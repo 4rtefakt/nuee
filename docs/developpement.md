@@ -11,7 +11,11 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/R/` | The engine: preprocessing, NIPALS PCA/PLS with missing values, cross-validation, OPLS, statistics, prediction, HCA, new analyses |
 | `moteur/serveur.R` | Local HTTP server (httpuv) answering the interface's JSON requests |
 | `moteur/console.R` | The R console: log of engine calls, prompt in the application's session |
+| `moteur/R/formats.R` | Reading and writing tables: text, Excel, R, SPSS, Stata, SAS, jamovi `.omv` (read and written here), dBase, ARFF |
+| `moteur/R/spectres.R` | Spectral preprocessing: SNV, MSC, Savitzky–Golay |
 | `moteur/tests/verifier_references.R` | Refits every model of a folder of exported `.usp` projects and compares with the results stored in them |
+| `moteur/tests/verifier_formats.R` | Every export format written and read back; text files as spreadsheets write them; jamovi files compared with `jmvReadWrite` when it is installed |
+| `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, and a PLS on made-up spectra |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
 | `app/tests/essai_api.js` | Check run before each build |
 | `app/icone/` | The logo, drawn by `dessiner_icone.py` |
@@ -20,7 +24,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 
 ## Running from the sources
 
-Requires R 4.6 with `jsonlite`, `httpuv` and `openxlsx`, Node, and Python 3 for the converter.
+Requires R 4.6 with `jsonlite`, `httpuv`, `openxlsx`, `haven` and `readxl` (and `foreign`, one of R's
+recommended packages), Node, and Python 3 for the converter.
 
 ```bash
 cd app && npm install && npm run vendor
@@ -29,6 +34,14 @@ npx electron app                               # or the desktop window, which st
 ```
 
 `node exemple/creer_exemple.js` rebuilds the example project after an engine change.
+
+Check the file formats and the spectral preprocessing (`jmvReadWrite`, if installed, is only used
+to compare the jamovi reader and writer with another implementation):
+
+```bash
+Rscript moteur/tests/verifier_formats.R
+Rscript moteur/tests/verifier_spectres.R
+```
 
 Check the engine against the results stored in `.usp` projects (exported with
 `convertisseur/export_project.py`):
@@ -47,7 +60,8 @@ cd app && node construire.js <output folder>
 The build first runs `app/tests/essai_api.js`. It syntax-checks the interface files, then starts
 the R server and runs the main requests on a small invented table: open, fit PCA/PLS/OPLS/PLS-DA,
 refit, predict, edit, undo, notes, save with session and reopen, R script, console, example
-project. Any failure stops the build. `SANS_ESSAI=1` skips it, and `node tests/essai_api.js` runs
+project, paste, export to every format and reopen, a workbook with two sheets. Any failure stops
+the build. `SANS_ESSAI=1` skips it, and `node tests/essai_api.js` runs
 it alone.
 
 It then produces two things.
@@ -72,6 +86,9 @@ uninstaller. No administrator rights are needed.
 electron-builder (NSIS): install for the current user (no administrator rights) or for all
 users, Start menu and desktop shortcuts, and an entry in Settings › Apps with its uninstaller.
 It is not code-signed, so SmartScreen warns on first run. `SANS_INSTALLATEUR=1` skips it.
+An installed copy asks `api.github.com/repos/4rtefakt/nuee/releases/latest` once per start
+whether a newer version exists, and shows a link in the status bar (off in Help; never for the
+network-share copy or when running from the sources).
 
 Settings live in `%APPDATA%\Nuee`; `--user-data-dir=<folder>` uses another one (a clean
 profile for tests or screenshots).

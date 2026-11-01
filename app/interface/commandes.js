@@ -14,9 +14,11 @@ export function creerCommandes(app) {
 
   const C = {
     ouvrir: { icone: 'folder-open', raccourci: 'Ctrl+O', action: () => app.ouvrir() },
+    coller: { icone: 'clipboard-paste', raccourci: 'Ctrl+V', action: () => app.coller() },
     enregistrer: { icone: 'save', raccourci: 'Ctrl+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), false) },
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
-    exporter: { icone: 'file-spreadsheet', raccourci: 'Ctrl+E', actif: avecModele, action: () => app.exporter(m()) },
+    exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
+    exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: avecModele, action: () => app.exporter(m()) },
     script_r: { icone: 'file-code', actif: avecModele, action: () => app.exporterScript(m()) },
     rapport: { icone: 'file-text', actif: avecModele, action: () => app.rapport(m()) },
     fermer_projet: { actif: () => !!app.projetActif(), action: () => app.fermerProjet(app.projetActif()) },
@@ -44,7 +46,7 @@ export function creerCommandes(app) {
     supprimer_modele: { icone: 'trash-2', actif: avecModele, action: () => app.supprimerModele(m()) },
     scores_variables: { icone: 'git-merge', actif: avecModele, action: () => app.scoresEnVariables(m()) },
 
-    resume: vue('resume'), scores: vue('scores'), loadings: vue('loadings'), dmodx: vue('dmodx'), t2: vue('t2'),
+    resume: vue('resume'), scores: vue('scores'), loadings: vue('loadings'), profils: vue('profils'), dmodx: vue('dmodx'), t2: vue('t2'),
     vip: vue('vip', avecPLS), coefficients: vue('coefficients', avecPLS), obspred: vue('obspred', avecPLS),
     dendrogramme: vue('dendrogramme'), liste_obs: vue('liste_obs'), liste_vars: vue('liste_vars'),
     permutations: vue('permutations', avecPLS), cvanova: vue('cvanova', avecPLS), classification: vue('classification', avecPLSDA),
@@ -69,6 +71,7 @@ export function creerCommandes(app) {
 
     guide: { icone: 'circle-help', raccourci: 'F1', action: () => app.aide('guide') },
     quoi_de_neuf: { action: () => app.quoiDeNeuf(true) },
+    maj_auto: { coche: () => app.majAuto() === true, action: () => app.basculerMajAuto() },
     projet_exemple: { icone: 'apple', action: () => app.ouvrirExemple() },
     redemarrer_moteur: { icone: 'refresh-cw', actif: () => !!app.bureau, action: () => app.confirmerRedemarrage() },
     differences: { action: () => app.aide('differences') },
@@ -79,7 +82,7 @@ export function creerCommandes(app) {
 }
 
 export const ICONES_VUES = {
-  resume: 'table-2', scores: 'chart-scatter', loadings: 'scan-search', dmodx: 'chart-line', t2: 'ruler',
+  resume: 'table-2', scores: 'chart-scatter', loadings: 'scan-search', profils: 'chart-spline', dmodx: 'chart-line', t2: 'ruler',
   vip: 'chart-bar', coefficients: 'chart-column', obspred: 'sigma', dendrogramme: 'network',
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
@@ -101,16 +104,16 @@ export function menus(app, C) {
     return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} « ${p.annulable} »` : t('annuler_action') };
   };
   return [
-    { cle: 'm_fichier', items: () => [it('ouvrir'),
+    { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
-      '-', it('enregistrer'), it('enregistrer_sous'), it('exporter'), it('script_r'), it('rapport'), '-', it('fermer_projet')]
+      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable')] },
     { cle: 'm_modele', items: () => [it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), '-', it('supprimer_modele')] },
-    { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
+    { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
       it('vip'), it('coefficients'), it('obspred'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
       it('dendrogramme'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
@@ -119,7 +122,7 @@ export function menus(app, C) {
     { cle: 'm_affichage', items: () => [it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
-    { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf'), it('differences'), '-', it('redemarrer_moteur'), '-', it('apropos')] },
+    { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('maj_auto')] : []).concat([it('differences'), '-', it('redemarrer_moteur'), '-', it('apropos')]) },
   ];
 }
 

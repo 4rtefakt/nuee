@@ -74,9 +74,12 @@ code_definition <- function(projet, d, p = "p") {
       sprintf("croises <- %s", croises),
       if (length(exclues)) "# observations exclues du modèle" else NULL,
       sprintf("observations <- %s", obs),
+      if (length(r$spectres)) c("# prétraitement des spectres, dans cet ordre (voir moteur/R/spectres.R)",
+                                sprintf("spectres <- %s", paste(deparse(r$spectres, width.cutoff = 500L), collapse = ""))),
       "",
       sprintf("d <- definir_modele(%s, %s, x = x, y = y, classe = classe, observations = observations,", p, q(r$type)),
-      "                    echelle = echelles, transformations = transformations, croises = croises,",
+      sprintf("                    echelle = echelles, transformations = transformations, croises = croises,%s",
+              if (length(r$spectres)) " spectres = spectres," else ""),
       sprintf("                    A = %s, G = %s, nom = %s, titre = %s)", q(r$A), q(r$G), q(r$nom), q(r$titre)))
   }
 }

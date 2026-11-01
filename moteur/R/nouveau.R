@@ -1,33 +1,32 @@
-# Nouvelles analyses : importer un tableau (CSV ou Excel), définir un modèle, choisir
-# automatiquement le nombre de composantes, enregistrer un projet.
+# Nouvelles analyses : importer un tableau (texte, Excel, R, SPSS, Stata, SAS, jamovi...),
+# définir un modèle, choisir automatiquement le nombre de composantes, enregistrer un projet.
 
-# Un tableau (une ligne par observation) en projet. La première colonne sert
-# d'identifiant si elle n'est pas numérique, ou si son nom l'annonce (« ID », « Obs »,
-# « Nom »...) et que ses valeurs sont toutes différentes ; les colonnes de texte deviennent
-# des variables qualitatives (une catégorie par valeur distincte), sauf celles dont toutes
-# les valeurs diffèrent, gardées en identifiants secondaires si `secondaires` (pas pour un
-# fichier à prédire : quelques lignes peuvent avoir chacune une catégorie différente).
-importer_tableau <- function(chemin, feuille = 1, secondaires = TRUE) {
-  ext <- tolower(tools::file_ext(chemin))
-  df <- if (ext %in% c("xlsx", "xlsm")) {
-    openxlsx::read.xlsx(chemin, sheet = feuille, check.names = FALSE)
-  } else {
-    lignes <- readLines(chemin, n = 1, warn = FALSE, encoding = "UTF-8")
-    sep <- if (lengths(regmatches(lignes, gregexpr(";", lignes))) > lengths(regmatches(lignes, gregexpr(",", lignes)))) ";" else ","
-    utils::read.csv(chemin, sep = sep, dec = if (sep == ";") "," else ".", check.names = FALSE,
-                    stringsAsFactors = FALSE, fileEncoding = "UTF-8-BOM", na.strings = c("", "NA"))
-  }
-  projet_depuis_tableau(df, basename(chemin), secondaires)
+# Un tableau (une ligne par observation) en projet ; formats.R le lit (`table` : la feuille
+# Excel ou l'objet R à lire). La première colonne sert d'identifiant si c'est du texte, ou si
+# son nom l'annonce (« ID », « Obs », « Nom »...) et que ses valeurs sont toutes différentes ;
+# les colonnes de texte et les facteurs deviennent des variables qualitatives (une catégorie par
+# valeur distincte), sauf les colonnes de texte dont toutes les valeurs diffèrent, gardées en
+# identifiants secondaires si `secondaires` (pas pour un fichier à prédire : quelques lignes
+# peuvent avoir chacune une catégorie différente).
+importer_tableau <- function(chemin, table = NULL, secondaires = TRUE) {
+  projet_depuis_tableau(lire_tableau(chemin, table), basename(chemin), secondaires)
+}
+
+# Un tableau collé (copié dans un tableur) : du texte, une ligne par observation, des colonnes
+# séparées par des tabulations.
+importer_texte <- function(texte, nom = "tableau", secondaires = TRUE) {
+  projet_depuis_tableau(vers_data_frame(lire_texte_delimite(enc2utf8(texte))), nom, secondaires)
 }
 
 projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE) {
-  premiere_id <- !is.numeric(df[[1]]) ||
-    (anyDuplicated(df[[1]]) == 0 && grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE))
+  if (!ncol(df) || !nrow(df)) stop("Le tableau est vide")
+  premiere_id <- is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
+    (is.factor(df[[1]]) || grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE)))
   ids <- if (premiere_id) as.character(df[[1]]) else as.character(seq_len(nrow(df)))
   if (premiere_id) df <- df[-1]
   # Une colonne de texte dont toutes les valeurs diffèrent (un code par observation) n'est
   # pas une variable : on la garde en identifiant secondaire, pour les étiquettes.
-  secondaire <- vapply(df, function(x) secondaires && !is.numeric(x) && !anyNA(x) && anyDuplicated(x) == 0, TRUE)
+  secondaire <- vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE)
   ids_secondaires <- lapply(df[secondaire], as.character)
   df <- df[!secondaire]
   vars <- list()
@@ -38,7 +37,7 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE) {
     if (is.numeric(x)) {
       donnees[, k] <- x
     } else {
-      cats <- sort(unique(stats::na.omit(as.character(x))))
+      cats <- if (is.factor(x)) levels(droplevels(x)) else sort(unique(stats::na.omit(as.character(x))))
       v$categories <- cats
       donnees[, k] <- match(as.character(x), cats)
     }
@@ -109,10 +108,13 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL) 
 #   transformations : vecteur nommé par numéro de variable, "racine2", "racine4", "log10" ou
 #   "log10:C2" pour log10(x + C2) ;
 #   croises : termes croisés et carrés, une paire de numéros de variables X par terme,
-#   par exemple list(c(3, 5), c(4, 4)) pour v3*v5 et v4*v4.
+#   par exemple list(c(3, 5), c(4, 4)) pour v3*v5 et v4*v4 ;
+#   spectres : prétraitement des spectres (spectres.R), par exemple
+#   list(list(type = "snv"), list(type = "sg", derivee = 1, fenetre = 11, degre = 2)) ; les
+#   variables X sont alors prises dans l'ordre du tableau.
 definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observations = NULL,
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
-                           transformations = NULL, croises = NULL) {
+                           transformations = NULL, croises = NULL, spectres = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -128,6 +130,8 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   x <- unique(as.numeric(x))
   y <- unique(as.numeric(y))
+  spectres <- etapes_spectres(spectres)
+  if (length(spectres)) x <- x[order(match(x, vapply(projet$variables, function(v) as.numeric(v$uid), 0)))]
   plsda <- type %in% c("PLS-DA", "OPLS-DA")
   opls <- type %in% c("OPLS", "OPLS-DA")
   if (plsda) {
@@ -148,6 +152,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                   unlist(lapply(croises, function(paire) termes_croises(projet, paire, x, ech("defaut"))), recursive = FALSE)),
             y = if (plsda) yt else unlist(lapply(y, function(u) termes_variable(projet, u, ech(u), trans(u))), recursive = FALSE))
   if (plsda) d$classe <- classe
+  if (length(spectres)) d$spectres <- spectres
   d
 }
 
@@ -203,7 +208,7 @@ reglages_modele <- function(projet, d) {
        exclues = I(setdiff(tous, d$observations)), echelles = echelles,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))),
-       nom = d$name %||% "", titre = d$title %||% "")
+       spectres = d$spectres %||% list(), nom = d$name %||% "", titre = d$title %||% "")
 }
 
 # Nombre de composantes significatives, avec les règles publiées de l'ajustement automatique :
@@ -270,7 +275,7 @@ enregistrer_projet <- function(projet, chemin) {
     p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
-  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- NULL  # état de la session
+  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- NULL  # état de la session
   jsonlite::write_json(p, chemin, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
   invisible(chemin)
 }

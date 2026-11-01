@@ -5,6 +5,8 @@ import { libelleTransfo, FORMAT, changerFormat } from './panneaux.js';
 
 const ECHELLES = ['UV', 'Par', 'Ctr', 'none'];
 const TRANSFOS = ['', 'racine2', 'racine4', 'log10'];
+// spectral preprocessing steps (moteur/R/spectres.R); sg1 = Savitzky–Golay 1st derivative
+const ETAPES = ['', 'snv', 'msc', 'sg0', 'sg1', 'sg2'];
 
 // projet: project summary; r: settings of an existing model to start from (m.reglages).
 export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele')) {
@@ -15,6 +17,10 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     exclues: new Set(r ? [].concat(r.exclues || []) : []), onglet: 'variables', filtre: '', filtreObs: '',
     croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '',
   };
+  const etapes = r && r.spectres ? [].concat(r.spectres) : [];
+  const sg = etapes.find((e) => e.type === 'sg');
+  Object.assign(st, { etapes: [0, 1].map((i) => (etapes[i] ? (etapes[i].type === 'sg' ? `sg${etapes[i].derivee || 0}` : etapes[i].type) : '')),
+    fenetre: sg ? sg.fenetre : 11, degre: sg ? sg.degre : 2 });
   if (r) {
     [].concat(r.x || []).forEach((u) => { st.roles[u] = 'x'; });
     [].concat(r.y || []).forEach((u) => { st.roles[u] = 'y'; });
@@ -49,7 +55,16 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       el('input', { type: 'number', min: 1, max: 50, value: st.A || 2, disabled: st.auto, style: 'width:5em', oninput: (e) => { st.A = +e.target.value; } })),
     el('label', {}, t('groupes_vc')), el('input', { type: 'number', min: 2, max: 50, value: st.G, style: 'width:5em', oninput: (e) => { st.G = +e.target.value || 7; } }),
     el('label', {}, t('echelle_defaut')), el('select', { onchange: (e) => { st.echelle = e.target.value; rendre(); } },
-      ECHELLES.map((k) => el('option', { value: k, selected: k === st.echelle }, t('echelle_' + k)))));
+      ECHELLES.map((k) => el('option', { value: k, selected: k === st.echelle }, t('echelle_' + k)))),
+    el('label', {}, t('spectres')), el('div', { class: 'ligne' },
+      st.etapes.map((code, i) => el('select', { title: `${i + 1}`, onchange: (e) => { st.etapes[i] = e.target.value; rendre(); } },
+        ETAPES.map((k) => el('option', { value: k, selected: k === code }, k ? `${i + 1}. ${t('etape_' + k)}` : `${i + 1}. —`)))),
+      st.etapes.some((k) => k.startsWith('sg')) ? [
+        el('label', { class: 'champ' }, t('fenetre'), el('input', { type: 'number', min: 3, step: 2, value: st.fenetre, style: 'width:4.5em',
+          oninput: (e) => { st.fenetre = +e.target.value; } })),
+        el('label', { class: 'champ' }, t('degre'), el('input', { type: 'number', min: 1, max: 5, value: st.degre, style: 'width:4em',
+          oninput: (e) => { st.degre = +e.target.value; } }))] : null),
+    st.etapes.some(Boolean) ? [el('label', {}, ''), el('p', { class: 'note' }, t('spectres_note'))] : null);
 
   const avecY = () => ['PLS', 'OPLS'].includes(st.type);
   const avecClasse = () => ['PLS-DA', 'OPLS-DA'].includes(st.type);
@@ -187,8 +202,14 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     }
     const echelles = Object.fromEntries(Object.entries(st.echelles).filter(([, v]) => v && v !== st.echelle));
     const transformations = Object.fromEntries(Object.entries(st.transfos).filter(([, v]) => v && v !== 'autre'));
+    if (st.etapes.some((k) => k.startsWith('sg')) && (st.fenetre < 3 || st.fenetre % 2 === 0 || st.degre >= st.fenetre
+      || st.etapes.some((k) => k.startsWith('sg') && +k[2] > st.degre))) {
+      erreur.textContent = t('sg_invalide');
+      return false;
+    }
+    const spectres = st.etapes.filter(Boolean).map((k) => (k.startsWith('sg') ? { type: 'sg', derivee: +k[2], fenetre: st.fenetre, degre: st.degre } : { type: k }));
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
-      exclues: [...st.exclues], echelle: st.echelle, echelles, transformations, croises: st.croises,
+      exclues: [...st.exclues], echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
       A: st.auto ? 0 : st.A, G: st.G, nom: st.nom, titre: st.titre };
     verifierPuisAjuster(q);
     return false;  // the dialog closes once the data check is done
@@ -251,16 +272,18 @@ function nomLibre(p) {
 const AIDE = {
   fr: {
     guide: [
-      ['Ouvrir', 'Fichier › Ouvrir (Ctrl+O) : un projet .usp, un projet enregistré par l’application (.json) ou un tableau (.csv, .xlsx ; une ligne par observation).'],
+      ['Ouvrir', 'Fichier › Ouvrir (Ctrl+O) : un tableau, une ligne par observation (Excel .xlsx ou .xls, texte .csv ou .txt, R .rds ou .RData, SPSS .sav, Stata .dta, SAS .sas7bdat ou .xpt, jamovi .omv, dBase .dbf, Weka .arff), un projet enregistré par l’application (.json) ou un projet .usp. Pour un classeur à plusieurs feuilles ou un .RData à plusieurs tableaux, l’application demande lequel ouvrir.'],
+      ['Coller un tableau', 'Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google Sheets ou jamovi deviennent un projet, à enregistrer. La première ligne donne les noms des variables, la première colonne ceux des observations si c’est du texte.'],
       ['Projet d’exemple', 'Aide › Projet d’exemple : 120 pommes inventées et quatre modèles prêts (ACP, PLS, PLS-DA, OPLS-DA), pour essayer l’application.'],
       ['Explorateur', 'À gauche : projets, données, modèles importés d’un fichier .usp, modèles calculés et leurs vues. Double-clic pour ouvrir, clic droit pour les actions.'],
       ['Modèles importés', 'Double-cliquer un modèle importé le recalcule en R. Le résumé marque chaque valeur : = identique à la valeur enregistrée dans le fichier, ≈ proche, ≠ différente.'],
-      ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA), rôle, échelle et transformation de chaque variable, observations incluses, nombre de composantes (automatique par défaut).'],
+      ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA, OPLS), rôle, échelle et transformation de chaque variable, observations incluses, nombre de composantes (automatique par défaut).'],
       ['Sélection', 'Cadre ou lasso dans un graphique, clic sur un point ou une ligne de liste : la sélection apparaît dans toutes les vues et toutes les fenêtres du modèle. Échap l’efface ; Ctrl+Suppr exclut les observations et réajuste.'],
       ['Fenêtres', 'Un onglet par modèle : sa page montre résumé, scores et loadings, ses autres vues s’y ajoutent en onglets. Les vues se déplacent par leur onglet (glisser-déposer), se divisent et s’empilent ; glisser l’onglet d’un modèle à côté d’un autre pour les comparer. Clic droit sur un onglet : détacher dans une fenêtre, agrandir, fermer. Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète.'],
       ['Graphiques', 'Molette : zoom ; clic droit : copier l’image, l’enregistrer en PNG ou SVG, voir les contributions de la sélection, en faire une classe. Listes Couleur et Étiquettes : par classe, groupe du dendrogramme, identifiant ou n’importe quelle variable.'],
-      ['Prédire un fichier', 'Prédiction › Prédire un fichier : un tableau CSV ou Excel dont les colonnes portent les noms des variables du modèle. Les observations hors du domaine du modèle sont signalées ; le résultat s’exporte vers Excel.'],
+      ['Prédire un fichier', 'Prédiction › Prédire un fichier : un tableau (CSV, Excel, R, SPSS…) dont les colonnes portent les noms des variables du modèle. Les observations hors du domaine du modèle sont signalées ; le résultat s’exporte dans tous les formats d’export.'],
       ['Modèles hiérarchiques', 'Modèle › Scores en variables : les scores d’un modèle deviennent des variables ($M1.t1…) utilisables comme X d’un autre modèle. Après avoir modifié le modèle de base, refaire cette étape puis réajuster le modèle supérieur.'],
+      ['Exporter', 'Fichier › Exporter les données : le tableau du projet ; Fichier › Exporter les résultats du modèle (Ctrl+E) : scores, T2, DModX, loadings, VIP, coefficients… Formats : Excel, CSV, texte, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Les qualitatives restent qualitatives ; pour SPSS, Stata et SAS, les noms de variables sont rendus valides et le nom d’origine devient l’étiquette.'],
       ['Script R', 'Fichier › Exporter en script R : un script commenté qui refait le modèle avec les fonctions du moteur, à relire et modifier dans RStudio.'],
       ['Rapport', 'Fichier › Rapport du modèle : un PDF ou un document Word avec les parties choisies ; les graphiques y sont mis en forme comme dans leurs panneaux.'],
       ['Console R', 'Affichage › Console R (Ctrl+J) : le code R de chaque action, et une invite R dans la session de l’application (m = modèle affiché, p = son projet). recharger_moteur() relit les fichiers du moteur après une correction.'],
@@ -269,6 +292,8 @@ const AIDE = {
       ['Statistiques des variables', 'Graphiques › Statistiques des variables : statistiques du jeu de travail, transformations proposées en rouge, histogrammes et carte des valeurs manquantes.'],
       ['Données', 'Double-clic sur une case de la vue Données pour la modifier ; Édition › Nouvelle variable : formule R ou classes d’après les valeurs.'],
       ['OPLS', 'Une composante prédictive et des composantes orthogonales ; un seul Y, ou deux classes (OPLS-DA). Graphique S (S-plot) dans Graphiques.'],
+      ['Spectres', 'Nouveau modèle › Général › Prétraitement des spectres : SNV, MSC, lissage ou dérivées de Savitzky–Golay, en une ou deux étapes, appliqués à chaque observation avant la mise à l’échelle (variables X dans l’ordre du tableau). Graphiques › Profils (spectres) : loadings, coefficients, VIP ou les spectres eux-mêmes en lignes, la longueur d’onde lue dans le nom des variables.'],
+      ['Mises à jour', 'La version installée cherche au démarrage une nouvelle version sur GitHub et la signale dans la barre d’état (Aide › Chercher une nouvelle version au démarrage pour l’arrêter).'],
       ['Historique du fichier', 'Sous un projet .usp : le journal d’audit enregistré dans le fichier (dates, versions, changements de chaque modèle).'],
       ['Code', 'Tous les calculs sont en R, commentés en français, dans resources\\moteur\\R.'],
     ],
@@ -284,16 +309,18 @@ const AIDE = {
   },
   en: {
     guide: [
-      ['Open', 'File › Open (Ctrl+O): a .usp project, a project saved by this application (.json), or a table (.csv, .xlsx; one row per observation).'],
+      ['Open', 'File › Open (Ctrl+O): a table, one row per observation (Excel .xlsx or .xls, text .csv or .txt, R .rds or .RData, SPSS .sav, Stata .dta, SAS .sas7bdat or .xpt, jamovi .omv, dBase .dbf, Weka .arff), a project saved by this application (.json) or a .usp project. For a workbook with several sheets or an .RData file with several tables, the application asks which one to open.'],
+      ['Paste a table', 'File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi become a project, to save. The first row gives the variable names, the first column the observation names when it is text.'],
       ['Example project', 'Help › Example project: 120 made-up apples and four ready models (PCA, PLS, PLS-DA, OPLS-DA), to try the application.'],
       ['Explorer', 'On the left: projects, data, models imported from a .usp file, fitted models and their views. Double-click to open, right-click for actions.'],
       ['Imported models', 'Double-clicking an imported model recomputes it in R. The summary marks each value: = same as the value stored in the file, ≈ close, ≠ different.'],
-      ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA), each variable’s role, scaling and transform, included observations, number of components (automatic by default).'],
+      ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA, OPLS), each variable’s role, scaling and transform, included observations, number of components (automatic by default).'],
       ['Selection', 'Box or lasso in a plot, click a point or a list row: the selection shows in every view and window of the model. Esc clears it; Ctrl+Delete excludes the observations and refits.'],
       ['Windows', 'One tab per model: its page shows the summary, scores and loadings, and its other views join it as tabs. Drag views by their tab to move, split and stack them; drag a model’s tab beside another to compare them. Right-click a tab to move it to a new window, maximize or close it. Window › New window opens a second full window.'],
       ['Plots', 'Wheel: zoom; right-click: copy the image, save it as PNG or SVG, see the contributions of the selection, make it a class. Colour and Labels lists: by class, dendrogram group, ID or any variable.'],
-      ['Predict a file', 'Predict › Predict a file: a CSV or Excel table whose columns carry the model’s variable names. Observations outside the model’s domain are flagged; results export to Excel.'],
+      ['Predict a file', 'Predict › Predict a file: a table (CSV, Excel, R, SPSS…) whose columns carry the model’s variable names. Observations outside the model’s domain are flagged; results export to every export format.'],
       ['Hierarchical models', 'Model › Scores as variables: a model’s scores become variables ($M1.t1…) usable as X of another model. After changing the base model, do it again and refit the upper model.'],
+      ['Export', 'File › Export data: the project’s table; File › Export model results (Ctrl+E): scores, T2, DModX, loadings, VIP, coefficients… Formats: Excel, CSV, text, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Qualitative variables stay qualitative; for SPSS, Stata and SAS, variable names are made valid and the original name becomes the label.'],
       ['R script', 'File › Export as R script: a commented script that rebuilds the model with the engine’s functions, to read and change in RStudio.'],
       ['Report', 'File › Model report: a PDF or Word document with the chosen parts; plots look as in their panels.'],
       ['R console', 'View › R console (Ctrl+J): the R code of each action, and an R prompt in the application’s session (m = model shown, p = its project). recharger_moteur() reloads the engine files after a correction.'],
@@ -302,6 +329,8 @@ const AIDE = {
       ['Variable statistics', 'Plots › Variable statistics: workset statistics, proposed transformations in red, histograms and a missing-value map.'],
       ['Data', 'Double-click a cell of the Data view to edit it; Edit › New variable: an R formula or classes from values.'],
       ['OPLS', 'One predictive component and orthogonal ones; a single Y, or two classes (OPLS-DA). S-plot in Plots.'],
+      ['Spectra', 'New model › General › Spectral preprocessing: SNV, MSC, Savitzky–Golay smoothing or derivatives, in one or two steps, applied to each observation before scaling (X variables in the order of the table). Plots › Profiles (spectra): loadings, coefficients, VIP or the spectra themselves as lines, the wavelength read from the variable names.'],
+      ['Updates', 'The installed version looks for a new version on GitHub at start-up and shows it in the status bar (Help › Look for a new version at start-up to stop it).'],
       ['File history', 'Under a .usp project: the audit trail stored in the file (dates, versions, changes to each model).'],
       ['Code', 'All computations are in R, commented in French, in resources\\moteur\\R.'],
     ],

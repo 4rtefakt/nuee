@@ -14,7 +14,7 @@ ajuster <- function(projet, definition, A = definition$A, G = definition$cv_grou
                     poids = "calcules", orienter = TRUE, arret = NULL) {
   pls <- identical(definition$type, "PLS")
   obs <- definition$observations
-  bx <- construire_bloc(projet, definition$x, obs, poids)
+  bx <- construire_bloc(projet, definition$x, obs, poids, spectres = definition$spectres)
   by <- if (pls) construire_bloc(projet, definition$y, obs, poids, facteurs = bx$simples)
   # PLS-DA venant d'un fichier .usp : ses classes s'appellent $M1.DA1... ; usp_extract a retrouvé leur
   # nom quand une variable qualitative les définit, par exemple « $M1.DA1 (variete=Gala) »

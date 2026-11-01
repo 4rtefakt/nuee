@@ -3,7 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('bureau', {
   versions: { electron: process.versions.electron },
-  choisirFichier: () => ipcRenderer.invoke('choisir-fichier'),
+  choisirFichier: (filtres) => ipcRenderer.invoke('choisir-fichier', filtres),
+  lirePressePapiers: () => ipcRenderer.invoke('lire-presse-papiers'),
   enregistrerSous: (nom, filtres) => ipcRenderer.invoke('enregistrer-sous', nom, filtres),
   recents: () => ipcRenderer.invoke('recents'),
   ajouterRecent: (chemin) => ipcRenderer.invoke('ajouter-recent', chemin),
@@ -25,4 +26,6 @@ contextBridge.exposeInMainWorld('bureau', {
   secoursIndex: (entrees) => ipcRenderer.invoke('secours-index', entrees),
   surMoteurArrete: (f) => ipcRenderer.on('moteur-arrete', (_, journal) => f(journal)),
   redemarrerMoteur: () => ipcRenderer.invoke('redemarrer-moteur'),
+  nouvelleVersion: () => ipcRenderer.invoke('nouvelle-version'),
+  majAuto: (oui) => ipcRenderer.invoke('maj-auto', oui),
 });

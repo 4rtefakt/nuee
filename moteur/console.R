@@ -27,10 +27,11 @@ journal_depuis <- function(n) Filter(function(e) e$n > n, etat$journal)
 code_r <- function(x) deparse(x, width.cutoff = 500L)
 vecteur_r <- function(x) if (length(x) == 1) code_r(x) else paste0("c(", paste(vapply(x, code_r, ""), collapse = ", "), ")")
 
-appel_ouverture <- function(chemin) {
+appel_ouverture <- function(chemin, table = NULL) {
   ext <- tolower(tools::file_ext(chemin))
   if (ext == "usp") return(sprintf("lire_projet(convertir_usp(%s))  # .usp converti par export_project", code_r(chemin)))
   if (ext == "json") return(sprintf("lire_projet(%s)", code_r(chemin)))
+  if (!is.null(table)) return(sprintf("importer_tableau(%s, table = %s)", code_r(chemin), code_r(table)))
   sprintf("importer_tableau(%s)", code_r(chemin))
 }
 
@@ -42,7 +43,10 @@ journaliser <- function(nom, q, r) {
     c(commentaire, code_definition(projet(e$projet), e$definition, e$projet), sprintf("%s <- ajuster(%s, d)", id, e$projet))
   }
   lignes <- switch(nom,
-    ouvrir = sprintf("%s <- %s", r$id, appel_ouverture(q$chemin)),
+    ouvrir = if (!is.null(r$id)) sprintf("%s <- %s", r$id, appel_ouverture(q$chemin, q$table)),
+    coller = c("# tableau collé, gardé dans un fichier de la session", sprintf("%s <- importer_tableau(%s)", r$id, code_r(r$fichier_colle))),
+    exporter = sprintf("ecrire_tables(tables_resultats(%s, %s), %s)", pm(q$modele), q$modele, code_r(r$chemin)),
+    exporter_donnees = sprintf("ecrire_tableau(tableau_projet(%s), %s)", q$projet, code_r(r$chemin)),
     fermer_projet = sprintf("rm(%s)  # projet fermé", q$projet),
     ajuster = definition_modele(r$id, sprintf("# modèle %s (%s) du projet %s", r$nom, r$type, projet(r$projet)$nom)),
     reajuster = definition_modele(r$id, sprintf("# modèle %s, d'après %s%s", r$nom, q$modele,

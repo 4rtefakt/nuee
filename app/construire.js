@@ -15,20 +15,23 @@ const depot = path.join(__dirname, '..');
 const sortie = path.resolve(process.argv[2] || path.join(depot, 'dist'));
 const dossierR = process.argv[3] || path.join(process.env.LOCALAPPDATA, 'Programs', 'R', 'R-4.6.2');
 
-// Parts of R the program never uses (manuals, tests, Tcl/Tk, the uninstaller, message
-// translations other than French and English).
+// Parts of R the program never uses (manuals, tests, C headers for compiling packages, example
+// files, Tcl/Tk, the uninstaller, message translations other than French and English).
 const inutile = (rel) => /^(doc|tests|Tcl)([\\/]|$)|^unins/i.test(rel)
-  || /^library[\\/][^\\/]+[\\/](doc|html|tests)([\\/]|$)/i.test(rel)
+  || /^library[\\/][^\\/]+[\\/](doc|html|tests|include)([\\/]|$)/i.test(rel)
+  || /^library[\\/](readr|readxl|vroom)[\\/](extdata|bench|words)([\\/]|$)/i.test(rel)
   || /^library[\\/]tcltk([\\/]|$)/i.test(rel)
   || /^library[\\/]translations[\\/](?!(fr|en|en_GB|en@quot|Meta|DESCRIPTION)([\\/]|$))[^\\/]+([\\/]|$)/i.test(rel);
 
-// R packages to bring: base R, the recommended packages (for the R console) and what the
-// engine loads with its dependencies. Others installed in the local R (testthat...) stay out.
+// R packages to bring: base R, the recommended packages (for the R console; foreign reads dBase
+// and Weka files) and what the engine loads with its dependencies (haven: SPSS, Stata, SAS;
+// readxl: .xls). Others installed in the local R (testthat...) stay out, and so do those only
+// needed to compile a package (LinkingTo: cpp11, progress).
 function paquetsR() {
   const code = 'ip <- installed.packages(lib.loc = .Library); '
     + 'std <- rownames(ip)[ip[, "Priority"] %in% c("base", "recommended")]; '
-    + 'dep <- unlist(tools::package_dependencies(c("httpuv", "jsonlite", "openxlsx"), db = ip, recursive = TRUE, which = c("Depends", "Imports", "LinkingTo"))); '
-    + 'writeLines(union(std, c("httpuv", "jsonlite", "openxlsx", "translations", dep)))';
+    + 'dep <- unlist(tools::package_dependencies(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"), db = ip, recursive = TRUE, which = c("Depends", "Imports"))); '
+    + 'writeLines(union(std, c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "translations", dep)))';
   return new Set(execFileSync(path.join(dossierR, 'bin', 'Rscript.exe'), ['-e', code], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean));
 }
 

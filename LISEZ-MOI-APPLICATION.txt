@@ -22,11 +22,22 @@ Ouvrir
 Fichier › Ouvrir (Ctrl+O) :
   - un projet .usp : données, modèles et résultats enregistrés dans le fichier ;
   - un projet enregistré par l'application (.json) ;
-  - un tableau (.csv ou .xlsx), une ligne par observation ; la première colonne sert de
-    nom d'observation si c'est du texte ou si elle s'appelle « ID », « Obs », « Nom »... ;
-    les autres colonnes de texte dont toutes les valeurs diffèrent (un code par observation)
-    deviennent des identifiants secondaires : elles servent d'étiquettes mais n'entrent pas
-    dans les modèles ; les autres colonnes de texte sont des variables qualitatives.
+  - un tableau, une ligne par observation :
+      Excel .xlsx, .xlsm, .xls        texte .csv, .txt, .tsv (séparateur, virgule décimale et
+      R .rds, .RData                    encodage reconnus, y compris le « texte Unicode »
+      SPSS .sav, .zsav, .por            d'Excel)
+      Stata .dta                      SAS .sas7bdat, .xpt
+      jamovi .omv                     dBase .dbf, Weka .arff
+    La première colonne sert de nom d'observation si c'est du texte ou si elle s'appelle
+    « ID », « Obs », « Nom »... (pour un fichier R, les noms des lignes) ; les autres colonnes
+    de texte dont toutes les valeurs diffèrent (un code par observation) deviennent des
+    identifiants secondaires : elles servent d'étiquettes mais n'entrent pas dans les modèles ;
+    les autres colonnes de texte, les facteurs R et les variables étiquetées de SPSS ou Stata
+    sont des variables qualitatives (dans l'ordre de leurs modalités). Pour un classeur à
+    plusieurs feuilles ou un fichier R à plusieurs tableaux, l'application demande lequel ouvrir.
+Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google
+Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
+projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).
 Les derniers fichiers ouverts sont dans Fichier › Ouvrir un fichier récent.
 Pour essayer : Aide › Projet d'exemple ouvre 120 pommes inventées (quatre variétés, culture
 bio ou conventionnelle, une douzaine de mesures et une note de dégustation) avec quatre
@@ -60,7 +71,10 @@ L'application le signale et propose de le redémarrer ; on peut aussi le faire s
 modèles et leurs vues ; les changements faits depuis la dernière copie de secours (deux
 minutes au plus) sont perdus. Au-delà d'une minute de calcul, la barre d'état le rappelle.
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
-jour).
+jour). La version installée avec Nuee-Setup cherche au démarrage s'il existe une nouvelle
+version (une seule demande à GitHub, rien d'autre n'est envoyé) et la signale dans la barre
+d'état ; Aide › Chercher une nouvelle version au démarrage l'arrête. La copie lancée depuis le
+NAS ne cherche pas : elle se met à jour avec le NAS.
 
 L'explorateur (à gauche)
 ------------------------
@@ -73,7 +87,8 @@ dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente.
 Menus et barre d'outils
 -----------------------
 Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. Raccourcis :
-  Ctrl+O ouvrir            Ctrl+S enregistrer         Ctrl+E exporter vers Excel
+  Ctrl+O ouvrir            Ctrl+S enregistrer         Ctrl+E exporter les résultats
+  Ctrl+V coller un tableau
   Ctrl+N nouveau modèle    Ctrl+M modifier le modèle  Ctrl+= / Ctrl+- composantes
   Échap  effacer la sélection    Ctrl+Suppr exclure la sélection et réajuster
   Ctrl+Maj+N nouvelle fenêtre    Ctrl+Maj+D détacher le panneau   Ctrl+W fermer le panneau
@@ -138,11 +153,11 @@ Prédire
 -------
 Prédiction › Prédire : les observations du projet hors du modèle, ou un jeu de prédiction
 enregistré dans le fichier .usp.
-Prédiction › Prédire un fichier : un tableau .csv ou .xlsx dont les colonnes portent les
+Prédiction › Prédire un fichier : un tableau (dans l'un des formats ci-dessus) dont les colonnes portent les
 noms des variables du modèle (sans tenir compte des majuscules ni des espaces au début et à
 la fin ; les catégories par leur nom). Le résultat donne les scores, DModX, T² et Y prédits ;
 les observations hors du domaine du modèle (DModX > DCrit ou T² > T²Crit 95 %) sont
-signalées ; il s'exporte vers Excel. Les variables X du modèle absentes du fichier sont
+signalées ; il s'exporte dans tous les formats d'export. Les variables X absentes du fichier sont
 listées et traitées comme manquantes.
 Le graphique au-dessus du tableau montre les scores, ou le DModXPS : la distance de chaque
 observation prédite au modèle, comparée à DCrit (les observations du modèle en gris).
@@ -154,6 +169,35 @@ Modèle › Scores en variables : les scores d'un modèle deviennent des variabl
 supérieur. Après avoir modifié le modèle de base, refaire cette étape puis réajuster les
 modèles qui les utilisent (l'application les nomme). Pour prédire un fichier avec un modèle
 hiérarchique, les modèles de base sont prédits d'abord, automatiquement.
+
+Exporter vers d'autres logiciels
+--------------------------------
+Fichier › Exporter les données : le tableau du projet (noms des observations, identifiants,
+variables). Fichier › Exporter les résultats du modèle (Ctrl+E) : les tableaux du modèle
+(observations : scores, T², DModX, valeurs ajustées ; variables : loadings, VIP, intervalles ;
+composantes ; coefficients ; variables Y). Formats : Excel (une feuille par tableau), CSV,
+texte séparé par des tabulations, R (.rds : une liste de tableaux ; .RData), SPSS (.sav),
+Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) et Weka (.arff) ; dans ces
+derniers, un fichier par tableau (« M1.sav », « M1 - variables.sav »...). Les variables
+qualitatives restent qualitatives (facteurs R, étiquettes de valeurs SPSS et Stata, nominales
+jamovi). Pour SPSS, Stata, SAS et dBase, les noms de variables sont rendus valides (lettres
+sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable.
+
+Spectres
+--------
+Nouveau modèle › Général › Prétraitement des spectres : chaque observation est un spectre
+(ses variables X quantitatives, dans l'ordre du tableau), corrigé avant la mise à l'échelle
+par une ou deux étapes, dans l'ordre :
+  SNV        chaque spectre centré sur sa moyenne et divisé par son écart-type ;
+  MSC        chaque spectre ajusté sur le spectre moyen des observations du modèle (x = a + b r),
+             puis remplacé par (x - a) / b ; une prédiction reprend ce spectre moyen ;
+  Savitzky–Golay : lissage, dérivée première ou seconde, dans une fenêtre de n variables
+             (impair) avec un polynôme de degré d.
+Pour des spectres, on centre souvent sans réduire (échelle « Centrage seul »). Le
+prétraitement est fait une fois, avant la validation croisée. Graphiques › Profils (spectres) :
+loadings, coefficients, VIP, ou les spectres eux-mêmes (avant ou après prétraitement) en
+lignes ; l'axe horizontal est le nombre lu dans le nom des variables (« 1450 nm ») quand
+chacune en a un. Un clic sur un spectre sélectionne son observation.
 
 Script R
 --------
@@ -300,6 +344,8 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   projet.R               lecture des projets, historique du fichier
   verification.R         comparaison avec les résultats enregistrés dans les fichiers .usp
   script.R               export d'un modèle en script R
+  formats.R              lecture et écriture des tableaux (Excel, texte, R, SPSS, Stata, SAS, jamovi...)
+  spectres.R             prétraitement des spectres (SNV, MSC, Savitzky–Golay)
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustement)
 Dans R : source("resources/moteur/charger.R"), puis par exemple
   p <- importer_tableau("mes_donnees.csv")

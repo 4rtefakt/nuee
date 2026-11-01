@@ -65,9 +65,10 @@ echelle <- function(x, type) {
 #   poids = "enregistres" : ceux que le fichier .usp avait enregistrés.
 # `imposees` : centres et poids d'un modèle déjà ajusté (son bloc), pour y projeter de
 # nouvelles observations. `facteurs` sert aux termes croisés du bloc Y, qui prennent leurs
-# facteurs dans le bloc X.
+# facteurs dans le bloc X. `spectres` : prétraitement des spectres (spectres.R), appliqué aux
+# termes quantitatifs simples, observation par observation, avant la mise à l'échelle.
 construire_bloc <- function(projet, termes, observations, poids = c("calcules", "enregistres"),
-                            facteurs = NULL, imposees = NULL) {
+                            facteurs = NULL, imposees = NULL, spectres = NULL) {
   poids <- match.arg(poids)
   K <- length(termes)
   X <- matrix(NA_real_, length(observations), K)
@@ -95,10 +96,19 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
   }
 
   croises <- which(vapply(termes, function(t) length(t$variables) > 1, TRUE))
-  for (k in setdiff(seq_len(K), croises)) {
+  seuls <- setdiff(seq_len(K), croises)
+  bruts <- matrix(NA_real_, length(observations), K)
+  for (k in seuls) bruts[, k] <- transformer(valeurs_simples(projet, termes[[k]], observations), termes[[k]]$transform)
+  reference <- NULL
+  if (length(spectres)) {
+    q <- seuls[vapply(termes[seuls], function(t) categorie(t) == 0, TRUE)]
+    r <- pretraiter_spectres(bruts[, q, drop = FALSE], spectres, imposees$reference)
+    bruts[, q] <- r$X
+    reference <- r$reference
+  }
+  for (k in seuls) {
     t <- termes[[k]]
-    x <- transformer(valeurs_simples(projet, t, observations), t$transform)
-    X[, k] <- mettre_a_echelle(k, x)
+    X[, k] <- mettre_a_echelle(k, bruts[, k])
     simples[[paste(t$variables[1], categorie(t))]] <- X[, k]
   }
   for (k in croises) {
@@ -113,7 +123,7 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
   }
   colnames(X) <- noms
   rownames(X) <- as.character(observations)
-  list(X = X, centre = centre, poids = poids_k, type = type, noms = noms, simples = simples)
+  list(X = X, centre = centre, poids = poids_k, type = type, noms = noms, simples = simples, reference = reference)
 }
 
 `%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a

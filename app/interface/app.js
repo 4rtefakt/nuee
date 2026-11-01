@@ -11,6 +11,7 @@ import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable } from '
 import { dialogueRapport } from './rapport.js';
 import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
+import { ECRITURE, filtresOuverture, acceptOuverture } from './formats.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -123,15 +124,24 @@ const app = {
   // ---- files
   async ouvrir() {
     if (bureau) {
-      const chemin = await bureau.choisirFichier();
+      const chemin = await bureau.choisirFichier(filtresOuverture());
       if (chemin) await app.ouvrirChemin(chemin);
       return;
     }
-    const f = await new Promise((resolve) => {
-      const i = el('input', { type: 'file', accept: '.usp,.json,.csv,.txt,.xlsx', onchange: () => resolve(i.files[0]) });
-      i.click();
-    });
-    if (f) await apresOuverture(await occupe(() => televerser(f)));
+    const f = await choisirFichierNavigateur(acceptOuverture());
+    if (!f) return;
+    const res = await choisirTable(await occupe(() => televerser(f)));
+    if (res) await apresOuverture(res);
+  },
+
+  // A table copied in a spreadsheet or a statistics program (cells separated by tabs)
+  // becomes a new project, to save like any other.
+  async coller() {
+    let texte = '';
+    try { texte = bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText(); } catch { texte = ''; }
+    if (!texte || !texte.trim()) { statut(t('presse_papiers_vide'), true); return; }
+    etat.collages = (etat.collages || 0) + 1;
+    await apresOuverture(await occupe(() => demander('coller', { texte, nom: `${t('tableau_colle')} ${etat.collages}` })));
   },
 
   // the example project (made-up data), with its first model open, scores coloured by variety
@@ -145,7 +155,8 @@ const app = {
   },
 
   async ouvrirChemin(chemin) {
-    const res = await occupe(() => demander('ouvrir', { chemin }));
+    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin })));
+    if (!res) return;
     await apresOuverture(res);
     if (bureau) recents = await bureau.ajouterRecent(chemin);
     else {
@@ -179,17 +190,19 @@ const app = {
     return true;
   },
 
+  // A model's results (scores, loadings, VIP...), a project's data, a prediction: in the
+  // format chosen in the export dialog.
   async exporter(id) {
     const m = etat.modeles[id];
     if (!m) return;
-    if (bureau) {
-      const chemin = await bureau.enregistrerSous(`${m.nom}.xlsx`, [{ name: 'Excel', extensions: ['xlsx'] }]);
-      if (!chemin) return;
-      await occupe(() => demander('exporter', { modele: id, chemin }));
-      statut(`${t('exporte')} ${chemin}`);
-    } else {
-      telecharger((await occupe(() => demander('exporter', { modele: id }))).chemin);
-    }
+    const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), m.nom, true);
+    if (choix) apresExport(await occupe(() => demander('exporter', { modele: id, ...choix })));
+  },
+  async exporterDonnees(pid) {
+    const p = etat.projets[pid];
+    if (!p) { statut(t('choisir_projet'), true); return; }
+    const choix = await choisirExport(t('exporter_donnees_titre', { nom: p.nom }), p.nom.replace(/\.[^.]+$/, ''), false);
+    if (choix) apresExport(await occupe(() => demander('exporter_donnees', { projet: pid, ...choix })));
   },
 
   async fermerProjet(pid) {
@@ -268,7 +281,7 @@ const app = {
     try { secours = await bureau.secoursListe(); } catch { secours = []; }
     const aRouvrir = Object.values(etat.projets).filter((p) => p.chemin).map((p) => {
       const s = p.modifie && secours.find((e) => e.origine === p.chemin);
-      return { chemin: s ? s.fichier : p.chemin, origine: s ? p.chemin : null, nom: p.nom, session: dock ? collecterSession(p.id) : null };
+      return { chemin: s ? s.fichier : p.chemin, origine: s ? p.chemin : null, nom: p.nom, table: p.table, session: dock ? collecterSession(p.id) : null };
     });
     statut(t('moteur_redemarrage'));
     const erreur = await bureau.redemarrerMoteur();
@@ -279,7 +292,8 @@ const app = {
     app.rafraichirExplorateur();
     for (const r of aRouvrir) {
       try {
-        const res = await occupe(() => demander('ouvrir', r.origine ? { chemin: r.chemin, origine: r.origine, nom: r.nom } : { chemin: r.chemin }));
+        const res = await occupe(() => demander('ouvrir', r.origine ? { chemin: r.chemin, origine: r.origine, nom: r.nom }
+          : r.table ? { chemin: r.chemin, table: r.table } : { chemin: r.chemin }));
         await apresOuverture(res, r.session);
       } catch { /* a project that cannot be read any more stays closed */ }
     }
@@ -291,15 +305,22 @@ const app = {
       boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('redemarrer'), principal: true, action: () => { app.redemarrerMoteur(); return true; } }] });
   },
   quoiDeNeuf: (tout) => quoiDeNeuf(tout),
+  // looking for a new version at start-up (installed copy only; null otherwise)
+  majAuto: () => (etat.majAuto === undefined ? null : etat.majAuto),
+  async basculerMajAuto() {
+    etat.majAuto = await bureau.majAuto(!etat.majAuto);
+    if (!etat.majAuto) etat.nouvelleVersion = null;
+    majEtat();
+  },
   valeurs: (projet, variable, observations, identifiant) => demander('valeurs', { projet, variable, observations, identifiant }),
 
   // ---- second batch: predictions from a file, score variables, classes, R scripts
   async predireFichier(id) {
     let chemin;
     if (bureau) {
-      chemin = await bureau.choisirFichier();
+      chemin = await bureau.choisirFichier(filtresOuverture(true));
     } else {
-      const f = await choisirFichierNavigateur('.csv,.txt,.xlsx');
+      const f = await choisirFichierNavigateur(acceptOuverture(true));
       if (f) chemin = (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
     }
     if (!chemin) return null;
@@ -311,14 +332,8 @@ const app = {
   },
   async exporterPrediction(id) {
     const m = etat.modeles[id];
-    if (bureau) {
-      const chemin = await bureau.enregistrerSous(`${t('predictions')} ${m.nom}.xlsx`, [{ name: 'Excel', extensions: ['xlsx'] }]);
-      if (!chemin) return;
-      await occupe(() => demander('exporter_prediction', { modele: id, chemin }));
-      statut(`${t('exporte')} ${chemin}`);
-    } else {
-      telecharger((await occupe(() => demander('exporter_prediction', { modele: id }))).chemin);
-    }
+    const choix = await choisirExport(t('exporter_prediction_titre', { nom: m.nom }), `${t('predictions')} ${m.nom}`, false);
+    if (choix) apresExport(await occupe(() => demander('exporter_prediction', { modele: id, ...choix })));
   },
   async scoresEnVariables(id) {
     const r = await occupe(() => demander('scores_en_variables', { modele: id }));
@@ -530,6 +545,55 @@ function choisirFichierNavigateur(accept) {
 
 function telecharger(chemin) {
   window.location.href = '/api/fichier?chemin=' + encodeURIComponent(chemin);
+}
+
+// A file with several tables (Excel sheets, objects of an .RData file): the one to open.
+// Resolves to the opened project, or null when the choice is cancelled.
+function choisirTable(res) {
+  if (!res || !res.choisir) return Promise.resolve(res);
+  const tables = [].concat(res.choisir);
+  return new Promise((resolve) => {
+    const liste = el('select', { class: 'liste-tables', size: Math.min(12, Math.max(4, tables.length)) },
+      tables.map((x, i) => el('option', { value: x, selected: i === 0 }, x)));
+    const ouvrir = () => {
+      occupe(() => demander('ouvrir', { chemin: res.chemin, table: liste.value })).then(resolve, () => resolve(null));
+      return true;
+    };
+    const d = dialogue({ titre: t('choisir_table'), contenu: el('div', {}, el('p', {}, t('choisir_table_texte', { nom: res.nom })), liste),
+      boutons: [{ libelle: t('annuler'), action: () => { resolve(null); return true; } }, { libelle: t('ouvrir_table'), principal: true, action: ouvrir }] });
+    liste.addEventListener('dblclick', () => { d.fermer(); ouvrir(); });
+    liste.focus();
+  });
+}
+
+// The export dialog: a format, then (desktop) where to write it. Resolves to { chemin } or
+// (browser) { format }, or null when cancelled. The last format chosen is offered again.
+function choisirExport(titre, nom, plusieursTables) {
+  return new Promise((resolve) => {
+    let choix = lire('format_export');
+    if (!ECRITURE.some((f) => f.ext === choix)) choix = 'xlsx';
+    const note = el('p', { class: 'note' });
+    const maj = () => { note.textContent = plusieursTables && ECRITURE.find((f) => f.ext === choix).plusieurs ? t('export_plusieurs_fichiers') : ''; };
+    const liste = el('div', { class: 'formats-export' }, ECRITURE.map((f) => el('label', { class: 'champ' },
+      el('input', { type: 'radio', name: 'format-export', value: f.ext, checked: f.ext === choix, onchange: () => { choix = f.ext; maj(); } }),
+      el('span', {}, t(f.cle)), el('span', { class: 'doux' }, '.' + f.ext))));
+    maj();
+    dialogue({ titre, contenu: el('div', {}, liste, note), boutons: [
+      { libelle: t('annuler'), action: () => { resolve(null); return true; } },
+      { libelle: bureau ? t('choisir_emplacement') : t('telecharger'), principal: true, action: () => {
+        ecrire('format_export', choix);
+        if (!bureau) { resolve({ format: choix }); return true; }
+        const f = ECRITURE.find((x) => x.ext === choix);
+        bureau.enregistrerSous(`${nom}.${choix}`, [{ name: t(f.cle), extensions: [choix] }]).then((chemin) => resolve(chemin ? { chemin } : null));
+        return true;
+      } }] });
+  });
+}
+
+function apresExport(r) {
+  const chemins = [].concat(r.chemins || r.chemin);
+  if (!bureau) { chemins.forEach((c, i) => setTimeout(() => telecharger(c), i * 800)); return; }
+  statut(chemins.length > 1 ? t('exporte_fichiers', { n: chemins.length, chemin: chemins[0] }) : `${t('exporte')} ${chemins[0]}`);
 }
 
 async function apresOuverture(res, session = null) {
@@ -802,7 +866,9 @@ function vuesParDefaut(id) {
     app.ouvrirVue('resume', id, null, null, interne.panels.length ? { referencePanel: interne.panels[0].id, direction: 'left' } : undefined);
   }
   if (!interne.getPanel(`scores:${id}`)) app.ouvrirVue('scores', id, null, null, { referencePanel: r, direction: 'right' });
-  if (!interne.getPanel(`loadings:${id}`)) app.ouvrirVue('loadings', id, null, null, { referencePanel: `scores:${id}`, direction: 'below' });
+  // spectra: their loadings as lines rather than a scatter of hundreds of variables
+  const vue = [].concat((etat.modeles[id].reglages || {}).spectres || []).length ? 'profils' : 'loadings';
+  if (!interne.getPanel(`${vue}:${id}`)) app.ouvrirVue(vue, id, null, null, { referencePanel: `scores:${id}`, direction: 'below' });
   interne.getPanel(r).api.setActive();
   derniers.set(id, `scores:${id}`);  // other views join the scores as tabs
   if (interne.width > 200) interne.getPanel(r).api.group.api.setSize({ width: Math.round(interne.width * 0.36) });  // summary narrower
@@ -1104,6 +1170,10 @@ function majEtat() {
     el('span', { class: 'moteur' + (etat.occupe ? ' occupe' : etat.erreur ? ' erreur' : '') }, el('span', { class: 'point' }),
       etat.occupe ? (Date.now() - etat.debutOccupe > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
     el('span', { class: 'espace' }),
+    etat.nouvelleVersion && lire('version_ignoree') !== etat.nouvelleVersion.version ? el('span', { class: 'nouvelle-version' },
+      el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); window.open(etat.nouvelleVersion.page); } },
+        icone('download'), t('nouvelle_version', { v: etat.nouvelleVersion.version })),
+      el('button', { class: 'icone-seule', title: t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
     m ? el('span', {}, `${m.nom} · ${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
     el('button', { class: 'icone-seule', title: t('theme_sombre'), onclick: () => app.changerTheme(!app.themeSombre()) }, icone(app.themeSombre() ? 'sun' : 'moon')),
@@ -1116,6 +1186,7 @@ function rendreAccueil(conteneur) {
     el('div', { class: 'accueil-tete' }, el('img', { class: 'logo', src: 'nuee.svg', alt: '' }), el('h1', {}, t('titre')), el('p', {}, t('sous_titre'))),
     el('div', { class: 'accueil-actions' },
       el('button', { class: 'principal', onclick: () => app.ouvrir() }, icone('folder-open'), t('ouvrir')),
+      el('button', { onclick: () => app.coller(), title: t('coller_aide') }, icone('clipboard-paste'), t('coller')),
       el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
       el('button', { onclick: () => app.nouveauModele(), disabled: !app.projetActif() }, icone('file-plus'), t('nouveau_modele')),
       el('button', { onclick: () => app.aide('guide') }, icone('circle-help'), t('guide'))),
@@ -1227,6 +1298,10 @@ async function demarrerPrincipal() {
     quoiDeNeuf();
     proposerRecuperation();
     if (bureau) setInterval(sauvegarderSecours, 120000);
+  }
+  if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar
+    etat.majAuto = await bureau.majAuto();
+    bureau.nouvelleVersion().then((v) => { etat.nouvelleVersion = v; majEtat(); }).catch(() => {});
   }
   if (params.get('ouvrir')) await app.ouvrirChemin(params.get('ouvrir'));
 }

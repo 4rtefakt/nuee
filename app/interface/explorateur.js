@@ -4,7 +4,7 @@ import { t } from './i18n.js';
 import { el, fmt, icone, menuContextuel } from './ui.js';
 import { ICONES_VUES } from './commandes.js';
 
-const VUES_MODELE = ['resume', 'scores', 'loadings', 'biplot', 'splot', 'scores3d', 'dmodx', 't2', 'contributions', 'vip', 'coefficients', 'obspred', 'permutations',
+const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot', 'scores3d', 'dmodx', 't2', 'contributions', 'vip', 'coefficients', 'obspred', 'permutations',
   'cvanova', 'classification', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
 const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanova'];
 const vuesDe = (m) => VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v)) && (v !== 'classification' || /-DA$/.test(m.type))
@@ -16,6 +16,7 @@ export function rendreExplorateur(conteneur, app) {
     conteneur.replaceChildren(el('div', { class: 'accueil-explorateur' },
       el('p', {}, t('aucun_projet')),
       el('button', { class: 'principal', onclick: () => app.ouvrir() }, icone('folder-open'), t('ouvrir')),
+      el('button', { onclick: () => app.coller(), title: t('coller_aide') }, icone('clipboard-paste'), t('coller')),
       el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
       el('p', { class: 'note' }, t('aide_vide'))));
     return;
@@ -83,7 +84,7 @@ export function rendreExplorateur(conteneur, app) {
         '-',
         { libelle: t('scores_variables'), icone: 'git-merge', action: () => app.scoresEnVariables(m.id) },
         '-',
-        { libelle: t('exporter'), icone: 'file-spreadsheet', action: () => app.exporter(m.id) },
+        { libelle: t('exporter'), icone: 'file-down', action: () => app.exporter(m.id) },
         { libelle: t('script_r'), icone: 'file-code', action: () => app.exporterScript(m.id) },
         { libelle: t('rapport'), icone: 'file-text', action: () => app.rapport(m.id) },
         { libelle: t('supprimer_modele'), icone: 'trash-2', action: () => app.supprimerModele(m.id) },
@@ -100,6 +101,7 @@ export function rendreExplorateur(conteneur, app) {
         '-',
         { libelle: t('enregistrer'), icone: 'save', action: () => app.enregistrer(p.id, false) },
         { libelle: t('enregistrer_sous'), action: () => app.enregistrer(p.id, true) },
+        { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) },
         '-',
         { libelle: t('fermer_projet'), icone: 'x', action: () => app.fermerProjet(p.id) },
       ],
@@ -109,7 +111,8 @@ export function rendreExplorateur(conteneur, app) {
           menu: () => [{ libelle: t('donnees'), icone: 'database', action: () => app.ouvrirVue('donnees', null, null, p.id) },
             { libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) },
             { libelle: t('nouvelle_variable'), icone: 'calculator', action: () => app.nouvelleVariable(p.id) },
-            { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) }] }),
+            { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
+            { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) }] }),
         p.historique ? noeud({ cle: `${p.id}/historique`, niveau: 2, ic: 'history', libelle: [t('historique'), el('span', { class: 'compte' }, p.historique)],
           titre: t('historique_aide'), double: () => app.ouvrirVue('historique', null, { modele: '' }, p.id),
           menu: () => [{ libelle: t('historique'), icone: 'history', action: () => app.ouvrirVue('historique', null, { modele: '' }, p.id) }] }) : null,

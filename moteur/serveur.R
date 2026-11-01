@@ -64,18 +64,36 @@ annuler_demande <- function(q) {
   list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
 }
 
-ouvrir_fichier <- function(chemin, nom = basename(chemin)) {
-  ext <- tolower(tools::file_ext(nom))
+# Un fichier qui a plusieurs tableaux (feuilles Excel, objets R) et dont le tableau n'est pas
+# choisi renvoie leur liste (`choisir`) : l'interface demande lequel ouvrir.
+ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL) {
+  ext <- extension(nom)
+  if (!ext %in% c("json", "usp", FORMATS_LECTURE)) stop("Format de fichier non reconnu : .", ext)
+  if (!ext %in% FORMATS_LECTURE) table <- NULL
+  if (ext %in% FORMATS_LECTURE && is.null(table)) {
+    tables <- tables_fichier(chemin)
+    if (length(tables) > 1) return(list(choisir = I(tables), chemin = chemin, nom = nom))
+  }
   p <- switch(ext,
               json = lire_projet(chemin),
               usp = lire_projet(convertir_usp(chemin)),
-              csv = , txt = , xlsx = , xlsm = importer_tableau(chemin),
-              stop("Format de fichier non reconnu : .", ext))
+              importer_tableau(chemin, table))
   p$id <- nouvel_id("P")
-  p$nom <- nom
+  p$nom <- if (is.null(table)) nom else sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), table, tools::file_ext(nom))
   p$chemin <- chemin
+  p$table <- table
   etat$projets[[p$id]] <- p
   resume_projet(p)
+}
+
+# Un nom de fichier (ou d'objet R) tiré du nom d'un projet ou d'un modèle.
+nom_fichier <- function(nom) gsub("[^[:alnum:]_ ()-]", "_", tools::file_path_sans_ext(nom %||% "donnees"))
+
+# Chemin d'un fichier écrit pour le navigateur (qui le télécharge ensuite).
+chemin_temporaire <- function(nom) {
+  dossier <- file.path(tempdir(), nouvel_id("export"))
+  dir.create(dossier)
+  file.path(dossier, nom)
 }
 
 composantes_stockees <- function(d) {
@@ -108,6 +126,7 @@ resume_projet <- function(p) {
   json <- identical(tolower(tools::file_ext(p$chemin %||% "")), "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
+       table = p$table %||% NULL,
        annulable = if (length(pile)) pile[[1]]$etiquette,
        chemin_enregistrement = p$chemin_enregistrement %||% (if (json) p$chemin),
        observations = list(uid = as.numeric(names(p$noms_obs)), nom = unname(p$noms_obs)),
@@ -147,7 +166,8 @@ definition_interface <- function(p, q) {
                       A = q$A %||% 0, nom = q$nom, titre = q$titre %||% "", G = q$G %||% 7,
                       transformations = if (length(q$transformations)) unlist(q$transformations),
                       croises = if (is.matrix(q$croises)) lapply(seq_len(nrow(q$croises)), function(i) q$croises[i, ])
-                                else q$croises)
+                                else q$croises,
+                      spectres = q$spectres)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -290,9 +310,12 @@ predire_fichier_demande <- function(q) {
 
 exporter_prediction_demande <- function(q) {
   out <- etat$predictions[[q$modele]] %||% stop("Aucune prédiction à exporter pour ce modèle")
-  chemin <- q$chemin %||% file.path(tempdir(), paste0("predictions ", modele(q$modele)$definition$name %||% "", ".xlsx"))
-  openxlsx::write.xlsx(out[c("nom", setdiff(names(out), c("nom", "uid")))], chemin, overwrite = TRUE)
-  list(chemin = chemin)
+  chemin <- q$chemin %||% chemin_temporaire(paste0("predictions ", nom_fichier(modele(q$modele)$definition$name), ".", q$format %||% "xlsx"))
+  out <- out[c("nom", setdiff(names(out), c("nom", "uid")))]
+  names(out)[1] <- "Observation"
+  rownames(out) <- NULL
+  ecrire_tableau(out, chemin, objet = "predictions")
+  list(chemin = chemin, chemins = I(chemin))
 }
 
 # Les scores d'un modèle deviennent des variables du projet (modèles hiérarchiques).
@@ -359,20 +382,39 @@ valeurs_demande <- function(q) {
        qualitative = length(v$categories) > 0)
 }
 
+# Les résultats d'un modèle (formats.R : ecrire_tables) : une feuille par tableau en Excel, une
+# liste en R, un fichier par tableau ailleurs.
 exporter_demande <- function(q) {
   e <- modele(q$modele)
-  s <- e$modele$statistiques
-  if (is.null(q$chemin)) q$chemin <- file.path(tempdir(), paste0(gsub("[^[:alnum:]_ -]", "_", e$definition$name %||% "modele"), ".xlsx"))
-  wb <- openxlsx::createWorkbook()
-  feuilles <- list(Composantes = s$composantes, Variables = s$variables, Observations = s$observations)
-  if (!is.null(s$coefficients)) feuilles$Coefficients <- s$coefficients
-  if (!is.null(s$variables_y)) feuilles$`Variables Y` <- s$variables_y
-  for (n in names(feuilles)) {
-    openxlsx::addWorksheet(wb, n)
-    openxlsx::writeData(wb, n, feuilles[[n]], rowNames = n == "Observations")
-  }
-  openxlsx::saveWorkbook(wb, q$chemin, overwrite = TRUE)
-  list(chemin = q$chemin)
+  nom <- nom_fichier(e$definition$name %||% "modele")
+  if (is.null(q$chemin)) q$chemin <- chemin_temporaire(paste0(nom, ".", q$format %||% "xlsx"))
+  chemins <- ecrire_tables(tables_resultats(projet(e$projet), e$modele), q$chemin, objet = make.names(nom))
+  list(chemin = chemins[1], chemins = I(chemins))
+}
+
+# Les données d'un projet, dans le format de l'extension du chemin.
+exporter_donnees_demande <- function(q) {
+  p <- projet(q$projet)
+  chemin <- q$chemin %||% chemin_temporaire(paste0(nom_fichier(p$nom), ".", q$format %||% "xlsx"))
+  ecrire_tableau(tableau_projet(p), chemin, objet = make.names(nom_fichier(p$nom)))
+  list(chemin = chemin, chemins = I(chemin))
+}
+
+# Un tableau collé depuis un tableur : écrit dans un fichier de la session (que le journal de
+# la console R relit), puis importé comme un tableau ouvert.
+coller_demande <- function(q) {
+  texte <- as.character(q$texte %||% "")
+  if (!grepl("[\t;,]", texte) || !grepl("\n.", texte)) stop("Le presse-papiers ne contient pas de tableau (au moins deux lignes et deux colonnes)")
+  chemin <- chemin_temporaire("tableau colle.tsv")
+  writeLines(enc2utf8(texte), chemin, useBytes = TRUE)
+  p <- importer_tableau(chemin)
+  p$id <- nouvel_id("P")
+  p$nom <- q$nom %||% "Tableau"
+  p$modifie <- TRUE  # à enregistrer : il n'a pas de fichier
+  etat$projets[[p$id]] <- p
+  r <- resume_projet(p)
+  r$fichier_colle <- chemin
+  r
 }
 
 # ---------------------------------------------------------------- HTTP
@@ -428,8 +470,8 @@ DEMANDES <- list(
     list(chemin = q$chemin)
   },
   ouvrir = function(q) {
-    r <- ouvrir_fichier(q$chemin)
-    if (is.null(q$origine)) return(r)
+    r <- ouvrir_fichier(q$chemin, table = q$table)
+    if (is.null(q$origine) || !is.null(r$choisir)) return(r)
     p <- projet(r$id)
     p$nom <- q$nom %||% basename(q$origine)
     p$chemin <- q$origine
@@ -465,6 +507,8 @@ DEMANDES <- list(
   },
   valeurs = valeurs_demande,
   exporter = exporter_demande,
+  exporter_donnees = exporter_donnees_demande,
+  coller = coller_demande,
   predire_fichier = predire_fichier_demande,
   exporter_prediction = exporter_prediction_demande,
   scores_en_variables = scores_demande,
@@ -484,6 +528,13 @@ DEMANDES <- list(
   classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),
     sprintf("variable %s", q$nom)),
   annuler = annuler_demande,
+  # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur prétraitement.
+  spectres = function(q) {
+    e <- modele(q$modele)
+    s <- spectres_modele(projet(e$projet), e$definition)
+    list(modele = q$modele, noms = I(colnames(s$bruts)), uid = as.numeric(rownames(s$bruts)),
+         bruts = unname(s$bruts), pretraites = unname(s$pretraites))
+  },
   biplot = function(q) {
     e <- modele(q$modele)
     b <- correlations_biplot(e$modele)
@@ -511,7 +562,7 @@ DEMANDES <- list(
   journal = function(q) list(entrees = journal_depuis(as.numeric(q$depuis %||% 0)), dernier = etat$n_journal),
   console = function(q) evaluer_console(q$code, q$modele, q$projet),
   version = function(q) list(R = R.version.string,
-                             paquets = vapply(c("jsonlite", "httpuv", "openxlsx"), function(x) as.character(utils::packageVersion(x)), "")))
+                             paquets = vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl"), function(x) as.character(utils::packageVersion(x)), "")))
 
 # Les valeurs non finies (NaN, Inf) deviennent des valeurs manquantes en JSON.
 fini <- function(x) {

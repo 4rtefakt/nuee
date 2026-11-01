@@ -1,6 +1,6 @@
 // Desktop application: starts the R server (moteur/serveur.R) once and shows its interface
 // in as many windows as wanted. Windows remember their size; recent files are kept.
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net: reseau, shell, screen } = require('electron');
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -192,13 +192,12 @@ function fenetrePrincipale() {
 
 function ipc() {
   const parent = (e) => BrowserWindow.fromWebContents(e.sender);
-  ipcMain.handle('choisir-fichier', async (e) => {
-    const r = await dialog.showOpenDialog(parent(e), {
-      properties: ['openFile'],
-      filters: [{ name: 'Projets et tableaux', extensions: ['usp', 'json', 'csv', 'txt', 'xlsx'] }, { name: '*', extensions: ['*'] }],
-    });
+  // the interface gives the filters (formats.js), in its language
+  ipcMain.handle('choisir-fichier', async (e, filtres) => {
+    const r = await dialog.showOpenDialog(parent(e), { properties: ['openFile'], filters: filtres || [{ name: '*', extensions: ['*'] }] });
     return r.canceled ? null : r.filePaths[0];
   });
+  ipcMain.handle('lire-presse-papiers', () => clipboard.readText());
   ipcMain.handle('enregistrer-sous', async (e, nom, filtres) => {
     const r = await dialog.showSaveDialog(parent(e), { defaultPath: nom, filters: filtres });
     return r.canceled ? null : r.filePath;
@@ -249,6 +248,39 @@ function ipc() {
   ipcMain.handle('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }
   });
+  ipcMain.handle('nouvelle-version', () => nouvelleVersion());
+  // the check at start-up, on or off (null: not offered, see verificationPossible)
+  ipcMain.handle('maj-auto', (_, oui) => {
+    if (!verificationPossible()) return null;
+    if (oui !== undefined) { reglages.majAuto = !!oui; ecrireReglages(); }
+    return reglages.majAuto !== false;
+  });
+}
+
+// An installed copy (Setup.exe) hears about new versions: at start-up, one request to the
+// GitHub page of the latest release (nothing else is sent), turned off in Aide. Not for the
+// network-share copy, which the share updates, nor when running from the sources.
+const DERNIERE_VERSION = 'https://api.github.com/repos/4rtefakt/nuee/releases/latest';
+const verificationPossible = () => app.isPackaged && !process.argv.includes('--lanceur-nas');
+let versionTrouvee;  // checked once per start, for every window
+function nouvelleVersion() {
+  if (!verificationPossible() || reglages.majAuto === false) return Promise.resolve(null);
+  if (versionTrouvee === undefined) {
+    versionTrouvee = reseau.fetch(DERNIERE_VERSION, { headers: { Accept: 'application/vnd.github+json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const v = j && String(j.tag_name || '').replace(/^v/, '');
+        return v && plusRecente(v, app.getVersion()) ? { version: v, page: j.html_url } : null;
+      })
+      .catch(() => null);
+  }
+  return versionTrouvee;
+}
+function plusRecente(a, b) {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < 3; i += 1) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
 }
 
 // Started by the network-share launcher (Lancer Nuee.cmd passes --lanceur-nas): the copy on

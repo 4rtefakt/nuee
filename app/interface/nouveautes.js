@@ -1,6 +1,23 @@
 // What changed in each version, shown once after an update (and in Aide › Quoi de neuf).
 // The first entry is the current version.
 export const NOUVEAUTES = [
+  { version: '0.7.0', date: '2026-11-01',
+    fr: [
+      'Fichier › Ouvrir lit aussi les fichiers R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka et les anciens classeurs Excel (.xls). Pour un classeur à plusieurs feuilles, l’application demande laquelle ouvrir.',
+      'Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans un tableur deviennent un projet.',
+      'Exporter les données d’un projet et les résultats d’un modèle en Excel, CSV, R, SPSS, Stata, SAS, jamovi, dBase ou Weka.',
+      'Spectres : prétraitement SNV, MSC et Savitzky–Golay (lissage, dérivées) dans Nouveau modèle, et la vue Profils (spectres).',
+      'Les fichiers texte séparés par des tabulations, en Windows-1252 ou en « texte Unicode » d’Excel s’ouvrent correctement.',
+      'La version installée signale une nouvelle version au démarrage (Aide pour l’arrêter).',
+    ],
+    en: [
+      'File › Open also reads R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase and Weka files, and old Excel workbooks (.xls). For a workbook with several sheets, the application asks which one to open.',
+      'File › Paste a table (Ctrl+V): cells copied from a spreadsheet become a project.',
+      'Export a project’s data and a model’s results to Excel, CSV, R, SPSS, Stata, SAS, jamovi, dBase or Weka.',
+      'Spectra: SNV, MSC and Savitzky–Golay preprocessing (smoothing, derivatives) in New model, and the Profiles (spectra) view.',
+      'Tab-separated text files, Windows-1252 files and Excel’s “Unicode text” now open correctly.',
+      'The installed version mentions a new version at start-up (Help to turn it off).',
+    ] },
   { version: '0.6.0', date: '2026-11-01',
     fr: [
       'Aide › Projet d’exemple : des données inventées (120 pommes) avec quatre modèles prêts à explorer, pour essayer Nuée.',

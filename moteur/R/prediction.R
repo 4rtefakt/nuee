@@ -8,7 +8,7 @@
 
 predire <- function(projet, m, definition, observations) {
   pls <- identical(m$type, "PLS")
-  bx <- construire_bloc(projet, definition$x, observations, imposees = m$x)
+  bx <- construire_bloc(projet, definition$x, observations, imposees = m$x, spectres = definition$spectres)
   X <- preparer(bx$X)
   E <- X$E
   A <- m$A

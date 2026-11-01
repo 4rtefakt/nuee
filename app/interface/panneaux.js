@@ -302,6 +302,8 @@ function rendreResume(conteneur, ctx, p) {
     el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, m.type), m.titre ? el('span', { class: 'doux' }, m.titre) : null),
     el('div', { class: 'fiche-chiffres' },
       [['A', m.A], ['N', m.N], ['K', m.K], [t('groupes_vc'), m.G]].map(([k, v]) => el('span', {}, el('small', {}, k), ' ', el('b', {}, v))),
+      m.reglages && [].concat(m.reglages.spectres || []).length
+        ? el('span', {}, el('small', {}, t('spectres')), ' ', el('b', {}, libelleSpectres(m.reglages.spectres))) : null,
       pls && m.RMSEE ? Object.entries(m.RMSEE).map(([y, v]) => el('span', {}, el('small', {}, `RMSEE ${y}`), ' ', el('b', {}, fmt(v, 4)))) : null,
       pls && m.RMSEcv ? Object.entries(m.RMSEcv).map(([y, v]) => el('span', {}, el('small', {}, `RMSEcv ${y}`), ' ', el('b', {}, fmt(v, 4)))) : null,
       pls && m.cv_anova ? Object.entries(m.cv_anova).map(([y, a]) => el('span', { title: 'CV-ANOVA' }, el('small', {}, `CV-ANOVA p ${y}`), ' ',
@@ -396,6 +398,90 @@ function rendreLoadings(conteneur, ctx, p, loc) {
 
 // Biplot: scores t(corr) and loadings p(corr) (pc(corr) with the Y of a
 // PLS) in one plot, inside the correlation circle; computed in R.
+// The steps of a model's spectral preprocessing, for the summary: "SNV → 1st derivative 11/2".
+export const libelleSpectres = (etapes) => [].concat(etapes || []).map((e) => (e.type === 'sg'
+  ? `${t('etape_sg' + (e.derivee || 0))} ${e.fenetre}/${e.degre}` : t('etape_' + e.type))).join(' → ');
+
+// Position of each variable along the X axis of a line plot: the number in its name (a
+// wavelength, "1450 nm") when every name has a different one, its rank otherwise.
+function abscisses(noms) {
+  const n = noms.map((s) => { const r = /-?\d+(?:[.,]\d+)?/.exec(String(s)); return r ? parseFloat(r[0].replace(',', '.')) : NaN; });
+  return n.every(Number.isFinite) && new Set(n).size === n.length ? n : noms.map((_, i) => i + 1);
+}
+
+// Variables in the order of the table, as lines (spectra): the model's loadings, coefficients
+// or VIP, or the spectra themselves, as read and after their preprocessing. Clicking a
+// spectrum selects its observation.
+async function rendreProfils(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  const v = m.variables;
+  const pls = m.type !== 'PCA';
+  const quoi = [['p', 'Loadings p']].concat(pls ? [['w', 'Loadings w*'], ['coeff', t('coefficients')], ['vip', 'VIP']] : [])
+    .concat([['spectres', t('profil_spectres')]]);
+  if (!quoi.some(([k]) => k === loc.quoi)) loc.quoi = 'p';
+  if (loc.quoi === 'spectres' && (!loc.res || loc.cle !== m.id)) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    loc.res = await ctx.demander('spectres', { modele: m.id });
+    loc.cle = m.id;
+  }
+  const graphe = el('div', { class: 'graphe' });
+  const avecEtapes = m.reglages && [].concat(m.reglages.spectres || []).length > 0;
+  conteneur.replaceChildren(outils(
+    choix(t('profil_quoi'), quoi, loc.quoi, (x) => { loc.quoi = x; ctx.rafraichir(); }),
+    loc.quoi === 'spectres' && avecEtapes ? case_(t('spectres_bruts'), !!loc.bruts, (x) => { loc.bruts = x; ctx.rafraichir(); }) : null,
+    avecEtapes ? el('span', { class: 'infos' }, libelleSpectres(m.reglages.spectres)) : null), graphe);
+  const traces = [];
+  let titre = '';
+  if (loc.quoi === 'spectres') {
+    const r = loc.res;
+    const x = abscisses(r.noms);
+    const lignes = loc.bruts ? r.bruts : r.pretraites;
+    const nomObs = new Map(m.observations.uid.map((u, i) => [u, m.observations.nom[i]]));
+    const sel = new Set(ctx.selection(m.id));
+    // one trace per group (spectra separated by gaps): fast with hundreds of spectra
+    const groupe = (indices, couleur, largeur, nom) => {
+      const xs = []; const ys = []; const txt = []; const ids = [];
+      for (const i of indices) {
+        lignes[i].forEach((y, k) => { xs.push(x[k]); ys.push(y); txt.push(nomObs.get(r.uid[i])); ids.push(r.uid[i]); });
+        xs.push(null); ys.push(null); txt.push(''); ids.push(null);
+      }
+      return { type: 'scattergl', mode: 'lines', name: nom, x: xs, y: ys, text: txt, customdata: ids, line: { color: couleur, width: largeur },
+        hovertemplate: '<b>%{text}</b><br>%{x}: %{y:.4g}<extra></extra>' };
+    };
+    const tous = r.uid.map((_, i) => i);
+    traces.push(groupe(tous.filter((i) => !sel.has(r.uid[i])), sel.size ? '#b8c2cf' : PALETTE[0], 1, t('observations')));
+    if (sel.size) traces.push(groupe(tous.filter((i) => sel.has(r.uid[i])), SELECTION, 1.6, t('selection')));
+    titre = `${m.nom} · ${t('profil_spectres')}${avecEtapes ? ` (${loc.bruts ? t('spectres_bruts').toLowerCase() : libelleSpectres(m.reglages.spectres)})` : ''}`;
+  } else {
+    const x = abscisses(v.terme);
+    const mode = v.terme.length <= 40 ? 'lines+markers' : 'lines';
+    const ligne = (y, nom, i) => ({ type: 'scatter', mode, name: nom, x, y, text: v.terme, line: { color: PALETTE[i % PALETTE.length], width: 1.5 },
+      marker: { size: 5 }, hovertemplate: `<b>%{text}</b><br>${nom} %{y:.4g}<extra></extra>` });
+    if (loc.quoi === 'p' || loc.quoi === 'w') {
+      const base = loc.quoi === 'p' ? 'p' : 'w*';
+      for (let a = 1; a <= m.A; a += 1) traces.push(ligne(v[base + a], nomComp(m, base, a), a - 1));
+      titre = `${m.nom} · Loadings ${base}`;
+    } else if (loc.quoi === 'coeff') {
+      const c = m.coefficients;
+      [].concat(m.noms_y).forEach((y, i) => { if (c[`CoeffCS ${y}`]) traces.push({ ...ligne(c[`CoeffCS ${y}`], y, i), x: abscisses(c.terme), text: c.terme }); });
+      titre = `${m.nom} · ${t('coefficients')} (CoeffCS)`;
+    } else {
+      traces.push(ligne(v.VIP, 'VIP', 0));
+      titre = `${m.nom} · VIP`;
+    }
+  }
+  tracer(ctx, graphe, traces, { title: { text: titre }, dragmode: 'zoom', showlegend: traces.length > 1,
+    xaxis: { title: { text: t('variables') } },
+    shapes: loc.quoi === 'vip' ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 1, y1: 1, line: { color: '#999', dash: 'dot', width: 1 } }] : [] });
+  if (loc.quoi === 'spectres' && !graphe._clicSpectre) {
+    graphe._clicSpectre = true;
+    graphe.on('plotly_click', (ev) => {
+      const u = ev.points[0] && ev.points[0].customdata;
+      if (u !== null && u !== undefined) ctx.choisir(m.id, [u]);
+    });
+  }
+}
+
 async function rendreBiplot(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   if (m.A < 2) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('deux_composantes'))); return; }
@@ -699,7 +785,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   loc.graphe ??= 'scores';
   const vueGraphe = o.DModX ? choix('', [['scores', t('scores')], ['dmodx', 'DModXPS']], loc.graphe, (v) => { loc.graphe = v; ctx.rafraichir(); }) : null;
   conteneur.replaceChildren(el('div', { class: 'outils' }, vueGraphe, infos, el('span', { class: 'espace' }),
-    el('button', { onclick: () => ctx.exporterPrediction(m.id) }, icone('file-spreadsheet'), t('exporter_court'))), haut, bas);
+    el('button', { onclick: () => ctx.exporterPrediction(m.id) }, icone('file-down'), t('exporter_court'))), haut, bas);
   loc.table ??= {};
   tableau(bas, ctx, loc.table, {
     avant: [jeu], n: o.nom.length, nom: 'Table',
@@ -1052,6 +1138,7 @@ export const VUES = {
   resume: { rendre: rendreResume, titre: (m) => `${m.nom} · ${t('resume')}` },
   scores: { rendre: rendreScores, titre: (m) => `${m.nom} · ${t('scores')}` },
   loadings: { rendre: rendreLoadings, titre: (m) => `${m.nom} · ${t('loadings')}` },
+  profils: { rendre: rendreProfils, titre: (m) => `${m.nom} · ${t('profils')}` },
   dmodx: { rendre: (c, x, p, l) => rendreLigneObs(c, x, p, l, 'dmodx'), titre: (m) => `${m.nom} · DModX` },
   t2: { rendre: (c, x, p, l) => rendreLigneObs(c, x, p, l, 't2'), titre: (m) => `${m.nom} · T²` },
   vip: { rendre: rendreVIP, titre: (m) => `${m.nom} · VIP` },

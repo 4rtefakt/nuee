@@ -244,3 +244,11 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .nouveautes h3 { font-size: 13px; margin: 10px 0 4px; }
 .nouveautes ul { margin: 0 0 6px; padding-left: 20px; }
 .nouveautes li { margin: 3px 0; }
+
+/* export dialog (format list) and the choice of a table in a file */
+.formats-export { display: grid; grid-template-columns: repeat(2, minmax(13em, 1fr)); grid-template-rows: repeat(6, auto); grid-auto-flow: column; gap: 4px 18px; margin-bottom: 6px; }
+.formats-export .champ { display: flex; color: var(--texte); }
+.formats-export .champ .doux { margin-left: auto; font-size: 11.5px; }
+.liste-tables { width: 100%; min-width: 22em; }
+#statut .nouvelle-version { display: inline-flex; align-items: center; gap: 2px; }
+#statut .nouvelle-version a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent, #2f6fb5); font-weight: 600; text-decoration: none; }

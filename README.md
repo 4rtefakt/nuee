@@ -16,9 +16,10 @@
 ![The example project in Nuée: a PCA with its summary, scores coloured by variety, and loadings](docs/captures/acp.png)
 
 Nuée (French for *swarm*) is a desktop application for multivariate data analysis. Open a
-table, pick your variables, and get the model with its scores, loadings, diagnostics and
-validation, in plots you can zoom, select and colour. Every calculation is written in R, with
-comments, so you can check exactly what was computed, and change it.
+table from Excel, R, SPSS, Stata, SAS or jamovi (or paste one), pick your variables, and get
+the model with its scores, loadings, diagnostics and validation, in plots you can zoom, select
+and colour. Send the data and the results back to any of those programs. Every calculation is
+written in R, with comments, so you can check exactly what was computed, and change it.
 
 The interface is in French and English (*Affichage › Langue* / *View › Language*); the
 screenshots show it in French.
@@ -32,7 +33,9 @@ screenshots show it in French.
    *More info*, then *Run anyway*.
 
 R is included: there is nothing else to install. Nuée appears in the Start menu, and can be
-uninstalled from *Settings › Apps*. Your projects stay where you saved them.
+uninstalled from *Settings › Apps*. Your projects stay where you saved them. At start-up it asks
+GitHub whether a newer version exists and shows a link in the status bar if so (nothing else is
+sent; *Aide › Chercher une nouvelle version au démarrage* turns it off).
 
 ## First steps
 
@@ -40,9 +43,10 @@ uninstalled from *Settings › Apps*. Your projects stay where you saved them.
   apples (four varieties, organic or conventional, a dozen measurements and a tasting score)
   with four models ready: a PCA, a PLS predicting the score, a PLS-DA of the varieties and an
   OPLS-DA of the growing method.
-- **Open your data:** *Fichier › Ouvrir* (Ctrl+O) reads a `.csv` or Excel table, one row per
-  observation, with the observation names in the first column. Text columns become
-  qualitative variables you can colour by, or use as classes.
+- **Open your data:** *Fichier › Ouvrir* (Ctrl+O) reads a table with one row per observation
+  and the observation names in the first column (see [Files](#files) for the formats), or
+  *Fichier › Coller un tableau* (Ctrl+V) takes cells copied from any spreadsheet. Text columns
+  and factors become qualitative variables you can colour by, or use as classes.
 - **Make a model:** *Modèle › Nouveau modèle* (Ctrl+N): type, the role of each variable (X, Y
   or left out), scaling and transformation, observations to include. The number of components
   is chosen by cross-validation unless you set it.
@@ -73,8 +77,13 @@ scores, classes made from a selection.
 
 ![An OPLS-DA: the S-plot shows which variables separate the two classes](docs/captures/oplsda.png)
 
+**Spectra:** SNV, MSC and Savitzky–Golay smoothing or derivatives before the model, and
+loadings, coefficients, VIP or the spectra themselves drawn as lines against the wavelength.
+
+![A PLS on made-up spectra after SNV and a first derivative: scores coloured by batch, and loadings p drawn as lines against the wavelength](docs/captures/spectres.png)
+
 **Prediction:** apply a model to new observations from a table, with flags for those outside
-the model's domain; export the results to Excel.
+the model's domain, and export the results.
 
 **Your work:**
 - saving a project keeps its models, the layout of your panels, plot settings and selections;
@@ -84,6 +93,25 @@ the model's domain; export the results to Excel.
 - several windows, and views that pop out onto a second screen;
 - plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG;
 - a model report as PDF or Word.
+
+## Files
+
+| | Opens | Exports |
+|---|---|---|
+| Excel | `.xlsx`, `.xlsm`, `.xls` (choice of sheet) | `.xlsx` (one sheet per table) |
+| Text | `.csv`, `.txt`, `.tsv`: separator, decimal comma and encoding detected | `.csv`, `.tsv` |
+| R | `.rds`, `.RData` (choice of table; factors and row names kept) | `.rds`, `.RData` |
+| SPSS | `.sav`, `.zsav`, `.por` (value labels become categories) | `.sav` |
+| Stata | `.dta` | `.dta` |
+| SAS | `.sas7bdat`, `.xpt` | `.xpt` |
+| jamovi | `.omv` | `.omv` |
+| dBase, Weka | `.dbf`, `.arff` | `.dbf`, `.arff` |
+| Clipboard | cells copied from Excel, LibreOffice, Google Sheets, jamovi… | |
+
+*Exporter les données* writes the project's table; *Exporter les résultats du modèle* (Ctrl+E)
+writes the observations (scores, T2, DModX, fitted values), the variables (loadings, VIP),
+the components and the coefficients. For SPSS, Stata and SAS, variable names are made valid and
+the original name becomes the variable label.
 
 ## R all the way down
 
@@ -118,6 +146,6 @@ See [docs/developpement.md](docs/developpement.md): running from the sources, th
 
 Nuée is free software under the [GNU General Public License v3.0](LICENSE) or later.
 
-The installer bundles R (GPL-2 | GPL-3) with the R packages httpuv, jsonlite, openxlsx and
-their dependencies, Electron (MIT), Plotly.js (MIT), dockview (MIT) and Lucide icons (ISC),
-each under its own license.
+The installer bundles R (GPL-2 | GPL-3) with its recommended packages and the R packages
+httpuv, jsonlite, openxlsx, haven, readxl and their dependencies, Electron (MIT), Plotly.js (MIT),
+dockview (MIT) and Lucide icons (ISC), each under its own license.

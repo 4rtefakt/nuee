@@ -151,6 +151,39 @@ async function principal() {
       const m = await api('ajuster', { projet: e.id, numero: e.modeles[0].numero, A: e.modeles[0].A });
       verifier(m.type === 'PCA' && m.N === 120, m.type);
     });
+    await etape('paquets de lecture des formats', async () => {
+      const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });
+      verifier(r.journal.some((e) => e.type === 'sortie' && e.texte.includes('[1] TRUE')), 'haven, readxl, foreign ou zip absent');
+    });
+    await etape('coller un tableau', async () => {
+      const r = await api('coller', { texte: 'nom\tx\ty\r\na\t1,5\t2\r\nb\t3\t4,25\r\nc\t5\t1\r\n', nom: 'Collé' });
+      verifier(r.nom === 'Collé' && r.modifie && r.variables.length === 2 && r.observations.nom[2] === 'c', `${r.variables.length} variables`);
+    });
+    await etape('exporter les données dans chaque format, puis les rouvrir', async () => {
+      const formats = ['xlsx', 'csv', 'tsv', 'rds', 'RData', 'sav', 'dta', 'xpt', 'omv', 'dbf', 'arff'];
+      for (const ext of formats) {
+        const f = path.join(dossier, `donnees.${ext}`);
+        await api('exporter_donnees', { projet: p.id, chemin: f });
+        const q = await api('ouvrir', { chemin: f });
+        verifier(q.observations.uid.length === 60 && q.variables.length === 9, `.${ext} : ${q.observations.uid.length} observations, ${q.variables.length} variables`);
+        verifier(q.observations.nom[0] === 'o1', `.${ext} : noms des observations`);
+      }
+    });
+    await etape('exporter les résultats (un fichier par tableau en SPSS) et la prédiction', async () => {
+      const r = await api('exporter', { modele: pls.id, chemin: path.join(dossier, 'PLS.sav') });
+      verifier(r.chemins.length === 5 && r.chemins.every((c) => fs.existsSync(c)), `${r.chemins.length} fichiers`);
+      await api('predire', { modele: pls.id });
+      const e = await api('exporter_prediction', { modele: pls.id, chemin: path.join(dossier, 'pred.csv') });
+      verifier(fs.readFileSync(e.chemin, 'utf8').startsWith('"Observation"'), 'prédiction en CSV');
+    });
+    await etape('un fichier à plusieurs tableaux demande lequel ouvrir', async () => {
+      const f = path.join(dossier, 'deux.xlsx');
+      await api('console', { code: `openxlsx::write.xlsx(list(a = data.frame(x = 1:3, y = 3:1), b = data.frame(z = 1:4, w = 4:1)), ${JSON.stringify(f.replace(/\\/g, '/'))})` });
+      const c = await api('ouvrir', { chemin: f });
+      verifier(Array.isArray(c.choisir) && c.choisir.join() === 'a,b' && !c.id, 'liste des feuilles');
+      const q = await api('ouvrir', { chemin: f, table: 'b' });
+      verifier(q.observations.uid.length === 4 && q.table === 'b' && q.nom === 'deux (b).xlsx', q.nom);
+    });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;
       const r = await api('supprimer_modele', { modele: da.id, definition: true });
