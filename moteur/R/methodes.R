@@ -78,6 +78,9 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
     etape <- function(e) switch(e$type,
       snv = cite("snv", if (fr) "SNV (Barnes et al., 1989)" else "SNV (Barnes et al., 1989)"),
       msc = cite("msc", if (fr) "MSC sur le spectre moyen (Geladi et al., 1985)" else "MSC against the mean spectrum (Geladi et al., 1985)"),
+      detrend = cite("snv", if (fr) sprintf("detrend (polynôme de degré %d retiré ; Barnes et al., 1989)", e$degre)
+                            else sprintf("detrending (degree-%d polynomial removed; Barnes et al., 1989)", e$degre)),
+      ligne_base = if (fr) "retrait de la ligne de base (enveloppe convexe inférieure du spectre)" else "baseline removal (lower convex hull of the spectrum)",
       sg = cite("sg", if (fr) sprintf("%s de Savitzky–Golay (fenêtre de %d points, polynôme de degré %d ; Savitzky et Golay, 1964)",
                                        c("lissage", "dérivée première", "dérivée seconde", "dérivée troisième")[e$derivee + 1] %||% sprintf("dérivée %d", e$derivee), e$fenetre, e$degre)
                       else sprintf("Savitzky–Golay %s (%d-point window, degree-%d polynomial; Savitzky & Golay, 1964)",

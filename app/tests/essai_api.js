@@ -179,6 +179,28 @@ async function principal() {
       const r = await api('coller', { texte: 'nom\tx\ty\r\na\t1,5\t2\r\nb\t3\t4,25\r\nc\t5\t1\r\n', nom: 'Collé' });
       verifier(r.nom === 'Collé' && r.modifie && r.variables.length === 2 && r.observations.nom[2] === 'c', `${r.variables.length} variables`);
     });
+    await etape('importer des spectres (texte et JCAMP-DX), avec un tableau d’informations', async () => {
+      const onde = Array.from({ length: 30 }, (_, k) => 1000 + 4 * k);
+      const chemins = [];
+      for (let i = 1; i <= 8; i += 1) {
+        const y = onde.map((x) => (0.2 + 0.05 * i) * Math.exp(-(((x - 1060) / 20) ** 2)) + 0.01 * i + 1e-4 * x);
+        const f = path.join(dossier, `s${i}.${i % 2 ? 'csv' : 'jdx'}`);
+        fs.writeFileSync(f, i % 2 ? `nm;abs\n${onde.map((x, k) => `${x};${String(y[k]).replace('.', ',')}`).join('\n')}\n`
+          : ['##TITLE= s', '##JCAMP-DX= 4.24', '##XFACTOR= 1', '##YFACTOR= 1', '##FIRSTX= 1000', '##LASTX= 1116', '##NPOINTS= 30', '##XYDATA= (X++(Y..Y))',
+            ...y.map((v, k) => `${onde[k]} ${v}`), '##END='].join('\n'));
+        chemins.push(f);
+      }
+      const infos = path.join(dossier, 'infos.csv');
+      fs.writeFileSync(infos, `echantillon,teneur\n${chemins.slice(0, 7).map((c, i) => `${path.basename(c)},${i + 1}`).join('\n')}\n`);
+      const r = await api('importer_spectres', { chemins, infos, nom: 'Spectres' });
+      verifier(r.observations.uid.length === 8 && r.variables.length === 31 && r.variables[0].nom === 'teneur' && r.variables[1].nom === '1000', `${r.variables.length} variables`);
+      verifier([].concat(r.note).join() === '1 spectre(s) sans informations', [].concat(r.note).join());
+      const x = r.variables.slice(1).filter((v) => +v.nom < 1040 || +v.nom > 1080).map((v) => v.uid);
+      const m = await api('ajuster', { projet: r.id, type: 'PLS', x, y: [r.variables[0].uid], A: 1, nom: 'S', echelle: 'Ctr',
+        spectres: [{ type: 'ligne_base' }, { type: 'detrend' }, { type: 'sg', derivee: 1, fenetre: 5, degre: 2 }] });
+      const s = await api('spectres', { modele: m.id });
+      verifier(s.variables.length === x.length && s.pretraites.length === 8 && s.pretraites[0].every(Number.isFinite), `${s.variables.length} variables, ${s.pretraites.length} spectres`);
+    });
     await etape('exporter les données dans chaque format, puis les rouvrir', async () => {
       const formats = ['xlsx', 'csv', 'tsv', 'rds', 'RData', 'sav', 'dta', 'xpt', 'omv', 'dbf', 'arff'];
       for (const ext of formats) {

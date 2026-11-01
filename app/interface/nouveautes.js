@@ -1,6 +1,21 @@
 // What changed in each version, shown once after an update (and in Aide › Quoi de neuf).
 // The first entry is the current version.
 export const NOUVEAUTES = [
+  { version: '0.9.0', date: '2026-11-01',
+    fr: [
+      'Fichier › Importer des spectres : des fichiers JCAMP-DX, SPC (Galactic, Thermo) ou texte, un spectre ou plusieurs par fichier, réunis en un projet ; un tableau d’informations (teneurs, classes) peut y être joint par le nom des fichiers. Un fichier JCAMP-DX ou SPC s’ouvre aussi avec Fichier › Ouvrir.',
+      'Prétraitement des spectres : detrend et ligne de base (enveloppe convexe) en plus, jusqu’à trois étapes.',
+      'Graphiques › Profils (spectres) › Choisir des zones : faire glisser sur les spectres pour marquer des zones de longueurs d’onde, puis un nouveau modèle sans elles ou avec elles seules. Savitzky–Golay traite chaque zone à part.',
+      'OPLS à plusieurs Y et OPLS-DA à plus de deux classes : les composantes orthogonales n’ont plus aucun lien avec Y, comme le veut l’article de Trygg et Wold (2002). Ces modèles changent un peu quand on les réajuste.',
+      'Rapports R Markdown et Quarto vérifiés jusqu’au HTML ; leur langue est celle du texte.',
+    ],
+    en: [
+      'File › Import spectra: JCAMP-DX, SPC (Galactic, Thermo) or text files, one spectrum or several per file, made into one project; a table of information (contents, classes) can be joined to them by file name. A JCAMP-DX or SPC file also opens with File › Open.',
+      'Spectral preprocessing: detrend and baseline (convex hull) added, up to three steps.',
+      'Plots › Profiles (spectra) › Choose ranges: drag across the spectra to mark wavelength ranges, then a new model without them or with them only. Savitzky–Golay treats each range on its own.',
+      'OPLS with several Y and OPLS-DA with more than two classes: the orthogonal components are no longer related to Y at all, as Trygg and Wold (2002) intend. These models change a little when refitted.',
+      'R Markdown and Quarto reports checked through to HTML; they now declare their language.',
+    ] },
   { version: '0.8.0', date: '2026-11-01',
     fr: [
       'Fichier › Exporter vers R : un script, ou un rapport R Markdown ou Quarto, qui refait le modèle sans Nuée, avec R seul (le code du moteur y est copié). Données dans le script ou dans un CSV à côté ; en plus, au choix : renv.lock, résultats en .RData, projet RStudio.',

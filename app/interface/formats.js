@@ -14,7 +14,14 @@ export const LECTURE = [
   { cle: 'format_jamovi', ext: ['omv'] },
   { cle: 'format_dbase', ext: ['dbf'] },
   { cle: 'format_arff', ext: ['arff'] },
+  { cle: 'format_spectres', ext: ['jdx', 'dx', 'jcm', 'spc'] },
 ];
+
+// Files of spectra (moteur/R/fichiers_spectres.R): JCAMP-DX, SPC, or text (x, then one column per spectrum).
+const SPECTRES = [LECTURE.find((f) => f.cle === 'format_spectres'), { cle: 'format_texte', ext: ['csv', 'txt', 'tsv', 'tab', 'dat'] }];
+export const filtresSpectres = () => [{ name: t('tous_spectres'), extensions: SPECTRES.flatMap((f) => f.ext) },
+  ...SPECTRES.map((f) => ({ name: t(f.cle), extensions: f.ext })), { name: t('tous_fichiers'), extensions: ['*'] }];
+export const acceptSpectres = () => SPECTRES.flatMap((f) => f.ext).map((e) => '.' + e).join(',');
 
 // One extension each; `plusieurs`: a model's results make one file per table in this format.
 export const ECRITURE = [

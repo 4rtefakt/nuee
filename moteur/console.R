@@ -45,6 +45,8 @@ journaliser <- function(nom, q, r) {
   lignes <- switch(nom,
     ouvrir = if (!is.null(r$id)) sprintf("%s <- %s", r$id, appel_ouverture(q$chemin, q$table)),
     coller = c("# tableau collé, gardé dans un fichier de la session", sprintf("%s <- importer_tableau(%s)", r$id, code_r(r$fichier_colle))),
+    importer_spectres = sprintf("%s <- importer_spectres(%s%s, nom = %s)", r$id, vecteur_r(as.character(unlist(q$chemins))),
+                                if (length(q$infos) && nzchar(q$infos)) sprintf(", infos = %s", code_r(q$infos)) else "", code_r(r$nom)),
     exporter = sprintf("ecrire_tables(tables_resultats(%s, %s), %s)", pm(q$modele), q$modele, code_r(r$chemin)),
     exporter_donnees = sprintf("ecrire_tableau(tableau_projet(%s), %s)", q$projet, code_r(r$chemin)),
     fermer_projet = sprintf("rm(%s)  # projet fermé", q$projet),

@@ -412,9 +412,19 @@ function abscisses(noms) {
   return n.every(Number.isFinite) && new Set(n).size === n.length ? n : noms.map((_, i) => i + 1);
 }
 
+// Where a line plot of variables breaks: after a jump of the abscissa more than 1.5 times the
+// usual step (variables left out of the model). couper() puts a gap (null) after those points.
+function coupures(x) {
+  const pas = x.slice(1).map((v, k) => Math.abs(v - x[k]));
+  const median = [...pas].sort((a, b) => a - b)[Math.floor(pas.length / 2)] || 0;
+  return new Set(pas.map((d, k) => (d > 1.5 * median ? k : -1)).filter((k) => k >= 0));
+}
+const couper = (valeurs, coupe) => valeurs.flatMap((v, k) => (coupe.has(k) ? [v, null] : [v]));
+
 // Variables in the order of the table, as lines (spectra): the model's loadings, coefficients
 // or VIP, or the spectra themselves, as read and after their preprocessing. Clicking a
-// spectrum selects its observation.
+// spectrum selects its observation. "Choose ranges": dragging marks wavelength ranges, for a
+// new model without them or with them only.
 async function rendreProfils(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const v = m.variables;
@@ -429,15 +439,34 @@ async function rendreProfils(conteneur, ctx, p, loc) {
   }
   const graphe = el('div', { class: 'graphe' });
   const avecEtapes = m.reglages && [].concat(m.reglages.spectres || []).length > 0;
+  loc.zones ??= [];
+  const dansZones = (a) => loc.zones.some(([z0, z1]) => a >= z0 && a <= z1);
+  const affichees = abscisses(loc.quoi === 'spectres' ? loc.res.noms : v.terme);
+  // the spectrum's X variables outside the ranges (garder = false) or inside them; the model's other X stay
+  const modeleZones = async (garder) => {
+    const r = loc.res && loc.cle === m.id ? loc.res : await ctx.demander('spectres', { modele: m.id });
+    const ax = abscisses(r.noms);
+    const spectre = [].concat(r.variables);
+    const retenues = spectre.filter((_, i) => dansZones(ax[i]) === garder);
+    if (!retenues.length) { ctx.statut(t('zones_vides'), true); return; }
+    ctx.nouveauModeleDepuis(m.id, { ...m.reglages, x: [...[].concat(m.reglages.x || []).filter((u) => !spectre.includes(u)), ...retenues] });
+  };
   conteneur.replaceChildren(outils(
     choix(t('profil_quoi'), quoi, loc.quoi, (x) => { loc.quoi = x; ctx.rafraichir(); }),
     loc.quoi === 'spectres' && avecEtapes ? case_(t('spectres_bruts'), !!loc.bruts, (x) => { loc.bruts = x; ctx.rafraichir(); }) : null,
-    avecEtapes ? el('span', { class: 'infos' }, libelleSpectres(m.reglages.spectres)) : null), graphe);
+    avecEtapes ? el('span', { class: 'infos' }, libelleSpectres(m.reglages.spectres)) : null,
+    case_(t('choisir_zones'), !!loc.choixZones, (x) => { loc.choixZones = x; ctx.rafraichir(); }),
+    loc.choixZones && !loc.zones.length ? el('span', { class: 'infos' }, t('zones_aide')) : null,
+    loc.zones.length ? [el('span', { class: 'infos' }, t('zones_n', { n: loc.zones.length, k: affichees.filter(dansZones).length })),
+      el('button', { onclick: () => modeleZones(false) }, t('modele_sans_zones')),
+      el('button', { onclick: () => modeleZones(true) }, t('modele_zones')),
+      el('button', { onclick: () => { loc.zones = []; ctx.rafraichir(); } }, t('effacer_zones'))] : null), graphe);
   const traces = [];
   let titre = '';
   if (loc.quoi === 'spectres') {
     const r = loc.res;
     const x = abscisses(r.noms);
+    const coupe = coupures(x);
     const lignes = loc.bruts ? r.bruts : r.pretraites;
     const nomObs = new Map(m.observations.uid.map((u, i) => [u, m.observations.nom[i]]));
     const sel = new Set(ctx.selection(m.id));
@@ -445,7 +474,10 @@ async function rendreProfils(conteneur, ctx, p, loc) {
     const groupe = (indices, couleur, largeur, nom) => {
       const xs = []; const ys = []; const txt = []; const ids = [];
       for (const i of indices) {
-        lignes[i].forEach((y, k) => { xs.push(x[k]); ys.push(y); txt.push(nomObs.get(r.uid[i])); ids.push(r.uid[i]); });
+        lignes[i].forEach((y, k) => {
+          xs.push(x[k]); ys.push(y); txt.push(nomObs.get(r.uid[i])); ids.push(r.uid[i]);
+          if (coupe.has(k)) { xs.push(null); ys.push(null); txt.push(''); ids.push(null); }
+        });
         xs.push(null); ys.push(null); txt.push(''); ids.push(null);
       }
       return { type: 'scattergl', mode: 'lines', name: nom, x: xs, y: ys, text: txt, customdata: ids, line: { color: couleur, width: largeur },
@@ -458,24 +490,37 @@ async function rendreProfils(conteneur, ctx, p, loc) {
   } else {
     const x = abscisses(v.terme);
     const mode = v.terme.length <= 40 ? 'lines+markers' : 'lines';
-    const ligne = (y, nom, i) => ({ type: 'scatter', mode, name: nom, x, y, text: v.terme, line: { color: PALETTE[i % PALETTE.length], width: 1.5 },
-      marker: { size: 5 }, hovertemplate: `<b>%{text}</b><br>${nom} %{y:.4g}<extra></extra>` });
+    const ligne = (y, nom, i, xs = x, termes = v.terme) => {
+      const coupe = coupures(xs);
+      return { type: 'scatter', mode, name: nom, x: couper(xs, coupe), y: couper(y, coupe), text: couper(termes, coupe),
+        line: { color: PALETTE[i % PALETTE.length], width: 1.5 }, marker: { size: 5 }, hovertemplate: `<b>%{text}</b><br>${nom} %{y:.4g}<extra></extra>` };
+    };
     if (loc.quoi === 'p' || loc.quoi === 'w') {
       const base = loc.quoi === 'p' ? 'p' : 'w*';
       for (let a = 1; a <= m.A; a += 1) traces.push(ligne(v[base + a], nomComp(m, base, a), a - 1));
       titre = `${m.nom} · Loadings ${base}`;
     } else if (loc.quoi === 'coeff') {
       const c = m.coefficients;
-      [].concat(m.noms_y).forEach((y, i) => { if (c[`CoeffCS ${y}`]) traces.push({ ...ligne(c[`CoeffCS ${y}`], y, i), x: abscisses(c.terme), text: c.terme }); });
+      [].concat(m.noms_y).forEach((y, i) => { if (c[`CoeffCS ${y}`]) traces.push(ligne(c[`CoeffCS ${y}`], y, i, abscisses(c.terme), c.terme)); });
       titre = `${m.nom} · ${t('coefficients')} (CoeffCS)`;
     } else {
       traces.push(ligne(v.VIP, 'VIP', 0));
       titre = `${m.nom} · VIP`;
     }
   }
-  tracer(ctx, graphe, traces, { title: { text: titre }, dragmode: 'zoom', showlegend: traces.length > 1,
+  tracer(ctx, graphe, traces, { title: { text: titre }, dragmode: loc.choixZones ? 'select' : 'zoom', selectdirection: 'h', showlegend: traces.length > 1,
     xaxis: { title: { text: t('variables') } },
-    shapes: loc.quoi === 'vip' ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 1, y1: 1, line: { color: '#999', dash: 'dot', width: 1 } }] : [] });
+    shapes: (loc.quoi === 'vip' ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 1, y1: 1, line: { color: '#999', dash: 'dot', width: 1 } }] : [])
+      .concat(loc.zones.map(([z0, z1]) => ({ type: 'rect', xref: 'x', yref: 'paper', x0: z0, x1: z1, y0: 0, y1: 1, layer: 'below',
+        fillcolor: 'rgba(242, 142, 43, 0.18)', line: { width: 0 } }))) });
+  graphe.on('plotly_selected', (ev) => {  // a range dragged (lines have no points to select: the box itself)
+    if (!loc.choixZones) return;
+    const boite = (graphe.layout.selections || []).slice(-1)[0];
+    const s = (ev && ev.range && ev.range.x) || (boite && [boite.x0, boite.x1]);
+    if (!s) return;
+    loc.zones.push([Math.min(...s), Math.max(...s)]);
+    ctx.rafraichir();
+  });
   if (loc.quoi === 'spectres' && !graphe._clicSpectre) {
     graphe._clicSpectre = true;
     graphe.on('plotly_click', (ev) => {

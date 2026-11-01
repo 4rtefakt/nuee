@@ -12,6 +12,16 @@
 #                       degré `degre` ajusté par moindres carrés ; la valeur corrigée est sa
 #                       valeur (derivee = 0 : lissage) ou sa dérivée au centre, par pas d'une
 #                       variable. Aux bords, le polynôme de la première ou de la dernière fenêtre.
+#                       Chaque zone de variables voisines dans le tableau est traitée à part :
+#                       une fenêtre ne passe pas par-dessus des variables laissées hors du modèle ;
+#   list(type = "detrend", degre = 2)  detrend (Barnes et al., 1989) : un polynôme de degré
+#                       `degre` en fonction de l'abscisse (terme constant compris), ajusté par
+#                       moindres carrés sur le spectre, en est retiré (souvent après SNV) ;
+#   list(type = "ligne_base")  ligne de base : l'enveloppe convexe inférieure du spectre (les
+#                       segments qui joignent ses points les plus bas, d'un bout à l'autre) en est
+#                       retirée ; le spectre corrigé est positif ou nul.
+# L'abscisse d'une variable est le nombre lu dans son nom (« 1450 nm » : 1450) quand chaque
+# variable en a un, différent ; sinon sa place dans le tableau.
 # Une valeur manquante reste manquante ; avec Savitzky–Golay, elle rend aussi manquantes les
 # valeurs dont la fenêtre la contient. Le prétraitement est fait une fois, sur toutes les
 # observations du modèle, avant la validation croisée.
@@ -23,7 +33,11 @@ etapes_spectres <- function(x) {
   lapply(x, function(e) {
     e <- Filter(function(v) length(v) && !is.na(v[1]), as.list(e))
     e$type <- tolower(as.character(e$type))
-    if (!e$type %in% c("snv", "msc", "sg")) stop("Prétraitement des spectres inconnu : ", e$type)
+    if (!e$type %in% c("snv", "msc", "sg", "detrend", "ligne_base")) stop("Prétraitement des spectres inconnu : ", e$type)
+    if (e$type == "detrend") {
+      e$degre <- as.integer(e$degre %||% 2)
+      if (e$degre < 1) stop("Detrend : le degré du polynôme doit être 1 au moins")
+    }
     if (e$type == "sg") {
       e$fenetre <- as.integer(e$fenetre %||% 11)
       e$degre <- as.integer(e$degre %||% 2)
@@ -36,9 +50,11 @@ etapes_spectres <- function(x) {
 }
 
 # Applique les étapes aux lignes de X. `reference` : les spectres moyens des étapes MSC d'un
-# modèle déjà ajusté (pour prédire de nouvelles observations) ; renvoyés sinon.
-pretraiter_spectres <- function(X, etapes, reference = NULL) {
+# modèle déjà ajusté (pour prédire de nouvelles observations) ; renvoyés sinon. `positions` :
+# la place de chaque colonne dans le tableau du projet (des colonnes voisines y sont voisines).
+pretraiter_spectres <- function(X, etapes, reference = NULL, positions = seq_len(ncol(X))) {
   refs <- list()
+  x <- abscisses_spectre(colnames(X), positions)
   for (i in seq_along(etapes)) {
     e <- etapes[[i]]
     X <- switch(e$type,
@@ -48,9 +64,79 @@ pretraiter_spectres <- function(X, etapes, reference = NULL) {
         refs[[i]] <- r
         msc(X, r)
       },
-      sg = savitzky_golay(X, e$fenetre, e$degre, e$derivee))
+      sg = {
+        zones <- split(seq_len(ncol(X)), cumsum(c(1, diff(positions) != 1)))
+        for (z in zones) {
+          if (length(zones) > 1 && length(z) < e$fenetre) {
+            stop(sprintf("Savitzky–Golay : la zone de %s à %s n'a que %d variables, moins que la fenêtre (%d)",
+                         colnames(X)[z[1]], colnames(X)[z[length(z)]], length(z), e$fenetre))
+          }
+          X[, z] <- savitzky_golay(X[, z, drop = FALSE], e$fenetre, e$degre, e$derivee)
+        }
+        X
+      },
+      detrend = detrend(X, x, e$degre),
+      ligne_base = ligne_base(X, x))
   }
   list(X = X, reference = refs)
+}
+
+# L'abscisse de chaque variable : le nombre de son nom quand toutes en ont un, différent ;
+# sinon sa place dans le tableau.
+abscisses_spectre <- function(noms, positions) {
+  n <- vapply(as.character(noms %||% character(0)), function(s) {
+    m <- regmatches(s, regexpr("-?[0-9]+([.,][0-9]+)?", s))
+    if (length(m)) as.numeric(sub(",", ".", m, fixed = TRUE)) else NA_real_
+  }, 0, USE.NAMES = FALSE)
+  if (length(n) == length(positions) && !anyNA(n) && !anyDuplicated(n)) n else positions
+}
+
+# Résidus de chaque spectre après l'ajustement d'un polynôme de degré `degre` en x.
+detrend <- function(X, x, degre = 2) {
+  u <- (x - mean(x)) / stats::sd(x)
+  V <- outer(u, 0:degre, `^`)
+  complet <- qr(V)
+  for (i in seq_len(nrow(X))) {
+    ok <- !is.na(X[i, ])
+    if (all(ok)) X[i, ] <- qr.resid(complet, X[i, ])
+    else if (sum(ok) > degre) X[i, ok] <- qr.resid(qr(V[ok, , drop = FALSE]), X[i, ok])
+    else X[i, ] <- NA
+  }
+  X
+}
+
+# La place dans le tableau du projet de la variable de chaque terme.
+positions_termes <- function(projet, termes) {
+  uids <- vapply(projet$variables, function(v) as.numeric(v$uid), 0)
+  vapply(termes, function(t) as.numeric(match(as.numeric(t$variables[1]), uids)), 0)
+}
+
+# Chaque spectre moins son enveloppe convexe inférieure, interpolée linéairement.
+ligne_base <- function(X, x) {
+  o <- order(x)
+  for (i in seq_len(nrow(X))) {
+    ok <- o[!is.na(X[i, o])]
+    if (length(ok) < 2) next
+    h <- enveloppe_basse(x[ok], X[i, ok])
+    X[i, ok] <- X[i, ok] - stats::approx(x[ok][h], X[i, ok][h], xout = x[ok])$y
+  }
+  X
+}
+
+# Les points de l'enveloppe convexe inférieure de (a, y), a croissant (chaîne monotone
+# d'Andrew) : on garde un point tant que le chemin tourne à gauche.
+enveloppe_basse <- function(a, y) {
+  h <- integer(0)
+  for (i in seq_along(a)) {
+    while (length(h) >= 2) {
+      j <- h[length(h) - 1]
+      k <- h[length(h)]
+      if ((a[k] - a[j]) * (y[i] - y[j]) - (y[k] - y[j]) * (a[i] - a[j]) > 0) break
+      h <- h[-length(h)]
+    }
+    h <- c(h, i)
+  }
+  h
 }
 
 snv <- function(X) {
@@ -103,6 +189,6 @@ spectres_modele <- function(projet, definition) {
   obs <- definition$observations
   bruts <- vapply(definition$x[quant], function(t) transformer(valeurs_simples(projet, t, obs), t$transform), numeric(length(obs)))
   bruts <- matrix(bruts, length(obs), length(quant), dimnames = list(as.character(obs), vapply(definition$x[quant], function(t) as.character(t$name), "")))
-  pretraites <- if (length(definition$spectres)) pretraiter_spectres(bruts, definition$spectres)$X else bruts
-  list(bruts = bruts, pretraites = pretraites)
+  pretraites <- if (length(definition$spectres)) pretraiter_spectres(bruts, definition$spectres, positions = positions_termes(projet, definition$x[quant]))$X else bruts
+  list(bruts = bruts, pretraites = pretraites, variables = vapply(definition$x[quant], function(t) as.numeric(t$variables[1]), 0))
 }

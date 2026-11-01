@@ -87,10 +87,15 @@ scores, classes made from a selection.
 
 ![Class models: one PCA per apple variety; the Coomans plot of the distances to two of them, the share of each variety each model accepts, and every apple's distances](docs/captures/coomans.png)
 
-**Spectra:** SNV, MSC and Savitzky–Golay smoothing or derivatives before the model, and
-loadings, coefficients, VIP or the spectra themselves drawn as lines against the wavelength.
+**Spectra:** open JCAMP-DX, SPC (Galactic, Thermo) or text files, one spectrum per file or
+several, with a table of sample information (contents, classes) joined by file name. SNV, MSC,
+detrending, baseline removal and Savitzky–Golay smoothing or derivatives before the model.
+Loadings, coefficients, VIP or the spectra themselves drawn as lines against the wavelength;
+drag across them to leave wavelength ranges out of a new model, or to keep only them.
 
 ![A PLS on made-up spectra after SNV and a first derivative: scores coloured by batch, and loadings p drawn as lines against the wavelength](docs/captures/spectres.png)
+
+![Made-up NIR spectra imported from 24 JCAMP-DX files with their sugar contents, after SNV, detrending and a first derivative; the two water bands are marked, to leave them out of a new model](docs/captures/zones.png)
 
 **Prediction:** apply a model to new observations from a table, with flags for those outside
 the model's domain, and export the results.
@@ -118,6 +123,7 @@ the model's domain, and export the results.
 | SAS | `.sas7bdat`, `.xpt` | `.xpt` |
 | jamovi | `.omv` | `.omv` |
 | dBase, Weka | `.dbf`, `.arff` | `.dbf`, `.arff` |
+| Spectra | `.jdx`, `.dx`, `.jcm` (JCAMP-DX), `.spc` (Galactic, Thermo), or text with one column per spectrum; several files at once with *Fichier › Importer des spectres* | |
 | Clipboard | cells copied from Excel, LibreOffice, Google Sheets, jamovi… | |
 
 *Exporter les données* writes the project's table; *Exporter les résultats du modèle* (Ctrl+E)
@@ -126,7 +132,8 @@ the components and the coefficients. For SPSS, Stata and SAS, variable names are
 the original name becomes the variable label. SAS files use the transport format version 5,
 which SAS reads with `libname xport`; dBase files are in Windows-1252, as LibreOffice and GIS
 software expect. Exported files were opened in jamovi, PSPP (for SPSS), Weka, LibreOffice and
-pandas (for Stata and SAS).
+pandas (for Stata and SAS). The spectra readers were checked against the official JCAMP-DX test
+files (every compression form) and the usual SPC sample files.
 
 ## R all the way down
 

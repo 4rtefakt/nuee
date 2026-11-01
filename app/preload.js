@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('bureau', {
   versions: { electron: process.versions.electron },
   choisirFichier: (filtres) => ipcRenderer.invoke('choisir-fichier', filtres),
+  choisirFichiers: (filtres) => ipcRenderer.invoke('choisir-fichiers', filtres),
   lirePressePapiers: () => ipcRenderer.invoke('lire-presse-papiers'),
   enregistrerSous: (nom, filtres) => ipcRenderer.invoke('enregistrer-sous', nom, filtres),
   recents: () => ipcRenderer.invoke('recents'),

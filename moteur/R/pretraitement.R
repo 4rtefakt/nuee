@@ -102,7 +102,9 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
   reference <- NULL
   if (length(spectres)) {
     q <- seuls[vapply(termes[seuls], function(t) categorie(t) == 0, TRUE)]
-    r <- pretraiter_spectres(bruts[, q, drop = FALSE], spectres, imposees$reference)
+    spectre <- bruts[, q, drop = FALSE]
+    colnames(spectre) <- noms[q]
+    r <- pretraiter_spectres(spectre, spectres, imposees$reference, positions_termes(projet, termes[q]))
     bruts[, q] <- r$X
     reference <- r$reference
   }

@@ -28,6 +28,7 @@ Fichier › Ouvrir (Ctrl+O) :
       SPSS .sav, .zsav, .por            d'Excel)
       Stata .dta                      SAS .sas7bdat, .xpt
       jamovi .omv                     dBase .dbf, Weka .arff
+      spectres JCAMP-DX .jdx, .dx, .jcm et SPC .spc (voir Spectres)
     La première colonne sert de nom d'observation si c'est du texte ou si elle s'appelle
     « ID », « Obs », « Nom »... (pour un fichier R, les noms des lignes) ; les autres colonnes
     de texte dont toutes les valeurs diffèrent (un code par observation) deviennent des
@@ -38,6 +39,7 @@ Fichier › Ouvrir (Ctrl+O) :
 Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google
 Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
 projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).
+Fichier › Importer des spectres : des fichiers de spectres réunis en un projet (voir Spectres).
 Les derniers fichiers ouverts sont dans Fichier › Ouvrir un fichier récent.
 Pour essayer : Aide › Projet d'exemple ouvre 120 pommes inventées (quatre variétés, culture
 bio ou conventionnelle, une douzaine de mesures et une note de dégustation) avec quatre
@@ -189,19 +191,53 @@ fichiers écrits ont été ouverts dans jamovi, PSPP (pour SPSS), Weka, LibreOff
 
 Spectres
 --------
+Fichier › Importer des spectres : choisir un ou plusieurs fichiers (Ctrl+A dans un dossier
+pour les prendre tous) ; ils deviennent un projet, une ligne par spectre, une colonne par
+longueur d'onde (nommée par sa valeur : « 1450 », « 3999.69 »). Fichiers lus :
+  JCAMP-DX (.jdx, .dx, .jcm)  toutes les écritures (nombres simples ou compressés : AFFN, PAC,
+             SQZ, DIF, DUP), plusieurs spectres par fichier ; pas les tables de pics ni les
+             NTUPLES (RMN complexe, spectrométrie de masse) ;
+  SPC (.spc)  Galactic (GRAMS, Thermo), nouveau et ancien format, un ou plusieurs spectres ;
+  texte (.csv, .txt...)  une colonne d'abscisses, puis une colonne par spectre, avec ou sans
+             ligne d'en-tête ; les lignes que l'appareil écrit avant les nombres sont ignorées.
+Un spectre est nommé d'après son fichier (et le titre du bloc ou son numéro quand un fichier en
+a plusieurs). Si les spectres n'ont pas tous les mêmes abscisses, ils sont interpolés
+(linéairement) sur celles du premier, dans la partie commune à tous ; la barre d'état le dit.
+Des unités différentes (nm et cm-1, absorbance et transmittance) sont refusées.
+Informations (facultatif) : un tableau (Excel, CSV...) dont la première colonne donne le nom de
+chaque fichier, avec ou sans son extension, et les autres colonnes des informations à joindre
+aux spectres (teneurs, classes, lots) ; elles prennent place avant les spectres. La barre
+d'état dit combien de spectres n'ont pas trouvé leur ligne. Un seul fichier JCAMP-DX ou SPC
+s'ouvre aussi avec Fichier › Ouvrir, et un fichier de nouveaux spectres sur la même grille se
+prédit avec Prédiction › Prédire un fichier.
+
 Nouveau modèle › Général › Prétraitement des spectres : chaque observation est un spectre
 (ses variables X quantitatives, dans l'ordre du tableau), corrigé avant la mise à l'échelle
-par une ou deux étapes, dans l'ordre :
+par une à trois étapes, dans l'ordre :
   SNV        chaque spectre centré sur sa moyenne et divisé par son écart-type ;
   MSC        chaque spectre ajusté sur le spectre moyen des observations du modèle (x = a + b r),
              puis remplacé par (x - a) / b ; une prédiction reprend ce spectre moyen ;
+  Detrend    un polynôme de degré 2 en fonction de la longueur d'onde, ajusté sur le spectre,
+             en est retiré (Barnes et al., 1989 ; souvent après SNV) ;
+  Ligne de base  l'enveloppe convexe inférieure du spectre (les segments qui joignent ses points
+             les plus bas, d'un bout à l'autre) en est retirée ; le spectre corrigé est positif
+             ou nul ;
   Savitzky–Golay : lissage, dérivée première ou seconde, dans une fenêtre de n variables
-             (impair) avec un polynôme de degré d.
+             (impair) avec un polynôme de degré d. Chaque zone de variables voisines dans le
+             tableau est traitée à part : une fenêtre ne passe pas par-dessus une zone retirée.
+La longueur d'onde (pour Detrend et la ligne de base) est le nombre lu dans le nom des
+variables quand chacune en a un, différent ; sinon leur place dans le tableau.
 Pour des spectres, on centre souvent sans réduire (échelle « Centrage seul »). Le
 prétraitement est fait une fois, avant la validation croisée. Graphiques › Profils (spectres) :
 loadings, coefficients, VIP, ou les spectres eux-mêmes (avant ou après prétraitement) en
 lignes ; l'axe horizontal est le nombre lu dans le nom des variables (« 1450 nm ») quand
-chacune en a un. Un clic sur un spectre sélectionne son observation.
+chacune en a un ; les lignes s'interrompent là où des variables sont hors du modèle. Un clic sur
+un spectre sélectionne son observation.
+Zones de longueurs d'onde : cocher « Choisir des zones », puis faire glisser sur le graphique
+(une ou plusieurs zones, en orange) ; « Nouveau modèle sans ces zones » (par exemple les
+bandes de l'eau) ou « Nouveau modèle avec ces zones seules » ouvre Nouveau modèle avec les
+réglages du modèle et ces variables X, à vérifier avant d'ajuster. Les autres variables X du
+modèle (qualitatives) restent.
 
 Exporter vers R (script, R Markdown, Quarto)
 --------------------------------------------
@@ -323,10 +359,15 @@ Des composantes prédictives, qui portent ce qui dans X est lié à Y, et des co
 orthogonales, qui décrivent le reste de la variation de X : scores et loadings se lisent plus
 facilement (t[1] contre to[1], S-plot). Une composante prédictive par variable Y, ou une de
 moins que de classes pour l'OPLS-DA (t[1], t[2]... puis to[1], to[2]...) ; avec une seule,
-les valeurs prédites sont celles d'une PLS au même nombre de composantes. Q2 par validation
-croisée complète (le modèle entier est réajusté sans chaque groupe). Aucun des projets .usp
-disponibles n'avait de modèle OPLS : ce calcul suit l'article de Trygg et Wold (2002), sans
-comparaison possible avec des valeurs enregistrées.
+les valeurs prédites sont celles d'une PLS au même nombre de composantes. Avec plusieurs Y
+(ou plus de deux classes), chaque poids orthogonal est rendu orthogonal aux poids X'y de
+toutes les colonnes de Y, si bien que les composantes orthogonales n'ont aucun lien avec Y
+(depuis 0.9.0 ; la version 0.8.0 laissait un léger lien : les modèles OPLS à plusieurs
+composantes prédictives qu'elle a faits changent un peu quand on les réajuste). Q2 par
+validation croisée complète (le modèle entier est réajusté sans chaque groupe). Aucun des
+projets .usp disponibles n'avait de modèle OPLS : ce calcul suit l'article de Trygg et Wold
+(2002), sans comparaison possible avec des valeurs enregistrées ; il est vérifié contre une
+seconde écriture de l'algorithme de l'article.
 
 VIP
 ---
@@ -401,7 +442,8 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   comparaisons.R         tests par variable
   modeles_classe.R       modèles de classe (une ACP par classe), graphique de Coomans
   formats.R              lecture et écriture des tableaux (Excel, texte, R, SPSS, Stata, SAS, jamovi...)
-  spectres.R             prétraitement des spectres (SNV, MSC, Savitzky–Golay)
+  spectres.R             prétraitement des spectres (SNV, MSC, detrend, ligne de base, Savitzky–Golay)
+  fichiers_spectres.R    lecture des spectres (JCAMP-DX, SPC, texte), informations jointes
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustement)
 Dans R : source("resources/moteur/charger.R"), puis par exemple
   p <- importer_tableau("mes_donnees.csv")

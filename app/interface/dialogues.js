@@ -6,7 +6,7 @@ import { libelleTransfo, FORMAT, changerFormat } from './panneaux.js';
 const ECHELLES = ['UV', 'Par', 'Ctr', 'none'];
 const TRANSFOS = ['', 'racine2', 'racine4', 'log10'];
 // spectral preprocessing steps (moteur/R/spectres.R); sg1 = Savitzky–Golay 1st derivative
-const ETAPES = ['', 'snv', 'msc', 'sg0', 'sg1', 'sg2'];
+const ETAPES = ['', 'snv', 'msc', 'detrend', 'ligne_base', 'sg0', 'sg1', 'sg2'];
 
 // projet: project summary; r: settings of an existing model to start from (m.reglages).
 export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele')) {
@@ -19,7 +19,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   };
   const etapes = r && r.spectres ? [].concat(r.spectres) : [];
   const sg = etapes.find((e) => e.type === 'sg');
-  Object.assign(st, { etapes: [0, 1].map((i) => (etapes[i] ? (etapes[i].type === 'sg' ? `sg${etapes[i].derivee || 0}` : etapes[i].type) : '')),
+  Object.assign(st, { etapes: [0, 1, 2].map((i) => (etapes[i] ? (etapes[i].type === 'sg' ? `sg${etapes[i].derivee || 0}` : etapes[i].type) : '')),
     fenetre: sg ? sg.fenetre : 11, degre: sg ? sg.degre : 2 });
   if (r) {
     [].concat(r.x || []).forEach((u) => { st.roles[u] = 'x'; });
@@ -296,7 +296,7 @@ const AIDE = {
       ['Modèles de classe', 'Nouveau modèle › type Modèles de classe : une ACP par catégorie de la variable de classe. Graphiques › Graphique de Coomans : la distance (DModX) de chaque observation à deux de ces modèles ; sous la limite d’un modèle, l’observation appartient à sa classe (à une, plusieurs ou aucune).'],
       ['Données', 'Double-clic sur une case de la vue Données pour la modifier ; Édition › Nouvelle variable : formule R ou classes d’après les valeurs.'],
       ['OPLS', 'Des composantes prédictives (une par variable Y, ou une de moins que de classes pour l’OPLS-DA) et des composantes orthogonales. Graphique S (S-plot) dans Graphiques.'],
-      ['Spectres', 'Nouveau modèle › Général › Prétraitement des spectres : SNV, MSC, lissage ou dérivées de Savitzky–Golay, en une ou deux étapes, appliqués à chaque observation avant la mise à l’échelle (variables X dans l’ordre du tableau). Graphiques › Profils (spectres) : loadings, coefficients, VIP ou les spectres eux-mêmes en lignes, la longueur d’onde lue dans le nom des variables.'],
+      ['Spectres', 'Fichier › Importer des spectres : des fichiers JCAMP-DX, SPC ou texte, un spectre par ligne du projet, avec un tableau d’informations (teneurs, classes) joint par le nom des fichiers. Nouveau modèle › Général › Prétraitement des spectres : SNV, MSC, detrend, ligne de base, lissage ou dérivées de Savitzky–Golay, en une à trois étapes, appliqués à chaque observation avant la mise à l’échelle (variables X dans l’ordre du tableau). Graphiques › Profils (spectres) : loadings, coefficients, VIP ou les spectres eux-mêmes en lignes, la longueur d’onde lue dans le nom des variables ; « Choisir des zones » : faire glisser pour marquer des zones, puis un nouveau modèle sans elles ou avec elles seules.'],
       ['Mises à jour', 'La version installée cherche au démarrage une nouvelle version sur GitHub et la signale dans la barre d’état (Aide › Chercher une nouvelle version au démarrage pour l’arrêter).'],
       ['Historique du fichier', 'Sous un projet .usp : le journal d’audit enregistré dans le fichier (dates, versions, changements de chaque modèle).'],
       ['Code', 'Tous les calculs sont en R, commentés en français, dans resources\\moteur\\R.'],
@@ -336,7 +336,7 @@ const AIDE = {
       ['Class models', 'New model › type Class models: one PCA per category of the class variable. Plots › Coomans plot: each observation’s distance (DModX) to two of these models; below a model’s limit, the observation belongs to its class (to one, several or none).'],
       ['Data', 'Double-click a cell of the Data view to edit it; Edit › New variable: an R formula or classes from values.'],
       ['OPLS', 'Predictive components (one per Y variable, or one fewer than the classes for OPLS-DA) and orthogonal ones. S-plot in Plots.'],
-      ['Spectra', 'New model › General › Spectral preprocessing: SNV, MSC, Savitzky–Golay smoothing or derivatives, in one or two steps, applied to each observation before scaling (X variables in the order of the table). Plots › Profiles (spectra): loadings, coefficients, VIP or the spectra themselves as lines, the wavelength read from the variable names.'],
+      ['Spectra', 'File › Import spectra: JCAMP-DX, SPC or text files, one spectrum per row of the project, with a table of information (contents, classes) joined by file name. New model › General › Spectral preprocessing: SNV, MSC, detrend, baseline, Savitzky–Golay smoothing or derivatives, in one to three steps, applied to each observation before scaling (X variables in the order of the table). Plots › Profiles (spectra): loadings, coefficients, VIP or the spectra themselves as lines, the wavelength read from the variable names; “Choose ranges”: drag to mark ranges, then a new model without them or with them only.'],
       ['Updates', 'The installed version looks for a new version on GitHub at start-up and shows it in the status bar (Help › Look for a new version at start-up to stop it).'],
       ['File history', 'Under a .usp project: the audit trail stored in the file (dates, versions, changes to each model).'],
       ['Code', 'All computations are in R, commented in French, in resources\\moteur\\R.'],

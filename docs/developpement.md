@@ -12,14 +12,17 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/serveur.R` | Local HTTP server (httpuv) answering the interface's JSON requests |
 | `moteur/console.R` | The R console: log of engine calls, prompt in the application's session |
 | `moteur/R/formats.R` | Reading and writing tables: text, Excel, R, SPSS, Stata, SAS, jamovi `.omv` (read and written here), dBase, ARFF |
-| `moteur/R/spectres.R` | Spectral preprocessing: SNV, MSC, Savitzky–Golay |
+| `moteur/R/spectres.R` | Spectral preprocessing: SNV, MSC, detrend, baseline (lower convex hull), Savitzky–Golay (each range of neighbouring variables on its own) |
+| `moteur/R/fichiers_spectres.R` | Spectra files: JCAMP-DX (AFFN, PAC, SQZ, DIF, DUP), SPC (new and old format), text; merged into one table, with a table of sample information joined by file name |
 | `moteur/R/script.R` | Export to R: a standalone script or R Markdown / Quarto report holding the data, the engine functions a model needs (found by following the names each function uses, and copied with their comments) and the model |
 | `moteur/R/methodes.R` | The Methods paragraph and its references, in French or English |
 | `moteur/R/comparaisons.R` | Tests by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis) with multiple-testing correction |
 | `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
 | `moteur/tests/verifier_references.R` | Refits every model of a folder of exported `.usp` projects and compares with the results stored in them |
 | `moteur/tests/verifier_formats.R` | Every export format written and read back; text files as spreadsheets write them; jamovi files compared with `jmvReadWrite` when it is installed |
-| `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, and a PLS on made-up spectra; the same results as `prospectr` when it is installed |
+| `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, detrend, baseline, Savitzky–Golay by range, and a PLS on made-up spectra; the same results as `prospectr` when it is installed |
+| `moteur/tests/verifier_fichiers_spectres.R` | Small made-up JCAMP-DX (every compression form), SPC (each layout) and text files read back; the spectra table and the joined information |
+| `moteur/tests/verifier_opls.R` | OPLS against a second, plain-matrix writing of Trygg and Wold's algorithm (one Y, two Y, three classes); orthogonal scores unrelated to Y |
 | `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, run in a fresh `Rscript --vanilla` without the engine, give the engine's results; reports compile with `knitr` when it is installed |
 | `moteur/tests/verifier_comparaisons.R` | Tests by variable against R's own test functions, class models, OPLS with several predictive components, the Methods text |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
@@ -48,9 +51,31 @@ compare with other implementations and to compile the reports):
 ```bash
 Rscript moteur/tests/verifier_formats.R
 Rscript moteur/tests/verifier_spectres.R
+Rscript moteur/tests/verifier_fichiers_spectres.R
+Rscript moteur/tests/verifier_opls.R
 Rscript moteur/tests/verifier_script.R
 Rscript moteur/tests/verifier_comparaisons.R
 ```
+
+Before 0.9.0, the spectra readers were run on real files and compared with other readers:
+- **JCAMP-DX:** the 21 official test files of jcamp-dx.org and R. J. Lancashire's 41 test files
+  (from the `jcamp` Python package's repository). Every (X++(Y..Y)) table passes the files' own
+  checks: the abscissa that starts each line matches the number of values decoded before it,
+  and the count matches NPOINTS. The same spectrum in AFFN, PAC, SQZ and DIF/DUP decodes to the
+  same values. The Python reader `jcamp` 1.3.2 gives identical values on 28 spectra; on three
+  files it drops the repeat (DUP) that follows a line's check value, and falls short of NPOINTS.
+  Peak tables and NTUPLES (complex NMR, mass spectra) are not read; one deliberately corrupted
+  file is refused.
+- **SPC:** the 25 sample files of the `spc` Python package (Galactic's own examples among them),
+  against that package's text output: the same values to 1e-12 in both formats. Where they
+  differ, that package is wrong: it treats a subfile's negative exponent as 0 (values 2 or 4
+  times too large; the files' exponents are the tightest that fit only under our reading), and
+  its abscissas for two files with per-subfile x lie outside the files' own first and last x.
+- **Preprocessing:** detrend and the baseline give `prospectr`'s results (detrend: up to each
+  spectrum's mean, which `prospectr` keeps when it fits the polynomial without a constant;
+  Barnes et al. fit it with one).
+- **Reports:** the R Markdown and Quarto reports render to HTML with rmarkdown 2.32 and Quarto
+  1.10.20 (French and English, data in the script or in a CSV).
 
 Before 0.8.0, the exported files were also opened in the programs themselves: jamovi 2.7 (its
 own reader, `jamovi.server.formatio.omv`), PSPP 2.1 (`pspp` with `GET FILE` and `LIST`), Weka 3.8
@@ -140,7 +165,7 @@ Known differences:
 - **PCA Q2:** the stored values include an unpublished step.
   - The Krzanowski method used here gives a median largest difference over components of 0.015 to 0.023 against the stored Q2(cum). It is about 0.01 for v10 models and 0.12 for v11.
   - Four other schemes did worse on all 149 PCA models: one-step projections from the full component, a single NIPALS step, and Wold's element-wise deletion in two patterns.
-- **OPLS:** none of the projects has an OPLS model, so it is checked against theory, not stored results. With one predictive component its fitted values equal PLS's to 1e-14, and its scores are orthogonal. With several (several Y, or OPLS-DA with more than two classes), each orthogonal weight is the first loading made orthogonal to all the predictive weights (Trygg and Wold, 2002); predictive and orthogonal scores are orthogonal to 1e-16 on complete data. The cross-validation is full: the whole model is refitted without each group of observations.
+- **OPLS:** none of the projects has an OPLS model, so it is checked against theory and against a second writing of the published algorithm (`verifier_opls.R`), not stored results. With one predictive component its fitted values equal PLS's to 1e-14, and its scores are orthogonal. With several (several Y, or OPLS-DA with more than two classes), each orthogonal weight is the first loading made orthogonal to the space of the weights X'y of each column of Y (Trygg and Wold, 2002, OPLS for several Y), so the orthogonal scores are unrelated to Y; on complete data they match the second writing to 1e-8 and To'Y = 0. (0.8.0 made them orthogonal to the PLS weights instead, which left the orthogonal scores correlated with Y, up to a cosine of 0.1 on the example data.) The cross-validation is full: the whole model is refitted without each group of observations.
 - **Standalone R scripts:** for 61 models sampled from the 133 projects (PCA, PLS, PLS-DA), the exported script, run in a fresh R session without the engine, gives the same scores and R2/Q2 to 1e-10.
 - **Transform suggestions:** the published rule doesn't say whether both the skewness and the Min/Max criteria are needed; the app requires both.
 - **Autofit:** PCA's significance limit isn't published, so the engine uses a degrees-of-freedom limit instead.

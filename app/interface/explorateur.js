@@ -17,6 +17,7 @@ export function rendreExplorateur(conteneur, app) {
       el('p', {}, t('aucun_projet')),
       el('button', { class: 'principal', onclick: () => app.ouvrir() }, icone('folder-open'), t('ouvrir')),
       el('button', { onclick: () => app.coller(), title: t('coller_aide') }, icone('clipboard-paste'), t('coller')),
+      el('button', { onclick: () => app.importerSpectres() }, icone('audio-waveform'), t('importer_spectres')),
       el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
       el('p', { class: 'note' }, t('aide_vide'))));
     return;

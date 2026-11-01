@@ -197,6 +197,11 @@ function ipc() {
     const r = await dialog.showOpenDialog(parent(e), { properties: ['openFile'], filters: filtres || [{ name: '*', extensions: ['*'] }] });
     return r.canceled ? null : r.filePaths[0];
   });
+  // several files at once (spectra, one per file)
+  ipcMain.handle('choisir-fichiers', async (e, filtres) => {
+    const r = await dialog.showOpenDialog(parent(e), { properties: ['openFile', 'multiSelections'], filters: filtres || [{ name: '*', extensions: ['*'] }] });
+    return r.canceled ? [] : r.filePaths;
+  });
   ipcMain.handle('lire-presse-papiers', () => clipboard.readText());
   ipcMain.handle('enregistrer-sous', async (e, nom, filtres) => {
     const r = await dialog.showSaveDialog(parent(e), { defaultPath: nom, filters: filtres });

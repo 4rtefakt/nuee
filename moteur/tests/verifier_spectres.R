@@ -1,7 +1,9 @@
 # Vérifie le prétraitement des spectres (moteur/R/spectres.R) :
 #   - les coefficients de Savitzky–Golay publiés (fenêtre de 5, degré 2) ;
 #   - un polynôme de degré ≤ 2 est lissé et dérivé exactement, bords compris ;
-#   - SNV et MSC ; s'il est installé, les mêmes résultats que le paquet prospectr ;
+#   - SNV et MSC ; s'il est installé, les mêmes résultats que le paquet prospectr (detrend et
+#     ligne de base aussi) ;
+#   - detrend, ligne de base, abscisses lues dans les noms, Savitzky–Golay zone par zone ;
 #   - un modèle PLS sur des spectres inventés : la prédiction des observations du modèle rend
 #     leurs scores, le script R refait la même définition, le projet enregistré se relit.
 #   Rscript moteur/tests/verifier_spectres.R
@@ -41,7 +43,37 @@ if (requireNamespace("prospectr", quietly = TRUE)) {  # s'il est installé : mê
     verifier(sprintf("Savitzky–Golay fenêtre %d, degré %d, dérivée %d (hors bords, que prospectr retire)", cas[1], cas[2], cas[3]),
              proche(savitzky_golay(Z, cas[1], cas[2], cas[3])[, (h + 1):(80 - h)], prospectr::savitzkyGolay(Z, m = cas[3], p = cas[2], w = cas[1]), 1e-12))
   }
+  onde_z <- seq(2500, 1000, length.out = 80)  # abscisses décroissantes, comme des nombres d'onde
+  for (degre in 1:3) {  # prospectr ajuste le polynôme sans terme constant : il garde la moyenne du spectre
+    verifier(sprintf("detrend de degré %d = prospectr::detrend(snv = FALSE), à la moyenne du spectre près", degre),
+             proche(detrend(Z, onde_z, degre) + rowMeans(Z), prospectr::detrend(Z, onde_z, p = degre, snv = FALSE), 1e-10))
+  }
+  verifier("SNV puis detrend = prospectr::detrend()", proche(detrend(snv(Z), onde_z, 2), prospectr::detrend(Z, onde_z, p = 2), 1e-10))
+  verifier("ligne de base = prospectr::baseline() (enveloppe convexe)", proche(ligne_base(Z, onde_z), prospectr::baseline(Z, onde_z), 1e-12))
 }
+
+cat("Detrend, ligne de base, zones\n")
+x <- seq(400, 700, length.out = 31)
+P <- rbind(2 + 0.01 * x, 1 - 3e-5 * (x - 550)^2, 5e-6 * x^2 - x / 300)
+verifier("detrend de degré 2 : un polynôme de degré 2 disparaît", proche(detrend(P, x, 2), 0 * P, 1e-9))
+verifier("detrend : résidus sans lien avec l'abscisse", proche(detrend(P + sin(x / 20), x, 1) %*% cbind(1, x), matrix(0, 3, 2), 1e-8))
+creux <- rbind(abs(x - 520) / 100 + sin(x / 7) / 50, (x - 550)^2 / 1e4)
+lb <- ligne_base(creux, x)
+verifier("ligne de base : spectre corrigé positif ou nul, nul à ses deux bouts", all(lb >= -1e-12) && proche(lb[, c(1, 31)], matrix(0, 2, 2)))
+verifier("ligne de base : un spectre convexe devient nul", proche(lb[2, ], rep(0, 31), 1e-12))
+manque <- creux
+manque[1, 5] <- NA
+lbm <- ligne_base(manque, x)
+verifier("ligne de base avec une valeur manquante : elle reste manquante", is.na(lbm[1, 5]) && all(lbm[1, -5] >= -1e-12))
+verifier("abscisses lues dans les noms (« 1450 nm »), sinon les places", identical(abscisses_spectre(c("1450 nm", "1452,5 nm"), 3:4), c(1450, 1452.5)) &&
+         identical(abscisses_spectre(c("a", "b"), 3:4), 3:4) && identical(abscisses_spectre(c("V1", "V1"), 3:4), 3:4))
+G <- cbind(X, X)  # deux zones séparées dans le tableau : traitées chacune à part
+colnames(G) <- seq_len(60)
+g <- pretraiter_spectres(G, list(list(type = "sg", derivee = 1, fenetre = 7, degre = 2)), positions = c(1:30, 41:70))$X
+verifier("Savitzky–Golay zone par zone : la fenêtre ne passe pas d'une zone à l'autre", proche(g, cbind(savitzky_golay(X, 7, 2, 1), savitzky_golay(X, 7, 2, 1))))
+verifier("une zone plus étroite que la fenêtre est refusée, avec son nom",
+         grepl("zone de 27 à 30", tryCatch(pretraiter_spectres(G[, 27:34], list(list(type = "sg", derivee = 0, fenetre = 7, degre = 2)), positions = c(27:30, 41:44)), error = conditionMessage)))
+verifier("une seule zone : comme avant", proche(pretraiter_spectres(G, list(list(type = "sg", derivee = 1, fenetre = 7, degre = 2)))$X, savitzky_golay(G, 7, 2, 1)))
 
 cat("Modèle sur des spectres inventés\n")
 set.seed(3)
@@ -80,6 +112,11 @@ m2 <- ajuster(q, q$models[[1]])
 verifier("le modèle enregistré avec le projet se recalcule à l'identique", proche(m2$T, m$T, 1e-12))
 s <- spectres_modele(p, d)
 verifier("spectres du modèle : bruts et prétraités", all(dim(s$bruts) == c(n, K)) && !proche(s$bruts, s$pretraites))
+d3 <- d
+d3$spectres <- etapes_spectres(list(list(type = "snv"), list(type = "detrend"), list(type = "ligne_base")))
+tm <- texte_methodes(p, d3, ajuster(p, d3), "fr")
+verifier("texte des méthodes : detrend (Barnes et al., 1989) et ligne de base",
+         any(grepl("detrend \\(polynôme de degré 2", tm$paragraphes)) && any(grepl("ligne de base", tm$paragraphes)) && any(grepl("^Barnes", tm$references)))
 unlink(f)
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")

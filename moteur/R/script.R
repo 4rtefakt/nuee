@@ -272,7 +272,7 @@ lignes_rapport <- function(format, d, m, langue, methodes, code_moteur, code_don
   plsda <- isTRUE(d$plsda)
   bloc <- function(options, code) c(sprintf("```{r%s}", if (nzchar(options)) paste0(", ", options) else ""), code, "```", "")
   titre <- sprintf("%s %s%s", tx("Modèle", "Model"), d$name %||% "", if (nzchar(d$title %||% "")) paste(" —", d$title) else "")
-  yaml <- c("---", sprintf("title: %s", code_texte(titre)), sprintf("date: %s", code_texte(format(Sys.Date()))),
+  yaml <- c("---", sprintf("title: %s", code_texte(titre)), sprintf("date: %s", code_texte(format(Sys.Date()))), sprintf("lang: %s", langue),
             if (format == "Rmd") "output: html_document" else c("format:", "  html:", "    embed-resources: true"), "---", "")
   couleurs <- if (plsda) c("classe <- factor(obs$classe)", "couleur <- as.integer(classe)") else "couleur <- 1"
   legende <- if (plsda) "legend(\"topright\", legend = levels(classe), col = seq_along(levels(classe)), pch = 19, bty = \"n\", cex = 0.8)"

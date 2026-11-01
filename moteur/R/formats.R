@@ -11,11 +11,13 @@
 #   .omv                      jamovi           (lu ici : lire_omv)
 #   .dbf                      dBase            (lu par foreign : lire_dbf ; écrit ici)
 #   .arff                     Weka             (lu ici : lire_arff ; écrit par foreign)
+#   .jdx .dx .jcm .spc        spectres JCAMP-DX et Galactic (fichiers_spectres.R ; lecture seule)
 # Écriture : ecrire_tableau() écrit un data.frame dans l'un de ces formats (sauf .xls, .por,
 # .sas7bdat, que les logiciels lisent mal quand un autre programme les écrit).
 
 FORMATS_LECTURE <- c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls", "rds", "rdata", "rda",
-                     "sav", "zsav", "por", "dta", "sas7bdat", "xpt", "omv", "dbf", "arff")
+                     "sav", "zsav", "por", "dta", "sas7bdat", "xpt", "omv", "dbf", "arff",
+                     "jdx", "dx", "jcm", "spc")
 FORMATS_ECRITURE <- c("xlsx", "csv", "tsv", "txt", "rds", "rdata", "sav", "dta", "xpt", "omv", "dbf", "arff")
 
 extension <- function(chemin) tolower(tools::file_ext(chemin))
@@ -56,6 +58,7 @@ lire_tableau <- function(chemin, table = NULL) {
     omv = lire_omv(chemin),
     dbf = lire_dbf(chemin),
     arff = lire_arff(chemin),
+    jdx = , dx = , jcm = , spc = tableau_spectres(lire_spectres(chemin)),
     stop("Format de fichier non reconnu : .", ext))
   vers_data_frame(x)
 }
@@ -74,7 +77,10 @@ objets_r <- function(chemin) {
 # Unicode » d'Excel), puis le séparateur, d'après la première ligne : tabulation, point-virgule,
 # virgule, sinon des espaces. Chaque colonne devient numérique si toutes ses valeurs sont des
 # nombres, avec un point ou une virgule décimale (« 12,5 », « 1 234,5 »).
-lire_texte <- function(chemin) {
+lire_texte <- function(chemin) lire_texte_delimite(texte_fichier(chemin))
+
+# Le texte d'un fichier, en UTF-8, quel que soit son encodage.
+texte_fichier <- function(chemin) {
   octets <- readBin(chemin, "raw", file.size(chemin))
   if (length(octets) >= 2 && octets[1] == as.raw(0xff) && octets[2] == as.raw(0xfe)) {
     texte <- iconv(list(octets[-(1:2)]), "UTF-16LE", "UTF-8")
@@ -84,7 +90,7 @@ lire_texte <- function(chemin) {
     if (!validUTF8(texte)) texte <- iconv(texte, "CP1252", "UTF-8")
   }
   Encoding(texte) <- "UTF-8"
-  lire_texte_delimite(texte)
+  texte
 }
 
 lire_texte_delimite <- function(texte) {

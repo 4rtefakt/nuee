@@ -81,6 +81,9 @@ q <- projet_depuis_tableau(df, "spectres")
 d <- definir_modele(q, "PLS", x = numeros(q, names(df)[-(1:2)]), y = numeros(q, "y"), A = 2,
                     spectres = list(list(type = "snv"), list(type = "sg", derivee = 1, fenetre = 7, degre = 2)))
 essayer("spectres", q, d)
+d <- definir_modele(q, "PLS", x = numeros(q, names(df)[-c(1:2, 15:22)]), y = numeros(q, "y"), A = 2,  # une zone retirée
+                    spectres = list(list(type = "ligne_base"), list(type = "detrend", degre = 2), list(type = "sg", derivee = 1, fenetre = 5, degre = 2)))
+essayer("spectres_zones", q, d, donnees = "csv")
 
 cat("Rapports R Markdown et Quarto\n")
 for (i in seq_along(p$models)) {

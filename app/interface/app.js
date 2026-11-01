@@ -11,7 +11,7 @@ import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable } from '
 import { dialogueRapport } from './rapport.js';
 import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
-import { ECRITURE, filtresOuverture, acceptOuverture } from './formats.js';
+import { ECRITURE, filtresOuverture, acceptOuverture, filtresSpectres, acceptSpectres } from './formats.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -144,6 +144,46 @@ const app = {
     await apresOuverture(await occupe(() => demander('coller', { texte, nom: `${t('tableau_colle')} ${etat.collages}` })));
   },
 
+  // Spectra from one or more files (JCAMP-DX, SPC, text) made into one project, with an
+  // optional table of information on the samples, joined by file name (fichiers_spectres.R).
+  importerSpectres() {
+    const st = { fichiers: [], infos: null };
+    // desktop: the paths; browser: the files are sent to the engine first
+    const choisir = async (spectres) => {
+      if (bureau) return spectres ? bureau.choisirFichiers(filtresSpectres()) : [await bureau.choisirFichier(filtresOuverture(true))].filter(Boolean);
+      const fichiers = await choisirFichiersNavigateur(spectres ? acceptSpectres() : acceptOuverture(true), spectres);
+      return Promise.all(fichiers.map(async (f) => (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin));
+    };
+    const nom = (c) => c.split(/[\\/]/).pop();
+    const contenu = el('div', { class: 'import-spectres' });
+    const erreur = el('p', { class: 'erreur' });
+    const rendre = () => contenu.replaceChildren(el('p', {}, t('importer_spectres_texte')),
+      el('div', { class: 'grille-champs' },
+        el('label', {}, t('fichiers_spectres')), el('div', {},
+          el('button', { onclick: async () => { const f = await choisir(true); if (f.length) { st.fichiers = f; rendre(); } } }, icone('folder-open'), t('choisir_fichiers')),
+          el('p', { class: 'note' }, st.fichiers.length
+            ? t('n_fichiers', { n: st.fichiers.length, noms: st.fichiers.slice(0, 3).map(nom).join(', ') + (st.fichiers.length > 3 ? '…' : '') })
+            : t('aucun_fichier'))),
+        el('label', {}, `${t('infos_echantillons')} (${t('facultatif')})`), el('div', {},
+          el('div', { class: 'ligne' },
+            el('button', { onclick: async () => { const [f] = await choisir(false); if (f) { st.infos = f; rendre(); } } }, icone('file-spreadsheet'), t('choisir_tableau')),
+            st.infos ? el('span', {}, nom(st.infos)) : null,
+            st.infos ? el('button', { onclick: () => { st.infos = null; rendre(); } }, t('retirer')) : null),
+          el('p', { class: 'note' }, t('infos_note')))),
+      erreur);
+    rendre();
+    dialogue({ titre: t('importer_spectres_titre'), contenu, boutons: [{ libelle: t('annuler'), action: () => true },
+      { libelle: t('importer'), principal: true, action: () => {
+        if (!st.fichiers.length) { erreur.textContent = t('aucun_fichier'); return false; }
+        const nomProjet = st.fichiers.length === 1 ? nom(st.fichiers[0]) : t('spectres_importes', { n: st.fichiers.length });
+        occupe(() => demander('importer_spectres', { chemins: st.fichiers, infos: st.infos, nom: nomProjet })).then(async (res) => {
+          await apresOuverture(res);
+          if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '));
+        }, () => {});
+        return true;
+      } }] });
+  },
+
   // the example project (made-up data), with its first model open, scores coloured by variety
   async ouvrirExemple() {
     const res = await occupe(() => demander('exemple'));
@@ -231,6 +271,11 @@ const app = {
   modifierModele(id) {
     const m = etat.modeles[id];
     if (m) dialogueModele(app, etat.projets[m.projet], m.reglages, t('modifier_modele'));
+  },
+  // a new model from a model's settings, changed (the Profiles view's wavelength ranges)
+  nouveauModeleDepuis(id, reglages) {
+    const m = etat.modeles[id];
+    if (m) dialogueModele(app, etat.projets[m.projet], reglages);
   },
   async ajusterDefinition(q) {
     if (q.type === 'CLASSES') {  // one PCA per class, then their Coomans plot
@@ -568,6 +613,13 @@ async function occupe(f) {
 function choisirFichierNavigateur(accept) {
   return new Promise((resolve) => {
     const i = el('input', { type: 'file', accept, onchange: () => resolve(i.files[0]) });
+    i.click();
+  });
+}
+
+function choisirFichiersNavigateur(accept, plusieurs) {
+  return new Promise((resolve) => {
+    const i = el('input', { type: 'file', accept, multiple: plusieurs, onchange: () => resolve([...i.files]) });
     i.click();
   });
 }
@@ -1106,6 +1158,7 @@ function contexte(entree) {
     occupe: (f) => occupe(f),
     apresConsole: async (ids) => { for (const id of ids) if (etat.projets[id]) projetChange(await demander('projet', { projet: id })); },
     noterModele: (id, note) => app.noterModele(id, note),
+    nouveauModeleDepuis: (id, reglages) => app.nouveauModeleDepuis(id, reglages),
   };
 }
 
@@ -1247,6 +1300,7 @@ function rendreAccueil(conteneur) {
     el('div', { class: 'accueil-actions' },
       el('button', { class: 'principal', onclick: () => app.ouvrir() }, icone('folder-open'), t('ouvrir')),
       el('button', { onclick: () => app.coller(), title: t('coller_aide') }, icone('clipboard-paste'), t('coller')),
+      el('button', { onclick: () => app.importerSpectres() }, icone('audio-waveform'), t('importer_spectres')),
       el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
       el('button', { onclick: () => app.nouveauModele(), disabled: !app.projetActif() }, icone('file-plus'), t('nouveau_modele')),
       el('button', { onclick: () => app.aide('guide') }, icone('circle-help'), t('guide'))),

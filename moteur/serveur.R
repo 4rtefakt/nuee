@@ -456,6 +456,19 @@ coller_demande <- function(q) {
   r
 }
 
+# Des spectres (JCAMP-DX, SPC, texte), un par fichier ou plusieurs, réunis en un projet, avec
+# un tableau d'informations sur les échantillons s'il est donné (fichiers_spectres.R).
+importer_spectres_demande <- function(q) {
+  p <- importer_spectres(as.character(unlist(q$chemins)), q$infos, q$nom)
+  p$id <- nouvel_id("P")
+  p$nom <- p$source
+  p$modifie <- TRUE  # à enregistrer : il n'a pas de fichier
+  etat$projets[[p$id]] <- p
+  r <- resume_projet(p)
+  r$note <- I(p$note %||% character(0))
+  r
+}
+
 # ---------------------------------------------------------------- HTTP
 
 # Tout ce qui est ouvert : pour une nouvelle fenêtre de l'application.
@@ -548,6 +561,7 @@ DEMANDES <- list(
   exporter = exporter_demande,
   exporter_donnees = exporter_donnees_demande,
   coller = coller_demande,
+  importer_spectres = importer_spectres_demande,
   predire_fichier = predire_fichier_demande,
   exporter_prediction = exporter_prediction_demande,
   scores_en_variables = scores_demande,
@@ -576,7 +590,7 @@ DEMANDES <- list(
   spectres = function(q) {
     e <- modele(q$modele)
     s <- spectres_modele(projet(e$projet), e$definition)
-    list(modele = q$modele, noms = I(colnames(s$bruts)), uid = as.numeric(rownames(s$bruts)),
+    list(modele = q$modele, noms = I(colnames(s$bruts)), variables = I(s$variables), uid = as.numeric(rownames(s$bruts)),
          bruts = unname(s$bruts), pretraites = unname(s$pretraites))
   },
   biplot = function(q) {

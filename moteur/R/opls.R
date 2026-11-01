@@ -6,7 +6,8 @@
 # Ap composantes prédictives : une pour un seul Y ou une OPLS-DA à deux classes ; plus pour
 # plusieurs Y ou plus de classes (definir_modele : autant que de Y, ou de classes moins une).
 # Aucun projet .usp disponible n'avait de modèle OPLS : ce calcul suit l'article, sans
-# comparaison possible avec des résultats enregistrés.
+# comparaison possible avec des résultats enregistrés (moteur/tests/verifier_opls.R le compare
+# à une seconde écriture de l'algorithme de l'article).
 #
 # Le modèle est rangé comme une PLS (voir ajuster_matrices dans modele.R) : composantes 1 à Ap
 # = prédictives, les suivantes = orthogonales, avec un poids de Y nul (elles n'expliquent pas
@@ -28,22 +29,35 @@ composantes_predictives <- function(E, ME, F, MF, Ap) {
   comps
 }
 
+# Plusieurs Y : une base orthonormée (colonnes de norme 1) de l'espace des poids w_m = X'y_m / y_m'y_m
+# de chaque colonne de Y, par l'ACP de ces poids, arrêtée quand ce qui reste de leur somme des
+# carrés est sous 1e-10 (Trygg et Wold, 2002 : OPLS pour plusieurs Y). Avec des classes, les
+# colonnes de Y sont liées et l'espace a une dimension de moins que de classes.
+base_poids_y <- function(E, ME, F) {
+  W <- vapply(seq_len(ncol(F)), function(m) projeter(t(E), t(ME), F[, m]), numeric(ncol(E)))
+  s <- svd(W)
+  reste <- rev(cumsum(rev(s$d^2))) / sum(s$d^2)  # reste[k] : part des composantes k et suivantes
+  s$u[, seq_len(max(1, sum(reste >= 1e-10))), drop = FALSE]
+}
+
 # Le calcul pour Ao composantes orthogonales, sur des résidus E (masque ME) et F (masque MF) :
-# à chaque étape, les composantes PLS de X filtré donnent les poids prédictifs w ; la part du
-# premier loading p qui leur est orthogonale est le poids orthogonal w_o ; ses scores t_o et
-# loadings p_o sont retirés de X. Les composantes prédictives sont les composantes PLS de X une
-# fois filtré. `predictives[[k + 1]]` : les composantes prédictives avec k composantes
-# orthogonales (pour la validation croisée).
+# à chaque étape, la première composante PLS de X filtré donne le loading p ; sa part
+# orthogonale aux poids de Y est le poids orthogonal w_o (un seul Y : orthogonale au poids w de
+# cette composante ; plusieurs Y : à l'espace de base_poids_y, calculé sur X avant filtrage),
+# si bien que les scores t_o n'ont pas de lien avec Y ; t_o et ses loadings p_o sont retirés de
+# X. Les composantes prédictives sont les composantes PLS de X une fois filtré.
+# `predictives[[k + 1]]` : les composantes prédictives avec k composantes orthogonales (pour
+# la validation croisée).
 opls_noyau <- function(E, ME, F, MF, Ao, Ap = 1) {
   To <- Po <- Wo <- NULL
   predictives <- list()
+  base <- if (Ap > 1) base_poids_y(E, ME, F)
   for (k in 0:Ao) {
     comps <- composantes_predictives(E, ME, F, MF, Ap)
     predictives[[k + 1]] <- comps
     if (k == Ao) break
     p <- comps[[1]]$p
-    wo <- p
-    for (cp in comps) wo <- wo - sum(cp$w * p) * cp$w  # les w sont de norme 1, orthogonaux entre eux
+    wo <- if (Ap > 1) drop(p - base %*% crossprod(base, p)) else p - sum(comps[[1]]$w * p) * comps[[1]]$w
     wo <- wo / norme(wo)
     to <- projeter(E, ME, wo)
     po <- projeter(t(E), t(ME), to)
