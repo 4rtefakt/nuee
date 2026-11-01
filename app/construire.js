@@ -1,8 +1,14 @@
-// Builds the Windows program: Electron + a portable R with its packages + the R engine +
-// the .usp converter, in one folder that runs without installing anything (Nuee/, for the
-// NAS), then the installer installateur/Nuee-Setup-<version>.exe made from that folder.
+// Builds the program for the system it runs on.
+// Windows: Electron + a portable R with its packages + the R engine + the .usp converter, in
+// one folder that runs without installing anything (Nuee/, for the NAS), then the installer
+// installateur/Nuee-Setup-<version>.exe made from that folder.
 //   node construire.js <output folder> [R folder]
 // The converter is compiled with PyInstaller if outils/export_project.exe is missing.
+// Linux: Electron + the R engine + the converter as a Python script, in Nuee/ (./nuee starts
+// it), then installateur/ with a .deb, an AppImage and a .tar.gz made from that folder. R is
+// not brought along: an R build is tied to the libraries of its distribution, so the system's
+// R is used (the .deb depends on it and on the packages the engine loads).
+//   node construire.js <output folder>        (RSCRIPT=<Rscript> for another R than the PATH's)
 // tests/essai_api.js runs first (interface syntax, main requests of the R server): a failure
 // stops the build (SANS_ESSAI=1 skips it). SANS_INSTALLATEUR=1 skips the installer.
 const { packager } = require('@electron/packager');
@@ -13,7 +19,10 @@ const path = require('path');
 
 const depot = path.join(__dirname, '..');
 const sortie = path.resolve(process.argv[2] || path.join(depot, 'dist'));
-const dossierR = process.argv[3] || path.join(process.env.LOCALAPPDATA, 'Programs', 'R', 'R-4.6.2');
+const windows = process.platform === 'win32';
+const dossierR = windows ? process.argv[3] || path.join(process.env.LOCALAPPDATA, 'Programs', 'R', 'R-4.6.2') : null;
+const rscript = windows ? path.join(dossierR, 'bin', 'Rscript.exe') : process.env.RSCRIPT || 'Rscript';
+const arch = windows || process.arch !== 'arm64' ? 'x64' : 'arm64';
 
 // Parts of R the program never uses (manuals, tests, C headers for compiling packages, example
 // files, Tcl/Tk, the uninstaller, message translations other than French and English).
@@ -32,7 +41,7 @@ function paquetsR() {
     + 'std <- rownames(ip)[ip[, "Priority"] %in% c("base", "recommended")]; '
     + 'dep <- unlist(tools::package_dependencies(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"), db = ip, recursive = TRUE, which = c("Depends", "Imports"))); '
     + 'writeLines(union(std, c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "translations", dep)))';
-  return new Set(execFileSync(path.join(dossierR, 'bin', 'Rscript.exe'), ['-e', code], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean));
+  return new Set(execFileSync(rscript, ['-e', code], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean));
 }
 
 function copier(src, dest, filtre = () => true, base = src) {
@@ -54,13 +63,14 @@ function copier(src, dest, filtre = () => true, base = src) {
 async function construire() {
   execFileSync(process.execPath, [path.join(__dirname, 'copier-vendor.js')], { stdio: 'inherit' });
   if (!process.env.SANS_ESSAI) {
-    execFileSync(process.execPath, [path.join(__dirname, 'tests', 'essai_api.js'), path.join(dossierR, 'bin', 'Rscript.exe')], { stdio: 'inherit' });
+    execFileSync(process.execPath, [path.join(__dirname, 'tests', 'essai_api.js'), rscript], { stdio: 'inherit' });
   }
+  // icone/nuee.png stays: the windows' icon on Linux
   const [dossier] = await packager({
-    dir: __dirname, out: sortie, overwrite: true, platform: 'win32', arch: 'x64',
-    name: 'Nuee', executableName: 'Nuee', asar: false, icon: path.join(__dirname, 'icone', 'nuee.ico'),
+    dir: __dirname, out: sortie, overwrite: true, platform: windows ? 'win32' : 'linux', arch,
+    name: 'Nuee', executableName: windows ? 'Nuee' : 'nuee', asar: false, icon: path.join(__dirname, 'icone', 'nuee.ico'),
     win32metadata: { ProductName: 'Nuée', FileDescription: 'Nuée', CompanyName: '4rtefakt', InternalName: 'Nuee', OriginalFilename: 'Nuee.exe' },
-    ignore: [/^\/node_modules/, /^\/tests/, /^\/construire\.js$/, /^\/copier-vendor\.js$/, /^\/package-lock\.json$/, /\.cmd$/, /^\/icone/],
+    ignore: [/^\/node_modules/, /^\/tests/, /^\/construire\.js$/, /^\/copier-vendor\.js$/, /^\/package-lock\.json$/, /\.cmd$/, /^\/icone\/(?!nuee\.png$)/],
   });
   const ressources = path.join(dossier, 'resources');
   // Chromium's interface languages: the application is in French and English
@@ -68,15 +78,24 @@ async function construire() {
     if (!['fr.pak', 'en-US.pak'].includes(f)) fs.rmSync(path.join(dossier, 'locales', f));
   }
 
-  console.log('R portable…');
-  const paquets = paquetsR();
-  const paquetUtile = (rel) => { const m = /^library[\\/]([^\\/]+)/.exec(rel); return !m || paquets.has(m[1]); };
-  copier(dossierR, path.join(ressources, 'R'), (rel) => !inutile(rel) && paquetUtile(rel));
+  if (windows) {
+    console.log('R portable…');
+    const paquets = paquetsR();
+    const paquetUtile = (rel) => { const m = /^library[\\/]([^\\/]+)/.exec(rel); return !m || paquets.has(m[1]); };
+    copier(dossierR, path.join(ressources, 'R'), (rel) => !inutile(rel) && paquetUtile(rel));
+  }
 
   console.log('moteur…');
   copier(path.join(depot, 'moteur'), path.join(ressources, 'moteur'));
   // the example project (made-up data) and its table
   copier(path.join(depot, 'exemple'), path.join(ressources, 'exemple'), (rel) => /^vergers\.(json|csv)$/.test(rel));
+
+  if (!windows) {
+    // the converter needs only Python's standard library: python3 runs it (moteur/serveur.R)
+    copier(path.join(depot, 'convertisseur'), path.join(ressources, 'convertisseur'), (rel) => /^\w+\.py$/.test(rel));
+    await construireLinux(dossier);
+    return;
+  }
 
   const exe = path.join(depot, 'outils', 'export_project.exe');
   if (!fs.existsSync(exe)) {
@@ -126,6 +145,41 @@ async function construire() {
     },
   });
   console.log('Installateur :', fichiers.filter((f) => f.endsWith('.exe')).join(', '));
+}
+
+// Linux: the folder Nuee/ (./nuee starts it), then a .deb (Debian, Ubuntu…: R and its packages
+// come with it), an AppImage and a .tar.gz (any distribution, R installed apart).
+async function construireLinux(dossier) {
+  const final = path.join(sortie, 'Nuee');
+  fs.rmSync(final, { recursive: true, force: true });
+  fs.renameSync(dossier, final);
+  fs.copyFileSync(path.join(depot, 'LISEZ-MOI-APPLICATION.txt'), path.join(final, 'LISEZ-MOI.txt'));
+  console.log('Prêt :', final);
+
+  if (process.env.SANS_INSTALLATEUR) return;
+  console.log('paquets Linux…');
+  const fichiers = await builder.build({
+    targets: builder.Platform.LINUX.createTarget(['deb', 'AppImage', 'tar.gz'], builder.Arch[arch]),
+    prepackaged: final,
+    projectDir: __dirname,
+    config: {
+      appId: 'io.github.4rtefakt.nuee', productName: 'Nuée', executableName: 'nuee', copyright: '4rtefakt',
+      directories: { output: path.join(sortie, 'installateur') },
+      linux: {
+        icon: path.join(__dirname, 'icone', 'nuee.png'), category: 'Science', maintainer: '4rtefakt <4rtefakt@kore.sh>',
+        synopsis: 'PCA, PLS, PLS-DA and OPLS computed in plain R', syncDesktopName: true,
+        artifactName: 'Nuee-${version}-${arch}.${ext}',
+      },
+      // electron-builder's own list (it is replaced, not added to), then R and the engine's packages
+      deb: {
+        packageCategory: 'science',
+        depends: ['libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6', 'xdg-utils', 'libatspi2.0-0', 'libuuid1', 'libsecret-1-0',
+          'r-base-core', 'r-cran-httpuv', 'r-cran-jsonlite', 'r-cran-openxlsx', 'r-cran-haven', 'r-cran-readxl'],
+        recommends: ['python3'],
+      },
+    },
+  });
+  console.log('Paquets :', fichiers.filter((f) => /\.(deb|AppImage|tar\.gz)$/.test(f)).join(', '));
 }
 
 construire().catch((e) => { console.error(e); process.exit(1); });

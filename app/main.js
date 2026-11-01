@@ -14,9 +14,9 @@ const interfaceDir = path.join(__dirname, 'interface');
 const fichierReglages = () => path.join(app.getPath('userData'), 'reglages.json');
 const TITRE = 'Nuée';
 
-// Settings, interface preferences and recovery copies in %APPDATA%\Nuee (or the folder given
-// with --user-data-dir). Up to version 0.4 the application was called "Analyse multivariée":
-// its settings are taken over once.
+// Settings, interface preferences and recovery copies in %APPDATA%\Nuee (~/.config/Nuee on
+// Linux), or the folder given with --user-data-dir. Up to version 0.4 the application was
+// called "Analyse multivariée": its settings are taken over once.
 const profilDonne = app.commandLine.hasSwitch('user-data-dir');
 if (!profilDonne) app.setPath('userData', path.join(app.getPath('appData'), 'Nuee'));
 const ancienDossier = path.join(app.getPath('appData'), 'analyse-multivariee');
@@ -48,18 +48,35 @@ function ecrireReglages() {
   try { fs.writeFileSync(fichierReglages(), JSON.stringify(reglages, null, 1)); } catch { /* read-only profile */ }
 }
 
-// bin\x64\Rscript.exe is R itself; bin\Rscript.exe only starts it, and stopping that one
-// would leave R running.
+// Windows: bin\x64\Rscript.exe is R itself; bin\Rscript.exe only starts it, and stopping that
+// one would leave R running. Linux: R is not brought along, the system's R is used (the .deb
+// depends on it); found on the PATH, or where R's installers put it when a launch from the
+// desktop menu gives a short PATH.
 function trouverRscript() {
-  const candidats = [
+  const candidats = process.platform === 'win32' ? [
     process.env.RSCRIPT,
     path.join(racine, 'R', 'bin', 'x64', 'Rscript.exe'),
     path.join(racine, 'R', 'bin', 'Rscript.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R', 'R-4.6.2', 'bin', 'x64', 'Rscript.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R', 'R-4.6.2', 'bin', 'Rscript.exe'),
-  ].filter(Boolean);
-  return candidats.find((c) => fs.existsSync(c)) || 'Rscript';
+  ] : [
+    process.env.RSCRIPT,
+    ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map((d) => path.join(d, 'Rscript')),
+    '/usr/local/bin/Rscript', '/usr/bin/Rscript',
+    ...versionsOptR().map((v) => path.join('/opt/R', v, 'bin', 'Rscript')),
+  ];
+  return candidats.filter(Boolean).find((c) => fs.existsSync(c)) || 'Rscript';
 }
+// R from Posit's packages: /opt/R/<version>, the most recent first
+function versionsOptR() {
+  try { return fs.readdirSync('/opt/R').sort((a, b) => b.localeCompare(a, undefined, { numeric: true })); } catch { return []; }
+}
+
+// Shown when R does not start on Linux: R and the packages the engine loads are installed apart.
+const AIDE_R_LINUX = '\n\nSous Linux, Nuée utilise le R de l’ordinateur, avec les paquets httpuv, jsonlite, '
+  + 'openxlsx, haven et readxl. Sous Debian ou Ubuntu :\n  sudo apt install r-base-core r-cran-httpuv '
+  + 'r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl\nAilleurs, dans R : install.packages(c("httpuv", '
+  + '"jsonlite", "openxlsx", "haven", "readxl")). Un autre R : lancer Nuée avec RSCRIPT=/chemin/vers/Rscript.';
 
 function portLibre(souhaite = 0) {
   return new Promise((resolve, reject) => {
@@ -86,9 +103,10 @@ function demarrerR(port) {
   });
 }
 
-// R and anything it started
+// R and anything it started (on Linux, Rscript becomes R itself: stopping it is enough)
 function arreterR() {
   if (!serveur || serveur.exitCode !== null) return;
+  if (process.platform !== 'win32') { serveur.kill(); return; }
   try { execFileSync('taskkill', ['/pid', String(serveur.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { serveur.kill(); }
 }
 
@@ -139,6 +157,8 @@ function options(largeur, hauteur) {
   return {
     width: largeur, height: hauteur, minWidth: 640, minHeight: 420, title: TITRE, autoHideMenuBar: true, show: false,
     backgroundColor: '#eef0f3',
+    // Windows takes the icon from Nuee.exe; Linux needs it given
+    ...(process.platform === 'linux' ? { icon: path.join(__dirname, 'icone', 'nuee.png') } : {}),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   };
 }
@@ -293,7 +313,7 @@ function plusRecente(a, b) {
 // (resources\desinstaller.cmd). The Setup.exe installer lists itself.
 const CLE_PROGRAMMES = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Nuee';
 function enregistrerProgramme() {
-  if (!app.isPackaged || !process.argv.includes('--lanceur-nas')) return;
+  if (process.platform !== 'win32' || !app.isPackaged || !process.argv.includes('--lanceur-nas')) return;
   const reg = (args) => execFileSync('reg', args, { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
   try {
     if (new RegExp(`DisplayVersion\\s+REG_SZ\\s+${app.getVersion().replace(/\./g, '\\.')}\\s*$`, 'm').test(reg(['query', CLE_PROGRAMMES, '/v', 'DisplayVersion']))) return;
@@ -322,7 +342,7 @@ async function demarrer() {
   try {
     await demarrerR(port);
   } catch (err) {
-    dialog.showErrorBox(TITRE, `Le moteur R n'a pas pu démarrer.\n\n${err.message}`);
+    dialog.showErrorBox(TITRE, `Le moteur R n'a pas pu démarrer.\n\n${err.message}${process.platform === 'linux' ? AIDE_R_LINUX : ''}`);
     app.quit();
     return;
   }

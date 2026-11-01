@@ -3,12 +3,13 @@
 <h1 align="center">Nuée</h1>
 
 <p align="center">
-  <b>PCA, PLS, PLS-DA and OPLS on Windows, computed in plain R.</b><br>
+  <b>PCA, PLS, PLS-DA and OPLS on Windows and Linux, computed in plain R.</b><br>
   Interactive plots, models side by side, and every calculation open to read.
 </p>
 
 <p align="center">
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1b4a9c">
+  <img alt="Linux" src="https://img.shields.io/badge/Linux-deb%20%7C%20AppImage-1b4a9c">
   <img alt="Interface in French and English" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-1b4a9c"></a>
 </p>
@@ -28,6 +29,8 @@ screenshots show it in French.
 
 ## Install
 
+### Windows
+
 1. Download `Nuee-Setup-<version>.exe` from the [Releases](https://github.com/4rtefakt/nuee/releases) page.
 2. Run it and choose to install for yourself (no administrator rights needed) or for everyone
    on the computer.
@@ -38,6 +41,24 @@ R is included: there is nothing else to install. Nuée appears in the Start menu
 uninstalled from *Settings › Apps*. Your projects stay where you saved them. At start-up it asks
 GitHub whether a newer version exists and shows a link in the status bar if so (nothing else is
 sent; *Aide › Chercher une nouvelle version au démarrage* turns it off).
+
+### Linux
+
+On Linux, Nuée uses the R installed on the computer (an R build is tied to its distribution's
+libraries, so it can't be carried along as on Windows).
+
+- **Debian, Ubuntu and their derivatives:** download `Nuee-<version>-amd64.deb` from the
+  [Releases](https://github.com/4rtefakt/nuee/releases) page and install it with
+  `sudo apt install ./Nuee-<version>-amd64.deb`. apt brings R and the R packages Nuée needs.
+  Nuée appears in the applications menu.
+- **Other distributions:** `Nuee-<version>-x86_64.AppImage` (make it executable, then run it)
+  or `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
+  distribution first, then the packages, in R:
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"))`.
+
+Opening `.usp` projects needs `python3`. Nuée looks for `Rscript` on the `PATH`, then in
+`/usr/local/bin`, `/usr/bin` and `/opt/R/<version>/bin`; start it with
+`RSCRIPT=/path/to/Rscript` to use another R. Settings are kept in `~/.config/Nuee`.
 
 ## First steps
 

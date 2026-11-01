@@ -102,6 +102,10 @@ Rscript moteur/tests/verifier_references.R exported results.csv 16
 cd app && node construire.js <output folder>
 ```
 
+It builds for the system it runs on: the Windows program on Windows, the Linux one on Linux
+(see [On Linux](#on-linux)). It needs Node 22.12 or later (`@electron/packager` requires it, and
+the syntax check below relies on Node telling ES modules apart by itself).
+
 The build first runs `app/tests/essai_api.js`. It syntax-checks the interface files, then starts
 the R server and runs the main requests on a small invented table: open, fit PCA/PLS/OPLS/PLS-DA,
 refit, predict, edit, undo, notes, save with session and reopen, standalone R script with its
@@ -110,7 +114,7 @@ with four classes, paste, export to every format and reopen, a workbook with two
 the build. `SANS_ESSAI=1` skips it, and `node tests/essai_api.js` runs
 it alone.
 
-It then produces two things.
+On Windows it then produces two things.
 
 **`Nuee/`**, a folder that runs without installing anything, for example from a network share:
 
@@ -136,8 +140,39 @@ An installed copy asks `api.github.com/repos/4rtefakt/nuee/releases/latest` once
 whether a newer version exists, and shows a link in the status bar (off in Help; never for the
 network-share copy or when running from the sources).
 
-Settings live in `%APPDATA%\Nuee`; `--user-data-dir=<folder>` uses another one (a clean
-profile for tests or screenshots).
+Settings live in `%APPDATA%\Nuee` (`~/.config/Nuee` on Linux); `--user-data-dir=<folder>` uses
+another one (a clean profile for tests or screenshots).
+
+### On Linux
+
+R is not brought along: a Linux R build is tied to its distribution's libraries (BLAS, ICU,
+readline…), so the application uses the system's R, found on the `PATH`, then in
+`/usr/local/bin`, `/usr/bin` and `/opt/R/<version>/bin` (`RSCRIPT=<Rscript>` picks another, for
+the build too). If R or one of the engine's packages is missing, the error at start-up says
+what to install. The `.usp` converter needs only Python's standard library: it is shipped as
+`resources/convertisseur/*.py` and run with `python3` (`PYTHON=<python>` picks another).
+`moteur/serveur.R` switches R to `C.UTF-8` when it starts without a UTF-8 locale (a launch
+from the desktop menu with no `LANG`), since the engine's files are in UTF-8.
+
+The build produces:
+
+- **`Nuee/`**: the application (`./nuee` starts it) with the engine, the example project, the
+  converter and `LISEZ-MOI.txt`.
+- **`installateur/`**, made from that folder with electron-builder:
+  - `Nuee-<version>-amd64.deb`, which depends on `r-base-core` and `r-cran-httpuv`,
+    `r-cran-jsonlite`, `r-cran-openxlsx`, `r-cran-haven`, `r-cran-readxl` (recommends `python3`),
+    installs into `/opt/Nuée`, adds `nuee.desktop` to the applications menu and, on Ubuntu 24.04
+    and later, the AppArmor profile Electron's sandbox needs;
+  - `Nuee-<version>-x86_64.AppImage` and `Nuee-<version>-x64.tar.gz`, for other distributions,
+    with R and the packages installed apart.
+
+  `SANS_INSTALLATEUR=1` skips them. Building the `.deb` needs `fpm`, which electron-builder
+  downloads; on NixOS, where its `#!/bin/bash` doesn't run, set `USE_SYSTEM_FPM=true` with
+  `fpm` installed.
+
+`package.json` names the desktop file (`desktopName`), so the windows' app id (`nuee`) matches
+the menu entry and docks group them under its icon. The tests run the same way:
+`node tests/essai_api.js` and `Rscript moteur/tests/verifier_*.R` find `Rscript` on the `PATH`.
 
 ## How it matches the stored results
 

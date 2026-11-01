@@ -10,7 +10,7 @@ const path = require('path');
 const depot = path.join(__dirname, '..', '..');
 // bin\x64\Rscript.exe is R itself (bin\Rscript.exe only starts it, and would leave it running)
 const lanceur = process.argv[2] || process.env.RSCRIPT
-  || path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R', 'R-4.6.2', 'bin', 'Rscript.exe');
+  || (process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R', 'R-4.6.2', 'bin', 'Rscript.exe') : 'Rscript');
 const rscript = fs.existsSync(path.join(path.dirname(lanceur), 'x64', 'Rscript.exe')) ? path.join(path.dirname(lanceur), 'x64', 'Rscript.exe') : lanceur;
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'essai-analyse-'));
 const echecs = [];
