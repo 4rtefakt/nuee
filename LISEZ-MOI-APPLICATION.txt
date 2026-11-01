@@ -1,5 +1,6 @@
 NUÉE — ACP, PLS, PLS-DA et OPLS, calculées en R
 ===============================================
+(English guide: USER-GUIDE.txt)
 
 Démarrer
 --------
@@ -75,8 +76,12 @@ minutes au plus) sont perdus. Au-delà d'une minute de calcul, la barre d'état 
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
 jour). La version installée avec Nuee-Setup cherche au démarrage s'il existe une nouvelle
 version (une seule demande à GitHub, rien d'autre n'est envoyé) et la signale dans la barre
-d'état ; Aide › Chercher une nouvelle version au démarrage l'arrête. La copie lancée depuis le
-NAS ne cherche pas : elle se met à jour avec le NAS.
+d'état ; un clic propose de mettre à jour : le programme d'installation est téléchargé et
+vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en
+proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation
+pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une nouvelle
+version au démarrage arrête la recherche. La copie lancée depuis le NAS ne cherche pas : elle
+se met à jour avec le NAS.
 
 L'explorateur (à gauche)
 ------------------------

@@ -93,6 +93,8 @@ async function construire() {
   // uninstaller of the copy the NAS launcher makes (Settings › Apps runs it)
   const crlf = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8').replace(/\r?\n/g, '\r\n');
   fs.writeFileSync(path.join(ressources, 'desinstaller.cmd'), crlf('desinstaller.cmd'));
+  // the full user guide, opened from Aide › Guide d'utilisation
+  for (const f of ['LISEZ-MOI-APPLICATION.txt', 'USER-GUIDE.txt']) fs.copyFileSync(path.join(depot, f), path.join(ressources, f));
 
   // What goes on the NAS: the launcher (Electron cannot start from a network share, so it
   // copies the application to the PC and starts it there), the user guide, application/.
@@ -102,6 +104,7 @@ async function construire() {
   fs.renameSync(dossier, path.join(final, 'application'));
   fs.writeFileSync(path.join(final, 'Lancer Nuee.cmd'), crlf('Lancer Nuee.cmd'));
   fs.copyFileSync(path.join(depot, 'LISEZ-MOI-APPLICATION.txt'), path.join(final, 'LISEZ-MOI.txt'));
+  fs.copyFileSync(path.join(depot, 'USER-GUIDE.txt'), path.join(final, 'USER-GUIDE.txt'));
   console.log('Prêt :', final);
 
   // The installer for everyone else: for this user (no administrator rights needed) or for

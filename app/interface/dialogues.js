@@ -369,7 +369,8 @@ export async function dialogueAide(app, sujet) {
   const textes = AIDE[langueActuelle()] || AIDE.fr;
   dialogue({ titre: t(sujet), large: true, contenu: el('div', { class: 'aide' },
     textes[sujet].map(([h, p]) => el('section', {}, el('h4', {}, h), el('p', {}, p)))),
-  boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
+  boutons: (sujet === 'guide' ? [{ libelle: t('guide_complet'), action: () => { app.ouvrirGuide(); return false; } }] : [])
+    .concat([{ libelle: t('fermer'), principal: true, action: () => true }]) });
 }
 
 const POLICES = ['Segoe UI', 'Arial', 'Calibri', 'Cambria', 'Times New Roman', 'Georgia', 'Verdana', 'Courier New'];

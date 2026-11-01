@@ -29,4 +29,8 @@ contextBridge.exposeInMainWorld('bureau', {
   redemarrerMoteur: () => ipcRenderer.invoke('redemarrer-moteur'),
   nouvelleVersion: () => ipcRenderer.invoke('nouvelle-version'),
   majAuto: (oui) => ipcRenderer.invoke('maj-auto', oui),
+  mettreAJour: () => ipcRenderer.invoke('mettre-a-jour'),
+  surProgressionMaj: (f) => ipcRenderer.on('maj-progression', (_, x) => f(x)),
+  langue: (l) => ipcRenderer.invoke('langue', l),
+  ouvrirGuide: () => ipcRenderer.invoke('ouvrir-guide'),
 });

@@ -2,6 +2,8 @@
 
 <h1 align="center">Nuée</h1>
 
+<p align="center"><b>English</b> · <a href="README.fr.md">Français</a></p>
+
 <p align="center">
   <b>PCA, PLS, PLS-DA and OPLS on Windows, computed in plain R.</b><br>
   Interactive plots, models side by side, and every calculation open to read.
@@ -23,8 +25,8 @@ for your Methods section, or export a script or an R Markdown / Quarto report th
 model in plain R, without Nuée. Every calculation is written in R, with comments, so you can
 check exactly what was computed, and change it.
 
-The interface is in French and English (*Affichage › Langue* / *View › Language*); the
-screenshots show it in French.
+The interface is in English and French (*View › Language*); the screenshots show it in
+French.
 
 ## Install
 
@@ -35,29 +37,33 @@ screenshots show it in French.
    *More info*, then *Run anyway*.
 
 R is included: there is nothing else to install. Nuée appears in the Start menu, and can be
-uninstalled from *Settings › Apps*. Your projects stay where you saved them. At start-up it asks
-GitHub whether a newer version exists and shows a link in the status bar if so (nothing else is
-sent; *Aide › Chercher une nouvelle version au démarrage* turns it off).
+uninstalled from *Settings › Apps*. Your projects stay where you saved them.
+
+At start-up it asks GitHub whether a newer version exists (nothing else is sent). If there is
+one, a click in the status bar downloads its installer, checks it against the SHA-256 checksum
+GitHub gives, offers to save your projects, installs it and starts Nuée again. *Help › Look for
+a new version at start-up* turns the check off.
 
 ## First steps
 
-- **Try the example:** *Aide › Projet d'exemple* (*Help › Example project*) opens 120 made-up
+- **Try the example:** *Help › Example project* opens 120 made-up
   apples (four varieties, organic or conventional, a dozen measurements and a tasting score)
   with four models ready: a PCA, a PLS predicting the score, a PLS-DA of the varieties and an
   OPLS-DA of the growing method.
-- **Open your data:** *Fichier › Ouvrir* (Ctrl+O) reads a table with one row per observation
+- **Open your data:** *File › Open* (Ctrl+O) reads a table with one row per observation
   and the observation names in the first column (see [Files](#files) for the formats), or
-  *Fichier › Coller un tableau* (Ctrl+V) takes cells copied from any spreadsheet. Text columns
+  *File › Paste a table* (Ctrl+V) takes cells copied from any spreadsheet. Text columns
   and factors become qualitative variables you can colour by, or use as classes.
-- **Make a model:** *Modèle › Nouveau modèle* (Ctrl+N): type, the role of each variable (X, Y
+- **Make a model:** *Model › New model* (Ctrl+N): type, the role of each variable (X, Y
   or left out), scaling and transformation, observations to include. The number of components
   is chosen by cross-validation unless you set it.
 - **Explore:** each model gets its own page with its summary, scores and loadings; add any
-  other view from the *Graphiques* menu. Select points with a box or a lasso: the selection
+  other view from the *Plots* menu. Select points with a box or a lasso: the selection
   follows you in every plot of the model.
 
-The full user guide, in French, comes with the application (*Aide › Guide d'utilisation*,
-and [LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)).
+The full user guide comes with the application (*Help › User guide › Full guide*), in
+English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
+([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)).
 
 ## What it does
 
@@ -109,7 +115,7 @@ the model's domain, and export the results.
 - plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG;
 - a model report as PDF or Word;
 - the paragraph for a Methods section, written from the model in French or English, with its
-  references (*Modèle › Texte pour la section Méthodes*).
+  references (*Model › Text for the Methods section*).
 
 ## Files
 
@@ -123,10 +129,10 @@ the model's domain, and export the results.
 | SAS | `.sas7bdat`, `.xpt` | `.xpt` |
 | jamovi | `.omv` | `.omv` |
 | dBase, Weka | `.dbf`, `.arff` | `.dbf`, `.arff` |
-| Spectra | `.jdx`, `.dx`, `.jcm` (JCAMP-DX), `.spc` (Galactic, Thermo), or text with one column per spectrum; several files at once with *Fichier › Importer des spectres* | |
+| Spectra | `.jdx`, `.dx`, `.jcm` (JCAMP-DX), `.spc` (Galactic, Thermo), or text with one column per spectrum; several files at once with *File › Import spectra* | |
 | Clipboard | cells copied from Excel, LibreOffice, Google Sheets, jamovi… | |
 
-*Exporter les données* writes the project's table; *Exporter les résultats du modèle* (Ctrl+E)
+*File › Export data* writes the project's table; *File › Export model results* (Ctrl+E)
 writes the observations (scores, T2, DModX, fitted values), the variables (loadings, VIP),
 the components and the coefficients. For SPSS, Stata and SAS, variable names are made valid and
 the original name becomes the variable label. SAS files use the transport format version 5,
@@ -140,10 +146,10 @@ files (every compression form) and the usual SPC sample files.
 The engine is plain R in [`moteur/R/`](moteur/R), commented in French: preprocessing, NIPALS,
 cross-validation, statistics, prediction. No statistic is computed anywhere else.
 
-- **R console** (*Affichage › Console R*, Ctrl+J): see the R code behind each action, and run
+- **R console** (*View › R console*, Ctrl+J): see the R code behind each action, and run
   your own in the application's session, with `m` and `p` standing for the model and project
   on screen.
-- **Export to R** (*Fichier › Exporter vers R*): any model becomes a script, or an R Markdown
+- **Export to R** (*File › Export to R*): any model becomes a script, or an R Markdown
   or Quarto report, that refits it without Nuée. It holds the data (or reads them from a CSV
   next to it), the code of the engine functions the model needs, copied with their comments,
   and the model; it checks the R version and the packages it needs. The report adds the
@@ -161,7 +167,7 @@ Nuée also opens `.usp` project files: their data, the models stored in them and
 those models were saved with. It recomputes each model in R and marks every value of the
 summary as identical, close or different. On 944 models from 133 projects, R2X, R2Y, the PLS
 Q2, scores, loadings, T2, DModX, VIP and coefficients match the stored values, apart from a
-few models with missing data; *Aide › Résultats et écarts connus* lists the known
+few models with missing data; *Help › Results and known differences* lists the known
 differences.
 
 ## Building from source

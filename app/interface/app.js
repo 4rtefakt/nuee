@@ -358,6 +358,21 @@ const app = {
       boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('redemarrer'), principal: true, action: () => { app.redemarrerMoteur(); return true; } }] });
   },
   quoiDeNeuf: (tout) => quoiDeNeuf(tout),
+  // One-click update (installed copy): what it does, then the download, checked against its
+  // SHA-256, and the installation; Nuée closes and starts again (main.js).
+  mettreAJour() {
+    const v = etat.nouvelleVersion;
+    if (!v || !v.installateur || !bureau || !bureau.mettreAJour) return;
+    dialogue({ titre: t('maj_titre', { v: v.version }), contenu: el('p', {}, t('maj_texte', { taille: Math.round(v.installateur.taille / 1e6) })),
+      boutons: [{ libelle: t('maj_nouveautes'), action: () => { window.open(v.page); return false; } },
+        { libelle: t('plus_tard'), action: () => true },
+        { libelle: t('mettre_a_jour'), principal: true, action: () => {
+          statut(t('maj_telechargement', { v: v.version, p: 0 }));
+          bureau.mettreAJour().then((r) => { if (r && r.erreur) statut(t(`maj_${r.erreur}`, { d: r.detail || '' }), r.erreur !== 'annulee'); },
+            (e) => statut(t('maj_reseau', { d: e.message }), true));
+          return true;
+        } }] });
+  },
   // looking for a new version at start-up (installed copy only; null otherwise)
   majAuto: () => (etat.majAuto === undefined ? null : etat.majAuto),
   async basculerMajAuto() {
@@ -568,11 +583,17 @@ const app = {
   },
   changerLangue(l, propager = true) {
     changerLangueTexte(l);
+    if (bureau && bureau.langue) bureau.langue(l);
     if (propager) diffuser('langue', { l });
     toutRedessiner();
   },
   zoom: (d) => bureau && bureau.zoom(d),
   aide: (sujet) => dialogueAide(app, sujet),
+  // the full guide: the text file shipped with the desktop app, or on GitHub
+  ouvrirGuide() {
+    if (bureau && bureau.ouvrirGuide) bureau.ouvrirGuide();
+    else window.open(`https://github.com/4rtefakt/nuee/blob/main/${langueActuelle() === 'en' ? 'USER-GUIDE.txt' : 'LISEZ-MOI-APPLICATION.txt'}`);
+  },
 };
 
 const C = creerCommandes(app);
@@ -1284,8 +1305,8 @@ function majEtat() {
       etat.occupe ? (Date.now() - etat.debutOccupe > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
     el('span', { class: 'espace' }),
     etat.nouvelleVersion && lire('version_ignoree') !== etat.nouvelleVersion.version ? el('span', { class: 'nouvelle-version' },
-      el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); window.open(etat.nouvelleVersion.page); } },
-        icone('download'), t('nouvelle_version', { v: etat.nouvelleVersion.version })),
+      el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); if (etat.nouvelleVersion.installateur) app.mettreAJour(); else window.open(etat.nouvelleVersion.page); } },
+        icone('download'), t(etat.nouvelleVersion.installateur ? 'nouvelle_version_maj' : 'nouvelle_version', { v: etat.nouvelleVersion.version })),
       el('button', { class: 'icone-seule', title: t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
     m ? el('span', {}, `${m.nom} · ${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
@@ -1413,9 +1434,11 @@ async function demarrerPrincipal() {
     proposerRecuperation();
     if (bureau) setInterval(sauvegarderSecours, 120000);
   }
-  if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar
+  if (bureau && bureau.langue) bureau.langue(langueActuelle());  // for the dialogs of the desktop app
+  if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar, and the update
     etat.majAuto = await bureau.majAuto();
     bureau.nouvelleVersion().then((v) => { etat.nouvelleVersion = v; majEtat(); }).catch(() => {});
+    if (bureau.surProgressionMaj) bureau.surProgressionMaj((f) => statut(t('maj_telechargement', { v: etat.nouvelleVersion.version, p: Math.round(100 * f) })));
   }
   if (params.get('ouvrir')) await app.ouvrirChemin(params.get('ouvrir'));
 }

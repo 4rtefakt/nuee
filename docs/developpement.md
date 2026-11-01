@@ -119,7 +119,9 @@ It then produces two things.
   or other message languages), the engine, the example project, and the converter compiled with
   PyInstaller.
 - `Lancer Nuee.cmd`: the launcher.
-- `LISEZ-MOI.txt`: the user guide, in French.
+- `LISEZ-MOI.txt` and `USER-GUIDE.txt`: the user guide, in French and in English (both are also
+  in `application/resources/`, where *Help › User guide › Full guide* opens the one in the
+  interface's language).
 
 Electron crashes when started from a network share, so the launcher mirrors `application/` to
 `%LOCALAPPDATA%\Nuee` with robocopy and starts it from there. The first launch copies everything;
@@ -134,7 +136,26 @@ users, Start menu and desktop shortcuts, and an entry in Settings › Apps with 
 It is not code-signed, so SmartScreen warns on first run. `SANS_INSTALLATEUR=1` skips it.
 An installed copy asks `api.github.com/repos/4rtefakt/nuee/releases/latest` once per start
 whether a newer version exists, and shows a link in the status bar (off in Help; never for the
-network-share copy or when running from the sources).
+network-share copy or when running from the sources). If the release has a
+`Nuee-Setup-<version>.exe` asset with a SHA-256 `digest` (GitHub computes it on upload), the
+link offers the one-click update (`app/main.js`): the installer is downloaded from
+`github.com/4rtefakt/nuee/releases/download/` into `%TEMP%\nuee-mise-a-jour`, its SHA-256 must
+match, unsaved projects are saved or left as the user says, R is stopped, and a hidden
+`cmd.exe` waits two seconds, runs the installer silently (`/S`, `/currentuser`, or `/allusers`
+when Nuée is in Program Files, which Windows asks to allow; `/D=` the current folder), then
+starts Nuée again with the same `--user-data-dir`. That `cmd.exe` is started by a go-between
+that ends at once (`Nuee.exe` with `ELECTRON_RUN_AS_NODE`), so it isn't in Nuée's process
+tree: the installer closes `Nuee.exe` with everything it started, and in one test out of three
+it killed a `cmd.exe` started directly by Nuée, before installing anything. The installer
+removes the old version first (keeping the settings) and keeps each file's original date; the
+next start deletes the downloaded installer.
+
+To test it without a release, set `NUEE_SOURCE_MAJ` to an address answering like the GitHub
+API (a `tag_name` above the installed version and an asset with `name`, `size`,
+`browser_download_url` and `digest`); the installer may then come from anywhere. Checked
+end to end: install the build, offer a "0.9.9" whose installer is that same build
+from a local server, first with a wrong SHA-256 (refused, nothing installed), then the right
+one (downloaded, installed, restarted with the same profile), and uninstall it.
 
 Settings live in `%APPDATA%\Nuee`; `--user-data-dir=<folder>` uses another one (a clean
 profile for tests or screenshots).

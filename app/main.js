@@ -2,6 +2,7 @@
 // in as many windows as wanted. Windows remember their size; recent files are kept.
 const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net: reseau, shell, screen } = require('electron');
 const { spawn, execFileSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
@@ -33,6 +34,7 @@ let adresse = null;
 let port = null;
 let quitter = false;
 let arretVoulu = false;  // R stopped on purpose (restart), not a crash
+let langue = 'fr';  // the interface's, for the dialogs shown from here
 // Recovery copies of the projects not saved yet, written regularly by the interface; they
 // are deleted when the application closes normally.
 const dossierSecours = () => path.join(app.getPath('userData'), 'secours');
@@ -158,19 +160,26 @@ function preparer(fenetre) {
   fenetre.on('close', async (e) => {
     if (quitter || BrowserWindow.getAllWindows().length > 1) return;
     e.preventDefault();
-    const noms = await projetsModifies();
-    if (noms.length) {
-      const r = dialog.showMessageBoxSync(fenetre, {
-        type: 'warning', buttons: ['Enregistrer et fermer', 'Fermer sans enregistrer', 'Annuler'], defaultId: 0, cancelId: 2, title: TITRE,
-        message: 'Des projets ont des changements non enregistrés.', detail: noms.join('\n'),
-      });
-      if (r === 2) return;
-      if (r === 0 && !(await demanderEnregistrement(fenetre))) return;
-    }
+    if (!(await accordFermeture(fenetre))) return;
     quitter = true;
     effacerSecours();
     app.quit();
   });
+}
+
+// Before closing (or installing an update): projects with unsaved changes are saved, or left,
+// as the user says, in the interface's language; false if they cancelled.
+async function accordFermeture(fenetre) {
+  const noms = await projetsModifies();
+  if (!noms.length) return true;
+  const en = langue === 'en';
+  const r = dialog.showMessageBoxSync(fenetre, {
+    type: 'warning', defaultId: 0, cancelId: 2, title: TITRE, detail: noms.join('\n'),
+    buttons: en ? ['Save and close', 'Close without saving', 'Cancel'] : ['Enregistrer et fermer', 'Fermer sans enregistrer', 'Annuler'],
+    message: en ? 'Some projects have unsaved changes.' : 'Des projets ont des changements non enregistrés.',
+  });
+  if (r === 2) return false;
+  return r === 1 || demanderEnregistrement(fenetre);
 }
 app.on('browser-window-created', (_, fenetre) => preparer(fenetre));
 
@@ -260,12 +269,39 @@ function ipc() {
     if (oui !== undefined) { reglages.majAuto = !!oui; ecrireReglages(); }
     return reglages.majAuto !== false;
   });
+  ipcMain.handle('langue', (_, l) => { langue = l === 'en' ? 'en' : 'fr'; });
+  // the full user guide, in the interface's language (text files next to the engine)
+  ipcMain.handle('ouvrir-guide', () => shell.openPath(path.join(racine, langue === 'en' ? 'USER-GUIDE.txt' : 'LISEZ-MOI-APPLICATION.txt')));
+  // One-click update: the new installer is downloaded (progress sent to the window) and
+  // checked; then, once unsaved projects are dealt with, Nuée closes, the installer runs and
+  // Nuée starts again. { erreur } when it can't: aucune, reseau, empreinte, annulee.
+  ipcMain.handle('mettre-a-jour', async (e) => {
+    const v = await nouvelleVersion();
+    if (!v || !v.installateur) return { erreur: 'aucune' };
+    const fenetre = parent(e);
+    let fichier;
+    try {
+      fichier = await telechargerInstallateur(v.installateur, (f) => { if (!fenetre.isDestroyed()) fenetre.webContents.send('maj-progression', f); });
+    } catch (err) {
+      return { erreur: err.code === 'empreinte' ? 'empreinte' : 'reseau', detail: err.message };
+    }
+    if (!(await accordFermeture(fenetre))) return { erreur: 'annulee' };
+    quitter = true;
+    effacerSecours();
+    arreterR();
+    installerPuisRelancer(fichier);
+    app.quit();
+    return null;
+  });
 }
 
 // An installed copy (Setup.exe) hears about new versions: at start-up, one request to the
 // GitHub page of the latest release (nothing else is sent), turned off in Aide. Not for the
 // network-share copy, which the share updates, nor when running from the sources.
-const DERNIERE_VERSION = 'https://api.github.com/repos/4rtefakt/nuee/releases/latest';
+// NUEE_SOURCE_MAJ: another address answering like GitHub, to test the update
+// (docs/developpement.md); the installer may then come from anywhere.
+const DERNIERE_VERSION = process.env.NUEE_SOURCE_MAJ || 'https://api.github.com/repos/4rtefakt/nuee/releases/latest';
+const sourceSure = (url) => !!process.env.NUEE_SOURCE_MAJ || String(url).startsWith('https://github.com/4rtefakt/nuee/releases/download/');
 const verificationPossible = () => app.isPackaged && !process.argv.includes('--lanceur-nas');
 let versionTrouvee;  // checked once per start, for every window
 function nouvelleVersion() {
@@ -275,11 +311,70 @@ function nouvelleVersion() {
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         const v = j && String(j.tag_name || '').replace(/^v/, '');
-        return v && plusRecente(v, app.getVersion()) ? { version: v, page: j.html_url } : null;
+        if (!v || !plusRecente(v, app.getVersion())) return null;
+        // its Windows installer, with the SHA-256 GitHub computed for it, for the one-click
+        // update (elsewhere, the link opens the release page)
+        const a = process.platform === 'win32' && (j.assets || []).find((x) => /^Nuee-Setup-[\d.]+\.exe$/.test(x.name) && /^sha256:[0-9a-f]{64}$/.test(x.digest || '') && sourceSure(x.browser_download_url));
+        return { version: v, page: j.html_url,
+          installateur: a ? { nom: a.name, url: a.browser_download_url, taille: a.size, empreinte: a.digest.slice(7) } : null };
       })
       .catch(() => null);
   }
   return versionTrouvee;
+}
+
+// The installer, downloaded to the temporary folder; its SHA-256 must be the one GitHub gives.
+async function telechargerInstallateur(a, progression) {
+  const dossier = path.join(app.getPath('temp'), 'nuee-mise-a-jour');
+  fs.rmSync(dossier, { recursive: true, force: true });
+  fs.mkdirSync(dossier, { recursive: true });
+  const fichier = path.join(dossier, a.nom);
+  const r = await reseau.fetch(a.url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const empreinte = crypto.createHash('sha256');
+  const sortie = fs.createWriteStream(fichier);
+  const lecteur = r.body.getReader();
+  let recu = 0;
+  let pourcent = -1;
+  try {
+    for (;;) {
+      const { done, value } = await lecteur.read();
+      if (done) break;
+      empreinte.update(value);
+      recu += value.length;
+      if (!sortie.write(value)) await new Promise((ok) => sortie.once('drain', ok));
+      if (Math.floor(100 * recu / a.taille) !== pourcent) { pourcent = Math.floor(100 * recu / a.taille); progression(Math.min(1, recu / a.taille)); }
+    }
+  } finally {
+    await new Promise((ok) => sortie.end(ok));
+  }
+  if (empreinte.digest('hex') !== a.empreinte) {
+    fs.rmSync(dossier, { recursive: true, force: true });
+    throw Object.assign(new Error('SHA-256'), { code: 'empreinte' });
+  }
+  return fichier;
+}
+
+// Once Nuée has closed, the installer runs silently, in the same mode (for all users when
+// Nuée is in Program Files, which Windows asks to allow; for this user otherwise) and folder;
+// then Nuée starts again, with the same profile. cmd.exe waits two seconds (Nuée has closed),
+// then for the installer; the paths reach it through environment variables. A go-between
+// starts it and ends at once (this executable run as Node), so it isn't a child of Nuée: the
+// installer stops Nuée and everything Nuée started, and would stop it too.
+function installerPuisRelancer(fichier) {
+  const dossier = path.dirname(process.execPath);
+  const programmes = [process.env.ProgramFiles, process.env.ProgramW6432, process.env['ProgramFiles(x86)']].filter(Boolean).map((p) => p.toLowerCase() + path.sep);
+  const pourTous = programmes.some((p) => (dossier.toLowerCase() + path.sep).startsWith(p));
+  const relance = process.argv.slice(1).filter((x) => /^--(user-data-dir|remote-debugging-port)=/.test(x)).map((x) => `"${x}"`).join(' ');
+  const commande = `ping -n 3 127.0.0.1 > nul & start "" /wait "%NUEE_INSTALLATEUR%" /S ${pourTous ? '/allusers' : '/currentuser'}`
+    + (/^[^&|<>^%"]+$/.test(dossier) ? ' /D=%NUEE_DOSSIER%' : '') + ` & start "" "%NUEE_EXE%"${relance ? ' %NUEE_RELANCE%' : ''}`;
+  const relais = `const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
+    require('child_process').spawn('cmd.exe', ['/d', '/s', '/c', '"' + env.NUEE_COMMANDE + '"'], { env, detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();`;
+  spawn(process.execPath, ['-e', relais], {
+    detached: true, stdio: 'ignore', windowsHide: true,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NUEE_COMMANDE: commande, NUEE_INSTALLATEUR: fichier, NUEE_DOSSIER: dossier, NUEE_EXE: process.execPath,
+      ...(relance ? { NUEE_RELANCE: relance } : {}) },
+  }).unref();
 }
 function plusRecente(a, b) {
   const x = a.split('.').map(Number);
@@ -316,6 +411,8 @@ function enregistrerProgramme() {
 async function demarrer() {
   lireReglages();
   enregistrerProgramme();
+  // the installer of the last one-click update, once it has run
+  if (verificationPossible()) fs.rm(path.join(app.getPath('temp'), 'nuee-mise-a-jour'), { recursive: true, force: true }, () => {});
   Menu.setApplicationMenu(null);  // the interface draws its own menu bar
   ipc();
   port = await portLibre(PORT_HABITUEL);

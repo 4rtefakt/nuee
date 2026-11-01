@@ -1,0 +1,433 @@
+NUÉE — PCA, PLS, PLS-DA and OPLS, computed in R
+===============================================
+(Guide en français : LISEZ-MOI-APPLICATION.txt)
+
+Getting started
+---------------
+Two ways to install Nuée, without administrator rights; R is included in both.
+- From the network share: double-click "Lancer Nuee.cmd". Windows can't start the
+  application straight from a network share, so this launcher copies it to the computer (into
+  %LOCALAPPDATA%\Nuee) and starts it there. The first copy takes one or two minutes; after
+  that only the files changed on the share are copied again, and the application starts right
+  away. On the first start, "Nuée" shortcuts are made on the desktop and in the Start menu:
+  they start the application the same way (always up to date with the share).
+- With the installer: double-click "Nuee-Setup-<version>.exe" and follow the steps (for you
+  alone, or for every user of the computer).
+Either way, Nuée appears in Settings › Apps › Installed apps, where it can be uninstalled;
+projects and settings are kept.
+If Windows shows "Windows protected your PC" (unknown publisher), click "More info", then
+"Run anyway".
+
+Opening
+-------
+File › Open (Ctrl+O):
+  - a .usp project: the data, models and results stored in the file;
+  - a project saved by the application (.json);
+  - a table, one row per observation:
+      Excel .xlsx, .xlsm, .xls        text .csv, .txt, .tsv (separator, decimal comma and
+      R .rds, .RData                    encoding detected, Excel's "Unicode text" included)
+      SPSS .sav, .zsav, .por          SAS .sas7bdat, .xpt
+      Stata .dta                      dBase .dbf, Weka .arff
+      jamovi .omv                     spectra: JCAMP-DX .jdx, .dx, .jcm and SPC .spc (see Spectra)
+    The first column names the observations if it holds text, or if it is called "ID", "Obs",
+    "Name"... (for an R file, the row names). Other text columns whose values all differ (one
+    code per observation) become secondary identifiers: they serve as labels but don't enter
+    the models. The remaining text columns, R factors and labelled SPSS or Stata variables are
+    qualitative variables (in the order of their categories). For a workbook with several
+    sheets, or an R file with several tables, the application asks which one to open.
+File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
+become a project (the first row gives the variable names). The project has no file yet: save
+it (Ctrl+S).
+File › Import spectra: files of spectra made into one project (see Spectra).
+The last files opened are in File › Open recent.
+To try it: Help › Example project opens 120 made-up apples (four varieties, organic or
+conventional growing, a dozen measurements and a tasting score) with four ready models: a
+PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The
+original table, vergers.csv, is next to it (resources\exemple), to try opening a table.
+
+Saving and getting your work back
+---------------------------------
+File › Save project (Ctrl+S) writes the project (.json) with its data, its models and the current
+session: fitted models, open panels and their layout, plot settings (axes, colours, labels,
+titles), selections, VIP choices, dendrogram groups. When the project is opened again, the
+models are refitted and everything comes back in place.
+Closing the application with unsaved changes offers "Save and close". Every two minutes it
+also keeps a recovery copy of unsaved projects: if it stops without being closed (crash,
+power cut), it offers to recover them at the next start.
+Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
+variable, class, scores as variables, deleted definition...), up to 20 steps back.
+Notes: each model's summary has a notes area, saved with the project and included in the
+report; a pencil marks it in the explorer.
+Removing a model (Model › Delete model) asks for confirmation. Its definition stays in the
+project; for a model made in the application, a checkbox removes it as well (undoable).
+
+If the R engine stops
+---------------------
+The application says so and offers to restart it; you can also do it yourself (Help ›
+Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
+views; changes made since the last recovery copy (two minutes at most) are lost. After a
+minute of computing, the status bar says so.
+Help › What's new: the changes in each version (shown once after an update). The copy
+installed with Nuee-Setup looks for a new version at start-up (a single request to GitHub,
+nothing else is sent) and mentions it in the status bar; one click offers to update: the
+installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then
+Nuée closes (offering to save the projects you changed), installs it and starts again. For an
+installation for all users, Windows asks for permission. Help › Look for a new version at
+start-up turns the check off. The copy started from the network share doesn't look: it is
+updated with the share.
+
+The explorer (on the left)
+--------------------------
+Projects, data, models imported from a .usp file, fitted models and their views.
+Double-click: open. Right-click: every action (fit, edit, add or remove a component,
+export, delete...). Double-clicking an imported model refits it in R; the Summary marks each
+value: "=" the same as the value stored in the file, "≈" close (less than 0.01), "≠"
+different.
+
+Menus and toolbar
+-----------------
+File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:
+  Ctrl+O open              Ctrl+S save                Ctrl+E export the results
+  Ctrl+V paste a table
+  Ctrl+N new model         Ctrl+M edit the model      Ctrl+= / Ctrl+- components
+  Esc    clear the selection       Ctrl+Del exclude the selection and refit
+  Ctrl+Shift+N new window          Ctrl+Shift+D detach the panel    Ctrl+W close the panel
+  Ctrl+B explorer          F1 guide
+View: dark theme, French / English, text size.
+
+New model (Model › New model)
+-----------------------------
+General tab: type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models), name, number of components
+(automatic by default, by cross-validation), cross-validation groups, default scaling.
+Variables tab: role (X, Y, class), scaling and transformation (square root, fourth root,
+log10) of each variable; the filter sets every variable shown at once. The "Proposed
+transformations" button applies the suggested log10 to the variables shown (see Variable
+statistics).
+Cross terms tab: products of two X variables (A × B) and squares (A × A); a qualitative
+variable enters through each of its categories.
+Observations tab: tick / untick the model's observations.
+"Edit model" (Ctrl+M) opens this window set like an existing model (imported models
+included) and makes a new model.
+Before fitting, the application checks the data: variables or observations with more than
+50 % missing values, constant variables. If there are any, it lists them and offers "Exclude
+them and fit" or "Fit anyway".
+
+Plots: colours and labels
+-------------------------
+Scores, DModX, T², observed / predicted: the "Colour" list colours the points by class
+(PLS-DA), by dendrogram group, or by any variable of the project (a gradient for a numeric
+variable). The "Labels" list writes next to each point its name, a secondary identifier or the
+value of a variable.
+Right-click on a plot after a selection: "Make a class from the selection…" puts these
+observations in a class of a qualitative variable (new or existing), to colour by or to use as
+the classes of a PLS-DA.
+Edit › Same selection in all the project's models (ticked by default): observations chosen in
+one model are chosen in the project's other models too.
+
+Other plots
+-----------
+Biplot: scores and loadings in one plot, scaled as correlations (t(corr) and p(corr), or
+pc(corr) with the Y of a PLS), all inside the circle of radius 1.
+3D scores: three components, turned with the mouse; a click picks a point.
+S-plot (OPLS): p[1] against p(corr)[1]; the variables at both ends are those that carry the
+link with Y (or that separate the two classes).
+
+Formatting plots (for a paper, a report)
+----------------------------------------
+Right-click on a plot › Format plot, or Edit › Format plot: this plot's title and axis
+titles; for every plot: font, text size, point size, colours (including a palette readable by
+colour-blind people, and greys), grid, legend; and "Export image" at the size wanted (in
+pixels, resolution ×1 to ×6) as PNG, SVG or JPEG. These settings are kept from one session to
+the next.
+
+Contributions
+-------------
+Plots › Contributions, or right-click on a selection: for an observation (or the mean of
+several), each variable's share in its distance from the model's average observation. To
+choose: contribution to DModX (why the observation is poorly modelled), to the score of a
+component, or to T² (why it is far from the centre); weighted or not by the modelling power.
+
+Predicting
+----------
+Predict › Predict observations: the project's observations left out of the model, or a prediction set
+stored in the .usp file.
+Predict › Predict a file: a table (in one of the formats above) whose columns carry the
+names of the model's variables (ignoring capitals and spaces at the start and end; categories
+by their name). The result gives the scores, DModX, T² and predicted Y; observations outside
+the model's domain (DModX > DCrit or T² > T²Crit 95 %) are flagged; it exports to every export
+format. X variables missing from the file are listed and treated as missing.
+The plot above the table shows the scores, or DModXPS: each predicted observation's distance
+to the model, compared with DCrit (the model's observations in grey).
+
+Hierarchical models
+-------------------
+Model › Scores as variables: a model's scores become variables of the project ($M1.t1(title),
+$M1.t2(title)...), which can be the X of a higher-level model. After changing the base model,
+do this step again, then refit the models that use them (the application names them). To
+predict a file with a hierarchical model, the base models are predicted first, automatically.
+
+Exporting to other software
+---------------------------
+File › Export data: the project's table (observation names, identifiers, variables). File ›
+Export model results (Ctrl+E): the model's tables (observations: scores, T², DModX, fitted
+values; variables: loadings, VIP, intervals; components; coefficients; Y variables). Formats:
+Excel (one sheet per table), CSV, tab-separated text, R (.rds: a list of tables; .RData), SPSS
+(.sav), Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) and Weka (.arff); for
+the last ones, one file per table ("M1.sav", "M1 - variables.sav"...). Qualitative variables
+stay qualitative (R factors, SPSS and Stata value labels, jamovi nominal variables). For SPSS,
+Stata, SAS and dBase, variable names are made valid (unaccented letters, digits, "_"); the
+original name becomes the variable label.
+SAS: transport format version 5, which SAS reads with libname xport (names of 8 characters,
+labels of 40, text of 200 at most). dBase: text in Windows-1252; in LibreOffice, choose the
+"Western Europe (Windows-1252)" character set when opening. The files written were opened in
+jamovi, PSPP (for SPSS), Weka, LibreOffice and pandas.
+
+Spectra
+-------
+File › Import spectra: choose one or more files (Ctrl+A in a folder takes them all); they
+become one project, one row per spectrum, one column per wavelength (named by its value:
+"1450", "3999.69"). Files read:
+  JCAMP-DX (.jdx, .dx, .jcm)  every form (plain or compressed numbers: AFFN, PAC, SQZ, DIF,
+             DUP), several spectra per file; not peak tables, nor NTUPLES (complex NMR, mass
+             spectrometry);
+  SPC (.spc)  Galactic (GRAMS, Thermo), new and old format, one or more spectra;
+  text (.csv, .txt...)  a column of x values, then one column per spectrum, with or without a
+             header row; the lines an instrument writes before the numbers are skipped.
+A spectrum is named after its file (and the block's title or its number when a file holds
+several). If the spectra don't all have the same x values, they are interpolated (linearly)
+onto those of the first one, in the range they all share; the status bar says so. Different
+units (nm and cm-1, absorbance and transmittance) are refused.
+Information (optional): a table (Excel, CSV...) whose first column gives the name of each
+file, with or without its extension, and the other columns information to join to the spectra
+(contents, classes, batches); they come before the spectra. The status bar says how many
+spectra didn't find their row. A single JCAMP-DX or SPC file also opens with File › Open, and
+a file of new spectra on the same grid is predicted with Predict › Predict a file.
+
+New model › General › Spectral preprocessing: each observation is a spectrum (its
+quantitative X variables, in the order of the table), corrected before scaling by one to
+three steps, in order:
+  SNV        each spectrum centred on its mean and divided by its standard deviation;
+  MSC        each spectrum fitted to the mean spectrum of the model's observations
+             (x = a + b r), then replaced by (x - a) / b; a prediction uses that mean spectrum;
+  Detrend    a degree-2 polynomial of the wavelength, fitted to the spectrum, is removed from
+             it (Barnes et al., 1989; often after SNV);
+  Baseline   the spectrum's lower convex hull (the segments joining its lowest points, from
+             one end to the other) is removed from it; the corrected spectrum is zero or
+             positive;
+  Savitzky–Golay: smoothing, first or second derivative, in a window of n variables (odd)
+             with a polynomial of degree d. Each range of neighbouring variables in the table
+             is treated on its own: a window never reaches across a range left out.
+The wavelength (for Detrend and Baseline) is the number read in the variables' names when
+each has one, all different; otherwise their place in the table.
+For spectra, one often centres without scaling ("Centring only" scaling). The preprocessing is
+done once, before cross-validation. Plots › Profiles (spectra): loadings, coefficients, VIP,
+or the spectra themselves (before or after preprocessing) as lines; the horizontal axis is the
+number read in the variables' names ("1450 nm") when each has one; the lines break where
+variables are out of the model. A click on a spectrum selects its observation.
+Wavelength ranges: tick "Choose ranges", then drag across the plot (one or more ranges, in
+orange); "New model without these ranges" (the water bands, for example) or "New model with
+these ranges only" opens New model with the model's settings and those X variables, to check
+before fitting. The model's other X variables (qualitative) stay.
+
+Export to R (script, R Markdown, Quarto)
+----------------------------------------
+File › Export to R: a file that refits the model without Nuée, with R alone, to send to a
+colleague or attach to a paper. It holds, in order:
+  1. the checks: the R version (4.0 or later; a message if it is older than the
+     application's) and the packages needed (none for a model: R is enough; if some are
+     missing, the script offers to install them);
+  2. the code of the engine functions the model needs, copied as is with its comments
+     (GPL-3.0 licence);
+  3. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
+     written without loss and categories in their order;
+  4. the model: definir_modele() with the variables named (or, for an imported model that
+     definir_modele() can't describe, the list of its terms), ajuster(), then its results.
+Format: R script (.R); or an R Markdown (.Rmd) or Quarto (.qmd) report, which adds the
+Methods text, tables and plots (scores, loadings, VIP, observed / predicted, T2, DModX) and
+the references; it compiles in RStudio (Knit button) or with quarto render, and needs the
+knitr package. Extra files, as you choose: renv.lock (versions of R and packages, for
+renv::restore()), the data and fitted model as .RData (load() gives them back without
+refitting), an RStudio project (.Rproj, best in a folder of its own).
+Before writing, the application refits the script's model and checks it gives the same
+results; otherwise it says so.
+
+Methods text
+------------
+Model › Text for the Methods section: a paragraph written from the model, in French or
+English (data, transformations, scaling, spectral preprocessing, method, cross-validation, R²,
+Q², CV-ANOVA, classification, software and R version), with its references. "Copy the text"
+button. Read it over and complete it (experimental design, sampling...) before publishing.
+
+R console
+---------
+View › R console (Ctrl+J): a panel below the tabs, with
+  - the log: for each action of the application, the call it made to the engine, written in
+    R (P1 <- lire_projet(...), d <- modele_du_projet(P1, 5), M4 <- ajuster(P1, d)...), to copy
+    into a script (Copy button); the "Application actions" box hides or shows them;
+  - a prompt to type R, run in the application's R session. m is the model shown, p its
+    project; P1, M4... the open projects and models, by their names in the log. For example:
+    m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (the plot shows in
+    the console), modeles(), projets(), definition("M4").
+    Enter runs the command, Shift+Enter starts a new line, ↑ and ↓ recall commands.
+Changing a project in the console (p$donnees[...] <- ...) changes it in the application.
+Correcting the engine: dossier_moteur() gives the folder of the application's R files; after
+a correction, recharger_moteur() reads them again, then refit the model. For the copy started
+from the network share, this folder is the copy made on the computer: at the next start, the
+share's copy replaces it; to keep a correction, make it in the same file on the share
+(application\resources\moteur\R).
+A long command blocks the application until the computation ends.
+Checking the engine: verifier_moteur() refits the imported models of the open projects and
+compares them with the values stored in their files (R2X, R2Y, Q2); verifier_moteur("folder")
+does the same for the .usp and .json files of a folder. To do after a correction of the
+engine. PCA Q2 is left out of the verdict (a known difference, see "What differs").
+
+Model report
+------------
+File › Model report (or right-click on the model): a PDF or Word (.docx) document with a
+title, a comment and the parts ticked (summary, scores, loadings, DModX, VIP, coefficients,
+CV-ANOVA, classification, list of variables...). Plots are formatted as in their open panels.
+The document opens once written.
+
+Variable statistics
+-------------------
+Plots › Variable statistics (or in the explorer, under the project): for each variable N,
+missing values, min, max, Min/Max, mean, median, standard deviation, standard deviation /
+mean, skewness, skewness test and kurtosis. In red: Min/Max < 0.1 and a skewness test beyond
+2; the "Suggested" column gives the log10 advised (with the constant C2 if there are zeros).
+A click on a row shows the variable's histogram, next to that of the transformed variable.
+The other view is the map of missing values (observations × variables).
+
+Tests by variable
+-----------------
+Plots › Tests by variable (or in the explorer, under the project): each quantitative variable
+compared between the classes of a qualitative variable.
+  Two classes (A, the reference, and B): Welch's t test (the default, unequal variances),
+  Student's t or Mann–Whitney (on ranks). Effect: log2 of the ratio of the means B / A (when
+  both means are positive) or Cohen's d. Volcano plot: the effect against -log10(p).
+  All classes: one-way ANOVA or Kruskal–Wallis; the variables ranked by p.
+p values are corrected for multiple comparisons: Benjamini–Hochberg (false discovery rate, the
+default), Bonferroni, or none. In colour: the variables whose corrected p passes the threshold
+(and, for two classes, whose effect does too).
+
+Class models and the Coomans plot
+---------------------------------
+New model › type "Class models": one PCA per category of the class variable, on the
+observations of that category only ("M5.Gala", "M5.Golden"...), each with its own centres,
+scaling and number of components. An observation belongs to a class when its distance to the
+class's model (DModX) doesn't exceed the 5 % DCrit limit: to one class, to several, or to
+none (an observation of another kind than all the known classes). Plots › Coomans plot: each
+observation's distances to two of the models, with their limits in red; the table gives, for
+each class, the share of its observations each model accepts (expected: about 95 % for its
+own class, 0 % for the others), then each observation's distances and classes.
+
+Editing the data, making variables
+----------------------------------
+In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; empty =
+missing value; for a qualitative variable, the category's name). Models already fitted don't
+change: refit them.
+Edit › New variable: from an R formula on the other variables, for example
+log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (a text result
+gives a qualitative variable); or classes from the values of a variable, at given limits
+(10 ; 20 gives "≤ 10", "]10 ; 20]", "> 20") or in classes of equal size. Remember to save
+the project.
+
+File history
+------------
+For a project from a .usp file, the explorer shows "File history": the log stored in the
+file (creation, working-set changes, number of components, deleted models...), with the
+date, the software version and the user. Right-click on an imported model › Model history:
+only what concerns it.
+
+OPLS and OPLS-DA
+----------------
+Predictive components, which carry what in X is related to Y, and orthogonal components,
+which describe the rest of X's variation: scores and loadings are easier to read (t[1]
+against to[1], S-plot). One predictive component per Y variable, or one fewer than the
+classes for OPLS-DA (t[1], t[2]... then to[1], to[2]...); with just one, the predicted values
+are those of a PLS with the same number of components. With several Y (or more than two
+classes), each orthogonal weight is made orthogonal to the weights X'y of every column of Y,
+so the orthogonal components are not related to Y at all (since 0.9.0; version 0.8.0 left a
+slight link: the OPLS models with several predictive components it made change a little when
+refitted). Q2 by full cross-validation (the whole model is refitted without each group). None
+of the .usp projects available had an OPLS model: this computation follows Trygg and Wold's
+paper (2002), with no stored values to compare with; it is checked against a second writing
+of the paper's algorithm.
+
+VIP
+---
+The cut-off is placed automatically at the largest step in the sorted VIPs around 0.8. You
+can type another cut-off or drag the red line, and click a bar to keep or drop a variable.
+"Refit with VIP variables" makes the model again with the variables kept.
+
+Validation (PLS and PLS-DA)
+---------------------------
+Permutation test: the order of Y is shuffled 20 times (or more) and the model refitted; the
+intercepts of R2 and Q2 measure overfitting (a valid model if Q2 < 0.05 and R2 < 0.3 to 0.4,
+the usual rule).
+CV-ANOVA: the model's p (cross-validation residuals against the mean); also in the Summary.
+Classification (PLS-DA): table of the observations correctly and wrongly classified, with
+the fitted or cross-validated values, and ROC curves with their area (AUC).
+
+Windows
+-------
+In the centre, one tab per model ("M1 · PLS"), and a tab for each view of the project (Data,
+Variable statistics, History). A model's tab is its page: its summary on the left, its scores
+and loadings on the right; its other views (VIP, DModX...) join it as tabs. Choosing a model
+in the explorer shows its page; closing a page's last view closes the page.
+In a page as in the centre, views move by their tab (drag and drop), split and stack;
+dragging a model's tab next to another one compares two models. Right-click on a tab, or the
+icon at the top right of a group: detach into its own window (on a second screen, for
+example), maximise, close.
+Window › New window opens a second full window. A selection of observations (box or lasso in
+a plot, click on a point or a list row) shows in every view and every window of the same
+model.
+Plots: mouse wheel to zoom; right-click to copy or save the image (PNG, SVG), see the
+selection's contributions or make it a class.
+
+What matches the stored values (checked on 944 models from 133 .usp projects)
+-----------------------------------------------------------------------------
+Scaling, R2X, R2Y, PLS Q2, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and
+weighted) and DCrit, VIP, coefficients, RMSEE.
+
+What differs
+------------
+- PCA Q2: the stored values include an unpublished step; typical difference 0.01 to 0.02,
+  larger (about 0.1) for version 11 .usp files. Other ways of doing the cross-validation,
+  tried on the 149 PCA models, are further off.
+- Sign of the components of new models: arbitrary (imported models are oriented as in the
+  file).
+- Dendrograms: exact Ward method; the merges at the top of the tree may differ from those of
+  the stored tree.
+- Confidence intervals (jack-knife): close to the stored values, not identical.
+- Automatic fitting of PCA: the exact limit used in the files isn't published.
+- VIP cut-off (step around 0.8): the application's own method.
+- OPLS / OPLS-DA: no stored model to compare with (see above).
+- Suggested transformation: the published rule doesn't say whether both skewness and Min/Max
+  are needed; the application requires both.
+
+The code
+--------
+Every computation is in resources\moteur\R (R, commented in French):
+  pretraitement.R        transformations, centring, scaling
+  nipals.R               PCA and PLS (NIPALS algorithm, missing data)
+  validation_croisee.R   Q2
+  statistiques.R         T2, DModX, VIP, coefficients, intervals, limits
+  validation.R           permutations, CV-ANOVA, PLS-DA classification and ROC curves
+  opls.R                 OPLS and OPLS-DA
+  diagnostic.R           contributions, data checks, variable statistics
+  variables.R            scores as variables, classes, edited values, computed variables
+  projet.R               reading projects, file history
+  verification.R         comparison with the results stored in .usp files
+  script.R               export of a model as a standalone R script or report
+  methodes.R             Methods text and references
+  comparaisons.R         tests by variable
+  modeles_classe.R       class models (one PCA per class), Coomans plot
+  formats.R              reading and writing tables (Excel, text, R, SPSS, Stata, SAS, jamovi...)
+  spectres.R             spectral preprocessing (SNV, MSC, detrend, baseline, Savitzky–Golay)
+  fichiers_spectres.R    reading spectra (JCAMP-DX, SPC, text), joined information
+  modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fitting)
+In R: source("resources/moteur/charger.R"), then for example
+  p <- importer_tableau("my_data.csv")
+  d <- definir_modele(p, "PLS", x = 3:20, y = 2)
+  m <- ajuster(p, d)
+  m$statistiques$composantes
