@@ -94,7 +94,8 @@ signale dans la barre d'état ; sous Linux, un clic ouvre la page de la version.
 un clic propose de mettre à jour : le programme d'installation est téléchargé et
 vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en
 proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation
-pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une nouvelle
+pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour
+fait de même à tout moment, même sans la recherche au démarrage ; Aide › Chercher une nouvelle
 version au démarrage arrête la recherche. La copie lancée depuis le NAS ne cherche pas : elle
 se met à jour avec le NAS.
 
@@ -147,6 +148,10 @@ sélection » range ces observations dans une classe d'une variable qualitative 
 existante), utilisable ensuite pour colorer ou comme classe d'une PLS-DA.
 Édition › Sélection commune aux modèles du projet (cochée par défaut) : des observations
 choisies dans un modèle le sont aussi dans les autres modèles du même projet.
+Variables en évidence : un clic sur une variable (barre des VIP, des coefficients ou des
+loadings, point des loadings, du biplot ou du S-plot, ligne d'un profil, ligne de la liste des
+variables) la met en rouge sur tous les graphiques du modèle ; un cadre en choisit plusieurs
+dans les nuages de points des variables. Échap efface la sélection et les variables en évidence.
 
 Autres graphiques
 -----------------
@@ -259,6 +264,17 @@ Zones de longueurs d'onde : cocher « Choisir des zones », puis faire glisser s
 bandes de l'eau) ou « Nouveau modèle avec ces zones seules » ouvre Nouveau modèle avec les
 réglages du modèle et ces variables X, à vérifier avant d'ajuster. Les autres variables X du
 modèle (qualitatives) restent.
+Graphiques › iPLS (intervalles du spectre), pour un modèle avec Y : le spectre (les variables X
+quantitatives du modèle, dans leur ordre) est prétraité une fois, en entier, comme pour le
+modèle, puis coupé en n intervalles de même largeur ; chacun est une PLS sur sa zone (avec la
+mise à l'échelle du modèle et ses autres variables X), avec 1 à A composantes. Une barre par
+intervalle donne son plus petit RMSEcv (dans les unités de Y, comme dans le résumé), avec ce
+nombre de composantes écrit dessus ; en vert, les intervalles qui prédisent mieux que le
+spectre entier (tirets rouges) ; la ligne grise est le spectre moyen après prétraitement.
+Cliquer des barres pour choisir des intervalles, puis « Nouveau modèle avec ces intervalles »
+ou « sans ces intervalles ». Un tel modèle prétraite ses propres variables : avec SNV, MSC,
+detrend ou ligne de base, son RMSEcv peut différer de celui de la barre. Méthode : Nørgaard et
+al. (2000), Applied Spectroscopy 54, 413–419.
 
 Exporter vers R (script, R Markdown, Quarto)
 --------------------------------------------
@@ -280,8 +296,11 @@ DModX) et les références ; il se compile dans RStudio (bouton Knit) ou avec qu
 demande le paquet knitr. Fichiers en plus, au choix : renv.lock (versions de R et des paquets,
 pour renv::restore()), les données et le modèle ajusté en .RData (load() les rend sans
 recalculer), un projet RStudio (.Rproj, à mettre dans un dossier à part).
-Avant d'écrire, l'application recalcule le modèle du script et vérifie qu'il donne les mêmes
-résultats ; sinon elle le signale.
+Modèles : celui-ci, ou tous les modèles de la séance (le dernier ajustement de chacun) dans un
+seul script .R : les données et le code du moteur une fois, puis un bloc par modèle sous son
+nom (M1, M2...).
+Avant d'écrire, l'application recalcule les modèles du script et vérifie qu'ils donnent les
+mêmes résultats ; sinon elle le signale.
 
 Texte des méthodes
 ------------------
@@ -393,8 +412,9 @@ seconde écriture de l'algorithme de l'article.
 VIP
 ---
 Le seuil est placé automatiquement à la plus grande marche des VIP triés autour de 0,8. On
-peut taper un autre seuil ou faire glisser la ligne rouge, et cliquer une barre pour garder
-ou écarter une variable. « Réajuster avec les variables VIP » refait le modèle avec les
+peut taper un autre seuil ou faire glisser la ligne rouge, et faire Ctrl+clic sur une barre
+pour garder ou écarter une variable (un simple clic la met en évidence sur les autres
+graphiques du modèle). « Réajuster avec les variables VIP » refait le modèle avec les
 variables retenues.
 
 Validation (PLS et PLS-DA)
@@ -438,6 +458,14 @@ graphique, clic sur un point ou une ligne de liste) apparaît dans toutes les vu
 les fenêtres du même modèle.
 Graphiques : molette pour zoomer ; clic droit pour copier l'image ou l'enregistrer (PNG, SVG),
 voir les contributions de la sélection ou en faire une classe.
+Ctrl+C dans une vue qui montre un tableau (résumé, listes, statistiques...) copie le tableau en
+texte séparé par des tabulations, à coller dans Excel (une liste : toutes ses lignes, en pleine
+précision) ; avec du texte sélectionné, Ctrl+C copie le texte comme d'habitude.
+Affichage › Rechercher une commande (Ctrl+K) : taper une partie du nom d'une commande ou de son
+menu (« vip », « exporter r »), puis Entrée.
+Aide › Informations de diagnostic : les versions de Nuée, du système, de R et de ses paquets, à
+coller dans un signalement de problème (github.com/4rtefakt/nuee/issues ; ni chemins ni
+données).
 
 Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 133 projets .usp)
 -------------------------------------------------------------------------------------------

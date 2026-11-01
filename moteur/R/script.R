@@ -13,77 +13,142 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
                           renv = FALSE, rdata = FALSE, rproj = FALSE, version = "", langue = "fr") {
   donnees <- match.arg(donnees)
   format <- c(r = "R", rmd = "Rmd", qmd = "qmd")[[tolower(tools::file_ext(chemin_script))]]
-  base <- sub("\\.[^.]+$", "", basename(chemin_script))
-  dossier <- dirname(chemin_script)
   tab <- tableau_script(projet)
   nom_projet <- as.character(projet$source %||% "projet")
-  code_projet <- sprintf("p <- projet_depuis_tableau(donnees, %s, secondaires = FALSE, toutes_modalites = TRUE)", code_texte(nom_projet))
-  code_d <- code_modele_script(projet, d, tab)
 
   # le modèle du script, calculé ici sur le projet refait à partir du tableau
   m <- m %||% ajuster(projet, d)
-  e <- new.env()
-  e$donnees <- tab$donnees
-  eval(parse(text = c(code_projet, code_d, "m <- ajuster(p, d)"), encoding = "UTF-8"), envir = e)
-  signes <- if (identical(dim(e$m$T), dim(m$T))) vapply(seq_len(m$A), function(a) if (sum(m$T[, a] * e$m$T[, a], na.rm = TRUE) < 0) -1 else 1, 0)
-  code_signes <- if (any(signes < 0)) c(
-    "# Le signe d'une composante est arbitraire : ceux-ci donnent les mêmes graphiques que dans Nuée.",
-    sprintf("m <- orienter_comme(m, t(m$T) * %s)", code_nombres(signes)),
-    "m$statistiques <- statistiques(m)")
-  if (length(code_signes)) eval(parse(text = code_signes), envir = e)
-  ecart <- ecart_modeles(m, e$m)
+  e <- environnement_script(tab, nom_projet)
+  x <- code_un_modele(projet, d, m, tab, e, "m")
+  code_fin <- c("m <- ajuster(p, d)", x$signes, "", "# Résultats (les mêmes que dans Nuée)", code_resultats(d, "m"))
 
-  pls <- identical(d$type, "PLS")
-  code_fin <- c("m <- ajuster(p, d)", code_signes, "",
-    "# Résultats (les mêmes que dans Nuée)",
-    "m$statistiques$composantes         # R2X, R2Y, Q2 et valeur propre par composante",
-    "m$statistiques$variables           # loadings, VIP, intervalles de confiance",
-    if (pls) "m$statistiques$coefficients        # coefficients (centrés-réduits et dans les unités des données)",
-    "head(m$statistiques$observations)  # scores, T2, DModX, valeurs ajustées",
-    if (pls) "m$statistiques$cv_anova           # CV-ANOVA",
-    if (pls) "# permutations(m, n = 20)          # test de permutation (quelques secondes)",
-    if (isTRUE(d$plsda)) "m$statistiques$classification$vc$table  # table de classification (validation croisée)",
-    if (length(d$test)) "m$test$statistiques                # jeu de test : RMSEP, biais, SEP, Q2 externe (jeu_test.R)",
-    if (length(d$test) && isTRUE(d$plsda)) "m$test$classement                  # jeu de test : classes prédites")
-
-  # le code du moteur dont ces lignes ont besoin
-  moteur <- fonctions_moteur(dossier_moteur)
-  utilises <- symboles(parse(text = c(code_projet, code_d, code_fin, if (pls) "permutations(m)")))
-  gardees <- dependances(utilises, moteur)
-  paquets <- paquets_utilises(moteur[gardees])
-
-  chemin_csv <- file.path(dossier, paste0(base, " - donnees.csv"))
-  fichiers <- c(script = chemin_script,
-                donnees = if (donnees == "csv") chemin_csv,
-                rdata = if (rdata) file.path(dossier, paste0(base, ".RData")),
-                renv = if (renv) file.path(dossier, "renv.lock"),
-                rproj = if (rproj) file.path(dossier, paste0(base, ".Rproj")))
-  if (donnees == "csv") ecrire_csv_script(tab$donnees, chemin_csv)
-  code_moteur <- c("# 1. Vérifications ----", code_verifications(paquets, langue), "",
-                   "# 2. Fonctions du moteur de Nuée ----",
-                   sprintf("# Copiées du moteur de Nuée %s (dossier moteur/R ; licence GPL-3.0 ou ultérieure), sans", version),
-                   sprintf("# modification : les %d fonctions et constantes dont ce modèle a besoin, fichier par fichier.", length(gardees)),
-                   texte_moteur(moteur, gardees))
-  code_donnees <- if (donnees == "csv") code_lire_csv(tab$donnees, basename(chemin_csv), langue) else code_donnees(tab$donnees)
+  fichiers <- fichiers_script(chemin_script, donnees, rdata, renv, rproj)
+  moteur <- code_moteur_script(c(e$code_projet, x$d, code_fin, if (identical(d$type, "PLS")) "permutations(m)"),
+                               dossier_moteur, version, langue, "ce modèle a besoin")
+  code_donnees <- donnees_script(tab, fichiers, langue)
   lignes <- if (format == "R") {
-    c(entete_script(d, m, nom_projet, version, fichiers), "", code_moteur, "",
+    c(entete_script(d, m, nom_projet, version, fichiers), "", moteur$code, "",
       "# 3. Données ----", code_donnees, "",
-      "# 4. Modèle et résultats ----", code_projet, "", code_d, "", code_fin)
+      "# 4. Modèle et résultats ----", e$code_projet, "", x$d, "", code_fin)
   } else {
     methodes <- texte_methodes(projet, d, m, langue, version)
-    lignes_rapport(format, d, m, langue, methodes, code_moteur, code_donnees, c(code_projet, "", code_d, "", "m <- ajuster(p, d)", code_signes))
+    lignes_rapport(format, d, m, langue, methodes, moteur$code, code_donnees, c(e$code_projet, "", x$d, "", "m <- ajuster(p, d)", x$signes))
   }
-  writeBin(charToRaw(enc2utf8(paste0(lignes, "\n", collapse = ""))), chemin_script)
+  ecrire_fichiers_script(lignes, fichiers, e, c("donnees", "p", "d", "m"), c(moteur$paquets, if (format != "R") c("knitr", "rmarkdown")))
+  list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart)
+}
 
-  if (rdata) {
-    e$donnees <- tab$donnees
-    save(list = c("donnees", "p", "d", "m"), envir = e, file = fichiers[["rdata"]])
+# Toute la séance dans un script .R : les données une fois, puis chaque modèle (`definitions`,
+# et `modeles` ceux de l'application, dans le même ordre), chacun sous son nom (M1, M2...).
+# Mêmes options qu'ecrire_script() ; `ecart` nomme les modèles qui ne redonnent pas le leur.
+ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, dossier_moteur, donnees = c("script", "csv"),
+                                 renv = FALSE, rdata = FALSE, rproj = FALSE, version = "", langue = "fr") {
+  donnees <- match.arg(donnees)
+  tab <- tableau_script(projet)
+  nom_projet <- as.character(projet$source %||% "projet")
+  e <- environnement_script(tab, nom_projet)
+  # chaque modèle sous son nom (M1...), sauf s'il est déjà pris par le script ou le moteur
+  noms <- make.unique(make.names(vapply(definitions, function(d) as.character(d$name %||% "M"), "")), sep = "_")
+  pris <- c("p", "d", "donnees", vapply(fonctions_moteur(dossier_moteur), `[[`, "", "nom"))
+  noms[noms %in% pris] <- paste0(noms[noms %in% pris], "_modele")
+  blocs <- list()
+  ecarts <- character(0)
+  for (k in seq_along(definitions)) {
+    d <- definitions[[k]]
+    x <- code_un_modele(projet, d, modeles[[k]], tab, e, noms[k])
+    if (!is.null(x$ecart)) ecarts <- c(ecarts, sprintf("%s : %s", noms[k], x$ecart))
+    blocs[[k]] <- c(sprintf("# 4.%d %s : %s%s ----", k, noms[k], type_script(d), if (nzchar(d$title %||% "")) sprintf(" (%s)", d$title) else ""),
+                    x$d, sprintf("%s <- ajuster(p, d)", noms[k]), x$signes, "", code_resultats(d, noms[k]))
   }
-  if (renv) ecrire_renv(c(paquets, if (format != "R") c("knitr", "rmarkdown")), fichiers[["renv"]])
-  if (rproj) writeBin(charToRaw(paste0(c("Version: 1.0", "", "RestoreWorkspace: No", "SaveWorkspace: No", "AlwaysSaveHistory: Default", "",
-                                          "EnableCodeIndexing: Yes", "UseSpacesForTab: Yes", "NumSpacesForTab: 2", "Encoding: UTF-8"), "\n", collapse = "")),
-                      fichiers[["rproj"]])
-  list(script = chemin_script, chemins = unname(fichiers), ecart = ecart)
+  fichiers <- fichiers_script(chemin_script, donnees, rdata, renv, rproj)
+  pls <- any(vapply(definitions, function(d) identical(d$type, "PLS"), FALSE))
+  moteur <- code_moteur_script(c(e$code_projet, unlist(blocs), if (pls) "permutations(m)"), dossier_moteur, version, langue, "ces modèles ont besoin")
+  lignes <- c(entete_seance(definitions, modeles, noms, nom_projet, version, fichiers), "", moteur$code, "",
+              "# 3. Données ----", donnees_script(tab, fichiers, langue), "",
+              "# 4. Modèles et résultats ----", e$code_projet, "", unlist(lapply(blocs, function(b) c(b, ""))))
+  ecrire_fichiers_script(lignes, fichiers, e, c("donnees", "p", noms), moteur$paquets)
+  list(script = chemin_script, chemins = unname(fichiers), ecart = if (length(ecarts)) paste(ecarts, collapse = " ; "))
+}
+
+# L'environnement où le script est refait avant d'être écrit : ses données et son projet `p`.
+environnement_script <- function(tab, nom_projet) {
+  e <- new.env()
+  e$donnees <- tab$donnees
+  e$code_projet <- sprintf("p <- projet_depuis_tableau(donnees, %s, secondaires = FALSE, toutes_modalites = TRUE)", code_texte(nom_projet))
+  eval(parse(text = e$code_projet, encoding = "UTF-8"), envir = e)
+  e
+}
+
+# Un modèle du script : le code de sa définition `d`, et celui qui oriente ses composantes
+# comme dans Nuée. Il est recalculé dans `e` sous le nom `nom` et comparé à `m`, celui de
+# l'application (`ecart`).
+code_un_modele <- function(projet, d, m, tab, e, nom) {
+  code_d <- code_modele_script(projet, d, tab)
+  eval(parse(text = c(code_d, sprintf("%s <- ajuster(p, d)", nom)), encoding = "UTF-8"), envir = e)
+  r <- e[[nom]]
+  signes <- if (identical(dim(r$T), dim(m$T))) vapply(seq_len(m$A), function(a) if (sum(m$T[, a] * r$T[, a], na.rm = TRUE) < 0) -1 else 1, 0)
+  code_signes <- if (any(signes < 0)) c(
+    "# Le signe d'une composante est arbitraire : ceux-ci donnent les mêmes graphiques que dans Nuée.",
+    sprintf("%s <- orienter_comme(%s, t(%s$T) * %s)", nom, nom, nom, code_nombres(signes)),
+    sprintf("%s$statistiques <- statistiques(%s)", nom, nom))
+  if (length(code_signes)) eval(parse(text = code_signes), envir = e)
+  list(d = code_d, signes = code_signes, ecart = ecart_modeles(m, e[[nom]]))
+}
+
+# Les résultats du modèle `nom`, à afficher dans la console.
+code_resultats <- function(d, nom) {
+  pls <- identical(d$type, "PLS")
+  ligne <- function(code, note) paste0(formatC(code, width = -max(35, nchar(code) + 2)), "# ", note)
+  c(ligne(sprintf("%s$statistiques$composantes", nom), "R2X, R2Y, Q2 et valeur propre par composante"),
+    ligne(sprintf("%s$statistiques$variables", nom), "loadings, VIP, intervalles de confiance"),
+    if (pls) ligne(sprintf("%s$statistiques$coefficients", nom), "coefficients (centrés-réduits et dans les unités des données)"),
+    ligne(sprintf("head(%s$statistiques$observations)", nom), "scores, T2, DModX, valeurs ajustées"),
+    if (pls) ligne(sprintf("%s$statistiques$cv_anova", nom), "CV-ANOVA"),
+    if (pls) ligne(sprintf("# permutations(%s, n = 20)", nom), "test de permutation (quelques secondes)"),
+    if (isTRUE(d$plsda)) ligne(sprintf("%s$statistiques$classification$vc$table", nom), "table de classification (validation croisée)"),
+    if (length(d$test)) ligne(sprintf("%s$test$statistiques", nom), "jeu de test : RMSEP, biais, SEP, Q2 externe (jeu_test.R)"),
+    if (length(d$test) && isTRUE(d$plsda)) ligne(sprintf("%s$test$classement", nom), "jeu de test : classes prédites"))
+}
+
+# Les vérifications (R, paquets) et le code du moteur dont `code` a besoin : list(code, paquets).
+code_moteur_script <- function(code, dossier_moteur, version, langue, besoin) {
+  moteur <- fonctions_moteur(dossier_moteur)
+  gardees <- dependances(symboles(parse(text = code, encoding = "UTF-8")), moteur)
+  paquets <- paquets_utilises(moteur[gardees])
+  list(paquets = paquets,
+       code = c("# 1. Vérifications ----", code_verifications(paquets, langue), "",
+                "# 2. Fonctions du moteur de Nuée ----",
+                sprintf("# Copiées du moteur de Nuée %s (dossier moteur/R ; licence GPL-3.0 ou ultérieure), sans", version),
+                sprintf("# modification : les %d fonctions et constantes dont %s, fichier par fichier.", length(gardees), besoin),
+                texte_moteur(moteur, gardees)))
+}
+
+# Le script et, au choix, les fichiers à côté : données en CSV, .RData, renv.lock, .Rproj.
+fichiers_script <- function(chemin_script, donnees, rdata, renv, rproj) {
+  base <- sub("\\.[^.]+$", "", basename(chemin_script))
+  dossier <- dirname(chemin_script)
+  c(script = chemin_script,
+    donnees = if (donnees == "csv") file.path(dossier, paste0(base, " - donnees.csv")),
+    rdata = if (rdata) file.path(dossier, paste0(base, ".RData")),
+    renv = if (renv) file.path(dossier, "renv.lock"),
+    rproj = if (rproj) file.path(dossier, paste0(base, ".Rproj")))
+}
+
+# Les données dans le script, ou le CSV écrit à côté et le code qui le lit.
+donnees_script <- function(tab, fichiers, langue) {
+  if (!"donnees" %in% names(fichiers)) return(code_donnees(tab$donnees))
+  ecrire_csv_script(tab$donnees, fichiers[["donnees"]])
+  code_lire_csv(tab$donnees, basename(fichiers[["donnees"]]), langue)
+}
+
+# Écrit le script et les fichiers d'à côté ; `objets` : ce que le .RData garde de `e`.
+ecrire_fichiers_script <- function(lignes, fichiers, e, objets, paquets) {
+  writeBin(charToRaw(enc2utf8(paste0(lignes, "\n", collapse = ""))), fichiers[["script"]])
+  if ("rdata" %in% names(fichiers)) save(list = objets, envir = e, file = fichiers[["rdata"]])
+  if ("renv" %in% names(fichiers)) ecrire_renv(paquets, fichiers[["renv"]])
+  if ("rproj" %in% names(fichiers)) writeBin(charToRaw(paste0(c("Version: 1.0", "", "RestoreWorkspace: No", "SaveWorkspace: No", "AlwaysSaveHistory: Default", "",
+                                                               "EnableCodeIndexing: Yes", "UseSpacesForTab: Yes", "NumSpacesForTab: 2", "Encoding: UTF-8"), "\n", collapse = "")),
+                                             fichiers[["rproj"]])
 }
 
 # Le tableau du script : les noms des observations, puis une colonne par variable (des facteurs
@@ -247,8 +312,10 @@ texte_moteur <- function(moteur, gardees) {
 
 # ---------------------------------------------------------------- les autres parties
 
+type_script <- function(d) paste0(if (isTRUE(d$opls)) "O" else "", if (isTRUE(d$plsda)) "PLS-DA" else if (identical(d$type, "PCA")) "ACP" else "PLS")
+
 entete_script <- function(d, m, nom_projet, version, fichiers) {
-  type <- paste0(if (isTRUE(d$opls)) "O" else "", if (isTRUE(d$plsda)) "PLS-DA" else if (identical(d$type, "PCA")) "ACP" else "PLS")
+  type <- type_script(d)
   autres <- fichiers[names(fichiers) != "script"]
   quoi <- c(donnees = "les données (le script les lit)", rdata = "les données et le modèle ajusté : load() les rend sans recalculer",
             renv = "les versions de R et des paquets : renv::restore() installe les mêmes", rproj = "le projet RStudio : l'ouvrir ouvre ce dossier")
@@ -261,6 +328,29 @@ entete_script <- function(d, m, nom_projet, version, fichiers) {
     "#   2. Fonctions du moteur de Nuée (copiées telles quelles, commentées en français)",
     "#   3. Données",
     "#   4. Modèle et résultats : la partie à lire et à modifier",
+    "# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.",
+    if (length(autres)) c("# À côté de ce script :", sprintf("#   %s : %s", basename(autres), quoi[names(autres)])))
+}
+
+entete_seance <- function(definitions, modeles, noms, nom_projet, version, fichiers) {
+  autres <- fichiers[names(fichiers) != "script"]
+  quoi <- c(donnees = "les données (le script les lit)", rdata = "les données et les modèles ajustés : load() les rend sans recalculer",
+            renv = "les versions de R et des paquets : renv::restore() installe les mêmes", rproj = "le projet RStudio : l'ouvrir ouvre ce dossier")
+  modele <- function(k) {
+    d <- definitions[[k]]
+    m <- modeles[[k]]
+    sprintf("#   %s%s : %s, %d composante%s, %d observations, %d termes X", noms[k], if (nzchar(d$title %||% "")) sprintf(" (%s)", d$title) else "",
+            type_script(d), m$A, if (m$A > 1) "s" else "", m$N, m$K)
+  }
+  c(sprintf("# Les %d modèles de la séance du projet « %s » :", length(noms), nom_projet),
+    vapply(seq_along(noms), modele, ""),
+    sprintf("# Script R écrit par Nuée %s le %s.", version, format(Sys.Date())),
+    "# Il refait ces modèles sans Nuée, avec R seul : il contient le code des fonctions du moteur",
+    "# de Nuée dont ils ont besoin, puis les données et les modèles. Ses quatre parties :",
+    "#   1. Vérifications : version de R, paquets",
+    "#   2. Fonctions du moteur de Nuée (copiées telles quelles, commentées en français)",
+    "#   3. Données",
+    "#   4. Modèles et résultats : un bloc par modèle, la partie à lire et à modifier",
     "# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.",
     if (length(autres)) c("# À côté de ce script :", sprintf("#   %s : %s", basename(autres), quoi[names(autres)])))
 }

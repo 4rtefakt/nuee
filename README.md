@@ -82,7 +82,8 @@ Opening `.usp` projects needs `python3`. Nuée looks for `Rscript` on the `PATH`
   is chosen by cross-validation unless you set it.
 - **Explore:** each model gets its own page with its summary, scores and loadings; add any
   other view from the *Plots* menu. Select points with a box or a lasso: the selection
-  follows you in every plot of the model.
+  follows you in every plot of the model. Click a variable (a VIP bar, a coefficient, a point
+  of the loadings or of the S-plot) to highlight it in all the model's plots.
 
 The full user guide comes with the application (*Help › User guide › Full guide*), in
 English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
@@ -122,7 +123,8 @@ scores, classes made from a selection.
 several, with a table of sample information (contents, classes) joined by file name. SNV, MSC,
 detrending, baseline removal and Savitzky–Golay smoothing or derivatives before the model.
 Loadings, coefficients, VIP or the spectra themselves drawn as lines against the wavelength;
-drag across them to leave wavelength ranges out of a new model, or to keep only them.
+drag across them to leave wavelength ranges out of a new model, or to keep only them. iPLS
+(interval PLS) fits each range of the spectrum on its own and shows which ones predict best.
 
 ![A PLS on made-up spectra after SNV and a first derivative: scores coloured by batch, and loadings p drawn as lines against the wavelength](docs/captures/spectres.png)
 
@@ -139,6 +141,8 @@ the model's domain, and export the results.
 - data editing and new variables from R formulas or value ranges;
 - several windows, and views that pop out onto a second screen;
 - plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG;
+- Ctrl+C on any result table copies it, ready to paste into Excel;
+- *View › Find a command* (Ctrl+K): type part of a command's name instead of looking through the menus;
 - a model report as PDF or Word;
 - the paragraph for a Methods section, written from the model in French or English, with its
   references (*Model › Text for the Methods section*).
@@ -181,7 +185,8 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
   and the model; it checks the R version and the packages it needs. The report adds the
   Methods text, tables, plots and references, and compiles in RStudio (*Knit*) or with Quarto.
   Optionally also a `renv.lock`, the data and fitted model as `.RData`, and an RStudio project.
-  Before writing, Nuée refits the script's model and checks that it gives the same results.
+  The whole session can go into one script instead: the data once, then every model.
+  Before writing, Nuée refits the script's models and checks that they give the same results.
 - **Fix it yourself:** edit a file of the engine, type `recharger_moteur()` in the console, and
   refit.
 
@@ -195,6 +200,12 @@ summary as identical, close or different. On 944 models from 133 projects, R2X, 
 Q2, scores, loadings, T2, DModX, VIP and coefficients match the stored values, apart from a
 few models with missing data; *Help › Results and known differences* lists the known
 differences.
+
+## Reporting a problem
+
+Open an [issue](https://github.com/4rtefakt/nuee/issues/new/choose), in English or French. *Help ›
+Diagnostic information* gives the versions of Nuée, R and its packages to paste into it (no
+paths, no data).
 
 ## Citing Nuée
 

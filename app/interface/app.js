@@ -12,6 +12,7 @@ import { dialogueRapport } from './rapport.js';
 import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
 import { ECRITURE, filtresOuverture, acceptOuverture, filtresSpectres, acceptSpectres } from './formats.js';
+import { ouvrirPalette } from './palette.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -19,7 +20,7 @@ const ID_FENETRE = params.get('fenetre') || 'principale';
 const canal = new BroadcastChannel('nuee');
 const DV = window['dockview-core'];
 
-const etat = { projets: {}, modeles: {}, selection: {}, groupesHCA: {}, choixVIP: {}, locInitial: {}, panneaux: new Map(), noeud: null,
+const etat = { projets: {}, modeles: {}, selection: {}, variables: {}, groupesHCA: {}, choixVIP: {}, locInitial: {}, panneaux: new Map(), noeud: null,
   replies: new Set(), occupe: 0, message: '', erreur: false, selectionLiee: lire('selection_liee') !== '0' };
 // The window's panels. `dock` holds the explorer and, in one central group of tabs, a page per
 // model and the project views (data, statistics...). A model's page is a dock of its own
@@ -66,6 +67,18 @@ const app = {
       rafraichirModele(x);
     }
     majEtat();
+  },
+  // Variables (term names) picked on one of a model's graphs, highlighted on all of them.
+  variablesChoisies: (id) => etat.variables[id] || [],
+  choisirVariables(id, termes) {
+    etat.variables[id] = [...new Set(termes)];
+    diffuser('variables', { modele: id, termes: etat.variables[id] });
+    rafraichirModele(id);
+    majEtat();
+  },
+  effacerSelection(id) {
+    if (app.selection(id).length) app.choisir(id, []);
+    if (app.variablesChoisies(id).length) app.choisirVariables(id, []);
   },
   selectionLiee: () => etat.selectionLiee,
   basculerSelectionLiee(propager = true) {
@@ -292,6 +305,7 @@ const app = {
   },
   async reajuster(id, q) {
     const res = await occupe(() => demander('reajuster', { modele: id, ...q }));
+    if (etat.variables[id]) etat.variables[res.id] = etat.variables[id];  // the refit keeps the highlighted variables
     await garder(res);
     vuesParDefaut(res.id);
   },
@@ -341,7 +355,7 @@ const app = {
     moteurArrete = false;
     if (erreur) { statut(`${t('erreur')} : ${erreur}`, true); return; }
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
-    for (const k of ['projets', 'modeles', 'selection', 'choixVIP', 'groupesHCA']) etat[k] = {};
+    for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
     for (const r of aRouvrir) {
       try {
@@ -372,6 +386,36 @@ const app = {
             (e) => statut(t('maj_reseau', { d: e.message }), true));
           return true;
         } }] });
+  },
+  // Aide › Chercher une mise à jour: the start-up check, now (installed copy only)
+  async chercherMiseAJour() {
+    statut(t('maj_recherche'));
+    const v = await bureau.nouvelleVersion(true);
+    if (v && v.erreur) { statut(t('maj_injoignable', { d: v.erreur }), true); return; }
+    statut('');
+    etat.nouvelleVersion = v;
+    majEtat();
+    if (v && v.installateur) { app.mettreAJour(); return; }
+    dialogue({ titre: t('chercher_maj'), contenu: el('p', {}, v ? t('nouvelle_version', { v: v.version }) : t('maj_a_jour', { v: VERSION })),
+      boutons: (v ? [{ libelle: t('maj_nouveautes'), action: () => { window.open(v.page); return true; } }] : [])
+        .concat([{ libelle: t('fermer'), principal: true, action: () => true }]) });
+  },
+  // Aide › Informations de diagnostic: the versions of Nuée, the system, R and its packages,
+  // to paste into a GitHub issue (no paths, no data)
+  async diagnostic() {
+    const v = await app.version();
+    const d = bureau && bureau.diagnostic ? await bureau.diagnostic() : { systeme: navigator.userAgent };
+    const texte = [`Nuée ${VERSION}${!bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
+      `System: ${d.systeme}`,
+      d.electron ? `Electron ${d.electron}, Chromium ${d.chrome}` : null,
+      `${v.R}, ${v.plateforme}, ${v.systeme}`,
+      `R locale: ${v.locale}`,
+      `R packages: ${Object.entries(v.paquets).map(([k, x]) => `${k} ${x}`).join(', ')}`,
+      `Interface: ${langueActuelle()}`].filter(Boolean).join('\n');
+    dialogue({ titre: t('diagnostic'), contenu: el('div', {}, el('p', { class: 'note' }, t('diagnostic_aide')), el('pre', { class: 'diagnostic' }, texte)),
+      boutons: [{ libelle: t('signaler_probleme'), action: () => { window.open('https://github.com/4rtefakt/nuee/issues/new/choose'); return false; } },
+        { libelle: t('copier_texte'), action: () => { navigator.clipboard.writeText(texte).then(() => statut(t('texte_copie'))); return true; } },
+        { libelle: t('fermer'), principal: true, action: () => true }] });
   },
   // looking for a new version at start-up (installed copy only; null otherwise)
   majAuto: () => (etat.majAuto === undefined ? null : etat.majAuto),
@@ -411,11 +455,15 @@ const app = {
     statut(t('scores_ajoutes', { noms: noms.slice(0, 3).join(', ') + (noms.length > 3 ? '…' : '') })
       + (modeles.length ? t('modeles_a_reajuster', { modeles: modeles.join(', ') }) : ''));
   },
+  // One model, or all the models of its project's session (the latest fit of each, as Ctrl+S
+  // saves them) in one .R script.
   async exporterScript(id) {
     const m = etat.modeles[id];
-    const choix = await choisirScript(m.nom);
+    const seance = modelesSeance(m.projet);
+    const choix = await choisirScript(m.nom, seance.length > 1 && seance.some((x) => x.id === id) ? { modeles: seance, nom: etat.projets[m.projet].nom } : null);
     if (!choix) return;
-    const r = await occupe(() => demander('script_r', { modele: id, version: VERSION, langue: langueActuelle(), ...choix }));
+    const qui = choix.seance ? { modeles: seance.map((x) => x.id) } : { modele: id };
+    const r = await occupe(() => demander('script_r', { ...qui, version: VERSION, langue: langueActuelle(), ...choix }));
     const chemins = [].concat(r.chemins);
     if (bureau) statut(chemins.length > 1 ? t('exporte_fichiers', { n: chemins.length, chemin: r.script }) : `${t('script_ecrit')} ${r.script}`);
     else chemins.forEach((c, i) => setTimeout(() => telecharger(c), i * 800));
@@ -696,19 +744,34 @@ function choisirExport(titre, nom, plusieursTables) {
 // The R script dialog: where the data go (in the script, or a CSV file next to it) and the
 // files written next to the script (renv.lock, the data and fitted model in .RData, an RStudio
 // project). Resolves to the choices, with { chemin } on the desktop, or null. Remembered.
-function choisirScript(nom) {
+// seance: { modeles, nom } when the project has other models, offering them all in one .R script.
+function choisirScript(nom, seance = null) {
   return new Promise((resolve) => {
-    const choix = { donnees: lire('script_donnees') === 'csv' ? 'csv' : 'script', format: ['R', 'Rmd', 'qmd'].includes(lire('script_format')) ? lire('script_format') : 'R' };
+    const choix = { donnees: lire('script_donnees') === 'csv' ? 'csv' : 'script', format: ['R', 'Rmd', 'qmd'].includes(lire('script_format')) ? lire('script_format') : 'R',
+      seance: false };
     for (const k of ['renv', 'rdata', 'rproj']) choix[k] = lire(`script_${k}`) === 'oui';
     const radio = (cle, valeur, note) => el('label', { class: 'champ' },
-      el('input', { type: 'radio', name: `script-${cle}`, checked: choix[cle] === valeur, onchange: () => { choix[cle] = valeur; } }),
+      el('input', { type: 'radio', name: `script-${cle}`, value: valeur, checked: choix[cle] === valeur, onchange: () => { choix[cle] = valeur; } }),
       el('span', {}, t(`script_${cle}_${valeur}`)), note ? el('span', { class: 'doux' }, note) : null);
     const coche = (cle) => el('label', { class: 'champ' },
       el('input', { type: 'checkbox', checked: choix[cle], onchange: (e) => { choix[cle] = e.target.checked; } }),
       el('span', {}, t(`script_${cle}`)), el('span', { class: 'doux' }, t(`script_${cle}_note`)));
+    const formats = el('div', {}, radio('format', 'R', '.R'), radio('format', 'Rmd', '.Rmd'), radio('format', 'qmd', '.qmd'));
+    const portee = (oui) => {  // the whole session: a .R script only
+      choix.seance = oui;
+      formats.querySelectorAll('input').forEach((i) => {
+        i.disabled = oui && i.value !== 'R';
+        if (oui) i.checked = i.value === 'R';
+        else i.checked = i.value === choix.format;
+      });
+    };
+    const quels = seance ? [el('h4', {}, t('script_modeles')),
+      el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'script-portee', checked: true, onchange: () => portee(false) }), el('span', {}, t('script_ce_modele', { nom }))),
+      el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'script-portee', onchange: () => portee(true) }),
+        el('span', {}, t('script_seance', { n: seance.modeles.length })), el('span', { class: 'doux' }, seance.modeles.map((x) => x.nom).join(', ')))] : [];
     dialogue({ titre: t('script_titre', { nom }), contenu: el('div', { class: 'options-script' },
-      el('p', {}, t('script_texte')),
-      el('h4', {}, t('script_format')), radio('format', 'R', '.R'), radio('format', 'Rmd', '.Rmd'), radio('format', 'qmd', '.qmd'),
+      el('p', {}, t('script_texte')), ...quels,
+      el('h4', {}, t('script_format')), formats,
       el('h4', {}, t('script_donnees')), radio('donnees', 'script'), radio('donnees', 'csv'),
       el('h4', {}, t('script_fichiers')), coche('renv'), coche('rdata'), coche('rproj'),
       el('p', { class: 'note' }, t('script_note'))), boutons: [
@@ -717,8 +780,10 @@ function choisirScript(nom) {
         ecrire('script_donnees', choix.donnees);
         ecrire('script_format', choix.format);
         for (const k of ['renv', 'rdata', 'rproj']) ecrire(`script_${k}`, choix[k] ? 'oui' : 'non');
-        if (!bureau) { resolve(choix); return true; }
-        bureau.enregistrerSous(`${nom}.${choix.format}`, [{ name: t(`script_format_${choix.format}`), extensions: [choix.format] }]).then((chemin) => resolve(chemin ? { ...choix, chemin } : null));
+        const r = choix.seance ? { ...choix, format: 'R' } : choix;
+        if (!bureau) { resolve(r); return true; }
+        bureau.enregistrerSous(`${choix.seance ? seance.nom : nom}.${r.format}`, [{ name: t(`script_format_${r.format}`), extensions: [r.format] }])
+          .then((chemin) => resolve(chemin ? { ...r, chemin } : null));
         return true;
       } }] });
   });
@@ -838,6 +903,13 @@ function remplacerIds(x, f) {
   return x;
 }
 
+// The latest fit of each model of the project, in the order of their numbers.
+function modelesSeance(pid) {
+  const parNumero = new Map();
+  for (const m of app.modelesDe(pid)) if (m.numero !== null && m.numero !== undefined) parNumero.set(m.numero, m);
+  return [...parNumero.entries()].sort((a, b) => a[0] - b[0]).map(([, m]) => m);
+}
+
 function collecterSession(pid) {
   const parNumero = new Map();  // the latest fit of each project model
   for (const m of app.modelesDe(pid)) if (m.numero !== null && m.numero !== undefined) parNumero.set(m.numero, m);
@@ -858,7 +930,7 @@ function collecterSession(pid) {
   }
   const parModele = (o) => Object.fromEntries(Object.entries(o).filter(([id]) => code.has(id)).map(([id, v]) => [code.get(id), v]));
   return { version: 2, modeles: [...parNumero.values()].map((m) => ({ numero: m.numero, A: m.A })), vues, disposition,
-    selection: parModele(etat.selection), choixVIP: parModele(etat.choixVIP), groupesHCA: parModele(etat.groupesHCA) };
+    selection: parModele(etat.selection), variables: parModele(etat.variables), choixVIP: parModele(etat.choixVIP), groupesHCA: parModele(etat.groupesHCA) };
 }
 
 async function restaurerSession(pid, donnee = null) {
@@ -877,7 +949,7 @@ async function restaurerSession(pid, donnee = null) {
   });
   await rafraichirProjet(pid);
   diffuser('modeles');
-  for (const cle of ['selection', 'choixVIP', 'groupesHCA']) {
+  for (const cle of ['selection', 'variables', 'choixVIP', 'groupesHCA']) {
     for (const [code, v] of Object.entries(s[cle] || {})) if (ids[code]) etat[cle][ids[code]] = v;
   }
   const idPanneau = (code, vue) => `${vue}:${code === '@P' || !code ? pid : ids[code]}`;
@@ -955,6 +1027,7 @@ async function garder(res) {
 function oublierModele(id) {
   delete etat.modeles[id];
   delete etat.selection[id];
+  delete etat.variables[id];
   const page = dock && dock.getPanel(`page:${id}`);
   if (page) page.api.close();
   app.rafraichirExplorateur();
@@ -1163,10 +1236,12 @@ function optionsDock() {
 function contexte(entree) {
   return {
     modele: app.modele, projet: app.projet, tousModeles: app.tousModeles, selection: app.selection,
-    choisir: app.choisir, groupesHCA: etat.groupesHCA, demander, valeurs: app.valeurs,
+    choisir: app.choisir, variablesChoisies: app.variablesChoisies, choisirVariables: app.choisirVariables,
+    groupesHCA: etat.groupesHCA, demander, valeurs: app.valeurs,
     ouvrirVue: app.ouvrirVue, reajuster: app.reajuster, statut,
     rafraichir: () => rendrePanneau(entree),
     definirGraphe: (div) => { entree.graphe = div; },
+    grapheCourant: () => entree.graphe,
     menuGraphique: (e, div) => menuGraphique(e, div, entree),
     diffuserGroupes: (id) => diffuser('groupes', { modele: id, groupes: etat.groupesHCA[id] }),
     definirChoixVIP: (id, termes) => { etat.choixVIP[id] = termes; majBarreOutils(); },
@@ -1217,6 +1292,7 @@ function toutRedessiner() {
 function menuGraphique(e, div, entree) {
   const id = entree.params.modele;
   const sel = id ? app.selection(id) : [];
+  const vars = id ? app.variablesChoisies(id) : [];
   menuContextuel(e.clientX, e.clientY, [
     { libelle: t('mise_en_forme'), icone: 'palette', action: () => dialogueFormat(app, entree, div) },
     '-',
@@ -1224,7 +1300,7 @@ function menuGraphique(e, div, entree) {
     { libelle: t('image_png'), icone: 'image-down', action: () => enregistrerImage(div, 'png') },
     { libelle: t('image_svg'), action: () => enregistrerImage(div, 'svg') },
     '-',
-    { libelle: t('effacer_selection'), actif: sel.length > 0, action: () => app.choisir(id, []) },
+    { libelle: t('effacer_selection'), actif: sel.length + vars.length > 0, action: () => app.effacerSelection(id) },
     { libelle: t('exclure_reajuster'), icone: 'eye-off', actif: sel.length > 0, action: () => app.reajuster(id, { exclues: sel }) },
     { libelle: t('contributions'), icone: 'sliders-horizontal', actif: sel.length > 0, action: () => app.ouvrirVue('contributions', id) },
     { libelle: t('classe_selection'), icone: 'tag', actif: sel.length > 0, action: () => app.classeSelection(id) },
@@ -1248,6 +1324,23 @@ function enregistrerImage(div = app.grapheActif(), format = 'png') {
   window.Plotly.downloadImage(div, { format, filename: nom, scale: format === 'png' ? 2 : 1 });
 }
 app.copierImage = () => copierImage();
+
+// Ctrl+C in a panel that shows a table (and no text selected): the table as tab-separated
+// text, for Excel. A list copies all its rows at full precision (its copy button), any other
+// table as shown.
+app.tableauActif = () => {
+  const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
+  const e = p && etat.panneaux.get(p.id);
+  const table = e && e.element && e.element.querySelector('table');
+  if (!table) return null;
+  if (e.element._copierTableau) return e.element._copierTableau;
+  return () => {
+    const texte = (c) => { const x = c.cloneNode(true); x.querySelectorAll('.marque').forEach((m) => m.remove()); return x.textContent.replace(/[▲▼]/g, '').trim(); };
+    navigator.clipboard.writeText([...table.rows].map((r) => [...r.cells].map(texte).join('\t')).join('\n')).then(() => statut(t('table_copiee')));
+  };
+};
+app.copierTableau = () => { const f = app.tableauActif(); if (f) f(); };
+app.palette = () => ouvrirPalette(app, C);
 app.miseEnForme = () => {
   const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
   const e = p && etat.panneaux.get(p.id);
@@ -1301,6 +1394,7 @@ function majEtat() {
   const id = app.modeleActif();
   const m = id && etat.modeles[id];
   const n = id ? app.selection(id).length : 0;
+  const nv = id ? app.variablesChoisies(id).length : 0;
   s.replaceChildren(...[
     el('span', { class: 'moteur' + (etat.occupe ? ' occupe' : etat.erreur ? ' erreur' : '') }, el('span', { class: 'point' }),
       etat.occupe ? (Date.now() - etat.debutOccupe > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
@@ -1311,6 +1405,7 @@ function majEtat() {
       el('button', { class: 'icone-seule', title: t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
     m ? el('span', {}, `${m.nom} · ${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
+    nv ? el('span', { class: 'sel' }, t('variables_en_evidence', { n: nv })) : null,
     el('button', { class: 'icone-seule', title: t('theme_sombre'), onclick: () => app.changerTheme(!app.themeSombre()) }, icone(app.themeSombre() ? 'sun' : 'moon')),
     el('select', { class: 'langue', title: t('langue'), onchange: (e) => app.changerLangue(e.target.value) },
       [['fr', 'FR'], ['en', 'EN']].map(([v, x]) => el('option', { value: v, selected: v === langueActuelle() }, x)))].filter(Boolean));
@@ -1350,6 +1445,10 @@ function rattacher() {
 canal.onmessage = async ({ data: msg }) => {
   if (msg.type === 'selection') {
     etat.selection[msg.modele] = msg.uids;
+    rafraichirModele(msg.modele);
+    majEtat();
+  } else if (msg.type === 'variables') {
+    etat.variables[msg.modele] = msg.termes;
     rafraichirModele(msg.modele);
     majEtat();
   } else if (msg.type === 'selection_liee') {

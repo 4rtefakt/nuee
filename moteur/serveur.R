@@ -389,16 +389,24 @@ methodes_demande <- function(q) {
   texte_methodes(projet(e$projet), e$definition, e$modele, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""))
 }
 
+# Un modèle (q$modele), ou plusieurs du même projet (q$modeles : la séance, dans un script .R).
 script_demande <- function(q) {
-  e <- modele(q$modele)
-  nom <- gsub("[^[:alnum:]_ -]", "_", e$definition$name %||% "modele")
-  format <- if (isTRUE(q$format %in% c("Rmd", "qmd"))) q$format else "R"
+  ids <- as.character(unlist(q$modeles %||% q$modele))
+  e <- modele(ids[1])
+  seance <- length(ids) > 1
+  nom <- gsub("[^[:alnum:]_ -]", "_", if (seance) as.character(projet(e$projet)$source %||% "seance") else e$definition$name %||% "modele")
+  format <- if (!seance && isTRUE(q$format %in% c("Rmd", "qmd"))) q$format else "R"
   chemin <- q$chemin %||% file.path(tempdir(), nouvel_id("script"), paste0(nom, ".", format))
   dir.create(dirname(chemin), showWarnings = FALSE, recursive = TRUE)
-  ecrire_script(projet(e$projet), e$definition, chemin, file.path(racine, "moteur"), m = e$modele,
-                donnees = if (identical(q$donnees, "csv")) "csv" else "script", renv = isTRUE(q$renv),
-                rdata = isTRUE(q$rdata), rproj = isTRUE(q$rproj), version = as.character(q$version %||% ""),
-                langue = if (identical(q$langue, "en")) "en" else "fr")
+  options <- list(donnees = if (identical(q$donnees, "csv")) "csv" else "script", renv = isTRUE(q$renv),
+                  rdata = isTRUE(q$rdata), rproj = isTRUE(q$rproj), version = as.character(q$version %||% ""),
+                  langue = if (identical(q$langue, "en")) "en" else "fr")
+  if (!seance) return(do.call(ecrire_script, c(list(projet(e$projet), e$definition, chemin, file.path(racine, "moteur"), m = e$modele), options)))
+  es <- lapply(ids, modele)
+  if (!all(vapply(es, function(x) identical(x$projet, e$projet), FALSE)))
+    stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
+  do.call(ecrire_script_seance, c(list(projet(e$projet), lapply(es, `[[`, "definition"), lapply(es, `[[`, "modele"), chemin,
+                                       file.path(racine, "moteur")), options))
 }
 
 # Les identifiants secondaires des observations (« site », « ANNEE »...), sans les
@@ -616,6 +624,11 @@ DEMANDES <- list(
     list(modele = q$modele, t = colonnes(b$t), p = colonnes(b$p), c = colonnes(b$c),
          noms_x = I(e$modele$x$noms), noms_y = I(e$modele$y$noms %||% character(0)))
   },
+  # iPLS (ipls.R) : q$n intervalles, 1 à q$A composantes (le A du modèle par défaut)
+  ipls = function(q) {
+    e <- modele(q$modele)
+    c(list(modele = q$modele), pls_par_intervalles(projet(e$projet), e$definition, n = q$n %||% 20, A = q$A %||% e$modele$A))
+  },
   verifier = function(q) {
     p <- projet(q$projet)
     if (identical(q$type, "CLASSES")) q <- utils::modifyList(q, list(type = "PCA", classe = NULL))
@@ -636,8 +649,10 @@ DEMANDES <- list(
   },
   journal = function(q) list(entrees = journal_depuis(as.numeric(q$depuis %||% 0)), dernier = etat$n_journal),
   console = function(q) evaluer_console(q$code, q$modele, q$projet),
-  version = function(q) list(R = R.version.string,
-                             paquets = vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl"), function(x) as.character(utils::packageVersion(x)), "")))
+  version = function(q) list(R = R.version.string, plateforme = R.version$platform, systeme = utils::osVersion %||% "",
+                             locale = Sys.getlocale("LC_CTYPE"),
+                             paquets = as.list(vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl", "foreign", "rmarkdown", "knitr"), function(x)
+                               tryCatch(as.character(utils::packageVersion(x)), error = function(e) "-"), ""))))
 
 # Les valeurs non finies (NaN, Inf) deviennent des valeurs manquantes en JSON.
 fini <- function(x) {

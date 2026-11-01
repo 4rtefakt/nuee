@@ -12,6 +12,13 @@ What changed in each version: the same list as *Help › What's new* in the appl
 - The R engine’s messages (errors, notes) are in English when the interface is, and so are exported scripts in English.
 - The full user guide in English (USER-GUIDE.txt); Help › User guide › Full guide opens the one in the interface’s language.
 - The Methods text cites Nuée and its version; GitHub’s “Cite this repository” button cites it too.
+- Nuée also runs on Linux: a .deb package (Debian, Ubuntu and derivatives), an AppImage or a .tar.gz archive, with the computer’s R.
+- Highlighted variables: clicking a variable (VIP, coefficients, loadings, biplot, S-plot, profiles, variable list) highlights it in all the model’s plots. On the VIP plot, keeping or dropping a variable is now Ctrl+click.
+- Plots › iPLS: each interval of the spectrum fitted on its own, to see which ranges predict best; then a new model with them, or without them.
+- File › Export to R: the whole session in one script, the data once, then each model under its name.
+- Ctrl+C copies the view’s table, ready to paste into Excel; View › Find a command (Ctrl+K) finds a command by typing its name.
+- Help › Check for updates, and Help › Diagnostic information: the versions to paste into a report on GitHub (with forms for problems and ideas).
+- A plot keeps its zoom when a selection redraws it.
 
 ## 0.9.0 — 2026-11-01
 

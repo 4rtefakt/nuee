@@ -1,0 +1,38 @@
+name: Bug report
+description: Something in Nuée doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting this. You can write in English or in French.
+        Please don't attach data you can't share publicly: a small made-up table that shows the problem is best.
+  - type: textarea
+    id: probleme
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Nuée did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: etapes
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a table with …
+        2. Fit a PLS with …
+        3. …
+  - type: textarea
+    id: diagnostic
+    attributes:
+      label: Diagnostic information
+      description: In Nuée, Help › Diagnostic information › Copy the text, then paste it here.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: messages
+    attributes:
+      label: Messages
+      description: Any error message Nuée showed, or the end of the R console (View › R console).
+      render: text

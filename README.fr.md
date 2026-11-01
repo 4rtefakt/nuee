@@ -84,7 +84,9 @@ Les projets `.usp` demandent `python3`. Nuée cherche `Rscript` dans le `PATH`, 
   composantes est choisi par validation croisée, sauf si vous le fixez.
 - **Explorer :** chaque modèle a sa page avec son résumé, ses scores et ses loadings ; ajoutez
   toute autre vue depuis le menu *Graphiques*. Sélectionnez des points avec un cadre ou un
-  lasso : la sélection vous suit dans chaque graphique du modèle.
+  lasso : la sélection vous suit dans chaque graphique du modèle. Cliquez une variable (une
+  barre des VIP, un coefficient, un point des loadings ou du S-plot) pour la mettre en évidence
+  dans tous les graphiques du modèle.
 
 Le guide complet est fourni avec l'application (*Aide › Guide d'utilisation › Guide complet*),
 en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en anglais
@@ -126,7 +128,8 @@ fichier ou plusieurs, avec un tableau d'informations sur les échantillons (tene
 joint par le nom des fichiers. SNV, MSC, detrend, retrait de la ligne de base et lissage ou
 dérivées de Savitzky–Golay avant le modèle. Loadings, coefficients, VIP ou les spectres
 eux-mêmes en lignes selon la longueur d'onde ; faites glisser dessus pour laisser des zones de
-longueurs d'onde hors d'un nouveau modèle, ou pour ne garder qu'elles.
+longueurs d'onde hors d'un nouveau modèle, ou pour ne garder qu'elles. L'iPLS (PLS par
+intervalles) ajuste chaque zone du spectre seule et montre celles qui prédisent le mieux.
 
 ![Une PLS sur des spectres inventés après SNV et une dérivée première : scores colorés par lot, et loadings p en lignes selon la longueur d'onde](docs/captures/spectres.png)
 
@@ -146,6 +149,9 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
 - plusieurs fenêtres, et des vues qui se détachent sur un second écran ;
 - des graphiques mis en forme pour une publication (polices, palettes, taille) et exportés en
   PNG ou SVG ;
+- Ctrl+C sur un tableau de résultats le copie, prêt à coller dans Excel ;
+- *Affichage › Rechercher une commande* (Ctrl+K) : tapez une partie du nom d'une commande au lieu
+  de chercher dans les menus ;
 - un rapport du modèle en PDF ou Word ;
 - le paragraphe d'une section Méthodes, écrit d'après le modèle en français ou en anglais, avec
   ses références (*Modèle › Texte pour la section Méthodes*).
@@ -190,8 +196,9 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   commentaires, et le modèle ; il vérifie la version de R et les paquets dont il a besoin. Le
   rapport ajoute le texte des méthodes, des tableaux, des graphiques et les références, et se
   compile dans RStudio (*Knit*) ou avec Quarto. En plus, au choix : un `renv.lock`, les données
-  et le modèle ajusté en `.RData`, et un projet RStudio. Avant d'écrire, Nuée refait le modèle du
-  script et vérifie qu'il donne les mêmes résultats.
+  et le modèle ajusté en `.RData`, et un projet RStudio. Toute la séance peut aussi aller dans un
+  seul script : les données une fois, puis chaque modèle. Avant d'écrire, Nuée refait les modèles
+  du script et vérifie qu'ils donnent les mêmes résultats.
 - **Le corriger soi-même :** modifiez un fichier du moteur, tapez `recharger_moteur()` dans la
   console, et réajustez.
 
@@ -205,6 +212,12 @@ et marque chaque valeur du résumé comme identique, proche ou différente. Sur 
 projets, R2X, R2Y, le Q2 des PLS, les scores, les loadings, T2, DModX, les VIP et les
 coefficients sont ceux enregistrés, à quelques modèles avec données manquantes près ;
 *Aide › Résultats et écarts connus* liste les écarts connus.
+
+## Signaler un problème
+
+Ouvrez une [issue](https://github.com/4rtefakt/nuee/issues/new/choose), en français ou en anglais.
+*Aide › Informations de diagnostic* donne les versions de Nuée, de R et de ses paquets à y
+coller (ni chemins ni données).
 
 ## Citer Nuée
 

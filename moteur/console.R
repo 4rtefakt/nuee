@@ -60,6 +60,7 @@ journaliser <- function(nom, q, r) {
     permutations = sprintf("permutations(%s, y = %s, n = %s)", q$modele, q$y %||% 1, q$n %||% 20),
     contributions = sprintf("contributions(%s, %s, %s)", q$modele, vecteur_r(as.numeric(q$observations)), code_r(q$type %||% "DModX")),
     biplot = sprintf("correlations_biplot(%s)", q$modele),
+    ipls = sprintf("pls_par_intervalles(%s, definition(%s), n = %d, A = %d)", pm(q$modele), code_r(q$modele), length(r$intervalles), as.integer(r$A)),
     scores_en_variables = sprintf("%s <- scores_en_variables(%s, %s)$projet", pm(q$modele), pm(q$modele), q$modele),
     classe_selection = sprintf("%s <- ajouter_classe(%s, %s, %s, %s)", q$projet, q$projet, code_r(q$variable), code_r(q$etiquette), vecteur_r(as.numeric(q$observations))),
     variable_calculee = sprintf("%s <- variable_calculee(%s, %s, %s)", q$projet, q$projet, code_r(q$nom), code_r(q$formule)),
@@ -69,9 +70,14 @@ journaliser <- function(nom, q, r) {
     statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
-    script_r = sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur(), m = %s, donnees = %s%s)", pm(q$modele), code_r(q$modele),
-                       code_r(r$script), q$modele, code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
-                       paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = "")),
+    script_r = if (length(q$modeles) > 1) {
+      ids <- as.character(unlist(q$modeles))
+      sprintf("ecrire_script_seance(%s, lapply(%s, definition), list(%s), %s, dossier_moteur(), donnees = %s%s)", pm(ids[1]), code_r(ids),
+              paste(ids, collapse = ", "), code_r(r$script), code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
+              paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = ""))
+    } else sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur(), m = %s, donnees = %s%s)", pm(q$modele), code_r(q$modele),
+                   code_r(r$script), q$modele, code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
+                   paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = "")),
     NULL)
   if (length(lignes)) noter("appel", lignes)
 }

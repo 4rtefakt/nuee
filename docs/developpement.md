@@ -13,6 +13,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/console.R` | The R console: log of engine calls, prompt in the application's session |
 | `moteur/R/formats.R` | Reading and writing tables: text, Excel, R, SPSS, Stata, SAS, jamovi `.omv` (read and written here), dBase, ARFF |
 | `moteur/R/spectres.R` | Spectral preprocessing: SNV, MSC, detrend, baseline (lower convex hull), Savitzky–Golay (each range of neighbouring variables on its own) |
+| `moteur/R/ipls.R` | iPLS (Nørgaard et al. 2000): the spectrum preprocessed once, whole, then cut into intervals, each a PLS on its range; RMSEcv for 1 to A components |
 | `moteur/R/jeu_test.R` | Test set: left out of the model, predicted after fitting (RMSEP, bias, SEP, external Q2, classification); chosen at random or by Kennard–Stone |
 | `moteur/R/langue.R` | `traduire("français", "English")`: the engine's messages in the interface's language (the `X-Langue` header of each request) |
 | `moteur/R/fichiers_spectres.R` | Spectra files: JCAMP-DX (AFFN, PAC, SQZ, DIF, DUP), SPC (new and old format), text; merged into one table, with a table of sample information joined by file name |
@@ -24,9 +25,10 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/tests/verifier_formats.R` | Every export format written and read back; text files as spreadsheets write them; jamovi files compared with `jmvReadWrite` when it is installed |
 | `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, detrend, baseline, Savitzky–Golay by range, and a PLS on made-up spectra; the same results as `prospectr` when it is installed |
 | `moteur/tests/verifier_fichiers_spectres.R` | Small made-up JCAMP-DX (every compression form), SPC (each layout) and text files read back; the spectra table and the joined information |
+| `moteur/tests/verifier_ipls.R` | iPLS on made-up spectra with one informative band: intervals cover the spectrum in order, each RMSEcv equals that of a PLS on the range's columns of the whole preprocessed spectrum, the whole spectrum gives back the model, the band's interval comes out best |
 | `moteur/tests/verifier_jeu_test.R` | The test set: the model doesn't see it, RMSEP / bias / SEP / Q2ext recomputed by hand, PLS-DA classification, random and Kennard–Stone choice (the same observations as `prospectr::kenStone` when installed) |
 | `moteur/tests/verifier_opls.R` | OPLS against a second, plain-matrix writing of Trygg and Wold's algorithm (one Y, two Y, three classes); orthogonal scores unrelated to Y |
-| `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, run in a fresh `Rscript --vanilla` without the engine, give the engine's results; reports compile with `knitr` when it is installed |
+| `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, and a whole session in one script, run in a fresh `Rscript --vanilla` without the engine, give the engine's results; reports compile with `knitr` when it is installed |
 | `moteur/tests/verifier_comparaisons.R` | Tests by variable against R's own test functions, class models, OPLS with several predictive components, the Methods text |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
 | `app/tests/essai_api.js` | Check run before each build |
@@ -57,6 +59,7 @@ Rscript moteur/tests/verifier_spectres.R
 Rscript moteur/tests/verifier_fichiers_spectres.R
 Rscript moteur/tests/verifier_opls.R
 Rscript moteur/tests/verifier_jeu_test.R
+Rscript moteur/tests/verifier_ipls.R
 Rscript moteur/tests/verifier_script.R
 Rscript moteur/tests/verifier_comparaisons.R
 ```

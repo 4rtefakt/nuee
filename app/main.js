@@ -295,7 +295,10 @@ function ipc() {
   ipcMain.handle('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }
   });
-  ipcMain.handle('nouvelle-version', () => nouvelleVersion());
+  ipcMain.handle('nouvelle-version', (_, maintenant) => nouvelleVersion(!!maintenant).catch((e) => ({ erreur: e.message })));
+  // for Aide › Informations de diagnostic (no paths, nothing personal)
+  ipcMain.handle('diagnostic', () => ({ systeme: `${process.platform} ${process.getSystemVersion()} ${process.arch}`,
+    electron: process.versions.electron, chrome: process.versions.chrome, installe: app.isPackaged }));
   // the check at start-up, on or off (null: not offered, see verificationPossible)
   ipcMain.handle('maj-auto', (_, oui) => {
     if (!verificationPossible()) return null;
@@ -309,7 +312,7 @@ function ipc() {
   // checked; then, once unsaved projects are dealt with, Nuée closes, the installer runs and
   // Nuée starts again. { erreur } when it can't: aucune, reseau, empreinte, annulee.
   ipcMain.handle('mettre-a-jour', async (e) => {
-    const v = await nouvelleVersion();
+    const v = await (versionTrouvee || nouvelleVersion());
     if (!v || !v.installateur) return { erreur: 'aucune' };
     const fenetre = parent(e);
     let fichier;
@@ -336,23 +339,30 @@ function ipc() {
 const DERNIERE_VERSION = process.env.NUEE_SOURCE_MAJ || 'https://api.github.com/repos/4rtefakt/nuee/releases/latest';
 const sourceSure = (url) => !!process.env.NUEE_SOURCE_MAJ || String(url).startsWith('https://github.com/4rtefakt/nuee/releases/download/');
 const verificationPossible = () => app.isPackaged && !process.argv.includes('--lanceur-nas');
-let versionTrouvee;  // checked once per start, for every window
-function nouvelleVersion() {
-  if (!verificationPossible() || reglages.majAuto === false) return Promise.resolve(null);
-  if (versionTrouvee === undefined) {
-    versionTrouvee = reseau.fetch(DERNIERE_VERSION, { headers: { Accept: 'application/vnd.github+json' } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        const v = j && String(j.tag_name || '').replace(/^v/, '');
-        if (!v || !plusRecente(v, app.getVersion())) return null;
-        // its Windows installer, with the SHA-256 GitHub computed for it, for the one-click
-        // update (elsewhere, the link opens the release page)
-        const a = process.platform === 'win32' && (j.assets || []).find((x) => /^Nuee-Setup-[\d.]+\.exe$/.test(x.name) && /^sha256:[0-9a-f]{64}$/.test(x.digest || '') && sourceSure(x.browser_download_url));
-        return { version: v, page: j.html_url,
-          installateur: a ? { nom: a.name, url: a.browser_download_url, taille: a.size, empreinte: a.digest.slice(7) } : null };
-      })
-      .catch(() => null);
+let versionTrouvee;  // checked once per start, for every window, and again from Aide › Chercher une mise à jour
+function chercherVersion() {
+  return reseau.fetch(DERNIERE_VERSION, { headers: { Accept: 'application/vnd.github+json' } })
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then((j) => {
+      const v = String(j.tag_name || '').replace(/^v/, '');
+      if (!v || !plusRecente(v, app.getVersion())) return null;
+      // its Windows installer, with the SHA-256 GitHub computed for it, for the one-click
+      // update (elsewhere, the link opens the release page)
+      const a = process.platform === 'win32' && (j.assets || []).find((x) => /^Nuee-Setup-[\d.]+\.exe$/.test(x.name) && /^sha256:[0-9a-f]{64}$/.test(x.digest || '') && sourceSure(x.browser_download_url));
+      return { version: v, page: j.html_url,
+        installateur: a ? { nom: a.name, url: a.browser_download_url, taille: a.size, empreinte: a.digest.slice(7) } : null };
+    });
+}
+// maintenant: asked for in Aide, whatever the start-up setting; then a network error reaches
+// the window ({ erreur }) instead of passing for "no new version".
+function nouvelleVersion(maintenant = false) {
+  if (!verificationPossible() || (reglages.majAuto === false && !maintenant)) return Promise.resolve(null);
+  if (maintenant) {
+    const v = chercherVersion();
+    versionTrouvee = v.catch(() => null);
+    return v;
   }
+  if (versionTrouvee === undefined) versionTrouvee = chercherVersion().catch(() => null);
   return versionTrouvee;
 }
 

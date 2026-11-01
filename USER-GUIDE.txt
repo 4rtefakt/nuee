@@ -86,7 +86,8 @@ to GitHub, nothing else is sent) and mentions it in the status bar; on Linux, a 
 version's page. On Windows, one click offers to update: the
 installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then
 Nuée closes (offering to save the projects you changed), installs it and starts again. For an
-installation for all users, Windows asks for permission. Help › Look for a new version at
+installation for all users, Windows asks for permission. Help › Check for updates does the
+same at any time, even with the start-up check off; Help › Look for a new version at
 start-up turns the check off. The copy started from the network share doesn't look: it is
 updated with the share.
 
@@ -137,6 +138,10 @@ observations in a class of a qualitative variable (new or existing), to colour b
 the classes of a PLS-DA.
 Edit › Same selection in all the project's models (ticked by default): observations chosen in
 one model are chosen in the project's other models too.
+Highlighted variables: a click on a variable (a bar of the VIP, the coefficients or the
+loadings, a point of the loadings, the biplot or the S-plot, a line of a profile, a row of the
+variable list) highlights it in red on all the model's plots; a box picks several in the
+scatter plots of variables. Esc clears the selection and the highlighted variables.
 
 Other plots
 -----------
@@ -242,6 +247,16 @@ Wavelength ranges: tick "Choose ranges", then drag across the plot (one or more 
 orange); "New model without these ranges" (the water bands, for example) or "New model with
 these ranges only" opens New model with the model's settings and those X variables, to check
 before fitting. The model's other X variables (qualitative) stay.
+Plots › iPLS (spectrum intervals), for a model with Y: the spectrum (the model's quantitative
+X variables, in their order) is preprocessed once, whole, as for the model, then cut into n
+intervals of the same width; each one is a PLS on its range (with the model's scaling and its
+other X variables), with 1 to A components. A bar per interval gives its smallest RMSEcv (in
+the units of Y, as in the summary), with that number of components written on it; in green,
+the intervals that predict better than the whole spectrum (red dashes); the grey line is the
+mean spectrum after preprocessing. Click bars to choose intervals, then "New model with these
+intervals" or "without these intervals". Such a model preprocesses its own variables: with
+SNV, MSC, detrend or baseline, its RMSEcv can differ from the bar's. Method: Nørgaard et al.
+(2000), Applied Spectroscopy 54, 413–419.
 
 Export to R (script, R Markdown, Quarto)
 ----------------------------------------
@@ -262,7 +277,10 @@ the references; it compiles in RStudio (Knit button) or with quarto render, and 
 knitr package. Extra files, as you choose: renv.lock (versions of R and packages, for
 renv::restore()), the data and fitted model as .RData (load() gives them back without
 refitting), an RStudio project (.Rproj, best in a folder of its own).
-Before writing, the application refits the script's model and checks it gives the same
+Models: this one, or all the models of the session (the latest fit of each) in one .R
+script: the data and the engine's code once, then a block per model under its name (M1,
+M2...).
+Before writing, the application refits the script's models and checks they give the same
 results; otherwise it says so.
 
 Methods text
@@ -370,7 +388,8 @@ of the paper's algorithm.
 VIP
 ---
 The cut-off is placed automatically at the largest step in the sorted VIPs around 0.8. You
-can type another cut-off or drag the red line, and click a bar to keep or drop a variable.
+can type another cut-off or drag the red line, and Ctrl+click a bar to keep or drop a
+variable (a plain click highlights it on the model's other plots).
 "Refit with VIP variables" makes the model again with the variables kept.
 
 Validation (PLS and PLS-DA)
@@ -413,6 +432,13 @@ a plot, click on a point or a list row) shows in every view and every window of 
 model.
 Plots: mouse wheel to zoom; right-click to copy or save the image (PNG, SVG), see the
 selection's contributions or make it a class.
+Ctrl+C in a view that shows a table (summary, lists, statistics...) copies the table as
+tab-separated text, to paste into Excel (a list: all its rows, at full precision); with text
+selected, Ctrl+C copies the text as usual.
+View › Find a command (Ctrl+K): type part of the name of a command or of its menu ("vip",
+"export r"), then Enter.
+Help › Diagnostic information: the versions of Nuée, the system, R and its packages, to paste
+into a report of a problem (github.com/4rtefakt/nuee/issues; no paths, no data).
 
 What matches the stored values (checked on 944 models from 133 .usp projects)
 -----------------------------------------------------------------------------

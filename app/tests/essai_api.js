@@ -153,6 +153,13 @@ async function principal() {
       verifier(!texte.includes('charger.R') && texte.includes('ajuster <- function'), 'sans Nuée');
       const s = await api('script_r', { modele: pls.id, chemin: path.join(dossier, 'pls2.R'), donnees: 'csv', renv: true, rdata: true, rproj: true });
       verifier([].concat(s.chemins).length === 5 && [].concat(s.chemins).every((c) => fs.existsSync(c)), 'CSV, renv.lock, .RData, .Rproj');
+      const q = await api('script_r', { modeles: [pca.id, pls.id], chemin: path.join(dossier, 'seance.R'), version: 'essai' });
+      const seance = fs.readFileSync(q.script, 'utf8');
+      verifier(!q.ecart && /^# Les 2 modèles de la séance/.test(seance) && (seance.match(/^ajuster <- function/gm) || []).length === 1, 'séance : deux modèles, un seul moteur');
+    });
+    await etape('informations de diagnostic', async () => {
+      const v = await api('version');
+      verifier(/^R version/.test(v.R) && v.plateforme && typeof v.paquets === 'object' && v.paquets.jsonlite, JSON.stringify(v).slice(0, 120));
     });
     await etape('console R et journal', async () => {
       const r = await api('console', { code: 'm$A', modele: pls.id });
@@ -210,6 +217,13 @@ async function principal() {
         spectres: [{ type: 'ligne_base' }, { type: 'detrend' }, { type: 'sg', derivee: 1, fenetre: 5, degre: 2 }] });
       const s = await api('spectres', { modele: m.id });
       verifier(s.variables.length === x.length && s.pretraites.length === 8 && s.pretraites[0].every(Number.isFinite), `${s.variables.length} variables, ${s.pretraites.length} spectres`);
+      const m2 = await api('ajuster', { projet: r.id, type: 'PLS', x, y: [r.variables[0].uid], A: 2, nom: 'S2', echelle: 'Ctr',
+        spectres: [{ type: 'sg', derivee: 1, fenetre: 5, degre: 2 }] });
+      const i = await api('ipls', { modele: m2.id, n: 4, A: 2 });
+      // (the whole spectrum is preprocessed first: even an interval smaller than the derivative's window fits)
+      const ajustes = i.intervalles.filter((z) => z.A >= 1 && z.rmsecv.length === 2);
+      verifier(i.intervalles.length === 4 && i.intervalles.flatMap((z) => z.termes).length === x.length && ajustes.length === 4
+        && i.moyen.length === x.length && i.complet.rmsecv.length === 2, `iPLS : ${ajustes.length} intervalles ajustés sur ${i.intervalles.length}`);
     });
     await etape('exporter les données dans chaque format, puis les rouvrir', async () => {
       const formats = ['xlsx', 'csv', 'tsv', 'rds', 'RData', 'sav', 'dta', 'xpt', 'omv', 'dbf', 'arff'];
