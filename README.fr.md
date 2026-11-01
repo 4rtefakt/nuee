@@ -5,12 +5,13 @@
 <p align="center"><a href="README.md">English</a> · <b>Français</b></p>
 
 <p align="center">
-  <b>ACP, PLS, PLS-DA et OPLS sous Windows, calculées en R.</b><br>
+  <b>ACP, PLS, PLS-DA et OPLS sous Windows et Linux, calculées en R.</b><br>
   Des graphiques interactifs, des modèles côte à côte, et chaque calcul lisible.
 </p>
 
 <p align="center">
   <img alt="Windows 10 et 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1b4a9c">
+  <img alt="Linux" src="https://img.shields.io/badge/Linux-deb%20%7C%20AppImage-1b4a9c">
   <img alt="Interface en français et en anglais" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/licence-GPL--3.0-1b4a9c"></a>
   <a href="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml"><img alt="Vérifications" src="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml/badge.svg"></a>
@@ -32,6 +33,8 @@ français.
 
 ## Installer
 
+### Windows
+
 1. Téléchargez `Nuee-Setup-<version>.exe` depuis la page [Releases](https://github.com/4rtefakt/nuee/releases).
 2. Lancez-le et choisissez de l'installer pour vous seul (sans droits d'administrateur) ou pour
    tous les utilisateurs de l'ordinateur.
@@ -46,6 +49,24 @@ Au démarrage, Nuée demande à GitHub s'il existe une nouvelle version (rien d'
 envoyé). S'il y en a une, un clic dans la barre d'état télécharge son programme d'installation,
 vérifie son empreinte SHA-256 auprès de GitHub, propose d'enregistrer vos projets, l'installe
 et redémarre Nuée. *Aide › Chercher une nouvelle version au démarrage* arrête la recherche.
+
+### Linux
+
+Sous Linux, Nuée utilise le R installé sur l'ordinateur (une version de R dépend des
+bibliothèques de sa distribution : elle ne peut pas être emportée comme sous Windows).
+
+- **Debian, Ubuntu et dérivées :** téléchargez `Nuee-<version>-amd64.deb` depuis la page
+  [Releases](https://github.com/4rtefakt/nuee/releases) et installez-le avec
+  `sudo apt install ./Nuee-<version>-amd64.deb`. apt installe aussi R et les paquets R dont
+  Nuée a besoin. Nuée apparaît dans le menu des applications.
+- **Autres distributions :** `Nuee-<version>-x86_64.AppImage` (le rendre exécutable, puis le
+  lancer) ou `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
+  d'abord R depuis votre distribution, puis les paquets, dans R :
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"))`.
+
+Les projets `.usp` demandent `python3`. Nuée cherche `Rscript` dans le `PATH`, puis dans
+`/usr/local/bin`, `/usr/bin` et `/opt/R/<version>/bin` ; lancez-le avec
+`RSCRIPT=/chemin/vers/Rscript` pour un autre R. Les réglages sont dans `~/.config/Nuee`.
 
 ## Premiers pas
 

@@ -88,9 +88,10 @@ L'application le signale et propose de le redémarrer ; on peut aussi le faire s
 modèles et leurs vues ; les changements faits depuis la dernière copie de secours (deux
 minutes au plus) sont perdus. Au-delà d'une minute de calcul, la barre d'état le rappelle.
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
-jour). La version installée (Nuee-Setup, ou les paquets Linux) cherche au démarrage s'il existe une nouvelle
-version (une seule demande à GitHub, rien d'autre n'est envoyé) et la signale dans la barre
-d'état ; un clic propose de mettre à jour : le programme d'installation est téléchargé et
+jour). La version installée (Nuee-Setup, ou les paquets Linux) cherche au démarrage s'il
+existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est envoyé) et la
+signale dans la barre d'état ; sous Linux, un clic ouvre la page de la version. Sous Windows,
+un clic propose de mettre à jour : le programme d'installation est téléchargé et
 vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en
 proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation
 pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une nouvelle

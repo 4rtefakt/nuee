@@ -75,10 +75,16 @@ function versionsOptR() {
 }
 
 // Shown when R does not start on Linux: R and the packages the engine loads are installed apart.
-const AIDE_R_LINUX = '\n\nSous Linux, Nuée utilise le R de l’ordinateur, avec les paquets httpuv, jsonlite, '
-  + 'openxlsx, haven et readxl. Sous Debian ou Ubuntu :\n  sudo apt install r-base-core r-cran-httpuv '
-  + 'r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl\nAilleurs, dans R : install.packages(c("httpuv", '
-  + '"jsonlite", "openxlsx", "haven", "readxl")). Un autre R : lancer Nuée avec RSCRIPT=/chemin/vers/Rscript.';
+const AIDE_R_LINUX = {
+  fr: '\n\nSous Linux, Nuée utilise le R de l’ordinateur, avec les paquets httpuv, jsonlite, '
+    + 'openxlsx, haven et readxl. Sous Debian ou Ubuntu :\n  sudo apt install r-base-core r-cran-httpuv '
+    + 'r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl\nAilleurs, dans R : install.packages(c("httpuv", '
+    + '"jsonlite", "openxlsx", "haven", "readxl")). Un autre R : lancer Nuée avec RSCRIPT=/chemin/vers/Rscript.',
+  en: '\n\nOn Linux, Nuée uses the computer’s R, with the packages httpuv, jsonlite, '
+    + 'openxlsx, haven and readxl. On Debian or Ubuntu:\n  sudo apt install r-base-core r-cran-httpuv '
+    + 'r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl\nElsewhere, in R: install.packages(c("httpuv", '
+    + '"jsonlite", "openxlsx", "haven", "readxl")). Another R: start Nuée with RSCRIPT=/path/to/Rscript.',
+};
 
 function portLibre(souhaite = 0) {
   return new Promise((resolve, reject) => {
@@ -446,7 +452,8 @@ async function demarrer() {
   try {
     await demarrerR(port);
   } catch (err) {
-    dialog.showErrorBox(TITRE, `Le moteur R n'a pas pu démarrer.\n\n${err.message}${process.platform === 'linux' ? AIDE_R_LINUX : ''}`);
+    const l = app.getLocale().startsWith('fr') ? 'fr' : 'en';  // before the interface: the system's language
+    dialog.showErrorBox(TITRE, `${l === 'fr' ? 'Le moteur R n’a pas pu démarrer.' : 'The R engine couldn’t start.'}\n\n${err.message}${process.platform === 'linux' ? AIDE_R_LINUX[l] : ''}`);
     app.quit();
     return;
   }

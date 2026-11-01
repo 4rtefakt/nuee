@@ -90,6 +90,8 @@ async function construire() {
   copier(path.join(depot, 'moteur'), path.join(ressources, 'moteur'));
   // the example project (made-up data) and its table
   copier(path.join(depot, 'exemple'), path.join(ressources, 'exemple'), (rel) => /^vergers\.(json|csv)$/.test(rel));
+  // the full user guide, opened from Aide › Guide d'utilisation
+  for (const f of ['LISEZ-MOI-APPLICATION.txt', 'USER-GUIDE.txt']) fs.copyFileSync(path.join(depot, f), path.join(ressources, f));
 
   if (!windows) {
     // the converter needs only Python's standard library: python3 runs it (moteur/serveur.R)
@@ -113,8 +115,6 @@ async function construire() {
   // uninstaller of the copy the NAS launcher makes (Settings › Apps runs it)
   const crlf = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8').replace(/\r?\n/g, '\r\n');
   fs.writeFileSync(path.join(ressources, 'desinstaller.cmd'), crlf('desinstaller.cmd'));
-  // the full user guide, opened from Aide › Guide d'utilisation
-  for (const f of ['LISEZ-MOI-APPLICATION.txt', 'USER-GUIDE.txt']) fs.copyFileSync(path.join(depot, f), path.join(ressources, f));
 
   // What goes on the NAS: the launcher (Electron cannot start from a network share, so it
   // copies the application to the PC and starts it there), the user guide, application/.
@@ -140,7 +140,7 @@ async function construire() {
       directories: { output: path.join(sortie, 'installateur') },
       win: { icon: path.join(__dirname, 'icone', 'nuee.ico') },
       // .nuee projects open in Nuée when double-clicked, with its icon
-      fileAssociations: [{ ext: 'nuee', name: 'Projet Nuée', description: 'Projet Nuée', icon: path.join(__dirname, 'icone', 'nuee.ico') }],
+      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Projet Nuée', icon: path.join(__dirname, 'icone', 'nuee.ico') }],
       nsis: {
         oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true,
         createDesktopShortcut: true, createStartMenuShortcut: true, shortcutName: 'Nuée', uninstallDisplayName: 'Nuée',
@@ -160,6 +160,7 @@ async function construireLinux(dossier) {
   fs.rmSync(final, { recursive: true, force: true });
   fs.renameSync(dossier, final);
   fs.copyFileSync(path.join(depot, 'LISEZ-MOI-APPLICATION.txt'), path.join(final, 'LISEZ-MOI.txt'));
+  fs.copyFileSync(path.join(depot, 'USER-GUIDE.txt'), path.join(final, 'USER-GUIDE.txt'));
   console.log('Prêt :', final);
 
   if (process.env.SANS_INSTALLATEUR) return;
@@ -176,6 +177,8 @@ async function construireLinux(dossier) {
         synopsis: 'PCA, PLS, PLS-DA and OPLS computed in plain R', syncDesktopName: true,
         artifactName: 'Nuee-${version}-${arch}.${ext}',
       },
+      // .nuee projects open in Nuée (MIME type in the menu entry and the .deb)
+      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Projet Nuée', mimeType: 'application/x-nuee' }],
       // electron-builder's own list (it is replaced, not added to), then R and the engine's packages
       deb: {
         packageCategory: 'science',

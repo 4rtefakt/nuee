@@ -18,6 +18,15 @@ projects and settings are kept.
 If Windows shows "Windows protected your PC" (unknown publisher), click "More info", then
 "Run anyway".
 
+On Linux, Nuée uses the computer's R.
+- Debian, Ubuntu and their derivatives: sudo apt install ./Nuee-<version>-amd64.deb also
+  installs R and the R packages needed. Nuée appears in the applications menu.
+- Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
+  Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
+  install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl")).
+.usp projects need python3. For another R than the PATH's: start Nuée with
+RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
+
 Opening
 -------
 File › Open (Ctrl+O):
@@ -71,9 +80,10 @@ The application says so and offers to restart it; you can also do it yourself (H
 Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
 views; changes made since the last recovery copy (two minutes at most) are lost. After a
 minute of computing, the status bar says so.
-Help › What's new: the changes in each version (shown once after an update). The copy
-installed with Nuee-Setup looks for a new version at start-up (a single request to GitHub,
-nothing else is sent) and mentions it in the status bar; one click offers to update: the
+Help › What's new: the changes in each version (shown once after an update). The installed
+copy (Nuee-Setup, or the Linux packages) looks for a new version at start-up (a single request
+to GitHub, nothing else is sent) and mentions it in the status bar; on Linux, a click opens the
+version's page. On Windows, one click offers to update: the
 installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then
 Nuée closes (offering to save the projects you changed), installs it and starts again. For an
 installation for all users, Windows asks for permission. Help › Look for a new version at
