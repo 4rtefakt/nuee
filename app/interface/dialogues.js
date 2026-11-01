@@ -44,10 +44,12 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
 
   const general = () => el('div', { class: 'grille-champs' },
     el('label', {}, t('type')), el('select', { onchange: (e) => { st.type = e.target.value; rendre(); } },
-      [['PCA', 'ACP / PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA']]
+      [['PCA', 'ACP / PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')]]
         .map(([k, n]) => el('option', { value: k, selected: k === st.type }, n))),
     ['OPLS', 'OPLS-DA'].includes(st.type) ? el('label', {}, '') : null,
     ['OPLS', 'OPLS-DA'].includes(st.type) ? el('p', { class: 'note' }, t('opls_note')) : null,
+    st.type === 'CLASSES' ? el('label', {}, '') : null,
+    st.type === 'CLASSES' ? el('p', { class: 'note' }, t('classes_note')) : null,
     el('label', {}, t('nom')), el('input', { value: st.nom, oninput: (e) => { st.nom = e.target.value; } }),
     el('label', {}, t('titre_modele')), el('input', { value: st.titre, oninput: (e) => { st.titre = e.target.value; } }),
     el('label', {}, t('nb_comp')), el('div', { class: 'ligne' },
@@ -67,7 +69,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     st.etapes.some(Boolean) ? [el('label', {}, ''), el('p', { class: 'note' }, t('spectres_note'))] : null);
 
   const avecY = () => ['PLS', 'OPLS'].includes(st.type);
-  const avecClasse = () => ['PLS-DA', 'OPLS-DA'].includes(st.type);
+  const avecClasse = () => ['PLS-DA', 'OPLS-DA', 'CLASSES'].includes(st.type);
   const roles = (v) => [['', t('role_aucun')], ['x', t('role_x')]].concat(avecY() ? [['y', t('role_y')]] : [])
     .concat(avecClasse() && v.qualitative ? [['classe', t('role_classe')]] : []);
 
@@ -193,7 +195,6 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const classe = cles('classe')[0];
     if (!x.length) { erreur.textContent = t('x_requis'); return false; }
     if (avecY() && !y.length) { erreur.textContent = t('pls_y_requis'); return false; }
-    if (st.type === 'OPLS' && y.length > 1) { erreur.textContent = t('opls_un_y'); return false; }
     if (avecClasse() && classe === undefined) { erreur.textContent = t('plsda_classe_requise'); return false; }
     const horsX = [...new Set(st.croises.flat().filter((u) => st.roles[u] !== 'x'))];
     if (horsX.length) {
@@ -284,14 +285,17 @@ const AIDE = {
       ['Prédire un fichier', 'Prédiction › Prédire un fichier : un tableau (CSV, Excel, R, SPSS…) dont les colonnes portent les noms des variables du modèle. Les observations hors du domaine du modèle sont signalées ; le résultat s’exporte dans tous les formats d’export.'],
       ['Modèles hiérarchiques', 'Modèle › Scores en variables : les scores d’un modèle deviennent des variables ($M1.t1…) utilisables comme X d’un autre modèle. Après avoir modifié le modèle de base, refaire cette étape puis réajuster le modèle supérieur.'],
       ['Exporter', 'Fichier › Exporter les données : le tableau du projet ; Fichier › Exporter les résultats du modèle (Ctrl+E) : scores, T2, DModX, loadings, VIP, coefficients… Formats : Excel, CSV, texte, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Les qualitatives restent qualitatives ; pour SPSS, Stata et SAS, les noms de variables sont rendus valides et le nom d’origine devient l’étiquette.'],
-      ['Script R', 'Fichier › Exporter en script R : un script commenté qui refait le modèle avec les fonctions du moteur, à relire et modifier dans RStudio.'],
+      ['Exporter vers R', 'Fichier › Exporter vers R : un script, ou un rapport R Markdown ou Quarto, qui refait le modèle sans Nuée, avec R seul. Il contient le code des fonctions du moteur dont le modèle a besoin (commenté), les données (ou un CSV à côté) et le modèle, et vérifie la version de R et les paquets. Le rapport ajoute le texte des méthodes, des tableaux, des graphiques et les références ; il se compile dans RStudio (Knit) ou avec Quarto. En plus, au choix : renv.lock, données et modèle en .RData, projet RStudio.'],
+      ['Texte des méthodes', 'Modèle › Texte pour la section Méthodes : un paragraphe écrit d’après le modèle (données, prétraitement, méthode, validation croisée, R², Q², logiciel), en français ou en anglais, avec ses références. À relire et compléter avant de le publier.'],
       ['Rapport', 'Fichier › Rapport du modèle : un PDF ou un document Word avec les parties choisies ; les graphiques y sont mis en forme comme dans leurs panneaux.'],
       ['Console R', 'Affichage › Console R (Ctrl+J) : le code R de chaque action, et une invite R dans la session de l’application (m = modèle affiché, p = son projet). recharger_moteur() relit les fichiers du moteur après une correction.'],
       ['Séance', 'Ctrl+S enregistre aussi la séance : modèles calculés, panneaux, réglages des graphiques et sélections reviennent à la réouverture du projet.'],
       ['Sécurité', 'En fermant : « Enregistrer et fermer ». Copie de secours toutes les deux minutes, proposée après un arrêt imprévu. Ctrl+Z annule une modification des données. Aide › Redémarrer le moteur R si un calcul ne finit pas.'],
       ['Statistiques des variables', 'Graphiques › Statistiques des variables : statistiques du jeu de travail, transformations proposées en rouge, histogrammes et carte des valeurs manquantes.'],
+      ['Tests par variable', 'Graphiques › Tests par variable : chaque variable quantitative comparée entre deux classes (t de Welch ou de Student, Mann–Whitney ; graphique volcan) ou entre toutes (ANOVA, Kruskal–Wallis), valeurs p corrigées (Benjamini–Hochberg ou Bonferroni). Les variables qui passent les seuils sont en couleur.'],
+      ['Modèles de classe', 'Nouveau modèle › type Modèles de classe : une ACP par catégorie de la variable de classe. Graphiques › Graphique de Coomans : la distance (DModX) de chaque observation à deux de ces modèles ; sous la limite d’un modèle, l’observation appartient à sa classe (à une, plusieurs ou aucune).'],
       ['Données', 'Double-clic sur une case de la vue Données pour la modifier ; Édition › Nouvelle variable : formule R ou classes d’après les valeurs.'],
-      ['OPLS', 'Une composante prédictive et des composantes orthogonales ; un seul Y, ou deux classes (OPLS-DA). Graphique S (S-plot) dans Graphiques.'],
+      ['OPLS', 'Des composantes prédictives (une par variable Y, ou une de moins que de classes pour l’OPLS-DA) et des composantes orthogonales. Graphique S (S-plot) dans Graphiques.'],
       ['Spectres', 'Nouveau modèle › Général › Prétraitement des spectres : SNV, MSC, lissage ou dérivées de Savitzky–Golay, en une ou deux étapes, appliqués à chaque observation avant la mise à l’échelle (variables X dans l’ordre du tableau). Graphiques › Profils (spectres) : loadings, coefficients, VIP ou les spectres eux-mêmes en lignes, la longueur d’onde lue dans le nom des variables.'],
       ['Mises à jour', 'La version installée cherche au démarrage une nouvelle version sur GitHub et la signale dans la barre d’état (Aide › Chercher une nouvelle version au démarrage pour l’arrêter).'],
       ['Historique du fichier', 'Sous un projet .usp : le journal d’audit enregistré dans le fichier (dates, versions, changements de chaque modèle).'],
@@ -321,14 +325,17 @@ const AIDE = {
       ['Predict a file', 'Predict › Predict a file: a table (CSV, Excel, R, SPSS…) whose columns carry the model’s variable names. Observations outside the model’s domain are flagged; results export to every export format.'],
       ['Hierarchical models', 'Model › Scores as variables: a model’s scores become variables ($M1.t1…) usable as X of another model. After changing the base model, do it again and refit the upper model.'],
       ['Export', 'File › Export data: the project’s table; File › Export model results (Ctrl+E): scores, T2, DModX, loadings, VIP, coefficients… Formats: Excel, CSV, text, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Qualitative variables stay qualitative; for SPSS, Stata and SAS, variable names are made valid and the original name becomes the label.'],
-      ['R script', 'File › Export as R script: a commented script that rebuilds the model with the engine’s functions, to read and change in RStudio.'],
+      ['Export to R', 'File › Export to R: a script, or an R Markdown or Quarto report, that refits the model without Nuée, in plain R. It holds the code of the engine functions the model needs (commented), the data (or a CSV next to it) and the model, and checks the R version and packages. The report adds the methods text, tables, plots and references; it compiles in RStudio (Knit) or with Quarto. Optionally: renv.lock, data and model as .RData, an RStudio project.'],
+      ['Methods text', 'Model › Text for the Methods section: a paragraph written from the model (data, preprocessing, method, cross-validation, R², Q², software), in French or English, with its references. Read it and complete it before publishing.'],
       ['Report', 'File › Model report: a PDF or Word document with the chosen parts; plots look as in their panels.'],
       ['R console', 'View › R console (Ctrl+J): the R code of each action, and an R prompt in the application’s session (m = model shown, p = its project). recharger_moteur() reloads the engine files after a correction.'],
       ['Session', 'Ctrl+S also saves the session: fitted models, panels, plot settings and selections come back when the project is reopened.'],
       ['Safety', 'When closing: “Save and close”. A recovery copy every two minutes, offered after an unexpected stop. Ctrl+Z undoes a data change. Help › Restart the R engine if a calculation never ends.'],
       ['Variable statistics', 'Plots › Variable statistics: workset statistics, proposed transformations in red, histograms and a missing-value map.'],
+      ['Tests by variable', 'Plots › Tests by variable: each quantitative variable compared between two classes (Welch’s or Student’s t, Mann–Whitney; volcano plot) or across all of them (ANOVA, Kruskal–Wallis), p-values corrected (Benjamini–Hochberg or Bonferroni). Variables that pass the cut-offs are coloured.'],
+      ['Class models', 'New model › type Class models: one PCA per category of the class variable. Plots › Coomans plot: each observation’s distance (DModX) to two of these models; below a model’s limit, the observation belongs to its class (to one, several or none).'],
       ['Data', 'Double-click a cell of the Data view to edit it; Edit › New variable: an R formula or classes from values.'],
-      ['OPLS', 'One predictive component and orthogonal ones; a single Y, or two classes (OPLS-DA). S-plot in Plots.'],
+      ['OPLS', 'Predictive components (one per Y variable, or one fewer than the classes for OPLS-DA) and orthogonal ones. S-plot in Plots.'],
       ['Spectra', 'New model › General › Spectral preprocessing: SNV, MSC, Savitzky–Golay smoothing or derivatives, in one or two steps, applied to each observation before scaling (X variables in the order of the table). Plots › Profiles (spectra): loadings, coefficients, VIP or the spectra themselves as lines, the wavelength read from the variable names.'],
       ['Updates', 'The installed version looks for a new version on GitHub at start-up and shows it in the status bar (Help › Look for a new version at start-up to stop it).'],
       ['File history', 'Under a .usp project: the audit trail stored in the file (dates, versions, changes to each model).'],

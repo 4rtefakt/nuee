@@ -136,9 +136,13 @@ async function principal() {
       const m = await api('ajuster', { projet: q.id, numero: pls.numero, A: 2 });
       verifier(m.note === 'essai' && m.reglages.x.length === 6, 'modèle relu');
     });
-    await etape('script R', async () => {
-      const r = await api('script_r', { modele: pls.id, chemin: path.join(dossier, 'pls.R') });
-      verifier(fs.existsSync(r.script) && fs.existsSync(r.donnees), 'script');
+    await etape('script R autonome', async () => {
+      const r = await api('script_r', { modele: pls.id, chemin: path.join(dossier, 'pls.R'), version: 'essai' });
+      verifier(fs.existsSync(r.script) && [].concat(r.chemins).length === 1 && !r.ecart, 'script seul, mêmes résultats');
+      const texte = fs.readFileSync(r.script, 'utf8');
+      verifier(!texte.includes('charger.R') && texte.includes('ajuster <- function'), 'sans Nuée');
+      const s = await api('script_r', { modele: pls.id, chemin: path.join(dossier, 'pls2.R'), donnees: 'csv', renv: true, rdata: true, rproj: true });
+      verifier([].concat(s.chemins).length === 5 && [].concat(s.chemins).every((c) => fs.existsSync(c)), 'CSV, renv.lock, .RData, .Rproj');
     });
     await etape('console R et journal', async () => {
       const r = await api('console', { code: 'm$A', modele: pls.id });
@@ -150,6 +154,22 @@ async function principal() {
       verifier(e.modeles.length === 4 && e.observations.uid.length === 120 && !e.chemin_enregistrement, `${e.modeles.length} modèles`);
       const m = await api('ajuster', { projet: e.id, numero: e.modeles[0].numero, A: e.modeles[0].A });
       verifier(m.type === 'PCA' && m.N === 120, m.type);
+    });
+    await etape('tests par variable, texte des méthodes, modèles de classe, OPLS-DA à 4 classes', async () => {
+      const e = await api('exemple');
+      const v = (nom) => e.variables.find((x) => x.nom === nom).uid;
+      const t = await api('tests_variables', { projet: e.id, classe: v('culture'), test: 'welch', correction: 'BH' });
+      verifier([].concat(t.tableau.p_ajuste).length === 15 && t.groupes.length === 2, 'tests par variable');
+      const m = await api('ajuster', { projet: e.id, numero: e.modeles[2].numero, A: e.modeles[2].A });
+      const txt = await api('methodes', { modele: m.id, langue: 'en', version: 'essai' });
+      verifier([].concat(txt.paragraphes).some((p) => /PLS-DA/.test(p)) && [].concat(txt.references).length >= 3, 'méthodes');
+      const x = e.variables.filter((y) => !y.qualitative).map((y) => y.uid);
+      const c = await api('modeles_classe', { projet: e.id, x, classe: v('variete'), nom: 'MC', echelle: 'UV', A: 0 });
+      verifier([].concat(c.modeles).length === 4 && c.modeles[0].groupe === 'MC', 'modèles de classe');
+      const a = await api('appartenance', { modele: c.modeles[0].id });
+      verifier([].concat(a.classes).length === 4 && [].concat(a.observations.nom).length === 120, 'appartenance');
+      const o = await api('ajuster', { projet: e.id, type: 'OPLS-DA', x, classe: v('variete'), echelle: 'UV', A: 0 });
+      verifier(o.Ap === 3 && o.A >= 3, `OPLS-DA : Ap = ${o.Ap}`);
     });
     await etape('paquets de lecture des formats', async () => {
       const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });

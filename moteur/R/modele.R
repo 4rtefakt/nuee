@@ -22,11 +22,12 @@ ajuster <- function(projet, definition, A = definition$A, G = definition$cv_grou
   if (pls && length(noms_y) == ncol(by$X)) by$noms <- colnames(by$X) <- noms_y
   X <- preparer(bx$X)
   Y <- if (pls) preparer(by$X)
-  # OPLS (opls.R) : A = 1 composante prédictive + A - 1 composantes orthogonales
-  res <- if (isTRUE(definition$opls)) ajuster_opls(X, Y, A - 1, G) else ajuster_matrices(X, Y, A, G, arret)
+  # OPLS (opls.R) : A = Ap composantes prédictives + A - Ap composantes orthogonales
+  Ap <- if (isTRUE(definition$opls)) definition$Ap %||% 1
+  res <- if (isTRUE(definition$opls)) ajuster_opls(X, Y, max(0, A - Ap), G, Ap) else ajuster_matrices(X, Y, A, G, arret)
 
   modele <- c(list(
-    type = definition$type, plsda = isTRUE(definition$plsda), opls = isTRUE(definition$opls),
+    type = definition$type, plsda = isTRUE(definition$plsda), opls = isTRUE(definition$opls), Ap = Ap,
     A = ncol(res$T), N = nrow(X$E), K = ncol(X$E), G = G,
     nom = definition$name %||% "", titre = definition$title %||% "",
     observations = obs, x = bx, y = by, X = X$E, MX = X$M, Y = if (pls) Y$E, MY = if (pls) Y$M), res)

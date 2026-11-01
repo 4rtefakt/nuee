@@ -112,9 +112,12 @@ function marqueurs(uids, sel, couleur) {
   };
 }
 
-const composantes = (m) => Array.from({ length: m.A }, (_, i) => [i + 1, m.opls ? (i ? `${t('orthogonale')} ${i}` : t('predictive')) : `${t('comp')} ${i + 1}`]);
+// An OPLS has m.Ap predictive components (1...Ap), then orthogonal ones.
+const libelleComp = (m, a) => (!m.opls ? `${t('comp')} ${a}` : a > (m.Ap || 1) ? `${t('orthogonale')} ${a - (m.Ap || 1)}`
+  : (m.Ap || 1) > 1 ? `${t('predictive')} ${a}` : t('predictive'));
+const composantes = (m) => Array.from({ length: m.A }, (_, i) => [i + 1, libelleComp(m, i + 1)]);
 // Name of component a of a vector (t, p, w*...): t[2], or for an OPLS t[1] (predictive) and to[1]...
-export const nomComp = (m, base, a) => (m.opls && a > 1 ? `${base}o[${a - 1}]` : `${base}[${a}]`);
+export const nomComp = (m, base, a) => (m.opls && a > (m.Ap || 1) ? `${base}o[${a - (m.Ap || 1)}]` : `${base}[${a}]`);
 export const estDA = (m) => /-DA$/.test(m.type);
 
 function groupesCouleur(m, loc, ctx) {
@@ -229,7 +232,7 @@ function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom,
   const cellule = (i, c) => {
     const v = valeur(i, c.cle);
     const td = el('td', { class: (c.num || typeof v === 'number' ? 'num' : '') + (c.alerte && c.alerte(i) ? ' alerte' : '') },
-      typeof v === 'number' ? fmt(v, c.decimales ?? 4) : v ?? '');
+      typeof v === 'number' ? (c.format ? c.format(v) : fmt(v, c.decimales ?? 4)) : v ?? '');
     if (modifier && c.modifiable) {
       td.title = t('double_clic_modifier');
       td.addEventListener('dblclick', (e) => {
@@ -311,7 +314,7 @@ function rendreResume(conteneur, ctx, p) {
       m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null));
   const table = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, t('comp')), cols.map(([, n]) => el('th', { class: 'num' }, n)))),
-    el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > 1 ? `O${a - 1}` : 'P') : a),
+    el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > (m.Ap || 1) ? `O${a - (m.Ap || 1)}` : (m.Ap || 1) > 1 ? `P${a}` : 'P') : a),
       cols.map(([k]) => el('td', { class: 'num' }, fmt(c[k][i]), s && s[k] && k !== 'valeur_propre' ? marque(c[k][i], s[k][i]) : null))))));
   const note = s ? el('p', { class: 'note' }, el('span', { class: 'marque egal' }, '='), ' ', el('span', { class: 'marque proche' }, '≈'), ' ',
     el('span', { class: 'marque diff' }, '≠'), ' ', t('valeurs_fichier'), m.type === 'PCA' ? '. ' + t('note_q2_acp') : '') : null;
@@ -327,7 +330,7 @@ function rendreResume(conteneur, ctx, p) {
   } }, enCours ? enCours[0] : m.note || '');
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes, table, note, graphe));
   if (enCours) { notes.focus(); notes.setSelectionRange(enCours[1], enCours[2]); }
-  const x = c.composante.map((a) => (m.opls ? (a > 1 ? `${t('orthogonale')} ${a - 1}` : t('predictive')) : `${t('comp')} ${a}`));
+  const x = c.composante.map((a) => libelleComp(m, a));
   tracer(ctx, graphe, [
     { type: 'bar', name: pls ? 'R2Y(cum)' : 'R2X(cum)', x, y: pls ? c.R2Ycum : c.R2Xcum, marker: { color: '#3b9a5b' } },
     { type: 'bar', name: 'Q2(cum)', x, y: c.Q2cum, marker: { color: '#2f6fb5' } }],
@@ -993,6 +996,159 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
   tracer(ctx, graphe, traces, lay);
 }
 
+// Class models (one PCA per class, Wold 1976): every observation's distance (DModX) to two of
+// the group's models, with each model's critical limit (Coomans et al., 1984). Below the
+// limit of a model, the observation belongs to its class: to one class, several, or none. The
+// table gives, for each known class, the share of its observations each model accepts, then
+// every observation's distances and classes. Computed in R (modeles_classe.R).
+async function rendreCoomans(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  if (!loc.res || loc.cle !== m.id) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    loc.res = await ctx.demander('appartenance', { modele: m.id });
+    loc.cle = m.id;
+  }
+  const r = loc.res;
+  const classes = [].concat(r.classes);
+  const dcrit = [].concat(r.dcrit);  // in the order of the classes
+  const o = r.observations;
+  const noms = [].concat(o.nom);
+  const vraie = [].concat(o.classe);
+  if (!classes.includes(loc.x)) loc.x = m.classe_modele && classes.includes(m.classe_modele) ? m.classe_modele : classes[0];
+  if (!classes.includes(loc.y) || loc.y === loc.x) loc.y = classes.find((c) => c !== loc.x) || classes[0];
+  const dx = [].concat(o[`DModX ${loc.x}`]);
+  const dy = [].concat(o[`DModX ${loc.y}`]);
+  const graphe = el('div', { class: 'graphe' });
+  const bas = el('div', { class: 'bas' });
+  const tableParts = el('table', { class: 'tableau compact' },
+    el('thead', {}, el('tr', {}, el('th', {}, r.variable), el('th', { class: 'num' }, 'n'), classes.map((c) => el('th', { class: 'num' }, `${t('modele_court')} ${c}`)))),
+    el('tbody', {}, [].concat(r.table).map((l) => el('tr', {}, el('td', {}, l.classe), el('td', { class: 'num' }, l.n),
+      [].concat(l.parts).map((v, k) => el('td', { class: 'num' + (l.classe === classes[k] ? ' choisie' : '') }, `${fmt(100 * v, 0)} %`))))));
+  conteneur.replaceChildren(outils(
+    choix(t('axe_x'), classes.map((c) => [c, c]), loc.x, (v) => { loc.x = v; ctx.rafraichir(); }),
+    choix(t('axe_y'), classes.filter((c) => c !== loc.x).map((c) => [c, c]), loc.y, (v) => { loc.y = v; ctx.rafraichir(); }),
+    el('span', { class: 'infos' }, t('coomans_note'))), graphe, el('div', { class: 'defile', style: 'max-height:30%' }, tableParts), bas);
+  const c = couleursTheme();
+  const groupes = [...new Set(vraie.map((v) => v ?? '?'))];
+  const traces = groupes.map((g, k) => {
+    const idx = vraie.map((v, i) => i).filter((i) => (vraie[i] ?? '?') === g);
+    return { type: 'scatter', mode: 'markers', name: g, x: idx.map((i) => dx[i]), y: idx.map((i) => dy[i]), text: idx.map((i) => noms[i]),
+      marker: { color: g === '?' ? c.doux : PALETTE[k % PALETTE.length], size: 7 * FORMAT.points },
+      hovertemplate: `%{text} (${g})<br>DModX ${loc.x} = %{x:.2f}<br>DModX ${loc.y} = %{y:.2f}<extra></extra>` };
+  });
+  const lx = dcrit[classes.indexOf(loc.x)];
+  const ly = dcrit[classes.indexOf(loc.y)];
+  tracer(ctx, graphe, traces, { title: { text: `Coomans · ${loc.x} / ${loc.y}` }, dragmode: 'zoom', showlegend: true,
+    xaxis: { title: { text: `DModX ${loc.x}` }, rangemode: 'tozero' },
+    yaxis: { title: { text: `DModX ${loc.y}` }, rangemode: 'tozero' },
+    shapes: [{ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: lx, x1: lx, line: { dash: 'dot', color: '#d1495b', width: 1 } },
+      { type: 'line', xref: 'paper', x0: 0, x1: 1, y0: ly, y1: ly, line: { dash: 'dot', color: '#d1495b', width: 1 } }] });
+  loc.table ??= {};
+  tableau(bas, ctx, loc.table, {
+    n: noms.length, nom: 'Classes',
+    colonnes: [{ cle: 'nom', titre: t('observations') }, { cle: 'classe', titre: r.variable }]
+      .concat(classes.map((k, j) => ({ cle: `DModX ${k}`, titre: `DModX ${k}`, num: true, decimales: 2, alerte: (i) => [].concat(o[`DModX ${k}`])[i] > dcrit[j] })),
+        [{ cle: 'classes', titre: t('classes_acceptees') }]),
+    valeur: (i, k) => (k === 'nom' ? noms[i] : [].concat(o[k])[i]),
+  });
+}
+
+// Tests variable by variable, computed in R: each quantitative variable compared between the
+// classes of a qualitative one, p-values corrected for multiple testing. Two classes: t-test
+// or Mann–Whitney, and a volcano plot (effect against -log10 p, the variables that pass both
+// cut-offs coloured); all classes: ANOVA or Kruskal–Wallis, and the variables ranked.
+const valeurP = (v) => (v === null || v === undefined ? '' : v < 1e-4 ? v.toExponential(1) : v.toFixed(4));
+async function rendreTests(conteneur, ctx, p, loc) {
+  const proj = ctx.projet(p.projet);
+  const quals = proj.variables.filter((v) => v.qualitative && [].concat(v.categories).length >= 2);
+  if (!quals.length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('tests_sans_classe'))); return; }
+  const v = quals.find((x) => x.uid === loc.classe) || quals[0];
+  loc.classe = v.uid;
+  const cats = [].concat(v.categories);
+  loc.comparaison ??= 'deux';
+  const deux = loc.comparaison === 'deux';
+  if (!cats.includes(loc.a)) loc.a = cats[0];
+  if (!cats.includes(loc.b) || loc.b === loc.a) loc.b = cats.find((c) => c !== loc.a);
+  const tests = deux ? [['welch', t('test_welch')], ['student', t('test_student')], ['mann_whitney', 'Mann–Whitney']]
+    : [['anova', 'ANOVA'], ['kruskal', 'Kruskal–Wallis']];
+  if (!tests.some(([k]) => k === loc.test)) loc.test = tests[0][0];
+  loc.correction ??= 'BH';
+  loc.seuil ??= 0.05;
+  const cle = JSON.stringify([v.uid, deux ? [loc.a, loc.b] : null, loc.test, loc.correction]);
+  if (loc.cle !== cle) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    loc.res = await ctx.demander('tests_variables', { projet: p.projet, classe: v.uid, groupes: deux ? [loc.a, loc.b] : null,
+      test: loc.test, correction: loc.correction });
+    loc.cle = cle;
+  }
+  const tab = loc.res.tableau;
+  const col = (k) => [].concat(tab[k]);
+  const noms = col('nom');
+  const n = noms.length;
+  const pv = col('p');
+  const pa = col('p_ajuste');
+  const log2 = deux ? col('log2_rapport') : [];
+  const log2Complet = log2.every((x) => x !== null);
+  if (deux && !(loc.axe === 'd' || (loc.axe === 'log2' && log2Complet))) loc.axe = log2Complet ? 'log2' : 'd';
+  const effet = deux ? (loc.axe === 'log2' ? log2 : col('d')) : [];
+  const seuilsEffet = loc.axe === 'log2' ? [[0, t('aucun')], [0.585, '× 1,5'], [1, '× 2']] : [[0, t('aucun')], [0.5, '0,5'], [0.8, '0,8']];
+  if (!seuilsEffet.some(([k]) => k === loc.effet)) loc.effet = seuilsEffet[0][0];
+  const retenue = (i) => pa[i] !== null && pa[i] <= loc.seuil && (!deux || (effet[i] !== null && Math.abs(effet[i]) >= loc.effet));
+  const nRetenues = noms.filter((_, i) => retenue(i)).length;
+  const graphe = el('div', { class: 'graphe' });
+  const bas = el('div', { class: 'bas' });
+  const nomTest = Object.fromEntries(tests)[loc.test];
+  const nomCorrection = { BH: t('correction_bh'), bonferroni: 'Bonferroni', aucune: t('aucune') }[loc.correction];
+  conteneur.replaceChildren(outils(
+    choix(t('classe_variable'), quals.map((q) => [q.uid, q.nom]), v.uid, (x) => { loc.classe = Number(x); ctx.rafraichir(); }),
+    choix('', [['deux', t('deux_classes')], ['toutes', t('toutes_classes')]], loc.comparaison, (x) => { loc.comparaison = x; ctx.rafraichir(); }),
+    deux ? choix('A', cats.map((c) => [c, c]), loc.a, (x) => { loc.a = x; ctx.rafraichir(); }) : null,
+    deux ? choix('B', cats.filter((c) => c !== loc.a).map((c) => [c, c]), loc.b, (x) => { loc.b = x; ctx.rafraichir(); }) : null,
+    choix(t('test'), tests, loc.test, (x) => { loc.test = x; ctx.rafraichir(); }),
+    choix(t('correction'), [['BH', t('correction_bh')], ['bonferroni', 'Bonferroni'], ['aucune', t('aucune')]], loc.correction, (x) => { loc.correction = x; ctx.rafraichir(); }),
+    choix(t('seuil_p'), [[0.01, '0,01'], [0.05, '0,05'], [0.1, '0,1']], loc.seuil, (x) => { loc.seuil = Number(x); ctx.rafraichir(); }),
+    deux ? choix(t('effet'), [['log2', t('effet_log2')], ['d', t('effet_d')]], loc.axe, (x) => { loc.axe = x; ctx.rafraichir(); }) : null,
+    deux ? choix(t('seuil_effet'), seuilsEffet, loc.effet, (x) => { loc.effet = Number(x); ctx.rafraichir(); }) : null),
+    el('p', { class: 'note' }, t(deux ? 'tests_note_deux' : 'tests_note_toutes', { test: nomTest, correction: nomCorrection, a: loc.a, b: loc.b, n: nRetenues, total: n })),
+    graphe, bas);
+  const c = couleursTheme();
+  if (deux) {
+    const y = pv.map((x) => (x === null ? null : -Math.log10(Math.max(x, 1e-300))));
+    const couleur = noms.map((_, i) => (!retenue(i) ? c.doux : effet[i] > 0 ? '#d1495b' : PALETTE[0]));
+    const etiquettes = noms.map((_, i) => i).filter(retenue).sort((i, j) => pv[i] - pv[j]).slice(0, 12);
+    const ligneP = Math.max(...noms.map((_, i) => (pa[i] !== null && pa[i] <= loc.seuil ? pv[i] : -1)));
+    const formes = [];
+    if (ligneP > 0) formes.push({ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: -Math.log10(ligneP), y1: -Math.log10(ligneP), line: { dash: 'dot', color: c.doux, width: 1 } });
+    for (const s of loc.effet > 0 ? [-loc.effet, loc.effet] : []) formes.push({ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: s, x1: s, line: { dash: 'dot', color: c.doux, width: 1 } });
+    tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', x: effet, y, text: noms, marker: { color: couleur, size: 7 * FORMAT.points },
+      customdata: noms.map((_, i) => [valeurP(pv[i]), valeurP(pa[i])]),
+      hovertemplate: `%{text}<br>${loc.axe === 'log2' ? 'log2(B/A)' : 'd'} = %{x:.3f}<br>p = %{customdata[0]} · ${t('p_ajuste')} = %{customdata[1]}<extra></extra>` },
+    { type: 'scatter', mode: 'text', x: etiquettes.map((i) => effet[i]), y: etiquettes.map((i) => y[i]), text: etiquettes.map((i) => noms[i]),
+      textposition: 'top center', textfont: { size: FORMAT.taille - 2 }, hoverinfo: 'skip' }],
+    { title: { text: `${t('volcan')} · ${loc.b} / ${loc.a}` }, showlegend: false, dragmode: 'zoom', shapes: formes,
+      xaxis: { title: { text: loc.axe === 'log2' ? t('effet_log2_axe', { a: loc.a, b: loc.b }) : t('effet_d_axe', { a: loc.a, b: loc.b }) } },
+      yaxis: { title: { text: '-log10(p)' } } });
+  } else {
+    const ordre = noms.map((_, i) => i).filter((i) => pa[i] !== null).sort((i, j) => pa[i] - pa[j]).slice(0, 40);
+    tracer(ctx, graphe, [{ type: 'bar', x: ordre.map((i) => noms[i]), y: ordre.map((i) => -Math.log10(Math.max(pa[i], 1e-300))),
+      marker: { color: ordre.map((i) => (retenue(i) ? '#d1495b' : c.doux)) }, hovertemplate: `%{x}<br>${t('p_ajuste')} = %{customdata}<extra></extra>`,
+      customdata: ordre.map((i) => valeurP(pa[i])) }],
+    { title: { text: `${nomTest} · ${v.nom}` }, dragmode: false, xaxis: { tickangle: -45, tickfont: { size: 9 } },
+      yaxis: { title: { text: `-log10(${t('p_ajuste')})` } },
+      shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: -Math.log10(loc.seuil), y1: -Math.log10(loc.seuil), line: { dash: 'dot', color: c.doux, width: 1 } }] });
+  }
+  loc.table ??= { tri: { cle: 'p', sens: 1 } };
+  const num = (cle, titre, decimales, format) => ({ cle, titre, num: true, decimales, format, alerte: cle === 'p_ajuste' ? retenue : undefined });
+  const moyennes = deux ? [num('moyenne_a', `${t('moyenne')} A`), num('moyenne_b', `${t('moyenne')} B`)]
+    : cats.map((k) => num(`moyenne ${k}`, `${t('moyenne')} ${k}`));
+  tableau(bas, ctx, loc.table, {
+    n, nom: 'Tests',
+    colonnes: [{ cle: 'nom', titre: t('variables') }].concat(deux ? [num('n_a', 'n A', 0), num('n_b', 'n B', 0)] : [], moyennes,
+      deux ? [num('log2_rapport', 'log2(B/A)', 3), num('d', 'd', 3)] : [], [num('statistique', t('statistique'), 3), num('p', 'p', 4, valeurP), num('p_ajuste', t('p_ajuste'), 4, valeurP)]),
+    valeur: (i, k) => (k === 'nom' ? noms[i] : [].concat(tab[k])[i]),
+  });
+}
+
 // The project's audit trail, kept in the .usp: when each model was made or changed, in which
 // version of the program, by whom. Can be narrowed to one model.
 async function rendreHistorique(conteneur, ctx, p, loc) {
@@ -1139,6 +1295,7 @@ export const VUES = {
   scores: { rendre: rendreScores, titre: (m) => `${m.nom} · ${t('scores')}` },
   loadings: { rendre: rendreLoadings, titre: (m) => `${m.nom} · ${t('loadings')}` },
   profils: { rendre: rendreProfils, titre: (m) => `${m.nom} · ${t('profils')}` },
+  coomans: { rendre: rendreCoomans, titre: (m) => `${m.groupe || m.nom} · Coomans` },
   dmodx: { rendre: (c, x, p, l) => rendreLigneObs(c, x, p, l, 'dmodx'), titre: (m) => `${m.nom} · DModX` },
   t2: { rendre: (c, x, p, l) => rendreLigneObs(c, x, p, l, 't2'), titre: (m) => `${m.nom} · T²` },
   vip: { rendre: rendreVIP, titre: (m) => `${m.nom} · VIP` },
@@ -1157,6 +1314,7 @@ export const VUES = {
   classification: { rendre: rendreClassification, titre: (m) => `${m.nom} · ${t('classification')}` },
   donnees: { rendre: rendreDonnees, titre: (_, p) => `${p.nom || ''} · ${t('donnees')}`, projet: true },
   statistiques: { rendre: rendreStatistiques, titre: (_, p) => `${p.nom || ''} · ${t('statistiques')}`, projet: true },
+  tests: { rendre: rendreTests, titre: (_, p) => `${p.nom || ''} · ${t('tests_variables')}`, projet: true },
   historique: { rendre: rendreHistorique, titre: (_, p) => `${p.nom || ''} · ${t('historique')}`, projet: true },
   comparaison: { rendre: rendreComparaison, titre: () => t('comparaison'), global: true },
 };

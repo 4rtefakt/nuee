@@ -9,7 +9,7 @@
 #   .dta                      Stata            (haven)
 #   .sas7bdat .xpt            SAS              (haven)
 #   .omv                      jamovi           (lu ici : lire_omv)
-#   .dbf                      dBase            (paquet foreign)
+#   .dbf                      dBase            (lu par foreign : lire_dbf ; écrit ici)
 #   .arff                     Weka             (lu ici : lire_arff ; écrit par foreign)
 # Écriture : ecrire_tableau() écrit un data.frame dans l'un de ces formats (sauf .xls, .por,
 # .sas7bdat, que les logiciels lisent mal quand un autre programme les écrit).
@@ -54,7 +54,7 @@ lire_tableau <- function(chemin, table = NULL) {
     sas7bdat = haven::read_sas(chemin),
     xpt = haven::read_xpt(chemin),
     omv = lire_omv(chemin),
-    dbf = foreign::read.dbf(chemin, as.is = TRUE),
+    dbf = lire_dbf(chemin),
     arff = lire_arff(chemin),
     stop("Format de fichier non reconnu : .", ext))
   vers_data_frame(x)
@@ -226,6 +226,70 @@ lire_arff <- function(chemin) {
   stats::setNames(as.data.frame(colonnes, stringsAsFactors = FALSE, col.names = paste0("V", seq_along(noms))), noms)
 }
 
+# ---------------------------------------------------------------- dBase (.dbf)
+
+# Les textes d'un fichier dBase sont dans la page de code que donne l'octet 29 de l'en-tête,
+# ou un fichier .cpg à côté (comme pour les fichiers de formes des SIG) ; sans indication, en
+# UTF-8 s'ils en sont, en Windows-1252 sinon.
+PAGES_DBF <- c("01" = "CP437", "02" = "CP850", "03" = "CP1252", "57" = "CP1252", "58" = "CP1252",
+               "64" = "CP852", "65" = "CP866", "c8" = "CP1250", "c9" = "CP1251", "ca" = "CP1254", "cb" = "CP1253")
+
+lire_dbf <- function(chemin) {
+  x <- foreign::read.dbf(chemin, as.is = TRUE)
+  page <- unname(PAGES_DBF[as.character(readBin(chemin, "raw", 30)[30])])
+  cpg <- sub("\\.dbf$", ".cpg", chemin, ignore.case = TRUE)
+  if (is.na(page) && file.exists(cpg)) page <- sub("^(ANSI ?|CP)?([0-9]+)$", "CP\\2", toupper(trimws(readLines(cpg, 1, warn = FALSE))))
+  textes <- c(names(x), unlist(Filter(is.character, x)))
+  if (is.na(page)) page <- if (all(validUTF8(textes[!is.na(textes)]))) "UTF-8" else "CP1252"
+  names(x) <- iconv(names(x), page, "UTF-8")
+  x[] <- lapply(x, function(v) if (is.character(v)) iconv(v, page, "UTF-8") else v)
+  x
+}
+
+# dBase III : une colonne de texte (C) ou de nombres (N) par variable, chaque valeur écrite en
+# caractères sur une largeur fixe ; une valeur manquante reste en blanc. Les textes en
+# Windows-1252, déclaré dans l'en-tête (0x57, que lisent les SIG et LibreOffice), les noms de
+# 10 caractères. Un nombre a 19 caractères au plus : jusqu'à 15 décimales, moins pour les
+# grands nombres.
+ecrire_dbf <- function(df, chemin) {
+  octets <- function(r, largeur, a_droite = FALSE) {  # r complété par des espaces
+    r <- r[seq_len(min(length(r), largeur))]
+    blanc <- rep(as.raw(0x20), largeur - length(r))
+    if (a_droite) c(blanc, r) else c(r, blanc)
+  }
+  champs <- lapply(df, function(x) {
+    if (is.logical(x)) x <- as.integer(x)
+    if (is.numeric(x)) {
+      fini <- x[is.finite(x)]
+      chiffres <- max(1, nchar(format(trunc(abs(fini)), scientific = FALSE, trim = TRUE)))
+      signe <- as.integer(any(fini < 0))
+      dec <- if (all(fini == round(fini))) 0 else max(0, min(15, 18 - chiffres - signe))
+      largeur <- chiffres + signe + if (dec) dec + 1 else 0
+      if (largeur > 19) stop("Nombre trop grand pour un fichier dBase : ", max(abs(fini)))
+      texte <- ifelse(is.finite(x), formatC(x, format = "f", digits = dec, width = largeur), "")
+      valeurs <- lapply(texte, function(t) octets(charToRaw(t), largeur, TRUE))
+      return(list(type = "N", largeur = largeur, dec = dec, valeurs = valeurs))
+    }
+    texte <- enc2utf8(as.character(x))
+    brut <- iconv(ifelse(is.na(texte), "", texte), "UTF-8", "CP1252//TRANSLIT", sub = "?", toRaw = TRUE)
+    largeur <- min(254, max(1, lengths(brut)))
+    list(type = "C", largeur = largeur, dec = 0, valeurs = lapply(brut, octets, largeur))
+  })
+  n <- nrow(df)
+  largeurs <- vapply(champs, function(ch) ch$largeur, 0)
+  entier <- function(v, taille) writeBin(as.integer(v), raw(), size = taille, endian = "little")
+  date <- as.POSIXlt(Sys.Date())
+  en_tete <- c(as.raw(0x03), as.raw(c(date$year %% 256, date$mon + 1, date$mday)), entier(n, 4),
+               entier(32 + 32 * length(champs) + 1, 2), entier(1 + sum(largeurs), 2), raw(17), as.raw(0x57), raw(2))
+  descripteurs <- unlist(Map(function(nom, ch) {
+    c(charToRaw(nom), raw(11 - nchar(nom)), charToRaw(ch$type), raw(4), as.raw(c(ch$largeur, ch$dec)), raw(14))
+  }, noms_pour_format(names(df), 10), champs), use.names = FALSE)
+  # une ligne par observation : un espace (ligne non effacée), puis les valeurs bout à bout
+  lignes <- do.call(rbind, c(list(matrix(as.raw(0x20), 1, n)),
+                             lapply(champs, function(ch) matrix(unlist(ch$valeurs), ch$largeur, n))))
+  writeBin(c(en_tete, descripteurs, as.raw(0x0D), as.vector(lignes), as.raw(0x1A)), chemin)
+}
+
 # ---------------------------------------------------------------- jamovi (.omv)
 
 # Un fichier jamovi est une archive zip : metadata.json décrit les colonnes, xdata.json les
@@ -321,19 +385,23 @@ ecrire_omv <- function(df, chemin) {
     champs[[k]] <- champ
   }
   close(bin)
-  fichiers <- c("meta", "metadata.json", "xdata.json", "data.bin", "index.html")
+  fichiers <- c("META-INF/MANIFEST.MF", "meta", "metadata.json", "xdata.json", "data.bin", "index.html")
   if (taille > 0) {
     writeBin(unlist(chaines), file.path(dossier, "strings.bin"))
     fichiers <- c(fichiers, "strings.bin")
   }
-  json <- function(x, f) writeLines(enc2utf8(as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA))),
-                                    file.path(dossier, f), useBytes = TRUE)
+  # des fins de ligne « \n » : jamovi refuse un manifeste aux fins de ligne Windows
+  texte <- function(lignes, f) writeBin(charToRaw(enc2utf8(paste0(lignes, "\n", collapse = ""))), file.path(dossier, f))
+  json <- function(x, f) texte(as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA)), f)
   json(list(dataSet = list(rowCount = n, columnCount = ncol(df), removedRows = list(), addedRows = list(),
                            fields = champs, transforms = list())), "metadata.json")
   json(if (length(xdata)) xdata else stats::setNames(list(), character(0)), "xdata.json")
-  writeLines(c("Manifest-Version: 1.0", "Data-Archive-Version: 1.0.2", "jamovi-Archive-Version: 11.0",
-               "Created-By: Nuee"), file.path(dossier, "meta"))
-  writeLines("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>", file.path(dossier, "index.html"))
+  # le manifeste, en double comme dans les fichiers de jamovi (META-INF/ pour ses anciennes versions)
+  dir.create(file.path(dossier, "META-INF"))
+  for (f in c("meta", "META-INF/MANIFEST.MF")) {
+    texte(c("Manifest-Version: 1.0", "Data-Archive-Version: 1.0.2", "jamovi-Archive-Version: 11.0", "Created-By: Nuee"), f)
+  }
+  texte("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>", "index.html")
   if (file.exists(chemin)) file.remove(chemin)
   zip::zip(normalizePath(chemin, mustWork = FALSE), files = fichiers, root = dossier)
   invisible(chemin)
@@ -368,9 +436,13 @@ noms_pour_format <- function(noms, max) {
 # Écrit un data.frame dans le format de l'extension du chemin.
 ecrire_tableau <- function(df, chemin, objet = "donnees") {
   ext <- extension(chemin)
-  renomme <- function(df, max) {
+  renomme <- function(df, max, octets_etiquette = Inf) {
     noms <- noms_pour_format(names(df), max)
-    for (k in seq_along(df)) if (!identical(noms[k], names(df)[k])) attr(df[[k]], "label") <- names(df)[k]
+    for (k in seq_along(df)) if (!identical(noms[k], names(df)[k])) {
+      etiquette <- enc2utf8(names(df)[k])
+      while (nchar(etiquette, "bytes") > octets_etiquette) etiquette <- substr(etiquette, 1, nchar(etiquette) - 1)
+      attr(df[[k]], "label") <- etiquette
+    }
     names(df) <- noms
     df
   }
@@ -393,12 +465,22 @@ ecrire_tableau <- function(df, chemin, objet = "donnees") {
     rdata = , rda = { e <- new.env(); assign(objet, r_noms_lignes(df), envir = e); save(list = objet, envir = e, file = chemin) },
     sav = haven::write_sav(renomme(logiques_en_nombres(df), 64), chemin),
     dta = haven::write_dta(renomme(logiques_en_nombres(df), 32), chemin),
-    xpt = {  # pas d'étiquettes de valeurs en SAS transport : les modalités s'écrivent en texte
-      df[] <- lapply(df, function(x) if (is.factor(x)) as.character(x) else x)
-      haven::write_xpt(renomme(logiques_en_nombres(df), 32), chemin, version = 8)
+    xpt = {  # pas d'étiquettes de valeurs en SAS transport : les modalités s'écrivent en texte.
+      # La version 5, que lisent SAS (libname xport), Stata, SPSS et pandas : noms de 8
+      # caractères, étiquettes de 40 octets, textes de 200 octets.
+      df[] <- lapply(df, function(x) {
+        if (is.factor(x)) x <- as.character(x)
+        if (is.character(x)) x <- vapply(enc2utf8(x), function(v) {
+          while (!is.na(v) && nchar(v, "bytes") > 200) v <- substr(v, 1, nchar(v) - 1)
+          v
+        }, "", USE.NAMES = FALSE)
+        x
+      })
+      haven::write_xpt(renomme(logiques_en_nombres(df), 8, 40), chemin, version = 5,
+                       name = noms_pour_format(objet, 8))
     },
     omv = ecrire_omv(df, chemin),
-    dbf = foreign::write.dbf(stats::setNames(logiques_en_nombres(df), noms_pour_format(names(df), 10)), chemin, factor2char = TRUE),
+    dbf = ecrire_dbf(df, chemin),
     arff = foreign::write.arff(logiques_en_nombres(df), chemin, relation = objet),
     stop("Format d'export non reconnu : .", ext))
   invisible(chemin)
@@ -434,7 +516,7 @@ ecrire_tables <- function(tables, chemin, objet = "resultats") {
   }
   base <- sub("\\.[^.]+$", "", chemin)
   chemins <- c(chemin, sprintf("%s - %s.%s", base, names(tables)[-1], tools::file_ext(chemin)))
-  for (i in seq_along(tables)) ecrire_tableau(tables[[i]], chemins[i])
+  for (i in seq_along(tables)) ecrire_tableau(tables[[i]], chemins[i], objet = sub("\\.[^.]+$", "", basename(chemins[i])))
   chemins
 }
 

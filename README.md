@@ -18,8 +18,10 @@
 Nuée (French for *swarm*) is a desktop application for multivariate data analysis. Open a
 table from Excel, R, SPSS, Stata, SAS or jamovi (or paste one), pick your variables, and get
 the model with its scores, loadings, diagnostics and validation, in plots you can zoom, select
-and colour. Send the data and the results back to any of those programs. Every calculation is
-written in R, with comments, so you can check exactly what was computed, and change it.
+and colour. Send the data and the results back to any of those programs, take the paragraph
+for your Methods section, or export a script or an R Markdown / Quarto report that refits the
+model in plain R, without Nuée. Every calculation is written in R, with comments, so you can
+check exactly what was computed, and change it.
 
 The interface is in French and English (*Affichage › Langue* / *View › Language*); the
 screenshots show it in French.
@@ -59,8 +61,10 @@ and [LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)).
 
 ## What it does
 
-**Methods:** PCA, PLS, PLS-DA, and OPLS / OPLS-DA, with missing values handled by NIPALS and
-7-fold cross-validation (R2, Q2, and Q2 per variable).
+**Methods:** PCA, PLS, PLS-DA, and OPLS / OPLS-DA (several Y or more than two classes give
+several predictive components), with missing values handled by NIPALS and 7-fold
+cross-validation (R2, Q2, and Q2 per variable). Class models: one PCA per class, and the
+Coomans plot to tell which class an observation belongs to, several, or none.
 
 **Validation:** permutation tests, CV-ANOVA, PLS-DA classification tables and ROC curves,
 jack-knife confidence intervals.
@@ -69,13 +73,19 @@ jack-knife confidence intervals.
 
 **Variables:** VIP with a cut-off placed automatically (or dragged by hand), coefficients,
 loadings, biplot, refit with the selected variables only. Variable statistics with suggested
-log transformations, histograms and a map of missing values.
+log transformations, histograms and a map of missing values. Tests by variable between two
+classes (Welch's or Student's t, Mann–Whitney) or across all of them (ANOVA, Kruskal–Wallis),
+with the Benjamini–Hochberg correction and a volcano plot.
+
+![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 
 **Observations:** scores in 2D and 3D, Hotelling's T2 and DModX with their limits,
 contribution plots explaining why an observation stands out, hierarchical clustering on the
 scores, classes made from a selection.
 
 ![An OPLS-DA: the S-plot shows which variables separate the two classes](docs/captures/oplsda.png)
+
+![Class models: one PCA per apple variety; the Coomans plot of the distances to two of them, the share of each variety each model accepts, and every apple's distances](docs/captures/coomans.png)
 
 **Spectra:** SNV, MSC and Savitzky–Golay smoothing or derivatives before the model, and
 loadings, coefficients, VIP or the spectra themselves drawn as lines against the wavelength.
@@ -92,7 +102,9 @@ the model's domain, and export the results.
 - data editing and new variables from R formulas or value ranges;
 - several windows, and views that pop out onto a second screen;
 - plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG;
-- a model report as PDF or Word.
+- a model report as PDF or Word;
+- the paragraph for a Methods section, written from the model in French or English, with its
+  references (*Modèle › Texte pour la section Méthodes*).
 
 ## Files
 
@@ -111,7 +123,10 @@ the model's domain, and export the results.
 *Exporter les données* writes the project's table; *Exporter les résultats du modèle* (Ctrl+E)
 writes the observations (scores, T2, DModX, fitted values), the variables (loadings, VIP),
 the components and the coefficients. For SPSS, Stata and SAS, variable names are made valid and
-the original name becomes the variable label.
+the original name becomes the variable label. SAS files use the transport format version 5,
+which SAS reads with `libname xport`; dBase files are in Windows-1252, as LibreOffice and GIS
+software expect. Exported files were opened in jamovi, PSPP (for SPSS), Weka, LibreOffice and
+pandas (for Stata and SAS).
 
 ## R all the way down
 
@@ -121,8 +136,13 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
 - **R console** (*Affichage › Console R*, Ctrl+J): see the R code behind each action, and run
   your own in the application's session, with `m` and `p` standing for the model and project
   on screen.
-- **Export as R script:** any model becomes a commented script that rebuilds it with the
-  engine's functions, to rerun or adapt in RStudio.
+- **Export to R** (*Fichier › Exporter vers R*): any model becomes a script, or an R Markdown
+  or Quarto report, that refits it without Nuée. It holds the data (or reads them from a CSV
+  next to it), the code of the engine functions the model needs, copied with their comments,
+  and the model; it checks the R version and the packages it needs. The report adds the
+  Methods text, tables, plots and references, and compiles in RStudio (*Knit*) or with Quarto.
+  Optionally also a `renv.lock`, the data and fitted model as `.RData`, and an RStudio project.
+  Before writing, Nuée refits the script's model and checks that it gives the same results.
 - **Fix it yourself:** edit a file of the engine, type `recharger_moteur()` in the console, and
   refit.
 

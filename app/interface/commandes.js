@@ -9,6 +9,7 @@ export function creerCommandes(app) {
   const avecSelection = () => avecModele() && app.selection(m()).length > 0;
   const avecPLSDA = () => { const x = app.modele(m()); return !!x && /-DA$/.test(x.type); };
   const avecOPLS = () => { const x = app.modele(m()); return !!x && !!x.opls; };
+  const avecGroupe = () => { const x = app.modele(m()); return !!x && !!x.groupe; };
   const choixVIP = () => app.choixVIP(m()) || [].concat((app.modele(m()).seuil_vip || {}).retenues || []);
   const vue = (nom, cond = avecModele) => ({ icone: ICONES_VUES[nom], actif: cond, action: () => app.ouvrirVue(nom, m()) });
 
@@ -21,6 +22,7 @@ export function creerCommandes(app) {
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: avecModele, action: () => app.exporter(m()) },
     script_r: { icone: 'file-code', actif: avecModele, action: () => app.exporterScript(m()) },
     rapport: { icone: 'file-text', actif: avecModele, action: () => app.rapport(m()) },
+    texte_methodes: { icone: 'quote', actif: avecModele, action: () => app.texteMethodes(m()) },
     fermer_projet: { actif: () => !!app.projetActif(), action: () => app.fermerProjet(app.projetActif()) },
     quitter: { raccourci: 'Ctrl+Q', actif: () => !!app.bureau, action: () => app.quitter() },
 
@@ -50,10 +52,11 @@ export function creerCommandes(app) {
     vip: vue('vip', avecPLS), coefficients: vue('coefficients', avecPLS), obspred: vue('obspred', avecPLS),
     dendrogramme: vue('dendrogramme'), liste_obs: vue('liste_obs'), liste_vars: vue('liste_vars'),
     permutations: vue('permutations', avecPLS), cvanova: vue('cvanova', avecPLS), classification: vue('classification', avecPLSDA),
-    contributions: vue('contributions'), biplot: vue('biplot'), scores3d: vue('scores3d'), splot: vue('splot', avecOPLS),
+    contributions: vue('contributions'), biplot: vue('biplot'), scores3d: vue('scores3d'), splot: vue('splot', avecOPLS), coomans: vue('coomans', avecGroupe),
     predire_fichier: { icone: 'file-input', actif: avecModele, action: () => app.predireFichierVue(m()) },
     donnees: { icone: 'database', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('donnees', null, null, app.projetActif()) },
     statistiques: { icone: 'chart-column-big', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('statistiques', null, null, app.projetActif()) },
+    tests: { icone: 'flask-conical', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('tests', null, null, app.projetActif()) },
     predire: { icone: 'target', actif: avecModele, action: () => app.ouvrirVue('predictions', m()) },
     comparaison: { icone: 'columns-2', action: () => app.ouvrirVue('comparaison') },
 
@@ -86,7 +89,7 @@ export const ICONES_VUES = {
   vip: 'chart-bar', coefficients: 'chart-column', obspred: 'sigma', dendrogramme: 'network',
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
-  statistiques: 'chart-column-big', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
+  statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
 };
 
 // A menu item for a command, evaluated now (enabled state, check mark).
@@ -112,10 +115,10 @@ export function menus(app, C) {
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable')] },
     { cle: 'm_modele', items: () => [it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
-      it('reajuster_vip'), '-', it('scores_variables'), '-', it('supprimer_modele')] },
+      it('reajuster_vip'), '-', it('scores_variables'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
       it('vip'), it('coefficients'), it('obspred'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
-      it('dendrogramme'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques')] },
+      it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
     { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },

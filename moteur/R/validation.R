@@ -12,7 +12,7 @@ permutations <- function(m, y = 1, n = 20, graine = 1) {
   Y <- list(E = m$Y, M = m$MY)
   A <- m$A
   mesure <- function(Yp) {
-    r <- if (isTRUE(m$opls)) ajuster_opls(X, Yp, A - 1, m$G) else ajuster_matrices(X, Yp, A, m$G)
+    r <- if (isTRUE(m$opls)) ajuster_opls(X, Yp, A - (m$Ap %||% 1), m$G, m$Ap %||% 1) else ajuster_matrices(X, Yp, A, m$G)
     c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$ssyv[y, 1]), Q2 = 1 - prod(r$press[, y] / r$ss_vc[, y]))
   }
   present <- Y$M[, y] == 1

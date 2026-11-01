@@ -14,8 +14,9 @@ predire <- function(projet, m, definition, observations) {
   A <- m$A
   n <- nrow(E)
   T <- matrix(NA_real_, n, A)
-  # OPLS : les composantes orthogonales (2...) sont retirées avant la prédictive (1)
-  ordre <- if (isTRUE(m$opls)) c(seq_len(A)[-1], 1) else seq_len(A)
+  # OPLS : les composantes orthogonales (après les Ap prédictives) sont retirées avant les prédictives
+  Ap <- m$Ap %||% 1
+  ordre <- if (isTRUE(m$opls)) c(seq_len(A)[-seq_len(Ap)], seq_len(Ap)) else seq_len(A)
   for (a in ordre) {
     v <- if (pls) m$W[, a] else m$P[, a]
     tt <- projeter(E, X$M, v)

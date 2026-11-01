@@ -67,7 +67,9 @@ journaliser <- function(nom, q, r) {
     statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
-    script_r = sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur())", pm(q$modele), code_r(q$modele), code_r(r$script)),
+    script_r = sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur(), m = %s, donnees = %s%s)", pm(q$modele), code_r(q$modele),
+                       code_r(r$script), q$modele, code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
+                       paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = "")),
     NULL)
   if (length(lignes)) noter("appel", lignes)
 }

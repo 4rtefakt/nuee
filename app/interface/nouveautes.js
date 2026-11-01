@@ -1,6 +1,23 @@
 // What changed in each version, shown once after an update (and in Aide › Quoi de neuf).
 // The first entry is the current version.
 export const NOUVEAUTES = [
+  { version: '0.8.0', date: '2026-11-01',
+    fr: [
+      'Fichier › Exporter vers R : un script, ou un rapport R Markdown ou Quarto, qui refait le modèle sans Nuée, avec R seul (le code du moteur y est copié). Données dans le script ou dans un CSV à côté ; en plus, au choix : renv.lock, résultats en .RData, projet RStudio.',
+      'Modèle › Texte pour la section Méthodes : un paragraphe écrit d’après le modèle, en français ou en anglais, avec ses références.',
+      'Graphiques › Tests par variable : chaque variable comparée entre deux classes (t de Welch ou de Student, Mann–Whitney) ou entre toutes (ANOVA, Kruskal–Wallis), avec la correction de Benjamini–Hochberg et un graphique volcan.',
+      'Nouveau modèle › Modèles de classe : une ACP par classe, et le graphique de Coomans pour dire à quelle classe une observation appartient (ou à aucune).',
+      'OPLS à plusieurs Y et OPLS-DA à plus de deux classes (plusieurs composantes prédictives).',
+      'Fichiers exportés vérifiés dans jamovi, PSPP (SPSS), Weka, LibreOffice et pandas : jamovi ouvre maintenant les fichiers .omv ; SAS transport en version 5, que lit SAS ; dBase en Windows-1252, valeurs manquantes laissées vides.',
+    ],
+    en: [
+      'File › Export to R: a script, or an R Markdown or Quarto report, that refits the model without Nuée, in plain R (the engine’s code is copied into it). Data in the script or in a CSV next to it; optionally also renv.lock, results as .RData, an RStudio project.',
+      'Model › Text for the Methods section: a paragraph written from the model, in French or English, with its references.',
+      'Plots › Tests by variable: each variable compared between two classes (Welch’s or Student’s t, Mann–Whitney) or across all of them (ANOVA, Kruskal–Wallis), with the Benjamini–Hochberg correction and a volcano plot.',
+      'New model › Class models: one PCA per class, and the Coomans plot to tell which class an observation belongs to (or none).',
+      'OPLS with several Y and OPLS-DA with more than two classes (several predictive components).',
+      'Exported files checked in jamovi, PSPP (SPSS), Weka, LibreOffice and pandas: jamovi now opens the .omv files; SAS transport in version 5, which SAS reads; dBase in Windows-1252, missing values left blank.',
+    ] },
   { version: '0.7.0', date: '2026-11-01',
     fr: [
       'Fichier › Ouvrir lit aussi les fichiers R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka et les anciens classeurs Excel (.xls). Pour un classeur à plusieurs feuilles, l’application demande laquelle ouvrir.',

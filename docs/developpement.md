@@ -13,9 +13,15 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/console.R` | The R console: log of engine calls, prompt in the application's session |
 | `moteur/R/formats.R` | Reading and writing tables: text, Excel, R, SPSS, Stata, SAS, jamovi `.omv` (read and written here), dBase, ARFF |
 | `moteur/R/spectres.R` | Spectral preprocessing: SNV, MSC, Savitzky–Golay |
+| `moteur/R/script.R` | Export to R: a standalone script or R Markdown / Quarto report holding the data, the engine functions a model needs (found by following the names each function uses, and copied with their comments) and the model |
+| `moteur/R/methodes.R` | The Methods paragraph and its references, in French or English |
+| `moteur/R/comparaisons.R` | Tests by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis) with multiple-testing correction |
+| `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
 | `moteur/tests/verifier_references.R` | Refits every model of a folder of exported `.usp` projects and compares with the results stored in them |
 | `moteur/tests/verifier_formats.R` | Every export format written and read back; text files as spreadsheets write them; jamovi files compared with `jmvReadWrite` when it is installed |
-| `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, and a PLS on made-up spectra |
+| `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, and a PLS on made-up spectra; the same results as `prospectr` when it is installed |
+| `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, run in a fresh `Rscript --vanilla` without the engine, give the engine's results; reports compile with `knitr` when it is installed |
+| `moteur/tests/verifier_comparaisons.R` | Tests by variable against R's own test functions, class models, OPLS with several predictive components, the Methods text |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
 | `app/tests/essai_api.js` | Check run before each build |
 | `app/icone/` | The logo, drawn by `dessiner_icone.py` |
@@ -35,13 +41,27 @@ npx electron app                               # or the desktop window, which st
 
 `node exemple/creer_exemple.js` rebuilds the example project after an engine change.
 
-Check the file formats and the spectral preprocessing (`jmvReadWrite`, if installed, is only used
-to compare the jamovi reader and writer with another implementation):
+Check the file formats, the spectral preprocessing, the export to R, the tests by variable and
+the class models (`jmvReadWrite`, `prospectr` and `knitr`, if installed, are only used to
+compare with other implementations and to compile the reports):
 
 ```bash
 Rscript moteur/tests/verifier_formats.R
 Rscript moteur/tests/verifier_spectres.R
+Rscript moteur/tests/verifier_script.R
+Rscript moteur/tests/verifier_comparaisons.R
 ```
+
+Before 0.8.0, the exported files were also opened in the programs themselves: jamovi 2.7 (its
+own reader, `jamovi.server.formatio.omv`), PSPP 2.1 (`pspp` with `GET FILE` and `LIST`), Weka 3.8
+(`weka.core.converters.ArffLoader`), LibreOffice 25.8 (headless conversion of the Excel, CSV and
+dBase files) and pandas 3.1 (`read_stata`, and `read_sas` for SAS transport, both its own
+readers). They found three faults, now fixed and covered by `verifier_formats.R`: Windows line
+endings in the jamovi manifest, which jamovi refused; SAS transport written in version 8, which
+`libname xport` and pandas don't read (now version 5); dBase text in UTF-8 without a code page,
+missing numbers written as asterisks. pandas still drops the last row of some small SAS transport
+files: it counts every block of eight spaces in the last 80 bytes as padding, including those
+inside the last row's text.
 
 Check the engine against the results stored in `.usp` projects (exported with
 `convertisseur/export_project.py`):
@@ -59,8 +79,9 @@ cd app && node construire.js <output folder>
 
 The build first runs `app/tests/essai_api.js`. It syntax-checks the interface files, then starts
 the R server and runs the main requests on a small invented table: open, fit PCA/PLS/OPLS/PLS-DA,
-refit, predict, edit, undo, notes, save with session and reopen, R script, console, example
-project, paste, export to every format and reopen, a workbook with two sheets. Any failure stops
+refit, predict, edit, undo, notes, save with session and reopen, standalone R script with its
+options, console, example project, tests by variable, Methods text, class models, an OPLS-DA
+with four classes, paste, export to every format and reopen, a workbook with two sheets. Any failure stops
 the build. `SANS_ESSAI=1` skips it, and `node tests/essai_api.js` runs
 it alone.
 
@@ -119,7 +140,8 @@ Known differences:
 - **PCA Q2:** the stored values include an unpublished step.
   - The Krzanowski method used here gives a median largest difference over components of 0.015 to 0.023 against the stored Q2(cum). It is about 0.01 for v10 models and 0.12 for v11.
   - Four other schemes did worse on all 149 PCA models: one-step projections from the full component, a single NIPALS step, and Wold's element-wise deletion in two patterns.
-- **OPLS:** none of the projects has an OPLS model, so it is checked against theory, not stored results. Its fitted values equal PLS's to 1e-14, and its scores are orthogonal. The cross-validation is full: the whole model is refitted without each group of observations.
+- **OPLS:** none of the projects has an OPLS model, so it is checked against theory, not stored results. With one predictive component its fitted values equal PLS's to 1e-14, and its scores are orthogonal. With several (several Y, or OPLS-DA with more than two classes), each orthogonal weight is the first loading made orthogonal to all the predictive weights (Trygg and Wold, 2002); predictive and orthogonal scores are orthogonal to 1e-16 on complete data. The cross-validation is full: the whole model is refitted without each group of observations.
+- **Standalone R scripts:** for 61 models sampled from the 133 projects (PCA, PLS, PLS-DA), the exported script, run in a fresh R session without the engine, gives the same scores and R2/Q2 to 1e-10.
 - **Transform suggestions:** the published rule doesn't say whether both the skewness and the Min/Max criteria are needed; the app requires both.
 - **Autofit:** PCA's significance limit isn't published, so the engine uses a degrees-of-freedom limit instead.
 - **HCA:** this is exact Ward linkage. Every pair of leaves joined first matches the stored tree, but its top merges differ.

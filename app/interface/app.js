@@ -233,6 +233,14 @@ const app = {
     if (m) dialogueModele(app, etat.projets[m.projet], m.reglages, t('modifier_modele'));
   },
   async ajusterDefinition(q) {
+    if (q.type === 'CLASSES') {  // one PCA per class, then their Coomans plot
+      const r = await occupe(() => demander('modeles_classe', q));
+      const liste = [].concat(r.modeles);
+      for (const res of liste) await garder(res);
+      vuesParDefaut(liste[0].id);
+      app.ouvrirVue('coomans', liste[0].id);
+      return;
+    }
     const res = await occupe(() => demander('ajuster', q));
     await garder(res);
     vuesParDefaut(res.id);
@@ -345,16 +353,37 @@ const app = {
   },
   async exporterScript(id) {
     const m = etat.modeles[id];
-    if (bureau) {
-      const chemin = await bureau.enregistrerSous(`${m.nom}.R`, [{ name: 'Script R', extensions: ['R'] }]);
-      if (!chemin) return;
-      const r = await occupe(() => demander('script_r', { modele: id, chemin }));
-      statut(`${t('script_ecrit')} ${r.script}`);
-    } else {
-      const r = await occupe(() => demander('script_r', { modele: id }));
-      telecharger(r.script);
-      setTimeout(() => telecharger(r.donnees), 1000);
+    const choix = await choisirScript(m.nom);
+    if (!choix) return;
+    const r = await occupe(() => demander('script_r', { modele: id, version: VERSION, langue: langueActuelle(), ...choix }));
+    const chemins = [].concat(r.chemins);
+    if (bureau) statut(chemins.length > 1 ? t('exporte_fichiers', { n: chemins.length, chemin: r.script }) : `${t('script_ecrit')} ${r.script}`);
+    else chemins.forEach((c, i) => setTimeout(() => telecharger(c), i * 800));
+    if (r.ecart) {
+      dialogue({ titre: t('script_ecart_titre'), contenu: el('p', {}, t('script_ecart', { ecart: r.ecart })),
+        boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
     }
+  },
+  // The Methods paragraph written from the model, in French or English, with its references.
+  async texteMethodes(id) {
+    const m = etat.modeles[id];
+    let langue = langueActuelle();
+    const corps = el('div', { class: 'texte-methodes' });
+    const montrer = async () => {
+      const r = await occupe(() => demander('methodes', { modele: id, langue, version: VERSION }));
+      corps.replaceChildren(...[].concat(r.paragraphes).map((x) => el('p', {}, x)), el('h4', {}, t('references')),
+        el('ol', {}, [].concat(r.references).map((x) => el('li', {}, x))));
+    };
+    const langues = el('div', { class: 'boutons-langue' }, [['fr', 'Français'], ['en', 'English']].map(([l, n]) => el('label', { class: 'champ' },
+      el('input', { type: 'radio', name: 'langue-methodes', checked: l === langue, onchange: () => { langue = l; montrer(); } }), el('span', {}, n))));
+    await montrer();
+    dialogue({ titre: t('texte_methodes_titre', { nom: m.nom }), contenu: el('div', {}, el('p', { class: 'note' }, t('texte_methodes_note')), langues, corps),
+      boutons: [{ libelle: t('copier_texte'), action: () => {
+        const texte = [...corps.querySelectorAll('p')].map((x) => x.textContent).join('\n\n') + '\n\n'
+          + [...corps.querySelectorAll('li')].map((x) => x.textContent).join('\n');
+        navigator.clipboard.writeText(texte).then(() => statut(t('texte_copie')));
+        return false;
+      } }, { libelle: t('fermer'), principal: true, action: () => true }] });
   },
   classeSelection(id) {
     const m = etat.modeles[id];
@@ -585,6 +614,37 @@ function choisirExport(titre, nom, plusieursTables) {
         if (!bureau) { resolve({ format: choix }); return true; }
         const f = ECRITURE.find((x) => x.ext === choix);
         bureau.enregistrerSous(`${nom}.${choix}`, [{ name: t(f.cle), extensions: [choix] }]).then((chemin) => resolve(chemin ? { chemin } : null));
+        return true;
+      } }] });
+  });
+}
+
+// The R script dialog: where the data go (in the script, or a CSV file next to it) and the
+// files written next to the script (renv.lock, the data and fitted model in .RData, an RStudio
+// project). Resolves to the choices, with { chemin } on the desktop, or null. Remembered.
+function choisirScript(nom) {
+  return new Promise((resolve) => {
+    const choix = { donnees: lire('script_donnees') === 'csv' ? 'csv' : 'script', format: ['R', 'Rmd', 'qmd'].includes(lire('script_format')) ? lire('script_format') : 'R' };
+    for (const k of ['renv', 'rdata', 'rproj']) choix[k] = lire(`script_${k}`) === 'oui';
+    const radio = (cle, valeur, note) => el('label', { class: 'champ' },
+      el('input', { type: 'radio', name: `script-${cle}`, checked: choix[cle] === valeur, onchange: () => { choix[cle] = valeur; } }),
+      el('span', {}, t(`script_${cle}_${valeur}`)), note ? el('span', { class: 'doux' }, note) : null);
+    const coche = (cle) => el('label', { class: 'champ' },
+      el('input', { type: 'checkbox', checked: choix[cle], onchange: (e) => { choix[cle] = e.target.checked; } }),
+      el('span', {}, t(`script_${cle}`)), el('span', { class: 'doux' }, t(`script_${cle}_note`)));
+    dialogue({ titre: t('script_titre', { nom }), contenu: el('div', { class: 'options-script' },
+      el('p', {}, t('script_texte')),
+      el('h4', {}, t('script_format')), radio('format', 'R', '.R'), radio('format', 'Rmd', '.Rmd'), radio('format', 'qmd', '.qmd'),
+      el('h4', {}, t('script_donnees')), radio('donnees', 'script'), radio('donnees', 'csv'),
+      el('h4', {}, t('script_fichiers')), coche('renv'), coche('rdata'), coche('rproj'),
+      el('p', { class: 'note' }, t('script_note'))), boutons: [
+      { libelle: t('annuler'), action: () => { resolve(null); return true; } },
+      { libelle: bureau ? t('choisir_emplacement') : t('telecharger'), principal: true, action: () => {
+        ecrire('script_donnees', choix.donnees);
+        ecrire('script_format', choix.format);
+        for (const k of ['renv', 'rdata', 'rproj']) ecrire(`script_${k}`, choix[k] ? 'oui' : 'non');
+        if (!bureau) { resolve(choix); return true; }
+        bureau.enregistrerSous(`${nom}.${choix.format}`, [{ name: t(`script_format_${choix.format}`), extensions: [choix.format] }]).then((chemin) => resolve(chemin ? { ...choix, chemin } : null));
         return true;
       } }] });
   });

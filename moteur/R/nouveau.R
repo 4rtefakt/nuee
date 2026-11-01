@@ -18,7 +18,9 @@ importer_texte <- function(texte, nom = "tableau", secondaires = TRUE) {
   projet_depuis_tableau(vers_data_frame(lire_texte_delimite(enc2utf8(texte))), nom, secondaires)
 }
 
-projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE) {
+# `toutes_modalites` : garder aussi les modalités d'un facteur sans observation (script R
+# autonome : les catégories restent celles du projet d'origine).
+projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE) {
   if (!ncol(df) || !nrow(df)) stop("Le tableau est vide")
   premiere_id <- is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
     (is.factor(df[[1]]) || grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE)))
@@ -37,7 +39,7 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE) {
     if (is.numeric(x)) {
       donnees[, k] <- x
     } else {
-      cats <- if (is.factor(x)) levels(droplevels(x)) else sort(unique(stats::na.omit(as.character(x))))
+      cats <- if (is.factor(x)) levels(if (toutes_modalites) x else droplevels(x)) else sort(unique(stats::na.omit(as.character(x))))
       v$categories <- cats
       donnees[, k] <- match(as.character(x), cats)
     }
@@ -99,8 +101,8 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL) 
 }
 
 # Définition d'un modèle.
-#   type : "PCA", "PLS", "PLS-DA", "OPLS" ou "OPLS-DA" (opls.R : un seul Y, ou deux
-#   classes) ; x, y : numéros des variables ; classe : variable
+#   type : "PCA", "PLS", "PLS-DA", "OPLS" ou "OPLS-DA" (opls.R : autant de composantes
+#   prédictives que de Y, ou que de classes moins une) ; x, y : numéros des variables ; classe : variable
 #   qualitative dont les catégories sont les classes d'une PLS-DA ; observations : numéros
 #   des observations retenues (toutes par défaut) ; echelle : "UV", "Par", "Ctr" ou "none",
 #   pour toutes les variables, ou un vecteur nommé par numéro de variable (l'élément
@@ -140,11 +142,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     yt <- termes_variable(projet, classe, "UV")
     # seules les observations dont la classe est connue entrent dans le modèle
     obs <- obs[!is.na(colonne(projet, classe, obs))]
-    if (opls && length(unique(colonne(projet, classe, obs))) != 2) {
-      stop("Une OPLS-DA compare deux classes ; pour plus de classes, utiliser la PLS-DA")
-    }
   }
-  if (opls && !plsda && length(y) != 1) stop("Une OPLS a un seul Y (une composante prédictive)")
+  Ap <- if (opls) (if (plsda) length(unique(colonne(projet, classe, obs))) - 1 else length(y))
+  if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) "Une OPLS-DA demande au moins deux classes" else "Une OPLS demande au moins une variable Y")
+  if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   d <- list(type = if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
             observations = obs, A = A %||% 0, cv_groups = G,
@@ -152,6 +153,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                   unlist(lapply(croises, function(paire) termes_croises(projet, paire, x, ech("defaut"))), recursive = FALSE)),
             y = if (plsda) yt else unlist(lapply(y, function(u) termes_variable(projet, u, ech(u), trans(u))), recursive = FALSE))
   if (plsda) d$classe <- classe
+  if (opls) d$Ap <- Ap
   if (length(spectres)) d$spectres <- spectres
   d
 }
@@ -229,14 +231,15 @@ autoajuster <- function(projet, definition, A_max = NULL) {
   K <- length(definition$x)
   pls <- identical(definition$type, "PLS")
   if (isTRUE(definition$opls)) {
-    # OPLS : la composante prédictive, plus autant de composantes orthogonales que la
+    # OPLS : les composantes prédictives, plus autant de composantes orthogonales que la
     # validation croisée en justifie (règle R1 : chacune doit améliorer la prédiction de Y)
-    Ao_max <- max(0, min(8, K - 1, N - 3))
-    m <- ajuster(projet, definition, A = Ao_max + 1)
+    Ap <- definition$Ap %||% 1
+    Ao_max <- max(0, min(8, K - Ap, N - Ap - 2))
+    m <- ajuster(projet, definition, A = Ao_max + Ap)
     limite <- if (N > 100) 0 else 0.05
     Ao <- 0
-    while (Ao < Ao_max && m$q2[Ao + 2] > limite) Ao <- Ao + 1
-    return(Ao + 1)
+    while (Ao < Ao_max && m$q2[Ap + Ao + 1] > limite) Ao <- Ao + 1
+    return(Ao + Ap)
   }
   A_max <- A_max %||% max(1, min(floor(min(N, K) / 2), 15))
   if (pls) A_max <- max(1, min(A_max, K, N - 2))

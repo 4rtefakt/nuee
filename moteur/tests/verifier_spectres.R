@@ -1,7 +1,7 @@
 # Vérifie le prétraitement des spectres (moteur/R/spectres.R) :
 #   - les coefficients de Savitzky–Golay publiés (fenêtre de 5, degré 2) ;
 #   - un polynôme de degré ≤ 2 est lissé et dérivé exactement, bords compris ;
-#   - SNV et MSC ;
+#   - SNV et MSC ; s'il est installé, les mêmes résultats que le paquet prospectr ;
 #   - un modèle PLS sur des spectres inventés : la prédiction des observations du modèle rend
 #     leurs scores, le script R refait la même définition, le projet enregistré se relit.
 #   Rscript moteur/tests/verifier_spectres.R
@@ -29,6 +29,19 @@ s <- snv(X)
 verifier("SNV : chaque spectre de moyenne 0 et d'écart-type 1", proche(rowMeans(s), rep(0, 3)) && proche(apply(s, 1, sd), rep(1, 3)))
 r <- sin(j / 5) + 2
 verifier("MSC : a + b r redevient r", proche(msc(rbind(1 + 3 * r, -2 + 0.5 * r), r), rbind(r, r)))
+
+if (requireNamespace("prospectr", quietly = TRUE)) {  # s'il est installé : mêmes résultats que prospectr
+  cat("Comparaison avec le paquet prospectr\n")
+  set.seed(7)
+  Z <- t(vapply(1:20, function(i) runif(1, 0.5, 1.5) * sin(seq(0, 6, length.out = 80) + runif(1)) + runif(1) + rnorm(80, 0, 0.01), numeric(80)))
+  verifier("SNV", proche(snv(Z), prospectr::standardNormalVariate(Z), 1e-12))
+  verifier("MSC sur le spectre moyen", proche(msc(Z, colMeans(Z)), prospectr::msc(Z, ref_spectrum = colMeans(Z)), 1e-12))
+  for (cas in list(c(11, 2, 0), c(11, 2, 1), c(15, 3, 2), c(5, 3, 3))) {
+    h <- (cas[1] - 1) / 2
+    verifier(sprintf("Savitzky–Golay fenêtre %d, degré %d, dérivée %d (hors bords, que prospectr retire)", cas[1], cas[2], cas[3]),
+             proche(savitzky_golay(Z, cas[1], cas[2], cas[3])[, (h + 1):(80 - h)], prospectr::savitzkyGolay(Z, m = cas[3], p = cas[2], w = cas[1]), 1e-12))
+  }
+}
 
 cat("Modèle sur des spectres inventés\n")
 set.seed(3)

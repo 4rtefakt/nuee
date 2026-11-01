@@ -97,7 +97,7 @@ Affichage : thème sombre, français / anglais, taille du texte.
 
 Nouveau modèle (Modèle › Nouveau modèle)
 ----------------------------------------
-Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA), nom, nombre de composantes
+Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA, modèles de classe), nom, nombre de composantes
 (automatique par défaut, par validation croisée), groupes de validation croisée,
 échelle par défaut.
 Onglet Variables : rôle (X, Y, classe), échelle et transformation (racine carrée, racine
@@ -182,6 +182,10 @@ derniers, un fichier par tableau (« M1.sav », « M1 - variables.sav »...). Le
 qualitatives restent qualitatives (facteurs R, étiquettes de valeurs SPSS et Stata, nominales
 jamovi). Pour SPSS, Stata, SAS et dBase, les noms de variables sont rendus valides (lettres
 sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable.
+SAS : format de transport version 5, que SAS lit avec libname xport (noms de 8 caractères,
+étiquettes de 40, textes de 200 au plus). dBase : textes en Windows-1252 ; dans LibreOffice,
+choisir le jeu de caractères « Europe occidentale (Windows-1252) » à l'ouverture. Les
+fichiers écrits ont été ouverts dans jamovi, PSPP (pour SPSS), Weka, LibreOffice et pandas.
 
 Spectres
 --------
@@ -199,12 +203,36 @@ loadings, coefficients, VIP, ou les spectres eux-mêmes (avant ou après prétra
 lignes ; l'axe horizontal est le nombre lu dans le nom des variables (« 1450 nm ») quand
 chacune en a un. Un clic sur un spectre sélectionne son observation.
 
-Script R
---------
-Fichier › Exporter en script R : écrit un script commenté (.R) et les données du projet
-(« ... - donnees.json » à côté). Le script charge le moteur, refait le modèle avec ses
-réglages (variables, échelles, transformations, termes croisés, observations) et affiche
-ses résultats : on peut le relire, le modifier et le relancer dans RStudio.
+Exporter vers R (script, R Markdown, Quarto)
+--------------------------------------------
+Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
+envoyer à un collègue ou à joindre à un article. Il contient, dans l'ordre :
+  1. les vérifications : la version de R (4.0 au moins ; un message si elle est plus
+     ancienne que celle de l'application) et les paquets demandés (aucun pour un modèle :
+     R suffit ; s'il en manque, le script propose de les installer) ;
+  2. le code des fonctions du moteur dont le modèle a besoin, copié tel quel avec ses
+     commentaires (licence GPL-3.0) ;
+  3. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
+     les nombres écrits sans perte et les catégories dans leur ordre ;
+  4. le modèle : definir_modele() avec les variables désignées par leur nom (ou, pour un
+     modèle importé que definir_modele() ne sait pas décrire, la liste de ses termes),
+     ajuster(), puis ses résultats.
+Format : script R (.R) ; ou rapport R Markdown (.Rmd) ou Quarto (.qmd), qui y ajoute le texte
+des méthodes, des tableaux et des graphiques (scores, loadings, VIP, observé / prédit, T2,
+DModX) et les références ; il se compile dans RStudio (bouton Knit) ou avec quarto render, et
+demande le paquet knitr. Fichiers en plus, au choix : renv.lock (versions de R et des paquets,
+pour renv::restore()), les données et le modèle ajusté en .RData (load() les rend sans
+recalculer), un projet RStudio (.Rproj, à mettre dans un dossier à part).
+Avant d'écrire, l'application recalcule le modèle du script et vérifie qu'il donne les mêmes
+résultats ; sinon elle le signale.
+
+Texte des méthodes
+------------------
+Modèle › Texte pour la section Méthodes : un paragraphe écrit d'après le modèle, en français
+ou en anglais (données, transformations, mise à l'échelle, prétraitement des spectres,
+méthode, validation croisée, R², Q², CV-ANOVA, classement, logiciel et version de R), avec ses
+références. Bouton « Copier le texte ». À relire et compléter (plan d'expérience,
+prélèvements...) avant de le publier.
 
 Console R
 ---------
@@ -247,6 +275,30 @@ constante C2 s'il y a des 0). Un clic sur une ligne montre l'histogramme de la v
 côté de celui de la variable transformée. L'autre vue est la carte des valeurs manquantes
 (observations × variables).
 
+Tests par variable
+------------------
+Graphiques › Tests par variable (ou dans l'explorateur, sous le projet) : chaque variable
+quantitative comparée entre les classes d'une variable qualitative.
+  Deux classes (A, la référence, et B) : test t de Welch (par défaut, variances inégales), t de
+  Student ou Mann–Whitney (sur les rangs). Effet : log2 du rapport des moyennes B / A (quand les
+  deux moyennes sont positives) ou d de Cohen. Graphique volcan : l'effet contre -log10(p).
+  Toutes les classes : ANOVA à un facteur ou Kruskal–Wallis ; les variables rangées par p.
+Les valeurs p sont corrigées pour les comparaisons multiples : Benjamini–Hochberg (taux de
+fausses découvertes, par défaut), Bonferroni, ou aucune. En couleur : les variables dont le p
+corrigé passe le seuil (et, pour deux classes, l'effet aussi).
+
+Modèles de classe et graphique de Coomans
+-----------------------------------------
+Nouveau modèle › type « Modèles de classe » : une ACP par catégorie de la variable de classe,
+sur les seules observations de cette catégorie (« M5.Gala », « M5.Golden »...), chacune avec
+ses centres, ses échelles et son nombre de composantes. Une observation appartient à une
+classe quand sa distance au modèle de la classe (DModX) ne dépasse pas la limite DCrit à 5 % :
+à une classe, à plusieurs, ou à aucune (une observation d'un autre type que toutes les
+classes connues). Graphiques › Graphique de Coomans : les distances de chaque observation à
+deux des modèles, avec leurs limites en rouge ; la table donne, pour chaque classe, la part de
+ses observations que chaque modèle accepte (attendu : vers 95 % pour sa propre classe, 0 %
+pour les autres), puis les distances et les classes de chaque observation.
+
 Modifier les données, créer des variables
 -----------------------------------------
 Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour
@@ -267,10 +319,11 @@ Clic droit sur un modèle importé › Historique du modèle : seulement ce qui 
 
 OPLS et OPLS-DA
 ---------------
-Une composante prédictive, qui porte ce qui dans X est lié à Y, et des composantes
-orthogonales, qui décrivent le reste de la variation de X : les valeurs prédites sont celles
-d'une PLS au même nombre de composantes, mais scores et loadings se lisent plus facilement
-(t[1] contre to[1], S-plot). Un seul Y, ou deux classes pour l'OPLS-DA. Q2 par validation
+Des composantes prédictives, qui portent ce qui dans X est lié à Y, et des composantes
+orthogonales, qui décrivent le reste de la variation de X : scores et loadings se lisent plus
+facilement (t[1] contre to[1], S-plot). Une composante prédictive par variable Y, ou une de
+moins que de classes pour l'OPLS-DA (t[1], t[2]... puis to[1], to[2]...) ; avec une seule,
+les valeurs prédites sont celles d'une PLS au même nombre de composantes. Q2 par validation
 croisée complète (le modèle entier est réajusté sans chaque groupe). Aucun des projets .usp
 disponibles n'avait de modèle OPLS : ce calcul suit l'article de Trygg et Wold (2002), sans
 comparaison possible avec des valeurs enregistrées.
@@ -343,7 +396,10 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   variables.R            scores en variables, classes, valeurs modifiées, variables calculées
   projet.R               lecture des projets, historique du fichier
   verification.R         comparaison avec les résultats enregistrés dans les fichiers .usp
-  script.R               export d'un modèle en script R
+  script.R               export d'un modèle en script ou rapport R autonome
+  methodes.R             texte des méthodes et références
+  comparaisons.R         tests par variable
+  modeles_classe.R       modèles de classe (une ACP par classe), graphique de Coomans
   formats.R              lecture et écriture des tableaux (Excel, texte, R, SPSS, Stata, SAS, jamovi...)
   spectres.R             prétraitement des spectres (SNV, MSC, Savitzky–Golay)
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustement)

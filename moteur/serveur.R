@@ -174,6 +174,35 @@ definition_interface <- function(p, q) {
   d
 }
 
+# Modèles de classe (modeles_classe.R) : une ACP par catégorie de la variable de classe,
+# chacune ajoutée au projet comme un modèle de l'application.
+modeles_classe_demande <- function(q) {
+  p <- projet(q$projet)
+  d <- definition_interface(p, utils::modifyList(q, list(type = "PCA", classe = NULL)))
+  ds <- modeles_classe(p, d, as.numeric(q$classe))
+  if (!length(ds)) stop("Aucune classe n'a assez d'observations (3 au moins)")
+  list(modeles = I(lapply(ds, function(e) ajuster_et_garder(projet(q$projet), e))))
+}
+
+# Distances de toutes les observations aux modèles du groupe de classes du modèle demandé ;
+# ceux qui ne sont pas encore calculés le sont ici.
+appartenance_demande <- function(q) {
+  e <- modele(q$modele)
+  p <- projet(e$projet)
+  g <- e$definition$groupe_classes
+  if (is.null(g)) stop("Ce modèle ne fait pas partie d'un groupe de modèles de classe")
+  defs <- Filter(function(d) identical(d$groupe_classes$nom, g$nom), p$models)
+  modeles <- lapply(defs, function(d) {
+    ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, p$id) && identical(etat$modeles[[id]]$definition$name, d$name), names(etat$modeles))
+    if (length(ids)) etat$modeles[[ids[length(ids)]]][c("definition", "modele")] else list(definition = d, modele = ajuster(p, d))
+  })
+  r <- appartenance_classes(p, modeles)
+  r$table <- lapply(seq_len(nrow(r$table)), function(i) list(classe = rownames(r$table)[i], n = unname(r$effectifs[i]), parts = I(unname(r$table[i, ]))))
+  r$effectifs <- NULL
+  r$variable <- as.character(variable_du_projet(p, g$variable)$ids[1])
+  r
+}
+
 ajuster_demande <- function(q) {
   p <- projet(q$projet)
   if (!is.null(q$numero)) {  # un modèle du projet (importé d'un .usp ou enregistré par l'application)
@@ -245,7 +274,8 @@ resultat_modele <- function(id) {
   obs$uid <- m$observations
   obs$nom <- unname(p$noms_obs[as.character(m$observations)])
   list(id = id, projet = p$id, nom = m$nom, titre = m$titre,
-       type = paste0(if (isTRUE(m$opls)) "O" else "", if (m$plsda) "PLS-DA" else m$type), opls = isTRUE(m$opls), A = m$A, N = N, K = m$K,
+       type = paste0(if (isTRUE(m$opls)) "O" else "", if (m$plsda) "PLS-DA" else m$type), opls = isTRUE(m$opls), Ap = m$Ap %||% 1, A = m$A, N = N, K = m$K,
+       groupe = d$groupe_classes$nom %||% NULL, classe_modele = d$groupe_classes$classe %||% NULL,
        composantes = s$composantes, observations = obs, variables = s$variables,
        variables_y = s$variables_y, coefficients = s$coefficients,
        limites = s$limites, RMSEE = as.list(s$RMSEE), RMSEcv = as.list(s$RMSEcv),
@@ -345,12 +375,21 @@ classe_demande <- function(q) {
   resume_projet(p)
 }
 
+methodes_demande <- function(q) {
+  e <- modele(q$modele)
+  texte_methodes(projet(e$projet), e$definition, e$modele, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""))
+}
+
 script_demande <- function(q) {
   e <- modele(q$modele)
   nom <- gsub("[^[:alnum:]_ -]", "_", e$definition$name %||% "modele")
-  chemin <- q$chemin %||% file.path(tempdir(), nouvel_id("script"), paste0(nom, ".R"))
+  format <- if (isTRUE(q$format %in% c("Rmd", "qmd"))) q$format else "R"
+  chemin <- q$chemin %||% file.path(tempdir(), nouvel_id("script"), paste0(nom, ".", format))
   dir.create(dirname(chemin), showWarnings = FALSE, recursive = TRUE)
-  ecrire_script(projet(e$projet), e$definition, chemin, file.path(racine, "moteur"))
+  ecrire_script(projet(e$projet), e$definition, chemin, file.path(racine, "moteur"), m = e$modele,
+                donnees = if (identical(q$donnees, "csv")) "csv" else "script", renv = isTRUE(q$renv),
+                rdata = isTRUE(q$rdata), rproj = isTRUE(q$rproj), version = as.character(q$version %||% ""),
+                langue = if (identical(q$langue, "en")) "en" else "fr")
 }
 
 # Les identifiants secondaires des observations (« site », « ANNEE »...), sans les
@@ -514,12 +553,17 @@ DEMANDES <- list(
   scores_en_variables = scores_demande,
   classe_selection = classe_demande,
   script_r = script_demande,
+  methodes = methodes_demande,
+  modeles_classe = modeles_classe_demande,
+  appartenance = appartenance_demande,
   contributions = function(q) {
     e <- modele(q$modele)
     c(list(modele = q$modele),
       as.list(contributions(e$modele, as.numeric(q$observations), q$type %||% "DModX", q$composante %||% 1, isTRUE(q$ponderee %||% TRUE))))
   },
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
+  tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
+                                               q$test %||% "welch", q$correction %||% "BH"),
   historique = function(q) historique_projet(projet(q$projet)),
   # données modifiées et variables ajoutées : le projet est à enregistrer
   modifier_valeur = function(q) changer_projet(q, function(p) modifier_valeur(p, q$observation, q$variable, q$valeur),
@@ -544,6 +588,7 @@ DEMANDES <- list(
   },
   verifier = function(q) {
     p <- projet(q$projet)
+    if (identical(q$type, "CLASSES")) q <- utils::modifyList(q, list(type = "PCA", classe = NULL))
     verifier_donnees(p, definition_interface(p, q))
   },
   # La session (modèles calculés, vues ouvertes, sélections) est décrite par l'interface, en

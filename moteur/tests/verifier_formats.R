@@ -139,6 +139,32 @@ r <- lire_tableau(file.path(dossier, "etiquettes.sav"))
 verifier("variable entièrement étiquetée : qualitative ; quelques étiquettes : numérique",
          identical(levels(r$sexe), c("femme", "homme")) && is.numeric(r$score))
 
+# Ce que les logiciels eux-mêmes ont refusé ou mal lu (jamovi 2.7, LibreOffice 25.8, pandas 3.1)
+cat("Fichiers tels que les lisent les autres logiciels\n")
+df <- data.frame(Observation = c("é1", "o2"), x = c(1.5, NA), n = c(NA, 2L), texte = c("été", NA),
+                 `nom de plus de quarante octets : teneur en °Brix` = c(1, 2), check.names = FALSE)
+f <- file.path(dossier, "lu.omv")
+ecrire_tableau(df, f)
+dir.create(z <- file.path(dossier, "omv"))
+utils::unzip(f, exdir = z)
+manifeste <- readBin(file.path(z, "meta"), "raw", 1000)
+verifier("jamovi : manifeste aux fins de ligne \\n, aussi dans META-INF/", !as.raw(0x0D) %in% manifeste &&
+         identical(manifeste, readBin(file.path(z, "META-INF", "MANIFEST.MF"), "raw", 1000)))
+f <- file.path(dossier, "lu.dbf")
+ecrire_tableau(df, f)
+octets <- readBin(f, "raw", file.size(f))
+lignes <- octets[(readBin(octets[9:10], "integer", size = 2, endian = "little") + 1):(length(octets) - 1)]
+verifier("dBase : Windows-1252 déclaré dans l'en-tête, manquants en blanc", octets[30] == as.raw(0x57) &&
+         as.raw(0xE9) %in% lignes && !any(lignes %in% as.raw(c(0x00, 0x2A))) && identical(lire_tableau(f)$texte, c("été", NA)) &&
+         identical(lire_tableau(f)$x, c(1.5, NA)))
+f <- file.path(dossier, "lu.xpt")
+ecrire_tableau(df, f, objet = "un nom long")
+octets <- readBin(f, "raw", 400)
+r <- haven::read_xpt(f)
+verifier("SAS transport en version 5 : noms de 8 caractères, étiquettes de 40 octets",
+         grepl("LIBRARY HEADER", rawToChar(octets[1:80])) && all(nchar(names(r)) <= 8) &&
+         all(nchar(vapply(r, function(v) attr(v, "label") %||% "", ""), "bytes") <= 40) && identical(r$x, c(1.5, NA)))
+
 if (requireNamespace("jmvReadWrite", quietly = TRUE)) {
   cat("jamovi, comparé au paquet jmvReadWrite\n")
   for (f in list.files(system.file("extdata", package = "jmvReadWrite"), "\\.omv$", full.names = TRUE)) {

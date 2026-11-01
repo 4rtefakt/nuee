@@ -246,6 +246,13 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .nouveautes li { margin: 3px 0; }
 
 /* export dialog (format list) and the choice of a table in a file */
+.texte-methodes { max-width: 46em; max-height: 60vh; overflow: auto; user-select: text; line-height: 1.45; }
+.texte-methodes ol { padding-left: 1.4em; font-size: 12px; }
+.boutons-langue { display: flex; gap: 14px; margin: 4px 0 8px; }
+.options-script { display: flex; flex-direction: column; gap: 4px; max-width: 34em; }
+.options-script h4 { margin: 10px 0 2px; }
+.options-script .champ { color: var(--texte); }
+.options-script .champ .doux { margin-left: 6px; font-size: 11.5px; }
 .formats-export { display: grid; grid-template-columns: repeat(2, minmax(13em, 1fr)); grid-template-rows: repeat(6, auto); grid-auto-flow: column; gap: 4px 18px; margin-bottom: 6px; }
 .formats-export .champ { display: flex; color: var(--texte); }
 .formats-export .champ .doux { margin-left: auto; font-size: 11.5px; }

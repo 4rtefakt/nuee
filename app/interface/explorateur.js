@@ -5,10 +5,10 @@ import { el, fmt, icone, menuContextuel } from './ui.js';
 import { ICONES_VUES } from './commandes.js';
 
 const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot', 'scores3d', 'dmodx', 't2', 'contributions', 'vip', 'coefficients', 'obspred', 'permutations',
-  'cvanova', 'classification', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
+  'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
 const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanova'];
 const vuesDe = (m) => VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v)) && (v !== 'classification' || /-DA$/.test(m.type))
-  && (v !== 'splot' || m.opls));
+  && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe));
 
 export function rendreExplorateur(conteneur, app) {
   const projets = app.projets();
@@ -98,6 +98,7 @@ export function rendreExplorateur(conteneur, app) {
         { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
         { libelle: t('donnees'), icone: 'database', action: () => app.ouvrirVue('donnees', null, null, p.id) },
         { libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) },
+        { libelle: t('tests_variables'), icone: 'flask-conical', action: () => app.ouvrirVue('tests', null, null, p.id) },
         '-',
         { libelle: t('enregistrer'), icone: 'save', action: () => app.enregistrer(p.id, false) },
         { libelle: t('enregistrer_sous'), action: () => app.enregistrer(p.id, true) },
@@ -119,6 +120,9 @@ export function rendreExplorateur(conteneur, app) {
         noeud({ cle: `${p.id}/statistiques`, niveau: 2, ic: 'chart-column-big', libelle: t('statistiques'),
           double: () => app.ouvrirVue('statistiques', null, null, p.id),
           menu: () => [{ libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) }] }),
+        noeud({ cle: `${p.id}/tests`, niveau: 2, ic: 'flask-conical', libelle: t('tests_variables'),
+          double: () => app.ouvrirVue('tests', null, null, p.id),
+          menu: () => [{ libelle: t('tests_variables'), icone: 'flask-conical', action: () => app.ouvrirVue('tests', null, null, p.id) }] }),
         groupe('importes', t('modeles_fichier'), 'layout-dashboard', importes, def),
         groupe('propres', t('modeles_projet'), 'layout-dashboard', propres, def),
         groupe('calcules', t('modeles_r'), 'sigma', calcules, modele),
