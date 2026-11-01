@@ -271,8 +271,9 @@ autoajuster <- function(projet, definition, A_max = NULL) {
     premiere_non_significative <<- a
     TRUE
   }
-  ajuster(projet, definition, A = A_max, arret = arret)
-  if (is.na(premiere_non_significative)) A_max else premiere_non_significative - 1
+  m <- ajuster(projet, definition, A = A_max, arret = arret)
+  # (m$A : moins que A_max quand il n'y avait plus de variation à décrire)
+  if (is.na(premiere_non_significative)) m$A else premiere_non_significative - 1
 }
 
 # Enregistre un projet (données et définitions de modèles) au format lu par lire_projet().

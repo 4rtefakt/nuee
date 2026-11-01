@@ -51,8 +51,9 @@ validation_acp <- function(E, ME, groupes, groupes_var) {
   for (h in sort(unique(groupes_var))) {
     hors <- groupes_var == h
     if (all(hors)) next
-    comp <- composante_acp(E[, !hors, drop = FALSE], ME[, !hors, drop = FALSE])
-    Tc[, hors] <- comp$t * sign(sum(comp$t * complet$t))
+    # (les autres variables n'ont plus de variation : t inconnu, ces cases sont prédites par 0)
+    comp <- tryCatch(composante_acp(E[, !hors, drop = FALSE], ME[, !hors, drop = FALSE]), sans_variation = function(e) NULL)
+    if (!is.null(comp)) Tc[, hors] <- comp$t * sign(sum(comp$t * complet$t))
   }
   pred <- Tc * t(P)
   press <- colSums(((E - pred) * ME)^2)

@@ -21,6 +21,15 @@ projeter <- function(E, M, v) {
 
 norme <- function(v) sqrt(sum(v^2))
 
+# Plus rien à décrire : les résidus de X (ou de Y, pour une PLS) n'ont plus de variation, et une
+# composante de plus serait faite de 0 / 0. Erreur de classe « sans_variation », qu'ajuster_matrices()
+# complète par le numéro de la composante.
+sans_variation <- function() {
+  stop(structure(class = c("sans_variation", "error", "condition"),
+                 list(message = traduire("Il ne reste plus de variation à décrire dans les données.",
+                                         "There is no variation left to describe in the data."), call = NULL)))
+}
+
 # Une composante d'ACP : scores t et loadings p (de norme 1).
 composante_acp <- function(E, ME) {
   Et <- t(E)
@@ -28,6 +37,7 @@ composante_acp <- function(E, ME) {
   tt <- E[, which.max(colSums(E^2))]
   for (i in seq_len(ITERATIONS_MAX)) {
     p <- projeter(Et, MEt, tt)
+    if (!isTRUE(norme(p) > 0)) sans_variation()
     p <- p / norme(p)
     nouveau <- projeter(E, ME, p)
     fini <- norme(nouveau - tt) <= TOLERANCE * norme(nouveau)
@@ -46,6 +56,7 @@ composante_pls <- function(E, ME, F, MF) {
   u <- F[, which.max(colSums(F^2))]
   for (i in seq_len(ITERATIONS_MAX)) {
     w <- projeter(Et, MEt, u)
+    if (!isTRUE(norme(w) > 0)) sans_variation()
     w <- w / norme(w)
     tt <- projeter(E, ME, w)
     cc <- projeter(Ft, MFt, tt)

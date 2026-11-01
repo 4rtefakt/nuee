@@ -19,6 +19,7 @@ What changed in each version: the same list as *Help › What's new* in the appl
 - Ctrl+C copies the view’s table, ready to paste into Excel; View › Find a command (Ctrl+K) finds a command by typing its name.
 - Help › Check for updates, and Help › Diagnostic information: the versions to paste into a report on GitHub (with forms for problems and ideas).
 - A plot keeps its zoom when a selection redraws it.
+- A model asking for more components than its data allow says so plainly (“Component 3 is not possible…”) instead of an internal R error; automatic fitting then stops at the last possible one.
 
 ## 0.9.0 — 2026-11-01
 

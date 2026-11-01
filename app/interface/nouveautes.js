@@ -17,6 +17,7 @@ export const NOUVEAUTES = [
       'Ctrl+C copie le tableau de la vue, prêt à coller dans Excel ; Affichage › Rechercher une commande (Ctrl+K) trouve une commande en tapant son nom.',
       'Aide › Chercher une mise à jour, et Aide › Informations de diagnostic : les versions à coller dans un signalement sur GitHub (avec des formulaires pour les problèmes et les idées).',
       'Un graphique garde son zoom quand une sélection le redessine.',
+      'Un modèle qui demande plus de composantes que ses données n’en permettent le dit clairement (« Composante 3 impossible… ») au lieu d’une erreur interne de R ; l’ajustement automatique s’arrête alors à la dernière possible.',
     ],
     en: [
       'One-click update: when the status bar mentions a new version, a click downloads its installer, checks it (SHA-256 checksum given by GitHub), offers to save your projects, installs it and starts Nuée again.',
@@ -33,6 +34,7 @@ export const NOUVEAUTES = [
       'Ctrl+C copies the view’s table, ready to paste into Excel; View › Find a command (Ctrl+K) finds a command by typing its name.',
       'Help › Check for updates, and Help › Diagnostic information: the versions to paste into a report on GitHub (with forms for problems and ideas).',
       'A plot keeps its zoom when a selection redraws it.',
+      'A model asking for more components than its data allow says so plainly (“Component 3 is not possible…”) instead of an internal R error; automatic fitting then stops at the last possible one.',
     ] },
   { version: '0.9.0', date: '2026-11-01',
     fr: [
