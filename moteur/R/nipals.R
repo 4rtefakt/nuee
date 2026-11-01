@@ -1,0 +1,65 @@
+# Algorithme NIPALS pour l'ACP et la PLS, avec données manquantes.
+#
+# Les cases manquantes sont ignorées dans chaque projection : par exemple le score d'une
+# observation est  t_i = somme_k(x_ik * p_k) / somme_k(p_k^2)  sur ses seules variables
+# présentes. Le facteur de correction  somme(p^2) / somme_présentes(p^2)  est limité à 3.
+#
+# Convention : E (résidus de X) et F (résidus de Y) ont leurs cases manquantes à 0, et les
+# masques ME / MF valent 1 là où la donnée existe, 0 sinon.
+
+PLAFOND_CORRECTION <- 3
+TOLERANCE <- 1e-10
+ITERATIONS_MAX <- 2000
+
+# Projection de chaque ligne de E sur le vecteur v, en ignorant les cases manquantes.
+projeter <- function(E, M, v) {
+  vv <- sum(v^2)
+  present <- as.vector(M %*% (v^2))
+  correction <- pmin(vv / pmax(present, 1e-300), PLAFOND_CORRECTION)
+  as.vector(E %*% v) / vv * correction
+}
+
+norme <- function(v) sqrt(sum(v^2))
+
+# Une composante d'ACP : scores t et loadings p (de norme 1).
+composante_acp <- function(E, ME) {
+  Et <- t(E)
+  MEt <- t(ME)
+  tt <- E[, which.max(colSums(E^2))]
+  for (i in seq_len(ITERATIONS_MAX)) {
+    p <- projeter(Et, MEt, tt)
+    p <- p / norme(p)
+    nouveau <- projeter(E, ME, p)
+    fini <- norme(nouveau - tt) <= TOLERANCE * norme(nouveau)
+    tt <- nouveau
+    if (fini) break
+  }
+  list(t = tt, p = projeter(Et, MEt, tt), iterations = i)
+}
+
+# Une composante de PLS : poids w (norme 1), scores t, poids de Y c, scores de Y u, loadings p.
+composante_pls <- function(E, ME, F, MF) {
+  Et <- t(E)
+  MEt <- t(ME)
+  Ft <- t(F)
+  MFt <- t(MF)
+  u <- F[, which.max(colSums(F^2))]
+  for (i in seq_len(ITERATIONS_MAX)) {
+    w <- projeter(Et, MEt, u)
+    w <- w / norme(w)
+    tt <- projeter(E, ME, w)
+    cc <- projeter(Ft, MFt, tt)
+    nouveau <- projeter(F, MF, cc)
+    fini <- norme(nouveau - u) <= TOLERANCE * norme(nouveau)
+    u <- nouveau
+    if (fini) break
+  }
+  list(t = tt, p = projeter(Et, MEt, tt), w = w, c = cc, u = u, iterations = i)
+}
+
+# Préparation d'une matrice : valeurs manquantes à 0 et masque des valeurs présentes.
+preparer <- function(X) {
+  M <- 1 * !is.na(X)
+  X[is.na(X)] <- 0
+  list(E = X, M = M)
+}

@@ -1,0 +1,198 @@
+# Console R de l'application (Affichage › Console R), lue par serveur.R :
+#   - le journal : pour chaque action de l'interface, l'appel au moteur qu'elle a fait, écrit
+#     en R (pour refaire le calcul ou le recopier dans un script) ;
+#   - l'évaluation de commandes R tapées dans la console, dans la session R de l'application.
+# Dans la console, P1, M7... sont les projets et les modèles ouverts (les noms qu'ils ont dans
+# le journal), `p` et `m` le projet et le modèle affichés. Modifier un projet
+# (P1$donnees[...] <- ...) le modifie dans l'application.
+
+etat$journal <- list()
+etat$n_journal <- 0
+etat$console_modifies <- character(0)
+
+# Une entrée du journal : type "appel" (action de l'interface), "commande", "sortie",
+# "avertissement", "erreur" ou "image" (graphique PNG en base64).
+noter <- function(type, texte) {
+  etat$n_journal <- etat$n_journal + 1
+  etat$journal[[length(etat$journal) + 1]] <- list(n = etat$n_journal, type = type, heure = format(Sys.time(), "%H:%M:%S"),
+                                                   texte = enc2utf8(paste(texte, collapse = "\n")))
+  if (length(etat$journal) > 2000) etat$journal <- utils::tail(etat$journal, 1500)
+  invisible(NULL)
+}
+
+journal_depuis <- function(n) Filter(function(e) e$n > n, etat$journal)
+
+# ---------------------------------------------------------------- le journal des actions
+
+code_r <- function(x) deparse(x, width.cutoff = 500L)
+vecteur_r <- function(x) if (length(x) == 1) code_r(x) else paste0("c(", paste(vapply(x, code_r, ""), collapse = ", "), ")")
+
+appel_ouverture <- function(chemin) {
+  ext <- tolower(tools::file_ext(chemin))
+  if (ext == "usp") return(sprintf("lire_projet(convertir_usp(%s))  # .usp converti par export_project", code_r(chemin)))
+  if (ext == "json") return(sprintf("lire_projet(%s)", code_r(chemin)))
+  sprintf("importer_tableau(%s)", code_r(chemin))
+}
+
+# Les lignes R d'une action de l'interface (NULL pour celles qui ne font qu'afficher).
+journaliser <- function(nom, q, r) {
+  pm <- function(id) etat$modeles[[id]]$projet
+  definition_modele <- function(id, commentaire) {
+    e <- etat$modeles[[id]]
+    c(commentaire, code_definition(projet(e$projet), e$definition, e$projet), sprintf("%s <- ajuster(%s, d)", id, e$projet))
+  }
+  lignes <- switch(nom,
+    ouvrir = sprintf("%s <- %s", r$id, appel_ouverture(q$chemin)),
+    fermer_projet = sprintf("rm(%s)  # projet fermé", q$projet),
+    ajuster = definition_modele(r$id, sprintf("# modèle %s (%s) du projet %s", r$nom, r$type, projet(r$projet)$nom)),
+    reajuster = definition_modele(r$id, sprintf("# modèle %s, d'après %s%s", r$nom, q$modele,
+      if (length(q$exclues)) sprintf(", sans %d observation(s)", length(q$exclues)) else if (length(q$garder)) ", variables VIP" else "")),
+    predire = sprintf("predire(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele),
+                      if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),
+    predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),
+    hca = sprintf("classification(%s, %s)", q$modele, q$composantes %||% sprintf("%s$A", q$modele)),
+    permutations = sprintf("permutations(%s, y = %s, n = %s)", q$modele, q$y %||% 1, q$n %||% 20),
+    contributions = sprintf("contributions(%s, %s, %s)", q$modele, vecteur_r(as.numeric(q$observations)), code_r(q$type %||% "DModX")),
+    biplot = sprintf("correlations_biplot(%s)", q$modele),
+    scores_en_variables = sprintf("%s <- scores_en_variables(%s, %s)$projet", pm(q$modele), pm(q$modele), q$modele),
+    classe_selection = sprintf("%s <- ajouter_classe(%s, %s, %s, %s)", q$projet, q$projet, code_r(q$variable), code_r(q$etiquette), vecteur_r(as.numeric(q$observations))),
+    variable_calculee = sprintf("%s <- variable_calculee(%s, %s, %s)", q$projet, q$projet, code_r(q$nom), code_r(q$formule)),
+    classes_valeurs = sprintf("%s <- classes_valeurs(%s, %s, %s, %s)", q$projet, q$projet, code_r(q$nom), q$variable,
+                              if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q$n)),
+    modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
+    statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
+    historique = sprintf("historique_projet(%s)", q$projet),
+    enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
+    script_r = sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur())", pm(q$modele), code_r(q$modele), code_r(r$script)),
+    NULL)
+  if (length(lignes)) noter("appel", lignes)
+}
+
+# ---------------------------------------------------------------- la console
+
+console <- new.env(parent = globalenv())
+
+# Les projets et les modèles ouverts, liés à l'état de l'application. Un projet se remplace
+# par un projet (P1 <- variable_calculee(P1, ...)) ; un modèle se refait avec ajuster().
+lier_objets <- function() {
+  for (k in ls(console)) {
+    if (grepl("^[PM]\\d+$", k) && bindingIsActive(k, console) && is.null(etat$projets[[k]]) && is.null(etat$modeles[[k]])) rm(list = k, envir = console)
+  }
+  for (id in names(etat$projets)) if (!exists(id, envir = console, inherits = FALSE)) local({
+    k <- id
+    makeActiveBinding(k, function(v) {
+      if (missing(v)) return(etat$projets[[k]])
+      if (!inherits(v, "projet_nuee")) stop(k, " est un projet de l'application : lui donner un autre nom")
+      memoriser(etat$projets[[k]], "changement depuis la console")
+      v$id <- k
+      v$modifie <- TRUE
+      etat$projets[[k]] <- v
+      etat$console_modifies <- unique(c(etat$console_modifies, k))
+    }, console)
+  })
+  for (id in names(etat$modeles)) if (!exists(id, envir = console, inherits = FALSE)) local({
+    k <- id
+    makeActiveBinding(k, function(v) {
+      if (missing(v)) return(etat$modeles[[k]]$modele)
+      stop(k, " est un modèle de l'application : donner un autre nom au résultat")
+    }, console)
+  })
+}
+
+# Outils de la console, présentés par aide_console().
+local({
+  assign("definition", function(id) (etat$modeles[[id]] %||% stop("Modèle inconnu : ", id))$definition, console)
+  assign("projets", function() data.frame(objet = names(etat$projets),
+    nom = vapply(etat$projets, function(p) p$nom %||% "", ""), row.names = NULL), console)
+  assign("modeles", function() data.frame(objet = names(etat$modeles),
+    nom = vapply(etat$modeles, function(e) e$definition$name %||% "", ""),
+    type = vapply(etat$modeles, function(e) paste0(if (isTRUE(e$modele$opls)) "O" else "", if (e$modele$plsda) "PLS-DA" else e$modele$type), ""),
+    A = vapply(etat$modeles, function(e) as.numeric(e$modele$A), 0), projet = vapply(etat$modeles, function(e) e$projet, ""),
+    row.names = NULL), console)
+  assign("dossier_moteur", function() normalizePath(file.path(racine, "moteur", "R"), winslash = "/"), console)
+  assign("recharger_moteur", function() {
+    for (f in sort(list.files(file.path(racine, "moteur", "R"), "\\.R$", full.names = TRUE))) sys.source(f, envir = globalenv(), keep.source = FALSE)
+    message("Moteur rechargé depuis ", normalizePath(file.path(racine, "moteur", "R"), winslash = "/"), " : réajuster les modèles pour l'utiliser.")
+  }, console)
+  # Recalcule les modèles enregistrés des projets ouverts (ou des fichiers .usp / .json d'un
+  # dossier) et les compare aux valeurs du fichier (voir comparer_references, moteur/R/verification.R).
+  assign("verifier_moteur", function(dossier = NULL) {
+    projets <- if (is.null(dossier)) etat$projets else {
+      fichiers <- list.files(dossier, "\\.(usp|json)$", full.names = TRUE, ignore.case = TRUE)
+      stats::setNames(lapply(fichiers, function(f) tryCatch(
+        if (grepl("\\.usp$", f, ignore.case = TRUE)) lire_projet(convertir_usp(f)) else lire_projet(f),
+        error = function(e) NULL)), basename(fichiers))
+    }
+    tab <- do.call(rbind, lapply(names(projets), function(k) {
+      p <- projets[[k]]
+      if (is.null(p)) return(NULL)
+      r <- comparer_references(p)
+      if (nrow(r)) cbind(projet = p$nom %||% k, r)
+    }))
+    if (is.null(tab)) { message("Aucun modèle enregistré à comparer."); return(invisible(NULL)) }
+    n <- table(factor(sub(" :.*", "", tab$statut), c("identique", "proche", "différent", "erreur")))
+    message(sprintf("%d modèle(s) : %d identique(s), %d proche(s), %d différent(s), %d en erreur (Q2 des ACP non compté : écart connu).",
+                    nrow(tab), n[["identique"]], n[["proche"]], n[["différent"]], n[["erreur"]]))
+    tab
+  }, console)
+  quitter <- function(...) message("Pour fermer l'application : Fichier › Quitter.")
+  assign("q", quitter, console)
+  assign("quit", quitter, console)
+})
+
+# Évalue une commande R. `modele` et `projet` : ceux affichés dans l'application, appelés
+# m et p dans la commande. Le texte affiché, les avertissements, les erreurs et les
+# graphiques vont au journal ; renvoie les entrées nouvelles et les projets modifiés.
+evaluer_console <- function(texte, modele = NULL, projet = NULL) {
+  depart <- etat$n_journal
+  lier_objets()
+  if (!is.null(modele) && !is.null(etat$modeles[[modele]])) {
+    assign("m", etat$modeles[[modele]]$modele, envir = console)
+    projet <- etat$modeles[[modele]]$projet
+  }
+  if (exists("p", envir = console, inherits = FALSE)) rm("p", envir = console)
+  if (!is.null(projet) && !is.null(etat$projets[[projet]])) makeActiveBinding("p", local({
+    k <- projet
+    function(v) if (missing(v)) get(k, envir = console) else assign(k, v, envir = console)
+  }), console)
+  noter("commande", texte)
+  exprs <- tryCatch(parse(text = texte, keep.source = FALSE), error = function(e) e)
+  if (inherits(exprs, "error")) {
+    noter("erreur", conditionMessage(exprs))
+  } else {
+    motif <- file.path(tempdir(), sprintf("console-%d-%%03d.png", etat$n_journal))
+    grDevices::png(motif, width = 900, height = 600, res = 110)
+    dev <- grDevices::dev.cur()
+    dessin <- FALSE
+    setHook("plot.new", function() dessin <<- TRUE, "replace")
+    setHook("grid.newpage", function() dessin <<- TRUE, "replace")
+    ancien <- options(width = 110)
+    for (e in exprs) {
+      sortie <- character(0)
+      res <- withCallingHandlers(
+        tryCatch({
+          sortie <- utils::capture.output(v <- withVisible(eval(e, console)))
+          if (v$visible) sortie <- c(sortie, utils::capture.output(print(v$value)))
+          NULL
+        }, error = function(err) err),
+        warning = function(w) { noter("avertissement", conditionMessage(w)); invokeRestart("muffleWarning") },
+        message = function(msg) { noter("sortie", sub("\n$", "", conditionMessage(msg))); invokeRestart("muffleMessage") })
+      if (length(sortie) > 3000) sortie <- c(utils::head(sortie, 3000), sprintf("... (%d lignes de plus)", length(sortie) - 3000))
+      if (length(sortie)) noter("sortie", sortie)
+      if (inherits(res, "error")) {
+        noter("erreur", conditionMessage(res))
+        break
+      }
+    }
+    options(ancien)
+    setHook("plot.new", NULL, "replace")
+    setHook("grid.newpage", NULL, "replace")
+    if (dev %in% grDevices::dev.list()) grDevices::dev.off(dev)
+    images <- list.files(dirname(motif), sprintf("^console-%d-\\d+\\.png$", depart + 1), full.names = TRUE)
+    if (dessin) for (f in images) noter("image", paste0("data:image/png;base64,", jsonlite::base64_enc(readBin(f, "raw", file.size(f)))))
+    unlink(images)
+  }
+  modifies <- etat$console_modifies
+  etat$console_modifies <- character(0)
+  list(journal = journal_depuis(depart), modifies = I(modifies))
+}

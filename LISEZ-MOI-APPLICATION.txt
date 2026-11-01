@@ -1,0 +1,308 @@
+NUÉE — ACP, PLS, PLS-DA et OPLS, calculées en R
+===============================================
+
+Démarrer
+--------
+Deux façons d'installer Nuée, sans droits d'administrateur ; R est inclus dans les deux.
+- Depuis le NAS : double-cliquez sur « Lancer Nuee.cmd ». Windows ne sait pas lancer
+  l'application directement depuis le NAS ; ce lanceur la copie sur l'ordinateur (dans
+  %LOCALAPPDATA%\Nuee) puis la démarre. La première fois la copie prend une à deux minutes ;
+  ensuite seuls les fichiers modifiés sur le NAS sont recopiés, et l'application démarre tout
+  de suite. Au premier lancement, des raccourcis « Nuée » sont créés sur le Bureau et dans le
+  menu Démarrer : ils lancent l'application de la même façon (toujours à jour avec le NAS).
+- Avec l'installateur : double-cliquez sur « Nuee-Setup-<version>.exe » et suivez les
+  étapes (pour vous seul, ou pour tous les utilisateurs de l'ordinateur).
+Dans les deux cas, Nuée apparaît dans Paramètres › Applications › Applications installées,
+d'où on peut la désinstaller ; les projets et les réglages sont gardés.
+Si Windows affiche « Windows a protégé votre ordinateur » (éditeur inconnu), cliquez sur
+« Informations complémentaires » puis « Exécuter quand même ».
+
+Ouvrir
+------
+Fichier › Ouvrir (Ctrl+O) :
+  - un projet .usp : données, modèles et résultats enregistrés dans le fichier ;
+  - un projet enregistré par l'application (.json) ;
+  - un tableau (.csv ou .xlsx), une ligne par observation ; la première colonne sert de
+    nom d'observation si c'est du texte ou si elle s'appelle « ID », « Obs », « Nom »... ;
+    les autres colonnes de texte dont toutes les valeurs diffèrent (un code par observation)
+    deviennent des identifiants secondaires : elles servent d'étiquettes mais n'entrent pas
+    dans les modèles ; les autres colonnes de texte sont des variables qualitatives.
+Les derniers fichiers ouverts sont dans Fichier › Ouvrir un fichier récent.
+Pour essayer : Aide › Projet d'exemple ouvre 120 pommes inventées (quatre variétés, culture
+bio ou conventionnelle, une douzaine de mesures et une note de dégustation) avec quatre
+modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA de la
+culture. Le tableau d'origine, vergers.csv, est à côté (resources\exemple) pour essayer
+l'ouverture d'un tableau.
+
+Enregistrer et retrouver son travail
+------------------------------------
+Fichier › Enregistrer (Ctrl+S) écrit le projet (.json) avec ses données, ses modèles et la
+séance en cours : modèles calculés, panneaux ouverts et leur disposition, réglages des
+graphiques (axes, couleurs, étiquettes, titres), sélections, choix des VIP, groupes du
+dendrogramme. En rouvrant le projet, les modèles sont recalculés et tout revient en place.
+En fermant l'application avec des changements non enregistrés, elle propose « Enregistrer et
+fermer ». Toutes les deux minutes, elle garde aussi une copie de secours des projets non
+enregistrés : si elle s'arrête sans avoir été fermée (panne, coupure), elle propose au
+lancement suivant de les récupérer.
+Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
+(valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
+jusqu'à 20 en arrière.
+Notes : le résumé de chaque modèle a une zone de notes, enregistrée avec le projet et reprise
+dans le rapport ; un crayon le signale dans l'explorateur.
+Retirer un modèle (Modèle › Supprimer le modèle) demande confirmation. Sa définition reste
+dans le projet ; pour un modèle fait dans l'application, une case permet de la supprimer
+aussi (annulable).
+
+Si le moteur R s'arrête
+-----------------------
+L'application le signale et propose de le redémarrer ; on peut aussi le faire soi-même
+(Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs
+modèles et leurs vues ; les changements faits depuis la dernière copie de secours (deux
+minutes au plus) sont perdus. Au-delà d'une minute de calcul, la barre d'état le rappelle.
+Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
+jour).
+
+L'explorateur (à gauche)
+------------------------
+Projets, données, modèles importés d'un fichier .usp, modèles calculés et leurs vues.
+Double-clic : ouvrir. Clic droit : toutes les actions (calculer, modifier, ajouter ou
+retirer une composante, exporter, supprimer...). Double-cliquer un modèle importé le
+recalcule en R ; le Résumé marque chaque valeur : « = » identique à la valeur enregistrée
+dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente.
+
+Menus et barre d'outils
+-----------------------
+Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. Raccourcis :
+  Ctrl+O ouvrir            Ctrl+S enregistrer         Ctrl+E exporter vers Excel
+  Ctrl+N nouveau modèle    Ctrl+M modifier le modèle  Ctrl+= / Ctrl+- composantes
+  Échap  effacer la sélection    Ctrl+Suppr exclure la sélection et réajuster
+  Ctrl+Maj+N nouvelle fenêtre    Ctrl+Maj+D détacher le panneau   Ctrl+W fermer le panneau
+  Ctrl+B explorateur       F1 guide
+Affichage : thème sombre, français / anglais, taille du texte.
+
+Nouveau modèle (Modèle › Nouveau modèle)
+----------------------------------------
+Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA), nom, nombre de composantes
+(automatique par défaut, par validation croisée), groupes de validation croisée,
+échelle par défaut.
+Onglet Variables : rôle (X, Y, classe), échelle et transformation (racine carrée, racine
+quatrième, log10) de chaque variable ; le filtre permet de régler d'un coup toutes les
+variables affichées. Le bouton « Transformations proposées » applique aux variables
+affichées le log10 proposé (voir Statistiques des variables).
+Onglet Termes croisés : produits de deux variables X (A × B) et carrés (A × A) ; une
+variable qualitative y entre par chacune de ses catégories.
+Onglet Observations : cocher / décocher les observations du modèle.
+« Modifier le modèle » (Ctrl+M) ouvre cette fenêtre réglée comme un modèle existant (y compris
+les modèles importés) et crée un nouveau modèle.
+Avant le calcul, l'application vérifie les données : variables ou observations avec plus de
+50 % de valeurs manquantes, variables constantes. S'il y en a, elle les liste et propose
+« Les exclure et ajuster » ou « Ajuster quand même ».
+
+Graphiques : couleurs et étiquettes
+-----------------------------------
+Scores, DModX, T², observé / prédit : la liste « Couleur » colore les points par classe
+(PLS-DA), par groupe du dendrogramme ou par n'importe quelle variable du projet (dégradé pour
+une variable numérique). La liste « Étiquettes » écrit à côté de chaque point son nom, un
+identifiant secondaire ou la valeur d'une variable.
+Clic droit sur un graphique après une sélection : « Créer une classe à partir de la
+sélection » range ces observations dans une classe d'une variable qualitative (nouvelle ou
+existante), utilisable ensuite pour colorer ou comme classe d'une PLS-DA.
+Édition › Sélection commune aux modèles du projet (cochée par défaut) : des observations
+choisies dans un modèle le sont aussi dans les autres modèles du même projet.
+
+Autres graphiques
+-----------------
+Biplot : scores et loadings dans le même graphique, mis à l'échelle des corrélations
+(t(corr) et p(corr), ou pc(corr) avec les Y d'une PLS), tous dans le cercle de rayon 1.
+Scores en 3D : trois composantes, à faire tourner à la souris ; un clic choisit un point.
+S-plot (OPLS) : p[1] contre p(corr)[1] ; les variables aux deux extrémités sont celles qui
+portent le lien avec Y (ou qui séparent les deux classes).
+
+Mise en forme des graphiques (pour un article, un rapport)
+-----------------------------------------------------------
+Clic droit sur un graphique › Mise en forme, ou Édition › Mise en forme du graphique :
+titre et titres des axes de ce graphique ; pour tous les graphiques : police, taille du
+texte, taille des points, couleurs (dont une palette lisible par les daltoniens et des
+niveaux de gris), grille, légende ; et « Exporter l'image » à la taille voulue (en pixels,
+résolution ×1 à ×6) en PNG, SVG ou JPEG. Ces réglages sont gardés d'une fois sur l'autre.
+
+Contributions
+-------------
+Graphiques › Contributions, ou clic droit sur une sélection : pour une observation (ou la
+moyenne de plusieurs), la part de chaque variable dans son écart à l'observation moyenne du
+modèle. Au choix : contribution au DModX (pourquoi l'observation est mal modélisée), au score
+d'une composante, ou au T² (pourquoi elle est loin du centre) ; pondérée ou non par le
+pouvoir de modélisation.
+
+Prédire
+-------
+Prédiction › Prédire : les observations du projet hors du modèle, ou un jeu de prédiction
+enregistré dans le fichier .usp.
+Prédiction › Prédire un fichier : un tableau .csv ou .xlsx dont les colonnes portent les
+noms des variables du modèle (sans tenir compte des majuscules ni des espaces au début et à
+la fin ; les catégories par leur nom). Le résultat donne les scores, DModX, T² et Y prédits ;
+les observations hors du domaine du modèle (DModX > DCrit ou T² > T²Crit 95 %) sont
+signalées ; il s'exporte vers Excel. Les variables X du modèle absentes du fichier sont
+listées et traitées comme manquantes.
+Le graphique au-dessus du tableau montre les scores, ou le DModXPS : la distance de chaque
+observation prédite au modèle, comparée à DCrit (les observations du modèle en gris).
+
+Modèles hiérarchiques
+---------------------
+Modèle › Scores en variables : les scores d'un modèle deviennent des variables du projet
+($M1.t1(titre), $M1.t2(titre)...), qu'on peut prendre comme X d'un modèle de niveau
+supérieur. Après avoir modifié le modèle de base, refaire cette étape puis réajuster les
+modèles qui les utilisent (l'application les nomme). Pour prédire un fichier avec un modèle
+hiérarchique, les modèles de base sont prédits d'abord, automatiquement.
+
+Script R
+--------
+Fichier › Exporter en script R : écrit un script commenté (.R) et les données du projet
+(« ... - donnees.json » à côté). Le script charge le moteur, refait le modèle avec ses
+réglages (variables, échelles, transformations, termes croisés, observations) et affiche
+ses résultats : on peut le relire, le modifier et le relancer dans RStudio.
+
+Console R
+---------
+Affichage › Console R (Ctrl+J) : un panneau sous les onglets, avec
+  - le journal : pour chaque action de l'application, l'appel au moteur qu'elle a fait, écrit
+    en R (P1 <- lire_projet(...), d <- modele_du_projet(P1, 5), M4 <- ajuster(P1, d)...),
+    à recopier dans un script (bouton Copier) ; la case « Actions de l'application » les
+    masque ou les montre ;
+  - une invite où taper du R, exécuté dans la session R de l'application. m est le modèle
+    affiché, p son projet ; P1, M4... les projets et modèles ouverts, sous les noms du journal.
+    Par exemple : m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (le
+    graphique s'affiche dans la console), modeles(), projets(), definition("M4").
+    Entrée lance la commande, Maj+Entrée passe à la ligne, ↑ et ↓ rappellent les commandes.
+Modifier un projet dans la console (p$donnees[...] <- ...) le modifie dans l'application.
+Corriger le moteur : dossier_moteur() donne le dossier des fichiers R de l'application ; après
+une correction, recharger_moteur() les relit, puis réajuster le modèle. Ce dossier est la
+copie faite sur l'ordinateur : au lancement suivant, la copie du NAS la remplace. Pour garder
+une correction, la reporter dans le même fichier sur le NAS (application\resources\moteur\R).
+Une commande longue bloque l'application jusqu'à la fin du calcul.
+Vérifier le moteur : verifier_moteur() recalcule les modèles importés des projets ouverts et
+les compare aux valeurs enregistrées dans leurs fichiers (R2X, R2Y, Q2) ;
+verifier_moteur("dossier") fait de même pour les fichiers .usp et .json d'un dossier.
+À faire après une correction du moteur. Le Q2 des ACP n'entre pas dans le verdict (écart
+connu, voir « Ce qui diffère »).
+
+Rapport du modèle
+-----------------
+Fichier › Rapport du modèle (ou clic droit sur le modèle) : un document PDF ou Word (.docx)
+avec un titre, un commentaire et les parties cochées (résumé, scores, loadings, DModX, VIP,
+coefficients, CV-ANOVA, classification, liste des variables...). Les graphiques y sont mis en
+forme comme dans leurs panneaux ouverts. Le document s'ouvre une fois écrit.
+
+Statistiques des variables
+--------------------------
+Graphiques › Statistiques des variables (ou dans l'explorateur, sous le projet) : pour chaque
+variable N, valeurs manquantes, min, max, Min/Max, moyenne, médiane, écart-type,
+écart-type/moyenne, asymétrie, test d'asymétrie et aplatissement. En rouge : Min/Max < 0,1
+et test d'asymétrie au-delà de 2 ; la colonne « Proposée » donne le log10 conseillé (avec la
+constante C2 s'il y a des 0). Un clic sur une ligne montre l'histogramme de la variable, à
+côté de celui de la variable transformée. L'autre vue est la carte des valeurs manquantes
+(observations × variables).
+
+Modifier les données, créer des variables
+-----------------------------------------
+Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour
+annuler ; vide = valeur manquante ; pour une variable qualitative, le nom de la catégorie).
+Les modèles déjà ajustés ne changent pas : les réajuster.
+Édition › Nouvelle variable : par une formule R sur les autres variables, par exemple
+log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (un résultat en
+texte donne une variable qualitative) ; ou des classes d'après les valeurs d'une variable,
+à des bornes données (10 ; 20 donne « ≤ 10 », « ]10 ; 20] », « > 20 ») ou en classes
+d'effectifs égaux. Penser à enregistrer le projet.
+
+Historique du fichier
+---------------------
+Pour un projet venant d'un fichier .usp, l'explorateur montre « Historique du fichier » :
+le journal enregistré dans le fichier (création, changements de jeu de travail, nombre de
+composantes, modèles supprimés...), avec la date, la version du logiciel et l'utilisateur.
+Clic droit sur un modèle importé › Historique du modèle : seulement ce qui le concerne.
+
+OPLS et OPLS-DA
+---------------
+Une composante prédictive, qui porte ce qui dans X est lié à Y, et des composantes
+orthogonales, qui décrivent le reste de la variation de X : les valeurs prédites sont celles
+d'une PLS au même nombre de composantes, mais scores et loadings se lisent plus facilement
+(t[1] contre to[1], S-plot). Un seul Y, ou deux classes pour l'OPLS-DA. Q2 par validation
+croisée complète (le modèle entier est réajusté sans chaque groupe). Aucun des projets .usp
+disponibles n'avait de modèle OPLS : ce calcul suit l'article de Trygg et Wold (2002), sans
+comparaison possible avec des valeurs enregistrées.
+
+VIP
+---
+Le seuil est placé automatiquement à la plus grande marche des VIP triés autour de 0,8. On
+peut taper un autre seuil ou faire glisser la ligne rouge, et cliquer une barre pour garder
+ou écarter une variable. « Réajuster avec les variables VIP » refait le modèle avec les
+variables retenues.
+
+Validation (PLS et PLS-DA)
+--------------------------
+Test de permutation : l'ordre du Y est mélangé 20 fois (ou plus) et le modèle réajusté ; les
+ordonnées à l'origine de R2 et Q2 mesurent le surajustement (modèle valide si Q2 < 0,05 et
+R2 < 0,3 à 0,4, règle usuelle).
+CV-ANOVA : p du modèle (résidus de validation croisée contre la moyenne) ; aussi dans le Résumé.
+Classification (PLS-DA) : table des observations bien et mal classées, avec les valeurs
+ajustées ou en validation croisée, et courbes ROC avec leur aire (AUC).
+
+Fenêtres
+--------
+Au centre, un onglet par modèle (« M1 · PLS »), et un onglet pour chaque vue du projet
+(Données, Statistiques des variables, Historique). L'onglet d'un modèle est sa page : son
+résumé à gauche, ses scores et ses loadings à droite ; ses autres vues (VIP, DModX...)
+s'y ajoutent en onglets. Choisir un modèle dans l'explorateur affiche sa page ; fermer la
+dernière vue d'une page ferme la page.
+Dans une page comme au centre, les vues se déplacent par leur onglet (glisser-déposer),
+se divisent et s'empilent ; glisser l'onglet d'un modèle à côté d'un autre permet de
+comparer deux modèles. Clic droit sur un onglet, ou l'icône en haut à droite d'un groupe :
+détacher dans sa propre fenêtre (par exemple sur un second écran), agrandir, fermer.
+Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète. Une sélection d'observations (cadre ou lasso dans un
+graphique, clic sur un point ou une ligne de liste) apparaît dans toutes les vues et toutes
+les fenêtres du même modèle.
+Graphiques : molette pour zoomer ; clic droit pour copier l'image ou l'enregistrer (PNG, SVG),
+voir les contributions de la sélection ou en faire une classe.
+
+Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 133 projets .usp)
+-------------------------------------------------------------------------------------------
+Mise à l'échelle, R2X, R2Y, Q2 des PLS, scores, loadings, valeurs propres, T2 et sa
+limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.
+
+Ce qui diffère
+--------------
+- Q2 des ACP : les valeurs enregistrées comportent une étape non publiée ; écart typique
+  0,01 à 0,02, plus grand (vers 0,1) pour les fichiers .usp de version 11. D'autres façons
+  de faire la validation croisée, essayées sur les 149 modèles ACP, s'en écartent davantage.
+- Signe des composantes de nouveaux modèles : arbitraire (les modèles importés sont
+  orientés comme dans le fichier).
+- Dendrogrammes : méthode de Ward exacte ; les fusions du haut de l'arbre peuvent
+  différer de celles de l'arbre enregistré.
+- Intervalles de confiance (jack-knife) : proches des valeurs enregistrées, pas identiques.
+- Ajustement automatique des ACP : la limite exacte utilisée dans les fichiers n'est pas
+  publiée.
+- Seuil VIP (marche autour de 0,8) : méthode propre à l'application.
+- OPLS / OPLS-DA : pas de modèle enregistré pour comparer (voir plus haut).
+- Transformation proposée : la règle publiée ne dit pas s'il faut l'asymétrie et Min/Max à
+  la fois ; l'application les exige tous les deux.
+
+Le code
+-------
+Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
+  pretraitement.R        transformations, centrage, mise à l'échelle
+  nipals.R               ACP et PLS (algorithme NIPALS, données manquantes)
+  validation_croisee.R   Q2
+  statistiques.R         T2, DModX, VIP, coefficients, intervalles, limites
+  validation.R           permutations, CV-ANOVA, classement PLS-DA et courbes ROC
+  opls.R                 OPLS et OPLS-DA
+  diagnostic.R           contributions, vérification des données, statistiques des variables
+  variables.R            scores en variables, classes, valeurs modifiées, variables calculées
+  projet.R               lecture des projets, historique du fichier
+  verification.R         comparaison avec les résultats enregistrés dans les fichiers .usp
+  script.R               export d'un modèle en script R
+  modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustement)
+Dans R : source("resources/moteur/charger.R"), puis par exemple
+  p <- importer_tableau("mes_donnees.csv")
+  d <- definir_modele(p, "PLS", x = 3:20, y = 2)
+  m <- ajuster(p, d)
+  m$statistiques$composantes

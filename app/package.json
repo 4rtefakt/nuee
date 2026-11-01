@@ -1,0 +1,25 @@
+{
+  "name": "nuee",
+  "productName": "Nuée",
+  "version": "0.6.0",
+  "description": "ACP, PLS, PLS-DA et OPLS calculées en R",
+  "author": "4rtefakt",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/4rtefakt/nuee",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "vendor": "node copier-vendor.js"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "lucide-static": "^1.66.0"
+  },
+  "dependencies": {
+    "dockview-core": "^8.8.3",
+    "plotly.js-dist-min": "^4.2.0"
+  }
+}

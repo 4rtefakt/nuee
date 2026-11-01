@@ -1,0 +1,15 @@
+# the .usp projects and anything exported from them stay out of git
+*.usp
+*.USP
+exported/
+extracted/
+
+# downloaded libraries and build outputs
+app/node_modules/
+app/interface/vendor/
+outils/
+dist/
+__pycache__/
+
+# local tooling
+.claude/
