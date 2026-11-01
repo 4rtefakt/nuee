@@ -3,6 +3,13 @@
 # L'interface (fenêtre de l'application ou navigateur) envoie ses demandes en JSON à
 # /api/<demande> ; chaque résultat affiché vient des fonctions du moteur.
 
+# Le moteur est écrit en UTF-8. R pour Windows l'est toujours ; sous Linux, une session
+# lancée sans langue (LANG vide ou C, depuis un menu par exemple) ne l'est pas : on passe à
+# C.UTF-8, présent sur tous les systèmes récents.
+if (!l10n_info()[["UTF-8"]]) {
+  for (l in c("C.UTF-8", "C.utf8", "en_US.UTF-8")) if (nzchar(suppressWarnings(Sys.setlocale("LC_CTYPE", l)))) break
+}
+
 local({
   f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
   racine <<- normalizePath(file.path(dirname(if (length(f)) f else "moteur/serveur.R"), ".."), winslash = "/")
@@ -29,7 +36,8 @@ source(file.path(racine, "moteur", "console.R"), encoding = "UTF-8")  # journal 
 
 # ---------------------------------------------------------------- projets
 
-# Un fichier .usp passe par le convertisseur (export_project), qui écrit un .json.
+# Un fichier .usp passe par le convertisseur (export_project), qui écrit un .json : le
+# programme compilé sous Windows, le script Python ailleurs (python3 sous Linux).
 convertir_usp <- function(chemin) {
   dossier <- file.path(tempdir(), nouvel_id("usp"))
   dir.create(dossier)
@@ -37,8 +45,9 @@ convertir_usp <- function(chemin) {
   sortie <- if (file.exists(exe)) {
     system2(exe, c(shQuote(chemin), "-o", shQuote(dossier)), stdout = TRUE, stderr = TRUE)
   } else {
-    system2(Sys.getenv("PYTHON", "python"), c(shQuote(file.path(racine, "convertisseur", "export_project.py")),
-                                               shQuote(chemin), "-o", shQuote(dossier)), stdout = TRUE, stderr = TRUE)
+    python <- Sys.getenv("PYTHON", if (.Platform$OS.type == "windows") "python" else "python3")
+    system2(python, c(shQuote(file.path(racine, "convertisseur", "export_project.py")),
+                      shQuote(chemin), "-o", shQuote(dossier)), stdout = TRUE, stderr = TRUE)
   }
   json <- list.files(dossier, "\\.json$", full.names = TRUE)
   if (!length(json)) stop(traduire("Conversion du fichier .usp impossible : ", "The .usp file couldn't be converted: "), paste(sortie, collapse = " "))

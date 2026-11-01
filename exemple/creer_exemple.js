@@ -17,7 +17,7 @@ const path = require('path');
 
 const ici = __dirname;
 const lanceur = process.argv[2] || process.env.RSCRIPT
-  || path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R', 'R-4.6.2', 'bin', 'Rscript.exe');
+  || (process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R', 'R-4.6.2', 'bin', 'Rscript.exe') : 'Rscript');
 const rscript = fs.existsSync(path.join(path.dirname(lanceur), 'x64', 'Rscript.exe')) ? path.join(path.dirname(lanceur), 'x64', 'Rscript.exe') : lanceur;
 
 // ---------------------------------------------------------------- the made-up table
