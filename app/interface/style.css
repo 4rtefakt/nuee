@@ -154,6 +154,18 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .apropos-tete .logo { width: 56px; height: 56px; }
 .apropos-tete h3 { margin: 0; }
 .apropos-tete p { margin: 2px 0 0; }
+.palette-fond { align-items: flex-start; padding-top: 12vh; }
+.palette { background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 8px; width: min(620px, 94vw); box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+  display: flex; flex-direction: column; overflow: hidden; }
+.palette-saisie { margin: 10px; padding: 7px 10px; font-size: 14px; }
+.palette-liste { max-height: 55vh; overflow-y: auto; padding: 0 6px 6px; }
+.palette-item { display: grid; grid-template-columns: 22px auto 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; }
+.palette-item.actuel { background: var(--accent-doux); }
+.palette-item.inactif { opacity: .45; cursor: default; }
+.palette-chemin { color: var(--texte-doux); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-item .raccourci { color: var(--texte-doux); font-size: 12px; }
+pre.diagnostic { margin: 0; padding: 8px 10px; background: var(--fond-barre); border: 1px solid var(--bord); border-radius: 4px; white-space: pre-wrap;
+  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; font-size: 12px; user-select: text; }
 .accueil-tete p { margin: 0; color: var(--texte-doux); }
 .accueil-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .accueil-actions button { padding: 7px 14px; }
@@ -259,3 +271,10 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .liste-tables { width: 100%; min-width: 22em; }
 #statut .nouvelle-version { display: inline-flex; align-items: center; gap: 2px; }
 #statut .nouvelle-version a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent, #2f6fb5); font-weight: 600; text-decoration: none; }
+
+/* files dragged over the window (drop to open them) */
+body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed var(--accent); border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent); pointer-events: none; z-index: 10000; }
+
+/* an observation in the test set (model dialog) */
+.onglet-obs tr.en-test td { background: var(--accent-doux); }

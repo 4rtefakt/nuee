@@ -21,7 +21,7 @@ importer_texte <- function(texte, nom = "tableau", secondaires = TRUE) {
 # `toutes_modalites` : garder aussi les modalités d'un facteur sans observation (script R
 # autonome : les catégories restent celles du projet d'origine).
 projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE) {
-  if (!ncol(df) || !nrow(df)) stop("Le tableau est vide")
+  if (!ncol(df) || !nrow(df)) stop(traduire("Le tableau est vide", "The table is empty"))
   premiere_id <- is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
     (is.factor(df[[1]]) || grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE)))
   ids <- if (premiere_id) as.character(df[[1]]) else as.character(seq_len(nrow(df)))
@@ -82,7 +82,7 @@ nom_transformation <- function(tr) {
 
 variable_du_projet <- function(projet, uid) {
   for (v in projet$variables) if (identical(as.numeric(v$uid), as.numeric(uid))) return(v)
-  stop("Variable introuvable : ", uid)
+  stop(traduire("Variable introuvable : ", "Variable not found: "), uid)
 }
 
 # Les termes d'une variable : un seul pour une variable quantitative, un par catégorie
@@ -113,10 +113,12 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL) 
 #   par exemple list(c(3, 5), c(4, 4)) pour v3*v5 et v4*v4 ;
 #   spectres : prétraitement des spectres (spectres.R), par exemple
 #   list(list(type = "snv"), list(type = "sg", derivee = 1, fenetre = 11, degre = 2)) ; les
-#   variables X sont alors prises dans l'ordre du tableau.
+#   variables X sont alors prises dans l'ordre du tableau ;
+#   test : numéros des observations d'un jeu de test (jeu_test.R) : hors du modèle, puis
+#   prédites par lui.
 definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observations = NULL,
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
-                           transformations = NULL, croises = NULL, spectres = NULL) {
+                           transformations = NULL, croises = NULL, spectres = NULL, test = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -127,9 +129,11 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     if (is.null(n) || !nzchar(n)) return(NULL)
     # log10(x + C2), écrit "log10:C2" (transformation proposée pour une variable avec des 0)
     if (startsWith(n, "log10:")) return(list(type = "log10", params = c(NA, 1, as.numeric(sub("^log10:", "", n)))))
-    TRANSFORMATIONS[[n]] %||% stop("Transformation inconnue : ", n)
+    TRANSFORMATIONS[[n]] %||% stop(traduire("Transformation inconnue : ", "Unknown transformation: "), n)
   }
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
+  test <- unique(as.numeric(test))
+  obs <- setdiff(obs, test)
   x <- unique(as.numeric(x))
   y <- unique(as.numeric(y))
   spectres <- etapes_spectres(spectres)
@@ -137,14 +141,14 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   plsda <- type %in% c("PLS-DA", "OPLS-DA")
   opls <- type %in% c("OPLS", "OPLS-DA")
   if (plsda) {
-    if (is.null(classe)) stop("Une PLS-DA demande une variable de classe")
+    if (is.null(classe)) stop(traduire("Une PLS-DA demande une variable de classe", "A PLS-DA needs a class variable"))
     y <- NULL
     yt <- termes_variable(projet, classe, "UV")
     # seules les observations dont la classe est connue entrent dans le modèle
     obs <- obs[!is.na(colonne(projet, classe, obs))]
   }
   Ap <- if (opls) (if (plsda) length(unique(colonne(projet, classe, obs))) - 1 else length(y))
-  if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) "Une OPLS-DA demande au moins deux classes" else "Une OPLS demande au moins une variable Y")
+  if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   d <- list(type = if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
@@ -155,6 +159,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (plsda) d$classe <- classe
   if (opls) d$Ap <- Ap
   if (length(spectres)) d$spectres <- spectres
+  if (length(test)) d$test <- test
   d
 }
 
@@ -164,10 +169,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
 # centrés et mis à l'échelle (voir construire_bloc), puis il est lui-même mis à l'échelle.
 termes_croises <- function(projet, paire, x, echelle = "UV") {
   paire <- as.numeric(paire)
-  if (!all(paire %in% x)) stop("Un terme croisé ne peut utiliser que des variables X")
+  if (!all(paire %in% x)) stop(traduire("Un terme croisé ne peut utiliser que des variables X", "A cross term can only use X variables"))
   vs <- lapply(paire, function(u) variable_du_projet(projet, u))
   if (paire[1] == paire[2] && length(vs[[1]]$categories)) {
-    stop("Pas de carré pour une variable qualitative : ", vs[[1]]$ids[1])
+    stop(traduire("Pas de carré pour une variable qualitative : ", "No square for a qualitative variable: "), vs[[1]]$ids[1])
   }
   options <- lapply(vs, function(v) if (length(v$categories)) seq_along(v$categories) else 0)
   combinaisons <- expand.grid(options)
@@ -207,10 +212,10 @@ reglages_modele <- function(projet, d) {
   plsda <- isTRUE(d$plsda) && !is.null(d$classe)
   list(type = paste0(if (isTRUE(d$opls)) "O" else "", if (plsda) "PLS-DA" else d$type), x = I(simples(d$x) %||% numeric(0)),
        y = I(if (plsda) numeric(0) else simples(d$y) %||% numeric(0)), classe = if (plsda) d$classe else NULL,
-       exclues = I(setdiff(tous, d$observations)), echelles = echelles,
+       exclues = I(setdiff(tous, c(d$observations, d$test))), echelles = echelles,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))),
-       spectres = d$spectres %||% list(), nom = d$name %||% "", titre = d$title %||% "")
+       spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
 }
 
 # Nombre de composantes significatives, avec les règles publiées de l'ajustement automatique :
@@ -266,8 +271,9 @@ autoajuster <- function(projet, definition, A_max = NULL) {
     premiere_non_significative <<- a
     TRUE
   }
-  ajuster(projet, definition, A = A_max, arret = arret)
-  if (is.na(premiere_non_significative)) A_max else premiere_non_significative - 1
+  m <- ajuster(projet, definition, A = A_max, arret = arret)
+  # (m$A : moins que A_max quand il n'y avait plus de variation à décrire)
+  if (is.na(premiere_non_significative)) m$A else premiere_non_significative - 1
 }
 
 # Enregistre un projet (données et définitions de modèles) au format lu par lire_projet().

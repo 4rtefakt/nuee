@@ -5,7 +5,9 @@
 #     ligne de base aussi) ;
 #   - detrend, ligne de base, abscisses lues dans les noms, Savitzky–Golay zone par zone ;
 #   - un modèle PLS sur des spectres inventés : la prédiction des observations du modèle rend
-#     leurs scores, le script R refait la même définition, le projet enregistré se relit.
+#     leurs scores, le script R refait la même définition, le projet enregistré se relit ;
+#   - plus de variation à décrire (spectres plats après la ligne de base, données épuisées) :
+#     un message clair, et l'ajustement automatique s'arrête sans erreur.
 #   Rscript moteur/tests/verifier_spectres.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -118,6 +120,32 @@ tm <- texte_methodes(p, d3, ajuster(p, d3), "fr")
 verifier("texte des méthodes : detrend (Barnes et al., 1989) et ligne de base",
          any(grepl("detrend \\(polynôme de degré 2", tm$paragraphes)) && any(grepl("ligne de base", tm$paragraphes)) && any(grepl("^Barnes", tm$references)))
 unlink(f)
+
+# Plus de variation à décrire : un message clair au lieu d'une erreur interne de R
+onde <- 1000 + 4 * (0:29)
+plat <- data.frame(nom = paste0("s", 1:8), y = 1:8)
+for (k in seq_along(onde)) plat[[as.character(onde[k])]] <- 0.01 * (1:8)  # des spectres plats
+pp <- projet_depuis_tableau(plat, "plats")
+dp <- definir_modele(pp, "PLS", x = numeros(pp, as.character(onde)), y = numeros(pp, "y"), A = 1, echelle = c(defaut = "Ctr"),
+                     spectres = list(list(type = "ligne_base")))
+message_de <- function(expr) tryCatch({ expr; "" }, error = function(e) conditionMessage(e))
+verifier("spectres nuls après la ligne de base : « aucune composante possible »",
+         startsWith(message_de(ajuster(pp, dp)), "Aucune composante possible"))
+options(nuee.langue = "en")
+verifier("… et en anglais", startsWith(message_de(ajuster(pp, dp)), "No component is possible"))
+options(nuee.langue = NULL)
+set.seed(4)
+epuise <- data.frame(nom = paste0("o", 1:20), x1 = rnorm(20), x2 = 5, x3 = 7)  # une seule variable varie
+epuise$y <- epuise$x1 + rnorm(20, 0, 0.1)
+pe <- projet_depuis_tableau(epuise, "épuisé")
+for (type in c("PCA", "PLS")) {
+  de <- definir_modele(pe, type, x = numeros(pe, c("x1", "x2", "x3")), y = if (type == "PLS") numeros(pe, "y"), A = 3, echelle = c(defaut = "Ctr"))
+  verifier(sprintf("%s : la 2e composante est impossible, et le message le dit", type),
+           startsWith(message_de(ajuster(pe, de)), "Composante 2 impossible") && grepl("au plus 1\\.$", message_de(ajuster(pe, de))))
+  # (en ACP, la validation croisée ne prédit pas x1 sans lui : même la 1re composante n'est pas retenue)
+  verifier(sprintf("%s : l'ajustement automatique s'arrête sans erreur, à %d composante", type, if (type == "PLS") 1 else 0),
+           identical(tryCatch(autoajuster(pe, de, A_max = 3), error = function(e) conditionMessage(e)), if (type == "PLS") 1L else 0))
+}
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

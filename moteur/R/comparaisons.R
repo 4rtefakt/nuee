@@ -15,14 +15,14 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   v_classe <- variable_du_projet(projet, classe)
   cats <- as.character(v_classe$categories)
-  if (!length(cats)) stop("La variable de classe doit être qualitative")
+  if (!length(cats)) stop(traduire("La variable de classe doit être qualitative", "The class variable must be qualitative"))
   g <- factor(cats[colonne(projet, classe, obs)], levels = cats)
   deux <- test %in% c("welch", "student", "mann_whitney")
   if (deux) {
     groupes <- as.character(groupes %||% cats[1:2])
-    if (length(groupes) != 2 || !all(groupes %in% cats) || groupes[1] == groupes[2]) stop("Il faut deux classes différentes à comparer")
+    if (length(groupes) != 2 || !all(groupes %in% cats) || groupes[1] == groupes[2]) stop(traduire("Il faut deux classes différentes à comparer", "Two different classes are needed to compare"))
   } else groupes <- cats
-  if (!test %in% c("welch", "student", "mann_whitney", "anova", "kruskal")) stop("Test inconnu : ", test)
+  if (!test %in% c("welch", "student", "mann_whitney", "anova", "kruskal")) stop(traduire("Test inconnu : ", "Unknown test: "), test)
   vars <- Filter(function(v) !length(v$categories) && as.character(v$uid) %in% colnames(projet$donnees) &&
                    !identical(as.numeric(v$uid), as.numeric(classe)), projet$variables)
   lignes <- lapply(vars, function(v) {
@@ -56,7 +56,7 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
     ligne
   })
   res <- do.call(rbind, lignes)
-  if (is.null(res)) stop("Aucune variable quantitative à comparer")
+  if (is.null(res)) stop(traduire("Aucune variable quantitative à comparer", "No quantitative variable to compare"))
   res$p_ajuste <- if (correction == "aucune") res$p else stats::p.adjust(res$p, method = if (correction == "bonferroni") "bonferroni" else "BH")
   list(tableau = res, groupes = groupes, test = test, correction = correction, classe = as.character(v_classe$ids[1]),
        effectifs = as.list(table(g)))

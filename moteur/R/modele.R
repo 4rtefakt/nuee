@@ -34,6 +34,7 @@ ajuster <- function(projet, definition, A = definition$A, G = definition$cv_grou
   class(modele) <- "modele_nuee"
   if (orienter && !is.null(definition[["solution"]][["T"]])) modele <- orienter_comme(modele, definition[["solution"]][["T"]])
   modele$statistiques <- statistiques(modele)
+  if (length(definition$test)) modele$test <- evaluer_test(projet, modele, definition)  # jeu_test.R
   modele
 }
 
@@ -54,13 +55,14 @@ ajuster_matrices <- function(X, Y, A, G, arret = NULL) {
               ssxv = matrix(colSums(E^2), K, 1), ssyv = if (pls) matrix(colSums(F^2), ncol(F), 1),
               press = NULL, ss_vc = NULL, vc = list())
   for (a in seq_len(A)) {
-    if (pls) {
-      vc <- validation_pls(E, X$M, F, Y$M, groupes)
-      comp <- composante_pls(E, X$M, F, Y$M)
-    } else {
-      vc <- validation_acp(E, X$M, groupes, groupes_var)
-      comp <- composante_acp(E, X$M)
-    }
+    # plus de variation à décrire (nipals.R) : l'ajustement automatique (arret) s'arrête là ;
+    # sinon l'erreur dit combien de composantes le modèle peut avoir
+    pas <- tryCatch(if (pls) list(vc = validation_pls(E, X$M, F, Y$M, groupes), comp = composante_pls(E, X$M, F, Y$M))
+                    else list(vc = validation_acp(E, X$M, groupes, groupes_var), comp = composante_acp(E, X$M)),
+                    sans_variation = function(e) if (!is.null(arret) && a > 1) NULL else stop(trop_de_composantes(a), call. = FALSE))
+    if (is.null(pas)) break
+    vc <- pas$vc
+    comp <- pas$comp
     tt <- comp$t
     tt[!avec_x] <- NA
     t0 <- ifelse(is.na(tt), 0, tt)
@@ -86,6 +88,13 @@ ajuster_matrices <- function(X, Y, A, G, arret = NULL) {
   c(res, list(ssx = colSums(res$ssxv), ssy = if (pls) colSums(res$ssyv),
               q2 = 1 - rapport, q2cum = 1 - cumprod(rapport),
               residus_x = E, residus_y = F, avec_x = avec_x))
+}
+
+trop_de_composantes <- function(a) {
+  if (a == 1) return(traduire("Aucune composante possible : les données n'ont pas de variation (variables constantes, ou nulles après le prétraitement des spectres).",
+                              "No component is possible: the data have no variation (constant variables, or all zero after the spectral preprocessing)."))
+  sprintf(traduire("Composante %d impossible : il ne reste plus de variation à décrire après %d composante(s). Ce modèle peut en avoir au plus %d.",
+                   "Component %d is not possible: no variation is left to describe after %d component(s). This model can have at most %d."), a, a - 1, a - 1)
 }
 
 # Change le signe des composantes dont les scores sont opposés à ceux de `reference`

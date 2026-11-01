@@ -15,7 +15,7 @@ ajouter_colonne <- function(projet, nom, observations, valeurs, categories = NUL
     uid <- projet$variables[[i]]$uid
     if (!is.null(categories)) {
       if (!length(projet$variables[[i]]$categories) && any(!is.na(projet$donnees[, as.character(uid)]))) {
-        stop("La variable « ", nom, " » existe déjà et n'est pas qualitative")
+        stop(sprintf(traduire("La variable « %s » existe déjà et n'est pas qualitative", "The variable “%s” already exists and isn't qualitative"), nom))
       }
       projet$variables[[i]]$categories <- categories
     }
@@ -74,7 +74,7 @@ modeles_utilisant <- function(projet, noms) {
 numeros <- function(projet, noms) {
   tous <- vapply(projet$variables, function(v) as.character(v$ids[1]), "")
   k <- match(noms, tous)
-  if (anyNA(k)) stop("Variable introuvable : ", paste(noms[is.na(k)], collapse = ", "))
+  if (anyNA(k)) stop(traduire("Variable introuvable : ", "Variable not found: "), paste(noms[is.na(k)], collapse = ", "))
   vapply(projet$variables[k], function(v) as.numeric(v$uid), 0)
 }
 
@@ -83,7 +83,7 @@ numeros_observations <- function(projet, noms = NULL) {
   uids <- vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   if (is.null(noms)) return(uids)
   k <- match(noms, unname(projet$noms_obs[as.character(uids)]))
-  if (anyNA(k)) stop("Observation introuvable : ", paste(noms[is.na(k)], collapse = ", "))
+  if (anyNA(k)) stop(traduire("Observation introuvable : ", "Observation not found: "), paste(noms[is.na(k)], collapse = ", "))
   uids[k]
 }
 
@@ -92,7 +92,7 @@ numeros_observations <- function(projet, noms = NULL) {
 # Les modèles déjà ajustés ne changent pas : il faut les réajuster.
 modifier_valeur <- function(projet, observation, variable, valeur) {
   k <- as.character(variable)
-  if (!(k %in% colnames(projet$donnees))) stop("Variable sans données : ", variable)
+  if (!(k %in% colnames(projet$donnees))) stop(traduire("Variable sans données : ", "Variable without data: "), variable)
   i <- which(vapply(projet$variables, function(v) identical(as.numeric(v$uid), as.numeric(variable)), TRUE))[1]
   texte <- trimws(as.character(valeur %||% ""))
   cats <- as.character(projet$variables[[i]]$categories %||% character(0))
@@ -103,7 +103,7 @@ modifier_valeur <- function(projet, observation, variable, valeur) {
     match(texte, cats)
   } else {
     n <- suppressWarnings(as.numeric(sub(",", ".", texte, fixed = TRUE)))  # 3,5 ou 3.5
-    if (is.na(n)) stop("Valeur non numérique pour ", projet$noms_var[[k]], " : ", texte)
+    if (is.na(n)) stop(sprintf(traduire("Valeur non numérique pour %s : %s", "Non-numeric value for %s: %s"), projet$noms_var[[k]], texte))
     n
   }
   projet$donnees[as.character(observation), k] <- x
@@ -117,8 +117,8 @@ modifier_valeur <- function(projet, observation, variable, valeur) {
 # qualitative, un résultat logique aussi (catégories FALSE et TRUE).
 variable_calculee <- function(projet, nom, formule) {
   nom <- trimws(nom)
-  if (!nzchar(nom)) stop("Donner un nom à la nouvelle variable")
-  if (nom %in% projet$noms_var) stop("Une variable s'appelle déjà « ", nom, " »")
+  if (!nzchar(nom)) stop(traduire("Donner un nom à la nouvelle variable", "Give the new variable a name"))
+  if (nom %in% projet$noms_var) stop(sprintf(traduire("Une variable s'appelle déjà « %s »", "A variable is already called “%s”"), nom))
   obs <- as.numeric(rownames(projet$donnees))
   env <- new.env(parent = globalenv())
   for (v in Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)) {
@@ -128,18 +128,18 @@ variable_calculee <- function(projet, nom, formule) {
   r <- tryCatch(eval(parse(text = formule), envir = env), error = function(e) {
     m <- conditionMessage(e)
     absent <- regmatches(m, regexec("^obje?c?t '(.*)' (not found|introuvable)", m))[[1]]
-    stop(if (length(absent)) sprintf("Variable introuvable : %s (vérifier le nom ; un nom avec des espaces ou des signes s'écrit entre `accents graves`)", absent[2]) else m, call. = FALSE)
+    stop(if (length(absent)) sprintf(traduire("Variable introuvable : %s (vérifier le nom ; un nom avec des espaces ou des signes s'écrit entre `accents graves`)", "Variable not found: %s (check the name; a name with spaces or signs is written between `backticks`)"), absent[2]) else m, call. = FALSE)
   })
   if (is.factor(r) || is.logical(r)) r <- as.character(r)
   if (length(r) == 1) r <- rep(r, length(obs))
   if (length(r) != length(obs)) {
-    stop("La formule doit donner une valeur par observation (", length(obs), ") ; elle en donne ", length(r))
+    stop(sprintf(traduire("La formule doit donner une valeur par observation (%d) ; elle en donne %d", "The formula must give one value per observation (%d); it gives %d"), length(obs), length(r)))
   }
   if (is.character(r)) {
     cats <- sort(unique(stats::na.omit(r)))
     return(ajouter_colonne(projet, nom, obs, match(r, cats), categories = cats))
   }
-  if (!is.numeric(r)) stop("La formule doit donner des nombres ou du texte")
+  if (!is.numeric(r)) stop(traduire("La formule doit donner des nombres ou du texte", "The formula must give numbers or text"))
   ajouter_colonne(projet, nom, obs, ifelse(is.finite(r), r, NA))
 }
 
@@ -148,17 +148,17 @@ variable_calculee <- function(projet, nom, formule) {
 # d'effectifs à peu près égaux (bornes aux quantiles).
 classes_valeurs <- function(projet, nom, variable, bornes = NULL, n = NULL) {
   nom <- trimws(nom)
-  if (!nzchar(nom)) stop("Donner un nom à la nouvelle variable")
-  if (nom %in% projet$noms_var) stop("Une variable s'appelle déjà « ", nom, " »")
+  if (!nzchar(nom)) stop(traduire("Donner un nom à la nouvelle variable", "Give the new variable a name"))
+  if (nom %in% projet$noms_var) stop(sprintf(traduire("Une variable s'appelle déjà « %s »", "A variable is already called “%s”"), nom))
   obs <- as.numeric(rownames(projet$donnees))
   x <- colonne(projet, variable, obs)
-  if (length(variable_du_projet(projet, variable)$categories)) stop("Choisir une variable quantitative")
+  if (length(variable_du_projet(projet, variable)$categories)) stop(traduire("Choisir une variable quantitative", "Choose a quantitative variable"))
   if (is.null(bornes)) {
     q <- stats::quantile(x, seq(0, 1, length.out = n + 1), na.rm = TRUE, names = FALSE)
     bornes <- unique(q[-c(1, length(q))])
   }
   bornes <- sort(unique(as.numeric(bornes)))
-  if (!length(bornes)) stop("Il faut au moins une borne")
+  if (!length(bornes)) stop(traduire("Il faut au moins une borne", "At least one limit is needed"))
   f <- function(b) format(signif(b, 4), trim = TRUE)
   etiquettes <- c(sprintf("≤ %s", f(bornes[1])),
                   if (length(bornes) > 1) sprintf("]%s ; %s]", f(bornes[-length(bornes)]), f(bornes[-1])),

@@ -16,7 +16,8 @@ rscript <- file.path(R.home("bin"), "Rscript")
 lanceur <- file.path(dossier, "lancer.R")
 writeLines(c("a <- commandArgs(TRUE)",
              "source(a[1], encoding = \"UTF-8\")",
-             "saveRDS(list(T = m$T, composantes = m$statistiques$composantes, vip = m$statistiques$variables$VIP), a[2])"), lanceur)
+             "saveRDS(list(T = m$T, composantes = m$statistiques$composantes, vip = m$statistiques$variables$VIP,",
+             "             test = m$test$statistiques[c(\"RMSEP\", \"biais\", \"SEP\", \"Q2ext\")]), a[2])"), lanceur)
 
 # Écrit le script de `d`, le lance dans une session neuve et compare ses résultats.
 essayer <- function(nom, p, d, ...) {
@@ -32,8 +33,9 @@ essayer <- function(nom, p, d, ...) {
   }
   s <- readRDS(sortie)
   meme <- function(a, b) (is.null(a) && is.null(b)) || isTRUE(all.equal(unname(as.matrix(a)), unname(as.matrix(b)), tolerance = 1e-10))
-  verifier(sprintf("%s : mêmes R2, Q2, scores (signes compris) et VIP que le moteur", nom),
-           is.null(r$ecart) && meme(s$T, m$T) && meme(s$composantes, m$statistiques$composantes) && meme(s$vip, m$statistiques$variables$VIP))
+  verifier(sprintf("%s : mêmes R2, Q2, scores (signes compris) et VIP%s que le moteur", nom, if (is.null(m$test)) "" else ", et jeu de test"),
+           is.null(r$ecart) && meme(s$T, m$T) && meme(s$composantes, m$statistiques$composantes) && meme(s$vip, m$statistiques$variables$VIP) &&
+           meme(s$test, if (!is.null(m$test)) m$test$statistiques[c("RMSEP", "biais", "SEP", "Q2ext")]))
   invisible(r)
 }
 
@@ -70,6 +72,9 @@ verifier("sinon, les termes un par un", !any(grepl("definir_modele\\(", readLine
 
 d <- definir_modele(p, "OPLS-DA", x = x, classe = uid("variete"), A = 4)
 essayer("opls_4_classes", p, d, donnees = "csv")
+d <- definir_modele(p, "PLS", x = x[-1], y = x[1], A = 2, test = numeros_observations(p)[seq(5, 120, by = 5)])
+r <- essayer("jeu_de_test", p, d)
+verifier("jeu de test : definir_modele(..., test = test)", any(grepl("test = test,", readLines(r$script, encoding = "UTF-8"))))
 d <- modeles_classe(p, definir_modele(p, "PCA", x = x, A = 2), uid("variete"))[[2]]
 essayer("modele_de_classe", p, d)
 
@@ -84,6 +89,28 @@ essayer("spectres", q, d)
 d <- definir_modele(q, "PLS", x = numeros(q, names(df)[-c(1:2, 15:22)]), y = numeros(q, "y"), A = 2,  # une zone retirée
                     spectres = list(list(type = "ligne_base"), list(type = "detrend", degre = 2), list(type = "sg", derivee = 1, fenetre = 5, degre = 2)))
 essayer("spectres_zones", q, d, donnees = "csv")
+
+cat("Toute la séance dans un script\n")
+dir.create(ici <- file.path(dossier, "seance"))
+ms <- lapply(p$models, function(d) ajuster(p, d))
+r <- ecrire_script_seance(p, p$models, ms, file.path(ici, "seance.R"), "moteur", version = "essai", donnees = "csv", rdata = TRUE)
+noms <- vapply(p$models, function(d) d$name, "")
+lanceur_seance <- file.path(dossier, "lancer_seance.R")
+writeLines(c("a <- commandArgs(TRUE)", "source(a[1], encoding = \"UTF-8\")",
+             "saveRDS(lapply(strsplit(a[3], \",\")[[1]], function(n) list(T = get(n)$T, composantes = get(n)$statistiques$composantes)), a[2])"),
+           lanceur_seance)
+sortie <- file.path(dossier, "seance.rds")
+messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(lanceur_seance), shQuote(r$script), shQuote(sortie), paste(noms, collapse = ",")),
+                                     stdout = TRUE, stderr = TRUE))
+s <- if (file.exists(sortie)) readRDS(sortie)
+meme <- function(a, b) isTRUE(all.equal(unname(as.matrix(a)), unname(as.matrix(b)), tolerance = 1e-10))
+verifier(sprintf("%d modèles, chacun sous son nom : mêmes R2, Q2 et scores (signes compris) que le moteur", length(noms)),
+         is.null(r$ecart) && length(s) == length(noms) &&
+           all(vapply(seq_along(noms), function(k) meme(s[[k]]$T, ms[[k]]$T) && meme(s[[k]]$composantes, ms[[k]]$statistiques$composantes), FALSE)))
+texte <- readLines(r$script, encoding = "UTF-8")
+verifier("le code du moteur n'y est qu'une fois", sum(grepl("^ajuster <- function", texte)) == 1 && sum(grepl("^# 1\\. Vérifications", texte)) == 1)
+e <- new.env(); load(r$chemins[3], envir = e)
+verifier(".RData : données, projet et chaque modèle", all(c("donnees", "p", noms) %in% ls(e)))
 
 cat("Rapports R Markdown et Quarto\n")
 for (i in seq_along(p$models)) {

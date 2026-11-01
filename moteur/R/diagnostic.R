@@ -14,7 +14,7 @@ contributions <- function(m, observations, type = c("DModX", "score", "T2"), com
   type <- match.arg(type)
   i <- match(as.numeric(observations), m$observations)
   i <- i[!is.na(i)]
-  if (!length(i)) stop("Aucune des observations choisies n'est dans le modèle")
+  if (!length(i)) stop(traduire("Aucune des observations choisies n'est dans le modèle", "None of the chosen observations is in the model"))
   moyenne <- function(M) colSums((M * m$MX)[i, , drop = FALSE]) / pmax(colSums(m$MX[i, , drop = FALSE]), 1)
   if (type == "DModX") {
     v <- moyenne(m$residus_x)

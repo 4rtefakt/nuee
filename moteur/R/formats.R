@@ -40,9 +40,9 @@ tables_fichier <- function(chemin) {
 lire_tableau <- function(chemin, table = NULL) {
   ext <- extension(chemin)
   un_parmi <- function(objets) {
-    if (!length(objets)) stop("Ce fichier ne contient aucun tableau (data.frame ou matrice)")
+    if (!length(objets)) stop(traduire("Ce fichier ne contient aucun tableau (data.frame ou matrice)", "This file holds no table (data frame or matrix)"))
     if (is.null(table)) return(objets[[1]])
-    objets[[table]] %||% stop("Tableau introuvable dans le fichier : ", table)
+    objets[[table]] %||% stop(traduire("Tableau introuvable dans le fichier : ", "Table not found in the file: "), table)
   }
   x <- switch(ext,
     csv = , txt = , tsv = , tab = , dat = lire_texte(chemin),
@@ -59,7 +59,7 @@ lire_tableau <- function(chemin, table = NULL) {
     dbf = lire_dbf(chemin),
     arff = lire_arff(chemin),
     jdx = , dx = , jcm = , spc = tableau_spectres(lire_spectres(chemin)),
-    stop("Format de fichier non reconnu : .", ext))
+    stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext))
   vers_data_frame(x)
 }
 
@@ -203,7 +203,7 @@ lire_arff <- function(chemin) {
   lignes <- trimws(readLines(chemin, encoding = "UTF-8", warn = FALSE))
   lignes <- lignes[nzchar(lignes) & !startsWith(lignes, "%")]
   debut <- grep("^@data", lignes, ignore.case = TRUE)[1]
-  if (is.na(debut)) stop("Fichier ARFF sans section @data")
+  if (is.na(debut)) stop(traduire("Fichier ARFF sans section @data", "ARFF file without a @data section"))
   jeton <- "'(?:[^'\\\\]|\\\\.)*'|\"(?:[^\"\\\\]|\\\\.)*\"|[^,'\"]+"
   valeurs <- function(x) {  # les valeurs d'une liste séparée par des virgules, sans leurs guillemets
     v <- trimws(regmatches(x, gregexpr(jeton, x, perl = TRUE))[[1]])
@@ -217,10 +217,10 @@ lire_arff <- function(chemin) {
   noms <- vapply(m, function(x) valeurs(x[2])[1], "")
   types <- vapply(m, function(x) x[3], "")
   donnees <- lignes[-seq_len(debut)]
-  if (any(startsWith(donnees, "{"))) stop("Fichier ARFF « creux » (sparse) : non pris en charge")
+  if (any(startsWith(donnees, "{"))) stop(traduire("Fichier ARFF « creux » (sparse) : non pris en charge", "Sparse ARFF file: not supported"))
   cellules <- lapply(donnees, valeurs)
   faux <- which(lengths(cellules) != length(noms))
-  if (length(faux)) stop(sprintf("Fichier ARFF : la ligne de données %d n'a pas %d valeurs", faux[1], length(noms)))
+  if (length(faux)) stop(sprintf(traduire("Fichier ARFF : la ligne de données %d n'a pas %d valeurs", "ARFF file: data line %d doesn't have %d values"), faux[1], length(noms)))
   M <- matrix(unlist(cellules), length(donnees), length(noms), byrow = TRUE)
   M[M == "?"] <- NA
   colonnes <- lapply(seq_along(noms), function(k) {
@@ -271,7 +271,7 @@ ecrire_dbf <- function(df, chemin) {
       signe <- as.integer(any(fini < 0))
       dec <- if (all(fini == round(fini))) 0 else max(0, min(15, 18 - chiffres - signe))
       largeur <- chiffres + signe + if (dec) dec + 1 else 0
-      if (largeur > 19) stop("Nombre trop grand pour un fichier dBase : ", max(abs(fini)))
+      if (largeur > 19) stop(traduire("Nombre trop grand pour un fichier dBase : ", "Number too large for a dBase file: "), max(abs(fini)))
       texte <- ifelse(is.finite(x), formatC(x, format = "f", digits = dec, width = largeur), "")
       valeurs <- lapply(texte, function(t) octets(charToRaw(t), largeur, TRUE))
       return(list(type = "N", largeur = largeur, dec = dec, valeurs = valeurs))
@@ -328,7 +328,7 @@ lire_omv <- function(chemin) {
                 number = readBin(bin, "double", n, size = 8, endian = "little"),
                 integer = readBin(bin, "integer", n, size = 4, endian = "little"),
                 string = { s <- texte(readBin(bin, "integer", n, size = 4, endian = "little")); Encoding(s) <- "UTF-8"; s },
-                stop("Colonne jamovi d'un type inconnu : ", type))
+                stop(traduire("Colonne jamovi d'un type inconnu : ", "jamovi column of an unknown type: "), type))
     if (f$columnType %in% c("Filter", "None")) next
     if (is.double(x)) x[is.nan(x)] <- NA
     labels <- xdata[[f$name]]$labels
@@ -488,7 +488,7 @@ ecrire_tableau <- function(df, chemin, objet = "donnees") {
     omv = ecrire_omv(df, chemin),
     dbf = ecrire_dbf(df, chemin),
     arff = foreign::write.arff(logiques_en_nombres(df), chemin, relation = objet),
-    stop("Format d'export non reconnu : .", ext))
+    stop(traduire("Format d'export non reconnu : .", "Unrecognised export format: ."), ext))
   invisible(chemin)
 }
 

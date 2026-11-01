@@ -70,7 +70,7 @@ modele_du_projet <- function(projet, quel) {
     if (identical(m$number, quel) || identical(as.numeric(m$number), as.numeric(quel)) ||
         identical(m$name, quel)) return(m)
   }
-  stop("Modèle introuvable : ", quel)
+  stop(traduire("Modèle introuvable : ", "Model not found: "), quel)
 }
 
 # Historique du fichier (journal d'audit enregistré dans le .usp) : une ligne par événement, avec
