@@ -53,6 +53,7 @@ function copier(src, dest, filtre = () => true, base = src) {
 
 async function construire() {
   execFileSync(process.execPath, [path.join(__dirname, 'copier-vendor.js')], { stdio: 'inherit' });
+  await require('./changelog').ecrireChangelog();  // CHANGELOG.md follows interface/nouveautes.js
   if (!process.env.SANS_ESSAI) {
     execFileSync(process.execPath, [path.join(__dirname, 'tests', 'essai_api.js'), path.join(dossierR, 'bin', 'Rscript.exe')], { stdio: 'inherit' });
   }
@@ -119,6 +120,8 @@ async function construire() {
       appId: 'io.github.4rtefakt.nuee', productName: 'Nuée', executableName: 'Nuee', copyright: '4rtefakt', compression: 'maximum',
       directories: { output: path.join(sortie, 'installateur') },
       win: { icon: path.join(__dirname, 'icone', 'nuee.ico') },
+      // .nuee projects open in Nuée when double-clicked, with its icon
+      fileAssociations: [{ ext: 'nuee', name: 'Projet Nuée', description: 'Projet Nuée', icon: path.join(__dirname, 'icone', 'nuee.ico') }],
       nsis: {
         oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true,
         createDesktopShortcut: true, createStartMenuShortcut: true, shortcutName: 'Nuée', uninstallDisplayName: 'Nuée',

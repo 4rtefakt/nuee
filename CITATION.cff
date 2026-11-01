@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use Nuée in your research, please cite it as below. Model > Text for the Methods section writes the citation for you."
+type: software
+title: "Nuée"
+abstract: "Desktop application for multivariate data analysis (PCA, PLS, PLS-DA, OPLS and OPLS-DA, class models), computed in plain R, with export to R scripts and reports."
+authors:
+  - name: "4rtefakt"
+version: "1.0.0"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/4rtefakt/nuee"
+url: "https://github.com/4rtefakt/nuee"
+keywords:
+  - chemometrics
+  - multivariate analysis
+  - PCA
+  - PLS
+  - OPLS
+  - spectroscopy
+  - R

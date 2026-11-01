@@ -33,7 +33,7 @@ lire_spectres <- function(chemin) {
     jdx = , dx = , jcm = lire_jcamp(chemin),
     spc = lire_spc(chemin),
     lire_spectres_texte(chemin))
-  if (!length(spectres)) stop("Aucun spectre lisible dans ", basename(chemin))
+  if (!length(spectres)) stop(traduire("Aucun spectre lisible dans ", "No readable spectrum in "), basename(chemin))
   base <- tools::file_path_sans_ext(basename(chemin))
   titres <- vapply(spectres, function(s) s$nom %||% "", "")
   noms <- if (length(spectres) == 1) base
@@ -49,10 +49,10 @@ lire_spectres <- function(chemin) {
 # l'attribut "note". Les spectres doivent avoir les mêmes unités, quand leurs fichiers les
 # donnent.
 tableau_spectres <- function(spectres) {
-  if (!length(spectres)) stop("Aucun spectre")
+  if (!length(spectres)) stop(traduire("Aucun spectre", "No spectrum"))
   for (cle in c("unite_x", "unite_y")) {
     u <- unique(Filter(nzchar, vapply(spectres, function(s) s[[cle]] %||% "", "")))
-    if (length(u) > 1) stop(sprintf("Les spectres n'ont pas les mêmes unités (%s) : %s", if (cle == "unite_x") "abscisses" else "ordonnées", paste(u, collapse = ", ")))
+    if (length(u) > 1) stop(sprintf(traduire("Les spectres n'ont pas les mêmes unités (%s) : %s", "The spectra don't have the same units (%s): %s"), if (cle == "unite_x") traduire("abscisses", "x values") else traduire("ordonnées", "y values"), paste(u, collapse = ", ")))
   }
   x <- spectres[[1]]$x
   pas <- stats::median(abs(diff(x)))
@@ -62,12 +62,12 @@ tableau_spectres <- function(spectres) {
     bas <- max(vapply(spectres, function(s) min(s$x), 0))
     haut <- min(vapply(spectres, function(s) max(s$x), 0))
     x <- x[x >= bas - 1e-6 * pas & x <= haut + 1e-6 * pas]
-    if (length(x) < 2) stop("Les spectres n'ont pas d'abscisses en commun")
+    if (length(x) < 2) stop(traduire("Les spectres n'ont pas d'abscisses en commun", "The spectra have no x values in common"))
     spectres <- lapply(spectres, function(s) {
       s$y <- stats::approx(s$x, s$y, xout = x, ties = mean)$y
       s
     })
-    note <- sprintf("Abscisses différentes d'un spectre à l'autre : spectres interpolés sur celles du premier, de %s à %s (%d valeurs)",
+    note <- sprintf(traduire("Abscisses différentes d'un spectre à l'autre : spectres interpolés sur celles du premier, de %s à %s (%d valeurs)", "Different x values from one spectrum to another: spectra interpolated onto the first one's, from %s to %s (%d values)"),
                     format(x[1]), format(x[length(x)]), length(x))
   }
   Y <- matrix(unlist(lapply(spectres, `[[`, "y")), length(spectres), length(x), byrow = TRUE)
@@ -99,13 +99,13 @@ noms_abscisses <- function(x) {
 joindre_informations <- function(df, infos) {
   cle <- function(s) tolower(trimws(sub("\\.(jdx|dx|jcm|spc|csv|txt|tsv)$", "", as.character(s), ignore.case = TRUE)))
   i <- match(cle(df$Observation), cle(infos[[1]]))
-  if (all(is.na(i))) stop("Aucun nom de la première colonne du tableau d'informations ne correspond à un spectre (le nom de son fichier)")
+  if (all(is.na(i))) stop(traduire("Aucun nom de la première colonne du tableau d'informations ne correspond à un spectre (le nom de son fichier)", "No name in the first column of the information table matches a spectrum (its file name)"))
   ajout <- infos[i, -1, drop = FALSE]
   rownames(ajout) <- NULL
   res <- cbind(df[1], ajout, df[-1])
   names(res) <- make.unique(names(res), sep = "_")
-  note <- c(if (anyNA(i)) sprintf("%d spectre(s) sans informations", sum(is.na(i))),
-            if (any(!seq_len(nrow(infos)) %in% i)) sprintf("%d ligne(s) du tableau d'informations sans spectre", sum(!seq_len(nrow(infos)) %in% i)))
+  note <- c(if (anyNA(i)) sprintf(traduire("%d spectre(s) sans informations", "%d spectrum(s) without information"), sum(is.na(i))),
+            if (any(!seq_len(nrow(infos)) %in% i)) sprintf(traduire("%d ligne(s) du tableau d'informations sans spectre", "%d row(s) of the information table without a spectrum"), sum(!seq_len(nrow(infos)) %in% i)))
   attr(res, "note") <- c(attr(df, "note"), note)
   res
 }
@@ -153,12 +153,12 @@ table_jcamp <- function(forme, lignes, bloc) {
   if (forme == "(X++(Y..Y))") {
     y <- valeurs_x_y(lignes, titre) * fy
     n <- nombre("NPOINTS", length(y))
-    if (length(y) != n) stop(sprintf("JCAMP-DX « %s » : %d valeurs lues pour NPOINTS = %d", titre, length(y), n))
-    if (is.na(nombre("FIRSTX")) || is.na(nombre("LASTX"))) stop(sprintf("JCAMP-DX « %s » : FIRSTX ou LASTX manque", titre))
+    if (length(y) != n) stop(sprintf(traduire("JCAMP-DX « %s » : %d valeurs lues pour NPOINTS = %d", "JCAMP-DX “%s”: %d values read for NPOINTS = %d"), titre, length(y), n))
+    if (is.na(nombre("FIRSTX")) || is.na(nombre("LASTX"))) stop(sprintf(traduire("JCAMP-DX « %s » : FIRSTX ou LASTX manque", "JCAMP-DX “%s”: FIRSTX or LASTX missing"), titre))
     x <- seq(nombre("FIRSTX"), nombre("LASTX"), length.out = n)
   } else if (forme == "(XY..XY)") {
     v <- nombres_affn(paste(lignes, collapse = " "))
-    if (length(v) %% 2) stop(sprintf("JCAMP-DX « %s » : la table (XY..XY) a un nombre impair de valeurs", titre))
+    if (length(v) %% 2) stop(sprintf(traduire("JCAMP-DX « %s » : la table (XY..XY) a un nombre impair de valeurs", "JCAMP-DX “%s”: the (XY..XY) table has an odd number of values"), titre))
     x <- v[c(TRUE, FALSE)] * fx
     y <- v[c(FALSE, TRUE)] * fy
   } else {
@@ -225,7 +225,7 @@ valeurs_x_y <- function(lignes, titre = "") {
     if (fin_dif && length(v)) {
       # une dernière ligne d'une seule valeur, fausse, ferme la table chez certains logiciels
       if (length(v) == 1 && identical(l, lignes[length(lignes)]) && !isTRUE(all.equal(v[1], derniere))) break
-      if (!isTRUE(all.equal(v[1], derniere))) stop(sprintf("JCAMP-DX « %s » : valeur de contrôle %s au lieu de %s (ligne « %s »)", titre, format(v[1]), format(derniere), substr(l, 1, 40)))
+      if (!isTRUE(all.equal(v[1], derniere))) stop(sprintf(traduire("JCAMP-DX « %s » : valeur de contrôle %s au lieu de %s (ligne « %s »)", "JCAMP-DX “%s”: check value %s instead of %s (line “%s”)"), titre, format(v[1]), format(derniere), substr(l, 1, 40)))
       v <- v[-1]
     }
     fin_dif <- precedent == "dif"
@@ -307,7 +307,7 @@ lire_spc <- function(chemin) {
       s <- s + 1
     }
   } else {
-    stop(sprintf("Fichier SPC de version %X non lu (seuls le nouveau format 4B et l'ancien format 4D le sont)", version))
+    stop(sprintf(traduire("Fichier SPC de version %X non lu (seuls le nouveau format 4B et l'ancien format 4D le sont)", "SPC file of version %X not read (only the new format 4B and the old format 4D are)"), version))
   }
   spectres
 }
@@ -331,7 +331,7 @@ lire_spectres_texte <- function(chemin) {
     v <- nombres(decouper(l, sep), sep)
     length(v) >= 2 && !anyNA(v)
   }, TRUE)
-  if (!any(est_donnee)) stop("Aucune ligne de nombres dans ", basename(chemin))
+  if (!any(est_donnee)) stop(traduire("Aucune ligne de nombres dans ", "No line of numbers in "), basename(chemin))
   debut <- which(est_donnee)[1]
   donnees <- lignes[debut:length(lignes)]
   donnees <- donnees[est_donnee[debut:length(lignes)]]

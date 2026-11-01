@@ -181,6 +181,13 @@ if (requireNamespace("jmvReadWrite", quietly = TRUE)) {
   verifier("un .omv écrit ici se relit avec jmvReadWrite", memes(b, ref))
 }
 
+cat("Langue des messages\n")
+message_erreur <- function() tryCatch(lire_tableau(file.path(dossier, "x.zzz")), error = conditionMessage)
+verifier("message en français par défaut", grepl("^Format de fichier non reconnu : \\.zzz$", message_erreur()))
+options(nuee.langue = "en")
+verifier("message en anglais avec options(nuee.langue = \"en\")", grepl("^Unrecognised file format: \\.zzz$", message_erreur()))
+options(nuee.langue = NULL)
+
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

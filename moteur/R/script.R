@@ -42,7 +42,9 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
     "head(m$statistiques$observations)  # scores, T2, DModX, valeurs ajustées",
     if (pls) "m$statistiques$cv_anova           # CV-ANOVA",
     if (pls) "# permutations(m, n = 20)          # test de permutation (quelques secondes)",
-    if (isTRUE(d$plsda)) "m$statistiques$classification$vc$table  # table de classification (validation croisée)")
+    if (isTRUE(d$plsda)) "m$statistiques$classification$vc$table  # table de classification (validation croisée)",
+    if (length(d$test)) "m$test$statistiques                # jeu de test : RMSEP, biais, SEP, Q2 externe (jeu_test.R)",
+    if (length(d$test) && isTRUE(d$plsda)) "m$test$classement                  # jeu de test : classes prédites")
 
   # le code du moteur dont ces lignes ont besoin
   moteur <- fonctions_moteur(dossier_moteur)
@@ -57,12 +59,12 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
                 renv = if (renv) file.path(dossier, "renv.lock"),
                 rproj = if (rproj) file.path(dossier, paste0(base, ".Rproj")))
   if (donnees == "csv") ecrire_csv_script(tab$donnees, chemin_csv)
-  code_moteur <- c("# 1. Vérifications ----", code_verifications(paquets), "",
+  code_moteur <- c("# 1. Vérifications ----", code_verifications(paquets, langue), "",
                    "# 2. Fonctions du moteur de Nuée ----",
                    sprintf("# Copiées du moteur de Nuée %s (dossier moteur/R ; licence GPL-3.0 ou ultérieure), sans", version),
                    sprintf("# modification : les %d fonctions et constantes dont ce modèle a besoin, fichier par fichier.", length(gardees)),
                    texte_moteur(moteur, gardees))
-  code_donnees <- if (donnees == "csv") code_lire_csv(tab$donnees, basename(chemin_csv)) else code_donnees(tab$donnees)
+  code_donnees <- if (donnees == "csv") code_lire_csv(tab$donnees, basename(chemin_csv), langue) else code_donnees(tab$donnees)
   lignes <- if (format == "R") {
     c(entete_script(d, m, nom_projet, version, fichiers), "", code_moteur, "",
       "# 3. Données ----", code_donnees, "",
@@ -121,6 +123,7 @@ code_modele_script <- function(projet, d, tab) {
   ok <- !is.null(code) && !inherits(try(eval(parse(text = code, encoding = "UTF-8"), envir = e), silent = TRUE), "try-error") &&
     identical(cles_termes(e$d$x, e$p$noms_var), cles_termes(d$x, tab$noms)) && identical(cles_termes(e$d$y, e$p$noms_var), cles_termes(d$y, tab$noms)) &&
     identical(as.numeric(e$d$observations), as.numeric(tab$rangs[as.character(d$observations)])) &&
+    identical(as.numeric(e$d$test %||% numeric(0)), as.numeric(tab$rangs[as.character(d$test)])) &&
     identical(e$d$spectres, d$spectres) && identical(e$d$type, d$type) && identical(isTRUE(e$d$opls), isTRUE(d$opls)) &&
     identical(isTRUE(e$d$plsda), isTRUE(d$plsda)) && identical(e$d$Ap %||% 1, d$Ap %||% 1)
   if (!ok) code <- code_termes(d, tab)
@@ -164,6 +167,7 @@ code_termes <- function(d, tab) {
             code_texte(as.character(d$name %||% "")), code_texte(as.character(d$title %||% ""))),
     sprintf("          A = %s, cv_groups = %s,%s", d$A, d$cv_groups %||% 7, if (isTRUE(d$opls)) sprintf(" Ap = %s,", d$Ap %||% 1) else ""),
     sprintf("          observations = %s,", code_rangs(tab$rangs[as.character(d$observations)])),
+    if (length(d$test)) sprintf("          test = %s,  # jeu de test (jeu_test.R)", code_rangs(tab$rangs[as.character(d$test)])),
     if (length(d$spectres)) sprintf("          spectres = %s,", paste(deparse(d$spectres, width.cutoff = 500L), collapse = "")),
     sprintf("          x = %s,", liste(d$x)),
     sprintf("          y = %s)", liste(d$y)))
@@ -319,11 +323,14 @@ lignes_rapport <- function(format, d, m, langue, methodes, code_moteur, code_don
     sprintf("## %s", tx("Références", "References")), "", paste("-", methodes$references))
 }
 
-code_verifications <- function(paquets) {
+code_verifications <- function(paquets, langue = "fr") {
+  tx <- function(fr, en) if (identical(langue, "en")) en else fr  # les messages que le script affiche
   teste <- paste(R.version$major, R.version$minor, sep = ".")
-  c(sprintf("# R 4.0 au moins ; script vérifié avec R %s.", teste),
-    "if (getRversion() < \"4.0.0\") stop(\"Ce script demande R 4.0 ou plus récent (ici R \", getRversion(), \").\")",
-    sprintf("if (getRversion() < \"%s\") message(\"Script vérifié avec R %s (ici R \", getRversion(), \") : les résultats devraient être les mêmes.\")", teste, teste),
+  c(if (identical(langue, "en")) "options(nuee.langue = \"en\")  # messages in English (traduire)",
+    sprintf("# R 4.0 au moins ; script vérifié avec R %s.", teste),
+    sprintf("if (getRversion() < \"4.0.0\") stop(\"%s\", getRversion(), \").\")", tx("Ce script demande R 4.0 ou plus récent (ici R ", "This script needs R 4.0 or later (here R ")),
+    sprintf("if (getRversion() < \"%s\") message(\"%s %s (%s\", getRversion(), \")%s\")", teste, tx("Script vérifié avec R", "Script checked with R"), teste,
+            tx("ici R ", "here R "), tx(" : les résultats devraient être les mêmes.", ": the results should be the same.")),
     if (!length(paquets)) "# Paquets : aucun, R suffit (stats et utils sont livrés avec R)." else c(
       "# Paquets utilisés ; s'il en manque, le script propose de les installer.",
       "local({",
@@ -331,9 +338,10 @@ code_verifications <- function(paquets) {
       "  manquants <- paquets[!vapply(paquets, requireNamespace, TRUE, quietly = TRUE)]",
       "  if (!length(manquants)) return(invisible())",
       "  commande <- sprintf(\"install.packages(c(%s))\", paste0('\"', manquants, '\"', collapse = \", \"))",
-      "  if (interactive() && isTRUE(utils::askYesNo(paste0(\"Paquets manquants : \", paste(manquants, collapse = \", \"), \". Les installer ?\")))) {",
+      sprintf("  if (interactive() && isTRUE(utils::askYesNo(paste0(\"%s\", paste(manquants, collapse = \", \"), \"%s\")))) {",
+              tx("Paquets manquants : ", "Missing packages: "), tx(". Les installer ?", ". Install them?")),
       "    utils::install.packages(manquants)",
-      "  } else stop(\"Paquets manquants ; pour les installer : \", commande)",
+      sprintf("  } else stop(\"%s\", commande)", tx("Paquets manquants ; pour les installer : ", "Missing packages; to install them: ")),
       "})"))
 }
 
@@ -361,7 +369,8 @@ ecrire_csv_script <- function(df, chemin) {
   writeBin(charToRaw(enc2utf8(paste0(lignes, "\n", collapse = ""))), chemin)
 }
 
-code_lire_csv <- function(df, fichier) {
+code_lire_csv <- function(df, fichier, langue = "fr") {
+  tx <- function(fr, en) if (identical(langue, "en")) en else fr  # les messages que le script affiche
   classes <- vapply(df, function(x) if (is.numeric(x)) "numeric" else "character", "")
   facteurs <- which(vapply(df, is.factor, TRUE))
   c(sprintf("# Les données sont dans « %s », à côté de ce script.", fichier),
@@ -371,8 +380,9 @@ code_lire_csv <- function(df, fichier) {
     "           sub(\"^--file=\", \"\", grep(\"^--file=\", commandArgs(FALSE), value = TRUE)))",
     "  if (length(ici)) fichier <- file.path(dirname(ici[1]), fichier)",
     "}",
-    "if (!file.exists(fichier)) stop(\"Fichier de données introuvable : \", basename(fichier), \". Il doit être à côté de ce \",",
-    "                                \"script : ouvrir le script depuis son dossier, ou faire setwd() vers ce dossier.\")",
+    sprintf("if (!file.exists(fichier)) stop(\"%s\", basename(fichier), \"%s\")", tx("Fichier de données introuvable : ", "Data file not found: "),
+            tx(". Il doit être à côté de ce script : ouvrir le script depuis son dossier, ou faire setwd() vers ce dossier.",
+               ". It must be next to this script: open the script from its folder, or setwd() to that folder.")),
     "donnees <- utils::read.csv(fichier, check.names = FALSE, na.strings = \"\", fileEncoding = \"UTF-8\",",
     sprintf("                           colClasses = %s)", code_vecteur(unname(classes))),
     if (length(facteurs)) "# les variables qualitatives, avec leurs catégories dans l'ordre du projet",
@@ -399,7 +409,7 @@ ecrire_renv <- function(paquets, chemin) {
 
 # Écart entre deux modèles (R2X, R2Y, Q2 cumulés et scores, au signe près) : NULL s'il n'y en a pas.
 ecart_modeles <- function(a, b) {
-  if (!identical(dim(a$T), dim(b$T))) return(sprintf("%d composantes et %d observations au lieu de %d et %d", ncol(b$T), nrow(b$T), ncol(a$T), nrow(a$T)))
+  if (!identical(dim(a$T), dim(b$T))) return(sprintf(traduire("%d composantes et %d observations au lieu de %d et %d", "%d components and %d observations instead of %d and %d"), ncol(b$T), nrow(b$T), ncol(a$T), nrow(a$T)))
   ca <- resume_composantes(a)
   cb <- resume_composantes(b)
   ecarts <- c(R2X = max(abs(ca$R2Xcum - cb$R2Xcum)), R2Y = if (!is.null(ca$R2Ycum)) max(abs(ca$R2Ycum - cb$R2Ycum)) else 0,
@@ -498,12 +508,14 @@ code_definition <- function(projet, d, p = "p") {
       sprintf("croises <- %s", croises),
       if (length(exclues)) "# observations exclues du modèle" else NULL,
       sprintf("observations <- %s", obs),
+      if (length(r$test)) c("# jeu de test : hors du modèle, puis prédit par lui (jeu_test.R)",
+                            sprintf("test <- numeros_observations(%s, %s)", p, vecteur(unname(projet$noms_obs[as.character(r$test)])))),
       if (length(r$spectres)) c("# prétraitement des spectres, dans cet ordre (voir moteur/R/spectres.R)",
                                 sprintf("spectres <- %s", paste(deparse(r$spectres, width.cutoff = 500L), collapse = ""))),
       "",
       sprintf("d <- definir_modele(%s, %s, x = x, y = y, classe = classe, observations = observations,", p, q(r$type)),
-      sprintf("                    echelle = echelles, transformations = transformations, croises = croises,%s",
-              if (length(r$spectres)) " spectres = spectres," else ""),
+      sprintf("                    echelle = echelles, transformations = transformations, croises = croises,%s%s",
+              if (length(r$spectres)) " spectres = spectres," else "", if (length(r$test)) " test = test," else ""),
       sprintf("                    A = %s, G = %s, nom = %s, titre = %s)", q(r$A), q(r$G), q(r$nom), q(r$titre)))
   }
 }

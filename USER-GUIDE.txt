@@ -22,7 +22,7 @@ Opening
 -------
 File › Open (Ctrl+O):
   - a .usp project: the data, models and results stored in the file;
-  - a project saved by the application (.json);
+  - a project saved by the application (.nuee; .json for versions before 1.0);
   - a table, one row per observation:
       Excel .xlsx, .xlsm, .xls        text .csv, .txt, .tsv (separator, decimal comma and
       R .rds, .RData                    encoding detected, Excel's "Unicode text" included)
@@ -39,6 +39,10 @@ File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sh
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).
 File › Import spectra: files of spectra made into one project (see Spectra).
+Dropping files on the window (drag and drop from Explorer) opens them the same way: JCAMP-DX or
+SPC spectra together make one project, as Import spectra; other files each open as with File ›
+Open. Double-clicking a .nuee project in Windows Explorer opens it in Nuée (in the window
+already open, if there is one).
 The last files opened are in File › Open recent.
 To try it: Help › Example project opens 120 made-up apples (four varieties, organic or
 conventional growing, a dozen measurements and a tasting score) with four ready models: a
@@ -47,7 +51,7 @@ original table, vergers.csv, is next to it (resources\exemple), to try opening a
 
 Saving and getting your work back
 ---------------------------------
-File › Save project (Ctrl+S) writes the project (.json) with its data, its models and the current
+File › Save project (Ctrl+S) writes the project (.nuee) with its data, its models and the current
 session: fitted models, open panels and their layout, plot settings (axes, colours, labels,
 titles), selections, VIP choices, dendrogram groups. When the project is opened again, the
 models are refitted and everything comes back in place.
@@ -105,7 +109,7 @@ transformations" button applies the suggested log10 to the variables shown (see 
 statistics).
 Cross terms tab: products of two X variables (A × B) and squares (A × A); a qualitative
 variable enters through each of its categories.
-Observations tab: tick / untick the model's observations.
+Observations tab: tick / untick the model's observations, and the test set (see Test set).
 "Edit model" (Ctrl+M) opens this window set like an existing model (imported models
 included) and makes a new model.
 Before fitting, the application checks the data: variables or observations with more than
@@ -368,6 +372,22 @@ CV-ANOVA: the model's p (cross-validation residuals against the mean); also in t
 Classification (PLS-DA): table of the observations correctly and wrongly classified, with
 the fitted or cross-validated values, and ROC curves with their area (AUC).
 
+Test set
+--------
+New model › Observations › Test set: observations left out of the model and of the
+cross-validation, then predicted by it, to judge its predictions on data it hasn't seen.
+"Test" column: by hand; "Selection to test set": the active model's selection; "Choose": a
+share of the observations (25 % by default), at random or by Kennard–Stone (which keeps for the
+model the observations furthest apart, so that it covers the whole range of the data, and
+leaves the others for the test); by class for a PLS-DA, so that each class is in both. After
+fitting, the Summary gives, for each Y:
+  RMSEP    root mean square of the prediction errors (predicted - observed);
+  bias     mean of these errors; SEP their standard deviation;
+  Q2ext    1 - sum (observed - predicted)² / sum (observed - the model's mean)²;
+for a PLS-DA, the share of the test set correctly classified; for all, the number of test
+observations outside the model's domain. Observed / predicted shows them as red diamonds. The
+test set is saved with the model, and kept by Export to R and by the Methods text.
+
 Windows
 -------
 In the centre, one tab per model ("M1 · PLS"), and a tab for each view of the project (Data,
@@ -425,6 +445,8 @@ Every computation is in resources\moteur\R (R, commented in French):
   formats.R              reading and writing tables (Excel, text, R, SPSS, Stata, SAS, jamovi...)
   spectres.R             spectral preprocessing (SNV, MSC, detrend, baseline, Savitzky–Golay)
   fichiers_spectres.R    reading spectra (JCAMP-DX, SPC, text), joined information
+  jeu_test.R             test set: prediction, RMSEP, external Q2, Kennard–Stone
+  langue.R               language of the messages (traduire("français", "English"))
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fitting)
 In R: source("resources/moteur/charger.R"), then for example
   p <- importer_tableau("my_data.csv")

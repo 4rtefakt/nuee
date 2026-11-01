@@ -65,8 +65,8 @@ async function principal() {
     serveur.stderr.on('data', (d) => { sortie += d; });
     serveur.on('exit', (code) => reject(new Error(`R s'est arrêté (code ${code}) : ${sortie.slice(-800)}`)));
   });
-  const api = async (nom, q = {}) => {
-    const r = await fetch(`http://127.0.0.1:${port}/api/${nom}`, { method: 'POST', body: JSON.stringify(q) });
+  const api = async (nom, q = {}, langue = null) => {
+    const r = await fetch(`http://127.0.0.1:${port}/api/${nom}`, { method: 'POST', body: JSON.stringify(q), headers: langue ? { 'X-Langue': langue } : {} });
     const j = await r.json();
     if (!r.ok) throw new Error(`${nom} : ${j.erreur}`);
     return j;
@@ -129,12 +129,22 @@ async function principal() {
     });
     await etape('notes, enregistrement avec séance, réouverture', async () => {
       verifier((await api('note_modele', { modele: pls.id, note: 'essai' })).note === 'essai', 'note');
-      const f = path.join(dossier, 'projet.json');
+      const f = path.join(dossier, 'projet.nuee');
       await api('enregistrer', { projet: p.id, chemin: f, session: JSON.stringify({ version: 2, modeles: [{ numero: pls.numero, A: 2 }] }) });
       const q = await api('ouvrir', { chemin: f });
       verifier(q.session === true, 'séance enregistrée');
       const m = await api('ajuster', { projet: q.id, numero: pls.numero, A: 2 });
       verifier(m.note === 'essai' && m.reglages.x.length === 6, 'modèle relu');
+    });
+    await etape('jeu de test : choisi par Kennard–Stone, prédit après l’ajustement', async () => {
+      const t = await api('jeu_test', { projet: p.id, x: [uid.x1, uid.x2, uid.x3], methode: 'kennard_stone', part: 0.25 });
+      verifier([].concat(t.test).length === 15, `${[].concat(t.test).length} observations en test`);
+      const m = await api('ajuster', { projet: p.id, type: 'PLS', x: [uid.x1, uid.x2, uid.x3], y: [uid.y], A: 2, nom: 'Test', test: t.test });
+      verifier(m.N === 45 && m.test.n === 15 && [].concat(m.test.statistiques.RMSEP)[0] > 0 && [].concat(m.reglages.test).length === 15, `N ${m.N}, test ${m.test.n}`);
+    });
+    await etape('messages en anglais (X-Langue)', async () => {
+      const essai = (langue) => api('ouvrir', { chemin: path.join(dossier, 'x.zzz') }, langue).then(() => '', (e) => e.message);
+      verifier(/Unrecognised file format/.test(await essai('en')) && /Format de fichier non reconnu/.test(await essai(null)), await essai('en'));
     });
     await etape('script R autonome', async () => {
       const r = await api('script_r', { modele: pls.id, chemin: path.join(dossier, 'pls.R'), version: 'essai' });

@@ -30,7 +30,7 @@ vecteur_r <- function(x) if (length(x) == 1) code_r(x) else paste0("c(", paste(v
 appel_ouverture <- function(chemin, table = NULL) {
   ext <- tolower(tools::file_ext(chemin))
   if (ext == "usp") return(sprintf("lire_projet(convertir_usp(%s))  # .usp converti par export_project", code_r(chemin)))
-  if (ext == "json") return(sprintf("lire_projet(%s)", code_r(chemin)))
+  if (ext %in% c("nuee", "json")) return(sprintf("lire_projet(%s)", code_r(chemin)))
   if (!is.null(table)) return(sprintf("importer_tableau(%s, table = %s)", code_r(chemin), code_r(table)))
   sprintf("importer_tableau(%s)", code_r(chemin))
 }
@@ -90,7 +90,7 @@ lier_objets <- function() {
     k <- id
     makeActiveBinding(k, function(v) {
       if (missing(v)) return(etat$projets[[k]])
-      if (!inherits(v, "projet_nuee")) stop(k, " est un projet de l'application : lui donner un autre nom")
+      if (!inherits(v, "projet_nuee")) stop(sprintf(traduire("%s est un projet de l'application : lui donner un autre nom", "%s is one of the application's projects: give it another name"), k))
       memoriser(etat$projets[[k]], "changement depuis la console")
       v$id <- k
       v$modifie <- TRUE
@@ -102,14 +102,14 @@ lier_objets <- function() {
     k <- id
     makeActiveBinding(k, function(v) {
       if (missing(v)) return(etat$modeles[[k]]$modele)
-      stop(k, " est un modèle de l'application : donner un autre nom au résultat")
+      stop(sprintf(traduire("%s est un modèle de l'application : donner un autre nom au résultat", "%s is one of the application's models: give the result another name"), k))
     }, console)
   })
 }
 
 # Outils de la console, présentés par aide_console().
 local({
-  assign("definition", function(id) (etat$modeles[[id]] %||% stop("Modèle inconnu : ", id))$definition, console)
+  assign("definition", function(id) (etat$modeles[[id]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id))$definition, console)
   assign("projets", function() data.frame(objet = names(etat$projets),
     nom = vapply(etat$projets, function(p) p$nom %||% "", ""), row.names = NULL), console)
   assign("modeles", function() data.frame(objet = names(etat$modeles),

@@ -13,6 +13,7 @@
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1b4a9c">
   <img alt="Interface in French and English" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-1b4a9c"></a>
+  <a href="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml"><img alt="Checks" src="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml/badge.svg"></a>
 </p>
 
 ![The example project in Nuée: a PCA with its summary, scores coloured by variety, and loadings](docs/captures/acp.png)
@@ -52,8 +53,9 @@ a new version at start-up* turns the check off.
   OPLS-DA of the growing method.
 - **Open your data:** *File › Open* (Ctrl+O) reads a table with one row per observation
   and the observation names in the first column (see [Files](#files) for the formats), or
-  *File › Paste a table* (Ctrl+V) takes cells copied from any spreadsheet. Text columns
-  and factors become qualitative variables you can colour by, or use as classes.
+  *File › Paste a table* (Ctrl+V) takes cells copied from any spreadsheet, or drop files on
+  the window. Text columns and factors become qualitative variables you can colour by, or use
+  as classes.
 - **Make a model:** *Model › New model* (Ctrl+N): type, the role of each variable (X, Y
   or left out), scaling and transformation, observations to include. The number of components
   is chosen by cross-validation unless you set it.
@@ -73,7 +75,9 @@ cross-validation (R2, Q2, and Q2 per variable). Class models: one PCA per class,
 Coomans plot to tell which class an observation belongs to, several, or none.
 
 **Validation:** permutation tests, CV-ANOVA, PLS-DA classification tables and ROC curves,
-jack-knife confidence intervals.
+jack-knife confidence intervals. A test set left out of the model and of the cross-validation
+(chosen by hand, at random, or by Kennard–Stone, by class for a PLS-DA), then predicted:
+RMSEP, bias, SEP and external Q2, or its classification.
 
 ![A PLS model: observed against predicted, and VIP with an automatic cut-off](docs/captures/pls.png)
 
@@ -107,7 +111,8 @@ drag across them to leave wavelength ranges out of a new model, or to keep only 
 the model's domain, and export the results.
 
 **Your work:**
-- saving a project keeps its models, the layout of your panels, plot settings and selections;
+- saving a project (`.nuee`, which opens Nuée when double-clicked) keeps its models, the layout
+  of your panels, plot settings and selections;
 - a recovery copy every two minutes, offered back after a crash, and undo for data changes;
 - notes on each model;
 - data editing and new variables from R formulas or value ranges;
@@ -170,10 +175,20 @@ Q2, scores, loadings, T2, DModX, VIP and coefficients match the stored values, a
 few models with missing data; *Help › Results and known differences* lists the known
 differences.
 
+## Citing Nuée
+
+*Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
+
+> 4rtefakt (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
+
+GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
+What changed in each version: [CHANGELOG.md](CHANGELOG.md).
+
 ## Building from source
 
 See [docs/developpement.md](docs/developpement.md): running from the sources, the build
-(installer and network-share version), the checks, and how the results were compared.
+(installer and network-share version), the checks, and how the results were compared. The
+checks run on GitHub for every push and pull request.
 
 ## License
 

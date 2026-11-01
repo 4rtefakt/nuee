@@ -211,7 +211,7 @@ const app = {
     if (!p) { statut(t('choisir_projet'), true); return false; }
     let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
-      chemin = await bureau.enregistrerSous(p.nom.replace(/\.[^.]+$/, '') + '.json', [{ name: 'Projet', extensions: ['json'] }]);
+      chemin = await bureau.enregistrerSous(p.nom.replace(/\.[^.]+$/, '') + '.nuee', [{ name: t('format_projet'), extensions: ['nuee'] }]);
       if (!chemin) return false;
     }
     const session = VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid));
@@ -469,6 +469,7 @@ const app = {
       } }] });
   },
   verifier: (q) => demander('verifier', q),
+  jeuTest: (q) => demander('jeu_test', q),
   statistiquesVariables: (pid) => demander('statistiques_variables', { projet: pid }),
   rapport: (id) => dialogueRapport(app, id),
   nouvelleVariable: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariable(app, p); },
@@ -1441,6 +1442,43 @@ async function demarrerPrincipal() {
     if (bureau.surProgressionMaj) bureau.surProgressionMaj((f) => statut(t('maj_telechargement', { v: etat.nouvelleVersion.version, p: Math.round(100 * f) })));
   }
   if (params.get('ouvrir')) await app.ouvrirChemin(params.get('ouvrir'));
+  if (!VUE_SEULE) {
+    document.addEventListener('dragover', (e) => {
+      if (![...e.dataTransfer.types].includes('Files')) return;  // not the panels' own tabs
+      e.preventDefault();
+      document.body.classList.add('depot');
+    });
+    document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('depot'); });
+    document.addEventListener('drop', (e) => {
+      document.body.classList.remove('depot');
+      if (!e.dataTransfer.files.length) return;
+      e.preventDefault();
+      deposerFichiers([...e.dataTransfer.files]).catch(() => {});
+    });
+    if (bureau && bureau.surOuvrirFichier) bureau.surOuvrirFichier((chemin) => app.ouvrirChemin(chemin));
+  }
+}
+
+// Files dropped on the window: spectra (JCAMP-DX, SPC) all together make one project, as
+// File › Import spectra; any other file opens as with File › Open.
+async function deposerFichiers(fichiers) {
+  const ext = (f) => f.name.split('.').pop().toLowerCase();
+  const chemin = async (f) => (bureau && bureau.cheminFichier ? bureau.cheminFichier(f)
+    : (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin);
+  if (fichiers.every((f) => ['jdx', 'dx', 'jcm', 'spc'].includes(ext(f)))) {
+    const chemins = await Promise.all(fichiers.map(chemin));
+    const res = await occupe(() => demander('importer_spectres', { chemins, nom: chemins.length === 1 ? fichiers[0].name : t('spectres_importes', { n: chemins.length }) }));
+    await apresOuverture(res);
+    if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '));
+    return;
+  }
+  for (const f of fichiers) {
+    if (bureau && bureau.cheminFichier) await app.ouvrirChemin(bureau.cheminFichier(f));
+    else {
+      const res = await choisirTable(await occupe(() => televerser(f)));
+      if (res) await apresOuverture(res);
+    }
+  }
 }
 
 document.documentElement.dataset.theme = lire('theme') === 'sombre' ? 'sombre' : 'clair';

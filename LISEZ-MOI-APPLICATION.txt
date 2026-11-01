@@ -22,7 +22,7 @@ Ouvrir
 ------
 Fichier › Ouvrir (Ctrl+O) :
   - un projet .usp : données, modèles et résultats enregistrés dans le fichier ;
-  - un projet enregistré par l'application (.json) ;
+  - un projet enregistré par l'application (.nuee ; .json pour les versions avant 1.0) ;
   - un tableau, une ligne par observation :
       Excel .xlsx, .xlsm, .xls        texte .csv, .txt, .tsv (séparateur, virgule décimale et
       R .rds, .RData                    encodage reconnus, y compris le « texte Unicode »
@@ -41,6 +41,10 @@ Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, Libre
 Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
 projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).
 Fichier › Importer des spectres : des fichiers de spectres réunis en un projet (voir Spectres).
+Déposer des fichiers sur la fenêtre (glisser-déposer depuis l'Explorateur) les ouvre de même :
+des spectres JCAMP-DX ou SPC ensemble font un seul projet, comme Importer des spectres ; les
+autres fichiers s'ouvrent chacun comme avec Fichier › Ouvrir. Un double-clic sur un projet
+.nuee dans l'Explorateur Windows l'ouvre dans Nuée (dans la fenêtre déjà ouverte s'il y en a une).
 Les derniers fichiers ouverts sont dans Fichier › Ouvrir un fichier récent.
 Pour essayer : Aide › Projet d'exemple ouvre 120 pommes inventées (quatre variétés, culture
 bio ou conventionnelle, une douzaine de mesures et une note de dégustation) avec quatre
@@ -50,7 +54,7 @@ l'ouverture d'un tableau.
 
 Enregistrer et retrouver son travail
 ------------------------------------
-Fichier › Enregistrer (Ctrl+S) écrit le projet (.json) avec ses données, ses modèles et la
+Fichier › Enregistrer (Ctrl+S) écrit le projet (.nuee) avec ses données, ses modèles et la
 séance en cours : modèles calculés, panneaux ouverts et leur disposition, réglages des
 graphiques (axes, couleurs, étiquettes, titres), sélections, choix des VIP, groupes du
 dendrogramme. En rouvrant le projet, les modèles sont recalculés et tout revient en place.
@@ -113,7 +117,8 @@ variables affichées. Le bouton « Transformations proposées » applique aux va
 affichées le log10 proposé (voir Statistiques des variables).
 Onglet Termes croisés : produits de deux variables X (A × B) et carrés (A × A) ; une
 variable qualitative y entre par chacune de ses catégories.
-Onglet Observations : cocher / décocher les observations du modèle.
+Onglet Observations : cocher / décocher les observations du modèle, et le jeu de test (voir
+Jeu de test).
 « Modifier le modèle » (Ctrl+M) ouvre cette fenêtre réglée comme un modèle existant (y compris
 les modèles importés) et crée un nouveau modèle.
 Avant le calcul, l'application vérifie les données : variables ou observations avec plus de
@@ -390,6 +395,22 @@ CV-ANOVA : p du modèle (résidus de validation croisée contre la moyenne) ; au
 Classification (PLS-DA) : table des observations bien et mal classées, avec les valeurs
 ajustées ou en validation croisée, et courbes ROC avec leur aire (AUC).
 
+Jeu de test
+-----------
+Nouveau modèle › Observations › Jeu de test : des observations laissées hors du modèle et de la
+validation croisée, puis prédites par lui, pour juger ses prédictions sur des données qu'il n'a
+pas vues. Colonne « Test » : à la main ; « Sélection en test » : la sélection du modèle actif ;
+« Choisir » : une part des observations (25 % par défaut), au hasard ou par Kennard–Stone (qui
+garde pour le modèle les observations les plus éloignées les unes des autres, pour qu'il couvre
+toute l'étendue des données, et laisse les autres en test) ; par classe pour une PLS-DA, pour
+que chaque classe soit dans les deux. Après l'ajustement, le Résumé donne, pour chaque Y :
+  RMSEP    racine de la moyenne des carrés des erreurs de prédiction (prédit - observé) ;
+  biais    moyenne de ces erreurs ; SEP leur écart-type ;
+  Q2ext    1 - somme (observé - prédit)² / somme (observé - moyenne du modèle)² ;
+pour une PLS-DA, la part du jeu de test bien classée ; pour tous, le nombre d'observations du
+test hors du domaine du modèle. Observé / prédit les montre en losanges rouges. Le jeu de test
+est enregistré avec le modèle, repris par Exporter vers R et par le texte des méthodes.
+
 Fenêtres
 --------
 Au centre, un onglet par modèle (« M1 · PLS »), et un onglet pour chaque vue du projet
@@ -449,6 +470,8 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   formats.R              lecture et écriture des tableaux (Excel, texte, R, SPSS, Stata, SAS, jamovi...)
   spectres.R             prétraitement des spectres (SNV, MSC, detrend, ligne de base, Savitzky–Golay)
   fichiers_spectres.R    lecture des spectres (JCAMP-DX, SPC, texte), informations jointes
+  jeu_test.R             jeu de test : prédiction, RMSEP, Q2 externe, Kennard–Stone
+  langue.R               langue des messages (traduire("français", "English"))
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustement)
 Dans R : source("resources/moteur/charger.R"), puis par exemple
   p <- importer_tableau("mes_donnees.csv")

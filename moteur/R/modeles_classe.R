@@ -12,7 +12,7 @@
 # groupe_classes = list(nom, variable, classe).
 modeles_classe <- function(projet, d, classe, nom = d$name) {
   v <- variable_du_projet(projet, classe)
-  if (!length(v$categories)) stop("La variable de classe doit être qualitative")
+  if (!length(v$categories)) stop(traduire("La variable de classe doit être qualitative", "The class variable must be qualitative"))
   valeurs <- colonne(projet, classe, d$observations)
   ds <- lapply(seq_along(v$categories), function(k) {
     e <- d

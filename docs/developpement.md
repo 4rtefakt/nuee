@@ -13,6 +13,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/console.R` | The R console: log of engine calls, prompt in the application's session |
 | `moteur/R/formats.R` | Reading and writing tables: text, Excel, R, SPSS, Stata, SAS, jamovi `.omv` (read and written here), dBase, ARFF |
 | `moteur/R/spectres.R` | Spectral preprocessing: SNV, MSC, detrend, baseline (lower convex hull), Savitzky–Golay (each range of neighbouring variables on its own) |
+| `moteur/R/jeu_test.R` | Test set: left out of the model, predicted after fitting (RMSEP, bias, SEP, external Q2, classification); chosen at random or by Kennard–Stone |
+| `moteur/R/langue.R` | `traduire("français", "English")`: the engine's messages in the interface's language (the `X-Langue` header of each request) |
 | `moteur/R/fichiers_spectres.R` | Spectra files: JCAMP-DX (AFFN, PAC, SQZ, DIF, DUP), SPC (new and old format), text; merged into one table, with a table of sample information joined by file name |
 | `moteur/R/script.R` | Export to R: a standalone script or R Markdown / Quarto report holding the data, the engine functions a model needs (found by following the names each function uses, and copied with their comments) and the model |
 | `moteur/R/methodes.R` | The Methods paragraph and its references, in French or English |
@@ -22,6 +24,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/tests/verifier_formats.R` | Every export format written and read back; text files as spreadsheets write them; jamovi files compared with `jmvReadWrite` when it is installed |
 | `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, detrend, baseline, Savitzky–Golay by range, and a PLS on made-up spectra; the same results as `prospectr` when it is installed |
 | `moteur/tests/verifier_fichiers_spectres.R` | Small made-up JCAMP-DX (every compression form), SPC (each layout) and text files read back; the spectra table and the joined information |
+| `moteur/tests/verifier_jeu_test.R` | The test set: the model doesn't see it, RMSEP / bias / SEP / Q2ext recomputed by hand, PLS-DA classification, random and Kennard–Stone choice (the same observations as `prospectr::kenStone` when installed) |
 | `moteur/tests/verifier_opls.R` | OPLS against a second, plain-matrix writing of Trygg and Wold's algorithm (one Y, two Y, three classes); orthogonal scores unrelated to Y |
 | `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, run in a fresh `Rscript --vanilla` without the engine, give the engine's results; reports compile with `knitr` when it is installed |
 | `moteur/tests/verifier_comparaisons.R` | Tests by variable against R's own test functions, class models, OPLS with several predictive components, the Methods text |
@@ -53,6 +56,7 @@ Rscript moteur/tests/verifier_formats.R
 Rscript moteur/tests/verifier_spectres.R
 Rscript moteur/tests/verifier_fichiers_spectres.R
 Rscript moteur/tests/verifier_opls.R
+Rscript moteur/tests/verifier_jeu_test.R
 Rscript moteur/tests/verifier_script.R
 Rscript moteur/tests/verifier_comparaisons.R
 ```
@@ -159,6 +163,21 @@ one (downloaded, installed, restarted with the same profile), and uninstall it.
 
 Settings live in `%APPDATA%\Nuee`; `--user-data-dir=<folder>` uses another one (a clean
 profile for tests or screenshots).
+
+## Checks on GitHub
+
+`.github/workflows/verifications.yml` runs the engine's checks (`moteur/tests/verifier_*.R`,
+except `verifier_references.R`, whose exported projects aren't in the repository) and
+`app/tests/essai_api.js` on every push and pull request, on Windows with the current R.
+
+## Releasing
+
+1. The version in `app/package.json` (and `package-lock.json`) and in `CITATION.cff`.
+2. Its entry at the top of `app/interface/nouveautes.js` (French and English): the build
+   writes `CHANGELOG.md` from it (`node app/changelog.js` does it alone).
+3. `node app/construire.js <folder>`, then the installer's checks.
+4. A GitHub release `v<version>` with `Nuee-Setup-<version>.exe`: installed copies offer it as a
+   one-click update. With the repository switched on at zenodo.org, each release also gets a DOI.
 
 ## How it matches the stored results
 

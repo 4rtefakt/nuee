@@ -41,7 +41,7 @@ convertir_usp <- function(chemin) {
                                                shQuote(chemin), "-o", shQuote(dossier)), stdout = TRUE, stderr = TRUE)
   }
   json <- list.files(dossier, "\\.json$", full.names = TRUE)
-  if (!length(json)) stop("Conversion du fichier .usp impossible : ", paste(sortie, collapse = " "))
+  if (!length(json)) stop(traduire("Conversion du fichier .usp impossible : ", "The .usp file couldn't be converted: "), paste(sortie, collapse = " "))
   json[1]
 }
 
@@ -54,7 +54,7 @@ memoriser <- function(p, etiquette) {
 
 annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
-  if (!length(pile)) stop("Rien à annuler")
+  if (!length(pile)) stop(traduire("Rien à annuler", "Nothing to undo"))
   actuel <- projet(q$projet)
   ancien <- pile[[1]]$projet
   etat$annulations[[q$projet]] <- pile[-1]
@@ -68,14 +68,14 @@ annuler_demande <- function(q) {
 # choisi renvoie leur liste (`choisir`) : l'interface demande lequel ouvrir.
 ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL) {
   ext <- extension(nom)
-  if (!ext %in% c("json", "usp", FORMATS_LECTURE)) stop("Format de fichier non reconnu : .", ext)
+  if (!ext %in% c("nuee", "json", "usp", FORMATS_LECTURE)) stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext)
   if (!ext %in% FORMATS_LECTURE) table <- NULL
   if (ext %in% FORMATS_LECTURE && is.null(table)) {
     tables <- tables_fichier(chemin)
     if (length(tables) > 1) return(list(choisir = I(tables), chemin = chemin, nom = nom))
   }
   p <- switch(ext,
-              json = lire_projet(chemin),
+              nuee = , json = lire_projet(chemin),
               usp = lire_projet(convertir_usp(chemin)),
               importer_tableau(chemin, table))
   p$id <- nouvel_id("P")
@@ -123,7 +123,7 @@ resume_projet <- function(p) {
   vars <- lapply(variables_avec_donnees(p), function(v) list(
     uid = v$uid, nom = as.character(v$ids[1]), qualitative = length(v$categories) > 0,
     categories = I(as.character(v$categories %||% character(0)))))
-  json <- identical(tolower(tools::file_ext(p$chemin %||% "")), "json")
+  json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
        table = p$table %||% NULL,
@@ -153,8 +153,8 @@ donnees_projet <- function(p) {
 
 # ---------------------------------------------------------------- modèles
 
-projet <- function(id) etat$projets[[id]] %||% stop("Projet inconnu : ", id)
-modele <- function(id) etat$modeles[[id]] %||% stop("Modèle inconnu : ", id)
+projet <- function(id) etat$projets[[id]] %||% stop(traduire("Projet inconnu : ", "Unknown project: "), id)
+modele <- function(id) etat$modeles[[id]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id)
 
 # Définition d'un modèle décrit par l'interface (type, variables, observations exclues...).
 definition_interface <- function(p, q) {
@@ -167,7 +167,7 @@ definition_interface <- function(p, q) {
                       transformations = if (length(q$transformations)) unlist(q$transformations),
                       croises = if (is.matrix(q$croises)) lapply(seq_len(nrow(q$croises)), function(i) q$croises[i, ])
                                 else q$croises,
-                      spectres = q$spectres)
+                      spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)))
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -180,7 +180,7 @@ modeles_classe_demande <- function(q) {
   p <- projet(q$projet)
   d <- definition_interface(p, utils::modifyList(q, list(type = "PCA", classe = NULL)))
   ds <- modeles_classe(p, d, as.numeric(q$classe))
-  if (!length(ds)) stop("Aucune classe n'a assez d'observations (3 au moins)")
+  if (!length(ds)) stop(traduire("Aucune classe n'a assez d'observations (3 au moins)", "No class has enough observations (3 or more)"))
   list(modeles = I(lapply(ds, function(e) ajuster_et_garder(projet(q$projet), e))))
 }
 
@@ -190,7 +190,7 @@ appartenance_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
   g <- e$definition$groupe_classes
-  if (is.null(g)) stop("Ce modèle ne fait pas partie d'un groupe de modèles de classe")
+  if (is.null(g)) stop(traduire("Ce modèle ne fait pas partie d'un groupe de modèles de classe", "This model isn't part of a group of class models"))
   defs <- Filter(function(d) identical(d$groupe_classes$nom, g$nom), p$models)
   modeles <- lapply(defs, function(d) {
     ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, p$id) && identical(etat$modeles[[id]]$definition$name, d$name), names(etat$modeles))
@@ -287,7 +287,7 @@ resultat_modele <- function(id) {
        stocke = composantes_stockees(d), version_origine = d$version_origine %||% NULL,
        noms_y = I(m$y$noms %||% character(0)),  # I() : un seul Y reste une liste
        G = m$G, reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "",
-       cv_anova = s$cv_anova, classification = s$classification,
+       cv_anova = s$cv_anova, classification = s$classification, test = m$test,
        demande = d$demande %||% list(type = d$type, numero = d$number))
 }
 
@@ -339,7 +339,7 @@ predire_fichier_demande <- function(q) {
 }
 
 exporter_prediction_demande <- function(q) {
-  out <- etat$predictions[[q$modele]] %||% stop("Aucune prédiction à exporter pour ce modèle")
+  out <- etat$predictions[[q$modele]] %||% stop(traduire("Aucune prédiction à exporter pour ce modèle", "No prediction to export for this model"))
   chemin <- q$chemin %||% chemin_temporaire(paste0("predictions ", nom_fichier(modele(q$modele)$definition$name), ".", q$format %||% "xlsx"))
   out <- out[c("nom", setdiff(names(out), c("nom", "uid")))]
   names(out)[1] <- "Observation"
@@ -443,7 +443,7 @@ exporter_donnees_demande <- function(q) {
 # la console R relit), puis importé comme un tableau ouvert.
 coller_demande <- function(q) {
   texte <- as.character(q$texte %||% "")
-  if (!grepl("[\t;,]", texte) || !grepl("\n.", texte)) stop("Le presse-papiers ne contient pas de tableau (au moins deux lignes et deux colonnes)")
+  if (!grepl("[\t;,]", texte) || !grepl("\n.", texte)) stop(traduire("Le presse-papiers ne contient pas de tableau (au moins deux lignes et deux colonnes)", "The clipboard holds no table (at least two rows and two columns)"))
   chemin <- chemin_temporaire("tableau colle.tsv")
   writeLines(enc2utf8(texte), chemin, useBytes = TRUE)
   p <- importer_tableau(chemin)
@@ -553,7 +553,7 @@ DEMANDES <- list(
   hca = hca_demande,
   permutations = function(q) {
     e <- modele(q$modele)
-    if (!identical(e$modele$type, "PLS")) stop("Le test de permutation ne concerne que les modèles PLS")
+    if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
     r <- permutations(e$modele, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
     c(list(modele = q$modele), r)
   },
@@ -561,6 +561,13 @@ DEMANDES <- list(
   exporter = exporter_demande,
   exporter_donnees = exporter_donnees_demande,
   coller = coller_demande,
+  # un jeu de test proposé (jeu_test.R) : au hasard ou par Kennard–Stone, par classe s'il y en a une
+  jeu_test = function(q) {
+    p <- projet(q$projet)
+    obs <- setdiff(vapply(p$observations, function(o) as.numeric(o$uid), 0), as.numeric(q$exclues %||% numeric(0)))
+    list(test = I(choisir_test(p, as.numeric(q$x), obs, q$methode %||% "hasard", as.numeric(q$part %||% 0.25),
+                               if (length(q$classe)) as.numeric(q$classe))))
+  },
   importer_spectres = importer_spectres_demande,
   predire_fichier = predire_fichier_demande,
   exporter_prediction = exporter_prediction_demande,
@@ -611,7 +618,7 @@ DEMANDES <- list(
   enregistrer = function(q) {
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
-    chemin <- q$chemin %||% file.path(tempdir(), paste0(tools::file_path_sans_ext(p$nom), ".json"))
+    chemin <- q$chemin %||% file.path(tempdir(), paste0(tools::file_path_sans_ext(p$nom), ".nuee"))
     enregistrer_projet(p, chemin)
     if (!is.null(q$chemin)) p$chemin_enregistrement <- chemin
     p$modifie <- FALSE
@@ -644,11 +651,12 @@ appli <- list(
     chemin <- req$PATH_INFO
     if (!startsWith(chemin, "/api/")) return(list(status = 404L, headers = list(), body = "introuvable"))
     nom <- sub("^/api/", "", chemin)
+    options(nuee.langue = if (identical(req$HTTP_X_LANGUE, "en")) "en" else "fr")  # langue des messages (langue.R)
     corps <- req$rook.input$read()
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
         f <- normalizePath(utils::URLdecode(sub(".*chemin=([^&]*).*", "\\1", req$QUERY_STRING)), winslash = "/")
-        if (!startsWith(f, normalizePath(tempdir(), winslash = "/"))) stop("Fichier non autorisé")
+        if (!startsWith(f, normalizePath(tempdir(), winslash = "/"))) stop(traduire("Fichier non autorisé", "File not allowed"))
         return(list(status = 200L, headers = list("Content-Type" = "application/octet-stream",
                                                   "Content-Disposition" = sprintf('attachment; filename="%s"', basename(f))),
                     body = readBin(f, "raw", file.size(f))))
@@ -666,7 +674,7 @@ appli <- list(
         return(repondre(200L, r))
       }
       f <- DEMANDES[[nom]]
-      if (is.null(f)) stop("Demande inconnue : ", nom)
+      if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
       q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
       r <- f(q)
       tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R

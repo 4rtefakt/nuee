@@ -34,6 +34,7 @@ ajuster <- function(projet, definition, A = definition$A, G = definition$cv_grou
   class(modele) <- "modele_nuee"
   if (orienter && !is.null(definition[["solution"]][["T"]])) modele <- orienter_comme(modele, definition[["solution"]][["T"]])
   modele$statistiques <- statistiques(modele)
+  if (length(definition$test)) modele$test <- evaluer_test(projet, modele, definition)  # jeu_test.R
   modele
 }
 

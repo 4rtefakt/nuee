@@ -1,6 +1,25 @@
 // What changed in each version, shown once after an update (and in Aide › Quoi de neuf).
 // The first entry is the current version.
 export const NOUVEAUTES = [
+  { version: '1.0.0', date: '2026-11-01',
+    fr: [
+      'Mise à jour en un clic : quand une nouvelle version est signalée dans la barre d’état, un clic télécharge son programme d’installation, le vérifie (empreinte SHA-256 donnée par GitHub), propose d’enregistrer les projets, l’installe et redémarre Nuée.',
+      'Jeu de test : dans Nouveau modèle › Observations, des observations laissées hors du modèle et de la validation croisée (à la main, au hasard ou par Kennard–Stone, par classe pour une PLS-DA), puis prédites : RMSEP, biais, SEP, Q2 externe, ou le classement d’une PLS-DA. Observé / prédit les montre, le texte des méthodes et l’export vers R les reprennent.',
+      'Les projets s’enregistrent en .nuee : un double-clic dans l’Explorateur Windows les ouvre dans Nuée. Les projets .json s’ouvrent toujours.',
+      'Déposer des fichiers sur la fenêtre les ouvre ; des spectres JCAMP-DX ou SPC déposés ensemble font un seul projet.',
+      'Les messages du moteur R (erreurs, notes) sont en anglais quand l’interface l’est, et les scripts exportés en anglais aussi.',
+      'Le guide complet en anglais (USER-GUIDE.txt) ; Aide › Guide d’utilisation › Guide complet ouvre celui de la langue de l’interface.',
+      'Le texte des méthodes cite Nuée et sa version ; Nuée se cite aussi avec le bouton « Cite this repository » de GitHub.',
+    ],
+    en: [
+      'One-click update: when the status bar mentions a new version, a click downloads its installer, checks it (SHA-256 checksum given by GitHub), offers to save your projects, installs it and starts Nuée again.',
+      'Test set: in New model › Observations, observations left out of the model and of the cross-validation (by hand, at random or by Kennard–Stone, by class for a PLS-DA), then predicted: RMSEP, bias, SEP, external Q2, or the classification of a PLS-DA. Observed / predicted shows them; the Methods text and Export to R include them.',
+      'Projects are saved as .nuee: double-clicking one in Windows Explorer opens it in Nuée. .json projects still open.',
+      'Dropping files on the window opens them; JCAMP-DX or SPC spectra dropped together make one project.',
+      'The R engine’s messages (errors, notes) are in English when the interface is, and so are exported scripts in English.',
+      'The full user guide in English (USER-GUIDE.txt); Help › User guide › Full guide opens the one in the interface’s language.',
+      'The Methods text cites Nuée and its version; GitHub’s “Cite this repository” button cites it too.',
+    ] },
   { version: '0.9.0', date: '2026-11-01',
     fr: [
       'Fichier › Importer des spectres : des fichiers JCAMP-DX, SPC (Galactic, Thermo) ou texte, un spectre ou plusieurs par fichier, réunis en un projet ; un tableau d’informations (teneurs, classes) peut y être joint par le nom des fichiers. Un fichier JCAMP-DX ou SPC s’ouvre aussi avec Fichier › Ouvrir.',

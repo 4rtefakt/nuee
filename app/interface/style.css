@@ -259,3 +259,10 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .liste-tables { width: 100%; min-width: 22em; }
 #statut .nouvelle-version { display: inline-flex; align-items: center; gap: 2px; }
 #statut .nouvelle-version a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent, #2f6fb5); font-weight: 600; text-decoration: none; }
+
+/* files dragged over the window (drop to open them) */
+body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed var(--accent); border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent); pointer-events: none; z-index: 10000; }
+
+/* an observation in the test set (model dialog) */
+.onglet-obs tr.en-test td { background: var(--accent-doux); }

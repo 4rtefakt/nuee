@@ -311,7 +311,13 @@ function rendreResume(conteneur, ctx, p) {
       pls && m.RMSEcv ? Object.entries(m.RMSEcv).map(([y, v]) => el('span', {}, el('small', {}, `RMSEcv ${y}`), ' ', el('b', {}, fmt(v, 4)))) : null,
       pls && m.cv_anova ? Object.entries(m.cv_anova).map(([y, a]) => el('span', { title: 'CV-ANOVA' }, el('small', {}, `CV-ANOVA p ${y}`), ' ',
         el('b', {}, a.p[1] === null ? '—' : a.p[1] < 0.001 ? Number(a.p[1]).toExponential(1) : fmt(a.p[1], 3)))) : null,
-      m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null));
+      m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null),
+    m.test ? el('div', { class: 'fiche-chiffres', title: t('jeu_test_aide') },
+      el('span', {}, el('small', {}, t('jeu_test')), ' ', el('b', {}, m.test.n)),
+      m.test.statistiques ? [].concat(m.test.statistiques.y).map((y, j) => [['RMSEP', 'RMSEP', 4], ['biais', t('biais'), 4], ['Q2ext', 'Q2ext', 3]]
+        .map(([k, n, d]) => el('span', {}, el('small', {}, `${n}${[].concat(m.test.statistiques.y).length > 1 ? ` ${y}` : ''}`), ' ', el('b', {}, fmt([].concat(m.test.statistiques[k])[j], d))))) : null,
+      m.test.classement ? el('span', {}, el('small', {}, t('bien_classes_test')), ' ', el('b', {}, `${fmt(100 * m.test.classement.bien_classees, 1)} %`)) : null,
+      el('span', {}, el('small', {}, t('hors_domaine_court')), ' ', el('b', {}, m.test.hors_domaine))) : null);
   const table = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, t('comp')), cols.map(([, n]) => el('th', { class: 'num' }, n)))),
     el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > (m.Ap || 1) ? `O${a - (m.Ap || 1)}` : (m.Ap || 1) > 1 ? `P${a}` : 'P') : a),
@@ -734,13 +740,21 @@ function rendreObsPred(conteneur, ctx, p, loc) {
     choix(t('y_var'), m.noms_y.map((n, i) => [i, n]), loc.y, (v) => { loc.y = +v; ctx.rafraichir(); }),
     controleCouleur(ctx, m, loc),
     controleEtiquettes(ctx, m, loc),
-    el('span', { class: 'infos' }, `RMSEE ${fmt(m.RMSEE[y], 4)} · RMSEcv ${fmt(m.RMSEcv[y], 4)}`)), graphe);
+    el('span', { class: 'infos' }, `RMSEE ${fmt(m.RMSEE[y], 4)} · RMSEcv ${fmt(m.RMSEcv[y], 4)}`
+      + (m.test && m.test.statistiques ? ` · RMSEP ${fmt([].concat(m.test.statistiques.RMSEP)[[].concat(m.test.statistiques.y).indexOf(y)], 4)}` : ''))), graphe);
   const xo = o[`${y} observé`];
   const yf = o[`${y} ajusté`];
   const vals = xo.concat(yf).filter((v) => v !== null);
+  const points = pointsObservations(ctx, m, loc, xo, yf, { survol: '%{x:.3f} → %{y:.3f}' });
+  if (m.test && m.test.observations[`${y} observé`]) {  // the test set, predicted by the model
+    const to = m.test.observations;
+    const [xt, yt] = [[].concat(to[`${y} observé`]), [].concat(to[`${y} prédit`])];
+    vals.push(...xt.concat(yt).filter((v) => v !== null));
+    points.push({ type: 'scatter', mode: 'markers', name: t('jeu_test'), x: xt, y: yt, text: [].concat(to.nom),
+      marker: { symbol: 'diamond-open', size: 9, color: '#d1495b', line: { width: 1.5 } }, hovertemplate: `<b>%{text}</b> (${t('test')})<br>%{x:.3f} → %{y:.3f}<extra></extra>` });
+  }
   const lo = Math.min(...vals);
   const hi = Math.max(...vals);
-  const points = pointsObservations(ctx, m, loc, xo, yf, { survol: '%{x:.3f} → %{y:.3f}' });
   tracer(ctx, graphe, points,
   { showlegend: points.length > 1, title: { text: `${m.nom} · ${y} : ${t('observe')} / ${t('ajuste')}` },
     shapes: [{ type: 'line', x0: lo, y0: lo, x1: hi, y1: hi, line: { color: '#888', dash: 'dot', width: 1 } }],

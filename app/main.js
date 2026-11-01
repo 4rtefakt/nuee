@@ -195,8 +195,15 @@ function fenetrePrincipale() {
   };
   fenetre.on('resize', garder);
   fenetre.on('move', garder);
-  fenetre.loadURL(adresse);
+  const fichier = fichierDonne(process.argv);
+  fenetre.loadURL(fichier ? `${adresse}?ouvrir=${encodeURIComponent(fichier)}` : adresse);
   return fenetre;
+}
+
+// The file Windows asks Nuée to open (a .nuee project double-clicked, "Open with"): the first
+// argument that is an existing file.
+function fichierDonne(argv) {
+  return argv.slice(1).find((a) => !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
 }
 
 function ipc() {
@@ -428,9 +435,13 @@ async function demarrer() {
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
-app.on('second-instance', () => {
-  const f = BrowserWindow.getAllWindows()[0];
-  if (f) { if (f.isMinimized()) f.restore(); f.focus(); }
+app.on('second-instance', (_, argv) => {  // Nuée started again: its file opens in the main window
+  const f = BrowserWindow.getAllWindows().find((x) => !new URL(x.webContents.getURL()).searchParams.get('vue')) || BrowserWindow.getAllWindows()[0];
+  if (!f) return;
+  if (f.isMinimized()) f.restore();
+  f.focus();
+  const fichier = fichierDonne(argv);
+  if (fichier) f.webContents.send('ouvrir-fichier', fichier);
 });
 app.whenReady().then(demarrer);
 app.on('window-all-closed', () => app.quit());

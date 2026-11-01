@@ -15,6 +15,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     type: r ? r.type : 'PLS', nom: nomLibre(p), titre: r && r.nom ? `${r.titre ? r.titre + ' — ' : ''}${langueActuelle() === 'fr' ? 'd’après' : 'from'} ${r.nom}` : '',
     A: r ? r.A : 0, auto: !r, G: r ? r.G || 7 : 7, echelle: 'UV', roles: {}, echelles: {}, transfos: {},
     exclues: new Set(r ? [].concat(r.exclues || []) : []), onglet: 'variables', filtre: '', filtreObs: '',
+    test: new Set(r ? [].concat(r.test || []).map(Number) : []), methodeTest: 'hasard', partTest: 25,
     croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '',
   };
   const etapes = r && r.spectres ? [].concat(r.spectres) : [];
@@ -35,7 +36,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   const majResume = () => {
     const x = Object.values(st.roles).filter((v) => v === 'x').length;
     const y = Object.values(st.roles).filter((v) => v === 'y' || v === 'classe').length;
-    resume.textContent = t('resume_dialogue', { x, y, n: p.observations.uid.length - st.exclues.size });
+    const test = [...st.test].filter((u) => !st.exclues.has(u)).length;
+    resume.textContent = t('resume_dialogue', { x, y, n: p.observations.uid.length - st.exclues.size - test }) + (test ? ` · ${t('n_test', { n: test })}` : '');
   };
 
   const onglets = () => el('div', { class: 'onglets' }, [['general', t('general')], ['variables', t('variables')],
@@ -138,11 +140,31 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         modele && modele.projet === p.id ? el('button', { disabled: !app.selection(modele.id).length,
           onclick: () => { app.selection(modele.id).forEach((u) => st.exclues.add(u)); rendre(); } }, icone('eye-off'), t('exclure_selection')) : null,
         el('span', { class: 'infos' }, `${o.uid.length - st.exclues.size} / ${o.uid.length} ${t('incluses')}`)),
+      // test set: observations left out of the model, then predicted by it (moteur/R/jeu_test.R)
+      el('div', { class: 'outils' }, el('span', { title: t('jeu_test_aide') }, t('jeu_test')),
+        el('select', { onchange: (e) => { st.methodeTest = e.target.value; } },
+          [['hasard', t('test_hasard')], ['kennard_stone', t('test_kennard_stone')]].map(([k, n]) => el('option', { value: k, selected: k === st.methodeTest }, n))),
+        el('input', { type: 'number', min: 5, max: 50, value: st.partTest, style: 'width:4.5em', oninput: (e) => { st.partTest = +e.target.value || 25; } }), '%',
+        el('button', { onclick: async () => {
+          const cles = (r2) => Object.keys(st.roles).filter((k) => st.roles[k] === r2).map(Number);
+          if (!cles('x').length) { erreur.textContent = t('x_requis'); return; }
+          try {
+            const res = await app.jeuTest({ projet: p.id, x: cles('x'), exclues: [...st.exclues], methode: st.methodeTest, part: st.partTest / 100,
+              classe: avecClasse() ? cles('classe')[0] ?? null : null });
+            st.test = new Set([].concat(res.test || []).map(Number));
+            rendre();
+          } catch (e) { erreur.textContent = e.message; }
+        } }, t('choisir_test')),
+        modele && modele.projet === p.id ? el('button', { disabled: !app.selection(modele.id).length,
+          onclick: () => { app.selection(modele.id).forEach((u) => st.test.add(u)); rendre(); } }, t('selection_en_test')) : null,
+        st.test.size ? el('button', { onclick: () => { st.test.clear(); rendre(); } }, t('vider_test')) : null),
       el('div', { class: 'defile' }, el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('inclure')), el('th', {}, t('observations')))),
-        el('tbody', {}, idx.slice(0, 3000).map((i) => el('tr', { class: st.exclues.has(o.uid[i]) ? 'exclue' : '' },
+        el('thead', {}, el('tr', {}, el('th', {}, t('inclure')), el('th', { title: t('jeu_test_aide') }, t('test')), el('th', {}, t('observations')))),
+        el('tbody', {}, idx.slice(0, 3000).map((i) => el('tr', { class: st.exclues.has(o.uid[i]) ? 'exclue' : st.test.has(o.uid[i]) ? 'en-test' : '' },
           el('td', {}, el('input', { type: 'checkbox', checked: !st.exclues.has(o.uid[i]),
-            onchange: (e) => { if (e.target.checked) st.exclues.delete(o.uid[i]); else st.exclues.add(o.uid[i]); majResume(); e.target.closest('tr').classList.toggle('exclue', !e.target.checked); } })),
+            onchange: (e) => { if (e.target.checked) st.exclues.delete(o.uid[i]); else st.exclues.add(o.uid[i]); rendre(); } })),
+          el('td', {}, el('input', { type: 'checkbox', checked: st.test.has(o.uid[i]), disabled: st.exclues.has(o.uid[i]),
+            onchange: (e) => { if (e.target.checked) st.test.add(o.uid[i]); else st.test.delete(o.uid[i]); majResume(); e.target.closest('tr').classList.toggle('en-test', e.target.checked); } })),
           el('td', {}, o.nom[i])))))));
   };
 
@@ -210,7 +232,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     }
     const spectres = st.etapes.filter(Boolean).map((k) => (k.startsWith('sg') ? { type: 'sg', derivee: +k[2], fenetre: st.fenetre, degre: st.degre } : { type: k }));
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
-      exclues: [...st.exclues], echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
+      exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
       A: st.auto ? 0 : st.A, G: st.G, nom: st.nom, titre: st.titre };
     verifierPuisAjuster(q);
     return false;  // the dialog closes once the data check is done

@@ -13,6 +13,7 @@
   <img alt="Windows 10 et 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1b4a9c">
   <img alt="Interface en français et en anglais" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/licence-GPL--3.0-1b4a9c"></a>
+  <a href="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml"><img alt="Vérifications" src="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml/badge.svg"></a>
 </p>
 
 ![Le projet d'exemple dans Nuée : une ACP avec son résumé, les scores colorés par variété et les loadings](docs/captures/acp.png)
@@ -55,8 +56,8 @@ et redémarre Nuée. *Aide › Chercher une nouvelle version au démarrage* arr�
 - **Ouvrir vos données :** *Fichier › Ouvrir* (Ctrl+O) lit un tableau, une ligne par
   observation et les noms des observations dans la première colonne (voir [Fichiers](#fichiers)
   pour les formats), ou *Fichier › Coller un tableau* (Ctrl+V) prend des cellules copiées
-  dans n'importe quel tableur. Les colonnes de texte et les facteurs deviennent des variables
-  qualitatives, pour colorer ou comme classes.
+  dans n'importe quel tableur, ou déposez des fichiers sur la fenêtre. Les colonnes de texte et
+  les facteurs deviennent des variables qualitatives, pour colorer ou comme classes.
 - **Faire un modèle :** *Modèle › Nouveau modèle* (Ctrl+N) : le type, le rôle de chaque variable
   (X, Y ou écartée), l'échelle et la transformation, les observations retenues. Le nombre de
   composantes est choisi par validation croisée, sauf si vous le fixez.
@@ -77,7 +78,9 @@ classe, et le graphique de Coomans pour dire à quelle classe appartient une obs
 plusieurs, ou à aucune.
 
 **Validation :** tests de permutation, CV-ANOVA, tables de classement et courbes ROC de la
-PLS-DA, intervalles de confiance par jack-knife.
+PLS-DA, intervalles de confiance par jack-knife. Un jeu de test laissé hors du modèle et de la
+validation croisée (choisi à la main, au hasard ou par Kennard–Stone, par classe pour une
+PLS-DA), puis prédit : RMSEP, biais, SEP et Q2 externe, ou son classement.
 
 ![Un modèle PLS : observé contre prédit, et les VIP avec un seuil placé automatiquement](docs/captures/pls.png)
 
@@ -112,8 +115,8 @@ longueurs d'onde hors d'un nouveau modèle, ou pour ne garder qu'elles.
 signal pour celles hors du domaine du modèle, et exportez les résultats.
 
 **Votre travail :**
-- enregistrer un projet garde ses modèles, la disposition de vos panneaux, les réglages des
-  graphiques et les sélections ;
+- enregistrer un projet (`.nuee`, qui ouvre Nuée d'un double-clic) garde ses modèles, la
+  disposition de vos panneaux, les réglages des graphiques et les sélections ;
 - une copie de secours toutes les deux minutes, proposée après une panne, et l'annulation des
   modifications des données ;
 - des notes sur chaque modèle ;
@@ -182,11 +185,22 @@ projets, R2X, R2Y, le Q2 des PLS, les scores, les loadings, T2, DModX, les VIP e
 coefficients sont ceux enregistrés, à quelques modèles avec données manquantes près ;
 *Aide › Résultats et écarts connus* liste les écarts connus.
 
+## Citer Nuée
+
+*Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
+
+> 4rtefakt (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
+
+Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
+([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)
+(en anglais ; dans l'application, *Aide › Quoi de neuf*).
+
 ## Construire depuis les sources
 
 Voir [docs/developpement.md](docs/developpement.md) (en anglais) : lancer depuis les sources,
 la construction (installateur et version pour un partage réseau), les vérifications, et la
-façon dont les résultats ont été comparés.
+façon dont les résultats ont été comparés. Les vérifications tournent sur GitHub à chaque envoi
+et chaque pull request.
 
 ## Licence
 

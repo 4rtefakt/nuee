@@ -14,7 +14,8 @@ REFERENCES <- list(
   snv = "Barnes, R. J., Dhanoa, M. S., & Lister, S. J. (1989). Standard normal variate transformation and de-trending of near-infrared diffuse reflectance spectra. Applied Spectroscopy, 43(5), 772–777. https://doi.org/10.1366/0003702894202201",
   msc = "Geladi, P., MacDougall, D., & Martens, H. (1985). Linearization and scatter-correction for near-infrared reflectance spectra of meat. Applied Spectroscopy, 39(3), 491–500. https://doi.org/10.1366/0003702854248656",
   sg = "Savitzky, A., & Golay, M. J. E. (1964). Smoothing and differentiation of data by simplified least squares procedures. Analytical Chemistry, 36(8), 1627–1639. https://doi.org/10.1021/ac60214a047",
-  r = "R Core Team (%s). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/")
+  r = "R Core Team (%s). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/",
+  nuee = "4rtefakt (%s). Nuée%s [Computer software]. https://github.com/4rtefakt/nuee")
 
 texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   langue <- match.arg(langue)
@@ -153,17 +154,37 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
     p4 <- c(p4, if (fr) sprintf("En validation croisée, %s des observations sont attribuées à leur classe (la plus grande valeur de Y prédite).", pourcent(s$classification$vc$global))
                 else sprintf("In cross-validation, %s of the observations are assigned to their own class (largest predicted Y value).", pourcent(s$classification$vc$global)))
   }
+  # --- jeu de test (jeu_test.R)
+  if (!is.null(m$test)) {
+    tt <- m$test
+    detail <- if (plsda && !is.null(tt$classement)) {
+      if (fr) sprintf("%s de ses observations sont attribuées à leur classe", pourcent(tt$classement$bien_classees))
+      else sprintf("%s of its observations are assigned to their own class", pourcent(tt$classement$bien_classees))
+    } else if (!is.null(tt$statistiques)) {
+      st <- tt$statistiques
+      liste(vapply(seq_len(nrow(st)), function(j) sprintf("%sRMSEP = %s, %s = %s, Q²%s = %s", if (nrow(st) > 1) paste0(guillemets(st$y[j]), " : ") else "",
+                                                         nombre(st$RMSEP[j], 3), if (fr) "biais" else "bias", nombre(st$biais[j], 3),
+                                                         if (fr) " externe" else "ext", nombre(st$Q2ext[j])), ""))
+    } else {
+      if (fr) sprintf("%d hors du domaine du modèle (DModX ou T²)", tt$hors_domaine) else sprintf("%d outside the model's domain (DModX or T²)", tt$hors_domaine)
+    }
+    p4 <- c(p4, if (fr) sprintf("Un jeu de test de %d observations, laissées hors du modèle et de la validation croisée, a ensuite été prédit : %s.", tt$n, detail)
+                else sprintf("A test set of %d observations, left out of the model and of the cross-validation, was then predicted: %s.", tt$n, detail))
+  }
 
   # --- logiciel
   annee_r <- R.version$year
   version_r <- paste(R.version$major, R.version$minor, sep = ".")
-  cites <- union(cites, "r")
-  p5 <- if (fr) sprintf("Les calculs ont été faits avec Nuée%s (https://github.com/4rtefakt/nuee), dont le moteur est écrit en R (R %s ; R Core Team, %s).",
-                        if (nzchar(version)) paste0(" ", version) else "", version_r, annee_r)
-        else sprintf("Computations were done with Nuée%s (https://github.com/4rtefakt/nuee), whose engine is written in R (R %s; R Core Team, %s).",
-                     if (nzchar(version)) paste0(" ", version) else "", version_r, annee_r)
+  annee_nuee <- format(Sys.Date(), "%Y")
+  cites <- union(cites, c("r", "nuee"))
+  p5 <- if (fr) sprintf("Les calculs ont été faits avec Nuée%s (4rtefakt, %s), dont le moteur est écrit en R (R %s ; R Core Team, %s).",
+                        if (nzchar(version)) paste0(" ", version) else "", annee_nuee, version_r, annee_r)
+        else sprintf("Computations were done with Nuée%s (4rtefakt, %s), whose engine is written in R (R %s; R Core Team, %s).",
+                     if (nzchar(version)) paste0(" ", version) else "", annee_nuee, version_r, annee_r)
 
-  references <- vapply(cites, function(k) if (k == "r") sprintf(REFERENCES$r, annee_r) else REFERENCES[[k]], "")
+  references <- vapply(cites, function(k) switch(k, r = sprintf(REFERENCES$r, annee_r),
+                                                 nuee = sprintf(REFERENCES$nuee, annee_nuee, if (nzchar(version)) sprintf(" (version %s)", version) else ""),
+                                                 REFERENCES[[k]]), "")
   list(paragraphes = c(paste(p1, collapse = " "), paste(p2, collapse = " "), paste(p3, collapse = " "), paste(p4, collapse = " "), p5),
        references = unname(sort(references)))
 }

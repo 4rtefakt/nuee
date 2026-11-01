@@ -21,7 +21,7 @@ transformer <- function(x, transformation) {
     return(y)
   }
   if (!identical(as.character(transformation$type), "7")) {
-    stop("Transformation de type ", transformation$type, " non prise en charge")
+    stop(sprintf(traduire("Transformation de type %s non prise en charge", "Transformation of type %s not supported"), transformation$type))
   }
   base <- p[2] * x + p[3]
   interdit <- (base < 0 & p[4] != round(p[4])) | (base == 0 & p[4] < 0)
@@ -56,7 +56,7 @@ echelle <- function(x, type) {
          Par = c(centre = moy, poids = if (et > 0) 1 / sqrt(et) else 0),
          Ctr = c(centre = moy, poids = 1),
          none = c(centre = 0, poids = 1),
-         stop("Mise à l'échelle inconnue : ", type))
+         stop(traduire("Mise à l'échelle inconnue : ", "Unknown scaling: "), type))
 }
 
 # Bloc X ou Y d'un modèle : matrice des termes centrés et mis à l'échelle
@@ -118,7 +118,7 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     x <- rep(1, length(observations))
     for (j in seq_along(t$variables)) {
       f <- simples[[paste(t$variables[j], categorie(t, j))]]
-      if (is.null(f)) stop("Terme croisé ", noms[k], " : facteur absent du modèle")
+      if (is.null(f)) stop(sprintf(traduire("Terme croisé %s : facteur absent du modèle", "Cross term %s: factor missing from the model"), noms[k]))
       x <- x * f
     }
     X[, k] <- mettre_a_echelle(k, transformer(x, t$transform))
