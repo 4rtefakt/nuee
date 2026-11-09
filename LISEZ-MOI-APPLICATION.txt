@@ -18,15 +18,7 @@ d'où on peut la désinstaller ; les projets et les réglages sont gardés.
 Si Windows affiche « Windows a protégé votre ordinateur » (éditeur inconnu), cliquez sur
 « Informations complémentaires » puis « Exécuter quand même ».
 
-Sous Linux, Nuée utilise le R de l'ordinateur.
-- Debian, Ubuntu et dérivées : sudo apt install ./Nuee-<version>-amd64.deb installe aussi R
-  et les paquets R nécessaires. Nuée apparaît dans le menu des applications.
-- Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
-  lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
-  d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl")).
-Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
-RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
+
 
 Ouvrir
 ------
@@ -47,6 +39,12 @@ Fichier › Ouvrir (Ctrl+O) :
     les autres colonnes de texte, les facteurs R et les variables étiquetées de SPSS ou Stata
     sont des variables qualitatives (dans l'ordre de leurs modalités). Pour un classeur à
     plusieurs feuilles ou un fichier R à plusieurs tableaux, l'application demande lequel ouvrir.
+    Une colonne de mesures qui a quelques cellules de texte (<0,5, <LOD, nd, n.d., #N/A...)
+    reste une variable quantitative : ces cellules sont lues comme manquantes, et la barre d'état
+    dit combien, dans quelles variables (dont celles sous la limite de détection). Les dates et
+    heures d'Excel restent des dates (2024-05-03). Un fichier texte dont une ligne a plus de
+    valeurs que l'en-tête est refusé, avec le numéro de la ligne, plutôt que de décaler les
+    colonnes. Un fichier R doit contenir des tableaux ; tout autre objet est refusé.
 Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google
 Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
 projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).
@@ -68,10 +66,19 @@ Fichier › Enregistrer (Ctrl+S) écrit le projet (.nuee) avec ses données, ses
 séance en cours : modèles calculés, panneaux ouverts et leur disposition, réglages des
 graphiques (axes, couleurs, étiquettes, titres), sélections, choix des VIP, groupes du
 dendrogramme. En rouvrant le projet, les modèles sont recalculés et tout revient en place.
+Le projet est écrit dans un fichier à côté, qui prend ensuite la place de l'ancien : une
+coupure du réseau ou un disque plein pendant l'enregistrement laisse l'ancien intact. Si le
+fichier a été modifié ailleurs depuis qu'on l'a ouvert ou enregistré (un collègue, sur un
+dossier partagé ; une autre fenêtre), Nuée le dit et propose Enregistrer sous..., Écraser ou
+Annuler. Le fichier dit aussi quelle version de Nuée et de R l'a écrit ; un projet enregistré
+par une version plus récente de Nuée est signalé à l'ouverture.
+Rouvrir un fichier déjà ouvert (fichier récent, double-clic dans l'Explorateur) montre le
+projet ouvert au lieu d'en ouvrir une seconde copie.
 En fermant l'application avec des changements non enregistrés, elle propose « Enregistrer et
 fermer ». Toutes les deux minutes, elle garde aussi une copie de secours des projets non
 enregistrés : si elle s'arrête sans avoir été fermée (panne, coupure), elle propose au
-lancement suivant de les récupérer.
+lancement suivant de les récupérer. Fermer cette question sans répondre garde les copies pour
+la fois suivante ; seul « Ignorer » les efface.
 Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
 (valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
 jusqu'à 20 en arrière.
@@ -85,13 +92,15 @@ Si le moteur R s'arrête
 -----------------------
 L'application le signale et propose de le redémarrer ; on peut aussi le faire soi-même
 (Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs
-modèles et leurs vues ; les changements faits depuis la dernière copie de secours (deux
-minutes au plus) sont perdus. Au-delà d'une minute de calcul, la barre d'état le rappelle.
+modèles et leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon
+depuis le fichier où ils s'enregistrent ; les changements faits depuis la dernière copie de
+secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde
+les copies de secours, proposées au lancement suivant. Au-delà d'une minute de calcul, la
+barre d'état le rappelle.
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
-jour). La version installée (Nuee-Setup, ou les paquets Linux) cherche au démarrage s'il
+jour). La version installée (Nuee-Setup) cherche au démarrage s'il
 existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est envoyé) et la
-signale dans la barre d'état ; sous Linux, un clic ouvre la page de la version. Sous Windows,
-un clic propose de mettre à jour : le programme d'installation est téléchargé et
+signale dans la barre d'état ; un clic propose de mettre à jour : le programme d'installation est téléchargé et
 vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en
 proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation
 pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour
@@ -279,17 +288,17 @@ al. (2000), Applied Spectroscopy 54, 413–419.
 Exporter vers R (script, R Markdown, Quarto)
 --------------------------------------------
 Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
-envoyer à un collègue ou à joindre à un article. Il contient, dans l'ordre :
-  1. les vérifications : la version de R (4.0 au moins ; un message si elle est plus
-     ancienne que celle de l'application) et les paquets demandés (aucun pour un modèle :
-     R suffit ; s'il en manque, le script propose de les installer) ;
-  2. le code des fonctions du moteur dont le modèle a besoin, copié tel quel avec ses
-     commentaires (licence GPL-3.0) ;
-  3. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
+envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul,
+en R sans paquet, commenté dans la langue de l'export, en quatre parties :
+  1. les fonctions : l'algorithme NIPALS, la validation croisée, et seulement ce que ce
+     modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;
+  2. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
      les nombres écrits sans perte et les catégories dans leur ordre ;
-  4. le modèle : definir_modele() avec les variables désignées par leur nom (ou, pour un
-     modèle importé que definir_modele() ne sait pas décrire, la liste de ses termes),
-     ajuster(), puis ses résultats.
+  3. le modèle : ses termes X et Y (transformations, catégories, termes croisés), leur
+     mise à l'échelle, l'ajustement, puis R2 et Q2, T2 et DModX avec leurs limites, VIP,
+     coefficients, CV-ANOVA, classement pour une PLS-DA, jeu de test ;
+  4. les résultats : les tableaux, le test de permutation (en commentaire) et les
+     graphiques (scores, loadings, VIP, observé / ajusté, T2 et DModX).
 Format : script R (.R) ; ou rapport R Markdown (.Rmd) ou Quarto (.qmd), qui y ajoute le texte
 des méthodes, des tableaux et des graphiques (scores, loadings, VIP, observé / prédit, T2,
 DModX) et les références ; il se compile dans RStudio (bouton Knit) ou avec quarto render, et
@@ -297,8 +306,8 @@ demande le paquet knitr. Fichiers en plus, au choix : renv.lock (versions de R e
 pour renv::restore()), les données et le modèle ajusté en .RData (load() les rend sans
 recalculer), un projet RStudio (.Rproj, à mettre dans un dossier à part).
 Modèles : celui-ci, ou tous les modèles de la séance (le dernier ajustement de chacun) dans un
-seul script .R : les données et le code du moteur une fois, puis un bloc par modèle sous son
-nom (M1, M2...).
+seul script .R : les fonctions et les données une fois, puis un bloc par modèle sous son nom
+(M1, M2...).
 Avant d'écrire, l'application recalcule les modèles du script et vérifie qu'ils donnent les
 mêmes résultats ; sinon elle le signale.
 
@@ -315,13 +324,18 @@ Console R
 Affichage › Console R (Ctrl+J) : un panneau sous les onglets, avec
   - le journal : pour chaque action de l'application, l'appel au moteur qu'elle a fait, écrit
     en R (P1 <- lire_projet(...), d <- modele_du_projet(P1, 5), M4 <- ajuster(P1, d)...),
-    à recopier dans un script (bouton Copier) ; la case « Actions de l'application » les
-    masque ou les montre ;
+    à recopier dans un script (bouton Copier), et pour chaque modèle ajusté ce que R en
+    affiche (composantes, Y, limites, variables, observations ; print(M4) fait de même) ; la
+    case « Actions de l'application » les masque ou les montre ;
   - une invite où taper du R, exécuté dans la session R de l'application. m est le modèle
     affiché, p son projet ; P1, M4... les projets et modèles ouverts, sous les noms du journal.
     Par exemple : m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (le
     graphique s'affiche dans la console), modeles(), projets(), definition("M4").
     Entrée lance la commande, Maj+Entrée passe à la ligne, ↑ et ↓ rappellent les commandes.
+    Tab complète le nom commencé : objets, m$... et p$... (les noms qu'ils contiennent),
+    arguments de la fonction dont la parenthèse est ouverte ; s'il y en a plusieurs, une liste
+    s'ouvre (flèches, puis Tab ou Entrée). Les raccourcis de l'application (Ctrl+S, Ctrl+K...)
+    fonctionnent aussi pendant qu'on tape.
 Modifier un projet dans la console (p$donnees[...] <- ...) le modifie dans l'application.
 Corriger le moteur : dossier_moteur() donne le dossier des fichiers R de l'application ; après
 une correction, recharger_moteur() les relit, puis réajuster le modèle. Ce dossier est la

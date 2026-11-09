@@ -18,14 +18,7 @@ projects and settings are kept.
 If Windows shows "Windows protected your PC" (unknown publisher), click "More info", then
 "Run anyway".
 
-On Linux, Nuée uses the computer's R.
-- Debian, Ubuntu and their derivatives: sudo apt install ./Nuee-<version>-amd64.deb also
-  installs R and the R packages needed. Nuée appears in the applications menu.
-- Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
-  Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
-  install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl")).
-.usp projects need python3. For another R than the PATH's: start Nuée with
-RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
+
 
 Opening
 -------
@@ -44,6 +37,12 @@ File › Open (Ctrl+O):
     the models. The remaining text columns, R factors and labelled SPSS or Stata variables are
     qualitative variables (in the order of their categories). For a workbook with several
     sheets, or an R file with several tables, the application asks which one to open.
+    A column of measurements with a few text cells (<0.5, <LOD, nd, n.d., #N/A...) stays a
+    quantitative variable: those cells are read as missing, and the status bar says how many,
+    in which variables (and which are below the detection limit). Excel dates and times stay
+    dates (2024-05-03). A text file with a line holding more values than the header is refused,
+    with the line number, rather than shifting the columns. An R file must hold tables; any
+    other object is refused.
 File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).
@@ -64,9 +63,17 @@ File › Save project (Ctrl+S) writes the project (.nuee) with its data, its mod
 session: fitted models, open panels and their layout, plot settings (axes, colours, labels,
 titles), selections, VIP choices, dendrogram groups. When the project is opened again, the
 models are refitted and everything comes back in place.
+The project is written to a file next to the old one, which then takes its place: a network
+cut or a full disk during the save leaves the old file intact. If the file was changed
+elsewhere since you opened or saved it (a colleague, on a shared folder; another window), Nuée
+says so and offers Save as..., Overwrite or Cancel. The file also records which versions of
+Nuée and R wrote it; a project saved by a newer Nuée is pointed out when it opens.
+Opening a file that is already open (a recent file, a double-click in Explorer) shows the open
+project instead of opening a second copy.
 Closing the application with unsaved changes offers "Save and close". Every two minutes it
 also keeps a recovery copy of unsaved projects: if it stops without being closed (crash,
-power cut), it offers to recover them at the next start.
+power cut), it offers to recover them at the next start. Closing that question without an
+answer keeps the copies for next time; only "Ignore" deletes them.
 Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
 variable, class, scores as variables, deleted definition...), up to 20 steps back.
 Notes: each model's summary has a notes area, saved with the project and included in the
@@ -78,12 +85,13 @@ If the R engine stops
 ---------------------
 The application says so and offers to restart it; you can also do it yourself (Help ›
 Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
-views; changes made since the last recovery copy (two minutes at most) are lost. After a
+views, from their recovery copy if they had changes, otherwise from the file they save to;
+changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when
+the engine no longer answers keeps the recovery copies, offered at the next start. After a
 minute of computing, the status bar says so.
 Help › What's new: the changes in each version (shown once after an update). The installed
-copy (Nuee-Setup, or the Linux packages) looks for a new version at start-up (a single request
-to GitHub, nothing else is sent) and mentions it in the status bar; on Linux, a click opens the
-version's page. On Windows, one click offers to update: the
+copy (Nuee-Setup) looks for a new version at start-up (a single request
+to GitHub, nothing else is sent) and mentions it in the status bar; one click offers to update: the
 installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then
 Nuée closes (offering to save the projects you changed), installs it and starts again. For an
 installation for all users, Windows asks for permission. Help › Check for updates does the
@@ -261,16 +269,17 @@ SNV, MSC, detrend or baseline, its RMSEcv can differ from the bar's. Method: Nø
 Export to R (script, R Markdown, Quarto)
 ----------------------------------------
 File › Export to R: a file that refits the model without Nuée, with R alone, to send to a
-colleague or attach to a paper. It holds, in order:
-  1. the checks: the R version (4.0 or later; a message if it is older than the
-     application's) and the packages needed (none for a model: R is enough; if some are
-     missing, the script offers to install them);
-  2. the code of the engine functions the model needs, copied as is with its comments
-     (GPL-3.0 licence);
-  3. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
+colleague or attach to a paper. The calculation is written for that model alone, in plain R
+with no package, commented in the export's language, in four parts:
+  1. the functions: the NIPALS algorithm, the cross-validation, and only what this model
+     uses (missing values, spectral preprocessing, OPLS...);
+  2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
      written without loss and categories in their order;
-  4. the model: definir_modele() with the variables named (or, for an imported model that
-     definir_modele() can't describe, the list of its terms), ajuster(), then its results.
+  3. the model: its X and Y terms (transformations, categories, cross terms), their
+     scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients,
+     CV-ANOVA, classification for a PLS-DA, test set;
+  4. the results: the tables, the permutation test (commented out) and the plots (scores,
+     loadings, VIP, observed / fitted, T2 and DModX).
 Format: R script (.R); or an R Markdown (.Rmd) or Quarto (.qmd) report, which adds the
 Methods text, tables and plots (scores, loadings, VIP, observed / predicted, T2, DModX) and
 the references; it compiles in RStudio (Knit button) or with quarto render, and needs the
@@ -278,7 +287,7 @@ knitr package. Extra files, as you choose: renv.lock (versions of R and packages
 renv::restore()), the data and fitted model as .RData (load() gives them back without
 refitting), an RStudio project (.Rproj, best in a folder of its own).
 Models: this one, or all the models of the session (the latest fit of each) in one .R
-script: the data and the engine's code once, then a block per model under its name (M1,
+script: the functions and the data once, then a block per model under its name (M1,
 M2...).
 Before writing, the application refits the script's models and checks they give the same
 results; otherwise it says so.
@@ -295,12 +304,18 @@ R console
 View › R console (Ctrl+J): a panel below the tabs, with
   - the log: for each action of the application, the call it made to the engine, written in
     R (P1 <- lire_projet(...), d <- modele_du_projet(P1, 5), M4 <- ajuster(P1, d)...), to copy
-    into a script (Copy button); the "Application actions" box hides or shows them;
+    into a script (Copy button), and for each fitted model what R prints of it (components,
+    Y, limits, variables, observations; print(M4) does the same); the "Application actions"
+    box hides or shows them;
   - a prompt to type R, run in the application's R session. m is the model shown, p its
     project; P1, M4... the open projects and models, by their names in the log. For example:
     m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (the plot shows in
     the console), modeles(), projets(), definition("M4").
     Enter runs the command, Shift+Enter starts a new line, ↑ and ↓ recall commands.
+    Tab completes the name begun: objects, m$... and p$... (the names they hold), the
+    arguments of the function whose parenthesis is open; when several fit, a list opens
+    (arrows, then Tab or Enter). The application's shortcuts (Ctrl+S, Ctrl+K...) also work
+    while typing.
 Changing a project in the console (p$donnees[...] <- ...) changes it in the application.
 Correcting the engine: dossier_moteur() gives the folder of the application's R files; after
 a correction, recharger_moteur() reads them again, then refit the model. For the copy started

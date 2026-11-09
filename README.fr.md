@@ -5,13 +5,12 @@
 <p align="center"><a href="README.md">English</a> · <b>Français</b></p>
 
 <p align="center">
-  <b>ACP, PLS, PLS-DA et OPLS sous Windows et Linux, calculées en R.</b><br>
+  <b>ACP, PLS, PLS-DA et OPLS sous Windows, calculées en R.</b><br>
   Des graphiques interactifs, des modèles côte à côte, et chaque calcul lisible.
 </p>
 
 <p align="center">
   <img alt="Windows 10 et 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1b4a9c">
-  <img alt="Linux" src="https://img.shields.io/badge/Linux-deb%20%7C%20AppImage-1b4a9c">
   <img alt="Interface en français et en anglais" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/licence-GPL--3.0-1b4a9c"></a>
   <a href="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml"><img alt="Vérifications" src="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml/badge.svg"></a>
@@ -50,23 +49,9 @@ envoyé). S'il y en a une, un clic dans la barre d'état télécharge son progra
 vérifie son empreinte SHA-256 auprès de GitHub, propose d'enregistrer vos projets, l'installe
 et redémarre Nuée. *Aide › Chercher une nouvelle version au démarrage* arrête la recherche.
 
-### Linux
-
-Sous Linux, Nuée utilise le R installé sur l'ordinateur (une version de R dépend des
-bibliothèques de sa distribution : elle ne peut pas être emportée comme sous Windows).
-
-- **Debian, Ubuntu et dérivées :** téléchargez `Nuee-<version>-amd64.deb` depuis la page
-  [Releases](https://github.com/4rtefakt/nuee/releases) et installez-le avec
-  `sudo apt install ./Nuee-<version>-amd64.deb`. apt installe aussi R et les paquets R dont
-  Nuée a besoin. Nuée apparaît dans le menu des applications.
-- **Autres distributions :** `Nuee-<version>-x86_64.AppImage` (le rendre exécutable, puis le
-  lancer) ou `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
-  d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"))`.
-
-Les projets `.usp` demandent `python3`. Nuée cherche `Rscript` dans le `PATH`, puis dans
-`/usr/local/bin`, `/usr/bin` et `/opt/R/<version>/bin` ; lancez-le avec
-`RSCRIPT=/chemin/vers/Rscript` pour un autre R. Les réglages sont dans `~/.config/Nuee`.
+**Pour les services informatiques :** installation silencieuse pour un utilisateur ou pour tout
+l'ordinateur, une stratégie qui coupe la recherche de mises à jour pour tous, ce que Nuée écrit
+où et envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
 
 ## Premiers pas
 
@@ -191,11 +176,12 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   propre code exécuté dans la session de l'application, avec `m` et `p` pour le modèle et le
   projet affichés.
 - **Exporter vers R** (*Fichier › Exporter vers R*) : tout modèle devient un script, ou un
-  rapport R Markdown ou Quarto, qui le refait sans Nuée. Il contient les données (ou les lit dans
-  un CSV à côté), le code des fonctions du moteur dont le modèle a besoin, copié avec ses
-  commentaires, et le modèle ; il vérifie la version de R et les paquets dont il a besoin. Le
-  rapport ajoute le texte des méthodes, des tableaux, des graphiques et les références, et se
-  compile dans RStudio (*Knit*) ou avec Quarto. En plus, au choix : un `renv.lock`, les données
+  rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet. Il contient les
+  données (ou les lit dans un CSV à côté) et le calcul écrit pour ce modèle seul, commenté : sa
+  mise à l'échelle, l'algorithme NIPALS, la validation croisée, puis les statistiques, tableaux
+  et graphiques (une PLS fait environ 150 lignes de code). Le rapport ajoute le texte des
+  méthodes, des tableaux, des graphiques et les références, et se compile dans RStudio (*Knit*)
+  ou avec Quarto. En plus, au choix : un `renv.lock`, les données
   et le modèle ajusté en `.RData`, et un projet RStudio. Toute la séance peut aussi aller dans un
   seul script : les données une fois, puis chaque modèle. Avant d'écrire, Nuée refait les modèles
   du script et vérifie qu'ils donnent les mêmes résultats.

@@ -28,16 +28,19 @@ extension <- function(chemin) tolower(tools::file_ext(chemin))
 # d'un classeur Excel, objets d'un .RData, liste de tableaux dans un .rds) ; NULL sinon.
 tables_fichier <- function(chemin) {
   switch(extension(chemin),
-         xlsx = , xlsm = openxlsx::getSheetNames(chemin),
-         xls = readxl::excel_sheets(chemin),
+         xlsx = , xlsm = , xls = readxl::excel_sheets(chemin),
          rdata = , rda = names(objets_r(chemin)),
-         rds = { x <- readRDS(chemin); if (est_tableau(x)) NULL else names(Filter(est_tableau, as.list(x))) },
+         rds = { x <- lire_rds(chemin); if (est_tableau(x)) NULL else names(tableaux_r(x)) },
          NULL)
 }
 
 # Le tableau d'un fichier, en data.frame. `table` : nom de la feuille ou de l'objet (le
-# premier sinon).
-lire_tableau <- function(chemin, table = NULL) {
+# premier sinon). Dans un fichier texte ou Excel, rien ne dit qu'une colonne est faite de
+# nombres : convertir_colonnes() en décide. `quantitatives` : noms de colonnes à lire en
+# nombres quel que soit le format (fichier à prédire : les variables quantitatives du modèle).
+# attr(, "note") : ce qu'il faut dire de la lecture (valeurs lues comme manquantes, lignes
+# incomplètes), une phrase par colonne concernée, nommée par elle ("" pour tout le fichier).
+lire_tableau <- function(chemin, table = NULL, quantitatives = NULL) {
   ext <- extension(chemin)
   un_parmi <- function(objets) {
     if (!length(objets)) stop(traduire("Ce fichier ne contient aucun tableau (data.frame ou matrice)", "This file holds no table (data frame or matrix)"))
@@ -46,9 +49,8 @@ lire_tableau <- function(chemin, table = NULL) {
   }
   x <- switch(ext,
     csv = , txt = , tsv = , tab = , dat = lire_texte(chemin),
-    xlsx = , xlsm = openxlsx::read.xlsx(chemin, sheet = table %||% 1, check.names = FALSE),
-    xls = readxl::read_xls(chemin, sheet = table %||% 1, .name_repair = "minimal"),
-    rds = { x <- readRDS(chemin); if (est_tableau(x)) x else un_parmi(Filter(est_tableau, as.list(x))) },
+    xlsx = , xlsm = , xls = lire_excel(chemin, table),
+    rds = { x <- lire_rds(chemin); if (est_tableau(x)) x else un_parmi(tableaux_r(x)) },
     rdata = , rda = un_parmi(objets_r(chemin)),
     sav = , zsav = haven::read_sav(chemin),
     por = haven::read_por(chemin),
@@ -60,23 +62,73 @@ lire_tableau <- function(chemin, table = NULL) {
     arff = lire_arff(chemin),
     jdx = , dx = , jcm = , spc = tableau_spectres(lire_spectres(chemin)),
     stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext))
-  vers_data_frame(x)
+  finir_tableau(x, quantitatives, toutes = ext %in% c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls"))
+}
+
+# Un tableau lu, en data.frame simple (vers_data_frame), ses colonnes de texte converties
+# (convertir_colonnes) : toutes si `toutes`, sinon celles de `quantitatives`.
+finir_tableau <- function(x, quantitatives = NULL, toutes = TRUE) {
+  note <- attr(x, "note")
+  virgule <- attr(x, "virgule") %||% "decimale"
+  x <- convertir_colonnes(vers_data_frame(x), virgule, quantitatives, toutes)
+  attr(x, "note") <- c(note, attr(x, "note"))
+  x
 }
 
 est_tableau <- function(x) is.data.frame(x) || (is.matrix(x) && (is.numeric(x) || is.character(x) || is.logical(x)))
 
-# Les tableaux d'un fichier .RData, par nom. Lire un fichier .rds ou .RData n'exécute pas de
-# code depuis R 4.4.
+# Fichiers R. readRDS() et load() n'exécutent pas de code (depuis R 4.4, un fichier ne peut
+# plus contenir de promesse), mais un objet lu peut en porter : un environnement exécute ses
+# liaisons actives quand on lit leurs valeurs (as.list, mget, get), et les méthodes d'un objet
+# S4 (R5 aussi) viennent du paquet qui le définit ; un objet R6 est un environnement. On ne
+# touche donc qu'à des objets faits de vecteurs et de listes (objet_r_sur), et on ne garde
+# que les tableaux.
+
+# L'objet d'un fichier .rds : un tableau, ou une liste dont tableaux_r() prendra les
+# tableaux ; tout autre objet est refusé.
+lire_rds <- function(chemin) {
+  x <- readRDS(chemin)
+  liste <- typeof(x) == "list" && !isS4(x) && !is.data.frame(x)
+  if (!liste && !objet_r_sur(x)) {
+    stop(traduire("Ce fichier R contient un objet que Nuée n'ouvre pas (environnement, fonction, objet S4, R5 ou R6...) : le lire pourrait exécuter du code. Enregistrez-y un data.frame, une matrice ou une liste de data.frames.",
+                  "This R file holds an object Nuée doesn't open (environment, function, S4, R5 or R6 object...): reading it could run code. Save a data frame, a matrix or a list of data frames in it."), call. = FALSE)
+  }
+  x
+}
+
+# Les tableaux d'une liste lue dans un fichier R, par nom ; ses autres éléments sont ignorés
+# sans y toucher.
+tableaux_r <- function(x) {
+  if (typeof(x) != "list" || isS4(x)) return(list())
+  Filter(function(e) !isS4(e) && est_tableau(e) && objet_r_sur(e), unclass(x))
+}
+
+# Les tableaux d'un fichier .RData, par nom ; ses autres objets (fonctions, environnements...)
+# sont ignorés sans y toucher.
 objets_r <- function(chemin) {
   e <- new.env()
   load(chemin, envir = e)
-  Filter(est_tableau, mget(sort(ls(e)), envir = e))
+  Filter(function(x) !isS4(x) && est_tableau(x) && objet_r_sur(x), mget(sort(ls(e)), envir = e))
+}
+
+# Un objet qu'on peut parcourir sans exécuter de code : des vecteurs (nombres, texte, valeurs
+# logiques ; facteurs, dates...) et des listes (data.frames compris) faites de vecteurs et de
+# listes, jusque dans leurs attributs. Pas d'environnement, de fonction, d'objet S4, de
+# pointeur externe ni d'expression ; sauf, en attribut, un pointeur externe (celui des
+# data.table, vide une fois relu).
+objet_r_sur <- function(x, profondeur = 0, attribut = FALSE) {
+  if (profondeur > 20 || isS4(x)) return(FALSE)
+  sur <- switch(typeof(x),
+                logical = , integer = , double = , complex = , character = , raw = , "NULL" = TRUE,
+                list = all(vapply(unclass(x), objet_r_sur, TRUE, profondeur + 1)),
+                externalptr = attribut,
+                FALSE)
+  sur && all(vapply(attributes(x), objet_r_sur, TRUE, profondeur + 1, TRUE))
 }
 
 # Texte délimité. L'encodage (UTF-8, Windows-1252 des fichiers d'Excel, UTF-16 du « texte
-# Unicode » d'Excel), puis le séparateur, d'après la première ligne : tabulation, point-virgule,
-# virgule, sinon des espaces. Chaque colonne devient numérique si toutes ses valeurs sont des
-# nombres, avec un point ou une virgule décimale (« 12,5 », « 1 234,5 »).
+# Unicode » d'Excel), puis les champs (lire_texte_delimite), dont convertir_colonnes() fait
+# des nombres quand ce sont des mesures.
 lire_texte <- function(chemin) lire_texte_delimite(texte_fichier(chemin))
 
 # Le texte d'un fichier, en UTF-8, quel que soit son encodage.
@@ -93,31 +145,269 @@ texte_fichier <- function(chemin) {
   texte
 }
 
+# Les champs d'un texte délimité, en data.frame de texte. Le séparateur est celui que la
+# première ligne a le plus, hors des champs entre guillemets : tabulation, point-virgule,
+# virgule, sinon des espaces. Un champ qui commence par un guillemet va jusqu'au guillemet
+# suivi du séparateur ou de la fin de la ligne : il peut contenir le séparateur, des retours
+# à la ligne, et "" pour un guillemet. Ailleurs, un guillemet est un caractère comme un autre
+# (coordonnées 43°31'12"N, tube de 3"). Chaque ligne a les colonnes de la première, l'en-tête :
+#   - des champs vides au-delà (séparateurs en trop au bout des lignes) sont ignorés ;
+#   - une ligne plus courte est complétée par des valeurs manquantes, et une note le dit ;
+#   - une ligne plus longue arrête la lecture, avec son numéro : ses valeurs seraient
+#     décalées ;
+#   - sauf si toutes les lignes ont une valeur de plus que l'en-tête et que leurs premières
+#     valeurs sont toutes différentes : ce sont les noms des lignes, que write.table() de R
+#     écrit sans nom de colonne.
+# attr(, "virgule") : "milliers" dans un fichier séparé par des virgules, où une virgule n'est
+# jamais décimale (lire_nombres), "decimale" sinon ; attr(, "note") : celle des lignes courtes.
 lire_texte_delimite <- function(texte) {
-  premiere <- sub("[\r\n].*$", "", sub("^[\r\n]+", "", texte))
-  compter <- function(s) lengths(regmatches(premiere, gregexpr(s, premiere, fixed = TRUE)))
+  # (une expression régulière serait bien plus lente sur un gros fichier)
+  couper <- function(t) strsplit(gsub("\r", "\n", gsub("\r\n", "\n", t, fixed = TRUE), fixed = TRUE), "\n", fixed = TRUE)[[1]]
+  lignes <- couper(texte)
+  pleines <- grepl("[^[:space:]]", lignes)
+  if (!any(pleines)) return(data.frame())
+  premiere <- gsub('(?<![^\t;,])[ \t]*"(?:[^"]|"")*"[ \t]*(?![^\t;,])', "", lignes[which(pleines)[1]], perl = TRUE)
+  compter <- function(s) nchar(premiere) - nchar(gsub(s, "", premiere, fixed = TRUE))
   n <- c("\t" = compter("\t"), ";" = compter(";"), "," = compter(","))
   sep <- if (max(n) > 0) names(n)[which.max(n)] else ""
-  df <- utils::read.table(text = texte, sep = sep, header = TRUE, quote = "\"", colClasses = "character",
-                          na.strings = c("", "NA"), check.names = FALSE, comment.char = "", fill = TRUE,
-                          strip.white = TRUE, blank.lines.skip = TRUE, encoding = "UTF-8")
-  df[] <- lapply(df, convertir_colonne)
+  # un champ entre guillemets sur plusieurs lignes : ses retours à la ligne sont mis de côté
+  # (\036) le temps de couper les lignes
+  saut <- "\036"
+  guillemets <- nchar(lignes) - nchar(gsub('"', "", lignes, fixed = TRUE))
+  if (any(guillemets %% 2 == 1)) {
+    motif <- if (sep == "") paste0("(?<!\\S)", entre_guillemets(sep), "(?=\\s|$)") else {
+      s <- if (sep == "\t") "\\t" else sep
+      blanc <- if (sep == "\t") " *" else "[ \\t]*"
+      sprintf("(?<![^%s\\r\\n])%s%s%s(?=[%s\\r\\n]|$)", s, blanc, entre_guillemets(sep), blanc, s)
+    }
+    m <- gregexpr(motif, texte, perl = TRUE)
+    champs <- regmatches(texte, m)[[1]]
+    plusieurs <- grepl("[\r\n]", champs)
+    if (any(plusieurs)) {
+      champs[plusieurs] <- gsub("\r\n|\r|\n", saut, champs[plusieurs], perl = TRUE)
+      regmatches(texte, m) <- list(champs)
+      lignes <- couper(texte)
+      pleines <- grepl("[^[:space:]]", lignes)
+    }
+  }
+  sauts <- nchar(lignes) - nchar(gsub(saut, "", lignes, fixed = TRUE))
+  numero <- cumsum(c(1, 1 + sauts))[seq_along(lignes)][pleines]  # dans le fichier, pour les messages
+  champs <- champs_lignes(lignes[pleines], sep)
+  v <- trimws(gsub(saut, "\n", champs$valeurs, fixed = TRUE))
+  n <- champs$n
+  k <- n[1]
+  noms <- v[seq_len(k)]
+  v <- v[-seq_len(k)]
+  n <- n[-1]
+  numero <- numero[-1]
+  ligne <- rep.int(seq_along(n), n)
+  col <- sequence(n)
+  vide <- !nzchar(v)
+  noms_lignes <- NULL
+  if (length(n) && all(n == k + 1) && !all(vide[col == k + 1])) {
+    premiers <- v[col == 1]
+    if (all(nzchar(premiers)) && !anyDuplicated(premiers)) {  # noms des lignes, écrits par R
+      noms_lignes <- premiers
+      garde <- col > 1
+      v <- v[garde]
+      vide <- vide[garde]
+      ligne <- ligne[garde]
+      col <- col[garde] - 1L
+    }
+  }
+  trop <- unique(ligne[col > k & !vide])
+  if (length(trop)) {
+    stop(sprintf(traduire("%s : plus de valeurs que la première ligne n'a de colonnes (%d). Les valeurs seraient décalées : une valeur contient peut-être le séparateur (%s) ou un guillemet, ou un nom de colonne manque à la première ligne.",
+                          "%s: more values than the first line has columns (%d). The values would be shifted: a value may contain the separator (%s) or a quote, or a column name is missing from the first line."),
+                 texte_lignes(numero[trop]), k, nom_separateur(sep)), call. = FALSE)
+  }
+  # lignes plus courtes que les colonnes nommées (une ligne courte parmi d'autres, complètes)
+  nommees <- max(c(0, which(nzchar(noms))))
+  courtes <- which(tabulate(ligne, length(n)) < nommees)
+  note <- if (length(courtes) && length(courtes) < length(n)) {
+    stats::setNames(sprintf(traduire("%s : moins de valeurs que de colonnes (%d) ; celles des dernières colonnes y sont lues comme manquantes.",
+                                     "%s: fewer values than columns (%d); those of the last columns are read as missing there."),
+                            texte_lignes(numero[courtes]), nommees), "")
+  }
+  v[vide | v == "NA"] <- NA
+  M <- matrix(NA_character_, length(n), k)
+  dedans <- col <= k
+  M[cbind(ligne[dedans], col[dedans])] <- v[dedans]
+  df <- as.data.frame(M, stringsAsFactors = FALSE)
+  names(df) <- noms
+  if (!is.null(noms_lignes)) rownames(df) <- noms_lignes
+  attr(df, "virgule") <- if (sep == ",") "milliers" else "decimale"
+  attr(df, "note") <- note
   df
 }
 
-convertir_colonne <- function(x) {
-  v <- trimws(x)
-  connues <- !is.na(v) & nzchar(v)
-  if (!any(connues)) return(rep(NA_real_, length(x)))
-  nombre <- function(s) suppressWarnings(as.numeric(s))
-  if (!anyNA(nombre(v[connues]))) return(nombre(v))
-  # virgule décimale, espaces (insécables aussi) entre les milliers
-  w <- gsub("(?<=\\d)[   ](?=\\d{3})", "", v, perl = TRUE)
-  if (!any(grepl(",.*,", w[connues])) && !anyNA(nombre(sub(",", ".", w[connues], fixed = TRUE)))) {
-    return(nombre(sub(",", ".", w, fixed = TRUE)))
+# Un champ entre guillemets (expression régulière) : "" y est un guillemet ; \" entre des
+# espaces (sep = ""), comme les écrit write.table() de R.
+entre_guillemets <- function(sep) if (sep == "") '"(?:[^"\\\\]|\\\\.)*+"' else '"(?:[^"]|"")*+"'
+
+# Les champs de lignes de texte : list(valeurs = les champs de toutes les lignes, bout à bout ;
+# n = leur nombre par ligne). Les lignes sans guillemets sont coupées au séparateur ; dans les
+# autres, un champ entre guillemets perd ses guillemets.
+champs_lignes <- function(lignes, sep) {
+  avec <- grepl('"', lignes, fixed = TRUE)
+  simples <- if (sep == "") strsplit(trimws(lignes[!avec]), "[ \t]+", perl = TRUE) else strsplit(paste0(lignes[!avec], sep), sep, fixed = TRUE)
+  n <- integer(length(lignes))
+  n[!avec] <- lengths(simples)
+  cites <- character(0)
+  if (any(avec)) {
+    if (sep == "") {
+      l <- lignes[avec]
+      m <- gregexpr(paste0(entre_guillemets(sep), "(?=\\s|$)|\\S+"), l, perl = TRUE)
+      fin <- 0L
+    } else {  # chaque champ suivi du séparateur, ajouté au bout de la ligne
+      s <- if (sep == "\t") "\\t" else sep
+      blanc <- if (sep == "\t") " *" else "[ \\t]*"
+      l <- paste0(lignes[avec], sep)
+      m <- gregexpr(sprintf("%s%s%s%s|[^%s]*%s", blanc, entre_guillemets(sep), blanc, s, s, s), l, perl = TRUE)
+      fin <- 1L
+    }
+    n[avec] <- lengths(m)
+    debut <- unlist(m, use.names = FALSE)
+    longueur <- unlist(lapply(m, attr, "match.length"), use.names = FALSE)
+    cites <- substring(rep.int(l, n[avec]), debut, debut + longueur - 1L - fin)
   }
-  v[!connues] <- NA
-  v
+  valeurs <- character(sum(n))
+  depart <- cumsum(n) - n
+  valeurs[rep.int(depart[!avec], n[!avec]) + sequence(n[!avec])] <- unlist(simples, use.names = FALSE)
+  valeurs[rep.int(depart[avec], n[avec]) + sequence(n[avec])] <- cites
+  q <- grepl('^\\s*"', valeurs, perl = TRUE)
+  q[q] <- grepl(paste0("^\\s*", entre_guillemets(sep), "\\s*$"), valeurs[q], perl = TRUE)
+  dedans <- sub('^\\s*"(.*)"\\s*$', "\\1", valeurs[q], perl = TRUE)
+  valeurs[q] <- if (sep == "") gsub('\\"', '"', dedans, fixed = TRUE) else gsub('""', '"', dedans, fixed = TRUE)
+  list(valeurs = valeurs, n = n)
+}
+
+# « Ligne 7 », « Lignes 7, 12 et 15 », « Lignes 7, 12, 15, 21, 30… (52 lignes) »
+texte_lignes <- function(numeros) {
+  if (length(numeros) == 1) return(sprintf(traduire("Ligne %d", "Line %d"), numeros))
+  if (length(numeros) > 5) {
+    return(sprintf(traduire("Lignes %s… (%d lignes)", "Lines %s… (%d lines)"), paste(numeros[1:5], collapse = ", "), length(numeros)))
+  }
+  sprintf(traduire("Lignes %s et %d", "Lines %s and %d"), paste(utils::head(numeros, -1), collapse = ", "), utils::tail(numeros, 1))
+}
+
+nom_separateur <- function(sep) {
+  switch(sep, "\t" = traduire("tabulation", "tab"), ";" = traduire("point-virgule", "semicolon"),
+         "," = traduire("virgule", "comma"), traduire("espace", "space"))
+}
+
+# ---------------------------------------------------------------- nombres
+
+# Un nom de colonne comparable d'un fichier à l'autre : sans majuscules ni espaces autour, un
+# « . » valant une espace (les versions précédentes de Nuée lisaient « NO3 (mg/L) » d'un
+# classeur Excel en « NO3.(mg/L) » ; les projets qui gardent ces noms retrouvent leurs colonnes).
+nom_comparable <- function(nom) gsub(".", " ", tolower(trimws(nom)), fixed = TRUE)
+
+# Les colonnes de texte d'un tableau dont le format ne dit pas le type (texte, Excel) :
+# convertir_colonne() en fait des nombres quand ce sont des mesures. `quantitatives` : noms de
+# colonnes à lire en nombres quoi qu'il arrive, de tout type (fichier à prédire : variables
+# quantitatives du modèle) ; seules celles-là si `toutes` est faux (formats qui disent le type
+# des colonnes). attr(, "note") : une phrase par colonne dont des valeurs sont lues comme
+# manquantes, nommée par la colonne.
+convertir_colonnes <- function(df, virgule = "decimale", quantitatives = NULL, toutes = TRUE) {
+  note <- character(0)
+  forcees <- nom_comparable(names(df)) %in% nom_comparable(quantitatives)
+  for (k in seq_along(df)) {
+    x <- df[[k]]
+    if (!(forcees[k] && (is.character(x) || is.factor(x) || is.logical(x))) && !(toutes && is.character(x))) next
+    y <- convertir_colonne(as.character(x), virgule, premiere = k == 1, forcer = forcees[k])
+    manquantes <- attr(y, "manquantes")
+    if (length(manquantes)) note[names(df)[k]] <- note_manquantes(names(df)[k], manquantes)
+    attr(y, "manquantes") <- NULL
+    df[[k]] <- y
+  }
+  attr(df, "note") <- if (length(note)) note
+  df
+}
+
+# Une colonne de texte, en nombres si c'est une colonne de mesures, sinon en texte (sans les
+# espaces autour ; "" et « NA » manquants). Une colonne de mesures a au moins deux nombres, et
+# ses autres valeurs (vides et « NA » non comptés) sont, sauf un cinquième au plus, des valeurs
+# qui disent qu'une mesure manque (valeur_manquante : « <0,5 », « nd », « #N/A »...) ; elles
+# deviennent toutes des valeurs manquantes, données par attr(, "manquantes") pour le dire.
+# Une colonne de noms (sites, espèces, traitements) reste ainsi du texte, même avec quelques
+# nombres. Un code numérique comme -999 reste un nombre : rien ne le distingue d'une mesure.
+# La première colonne, qui nomme les observations quand c'est du texte, ne devient des
+# nombres que si ses autres valeurs disent toutes qu'une mesure manque (des noms comme
+# « 12bis » la gardent en texte). `forcer` : en nombres quoi qu'il arrive.
+convertir_colonne <- function(x, virgule = "decimale", premiere = FALSE, forcer = FALSE) {
+  v <- trimws(x)
+  v[v %in% c("", "NA")] <- NA
+  connues <- !is.na(v)
+  if (!any(connues)) return(rep(NA_real_, length(v)))
+  n <- lire_nombres(v, virgule)
+  autres <- connues & is.na(n)
+  if (!any(autres)) return(n)
+  texte <- sum(autres & !valeur_manquante(v))
+  if (!forcer && (sum(connues & !autres) < 2 || texte > if (premiere) 0 else 0.2 * sum(connues))) return(v)
+  n[autres] <- NA
+  structure(n, manquantes = v[autres])
+}
+
+# Les nombres écrits dans du texte (NA pour le reste). En plus de ce que lit as.numeric()
+# (« 12.5 », « -3 », « 1e-3 ») : les espaces entre les milliers (insécables aussi : « 1 234,5 »)
+# et une virgule, décimale (« 12,5 »), sauf dans un fichier séparé par des virgules
+# (`virgule` = "milliers") ou dans une colonne écrite à l'anglaise (« 1,234,567 »,
+# « 1,250.5 ») : elle y sépare les milliers (« 1,250 » : 1250) si toutes les virgules de la
+# colonne séparent des groupes de trois chiffres ; sinon ces valeurs ne sont pas des nombres.
+lire_nombres <- function(v, virgule = "decimale") {
+  n <- suppressWarnings(as.numeric(v))
+  reste <- which(is.na(n) & !is.na(v))
+  if (!length(reste)) return(n)
+  w <- gsub("(?<=\\d)[   ](?=\\d{3})", "", v[reste], perl = TRUE)
+  virgules <- grepl("^[+-]?[0-9.,]+([eE][+-]?[0-9]+)?$", w) & grepl(",", w, fixed = TRUE)
+  if (virgule == "milliers" || any(grepl(",.*[,.]", w[virgules]))) {
+    milliers <- all(grepl("^[+-]?[1-9][0-9]{0,2}(,[0-9]{3})+(\\.[0-9]+)?$", w[virgules]))
+    w[virgules] <- if (milliers) gsub(",", "", w[virgules], fixed = TRUE) else NA
+  } else {
+    w[virgules] <- sub(",", ".", w[virgules], fixed = TRUE)
+  }
+  n[reste] <- suppressWarnings(as.numeric(w))
+  n
+}
+
+# Valeurs qui disent qu'une mesure manque, plutôt que du texte : valeurs censurées (« <0,5 »,
+# « < LQ », « >2000 », « ≤0,1 »), codes de valeur manquante (nd, n.d., n/a, NaN, -, ?...),
+# limites seules (LOD, LQ...), traces, erreurs d'Excel (#N/A, #DIV/0!...).
+valeur_manquante <- function(v) {
+  code <- gsub("[[:space:]./]", "", tolower(v))
+  grepl("^[<>≤≥]", v) |
+    code %in% c("nd", "na", "nan", "nm", "nq", "ns", "null", "-", "--", "---", "—", "–", "?", "??",
+                "lod", "loq", "ld", "lq", "dl", "ql", "tr", "trace", "traces") |
+    grepl("^#(n/a|div/0!|value!|valeur!|ref!|name\\?|nom\\?|num!|nombre!|null!|nul!)$", v, ignore.case = TRUE)
+}
+
+# La note d'une colonne dont des valeurs sont lues comme manquantes : combien, lesquelles, et
+# combien sont sous la limite de détection (« <0,5 ») ou au-dessus de la limite de mesure
+# (« >2000 »).
+note_manquantes <- function(nom, valeurs) {
+  n <- length(valeurs)
+  comptes <- table(factor(valeurs, levels = unique(valeurs)))
+  montrees <- ifelse(nchar(names(comptes)) > 20, paste0(substr(names(comptes), 1, 19), "…"), names(comptes))
+  liste <- paste0(montrees, " ×", comptes)
+  if (length(liste) > 5) liste <- c(liste[1:5], "…")
+  dessous <- sum(grepl("^[<≤]", valeurs))
+  dessus <- sum(grepl("^[>≥]", valeurs))
+  quoi <- if (dessous == n) {
+    traduire(if (n == 1) "valeur sous la limite de détection lue comme manquante" else "valeurs sous la limite de détection lues comme manquantes",
+             if (n == 1) "value below the detection limit read as missing" else "values below the detection limit read as missing")
+  } else if (dessus == n) {
+    traduire(if (n == 1) "valeur au-dessus de la limite de mesure lue comme manquante" else "valeurs au-dessus de la limite de mesure lues comme manquantes",
+             if (n == 1) "value above the measurement limit read as missing" else "values above the measurement limit read as missing")
+  } else {
+    traduire(if (n == 1) "valeur non numérique lue comme manquante" else "valeurs non numériques lues comme manquantes",
+             if (n == 1) "non-numeric value read as missing" else "non-numeric values read as missing")
+  }
+  limites <- if (dessous < n && dessus < n) c(
+    if (dessous) sprintf(traduire("%d sous la limite de détection", "%d below the detection limit"), dessous),
+    if (dessus) sprintf(traduire("%d au-dessus de la limite de mesure", "%d above the measurement limit"), dessus))
+  sprintf(traduire("%s : %d %s (%s)%s", "%s: %d %s (%s)%s"), nom, n, quoi, paste(liste, collapse = ", "),
+          if (length(limites)) paste0(traduire(", dont ", ", including "), paste(limites, collapse = traduire(" et ", " and "))) else "")
 }
 
 # Un tableau lu (data.frame, tibble, matrice) en data.frame simple : des nombres, des facteurs
@@ -144,7 +434,7 @@ vers_data_frame <- function(x) {
       noms <- c(noms, nom)
     }
   }
-  names(colonnes) <- paste0("V", seq_along(colonnes))
+  names(colonnes) <- sprintf("V%d", seq_along(colonnes))  # (paste0 donnerait "V" sans colonne)
   x <- as.data.frame(colonnes, stringsAsFactors = FALSE)
   names(x) <- noms
   if (!is.null(noms_lignes) && !anyDuplicated(noms_lignes)) {
@@ -190,6 +480,51 @@ colonne_simple <- function(x) {
   if (is.character(x)) return(enc2utf8(as.vector(x)))
   if (is.list(x)) return(vapply(x, function(e) paste(format(e), collapse = " "), ""))
   as.character(x)
+}
+
+# ---------------------------------------------------------------- Excel
+
+# Une feuille d'un classeur Excel (.xlsx, .xlsm, .xls), lue cellule par cellule (readxl), avec
+# les noms de colonnes tels qu'ils sont écrits (espaces compris). Une colonne de nombres reste
+# en nombres ; les autres deviennent du texte, que convertir_colonnes() traite comme celui d'un
+# fichier texte (nombres saisis en texte comme « 1,2 », valeurs censurées comme « <0,5 »...).
+# Une cellule vide ou une erreur (#N/A, #DIV/0!...) est une valeur manquante.
+lire_excel <- function(chemin, table = NULL) {
+  x <- readxl::read_excel(chemin, sheet = table %||% 1, col_types = "list", .name_repair = "minimal")
+  df <- as.data.frame(lapply(stats::setNames(as.list(x), sprintf("V%d", seq_along(x))), cellules_excel), stringsAsFactors = FALSE)
+  names(df) <- names(x)
+  df
+}
+
+# Les cellules d'une colonne Excel (nombres, texte, dates, valeurs logiques ; NA pour une
+# cellule vide ou une erreur) : des nombres si ce n'en sont que, sinon du texte (les nombres
+# avec 15 chiffres significatifs). Une date devient du texte, comme dans un fichier texte
+# (texte_dates), et non le nombre de jours qu'Excel garde.
+cellules_excel <- function(cellules) {
+  type <- vapply(cellules, function(e) {
+    if (inherits(e, "POSIXct")) "date" else if (is.numeric(e)) "nombre" else if (is.character(e)) "texte"
+    else if (is.logical(e) && !is.na(e)) "logique" else "vide"
+  }, "")
+  x <- rep(NA_real_, length(cellules))
+  x[type == "nombre"] <- unlist(cellules[type == "nombre"])
+  if (all(type %in% c("nombre", "vide"))) return(x)
+  x <- as.character(x)
+  x[type == "texte"] <- unlist(cellules[type == "texte"])
+  x[type == "logique"] <- as.character(unlist(cellules[type == "logique"]))
+  if (any(type == "date")) x[type == "date"] <- texte_dates(vapply(cellules[type == "date"], as.numeric, 0))
+  x
+}
+
+# Des dates et heures d'Excel (secondes depuis 1970, arrondies à la seconde) en texte :
+# « 2024-05-03 » pour des jours, « 08:30 » pour des heures seules (le jour 0 d'Excel :
+# 1899-12-31, ou 1904-01-01 dans les classeurs des anciens Mac), « 2024-05-03 08:30 » sinon,
+# avec les secondes s'il y en a.
+texte_dates <- function(secondes) {
+  s <- round(secondes)
+  heure <- s %% 86400
+  format_date <- if (all(s %/% 86400 %in% c(-25568, -24107))) "%H:%M" else if (all(heure == 0)) "%Y-%m-%d" else "%Y-%m-%d %H:%M"
+  if (format_date != "%Y-%m-%d" && any(heure %% 60 != 0)) format_date <- paste0(format_date, ":%S")
+  format(as.POSIXct(s, origin = "1970-01-01", tz = "UTC"), format_date, tz = "UTC")
 }
 
 # ---------------------------------------------------------------- Weka (.arff)
@@ -256,8 +591,15 @@ lire_dbf <- function(chemin) {
 # caractères sur une largeur fixe ; une valeur manquante reste en blanc. Les textes en
 # Windows-1252, déclaré dans l'en-tête (0x57, que lisent les SIG et LibreOffice), les noms de
 # 10 caractères. Un nombre a 19 caractères au plus : jusqu'à 15 décimales, moins pour les
-# grands nombres.
+# grands nombres. L'en-tête donne sa longueur (32 octets par colonne) et celle d'une ligne sur
+# 16 bits : 2046 colonnes et 65 535 octets par ligne au plus, ce que lisent LibreOffice et les
+# SIG qui passent par GDAL (QGIS) ; au-delà, le fichier serait faux, on refuse. (ArcGIS et
+# dBase IV ne lisent que 255 colonnes, dBase III 128.)
 ecrire_dbf <- function(df, chemin) {
+  if (length(df) > 2046) {
+    stop(sprintf(traduire("Trop de colonnes pour un fichier dBase : %d, pour 2046 au plus (255 pour ArcGIS). Choisissez un autre format (Excel, CSV...).",
+                          "Too many columns for a dBase file: %d, for at most 2046 (255 for ArcGIS). Choose another format (Excel, CSV...)."), length(df)), call. = FALSE)
+  }
   octets <- function(r, largeur, a_droite = FALSE) {  # r complété par des espaces
     r <- r[seq_len(min(length(r), largeur))]
     blanc <- rep(as.raw(0x20), largeur - length(r))
@@ -283,6 +625,10 @@ ecrire_dbf <- function(df, chemin) {
   })
   n <- nrow(df)
   largeurs <- vapply(champs, function(ch) ch$largeur, 0)
+  if (1 + sum(largeurs) > 65535) {
+    stop(sprintf(traduire("Lignes trop longues pour un fichier dBase : %d octets, pour 65 535 au plus (textes longs ou nombreuses colonnes). Choisissez un autre format (Excel, CSV...).",
+                          "Rows too long for a dBase file: %d bytes, for at most 65,535 (long texts or many columns). Choose another format (Excel, CSV...)."), 1 + sum(largeurs)), call. = FALSE)
+  }
   entier <- function(v, taille) writeBin(as.integer(v), raw(), size = taille, endian = "little")
   date <- as.POSIXlt(Sys.Date())
   en_tete <- c(as.raw(0x03), as.raw(c(date$year %% 256, date$mon + 1, date$mday)), entier(n, 4),
@@ -408,8 +754,12 @@ ecrire_omv <- function(df, chemin) {
     texte(c("Manifest-Version: 1.0", "Data-Archive-Version: 1.0.2", "jamovi-Archive-Version: 11.0", "Created-By: Nuee"), f)
   }
   texte("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>", "index.html")
-  if (file.exists(chemin)) file.remove(chemin)
-  zip::zip(normalizePath(chemin, mustWork = FALSE), files = fichiers, root = dossier)
+  # l'archive est écrite à côté, puis remplace l'ancien fichier (nouveau.R) : un échec en
+  # route laisse l'ancien intact
+  ecrire_sans_risque(chemin, function(f) {
+    unlink(f)
+    zip::zip(normalizePath(f, mustWork = FALSE), files = fichiers, root = dossier)
+  })
   invisible(chemin)
 }
 

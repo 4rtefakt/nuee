@@ -86,7 +86,9 @@ async function principal() {
   fs.writeFileSync(csv, tableau());
 
   const port = await portLibre();
-  const serveur = spawn(rscript, [path.join(ici, '..', 'moteur', 'serveur.R'), String(port), path.join(ici, '..', 'app', 'interface')], { windowsHide: true });
+  const jeton = require('crypto').randomBytes(32).toString('hex');  // as the application does (main.js)
+  const serveur = spawn(rscript, [path.join(ici, '..', 'moteur', 'serveur.R'), String(port), path.join(ici, '..', 'app', 'interface')],
+    { windowsHide: true, env: { ...process.env, NUEE_JETON: jeton } });
   await new Promise((resolve, reject) => {
     let sortie = '';
     serveur.stdout.on('data', (d) => { sortie += d; if (sortie.includes('PRET')) resolve(); });
@@ -94,7 +96,7 @@ async function principal() {
     serveur.on('exit', (code) => reject(new Error(`R s'est arrêté (code ${code}) : ${sortie.slice(-800)}`)));
   });
   const api = async (nom, q = {}) => {
-    const r = await fetch(`http://127.0.0.1:${port}/api/${nom}`, { method: 'POST', body: JSON.stringify(q) });
+    const r = await fetch(`http://127.0.0.1:${port}/api/${nom}`, { method: 'POST', body: JSON.stringify(q), headers: { Cookie: `nuee_${port}=${jeton}` } });
     const j = await r.json();
     if (!r.ok) throw new Error(`${nom} : ${j.erreur}`);
     return j;

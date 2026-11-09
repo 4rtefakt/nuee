@@ -2,20 +2,28 @@
 # définir un modèle, choisir automatiquement le nombre de composantes, enregistrer un projet.
 
 # Un tableau (une ligne par observation) en projet ; formats.R le lit (`table` : la feuille
-# Excel ou l'objet R à lire). La première colonne sert d'identifiant si c'est du texte, ou si
-# son nom l'annonce (« ID », « Obs », « Nom »...) et que ses valeurs sont toutes différentes ;
-# les colonnes de texte et les facteurs deviennent des variables qualitatives (une catégorie par
-# valeur distincte), sauf les colonnes de texte dont toutes les valeurs diffèrent, gardées en
-# identifiants secondaires si `secondaires` (pas pour un fichier à prédire : quelques lignes
-# peuvent avoir chacune une catégorie différente).
-importer_tableau <- function(chemin, table = NULL, secondaires = TRUE) {
-  projet_depuis_tableau(lire_tableau(chemin, table), basename(chemin), secondaires)
+# Excel ou l'objet R à lire ; `quantitatives` : colonnes à lire en nombres quoi qu'il arrive)
+# et décide quelles colonnes de texte sont des mesures (convertir_colonne : « <0,5 » ou « nd »
+# y deviennent des valeurs manquantes, que p$note signale à l'interface). La première colonne
+# sert d'identifiant si c'est du texte, ou si son nom l'annonce (« ID », « Obs », « Nom »...)
+# et que ses valeurs sont toutes différentes ; les colonnes de texte et les facteurs deviennent
+# des variables qualitatives (une catégorie par valeur distincte), sauf les colonnes de texte
+# dont toutes les valeurs diffèrent, gardées en identifiants secondaires si `secondaires` (pas
+# pour un fichier à prédire : quelques lignes peuvent avoir chacune une catégorie différente).
+importer_tableau <- function(chemin, table = NULL, secondaires = TRUE, quantitatives = NULL) {
+  df <- lire_tableau(chemin, table, quantitatives)
+  p <- projet_depuis_tableau(df, basename(chemin), secondaires)
+  p$note <- unname(attr(df, "note"))
+  p
 }
 
 # Un tableau collé (copié dans un tableur) : du texte, une ligne par observation, des colonnes
 # séparées par des tabulations.
 importer_texte <- function(texte, nom = "tableau", secondaires = TRUE) {
-  projet_depuis_tableau(vers_data_frame(lire_texte_delimite(enc2utf8(texte))), nom, secondaires)
+  df <- finir_tableau(lire_texte_delimite(enc2utf8(texte)))
+  p <- projet_depuis_tableau(df, nom, secondaires)
+  p$note <- unname(attr(df, "note"))
+  p
 }
 
 # `toutes_modalites` : garder aussi les modalités d'un facteur sans observation (script R
@@ -276,15 +284,36 @@ autoajuster <- function(projet, definition, A_max = NULL) {
   if (is.na(premiere_non_significative)) m$A else premiere_non_significative - 1
 }
 
-# Enregistre un projet (données et définitions de modèles) au format lu par lire_projet().
-enregistrer_projet <- function(projet, chemin) {
+# Enregistre un projet (données et définitions de modèles) au format lu par lire_projet(), avec
+# ce qui l'a écrit : le format (FORMAT_PROJET, projet.R), la version de Nuée (`version`) et de R.
+enregistrer_projet <- function(projet, chemin, version = "") {
   p <- unclass(projet)
   for (i in seq_along(p$datasets)) {
     d <- p$datasets[[i]]
     p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
-  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- NULL  # état de la session
-  jsonlite::write_json(p, chemin, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- NULL  # état de la session
+  p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."))
+  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA))
+}
+
+# Écrit un fichier (ecrire(fichier temporaire)) sans jamais en laisser un à moitié écrit : dans
+# un fichier à côté, qui prend ensuite la place de l'ancien d'un coup. Un arrêt, un disque plein
+# ou une coupure du réseau pendant l'écriture laissent l'ancien fichier intact. Un antivirus ou
+# un logiciel de synchronisation qui lit l'ancien à ce moment-là empêche de le remplacer : on
+# réessaie pendant deux secondes, puis on recopie par-dessus.
+ecrire_sans_risque <- function(chemin, ecrire) {
+  temporaire <- file.path(dirname(chemin), sprintf(".%s.%d.tmp", basename(chemin), Sys.getpid()))
+  on.exit(unlink(temporaire), add = TRUE)
+  ecrire(temporaire)
+  for (i in 1:10) {
+    if (suppressWarnings(file.rename(temporaire, chemin))) return(invisible(chemin))
+    Sys.sleep(0.2)
+  }
+  if (!suppressWarnings(file.copy(temporaire, chemin, overwrite = TRUE))) {
+    stop(sprintf(traduire("Impossible d'écrire %s : le fichier est peut-être ouvert dans un autre programme.",
+                          "Couldn't write %s: the file may be open in another program."), chemin), call. = FALSE)
+  }
   invisible(chemin)
 }

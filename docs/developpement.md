@@ -17,7 +17,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/R/jeu_test.R` | Test set: left out of the model, predicted after fitting (RMSEP, bias, SEP, external Q2, classification); chosen at random or by Kennard–Stone |
 | `moteur/R/langue.R` | `traduire("français", "English")`: the engine's messages in the interface's language (the `X-Langue` header of each request) |
 | `moteur/R/fichiers_spectres.R` | Spectra files: JCAMP-DX (AFFN, PAC, SQZ, DIF, DUP), SPC (new and old format), text; merged into one table, with a table of sample information joined by file name |
-| `moteur/R/script.R` | Export to R: a standalone script or R Markdown / Quarto report holding the data, the engine functions a model needs (found by following the names each function uses, and copied with their comments) and the model |
+| `moteur/R/script.R` | Export to R: a standalone script or R Markdown / Quarto report written for one model (or the session): the data, then only the steps that model uses (its terms and scaling, NIPALS, cross-validation, statistics, plots), in plain R with no package; refitted and compared with the engine before it is written |
 | `moteur/R/methodes.R` | The Methods paragraph and its references, in French or English |
 | `moteur/R/comparaisons.R` | Tests by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis) with multiple-testing correction |
 | `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
@@ -43,9 +43,16 @@ recommended packages), Node, and Python 3 for the converter.
 
 ```bash
 cd app && npm install && npm run vendor
-Rscript moteur/serveur.R 8765 app/interface   # then open http://127.0.0.1:8765/?ouvrir=<path>
+Rscript moteur/serveur.R 8765 app/interface   # then open the address it prints
 npx electron app                               # or the desktop window, which starts R itself
 ```
+
+The engine answers only requests carrying the session's token, in the cookie `nuee_<port>`.
+The desktop app draws it at each start and passes it to R as `NUEE_JETON`. Started by hand,
+the server draws its own and prints `http://127.0.0.1:8765/api/connexion?jeton=…`: opening
+that sets the cookie and shows the interface. Add `&ouvrir=<path>` to open a file. The checks
+(`essai_api.js`, `creer_exemple.js`) send the cookie themselves. The server also refuses any
+other host name than `127.0.0.1` or `localhost` (DNS rebinding).
 
 `node exemple/creer_exemple.js` rebuilds the example project after an engine change.
 

@@ -80,6 +80,10 @@ journaliser <- function(nom, q, r) {
                    paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = "")),
     NULL)
   if (length(lignes)) noter("appel", lignes)
+  # un modèle ajusté : ce que R en affiche, comme après l'avoir tapé dans la console
+  if (nom %in% c("ajuster", "reajuster") && !is.null(etat$modeles[[r$id]])) {
+    noter("resultat", utils::capture.output(print(etat$modeles[[r$id]]$modele)))
+  }
 }
 
 # ---------------------------------------------------------------- la console
@@ -154,11 +158,8 @@ local({
   assign("quit", quitter, console)
 })
 
-# Évalue une commande R. `modele` et `projet` : ceux affichés dans l'application, appelés
-# m et p dans la commande. Le texte affiché, les avertissements, les erreurs et les
-# graphiques vont au journal ; renvoie les entrées nouvelles et les projets modifiés.
-evaluer_console <- function(texte, modele = NULL, projet = NULL) {
-  depart <- etat$n_journal
+# m et p : le modèle et le projet affichés dans l'application.
+lier_m_p <- function(modele = NULL, projet = NULL) {
   lier_objets()
   if (!is.null(modele) && !is.null(etat$modeles[[modele]])) {
     assign("m", etat$modeles[[modele]]$modele, envir = console)
@@ -169,6 +170,66 @@ evaluer_console <- function(texte, modele = NULL, projet = NULL) {
     k <- projet
     function(v) if (missing(v)) get(k, envir = console) else assign(k, v, envir = console)
   }), console)
+}
+
+# Complétion (touche Tab) : les noms qui peuvent finir le mot tapé avant le curseur. Après
+# « x$ » ou « x[[ », les noms de l'objet ; dans les parenthèses d'une fonction, ses arguments ;
+# sinon les objets de la console et du moteur, et les fonctions de R. Rien n'est évalué : un
+# objet n'est lu que par son nom suivi de $nom ou [["nom"]], jamais par un appel de fonction
+# (la complétion de R le ferait, et pourrait relancer un calcul).
+completer_console <- function(texte, curseur = nchar(texte), modele = NULL, projet = NULL) {
+  lier_m_p(modele, projet)
+  avant <- substr(texte, 1, curseur)
+  mot <- regmatches(avant, regexpr("[[:alnum:]._]*$", avant))
+  reste <- substr(avant, 1, nchar(avant) - nchar(mot))
+  debut <- nchar(reste)
+  sur <- function(n) ifelse(make.names(n) == n | !nzchar(n), n, paste0("`", gsub("`", "\\\\`", n), "`"))
+  candidats <- character(0)
+  chaine <- regmatches(reste, regexpr("[[:alpha:].][[:alnum:]._]*((\\$[[:alnum:]._]+)|(\\[\\[\"[^\"]*\"\\]\\]))*(\\$|\\[\\[\")$", reste))
+  if (length(chaine)) {  # x$..., x$y$..., x[["...
+    guillemet <- endsWith(chaine, "[[\"")
+    morceaux <- regmatches(chaine, gregexpr("^[[:alpha:].][[:alnum:]._]*|\\$[[:alnum:]._]+|\\[\\[\"[^\"]*\"\\]\\]", chaine))[[1]]
+    objet <- tryCatch({
+      o <- get(morceaux[1], envir = console)
+      for (k in morceaux[-1]) o <- o[[gsub("^\\$|^\\[\\[\"|\"\\]\\]$", "", k)]]
+      o
+    }, error = function(e) NULL)
+    noms <- if (is.environment(objet)) ls(objet) else names(objet)
+    candidats <- noms[startsWith(noms, mot)]
+    if (!guillemet) candidats <- sur(candidats)
+  } else {
+    # l'appel de fonction dont la parenthèse est ouverte : ses arguments d'abord
+    profondeur <- 0
+    fonction <- NULL
+    caracteres <- strsplit(reste, "")[[1]]
+    for (i in rev(seq_along(caracteres))) {
+      if (caracteres[i] == ")") profondeur <- profondeur + 1
+      if (caracteres[i] == "(") {
+        if (profondeur == 0) {
+          fonction <- regmatches(substr(reste, 1, i - 1), regexpr("[[:alpha:].][[:alnum:]._]*\\s*$", substr(reste, 1, i - 1)))
+          break
+        }
+        profondeur <- profondeur - 1
+      }
+    }
+    arguments <- character(0)
+    if (length(fonction) && nzchar(trimws(fonction))) arguments <- tryCatch({
+      f <- get(trimws(fonction), envir = console, mode = "function")
+      setdiff(names(formals(if (is.primitive(f)) args(f) else f)), "...")
+    }, error = function(e) character(0))
+    objets <- c(ls(console), ls(globalenv()), if (nzchar(mot)) utils::apropos(paste0("^", gsub("\\.", "\\\\.", mot))),
+                "TRUE", "FALSE", "NULL", "NA", "function")
+    candidats <- c(sprintf("%s = ", arguments[startsWith(arguments, mot)]), sort(unique(objets[startsWith(objets, mot)])))
+  }
+  list(debut = debut, mot = mot, candidats = I(utils::head(unique(candidats), 300)))
+}
+
+# Évalue une commande R. `modele` et `projet` : ceux affichés dans l'application, appelés
+# m et p dans la commande. Le texte affiché, les avertissements, les erreurs et les
+# graphiques vont au journal ; renvoie les entrées nouvelles et les projets modifiés.
+evaluer_console <- function(texte, modele = NULL, projet = NULL) {
+  depart <- etat$n_journal
+  lier_m_p(modele, projet)
   noter("commande", texte)
   exprs <- tryCatch(parse(text = texte, keep.source = FALSE), error = function(e) e)
   if (inherits(exprs, "error")) {

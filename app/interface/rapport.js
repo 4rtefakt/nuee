@@ -99,7 +99,7 @@ async function contenuRapport(app, m, parties, st) {
     if (x.tableau) blocs.push(...x.tableau(m));
     if (x.vue) {
       const image = await imageVue(app, x.vue, m);
-      if (image) blocs.push({ image, largeur: LARGEUR, hauteur: HAUTEUR });
+      blocs.push(image ? { image, largeur: LARGEUR, hauteur: HAUTEUR } : { texte: t('rapport_graphique_absent') });
     }
   }
   return blocs;

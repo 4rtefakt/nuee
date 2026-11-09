@@ -69,7 +69,7 @@ export function creerCommandes(app) {
     fermer_panneau: { raccourci: 'Ctrl+W', actif: () => !!app.panneauActif(), action: () => app.fermerPanneau() },
     reinitialiser: { icone: 'layout-dashboard', action: () => app.reinitialiser() },
 
-    palette: { icone: 'search', raccourci: 'Ctrl+K', action: () => app.palette() },
+    chercher_commande: { icone: 'search', raccourci: 'Ctrl+K', action: () => app.palette() },
     explorateur: { icone: 'panel-left', raccourci: 'Ctrl+B', coche: () => app.explorateurVisible(), action: () => app.basculerExplorateur() },
     console_r: { icone: 'square-terminal', raccourci: 'Ctrl+J', coche: () => app.consoleVisible(), action: () => app.basculerConsole() },
     theme_sombre: { coche: () => app.themeSombre(), action: () => app.changerTheme(!app.themeSombre()) },
@@ -129,7 +129,7 @@ export function menus(app, C) {
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
     { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },
-    { cle: 'm_affichage', items: () => [it('palette'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
+    { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
     { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
@@ -146,7 +146,8 @@ export const BARRE_OUTILS = [
 
 const MAC = /Mac/.test(navigator.platform);
 export function afficherRaccourci(r) {
-  return r.replace('Ctrl', MAC ? '⌘' : 'Ctrl').replace('Escape', 'Échap').replace('Delete', 'Suppr').replace('=', '+');
+  const en = langueActuelle() === 'en';
+  return r.replace('Ctrl', MAC ? '⌘' : 'Ctrl').replace('Escape', en ? 'Esc' : 'Échap').replace('Delete', en ? 'Del' : 'Suppr').replace('=', '+');
 }
 
 // "Ctrl+Shift+S" for a keyboard event. "+" and "=" (and "_" and "-") count as the same key,

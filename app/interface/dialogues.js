@@ -234,8 +234,26 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
       exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
       A: st.auto ? 0 : st.A, G: st.G, nom: st.nom, titre: st.titre };
-    verifierPuisAjuster(q);
-    return false;  // the dialog closes once the data check is done
+    if (!enCours) verifierPuisAjuster(q);
+    return false;  // the dialog closes once the model is fitted
+  }
+
+  // The fit runs with the dialog open: it closes once the model is there; an error ("Component 3
+  // isn't possible…") shows in it, with every setting kept. A second click on Fit does nothing.
+  let enCours = false;
+  async function ajusterPuisFermer(q) {
+    enCours = true;
+    erreur.textContent = '';
+    alerte.replaceChildren(el('p', { class: 'infos' }, t('calcul')));
+    try {
+      await app.ajusterDefinition(q);
+      d.fermer();
+    } catch (e) {
+      alerte.replaceChildren();
+      erreur.textContent = e.message;
+    } finally {
+      enCours = false;
+    }
   }
 
   // Checks before fitting: variables or observations with more than 50 % missing
@@ -244,19 +262,20 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     erreur.textContent = '';
     alerte.replaceChildren(el('p', { class: 'infos' }, t('calcul')));
     let v;
+    enCours = true;
     try {
       v = await app.verifier(q);
     } catch (e) {
       alerte.replaceChildren();
       erreur.textContent = e.message;
       return;
+    } finally {
+      enCours = false;
     }
     const vars = v.variables && v.variables.uid ? v.variables.uid.map((u, i) => ({ uid: u, nom: v.variables.nom[i], manque: v.variables.manquantes[i], constante: v.variables.constante[i] })) : [];
     const obs = v.observations && v.observations.uid ? v.observations.uid.map((u, i) => ({ uid: u, nom: v.observations.nom[i], manque: v.observations.manquantes[i] })) : [];
     if (!vars.length && !obs.length) {
-      alerte.replaceChildren();
-      d.fermer();
-      app.ajusterDefinition(q);
+      await ajusterPuisFermer(q);
       return;
     }
     const pct = (x) => t('manquantes_pct', { p: Math.round(100 * x) });
@@ -273,7 +292,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           rendre();
           valider();
         } }, t('verif_exclure')),
-        el('button', { onclick: () => { alerte.replaceChildren(); d.fermer(); app.ajusterDefinition(q); } }, t('verif_garder')))));
+        el('button', { onclick: () => { if (!enCours) ajusterPuisFermer(q); } }, t('verif_garder')))));
   }
 
   rendre();

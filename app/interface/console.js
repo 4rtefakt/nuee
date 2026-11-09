@@ -5,6 +5,10 @@
 import { t, lire, ecrire } from './i18n.js';
 import { el, icone } from './ui.js';
 
+// the last click anywhere: what the prompt's focus guard compares with the last key typed
+let dernierClic = 0;
+document.addEventListener('pointerdown', () => { dernierClic = Date.now(); }, true);
+
 // The panel keeps its content between redraws (selections and refits redraw every view).
 export function rendreConsole(conteneur, ctx) {
   if (conteneur._console) {
@@ -36,6 +40,7 @@ export function rendreConsole(conteneur, ctx) {
       }
       const texte = e.type === 'commande' ? e.texte.split('\n').map((l, i) => (i ? '+ ' : '> ') + l).join('\n')
         : e.type === 'erreur' ? `${t('erreur')} : ${e.texte}` : e.type === 'avertissement' ? `${t('avertissement')} : ${e.texte}` : e.texte;
+      // (resultat: what R prints of a model the interface fitted; hidden with the calls)
       const bloc = el('pre', { class: 'r-' + e.type, title: e.heure }, texte);
       if (e.type === 'appel' || e.type === 'commande') bloc.dataset.code = e.texte;
       journal.append(bloc);
@@ -44,16 +49,22 @@ export function rendreConsole(conteneur, ctx) {
     if (enBas || entrees.some((e) => e.type === 'commande')) journal.scrollTop = journal.scrollHeight;
   };
 
-  // the actions of the interface (and of other windows) come in by polling
+  // the actions of the interface (and of other windows) come in by polling, from the moment
+  // the panel is in the page (not yet when it is first drawn) until it is closed
+  let affichee = false;
   const charger = async (force = false) => {
-    if (!conteneur.isConnected) { clearInterval(minuterie); return; }
+    if (!conteneur.isConnected) {
+      if (affichee) clearInterval(minuterie);
+      return;
+    }
+    affichee = true;
     if (!force && (document.hidden || etat.occupe)) return;
     try {
-      let r = await ctx.demander('journal', { depuis: etat.n });
+      let r = await ctx.demander('journal', { depuis: etat.n }, { silencieux: true });
       if (r.dernier < etat.n) {  // a new R engine: its log starts again from 1
         etat.n = 0;
         journal.append(el('pre', { class: 'r-aide' }, t('moteur_redemarre_console')));
-        r = await ctx.demander('journal', { depuis: 0 });
+        r = await ctx.demander('journal', { depuis: 0 }, { silencieux: true });
       }
       ajouter(r.entrees || []);
     } catch { /* server busy or stopped */ }
@@ -83,8 +94,76 @@ export function rendreConsole(conteneur, ctx) {
     saisie.rows = Math.min(8, saisie.value.split('\n').length);
   };
   saisie.addEventListener('input', ajuster);
+
+  // Tab: the names that can end the word before the cursor (completer_console, moteur/console.R).
+  // One is written at once; several are listed above the prompt, after writing what they all
+  // begin with: arrows to move, Tab or Enter to choose, Esc to close.
+  const liste = el('div', { class: 'completion-r', role: 'listbox', hidden: true });
+  let propositions = null;  // { debut, candidats, rang }
+  const fermerListe = () => { propositions = null; liste.hidden = true; liste.replaceChildren(); };
+  const remplacer = (debut, texte) => {
+    saisie.setRangeText(texte, debut, saisie.selectionStart, 'end');
+    ajuster();
+  };
+  const montrer = () => {
+    liste.replaceChildren(...propositions.candidats.map((c, i) => el('div', {
+      class: 'completion-item' + (i === propositions.rang ? ' actuel' : ''), role: 'option',
+      onmousedown: (e) => { e.preventDefault(); choisir(i); } }, c)));
+    liste.hidden = false;
+    const actuel = liste.querySelector('.actuel');
+    if (actuel) actuel.scrollIntoView({ block: 'nearest' });
+  };
+  const choisir = (i) => {
+    const { debut, candidats } = propositions;
+    fermerListe();
+    remplacer(debut, candidats[i]);
+  };
+  const completer = async () => {
+    const curseur = saisie.selectionStart;
+    let r;
+    try {
+      r = await ctx.demander('completer', { texte: saisie.value, curseur, modele: ctx.modeleActif(), projet: ctx.projetActif() }, { silencieux: true });
+    } catch { return; }
+    const candidats = [].concat(r.candidats || []);
+    if (!candidats.length || saisie.selectionStart !== curseur) return;  // nothing, or typed meanwhile
+    if (candidats.length === 1) { remplacer(r.debut, candidats[0]); return; }
+    const commun = candidats.reduce((a, c) => { let i = 0; while (i < a.length && a[i] === c[i]) i += 1; return a.slice(0, i); });
+    if (commun.length > r.mot.length) remplacer(r.debut, commun);
+    propositions = { debut: r.debut, candidats, rang: 0 };
+    montrer();
+  };
+
+  // The prompt keeps the cursor while one types in it: if something takes it away right after a
+  // key, with no click since and no dialog or other field taking it, it comes back.
+  let derniereTouche = 0;
+  saisie.addEventListener('blur', (e) => {
+    fermerListe();
+    if (dernierClic > derniereTouche || Date.now() - derniereTouche > 1000) return;
+    const vers = e.relatedTarget;
+    if (vers && vers.matches && vers.matches('input, textarea, select, [contenteditable]')) return;
+    setTimeout(() => {
+      if (conteneur.isConnected && document.hasFocus() && document.activeElement !== saisie && !document.querySelector('.fond-dialogue')) saisie.focus();
+    });
+  });
+
   saisie.addEventListener('keydown', (e) => {
-    e.stopPropagation();
+    derniereTouche = Date.now();
+    // the application's shortcuts (Ctrl+S, Ctrl+K...) still work while typing R, except those
+    // that edit text
+    if (!(e.ctrlKey && /^[a-z]$/i.test(e.key) && !'acvxyzl'.includes(e.key.toLowerCase()))) e.stopPropagation();
+    if (propositions) {  // the list of names is open
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const n = propositions.candidats.length;
+        propositions.rang = (propositions.rang + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+        montrer();
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); choisir(propositions.rang); return; }
+      if (e.key === 'Escape') { e.preventDefault(); fermerListe(); return; }
+      fermerListe();
+    }
+    if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); completer(); return; }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); lancer(); return; }
     const premiere = !saisie.value.slice(0, saisie.selectionStart).includes('\n');
     const derniere = !saisie.value.slice(saisie.selectionEnd).includes('\n');
@@ -118,8 +197,8 @@ export function rendreConsole(conteneur, ctx) {
   conteneur.replaceChildren(
     el('div', { class: 'outils' }, el('label', { class: 'champ' }, appels, libelleAppels), effacer, copier, el('span', { class: 'espace' }), actif),
     journal,
-    el('div', { class: 'invite-r' }, el('span', { class: 'chevron' }, '>'), saisie));
+    el('div', { class: 'invite-r' }, el('span', { class: 'chevron' }, '>'), saisie, liste));
   journal.append(el('pre', { class: 'r-sortie r-aide' }, t('console_aide')));
   entete();
-  charger(true);
+  setTimeout(() => charger(true));  // once the panel is in the page
 }

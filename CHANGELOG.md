@@ -12,7 +12,6 @@ What changed in each version: the same list as *Help › What's new* in the appl
 - The R engine’s messages (errors, notes) are in English when the interface is, and so are exported scripts in English.
 - The full user guide in English (USER-GUIDE.txt); Help › User guide › Full guide opens the one in the interface’s language.
 - The Methods text cites Nuée and its version; GitHub’s “Cite this repository” button cites it too.
-- Nuée also runs on Linux: a .deb package (Debian, Ubuntu and derivatives), an AppImage or a .tar.gz archive, with the computer’s R.
 - Highlighted variables: clicking a variable (VIP, coefficients, loadings, biplot, S-plot, profiles, variable list) highlights it in all the model’s plots. On the VIP plot, keeping or dropping a variable is now Ctrl+click.
 - Plots › iPLS: each interval of the spectrum fitted on its own, to see which ranges predict best; then a new model with them, or without them.
 - File › Export to R: the whole session in one script, the data once, then each model under its name.
@@ -20,6 +19,16 @@ What changed in each version: the same list as *Help › What's new* in the appl
 - Help › Check for updates, and Help › Diagnostic information: the versions to paste into a report on GitHub (with forms for problems and ideas).
 - A plot keeps its zoom when a selection redraws it.
 - A model asking for more components than its data allow says so plainly (“Component 3 is not possible…”) instead of an internal R error; automatic fitting then stops at the last possible one.
+- Security: the R engine now answers only Nuée’s own windows (a token drawn at each start). Until now, a web page open in a browser, or another user of the same computer, could make it run code. The windows no longer go to another site, and a file received from someone (a project, an R file, an export to R) can no longer run code or choose where Nuée saves.
+- Saving never leaves a project half-written (network cut, full disk); if the file was changed elsewhere since it was opened (a colleague, another window), Nuée asks before overwriting it. The file records which versions of Nuée and R wrote it.
+- Recovery copies are kept until they are recovered or set aside, and never deleted when the R engine stops answering. Restarting the R engine reopens each project from the file it saves to, or from its recovery copy, pasted tables and imported spectra included. Opening a file that is already open shows the project instead of making a second copy.
+- Field data: a text cell (<0.5, <LOD, nd, #N/A…) in a column of measurements is read as missing, and Nuée says so, instead of turning the column into a qualitative variable or dropping it; the same in a file to predict, which gave wrong predictions until now. Excel dates stay dates, column names keep their spaces, and a malformed CSV line is reported instead of shifting the columns.
+- R console: each fitted model shows there with its code and what R prints of it; Tab completes names (objects, m$…, arguments); the cursor stays in the prompt, and shortcuts (Ctrl+S, Ctrl+K…) work there. The application’s actions didn’t appear once the console was open: fixed.
+- New model stays open while the model is fitted: an error shows in it, with every setting kept.
+- Export to R: the script now holds only the exported model’s calculation, written for it alone (scaling, NIPALS, cross-validation, statistics, plots), in plain R with no package: a PLS goes from over 1,000 lines of code to about 150. It still gives Nuée’s results, checked before writing; an English export also translates the names in the code.
+- Spectra: a malformed JCAMP-DX, SPC or text file is refused at once, with its name, instead of freezing Nuée or exhausting its memory; a file with many labels reads much faster.
+- Data: a very wide table (spectra) shows its first 200 columns, or those whose name holds the text typed; the loadings and the S-plot write variable names only up to 100 variables.
+- For IT departments: silent installation, a Group Policy that turns the update check off, what Nuée writes where and sends over the network (docs/deploiement.md). An installed copy ignores the user’s .Rprofile and loads its own packages first; R’s temporary files are deleted when Nuée closes.
 
 ## 0.9.0 — 2026-11-01
 
