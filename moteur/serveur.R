@@ -641,7 +641,7 @@ DEMANDES <- list(
   permutations = function(q) {
     e <- modele(q$modele)
     if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
-    r <- permutations(e$modele, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
+    r <- permutations(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
     c(list(modele = q$modele), r)
   },
   valeurs = valeurs_demande,

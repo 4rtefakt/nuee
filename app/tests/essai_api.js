@@ -263,7 +263,8 @@ async function principal() {
       const onde = Array.from({ length: 30 }, (_, k) => 1000 + 4 * k);
       const chemins = [];
       for (let i = 1; i <= 8; i += 1) {
-        const y = onde.map((x) => (0.2 + 0.05 * i) * Math.exp(-(((x - 1060) / 20) ** 2)) + 0.01 * i + 1e-4 * x);
+        // two sources of variation (the band's height, the baseline's slope): models with 2 components
+        const y = onde.map((x) => (0.2 + 0.05 * i) * Math.exp(-(((x - 1060) / 20) ** 2)) + 0.01 * i + (1 + (i % 3)) * 1e-4 * x);
         const f = path.join(dossier, `s${i}.${i % 2 ? 'csv' : 'jdx'}`);
         fs.writeFileSync(f, i % 2 ? `nm;abs\n${onde.map((x, k) => `${x};${String(y[k]).replace('.', ',')}`).join('\n')}\n`
           : ['##TITLE= s', '##JCAMP-DX= 4.24', '##XFACTOR= 1', '##YFACTOR= 1', '##FIRSTX= 1000', '##LASTX= 1116', '##NPOINTS= 30', '##XYDATA= (X++(Y..Y))',

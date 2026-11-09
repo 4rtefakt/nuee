@@ -78,7 +78,8 @@ English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 
 **Methods:** PCA, PLS, PLS-DA, and OPLS / OPLS-DA (several Y or more than two classes give
 several predictive components), with missing values handled by NIPALS and 7-fold
-cross-validation (R2, Q2, and Q2 per variable). Class models: one PCA per class, and the
+cross-validation in which each group is predicted by a model fitted without it, centring and
+scaling included (R2, Q2, and Q2 per variable). Class models: one PCA per class, and the
 Coomans plot to tell which class an observation belongs to, several, or none.
 
 **Validation:** permutation tests, CV-ANOVA, PLS-DA classification tables and ROC curves,
@@ -168,7 +169,7 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
   or Quarto report, that refits it without Nuée, in plain R with no package. It holds the
   data (or reads them from a CSV next to it) and the calculation written for that model alone,
   with comments: its scaling, the NIPALS algorithm, the cross-validation, then the statistics,
-  tables and plots (a PLS is about 150 lines of code). The report adds the Methods text,
+  tables and plots (a PLS is about 170 lines of code). The report adds the Methods text,
   tables, plots and references, and compiles in RStudio (*Knit*) or with Quarto.
   Optionally also a `renv.lock`, the data and fitted model as `.RData`, and an RStudio project.
   The whole session can go into one script instead: the data once, then every model.
@@ -182,10 +183,14 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
 
 Nuée also opens `.usp` project files: their data, the models stored in them and the values
 those models were saved with. It recomputes each model in R and marks every value of the
-summary as identical, close or different. On 944 models from 133 projects, R2X, R2Y, the PLS
-Q2, scores, loadings, T2, DModX, VIP and coefficients match the stored values, apart from a
-few models with missing data; *Help › Results and known differences* lists the known
-differences.
+summary as identical, close or different. On 944 models from 133 projects, R2X, R2Y, scores,
+loadings, T2, DModX, VIP and coefficients match the stored values, apart from a few models with
+missing data; *Help › Results and known differences* lists the known differences. Q2 is
+Nuée's own: its cross-validation refits each group's model without it, scaling included,
+which the stored values didn't do. The two agree for large data sets (a median difference of
+0.003 for PLS models with over 200 observations) and part with fewer observations, where
+Nuée's Q2 is lower (0.11 lower in median from 20 to 50 observations, 0.27 up to 20). RMSEcv,
+CV-ANOVA and the cross-validated classification follow.
 
 ## Reporting a problem
 

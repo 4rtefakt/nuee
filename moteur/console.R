@@ -57,7 +57,7 @@ journaliser <- function(nom, q, r) {
                       if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),
     predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),
     hca = sprintf("classification(%s, %s)", q$modele, q$composantes %||% sprintf("%s$A", q$modele)),
-    permutations = sprintf("permutations(%s, y = %s, n = %s)", q$modele, q$y %||% 1, q$n %||% 20),
+    permutations = sprintf("permutations(%s, %s, definition(%s), y = %s, n = %s)", pm(q$modele), q$modele, code_r(q$modele), q$y %||% 1, q$n %||% 20),
     contributions = sprintf("contributions(%s, %s, %s)", q$modele, vecteur_r(as.numeric(q$observations)), code_r(q$type %||% "DModX")),
     biplot = sprintf("correlations_biplot(%s)", q$modele),
     ipls = sprintf("pls_par_intervalles(%s, definition(%s), n = %d, A = %d)", pm(q$modele), code_r(q$modele), length(r$intervalles), as.integer(r$A)),
@@ -149,7 +149,7 @@ local({
     }))
     if (is.null(tab)) { message("Aucun modèle enregistré à comparer."); return(invisible(NULL)) }
     n <- table(factor(sub(" :.*", "", tab$statut), c("identique", "proche", "différent", "erreur")))
-    message(sprintf("%d modèle(s) : %d identique(s), %d proche(s), %d différent(s), %d en erreur (Q2 des ACP non compté : écart connu).",
+    message(sprintf("%d modèle(s) : %d identique(s), %d proche(s), %d différent(s), %d en erreur (Q2 non compté : la validation croisée de Nuée n'est pas celle du fichier).",
                     nrow(tab), n[["identique"]], n[["proche"]], n[["différent"]], n[["erreur"]]))
     tab
   }, console)

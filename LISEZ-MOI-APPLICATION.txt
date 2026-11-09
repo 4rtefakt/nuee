@@ -114,7 +114,9 @@ Projets, données, modèles importés d'un fichier .usp, modèles calculés et l
 Double-clic : ouvrir. Clic droit : toutes les actions (calculer, modifier, ajouter ou
 retirer une composante, exporter, supprimer...). Double-cliquer un modèle importé le
 recalcule en R ; le Résumé marque chaque valeur : « = » identique à la valeur enregistrée
-dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente.
+dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente. Le Q2 diffère presque
+toujours : Nuée ne fait pas sa validation croisée comme le logiciel qui a écrit le fichier
+(voir « Ce qui diffère »).
 
 Menus et barre d'outils
 -----------------------
@@ -262,8 +264,9 @@ par une à trois étapes, dans l'ordre :
              tableau est traitée à part : une fenêtre ne passe pas par-dessus une zone retirée.
 La longueur d'onde (pour Detrend et la ligne de base) est le nombre lu dans le nom des
 variables quand chacune en a un, différent ; sinon leur place dans le tableau.
-Pour des spectres, on centre souvent sans réduire (échelle « Centrage seul »). Le
-prétraitement est fait une fois, avant la validation croisée. Graphiques › Profils (spectres) :
+Pour des spectres, on centre souvent sans réduire (échelle « Centrage seul »). Seul le MSC
+dépend des autres observations (le spectre moyen) : en validation croisée, chaque groupe est
+corrigé avec le spectre moyen des autres observations. Graphiques › Profils (spectres) :
 loadings, coefficients, VIP, ou les spectres eux-mêmes (avant ou après prétraitement) en
 lignes ; l'axe horizontal est le nombre lu dans le nom des variables (« 1450 nm ») quand
 chacune en a un ; les lignes s'interrompent là où des variables sont hors du modèle. Un clic sur
@@ -275,7 +278,8 @@ réglages du modèle et ces variables X, à vérifier avant d'ajuster. Les autre
 modèle (qualitatives) restent.
 Graphiques › iPLS (intervalles du spectre), pour un modèle avec Y : le spectre (les variables X
 quantitatives du modèle, dans leur ordre) est prétraité une fois, en entier, comme pour le
-modèle, puis coupé en n intervalles de même largeur ; chacun est une PLS sur sa zone (avec la
+modèle (avec un MSC, aussi pour chaque groupe de la validation croisée, avec le spectre moyen
+des autres observations), puis coupé en n intervalles de même largeur ; chacun est une PLS sur sa zone (avec la
 mise à l'échelle du modèle et ses autres variables X), avec 1 à A composantes. Une barre par
 intervalle donne son plus petit RMSEcv (dans les unités de Y, comme dans le résumé), avec ce
 nombre de composantes écrit dessus ; en vert, les intervalles qui prédisent mieux que le
@@ -345,8 +349,8 @@ Une commande longue bloque l'application jusqu'à la fin du calcul.
 Vérifier le moteur : verifier_moteur() recalcule les modèles importés des projets ouverts et
 les compare aux valeurs enregistrées dans leurs fichiers (R2X, R2Y, Q2) ;
 verifier_moteur("dossier") fait de même pour les fichiers .usp et .json d'un dossier.
-À faire après une correction du moteur. Le Q2 des ACP n'entre pas dans le verdict (écart
-connu, voir « Ce qui diffère »).
+À faire après une correction du moteur. Le Q2 est donné mais n'entre pas dans le verdict :
+la validation croisée de Nuée n'est pas celle des fichiers (voir « Ce qui diffère »).
 
 Rapport du modèle
 -----------------
@@ -418,7 +422,7 @@ les valeurs prédites sont celles d'une PLS au même nombre de composantes. Avec
 toutes les colonnes de Y, si bien que les composantes orthogonales n'ont aucun lien avec Y
 (depuis 0.9.0 ; la version 0.8.0 laissait un léger lien : les modèles OPLS à plusieurs
 composantes prédictives qu'elle a faits changent un peu quand on les réajuste). Q2 par
-validation croisée complète (le modèle entier est réajusté sans chaque groupe). Aucun des
+validation croisée, comme pour les autres modèles (voir plus bas). Aucun des
 projets .usp disponibles n'avait de modèle OPLS : ce calcul suit l'article de Trygg et Wold
 (2002), sans comparaison possible avec des valeurs enregistrées ; il est vérifié contre une
 seconde écriture de l'algorithme de l'article.
@@ -431,10 +435,27 @@ pour garder ou écarter une variable (un simple clic la met en évidence sur les
 graphiques du modèle). « Réajuster avec les variables VIP » refait le modèle avec les
 variables retenues.
 
+Validation croisée
+------------------
+Les observations du modèle sont réparties à tour de rôle en G groupes (7 par défaut : la 1re,
+la 8e, la 15e... dans le groupe 1). Chaque groupe est prédit par un modèle ajusté sans lui,
+comme de nouvelles observations : le centrage, la mise à l'échelle (et le spectre moyen du MSC,
+les termes croisés) sont recalculés sur les autres observations, avec le même nombre de
+composantes. PRESS : la somme des carrés des erreurs de prédiction ; Q2(cum) = 1 - PRESS / SS
+(SS : la variation de Y, ou de X pour une ACP) ; le Q2 d'une composante, 1 - PRESS / PRESS de
+la précédente. ACP : chaque valeur est prédite par les scores de son observation calculés sans
+les variables de son groupe de variables (réparties elles aussi en G groupes). Ce Q2 ne voit
+rien des observations qu'il prédit : avec peu d'observations, il est bien plus bas qu'une
+validation faite avec la mise à l'échelle de toutes les observations (sur du bruit pur, 6
+observations et 20 variables, celle-ci donnait Q2 = 0,98 pour une OPLS-DA ; Nuée donne
+maintenant moins de 0). Le RMSEcv, la CV-ANOVA, le classement en validation croisée et les
+intervalles de confiance (jack-knife, sur les G sous-modèles) en viennent.
+
 Validation (PLS et PLS-DA)
 --------------------------
-Test de permutation : l'ordre du Y est mélangé 20 fois (ou plus) et le modèle réajusté ; les
-ordonnées à l'origine de R2 et Q2 mesurent le surajustement (modèle valide si Q2 < 0,05 et
+Test de permutation : les valeurs du Y (d'une PLS-DA : les classes) sont mélangées entre les
+observations 20 fois (ou plus) et tout le modèle est réajusté, validation croisée comprise ;
+les ordonnées à l'origine de R2 et Q2 mesurent le surajustement (modèle valide si Q2 < 0,05 et
 R2 < 0,3 à 0,4, règle usuelle).
 CV-ANOVA : p du modèle (résidus de validation croisée contre la moyenne) ; aussi dans le Résumé.
 Classification (PLS-DA) : table des observations bien et mal classées, avec les valeurs
@@ -483,21 +504,27 @@ données).
 
 Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 133 projets .usp)
 -------------------------------------------------------------------------------------------
-Mise à l'échelle, R2X, R2Y, Q2 des PLS, scores, loadings, valeurs propres, T2 et sa
-limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.
+Mise à l'échelle, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX
+(normal et pondéré) et DCrit, VIP, coefficients, RMSEE.
 
 Ce qui diffère
 --------------
-- Q2 des ACP : les valeurs enregistrées comportent une étape non publiée ; écart typique
-  0,01 à 0,02, plus grand (vers 0,1) pour les fichiers .usp de version 11. D'autres façons
-  de faire la validation croisée, essayées sur les 149 modèles ACP, s'en écartent davantage.
+- Q2 (et ce qui vient de la validation croisée : Q2 par variable, RMSEcv, CV-ANOVA, classement
+  en validation croisée, intervalles de confiance) : Nuée prédit chaque groupe par un modèle
+  ajusté sans lui, centrage et mise à l'échelle compris (voir « Validation croisée ») ; les
+  valeurs enregistrées viennent d'une validation faite avec la mise à l'échelle de toutes les
+  observations. Écart au Q2(cum) enregistré, en médiane : 0,003 pour les PLS de plus de 200
+  observations, 0,02 de 50 à 200, 0,11 de 20 à 50, 0,27 jusqu'à 20, le Q2 de Nuée étant
+  presque toujours plus bas ; de quelques centièmes pour les ACP. 18 modèles sur 944, dont une
+  variable ne varie presque que sur une observation, perdent bien plus (sans elle, sa mise à
+  l'échelle l'agrandit beaucoup).
 - Signe des composantes de nouveaux modèles : arbitraire (les modèles importés sont
   orientés comme dans le fichier).
 - Dendrogrammes : méthode de Ward exacte ; les fusions du haut de l'arbre peuvent
   différer de celles de l'arbre enregistré.
-- Intervalles de confiance (jack-knife) : proches des valeurs enregistrées, pas identiques.
-- Ajustement automatique des ACP : la limite exacte utilisée dans les fichiers n'est pas
-  publiée.
+- Ajustement automatique : les règles publiées, appliquées au Q2 de Nuée, peuvent choisir un
+  autre nombre de composantes ; pour les ACP, la limite exacte utilisée dans les fichiers
+  n'est pas publiée.
 - Seuil VIP (marche autour de 0,8) : méthode propre à l'application.
 - OPLS / OPLS-DA : pas de modèle enregistré pour comparer (voir plus haut).
 - Transformation proposée : la règle publiée ne dit pas s'il faut l'asymétrie et Min/Max à
@@ -508,7 +535,7 @@ Le code
 Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   pretraitement.R        transformations, centrage, mise à l'échelle
   nipals.R               ACP et PLS (algorithme NIPALS, données manquantes)
-  validation_croisee.R   Q2
+  validation_croisee.R   validation croisée (un sous-modèle sans chaque groupe), Q2
   statistiques.R         T2, DModX, VIP, coefficients, intervalles, limites
   validation.R           permutations, CV-ANOVA, classement PLS-DA et courbes ROC
   opls.R                 OPLS et OPLS-DA

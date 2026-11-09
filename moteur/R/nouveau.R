@@ -238,7 +238,8 @@ reglages_modele <- function(projet, d) {
 #   N4 : composante non significative si elle explique moins de 1 % (ACP) de X ou de Y (PLS)
 #        et qu'aucune variable n'en gagne plus de 2 % (ACP) / 3 % (PLS).
 # Les composantes sont calculées une à une et le calcul s'arrête à la première qui n'est pas
-# significative.
+# significative. Q2 et Q2V sont ceux de la validation croisée du modèle (validation_croisee.R) :
+# chaque composante est jugée sur PRESS / PRESS de la précédente, pour tous ses Y ou chacun.
 autoajuster <- function(projet, definition, A_max = NULL) {
   N <- length(definition$observations)
   K <- length(definition$x)
@@ -248,7 +249,9 @@ autoajuster <- function(projet, definition, A_max = NULL) {
     # validation croisée en justifie (règle R1 : chacune doit améliorer la prédiction de Y)
     Ap <- definition$Ap %||% 1
     Ao_max <- max(0, min(8, K - Ap, N - Ap - 2))
-    m <- ajuster(projet, definition, A = Ao_max + Ap)
+    # (`arret` : moins de composantes orthogonales si les données n'en permettent pas autant)
+    m <- calculer_modele(projet, definition, A = Ao_max + Ap, arret = function(res, a) FALSE)
+    Ao_max <- m$A - Ap
     limite <- if (N > 100) 0 else 0.05
     Ao <- 0
     while (Ao < Ao_max && m$q2[Ap + Ao + 1] > limite) Ao <- Ao + 1
@@ -279,7 +282,7 @@ autoajuster <- function(projet, definition, A_max = NULL) {
     premiere_non_significative <<- a
     TRUE
   }
-  m <- ajuster(projet, definition, A = A_max, arret = arret)
+  m <- calculer_modele(projet, definition, A = A_max, arret = arret)
   # (m$A : moins que A_max quand il n'y avait plus de variation à décrire)
   if (is.na(premiere_non_significative)) m$A else premiere_non_significative - 1
 }

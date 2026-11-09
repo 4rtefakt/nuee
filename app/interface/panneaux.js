@@ -370,7 +370,7 @@ function rendreResume(conteneur, ctx, p) {
     el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > (m.Ap || 1) ? `O${a - (m.Ap || 1)}` : (m.Ap || 1) > 1 ? `P${a}` : 'P') : a),
       cols.map(([k]) => el('td', { class: 'num' }, fmt(c[k][i]), s && s[k] && k !== 'valeur_propre' ? marque(c[k][i], s[k][i]) : null))))));
   const note = s ? el('p', { class: 'note' }, el('span', { class: 'marque egal' }, '='), ' ', el('span', { class: 'marque proche' }, '≈'), ' ',
-    el('span', { class: 'marque diff' }, '≠'), ' ', t('valeurs_fichier'), m.type === 'PCA' ? '. ' + t('note_q2_acp') : '') : null;
+    el('span', { class: 'marque diff' }, '≠'), ' ', t('valeurs_fichier'), '. ' + t('note_q2')) : null;
   const graphe = el('div', { class: 'graphe petit' });
   // Notes on the model, saved with its definition in the project (while typing, a redraw keeps
   // the text and the cursor)

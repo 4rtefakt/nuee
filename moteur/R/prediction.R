@@ -41,7 +41,8 @@ predire <- function(projet, m, definition, observations) {
     ny <- m$y$noms
     Yp <- ifelse(is.na(T), 0, T) %*% t(m$C)
     for (j in seq_along(ny)) {
-      out[[paste(ny[j], "prédit")]] <- Yp[, j] / m$y$poids[j] + m$y$centre[j]
+      # (un Y constant dans le modèle, de poids 0 : prédit par sa valeur, comme en validation croisée)
+      out[[paste(ny[j], "prédit")]] <- Yp[, j] / (if (isTRUE(m$y$poids[j] == 0)) Inf else m$y$poids[j]) + m$y$centre[j]
       out[[paste(ny[j], "prédit")]][is.na(T[, 1])] <- NA
     }
     if (m$plsda) {

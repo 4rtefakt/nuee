@@ -81,7 +81,8 @@ en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en angl
 
 **Méthodes :** ACP, PLS, PLS-DA, et OPLS / OPLS-DA (plusieurs Y ou plus de deux classes donnent
 plusieurs composantes prédictives), avec les valeurs manquantes traitées par NIPALS et une
-validation croisée en 7 groupes (R2, Q2, et Q2 par variable). Modèles de classe : une ACP par
+validation croisée en 7 groupes, où chaque groupe est prédit par un modèle ajusté sans lui,
+centrage et mise à l'échelle compris (R2, Q2, et Q2 par variable). Modèles de classe : une ACP par
 classe, et le graphique de Coomans pour dire à quelle classe appartient une observation, à
 plusieurs, ou à aucune.
 
@@ -179,7 +180,7 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet. Il contient les
   données (ou les lit dans un CSV à côté) et le calcul écrit pour ce modèle seul, commenté : sa
   mise à l'échelle, l'algorithme NIPALS, la validation croisée, puis les statistiques, tableaux
-  et graphiques (une PLS fait environ 150 lignes de code). Le rapport ajoute le texte des
+  et graphiques (une PLS fait environ 170 lignes de code). Le rapport ajoute le texte des
   méthodes, des tableaux, des graphiques et les références, et se compile dans RStudio (*Knit*)
   ou avec Quarto. En plus, au choix : un `renv.lock`, les données
   et le modèle ajusté en `.RData`, et un projet RStudio. Toute la séance peut aussi aller dans un
@@ -195,9 +196,14 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
 Nuée ouvre aussi les fichiers de projet `.usp` : leurs données, les modèles qu'ils contiennent
 et les valeurs avec lesquelles ces modèles ont été enregistrés. Il recalcule chaque modèle en R
 et marque chaque valeur du résumé comme identique, proche ou différente. Sur 944 modèles de 133
-projets, R2X, R2Y, le Q2 des PLS, les scores, les loadings, T2, DModX, les VIP et les
-coefficients sont ceux enregistrés, à quelques modèles avec données manquantes près ;
-*Aide › Résultats et écarts connus* liste les écarts connus.
+projets, R2X, R2Y, les scores, les loadings, T2, DModX, les VIP et les coefficients sont ceux
+enregistrés, à quelques modèles avec données manquantes près ; *Aide › Résultats et écarts
+connus* liste les écarts connus. Le Q2 est celui de Nuée : sa validation croisée réajuste le
+modèle de chaque groupe sans lui, mise à l'échelle comprise, ce que les valeurs enregistrées
+ne faisaient pas. Les deux s'accordent pour de grands jeux de données (un écart médian de 0,003
+pour les PLS de plus de 200 observations) et s'éloignent avec moins d'observations, où le Q2 de
+Nuée est plus bas (de 0,11 en médiane de 20 à 50 observations, de 0,27 jusqu'à 20). Le RMSEcv,
+la CV-ANOVA et le classement en validation croisée suivent.
 
 ## Signaler un problème
 

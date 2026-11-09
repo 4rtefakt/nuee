@@ -2,7 +2,8 @@
 # ajuste (ACP, PLS à un ou plusieurs Y, PLS-DA, OPLS, OPLS-DA à deux classes et plus) et ses
 # options (transformations, mises à l'échelle par variable, termes qualitatifs, croisés et carrés,
 # spectres, valeurs manquantes, jeu de test, modèle d'un .usp orienté comme sa solution
-# enregistrée, modèle hiérarchique), le script est écrit, lancé dans une session R neuve
+# enregistrée, modèle hiérarchique, sous-modèles de la validation croisée à court de variation),
+# le script est écrit, lancé dans une session R neuve
 # (Rscript --vanilla, sans le moteur) depuis un autre dossier, et ses résultats sont comparés à
 # ceux du moteur : scores, R2 et Q2, T2, DModX et leurs limites, VIP, coefficients, CV-ANOVA,
 # classification, jeu de test, test de permutation. Puis : le script d'une PLS simple est court
@@ -58,7 +59,8 @@ moteur <- function(m) {
   s <- m$statistiques
   list(scores = m$T, "R2, Q2" = s$composantes, T2 = s$observations$T2, DModX = s$observations$DModX, "DModX pondéré" = s$observations$DModX_pondere,
        limites = unlist(s$limites), VIP = s$variables$VIP, coefficients = if (!is.null(s$coefficients)) as.matrix(s$coefficients[paste("Coeff", m$y$noms)]),
-       "CV-ANOVA" = cv(s$cv_anova), classification = s$classification$vc$table,
+       # (le script n'écrit la CV-ANOVA que si elle a des degrés de liberté résiduels : N - 1 - 2A > 0)
+       "CV-ANOVA" = if (all(vapply(s$cv_anova, function(t) t$DF[3] > 0, TRUE))) cv(s$cv_anova), classification = s$classification$vc$table,
        "jeu de test" = if (!is.null(m$test$statistiques) && !m$plsda) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")],
        "hors du domaine" = m$test$hors_domaine, "classes du jeu de test" = m$test$classement$table)
 }
@@ -92,7 +94,7 @@ essayer <- function(nom, p, d, langue = "fr", permutations = FALSE, ...) {
                    if (length(differents)) sprintf(" ; DIFFÉRENTS : %s", paste(differents, collapse = ", ")) else ""),
            !length(differents) && is.null(r$ecart))
   if (permutations) {
-    attendu <- permutations(m, n = 3)
+    attendu <- permutations(p, m, d, n = 3)
     verifier(sprintf("%s : le test de permutation du script donne celui du moteur", nom),
              meme(s$suite$points, attendu$points[c("correlation", "R2", "Q2")]) &&
                meme(c(s$suite[[nom_script("ordonnee_R2", langue)]], s$suite[[nom_script("ordonnee_Q2", langue)]]), c(attendu$ordonnee_R2, attendu$ordonnee_Q2)))
@@ -179,6 +181,37 @@ essayer("acp_sans_valeur", q, definir_modele(q, "PCA", x = complets[1:4], A = 2)
 essayer("opls_sans_valeur", q, definir_modele(q, "OPLS", x = complets[1:4], y = uid("note_gout"), A = 2))
 essayer("opls_2y_manquants", q, definir_modele(q, "OPLS", x = c(complets[1:6], uid("calcium")), y = uid(c("note_gout", "jus")), A = 3))
 essayer("manquants_jeu_de_test", q, definir_modele(q, "PLS", x = c(complets[1:6], uid("polyphenols")), y = uid("note_gout"), A = 2, test = c(9, 17, 33, 61)))
+# termes croisés (faits dans pretraiter()) et valeurs manquantes : le DModX compte les termes présents, pas les colonnes du tableau
+essayer("croises_manquants", q, definir_modele(q, "PLS", x = c(uid("variete"), complets[1:5]), y = uid("note_gout"), A = 2,
+                                               croises = list(c(uid("variete"), complets[4]))))
+cat("Sous-modèles de la validation croisée à court de variation\n")
+# 8 observations : le sous-modèle sans le groupe 1 (6 observations) n'a que 5 composantes sur 6
+set.seed(5)
+pr <- projet_depuis_tableau(data.frame(nom = sprintf("O%02d", 1:8), y = rnorm(8), classe = rep(c("a", "b"), 4),
+                                       matrix(rnorm(80), 8, 10, dimnames = list(NULL, paste0("V", 1:10)))), "rang")
+vr <- numeros(pr, paste0("V", 1:10))
+essayer("pls_sous_modele_court", pr, definir_modele(pr, "PLS", x = vr, y = numeros(pr, "y"), A = 6))
+essayer("acp_sous_modele_court", pr, definir_modele(pr, "PCA", x = vr, A = 6))
+essayer("opls_sous_modele_court", pr, definir_modele(pr, "OPLS", x = vr, y = numeros(pr, "y"), A = 6))
+essayer("oplsda_sous_modele_court", pr, definir_modele(pr, "OPLS-DA", x = vr, classe = numeros(pr, "classe"), A = 6), donnees = "csv")
+# 2 composantes prédictives (2 Y, 3 classes)
+set.seed(6)
+pr <- projet_depuis_tableau(data.frame(nom = sprintf("O%02d", 1:9), y1 = rnorm(9), y2 = rnorm(9), classe = rep(c("a", "b", "c"), 3),
+                                       matrix(rnorm(90), 9, 10, dimnames = list(NULL, paste0("V", 1:10)))), "rang2")
+vr <- numeros(pr, paste0("V", 1:10))
+essayer("opls_2y_sous_modele_court", pr, definir_modele(pr, "OPLS", x = vr, y = numeros(pr, c("y1", "y2")), A = 7))
+essayer("oplsda_3_classes_sous_modele_court", pr, definir_modele(pr, "OPLS-DA", x = vr, classe = numeros(pr, "classe"), A = 7))
+# un Y qui ne varie que dans le groupe 1 (y : lignes 1 et 8) ou le groupe 2 (y2 : lignes 2 et 9) : le
+# sous-modèle sans ce groupe n'a pas de composante pour lui ; une classe toute dans le groupe 1
+set.seed(7)
+pr <- projet_depuis_tableau(data.frame(nom = sprintf("O%02d", 1:14), y = c(1, rep(0, 6), 2, rep(0, 6)), y2 = c(0, 3, rep(0, 6), 1, rep(0, 5)),
+                                       classe = c("c", rep(c("a", "b"), 3), "c", rep(c("a", "b"), 3)),
+                                       matrix(rnorm(70), 14, 5, dimnames = list(NULL, paste0("V", 1:5)))), "groupe")
+vr <- numeros(pr, paste0("V", 1:5))
+essayer("pls_y_dans_un_groupe", pr, definir_modele(pr, "PLS", x = vr, y = numeros(pr, "y"), A = 1))
+essayer("opls_y_dans_un_groupe", pr, definir_modele(pr, "OPLS", x = vr, y = numeros(pr, "y"), A = 2))
+essayer("opls_2y_dans_un_groupe", pr, definir_modele(pr, "OPLS", x = vr, y = numeros(pr, c("y", "y2")), A = 3))
+essayer("oplsda_classe_dans_un_groupe", pr, definir_modele(pr, "OPLS-DA", x = vr, classe = numeros(pr, "classe"), A = 3))
 cat("Modèle d'un .usp, modèle de classe, modèle hiérarchique\n")
 d <- definir_modele(p, "PLS-DA", x = complets, classe = uid("variete"), A = 3)
 m0 <- ajuster(p, d)
@@ -261,7 +294,8 @@ ms <- lapply(definitions, function(d) ajuster(p, d))
 r <- ecrire_script_seance(p, definitions, ms, file.path(ici, "seance.R"), "moteur", version = "essai", donnees = "csv", rdata = TRUE)
 texte <- lignes_script(r)
 noms <- sub(" <- list\\(.*", "", grep("^[A-Za-z][A-Za-z0-9_.]* <- list\\(m = ", texte, value = TRUE))
-s <- lancer(r$script, noms, "permutations(function(Yp) list(pls(M2$X, Yp, 4), validation_croisee_pls(M2$X, Yp, 4, G = 7)), M2$Y, n = 3)")
+s <- lancer(r$script, noms, sprintf(paste("permutations(function(Yp) { s <- M2$pretraiter(M2$X, Yp, seq_len(nrow(Yp)));",
+                                           "list(pls(s$X, s$Y, %d), validation_croisee_pls(M2$X, Yp, %d, M2$pretraiter, G = 7)) }, M2$Y, n = 3)"), ms[[2]]$A, ms[[2]]$A))
 memes <- vapply(seq_along(noms), function(k) {
   a <- moteur(ms[[k]])
   x <- s[[noms[k]]]
@@ -271,7 +305,7 @@ memes <- vapply(seq_along(noms), function(k) {
 }, TRUE)
 verifier(sprintf("%d modèles, chacun sous son nom (%s) : les mêmes résultats que le moteur", length(noms), paste(noms, collapse = ", ")),
          is.null(r$ecart) && length(noms) == length(definitions) && all(memes) && noms[5] == "m_modele")
-attendu <- permutations(ms[[2]], n = 3)
+attendu <- permutations(p, ms[[2]], definitions[[2]], n = 3)
 verifier("le test de permutation d'un modèle de la séance", meme(s$suite$points, attendu$points[c("correlation", "R2", "Q2")]))
 verifier("les fonctions n'y sont qu'une fois", sum(grepl("^pls <- function", texte)) == 1 && sum(grepl("^# 1\\. ", texte)) == 1)
 e <- new.env(); load(r$chemins[3], envir = e)

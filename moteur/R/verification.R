@@ -2,10 +2,11 @@
 # leurs R2X, R2Y et Q2 cumulés comparés aux valeurs enregistrées dans le fichier.
 # Sert à contrôler le moteur après une correction (console : verifier_moteur()).
 #
-# Statut d'un modèle, d'après le plus grand écart entre ses valeurs et celles du fichier :
-# « identique » (moins de 0,0001), « proche » (moins de 0,01), « différent » sinon. Le Q2 des
-# ACP n'entre pas dans le statut : la valeur enregistrée vient d'une étape non publiée (écart connu, de
-# l'ordre de 0,01 à 0,02). Avec des données manquantes, quelques PLS s'écartent aussi un peu.
+# Statut d'un modèle, d'après le plus grand écart entre ses R2X et R2Y et ceux du fichier :
+# « identique » (moins de 0,0001), « proche » (moins de 0,01), « différent » sinon. Avec des
+# données manquantes, quelques PLS s'écartent un peu. L'écart de Q2 est donné, mais n'entre pas
+# dans le statut : la validation croisée de Nuée (chaque groupe prédit par un modèle ajusté sans
+# lui, mise à l'échelle comprise, validation_croisee.R) n'est pas celle qui a écrit le fichier.
 comparer_references <- function(projet) {
   lignes <- list()
   for (d in projet$models) {
@@ -28,7 +29,7 @@ comparer_references <- function(projet) {
     r2x <- ecart(comp$R2Xcum, val("R2X(cum)"))
     r2y <- if (!is.null(comp$R2Ycum)) ecart(comp$R2Ycum, val("R2Y(cum)")) else NA
     q2 <- ecart(comp$Q2cum, val("Q2(cum)"))
-    pire <- max(c(r2x, r2y, if (identical(d$type, "PLS")) q2), na.rm = TRUE)
+    pire <- max(c(r2x, r2y), na.rm = TRUE)
     statut <- if (pire < 1e-4) "identique" else if (pire < 0.01) "proche" else "différent"
     lignes[[length(lignes) + 1]] <- data.frame(modele = d$name, type = type, A = d$A, R2X = signif(r2x, 2),
                                                R2Y = signif(r2y, 2), Q2 = signif(q2, 2), statut = statut)

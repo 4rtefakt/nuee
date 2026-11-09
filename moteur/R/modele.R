@@ -9,12 +9,27 @@
 #   solution enregistrée dans le fichier (le signe d'une composante est arbitraire ; ainsi
 #   les graphiques ont le même sens que ceux du logiciel qui l'a écrit).
 #   arret : function(res, a) appelée après chaque composante ; TRUE arrête le calcul
-#   (ajustement automatique). Le modèle a alors moins de A composantes.
+#   (ajustement automatique). Le modèle a alors moins de A composantes. Une OPLS, ajustée d'un
+#   coup, ne l'appelle pas : avec `arret`, elle s'arrête aux composantes orthogonales que ses
+#   données permettent, au lieu de le dire par une erreur.
+#   projets_vc : pour l'iPLS, le projet de chaque groupe de la validation croisée (validation_croisee.R).
 ajuster <- function(projet, definition, A = definition$A, G = definition$cv_groups %||% 7,
-                    poids = "calcules", orienter = TRUE, arret = NULL) {
+                    poids = "calcules", orienter = TRUE, arret = NULL, projets_vc = NULL) {
+  modele <- calculer_modele(projet, definition, A, G, poids, arret, projets_vc)
+  if (orienter && !is.null(definition[["solution"]][["T"]])) modele <- orienter_comme(modele, definition[["solution"]][["T"]])
+  modele$statistiques <- statistiques(modele)
+  if (length(definition$test)) modele$test <- evaluer_test(projet, modele, definition)  # jeu_test.R
+  modele
+}
+
+# Le modèle et sa validation croisée, sans les statistiques qui en découlent (le test de
+# permutation, qui en réajuste beaucoup, n'a besoin que de R2 et de Q2).
+calculer_modele <- function(projet, definition, A = definition$A, G = definition$cv_groups %||% 7,
+                            poids = "calcules", arret = NULL, projets_vc = NULL) {
   pls <- identical(definition$type, "PLS")
   obs <- definition$observations
-  bx <- construire_bloc(projet, definition$x, obs, poids, spectres = definition$spectres)
+  vx <- valeurs_bloc(projet, definition$x, obs)
+  bx <- construire_bloc(projet, definition$x, obs, poids, spectres = definition$spectres, bruts = vx)
   by <- if (pls) construire_bloc(projet, definition$y, obs, poids, facteurs = bx$simples)
   # PLS-DA venant d'un fichier .usp : ses classes s'appellent $M1.DA1... ; usp_extract a retrouvé leur
   # nom quand une variable qualitative les définit, par exemple « $M1.DA1 (variete=Gala) »
@@ -22,9 +37,11 @@ ajuster <- function(projet, definition, A = definition$A, G = definition$cv_grou
   if (pls && length(noms_y) == ncol(by$X)) by$noms <- colnames(by$X) <- noms_y
   X <- preparer(bx$X)
   Y <- if (pls) preparer(by$X)
+  vc <- debut_validation(projet, definition, X, Y, bx, by, A, G, poids, vx, projets_vc)  # validation_croisee.R
   # OPLS (opls.R) : A = Ap composantes prédictives + A - Ap composantes orthogonales
   Ap <- if (isTRUE(definition$opls)) definition$Ap %||% 1
-  res <- if (isTRUE(definition$opls)) ajuster_opls(X, Y, max(0, A - Ap), G, Ap) else ajuster_matrices(X, Y, A, G, arret)
+  res <- if (isTRUE(definition$opls)) ajuster_opls(X, Y, max(0, A - Ap), Ap, vc, jusqua = !is.null(arret))
+         else ajuster_matrices(X, Y, A, arret, vc)
 
   modele <- c(list(
     type = definition$type, plsda = isTRUE(definition$plsda), opls = isTRUE(definition$opls), Ap = Ap,
@@ -32,37 +49,29 @@ ajuster <- function(projet, definition, A = definition$A, G = definition$cv_grou
     nom = definition$name %||% "", titre = definition$title %||% "",
     observations = obs, x = bx, y = by, X = X$E, MX = X$M, Y = if (pls) Y$E, MY = if (pls) Y$M), res)
   class(modele) <- "modele_nuee"
-  if (orienter && !is.null(definition[["solution"]][["T"]])) modele <- orienter_comme(modele, definition[["solution"]][["T"]])
-  modele$statistiques <- statistiques(modele)
-  if (length(definition$test)) modele$test <- evaluer_test(projet, modele, definition)  # jeu_test.R
   modele
 }
 
 # Le calcul lui-même, sur des matrices déjà mises à l'échelle (préparées par preparer()) :
-# A composantes par NIPALS, chacune avec sa validation croisée. Y absent : ACP.
-# Sert aussi au test de permutation, qui réajuste le même X avec un Y permuté.
-ajuster_matrices <- function(X, Y, A, G, arret = NULL) {
+# A composantes par NIPALS. Y absent : ACP. `vc` : les sous-modèles de la validation croisée
+# (debut_validation), qui avancent d'une composante avec le modèle (ainsi l'ajustement
+# automatique, `arret`, juge chaque composante sur son Q2 sans en calculer de trop).
+ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL) {
   pls <- !is.null(Y)
-  N <- nrow(X$E)
   K <- ncol(X$E)
   avec_x <- rowSums(X$M) > 0  # sans aucune valeur X, pas de score
-  groupes <- groupes_validation(N, G)
-  groupes_var <- groupes_validation(K, G)
+  depart <- c(sum(X$E^2), if (pls) sum(Y$E^2))
 
   E <- X$E
   F <- if (pls) Y$E
   res <- list(T = NULL, P = NULL, W = NULL, C = NULL, U = NULL,
-              ssxv = matrix(colSums(E^2), K, 1), ssyv = if (pls) matrix(colSums(F^2), ncol(F), 1),
-              press = NULL, ss_vc = NULL, vc = list())
+              ssxv = matrix(colSums(E^2), K, 1), ssyv = if (pls) matrix(colSums(F^2), ncol(F), 1))
   for (a in seq_len(A)) {
     # plus de variation à décrire (nipals.R) : l'ajustement automatique (arret) s'arrête là ;
     # sinon l'erreur dit combien de composantes le modèle peut avoir
-    pas <- tryCatch(if (pls) list(vc = validation_pls(E, X$M, F, Y$M, groupes), comp = composante_pls(E, X$M, F, Y$M))
-                    else list(vc = validation_acp(E, X$M, groupes, groupes_var), comp = composante_acp(E, X$M)),
-                    sans_variation = function(e) if (!is.null(arret) && a > 1) NULL else stop(trop_de_composantes(a), call. = FALSE))
-    if (is.null(pas)) break
-    vc <- pas$vc
-    comp <- pas$comp
+    comp <- tryCatch(if (pls) composante_pls(E, X$M, F, Y$M, depart) else composante_acp(E, X$M, depart),
+                     sans_variation = function(e) if (!is.null(arret) && a > 1) NULL else stop(trop_de_composantes(a), call. = FALSE))
+    if (is.null(comp)) break
     tt <- comp$t
     tt[!avec_x] <- NA
     t0 <- ifelse(is.na(tt), 0, tt)
@@ -79,15 +88,15 @@ ajuster_matrices <- function(X, Y, A, G, arret = NULL) {
       res$U <- cbind(res$U, u)
       res$ssyv <- cbind(res$ssyv, colSums(F[avec_x, , drop = FALSE]^2))
     }
-    res$press <- rbind(res$press, vc$press)
-    res$ss_vc <- rbind(res$ss_vc, vc$ss)
-    res$vc[[a]] <- vc
+    if (!is.null(vc)) {  # (PRESS et SS jusqu'à cette composante, pour `arret`)
+      vc <- composante_validation(vc, a)
+      res$press <- vc$press
+      res$ss_vc <- rbind(vc$ss, vc$press[-a, , drop = FALSE], deparse.level = 0)
+    }
     if (!is.null(arret) && arret(res, a)) break
   }
-  rapport <- rowSums(res$press) / rowSums(res$ss_vc)
-  c(res, list(ssx = colSums(res$ssxv), ssy = if (pls) colSums(res$ssyv),
-              q2 = 1 - rapport, q2cum = 1 - cumprod(rapport),
-              residus_x = E, residus_y = F, avec_x = avec_x))
+  c(res[setdiff(names(res), c("press", "ss_vc"))], if (!is.null(vc)) fin_validation(vc, ncol(res$T)),
+    list(ssx = colSums(res$ssxv), ssy = if (pls) colSums(res$ssyv), residus_x = E, residus_y = F, avec_x = avec_x))
 }
 
 trop_de_composantes <- function(a) {
