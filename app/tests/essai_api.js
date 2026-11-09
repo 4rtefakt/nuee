@@ -196,6 +196,26 @@ async function principal() {
       verifier(s.nom === 'Tableau collé 1' && s.modifie === true && !s.chemin && !s.chemin_enregistrement, `copie rouverte : ${s.chemin_enregistrement}`);
       verifier([].concat((await api('projets_modifies')).noms).includes('Tableau collé 1'), 'projets_modifies');
     });
+    await etape('copie de secours reprise : le fichier changé par ailleurs l’est encore', async () => {
+      const f = path.join(dossier, 'repris.nuee');
+      await api('enregistrer', { projet: p.id, chemin: f });
+      // the copy comes with the state of the project's file, which the index keeps (JSON)
+      const copie1 = path.join(dossier, 'secours-1.json');
+      const c1 = await api('sauvegarde_secours', { projet: p.id, chemin: copie1 });
+      verifier(c1.lu && c1.lu.taille > 0 && c1.lu.date > 0, `lu : ${JSON.stringify(c1.lu)}`);
+      // the file unchanged since: saved without a question
+      const s1 = await api('ouvrir', { chemin: copie1, secours: true, origine: f, nom: 'repris', lu: JSON.parse(JSON.stringify(c1.lu)) });
+      verifier(s1.chemin_enregistrement === f, `enregistre dans ${s1.chemin_enregistrement}`);
+      await api('enregistrer', { projet: s1.id, chemin: f });
+      // changed by a colleague between the stop and the recovery: asked before overwriting
+      const copie2 = path.join(dossier, 'secours-2.json');
+      const c2 = await api('sauvegarde_secours', { projet: s1.id, chemin: copie2 });
+      fs.writeFileSync(f, JSON.stringify({ ...JSON.parse(fs.readFileSync(f, 'utf8')), source: 'collègue' }));
+      fs.utimesSync(f, new Date(), new Date(Date.now() + 5000));
+      const s2 = await api('ouvrir', { chemin: copie2, secours: true, origine: f, nom: 'repris 2', lu: c2.lu });
+      const r = await fetch(`http://127.0.0.1:${port}/api/enregistrer`, { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ projet: s2.id, chemin: f }) });
+      verifier(r.status === 409 && JSON.parse(fs.readFileSync(f, 'utf8')).source === 'collègue', `HTTP ${r.status}, écrasé sans demander`);
+    });
     await etape('jeu de test : choisi par Kennard–Stone, prédit après l’ajustement', async () => {
       const t = await api('jeu_test', { projet: p.id, x: [uid.x1, uid.x2, uid.x3], methode: 'kennard_stone', part: 0.25 });
       verifier([].concat(t.test).length === 15, `${[].concat(t.test).length} observations en test`);

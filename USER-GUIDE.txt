@@ -71,10 +71,13 @@ session: fitted models, open panels and their layout, plot settings (axes, colou
 titles), selections, VIP choices, dendrogram groups. When the project is opened again, the
 models are refitted and everything comes back in place.
 The project is written to a file next to the old one, which then takes its place: a network
-cut or a full disk during the save leaves the old file intact. If the file was changed
-elsewhere since you opened or saved it (a colleague, on a shared folder; another window), Nuée
-says so and offers Save as..., Overwrite or Cancel. The file also records which versions of
-Nuée and R wrote it; a project saved by a newer Nuée is pointed out when it opens.
+cut or a full disk during the save leaves the old file intact. If another program keeps the
+file open (a sync client, an antivirus), Nuée tries again for five seconds, then leaves it as
+it was and says so: save again, or Save as.... If the file was changed elsewhere since you
+opened or saved it (a colleague, on a shared folder; another window), Nuée says so and offers
+Save as..., Overwrite or Cancel, also for a project recovered after a crash. The file also
+records which versions of Nuée and R wrote it; a project saved by a newer Nuée is pointed out
+when it opens.
 Opening a file that is already open (a recent file, a double-click in Explorer) shows the open
 project instead of opening a second copy.
 Closing the application with unsaved changes offers "Save and close". Every two minutes it

@@ -75,10 +75,13 @@ séance en cours : modèles calculés, panneaux ouverts et leur disposition, ré
 graphiques (axes, couleurs, étiquettes, titres), sélections, choix des VIP, groupes du
 dendrogramme. En rouvrant le projet, les modèles sont recalculés et tout revient en place.
 Le projet est écrit dans un fichier à côté, qui prend ensuite la place de l'ancien : une
-coupure du réseau ou un disque plein pendant l'enregistrement laisse l'ancien intact. Si le
-fichier a été modifié ailleurs depuis qu'on l'a ouvert ou enregistré (un collègue, sur un
-dossier partagé ; une autre fenêtre), Nuée le dit et propose Enregistrer sous..., Écraser ou
-Annuler. Le fichier dit aussi quelle version de Nuée et de R l'a écrit ; un projet enregistré
+coupure du réseau ou un disque plein pendant l'enregistrement laisse l'ancien intact. Si un
+autre programme garde le fichier ouvert (synchronisation, antivirus), Nuée réessaie pendant
+cinq secondes, puis le laisse tel quel et le dit : enregistrer de nouveau, ou Enregistrer
+sous.... Si le fichier a été modifié ailleurs depuis qu'on l'a ouvert ou enregistré (un
+collègue, sur un dossier partagé ; une autre fenêtre), Nuée le dit et propose Enregistrer
+sous..., Écraser ou Annuler, aussi pour un projet repris après un arrêt inattendu. Le
+fichier dit aussi quelle version de Nuée et de R l'a écrit ; un projet enregistré
 par une version plus récente de Nuée est signalé à l'ouverture.
 Rouvrir un fichier déjà ouvert (fichier récent, double-clic dans l'Explorateur) montre le
 projet ouvert au lieu d'en ouvrir une seconde copie.
