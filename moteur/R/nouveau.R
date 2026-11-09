@@ -315,6 +315,6 @@ ecrire_sans_risque <- function(chemin, ecrire) {
     if (suppressWarnings(file.rename(temporaire, chemin))) return(invisible(chemin))
     Sys.sleep(0.2)
   }
-  stop(sprintf(traduire("Impossible de remplacer %s : un autre programme l'utilise (synchronisation, antivirus, fichier ouvert ailleurs). Le fichier est resté tel quel ; réessayez, ou enregistrez sous un autre nom.",
-                        "Couldn't replace %s: another program is using it (sync, antivirus, the file open elsewhere). The file was left as it was; try again, or save under another name."), chemin), call. = FALSE)
+  stop(sprintf(traduire("Impossible de remplacer %s : un autre programme l'utilise (synchronisation, antivirus, fichier ouvert ailleurs), ou il est en lecture seule. Le fichier est resté tel quel ; réessayez, ou enregistrez sous un autre nom.",
+                        "Couldn't replace %s: another program is using it (sync, antivirus, the file open elsewhere), or it is read-only. The file was left as it was; try again, or save under another name."), chemin), call. = FALSE)
 }
