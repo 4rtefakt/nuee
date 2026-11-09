@@ -215,7 +215,8 @@ the menu entry and docks group them under its icon. The tests run the same way:
 
 `.github/workflows/verifications.yml` runs the engine's checks (`moteur/tests/verifier_*.R`,
 except `verifier_references.R`, whose exported projects aren't in the repository) and
-`app/tests/essai_api.js` on every push and pull request, on Windows with the current R.
+`app/tests/essai_api.js` on every push and pull request, on Windows with R 4.6.2 from CRAN, the
+version the Windows build ships (change both together).
 
 ## Releasing
 
