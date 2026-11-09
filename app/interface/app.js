@@ -154,7 +154,9 @@ const app = {
     try { texte = bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText(); } catch { texte = ''; }
     if (!texte || !texte.trim()) { statut(t('presse_papiers_vide'), true); return; }
     etat.collages = (etat.collages || 0) + 1;
-    await apresOuverture(await occupe(() => demander('coller', { texte, nom: `${t('tableau_colle')} ${etat.collages}` })));
+    const res = await occupe(() => demander('coller', { texte, nom: `${t('tableau_colle')} ${etat.collages}` }));
+    await apresOuverture(res);
+    if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing
   },
 
   // Spectra from one or more files (JCAMP-DX, SPC, text) made into one project, with an
@@ -208,9 +210,21 @@ const app = {
   },
 
   async ouvrirChemin(chemin) {
+    // already open (a recent file, a file dropped or double-clicked again): shown, not opened
+    // twice, which would make two copies that both save to the same file
+    const cle = (c) => (c ? (/^Win/.test(navigator.platform) ? c.replace(/\\/g, '/').toLowerCase() : c) : null);
+    const ouvert = Object.values(etat.projets).find((p) => cle(p.chemin_enregistrement) === cle(chemin) || (!p.table && cle(p.chemin) === cle(chemin)));
+    if (ouvert) {
+      etat.noeud = ouvert.id;
+      app.rafraichirExplorateur();
+      majEtat();
+      statut(t('deja_ouvert', { nom: ouvert.nom }));
+      return;
+    }
     const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin })));
     if (!res) return;
     await apresOuverture(res);
+    if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
     if (bureau) recents = await bureau.ajouterRecent(chemin);
     else {
       recents = [chemin, ...recents.filter((r) => r !== chemin)].slice(0, 10);
@@ -228,7 +242,19 @@ const app = {
       if (!chemin) return false;
     }
     const session = VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid));
-    const r = await occupe(() => demander('enregistrer', { projet: pid, chemin, session }));
+    const q = { projet: pid, chemin, session, version: VERSION };
+    let r = await occupe(() => demander('enregistrer', q).catch((e) => { if (e.reponse && e.reponse.conflit) return e.reponse; throw e; }));
+    if (r.conflit) {  // changed on disk since it was read: overwrite, save elsewhere, or leave it
+      const choix = await new Promise((resolve) => dialogue({ titre: t('conflit_titre'),
+        contenu: el('p', {}, t('conflit_texte', { nom: chemin.split(/[\\/]/).pop(), date: new Date(r.date * 1000).toLocaleString(langueActuelle()) })),
+        boutons: [{ libelle: t('annuler'), action: () => resolve(null) },
+          { libelle: t('ecraser'), action: () => resolve('ecraser') },
+          { libelle: t('enregistrer_sous_bouton'), principal: true, action: () => resolve('sous') }],
+        surFermeture: () => resolve(null) }));
+      if (choix === 'sous') return app.enregistrer(pid, true);
+      if (choix !== 'ecraser') return false;
+      r = await occupe(() => demander('enregistrer', { ...q, ecraser: true }));
+    }
     if (!bureau && !chemin) telecharger(r.chemin);
     statut(`${t('enregistre')} ${r.chemin}`);
     await rafraichirProjet(pid);
@@ -333,23 +359,31 @@ const app = {
     statut(t('annule', { quoi: r.etiquette }));
   },
   async noterModele(id, note) {
-    const r = await demander('note_modele', { modele: id, note });
+    let r;
+    try { r = await demander('note_modele', { modele: id, note }); } catch (e) { statut(`${t('erreur')} : ${e.message}`, true); return; }
     if (etat.modeles[id]) etat.modeles[id].note = r.note;
     etat.projets[r.projet.id] = r.projet;
     app.rafraichirExplorateur();
     majEtat();
     diffuser('modeles');
   },
-  // A new R engine (after it stopped, or on request): the projects reopen, from their recovery
-  // copy when they had unsaved changes, with the session they had.
+  // A new R engine (after it stopped, or on request): the projects reopen with the session they
+  // had: from their recovery copy when they had unsaved changes, otherwise from the file they
+  // are saved to (or, never saved, the file they came from). Those with neither are named.
   async redemarrerMoteur() {
     if (!bureau) { statut(t('moteur_navigateur'), true); return; }
     let secours = [];
     try { secours = await bureau.secoursListe(); } catch { secours = []; }
-    const aRouvrir = Object.values(etat.projets).filter((p) => p.chemin).map((p) => {
-      const s = p.modifie && secours.find((e) => e.origine === p.chemin);
-      return { chemin: s ? s.fichier : p.chemin, origine: s ? p.chemin : null, nom: p.nom, table: p.table, session: dock ? collecterSession(p.id) : null };
-    });
+    const aRouvrir = [];
+    const perdus = [];
+    for (const p of Object.values(etat.projets)) {
+      const s = p.modifie && secours.find((e) => e.projet === p.id);
+      const source = p.chemin_enregistrement || p.chemin;
+      const session = dock ? collecterSession(p.id) : null;
+      if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom } });
+      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined } });
+      else perdus.push(p.nom);
+    }
     statut(t('moteur_redemarrage'));
     const erreur = await bureau.redemarrerMoteur();
     moteurArrete = false;
@@ -357,15 +391,20 @@ const app = {
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
     for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
+    derniersSecours.clear();  // the new engine numbers its projects from P1 again
+    let n = 0;
     for (const r of aRouvrir) {
       try {
-        const res = await occupe(() => demander('ouvrir', r.origine ? { chemin: r.chemin, origine: r.origine, nom: r.nom }
-          : r.table ? { chemin: r.chemin, table: r.table } : { chemin: r.chemin }));
-        await apresOuverture(res, r.session);
-      } catch { /* a project that cannot be read any more stays closed */ }
+        await apresOuverture(await occupe(() => demander('ouvrir', r.q)), r.session);
+        n += 1;
+      } catch {
+        perdus.push(r.nom);
+        if (r.copie) secoursEnAttente.push(r.copie);  // its recovery copy stays, for another try
+      }
     }
     diffuser('modeles');
-    statut(t('moteur_redemarre', { n: aRouvrir.length }));
+    statut(t('moteur_redemarre', { n }) + (perdus.length ? ` ${t('non_rouverts', { noms: perdus.join(', ') })}` : ''), perdus.length > 0);
+    if (n) sauvegarderSecours();  // the reopened projects get copies of their own at once
   },
   confirmerRedemarrage() {
     dialogue({ titre: t('redemarrer_moteur'), contenu: el('p', {}, t('redemarrer_confirmation')),
@@ -653,6 +692,8 @@ function statut(message, erreur = false) {
   etat.message = message || '';
   etat.erreur = erreur;
   majEtat();
+  const a = document.getElementById('annonce');  // what a screen reader says
+  if (a) a.textContent = etat.message;
 }
 
 async function occupe(f) {
@@ -809,37 +850,59 @@ async function apresOuverture(res, session = null) {
 
 // Every two minutes, a copy of each project with unsaved changes, with its session, goes to
 // the application's recovery folder (deleted when the application closes normally). After an
-// unexpected stop, the next start offers to reopen them.
+// unexpected stop, the next start offers to reopen them. The index lists the copies to keep
+// (main.js deletes the others): those of this launch, named after it so that they never
+// replace one of an earlier stop, and those of an earlier stop that haven't been recovered or
+// set aside yet (secoursEnAttente). A project whose copy fails this time keeps its last one.
+// One main window writes them: the first one open (several main windows share the projects).
+const LANCEMENT = Date.now().toString(36);
+let secoursEnAttente = [];
+const derniersSecours = new Map();
 async function sauvegarderSecours() {
   if (!bureau || VUE_SEULE || !dock) return;
   try {
+    const principales = (await bureau.fenetres()).filter((f) => f.principale).sort((a, b) => a.id - b.id);
+    if (principales.length && !principales[0].actuelle) return;
     const dossier = await bureau.secoursDossier();
     const entrees = [];
     for (const p of Object.values(etat.projets)) {
       if (!p.modifie) continue;
-      const fichier = `${dossier}/${p.id}.json`;
-      await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session: JSON.stringify(collecterSession(p.id)) });
-      entrees.push({ fichier, nom: p.nom, origine: p.chemin || fichier, date: new Date().toISOString() });
+      const fichier = `${dossier}/${LANCEMENT}-${p.id}.json`;
+      try {
+        await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session: JSON.stringify(collecterSession(p.id)), version: VERSION });
+        derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: p.chemin_enregistrement || p.chemin || null, date: new Date().toISOString() });
+      } catch { /* this one is tried again two minutes later; the others go on */ }
+      if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
     }
-    await bureau.secoursIndex(entrees);
+    await bureau.secoursIndex([...secoursEnAttente, ...entrees]);
   } catch { /* tried again two minutes later */ }
 }
 
+// The copies of an earlier stop: reopened as the projects they hold (their name, the file they
+// save to, if any, and unsaved changes), or set aside (deleted). Closing the question without
+// answering keeps them, to be offered again next time.
 async function proposerRecuperation() {
   if (!bureau || VUE_SEULE) return;
   let entrees = [];
   try { entrees = await bureau.secoursListe(); } catch { entrees = []; }
   if (!entrees.length) return;
+  secoursEnAttente = entrees;
   const quand = (d) => new Date(d).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   dialogue({ titre: t('recuperation'),
     contenu: el('div', {}, el('p', {}, t('recuperation_question')), el('ul', {}, entrees.map((e) => el('li', {}, `${e.nom} — ${quand(e.date)}`)))),
     boutons: [
-      { libelle: t('ignorer'), action: () => { bureau.secoursIndex([]); return true; } },
+      { libelle: t('ignorer'), action: () => { secoursEnAttente = []; bureau.secoursIndex([]); return true; } },
       { libelle: t('recuperer'), principal: true, action: () => {
         (async () => {
+          const illisibles = [];
           for (const e of entrees) {
-            try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, origine: e.origine, nom: e.nom }))); } catch { /* unreadable copy */ }
+            // before 1.0, a project without a file had its own copy as its origin
+            const origine = e.origine && e.origine !== e.fichier ? e.origine : null;
+            try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom }))); } catch { illisibles.push(e); }
           }
+          secoursEnAttente = illisibles;  // kept for another try
+          if (illisibles.length) statut(t('recuperation_echec', { noms: illisibles.map((e) => e.nom).join(', ') }), true);
+          sauvegarderSecours();  // the recovered projects get copies of their own at once
         })();
         return true;
       } }] });

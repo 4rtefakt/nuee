@@ -20,6 +20,44 @@ args <- commandArgs(trailingOnly = TRUE)
 port <- if (length(args) >= 1) as.integer(args[1]) else 8765L
 interface <- if (length(args) >= 2) args[2] else file.path(racine, "app", "interface")
 
+# Seule l'interface de l'application peut faire calculer le moteur. Le serveur n'écoute que
+# 127.0.0.1, mais d'autres que l'application y ont accès : une page web ouverte dans un
+# navigateur (elle peut envoyer des demandes à 127.0.0.1, ou s'y faire passer pour son propre
+# site en changeant l'adresse de son nom de domaine) et les autres utilisateurs du même
+# ordinateur (bureau à distance). Or la console R exécute ce qu'on lui envoie. Chaque demande
+# doit donc porter le jeton de la séance : l'application le tire au hasard à chaque lancement
+# (NUEE_JETON) et le donne à ses fenêtres dans un cookie que les navigateurs n'envoient jamais
+# depuis un autre site. Lancé à la main sans NUEE_JETON (développement), le serveur tire
+# lui-même le jeton et affiche l'adresse à ouvrir dans le navigateur.
+JETON <- Sys.getenv("NUEE_JETON")
+jeton_donne <- nzchar(JETON)
+if (!jeton_donne) JETON <- paste(sample(c(0:9, letters[1:6]), 64, replace = TRUE), collapse = "")
+Sys.unsetenv("NUEE_JETON")  # ni la console ni les programmes qu'elle lance n'en héritent
+COOKIE <- paste0("nuee_", port)  # les cookies ne distinguent pas les ports : un nom par serveur
+HOTES <- sprintf(c("127.0.0.1:%d", "localhost:%d"), port)
+
+jeton_recu <- function(cookies) {
+  for (x in trimws(strsplit(cookies %||% "", ";", fixed = TRUE)[[1]])) {
+    if (startsWith(x, paste0(COOKIE, "="))) return(substring(x, nchar(COOKIE) + 2L))
+  }
+  ""
+}
+
+# /api/connexion?jeton=… (navigateur, développement) : pose le cookie, puis ouvre l'interface
+# avec les autres paramètres de l'adresse (ouvrir=…).
+connexion <- function(req) {
+  q <- sub("^\\?", "", req$QUERY_STRING %||% "")
+  parametres <- strsplit(q, "&", fixed = TRUE)[[1]]
+  j <- grep("^jeton=", parametres, value = TRUE)
+  if (!length(j) || !identical(utils::URLdecode(sub("^jeton=", "", j[1])), JETON)) {
+    return(list(status = 403L, headers = list(), body = "jeton refusé"))
+  }
+  reste <- paste(grep("^jeton=", parametres, value = TRUE, invert = TRUE), collapse = "&")
+  list(status = 302L, body = "",
+       headers = list(Location = paste0("/", if (nzchar(reste)) paste0("?", reste)),
+                      "Set-Cookie" = sprintf("%s=%s; Path=/; HttpOnly; SameSite=Strict", COOKIE, JETON)))
+}
+
 etat <- new.env()
 etat$projets <- list()
 etat$modeles <- list()
@@ -68,6 +106,7 @@ annuler_demande <- function(q) {
   ancien <- pile[[1]]$projet
   etat$annulations[[q$projet]] <- pile[-1]
   ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
+  ancien$fichier_lu <- actuel$fichier_lu
   ancien$modifie <- TRUE
   etat$projets[[q$projet]] <- ancien
   list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
@@ -91,8 +130,31 @@ ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL) {
   p$nom <- if (is.null(table)) nom else sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), table, tools::file_ext(nom))
   p$chemin <- chemin
   p$table <- table
+  if (ext %in% c("nuee", "json")) p$fichier_lu <- etat_fichier(chemin)
   etat$projets[[p$id]] <- p
-  resume_projet(p)
+  r <- resume_projet(p)
+  # ce qu'il faut savoir de la lecture (valeurs non numériques lues comme manquantes...), et
+  # d'un projet venant d'une version plus récente
+  notes <- c(p$note, if (isTRUE(as.numeric(p$nuee$format %||% 0) > FORMAT_PROJET))
+    sprintf(traduire("Ce projet a été enregistré par Nuée %s, plus récente que celle-ci : certaines de ses parties ne sont peut-être pas lues. Mettez Nuée à jour.",
+                     "This project was saved by Nuée %s, newer than this one: some of its parts may not be read. Update Nuée."), p$nuee$version %||% "?"))
+  if (length(notes)) r$note <- I(as.character(notes))
+  r
+}
+
+# Ce qu'on sait d'un fichier de projet quand on l'ouvre ou l'enregistre, pour voir avant de
+# l'écraser s'il a changé depuis (un collègue, sur un dossier partagé ; une autre copie de Nuée).
+etat_fichier <- function(chemin) {
+  i <- file.info(chemin)
+  list(chemin = normalizePath(chemin, winslash = "/", mustWork = FALSE), taille = i$size, date = as.numeric(i$mtime))
+}
+
+# Une erreur que l'interface reconnaît : le fichier a changé depuis qu'on l'a lu.
+conflit_fichier <- function(chemin) {
+  structure(class = c("conflit_fichier", "error", "condition"),
+            list(message = sprintf(traduire("%s a été modifié par ailleurs depuis que vous l'avez ouvert ou enregistré.",
+                                            "%s was changed elsewhere since you opened or saved it."), basename(chemin)),
+                 call = NULL, date = etat_fichier(chemin)$date))
 }
 
 # Un nom de fichier (ou d'objet R) tiré du nom d'un projet ou d'un modèle.
@@ -470,6 +532,7 @@ coller_demande <- function(q) {
   etat$projets[[p$id]] <- p
   r <- resume_projet(p)
   r$fichier_colle <- chemin
+  r$note <- I(p$note %||% character(0))
   r
 }
 
@@ -496,6 +559,8 @@ etat_complet <- function() {
 
 DEMANDES <- list(
   etat = function(q) etat_complet(),
+  # les noms des projets aux changements non enregistrés (main.js, avant de fermer)
+  projets_modifies = function(q) list(noms = I(unname(vapply(Filter(function(p) isTRUE(p$modifie), etat$projets), function(p) p$nom, "")))),
   fermer_projet = function(q) {
     etat$modeles <- Filter(function(e) !identical(e$projet, q$projet), etat$modeles)
     etat$projets[[q$projet]] <- NULL
@@ -535,15 +600,20 @@ DEMANDES <- list(
   sauvegarde_secours = function(q) {
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
-    enregistrer_projet(p, q$chemin)
+    enregistrer_projet(p, q$chemin, as.character(q$version %||% ""))
     list(chemin = q$chemin)
   },
+  # q$secours : une copie de secours (q$chemin), rouverte comme le projet qu'elle garde : son nom,
+  # son fichier (q$origine : celui où il s'enregistre, ou d'où il vient ; aucun pour un tableau
+  # collé ou des spectres importés jamais enregistrés), des changements à enregistrer. Jamais la
+  # copie elle-même comme fichier du projet : elle est effacée quand Nuée se ferme.
   ouvrir = function(q) {
     r <- ouvrir_fichier(q$chemin, table = q$table)
-    if (is.null(q$origine) || !is.null(r$choisir)) return(r)
+    if (!(isTRUE(q$secours) || !is.null(q$origine)) || !is.null(r$choisir)) return(r)
     p <- projet(r$id)
-    p$nom <- q$nom %||% basename(q$origine)
+    p$nom <- q$nom %||% basename(q$origine %||% p$nom)
     p$chemin <- q$origine
+    p$fichier_lu <- NULL
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
     resume_projet(p)
@@ -571,7 +641,7 @@ DEMANDES <- list(
   permutations = function(q) {
     e <- modele(q$modele)
     if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
-    r <- permutations(e$modele, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
+    r <- permutations(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
     c(list(modele = q$modele), r)
   },
   valeurs = valeurs_demande,
@@ -641,14 +711,24 @@ DEMANDES <- list(
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
     chemin <- q$chemin %||% file.path(tempdir(), paste0(tools::file_path_sans_ext(p$nom), ".nuee"))
-    enregistrer_projet(p, chemin)
-    if (!is.null(q$chemin)) p$chemin_enregistrement <- chemin
+    # le fichier qu'on avait lu ou écrit, changé depuis : l'interface demande avant de l'écraser
+    lu <- p$fichier_lu
+    if (!is.null(q$chemin) && !isTRUE(q$ecraser) && !is.null(lu) && file.exists(chemin) &&
+        identical(etat_fichier(chemin)$chemin, lu$chemin) && !identical(etat_fichier(chemin)[c("taille", "date")], lu[c("taille", "date")])) {
+      stop(conflit_fichier(chemin))
+    }
+    enregistrer_projet(p, chemin, as.character(q$version %||% ""))
+    if (!is.null(q$chemin)) {
+      p$chemin_enregistrement <- chemin
+      p$fichier_lu <- etat_fichier(chemin)
+    }
     p$modifie <- FALSE
     etat$projets[[p$id]] <- p
     list(chemin = chemin)
   },
   journal = function(q) list(entrees = journal_depuis(as.numeric(q$depuis %||% 0)), dernier = etat$n_journal),
   console = function(q) evaluer_console(q$code, q$modele, q$projet),
+  completer = function(q) completer_console(as.character(q$texte %||% ""), as.integer(q$curseur %||% nchar(q$texte %||% "")), q$modele, q$projet),
   version = function(q) list(R = R.version.string, plateforme = R.version$platform, systeme = utils::osVersion %||% "",
                              locale = Sys.getlocale("LC_CTYPE"),
                              paquets = as.list(vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl", "foreign", "rmarkdown", "knitr"), function(x)
@@ -673,9 +753,16 @@ repondre <- function(statut, contenu) {
 appli <- list(
   call = function(req) {
     chemin <- req$PATH_INFO
-    if (!startsWith(chemin, "/api/")) return(list(status = 404L, headers = list(), body = "introuvable"))
-    nom <- sub("^/api/", "", chemin)
     options(nuee.langue = if (identical(req$HTTP_X_LANGUE, "en")) "en" else "fr")  # langue des messages (langue.R)
+    # un autre nom que 127.0.0.1 : un site qui se fait passer pour l'ordinateur
+    if (!isTRUE(req$HTTP_HOST %in% HOTES)) return(list(status = 403L, headers = list(), body = "interdit"))
+    if (identical(chemin, "/api/connexion")) return(connexion(req))
+    if (!startsWith(chemin, "/api/")) return(list(status = 404L, headers = list(), body = "introuvable"))
+    if (!identical(jeton_recu(req$HTTP_COOKIE), JETON)) {
+      return(repondre(403L, list(erreur = traduire("Demande refusée : elle ne vient pas de la fenêtre de Nuée.",
+                                                   "Request refused: it doesn't come from Nuée's window."))))
+    }
+    nom <- sub("^/api/", "", chemin)
     corps <- req$rook.input$read()
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
@@ -705,6 +792,7 @@ appli <- list(
       repondre(200L, r)
     }, error = function(e) {
       tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
+      if (inherits(e, "conflit_fichier")) return(repondre(409L, list(erreur = conditionMessage(e), conflit = TRUE, date = e$date)))
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },
@@ -714,5 +802,6 @@ appli <- list(
 
 serveur <- httpuv::startServer("127.0.0.1", port, appli)
 cat("PRET", port, "\n")
+if (!jeton_donne) cat(sprintf("Interface : http://127.0.0.1:%d/api/connexion?jeton=%s\n", port, JETON))
 flush(stdout())
 repeat httpuv::service(100)

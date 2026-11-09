@@ -7,10 +7,18 @@
 #     (lignes = observations, colonnes = variables, repérées par leur numéro interne) ;
 #   - la définition de chaque modèle (observations retenues, termes X et Y, transformation
 #     et mise à l'échelle de chaque terme) et les résultats enregistrés dans le fichier.
+#
+# Un projet enregistré par l'application dit aussi ce qui l'a écrit (j$nuee : format, version de
+# Nuée, version de R). FORMAT_PROJET augmente quand une version de Nuée écrit des projets que
+# les précédentes ne liraient pas en entier : elles le voient au format du fichier.
+FORMAT_PROJET <- 1L
 
 lire_projet <- function(chemin) {
   j <- jsonlite::fromJSON(chemin, simplifyVector = TRUE, simplifyDataFrame = FALSE,
                           simplifyMatrix = TRUE)
+  # L'état de la séance (où Enregistrer écrit, changements...) ne vient jamais du fichier : un
+  # projet reçu ne peut pas faire écrire Enregistrer ailleurs que là où on l'a ouvert.
+  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "fichier_lu", "note")] <- NULL
   obs <- unique(unlist(lapply(j$datasets, function(d) d$observations)))
   vars <- unique(unlist(lapply(j$datasets, function(d) d$variables)))
   donnees <- matrix(NA_real_, length(obs), length(vars),

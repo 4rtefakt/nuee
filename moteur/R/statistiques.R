@@ -53,7 +53,7 @@ statistiques <- function(m, niveau = 0.95) {
   for (a in seq_len(A)) vars[[paste0("p", a)]] <- m$P[, a]
   vars$R2V_cum <- 1 - m$ssxv[, A + 1] / m$ssxv[, 1]
   if (!pls) {
-    vars$Q2V_cum <- 1 - apply(m$press / m$ss_vc, 2, prod)
+    vars$Q2V_cum <- 1 - m$press[A, ] / m$ss_vc[1, ]
     ic <- intervalles_acp(m, niveau)
     for (a in seq_len(A)) vars[[paste0("p", a, "_IC")]] <- ic[, a]
   }
@@ -81,7 +81,7 @@ statistiques <- function(m, niveau = 0.95) {
     ajuste <- matrix(NA_real_, N, length(ny))
     observe <- matrix(NA_real_, N, length(ny))
     s$RMSEE <- s$RMSEcv <- stats::setNames(numeric(length(ny)), ny)
-    pred_vc <- Reduce(`+`, lapply(m$vc, function(v) v$prediction))  # Y prédit en validation croisée
+    pred_vc <- m$vc$predictions[[A]]  # Y prédit en validation croisée (validation_croisee.R)
     for (j in seq_along(ny)) {
       bj <- cf$coef_cs[, j]
       brut <- bj * m$x$poids / m$y$poids[j]  # dans les unités des données
@@ -109,7 +109,7 @@ statistiques <- function(m, niveau = 0.95) {
       yv[[paste0("c", a, "_IC")]] <- ic$c[, a]
     }
     yv$R2V_cum <- 1 - m$ssyv[, A + 1] / m$ssyv[, 1]
-    yv$Q2V_cum <- 1 - apply(m$press / m$ss_vc, 2, prod)
+    yv$Q2V_cum <- 1 - m$press[A, ] / m$ss_vc[1, ]
     yv$centre <- m$y$centre
     yv$poids <- m$y$poids
     yv$RMSEE <- s$RMSEE
@@ -153,9 +153,9 @@ seuil_vip <- function(vip, repere = 0.8, fenetre = c(0.5, 1.2)) {
 }
 
 # Intervalle de confiance des VIP par jack-knife : VIP recalculé avec les poids w de chaque
-# tour de validation croisée (et la part de Y expliquée par composante du modèle complet).
+# sous-modèle de la validation croisée (et la part de Y expliquée par composante du modèle complet).
 intervalles_vip <- function(m, d, niveau) {
-  G <- length(m$vc[[1]]$tours)
+  G <- length(m$vc$tours)
   vip_g <- sapply(seq_len(G), function(g) {
     W <- matrix(tour(m, g, "w"), ncol = m$A)
     W <- sweep(W, 2, sqrt(colSums(W^2)), "/")
@@ -191,33 +191,35 @@ dcrit <- function(N, K, A, C = 1, p = 0.95) {
   sqrt(stats::qf(p, max(dfo, 1), dfm))
 }
 
-# Demi-largeur d'intervalle de confiance par jack-knife sur les G tours de validation
-# croisée : t(0.975, G - 1) * racine((G - 1) / G * somme((v_g - moyenne)^2)).
+# Demi-largeur d'intervalle de confiance par jack-knife sur les G sous-modèles de la validation
+# croisée : t(0.975, G - 1) * racine((G - 1) / G * somme((v_g - moyenne)^2)). Manquante quand un
+# sous-modèle n'a pas pu avoir une composante (ses données n'avaient plus de variation).
 jackknife <- function(valeurs, niveau = 0.95) {
   G <- length(valeurs)
   if (G < 2 || anyNA(valeurs)) return(NA_real_)
   stats::qt(1 - (1 - niveau) / 2, G - 1) * sqrt((G - 1) / G * sum((valeurs - mean(valeurs))^2))
 }
 
-# Matrice (une colonne par composante) d'un tour de validation croisée, chaque composante
-# du tour orientée comme celle du modèle complet (signe de w en PLS, de p en ACP).
+# Les paramètres `quoi` ("w", "p" ou "c") du sous-modèle g de la validation croisée, une colonne
+# par composante, chacune orientée comme celle du modèle complet (signe de w en PLS, de p en ACP).
+# Ils sont dans les unités du sous-modèle (ses centres et poids).
 tour <- function(m, g, quoi) {
   pls <- identical(m$type, "PLS")
+  r <- m$vc$tours[[g]]
   sapply(seq_len(m$A), function(a) {
-    r <- m$vc[[a]]$tours[[g]]
-    sens <- if (pls) sign(sum(r$w * m$W[, a])) else sign(sum(r$p * m$P[, a]))
-    r[[quoi]] * if (sens == 0) 1 else sens
+    sens <- if (pls) sign(sum(r$W[, a] * m$W[, a])) else sign(sum(r$P[, a] * m$P[, a]))
+    r[[toupper(quoi)]][, a] * if (is.na(sens) || sens == 0) 1 else sens
   })
 }
 
 intervalles_acp <- function(m, niveau) {
-  G <- length(m$vc[[1]]$tours)
+  G <- length(m$vc$tours)
   Pg <- lapply(seq_len(G), function(g) matrix(tour(m, g, "p"), ncol = m$A))
   sapply(seq_len(m$A), function(a) apply(sapply(Pg, function(P) P[, a]), 1, jackknife, niveau = niveau))
 }
 
 intervalles_pls <- function(m, niveau) {
-  G <- length(m$vc[[1]]$tours)
+  G <- length(m$vc$tours)
   A <- m$A
   ronds <- lapply(seq_len(G), function(g) {
     W <- matrix(tour(m, g, "w"), ncol = A)

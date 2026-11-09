@@ -1,5 +1,6 @@
 // Small DOM helpers shared by the interface: elements, icons, context menus, dialogs.
 import ICONES from './vendor/icones.js';
+import { t } from './i18n.js';
 
 export const fmt = (v, d = 3) => (v === null || v === undefined || Number.isNaN(v) ? '' : Number(v).toFixed(d));
 
@@ -107,19 +108,41 @@ window.addEventListener('blur', fermerMenus);
 
 // ------------------------------------------------------------ dialogs
 
-export function dialogue({ titre, contenu, boutons = [], large = false }) {
+// surFermeture: called once the dialog is gone, whichever way (button, Esc, ×, click outside).
+// The keyboard starts in the dialog (its first field, or its main button) and goes back where it
+// was when it closes (the R console's prompt, for one).
+let nDialogues = 0;
+export function dialogue({ titre, contenu, boutons = [], large = false, surFermeture = null }) {
+  const avant = document.activeElement;
   const fond = el('div', { class: 'fond-dialogue' });
-  const fermer = () => { fond.remove(); document.removeEventListener('keydown', touche, true); };
-  const touche = (e) => { if (e.key === 'Escape') { e.stopPropagation(); fermer(); } };
+  let ferme = false;
+  const fermer = () => {
+    if (ferme) return;
+    ferme = true;
+    fond.remove();
+    document.removeEventListener('keydown', touche, true);
+    if (avant && avant !== document.body && avant.isConnected && !document.querySelector('.fond-dialogue')) avant.focus();
+    if (surFermeture) surFermeture();
+  };
+  // Esc closes the dialog on top only (another may be open under it)
+  const touche = (e) => {
+    if (e.key !== 'Escape' || fond !== [...document.querySelectorAll('.fond-dialogue')].pop()) return;
+    e.stopPropagation();
+    fermer();
+  };
   const pied = el('div', { class: 'pied-dialogue' }, boutons.map((b) => el('button', {
     class: b.principal ? 'principal' : '', onclick: () => { if (b.action() !== false) fermer(); } }, b.libelle)));
-  const boite = el('div', { class: 'dialogue' + (large ? ' large' : ''), role: 'dialog' },
-    el('div', { class: 'tete-dialogue' }, el('h2', {}, titre),
-      el('button', { class: 'icone-seule', onclick: fermer, title: 'Esc' }, icone('x'))),
+  nDialogues += 1;
+  const boite = el('div', { class: 'dialogue' + (large ? ' large' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': `titre-dialogue-${nDialogues}` },
+    el('div', { class: 'tete-dialogue' }, el('h2', { id: `titre-dialogue-${nDialogues}` }, titre),
+      el('button', { class: 'icone-seule', onclick: fermer, title: `${t('fermer')} (Esc)`, 'aria-label': t('fermer') }, icone('x'))),
     el('div', { class: 'corps-dialogue' }, contenu), pied);
   fond.append(boite);
   fond.addEventListener('mousedown', (e) => { if (e.target === fond) fermer(); });
   document.addEventListener('keydown', touche, true);
   document.body.append(fond);
+  const premier = boite.querySelector('.corps-dialogue input, .corps-dialogue select, .corps-dialogue textarea')
+    || pied.querySelector('button.principal') || pied.querySelector('button');
+  if (premier) premier.focus();
   return { fermer, boite };
 }

@@ -131,9 +131,9 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
                    else sprintf(", which handles missing values (%s of the X values; Nelson et al., 1996)", pourcent(manquantes_x)))
   } else ""
   G <- m$G
-  p3 <- if (fr) sprintf("Nous avons ajusté %s par l'algorithme NIPALS%s, avec %s. La validation croisée comptait %d groupes (l'observation i dans le groupe i modulo %d).",
+  p3 <- if (fr) sprintf("Nous avons ajusté %s par l'algorithme NIPALS%s, avec %s. La validation croisée comptait %d groupes (l'observation i dans le groupe i modulo %d) ; chaque groupe a été prédit par un modèle ajusté sans lui, avec un centrage et une mise à l'échelle recalculés sur les autres observations.",
                         nom_methode, manq, composantes, G, G)
-        else sprintf("We fitted %s with the NIPALS algorithm%s, with %s. Cross-validation used %d groups (observation i in group i modulo %d).",
+        else sprintf("We fitted %s with the NIPALS algorithm%s, with %s. Cross-validation used %d groups (observation i in group i modulo %d); each group was predicted by a model fitted without it, with centring and scaling recomputed on the other observations.",
                      nom_methode, manq, composantes, G, G)
 
   # --- qualité

@@ -31,7 +31,9 @@ verifier("16 intervalles qui couvrent le spectre, dans l'ordre, de tailles égal
          length(r$intervalles) == 16 && identical(termes, names(df)[-(1:2)]) && max(tailles) - min(tailles) <= 1)
 meilleur <- which.min(vapply(r$intervalles, function(z) min(z$rmsecv), 0))
 dans <- function(z, nm) { a <- as.numeric(sub(" nm", "", z$termes)); min(a) <= nm && nm <= max(a) }
-verifier("le meilleur intervalle est celui de la bande (1450 nm)", dans(r$intervalles[[meilleur]], 1450))
+# le centre de la bande est entre deux intervalles (1400-1445 et 1450-1495 nm), presque à égalité
+bande_au_bord <- function(z) dans(z, 1445) || dans(z, 1450)
+verifier("le meilleur intervalle est un des deux qui se partagent le centre de la bande (1445-1450 nm)", bande_au_bord(r$intervalles[[meilleur]]))
 loin <- Filter(function(z) { a <- as.numeric(sub(" nm", "", z$termes)); max(a) < 1400 || min(a) > 1500 }, r$intervalles)
 verifier("il prédit bien mieux que les intervalles loin de la bande (hors 1400-1500 nm)",
          length(loin) >= 10 && min(r$intervalles[[meilleur]]$rmsecv) < 0.5 * min(vapply(loin, function(z) min(z$rmsecv), 0)))
@@ -68,6 +70,13 @@ b <- vapply(r3$intervalles, function(z) min(z$rmsecv), 0)
 verifier(sprintf("SNV, 20 intervalles : celui de la bande est le meilleur (%.3f, médiane %.3f, spectre entier %.3f)",
                  min(b), stats::median(b), min(r3$complet$rmsecv)),
          dans(r3$intervalles[[which.min(b)]], 1450) && min(b) < 0.8 * stats::median(b))  # (le SNV du spectre entier répand un peu la bande partout)
+
+# MSC : le spectre moyen de référence dépend des observations ; chaque sous-modèle de la validation
+# croisée prend celui de ses observations, dans l'iPLS comme dans le modèle
+d4 <- definir_modele(p, "PLS", x = x, y = numeros(p, "y"), A = 2, spectres = list(list(type = "msc"), list(type = "sg", derivee = 1, fenetre = 7, degre = 2)))
+r4 <- pls_par_intervalles(p, d4, n = 8)
+verifier("MSC : le spectre entier redonne le RMSEcv du modèle (spectre moyen recalculé à chaque groupe)",
+         isTRUE(all.equal(as.numeric(r4$complet$rmsecv), vapply(1:2, function(a) unname(ajuster(p, modifyList(d4, list(A = a)))$statistiques$RMSEcv[1]), 0), tolerance = 1e-12)))
 
 verifier("une ACP est refusée", inherits(try(pls_par_intervalles(p, definir_modele(p, "PCA", x = x, A = 2)), silent = TRUE), "try-error"))
 

@@ -23,8 +23,9 @@
 # L'abscisse d'une variable est le nombre lu dans son nom (« 1450 nm » : 1450) quand chaque
 # variable en a un, différent ; sinon sa place dans le tableau.
 # Une valeur manquante reste manquante ; avec Savitzky–Golay, elle rend aussi manquantes les
-# valeurs dont la fenêtre la contient. Le prétraitement est fait une fois, sur toutes les
-# observations du modèle, avant la validation croisée.
+# valeurs dont la fenêtre la contient. Seul le MSC dépend des autres observations (le spectre
+# moyen) : chaque sous-modèle de la validation croisée prend celui de ses observations
+# (validation_croisee.R).
 
 # Les étapes telles que l'interface les envoie (un data.frame, une ligne par étape) en liste.
 etapes_spectres <- function(x) {

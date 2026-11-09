@@ -48,6 +48,10 @@ one, a click in the status bar downloads its installer, checks it against the SH
 GitHub gives, offers to save your projects, installs it and starts Nuée again. *Help › Look for
 a new version at start-up* turns the check off.
 
+**For IT departments:** silent installation for one user or the whole computer, a policy that
+turns the update check off for everyone, what Nuée writes where and sends over the network:
+[docs/deploiement.md](docs/deploiement.md).
+
 ### Linux
 
 On Linux, Nuée uses the R installed on the computer (an R build is tied to its distribution's
@@ -57,14 +61,22 @@ libraries, so it can't be carried along as on Windows).
   [Releases](https://github.com/4rtefakt/nuee/releases) page and install it with
   `sudo apt install ./Nuee-<version>-amd64.deb`. apt brings R and the R packages Nuée needs.
   Nuée appears in the applications menu.
-- **Other distributions:** `Nuee-<version>-x86_64.AppImage` (make it executable, then run it)
-  or `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
+- **Other distributions:** `Nuee-<version>-x86_64.AppImage` (make it executable, then run it;
+  it needs FUSE 2, the `libfuse2` package on most distributions) or
+  `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
   distribution first, then the packages, in R:
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign"))`.
+  On Ubuntu 24.04 and later, prefer the `.deb`: it installs the AppArmor profile Chromium's
+  sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
+
+Every change is checked on GitHub with the `.deb` installed on Ubuntu 22.04 and 24.04 and
+Debian 12, with their own R (4.1 to 4.3).
 
 Opening `.usp` projects needs `python3`. Nuée looks for `Rscript` on the `PATH`, then in
 `/usr/local/bin`, `/usr/bin` and `/opt/R/<version>/bin`; start it with
-`RSCRIPT=/path/to/Rscript` to use another R. Settings are kept in `~/.config/Nuee`.
+`RSCRIPT=/path/to/Rscript` to use another R. Settings are kept in `~/.config/Nuee`. At
+start-up it asks GitHub whether a newer version exists; a click in the status bar opens its
+page.
 
 ## First steps
 
@@ -93,7 +105,8 @@ English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 
 **Methods:** PCA, PLS, PLS-DA, and OPLS / OPLS-DA (several Y or more than two classes give
 several predictive components), with missing values handled by NIPALS and 7-fold
-cross-validation (R2, Q2, and Q2 per variable). Class models: one PCA per class, and the
+cross-validation in which each group is predicted by a model fitted without it, centring and
+scaling included (R2, Q2, and Q2 per variable). Class models: one PCA per class, and the
 Coomans plot to tell which class an observation belongs to, several, or none.
 
 **Validation:** permutation tests, CV-ANOVA, PLS-DA classification tables and ROC curves,
@@ -180,10 +193,11 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
   your own in the application's session, with `m` and `p` standing for the model and project
   on screen.
 - **Export to R** (*File › Export to R*): any model becomes a script, or an R Markdown
-  or Quarto report, that refits it without Nuée. It holds the data (or reads them from a CSV
-  next to it), the code of the engine functions the model needs, copied with their comments,
-  and the model; it checks the R version and the packages it needs. The report adds the
-  Methods text, tables, plots and references, and compiles in RStudio (*Knit*) or with Quarto.
+  or Quarto report, that refits it without Nuée, in plain R with no package. It holds the
+  data (or reads them from a CSV next to it) and the calculation written for that model alone,
+  with comments: its scaling, the NIPALS algorithm, the cross-validation, then the statistics,
+  tables and plots (a PLS is about 170 lines of code). The report adds the Methods text,
+  tables, plots and references, and compiles in RStudio (*Knit*) or with Quarto.
   Optionally also a `renv.lock`, the data and fitted model as `.RData`, and an RStudio project.
   The whole session can go into one script instead: the data once, then every model.
   Before writing, Nuée refits the script's models and checks that they give the same results.
@@ -196,10 +210,14 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
 
 Nuée also opens `.usp` project files: their data, the models stored in them and the values
 those models were saved with. It recomputes each model in R and marks every value of the
-summary as identical, close or different. On 944 models from 133 projects, R2X, R2Y, the PLS
-Q2, scores, loadings, T2, DModX, VIP and coefficients match the stored values, apart from a
-few models with missing data; *Help › Results and known differences* lists the known
-differences.
+summary as identical, close or different. On 944 models from 133 projects, R2X, R2Y, scores,
+loadings, T2, DModX, VIP and coefficients match the stored values, apart from a few models with
+missing data; *Help › Results and known differences* lists the known differences. Q2 is
+Nuée's own: its cross-validation refits each group's model without it, scaling included,
+which the stored values didn't do. The two agree for large data sets (a median difference of
+0.003 for PLS models with over 200 observations) and part with fewer observations, where
+Nuée's Q2 is lower (0.11 lower in median from 20 to 50 observations, 0.27 up to 20). RMSEcv,
+CV-ANOVA and the cross-validated classification follow.
 
 ## Reporting a problem
 

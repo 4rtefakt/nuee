@@ -10,6 +10,8 @@ export const PALETTES = {
 };
 const PALETTE = [...PALETTES.defaut];
 const SELECTION = '#e4572e';
+// names written by each point only up to this many variables (spectra have hundreds; a box shows them)
+const ETIQUETTES_MAX = 100;
 
 // Plot formatting chosen in Graphiques › Mise en forme, for every plot, kept from one session
 // to the next. A plot's own title and axis titles are in its panel's settings (loc).
@@ -324,7 +326,7 @@ function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom,
     oninput: (e) => { loc.filtre = e.target.value; clearTimeout(loc.minuterie); loc.minuterie = setTimeout(() => ctx.rafraichir(), 200); } });
   conteneur.replaceChildren(
     outils(...avant, filtre, el('span', { class: 'infos' }, `${idx.length} ${t('lignes')}${idx.length > max ? ` (${max})` : ''}`), espace(),
-      el('button', { class: 'icone-seule', title: 'Copier (TSV)', onclick: copier }, icone('copy'))),
+      el('button', { class: 'icone-seule', title: t('copier_tableau'), onclick: copier }, icone('copy'))),
     el('div', { class: 'defile' }, el('table', { class: 'tableau' }, el('thead', {}, tete), corps)));
   if (loc.focus) { filtre.focus(); filtre.setSelectionRange(filtre.value.length, filtre.value.length); }
   filtre.addEventListener('focus', () => { loc.focus = true; });
@@ -368,7 +370,7 @@ function rendreResume(conteneur, ctx, p) {
     el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > (m.Ap || 1) ? `O${a - (m.Ap || 1)}` : (m.Ap || 1) > 1 ? `P${a}` : 'P') : a),
       cols.map(([k]) => el('td', { class: 'num' }, fmt(c[k][i]), s && s[k] && k !== 'valeur_propre' ? marque(c[k][i], s[k][i]) : null))))));
   const note = s ? el('p', { class: 'note' }, el('span', { class: 'marque egal' }, '='), ' ', el('span', { class: 'marque proche' }, '≈'), ' ',
-    el('span', { class: 'marque diff' }, '≠'), ' ', t('valeurs_fichier'), m.type === 'PCA' ? '. ' + t('note_q2_acp') : '') : null;
+    el('span', { class: 'marque diff' }, '≠'), ' ', t('valeurs_fichier'), '. ' + t('note_q2')) : null;
   const graphe = el('div', { class: 'graphe petit' });
   // Notes on the model, saved with its definition in the project (while typing, a redraw keeps
   // the text and the cursor)
@@ -429,8 +431,8 @@ function rendreLoadings(conteneur, ctx, p, loc) {
   conteneur.replaceChildren(outils(
     choix(t('axe_x'), composantes(m), loc.a, (x) => { loc.a = +x; ctx.rafraichir(); }),
     m.A > 1 ? choix(t('axe_y'), composantes(m), loc.b, (x) => { loc.b = +x; ctx.rafraichir(); }) : null,
-    case_(t('etiquettes'), loc.etiquettes ?? true, (x) => { loc.etiquettes = x; ctx.rafraichir(); })), graphe);
-  const etiq = loc.etiquettes ?? true;
+    case_(t('etiquettes'), loc.etiquettes ?? v.terme.length <= ETIQUETTES_MAX, (x) => { loc.etiquettes = x; ctx.rafraichir(); })), graphe);
+  const etiq = loc.etiquettes ?? v.terme.length <= ETIQUETTES_MAX;
   const un = m.A === 1 || loc.a === loc.b;
   const choisies = new Set(ctx.variablesChoisies(m.id));
   const traces = [];
@@ -714,10 +716,10 @@ async function rendreSplot(conteneur, ctx, p, loc) {
   }
   const v = m.variables;
   const graphe = el('div', { class: 'graphe' });
-  conteneur.replaceChildren(outils(case_(t('etiquettes'), loc.etiquettes ?? true, (x) => { loc.etiquettes = x; ctx.rafraichir(); })), graphe);
+  conteneur.replaceChildren(outils(case_(t('etiquettes'), loc.etiquettes ?? v.terme.length <= ETIQUETTES_MAX, (x) => { loc.etiquettes = x; ctx.rafraichir(); })), graphe);
   const pc = loc.res.p[0];
   const choisies = new Set(ctx.variablesChoisies(m.id));
-  tracer(ctx, graphe, [{ type: 'scatter', mode: (loc.etiquettes ?? true) ? 'markers+text' : 'markers', name: 'X', x: v.p1, y: pc, text: v.terme,
+  tracer(ctx, graphe, [{ type: 'scatter', mode: (loc.etiquettes ?? v.terme.length <= ETIQUETTES_MAX) ? 'markers+text' : 'markers', name: 'X', x: v.p1, y: pc, text: v.terme,
     meta: 'variables', customdata: v.terme, textposition: 'top center', textfont: { size: 10 },
     marker: { color: pc.map((r) => r), colorscale: 'RdBu', reversescale: true, cmin: -1, cmax: 1, size: 8,
       ...(choisies.size ? { opacity: v.terme.map((x) => (choisies.has(x) ? 1 : 0.35)) } : {}) },
@@ -987,7 +989,9 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   const hors = o.hors_domaine ? o.hors_domaine.filter(Boolean).length : 0;
   const infos = el('span', { class: 'infos' }, `${o.nom.length} ${t('obs')}`,
     hors ? ` · ${hors} ${t('hors_domaine')}` : '',
-    fichier && r.absentes && [].concat(r.absentes).length ? el('span', { class: 'erreur' }, ` · ${t('variables_absentes')} : ${[].concat(r.absentes).join(', ')}`) : '');
+    fichier && r.absentes && [].concat(r.absentes).length ? el('span', { class: 'erreur' }, ` · ${t('variables_absentes')} : ${[].concat(r.absentes).join(', ')}`) : '',
+    // values of the file read as missing (text in a quantitative column: <0.5, nd...)
+    fichier && r.note && [].concat(r.note).length ? el('span', { class: 'erreur' }, ` · ${[].concat(r.note).join(' ; ')}`) : '');
   loc.graphe ??= 'scores';
   const vueGraphe = o.DModX ? choix('', [['scores', t('scores')], ['dmodx', 'DModXPS']], loc.graphe, (v) => { loc.graphe = v; ctx.rafraichir(); }) : null;
   conteneur.replaceChildren(el('div', { class: 'outils' }, vueGraphe, infos, el('span', { class: 'espace' }),
@@ -1112,14 +1116,29 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     loc.d = await ctx.demander('donnees', { projet: p.projet });
   }
   const d = loc.d;
+  // A wide table (spectra: a column per wavelength) shows its first columns, or those whose name
+  // holds the text typed: thousands of columns would freeze the window.
+  let k = d.variables.map((_, i) => i);
+  const avant = [el('button', { onclick: () => ctx.nouvelleVariable(p.projet) }, icone('calculator'), t('nouvelle_variable'))];
+  let filtreColonnes = null;
+  if (k.length > COLONNES_MAX) {
+    const f = (loc.filtreColonnes || '').toLowerCase();
+    if (f) k = k.filter((i) => String(d.variables[i]).toLowerCase().includes(f));
+    filtreColonnes = el('input', { type: 'search', class: 'filtre', placeholder: t('filtrer_variables'), value: loc.filtreColonnes || '',
+      oninput: (e) => { loc.filtreColonnes = e.target.value; clearTimeout(loc.minuterieColonnes); loc.minuterieColonnes = setTimeout(() => ctx.rafraichir(), 300); },
+      onfocus: () => { loc.focusColonnes = true; }, onblur: () => { loc.focusColonnes = false; } });
+    avant.push(filtreColonnes, el('span', { class: 'infos' }, t('colonnes_montrees', { n: Math.min(k.length, COLONNES_MAX), total: d.variables.length })));
+    k = k.slice(0, COLONNES_MAX);
+  }
   tableau(conteneur, ctx, loc, {
-    n: d.observations.length, nom: 'Table',
-    avant: [el('button', { onclick: () => ctx.nouvelleVariable(p.projet) }, icone('calculator'), t('nouvelle_variable'))],
-    colonnes: [{ cle: -1, titre: '' }].concat(d.variables.map((v, k) => ({ cle: k, titre: v, modifiable: true }))),
-    valeur: (i, k) => (k === -1 ? d.observations[i] : d.valeurs[k][i]),
-    modifier: (i, k, texte) => ctx.modifierValeur(p.projet, d.uid_observations[i], d.uid_variables[k], texte),
+    n: d.observations.length, nom: 'Table', avant,
+    colonnes: [{ cle: -1, titre: '' }].concat(k.map((i) => ({ cle: i, titre: d.variables[i], modifiable: true }))),
+    valeur: (i, j) => (j === -1 ? d.observations[i] : d.valeurs[j][i]),
+    modifier: (i, j, texte) => ctx.modifierValeur(p.projet, d.uid_observations[i], d.uid_variables[j], texte),
   });
+  if (filtreColonnes && loc.focusColonnes) { filtreColonnes.focus(); filtreColonnes.setSelectionRange(filtreColonnes.value.length, filtreColonnes.value.length); }
 }
+const COLONNES_MAX = 200;
 
 // Name of a transformation as the model dialog writes it ("log10:C2" is log10(x + C2)).
 export const libelleTransfo = (tr) => (!tr ? '' : tr.startsWith('log10:') ? `log10(x + ${tr.slice(6)})` : t('tr_' + tr));

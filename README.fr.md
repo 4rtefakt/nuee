@@ -50,6 +50,10 @@ envoyé). S'il y en a une, un clic dans la barre d'état télécharge son progra
 vérifie son empreinte SHA-256 auprès de GitHub, propose d'enregistrer vos projets, l'installe
 et redémarre Nuée. *Aide › Chercher une nouvelle version au démarrage* arrête la recherche.
 
+**Pour les services informatiques :** installation silencieuse pour un utilisateur ou pour tout
+l'ordinateur, une stratégie qui coupe la recherche de mises à jour pour tous, ce que Nuée écrit
+où et envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
+
 ### Linux
 
 Sous Linux, Nuée utilise le R installé sur l'ordinateur (une version de R dépend des
@@ -60,13 +64,21 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   `sudo apt install ./Nuee-<version>-amd64.deb`. apt installe aussi R et les paquets R dont
   Nuée a besoin. Nuée apparaît dans le menu des applications.
 - **Autres distributions :** `Nuee-<version>-x86_64.AppImage` (le rendre exécutable, puis le
-  lancer) ou `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
+  lancer ; il demande FUSE 2, le paquet `libfuse2` dans la plupart des distributions) ou
+  `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
   d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign"))`.
+  Sous Ubuntu 24.04 et après, préférez le `.deb` : il installe le profil AppArmor dont le bac
+  à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
+
+Chaque changement est vérifié sur GitHub avec le `.deb` installé sous Ubuntu 22.04 et 24.04
+et Debian 12, avec leur propre R (4.1 à 4.3).
 
 Les projets `.usp` demandent `python3`. Nuée cherche `Rscript` dans le `PATH`, puis dans
 `/usr/local/bin`, `/usr/bin` et `/opt/R/<version>/bin` ; lancez-le avec
-`RSCRIPT=/chemin/vers/Rscript` pour un autre R. Les réglages sont dans `~/.config/Nuee`.
+`RSCRIPT=/chemin/vers/Rscript` pour un autre R. Les réglages sont dans `~/.config/Nuee`. Au
+démarrage, Nuée demande à GitHub s'il existe une nouvelle version ; un clic dans la barre
+d'état ouvre sa page.
 
 ## Premiers pas
 
@@ -96,7 +108,8 @@ en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en angl
 
 **Méthodes :** ACP, PLS, PLS-DA, et OPLS / OPLS-DA (plusieurs Y ou plus de deux classes donnent
 plusieurs composantes prédictives), avec les valeurs manquantes traitées par NIPALS et une
-validation croisée en 7 groupes (R2, Q2, et Q2 par variable). Modèles de classe : une ACP par
+validation croisée en 7 groupes, où chaque groupe est prédit par un modèle ajusté sans lui,
+centrage et mise à l'échelle compris (R2, Q2, et Q2 par variable). Modèles de classe : une ACP par
 classe, et le graphique de Coomans pour dire à quelle classe appartient une observation, à
 plusieurs, ou à aucune.
 
@@ -191,11 +204,12 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   propre code exécuté dans la session de l'application, avec `m` et `p` pour le modèle et le
   projet affichés.
 - **Exporter vers R** (*Fichier › Exporter vers R*) : tout modèle devient un script, ou un
-  rapport R Markdown ou Quarto, qui le refait sans Nuée. Il contient les données (ou les lit dans
-  un CSV à côté), le code des fonctions du moteur dont le modèle a besoin, copié avec ses
-  commentaires, et le modèle ; il vérifie la version de R et les paquets dont il a besoin. Le
-  rapport ajoute le texte des méthodes, des tableaux, des graphiques et les références, et se
-  compile dans RStudio (*Knit*) ou avec Quarto. En plus, au choix : un `renv.lock`, les données
+  rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet. Il contient les
+  données (ou les lit dans un CSV à côté) et le calcul écrit pour ce modèle seul, commenté : sa
+  mise à l'échelle, l'algorithme NIPALS, la validation croisée, puis les statistiques, tableaux
+  et graphiques (une PLS fait environ 170 lignes de code). Le rapport ajoute le texte des
+  méthodes, des tableaux, des graphiques et les références, et se compile dans RStudio (*Knit*)
+  ou avec Quarto. En plus, au choix : un `renv.lock`, les données
   et le modèle ajusté en `.RData`, et un projet RStudio. Toute la séance peut aussi aller dans un
   seul script : les données une fois, puis chaque modèle. Avant d'écrire, Nuée refait les modèles
   du script et vérifie qu'ils donnent les mêmes résultats.
@@ -209,9 +223,14 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
 Nuée ouvre aussi les fichiers de projet `.usp` : leurs données, les modèles qu'ils contiennent
 et les valeurs avec lesquelles ces modèles ont été enregistrés. Il recalcule chaque modèle en R
 et marque chaque valeur du résumé comme identique, proche ou différente. Sur 944 modèles de 133
-projets, R2X, R2Y, le Q2 des PLS, les scores, les loadings, T2, DModX, les VIP et les
-coefficients sont ceux enregistrés, à quelques modèles avec données manquantes près ;
-*Aide › Résultats et écarts connus* liste les écarts connus.
+projets, R2X, R2Y, les scores, les loadings, T2, DModX, les VIP et les coefficients sont ceux
+enregistrés, à quelques modèles avec données manquantes près ; *Aide › Résultats et écarts
+connus* liste les écarts connus. Le Q2 est celui de Nuée : sa validation croisée réajuste le
+modèle de chaque groupe sans lui, mise à l'échelle comprise, ce que les valeurs enregistrées
+ne faisaient pas. Les deux s'accordent pour de grands jeux de données (un écart médian de 0,003
+pour les PLS de plus de 200 observations) et s'éloignent avec moins d'observations, où le Q2 de
+Nuée est plus bas (de 0,11 en médiane de 20 à 50 observations, de 0,27 jusqu'à 20). Le RMSEcv,
+la CV-ANOVA et le classement en validation croisée suivent.
 
 ## Signaler un problème
 

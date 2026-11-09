@@ -24,7 +24,7 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
 - Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl")).
+  "readxl", "foreign")).
 Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
 RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
 
@@ -47,6 +47,12 @@ Fichier › Ouvrir (Ctrl+O) :
     les autres colonnes de texte, les facteurs R et les variables étiquetées de SPSS ou Stata
     sont des variables qualitatives (dans l'ordre de leurs modalités). Pour un classeur à
     plusieurs feuilles ou un fichier R à plusieurs tableaux, l'application demande lequel ouvrir.
+    Une colonne de mesures qui a quelques cellules de texte (<0,5, <LOD, nd, n.d., #N/A...)
+    reste une variable quantitative : ces cellules sont lues comme manquantes, et la barre d'état
+    dit combien, dans quelles variables (dont celles sous la limite de détection). Les dates et
+    heures d'Excel restent des dates (2024-05-03). Un fichier texte dont une ligne a plus de
+    valeurs que l'en-tête est refusé, avec le numéro de la ligne, plutôt que de décaler les
+    colonnes. Un fichier R doit contenir des tableaux ; tout autre objet est refusé.
 Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google
 Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
 projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).
@@ -68,10 +74,19 @@ Fichier › Enregistrer (Ctrl+S) écrit le projet (.nuee) avec ses données, ses
 séance en cours : modèles calculés, panneaux ouverts et leur disposition, réglages des
 graphiques (axes, couleurs, étiquettes, titres), sélections, choix des VIP, groupes du
 dendrogramme. En rouvrant le projet, les modèles sont recalculés et tout revient en place.
+Le projet est écrit dans un fichier à côté, qui prend ensuite la place de l'ancien : une
+coupure du réseau ou un disque plein pendant l'enregistrement laisse l'ancien intact. Si le
+fichier a été modifié ailleurs depuis qu'on l'a ouvert ou enregistré (un collègue, sur un
+dossier partagé ; une autre fenêtre), Nuée le dit et propose Enregistrer sous..., Écraser ou
+Annuler. Le fichier dit aussi quelle version de Nuée et de R l'a écrit ; un projet enregistré
+par une version plus récente de Nuée est signalé à l'ouverture.
+Rouvrir un fichier déjà ouvert (fichier récent, double-clic dans l'Explorateur) montre le
+projet ouvert au lieu d'en ouvrir une seconde copie.
 En fermant l'application avec des changements non enregistrés, elle propose « Enregistrer et
 fermer ». Toutes les deux minutes, elle garde aussi une copie de secours des projets non
 enregistrés : si elle s'arrête sans avoir été fermée (panne, coupure), elle propose au
-lancement suivant de les récupérer.
+lancement suivant de les récupérer. Fermer cette question sans répondre garde les copies pour
+la fois suivante ; seul « Ignorer » les efface.
 Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
 (valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
 jusqu'à 20 en arrière.
@@ -85,8 +100,11 @@ Si le moteur R s'arrête
 -----------------------
 L'application le signale et propose de le redémarrer ; on peut aussi le faire soi-même
 (Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs
-modèles et leurs vues ; les changements faits depuis la dernière copie de secours (deux
-minutes au plus) sont perdus. Au-delà d'une minute de calcul, la barre d'état le rappelle.
+modèles et leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon
+depuis le fichier où ils s'enregistrent ; les changements faits depuis la dernière copie de
+secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde
+les copies de secours, proposées au lancement suivant. Au-delà d'une minute de calcul, la
+barre d'état le rappelle.
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
 jour). La version installée (Nuee-Setup, ou les paquets Linux) cherche au démarrage s'il
 existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est envoyé) et la
@@ -105,7 +123,9 @@ Projets, données, modèles importés d'un fichier .usp, modèles calculés et l
 Double-clic : ouvrir. Clic droit : toutes les actions (calculer, modifier, ajouter ou
 retirer une composante, exporter, supprimer...). Double-cliquer un modèle importé le
 recalcule en R ; le Résumé marque chaque valeur : « = » identique à la valeur enregistrée
-dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente.
+dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente. Le Q2 diffère presque
+toujours : Nuée ne fait pas sa validation croisée comme le logiciel qui a écrit le fichier
+(voir « Ce qui diffère »).
 
 Menus et barre d'outils
 -----------------------
@@ -253,8 +273,9 @@ par une à trois étapes, dans l'ordre :
              tableau est traitée à part : une fenêtre ne passe pas par-dessus une zone retirée.
 La longueur d'onde (pour Detrend et la ligne de base) est le nombre lu dans le nom des
 variables quand chacune en a un, différent ; sinon leur place dans le tableau.
-Pour des spectres, on centre souvent sans réduire (échelle « Centrage seul »). Le
-prétraitement est fait une fois, avant la validation croisée. Graphiques › Profils (spectres) :
+Pour des spectres, on centre souvent sans réduire (échelle « Centrage seul »). Seul le MSC
+dépend des autres observations (le spectre moyen) : en validation croisée, chaque groupe est
+corrigé avec le spectre moyen des autres observations. Graphiques › Profils (spectres) :
 loadings, coefficients, VIP, ou les spectres eux-mêmes (avant ou après prétraitement) en
 lignes ; l'axe horizontal est le nombre lu dans le nom des variables (« 1450 nm ») quand
 chacune en a un ; les lignes s'interrompent là où des variables sont hors du modèle. Un clic sur
@@ -266,7 +287,8 @@ réglages du modèle et ces variables X, à vérifier avant d'ajuster. Les autre
 modèle (qualitatives) restent.
 Graphiques › iPLS (intervalles du spectre), pour un modèle avec Y : le spectre (les variables X
 quantitatives du modèle, dans leur ordre) est prétraité une fois, en entier, comme pour le
-modèle, puis coupé en n intervalles de même largeur ; chacun est une PLS sur sa zone (avec la
+modèle (avec un MSC, aussi pour chaque groupe de la validation croisée, avec le spectre moyen
+des autres observations), puis coupé en n intervalles de même largeur ; chacun est une PLS sur sa zone (avec la
 mise à l'échelle du modèle et ses autres variables X), avec 1 à A composantes. Une barre par
 intervalle donne son plus petit RMSEcv (dans les unités de Y, comme dans le résumé), avec ce
 nombre de composantes écrit dessus ; en vert, les intervalles qui prédisent mieux que le
@@ -279,17 +301,17 @@ al. (2000), Applied Spectroscopy 54, 413–419.
 Exporter vers R (script, R Markdown, Quarto)
 --------------------------------------------
 Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
-envoyer à un collègue ou à joindre à un article. Il contient, dans l'ordre :
-  1. les vérifications : la version de R (4.0 au moins ; un message si elle est plus
-     ancienne que celle de l'application) et les paquets demandés (aucun pour un modèle :
-     R suffit ; s'il en manque, le script propose de les installer) ;
-  2. le code des fonctions du moteur dont le modèle a besoin, copié tel quel avec ses
-     commentaires (licence GPL-3.0) ;
-  3. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
+envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul,
+en R sans paquet, commenté dans la langue de l'export, en quatre parties :
+  1. les fonctions : l'algorithme NIPALS, la validation croisée, et seulement ce que ce
+     modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;
+  2. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
      les nombres écrits sans perte et les catégories dans leur ordre ;
-  4. le modèle : definir_modele() avec les variables désignées par leur nom (ou, pour un
-     modèle importé que definir_modele() ne sait pas décrire, la liste de ses termes),
-     ajuster(), puis ses résultats.
+  3. le modèle : ses termes X et Y (transformations, catégories, termes croisés), leur
+     mise à l'échelle, l'ajustement, puis R2 et Q2, T2 et DModX avec leurs limites, VIP,
+     coefficients, CV-ANOVA, classement pour une PLS-DA, jeu de test ;
+  4. les résultats : les tableaux, le test de permutation (en commentaire) et les
+     graphiques (scores, loadings, VIP, observé / ajusté, T2 et DModX).
 Format : script R (.R) ; ou rapport R Markdown (.Rmd) ou Quarto (.qmd), qui y ajoute le texte
 des méthodes, des tableaux et des graphiques (scores, loadings, VIP, observé / prédit, T2,
 DModX) et les références ; il se compile dans RStudio (bouton Knit) ou avec quarto render, et
@@ -297,8 +319,8 @@ demande le paquet knitr. Fichiers en plus, au choix : renv.lock (versions de R e
 pour renv::restore()), les données et le modèle ajusté en .RData (load() les rend sans
 recalculer), un projet RStudio (.Rproj, à mettre dans un dossier à part).
 Modèles : celui-ci, ou tous les modèles de la séance (le dernier ajustement de chacun) dans un
-seul script .R : les données et le code du moteur une fois, puis un bloc par modèle sous son
-nom (M1, M2...).
+seul script .R : les fonctions et les données une fois, puis un bloc par modèle sous son nom
+(M1, M2...).
 Avant d'écrire, l'application recalcule les modèles du script et vérifie qu'ils donnent les
 mêmes résultats ; sinon elle le signale.
 
@@ -315,13 +337,18 @@ Console R
 Affichage › Console R (Ctrl+J) : un panneau sous les onglets, avec
   - le journal : pour chaque action de l'application, l'appel au moteur qu'elle a fait, écrit
     en R (P1 <- lire_projet(...), d <- modele_du_projet(P1, 5), M4 <- ajuster(P1, d)...),
-    à recopier dans un script (bouton Copier) ; la case « Actions de l'application » les
-    masque ou les montre ;
+    à recopier dans un script (bouton Copier), et pour chaque modèle ajusté ce que R en
+    affiche (composantes, Y, limites, variables, observations ; print(M4) fait de même) ; la
+    case « Actions de l'application » les masque ou les montre ;
   - une invite où taper du R, exécuté dans la session R de l'application. m est le modèle
     affiché, p son projet ; P1, M4... les projets et modèles ouverts, sous les noms du journal.
     Par exemple : m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (le
     graphique s'affiche dans la console), modeles(), projets(), definition("M4").
     Entrée lance la commande, Maj+Entrée passe à la ligne, ↑ et ↓ rappellent les commandes.
+    Tab complète le nom commencé : objets, m$... et p$... (les noms qu'ils contiennent),
+    arguments de la fonction dont la parenthèse est ouverte ; s'il y en a plusieurs, une liste
+    s'ouvre (flèches, puis Tab ou Entrée). Les raccourcis de l'application (Ctrl+S, Ctrl+K...)
+    fonctionnent aussi pendant qu'on tape.
 Modifier un projet dans la console (p$donnees[...] <- ...) le modifie dans l'application.
 Corriger le moteur : dossier_moteur() donne le dossier des fichiers R de l'application ; après
 une correction, recharger_moteur() les relit, puis réajuster le modèle. Ce dossier est la
@@ -331,8 +358,8 @@ Une commande longue bloque l'application jusqu'à la fin du calcul.
 Vérifier le moteur : verifier_moteur() recalcule les modèles importés des projets ouverts et
 les compare aux valeurs enregistrées dans leurs fichiers (R2X, R2Y, Q2) ;
 verifier_moteur("dossier") fait de même pour les fichiers .usp et .json d'un dossier.
-À faire après une correction du moteur. Le Q2 des ACP n'entre pas dans le verdict (écart
-connu, voir « Ce qui diffère »).
+À faire après une correction du moteur. Le Q2 est donné mais n'entre pas dans le verdict :
+la validation croisée de Nuée n'est pas celle des fichiers (voir « Ce qui diffère »).
 
 Rapport du modèle
 -----------------
@@ -404,7 +431,7 @@ les valeurs prédites sont celles d'une PLS au même nombre de composantes. Avec
 toutes les colonnes de Y, si bien que les composantes orthogonales n'ont aucun lien avec Y
 (depuis 0.9.0 ; la version 0.8.0 laissait un léger lien : les modèles OPLS à plusieurs
 composantes prédictives qu'elle a faits changent un peu quand on les réajuste). Q2 par
-validation croisée complète (le modèle entier est réajusté sans chaque groupe). Aucun des
+validation croisée, comme pour les autres modèles (voir plus bas). Aucun des
 projets .usp disponibles n'avait de modèle OPLS : ce calcul suit l'article de Trygg et Wold
 (2002), sans comparaison possible avec des valeurs enregistrées ; il est vérifié contre une
 seconde écriture de l'algorithme de l'article.
@@ -417,10 +444,27 @@ pour garder ou écarter une variable (un simple clic la met en évidence sur les
 graphiques du modèle). « Réajuster avec les variables VIP » refait le modèle avec les
 variables retenues.
 
+Validation croisée
+------------------
+Les observations du modèle sont réparties à tour de rôle en G groupes (7 par défaut : la 1re,
+la 8e, la 15e... dans le groupe 1). Chaque groupe est prédit par un modèle ajusté sans lui,
+comme de nouvelles observations : le centrage, la mise à l'échelle (et le spectre moyen du MSC,
+les termes croisés) sont recalculés sur les autres observations, avec le même nombre de
+composantes. PRESS : la somme des carrés des erreurs de prédiction ; Q2(cum) = 1 - PRESS / SS
+(SS : la variation de Y, ou de X pour une ACP) ; le Q2 d'une composante, 1 - PRESS / PRESS de
+la précédente. ACP : chaque valeur est prédite par les scores de son observation calculés sans
+les variables de son groupe de variables (réparties elles aussi en G groupes). Ce Q2 ne voit
+rien des observations qu'il prédit : avec peu d'observations, il est bien plus bas qu'une
+validation faite avec la mise à l'échelle de toutes les observations (sur du bruit pur, 6
+observations et 20 variables, celle-ci donnait Q2 = 0,98 pour une OPLS-DA ; Nuée donne
+maintenant moins de 0). Le RMSEcv, la CV-ANOVA, le classement en validation croisée et les
+intervalles de confiance (jack-knife, sur les G sous-modèles) en viennent.
+
 Validation (PLS et PLS-DA)
 --------------------------
-Test de permutation : l'ordre du Y est mélangé 20 fois (ou plus) et le modèle réajusté ; les
-ordonnées à l'origine de R2 et Q2 mesurent le surajustement (modèle valide si Q2 < 0,05 et
+Test de permutation : les valeurs du Y (d'une PLS-DA : les classes) sont mélangées entre les
+observations 20 fois (ou plus) et tout le modèle est réajusté, validation croisée comprise ;
+les ordonnées à l'origine de R2 et Q2 mesurent le surajustement (modèle valide si Q2 < 0,05 et
 R2 < 0,3 à 0,4, règle usuelle).
 CV-ANOVA : p du modèle (résidus de validation croisée contre la moyenne) ; aussi dans le Résumé.
 Classification (PLS-DA) : table des observations bien et mal classées, avec les valeurs
@@ -469,21 +513,27 @@ données).
 
 Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 133 projets .usp)
 -------------------------------------------------------------------------------------------
-Mise à l'échelle, R2X, R2Y, Q2 des PLS, scores, loadings, valeurs propres, T2 et sa
-limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.
+Mise à l'échelle, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX
+(normal et pondéré) et DCrit, VIP, coefficients, RMSEE.
 
 Ce qui diffère
 --------------
-- Q2 des ACP : les valeurs enregistrées comportent une étape non publiée ; écart typique
-  0,01 à 0,02, plus grand (vers 0,1) pour les fichiers .usp de version 11. D'autres façons
-  de faire la validation croisée, essayées sur les 149 modèles ACP, s'en écartent davantage.
+- Q2 (et ce qui vient de la validation croisée : Q2 par variable, RMSEcv, CV-ANOVA, classement
+  en validation croisée, intervalles de confiance) : Nuée prédit chaque groupe par un modèle
+  ajusté sans lui, centrage et mise à l'échelle compris (voir « Validation croisée ») ; les
+  valeurs enregistrées viennent d'une validation faite avec la mise à l'échelle de toutes les
+  observations. Écart au Q2(cum) enregistré, en médiane : 0,003 pour les PLS de plus de 200
+  observations, 0,02 de 50 à 200, 0,11 de 20 à 50, 0,27 jusqu'à 20, le Q2 de Nuée étant
+  presque toujours plus bas ; de quelques centièmes pour les ACP. 18 modèles sur 944, dont une
+  variable ne varie presque que sur une observation, perdent bien plus (sans elle, sa mise à
+  l'échelle l'agrandit beaucoup).
 - Signe des composantes de nouveaux modèles : arbitraire (les modèles importés sont
   orientés comme dans le fichier).
 - Dendrogrammes : méthode de Ward exacte ; les fusions du haut de l'arbre peuvent
   différer de celles de l'arbre enregistré.
-- Intervalles de confiance (jack-knife) : proches des valeurs enregistrées, pas identiques.
-- Ajustement automatique des ACP : la limite exacte utilisée dans les fichiers n'est pas
-  publiée.
+- Ajustement automatique : les règles publiées, appliquées au Q2 de Nuée, peuvent choisir un
+  autre nombre de composantes ; pour les ACP, la limite exacte utilisée dans les fichiers
+  n'est pas publiée.
 - Seuil VIP (marche autour de 0,8) : méthode propre à l'application.
 - OPLS / OPLS-DA : pas de modèle enregistré pour comparer (voir plus haut).
 - Transformation proposée : la règle publiée ne dit pas s'il faut l'asymétrie et Min/Max à
@@ -494,7 +544,7 @@ Le code
 Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   pretraitement.R        transformations, centrage, mise à l'échelle
   nipals.R               ACP et PLS (algorithme NIPALS, données manquantes)
-  validation_croisee.R   Q2
+  validation_croisee.R   validation croisée (un sous-modèle sans chaque groupe), Q2
   statistiques.R         T2, DModX, VIP, coefficients, intervalles, limites
   validation.R           permutations, CV-ANOVA, classement PLS-DA et courbes ROC
   opls.R                 OPLS et OPLS-DA

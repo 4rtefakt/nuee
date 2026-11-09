@@ -23,7 +23,7 @@ On Linux, Nuée uses the computer's R.
   installs R and the R packages needed. Nuée appears in the applications menu.
 - Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
   Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
-  install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl")).
+  install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign")).
 .usp projects need python3. For another R than the PATH's: start Nuée with
 RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
 
@@ -44,6 +44,12 @@ File › Open (Ctrl+O):
     the models. The remaining text columns, R factors and labelled SPSS or Stata variables are
     qualitative variables (in the order of their categories). For a workbook with several
     sheets, or an R file with several tables, the application asks which one to open.
+    A column of measurements with a few text cells (<0.5, <LOD, nd, n.d., #N/A...) stays a
+    quantitative variable: those cells are read as missing, and the status bar says how many,
+    in which variables (and which are below the detection limit). Excel dates and times stay
+    dates (2024-05-03). A text file with a line holding more values than the header is refused,
+    with the line number, rather than shifting the columns. An R file must hold tables; any
+    other object is refused.
 File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).
@@ -64,9 +70,17 @@ File › Save project (Ctrl+S) writes the project (.nuee) with its data, its mod
 session: fitted models, open panels and their layout, plot settings (axes, colours, labels,
 titles), selections, VIP choices, dendrogram groups. When the project is opened again, the
 models are refitted and everything comes back in place.
+The project is written to a file next to the old one, which then takes its place: a network
+cut or a full disk during the save leaves the old file intact. If the file was changed
+elsewhere since you opened or saved it (a colleague, on a shared folder; another window), Nuée
+says so and offers Save as..., Overwrite or Cancel. The file also records which versions of
+Nuée and R wrote it; a project saved by a newer Nuée is pointed out when it opens.
+Opening a file that is already open (a recent file, a double-click in Explorer) shows the open
+project instead of opening a second copy.
 Closing the application with unsaved changes offers "Save and close". Every two minutes it
 also keeps a recovery copy of unsaved projects: if it stops without being closed (crash,
-power cut), it offers to recover them at the next start.
+power cut), it offers to recover them at the next start. Closing that question without an
+answer keeps the copies for next time; only "Ignore" deletes them.
 Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
 variable, class, scores as variables, deleted definition...), up to 20 steps back.
 Notes: each model's summary has a notes area, saved with the project and included in the
@@ -78,7 +92,9 @@ If the R engine stops
 ---------------------
 The application says so and offers to restart it; you can also do it yourself (Help ›
 Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
-views; changes made since the last recovery copy (two minutes at most) are lost. After a
+views, from their recovery copy if they had changes, otherwise from the file they save to;
+changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when
+the engine no longer answers keeps the recovery copies, offered at the next start. After a
 minute of computing, the status bar says so.
 Help › What's new: the changes in each version (shown once after an update). The installed
 copy (Nuee-Setup, or the Linux packages) looks for a new version at start-up (a single request
@@ -97,7 +113,8 @@ Projects, data, models imported from a .usp file, fitted models and their views.
 Double-click: open. Right-click: every action (fit, edit, add or remove a component,
 export, delete...). Double-clicking an imported model refits it in R; the Summary marks each
 value: "=" the same as the value stored in the file, "≈" close (less than 0.01), "≠"
-different.
+different. Q2 nearly always differs: Nuée doesn't cross-validate the way the software that
+wrote the file did (see "What differs").
 
 Menus and toolbar
 -----------------
@@ -238,8 +255,9 @@ three steps, in order:
              is treated on its own: a window never reaches across a range left out.
 The wavelength (for Detrend and Baseline) is the number read in the variables' names when
 each has one, all different; otherwise their place in the table.
-For spectra, one often centres without scaling ("Centring only" scaling). The preprocessing is
-done once, before cross-validation. Plots › Profiles (spectra): loadings, coefficients, VIP,
+For spectra, one often centres without scaling ("Centring only" scaling). Only MSC depends on
+the other observations (the mean spectrum): in cross-validation, each group is corrected with
+the mean spectrum of the other observations. Plots › Profiles (spectra): loadings, coefficients, VIP,
 or the spectra themselves (before or after preprocessing) as lines; the horizontal axis is the
 number read in the variables' names ("1450 nm") when each has one; the lines break where
 variables are out of the model. A click on a spectrum selects its observation.
@@ -248,9 +266,10 @@ orange); "New model without these ranges" (the water bands, for example) or "New
 these ranges only" opens New model with the model's settings and those X variables, to check
 before fitting. The model's other X variables (qualitative) stay.
 Plots › iPLS (spectrum intervals), for a model with Y: the spectrum (the model's quantitative
-X variables, in their order) is preprocessed once, whole, as for the model, then cut into n
-intervals of the same width; each one is a PLS on its range (with the model's scaling and its
-other X variables), with 1 to A components. A bar per interval gives its smallest RMSEcv (in
+X variables, in their order) is preprocessed once, whole, as for the model (with MSC, also
+for each cross-validation group, with the mean spectrum of the other observations), then cut
+into n intervals of the same width; each one is a PLS on its range (with the model's scaling
+and its other X variables), with 1 to A components. A bar per interval gives its smallest RMSEcv (in
 the units of Y, as in the summary), with that number of components written on it; in green,
 the intervals that predict better than the whole spectrum (red dashes); the grey line is the
 mean spectrum after preprocessing. Click bars to choose intervals, then "New model with these
@@ -261,16 +280,17 @@ SNV, MSC, detrend or baseline, its RMSEcv can differ from the bar's. Method: Nø
 Export to R (script, R Markdown, Quarto)
 ----------------------------------------
 File › Export to R: a file that refits the model without Nuée, with R alone, to send to a
-colleague or attach to a paper. It holds, in order:
-  1. the checks: the R version (4.0 or later; a message if it is older than the
-     application's) and the packages needed (none for a model: R is enough; if some are
-     missing, the script offers to install them);
-  2. the code of the engine functions the model needs, copied as is with its comments
-     (GPL-3.0 licence);
-  3. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
+colleague or attach to a paper. The calculation is written for that model alone, in plain R
+with no package, commented in the export's language, in four parts:
+  1. the functions: the NIPALS algorithm, the cross-validation, and only what this model
+     uses (missing values, spectral preprocessing, OPLS...);
+  2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
      written without loss and categories in their order;
-  4. the model: definir_modele() with the variables named (or, for an imported model that
-     definir_modele() can't describe, the list of its terms), ajuster(), then its results.
+  3. the model: its X and Y terms (transformations, categories, cross terms), their
+     scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients,
+     CV-ANOVA, classification for a PLS-DA, test set;
+  4. the results: the tables, the permutation test (commented out) and the plots (scores,
+     loadings, VIP, observed / fitted, T2 and DModX).
 Format: R script (.R); or an R Markdown (.Rmd) or Quarto (.qmd) report, which adds the
 Methods text, tables and plots (scores, loadings, VIP, observed / predicted, T2, DModX) and
 the references; it compiles in RStudio (Knit button) or with quarto render, and needs the
@@ -278,7 +298,7 @@ knitr package. Extra files, as you choose: renv.lock (versions of R and packages
 renv::restore()), the data and fitted model as .RData (load() gives them back without
 refitting), an RStudio project (.Rproj, best in a folder of its own).
 Models: this one, or all the models of the session (the latest fit of each) in one .R
-script: the data and the engine's code once, then a block per model under its name (M1,
+script: the functions and the data once, then a block per model under its name (M1,
 M2...).
 Before writing, the application refits the script's models and checks they give the same
 results; otherwise it says so.
@@ -295,12 +315,18 @@ R console
 View › R console (Ctrl+J): a panel below the tabs, with
   - the log: for each action of the application, the call it made to the engine, written in
     R (P1 <- lire_projet(...), d <- modele_du_projet(P1, 5), M4 <- ajuster(P1, d)...), to copy
-    into a script (Copy button); the "Application actions" box hides or shows them;
+    into a script (Copy button), and for each fitted model what R prints of it (components,
+    Y, limits, variables, observations; print(M4) does the same); the "Application actions"
+    box hides or shows them;
   - a prompt to type R, run in the application's R session. m is the model shown, p its
     project; P1, M4... the open projects and models, by their names in the log. For example:
     m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (the plot shows in
     the console), modeles(), projets(), definition("M4").
     Enter runs the command, Shift+Enter starts a new line, ↑ and ↓ recall commands.
+    Tab completes the name begun: objects, m$... and p$... (the names they hold), the
+    arguments of the function whose parenthesis is open; when several fit, a list opens
+    (arrows, then Tab or Enter). The application's shortcuts (Ctrl+S, Ctrl+K...) also work
+    while typing.
 Changing a project in the console (p$donnees[...] <- ...) changes it in the application.
 Correcting the engine: dossier_moteur() gives the folder of the application's R files; after
 a correction, recharger_moteur() reads them again, then refit the model. For the copy started
@@ -311,7 +337,8 @@ A long command blocks the application until the computation ends.
 Checking the engine: verifier_moteur() refits the imported models of the open projects and
 compares them with the values stored in their files (R2X, R2Y, Q2); verifier_moteur("folder")
 does the same for the .usp and .json files of a folder. To do after a correction of the
-engine. PCA Q2 is left out of the verdict (a known difference, see "What differs").
+engine. Q2 is shown but left out of the verdict: Nuée's cross-validation isn't the files' (see
+"What differs").
 
 Model report
 ------------
@@ -380,7 +407,7 @@ are those of a PLS with the same number of components. With several Y (or more t
 classes), each orthogonal weight is made orthogonal to the weights X'y of every column of Y,
 so the orthogonal components are not related to Y at all (since 0.9.0; version 0.8.0 left a
 slight link: the OPLS models with several predictive components it made change a little when
-refitted). Q2 by full cross-validation (the whole model is refitted without each group). None
+refitted). Q2 by cross-validation, as for the other models (see below). None
 of the .usp projects available had an OPLS model: this computation follows Trygg and Wold's
 paper (2002), with no stored values to compare with; it is checked against a second writing
 of the paper's algorithm.
@@ -392,9 +419,25 @@ can type another cut-off or drag the red line, and Ctrl+click a bar to keep or d
 variable (a plain click highlights it on the model's other plots).
 "Refit with VIP variables" makes the model again with the variables kept.
 
+Cross-validation
+----------------
+The model's observations are assigned in turn to G groups (7 by default: the 1st, 8th,
+15th... in group 1). Each group is predicted by a model fitted without it, like new
+observations: the centring, the scaling (and MSC's mean spectrum, the cross terms) are
+computed again on the other observations, with the same number of components. PRESS: the sum
+of squared prediction errors; Q2(cum) = 1 - PRESS / SS (SS: the variation of Y, or of X for a
+PCA); a component's Q2, 1 - PRESS / PRESS of the previous one. PCA: each value is predicted by
+the scores of its observation computed without the variables of its group of variables (also
+assigned to G groups). This Q2 sees nothing of the observations it predicts: with few
+observations, it is much lower than a validation done with the scaling of all the
+observations (on pure noise, 6 observations and 20 variables, the latter gave Q2 = 0.98 for an
+OPLS-DA; Nuée now gives less than 0). RMSEcv, CV-ANOVA, the cross-validated classification and
+the confidence intervals (jack-knife, over the G sub-models) come from it.
+
 Validation (PLS and PLS-DA)
 ---------------------------
-Permutation test: the order of Y is shuffled 20 times (or more) and the model refitted; the
+Permutation test: the values of Y (for a PLS-DA, the classes) are shuffled among the
+observations 20 times (or more) and the whole model refitted, cross-validation included; the
 intercepts of R2 and Q2 measure overfitting (a valid model if Q2 < 0.05 and R2 < 0.3 to 0.4,
 the usual rule).
 CV-ANOVA: the model's p (cross-validation residuals against the mean); also in the Summary.
@@ -442,20 +485,25 @@ into a report of a problem (github.com/4rtefakt/nuee/issues; no paths, no data).
 
 What matches the stored values (checked on 944 models from 133 .usp projects)
 -----------------------------------------------------------------------------
-Scaling, R2X, R2Y, PLS Q2, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and
-weighted) and DCrit, VIP, coefficients, RMSEE.
+Scaling, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted)
+and DCrit, VIP, coefficients, RMSEE.
 
 What differs
 ------------
-- PCA Q2: the stored values include an unpublished step; typical difference 0.01 to 0.02,
-  larger (about 0.1) for version 11 .usp files. Other ways of doing the cross-validation,
-  tried on the 149 PCA models, are further off.
+- Q2 (and what comes from the cross-validation: Q2 per variable, RMSEcv, CV-ANOVA, the
+  cross-validated classification, confidence intervals): Nuée predicts each group by a model
+  fitted without it, centring and scaling included (see "Cross-validation"); the stored values
+  come from a validation done with the scaling of all the observations. Median difference from
+  the stored Q2(cum): 0.003 for PLS models with over 200 observations, 0.02 from 50 to 200,
+  0.11 from 20 to 50, 0.27 up to 20, Nuée's Q2 being nearly always lower; a few hundredths for
+  PCA. 18 models out of 944, with a variable that varies on almost one observation only, lose
+  much more (without it, its scaling enlarges it a lot).
 - Sign of the components of new models: arbitrary (imported models are oriented as in the
   file).
 - Dendrograms: exact Ward method; the merges at the top of the tree may differ from those of
   the stored tree.
-- Confidence intervals (jack-knife): close to the stored values, not identical.
-- Automatic fitting of PCA: the exact limit used in the files isn't published.
+- Automatic fitting: the published rules, applied to Nuée's Q2, may choose another number of
+  components; for PCA, the exact limit used in the files isn't published.
 - VIP cut-off (step around 0.8): the application's own method.
 - OPLS / OPLS-DA: no stored model to compare with (see above).
 - Suggested transformation: the published rule doesn't say whether both skewness and Min/Max
@@ -466,7 +514,7 @@ The code
 Every computation is in resources\moteur\R (R, commented in French):
   pretraitement.R        transformations, centring, scaling
   nipals.R               PCA and PLS (NIPALS algorithm, missing data)
-  validation_croisee.R   Q2
+  validation_croisee.R   cross-validation (a sub-model without each group), Q2
   statistiques.R         T2, DModX, VIP, coefficients, intervals, limits
   validation.R           permutations, CV-ANOVA, PLS-DA classification and ROC curves
   opls.R                 OPLS and OPLS-DA

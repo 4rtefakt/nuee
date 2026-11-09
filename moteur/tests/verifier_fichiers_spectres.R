@@ -1,7 +1,9 @@
 # Vérifie la lecture des fichiers de spectres (moteur/R/fichiers_spectres.R) sur de petits
 # fichiers inventés : JCAMP-DX dans chaque écriture (AFFN, PAC, SQZ, DIF/DUP), avec plusieurs
 # blocs ; SPC nouveau et ancien format (un ou plusieurs sous-fichiers, entiers ou réels,
-# abscisses données) ; texte. Puis le tableau des spectres et les informations jointes.
+# abscisses données) ; texte. Des fichiers abîmés : chacun refusé en moins d'une seconde, sans
+# prendre de mémoire, par un message qui le nomme. Puis le tableau des spectres et les
+# informations jointes.
 # La lecture a été comparée par ailleurs aux fichiers d'essai officiels de JCAMP-DX et aux
 # fichiers d'exemple SPC (docs/developpement.md).
 #   Rscript moteur/tests/verifier_fichiers_spectres.R
@@ -100,6 +102,46 @@ s <- lire_spectres(fichier("appareil.txt", c("Appareil : NIR-1", "Date : 2026-11
 verifier("les lignes de l'appareil avant les nombres sont ignorées", length(s) == 1 && proche(s[[1]]$x, c(1100, 1102)) && proche(s[[1]]$y, c(0.5, 0.52)))
 s <- lire_spectres(fichier("espaces.dat", c("  400   1.5e-1", "  401   2.5E-1")))
 verifier("séparés par des espaces, en notation scientifique", proche(s[[1]]$y, c(0.15, 0.25)))
+
+cat("Fichiers abîmés\n")
+# le temps (s) et la mémoire prise au plus fort (Mo, en plus de celle déjà prise) d'une lecture
+mesure <- function(expr) {
+  avant <- sum(gc(reset = TRUE)[, 2])
+  temps <- system.time(r <- tryCatch(expr, error = conditionMessage))[["elapsed"]]
+  g <- gc()
+  list(r = r, temps = temps, memoire = sum(g[, ncol(g)]) - avant)
+}
+# refusé en moins d'une seconde, avec moins de 50 Mo, par un message qui nomme le fichier
+refuse <- function(f, motif) {
+  m <- mesure(lire_spectres(f))
+  ok <- is.character(m$r) && grepl(motif, m$r) && grepl(basename(f), m$r, fixed = TRUE) && m$temps < 1 && m$memoire < 50
+  if (!ok) cat(sprintf("          %s (%.2f s, %.0f Mo)\n", if (is.character(m$r)) m$r else "lu sans erreur", m$temps, m$memoire))
+  ok
+}
+jdx_xy <- function(nom, npoints, donnees) fichier(nom, c("##TITLE= x", "##JCAMP-DX= 4.24", "##FIRSTX= 400", "##LASTX= 401",
+                                                        if (length(npoints)) paste("##NPOINTS=", npoints), "##XYDATA= (X++(Y..Y))", donnees, "##END="))
+# « s999999 » : la valeur répétée 9999999 fois en tout
+verifier("JCAMP-DX : une répétition (DUP) de près de 10 millions de valeurs pour NPOINTS = 2 s'arrête à NPOINTS",
+         refuse(jdx_xy("dup.jdx", 2, "400 A1 s999999"), "plus de valeurs que NPOINTS = 2"))
+verifier("JCAMP-DX sans NPOINTS : la même répétition dépasse le million de valeurs permis à un petit fichier",
+         refuse(jdx_xy("sans_npoints.jdx", NULL, "400 A1 s999999"), "trop pour la taille du fichier"))
+m <- mesure(lire_jcamp(jdx_xy("longue.jdx", 20001, paste0("400 A1", strrep("J", 20000)))))
+verifier("JCAMP-DX : une ligne de 20000 écarts (DIF) se lit en un temps proportionnel à sa longueur",
+         !is.character(m$r) && proche(m$r[[1]]$y, 11:20011) && m$temps < 1 && m$memoire < 50)
+verifier("SPC : 10 millions de points annoncés dans un fichier de 512 octets",
+         refuse(spc("npts.spc", entete_spc(0, -128, 1e7, 400, 2500)), "tronqué ou abîmé"))
+verifier("SPC : 100000 sous-fichiers annoncés, aucun dans le fichier (sans boucler)",
+         refuse(spc("nsub.spc", entete_spc(4, -128, 1, 400, 2500, nsub = 100000)), "tronqué ou abîmé"))
+verifier("SPC : un sous-fichier à ses propres abscisses en annonce 5 millions",
+         refuse(spc("sous.spc", entete_spc(128 + 64 + 4, -128, 0, 1, 9, nsub = 1), sous_entete(-128, 5e6), octets(1:4, 4, FALSE)), "tronqué ou abîmé"))
+verifier("SPC ancien format : 10 millions de points annoncés",
+         refuse(spc("ancien_npts.spc", { o <- ancien; o[5:8] <- octets(1e7, 4, FALSE); o }), "tronqué ou abîmé"))
+verifier("texte : une première ligne de 4000 nombres puis 4000 lignes de 2 (une matrice presque vide)",
+         refuse(fichier("inegal.txt", c(paste(1:4000, collapse = " "), rep("1 2", 4000))), "longueurs trop différentes"))
+verifier("un spectre d'un seul point : un message qui nomme le fichier",
+         refuse(fichier("un_point.jdx", c("##TITLE= x", "##JCAMP-DX= 4.24", "##XYDATA= (XY..XY)", "400, 0.5", "##END=")), "moins de deux valeurs"))
+verifier("NPOINTS qui n'est pas un nombre (« trois ») : un message qui nomme le fichier",
+         refuse(jdx_xy("trois.jdx", "trois", "400 1 2"), "NPOINTS n'est pas un nombre entier"))
 
 cat("Tableau des spectres\n")
 a <- list(nom = "a", x = c(400, 402, 404), y = c(1, 2, 3), unite_x = "NANOMETERS", unite_y = "")

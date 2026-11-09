@@ -1,31 +1,34 @@
 # Outils de validation des modèles PLS : test de permutation, CV-ANOVA, et pour les PLS-DA
 # la table de classification et les courbes ROC.
 
-# Test de permutation. L'ordre de la variable Y choisie est permuté au hasard
-# n fois ; chaque fois un modèle est réajusté avec le même nombre de composantes. Pour chaque
-# modèle : la corrélation entre le Y d'origine et le Y permuté, et le R2 et le Q2 cumulés de
-# ce Y. Les droites de régression de R2 et de Q2 en fonction de la corrélation coupent l'axe
-# en 0 : ces ordonnées à l'origine mesurent le surajustement (règle usuelle : Q2 < 0,05 et
-# R2 < 0,3 à 0,4 pour un modèle valide).
-permutations <- function(m, y = 1, n = 20, graine = 1) {
-  X <- list(E = m$X, M = m$MX)
-  Y <- list(E = m$Y, M = m$MY)
+# Test de permutation. Les valeurs de la variable du Y numéro y (pour une PLS-DA, les classes :
+# toutes les indicatrices ensemble) sont permutées au hasard entre les observations du modèle, n
+# fois ; chaque fois tout le modèle est réajusté à partir du projet (mise à l'échelle et
+# validation croisée comprises), avec le même nombre de composantes. Pour chaque modèle : la
+# corrélation entre le Y d'origine et le Y permuté, et le R2 et le Q2 cumulés de ce Y. Les
+# droites de régression de R2 et de Q2 en fonction de la corrélation coupent l'axe en 0 : ces
+# ordonnées à l'origine mesurent le surajustement (règle usuelle : Q2 < 0,05 et R2 < 0,3 à 0,4
+# pour un modèle valide). `m` : le modèle ajusté de `projet` d'après `definition`.
+permutations <- function(projet, m, definition, y = 1, n = 20, graine = 1) {
   A <- m$A
-  mesure <- function(Yp) {
-    r <- if (isTRUE(m$opls)) ajuster_opls(X, Yp, A - (m$Ap %||% 1), m$G, m$Ap %||% 1) else ajuster_matrices(X, Yp, A, m$G)
-    c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$ssyv[y, 1]), Q2 = 1 - prod(r$press[, y] / r$ss_vc[, y]))
-  }
-  present <- Y$M[, y] == 1
+  d <- definition
+  d$test <- NULL  # (le jeu de test ne change ni R2 ni Q2)
+  mesure <- function(r) c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$ssyv[y, 1]), Q2 = 1 - unname(r$press[A, y] / r$ss_vc[1, y]))
+  lignes_y <- match(as.character(m$observations), rownames(projet$donnees))
+  # (une PLS-DA d'un fichier .usp a une variable 0/1 par classe, celle de l'application une variable de classe)
+  variables <- unique(vapply(if (m$plsda) d$y else d$y[y], function(t) as.character(t$variables[1]), ""))
+  valeurs <- projet$donnees[lignes_y, variables, drop = FALSE]
+  present <- m$MY[, y] == 1
   set.seed(graine)
-  lignes <- list(c(correlation = 1, mesure(Y)))
+  lignes <- list(c(correlation = 1, mesure(m)))
   for (i in seq_len(n)) {
-    ordre <- sample(nrow(Y$E))
-    Yp <- Y
-    Yp$E[, y] <- Y$E[ordre, y]
-    Yp$M[, y] <- Y$M[ordre, y]
-    deux <- present & Yp$M[, y] == 1
-    r <- suppressWarnings(stats::cor(Y$E[deux, y], Yp$E[deux, y]))
-    lignes[[i + 1]] <- c(correlation = abs(r), mesure(Yp))
+    ordre <- sample(length(lignes_y))
+    pp <- projet
+    pp$donnees[lignes_y, variables] <- valeurs[ordre, , drop = FALSE]
+    r <- calculer_modele(pp, d, A, m$G)
+    deux <- present & r$MY[, y] == 1
+    corr <- suppressWarnings(stats::cor(m$Y[deux, y], r$Y[deux, y]))
+    lignes[[i + 1]] <- c(correlation = abs(corr), mesure(r))
   }
   tab <- as.data.frame(do.call(rbind, lignes))
   tab$origine <- c(TRUE, rep(FALSE, n))
@@ -37,8 +40,8 @@ permutations <- function(m, y = 1, n = 20, graine = 1) {
 }
 
 # CV-ANOVA (Eriksson, Trygg et Wold 2008) : compare les résidus de validation
-# croisée du modèle (Y prédit par les tours de validation croisée) à la variation autour de
-# la moyenne, par une ANOVA. Un tableau par variable Y :
+# croisée du modèle (Y prédit par les sous-modèles de la validation croisée) à la variation autour
+# de la moyenne, par une ANOVA. Un tableau par variable Y :
 #   Total corr. : SS = somme (y - moyenne)^2, DF = N - 1
 #   Régression  : SS = SS total - SS résidus, DF = 2A (convention de l'article : chaque
 #                 composante coûte deux degrés de liberté)

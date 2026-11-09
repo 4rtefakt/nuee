@@ -6,7 +6,8 @@
 # est ajustée en PLS (pour un Y, elle le prédit de la même façon au même nombre de composantes).
 # Pour chaque intervalle : ses termes et leurs variables, son RMSEcv pour 1, 2... composantes
 # et le nombre qui le rend le plus petit ; de même pour le spectre entier (`complet`, qui
-# redonne le modèle).
+# redonne le modèle). Avec un MSC, chaque sous-modèle de la validation croisée a son spectre
+# prétraité à part, avec le spectre moyen de ses seules observations (validation_croisee.R).
 pls_par_intervalles <- function(projet, d, n = 20, A = d$A) {
   if (identical(d$type, "PCA")) stop(traduire("L'iPLS demande un modèle avec Y (PLS, PLS-DA, OPLS).", "iPLS needs a model with Y (PLS, PLS-DA, OPLS)."))
   spectre <- which(vapply(d$x, function(t) length(t$variables) == 1 && categorie(t) == 0, TRUE))
@@ -16,14 +17,32 @@ pls_par_intervalles <- function(projet, d, n = 20, A = d$A) {
   A <- max(1L, as.integer(A))
 
   # le projet où le spectre des observations du modèle est déjà prétraité (transformation
-  # comprise) : ses termes n'ont plus ni transformation ni prétraitement
+  # comprise) : ses termes n'ont plus ni transformation ni prétraitement. Avec un MSC, le même
+  # pour chaque groupe de la validation croisée : le spectre moyen de référence y est celui des
+  # observations des autres groupes, qui ajustent le sous-modèle (les autres étapes ne regardent
+  # que chaque spectre : elles donnent les mêmes valeurs à chaque groupe).
   s <- spectres_modele(projet, d)
-  pp <- projet
-  lignes <- match(as.character(d$observations), rownames(pp$donnees))
-  for (k in seq_along(spectre)) {
-    pp$donnees[lignes, as.character(d$x[[spectre[k]]]$variables[1])] <- s$pretraites[, k]
-    d$x[[spectre[k]]]$transform <- NULL
+  lignes <- match(as.character(d$observations), rownames(projet$donnees))
+  colonnes <- vapply(d$x[spectre], function(t) as.character(t$variables[1]), "")
+  avec_spectre <- function(valeurs) {
+    q <- projet
+    q$donnees[lignes, colonnes] <- valeurs
+    q
   }
+  pp <- avec_spectre(s$pretraites)
+  projets <- if ("msc" %in% vapply(d$spectres, `[[`, "", "type")) {
+    groupes <- groupes_validation(length(d$observations), d$cv_groups %||% 7)
+    positions <- positions_termes(projet, d$x[spectre])
+    lapply(sort(unique(groupes)), function(g) {
+      hors <- groupes == g
+      v <- s$pretraites
+      apprentissage <- pretraiter_spectres(s$bruts[!hors, , drop = FALSE], d$spectres, positions = positions)
+      v[!hors, ] <- apprentissage$X
+      v[hors, ] <- pretraiter_spectres(s$bruts[hors, , drop = FALSE], d$spectres, apprentissage$reference, positions)$X
+      avec_spectre(v)
+    })
+  }
+  for (k in spectre) d$x[[k]]$transform <- NULL
   d$spectres <- NULL
   d$test <- NULL
   d$opls <- FALSE
@@ -35,7 +54,7 @@ pls_par_intervalles <- function(projet, d, n = 20, A = d$A) {
     dz$x <- d$x[sort(termes)]
     for (a in rev(seq_len(min(A, length(termes))))) {
       dz$A <- a
-      m <- tryCatch(ajuster(pp, dz), error = function(e) NULL)
+      m <- tryCatch(calculer_modele(pp, dz, projets_vc = projets), error = function(e) NULL)
       if (!is.null(m)) return(rmsecv_composantes(m))
     }
     NA_real_
@@ -55,7 +74,6 @@ pls_par_intervalles <- function(projet, d, n = 20, A = d$A) {
 # RMSEcv du modèle `m` pour 1, 2... m$A composantes, en moyenne sur ses Y : la même formule
 # que celui du résumé (statistiques.R), qu'il redonne pour m$A composantes.
 rmsecv_composantes <- function(m) {
-  cumuls <- Reduce(`+`, lapply(m$vc, function(v) v$prediction), accumulate = TRUE)
-  vapply(cumuls, function(pred) mean(vapply(seq_len(ncol(m$Y)), function(j)
+  vapply(m$vc$predictions, function(pred) mean(vapply(seq_len(ncol(m$Y)), function(j)
     sqrt(mean(ifelse(m$MY[, j] == 1, (m$Y[, j] - pred[, j]) / m$y$poids[j], NA)^2, na.rm = TRUE)), 0)), 0)
 }

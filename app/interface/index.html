@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- only the application's own scripts run: no script written into a page by data from a file
+       ('unsafe-eval': Plotly's WebGL plots build their drawing code as they go) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Nuée</title>
   <link rel="icon" href="nuee.svg">
   <link rel="stylesheet" href="style.css">
@@ -15,6 +18,7 @@
     <div id="barre-outils" role="toolbar"></div>
     <main id="dock"></main>
     <footer id="statut"></footer>
+    <div id="annonce" class="lecteur-seul" role="status" aria-live="polite"></div>
   </div>
   <div id="seul"><div id="tete-seul"></div></div>
   <script type="module" src="app.js"></script>

@@ -1,5 +1,8 @@
 # Réajuste tous les modèles des projets exportés et compare avec les résultats enregistrés.
 #   Rscript moteur/tests/verifier_references.R <dossier des .json> <fichier .csv de résultats> [coeurs]
+# Le Q2 est donné à part, hors de la comparaison : la validation croisée de Nuée (chaque groupe
+# prédit par un modèle ajusté sans lui, mise à l'échelle comprise) n'est pas celle qui a écrit les
+# fichiers.
 
 args <- commandArgs(trailingOnly = TRUE)
 dossier <- args[1]
@@ -134,10 +137,20 @@ for (typ in c("PCA", "PLS")) {
   for (manq in c(FALSE, TRUE)) {
     s <- res[ok & res$type == typ & (res$manquantes > 0) == manq, ]
     if (!nrow(s)) next
-    cat(sprintf("%s %s (%d) : données %d, R2X %d, R2Y %d, Q2 %d, T %d, P %d (écart < 1e-4) ; signes de T identiques %d\n",
+    cat(sprintf("%s %s (%d) : données %d, R2X %d, R2Y %d, T %d, P %d (écart < 1e-4) ; signes de T identiques %d\n",
                 typ, if (manq) "avec manquantes" else "complets", nrow(s), seuil(s$donnees, 1e-4),
-                seuil(s$R2X, 1e-4), seuil(s$R2Y, 1e-4), seuil(s$Q2, 1e-4), seuil(s$T, 1e-4), seuil(s$P, 1e-4),
+                seuil(s$R2X, 1e-4), seuil(s$R2Y, 1e-4), seuil(s$T, 1e-4), seuil(s$P, 1e-4),
                 sum(s$signeT %in% TRUE)))
+  }
+}
+cat("\nQ2, hors de la comparaison (écart absolu au Q2 du fichier, plus grand sur les composantes : médiane / 90e centile) :\n")
+for (typ in c("PCA", "PLS")) {
+  for (manq in c(FALSE, TRUE)) {
+    s <- res[ok & res$type == typ & (res$manquantes > 0) == manq, ]
+    if (!nrow(s)) next
+    q <- function(x) stats::quantile(x, c(0.5, 0.9), na.rm = TRUE, names = FALSE)
+    cat(sprintf("  %s %-16s Q2 %.3f / %.3f, Q2(cum) %.3f / %.3f\n", typ, if (manq) "avec manquantes" else "complets",
+                q(s$Q2)[1], q(s$Q2)[2], q(s$Q2cum)[1], q(s$Q2cum)[2]))
   }
 }
 cat("\nStatistiques dérivées (écart relatif < 1e-3 / comparés) :\n")

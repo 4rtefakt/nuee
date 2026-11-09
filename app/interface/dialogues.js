@@ -234,8 +234,26 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
       exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
       A: st.auto ? 0 : st.A, G: st.G, nom: st.nom, titre: st.titre };
-    verifierPuisAjuster(q);
-    return false;  // the dialog closes once the data check is done
+    if (!enCours) verifierPuisAjuster(q);
+    return false;  // the dialog closes once the model is fitted
+  }
+
+  // The fit runs with the dialog open: it closes once the model is there; an error ("Component 3
+  // isn't possible…") shows in it, with every setting kept. A second click on Fit does nothing.
+  let enCours = false;
+  async function ajusterPuisFermer(q) {
+    enCours = true;
+    erreur.textContent = '';
+    alerte.replaceChildren(el('p', { class: 'infos' }, t('calcul')));
+    try {
+      await app.ajusterDefinition(q);
+      d.fermer();
+    } catch (e) {
+      alerte.replaceChildren();
+      erreur.textContent = e.message;
+    } finally {
+      enCours = false;
+    }
   }
 
   // Checks before fitting: variables or observations with more than 50 % missing
@@ -244,19 +262,20 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     erreur.textContent = '';
     alerte.replaceChildren(el('p', { class: 'infos' }, t('calcul')));
     let v;
+    enCours = true;
     try {
       v = await app.verifier(q);
     } catch (e) {
       alerte.replaceChildren();
       erreur.textContent = e.message;
       return;
+    } finally {
+      enCours = false;
     }
     const vars = v.variables && v.variables.uid ? v.variables.uid.map((u, i) => ({ uid: u, nom: v.variables.nom[i], manque: v.variables.manquantes[i], constante: v.variables.constante[i] })) : [];
     const obs = v.observations && v.observations.uid ? v.observations.uid.map((u, i) => ({ uid: u, nom: v.observations.nom[i], manque: v.observations.manquantes[i] })) : [];
     if (!vars.length && !obs.length) {
-      alerte.replaceChildren();
-      d.fermer();
-      app.ajusterDefinition(q);
+      await ajusterPuisFermer(q);
       return;
     }
     const pct = (x) => t('manquantes_pct', { p: Math.round(100 * x) });
@@ -273,7 +292,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           rendre();
           valider();
         } }, t('verif_exclure')),
-        el('button', { onclick: () => { alerte.replaceChildren(); d.fermer(); app.ajusterDefinition(q); } }, t('verif_garder')))));
+        el('button', { onclick: () => { if (!enCours) ajusterPuisFermer(q); } }, t('verif_garder')))));
   }
 
   rendre();
@@ -311,7 +330,7 @@ const AIDE = {
       ['Prédire un fichier', 'Prédiction › Prédire un fichier : un tableau (CSV, Excel, R, SPSS…) dont les colonnes portent les noms des variables du modèle. Les observations hors du domaine du modèle sont signalées ; le résultat s’exporte dans tous les formats d’export.'],
       ['Modèles hiérarchiques', 'Modèle › Scores en variables : les scores d’un modèle deviennent des variables ($M1.t1…) utilisables comme X d’un autre modèle. Après avoir modifié le modèle de base, refaire cette étape puis réajuster le modèle supérieur.'],
       ['Exporter', 'Fichier › Exporter les données : le tableau du projet ; Fichier › Exporter les résultats du modèle (Ctrl+E) : scores, T2, DModX, loadings, VIP, coefficients… Formats : Excel, CSV, texte, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Les qualitatives restent qualitatives ; pour SPSS, Stata et SAS, les noms de variables sont rendus valides et le nom d’origine devient l’étiquette.'],
-      ['Exporter vers R', 'Fichier › Exporter vers R : un script, ou un rapport R Markdown ou Quarto, qui refait le modèle sans Nuée, avec R seul. Il contient le code des fonctions du moteur dont le modèle a besoin (commenté), les données (ou un CSV à côté) et le modèle, et vérifie la version de R et les paquets. Le rapport ajoute le texte des méthodes, des tableaux, des graphiques et les références ; il se compile dans RStudio (Knit) ou avec Quarto. En plus, au choix : renv.lock, données et modèle en .RData, projet RStudio. Toute la séance peut aussi aller dans un seul script .R.'],
+      ['Exporter vers R', 'Fichier › Exporter vers R : un script, ou un rapport R Markdown ou Quarto, qui refait le modèle sans Nuée, avec R seul (sans paquet). Le calcul y est écrit pour ce modèle seul et commenté : mise à l’échelle, NIPALS, validation croisée, statistiques, graphiques ; les données sont dans le script ou dans un CSV à côté. Le rapport ajoute le texte des méthodes, des tableaux, des graphiques et les références ; il se compile dans RStudio (Knit) ou avec Quarto. En plus, au choix : renv.lock, données et modèle en .RData, projet RStudio. Toute la séance peut aussi aller dans un seul script .R.'],
       ['Texte des méthodes', 'Modèle › Texte pour la section Méthodes : un paragraphe écrit d’après le modèle (données, prétraitement, méthode, validation croisée, R², Q², logiciel), en français ou en anglais, avec ses références. À relire et compléter avant de le publier.'],
       ['Rapport', 'Fichier › Rapport du modèle : un PDF ou un document Word avec les parties choisies ; les graphiques y sont mis en forme comme dans leurs panneaux.'],
       ['Console R', 'Affichage › Console R (Ctrl+J) : le code R de chaque action, et une invite R dans la session de l’application (m = modèle affiché, p = son projet). recharger_moteur() relit les fichiers du moteur après une correction.'],
@@ -329,12 +348,12 @@ const AIDE = {
       ['Code', `Tous les calculs sont en R, commentés en français, dans ${MOTEUR}.`],
     ],
     differences: [
-      ['Identique aux valeurs enregistrées', 'Vérifié sur 944 modèles de 133 projets .usp : mise à l’échelle, R2X, R2Y, Q2 des PLS, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.'],
-      ['Q2 des ACP', 'Les valeurs enregistrées viennent d’une étape non publiée ; l’écart typique est de 0,01.'],
+      ['Identique aux valeurs enregistrées', 'Vérifié sur 944 modèles de 133 projets .usp : mise à l’échelle, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.'],
+      ['Validation croisée', 'Chaque groupe est prédit par un modèle ajusté sans lui, centrage et mise à l’échelle recalculés sur les autres observations. Q2, RMSEcv, CV-ANOVA et classement en validation croisée s’écartent donc des valeurs enregistrées, d’autant plus que les observations sont peu nombreuses (PLS, écart médian du Q2 : 0,003 au-delà de 200 observations, 0,02 de 50 à 200, 0,1 à 0,3 en dessous) ; le Q2 de Nuée est le plus souvent plus bas.'],
       ['Signe des composantes', 'Arbitraire pour les nouveaux modèles ; les modèles importés sont orientés comme la solution enregistrée.'],
       ['Dendrogrammes', 'Méthode de Ward exacte : les fusions du haut de l’arbre peuvent différer de celles enregistrées.'],
-      ['Intervalles de confiance', 'Jack-knife sur les tours de validation croisée : proches des valeurs enregistrées, pas identiques.'],
-      ['Ajustement automatique', 'Règles publiées R1, R2, N3, N4 ; pour l’ACP, la limite exacte n’est pas publiée.'],
+      ['Intervalles de confiance', 'Jack-knife sur les sous-modèles de la validation croisée, chacun dans sa propre mise à l’échelle : ils diffèrent des valeurs enregistrées.'],
+      ['Ajustement automatique', 'Règles publiées R1, R2, N3, N4, sur le Q2 de cette validation croisée : le nombre de composantes peut différer ; pour l’ACP, la limite exacte n’est pas publiée.'],
       ['Seuil VIP', 'Plus grande marche des VIP triés autour de 0,8 : méthode de l’application.'],
     ],
   },
@@ -354,7 +373,7 @@ const AIDE = {
       ['Predict a file', 'Predict › Predict a file: a table (CSV, Excel, R, SPSS…) whose columns carry the model’s variable names. Observations outside the model’s domain are flagged; results export to every export format.'],
       ['Hierarchical models', 'Model › Scores as variables: a model’s scores become variables ($M1.t1…) usable as X of another model. After changing the base model, do it again and refit the upper model.'],
       ['Export', 'File › Export data: the project’s table; File › Export model results (Ctrl+E): scores, T2, DModX, loadings, VIP, coefficients… Formats: Excel, CSV, text, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Qualitative variables stay qualitative; for SPSS, Stata and SAS, variable names are made valid and the original name becomes the label.'],
-      ['Export to R', 'File › Export to R: a script, or an R Markdown or Quarto report, that refits the model without Nuée, in plain R. It holds the code of the engine functions the model needs (commented), the data (or a CSV next to it) and the model, and checks the R version and packages. The report adds the methods text, tables, plots and references; it compiles in RStudio (Knit) or with Quarto. Optionally: renv.lock, data and model as .RData, an RStudio project. The whole session can also go into one .R script.'],
+      ['Export to R', 'File › Export to R: a script, or an R Markdown or Quarto report, that refits the model without Nuée, in plain R (no package). The computation is written for this model alone, with comments: scaling, NIPALS, cross-validation, statistics, plots; the data are in the script or in a CSV next to it. The report adds the methods text, tables, plots and references; it compiles in RStudio (Knit) or with Quarto. Optionally: renv.lock, data and model as .RData, an RStudio project. The whole session can also go into one .R script.'],
       ['Methods text', 'Model › Text for the Methods section: a paragraph written from the model (data, preprocessing, method, cross-validation, R², Q², software), in French or English, with its references. Read it and complete it before publishing.'],
       ['Report', 'File › Model report: a PDF or Word document with the chosen parts; plots look as in their panels.'],
       ['R console', 'View › R console (Ctrl+J): the R code of each action, and an R prompt in the application’s session (m = model shown, p = its project). recharger_moteur() reloads the engine files after a correction.'],
@@ -372,12 +391,12 @@ const AIDE = {
       ['Code', `All computations are in R, commented in French, in ${MOTEUR}.`],
     ],
     differences: [
-      ['Same as the stored values', 'Checked on 944 models from 133 .usp projects: scaling, R2X, R2Y, PLS Q2, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE.'],
-      ['PCA Q2', 'The stored values come from an unpublished step; typical difference 0.01.'],
+      ['Same as the stored values', 'Checked on 944 models from 133 .usp projects: scaling, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE.'],
+      ['Cross-validation', 'Each group is predicted by a model fitted without it, with centring and scaling recomputed on the other observations. Q2, RMSEcv, CV-ANOVA and the cross-validated classification therefore differ from the stored values, more so with few observations (PLS, median Q2 difference: 0.003 above 200 observations, 0.02 from 50 to 200, 0.1 to 0.3 below); Nuée’s Q2 is usually lower.'],
       ['Component signs', 'Arbitrary for new models; imported models are oriented like their stored solution.'],
       ['Dendrograms', 'Exact Ward linkage: the top merges can differ from the stored ones.'],
-      ['Confidence intervals', 'Jack-knife over the cross-validation rounds: close to the stored ones, not identical.'],
-      ['Autofit', 'Published rules R1, R2, N3, N4; for PCA, the exact limit is not published.'],
+      ['Confidence intervals', 'Jack-knife over the cross-validation sub-models, each in its own scaling: they differ from the stored ones.'],
+      ['Autofit', 'Published rules R1, R2, N3, N4, on the Q2 of this cross-validation: the number of components can differ; for PCA, the exact limit is not published.'],
       ['VIP cut-off', 'Largest step in the sorted VIPs around 0.8: the application’s method.'],
     ],
   },

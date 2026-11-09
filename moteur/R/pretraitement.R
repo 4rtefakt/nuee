@@ -67,8 +67,10 @@ echelle <- function(x, type) {
 # nouvelles observations. `facteurs` sert aux termes croisés du bloc Y, qui prennent leurs
 # facteurs dans le bloc X. `spectres` : prétraitement des spectres (spectres.R), appliqué aux
 # termes quantitatifs simples, observation par observation, avant la mise à l'échelle.
+# `bruts` : les valeurs des termes simples de ces observations (valeurs_bloc), déjà lues (la
+# validation croisée les lit une fois pour tous ses sous-modèles).
 construire_bloc <- function(projet, termes, observations, poids = c("calcules", "enregistres"),
-                            facteurs = NULL, imposees = NULL, spectres = NULL) {
+                            facteurs = NULL, imposees = NULL, spectres = NULL, bruts = NULL) {
   poids <- match.arg(poids)
   K <- length(termes)
   X <- matrix(NA_real_, length(observations), K)
@@ -97,8 +99,7 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
 
   croises <- which(vapply(termes, function(t) length(t$variables) > 1, TRUE))
   seuls <- setdiff(seq_len(K), croises)
-  bruts <- matrix(NA_real_, length(observations), K)
-  for (k in seuls) bruts[, k] <- transformer(valeurs_simples(projet, termes[[k]], observations), termes[[k]]$transform)
+  if (is.null(bruts)) bruts <- valeurs_bloc(projet, termes, observations)
   reference <- NULL
   if (length(spectres)) {
     q <- seuls[vapply(termes[seuls], function(t) categorie(t) == 0, TRUE)]
@@ -108,11 +109,10 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     bruts[, q] <- r$X
     reference <- r$reference
   }
-  for (k in seuls) {
-    t <- termes[[k]]
-    X[, k] <- mettre_a_echelle(k, bruts[, k])
-    simples[[paste(t$variables[1], categorie(t))]] <- X[, k]
-  }
+  for (k in seuls) X[, k] <- mettre_a_echelle(k, bruts[, k])
+  # les termes simples par « variable catégorie », pour les termes croisés (d'un coup : une liste
+  # qui grandit terme à terme coûte cher avec des milliers de termes)
+  simples[vapply(termes[seuls], function(t) paste(t$variables[1], categorie(t)), "")] <- lapply(seuls, function(k) X[, k])
   for (k in croises) {
     t <- termes[[k]]
     x <- rep(1, length(observations))
@@ -126,6 +126,17 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
   colnames(X) <- noms
   rownames(X) <- as.character(observations)
   list(X = X, centre = centre, poids = poids_k, type = type, noms = noms, simples = simples, reference = reference)
+}
+
+# Les valeurs des termes simples d'un bloc pour des observations, transformées (une colonne par
+# terme ; celles des termes croisés restent manquantes : construire_bloc les calcule).
+valeurs_bloc <- function(projet, termes, observations) {
+  bruts <- matrix(NA_real_, length(observations), length(termes))
+  croises <- which(vapply(termes, function(t) length(t$variables) > 1, TRUE))
+  for (k in setdiff(seq_along(termes), croises)) {
+    bruts[, k] <- transformer(valeurs_simples(projet, termes[[k]], observations), termes[[k]]$transform)
+  }
+  bruts
 }
 
 `%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a

@@ -70,7 +70,7 @@ for (cas in list(list(nom = "un Y", Y = Y2[, 1, drop = FALSE], Ap = 1, Ao = 3),
                  list(nom = "deux Y", Y = Y2, Ap = 2, Ao = 3),
                  list(nom = "trois classes", Y = Y3, Ap = 2, Ao = 2))) {
   cat(cas$nom, "\n")
-  m <- ajuster_opls(preparer(X), preparer(cas$Y), cas$Ao, 7, cas$Ap)
+  m <- ajuster_opls(preparer(X), preparer(cas$Y), cas$Ao, cas$Ap)
   a <- opls_article(X, cas$Y, cas$Ao, cas$Ap)
   To <- m$T[, cas$Ap + seq_len(cas$Ao), drop = FALSE]
   verifier("scores orthogonaux to = article", egaux(To, a$To))
