@@ -102,15 +102,18 @@ function portLibre(souhaite = 0) {
 // R's temporary files (pasted tables, converted .usp projects, files exported for a browser,
 // console plots) go in a folder of this run, deleted when Nuée closes: R, stopped by taskkill,
 // can't delete its own. The folders of runs that ended without closing go at the next start.
-const temporaireR = path.join(app.getPath('temp'), `nuee-r-${process.pid}`);
+// On Linux, /tmp is shared by every user of the computer: the folder names the user too, and
+// only this user's are ever cleaned.
+const prefixeR = process.platform === 'win32' ? 'nuee-r-' : `nuee-r-${process.getuid()}-`;
+const temporaireR = path.join(app.getPath('temp'), `${prefixeR}${process.pid}`);
 function nettoyerTemporairesR() {
   let noms = [];
-  try { noms = fs.readdirSync(app.getPath('temp')).filter((n) => /^nuee-r-\d+$/.test(n)); } catch { /* no temporary folder */ }
+  try { noms = fs.readdirSync(app.getPath('temp')).filter((n) => n.startsWith(prefixeR) && /^\d+$/.test(n.slice(prefixeR.length))); } catch { /* no temporary folder */ }
   for (const n of noms) {
-    const pid = Number(n.slice(7));
+    const pid = Number(n.slice(prefixeR.length));
     let vivant = pid === process.pid;
-    if (!vivant) try { process.kill(pid, 0); vivant = true; } catch { vivant = false; }
-    if (!vivant) fs.rmSync(path.join(app.getPath('temp'), n), { recursive: true, force: true });
+    if (!vivant) try { process.kill(pid, 0); vivant = true; } catch (e) { vivant = e.code === 'EPERM'; }  // (EPERM: running, someone else's)
+    if (!vivant) try { fs.rmSync(path.join(app.getPath('temp'), n), { recursive: true, force: true }); } catch { /* still held: next time */ }
   }
 }
 
@@ -256,19 +259,24 @@ async function fermerNuee(fenetre) {
 
 // Before closing (or installing an update): projects with unsaved changes are saved, or left,
 // as the user says, in the interface's language. false if they cancelled; 'secours' when R
-// doesn't answer and there are recovery copies: close, but keep them.
+// doesn't answer and there are recovery copies: close, but keep them. When R doesn't answer
+// (a long computation, or stopped), what is unsaved isn't known: the user is asked either way.
 async function accordFermeture(fenetre) {
   const noms = await projetsModifies();
   const en = langue === 'en';
   if (noms === null) {
-    if (!secoursPresents()) return true;
+    const secours = secoursPresents();
     const r = dialog.showMessageBoxSync(fenetre, {
-      type: 'warning', defaultId: 0, cancelId: 1, title: TITRE, buttons: en ? ['Close', 'Cancel'] : ['Fermer', 'Annuler'],
+      type: 'warning', defaultId: secours ? 0 : 1, cancelId: 1, title: TITRE, buttons: en ? ['Close', 'Cancel'] : ['Fermer', 'Annuler'],
       message: en ? 'The R engine isn’t answering.' : 'Le moteur R ne répond pas.',
-      detail: en ? 'Projects with unsaved changes will be offered at the next start, as they were in their last recovery copy (two minutes old at most).'
-        : 'Les projets non enregistrés seront proposés au prochain lancement, tels qu’ils étaient dans leur dernière copie de secours (deux minutes au plus).',
+      detail: secours
+        ? (en ? 'Projects with unsaved changes will be offered at the next start, as they were in their last recovery copy (two minutes old at most).'
+          : 'Les projets non enregistrés seront proposés au prochain lancement, tels qu’ils étaient dans leur dernière copie de secours (deux minutes au plus).')
+        : (en ? 'It may still be computing. Changes not saved yet would be lost: Cancel, wait for the computation to end, then save.'
+          : 'Il calcule peut-être encore. Les changements pas encore enregistrés seraient perdus : Annuler, attendre la fin du calcul, puis enregistrer.'),
     });
-    return r === 0 ? 'secours' : false;
+    if (r !== 0) return false;
+    return secours ? 'secours' : true;
   }
   if (!noms.length) return true;
   const r = dialog.showMessageBoxSync(fenetre, {

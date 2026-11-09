@@ -189,12 +189,14 @@ completer_console <- function(texte, curseur = nchar(texte), modele = NULL, proj
   if (length(chaine)) {  # x$..., x$y$..., x[["...
     guillemet <- endsWith(chaine, "[[\"")
     morceaux <- regmatches(chaine, gregexpr("^[[:alpha:].][[:alnum:]._]*|\\$[[:alnum:]._]+|\\[\\[\"[^\"]*\"\\]\\]", chaine))[[1]]
+    # (au-delà du premier nom, seulement les éléments de listes, sans leur classe : aucune
+    # méthode `[[` ni liaison active d'un environnement n'est appelée)
     objet <- tryCatch({
       o <- get(morceaux[1], envir = console)
-      for (k in morceaux[-1]) o <- o[[gsub("^\\$|^\\[\\[\"|\"\\]\\]$", "", k)]]
+      for (k in morceaux[-1]) o <- if (is.list(o) && !isS4(o)) unclass(o)[[gsub("^\\$|^\\[\\[\"|\"\\]\\]$", "", k)]]
       o
     }, error = function(e) NULL)
-    noms <- if (is.environment(objet)) ls(objet) else names(objet)
+    noms <- as.character(if (is.environment(objet)) ls(objet) else if (!isS4(objet)) names(unclass(objet)))  # (aucun : objet inconnu)
     candidats <- noms[startsWith(noms, mot)]
     if (!guillemet) candidats <- sur(candidats)
   } else {

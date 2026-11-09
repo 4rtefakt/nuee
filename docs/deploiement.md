@@ -130,7 +130,7 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
   new `.deb` installs over the old one. Users can turn the check off in *Help*; there is no
   system-wide policy on Linux.
 - **What Nuée writes where:** settings and recovery copies in `~/.config/Nuee`, R's temporary
-  files in `/tmp/nuee-r-<process>`. The network and file rules above are the same.
+  files in `/tmp/nuee-r-<user id>-<process>`. The network and file rules above are the same.
 
 ## Reporting a problem
 

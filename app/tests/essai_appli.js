@@ -195,7 +195,7 @@ async function brancher(cible) {
     if (capture) await p.capture(capture);
 
     // quitting stops R and removes its temporary folder
-    verifier('dossierTemporaireR', /nuee-r-\d+$/.test(temporaire) && fs.existsSync(temporaire), temporaire);
+    verifier('dossierTemporaireR', /nuee-r-[\d-]+$/.test(temporaire) && fs.existsSync(temporaire), temporaire);
     await Promise.race([p.evaluer('window.bureau.quitter()').catch(() => {}), pause(3000)]);  // the page goes with the app
     for (let i = 0; i < 60 && proc.exitCode === null; i += 1) await pause(250);
     verifier('quitte', proc.exitCode !== null, proc.exitCode);

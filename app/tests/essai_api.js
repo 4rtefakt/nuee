@@ -229,6 +229,17 @@ async function principal() {
       verifier(r.journal.some((e) => e.type === 'sortie' && e.texte.includes('[1] 2')), 'console');
       verifier((await api('journal', { depuis: 0 })).entrees.some((e) => e.type === 'appel'), 'journal');
     });
+    await etape('complétion (Tab) sans rien exécuter', async () => {
+      const c = await api('completer', { texte: 'm$stat', modele: pls.id });
+      verifier(c.debut === 2 && [].concat(c.candidats).includes('statistiques'), JSON.stringify(c));
+      // an object whose `[[` method has an effect: listing its names must not call it
+      await api('console', { code: 'piege <- structure(list(a = list(b = 1, bc = 2)), class = "piege"); appels <- 0; registerS3method("[[", "piege", function(x, i) { appels <<- appels + 1; NULL })' });
+      const d = await api('completer', { texte: 'piege$a$b' });
+      const n = await api('console', { code: 'cat(appels)' });
+      verifier([].concat(d.candidats).join(' ') === 'b bc' && n.journal.some((e) => e.type === 'sortie' && e.texte.trim() === '0'), `${JSON.stringify(d.candidats)}, appels : ${JSON.stringify(n.journal)}`);
+      const inconnu = await api('completer', { texte: 'inexistant$a' });  // nothing to offer, no error
+      verifier([].concat(inconnu.candidats).length === 0, JSON.stringify(inconnu));
+    });
     await etape('projet d’exemple', async () => {
       const e = await api('exemple');
       verifier(e.modeles.length === 4 && e.observations.uid.length === 120 && !e.chemin_enregistrement, `${e.modeles.length} modèles`);
