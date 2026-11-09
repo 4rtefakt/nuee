@@ -33,6 +33,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/tests/verifier_validation.R` | The cross-validation: the engine's PRESS equals refitting each group's model by hand and predicting the group with `predire()`; on pure noise the median Q2 stays at or below 0 for 6 to 30 observations (PCA, PLS, OPLS-DA, automatic or fixed A); no more components than the data's rank; the example's models keep a high Q2; the permutation test refits from the project |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
 | `app/tests/essai_api.js` | Check run before each build |
+| `app/tests/essai_appli.js` | The built program used end to end over the Chrome DevTools Protocol: the engine starts, the example project, a PLS model's views, an image of a plot, each fit in the R console, a `.nuee` given to a second start opens in the running window, then quitting stops R and removes its temporary folder (`node tests/essai_appli.js <program> [screenshot.png] [options]`; on Linux the program starts with no `LANG` and a short `PATH`, as from the desktop menu) |
 | `app/icone/` | The logo, drawn by `dessiner_icone.py` |
 | `exemple/` | The example project (made-up data) and `creer_exemple.js`, which makes it |
 | `convertisseur/` | `.usp` to JSON converter; `usp_extract.py` is also used standalone to extract tables and model results |
@@ -194,14 +195,23 @@ from the desktop menu with no `LANG`), since the engine's files are in UTF-8.
 The build produces:
 
 - **`Nuee/`**: the application (`./nuee` starts it) with the engine, the example project, the
-  converter and `LISEZ-MOI.txt`.
+  converter and `LISEZ-MOI.txt`, readable by every user (the packager builds in a folder made
+  by `mkdtemp`, mode 700, which the `.deb` would otherwise install as `/opt/Nuée` for root
+  alone).
 - **`installateur/`**, made from that folder with electron-builder:
-  - `Nuee-<version>-amd64.deb`, which depends on `r-base-core` and `r-cran-httpuv`,
-    `r-cran-jsonlite`, `r-cran-openxlsx`, `r-cran-haven`, `r-cran-readxl` (recommends `python3`),
-    installs into `/opt/Nuée`, adds `nuee.desktop` to the applications menu and, on Ubuntu 24.04
-    and later, the AppArmor profile Electron's sandbox needs;
+  - `Nuee-<version>-amd64.deb`, which depends on electron-builder's list plus `libgbm1` and
+    `libasound2` (Electron loads them; a minimal Ubuntu 22.04 lacks `libgbm1`), then on
+    `r-base-core` and `r-cran-httpuv`, `r-cran-jsonlite`, `r-cran-openxlsx`, `r-cran-haven`,
+    `r-cran-readxl`, `r-cran-foreign` (Debian keeps R's recommended packages, `foreign` among
+    them, out of `r-base-core`), and recommends `python3` and `r-recommended` (for the R
+    console, as on Windows). It installs into `/opt/Nuée`, adds `nuee.desktop` to the
+    applications menu and, on Ubuntu 24.04 and later, the AppArmor profile Electron's sandbox
+    needs;
   - `Nuee-<version>-x86_64.AppImage` and `Nuee-<version>-x64.tar.gz`, for other distributions,
-    with R and the packages installed apart.
+    with R and the packages installed apart. The AppImage uses electron-builder's default
+    runtime, which mounts it with FUSE 2 (`libfuse2`). Ubuntu 24.04 and later keep
+    unprivileged user namespaces to programs with an AppArmor profile, so an AppImage there
+    starts only with `--no-sandbox`.
 
   `SANS_INSTALLATEUR=1` skips them. Building the `.deb` needs `fpm`, which electron-builder
   downloads; on NixOS, where its `#!/bin/bash` doesn't run, set `USE_SYSTEM_FPM=true` with
@@ -215,8 +225,24 @@ the menu entry and docks group them under its icon. The tests run the same way:
 
 `.github/workflows/verifications.yml` runs the engine's checks (`moteur/tests/verifier_*.R`,
 except `verifier_references.R`, whose exported projects aren't in the repository) and
-`app/tests/essai_api.js` on every push and pull request, on Windows with R 4.6.2 from CRAN, the
-version the Windows build ships (change both together).
+`app/tests/essai_api.js` on every push and pull request:
+
+- on Windows, with R 4.6.2 from CRAN, the version the Windows build ships (change both
+  together);
+- on Ubuntu 24.04, with Ubuntu's own R (4.3) and R packages. This job then builds the Linux
+  packages, installs the `.deb` with apt, and runs `app/tests/essai_appli.js` as the runner's
+  ordinary user on the installed program and on the AppImage (mounted with FUSE 2), under
+  Xvfb. The packages are kept with the run (artifact `nuee-linux`), and so are the
+  screenshots (`capture-*`);
+- in Debian 12 (R 4.2) and Ubuntu 22.04 (R 4.1) containers: that `.deb` installed with apt,
+  which brings R and its packages, then a check that the program finds every library it
+  loads, the engine's checks, `essai_api.js` and `essai_appli.js` with that R.
+
+Electron's and electron-builder's downloaders fetch GitHub release files anonymously, which
+GitHub throttles at times (HTTP 504 for hours on 2026-11-09). The Linux job has them fetched
+through GitHub's API with its token instead (`.github/miroir-github.js`, through
+`ELECTRON_MIRROR` and `ELECTRON_BUILDER_BINARIES_MIRROR`); both still check the files against
+their own checksums. The files are also cached between runs.
 
 ## Releasing
 
@@ -226,6 +252,9 @@ version the Windows build ships (change both together).
 3. `node app/construire.js <folder>`, then the installer's checks.
 4. A GitHub release `v<version>` with `Nuee-Setup-<version>.exe`: installed copies offer it as a
    one-click update. With the repository switched on at zenodo.org, each release also gets a DOI.
+   Publishing the release starts the checks on GitHub: the Linux jobs build the `.deb`, the
+   AppImage and the `.tar.gz` from the tag and check them, then `linux-version-publiee` adds
+   them to the release.
 
 ## How it matches the stored results
 

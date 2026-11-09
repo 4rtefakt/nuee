@@ -82,13 +82,13 @@ function versionsOptR() {
 // Shown when R does not start on Linux: R and the packages the engine loads are installed apart.
 const AIDE_R_LINUX = {
   fr: '\n\nSous Linux, Nuée utilise le R de l’ordinateur, avec les paquets httpuv, jsonlite, '
-    + 'openxlsx, haven et readxl. Sous Debian ou Ubuntu :\n  sudo apt install r-base-core r-cran-httpuv '
-    + 'r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl\nAilleurs, dans R : install.packages(c("httpuv", '
-    + '"jsonlite", "openxlsx", "haven", "readxl")). Un autre R : lancer Nuée avec RSCRIPT=/chemin/vers/Rscript.',
+    + 'openxlsx, haven, readxl et foreign. Sous Debian ou Ubuntu :\n  sudo apt install r-base-core r-cran-httpuv '
+    + 'r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign\nAilleurs, dans R : install.packages(c("httpuv", '
+    + '"jsonlite", "openxlsx", "haven", "readxl", "foreign")). Un autre R : lancer Nuée avec RSCRIPT=/chemin/vers/Rscript.',
   en: '\n\nOn Linux, Nuée uses the computer’s R, with the packages httpuv, jsonlite, '
-    + 'openxlsx, haven and readxl. On Debian or Ubuntu:\n  sudo apt install r-base-core r-cran-httpuv '
-    + 'r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl\nElsewhere, in R: install.packages(c("httpuv", '
-    + '"jsonlite", "openxlsx", "haven", "readxl")). Another R: start Nuée with RSCRIPT=/path/to/Rscript.',
+    + 'openxlsx, haven, readxl and foreign. On Debian or Ubuntu:\n  sudo apt install r-base-core r-cran-httpuv '
+    + 'r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign\nElsewhere, in R: install.packages(c("httpuv", '
+    + '"jsonlite", "openxlsx", "haven", "readxl", "foreign")). Another R: start Nuée with RSCRIPT=/path/to/Rscript.',
 };
 
 function portLibre(souhaite = 0) {

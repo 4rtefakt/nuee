@@ -1,7 +1,8 @@
 # Deploying Nuée in an organisation
 
 For IT departments installing Nuée on several Windows computers: how to install it silently,
-turn off its update check, what it writes where, and what it sends over the network.
+turn off its update check, what it writes where, and what it sends over the network. Linux
+computers: see [Linux](#linux) at the end.
 
 ## What gets installed
 
@@ -113,6 +114,23 @@ can't be navigated to another site.
 
 The installer isn't code-signed yet, so SmartScreen warns the first time it runs. Where AppLocker
 or WDAC applies, allow the installer and the installed folder by hash or by path.
+
+## Linux
+
+- **Installing:** `sudo apt install ./Nuee-<version>-amd64.deb` on Debian, Ubuntu and their
+  derivatives, or any tool that installs `.deb` packages. Nuée goes into `/opt/Nuée` for every
+  user, with R and the R packages it needs from the distribution, a menu entry, the `.nuee`
+  association and, on Ubuntu 24.04 and later, an AppArmor profile for Chromium's sandbox.
+  `sudo apt remove nuee` uninstalls it. GitHub's checks install and use this package on
+  Ubuntu 22.04 and 24.04 and Debian 12.
+- **R:** the computer's R and its packages (only the Windows build brings its own R). As in R
+  itself, packages in a user's own library come before the system's; the user's `.Rprofile`
+  is ignored.
+- **Updates:** the same check as on Windows, but a click only opens the release's page; the
+  new `.deb` installs over the old one. Users can turn the check off in *Help*; there is no
+  system-wide policy on Linux.
+- **What Nuée writes where:** settings and recovery copies in `~/.config/Nuee`, R's temporary
+  files in `/tmp/nuee-r-<process>`. The network and file rules above are the same.
 
 ## Reporting a problem
 

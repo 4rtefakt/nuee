@@ -161,6 +161,9 @@ async function construireLinux(dossier) {
   fs.renameSync(dossier, final);
   fs.copyFileSync(path.join(depot, 'LISEZ-MOI-APPLICATION.txt'), path.join(final, 'LISEZ-MOI.txt'));
   fs.copyFileSync(path.join(depot, 'USER-GUIDE.txt'), path.join(final, 'USER-GUIDE.txt'));
+  // The packager builds in a folder made by mkdtemp (mode 700): installed as is, /opt/Nuée
+  // would open for root alone. Everything readable by all, folders and programs runnable.
+  execFileSync('chmod', ['-R', 'a+rX', final]);
   console.log('Prêt :', final);
 
   if (process.env.SANS_INSTALLATEUR) return;
@@ -179,12 +182,16 @@ async function construireLinux(dossier) {
       },
       // .nuee projects open in Nuée (MIME type in the menu entry and the .deb)
       fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Projet Nuée', mimeType: 'application/x-nuee' }],
-      // electron-builder's own list (it is replaced, not added to), then R and the engine's packages
+      // electron-builder's own list (it is replaced, not added to) with libgbm1 and libasound2,
+      // which Electron needs too (a minimal Ubuntu 22.04 lacks libgbm1), then R and the engine's
+      // packages (foreign, for dBase and Weka files, is one of R's recommended packages, which
+      // Debian keeps out of r-base-core; the others are for the R console, as on Windows)
       deb: {
         packageCategory: 'science',
         depends: ['libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6', 'xdg-utils', 'libatspi2.0-0', 'libuuid1', 'libsecret-1-0',
-          'r-base-core', 'r-cran-httpuv', 'r-cran-jsonlite', 'r-cran-openxlsx', 'r-cran-haven', 'r-cran-readxl'],
-        recommends: ['python3'],
+          'libgbm1', 'libasound2',
+          'r-base-core', 'r-cran-httpuv', 'r-cran-jsonlite', 'r-cran-openxlsx', 'r-cran-haven', 'r-cran-readxl', 'r-cran-foreign'],
+        recommends: ['python3', 'r-recommended'],
       },
     },
   });

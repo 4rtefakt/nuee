@@ -1,10 +1,16 @@
-# The engine's checks and the requests to the R server, on every push and pull request.
+# The engine's checks and the requests to the R server, on every push and pull request: on
+# Windows, and on Linux with the distributions' own R. Linux also builds the packages (.deb,
+# AppImage, .tar.gz), installs the .deb with what it depends on, and uses the installed program
+# end to end (app/tests/essai_appli.js). The packages stay with the run, and are added to a
+# release when it is published.
 # (verifier_references.R needs exported .usp projects that are not in the repository.)
 name: Vérifications
 
 on:
   push:
   pull_request:
+  release:
+    types: [published]
 
 jobs:
   windows:
@@ -40,3 +46,157 @@ jobs:
       - name: Requêtes au serveur R
         working-directory: app
         run: node tests/essai_api.js Rscript
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: R d'Ubuntu, avec les paquets dont dépend le .deb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends r-base-core r-cran-httpuv r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign r-cran-knitr xvfb xauth
+          Rscript -e 'cat(R.version.string, "\n")'
+
+      - name: Vérifications du moteur
+        run: |
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons script validation; do
+            echo "::group::verifier_$f"
+            Rscript moteur/tests/verifier_$f.R
+            echo "::endgroup::"
+          done
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Electron and electron-builder's tools come from GitHub releases: kept between runs, and
+      # fetched through GitHub's API with this job's token (their own downloaders go anonymously,
+      # which GitHub throttles at times)
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-linux-${{ hashFiles('app/package-lock.json') }}
+
+      - name: Fichiers des versions GitHub, par l'API
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          nohup node .github/miroir-github.js 8123 > "$RUNNER_TEMP/miroir.log" 2>&1 &
+          echo "ELECTRON_MIRROR=http://127.0.0.1:8123/electron/electron/" >> "$GITHUB_ENV"
+          echo "ELECTRON_BUILDER_BINARIES_MIRROR=http://127.0.0.1:8123/electron-userland/electron-builder-binaries/" >> "$GITHUB_ENV"
+          echo "ELECTRON_BUILDER_BINARIES_ALLOW_HTTP=true" >> "$GITHUB_ENV"
+
+      # (construire.js runs tests/essai_api.js first)
+      - name: Paquets Linux
+        working-directory: app
+        run: |
+          npm ci
+          node construire.js ../dist
+
+      - name: Installation du .deb
+        run: sudo apt-get install -y ./dist/installateur/Nuee-*-amd64.deb
+
+      - name: Nuée installée, de bout en bout
+        working-directory: app
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_appli.js '/opt/Nuée/nuee' ../dist/ubuntu-24.04-deb.png
+
+      # Run as people do, mounted with FUSE 2. Ubuntu 24.04 keeps unprivileged user namespaces,
+      # and so Chromium's sandbox, to programs with an AppArmor profile: the .deb installs one,
+      # an AppImage there needs --no-sandbox
+      - name: AppImage, de bout en bout
+        working-directory: app
+        run: |
+          sudo apt-get install -y --no-install-recommends libfuse2t64
+          chmod +x ../dist/installateur/Nuee-*.AppImage
+          xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_appli.js ../dist/installateur/Nuee-*.AppImage ../dist/ubuntu-24.04-appimage.png --no-sandbox
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nuee-linux
+          path: dist/installateur/Nuee-*
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: capture-ubuntu-24.04
+          path: dist/*.png
+
+  # The same .deb on older distributions, whose R is older: Debian 12 (R 4.2), Ubuntu 22.04 (R 4.1)
+  linux-distributions:
+    needs: linux
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: 'debian:12', nom: debian-12 }
+          - { image: 'ubuntu:22.04', nom: ubuntu-22.04 }
+    container: ${{ matrix.image }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      LANG: C.UTF-8  # (the images have no locale; the engine's files are in UTF-8)
+    steps:
+      - name: Outils
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates xvfb xauth
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuee-linux
+          path: paquets
+
+      # (then every library the program loads must have come with the .deb's dependencies)
+      - name: Installation du .deb, R et ses paquets avec
+        run: |
+          apt-get install -y ./paquets/Nuee-*-amd64.deb
+          Rscript -e 'cat(R.version.string, "\n")'
+          if ldd '/opt/Nuée/nuee' | grep 'not found'; then exit 1; fi
+
+      - name: Vérifications du moteur
+        run: |
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons script validation; do
+            echo "::group::verifier_$f"
+            Rscript moteur/tests/verifier_$f.R
+            echo "::endgroup::"
+          done
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Requêtes au serveur R
+        working-directory: app
+        run: node tests/essai_api.js Rscript
+
+      # (as root in a container: Chromium's sandbox needs --no-sandbox there)
+      - name: Nuée installée, de bout en bout
+        working-directory: app
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_appli.js '/opt/Nuée/nuee' ../${{ matrix.nom }}.png --no-sandbox
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: capture-${{ matrix.nom }}
+          path: ${{ matrix.nom }}*.png
+
+  # A published release gets the Linux packages, once every Linux check has passed
+  linux-version-publiee:
+    if: github.event_name == 'release'
+    needs: [linux, linux-distributions]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuee-linux
+          path: paquets
+
+      - name: Paquets ajoutés à la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload '${{ github.event.release.tag_name }}' paquets/Nuee-* --clobber --repo '${{ github.repository }}'

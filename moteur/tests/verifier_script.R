@@ -323,8 +323,9 @@ for (i in seq_along(p$models)) {
            any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^- .*Wold|^- .*Barker|^- .*Trygg", texte)) && is.null(r$ecart))
   if (requireNamespace("knitr", quietly = TRUE)) {  # compilé avec knitr dans une session neuve (sans pandoc : en Markdown)
     compiler <- file.path(dossier, "compiler.R")
+    # (le nom du .md donné : le knitr d'Ubuntu 22.04, 1.37, ne reconnaît pas l'extension .qmd)
     writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
-                 "knitr::knit(basename(a[1]), quiet = TRUE, envir = new.env())"), compiler)
+                 "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
     messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(r$script)), stdout = TRUE, stderr = TRUE))
     md <- file.path(ici, paste0(d$name, ".md"))
     verifier(sprintf("%s.%s : se compile, avec ses graphiques", d$name, ext), file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) &&
