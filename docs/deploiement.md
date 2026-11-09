@@ -80,10 +80,13 @@ value wins.
 ## Projects on network folders
 
 - A save never leaves a half-written project. The file is written next to the old one, then
-  takes its place in one step, so a network cut or a full disk leaves the old file intact.
+  takes its place in one step, so a network cut or a full disk leaves the old file intact. A
+  file another program keeps open (a sync client, an antivirus) is retried for five seconds,
+  then left as it was, and Nuée says so; it is never written over in place.
 - Projects aren't locked: two people can open the same one. If the file changed on disk since it
   was opened or last saved (a colleague, another window), Nuée asks before overwriting it and
-  offers *Save as…* instead.
+  offers *Save as…* instead. This also holds for a project recovered from its recovery copy
+  after a crash or an engine restart.
 
 ## Shared computers (Remote Desktop, Citrix)
 

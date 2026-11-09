@@ -335,6 +335,21 @@ if (requireNamespace("jmvReadWrite", quietly = TRUE)) {
 cat("Langue des messages\n")
 message_erreur <- function() tryCatch(lire_tableau(file.path(dossier, "x.zzz")), error = conditionMessage)
 verifier("message en français par défaut", grepl("^Format de fichier non reconnu : \\.zzz$", message_erreur()))
+cat("Enregistrer sans jamais laisser un fichier à moitié écrit\n")
+cible <- file.path(dossier, "garde.nuee")
+writeLines("ancien", cible)
+# un fichier qu'un autre programme garde ouvert (synchronisation, antivirus) : il ne peut pas
+# être remplacé ; ecrire_sans_risque (dans l'environnement global) prend ces deux-là
+file.rename <- function(...) FALSE
+Sys.sleep <- function(...) invisible(NULL)
+pris <- tryCatch({ ecrire_sans_risque(cible, function(f) writeLines("nouveau", f)); "" }, error = conditionMessage)
+rm(file.rename, Sys.sleep)
+verifier("fichier pris par un autre programme : laissé tel quel, et l'erreur le dit",
+         grepl("autre programme l'utilise", pris) && identical(readLines(cible), "ancien") &&
+           !any(grepl("[.]tmp$", list.files(dossier, all.files = TRUE))))
+ecrire_sans_risque(cible, function(f) writeLines("nouveau", f))
+verifier("fichier libre : remplacé d'un coup", identical(readLines(cible), "nouveau"))
+
 options(nuee.langue = "en")
 verifier("message en anglais avec options(nuee.langue = \"en\")", grepl("^Unrecognised file format: \\.zzz$", message_erreur()))
 verifier("en anglais : ligne trop longue, note de lecture", startsWith(tryCatch(lire_tableau(file.path(dossier, "long.csv")), error = conditionMessage),

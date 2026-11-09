@@ -258,6 +258,7 @@ const app = {
     if (!bureau && !chemin) telecharger(r.chemin);
     statut(`${t('enregistre')} ${r.chemin}`);
     await rafraichirProjet(pid);
+    sauvegarderSecours();  // its recovery copy, now older than the file, leaves the index
     diffuser('modeles');
     return true;
   },
@@ -380,7 +381,7 @@ const app = {
       const s = p.modifie && secours.find((e) => e.projet === p.id);
       const source = p.chemin_enregistrement || p.chemin;
       const session = dock ? collecterSession(p.id) : null;
-      if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom } });
+      if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null } });
       else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined } });
       else perdus.push(p.nom);
     }
@@ -869,8 +870,10 @@ async function sauvegarderSecours() {
       if (!p.modifie) continue;
       const fichier = `${dossier}/${LANCEMENT}-${p.id}.json`;
       try {
-        await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session: JSON.stringify(collecterSession(p.id)), version: VERSION });
-        derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: p.chemin_enregistrement || p.chemin || null, date: new Date().toISOString() });
+        // (lu: the state of the project's file when it was read or saved, for the question
+        // before overwriting it once the copy is recovered)
+        const r = await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session: JSON.stringify(collecterSession(p.id)), version: VERSION });
+        derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: p.chemin_enregistrement || p.chemin || null, lu: r.lu || null, date: new Date().toISOString() });
       } catch { /* this one is tried again two minutes later; the others go on */ }
       if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
     }
@@ -898,7 +901,7 @@ async function proposerRecuperation() {
           for (const e of entrees) {
             // before 1.0, a project without a file had its own copy as its origin
             const origine = e.origine && e.origine !== e.fichier ? e.origine : null;
-            try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom }))); } catch { illisibles.push(e); }
+            try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom, lu: e.lu || null }))); } catch { illisibles.push(e); }
           }
           secoursEnAttente = illisibles;  // kept for another try
           if (illisibles.length) statut(t('recuperation_echec', { noms: illisibles.map((e) => e.nom).join(', ') }), true);

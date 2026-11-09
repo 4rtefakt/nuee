@@ -371,9 +371,12 @@ function ipc() {
   });
   recevoir('ouvrir-chemin', (_, chemin) => shell.openPath(chemin));
   // recovery copies: their folder, and the index of what they hold (files not in it are deleted)
-  recevoir('secours-dossier', () => { fs.mkdirSync(dossierSecours(), { recursive: true }); return dossierSecours(); });
+  // (once Nuée is closing, nothing is written there any more: a copy or an index arriving after
+  // the folder was deleted would bring it back, offering at the next start what was saved)
+  recevoir('secours-dossier', () => { if (!quitter) fs.mkdirSync(dossierSecours(), { recursive: true }); return dossierSecours(); });
   recevoir('secours-liste', () => { try { return JSON.parse(fs.readFileSync(indexSecours(), 'utf8')); } catch { return []; } });
   recevoir('secours-index', (_, entrees) => {
+    if (quitter) return;
     fs.mkdirSync(dossierSecours(), { recursive: true });
     const gardes = new Set(entrees.map((e) => path.basename(e.fichier)));
     for (const f of fs.readdirSync(dossierSecours())) if (f !== 'index.json' && !gardes.has(f)) fs.rmSync(path.join(dossierSecours(), f), { force: true });

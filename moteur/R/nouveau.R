@@ -305,18 +305,16 @@ enregistrer_projet <- function(projet, chemin, version = "") {
 # un fichier à côté, qui prend ensuite la place de l'ancien d'un coup. Un arrêt, un disque plein
 # ou une coupure du réseau pendant l'écriture laissent l'ancien fichier intact. Un antivirus ou
 # un logiciel de synchronisation qui lit l'ancien à ce moment-là empêche de le remplacer : on
-# réessaie pendant deux secondes, puis on recopie par-dessus.
+# réessaie pendant cinq secondes. S'il est encore pris, l'ancien fichier reste tel quel et
+# l'erreur le dit : l'écrire par-dessus, sur place, pourrait le laisser à moitié écrit.
 ecrire_sans_risque <- function(chemin, ecrire) {
   temporaire <- file.path(dirname(chemin), sprintf(".%s.%d.tmp", basename(chemin), Sys.getpid()))
   on.exit(unlink(temporaire), add = TRUE)
   ecrire(temporaire)
-  for (i in 1:10) {
+  for (i in 1:25) {
     if (suppressWarnings(file.rename(temporaire, chemin))) return(invisible(chemin))
     Sys.sleep(0.2)
   }
-  if (!suppressWarnings(file.copy(temporaire, chemin, overwrite = TRUE))) {
-    stop(sprintf(traduire("Impossible d'écrire %s : le fichier est peut-être ouvert dans un autre programme.",
-                          "Couldn't write %s: the file may be open in another program."), chemin), call. = FALSE)
-  }
-  invisible(chemin)
+  stop(sprintf(traduire("Impossible de remplacer %s : un autre programme l'utilise (synchronisation, antivirus, fichier ouvert ailleurs), ou il est en lecture seule. Le fichier est resté tel quel ; réessayez, ou enregistrez sous un autre nom.",
+                        "Couldn't replace %s: another program is using it (sync, antivirus, the file open elsewhere), or it is read-only. The file was left as it was; try again, or save under another name."), chemin), call. = FALSE)
 }

@@ -149,6 +149,21 @@ etat_fichier <- function(chemin) {
   list(chemin = normalizePath(chemin, winslash = "/", mustWork = FALSE), taille = i$size, date = as.numeric(i$mtime))
 }
 
+# Un fichier dans l'état qu'on en connaissait : même taille, même date à la milliseconde près
+# (un état gardé avec une copie de secours est passé par du JSON).
+meme_etat <- function(a, b) {
+  isTRUE(as.numeric(a$taille) == as.numeric(b$taille)) && isTRUE(abs(as.numeric(a$date) - as.numeric(b$date)) < 1e-3)
+}
+
+# L'état du fichier d'un projet gardé avec sa copie de secours (sauvegarde_secours), rendu au
+# projet repris de la copie, s'il est bien celui du fichier où il s'enregistre (`origine`) :
+# la question avant d'écraser un fichier changé par ailleurs vaut encore après un arrêt
+# inattendu ou un redémarrage du moteur. NULL sinon.
+fichier_lu_repris <- function(lu, origine) {
+  if (!is.list(lu) || is.null(origine) || !identical(as.character(lu$chemin), etat_fichier(origine)$chemin)) return(NULL)
+  list(chemin = as.character(lu$chemin), taille = as.numeric(lu$taille), date = as.numeric(lu$date))
+}
+
 # Une erreur que l'interface reconnaît : le fichier a changé depuis qu'on l'a lu.
 conflit_fichier <- function(chemin) {
   structure(class = c("conflit_fichier", "error", "condition"),
@@ -596,24 +611,26 @@ DEMANDES <- list(
     etat$projets[[p$id]] <- p
     list(note = note, projet = resume_projet(p))
   },
-  # Copie de secours d'un projet pas encore enregistré, sans toucher à son état
+  # Copie de secours d'un projet pas encore enregistré, sans toucher à son état ; `lu` : l'état
+  # de son fichier quand il l'a lu ou enregistré, que l'interface garde avec la copie
   sauvegarde_secours = function(q) {
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
     enregistrer_projet(p, q$chemin, as.character(q$version %||% ""))
-    list(chemin = q$chemin)
+    list(chemin = q$chemin, lu = p$fichier_lu)
   },
   # q$secours : une copie de secours (q$chemin), rouverte comme le projet qu'elle garde : son nom,
   # son fichier (q$origine : celui où il s'enregistre, ou d'où il vient ; aucun pour un tableau
-  # collé ou des spectres importés jamais enregistrés), des changements à enregistrer. Jamais la
-  # copie elle-même comme fichier du projet : elle est effacée quand Nuée se ferme.
+  # collé ou des spectres importés jamais enregistrés), l'état de ce fichier quand il l'avait lu
+  # (q$lu), des changements à enregistrer. Jamais la copie elle-même comme fichier du projet :
+  # elle est effacée quand Nuée se ferme.
   ouvrir = function(q) {
     r <- ouvrir_fichier(q$chemin, table = q$table)
     if (!(isTRUE(q$secours) || !is.null(q$origine)) || !is.null(r$choisir)) return(r)
     p <- projet(r$id)
     p$nom <- q$nom %||% basename(q$origine %||% p$nom)
     p$chemin <- q$origine
-    p$fichier_lu <- NULL
+    p$fichier_lu <- fichier_lu_repris(q$lu, q$origine)
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
     resume_projet(p)
@@ -714,7 +731,7 @@ DEMANDES <- list(
     # le fichier qu'on avait lu ou écrit, changé depuis : l'interface demande avant de l'écraser
     lu <- p$fichier_lu
     if (!is.null(q$chemin) && !isTRUE(q$ecraser) && !is.null(lu) && file.exists(chemin) &&
-        identical(etat_fichier(chemin)$chemin, lu$chemin) && !identical(etat_fichier(chemin)[c("taille", "date")], lu[c("taille", "date")])) {
+        identical(etat_fichier(chemin)$chemin, lu$chemin) && !meme_etat(etat_fichier(chemin), lu)) {
       stop(conflit_fichier(chemin))
     }
     enregistrer_projet(p, chemin, as.character(q$version %||% ""))
