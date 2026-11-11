@@ -39,15 +39,19 @@ def clean(x):
 # ncwsspec<N> (v11+) WorksetSpec: f3 X BlockSpec, f4 Y BlockSpec.
 # BlockSpec f0: u32 count, then (presence byte, MT); MT f0 = NCIV of the term's variable uids.
 # BlockSpec f1: u32 count, then (u32 MT index, SS); SS f0 = scaling code (0 centring,
-# 1 unit variance), f2 = modifier, f3 = user weight (-99 = none).
+# 1 unit variance), f1 = 2 in every file seen, f2 = modifier (multiplies the weight),
+# f3 = user weight (-99 = none), f4 = 1 for block scaling, f5 = the term's block. A block-scaled
+# term's weight is also divided by sqrt(K), K the number of block-scaled terms of its block in
+# the model: checked on the 2530 terms of a project of 132 models.
 # v10 files write the spec without field tables; the scaling is then inferred.
 
 def _end(f):
     return max(e for level in f for (_, e) in level.values())
 
 
-def _scaling_codes(r, fld):
-    """{variable uids: SS code} for one BlockSpec."""
+def _scaling_specs(r, fld):
+    """{variable uids: SS fields} for one BlockSpec: 'code', 'f1', 'modifier', 'user',
+    'block' (the block's number for a block-scaled term, else None)."""
     g = r.at(fld).obj('BlockSpec')[0]
     if 0 not in g or 1 not in g:
         return {}
@@ -61,18 +65,22 @@ def _scaling_codes(r, fld):
         mts.append(tuple(t.at(f[0][0]).vector()))
         t.p = _end(f)
     t = r.at(g[1])
-    codes = {}
+    specs = {}
     for _ in range(t.u32()):
         i = t.u32()
         f = t.obj('SS')
         if i < len(mts) and mts[i] is not None and 0 in f[0]:
-            codes[mts[i]] = t.at(f[0][0]).u16()
+            fl = f[0]
+            num = lambda k: t.at(fl[k])._un('<f') if k in fl and fl[k][1] - fl[k][0] == 4 else None
+            ent = lambda k, w: int.from_bytes(r.b[fl[k][0]:fl[k][1]], 'little') if k in fl and fl[k][1] - fl[k][0] == w else None
+            specs[mts[i]] = {'code': t.at(fl[0]).u16(), 'f1': ent(1, 2), 'modifier': num(2), 'user': num(3),
+                             'block': ent(5, 4) if ent(4, 2) == 1 else None}
         t.p = _end(f)
-    return codes
+    return specs
 
 
 def parse_wsspec(buf):
-    """(X codes, Y codes) as {variable uids: stored scaling code}; empty for v10."""
+    """(X specs, Y specs) as {variable uids: SS fields}; empty for v10."""
     if not buf:
         return {}, {}
     r = u.Reader(buf, pfx=b'zA' in buf[:64])
@@ -82,13 +90,27 @@ def parse_wsspec(buf):
     out = []
     for fid in (3, 4):
         try:
-            out.append(_scaling_codes(r, lv[0][fid]) if fid in lv[0] else {})
+            out.append(_scaling_specs(r, lv[0][fid]) if fid in lv[0] else {})
         except Exception:
             out.append({})
     return out[0], out[1]
 
 
 SCALING_CODES = {0: 'Ctr', 1: 'UV'}
+
+
+def weighting(spec, sizes):
+    """(modifier, block) of a term from its SS fields: what multiplies the weight of its own
+    scaling. None for a setting not seen in a checked file (user weight, f1 other than 2 with
+    block scaling): the stored weight is then kept as it is."""
+    if not spec:
+        return 1.0, None
+    if spec['user'] is not None and spec['user'] != -99:
+        return None
+    if spec['block'] is not None and (spec['f1'] != 2 or not sizes.get(spec['block'])):
+        return None
+    mod = spec['modifier'] if spec['modifier'] is not None else 1.0
+    return mod, spec['block']
 
 
 def infer_scaling(values, weight, centre):
@@ -139,10 +161,11 @@ def export(path):
         vars_.append({'class': 'auxiliary', 'ids': ['$aux%d' % a], 'uid': a, 'formula': ''})
 
     models = []
+    obs_by = {o['uid']: o for o in obs}
     for key in sorted((k for k in st if re.fullmatch(r'ncmodel\d+', k)), key=lambda k: int(k[7:])):
         n = key[7:]
         try:
-            models.append(export_model(st, n, cols, var_by, qual))
+            models.append(export_model(st, n, cols, var_by, qual, (obs_by, obs_names, datasets)))
         except Exception as e:  # one unreadable model should not cost the others
             models.append({'number': int(n), 'error': '%s: %s' % (type(e).__name__, e)})
 
@@ -166,7 +189,70 @@ def export(path):
     })
 
 
-def export_model(st, n, cols, var_by, qual):
+def partition(labels):
+    """The groups of a labelling as lists of positions, whatever the groups' numbers."""
+    groups = {}
+    for i, label in enumerate(labels):
+        groups.setdefault(label, []).append(i)
+    return sorted(groups.values())
+
+
+def setting_id(m, cvg, obs_by, names, datasets):
+    """The ID named by a "by observation ID" setting: its place among the IDs of the model's
+    dataset, the 1st and 2nd included (checked against the stored groups of 128 models)."""
+    if not cvg or cvg['method'] != 3 or cvg['id'] is None or cvg['id'] < 0:
+        return None
+    ds = next((d for d in datasets if set(m['obs']) <= set(d['observations'])), None)
+    if not ds:
+        return None
+    rows = [obs_by[o]['ids'] for o in ds['observations'] if o in obs_by]
+    order = [0, 1] + [j for j in range(2, len(names)) if not names[j].startswith('$')
+                      and any(j < len(i) and i[j] for i in rows)]
+    return order[cvg['id']] if cvg['id'] < len(order) else None
+
+
+def cross_validation(m, cvg, obs_by, obs_names, datasets):
+    """The model's cross-validation groups, from the group of each observation stored with it
+    (v11+; for v10 files, the writing program's default of 7 groups, with which their stored Q2
+    reproduce):
+    - observations in turn: {'cv_groups': G}, the engine's default;
+    - grouped by an observation ID (same value, same group): {'groupes_vc': {'by': 'id', 'id': name}},
+      when that ID's values over the model's observations give exactly the stored groups, or,
+      for a model not fitted yet, when its setting names that ID;
+    - otherwise the stored groups themselves: {'groupes_vc': {'by': 'groups', 'observations', 'groups'}}."""
+    g = m.get('cvgroups')
+    N = len(m['obs'])
+    names = [str(x) for x in obs_names]
+    # an ID the engine finds by its name: the first of that name, not internal ($ClassID...)
+    usable = [j for j in range(len(names)) if (j == 0 or (names[j] and not names[j].startswith('$')))
+              and names.index(names[j]) == j]
+    labels = [x + 1 for x in g] if g and len(g) == N and m['T'] else []
+    G = len(set(labels))
+    if G < 2:  # not fitted yet, or fitted without cross-validation (no Q2 stored)
+        j = setting_id(m, cvg, obs_by, names, datasets) if not m['T'] and cvg and cvg['option'] == 2 else None
+        if j in usable:
+            return {'cv_groups': 7, 'groupes_vc': {'by': 'id', 'id': names[j]}}
+        return {'cv_groups': 7}
+    stored = partition(labels)
+    for n in ((cvg or {}).get('requested'), G):  # in turn: the number asked for (more than N is N groups)
+        if n and n >= 2 and stored == partition([i % n for i in range(N)]):
+            return {'cv_groups': n}
+    out = {'cv_groups': G}
+    if cvg and cvg['method'] == 3:
+        ids = [obs_by[o]['ids'] if o in obs_by else [] for o in m['obs']]
+        column = lambda j: [i[j] if j < len(i) else '' for i in ids]
+        found = [j for j in usable if partition(column(j)) == stored]
+        if found:
+            # two IDs can group alike (a site's name and its code): the one the setting names
+            j = setting_id(m, cvg, obs_by, names, datasets)
+            out['groupes_vc'] = {'by': 'id', 'id': names[j if j in found else found[0]]}
+            return out
+    out['groupes_vc'] = {'by': 'groups', 'observations': list(m['obs']), 'groups': labels}
+    return out
+
+
+def export_model(st, n, cols, var_by, qual, observations):
+    obs_by, obs_names, datasets = observations
     m = u.parse_model(st['ncmodel' + n])
     name, title = ('M' + n, '')
     if 'ncmodelinfo' + n in st:
@@ -177,7 +263,7 @@ def export_model(st, n, cols, var_by, qual):
     title = '' if title == 'Untitled' else title.strip()
     pipe = st.get('ncpspipe' + n, b'')
     scaling = u.parse_scaling(pipe)
-    weights = {t: v for seg in scaling for t, v in seg.items()}
+    weights = u.compose_scaling(scaling)
     transforms = u.parse_transforms(pipe)
     codes = parse_wsspec(st.get('ncwsspec' + n))
 
@@ -202,27 +288,52 @@ def export_model(st, n, cols, var_by, qual):
                 prod[i] = None if v is None or prod[i] is None else prod[i] * (v - fce) * fsc
         return prod
 
-    def terms(ts, block_codes):
+    def terms(ts, specs):
+        """The block's terms. Their scaling: its type (UV, Par, Ctr, none: what reproduces the
+        stored centre and weight, the modifier and block factor taken out; else the stored code),
+        the modifier and the block of block scaling (weight times 1/sqrt(K), K the number of
+        terms of the block), and the stored centre and weight (all of it)."""
+        sizes = {}
+        for t in ts:
+            b = (specs.get(tuple(t[0])) or {}).get('block')
+            if b is not None:
+                sizes[b] = sizes.get(b, 0) + 1
         out = []
         for t in ts:
             uids, lags, cats = t
             sc, ce = weights.get(t, (None, None))
             values = values_of(t)
-            code = block_codes.get(tuple(uids))
-            kind = infer_scaling(values, sc, ce)
+            spec = specs.get(tuple(uids))
+            code = spec['code'] if spec else None
+            w = weighting(spec, sizes)
+            scaling = {'code': code, 'weight': sc, 'centre': ce}
+            if w is None:  # a setting the engine doesn't redo: the stored weight is kept
+                scaling['type'] = None
+            else:
+                mod, block = w
+                extra = mod / sizes[block] ** 0.5 if block is not None else mod
+                kind = infer_scaling(values, sc / extra if sc is not None and extra else None, ce)
+                scaling['type'] = kind or SCALING_CODES.get(code)
+                if mod != 1:
+                    scaling['modifier'] = mod
+                if block is not None:
+                    scaling['block'] = block
             tr = transforms.get(t)
             label = u.term_name(t, var_by)
             out.append({'variables': list(uids), 'categories': list(cats), 'lags': list(lags),
                         'name': u.transform_label(label, tr) if tr else label,
                         'transform': {'type': tr[0], 'params': list(tr[1])} if tr else None,
-                        'scaling': {'type': kind or SCALING_CODES.get(code), 'code': code,
-                                    'weight': sc, 'centre': ce}})
+                        'scaling': scaling})
         return out
 
     out = {'number': int(n), 'name': name or 'M' + n, 'title': title, 'type': m['type'],
            'version_origine': m['version'], 'A': m['A'], 'fitted': bool(m['T']),
-           'observations': m['obs'], 'x': terms(m['xterms'], codes[0]), 'y': terms(m['yterms'], codes[1]),
-           'cv_groups': 7}  # the writing program's default; the stored Q2 of the test projects reproduce with 7
+           'observations': m['obs'], 'x': terms(m['xterms'], codes[0]), 'y': terms(m['yterms'], codes[1])}
+    try:
+        cvg = u.parse_cvgroups(st.get('ncCVgroups' + n))
+    except Exception:  # the setting only names the groups; the stored groups are what counts
+        cvg = None
+    out.update(cross_validation(m, cvg, obs_by, obs_names, datasets))
     out['plsda'] = bool(out['y']) and all(re.fullmatch(r'\$M\d+\.DA\d+', t['name']) for t in out['y'])
     solution = {k: m.get(k) for k in ('computed', 'ssx', 'ssxv', 'ssy', 'ssyv', 'q2', 'q2cum', 'eig',
                                    'P', 'T', 'W', 'C', 'U', 'dmodx', 'q2v', 'q2vcum', 'cvP', 'cvW', 'cvC')}

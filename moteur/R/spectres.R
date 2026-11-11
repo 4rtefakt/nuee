@@ -23,8 +23,9 @@
 # L'abscisse d'une variable est le nombre lu dans son nom (« 1450 nm » : 1450) quand chaque
 # variable en a un, différent ; sinon sa place dans le tableau.
 # Une valeur manquante reste manquante ; avec Savitzky–Golay, elle rend aussi manquantes les
-# valeurs dont la fenêtre la contient. Le prétraitement est fait une fois, sur toutes les
-# observations du modèle, avant la validation croisée.
+# valeurs dont la fenêtre la contient. Seul le MSC dépend des autres observations (le spectre
+# moyen) : chaque sous-modèle de la validation croisée prend celui de ses observations
+# (validation_croisee.R).
 
 # Les étapes telles que l'interface les envoie (un data.frame, une ligne par étape) en liste.
 etapes_spectres <- function(x) {
@@ -33,17 +34,17 @@ etapes_spectres <- function(x) {
   lapply(x, function(e) {
     e <- Filter(function(v) length(v) && !is.na(v[1]), as.list(e))
     e$type <- tolower(as.character(e$type))
-    if (!e$type %in% c("snv", "msc", "sg", "detrend", "ligne_base")) stop("Prétraitement des spectres inconnu : ", e$type)
+    if (!e$type %in% c("snv", "msc", "sg", "detrend", "ligne_base")) stop(traduire("Prétraitement des spectres inconnu : ", "Unknown spectral preprocessing: "), e$type)
     if (e$type == "detrend") {
       e$degre <- as.integer(e$degre %||% 2)
-      if (e$degre < 1) stop("Detrend : le degré du polynôme doit être 1 au moins")
+      if (e$degre < 1) stop(traduire("Detrend : le degré du polynôme doit être 1 au moins", "Detrend: the polynomial's degree must be 1 or more"))
     }
     if (e$type == "sg") {
       e$fenetre <- as.integer(e$fenetre %||% 11)
       e$degre <- as.integer(e$degre %||% 2)
       e$derivee <- as.integer(e$derivee %||% 0)
-      if (e$fenetre < 3 || e$fenetre %% 2 == 0) stop("La fenêtre de Savitzky–Golay doit compter un nombre impair de variables, 3 au moins")
-      if (e$degre < e$derivee || e$degre >= e$fenetre) stop("Savitzky–Golay : il faut dérivée ≤ degré < fenêtre")
+      if (e$fenetre < 3 || e$fenetre %% 2 == 0) stop(traduire("La fenêtre de Savitzky–Golay doit compter un nombre impair de variables, 3 au moins", "The Savitzky–Golay window must be an odd number of variables, 3 or more"))
+      if (e$degre < e$derivee || e$degre >= e$fenetre) stop(traduire("Savitzky–Golay : il faut dérivée ≤ degré < fenêtre", "Savitzky–Golay: derivative ≤ degree < window is needed"))
     }
     e
   })
@@ -68,7 +69,7 @@ pretraiter_spectres <- function(X, etapes, reference = NULL, positions = seq_len
         zones <- split(seq_len(ncol(X)), cumsum(c(1, diff(positions) != 1)))
         for (z in zones) {
           if (length(zones) > 1 && length(z) < e$fenetre) {
-            stop(sprintf("Savitzky–Golay : la zone de %s à %s n'a que %d variables, moins que la fenêtre (%d)",
+            stop(sprintf(traduire("Savitzky–Golay : la zone de %s à %s n'a que %d variables, moins que la fenêtre (%d)", "Savitzky–Golay: the range from %s to %s has only %d variables, fewer than the window (%d)"),
                          colnames(X)[z[1]], colnames(X)[z[length(z)]], length(z), e$fenetre))
           }
           X[, z] <- savitzky_golay(X[, z, drop = FALSE], e$fenetre, e$degre, e$derivee)
@@ -170,7 +171,7 @@ coefficients_sg <- function(fenetre, degre, derivee, u = 0) {
 
 savitzky_golay <- function(X, fenetre = 11, degre = 2, derivee = 0) {
   K <- ncol(X)
-  if (fenetre > K) stop(sprintf("La fenêtre de Savitzky–Golay (%d variables) dépasse le spectre (%d variables X)", fenetre, K))
+  if (fenetre > K) stop(sprintf(traduire("La fenêtre de Savitzky–Golay (%d variables) dépasse le spectre (%d variables X)", "The Savitzky–Golay window (%d variables) is wider than the spectrum (%d X variables)"), fenetre, K))
   h <- (fenetre - 1) / 2
   out <- matrix(NA_real_, nrow(X), K, dimnames = dimnames(X))
   centre <- coefficients_sg(fenetre, degre, derivee)

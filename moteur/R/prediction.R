@@ -41,7 +41,8 @@ predire <- function(projet, m, definition, observations) {
     ny <- m$y$noms
     Yp <- ifelse(is.na(T), 0, T) %*% t(m$C)
     for (j in seq_along(ny)) {
-      out[[paste(ny[j], "prédit")]] <- Yp[, j] / m$y$poids[j] + m$y$centre[j]
+      # (un Y constant dans le modèle, de poids 0 : prédit par sa valeur, comme en validation croisée)
+      out[[paste(ny[j], "prédit")]] <- Yp[, j] / (if (isTRUE(m$y$poids[j] == 0)) Inf else m$y$poids[j]) + m$y$centre[j]
       out[[paste(ny[j], "prédit")]][is.na(T[, 1])] <- NA
     }
     if (m$plsda) {
@@ -59,24 +60,30 @@ predire <- function(projet, m, definition, observations) {
 }
 
 # Prédiction des observations d'un fichier (CSV ou Excel, une ligne par observation).
-# Les colonnes du fichier sont reconnues par le nom des variables du projet (sans tenir
-# compte des majuscules ni des espaces autour) ; une variable qualitative l'est par le nom de
-# ses catégories. Les variables du modèle absentes du fichier restent manquantes (la
-# prédiction les ignore), sauf si `completer(nom)` sait les calculer (par exemple les scores
-# d'un modèle de base pour un modèle hiérarchique) : il renvoie alors leurs valeurs.
+# Les colonnes du fichier sont reconnues par le nom des variables du projet (nom_comparable :
+# sans tenir compte des majuscules, des espaces autour, ni d'un « . » à la place d'une espace) ;
+# une variable qualitative l'est par le nom de ses catégories. La colonne d'une variable
+# quantitative du modèle est lue en nombres, même si elle a du texte : ces valeurs (« <0,5 »,
+# « nd »...) sont manquantes, et `note` le dit (avec ce qu'il faut dire du fichier). Les
+# variables du modèle absentes du fichier restent manquantes (la prédiction les ignore), sauf
+# si `completer(nom)` sait les calculer (par exemple les scores d'un modèle de base pour un
+# modèle hiérarchique) : il renvoie alors leurs valeurs.
 predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
-  tableau <- importer_tableau(chemin, secondaires = FALSE)
   norme <- function(s) tolower(trimws(s))
-  noms_fichier <- norme(vapply(tableau$variables, function(v) as.character(v$ids[1]), ""))
   utilises <- unique(unlist(lapply(c(definition$x, definition$y), function(t) t$variables)))
   variables_x <- unique(unlist(lapply(definition$x, function(t) t$variables)))
+  nom_variable <- function(u) as.character(variable_du_projet(projet, u)$ids[1])
+  quantitatives <- vapply(Filter(function(u) !length(variable_du_projet(projet, u)$categories), utilises), nom_variable, "")
+  df <- lire_tableau(chemin, quantitatives = quantitatives)
+  tableau <- projet_depuis_tableau(df, basename(chemin), secondaires = FALSE)
+  noms_fichier <- nom_comparable(vapply(tableau$variables, function(v) as.character(v$ids[1]), ""))
   obs <- seq_len(nrow(tableau$donnees))
   donnees <- matrix(NA_real_, length(obs), length(utilises), dimnames = list(as.character(obs), as.character(utilises)))
   absentes <- character(0)
   for (u in utilises) {
     v <- variable_du_projet(projet, u)
     nom <- as.character(v$ids[1])
-    k <- match(norme(nom), noms_fichier)
+    k <- match(nom_comparable(nom), noms_fichier)
     if (is.na(k)) {
       x <- if (!is.null(completer)) completer(nom)
       # un Y absent est normal (on le prédit) : seuls les X manquants sont signalés
@@ -93,5 +100,9 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
   provisoire <- list(donnees = donnees)
   out <- predire(provisoire, m, definition, obs)
   out$nom <- unname(tableau$noms_obs[as.character(obs)])
-  list(observations = out, absentes = absentes, n = length(obs), fichier = basename(chemin))
+  # ce qu'il faut dire de la lecture : du fichier, et des colonnes des variables X
+  note <- attr(df, "note") %||% character(0)
+  colonnes <- names(note) %||% character(length(note))
+  note <- unname(note[!nzchar(colonnes) | nom_comparable(colonnes) %in% nom_comparable(vapply(variables_x, nom_variable, ""))])
+  list(observations = out, absentes = absentes, n = length(obs), fichier = basename(chemin), note = I(note))
 }

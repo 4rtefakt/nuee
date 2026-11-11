@@ -12,6 +12,7 @@ import { dialogueRapport } from './rapport.js';
 import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
 import { ECRITURE, filtresOuverture, acceptOuverture, filtresSpectres, acceptSpectres } from './formats.js';
+import { ouvrirPalette } from './palette.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -19,7 +20,7 @@ const ID_FENETRE = params.get('fenetre') || 'principale';
 const canal = new BroadcastChannel('nuee');
 const DV = window['dockview-core'];
 
-const etat = { projets: {}, modeles: {}, selection: {}, groupesHCA: {}, choixVIP: {}, locInitial: {}, panneaux: new Map(), noeud: null,
+const etat = { projets: {}, modeles: {}, selection: {}, variables: {}, groupesHCA: {}, choixVIP: {}, locInitial: {}, panneaux: new Map(), noeud: null,
   replies: new Set(), occupe: 0, message: '', erreur: false, selectionLiee: lire('selection_liee') !== '0' };
 // The window's panels. `dock` holds the explorer and, in one central group of tabs, a page per
 // model and the project views (data, statistics...). A model's page is a dock of its own
@@ -66,6 +67,18 @@ const app = {
       rafraichirModele(x);
     }
     majEtat();
+  },
+  // Variables (term names) picked on one of a model's graphs, highlighted on all of them.
+  variablesChoisies: (id) => etat.variables[id] || [],
+  choisirVariables(id, termes) {
+    etat.variables[id] = [...new Set(termes)];
+    diffuser('variables', { modele: id, termes: etat.variables[id] });
+    rafraichirModele(id);
+    majEtat();
+  },
+  effacerSelection(id) {
+    if (app.selection(id).length) app.choisir(id, []);
+    if (app.variablesChoisies(id).length) app.choisirVariables(id, []);
   },
   selectionLiee: () => etat.selectionLiee,
   basculerSelectionLiee(propager = true) {
@@ -141,7 +154,9 @@ const app = {
     try { texte = bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText(); } catch { texte = ''; }
     if (!texte || !texte.trim()) { statut(t('presse_papiers_vide'), true); return; }
     etat.collages = (etat.collages || 0) + 1;
-    await apresOuverture(await occupe(() => demander('coller', { texte, nom: `${t('tableau_colle')} ${etat.collages}` })));
+    const res = await occupe(() => demander('coller', { texte, nom: `${t('tableau_colle')} ${etat.collages}` }));
+    await apresOuverture(res);
+    if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing
   },
 
   // Spectra from one or more files (JCAMP-DX, SPC, text) made into one project, with an
@@ -195,9 +210,21 @@ const app = {
   },
 
   async ouvrirChemin(chemin) {
+    // already open (a recent file, a file dropped or double-clicked again): shown, not opened
+    // twice, which would make two copies that both save to the same file
+    const cle = (c) => (c ? (/^Win/.test(navigator.platform) ? c.replace(/\\/g, '/').toLowerCase() : c) : null);
+    const ouvert = Object.values(etat.projets).find((p) => cle(p.chemin_enregistrement) === cle(chemin) || (!p.table && cle(p.chemin) === cle(chemin)));
+    if (ouvert) {
+      etat.noeud = ouvert.id;
+      app.rafraichirExplorateur();
+      majEtat();
+      statut(t('deja_ouvert', { nom: ouvert.nom }));
+      return;
+    }
     const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin })));
     if (!res) return;
     await apresOuverture(res);
+    if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
     if (bureau) recents = await bureau.ajouterRecent(chemin);
     else {
       recents = [chemin, ...recents.filter((r) => r !== chemin)].slice(0, 10);
@@ -211,14 +238,27 @@ const app = {
     if (!p) { statut(t('choisir_projet'), true); return false; }
     let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
-      chemin = await bureau.enregistrerSous(p.nom.replace(/\.[^.]+$/, '') + '.json', [{ name: 'Projet', extensions: ['json'] }]);
+      chemin = await bureau.enregistrerSous(p.nom.replace(/\.[^.]+$/, '') + '.nuee', [{ name: t('format_projet'), extensions: ['nuee'] }]);
       if (!chemin) return false;
     }
     const session = VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid));
-    const r = await occupe(() => demander('enregistrer', { projet: pid, chemin, session }));
+    const q = { projet: pid, chemin, session, version: VERSION };
+    let r = await occupe(() => demander('enregistrer', q).catch((e) => { if (e.reponse && e.reponse.conflit) return e.reponse; throw e; }));
+    if (r.conflit) {  // changed on disk since it was read: overwrite, save elsewhere, or leave it
+      const choix = await new Promise((resolve) => dialogue({ titre: t('conflit_titre'),
+        contenu: el('p', {}, t('conflit_texte', { nom: chemin.split(/[\\/]/).pop(), date: new Date(r.date * 1000).toLocaleString(langueActuelle()) })),
+        boutons: [{ libelle: t('annuler'), action: () => resolve(null) },
+          { libelle: t('ecraser'), action: () => resolve('ecraser') },
+          { libelle: t('enregistrer_sous_bouton'), principal: true, action: () => resolve('sous') }],
+        surFermeture: () => resolve(null) }));
+      if (choix === 'sous') return app.enregistrer(pid, true);
+      if (choix !== 'ecraser') return false;
+      r = await occupe(() => demander('enregistrer', { ...q, ecraser: true }));
+    }
     if (!bureau && !chemin) telecharger(r.chemin);
     statut(`${t('enregistre')} ${r.chemin}`);
     await rafraichirProjet(pid);
+    sauvegarderSecours();  // its recovery copy, now older than the file, leaves the index
     diffuser('modeles');
     return true;
   },
@@ -292,6 +332,7 @@ const app = {
   },
   async reajuster(id, q) {
     const res = await occupe(() => demander('reajuster', { modele: id, ...q }));
+    if (etat.variables[id]) etat.variables[res.id] = etat.variables[id];  // the refit keeps the highlighted variables
     await garder(res);
     vuesParDefaut(res.id);
   },
@@ -319,45 +360,104 @@ const app = {
     statut(t('annule', { quoi: r.etiquette }));
   },
   async noterModele(id, note) {
-    const r = await demander('note_modele', { modele: id, note });
+    let r;
+    try { r = await demander('note_modele', { modele: id, note }); } catch (e) { statut(`${t('erreur')} : ${e.message}`, true); return; }
     if (etat.modeles[id]) etat.modeles[id].note = r.note;
     etat.projets[r.projet.id] = r.projet;
     app.rafraichirExplorateur();
     majEtat();
     diffuser('modeles');
   },
-  // A new R engine (after it stopped, or on request): the projects reopen, from their recovery
-  // copy when they had unsaved changes, with the session they had.
+  // A new R engine (after it stopped, or on request): the projects reopen with the session they
+  // had: from their recovery copy when they had unsaved changes, otherwise from the file they
+  // are saved to (or, never saved, the file they came from). Those with neither are named.
   async redemarrerMoteur() {
     if (!bureau) { statut(t('moteur_navigateur'), true); return; }
-    let secours = [];
-    try { secours = await bureau.secoursListe(); } catch { secours = []; }
-    const aRouvrir = Object.values(etat.projets).filter((p) => p.chemin).map((p) => {
-      const s = p.modifie && secours.find((e) => e.origine === p.chemin);
-      return { chemin: s ? s.fichier : p.chemin, origine: s ? p.chemin : null, nom: p.nom, table: p.table, session: dock ? collecterSession(p.id) : null };
-    });
+    const aRouvrir = [];
+    const perdus = [];
+    for (const p of Object.values(etat.projets)) {
+      // (this launch's own copy of the project: those of an earlier stop, also in the index,
+      // had projects numbered P1, P2... too)
+      const s = p.modifie && derniersSecours.get(p.id);
+      const source = p.chemin_enregistrement || p.chemin;
+      const session = dock ? collecterSession(p.id) : null;
+      if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null } });
+      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined } });
+      else perdus.push(p.nom);
+    }
     statut(t('moteur_redemarrage'));
     const erreur = await bureau.redemarrerMoteur();
     moteurArrete = false;
     if (erreur) { statut(`${t('erreur')} : ${erreur}`, true); return; }
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
-    for (const k of ['projets', 'modeles', 'selection', 'choixVIP', 'groupesHCA']) etat[k] = {};
+    for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
+    derniersSecours.clear();  // the new engine numbers its projects from P1 again,
+    moteurs += 1;             // and its copies get names of their own (moteurs)
+    let n = 0;
     for (const r of aRouvrir) {
       try {
-        const res = await occupe(() => demander('ouvrir', r.origine ? { chemin: r.chemin, origine: r.origine, nom: r.nom }
-          : r.table ? { chemin: r.chemin, table: r.table } : { chemin: r.chemin }));
-        await apresOuverture(res, r.session);
-      } catch { /* a project that cannot be read any more stays closed */ }
+        await apresOuverture(await occupe(() => demander('ouvrir', r.q)), r.session);
+        n += 1;
+      } catch {
+        perdus.push(r.nom);
+        if (r.copie) secoursEnAttente.push(r.copie);  // its recovery copy stays, for another try
+      }
     }
     diffuser('modeles');
-    statut(t('moteur_redemarre', { n: aRouvrir.length }));
+    statut(t('moteur_redemarre', { n }) + (perdus.length ? ` ${t('non_rouverts', { noms: perdus.join(', ') })}` : ''), perdus.length > 0);
+    if (n) sauvegarderSecours();  // the reopened projects get copies of their own at once
   },
   confirmerRedemarrage() {
     dialogue({ titre: t('redemarrer_moteur'), contenu: el('p', {}, t('redemarrer_confirmation')),
       boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('redemarrer'), principal: true, action: () => { app.redemarrerMoteur(); return true; } }] });
   },
   quoiDeNeuf: (tout) => quoiDeNeuf(tout),
+  // One-click update (installed copy): what it does, then the download, checked against its
+  // SHA-256, and the installation; Nuée closes and starts again (main.js).
+  mettreAJour() {
+    const v = etat.nouvelleVersion;
+    if (!v || !v.installateur || !bureau || !bureau.mettreAJour) return;
+    dialogue({ titre: t('maj_titre', { v: v.version }), contenu: el('p', {}, t('maj_texte', { taille: Math.round(v.installateur.taille / 1e6) })),
+      boutons: [{ libelle: t('maj_nouveautes'), action: () => { window.open(v.page); return false; } },
+        { libelle: t('plus_tard'), action: () => true },
+        { libelle: t('mettre_a_jour'), principal: true, action: () => {
+          statut(t('maj_telechargement', { v: v.version, p: 0 }));
+          bureau.mettreAJour().then((r) => { if (r && r.erreur) statut(t(`maj_${r.erreur}`, { d: r.detail || '' }), r.erreur !== 'annulee'); },
+            (e) => statut(t('maj_reseau', { d: e.message }), true));
+          return true;
+        } }] });
+  },
+  // Aide › Chercher une mise à jour: the start-up check, now (installed copy only)
+  async chercherMiseAJour() {
+    statut(t('maj_recherche'));
+    const v = await bureau.nouvelleVersion(true);
+    if (v && v.erreur) { statut(t('maj_injoignable', { d: v.erreur }), true); return; }
+    statut('');
+    etat.nouvelleVersion = v;
+    majEtat();
+    if (v && v.installateur) { app.mettreAJour(); return; }
+    dialogue({ titre: t('chercher_maj'), contenu: el('p', {}, v ? t('nouvelle_version', { v: v.version }) : t('maj_a_jour', { v: VERSION })),
+      boutons: (v ? [{ libelle: t('maj_nouveautes'), action: () => { window.open(v.page); return true; } }] : [])
+        .concat([{ libelle: t('fermer'), principal: true, action: () => true }]) });
+  },
+  // Aide › Informations de diagnostic: the versions of Nuée, the system, R and its packages,
+  // to paste into a GitHub issue (no paths, no data)
+  async diagnostic() {
+    const v = await app.version();
+    const d = bureau && bureau.diagnostic ? await bureau.diagnostic() : { systeme: navigator.userAgent };
+    const texte = [`Nuée ${VERSION}${!bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
+      `System: ${d.systeme}`,
+      d.electron ? `Electron ${d.electron}, Chromium ${d.chrome}` : null,
+      `${v.R}, ${v.plateforme}, ${v.systeme}`,
+      `R locale: ${v.locale}`,
+      `R packages: ${Object.entries(v.paquets).map(([k, x]) => `${k} ${x}`).join(', ')}`,
+      `Interface: ${langueActuelle()}`].filter(Boolean).join('\n');
+    dialogue({ titre: t('diagnostic'), contenu: el('div', {}, el('p', { class: 'note' }, t('diagnostic_aide')), el('pre', { class: 'diagnostic' }, texte)),
+      boutons: [{ libelle: t('signaler_probleme'), action: () => { window.open('https://github.com/4rtefakt/nuee/issues/new/choose'); return false; } },
+        { libelle: t('copier_texte'), action: () => { navigator.clipboard.writeText(texte).then(() => statut(t('texte_copie'))); return true; } },
+        { libelle: t('fermer'), principal: true, action: () => true }] });
+  },
   // looking for a new version at start-up (installed copy only; null otherwise)
   majAuto: () => (etat.majAuto === undefined ? null : etat.majAuto),
   async basculerMajAuto() {
@@ -396,11 +496,15 @@ const app = {
     statut(t('scores_ajoutes', { noms: noms.slice(0, 3).join(', ') + (noms.length > 3 ? '…' : '') })
       + (modeles.length ? t('modeles_a_reajuster', { modeles: modeles.join(', ') }) : ''));
   },
+  // One model, or all the models of its project's session (the latest fit of each, as Ctrl+S
+  // saves them) in one .R script.
   async exporterScript(id) {
     const m = etat.modeles[id];
-    const choix = await choisirScript(m.nom);
+    const seance = modelesSeance(m.projet);
+    const choix = await choisirScript(m.nom, seance.length > 1 && seance.some((x) => x.id === id) ? { modeles: seance, nom: etat.projets[m.projet].nom } : null);
     if (!choix) return;
-    const r = await occupe(() => demander('script_r', { modele: id, version: VERSION, langue: langueActuelle(), ...choix }));
+    const qui = choix.seance ? { modeles: seance.map((x) => x.id) } : { modele: id };
+    const r = await occupe(() => demander('script_r', { ...qui, version: VERSION, langue: langueActuelle(), ...choix }));
     const chemins = [].concat(r.chemins);
     if (bureau) statut(chemins.length > 1 ? t('exporte_fichiers', { n: chemins.length, chemin: r.script }) : `${t('script_ecrit')} ${r.script}`);
     else chemins.forEach((c, i) => setTimeout(() => telecharger(c), i * 800));
@@ -454,6 +558,7 @@ const app = {
       } }] });
   },
   verifier: (q) => demander('verifier', q),
+  jeuTest: (q) => demander('jeu_test', q),
   statistiquesVariables: (pid) => demander('statistiques_variables', { projet: pid }),
   rapport: (id) => dialogueRapport(app, id),
   nouvelleVariable: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariable(app, p); },
@@ -568,11 +673,17 @@ const app = {
   },
   changerLangue(l, propager = true) {
     changerLangueTexte(l);
+    if (bureau && bureau.langue) bureau.langue(l);
     if (propager) diffuser('langue', { l });
     toutRedessiner();
   },
   zoom: (d) => bureau && bureau.zoom(d),
   aide: (sujet) => dialogueAide(app, sujet),
+  // the full guide: the text file shipped with the desktop app, or on GitHub
+  ouvrirGuide() {
+    if (bureau && bureau.ouvrirGuide) bureau.ouvrirGuide();
+    else window.open(`https://github.com/4rtefakt/nuee/blob/main/${langueActuelle() === 'en' ? 'USER-GUIDE.txt' : 'LISEZ-MOI-APPLICATION.txt'}`);
+  },
 };
 
 const C = creerCommandes(app);
@@ -583,6 +694,8 @@ function statut(message, erreur = false) {
   etat.message = message || '';
   etat.erreur = erreur;
   majEtat();
+  const a = document.getElementById('annonce');  // what a screen reader says
+  if (a) a.textContent = etat.message;
 }
 
 async function occupe(f) {
@@ -674,19 +787,34 @@ function choisirExport(titre, nom, plusieursTables) {
 // The R script dialog: where the data go (in the script, or a CSV file next to it) and the
 // files written next to the script (renv.lock, the data and fitted model in .RData, an RStudio
 // project). Resolves to the choices, with { chemin } on the desktop, or null. Remembered.
-function choisirScript(nom) {
+// seance: { modeles, nom } when the project has other models, offering them all in one .R script.
+function choisirScript(nom, seance = null) {
   return new Promise((resolve) => {
-    const choix = { donnees: lire('script_donnees') === 'csv' ? 'csv' : 'script', format: ['R', 'Rmd', 'qmd'].includes(lire('script_format')) ? lire('script_format') : 'R' };
+    const choix = { donnees: lire('script_donnees') === 'csv' ? 'csv' : 'script', format: ['R', 'Rmd', 'qmd'].includes(lire('script_format')) ? lire('script_format') : 'R',
+      seance: false };
     for (const k of ['renv', 'rdata', 'rproj']) choix[k] = lire(`script_${k}`) === 'oui';
     const radio = (cle, valeur, note) => el('label', { class: 'champ' },
-      el('input', { type: 'radio', name: `script-${cle}`, checked: choix[cle] === valeur, onchange: () => { choix[cle] = valeur; } }),
+      el('input', { type: 'radio', name: `script-${cle}`, value: valeur, checked: choix[cle] === valeur, onchange: () => { choix[cle] = valeur; } }),
       el('span', {}, t(`script_${cle}_${valeur}`)), note ? el('span', { class: 'doux' }, note) : null);
     const coche = (cle) => el('label', { class: 'champ' },
       el('input', { type: 'checkbox', checked: choix[cle], onchange: (e) => { choix[cle] = e.target.checked; } }),
       el('span', {}, t(`script_${cle}`)), el('span', { class: 'doux' }, t(`script_${cle}_note`)));
+    const formats = el('div', {}, radio('format', 'R', '.R'), radio('format', 'Rmd', '.Rmd'), radio('format', 'qmd', '.qmd'));
+    const portee = (oui) => {  // the whole session: a .R script only
+      choix.seance = oui;
+      formats.querySelectorAll('input').forEach((i) => {
+        i.disabled = oui && i.value !== 'R';
+        if (oui) i.checked = i.value === 'R';
+        else i.checked = i.value === choix.format;
+      });
+    };
+    const quels = seance ? [el('h4', {}, t('script_modeles')),
+      el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'script-portee', checked: true, onchange: () => portee(false) }), el('span', {}, t('script_ce_modele', { nom }))),
+      el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'script-portee', onchange: () => portee(true) }),
+        el('span', {}, t('script_seance', { n: seance.modeles.length })), el('span', { class: 'doux' }, seance.modeles.map((x) => x.nom).join(', ')))] : [];
     dialogue({ titre: t('script_titre', { nom }), contenu: el('div', { class: 'options-script' },
-      el('p', {}, t('script_texte')),
-      el('h4', {}, t('script_format')), radio('format', 'R', '.R'), radio('format', 'Rmd', '.Rmd'), radio('format', 'qmd', '.qmd'),
+      el('p', {}, t('script_texte')), ...quels,
+      el('h4', {}, t('script_format')), formats,
       el('h4', {}, t('script_donnees')), radio('donnees', 'script'), radio('donnees', 'csv'),
       el('h4', {}, t('script_fichiers')), coche('renv'), coche('rdata'), coche('rproj'),
       el('p', { class: 'note' }, t('script_note'))), boutons: [
@@ -695,8 +823,10 @@ function choisirScript(nom) {
         ecrire('script_donnees', choix.donnees);
         ecrire('script_format', choix.format);
         for (const k of ['renv', 'rdata', 'rproj']) ecrire(`script_${k}`, choix[k] ? 'oui' : 'non');
-        if (!bureau) { resolve(choix); return true; }
-        bureau.enregistrerSous(`${nom}.${choix.format}`, [{ name: t(`script_format_${choix.format}`), extensions: [choix.format] }]).then((chemin) => resolve(chemin ? { ...choix, chemin } : null));
+        const r = choix.seance ? { ...choix, format: 'R' } : choix;
+        if (!bureau) { resolve(r); return true; }
+        bureau.enregistrerSous(`${choix.seance ? seance.nom : nom}.${r.format}`, [{ name: t(`script_format_${r.format}`), extensions: [r.format] }])
+          .then((chemin) => resolve(chemin ? { ...r, chemin } : null));
         return true;
       } }] });
   });
@@ -722,37 +852,63 @@ async function apresOuverture(res, session = null) {
 
 // Every two minutes, a copy of each project with unsaved changes, with its session, goes to
 // the application's recovery folder (deleted when the application closes normally). After an
-// unexpected stop, the next start offers to reopen them.
+// unexpected stop, the next start offers to reopen them. The index lists the copies to keep
+// (main.js deletes the others): those of this launch, named after it so that they never
+// replace one of an earlier stop, and those of an earlier stop that haven't been recovered or
+// set aside yet (secoursEnAttente). A project whose copy fails this time keeps its last one.
+// One main window writes them: the first one open (several main windows share the projects).
+const LANCEMENT = Date.now().toString(36);
+let moteurs = 0;  // engines started by this launch: each numbers its projects from P1
+let secoursEnAttente = [];
+const derniersSecours = new Map();
 async function sauvegarderSecours() {
   if (!bureau || VUE_SEULE || !dock) return;
   try {
+    const principales = (await bureau.fenetres()).filter((f) => f.principale).sort((a, b) => a.id - b.id);
+    if (principales.length && !principales[0].actuelle) return;
     const dossier = await bureau.secoursDossier();
     const entrees = [];
     for (const p of Object.values(etat.projets)) {
       if (!p.modifie) continue;
-      const fichier = `${dossier}/${p.id}.json`;
-      await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session: JSON.stringify(collecterSession(p.id)) });
-      entrees.push({ fichier, nom: p.nom, origine: p.chemin || fichier, date: new Date().toISOString() });
+      const fichier = `${dossier}/${LANCEMENT}-${moteurs}-${p.id}.json`;
+      try {
+        // (lu: the state of the project's file when it was read or saved, for the question
+        // before overwriting it once the copy is recovered)
+        const r = await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session: JSON.stringify(collecterSession(p.id)), version: VERSION });
+        derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: p.chemin_enregistrement || p.chemin || null, lu: r.lu || null, date: new Date().toISOString() });
+      } catch { /* this one is tried again two minutes later; the others go on */ }
+      if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
     }
-    await bureau.secoursIndex(entrees);
+    // (attente: kept when Nuée closes normally, to be offered at the next start; main.js)
+    await bureau.secoursIndex([...secoursEnAttente.map((e) => ({ ...e, attente: true })), ...entrees]);
   } catch { /* tried again two minutes later */ }
 }
 
+// The copies of an earlier stop: reopened as the projects they hold (their name, the file they
+// save to, if any, and unsaved changes), or set aside (deleted). Closing the question without
+// answering keeps them, to be offered again next time.
 async function proposerRecuperation() {
   if (!bureau || VUE_SEULE) return;
   let entrees = [];
   try { entrees = await bureau.secoursListe(); } catch { entrees = []; }
   if (!entrees.length) return;
+  secoursEnAttente = entrees;
   const quand = (d) => new Date(d).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   dialogue({ titre: t('recuperation'),
     contenu: el('div', {}, el('p', {}, t('recuperation_question')), el('ul', {}, entrees.map((e) => el('li', {}, `${e.nom} — ${quand(e.date)}`)))),
     boutons: [
-      { libelle: t('ignorer'), action: () => { bureau.secoursIndex([]); return true; } },
+      { libelle: t('ignorer'), action: () => { secoursEnAttente = []; bureau.secoursIndex([]); return true; } },
       { libelle: t('recuperer'), principal: true, action: () => {
         (async () => {
+          const illisibles = [];
           for (const e of entrees) {
-            try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, origine: e.origine, nom: e.nom }))); } catch { /* unreadable copy */ }
+            // before 0.9.1, a project without a file had its own copy as its origin
+            const origine = e.origine && e.origine !== e.fichier ? e.origine : null;
+            try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom, lu: e.lu || null }))); } catch { illisibles.push(e); }
           }
+          secoursEnAttente = illisibles;  // kept for another try
+          if (illisibles.length) statut(t('recuperation_echec', { noms: illisibles.map((e) => e.nom).join(', ') }), true);
+          sauvegarderSecours();  // the recovered projects get copies of their own at once
         })();
         return true;
       } }] });
@@ -816,6 +972,13 @@ function remplacerIds(x, f) {
   return x;
 }
 
+// The latest fit of each model of the project, in the order of their numbers.
+function modelesSeance(pid) {
+  const parNumero = new Map();
+  for (const m of app.modelesDe(pid)) if (m.numero !== null && m.numero !== undefined) parNumero.set(m.numero, m);
+  return [...parNumero.entries()].sort((a, b) => a[0] - b[0]).map(([, m]) => m);
+}
+
 function collecterSession(pid) {
   const parNumero = new Map();  // the latest fit of each project model
   for (const m of app.modelesDe(pid)) if (m.numero !== null && m.numero !== undefined) parNumero.set(m.numero, m);
@@ -836,7 +999,7 @@ function collecterSession(pid) {
   }
   const parModele = (o) => Object.fromEntries(Object.entries(o).filter(([id]) => code.has(id)).map(([id, v]) => [code.get(id), v]));
   return { version: 2, modeles: [...parNumero.values()].map((m) => ({ numero: m.numero, A: m.A })), vues, disposition,
-    selection: parModele(etat.selection), choixVIP: parModele(etat.choixVIP), groupesHCA: parModele(etat.groupesHCA) };
+    selection: parModele(etat.selection), variables: parModele(etat.variables), choixVIP: parModele(etat.choixVIP), groupesHCA: parModele(etat.groupesHCA) };
 }
 
 async function restaurerSession(pid, donnee = null) {
@@ -855,7 +1018,7 @@ async function restaurerSession(pid, donnee = null) {
   });
   await rafraichirProjet(pid);
   diffuser('modeles');
-  for (const cle of ['selection', 'choixVIP', 'groupesHCA']) {
+  for (const cle of ['selection', 'variables', 'choixVIP', 'groupesHCA']) {
     for (const [code, v] of Object.entries(s[cle] || {})) if (ids[code]) etat[cle][ids[code]] = v;
   }
   const idPanneau = (code, vue) => `${vue}:${code === '@P' || !code ? pid : ids[code]}`;
@@ -933,6 +1096,7 @@ async function garder(res) {
 function oublierModele(id) {
   delete etat.modeles[id];
   delete etat.selection[id];
+  delete etat.variables[id];
   const page = dock && dock.getPanel(`page:${id}`);
   if (page) page.api.close();
   app.rafraichirExplorateur();
@@ -1141,10 +1305,12 @@ function optionsDock() {
 function contexte(entree) {
   return {
     modele: app.modele, projet: app.projet, tousModeles: app.tousModeles, selection: app.selection,
-    choisir: app.choisir, groupesHCA: etat.groupesHCA, demander, valeurs: app.valeurs,
+    choisir: app.choisir, variablesChoisies: app.variablesChoisies, choisirVariables: app.choisirVariables,
+    groupesHCA: etat.groupesHCA, demander, valeurs: app.valeurs,
     ouvrirVue: app.ouvrirVue, reajuster: app.reajuster, statut,
     rafraichir: () => rendrePanneau(entree),
     definirGraphe: (div) => { entree.graphe = div; },
+    grapheCourant: () => entree.graphe,
     menuGraphique: (e, div) => menuGraphique(e, div, entree),
     diffuserGroupes: (id) => diffuser('groupes', { modele: id, groupes: etat.groupesHCA[id] }),
     definirChoixVIP: (id, termes) => { etat.choixVIP[id] = termes; majBarreOutils(); },
@@ -1195,6 +1361,7 @@ function toutRedessiner() {
 function menuGraphique(e, div, entree) {
   const id = entree.params.modele;
   const sel = id ? app.selection(id) : [];
+  const vars = id ? app.variablesChoisies(id) : [];
   menuContextuel(e.clientX, e.clientY, [
     { libelle: t('mise_en_forme'), icone: 'palette', action: () => dialogueFormat(app, entree, div) },
     '-',
@@ -1202,7 +1369,7 @@ function menuGraphique(e, div, entree) {
     { libelle: t('image_png'), icone: 'image-down', action: () => enregistrerImage(div, 'png') },
     { libelle: t('image_svg'), action: () => enregistrerImage(div, 'svg') },
     '-',
-    { libelle: t('effacer_selection'), actif: sel.length > 0, action: () => app.choisir(id, []) },
+    { libelle: t('effacer_selection'), actif: sel.length + vars.length > 0, action: () => app.effacerSelection(id) },
     { libelle: t('exclure_reajuster'), icone: 'eye-off', actif: sel.length > 0, action: () => app.reajuster(id, { exclues: sel }) },
     { libelle: t('contributions'), icone: 'sliders-horizontal', actif: sel.length > 0, action: () => app.ouvrirVue('contributions', id) },
     { libelle: t('classe_selection'), icone: 'tag', actif: sel.length > 0, action: () => app.classeSelection(id) },
@@ -1226,6 +1393,23 @@ function enregistrerImage(div = app.grapheActif(), format = 'png') {
   window.Plotly.downloadImage(div, { format, filename: nom, scale: format === 'png' ? 2 : 1 });
 }
 app.copierImage = () => copierImage();
+
+// Ctrl+C in a panel that shows a table (and no text selected): the table as tab-separated
+// text, for Excel. A list copies all its rows at full precision (its copy button), any other
+// table as shown.
+app.tableauActif = () => {
+  const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
+  const e = p && etat.panneaux.get(p.id);
+  const table = e && e.element && e.element.querySelector('table');
+  if (!table) return null;
+  if (e.element._copierTableau) return e.element._copierTableau;
+  return () => {
+    const texte = (c) => { const x = c.cloneNode(true); x.querySelectorAll('.marque').forEach((m) => m.remove()); return x.textContent.replace(/[▲▼]/g, '').trim(); };
+    navigator.clipboard.writeText([...table.rows].map((r) => [...r.cells].map(texte).join('\t')).join('\n')).then(() => statut(t('table_copiee')));
+  };
+};
+app.copierTableau = () => { const f = app.tableauActif(); if (f) f(); };
+app.palette = () => ouvrirPalette(app, C);
 app.miseEnForme = () => {
   const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
   const e = p && etat.panneaux.get(p.id);
@@ -1279,16 +1463,18 @@ function majEtat() {
   const id = app.modeleActif();
   const m = id && etat.modeles[id];
   const n = id ? app.selection(id).length : 0;
+  const nv = id ? app.variablesChoisies(id).length : 0;
   s.replaceChildren(...[
     el('span', { class: 'moteur' + (etat.occupe ? ' occupe' : etat.erreur ? ' erreur' : '') }, el('span', { class: 'point' }),
       etat.occupe ? (Date.now() - etat.debutOccupe > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
     el('span', { class: 'espace' }),
     etat.nouvelleVersion && lire('version_ignoree') !== etat.nouvelleVersion.version ? el('span', { class: 'nouvelle-version' },
-      el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); window.open(etat.nouvelleVersion.page); } },
-        icone('download'), t('nouvelle_version', { v: etat.nouvelleVersion.version })),
+      el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); if (etat.nouvelleVersion.installateur) app.mettreAJour(); else window.open(etat.nouvelleVersion.page); } },
+        icone('download'), t(etat.nouvelleVersion.installateur ? 'nouvelle_version_maj' : 'nouvelle_version', { v: etat.nouvelleVersion.version })),
       el('button', { class: 'icone-seule', title: t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
     m ? el('span', {}, `${m.nom} · ${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
+    nv ? el('span', { class: 'sel' }, t('variables_en_evidence', { n: nv })) : null,
     el('button', { class: 'icone-seule', title: t('theme_sombre'), onclick: () => app.changerTheme(!app.themeSombre()) }, icone(app.themeSombre() ? 'sun' : 'moon')),
     el('select', { class: 'langue', title: t('langue'), onchange: (e) => app.changerLangue(e.target.value) },
       [['fr', 'FR'], ['en', 'EN']].map(([v, x]) => el('option', { value: v, selected: v === langueActuelle() }, x)))].filter(Boolean));
@@ -1328,6 +1514,10 @@ function rattacher() {
 canal.onmessage = async ({ data: msg }) => {
   if (msg.type === 'selection') {
     etat.selection[msg.modele] = msg.uids;
+    rafraichirModele(msg.modele);
+    majEtat();
+  } else if (msg.type === 'variables') {
+    etat.variables[msg.modele] = msg.termes;
     rafraichirModele(msg.modele);
     majEtat();
   } else if (msg.type === 'selection_liee') {
@@ -1413,11 +1603,50 @@ async function demarrerPrincipal() {
     proposerRecuperation();
     if (bureau) setInterval(sauvegarderSecours, 120000);
   }
-  if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar
+  if (bureau && bureau.langue) bureau.langue(langueActuelle());  // for the dialogs of the desktop app
+  if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar, and the update
     etat.majAuto = await bureau.majAuto();
     bureau.nouvelleVersion().then((v) => { etat.nouvelleVersion = v; majEtat(); }).catch(() => {});
+    if (bureau.surProgressionMaj) bureau.surProgressionMaj((f) => statut(t('maj_telechargement', { v: etat.nouvelleVersion.version, p: Math.round(100 * f) })));
   }
   if (params.get('ouvrir')) await app.ouvrirChemin(params.get('ouvrir'));
+  if (!VUE_SEULE) {
+    document.addEventListener('dragover', (e) => {
+      if (![...e.dataTransfer.types].includes('Files')) return;  // not the panels' own tabs
+      e.preventDefault();
+      document.body.classList.add('depot');
+    });
+    document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('depot'); });
+    document.addEventListener('drop', (e) => {
+      document.body.classList.remove('depot');
+      if (!e.dataTransfer.files.length) return;
+      e.preventDefault();
+      deposerFichiers([...e.dataTransfer.files]).catch(() => {});
+    });
+    if (bureau && bureau.surOuvrirFichier) bureau.surOuvrirFichier((chemin) => app.ouvrirChemin(chemin));
+  }
+}
+
+// Files dropped on the window: spectra (JCAMP-DX, SPC) all together make one project, as
+// File › Import spectra; any other file opens as with File › Open.
+async function deposerFichiers(fichiers) {
+  const ext = (f) => f.name.split('.').pop().toLowerCase();
+  const chemin = async (f) => (bureau && bureau.cheminFichier ? bureau.cheminFichier(f)
+    : (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin);
+  if (fichiers.every((f) => ['jdx', 'dx', 'jcm', 'spc'].includes(ext(f)))) {
+    const chemins = await Promise.all(fichiers.map(chemin));
+    const res = await occupe(() => demander('importer_spectres', { chemins, nom: chemins.length === 1 ? fichiers[0].name : t('spectres_importes', { n: chemins.length }) }));
+    await apresOuverture(res);
+    if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '));
+    return;
+  }
+  for (const f of fichiers) {
+    if (bureau && bureau.cheminFichier) await app.ouvrirChemin(bureau.cheminFichier(f));
+    else {
+      const res = await choisirTable(await occupe(() => televerser(f)));
+      if (res) await apresOuverture(res);
+    }
+  }
 }
 
 document.documentElement.dataset.theme = lire('theme') === 'sombre' ? 'sombre' : 'clair';

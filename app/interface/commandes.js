@@ -28,10 +28,13 @@ export function creerCommandes(app) {
     quitter: { raccourci: 'Ctrl+Q', actif: () => !!app.bureau, action: () => app.quitter() },
 
     copier_image: { icone: 'copy', raccourci: 'Ctrl+Shift+C', actif: () => !!app.grapheActif(), action: () => app.copierImage() },
+    // (with text selected, Ctrl+C copies the text as usual)
+    copier_tableau: { icone: 'copy', raccourci: 'Ctrl+C', actif: () => !!app.tableauActif() && !String(window.getSelection()), action: () => app.copierTableau() },
     image_png: { icone: 'image-down', actif: () => !!app.grapheActif(), action: () => app.enregistrerImage('png') },
     image_svg: { actif: () => !!app.grapheActif(), action: () => app.enregistrerImage('svg') },
     mise_en_forme: { icone: 'palette', actif: () => !!app.grapheActif(), action: () => app.miseEnForme() },
-    effacer_selection: { raccourci: 'Escape', actif: avecSelection, action: () => app.choisir(m(), []) },
+    effacer_selection: { raccourci: 'Escape', actif: () => avecSelection() || (avecModele() && app.variablesChoisies(m()).length > 0),
+      action: () => app.effacerSelection(m()) },
     exclure_reajuster: { icone: 'eye-off', raccourci: 'Ctrl+Delete', actif: avecSelection, action: () => app.reajuster(m(), { exclues: app.selection(m()) }) },
     classe_selection: { icone: 'tag', actif: avecSelection, action: () => app.classeSelection(m()) },
     annuler_action: { icone: 'undo-2', raccourci: 'Ctrl+Z', actif: () => { const p = app.projet(app.projetActif()); return !!(p && p.annulable); },
@@ -50,7 +53,7 @@ export function creerCommandes(app) {
     scores_variables: { icone: 'git-merge', actif: avecModele, action: () => app.scoresEnVariables(m()) },
 
     resume: vue('resume'), scores: vue('scores'), loadings: vue('loadings'), profils: vue('profils'), dmodx: vue('dmodx'), t2: vue('t2'),
-    vip: vue('vip', avecPLS), coefficients: vue('coefficients', avecPLS), obspred: vue('obspred', avecPLS),
+    vip: vue('vip', avecPLS), coefficients: vue('coefficients', avecPLS), obspred: vue('obspred', avecPLS), ipls: vue('ipls', avecPLS),
     dendrogramme: vue('dendrogramme'), liste_obs: vue('liste_obs'), liste_vars: vue('liste_vars'),
     permutations: vue('permutations', avecPLS), cvanova: vue('cvanova', avecPLS), classification: vue('classification', avecPLSDA),
     contributions: vue('contributions'), biplot: vue('biplot'), scores3d: vue('scores3d'), splot: vue('splot', avecOPLS), coomans: vue('coomans', avecGroupe),
@@ -66,6 +69,7 @@ export function creerCommandes(app) {
     fermer_panneau: { raccourci: 'Ctrl+W', actif: () => !!app.panneauActif(), action: () => app.fermerPanneau() },
     reinitialiser: { icone: 'layout-dashboard', action: () => app.reinitialiser() },
 
+    chercher_commande: { icone: 'search', raccourci: 'Ctrl+K', action: () => app.palette() },
     explorateur: { icone: 'panel-left', raccourci: 'Ctrl+B', coche: () => app.explorateurVisible(), action: () => app.basculerExplorateur() },
     console_r: { icone: 'square-terminal', raccourci: 'Ctrl+J', coche: () => app.consoleVisible(), action: () => app.basculerConsole() },
     theme_sombre: { coche: () => app.themeSombre(), action: () => app.changerTheme(!app.themeSombre()) },
@@ -76,6 +80,8 @@ export function creerCommandes(app) {
     guide: { icone: 'circle-help', raccourci: 'F1', action: () => app.aide('guide') },
     quoi_de_neuf: { action: () => app.quoiDeNeuf(true) },
     maj_auto: { coche: () => app.majAuto() === true, action: () => app.basculerMajAuto() },
+    chercher_maj: { icone: 'refresh-ccw-dot', action: () => app.chercherMiseAJour() },
+    diagnostic: { icone: 'stethoscope', action: () => app.diagnostic() },
     projet_exemple: { icone: 'apple', action: () => app.ouvrirExemple() },
     redemarrer_moteur: { icone: 'refresh-cw', actif: () => !!app.bureau, action: () => app.confirmerRedemarrage() },
     differences: { action: () => app.aide('differences') },
@@ -87,7 +93,7 @@ export function creerCommandes(app) {
 
 export const ICONES_VUES = {
   resume: 'table-2', scores: 'chart-scatter', loadings: 'scan-search', profils: 'chart-spline', dmodx: 'chart-line', t2: 'ruler',
-  vip: 'chart-bar', coefficients: 'chart-column', obspred: 'sigma', dendrogramme: 'network',
+  vip: 'chart-bar', coefficients: 'chart-column', ipls: 'chart-column-big', obspred: 'sigma', dendrogramme: 'network',
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
   statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
@@ -113,20 +119,21 @@ export function menus(app, C) {
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
       '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
-    { cle: 'm_edition', items: () => [annuler(), '-', it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
+    { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable')] },
     { cle: 'm_modele', items: () => [it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('texte_methodes'), '-', it('supprimer_modele')] },
-    { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
+    { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
       it('vip'), it('coefficients'), it('obspred'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
       it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
     { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },
-    { cle: 'm_affichage', items: () => [it('explorateur'), it('console_r'), it('theme_sombre'),
+    { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
-    { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('maj_auto')] : []).concat([it('differences'), '-', it('redemarrer_moteur'), '-', it('apropos')]) },
+    { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
+      .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), '-', it('apropos')]) },
   ];
 }
 
@@ -139,7 +146,8 @@ export const BARRE_OUTILS = [
 
 const MAC = /Mac/.test(navigator.platform);
 export function afficherRaccourci(r) {
-  return r.replace('Ctrl', MAC ? '⌘' : 'Ctrl').replace('Escape', 'Échap').replace('Delete', 'Suppr').replace('=', '+');
+  const en = langueActuelle() === 'en';
+  return r.replace('Ctrl', MAC ? '⌘' : 'Ctrl').replace('Escape', en ? 'Esc' : 'Échap').replace('Delete', en ? 'Del' : 'Suppr').replace('=', '+');
 }
 
 // "Ctrl+Shift+S" for a keyboard event. "+" and "=" (and "_" and "-") count as the same key,

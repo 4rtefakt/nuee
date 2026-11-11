@@ -14,6 +14,12 @@
 
 EXTENSIONS_SPECTRES <- c("jdx", "dx", "jcm", "spc")
 
+# Le plus de valeurs qu'un lecteur tire d'un fichier : un million, ou dix par octet du fichier
+# s'il est plus grand. La compression (JCAMP-DX, DUP surtout) ou des lignes inégales (texte)
+# donnent beaucoup de valeurs pour peu d'octets, mais un petit fichier abîmé ne doit pas remplir
+# la mémoire.
+plafond_valeurs <- function(chemin) max(1e6, 10 * file.size(chemin))
+
 # Un projet fait des spectres de plusieurs fichiers, avec, si `infos` est donné, un tableau
 # d'informations sur les échantillons (concentrations, classes...) joint par le nom des
 # fichiers (joindre_informations). p$note : ce qu'il faut en dire (interpolation, noms
@@ -27,13 +33,21 @@ importer_spectres <- function(chemins, infos = NULL, nom = NULL) {
 }
 
 # Les spectres d'un fichier, nommés d'après le fichier (et le titre du bloc ou le numéro du
-# sous-fichier quand il y en a plusieurs).
+# sous-fichier quand il y en a plusieurs). Une erreur de lecture nomme le fichier : parmi
+# plusieurs, c'est lui qu'il faut regarder.
 lire_spectres <- function(chemin) {
-  spectres <- switch(extension(chemin),
+  fichier <- basename(chemin)
+  spectres <- tryCatch(switch(extension(chemin),
     jdx = , dx = , jcm = lire_jcamp(chemin),
     spc = lire_spc(chemin),
-    lire_spectres_texte(chemin))
-  if (!length(spectres)) stop("Aucun spectre lisible dans ", basename(chemin))
+    lire_spectres_texte(chemin)),
+    error = function(e) stop(sprintf(traduire("%s : %s", "%s: %s"), fichier, conditionMessage(e)), call. = FALSE))
+  if (!length(spectres)) stop(traduire("Aucun spectre lisible dans ", "No readable spectrum in "), basename(chemin))
+  # un spectre se compare aux autres (tableau_spectres) sur au moins deux abscisses connues
+  for (s in spectres) {
+    if (length(s$x) < 2) stop(traduire("Un spectre de moins de deux valeurs dans ", "A spectrum of fewer than two values in "), fichier)
+    if (!all(is.finite(s$x))) stop(traduire("Des abscisses manquantes ou illisibles dans ", "Missing or unreadable x values in "), fichier)
+  }
   base <- tools::file_path_sans_ext(basename(chemin))
   titres <- vapply(spectres, function(s) s$nom %||% "", "")
   noms <- if (length(spectres) == 1) base
@@ -49,10 +63,10 @@ lire_spectres <- function(chemin) {
 # l'attribut "note". Les spectres doivent avoir les mêmes unités, quand leurs fichiers les
 # donnent.
 tableau_spectres <- function(spectres) {
-  if (!length(spectres)) stop("Aucun spectre")
+  if (!length(spectres)) stop(traduire("Aucun spectre", "No spectrum"))
   for (cle in c("unite_x", "unite_y")) {
     u <- unique(Filter(nzchar, vapply(spectres, function(s) s[[cle]] %||% "", "")))
-    if (length(u) > 1) stop(sprintf("Les spectres n'ont pas les mêmes unités (%s) : %s", if (cle == "unite_x") "abscisses" else "ordonnées", paste(u, collapse = ", ")))
+    if (length(u) > 1) stop(sprintf(traduire("Les spectres n'ont pas les mêmes unités (%s) : %s", "The spectra don't have the same units (%s): %s"), if (cle == "unite_x") traduire("abscisses", "x values") else traduire("ordonnées", "y values"), paste(u, collapse = ", ")))
   }
   x <- spectres[[1]]$x
   pas <- stats::median(abs(diff(x)))
@@ -62,12 +76,12 @@ tableau_spectres <- function(spectres) {
     bas <- max(vapply(spectres, function(s) min(s$x), 0))
     haut <- min(vapply(spectres, function(s) max(s$x), 0))
     x <- x[x >= bas - 1e-6 * pas & x <= haut + 1e-6 * pas]
-    if (length(x) < 2) stop("Les spectres n'ont pas d'abscisses en commun")
+    if (length(x) < 2) stop(traduire("Les spectres n'ont pas d'abscisses en commun", "The spectra have no x values in common"))
     spectres <- lapply(spectres, function(s) {
       s$y <- stats::approx(s$x, s$y, xout = x, ties = mean)$y
       s
     })
-    note <- sprintf("Abscisses différentes d'un spectre à l'autre : spectres interpolés sur celles du premier, de %s à %s (%d valeurs)",
+    note <- sprintf(traduire("Abscisses différentes d'un spectre à l'autre : spectres interpolés sur celles du premier, de %s à %s (%d valeurs)", "Different x values from one spectrum to another: spectra interpolated onto the first one's, from %s to %s (%d values)"),
                     format(x[1]), format(x[length(x)]), length(x))
   }
   Y <- matrix(unlist(lapply(spectres, `[[`, "y")), length(spectres), length(x), byrow = TRUE)
@@ -99,13 +113,13 @@ noms_abscisses <- function(x) {
 joindre_informations <- function(df, infos) {
   cle <- function(s) tolower(trimws(sub("\\.(jdx|dx|jcm|spc|csv|txt|tsv)$", "", as.character(s), ignore.case = TRUE)))
   i <- match(cle(df$Observation), cle(infos[[1]]))
-  if (all(is.na(i))) stop("Aucun nom de la première colonne du tableau d'informations ne correspond à un spectre (le nom de son fichier)")
+  if (all(is.na(i))) stop(traduire("Aucun nom de la première colonne du tableau d'informations ne correspond à un spectre (le nom de son fichier)", "No name in the first column of the information table matches a spectrum (its file name)"))
   ajout <- infos[i, -1, drop = FALSE]
   rownames(ajout) <- NULL
   res <- cbind(df[1], ajout, df[-1])
   names(res) <- make.unique(names(res), sep = "_")
-  note <- c(if (anyNA(i)) sprintf("%d spectre(s) sans informations", sum(is.na(i))),
-            if (any(!seq_len(nrow(infos)) %in% i)) sprintf("%d ligne(s) du tableau d'informations sans spectre", sum(!seq_len(nrow(infos)) %in% i)))
+  note <- c(if (anyNA(i)) sprintf(traduire("%d spectre(s) sans informations", "%d spectrum(s) without information"), sum(is.na(i))),
+            if (any(!seq_len(nrow(infos)) %in% i)) sprintf(traduire("%d ligne(s) du tableau d'informations sans spectre", "%d row(s) of the information table without a spectrum"), sum(!seq_len(nrow(infos)) %in% i)))
   attr(res, "note") <- c(attr(df, "note"), note)
   res
 }
@@ -127,38 +141,57 @@ unite_spectre <- function(u) {
 lire_jcamp <- function(chemin) {
   lignes <- sub("\\$\\$.*$", "", strsplit(texte_fichier(chemin), "\r\n|\r|\n")[[1]])
   etiquette <- grepl("^\\s*##", lignes)
+  reste <- plafond_valeurs(chemin)  # pour tout le fichier : chaque table lit au plus ce qu'en laissent les autres
   spectres <- list()
-  bloc <- list()
-  for (i in which(etiquette)) {
+  # Les étiquettes du bloc dans un environnement, et la fin de chaque table d'après l'étiquette
+  # qui suit : des dizaines de milliers d'étiquettes ou de tables ne coûtent pas le carré de
+  # leur nombre (plus d'une minute pour un fichier de 1 Mo).
+  bloc <- new.env()
+  debuts <- which(etiquette)
+  suivante <- c(debuts[-1], length(lignes) + 1)
+  for (j in seq_along(debuts)) {
+    i <- debuts[j]
     m <- regmatches(lignes[i], regexec("^\\s*##([^=]*)=(.*)$", lignes[i]))[[1]]
     if (!length(m)) next
     cle <- gsub("[ _/-]", "", toupper(m[2]))
-    if (cle == "TITLE") bloc <- list()
+    if (!nzchar(cle)) next
+    if (cle == "TITLE") bloc <- new.env()
     bloc[[cle]] <- trimws(m[3])
     if (cle %in% c("XYDATA", "XYPOINTS")) {
-      fin <- match(TRUE, etiquette[-seq_len(i)], nomatch = length(lignes) - i + 1) - 1
-      s <- table_jcamp(bloc[[cle]], lignes[i + seq_len(fin)], bloc)
-      if (!is.null(s)) spectres[[length(spectres) + 1]] <- s
+      fin <- suivante[j] - i - 1
+      s <- table_jcamp(bloc[[cle]], lignes[i + seq_len(fin)], bloc, reste)
+      if (!is.null(s)) {
+        spectres[[length(spectres) + 1]] <- s
+        reste <- max(0, reste - length(s$y))
+      }
     }
   }
   spectres
 }
 
-table_jcamp <- function(forme, lignes, bloc) {
+# `plafond` : le plus de valeurs que la table peut donner (ce que laisse le fichier, lire_jcamp).
+table_jcamp <- function(forme, lignes, bloc, plafond = Inf) {
   nombre <- function(cle, defaut = NA_real_) if (is.null(bloc[[cle]])) defaut else as.numeric(nombres_affn(bloc[[cle]])[1])
   fx <- nombre("XFACTOR", 1)
   fy <- nombre("YFACTOR", 1)
   forme <- gsub("\\s", "", toupper(forme))
   titre <- bloc$TITLE %||% ""
   if (forme == "(X++(Y..Y))") {
-    y <- valeurs_x_y(lignes, titre) * fy
-    n <- nombre("NPOINTS", length(y))
-    if (length(y) != n) stop(sprintf("JCAMP-DX « %s » : %d valeurs lues pour NPOINTS = %d", titre, length(y), n))
-    if (is.na(nombre("FIRSTX")) || is.na(nombre("LASTX"))) stop(sprintf("JCAMP-DX « %s » : FIRSTX ou LASTX manque", titre))
+    # NPOINTS, quand il est donné, borne le décodage : une répétition (DUP) abîmée s'arrête là
+    # au lieu d'allouer ce qu'elle annonce. Sans NPOINTS, c'est le plafond.
+    n <- nombre("NPOINTS")
+    if (!is.null(bloc[["NPOINTS"]]) && !(is.finite(n) && n >= 0 && n == round(n))) stop(sprintf(traduire("JCAMP-DX « %s » : NPOINTS n'est pas un nombre entier (« %s »)", "JCAMP-DX “%s”: NPOINTS is not a whole number (“%s”)"), titre, bloc[["NPOINTS"]]))
+    if (!is.na(n) && n > plafond) stop(sprintf(traduire("JCAMP-DX « %s » : NPOINTS = %.0f, trop de valeurs pour la taille du fichier", "JCAMP-DX “%s”: NPOINTS = %.0f, too many values for the size of the file"), titre, n))
+    trop <- if (is.na(n)) sprintf(traduire("plus de %.0f valeurs, trop pour la taille du fichier", "more than %.0f values, too many for the size of the file"), plafond)
+            else sprintf(traduire("plus de valeurs que NPOINTS = %.0f", "more values than NPOINTS = %.0f"), n)
+    y <- valeurs_x_y(lignes, titre, min(n, plafond, na.rm = TRUE), trop) * fy
+    if (is.na(n)) n <- length(y)
+    if (length(y) != n) stop(sprintf(traduire("JCAMP-DX « %s » : %d valeurs lues pour NPOINTS = %d", "JCAMP-DX “%s”: %d values read for NPOINTS = %d"), titre, length(y), n))
+    if (is.na(nombre("FIRSTX")) || is.na(nombre("LASTX"))) stop(sprintf(traduire("JCAMP-DX « %s » : FIRSTX ou LASTX manque", "JCAMP-DX “%s”: FIRSTX or LASTX missing"), titre))
     x <- seq(nombre("FIRSTX"), nombre("LASTX"), length.out = n)
   } else if (forme == "(XY..XY)") {
     v <- nombres_affn(paste(lignes, collapse = " "))
-    if (length(v) %% 2) stop(sprintf("JCAMP-DX « %s » : la table (XY..XY) a un nombre impair de valeurs", titre))
+    if (length(v) %% 2) stop(sprintf(traduire("JCAMP-DX « %s » : la table (XY..XY) a un nombre impair de valeurs", "JCAMP-DX “%s”: the (XY..XY) table has an odd number of values"), titre))
     x <- v[c(TRUE, FALSE)] * fx
     y <- v[c(FALSE, TRUE)] * fy
   } else {
@@ -182,7 +215,10 @@ nombres_affn <- function(texte) {
 # Une ligne qui suit une ligne finie en DIF commence par une valeur de contrôle : la dernière
 # de la ligne précédente, qui n'est pas comptée deux fois (un DUP qui la suit répète bien une
 # valeur de plus).
-valeurs_x_y <- function(lignes, titre = "") {
+# Les valeurs d'une ligne se comptent avant d'être décodées : si elles dépassent `limite`
+# (NPOINTS, ou le plafond du fichier), la lecture s'arrête sur le message `trop`, sans avoir
+# alloué ce qu'annonce une répétition abîmée.
+valeurs_x_y <- function(lignes, titre = "", limite = Inf, trop = "") {
   lignes <- lignes[nzchar(trimws(lignes))]
   if (!any(grepl("[@A-DF-Ia-df-iJ-Rj-r%S-Zs]", lignes))) {  # pas de compression
     return(unlist(lapply(lignes, function(l) nombres_affn(l)[-1])))
@@ -194,43 +230,55 @@ valeurs_x_y <- function(lignes, titre = "") {
              stats::setNames(rep("dif", 19), strsplit("%JKLMNOPQRjklmnopqr", "")[[1]]),
              stats::setNames(rep("dup", 9), strsplit("STUVWXYZs", "")[[1]]))
   resultat <- list()
+  total <- 0
   fin_dif <- FALSE
   derniere <- NA_real_
   for (l in lignes) {
     jetons <- regmatches(l, gregexpr("[@A-Ia-iJ-Rj-r%S-Zs+-][0-9.]*|[0-9.]+|\\?", l))[[1]][-1]  # sans l'abscisse
     tete <- substr(jetons, 1, 1)
-    reste <- substring(jetons, 2)
-    v <- numeric(0)
+    g <- unname(genre[tete])  # NA : nombre simple, ou « ? »
+    d <- unname(chiffre[tete])
+    n <- suppressWarnings(as.numeric(jetons))
+    a <- !is.na(g)
+    n[a] <- suppressWarnings(as.numeric(paste0(abs(d[a]), substring(jetons[a], 2)))) * ifelse(d[a] < 0, -1, 1)
+    # un jeton donne une valeur, un DUP de n en donne n - 1 de plus (valeur de contrôle comprise)
+    dup <- g %in% "dup"
+    if (!all(is.finite(n[dup]) & n[dup] == round(n[dup]))) stop(sprintf(traduire("JCAMP-DX « %s » : répétition (DUP) illisible (ligne « %s »)", "JCAMP-DX “%s”: unreadable repeat (DUP) (line “%s”)"), titre, substr(l, 1, 40)))
+    compte <- sum(!dup) + sum(n[dup] - 1)
+    if (total + compte - fin_dif > limite) stop(sprintf(traduire("JCAMP-DX « %s » : %s (ligne « %s »)", "JCAMP-DX “%s”: %s (line “%s”)"), titre, trop, substr(l, 1, 40)))
+    v <- numeric(compte)
+    m <- 0  # valeurs déjà écrites dans v
     precedent <- "sqz"
     ecart <- 0
     for (k in seq_along(jetons)) {
-      g <- genre[tete[k]]
-      if (is.na(g)) {  # nombre simple, ou « ? »
-        v <- c(v, suppressWarnings(as.numeric(jetons[k])))
+      if (is.na(g[k]) || g[k] == "sqz") {  # nombre simple, « ? », ou SQZ
+        m <- m + 1
+        v[m] <- n[k]
         precedent <- "sqz"
-        next
-      }
-      n <- as.numeric(paste0(abs(chiffre[[tete[k]]]), reste[k])) * (if (chiffre[[tete[k]]] < 0) -1 else 1)
-      if (g == "sqz") {
-        v <- c(v, n)
-        precedent <- "sqz"
-      } else if (g == "dif") {
-        ecart <- n
-        v <- c(v, v[length(v)] + ecart)
+      } else if (g[k] == "dif") {
+        ecart <- n[k]
+        if (m > 0) {
+          v[m + 1] <- v[m] + ecart
+          m <- m + 1
+        }
         precedent <- "dif"
-      } else {
-        v <- c(v, if (precedent == "dif") v[length(v)] + ecart * seq_len(n - 1) else rep(v[length(v)], n - 1))
+      } else if (m > 0) {  # DUP
+        r <- seq_len(n[k] - 1)
+        v[m + r] <- if (precedent == "dif") v[m] + ecart * r else v[m]
+        m <- m + length(r)
       }
     }
+    v <- v[seq_len(m)]
     if (fin_dif && length(v)) {
       # une dernière ligne d'une seule valeur, fausse, ferme la table chez certains logiciels
       if (length(v) == 1 && identical(l, lignes[length(lignes)]) && !isTRUE(all.equal(v[1], derniere))) break
-      if (!isTRUE(all.equal(v[1], derniere))) stop(sprintf("JCAMP-DX « %s » : valeur de contrôle %s au lieu de %s (ligne « %s »)", titre, format(v[1]), format(derniere), substr(l, 1, 40)))
+      if (!isTRUE(all.equal(v[1], derniere))) stop(sprintf(traduire("JCAMP-DX « %s » : valeur de contrôle %s au lieu de %s (ligne « %s »)", "JCAMP-DX “%s”: check value %s instead of %s (line “%s”)"), titre, format(v[1]), format(derniere), substr(l, 1, 40)))
       v <- v[-1]
     }
     fin_dif <- precedent == "dif"
     if (length(v)) derniere <- v[length(v)]
     resultat[[length(resultat) + 1]] <- v
+    total <- total + length(v)
   }
   unlist(resultat)
 }
@@ -243,8 +291,17 @@ UNITES_SPC_Y <- c("2" = "ABSORBANCE", "10" = "LOG(1/R)", "128" = "TRANSMITTANCE"
 
 lire_spc <- function(chemin) {
   o <- readBin(chemin, "raw", file.size(chemin))
-  entiers <- function(pos, n, taille) readBin(o[pos + seq_len(n * taille)], "integer", n = n, size = taille, signed = TRUE, endian = "little")
-  reels <- function(pos, n, taille) readBin(o[pos + seq_len(n * taille)], "double", n = n, size = taille, endian = "little")
+  # Un fichier tronqué ou un en-tête abîmé : ce qui dépasse la fin du fichier se lirait en zéros,
+  # et des nombres de points ou de sous-fichiers démesurés feraient allouer ou boucler sans fin.
+  # Rien ne se lit donc au-delà de la fin.
+  abime <- function() stop(traduire("Fichier SPC tronqué ou abîmé : son en-tête annonce plus de données que le fichier n'en a, ou des valeurs impossibles",
+                                    "Truncated or damaged SPC file: its header announces more data than the file has, or impossible values"))
+  octets <- function(pos, nb) {  # les nb octets qui suivent pos
+    if (is.na(nb) || nb < 0 || pos + nb > length(o)) abime()
+    o[pos + seq_len(nb)]
+  }
+  entiers <- function(pos, n, taille) readBin(octets(pos, n * taille), "integer", n = n, size = taille, signed = TRUE, endian = "little")
+  reels <- function(pos, n, taille) readBin(octets(pos, n * taille), "double", n = n, size = taille, endian = "little")
   drapeaux <- as.integer(o[1])
   bit <- function(b) bitwAnd(drapeaux, b) > 0
   seize <- bit(1)    # TSPREC : ordonnées en entiers de 16 bits
@@ -257,7 +314,7 @@ lire_spc <- function(chemin) {
   ordonnees <- function(pos, n, exposant, mots_inverses = FALSE) {
     if (exposant == -128) return(list(y = reels(pos, n, 4), taille = 4 * n))
     if (seize) return(list(y = entiers(pos, n, 2) * 2^(exposant - 16), taille = 2 * n))
-    b <- o[pos + seq_len(4 * n)]
+    b <- octets(pos, 4 * n)
     if (mots_inverses) b <- b[as.vector(matrix(seq_len(4 * n), 4)[c(3, 4, 1, 2), ])]  # ancien format : mot de poids fort d'abord
     list(y = readBin(b, "integer", n = n, size = 4, endian = "little") * 2^(exposant - 32), taille = 4 * n)
   }
@@ -271,7 +328,13 @@ lire_spc <- function(chemin) {
     ux <- unite(UNITES_SPC_X, as.integer(o[29]))
     uy <- unite(UNITES_SPC_Y, as.integer(o[30]))
     pos <- 512
-    x <- if (xval && !xyxy) reels(pos, npts, 4) else seq(premier, dernier, length.out = npts)
+    # Avant d'allouer ou de boucler, ce qu'annonce l'en-tête doit tenir dans le fichier : les
+    # abscisses communes, puis chaque sous-fichier (32 octets, et ses ordonnées de 2 octets au
+    # moins ; avec ses propres abscisses, son nombre de points est dans son en-tête, lu ensuite).
+    if (is.na(nsub) || nsub < 1 || (!xyxy && (is.na(npts) || npts < 1)) ||
+        pos + (if (xval && !xyxy) 4 * npts else 0) + nsub * (32 + if (xyxy) 0 else npts * if (seize) 2 else 4) > length(o)) abime()
+    if (!xyxy && !xval && !all(is.finite(c(premier, dernier)))) abime()
+    x <- if (xyxy) NULL else if (xval) reels(pos, npts, 4) else seq(premier, dernier, length.out = npts)
     if (xval && !xyxy) pos <- pos + 4 * npts
     for (s in seq_len(nsub)) {
       exp_sous <- entiers(pos + 1, 1, 1)
@@ -287,27 +350,36 @@ lire_spc <- function(chemin) {
     }
   } else if (version == 0x4D) {
     exposant <- entiers(2, 1, 2)
-    npts <- as.integer(round(reels(4, 1, 4)))
-    x <- seq(reels(8, 1, 4), reels(12, 1, 4), length.out = npts)
+    npts <- round(reels(4, 1, 4))
+    premier <- reels(8, 1, 4)
+    dernier <- reels(12, 1, 4)
     ux <- unite(UNITES_SPC_X, as.integer(o[17]))
     uy <- unite(UNITES_SPC_Y, as.integer(o[18]))
     pos <- 256
+    # le premier sous-fichier doit tenir dans le fichier (même contrôle que plus haut)
+    if (!is.finite(npts) || npts < 1 || !all(is.finite(c(premier, dernier))) ||
+        pos + npts * (if (exposant != -128 && seize) 2 else 4) > length(o)) abime()
+    npts <- as.integer(npts)
+    x <- seq(premier, dernier, length.out = npts)
     s <- 1
+    # ce qui reste après le dernier sous-fichier (journal, remplissage) n'en est pas un : on
+    # s'arrête avant un en-tête ou des ordonnées qui ne tiennent pas dans le fichier
     while (pos < length(o)) {
       e <- exposant
       if (s > 1) {  # le premier sous-fichier a son en-tête dans celui du fichier
+        if (pos + 32 > length(o)) break
         e <- entiers(pos + 1, 1, 1)
         pos <- pos + 32
       }
+      if (pos + npts * (if (e != -128 && seize) 2 else 4) > length(o)) break
       r <- ordonnees(pos, npts, e, mots_inverses = TRUE)
-      if (pos + r$taille > length(o)) break
       pos <- pos + r$taille
       spectres[[s]] <- list(x = x, y = r$y, unite_x = ux, unite_y = uy)
       if (!multi) break
       s <- s + 1
     }
   } else {
-    stop(sprintf("Fichier SPC de version %X non lu (seuls le nouveau format 4B et l'ancien format 4D le sont)", version))
+    stop(sprintf(traduire("Fichier SPC de version %X non lu (seuls le nouveau format 4B et l'ancien format 4D le sont)", "SPC file of version %X not read (only the new format 4B and the old format 4D are)"), version))
   }
   spectres
 }
@@ -331,12 +403,16 @@ lire_spectres_texte <- function(chemin) {
     v <- nombres(decouper(l, sep), sep)
     length(v) >= 2 && !anyNA(v)
   }, TRUE)
-  if (!any(est_donnee)) stop("Aucune ligne de nombres dans ", basename(chemin))
+  if (!any(est_donnee)) stop(traduire("Aucune ligne de nombres", "No line of numbers"))  # lire_spectres nomme le fichier
   debut <- which(est_donnee)[1]
   donnees <- lignes[debut:length(lignes)]
   donnees <- donnees[est_donnee[debut:length(lignes)]]
   sep <- separateur(donnees[1])
-  M <- do.call(rbind, lapply(donnees, function(l) nombres(decouper(l, sep), sep)[seq_len(length(decouper(donnees[1], sep)))]))
+  # autant de colonnes que la première ligne de nombres : si les suivantes sont bien plus courtes,
+  # la matrice (presque vide) prendrait le carré de la taille du fichier
+  k <- length(decouper(donnees[1], sep))
+  if (length(donnees) * k > plafond_valeurs(chemin)) stop(sprintf(traduire("Lignes de nombres de longueurs trop différentes (%d nombres sur la première)", "Lines of numbers of very different lengths (%d numbers on the first one)"), k))
+  M <- do.call(rbind, lapply(donnees, function(l) nombres(decouper(l, sep), sep)[seq_len(k)]))
   noms <- if (debut > 1 && length(decouper(lignes[debut - 1], sep)) == ncol(M)) decouper(lignes[debut - 1], sep)[-1] else rep("", ncol(M) - 1)
   lapply(seq_len(ncol(M) - 1), function(j) list(nom = gsub("^\"|\"$", "", noms[j]), x = M[, 1], y = M[, j + 1], unite_x = "", unite_y = ""))
 }

@@ -1,5 +1,5 @@
 // What the interface can ask of the desktop app (window.bureau); absent in a browser.
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('bureau', {
   versions: { electron: process.versions.electron },
@@ -27,6 +27,14 @@ contextBridge.exposeInMainWorld('bureau', {
   secoursIndex: (entrees) => ipcRenderer.invoke('secours-index', entrees),
   surMoteurArrete: (f) => ipcRenderer.on('moteur-arrete', (_, journal) => f(journal)),
   redemarrerMoteur: () => ipcRenderer.invoke('redemarrer-moteur'),
-  nouvelleVersion: () => ipcRenderer.invoke('nouvelle-version'),
+  nouvelleVersion: (maintenant) => ipcRenderer.invoke('nouvelle-version', maintenant),
+  diagnostic: () => ipcRenderer.invoke('diagnostic'),
   majAuto: (oui) => ipcRenderer.invoke('maj-auto', oui),
+  mettreAJour: () => ipcRenderer.invoke('mettre-a-jour'),
+  surProgressionMaj: (f) => ipcRenderer.on('maj-progression', (_, x) => f(x)),
+  langue: (l) => ipcRenderer.invoke('langue', l),
+  ouvrirGuide: () => ipcRenderer.invoke('ouvrir-guide'),
+  // a file dropped on the window: its path; a file Windows asks Nuée to open (double-click)
+  cheminFichier: (f) => webUtils.getPathForFile(f),
+  surOuvrirFichier: (f) => ipcRenderer.on('ouvrir-fichier', (_, chemin) => f(chemin)),
 });

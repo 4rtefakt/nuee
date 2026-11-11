@@ -99,7 +99,7 @@ async function contenuRapport(app, m, parties, st) {
     if (x.tableau) blocs.push(...x.tableau(m));
     if (x.vue) {
       const image = await imageVue(app, x.vue, m);
-      if (image) blocs.push({ image, largeur: LARGEUR, hauteur: HAUTEUR });
+      blocs.push(image ? { image, largeur: LARGEUR, hauteur: HAUTEUR } : { texte: t('rapport_graphique_absent') });
     }
   }
   return blocs;
@@ -132,7 +132,7 @@ function tableauComposantes(m) {
   const pls = m.type !== 'PCA';
   const cols = [['R2X', 'R2X'], ['R2Xcum', 'R2X(cum)']].concat(pls ? [['R2Y', 'R2Y'], ['R2Ycum', 'R2Y(cum)']] : [])
     .concat([['Q2', 'Q2'], ['Q2cum', 'Q2(cum)'], ['valeur_propre', t('valeur_propre')]]);
-  const infos = [`${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K} · ${t('groupes_vc')} ${m.G}`];
+  const infos = [`${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K} · ${t('groupes_vc')} ${m.G}${m.vc_par ? ` (${m.vc_par})` : ''}`];
   if (pls && m.noms_y.length) infos.push(`Y : ${[].concat(m.noms_y).join(', ')}`);
   if (pls && m.RMSEE) infos.push(Object.keys(m.RMSEE).map((y) => `${y} : RMSEE ${fmt(m.RMSEE[y], 4)}, RMSEcv ${fmt(m.RMSEcv[y], 4)}`).join(' · '));
   if (m.classification) infos.push(`${t('bien_classes_vc')} : ${fmt(100 * m.classification.vc.global, 1)} %`);

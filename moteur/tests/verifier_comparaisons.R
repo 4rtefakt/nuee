@@ -60,7 +60,8 @@ verifier("OPLS-DA à 4 classes : 3 prédictives, orthogonales sans Y", d$Ap == 3
 pr <- predire(p, m, d, d$observations)
 verifier("prédire les observations du modèle rend leurs scores", isTRUE(all.equal(unname(as.matrix(pr[paste0("t", 1:5)])), unname(m$T), tolerance = 1e-8)))
 d1 <- p$models[[4]]
-verifier("une seule prédictive : Ap = 1 par défaut (projets enregistrés avant)", is.null(d1$Ap) && ajuster(p, d1)$Ap == 1)
+d1$Ap <- NULL  # comme dans un projet enregistré avant (le projet d'exemple, refait, a maintenant Ap)
+verifier("une seule prédictive : Ap = 1 par défaut (projets enregistrés avant)", ajuster(p, d1)$Ap == 1)
 d2 <- definir_modele(p, "OPLS", x = x[1:10], y = x[11:12], A = 0)
 verifier("OPLS à 2 Y : 2 prédictives", d2$Ap == 2 && autoajuster(p, d2) >= 2)
 

@@ -3,6 +3,13 @@
 # L'interface (fenêtre de l'application ou navigateur) envoie ses demandes en JSON à
 # /api/<demande> ; chaque résultat affiché vient des fonctions du moteur.
 
+# Le moteur est écrit en UTF-8. R pour Windows l'est toujours ; sous Linux, une session
+# lancée sans langue (LANG vide ou C, depuis un menu par exemple) ne l'est pas : on passe à
+# C.UTF-8, présent sur tous les systèmes récents.
+if (!l10n_info()[["UTF-8"]]) {
+  for (l in c("C.UTF-8", "C.utf8", "en_US.UTF-8")) if (nzchar(suppressWarnings(Sys.setlocale("LC_CTYPE", l)))) break
+}
+
 local({
   f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
   racine <<- normalizePath(file.path(dirname(if (length(f)) f else "moteur/serveur.R"), ".."), winslash = "/")
@@ -12,6 +19,44 @@ source(file.path(racine, "moteur", "charger.R"))
 args <- commandArgs(trailingOnly = TRUE)
 port <- if (length(args) >= 1) as.integer(args[1]) else 8765L
 interface <- if (length(args) >= 2) args[2] else file.path(racine, "app", "interface")
+
+# Seule l'interface de l'application peut faire calculer le moteur. Le serveur n'écoute que
+# 127.0.0.1, mais d'autres que l'application y ont accès : une page web ouverte dans un
+# navigateur (elle peut envoyer des demandes à 127.0.0.1, ou s'y faire passer pour son propre
+# site en changeant l'adresse de son nom de domaine) et les autres utilisateurs du même
+# ordinateur (bureau à distance). Or la console R exécute ce qu'on lui envoie. Chaque demande
+# doit donc porter le jeton de la séance : l'application le tire au hasard à chaque lancement
+# (NUEE_JETON) et le donne à ses fenêtres dans un cookie que les navigateurs n'envoient jamais
+# depuis un autre site. Lancé à la main sans NUEE_JETON (développement), le serveur tire
+# lui-même le jeton et affiche l'adresse à ouvrir dans le navigateur.
+JETON <- Sys.getenv("NUEE_JETON")
+jeton_donne <- nzchar(JETON)
+if (!jeton_donne) JETON <- paste(sample(c(0:9, letters[1:6]), 64, replace = TRUE), collapse = "")
+Sys.unsetenv("NUEE_JETON")  # ni la console ni les programmes qu'elle lance n'en héritent
+COOKIE <- paste0("nuee_", port)  # les cookies ne distinguent pas les ports : un nom par serveur
+HOTES <- sprintf(c("127.0.0.1:%d", "localhost:%d"), port)
+
+jeton_recu <- function(cookies) {
+  for (x in trimws(strsplit(cookies %||% "", ";", fixed = TRUE)[[1]])) {
+    if (startsWith(x, paste0(COOKIE, "="))) return(substring(x, nchar(COOKIE) + 2L))
+  }
+  ""
+}
+
+# /api/connexion?jeton=… (navigateur, développement) : pose le cookie, puis ouvre l'interface
+# avec les autres paramètres de l'adresse (ouvrir=…).
+connexion <- function(req) {
+  q <- sub("^\\?", "", req$QUERY_STRING %||% "")
+  parametres <- strsplit(q, "&", fixed = TRUE)[[1]]
+  j <- grep("^jeton=", parametres, value = TRUE)
+  if (!length(j) || !identical(utils::URLdecode(sub("^jeton=", "", j[1])), JETON)) {
+    return(list(status = 403L, headers = list(), body = "jeton refusé"))
+  }
+  reste <- paste(grep("^jeton=", parametres, value = TRUE, invert = TRUE), collapse = "&")
+  list(status = 302L, body = "",
+       headers = list(Location = paste0("/", if (nzchar(reste)) paste0("?", reste)),
+                      "Set-Cookie" = sprintf("%s=%s; Path=/; HttpOnly; SameSite=Strict", COOKIE, JETON)))
+}
 
 etat <- new.env()
 etat$projets <- list()
@@ -29,7 +74,8 @@ source(file.path(racine, "moteur", "console.R"), encoding = "UTF-8")  # journal 
 
 # ---------------------------------------------------------------- projets
 
-# Un fichier .usp passe par le convertisseur (export_project), qui écrit un .json.
+# Un fichier .usp passe par le convertisseur (export_project), qui écrit un .json : le
+# programme compilé sous Windows, le script Python ailleurs (python3 sous Linux).
 convertir_usp <- function(chemin) {
   dossier <- file.path(tempdir(), nouvel_id("usp"))
   dir.create(dossier)
@@ -37,11 +83,12 @@ convertir_usp <- function(chemin) {
   sortie <- if (file.exists(exe)) {
     system2(exe, c(shQuote(chemin), "-o", shQuote(dossier)), stdout = TRUE, stderr = TRUE)
   } else {
-    system2(Sys.getenv("PYTHON", "python"), c(shQuote(file.path(racine, "convertisseur", "export_project.py")),
-                                               shQuote(chemin), "-o", shQuote(dossier)), stdout = TRUE, stderr = TRUE)
+    python <- Sys.getenv("PYTHON", if (.Platform$OS.type == "windows") "python" else "python3")
+    system2(python, c(shQuote(file.path(racine, "convertisseur", "export_project.py")),
+                      shQuote(chemin), "-o", shQuote(dossier)), stdout = TRUE, stderr = TRUE)
   }
   json <- list.files(dossier, "\\.json$", full.names = TRUE)
-  if (!length(json)) stop("Conversion du fichier .usp impossible : ", paste(sortie, collapse = " "))
+  if (!length(json)) stop(traduire("Conversion du fichier .usp impossible : ", "The .usp file couldn't be converted: "), paste(sortie, collapse = " "))
   json[1]
 }
 
@@ -54,11 +101,12 @@ memoriser <- function(p, etiquette) {
 
 annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
-  if (!length(pile)) stop("Rien à annuler")
+  if (!length(pile)) stop(traduire("Rien à annuler", "Nothing to undo"))
   actuel <- projet(q$projet)
   ancien <- pile[[1]]$projet
   etat$annulations[[q$projet]] <- pile[-1]
   ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
+  ancien$fichier_lu <- actuel$fichier_lu
   ancien$modifie <- TRUE
   etat$projets[[q$projet]] <- ancien
   list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
@@ -68,22 +116,60 @@ annuler_demande <- function(q) {
 # choisi renvoie leur liste (`choisir`) : l'interface demande lequel ouvrir.
 ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL) {
   ext <- extension(nom)
-  if (!ext %in% c("json", "usp", FORMATS_LECTURE)) stop("Format de fichier non reconnu : .", ext)
+  if (!ext %in% c("nuee", "json", "usp", FORMATS_LECTURE)) stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext)
   if (!ext %in% FORMATS_LECTURE) table <- NULL
   if (ext %in% FORMATS_LECTURE && is.null(table)) {
     tables <- tables_fichier(chemin)
     if (length(tables) > 1) return(list(choisir = I(tables), chemin = chemin, nom = nom))
   }
   p <- switch(ext,
-              json = lire_projet(chemin),
+              nuee = , json = lire_projet(chemin),
               usp = lire_projet(convertir_usp(chemin)),
               importer_tableau(chemin, table))
   p$id <- nouvel_id("P")
   p$nom <- if (is.null(table)) nom else sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), table, tools::file_ext(nom))
   p$chemin <- chemin
   p$table <- table
+  if (ext %in% c("nuee", "json")) p$fichier_lu <- etat_fichier(chemin)
   etat$projets[[p$id]] <- p
-  resume_projet(p)
+  r <- resume_projet(p)
+  # ce qu'il faut savoir de la lecture (valeurs non numériques lues comme manquantes...), et
+  # d'un projet venant d'une version plus récente
+  notes <- c(p$note, if (isTRUE(as.numeric(p$nuee$format %||% 0) > FORMAT_PROJET))
+    sprintf(traduire("Ce projet a été enregistré par Nuée %s, plus récente que celle-ci : certaines de ses parties ne sont peut-être pas lues. Mettez Nuée à jour.",
+                     "This project was saved by Nuée %s, newer than this one: some of its parts may not be read. Update Nuée."), p$nuee$version %||% "?"))
+  if (length(notes)) r$note <- I(as.character(notes))
+  r
+}
+
+# Ce qu'on sait d'un fichier de projet quand on l'ouvre ou l'enregistre, pour voir avant de
+# l'écraser s'il a changé depuis (un collègue, sur un dossier partagé ; une autre copie de Nuée).
+etat_fichier <- function(chemin) {
+  i <- file.info(chemin)
+  list(chemin = normalizePath(chemin, winslash = "/", mustWork = FALSE), taille = i$size, date = as.numeric(i$mtime))
+}
+
+# Un fichier dans l'état qu'on en connaissait : même taille, même date à la milliseconde près
+# (un état gardé avec une copie de secours est passé par du JSON).
+meme_etat <- function(a, b) {
+  isTRUE(as.numeric(a$taille) == as.numeric(b$taille)) && isTRUE(abs(as.numeric(a$date) - as.numeric(b$date)) < 1e-3)
+}
+
+# L'état du fichier d'un projet gardé avec sa copie de secours (sauvegarde_secours), rendu au
+# projet repris de la copie, s'il est bien celui du fichier où il s'enregistre (`origine`) :
+# la question avant d'écraser un fichier changé par ailleurs vaut encore après un arrêt
+# inattendu ou un redémarrage du moteur. NULL sinon.
+fichier_lu_repris <- function(lu, origine) {
+  if (!is.list(lu) || is.null(origine) || !identical(as.character(lu$chemin), etat_fichier(origine)$chemin)) return(NULL)
+  list(chemin = as.character(lu$chemin), taille = as.numeric(lu$taille), date = as.numeric(lu$date))
+}
+
+# Une erreur que l'interface reconnaît : le fichier a changé depuis qu'on l'a lu.
+conflit_fichier <- function(chemin) {
+  structure(class = c("conflit_fichier", "error", "condition"),
+            list(message = sprintf(traduire("%s a été modifié par ailleurs depuis que vous l'avez ouvert ou enregistré.",
+                                            "%s was changed elsewhere since you opened or saved it."), basename(chemin)),
+                 call = NULL, date = etat_fichier(chemin)$date))
 }
 
 # Un nom de fichier (ou d'objet R) tiré du nom d'un projet ou d'un modèle.
@@ -123,7 +209,7 @@ resume_projet <- function(p) {
   vars <- lapply(variables_avec_donnees(p), function(v) list(
     uid = v$uid, nom = as.character(v$ids[1]), qualitative = length(v$categories) > 0,
     categories = I(as.character(v$categories %||% character(0)))))
-  json <- identical(tolower(tools::file_ext(p$chemin %||% "")), "json")
+  json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
        table = p$table %||% NULL,
@@ -153,8 +239,8 @@ donnees_projet <- function(p) {
 
 # ---------------------------------------------------------------- modèles
 
-projet <- function(id) etat$projets[[id]] %||% stop("Projet inconnu : ", id)
-modele <- function(id) etat$modeles[[id]] %||% stop("Modèle inconnu : ", id)
+projet <- function(id) etat$projets[[id]] %||% stop(traduire("Projet inconnu : ", "Unknown project: "), id)
+modele <- function(id) etat$modeles[[id]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id)
 
 # Définition d'un modèle décrit par l'interface (type, variables, observations exclues...).
 definition_interface <- function(p, q) {
@@ -167,7 +253,8 @@ definition_interface <- function(p, q) {
                       transformations = if (length(q$transformations)) unlist(q$transformations),
                       croises = if (is.matrix(q$croises)) lapply(seq_len(nrow(q$croises)), function(i) q$croises[i, ])
                                 else q$croises,
-                      spectres = q$spectres)
+                      spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)),
+                      vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs))
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -180,7 +267,7 @@ modeles_classe_demande <- function(q) {
   p <- projet(q$projet)
   d <- definition_interface(p, utils::modifyList(q, list(type = "PCA", classe = NULL)))
   ds <- modeles_classe(p, d, as.numeric(q$classe))
-  if (!length(ds)) stop("Aucune classe n'a assez d'observations (3 au moins)")
+  if (!length(ds)) stop(traduire("Aucune classe n'a assez d'observations (3 au moins)", "No class has enough observations (3 or more)"))
   list(modeles = I(lapply(ds, function(e) ajuster_et_garder(projet(q$projet), e))))
 }
 
@@ -190,7 +277,7 @@ appartenance_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
   g <- e$definition$groupe_classes
-  if (is.null(g)) stop("Ce modèle ne fait pas partie d'un groupe de modèles de classe")
+  if (is.null(g)) stop(traduire("Ce modèle ne fait pas partie d'un groupe de modèles de classe", "This model isn't part of a group of class models"))
   defs <- Filter(function(d) identical(d$groupe_classes$nom, g$nom), p$models)
   modeles <- lapply(defs, function(d) {
     ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, p$id) && identical(etat$modeles[[id]]$definition$name, d$name), names(etat$modeles))
@@ -286,8 +373,8 @@ resultat_modele <- function(id) {
                       `99` = 2 * (Nt - 1) / (Nt - 2) * stats::qf(0.99, 2, Nt - 2)),
        stocke = composantes_stockees(d), version_origine = d$version_origine %||% NULL,
        noms_y = I(m$y$noms %||% character(0)),  # I() : un seul Y reste une liste
-       G = m$G, reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "",
-       cv_anova = s$cv_anova, classification = s$classification,
+       G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "",
+       cv_anova = s$cv_anova, classification = s$classification, test = m$test,
        demande = d$demande %||% list(type = d$type, numero = d$number))
 }
 
@@ -339,7 +426,7 @@ predire_fichier_demande <- function(q) {
 }
 
 exporter_prediction_demande <- function(q) {
-  out <- etat$predictions[[q$modele]] %||% stop("Aucune prédiction à exporter pour ce modèle")
+  out <- etat$predictions[[q$modele]] %||% stop(traduire("Aucune prédiction à exporter pour ce modèle", "No prediction to export for this model"))
   chemin <- q$chemin %||% chemin_temporaire(paste0("predictions ", nom_fichier(modele(q$modele)$definition$name), ".", q$format %||% "xlsx"))
   out <- out[c("nom", setdiff(names(out), c("nom", "uid")))]
   names(out)[1] <- "Observation"
@@ -380,16 +467,24 @@ methodes_demande <- function(q) {
   texte_methodes(projet(e$projet), e$definition, e$modele, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""))
 }
 
+# Un modèle (q$modele), ou plusieurs du même projet (q$modeles : la séance, dans un script .R).
 script_demande <- function(q) {
-  e <- modele(q$modele)
-  nom <- gsub("[^[:alnum:]_ -]", "_", e$definition$name %||% "modele")
-  format <- if (isTRUE(q$format %in% c("Rmd", "qmd"))) q$format else "R"
+  ids <- as.character(unlist(q$modeles %||% q$modele))
+  e <- modele(ids[1])
+  seance <- length(ids) > 1
+  nom <- gsub("[^[:alnum:]_ -]", "_", if (seance) as.character(projet(e$projet)$source %||% "seance") else e$definition$name %||% "modele")
+  format <- if (!seance && isTRUE(q$format %in% c("Rmd", "qmd"))) q$format else "R"
   chemin <- q$chemin %||% file.path(tempdir(), nouvel_id("script"), paste0(nom, ".", format))
   dir.create(dirname(chemin), showWarnings = FALSE, recursive = TRUE)
-  ecrire_script(projet(e$projet), e$definition, chemin, file.path(racine, "moteur"), m = e$modele,
-                donnees = if (identical(q$donnees, "csv")) "csv" else "script", renv = isTRUE(q$renv),
-                rdata = isTRUE(q$rdata), rproj = isTRUE(q$rproj), version = as.character(q$version %||% ""),
-                langue = if (identical(q$langue, "en")) "en" else "fr")
+  options <- list(donnees = if (identical(q$donnees, "csv")) "csv" else "script", renv = isTRUE(q$renv),
+                  rdata = isTRUE(q$rdata), rproj = isTRUE(q$rproj), version = as.character(q$version %||% ""),
+                  langue = if (identical(q$langue, "en")) "en" else "fr")
+  if (!seance) return(do.call(ecrire_script, c(list(projet(e$projet), e$definition, chemin, file.path(racine, "moteur"), m = e$modele), options)))
+  es <- lapply(ids, modele)
+  if (!all(vapply(es, function(x) identical(x$projet, e$projet), FALSE)))
+    stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
+  do.call(ecrire_script_seance, c(list(projet(e$projet), lapply(es, `[[`, "definition"), lapply(es, `[[`, "modele"), chemin,
+                                       file.path(racine, "moteur")), options))
 }
 
 # Les identifiants secondaires des observations (« site », « ANNEE »...), sans les
@@ -402,10 +497,8 @@ identifiants_secondaires <- function(p) {
   lapply(rangs, function(k) list(rang = k, nom = noms[k]))
 }
 
-# Le k-ième identifiant de chaque observation (NA s'il manque).
-identifiants_obs <- function(p, k) {
-  vapply(p$observations, function(o) if (length(o$ids) >= k) as.character(o$ids[[k]] %||% NA) else NA_character_, "")
-}
+# Le k-ième identifiant de chaque observation (NA s'il manque ; validation_croisee.R).
+identifiants_obs <- function(p, k) identifiants_observations(p, k, vapply(p$observations, function(o) as.numeric(o$uid), 0))
 
 valeurs_demande <- function(q) {
   p <- projet(q$projet)
@@ -443,7 +536,7 @@ exporter_donnees_demande <- function(q) {
 # la console R relit), puis importé comme un tableau ouvert.
 coller_demande <- function(q) {
   texte <- as.character(q$texte %||% "")
-  if (!grepl("[\t;,]", texte) || !grepl("\n.", texte)) stop("Le presse-papiers ne contient pas de tableau (au moins deux lignes et deux colonnes)")
+  if (!grepl("[\t;,]", texte) || !grepl("\n.", texte)) stop(traduire("Le presse-papiers ne contient pas de tableau (au moins deux lignes et deux colonnes)", "The clipboard holds no table (at least two rows and two columns)"))
   chemin <- chemin_temporaire("tableau colle.tsv")
   writeLines(enc2utf8(texte), chemin, useBytes = TRUE)
   p <- importer_tableau(chemin)
@@ -453,6 +546,7 @@ coller_demande <- function(q) {
   etat$projets[[p$id]] <- p
   r <- resume_projet(p)
   r$fichier_colle <- chemin
+  r$note <- I(p$note %||% character(0))
   r
 }
 
@@ -479,6 +573,8 @@ etat_complet <- function() {
 
 DEMANDES <- list(
   etat = function(q) etat_complet(),
+  # les noms des projets aux changements non enregistrés (main.js, avant de fermer)
+  projets_modifies = function(q) list(noms = I(unname(vapply(Filter(function(p) isTRUE(p$modifie), etat$projets), function(p) p$nom, "")))),
   fermer_projet = function(q) {
     etat$modeles <- Filter(function(e) !identical(e$projet, q$projet), etat$modeles)
     etat$projets[[q$projet]] <- NULL
@@ -514,19 +610,26 @@ DEMANDES <- list(
     etat$projets[[p$id]] <- p
     list(note = note, projet = resume_projet(p))
   },
-  # Copie de secours d'un projet pas encore enregistré, sans toucher à son état
+  # Copie de secours d'un projet pas encore enregistré, sans toucher à son état ; `lu` : l'état
+  # de son fichier quand il l'a lu ou enregistré, que l'interface garde avec la copie
   sauvegarde_secours = function(q) {
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
-    enregistrer_projet(p, q$chemin)
-    list(chemin = q$chemin)
+    enregistrer_projet(p, q$chemin, as.character(q$version %||% ""))
+    list(chemin = q$chemin, lu = p$fichier_lu)
   },
+  # q$secours : une copie de secours (q$chemin), rouverte comme le projet qu'elle garde : son nom,
+  # son fichier (q$origine : celui où il s'enregistre, ou d'où il vient ; aucun pour un tableau
+  # collé ou des spectres importés jamais enregistrés), l'état de ce fichier quand il l'avait lu
+  # (q$lu), des changements à enregistrer. Jamais la copie elle-même comme fichier du projet :
+  # elle est effacée quand Nuée se ferme.
   ouvrir = function(q) {
     r <- ouvrir_fichier(q$chemin, table = q$table)
-    if (is.null(q$origine) || !is.null(r$choisir)) return(r)
+    if (!(isTRUE(q$secours) || !is.null(q$origine)) || !is.null(r$choisir)) return(r)
     p <- projet(r$id)
-    p$nom <- q$nom %||% basename(q$origine)
+    p$nom <- q$nom %||% basename(q$origine %||% p$nom)
     p$chemin <- q$origine
+    p$fichier_lu <- fichier_lu_repris(q$lu, q$origine)
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
     resume_projet(p)
@@ -553,14 +656,21 @@ DEMANDES <- list(
   hca = hca_demande,
   permutations = function(q) {
     e <- modele(q$modele)
-    if (!identical(e$modele$type, "PLS")) stop("Le test de permutation ne concerne que les modèles PLS")
-    r <- permutations(e$modele, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
+    if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
+    r <- permutations(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
     c(list(modele = q$modele), r)
   },
   valeurs = valeurs_demande,
   exporter = exporter_demande,
   exporter_donnees = exporter_donnees_demande,
   coller = coller_demande,
+  # un jeu de test proposé (jeu_test.R) : au hasard ou par Kennard–Stone, par classe s'il y en a une
+  jeu_test = function(q) {
+    p <- projet(q$projet)
+    obs <- setdiff(vapply(p$observations, function(o) as.numeric(o$uid), 0), as.numeric(q$exclues %||% numeric(0)))
+    list(test = I(choisir_test(p, as.numeric(q$x), obs, q$methode %||% "hasard", as.numeric(q$part %||% 0.25),
+                               if (length(q$classe)) as.numeric(q$classe))))
+  },
   importer_spectres = importer_spectres_demande,
   predire_fichier = predire_fichier_demande,
   exporter_prediction = exporter_prediction_demande,
@@ -600,6 +710,11 @@ DEMANDES <- list(
     list(modele = q$modele, t = colonnes(b$t), p = colonnes(b$p), c = colonnes(b$c),
          noms_x = I(e$modele$x$noms), noms_y = I(e$modele$y$noms %||% character(0)))
   },
+  # iPLS (ipls.R) : q$n intervalles, 1 à q$A composantes (le A du modèle par défaut)
+  ipls = function(q) {
+    e <- modele(q$modele)
+    c(list(modele = q$modele), pls_par_intervalles(projet(e$projet), e$definition, n = q$n %||% 20, A = q$A %||% e$modele$A))
+  },
   verifier = function(q) {
     p <- projet(q$projet)
     if (identical(q$type, "CLASSES")) q <- utils::modifyList(q, list(type = "PCA", classe = NULL))
@@ -611,17 +726,29 @@ DEMANDES <- list(
   enregistrer = function(q) {
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
-    chemin <- q$chemin %||% file.path(tempdir(), paste0(tools::file_path_sans_ext(p$nom), ".json"))
-    enregistrer_projet(p, chemin)
-    if (!is.null(q$chemin)) p$chemin_enregistrement <- chemin
+    chemin <- q$chemin %||% file.path(tempdir(), paste0(tools::file_path_sans_ext(p$nom), ".nuee"))
+    # le fichier qu'on avait lu ou écrit, changé depuis : l'interface demande avant de l'écraser
+    lu <- p$fichier_lu
+    if (!is.null(q$chemin) && !isTRUE(q$ecraser) && !is.null(lu) && file.exists(chemin) &&
+        identical(etat_fichier(chemin)$chemin, lu$chemin) && !meme_etat(etat_fichier(chemin), lu)) {
+      stop(conflit_fichier(chemin))
+    }
+    enregistrer_projet(p, chemin, as.character(q$version %||% ""))
+    if (!is.null(q$chemin)) {
+      p$chemin_enregistrement <- chemin
+      p$fichier_lu <- etat_fichier(chemin)
+    }
     p$modifie <- FALSE
     etat$projets[[p$id]] <- p
     list(chemin = chemin)
   },
   journal = function(q) list(entrees = journal_depuis(as.numeric(q$depuis %||% 0)), dernier = etat$n_journal),
   console = function(q) evaluer_console(q$code, q$modele, q$projet),
-  version = function(q) list(R = R.version.string,
-                             paquets = vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl"), function(x) as.character(utils::packageVersion(x)), "")))
+  completer = function(q) completer_console(as.character(q$texte %||% ""), as.integer(q$curseur %||% nchar(q$texte %||% "")), q$modele, q$projet),
+  version = function(q) list(R = R.version.string, plateforme = R.version$platform, systeme = utils::osVersion %||% "",
+                             locale = Sys.getlocale("LC_CTYPE"),
+                             paquets = as.list(vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl", "foreign", "rmarkdown", "knitr"), function(x)
+                               tryCatch(as.character(utils::packageVersion(x)), error = function(e) "-"), ""))))
 
 # Les valeurs non finies (NaN, Inf) deviennent des valeurs manquantes en JSON.
 fini <- function(x) {
@@ -642,13 +769,21 @@ repondre <- function(statut, contenu) {
 appli <- list(
   call = function(req) {
     chemin <- req$PATH_INFO
+    options(nuee.langue = if (identical(req$HTTP_X_LANGUE, "en")) "en" else "fr")  # langue des messages (langue.R)
+    # un autre nom que 127.0.0.1 : un site qui se fait passer pour l'ordinateur
+    if (!isTRUE(req$HTTP_HOST %in% HOTES)) return(list(status = 403L, headers = list(), body = "interdit"))
+    if (identical(chemin, "/api/connexion")) return(connexion(req))
     if (!startsWith(chemin, "/api/")) return(list(status = 404L, headers = list(), body = "introuvable"))
+    if (!identical(jeton_recu(req$HTTP_COOKIE), JETON)) {
+      return(repondre(403L, list(erreur = traduire("Demande refusée : elle ne vient pas de la fenêtre de Nuée.",
+                                                   "Request refused: it doesn't come from Nuée's window."))))
+    }
     nom <- sub("^/api/", "", chemin)
     corps <- req$rook.input$read()
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
         f <- normalizePath(utils::URLdecode(sub(".*chemin=([^&]*).*", "\\1", req$QUERY_STRING)), winslash = "/")
-        if (!startsWith(f, normalizePath(tempdir(), winslash = "/"))) stop("Fichier non autorisé")
+        if (!startsWith(f, normalizePath(tempdir(), winslash = "/"))) stop(traduire("Fichier non autorisé", "File not allowed"))
         return(list(status = 200L, headers = list("Content-Type" = "application/octet-stream",
                                                   "Content-Disposition" = sprintf('attachment; filename="%s"', basename(f))),
                     body = readBin(f, "raw", file.size(f))))
@@ -666,13 +801,14 @@ appli <- list(
         return(repondre(200L, r))
       }
       f <- DEMANDES[[nom]]
-      if (is.null(f)) stop("Demande inconnue : ", nom)
+      if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
       q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
       r <- f(q)
       tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
       repondre(200L, r)
     }, error = function(e) {
       tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
+      if (inherits(e, "conflit_fichier")) return(repondre(409L, list(erreur = conditionMessage(e), conflit = TRUE, date = e$date)))
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },
@@ -682,5 +818,6 @@ appli <- list(
 
 serveur <- httpuv::startServer("127.0.0.1", port, appli)
 cat("PRET", port, "\n")
+if (!jeton_donne) cat(sprintf("Interface : http://127.0.0.1:%d/api/connexion?jeton=%s\n", port, JETON))
 flush(stdout())
 repeat httpuv::service(100)

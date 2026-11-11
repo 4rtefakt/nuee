@@ -3,7 +3,7 @@
 import { t } from './i18n.js';
 
 export const LECTURE = [
-  { cle: 'format_projet', ext: ['json'] },
+  { cle: 'format_projet', ext: ['nuee', 'json'] },
   { cle: 'format_usp', ext: ['usp'] },
   { cle: 'format_excel', ext: ['xlsx', 'xlsm', 'xls'] },
   { cle: 'format_texte', ext: ['csv', 'txt', 'tsv', 'tab', 'dat'] },

@@ -1,0 +1,19 @@
+name: Feature request
+description: Something Nuée could do, or do better.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: You can write in English or in French.
+  - type: textarea
+    id: souhait
+    attributes:
+      label: What you would like
+      description: The analysis or the task, and how you do it today.
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: A paper, an R package or another program that does it, if you know one.

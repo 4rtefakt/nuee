@@ -1,10 +1,56 @@
 // Dialogs: model definition (type, variables, observations), help and about.
 import { t, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { libelleTransfo, FORMAT, changerFormat } from './panneaux.js';
+import { libelleTransfo, lireTransfo, codeTransfo, TYPES_TRANSFO, FORMAT, changerFormat } from './panneaux.js';
 
 const ECHELLES = ['UV', 'Par', 'Ctr', 'none'];
 const TRANSFOS = ['', 'racine2', 'racine4', 'log10'];
+const PERSO = '~perso';  // "Custom…": opens editeurTransfo
+
+// The transformations offered for a variable: the usual ones, its own if it is another
+// (a custom one, or 'autre' from a .usp file), and "Custom…".
+const optionsTransfo = (courant) => TRANSFOS.map((k) => [k, t('tr_' + (k || 'aucune'))])
+  .concat(courant && !TRANSFOS.includes(courant) ? [[courant, libelleTransfo(courant)]] : [])
+  .concat([[PERSO, t('tr_perso')]]);
+
+// Custom transformation: its type and constants, and the formula as it will be applied
+// (moteur/R/pretraitement.R, transformer). `choisir(code)` on OK; `apres` once closed.
+function editeurTransfo(initial, choisir, apres) {
+  const s = { type: 'log10', c1: 1, c2: 1, c3: 0.5, ...(lireTransfo(initial) || {}) };
+  const formule = el('b');
+  const erreur = el('p', { class: 'erreur' });
+  const champs = el('div', { class: 'grille-champs' });
+  const valide = () => [s.c1, s.c2].concat(s.type === 'puissance' ? [s.c3] : []).every(Number.isFinite) && (s.type !== 'logit' || s.c1 < s.c2);
+  const maj = () => {
+    formule.textContent = valide() ? (libelleTransfo(codeTransfo(s)) || t('tr_aucune')) : '—';
+    erreur.textContent = '';
+  };
+  const nombre = (cle) => el('input', { type: 'number', step: 'any', value: s[cle], style: 'width:8em',
+    oninput: (e) => { s[cle] = parseFloat(e.target.value); maj(); } });
+  const rendreChamps = () => {
+    champs.replaceChildren(...[
+      el('label', {}, t('type')), el('select', { onchange: (e) => {
+        s.type = e.target.value;
+        if (s.type === 'logit' && !(s.c1 < s.c2)) Object.assign(s, { c1: 0, c2: 1 });
+        rendreChamps();
+      } }, TYPES_TRANSFO.map((k) => el('option', { value: k, selected: k === s.type }, t('tr_type_' + k)))),
+      el('label', {}, s.type === 'logit' ? t('tr_borne_basse') : 'C1'), nombre('c1'),
+      el('label', {}, s.type === 'logit' ? t('tr_borne_haute') : 'C2'), nombre('c2'),
+      s.type === 'puissance' ? [el('label', {}, 'C3'), nombre('c3')] : null,
+      el('label', {}, t('tr_formule')), formule,
+      s.type === 'logit' ? [el('label', {}, ''), el('p', { class: 'note' }, t('tr_logit_note'))] : null,
+      el('label', {}, ''), el('p', { class: 'note' }, t('tr_domaine_note'))].flat().filter(Boolean));  // (replaceChildren writes null as text)
+    maj();
+  };
+  rendreChamps();
+  dialogue({ titre: t('tr_perso_titre'), contenu: el('div', {}, champs, erreur), surFermeture: apres,
+    boutons: [{ libelle: t('annuler'), action: () => true },
+      { libelle: 'OK', principal: true, action: () => {
+        if (!valide()) { erreur.textContent = t('tr_invalide'); return false; }
+        choisir(codeTransfo(s));
+        return true;
+      } }] });
+}
 // spectral preprocessing steps (moteur/R/spectres.R); sg1 = Savitzky–Golay 1st derivative
 const ETAPES = ['', 'snv', 'msc', 'detrend', 'ligne_base', 'sg0', 'sg1', 'sg2'];
 
@@ -14,8 +60,11 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   const st = {
     type: r ? r.type : 'PLS', nom: nomLibre(p), titre: r && r.nom ? `${r.titre ? r.titre + ' — ' : ''}${langueActuelle() === 'fr' ? 'd’après' : 'from'} ${r.nom}` : '',
     A: r ? r.A : 0, auto: !r, G: r ? r.G || 7 : 7, echelle: 'UV', roles: {}, echelles: {}, transfos: {},
+    // cross-validation groups: null = in turn (G groups), else { by: 'id', id } | { by: 'variable', variable } | { by: 'groups', … } (moteur/R/validation_croisee.R)
+    vc: r && r.vc && r.vc.by ? r.vc : null, blocs: {}, modificateurs: {}, bloc: '',
     exclues: new Set(r ? [].concat(r.exclues || []) : []), onglet: 'variables', filtre: '', filtreObs: '',
-    croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '',
+    test: new Set(r ? [].concat(r.test || []).map(Number) : []), methodeTest: 'hasard', partTest: 25,
+    croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '', c: '',
   };
   const etapes = r && r.spectres ? [].concat(r.spectres) : [];
   const sg = etapes.find((e) => e.type === 'sg');
@@ -27,6 +76,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     if (r.classe !== null && r.classe !== undefined) st.roles[r.classe] = 'classe';
     Object.assign(st.echelles, r.echelles || {});
     Object.assign(st.transfos, r.transformations || {});
+    Object.assign(st.blocs, r.blocs || {});
+    Object.assign(st.modificateurs, r.modificateurs || {});
   }
   const contenu = el('div', { class: 'dialogue-modele' });
   const erreur = el('p', { class: 'erreur' });
@@ -35,12 +86,42 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   const majResume = () => {
     const x = Object.values(st.roles).filter((v) => v === 'x').length;
     const y = Object.values(st.roles).filter((v) => v === 'y' || v === 'classe').length;
-    resume.textContent = t('resume_dialogue', { x, y, n: p.observations.uid.length - st.exclues.size });
+    const test = [...st.test].filter((u) => !st.exclues.has(u)).length;
+    resume.textContent = t('resume_dialogue', { x, y, n: p.observations.uid.length - st.exclues.size - test }) + (test ? ` · ${t('n_test', { n: test })}` : '');
   };
 
   const onglets = () => el('div', { class: 'onglets' }, [['general', t('general')], ['variables', t('variables')],
     ['termes', `${t('termes')}${st.croises.length ? ` (${st.croises.length})` : ''}`], ['observations', t('observations')]]
     .map(([k, n]) => el('button', { class: st.onglet === k ? 'actif' : '', onclick: () => { st.onglet = k; rendre(); } }, n)));
+
+  // Cross-validation groups: in turn (G groups), one group per value of an observation ID or of
+  // a variable (all the years of a site in one group: the model is judged on sites it has never
+  // seen), or the groups stored in the .usp file the model comes from.
+  const vcFichier = r && r.vc && r.vc.by === 'groups' ? r.vc : null;
+  const groupesVC = () => {
+    const valeur = !st.vc ? 'ordre' : st.vc.by === 'id' ? `id:${st.vc.id}` : st.vc.by === 'variable' ? `var:${st.vc.variable}` : 'fichier';
+    const ids = [].concat(p.identifiants || []).map((i) => i.nom);
+    if (st.vc && st.vc.by === 'id' && !ids.includes(st.vc.id)) ids.unshift(st.vc.id);
+    const choisir = (v) => {
+      if (v === 'ordre') st.vc = null;
+      else if (v === 'fichier') st.vc = vcFichier;
+      else if (v.startsWith('id:')) st.vc = { by: 'id', id: v.slice(3) };
+      else st.vc = { by: 'variable', variable: Number(v.slice(4)) };
+      rendre();
+    };
+    const option = (v, n) => el('option', { value: v, selected: v === valeur }, n);
+    // a wide table (spectra): qualitative variables only, and the one chosen
+    const vars = p.variables.length <= 200 ? p.variables
+      : p.variables.filter((v) => v.qualitative || (st.vc && st.vc.by === 'variable' && v.uid === st.vc.variable));
+    return el('div', { class: 'ligne' },
+      el('select', { onchange: (e) => choisir(e.target.value) },
+        option('ordre', t('vc_ordre')),
+        vcFichier ? option('fichier', t('vc_fichier')) : null,
+        ids.length ? el('optgroup', { label: t('vc_par_identifiant') }, ids.map((n) => option(`id:${n}`, n))) : null,
+        vars.length ? el('optgroup', { label: t('vc_par_variable') }, vars.map((v) => option(`var:${v.uid}`, v.nom))) : null),
+      st.vc ? null : el('input', { type: 'number', min: 2, max: 50, value: st.G, style: 'width:5em', title: t('vc_nombre'),
+        oninput: (e) => { st.G = +e.target.value || 7; } }));
+  };
 
   const general = () => el('div', { class: 'grille-champs' },
     el('label', {}, t('type')), el('select', { onchange: (e) => { st.type = e.target.value; rendre(); } },
@@ -55,7 +136,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     el('label', {}, t('nb_comp')), el('div', { class: 'ligne' },
       el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: st.auto, onchange: (e) => { st.auto = e.target.checked; rendre(); } }), t('auto')),
       el('input', { type: 'number', min: 1, max: 50, value: st.A || 2, disabled: st.auto, style: 'width:5em', oninput: (e) => { st.A = +e.target.value; } })),
-    el('label', {}, t('groupes_vc')), el('input', { type: 'number', min: 2, max: 50, value: st.G, style: 'width:5em', oninput: (e) => { st.G = +e.target.value || 7; } }),
+    el('label', {}, t('groupes_vc')), groupesVC(),
+    st.vc ? el('label', {}, '') : null, st.vc ? el('p', { class: 'note' }, t(st.vc.by === 'groups' ? 'vc_fichier_note' : 'vc_note')) : null,
     el('label', {}, t('echelle_defaut')), el('select', { onchange: (e) => { st.echelle = e.target.value; rendre(); } },
       ECHELLES.map((k) => el('option', { value: k, selected: k === st.echelle }, t('echelle_' + k)))),
     el('label', {}, t('spectres')), el('div', { class: 'ligne' },
@@ -83,6 +165,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           if (valeur === 'y' && !avecY()) continue;
           st.roles[v.uid] = valeur;
         } else if (cle === 'echelle') st.echelles[v.uid] = valeur;
+        else if (cle === 'bloc') st.blocs[v.uid] = valeur;
         else if (!v.qualitative) st.transfos[v.uid] = valeur;
       }
       rendre();
@@ -95,20 +178,32 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       el('div', { class: 'outils' }, filtre, el('span', { class: 'infos' }, t('pour_filtrees')),
         sel([['-', t('role') + '…']].concat(roles({ qualitative: true }).map(([k, n]) => [k || 'aucun', n])), '-', (v) => tous('role', v === 'aucun' ? '' : v)),
         sel([['-', t('echelle') + '…']].concat(ECHELLES.map((k) => [k, t('echelle_' + k)])), '-', (v) => tous('echelle', v)),
-        sel([['-', t('transformation') + '…']].concat(TRANSFOS.map((k) => [k || 'aucune', t('tr_' + (k || 'aucune'))])), '-', (v) => tous('transfo', v === 'aucune' ? '' : v)),
+        el('input', { placeholder: t('bloc') + '…', title: `${t('bloc_aide')} ${t('bloc_entree')}`, size: 9, value: st.bloc,
+          oninput: (e) => { st.bloc = e.target.value; },
+          onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); tous('bloc', st.bloc.trim()); } } }),
+        sel([['-', t('transformation') + '…']].concat(TRANSFOS.map((k) => [k || 'aucune', t('tr_' + (k || 'aucune'))]), [[PERSO, t('tr_perso')]]), '-',
+          (v) => (v === PERSO ? editeurTransfo('', (c) => tous('transfo', c), rendre) : tous('transfo', v === 'aucune' ? '' : v))),
         el('button', { title: t('transfos_suggerees_aide'), onclick: () => suggerer(vars) }, icone('wand-sparkles'), t('transfos_suggerees')),
         st.suggerees !== undefined ? el('span', { class: 'infos' }, t('transfos_appliquees', { n: st.suggerees })) : null),
       el('div', { class: 'defile' }, el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, ''), el('th', {}, t('role')), el('th', {}, t('echelle')), el('th', {}, t('transformation')))),
+        el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, ''), el('th', {}, t('role')), el('th', {}, t('echelle')),
+          el('th', { title: t('bloc_aide') }, t('bloc')), el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, t('transformation')))),
         el('tbody', {}, vars.map((v) => el('tr', { class: st.roles[v.uid] ? 'role-' + st.roles[v.uid] : '' },
           el('td', {}, v.nom),
           el('td', { class: 'doux' }, v.qualitative ? `${v.categories.length} ${t('categories')}` : ''),
           el('td', {}, sel(roles(v), st.roles[v.uid] || '', (x) => { st.roles[v.uid] = x; rendre(); })),
           el('td', {}, sel(ECHELLES.map((k) => [k, t('echelle_' + k)]), st.echelles[v.uid] || st.echelle, (x) => { st.echelles[v.uid] = x; })),
-          el('td', {}, sel(TRANSFOS.map((k) => [k, t('tr_' + (k || 'aucune'))])
-            .concat(st.transfos[v.uid] === 'autre' ? [['autre', t('tr_autre')]] : [])
-            .concat((st.transfos[v.uid] || '').startsWith('log10:') ? [[st.transfos[v.uid], libelleTransfo(st.transfos[v.uid])]] : []),
-            st.transfos[v.uid] || '', (x) => { st.transfos[v.uid] = x; }, !v.qualitative))))))));
+          // block scaling and modifier (moteur/R/pretraitement.R: facteurs_ponderation)
+          el('td', {}, el('input', { value: st.blocs[v.uid] || '', placeholder: '—', size: 7, title: t('bloc_aide'),
+            oninput: (e) => { st.blocs[v.uid] = e.target.value.trim(); } })),
+          // (shown to 5 significant digits; the exact value stays unless it is edited)
+          el('td', {}, el('input', { type: 'number', step: 'any', min: 0, value: st.modificateurs[v.uid] !== undefined ? +Number(st.modificateurs[v.uid]).toPrecision(5) : '',
+            placeholder: '1', style: 'width:7em',
+            title: t('modificateur_aide'),
+            oninput: (e) => { const x = parseFloat(e.target.value); if (Number.isFinite(x) && x !== 1) st.modificateurs[v.uid] = x; else delete st.modificateurs[v.uid]; } })),
+          el('td', {}, sel(optionsTransfo(st.transfos[v.uid]), st.transfos[v.uid] || '',
+            (x) => (x === PERSO ? editeurTransfo(st.transfos[v.uid], (c) => { st.transfos[v.uid] = c; }, rendre) : (st.transfos[v.uid] = x)),
+            !v.qualitative))))))));
   };
 
   // The proposed transformation, worked out in R: log10(x + C2) for the variables
@@ -138,33 +233,55 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         modele && modele.projet === p.id ? el('button', { disabled: !app.selection(modele.id).length,
           onclick: () => { app.selection(modele.id).forEach((u) => st.exclues.add(u)); rendre(); } }, icone('eye-off'), t('exclure_selection')) : null,
         el('span', { class: 'infos' }, `${o.uid.length - st.exclues.size} / ${o.uid.length} ${t('incluses')}`)),
+      // test set: observations left out of the model, then predicted by it (moteur/R/jeu_test.R)
+      el('div', { class: 'outils' }, el('span', { title: t('jeu_test_aide') }, t('jeu_test')),
+        el('select', { onchange: (e) => { st.methodeTest = e.target.value; } },
+          [['hasard', t('test_hasard')], ['kennard_stone', t('test_kennard_stone')]].map(([k, n]) => el('option', { value: k, selected: k === st.methodeTest }, n))),
+        el('input', { type: 'number', min: 5, max: 50, value: st.partTest, style: 'width:4.5em', oninput: (e) => { st.partTest = +e.target.value || 25; } }), '%',
+        el('button', { onclick: async () => {
+          const cles = (r2) => Object.keys(st.roles).filter((k) => st.roles[k] === r2).map(Number);
+          if (!cles('x').length) { erreur.textContent = t('x_requis'); return; }
+          try {
+            const res = await app.jeuTest({ projet: p.id, x: cles('x'), exclues: [...st.exclues], methode: st.methodeTest, part: st.partTest / 100,
+              classe: avecClasse() ? cles('classe')[0] ?? null : null });
+            st.test = new Set([].concat(res.test || []).map(Number));
+            rendre();
+          } catch (e) { erreur.textContent = e.message; }
+        } }, t('choisir_test')),
+        modele && modele.projet === p.id ? el('button', { disabled: !app.selection(modele.id).length,
+          onclick: () => { app.selection(modele.id).forEach((u) => st.test.add(u)); rendre(); } }, t('selection_en_test')) : null,
+        st.test.size ? el('button', { onclick: () => { st.test.clear(); rendre(); } }, t('vider_test')) : null),
       el('div', { class: 'defile' }, el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('inclure')), el('th', {}, t('observations')))),
-        el('tbody', {}, idx.slice(0, 3000).map((i) => el('tr', { class: st.exclues.has(o.uid[i]) ? 'exclue' : '' },
+        el('thead', {}, el('tr', {}, el('th', {}, t('inclure')), el('th', { title: t('jeu_test_aide') }, t('test')), el('th', {}, t('observations')))),
+        el('tbody', {}, idx.slice(0, 3000).map((i) => el('tr', { class: st.exclues.has(o.uid[i]) ? 'exclue' : st.test.has(o.uid[i]) ? 'en-test' : '' },
           el('td', {}, el('input', { type: 'checkbox', checked: !st.exclues.has(o.uid[i]),
-            onchange: (e) => { if (e.target.checked) st.exclues.delete(o.uid[i]); else st.exclues.add(o.uid[i]); majResume(); e.target.closest('tr').classList.toggle('exclue', !e.target.checked); } })),
+            onchange: (e) => { if (e.target.checked) st.exclues.delete(o.uid[i]); else st.exclues.add(o.uid[i]); rendre(); } })),
+          el('td', {}, el('input', { type: 'checkbox', checked: st.test.has(o.uid[i]), disabled: st.exclues.has(o.uid[i]),
+            onchange: (e) => { if (e.target.checked) st.test.add(o.uid[i]); else st.test.delete(o.uid[i]); majResume(); e.target.closest('tr').classList.toggle('en-test', e.target.checked); } })),
           el('td', {}, o.nom[i])))))));
   };
 
-  // Cross and square terms: pairs of X variables (both factors must stay in X).
+  // Cross terms (A × B, A × B × C), squares and cubes: products of X variables (every factor
+  // must stay in X; a qualitative variable once at most, by each of its categories).
   const termes = () => {
     const nom = (u) => (p.variables.find((v) => v.uid === u) || { nom: `#${u}` }).nom;
     const qual = (u) => !!(p.variables.find((v) => v.uid === u) || {}).qualitative;
     const enX = p.variables.filter((v) => st.roles[v.uid] === 'x');
     const quantX = enX.filter((v) => !v.qualitative).map((v) => v.uid);
-    const existe = (a, b) => st.croises.some(([c, d]) => (c === a && d === b) || (c === b && d === a));
-    const ajouter = (a, b) => { if (!existe(a, b) && !(a === b && qual(a))) st.croises.push([a, b]); };
+    const cle = (fs) => [...fs].sort((x, y) => x - y).join(',');
+    const existe = (fs) => st.croises.some((c) => cle(c) === cle(fs));
+    const qualDouble = (fs) => fs.some((u, i) => qual(u) && fs.indexOf(u) !== i);
+    const ajouter = (...fs) => { if (!existe(fs) && !qualDouble(fs)) st.croises.push(fs); };
     const options = [['', '—']].concat(enX.map((v) => [v.uid, v.nom]));
-    const sel = (cle) => el('select', { onchange: (e) => { st[cle] = e.target.value; } },
-      options.map(([k, n]) => el('option', { value: k, selected: String(k) === String(st[cle]) }, n)));
+    const sel = (c) => el('select', { onchange: (e) => { st[c] = e.target.value; } },
+      options.map(([k, n]) => el('option', { value: k, selected: String(k) === String(st[c] ?? '') }, n)));
     return el('div', { class: 'onglet-termes' },
-      el('div', { class: 'outils' }, sel('a'), '×', sel('b'),
+      el('div', { class: 'outils' }, sel('a'), '×', sel('b'), el('span', { title: t('facteur_facultatif') }, '×'), sel('c'),
         el('button', { onclick: () => {
-          const a = Number(st.a);
-          const b = Number(st.b);
           if (!st.a || !st.b) return;
-          if (a === b && qual(a)) { erreur.textContent = t('carre_qualitatif'); return; }
-          ajouter(a, b);
+          const fs = [st.a, st.b].concat(st.c ? [st.c] : []).map(Number);
+          if (qualDouble(fs)) { erreur.textContent = t('carre_qualitatif'); return; }
+          ajouter(...fs);
           rendre();
         } }, icone('plus'), t('ajouter')),
         el('span', { class: 'espace' }),
@@ -173,9 +290,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           onclick: () => { quantX.forEach((u, i) => quantX.slice(i + 1).forEach((w) => ajouter(u, w))); rendre(); } }, t('toutes_interactions')),
         el('button', { disabled: !st.croises.length, onclick: () => { st.croises = []; rendre(); } }, t('tout_retirer'))),
       el('p', { class: 'note' }, t('termes_note')),
-      el('div', { class: 'defile' }, st.croises.length ? el('table', { class: 'tableau' }, el('tbody', {}, st.croises.map(([a, b], i) => {
-        const horsX = [a, b].filter((u) => st.roles[u] !== 'x');
-        return el('tr', {}, el('td', {}, `${nom(a)} × ${nom(b)}`),
+      el('div', { class: 'defile' }, st.croises.length ? el('table', { class: 'tableau' }, el('tbody', {}, st.croises.map((fs, i) => {
+        const horsX = [...new Set(fs)].filter((u) => st.roles[u] !== 'x');
+        return el('tr', {}, el('td', {}, fs.map(nom).join(' × ')),
           el('td', { class: 'erreur' }, horsX.length ? `${t('facteur_non_x')} : ${horsX.map(nom).join(', ')}` : ''),
           el('td', { class: 'num' }, el('button', { class: 'icone-seule', onclick: () => { st.croises.splice(i, 1); rendre(); } }, icone('x-circle'))));
       }))) : el('p', { class: 'infos' }, t('aucun_terme'))));
@@ -209,11 +326,31 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       return false;
     }
     const spectres = st.etapes.filter(Boolean).map((k) => (k.startsWith('sg') ? { type: 'sg', derivee: +k[2], fenetre: st.fenetre, degre: st.degre } : { type: k }));
+    const blocs = Object.fromEntries(Object.entries(st.blocs).filter(([, b]) => b));
+    const modificateurs = Object.fromEntries(Object.entries(st.modificateurs).filter(([, m]) => Number.isFinite(m) && m !== 1));
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
-      exclues: [...st.exclues], echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
-      A: st.auto ? 0 : st.A, G: st.G, nom: st.nom, titre: st.titre };
-    verifierPuisAjuster(q);
-    return false;  // the dialog closes once the data check is done
+      exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
+      A: st.auto ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs, nom: st.nom, titre: st.titre };
+    if (!enCours) verifierPuisAjuster(q);
+    return false;  // the dialog closes once the model is fitted
+  }
+
+  // The fit runs with the dialog open: it closes once the model is there; an error ("Component 3
+  // isn't possible…") shows in it, with every setting kept. A second click on Fit does nothing.
+  let enCours = false;
+  async function ajusterPuisFermer(q) {
+    enCours = true;
+    erreur.textContent = '';
+    alerte.replaceChildren(el('p', { class: 'infos' }, t('calcul')));
+    try {
+      await app.ajusterDefinition(q);
+      d.fermer();
+    } catch (e) {
+      alerte.replaceChildren();
+      erreur.textContent = e.message;
+    } finally {
+      enCours = false;
+    }
   }
 
   // Checks before fitting: variables or observations with more than 50 % missing
@@ -222,19 +359,20 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     erreur.textContent = '';
     alerte.replaceChildren(el('p', { class: 'infos' }, t('calcul')));
     let v;
+    enCours = true;
     try {
       v = await app.verifier(q);
     } catch (e) {
       alerte.replaceChildren();
       erreur.textContent = e.message;
       return;
+    } finally {
+      enCours = false;
     }
     const vars = v.variables && v.variables.uid ? v.variables.uid.map((u, i) => ({ uid: u, nom: v.variables.nom[i], manque: v.variables.manquantes[i], constante: v.variables.constante[i] })) : [];
     const obs = v.observations && v.observations.uid ? v.observations.uid.map((u, i) => ({ uid: u, nom: v.observations.nom[i], manque: v.observations.manquantes[i] })) : [];
     if (!vars.length && !obs.length) {
-      alerte.replaceChildren();
-      d.fermer();
-      app.ajusterDefinition(q);
+      await ajusterPuisFermer(q);
       return;
     }
     const pct = (x) => t('manquantes_pct', { p: Math.round(100 * x) });
@@ -251,7 +389,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           rendre();
           valider();
         } }, t('verif_exclure')),
-        el('button', { onclick: () => { alerte.replaceChildren(); d.fermer(); app.ajusterDefinition(q); } }, t('verif_garder')))));
+        el('button', { onclick: () => { if (!enCours) ajusterPuisFermer(q); } }, t('verif_garder')))));
   }
 
   rendre();
@@ -270,22 +408,26 @@ function nomLibre(p) {
 
 // ------------------------------------------------------------ help
 
+// where the engine sits in the installed application
+const MOTEUR = /Win/.test(navigator.platform) ? 'resources\\moteur\\R' : 'resources/moteur/R';
 const AIDE = {
   fr: {
     guide: [
-      ['Ouvrir', 'Fichier › Ouvrir (Ctrl+O) : un tableau, une ligne par observation (Excel .xlsx ou .xls, texte .csv ou .txt, R .rds ou .RData, SPSS .sav, Stata .dta, SAS .sas7bdat ou .xpt, jamovi .omv, dBase .dbf, Weka .arff), un projet enregistré par l’application (.json) ou un projet .usp. Pour un classeur à plusieurs feuilles ou un .RData à plusieurs tableaux, l’application demande lequel ouvrir.'],
+      ['Ouvrir', 'Fichier › Ouvrir (Ctrl+O) : un tableau, une ligne par observation (Excel .xlsx ou .xls, texte .csv ou .txt, R .rds ou .RData, SPSS .sav, Stata .dta, SAS .sas7bdat ou .xpt, jamovi .omv, dBase .dbf, Weka .arff), un projet enregistré par l’application (.nuee, ou .json avant la version 0.9.1) ou un projet .usp. Pour un classeur à plusieurs feuilles ou un .RData à plusieurs tableaux, l’application demande lequel ouvrir.'],
       ['Coller un tableau', 'Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google Sheets ou jamovi deviennent un projet, à enregistrer. La première ligne donne les noms des variables, la première colonne ceux des observations si c’est du texte.'],
       ['Projet d’exemple', 'Aide › Projet d’exemple : 120 pommes inventées et quatre modèles prêts (ACP, PLS, PLS-DA, OPLS-DA), pour essayer l’application.'],
       ['Explorateur', 'À gauche : projets, données, modèles importés d’un fichier .usp, modèles calculés et leurs vues. Double-clic pour ouvrir, clic droit pour les actions.'],
       ['Modèles importés', 'Double-cliquer un modèle importé le recalcule en R. Le résumé marque chaque valeur : = identique à la valeur enregistrée dans le fichier, ≈ proche, ≠ différente.'],
-      ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA, OPLS), rôle, échelle et transformation de chaque variable, observations incluses, nombre de composantes (automatique par défaut).'],
+      ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA, OPLS), rôle, échelle, bloc, modificateur et transformation de chaque variable (racine, log10, ou personnalisée : log10, ln, −log10, exp, logit, puissance ou linéaire, avec ses constantes), termes croisés (A × B, A × B × C, carrés et cubes), observations incluses, nombre de composantes (automatique par défaut), groupes de validation croisée (à tour de rôle, ou un groupe par valeur d’un identifiant ou d’une variable : toutes les années d’un site ensemble).'],
       ['Sélection', 'Cadre ou lasso dans un graphique, clic sur un point ou une ligne de liste : la sélection apparaît dans toutes les vues et toutes les fenêtres du modèle. Échap l’efface ; Ctrl+Suppr exclut les observations et réajuste.'],
+      ['Variables en évidence', 'Un clic sur une variable (barre des VIP, des coefficients ou des loadings, point des loadings, du biplot ou du S-plot, ligne d’un profil ou de la liste des variables) la met en évidence sur tous les graphiques du modèle ; un cadre en choisit plusieurs dans les nuages de points. Échap les efface.'],
       ['Fenêtres', 'Un onglet par modèle : sa page montre résumé, scores et loadings, ses autres vues s’y ajoutent en onglets. Les vues se déplacent par leur onglet (glisser-déposer), se divisent et s’empilent ; glisser l’onglet d’un modèle à côté d’un autre pour les comparer. Clic droit sur un onglet : détacher dans une fenêtre, agrandir, fermer. Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète.'],
       ['Graphiques', 'Molette : zoom ; clic droit : copier l’image, l’enregistrer en PNG ou SVG, voir les contributions de la sélection, en faire une classe. Listes Couleur et Étiquettes : par classe, groupe du dendrogramme, identifiant ou n’importe quelle variable.'],
+      ['Tableaux et commandes', 'Ctrl+C copie le tableau de la vue, à coller dans Excel (avec du texte sélectionné : le texte). Ctrl+K : rechercher une commande par son nom.'],
       ['Prédire un fichier', 'Prédiction › Prédire un fichier : un tableau (CSV, Excel, R, SPSS…) dont les colonnes portent les noms des variables du modèle. Les observations hors du domaine du modèle sont signalées ; le résultat s’exporte dans tous les formats d’export.'],
       ['Modèles hiérarchiques', 'Modèle › Scores en variables : les scores d’un modèle deviennent des variables ($M1.t1…) utilisables comme X d’un autre modèle. Après avoir modifié le modèle de base, refaire cette étape puis réajuster le modèle supérieur.'],
       ['Exporter', 'Fichier › Exporter les données : le tableau du projet ; Fichier › Exporter les résultats du modèle (Ctrl+E) : scores, T2, DModX, loadings, VIP, coefficients… Formats : Excel, CSV, texte, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Les qualitatives restent qualitatives ; pour SPSS, Stata et SAS, les noms de variables sont rendus valides et le nom d’origine devient l’étiquette.'],
-      ['Exporter vers R', 'Fichier › Exporter vers R : un script, ou un rapport R Markdown ou Quarto, qui refait le modèle sans Nuée, avec R seul. Il contient le code des fonctions du moteur dont le modèle a besoin (commenté), les données (ou un CSV à côté) et le modèle, et vérifie la version de R et les paquets. Le rapport ajoute le texte des méthodes, des tableaux, des graphiques et les références ; il se compile dans RStudio (Knit) ou avec Quarto. En plus, au choix : renv.lock, données et modèle en .RData, projet RStudio.'],
+      ['Exporter vers R', 'Fichier › Exporter vers R : un script, ou un rapport R Markdown ou Quarto, qui refait le modèle sans Nuée, avec R seul (sans paquet). Le calcul y est écrit pour ce modèle seul et commenté : mise à l’échelle, NIPALS, validation croisée, statistiques, graphiques ; les données sont dans le script ou dans un CSV à côté. Le rapport ajoute le texte des méthodes, des tableaux, des graphiques et les références ; il se compile dans RStudio (Knit) ou avec Quarto. En plus, au choix : renv.lock, données et modèle en .RData, projet RStudio. Toute la séance peut aussi aller dans un seul script .R.'],
       ['Texte des méthodes', 'Modèle › Texte pour la section Méthodes : un paragraphe écrit d’après le modèle (données, prétraitement, méthode, validation croisée, R², Q², logiciel), en français ou en anglais, avec ses références. À relire et compléter avant de le publier.'],
       ['Rapport', 'Fichier › Rapport du modèle : un PDF ou un document Word avec les parties choisies ; les graphiques y sont mis en forme comme dans leurs panneaux.'],
       ['Console R', 'Affichage › Console R (Ctrl+J) : le code R de chaque action, et une invite R dans la session de l’application (m = modèle affiché, p = son projet). recharger_moteur() relit les fichiers du moteur après une correction.'],
@@ -296,36 +438,39 @@ const AIDE = {
       ['Modèles de classe', 'Nouveau modèle › type Modèles de classe : une ACP par catégorie de la variable de classe. Graphiques › Graphique de Coomans : la distance (DModX) de chaque observation à deux de ces modèles ; sous la limite d’un modèle, l’observation appartient à sa classe (à une, plusieurs ou aucune).'],
       ['Données', 'Double-clic sur une case de la vue Données pour la modifier ; Édition › Nouvelle variable : formule R ou classes d’après les valeurs.'],
       ['OPLS', 'Des composantes prédictives (une par variable Y, ou une de moins que de classes pour l’OPLS-DA) et des composantes orthogonales. Graphique S (S-plot) dans Graphiques.'],
-      ['Spectres', 'Fichier › Importer des spectres : des fichiers JCAMP-DX, SPC ou texte, un spectre par ligne du projet, avec un tableau d’informations (teneurs, classes) joint par le nom des fichiers. Nouveau modèle › Général › Prétraitement des spectres : SNV, MSC, detrend, ligne de base, lissage ou dérivées de Savitzky–Golay, en une à trois étapes, appliqués à chaque observation avant la mise à l’échelle (variables X dans l’ordre du tableau). Graphiques › Profils (spectres) : loadings, coefficients, VIP ou les spectres eux-mêmes en lignes, la longueur d’onde lue dans le nom des variables ; « Choisir des zones » : faire glisser pour marquer des zones, puis un nouveau modèle sans elles ou avec elles seules.'],
-      ['Mises à jour', 'La version installée cherche au démarrage une nouvelle version sur GitHub et la signale dans la barre d’état (Aide › Chercher une nouvelle version au démarrage pour l’arrêter).'],
+      ['Spectres', 'Fichier › Importer des spectres : des fichiers JCAMP-DX, SPC ou texte, un spectre par ligne du projet, avec un tableau d’informations (teneurs, classes) joint par le nom des fichiers. Nouveau modèle › Général › Prétraitement des spectres : SNV, MSC, detrend, ligne de base, lissage ou dérivées de Savitzky–Golay, en une à trois étapes, appliqués à chaque observation avant la mise à l’échelle (variables X dans l’ordre du tableau). Graphiques › Profils (spectres) : loadings, coefficients, VIP ou les spectres eux-mêmes en lignes, la longueur d’onde lue dans le nom des variables ; « Choisir des zones » : faire glisser pour marquer des zones, puis un nouveau modèle sans elles ou avec elles seules. Graphiques › iPLS : chaque intervalle du spectre ajusté seul ; en vert, ceux qui prédisent mieux que le spectre entier.'],
+      ['Mises à jour', 'La version installée cherche au démarrage une nouvelle version sur GitHub et la signale dans la barre d’état ; sous Windows, un clic la télécharge, la vérifie, l’installe et relance Nuée (Aide › Chercher une nouvelle version au démarrage pour l’arrêter). Aide › Chercher une mise à jour : la même recherche, à tout moment.'],
       ['Historique du fichier', 'Sous un projet .usp : le journal d’audit enregistré dans le fichier (dates, versions, changements de chaque modèle).'],
-      ['Code', 'Tous les calculs sont en R, commentés en français, dans resources\\moteur\\R.'],
+      ['Signaler un problème', 'Aide › Informations de diagnostic : les versions à coller dans une issue sur github.com/4rtefakt/nuee, en français ou en anglais.'],
+      ['Code', `Tous les calculs sont en R, commentés en français, dans ${MOTEUR}.`],
     ],
     differences: [
-      ['Identique aux valeurs enregistrées', 'Vérifié sur 944 modèles de 133 projets .usp : mise à l’échelle, R2X, R2Y, Q2 des PLS, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.'],
-      ['Q2 des ACP', 'Les valeurs enregistrées viennent d’une étape non publiée ; l’écart typique est de 0,01.'],
+      ['Identique aux valeurs enregistrées', 'Vérifié sur 944 modèles de 133 projets .usp : mise à l’échelle (pondération par blocs et modificateurs compris), groupes de validation croisée, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.'],
+      ['Validation croisée', 'Chaque groupe est prédit par un modèle ajusté sans lui, centrage et mise à l’échelle recalculés sur les autres observations. Q2, RMSEcv, CV-ANOVA et classement en validation croisée s’écartent donc des valeurs enregistrées, d’autant plus que les observations sont peu nombreuses (PLS, écart médian du Q2 : 0,003 au-delà de 200 observations, 0,02 de 50 à 200, 0,1 à 0,3 en dessous) ; le Q2 de Nuée est le plus souvent plus bas. Avec des groupes par identifiant (un site, un secteur), l’écart est plus grand : le modèle ajusté sans un site ne connaît pas non plus son niveau moyen.'],
       ['Signe des composantes', 'Arbitraire pour les nouveaux modèles ; les modèles importés sont orientés comme la solution enregistrée.'],
       ['Dendrogrammes', 'Méthode de Ward exacte : les fusions du haut de l’arbre peuvent différer de celles enregistrées.'],
-      ['Intervalles de confiance', 'Jack-knife sur les tours de validation croisée : proches des valeurs enregistrées, pas identiques.'],
-      ['Ajustement automatique', 'Règles publiées R1, R2, N3, N4 ; pour l’ACP, la limite exacte n’est pas publiée.'],
+      ['Intervalles de confiance', 'Jack-knife sur les sous-modèles de la validation croisée, chacun dans sa propre mise à l’échelle : ils diffèrent des valeurs enregistrées.'],
+      ['Ajustement automatique', 'Règles publiées R1, R2, N3, N4, sur le Q2 de cette validation croisée : le nombre de composantes peut différer ; pour l’ACP, la limite exacte n’est pas publiée.'],
       ['Seuil VIP', 'Plus grande marche des VIP triés autour de 0,8 : méthode de l’application.'],
     ],
   },
   en: {
     guide: [
-      ['Open', 'File › Open (Ctrl+O): a table, one row per observation (Excel .xlsx or .xls, text .csv or .txt, R .rds or .RData, SPSS .sav, Stata .dta, SAS .sas7bdat or .xpt, jamovi .omv, dBase .dbf, Weka .arff), a project saved by this application (.json) or a .usp project. For a workbook with several sheets or an .RData file with several tables, the application asks which one to open.'],
+      ['Open', 'File › Open (Ctrl+O): a table, one row per observation (Excel .xlsx or .xls, text .csv or .txt, R .rds or .RData, SPSS .sav, Stata .dta, SAS .sas7bdat or .xpt, jamovi .omv, dBase .dbf, Weka .arff), a project saved by this application (.nuee, or .json before version 0.9.1) or a .usp project. For a workbook with several sheets or an .RData file with several tables, the application asks which one to open.'],
       ['Paste a table', 'File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi become a project, to save. The first row gives the variable names, the first column the observation names when it is text.'],
       ['Example project', 'Help › Example project: 120 made-up apples and four ready models (PCA, PLS, PLS-DA, OPLS-DA), to try the application.'],
       ['Explorer', 'On the left: projects, data, models imported from a .usp file, fitted models and their views. Double-click to open, right-click for actions.'],
       ['Imported models', 'Double-clicking an imported model recomputes it in R. The summary marks each value: = same as the value stored in the file, ≈ close, ≠ different.'],
-      ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA, OPLS), each variable’s role, scaling and transform, included observations, number of components (automatic by default).'],
+      ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA, OPLS), each variable’s role, scaling, block, modifier and transform (root, log10, or custom: log10, ln, −log10, exp, logit, power or linear, with its constants), cross terms (A × B, A × B × C, squares and cubes), included observations, number of components (automatic by default), cross-validation groups (in turn, or one group per value of an ID or of a variable: all the years of a site together).'],
       ['Selection', 'Box or lasso in a plot, click a point or a list row: the selection shows in every view and window of the model. Esc clears it; Ctrl+Delete excludes the observations and refits.'],
+      ['Highlighted variables', 'Clicking a variable (a bar of the VIP, coefficients or loadings, a point of the loadings, biplot or S-plot, a line of a profile or of the variable list) highlights it on all the model’s graphs; a box picks several in the scatter plots. Esc clears them.'],
       ['Windows', 'One tab per model: its page shows the summary, scores and loadings, and its other views join it as tabs. Drag views by their tab to move, split and stack them; drag a model’s tab beside another to compare them. Right-click a tab to move it to a new window, maximize or close it. Window › New window opens a second full window.'],
       ['Plots', 'Wheel: zoom; right-click: copy the image, save it as PNG or SVG, see the contributions of the selection, make it a class. Colour and Labels lists: by class, dendrogram group, ID or any variable.'],
+      ['Tables and commands', 'Ctrl+C copies the view’s table, to paste into Excel (with text selected: the text). Ctrl+K: find a command by its name.'],
       ['Predict a file', 'Predict › Predict a file: a table (CSV, Excel, R, SPSS…) whose columns carry the model’s variable names. Observations outside the model’s domain are flagged; results export to every export format.'],
       ['Hierarchical models', 'Model › Scores as variables: a model’s scores become variables ($M1.t1…) usable as X of another model. After changing the base model, do it again and refit the upper model.'],
       ['Export', 'File › Export data: the project’s table; File › Export model results (Ctrl+E): scores, T2, DModX, loadings, VIP, coefficients… Formats: Excel, CSV, text, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Qualitative variables stay qualitative; for SPSS, Stata and SAS, variable names are made valid and the original name becomes the label.'],
-      ['Export to R', 'File › Export to R: a script, or an R Markdown or Quarto report, that refits the model without Nuée, in plain R. It holds the code of the engine functions the model needs (commented), the data (or a CSV next to it) and the model, and checks the R version and packages. The report adds the methods text, tables, plots and references; it compiles in RStudio (Knit) or with Quarto. Optionally: renv.lock, data and model as .RData, an RStudio project.'],
+      ['Export to R', 'File › Export to R: a script, or an R Markdown or Quarto report, that refits the model without Nuée, in plain R (no package). The computation is written for this model alone, with comments: scaling, NIPALS, cross-validation, statistics, plots; the data are in the script or in a CSV next to it. The report adds the methods text, tables, plots and references; it compiles in RStudio (Knit) or with Quarto. Optionally: renv.lock, data and model as .RData, an RStudio project. The whole session can also go into one .R script.'],
       ['Methods text', 'Model › Text for the Methods section: a paragraph written from the model (data, preprocessing, method, cross-validation, R², Q², software), in French or English, with its references. Read it and complete it before publishing.'],
       ['Report', 'File › Model report: a PDF or Word document with the chosen parts; plots look as in their panels.'],
       ['R console', 'View › R console (Ctrl+J): the R code of each action, and an R prompt in the application’s session (m = model shown, p = its project). recharger_moteur() reloads the engine files after a correction.'],
@@ -336,18 +481,19 @@ const AIDE = {
       ['Class models', 'New model › type Class models: one PCA per category of the class variable. Plots › Coomans plot: each observation’s distance (DModX) to two of these models; below a model’s limit, the observation belongs to its class (to one, several or none).'],
       ['Data', 'Double-click a cell of the Data view to edit it; Edit › New variable: an R formula or classes from values.'],
       ['OPLS', 'Predictive components (one per Y variable, or one fewer than the classes for OPLS-DA) and orthogonal ones. S-plot in Plots.'],
-      ['Spectra', 'File › Import spectra: JCAMP-DX, SPC or text files, one spectrum per row of the project, with a table of information (contents, classes) joined by file name. New model › General › Spectral preprocessing: SNV, MSC, detrend, baseline, Savitzky–Golay smoothing or derivatives, in one to three steps, applied to each observation before scaling (X variables in the order of the table). Plots › Profiles (spectra): loadings, coefficients, VIP or the spectra themselves as lines, the wavelength read from the variable names; “Choose ranges”: drag to mark ranges, then a new model without them or with them only.'],
-      ['Updates', 'The installed version looks for a new version on GitHub at start-up and shows it in the status bar (Help › Look for a new version at start-up to stop it).'],
+      ['Spectra', 'File › Import spectra: JCAMP-DX, SPC or text files, one spectrum per row of the project, with a table of information (contents, classes) joined by file name. New model › General › Spectral preprocessing: SNV, MSC, detrend, baseline, Savitzky–Golay smoothing or derivatives, in one to three steps, applied to each observation before scaling (X variables in the order of the table). Plots › Profiles (spectra): loadings, coefficients, VIP or the spectra themselves as lines, the wavelength read from the variable names; “Choose ranges”: drag to mark ranges, then a new model without them or with them only. Plots › iPLS: each interval of the spectrum fitted on its own; in green, those that predict better than the whole spectrum.'],
+      ['Updates', 'The installed version looks for a new version on GitHub at start-up and shows it in the status bar; on Windows, one click downloads it, checks it, installs it and restarts Nuée (Help › Look for a new version at start-up to stop it). Help › Check for updates: the same check, at any time.'],
       ['File history', 'Under a .usp project: the audit trail stored in the file (dates, versions, changes to each model).'],
-      ['Code', 'All computations are in R, commented in French, in resources\\moteur\\R.'],
+      ['Report a problem', 'Help › Diagnostic information: the versions to paste into an issue on github.com/4rtefakt/nuee, in English or French.'],
+      ['Code', `All computations are in R, commented in French, in ${MOTEUR}.`],
     ],
     differences: [
-      ['Same as the stored values', 'Checked on 944 models from 133 .usp projects: scaling, R2X, R2Y, PLS Q2, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE.'],
-      ['PCA Q2', 'The stored values come from an unpublished step; typical difference 0.01.'],
+      ['Same as the stored values', 'Checked on 944 models from 133 .usp projects: scaling (block scaling and modifiers included), cross-validation groups, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE.'],
+      ['Cross-validation', 'Each group is predicted by a model fitted without it, with centring and scaling recomputed on the other observations. Q2, RMSEcv, CV-ANOVA and the cross-validated classification therefore differ from the stored values, more so with few observations (PLS, median Q2 difference: 0.003 above 200 observations, 0.02 from 50 to 200, 0.1 to 0.3 below); Nuée’s Q2 is usually lower. With groups by an ID (a site, a sector), the difference is larger: the model fitted without a site doesn’t know its mean level either.'],
       ['Component signs', 'Arbitrary for new models; imported models are oriented like their stored solution.'],
       ['Dendrograms', 'Exact Ward linkage: the top merges can differ from the stored ones.'],
-      ['Confidence intervals', 'Jack-knife over the cross-validation rounds: close to the stored ones, not identical.'],
-      ['Autofit', 'Published rules R1, R2, N3, N4; for PCA, the exact limit is not published.'],
+      ['Confidence intervals', 'Jack-knife over the cross-validation sub-models, each in its own scaling: they differ from the stored ones.'],
+      ['Autofit', 'Published rules R1, R2, N3, N4, on the Q2 of this cross-validation: the number of components can differ; for PCA, the exact limit is not published.'],
       ['VIP cut-off', 'Largest step in the sorted VIPs around 0.8: the application’s method.'],
     ],
   },
@@ -369,7 +515,8 @@ export async function dialogueAide(app, sujet) {
   const textes = AIDE[langueActuelle()] || AIDE.fr;
   dialogue({ titre: t(sujet), large: true, contenu: el('div', { class: 'aide' },
     textes[sujet].map(([h, p]) => el('section', {}, el('h4', {}, h), el('p', {}, p)))),
-  boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
+  boutons: (sujet === 'guide' ? [{ libelle: t('guide_complet'), action: () => { app.ouvrirGuide(); return false; } }] : [])
+    .concat([{ libelle: t('fermer'), principal: true, action: () => true }]) });
 }
 
 const POLICES = ['Segoe UI', 'Arial', 'Calibri', 'Cambria', 'Times New Roman', 'Georgia', 'Verdana', 'Courier New'];

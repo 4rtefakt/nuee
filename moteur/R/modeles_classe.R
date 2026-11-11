@@ -12,13 +12,17 @@
 # groupe_classes = list(nom, variable, classe).
 modeles_classe <- function(projet, d, classe, nom = d$name) {
   v <- variable_du_projet(projet, classe)
-  if (!length(v$categories)) stop("La variable de classe doit être qualitative")
+  if (!length(v$categories)) stop(traduire("La variable de classe doit être qualitative", "The class variable must be qualitative"))
   valeurs <- colonne(projet, classe, d$observations)
   ds <- lapply(seq_along(v$categories), function(k) {
     e <- d
     e$observations <- d$observations[!is.na(valeurs) & valeurs == k]
     e$name <- sprintf("%s.%s", nom, v$categories[k])
     e$groupe_classes <- list(nom = nom, variable = as.numeric(classe), classe = as.character(v$categories[k]))
+    # groupes par identifiant ou variable (validation_croisee.R) : une classe dont toutes les
+    # observations ont la même valeur n'en aurait qu'un ; elle est validée à tour de rôle
+    if (!is.null(e$groupes_vc) && length(e$observations) >= 3 &&
+        is.null(tryCatch(groupes_definition(projet, e), error = function(err) NULL))) e$groupes_vc <- NULL
     e
   })
   Filter(function(e) length(e$observations) >= 3, ds)

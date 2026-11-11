@@ -1,5 +1,9 @@
 # Réajuste tous les modèles des projets exportés et compare avec les résultats enregistrés.
 #   Rscript moteur/tests/verifier_references.R <dossier des .json> <fichier .csv de résultats> [coeurs]
+# Le Q2 est donné à part, hors de la comparaison : la validation croisée de Nuée (chaque groupe
+# prédit par un modèle ajusté sans lui, mise à l'échelle comprise) n'est pas celle qui a écrit les
+# fichiers. Celle des fichiers est refaite à côté pour les PLS (q2_comme_le_fichier), avec les
+# groupes de validation croisée lus dans le fichier : elle vérifie ces groupes.
 
 args <- commandArgs(trailingOnly = TRUE)
 dossier <- args[1]
@@ -21,6 +25,29 @@ ecart <- function(ref, r) {
     pire <- max(pire, min(d1, d2) / max(abs(ref[ok, a]), 1e-12))
   }
   c(ecart = pire, signe = memes)
+}
+
+# Le Q2(cum) d'une PLS validée comme le programme qui a écrit le fichier : centres et poids de
+# toutes les observations du modèle, chaque composante validée sur les résidus du modèle complet
+# (un sous-modèle d'une composante sans chaque groupe), le Q2 de chaque composante ramené à -0,1
+# s'il est plus bas. Il redonne le Q2 du fichier quand les groupes sont les siens.
+q2_comme_le_fichier <- function(m, groupes) {
+  E <- m$X; ME <- m$MX; F <- m$Y; MF <- m$MY
+  q2 <- numeric(m$A)
+  for (a in seq_len(m$A)) {
+    press <- 0
+    for (g in sort(unique(groupes))) {
+      h <- groupes == g
+      k <- tryCatch(composante_pls(E[!h, , drop = FALSE], ME[!h, , drop = FALSE], F[!h, , drop = FALSE], MF[!h, , drop = FALSE]), error = function(e) NULL)
+      prediction <- if (is.null(k)) 0 else outer(projeter(E[h, , drop = FALSE], ME[h, , drop = FALSE], k$w), k$c)
+      press <- press + sum(((F[h, , drop = FALSE] - prediction) * MF[h, , drop = FALSE])^2)
+    }
+    q2[a] <- 1 - press / sum(F^2)
+    t0 <- ifelse(is.na(m$T[, a]), 0, m$T[, a])
+    E <- (E - outer(t0, m$P[, a])) * ME
+    F <- (F - outer(t0, m$C[, a])) * MF
+  }
+  1 - cumprod(1 - pmax(q2, -0.1))
 }
 
 # Matrice enregistrée (une ligne par composante) en colonnes, limitée à A composantes.
@@ -59,6 +86,10 @@ verifier_fichier <- function(f) {
     base$R2Y <- if (!is.null(comp$R2Ycum)) max(abs(comp$R2Ycum - val("R2Y(cum)"))) else NA
     base$Q2 <- max(abs(comp$Q2 - val("Q2")))
     base$Q2cum <- max(abs(comp$Q2cum - val("Q2(cum)")))
+    base$groupes_vc <- if (length(d$groupes_vc$by)) paste(d$groupes_vc$by, d$groupes_vc$id %||% "") else "ordre"
+    if (identical(d$type, "PLS") && !isTRUE(d$opls)) {
+      base$Q2cum_fichier <- max(abs(q2_comme_le_fichier(r, groupes_definition(p, d)) - val("Q2(cum)")))
+    }
     e <- ecart(colonnes(d$solution$T, r$A), r$T)
     base$T <- e[["ecart"]]
     base$signeT <- e[["signe"]]
@@ -102,7 +133,7 @@ verifier_fichier <- function(f) {
 }
 
 NOMS <- c("fichier", "modele", "type", "version", "A", "statut", "N", "K", "manquantes", "donnees",
-          "R2X", "R2Y", "Q2", "Q2cum", "T", "signeT", "P", "W", "valeur_propre", "T2", "DModX_absolu",
+          "R2X", "R2Y", "Q2", "Q2cum", "groupes_vc", "Q2cum_fichier", "T", "signeT", "P", "W", "valeur_propre", "T2", "DModX_absolu",
           "DModX_pondere", "T2Crit", "DCrit", "VIP", "coefficients", "RMSEE", "HCA")
 
 fichiers <- list.files(dossier, "\\.json$", recursive = TRUE, full.names = TRUE)
@@ -117,7 +148,7 @@ cat(length(fichiers), "projets distincts\n")
 
 if (coeurs > 1) {
   cl <- parallel::makeCluster(coeurs)
-  parallel::clusterExport(cl, c("ecart", "colonnes", "NOMS"))
+  parallel::clusterExport(cl, c("ecart", "colonnes", "q2_comme_le_fichier", "NOMS"))
   res <- parallel::parLapplyLB(cl, fichiers, verifier_fichier)
   parallel::stopCluster(cl)
 } else {
@@ -134,11 +165,27 @@ for (typ in c("PCA", "PLS")) {
   for (manq in c(FALSE, TRUE)) {
     s <- res[ok & res$type == typ & (res$manquantes > 0) == manq, ]
     if (!nrow(s)) next
-    cat(sprintf("%s %s (%d) : données %d, R2X %d, R2Y %d, Q2 %d, T %d, P %d (écart < 1e-4) ; signes de T identiques %d\n",
+    cat(sprintf("%s %s (%d) : données %d, R2X %d, R2Y %d, T %d, P %d (écart < 1e-4) ; signes de T identiques %d\n",
                 typ, if (manq) "avec manquantes" else "complets", nrow(s), seuil(s$donnees, 1e-4),
-                seuil(s$R2X, 1e-4), seuil(s$R2Y, 1e-4), seuil(s$Q2, 1e-4), seuil(s$T, 1e-4), seuil(s$P, 1e-4),
+                seuil(s$R2X, 1e-4), seuil(s$R2Y, 1e-4), seuil(s$T, 1e-4), seuil(s$P, 1e-4),
                 sum(s$signeT %in% TRUE)))
   }
+}
+cat("\nQ2, hors de la comparaison (écart absolu au Q2 du fichier, plus grand sur les composantes : médiane / 90e centile) :\n")
+for (typ in c("PCA", "PLS")) {
+  for (manq in c(FALSE, TRUE)) {
+    s <- res[ok & res$type == typ & (res$manquantes > 0) == manq, ]
+    if (!nrow(s)) next
+    q <- function(x) stats::quantile(x, c(0.5, 0.9), na.rm = TRUE, names = FALSE)
+    cat(sprintf("  %s %-16s Q2 %.3f / %.3f, Q2(cum) %.3f / %.3f\n", typ, if (manq) "avec manquantes" else "complets",
+                q(s$Q2)[1], q(s$Q2)[2], q(s$Q2cum)[1], q(s$Q2cum)[2]))
+  }
+}
+s <- res[ok & !is.na(res$Q2cum_fichier), ]
+cat("\nQ2(cum) des PLS validées comme le fichier, avec ses groupes (écart < 1e-4 / comparés) :\n")
+for (g in sort(unique(s$groupes_vc))) {
+  x <- s$Q2cum_fichier[s$groupes_vc == g]
+  cat(sprintf("  %-20s %4d / %d\n", g, seuil(x, 1e-4), length(x)))
 }
 cat("\nStatistiques dérivées (écart relatif < 1e-3 / comparés) :\n")
 for (k in c("valeur_propre", "T2", "DModX_absolu", "DModX_pondere", "T2Crit", "DCrit", "VIP",
