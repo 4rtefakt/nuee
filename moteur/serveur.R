@@ -257,7 +257,7 @@ definition_interface <- function(p, q) {
                       vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs),
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
                       lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
-                      croises_reglages = if (length(q$croises_reglages)) q$croises_reglages)
+                      croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, options = q$options)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -388,6 +388,7 @@ resultat_regression <- function(id) {
 resultat_modele <- function(id) {
   e <- modele(id)
   if (est_regression(e$definition)) return(resultat_regression(id))
+  if (est_autre_analyse(e$definition)) return(get(paste0("resultat_", tolower(e$definition$type)), mode = "function")(id))  # analyses.R
   p <- projet(e$projet)
   m <- e$modele
   d <- e$definition
@@ -861,8 +862,9 @@ appli <- list(
       f <- DEMANDES[[nom]]
       if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
       q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
-      if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) est_regression(modele(id)$definition), TRUE))) {
-        stop(traduire("Ce n'est pas pour une régression (pas de composantes ni de scores).", "This isn't for a regression (no components or scores)."))
+      if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
+        stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
+                      "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
       }
       r <- f(q)
       tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R

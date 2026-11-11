@@ -7,8 +7,9 @@ export function creerCommandes(app) {
   const avecModele = () => !!m();
   // (a regression has no components, scores or loadings: regression.R)
   const avecRegression = () => { const x = app.modele(m()); return !!x && !!x.regression; };
-  const avecLV = () => avecModele() && !avecRegression();
-  const avecPLS = () => { const x = app.modele(m()); return !!x && x.type !== 'PCA' && !x.regression; };
+  // a model of NIPALS components (PCA, PLS, OPLS): not a regression nor another analysis (x.analyse)
+  const avecLV = () => { const x = app.modele(m()); return !!x && !x.regression && !x.analyse; };
+  const avecPLS = () => { const x = app.modele(m()); return !!x && x.type !== 'PCA' && !x.regression && !x.analyse; };
   const avecSelection = () => avecModele() && app.selection(m()).length > 0;
   const avecPLSDA = () => { const x = app.modele(m()); return !!x && /-DA$/.test(x.type); };
   const avecOPLS = () => { const x = app.modele(m()); return !!x && !!x.opls; };

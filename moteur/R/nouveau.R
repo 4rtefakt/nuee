@@ -201,7 +201,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
-                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL) {
+                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, options = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -245,7 +245,8 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   regression <- type %in% REGRESSIONS
-  d <- list(type = if (regression) type else if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
+  autre <- type %in% AUTRES_ANALYSES  # (analyses.R : RDA, CA, LDA, TREE, KMEANS)
+  d <- list(type = if (regression || autre) type else if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
             observations = obs, A = A %||% 0, cv_groups = G,
             x = c(unlist(lapply(x, termes), recursive = FALSE),
@@ -267,6 +268,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     }
     if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]]
     verifier_regression(projet, d)
+  }
+  if (autre) {
+    d$A <- 0
+    if (length(options)) d$options <- options  # (les réglages propres de l'analyse)
   }
   if (length(vc$by) && !identical(as.character(vc$by), "order")) {
     d$groupes_vc <- vc
@@ -350,6 +355,7 @@ reglages_modele <- function(projet, d) {
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))), croises_reglages = croises_reglages,
+       options = d$options,
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
 }
 

@@ -847,6 +847,13 @@ const TEXTES = {
   },
 };
 
+// The strings of an analysis kept in a module of its own (its views, its settings), in both
+// languages: added to the others at import, never replacing one.
+export function ajouterTextes(fr, en) {
+  for (const [k, v] of Object.entries(fr)) if (!(k in TEXTES.fr)) TEXTES.fr[k] = v;
+  for (const [k, v] of Object.entries(en)) if (!(k in TEXTES.en)) TEXTES.en[k] = v;
+}
+
 export function lire(k) {
   try { return localStorage.getItem(k); } catch { return null; }
 }

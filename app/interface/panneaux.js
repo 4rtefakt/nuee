@@ -8,7 +8,7 @@ export const PALETTES = {
   daltonien: ['#0072b2', '#e69f00', '#009e73', '#d55e00', '#cc79a7', '#56b4e9', '#f0e442', '#000000'],  // Okabe & Ito
   gris: ['#000000', '#7a7a7a', '#b5b5b5', '#3d3d3d', '#9a9a9a', '#5c5c5c'],
 };
-const PALETTE = [...PALETTES.defaut];
+export const PALETTE = [...PALETTES.defaut];
 const SELECTION = '#e4572e';
 // names written by each point only up to this many variables (spectra have hundreds; a box shows them)
 const ETIQUETTES_MAX = 100;
@@ -28,7 +28,7 @@ export function changerFormat(f) {
 
 // ------------------------------------------------------------ helpers
 
-function choix(libelle, options, valeur, changer) {
+export function choix(libelle, options, valeur, changer) {
   return el('label', { class: 'champ' }, libelle ? el('span', {}, libelle) : null,
     el('select', { onchange: (e) => changer(e.target.value) },
       options.map(([v, txt]) => el('option', { value: v, selected: String(v) === String(valeur) }, txt))));
@@ -38,17 +38,17 @@ function case_(libelle, valeur, changer) {
   return el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: valeur, onchange: (e) => changer(e.target.checked) }), libelle);
 }
 
-const outils = (...enfants) => el('div', { class: 'outils' }, enfants);
+export const outils = (...enfants) => el('div', { class: 'outils' }, enfants);
 const espace = () => el('span', { class: 'espace' });
 
-function couleursTheme() {
+export function couleursTheme() {
   const cs = getComputedStyle(document.documentElement);
   const v = (n, d) => cs.getPropertyValue(n).trim() || d;
   return { texte: v('--texte', '#222'), doux: v('--texte-doux', '#666'), grille: v('--grille', '#e5e5e5'), fond: v('--fond-panneau', '#fff'),
     ligne: v('--ligne-graphe', '#9bb5d6') };
 }
 
-function tracer(ctx, div, traces, layout = {}) {
+export function tracer(ctx, div, traces, layout = {}) {
   const c = couleursTheme();
   const F = FORMAT;
   const police = `${F.police}, system-ui, sans-serif`;
@@ -103,7 +103,7 @@ function tracer(ctx, div, traces, layout = {}) {
 }
 
 // Box / lasso selection and clicks on points whose customdata is the observation uid.
-function brancherSelection(div, ctx, idModele) {
+export function brancherSelection(div, ctx, idModele) {
   if (div._branche) return;
   div._branche = true;
   const obs = (points) => points.filter((p) => p.data.meta !== 'variables' && p.customdata !== undefined);
@@ -202,7 +202,7 @@ function valeursSource(ctx, m, loc, source) {
 
 // Colour control shared by the observation plots: none, PLS-DA class, dendrogram groups, or
 // any variable of the project.
-function controleCouleur(ctx, m, loc) {
+export function controleCouleur(ctx, m, loc) {
   const o = m.observations;
   const proj = ctx.projet(m.projet);
   const options = [['', t('aucune')]].concat(o.classe ? [['classe', t('classe')]] : [])
@@ -213,7 +213,7 @@ function controleCouleur(ctx, m, loc) {
 
 // Label control of the same plots: none, the observation name, a secondary ID of the
 // project, or the value of any variable.
-function controleEtiquettes(ctx, m, loc) {
+export function controleEtiquettes(ctx, m, loc) {
   if (loc.etiquettes === true) loc.etiquettes = 'nom';
   const proj = ctx.projet(m.projet);
   const options = [['', t('aucune')], ['nom', t('nom_obs')]]
@@ -233,7 +233,7 @@ function textesEtiquettes(ctx, m, loc) {
 // Observation markers, one value of xs and ys per observation of the model: one trace per
 // colour group (or a colour scale for a numeric variable), selected observations in red,
 // optional labels.
-function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', survol = '%{x:.3f}, %{y:.3f}' } = {}) {
+export function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', survol = '%{x:.3f}, %{y:.3f}' } = {}) {
   const o = m.observations;
   const sel = new Set(ctx.selection(m.id));
   const g = groupesCouleur(m, loc, ctx);
@@ -258,7 +258,7 @@ function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', survol = 
 // current one; a column's alerte(i) shows that cell in red. Cells of `modifiable` columns
 // are edited by double-click, then modifier(i, cle, texte) (Enter or leaving the cell: keep;
 // Escape: cancel).
-function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier }) {
+export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier }) {
   loc.filtre ??= '';
   const f = loc.filtre.toLowerCase();
   let idx = Array.from({ length: n }, (_, i) => i);
@@ -336,7 +336,7 @@ function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom,
 // ------------------------------------------------------------ views
 
 // The test set's line of a summary (jeu_test.R).
-function ficheTest(m) {
+export function ficheTest(m) {
   if (!m.test) return null;
   return el('div', { class: 'fiche-chiffres', title: t('jeu_test_aide') },
     el('span', {}, el('small', {}, t('jeu_test')), ' ', el('b', {}, m.test.n)),
@@ -348,7 +348,7 @@ function ficheTest(m) {
 
 // Notes on the model, saved with its definition in the project. While typing, a redraw keeps
 // the text and the cursor: retrouver() once the field is back in the page.
-function notesModele(conteneur, ctx, m) {
+export function notesModele(conteneur, ctx, m) {
   const avant = conteneur.querySelector('.notes-modele');
   const enCours = avant && document.activeElement === avant ? [avant.value, avant.selectionStart, avant.selectionEnd] : null;
   const champ = el('textarea', { class: 'notes-modele', rows: 2, placeholder: t('notes_placeholder'), oninput: (e) => {
@@ -1367,7 +1367,7 @@ async function rendreCoomans(conteneur, ctx, p, loc) {
 // Statistical tests, computed in R, in three modes: between the classes of a qualitative
 // variable, variable by variable; two variables, with the test their types call for; the
 // correlation matrix of the quantitative variables.
-const valeurP = (v) => (v === null || v === undefined ? '' : v === 0 ? '< 1e-16' : v < 1e-4 ? v.toExponential(1) : v.toFixed(4));  // (0 : sous la précision de R)
+export const valeurP = (v) => (v === null || v === undefined ? '' : v === 0 ? '< 1e-16' : v < 1e-4 ? v.toExponential(1) : v.toFixed(4));  // (0 : sous la précision de R)
 async function rendreTests(conteneur, ctx, p, loc) {
   loc.mode ??= 'classes';
   const modes = choix('', [['classes', t('tests_mode_classes')], ['deux', t('tests_mode_deux')], ['correlations', t('tests_mode_correlations')]],
@@ -2054,6 +2054,7 @@ function rendreClassification(conteneur, ctx, p, loc) {
     xaxis: { title: { text: t('faux_positifs') }, range: [0, 1] }, yaxis: { title: { text: t('vrais_positifs') }, range: [0, 1.02] } });
 }
 
+// The views, by name. A view kept in a module of its own (vues_*.js) is added by app.js at start-up.
 export const VUES = {
   resume: { rendre: rendreResume, titre: (m) => `${m.nom} · ${t('resume')}` },
   scores: { rendre: rendreScores, titre: (m) => `${m.nom} · ${t('scores')}` },

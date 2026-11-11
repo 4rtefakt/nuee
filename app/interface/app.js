@@ -13,6 +13,9 @@ import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
 import { ECRITURE, filtresOuverture, acceptOuverture, filtresSpectres, acceptSpectres } from './formats.js';
 import { ouvrirPalette } from './palette.js';
+// Analyses kept in modules of their own (vues_*.js): imported here, each adds its views to VUES
+// (panneaux.js), their icons (commandes.js: ICONES_VUES), its views per model type
+// (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');

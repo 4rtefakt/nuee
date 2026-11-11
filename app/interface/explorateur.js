@@ -10,8 +10,10 @@ const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanov
 // (a regression has no components, scores or loadings: its own views, regression.R)
 const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'apports', 'liste_obs', 'predictions'];
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
-const vuesDe = (m) => (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
-  && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe)));
+// the views of another analysis, by its type (filled by its module, vues_*.js)
+export const VUES_TYPES = {};
+const vuesDe = (m) => (VUES_TYPES[m.type] || (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
+  && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe))));
 // R2 and Q2 of a fitted model, for its line in the explorer
 const chiffresModele = (m) => (m.regression
   ? `${m.qualite.marginal !== undefined ? `R2m ${fmt(m.qualite.marginal, 2)} · R2c ${fmt(m.qualite.conditionnel, 2)}`
