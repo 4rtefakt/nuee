@@ -128,7 +128,11 @@ PLS-DA), puis prédit : RMSEP, biais, SEP et Q2 externe, ou son classement.
 loadings, biplot, réajustement avec les seules variables retenues. Statistiques des variables
 avec les transformations log proposées, histogrammes et carte des valeurs manquantes. Tests par
 variable entre deux classes (t de Welch ou de Student, Mann–Whitney) ou entre toutes (ANOVA,
-Kruskal–Wallis), avec la correction de Benjamini–Hochberg et un graphique volcan.
+Kruskal–Wallis), avec la correction de Benjamini–Hochberg et un graphique volcan. Tests entre
+deux variables, choisis d'après leurs types, leurs conditions vérifiées : khi² ou test exact de
+Fisher, test t, ANOVA ou Kruskal–Wallis avec les comparaisons deux à deux, corrélation de
+Pearson ou de Spearman ; un identifiant des observations (site, année...) peut faire les
+groupes. Une matrice des corrélations avec les valeurs p corrigées.
 
 ![Tests par variable sur les pommes de l'exemple : un graphique volcan de Golden contre Gala, et la table des tests](docs/captures/volcan.png)
 

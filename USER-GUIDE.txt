@@ -370,10 +370,13 @@ mean, skewness, skewness test and kurtosis. In red: Min/Max < 0.1 and a skewness
 A click on a row shows the variable's histogram, next to that of the transformed variable.
 The other view is the map of missing values (observations × variables).
 
-Tests by variable
+Statistical tests
 -----------------
-Plots › Tests by variable (or in the explorer, under the project): each quantitative variable
-compared between the classes of a qualitative variable.
+Plots › Statistical tests (or in the explorer, under the project), in three modes chosen at the
+top left.
+
+Between classes, variable by variable: each quantitative variable compared between the classes
+of a qualitative variable.
   Two classes (A, the reference, and B): Welch's t test (the default, unequal variances),
   Student's t or Mann–Whitney (on ranks). Effect: log2 of the ratio of the means B / A (when
   both means are positive) or Cohen's d. Volcano plot: the effect against -log10(p).
@@ -381,6 +384,31 @@ compared between the classes of a qualitative variable.
 p values are corrected for multiple comparisons: Benjamini–Hochberg (false discovery rate, the
 default), Bonferroni, or none. In colour: the variables whose corrected p passes the threshold
 (and, for two classes, whose effect does too).
+
+Two variables: the test their types call for, its conditions checked, on the observations where
+both are known. An observation ID (site, sector, year...) can make the groups, like a
+qualitative variable.
+  Two qualitative variables: the contingency table and Pearson's chi-square test of
+  independence, with Cramér's V. In red and in blue, the cells more or less frequent than if the
+  two variables were independent (adjusted residual beyond ±1.96). When the expected counts are
+  too small for the chi-square test (one below 1, or more than 20 % below 5: Cochran's rule),
+  Fisher's exact test is recommended; for a 2 × 2 table it is always given, with the odds
+  ratio. Beyond 2 × 2 and 200 observations, its p value is simulated (100,000 tables).
+  A measurement and a qualitative variable: the measurement compared between the groups, in box
+  plots. Two groups: Welch's t test and Mann–Whitney. More: one-way ANOVA, Welch's ANOVA and
+  Kruskal–Wallis, each with its pairwise comparisons (Tukey, Games–Howell, Dunn with Holm's
+  correction; up to 50 groups): a click on a test shows them. The rank test is recommended
+  when normality is doubtful in a group (Shapiro–Wilk p < 0.05, or fewer than three
+  observations), Welch's ANOVA when the variances differ (Brown–Forsythe p < 0.05).
+  Two measurements: Pearson's and Spearman's correlations; Spearman is recommended when
+  normality is doubtful for either.
+The recommended test's result comes as a sentence ready for a report (copy it with the button
+next to it), with its effect size: Cramér's V, odds ratio, Cohen's d, rank-biserial
+correlation, η², ε², r or ρ.
+
+Correlation matrix: the Pearson or Spearman correlations of all the quantitative variables (300
+at most), each pair on the observations where both are known, p values corrected for the number
+of pairs. A click on a pair, in the table or the plot, tests it in "Two variables".
 
 Class models and the Coomans plot
 ---------------------------------
@@ -548,7 +576,7 @@ Every computation is in resources\moteur\R (R, commented in French):
   verification.R         comparison with the results stored in .usp files
   script.R               export of a model as a standalone R script or report
   methodes.R             Methods text and references
-  comparaisons.R         tests by variable
+  comparaisons.R         statistical tests
   modeles_classe.R       class models (one PCA per class), Coomans plot
   formats.R              reading and writing tables (Excel, text, R, SPSS, Stata, SAS, jamovi...)
   spectres.R             spectral preprocessing (SNV, MSC, detrend, baseline, Savitzky–Golay)

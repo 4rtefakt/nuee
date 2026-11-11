@@ -688,6 +688,8 @@ DEMANDES <- list(
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
                                                q$test %||% "welch", q$correction %||% "BH"),
+  test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y),
+  correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),
   historique = function(q) historique_projet(projet(q$projet)),
   # données modifiées et variables ajoutées : le projet est à enregistrer
   modifier_valeur = function(q) changer_projet(q, function(p) modifier_valeur(p, q$observation, q$variable, q$valeur),

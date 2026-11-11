@@ -124,7 +124,11 @@ RMSEP, bias, SEP and external Q2, or its classification.
 loadings, biplot, refit with the selected variables only. Variable statistics with suggested
 log transformations, histograms and a map of missing values. Tests by variable between two
 classes (Welch's or Student's t, Mann–Whitney) or across all of them (ANOVA, Kruskal–Wallis),
-with the Benjamini–Hochberg correction and a volcano plot.
+with the Benjamini–Hochberg correction and a volcano plot. Tests between two variables, chosen
+from their types with their conditions checked: chi-square or Fisher's exact test, t test, ANOVA
+or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's correlation; an
+observation ID (site, year...) can make the groups. A correlation matrix with corrected p
+values.
 
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 
