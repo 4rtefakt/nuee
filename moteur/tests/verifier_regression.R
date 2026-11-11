@@ -31,6 +31,9 @@ verifier(sprintf("coefficients, AIC, R² = lm() (%d observations complètes sur 
            m$N == sum(complet) && setequal(m$exclues, obs[!complet]))
 verifier("intervalles à 95 % = confint()", proche(m$resultat$coefficients$bas, confint(l)[, 1]) && proche(m$resultat$coefficients$haut, confint(l)[, 2]))
 verifier("noms des termes", identical(m$resultat$coefficients$terme, c("(Intercept)", "sucre", "fermete", "acidite", "polyphenols")))
+m0 <- ajuster(p, definir_modele(p, "LM", x = NULL, y = u("note_gout"), echelle = "none"))
+l0 <- lm(note ~ 1, data = df)
+verifier("sans X : le modèle nul = lm(y ~ 1)", proche(m0$resultat$coefficients$estimation, coef(l0)) && proche(m0$resultat$AIC, AIC(l0)))
 d2 <- definir_modele(p, "LM", x = u("sucre", "variete"), y = u("note_gout"), echelle = "none")
 m2 <- ajuster(p, d2)
 l2 <- lm(note ~ sucre + variete, data = df)
@@ -202,6 +205,96 @@ verifier("une courbe dans un GLM : refusée", grepl("additif", refus(modele_g("G
 verifier("l'autocorrélation avec un GLM : refusée", grepl("linéaire mixte", refus(modele_g("GLM", "masse", "x2", famille = "gamma",
          aleatoires = list(list(by = "variable", variable = ug("site"))), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ug("x1")))))))
 
+cat("Prédiction\n")
+pr <- predire(p, m, d, obs)
+xc <- stats::complete.cases(df[c("sucre", "fermete", "acidite", "polyphenols")])
+verifier("linéaire : chaque observation dont les X sont connus prédite comme predict(lm()), son Y connu ou non",
+         identical(!is.na(pr[["note_gout prédit"]]), xc) && proche(pr[["note_gout prédit"]][xc], predict(l, df[xc, ])) &&
+           proche(pr[["note_gout observé"]], df$note) && !any(pr$hors_domaine))
+pr3 <- predire(p, m3, d3, obs)
+xc3 <- stats::complete.cases(df[c("sucre", "fermete")])
+verifier("mixte : prédit par les effets fixes, comme predict(lme(), level = 0)",
+         proche(pr3[["note_gout prédit"]][xc3], as.vector(predict(r_reml, df[xc3, ], level = 0)), 1e-5))
+dossier <- tempfile("prediction")
+dir.create(dossier)
+f <- file.path(dossier, "vergers.csv")
+utils::write.csv(data.frame(nom = c("A", "B", "C"), sucre = c(12, 40, 13), fermete = c(7, 7, NA), acidite = c(5, 5, 5), polyphenols = c(1000, 1000, 1000)),
+                 f, row.names = FALSE)
+rf <- predire_fichier(p, m, d, f)
+nf <- data.frame(sucre = 12, fermete = 7, acidite = 5, polyphenols = 1000)
+verifier("un fichier : la prédiction de lm(), une valeur hors de l'étendue du modèle signalée, une observation incomplète sans prédiction",
+         proche(rf$observations[["note_gout prédit"]][1], predict(l, nf)) && identical(rf$observations$hors_domaine, c(FALSE, TRUE, FALSE)) &&
+           is.na(rf$observations[["note_gout prédit"]][3]) && identical(as.character(rf$observations$nom), c("A", "B", "C")) && !length(rf$absentes))
+fg <- file.path(dossier, "comptes.csv")
+utils::write.csv(tg[1:5, c("nom", "x1", "x2", "effort")], fg, row.names = FALSE)
+ref <- glm(compte ~ x1 + x2, family = poisson, data = tg, offset = log(effort))
+rg <- predire_fichier(pg, mg2, definir_modele(pg, "GLM", x = ug("x1", "x2"), y = ug("compte"), echelle = "none", famille = "poisson", decalage = ug("effort")), fg)
+verifier("Poisson avec l'effort : la prédiction de glm() pour l'effort de chaque observation",
+         proche(rg$observations[["compte prédit"]], unname(predict(ref, tg[1:5, ], type = "response"))) && !length(rg$note))
+utils::write.csv(tg[1:5, c("nom", "x1", "x2")], fg, row.names = FALSE)
+rg1 <- predire_fichier(pg, mg2, definir_modele(pg, "GLM", x = ug("x1", "x2"), y = ug("compte"), echelle = "none", famille = "poisson", decalage = ug("effort")), fg)
+verifier("sans l'effort dans le fichier : la prédiction pour un effort de 1, et la note le dit",
+         proche(rg1$observations[["compte prédit"]], unname(predict(ref, transform(tg[1:5, ], effort = 1), type = "response"))) &&
+           any(grepl("effort", rg1$note)))
+dg6 <- definir_modele(pg, "GAM", x = ug("x1", "x2"), y = ug("compte"), echelle = "none", famille = "binomiale_negative", lisses = ug("x1"), decalage = ug("effort"),
+                      aleatoires = list(list(by = "variable", variable = ug("site"))))
+pg6 <- predire(pg, mg6, dg6, numeros_observations(pg)[1:5])
+nd6 <- transform(tg[1:5, ], site = factor(tg$site[1], levels = sort(unique(tg$site))))
+# (predict.gam ignore l'argument offset de gam() : log(effort) est ajouté ici)
+verifier("GAMM : prédit sans l'effet aléatoire, comme predict.gam(exclude = \"s(site)\"), l'effort compris",
+         proche(pg6[["compte prédit"]], exp(as.vector(predict(refr, nd6, type = "link", exclude = "s(site)")) + log(tg$effort[1:5])), 1e-4))
+unlink(dossier, recursive = TRUE)
+
+cat("Formule R\n")
+reglees <- function(projet, r, ...) definir_modele(projet, r$type, x = r$x, y = r$y, echelle = "none", transformations = unlist(r$transformations),
+                                                    croises = r$croises, aleatoires = r$aleatoires, lisses = r$lisses, decalage = r$decalage, ...)
+r1 <- lire_formule(p, "note_gout ~ sucre * fermete + log10(acidite) + I(sucre^2) + (1 | verger)")
+verifier("lue : variables, transformation, terme croisé, carré, effet aléatoire ; le type devient mixte",
+         r1$type == "LMM" && identical(as.numeric(r1$x), u("sucre", "fermete", "acidite")) && r1$y == u("note_gout") &&
+           identical(r1$transformations[[as.character(u("acidite"))]], "log10") &&
+           setequal(lapply(r1$croises, sort), list(sort(u("sucre", "fermete")), u("sucre", "sucre"))) &&
+           identical(r1$aleatoires, I(list(list(by = "variable", variable = u("verger"))))))
+mr1 <- ajuster(p, reglees(p, r1))
+ref <- nlme::lme(note ~ sucre * fermete + log10(acidite) + I(sucre^2), random = ~ 1 | verger, data = df, method = "ML", control = ctrl)
+verifier("ajusté, le modèle de cette formule = nlme::lme() de la même formule (AIC en ML)", proche(mr1$resultat$AIC, AIC(ref), 1e-6))
+texte1 <- formule_reglages(p, r1)
+r1b <- lire_formule(p, texte1, "LMM")
+verifier(sprintf("écrite puis relue, les mêmes réglages : %s", texte1),
+         identical(r1b$x, r1$x) && identical(r1b$transformations, r1$transformations) && identical(r1b$aleatoires, r1$aleatoires) &&
+           setequal(lapply(r1b$croises, sort), lapply(r1$croises, sort)))
+codes <- c("log10", "log10:1:2", "ln:2:1", "neglog:1:0", "exp:0.5:0", "lineaire:2:-3", "logit:0:20", "logit:1:30", "racine2", "racine4",
+           "puissance:1:0:3", "puissance:2:1:0.33")
+relus <- vapply(codes, function(code) {
+  texte <- formule_reglages(p, list(type = "LM", x = u("sucre"), y = u("note_gout"), transformations = stats::setNames(list(code), u("sucre"))))
+  lu <- lire_formule(p, texte)$transformations[[as.character(u("sucre"))]] %||% ""
+  if (identical(nom_transformation(lire_transformation(lu)), nom_transformation(lire_transformation(code)))) "" else sprintf("%s → %s → %s", code, texte, lu)
+}, "")
+verifier(sprintf("chaque transformation écrite en R se relit (%d)", length(codes)), !any(nzchar(relus)))
+if (any(nzchar(relus))) cat("         ", relus[nzchar(relus)], sep = "\n          ")
+r2 <- lire_formule(p, "note_gout ~ s(sucre) + `fermete`", "LMM")
+verifier("une courbe : le type devient additif ; un nom entre accents graves", r2$type == "GAM" && r2$lisses == u("sucre") && setequal(r2$x, u("sucre", "fermete")))
+r3 <- lire_formule(p, "log(note_gout) ~ I(sucre^2) + variete", "LMM")
+verifier("sans effet aléatoire, un modèle linéaire ; x² seul, une transformation de x ; une réponse transformée",
+         r3$type == "LM" && identical(r3$transformations[[as.character(u("sucre"))]], "puissance:1:0:2") && !length(r3$croises) &&
+           identical(r3$transformations[[as.character(u("note_gout"))]], "ln:1:0") && u("variete") %in% r3$x)
+rg <- lire_formule(pg, "compte ~ s(x1) + x2 + offset(log(effort)) + (1 | site)", "GLM", "binomiale_negative")
+mrg <- ajuster(pg, reglees(pg, rg, famille = "binomiale_negative"))
+verifier("un GAMM avec l'effort, lu d'une formule : le modèle de mgcv (AIC)", rg$type == "GAM" && rg$decalage == ug("effort") && proche(mrg$resultat$AIC, mg6$resultat$AIC, 1e-6))
+verifier("l'effort avec une loi normale : refusé", grepl("offset", refus(lire_formule(pg, "compte ~ x2 + offset(log(effort))", "GLM", "gaussienne"))))
+marqueur <- file.path(tempdir(), "formule_executee")
+dangereuses <- c(sprintf("note_gout ~ sucre + file.create(\"%s\")", marqueur), sprintf("file.create(\"%s\") ~ sucre", marqueur),
+                 sprintf("note_gout ~ log(file.create(\"%s\"))", marqueur), sprintf("note_gout ~ I(eval(parse(text = 'file.create(\"%s\")')))", marqueur),
+                 sprintf("note_gout ~ s(sucre, k = file.create(\"%s\"))", marqueur), "note_gout ~ sucre[1]", "note_gout ~ get(\"sucre\")", "note_gout ~ \"sucre\"",
+                 "note_gout ~ (function() sucre)()", "note_gout ~ sucre; file.remove(\"x\")")
+verifier("du code dans une formule : refusé, jamais exécuté", all(vapply(dangereuses, function(f) nzchar(refus(lire_formule(p, f))), TRUE)) && !file.exists(marqueur))
+messages <- c("note_gout ~ sucre - 1" = "ordonnée", "note_gout ~ (sucre | verger)" = "aléatoires", "note_gout ~ sucre + (1 | verger) + (1 | culture)" = "emboîtés",
+              "note_gout ~ s(sucre, k = 5)" = "choisit", "note_gout ~ sucre:fermete" = "demande aussi", "note_gout ~ inconnue" = "pas une variable",
+              "note_gout ~ sucre^2" = "I\\(x\\^2\\)", "variete ~ sucre" = "qualitative", "note_gout ~ sucre + log(sucre)" = "deux façons",
+              "note_gout ~ s(variete)" = "quantitative", "note_gout ~ sucre +" = "illisible")
+mauvais <- names(messages)[!vapply(names(messages), function(f) grepl(messages[[f]], refus(lire_formule(p, f))), TRUE)]
+verifier("une formule que Nuée ne sait pas faire : refusée, en disant pourquoi", !length(mauvais))
+if (length(mauvais)) cat("          ", mauvais, sep = "\n          ")
+
 cat("Texte des méthodes\n")
 for (l in c("fr", "en")) {
   t3 <- texte_methodes(p, d3, m3, l, "essai")
@@ -212,8 +305,6 @@ for (l in c("fr", "en")) {
              !any(grepl("nlme", t1$references)))
 }
 
-dg6 <- definir_modele(pg, "GAM", x = ug("x1", "x2"), y = ug("compte"), echelle = "none", famille = "binomiale_negative", lisses = ug("x1"), decalage = ug("effort"),
-                      aleatoires = list(list(by = "variable", variable = ug("site"))))
 for (l in c("fr", "en")) {
   tg6 <- texte_methodes(pg, dg6, mg6, l, "essai")
   verifier(sprintf("GAMM (%s) : loi, courbe, effort et site aléatoire décrits, mgcv et Wood cités", l),

@@ -1001,14 +1001,15 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   });
   const hors = o.hors_domaine ? o.hors_domaine.filter(Boolean).length : 0;
   const infos = el('span', { class: 'infos' }, `${o.nom.length} ${t('obs')}`,
-    hors ? ` · ${hors} ${t('hors_domaine')}` : '',
+    hors ? ` · ${hors} ${t(m.regression ? 'extrapolations' : 'hors_domaine')}` : '',
     fichier && r.absentes && [].concat(r.absentes).length ? el('span', { class: 'erreur' }, ` · ${t('variables_absentes')} : ${[].concat(r.absentes).join(', ')}`) : '',
     // values of the file read as missing (text in a quantitative column: <0.5, nd...)
     fichier && r.note && [].concat(r.note).length ? el('span', { class: 'erreur' }, ` · ${[].concat(r.note).join(' ; ')}`) : '');
   loc.graphe ??= 'scores';
   const vueGraphe = o.DModX ? choix('', [['scores', t('scores')], ['dmodx', 'DModXPS']], loc.graphe, (v) => { loc.graphe = v; ctx.rafraichir(); }) : null;
   conteneur.replaceChildren(el('div', { class: 'outils' }, vueGraphe, infos, el('span', { class: 'espace' }),
-    el('button', { onclick: () => ctx.exporterPrediction(m.id) }, icone('file-down'), t('exporter_court'))), haut, bas);
+    el('button', { onclick: () => ctx.exporterPrediction(m.id) }, icone('file-down'), t('exporter_court'))),
+  m.regression ? el('p', { class: 'note' }, t('prediction_regression_note')) : null, haut, bas);
   loc.table ??= {};
   tableau(bas, ctx, loc.table, {
     avant: [jeu], n: o.nom.length, nom: 'Table',
@@ -1020,6 +1021,24 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   const yk = m.A > 1 ? 't2' : 'T2';
   const ii = o.nom.map((_, i) => i).filter((i) => !o.dans_modele[i]);
   const couleur = ii.map((i) => (o.hors_domaine && o.hors_domaine[i] ? '#d1495b' : PALETTE[0]));
+  if (m.regression) {  // a regression: Y predicted, against Y observed when it is known, else by observation
+    const yp = cols.find((k) => k.endsWith(' prédit'));
+    const yo = cols.find((k) => k.endsWith(' observé'));
+    const avecObs = !!yo && o.nom.some((_, i) => o[yo][i] !== null && o[yp][i] !== null);
+    const abscisse = (i) => (avecObs ? o[yo][i] : i + 1);
+    const dans = o.nom.map((_, i) => i).filter((i) => o.dans_modele[i]);
+    const survol = `<b>%{text}</b><br>${avecObs ? '%{x:.4g} → ' : ''}%{y:.4g}<extra>%{fullData.name}</extra>`;
+    const vals = avecObs ? o.nom.map((_, i) => i).flatMap((i) => [o[yo][i], o[yp][i]]).filter((v) => v !== null) : [];
+    tracer(ctx, haut, [
+      { type: 'scattergl', mode: 'markers', name: t('dans_modele'), x: dans.map(abscisse), y: dans.map((i) => o[yp][i]), text: dans.map((i) => o.nom[i]),
+        marker: { color: '#b8c2cf', size: 5 }, hovertemplate: survol },
+      { type: 'scattergl', mode: 'markers', name: t('predictions'), x: ii.map(abscisse), y: ii.map((i) => o[yp][i]), text: ii.map((i) => o.nom[i]),
+        marker: { color: couleur, size: 7, opacity: 0.9 }, hovertemplate: survol }],
+    { title: { text: `${m.nom} · ${t('predictions')}${fichier ? ' · ' + r.fichier : ''}` }, dragmode: 'zoom', margin: { t: 30, b: 36 },
+      shapes: vals.length ? [{ type: 'line', x0: Math.min(...vals), y0: Math.min(...vals), x1: Math.max(...vals), y1: Math.max(...vals), line: { color: '#888', dash: 'dot', width: 1 } }] : [],
+      xaxis: { title: { text: avecObs ? yo : 'observation' } }, yaxis: { title: { text: yp } } });
+    return;
+  }
   if (loc.graphe === 'dmodx' && o.DModX) {  // DModXPS: distance of each prediction to the model, against DCrit
     const recent = m.version_origine === null || m.version_origine === undefined || m.version_origine >= 13;
     const cle = recent && o.DModX_pondere ? 'DModX_pondere' : 'DModX';

@@ -328,6 +328,25 @@ async function principal() {
       verifier(gam.type === 'GAM' && [].concat(gam.courbes.terme).length === 1, 'GAM, une courbe');
       const ef = await api('effets', { modele: gam.id });
       verifier([].concat(ef.effets).length === 2 && ef.effets[0].courbe === true && [].concat(ef.effets[0].x).length === 80, 'courbes d’effet');
+      const cle = 'note_gout prédit';
+      const pr = await api('predire', { modele: gam.id });
+      verifier(pr.observations[cle].length === 120 && pr.observations[cle].every((x) => x !== null) && pr.observations.dans_modele.every(Boolean)
+        && pr.observations.hors_domaine.every((x) => x === false), 'prédire les observations avec un GAM');
+      const fp = path.join(dossier, 'a_predire.csv');
+      fs.writeFileSync(fp, 'nom,sucre,fermete\nA,12,7\nB,40,7\n');
+      const pf = await api('predire_fichier', { modele: lm.id, chemin: fp });
+      verifier(pf.observations[cle].length === 2 && pf.observations.hors_domaine[0] === false && pf.observations.hors_domaine[1] === true,
+        'prédire un fichier avec une régression, une extrapolation signalée');
+      const ep = await api('exporter_prediction', { modele: lm.id, chemin: path.join(dossier, 'pred_lm.csv') });
+      verifier(fs.readFileSync(ep.chemin, 'utf8').includes('note_gout prédit'), 'exporter la prédiction d’une régression');
+      const fo = await api('formule', { projet: e.id, type: 'GAM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], lisses: [v('sucre')],
+        croises: [], transformations: {}, aleatoires: [], decalage: null });
+      verifier(fo.formule === 'note_gout ~ s(sucre) + fermete', `formule R des réglages : ${fo.formule}`);
+      const lu = await api('lire_formule', { projet: e.id, texte: 'note_gout ~ sucre * fermete + (1 | verger)', type: 'LM' });
+      verifier(lu.type === 'LMM' && lu.x.length === 2 && lu.croises.length === 1 && lu.aleatoires[0].by === 'variable', 'formule lue en réglages');
+      let refusF = '';
+      try { await api('lire_formule', { projet: e.id, texte: 'note_gout ~ sucre + system("calc")', type: 'LM' }); } catch (err) { refusF = err.message; }
+      verifier(/system/.test(refusF), 'une formule qui porte du code, refusée');
       let refusReg = '';
       try { await api('hca', { modele: lmm.id }); } catch (err) { refusReg = err.message; }
       verifier(/régression/.test(refusReg), 'une demande qui suppose des composantes, refusée pour une régression');

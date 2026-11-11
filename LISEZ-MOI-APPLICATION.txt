@@ -471,6 +471,16 @@ d'un ajustement en ML ; un GLM sans eux est ajusté par maximum de vraisemblance
 glm() et MASS::glm.nb(). Le résumé d'un modèle de Poisson prévient quand les comptages sont
 surdispersés (le khi² de Pearson au-delà de 1,5 fois ses degrés de liberté) : ses valeurs p
 sont alors trop petites, et la binomiale négative convient mieux à ces comptages.
+Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
+  y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/secteur).
+Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations
+(log, log10, log1p, exp, sqrt, I(x^p), I(a * x + b), le logit log((x - a) / (b - x))), les
+termes croisés (a:b ; a*b pour a, b et a:b ; I(a^2) quand a est aussi dans le modèle, sinon le
+carré de a), les courbes s(x), l'effort offset(log(x)) et les ordonnées à l'origine aléatoires
+emboîtées (1 | site/secteur), du plus large au plus fin. Une courbe rend le modèle additif, des
+effets aléatoires le rendent mixte. R lit la formule sans jamais l'exécuter : tout le reste
+(une autre fonction, du code) est refusé en disant pourquoi, et la formule n'est pas gardée,
+seulement les réglages qu'elle donne.
 Vues : Résumé (R2, ou R2 marginal et conditionnel pour un modèle mixte, Nakagawa et
 Schielzeth ; R2 ajusté et déviance expliquée pour un GLM ou un GAM, avec l'edf et le test de
 chaque courbe ; Q2 et RMSEcv ; AIC ; la variance de chaque effet aléatoire et sa part ; φ de
@@ -485,6 +495,12 @@ groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire),
 ML ; un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
+Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
+un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
+comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par
+le nom des variables du modèle, l'effort compris (sans lui, les prédictions sont pour un effort
+de 1, et la note le dit). ⚠ signale une valeur hors de l'étendue des observations du modèle :
+une extrapolation.
 Prédiction › Comparer les modèles : Q2 et RMSEcv pour tous les modèles ; AIC, ΔAIC et poids
 d'Akaike (la probabilité que chaque modèle soit le meilleur de son ensemble) entre les seules
 régressions de la même réponse sur les mêmes observations (un « ensemble AIC », lettré A,
@@ -492,7 +508,7 @@ B...), et seulement celles dont les vraisemblances se comparent : des modèles d
 binomiaux négatifs des mêmes comptages, mais pas un modèle normal de ces comptages ; des
 modèles de Tweedie entre eux ; des GLMM et des GAMM (la vraisemblance conditionnelle de mgcv)
 entre eux.
-Pas encore pour les régressions : l'export vers R, la prédiction d'un fichier, le rapport.
+Pas encore pour les régressions : l'export vers R et le rapport.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------

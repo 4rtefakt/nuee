@@ -8,7 +8,7 @@ const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot
   'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
 const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanova'];
 // (a regression has no components, scores or loadings: its own views, regression.R)
-const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'apports', 'liste_obs'];
+const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'apports', 'liste_obs', 'predictions'];
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 const vuesDe = (m) => (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
   && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe)));

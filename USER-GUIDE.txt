@@ -443,6 +443,16 @@ estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitte
 likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns when the
 counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of freedom): its p
 values are then too small, and the negative binomial suits the counts better.
+R formula (General tab): the model written as in R, for instance
+  y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
+Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
+log10, log1p, exp, sqrt, I(x^p), I(a * x + b), the logit log((x - a) / (b - x))), the cross
+terms (a:b; a*b for a, b and a:b; I(a^2) when a is in the model too, else the square of a), the
+curves s(x), the effort offset(log(x)) and the nested random intercepts (1 | site/sector), the
+widest first.
+A curve makes the model additive, random effects make it mixed. R reads the formula without
+ever running it: anything else (another function, code) is refused with the reason, and the
+formula isn't kept, only the settings it gives.
 Views: Summary (R2, or marginal and conditional R2 for a mixed model, Nakagawa and Schielzeth;
 adjusted R2 and deviance explained for a GLM or GAM, with each curve's edf and test; Q2 and
 RMSEcv; AIC; the variance of each random effect and its share; φ of the autocorrelation),
@@ -456,13 +466,18 @@ distance for a linear regression), Block contributions (AIC): each block of the 
 (or each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
 Y, X, a random effect, the time or the effort are left out (the summary counts them).
+Prediction › Predict observations, Predict a file: Y predicted by the fixed effects (for a
+mixed model, a group never seen), on the model's scale of Y (its transformation included), next
+to Y observed when it is known. A file's columns are matched to the model's variables by name,
+the effort included (without it, the predictions are for an effort of 1, and the note says
+so). ⚠ marks a value outside the range of the model's observations: an extrapolation.
 Prediction › Compare models: Q2 and RMSEcv for every model; AIC, ΔAIC and Akaike weights (the
 probability that each model is the best of its set) between the regressions of the same
 response on the same observations only (an "AIC set", lettered A, B...), and only those whose
 likelihoods compare: Poisson and negative binomial models of the same counts, but not a normal
 model of them; Tweedie models with each other; GLMMs and GAMMs (mgcv's conditional likelihood)
 with each other.
-Not yet for regressions: export to R, predicting a file, the model report.
+Not yet for regressions: export to R and the model report.
 
 Class models and the Coomans plot
 ---------------------------------

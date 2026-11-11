@@ -356,7 +356,7 @@ ajuster_et_garder <- function(p, d) {
 
 # Les demandes qui supposent des composantes et des scores : refusées pour une régression
 # (regression.R), avant d'arriver à un code qui ne les trouverait pas.
-SANS_REGRESSION <- c("predire", "hca", "permutations", "exporter", "predire_fichier", "exporter_prediction", "scores_en_variables",
+SANS_REGRESSION <- c("hca", "permutations", "exporter", "scores_en_variables",
                      "script_r", "appartenance", "contributions", "spectres", "biplot", "ipls")
 
 # Ce que l'interface reçoit d'une régression : comme resultat_modele pour ce qui est commun
@@ -744,6 +744,10 @@ DEMANDES <- list(
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y),
   # l'apport de chaque groupe de termes d'une régression (regression.R), calculé une fois
   # les courbes d'effet d'une régression (regression.R : effets_regression), calculées une fois
+  # la formule R des réglages d'une régression (Nouveau modèle), et les réglages d'une formule :
+  # lue sans jamais être exécutée (formule.R)
+  formule = function(q) list(formule = formule_reglages(projet(q$projet), q)),
+  lire_formule = function(q) lire_formule(projet(q$projet), q$texte %||% "", q$type, q$famille),
   effets = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))

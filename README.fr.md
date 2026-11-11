@@ -143,7 +143,8 @@ courbes lissées pour un effet qui monte puis descend ou un seuil ; les coeffici
 intervalles, R2 marginal et conditionnel, les courbes d'effet, les graphiques des résidus, la
 variation de l'AIC quand chaque bloc de variables est retiré, et la comparaison par l'AIC (ΔAIC,
 poids d'Akaike) des régressions de la même réponse, à côté du Q2 en validation croisée de tous
-les modèles.
+les modèles. Une formule R règle le modèle (R la lit sans jamais l'exécuter), et les régressions
+prédisent de nouvelles observations et des fichiers, les extrapolations signalées.
 
 ![Tests par variable sur les pommes de l'exemple : un graphique volcan de Golden contre Gala, et la table des tests](docs/captures/volcan.png)
 

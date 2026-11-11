@@ -7,6 +7,7 @@
 # des valeurs manquantes est limité à 3 : une observation du modèle retrouve ainsi ses scores.
 
 predire <- function(projet, m, definition, observations) {
+  if (est_regression(definition)) return(predire_observations_regression(projet, m, definition, observations))
   pls <- identical(m$type, "PLS")
   bx <- construire_bloc(projet, definition$x, observations, imposees = m$x, spectres = definition$spectres)
   X <- preparer(bx$X)
@@ -67,10 +68,13 @@ predire <- function(projet, m, definition, observations) {
 # « nd »...) sont manquantes, et `note` le dit (avec ce qu'il faut dire du fichier). Les
 # variables du modèle absentes du fichier restent manquantes (la prédiction les ignore), sauf
 # si `completer(nom)` sait les calculer (par exemple les scores d'un modèle de base pour un
-# modèle hiérarchique) : il renvoie alors leurs valeurs.
+# modèle hiérarchique) : il renvoie alors leurs valeurs. Une régression lit aussi l'effort de son
+# décalage ; sans lui dans le fichier, elle prédit pour un effort de 1, et `note` le dit.
 predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
   norme <- function(s) tolower(trimws(s))
-  utilises <- unique(unlist(lapply(c(definition$x, definition$y), function(t) t$variables)))
+  regression <- est_regression(definition)
+  effort <- if (regression && !is.null(definition$decalage)) as.numeric(definition$decalage)
+  utilises <- unique(c(unlist(lapply(c(definition$x, definition$y), function(t) t$variables)), effort))
   variables_x <- unique(unlist(lapply(definition$x, function(t) t$variables)))
   nom_variable <- function(u) as.character(variable_du_projet(projet, u)$ids[1])
   quantitatives <- vapply(Filter(function(u) !length(variable_du_projet(projet, u)$categories), utilises), nom_variable, "")
@@ -80,6 +84,7 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
   obs <- seq_len(nrow(tableau$donnees))
   donnees <- matrix(NA_real_, length(obs), length(utilises), dimnames = list(as.character(obs), as.character(utilises)))
   absentes <- character(0)
+  effort_absent <- FALSE
   for (u in utilises) {
     v <- variable_du_projet(projet, u)
     nom <- as.character(v$ids[1])
@@ -88,6 +93,7 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
       x <- if (!is.null(completer)) completer(nom)
       # un Y absent est normal (on le prédit) : seuls les X manquants sont signalés
       if (!is.null(x)) donnees[, as.character(u)] <- x else if (u %in% variables_x) absentes <- c(absentes, nom)
+      if (u %in% effort) effort_absent <- TRUE
       next
     }
     x <- tableau$donnees[, k]
@@ -98,11 +104,13 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
     donnees[, as.character(u)] <- x
   }
   provisoire <- list(donnees = donnees)
-  out <- predire(provisoire, m, definition, obs)
+  out <- if (regression) predire_observations_regression(provisoire, m, definition, obs, effort_absent) else predire(provisoire, m, definition, obs)
   out$nom <- unname(tableau$noms_obs[as.character(obs)])
   # ce qu'il faut dire de la lecture : du fichier, et des colonnes des variables X
   note <- attr(df, "note") %||% character(0)
   colonnes <- names(note) %||% character(length(note))
-  note <- unname(note[!nzchar(colonnes) | nom_comparable(colonnes) %in% nom_comparable(vapply(variables_x, nom_variable, ""))])
+  note <- unname(note[!nzchar(colonnes) | nom_comparable(colonnes) %in% nom_comparable(vapply(c(variables_x, effort), nom_variable, ""))])
+  if (effort_absent) note <- c(note, sprintf(traduire("l'effort (%s) n'est pas dans le fichier : prédictions pour un effort de 1",
+                                                      "the effort (%s) is not in the file: predictions for an effort of 1"), nom_variable(effort)))
   list(observations = out, absentes = absentes, n = length(obs), fichier = basename(chemin), note = I(note))
 }

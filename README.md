@@ -138,6 +138,8 @@ effort as an offset, and smooth curves for effects that rise then fall or have a
 coefficients with their intervals, marginal and conditional R2, effect curves, residual plots,
 the AIC change when each block of variables is removed, and an AIC comparison (ΔAIC, Akaike
 weights) of the regressions of the same response, next to the cross-validated Q2 of every model.
+An R formula box sets the model (R reads it and never runs it), and regressions predict new
+observations and files, extrapolations flagged.
 
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 

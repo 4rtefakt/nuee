@@ -61,11 +61,11 @@ export function creerCommandes(app) {
     dendrogramme: vue('dendrogramme', avecLV), liste_obs: vue('liste_obs'), liste_vars: vue('liste_vars', avecLV),
     permutations: vue('permutations', avecPLS), cvanova: vue('cvanova', avecPLS), classification: vue('classification', avecPLSDA),
     contributions: vue('contributions', avecLV), biplot: vue('biplot', avecLV), scores3d: vue('scores3d', avecLV), splot: vue('splot', avecOPLS), coomans: vue('coomans', avecGroupe),
-    predire_fichier: { icone: 'file-input', actif: avecLV, action: () => app.predireFichierVue(m()) },
+    predire_fichier: { icone: 'file-input', actif: avecModele, action: () => app.predireFichierVue(m()) },
     donnees: { icone: 'database', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('donnees', null, null, app.projetActif()) },
     statistiques: { icone: 'chart-column-big', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('statistiques', null, null, app.projetActif()) },
     tests: { icone: 'flask-conical', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('tests', null, null, app.projetActif()) },
-    predire: { icone: 'target', actif: avecLV, action: () => app.ouvrirVue('predictions', m()) },
+    predire: { icone: 'target', actif: avecModele, action: () => app.ouvrirVue('predictions', m()) },
     comparaison: { icone: 'columns-2', action: () => app.ouvrirVue('comparaison') },
 
     nouvelle_fenetre: { icone: 'app-window', raccourci: 'Ctrl+Shift+N', action: () => app.nouvelleFenetre() },

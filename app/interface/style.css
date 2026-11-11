@@ -288,3 +288,6 @@ body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed
 
 /* an observation in the test set (model dialog) */
 .onglet-obs tr.en-test td { background: var(--accent-doux); }
+/* the R formula of a regression (New model) */
+.formule-r { display: flex; flex-direction: column; gap: 4px; }
+.formule-r textarea.formule { font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; font-size: 12px; width: 100%; box-sizing: border-box; resize: vertical; }

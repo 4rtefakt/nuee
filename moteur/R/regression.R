@@ -340,7 +340,7 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   if (!is.null(decalage)) cadre$decalage <- decalage[connu]
   complet <- stats::complete.cases(cadre)  # (un terme croisé que sa transformation rend manquant)
   list(cadre = cadre[complet, , drop = FALSE], observations = garde[complet], exclues = setdiff(obs, garde[complet]),
-       termes = paste0("t", seq_len(K)), noms = if (K) bloc$noms else character(0), bloc = bloc)
+       termes = if (K) paste0("t", seq_len(K)) else character(0), noms = if (K) bloc$noms else character(0), bloc = bloc)
 }
 
 # Ajuste une définition de régression (definir_modele, type "LM", "LMM", "GLM" ou "GAM") : le
@@ -430,6 +430,43 @@ tester_regression <- function(projet, m, d) {
   list(n = nrow(nd), hors_domaine = 0, observations = obs,
        statistiques = data.frame(y = y, n = length(e), RMSEP = sqrt(mean(e^2)), biais = mean(e), SEP = if (length(e) > 1) stats::sd(e) else NA_real_,
                                  Q2ext = 1 - sum(e^2) / sum((nd$y - mean(m$donnees$y))^2), stringsAsFactors = FALSE))
+}
+
+# Les prédictions d'une régression pour des observations du projet, d'un jeu de prédiction ou
+# d'un fichier (prediction.R : predire, predire_fichier) : Y prédit par les effets fixes, sur
+# l'échelle de la réponse modélisée (sa transformation comprise) ; Y observé quand il est connu ;
+# hors_domaine : une valeur d'un terme hors de l'étendue des observations du modèle (une
+# extrapolation). Une observation sans une valeur d'un terme du modèle, ou sans son effort, n'a
+# pas de prédiction. `effort_absent` : le fichier n'a pas l'effort ; la prédiction est alors
+# pour un effort de 1 (une densité).
+predire_observations_regression <- function(projet, m, d, observations, effort_absent = FALSE) {
+  n <- length(observations)
+  termes <- termes_regression(d$x)
+  nd <- data.frame(row.names = seq_len(n))
+  if (length(termes)) {
+    bloc <- construire_bloc(projet, termes, observations, imposees = m$bloc)
+    for (k in seq_along(termes)) nd[[paste0("t", k)]] <- bloc$X[, k]
+  }
+  if (!is.null(d$decalage)) {
+    effort <- if (effort_absent) rep(1, n) else colonne(projet, d$decalage, observations)
+    nd$decalage <- ifelse(!is.na(effort) & effort > 0, log(abs(effort)), NA_real_)
+  }
+  utilisees <- intersect(c(m$utiles, "decalage"), names(nd))
+  connu <- if (length(utilisees)) stats::complete.cases(nd[utilisees]) else rep(TRUE, n)  # (sans X : le modèle nul)
+  predit <- rep(NA_real_, n)
+  if (any(connu)) predit[connu] <- predire_regression(m, nd[connu, , drop = FALSE])
+  hors <- rep(FALSE, n)
+  for (t in m$utiles) {
+    r <- range(m$donnees[[t]])
+    marge <- 1e-9 * max(1, abs(r))
+    hors <- hors | (!is.na(nd[[t]]) & (nd[[t]] < r[1] - marge | nd[[t]] > r[2] + marge))
+  }
+  y <- transformer(valeurs_simples(projet, d$y[[1]], observations), d$y[[1]]$transform)
+  out <- data.frame(row.names = as.character(observations))
+  out[[paste(m$y$noms, "prédit")]] <- predit
+  if (any(!is.na(y))) out[[paste(m$y$noms, "observé")]] <- y
+  out$hors_domaine <- hors
+  out
 }
 
 # L'apport de chaque groupe de termes du modèle (son bloc, sinon sa variable), calculé à la
