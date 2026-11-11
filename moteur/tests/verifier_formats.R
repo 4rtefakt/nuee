@@ -20,6 +20,12 @@ verifier <- function(nom, ok) {
 }
 dossier <- tempfile("formats")
 dir.create(dossier)
+# Nuée ne lit les fichiers .rds et .RData qu'avec R 4.4 ou plus récent (formats.R :
+# fichier_r_lisible) ; avec un R plus ancien, on vérifie qu'il les refuse
+# (ESSAI_R_ANCIEN=1 : comme avec R 4.3, que le moteur, chargé dans l'environnement global, voit aussi)
+if (nzchar(Sys.getenv("ESSAI_R_ANCIEN"))) getRversion <- function() package_version("4.3.3")
+r_recent <- getRversion() >= "4.4.0"
+REFUS_R <- "Nuée n'ouvre les fichiers .rds et .RData qu'avec R 4.4"
 
 p <- lire_projet("exemple/vergers.json")
 ref <- tableau_projet(p)
@@ -39,6 +45,12 @@ memes <- function(a, b, noms = TRUE) {
 cat("Écriture puis relecture des données du projet d'exemple\n")
 for (ext in FORMATS_ECRITURE) {
   f <- file.path(dossier, paste0("vergers.", ext))
+  if (!r_recent && ext %in% c("rds", "rdata")) {
+    ecrire_tableau(ref, f, objet = "vergers")
+    verifier(sprintf(".%s : écrit, puis refusé à la lecture avec R %s", ext, getRversion()),
+             startsWith(tryCatch({ lire_tableau(f); "lu" }, error = conditionMessage), REFUS_R))
+    next
+  }
   r <- tryCatch({
     ecrire_tableau(ref, f, objet = "vergers")
     lire_tableau(f)
@@ -74,11 +86,6 @@ f <- ecrire_tables(tables, file.path(dossier, "M2.RData"), objet = "M2")
 e <- new.env(); load(f, envir = e)
 verifier("une liste de tableaux dans un .RData", is.list(e$M2) && isTRUE(all.equal(e$M2$observations$t1, tables$observations$t1)) &&
          identical(rownames(e$M2$observations)[1], tables$observations$Observation[1]))
-# Nuée ne lit les fichiers .rds et .RData qu'avec R 4.4 ou plus récent (formats.R :
-# fichier_r_lisible) ; avec un R plus ancien, on vérifie qu'il les refuse
-# (ESSAI_R_ANCIEN=1 : comme avec R 4.3, que le moteur, chargé dans l'environnement global, voit aussi)
-if (nzchar(Sys.getenv("ESSAI_R_ANCIEN"))) getRversion <- function() package_version("4.3.3")
-r_recent <- getRversion() >= "4.4.0"
 if (r_recent) {
   verifier("choix d'un tableau dans un .RData", identical(tables_fichier(f), NULL) || TRUE)
   saveRDS(list(a = ref, b = ref[1:5, ]), file.path(dossier, "deux.rds"))
@@ -227,8 +234,8 @@ if (r_recent) {
 } else {
   save(piege, file = f2 <- file.path(dossier, "piege_ancien.RData"))
   verifier(sprintf("R %s : un .rds ou un .RData est refusé avant d'être lu (R 4.4 ou plus récent : CVE-2024-27322)", getRversion()),
-           startsWith(m1, "Nuée n'ouvre les fichiers .rds et .RData qu'avec R 4.4") && identical(m1, m2) &&
-             startsWith(tryCatch(lire_tableau(f2), error = conditionMessage), "Nuée n'ouvre les fichiers .rds et .RData") && !file.exists(marqueur))
+           startsWith(m1, REFUS_R) && identical(m1, m2) &&
+             startsWith(tryCatch(lire_tableau(f2), error = conditionMessage), REFUS_R) && !file.exists(marqueur))
 }
 
 cat("Prédiction d'un fichier\n")
