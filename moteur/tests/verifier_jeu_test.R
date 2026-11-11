@@ -69,6 +69,7 @@ X <- scale(vapply(x, function(u) colonne(p, u, obs), numeric(length(obs))))
 X[!is.finite(X)] <- 0
 garde <- kennard_stone(X, 90)
 verifier("Kennard–Stone : les deux plus éloignées d'abord", { D <- as.matrix(dist(X)); proche(D[garde[1], garde[2]], max(D)) })
+verifier("Kennard–Stone : des lignes toutes identiques, les premières dans l'ordre", identical(kennard_stone(matrix(1, 6, 2), 4), 1:4))
 if (requireNamespace("prospectr", quietly = TRUE)) {
   verifier("Kennard–Stone : les mêmes observations que prospectr::kenStone()", setequal(garde, prospectr::kenStone(X, k = 90, metric = "euclid")$model))
 }

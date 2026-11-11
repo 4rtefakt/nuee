@@ -113,6 +113,13 @@ async function brancher(cible) {
   const res = {};
   const echecs = [];
   const verifier = (nom, ok, valeur) => { res[nom] = valeur === undefined ? ok : valeur; if (!ok) echecs.push(nom); };
+  // an earlier stop left a recovery copy: the question about it is closed without an answer
+  // (commande() removes the dialogs), so a normal quit must keep it for the next start
+  const secours = path.join(profil, 'secours');
+  const copieAncienne = path.join(secours, 'arret-precedent-P1.json');
+  fs.mkdirSync(secours, { recursive: true });
+  fs.writeFileSync(copieAncienne, '{}');
+  fs.writeFileSync(path.join(secours, 'index.json'), JSON.stringify([{ fichier: copieAncienne, projet: 'P1', nom: 'arret precedent', date: new Date().toISOString() }]));
   const port = await portLibre();
   const proc = lancer(port);
   let sortie = '';
@@ -202,6 +209,10 @@ async function brancher(cible) {
     await pause(1000);
     verifier('RArrete', pidR > 0 && !enVie(pidR), pidR);
     verifier('dossierTemporaireRSupprime', !fs.existsSync(temporaire));
+    let index = [];
+    try { index = JSON.parse(fs.readFileSync(path.join(secours, 'index.json'), 'utf8')); } catch { index = []; }
+    verifier('copieDUnArretPrecedentGardee', fs.existsSync(copieAncienne) && index.length === 1 && path.basename(index[0].fichier) === path.basename(copieAncienne),
+      `${fs.existsSync(copieAncienne)} / ${JSON.stringify(index)}`);
     verifier('sansErreurDansLaPage', p.erreurs.length === 0, p.erreurs.slice(0, 10));
   } catch (e) {
     verifier('erreur', false, e.message);

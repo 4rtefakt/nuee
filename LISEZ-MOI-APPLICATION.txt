@@ -52,7 +52,11 @@ Fichier › Ouvrir (Ctrl+O) :
     dit combien, dans quelles variables (dont celles sous la limite de détection). Les dates et
     heures d'Excel restent des dates (2024-05-03). Un fichier texte dont une ligne a plus de
     valeurs que l'en-tête est refusé, avec le numéro de la ligne, plutôt que de décaler les
-    colonnes. Un fichier R doit contenir des tableaux ; tout autre objet est refusé.
+    colonnes. Un fichier R doit contenir des tableaux ; tout autre objet est refusé. Les fichiers
+    R ne s'ouvrent qu'avec R 4.4 ou plus récent (celui de Windows) : avec un R plus ancien, comme
+    celui d'Ubuntu 22.04 ou 24.04 ou de Debian 12, un .rds ou un .RData pourrait exécuter du code
+    dès sa lecture (CVE-2024-27322) ; Nuée le refuse donc : enregistrez le tableau en CSV ou en
+    Excel.
 Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google
 Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
 projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).

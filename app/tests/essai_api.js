@@ -347,9 +347,18 @@ async function principal() {
     });
     await etape('exporter les données dans chaque format, puis les rouvrir', async () => {
       const formats = ['xlsx', 'csv', 'tsv', 'rds', 'RData', 'sav', 'dta', 'xpt', 'omv', 'dbf', 'arff'];
+      // R files are opened only with R 4.4 or newer (moteur/R/formats.R: fichier_r_lisible)
+      const v = /R version (\d+)\.(\d+)/.exec((await api('version')).R || '');
+      const rRecent = !v || +v[1] > 4 || (+v[1] === 4 && +v[2] >= 4);
       for (const ext of formats) {
         const f = path.join(dossier, `donnees.${ext}`);
         await api('exporter_donnees', { projet: p.id, chemin: f });
+        if (!rRecent && ['rds', 'RData'].includes(ext)) {
+          let refus = '';
+          try { await api('ouvrir', { chemin: f }); } catch (e) { refus = e.message; }
+          verifier(/R 4\.4/.test(refus), `.${ext} avec R ${v[1]}.${v[2]} : « ${refus} »`);
+          continue;
+        }
         const q = await api('ouvrir', { chemin: f });
         verifier(q.observations.uid.length === 60 && q.variables.length === 9, `.${ext} : ${q.observations.uid.length} observations, ${q.variables.length} variables`);
         verifier(q.observations.nom[0] === 'o1', `.${ext} : noms des observations`);

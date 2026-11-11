@@ -49,7 +49,10 @@ File › Open (Ctrl+O):
     in which variables (and which are below the detection limit). Excel dates and times stay
     dates (2024-05-03). A text file with a line holding more values than the header is refused,
     with the line number, rather than shifting the columns. An R file must hold tables; any
-    other object is refused.
+    other object is refused. R files open only with R 4.4 or newer (included on Windows): with
+    an older R, such as that of Ubuntu 22.04 or 24.04 or Debian 12, a .rds or .RData file could
+    run code as soon as it is read (CVE-2024-27322), so Nuée refuses it; save the table as CSV
+    or Excel instead.
 File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).

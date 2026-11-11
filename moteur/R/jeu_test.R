@@ -75,10 +75,11 @@ choisir_test <- function(projet, x, observations, methode = c("hasard", "kennard
 
 # Kennard et Stone (1969) : les k lignes de X choisies une à une, en partant des deux plus
 # éloignées, puis chaque fois la ligne la plus loin (distance euclidienne) de celles déjà
-# choisies.
+# choisies. (Toutes les distances nulles : lignes identiques, ou aucun terme quantitatif : les
+# deux premières, et non deux fois la même.)
 kennard_stone <- function(X, k) {
   D <- as.matrix(stats::dist(X))
-  choisies <- as.vector(arrayInd(which.max(D), dim(D)))
+  choisies <- if (isTRUE(max(D) > 0)) as.vector(arrayInd(which.max(D), dim(D))) else 1:2
   while (length(choisies) < k) {
     reste <- setdiff(seq_len(nrow(X)), choisies)
     plus_proche <- apply(D[reste, choisies, drop = FALSE], 1, min)
