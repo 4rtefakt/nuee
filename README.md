@@ -65,7 +65,7 @@ libraries, so it can't be carried along as on Windows).
   it needs FUSE 2, the `libfuse2` package on most distributions) or
   `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
   distribution first, then the packages, in R:
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv"))`.
   On Ubuntu 24.04 and later, prefer the `.deb`: it installs the AppArmor profile Chromium's
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 
@@ -129,6 +129,17 @@ from their types with their conditions checked: chi-square or Fisher's exact tes
 or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's correlation; an
 observation ID (site, year...) can make the groups. A correlation matrix with corrected p
 values.
+
+**Linear, generalized and mixed models:** linear regression and linear mixed models (nlme), with
+nested random effects (site, then sector within the site) and a continuous-time autocorrelation
+(CAR1); generalized linear and additive models (mgcv) for counts (Poisson, negative binomial),
+presence-absence, positive values and densities with zeros (Tweedie), with random effects, an
+effort as an offset, and smooth curves for effects that rise then fall or have a threshold;
+coefficients with their intervals, marginal and conditional R2, effect curves, residual plots,
+the AIC change when each block of variables is removed, and an AIC comparison (ΔAIC, Akaike
+weights) of the regressions of the same response, next to the cross-validated Q2 of every model.
+An R formula box sets the model (R reads it and never runs it), and regressions predict new
+observations and files, extrapolations flagged.
 
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 
@@ -201,7 +212,8 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
   your own in the application's session, with `m` and `p` standing for the model and project
   on screen.
 - **Export to R** (*File › Export to R*): any model becomes a script, or an R Markdown
-  or Quarto report, that refits it without Nuée, in plain R with no package. It holds the
+  or Quarto report, that refits it without Nuée, in plain R with no package (a regression: `lm`,
+  or `nlme` and `mgcv`, which come with R). It holds the
   data (or reads them from a CSV next to it) and the calculation written for that model alone,
   with comments: its scaling, the NIPALS algorithm, the cross-validation, then the statistics,
   tables and plots (a PLS is about 170 lines of code). The report adds the Methods text,
@@ -237,7 +249,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.1) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.2) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).

@@ -918,6 +918,7 @@ tableau_projet <- function(projet) {
 # Les résultats d'un modèle ajusté en tableaux : observations (scores, T2, DModX, valeurs
 # ajustées), variables (loadings, VIP...), composantes, coefficients et variables Y.
 tables_resultats <- function(projet, m) {
+  if (inherits(m, "modele_regression")) return(tables_regression(projet, m))
   s <- m$statistiques
   obs <- s$observations
   obs <- cbind(data.frame(Observation = unname(projet$noms_obs[rownames(obs)]), stringsAsFactors = FALSE), obs)

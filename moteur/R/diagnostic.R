@@ -50,7 +50,7 @@ verifier_donnees <- function(projet, definition, limite = 0.5) {
                constante = all(constant[k]))
   }))
   vars <- if (is.null(vars)) data.frame() else vars[vars$manquantes > limite | vars$constante, , drop = FALSE]
-  manque_obs <- rowMeans(is.na(bx$X))
+  manque_obs <- if (ncol(bx$X)) rowMeans(is.na(bx$X)) else rep(0, length(obs))  # (une régression sans X : le modèle nul)
   garde <- manque_obs > limite
   list(variables = vars,
        observations = data.frame(uid = obs[garde], nom = unname(projet$noms_obs[as.character(obs[garde])]),

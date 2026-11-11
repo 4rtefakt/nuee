@@ -67,7 +67,7 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   lancer ; il demande FUSE 2, le paquet `libfuse2` dans la plupart des distributions) ou
   `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
   d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv"))`.
   Sous Ubuntu 24.04 et après, préférez le `.deb` : il installe le profil AppArmor dont le bac
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 
@@ -133,6 +133,18 @@ deux variables, choisis d'après leurs types, leurs conditions vérifiées : khi
 Fisher, test t, ANOVA ou Kruskal–Wallis avec les comparaisons deux à deux, corrélation de
 Pearson ou de Spearman ; un identifiant des observations (site, année...) peut faire les
 groupes. Une matrice des corrélations avec les valeurs p corrigées.
+
+**Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
+(nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site) et une
+autocorrélation en temps continu (CAR1) ; modèles linéaires généralisés et additifs (mgcv) pour
+des comptages (Poisson, binomiale négative), la présence-absence, des valeurs positives et des
+densités avec des zéros (Tweedie), avec des effets aléatoires, un effort en décalage et des
+courbes lissées pour un effet qui monte puis descend ou un seuil ; les coefficients et leurs
+intervalles, R2 marginal et conditionnel, les courbes d'effet, les graphiques des résidus, la
+variation de l'AIC quand chaque bloc de variables est retiré, et la comparaison par l'AIC (ΔAIC,
+poids d'Akaike) des régressions de la même réponse, à côté du Q2 en validation croisée de tous
+les modèles. Une formule R règle le modèle (R la lit sans jamais l'exécuter), et les régressions
+prédisent de nouvelles observations et des fichiers, les extrapolations signalées.
 
 ![Tests par variable sur les pommes de l'exemple : un graphique volcan de Golden contre Gala, et la table des tests](docs/captures/volcan.png)
 
@@ -212,7 +224,8 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   propre code exécuté dans la session de l'application, avec `m` et `p` pour le modèle et le
   projet affichés.
 - **Exporter vers R** (*Fichier › Exporter vers R*) : tout modèle devient un script, ou un
-  rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet. Il contient les
+  rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet (une régression :
+  `lm`, ou `nlme` et `mgcv`, livrés avec R). Il contient les
   données (ou les lit dans un CSV à côté) et le calcul écrit pour ce modèle seul, commenté : sa
   mise à l'échelle, l'algorithme NIPALS, la validation croisée, puis les statistiques, tableaux
   et graphiques (une PLS fait environ 170 lignes de code). Le rapport ajoute le texte des
@@ -250,7 +263,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 0.9.1) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.2) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)

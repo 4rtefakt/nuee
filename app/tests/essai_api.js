@@ -308,6 +308,52 @@ async function principal() {
       verifier(g.type === 'groupes' && [].concat(g.posthoc.kruskal.p_ajuste).length === 6 && [].concat(g.valeurs.valeur).length === 120, 'une mesure entre groupes');
       const r = await api('correlations_variables', { projet: e.id, methode: 'spearman', correction: 'BH' });
       verifier(r.r.length === 15 && r.r[0].length === 15 && r.p_ajuste[0][0] === null && r.n[0][1] > 0, 'matrice des corrélations');
+      // regressions (moteur/R/regression.R): no components, their own results
+      const lm = await api('ajuster', { projet: e.id, type: 'LM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], echelle: 'none', nom: 'R1' });
+      verifier(lm.regression && lm.type === 'LM' && lm.A === 0 && lm.N === 120 && [].concat(lm.coefficients_regression.terme).length === 3
+        && lm.qualite.AIC !== null && [].concat(lm.observations.quantile_normal).length === 120, 'régression linéaire');
+      const lmm = await api('ajuster', { projet: e.id, type: 'LMM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], echelle: 'none', nom: 'R2',
+        aleatoires: [{ by: 'variable', variable: v('verger') }] });
+      verifier(lmm.type === 'LMM' && lmm.vc_par === 'verger' && lmm.G === 3 && lmm.qualite.marginal > 0 && [].concat(lmm.variances.composante).length === 2
+        && lm.signature === lmm.signature, 'modèle mixte validé par verger, même ensemble AIC que la régression');
+      const ap = await api('apports', { modele: lmm.id });
+      verifier([].concat(ap.apports.groupe).length === 2 && [].concat(ap.apports.delta_aic).every((d) => d !== null), 'apport des variables (AIC)');
+      const ex = await api('exporter', { modele: lmm.id, chemin: path.join(dossier, 'R2.csv') });
+      verifier(ex.chemins.length === 4 && ex.chemins.every((c) => fs.existsSync(c)), 'exporter les résultats d’une régression (un fichier par tableau)');
+      const sc = await api('script_r', { modele: lmm.id, version: 'essai', langue: 'fr', chemin: path.join(dossier, 'R2.R') });
+      verifier(fs.existsSync(sc.script) && !sc.ecart && fs.readFileSync(sc.script, 'utf8').includes('lme('), 'exporter un modèle mixte vers R : le script redonne ses résultats');
+      const tm = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
+      verifier([].concat(tm.paragraphes).some((x) => /linear mixed model/.test(x)) && [].concat(tm.references).some((x) => /nlme/.test(x)), 'texte des méthodes d’un modèle mixte');
+      const glm = await api('ajuster', { projet: e.id, type: 'GLM', x: [v('sucre')], y: [v('stockage')], echelle: 'none', nom: 'R3', famille: 'poisson' });
+      verifier(glm.type === 'GLM' && glm.famille === 'poisson' && glm.lien === 'log' && glm.qualite.deviance_expliquee !== undefined
+        && glm.signature !== lm.signature, 'GLM de Poisson (un autre ensemble AIC)');
+      const gam = await api('ajuster', { projet: e.id, type: 'GAM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], echelle: 'none', nom: 'R4',
+        famille: 'gaussienne', lisses: [v('sucre')] });
+      verifier(gam.type === 'GAM' && [].concat(gam.courbes.terme).length === 1, 'GAM, une courbe');
+      const ef = await api('effets', { modele: gam.id });
+      verifier([].concat(ef.effets).length === 2 && ef.effets[0].courbe === true && [].concat(ef.effets[0].x).length === 80, 'courbes d’effet');
+      const cle = 'note_gout prédit';
+      const pr = await api('predire', { modele: gam.id });
+      verifier(pr.observations[cle].length === 120 && pr.observations[cle].every((x) => x !== null) && pr.observations.dans_modele.every(Boolean)
+        && pr.observations.hors_domaine.every((x) => x === false), 'prédire les observations avec un GAM');
+      const fp = path.join(dossier, 'a_predire.csv');
+      fs.writeFileSync(fp, 'nom,sucre,fermete\nA,12,7\nB,40,7\n');
+      const pf = await api('predire_fichier', { modele: lm.id, chemin: fp });
+      verifier(pf.observations[cle].length === 2 && pf.observations.hors_domaine[0] === false && pf.observations.hors_domaine[1] === true,
+        'prédire un fichier avec une régression, une extrapolation signalée');
+      const ep = await api('exporter_prediction', { modele: lm.id, chemin: path.join(dossier, 'pred_lm.csv') });
+      verifier(fs.readFileSync(ep.chemin, 'utf8').includes('note_gout prédit'), 'exporter la prédiction d’une régression');
+      const fo = await api('formule', { projet: e.id, type: 'GAM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], lisses: [v('sucre')],
+        croises: [], transformations: {}, aleatoires: [], decalage: null });
+      verifier(fo.formule === 'note_gout ~ s(sucre) + fermete', `formule R des réglages : ${fo.formule}`);
+      const lu = await api('lire_formule', { projet: e.id, texte: 'note_gout ~ sucre * fermete + (1 | verger)', type: 'LM' });
+      verifier(lu.type === 'LMM' && lu.x.length === 2 && lu.croises.length === 1 && lu.aleatoires[0].by === 'variable', 'formule lue en réglages');
+      let refusF = '';
+      try { await api('lire_formule', { projet: e.id, texte: 'note_gout ~ sucre + system("calc")', type: 'LM' }); } catch (err) { refusF = err.message; }
+      verifier(/system/.test(refusF), 'une formule qui porte du code, refusée');
+      let refusReg = '';
+      try { await api('hca', { modele: lmm.id }); } catch (err) { refusReg = err.message; }
+      verifier(/régression/.test(refusReg), 'une demande qui suppose des composantes, refusée pour une régression');
       const m = await api('ajuster', { projet: e.id, numero: e.modeles[2].numero, A: e.modeles[2].A });
       const txt = await api('methodes', { modele: m.id, langue: 'en', version: 'essai' });
       verifier([].concat(txt.paragraphes).some((p) => /PLS-DA/.test(p)) && [].concat(txt.references).length >= 3, 'méthodes');

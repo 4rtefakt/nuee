@@ -16,6 +16,7 @@
 #   projets_vc : pour l'iPLS, le projet de chaque groupe de la validation croisée (validation_croisee.R).
 ajuster <- function(projet, definition, A = definition$A, G = definition$cv_groups %||% 7,
                     poids = "calcules", orienter = TRUE, arret = NULL, projets_vc = NULL) {
+  if (est_regression(definition)) return(ajuster_regression(projet, definition))  # regression.R
   modele <- calculer_modele(projet, definition, A, G, poids, arret, projets_vc)
   if (orienter && !is.null(definition[["solution"]][["T"]])) modele <- orienter_comme(modele, definition[["solution"]][["T"]])
   modele$statistiques <- statistiques(modele)
