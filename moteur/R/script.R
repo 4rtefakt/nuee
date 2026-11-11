@@ -156,9 +156,14 @@ plan_modele <- function(projet, d, m, tab) {
   n_y <- if (pls) colSums(m$MY == 1 & notes)
   dfm <- (N - 1 - A) * (K - A)
   presentes_test <- if (length(test)) rowSums(!is.na(bt))
+  # les groupes de la validation croisée, s'ils ne sont pas à tour de rôle (un par valeur d'un
+  # identifiant ou d'une variable : validation_croisee.R)
+  groupes <- as.integer(m$vc$groupes)
   list(nom = as.character(d$name %||% ""), titre = as.character(d$title %||% ""),
        type = if (opls) "opls" else if (pls) "pls" else "acp", plsda = isTRUE(m$plsda),
        A = A, N = N, K = K, G = m$G, Ap = if (opls) m$Ap %||% 1 else 0, M = if (pls) ncol(m$Y) else 0,
+       groupes_vc = if (length(groupes) && !identical(groupes, as.integer(groupes_validation(N, m$G)))) groupes,
+       vc_par = m$vc_par %||% "", vc_fichier = identical(as.character(d[["cv"]]$by), "groups"),
        rangs = unname(tab$rangs[as.character(m$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
        x = x$termes, y = y$termes, spectres = plan_spectres(projet, d, x$termes),
@@ -183,7 +188,8 @@ plan_bloc <- function(projet, termes, mb, tab, obs, bloc, cles = list()) {
   for (k in seq_along(termes)) {
     t <- termes[[k]]
     p <- list(nom = mb$noms[k], croise = length(t$variables) > 1, tr = t$transform, type = mb$type[k],
-              centre = mb$centre[k], poids = mb$poids[k], bloc = bloc, k = k)
+              centre = mb$centre[k], poids = mb$poids[k], facteur = mb$facteur[k] %||% 1, bloc = bloc, k = k,
+              bloc_ponderation = if (length(t$scaling$block)) as.character(t$scaling$block[1]))
     if (!p$croise) {
       v <- variable_du_projet(projet, t$variables[1])
       p$colonne <- unname(tab$noms[as.character(v$uid)])
@@ -209,7 +215,11 @@ plan_bloc <- function(projet, termes, mb, tab, obs, bloc, cles = list()) {
 hors_domaine <- function(tr, x) {
   p <- as.numeric(tr$params)
   base <- p[2] * x + p[3]
-  if (identical(as.character(tr$type), "log10")) return(any(base <= 0, na.rm = TRUE))
+  type <- as.character(tr$type)
+  if (type %in% c("log10", "ln", "neglog")) return(any(base <= 0, na.rm = TRUE))
+  if (type == "exp") return(any(!is.finite(exp(base)) & !is.na(base)))
+  if (type == "lineaire") return(FALSE)
+  if (type == "logit") return(any(!(x > p[2] & x < p[3]), na.rm = TRUE))
   any((base < 0 & p[4] != round(p[4])) | (base == 0 & p[4] < 0), na.rm = TRUE)
 }
 
@@ -260,7 +270,7 @@ code_modele <- function(pl, b, langue, seance = NULL, signes = NULL) {
                   code_pretraiter(pl, tx, ensemble), "",
                   if (test) c(code_separer_test(pl, tx), ""),
                   code_ajustement(pl, b, tx))
-  objets <- c("m", "vc", "s", "pretraiter", "X", if (pls) "Y", "composantes", "observations", "variables", "limites",
+  objets <- c("m", "vc", "s", "pretraiter", "X", if (pls) "Y", if (!is.null(pl$groupes_vc)) "groupes_vc", "composantes", "observations", "variables", "limites",
               if (pls) "coefficients", if (pl$cv_anova) "cv_anova", if (pl$plsda) "classification",
               if (test) "predictions_test", if (test && pl$type != "acp" && !pl$plsda) "test",
               if (test && pl$plsda) "classification_test")
@@ -371,16 +381,26 @@ code_transformations <- function(ts, M, tx) {
 
 identite <- function(tr) identical(as.character(tr$type), "7") && isTRUE(all(as.numeric(tr$params)[2:4] == c(1, 0, 1)))
 
-# Le code d'une transformation de `x` : log10(C1 * x + C2), ou (C1 * x + C2) ^ C3 (type 7). Avec
-# `garde`, les valeurs hors du domaine deviennent manquantes d'abord.
+# Le code d'une transformation de `x` : log10, ln ou -log10 de (C1 * x + C2), exp(C1 * x + C2),
+# C1 * x + C2, ln((x - C1) / (C2 - x)) (logit), ou (C1 * x + C2) ^ C3 (type 7) ; comme
+# pretraitement.R : transformer. Avec `garde`, les valeurs hors du domaine deviennent manquantes
+# d'abord.
 code_transformation <- function(tr, x, garde) {
   p <- as.numeric(tr$params)
+  type <- as.character(tr$type)
+  if (type == "logit") {
+    bornes <- sprintf("(%s - %s) / (%s - %s)", x, texte_exact(p[2]), texte_exact(p[3]), x)
+    return(if (garde) sprintf("log(ifelse(%s > %s & %s < %s, %s, NA))", x, texte_exact(p[2]), x, texte_exact(p[3]), bornes) else sprintf("log(%s)", bornes))
+  }
   base <- if (p[2] == 1) x else sprintf("%s * %s", texte_exact(p[2]), x)
   if (p[3] > 0) base <- sprintf("%s + %s", base, texte_exact(p[3]))
   if (p[3] < 0) base <- sprintf("%s - %s", base, texte_exact(-p[3]))
-  if (identical(as.character(tr$type), "log10")) {
-    return(sprintf("log10(%s)", if (garde) sprintf("ifelse(%s > 0, %s, NA)", base, base) else base))
+  if (type %in% c("log10", "ln", "neglog")) {
+    f <- c(log10 = "log10(%s)", ln = "log(%s)", neglog = "-log10(%s)")[[type]]
+    return(sprintf(f, if (garde) sprintf("ifelse(%s > 0, %s, NA)", base, base) else base))
   }
+  if (type == "exp") return(if (garde) sprintf("ifelse(is.finite(exp(%s)), exp(%s), NA)", base, base) else sprintf("exp(%s)", base))
+  if (type == "lineaire") return(base)
   e <- p[4]
   if (garde) base <- sprintf("ifelse(%s %s, %s, NA)", base, if (e != round(e)) (if (e > 0) ">= 0" else "> 0") else "!= 0", base)
   if (e == 0.5) return(sprintf("sqrt(%s)", base))
@@ -389,9 +409,13 @@ code_transformation <- function(tr, x, garde) {
 
 nom_transformation_script <- function(tr, garde, tx) {
   p <- as.numeric(tr$params)
-  nom <- if (identical(as.character(tr$type), "log10")) tx("logarithme décimal", "decimal logarithm")
-         else if (p[4] == 0.5) tx("racine carrée", "square root") else if (p[4] == 0.25) tx("racine quatrième", "fourth root")
-         else tx(sprintf("puissance %s", texte_exact(p[4])), sprintf("power %s", texte_exact(p[4])))
+  nom <- switch(as.character(tr$type),
+    log10 = tx("logarithme décimal", "decimal logarithm"), ln = tx("logarithme népérien", "natural logarithm"),
+    neglog = tx("moins le logarithme décimal", "minus the decimal logarithm"), exp = tx("exponentielle", "exponential"),
+    lineaire = tx("transformation linéaire", "linear transformation"),
+    logit = tx(sprintf("logit entre les bornes %s et %s", texte_exact(p[2]), texte_exact(p[3])), sprintf("logit between the bounds %s and %s", texte_exact(p[2]), texte_exact(p[3]))),
+    if (p[4] == 0.5) tx("racine carrée", "square root") else if (p[4] == 0.25) tx("racine quatrième", "fourth root")
+    else tx(sprintf("puissance %s", texte_exact(p[4])), sprintf("power %s", texte_exact(p[4]))))
   if (garde) nom <- paste(nom, tx("(hors de son domaine : manquante)", "(outside its domain: missing)"))
   nom
 }
@@ -546,7 +570,24 @@ code_echelle <- function(ts, M, sfx, sur, tx, na) {
   vides <- na && any(types %in% c("UV", "Par", "Ctr"))
   c(lignes,
     if (constants) note(sprintf("%s[!is.finite(%s)] <- 0", poids, poids), "terme constant : poids 0", "constant term: weight 0"),
-    if (vides) note(sprintf("%s[is.nan(%s)] <- 0", centre, centre), "terme sans aucune valeur : centre 0", "term without any value: centre 0"))
+    if (vides) note(sprintf("%s[is.nan(%s)] <- 0", centre, centre), "terme sans aucune valeur : centre 0", "term without any value: centre 0"),
+    code_ponderation(ts, poids, tx))
+}
+
+# La pondération des termes (pretraitement.R : facteurs_ponderation) : leur poids multiplié par
+# leur modificateur, et par 1/racine(K) pour les K termes d'un bloc ; rien si aucun n'en a.
+code_ponderation <- function(ts, poids, tx) {
+  f <- vapply(ts, function(t) as.numeric(t$facteur %||% 1), 0)
+  if (all(f == 1)) return(character(0))
+  blocs <- vapply(ts, function(t) t$bloc_ponderation %||% NA_character_, "")
+  K <- table(blocs[f != 1 & !is.na(blocs)])
+  detail <- if (length(K)) paste(sprintf(tx("bloc %s : %d termes, 1/racine(%d) = %s", "block %s: %d terms, 1/sqrt(%d) = %s"),
+                                         names(K), K, K, signif(1 / sqrt(as.numeric(K)), 4)), collapse = " ; ")
+  c(commentaire(tx(sprintf("Pondération : le poids de chaque terme multiplié par son modificateur, et par 1/racine(K) pour les K termes d'un bloc (pondération par blocs : chaque bloc pèse autant, quel que soit son nombre de termes)%s.",
+                           if (!is.null(detail)) paste0(" ; ", detail) else ""),
+                   sprintf("Weighting: each term's weight multiplied by its modifier, and by 1/sqrt(K) for the K terms of a block (block scaling: each block weighs the same, whatever its number of terms)%s.",
+                           if (!is.null(detail)) paste0("; ", detail) else ""))),
+    code_valeurs(texte_exact(f), sprintf("%s <- %s * ", poids, poids)))
 }
 
 # Le prétraitement des termes, en une fonction que l'ajustement et chaque sous-modèle de la
@@ -586,23 +627,47 @@ code_ajustement <- function(pl, b, tx) {
   A <- pl$A
   G <- pl$G
   general <- pl$type == "opls" && b$opls_general
+  groupes <- arguments_groupes(pl)
   appel <- switch(pl$type,
-    acp = c("m <- acp(s$X, A)", sprintf("vc <- validation_croisee_acp(X, A, pretraiter, G = %d)", G)),
-    pls = c("m <- pls(s$X, s$Y, A)", sprintf("vc <- validation_croisee_pls(X, Y, A, pretraiter, G = %d)", G)),
+    acp = c("m <- acp(s$X, A)", sprintf("vc <- validation_croisee_acp(X, A, pretraiter, %s)", groupes)),
+    pls = c("m <- pls(s$X, s$Y, A)", sprintf("vc <- validation_croisee_pls(X, Y, A, pretraiter, %s)", groupes)),
     opls = if (general) c(sprintf("Ap <- %d  # %s", pl$Ap, tx("composantes prédictives", "predictive components")),
-                          "m <- opls(s$X, s$Y, Ap, A - Ap)", sprintf("vc <- validation_croisee_opls(X, Y, Ap, A - Ap, pretraiter, G = %d)", G))
-           else c("m <- opls(s$X, s$Y, A - 1)", sprintf("vc <- validation_croisee_opls(X, Y, A - 1, pretraiter, G = %d)", G)))
+                          "m <- opls(s$X, s$Y, Ap, A - Ap)", sprintf("vc <- validation_croisee_opls(X, Y, Ap, A - Ap, pretraiter, %s)", groupes))
+           else c("m <- opls(s$X, s$Y, A - 1)", sprintf("vc <- validation_croisee_opls(X, Y, A - 1, pretraiter, %s)", groupes)))
   quoi <- if (pl$type == "opls") {
     Ao <- A - pl$Ap
     tx(sprintf("%d composante%s prédictive%s et %d orthogonale%s", pl$Ap, if (pl$Ap > 1) "s" else "", if (pl$Ap > 1) "s" else "", Ao, if (Ao > 1) "s" else ""),
        sprintf("%d predictive and %d orthogonal component%s", pl$Ap, Ao, if (Ao > 1) "s" else ""))
   } else tx(sprintf("%d composante%s", A, if (A > 1) "s" else ""), sprintf("%d component%s", A, if (A > 1) "s" else ""))
-  c(commentaire(tx(sprintf("Ajustement : %s ; validation croisée en %d groupes, chacun prédit par un modèle ajusté sans lui (prétraitement compris).", quoi, G),
-                   sprintf("Fit: %s; cross-validation in %d groups, each predicted by a model fitted without it (preprocessing included).", quoi, G))),
+  par <- if (!is.null(pl$groupes_vc)) {
+    if (pl$vc_fichier) tx(", ceux du fichier d'origine (groupes_vc : le groupe de chaque observation)", ", those of the original file (cv_groups: each observation's group)")
+    else tx(sprintf(", un par valeur de « %s » (groupes_vc : le groupe de chaque observation, les observations de même valeur ensemble)", texte_sur(pl$vc_par)),
+            sprintf(", one per value of \"%s\" (cv_groups: each observation's group, the observations with the same value together)", texte_sur(pl$vc_par)))
+  } else ""
+  c(commentaire(tx(sprintf("Ajustement : %s ; validation croisée en %d groupes%s, chacun prédit par un modèle ajusté sans lui (prétraitement compris).", quoi, G, par),
+                   sprintf("Fit: %s; cross-validation in %d groups%s, each predicted by a model fitted without it (preprocessing included).", quoi, G, par))),
+    if (!is.null(pl$groupes_vc)) code_groupes_vc(pl$groupes_vc),
     sprintf("A <- %d", A),
     sprintf("s <- pretraiter(%s, seq_len(nrow(X)))  # %s", if (pl$type != "acp") "X, Y" else "X",
             tx("les termes du modèle, prétraités d'après toutes ses lignes", "the model's terms, preprocessed from all its rows")),
     "N <- nrow(s$X)", "K <- ncol(s$X)", appel)
+}
+
+# Les arguments de groupes des fonctions de validation croisée : G, et le groupe de chaque
+# observation quand ils ne sont pas à tour de rôle (`liste` : la liste des résultats du modèle,
+# dans un script de séance).
+arguments_groupes <- function(pl, liste = NULL) {
+  if (is.null(pl$groupes_vc)) return(sprintf("G = %d", pl$G))
+  sprintf("G = %d, groupe = %sgroupes_vc", pl$G, if (is.null(liste)) "" else paste0(liste, "$"))
+}
+
+# Le groupe de chaque observation du modèle, écrit en répétitions quand elles se suivent.
+code_groupes_vc <- function(g) {
+  r <- rle(as.integer(g))
+  if (2 * length(r$values) >= length(g)) return(code_valeurs(as.character(g), "groupes_vc <- "))
+  debut <- "groupes_vc <- rep("
+  c(code_valeurs(as.character(r$values), debut, ","),
+    code_valeurs(as.character(r$lengths), strrep(" ", nchar(debut)), ")"))
 }
 
 # Les composantes de signe opposé à celles de Nuée, retournées.
@@ -789,9 +854,10 @@ appel_permutations <- function(pl, tx, liste = NULL) {
   langue <- tx
   ajuster <- switch(pl$type, pls = sprintf("pls(s$X, s$Y, %d)", pl$A),
                     opls = if (pl$Ap > 1) sprintf("opls(s$X, s$Y, %d, %d)", pl$Ap, pl$A - pl$Ap) else sprintf("opls(s$X, s$Y, %d)", pl$A - 1))
-  vc <- switch(pl$type, pls = sprintf("validation_croisee_pls(%s$X, Yp, %d, %s$pretraiter, G = %d)", liste, pl$A, liste, pl$G),
-               opls = if (pl$Ap > 1) sprintf("validation_croisee_opls(%s$X, Yp, %d, %d, %s$pretraiter, G = %d)", liste, pl$Ap, pl$A - pl$Ap, liste, pl$G)
-                      else sprintf("validation_croisee_opls(%s$X, Yp, %d, %s$pretraiter, G = %d)", liste, pl$A - 1, liste, pl$G))
+  g <- arguments_groupes(pl, liste)
+  vc <- switch(pl$type, pls = sprintf("validation_croisee_pls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A, liste, g),
+               opls = if (pl$Ap > 1) sprintf("validation_croisee_opls(%s$X, Yp, %d, %d, %s$pretraiter, %s)", liste, pl$Ap, pl$A - pl$Ap, liste, g)
+                      else sprintf("validation_croisee_opls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A - 1, liste, g))
   appel <- traduire_code(c("permutations(function(Yp) {", sprintf("  s <- %s$pretraiter(%s$X, Yp, seq_len(nrow(Yp)))", liste, liste),
                            sprintf("  list(%s, %s)", ajuster, vc), sprintf("}, %s$Y%s)", liste, if (pl$plsda) ", classes = TRUE" else "")), langue)
   c(if (langue == "en") "# Permutation test (a few seconds):" else "# Test de permutation (quelques secondes) :", paste("#", appel))
@@ -940,11 +1006,10 @@ modele_acp <- function(tx, na, vides) c(
 
 # La validation croisée d'une ACP.
 modele_vc_acp <- function(tx, na) c(
-  commentaire(tx("La validation croisée de l'ACP : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), les termes aussi. Chaque groupe d'observations est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une ACP à A composantes. Pour chaque groupe de termes, les valeurs de ces termes sont prédites par les scores de chaque observation calculés sans eux (comme des valeurs manquantes), composante après composante ; puis ramenées dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante) et dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction, avec 1, 2... A composantes ; SS : celle de la composante précédente (celle de X pour la 1re).",
-                 "The cross-validation of the PCA: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), the terms too. Each group of observations is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then a PCA with A components. For each group of terms, the values of these terms are predicted by the scores of each observation computed without them (as missing values), component after component; then brought back to the units of the data (a term constant in the sub-model: its constant value) and to those of the full model. PRESS: the sum of squared prediction errors, with 1, 2... A components; SS: that of the previous component (that of X for the 1st).")),
-  "validation_croisee_acp <- function(X, A, pretraiter, G = 7) {",
+  commentaire(tx("La validation croisée de l'ACP : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation ; les termes en G groupes à tour de rôle. Chaque groupe d'observations est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une ACP à A composantes. Pour chaque groupe de termes, les valeurs de ces termes sont prédites par les scores de chaque observation calculés sans eux (comme des valeurs manquantes), composante après composante ; puis ramenées dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante) et dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction, avec 1, 2... A composantes ; SS : celle de la composante précédente (celle de X pour la 1re).",
+                 "The cross-validation of the PCA: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group; the terms to G groups in turn. Each group of observations is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then a PCA with A components. For each group of terms, the values of these terms are predicted by the scores of each observation computed without them (as missing values), component after component; then brought back to the units of the data (a term constant in the sub-model: its constant value) and to those of the full model. PRESS: the sum of squared prediction errors, with 1, 2... A components; SS: that of the previous component (that of X for the 1st).")),
+  "validation_croisee_acp <- function(X, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
   "  complet <- pretraiter(X, seq_len(nrow(X)))",
-  "  groupe <- (seq_len(nrow(X)) - 1) %% G + 1",
   "  groupe_terme <- (seq_len(ncol(complet$X)) - 1) %% G + 1",
   "  vc <- list(press = matrix(0, A, ncol(complet$X)))",
   "  for (g in unique(groupe)) {",
@@ -1002,11 +1067,10 @@ modele_pls <- function(tx, na, vides) c(
 
 # La validation croisée d'une PLS.
 modele_vc_pls <- function(tx, na, y_na) c(
-  commentaire(tx("La validation croisée de la PLS : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7). Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une PLS à A composantes ; les lignes du groupe, prétraitées de même, sont projetées sur ses composantes une à une. Le Y prédit avec 1, 2... A composantes est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction ; SS : celle de la composante précédente (celle de Y pour la 1re) ; y_vc : Y prédit en validation croisée avec A composantes.",
-                 "The cross-validation of the PLS: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7). Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then a PLS with A components; the rows of the group, preprocessed likewise, are projected on its components one by one. The Y predicted with 1, 2... A components is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS: the sum of squared prediction errors; SS: that of the previous component (that of Y for the 1st); y_vc: Y predicted in cross-validation with A components.")),
-  "validation_croisee_pls <- function(X, Y, A, pretraiter, G = 7) {",
+  commentaire(tx("La validation croisée de la PLS : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une PLS à A composantes ; les lignes du groupe, prétraitées de même, sont projetées sur ses composantes une à une. Le Y prédit avec 1, 2... A composantes est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction ; SS : celle de la composante précédente (celle de Y pour la 1re) ; y_vc : Y prédit en validation croisée avec A composantes.",
+                 "The cross-validation of the PLS: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then a PLS with A components; the rows of the group, preprocessed likewise, are projected on its components one by one. The Y predicted with 1, 2... A components is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS: the sum of squared prediction errors; SS: that of the previous component (that of Y for the 1st); y_vc: Y predicted in cross-validation with A components.")),
+  "validation_croisee_pls <- function(X, Y, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
   "  complet <- pretraiter(X, Y, seq_len(nrow(X)))",
-  "  groupe <- (seq_len(nrow(X)) - 1) %% G + 1",
   "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y)",
   "  for (g in unique(groupe)) {",
   "    hors <- groupe == g",
@@ -1150,14 +1214,13 @@ modele_opls_predire <- function(tx, na, general) c(
 
 # La validation croisée d'une OPLS.
 modele_vc_opls <- function(tx, na, general) c(
-  commentaire(tx(sprintf("La validation croisée de l'OPLS : les observations sont réparties à tour de rôle en G groupes. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une OPLS aux mêmes composantes (moins si ses données n'en permettent pas autant : il prédit avec celles qu'il a) ; les lignes du groupe, prétraitées de même, sont prédites avec %s puis avec 1, 2... Ao orthogonales. Le Y prédit est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS de chaque composante ; SS : celui de la précédente (la somme des carrés de Y pour la 1re). y_vc : Y prédit en validation croisée.",
+  commentaire(tx(sprintf("La validation croisée de l'OPLS : les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une OPLS aux mêmes composantes (moins si ses données n'en permettent pas autant : il prédit avec celles qu'il a) ; les lignes du groupe, prétraitées de même, sont prédites avec %s puis avec 1, 2... Ao orthogonales. Le Y prédit est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS de chaque composante ; SS : celui de la précédente (la somme des carrés de Y pour la 1re). y_vc : Y prédit en validation croisée.",
                          if (general) "1, 2... Ap composantes prédictives," else "la composante prédictive seule,"),
-                 sprintf("The cross-validation of the OPLS: the observations are assigned in turn to G groups. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then an OPLS with the same components (fewer if its data do not allow as many: it predicts with those it has); the rows of the group, preprocessed likewise, are predicted with %s then with 1, 2... Ao orthogonal ones. The predicted Y is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS of each component; SS: that of the previous one (the sum of squares of Y for the 1st). y_vc: Y predicted in cross-validation.",
+                 sprintf("The cross-validation of the OPLS: the observations are assigned in turn to G groups, or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then an OPLS with the same components (fewer if its data do not allow as many: it predicts with those it has); the rows of the group, preprocessed likewise, are predicted with %s then with 1, 2... Ao orthogonal ones. The predicted Y is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS of each component; SS: that of the previous one (the sum of squares of Y for the 1st). y_vc: Y predicted in cross-validation.",
                          if (general) "1, 2... Ap predictive components," else "the predictive component alone,"))),
-  sprintf("validation_croisee_opls <- function(X, Y, %sAo, pretraiter, G = 7) {", if (general) "Ap, " else ""),
+  sprintf("validation_croisee_opls <- function(X, Y, %sAo, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %%%% G + 1) {", if (general) "Ap, " else ""),
   if (general) "  A <- Ap + Ao" else "  A <- 1 + Ao",
   "  complet <- pretraiter(X, Y, seq_len(nrow(X)))",
-  "  groupe <- (seq_len(nrow(X)) - 1) %% G + 1",
   "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y)",
   "  for (g in unique(groupe)) {",
   "    hors <- groupe == g",
@@ -1198,7 +1261,7 @@ modele_la_plus_grande <- function(tx) c(
 # Le test de permutation : dans un script d'un modèle, il réajuste ce modèle ; dans un script de
 # séance, `ajuster(Yp)` donne l'ajustement et la validation croisée de chaque modèle.
 modele_permutations <- function(tx, pl, na) {
-  G <- if (!is.null(pl) && pl$G != 7) sprintf(", G = %d", pl$G) else ""
+  G <- if (!is.null(pl) && (pl$G != 7 || !is.null(pl$groupes_vc))) paste0(", ", arguments_groupes(pl)) else ""
   mesure <- if (is.null(pl)) c("    r <- ajuster(Yp)", "    A <- ncol(r[[1]]$T)", "    m <- r[[1]]", "    vc <- r[[2]]")
   else c("    s <- pretraiter(X, Yp, seq_len(nrow(X)))", switch(pl$type,
     pls = c("    m <- pls(s$X, s$Y, A)", sprintf("    vc <- validation_croisee_pls(X, Yp, A, pretraiter%s)", G)),
@@ -1345,7 +1408,8 @@ NOMS_SCRIPT_EN <- c(
   classe_vc = "class_cv", classe_predite = "class_predicted", observee = "observed", predite = "predicted",
   limites = "limits", terme = "term", signes = "signs", hors_domaine = "outside_domain", y_predit = "y_predicted",
   erreur = "error", biais = "bias", predictions_test = "test_predictions", classification_test = "classification_test",
-  couleur = "colour", ordre = "ranking", pretraiter = "preprocess", apprentissage = "training", cases = "cells")
+  couleur = "colour", ordre = "ranking", pretraiter = "preprocess", apprentissage = "training", cases = "cells",
+  groupes_vc = "cv_groups")
 
 nom_script <- function(x, langue) if (identical(langue, "en")) ifelse(x %in% names(NOMS_SCRIPT_EN), NOMS_SCRIPT_EN[x], x) else x
 

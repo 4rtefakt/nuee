@@ -144,14 +144,22 @@ Affichage : thème sombre, français / anglais, taille du texte.
 Nouveau modèle (Modèle › Nouveau modèle)
 ----------------------------------------
 Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA, modèles de classe), nom, nombre de composantes
-(automatique par défaut, par validation croisée), groupes de validation croisée,
-échelle par défaut.
-Onglet Variables : rôle (X, Y, classe), échelle et transformation (racine carrée, racine
-quatrième, log10) de chaque variable ; le filtre permet de régler d'un coup toutes les
-variables affichées. Le bouton « Transformations proposées » applique aux variables
-affichées le log10 proposé (voir Statistiques des variables).
-Onglet Termes croisés : produits de deux variables X (A × B) et carrés (A × A) ; une
-variable qualitative y entre par chacune de ses catégories.
+(automatique par défaut, par validation croisée), groupes de validation croisée (à tour de
+rôle, G groupes ; ou un groupe par valeur d'un identifiant ou d'une variable, voir Validation
+croisée), échelle par défaut.
+Onglet Variables : rôle (X, Y, classe), échelle, bloc, modificateur et transformation de
+chaque variable : racine carrée, racine quatrième, log10, ou personnalisée... (log10, ln ou
+-log10 de C1*x + C2, exp(C1*x + C2), C1*x + C2, le logit ln((x - C1) / (C2 - x)) entre deux
+bornes, ou la puissance (C1*x + C2)^C3 ; une valeur hors du domaine devient manquante) ; le filtre permet de régler d'un coup
+toutes les variables affichées (un bloc : le taper dans « Bloc... » au-dessus de la liste,
+puis Entrée). Pondération par blocs : les termes d'un même bloc ont leur poids divisé par la
+racine carrée de leur nombre, pour qu'un bloc de 20 variables ne pèse pas 20 fois plus qu'une
+variable seule ; une variable qualitative compte par ses catégories. Modificateur : multiplie
+le poids de la variable après sa mise à l'échelle. Le bouton « Transformations proposées »
+applique aux variables affichées le log10 proposé (voir Statistiques des variables).
+Onglet Termes croisés : produits de deux ou trois variables X (A × B, A × B × C), carrés
+(A × A) et cubes (A × A × A) ; une variable qualitative y entre par chacune de ses catégories,
+une fois au plus.
 Onglet Observations : cocher / décocher les observations du modèle, et le jeu de test (voir
 Jeu de test).
 « Modifier le modèle » (Ctrl+M) ouvre cette fenêtre réglée comme un modèle existant (y compris
@@ -450,18 +458,24 @@ variables retenues.
 Validation croisée
 ------------------
 Les observations du modèle sont réparties à tour de rôle en G groupes (7 par défaut : la 1re,
-la 8e, la 15e... dans le groupe 1). Chaque groupe est prédit par un modèle ajusté sans lui,
-comme de nouvelles observations : le centrage, la mise à l'échelle (et le spectre moyen du MSC,
-les termes croisés) sont recalculés sur les autres observations, avec le même nombre de
-composantes. PRESS : la somme des carrés des erreurs de prédiction ; Q2(cum) = 1 - PRESS / SS
-(SS : la variation de Y, ou de X pour une ACP) ; le Q2 d'une composante, 1 - PRESS / PRESS de
-la précédente. ACP : chaque valeur est prédite par les scores de son observation calculés sans
-les variables de son groupe de variables (réparties elles aussi en G groupes). Ce Q2 ne voit
-rien des observations qu'il prédit : avec peu d'observations, il est bien plus bas qu'une
-validation faite avec la mise à l'échelle de toutes les observations (sur du bruit pur, 6
-observations et 20 variables, celle-ci donnait Q2 = 0,98 pour une OPLS-DA ; Nuée donne
-maintenant moins de 0). Le RMSEcv, la CV-ANOVA, le classement en validation croisée et les
-intervalles de confiance (jack-knife, sur les G sous-modèles) en viennent.
+la 8e, la 15e... dans le groupe 1), ou bien un groupe par valeur d'un identifiant ou d'une
+variable (Nouveau modèle › Groupes de validation croisée) : avec « site », toutes les années
+d'un site sont dans le même groupe, et chaque site est prédit par un modèle qui ne l'a jamais
+vu ; les observations sans valeur forment un groupe à part. Les modèles des fichiers .usp
+gardent leurs groupes : par identifiant quand le fichier groupe les observations de même
+valeur, sinon les groupes du fichier tels quels (« groupes du fichier »). Chaque groupe est
+prédit par un modèle ajusté sans lui, comme de nouvelles observations : le centrage, la mise à
+l'échelle (et le spectre moyen du MSC, les termes croisés) sont recalculés sur les autres
+observations, avec le même nombre de composantes. PRESS : la somme des carrés des erreurs de
+prédiction ; Q2(cum) = 1 - PRESS / SS (SS : la variation de Y, ou de X pour une ACP) ; le Q2
+d'une composante, 1 - PRESS / PRESS de la précédente. ACP : chaque valeur est prédite par les
+scores de son observation calculés sans les variables de son groupe de variables (réparties
+elles aussi en G groupes). Ce Q2 ne voit rien des observations qu'il prédit : avec peu
+d'observations, il est bien plus bas qu'une validation faite avec la mise à l'échelle de toutes
+les observations (sur du bruit pur, 6 observations et 20 variables, celle-ci donnait Q2 = 0,98
+pour une OPLS-DA ; Nuée donne maintenant moins de 0). Le RMSEcv, la CV-ANOVA, le classement en
+validation croisée et les intervalles de confiance (jack-knife, sur les G sous-modèles) en
+viennent.
 
 Validation (PLS et PLS-DA)
 --------------------------
@@ -526,10 +540,15 @@ Ce qui diffère
   ajusté sans lui, centrage et mise à l'échelle compris (voir « Validation croisée ») ; les
   valeurs enregistrées viennent d'une validation faite avec la mise à l'échelle de toutes les
   observations. Écart au Q2(cum) enregistré, en médiane : 0,003 pour les PLS de plus de 200
-  observations, 0,02 de 50 à 200, 0,11 de 20 à 50, 0,27 jusqu'à 20, le Q2 de Nuée étant
-  presque toujours plus bas ; de quelques centièmes pour les ACP. 18 modèles sur 944, dont une
+  observations, 0,02 de 50 à 200, 0,11 de 20 à 50, 0,27 jusqu'à 20, le Q2 de Nuée étant presque
+  toujours plus bas ; de quelques centièmes pour les ACP. Avec des groupes par identifiant (un
+  site, un secteur), l'écart est plus grand : le modèle ajusté sans un site ne connaît pas non
+  plus le niveau moyen de ce site. Avec la validation des fichiers (la mise à l'échelle de
+  toutes les observations), le Q2 enregistré des modèles .usp revient exactement, groupes par
+  identifiant compris (moteur/tests/verifier_references.R). 18 modèles sur 944, dont une
   variable ne varie presque que sur une observation, perdent bien plus (sans elle, sa mise à
   l'échelle l'agrandit beaucoup).
+
 - Signe des composantes de nouveaux modèles : arbitraire (les modèles importés sont
   orientés comme dans le fichier).
 - Dendrogrammes : méthode de Ward exacte ; les fusions du haut de l'arbre peuvent

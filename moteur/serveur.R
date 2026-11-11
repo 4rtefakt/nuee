@@ -253,7 +253,8 @@ definition_interface <- function(p, q) {
                       transformations = if (length(q$transformations)) unlist(q$transformations),
                       croises = if (is.matrix(q$croises)) lapply(seq_len(nrow(q$croises)), function(i) q$croises[i, ])
                                 else q$croises,
-                      spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)))
+                      spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)),
+                      vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs))
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -372,7 +373,7 @@ resultat_modele <- function(id) {
                       `99` = 2 * (Nt - 1) / (Nt - 2) * stats::qf(0.99, 2, Nt - 2)),
        stocke = composantes_stockees(d), version_origine = d$version_origine %||% NULL,
        noms_y = I(m$y$noms %||% character(0)),  # I() : un seul Y reste une liste
-       G = m$G, reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "",
+       G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "",
        cv_anova = s$cv_anova, classification = s$classification, test = m$test,
        demande = d$demande %||% list(type = d$type, numero = d$number))
 }

@@ -74,18 +74,71 @@ TRANSFORMATIONS <- list(
   racine4 = list(type = 7, params = c(NA, 1, 0, 0.25)),
   log10 = list(type = "log10", params = c(NA, 1, 0)))
 
+# Une transformation écrite en texte (Nouveau modèle) : "racine2", "racine4", "log10", ou
+# "type:C1:C2" pour log10(C1 x + C2), ln, neglog (-log10), exp, lineaire (C1 x + C2) et logit
+# (bornes C1 et C2), "puissance:C1:C2:C3" pour (C1 x + C2)^C3 (pretraitement.R : transformer) ;
+# "log10:C2" est log10(x + C2).
+lire_transformation <- function(n) {
+  if (n %in% names(TRANSFORMATIONS)) return(TRANSFORMATIONS[[n]])
+  morceaux <- strsplit(n, ":", fixed = TRUE)[[1]]
+  type <- morceaux[1]
+  x <- suppressWarnings(as.numeric(morceaux[-1]))
+  inconnue <- function() stop(traduire("Transformation inconnue : ", "Unknown transformation: "), n, call. = FALSE)
+  if (anyNA(x) || !all(is.finite(x))) inconnue()
+  if (type == "log10" && length(x) == 1) x <- c(1, x)
+  if (type == "puissance") {
+    if (length(x) == 1) x <- c(1, 0, x)
+    if (length(x) != 3) inconnue()
+    return(list(type = 7, params = c(NA, x)))
+  }
+  if (!type %in% c("log10", "ln", "neglog", "exp", "lineaire", "logit") || length(x) != 2) inconnue()
+  if (type == "logit" && !(x[1] < x[2])) {
+    stop(sprintf(traduire("Logit : la borne basse (%s) doit être plus petite que la borne haute (%s).", "Logit: the lower bound (%s) must be smaller than the upper bound (%s)."), x[1], x[2]), call. = FALSE)
+  }
+  list(type = type, params = c(NA, x))
+}
+
+# Le nom d'une transformation, écrit comme Nouveau modèle l'écrit (lire_transformation) ; NULL
+# pour aucune, "autre" pour un type des fichiers .usp que le moteur ne connaît pas.
 nom_transformation <- function(tr) {
   if (is.null(tr)) return(NULL)
-  p <- tr$params
-  if (identical(as.character(tr$type), "log10") && isTRUE(p[2] == 1)) {
-    return(if (isTRUE(p[3] == 0)) "log10" else sprintf("log10:%s", format(p[3], digits = 15)))
+  p <- as.numeric(tr$params)
+  type <- as.character(tr$type)
+  n <- function(v) format(v, digits = 15)
+  if (identical(type, "log10") && isTRUE(p[2] == 1)) {
+    return(if (isTRUE(p[3] == 0)) "log10" else sprintf("log10:%s", n(p[3])))
   }
-  if (identical(as.character(tr$type), "7") && isTRUE(p[2] == 1 && p[3] == 0)) {
-    if (p[4] == 1) return(NULL)
-    if (p[4] == 0.5) return("racine2")
-    if (p[4] == 0.25) return("racine4")
+  if (identical(type, "7") && length(p) >= 4 && all(is.finite(p[2:4]))) {
+    if (p[2] == 1 && p[3] == 0) {
+      if (p[4] == 1) return(NULL)
+      if (p[4] == 0.5) return("racine2")
+      if (p[4] == 0.25) return("racine4")
+    }
+    return(sprintf("puissance:%s:%s:%s", n(p[2]), n(p[3]), n(p[4])))
+  }
+  if (type %in% c("log10", "ln", "neglog", "exp", "lineaire", "logit") && all(is.finite(p[2:3]))) {
+    return(sprintf("%s:%s:%s", type, n(p[2]), n(p[3])))
   }
   "autre"
+}
+
+# La formule d'une transformation, pour les textes : « ln(2·x + 1) », « (x + 1)^0,33 »...
+formule_transformation <- function(tr, x = "x", fr = TRUE) {
+  p <- as.numeric(tr$params)
+  type <- as.character(tr$type)
+  nb <- function(v) trimws(formatC(v, digits = 6, format = "fg", decimal.mark = if (fr) "," else "."))
+  affine <- function() {
+    s <- if (p[2] == 1) x else if (p[2] == -1) paste0("-", x) else sprintf("%s·%s", nb(p[2]), x)
+    if (p[3] > 0) s <- sprintf("%s + %s", s, nb(p[3]))
+    if (p[3] < 0) s <- sprintf("%s - %s", s, nb(-p[3]))
+    s
+  }
+  switch(type,
+    "7" = if (p[2] == 1 && p[3] == 0) sprintf("%s^%s", x, nb(p[4])) else sprintf("(%s)^%s", affine(), nb(p[4])),
+    log10 = sprintf("log10(%s)", affine()), ln = sprintf("ln(%s)", affine()), neglog = sprintf("-log10(%s)", affine()),
+    exp = sprintf("exp(%s)", affine()), lineaire = affine(),
+    logit = if (p[2] == 0) sprintf("ln(%s / (%s - %s))", x, nb(p[3]), x) else sprintf("ln((%s - %s) / (%s - %s))", x, nb(p[2]), nb(p[3]), x),
+    sprintf("%s [%s]", x, type))
 }
 
 variable_du_projet <- function(projet, uid) {
@@ -94,18 +147,22 @@ variable_du_projet <- function(projet, uid) {
 }
 
 # Les termes d'une variable : un seul pour une variable quantitative, un par catégorie
-# (indicatrice 0/1) pour une variable qualitative.
-termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL) {
+# (indicatrice 0/1) pour une variable qualitative. `bloc` : son bloc pour la pondération par
+# blocs, `modificateur` : le facteur de son poids (pretraitement.R : facteurs_ponderation) ; les
+# catégories d'une variable qualitative les partagent (chacune compte dans le bloc).
+termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, bloc = NULL, modificateur = NULL) {
   v <- variable_du_projet(projet, uid)
   nom <- as.character(v$ids[1])
+  ech <- c(list(type = echelle), if (length(bloc) && !is.na(bloc[1]) && nzchar(as.character(bloc[1]))) list(block = as.character(bloc[1])),
+           if (length(modificateur) && !is.na(modificateur[1]) && as.numeric(modificateur[1]) != 1) list(modifier = as.numeric(modificateur[1])))
   if (length(v$categories)) {
     return(lapply(seq_along(v$categories), function(k) list(
       variables = as.numeric(uid), categories = k, lags = integer(0),
       name = sprintf("%s(%s)", nom, v$categories[k]), transform = NULL,
-      scaling = list(type = echelle))))
+      scaling = ech)))
   }
   list(list(variables = as.numeric(uid), categories = 0, lags = integer(0), name = nom,
-            transform = transformation, scaling = list(type = echelle)))
+            transform = transformation, scaling = ech))
 }
 
 # Définition d'un modèle.
@@ -123,21 +180,28 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL) 
 #   list(list(type = "snv"), list(type = "sg", derivee = 1, fenetre = 11, degre = 2)) ; les
 #   variables X sont alors prises dans l'ordre du tableau ;
 #   test : numéros des observations d'un jeu de test (jeu_test.R) : hors du modèle, puis
-#   prédites par lui.
+#   prédites par lui ;
+#   G : le nombre de groupes de la validation croisée, les observations y étant réparties à tour
+#   de rôle ; vc : sinon, ce qui fait les groupes (validation_croisee.R : groupes_definition),
+#   par exemple list(by = "id", id = "site") ou list(by = "variable", variable = 4) ;
+#   blocs : vecteur nommé par numéro de variable, le bloc de chaque variable pondérée par blocs
+#   (ses termes : poids divisé par la racine du nombre de termes du bloc) ; modificateurs : de
+#   même, un facteur du poids (pretraitement.R : facteurs_ponderation).
 definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observations = NULL,
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
-                           transformations = NULL, croises = NULL, spectres = NULL, test = NULL) {
+                           transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
+                           vc = NULL, blocs = NULL, modificateurs = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
     if ("defaut" %in% names(echelle)) echelle[["defaut"]] else "UV"
   }
+  par_variable <- function(valeurs, uid) if (as.character(uid) %in% names(valeurs)) valeurs[[as.character(uid)]]
+  termes <- function(u) termes_variable(projet, u, ech(u), trans(u), par_variable(blocs, u), par_variable(modificateurs, u))
   trans <- function(uid) {
     n <- if (as.character(uid) %in% names(transformations)) transformations[[as.character(uid)]]
     if (is.null(n) || !nzchar(n)) return(NULL)
-    # log10(x + C2), écrit "log10:C2" (transformation proposée pour une variable avec des 0)
-    if (startsWith(n, "log10:")) return(list(type = "log10", params = c(NA, 1, as.numeric(sub("^log10:", "", n)))))
-    TRANSFORMATIONS[[n]] %||% stop(traduire("Transformation inconnue : ", "Unknown transformation: "), n)
+    lire_transformation(n)
   }
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   test <- unique(as.numeric(test))
@@ -161,26 +225,32 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   d <- list(type = if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
             observations = obs, A = A %||% 0, cv_groups = G,
-            x = c(unlist(lapply(x, function(u) termes_variable(projet, u, ech(u), trans(u))), recursive = FALSE),
+            x = c(unlist(lapply(x, termes), recursive = FALSE),
                   unlist(lapply(croises, function(paire) termes_croises(projet, paire, x, ech("defaut"))), recursive = FALSE)),
-            y = if (plsda) yt else unlist(lapply(y, function(u) termes_variable(projet, u, ech(u), trans(u))), recursive = FALSE))
+            y = if (plsda) yt else unlist(lapply(y, termes), recursive = FALSE))
   if (plsda) d$classe <- classe
   if (opls) d$Ap <- Ap
   if (length(spectres)) d$spectres <- spectres
   if (length(test)) d$test <- test
+  if (length(vc$by) && !identical(as.character(vc$by), "order")) {
+    d$cv <- vc
+    groupes_definition(projet, d)  # (une erreur claire maintenant : un seul groupe, identifiant inconnu)
+  }
   d
 }
 
-# Termes croisés de deux variables X (ou carré d'une variable X quantitative). Une variable
-# qualitative y entre par chacune de ses catégories : variete*culture donne
-# variete(Gala)*culture(bio), variete(Gala)*culture(conventionnel)... Chaque terme est le produit de ses facteurs déjà
+# Termes croisés de deux variables X ou plus (A*B, A*B*C), ou puissance d'une variable X
+# quantitative (carré A*A, cube A*A*A). Une variable qualitative y entre par chacune de ses
+# catégories : variete*culture donne variete(Gala)*culture(bio), variete(Gala)*culture(conventionnel)... ;
+# elle n'y est qu'une fois. Chaque terme est le produit de ses facteurs déjà
 # centrés et mis à l'échelle (voir construire_bloc), puis il est lui-même mis à l'échelle.
 termes_croises <- function(projet, paire, x, echelle = "UV") {
   paire <- as.numeric(paire)
   if (!all(paire %in% x)) stop(traduire("Un terme croisé ne peut utiliser que des variables X", "A cross term can only use X variables"))
   vs <- lapply(paire, function(u) variable_du_projet(projet, u))
-  if (paire[1] == paire[2] && length(vs[[1]]$categories)) {
-    stop(traduire("Pas de carré pour une variable qualitative : ", "No square for a qualitative variable: "), vs[[1]]$ids[1])
+  qualitative <- vapply(vs, function(v) length(v$categories) > 0, TRUE)
+  if (any(duplicated(paire) & qualitative)) {
+    stop(traduire("Pas de carré pour une variable qualitative : ", "No square for a qualitative variable: "), vs[[which(duplicated(paire) & qualitative)[1]]]$ids[1])
   }
   options <- lapply(vs, function(v) if (length(v$categories)) seq_along(v$categories) else 0)
   combinaisons <- expand.grid(options)
@@ -196,18 +266,24 @@ termes_croises <- function(projet, paire, x, echelle = "UV") {
 }
 
 # Les réglages d'un modèle, sous la forme de definir_modele() (pour les modifier) :
-# variables X et Y, classe, observations exclues, échelle et transformation par variable.
+# variables X et Y, classe, observations exclues, échelle, bloc, modificateur et transformation
+# par variable, groupes de la validation croisée.
 reglages_modele <- function(projet, d) {
   simples <- function(termes) unique(unlist(lapply(termes, function(t)
     if (length(t$variables) == 1) as.numeric(t$variables))))
   echelles <- list()
   transformations <- list()
+  blocs <- list()
+  modificateurs <- list()
   for (t in c(d$x, d$y)) {
     if (length(t$variables) != 1) next
     k <- as.character(t$variables)
     echelles[[k]] <- t$scaling$type %||% "UV"
     tr <- nom_transformation(t$transform)
     if (!is.null(tr)) transformations[[k]] <- tr
+    b <- t$scaling$block
+    if (length(b) && !is.na(b[1]) && nzchar(as.character(b[1]))) blocs[[k]] <- as.character(b[1])
+    if (!is.null(t$scaling$modifier) && !isTRUE(as.numeric(t$scaling$modifier) == 1)) modificateurs[[k]] <- as.numeric(t$scaling$modifier)
   }
   tous <- vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   if (isTRUE(d$plsda) && is.null(d$classe)) {
@@ -221,7 +297,8 @@ reglages_modele <- function(projet, d) {
   list(type = paste0(if (isTRUE(d$opls)) "O" else "", if (plsda) "PLS-DA" else d$type), x = I(simples(d$x) %||% numeric(0)),
        y = I(if (plsda) numeric(0) else simples(d$y) %||% numeric(0)), classe = if (plsda) d$classe else NULL,
        exclues = I(setdiff(tous, c(d$observations, d$test))), echelles = echelles,
-       transformations = transformations, A = d$A, G = d$cv_groups %||% 7,
+       blocs = blocs, modificateurs = modificateurs,
+       transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d[["cv"]],
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))),
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
 }

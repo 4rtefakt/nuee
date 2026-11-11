@@ -136,6 +136,31 @@ async function principal() {
       const r = await api('reajuster', { modele: pls.id, exclues: [1, 2], A: 2 });
       verifier(r.N === 58, `N = ${r.N}`);
     });
+    await etape('groupes de validation croisée par variable, blocs et modificateur', async () => {
+      // as New model sends them: nothing set (vc null, empty objects), then a group per zone
+      const sans = await api('ajuster', { projet: p.id, type: 'PLS', x, y: [uid.y], A: 2, nom: 'PLS0', vc: null, blocs: {}, modificateurs: {} });
+      verifier(sans.G === 7 && sans.vc_par === '' && !sans.reglages.vc, `sans réglage : G = ${sans.G}, ${sans.vc_par}`);
+      const m = await api('ajuster', { projet: p.id, type: 'PLS', x, y: [uid.y], A: 2, nom: 'PLSzone', vc: { by: 'variable', variable: uid.zone },
+        blocs: { [uid.x1]: 'a', [uid.x2]: 'a' }, modificateurs: { [uid.x3]: 2 } });
+      verifier(m.G === 3 && m.vc_par === 'zone', `G = ${m.G}, par ${m.vc_par}`);
+      const r = m.reglages;
+      verifier(r.vc && r.vc.by === 'variable' && r.vc.variable === uid.zone && r.blocs[uid.x1] === 'a' && r.modificateurs[uid.x3] === 2,
+        `réglages : ${JSON.stringify([r.vc, r.blocs, r.modificateurs])}`);
+      const re = await api('reajuster', { modele: m.id, exclues: [3], A: 2 });
+      verifier(re.G === 3 && re.vc_par === 'zone' && re.N === 59, `réajusté : G = ${re.G}, N = ${re.N}`);
+      let refus = '';
+      try { await api('ajuster', { projet: p.id, type: 'PLS', x, y: [uid.y], A: 2, vc: { by: 'id', id: 'site' } }); } catch (e) { refus = e.message; }
+      verifier(/site/.test(refus), `identifiant absent : « ${refus} »`);
+    });
+    await etape('transformations personnalisées et terme à trois facteurs', async () => {
+      const m = await api('ajuster', { projet: p.id, type: 'PLS', x: [uid.zone, ...x], y: [uid.y], A: 2, nom: 'PLSperso',
+        transformations: { [uid.x1]: 'ln:1:5', [uid.x2]: 'puissance:1:10:0.33', [uid.x4]: 'logit:-20:20' }, croises: [[uid.zone, uid.x1, uid.x2], [uid.x3, uid.x3, uid.x3]] });
+      verifier(m.K === 3 + 6 + 3 + 1, `K = ${m.K}`);
+      const r = m.reglages;
+      verifier(r.transformations[uid.x1] === 'ln:1:5' && r.transformations[uid.x2] === 'puissance:1:10:0.33' && r.transformations[uid.x4] === 'logit:-20:20',
+        `réglages : ${JSON.stringify(r.transformations)}`);
+      verifier(r.croises.length === 2 && r.croises.every((c) => c.length === 3), `termes : ${JSON.stringify(r.croises)}`);
+    });
     await etape('prédire, dendrogramme, permutations, contributions, biplot', async () => {
       const pr = await api('predire', { modele: pls.id });
       verifier(pr.observations.t1.length === 60, 'prédiction');

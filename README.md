@@ -104,9 +104,11 @@ English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 ## What it does
 
 **Methods:** PCA, PLS, PLS-DA, and OPLS / OPLS-DA (several Y or more than two classes give
-several predictive components), with missing values handled by NIPALS and 7-fold
-cross-validation in which each group is predicted by a model fitted without it, centring and
-scaling included (R2, Q2, and Q2 per variable). Class models: one PCA per class, and the
+several predictive components), with missing values handled by NIPALS and cross-validation
+(7 groups in turn, or one group per value of an ID or a variable, such as a site) in which each
+group is predicted by a model fitted without it, centring and scaling included (R2, Q2, and Q2
+per variable). Block scaling and modifiers, custom transforms, cross terms of two or three
+variables. Class models: one PCA per class, and the
 Coomans plot to tell which class an observation belongs to, several, or none.
 
 **Validation:** permutation tests, CV-ANOVA, PLS-DA classification tables and ROC curves,

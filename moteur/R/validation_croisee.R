@@ -1,7 +1,9 @@
 # Validation croisée.
 #
 # Les observations du modèle sont réparties à tour de rôle dans G groupes (7 par défaut) : la
-# 1re, la 8e, la 15e... dans le groupe 1, la 2e, la 9e... dans le groupe 2, etc. Chaque groupe est
+# 1re, la 8e, la 15e... dans le groupe 1, la 2e, la 9e... dans le groupe 2, etc. Ou bien un groupe
+# par valeur d'un identifiant ou d'une variable (groupes_definition) : toutes les années d'un site
+# dans le même groupe, pour savoir si le modèle prédit un site qu'il n'a jamais vu. Chaque groupe est
 # prédit par un sous-modèle ajusté sans lui, comme de nouvelles observations (prediction.R) :
 #   - tout ce que le moteur calcule à partir des observations est recalculé sur celles des autres
 #     groupes : centres et poids de la mise à l'échelle, spectre moyen du MSC, termes qualitatifs
@@ -29,17 +31,93 @@
 
 groupes_validation <- function(n, G = 7) ((seq_len(n) - 1) %% G) + 1
 
+# Le groupe de validation croisée de chaque observation du modèle `d` (d$observations), d'après
+# d[["cv"]] :
+#   - absent : à tour de rôle en G groupes (d$cv_groups, 7 par défaut) ;
+#   - list(by = "id", id = nom) : un groupe par valeur de cet identifiant des observations
+#     (« site », « annee »... : les observations de même valeur ensemble) ;
+#   - list(by = "variable", variable = numéro) : de même, un groupe par valeur d'une variable
+#     (par catégorie pour une variable qualitative) ;
+#   - list(by = "groups", observations, groups) : le groupe de chaque observation, donné tel quel
+#     (fichier .usp dont les groupes ne suivent ni l'ordre ni un identifiant).
+# Les observations sans valeur forment un groupe à part. Les groupes sont numérotés dans l'ordre
+# des valeurs (croissant pour des nombres, alphabétique pour du texte).
+groupes_definition <- function(projet, d, G = d$cv_groups %||% 7) {
+  obs <- d$observations
+  vc <- d[["cv"]]  # [[ ]] : d$cv prendrait cv_groups quand cv manque
+  par <- if (length(vc$by)) as.character(vc$by) else ""
+  if (!nzchar(par) || identical(par, "order")) {
+    if (!isTRUE(G >= 2)) stop(traduire("La validation croisée demande au moins deux groupes.", "Cross-validation needs at least two groups."), call. = FALSE)
+    return(groupes_validation(length(obs), G))
+  }
+  valeurs <- switch(par,
+    id = {
+      k <- match(as.character(vc$id), as.character(projet$observation_id_names))
+      if (is.na(k)) stop(sprintf(traduire("Validation croisée : ce projet n'a pas d'identifiant « %s ».",
+                                          "Cross-validation: this project has no ID \"%s\"."), vc$id), call. = FALSE)
+      identifiants_observations(projet, k, obs)
+    },
+    variable = {
+      v <- variable_du_projet(projet, vc$variable)
+      x <- colonne(projet, vc$variable, obs)
+      if (length(v$categories)) v$categories[x] else x
+    },
+    groups = {
+      g <- as.numeric(vc$groups)[match(as.character(obs), as.character(vc$observations))]
+      if (anyNA(g)) stop(traduire("Validation croisée : les groupes de ce modèle viennent du fichier .usp, et certaines de ses observations n'en ont pas. Choisissez d'autres groupes dans Nouveau modèle.",
+                                  "Cross-validation: this model's groups come from the .usp file, and some of its observations have none. Choose other groups in New model."), call. = FALSE)
+      g
+    },
+    stop(sprintf(traduire("Validation croisée : groupes « %s » inconnus", "Cross-validation: unknown groups \"%s\""), par), call. = FALSE))
+  v <- as.character(valeurs)
+  v[!nzchar(v)] <- NA
+  niveaux <- unique(v[!is.na(v)])
+  nombres <- suppressWarnings(as.numeric(niveaux))
+  niveaux <- if (!anyNA(nombres)) niveaux[order(nombres)] else sort(niveaux)
+  groupes <- match(v, niveaux)
+  groupes[is.na(groupes)] <- length(niveaux) + 1
+  if (length(unique(groupes)) < 2) {
+    stop(sprintf(traduire("Validation croisée par « %s » : les observations du modèle n'ont qu'une valeur, donc un seul groupe. Il en faut au moins deux.",
+                          "Cross-validation by \"%s\": the model's observations have a single value, so a single group. At least two are needed."),
+                 nom_groupes_vc(projet, d)), call. = FALSE)
+  }
+  groupes
+}
+
+# Le k-ième identifiant des observations `obs` (NA s'il manque).
+identifiants_observations <- function(projet, k, obs) {
+  uid <- vapply(projet$observations, function(o) as.numeric(o$uid), 0)
+  ids <- vapply(projet$observations, function(o) if (length(o$ids) >= k) as.character(o$ids[[k]] %||% NA) else NA_character_, "")
+  unname(ids[match(as.numeric(obs), uid)])
+}
+
+# Ce qui fait les groupes de la validation croisée de `d`, en un mot (pour les messages et
+# l'interface) : le nom de l'identifiant ou de la variable ; "" à tour de rôle.
+nom_groupes_vc <- function(projet, d) {
+  vc <- d[["cv"]]  # [[ ]] : d$cv prendrait cv_groups quand cv manque
+  switch(if (length(vc$by)) as.character(vc$by) else "",
+         id = as.character(vc$id),
+         variable = tryCatch(as.character(variable_du_projet(projet, vc$variable)$ids[1]), error = function(e) as.character(vc$variable)),
+         groups = traduire("groupes du fichier", "groups from the file"),
+         "")
+}
+
 # Les sous-modèles de la validation croisée de la définition `d`, prêts à être ajustés : pour
 # chaque groupe, leurs blocs X (et Y) préparés (preparer), construits sur les observations des
 # autres groupes, et les lignes X du groupe, construites avec les centres et poids du sous-modèle.
 #   X, Y : les blocs préparés du modèle complet, où les erreurs de prédiction sont mesurées ;
 #   bx, by : ses centres et poids ; vx : les valeurs des termes X de ses observations
 #   (valeurs_bloc), lues une fois pour tous les sous-modèles ; A : le nombre de composantes au
-#   plus ; projets (iPLS) : le projet de chaque groupe, quand ses valeurs en dépendent.
+#   plus ; G : le nombre de groupes quand les observations y sont réparties à tour de rôle
+#   (groupes_definition) ; projets (iPLS) : le projet de chaque groupe, quand ses valeurs en
+#   dépendent.
 debut_validation <- function(projet, d, X, Y, bx, by, A, G, poids, vx, projets = NULL) {
   obs <- d$observations
   pls <- !is.null(Y)
-  groupes <- groupes_validation(length(obs), G)
+  groupes <- groupes_definition(projet, d, G)
+  # G : celui de la définition pour des groupes à tour de rôle (même avec moins d'observations que
+  # de groupes), sinon le nombre de groupes formés ; les termes (ACP) en font autant
+  if (!identical(groupes, groupes_validation(length(obs), G))) G <- max(groupes)
   groupes_termes <- groupes_validation(ncol(X$E), G)
   Z <- if (pls) Y else X  # les variables prédites
   tours <- lapply(sort(unique(groupes)), function(g) {
@@ -65,7 +143,7 @@ debut_validation <- function(projet, d, X, Y, bx, by, A, G, poids, vx, projets =
     }
     r
   })
-  list(pls = pls, tours = tours, Z = Z, complet = if (pls) by else bx, ss = colSums(Z$E^2),
+  list(pls = pls, tours = tours, Z = Z, complet = if (pls) by else bx, ss = colSums(Z$E^2), G = G,
        groupes = groupes, groupes_termes = groupes_termes, press = NULL, predictions = list())
 }
 

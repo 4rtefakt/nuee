@@ -1,10 +1,56 @@
 // Dialogs: model definition (type, variables, observations), help and about.
 import { t, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { libelleTransfo, FORMAT, changerFormat } from './panneaux.js';
+import { libelleTransfo, lireTransfo, codeTransfo, TYPES_TRANSFO, FORMAT, changerFormat } from './panneaux.js';
 
 const ECHELLES = ['UV', 'Par', 'Ctr', 'none'];
 const TRANSFOS = ['', 'racine2', 'racine4', 'log10'];
+const PERSO = '~perso';  // "Custom…": opens editeurTransfo
+
+// The transformations offered for a variable: the usual ones, its own if it is another
+// (a custom one, or 'autre' from a .usp file), and "Custom…".
+const optionsTransfo = (courant) => TRANSFOS.map((k) => [k, t('tr_' + (k || 'aucune'))])
+  .concat(courant && !TRANSFOS.includes(courant) ? [[courant, libelleTransfo(courant)]] : [])
+  .concat([[PERSO, t('tr_perso')]]);
+
+// Custom transformation: its type and constants, and the formula as it will be applied
+// (moteur/R/pretraitement.R, transformer). `choisir(code)` on OK; `apres` once closed.
+function editeurTransfo(initial, choisir, apres) {
+  const s = { type: 'log10', c1: 1, c2: 1, c3: 0.5, ...(lireTransfo(initial) || {}) };
+  const formule = el('b');
+  const erreur = el('p', { class: 'erreur' });
+  const champs = el('div', { class: 'grille-champs' });
+  const valide = () => [s.c1, s.c2].concat(s.type === 'puissance' ? [s.c3] : []).every(Number.isFinite) && (s.type !== 'logit' || s.c1 < s.c2);
+  const maj = () => {
+    formule.textContent = valide() ? (libelleTransfo(codeTransfo(s)) || t('tr_aucune')) : '—';
+    erreur.textContent = '';
+  };
+  const nombre = (cle) => el('input', { type: 'number', step: 'any', value: s[cle], style: 'width:8em',
+    oninput: (e) => { s[cle] = parseFloat(e.target.value); maj(); } });
+  const rendreChamps = () => {
+    champs.replaceChildren(...[
+      el('label', {}, t('type')), el('select', { onchange: (e) => {
+        s.type = e.target.value;
+        if (s.type === 'logit' && !(s.c1 < s.c2)) Object.assign(s, { c1: 0, c2: 1 });
+        rendreChamps();
+      } }, TYPES_TRANSFO.map((k) => el('option', { value: k, selected: k === s.type }, t('tr_type_' + k)))),
+      el('label', {}, s.type === 'logit' ? t('tr_borne_basse') : 'C1'), nombre('c1'),
+      el('label', {}, s.type === 'logit' ? t('tr_borne_haute') : 'C2'), nombre('c2'),
+      s.type === 'puissance' ? [el('label', {}, 'C3'), nombre('c3')] : null,
+      el('label', {}, t('tr_formule')), formule,
+      s.type === 'logit' ? [el('label', {}, ''), el('p', { class: 'note' }, t('tr_logit_note'))] : null,
+      el('label', {}, ''), el('p', { class: 'note' }, t('tr_domaine_note'))].flat().filter(Boolean));  // (replaceChildren writes null as text)
+    maj();
+  };
+  rendreChamps();
+  dialogue({ titre: t('tr_perso_titre'), contenu: el('div', {}, champs, erreur), surFermeture: apres,
+    boutons: [{ libelle: t('annuler'), action: () => true },
+      { libelle: 'OK', principal: true, action: () => {
+        if (!valide()) { erreur.textContent = t('tr_invalide'); return false; }
+        choisir(codeTransfo(s));
+        return true;
+      } }] });
+}
 // spectral preprocessing steps (moteur/R/spectres.R); sg1 = Savitzky–Golay 1st derivative
 const ETAPES = ['', 'snv', 'msc', 'detrend', 'ligne_base', 'sg0', 'sg1', 'sg2'];
 
@@ -14,9 +60,11 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   const st = {
     type: r ? r.type : 'PLS', nom: nomLibre(p), titre: r && r.nom ? `${r.titre ? r.titre + ' — ' : ''}${langueActuelle() === 'fr' ? 'd’après' : 'from'} ${r.nom}` : '',
     A: r ? r.A : 0, auto: !r, G: r ? r.G || 7 : 7, echelle: 'UV', roles: {}, echelles: {}, transfos: {},
+    // cross-validation groups: null = in turn (G groups), else { by: 'id', id } | { by: 'variable', variable } | { by: 'groups', … } (moteur/R/validation_croisee.R)
+    vc: r && r.vc && r.vc.by ? r.vc : null, blocs: {}, modificateurs: {}, bloc: '',
     exclues: new Set(r ? [].concat(r.exclues || []) : []), onglet: 'variables', filtre: '', filtreObs: '',
     test: new Set(r ? [].concat(r.test || []).map(Number) : []), methodeTest: 'hasard', partTest: 25,
-    croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '',
+    croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '', c: '',
   };
   const etapes = r && r.spectres ? [].concat(r.spectres) : [];
   const sg = etapes.find((e) => e.type === 'sg');
@@ -28,6 +76,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     if (r.classe !== null && r.classe !== undefined) st.roles[r.classe] = 'classe';
     Object.assign(st.echelles, r.echelles || {});
     Object.assign(st.transfos, r.transformations || {});
+    Object.assign(st.blocs, r.blocs || {});
+    Object.assign(st.modificateurs, r.modificateurs || {});
   }
   const contenu = el('div', { class: 'dialogue-modele' });
   const erreur = el('p', { class: 'erreur' });
@@ -44,6 +94,32 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     ['termes', `${t('termes')}${st.croises.length ? ` (${st.croises.length})` : ''}`], ['observations', t('observations')]]
     .map(([k, n]) => el('button', { class: st.onglet === k ? 'actif' : '', onclick: () => { st.onglet = k; rendre(); } }, n)));
 
+  // Cross-validation groups: in turn (G groups), one group per value of an observation ID or of
+  // a variable (all the years of a site in one group: the model is judged on sites it has never
+  // seen), or the groups stored in the .usp file the model comes from.
+  const vcFichier = r && r.vc && r.vc.by === 'groups' ? r.vc : null;
+  const groupesVC = () => {
+    const valeur = !st.vc ? 'ordre' : st.vc.by === 'id' ? `id:${st.vc.id}` : st.vc.by === 'variable' ? `var:${st.vc.variable}` : 'fichier';
+    const ids = [].concat(p.identifiants || []).map((i) => i.nom);
+    if (st.vc && st.vc.by === 'id' && !ids.includes(st.vc.id)) ids.unshift(st.vc.id);
+    const choisir = (v) => {
+      if (v === 'ordre') st.vc = null;
+      else if (v === 'fichier') st.vc = vcFichier;
+      else if (v.startsWith('id:')) st.vc = { by: 'id', id: v.slice(3) };
+      else st.vc = { by: 'variable', variable: Number(v.slice(4)) };
+      rendre();
+    };
+    const option = (v, n) => el('option', { value: v, selected: v === valeur }, n);
+    return el('div', { class: 'ligne' },
+      el('select', { onchange: (e) => choisir(e.target.value) },
+        option('ordre', t('vc_ordre')),
+        vcFichier ? option('fichier', t('vc_fichier')) : null,
+        ids.length ? el('optgroup', { label: t('vc_par_identifiant') }, ids.map((n) => option(`id:${n}`, n))) : null,
+        el('optgroup', { label: t('vc_par_variable') }, p.variables.map((v) => option(`var:${v.uid}`, v.nom)))),
+      st.vc ? null : el('input', { type: 'number', min: 2, max: 50, value: st.G, style: 'width:5em', title: t('vc_nombre'),
+        oninput: (e) => { st.G = +e.target.value || 7; } }));
+  };
+
   const general = () => el('div', { class: 'grille-champs' },
     el('label', {}, t('type')), el('select', { onchange: (e) => { st.type = e.target.value; rendre(); } },
       [['PCA', 'ACP / PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')]]
@@ -57,7 +133,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     el('label', {}, t('nb_comp')), el('div', { class: 'ligne' },
       el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: st.auto, onchange: (e) => { st.auto = e.target.checked; rendre(); } }), t('auto')),
       el('input', { type: 'number', min: 1, max: 50, value: st.A || 2, disabled: st.auto, style: 'width:5em', oninput: (e) => { st.A = +e.target.value; } })),
-    el('label', {}, t('groupes_vc')), el('input', { type: 'number', min: 2, max: 50, value: st.G, style: 'width:5em', oninput: (e) => { st.G = +e.target.value || 7; } }),
+    el('label', {}, t('groupes_vc')), groupesVC(),
+    st.vc ? el('label', {}, '') : null, st.vc ? el('p', { class: 'note' }, t(st.vc.by === 'groups' ? 'vc_fichier_note' : 'vc_note')) : null,
     el('label', {}, t('echelle_defaut')), el('select', { onchange: (e) => { st.echelle = e.target.value; rendre(); } },
       ECHELLES.map((k) => el('option', { value: k, selected: k === st.echelle }, t('echelle_' + k)))),
     el('label', {}, t('spectres')), el('div', { class: 'ligne' },
@@ -85,6 +162,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           if (valeur === 'y' && !avecY()) continue;
           st.roles[v.uid] = valeur;
         } else if (cle === 'echelle') st.echelles[v.uid] = valeur;
+        else if (cle === 'bloc') st.blocs[v.uid] = valeur;
         else if (!v.qualitative) st.transfos[v.uid] = valeur;
       }
       rendre();
@@ -97,20 +175,32 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       el('div', { class: 'outils' }, filtre, el('span', { class: 'infos' }, t('pour_filtrees')),
         sel([['-', t('role') + '…']].concat(roles({ qualitative: true }).map(([k, n]) => [k || 'aucun', n])), '-', (v) => tous('role', v === 'aucun' ? '' : v)),
         sel([['-', t('echelle') + '…']].concat(ECHELLES.map((k) => [k, t('echelle_' + k)])), '-', (v) => tous('echelle', v)),
-        sel([['-', t('transformation') + '…']].concat(TRANSFOS.map((k) => [k || 'aucune', t('tr_' + (k || 'aucune'))])), '-', (v) => tous('transfo', v === 'aucune' ? '' : v)),
+        el('input', { placeholder: t('bloc') + '…', title: `${t('bloc_aide')} ${t('bloc_entree')}`, size: 9, value: st.bloc,
+          oninput: (e) => { st.bloc = e.target.value; },
+          onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); tous('bloc', st.bloc.trim()); } } }),
+        sel([['-', t('transformation') + '…']].concat(TRANSFOS.map((k) => [k || 'aucune', t('tr_' + (k || 'aucune'))]), [[PERSO, t('tr_perso')]]), '-',
+          (v) => (v === PERSO ? editeurTransfo('', (c) => tous('transfo', c), rendre) : tous('transfo', v === 'aucune' ? '' : v))),
         el('button', { title: t('transfos_suggerees_aide'), onclick: () => suggerer(vars) }, icone('wand-sparkles'), t('transfos_suggerees')),
         st.suggerees !== undefined ? el('span', { class: 'infos' }, t('transfos_appliquees', { n: st.suggerees })) : null),
       el('div', { class: 'defile' }, el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, ''), el('th', {}, t('role')), el('th', {}, t('echelle')), el('th', {}, t('transformation')))),
+        el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, ''), el('th', {}, t('role')), el('th', {}, t('echelle')),
+          el('th', { title: t('bloc_aide') }, t('bloc')), el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, t('transformation')))),
         el('tbody', {}, vars.map((v) => el('tr', { class: st.roles[v.uid] ? 'role-' + st.roles[v.uid] : '' },
           el('td', {}, v.nom),
           el('td', { class: 'doux' }, v.qualitative ? `${v.categories.length} ${t('categories')}` : ''),
           el('td', {}, sel(roles(v), st.roles[v.uid] || '', (x) => { st.roles[v.uid] = x; rendre(); })),
           el('td', {}, sel(ECHELLES.map((k) => [k, t('echelle_' + k)]), st.echelles[v.uid] || st.echelle, (x) => { st.echelles[v.uid] = x; })),
-          el('td', {}, sel(TRANSFOS.map((k) => [k, t('tr_' + (k || 'aucune'))])
-            .concat(st.transfos[v.uid] === 'autre' ? [['autre', t('tr_autre')]] : [])
-            .concat((st.transfos[v.uid] || '').startsWith('log10:') ? [[st.transfos[v.uid], libelleTransfo(st.transfos[v.uid])]] : []),
-            st.transfos[v.uid] || '', (x) => { st.transfos[v.uid] = x; }, !v.qualitative))))))));
+          // block scaling and modifier (moteur/R/pretraitement.R: facteurs_ponderation)
+          el('td', {}, el('input', { value: st.blocs[v.uid] || '', placeholder: '—', size: 7, title: t('bloc_aide'),
+            oninput: (e) => { st.blocs[v.uid] = e.target.value.trim(); } })),
+          // (shown to 5 significant digits; the exact value stays unless it is edited)
+          el('td', {}, el('input', { type: 'number', step: 'any', min: 0, value: st.modificateurs[v.uid] !== undefined ? +Number(st.modificateurs[v.uid]).toPrecision(5) : '',
+            placeholder: '1', style: 'width:7em',
+            title: t('modificateur_aide'),
+            oninput: (e) => { const x = parseFloat(e.target.value); if (Number.isFinite(x) && x !== 1) st.modificateurs[v.uid] = x; else delete st.modificateurs[v.uid]; } })),
+          el('td', {}, sel(optionsTransfo(st.transfos[v.uid]), st.transfos[v.uid] || '',
+            (x) => (x === PERSO ? editeurTransfo(st.transfos[v.uid], (c) => { st.transfos[v.uid] = c; }, rendre) : (st.transfos[v.uid] = x)),
+            !v.qualitative))))))));
   };
 
   // The proposed transformation, worked out in R: log10(x + C2) for the variables
@@ -168,25 +258,27 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           el('td', {}, o.nom[i])))))));
   };
 
-  // Cross and square terms: pairs of X variables (both factors must stay in X).
+  // Cross terms (A × B, A × B × C), squares and cubes: products of X variables (every factor
+  // must stay in X; a qualitative variable once at most, by each of its categories).
   const termes = () => {
     const nom = (u) => (p.variables.find((v) => v.uid === u) || { nom: `#${u}` }).nom;
     const qual = (u) => !!(p.variables.find((v) => v.uid === u) || {}).qualitative;
     const enX = p.variables.filter((v) => st.roles[v.uid] === 'x');
     const quantX = enX.filter((v) => !v.qualitative).map((v) => v.uid);
-    const existe = (a, b) => st.croises.some(([c, d]) => (c === a && d === b) || (c === b && d === a));
-    const ajouter = (a, b) => { if (!existe(a, b) && !(a === b && qual(a))) st.croises.push([a, b]); };
+    const cle = (fs) => [...fs].sort((x, y) => x - y).join(',');
+    const existe = (fs) => st.croises.some((c) => cle(c) === cle(fs));
+    const qualDouble = (fs) => fs.some((u, i) => qual(u) && fs.indexOf(u) !== i);
+    const ajouter = (...fs) => { if (!existe(fs) && !qualDouble(fs)) st.croises.push(fs); };
     const options = [['', '—']].concat(enX.map((v) => [v.uid, v.nom]));
-    const sel = (cle) => el('select', { onchange: (e) => { st[cle] = e.target.value; } },
-      options.map(([k, n]) => el('option', { value: k, selected: String(k) === String(st[cle]) }, n)));
+    const sel = (c) => el('select', { onchange: (e) => { st[c] = e.target.value; } },
+      options.map(([k, n]) => el('option', { value: k, selected: String(k) === String(st[c] ?? '') }, n)));
     return el('div', { class: 'onglet-termes' },
-      el('div', { class: 'outils' }, sel('a'), '×', sel('b'),
+      el('div', { class: 'outils' }, sel('a'), '×', sel('b'), el('span', { title: t('facteur_facultatif') }, '×'), sel('c'),
         el('button', { onclick: () => {
-          const a = Number(st.a);
-          const b = Number(st.b);
           if (!st.a || !st.b) return;
-          if (a === b && qual(a)) { erreur.textContent = t('carre_qualitatif'); return; }
-          ajouter(a, b);
+          const fs = [st.a, st.b].concat(st.c ? [st.c] : []).map(Number);
+          if (qualDouble(fs)) { erreur.textContent = t('carre_qualitatif'); return; }
+          ajouter(...fs);
           rendre();
         } }, icone('plus'), t('ajouter')),
         el('span', { class: 'espace' }),
@@ -195,9 +287,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           onclick: () => { quantX.forEach((u, i) => quantX.slice(i + 1).forEach((w) => ajouter(u, w))); rendre(); } }, t('toutes_interactions')),
         el('button', { disabled: !st.croises.length, onclick: () => { st.croises = []; rendre(); } }, t('tout_retirer'))),
       el('p', { class: 'note' }, t('termes_note')),
-      el('div', { class: 'defile' }, st.croises.length ? el('table', { class: 'tableau' }, el('tbody', {}, st.croises.map(([a, b], i) => {
-        const horsX = [a, b].filter((u) => st.roles[u] !== 'x');
-        return el('tr', {}, el('td', {}, `${nom(a)} × ${nom(b)}`),
+      el('div', { class: 'defile' }, st.croises.length ? el('table', { class: 'tableau' }, el('tbody', {}, st.croises.map((fs, i) => {
+        const horsX = [...new Set(fs)].filter((u) => st.roles[u] !== 'x');
+        return el('tr', {}, el('td', {}, fs.map(nom).join(' × ')),
           el('td', { class: 'erreur' }, horsX.length ? `${t('facteur_non_x')} : ${horsX.map(nom).join(', ')}` : ''),
           el('td', { class: 'num' }, el('button', { class: 'icone-seule', onclick: () => { st.croises.splice(i, 1); rendre(); } }, icone('x-circle'))));
       }))) : el('p', { class: 'infos' }, t('aucun_terme'))));
@@ -231,9 +323,11 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       return false;
     }
     const spectres = st.etapes.filter(Boolean).map((k) => (k.startsWith('sg') ? { type: 'sg', derivee: +k[2], fenetre: st.fenetre, degre: st.degre } : { type: k }));
+    const blocs = Object.fromEntries(Object.entries(st.blocs).filter(([, b]) => b));
+    const modificateurs = Object.fromEntries(Object.entries(st.modificateurs).filter(([, m]) => Number.isFinite(m) && m !== 1));
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
       exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
-      A: st.auto ? 0 : st.A, G: st.G, nom: st.nom, titre: st.titre };
+      A: st.auto ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs, nom: st.nom, titre: st.titre };
     if (!enCours) verifierPuisAjuster(q);
     return false;  // the dialog closes once the model is fitted
   }
@@ -321,7 +415,7 @@ const AIDE = {
       ['Projet d’exemple', 'Aide › Projet d’exemple : 120 pommes inventées et quatre modèles prêts (ACP, PLS, PLS-DA, OPLS-DA), pour essayer l’application.'],
       ['Explorateur', 'À gauche : projets, données, modèles importés d’un fichier .usp, modèles calculés et leurs vues. Double-clic pour ouvrir, clic droit pour les actions.'],
       ['Modèles importés', 'Double-cliquer un modèle importé le recalcule en R. Le résumé marque chaque valeur : = identique à la valeur enregistrée dans le fichier, ≈ proche, ≠ différente.'],
-      ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA, OPLS), rôle, échelle et transformation de chaque variable, observations incluses, nombre de composantes (automatique par défaut).'],
+      ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA, OPLS), rôle, échelle, bloc, modificateur et transformation de chaque variable (racine, log10, ou personnalisée : log10, ln, −log10, exp, logit, puissance ou linéaire, avec ses constantes), termes croisés (A × B, A × B × C, carrés et cubes), observations incluses, nombre de composantes (automatique par défaut), groupes de validation croisée (à tour de rôle, ou un groupe par valeur d’un identifiant ou d’une variable : toutes les années d’un site ensemble).'],
       ['Sélection', 'Cadre ou lasso dans un graphique, clic sur un point ou une ligne de liste : la sélection apparaît dans toutes les vues et toutes les fenêtres du modèle. Échap l’efface ; Ctrl+Suppr exclut les observations et réajuste.'],
       ['Variables en évidence', 'Un clic sur une variable (barre des VIP, des coefficients ou des loadings, point des loadings, du biplot ou du S-plot, ligne d’un profil ou de la liste des variables) la met en évidence sur tous les graphiques du modèle ; un cadre en choisit plusieurs dans les nuages de points. Échap les efface.'],
       ['Fenêtres', 'Un onglet par modèle : sa page montre résumé, scores et loadings, ses autres vues s’y ajoutent en onglets. Les vues se déplacent par leur onglet (glisser-déposer), se divisent et s’empilent ; glisser l’onglet d’un modèle à côté d’un autre pour les comparer. Clic droit sur un onglet : détacher dans une fenêtre, agrandir, fermer. Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète.'],
@@ -348,8 +442,8 @@ const AIDE = {
       ['Code', `Tous les calculs sont en R, commentés en français, dans ${MOTEUR}.`],
     ],
     differences: [
-      ['Identique aux valeurs enregistrées', 'Vérifié sur 944 modèles de 133 projets .usp : mise à l’échelle, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.'],
-      ['Validation croisée', 'Chaque groupe est prédit par un modèle ajusté sans lui, centrage et mise à l’échelle recalculés sur les autres observations. Q2, RMSEcv, CV-ANOVA et classement en validation croisée s’écartent donc des valeurs enregistrées, d’autant plus que les observations sont peu nombreuses (PLS, écart médian du Q2 : 0,003 au-delà de 200 observations, 0,02 de 50 à 200, 0,1 à 0,3 en dessous) ; le Q2 de Nuée est le plus souvent plus bas.'],
+      ['Identique aux valeurs enregistrées', 'Vérifié sur 944 modèles de 133 projets .usp : mise à l’échelle (pondération par blocs et modificateurs compris), groupes de validation croisée, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.'],
+      ['Validation croisée', 'Chaque groupe est prédit par un modèle ajusté sans lui, centrage et mise à l’échelle recalculés sur les autres observations. Q2, RMSEcv, CV-ANOVA et classement en validation croisée s’écartent donc des valeurs enregistrées, d’autant plus que les observations sont peu nombreuses (PLS, écart médian du Q2 : 0,003 au-delà de 200 observations, 0,02 de 50 à 200, 0,1 à 0,3 en dessous) ; le Q2 de Nuée est le plus souvent plus bas. Avec des groupes par identifiant (un site, un secteur), l’écart est plus grand : le modèle ajusté sans un site ne connaît pas non plus son niveau moyen.'],
       ['Signe des composantes', 'Arbitraire pour les nouveaux modèles ; les modèles importés sont orientés comme la solution enregistrée.'],
       ['Dendrogrammes', 'Méthode de Ward exacte : les fusions du haut de l’arbre peuvent différer de celles enregistrées.'],
       ['Intervalles de confiance', 'Jack-knife sur les sous-modèles de la validation croisée, chacun dans sa propre mise à l’échelle : ils diffèrent des valeurs enregistrées.'],
@@ -364,7 +458,7 @@ const AIDE = {
       ['Example project', 'Help › Example project: 120 made-up apples and four ready models (PCA, PLS, PLS-DA, OPLS-DA), to try the application.'],
       ['Explorer', 'On the left: projects, data, models imported from a .usp file, fitted models and their views. Double-click to open, right-click for actions.'],
       ['Imported models', 'Double-clicking an imported model recomputes it in R. The summary marks each value: = same as the value stored in the file, ≈ close, ≠ different.'],
-      ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA, OPLS), each variable’s role, scaling and transform, included observations, number of components (automatic by default).'],
+      ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA, OPLS), each variable’s role, scaling, block, modifier and transform (root, log10, or custom: log10, ln, −log10, exp, logit, power or linear, with its constants), cross terms (A × B, A × B × C, squares and cubes), included observations, number of components (automatic by default), cross-validation groups (in turn, or one group per value of an ID or of a variable: all the years of a site together).'],
       ['Selection', 'Box or lasso in a plot, click a point or a list row: the selection shows in every view and window of the model. Esc clears it; Ctrl+Delete excludes the observations and refits.'],
       ['Highlighted variables', 'Clicking a variable (a bar of the VIP, coefficients or loadings, a point of the loadings, biplot or S-plot, a line of a profile or of the variable list) highlights it on all the model’s graphs; a box picks several in the scatter plots. Esc clears them.'],
       ['Windows', 'One tab per model: its page shows the summary, scores and loadings, and its other views join it as tabs. Drag views by their tab to move, split and stack them; drag a model’s tab beside another to compare them. Right-click a tab to move it to a new window, maximize or close it. Window › New window opens a second full window.'],
@@ -391,8 +485,8 @@ const AIDE = {
       ['Code', `All computations are in R, commented in French, in ${MOTEUR}.`],
     ],
     differences: [
-      ['Same as the stored values', 'Checked on 944 models from 133 .usp projects: scaling, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE.'],
-      ['Cross-validation', 'Each group is predicted by a model fitted without it, with centring and scaling recomputed on the other observations. Q2, RMSEcv, CV-ANOVA and the cross-validated classification therefore differ from the stored values, more so with few observations (PLS, median Q2 difference: 0.003 above 200 observations, 0.02 from 50 to 200, 0.1 to 0.3 below); Nuée’s Q2 is usually lower.'],
+      ['Same as the stored values', 'Checked on 944 models from 133 .usp projects: scaling (block scaling and modifiers included), cross-validation groups, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE.'],
+      ['Cross-validation', 'Each group is predicted by a model fitted without it, with centring and scaling recomputed on the other observations. Q2, RMSEcv, CV-ANOVA and the cross-validated classification therefore differ from the stored values, more so with few observations (PLS, median Q2 difference: 0.003 above 200 observations, 0.02 from 50 to 200, 0.1 to 0.3 below); Nuée’s Q2 is usually lower. With groups by an ID (a site, a sector), the difference is larger: the model fitted without a site doesn’t know its mean level either.'],
       ['Component signs', 'Arbitrary for new models; imported models are oriented like their stored solution.'],
       ['Dendrograms', 'Exact Ward linkage: the top merges can differ from the stored ones.'],
       ['Confidence intervals', 'Jack-knife over the cross-validation sub-models, each in its own scaling: they differ from the stored ones.'],

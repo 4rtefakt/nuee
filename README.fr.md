@@ -108,8 +108,10 @@ en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en angl
 
 **Méthodes :** ACP, PLS, PLS-DA, et OPLS / OPLS-DA (plusieurs Y ou plus de deux classes donnent
 plusieurs composantes prédictives), avec les valeurs manquantes traitées par NIPALS et une
-validation croisée en 7 groupes, où chaque groupe est prédit par un modèle ajusté sans lui,
-centrage et mise à l'échelle compris (R2, Q2, et Q2 par variable). Modèles de classe : une ACP par
+validation croisée (7 groupes à tour de rôle, ou un groupe par valeur d'un identifiant ou d'une
+variable, un site par exemple) où chaque groupe est prédit par un modèle ajusté sans lui,
+centrage et mise à l'échelle compris (R2, Q2, et Q2 par variable). Pondération par blocs et
+modificateurs, transformations personnalisées, termes croisés de deux ou trois variables. Modèles de classe : une ACP par
 classe, et le graphique de Coomans pour dire à quelle classe appartient une observation, à
 plusieurs, ou à aucune.
 

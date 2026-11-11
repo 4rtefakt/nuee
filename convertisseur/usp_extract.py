@@ -267,7 +267,9 @@ def parse_dataset(buf):
 # Field ids, v11 (v10 writes the same fields in order, without tables):
 #   PModel  f0 model no, f1 components used (A), f2 computed, f3 obs uids, f4 X terms,
 #           f5 obs residual SS, f6 SSX per component (0..A), f7 SSX per variable,
-#           f8 Q2, f9 Q2cum, f11 eigenvalues, f19/f20 cross-validation rounds
+#           f8 Q2, f9 Q2cum, f11 eigenvalues, f19/f20 cross-validation rounds,
+#           f26 (v11+) each observation's cross-validation group, from 0 (checked against the
+#           groups the writing program exports, on 128 models)
 #   PLS     f0 P, f1 W, f2 C, f3 U, f4 T, f5 Y terms, f6 SSY per component
 #   PCA     f0 P, f1 T
 # v16 adds an OnMo level (f0 computed) and moves P/T to PModel f28/f29; its PLS
@@ -313,7 +315,7 @@ def _parse_model(buf):
     lv = r.obj('PModel')
     m = {'type': kind, 'version': 10 if lv is None else 11 if len(lv) == 2 else 13,
          'yterms': [], 'C': [], 'U': [], 'W': [], 'ssy': None, 'ssyv': None,
-         'q2v': None, 'q2vcum': None, 'cvP': None, 'cvW': None, 'cvC': None}
+         'q2v': None, 'q2vcum': None, 'cvP': None, 'cvW': None, 'cvC': None, 'cvgroups': None}
     opt = lambda: r.matrix()[0] if r.u8() else None  # v10 pointer: present flag + matrix
     if lv is None:  # v10
         r.u32()
@@ -358,6 +360,7 @@ def _parse_model(buf):
         return [s.matrix()[0] if s.u8() else None for _ in range(s.u32())]
 
     m['cvP'] = rounds(f[20]) if 20 in f else None
+    m['cvgroups'] = at(f[26]).vector() if 26 in f else None
     m['A'] = at(f[1]).u32()
     m['obs'] = at(f[3]).vector()
     m['xterms'] = columnterms(at(f[4]))
@@ -422,6 +425,42 @@ def parse_scaling(buf):
                     seg[term(s.at(f[2]))] = (s.at(f[0])._un('<f'), s.at(f[1])._un('<f'))
         blocks.append(seg)
     return blocks
+
+
+def compose_scaling(blocks):
+    """{term: (scale, centre)} over all the segments of a pipe. A term can be scaled by several
+    segments in turn: first its own scaling (UV, centring, Pareto, times its modifier), then, for
+    block scaling, 1/sqrt(K) with centre 0. Each segment computes (x - centre) * scale on the
+    previous one's output, so the whole is (x - C) * S with S the product of the scales and
+    C = c1 + c2 / s1 + c3 / (s1 s2) + ..."""
+    out = {}
+    for seg in blocks:
+        for t, (s, c) in seg.items():
+            if t not in out:
+                out[t] = (s, c)
+                continue
+            S, C = out[t]
+            out[t] = (S * s, C + c / S if S else C)
+    return out
+
+
+def parse_cvgroups(buf):
+    """ncCVgroups<N> (v11+), the model's cross-validation setting: 'method' (0 the writing
+    program's default, observations in turn; 3 by an observation ID), 'option' (2: the
+    observations with the same ID value in the same group), 'id' (the ID's place among the
+    dataset's IDs, -1 for none), 'requested' and 'groups' (the number of groups asked for and
+    obtained). Field meanings read from a project whose groups were also exported; None if absent."""
+    if not buf:
+        return None
+    r = Reader(buf)
+    r.raw()  # 'CVG', then its version
+    r.u16()
+    if buf[r.p:r.p + 2] not in (b'xA', b'zA'):
+        return None
+    f = r.fields()
+    fmt = {2: '<H', 4: '<i', 8: '<q'}
+    val = lambda k: struct.unpack_from(fmt[f[k][1] - f[k][0]], buf, f[k][0])[0] if k in f and f[k][1] - f[k][0] in fmt else None
+    return {'method': val(0), 'option': val(1), 'id': val(2), 'requested': val(3), 'groups': val(4)}
 
 
 def parse_transforms(buf):
@@ -643,7 +682,7 @@ def model_report(m, scaling, ws, var_by, transforms=None, qual=None):
             row['R2Y'] = (ssy[a - 1] - ssy[a]) / ssy[0]
             row['R2Y(cum)'] = 1 - ssy[a] / ssy[0]
         comps.append(row)
-    xs = ys = {t: v for seg in scaling for t, v in seg.items()}  # expanded terms get their own segment
+    xs = ys = compose_scaling(scaling)  # expanded terms get their own segment; block scaling a second one
     tr = transforms or {}  # transformed terms are named as such: their coefficients are per transformed unit
     name = lambda t: transform_label(term_name(t, var_by), tr[t]) if t in tr else term_name(t, var_by)
     xnames = [name(t) for t in m['xterms']]
@@ -1021,7 +1060,7 @@ def predict(m, scaling, transforms, cols, obs, w=None, sw0=None):
     Returns per observation: scores, fitted Y (data units), DModX (normalised), T2."""
     A, K = m['A'], len(m['xterms'])
     pls = m['type'] == 'PLS'
-    sc = {t: v for seg in scaling for t, v in seg.items()}
+    sc = compose_scaling(scaling)
     if not all(t in sc for t in m['xterms'] + m['yterms']):
         return None
     N = len(m['obs'])

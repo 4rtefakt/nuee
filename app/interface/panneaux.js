@@ -1,6 +1,6 @@
 // Views. Each draws one model result (or the project data) into a panel and is re-run when
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
-import { t, lire, ecrire } from './i18n.js';
+import { t, lire, ecrire, langueActuelle } from './i18n.js';
 import { el, fmt, icone } from './ui.js';
 
 export const PALETTES = {
@@ -351,7 +351,7 @@ function rendreResume(conteneur, ctx, p) {
   const fiche = el('div', { class: 'fiche' },
     el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, m.type), m.titre ? el('span', { class: 'doux' }, m.titre) : null),
     el('div', { class: 'fiche-chiffres' },
-      [['A', m.A], ['N', m.N], ['K', m.K], [t('groupes_vc'), m.G]].map(([k, v]) => el('span', {}, el('small', {}, k), ' ', el('b', {}, v))),
+      [['A', m.A], ['N', m.N], ['K', m.K], [t('groupes_vc'), m.vc_par ? `${m.G} (${m.vc_par})` : m.G]].map(([k, v]) => el('span', {}, el('small', {}, k), ' ', el('b', {}, v))),
       m.reglages && [].concat(m.reglages.spectres || []).length
         ? el('span', {}, el('small', {}, t('spectres')), ' ', el('b', {}, libelleSpectres(m.reglages.spectres))) : null,
       pls && m.RMSEE ? Object.entries(m.RMSEE).map(([y, v]) => el('span', {}, el('small', {}, `RMSEE ${y}`), ' ', el('b', {}, fmt(v, 4)))) : null,
@@ -1140,18 +1140,65 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
 }
 const COLONNES_MAX = 200;
 
-// Name of a transformation as the model dialog writes it ("log10:C2" is log10(x + C2)).
-export const libelleTransfo = (tr) => (!tr ? '' : tr.startsWith('log10:') ? `log10(x + ${tr.slice(6)})` : t('tr_' + tr));
+// Transformations as the model dialog writes them (moteur/R/nouveau.R, lire_transformation):
+// 'racine2', 'racine4', 'log10', 'log10:C2' (log10(x + C2)), 'type:C1:C2' for log10, ln, neglog
+// (-log10), exp, lineaire (C1·x + C2) and logit (ln((x - C1) / (C2 - x)), between the bounds C1
+// and C2), 'puissance:C1:C2:C3' for (C1·x + C2)^C3. 'autre': a type of a .usp file the engine
+// doesn't know.
+export const TYPES_TRANSFO = ['log10', 'ln', 'neglog', 'logit', 'exp', 'puissance', 'lineaire'];
+export function lireTransfo(code) {
+  if (!code) return null;
+  const nommees = { racine2: [1, 0, 0.5], racine4: [1, 0, 0.25] };
+  if (nommees[code]) return { type: 'puissance', c1: nommees[code][0], c2: nommees[code][1], c3: nommees[code][2] };
+  if (code === 'log10') return { type: 'log10', c1: 1, c2: 0 };
+  const [type, ...n] = String(code).split(':');
+  const x = n.map(Number);
+  if (!TYPES_TRANSFO.includes(type) || x.some((v) => !Number.isFinite(v))) return null;
+  if (type === 'puissance') return x.length === 1 ? { type, c1: 1, c2: 0, c3: x[0] } : x.length === 3 ? { type, c1: x[0], c2: x[1], c3: x[2] } : null;
+  if (type === 'log10' && x.length === 1) return { type, c1: 1, c2: x[0] };
+  return x.length === 2 ? { type, c1: x[0], c2: x[1] } : null;
+}
+// The code of a transformation, under its usual name when it has one ('' for none: x^1).
+export function codeTransfo(s) {
+  if (s.type === 'puissance' && s.c1 === 1 && s.c2 === 0) {
+    if (s.c3 === 1) return '';
+    if (s.c3 === 0.5) return 'racine2';
+    if (s.c3 === 0.25) return 'racine4';
+  }
+  if (s.type === 'log10' && s.c1 === 1) return s.c2 === 0 ? 'log10' : `log10:${s.c2}`;
+  return s.type === 'puissance' ? `puissance:${s.c1}:${s.c2}:${s.c3}` : `${s.type}:${s.c1}:${s.c2}`;
+}
+
+// Name of a transformation: its usual name, or its formula ("ln(2·x + 1)").
+export function libelleTransfo(tr) {
+  if (!tr) return '';
+  if (['racine2', 'racine4', 'log10', 'autre'].includes(tr)) return t('tr_' + tr);
+  const s = lireTransfo(tr);
+  if (!s) return tr;
+  const nb = (v) => String(+Number(v).toPrecision(6)).replace('.', langueActuelle() === 'fr' ? ',' : '.');
+  let a = s.c1 === 1 ? 'x' : s.c1 === -1 ? '−x' : `${nb(s.c1)}·x`;
+  if (s.c2 > 0) a += ` + ${nb(s.c2)}`;
+  if (s.c2 < 0) a += ` − ${nb(-s.c2)}`;
+  switch (s.type) {
+    case 'puissance': return s.c1 === 1 && s.c2 === 0 ? `x^${nb(s.c3)}` : `(${a})^${nb(s.c3)}`;
+    case 'neglog': return `−log10(${a})`;
+    case 'lineaire': return a;
+    case 'logit': return s.c1 === 0 ? `ln(x / (${nb(s.c2)} − x))` : `ln((x − ${nb(s.c1)}) / (${nb(s.c2)} − x))`;
+    default: return `${s.type}(${a})`;
+  }
+}
 
 // x transformed as in R (moteur/R/pretraitement.R, transformer), null where undefined.
 function transformer(x, tr) {
-  if (!tr) return x;
-  if (tr.startsWith('log10')) {
-    const c2 = tr.includes(':') ? +tr.split(':')[1] : 0;
-    return x.map((v) => (v === null || v + c2 <= 0 ? null : Math.log10(v + c2)));
-  }
-  const puissance = { racine2: 0.5, racine4: 0.25 }[tr];
-  return x.map((v) => (v === null || v < 0 ? null : v ** puissance));
+  const s = lireTransfo(tr);
+  if (!s) return x;
+  if (s.type === 'logit') return x.map((v) => (v === null || !(v > s.c1 && v < s.c2) ? null : Math.log((v - s.c1) / (s.c2 - v))));
+  const f = {
+    log10: (b) => (b > 0 ? Math.log10(b) : null), ln: (b) => (b > 0 ? Math.log(b) : null), neglog: (b) => (b > 0 ? -Math.log10(b) : null),
+    exp: (b) => (Number.isFinite(Math.exp(b)) ? Math.exp(b) : null), lineaire: (b) => b,
+    puissance: (b) => ((b < 0 && s.c3 !== Math.round(s.c3)) || (b === 0 && s.c3 < 0) ? null : b ** s.c3),
+  }[s.type];
+  return x.map((v) => (v === null ? null : f(s.c1 * v + s.c2)));
 }
 
 // Variable statistics of the workset, computed in R: Min/Max and skewness in red where a

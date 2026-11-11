@@ -3,7 +3,8 @@
 #
 # `definition` décrit le modèle : type ("PCA" ou "PLS"), observations retenues,
 # termes X et Y avec leur transformation et leur mise à l'échelle, nombre de composantes A,
-# nombre de groupes de validation croisée. C'est la forme des modèles d'un projet exporté.
+# groupes de validation croisée (cv_groups, et cv : groupes_definition). C'est la forme des
+# modèles d'un projet exporté.
 
 #   orienter : pour un modèle venant d'un fichier .usp, oriente chaque composante comme la
 #   solution enregistrée dans le fichier (le signe d'une composante est arbitraire ; ainsi
@@ -45,7 +46,7 @@ calculer_modele <- function(projet, definition, A = definition$A, G = definition
 
   modele <- c(list(
     type = definition$type, plsda = isTRUE(definition$plsda), opls = isTRUE(definition$opls), Ap = Ap,
-    A = ncol(res$T), N = nrow(X$E), K = ncol(X$E), G = G,
+    A = ncol(res$T), N = nrow(X$E), K = ncol(X$E), G = vc$G, vc_par = nom_groupes_vc(projet, definition),
     nom = definition$name %||% "", titre = definition$title %||% "",
     observations = obs, x = bx, y = by, X = X$E, MX = X$M, Y = if (pls) Y$E, MY = if (pls) Y$M), res)
   class(modele) <- "modele_nuee"
