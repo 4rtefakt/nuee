@@ -36,8 +36,12 @@ ajuster_lineaire <- function(donnees, termes, niveaux = 0, car1 = FALSE, methode
   correlation <- if (car1) nlme::corCAR1(form = stats::as.formula(paste("~ temps |", paste0("g", seq_len(niveaux), collapse = " / ")), env = baseenv()))
   essai <- function(reglages) tryCatch(nlme::lme(f, random = aleatoire, correlation = correlation, data = donnees, method = methode,
                                                  control = reglages), error = function(e) NULL)
-  essai(nlme::lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, returnObject = TRUE)) %||%
+  m <- essai(nlme::lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, returnObject = TRUE)) %||%
     essai(nlme::lmeControl(maxIter = 500, msMaxIter = 500, returnObject = TRUE))
+  # (la formule elle-même dans l'appel gardé, et non son nom : predict() et formula() de nlme
+  # 3.1-164 (Ubuntu 24.04) et d'avant réévaluent cet appel, où f n'existe plus)
+  if (!is.null(m)) m$call$fixed <- f
+  m
 }
 
 # AIC corrigé pour les petits échantillons (Hurvich et Tsai, 1989).

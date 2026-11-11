@@ -180,8 +180,9 @@ verifier(sprintf("GAMM binomial négatif (courbe, site aléatoire, effort) : AIC
          proche(mg6$resultat$AIC, AIC(ref), 1e-4) && mg6$resultat$courbes$edf > 2 && !is.na(mg6$vc$Q2) && mg6$vc$echecs == 0 && mg6$G == 8)
 refr <- mgcv::gam(stats::as.formula("compte ~ x2 + s(x1, k = 10) + s(site, bs = \"re\")", env = env), data = transform(tg, site = factor(site)),
                   family = mgcv::nb(), method = "REML", offset = log(effort))
+vcomp <- mgcv::gam.vcomp(refr)  # (une liste, ou la matrice seule selon la version de mgcv)
 verifier("GAMM : la variance du site = gam.vcomp() d'un ajustement en REML",
-         proche(mg6$resultat$variances$variance, mgcv::gam.vcomp(refr)$vc["s(site)", 1]^2, 1e-3))
+         proche(mg6$resultat$variances$variance, (if (is.matrix(vcomp)) vcomp else vcomp$vc)["s(site)", 1]^2, 1e-3))
 eg6 <- effets_regression(mg6)
 verifier("courbes d'effet : la courbe en x1, la droite en x2, avec leurs intervalles", length(eg6) == 2 && isTRUE(eg6[[1]]$courbe) &&
          all(eg6[[1]]$haut >= eg6[[1]]$bas) && length(eg6[[2]]$x) == 80)
