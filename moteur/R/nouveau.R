@@ -233,7 +233,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (length(spectres)) d$spectres <- spectres
   if (length(test)) d$test <- test
   if (length(vc$by) && !identical(as.character(vc$by), "order")) {
-    d$cv <- vc
+    d$groupes_vc <- vc
     groupes_definition(projet, d)  # (une erreur claire maintenant : un seul groupe, identifiant inconnu)
   }
   d
@@ -298,7 +298,7 @@ reglages_modele <- function(projet, d) {
        y = I(if (plsda) numeric(0) else simples(d$y) %||% numeric(0)), classe = if (plsda) d$classe else NULL,
        exclues = I(setdiff(tous, c(d$observations, d$test))), echelles = echelles,
        blocs = blocs, modificateurs = modificateurs,
-       transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d[["cv"]],
+       transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))),
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
 }

@@ -3,7 +3,7 @@
 #
 # `definition` décrit le modèle : type ("PCA" ou "PLS"), observations retenues,
 # termes X et Y avec leur transformation et leur mise à l'échelle, nombre de composantes A,
-# groupes de validation croisée (cv_groups, et cv : groupes_definition). C'est la forme des
+# groupes de validation croisée (cv_groups, et groupes_vc : groupes_definition). C'est la forme des
 # modèles d'un projet exporté.
 
 #   orienter : pour un modèle venant d'un fichier .usp, oriente chaque composante comme la

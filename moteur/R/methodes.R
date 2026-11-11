@@ -115,11 +115,12 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
     if (is.null(b)) next
     calcule <- b$bloc$type %in% c("UV", "Par", "Ctr", "none")
     blocs <- vapply(b$termes, function(t) { x <- t$scaling$block; if (length(x) && !is.na(x[1]) && nzchar(as.character(x[1]))) as.character(x[1]) else NA_character_ }, "")
+    K_tous <- table(blocs[!is.na(blocs)])  # (K compte tous les termes du bloc, comme facteurs_ponderation)
     blocs[!calcule] <- NA
     mods <- vapply(b$termes, function(t) as.numeric(t$scaling$modifier %||% 1), 0)
     mods[!calcule] <- 1
     if (any(!is.na(blocs))) {
-      K <- table(blocs[!is.na(blocs)])
+      K <- K_tous[unique(blocs[!is.na(blocs)])]
       nom_bloc <- ifelse(grepl("^[0-9]+$", names(K)), paste(if (fr) "bloc" else "block", names(K)), guillemets(names(K)))
       p2 <- c(p2, if (fr) sprintf("Les termes %s étaient répartis en %d bloc%s (%s) : le poids de chaque terme d'un bloc a été divisé par la racine carrée du nombre de termes du bloc, pour que chaque bloc pèse autant, quel que soit son nombre de termes (pondération par blocs).",
                                   b$nom, length(K), if (length(K) > 1) "s" else "", paste(sprintf("%s : %d terme%s", nom_bloc, K, ifelse(K > 1, "s", "")), collapse = " ; "))
@@ -162,7 +163,7 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
                    else sprintf(", which handles missing values (%s of the X values; Nelson et al., 1996)", pourcent(manquantes_x)))
   } else ""
   G <- m$G
-  par <- if (length(d[["cv"]]$by)) as.character(d[["cv"]]$by) else ""
+  par <- if (length(d$groupes_vc$by)) as.character(d$groupes_vc$by) else ""
   groupes <- if (par %in% c("id", "variable")) {
     if (fr) sprintf("%d groupes, un par valeur de %s (les observations de même valeur dans le même groupe)", G, guillemets(m$vc_par))
     else sprintf("%d groups, one per value of %s (observations with the same value in the same group)", G, guillemets(m$vc_par))

@@ -497,10 +497,8 @@ identifiants_secondaires <- function(p) {
   lapply(rangs, function(k) list(rang = k, nom = noms[k]))
 }
 
-# Le k-ième identifiant de chaque observation (NA s'il manque).
-identifiants_obs <- function(p, k) {
-  vapply(p$observations, function(o) if (length(o$ids) >= k) as.character(o$ids[[k]] %||% NA) else NA_character_, "")
-}
+# Le k-ième identifiant de chaque observation (NA s'il manque ; validation_croisee.R).
+identifiants_obs <- function(p, k) identifiants_observations(p, k, vapply(p$observations, function(o) as.numeric(o$uid), 0))
 
 valeurs_demande <- function(q) {
   p <- projet(q$projet)

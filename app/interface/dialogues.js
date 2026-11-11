@@ -110,12 +110,15 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       rendre();
     };
     const option = (v, n) => el('option', { value: v, selected: v === valeur }, n);
+    // a wide table (spectra): qualitative variables only, and the one chosen
+    const vars = p.variables.length <= 200 ? p.variables
+      : p.variables.filter((v) => v.qualitative || (st.vc && st.vc.by === 'variable' && v.uid === st.vc.variable));
     return el('div', { class: 'ligne' },
       el('select', { onchange: (e) => choisir(e.target.value) },
         option('ordre', t('vc_ordre')),
         vcFichier ? option('fichier', t('vc_fichier')) : null,
         ids.length ? el('optgroup', { label: t('vc_par_identifiant') }, ids.map((n) => option(`id:${n}`, n))) : null,
-        el('optgroup', { label: t('vc_par_variable') }, p.variables.map((v) => option(`var:${v.uid}`, v.nom)))),
+        vars.length ? el('optgroup', { label: t('vc_par_variable') }, vars.map((v) => option(`var:${v.uid}`, v.nom))) : null),
       st.vc ? null : el('input', { type: 'number', min: 2, max: 50, value: st.G, style: 'width:5em', title: t('vc_nombre'),
         oninput: (e) => { st.G = +e.target.value || 7; } }));
   };

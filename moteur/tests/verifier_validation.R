@@ -216,7 +216,7 @@ pi$observations <- Map(function(o, l) { o$ids <- c(as.character(o$ids), l); o },
 di <- definir_modele(pi, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = list(by = "id", id = "lot"))
 verifier("par identifiant : les mêmes groupes, le même Q2", identical(groupes_definition(pi, di), g) && isTRUE(all.equal(ajuster(pi, di)$q2cum, m$q2cum)))
 dg <- d
-dg$cv <- list(by = "groups", observations = rev(d$observations), groups = rev(10 * g))  # (numéros quelconques)
+dg$groupes_vc <- list(by = "groups", observations = rev(d$observations), groups = rev(10 * g))  # (numéros quelconques)
 verifier("donnés tels quels (dans un autre ordre) : les mêmes groupes, le même Q2", identical(groupes_definition(p, dg), g) && isTRUE(all.equal(ajuster(p, dg)$q2cum, m$q2cum)))
 dg$observations <- c(d$observations, 999)
 e <- tryCatch({ groupes_definition(p, dg); "" }, error = function(e) conditionMessage(e))
@@ -232,6 +232,15 @@ verifier(sprintf("un seul verger parmi les observations : « %s »", substr(e, 1
 e <- tryCatch({ definir_modele(p, "PLS", x = complets, y = uid("note_gout"), vc = list(by = "id", id = "site")); "" }, error = function(e) conditionMessage(e))
 verifier(sprintf("un identifiant absent du projet : « %s »", e), grepl("pas d'identifiant « site »", e))
 verifier("sans réglage (ou « order ») : à tour de rôle en G groupes", identical(groupes_definition(p, definir_modele(p, "PCA", x = complets, G = 5)), groupes_validation(120, 5)))
+mc <- modeles_classe(p, definir_modele(p, "PCA", x = complets, A = 2, vc = list(by = "variable", variable = uid("verger"))), uid("variete"))
+verifier("modèles de classe groupés par verger : une classe d'un seul verger est validée à tour de rôle, les autres par verger",
+         length(mc) == 4 && all(vapply(mc, function(e) {
+           un_seul <- length(unique(colonne(p, uid("verger"), e$observations))) == 1
+           if (un_seul) is.null(e$groupes_vc) && ajuster(p, e)$G == 7 else identical(e$groupes_vc$by, "variable")
+         }, TRUE)))
+mc <- modeles_classe(p, definir_modele(p, "PCA", x = complets, A = 2, vc = list(by = "variable", variable = uid("variete"))), uid("variete"))
+verifier("groupés par la variable des classes : chaque classe n'a qu'une valeur, elle est validée à tour de rôle (au lieu d'une erreur)",
+         length(mc) == 4 && all(vapply(mc, function(e) is.null(e$groupes_vc) && ajuster(p, e)$G == 7, TRUE)))
 
 cat("Pondération par blocs et modificateurs : poids UV × modificateur × 1/racine(K)\n")
 blocs <- stats::setNames(c("taille", "taille", "gout", "gout", "gout"), as.character(complets[1:5]))
@@ -250,7 +259,7 @@ r <- reglages_modele(p, db)
 verifier("Nouveau modèle depuis celui-ci garde les blocs et les modificateurs",
          identical(unlist(r$blocs), blocs) && isTRUE(all.equal(unlist(r$modificateurs), stats::setNames(c(0.5, 3), as.character(complets[c(4, 11)])))))
 r <- reglages_modele(p, d)
-verifier("… et les groupes de la validation croisée", identical(r$vc, d$cv))
+verifier("… et les groupes de la validation croisée", identical(r$vc, d$groupes_vc))
 dq <- definir_modele(p, "PLS-DA", x = uid(c("culture", "poids")), classe = uid("variete"), A = 1, blocs = stats::setNames("b", as.character(uid("culture"))))
 verifier("une variable qualitative dans un bloc : chacune de ses catégories compte (1/racine(2) pour 2)",
          isTRUE(all.equal(ajuster(p, dq)$x$facteur, c(1 / sqrt(2), 1 / sqrt(2), 1))))

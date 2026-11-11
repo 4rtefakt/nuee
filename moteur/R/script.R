@@ -163,7 +163,7 @@ plan_modele <- function(projet, d, m, tab) {
        type = if (opls) "opls" else if (pls) "pls" else "acp", plsda = isTRUE(m$plsda),
        A = A, N = N, K = K, G = m$G, Ap = if (opls) m$Ap %||% 1 else 0, M = if (pls) ncol(m$Y) else 0,
        groupes_vc = if (length(groupes) && !identical(groupes, as.integer(groupes_validation(N, m$G)))) groupes,
-       vc_par = m$vc_par %||% "", vc_fichier = identical(as.character(d[["cv"]]$by), "groups"),
+       vc_par = m$vc_par %||% "", vc_fichier = identical(as.character(d$groupes_vc$by), "groups"),
        rangs = unname(tab$rangs[as.character(m$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
        x = x$termes, y = y$termes, spectres = plan_spectres(projet, d, x$termes),

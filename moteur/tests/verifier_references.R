@@ -86,7 +86,7 @@ verifier_fichier <- function(f) {
     base$R2Y <- if (!is.null(comp$R2Ycum)) max(abs(comp$R2Ycum - val("R2Y(cum)"))) else NA
     base$Q2 <- max(abs(comp$Q2 - val("Q2")))
     base$Q2cum <- max(abs(comp$Q2cum - val("Q2(cum)")))
-    base$groupes_vc <- if (length(d[["cv"]]$by)) paste(d[["cv"]]$by, d[["cv"]]$id %||% "") else "ordre"
+    base$groupes_vc <- if (length(d$groupes_vc$by)) paste(d$groupes_vc$by, d$groupes_vc$id %||% "") else "ordre"
     if (identical(d$type, "PLS") && !isTRUE(d$opls)) {
       base$Q2cum_fichier <- max(abs(q2_comme_le_fichier(r, groupes_definition(p, d)) - val("Q2(cum)")))
     }

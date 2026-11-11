@@ -197,19 +197,41 @@ def partition(labels):
     return sorted(groups.values())
 
 
+def setting_id(m, cvg, obs_by, names, datasets):
+    """The ID named by a "by observation ID" setting: its place among the IDs of the model's
+    dataset, the 1st and 2nd included (checked against the stored groups of 128 models)."""
+    if not cvg or cvg['method'] != 3 or cvg['id'] is None or cvg['id'] < 0:
+        return None
+    ds = next((d for d in datasets if set(m['obs']) <= set(d['observations'])), None)
+    if not ds:
+        return None
+    rows = [obs_by[o]['ids'] for o in ds['observations'] if o in obs_by]
+    order = [0, 1] + [j for j in range(2, len(names)) if not names[j].startswith('$')
+                      and any(j < len(i) and i[j] for i in rows)]
+    return order[cvg['id']] if cvg['id'] < len(order) else None
+
+
 def cross_validation(m, cvg, obs_by, obs_names, datasets):
     """The model's cross-validation groups, from the group of each observation stored with it
     (v11+; for v10 files, the writing program's default of 7 groups, with which their stored Q2
     reproduce):
     - observations in turn: {'cv_groups': G}, the engine's default;
-    - grouped by an observation ID (same value, same group): {'cv': {'by': 'id', 'id': name}},
-      when that ID's values over the model's observations give exactly the stored groups;
-    - otherwise the stored groups themselves: {'cv': {'by': 'groups', 'observations', 'groups'}}."""
+    - grouped by an observation ID (same value, same group): {'groupes_vc': {'by': 'id', 'id': name}},
+      when that ID's values over the model's observations give exactly the stored groups, or,
+      for a model not fitted yet, when its setting names that ID;
+    - otherwise the stored groups themselves: {'groupes_vc': {'by': 'groups', 'observations', 'groups'}}."""
     g = m.get('cvgroups')
     N = len(m['obs'])
+    names = [str(x) for x in obs_names]
+    # an ID the engine finds by its name: the first of that name, not internal ($ClassID...)
+    usable = [j for j in range(len(names)) if (j == 0 or (names[j] and not names[j].startswith('$')))
+              and names.index(names[j]) == j]
     labels = [x + 1 for x in g] if g and len(g) == N and m['T'] else []
     G = len(set(labels))
-    if G < 2:  # not fitted yet, or fitted without cross-validation (no Q2 stored): the default
+    if G < 2:  # not fitted yet, or fitted without cross-validation (no Q2 stored)
+        j = setting_id(m, cvg, obs_by, names, datasets) if not m['T'] and cvg and cvg['option'] == 2 else None
+        if j in usable:
+            return {'cv_groups': 7, 'groupes_vc': {'by': 'id', 'id': names[j]}}
         return {'cv_groups': 7}
     stored = partition(labels)
     for n in ((cvg or {}).get('requested'), G):  # in turn: the number asked for (more than N is N groups)
@@ -218,27 +240,14 @@ def cross_validation(m, cvg, obs_by, obs_names, datasets):
     out = {'cv_groups': G}
     if cvg and cvg['method'] == 3:
         ids = [obs_by[o]['ids'] if o in obs_by else [] for o in m['obs']]
-        names = [str(x) for x in obs_names]
         column = lambda j: [i[j] if j < len(i) else '' for i in ids]
-        # an ID the engine finds by its name: the first of that name, not internal ($ClassID...)
-        usable = [j for j in range(len(names)) if (j == 0 or (names[j] and not names[j].startswith('$')))
-                  and names.index(names[j]) == j]
         found = [j for j in usable if partition(column(j)) == stored]
         if found:
-            # two IDs can group alike (a site's name and its code): the setting names one of
-            # them by its place among the IDs of the model's dataset, the 1st and 2nd included
-            # (verified on 128 models)
-            pick = found[0]
-            ds = next((d for d in datasets if set(m['obs']) <= set(d['observations'])), None)
-            if ds and cvg['id'] is not None and cvg['id'] >= 0:
-                rows = [obs_by[o]['ids'] for o in ds['observations'] if o in obs_by]
-                order = [0, 1] + [j for j in range(2, len(names)) if not names[j].startswith('$')
-                                  and any(j < len(i) and i[j] for i in rows)]
-                if cvg['id'] < len(order) and order[cvg['id']] in found:
-                    pick = order[cvg['id']]
-            out['cv'] = {'by': 'id', 'id': names[pick]}
+            # two IDs can group alike (a site's name and its code): the one the setting names
+            j = setting_id(m, cvg, obs_by, names, datasets)
+            out['groupes_vc'] = {'by': 'id', 'id': names[j if j in found else found[0]]}
             return out
-    out['cv'] = {'by': 'groups', 'observations': list(m['obs']), 'groups': labels}
+    out['groupes_vc'] = {'by': 'groups', 'observations': list(m['obs']), 'groups': labels}
     return out
 
 

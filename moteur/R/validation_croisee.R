@@ -32,7 +32,7 @@
 groupes_validation <- function(n, G = 7) ((seq_len(n) - 1) %% G) + 1
 
 # Le groupe de validation croisée de chaque observation du modèle `d` (d$observations), d'après
-# d[["cv"]] :
+# d$groupes_vc :
 #   - absent : à tour de rôle en G groupes (d$cv_groups, 7 par défaut) ;
 #   - list(by = "id", id = nom) : un groupe par valeur de cet identifiant des observations
 #     (« site », « annee »... : les observations de même valeur ensemble) ;
@@ -44,7 +44,7 @@ groupes_validation <- function(n, G = 7) ((seq_len(n) - 1) %% G) + 1
 # des valeurs (croissant pour des nombres, alphabétique pour du texte).
 groupes_definition <- function(projet, d, G = d$cv_groups %||% 7) {
   obs <- d$observations
-  vc <- d[["cv"]]  # [[ ]] : d$cv prendrait cv_groups quand cv manque
+  vc <- d$groupes_vc
   par <- if (length(vc$by)) as.character(vc$by) else ""
   if (!nzchar(par) || identical(par, "order")) {
     if (!isTRUE(G >= 2)) stop(traduire("La validation croisée demande au moins deux groupes.", "Cross-validation needs at least two groups."), call. = FALSE)
@@ -94,7 +94,7 @@ identifiants_observations <- function(projet, k, obs) {
 # Ce qui fait les groupes de la validation croisée de `d`, en un mot (pour les messages et
 # l'interface) : le nom de l'identifiant ou de la variable ; "" à tour de rôle.
 nom_groupes_vc <- function(projet, d) {
-  vc <- d[["cv"]]  # [[ ]] : d$cv prendrait cv_groups quand cv manque
+  vc <- d$groupes_vc
   switch(if (length(vc$by)) as.character(vc$by) else "",
          id = as.character(vc$id),
          variable = tryCatch(as.character(variable_du_projet(projet, vc$variable)$ids[1]), error = function(e) as.character(vc$variable)),
