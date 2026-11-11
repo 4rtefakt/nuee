@@ -364,6 +364,12 @@ script_regression <- function(s, langue) {
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
        "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "jeu de test" = colonnes(n("test"), 2:6))
 }
+# Les blocs de code d'un rapport ont chacun leur nom : knitr refuse d'en compiler deux du même nom
+# (vérifié ici même sans knitr).
+etiquettes_uniques <- function(texte) {
+  etiquettes <- sub("^```\\{r ([^,} ]+).*$", "\\1", grep("^```\\{r [^,} ]", texte, value = TRUE))
+  !anyDuplicated(etiquettes)
+}
 # Écrit le script d'une régression, le lance dans une session neuve et compare ses résultats à ceux du moteur.
 essayer_regression <- function(nom, p, d, langue = "fr", ...) {
   m <- ajuster(p, d)
@@ -450,6 +456,7 @@ for (k in 1:2) {
   r <- ecrire_script(pr, d, file.path(ici, paste0(d$name, ".", ext)), "moteur", version = "essai", langue = c("fr", "en")[k])
   texte <- readLines(r$script, encoding = "UTF-8")
   verifier(sprintf("%s.%s : méthodes, code du modèle, coefficients, références", d$name, ext), texte[1] == "---" && any(grepl("^## (Méthodes|Methods)", texte)) &&
+           etiquettes_uniques(texte) &&
            any(grepl("^```\\{r coefficients\\}", texte)) && any(grepl(c("^- .*Pinheiro", "^- .*Wood")[k], texte)) && is.null(r$ecart))
   if (requireNamespace("knitr", quietly = TRUE)) {
     compiler <- file.path(dossier, "compiler.R")
@@ -481,6 +488,7 @@ for (i in seq_along(p$models)) {
                      donnees = if (i > 2) "csv" else "script")
   texte <- readLines(r$script, encoding = "UTF-8")
   verifier(sprintf("%s.%s : en-tête, méthodes, code du modèle, références", d$name, ext), texte[1] == "---" && any(grepl("^## (Méthodes|Methods)", texte)) &&
+           etiquettes_uniques(texte) &&
            any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^- .*Wold|^- .*Barker|^- .*Trygg", texte)) && is.null(r$ecart))
   if (requireNamespace("knitr", quietly = TRUE)) {  # compilé avec knitr dans une session neuve (sans pandoc : en Markdown)
     compiler <- file.path(dossier, "compiler.R")

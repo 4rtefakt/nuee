@@ -2213,7 +2213,8 @@ lignes_rapport <- function(format, pl, langue, methodes, fonctions, code_donnees
       bloc("criteres", kable("t(criteres)", 2)),
       bloc("qualite", kable("t(c(r2, Q2 = vc$Q2, RMSEcv = vc$RMSEcv))", 3)),
       if (length(pl$niveaux)) bloc("variances", kable("variances", 4)),
-      if (length(pl$lisses)) bloc("courbes", kable("courbes", 3)),
+      # (« courbes » est le bloc de leurs graphiques : knitr refuse deux blocs du même nom)
+      if (length(pl$lisses)) bloc("courbes-edf", kable("courbes", 3)),
       graphiques,
       if (test) bloc("test", kable("test", 3)))
   } else {
