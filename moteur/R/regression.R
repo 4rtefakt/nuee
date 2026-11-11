@@ -469,6 +469,55 @@ predire_observations_regression <- function(projet, m, d, observations, effort_a
   out
 }
 
+# Les observations d'une régression : Y observé, ajusté (et par les effets fixes seuls), prédit
+# en validation croisée, résidu standardisé et son quantile normal, levier et distance de Cook
+# (lm), groupes des effets aléatoires et de la validation croisée.
+observations_regression <- function(projet, m) {
+  r <- m$resultat
+  y <- m$y$noms
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs[[paste(y, "observé")]] <- m$donnees$y
+  obs[[paste(y, "ajusté")]] <- r$ajuste
+  if (!is.null(r$ajuste_fixe)) obs[[paste(y, "ajusté (effets fixes)")]] <- r$ajuste_fixe
+  obs[[paste(y, "prédit (VC)")]] <- m$vc$prediction
+  obs$residu <- r$residus
+  ok <- !is.na(r$residus)  # (la droite de Henry : le quantile de la loi normale de chaque résidu, positions de Blom)
+  obs$quantile_normal <- NA_real_
+  obs$quantile_normal[ok] <- stats::qnorm((rank(r$residus[ok]) - 0.375) / (sum(ok) + 0.25))
+  if (!is.null(r$levier)) {
+    obs$levier <- r$levier
+    obs$cook <- r$cook
+  }
+  for (l in seq_along(m$niveaux)) obs[[m$niveaux[l]]] <- as.character(m$donnees[[paste0("g", l)]])
+  obs$groupe_vc <- m$vc$groupe
+  obs
+}
+
+# Les variances des effets aléatoires, nommées par leur groupement (nlme : avec la variance
+# résiduelle ; mgcv : les effets aléatoires seuls), ou NULL.
+variances_regression <- function(m) {
+  v <- m$resultat$variances
+  if (!is.null(v)) v$composante <- c(m$niveaux, traduire("résiduelle", "residual"))[seq_len(nrow(v))]
+  v
+}
+
+# Les résultats d'une régression en tableaux (formats.R : tables_resultats, pour Exporter) :
+# observations, coefficients, qualité de l'ajustement (R2, Q2, AIC...), effets aléatoires et
+# courbes s'il y en a.
+tables_regression <- function(projet, m) {
+  r <- m$resultat
+  obs <- observations_regression(projet, m)
+  obs$uid <- NULL
+  names(obs)[names(obs) == "nom"] <- "Observation"
+  qualite <- c(list(N = m$N), r$r2, list(Q2 = m$vc$Q2, RMSEE = sqrt(mean((m$donnees$y - r$ajuste)^2)), RMSEcv = m$vc$RMSEcv,
+                                        AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres))
+  qualite <- as.data.frame(lapply(qualite, function(v) if (is.null(v)) NA_real_ else v), check.names = FALSE)
+  tables <- list(observations = obs, coefficients = r$coefficients, qualite = qualite)
+  if (!is.null(r$variances)) tables$effets_aleatoires <- variances_regression(m)
+  if (!is.null(r$courbes)) tables$courbes <- r$courbes
+  tables
+}
+
 # L'apport de chaque groupe de termes du modèle (son bloc, sinon sa variable), calculé à la
 # demande : retrait_groupes sur les données et l'ajustement en ML du modèle.
 apport_groupes <- function(m) {

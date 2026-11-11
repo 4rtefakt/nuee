@@ -318,6 +318,8 @@ async function principal() {
         && lm.signature === lmm.signature, 'modèle mixte validé par verger, même ensemble AIC que la régression');
       const ap = await api('apports', { modele: lmm.id });
       verifier([].concat(ap.apports.groupe).length === 2 && [].concat(ap.apports.delta_aic).every((d) => d !== null), 'apport des variables (AIC)');
+      const ex = await api('exporter', { modele: lmm.id, chemin: path.join(dossier, 'R2.csv') });
+      verifier(ex.chemins.length === 4 && ex.chemins.every((c) => fs.existsSync(c)), 'exporter les résultats d’une régression (un fichier par tableau)');
       const tm = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
       verifier([].concat(tm.paragraphes).some((x) => /linear mixed model/.test(x)) && [].concat(tm.references).some((x) => /nlme/.test(x)), 'texte des méthodes d’un modèle mixte');
       const glm = await api('ajuster', { projet: e.id, type: 'GLM', x: [v('sucre')], y: [v('stockage')], echelle: 'none', nom: 'R3', famille: 'poisson' });

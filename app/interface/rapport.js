@@ -4,6 +4,7 @@
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
 import { VUES } from './panneaux.js';
+import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
 const HAUTEUR = 580;
@@ -27,11 +28,24 @@ const PARTIES = [
   { cle: 'liste_vars', tableau: tableauVariables },
 ];
 
+// A regression's parts (moteur/R/regression.R): its summary and coefficients as tables, its plots
+// as in their panels. `variantes`: one plot per setting of the view (each term's effect; the
+// residuals against the fitted values, then on a normal Q-Q plot).
+const PARTIES_REGRESSION = [
+  { cle: 'resume', defaut: true, tableau: tableauRegression },
+  { cle: 'coefficients', vue: 'coefficients', defaut: true, tableau: tableauCoefficientsRegression },
+  { cle: 'effets', vue: 'effets', defaut: true, variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme })) },
+  { cle: 'obspred', vue: 'obspred', defaut: true },
+  { cle: 'residus', vue: 'residus', defaut: true, variantes: async () => [{ mode: 'ajustes' }, { mode: 'qq' }] },
+  { cle: 'apports', vue: 'apports' },
+];
+
 export function dialogueRapport(app, id) {
   const m = app.modele(id);
   if (!m) return;
   const pls = m.type !== 'PCA';
-  const parties = PARTIES.filter((x) => (!x.pls || pls) && (!x.plsda || /-DA$/.test(m.type)) && (!x.min || m.A >= x.min) && (!x.opls || m.opls));
+  const parties = m.regression ? PARTIES_REGRESSION
+    : PARTIES.filter((x) => (!x.pls || pls) && (!x.plsda || /-DA$/.test(m.type)) && (!x.min || m.A >= x.min) && (!x.opls || m.opls));
   const choix = new Set(parties.filter((x) => x.defaut).map((x) => x.cle));
   const st = { titre: `${m.nom}${m.titre ? ' — ' + m.titre : ''}`, commentaire: '', format: 'pdf' };
   const contenu = el('div', { class: 'dialogue-rapport' },
@@ -98,19 +112,22 @@ async function contenuRapport(app, m, parties, st) {
     blocs.push({ titre: t(x.cle), niveau: 1 });
     if (x.tableau) blocs.push(...x.tableau(m));
     if (x.vue) {
-      const image = await imageVue(app, x.vue, m);
-      blocs.push(image ? { image, largeur: LARGEUR, hauteur: HAUTEUR } : { texte: t('rapport_graphique_absent') });
+      for (const variante of x.variantes ? await x.variantes(m) : [{}]) {
+        const image = await imageVue(app, x.vue, m, variante);
+        blocs.push(image ? { image, largeur: LARGEUR, hauteur: HAUTEUR } : { texte: t('rapport_graphique_absent') });
+      }
     }
   }
   return blocs;
 }
 
-// A view drawn off screen with the settings of its open panel, if any, then turned into a PNG.
-async function imageVue(app, vue, m) {
+// A view drawn off screen with the settings of its open panel, if any (and `variante`'s), then
+// turned into a PNG.
+async function imageVue(app, vue, m, variante = {}) {
   const hote = el('div', { class: 'panneau', style: `position:fixed;left:-30000px;top:0;width:${LARGEUR}px;height:${HAUTEUR + 60}px` });
   document.body.append(hote);
   let graphe = null;
-  const loc = { ...(app.locVue(vue, m.id) || {}) };
+  const loc = { ...(app.locVue(vue, m.id) || {}), ...variante };
   try {
     await VUES[vue].rendre(hote, app.contexteHorsEcran(loc, (div) => { graphe = div; }), { modele: m.id, projet: m.projet }, loc);
     if (!graphe) return null;
@@ -125,7 +142,7 @@ async function imageVue(app, vue, m) {
 }
 
 const nombre = (v, d = 4) => (v === null || v === undefined ? '' : typeof v === 'number' ? fmt(v, d) : String(v));
-const valeurP = (x) => (x === null || x === undefined ? '' : x < 0.001 ? Number(x).toExponential(2) : fmt(x, 4));
+const valeurP = (x) => (x === null || x === undefined ? '' : x === 0 ? '< 1e-16' : x < 0.001 ? Number(x).toExponential(2) : fmt(x, 4));
 
 function tableauComposantes(m) {
   const c = m.composantes;
@@ -138,6 +155,52 @@ function tableauComposantes(m) {
   if (m.classification) infos.push(`${t('bien_classes_vc')} : ${fmt(100 * m.classification.vc.global, 1)} %`);
   return [...infos.map((texte) => ({ texte })),
     { entetes: [t('comp'), ...cols.map(([, n]) => n)], lignes: c.composante.map((a, i) => [String(a), ...cols.map(([k]) => nombre(c[k][i], 3))]) }];
+}
+
+// A regression's summary: its kind, distribution and fit statistics, then its random effects,
+// curves and notes, as in its Summary panel.
+function tableauRegression(m) {
+  const q = m.qualite || {};
+  const y = m.noms_y[0];
+  const infos = [`${t('type_' + m.type.toLowerCase())} · N = ${m.N} · ${t('nb_termes')} ${m.K} · ${t('groupes_vc')} ${m.G}${m.vc_par ? ` (${m.vc_par})` : ''}`];
+  if (['GLM', 'GAM'].includes(m.type) && m.famille) {
+    infos.push([`${t('loi')} : ${t('famille_' + m.famille)}`, `${t('lien')} : ${m.lien}`,
+      m.parametre_loi ? `${m.parametre_loi.nom === 'theta' ? 'θ' : 'p'} = ${fmt(m.parametre_loi.valeur, 3)}` : '',
+      m.decalage ? `${t('decalage')} : log(${m.decalage})` : ''].filter(Boolean).join(' · '));
+  }
+  const stats = (q.marginal !== undefined ? [[t('r2_marginal'), q.marginal], [t('r2_conditionnel'), q.conditionnel]]
+    : q.deviance_expliquee !== undefined ? [[t('r2_ajuste'), q.r2_ajuste], [t('deviance_expliquee'), q.deviance_expliquee === null ? null : `${fmt(100 * q.deviance_expliquee, 1)} %`]]
+      : [['R2', q.r2], [t('r2_ajuste'), q.r2_ajuste]])
+    .concat([['Q2', q.Q2], ['RMSEE', m.RMSEE && m.RMSEE[y]], ['RMSEcv', q.RMSEcv], ['AIC', q.AIC], ['AICc', q.AICc], ['BIC', q.BIC], ['logLik', q.logLik], [t('parametres'), q.parametres]]);
+  const blocs = [...infos.map((texte) => ({ texte })), { entetes: stats.map(([n]) => n), lignes: [stats.map(([, v]) => nombre(v, 3))] }];
+  const v = m.variances;
+  if (v) {
+    const variances = [].concat(v.variance);
+    blocs.push({ entetes: [t('effet_aleatoire'), t('variance'), t('ecart_type')],
+      lignes: [].concat(v.composante).map((c, i) => [c, nombre(variances[i]), nombre(Math.sqrt(variances[i]))]) });
+  }
+  const cb = m.courbes;
+  if (cb) {
+    blocs.push({ entetes: [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'],
+      lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]) });
+  }
+  const retires = [].concat(m.termes_retires || []);
+  return blocs.concat([m.phi !== null && m.phi !== undefined ? t('phi_note', { phi: fmt(m.phi, 3), temps: m.temps }) : '',
+    m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
+    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : ''].filter(Boolean).map((texte) => ({ texte })));
+}
+
+// A regression's coefficients, as in its Coefficients panel (exp() of them with a log or logit link).
+function tableauCoefficientsRegression(m) {
+  const c = m.coefficients_regression;
+  const col = (k) => [].concat(c[k]);
+  const exp = ['log', 'logit'].includes(m.lien);
+  const est = col('estimation');
+  const [bas, haut] = [col('bas'), col('haut')];
+  return [{ entetes: [t('terme'), t('estimation'), t('erreur_type'), t('ddl'), 't', 'p', t('ic_bas'), t('ic_haut')]
+    .concat(exp ? [t(m.lien === 'logit' ? 'rapport_cotes' : 'effet_multiplicatif'), t('ic_bas'), t('ic_haut')] : []),
+  lignes: col('terme').map((n, i) => [n, nombre(est[i]), nombre(col('erreur_type')[i]), nombre(col('ddl')[i], 0), nombre(col('t')[i], 3), valeurP(col('p')[i]),
+    nombre(bas[i]), nombre(haut[i])].concat(exp ? [nombre(Math.exp(est[i])), nombre(Math.exp(bas[i])), nombre(Math.exp(haut[i]))] : [])) }];
 }
 
 function tableauCVANOVA(m) {

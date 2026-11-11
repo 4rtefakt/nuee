@@ -508,7 +508,11 @@ B...), et seulement celles dont les vraisemblances se comparent : des modèles d
 binomiaux négatifs des mêmes comptages, mais pas un modèle normal de ces comptages ; des
 modèles de Tweedie entre eux ; des GLMM et des GAMM (la vraisemblance conditionnelle de mgcv)
 entre eux.
-Pas encore pour les régressions : l'export vers R et le rapport.
+Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
+résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
+un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
+chaque terme, observé / prédit et les résidus.
+Pas encore pour les régressions : l'export vers R.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------

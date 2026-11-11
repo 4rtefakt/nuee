@@ -477,7 +477,11 @@ response on the same observations only (an "AIC set", lettered A, B...), and onl
 likelihoods compare: Poisson and negative binomial models of the same counts, but not a normal
 model of them; Tweedie models with each other; GLMMs and GAMMs (mgcv's conditional likelihood)
 with each other.
-Not yet for regressions: export to R and the model report.
+File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
+the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
+Model report: the summary and the coefficients, each term's effect, observed / predicted and
+the residuals.
+Not yet for regressions: export to R.
 
 Class models and the Coomans plot
 ---------------------------------

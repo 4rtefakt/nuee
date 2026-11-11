@@ -356,7 +356,7 @@ ajuster_et_garder <- function(p, d) {
 
 # Les demandes qui supposent des composantes et des scores : refusées pour une régression
 # (regression.R), avant d'arriver à un code qui ne les trouverait pas.
-SANS_REGRESSION <- c("hca", "permutations", "exporter", "scores_en_variables",
+SANS_REGRESSION <- c("hca", "permutations", "scores_en_variables",
                      "script_r", "appartenance", "contributions", "spectres", "biplot", "ipls")
 
 # Ce que l'interface reçoit d'une régression : comme resultat_modele pour ce qui est commun
@@ -369,24 +369,8 @@ resultat_regression <- function(id) {
   d <- e$definition
   r <- m$resultat
   y <- m$y$noms
-  obs <- data.frame(uid = m$observations, nom = unname(p$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
-  obs[[paste(y, "observé")]] <- m$donnees$y
-  obs[[paste(y, "ajusté")]] <- r$ajuste
-  if (!is.null(r$ajuste_fixe)) obs[[paste(y, "ajusté (effets fixes)")]] <- r$ajuste_fixe
-  obs[[paste(y, "prédit (VC)")]] <- m$vc$prediction
-  obs$residu <- r$residus
-  ok <- !is.na(r$residus)  # (la droite de Henry : le quantile de la loi normale de chaque résidu, positions de Blom)
-  obs$quantile_normal <- NA_real_
-  obs$quantile_normal[ok] <- stats::qnorm((rank(r$residus[ok]) - 0.375) / (sum(ok) + 0.25))
-  if (!is.null(r$levier)) {
-    obs$levier <- r$levier
-    obs$cook <- r$cook
-  }
-  for (l in seq_along(m$niveaux)) obs[[m$niveaux[l]]] <- as.character(m$donnees[[paste0("g", l)]])
-  obs$groupe_vc <- m$vc$groupe
-  variances <- r$variances
-  # (nlme : les effets aléatoires et la variance résiduelle ; mgcv : les effets aléatoires seuls)
-  if (!is.null(variances)) variances$composante <- c(m$niveaux, traduire("résiduelle", "residual"))[seq_len(nrow(variances))]
+  obs <- observations_regression(p, m)
+  variances <- variances_regression(m)
   list(id = id, projet = p$id, nom = m$nom, titre = m$titre, type = m$type, regression = TRUE, opls = FALSE, Ap = 0, A = 0,
        N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
        coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),

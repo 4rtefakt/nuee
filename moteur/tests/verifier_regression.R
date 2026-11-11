@@ -244,6 +244,11 @@ nd6 <- transform(tg[1:5, ], site = factor(tg$site[1], levels = sort(unique(tg$si
 verifier("GAMM : prédit sans l'effet aléatoire, comme predict.gam(exclude = \"s(site)\"), l'effort compris",
          proche(pg6[["compte prédit"]], exp(as.vector(predict(refr, nd6, type = "link", exclude = "s(site)")) + log(tg$effort[1:5])), 1e-4))
 unlink(dossier, recursive = TRUE)
+xr3 <- tables_resultats(p, m3)
+xg6 <- tables_resultats(pg, mg6)
+verifier("Exporter : observations, coefficients, qualité, effets aléatoires (et les courbes d'un GAMM)",
+         identical(names(xr3), c("observations", "coefficients", "qualite", "effets_aleatoires")) && nrow(xr3$observations) == m3$N &&
+           proche(xr3$qualite$AIC, m3$resultat$AIC) && identical(names(xg6), c("observations", "coefficients", "qualite", "effets_aleatoires", "courbes")))
 
 cat("Formule R\n")
 reglees <- function(projet, r, ...) definir_modele(projet, r$type, x = r$x, y = r$y, echelle = "none", transformations = unlist(r$transformations),
