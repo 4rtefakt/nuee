@@ -72,7 +72,9 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 
 Chaque changement est vérifié sur GitHub avec le `.deb` installé sous Ubuntu 22.04 et 24.04
-et Debian 12, avec leur propre R (4.1 à 4.3).
+et Debian 12, avec leur propre R (4.1 à 4.3). Avec un R plus ancien que 4.4, comme ceux-ci, les
+fichiers R (`.rds`, `.RData`) ne s'ouvrent pas, car en lire un pourrait exécuter du code
+(CVE-2024-27322) : enregistrez le tableau en CSV ou en Excel.
 
 Les projets `.usp` demandent `python3`. Nuée cherche `Rscript` dans le `PATH`, puis dans
 `/usr/local/bin`, `/usr/bin` et `/opt/R/<version>/bin` ; lancez-le avec

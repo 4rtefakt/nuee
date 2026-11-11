@@ -70,7 +70,9 @@ libraries, so it can't be carried along as on Windows).
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 
 Every change is checked on GitHub with the `.deb` installed on Ubuntu 22.04 and 24.04 and
-Debian 12, with their own R (4.1 to 4.3).
+Debian 12, with their own R (4.1 to 4.3). With an R older than 4.4, such as these, R files
+(`.rds`, `.RData`) don't open, because reading one could run code (CVE-2024-27322): save the
+table as CSV or Excel instead.
 
 Opening `.usp` projects needs `python3`. Nuée looks for `Rscript` on the `PATH`, then in
 `/usr/local/bin`, `/usr/bin` and `/opt/R/<version>/bin`; start it with
