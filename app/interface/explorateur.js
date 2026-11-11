@@ -95,6 +95,7 @@ export function rendreExplorateur(conteneur, app) {
       ], m.regression ? [] : [
         '-',
         { libelle: t('scores_variables'), icone: 'git-merge', action: () => app.scoresEnVariables(m.id) },
+      ], [
         '-',
         { libelle: t('exporter'), icone: 'file-down', action: () => app.exporter(m.id) },
         { libelle: t('script_r'), icone: 'file-code', action: () => app.exporterScript(m.id) },

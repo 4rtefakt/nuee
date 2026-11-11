@@ -212,7 +212,8 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
   your own in the application's session, with `m` and `p` standing for the model and project
   on screen.
 - **Export to R** (*File › Export to R*): any model becomes a script, or an R Markdown
-  or Quarto report, that refits it without Nuée, in plain R with no package. It holds the
+  or Quarto report, that refits it without Nuée, in plain R with no package (a regression: `lm`,
+  or `nlme` and `mgcv`, which come with R). It holds the
   data (or reads them from a CSV next to it) and the calculation written for that model alone,
   with comments: its scaling, the NIPALS algorithm, the cross-validation, then the statistics,
   tables and plots (a PLS is about 170 lines of code). The report adds the Methods text,

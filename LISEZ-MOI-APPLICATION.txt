@@ -319,7 +319,8 @@ Exporter vers R (script, R Markdown, Quarto)
 --------------------------------------------
 Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
 envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul,
-en R sans paquet, commenté dans la langue de l'export, en quatre parties :
+en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R), commenté dans la
+langue de l'export, en quatre parties :
   1. les fonctions : l'algorithme NIPALS, la validation croisée, et seulement ce que ce
      modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;
   2. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
@@ -512,7 +513,10 @@ Fichier › Exporter : les observations (observées, ajustées, prédites en val
 résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
 un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
 chaque terme, observé / prédit et les résidus.
-Pas encore pour les régressions : l'export vers R.
+Fichier › Exporter vers R : un script ou un rapport pour une régression aussi, avec lm,
+nlme::lme ou mgcv::gam : ses lignes et ses termes, les ajustements (REML et ML), la validation
+croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les courbes, le
+jeu de test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------

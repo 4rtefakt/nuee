@@ -409,6 +409,9 @@ r <- essayer_regression("lm_qualitatives_croises", p, definir_modele(p, "LM", x 
 code <- code_hors_donnees(lignes_script(r))
 verifier("une régression linéaire n'utilise que R (ni library() ni paquet)", !any(grepl("library\\(|require\\(|::", code)))
 essayer_regression("lm_groupes_verger", p, definir_modele(p, "LM", x = uid(c("sucre", "acidite")), y = uid("note_gout"), echelle = "none", vc = vc_verger))
+# (sans X : le modèle nul, qui sert à comparer les AIC)
+essayer_regression("lm_nul", p, definir_modele(p, "LM", x = numeric(0), y = uid("note_gout"), vc = vc_verger))
+essayer_regression("lmm_nul", p, definir_modele(p, "LMM", x = numeric(0), y = uid("note_gout"), aleatoires = list(vc_verger)))
 r <- essayer_regression("lmm_emboites_car1_test", pr, definir_modele(pr, "LMM", x = ur("x1", "x2", "sol"), y = ur("hauteur"), echelle = "none",
                         aleatoires = list(par_site, par_secteur), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ur("annee"))),
                         test = numeros_observations(pr)[seq(3, n, by = 12)]))

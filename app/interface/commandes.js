@@ -24,7 +24,7 @@ export function creerCommandes(app) {
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
     exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: avecModele, action: () => app.exporter(m()) },
-    script_r: { icone: 'file-code', actif: avecLV, action: () => app.exporterScript(m()) },
+    script_r: { icone: 'file-code', actif: avecModele, action: () => app.exporterScript(m()) },
     rapport: { icone: 'file-text', actif: avecModele, action: () => app.rapport(m()) },
     texte_methodes: { icone: 'quote', actif: avecModele, action: () => app.texteMethodes(m()) },
     fermer_projet: { actif: () => !!app.projetActif(), action: () => app.fermerProjet(app.projetActif()) },

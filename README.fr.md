@@ -224,7 +224,8 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   propre code exécuté dans la session de l'application, avec `m` et `p` pour le modèle et le
   projet affichés.
 - **Exporter vers R** (*Fichier › Exporter vers R*) : tout modèle devient un script, ou un
-  rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet. Il contient les
+  rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet (une régression :
+  `lm`, ou `nlme` et `mgcv`, livrés avec R). Il contient les
   données (ou les lit dans un CSV à côté) et le calcul écrit pour ce modèle seul, commenté : sa
   mise à l'échelle, l'algorithme NIPALS, la validation croisée, puis les statistiques, tableaux
   et graphiques (une PLS fait environ 170 lignes de code). Le rapport ajoute le texte des

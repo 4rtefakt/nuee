@@ -298,7 +298,8 @@ Export to R (script, R Markdown, Quarto)
 ----------------------------------------
 File › Export to R: a file that refits the model without Nuée, with R alone, to send to a
 colleague or attach to a paper. The calculation is written for that model alone, in plain R
-with no package, commented in the export's language, in four parts:
+with no package (a regression: lm, or nlme and mgcv, which come with R), commented in the
+export's language, in four parts:
   1. the functions: the NIPALS algorithm, the cross-validation, and only what this model
      uses (missing values, spectral preprocessing, OPLS...);
   2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
@@ -481,7 +482,10 @@ File › Export: the observations (observed, fitted, predicted in cross-validati
 the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
 Model report: the summary and the coefficients, each term's effect, observed / predicted and
 the residuals.
-Not yet for regressions: export to R.
+File › Export to R: a script or report for a regression too, with lm, nlme::lme or
+mgcv::gam: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
+then the coefficients, AIC, R2, variances, curves, test set and plots, checked against Nuée's
+results before it is written.
 
 Class models and the Coomans plot
 ---------------------------------

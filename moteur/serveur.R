@@ -357,7 +357,7 @@ ajuster_et_garder <- function(p, d) {
 # Les demandes qui supposent des composantes et des scores : refusées pour une régression
 # (regression.R), avant d'arriver à un code qui ne les trouverait pas.
 SANS_REGRESSION <- c("hca", "permutations", "scores_en_variables",
-                     "script_r", "appartenance", "contributions", "spectres", "biplot", "ipls")
+                     "appartenance", "contributions", "spectres", "biplot", "ipls")
 
 # Ce que l'interface reçoit d'une régression : comme resultat_modele pour ce qui est commun
 # (observations observées et ajustées, RMSEE, RMSEcv, jeu de test, réglages), et ses propres
