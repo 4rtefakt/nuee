@@ -1,7 +1,7 @@
 // What changed in each version, shown once after an update (and in Aide › Quoi de neuf).
 // The first entry is the current version.
 export const NOUVEAUTES = [
-  { version: '1.0.0', date: '2026-11-01',
+  { version: '0.9.1', date: '2026-11-11',
     fr: [
       'Mise à jour en un clic : quand une nouvelle version est signalée dans la barre d’état, un clic télécharge son programme d’installation, le vérifie (empreinte SHA-256 donnée par GitHub), propose d’enregistrer les projets, l’installe et redémarre Nuée.',
       'Jeu de test : dans Nouveau modèle › Observations, des observations laissées hors du modèle et de la validation croisée (à la main, au hasard ou par Kennard–Stone, par classe pour une PLS-DA), puis prédites : RMSEP, biais, SEP, Q2 externe, ou le classement d’une PLS-DA. Observé / prédit les montre, le texte des méthodes et l’export vers R les reprennent.',

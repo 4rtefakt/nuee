@@ -3,7 +3,7 @@
 What changed in each version: the same list as *Help › What's new* in the application
 (in French: *Aide › Quoi de neuf*). Downloads: [Releases](https://github.com/4rtefakt/nuee/releases).
 
-## 1.0.0 — 2026-11-01
+## 0.9.1 — 2026-11-11
 
 - One-click update: when the status bar mentions a new version, a click downloads its installer, checks it (SHA-256 checksum given by GitHub), offers to save your projects, installs it and starts Nuée again.
 - Test set: in New model › Observations, observations left out of the model and of the cross-validation (by hand, at random or by Kennard–Stone, by class for a PLS-DA), then predicted: RMSEP, bias, SEP, external Q2, or the classification of a PLS-DA. Observed / predicted shows them; the Methods text and Export to R include them.

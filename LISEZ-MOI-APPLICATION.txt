@@ -32,7 +32,7 @@ Ouvrir
 ------
 Fichier › Ouvrir (Ctrl+O) :
   - un projet .usp : données, modèles et résultats enregistrés dans le fichier ;
-  - un projet enregistré par l'application (.nuee ; .json pour les versions avant 1.0) ;
+  - un projet enregistré par l'application (.nuee ; .json pour les versions avant 0.9.1) ;
   - un tableau, une ligne par observation :
       Excel .xlsx, .xlsm, .xls        texte .csv, .txt, .tsv (séparateur, virgule décimale et
       R .rds, .RData                    encodage reconnus, y compris le « texte Unicode »

@@ -902,7 +902,7 @@ async function proposerRecuperation() {
         (async () => {
           const illisibles = [];
           for (const e of entrees) {
-            // before 1.0, a project without a file had its own copy as its origin
+            // before 0.9.1, a project without a file had its own copy as its origin
             const origine = e.origine && e.origine !== e.fichier ? e.origine : null;
             try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom, lu: e.lu || null }))); } catch { illisibles.push(e); }
           }

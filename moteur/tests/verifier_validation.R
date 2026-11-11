@@ -176,7 +176,7 @@ e <- tryCatch({ ajuster(po, do); "ajusté" }, error = function(e) conditionMessa
 verifier(sprintf("la même OPLS-DA à 5 composantes demandées : « %s »", e), identical(e, message_5))
 
 cat("Un vrai signal garde un Q2 élevé : les modèles du projet d'exemple\n")
-# avant : la validation croisée sur les matrices du modèle complet (version 1.0 jusqu'ici)
+# avant : la validation croisée sur les matrices du modèle complet (jusqu'à la version 0.9.0)
 avant <- list(M1 = c(0.1716, 0.4035, 0.3481, 0.5278), M2 = c(0.6731, 0.6964, 0.7086, 0.7245), M3 = c(0.3048, 0.5850, 0.8946), M4 = c(0.5924, 0.7417))
 for (d in p$models) {
   m <- ajuster(p, d)

@@ -31,7 +31,7 @@ Opening
 -------
 File › Open (Ctrl+O):
   - a .usp project: the data, models and results stored in the file;
-  - a project saved by the application (.nuee; .json for versions before 1.0);
+  - a project saved by the application (.nuee; .json for versions before 0.9.1);
   - a table, one row per observation:
       Excel .xlsx, .xlsm, .xls        text .csv, .txt, .tsv (separator, decimal comma and
       R .rds, .RData                    encoding detected, Excel's "Unicode text" included)
