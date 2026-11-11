@@ -52,9 +52,15 @@ async function etape(nom, f) {
 async function principal() {
   console.log('Vérification de l’interface (syntaxe)…');
   const interfaceDir = path.join(depot, 'app', 'interface');
+  // (checked as ES modules, through a .mjs copy: a .js that imports or exports passes
+  // `node --check` whatever its errors, a declaration made twice included)
+  const copies = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-syntaxe-'));
   for (const f of fs.readdirSync(interfaceDir).filter((x) => x.endsWith('.js'))) {
-    await etape(`syntaxe ${f}`, () => execFileSync(process.execPath, ['--check', path.join(interfaceDir, f)], { stdio: 'pipe' }));
+    const copie = path.join(copies, f.replace(/\.js$/, '.mjs'));
+    fs.copyFileSync(path.join(interfaceDir, f), copie);
+    await etape(`syntaxe ${f}`, () => execFileSync(process.execPath, ['--check', copie], { stdio: 'pipe' }));
   }
+  fs.rmSync(copies, { recursive: true, force: true });
 
   console.log('Vérification du serveur R…');
   const port = await portLibre();
@@ -296,6 +302,12 @@ async function principal() {
       const v = (nom) => e.variables.find((x) => x.nom === nom).uid;
       const t = await api('tests_variables', { projet: e.id, classe: v('culture'), test: 'welch', correction: 'BH' });
       verifier([].concat(t.tableau.p_ajuste).length === 15 && t.groupes.length === 2, 'tests par variable');
+      const k = await api('test_deux_variables', { projet: e.id, x: v('verger'), y: v('culture') });
+      verifier(k.type === 'contingence' && k.conseille === 'khi2' && k.effectifs.length === 3 && k.residus[0].length === 2 && /χ²\(2, N = 120\)/.test(k.phrase), 'khi²');
+      const g = await api('test_deux_variables', { projet: e.id, x: v('variete'), y: v('sucre') });
+      verifier(g.type === 'groupes' && [].concat(g.posthoc.kruskal.p_ajuste).length === 6 && [].concat(g.valeurs.valeur).length === 120, 'une mesure entre groupes');
+      const r = await api('correlations_variables', { projet: e.id, methode: 'spearman', correction: 'BH' });
+      verifier(r.r.length === 15 && r.r[0].length === 15 && r.p_ajuste[0][0] === null && r.n[0][1] > 0, 'matrice des corrélations');
       const m = await api('ajuster', { projet: e.id, numero: e.modeles[2].numero, A: e.modeles[2].A });
       const txt = await api('methodes', { modele: m.id, langue: 'en', version: 'essai' });
       verifier([].concat(txt.paragraphes).some((p) => /PLS-DA/.test(p)) && [].concat(txt.references).length >= 3, 'méthodes');

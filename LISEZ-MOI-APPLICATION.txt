@@ -393,10 +393,13 @@ constante C2 s'il y a des 0). Un clic sur une ligne montre l'histogramme de la v
 côté de celui de la variable transformée. L'autre vue est la carte des valeurs manquantes
 (observations × variables).
 
-Tests par variable
+Tests statistiques
 ------------------
-Graphiques › Tests par variable (ou dans l'explorateur, sous le projet) : chaque variable
-quantitative comparée entre les classes d'une variable qualitative.
+Graphiques › Tests statistiques (ou dans l'explorateur, sous le projet), en trois modes, au
+choix en haut à gauche.
+
+Entre classes, variable par variable : chaque variable quantitative comparée entre les classes
+d'une variable qualitative.
   Deux classes (A, la référence, et B) : test t de Welch (par défaut, variances inégales), t de
   Student ou Mann–Whitney (sur les rangs). Effet : log2 du rapport des moyennes B / A (quand les
   deux moyennes sont positives) ou d de Cohen. Graphique volcan : l'effet contre -log10(p).
@@ -404,6 +407,34 @@ quantitative comparée entre les classes d'une variable qualitative.
 Les valeurs p sont corrigées pour les comparaisons multiples : Benjamini–Hochberg (taux de
 fausses découvertes, par défaut), Bonferroni, ou aucune. En couleur : les variables dont le p
 corrigé passe le seuil (et, pour deux classes, l'effet aussi).
+
+Deux variables : le test qui convient à leurs types, ses conditions vérifiées, sur les
+observations où les deux sont connues. Un identifiant des observations (site, secteur,
+année...) peut faire les groupes, comme une variable qualitative.
+  Deux variables qualitatives : le tableau de contingence et le khi² d'indépendance de Pearson,
+  avec le V de Cramér. En rouge et en bleu, les cases plus ou moins fréquentes que si les deux
+  variables étaient indépendantes (résidu ajusté au-delà de ±1,96). Quand les effectifs
+  attendus sont trop petits pour le khi² (un sous 1, ou plus de 20 % sous 5 : règle de
+  Cochran), le test exact de Fisher est conseillé ; pour un tableau 2 × 2, il est toujours
+  donné, avec le rapport des cotes. Au-delà de 2 × 2 et de 200 observations, sa valeur p est
+  simulée (100 000 tableaux).
+  Une mesure et une variable qualitative : la mesure comparée entre les groupes, en boîtes à
+  moustaches. Deux groupes : test t de Welch et Mann–Whitney. Plus : ANOVA à un facteur, ANOVA
+  de Welch et Kruskal–Wallis, chacun avec ses comparaisons deux à deux (Tukey, Games–Howell,
+  Dunn avec la correction de Holm ; jusqu'à 50 groupes) : un clic sur un test les montre. Le
+  test sur les rangs est conseillé quand la normalité est douteuse dans un groupe
+  (Shapiro–Wilk p < 0,05, ou moins de trois observations), l'ANOVA de Welch quand les
+  variances diffèrent (Brown–Forsythe p < 0,05).
+  Deux mesures : les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la
+  normalité de l'une des deux est douteuse.
+Le résultat du test conseillé est donné en une phrase, prête pour un rapport (le bouton à côté
+la copie), avec la taille de l'effet : V de Cramér, rapport des cotes, d de Cohen,
+corrélation rang-bisériale, η², ε², r ou ρ.
+
+Matrice des corrélations : les corrélations de Pearson ou de Spearman de toutes les variables
+quantitatives (300 au plus), chaque paire sur les observations où les deux sont connues,
+valeurs p corrigées pour le nombre de paires. Un clic sur une paire, dans la table ou le
+graphique, la teste dans « Deux variables ».
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------
@@ -580,7 +611,7 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   verification.R         comparaison avec les résultats enregistrés dans les fichiers .usp
   script.R               export d'un modèle en script ou rapport R autonome
   methodes.R             texte des méthodes et références
-  comparaisons.R         tests par variable
+  comparaisons.R         tests statistiques
   modeles_classe.R       modèles de classe (une ACP par classe), graphique de Coomans
   formats.R              lecture et écriture des tableaux (Excel, texte, R, SPSS, Stata, SAS, jamovi...)
   spectres.R             prétraitement des spectres (SNV, MSC, detrend, ligne de base, Savitzky–Golay)

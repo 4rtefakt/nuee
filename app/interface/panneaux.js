@@ -1332,15 +1332,27 @@ async function rendreCoomans(conteneur, ctx, p, loc) {
   });
 }
 
-// Tests variable by variable, computed in R: each quantitative variable compared between the
-// classes of a qualitative one, p-values corrected for multiple testing. Two classes: t-test
-// or Mann–Whitney, and a volcano plot (effect against -log10 p, the variables that pass both
-// cut-offs coloured); all classes: ANOVA or Kruskal–Wallis, and the variables ranked.
+// Statistical tests, computed in R, in three modes: between the classes of a qualitative
+// variable, variable by variable; two variables, with the test their types call for; the
+// correlation matrix of the quantitative variables.
 const valeurP = (v) => (v === null || v === undefined ? '' : v < 1e-4 ? v.toExponential(1) : v.toFixed(4));
 async function rendreTests(conteneur, ctx, p, loc) {
+  loc.mode ??= 'classes';
+  const modes = choix('', [['classes', t('tests_mode_classes')], ['deux', t('tests_mode_deux')], ['correlations', t('tests_mode_correlations')]],
+    loc.mode, (x) => { loc.mode = x; ctx.rafraichir(); });
+  if (loc.mode === 'deux') return rendreTestDeux(conteneur, ctx, p, loc, modes);
+  if (loc.mode === 'correlations') return rendreCorrelations(conteneur, ctx, p, loc, modes);
+  return rendreTestsClasses(conteneur, ctx, p, loc, modes);
+}
+
+// Each quantitative variable compared between the classes of a qualitative one, p-values
+// corrected for multiple testing. Two classes: t-test or Mann–Whitney, and a volcano plot
+// (effect against -log10 p, the variables that pass both cut-offs coloured); all classes:
+// ANOVA or Kruskal–Wallis, and the variables ranked.
+async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
   const proj = ctx.projet(p.projet);
   const quals = proj.variables.filter((v) => v.qualitative && [].concat(v.categories).length >= 2);
-  if (!quals.length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('tests_sans_classe'))); return; }
+  if (!quals.length) { conteneur.replaceChildren(outils(modes), el('p', { class: 'infos' }, t('tests_sans_classe'))); return; }
   const v = quals.find((x) => x.uid === loc.classe) || quals[0];
   loc.classe = v.uid;
   const cats = [].concat(v.categories);
@@ -1378,7 +1390,7 @@ async function rendreTests(conteneur, ctx, p, loc) {
   const bas = el('div', { class: 'bas' });
   const nomTest = Object.fromEntries(tests)[loc.test];
   const nomCorrection = { BH: t('correction_bh'), bonferroni: 'Bonferroni', aucune: t('aucune') }[loc.correction];
-  conteneur.replaceChildren(outils(
+  conteneur.replaceChildren(outils(modes,
     choix(t('classe_variable'), quals.map((q) => [q.uid, q.nom]), v.uid, (x) => { loc.classe = Number(x); ctx.rafraichir(); }),
     choix('', [['deux', t('deux_classes')], ['toutes', t('toutes_classes')]], loc.comparaison, (x) => { loc.comparaison = x; ctx.rafraichir(); }),
     deux ? choix('A', cats.map((c) => [c, c]), loc.a, (x) => { loc.a = x; ctx.rafraichir(); }) : null,
@@ -1425,6 +1437,218 @@ async function rendreTests(conteneur, ctx, p, loc) {
     colonnes: [{ cle: 'nom', titre: t('variables') }].concat(deux ? [num('n_a', 'n A', 0), num('n_b', 'n B', 0)] : [], moyennes,
       deux ? [num('log2_rapport', 'log2(B/A)', 3), num('d', 'd', 3)] : [], [num('statistique', t('statistique'), 3), num('p', 'p', 4, valeurP), num('p_ajuste', t('p_ajuste'), 4, valeurP)]),
     valeur: (i, k) => (k === 'nom' ? noms[i] : [].concat(tab[k])[i]),
+  });
+}
+
+// Two variables, with the test their types call for (R chooses it and checks its conditions):
+// a contingency table and the chi-square or Fisher's exact test; a measurement compared
+// between groups (t-test, ANOVA or their rank versions, and the pairwise comparisons); or a
+// correlation. The recommended test's result comes as a sentence, ready for a report; with
+// three groups or more, clicking another test shows its pairwise comparisons.
+const NOMS_TESTS = () => ({ khi2: t('test_khi2'), fisher: t('test_fisher'), welch: t('test_welch'), mann_whitney: 'Mann–Whitney',
+  anova: 'ANOVA', welch_anova: t('test_welch_anova'), kruskal: 'Kruskal–Wallis', pearson: t('test_pearson'), spearman: t('test_spearman') });
+const NOMS_EFFETS = () => ({ V: t('effet_v'), OR: t('effet_or'), d: t('effet_d'), r_rb: t('effet_rb'), eta2: 'η²', epsilon2: 'ε²', r: 'r', rho: 'ρ' });
+const ddlTexte = (x) => (x === null || x === undefined ? '' : Math.abs(x - Math.round(x)) < 1e-8 ? String(Math.round(x)) : fmt(x, 1));
+// (normality checked: p ≥ 0.05, or more than 5,000 observations; R's rule, comparaisons.R)
+const normaliteDouteuse = (p, n) => p.map((v, i) => !(n[i] > 5000 || (v !== null && v >= 0.05)));
+
+async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
+  const L = (loc.deux ??= {});
+  const cache = ((loc.cache ??= {}).deux ??= {});  // (the results: loc.cache isn't saved with the session)
+  const proj = ctx.projet(p.projet);
+  const vars = proj.variables;
+  // the observation IDs (site, sector, year...) make groups too, as a qualitative variable
+  const ids = [].concat(proj.identifiants || []).map((i) => [`id:${i.rang}`, `${i.nom} (${t('identifiant')})`]);
+  const options = vars.map((v) => [v.uid, v.qualitative ? `${v.nom} (${[].concat(v.categories).length} ${t('categories')})` : v.nom]).concat(ids);
+  if (options.length < 2) { conteneur.replaceChildren(outils(modes), el('p', { class: 'infos' }, t('tests_deux_peu'))); return; }
+  const existe = (v) => options.some(([u]) => u === v);
+  if (!existe(L.x)) L.x = (vars.find((v) => v.qualitative) || {}).uid ?? (ids.length ? ids[0][0] : vars[0].uid);
+  if (!existe(L.y) || L.y === L.x) L.y = (vars.find((v) => !v.qualitative && v.uid !== L.x) || {}).uid ?? options.find(([u]) => u !== L.x)[0];
+  const lire = (x) => (String(x).startsWith('id:') ? x : Number(x));
+  const barre = outils(modes,
+    choix(t('tests_var1'), options, L.x, (x) => { L.x = lire(x); ctx.rafraichir(); }),
+    choix(t('tests_var2'), options.filter(([u]) => u !== L.x), L.y, (x) => { L.y = lire(x); ctx.rafraichir(); }));
+  const cle = `${L.x}|${L.y}`;
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
+    try { cache.res = await ctx.demander('test_deux_variables', { projet: p.projet, x: L.x, y: L.y }); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
+    cache.cle = cle;
+    L.test = null;
+  }
+  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  const r = cache.res;
+  const col = (k) => [].concat(r.tests[k]);
+  const cles = col('test');
+  if (!cles.includes(L.test)) L.test = r.conseille;
+  const noms = NOMS_TESTS();
+  const effets = NOMS_EFFETS();
+  const tableTests = el('table', { class: 'tableau compact' },
+    el('thead', {}, el('tr', {}, [t('test'), t('statistique'), t('ddl'), 'p', t('effet'), ''].map((h, j) => el('th', { class: j >= 1 && j <= 4 ? 'num' : '' }, h)))),
+    el('tbody', {}, cles.map((k, i) => el('tr', { class: k === L.test ? 'choisie' : '', onclick: r.posthoc ? () => { L.test = k; ctx.rafraichir(); } : null },
+      el('td', {}, noms[k]),
+      el('td', { class: 'num' }, fmt(col('statistique')[i], 3)),
+      el('td', { class: 'num' }, [ddlTexte(col('ddl1')[i]), ddlTexte(col('ddl2')[i])].filter(Boolean).join(', ')),
+      el('td', { class: 'num' }, valeurP(col('p')[i])),
+      el('td', { class: 'num' }, col('effet')[i] === null ? '' : `${effets[col('nom_effet')[i]] || ''} = ${fmt(col('effet')[i], 3)}`),
+      el('td', {}, k === r.conseille ? el('b', {}, t('conseille')) : '')))));
+  // why this test: its conditions, checked in R
+  const groupes = r.groupes ? [].concat(r.groupes.groupe) : [];
+  const liste = (xs) => (xs.length > 8 ? `${xs.slice(0, 8).join(', ')}… (${xs.length})` : xs.join(', '));
+  const decimal = (s) => (langueActuelle() === 'fr' ? s.replace('.', ',') : s);  // (in a sentence)
+  let raison;
+  if (r.raison === 'attendus') raison = t('raison_attendus', { part: `${fmt(100 * r.part_attendus_faibles, 0)} %`, min: decimal(fmt(r.attendu_min, 2)) });
+  else if (r.raison === 'variances') raison = t('raison_variances', { p: decimal(valeurP(r.variances.p)) });
+  else if (r.raison === 'normalite' && r.type === 'groupes') {
+    const d = normaliteDouteuse([].concat(r.groupes.shapiro_p), [].concat(r.groupes.n));
+    raison = t('raison_normalite_groupes', { groupes: liste(groupes.filter((_, i) => d[i])) });
+  } else if (r.raison === 'normalite') {
+    const d = normaliteDouteuse([].concat(r.normalite), [r.n, r.n]);
+    raison = t('raison_normalite_cor', { variables: [r.x.nom, r.y.nom].filter((_, i) => d[i]).join(', ') });
+  } else {
+    raison = r.type === 'contingence' ? t('raison_ok_contingence') : r.type === 'correlation' ? t('raison_ok_correlation')
+      : groupes.length === 2 ? t('raison_ok_deux_groupes') : t('raison_ok_groupes', { p: decimal(valeurP(r.variances.p)) });
+  }
+  const ecartes = [].concat(r.ecartes ?? []);
+  const notes = [raison, r.manquantes ? t('tests_manquantes', { n: r.manquantes }) : '', ecartes.length ? t('tests_ecartes', { groupes: liste(ecartes) }) : '',
+    r.note_comparaisons || ''].filter(Boolean).join(' ');
+  const copier = el('button', { class: 'icone-seule', title: t('copier_phrase'),
+    onclick: () => navigator.clipboard.writeText(r.phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+  const graphe = el('div', { class: 'graphe' });
+  const details = el('div', { class: 'defile', style: { flex: '0 1 auto', maxHeight: '40%' } });
+  const bas = el('div', { class: 'bas' });
+  const ph = r.posthoc && r.posthoc[L.test];
+  conteneur.replaceChildren(...[barre, el('div', { class: 'note' }, el('b', {}, r.phrase), ' ', copier, el('br'), notes), graphe, details, ph ? bas : null].filter(Boolean));
+
+  if (r.type === 'contingence') {
+    const lignes = [].concat(r.lignes);
+    const colonnes = [].concat(r.colonnes);
+    const eff = r.effectifs;
+    const totalL = eff.map((l) => l.reduce((a, b) => a + b, 0));
+    const totalC = colonnes.map((_, j) => eff.reduce((a, l) => a + l[j], 0));
+    const signe = (z) => (z > 1.96 ? { color: '#d1495b', fontWeight: '600' } : z < -1.96 ? { color: PALETTE[0], fontWeight: '600' } : {});
+    details.replaceChildren(tableTests, el('table', { class: 'tableau compact', style: { marginTop: '10px' } },
+      el('thead', {}, el('tr', {}, el('th', {}, `${r.x.nom} / ${r.y.nom}`), colonnes.map((c) => el('th', { class: 'num' }, c)), el('th', { class: 'num' }, t('total')))),
+      el('tbody', {}, lignes.map((l, i) => el('tr', {}, el('td', {}, l),
+        colonnes.map((_, j) => el('td', { class: 'num', style: signe(r.residus[i][j]),
+          title: t('case_contingence', { attendu: fmt(r.attendus[i][j], 1), residu: fmt(r.residus[i][j], 2) }) }, String(eff[i][j]))),
+        el('td', { class: 'num' }, String(totalL[i])))),
+      el('tr', {}, el('td', {}, el('b', {}, t('total'))), totalC.map((n) => el('td', { class: 'num' }, String(n))), el('td', { class: 'num' }, String(r.n))))),
+    el('p', { class: 'note' }, t('contingence_note')));
+    tracer(ctx, graphe, colonnes.map((c, j) => ({ type: 'bar', name: c, x: lignes, y: eff.map((l, i) => (100 * l[j]) / totalL[i]), customdata: eff.map((l) => l[j]),
+      marker: { color: PALETTE[j % PALETTE.length] }, hovertemplate: `%{x} · ${c}<br>%{y:.1f} % (%{customdata})<extra></extra>` })),
+    { barmode: 'stack', showlegend: true, dragmode: false, title: { text: t('repartition', { x: r.x.nom, y: r.y.nom }) },
+      xaxis: { title: { text: r.x.nom } }, yaxis: { title: { text: '%' }, range: [0, 100] } });
+    return;
+  }
+
+  if (r.type === 'correlation') {
+    const x = [].concat(r.valeurs.x);
+    const y = [].concat(r.valeurs.y);
+    const xmin = Math.min(...x);
+    const xmax = Math.max(...x);
+    const traces = [{ type: 'scatter', mode: 'markers', x, y, text: [].concat(r.valeurs.nom), marker: { color: PALETTE[0], size: 6 },
+      hovertemplate: `%{text}<br>${r.x.nom} = %{x}<br>${r.y.nom} = %{y}<extra></extra>` }];
+    if (r.pente !== null) {
+      traces.push({ type: 'scatter', mode: 'lines', x: [xmin, xmax], y: [r.ordonnee + r.pente * xmin, r.ordonnee + r.pente * xmax],
+        line: { color: '#d1495b', width: 1.5 }, hoverinfo: 'skip' });
+    }
+    tracer(ctx, graphe, traces, { title: { text: `${r.y.nom} · ${r.x.nom}` }, showlegend: false, dragmode: 'zoom',
+      xaxis: { title: { text: r.x.nom } }, yaxis: { title: { text: r.y.nom } } });
+    details.replaceChildren(tableTests);
+    return;
+  }
+
+  // a measurement between groups: box plots (the mean as a dashed line), the groups, and the
+  // pairwise comparisons of the chosen test
+  const g = r.groupes;
+  const gc = (k) => [].concat(g[k]);
+  const doute = normaliteDouteuse(gc('shapiro_p'), gc('n'));
+  details.replaceChildren(tableTests, el('table', { class: 'tableau compact', style: { marginTop: '10px' } },
+    el('thead', {}, el('tr', {}, [t('groupe'), 'n', t('moyenne'), t('ecart_type'), t('mediane'), 'Q1', 'Q3', t('shapiro_p')].map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
+    el('tbody', {}, groupes.map((nom, i) => el('tr', {}, el('td', {}, nom), el('td', { class: 'num' }, String(gc('n')[i])),
+      ['moyenne', 'ecart_type', 'mediane', 'q1', 'q3'].map((k) => el('td', { class: 'num' }, fmt(gc(k)[i], 3))),
+      el('td', { class: 'num' + (doute[i] ? ' alerte' : '') }, valeurP(gc('shapiro_p')[i])))))));
+  const mesure = r.x.qualitative ? r.y.nom : r.x.nom;
+  const facteur = r.x.qualitative ? r.x.nom : r.y.nom;
+  const grp = [].concat(r.valeurs.groupe);
+  const val = [].concat(r.valeurs.valeur);
+  const nm = [].concat(r.valeurs.nom);
+  tracer(ctx, graphe, groupes.map((gr, k) => {
+    const idx = grp.map((_, i) => i).filter((i) => grp[i] === gr);
+    return { type: 'box', name: gr, y: idx.map((i) => val[i]), text: idx.map((i) => nm[i]), boxpoints: idx.length <= 500 ? 'all' : 'outliers',
+      jitter: 0.4, pointpos: 0, boxmean: true, marker: { color: PALETTE[k % PALETTE.length], size: 4 }, line: { width: 1 } };
+  }), { title: { text: `${mesure} · ${facteur}` }, showlegend: false, dragmode: 'zoom', xaxis: { title: { text: facteur } }, yaxis: { title: { text: mesure } } });
+  if (!ph) return;
+  const pc = (k) => [].concat(ph[k]);
+  const dunn = L.test === 'kruskal';
+  const titre = t(dunn ? 'posthoc_dunn' : L.test === 'welch_anova' ? 'posthoc_gh' : 'posthoc_tukey');
+  const num = (cle, titreCol, decimales, format, alerte) => ({ cle, titre: titreCol, num: true, decimales, format, alerte });
+  L.table ??= {};
+  tableau(bas, ctx, L.table, {
+    n: pc('a').length, nom: titre, avant: [el('b', {}, titre)],
+    colonnes: [{ cle: 'a', titre: 'A' }, { cle: 'b', titre: 'B' }].concat(dunn
+      ? [num('z', 'z', 3), num('p', 'p', 4, valeurP), num('p_ajuste', t('p_holm'), 4, valeurP, (i) => pc('p_ajuste')[i] <= 0.05)]
+      : [num('difference', t('difference_ba'), 3), num('bas', t('ic_bas'), 3), num('haut', t('ic_haut'), 3), num('p', t('p_ajuste'), 4, valeurP, (i) => pc('p')[i] <= 0.05)]),
+    valeur: (i, k) => pc(k)[i],
+  });
+}
+
+// The correlation matrix of the quantitative variables (Pearson or Spearman), p-values
+// corrected for the number of pairs. Clicking a pair, in the table or the plot, tests it in
+// the "Two variables" mode.
+async function rendreCorrelations(conteneur, ctx, p, loc, modes) {
+  const C = (loc.cor ??= {});
+  const cache = ((loc.cache ??= {}).cor ??= {});  // (the results: loc.cache isn't saved with the session)
+  C.methode ??= 'pearson';
+  C.correction ??= 'BH';
+  C.seuil ??= 0.05;
+  const seuils = [[0.01, '0,01'], [0.05, '0,05'], [0.1, '0,1']];
+  const barre = outils(modes,
+    choix(t('methode'), [['pearson', 'Pearson'], ['spearman', 'Spearman']], C.methode, (x) => { C.methode = x; ctx.rafraichir(); }),
+    choix(t('correction'), [['BH', t('correction_bh')], ['bonferroni', 'Bonferroni'], ['aucune', t('aucune')]], C.correction, (x) => { C.correction = x; ctx.rafraichir(); }),
+    choix(t('seuil_p'), seuils, C.seuil, (x) => { C.seuil = Number(x); ctx.rafraichir(); }));
+  const cle = `${C.methode}|${C.correction}`;
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
+    try { cache.res = await ctx.demander('correlations_variables', { projet: p.projet, methode: C.methode, correction: C.correction }); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
+    cache.cle = cle;
+  }
+  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  const r = cache.res;
+  const noms = [].concat(r.noms);
+  const uid = [].concat(r.uid);
+  const K = noms.length;
+  const paires = [];
+  for (let i = 0; i < K; i += 1) for (let j = i + 1; j < K; j += 1) paires.push([i, j]);
+  const significative = (k) => { const [i, j] = paires[k]; return r.p_ajuste[i][j] !== null && r.p_ajuste[i][j] <= C.seuil; };
+  const nSig = paires.filter((_, k) => significative(k)).length;
+  const tester = (i, j) => { loc.mode = 'deux'; Object.assign((loc.deux ??= {}), { x: uid[i], y: uid[j] }); ctx.rafraichir(); };
+  const lettre = C.methode === 'pearson' ? 'r' : 'ρ';
+  const nomCorrection = { BH: t('correction_bh'), bonferroni: 'Bonferroni', aucune: t('aucune') }[C.correction];
+  const graphe = el('div', { class: 'graphe' });
+  const bas = el('div', { class: 'bas' });
+  conteneur.replaceChildren(barre, el('p', { class: 'note' }, t('cor_note', { k: K, paires: paires.length, n: nSig,
+    seuil: Object.fromEntries(seuils)[C.seuil], correction: nomCorrection })), graphe, bas);
+  const survol = r.r.map((l, i) => l.map((v, j) => (i === j ? noms[i]
+    : `${noms[i]} × ${noms[j]}<br>${lettre} = ${fmt(v, 3)} · n = ${r.n[i][j]}<br>${t('p_ajuste')} = ${valeurP(r.p_ajuste[i][j])}`)));
+  tracer(ctx, graphe, [{ type: 'heatmap', x: noms, y: noms, z: r.r, zmin: -1, zmax: 1, text: survol, hovertemplate: '%{text}<extra></extra>',
+    colorscale: [[0, '#2166ac'], [0.5, '#f7f7f7'], [1, '#b2182b']], xgap: K <= 40 ? 1 : 0, ygap: K <= 40 ? 1 : 0, colorbar: { title: { text: lettre }, thickness: 12 } }],
+  { title: { text: t('cor_titre', { methode: C.methode === 'pearson' ? 'Pearson' : 'Spearman' }) }, dragmode: 'zoom',
+    xaxis: { tickangle: -45, tickfont: { size: 9 }, showticklabels: K <= 80 }, yaxis: { autorange: 'reversed', tickfont: { size: 9 }, showticklabels: K <= 80 } });
+  graphe.on('plotly_click', (e) => {
+    const pt = e.points && e.points[0];
+    const i = pt ? noms.indexOf(pt.y) : -1;
+    const j = pt ? noms.indexOf(pt.x) : -1;
+    if (i >= 0 && j >= 0 && i !== j) tester(i, j);
+  });
+  C.table ??= { tri: { cle: 'p_ajuste', sens: 1 } };
+  tableau(bas, ctx, C.table, {
+    n: paires.length, nom: 'Correlations',
+    colonnes: [{ cle: 'a', titre: t('tests_var1') }, { cle: 'b', titre: t('tests_var2') }, { cle: 'r', titre: lettre, num: true, decimales: 3 },
+      { cle: 'n', titre: 'n', num: true, decimales: 0 }, { cle: 'p', titre: 'p', num: true, format: valeurP },
+      { cle: 'p_ajuste', titre: t('p_ajuste'), num: true, format: valeurP, alerte: significative }],
+    valeur: (k, c) => { const [i, j] = paires[k]; return c === 'a' ? noms[i] : c === 'b' ? noms[j] : r[c][i][j]; },
+    cliquer: (k) => tester(...paires[k]),
   });
 }
 
