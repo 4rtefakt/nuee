@@ -373,12 +373,12 @@ const app = {
   // are saved to (or, never saved, the file they came from). Those with neither are named.
   async redemarrerMoteur() {
     if (!bureau) { statut(t('moteur_navigateur'), true); return; }
-    let secours = [];
-    try { secours = await bureau.secoursListe(); } catch { secours = []; }
     const aRouvrir = [];
     const perdus = [];
     for (const p of Object.values(etat.projets)) {
-      const s = p.modifie && secours.find((e) => e.projet === p.id);
+      // (this launch's own copy of the project: those of an earlier stop, also in the index,
+      // had projects numbered P1, P2... too)
+      const s = p.modifie && derniersSecours.get(p.id);
       const source = p.chemin_enregistrement || p.chemin;
       const session = dock ? collecterSession(p.id) : null;
       if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null } });
@@ -392,7 +392,8 @@ const app = {
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
     for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
-    derniersSecours.clear();  // the new engine numbers its projects from P1 again
+    derniersSecours.clear();  // the new engine numbers its projects from P1 again,
+    moteurs += 1;             // and its copies get names of their own (moteurs)
     let n = 0;
     for (const r of aRouvrir) {
       try {
@@ -857,6 +858,7 @@ async function apresOuverture(res, session = null) {
 // set aside yet (secoursEnAttente). A project whose copy fails this time keeps its last one.
 // One main window writes them: the first one open (several main windows share the projects).
 const LANCEMENT = Date.now().toString(36);
+let moteurs = 0;  // engines started by this launch: each numbers its projects from P1
 let secoursEnAttente = [];
 const derniersSecours = new Map();
 async function sauvegarderSecours() {
@@ -868,7 +870,7 @@ async function sauvegarderSecours() {
     const entrees = [];
     for (const p of Object.values(etat.projets)) {
       if (!p.modifie) continue;
-      const fichier = `${dossier}/${LANCEMENT}-${p.id}.json`;
+      const fichier = `${dossier}/${LANCEMENT}-${moteurs}-${p.id}.json`;
       try {
         // (lu: the state of the project's file when it was read or saved, for the question
         // before overwriting it once the copy is recovered)
@@ -877,7 +879,8 @@ async function sauvegarderSecours() {
       } catch { /* this one is tried again two minutes later; the others go on */ }
       if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
     }
-    await bureau.secoursIndex([...secoursEnAttente, ...entrees]);
+    // (attente: kept when Nuée closes normally, to be offered at the next start; main.js)
+    await bureau.secoursIndex([...secoursEnAttente.map((e) => ({ ...e, attente: true })), ...entrees]);
   } catch { /* tried again two minutes later */ }
 }
 
@@ -899,7 +902,7 @@ async function proposerRecuperation() {
         (async () => {
           const illisibles = [];
           for (const e of entrees) {
-            // before 1.0, a project without a file had its own copy as its origin
+            // before 0.9.1, a project without a file had its own copy as its origin
             const origine = e.origine && e.origine !== e.fichier ? e.origine : null;
             try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom, lu: e.lu || null }))); } catch { illisibles.push(e); }
           }

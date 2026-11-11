@@ -70,7 +70,9 @@ libraries, so it can't be carried along as on Windows).
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 
 Every change is checked on GitHub with the `.deb` installed on Ubuntu 22.04 and 24.04 and
-Debian 12, with their own R (4.1 to 4.3).
+Debian 12, with their own R (4.1 to 4.3). With an R older than 4.4, such as these, R files
+(`.rds`, `.RData`) don't open, because reading one could run code (CVE-2024-27322): save the
+table as CSV or Excel instead.
 
 Opening `.usp` projects needs `python3`. Nuée looks for `Rscript` on the `PATH`, then in
 `/usr/local/bin`, `/usr/bin` and `/opt/R/<version>/bin`; start it with
@@ -104,9 +106,11 @@ English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 ## What it does
 
 **Methods:** PCA, PLS, PLS-DA, and OPLS / OPLS-DA (several Y or more than two classes give
-several predictive components), with missing values handled by NIPALS and 7-fold
-cross-validation in which each group is predicted by a model fitted without it, centring and
-scaling included (R2, Q2, and Q2 per variable). Class models: one PCA per class, and the
+several predictive components), with missing values handled by NIPALS and cross-validation
+(7 groups in turn, or one group per value of an ID or a variable, such as a site) in which each
+group is predicted by a model fitted without it, centring and scaling included (R2, Q2, and Q2
+per variable). Block scaling and modifiers, custom transforms, cross terms of two or three
+variables. Class models: one PCA per class, and the
 Coomans plot to tell which class an observation belongs to, several, or none.
 
 **Validation:** permutation tests, CV-ANOVA, PLS-DA classification tables and ROC curves,
@@ -229,7 +233,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.1) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).

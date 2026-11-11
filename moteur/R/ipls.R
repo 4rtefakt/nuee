@@ -31,7 +31,7 @@ pls_par_intervalles <- function(projet, d, n = 20, A = d$A) {
   }
   pp <- avec_spectre(s$pretraites)
   projets <- if ("msc" %in% vapply(d$spectres, `[[`, "", "type")) {
-    groupes <- groupes_validation(length(d$observations), d$cv_groups %||% 7)
+    groupes <- groupes_definition(projet, d)
     positions <- positions_termes(projet, d$x[spectre])
     lapply(sort(unique(groupes)), function(g) {
       hors <- groupes == g

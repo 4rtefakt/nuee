@@ -72,7 +72,9 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 
 Chaque changement est vérifié sur GitHub avec le `.deb` installé sous Ubuntu 22.04 et 24.04
-et Debian 12, avec leur propre R (4.1 à 4.3).
+et Debian 12, avec leur propre R (4.1 à 4.3). Avec un R plus ancien que 4.4, comme ceux-ci, les
+fichiers R (`.rds`, `.RData`) ne s'ouvrent pas, car en lire un pourrait exécuter du code
+(CVE-2024-27322) : enregistrez le tableau en CSV ou en Excel.
 
 Les projets `.usp` demandent `python3`. Nuée cherche `Rscript` dans le `PATH`, puis dans
 `/usr/local/bin`, `/usr/bin` et `/opt/R/<version>/bin` ; lancez-le avec
@@ -108,8 +110,10 @@ en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en angl
 
 **Méthodes :** ACP, PLS, PLS-DA, et OPLS / OPLS-DA (plusieurs Y ou plus de deux classes donnent
 plusieurs composantes prédictives), avec les valeurs manquantes traitées par NIPALS et une
-validation croisée en 7 groupes, où chaque groupe est prédit par un modèle ajusté sans lui,
-centrage et mise à l'échelle compris (R2, Q2, et Q2 par variable). Modèles de classe : une ACP par
+validation croisée (7 groupes à tour de rôle, ou un groupe par valeur d'un identifiant ou d'une
+variable, un site par exemple) où chaque groupe est prédit par un modèle ajusté sans lui,
+centrage et mise à l'échelle compris (R2, Q2, et Q2 par variable). Pondération par blocs et
+modificateurs, transformations personnalisées, termes croisés de deux ou trois variables. Modèles de classe : une ACP par
 classe, et le graphique de Coomans pour dire à quelle classe appartient une observation, à
 plusieurs, ou à aucune.
 
@@ -242,7 +246,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.1) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)

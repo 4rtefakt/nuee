@@ -31,7 +31,7 @@ Opening
 -------
 File › Open (Ctrl+O):
   - a .usp project: the data, models and results stored in the file;
-  - a project saved by the application (.nuee; .json for versions before 1.0);
+  - a project saved by the application (.nuee; .json for versions before 0.9.1);
   - a table, one row per observation:
       Excel .xlsx, .xlsm, .xls        text .csv, .txt, .tsv (separator, decimal comma and
       R .rds, .RData                    encoding detected, Excel's "Unicode text" included)
@@ -49,7 +49,10 @@ File › Open (Ctrl+O):
     in which variables (and which are below the detection limit). Excel dates and times stay
     dates (2024-05-03). A text file with a line holding more values than the header is refused,
     with the line number, rather than shifting the columns. An R file must hold tables; any
-    other object is refused.
+    other object is refused. R files open only with R 4.4 or newer (included on Windows): with
+    an older R, such as that of Ubuntu 22.04 or 24.04 or Debian 12, a .rds or .RData file could
+    run code as soon as it is read (CVE-2024-27322), so Nuée refuses it; save the table as CSV
+    or Excel instead.
 File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).
@@ -133,13 +136,21 @@ View: dark theme, French / English, text size.
 New model (Model › New model)
 -----------------------------
 General tab: type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models), name, number of components
-(automatic by default, by cross-validation), cross-validation groups, default scaling.
-Variables tab: role (X, Y, class), scaling and transformation (square root, fourth root,
-log10) of each variable; the filter sets every variable shown at once. The "Proposed
+(automatic by default, by cross-validation), cross-validation groups (in turn, G groups; or
+one group per value of an observation ID or of a variable, see Cross-validation), default
+scaling.
+Variables tab: role (X, Y, class), scaling, block, modifier and transformation of each
+variable: square root, fourth root, log10, or custom... (log10, ln or -log10 of C1*x + C2,
+exp(C1*x + C2), C1*x + C2, the logit ln((x - C1) / (C2 - x)) between two bounds, or the power
+(C1*x + C2)^C3; a value outside the domain becomes missing); the filter sets every variable shown at once (a block:
+type it in "Block..." above the list, then Enter). Block scaling: the terms of a block have
+their weight divided by the square root of their number, so that a block of 20 variables
+doesn't weigh 20 times more than a variable alone; a qualitative variable counts by its
+categories. Modifier: multiplies the variable's weight after its scaling. The "Proposed
 transformations" button applies the suggested log10 to the variables shown (see Variable
 statistics).
-Cross terms tab: products of two X variables (A × B) and squares (A × A); a qualitative
-variable enters through each of its categories.
+Cross terms tab: products of two or three X variables (A × B, A × B × C), squares (A × A) and
+cubes (A × A × A); a qualitative variable enters through each of its categories, once at most.
 Observations tab: tick / untick the model's observations, and the test set (see Test set).
 "Edit model" (Ctrl+M) opens this window set like an existing model (imported models
 included) and makes a new model.
@@ -424,18 +435,23 @@ variable (a plain click highlights it on the model's other plots).
 
 Cross-validation
 ----------------
-The model's observations are assigned in turn to G groups (7 by default: the 1st, 8th,
-15th... in group 1). Each group is predicted by a model fitted without it, like new
-observations: the centring, the scaling (and MSC's mean spectrum, the cross terms) are
-computed again on the other observations, with the same number of components. PRESS: the sum
-of squared prediction errors; Q2(cum) = 1 - PRESS / SS (SS: the variation of Y, or of X for a
-PCA); a component's Q2, 1 - PRESS / PRESS of the previous one. PCA: each value is predicted by
-the scores of its observation computed without the variables of its group of variables (also
-assigned to G groups). This Q2 sees nothing of the observations it predicts: with few
-observations, it is much lower than a validation done with the scaling of all the
-observations (on pure noise, 6 observations and 20 variables, the latter gave Q2 = 0.98 for an
-OPLS-DA; Nuée now gives less than 0). RMSEcv, CV-ANOVA, the cross-validated classification and
-the confidence intervals (jack-knife, over the G sub-models) come from it.
+The model's observations are assigned in turn to G groups (7 by default: the 1st, 8th, 15th...
+in group 1), or one group per value of an observation ID or of a variable (New model ›
+Cross-validation groups): with "site", all the years of a site are in the same group, and each
+site is predicted by a model that has never seen it; observations without a value make a group
+of their own. Models from .usp files keep their groups: by an ID when the file groups the
+observations with the same value, or else the file's groups as they are (shown "groups from the
+file"). Each group is predicted by a model fitted without it, like new observations: the
+centring, the scaling (and MSC's mean spectrum, the cross terms) are computed again on the
+other observations, with the same number of components. PRESS: the sum of squared prediction
+errors; Q2(cum) = 1 - PRESS / SS (SS: the variation of Y, or of X for a PCA); a component's Q2,
+1 - PRESS / PRESS of the previous one. PCA: each value is predicted by the scores of its
+observation computed without the variables of its group of variables (also assigned to G
+groups). This Q2 sees nothing of the observations it predicts: with few observations, it is
+much lower than a validation done with the scaling of all the observations (on pure noise, 6
+observations and 20 variables, the latter gave Q2 = 0.98 for an OPLS-DA; Nuée now gives less
+than 0). RMSEcv, CV-ANOVA, the cross-validated classification and the confidence intervals
+(jack-knife, over the G sub-models) come from it.
 
 Validation (PLS and PLS-DA)
 ---------------------------
@@ -499,8 +515,13 @@ What differs
   come from a validation done with the scaling of all the observations. Median difference from
   the stored Q2(cum): 0.003 for PLS models with over 200 observations, 0.02 from 50 to 200,
   0.11 from 20 to 50, 0.27 up to 20, Nuée's Q2 being nearly always lower; a few hundredths for
-  PCA. 18 models out of 944, with a variable that varies on almost one observation only, lose
-  much more (without it, its scaling enlarges it a lot).
+  PCA. With groups by an ID (a site, a sector), the difference is larger: the model fitted
+  without a site doesn't know that site's mean level either. With the file's own validation
+  (the scaling of all the observations), the stored Q2 of .usp models comes back exactly,
+  groups by ID included (moteur/tests/verifier_references.R). 18 models out of 944, with a
+  variable that varies on almost one observation only, lose much more (without it, its scaling
+  enlarges it a lot).
+
 - Sign of the components of new models: arbitrary (imported models are oriented as in the
   file).
 - Dendrograms: exact Ward method; the merges at the top of the tree may differ from those of

@@ -77,16 +77,28 @@ finir_tableau <- function(x, quantitatives = NULL, toutes = TRUE) {
 
 est_tableau <- function(x) is.data.frame(x) || (is.matrix(x) && (is.numeric(x) || is.character(x) || is.logical(x)))
 
-# Fichiers R. readRDS() et load() n'exécutent pas de code (depuis R 4.4, un fichier ne peut
-# plus contenir de promesse), mais un objet lu peut en porter : un environnement exécute ses
+# Fichiers R. readRDS() et load() n'exécutent pas de code depuis R 4.4 (avant, un fichier
+# pouvait contenir une promesse, évaluée dès qu'on touche à l'objet : CVE-2024-27322). Avec un
+# R plus ancien (Ubuntu 22.04, Debian 12 sous Linux), Nuée refuse donc ces fichiers
+# (fichier_r_lisible). Un objet lu peut aussi porter du code : un environnement exécute ses
 # liaisons actives quand on lit leurs valeurs (as.list, mget, get), et les méthodes d'un objet
 # S4 (R5 aussi) viennent du paquet qui le définit ; un objet R6 est un environnement. On ne
 # touche donc qu'à des objets faits de vecteurs et de listes (objet_r_sur), et on ne garde
 # que les tableaux.
 
+# Refuse un fichier R avant de le lire quand ce R est plus ancien que 4.4.
+fichier_r_lisible <- function() {
+  if (getRversion() < "4.4.0") {
+    stop(sprintf(traduire("Nuée n'ouvre les fichiers .rds et .RData qu'avec R 4.4 ou plus récent (avant, un tel fichier peut exécuter du code dès qu'on le lit). Ce R est en version %s : enregistrez le tableau dans un autre format (CSV, Excel...), ou installez un R plus récent.",
+                          "Nuée opens .rds and .RData files only with R 4.4 or newer (before, such a file can run code as soon as it is read). This R is version %s: save the table in another format (CSV, Excel...), or install a newer R."),
+                 as.character(getRversion())), call. = FALSE)
+  }
+}
+
 # L'objet d'un fichier .rds : un tableau, ou une liste dont tableaux_r() prendra les
 # tableaux ; tout autre objet est refusé.
 lire_rds <- function(chemin) {
+  fichier_r_lisible()
   x <- readRDS(chemin)
   liste <- typeof(x) == "list" && !isS4(x) && !is.data.frame(x)
   if (!liste && !objet_r_sur(x)) {
@@ -106,6 +118,7 @@ tableaux_r <- function(x) {
 # Les tableaux d'un fichier .RData, par nom ; ses autres objets (fonctions, environnements...)
 # sont ignorés sans y toucher.
 objets_r <- function(chemin) {
+  fichier_r_lisible()
   e <- new.env()
   load(chemin, envir = e)
   Filter(function(x) !isS4(x) && est_tableau(x) && objet_r_sur(x), mget(sort(ls(e)), envir = e))

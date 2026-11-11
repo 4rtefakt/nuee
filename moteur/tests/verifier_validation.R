@@ -8,7 +8,10 @@
 #     (une OPLS-DA dont une classe est toute dans un groupe, absente de son sous-modèle, comprise) ;
 #   - un modèle ne peut pas avoir plus de composantes que le rang de ses données ;
 #   - un vrai signal garde un Q2 élevé (les quatre modèles du projet d'exemple) ;
-#   - le test de permutation réajuste tout le modèle à partir du projet.
+#   - le test de permutation réajuste tout le modèle à partir du projet ;
+#   - les groupes par valeur d'une variable ou d'un identifiant (toutes les observations d'un
+#     verger dans le même groupe), ou donnés tels quels, et la pondération par blocs et les
+#     modificateurs (pretraitement.R), y compris dans les sous-modèles.
 #   Rscript moteur/tests/verifier_validation.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -28,7 +31,7 @@ cat("La validation croisée redonne : un modèle ajusté sans chaque groupe, qui
 press_a_la_main <- function(p, d) {
   m <- ajuster(p, d)
   obs <- d$observations
-  groupes <- groupes_validation(length(obs), m$G)
+  groupes <- groupes_definition(p, d)
   pls <- identical(m$type, "PLS")
   press <- matrix(0, m$A, if (pls) ncol(m$Y) else m$K)
   vers_complet <- function(z, centre, poids) sweep(sweep(z, 2, centre, "-"), 2, poids, "*")
@@ -96,7 +99,18 @@ cas <- list(
   "ACP, valeurs manquantes" = list(q, definir_modele(q, "PCA", x = complets[1:6], A = 2)),
   "OPLS" = list(p, definir_modele(p, "OPLS", x = complets, y = uid("note_gout"), A = 3)),
   "OPLS-DA à 4 classes" = list(p, definir_modele(p, "OPLS-DA", x = complets, classe = uid("variete"), A = 4)),
-  "OPLS-DA à 3 classes, dont une toute dans un groupe" = list(pk, definir_modele(pk, "OPLS-DA", x = numeros(pk, paste0("V", 1:5)), classe = numeros(pk, "classe"), A = 3)))
+  "OPLS-DA à 3 classes, dont une toute dans un groupe" = list(pk, definir_modele(pk, "OPLS-DA", x = numeros(pk, paste0("V", 1:5)), classe = numeros(pk, "classe"), A = 3)),
+  "PLS, un groupe par verger" = list(p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 3, vc = list(by = "variable", variable = uid("verger")))),
+  "PLS, blocs et modificateur, un groupe par verger, valeurs manquantes" = list(q, definir_modele(q, "PLS", x = complets, y = uid("note_gout"), A = 3,
+    vc = list(by = "variable", variable = uid("verger")), echelle = stats::setNames("Ctr", as.character(complets[11])),
+    blocs = stats::setNames(c("taille", "taille", "gout", "gout", "gout"), as.character(complets[1:5])),
+    modificateurs = stats::setNames(c(0.5, 3), as.character(complets[c(4, 11)])))),
+  "ACP, un groupe par verger, blocs" = list(p, definir_modele(p, "PCA", x = complets, A = 3, vc = list(by = "variable", variable = uid("verger")),
+    blocs = stats::setNames(rep("couleur", 2), as.character(uid(c("couleur_a", "couleur_b")))))),
+  "OPLS-DA, un groupe par verger" = list(p, definir_modele(p, "OPLS-DA", x = complets, classe = uid("variete"), A = 3, vc = list(by = "variable", variable = uid("verger")))),
+  "PLS, transformations personnalisées, terme à trois facteurs et cube" = list(p, definir_modele(p, "PLS", x = c(uid("variete"), complets[1:6]), y = uid("note_gout"), A = 3,
+    transformations = stats::setNames(c("ln:1:1", "puissance:2:1:0.33", "neglog:0.5:2", "lineaire:-1:300", "exp:0.01:0", "logit:0:40"), as.character(complets[1:6])),
+    croises = list(c(uid("variete"), complets[1], complets[2]), c(complets[3], complets[3], complets[3])))))
 for (k in names(cas)) {
   e <- press_a_la_main(cas[[k]][[1]], cas[[k]][[2]])
   verifier(sprintf("%s : PRESS du moteur = PRESS à la main (écart relatif %.1g)", k, e), e < 1e-10)
@@ -162,7 +176,7 @@ e <- tryCatch({ ajuster(po, do); "ajusté" }, error = function(e) conditionMessa
 verifier(sprintf("la même OPLS-DA à 5 composantes demandées : « %s »", e), identical(e, message_5))
 
 cat("Un vrai signal garde un Q2 élevé : les modèles du projet d'exemple\n")
-# avant : la validation croisée sur les matrices du modèle complet (version 1.0 jusqu'ici)
+# avant : la validation croisée sur les matrices du modèle complet (jusqu'à la version 0.9.0)
 avant <- list(M1 = c(0.1716, 0.4035, 0.3481, 0.5278), M2 = c(0.6731, 0.6964, 0.7086, 0.7245), M3 = c(0.3048, 0.5850, 0.8946), M4 = c(0.5924, 0.7417))
 for (d in p$models) {
   m <- ajuster(p, d)
@@ -185,6 +199,102 @@ dd <- definir_modele(p, "PLS-DA", x = complets, classe = uid("variete"), A = 2)
 rd <- permutations(p, ajuster(p, dd), dd, n = 2)
 verifier("PLS-DA : les classes sont permutées ensemble et le modèle réajusté à chaque fois",
          nrow(rd$points) == 3 && all(rd$points$correlation[-1] < 1))
+
+cat("Groupes par valeur d'une variable ou d'un identifiant, ou donnés tels quels\n")
+d <- definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = list(by = "variable", variable = uid("verger")))
+g <- groupes_definition(p, d)
+verger <- colonne(p, uid("verger"), d$observations)
+verifier(sprintf("un groupe par verger : %d groupes, chacun un seul verger, chaque verger un seul groupe", max(g)),
+         max(g) == length(unique(verger)) && all(tapply(verger, g, function(v) length(unique(v))) == 1) && all(tapply(g, verger, function(v) length(unique(v))) == 1))
+m <- ajuster(p, d)
+verifier(sprintf("le modèle compte %d groupes (G) et dit par quoi (« %s »)", m$G, m$vc_par), m$G == max(g) && identical(m$vc_par, "verger"))
+# le même verger en identifiant secondaire des observations (comme « site » dans un fichier .usp)
+pi <- p
+pi$observation_id_names <- c(p$observation_id_names, "lot")
+lettres <- as.character(variable_du_projet(p, uid("verger"))$categories)[colonne(p, uid("verger"), vapply(p$observations, function(o) as.numeric(o$uid), 0))]
+pi$observations <- Map(function(o, l) { o$ids <- c(as.character(o$ids), l); o }, p$observations, lettres)
+di <- definir_modele(pi, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = list(by = "id", id = "lot"))
+verifier("par identifiant : les mêmes groupes, le même Q2", identical(groupes_definition(pi, di), g) && isTRUE(all.equal(ajuster(pi, di)$q2cum, m$q2cum)))
+dg <- d
+dg$groupes_vc <- list(by = "groups", observations = rev(d$observations), groups = rev(10 * g))  # (numéros quelconques)
+verifier("donnés tels quels (dans un autre ordre) : les mêmes groupes, le même Q2", identical(groupes_definition(p, dg), g) && isTRUE(all.equal(ajuster(p, dg)$q2cum, m$q2cum)))
+dg$observations <- c(d$observations, 999)
+e <- tryCatch({ groupes_definition(p, dg); "" }, error = function(e) conditionMessage(e))
+verifier(sprintf("une observation sans groupe : « %s »", substr(e, 1, 60)), grepl("groupes de ce modèle viennent du fichier", e))
+qn <- p
+qn$donnees[c(3, 30), as.character(uid("verger"))] <- NA
+gn <- groupes_definition(qn, definir_modele(qn, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = list(by = "variable", variable = uid("verger"))))
+verifier("les observations sans valeur forment un groupe à part", gn[3] == gn[30] && sum(gn == gn[3]) == 2 && max(gn) == max(g) + 1)
+seul <- d$observations[verger == verger[1]]
+e <- tryCatch({ definir_modele(p, "PLS", x = complets, y = uid("note_gout"), observations = seul, vc = list(by = "variable", variable = uid("verger"))); "" },
+              error = function(e) conditionMessage(e))
+verifier(sprintf("un seul verger parmi les observations : « %s »", substr(e, 1, 60)), grepl("un seul groupe", e))
+e <- tryCatch({ definir_modele(p, "PLS", x = complets, y = uid("note_gout"), vc = list(by = "id", id = "site")); "" }, error = function(e) conditionMessage(e))
+verifier(sprintf("un identifiant absent du projet : « %s »", e), grepl("pas d'identifiant « site »", e))
+verifier("sans réglage (ou « order ») : à tour de rôle en G groupes", identical(groupes_definition(p, definir_modele(p, "PCA", x = complets, G = 5)), groupes_validation(120, 5)))
+mc <- modeles_classe(p, definir_modele(p, "PCA", x = complets, A = 2, vc = list(by = "variable", variable = uid("verger"))), uid("variete"))
+verifier("modèles de classe groupés par verger : une classe d'un seul verger est validée à tour de rôle, les autres par verger",
+         length(mc) == 4 && all(vapply(mc, function(e) {
+           un_seul <- length(unique(colonne(p, uid("verger"), e$observations))) == 1
+           if (un_seul) is.null(e$groupes_vc) && ajuster(p, e)$G == 7 else identical(e$groupes_vc$by, "variable")
+         }, TRUE)))
+mc <- modeles_classe(p, definir_modele(p, "PCA", x = complets, A = 2, vc = list(by = "variable", variable = uid("variete"))), uid("variete"))
+verifier("groupés par la variable des classes : chaque classe n'a qu'une valeur, elle est validée à tour de rôle (au lieu d'une erreur)",
+         length(mc) == 4 && all(vapply(mc, function(e) is.null(e$groupes_vc) && ajuster(p, e)$G == 7, TRUE)))
+
+cat("Pondération par blocs et modificateurs : poids UV × modificateur × 1/racine(K)\n")
+blocs <- stats::setNames(c("taille", "taille", "gout", "gout", "gout"), as.character(complets[1:5]))
+db <- definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, blocs = blocs,
+                     modificateurs = stats::setNames(c(0.5, 3), as.character(complets[c(4, 11)])), echelle = stats::setNames("Ctr", as.character(complets[11])))
+mb <- ajuster(p, db)
+et <- apply(sapply(complets, function(u) colonne(p, u, db$observations)), 2, sd, na.rm = TRUE)
+attendu <- 1 / et * c(1 / sqrt(c(2, 2, 3)), 0.5 / sqrt(3), 1 / sqrt(3), rep(1, 5), 3 * et[11])
+verifier("le poids de chaque terme", isTRUE(all.equal(unname(mb$x$poids), unname(attendu))) && isTRUE(all.equal(mb$x$facteur, unname(attendu * c(et[-11], 1)))))
+verifier("un bloc de 3 termes UV pèse autant qu'une variable : variance totale 1, au lieu de 3",
+         isTRUE(all.equal(sum(apply(mb$X[, c(3, 5)], 2, var)) + var(mb$X[, 4]) / 0.25, 1)))
+pr <- predire(p, mb, db, db$observations[1:5])
+verifier("une prédiction projette avec les mêmes poids : elle redonne les scores du modèle",
+         isTRUE(all.equal(unname(as.matrix(pr[c("t1", "t2")])), unname(mb$T[1:5, ]))))
+r <- reglages_modele(p, db)
+verifier("Nouveau modèle depuis celui-ci garde les blocs et les modificateurs",
+         identical(unlist(r$blocs), blocs) && isTRUE(all.equal(unlist(r$modificateurs), stats::setNames(c(0.5, 3), as.character(complets[c(4, 11)])))))
+r <- reglages_modele(p, d)
+verifier("… et les groupes de la validation croisée", identical(r$vc, d$groupes_vc))
+dq <- definir_modele(p, "PLS-DA", x = uid(c("culture", "poids")), classe = uid("variete"), A = 1, blocs = stats::setNames("b", as.character(uid("culture"))))
+verifier("une variable qualitative dans un bloc : chacune de ses catégories compte (1/racine(2) pour 2)",
+         isTRUE(all.equal(ajuster(p, dq)$x$facteur, c(1 / sqrt(2), 1 / sqrt(2), 1))))
+
+cat("Transformations personnalisées et termes à trois facteurs (Nouveau modèle)\n")
+x <- c(-1, 0, 0.5, 2, 39.9, 40, 100, NA)
+formules <- suppressWarnings(list(
+  "ln:2:1" = ifelse(2 * x + 1 > 0, log(2 * x + 1), NA), "log10:3" = ifelse(x + 3 > 0, log10(x + 3), NA), "log10:2:0" = ifelse(2 * x > 0, log10(2 * x), NA),
+  "neglog:1:2" = ifelse(x + 2 > 0, -log10(x + 2), NA), "exp:0.5:-1" = exp(0.5 * x - 1), "lineaire:-2:5" = -2 * x + 5,
+  "logit:0:40" = ifelse(x > 0 & x < 40, log(x / (40 - x)), NA), "puissance:1:1:0.5" = ifelse(x + 1 >= 0, sqrt(x + 1), NA),
+  "puissance:3" = x^3, "racine4" = ifelse(x >= 0, x^0.25, NA)))
+ok <- vapply(names(formules), function(k) isTRUE(all.equal(suppressWarnings(transformer(x, lire_transformation(k))), formules[[k]])), TRUE)
+verifier(sprintf("chaque transformation donne sa formule, hors domaine manquante (%s)", paste(names(formules)[!ok], collapse = ", ")), all(ok))
+codes <- c("racine2", "racine4", "log10", "log10:1", "ln:1:1", "log10:2:0.5", "neglog:1:0", "exp:0.01:0", "lineaire:-1:300", "logit:0:100", "puissance:2:1:0.33")
+retour <- vapply(codes, function(k) nom_transformation(lire_transformation(k)), "")
+verifier("le nom de chaque transformation la relit telle quelle (Nouveau modèle depuis un modèle)", identical(unname(retour), codes))
+verifier("une puissance enregistrée dans un fichier .usp a maintenant un nom : elle reste dans le modèle refait",
+         identical(nom_transformation(list(type = 7, params = c(-99, 1, 0, 0.33))), "puissance:1:0:0.33") && is.null(nom_transformation(list(type = 7, params = c(-99, 1, 0, 1)))))
+e <- tryCatch({ lire_transformation("logit:5:1"); "" }, error = function(e) conditionMessage(e))
+verifier(sprintf("un logit aux bornes à l'envers : « %s »", e), grepl("borne basse", e))
+e <- tryCatch({ lire_transformation("ln:a:1"); "" }, error = function(e) conditionMessage(e))
+verifier(sprintf("une transformation mal écrite : « %s »", e), grepl("Transformation inconnue", e))
+d3 <- definir_modele(p, "PLS", x = c(uid("variete"), complets[1:3]), y = uid("note_gout"), A = 2,
+                     croises = list(c(uid("variete"), complets[1], complets[2]), c(complets[3], complets[3], complets[3])))
+noms3 <- vapply(d3$x, `[[`, "", "name")
+verifier(sprintf("A × B × C (une variable qualitative par ses catégories) et un cube : %d termes croisés", sum(lengths(lapply(d3$x, `[[`, "variables")) == 3)),
+         all(c("variete(Gala)*poids*diametre", "fermete*fermete*fermete") %in% noms3) && sum(lengths(lapply(d3$x, `[[`, "variables")) == 3) == 5)
+m3 <- ajuster(p, d3)
+attendu <- m3$x$X[, "variete(Gala)"] * m3$x$X[, "poids"] * m3$x$X[, "diametre"]
+verifier("un terme à trois facteurs est le produit de ses facteurs mis à l'échelle, mis à l'échelle à son tour",
+         isTRUE(all.equal(unname(m3$x$X[, "variete(Gala)*poids*diametre"]), unname((attendu - mean(attendu)) / sd(attendu)))))
+verifier("Nouveau modèle depuis celui-ci garde les termes à trois facteurs", length(reglages_modele(p, d3)$croises) == 2 && all(lengths(reglages_modele(p, d3)$croises) == 3))
+e <- tryCatch({ definir_modele(p, "PLS", x = c(uid("variete"), complets[1]), y = uid("note_gout"), croises = list(c(uid("variete"), complets[1], uid("variete")))); "" },
+              error = function(e) conditionMessage(e))
+verifier(sprintf("une variable qualitative deux fois dans un terme : « %s »", e), grepl("qualitative", e))
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

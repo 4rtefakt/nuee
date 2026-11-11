@@ -161,12 +161,37 @@ essayer("transformations_echelles", p, definir_modele(p, "PLS", x = complets, y 
                                                       echelle = stats::setNames(c("Ctr", "none", "Par"), as.character(complets[4:6]))))
 essayer("acp_centree", p, definir_modele(p, "PCA", x = complets, A = 3, echelle = "Ctr"))
 essayer("sans_echelle", p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, echelle = stats::setNames(c("none", "UV"), c("defaut", as.character(complets[1])))))
+# groupes de validation croisée par valeur d'une variable (un groupe par verger), pondération par
+# blocs et modificateurs (pretraitement.R : facteurs_ponderation)
+vc_verger <- list(by = "variable", variable = uid("verger"))
+blocs <- stats::setNames(c("taille", "taille", "gout", "gout", "gout"), as.character(complets[1:5]))
+r <- essayer("blocs_groupes", p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = vc_verger, blocs = blocs,
+                                                modificateurs = stats::setNames(c(0.5, 3), as.character(complets[c(4, 11)]))), permutations = TRUE)
+texte <- lignes_script(r)
+verifier("ses groupes de validation croisée et sa pondération y sont écrits",
+         any(grepl("^groupes_vc <- ", texte)) && any(grepl("groupe = groupes_vc", texte)) && any(grepl("^  poids_x <- poids_x \\* ", texte)))
+essayer("acp_groupes_blocs", p, definir_modele(p, "PCA", x = complets, A = 3, vc = vc_verger, blocs = blocs))
+essayer("opls_groupes", p, definir_modele(p, "OPLS", x = complets, y = uid("note_gout"), A = 3, vc = vc_verger), permutations = TRUE)
+essayer("plsda_groupes_test", p, definir_modele(p, "PLS-DA", x = complets, classe = uid("variete"), A = 2, vc = vc_verger,
+                                                test = numeros_observations(p)[seq(4, 120, by = 6)], blocs = blocs[1:2]))
 # une transformation de type 7 (puissance), et des valeurs hors du domaine du log : manquantes
 q <- p
 q$donnees[c(2, 30), as.character(complets[1])] <- c(0, -3)
 d <- definir_modele(q, "PLS", x = complets, y = uid("note_gout"), A = 2, transformations = stats::setNames("log10", as.character(complets[1])))
 d$x[[2]]$transform <- list(type = 7, params = c(NA, 2, 1, 1.5))
 essayer("hors_domaine", q, d)
+# transformations personnalisées (Nouveau modèle), dans leur domaine puis en dehors (manquantes)
+essayer("transformations_personnalisees", p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2,
+  transformations = stats::setNames(c("ln:1:1", "puissance:2:1:0.33", "neglog:0.5:2", "lineaire:-1:300", "exp:0.01:0", "logit:0:40", "log10:2:0.5"), as.character(complets[1:7]))))
+essayer("transformations_hors_domaine", q, definir_modele(q, "PLS", x = complets, y = uid("note_gout"), A = 2,
+  transformations = stats::setNames(c("logit:0:150", "ln:1:0"), as.character(complets[1:2]))))
+q2 <- q
+q2$donnees[c(4, 9), as.character(complets[2])] <- c(0, -1)
+essayer("transformations_hors_domaine_ln", q2, definir_modele(q2, "PLS", x = complets, y = uid("note_gout"), A = 2,
+  transformations = stats::setNames(c("ln:1:0", "neglog:1:0"), as.character(complets[2:3]))))
+# termes à trois facteurs (A × B × C, une variable qualitative par ses catégories) et cube
+essayer("trois_facteurs", p, definir_modele(p, "PLS", x = c(uid("variete"), complets[1:4]), y = uid("note_gout"), A = 2,
+  croises = list(c(uid("variete"), complets[1], complets[2]), c(complets[3], complets[3], complets[3]))))
 cat("Jeu de test\n")
 r <- essayer("jeu_de_test", p, definir_modele(p, "PLS", x = x[-1], y = x[1], A = 2, test = numeros_observations(p)[seq(5, 120, by = 5)]))
 essayer("plsda_jeu_de_test", p, definir_modele(p, "PLS-DA", x = complets, classe = uid("variete"), A = 3, test = numeros_observations(p)[seq(4, 120, by = 6)]))
@@ -268,8 +293,10 @@ en_anglais <- function(texte) {
 autres <- list(definir_modele(q, "PCA", x = complets[1:4], A = 2), definir_modele(q, "PLS", x = c(complets[1:6], uid("polyphenols")), y = uid("note_gout"), A = 2, test = c(9, 17, 33, 61)),
                definir_modele(p, "OPLS", x = complets, y = uid(c("note_gout", "jus")), A = 4),
                definir_modele(p, "PLS-DA", x = c(uid("verger"), complets[1:6]), classe = uid("culture"), A = 2, croises = list(c(uid("verger"), complets[1])),
-                              echelle = stats::setNames(c("Par", "Ctr", "none"), as.character(complets[1:3]))))
-projets <- list(q, q, p, p)
+                              echelle = stats::setNames(c("Par", "Ctr", "none"), as.character(complets[1:3]))),
+               definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = vc_verger, blocs = blocs,
+                              modificateurs = stats::setNames(2, as.character(complets[7]))))
+projets <- list(q, q, p, p, p)
 ecarts <- character(0)
 anglais <- vapply(seq_along(autres), function(k) {
   r <- ecrire_script(projets[[k]], autres[[k]], file.path(dossier, sprintf("anglais_%d.R", k)), "moteur", version = "essai", langue = "en", donnees = "csv")
@@ -289,7 +316,8 @@ verifier("ni nom ni commentaire en français (OPLS-DA et jeu de test, ACP et PLS
 cat("Toute la séance dans un script\n")
 dir.create(ici <- file.path(dossier, "seance"))
 definitions <- c(p$models, list(definir_modele(p, "OPLS", x = complets, y = uid("note_gout"), A = 2, nom = "m"),
-                                definir_modele(p, "PLS", x = x[-1], y = x[1], A = 2, test = numeros_observations(p)[seq(5, 120, by = 5)], nom = "M6")))
+                                definir_modele(p, "PLS", x = x[-1], y = x[1], A = 2, test = numeros_observations(p)[seq(5, 120, by = 5)], nom = "M6"),
+                                definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = vc_verger, blocs = blocs, nom = "M7")))
 ms <- lapply(definitions, function(d) ajuster(p, d))
 r <- ecrire_script_seance(p, definitions, ms, file.path(ici, "seance.R"), "moteur", version = "essai", donnees = "csv", rdata = TRUE)
 texte <- lignes_script(r)
@@ -308,6 +336,8 @@ verifier(sprintf("%d modèles, chacun sous son nom (%s) : les mêmes résultats 
 attendu <- permutations(p, ms[[2]], definitions[[2]], n = 3)
 verifier("le test de permutation d'un modèle de la séance", meme(s$suite$points, attendu$points[c("correlation", "R2", "Q2")]))
 verifier("les fonctions n'y sont qu'une fois", sum(grepl("^pls <- function", texte)) == 1 && sum(grepl("^# 1\\. ", texte)) == 1)
+verifier("un modèle à groupes par verger garde les siens (M7$groupes_vc), y compris dans l'appel du test de permutation",
+         any(grepl("groupe = M7\\$groupes_vc", texte)) && any(grepl("^groupes_vc <- ", texte)))
 e <- new.env(); load(r$chemins[3], envir = e)
 verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e)))
 

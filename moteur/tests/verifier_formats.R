@@ -20,6 +20,12 @@ verifier <- function(nom, ok) {
 }
 dossier <- tempfile("formats")
 dir.create(dossier)
+# Nuée ne lit les fichiers .rds et .RData qu'avec R 4.4 ou plus récent (formats.R :
+# fichier_r_lisible) ; avec un R plus ancien, on vérifie qu'il les refuse
+# (ESSAI_R_ANCIEN=1 : comme avec R 4.3, que le moteur, chargé dans l'environnement global, voit aussi)
+if (nzchar(Sys.getenv("ESSAI_R_ANCIEN"))) getRversion <- function() package_version("4.3.3")
+r_recent <- getRversion() >= "4.4.0"
+REFUS_R <- "Nuée n'ouvre les fichiers .rds et .RData qu'avec R 4.4"
 
 p <- lire_projet("exemple/vergers.json")
 ref <- tableau_projet(p)
@@ -39,6 +45,12 @@ memes <- function(a, b, noms = TRUE) {
 cat("Écriture puis relecture des données du projet d'exemple\n")
 for (ext in FORMATS_ECRITURE) {
   f <- file.path(dossier, paste0("vergers.", ext))
+  if (!r_recent && ext %in% c("rds", "rdata")) {
+    ecrire_tableau(ref, f, objet = "vergers")
+    verifier(sprintf(".%s : écrit, puis refusé à la lecture avec R %s", ext, getRversion()),
+             startsWith(tryCatch({ lire_tableau(f); "lu" }, error = conditionMessage), REFUS_R))
+    next
+  }
   r <- tryCatch({
     ecrire_tableau(ref, f, objet = "vergers")
     lire_tableau(f)
@@ -74,10 +86,12 @@ f <- ecrire_tables(tables, file.path(dossier, "M2.RData"), objet = "M2")
 e <- new.env(); load(f, envir = e)
 verifier("une liste de tableaux dans un .RData", is.list(e$M2) && isTRUE(all.equal(e$M2$observations$t1, tables$observations$t1)) &&
          identical(rownames(e$M2$observations)[1], tables$observations$Observation[1]))
-verifier("choix d'un tableau dans un .RData", identical(tables_fichier(f), NULL) || TRUE)
-saveRDS(list(a = ref, b = ref[1:5, ]), file.path(dossier, "deux.rds"))
-verifier("tableaux d'un .rds", identical(tables_fichier(file.path(dossier, "deux.rds")), c("a", "b")) &&
-         nrow(lire_tableau(file.path(dossier, "deux.rds"), "b")) == 5)
+if (r_recent) {
+  verifier("choix d'un tableau dans un .RData", identical(tables_fichier(f), NULL) || TRUE)
+  saveRDS(list(a = ref, b = ref[1:5, ]), file.path(dossier, "deux.rds"))
+  verifier("tableaux d'un .rds", identical(tables_fichier(file.path(dossier, "deux.rds")), c("a", "b")) &&
+           nrow(lire_tableau(file.path(dossier, "deux.rds"), "b")) == 5)
+}
 
 cat("Fichiers texte\n")
 ecrire <- function(nom, octets) { f <- file.path(dossier, nom); writeBin(octets, f); f }
@@ -198,24 +212,31 @@ f <- file.path(dossier, "piege.rds")
 saveRDS(piege, f)
 m1 <- tryCatch(tables_fichier(f), error = conditionMessage)
 m2 <- tryCatch(lire_tableau(f), error = conditionMessage)
-verifier("un environnement dans un .rds (liaison active) est refusé, sans être lu", !file.exists(marqueur) &&
-         startsWith(m1, "Ce fichier R contient un objet que Nuée n'ouvre pas") && identical(m1, m2))
-d <- data.frame(x = 1:2)
-d$e <- list(piege, piege)
-saveRDS(d, f <- file.path(dossier, "piege_colonne.rds"))
-methods::setClass("EssaiNuee", methods::representation(x = "numeric"))
-saveRDS(methods::new("EssaiNuee", x = 1), g <- file.path(dossier, "s4.rds"))
-verifier("de même un tableau qui contient un environnement, et un objet S4", inherits(tryCatch(lire_tableau(f), error = identity), "error") &&
-         inherits(tryCatch(lire_tableau(g), error = identity), "error") && !file.exists(marqueur))
-saveRDS(list(donnees = data.frame(x = 1:3, y = c(2.5, 3, 4)), piege = piege, f = function() 1), f <- file.path(dossier, "liste.rds"))
-verifier("une liste : ses tableaux, le reste ignoré sans y toucher", identical(tables_fichier(f), "donnees") && identical(lire_tableau(f)$y, c(2.5, 3, 4)) &&
-         !file.exists(marqueur))
-vergers <- ref[1:5, ]
-save(piege, vergers, file = f <- file.path(dossier, "piege.RData"))
-verifier(".RData : ses tableaux, sans toucher aux environnements", identical(tables_fichier(f), "vergers") && nrow(lire_tableau(f)) == 5 && !file.exists(marqueur))
-dt <- structure(data.frame(x = 1:3), .internal.selfref = methods::new("externalptr"), class = c("data.table", "data.frame"))
-saveRDS(dt, f <- file.path(dossier, "dt.rds"))
-verifier("un data.table (pointeur externe en attribut) s'ouvre", identical(lire_tableau(f)$x, c(1, 2, 3)))
+if (r_recent) {
+  verifier("un environnement dans un .rds (liaison active) est refusé, sans être lu", !file.exists(marqueur) &&
+           startsWith(m1, "Ce fichier R contient un objet que Nuée n'ouvre pas") && identical(m1, m2))
+  d <- data.frame(x = 1:2)
+  d$e <- list(piege, piege)
+  saveRDS(d, f <- file.path(dossier, "piege_colonne.rds"))
+  methods::setClass("EssaiNuee", methods::representation(x = "numeric"))
+  saveRDS(methods::new("EssaiNuee", x = 1), g <- file.path(dossier, "s4.rds"))
+  verifier("de même un tableau qui contient un environnement, et un objet S4", inherits(tryCatch(lire_tableau(f), error = identity), "error") &&
+           inherits(tryCatch(lire_tableau(g), error = identity), "error") && !file.exists(marqueur))
+  saveRDS(list(donnees = data.frame(x = 1:3, y = c(2.5, 3, 4)), piege = piege, f = function() 1), f <- file.path(dossier, "liste.rds"))
+  verifier("une liste : ses tableaux, le reste ignoré sans y toucher", identical(tables_fichier(f), "donnees") && identical(lire_tableau(f)$y, c(2.5, 3, 4)) &&
+           !file.exists(marqueur))
+  vergers <- ref[1:5, ]
+  save(piege, vergers, file = f <- file.path(dossier, "piege.RData"))
+  verifier(".RData : ses tableaux, sans toucher aux environnements", identical(tables_fichier(f), "vergers") && nrow(lire_tableau(f)) == 5 && !file.exists(marqueur))
+  dt <- structure(data.frame(x = 1:3), .internal.selfref = methods::new("externalptr"), class = c("data.table", "data.frame"))
+  saveRDS(dt, f <- file.path(dossier, "dt.rds"))
+  verifier("un data.table (pointeur externe en attribut) s'ouvre", identical(lire_tableau(f)$x, c(1, 2, 3)))
+} else {
+  save(piege, file = f2 <- file.path(dossier, "piege_ancien.RData"))
+  verifier(sprintf("R %s : un .rds ou un .RData est refusé avant d'être lu (R 4.4 ou plus récent : CVE-2024-27322)", getRversion()),
+           startsWith(m1, REFUS_R) && identical(m1, m2) &&
+             startsWith(tryCatch(lire_tableau(f2), error = conditionMessage), REFUS_R) && !file.exists(marqueur))
+}
 
 cat("Prédiction d'un fichier\n")
 set.seed(2)
@@ -239,19 +260,21 @@ if (nzchar(xls)) {  # classeur d'exemple du paquet readxl (pas dans l'applicatio
 }
 
 cat("R : facteurs et noms de lignes\n")
-saveRDS(datasets::mtcars, file.path(dossier, "mtcars.rds"))
-q <- importer_tableau(file.path(dossier, "mtcars.rds"))
-verifier("noms de lignes en noms d'observations", identical(unname(q$noms_obs[1]), "Mazda RX4") && length(q$variables) == 11)
-df <- data.frame(g = factor(c("lent", "moyen", "rapide", "lent"), levels = c("lent", "moyen", "rapide")), x = 1:4)
-saveRDS(df, file.path(dossier, "facteur.rds"))
-q <- importer_tableau(file.path(dossier, "facteur.rds"))
-verifier("un facteur garde l'ordre de ses modalités et n'est pas pris pour un identifiant",
-         identical(q$variables[[1]]$categories, c("lent", "moyen", "rapide")) && identical(unname(q$noms_obs), c("1", "2", "3", "4")))
-spectres <- data.frame(y = 1:3)
-spectres$NIR <- I(matrix(1:6 / 10, 3, 2, dimnames = list(NULL, c("900 nm", "902 nm"))))
-saveRDS(spectres, file.path(dossier, "spectres.rds"))
-verifier("une colonne matrice (spectres) donne une colonne par longueur d'onde",
-         identical(names(lire_tableau(file.path(dossier, "spectres.rds"))), c("y", "900 nm", "902 nm")))
+if (r_recent) {
+  saveRDS(datasets::mtcars, file.path(dossier, "mtcars.rds"))
+  q <- importer_tableau(file.path(dossier, "mtcars.rds"))
+  verifier("noms de lignes en noms d'observations", identical(unname(q$noms_obs[1]), "Mazda RX4") && length(q$variables) == 11)
+  df <- data.frame(g = factor(c("lent", "moyen", "rapide", "lent"), levels = c("lent", "moyen", "rapide")), x = 1:4)
+  saveRDS(df, file.path(dossier, "facteur.rds"))
+  q <- importer_tableau(file.path(dossier, "facteur.rds"))
+  verifier("un facteur garde l'ordre de ses modalités et n'est pas pris pour un identifiant",
+           identical(q$variables[[1]]$categories, c("lent", "moyen", "rapide")) && identical(unname(q$noms_obs), c("1", "2", "3", "4")))
+  spectres <- data.frame(y = 1:3)
+  spectres$NIR <- I(matrix(1:6 / 10, 3, 2, dimnames = list(NULL, c("900 nm", "902 nm"))))
+  saveRDS(spectres, file.path(dossier, "spectres.rds"))
+  verifier("une colonne matrice (spectres) donne une colonne par longueur d'onde",
+           identical(names(lire_tableau(file.path(dossier, "spectres.rds"))), c("y", "900 nm", "902 nm")))
+}
 
 cat("Weka : apostrophes et guillemets dans le texte\n")
 df <- data.frame(Observation = c("a b", "l'eau", "c\"d", "g,h", "i%j", "k\\l"),
@@ -358,7 +381,7 @@ verifier("en anglais : ligne trop longue, note de lecture", startsWith(tryCatch(
                    "NO3 (mg/L): 3 non-numeric values read as missing (<0,5 ×2, nd ×1), including 2 below the detection limit") &&
          identical(attr(lire_tableau(file.path(dossier, "court.csv")), "note")[[1]], "Line 3: fewer values than columns (3); those of the last columns are read as missing there."))
 verifier("en anglais : fichier R refusé, limites de dBase", startsWith(tryCatch(lire_tableau(file.path(dossier, "piege.rds")), error = conditionMessage),
-         "This R file holds an object Nuée doesn't open") &&
+         if (r_recent) "This R file holds an object Nuée doesn't open" else "Nuée opens .rds and .RData files only with R 4.4") &&
          startsWith(tryCatch(ecrire_tableau(cbind(large, V2047 = 1), file.path(dossier, "trop.dbf")), error = conditionMessage), "Too many columns for a dBase file: 2047"))
 options(nuee.langue = NULL)
 

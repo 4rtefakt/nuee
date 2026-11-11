@@ -63,15 +63,20 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   }
 
   # --- prétraitement
-  tr <- Filter(Negate(is.null), lapply(simples, function(t) if (!is.null(t$transform)) c(nom = as.character(t$name), tr = nom_transformation(t$transform) %||% "autre")))
+  # (une transformation identité, x^1, n'en est pas une)
+  tr <- Filter(Negate(is.null), lapply(simples, function(t) {
+    code <- nom_transformation(t$transform)
+    if (!is.null(code)) c(nom = as.character(t$name), tr = code, formule = formule_transformation(t$transform, fr = fr))
+  }))
   p2 <- character(0)
   if (length(tr)) {
     par_type <- split(vapply(tr, `[[`, "", "nom"), vapply(tr, `[[`, "", "tr"))
+    formules <- stats::setNames(vapply(tr, `[[`, "", "formule"), vapply(tr, `[[`, "", "tr"))
     noms_tr <- if (fr) c(log10 = "en logarithme décimal", racine2 = "en racine carrée", racine4 = "en racine quatrième", autre = "par une transformation enregistrée dans le projet")
                else c(log10 = "log10-transformed", racine2 = "square-root transformed", racine4 = "fourth-root transformed", autre = "transformed as stored in the project")
     morceaux <- vapply(names(par_type), function(k) {
-      cle <- if (startsWith(k, "log10")) "log10" else if (k %in% names(noms_tr)) k else "autre"
-      sprintf("%s %s", liste(guillemets(par_type[[k]])), noms_tr[[cle]])
+      quoi <- if (k %in% names(noms_tr)) noms_tr[[k]] else sprintf(if (fr) "par %s" else "transformed by %s", formules[[k]])
+      sprintf("%s %s", liste(guillemets(par_type[[k]])), quoi)
     }, "")
     p2 <- c(p2, if (fr) sprintf("Transformations : %s.", paste(morceaux, collapse = " ; ")) else sprintf("Transformations: %s.", paste(morceaux, collapse = "; ")))
   }
@@ -104,6 +109,33 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
     p2 <- c(p2, if (fr) sprintf("Mise à l'échelle des termes X : %s.", paste(sprintf("%d %s", types, noms_ech[names(types)]), collapse = " ; "))
                 else sprintf("Scaling of the X terms: %s.", paste(sprintf("%d %s", types, noms_ech[names(types)]), collapse = "; ")))
   }
+  # pondération par blocs et modificateurs (pretraitement.R : facteurs_ponderation), pour les
+  # termes dont le poids est calculé
+  for (b in list(list(termes = d$x, bloc = m$x, nom = "X"), if (pls && !plsda) list(termes = d$y, bloc = m$y, nom = "Y"))) {
+    if (is.null(b)) next
+    calcule <- b$bloc$type %in% c("UV", "Par", "Ctr", "none")
+    blocs <- vapply(b$termes, function(t) { x <- t$scaling$block; if (length(x) && !is.na(x[1]) && nzchar(as.character(x[1]))) as.character(x[1]) else NA_character_ }, "")
+    K_tous <- table(blocs[!is.na(blocs)])  # (K compte tous les termes du bloc, comme facteurs_ponderation)
+    blocs[!calcule] <- NA
+    mods <- vapply(b$termes, function(t) as.numeric(t$scaling$modifier %||% 1), 0)
+    mods[!calcule] <- 1
+    if (any(!is.na(blocs))) {
+      K <- K_tous[unique(blocs[!is.na(blocs)])]
+      nom_bloc <- ifelse(grepl("^[0-9]+$", names(K)), paste(if (fr) "bloc" else "block", names(K)), guillemets(names(K)))
+      p2 <- c(p2, if (fr) sprintf("Les termes %s étaient répartis en %d bloc%s (%s) : le poids de chaque terme d'un bloc a été divisé par la racine carrée du nombre de termes du bloc, pour que chaque bloc pèse autant, quel que soit son nombre de termes (pondération par blocs).",
+                                  b$nom, length(K), if (length(K) > 1) "s" else "", paste(sprintf("%s : %d terme%s", nom_bloc, K, ifelse(K > 1, "s", "")), collapse = " ; "))
+                  else sprintf("The %s terms were divided into %d block%s (%s): the weight of each term of a block was divided by the square root of the block's number of terms, so that each block weighs the same whatever its number of terms (block scaling).",
+                               b$nom, length(K), if (length(K) > 1) "s" else "", paste(sprintf("%s: %d term%s", nom_bloc, K, ifelse(K > 1, "s", "")), collapse = "; ")))
+    }
+    if (any(mods != 1)) {
+      n <- table(signif(mods[mods != 1], 4))
+      facteur <- trimws(formatC(as.numeric(names(n)), digits = 4, format = "fg", decimal.mark = if (fr) "," else "."))
+      p2 <- c(p2, if (fr) sprintf("Le poids %s a aussi été multiplié par un modificateur (%s).", if (sum(n) > 1) sprintf("de %d termes %s", sum(n), b$nom) else sprintf("d'un terme %s", b$nom),
+                                  paste(sprintf("×%s%s", facteur, ifelse(length(n) > 1, sprintf(" pour %d", n), "")), collapse = " ; "))
+                  else sprintf("The weight of %s was also multiplied by a modifier (%s).", if (sum(n) > 1) sprintf("%d %s terms", sum(n), b$nom) else sprintf("one %s term", b$nom),
+                               paste(sprintf("×%s%s", facteur, ifelse(length(n) > 1, sprintf(" for %d", n), "")), collapse = "; ")))
+    }
+  }
 
   # --- méthode
   nom_methode <- if (fr) {
@@ -131,10 +163,17 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
                    else sprintf(", which handles missing values (%s of the X values; Nelson et al., 1996)", pourcent(manquantes_x)))
   } else ""
   G <- m$G
-  p3 <- if (fr) sprintf("Nous avons ajusté %s par l'algorithme NIPALS%s, avec %s. La validation croisée comptait %d groupes (l'observation i dans le groupe i modulo %d) ; chaque groupe a été prédit par un modèle ajusté sans lui, avec un centrage et une mise à l'échelle recalculés sur les autres observations.",
-                        nom_methode, manq, composantes, G, G)
-        else sprintf("We fitted %s with the NIPALS algorithm%s, with %s. Cross-validation used %d groups (observation i in group i modulo %d); each group was predicted by a model fitted without it, with centring and scaling recomputed on the other observations.",
-                     nom_methode, manq, composantes, G, G)
+  par <- if (length(d$groupes_vc$by)) as.character(d$groupes_vc$by) else ""
+  groupes <- if (par %in% c("id", "variable")) {
+    if (fr) sprintf("%d groupes, un par valeur de %s (les observations de même valeur dans le même groupe)", G, guillemets(m$vc_par))
+    else sprintf("%d groups, one per value of %s (observations with the same value in the same group)", G, guillemets(m$vc_par))
+  } else if (par == "groups") {
+    if (fr) sprintf("%d groupes, repris du fichier d'origine", G) else sprintf("%d groups, taken from the original file", G)
+  } else if (fr) sprintf("%d groupes (l'observation i dans le groupe i modulo %d)", G, G) else sprintf("%d groups (observation i in group i modulo %d)", G, G)
+  p3 <- if (fr) sprintf("Nous avons ajusté %s par l'algorithme NIPALS%s, avec %s. La validation croisée comptait %s ; chaque groupe a été prédit par un modèle ajusté sans lui, avec un centrage et une mise à l'échelle recalculés sur les autres observations.",
+                        nom_methode, manq, composantes, groupes)
+        else sprintf("We fitted %s with the NIPALS algorithm%s, with %s. Cross-validation used %s; each group was predicted by a model fitted without it, with centring and scaling recomputed on the other observations.",
+                     nom_methode, manq, composantes, groupes)
 
   # --- qualité
   cp <- s$composantes

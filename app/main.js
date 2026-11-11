@@ -7,6 +7,7 @@ const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const path = require('path');
+const { fileURLToPath } = require('url');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -105,21 +106,34 @@ function portLibre(souhaite = 0) {
 // On Linux, /tmp is shared by every user of the computer: the folder names the user too, and
 // only this user's are ever cleaned.
 const prefixeR = process.platform === 'win32' ? 'nuee-r-' : `nuee-r-${process.getuid()}-`;
-const temporaireR = path.join(app.getPath('temp'), `${prefixeR}${process.pid}`);
+const temporaireDuLancement = path.join(app.getPath('temp'), `${prefixeR}${process.pid}`);
 function nettoyerTemporairesR() {
   let noms = [];
-  try { noms = fs.readdirSync(app.getPath('temp')).filter((n) => n.startsWith(prefixeR) && /^\d+$/.test(n.slice(prefixeR.length))); } catch { /* no temporary folder */ }
+  try { noms = fs.readdirSync(app.getPath('temp')).filter((n) => n.startsWith(prefixeR) && /^\d+(-\w+)?$/.test(n.slice(prefixeR.length))); } catch { /* no temporary folder */ }
   for (const n of noms) {
-    const pid = Number(n.slice(prefixeR.length));
+    const pid = Number(n.slice(prefixeR.length).split('-')[0]);
     let vivant = pid === process.pid;
     if (!vivant) try { process.kill(pid, 0); vivant = true; } catch (e) { vivant = e.code === 'EPERM'; }  // (EPERM: running, someone else's)
     if (!vivant) try { fs.rmSync(path.join(app.getPath('temp'), n), { recursive: true, force: true }); } catch { /* still held: next time */ }
   }
 }
 
+// The folder made for this run, readable by this user only. On Linux, someone else could
+// have made one of that name beforehand in the shared /tmp, to read or swap R's files: then
+// another, with a name nobody can foresee.
+let temporaireR = temporaireDuLancement;
+function dossierTemporaireR() {
+  try { fs.mkdirSync(temporaireR, { mode: 0o700 }); } catch (e) { if (e.code !== 'EEXIST') throw e; }
+  if (process.platform === 'win32') return;
+  const s = fs.lstatSync(temporaireR);
+  if (!s.isDirectory() || s.uid !== process.getuid() || (s.mode & 0o077)) {
+    temporaireR = fs.mkdtempSync(`${temporaireDuLancement}-`);
+  }
+}
+
 function demarrerR(port) {
   return new Promise((resolve, reject) => {
-    fs.mkdirSync(temporaireR, { recursive: true });
+    dossierTemporaireR();
     const env = { ...process.env, NUEE_JETON: jeton, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR };
     const conv = path.join(racine, 'outils', 'export_project.exe');
     if (fs.existsSync(conv)) env.CONVERTISSEUR_USP = conv;
@@ -177,6 +191,24 @@ function demanderEnregistrement(fenetre) {
 
 function effacerSecours() {
   try { fs.rmSync(dossierSecours(), { recursive: true, force: true }); } catch { /* nothing to delete */ }
+}
+// Closing normally: the copies of this launch go (their projects were saved or left), those of
+// an earlier stop that were neither recovered nor set aside stay, offered at the next start
+// (closing that question without answering keeps them). They are the ones the index listed
+// when Nuée started, or that the interface marks as waiting (a project not reopened after a
+// restart of the R engine).
+let secoursDuDemarrage = new Set();
+function copiesEnAttente() {
+  try { return JSON.parse(fs.readFileSync(indexSecours(), 'utf8')); } catch { return []; }
+}
+function fermerSecours() {
+  const gardes = copiesEnAttente().filter((e) => e && e.fichier && (e.attente || secoursDuDemarrage.has(path.basename(e.fichier))));
+  if (!gardes.length) { effacerSecours(); return; }
+  try {
+    const noms = new Set(gardes.map((e) => path.basename(e.fichier)));
+    for (const f of fs.readdirSync(dossierSecours())) if (f !== 'index.json' && !noms.has(f)) fs.rmSync(path.join(dossierSecours(), f), { force: true });
+    fs.writeFileSync(indexSecours(), JSON.stringify(gardes, null, 1));
+  } catch { /* left as it is: offered again next time */ }
 }
 function secoursPresents() {
   try { return JSON.parse(fs.readFileSync(indexSecours(), 'utf8')).length > 0; } catch { return false; }
@@ -252,7 +284,7 @@ async function fermerNuee(fenetre) {
   const accord = await accordFermeture(fenetre);
   if (!accord) return false;
   quitter = true;
-  if (accord !== 'secours') effacerSecours();
+  if (accord !== 'secours') fermerSecours();
   app.quit();
   return true;
 }
@@ -306,10 +338,11 @@ function fenetrePrincipale() {
   return fenetre;
 }
 
-// The file Windows asks Nuée to open (a .nuee project double-clicked, "Open with"): the first
-// argument that is an existing file.
+// The file the system asks Nuée to open (a .nuee project double-clicked, "Open with"): the
+// first argument that is an existing file. A Linux desktop gives it as a file:// URL (%U).
 function fichierDonne(argv) {
-  return argv.slice(1).find((a) => !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
+  const chemin = (a) => { if (!/^file:\/\//i.test(a)) return a; try { return fileURLToPath(a); } catch { return null; } };
+  return argv.slice(1).map(chemin).find((a) => a && !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
 }
 
 function ipc() {
@@ -414,7 +447,7 @@ function ipc() {
     const accord = await accordFermeture(fenetre);
     if (!accord) return { erreur: 'annulee' };
     quitter = true;
-    if (accord !== 'secours') effacerSecours();
+    if (accord !== 'secours') fermerSecours();
     arreterR();
     installerPuisRelancer(fichier);
     app.quit();
@@ -564,6 +597,8 @@ function enregistrerProgramme() {
 
 async function demarrer() {
   lireReglages();
+  // (the recovery copies of an earlier stop, before this launch writes any: fermerSecours)
+  secoursDuDemarrage = new Set(copiesEnAttente().map((e) => path.basename(String((e && e.fichier) || ''))));
   enregistrerProgramme();
   nettoyerTemporairesR();
   // the installer of the last one-click update, once it has run
