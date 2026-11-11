@@ -3,6 +3,18 @@
 What changed in each version: the same list as *Help › What's new* in the application
 (in French: *Aide › Quoi de neuf*). Downloads: [Releases](https://github.com/4rtefakt/nuee/releases).
 
+## 0.9.2 — 2026-11-12
+
+- Regression models, next to PLS: New model › type “Linear regression” or “Linear mixed model” (nlme), built from the Variables tab like the other models. A mixed model takes nested random effects (the site, then the sector within the site: an observation ID or a qualitative variable) and, optionally, an autocorrelation in time (CAR1, continuous time). Coefficients and variances by REML, AIC by ML; marginal and conditional R²; cross-validation defaults to the first random effect, each site predicted as a site never seen.
+- Generalized linear and additive models (mgcv): the distribution of Y (Poisson or negative binomial for counts, binomial for presence-absence, gamma for positive values, Tweedie for densities with zeros, or normal), an effort as an offset, random effects (GLMM, GAMM), and in an additive model curves for the variables ticked in the Curve column of the Variables tab: an effect that rises then falls, or a threshold. A Poisson model warns when its counts are overdispersed.
+- A regression’s results: Summary (R², deviance explained, Q², AIC, variances, curves), Coefficients (95 % intervals; the multiplicative effect or odds ratio with a log or logit link), Effects (each variable’s effect with its 95 % band, an additive model’s curves), Residuals, and Block contributions: the AIC change when each block of variables is removed, with a likelihood-ratio test.
+- Prediction › Compare models: AIC, ΔAIC and Akaike weights (the probability that each model is the best of its set) between the regressions of the same response on the same observations whose likelihoods compare, next to the cross-validated Q² of every model, PLS included.
+- R formula (New model › General): the model written as in R, for instance y ~ a * b + log10(c) + s(d) + offset(log(effort)) + (1 | site/sector); edited and applied (Ctrl+Enter), it sets the tabs. R reads it without ever running it, and it isn’t kept: a project someone sends can’t carry code.
+- Regressions predict (observations, a prediction set or a file, its effort included; an extrapolation is flagged), export (File › Export), make a PDF or Word report (File › Model report), and File › Export to R writes a script or an R Markdown / Quarto report that refits them with lm, nlme or mgcv.
+- Plots › Statistical tests (formerly Tests by variable), with two new modes. Two variables: the test their types call for, its conditions checked (chi-square or Fisher’s exact test; Welch’s t, ANOVA or Kruskal–Wallis with pairwise comparisons; Pearson’s or Spearman’s correlation), and its result as a sentence ready for a report, with its effect size; an observation ID (site, year…) can make the groups.
+- Correlation matrix: Pearson or Spearman for every pair of quantitative variables, p-values corrected for the number of pairs; a click on a pair tests it in Two variables.
+- Linux: the .deb also installs the R packages nlme and mgcv; with the AppImage or the .tar.gz archive, add them to the packages you install in R.
+
 ## 0.9.1 — 2026-11-11
 
 - One-click update: when the status bar mentions a new version, a click downloads its installer, checks it (SHA-256 checksum given by GitHub), offers to save your projects, installs it and starts Nuée again.

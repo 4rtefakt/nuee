@@ -249,7 +249,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.1) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.2) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).
