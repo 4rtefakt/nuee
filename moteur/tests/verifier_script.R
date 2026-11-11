@@ -7,8 +7,11 @@
 # (Rscript --vanilla, sans le moteur) depuis un autre dossier, et ses résultats sont comparés à
 # ceux du moteur : scores, R2 et Q2, T2, DModX et leurs limites, VIP, coefficients, CV-ANOVA,
 # classification, jeu de test, test de permutation. Puis : le script d'une PLS simple est court
-# et n'a pas de fonction inutile ; la séance en un script ; l'export en anglais ; les rapports
-# R Markdown et Quarto (compilés avec knitr s'il est installé).
+# et n'a pas de fonction inutile ; la séance en un script ; l'export en anglais ; les régressions
+# (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort et binomial, GAMM
+# binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
+# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, jeu de test), en
+# séance et en rapport ; les rapports R Markdown et Quarto (compilés avec knitr s'il est installé).
 #   Rscript moteur/tests/verifier_script.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -340,6 +343,131 @@ verifier("un modèle à groupes par verger garde les siens (M7$groupes_vc), y co
          any(grepl("groupe = M7\\$groupes_vc", texte)) && any(grepl("^groupes_vc <- ", texte)))
 e <- new.env(); load(r$chemins[3], envir = e)
 verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e)))
+
+cat("Régressions (lm, nlme, mgcv)\n")
+# Ce que le moteur donne d'une régression, et ce que son script a calculé (sous ses noms, dans sa langue).
+ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "vc", "observations", "test")
+moteur_regression <- function(m) {
+  r <- m$resultat
+  list(coefficients = as.matrix(r$coefficients[c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]),
+       "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
+       phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(r$courbes[-1]),
+       "Q2 et RMSEcv" = c(m$vc$Q2, m$vc$RMSEcv), "prédictions de la validation croisée" = m$vc$prediction,
+       "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus),
+       "jeu de test" = if (!is.null(m$test)) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")])
+}
+script_regression <- function(s, langue) {
+  n <- function(x) s[[nom_script(x, langue)]]
+  colonnes <- function(x, k) if (!is.null(x)) as.matrix(x[k])
+  list(coefficients = colonnes(n("coefficients"), 2:8), "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
+       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = colonnes(n("courbes"), 2:5),
+       "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
+       "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "jeu de test" = colonnes(n("test"), 2:6))
+}
+# Écrit le script d'une régression, le lance dans une session neuve et compare ses résultats à ceux du moteur.
+essayer_regression <- function(nom, p, d, langue = "fr", ...) {
+  m <- ajuster(p, d)
+  dir.create(ici <- file.path(dossier, nom))
+  r <- ecrire_script(p, d, file.path(ici, paste0(nom, ".R")), "moteur", m = m, version = "essai", langue = langue, ...)
+  s <- lancer(r$script, nom_script(ATTENDUS_REGRESSION, langue))
+  if (!length(s)) {
+    verifier(sprintf("%s : le script tourne (%s)", nom, paste(utils::tail(attr(s, "messages"), 3), collapse = " / ")), FALSE)
+    return(invisible(r))
+  }
+  a <- moteur_regression(m)
+  b <- script_regression(s, langue)
+  differents <- names(a)[!vapply(names(a), function(k) meme(a[[k]], b[[k]]), TRUE)]
+  presents <- names(a)[!vapply(a, is.null, TRUE)]
+  verifier(sprintf("%s : les mêmes %s que le moteur%s%s", nom, paste(setdiff(presents, differents), collapse = ", "),
+                   if (length(differents)) sprintf(" ; DIFFÉRENTS : %s", paste(differents, collapse = ", ")) else "",
+                   if (!is.null(r$ecart)) sprintf(" ; écart vu par le moteur : %s", r$ecart) else ""),
+           !length(differents) && is.null(r$ecart))
+  invisible(r)
+}
+# des sites (un identifiant des observations), deux secteurs par site, huit années (une manque),
+# des comptages avec un effort, des présences-absences, des densités avec des zéros
+set.seed(11)
+n <- 96
+tr <- data.frame(nom = sprintf("O%03d", 1:n), secteur = rep(rep(c("a", "b"), each = 8), 6), annee = rep(c(2001:2005, 2007:2009), 12),
+                 x1 = rnorm(n), x2 = runif(n), sol = sample(c("argile", "sable", "limon"), n, TRUE), effort = runif(n, 1, 4))
+site <- rep(sprintf("S%d", 1:6), each = 16)
+effet_site <- rep(rnorm(6, 0, 0.6), each = 16)
+tr$hauteur <- 1 + 0.6 * tr$x1 - 0.8 * tr$x2 + effet_site + rep(rnorm(12, 0, 0.3), each = 8) + as.vector(stats::filter(rnorm(n, 0, 0.5), 0.5, "recursive"))
+tr$compte <- stats::rnbinom(n, mu = exp(0.5 + 0.4 * tr$x1 + sin(3 * tr$x2) + effet_site / 2) * tr$effort, size = 3)
+tr$presence <- as.numeric(runif(n) < stats::plogis(-0.3 + 1.1 * tr$x1))
+tr$densite <- ifelse(runif(n) < 0.3, 0, stats::rgamma(n, shape = 2, rate = 2 / exp(0.2 + 0.5 * tr$x2)))
+tr$x1[c(7, 40)] <- NA  # deux observations sans x1 : laissées de côté
+pr <- projet_depuis_tableau(tr, "terrain")
+pr$observation_id_names <- c("Observation", "site")
+for (i in seq_along(pr$observations)) pr$observations[[i]]$ids <- c(pr$observations[[i]]$ids[1], site[i])
+ur <- function(...) numeros(pr, c(...))
+par_site <- list(by = "id", id = "site")
+par_secteur <- list(by = "variable", variable = ur("secteur"))
+r <- essayer_regression("lm_qualitatives_croises", p, definir_modele(p, "LM", x = uid(c("variete", "sucre", "fermete", "polyphenols")), y = uid("note_gout"),
+                        echelle = stats::setNames(c("none", "UV"), c("defaut", as.character(uid("sucre")))), croises = list(uid(c("sucre", "fermete"))),
+                        transformations = stats::setNames(c("log10", "racine2"), as.character(uid(c("fermete", "note_gout"))))), donnees = "csv")
+code <- code_hors_donnees(lignes_script(r))
+verifier("une régression linéaire n'utilise que R (ni library() ni paquet)", !any(grepl("library\\(|require\\(|::", code)))
+essayer_regression("lm_groupes_verger", p, definir_modele(p, "LM", x = uid(c("sucre", "acidite")), y = uid("note_gout"), echelle = "none", vc = vc_verger))
+r <- essayer_regression("lmm_emboites_car1_test", pr, definir_modele(pr, "LMM", x = ur("x1", "x2", "sol"), y = ur("hauteur"), echelle = "none",
+                        aleatoires = list(par_site, par_secteur), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ur("annee"))),
+                        test = numeros_observations(pr)[seq(3, n, by = 12)]))
+texte <- lignes_script(r)
+verifier("modèle mixte : ses sites (un identifiant) dans le tableau, nlme::lme, CAR1, groupes de validation par site",
+         any(grepl("^  site = ", texte)) && any(grepl("nlme::lme\\(", texte)) && any(grepl("corCAR1", texte)) &&
+           any(grepl("^groupes_vc <- as.integer\\(cadre\\[\\[\"site\"\\]\\]\\)", texte)))
+r <- essayer_regression("glm_poisson_effort", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort"), echelle = "none"))
+verifier("GLM de Poisson : effort en décalage, effet multiplicatif, surdispersion", any(grepl("offset\\(log\\(effort\\)\\)", lignes_script(r))) &&
+         any(grepl("effet_multiplicatif", lignes_script(r))) && any(grepl("^dispersion <- ", lignes_script(r))))
+essayer_regression("glm_binomiale", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("presence"), famille = "binomiale", echelle = "none"))
+r <- essayer_regression("gamm_binomiale_negative", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("compte"), famille = "binomiale_negative",
+                        lisses = ur("x2"), decalage = ur("effort"), aleatoires = list(par_site, par_secteur), echelle = "none"), langue = "en")
+verifier("GAMM en anglais : mgcv attaché, une courbe, les secteurs emboîtés dans les sites, ni nom ni commentaire en français",
+         any(grepl("^library\\(mgcv\\)", lignes_script(r))) && any(grepl("site_secteur", lignes_script(r))) && en_anglais(lignes_script(r)))
+essayer_regression("gam_tweedie_test", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("densite"), famille = "tweedie", lisses = ur("x2"), echelle = "none",
+                                                          test = numeros_observations(pr)[seq(5, n, by = 10)]))
+# la séance : une ACP, un modèle mixte et un GAM dans le même script
+definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
+                    definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),
+                    definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("densite"), famille = "tweedie", lisses = ur("x2"), echelle = "none", nom = "R2"))
+ms <- lapply(definitions, function(d) ajuster(pr, d))
+dir.create(ici <- file.path(dossier, "seance_regressions"))
+r <- ecrire_script_seance(pr, definitions, ms, file.path(ici, "seance.R"), "moteur", version = "essai")
+s <- lancer(r$script, c("A1", "R1", "R2"))
+verifier("une séance avec une ACP, un modèle mixte et un GAM : chacun sous son nom, les résultats du moteur",
+         is.null(r$ecart) && length(s) == 3 && meme(moteur(ms[[1]])$scores, s$A1$m$T) &&
+           all(vapply(2:3, function(k) meme(moteur_regression(ms[[k]])$coefficients, as.matrix(s[[k]]$coefficients[2:8])) &&
+                        meme(moteur_regression(ms[[k]])[["Q2 et RMSEcv"]], c(s[[k]]$vc$Q2, s[[k]]$vc$RMSEcv)), TRUE)))
+# les rapports d'une régression : méthodes et références, et ils se compilent
+for (k in 1:2) {
+  d <- list(definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site, par_secteur), nom = "R3"),
+            definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("compte"), famille = "binomiale_negative", lisses = ur("x2"), decalage = ur("effort"), nom = "R4"))[[k]]
+  ext <- c("Rmd", "qmd")[k]
+  dir.create(ici <- file.path(dossier, paste0("rapport_regression", k)))
+  r <- ecrire_script(pr, d, file.path(ici, paste0(d$name, ".", ext)), "moteur", version = "essai", langue = c("fr", "en")[k])
+  texte <- readLines(r$script, encoding = "UTF-8")
+  verifier(sprintf("%s.%s : méthodes, code du modèle, coefficients, références", d$name, ext), texte[1] == "---" && any(grepl("^## (Méthodes|Methods)", texte)) &&
+           any(grepl("^```\\{r coefficients\\}", texte)) && any(grepl(c("^- .*Pinheiro", "^- .*Wood")[k], texte)) && is.null(r$ecart))
+  if (requireNamespace("knitr", quietly = TRUE)) {
+    compiler <- file.path(dossier, "compiler.R")
+    writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
+                 "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
+    messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(r$script)), stdout = TRUE, stderr = TRUE))
+    md <- file.path(ici, paste0(d$name, ".md"))
+    verifier(sprintf("%s.%s : se compile, avec ses graphiques", d$name, ext), file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) &&
+             length(list.files(file.path(ici, "figure"), "\\.png$")) >= 2 + (k == 2))
+  } else {  # sans knitr : le code de ses blocs R tourne dans une session neuve (sans les tableaux de knitr::kable)
+    debuts <- grep("^```\\{r", texte)
+    fins <- vapply(debuts, function(i) i + match("```", texte[-seq_len(i)]), 0)
+    code <- unlist(lapply(seq_along(debuts), function(j) texte[seq(debuts[j] + 1, length.out = fins[j] - debuts[j] - 1)]))
+    blocs <- file.path(ici, "blocs.R")
+    writeLines(enc2utf8(c("pdf(NULL)", code[!grepl("knitr::", code)])), blocs, useBytes = TRUE)
+    avant <- setwd(ici)
+    messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(blocs)), stdout = TRUE, stderr = TRUE))
+    setwd(avant)
+    verifier(sprintf("%s.%s : le code de ses blocs R tourne (knitr n'est pas installé : pas compilé)", d$name, ext), is.null(attr(messages, "status")))
+  }
+}
 
 cat("Rapports R Markdown et Quarto\n")
 for (i in seq_along(p$models)) {
