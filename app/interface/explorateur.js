@@ -8,13 +8,14 @@ const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot
   'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
 const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanova'];
 // (a regression has no components, scores or loadings: its own views, regression.R)
-const VUES_REGRESSION = ['resume', 'coefficients', 'obspred', 'residus', 'apports', 'liste_obs'];
-const REGRESSIONS = ['LM', 'LMM'];
+const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'apports', 'liste_obs'];
+const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 const vuesDe = (m) => (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
   && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe)));
 // R2 and Q2 of a fitted model, for its line in the explorer
 const chiffresModele = (m) => (m.regression
-  ? `${m.qualite.marginal !== undefined ? `R2m ${fmt(m.qualite.marginal, 2)} · R2c ${fmt(m.qualite.conditionnel, 2)}` : `R2 ${fmt(m.qualite.r2, 2)}`} · Q2 ${fmt(m.qualite.Q2, 2)} · AIC ${fmt(m.qualite.AIC, 1)}`
+  ? `${m.qualite.marginal !== undefined ? `R2m ${fmt(m.qualite.marginal, 2)} · R2c ${fmt(m.qualite.conditionnel, 2)}`
+    : `R2 ${fmt(m.qualite.r2 ?? m.qualite.r2_ajuste, 2)}`} · Q2 ${fmt(m.qualite.Q2, 2)} · AIC ${fmt(m.qualite.AIC, 1)}`
   : `R2X ${fmt(m.composantes.R2Xcum[m.A - 1], 2)}${m.composantes.R2Ycum ? ' · R2Y ' + fmt(m.composantes.R2Ycum[m.A - 1], 2) : ''} · Q2 ${fmt(m.composantes.Q2cum[m.A - 1], 2)}`);
 
 export function rendreExplorateur(conteneur, app) {

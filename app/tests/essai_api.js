@@ -320,6 +320,14 @@ async function principal() {
       verifier([].concat(ap.apports.groupe).length === 2 && [].concat(ap.apports.delta_aic).every((d) => d !== null), 'apport des variables (AIC)');
       const tm = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
       verifier([].concat(tm.paragraphes).some((x) => /linear mixed model/.test(x)) && [].concat(tm.references).some((x) => /nlme/.test(x)), 'texte des méthodes d’un modèle mixte');
+      const glm = await api('ajuster', { projet: e.id, type: 'GLM', x: [v('sucre')], y: [v('stockage')], echelle: 'none', nom: 'R3', famille: 'poisson' });
+      verifier(glm.type === 'GLM' && glm.famille === 'poisson' && glm.lien === 'log' && glm.qualite.deviance_expliquee !== undefined
+        && glm.signature !== lm.signature, 'GLM de Poisson (un autre ensemble AIC)');
+      const gam = await api('ajuster', { projet: e.id, type: 'GAM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], echelle: 'none', nom: 'R4',
+        famille: 'gaussienne', lisses: [v('sucre')] });
+      verifier(gam.type === 'GAM' && [].concat(gam.courbes.terme).length === 1, 'GAM, une courbe');
+      const ef = await api('effets', { modele: gam.id });
+      verifier([].concat(ef.effets).length === 2 && ef.effets[0].courbe === true && [].concat(ef.effets[0].x).length === 80, 'courbes d’effet');
       let refusReg = '';
       try { await api('hca', { modele: lmm.id }); } catch (err) { refusReg = err.message; }
       verifier(/régression/.test(refusReg), 'une demande qui suppose des composantes, refusée pour une régression');

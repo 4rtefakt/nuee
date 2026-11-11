@@ -65,7 +65,7 @@ libraries, so it can't be carried along as on Windows).
   it needs FUSE 2, the `libfuse2` package on most distributions) or
   `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
   distribution first, then the packages, in R:
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv"))`.
   On Ubuntu 24.04 and later, prefer the `.deb`: it installs the AppArmor profile Chromium's
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 
@@ -130,11 +130,14 @@ or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's correlati
 observation ID (site, year...) can make the groups. A correlation matrix with corrected p
 values.
 
-**Linear and mixed models:** linear regression and linear mixed models (nlme), with nested random
-effects (site, then sector within the site) and a continuous-time autocorrelation (CAR1);
-coefficients with their intervals, marginal and conditional R2, residual plots, the AIC change
-when each block of variables is removed, and an AIC comparison (ΔAIC, Akaike weights) of the
-regressions of the same response, next to the cross-validated Q2 of every model.
+**Linear, generalized and mixed models:** linear regression and linear mixed models (nlme), with
+nested random effects (site, then sector within the site) and a continuous-time autocorrelation
+(CAR1); generalized linear and additive models (mgcv) for counts (Poisson, negative binomial),
+presence-absence, positive values and densities with zeros (Tweedie), with random effects, an
+effort as an offset, and smooth curves for effects that rise then fall or have a threshold;
+coefficients with their intervals, marginal and conditional R2, effect curves, residual plots,
+the AIC change when each block of variables is removed, and an AIC comparison (ΔAIC, Akaike
+weights) of the regressions of the same response, next to the cross-validated Q2 of every model.
 
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 

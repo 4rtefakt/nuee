@@ -67,7 +67,7 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   lancer ; il demande FUSE 2, le paquet `libfuse2` dans la plupart des distributions) ou
   `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
   d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv"))`.
   Sous Ubuntu 24.04 et après, préférez le `.deb` : il installe le profil AppArmor dont le bac
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 
@@ -134,12 +134,16 @@ Fisher, test t, ANOVA ou Kruskal–Wallis avec les comparaisons deux à deux, co
 Pearson ou de Spearman ; un identifiant des observations (site, année...) peut faire les
 groupes. Une matrice des corrélations avec les valeurs p corrigées.
 
-**Modèles linéaires et mixtes :** régression linéaire et modèles linéaires mixtes (nlme), avec des
-effets aléatoires emboîtés (le site, puis le secteur dans le site) et une autocorrélation en
-temps continu (CAR1) ; les coefficients et leurs intervalles, R2 marginal et conditionnel,
-les graphiques des résidus, la variation de l'AIC quand chaque bloc de variables est retiré,
-et la comparaison par l'AIC (ΔAIC, poids d'Akaike) des régressions de la même réponse, à côté
-du Q2 en validation croisée de tous les modèles.
+**Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
+(nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site) et une
+autocorrélation en temps continu (CAR1) ; modèles linéaires généralisés et additifs (mgcv) pour
+des comptages (Poisson, binomiale négative), la présence-absence, des valeurs positives et des
+densités avec des zéros (Tweedie), avec des effets aléatoires, un effort en décalage et des
+courbes lissées pour un effet qui monte puis descend ou un seuil ; les coefficients et leurs
+intervalles, R2 marginal et conditionnel, les courbes d'effet, les graphiques des résidus, la
+variation de l'AIC quand chaque bloc de variables est retiré, et la comparaison par l'AIC (ΔAIC,
+poids d'Akaike) des régressions de la même réponse, à côté du Q2 en validation croisée de tous
+les modèles.
 
 ![Tests par variable sur les pommes de l'exemple : un graphique volcan de Golden contre Gala, et la table des tests](docs/captures/volcan.png)
 

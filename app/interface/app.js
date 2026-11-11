@@ -1142,7 +1142,7 @@ function vuesParDefaut(id) {
     app.ouvrirVue('resume', id, null, null, interne.panels.length ? { referencePanel: interne.panels[0].id, direction: 'left' } : undefined);
   }
   // a regression: its coefficients and residuals (no scores or loadings: regression.R)
-  const [haut, bas] = etat.modeles[id].regression ? ['coefficients', 'residus'] : ['scores', null];
+  const [haut, bas] = etat.modeles[id].regression ? ['coefficients', etat.modeles[id].type === 'GAM' ? 'effets' : 'residus'] : ['scores', null];
   if (!interne.getPanel(`${haut}:${id}`)) app.ouvrirVue(haut, id, null, null, { referencePanel: r, direction: 'right' });
   // spectra: their loadings as lines rather than a scatter of hundreds of variables
   const vue = bas || ([].concat((etat.modeles[id].reglages || {}).spectres || []).length ? 'profils' : 'loadings');

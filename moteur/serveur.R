@@ -255,7 +255,8 @@ definition_interface <- function(p, q) {
                                 else q$croises,
                       spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)),
                       vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs),
-                      aleatoires = q$aleatoires, correlation = q$correlation)
+                      aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
+                      lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage))
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -384,10 +385,12 @@ resultat_regression <- function(id) {
   for (l in seq_along(m$niveaux)) obs[[m$niveaux[l]]] <- as.character(m$donnees[[paste0("g", l)]])
   obs$groupe_vc <- m$vc$groupe
   variances <- r$variances
-  if (!is.null(variances)) variances$composante <- c(m$niveaux, traduire("résiduelle", "residual"))
+  # (nlme : les effets aléatoires et la variance résiduelle ; mgcv : les effets aléatoires seuls)
+  if (!is.null(variances)) variances$composante <- c(m$niveaux, traduire("résiduelle", "residual"))[seq_len(nrow(variances))]
   list(id = id, projet = p$id, nom = m$nom, titre = m$titre, type = m$type, regression = TRUE, opls = FALSE, Ap = 0, A = 0,
        N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
        coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),
+       famille = m$famille, lien = m$lien, parametre_loi = r$parametre_loi, courbes = r$courbes, decalage = m$decalage, dispersion = r$dispersion,
        qualite = c(r$r2, list(AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres,
                               Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs)),
        variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),
@@ -740,6 +743,13 @@ DEMANDES <- list(
                                                q$test %||% "welch", q$correction %||% "BH"),
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y),
   # l'apport de chaque groupe de termes d'une régression (regression.R), calculé une fois
+  # les courbes d'effet d'une régression (regression.R : effets_regression), calculées une fois
+  effets = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    if (is.null(e$modele$effets)) etat$modeles[[q$modele]]$modele$effets <- effets_regression(e$modele)
+    list(modele = q$modele, lien = e$modele$lien, effets = etat$modeles[[q$modele]]$modele$effets)
+  },
   apports = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))

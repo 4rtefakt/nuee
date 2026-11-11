@@ -197,7 +197,8 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observations = NULL,
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
-                           vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL) {
+                           vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
+                           famille = NULL, lisses = NULL, decalage = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -245,6 +246,11 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     aleatoires <- specs_groupement(aleatoires)
     if (length(aleatoires)) d$aleatoires <- aleatoires
     if (length(correlation$type)) d$correlation <- list(type = as.character(correlation$type)[1], temps = specs_groupement(correlation$temps)[[1]])
+    if (type %in% GENERALISES) {  # (regression.R : la loi de la réponse, les variables en courbe, l'effort en décalage)
+      d$famille <- as.character(famille %||% "gaussienne")[1]
+      if (length(lisses)) d$lisses <- as.numeric(lisses)
+      if (length(decalage)) d$decalage <- as.numeric(decalage)[1]
+    }
     if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]]
     verifier_regression(projet, d)
   }
@@ -315,7 +321,7 @@ reglages_modele <- function(projet, d) {
        exclues = I(setdiff(tous, c(d$observations, d$test))), echelles = echelles,
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
-       aleatoires = d$aleatoires, correlation = d$correlation,
+       aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))),
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
 }

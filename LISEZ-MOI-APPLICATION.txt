@@ -24,7 +24,7 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
 - Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl", "foreign")).
+  "readxl", "foreign", "nlme", "mgcv")).
 Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
 RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
 
@@ -148,7 +148,8 @@ Affichage : thème sombre, français / anglais, taille du texte.
 Nouveau modèle (Modèle › Nouveau modèle)
 ----------------------------------------
 Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA, modèles de classe, régression
-linéaire, modèle linéaire mixte : voir Modèles linéaires et mixtes), nom, nombre de composantes
+linéaire, modèle linéaire mixte, modèle linéaire généralisé, modèle additif : voir Modèles
+linéaires, généralisés et mixtes), nom, nombre de composantes
 (automatique par défaut, par validation croisée), groupes de validation croisée (à tour de
 rôle, G groupes ; ou un groupe par valeur d'un identifiant ou d'une variable, voir Validation
 croisée), échelle par défaut.
@@ -437,8 +438,8 @@ quantitatives (300 au plus), chaque paire sur les observations où les deux sont
 valeurs p corrigées pour le nombre de paires. Un clic sur une paire, dans la table ou le
 graphique, la teste dans « Deux variables ».
 
-Modèles linéaires et mixtes
----------------------------
+Modèles linéaires, généralisés et mixtes
+----------------------------------------
 Nouveau modèle › type « Régression linéaire » ou « Modèle linéaire mixte » : une variable Y
 quantitative, les variables X de l'onglet Variables (transformations et termes croisés
 compris ; une variable qualitative par ses catégories, l'une d'elles servant de référence).
@@ -453,19 +454,44 @@ variances sont estimés en REML ; la log-vraisemblance, l'AIC, l'AICc et le BIC 
 l'ajustement en ML, le seul qui compare des modèles aux effets fixes différents. La validation
 croisée se fait par défaut par le premier effet aléatoire : chaque site est prédit par les
 effets fixes du modèle ajusté sans lui, comme un site jamais vu.
+Type « Modèle linéaire généralisé (GLM) » ou « Modèle additif (GAM) » (mgcv), pour une
+variable Y qui ne suit pas une loi normale. Loi de Y : Poisson pour des comptages ; binomiale
+négative pour des comptages qui varient plus qu'une loi de Poisson ne le permet (son θ
+estimé) ; binomiale pour la présence-absence (0 ou 1) ; gamma pour des valeurs positives ;
+Tweedie pour des densités avec des zéros (sa puissance p estimée) ; ou normale. Le lien est
+log (comptages, gamma, Tweedie), logit (binomiale) ou l'identité (normale). Effort
+(décalage) : une variable comme une surface, une durée ou un nombre de passages, dont le log
+entre dans le modèle avec un coefficient 1 : il décrit alors une densité (un effort nul ou
+négatif est refusé). Des effets aléatoires comme ci-dessus en font un GLMM ou un GAMM (sans
+autocorrélation). Dans un modèle additif, les variables X cochées dans la colonne Courbe de
+l'onglet Variables entrent par une courbe lissée (une spline) plutôt que par une droite, pour
+un effet qui monte puis descend, ou un seuil ; les données décident de sa courbure (son edf ;
+1 est une droite). Les courbes et les effets aléatoires sont estimés en REML, et l'AIC vient
+d'un ajustement en ML ; un GLM sans eux est ajusté par maximum de vraisemblance, comme le font
+glm() et MASS::glm.nb(). Le résumé d'un modèle de Poisson prévient quand les comptages sont
+surdispersés (le khi² de Pearson au-delà de 1,5 fois ses degrés de liberté) : ses valeurs p
+sont alors trop petites, et la binomiale négative convient mieux à ces comptages.
 Vues : Résumé (R2, ou R2 marginal et conditionnel pour un modèle mixte, Nakagawa et
-Schielzeth ; Q2 et RMSEcv ; AIC ; la variance de chaque effet aléatoire et sa part ; φ de
+Schielzeth ; R2 ajusté et déviance expliquée pour un GLM ou un GAM, avec l'edf et le test de
+chaque courbe ; Q2 et RMSEcv ; AIC ; la variance de chaque effet aléatoire et sa part ; φ de
 l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
-quand p ≤ 0,05), Observé / prédit, Résidus (contre les valeurs ajustées, droite de Henry, par
-groupe d'un effet aléatoire, distance de Cook), Apport des blocs (AIC) : chaque bloc de la
-colonne Bloc (ou chaque variable) retiré et le modèle réajusté en ML ; un ΔAIC au-dessus de 2
-dit que le bloc améliore nettement le modèle, un test du rapport de vraisemblance donne son p.
-Les observations où Y, un X, un effet aléatoire ou le temps manque sont laissées de côté (le
-résumé les compte).
+quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
+plus, avec le logit le rapport des cotes), Effets (l'effet de chaque terme quantitatif quand sa
+variable varie, les autres fixés, avec sa bande à 95 % et les valeurs observées dessous : les
+courbes d'un GAM, des droites sinon ; sur l'échelle du lien, log ou logit, quand il y en a un),
+Observé / prédit, Résidus (standardisés, contre les valeurs ajustées, droite de Henry, par
+groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire), Apport des blocs
+(AIC) : chaque bloc de la colonne Bloc (ou chaque variable) retiré et le modèle réajusté en
+ML ; un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
+de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
+l'effort manque sont laissées de côté (le résumé les compte).
 Prédiction › Comparer les modèles : Q2 et RMSEcv pour tous les modèles ; AIC, ΔAIC et poids
 d'Akaike (la probabilité que chaque modèle soit le meilleur de son ensemble) entre les seules
 régressions de la même réponse sur les mêmes observations (un « ensemble AIC », lettré A,
-B...).
+B...), et seulement celles dont les vraisemblances se comparent : des modèles de Poisson et
+binomiaux négatifs des mêmes comptages, mais pas un modèle normal de ces comptages ; des
+modèles de Tweedie entre eux ; des GLMM et des GAMM (la vraisemblance conditionnelle de mgcv)
+entre eux.
 Pas encore pour les régressions : l'export vers R, la prédiction d'un fichier, le rapport.
 
 Modèles de classe et graphique de Coomans
@@ -634,7 +660,7 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   pretraitement.R        transformations, centrage, mise à l'échelle
   nipals.R               ACP et PLS (algorithme NIPALS, données manquantes)
   validation_croisee.R   validation croisée (un sous-modèle sans chaque groupe), Q2
-  regression.R           modèles linéaires et mixtes (lm, nlme), AIC, apport des blocs
+  regression.R           modèles de régression (lm, nlme, mgcv), AIC, apport des blocs
   statistiques.R         T2, DModX, VIP, coefficients, intervalles, limites
   validation.R           permutations, CV-ANOVA, classement PLS-DA et courbes ROC
   opls.R                 OPLS et OPLS-DA

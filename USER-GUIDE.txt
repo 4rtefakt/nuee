@@ -23,7 +23,8 @@ On Linux, Nuée uses the computer's R.
   installs R and the R packages needed. Nuée appears in the applications menu.
 - Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
   Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
-  install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign")).
+  install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme",
+  "mgcv")).
 .usp projects need python3. For another R than the PATH's: start Nuée with
 RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
 
@@ -136,7 +137,8 @@ View: dark theme, French / English, text size.
 New model (Model › New model)
 -----------------------------
 General tab: type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models, linear regression, linear
-mixed model: see Linear and mixed models), name, number of components
+mixed model, generalized linear model, additive model: see Linear, generalized and mixed
+models), name, number of components
 (automatic by default, by cross-validation), cross-validation groups (in turn, G groups; or
 one group per value of an observation ID or of a variable, see Cross-validation), default
 scaling.
@@ -411,8 +413,8 @@ Correlation matrix: the Pearson or Spearman correlations of all the quantitative
 at most), each pair on the observations where both are known, p values corrected for the number
 of pairs. A click on a pair, in the table or the plot, tests it in "Two variables".
 
-Linear and mixed models
------------------------
+Linear, generalized and mixed models
+------------------------------------
 New model › type "Linear regression" or "Linear mixed model": one quantitative Y, the X
 variables of the Variables tab (transformations and cross terms included; a qualitative
 variable through its categories, one of them the reference). Without X: the null model, useful
@@ -426,17 +428,40 @@ estimated by REML; the log-likelihood, AIC, AICc and BIC come from the ML fit, t
 that compares models with different fixed effects. Cross-validation defaults to the first
 random effect: each site is predicted by the fixed effects of the model fitted without it, as a
 site never seen.
+Type "Generalized linear model (GLM)" or "Additive model (GAM)" (mgcv), for a Y that isn't
+normal. Distribution of Y: Poisson for counts; negative binomial for counts that vary more than
+a Poisson allows (its θ estimated); binomial for presence-absence (0 or 1); gamma for positive
+values; Tweedie for densities with zeros (its power p estimated); or normal. The link is log
+(counts, gamma, Tweedie), logit (binomial) or identity (normal). Effort (offset): a variable
+such as an area, a duration or a number of visits, whose log enters the model with a
+coefficient of 1, which then describes a density (an effort of 0 or less is refused). Random
+effects as above make a GLMM or a GAMM (without autocorrelation). In an additive model, the X
+variables ticked in the Curve column of the Variables tab enter through a smooth curve (a
+spline) instead of a straight line, for an effect that rises then falls, or a threshold; the
+data decide how curved it is (its edf; 1 is a straight line). Curves and random effects are
+estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitted by maximum
+likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns when the
+counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of freedom): its p
+values are then too small, and the negative binomial suits the counts better.
 Views: Summary (R2, or marginal and conditional R2 for a mixed model, Nakagawa and Schielzeth;
-Q2 and RMSEcv; AIC; the variance of each random effect and its share; φ of the
-autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05),
-Observed / predicted, Residuals (against the fitted values, normal Q-Q plot, by group of a
-random effect, Cook's distance), Block contributions (AIC): each block of the Block column (or
-each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
+adjusted R2 and deviance explained for a GLM or GAM, with each curve's edf and test; Q2 and
+RMSEcv; AIC; the variance of each random effect and its share; φ of the autocorrelation),
+Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05; with a log link,
+exp(estimate) is the multiplicative effect of one unit more, with the logit the odds ratio),
+Effects (each quantitative term's effect as its variable varies, the others fixed, with its
+95 % band and the observed values below it: a GAM's curves, straight lines otherwise; on the
+scale of the link, log or logit, when there is one), Observed / predicted, Residuals
+(standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
+distance for a linear regression), Block contributions (AIC): each block of the Block column
+(or each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
-Y, X, a random effect or the time are left out (the summary counts them).
+Y, X, a random effect, the time or the effort are left out (the summary counts them).
 Prediction › Compare models: Q2 and RMSEcv for every model; AIC, ΔAIC and Akaike weights (the
 probability that each model is the best of its set) between the regressions of the same
-response on the same observations only (an "AIC set", lettered A, B...).
+response on the same observations only (an "AIC set", lettered A, B...), and only those whose
+likelihoods compare: Poisson and negative binomial models of the same counts, but not a normal
+model of them; Tweedie models with each other; GLMMs and GAMMs (mgcv's conditional likelihood)
+with each other.
 Not yet for regressions: export to R, predicting a file, the model report.
 
 Class models and the Coomans plot
@@ -596,7 +621,7 @@ Every computation is in resources\moteur\R (R, commented in French):
   pretraitement.R        transformations, centring, scaling
   nipals.R               PCA and PLS (NIPALS algorithm, missing data)
   validation_croisee.R   cross-validation (a sub-model without each group), Q2
-  regression.R           linear and mixed models (lm, nlme), AIC, block contributions
+  regression.R           regression models (lm, nlme, mgcv), AIC, block contributions
   statistiques.R         T2, DModX, VIP, coefficients, intervals, limits
   validation.R           permutations, CV-ANOVA, PLS-DA classification and ROC curves
   opls.R                 OPLS and OPLS-DA

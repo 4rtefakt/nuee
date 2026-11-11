@@ -55,7 +55,7 @@ jobs:
       - name: R d'Ubuntu, avec les paquets dont dépend le .deb
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends r-base-core r-cran-httpuv r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign r-cran-knitr xvfb xauth
+          sudo apt-get install -y --no-install-recommends r-base-core r-cran-httpuv r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign r-cran-nlme r-cran-mgcv r-cran-knitr r-cran-mass xvfb xauth
           Rscript -e 'cat(R.version.string, "\n")'
 
       - name: Vérifications du moteur

@@ -140,6 +140,67 @@ verifier("une définition de modèle mixte relue donne le même modèle", proche
            proche(m9$vc$Q2, m3$vc$Q2))
 verifier("ce que R affiche du modèle", any(grepl("AIC", utils::capture.output(print(m3)))))
 
+cat("Modèles généralisés et additifs (mgcv)\n")
+set.seed(7)
+n <- 240
+tg <- data.frame(nom = sprintf("O%03d", 1:n), site = rep(sprintf("S%d", 1:8), each = 30), x1 = runif(n), x2 = rnorm(n), effort = runif(n, 1, 3))
+site_effet <- rnorm(8, 0, 0.4)[as.integer(factor(tg$site))]
+mu <- exp(0.3 + sin(3 * tg$x1) + 0.4 * tg$x2 + site_effet) * tg$effort
+tg$compte <- stats::rnbinom(n, mu = mu, size = 4)
+tg$presence <- as.numeric(runif(n) < stats::plogis(-0.5 + 1.2 * tg$x2))
+tg$masse <- stats::rgamma(n, shape = 3, rate = 3 / exp(0.5 + 0.3 * tg$x2))
+tg$densite <- ifelse(runif(n) < 0.25, 0, tg$masse)
+pg <- projet_depuis_tableau(tg, "generalises")
+ug <- function(...) numeros(pg, c(...))
+modele_g <- function(type, y, x, ...) ajuster(pg, definir_modele(pg, type, x = ug(x), y = ug(y), echelle = "none", ...))
+ref <- glm(compte ~ x1 + x2, family = poisson, data = tg)
+mg1 <- modele_g("GLM", "compte", c("x1", "x2"), famille = "poisson")
+verifier("Poisson : coefficients et AIC = glm()", proche(mg1$resultat$coefficients$estimation, coef(ref)) && proche(mg1$resultat$AIC, AIC(ref)))
+verifier(sprintf("Poisson sur des comptages binomiaux négatifs : la surdispersion se voit (khi² de Pearson / ddl = %.1f, comme glm())", mg1$resultat$dispersion),
+         proche(mg1$resultat$dispersion, sum(residuals(ref, type = "pearson")^2) / ref$df.residual) && mg1$resultat$dispersion > 1.5)
+ref <- glm(compte ~ x1 + x2, family = poisson, data = tg, offset = log(effort))
+mg2 <- modele_g("GLM", "compte", c("x1", "x2"), famille = "poisson", decalage = ug("effort"))
+verifier("Poisson avec l'effort en décalage = glm(offset = log(effort))", proche(mg2$resultat$coefficients$estimation, coef(ref)) && proche(mg2$resultat$AIC, AIC(ref)))
+ref <- MASS::glm.nb(compte ~ x1 + x2, data = tg)
+mg3 <- modele_g("GLM", "compte", c("x1", "x2"), famille = "binomiale_negative")
+verifier(sprintf("binomiale négative : coefficients et θ = MASS::glm.nb() (θ = %.2f)", mg3$resultat$parametre_loi$valeur),
+         proche(mg3$resultat$coefficients$estimation, coef(ref), 1e-3) && proche(mg3$resultat$parametre_loi$valeur, ref$theta, 1e-2))
+ref <- glm(presence ~ x2, family = binomial, data = tg)
+mg4 <- modele_g("GLM", "presence", "x2", famille = "binomiale")
+verifier("binomiale (présence-absence) = glm()", proche(mg4$resultat$coefficients$estimation, coef(ref)) && proche(mg4$resultat$AIC, AIC(ref)))
+ref <- glm(masse ~ x2, family = Gamma(link = "log"), data = tg)
+mg5 <- modele_g("GLM", "masse", "x2", famille = "gamma")
+verifier("gamma (lien log) = glm()", proche(mg5$resultat$coefficients$estimation, coef(ref), 1e-5))
+env <- new.env(parent = asNamespace("mgcv"))
+ref <- mgcv::gam(stats::as.formula("compte ~ x2 + s(x1, k = 10) + s(site, bs = \"re\")", env = env), data = transform(tg, site = factor(site)),
+                 family = mgcv::nb(), method = "ML", offset = log(effort))
+mg6 <- modele_g("GAM", "compte", c("x1", "x2"), famille = "binomiale_negative", lisses = ug("x1"), decalage = ug("effort"),
+               aleatoires = list(list(by = "variable", variable = ug("site"))))
+verifier(sprintf("GAMM binomial négatif (courbe, site aléatoire, effort) : AIC = mgcv::gam() en ML (edf %.1f, Q2 = %.2f)", mg6$resultat$courbes$edf, mg6$vc$Q2),
+         proche(mg6$resultat$AIC, AIC(ref), 1e-4) && mg6$resultat$courbes$edf > 2 && !is.na(mg6$vc$Q2) && mg6$vc$echecs == 0 && mg6$G == 8)
+refr <- mgcv::gam(stats::as.formula("compte ~ x2 + s(x1, k = 10) + s(site, bs = \"re\")", env = env), data = transform(tg, site = factor(site)),
+                  family = mgcv::nb(), method = "REML", offset = log(effort))
+verifier("GAMM : la variance du site = gam.vcomp() d'un ajustement en REML",
+         proche(mg6$resultat$variances$variance, mgcv::gam.vcomp(refr)$vc["s(site)", 1]^2, 1e-3))
+eg6 <- effets_regression(mg6)
+verifier("courbes d'effet : la courbe en x1, la droite en x2, avec leurs intervalles", length(eg6) == 2 && isTRUE(eg6[[1]]$courbe) &&
+         all(eg6[[1]]$haut >= eg6[[1]]$bas) && length(eg6[[2]]$x) == 80)
+ag6 <- apport_groupes(mg6)
+verifier("apport des termes d'un GAMM (réajusté en ML)", nrow(ag6) == 2 && all(!is.na(ag6$delta_aic)))
+mg7 <- modele_g("GAM", "densite", c("x1", "x2"), famille = "tweedie", lisses = ug("x1"))
+verifier(sprintf("Tweedie (des zéros et des valeurs positives) : p = %.2f", mg7$resultat$parametre_loi$valeur),
+         mg7$resultat$parametre_loi$valeur > 1 && mg7$resultat$parametre_loi$valeur < 2)
+mg8 <- modele_g("LM", "compte", c("x1", "x2"))
+verifier("une loi discrète et la loi normale ne sont pas dans le même ensemble AIC ; Poisson et binomiale négative, si",
+         mg8$signature != mg1$signature && mg3$signature == mg1$signature && mg6$signature != mg3$signature)
+pv <- projet_depuis_tableau(transform(tg, compte = compte + 0.5), "demi")
+verifier("Poisson sur des valeurs non entières : refusé", grepl("comptages", refus(ajuster(pv, definir_modele(pv, "GLM", x = numeros(pv, "x2"), y = numeros(pv, "compte"), famille = "poisson")))))
+verifier("binomiale sur une réponse qui n'est pas 0/1 : refusé", grepl("0 ou 1", refus(modele_g("GLM", "compte", "x2", famille = "binomiale"))))
+verifier("un décalage avec la loi normale : refusé", grepl("lien log", refus(modele_g("GLM", "masse", "x2", decalage = ug("effort")))))
+verifier("une courbe dans un GLM : refusée", grepl("additif", refus(modele_g("GLM", "masse", c("x1", "x2"), famille = "gamma", lisses = ug("x1")))))
+verifier("l'autocorrélation avec un GLM : refusée", grepl("linéaire mixte", refus(modele_g("GLM", "masse", "x2", famille = "gamma",
+         aleatoires = list(list(by = "variable", variable = ug("site"))), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ug("x1")))))))
+
 cat("Texte des méthodes\n")
 for (l in c("fr", "en")) {
   t3 <- texte_methodes(p, d3, m3, l, "essai")
@@ -148,6 +209,15 @@ for (l in c("fr", "en")) {
            length(t3$paragraphes) == 5 && any(grepl("Pinheiro", t3$references)) && any(grepl("Nakagawa", t3$references)) &&
              any(grepl("AIC", t3$paragraphes)) && any(grepl("Q²", t1$paragraphes)) && !any(grepl("NA", c(t3$paragraphes, t1$paragraphes), fixed = TRUE)) &&
              !any(grepl("nlme", t1$references)))
+}
+
+dg6 <- definir_modele(pg, "GAM", x = ug("x1", "x2"), y = ug("compte"), echelle = "none", famille = "binomiale_negative", lisses = ug("x1"), decalage = ug("effort"),
+                      aleatoires = list(list(by = "variable", variable = ug("site"))))
+for (l in c("fr", "en")) {
+  tg6 <- texte_methodes(pg, dg6, mg6, l, "essai")
+  verifier(sprintf("GAMM (%s) : loi, courbe, effort et site aléatoire décrits, mgcv et Wood cités", l),
+           any(grepl("binomial", tg6$paragraphes)) && any(grepl("REML", tg6$paragraphes)) && any(grepl("log\\(", tg6$paragraphes)) &&
+             any(grepl("mgcv", tg6$references)) && any(grepl("Wood, S. N. \\(2011\\)", tg6$references)) && !any(grepl("NA", tg6$paragraphes, fixed = TRUE)))
 }
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
