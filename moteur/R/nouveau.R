@@ -175,7 +175,10 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   transformations : vecteur nommé par numéro de variable, "racine2", "racine4", "log10" ou
 #   "log10:C2" pour log10(x + C2) ;
 #   croises : termes croisés et carrés, une paire de numéros de variables X par terme,
-#   par exemple list(c(3, 5), c(4, 4)) pour v3*v5 et v4*v4 ;
+#   par exemple list(c(3, 5), c(4, 4)) pour v3*v5 et v4*v4 ; croises_reglages : leur échelle,
+#   bloc et modificateur, par terme nommé « 3*5 » (les numéros dans l'ordre du terme), par exemple
+#   list(`3*5` = list(echelle = "Par", bloc = "B1", modificateur = 0.5)) ; sans réglage, l'échelle
+#   par défaut, ni bloc ni modificateur ;
 #   spectres : prétraitement des spectres (spectres.R), par exemple
 #   list(list(type = "snv"), list(type = "sg", derivee = 1, fenetre = 11, degre = 2)) ; les
 #   variables X sont alors prises dans l'ordre du tableau ;
@@ -198,7 +201,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
-                           famille = NULL, lisses = NULL, decalage = NULL) {
+                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -210,6 +213,17 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     n <- if (as.character(uid) %in% names(transformations)) transformations[[as.character(uid)]]
     if (is.null(n) || !nzchar(n)) return(NULL)
     lire_transformation(n)
+  }
+  # un terme croisé et ses réglages (croises_reglages) : son échelle, son bloc, son modificateur
+  croise <- function(paire) {
+    r <- croises_reglages[[paste(as.numeric(paire), collapse = "*")]]
+    lapply(termes_croises(projet, paire, x, as.character(r$echelle %||% ech("defaut"))[1]), function(t) {
+      b <- r$bloc
+      if (length(b) && !is.na(b[1]) && nzchar(as.character(b[1]))) t$scaling$block <- as.character(b[1])
+      mo <- suppressWarnings(as.numeric(r$modificateur))
+      if (length(mo) && !is.na(mo[1]) && mo[1] != 1) t$scaling$modifier <- mo[1]
+      t
+    })
   }
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   test <- unique(as.numeric(test))
@@ -235,7 +249,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
             observations = obs, A = A %||% 0, cv_groups = G,
             x = c(unlist(lapply(x, termes), recursive = FALSE),
-                  unlist(lapply(croises, function(paire) termes_croises(projet, paire, x, ech("defaut"))), recursive = FALSE)),
+                  unlist(lapply(croises, croise), recursive = FALSE)),
             y = if (plsda) yt else unlist(lapply(y, termes), recursive = FALSE))
   if (plsda) d$classe <- classe
   if (opls) d$Ap <- Ap
@@ -289,7 +303,7 @@ termes_croises <- function(projet, paire, x, echelle = "UV") {
 
 # Les réglages d'un modèle, sous la forme de definir_modele() (pour les modifier) :
 # variables X et Y, classe, observations exclues, échelle, bloc, modificateur et transformation
-# par variable, groupes de la validation croisée.
+# par variable, termes croisés et leurs réglages, groupes de la validation croisée.
 reglages_modele <- function(projet, d) {
   simples <- function(termes) unique(unlist(lapply(termes, function(t)
     if (length(t$variables) == 1) as.numeric(t$variables))))
@@ -307,6 +321,19 @@ reglages_modele <- function(projet, d) {
     if (length(b) && !is.na(b[1]) && nzchar(as.character(b[1]))) blocs[[k]] <- as.character(b[1])
     if (!is.null(t$scaling$modifier) && !isTRUE(as.numeric(t$scaling$modifier) == 1)) modificateurs[[k]] <- as.numeric(t$scaling$modifier)
   }
+  # les réglages de chaque terme croisé (le premier de ses termes : une variable qualitative en
+  # fait un par catégorie, mis à l'échelle de la même façon)
+  croises_reglages <- stats::setNames(list(), character(0))
+  for (t in d$x) {
+    if (length(t$variables) < 2) next
+    k <- paste(as.numeric(t$variables), collapse = "*")
+    if (!is.null(croises_reglages[[k]])) next
+    r <- list(echelle = as.character(t$scaling$type %||% "UV")[1])
+    b <- t$scaling$block
+    if (length(b) && !is.na(b[1]) && nzchar(as.character(b[1]))) r$bloc <- as.character(b[1])
+    if (!is.null(t$scaling$modifier) && !isTRUE(as.numeric(t$scaling$modifier) == 1)) r$modificateur <- as.numeric(t$scaling$modifier)
+    croises_reglages[[k]] <- r
+  }
   tous <- vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   if (isTRUE(d$plsda) && is.null(d$classe)) {
     # PLS-DA venant d'un fichier .usp : usp_extract a reconnu la variable qui définit ses classes
@@ -322,7 +349,7 @@ reglages_modele <- function(projet, d) {
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
-       croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))),
+       croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))), croises_reglages = croises_reglages,
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
 }
 

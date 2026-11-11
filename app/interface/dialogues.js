@@ -66,6 +66,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     exclues: new Set(r ? [].concat(r.exclues || []) : []), onglet: 'variables', filtre: '', filtreObs: '',
     test: new Set(r ? [].concat(r.test || []).map(Number) : []), methodeTest: 'hasard', partTest: 25,
     croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '', c: '',
+    // each cross term's scaling, block and modifier, by its key "3*5" (moteur/R/nouveau.R: croises_reglages)
+    croisesReglages: r && r.croises_reglages && !Array.isArray(r.croises_reglages) ? { ...r.croises_reglages } : {},
     // a mixed model: nested random effects, the widest first, and an autocorrelation in time
     aleatoires: r && r.aleatoires ? [].concat(r.aleatoires) : [], correlation: r && r.correlation ? r.correlation : null,
     // a generalized or additive model: the distribution of Y, the X in curves, the effort (offset)
@@ -400,14 +402,32 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         el('button', { disabled: !quantX.length, onclick: () => { quantX.forEach((u) => ajouter(u, u)); rendre(); } }, t('tous_carres')),
         el('button', { disabled: quantX.length < 2, title: `${quantX.length * (quantX.length - 1) / 2}`,
           onclick: () => { quantX.forEach((u, i) => quantX.slice(i + 1).forEach((w) => ajouter(u, w))); rendre(); } }, t('toutes_interactions')),
-        el('button', { disabled: !st.croises.length, onclick: () => { st.croises = []; rendre(); } }, t('tout_retirer'))),
+        el('button', { disabled: !st.croises.length, onclick: () => { st.croises = []; st.croisesReglages = {}; rendre(); } }, t('tout_retirer'))),
       el('p', { class: 'note' }, t('termes_note')),
-      el('div', { class: 'defile' }, st.croises.length ? el('table', { class: 'tableau' }, el('tbody', {}, st.croises.map((fs, i) => {
-        const horsX = [...new Set(fs)].filter((u) => st.roles[u] !== 'x');
-        return el('tr', {}, el('td', {}, fs.map(nom).join(' × ')),
-          el('td', { class: 'erreur' }, horsX.length ? `${t('facteur_non_x')} : ${horsX.map(nom).join(', ')}` : ''),
-          el('td', { class: 'num' }, el('button', { class: 'icone-seule', onclick: () => { st.croises.splice(i, 1); rendre(); } }, icone('x-circle'))));
-      }))) : el('p', { class: 'infos' }, t('aucun_terme'))));
+      el('div', { class: 'defile' }, st.croises.length ? el('table', { class: 'tableau' },
+        el('thead', {}, el('tr', {}, el('th', {}, t('termes')), el('th', {}, ''), el('th', {}, t('echelle')),
+          el('th', { title: regression() ? t('bloc_aide_regression') : t('bloc_aide') }, t('bloc')),
+          regression() ? null : el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, ''))),
+        el('tbody', {}, st.croises.map((fs, i) => {
+          const horsX = [...new Set(fs)].filter((u) => st.roles[u] !== 'x');
+          const k = fs.join('*');
+          const reglage = (cle, valeur) => {
+            const r2 = { ...(st.croisesReglages[k] || {}) };
+            if (valeur === null || valeur === '' || valeur === undefined) delete r2[cle]; else r2[cle] = valeur;
+            if (Object.keys(r2).length) st.croisesReglages[k] = r2; else delete st.croisesReglages[k];
+          };
+          const r2 = st.croisesReglages[k] || {};
+          return el('tr', {}, el('td', {}, fs.map(nom).join(' × ')),
+            el('td', { class: 'erreur' }, horsX.length ? `${t('facteur_non_x')} : ${horsX.map(nom).join(', ')}` : ''),
+            el('td', {}, el('select', { onchange: (e) => reglage('echelle', e.target.value) },
+              ECHELLES.map((e2) => el('option', { value: e2, selected: e2 === (r2.echelle || st.echelle) }, t('echelle_' + e2))))),
+            el('td', {}, el('input', { value: r2.bloc || '', placeholder: '—', size: 7, title: t('bloc_aide'),
+              oninput: (e) => reglage('bloc', e.target.value.trim()) })),
+            regression() ? null : el('td', {}, el('input', { type: 'number', step: 'any', min: 0, placeholder: '1', title: t('modificateur_aide'),
+              value: r2.modificateur !== undefined ? +Number(r2.modificateur).toPrecision(5) : '', style: 'width:5em',
+              oninput: (e) => { const x2 = parseFloat(e.target.value); reglage('modificateur', Number.isFinite(x2) && x2 !== 1 ? x2 : null); } })),
+            el('td', { class: 'num' }, el('button', { class: 'icone-seule', onclick: () => { st.croises.splice(i, 1); delete st.croisesReglages[k]; rendre(); } }, icone('x-circle'))));
+        }))) : el('p', { class: 'infos' }, t('aucun_terme'))));
   };
 
   function rendre() {
@@ -447,12 +467,19 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const spectres = st.etapes.filter(Boolean).map((k) => (k.startsWith('sg') ? { type: 'sg', derivee: +k[2], fenetre: st.fenetre, degre: st.degre } : { type: k }));
     const blocs = Object.fromEntries(Object.entries(st.blocs).filter(([, b]) => b));
     const modificateurs = Object.fromEntries(Object.entries(st.modificateurs).filter(([, m]) => Number.isFinite(m) && m !== 1));
+    // the cross terms' own settings: a scaling other than the default, a block, a modifier
+    const croisesReglages = Object.fromEntries(st.croises.map((fs) => {
+      const r2 = st.croisesReglages[fs.join('*')] || {};
+      const garde = { ...(r2.echelle && r2.echelle !== st.echelle ? { echelle: r2.echelle } : {}), ...(r2.bloc ? { bloc: r2.bloc } : {}),
+        ...(!regression() && Number.isFinite(r2.modificateur) && r2.modificateur !== 1 ? { modificateur: r2.modificateur } : {}) };
+      return [fs.join('*'), garde];
+    }).filter(([, r2]) => Object.keys(r2).length));
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
       exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises,
       spectres: regression() ? [] : spectres, A: st.auto || regression() ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs: regression() ? {} : modificateurs,
       aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [], correlation: st.type === 'LMM' ? st.correlation : null,
       famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [],
-      decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, nom: st.nom, titre: st.titre };
+      decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, croises_reglages: croisesReglages, nom: st.nom, titre: st.titre };
     if (!enCours) verifierPuisAjuster(q);
     return false;  // the dialog closes once the model is fitted
   }

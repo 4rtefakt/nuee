@@ -2503,6 +2503,8 @@ code_definition <- function(projet, d, p = "p") {
       if (length(r$famille)) sprintf("famille <- %s  # loi de la réponse (regression.R)", q(r$famille)),
       if (length(r$lisses)) sprintf("lisses <- numeros(%s, %s)  # variables en courbe", p, vecteur(noms(r$lisses))),
       if (length(r$decalage)) sprintf("decalage <- numeros(%s, %s)  # l'effort, log en décalage", p, q(noms(r$decalage))),
+      if (length(r$croises_reglages)) sprintf("croises_reglages <- %s  # échelle, bloc et modificateur des termes croisés",
+                                              paste(deparse(r$croises_reglages, width.cutoff = 500L), collapse = "")),
       "",
       sprintf("d <- definir_modele(%s, %s, x = x, y = y, classe = classe, observations = observations,", p, q(r$type)),
       sprintf("                    echelle = echelles, transformations = transformations, croises = croises,%s",
@@ -2510,7 +2512,7 @@ code_definition <- function(projet, d, p = "p") {
                        if (length(r$aleatoires)) " aleatoires = aleatoires,", if (length(r$correlation)) " correlation = correlation,",
                        if (length(r$blocs)) " blocs = blocs,", if (length(r$modificateurs)) " modificateurs = modificateurs,",
                        if (length(r$vc)) " vc = vc,", if (length(r$famille)) " famille = famille,", if (length(r$lisses)) " lisses = lisses,",
-                       if (length(r$decalage)) " decalage = decalage,"), collapse = "")),
+                       if (length(r$decalage)) " decalage = decalage,", if (length(r$croises_reglages)) " croises_reglages = croises_reglages,"), collapse = "")),
       sprintf("                    A = %s, G = %s, nom = %s, titre = %s)", q(r$A), q(r$G), q(r$nom), q(r$titre)))
   }
 }

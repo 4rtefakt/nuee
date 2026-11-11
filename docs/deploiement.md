@@ -40,7 +40,8 @@ everyone at their next start. This copy never checks for new versions.
 An installed copy asks GitHub at start-up whether a newer version exists: one HTTPS request to
 `api.github.com/repos/4rtefakt/nuee/releases/latest`. If there is one, a click in the status bar
 downloads the new installer from `github.com/4rtefakt/nuee/releases`, checks its SHA-256 against
-the one GitHub gives, and reinstalls silently in the same mode and folder. A per-computer
+the one GitHub gives, and reinstalls silently in the same mode and folder (all users or this
+user, as Nuée's entry in *Settings › Apps* says, wherever its folder is). A per-computer
 installation asks for administrator rights to do so. Users can turn the check off in *Help*.
 
 To turn it off for everyone (when you deploy updates yourself), set this policy value; the

@@ -256,7 +256,8 @@ definition_interface <- function(p, q) {
                       spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)),
                       vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs),
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
-                      lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage))
+                      lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
+                      croises_reglages = if (length(q$croises_reglages)) q$croises_reglages)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q

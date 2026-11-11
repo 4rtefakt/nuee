@@ -47,6 +47,11 @@ jobs:
         working-directory: app
         run: node tests/essai_api.js Rscript
 
+      # (the updater reinstalls for all users or for this user, as the installer's entry says)
+      - name: Mode d'installation, pour la mise à jour
+        working-directory: app
+        run: node tests/essai_installation.js
+
   linux:
     runs-on: ubuntu-24.04
     steps:
