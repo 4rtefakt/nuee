@@ -308,6 +308,21 @@ async function principal() {
       verifier(g.type === 'groupes' && [].concat(g.posthoc.kruskal.p_ajuste).length === 6 && [].concat(g.valeurs.valeur).length === 120, 'une mesure entre groupes');
       const r = await api('correlations_variables', { projet: e.id, methode: 'spearman', correction: 'BH' });
       verifier(r.r.length === 15 && r.r[0].length === 15 && r.p_ajuste[0][0] === null && r.n[0][1] > 0, 'matrice des corrélations');
+      // regressions (moteur/R/regression.R): no components, their own results
+      const lm = await api('ajuster', { projet: e.id, type: 'LM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], echelle: 'none', nom: 'R1' });
+      verifier(lm.regression && lm.type === 'LM' && lm.A === 0 && lm.N === 120 && [].concat(lm.coefficients_regression.terme).length === 3
+        && lm.qualite.AIC !== null && [].concat(lm.observations.quantile_normal).length === 120, 'régression linéaire');
+      const lmm = await api('ajuster', { projet: e.id, type: 'LMM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], echelle: 'none', nom: 'R2',
+        aleatoires: [{ by: 'variable', variable: v('verger') }] });
+      verifier(lmm.type === 'LMM' && lmm.vc_par === 'verger' && lmm.G === 3 && lmm.qualite.marginal > 0 && [].concat(lmm.variances.composante).length === 2
+        && lm.signature === lmm.signature, 'modèle mixte validé par verger, même ensemble AIC que la régression');
+      const ap = await api('apports', { modele: lmm.id });
+      verifier([].concat(ap.apports.groupe).length === 2 && [].concat(ap.apports.delta_aic).every((d) => d !== null), 'apport des variables (AIC)');
+      const tm = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
+      verifier([].concat(tm.paragraphes).some((x) => /linear mixed model/.test(x)) && [].concat(tm.references).some((x) => /nlme/.test(x)), 'texte des méthodes d’un modèle mixte');
+      let refusReg = '';
+      try { await api('hca', { modele: lmm.id }); } catch (err) { refusReg = err.message; }
+      verifier(/régression/.test(refusReg), 'une demande qui suppose des composantes, refusée pour une régression');
       const m = await api('ajuster', { projet: e.id, numero: e.modeles[2].numero, A: e.modeles[2].A });
       const txt = await api('methodes', { modele: m.id, langue: 'en', version: 'essai' });
       verifier([].concat(txt.paragraphes).some((p) => /PLS-DA/.test(p)) && [].concat(txt.references).length >= 3, 'méthodes');

@@ -147,7 +147,8 @@ Affichage : thème sombre, français / anglais, taille du texte.
 
 Nouveau modèle (Modèle › Nouveau modèle)
 ----------------------------------------
-Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA, modèles de classe), nom, nombre de composantes
+Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA, modèles de classe, régression
+linéaire, modèle linéaire mixte : voir Modèles linéaires et mixtes), nom, nombre de composantes
 (automatique par défaut, par validation croisée), groupes de validation croisée (à tour de
 rôle, G groupes ; ou un groupe par valeur d'un identifiant ou d'une variable, voir Validation
 croisée), échelle par défaut.
@@ -436,6 +437,37 @@ quantitatives (300 au plus), chaque paire sur les observations où les deux sont
 valeurs p corrigées pour le nombre de paires. Un clic sur une paire, dans la table ou le
 graphique, la teste dans « Deux variables ».
 
+Modèles linéaires et mixtes
+---------------------------
+Nouveau modèle › type « Régression linéaire » ou « Modèle linéaire mixte » : une variable Y
+quantitative, les variables X de l'onglet Variables (transformations et termes croisés
+compris ; une variable qualitative par ses catégories, l'une d'elles servant de référence).
+Sans X : le modèle nul, utile pour comparer les AIC. L'échelle par défaut garde les unités
+des variables (coefficients par unité) ; UV donne des coefficients par écart-type.
+Un modèle mixte (nlme) ajoute des effets aléatoires emboîtés, du plus large au plus fin : une
+ordonnée à l'origine aléatoire par site, puis par secteur dans son site (un identifiant des
+observations ou une variable qualitative). Il peut ajouter une autocorrélation dans le temps à
+l'intérieur du dernier niveau (CAR1, en temps continu : des années manquantes ne gênent pas ;
+le temps est un identifiant numérique ou une variable quantitative). Les coefficients et les
+variances sont estimés en REML ; la log-vraisemblance, l'AIC, l'AICc et le BIC viennent de
+l'ajustement en ML, le seul qui compare des modèles aux effets fixes différents. La validation
+croisée se fait par défaut par le premier effet aléatoire : chaque site est prédit par les
+effets fixes du modèle ajusté sans lui, comme un site jamais vu.
+Vues : Résumé (R2, ou R2 marginal et conditionnel pour un modèle mixte, Nakagawa et
+Schielzeth ; Q2 et RMSEcv ; AIC ; la variance de chaque effet aléatoire et sa part ; φ de
+l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
+quand p ≤ 0,05), Observé / prédit, Résidus (contre les valeurs ajustées, droite de Henry, par
+groupe d'un effet aléatoire, distance de Cook), Apport des blocs (AIC) : chaque bloc de la
+colonne Bloc (ou chaque variable) retiré et le modèle réajusté en ML ; un ΔAIC au-dessus de 2
+dit que le bloc améliore nettement le modèle, un test du rapport de vraisemblance donne son p.
+Les observations où Y, un X, un effet aléatoire ou le temps manque sont laissées de côté (le
+résumé les compte).
+Prédiction › Comparer les modèles : Q2 et RMSEcv pour tous les modèles ; AIC, ΔAIC et poids
+d'Akaike (la probabilité que chaque modèle soit le meilleur de son ensemble) entre les seules
+régressions de la même réponse sur les mêmes observations (un « ensemble AIC », lettré A,
+B...).
+Pas encore pour les régressions : l'export vers R, la prédiction d'un fichier, le rapport.
+
 Modèles de classe et graphique de Coomans
 -----------------------------------------
 Nouveau modèle › type « Modèles de classe » : une ACP par catégorie de la variable de classe,
@@ -602,6 +634,7 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   pretraitement.R        transformations, centrage, mise à l'échelle
   nipals.R               ACP et PLS (algorithme NIPALS, données manquantes)
   validation_croisee.R   validation croisée (un sous-modèle sans chaque groupe), Q2
+  regression.R           modèles linéaires et mixtes (lm, nlme), AIC, apport des blocs
   statistiques.R         T2, DModX, VIP, coefficients, intervalles, limites
   validation.R           permutations, CV-ANOVA, classement PLS-DA et courbes ROC
   opls.R                 OPLS et OPLS-DA

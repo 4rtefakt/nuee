@@ -254,7 +254,8 @@ definition_interface <- function(p, q) {
                       croises = if (is.matrix(q$croises)) lapply(seq_len(nrow(q$croises)), function(i) q$croises[i, ])
                                 else q$croises,
                       spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)),
-                      vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs))
+                      vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs),
+                      aleatoires = q$aleatoires, correlation = q$correlation)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -306,6 +307,10 @@ reajuster_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
   d <- e$definition
+  if (est_regression(d)) {  # (sans composantes ni VIP : seulement des observations en moins)
+    if (length(q$garder)) stop(traduire("Une régression n'a pas de VIP.", "A regression has no VIP."))
+    q$A <- NULL
+  }
   exclues <- as.numeric(q$exclues %||% numeric(0))
   if (length(q$garder)) {  # ne garder que ces termes X (et les facteurs de leurs termes croisés)
     noms <- vapply(d$x, function(t) as.character(t$name), "")
@@ -333,7 +338,7 @@ reajuster_demande <- function(q) {
 }
 
 ajuster_et_garder <- function(p, d) {
-  if (!d$A) d$A <- max(1, autoajuster(p, d))
+  if (!d$A && !est_regression(d)) d$A <- max(1, autoajuster(p, d))
   m <- ajuster(p, d)
   id <- nouvel_id("M")
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
@@ -348,8 +353,53 @@ ajuster_et_garder <- function(p, d) {
   resultat_modele(id)
 }
 
+# Les demandes qui supposent des composantes et des scores : refusées pour une régression
+# (regression.R), avant d'arriver à un code qui ne les trouverait pas.
+SANS_REGRESSION <- c("predire", "hca", "permutations", "exporter", "predire_fichier", "exporter_prediction", "scores_en_variables",
+                     "script_r", "appartenance", "contributions", "spectres", "biplot", "ipls")
+
+# Ce que l'interface reçoit d'une régression : comme resultat_modele pour ce qui est commun
+# (observations observées et ajustées, RMSEE, RMSEcv, jeu de test, réglages), et ses propres
+# résultats (coefficients, qualité, variances, apports sur demande).
+resultat_regression <- function(id) {
+  e <- modele(id)
+  p <- projet(e$projet)
+  m <- e$modele
+  d <- e$definition
+  r <- m$resultat
+  y <- m$y$noms
+  obs <- data.frame(uid = m$observations, nom = unname(p$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs[[paste(y, "observé")]] <- m$donnees$y
+  obs[[paste(y, "ajusté")]] <- r$ajuste
+  if (!is.null(r$ajuste_fixe)) obs[[paste(y, "ajusté (effets fixes)")]] <- r$ajuste_fixe
+  obs[[paste(y, "prédit (VC)")]] <- m$vc$prediction
+  obs$residu <- r$residus
+  ok <- !is.na(r$residus)  # (la droite de Henry : le quantile de la loi normale de chaque résidu, positions de Blom)
+  obs$quantile_normal <- NA_real_
+  obs$quantile_normal[ok] <- stats::qnorm((rank(r$residus[ok]) - 0.375) / (sum(ok) + 0.25))
+  if (!is.null(r$levier)) {
+    obs$levier <- r$levier
+    obs$cook <- r$cook
+  }
+  for (l in seq_along(m$niveaux)) obs[[m$niveaux[l]]] <- as.character(m$donnees[[paste0("g", l)]])
+  obs$groupe_vc <- m$vc$groupe
+  variances <- r$variances
+  if (!is.null(variances)) variances$composante <- c(m$niveaux, traduire("résiduelle", "residual"))
+  list(id = id, projet = p$id, nom = m$nom, titre = m$titre, type = m$type, regression = TRUE, opls = FALSE, Ap = 0, A = 0,
+       N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
+       coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),
+       qualite = c(r$r2, list(AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres,
+                              Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs)),
+       variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),
+       signature = m$signature, RMSEE = stats::setNames(list(sqrt(mean((m$donnees$y - r$ajuste)^2))), y),
+       RMSEcv = stats::setNames(list(m$vc$RMSEcv), y), composantes = NULL,
+       G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app),
+       note = d$note %||% "", test = m$test, demande = d$demande %||% list(type = d$type, numero = d$number))
+}
+
 resultat_modele <- function(id) {
   e <- modele(id)
+  if (est_regression(e$definition)) return(resultat_regression(id))
   p <- projet(e$projet)
   m <- e$modele
   d <- e$definition
@@ -689,6 +739,13 @@ DEMANDES <- list(
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
                                                q$test %||% "welch", q$correction %||% "BH"),
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y),
+  # l'apport de chaque groupe de termes d'une régression (regression.R), calculé une fois
+  apports = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    if (is.null(e$modele$apports)) etat$modeles[[q$modele]]$modele$apports <- apport_groupes(e$modele) %||% data.frame()
+    list(modele = q$modele, apports = etat$modeles[[q$modele]]$modele$apports)
+  },
   correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),
   historique = function(q) historique_projet(projet(q$projet)),
   # données modifiées et variables ajoutées : le projet est à enregistrer
@@ -805,6 +862,9 @@ appli <- list(
       f <- DEMANDES[[nom]]
       if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
       q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
+      if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) est_regression(modele(id)$definition), TRUE))) {
+        stop(traduire("Ce n'est pas pour une régression (pas de composantes ni de scores).", "This isn't for a regression (no components or scores)."))
+      }
       r <- f(q)
       tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
       repondre(200L, r)

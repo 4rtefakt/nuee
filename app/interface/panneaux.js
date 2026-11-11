@@ -335,8 +335,33 @@ function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom,
 
 // ------------------------------------------------------------ views
 
+// The test set's line of a summary (jeu_test.R).
+function ficheTest(m) {
+  if (!m.test) return null;
+  return el('div', { class: 'fiche-chiffres', title: t('jeu_test_aide') },
+    el('span', {}, el('small', {}, t('jeu_test')), ' ', el('b', {}, m.test.n)),
+    m.test.statistiques ? [].concat(m.test.statistiques.y).map((y, j) => [['RMSEP', 'RMSEP', 4], ['biais', t('biais'), 4], ['Q2ext', 'Q2ext', 3]]
+      .map(([k, n, d]) => el('span', {}, el('small', {}, `${n}${[].concat(m.test.statistiques.y).length > 1 ? ` ${y}` : ''}`), ' ', el('b', {}, fmt([].concat(m.test.statistiques[k])[j], d))))) : null,
+    m.test.classement ? el('span', {}, el('small', {}, t('bien_classes_test')), ' ', el('b', {}, `${fmt(100 * m.test.classement.bien_classees, 1)} %`)) : null,
+    m.regression ? null : el('span', {}, el('small', {}, t('hors_domaine_court')), ' ', el('b', {}, m.test.hors_domaine)));
+}
+
+// Notes on the model, saved with its definition in the project. While typing, a redraw keeps
+// the text and the cursor: retrouver() once the field is back in the page.
+function notesModele(conteneur, ctx, m) {
+  const avant = conteneur.querySelector('.notes-modele');
+  const enCours = avant && document.activeElement === avant ? [avant.value, avant.selectionStart, avant.selectionEnd] : null;
+  const champ = el('textarea', { class: 'notes-modele', rows: 2, placeholder: t('notes_placeholder'), oninput: (e) => {
+    clearTimeout(conteneur._minuterieNotes);
+    const texte = e.target.value;
+    conteneur._minuterieNotes = setTimeout(() => ctx.noterModele(m.id, texte), 700);
+  } }, enCours ? enCours[0] : m.note || '');
+  return { champ, retrouver: () => { if (enCours) { champ.focus(); champ.setSelectionRange(enCours[1], enCours[2]); } } };
+}
+
 function rendreResume(conteneur, ctx, p) {
   const m = ctx.modele(p.modele);
+  if (m.regression) { rendreResumeRegression(conteneur, ctx, m); return; }
   const c = m.composantes;
   const pls = m.type !== 'PCA';
   const cols = [['R2X', 'R2X'], ['R2Xcum', 'R2X(cum)']].concat(pls ? [['R2Y', 'R2Y'], ['R2Ycum', 'R2Y(cum)']] : [])
@@ -359,12 +384,7 @@ function rendreResume(conteneur, ctx, p) {
       pls && m.cv_anova ? Object.entries(m.cv_anova).map(([y, a]) => el('span', { title: 'CV-ANOVA' }, el('small', {}, `CV-ANOVA p ${y}`), ' ',
         el('b', {}, a.p[1] === null ? '—' : a.p[1] < 0.001 ? Number(a.p[1]).toExponential(1) : fmt(a.p[1], 3)))) : null,
       m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null),
-    m.test ? el('div', { class: 'fiche-chiffres', title: t('jeu_test_aide') },
-      el('span', {}, el('small', {}, t('jeu_test')), ' ', el('b', {}, m.test.n)),
-      m.test.statistiques ? [].concat(m.test.statistiques.y).map((y, j) => [['RMSEP', 'RMSEP', 4], ['biais', t('biais'), 4], ['Q2ext', 'Q2ext', 3]]
-        .map(([k, n, d]) => el('span', {}, el('small', {}, `${n}${[].concat(m.test.statistiques.y).length > 1 ? ` ${y}` : ''}`), ' ', el('b', {}, fmt([].concat(m.test.statistiques[k])[j], d))))) : null,
-      m.test.classement ? el('span', {}, el('small', {}, t('bien_classes_test')), ' ', el('b', {}, `${fmt(100 * m.test.classement.bien_classees, 1)} %`)) : null,
-      el('span', {}, el('small', {}, t('hors_domaine_court')), ' ', el('b', {}, m.test.hors_domaine))) : null);
+    ficheTest(m));
   const table = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, t('comp')), cols.map(([, n]) => el('th', { class: 'num' }, n)))),
     el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > (m.Ap || 1) ? `O${a - (m.Ap || 1)}` : (m.Ap || 1) > 1 ? `P${a}` : 'P') : a),
@@ -372,17 +392,9 @@ function rendreResume(conteneur, ctx, p) {
   const note = s ? el('p', { class: 'note' }, el('span', { class: 'marque egal' }, '='), ' ', el('span', { class: 'marque proche' }, '≈'), ' ',
     el('span', { class: 'marque diff' }, '≠'), ' ', t('valeurs_fichier'), '. ' + t('note_q2')) : null;
   const graphe = el('div', { class: 'graphe petit' });
-  // Notes on the model, saved with its definition in the project (while typing, a redraw keeps
-  // the text and the cursor)
-  const avant = conteneur.querySelector('.notes-modele');
-  const enCours = avant && document.activeElement === avant ? [avant.value, avant.selectionStart, avant.selectionEnd] : null;
-  const notes = el('textarea', { class: 'notes-modele', rows: 2, placeholder: t('notes_placeholder'), oninput: (e) => {
-    clearTimeout(conteneur._minuterieNotes);
-    const texte = e.target.value;
-    conteneur._minuterieNotes = setTimeout(() => ctx.noterModele(m.id, texte), 700);
-  } }, enCours ? enCours[0] : m.note || '');
-  conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes, table, note, graphe));
-  if (enCours) { notes.focus(); notes.setSelectionRange(enCours[1], enCours[2]); }
+  const notes = notesModele(conteneur, ctx, m);
+  conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, table, note, graphe));
+  notes.retrouver();
   const x = c.composante.map((a) => libelleComp(m, a));
   tracer(ctx, graphe, [
     { type: 'bar', name: pls ? 'R2Y(cum)' : 'R2X(cum)', x, y: pls ? c.R2Ycum : c.R2Xcum, marker: { color: '#3b9a5b' } },
@@ -856,6 +868,7 @@ function rendreVIP(conteneur, ctx, p, loc) {
 
 function rendreCoefficients(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
+  if (m.regression) { rendreCoefficientsRegression(conteneur, ctx, m, loc); return; }
   loc.y ??= 0;
   loc.cs ??= true;
   const c = m.coefficients;
@@ -1678,13 +1691,176 @@ async function rendreHistorique(conteneur, ctx, p, loc) {
   });
 }
 
+// ------------------------------------------------------------ regressions (regression.R)
+
+// A regression's summary: its fit (R², AIC from the ML fit), its cross-validation, its random
+// effects and its autocorrelation, the terms left out.
+function rendreResumeRegression(conteneur, ctx, m) {
+  const q = m.qualite;
+  const y = m.noms_y[0];
+  const chiffre = (k, v, d = 3) => el('span', {}, el('small', {}, k), ' ', el('b', {}, typeof v === 'number' ? fmt(v, d) : v ?? '—'));
+  const mixte = q.marginal !== undefined;
+  const fiche = el('div', { class: 'fiche' },
+    el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, m.type), m.titre ? el('span', { class: 'doux' }, m.titre) : null),
+    el('div', { class: 'fiche-chiffres' }, chiffre('N', m.N, 0), chiffre(t('nb_termes'), m.K, 0),
+      chiffre(t('groupes_vc'), m.vc_par ? `${m.G} (${m.vc_par})` : m.G), m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
+    el('div', { class: 'fiche-chiffres' },
+      mixte ? [chiffre(t('r2_marginal'), q.marginal), chiffre(t('r2_conditionnel'), q.conditionnel)] : [chiffre('R2', q.r2), chiffre(t('r2_ajuste'), q.r2_ajuste)],
+      chiffre('Q2', q.Q2), chiffre(`RMSEE ${y}`, m.RMSEE[y], 4), chiffre(`RMSEcv ${y}`, q.RMSEcv, 4)),
+    el('div', { class: 'fiche-chiffres', title: t('aic_aide') },
+      chiffre('AIC', q.AIC, 1), chiffre('AICc', q.AICc, 1), chiffre('BIC', q.BIC, 1), chiffre('logLik', q.logLik, 2), chiffre(t('parametres'), q.parametres, 0)),
+    ficheTest(m));
+  const v = m.variances;
+  const variances = v ? [].concat(v.variance) : [];
+  const total = variances.reduce((a, b) => a + b, 0);
+  const table = v ? el('table', { class: 'tableau compact' },
+    el('thead', {}, el('tr', {}, [t('effet_aleatoire'), t('variance'), t('ecart_type'), t('part')].map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
+    el('tbody', {}, [].concat(v.composante).map((c, i) => el('tr', {}, el('td', {}, c), el('td', { class: 'num' }, fmt(variances[i], 4)),
+      el('td', { class: 'num' }, fmt(Math.sqrt(variances[i]), 4)), el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`))))) : null;
+  const retires = [].concat(m.termes_retires || []);
+  const textes = [mixte ? t('regression_note_mixte') : t('regression_note'),
+    m.phi !== null && m.phi !== undefined ? t('phi_note', { phi: fmt(m.phi, 3), temps: m.temps }) : '',
+    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : '',
+    q.echecs_vc ? t('echecs_vc', { n: q.echecs_vc }) : ''].filter(Boolean);
+  const notes = notesModele(conteneur, ctx, m);
+  conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, table, textes.map((x) => el('p', { class: 'note' }, x))));
+  notes.retrouver();
+}
+
+// The coefficients of a regression: each term's effect on Y with its 95 % interval (a forest
+// plot, red when p ≤ 0.05), and their table.
+function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
+  const c = m.coefficients_regression;
+  const col = (k) => [].concat(c[k]);
+  const termes = col('terme');
+  const est = col('estimation');
+  const bas = col('bas');
+  const haut = col('haut');
+  const pv = col('p');
+  const graphe = el('div', { class: 'graphe' });
+  const table = el('div', { class: 'bas' });
+  const retires = [].concat(m.termes_retires || []);
+  conteneur.replaceChildren(el('p', { class: 'note' }, [t('coefficients_regression_note', { y: m.noms_y[0] }),
+    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : ''].filter(Boolean).join(' ')), graphe, table);
+  const idx = termes.map((_, i) => i).filter((i) => termes[i] !== '(Intercept)');
+  tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => est[i]),
+    error_x: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: '#888', thickness: 1.5 },
+    marker: { size: 9, color: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? '#d1495b' : PALETTE[0])) },
+    customdata: idx.map((i) => [fmt(bas[i], 4), fmt(haut[i], 4), valeurP(pv[i])]),
+    hovertemplate: '<b>%{y}</b><br>%{x:.4f} [%{customdata[0]} ; %{customdata[1]}]<br>p = %{customdata[2]}<extra></extra>' }],
+  { title: { text: `${m.nom} · ${t('coefficients')} ${m.noms_y[0]}` }, dragmode: 'zoom', showlegend: false,
+    xaxis: { title: { text: t('estimation_ic') } }, yaxis: { autorange: 'reversed' },
+    shapes: [{ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: 0, x1: 0, line: { color: '#888', width: 1, dash: 'dot' } }] });
+  loc.table ??= {};
+  const num = (cle, titre, decimales, format, alerte) => ({ cle, titre, num: true, decimales, format, alerte });
+  tableau(table, ctx, loc.table, {
+    n: termes.length, nom: 'Coefficients',
+    colonnes: [{ cle: 'terme', titre: t('terme') }, num('estimation', t('estimation'), 4), num('erreur_type', t('erreur_type'), 4), num('ddl', t('ddl'), 0),
+      num('t', 't', 3), num('p', 'p', 4, valeurP, (i) => pv[i] !== null && pv[i] <= 0.05), num('bas', t('ic_bas'), 4), num('haut', t('ic_haut'), 4)],
+    valeur: (i, k) => col(k)[i],
+  });
+}
+
+// The residuals of a regression: against the fitted values, on a normal Q-Q plot, by group of
+// each random effect, and Cook's distances (linear model). Points are linked to the selection.
+function rendreResidus(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  const o = m.observations;
+  const y = m.noms_y[0];
+  const residu = [].concat(o.residu);
+  const niveaux = [].concat(m.niveaux || []);
+  const modes = [['ajustes', t('residus_ajustes')], ['qq', t('residus_qq')]].concat(niveaux.map((n) => [`g:${n}`, t('residus_par', { groupe: n })]),
+    o.cook ? [['cook', t('distance_cook')]] : []);
+  if (!modes.some(([k]) => k === loc.mode)) loc.mode = 'ajustes';
+  loc.couleur ??= '';
+  const graphe = el('div', { class: 'graphe' });
+  const parGroupe = loc.mode.startsWith('g:');
+  conteneur.replaceChildren(outils(choix('', modes, loc.mode, (v) => { loc.mode = v; ctx.rafraichir(); }),
+    parGroupe ? null : controleCouleur(ctx, m, loc), parGroupe ? null : controleEtiquettes(ctx, m, loc),
+    el('span', { class: 'infos' }, t(niveaux.length ? 'residus_note_mixte' : 'residus_note'))), graphe);
+  const c = couleursTheme();
+  const lignes = (valeurs) => valeurs.map((v) => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v, y1: v,
+    line: { color: v ? '#d1495b' : c.doux, width: 1, dash: 'dot' } }));
+  if (parGroupe) {
+    const g = [].concat(o[loc.mode.slice(2)]);
+    const valeurs = [...new Set(g)];
+    tracer(ctx, graphe, valeurs.map((v, k) => {
+      const idx = g.map((_, i) => i).filter((i) => g[i] === v);
+      return { type: 'box', name: v, y: idx.map((i) => residu[i]), text: idx.map((i) => o.nom[i]), boxpoints: idx.length <= 300 ? 'all' : 'outliers',
+        jitter: 0.4, pointpos: 0, marker: { color: PALETTE[k % PALETTE.length], size: 4 }, line: { width: 1 } };
+    }), { title: { text: `${m.nom} · ${t('residus_par', { groupe: loc.mode.slice(2) })}` }, showlegend: false, dragmode: 'zoom',
+      yaxis: { title: { text: t('residus_std') } }, shapes: lignes([0, -2, 2]) });
+    return;
+  }
+  const [xs, ys, titreX, formes] = loc.mode === 'qq' ? [[].concat(o.quantile_normal), residu, t('quantiles_normaux'), []]
+    : loc.mode === 'cook' ? [[].concat(o[`${y} ajusté`]), [].concat(o.cook), t('valeurs_ajustees'), lignes([4 / m.N])]
+      : [[].concat(o[`${y} ajusté`]), residu, t('valeurs_ajustees'), lignes([0, -2, 2])];
+  if (loc.mode === 'qq') {  // the line of a normal distribution: through the quartiles
+    const tri = (v) => v.filter((x) => x !== null).sort((a, b) => a - b);
+    const q = (v, f) => v[Math.floor(f * (v.length - 1))];
+    const [rx, ry] = [tri(xs), tri(ys)];
+    const pente = (q(ry, 0.75) - q(ry, 0.25)) / (q(rx, 0.75) - q(rx, 0.25));
+    const origine = q(ry, 0.25) - pente * q(rx, 0.25);
+    formes.push({ type: 'line', x0: rx[0], x1: rx[rx.length - 1], y0: origine + pente * rx[0], y1: origine + pente * rx[rx.length - 1],
+      line: { color: '#d1495b', width: 1, dash: 'dot' } });
+  }
+  tracer(ctx, graphe, pointsObservations(ctx, m, loc, xs, ys), { title: { text: `${m.nom} · ${modes.find(([k]) => k === loc.mode)[1]}` },
+    xaxis: { title: { text: titreX } }, yaxis: { title: { text: loc.mode === 'cook' ? t('distance_cook') : t('residus_std') } }, shapes: formes });
+  brancherSelection(graphe, ctx, m.id);
+}
+
+// The contribution of each group of terms (a block, or a variable): the model refitted
+// without it, by ML. ΔAIC above 2: the group clearly improves the model (computed in R on
+// request, then kept).
+async function rendreApports(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  const cache = ((loc.cache ??= {}).apports ??= {});  // (loc.cache isn't saved with the session)
+  if (cache.id !== m.id) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul_apports')));
+    cache.res = (await ctx.demander('apports', { modele: m.id })).apports;
+    cache.id = m.id;
+  }
+  const a = cache.res || {};
+  const col = (k) => [].concat(a[k] ?? []);
+  const groupes = col('groupe');
+  const graphe = el('div', { class: 'graphe petit' });
+  const bas = el('div', { class: 'bas' });
+  conteneur.replaceChildren(el('p', { class: 'note' }, t('apports_note')), graphe, bas);
+  if (!groupes.length) { graphe.replaceChildren(el('p', { class: 'infos' }, t('apports_vide'))); return; }
+  const delta = col('delta_aic');
+  const ordre = groupes.map((_, i) => i).sort((i, j) => (delta[j] ?? -Infinity) - (delta[i] ?? -Infinity));
+  const c = couleursTheme();
+  tracer(ctx, graphe, [{ type: 'bar', x: ordre.map((i) => groupes[i]), y: ordre.map((i) => delta[i]),
+    marker: { color: ordre.map((i) => (delta[i] > 2 ? '#3b9a5b' : delta[i] < 0 ? '#d1495b' : c.doux)) },
+    hovertemplate: '<b>%{x}</b><br>ΔAIC = %{y:.2f}<extra></extra>' }],
+  { title: { text: `${m.nom} · ${t('apports')}` }, dragmode: false, xaxis: { tickangle: -30 }, yaxis: { title: { text: 'ΔAIC' } },
+    shapes: [0, 2].map((v) => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v, y1: v, line: { color: v ? '#3b9a5b' : c.doux, width: 1, dash: 'dot' } })) });
+  loc.table ??= { tri: { cle: 'delta_aic', sens: -1 } };
+  const num = (cle, titre, decimales, format, alerte) => ({ cle, titre, num: true, decimales, format, alerte });
+  tableau(bas, ctx, loc.table, {
+    n: groupes.length, nom: 'AIC',
+    colonnes: [{ cle: 'groupe', titre: t('groupe') }, num('termes', t('nb_termes'), 0), num('delta_aic', 'ΔAIC', 2, undefined, (i) => delta[i] > 2),
+      num('khi2', 'χ²', 2), num('ddl', t('ddl'), 0), num('p', 'p', 4, valeurP)],
+    valeur: (i, k) => col(k)[i],
+  });
+}
+
+// Every fitted model side by side. Q2 and RMSEcv compare all models validated by the same
+// groups; AIC, ΔAIC and Akaike weights only the regressions of the same response on the same
+// observations (an "AIC set", regression.R : signature).
 function rendreComparaison(conteneur, ctx, p, loc) {
   const ms = ctx.tousModeles();
   const cum = (v) => (v && v.length ? v[v.length - 1] : null);
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
-  conteneur.replaceChildren(graphe, bas);
+  conteneur.replaceChildren(el('p', { class: 'note' }, t('comparaison_note')), graphe, bas);
   const lignes = ms.map((m) => {
+    if (m.regression) {
+      const q = m.qualite;
+      return { id: m.id, nom: m.nom, projet: (ctx.projet(m.projet) || {}).nom, type: m.type, A: null, N: m.N, K: m.K,
+        R2X: null, R2Y: null, R2: q.marginal !== undefined ? q.marginal : q.r2, Q2: q.Q2,
+        RMSEE: Object.values(m.RMSEE)[0], RMSEcv: q.RMSEcv, AIC: q.AIC, signature: m.signature };
+    }
     const c = m.composantes;
     const s = m.stocke;
     return { id: m.id, nom: m.nom, projet: (ctx.projet(m.projet) || {}).nom, type: m.type, A: m.A, N: m.N, K: m.K,
@@ -1692,18 +1868,30 @@ function rendreComparaison(conteneur, ctx, p, loc) {
       RMSEE: m.RMSEE ? Object.values(m.RMSEE)[0] : null, RMSEcv: m.RMSEcv ? Object.values(m.RMSEcv)[0] : null,
       sR2X: s ? s.R2Xcum[m.A - 1] : null, sR2Y: s && s.R2Ycum ? s.R2Ycum[m.A - 1] : null, sQ2: s ? s.Q2cum[m.A - 1] : null };
   });
+  // the AIC sets, lettered A, B... in the order of their first model
+  const ensembles = [...new Set(lignes.filter((l) => l.AIC !== undefined && l.AIC !== null).map((l) => l.signature))];
+  ensembles.forEach((sig, k) => {
+    const ici = lignes.filter((l) => l.signature === sig && l.AIC !== null);
+    const min = Math.min(...ici.map((l) => l.AIC));
+    const w = ici.map((l) => Math.exp(-(l.AIC - min) / 2));
+    const somme = w.reduce((a, b) => a + b, 0);
+    ici.forEach((l, i) => Object.assign(l, { ensemble: String.fromCharCode(65 + (k % 26)), dAIC: l.AIC - min, poids: w[i] / somme }));
+  });
+  const regressions = ensembles.length > 0;
   tableau(bas, ctx, loc, {
     n: lignes.length, nom: 'Table',
     colonnes: [['nom', ''], ['projet', t('projets')], ['type', t('type')], ['A', 'A'], ['N', 'N'], ['K', 'K'], ['R2X', 'R2X(cum)'],
-      ['R2Y', 'R2Y(cum)'], ['Q2', 'Q2(cum)'], ['RMSEE', 'RMSEE'], ['RMSEcv', 'RMSEcv'],
-      ['sR2X', `R2X(cum) ${t('stocke')}`], ['sR2Y', `R2Y(cum) ${t('stocke')}`], ['sQ2', `Q2(cum) ${t('stocke')}`]].map(([cle, titre]) => ({ cle, titre })),
+      ['R2Y', 'R2Y(cum)'], ['Q2', 'Q2(cum)'], ['RMSEE', 'RMSEE'], ['RMSEcv', 'RMSEcv']]
+      .concat(regressions ? [['R2', t('r2_regression')], ['ensemble', t('ensemble_aic')], ['AIC', 'AIC'], ['dAIC', 'ΔAIC'], ['poids', t('poids_akaike')]] : [],
+        [['sR2X', `R2X(cum) ${t('stocke')}`], ['sR2Y', `R2Y(cum) ${t('stocke')}`], ['sQ2', `Q2(cum) ${t('stocke')}`]])
+      .map(([cle, titre]) => ({ cle, titre, decimales: ['A', 'N', 'K'].includes(cle) ? 0 : undefined })),
     valeur: (i, k) => (typeof lignes[i][k] === 'number' && !['A', 'N', 'K'].includes(k) ? Number(lignes[i][k].toFixed(4)) : lignes[i][k]),
   });
   if (!ms.length) return;
   const noms = lignes.map((l) => l.nom);
   tracer(ctx, graphe, [
     { type: 'bar', name: 'R2X(cum)', x: noms, y: lignes.map((l) => l.R2X), marker: { color: '#9aa7b8' } },
-    { type: 'bar', name: 'R2Y(cum)', x: noms, y: lignes.map((l) => l.R2Y), marker: { color: '#3b9a5b' } },
+    { type: 'bar', name: regressions ? `R2Y(cum) / ${t('r2_regression')}` : 'R2Y(cum)', x: noms, y: lignes.map((l) => l.R2Y ?? l.R2 ?? null), marker: { color: '#3b9a5b' } },
     { type: 'bar', name: 'Q2(cum)', x: noms, y: lignes.map((l) => l.Q2), marker: { color: '#2f6fb5' } }],
   { barmode: 'group', dragmode: false, title: { text: t('comparaison') }, margin: { t: 30, b: 50 } });
 }
@@ -1804,6 +1992,8 @@ export const VUES = {
   t2: { rendre: (c, x, p, l) => rendreLigneObs(c, x, p, l, 't2'), titre: (m) => `${m.nom} · T²` },
   vip: { rendre: rendreVIP, titre: (m) => `${m.nom} · VIP` },
   coefficients: { rendre: rendreCoefficients, titre: (m) => `${m.nom} · ${t('coefficients')}` },
+  residus: { rendre: rendreResidus, titre: (m) => `${m.nom} · ${t('residus')}` },
+  apports: { rendre: rendreApports, titre: (m) => `${m.nom} · ${t('apports')}` },
   obspred: { rendre: rendreObsPred, titre: (m) => `${m.nom} · ${t('obspred')}` },
   dendrogramme: { rendre: rendreDendrogramme, titre: (m) => `${m.nom} · ${t('dendrogramme')}` },
   predictions: { rendre: rendrePredictions, titre: (m) => `${m.nom} · ${t('predictions')}` },

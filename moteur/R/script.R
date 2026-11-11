@@ -1857,10 +1857,19 @@ code_definition <- function(projet, d, p = "p") {
                             sprintf("test <- numeros_observations(%s, %s)", p, vecteur(unname(projet$noms_obs[as.character(r$test)])))),
       if (length(r$spectres)) c("# prétraitement des spectres, dans cet ordre (voir moteur/R/spectres.R)",
                                 sprintf("spectres <- %s", paste(deparse(r$spectres, width.cutoff = 500L), collapse = ""))),
+      if (length(r$aleatoires)) c("# effets aléatoires emboîtés, du plus large au plus fin (voir moteur/R/regression.R)",
+                                  sprintf("aleatoires <- %s", paste(deparse(r$aleatoires, width.cutoff = 500L), collapse = ""))),
+      if (length(r$correlation)) sprintf("correlation <- %s", paste(deparse(r$correlation, width.cutoff = 500L), collapse = "")),
+      if (length(r$blocs)) sprintf("blocs <- %s  # par numéro de variable", paste(deparse(unlist(r$blocs), width.cutoff = 500L), collapse = "")),
+      if (length(r$modificateurs)) sprintf("modificateurs <- %s", paste(deparse(unlist(r$modificateurs), width.cutoff = 500L), collapse = "")),
+      if (length(r$vc)) sprintf("vc <- %s  # groupes de la validation croisée", paste(deparse(r$vc, width.cutoff = 500L), collapse = "")),
       "",
       sprintf("d <- definir_modele(%s, %s, x = x, y = y, classe = classe, observations = observations,", p, q(r$type)),
-      sprintf("                    echelle = echelles, transformations = transformations, croises = croises,%s%s",
-              if (length(r$spectres)) " spectres = spectres," else "", if (length(r$test)) " test = test," else ""),
+      sprintf("                    echelle = echelles, transformations = transformations, croises = croises,%s",
+              paste0(c(if (length(r$spectres)) " spectres = spectres,", if (length(r$test)) " test = test,",
+                       if (length(r$aleatoires)) " aleatoires = aleatoires,", if (length(r$correlation)) " correlation = correlation,",
+                       if (length(r$blocs)) " blocs = blocs,", if (length(r$modificateurs)) " modificateurs = modificateurs,",
+                       if (length(r$vc)) " vc = vc,"), collapse = "")),
       sprintf("                    A = %s, G = %s, nom = %s, titre = %s)", q(r$A), q(r$G), q(r$nom), q(r$titre)))
   }
 }

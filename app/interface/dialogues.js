@@ -65,7 +65,10 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     exclues: new Set(r ? [].concat(r.exclues || []) : []), onglet: 'variables', filtre: '', filtreObs: '',
     test: new Set(r ? [].concat(r.test || []).map(Number) : []), methodeTest: 'hasard', partTest: 25,
     croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '', c: '',
+    // a mixed model: nested random effects, the widest first, and an autocorrelation in time
+    aleatoires: r && r.aleatoires ? [].concat(r.aleatoires) : [], correlation: r && r.correlation ? r.correlation : null,
   };
+  if (r && ['LM', 'LMM'].includes(r.type) && !Object.keys(r.echelles || {}).length) st.echelle = 'none';
   const etapes = r && r.spectres ? [].concat(r.spectres) : [];
   const sg = etapes.find((e) => e.type === 'sg');
   Object.assign(st, { etapes: [0, 1, 2].map((i) => (etapes[i] ? (etapes[i].type === 'sg' ? `sg${etapes[i].derivee || 0}` : etapes[i].type) : '')),
@@ -123,24 +126,55 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         oninput: (e) => { st.G = +e.target.value || 7; } }));
   };
 
+  // Regressions (moteur/R/regression.R): one Y, no components or spectra; a mixed model takes
+  // nested random effects, from an observation ID or a qualitative variable, and an optional
+  // autocorrelation in time within the last one (a numeric ID or a quantitative variable).
+  const regression = () => ['LM', 'LMM'].includes(st.type);
+  const codeSpec = (s) => (!s ? '' : s.by === 'id' ? `id:${s.id}` : `var:${s.variable}`);
+  const lireSpec = (v) => (!v ? null : v.startsWith('id:') ? { by: 'id', id: v.slice(3) } : { by: 'variable', variable: Number(v.slice(4)) });
+  const groupements = (temps = false) => [['', '—']]
+    .concat([].concat(p.identifiants || []).map((i) => [`id:${i.nom}`, `${i.nom} (${t('identifiant')})`]),
+      p.variables.filter((v) => (temps ? !v.qualitative : v.qualitative)).map((v) => [`var:${v.uid}`, v.nom]));
+  const aleatoires = () => el('div', { class: 'ligne' }, [0, 1, 2].slice(0, Math.min(3, st.aleatoires.length + 1)).map((i) => el('select', {
+    title: t('aleatoire_n', { n: i + 1 }),
+    onchange: (e) => {
+      const s = lireSpec(e.target.value);
+      if (s) st.aleatoires[i] = s; else st.aleatoires.splice(i);  // (the finer ones go with it)
+      if (i === 0 && s && !st.vc) st.vc = s;  // validated by the widest one: a site never seen
+      rendre();
+    } }, groupements().map(([k, n]) => el('option', { value: k, selected: k === codeSpec(st.aleatoires[i]) }, n)))));
+  const autocorrelation = () => el('div', { class: 'ligne' },
+    el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: !!st.correlation,
+      onchange: (e) => { st.correlation = e.target.checked ? { type: 'CAR1', temps: null } : null; rendre(); } }), t('car1')),
+    st.correlation ? el('select', { onchange: (e) => { st.correlation.temps = lireSpec(e.target.value); } },
+      groupements(true).map(([k, n]) => el('option', { value: k, selected: k === codeSpec(st.correlation.temps) }, n))) : null);
+
   const general = () => el('div', { class: 'grille-champs' },
-    el('label', {}, t('type')), el('select', { onchange: (e) => { st.type = e.target.value; rendre(); } },
-      [['PCA', 'ACP / PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')]]
+    el('label', {}, t('type')), el('select', { onchange: (e) => {
+      const avant = regression();
+      st.type = e.target.value;
+      if (!r && regression() !== avant) st.echelle = regression() ? 'none' : 'UV';  // a regression keeps the units
+      rendre();
+    } },
+      [['PCA', 'ACP / PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')],
+        ['LM', t('type_lm')], ['LMM', t('type_lmm')]]
         .map(([k, n]) => el('option', { value: k, selected: k === st.type }, n))),
+    regression() ? [el('label', {}, ''), el('p', { class: 'note' }, t(st.type === 'LMM' ? 'lmm_note' : 'lm_note'))] : null,
+    st.type === 'LMM' ? [el('label', {}, t('effets_aleatoires')), aleatoires(), el('label', {}, t('autocorrelation')), autocorrelation()] : null,
     ['OPLS', 'OPLS-DA'].includes(st.type) ? el('label', {}, '') : null,
     ['OPLS', 'OPLS-DA'].includes(st.type) ? el('p', { class: 'note' }, t('opls_note')) : null,
     st.type === 'CLASSES' ? el('label', {}, '') : null,
     st.type === 'CLASSES' ? el('p', { class: 'note' }, t('classes_note')) : null,
     el('label', {}, t('nom')), el('input', { value: st.nom, oninput: (e) => { st.nom = e.target.value; } }),
     el('label', {}, t('titre_modele')), el('input', { value: st.titre, oninput: (e) => { st.titre = e.target.value; } }),
-    el('label', {}, t('nb_comp')), el('div', { class: 'ligne' },
+    regression() ? null : [el('label', {}, t('nb_comp')), el('div', { class: 'ligne' },
       el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: st.auto, onchange: (e) => { st.auto = e.target.checked; rendre(); } }), t('auto')),
-      el('input', { type: 'number', min: 1, max: 50, value: st.A || 2, disabled: st.auto, style: 'width:5em', oninput: (e) => { st.A = +e.target.value; } })),
+      el('input', { type: 'number', min: 1, max: 50, value: st.A || 2, disabled: st.auto, style: 'width:5em', oninput: (e) => { st.A = +e.target.value; } }))],
     el('label', {}, t('groupes_vc')), groupesVC(),
     st.vc ? el('label', {}, '') : null, st.vc ? el('p', { class: 'note' }, t(st.vc.by === 'groups' ? 'vc_fichier_note' : 'vc_note')) : null,
     el('label', {}, t('echelle_defaut')), el('select', { onchange: (e) => { st.echelle = e.target.value; rendre(); } },
       ECHELLES.map((k) => el('option', { value: k, selected: k === st.echelle }, t('echelle_' + k)))),
-    el('label', {}, t('spectres')), el('div', { class: 'ligne' },
+    regression() ? null : el('label', {}, t('spectres')), regression() ? null : el('div', { class: 'ligne' },
       st.etapes.map((code, i) => el('select', { title: `${i + 1}`, onchange: (e) => { st.etapes[i] = e.target.value; rendre(); } },
         ETAPES.map((k) => el('option', { value: k, selected: k === code }, k ? `${i + 1}. ${t('etape_' + k)}` : `${i + 1}. —`)))),
       st.etapes.some((k) => k.startsWith('sg')) ? [
@@ -148,9 +182,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           oninput: (e) => { st.fenetre = +e.target.value; } })),
         el('label', { class: 'champ' }, t('degre'), el('input', { type: 'number', min: 1, max: 5, value: st.degre, style: 'width:4em',
           oninput: (e) => { st.degre = +e.target.value; } }))] : null),
-    st.etapes.some(Boolean) ? [el('label', {}, ''), el('p', { class: 'note' }, t('spectres_note'))] : null);
+    st.etapes.some(Boolean) && !regression() ? [el('label', {}, ''), el('p', { class: 'note' }, t('spectres_note'))] : null);
 
-  const avecY = () => ['PLS', 'OPLS'].includes(st.type);
+  const avecY = () => ['PLS', 'OPLS', 'LM', 'LMM'].includes(st.type);
   const avecClasse = () => ['PLS-DA', 'OPLS-DA', 'CLASSES'].includes(st.type);
   const roles = (v) => [['', t('role_aucun')], ['x', t('role_x')]].concat(avecY() ? [['y', t('role_y')]] : [])
     .concat(avecClasse() && v.qualitative ? [['classe', t('role_classe')]] : []);
@@ -187,7 +221,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         st.suggerees !== undefined ? el('span', { class: 'infos' }, t('transfos_appliquees', { n: st.suggerees })) : null),
       el('div', { class: 'defile' }, el('table', { class: 'tableau' },
         el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, ''), el('th', {}, t('role')), el('th', {}, t('echelle')),
-          el('th', { title: t('bloc_aide') }, t('bloc')), el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, t('transformation')))),
+          el('th', { title: regression() ? t('bloc_aide_regression') : t('bloc_aide') }, t('bloc')),
+          regression() ? null : el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, t('transformation')))),
         el('tbody', {}, vars.map((v) => el('tr', { class: st.roles[v.uid] ? 'role-' + st.roles[v.uid] : '' },
           el('td', {}, v.nom),
           el('td', { class: 'doux' }, v.qualitative ? `${v.categories.length} ${t('categories')}` : ''),
@@ -197,7 +232,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           el('td', {}, el('input', { value: st.blocs[v.uid] || '', placeholder: '—', size: 7, title: t('bloc_aide'),
             oninput: (e) => { st.blocs[v.uid] = e.target.value.trim(); } })),
           // (shown to 5 significant digits; the exact value stays unless it is edited)
-          el('td', {}, el('input', { type: 'number', step: 'any', min: 0, value: st.modificateurs[v.uid] !== undefined ? +Number(st.modificateurs[v.uid]).toPrecision(5) : '',
+          regression() ? null : el('td', {}, el('input', { type: 'number', step: 'any', min: 0, value: st.modificateurs[v.uid] !== undefined ? +Number(st.modificateurs[v.uid]).toPrecision(5) : '',
             placeholder: '1', style: 'width:7em',
             title: t('modificateur_aide'),
             oninput: (e) => { const x = parseFloat(e.target.value); if (Number.isFinite(x) && x !== 1) st.modificateurs[v.uid] = x; else delete st.modificateurs[v.uid]; } })),
@@ -310,7 +345,10 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const x = cles('x');
     const y = cles('y');
     const classe = cles('classe')[0];
-    if (!x.length) { erreur.textContent = t('x_requis'); return false; }
+    if (!x.length && !regression()) { erreur.textContent = t('x_requis'); return false; }  // (a regression without X: the null model)
+    if (regression() && y.length !== 1) { erreur.textContent = t('regression_y_requis'); return false; }
+    if (st.type === 'LMM' && !st.aleatoires.length) { erreur.textContent = t('lmm_aleatoire_requis'); return false; }
+    if (st.type === 'LMM' && st.correlation && !st.correlation.temps) { erreur.textContent = t('car1_temps_requis'); return false; }
     if (avecY() && !y.length) { erreur.textContent = t('pls_y_requis'); return false; }
     if (avecClasse() && classe === undefined) { erreur.textContent = t('plsda_classe_requise'); return false; }
     const horsX = [...new Set(st.croises.flat().filter((u) => st.roles[u] !== 'x'))];
@@ -329,8 +367,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const blocs = Object.fromEntries(Object.entries(st.blocs).filter(([, b]) => b));
     const modificateurs = Object.fromEntries(Object.entries(st.modificateurs).filter(([, m]) => Number.isFinite(m) && m !== 1));
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
-      exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises, spectres,
-      A: st.auto ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs, nom: st.nom, titre: st.titre };
+      exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises,
+      spectres: regression() ? [] : spectres, A: st.auto || regression() ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs: regression() ? {} : modificateurs,
+      aleatoires: st.type === 'LMM' ? st.aleatoires : [], correlation: st.type === 'LMM' ? st.correlation : null, nom: st.nom, titre: st.titre };
     if (!enCours) verifierPuisAjuster(q);
     return false;  // the dialog closes once the model is fitted
   }
@@ -434,6 +473,7 @@ const AIDE = {
       ['Séance', 'Ctrl+S enregistre aussi la séance : modèles calculés, panneaux, réglages des graphiques et sélections reviennent à la réouverture du projet.'],
       ['Sécurité', 'En fermant : « Enregistrer et fermer ». Copie de secours toutes les deux minutes, proposée après un arrêt imprévu. Ctrl+Z annule une modification des données. Aide › Redémarrer le moteur R si un calcul ne finit pas.'],
       ['Statistiques des variables', 'Graphiques › Statistiques des variables : statistiques du jeu de travail, transformations proposées en rouge, histogrammes et carte des valeurs manquantes.'],
+      ['Modèles linéaires et mixtes', 'Nouveau modèle › type « Régression linéaire » ou « Modèle linéaire mixte » : une variable Y quantitative, les X de l’onglet Variables ; sans X, le modèle nul. Un modèle mixte (nlme) ajoute des effets aléatoires emboîtés (le site, puis le secteur dans le site : un identifiant ou une variable qualitative) et, au choix, une autocorrélation dans le temps (CAR1). Coefficients en REML, AIC en ML. Vues : Résumé (R2, ou R2 marginal et conditionnel ; Q2 ; AIC ; variances), Coefficients, Observé / prédit, Résidus, Apport des blocs (AIC : chaque bloc retiré, le modèle réajusté). Prédiction › Comparer les modèles : AIC, ΔAIC et poids d’Akaike entre les régressions de la même réponse sur les mêmes observations.'],
       ['Tests statistiques', 'Graphiques › Tests statistiques, en trois modes. Entre classes, variable par variable : chaque variable quantitative comparée entre deux classes (t de Welch ou de Student, Mann–Whitney ; graphique volcan) ou entre toutes (ANOVA, Kruskal–Wallis), valeurs p corrigées (Benjamini–Hochberg ou Bonferroni). Deux variables : le test qui convient à leurs types, ses conditions vérifiées (khi² ou Fisher ; t de Welch, ANOVA ou Kruskal–Wallis avec les comparaisons deux à deux ; Pearson ou Spearman), et son résultat en une phrase ; un identifiant (site, année…) peut faire les groupes. Matrice des corrélations : toutes les paires de variables quantitatives, valeurs p corrigées ; un clic sur une paire la teste.'],
       ['Modèles de classe', 'Nouveau modèle › type Modèles de classe : une ACP par catégorie de la variable de classe. Graphiques › Graphique de Coomans : la distance (DModX) de chaque observation à deux de ces modèles ; sous la limite d’un modèle, l’observation appartient à sa classe (à une, plusieurs ou aucune).'],
       ['Données', 'Double-clic sur une case de la vue Données pour la modifier ; Édition › Nouvelle variable : formule R ou classes d’après les valeurs.'],
@@ -477,6 +517,7 @@ const AIDE = {
       ['Session', 'Ctrl+S also saves the session: fitted models, panels, plot settings and selections come back when the project is reopened.'],
       ['Safety', 'When closing: “Save and close”. A recovery copy every two minutes, offered after an unexpected stop. Ctrl+Z undoes a data change. Help › Restart the R engine if a calculation never ends.'],
       ['Variable statistics', 'Plots › Variable statistics: workset statistics, proposed transformations in red, histograms and a missing-value map.'],
+      ['Linear and mixed models', 'New model › type “Linear regression” or “Linear mixed model”: one quantitative Y, the X of the Variables tab; without X, the null model. A mixed model (nlme) adds nested random effects (the site, then the sector within the site: an ID or a qualitative variable) and, optionally, an autocorrelation in time (CAR1). Coefficients by REML, AIC by ML. Views: Summary (R2, or marginal and conditional R2; Q2; AIC; variances), Coefficients, Observed / predicted, Residuals, Block contributions (AIC: each block removed, the model refitted). Prediction › Compare models: AIC, ΔAIC and Akaike weights between the regressions of the same response on the same observations.'],
       ['Statistical tests', 'Plots › Statistical tests, in three modes. Between classes, variable by variable: each quantitative variable compared between two classes (Welch’s or Student’s t, Mann–Whitney; volcano plot) or across all of them (ANOVA, Kruskal–Wallis), p-values corrected (Benjamini–Hochberg or Bonferroni). Two variables: the test their types call for, its conditions checked (chi-square or Fisher; Welch’s t, ANOVA or Kruskal–Wallis with pairwise comparisons; Pearson or Spearman), and its result as a sentence; an ID (site, year…) can make the groups. Correlation matrix: every pair of quantitative variables, p-values corrected; a click on a pair tests it.'],
       ['Class models', 'New model › type Class models: one PCA per category of the class variable. Plots › Coomans plot: each observation’s distance (DModX) to two of these models; below a model’s limit, the observation belongs to its class (to one, several or none).'],
       ['Data', 'Double-click a cell of the Data view to edit it; Edit › New variable: an R formula or classes from values.'],

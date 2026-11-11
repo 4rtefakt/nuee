@@ -134,6 +134,13 @@ Fisher, test t, ANOVA ou Kruskal–Wallis avec les comparaisons deux à deux, co
 Pearson ou de Spearman ; un identifiant des observations (site, année...) peut faire les
 groupes. Une matrice des corrélations avec les valeurs p corrigées.
 
+**Modèles linéaires et mixtes :** régression linéaire et modèles linéaires mixtes (nlme), avec des
+effets aléatoires emboîtés (le site, puis le secteur dans le site) et une autocorrélation en
+temps continu (CAR1) ; les coefficients et leurs intervalles, R2 marginal et conditionnel,
+les graphiques des résidus, la variation de l'AIC quand chaque bloc de variables est retiré,
+et la comparaison par l'AIC (ΔAIC, poids d'Akaike) des régressions de la même réponse, à côté
+du Q2 en validation croisée de tous les modèles.
+
 ![Tests par variable sur les pommes de l'exemple : un graphique volcan de Golden contre Gala, et la table des tests](docs/captures/volcan.png)
 
 **Observations :** scores en 2D et en 3D, T2 de Hotelling et DModX avec leurs limites,

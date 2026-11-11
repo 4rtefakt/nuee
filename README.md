@@ -130,6 +130,12 @@ or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's correlati
 observation ID (site, year...) can make the groups. A correlation matrix with corrected p
 values.
 
+**Linear and mixed models:** linear regression and linear mixed models (nlme), with nested random
+effects (site, then sector within the site) and a continuous-time autocorrelation (CAR1);
+coefficients with their intervals, marginal and conditional R2, residual plots, the AIC change
+when each block of variables is removed, and an AIC comparison (ΔAIC, Akaike weights) of the
+regressions of the same response, next to the cross-validated Q2 of every model.
+
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 
 **Observations:** scores in 2D and 3D, Hotelling's T2 and DModX with their limits,

@@ -135,7 +135,8 @@ View: dark theme, French / English, text size.
 
 New model (Model › New model)
 -----------------------------
-General tab: type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models), name, number of components
+General tab: type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models, linear regression, linear
+mixed model: see Linear and mixed models), name, number of components
 (automatic by default, by cross-validation), cross-validation groups (in turn, G groups; or
 one group per value of an observation ID or of a variable, see Cross-validation), default
 scaling.
@@ -410,6 +411,34 @@ Correlation matrix: the Pearson or Spearman correlations of all the quantitative
 at most), each pair on the observations where both are known, p values corrected for the number
 of pairs. A click on a pair, in the table or the plot, tests it in "Two variables".
 
+Linear and mixed models
+-----------------------
+New model › type "Linear regression" or "Linear mixed model": one quantitative Y, the X
+variables of the Variables tab (transformations and cross terms included; a qualitative
+variable through its categories, one of them the reference). Without X: the null model, useful
+to compare AICs. The default scaling keeps the variables' units (coefficients per unit); UV
+gives coefficients per standard deviation.
+A mixed model (nlme) adds nested random effects, the widest first: a random intercept for each
+site, then for each sector within its site (an observation ID or a qualitative variable). It
+can add an autocorrelation in time within the last level (CAR1, continuous time: missing years
+are fine; the time is a numeric ID or a quantitative variable). Coefficients and variances are
+estimated by REML; the log-likelihood, AIC, AICc and BIC come from the ML fit, the only one
+that compares models with different fixed effects. Cross-validation defaults to the first
+random effect: each site is predicted by the fixed effects of the model fitted without it, as a
+site never seen.
+Views: Summary (R2, or marginal and conditional R2 for a mixed model, Nakagawa and Schielzeth;
+Q2 and RMSEcv; AIC; the variance of each random effect and its share; φ of the
+autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05),
+Observed / predicted, Residuals (against the fitted values, normal Q-Q plot, by group of a
+random effect, Cook's distance), Block contributions (AIC): each block of the Block column (or
+each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
+improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
+Y, X, a random effect or the time are left out (the summary counts them).
+Prediction › Compare models: Q2 and RMSEcv for every model; AIC, ΔAIC and Akaike weights (the
+probability that each model is the best of its set) between the regressions of the same
+response on the same observations only (an "AIC set", lettered A, B...).
+Not yet for regressions: export to R, predicting a file, the model report.
+
 Class models and the Coomans plot
 ---------------------------------
 New model › type "Class models": one PCA per category of the class variable, on the
@@ -567,6 +596,7 @@ Every computation is in resources\moteur\R (R, commented in French):
   pretraitement.R        transformations, centring, scaling
   nipals.R               PCA and PLS (NIPALS algorithm, missing data)
   validation_croisee.R   cross-validation (a sub-model without each group), Q2
+  regression.R           linear and mixed models (lm, nlme), AIC, block contributions
   statistiques.R         T2, DModX, VIP, coefficients, intervals, limits
   validation.R           permutations, CV-ANOVA, PLS-DA classification and ROC curves
   opls.R                 OPLS and OPLS-DA

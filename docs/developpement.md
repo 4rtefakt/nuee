@@ -19,6 +19,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/R/fichiers_spectres.R` | Spectra files: JCAMP-DX (AFFN, PAC, SQZ, DIF, DUP), SPC (new and old format), text; merged into one table, with a table of sample information joined by file name |
 | `moteur/R/script.R` | Export to R: a standalone script or R Markdown / Quarto report written for one model (or the session): the data, then only the steps that model uses (its terms and scaling, NIPALS, cross-validation, statistics, plots), in plain R with no package; refitted and compared with the engine before it is written |
 | `moteur/R/methodes.R` | The Methods paragraph and its references, in French or English |
+| `moteur/R/regression.R` | Linear and mixed models: `lm`, `nlme::lme` (nested random effects, CAR1), REML estimates and ML likelihoods, marginal and conditional R2, cross-validation by groups, block contributions by AIC, Methods text |
 | `moteur/R/comparaisons.R` | Statistical tests: by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis) with multiple-testing correction; between two variables (chi-square or Fisher, groups with Tukey, Games–Howell or Dunn, correlations), the test chosen from their conditions; the correlation matrix |
 | `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
 | `moteur/tests/verifier_references.R` | Refits every model of a folder of exported `.usp` projects and compares with the results stored in them; for PLS models, also the files' own cross-validation (scaling from all the observations) with the groups read in the files, which gives back the stored Q2 when the groups are right |
@@ -29,6 +30,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/tests/verifier_jeu_test.R` | The test set: the model doesn't see it, RMSEP / bias / SEP / Q2ext recomputed by hand, PLS-DA classification, random and Kennard–Stone choice (the same observations as `prospectr::kenStone` when installed) |
 | `moteur/tests/verifier_opls.R` | OPLS against a second, plain-matrix writing of Trygg and Wold's algorithm (one Y, two Y, three classes); orthogonal scores unrelated to Y |
 | `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, and a whole session in one script, run in a fresh `Rscript --vanilla` without the engine, give the engine's results; reports compile with `knitr` when it is installed |
+| `moteur/tests/verifier_regression.R` | The regressions against `lm()` and `nlme::lme()`: coefficients, AIC, R2, cross-validation, test set, block contributions, CAR1, refused definitions, a saved definition read back |
 | `moteur/tests/verifier_comparaisons.R` | The statistical tests against R's own test functions (Dunn and Games–Howell through their two-group identities with Kruskal–Wallis and Welch's t), class models, OPLS with several predictive components, the Methods text |
 | `moteur/tests/verifier_validation.R` | The cross-validation: the engine's PRESS equals refitting each group's model by hand and predicting the group with `predire()`; on pure noise the median Q2 stays at or below 0 for 6 to 30 observations (PCA, PLS, OPLS-DA, automatic or fixed A); no more components than the data's rank; the example's models keep a high Q2; the permutation test refits from the project; groups by the value of a variable or of an ID, or given as they are (the same groups and Q2 each way, observations without a value in a group of their own, a clear error for a single group); block scaling and modifiers (each weight, a block of UV terms of total variance 1, the same weights in prediction and in each sub-model, kept by the settings of New model from this one) |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
@@ -71,6 +73,7 @@ Rscript moteur/tests/verifier_jeu_test.R
 Rscript moteur/tests/verifier_ipls.R
 Rscript moteur/tests/verifier_script.R
 Rscript moteur/tests/verifier_comparaisons.R
+Rscript moteur/tests/verifier_regression.R
 Rscript moteur/tests/verifier_validation.R
 ```
 

@@ -187,10 +187,17 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   blocs : vecteur nommé par numéro de variable, le bloc de chaque variable pondérée par blocs
 #   (ses termes : poids divisé par la racine du nombre de termes du bloc) ; modificateurs : de
 #   même, un facteur du poids (pretraitement.R : facteurs_ponderation).
+# Régressions (regression.R) : type "LM" (linéaire) ou "LMM" (mixte), une seule variable Y ;
+#   aleatoires : les effets aléatoires d'un modèle mixte, emboîtés, du plus large au plus fin,
+#   par exemple list(list(by = "id", id = "site"), list(by = "id", id = "secteur")) ;
+#   correlation : list(type = "CAR1", temps = list(by = "id", id = "annee")), une
+#   autocorrélation dans le temps à l'intérieur du dernier effet aléatoire. Les blocs n'y
+#   pondèrent rien : ils font les groupes de la table des apports. Sans groupes de validation
+#   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu).
 definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observations = NULL,
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
-                           vc = NULL, blocs = NULL, modificateurs = NULL) {
+                           vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -222,7 +229,8 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   Ap <- if (opls) (if (plsda) length(unique(colonne(projet, classe, obs))) - 1 else length(y))
   if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
-  d <- list(type = if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
+  regression <- type %in% REGRESSIONS
+  d <- list(type = if (regression) type else if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
             observations = obs, A = A %||% 0, cv_groups = G,
             x = c(unlist(lapply(x, termes), recursive = FALSE),
@@ -232,6 +240,14 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (opls) d$Ap <- Ap
   if (length(spectres)) d$spectres <- spectres
   if (length(test)) d$test <- test
+  if (regression) {
+    d$A <- 0
+    aleatoires <- specs_groupement(aleatoires)
+    if (length(aleatoires)) d$aleatoires <- aleatoires
+    if (length(correlation$type)) d$correlation <- list(type = as.character(correlation$type)[1], temps = specs_groupement(correlation$temps)[[1]])
+    if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]]
+    verifier_regression(projet, d)
+  }
   if (length(vc$by) && !identical(as.character(vc$by), "order")) {
     d$groupes_vc <- vc
     groupes_definition(projet, d)  # (une erreur claire maintenant : un seul groupe, identifiant inconnu)
@@ -299,6 +315,7 @@ reglages_modele <- function(projet, d) {
        exclues = I(setdiff(tous, c(d$observations, d$test))), echelles = echelles,
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
+       aleatoires = d$aleatoires, correlation = d$correlation,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))),
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
 }
