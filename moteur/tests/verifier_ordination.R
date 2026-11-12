@@ -28,10 +28,11 @@ refus <- function(expr) tryCatch({ force(expr); "" }, error = conditionMessage)
 # vegan, s'il est installé (NUEE_VEGAN : une bibliothèque où il l'est)
 if (nzchar(Sys.getenv("NUEE_VEGAN"))) .libPaths(c(Sys.getenv("NUEE_VEGAN"), .libPaths()))
 avec_vegan <- requireNamespace("vegan", quietly = TRUE)
-# (les tests par axe, et avec eux la sélection pas à pas, sont ceux de vegan 2.7 : vegan 2.6, celui
-# de Debian 12 par exemple, les calcule autrement ; avec lui, ils ne sont pas comparés)
+# (les tests par axe, ceux d'une RDA partielle et la sélection pas à pas sont ceux de vegan 2.7 :
+# vegan 2.6, celui de Debian 12 par exemple, les calcule autrement ; avec lui, ils ne sont pas
+# comparés)
 vegan_27 <- avec_vegan && utils::packageVersion("vegan") >= "2.7"
-if (avec_vegan && !vegan_27) cat("(vegan avant 2.7 : tests par axe et sélection pas à pas non comparés)\n")
+if (avec_vegan && !vegan_27) cat("(vegan avant 2.7 : tests par axe, tests d'une RDA partielle et sélection pas à pas non comparés)\n")
 cat(if (avec_vegan) sprintf("(vegan %s installé : comparaisons avec lui)\n", utils::packageVersion("vegan")) else "(vegan absent : calculs directs seulement)\n")
 
 # ---------------------------------------------------------------- les données
@@ -183,10 +184,11 @@ if (avec_vegan) {
              proche(kz$residuel$eig, rzv$CA$eig) && proche(mz$r2_ajuste, vegan::RsquareAdj(rzv)$adj.r.squared))
   avz <- vegan::anova.cca(rzv, permutations = pv(Pz))
   verifier("RDA partielle permutée par site : F et p = anova.cca", proche(mz$test$F, avz$F[1]) && identical(mz$test$p, avz[["Pr(>F)"]][1]))
-  verifier(if (vegan_27) "RDA partielle : tests par axe et par terme = anova.cca" else "RDA partielle : tests par terme = anova.cca", {
+  # (une RDA partielle : ses tests par terme aussi diffèrent dans vegan 2.6)
+  if (vegan_27) verifier("RDA partielle : tests par axe et par terme = anova.cca", {
     a <- tests_axes_rda(mz, Pz); va <- vegan::anova.cca(rzv, by = "axis", permutations = pv(Pz))
     t <- tests_termes_rda(mz, Pz); vt <- vegan::anova.cca(rzv, by = "margin", permutations = pv(Pz))
-    (!vegan_27 || (proche(a$F, va$F) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])))) && proche(t$F, vt$F) && isTRUE(all.equal(t$p, vt[["Pr(>F)"]]))
+    proche(a$F, va$F) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])) && proche(t$F, vt$F) && isTRUE(all.equal(t$p, vt[["Pr(>F)"]]))
   })
   ss <- vegan::scores(rzv, choices = seq_along(c(rzv$CCA$eig, rzv$CA$eig)), display = c("sites", "lc", "species", "bp"), scaling = 2)
   sz <- scores_rda(mz, 2)
