@@ -283,6 +283,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (autre) {
     d$A <- 0
     if (length(options)) d$options <- options  # (les réglages propres de l'analyse)
+    if (length(classe) && !is.na(classe[1])) d$classe <- as.numeric(classe)[1]  # (sa variable de classe : LDA, arbre de classement)
   }
   if (length(vc$by) && !identical(as.character(vc$by), "order")) {
     d$groupes_vc <- vc
@@ -360,7 +361,7 @@ reglages_modele <- function(projet, d) {
   }
   plsda <- isTRUE(d$plsda) && !is.null(d$classe)
   list(type = paste0(if (isTRUE(d$opls)) "O" else "", if (plsda) "PLS-DA" else d$type), x = I(simples(d$x) %||% numeric(0)),
-       y = I(if (plsda) numeric(0) else simples(d$y) %||% numeric(0)), classe = if (plsda) d$classe else NULL,
+       y = I(if (plsda) numeric(0) else simples(d$y) %||% numeric(0)), classe = if (plsda || est_autre_analyse(d)) d$classe else NULL,
        exclues = I(setdiff(tous, c(d$observations, d$test))), echelles = echelles,
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,

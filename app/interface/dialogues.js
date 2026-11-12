@@ -287,7 +287,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     st.vc && !(analyse() && analyse().vc === false) ? [el('label', {}, ''), el('p', { class: 'note' }, t(st.vc.by === 'groups' ? 'vc_fichier_note' : 'vc_note'))] : null,
     el('label', {}, t('echelle_defaut')), el('select', { onchange: (e) => { st.echelle = e.target.value; rendre(); } },
       ECHELLES.map((k) => el('option', { value: k, selected: k === st.echelle }, t('echelle_' + k)))),
-    regression() ? null : el('label', {}, t('spectres')), regression() ? null : el('div', { class: 'ligne' },
+    sansSpectres() ? null : el('label', {}, t('spectres')), sansSpectres() ? null : el('div', { class: 'ligne' },
       st.etapes.map((code, i) => el('select', { title: `${i + 1}`, onchange: (e) => { st.etapes[i] = e.target.value; rendre(); } },
         ETAPES.map((k) => el('option', { value: k, selected: k === code }, k ? `${i + 1}. ${t('etape_' + k)}` : `${i + 1}. —`)))),
       st.etapes.some((k) => k.startsWith('sg')) ? [
@@ -295,7 +295,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           oninput: (e) => { st.fenetre = +e.target.value; } })),
         el('label', { class: 'champ' }, t('degre'), el('input', { type: 'number', min: 1, max: 5, value: st.degre, style: 'width:4em',
           oninput: (e) => { st.degre = +e.target.value; } }))] : null),
-    st.etapes.some(Boolean) && !regression() ? [el('label', {}, ''), el('p', { class: 'note' }, t('spectres_note'))] : null);
+    st.etapes.some(Boolean) && !sansSpectres() ? [el('label', {}, ''), el('p', { class: 'note' }, t('spectres_note'))] : null);
 
   const avecY = () => ['PLS', 'OPLS', 'LM', 'LMM', 'GLM', 'GAM'].includes(st.type) || (!!analyse() && analyse().roles.includes('y'));
   const avecClasse = () => ['PLS-DA', 'OPLS-DA', 'CLASSES'].includes(st.type) || (!!analyse() && analyse().roles.includes('classe'));

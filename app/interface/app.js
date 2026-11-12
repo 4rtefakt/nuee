@@ -17,6 +17,7 @@ import { ouvrirPalette } from './palette.js';
 // (panneaux.js), their icons (commandes.js: ICONES_VUES), its views per model type
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 import './vues_ordination.js';
+import './vues_classement.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');

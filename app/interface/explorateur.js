@@ -10,10 +10,11 @@ const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanov
 // (a regression has no components, scores or loadings: its own views, regression.R)
 const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'apports', 'liste_obs', 'predictions'];
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
-// the views of another analysis, by its type (filled by its module, vues_*.js)
+// the views of another analysis, by its type (filled by its module, vues_*.js): a list, or a
+// function of the model that gives it (a regression tree and a classification tree differ)
 export const VUES_TYPES = {};
 // a model's views, as the explorer lists them (and the Plots menu offers another analysis's)
-export const vuesDe = (m) => (VUES_TYPES[m.type] || (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
+export const vuesDe = (m) => ((typeof VUES_TYPES[m.type] === 'function' ? VUES_TYPES[m.type](m) : VUES_TYPES[m.type]) || (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
   && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe))));
 // R2 and Q2 of a fitted model, for its line in the explorer
 const chiffresModele = (m) => (m.chiffres ? m.chiffres : m.regression

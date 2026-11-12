@@ -51,7 +51,7 @@ export function dialogueRapport(app, id) {
   const m = app.modele(id);
   if (!m) return;
   const pls = m.type !== 'PCA';
-  const parties = PARTIES_TYPES[m.type] ? PARTIES_TYPES[m.type] : m.regression ? PARTIES_REGRESSION.filter((x) => !x.si || x.si(m))
+  const parties = PARTIES_TYPES[m.type] ? PARTIES_TYPES[m.type].filter((x) => !x.si || x.si(m)) : m.regression ? PARTIES_REGRESSION.filter((x) => !x.si || x.si(m))
     : PARTIES.filter((x) => (!x.pls || pls) && (!x.plsda || /-DA$/.test(m.type)) && (!x.min || m.A >= x.min) && (!x.opls || m.opls));
   const choix = new Set(parties.filter((x) => x.defaut).map((x) => x.cle));
   const st = { titre: `${m.nom}${m.titre ? ' — ' + m.titre : ''}`, commentaire: '', format: 'pdf' };

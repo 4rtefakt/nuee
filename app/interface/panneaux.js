@@ -1021,7 +1021,9 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   const yk = m.A > 1 ? 't2' : 'T2';
   const ii = o.nom.map((_, i) => i).filter((i) => !o.dans_modele[i]);
   const couleur = ii.map((i) => (o.hors_domaine && o.hors_domaine[i] ? '#d1495b' : PALETTE[0]));
-  if (m.regression) {  // a regression: Y predicted, against Y observed when it is known, else by observation
+  // a regression (or another analysis that predicts its Y: a regression tree): Y predicted, against Y
+  // observed when it is known, else by observation; another analysis's predictions: the table only
+  if (m.regression || (m.analyse && m.noms_y && cols.includes(`${[].concat(m.noms_y)[0]} prédit`))) {
     const yp = cols.find((k) => k.endsWith(' prédit'));
     const yo = cols.find((k) => k.endsWith(' observé'));
     const avecObs = !!yo && o.nom.some((_, i) => o[yo][i] !== null && o[yp][i] !== null);
@@ -1039,6 +1041,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
       xaxis: { title: { text: avecObs ? yo : 'observation' } }, yaxis: { title: { text: yp } } });
     return;
   }
+  if (m.analyse) { haut.remove(); return; }
   if (loc.graphe === 'dmodx' && o.DModX) {  // DModXPS: distance of each prediction to the model, against DCrit
     const recent = m.version_origine === null || m.version_origine === undefined || m.version_origine >= 13;
     const cle = recent && o.DModX_pondere ? 'DModX_pondere' : 'DModX';
@@ -2115,7 +2118,7 @@ function rendreClassification(conteneur, ctx, p, loc) {
   conteneur.replaceChildren(outils(
     choix('', [['vc', t('validation_croisee')], ['ajuste', t('valeurs_ajustees')]], loc.mode, (v) => { loc.mode = v; ctx.rafraichir(); }),
     el('span', { class: 'infos' }, `${t('bien_classes')} : ${pct(r.global)}`)),
-  el('p', { class: 'note' }, t('classification_note')), el('div', { class: 'tableau-court' }, table), graphe);
+  el('p', { class: 'note' }, t(m.analyse ? 'classification_note_proba' : 'classification_note')), el('div', { class: 'tableau-court' }, table), graphe);
   const traces = r.roc.map((roc, j) => ({ type: 'scatter', mode: 'lines', name: `${classes[j]} (AUC ${fmt(roc.auc, 3)})`,
     x: roc.fpr, y: roc.tpr, line: { color: PALETTE[j % PALETTE.length], width: 2, shape: 'hv' } }));
   traces.push({ type: 'scatter', mode: 'lines', x: [0, 1], y: [0, 1], line: { color: '#999', dash: 'dot', width: 1 }, showlegend: false, hoverinfo: 'skip' });
