@@ -496,6 +496,12 @@ verifier("imputée à nouveau, avec d'autres réglages : les mêmes variables, m
            !proche(imputees(pi4)[garde, ], imputees(pi1)[garde, ], 1e-8))
 verifier("une seule variable, ou une variable qualitative : refusé", grepl("deux variables", refus(imputer_acp(pim, vars_i[1]))) &&
            grepl("quantitatives", refus(imputer_acp(p, u("variete", "sucre")))))
+pc <- projet_depuis_tableau(data.frame(nom = sprintf("I%02d", 1:ni), Xs, C = rnorm(ni), D = rnorm(ni)), "imputation")
+pi5 <- imputer_acp(pc, numeros(pc, c(paste0("X", 1:6), "C")), k = 5)
+verifier("une variable complète aide à imputer les autres, sans copie « (imputée) » ; rien à remplir : refusé",
+         length(pi5$variables) == length(pc$variables) + 6 && !"C (imputée)" %in% unlist(pi5$noms_var) &&
+           grepl("aucune valeur manquante", refus(imputer_acp(pc, numeros(pc, c("C", "D"))))) &&
+           grepl("plus de la moitié", refus(imputer_acp(pi3, vars_i))))
 
 cat("Texte des méthodes\n")
 for (l in c("fr", "en")) {

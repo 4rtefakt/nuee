@@ -354,8 +354,9 @@ async function principal() {
       try { await api('lire_formule', { projet: e.id, texte: 'note_gout ~ sucre + system("calc")', type: 'LM' }); } catch (err) { refusF = err.message; }
       verifier(/system/.test(refusF), 'une formule qui porte du code, refusée');
       const im = await api('imputer', { projet: e.id, variables: [v('sucre'), v('fermete'), v('acidite'), v('polyphenols')], k: 2 });
-      verifier(im.imputation.valeurs === 11 && im.variables.find((x) => x.nom === 'polyphenols (imputée)').manquantes === 0 && im.variables.find((x) => x.nom === 'polyphenols').manquantes === 11,
-        'imputation par ACP : de nouvelles variables, moins de valeurs manquantes');
+      verifier(im.imputation.valeurs === 11 && im.variables.find((x) => x.nom === 'polyphenols (imputée)').manquantes === 0 && im.variables.find((x) => x.nom === 'polyphenols').manquantes === 11
+        && !im.variables.some((x) => x.nom === 'sucre (imputée)'),
+        'imputation par ACP : une nouvelle variable pour celle qui avait des valeurs manquantes, moins de valeurs manquantes');
       let refusReg = '';
       try { await api('hca', { modele: lmm.id }); } catch (err) { refusReg = err.message; }
       verifier(/régression/.test(refusReg), 'une demande qui suppose des composantes, refusée pour une régression');

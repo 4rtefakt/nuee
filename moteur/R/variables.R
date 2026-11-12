@@ -172,7 +172,8 @@ variable_calculee <- function(projet, nom, formule) {
 # observation à qui manquent plus de la moitié de ces variables reste manquante. Avec `bornes`,
 # une valeur imputée reste dans l'étendue observée de sa variable (une variable 0/1 entre 0 et
 # 1, une surface positive). De nouvelles variables « x (imputée) », ou, avec `remplacer`, les
-# variables elles-mêmes. attr(, "imputation") : le nombre de valeurs remplies et de tours.
+# variables elles-mêmes, pour celles qui ont reçu des valeurs (les complètes aident seulement à
+# imputer les autres). attr(, "imputation") : le nombre de valeurs remplies et de tours.
 imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, bornes = TRUE, remplacer = FALSE) {
   obs <- as.numeric(rownames(projet$donnees))
   variables <- unique(as.numeric(variables))
@@ -182,6 +183,7 @@ imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, born
   if (length(variables) < 2) stop(traduire("Choisir au moins deux variables : l'ACP complète chacune par les autres.", "Choose at least two variables: the PCA fills each one from the others."), call. = FALSE)
   X <- vapply(variables, function(u) as.numeric(colonne(projet, u, obs)), numeric(length(obs)))
   dimnames(X) <- NULL
+  if (!anyNA(X)) stop(traduire("Ces variables n'ont aucune valeur manquante.", "These variables have no missing values."), call. = FALSE)
   utiles <- rowMeans(is.na(X)) <= 0.5
   Xu <- X[utiles, , drop = FALSE]
   mu <- colMeans(Xu, na.rm = TRUE)
@@ -195,10 +197,14 @@ imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, born
   k <- max(1, min(as.integer(k), p - 1, n - 2))
   Z <- sweep(sweep(Xu, 2, mu), 2, s, "/")
   M <- is.na(Z)
+  if (!any(M)) {
+    stop(traduire("Aucune valeur à remplir : il manque à chaque observation incomplète plus de la moitié de ces variables.",
+                  "No value to fill: each incomplete observation misses more than half of these variables."), call. = FALSE)
+  }
   Z[M] <- 0
   cumul <- rep(0, p)
   it <- 0
-  if (any(M)) for (it in seq_len(maxit)) {
+  for (it in seq_len(maxit)) {
     sv <- svd(Z)
     valeurs <- sv$d^2 / n
     sigma2 <- n * p / min(p, n - 1) * sum(valeurs[-seq_len(k)]) / ((n - 1) * p - (n - 1) * k - p * k + k^2)
@@ -222,6 +228,7 @@ imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, born
   }
   X[utiles, ] <- Xi
   for (j in seq_len(p)) {
+    if (!any(M[, j])) next  # (une variable sans valeur remplie aide à imputer les autres, sans copie)
     u <- variables[j]
     if (remplacer) {
       projet$donnees[, as.character(u)] <- X[, j]
