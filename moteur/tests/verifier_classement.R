@@ -178,6 +178,26 @@ verifier("refus : deux réponses, aucune, Y qualitative, termes croisés, moins 
            grepl("croisés", refus(ajuster(p, definir_modele(p, "TREE", x = u("haie", "vent"), y = u("densite"), echelle = "none", vc = vc, croises = list(u("haie", "vent")))))) &&
            grepl("trois groupes", refus(ajuster(p, definir_modele(p, "TREE", x = xs, y = u("densite"), echelle = "none", vc = vc, observations = 1:16)))))
 
+# une classe rare, dans un seul site : sans lui, une seule classe reste (rpart ne s'ajuste pas)
+rare <- ifelse(site == "S01" & seq_len(n) %% 2 == 0, "rare", "courante")
+pr1 <- projet_depuis_tableau(data.frame(df, rare = rare), "rare")
+dr <- definir_modele(pr1, "TREE", x = numeros(pr1, names(X)), classe = numeros(pr1, "rare"), echelle = "none",
+                     vc = list(by = "variable", variable = numeros(pr1, "site")), options = list(minbucket = 2))
+mr <- tryCatch(ajuster(pr1, dr), error = function(e) e)
+verifier("une classe présente dans un seul site : l'arbre s'ajuste, ce site prédit « courante » (sans lui, seule classe des autres)",
+         !inherits(mr, "error") && all(mr$vc$proba[site == "S01", "courante"] == 1) && all(mr$vc$proba[site == "S01", "rare"] == 0))
+# (le modèle sans aucune observation « haute » ; le jeu de test : 6 « haute » et 14 autres)
+sans_haute <- which(classe != "haute")
+dti <- definir_modele(p, "TREE", x = xs, classe = u("classe"), echelle = "none", vc = vc, observations = c(sans_haute, which(classe == "haute")[1:6]),
+                      test = c(which(classe == "haute")[1:6], sans_haute[1:14]))
+mti <- ajuster(p, dti)
+tab <- mti$test$classement$table
+verifier(sprintf("jeu de test avec une classe que l'arbre n'a pas vue (%d) : la part bien classée est celle du tableau (%.0f %%)",
+                 mti$test$classement$inconnues, 100 * mti$test$classement$bien_classees),
+         mti$test$classement$inconnues == sum(!classe[mti$test$observations$uid] %in% mti$classes) &&
+           proche(mti$test$classement$bien_classees, sum(diag(tab)) / sum(tab)) &&
+           any(grepl("n'a pas vue", texte_methodes(p, dti, mti, "fr", "essai")$paragraphes)))
+
 cat("Analyse discriminante linéaire : MASS::lda\n")
 dl <- definir_modele(p, "LDA", x = u("h_nbgelee", "t_moy", "haie", "sol"), classe = u("classe"), echelle = "UV", vc = vc)
 ml <- ajuster(p, dl)
@@ -217,6 +237,18 @@ xn <- XL[match(c(1, 2, 3), which(comp)), , drop = FALSE]
 verifier("prédire : les probabilités de MASS ; une observation incomplète sans classe",
          proche(as.matrix(pl2[comp[1:3], paste("probabilité", ml$classes)]), stats::predict(fl, xn[stats::complete.cases(xn), , drop = FALSE])$posterior) &&
            all(is.na(pl2[!comp[1:3], "classe prédite"])))
+langue_r <- Sys.getenv("LANGUAGE")
+pco <- projet_depuis_tableau(data.frame(df, somme = df$t_moy + df$haie + stats::rnorm(n, 0, 1e-6)), "colineaires")
+dco <- definir_modele(pco, "LDA", x = numeros(pco, c("h_nbgelee", "t_moy", "haie", "somme")), classe = numeros(pco, "classe"), echelle = "none",
+                      vc = list(by = "variable", variable = numeros(pco, "site")))
+colin <- vapply(c("en", "fr"), function(l) {
+  Sys.setenv(LANGUAGE = l)
+  avert <- character(0)
+  mco <- withCallingHandlers(ajuster(pco, dco), warning = function(w) { avert <<- c(avert, conditionMessage(w)); invokeRestart("muffleWarning") })
+  isTRUE(mco$colineaires) && !length(avert)
+}, TRUE)
+Sys.setenv(LANGUAGE = langue_r)
+verifier("variables colinéaires : signalées, que R parle anglais ou français (le message de MASS traduit)", all(colin))
 huit <- c(which(classe == "basse")[1:3], which(classe == "moyenne")[1:3], which(classe == "haute")[1:2])
 verifier("refus : sans classe, une Y, trop de termes, une variable constante dans chaque classe (par son nom)",
          grepl("classe", refus(ajuster(p, definir_modele(p, "LDA", x = u("haie"), echelle = "none", vc = vc)))) &&
@@ -248,6 +280,9 @@ verifier(sprintf("choix de k (2 à 10) : silhouette la plus grande pour k = %d ;
 pk <- predire(p, mk, dk, c(1, 2, 300))
 pkk <- predire(p, mk, dk, as.numeric(rownames(p$donnees))[which(ck)[1:5]])
 verifier("prédire : le groupe du centre le plus proche (une observation du modèle retrouve le sien)", identical(pkk[["groupe prédit"]], mk$groupe[1:5]) && nrow(pk) == 3)
+p1o <- predire(p, mk, dk, as.numeric(rownames(p$donnees))[which(ck)[2]])
+verifier("prédire une seule observation : une ligne, son groupe et sa distance au centre",
+         nrow(p1o) == 1 && identical(p1o[["groupe prédit"]], mk$groupe[2]) && proche(p1o[["distance au centre"]], mk$distance[2]))
 changer_projet <- function(q, f, etiquette) { pp <- f(projet(q$projet)); etat$projets[[q$projet]] <- pp; list(id = q$projet) }
 invisible(demande_analyse_kmeans_variable(list(modele = "K1", nom = "groupes k3")))
 pp <- etat$projets$P1
@@ -256,6 +291,10 @@ verifier("les groupes en variable qualitative du projet (catégories 1 à 3, les
          identical(as.character(v$categories), c("1", "2", "3")) && identical(unname(pp$donnees[as.character(mk$observations), as.character(v$uid)]), as.numeric(mk$groupe)) &&
            all(is.na(pp$donnees[as.character(setdiff(as.numeric(rownames(pp$donnees)), mk$observations)), as.character(v$uid)])))
 etat$projets$P1 <- p1
+rk <- resultat("K1")
+verifier("le plan des groupes : les centres sous les noms des composantes des observations (CP1, CP2)",
+         identical(names(rk$acp$centres), c("groupe", "CP1", "CP2")) && all(c("CP1", "CP2") %in% names(rk$observations)) &&
+           proche(as.matrix(rk$acp$centres[c("CP1", "CP2")]), mk$acp$centres))
 verifier("refus : une réponse, trop de groupes pour les observations",
          grepl("pas de réponse", refus(ajuster(p, definir_modele(p, "KMEANS", x = u("haie"), y = u("vent"), echelle = "UV")))) &&
            grepl("distinctes", refus(ajuster(p, definir_modele(p, "KMEANS", x = u("haie"), echelle = "UV", observations = 1:4, options = list(k = 4))))))
@@ -292,6 +331,22 @@ tk <- tables_resultats(p, etat$modeles$K1$modele)
 verifier("tableaux exportés : des data.frame (règles, importance, élagage, classement ; coefficients ; centres, choix de k)",
          all(vapply(c(ta, tl, tk), is.data.frame, TRUE)) && all(c("regles", "importance", "elagage", "classement_vc") %in% names(ta)) &&
            all(c("coefficients", "structure", "classement_vc") %in% names(tl)) && all(c("groupes", "centres", "choix_k") %in% names(tk)))
+
+genre <- RNGkind()
+s1 <- stabilite_arbre(etat$modeles$A1$modele)
+suppressWarnings(RNGkind(sample.kind = "Rounding"))  # (R prévient que ce tirage n'est pas uniforme)
+s2 <- stabilite_arbre(etat$modeles$A1$modele)
+verifier("stabilité : les mêmes tirages quel que soit le générateur de la session, rendu tel quel",
+         identical(s1, s2) && identical(RNGkind()[3], "Rounding"))
+RNGkind(genre[1], genre[2], genre[3])
+d1 <- definir_modele(p, "TREE", x = u("prairie"), y = u("densite"), echelle = "none", vc = vc, observations = 1:50)
+m1 <- ajuster(p, d1)
+m1$stabilite <- stabilite_arbre(m1)
+t_en <- texte_methodes(p, d1, m1, "en", "essai")$paragraphes
+verifier("un arbre sans coupure : « une seule feuille », aucune coupure dans les tirages, dans la langue du texte",
+         any(grepl("a single leaf", t_en)) && any(grepl("has no split in", t_en)) && !any(grepl("aucune coupure|1 leaves", t_en)) &&
+           identical(stabilite_affichee(m1$stabilite, fr = FALSE)$variable[1], "(no split)") &&
+           identical(stabilite_affichee(m1$stabilite, fr = TRUE)$variable[1], "(aucune coupure)"))
 
 cat("Export vers R : scripts autonomes et rapports\n")
 dossier <- tempfile("classement")

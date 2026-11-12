@@ -149,7 +149,7 @@ code_fonctions_arbre <- function(m, tx) {
       commentaire(tx("La stabilité de la première coupure : des tirages bootstrap des groupes (avec remise ; chaque groupe tiré est un pli de la validation croisée interne), l'arbre refait et élagué sur chacun ; pour chaque variable, le nombre et la part des tirages où elle fait la première coupure, et son seuil médian.",
                      "The stability of the first split: bootstrap draws of the groups (with replacement; each group drawn is a fold of the internal cross-validation), the tree rebuilt and pruned on each; for each variable, the number and share of the draws where it makes the first split, and its median threshold.")),
       "stabilite <- function(cadre, groupes, methode, controle, regle = \"1se\", tirages = 200, graine = 2026) {",
-      "  set.seed(graine)",
+      "  set.seed(graine, kind = \"Mersenne-Twister\", normal.kind = \"Inversion\", sample.kind = \"Rejection\")",
       "  us <- unique(groupes)",
       "  premieres <- lapply(seq_len(tirages), function(tirage) {",
       "    ss <- us[sample.int(length(us), length(us), replace = TRUE)]",
@@ -461,7 +461,7 @@ code_fonctions_kmeans <- function(m, tx) {
     commentaire(tx(sprintf("Les k-moyennes (algorithme de Hartigan et Wong), le meilleur de %d départs au hasard (graine 1), les groupes numérotés du plus grand au plus petit.", DEPARTS_KMEANS),
                    sprintf("The k-means (Hartigan and Wong algorithm), the best of %d random starts (seed 1), the clusters numbered from the largest to the smallest.", DEPARTS_KMEANS))),
     "kmeans_ordonne <- function(X, k) {",
-    "  set.seed(1)",
+    "  set.seed(1, kind = \"Mersenne-Twister\", normal.kind = \"Inversion\", sample.kind = \"Rejection\")",
     sprintf("  a <- kmeans(X, centers = k, nstart = %d, iter.max = 100)", DEPARTS_KMEANS),
     "  ordre <- order(-a$size, seq_len(k))",
     "  list(groupe = match(a$cluster, ordre), centres = a$centers[ordre, , drop = FALSE], tailles = a$size[ordre],",
@@ -575,15 +575,8 @@ ecart_kmeans <- function(m, e, langue) {
 
 # ---------------------------------------------------------------- écrire le script
 
-ecrire_script_tree <- function(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue) {
-  ecrire_script_classement(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue)
-}
-ecrire_script_lda <- function(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue) {
-  ecrire_script_classement(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue)
-}
-ecrire_script_kmeans <- function(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue) {
-  ecrire_script_classement(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue)
-}
+# (les trois analyses s'exportent par la même fonction)
+ecrire_script_tree <- ecrire_script_lda <- ecrire_script_kmeans <- function(...) ecrire_script_classement(...)
 
 ecrire_script_classement <- function(projet, d, chemin_script, m, donnees = "script", renv = FALSE, rdata = FALSE, rproj = FALSE, version = "", langue = "fr") {
   tx <- function(fr, en) if (langue == "en") en else fr
@@ -663,7 +656,7 @@ lignes_rapport_classement <- function(format, d, m, langue, methodes, fonctions,
             if (format == "Rmd") c("output:", "  html_document:", "    code_folding: hide") else c("format:", "  html:", "    embed-resources: true", "    code-fold: true"),
             "---", "")
   resultats <- switch(m$type,
-    TREE = c(bloc("qualite-table", kable(if (m$classement) "t(qualite)" else "t(qualite)", 3)),
+    TREE = c(bloc("qualite-table", kable("t(qualite)", 3)),
              bloc("regles-table", kable("regles", 3)),
              bloc("importance-table", kable("importance", 2)),
              if (m$classement) bloc("classement-table", kable("classement_vc", 0)),

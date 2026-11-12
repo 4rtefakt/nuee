@@ -109,7 +109,11 @@ ajuster_lda <- function(projet, d) {
   }
   colineaires <- FALSE
   a <- withCallingHandlers(lda_nuee(X, cl, r$priors), warning = function(w) {
-    if (grepl("collinear", conditionMessage(w))) { colineaires <<- TRUE; invokeRestart("muffleWarning") }
+    # (le message de MASS, dans la langue de R : « variables are collinear », « les variables sont colinéaires »...)
+    if (grepl(gettext("variables are collinear", domain = "R-MASS"), conditionMessage(w), fixed = TRUE) || grepl("collinear", conditionMessage(w))) {
+      colineaires <<- TRUE
+      invokeRestart("muffleWarning")
+    }
   })
   classes <- levels(cl)
   groupes <- groupes_observations(projet, d, garde)
@@ -234,9 +238,9 @@ texte_methodes_lda <- function(projet, d, m, langue = "fr", version = "") {
                 if (length(m$part) > 1) sprintf(if (fr) ", la deuxième %s" else ", the second %s", pourcent_texte(m$part[2], fr)) else "",
                 pourcent_texte(r$ajuste$global, fr), pourcent_texte(r$vc$global, fr))
   if (!is.null(m$test)) {
-    p4 <- paste(p4, sprintf(if (fr) "Un jeu de test de %d observations, laissées hors du modèle et de la validation croisée, a ensuite été classé : %s bien classées."
-                            else "A test set of %d observations, left out of the model and of the cross-validation, was then classified: %s correctly classified.",
-                            m$test$n, pourcent_texte(m$test$classement$bien_classees, fr)))
+    p4 <- paste(p4, sprintf(if (fr) "Un jeu de test de %d observations, laissées hors du modèle et de la validation croisée, a ensuite été classé : %s bien classées%s."
+                            else "A test set of %d observations, left out of the model and of the cross-validation, was then classified: %s correctly classified%s.",
+                            m$test$n, pourcent_texte(m$test$classement$bien_classees, fr), classes_inconnues_texte(m$test$classement$inconnues, fr)))
   }
   logiciels <- references_classement(c("fisher", "venables"), "MASS", fr, version)
   list(paragraphes = c(p1, p2, p3, p4, logiciels$phrase), references = logiciels$references)

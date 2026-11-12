@@ -21,16 +21,19 @@
 
 # ---------------------------------------------------------------- outils communs
 
-# Évalue `expr` après set.seed(graine), puis rend au générateur de R l'état qu'il avait : un
-# calcul reproductible qui ne change pas le hasard du reste de la séance.
+# Évalue `expr` après set.seed(graine) avec le générateur de R par défaut (comme le script
+# exporté, même si la console R en a choisi un autre), puis rend au générateur son genre et son
+# état : un calcul reproductible qui ne change pas le hasard du reste de la séance.
 avec_graine <- function(graine, expr) {
   avant <- if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) get(".Random.seed", envir = globalenv())
+  genre <- RNGkind()
   on.exit({
+    RNGkind(genre[1], genre[2], genre[3])
     if (is.null(avant)) {
       if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) rm(".Random.seed", envir = globalenv())
     } else assign(".Random.seed", avant, envir = globalenv())
   })
-  set.seed(graine)
+  set.seed(graine, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
   expr
 }
 
@@ -81,11 +84,15 @@ table_classement <- function(observee, predite, classes) {
   unname(unclass(table(factor(as.character(observee)[ok], classes), factor(as.character(predite)[ok], classes))))
 }
 
-# Le jeu de test d'un classement (jeu_test.R) : la part bien classée, les classes, le tableau.
+# Le jeu de test d'un classement (jeu_test.R) : la part bien classée, les classes, le tableau,
+# sur les observations d'une classe que le modèle connaît (il ne peut prédire une classe qu'il
+# n'a pas vue : `inconnues` les compte).
 classement_test <- function(observee, predite, classes) {
-  ok <- !is.na(observee) & !is.na(predite)
-  list(bien_classees = if (any(ok)) mean(as.character(observee)[ok] == as.character(predite)[ok]) else NA_real_, classes = classes,
-       table = table_classement(observee, predite, classes))
+  observee <- as.character(observee)
+  predite <- as.character(predite)
+  ok <- !is.na(observee) & !is.na(predite) & observee %in% classes
+  list(bien_classees = if (any(ok)) mean(observee[ok] == predite[ok]) else NA_real_, classes = classes,
+       table = table_classement(observee, predite, classes), inconnues = sum(!is.na(observee) & !observee %in% classes))
 }
 
 # Des noms de colonnes uniques pour un data.frame de R (`reserves` : des noms déjà pris), sans
@@ -211,11 +218,25 @@ validation_arbre <- function(dat, groupes, methode, ctl, regle) {
   pred <- if (is.null(classes)) rep(NA_real_, nrow(dat)) else matrix(NA_real_, nrow(dat), length(classes), dimnames = list(NULL, classes))
   for (g in unique(groupes)) {
     k <- groupes == g
+    restantes <- if (!is.null(classes)) unique(as.character(dat$.y[!k]))
+    if (length(restantes) == 1) {  # (sans ce groupe, une seule classe : tout arbre la prédit ; rpart ne s'ajuste pas sur une classe)
+      pred[k, ] <- 0
+      pred[k, restantes] <- 1
+      next
+    }
     a <- arbre_elague(dat[!k, , drop = FALSE], groupes[!k], methode, ctl, regle)$arbre
     if (is.null(classes)) pred[k] <- stats::predict(a, dat[k, , drop = FALSE])
     else pred[k, ] <- proba_arbre(a, dat[k, , drop = FALSE], classes)
   }
   pred
+}
+
+# Les observations d'un jeu de test dont l'arbre ou la LDA n'a pas vu la classe, laissées hors de
+# la part bien classée (« , sans les 3 d'une classe inconnue du modèle »).
+classes_inconnues_texte <- function(n, fr) {
+  if (!isTRUE(n > 0)) return("")
+  sprintf(if (fr) ", sans %s d'une classe que le modèle n'a pas vue" else ", without the %s of a class the model hasn't seen",
+          if (n == 1) (if (fr) "celle" else "one") else sprintf(if (fr) "les %d" else "%d", n))
 }
 
 # Le nom de la variable d'une colonne de rpart.
@@ -403,7 +424,7 @@ tester_tree <- function(projet, m, d) {
 stabilite_arbre <- function(m) avec_graine(2026, {
   methode <- if (m$classement) "class" else "anova"
   us <- unique(m$groupes)
-  aucune <- traduire("(aucune coupure)", "(no split)")
+  aucune <- ""  # (aucune coupure : dit dans la langue de ce qui l'affiche, stabilite_affichee)
   tirages <- lapply(seq_len(m$reglages_arbre$tirages), function(i) {
     ss <- us[sample.int(length(us), length(us), replace = TRUE)]
     k <- unlist(lapply(ss, function(s) which(m$groupes == s)))
@@ -426,6 +447,13 @@ stabilite_arbre <- function(m) avec_graine(2026, {
   attr(out, "echecs") <- sum(is.na(v))
   out
 })
+
+# La stabilité pour l'interface, Exporter ou un texte : « (aucune coupure) » dans la langue voulue.
+stabilite_affichee <- function(s, fr = !identical(getOption("nuee.langue"), "en")) {
+  if (is.null(s)) return(NULL)
+  s$variable[!is.na(s$variable) & !nzchar(s$variable)] <- if (fr) "(aucune coupure)" else "(no split)"
+  s
+}
 
 # La feuille (son numéro parmi les feuilles) de chaque observation de l'arbre, ou de chaque ligne
 # de `X` (des X bruts) en suivant les coupures et leurs substitutions comme predict.rpart.
@@ -488,7 +516,7 @@ resultat_tree <- function(id) {
        classification = m$classification, qualite = qualite,
        RMSEE = if (!m$classement) stats::setNames(list(rmsee), y), RMSEcv = if (!m$classement) stats::setNames(list(m$vc$RMSEcv), y),
        comparaison = if (!m$classement) list(R2 = m$r2, Q2 = m$vc$Q2, RMSEE = rmsee, RMSEcv = m$vc$RMSEcv),
-       stabilite = m$stabilite, exclues_manquantes = length(m$exclues), manquantes_x = m$manquantes_x,
+       stabilite = stabilite_affichee(m$stabilite), exclues_manquantes = length(m$exclues), manquantes_x = m$manquantes_x,
        variables_x = I(vapply(m$variables, `[[`, "", "nom")),
        G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app),
        note = d$note %||% "", test = m$test, demande = d$demande %||% list(type = d$type, numero = d$number),
@@ -502,7 +530,7 @@ demande_analyse_arbre_stabilite <- function(q) {
   if (!identical(e$modele$type, "TREE")) stop(traduire("Seulement pour un arbre de décision.", "Only for a decision tree."), call. = FALSE)
   if (is.null(e$modele$stabilite)) etat$modeles[[q$modele]]$modele$stabilite <- stabilite_arbre(e$modele)
   s <- etat$modeles[[q$modele]]$modele$stabilite
-  list(modele = q$modele, stabilite = s, tirages = e$modele$reglages_arbre$tirages, echecs = attr(s, "echecs") %||% 0)
+  list(modele = q$modele, stabilite = stabilite_affichee(s), tirages = e$modele$reglages_arbre$tirages, echecs = attr(s, "echecs") %||% 0)
 }
 
 predire_tree <- function(projet, m, d, observations) {
@@ -552,7 +580,7 @@ tables_tree <- function(projet, m) {
     out$classement <- tableau_classes(m$classification$ajuste$table, m$classes)
     out$classement_vc <- tableau_classes(m$classification$vc$table, m$classes)
   }
-  if (!is.null(m$stabilite)) out$stabilite <- m$stabilite
+  if (!is.null(m$stabilite)) out$stabilite <- stabilite_affichee(m$stabilite)
   out
 }
 
@@ -578,10 +606,10 @@ texte_methodes_tree <- function(projet, d, m, langue = "fr", version = "") {
                 m$N, laissees, reponse)
   explicatives <- if (length(noms) <= 12) sprintf(if (fr) "%d variables explicatives (%s)" else "%d explanatory variables (%s)", length(noms), liste_mots(noms, fr))
                   else sprintf(if (fr) "%d variables explicatives" else "%d explanatory variables", length(noms))
-  p2 <- sprintf(if (fr) "Un arbre de %s a été construit avec rpart (Therneau & Atkinson ; Breiman et al., 1984) sur les valeurs brutes de %s, pour que ses seuils se lisent dans leurs unités ; les valeurs manquantes (%d observations en ont au moins une) sont prises en charge par des variables de substitution (%d au plus par coupure). Chaque feuille compte au moins %d observations et l'arbre a au plus %d niveaux (paramètre de complexité initial %s)."
-                else "A %s tree was built with rpart (Therneau & Atkinson; Breiman et al., 1984) on the raw values of %s, so that its thresholds read in their units; missing values (%d observations have at least one) are handled by surrogate variables (%d at most per split). Each leaf holds at least %d observations and the tree has at most %d levels (initial complexity parameter %s).",
+  p2 <- sprintf(if (fr) "Un arbre de %s a été construit avec rpart (Therneau & Atkinson ; Breiman et al., 1984) sur les valeurs brutes de %s, pour que ses seuils se lisent dans leurs unités ; les valeurs manquantes (%d observations en ont au moins une) sont prises en charge par des variables de substitution (%d au plus par coupure). Chaque feuille compte au moins %d observations (un nœud n'est coupé que s'il en compte au moins %d) et l'arbre a au plus %d niveaux (paramètre de complexité initial %s)."
+                else "A %s tree was built with rpart (Therneau & Atkinson; Breiman et al., 1984) on the raw values of %s, so that its thresholds read in their units; missing values (%d observations have at least one) are handled by surrogate variables (%d at most per split). Each leaf holds at least %d observations (a node is split only if it holds at least %d) and the tree has at most %d levels (initial complexity parameter %s).",
                 if (m$classement) (if (fr) "classement (indice de Gini)" else "classification (Gini index)") else (if (fr) "régression" else "regression"),
-                explicatives, m$manquantes_x, r$maxsurrogate, r$minbucket, r$maxdepth, format(r$cp, decimal.mark = if (fr) "," else "."))
+                explicatives, m$manquantes_x, r$maxsurrogate, r$minbucket, m$controle$minsplit, r$maxdepth, format(r$cp, decimal.mark = if (fr) "," else "."))
   p3 <- sprintf(if (fr) "Sa taille a été choisie par une validation croisée interne %s : %s. Sa capacité de prédiction a été estimée par une validation croisée externe, chaque groupe étant prédit par un arbre refait entièrement sans lui, sa validation croisée interne et son élagage compris%s."
                 else "Its size was chosen by an internal cross-validation %s: %s. Its predictive ability was estimated by an external cross-validation, each group being predicted by a tree entirely rebuilt without it, its internal cross-validation and pruning included%s.",
                 groupes_texte(m$vc_par, m$G, fr),
@@ -591,26 +619,32 @@ texte_methodes_tree <- function(projet, d, m, langue = "fr", version = "") {
                 if (m$classement) "" else " (Q² = 1 − PRESS / SS)")
   premiere <- premiere_coupure(a, m$variables)
   coupure <- if (!is.na(premiere$regle)) sprintf(if (fr) ", la première coupure étant %s" else ", the first split being %s", premiere$regle) else ""
+  n_feuilles <- if (feuilles == 1) (if (fr) "une seule feuille" else "a single leaf") else sprintf(if (fr) "%d feuilles" else "%d leaves", feuilles)
   p4 <- if (m$classement) {
-    sprintf(if (fr) "L'arbre retenu a %d feuilles%s ; il classe bien %s des observations, %s en validation croisée."
-            else "The tree retained has %d leaves%s; it classifies %s of the observations correctly, %s in cross-validation.",
-            feuilles, coupure, pourcent_texte(m$classification$ajuste$global, fr), pourcent_texte(m$classification$vc$global, fr))
+    sprintf(if (fr) "L'arbre retenu a %s%s ; il classe bien %s des observations, %s en validation croisée."
+            else "The tree retained has %s%s; it classifies %s of the observations correctly, %s in cross-validation.",
+            n_feuilles, coupure, pourcent_texte(m$classification$ajuste$global, fr), pourcent_texte(m$classification$vc$global, fr))
   } else {
-    sprintf(if (fr) "L'arbre retenu a %d feuilles%s ; R² = %s, Q² = %s et RMSEcv = %s."
-            else "The tree retained has %d leaves%s; R² = %s, Q² = %s and RMSEcv = %s.",
-            feuilles, coupure, nombre_texte(m$r2, 2, fr), nombre_texte(m$vc$Q2, 2, fr), format(signif(m$vc$RMSEcv, 4), decimal.mark = if (fr) "," else "."))
+    sprintf(if (fr) "L'arbre retenu a %s%s ; R² = %s, Q² = %s et RMSEcv = %s."
+            else "The tree retained has %s%s; R² = %s, Q² = %s and RMSEcv = %s.",
+            n_feuilles, coupure, nombre_texte(m$r2, 2, fr), nombre_texte(m$vc$Q2, 2, fr), format(signif(m$vc$RMSEcv, 4), decimal.mark = if (fr) "," else "."))
   }
   s <- m$stabilite
   if (!is.null(s) && nrow(s)) {
-    p4 <- paste(p4, sprintf(if (fr) "Sur %d tirages bootstrap des groupes, la première coupure porte sur %s dans %s des tirages%s."
-                            else "Over %d bootstrap draws of the groups, the first split is on %s in %s of the draws%s.",
-                            r$tirages, g(s$variable[1]), pourcent_texte(s$frequence[1] / 100, fr),
-                            if (!is.na(s$seuil_median[1])) sprintf(if (fr) " (seuil médian %s)" else " (median threshold %s)", format(signif(s$seuil_median[1], 4), decimal.mark = if (fr) "," else ".")) else ""))
+    p4 <- paste(p4, if (!nzchar(s$variable[1])) {
+      sprintf(if (fr) "Sur %d tirages bootstrap des groupes, l'arbre élagué n'a aucune coupure dans %s des tirages."
+              else "Over %d bootstrap draws of the groups, the pruned tree has no split in %s of the draws.", r$tirages, pourcent_texte(s$frequence[1] / 100, fr))
+    } else {
+      sprintf(if (fr) "Sur %d tirages bootstrap des groupes, la première coupure porte sur %s dans %s des tirages%s."
+              else "Over %d bootstrap draws of the groups, the first split is on %s in %s of the draws%s.",
+              r$tirages, g(s$variable[1]), pourcent_texte(s$frequence[1] / 100, fr),
+              if (!is.na(s$seuil_median[1])) sprintf(if (fr) " (seuil médian %s)" else " (median threshold %s)", format(signif(s$seuil_median[1], 4), decimal.mark = if (fr) "," else ".")) else "")
+    })
   }
   if (!is.null(m$test)) {
-    p4 <- paste(p4, if (m$classement) sprintf(if (fr) "Un jeu de test de %d observations, laissées hors de l'arbre et de la validation croisée, a ensuite été prédit : %s bien classées."
-                                               else "A test set of %d observations, left out of the tree and of the cross-validation, was then predicted: %s correctly classified.",
-                                               m$test$n, pourcent_texte(m$test$classement$bien_classees, fr))
+    p4 <- paste(p4, if (m$classement) sprintf(if (fr) "Un jeu de test de %d observations, laissées hors de l'arbre et de la validation croisée, a ensuite été prédit : %s bien classées%s."
+                                               else "A test set of %d observations, left out of the tree and of the cross-validation, was then predicted: %s correctly classified%s.",
+                                               m$test$n, pourcent_texte(m$test$classement$bien_classees, fr), classes_inconnues_texte(m$test$classement$inconnues, fr))
                 else sprintf(if (fr) "Un jeu de test de %d observations, laissées hors de l'arbre et de la validation croisée, a ensuite été prédit : RMSEP = %s, biais = %s, Q² externe = %s."
                              else "A test set of %d observations, left out of the tree and of the cross-validation, was then predicted: RMSEP = %s, bias = %s, external Q² = %s.",
                              m$test$n, nombre_texte(m$test$statistiques$RMSEP, 3, fr), nombre_texte(m$test$statistiques$biais, 3, fr), nombre_texte(m$test$statistiques$Q2ext, 2, fr)))

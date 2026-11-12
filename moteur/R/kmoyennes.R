@@ -30,11 +30,12 @@ kmeans_nuee <- function(X, k) {
 # La distance (euclidienne, dans l'espace mis à l'échelle) de chaque ligne de X à chaque centre ;
 # une valeur manquante est laissée de côté, la distance ramenée à tous les termes.
 distances_centres <- function(X, centres) {
-  vapply(seq_len(nrow(centres)), function(g) {
+  # (une matrice même pour une seule ligne : vapply rendrait alors un vecteur)
+  matrix(vapply(seq_len(nrow(centres)), function(g) {
     e <- sweep(X, 2, centres[g, ])^2
     connus <- rowSums(!is.na(e))
     ifelse(connus > 0, sqrt(rowSums(e, na.rm = TRUE) * ncol(X) / pmax(connus, 1)), NA_real_)
-  }, numeric(nrow(X)))
+  }, numeric(nrow(X))), nrow(X), nrow(centres))
 }
 groupe_le_plus_proche <- function(D) {
   D <- matrix(D, ncol = max(1, ncol(D)))
@@ -155,7 +156,8 @@ resultat_kmeans <- function(id) {
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = m$K, noms_y = I(character(0)), k = m$k, observations = observations_kmeans(p, m),
        tailles = tailles_kmeans(m), centres = centres_tableau(m$centres), centres_unites = centres_tableau(m$centres_unites),
        inertie = list(totale = m$totale, intra = sum(m$intra), inter = m$inter, r2 = m$r2), silhouette = sil, silhouette_max = SILHOUETTE_MAX,
-       acp = list(part = I(unname(m$acp$part)), centres = centres_tableau(m$acp$centres)), choix = m$choix,
+       acp = list(part = I(unname(m$acp$part)), centres = stats::setNames(centres_tableau(m$acp$centres), c("groupe", paste0("CP", seq_len(ncol(m$acp$centres)))))),
+       choix = m$choix,
        echelles = I(unique(m$echelles)), avertissements = I(m$avertissements), exclues_manquantes = length(m$exclues),
        reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "", test = m$test,
        demande = d$demande %||% list(type = d$type, numero = d$number),
@@ -184,9 +186,9 @@ tables_kmeans <- function(projet, m) {
 
 # Les échelles des termes, en mots.
 echelles_texte <- function(echelles, fr) {
-  mots <- c(UV = if (fr) "centrées et réduites" else "centred and scaled to unit variance",
-            Par = if (fr) "centrées et mises à l'échelle de Pareto" else "centred and Pareto-scaled",
-            Ctr = if (fr) "centrées" else "centred", none = if (fr) "sans mise à l'échelle" else "unscaled")
+  mots <- c(UV = if (fr) "centrés et réduits" else "centred and scaled to unit variance",
+            Par = if (fr) "centrés et mis à l'échelle de Pareto" else "centred and Pareto-scaled",
+            Ctr = if (fr) "centrés" else "centred", none = if (fr) "sans mise à l'échelle" else "unscaled")
   e <- unique(echelles)
   e <- ifelse(e %in% names(mots), mots[e], e)
   liste_mots(e, fr)
@@ -198,7 +200,8 @@ texte_methodes_kmeans <- function(projet, d, m, langue = "fr", version = "") {
   p1 <- sprintf(if (fr) "Les k-moyennes portent sur %d observations%s et %s, %s."
                 else "The k-means use %d observations%s and %s, %s.",
                 m$N, if (length(m$exclues)) sprintf(if (fr) " (%d autres laissées de côté : une valeur y manque)" else " (%d others left out: a value is missing)", length(m$exclues)) else "",
-                if (length(noms) <= 12) sprintf(if (fr) "%d termes (%s)" else "%d terms (%s)", length(noms), liste_mots(noms, fr)) else sprintf(if (fr) "%d termes" else "%d terms", length(noms)),
+                if (length(noms) == 1) sprintf(if (fr) "1 terme (%s)" else "1 term (%s)", noms)
+                else if (length(noms) <= 12) sprintf(if (fr) "%d termes (%s)" else "%d terms (%s)", length(noms), liste_mots(noms, fr)) else sprintf(if (fr) "%d termes" else "%d terms", length(noms)),
                 echelles_texte(m$echelles, fr))
   p2 <- sprintf(if (fr) "Les observations ont été réparties en %d groupes par l'algorithme de Hartigan et Wong (1979) (fonction kmeans de R), qui rend minimale la somme des carrés des écarts à leur centre ; le meilleur de %d départs au hasard a été gardé (graine 1)."
                 else "The observations were split into %d clusters by the Hartigan and Wong (1979) algorithm (R's kmeans function), which minimizes the sum of squared deviations from their centre; the best of %d random starts was kept (seed 1).",
