@@ -206,9 +206,10 @@ variables_avec_donnees <- function(p) {
 }
 
 resume_projet <- function(p) {
+  manquantes <- colSums(is.na(p$donnees))
   vars <- lapply(variables_avec_donnees(p), function(v) list(
     uid = v$uid, nom = as.character(v$ids[1]), qualitative = length(v$categories) > 0,
-    categories = I(as.character(v$categories %||% character(0)))))
+    categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[as.character(v$uid)])))
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
@@ -769,6 +770,16 @@ DEMANDES <- list(
   modifier_valeur = function(q) changer_projet(q, function(p) modifier_valeur(p, q$observation, q$variable, q$valeur),
     sprintf("modification de %s", projet(q$projet)$noms_var[[as.character(q$variable)]])),
   variable_calculee = function(q) changer_projet(q, function(p) variable_calculee(p, q$nom, q$formule), sprintf("variable %s", q$nom)),
+  # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
+  imputer = function(q) {
+    memoriser(projet(q$projet), traduire("imputation", "imputation"))
+    p <- imputer_acp(projet(q$projet), unlist(q$variables), k = q$k %||% 5, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
+    info <- attr(p, "imputation")
+    attr(p, "imputation") <- NULL
+    p$modifie <- TRUE
+    etat$projets[[p$id]] <- p
+    c(resume_projet(p), list(imputation = info))
+  },
   classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),
     sprintf("variable %s", q$nom)),
   annuler = annuler_demande,

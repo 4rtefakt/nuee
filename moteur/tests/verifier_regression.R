@@ -435,6 +435,57 @@ pid <- variable_calculee(pid, "x_secteur", "group_mean(x, secteur)")
 verifier("un identifiant des observations fait les groupes d'une formule (le secteur)",
          proche(colonne(pid, numeros(pid, "x_secteur"), numeros_observations(pid)), c(2, 2, 2, 12, 12, 12)))
 
+cat("Imputation par ACP (Nouvelle variable)\n")
+# la fonction des scripts de préparation qui ont servi de modèle (ACP itérative régularisée,
+# comme missMDA::imputePCA), telle quelle
+impute_ref <- function(X, k = 5, tol = 1e-4, maxit = 1000) {
+  mu <- colMeans(X, na.rm = TRUE); s <- apply(X, 2, sd, na.rm = TRUE)
+  Z <- sweep(sweep(X, 2, mu), 2, s, "/"); M <- is.na(Z); Z[M] <- 0
+  n <- nrow(Z); p <- ncol(Z)
+  cumul <- rep(0, p)
+  for (it in seq_len(maxit)) {
+    sv <- svd(Z)
+    eig <- sv$d^2 / n
+    sigma2 <- n * p / min(p, n - 1) * sum(eig[-(1:k)]) / ((n - 1) * p - (n - 1) * k - p * k + k^2)
+    dreg <- (eig[1:k] - sigma2) / sqrt(eig[1:k]) * sqrt(n)
+    R <- sv$u[, 1:k] %*% diag(dreg, k) %*% t(sv$v[, 1:k])
+    delta <- sqrt(mean((Z[M] - R[M])^2))
+    Z[M] <- R[M]
+    m2 <- colMeans(Z); Z <- sweep(Z, 2, m2); cumul <- cumul + m2
+    if (delta < tol) break
+  }
+  Z <- sweep(Z, 2, cumul, "+")
+  sweep(sweep(Z, 2, s, "*"), 2, mu, "+")
+}
+set.seed(5)
+ni <- 80
+Xs <- matrix(rnorm(ni * 2), ni, 2) %*% matrix(runif(12, -1, 1), 2, 6) + matrix(rnorm(ni * 6, sd = 0.3), ni, 6)
+Xs[, 6] <- as.numeric(Xs[, 6] > 0)  # (une variable 0/1)
+Xs[matrix(runif(ni * 6) < 0.12, ni, 6)] <- NA
+Xs[3, 1:4] <- NA  # (une observation à qui manquent plus de la moitié des variables)
+pim <- projet_depuis_tableau(data.frame(nom = sprintf("I%02d", 1:ni), Xs), "imputation")
+vars_i <- numeros(pim, paste0("X", 1:6))
+imputees <- function(pr, suffixe = " (imputée)") sapply(paste0("X", 1:6, suffixe), function(n) colonne(pr, numeros(pr, n), numeros_observations(pr)))
+garde <- rowMeans(is.na(Xs)) <= 0.5
+ref <- impute_ref(Xs[garde, ], k = 5)
+pi1 <- imputer_acp(pim, vars_i, k = 5, bornes = FALSE)
+got <- imputees(pi1)
+verifier(sprintf("imputation = l'ACP itérative régularisée des scripts (%d valeurs, %d tours) ; les valeurs observées restent",
+                 attr(pi1, "imputation")$valeurs, attr(pi1, "imputation")$tours),
+         proche(unname(got[garde, ]), unname(ref), 1e-8) && proche(got[!is.na(Xs)], Xs[!is.na(Xs)]) && attr(pi1, "imputation")$valeurs == sum(is.na(Xs[garde, ])))
+verifier("une observation à qui manquent plus de la moitié des variables reste manquante", all(is.na(got[3, 1:4])) && attr(pi1, "imputation")$laissees == 1)
+pi2 <- imputer_acp(pim, vars_i, k = 5)
+x6 <- imputees(pi2)[, 6]
+verifier("bornées : une variable 0/1 imputée reste entre 0 et 1", all(x6[!is.na(x6)] >= 0 & x6[!is.na(x6)] <= 1) && any(x6[garde & is.na(Xs[, 6])] %% 1 != 0))
+pi3 <- imputer_acp(pim, vars_i, k = 2, remplacer = TRUE)
+verifier("remplir les variables elles-mêmes : aucune nouvelle variable, plus de manques (sauf l'observation trop incomplète)",
+         length(pi3$variables) == length(pim$variables) && !anyNA(imputees(pi3, "")[garde, ]))
+pi4 <- imputer_acp(pi1, vars_i, k = 3, bornes = FALSE)
+verifier("imputée à nouveau, avec d'autres réglages : les mêmes variables, mises à jour", length(pi4$variables) == length(pi1$variables) &&
+           !proche(imputees(pi4)[garde, ], imputees(pi1)[garde, ], 1e-8))
+verifier("une seule variable, ou une variable qualitative : refusé", grepl("deux variables", refus(imputer_acp(pim, vars_i[1]))) &&
+           grepl("quantitatives", refus(imputer_acp(p, u("variete", "sucre")))))
+
 cat("Texte des méthodes\n")
 for (l in c("fr", "en")) {
   t3 <- texte_methodes(p, d3, m3, l, "essai")

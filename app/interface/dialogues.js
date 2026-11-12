@@ -779,7 +779,9 @@ export function dialogueFormat(app, entree, div) {
 // (moteur/R/variables.R).
 export function dialogueVariable(app, p, mode = 'formule') {
   const quantitatives = p.variables.filter((v) => !v.qualitative);
-  const st = { mode, nom: '', formule: '', variable: quantitatives.length ? quantitatives[0].uid : null, parBornes: true, bornes: '', n: 3 };
+  const st = { mode, nom: '', formule: '', variable: quantitatives.length ? quantitatives[0].uid : null, parBornes: true, bornes: '', n: 3,
+    // imputation by PCA (moteur/R/variables.R: imputer_acp): every quantitative variable takes part, as in a PCA of them
+    imputees: new Set(quantitatives.map((v) => v.uid)), k: Math.max(1, Math.min(5, quantitatives.length - 1)), bornes2: true, remplacer: false };
   const contenu = el('div', { class: 'dialogue-variable' });
   const erreur = el('p', { class: 'erreur' });
   const nomR = (n) => (/^[\p{L}.][\p{L}\p{N}._]*$/u.test(n) ? n : `\`${n}\``);
@@ -803,16 +805,34 @@ export function dialogueVariable(app, p, mode = 'formule') {
       el('label', {}, t('bornes')), el('input', { value: st.bornes, placeholder: '10 ; 20', disabled: !st.parBornes, oninput: (e) => { st.bornes = e.target.value; } }),
       el('label', {}, ''), el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'decoupage', checked: !st.parBornes, onchange: () => { st.parBornes = false; rendre(); } }), t('par_effectifs')),
       el('label', {}, t('nb_classes')), el('input', { type: 'number', min: 2, max: 20, value: st.n, style: 'width:5em', disabled: st.parBornes, oninput: (e) => { st.n = +e.target.value; } })];
+    const imputation = () => {
+      const manquent = quantitatives.filter((v) => v.manquantes > 0).length;
+      return [
+        el('label', {}, t('variables')), el('div', {},
+          el('div', { class: 'ligne' }, el('button', { onclick: () => { st.imputees = new Set(quantitatives.map((v) => v.uid)); rendre(); } }, t('tout_cocher')),
+            el('button', { onclick: () => { st.imputees = new Set(); rendre(); } }, t('aucune_cocher')),
+            el('span', { class: 'infos' }, t('imputation_compte', { n: st.imputees.size, m: manquent }))),
+          el('div', { class: 'liste-imputation' }, quantitatives.map((v) => el('label', { class: 'champ' },
+            el('input', { type: 'checkbox', checked: st.imputees.has(v.uid), onchange: (e) => { if (e.target.checked) st.imputees.add(v.uid); else st.imputees.delete(v.uid); rendre(); } }),
+            v.nom, v.manquantes ? el('span', { class: 'doux' }, ` · ${t('manquantes_n', { n: v.manquantes })}`) : '')))),
+        el('label', {}, t('imputation_k')), el('input', { type: 'number', min: 1, max: 50, value: st.k, style: 'width:5em', oninput: (e) => { st.k = +e.target.value || 5; } }),
+        el('label', {}, ''), el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: st.bornes2, onchange: (e) => { st.bornes2 = e.target.checked; } }), t('imputation_bornes')),
+        el('label', {}, ''), el('div', {},
+          el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'imputer', checked: !st.remplacer, onchange: () => { st.remplacer = false; } }), t('imputation_nouvelles')),
+          el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'imputer', checked: st.remplacer, onchange: () => { st.remplacer = true; } }), t('imputation_remplacer'))),
+        el('label', {}, ''), el('p', { class: 'note' }, t('imputation_note'))];
+    };
     contenu.replaceChildren(
-      el('div', { class: 'onglets' }, [['formule', t('formule')], ['classes', t('classes_valeurs')]].map(([k, n]) =>
+      el('div', { class: 'onglets' }, [['formule', t('formule')], ['classes', t('classes_valeurs')], ['imputation', t('imputation')]].map(([k, n]) =>
         el('button', { class: st.mode === k ? 'actif' : '', onclick: () => { st.mode = k; rendre(); } }, n))),
-      el('div', { class: 'grille-champs' }, el('label', {}, t('nom')), el('input', { value: st.nom, oninput: (e) => { st.nom = e.target.value; } }),
-        ...(st.mode === 'formule' ? formule() : classes())));
+      el('div', { class: 'grille-champs' }, st.mode === 'imputation' ? null : [el('label', {}, t('nom')), el('input', { value: st.nom, oninput: (e) => { st.nom = e.target.value; } })],
+        ...(st.mode === 'formule' ? formule() : st.mode === 'classes' ? classes() : imputation())));
   };
   async function valider() {
     erreur.textContent = '';
     let q;
-    if (st.mode === 'formule') q = { nom: st.nom, formule: st.formule };
+    if (st.mode === 'imputation') q = { imputation: true, variables: [...st.imputees], k: st.k, bornes: st.bornes2, remplacer: st.remplacer };
+    else if (st.mode === 'formule') q = { nom: st.nom, formule: st.formule };
     else if (st.parBornes) q = { nom: st.nom, variable: st.variable, bornes: st.bornes.split(/[;\s]+/).filter(Boolean).map((x) => Number(x.replace(',', '.'))) };
     else q = { nom: st.nom, variable: st.variable, n: st.n };
     try {

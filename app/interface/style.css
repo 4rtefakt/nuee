@@ -291,3 +291,5 @@ body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed
 /* the R formula of a regression (New model) */
 .formule-r { display: flex; flex-direction: column; gap: 4px; }
 .formule-r textarea.formule { font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; font-size: 12px; width: 100%; box-sizing: border-box; resize: vertical; }
+/* imputation by PCA (New variable): the variables, ticked */
+.liste-imputation { max-height: 14em; overflow: auto; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--bord); border-radius: 4px; padding: 4px 6px; margin-top: 4px; }

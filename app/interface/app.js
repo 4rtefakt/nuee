@@ -566,9 +566,11 @@ const app = {
   rapport: (id) => dialogueRapport(app, id),
   nouvelleVariable: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariable(app, p); },
   async ajouterVariable(pid, q) {
-    const res = await occupe(() => demander(q.formule !== undefined ? 'variable_calculee' : 'classes_valeurs', { projet: pid, ...q }));
+    const nom = q.imputation ? 'imputer' : q.formule !== undefined ? 'variable_calculee' : 'classes_valeurs';
+    const res = await occupe(() => demander(nom, { projet: pid, ...q }));
     projetChange(res);
-    statut(t('variable_ajoutee', { nom: q.nom }));
+    statut(q.imputation ? t('imputation_faite', { n: res.imputation.valeurs, k: res.imputation.composantes, tours: res.imputation.tours })
+      : t('variable_ajoutee', { nom: q.nom }));
   },
   async modifierValeur(pid, observation, variable, valeur) {
     const res = await occupe(() => demander('modifier_valeur', { projet: pid, observation, variable, valeur }));

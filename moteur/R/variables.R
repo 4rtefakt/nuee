@@ -163,6 +163,77 @@ variable_calculee <- function(projet, nom, formule) {
   ajouter_colonne(projet, nom, obs, ifelse(is.finite(r), r, NA))
 }
 
+# Les valeurs manquantes de variables quantitatives remplies par ACP itérative régularisée
+# (Josse et Husson 2012 ; missMDA::imputePCA, méthode « Regularized ») : les variables centrées
+# et réduites, leurs manques d'abord à la moyenne ; à chaque tour, l'ACP à k composantes, aux
+# valeurs singulières réduites du bruit estimé sur les autres, reconstruit le tableau, dont les
+# manques prennent les valeurs, et les colonnes sont recentrées ; jusqu'à ce que les valeurs
+# imputées bougent de moins de `tol` écart-type. Les valeurs observées ne changent pas. Une
+# observation à qui manquent plus de la moitié de ces variables reste manquante. Avec `bornes`,
+# une valeur imputée reste dans l'étendue observée de sa variable (une variable 0/1 entre 0 et
+# 1, une surface positive). De nouvelles variables « x (imputée) », ou, avec `remplacer`, les
+# variables elles-mêmes. attr(, "imputation") : le nombre de valeurs remplies et de tours.
+imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, bornes = TRUE, remplacer = FALSE) {
+  obs <- as.numeric(rownames(projet$donnees))
+  variables <- unique(as.numeric(variables))
+  for (u in variables) {
+    if (length(variable_du_projet(projet, u)$categories)) stop(traduire("L'imputation par ACP va avec des variables quantitatives.", "Imputation by PCA goes with quantitative variables."), call. = FALSE)
+  }
+  if (length(variables) < 2) stop(traduire("Choisir au moins deux variables : l'ACP complète chacune par les autres.", "Choose at least two variables: the PCA fills each one from the others."), call. = FALSE)
+  X <- vapply(variables, function(u) as.numeric(colonne(projet, u, obs)), numeric(length(obs)))
+  dimnames(X) <- NULL
+  utiles <- rowMeans(is.na(X)) <= 0.5
+  Xu <- X[utiles, , drop = FALSE]
+  mu <- colMeans(Xu, na.rm = TRUE)
+  s <- apply(Xu, 2, stats::sd, na.rm = TRUE)
+  if (any(!is.finite(s) | s == 0)) {
+    stop(sprintf(traduire("Une variable constante ou presque vide ne s'impute pas : %s.", "A constant or nearly empty variable can't be imputed: %s."),
+                 paste(projet$noms_var[as.character(variables[!is.finite(s) | s == 0])], collapse = ", ")), call. = FALSE)
+  }
+  n <- nrow(Xu)
+  p <- ncol(Xu)
+  k <- max(1, min(as.integer(k), p - 1, n - 2))
+  Z <- sweep(sweep(Xu, 2, mu), 2, s, "/")
+  M <- is.na(Z)
+  Z[M] <- 0
+  cumul <- rep(0, p)
+  it <- 0
+  if (any(M)) for (it in seq_len(maxit)) {
+    sv <- svd(Z)
+    valeurs <- sv$d^2 / n
+    sigma2 <- n * p / min(p, n - 1) * sum(valeurs[-seq_len(k)]) / ((n - 1) * p - (n - 1) * k - p * k + k^2)
+    reduites <- (valeurs[seq_len(k)] - sigma2) / sqrt(valeurs[seq_len(k)]) * sqrt(n)
+    R <- sv$u[, seq_len(k), drop = FALSE] %*% diag(reduites, k) %*% t(sv$v[, seq_len(k), drop = FALSE])
+    ecart <- sqrt(mean((Z[M] - R[M])^2))
+    Z[M] <- R[M]
+    moyennes <- colMeans(Z)
+    Z <- sweep(Z, 2, moyennes)
+    cumul <- cumul + moyennes
+    if (ecart < tol) break
+  }
+  Z <- sweep(Z, 2, cumul, "+")
+  Xi <- sweep(sweep(Z, 2, s, "*"), 2, mu, "+")
+  Xi[!M] <- Xu[!M]  # (exactement les valeurs observées)
+  if (bornes) {
+    for (j in seq_len(p)) {
+      r <- range(Xu[, j], na.rm = TRUE)
+      Xi[M[, j], j] <- pmin(pmax(Xi[M[, j], j], r[1]), r[2])
+    }
+  }
+  X[utiles, ] <- Xi
+  for (j in seq_len(p)) {
+    u <- variables[j]
+    if (remplacer) {
+      projet$donnees[, as.character(u)] <- X[, j]
+    } else {
+      # (imputée à nouveau, avec d'autres réglages : la même variable, mise à jour)
+      projet <- ajouter_colonne(projet, paste0(projet$noms_var[[as.character(u)]], traduire(" (imputée)", " (imputed)")), obs, X[, j])
+    }
+  }
+  attr(projet, "imputation") <- list(valeurs = sum(M), tours = it, composantes = k, laissees = sum(!utiles))
+  projet
+}
+
 # Variable qualitative d'après les valeurs d'une variable quantitative : des bornes
 # (par exemple 10 et 20 donnent « ≤ 10 », « ]10 ; 20] » et « > 20 ») ou un nombre de classes
 # d'effectifs à peu près égaux (bornes aux quantiles).
