@@ -533,9 +533,10 @@ résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires
 un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
 chaque terme, observé / prédit et les résidus.
 Fichier › Exporter vers R : un script ou un rapport pour une régression aussi, avec lm,
-nlme::lme ou mgcv::gam : ses lignes et ses termes, les ajustements (REML et ML), la validation
-croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les courbes, le
-jeu de test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
+nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML),
+la validation croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les
+courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), le jeu de
+test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------

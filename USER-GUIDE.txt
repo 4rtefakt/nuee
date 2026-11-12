@@ -498,10 +498,11 @@ File › Export: the observations (observed, fitted, predicted in cross-validati
 the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
 Model report: the summary and the coefficients, each term's effect, observed / predicted and
 the residuals.
-File › Export to R: a script or report for a regression too, with lm, nlme::lme or
-mgcv::gam: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
-then the coefficients, AIC, R2, variances, curves, test set and plots, checked against Nuée's
-results before it is written.
+File › Export to R: a script or report for a regression too, with lm, nlme::lme, mgcv::gam
+or mgcv::gamm: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
+then the coefficients, AIC, R2, variances, curves with their concurvity and thresholds (the
+same draws as the Thresholds view), test set and plots, checked against Nuée's results before
+it is written.
 
 Class models and the Coomans plot
 ---------------------------------
