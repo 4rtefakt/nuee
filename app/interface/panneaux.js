@@ -1802,6 +1802,48 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
 // The effect curves of a regression (regression.R: effets_regression): each quantitative term's
 // effect on the link scale over its values, a curve (GAM) or a line, with its 95 % band and the
 // observed values along the axis (computed in R on request, then kept).
+// A curve's thresholds (regression.R: seuils_courbe), in words: its edf and shape, the ranges
+// where its slope is clearly rising or falling, and where the effect is clearly above or below
+// its mean.
+const PENTE = { hausse: '#2a9d8f', baisse: '#d1495b' };
+const nombreSeuil = (v) => fmt(v, Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2);
+const plagesSeuils = (pl) => [].concat((pl && pl.sens) || []).map((sens, i) => ({ sens, de: [].concat(pl.de)[i], a: [].concat(pl.a)[i] }));
+function resumeSeuils(s) {
+  const pente = plagesSeuils(s.plages_pente).map((z) => t('seuils_de_a', { sens: t(z.sens), de: nombreSeuil(z.de), a: nombreSeuil(z.a) }));
+  const effet = plagesSeuils(s.plages_effet).map((z) => t('seuils_de_a', { sens: t(z.sens), de: nombreSeuil(z.de), a: nombreSeuil(z.a) }));
+  return t('seuils_resume', { edf: fmt(s.edf, 2), forme: t(s.lineaire ? 'seuils_lineaire' : 'seuils_courbe'),
+    pente: pente.length ? pente.join(' ; ') : t('seuils_aucune'), effet: effet.length ? effet.join(' ; ') : t('seuils_aucune') });
+}
+
+// The curve and its slope, one above the other, with their 95 % simultaneous bands; the ranges
+// where the slope's band excludes 0 shaded (rising, falling).
+function tracerSeuils(ctx, graphe, m, e, s, lien) {
+  const c = couleursTheme();
+  const bandeGrise = (xs, bas, haut, axe) => ({ type: 'scatter', mode: 'lines', x: xs.concat([...xs].reverse()), y: bas.concat([...haut].reverse()), yaxis: axe,
+    fill: 'toself', fillcolor: 'rgba(128, 128, 128, 0.22)', line: { width: 0 }, hoverinfo: 'skip', name: t('seuils_bande') });
+  const x = [].concat(s.x);
+  const xp = [].concat(s.x_pente);
+  const valeurs = [].concat(s.valeurs);
+  const bas = [].concat(s.bas);
+  const basMin = Math.min(...bas);
+  const zones = plagesSeuils(s.plages_pente);
+  tracer(ctx, graphe, [
+    bandeGrise(x, bas, [].concat(s.haut), 'y'),
+    { type: 'scatter', mode: 'lines', x, y: [].concat(s.effet), line: { color: PALETTE[0], width: 2 }, name: e.terme,
+      hovertemplate: `${e.terme} = %{x:.3f}<br>${t('effet')} = %{y:.3f}<extra></extra>` },
+    { type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux }, hoverinfo: 'skip', name: t('observations') },
+    bandeGrise(xp, [].concat(s.pente_bas), [].concat(s.pente_haut), 'y2'),
+    { type: 'scatter', mode: 'lines', x: xp, y: [].concat(s.pente), yaxis: 'y2', line: { color: c.texte, width: 1.5 }, name: t('pente'),
+      hovertemplate: `${e.terme} = %{x:.3f}<br>${t('pente')} = %{y:.4g}<extra></extra>` }],
+  { title: { text: `${m.nom} · ${t('seuils')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
+    xaxis: { title: { text: e.terme }, anchor: 'y2' },
+    yaxis: { domain: [0.4, 1], title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
+    yaxis2: { domain: [0, 0.3], title: { text: t('pente') } },
+    shapes: zones.map((z) => ({ type: 'rect', xref: 'x', yref: 'paper', x0: z.de, x1: z.a, y0: 0, y1: 1, fillcolor: PENTE[z.sens], opacity: 0.14, line: { width: 0 }, layer: 'below' }))
+      .concat([{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } },
+        { type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y2', y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }]) });
+}
+
 async function rendreEffets(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const cache = ((loc.cache ??= {}).effets ??= {});  // (loc.cache isn't saved with the session)
@@ -1809,6 +1851,7 @@ async function rendreEffets(conteneur, ctx, p, loc) {
     conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
     cache.res = await ctx.demander('effets', { modele: m.id });
     cache.id = m.id;
+    cache.seuils = {};
   }
   const effets = [].concat(cache.res.effets || []);
   if (!effets.length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('effets_vide'))); return; }
@@ -1816,8 +1859,20 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   const e = effets.find((x) => x.terme === loc.terme);
   const graphe = el('div', { class: 'graphe' });
   const lien = cache.res.lien || 'identity';
+  // a curve's thresholds (regression.R: seuils_courbe): computed on demand, kept per term
+  const avecSeuils = e.courbe && !!loc.seuils;
+  const seuils = (cache.seuils ??= {});
+  if (avecSeuils && !seuils[e.terme]) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    seuils[e.terme] = await ctx.demander('seuils', { modele: m.id, terme: e.terme });
+  }
+  const s = avecSeuils ? seuils[e.terme] : null;
   conteneur.replaceChildren(outils(choix(t('terme'), effets.map((x) => [x.terme, x.courbe ? `${x.terme} (${t('courbe').toLowerCase()})` : x.terme]), loc.terme,
-    (v) => { loc.terme = v; ctx.rafraichir(); }), el('span', { class: 'infos' }, t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien }))), graphe);
+    (v) => { loc.terme = v; ctx.rafraichir(); }),
+    e.courbe ? el('label', { class: 'champ', title: t('seuils_aide') }, el('input', { type: 'checkbox', checked: avecSeuils,
+      onchange: (ev) => { loc.seuils = ev.target.checked; ctx.rafraichir(); } }), t('seuils')) : null,
+    el('span', { class: 'infos' }, s ? resumeSeuils(s) : t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien }))), graphe);
+  if (s) { tracerSeuils(ctx, graphe, m, e, s, lien); return; }
   const x = [].concat(e.x);
   const c = couleursTheme();
   const valeurs = [].concat(e.valeurs);

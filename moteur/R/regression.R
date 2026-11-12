@@ -909,6 +909,69 @@ effets_regression <- function(m) {
   })
 }
 
+# Les seuils d'une courbe (GAM) : son effet et sa pente sur une grille de 200 valeurs entre les
+# percentiles 2 et 98 de sa variable, avec des intervalles simultanés à 95 % (ils couvrent toute
+# la courbe, pas un point), tirés de 2000 jeux de coefficients (MASS::mvrnorm sur vcov du modèle)
+# avec une graine fixe ; les plages où la pente est nettement positive ou négative (sa bande
+# simultanée exclut 0), et celles où l'effet est nettement au-dessus ou au-dessous de sa moyenne.
+# Une courbe d'edf < 1,5 est presque une droite. C'est la démarche de Simpson (2018), celle des
+# scripts de seuils qui ont servi de modèle. `terme` : le nom du terme (noms_termes).
+seuils_courbe <- function(m, terme, tirages = 2000, niveau = 0.95, graine = 1) {
+  a <- m$ajustement
+  if (inherits(a, "gamm")) a <- a$gam
+  if (!inherits(a, "gam")) stop(traduire("Les seuils se lisent sur une courbe d'un modèle additif.", "Thresholds are read on a curve of an additive model."), call. = FALSE)
+  i <- match(as.character(terme)[1], m$noms_termes)
+  t <- if (!is.na(i)) m$termes[i]
+  if (is.null(t) || !t %in% m$lisses) stop(sprintf(traduire("« %s » n'est pas une courbe de ce modèle.", "\"%s\" is not a curve of this model."), terme), call. = FALSE)
+  d <- m$donnees
+  grille <- seq(stats::quantile(d[[t]], 0.02), stats::quantile(d[[t]], 0.98), length.out = 200)
+  nd <- d[rep(1, length(grille)), , drop = FALSE]
+  nd[[t]] <- grille
+  Xp <- stats::predict(a, nd, type = "lpmatrix")
+  js <- grep(sprintf("^s\\(%s\\)\\.", t), colnames(Xp))
+  # (une graine fixe : les mêmes bandes à chaque calcul ; le hasard de la session est rendu)
+  avant <- if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) get(".Random.seed", envir = globalenv())
+  on.exit(if (is.null(avant)) rm(".Random.seed", envir = globalenv()) else assign(".Random.seed", avant, envir = globalenv()))
+  set.seed(graine)
+  B <- MASS::mvrnorm(tirages, stats::coef(a), stats::vcov(a))
+  ajuste <- as.vector(Xp[, js, drop = FALSE] %*% stats::coef(a)[js])
+  simules <- Xp[, js, drop = FALSE] %*% t(B[, js, drop = FALSE])
+  # (centrées : des écarts à la moyenne de la courbe)
+  ajuste <- ajuste - mean(ajuste)
+  simules <- sweep(simules, 2, colMeans(simules))
+  bande <- function(estime, sims) {
+    et <- apply(sims, 1, stats::sd)
+    critique <- stats::quantile(apply(abs(sims - estime) / et, 2, max), niveau, names = FALSE)
+    list(bas = estime - critique * et, haut = estime + critique * et, critique = critique)
+  }
+  be <- bande(ajuste, simules)
+  # la grille dans les unités de la variable ; la pente par différences, dans ces unités
+  centre <- m$bloc$centre[match(t, m$termes)]
+  poids <- m$bloc$poids[match(t, m$termes)]
+  if (!isTRUE(poids > 0)) poids <- 1
+  x <- grille / poids + centre
+  h <- diff(x[1:2])
+  pente <- diff(ajuste) / h
+  bp <- bande(pente, apply(simules, 2, diff) / h)
+  milieux <- (x[-1] + x[-length(x)]) / 2
+  sens <- ifelse(bp$bas > 0, "hausse", ifelse(bp$haut < 0, "baisse", "ns"))
+  plages <- function(etat, xs, xs_fin = xs) {
+    r <- rle(etat)
+    fin <- cumsum(r$lengths)
+    debut <- c(1, utils::head(fin, -1) + 1)
+    garde <- r$values != "ns"
+    data.frame(sens = r$values[garde], de = xs[debut][garde], a = xs_fin[fin][garde], stringsAsFactors = FALSE)
+  }
+  position <- ifelse(be$bas > 0, "au_dessus", ifelse(be$haut < 0, "au_dessous", "ns"))
+  st <- summary(a)$s.table
+  ligne <- match(sprintf("s(%s)", t), rownames(st))
+  edf <- unname(st[ligne, 1])
+  list(terme = m$noms_termes[i], edf = edf, p = unname(st[ligne, 4]), lineaire = edf < 1.5, amplitude = diff(range(ajuste)),
+       x = x, effet = ajuste, bas = be$bas, haut = be$haut, x_pente = milieux, pente = pente, pente_bas = bp$bas, pente_haut = bp$haut,
+       sens = sens, plages_pente = plages(sens, milieux), plages_effet = plages(position, x),
+       critique_effet = be$critique, critique_pente = bp$critique, tirages = tirages, niveau = niveau, valeurs = d[[t]] / poids + centre)
+}
+
 # Le texte d'une section « Méthodes » pour une régression, de la même forme que celui des
 # autres modèles (methodes.R : texte_methodes) : données, modèle, validation croisée,
 # qualité, logiciel ; et les références.

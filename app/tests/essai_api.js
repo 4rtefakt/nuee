@@ -332,6 +332,8 @@ async function principal() {
       verifier(gam.type === 'GAM' && [].concat(gam.courbes.terme).length === 1, 'GAM, une courbe');
       const ef = await api('effets', { modele: gam.id });
       verifier([].concat(ef.effets).length === 2 && ef.effets[0].courbe === true && [].concat(ef.effets[0].x).length === 80, 'courbes d’effet');
+      const se = await api('seuils', { modele: gam.id, terme: 'sucre' });
+      verifier([].concat(se.x).length === 200 && [].concat(se.pente).length === 199 && se.edf > 0 && se.tirages === 2000, 'seuils d’une courbe (pente et bandes simultanées)');
       const cle = 'note_gout prédit';
       const pr = await api('predire', { modele: gam.id });
       verifier(pr.observations[cle].length === 120 && pr.observations[cle].every((x) => x !== null) && pr.observations.dans_modele.every(Boolean)

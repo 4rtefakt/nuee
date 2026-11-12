@@ -191,6 +191,42 @@ verifier("courbes d'effet : la courbe en x1, la droite en x2, avec leurs interva
          all(eg6[[1]]$haut >= eg6[[1]]$bas) && length(eg6[[2]]$x) == 80)
 ag6 <- apport_groupes(mg6)
 verifier("apport des termes d'un GAMM (réajusté en ML)", nrow(ag6) == 2 && all(!is.na(ag6$delta_aic)))
+# les seuils d'une courbe : la démarche des scripts qui ont servi de modèle, refaite ici sur
+# l'ajustement de mgcv fait à part (refr : mêmes termes dans le même ordre), avec la même graine
+s6 <- seuils_courbe(mg6, "x1")
+xs <- seq(quantile(tg$x1, .02), quantile(tg$x1, .98), length.out = 200)
+nds <- transform(tg[rep(1, 200), ], x1 = xs, site = factor(tg$site[1], levels = sort(unique(tg$site))))
+Xp <- predict(refr, nds, type = "lpmatrix")
+js <- grep("^s\\(x1\\)", colnames(Xp))
+set.seed(1)
+B <- MASS::mvrnorm(2000, coef(refr), vcov(refr))
+fit <- as.vector(Xp[, js] %*% coef(refr)[js])
+fit <- fit - mean(fit)
+sims <- sweep(Xp[, js] %*% t(B[, js]), 2, colMeans(Xp[, js] %*% t(B[, js])))
+se_f <- apply(sims, 1, sd)
+cf <- quantile(apply(abs(sims - fit) / se_f, 2, max), .95)
+der <- diff(fit) / diff(xs[1:2])
+dsim <- apply(sims, 2, diff) / diff(xs[1:2])
+se_d <- apply(dsim, 1, sd)
+cd <- quantile(apply(abs(dsim - der) / se_d, 2, max), .95)
+signe <- ifelse(der - cd * se_d > 0, "hausse", ifelse(der + cd * se_d < 0, "baisse", "ns"))
+verifier(sprintf("seuils d'une courbe = la démarche des scripts (2000 tirages, bandes simultanées ; %d plage(s) de pente nette)", nrow(s6$plages_pente)),
+         proche(s6$x, xs) && proche(s6$effet, fit, 1e-4) && proche(s6$bas, fit - cf * se_f, 1e-3) && proche(s6$pente, der, 1e-4) &&
+           proche(s6$pente_haut, der + cd * se_d, 1e-3) && identical(s6$sens, signe) && !s6$lineaire)
+set.seed(3)
+ts <- data.frame(nom = sprintf("S%03d", 1:300), x = runif(300), z = runif(300))
+ts$y <- 1 + 3 * pmax(0, ts$x - 0.5) + rnorm(300, sd = 0.3)
+ts$y_droit <- 1 + 2 * ts$x + rnorm(300, sd = 0.3)
+ps <- projet_depuis_tableau(ts, "seuil")
+seuil <- function(y) seuils_courbe(ajuster(ps, definir_modele(ps, "GAM", x = numeros(ps, c("x", "z")), y = numeros(ps, y), echelle = "none",
+                                                             lisses = numeros(ps, "x"))), "x")
+sc <- seuil("y")
+sd2 <- seuil("y_droit")
+verifier(sprintf("un seuil connu (pente nulle, puis 3 à partir de 0,5) : la pente devient nettement positive vers %.2f", sc$plages_pente$de[1]),
+         identical(sc$plages_pente$sens, "hausse") && sc$plages_pente$de[1] > 0.45 && sc$plages_pente$de[1] < 0.7 && !sc$lineaire)
+verifier(sprintf("une droite : edf %.2f, dite linéaire sous 1,5 seulement, une seule plage de hausse", sd2$edf),
+         sd2$edf < 2 && identical(sd2$lineaire, sd2$edf < 1.5) && identical(sd2$plages_pente$sens, "hausse"))
+verifier("des seuils sans courbe : refusés", grepl("courbe", refus(seuils_courbe(mg6, "x2"))))
 mg7 <- modele_g("GAM", "densite", c("x1", "x2"), famille = "tweedie", lisses = ug("x1"))
 verifier(sprintf("Tweedie (des zéros et des valeurs positives) : p = %.2f", mg7$resultat$parametre_loi$valeur),
          mg7$resultat$parametre_loi$valeur > 1 && mg7$resultat$parametre_loi$valeur < 2)
@@ -386,6 +422,18 @@ messages <- c("note_gout ~ sucre - 1" = "ordonnée", "note_gout ~ (sucre | verge
 mauvais <- names(messages)[!vapply(names(messages), function(f) grepl(messages[[f]], refus(lire_formule(p, f))), TRUE)]
 verifier("une formule que Nuée ne sait pas faire : refusée, en disant pourquoi", !length(mauvais))
 if (length(mauvais)) cat("          ", mauvais, sep = "\n          ")
+
+cat("Variables par groupe (Nouvelle variable)\n")
+pv2 <- variable_calculee(variable_calculee(p, "sucre_verger", "moyenne_groupe(sucre, verger)"), "sucre_intra", "ecart_groupe(sucre, verger)")
+attendu <- ave(df$sucre, df$verger, FUN = function(v) mean(v, na.rm = TRUE))
+verifier("moyenne par groupe et écart à la moyenne = ave(), les valeurs manquantes ignorées",
+         proche(colonne(pv2, numeros(pv2, "sucre_verger"), obs), attendu) && proche(colonne(pv2, numeros(pv2, "sucre_intra"), obs), df$sucre - attendu))
+pid <- projet_depuis_tableau(data.frame(nom = sprintf("O%d", 1:6), x = c(1, 2, 3, 10, NA, 14)), "ids")
+pid$observation_id_names <- c("Observation", "secteur")
+for (i in seq_along(pid$observations)) pid$observations[[i]]$ids <- c(pid$observations[[i]]$ids[1], c("a", "a", "a", "b", "b", "b")[i])
+pid <- variable_calculee(pid, "x_secteur", "group_mean(x, secteur)")
+verifier("un identifiant des observations fait les groupes d'une formule (le secteur)",
+         proche(colonne(pid, numeros(pid, "x_secteur"), numeros_observations(pid)), c(2, 2, 2, 12, 12, 12)))
 
 cat("Texte des méthodes\n")
 for (l in c("fr", "en")) {

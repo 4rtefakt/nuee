@@ -110,11 +110,23 @@ modifier_valeur <- function(projet, observation, variable, valeur) {
   projet
 }
 
+# La moyenne de x dans le groupe de chaque observation (les valeurs manquantes ignorées), et
+# l'écart de x à cette moyenne : pour une formule de Nouvelle variable, par exemple la moyenne
+# d'une variable par secteur, ou une réponse centrée par secteur (ce qui varie d'une année à
+# l'autre dans un secteur). `groupe` : une variable qualitative, un identifiant des observations,
+# ou interaction(site, secteur).
+moyenne_groupe <- function(x, groupe) stats::ave(as.numeric(x), as.character(groupe), FUN = function(v) if (all(is.na(v))) NA_real_ else mean(v, na.rm = TRUE))
+ecart_groupe <- function(x, groupe) as.numeric(x) - moyenne_groupe(x, groupe)
+group_mean <- moyenne_groupe
+group_deviation <- ecart_groupe
+
 # Nouvelle variable calculée par une formule R sur les variables du projet, appelées par leur
 # nom (entre `accents graves` si le nom contient des espaces ou des signes), par exemple :
 #   log10(polyphenols)   sucre / acidite        ifelse(poids >= 170, "gros", "petit")
-# Une variable qualitative y vaut le nom de sa catégorie. Un résultat texte donne une variable
-# qualitative, un résultat logique aussi (catégories FALSE et TRUE).
+#   moyenne_groupe(sucre, verger)               ecart_groupe(densite, secteur)
+# Une variable qualitative y vaut le nom de sa catégorie ; un identifiant des observations
+# (site, secteur...) y vaut ses valeurs, sauf si une variable a le même nom. Un résultat texte
+# donne une variable qualitative, un résultat logique aussi (catégories FALSE et TRUE).
 variable_calculee <- function(projet, nom, formule) {
   nom <- trimws(nom)
   if (!nzchar(nom)) stop(traduire("Donner un nom à la nouvelle variable", "Give the new variable a name"))
@@ -124,6 +136,14 @@ variable_calculee <- function(projet, nom, formule) {
   for (v in Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)) {
     x <- projet$donnees[, as.character(v$uid)]
     assign(as.character(v$ids[1]), if (length(v$categories)) as.character(v$categories)[x] else unname(x), envir = env)
+  }
+  noms_id <- as.character(projet$observation_id_names %||% character(0))
+  for (k in seq_along(noms_id)[-1]) {
+    n <- noms_id[k]
+    if (!nzchar(n) || startsWith(n, "$") || exists(n, envir = env, inherits = FALSE)) next
+    ids <- identifiants_observations(projet, k, obs)
+    ids[!is.na(ids) & !nzchar(trimws(ids))] <- NA
+    assign(n, ids, envir = env)
   }
   r <- tryCatch(eval(parse(text = formule), envir = env), error = function(e) {
     m <- conditionMessage(e)

@@ -739,6 +739,18 @@ DEMANDES <- list(
   # lue sans jamais être exécutée (formule.R)
   formule = function(q) list(formule = formule_reglages(projet(q$projet), q)),
   lire_formule = function(q) lire_formule(projet(q$projet), q$texte %||% "", q$type, q$famille),
+  # les seuils d'une courbe (regression.R : seuils_courbe), gardés avec le modèle
+  seuils = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    terme <- as.character(q$terme)[1]
+    s <- e$modele$seuils[[terme]]
+    if (is.null(s)) {
+      s <- seuils_courbe(e$modele, terme)
+      etat$modeles[[q$modele]]$modele$seuils[[terme]] <- s
+    }
+    c(list(modele = q$modele), s)
+  },
   effets = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
