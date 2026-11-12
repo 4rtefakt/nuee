@@ -224,6 +224,72 @@ ptt <- pairwise.t.test(complet$densite, complet$secteur, paired = TRUE, p.adjust
 pwt <- suppressWarnings(pairwise.wilcox.test(complet$densite, complet$secteur, paired = TRUE, p.adjust.method = "holm"))$p.value
 verifier("les mêmes années partout : = pairwise.t.test() et pairwise.wilcox.test() avec paired = TRUE, Holm",
          isTRUE(all.equal(rc$toutes$p_t_holm, ptt[!is.na(ptt)])) && isTRUE(all.equal(rc$toutes$p_w_holm, pwt[!is.na(pwt)])))
+# les paires dans chaque site (script 13, section 3 : les secteurs d'un même groupe) : S1, S2, S3
+# dans A, S4 et S5 dans B, S6 seul dans C ; S3 commence en 2004, S4 n'a pas de densité en 2005
+set.seed(8)
+sites <- c(S1 = "A", S2 = "A", S3 = "A", S4 = "B", S5 = "B", S6 = "C")
+lg <- expand.grid(annee = 2001:2010, secteur = names(sites), stringsAsFactors = FALSE)
+lg$site <- unname(sites[lg$secteur])
+lg$densite <- round(4 + rnorm(nrow(lg)) + 0.7 * (lg$secteur %in% c("S2", "S5")), 3)
+lg$effort <- round(runif(nrow(lg), 1, 3), 1)
+lg <- lg[!(lg$secteur == "S3" & lg$annee <= 2003), ]
+lg$densite[lg$secteur == "S4" & lg$annee == 2005] <- NA
+lg <- data.frame(nom = paste0("g", seq_len(nrow(lg))), lg[sample(nrow(lg)), c("secteur", "site", "annee", "densite", "effort")])
+pg <- projet_depuis_tableau(lg, "sites")
+gv <- function(nom) numeros(pg, nom)
+dans_site <- function(projet, ...) test_deux_variables(projet, gv("densite"), gv("secteur"), appariement = gv("annee"), ...)
+rg <- dans_site(pg, dans = gv("site"))
+ref <- do.call(rbind, lapply(split(names(sites), sites), function(s) {
+  if (length(s) < 2) return(NULL)
+  do.call(rbind, lapply(combn(s, 2, simplify = FALSE), function(cb) {
+    a <- lg[lg$secteur == cb[1] & !is.na(lg$densite), ]
+    b <- lg[lg$secteur == cb[2] & !is.na(lg$densite), ]
+    an <- intersect(a$annee, b$annee)
+    va <- a$densite[match(an, a$annee)]
+    vb <- b$densite[match(an, b$annee)]
+    tt <- t.test(vb, va, paired = TRUE)
+    data.frame(groupe = sites[[cb[1]]], a = cb[1], b = cb[2], n = length(an), bas = tt$conf.int[1], haut = tt$conf.int[2], p_t = tt$p.value,
+               p_w = suppressWarnings(wilcox.test(vb, va, paired = TRUE))$p.value, stringsAsFactors = FALSE)
+  }))
+}))
+verifier("dans chaque site : les paires de ses secteurs, site après site, = t.test() et wilcox.test(paired = TRUE), Holm sur ces paires seules",
+         identical(paste(rg$toutes$groupe, rg$toutes$a, rg$toutes$b), c("A S1 S2", "A S1 S3", "A S2 S3", "B S4 S5")) &&
+         identical(paste(rg$toutes$groupe, rg$toutes$a, rg$toutes$b), paste(ref$groupe, ref$a, ref$b)) && identical(rg$toutes$n, c(10L, 7L, 7L, 9L)) &&
+         isTRUE(all.equal(rg$toutes[c("bas", "haut", "p_t", "p_w")], ref[c("bas", "haut", "p_t", "p_w")], check.attributes = FALSE)) &&
+         isTRUE(all.equal(rg$toutes$p_t_holm, p.adjust(ref$p_t, "holm"))) && isTRUE(all.equal(rg$toutes$p_w_holm, p.adjust(ref$p_w, "holm"))))
+r0 <- dans_site(pg)
+verifier("le test de A et B ne change pas, le groupe des paires est nommé", identical(rg$tests, r0$tests) && nrow(r0$toutes) == 15 &&
+         identical(rg$dans$nom, "site") && is.null(rg$sans_groupe) && is.null(rg$note_comparaisons))
+pgi <- pg
+pgi$observation_id_names <- c("Observation", "site")
+for (i in seq_along(pgi$observations)) pgi$observations[[i]]$ids <- c(lg$nom[i], lg$site[i])
+verifier("un identifiant des observations (le site) fait les groupes : le même tableau", isTRUE(all.equal(dans_site(pgi, dans = "id:2")$toutes, rg$toutes)))
+deux_sites <- lg
+deux_sites$site[deux_sites$secteur == "S2" & deux_sites$annee == 2004] <- "B"
+verifier("un secteur dans deux sites : refusé, le secteur et les sites dits",
+         grepl("^S2 a des lignes pour plusieurs valeurs de site \\(A, B\\) : un niveau doit appartenir à un seul groupe$",
+               erreur(projet_depuis_tableau(deux_sites, "sites"), gv("densite"), gv("secteur"), appariement = gv("annee"), dans = gv("site"))))
+verifier("le groupe des paires : la clé, l'une des deux variables ou une mesure, refusé",
+         grepl("quatrième variable", erreur(pg, gv("densite"), gv("secteur"), appariement = gv("annee"), dans = gv("annee"))) &&
+         grepl("quatrième variable", erreur(pg, gv("densite"), gv("secteur"), appariement = gv("annee"), dans = gv("secteur"))) &&
+         grepl("variable qualitative ou un identifiant", erreur(pg, gv("densite"), gv("secteur"), appariement = gv("annee"), dans = gv("effort"))))
+sans <- lg
+sans$site[sans$secteur == "S6"] <- NA
+rs <- dans_site(projet_depuis_tableau(sans, "sites"), dans = gv("site"))
+verifier("un secteur sans site : listé, hors des paires", identical(rs$sans_groupe, "S6") && isTRUE(all.equal(rs$toutes, rg$toutes)))
+seuls <- lg
+seuls$site <- seuls$secteur
+rn <- dans_site(projet_depuis_tableau(seuls, "sites"), dans = gv("site"))
+verifier("chaque secteur seul dans son site : pas de paires, et la note le dit", is.null(rn$toutes) && grepl("Aucune valeur de site", rn$note_comparaisons))
+nombreux <- expand.grid(annee = 1:4, secteur = sprintf("s%02d", 1:60), stringsAsFactors = FALSE)
+nombreux$site <- sprintf("site%02d", (match(nombreux$secteur, sprintf("s%02d", 1:60)) + 1) %/% 2)
+nombreux$densite <- round(rnorm(nrow(nombreux), 5), 2)
+pn <- projet_depuis_tableau(data.frame(nom = paste0("n", seq_len(nrow(nombreux))), nombreux[c("secteur", "site", "annee", "densite")]), "nombreux")
+nv <- function(nom) numeros(pn, nom)
+rgn <- test_deux_variables(pn, nv("densite"), nv("secteur"), appariement = nv("annee"), dans = nv("site"))
+verifier("60 secteurs, 2 par site : les 30 paires de chaque site (au-delà de 50 niveaux, c'est le plus grand groupe qui compte)",
+         nrow(rgn$toutes) == 30 && all(rgn$toutes$n == 4) && is.null(rgn$note_comparaisons) &&
+         is.null(test_deux_variables(pn, nv("densite"), nv("secteur"), appariement = nv("annee"))$toutes))
 # en large : la même ligne porte les deux mesures (avant, après)
 set.seed(6)
 large <- data.frame(nom = paste0("o", 1:25), site = rep(c("A", "B"), length.out = 25), avant = round(rnorm(25, 5), 2))

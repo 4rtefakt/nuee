@@ -739,9 +739,10 @@ DEMANDES <- list(
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
                                                q$test %||% "welch", q$correction %||% "BH"),
-  # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux
+  # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux, et
+  # avec q$dans (une variable ou "id:k" : le site), toutes les paires de niveaux d'un même groupe
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y, appariement = q$appariement,
-                                                        niveaux = if (length(q$niveaux)) as.character(unlist(q$niveaux))),
+                                                        niveaux = if (length(q$niveaux)) as.character(unlist(q$niveaux)), dans = q$dans),
   # les niveaux d'une variable qualitative ou d'un identifiant ("id:k"), dans l'ordre des tests
   niveaux = function(q) list(niveaux = I(niveaux_a_tester(projet(q$projet), q$variable))),
   # l'apport de chaque groupe de termes d'une régression (regression.R), calculé une fois

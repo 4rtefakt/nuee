@@ -1520,18 +1520,24 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   const niveaux = parNiveaux ? cache.niveaux : [];
   if (parNiveaux && !niveaux.includes(L.a)) L.a = niveaux[0];
   if (parNiveaux && (!niveaux.includes(L.b) || L.b === L.a)) L.b = niveaux.find((c) => c !== L.a);
+  // with three levels or more, the table of all their pairs can keep to the levels of the same
+  // group (the sectors of a site): a qualitative variable or an ID other than the three above
+  const candidatsDans = parNiveaux && niveaux.length >= 3 ? options.filter(([u]) => u !== L.x && u !== L.y && u !== L.apparier && qualitative(u)) : [];
+  const dans = candidatsDans.some(([u]) => u === L.dans) ? L.dans : null;
   const barre = outils(modes,
     choix(t('tests_var1'), options, L.x, (x) => { L.x = lire(x); ctx.rafraichir(); }),
     choix(t('tests_var2'), options.filter(([u]) => u !== L.x), L.y, (x) => { L.y = lire(x); ctx.rafraichir(); }),
     candidates.length ? choix(t('apparier_par'), [['', t(mesures ? 'apparie_aucun_cor' : 'apparie_aucun')]].concat(candidates), apparie ? L.apparier : '',
       (x) => { L.apparier = x === '' ? null : x === 'observation' ? x : lire(x); ctx.rafraichir(); }) : null,
+    candidatsDans.length ? choix(t('paires_dans'), [['', t('paires_dans_aucun')]].concat(candidatsDans), dans ?? '',
+      (x) => { L.dans = x === '' ? null : lire(x); if (L.dans !== null) L.tableauPaires = 'toutes'; ctx.rafraichir(); }) : null,
     parNiveaux ? choix('A', niveaux.map((c) => [c, c]), L.a, (x) => { L.a = x; ctx.rafraichir(); }) : null,
     parNiveaux ? choix('B', niveaux.filter((c) => c !== L.a).map((c) => [c, c]), L.b, (x) => { L.b = x; ctx.rafraichir(); }) : null);
   // (the language too: R writes the sentence)
-  const cle = JSON.stringify(apparie ? [L.x, L.y, L.apparier, L.a, L.b, langueActuelle()] : [L.x, L.y, langueActuelle()]);
+  const cle = JSON.stringify(apparie ? [L.x, L.y, L.apparier, L.a, L.b, dans, langueActuelle()] : [L.x, L.y, langueActuelle()]);
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
-    const q = { projet: p.projet, x: L.x, y: L.y, ...(apparie ? { appariement: L.apparier, niveaux: parNiveaux ? [L.a, L.b] : null } : {}) };
+    const q = { projet: p.projet, x: L.x, y: L.y, ...(apparie ? { appariement: L.apparier, niveaux: parNiveaux ? [L.a, L.b] : null, ...(dans !== null ? { dans } : {}) } : {}) };
     try { cache.res = await ctx.demander('test_deux_variables', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
     // (another pair A, B keeps the test chosen for the table of all pairs)
@@ -1582,7 +1588,8 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     : r.type === 'apparie'
     ? [raison, t('apparie_paires', { n: r.n, cle: r.cle.nom, a: r.a, b: r.b }),
       nSeules ? t('apparie_seules', { n: nSeules, detail: seules.map(([g, l]) => `${g} (${liste(l)})`).join(langueActuelle() === 'fr' ? ' ; ' : '; ') }) : '',
-      r.manquantes ? t('apparie_manquantes', { n: r.manquantes, a: r.a, b: r.b }) : '', r.note_comparaisons || '']
+      r.manquantes ? t('apparie_manquantes', { n: r.manquantes, a: r.a, b: r.b }) : '',
+      r.sans_groupe ? t('paires_sans_groupe', { groupe: r.dans.nom, niveaux: liste([].concat(r.sans_groupe)) }) : '', r.note_comparaisons || '']
     : [raison, r.manquantes ? t('tests_manquantes', { n: r.manquantes }) : '', ecartes.length ? t('tests_ecartes', { groupes: liste(ecartes) }) : '',
       r.note_comparaisons || '']).filter(Boolean).join(' ');
   const copier = el('button', { class: 'icone-seule', title: t('copier_phrase'),
@@ -1620,11 +1627,13 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     tracer(ctx, graphe, traces, { title: { text: `${mesure ? `${mesure} · ` : ''}${r.b} − ${r.a}` }, showlegend: true, dragmode: 'zoom',
       xaxis: { title: { text: facteur }, type: 'category' }, yaxis: { title: { text: mesure } } });
     details.replaceChildren(tableTests);
-    // below: the pairs of A and B, or, with three levels or more, every pair of levels with the
-    // chosen test (a click on a test above), a click on a row comparing that pair
+    // below: the pairs of A and B, or, with three levels or more, every pair of levels (within
+    // each group, if one is chosen) with the chosen test (a click on a test above), a click on a
+    // row comparing that pair
     L.tableauPaires ??= 'paires';
     const toutes = Boolean(r.toutes) && L.tableauPaires === 'toutes';
-    const avant = r.toutes ? [choix('', [['paires', t('paires_ab', { a: r.a, b: r.b })], ['toutes', t('toutes_paires')]], L.tableauPaires,
+    const nomToutes = r.dans ? t('paires_dans_groupe', { groupe: r.dans.nom }) : t('toutes_paires');
+    const avant = r.toutes ? [choix('', [['paires', t('paires_ab', { a: r.a, b: r.b })], ['toutes', nomToutes]], L.tableauPaires,
       (x) => { L.tableauPaires = x; ctx.rafraichir(); })] : [el('b', {}, t('paires'))];
     if (toutes) {
       const tp = (k) => [].concat(r.toutes[k]);
@@ -1632,8 +1641,8 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
       const sous = (k) => (i) => tp(k)[i] !== null && tp(k)[i] <= 0.05;
       L.tableToutes ??= {};
       tableau(bas, ctx, L.tableToutes, {
-        n: tp('a').length, nom: t('toutes_paires'), avant,
-        colonnes: [{ cle: 'a', titre: 'A' }, { cle: 'b', titre: 'B' }, num('n', 'n', 0)].concat(L.test === 'wilcoxon'
+        n: tp('a').length, nom: nomToutes, avant,
+        colonnes: [...(r.dans ? [{ cle: 'groupe', titre: r.dans.nom }] : []), { cle: 'a', titre: 'A' }, { cle: 'b', titre: 'B' }, num('n', 'n', 0)].concat(L.test === 'wilcoxon'
           ? [num('mediane', t('difference_mediane_ba'), 3), num('p_w', 'p', 4, valeurP), num('p_w_holm', t('p_holm'), 4, valeurP, sous('p_w_holm'))]
           : [num('difference', t('difference_ba'), 3), num('bas', t('ic_bas'), 3), num('haut', t('ic_haut'), 3), num('p_t', 'p', 4, valeurP),
             num('p_t_holm', t('p_holm'), 4, valeurP, sous('p_t_holm'))]),

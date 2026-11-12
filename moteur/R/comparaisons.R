@@ -86,14 +86,15 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
 # Avec `appariement`, un test apparié :
 #   - une mesure et une variable qualitative, appariées par une clé (une variable ou "id:k" :
 #     l'année par exemple), entre deux de ses niveaux (`niveaux` : A et B, les deux premiers par
-#     défaut) : voir comparer_apparies() ;
+#     défaut) : voir comparer_apparies(). Avec `dans` (une variable qualitative ou "id:k" : le
+#     site), toutes les paires de niveaux se limitent à celles d'un même groupe ;
 #   - deux mesures, appariées par l'observation (appariement = "observation" : la même ligne
 #     porte les deux valeurs, avant et après par exemple) : y − x, sur les observations où les
 #     deux sont connues.
 # Renvoie le type de comparaison, les tests (statistique, degrés de liberté, p, taille de
 # l'effet), le test conseillé et pourquoi (raison : "attendus", "normalite", "variances" ou
 # ""), ce qu'il faut pour les graphiques, et une phrase qui donne le résultat du test conseillé.
-test_deux_variables <- function(projet, x, y, observations = NULL, appariement = NULL, niveaux = NULL) {
+test_deux_variables <- function(projet, x, y, observations = NULL, appariement = NULL, niveaux = NULL, dans = NULL) {
   obs <- observations %||% numeros_observations(projet)
   if (identical(as.character(x), as.character(y))) stop(traduire("Choisissez deux variables différentes", "Choose two different variables"))
   a <- valeurs_a_tester(projet, x, obs)
@@ -125,7 +126,17 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
       k <- valeurs_a_tester(projet, appariement, obs)
       mesure <- if (a$qualitative) b else a
       groupe <- if (a$qualitative) a else b
-      r <- comparer_apparies(mesure$valeurs, groupe$valeurs, as.character(k$valeurs), niveaux, unname(projet$noms_obs[as.character(obs)]), k$nom)
+      g <- NULL
+      if (length(dans)) {
+        if (as.character(dans) %in% as.character(c(x, y, appariement))) {
+          stop(traduire("Le groupe des paires doit être une quatrième variable", "The group of the pairs must be a fourth variable"))
+        }
+        g <- valeurs_a_tester(projet, dans, obs)
+        if (!g$qualitative) stop(traduire("Les paires se groupent par une variable qualitative ou un identifiant", "Pairs are grouped by a qualitative variable or an ID"))
+      }
+      r <- comparer_apparies(mesure$valeurs, groupe$valeurs, as.character(k$valeurs), niveaux, unname(projet$noms_obs[as.character(obs)]), k$nom,
+                             g$valeurs, g$nom)
+      if (!is.null(g)) r$dans <- g[c("uid", "nom", "qualitative")]
     }
     r <- c(list(x = a[c("uid", "nom", "qualitative")], y = b[c("uid", "nom", "qualitative")], cle = k[c("uid", "nom", "qualitative")]), r)
     r$phrase <- phrase_test(r)
@@ -342,8 +353,11 @@ correler <- function(x, y, noms) {
 # deux niveaux ont toutes deux font les paires, les autres lignes restent sans partenaire. Une
 # clé ne désigne qu'une ligne par niveau, et il faut au moins trois paires. Les tests sont ceux
 # de tests_apparies() ; avec trois niveaux ou plus, toutes leurs paires aussi
-# (paires_niveaux()).
-comparer_apparies <- function(x, f, cle, niveaux, noms, nom_cle) {
+# (paires_niveaux()), ou, avec le groupe de chaque ligne (groupe_ligne, un facteur : le site ;
+# nommé nom_groupe), celles des niveaux d'un même groupe : un niveau est du groupe que portent
+# ses lignes, ceux qui n'en portent aucun sont listés (sans_groupe), et un niveau aux lignes de
+# plusieurs groupes est refusé.
+comparer_apparies <- function(x, f, cle, niveaux, noms, nom_cle, groupe_ligne = NULL, nom_groupe = NULL) {
   presents <- levels(droplevels(f))
   niveaux <- as.character(unlist(niveaux))
   if (!length(niveaux)) niveaux <- presents[1:2]
@@ -376,10 +390,29 @@ comparer_apparies <- function(x, f, cle, niveaux, noms, nom_cle) {
               paires = list(cle = communes, a = x[ja], b = x[jb], difference = x[jb] - x[ja], nom_a = noms[ja], nom_b = noms[jb]),
               sans_partenaire = list(a = ordre(setdiff(cle[ia], communes)), b = ordre(setdiff(cle[ib], communes)))),
          tests_apparies(x[ja], x[jb], niveaux[1], niveaux[2]))
-  if (length(presents) > MAX_GROUPES_COMPARAISONS) {
+  if (length(presents) < 3) return(r)
+  groupes <- NULL
+  if (!is.null(groupe_ligne)) {
+    groupes <- factor(vapply(presents, function(l) {
+      v <- levels(droplevels(groupe_ligne[f %in% l]))
+      if (length(v) > 1) {
+        stop(sprintf(traduire("%s a des lignes pour plusieurs valeurs de %s (%s) : un niveau doit appartenir à un seul groupe",
+                              "%s has rows for several values of %s (%s): a level must belong to a single group"),
+                     l, nom_groupe, paste(c(utils::head(v, 5), if (length(v) > 5) "…"), collapse = ", ")))
+      }
+      if (length(v)) v else NA_character_
+    }, "", USE.NAMES = FALSE), levels = levels(groupe_ligne))
+    if (anyNA(groupes)) r$sans_groupe <- presents[is.na(groupes)]
+  }
+  # (dans des groupes, le plus grand compte : ce sont ses paires qu'il faudrait lire)
+  taille <- if (is.null(groupes)) length(presents) else max(0, table(groupes))
+  if (taille > MAX_GROUPES_COMPARAISONS) {
     r$note_comparaisons <- sprintf(traduire("Plus de %d groupes : pas de comparaisons deux à deux.", "More than %d groups: no pairwise comparisons."),
                                    MAX_GROUPES_COMPARAISONS)
-  } else if (length(presents) > 2) r$toutes <- paires_niveaux(x, f, cle, presents)
+  } else if (taille < 2) {
+    r$note_comparaisons <- sprintf(traduire("Aucune valeur de %s ne réunit deux niveaux : pas de paires à comparer.",
+                                            "No value of %s holds two levels: no pairs to compare."), nom_groupe)
+  } else r$toutes <- paires_niveaux(x, f, cle, presents, groupes)
   r
 }
 
@@ -418,11 +451,18 @@ tests_apparies <- function(va, vb, a, b) {
 # et ces valeurs corrigées par Holm (1979) sur les paires testées. Quand tous les niveaux ont
 # les mêmes clés, ce sont celles de pairwise.t.test() et pairwise.wilcox.test() avec
 # paired = TRUE. Une paire de moins de trois clés communes, ou dont un niveau a une clé deux
-# fois, n'est pas testée.
-paires_niveaux <- function(x, f, cle, presents) {
+# fois, n'est pas testée. Avec le groupe de chaque niveau (`groupes`, un facteur ; NA hors des
+# groupes), seulement les paires de niveaux d'un même groupe, groupe après groupe (colonne
+# groupe), Holm sur ces paires-là.
+paires_niveaux <- function(x, f, cle, presents, groupes = NULL) {
   ok <- !is.na(x) & !is.na(cle)
   par <- lapply(presents, function(l) { i <- which(ok & f %in% l); stats::setNames(x[i], cle[i]) })
   pg <- paires_groupes(length(presents))
+  if (!is.null(groupes)) {
+    garde <- which(!is.na(groupes[pg$a]) & groupes[pg$a] == groupes[pg$b])
+    garde <- garde[order(as.integer(groupes[pg$a[garde]]))]
+    pg <- list(a = pg$a[garde], b = pg$b[garde])
+  }
   lignes <- lapply(seq_along(pg$a), function(j) {
     va <- par[[pg$a[j]]]
     vb <- par[[pg$b[j]]]
@@ -437,6 +477,7 @@ paires_niveaux <- function(x, f, cle, presents) {
                p_t = champ_test(tt, "p.value"), mediane = if (length(d)) stats::median(d) else NA_real_, p_w = champ_test(w, "p.value"))
   })
   res <- cbind(data.frame(a = presents[pg$a], b = presents[pg$b], stringsAsFactors = FALSE), do.call(rbind, lignes))
+  if (!is.null(groupes)) res <- cbind(data.frame(groupe = as.character(groupes[pg$a]), stringsAsFactors = FALSE), res)
   res$p_t_holm <- stats::p.adjust(res$p_t, "holm")
   res$p_w_holm <- stats::p.adjust(res$p_w, "holm")
   res
