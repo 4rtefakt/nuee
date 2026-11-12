@@ -1313,8 +1313,8 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
 // Series in time (Plots › Series): a variable over time, a line per group (the sector) and a
 // small plot per larger group (the site), in a grid with shared axes: the sectors of each site
 // compared year by year. R gives the long data (moteur/R/series.R), one row per observation with
-// a known time and value. Within a line, times one step apart (R's `pas`, the smallest gap
-// between two times) are joined, and a missing time breaks the line; a line that has the same
+// a known time and value. Within a line, times one step apart (the line's own step, the smallest
+// gap between its times) are joined, and a missing time breaks the line; a line that has the same
 // time twice is no series: its points are left unjoined (R counts them, a note says so).
 // Colours go by line within each panel (the palette, then dashes), the legend grouped by panel,
 // so that 30 sectors stay readable. Optionally the mean of each panel's lines (a thicker line), a
@@ -1379,8 +1379,13 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   const nomsP = parPanneaux ? liste(r.niveaux_panneaux) : [null];
   const nomsL = parLignes ? liste(r.niveaux_lignes) : [null];
   const montre = (y) => y !== null && (!loc.log || y > 0);  // (a log scale has no place for values ≤ 0)
-  // a line's points (indices, sorted by time), with a null where it breaks
-  const avecTrous = (idx, tps) => idx.flatMap((i, m) => (m && !(r.pas && Math.abs(tps[i] - tps[idx[m - 1]] - r.pas) <= 1e-9 * Math.max(1, r.pas)) ? [null, i] : [i]));
+  // a line's points (indices, sorted by time), with a null where it breaks: its own step, the
+  // smallest gap between its times (a sector surveyed every other year stays joined while another
+  // is surveyed every year), a larger gap breaks it
+  const avecTrous = (idx, tps) => {
+    const pas = idx.slice(1).reduce((min, i, m) => { const g = tps[i] - tps[idx[m]]; return g > 0 && g < min ? g : min; }, Infinity);
+    return idx.flatMap((i, m) => (m && !(Number.isFinite(pas) && Math.abs(tps[i] - tps[idx[m - 1]] - pas) <= 1e-9 * Math.max(1, pas)) ? [null, i] : [i]));
+  };
   const de = (valeurs, suite) => suite.map((i) => (i === null ? null : valeurs[i]));
   // the grid: the panels row by row; the bottom-left one has the main axes, and their titles
   const nP = nomsP.length;
@@ -1562,7 +1567,7 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
     choix(t('test'), tests, loc.test, (x) => { loc.test = x; ctx.rafraichir(); }),
     choix(t('correction'), [['BH', t('correction_bh')], ['bonferroni', 'Bonferroni'], ['aucune', t('aucune')]], loc.correction, (x) => { loc.correction = x; ctx.rafraichir(); }),
     ...fin);
-  const cle = JSON.stringify([v.uid, deux ? [loc.a, loc.b] : null, loc.test, loc.correction, apparie ? loc.apparier : null]);
+  const cle = JSON.stringify([v.uid, deux ? [loc.a, loc.b] : null, loc.test, loc.correction, apparie ? loc.apparier : null, langueActuelle()]);
   if (loc.cle !== cle) {
     conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
     // (an error, a key repeated within a class, shows under the selectors, which stay)
@@ -2463,13 +2468,18 @@ async function rendreACF(conteneur, ctx, p, loc) {
   const variables = [].concat(proj.variables || []);
   const temps = ids.concat(variables.filter((v) => !v.qualitative).map((v) => [`var:${v.uid}`, v.nom]));
   const simples = ids.concat(variables.filter((v) => v.qualitative).map((v) => [`var:${v.uid}`, v.nom]));
-  const groupes = [['', t('aucun')]].concat(niveaux.length ? [['effets', niveaux.join(' / ')]] : [], simples);
+  // (a grouping's own name: an ID's entry reads "site (ID)"; the variable or the ID of a single
+  // random effect is the same groups as "its random effects", and a random effect's level adds
+  // nothing within them)
+  const nomDe = ([k, n]) => (k.startsWith('id:') ? k.slice(3) : n);
+  const groupes = [['', t('aucun')]].concat(niveaux.length ? [['effets', niveaux.join(' / ')]] : [],
+    simples.filter((s) => !(niveaux.length === 1 && nomDe(s) === niveaux[0])));
   // by default a time named like one (a year, a date...), and the groups of the model's random effects;
   // a group can take a finer level within it (the sector within its site, when sector names repeat)
   if (!temps.some(([k]) => k === loc.temps)) loc.temps = (temps.find(([, n]) => /ann[ée]e|year|date|temps|time|saison|season/i.test(n)) || [''])[0];
   if (!groupes.some(([k]) => k === loc.groupe)) loc.groupe = niveaux.length ? 'effets' : '';
-  const emboitable = !!loc.groupe && loc.groupe !== 'effets';
-  const fins = [['', '—']].concat(simples.filter(([k]) => k !== loc.groupe));
+  const emboitable = !!loc.groupe;
+  const fins = [['', '—']].concat(simples.filter((s) => s[0] !== loc.groupe && !(loc.groupe === 'effets' && niveaux.includes(nomDe(s)))));
   if (!emboitable || !fins.some(([k]) => k === loc.groupe_fin)) loc.groupe_fin = '';
   if (!['pearson', 'deviance'].includes(loc.type)) loc.type = 'pearson';
   const spec = (v) => (v.startsWith('id:') ? { by: 'id', id: v.slice(3) } : { by: 'variable', variable: Number(v.slice(4)) });
@@ -2479,13 +2489,16 @@ async function rendreACF(conteneur, ctx, p, loc) {
     mgcv ? el('span', { title: t('acf_type_aide') }, choix(t('residus'), [['pearson', t('acf_pearson')], ['deviance', t('acf_deviance')]], loc.type,
       (v) => { loc.type = v; ctx.rafraichir(); })) : null);
   if (!car1 && !loc.temps) { conteneur.replaceChildren(barre, el('p', { class: 'infos' }, t('acf_choisir_temps'))); return; }
-  const cle = JSON.stringify(car1 ? [m.id] : [m.id, loc.temps, loc.groupe, loc.groupe_fin, mgcv ? loc.type : '']);
+  // (with the language, for an engine error, and the project's revision: without CAR1, the time and
+  // the groups are read in the project's current data)
+  const cle = JSON.stringify([...(car1 ? [m.id] : [m.id, loc.temps, loc.groupe, loc.groupe_fin, mgcv ? loc.type : '']), langueActuelle(), proj.revision ?? null]);
   const cache = ((loc.cache ??= {}).acf ??= {});  // (loc.cache isn't saved with the session)
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
     try {
       cache.res = await ctx.demander('autocorrelation_residus', car1 ? { modele: m.id } : { modele: m.id, temps: spec(loc.temps), type: loc.type,
-        groupe: loc.groupe === 'effets' ? { by: 'effets' } : emboitable ? [loc.groupe, loc.groupe_fin].filter(Boolean).map(spec) : null });
+        groupe: loc.groupe === 'effets' ? [{ by: 'effets' }].concat(loc.groupe_fin ? [spec(loc.groupe_fin)] : [])
+          : emboitable ? [loc.groupe, loc.groupe_fin].filter(Boolean).map(spec) : null });
       cache.erreur = null;
     } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;

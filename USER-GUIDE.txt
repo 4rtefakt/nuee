@@ -383,16 +383,16 @@ Plots › Series (or in the explorer, under the project): a variable over time, 
 series by sector, one page per site. Choose the variable, the time (a numeric variable, or an
 ID made of numbers like the year), the lines (a qualitative variable or an ID: the sector)
 and, optionally, the panels (the site): one small plot per panel, in a grid with shared axes.
-Within a line, times that follow each other are joined; a missing time breaks the line, so a
-year without a count shows. Colours go by line within each panel and the legend is grouped by
-panel (a click on an entry hides its line): it stays readable with 30 sectors. Optionally:
-the mean of each panel's lines, time by time (a thick line), a log scale (values ≤ 0 aren't
-shown on it) and events, times typed as "2015; 2019", drawn as dashed lines in every panel.
-Hovering gives the observation's name, the time and the value; a click or a box selects
-observations, also in the project's models when the selection is shared with them.
-Observations without a time, a value, a line or a panel are left out and counted; a line
-with the same time twice (sectors chosen without their site) is flagged and shown as points.
-Right-click: copy or save the image.
+Within a line, times that follow each other at its own step (its smallest gap) are joined, so a
+sector counted every other year stays one line; a missing time breaks the line, so a year
+without a count shows. Colours go by line within each panel and the legend is grouped by panel
+(a click on an entry hides its line): it stays readable with 30 sectors. Optionally: the mean
+of each panel's lines, time by time (a thick line), a log scale (values ≤ 0 aren't shown on it)
+and events, times typed as "2015; 2019", drawn as dashed lines in every panel. Hovering gives
+the observation's name, the time and the value; a click or a box selects observations, also in
+the project's models when the selection is shared with them. Observations without a time, a
+value, a line or a panel are left out and counted; a line with the same time twice (sectors
+chosen without their site) is flagged and shown as points. Right-click: copy or save the image.
 
 Statistical tests
 -----------------
@@ -485,7 +485,9 @@ and the result comes as a sentence ready for a report. The plot shows the gaps o
 event and each period's mean; until an event is entered, the gaps alone. The times are treated
 as independent: successive gaps that resemble each other (autocorrelation) make the p value
 too small. A mixed model accounts for it: y ~ period × impact + (1 | unit), with CAR1 in time
-if needed (New model › Linear mixed model, the period and the impact made as new variables).
+if needed (New model › Linear mixed model). Make the period and the impact as new variables
+worth 0 or 1, ifelse(year >= 2007, 1, 0) and ifelse(sector %in% c("S1", "S2"), 1, 0): a
+regression doesn't take a cross term with a qualitative variable yet.
 
 Linear, generalized and mixed models
 ------------------------------------
@@ -562,14 +564,15 @@ band ±1.96/√n of each lag (n: its pairs), as nlme draws it. A model with CAR1
 and groups and shows two series: its residuals without the autocorrelation, and its normalized
 residuals, which show none left when CAR1 is enough (the note reads lag 1). For another model,
 choose the time (an ID or a quantitative variable: the year) and the groups: by default those
-of its random effects (the sector within its site), otherwise an ID or a qualitative variable,
-with a finer level within it if needed (the sector, when its names repeat from one site to
-another). Beyond the band at lag 1, the note suggests a CAR1 autocorrelation, to compare by
-AIC. For a GLM or a GAM, Pearson residuals ((y − fitted) / √variance) or deviance residuals
-(each observation's signed share of the deviance), the same for the normal distribution; a
-mixed model's residuals are those within its groups (given the random effects), as in
-nlme::ACF. Nuée computes the normalized residuals in each group's time order: nlme's own are
-right only on rows sorted by group, then by time. File › Model report can include the plot.
+of its random effects (the sector within its site), otherwise an ID or a qualitative variable;
+either can take a finer level within it (the sector within the site of a random effect, or a
+sector whose names repeat from one site to another). Beyond the band at lag 1, the note
+suggests a CAR1 autocorrelation, to compare by AIC. For a GLM or a GAM, Pearson residuals
+((y − fitted) / √variance) or deviance residuals (each observation's signed share of the
+deviance), the same for the normal distribution; a mixed model's residuals are those within its
+groups (given the random effects), as in nlme::ACF. Nuée computes the normalized residuals in
+each group's time order: nlme's own are right only on rows sorted by group, then by time.
+File › Model report can include the plot.
 Plots › AIC selection (also under each regression in the explorer): which variables to keep.
 Each combination of the model's groups of terms (the blocks of the Block column, otherwise the
 variables), from the null model to the full model, is fitted by ML on the same observations and
@@ -607,8 +610,8 @@ linear regressions and GLMs it is the difference of their logLik (of their devia
 Poisson or binomial GLM, as anova(glm1, glm2, test = "Chisq")). Random effects and
 autocorrelation aren't tested this way: a zero variance is on the boundary of its range,
 where the χ² distribution no longer holds; compare them by AIC. With curves or mgcv random
-effects, the df are edf and the test is approximate, as the table says. 50 pairs at most; the
-table's search box finds those of a model.
+effects, the df are edf and the test is approximate, as the table says. Every nested pair is
+listed (2000 at most); the table's search box finds those of a model.
 File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
 the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
 Model report: the summary and the coefficients, each term's effect, each curve's thresholds,

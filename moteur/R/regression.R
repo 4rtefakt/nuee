@@ -373,6 +373,12 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
     decalage <- log(effort)
   }
   connu <- !is.na(y) & stats::complete.cases(bruts[, simples, drop = FALSE])
+  # (un modèle choisi par la sélection par AIC, pour son ajustement : les observations où manque un
+  # terme du modèle complet, ou que sa transformation rend manquant, restent de côté, comme dans
+  # celui-ci ; un jeu de test garde les siennes ; definition_selection)
+  complets <- if (is.null(imposees) && length(d$termes_complets)) termes_regression(d$termes_complets)
+  simples_complets <- vapply(complets, function(t) length(t$variables) == 1, TRUE)
+  if (length(complets)) connu <- connu & stats::complete.cases(valeurs_bloc(projet, complets, obs)[, simples_complets, drop = FALSE])
   for (v in niveaux) connu <- connu & !is.na(v)
   if (!is.null(temps)) connu <- connu & !is.na(temps)
   if (!is.null(dans)) connu <- connu & !is.na(dans)
@@ -390,6 +396,7 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   if (!is.null(dans)) cadre$gc <- factor(dans[connu])  # (le groupe de l'autocorrélation, plus fin que les effets aléatoires)
   if (!is.null(decalage)) cadre$decalage <- decalage[connu]
   complet <- stats::complete.cases(cadre)  # (un terme croisé que sa transformation rend manquant)
+  if (!all(simples_complets)) complet <- complet & stats::complete.cases(construire_bloc(projet, complets, garde)$X)  # (de même dans le modèle complet)
   list(cadre = cadre[complet, , drop = FALSE], observations = garde[complet], exclues = setdiff(obs, garde[complet]),
        termes = if (K) paste0("t", seq_len(K)) else character(0), noms = if (K) bloc$noms else character(0), bloc = bloc)
 }
@@ -709,6 +716,11 @@ selection_aic <- function(m, d, limite = 256) {
 # manquante d'une variable retirée en écartait peut-être, qui restent écartées).
 definition_selection <- function(d, m, choisis) {
   choisis <- as.character(unlist(choisis))
+  # (les termes du modèle complet, ou ceux du modèle d'où il venait lui-même : une observation où
+  # l'un manque reste de côté, comme dans celui-ci, et le modèle choisi est ajusté sur les lignes où
+  # la sélection l'a comparé aux autres ; la liste des observations ne change pas, ni les groupes de
+  # la validation croisée « à tour de rôle », qui sont des rangs dans cette liste)
+  complets <- if (length(d$termes_complets)) d$termes_complets else d$x
   inconnus <- setdiff(choisis, names(groupes_modele(m)))
   if (length(inconnus)) stop(sprintf(traduire("Groupe de termes inconnu dans ce modèle : %s", "Unknown group of terms in this model: %s"),
                                      paste(inconnus, collapse = ", ")), call. = FALSE)
@@ -722,10 +734,8 @@ definition_selection <- function(d, m, choisis) {
   if (!length(d$lisses)) d$lisses <- NULL
   d$k_courbes <- d$k_courbes[names(d$k_courbes) %in% as.character(d$lisses)]
   if (!length(d$k_courbes)) d$k_courbes <- NULL
-  if (length(m$exclues)) {
-    d$exclues <- c(d$exclues, setdiff(d$observations, m$observations))
-    d$observations <- intersect(d$observations, m$observations)
-  }
+  d$termes_complets <- complets
+  d$selection_origine <- list(modele = as.character(d$name %||% ""), groupes = choisis, n = length(m$observations))
   d
 }
 
@@ -1182,8 +1192,18 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
       cite("zuur", if (fr) "Les coefficients et les variances ont été estimés par maximum de vraisemblance restreint (REML), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance (ML ; Zuur et al., 2009)."
                    else "Coefficients and variances were estimated by restricted maximum likelihood (REML), and models compared by the AIC of maximum-likelihood fits (ML; Zuur et al., 2009)."))
   }
-  # (la sélection par l'AIC, quand elle a été faite sur ce modèle)
+  # (la sélection par l'AIC, quand elle a été faite sur ce modèle ; un modèle qu'elle a choisi le dit)
   if (isTRUE(m$selection_aic$K > 0)) p2 <- c(p2, cite("burnham", phrase_selection_aic(m, fr, nombre, liste, guillemets)))
+  if (!is.null(d$selection_origine)) {
+    o <- d$selection_origine
+    groupes <- as.character(unlist(o$groupes))
+    # (les mêmes observations tant qu'aucune n'a été exclue depuis : ses lignes sont celles du modèle complet)
+    memes <- isTRUE(as.numeric(o$n)[1] == length(m$observations))
+    p2 <- c(p2, cite("burnham", sprintf(if (fr) "Ses termes sont ceux que la sélection par l'AICc du modèle %s a retenus (%s)%s (Burnham et Anderson, 2002)."
+                                        else "Its terms are those the AICc selection of model %s kept (%s)%s (Burnham & Anderson, 2002).",
+                                        guillemets(as.character(o$modele)[1]), if (length(groupes)) liste(groupes) else (if (fr) "aucun : le modèle nul" else "none: the null model"),
+                                        if (!memes) "" else if (fr) ", sur les mêmes observations que lui" else ", on the same observations as that model")))
+  }
 
   # --- validation croisée
   par <- if (length(d$groupes_vc$by)) as.character(d$groupes_vc$by) else ""

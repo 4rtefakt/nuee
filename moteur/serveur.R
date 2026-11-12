@@ -798,14 +798,18 @@ DEMANDES <- list(
   },
   # l'autocorrélation des résidus d'une régression dans le temps (regression_diagnostics.R) ; sans
   # CAR1, q$temps : un groupement ({ by: "id" | "variable" }) ; q$groupe : un ou plusieurs
-  # (emboîtés), { by: "effets" } (ses effets aléatoires) ou rien ; q$type : les résidus d'un modèle de mgcv
+  # (emboîtés, du plus large au plus fin), dont { by: "effets" } (ses effets aléatoires), ou rien ;
+  # q$type : les résidus d'un modèle de mgcv
   autocorrelation_residus = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     groupement <- function(s, tous = FALSE) {
       if (!length(s$by)) return(NULL)
-      if (identical(as.character(s$by)[1], "effets")) return(list(by = "effets"))
-      if (tous) specs_groupement(s) else specs_groupement(s)[[1]]
+      # (plusieurs groupements arrivent en data.frame, une ligne chacun)
+      if (is.data.frame(s)) s <- lapply(seq_len(nrow(s)), function(i) as.list(s[i, , drop = FALSE]))
+      if (!is.null(s$by)) s <- list(s)
+      specs <- lapply(s, function(x) if (identical(as.character(x$by)[1], "effets")) list(by = "effets") else specs_groupement(x)[[1]])
+      if (tous) specs else specs[[1]]
     }
     c(list(modele = q$modele), autocorrelation_residus(projet(e$projet), e$modele, groupement(q$temps), groupement(q$groupe, TRUE), q$type %||% "pearson"))
   },

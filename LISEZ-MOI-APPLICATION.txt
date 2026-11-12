@@ -405,17 +405,18 @@ Graphiques › Séries (ou dans l'explorateur, sous le projet) : une variable au
 comme des figures de séries par secteur, une page par site. Choisir la variable, le temps (une
 variable numérique, ou un identifiant fait de nombres comme l'année), les lignes (une variable
 qualitative ou un identifiant : le secteur) et, au choix, les panneaux (le site) : un petit
-graphique par panneau, en grille, aux axes communs. Dans une ligne, les temps qui se suivent
-sont reliés ; un temps manquant coupe la ligne, et l'année sans comptage se voit. Les couleurs
-vont par ligne dans chaque panneau, la légende est rangée par panneau (un clic sur une entrée
-cache sa ligne) : elle reste lisible avec 30 secteurs. Au choix : la moyenne des lignes de
-chaque panneau, temps par temps (trait épais), une échelle log (les valeurs ≤ 0 n'y sont pas
-montrées) et des événements, des temps tapés « 2015 ; 2019 », en tirets dans chaque panneau.
-Le survol donne le nom de l'observation, le temps et la valeur ; un clic ou un cadre
-sélectionne des observations, qui le sont aussi dans les modèles du projet quand la sélection
-leur est commune. Les observations sans temps, sans valeur, sans ligne ou sans panneau sont
-laissées de côté et comptées ; une ligne qui a deux fois le même temps (des secteurs choisis
-sans leur site) est signalée et montrée en points. Clic droit : copier ou enregistrer l'image.
+graphique par panneau, en grille, aux axes communs. Dans une ligne, les temps qui se suivent à
+son propre pas (son plus petit écart) sont reliés, et un secteur compté une année sur deux
+reste une ligne ; un temps manquant coupe la ligne, et l'année sans comptage se voit. Les
+couleurs vont par ligne dans chaque panneau, la légende est rangée par panneau (un clic sur une
+entrée cache sa ligne) : elle reste lisible avec 30 secteurs. Au choix : la moyenne des lignes
+de chaque panneau, temps par temps (trait épais), une échelle log (les valeurs ≤ 0 n'y sont pas
+montrées) et des événements, des temps tapés « 2015 ; 2019 », en tirets dans chaque panneau. Le
+survol donne le nom de l'observation, le temps et la valeur ; un clic ou un cadre sélectionne
+des observations, qui le sont aussi dans les modèles du projet quand la sélection leur est
+commune. Les observations sans temps, sans valeur, sans ligne ou sans panneau sont laissées de
+côté et comptées ; une ligne qui a deux fois le même temps (des secteurs choisis sans leur
+site) est signalée et montrée en points. Clic droit : copier ou enregistrer l'image.
 
 Tests statistiques
 ------------------
@@ -517,8 +518,10 @@ rapport. Le graphique montre les écarts dans le temps, l'événement et la moye
 période ; tant qu'aucun événement n'est entré, les écarts seuls. Les temps sont tenus pour
 indépendants : des écarts successifs qui se ressemblent (autocorrélation) rendent la valeur p
 trop petite. Un modèle mixte en tient compte : y ~ période × impact + (1 | unité), avec CAR1
-dans le temps au besoin (Nouveau modèle › Modèle linéaire mixte, la période et l'impact faits
-en nouvelles variables).
+dans le temps au besoin (Nouveau modèle › Modèle linéaire mixte). La période et l'impact se
+font en nouvelles variables valant 0 ou 1, ifelse(annee >= 2007, 1, 0) et
+ifelse(secteur %in% c("S1", "S2"), 1, 0) : une régression ne prend pas encore de terme croisé
+avec une variable qualitative.
 
 Modèles linéaires, généralisés et mixtes
 ----------------------------------------
@@ -604,11 +607,12 @@ son temps et ses groupes et montre deux séries : ses résidus sans l'autocorré
 résidus normalisés, qui n'en montrent plus quand CAR1 suffit (la note lit le décalage 1). Pour
 un autre modèle, choisir le temps (un identifiant ou une variable quantitative : l'année) et
 les groupes : par défaut ceux de ses effets aléatoires (le secteur dans son site), sinon un
-identifiant ou une variable qualitative, avec au besoin un niveau plus fin dedans (le secteur,
-quand ses noms se répètent d'un site à l'autre). Au-delà de la bande au décalage 1, la note
-propose une autocorrélation CAR1, à comparer par l'AIC. Pour un GLM ou un GAM, les résidus de
-Pearson ((y − ajusté) / √variance) ou de déviance (la part signée de chaque observation dans
-la déviance), les mêmes pour la loi normale ; les résidus d'un modèle mixte sont ceux de
+identifiant ou une variable qualitative ; les uns comme les autres peuvent prendre un niveau
+plus fin dedans (le secteur dans le site d'un effet aléatoire, ou un secteur dont les noms se
+répètent d'un site à l'autre). Au-delà de la bande au décalage 1, la note propose une
+autocorrélation CAR1, à comparer par l'AIC. Pour un GLM ou un GAM, les résidus de Pearson
+((y − ajusté) / √variance) ou de déviance (la part signée de chaque observation dans la
+déviance), les mêmes pour la loi normale ; les résidus d'un modèle mixte sont ceux de
 l'intérieur de ses groupes (sachant les effets aléatoires), comme dans nlme::ACF. Nuée calcule
 les résidus normalisés dans l'ordre du temps de chaque groupe : ceux de nlme ne sont justes que
 sur des lignes rangées par groupe, puis par temps. Fichier › Rapport du modèle peut reprendre
@@ -655,8 +659,8 @@ de leurs logLik (de leurs déviances pour un GLM de Poisson ou binomial, comme a
 glm2, test = "Chisq")). Les effets aléatoires et l'autocorrélation ne se testent pas ainsi :
 une variance nulle est au bord de son domaine, où la loi du χ² ne tient plus ; comparez-les
 par l'AIC. Avec des courbes ou des effets aléatoires de mgcv, les ddl sont des edf et le test
-est approché, comme le dit le tableau. 50 paires au plus ; la recherche du tableau trouve
-celles d'un modèle.
+est approché, comme le dit le tableau. Toutes les paires emboîtées sont listées (2000 au
+plus) ; la recherche du tableau trouve celles d'un modèle.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
 résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
 un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de

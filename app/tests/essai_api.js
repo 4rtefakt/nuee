@@ -472,7 +472,7 @@ async function principal() {
       // two steps apart: the interface breaks its line there
       verifier(col(r.points, 'temps').join() === '2001,2002,2003,2004,2005,2006,2001,2002,2003,2005,2006,2001,2003,2004,2005,2006'
         && col(r.points, 'ligne').join() === 'S1,S1,S1,S1,S1,S1,S2,S2,S2,S2,S2,S3,S3,S3,S3,S3' && col(r.points, 'panneau').join() === 'A,A,A,A,A,A,B,B,B,B,B,B,B,B,B,B'
-        && r.pas === 1 && r.sans_temps_valeur === 1 && r.sans_groupe === 0 && r.doubles.n === 0
+        && r.sans_temps_valeur === 1 && r.sans_groupe === 0 && r.doubles.n === 0
         && [].concat(r.niveaux_lignes).join() === 'S1,S2,S3' && [].concat(r.niveaux_panneaux).join() === 'A,B', `points : ${JSON.stringify(r.points)}`);
       const i = col(r.points, 'nom').indexOf('S2_2005');
       verifier(col(r.points, 'valeur')[i] === 15 && col(r.points, 'uid')[i] === lignes.findIndex((l) => l[0] === 'S2_2005') + 1, 'nom, uid et valeur d’un point');
@@ -509,10 +509,10 @@ async function principal() {
         for (const an of [2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009, 2010, 2011]) {
           bruit = 0.7 * bruit + alea();
           const x = 2 * alea();
-          lignes.push([`${s}${an}`, s, an, x.toFixed(4), (2 * alea()).toFixed(4), (1 + 0.5 * x + effet + bruit).toFixed(4)]);
+          lignes.push([`${s}${an}`, s, an, x.toFixed(4), (2 * alea()).toFixed(4), (1 + 0.5 * x + effet + bruit).toFixed(4), an < 2006 ? 'p1' : 'p2']);
         }
       }
-      const q = await api('coller', { texte: ['nom\tsite\tannee\tx\tz\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Sites' });
+      const q = await api('coller', { texte: ['nom\tsite\tannee\tx\tz\ty\tperiode', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Sites' });
       const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
       const mixte = (nom, x, correlation) => api('ajuster', { projet: q.id, type: 'LMM', x, y: [v.y], echelle: 'none', nom,
         aleatoires: [{ by: 'variable', variable: v.site }], ...(correlation ? { correlation: { type: 'CAR1', temps: { by: 'variable', variable: v.annee } } } : {}) });
@@ -529,6 +529,9 @@ async function principal() {
       const b2 = await api('autocorrelation_residus', { modele: m2.id, temps: { by: 'variable', variable: v.annee }, groupe: [{ by: 'variable', variable: v.site }] });
       verifier(b2.groupe === 'site' && b2.groupes === 6 && JSON.stringify(b2.series[0].acf) === JSON.stringify(b.series[0].acf),
         `les groupes d'une variable (une liste de groupements emboîtés) : ${JSON.stringify(b2).slice(0, 300)}`);
+      const b3 = await api('autocorrelation_residus', { modele: m2.id, temps: { by: 'variable', variable: v.annee }, groupe: [{ by: 'effets' }, { by: 'variable', variable: v.periode }] });
+      verifier(b3.groupe === 'site / periode' && b3.groupes === 12 && b3.n === 60,
+        `les groupes des effets aléatoires, puis un niveau plus fin : ${JSON.stringify(b3).slice(0, 300)}`);
       let refusT = '';
       try { await api('autocorrelation_residus', { modele: m2.id, temps: { by: 'variable', variable: v.annee }, groupe: null }); } catch (err) { refusT = err.message; }
       verifier(/même temps/.test(refusT), `les années de tous les sites en une série, refusé : « ${refusT} »`);

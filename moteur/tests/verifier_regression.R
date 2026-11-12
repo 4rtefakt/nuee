@@ -447,6 +447,14 @@ ala <- autocorrelation_residus(pa, mla, temps = par_variable("annee"), groupe = 
 verifier("des groupes emboîtés, le secteur dans son site (ses noms se répètent d'un site à l'autre) : 21 séries ; le secteur seul, refusé",
          ala$groupes == 21 && identical(ala$groupe, "site / secteur") && proche(ala$series[[1]]$acf, acf_main(residuals(lm(y ~ x + xbar, data = ta)), ta$annee, secteurs, 9)) &&
            grepl("même temps", refus(autocorrelation_residus(pa, mla, temps = par_variable("annee"), groupe = par_variable("secteur")))))
+# (un modèle mixte au site aléatoire, sans CAR1 : ses groupes, puis le secteur dans chacun)
+mle_a <- ajuster(pa, definir_modele(pa, "LMM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", aleatoires = list(par_variable("site"))))
+r_lme_a <- nlme::lme(y ~ x + xbar, random = ~ 1 | site, data = ta, method = "REML", control = ctrl)
+aef <- autocorrelation_residus(pa, mle_a, temps = par_variable("annee"), groupe = list(list(by = "effets"), par_variable("secteur")))
+verifier("les groupes des effets aléatoires, puis un niveau plus fin (le secteur dans son site) : 21 séries, l'autocorrélation refaite à la main ; les effets seuls, refusés",
+         aef$groupes == 21 && identical(aef$groupe, "site / secteur") &&
+           proche(aef$series[[1]]$acf, acf_main(as.vector(residuals(r_lme_a, type = "pearson")), ta$annee, secteurs, 9), 1e-5) &&
+           grepl("même temps", refus(autocorrelation_residus(pa, mle_a, temps = par_variable("annee"), groupe = list(by = "effets")))))
 verifier("plusieurs observations au même temps dans un groupe, ou pas de temps : refusé, en disant pourquoi",
          grepl("même temps", refus(autocorrelation_residus(pac, ml_ac, temps = annee_ac))) && grepl("temps", refus(autocorrelation_residus(pac, ml_ac))))
 
@@ -592,6 +600,55 @@ verifier(sprintf("ajusté, le modèle choisi a l'AICc de sa ligne (%.2f), sur le
                  mch$resultat$AICc, mch$N),
          proche(mch$resultat$AICc, ssel$modeles$AICc[isf], 1e-8) && mch$N == msel$N && identical(sort(mch$observations), sort(msel$observations)) &&
            identical(mch$resultat$coefficients$terme, c("(Intercept)", "sucre", "fermete")))
+# (les mêmes groupes de validation croisée « à tour de rôle » : la liste des observations ne change
+# pas, celles où manque une variable retirée restent de côté faute de valeurs, et le texte le dit)
+set.seed(2)
+dv <- data.frame(nom = sprintf("o%02d", 1:60), x1 = rnorm(60), x2 = rnorm(60), x3 = rnorm(60))
+dv$y <- 1 + dv$x1 + 0.5 * dv$x2 + rnorm(60)
+dv$x3[c(4, 11, 17, 30, 41)] <- NA
+pvc <- projet_depuis_tableau(dv, "vc")
+dvc <- definir_modele(pvc, "LM", x = numeros(pvc, c("x1", "x2", "x3")), y = numeros(pvc, "y"), echelle = "none")
+mvc <- ajuster(pvc, dvc)
+svc <- selection_aic(mvc, dvc)
+mtous <- ajuster(pvc, definition_selection(dvc, mvc, as.character(svc$groupes)))
+dx1 <- definition_selection(dvc, mvc, c("x1", "x2"))
+mx1 <- ajuster(pvc, dx1)
+tx1 <- paste(texte_methodes(pvc, dx1, mx1, "fr", "essai")$paragraphes, collapse = " ")
+verifier(sprintf("Ajuster ce modèle : les mêmes groupes de validation croisée que le modèle complet (Q2 %.4f, le même) ; 5 observations sans x3 laissées de côté faute de valeurs, dites dans le texte",
+                 mtous$vc$Q2),
+         proche(mtous$vc$Q2, mvc$vc$Q2, 1e-12) && identical(dx1$observations, dvc$observations) && length(mx1$exclues) == 5 && mx1$N == 55 &&
+           grepl("5 autres", tx1) && grepl("sélection par l'AICc du modèle", tx1))
+# (un log10 que des comptages nuls mettent hors de son domaine : le modèle complet laisse ces lignes
+# de côté ; le modèle choisi sans ce terme aussi, et son AICc est celui de sa ligne de la sélection)
+set.seed(31)
+dz <- data.frame(nom = sprintf("z%02d", 1:60), x1 = rnorm(60), x2 = rnorm(60), compte = stats::rpois(60, 1.5))
+dz$y <- 1 + dz$x1 + 0.4 * dz$x2 + rnorm(60)
+pz <- projet_depuis_tableau(dz, "zéros")
+uz <- function(...) numeros(pz, c(...))
+complet_z <- function(...) definir_modele(pz, "LM", x = uz("x1", "x2", "compte"), y = uz("y"), echelle = "none", nom = "M1",
+                                          transformations = stats::setNames(list("log10"), uz("compte")), ...)
+dzc <- complet_z()
+mzc <- ajuster(pz, dzc)
+szc <- selection_aic(mzc, dzc)
+dz1 <- definition_selection(dzc, mzc, c("x1", "x2"))
+mz1 <- ajuster(pz, dz1)
+zeros <- sum(dz$compte == 0)
+tz1 <- paste(texte_methodes(pz, dz1, mz1, "fr", "essai")$paragraphes, collapse = " ")
+dz2 <- dz1
+dz2$observations <- setdiff(dz2$observations, mz1$observations[1:2])  # (deux observations exclues ensuite)
+tz2 <- paste(texte_methodes(pz, dz2, ajuster(pz, dz2), "fr", "essai")$paragraphes, collapse = " ")
+verifier(sprintf("Ajuster ce modèle sans un log10 que %d comptages nuls mettent hors de son domaine : les %d lignes du modèle complet, l'AICc de sa ligne de la sélection ; « les mêmes observations » tant qu'aucune n'est exclue",
+                 zeros, mzc$N),
+         zeros > 0 && mzc$N == 60 - zeros && identical(mz1$observations, mzc$observations) &&
+           proche(mz1$resultat$AICc, szc$modeles$AICc[match("x1 + x2", vapply(contenus_sel(szc), cle_sel, ""))], 1e-8) &&
+           grepl("du modèle .{1,2}M1.{1,2} a retenus", tz1) && grepl("sur les mêmes observations que lui", tz1) &&
+           grepl("a retenus", tz2) && !grepl("mêmes observations", tz2))
+test_z <- numeros_observations(pz)[51:60]
+mzt <- ajuster(pz, complet_z(test = test_z))
+mzt1 <- ajuster(pz, definition_selection(complet_z(test = test_z), mzt, c("x1", "x2")))
+nuls_test <- sum(colonne(pz, uz("compte"), test_z) == 0)
+verifier(sprintf("un jeu de test garde ses observations : le modèle choisi prédit aussi les %d au comptage nul", nuls_test),
+         nuls_test > 0 && mzt1$test$statistiques$n == 10 && mzt$test$statistiques$n == 10 - nuls_test && identical(mzt1$observations, mzt$observations))
 dch6 <- definition_selection(dsel6, mg6, "x2")
 mch6 <- ajuster(pg, dch6)
 dcha <- definition_selection(da, ma, "x")

@@ -9,9 +9,9 @@
 #   lignes, panneaux : le numéro d'une variable qualitative ou "id:k" (le secteur, le site), ou
 #     NULL : une seule ligne, un seul panneau.
 # Renvoie les points (temps, valeur, ligne, panneau, uid et nom de l'observation), rangés par
-# panneau, ligne et temps ; les niveaux des lignes et des panneaux, dans leur ordre ; le pas des
-# temps (le plus petit écart entre deux temps différents : dans une ligne, deux temps plus éloignés
-# laissent un trou) ; la moyenne des lignes de chaque panneau à chaque temps ; le nombre
+# panneau, ligne et temps (l'interface coupe une ligne là où deux de ses temps sont plus éloignés
+# que son pas, le plus petit écart entre ses temps) ; les niveaux des lignes et des panneaux, dans
+# leur ordre ; la moyenne des lignes de chaque panneau à chaque temps ; le nombre
 # d'observations laissées de côté (sans temps ou sans valeur ; sans ligne ou sans panneau) ; les
 # temps qui reviennent dans une même ligne (doubles : leur nombre et le premier).
 series_variable <- function(projet, variable, temps, lignes = NULL, panneaux = NULL) {
@@ -46,7 +46,6 @@ series_variable <- function(projet, variable, temps, lignes = NULL, panneaux = N
                        nom = unname(projet$noms_obs[as.character(obs[i])]), stringsAsFactors = FALSE)
   niveaux <- function(x) if (is.null(x)) character(0) else levels(droplevels(x$valeurs[i]))
   temps_cle <- as.character(round(t[i], 8))
-  u <- sort(unique(round(t[i], 8)))
   # un même temps deux fois dans une ligne : ce n'est pas une série (les lignes à choisir plus fines)
   ligne_cle <- paste(cp[i], cl[i], temps_cle, sep = "\r")
   d <- which(duplicated(ligne_cle))
@@ -62,6 +61,6 @@ series_variable <- function(projet, variable, temps, lignes = NULL, panneaux = N
   list(variable = v[c("uid", "nom")], temps = tp[c("uid", "nom")],
        lignes = if (!is.null(l)) l[c("uid", "nom")], panneaux = if (!is.null(pa)) pa[c("uid", "nom")],
        points = points, niveaux_lignes = I(niveaux(l)), niveaux_panneaux = I(niveaux(pa)),
-       pas = if (length(u) > 1) min(diff(u)) else NA_real_, moyennes = moyennes,
+       moyennes = moyennes,
        sans_temps_valeur = sum(!connus), sans_groupe = sum(connus & !avec_groupe), doubles = doubles)
 }

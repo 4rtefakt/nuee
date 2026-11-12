@@ -489,6 +489,20 @@ essayer_regression("gam_selection_descendante", pr, definir_modele(pr, "GAM", x 
                    lisses = ur("x2"), decalage = ur("effort"), aleatoires = list(par_site), echelle = "none"), selection = 4)
 essayer_regression("gamm_selection", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",
                    lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur), selection = TRUE)
+# Ajuster ce modèle (sélection par l'AIC) : le modèle choisi garde les lignes du modèle complet (sans
+# x1, ou une densité nulle que son log10 rend manquante) ; son script les laisse de côté de même
+dcomplet <- definir_modele(pr, "LM", x = ur("x1", "x2", "densite"), y = ur("hauteur"), echelle = "none", nom = "M1",
+                           transformations = stats::setNames(list("log10"), ur("densite")))
+mcomplet <- ajuster(pr, dcomplet)
+dchoisi <- definition_selection(dcomplet, mcomplet, "x2")
+r <- essayer_regression("lm_choisi_selection", pr, dchoisi)
+verifier(sprintf("le modèle choisi par la sélection : les %d lignes du modèle complet ; le script laisse de côté les %d autres, en le disant",
+                 mcomplet$N, length(dcomplet$observations) - mcomplet$N),
+         ajuster(pr, dchoisi)$N == mcomplet$N && mcomplet$N < length(dcomplet$observations) - 2 &&
+           any(grepl("^connu\\[hors_selection\\] <- FALSE", lignes_script(r))) && any(grepl("sélection par l'AICc du modèle", lignes_script(r))))
+r <- essayer_regression("lm_choisi_selection_en", pr, dchoisi, langue = "en")
+verifier("le modèle choisi, en anglais : ni nom ni commentaire en français", en_anglais(lignes_script(r)) &&
+           any(grepl("^known\\[outside_selection\\] <- FALSE", lignes_script(r))))
 # la séance : une ACP, un modèle mixte et un GAM dans le même script
 definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
                     definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),

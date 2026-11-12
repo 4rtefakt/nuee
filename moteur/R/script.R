@@ -1049,7 +1049,12 @@ plan_regression <- function(projet, d, m, tab) {
        # (les groupes de la validation croisée sont-ils les niveaux du premier effet aléatoire, comme par défaut ?)
        vc_premier = L > 0 && length(d$groupes_vc$by) > 0 && as.character(d$groupes_vc$by)[1] %in% c("id", "variable") &&
          identical(specs_groupement(d$groupes_vc)[[1]], specs[[1]]),
-       vc_par = as.character(m$vc_par %||% ""), selection = selection)
+       vc_par = as.character(m$vc_par %||% ""), selection = selection,
+       # (un modèle choisi par la sélection par AIC : les lignes de d que le modèle complet n'a pas
+       # ajustées, faute de valeurs, restent de côté ; regression.R, definition_selection)
+       choisi = if (!is.null(d$selection_origine) && length(d$termes_complets))
+         list(modele = as.character(d$selection_origine$modele)[1],
+              hors = match(setdiff(as.numeric(d$observations), m$observations), as.numeric(d$observations))))
 }
 
 # Le type d'une régression, en mots (en-têtes des scripts).
@@ -1169,6 +1174,13 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    sprintf("The rows where %s are known (`known`). Those of the model (`training`) give the centres and weights of the terms, then the table of the model%s.",
                            liste(quoi), if (test) "; the others, that of the test set" else ""))),
     sprintf("connu <- complete.cases(%s)", paste(c("y", if (K) "X", lectures), collapse = ", ")),
+    if (length(pl$choisi$hors)) c(
+      commentaire(tx(sprintf("Ce modèle est celui que la sélection par l'AICc du modèle %s a choisi : il est ajusté sur les lignes de %s, où la sélection l'a comparé aux autres ; les %d lignes que %s n'a pas ajustées, faute de valeurs, restent de côté.",
+                             guillemets(pl$choisi$modele), guillemets(pl$choisi$modele), length(pl$choisi$hors), guillemets(pl$choisi$modele)),
+                     sprintf("This model is the one the AICc selection of model %s chose: it is fitted on the rows of %s, where the selection compared it with the others; the %d rows %s did not fit, for missing values, stay out.",
+                             guillemets(pl$choisi$modele), guillemets(pl$choisi$modele), length(pl$choisi$hors), guillemets(pl$choisi$modele)))),
+      code_valeurs(morceaux_rangs(pl$choisi$hors), "hors_selection <- "),
+      "connu[hors_selection] <- FALSE"),
     if (test) "apprentissage <- intersect(which(connu), modele)" else "apprentissage <- which(connu)",
     if (K) c("", code_echelle_bloc(pl$x, "X", "x", plx, tx, "X")),
     "",
@@ -2322,7 +2334,7 @@ NOMS_SCRIPT_EN <- c(
   permise = "allowed", combinaisons = "combinations", combinaison = "combination", valeurs_aic = "aic_values", etapes_aic = "aic_steps",
   courant = "current", retirables = "removable", essais = "trials", aicc_courant = "current_aicc", modeles_aic = "aic_models",
   importance_aic = "aic_importance", poids_cumule = "cumulative_weight", etape = "step", toutes = "all_subsets", termes_aic = "aic_terms",
-  modeles = "models", ajuster_ml = "fit_ml", libelle_aic = "aic_label", contient_aic = "aic_contains")
+  modeles = "models", ajuster_ml = "fit_ml", libelle_aic = "aic_label", contient_aic = "aic_contains", hors_selection = "outside_selection")
 
 nom_script <- function(x, langue) if (identical(langue, "en")) ifelse(x %in% names(NOMS_SCRIPT_EN), NOMS_SCRIPT_EN[x], x) else x
 

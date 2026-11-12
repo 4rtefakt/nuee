@@ -84,14 +84,17 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
     nom_groupe <- NULL
     if (is.null(groupe)) {
       g <- rep("1", length(e))
-    } else if (identical(as.character(groupe$by)[1], "effets")) {
-      if (!length(niveaux)) stop(traduire("Ce modèle n'a pas d'effet aléatoire.", "This model has no random effect."), call. = FALSE)
-      g <- interaction(d[niveaux], drop = TRUE)
-      nom_groupe <- m$niveaux[length(m$niveaux)]
     } else {
+      # (des groupements emboîtés, du plus large au plus fin : les effets aléatoires du modèle
+      # (by = "effets"), puis au besoin un niveau plus fin, le secteur dans son site)
       if (!is.null(groupe$by)) groupe <- list(groupe)
-      g <- interaction(lapply(groupe, function(s) valeurs_groupement(projet, s, m$observations)), drop = TRUE)
-      nom_groupe <- paste(vapply(groupe, function(s) nom_groupement(projet, s), ""), collapse = " / ")
+      effets <- vapply(groupe, function(s) identical(as.character(s$by)[1], "effets"), TRUE)
+      if (any(effets) && !length(niveaux)) stop(traduire("Ce modèle n'a pas d'effet aléatoire.", "This model has no random effect."), call. = FALSE)
+      morceaux <- unlist(lapply(groupe, function(s) if (identical(as.character(s$by)[1], "effets")) as.list(d[niveaux])
+                                else list(valeurs_groupement(projet, s, m$observations))), recursive = FALSE)
+      g <- interaction(morceaux, drop = TRUE)
+      nom_groupe <- paste(vapply(groupe, function(s) if (identical(as.character(s$by)[1], "effets")) m$niveaux[length(m$niveaux)] else nom_groupement(projet, s), ""),
+                          collapse = " / ")
     }
   }
   garde <- !is.na(t) & !is.na(g)
@@ -171,7 +174,7 @@ penalise_regression <- function(m) length(m$lisses) > 0 || (inherits(m$ajustemen
 # ils se comparent par l'AIC. Avec des courbes ou des effets aléatoires de mgcv, les ddl sont des
 # edf et le test est approché (Wood, 2017) : `approche`. Au plus `max_paires` paires, par ensemble
 # puis dans l'ordre des modèles ; `total` : combien il y en a.
-rapports_vraisemblance <- function(modeles, max_paires = 50) {
+rapports_vraisemblance <- function(modeles, max_paires = 2000) {
   modeles <- Filter(function(m) inherits(m, "modele_regression") && isTRUE(is.finite(m$resultat$logLik)), modeles)
   ids <- names(modeles)
   signatures <- vapply(modeles, function(m) as.character(m$signature), "")

@@ -522,6 +522,47 @@ verifier(sprintf("en anglais, Student, deux unités d'impact (2003 compte alors 
                rt$phrase) && isTRUE(all.equal(rt$difference[2:3], c(rt$tests$bas[2], rt$tests$haut[2]))))
 verifier("aucune phrase BACI avec NA", !any(grepl("NA", c(rb$phrase, re$phrase, rt$phrase, rf$phrase), fixed = TRUE)))
 
+cat("Le même calcul sous toutes les versions de R (ex aequo, différences nulles)\n")
+# des comptages : S1 et S2 suivis 10 ans, des différences nulles et ex aequo ; une variable aux
+# différences constantes à 1e-9 près
+set.seed(21)
+eq <- data.frame(nom = paste0("e", 1:20), secteur = rep(c("S1", "S2"), each = 10), annee = rep(2001:2010, 2),
+                 compte = c(c(3, 5, 4, 6, 2, 5, 4, 3, 6, 5), c(4, 5, 6, 6, 3, 7, 4, 5, 8, 6)),
+                 constante = c(rep(1, 10), rep(2, 10)) + c(rnorm(10, 0, 1e-12), rnorm(10, 0, 1e-12)))
+pe <- projet_depuis_tableau(eq, "ex aequo")
+de <- eq$compte[11:20] - eq$compte[1:10]  # (S2 − S1, par année)
+re <- tests_variables(pe, numeros(pe, "secteur"), c("S1", "S2"), test = "wilcoxon", appariement = numeros(pe, "annee"))
+ligne_compte <- re$tableau[re$tableau$nom == "compte", ]
+w_ancien <- suppressWarnings(stats::wilcox.test(de[de != 0], exact = FALSE, correct = TRUE))  # (le calcul de R < 4.6)
+verifier("variable par variable, Wilcoxon avec des différences nulles et ex aequo : V et p de R < 4.6, comme le test apparié de deux variables",
+         isTRUE(all.equal(ligne_compte$statistique, unname(w_ancien$statistic))) && isTRUE(all.equal(ligne_compte$p, w_ancien$p.value)) &&
+           isTRUE(all.equal(ligne_compte$p, wilcoxon_apparie(de)$p)))
+rt <- tests_variables(pe, numeros(pe, "secteur"), c("S1", "S2"), test = "t_apparie", appariement = numeros(pe, "annee"))
+ligne_cst <- rt$tableau[rt$tableau$nom == "constante", ]
+verifier("variable par variable, des différences constantes (à 1e-8 près) : ni t, ni p, ni d_z",
+         is.na(ligne_cst$statistique) && is.na(ligne_cst$p) && is.na(ligne_cst$d))
+mw_ancien <- suppressWarnings(stats::wilcox.test(eq$compte[11:20], eq$compte[1:10], exact = FALSE, correct = TRUE))
+rm2 <- tests_variables(pe, numeros(pe, "secteur"), c("S1", "S2"), test = "mann_whitney")
+deux_mw <- test_deux_variables(pe, numeros(pe, "compte"), numeros(pe, "secteur"))
+verifier("Mann–Whitney avec des ex aequo : la loi normale avec correction de continuité (R < 4.6), entre classes et en deux variables",
+         isTRUE(all.equal(rm2$tableau$p[rm2$tableau$nom == "compte"], mw_ancien$p.value)) &&
+           isTRUE(all.equal(deux_mw$tests$p[deux_mw$tests$test == "mann_whitney"], mw_ancien$p.value)))
+# BACI : des comptages entiers, des écarts ex aequo
+bq <- data.frame(nom = paste0("q", 1:24), secteur = rep(c("I", "T"), each = 12), annee = rep(2001:2012, 2),
+                 compte = c(c(5, 6, 5, 6, 5, 6, 9, 10, 9, 10, 9, 10), rep(5, 12)))
+pq <- projet_depuis_tableau(bq, "baci comptages")
+rq <- baci(pq, numeros(pq, "compte"), numeros(pq, "annee"), numeros(pq, "secteur"), "I", "T", evenement = 2007, test = "mann_whitney")
+dq <- bq$compte[1:12] - 5
+mq <- suppressWarnings(stats::wilcox.test(dq[7:12], dq[1:6], exact = FALSE, correct = TRUE))
+verifier("BACI, Mann–Whitney sur des écarts ex aequo : la loi normale avec correction de continuité (R < 4.6)",
+         isTRUE(all.equal(rq$tests$p[rq$tests$test == "mann_whitney"], mq$p.value)))
+bq2 <- bq
+bq2$annee <- sub(".", ",", sprintf("%.1f", bq2$annee), fixed = TRUE)  # (« 2001,0 » : un temps en texte, avec la virgule)
+pq2 <- projet_depuis_tableau(bq2, "baci virgule")
+rq2 <- baci(pq2, numeros(pq2, "compte"), numeros(pq2, "annee"), numeros(pq2, "secteur"), "I", "T", evenement = 2007, test = "welch")
+verifier("BACI, un temps écrit avec une virgule décimale : lu comme dans les séries", isTRUE(all.equal(rq2$tests$p, baci(pq, numeros(pq, "compte"), numeros(pq, "annee"),
+         numeros(pq, "secteur"), "I", "T", evenement = 2007, test = "welch")$tests$p)))
+
 cat("Phrases\n")
 r <- test_deux_variables(p, variete, numeros(p, "sucre"))
 verifier(sprintf("en français : « %s »", r$phrase), grepl("^ANOVA à un facteur : F\\(3, 116\\) = [0-9]+,[0-9]{2}, p < 0,001 ; η² = 0,[0-9]{2} \\(N = 120, 4 groupes\\)\\.$", r$phrase))

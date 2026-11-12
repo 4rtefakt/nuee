@@ -59,9 +59,17 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
       ligne <- cbind(ligne, data.frame(n_paires = n, moyenne_a = if (n) mean(va) else NA_real_, moyenne_b = if (n) mean(vb) else NA_real_,
                                        log2_rapport = NA_real_, d = NA_real_))
       if (n >= 3) {
-        r <- if (any(d != 0)) essai_test(switch(test, t_apparie = stats::t.test(vb, va, paired = TRUE), wilcoxon = stats::wilcox.test(vb, va, paired = TRUE)))
-        if (!is.null(r)) ligne[c("statistique", "p")] <- list(unname(r$statistic), r$p.value)
-        if (stats::sd(d) > 0) ligne$d <- mean(d) / stats::sd(d)
+        # (les règles du test apparié de deux variables : des différences constantes, à 1e-8 près
+        # de leur moyenne, n'ont ni t ni d_z ; Wilcoxon, le même calcul sous toutes les versions de R)
+        constantes <- differences_constantes(d)
+        if (test == "t_apparie") {
+          tt <- if (!constantes) t_apparie(d)
+          if (!is.null(tt)) ligne[c("statistique", "p")] <- list(tt$t, tt$p)
+        } else if (any(d != 0)) {
+          w <- wilcoxon_apparie(d)
+          ligne[c("statistique", "p")] <- list(w$V, w$p)
+        }
+        if (!constantes) ligne$d <- mean(d) / stats::sd(d)
         if (mean(va) > 0 && mean(vb) > 0) ligne$log2_rapport <- log2(mean(vb) / mean(va))
       }
     } else if (deux) {
@@ -73,7 +81,7 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
         r <- tryCatch(switch(test,
           welch = stats::t.test(b, a),
           student = stats::t.test(b, a, var.equal = TRUE),
-          mann_whitney = suppressWarnings(stats::wilcox.test(b, a))), error = function(e) NULL)
+          mann_whitney = mann_whitney(b, a)), error = function(e) NULL)
         if (!is.null(r)) ligne[c("statistique", "p")] <- list(unname(r$statistic), r$p.value)
         commun <- sqrt(((length(a) - 1) * stats::var(a) + (length(b) - 1) * stats::var(b)) / (length(a) + length(b) - 2))
         if (commun > 0) ligne$d <- (mean(b) - mean(a)) / commun
@@ -221,6 +229,15 @@ niveaux_a_tester <- function(projet, v, observations = NULL) {
 
 # (le résultat d'un test, ou NULL quand R ne peut pas le faire : valeurs toutes égales...)
 essai_test <- function(expr) tryCatch(suppressWarnings(expr), error = function(e) NULL)
+
+# Le test de Mann–Whitney de b contre a, le même calcul sous toutes les versions de R : exact
+# sous 50 valeurs de chaque côté et sans ex aequo ; sinon par la loi normale, avec la correction
+# de continuité (et celle des ex aequo). R 4.6 calculerait une p exacte avec des ex aequo ; avant
+# 4.6 (les R des paquets Linux), R passe alors par la loi normale : partout, ce calcul-là.
+mann_whitney <- function(b, a) {
+  exact <- length(a) < 50 && length(b) < 50 && !anyDuplicated(c(a, b))
+  essai_test(stats::wilcox.test(b, a, exact = exact, correct = TRUE))
+}
 champ_test <- function(r, k) if (is.null(r) || is.null(r[[k]])) NA_real_ else unname(r[[k]])[1]
 
 contingence <- function(f1, f2) {
@@ -284,7 +301,7 @@ comparer_groupes <- function(x, f, noms) {
     a <- par[[1]]
     b <- par[[2]]
     w <- essai_test(stats::t.test(b, a))
-    mw <- essai_test(stats::wilcox.test(b, a))
+    mw <- mann_whitney(b, a)
     commun <- sqrt(((length(a) - 1) * stats::var(a) + (length(b) - 1) * stats::var(b)) / (length(a) + length(b) - 2))
     res$tests <- data.frame(test = c("welch", "mann_whitney"), statistique = c(champ_test(w, "statistic"), champ_test(mw, "statistic")),
                             ddl1 = c(champ_test(w, "parameter"), NA), ddl2 = NA_real_, p = c(champ_test(w, "p.value"), champ_test(mw, "p.value")),
@@ -470,9 +487,8 @@ paires_cle <- function(x, f, cle, niveaux, nom_cle) {
   dans <- f %in% niveaux
   ok <- dans & !is.na(x) & !is.na(cle)
   lignes <- lapply(niveaux, function(n) which(ok & f %in% n))
-  ordre <- function(v) v[order(suppressWarnings(as.numeric(v)), v)]
   for (k in 1:2) {
-    doubles <- ordre(unique(cle[lignes[[k]]][duplicated(cle[lignes[[k]]])]))
+    doubles <- ordre_cles(unique(cle[lignes[[k]]][duplicated(cle[lignes[[k]]])]))
     if (length(doubles)) {
       stop(sprintf(traduire("%s a plusieurs lignes pour la même valeur de %s (%s) : la clé d'appariement doit désigner une seule ligne par niveau",
                             "%s has several rows for the same value of %s (%s): the pairing key must identify one row per level"),
@@ -481,9 +497,9 @@ paires_cle <- function(x, f, cle, niveaux, nom_cle) {
   }
   ia <- lignes[[1]]
   ib <- lignes[[2]]
-  communes <- ordre(intersect(cle[ia], cle[ib]))
+  communes <- ordre_cles(intersect(cle[ia], cle[ib]))
   list(cle = communes, ja = ia[match(communes, cle[ia])], jb = ib[match(communes, cle[ib])],
-       sans_a = ordre(setdiff(cle[ia], communes)), sans_b = ordre(setdiff(cle[ib], communes)), manquantes = sum(dans & !ok))
+       sans_a = ordre_cles(setdiff(cle[ia], communes)), sans_b = ordre_cles(setdiff(cle[ib], communes)), manquantes = sum(dans & !ok))
 }
 
 # Les tests de valeurs appariées va (A) et vb (B), sur les différences B − A : le test t
@@ -710,7 +726,7 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   vy <- valeurs_a_tester(projet, y, obs)
   if (vy$qualitative) stop(traduire("La réponse doit être une variable quantitative", "The response must be a quantitative variable"))
   vt <- valeurs_a_tester(projet, temps, obs)
-  tv <- if (vt$qualitative) suppressWarnings(as.numeric(as.character(vt$valeurs))) else vt$valeurs
+  tv <- as.vector(temps_en_nombres(if (vt$qualitative) as.character(vt$valeurs) else vt$valeurs))
   autres <- if (vt$qualitative) levels(droplevels(vt$valeurs[is.na(tv)])) else character(0)
   if (length(autres)) {
     stop(sprintf(traduire("Le temps doit être numérique : %s a des valeurs qui ne sont pas des nombres (%s)",
@@ -776,7 +792,7 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   if (diff(range(c(db, da))) == 0) stop(traduire("L'écart est le même à chaque temps : rien à comparer", "The gap is the same at every time: nothing to compare"))
   w <- essai_test(stats::t.test(da, db))
   s <- essai_test(stats::t.test(da, db, var.equal = TRUE))
-  mw <- essai_test(stats::wilcox.test(da, db))
+  mw <- mann_whitney(da, db)
   commun <- sqrt(((nb - 1) * stats::var(db) + (na - 1) * stats::var(da)) / (nb + na - 2))
   d <- if (commun > 0) (mean(da) - mean(db)) / commun else NA_real_
   ic <- function(x) if (is.null(x)) c(NA_real_, NA_real_) else as.numeric(x$conf.int)
