@@ -11,24 +11,60 @@
 # ou "aucune". L'effet est le rapport des moyennes B / A en log2 (quand les deux moyennes sont
 # positives) et le d de Cohen (différence des moyennes sur l'écart-type commun) : avec la
 # valeur p, ils font le graphique « volcan ».
-tests_variables <- function(projet, classe, groupes = NULL, test = "welch", correction = "BH", observations = NULL) {
+# Avec `appariement` (une variable ou "id:k" : l'année, quand A et B sont deux secteurs suivis
+# les mêmes années), deux classes comparées sur des paires, comme dans test_deux_variables() :
+# pour chaque variable, les lignes de A et de B qui ont la même clé et une valeur (paires_cle() ;
+# une clé en double dans une classe est refusée), au moins trois paires, et
+#   "t_apparie"    test t apparié (par défaut) ;
+#   "wilcoxon"     test des rangs signés de Wilcoxon ;
+# sur les différences B − A ; le nombre de paires, les moyennes de A et de B sur ces paires, le
+# log2 du rapport de ces moyennes et le d_z de Cohen (différence moyenne sur l'écart-type des
+# différences) à la place du d.
+tests_variables <- function(projet, classe, groupes = NULL, test = "welch", correction = "BH", observations = NULL, appariement = NULL) {
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   v_classe <- variable_du_projet(projet, classe)
   cats <- as.character(v_classe$categories)
   if (!length(cats)) stop(traduire("La variable de classe doit être qualitative", "The class variable must be qualitative"))
   g <- factor(cats[colonne(projet, classe, obs)], levels = cats)
-  deux <- test %in% c("welch", "student", "mann_whitney")
+  apparie <- test %in% c("t_apparie", "wilcoxon")
+  deux <- apparie || test %in% c("welch", "student", "mann_whitney")
   if (deux) {
     groupes <- as.character(groupes %||% cats[1:2])
     if (length(groupes) != 2 || !all(groupes %in% cats) || groupes[1] == groupes[2]) stop(traduire("Il faut deux classes différentes à comparer", "Two different classes are needed to compare"))
   } else groupes <- cats
-  if (!test %in% c("welch", "student", "mann_whitney", "anova", "kruskal")) stop(traduire("Test inconnu : ", "Unknown test: "), test)
+  if (!test %in% c("welch", "student", "mann_whitney", "anova", "kruskal", "t_apparie", "wilcoxon")) stop(traduire("Test inconnu : ", "Unknown test: "), test)
+  if (apparie != (length(appariement) > 0)) {
+    stop(traduire("Un test apparié (t apparié, Wilcoxon) se fait avec une clé d'appariement, et une clé d'appariement avec un test apparié",
+                  "A paired test (paired t, Wilcoxon) takes a pairing key, and a pairing key a paired test"))
+  }
+  if (apparie) {
+    if (identical(as.character(appariement), as.character(classe))) {
+      stop(traduire("La clé d'appariement doit être une autre variable que la classe", "The pairing key must be another variable than the class"))
+    }
+    k <- valeurs_a_tester(projet, appariement, obs)
+    cle <- as.character(k$valeurs)
+  }
+  # (ni la classe ni la clé ne sont testées)
   vars <- Filter(function(v) !length(v$categories) && as.character(v$uid) %in% colnames(projet$donnees) &&
-                   !identical(as.numeric(v$uid), as.numeric(classe)), projet$variables)
+                   !identical(as.numeric(v$uid), as.numeric(classe)) && !identical(as.character(v$uid), as.character(appariement)), projet$variables)
   lignes <- lapply(vars, function(v) {
     x <- colonne(projet, v$uid, obs)
     ligne <- data.frame(uid = as.numeric(v$uid), nom = as.character(v$ids[1]), statistique = NA_real_, p = NA_real_, stringsAsFactors = FALSE)
-    if (deux) {
+    if (apparie) {
+      pc <- paires_cle(x, g, cle, groupes, k$nom)
+      va <- x[pc$ja]
+      vb <- x[pc$jb]
+      d <- vb - va
+      n <- length(d)
+      ligne <- cbind(ligne, data.frame(n_paires = n, moyenne_a = if (n) mean(va) else NA_real_, moyenne_b = if (n) mean(vb) else NA_real_,
+                                       log2_rapport = NA_real_, d = NA_real_))
+      if (n >= 3) {
+        r <- if (any(d != 0)) essai_test(switch(test, t_apparie = stats::t.test(vb, va, paired = TRUE), wilcoxon = stats::wilcox.test(vb, va, paired = TRUE)))
+        if (!is.null(r)) ligne[c("statistique", "p")] <- list(unname(r$statistic), r$p.value)
+        if (stats::sd(d) > 0) ligne$d <- mean(d) / stats::sd(d)
+        if (mean(va) > 0 && mean(vb) > 0) ligne$log2_rapport <- log2(mean(vb) / mean(va))
+      }
+    } else if (deux) {
       a <- x[!is.na(x) & g %in% groupes[1]]
       b <- x[!is.na(x) & g %in% groupes[2]]
       ligne <- cbind(ligne, data.frame(n_a = length(a), n_b = length(b), moyenne_a = if (length(a)) mean(a) else NA,
@@ -58,8 +94,8 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
   res <- do.call(rbind, lignes)
   if (is.null(res)) stop(traduire("Aucune variable quantitative à comparer", "No quantitative variable to compare"))
   res$p_ajuste <- if (correction == "aucune") res$p else stats::p.adjust(res$p, method = if (correction == "bonferroni") "bonferroni" else "BH")
-  list(tableau = res, groupes = groupes, test = test, correction = correction, classe = as.character(v_classe$ids[1]),
-       effectifs = as.list(table(g)))
+  c(list(tableau = res, groupes = groupes, test = test, correction = correction, classe = as.character(v_classe$ids[1]),
+         effectifs = as.list(table(g))), if (apparie) list(cle = k[c("uid", "nom", "qualitative")]))
 }
 
 # ------------------------------------------------------------------------ deux variables
@@ -380,30 +416,17 @@ ordre_cles <- function(v) v[order(suppressWarnings(as.numeric(v)), v)]
 
 # La paire A–B : ses clés communes, les lignes sans partenaire ou sans valeur, et ses tests.
 paire_niveaux <- function(x, f, cle, niveaux, noms, nom_cle) {
-  dans <- f %in% niveaux
-  ok <- dans & !is.na(x) & !is.na(cle)
-  lignes <- lapply(niveaux, function(n) which(ok & f %in% n))
-  for (k in 1:2) {
-    doubles <- ordre_cles(unique(cle[lignes[[k]]][duplicated(cle[lignes[[k]]])]))
-    if (length(doubles)) {
-      stop(sprintf(traduire("%s a plusieurs lignes pour la même valeur de %s (%s) : la clé d'appariement doit désigner une seule ligne par niveau",
-                            "%s has several rows for the same value of %s (%s): the pairing key must identify one row per level"),
-                   niveaux[k], nom_cle, paste(c(utils::head(doubles, 5), if (length(doubles) > 5) "…"), collapse = ", ")))
-    }
-  }
-  ia <- lignes[[1]]
-  ib <- lignes[[2]]
-  communes <- ordre_cles(intersect(cle[ia], cle[ib]))
-  n <- length(communes)
+  pc <- paires_cle(x, f, cle, niveaux, nom_cle)  # (le même appariement que les tests par variable)
+  n <- length(pc$cle)
   if (n < 3) {
     stop(sprintf(traduire("Il faut au moins trois paires : %s et %s n'ont que %d valeur(s) de %s en commun",
                           "At least three pairs are needed: %s and %s share only %d value(s) of %s"), niveaux[1], niveaux[2], n, nom_cle))
   }
-  ja <- ia[match(communes, cle[ia])]
-  jb <- ib[match(communes, cle[ib])]
-  c(list(n = n, manquantes = sum(dans & !ok),
-         paires = list(cle = communes, a = x[ja], b = x[jb], difference = x[jb] - x[ja], nom_a = noms[ja], nom_b = noms[jb]),
-         sans_partenaire = list(a = ordre_cles(setdiff(cle[ia], communes)), b = ordre_cles(setdiff(cle[ib], communes)))),
+  ja <- pc$ja
+  jb <- pc$jb
+  c(list(n = n, manquantes = pc$manquantes,
+         paires = list(cle = pc$cle, a = x[ja], b = x[jb], difference = x[jb] - x[ja], nom_a = noms[ja], nom_b = noms[jb]),
+         sans_partenaire = list(a = pc$sans_a, b = pc$sans_b)),
     tests_apparies(x[ja], x[jb], niveaux[1], niveaux[2]))
 }
 
@@ -435,6 +458,32 @@ tableau_paires <- function(x, f, cle, presents, groupe_ligne, nom_groupe, nom_cl
                                             "No value of %s holds two levels: no pairs to compare."), nom_groupe)
   } else r$toutes <- paires_niveaux(x, f, cle, presents, groupes, nom_cle)
   r
+}
+
+# Les paires d'une mesure x entre deux niveaux A et B (niveaux) des groupes f : les lignes de A
+# et de B qui ont la même clé (cle, en texte), parmi celles qui ont une valeur et une clé. Une clé
+# ne désigne qu'une ligne par niveau : une clé en double est refusée, les premières dites.
+# Renvoie les clés communes (dans l'ordre des nombres quand elles en sont), les lignes de A et de
+# B de chaque paire (ja, jb), les clés de chaque niveau restées sans partenaire et le nombre de
+# lignes des deux niveaux sans valeur ou sans clé.
+paires_cle <- function(x, f, cle, niveaux, nom_cle) {
+  dans <- f %in% niveaux
+  ok <- dans & !is.na(x) & !is.na(cle)
+  lignes <- lapply(niveaux, function(n) which(ok & f %in% n))
+  ordre <- function(v) v[order(suppressWarnings(as.numeric(v)), v)]
+  for (k in 1:2) {
+    doubles <- ordre(unique(cle[lignes[[k]]][duplicated(cle[lignes[[k]]])]))
+    if (length(doubles)) {
+      stop(sprintf(traduire("%s a plusieurs lignes pour la même valeur de %s (%s) : la clé d'appariement doit désigner une seule ligne par niveau",
+                            "%s has several rows for the same value of %s (%s): the pairing key must identify one row per level"),
+                   niveaux[k], nom_cle, paste(c(utils::head(doubles, 5), if (length(doubles) > 5) "…"), collapse = ", ")))
+    }
+  }
+  ia <- lignes[[1]]
+  ib <- lignes[[2]]
+  communes <- ordre(intersect(cle[ia], cle[ib]))
+  list(cle = communes, ja = ia[match(communes, cle[ia])], jb = ib[match(communes, cle[ib])],
+       sans_a = ordre(setdiff(cle[ia], communes)), sans_b = ordre(setdiff(cle[ib], communes)), manquantes = sum(dans & !ok))
 }
 
 # Les tests de valeurs appariées va (A) et vb (B), sur les différences B − A : le test t
@@ -570,6 +619,26 @@ phrase_test <- function(r) {
   # (3 chiffres significatifs : 0,0497 ne s'écrit pas 0,05)
   pv <- function(p) if (is.na(p)) "p = NA" else if (p < 0.001) paste("p <", nb(0.001, 3)) else paste("p =", trimws(formatC(p, digits = 3, format = "g", decimal.mark = marque)))
   ic <- function(v) if (length(v) == 2 && !anyNA(v)) sprintf(if (fr) " [IC 95 %% %s ; %s]" else " [95%% CI %s, %s]", nb(v[1]), nb(v[2])) else ""
+  # avant/après avec témoin (baci()) : le test choisi, les unités, les périodes
+  if (identical(r$type, "baci")) {
+    t <- r$tests[r$tests$test == r$test, ]
+    p <- r$periodes
+    noms <- function(v) if (length(v) > 3) sprintf("%s… (%d)", paste(v[1:3], collapse = ", "), length(v)) else paste(v, collapse = ", ")
+    temps <- function(x) trimws(formatC(x, digits = 10, format = "fg", decimal.mark = marque))
+    apres <- if (length(r$fin)) sprintf("%s ≤ %s ≤ %s", temps(r$evenement), r$temps$nom, temps(r$fin)) else sprintf("%s ≥ %s", r$temps$nom, temps(r$evenement))
+    quoi <- sprintf(if (fr) "écart de %s impact (%s) − témoins (%s), après contre avant" else "%s gap impact (%s) − control (%s), after against before",
+                    r$y$nom, noms(r$impact), noms(r$temoins))
+    n <- sprintf(if (fr) "n = %d avant et %d après ; après : %s" else "n = %d before and %d after; after: %s", p$n[1], p$n[2], apres)
+    if (r$test == "mann_whitney") {
+      return(sprintf(if (fr) "Test de Mann–Whitney (BACI), %s : U = %s, %s ; écart médian %s avant et %s après, corrélation rang-bisériale = %s (%s)."
+                     else "Mann–Whitney test (BACI), %s: U = %s, %s; median gap %s before and %s after, rank-biserial correlation = %s (%s).",
+                     quoi, ddl(t$statistique), pv(t$p), nb(p$mediane[1]), nb(p$mediane[2]), nb(t$effet), n))
+    }
+    return(sprintf(if (fr) "Test t de %s (BACI), %s : t(%s) = %s, %s ; écart moyen %s avant et %s après, changement = %s%s, d de Cohen = %s (%s)."
+                   else "%s's t-test (BACI), %s: t(%s) = %s, %s; mean gap %s before and %s after, change = %s%s, Cohen's d = %s (%s).",
+                   if (r$test == "welch") "Welch" else "Student", quoi, ddl(t$ddl1), nb(t$statistique), pv(t$p), nb(p$moyenne[1]), nb(p$moyenne[2]),
+                   nb(p$moyenne[2] - p$moyenne[1]), ic(c(t$bas, t$haut)), nb(t$effet), n))
+  }
   t <- r$tests[r$tests$test == r$conseille, ]
   et <- if (fr) "et" else "and"
   if (r$type == "groupes") {
@@ -609,6 +678,126 @@ phrase_test <- function(r) {
                       nb(t$effet), ic(r$ic), ddl(t$ddl1), nb(t$statistique), pv(t$p), r$n),
     spearman = sprintf(if (fr) "Corrélation de Spearman : ρ = %s, %s (n = %d)." else "Spearman correlation: ρ = %s, %s (n = %d).",
                        nb(t$effet), pv(t$p), r$n))
+}
+
+# ---------------------------------------------------------- avant/après avec témoin (BACI)
+
+# Avant/après avec témoin (BACI, before-after control-impact : Stewart-Oaten et al., 1986), comme
+# la section 4 de son script 13 : à chaque temps t (l'année), l'écart d_t = la moyenne de y sur
+# les lignes des unités d'impact à t − celle sur les lignes des unités témoins à t, aux temps où
+# les unes et les autres en ont au moins une. Une ligne par unité et par temps donne la moyenne
+# des unités ; avec plusieurs (les secteurs d'un site, quand l'unité est le site), chaque ligne
+# compte une fois, comme dans le script (aggregate() sur les lignes des témoins) : `repetees` dit
+# combien de temps chaque unité en a plusieurs. Les périodes : avant, t < evenement (le premier
+# temps « après ») ; après, t ≥ evenement, jusqu'à fin comprise si elle est donnée (les temps
+# suivants restent hors du test). Il faut au moins deux temps dans chaque période (son
+# contraste()). Les écarts d'après sont comparés à ceux d'avant : t de Welch (par défaut), t de
+# Student (variances égales : le lm(écart ~ période) du script, son intervalle et sa valeur p) ou
+# Mann–Whitney (sur les rangs) ; l'effet est la moyenne des écarts d'après moins celle d'avant,
+# avec son intervalle à 95 % (celui de Welch, ou de Student si c'est le test choisi). Les temps y
+# sont tenus pour indépendants : l'autocorrélation des écarts n'est pas prise en compte (un modèle
+# mixte y ~ période × impact + (1 | unité), avec CAR1, le fait).
+# y : le numéro d'une variable quantitative ; temps : une variable ou "id:k" aux valeurs
+# numériques (l'année) ; unite : une variable qualitative ou "id:k" (le secteur) ; impact et
+# temoins : ses niveaux. Sans evenement, la série des écarts seule.
+baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin = NULL, test = "welch", observations = NULL) {
+  obs <- observations %||% numeros_observations(projet)
+  liste <- function(v) paste(c(utils::head(v, 5), if (length(v) > 5) "…"), collapse = ", ")
+  if (anyDuplicated(as.character(c(y, temps, unite)))) {
+    stop(traduire("La réponse, le temps et l'unité doivent être trois variables différentes", "The response, the time and the unit must be three different variables"))
+  }
+  if (!test %in% c("welch", "student", "mann_whitney")) stop(traduire("Test inconnu : ", "Unknown test: "), test)
+  vy <- valeurs_a_tester(projet, y, obs)
+  if (vy$qualitative) stop(traduire("La réponse doit être une variable quantitative", "The response must be a quantitative variable"))
+  vt <- valeurs_a_tester(projet, temps, obs)
+  tv <- if (vt$qualitative) suppressWarnings(as.numeric(as.character(vt$valeurs))) else vt$valeurs
+  autres <- if (vt$qualitative) levels(droplevels(vt$valeurs[is.na(tv)])) else character(0)
+  if (length(autres)) {
+    stop(sprintf(traduire("Le temps doit être numérique : %s a des valeurs qui ne sont pas des nombres (%s)",
+                          "The time must be numeric: %s has values that aren't numbers (%s)"), vt$nom, liste(autres)))
+  }
+  vu <- valeurs_a_tester(projet, unite, obs)
+  if (!vu$qualitative) stop(traduire("L'unité doit être une variable qualitative ou un identifiant", "The unit must be a qualitative variable or an ID"))
+  impact <- unique(as.character(unlist(impact)))
+  temoins <- unique(as.character(unlist(temoins)))
+  if (!length(impact) || !length(temoins)) stop(traduire("Choisissez au moins une unité d'impact et une unité témoin", "Choose at least one impact unit and one control unit"))
+  inconnus <- setdiff(c(impact, temoins), levels(vu$valeurs))
+  if (length(inconnus)) stop(sprintf(traduire("%s n'a pas de niveau %s", "%s has no level %s"), vu$nom, liste(inconnus)))
+  deux_fois <- intersect(impact, temoins)
+  if (length(deux_fois)) stop(sprintf(traduire("Une unité ne peut être à la fois impact et témoin : %s", "A unit can't be both impact and control: %s"), liste(deux_fois)))
+  u <- as.character(vu$valeurs)
+  role <- ifelse(u %in% impact, "impact", ifelse(u %in% temoins, "temoin", NA_character_))
+  i <- which(!is.na(role) & !is.na(vy$valeurs) & !is.na(tv))
+  temps_vus <- sort(unique(tv[i]))
+  ti <- match(tv[i], temps_vus)
+  par_temps <- function(r, f, vide) vapply(seq_along(temps_vus), function(k) {
+    s <- role[i] == r & ti == k
+    if (any(s)) f(vy$valeurs[i][s]) else vide
+  }, 0)
+  serie <- data.frame(temps = temps_vus, impact = par_temps("impact", mean, NA_real_), temoins = par_temps("temoin", mean, NA_real_),
+                      n_impact = par_temps("impact", length, 0), n_temoins = par_temps("temoin", length, 0))
+  deux <- serie$n_impact > 0 & serie$n_temoins > 0
+  seuls <- list(impact = temps_vus[serie$n_impact > 0 & !deux], temoins = temps_vus[serie$n_temoins > 0 & !deux])
+  serie <- serie[deux, ]
+  rownames(serie) <- NULL
+  if (!nrow(serie)) {
+    stop(sprintf(traduire("Aucune valeur de %s où l'impact et les témoins ont tous deux une valeur de %s",
+                          "No value of %s where both the impact and the controls have a value of %s"), vt$nom, vy$nom))
+  }
+  serie$ecart <- serie$impact - serie$temoins
+  cles <- paste(u[i], ti, sep = "\r")
+  plusieurs <- table(factor(sub("\r.*", "", unique(cles[duplicated(cles)])), levels = c(impact, temoins)))
+  r <- list(type = "baci", y = vy[c("uid", "nom")], temps = vt[c("uid", "nom")], unite = vu[c("uid", "nom")], impact = impact, temoins = temoins,
+            serie = serie, seuls = seuls, manquantes = sum(!is.na(role)) - length(i),
+            repetees = if (any(plusieurs > 0)) data.frame(unite = names(plusieurs)[plusieurs > 0], temps = as.integer(plusieurs[plusieurs > 0]), stringsAsFactors = FALSE))
+  if (!length(evenement)) return(r)
+  evenement <- suppressWarnings(as.numeric(evenement))
+  if (length(evenement) != 1 || is.na(evenement)) stop(traduire("Le temps de l'événement doit être un nombre", "The event time must be a number"))
+  if (length(fin)) {
+    fin <- suppressWarnings(as.numeric(fin))
+    if (length(fin) != 1 || is.na(fin)) stop(traduire("La fin de la période après doit être un nombre", "The end of the after period must be a number"))
+    if (fin < evenement) {
+      stop(sprintf(traduire("La fin de la période après (%s) vient avant l'événement (%s)", "The end of the after period (%s) comes before the event (%s)"),
+                   format(fin), format(evenement)))
+    }
+  } else fin <- NULL
+  hors <- if (length(fin)) serie$temps > fin else rep(FALSE, nrow(serie))
+  serie$periode <- ifelse(serie$temps < evenement, "avant", ifelse(hors, "hors", "apres"))
+  r$serie <- serie
+  db <- serie$ecart[serie$periode == "avant"]
+  da <- serie$ecart[serie$periode == "apres"]
+  nb <- length(db)
+  na <- length(da)
+  if (nb < 2 || na < 2) {
+    stop(sprintf(traduire("Il faut au moins deux valeurs de %s dans chaque période, avant et après %s : il y en a %d avant et %d après",
+                          "At least two values of %s are needed in each period, before and after %s: there are %d before and %d after"),
+                 vt$nom, format(evenement), nb, na))
+  }
+  if (diff(range(c(db, da))) == 0) stop(traduire("L'écart est le même à chaque temps : rien à comparer", "The gap is the same at every time: nothing to compare"))
+  w <- essai_test(stats::t.test(da, db))
+  s <- essai_test(stats::t.test(da, db, var.equal = TRUE))
+  mw <- essai_test(stats::wilcox.test(da, db))
+  commun <- sqrt(((nb - 1) * stats::var(db) + (na - 1) * stats::var(da)) / (nb + na - 2))
+  d <- if (commun > 0) (mean(da) - mean(db)) / commun else NA_real_
+  ic <- function(x) if (is.null(x)) c(NA_real_, NA_real_) else as.numeric(x$conf.int)
+  shapiro <- function(v) if (length(v) >= 3 && length(v) <= 5000 && diff(range(v)) > 0) stats::shapiro.test(v)$p.value else NA_real_
+  tp <- list(serie$temps[serie$periode == "avant"], serie$temps[serie$periode == "apres"])
+  r$periodes <- data.frame(periode = c("avant", "apres"), n = c(nb, na), debut = vapply(tp, min, 0), fin = vapply(tp, max, 0),
+                           moyenne = c(mean(db), mean(da)), ecart_type = c(stats::sd(db), stats::sd(da)),
+                           mediane = c(stats::median(db), stats::median(da)), shapiro_p = c(shapiro(db), shapiro(da)), stringsAsFactors = FALSE)
+  r$tests <- data.frame(test = c("welch", "student", "mann_whitney"),
+                        statistique = c(champ_test(w, "statistic"), champ_test(s, "statistic"), champ_test(mw, "statistic")),
+                        ddl1 = c(champ_test(w, "parameter"), champ_test(s, "parameter"), NA), ddl2 = NA_real_,
+                        p = c(champ_test(w, "p.value"), champ_test(s, "p.value"), champ_test(mw, "p.value")),
+                        effet = c(d, d, 2 * champ_test(mw, "statistic") / (na * nb) - 1), nom_effet = c("d", "d", "r_rb"),
+                        bas = c(ic(w)[1], ic(s)[1], NA), haut = c(ic(w)[2], ic(s)[2], NA), stringsAsFactors = FALSE)
+  r$difference <- c(mean(da) - mean(db), ic(if (test == "student") s else w))
+  r$evenement <- evenement
+  r["fin"] <- list(fin)
+  r$hors <- sum(hors)
+  r$test <- test
+  r$phrase <- phrase_test(r)
+  r
 }
 
 # --------------------------------------------------------------- matrice des corrélations

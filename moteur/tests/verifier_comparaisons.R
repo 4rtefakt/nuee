@@ -369,6 +369,159 @@ verifier("deux mesures par une clé, une mesure et des groupes par la ligne, moi
          grepl("par une troisième variable", erreur(pw, avant, numeros(pw, "site"), appariement = "observation")) &&
          grepl("2 observation\\(s\\) seulement", erreur(pw, avant, apres, observations = c(1, 2, 4), appariement = "observation")))
 
+cat("Entre classes, appariées par une clé\n")
+# les secteurs S1 et S2 de `long`, chaque variable sur ses années communes : nnicad manque pour S1
+# en 2008, tmnic est négative (pas de log2 du rapport), rare n'a que deux années communes
+set.seed(9)
+lv <- long
+lv$nnicad <- round(3 + 0.4 * (lv$secteur == "S2") + rnorm(nrow(lv)), 3)
+lv$tmnic <- round(-1 + rnorm(nrow(lv)), 3)
+lv$rare <- ifelse(lv$annee %in% c(2003, 2004), round(rnorm(nrow(lv)), 3), NA)
+lv$nnicad[lv$secteur == "S1" & lv$annee == 2008] <- NA
+pv <- projet_depuis_tableau(lv, "secteurs")
+cl <- numeros(pv, "secteur")
+an <- numeros(pv, "annee")
+paire <- function(nom) {
+  a <- lv[lv$secteur == "S1" & !is.na(lv[[nom]]), ]
+  b <- lv[lv$secteur == "S2" & !is.na(lv[[nom]]), ]
+  k <- sort(intersect(a$annee, b$annee))
+  list(a = a[[nom]][match(k, a$annee)], b = b[[nom]][match(k, b$annee)])
+}
+vt <- c("densite", "nnicad", "tmnic")
+ref <- lapply(vt, paire)
+rv <- tests_variables(pv, cl, c("S1", "S2"), test = "t_apparie", appariement = an)
+tb <- rv$tableau[match(vt, rv$tableau$nom), ]
+tt <- lapply(ref, function(x) t.test(x$b, x$a, paired = TRUE))
+verifier("t apparié de chaque variable = t.test(paired = TRUE) sur ses années communes, le nombre de paires par variable",
+         identical(tb$n_paires, c(8L, 8L, 9L)) && identical(tb$n_paires, vapply(ref, function(x) length(x$a), 0L)) &&
+         isTRUE(all.equal(tb$p, vapply(tt, `[[`, 0, "p.value"))) && isTRUE(all.equal(tb$statistique, vapply(tt, function(x) unname(x$statistic), 0))))
+verifier("moyennes des paires, log2 de leur rapport (positives), d_z = différence moyenne / écart-type des différences",
+         isTRUE(all.equal(tb$moyenne_a, vapply(ref, function(x) mean(x$a), 0))) && isTRUE(all.equal(tb$moyenne_b, vapply(ref, function(x) mean(x$b), 0))) &&
+         isTRUE(all.equal(tb$log2_rapport[1:2], vapply(ref[1:2], function(x) log2(mean(x$b) / mean(x$a)), 0))) && is.na(tb$log2_rapport[3]) &&
+         isTRUE(all.equal(tb$d, vapply(ref, function(x) mean(x$b - x$a) / sd(x$b - x$a), 0))))
+rr <- rv$tableau[rv$tableau$nom == "rare", ]
+verifier("deux paires seulement : pas de test, hors de la correction ; Benjamini–Hochberg = p.adjust() ; ni la classe ni la clé testées",
+         rr$n_paires == 2 && is.na(rr$p) && is.na(rr$p_ajuste) && isTRUE(all.equal(tb$p_ajuste, p.adjust(tb$p, "BH"))) &&
+         identical(sort(rv$tableau$nom), sort(c(vt, "rare"))) && rv$test == "t_apparie" && rv$cle$nom == "annee")
+rw <- tests_variables(pv, cl, c("S1", "S2"), test = "wilcoxon", correction = "bonferroni", appariement = an)
+pw_ref <- vapply(ref, function(x) wilcox.test(x$b, x$a, paired = TRUE)$p.value, 0)
+verifier("Wilcoxon de chaque variable = wilcox.test(paired = TRUE), Bonferroni = p.adjust()",
+         isTRUE(all.equal(rw$tableau$p[match(vt, rw$tableau$nom)], pw_ref)) && isTRUE(all.equal(rw$tableau$p_ajuste, p.adjust(rw$tableau$p, "bonferroni"))))
+verifier("chaque variable : le même t apparié que Deux variables",
+         all(vapply(vt, function(nom) isTRUE(all.equal(tb$p[tb$nom == nom],
+                    test_deux_variables(pv, numeros(pv, nom), cl, appariement = an, niveaux = c("S1", "S2"))$tests$p[1])), TRUE)))
+pvi <- pv
+pvi$observation_id_names <- c("Observation", "an")
+for (i in seq_along(pvi$observations)) pvi$observations[[i]]$ids <- c(lv$nom[i], lv$annee[i])
+ri <- tests_variables(pvi, cl, c("S1", "S2"), test = "t_apparie", appariement = "id:2")
+verifier("un identifiant des observations pour clé : les mêmes paires (la variable annee, testée alors, ne change dans aucune paire : pas de p)",
+         isTRUE(all.equal(ri$tableau[match(vt, ri$tableau$nom), c("n_paires", "p", "d")], tb[c("n_paires", "p", "d")], check.attributes = FALSE)) &&
+         is.na(ri$tableau$p[ri$tableau$nom == "annee"]) && ri$cle$nom == "an")
+dv <- lv
+dv$annee[dv$secteur == "S1" & dv$annee == 2004] <- 2003
+erreur_tv <- function(...) tryCatch({ tests_variables(...); "" }, error = conditionMessage)
+verifier("une année deux fois pour une classe : refusé comme dans Deux variables",
+         grepl("^S1 a plusieurs lignes pour la même valeur de annee \\(2003\\) : la clé d'appariement doit désigner une seule ligne par niveau$",
+               erreur_tv(projet_depuis_tableau(dv, "secteurs"), cl, c("S1", "S2"), test = "t_apparie", appariement = an)))
+verifier("un test apparié sans clé, une clé sans test apparié, la classe pour clé : refusé",
+         grepl("clé d'appariement", erreur_tv(pv, cl, c("S1", "S2"), test = "t_apparie")) &&
+         grepl("avec un test apparié", erreur_tv(pv, cl, c("S1", "S2"), test = "welch", appariement = an)) &&
+         grepl("autre variable que la classe", erreur_tv(pv, cl, c("S1", "S2"), test = "t_apparie", appariement = cl)))
+
+cat("Avant/après avec témoin (BACI)\n")
+# quatre secteurs suivis de 2001 à 2012, en long et dans le désordre : S1 (l'impact) gagne 1,2 à
+# partir de 2007 et n'a pas de densité en 2003 ; les témoins S2 et S3 n'ont pas de ligne en 2012 ;
+# S4 n'est ni l'un ni l'autre
+set.seed(11)
+bl <- expand.grid(annee = 2001:2012, secteur = c("S1", "S2", "S3", "S4"), stringsAsFactors = FALSE)
+bl$densite <- round(5 + rnorm(nrow(bl)) + 1.2 * (bl$secteur == "S1" & bl$annee >= 2007), 3)
+bl <- bl[!(bl$secteur %in% c("S2", "S3") & bl$annee == 2012), ]
+bl$densite[bl$secteur == "S1" & bl$annee == 2003] <- NA
+bl <- data.frame(nom = paste0("b", seq_len(nrow(bl))), bl[sample(nrow(bl)), c("secteur", "annee", "densite")])
+pb <- projet_depuis_tableau(bl, "baci")
+bv <- function(nom) numeros(pb, nom)
+# d_t calculé ici : la moyenne de l'impact moins celle des témoins, les années où les deux en ont une
+ecarts <- function(impact, temoins) {
+  ok <- !is.na(bl$densite)
+  mi <- tapply(bl$densite[ok & bl$secteur %in% impact], bl$annee[ok & bl$secteur %in% impact], mean)
+  mt <- tapply(bl$densite[ok & bl$secteur %in% temoins], bl$annee[ok & bl$secteur %in% temoins], mean)
+  annees <- sort(as.numeric(intersect(names(mi), names(mt))))
+  data.frame(annee = annees, d = unname(mi[as.character(annees)] - mt[as.character(annees)]))
+}
+e <- ecarts("S1", c("S2", "S3"))
+rb <- baci(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", c("S2", "S3"), evenement = 2007)
+db <- e$d[e$annee < 2007]
+da <- e$d[e$annee >= 2007]
+w <- t.test(da, db)
+verifier("d_t = moyenne de l'impact − moyenne des témoins, les années où les deux en ont ; les années de l'un seul et les lignes sans valeur, dites",
+         isTRUE(all.equal(rb$serie$temps, e$annee)) && isTRUE(all.equal(rb$serie$ecart, e$d)) && all(rb$serie$n_temoins == 2) &&
+         identical(rb$seuls$impact, 2012) && identical(rb$seuls$temoins, 2003) && rb$manquantes == 1 && is.null(rb$repetees))
+verifier("après contre avant : t de Welch = t.test(), Mann–Whitney = wilcox.test(), sur les d_t calculés ici ; r rang-bisérial",
+         isTRUE(all.equal(rb$tests$p[1], w$p.value)) && isTRUE(all.equal(rb$tests$statistique[1], unname(w$statistic))) &&
+         isTRUE(all.equal(rb$tests$ddl1[1], unname(w$parameter))) && isTRUE(all.equal(rb$difference, c(mean(da) - mean(db), as.numeric(w$conf.int)))) &&
+         isTRUE(all.equal(rb$tests$p[3], wilcox.test(da, db)$p.value)) && identical(rb$periodes$n, c(length(db), length(da))) &&
+         isTRUE(all.equal(rb$tests$effet[3], 2 * unname(wilcox.test(da, db)$statistic) / (length(da) * length(db)) - 1)))
+periode <- factor(ifelse(e$annee < 2007, "avant", "pendant"), levels = c("avant", "pendant"))
+lm_script <- lm(e$d ~ periode)
+verifier("t de Student = son contraste() : lm(d_t ~ période), l'effet, son intervalle et sa valeur p",
+         isTRUE(all.equal(rb$tests$p[2], summary(lm_script)$coefficients[2, 4])) && isTRUE(all.equal(mean(da) - mean(db), unname(coef(lm_script)[2]))) &&
+         isTRUE(all.equal(c(rb$tests$bas[2], rb$tests$haut[2]), unname(confint(lm_script)[2, ]))) &&
+         isTRUE(all.equal(rb$tests$p[2], t.test(da, db, var.equal = TRUE)$p.value)))
+rf <- baci(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", c("S2", "S3"), evenement = 2005, fin = 2009, test = "mann_whitney")
+af <- e$d[e$annee >= 2005 & e$annee <= 2009]
+bf <- e$d[e$annee < 2005]
+verifier("une fin : après = de l'événement à la fin comprise, les années suivantes hors du test",
+         identical(rf$serie$periode, ifelse(e$annee < 2005, "avant", ifelse(e$annee <= 2009, "apres", "hors"))) && rf$hors == 2 && rf$fin == 2009 &&
+         isTRUE(all.equal(rf$tests$p, c(t.test(af, bf)$p.value, t.test(af, bf, var.equal = TRUE)$p.value, wilcox.test(af, bf)$p.value))))
+r2 <- baci(pb, bv("densite"), bv("annee"), bv("secteur"), c("S1", "S4"), c("S2", "S3"), evenement = 2007)
+verifier("deux unités d'impact : la moyenne de leurs lignes chaque année (S4 seul en 2003)",
+         isTRUE(all.equal(r2$serie$ecart, ecarts(c("S1", "S4"), c("S2", "S3"))$d)) && r2$serie$n_impact[r2$serie$temps == 2003] == 1 &&
+         all(r2$serie$n_impact[r2$serie$temps != 2003] == 2))
+pbi <- pb
+pbi$observation_id_names <- c("Observation", "secteur_id", "an")
+for (i in seq_along(pbi$observations)) pbi$observations[[i]]$ids <- c(bl$nom[i], bl$secteur[i], bl$annee[i])
+ri <- baci(pbi, bv("densite"), "id:3", "id:2", "S1", c("S2", "S3"), evenement = 2007)
+verifier("le temps et l'unité en identifiants des observations : les mêmes écarts et les mêmes tests",
+         isTRUE(all.equal(ri$serie$ecart, rb$serie$ecart)) && isTRUE(all.equal(ri$tests, rb$tests)) && ri$temps$nom == "an" && ri$unite$nom == "secteur_id")
+bs <- bl
+bs$site <- c(S1 = "A", S2 = "B", S3 = "B", S4 = "C")[bs$secteur]
+pbs <- projet_depuis_tableau(bs, "baci")
+rsite <- baci(pbs, numeros(pbs, "densite"), numeros(pbs, "annee"), numeros(pbs, "site"), "A", "B", evenement = 2007)
+verifier("l'unité = le site : chaque ligne (secteur) compte une fois, les mêmes écarts ; le nombre d'années à plusieurs lignes, dit",
+         isTRUE(all.equal(rsite$serie$ecart, rb$serie$ecart)) && identical(rsite$repetees$unite, "B") && rsite$repetees$temps == 11)
+rs <- baci(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", c("S2", "S3"))
+verifier("sans événement : la série des écarts seule", isTRUE(all.equal(rs$serie$ecart, rb$serie$ecart)) && is.null(rs$tests) && is.null(rs$phrase))
+erreur_b <- function(...) tryCatch({ baci(...); "" }, error = conditionMessage)
+verifier("moins de deux années dans une période, une unité impact et témoin, pas de témoin : refusé",
+         grepl("au moins deux valeurs de annee dans chaque période, avant et après 2002 : il y en a 1 avant et 9 après",
+               erreur_b(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", c("S2", "S3"), evenement = 2002)) &&
+         grepl("à la fois impact et témoin : S2", erreur_b(pb, bv("densite"), bv("annee"), bv("secteur"), c("S1", "S2"), c("S2", "S3"), evenement = 2007)) &&
+         grepl("au moins une unité d'impact et une unité témoin", erreur_b(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", character(0), evenement = 2007)))
+verifier("une fin avant l'événement, un temps qui n'est pas un nombre, une unité ou une réponse du mauvais type, une variable pour deux rôles : refusé",
+         grepl("vient avant l'événement", erreur_b(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", "S2", evenement = 2007, fin = 2005)) &&
+         grepl("^Le temps doit être numérique : secteur_id a des valeurs qui ne sont pas des nombres \\(S1, S2, S3, S4\\)$",
+               erreur_b(pbi, bv("densite"), "id:2", bv("secteur"), "S1", "S2", evenement = 2007)) &&
+         grepl("qualitative ou un identifiant", erreur_b(pbi, bv("densite"), "id:3", bv("annee"), "S1", "S2", evenement = 2007)) &&
+         grepl("réponse doit être une variable quantitative", erreur_b(pb, bv("secteur"), bv("annee"), "id:1", "S1", "S2")) &&
+         grepl("trois variables différentes", erreur_b(pb, bv("densite"), bv("annee"), bv("annee"), "S1", "S2", evenement = 2007)))
+verifier(sprintf("phrase du t de Welch, en français : « %s »", rb$phrase),
+         grepl(paste0("^Test t de Welch \\(BACI\\), écart de densite impact \\(S1\\) − témoins \\(S2, S3\\), après contre avant : ",
+                      "t\\([0-9]+(,[0-9])?\\) = -?[0-9]+,[0-9]{2}, p [=<] 0,[0-9]+ ; écart moyen -?[0-9]+,[0-9]{2} avant et -?[0-9]+,[0-9]{2} après, ",
+                      "changement = -?[0-9]+,[0-9]{2} \\[IC 95 % -?[0-9]+,[0-9]{2} ; -?[0-9]+,[0-9]{2}\\], d de Cohen = -?[0-9]+,[0-9]{2} ",
+                      "\\(n = 5 avant et 5 après ; après : annee ≥ 2007\\)\\.$"), rb$phrase))
+options(nuee.langue = "en")
+re <- baci(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", c("S2", "S3"), evenement = 2005, fin = 2009, test = "mann_whitney")
+rt <- baci(pb, bv("densite"), bv("annee"), bv("secteur"), c("S1", "S4"), c("S2", "S3"), evenement = 2007, test = "student")
+options(nuee.langue = NULL)
+verifier(sprintf("en anglais, Mann–Whitney avec une fin : « %s »", re$phrase),
+         grepl(paste0("^Mann–Whitney test \\(BACI\\), densite gap impact \\(S1\\) − control \\(S2, S3\\), after against before: U = [0-9.]+, p = 0\\.[0-9]+; ",
+                      "median gap -?[0-9.]+ before and -?[0-9.]+ after, rank-biserial correlation = -?[0-9.]+ \\(n = 3 before and 5 after; after: 2005 ≤ annee ≤ 2009\\)\\.$"),
+               re$phrase))
+verifier(sprintf("en anglais, Student, deux unités d'impact (2003 compte alors : S4 en a une) : « %s »", rt$phrase),
+         grepl("^Student's t-test \\(BACI\\), densite gap impact \\(S1, S4\\) − control \\(S2, S3\\), after against before: t\\(9\\) = .*\\[95% CI .*\\(n = 6 before and 5 after; after: annee ≥ 2007\\)\\.$",
+               rt$phrase) && isTRUE(all.equal(rt$difference[2:3], c(rt$tests$bas[2], rt$tests$haut[2]))))
+verifier("aucune phrase BACI avec NA", !any(grepl("NA", c(rb$phrase, re$phrase, rt$phrase, rf$phrase), fixed = TRUE)))
+
 cat("Phrases\n")
 r <- test_deux_variables(p, variete, numeros(p, "sucre"))
 verifier(sprintf("en français : « %s »", r$phrase), grepl("^ANOVA à un facteur : F\\(3, 116\\) = [0-9]+,[0-9]{2}, p < 0,001 ; η² = 0,[0-9]{2} \\(N = 120, 4 groupes\\)\\.$", r$phrase))

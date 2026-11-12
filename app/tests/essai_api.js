@@ -522,6 +522,52 @@ async function principal() {
         && Math.abs([].concat(r.paires.khi2)[0] - Math.max(0, khi2)) < 1e-8 && [].concat(r.paires.approche)[0] === false,
       `x + z contre x (pas le modèle avec CAR1) : ${JSON.stringify(r)}`);
     });
+    await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
+      // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the
+      // impact) rises from 2006; S3 has no row in 2002; S4 is neither impact nor control
+      let g = 5;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = [];
+      for (const s of ['S1', 'S2', 'S3', 'S4']) {
+        for (let an = 2001; an <= 2010; an += 1) {
+          if (s !== 'S3' || an !== 2002) lignes.push([`${s}_${an}`, s, an, (3 + (s === 'S1' && an >= 2006 ? 1 : 0) + alea()).toFixed(3), (2 + alea()).toFixed(3)]);
+        }
+      }
+      lignes.sort((a, b) => (a[2] % 4) - (b[2] % 4) || a[0].localeCompare(b[0]));
+      const q = await api('coller', { texte: ['nom\tsecteur\tannee\tdensite\tnnicad', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'BACI' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const base = { projet: q.id, y: v.densite, temps: v.annee, unite: v.secteur, impact: ['S1'], temoins: ['S2', 'S3'] };
+      const r = await api('baci', { ...base, evenement: 2006 });
+      // d_t computed here: S1 − the mean of S2 and S3 (S2 alone in 2002), and Welch's t after against before
+      const val = (s, an) => { const l = lignes.find((x) => x[1] === s && x[2] === an); return l ? Number(l[3]) : null; };
+      const moy = (x) => x.reduce((a, b) => a + b, 0) / x.length;
+      const vari = (x) => { const m = moy(x); return x.reduce((a, b) => a + (b - m) ** 2, 0) / (x.length - 1); };
+      const d = [];
+      for (let an = 2001; an <= 2010; an += 1) d.push([an, val('S1', an) - moy([val('S2', an), val('S3', an)].filter((x) => x !== null))]);
+      const av = d.filter(([an]) => an < 2006).map(([, x]) => x);
+      const ap = d.filter(([an]) => an >= 2006).map(([, x]) => x);
+      const tw = (moy(ap) - moy(av)) / Math.sqrt(vari(ap) / ap.length + vari(av) / av.length);
+      const ecarts = [].concat(r.serie.ecart);
+      verifier(r.type === 'baci' && ecarts.length === 10 && ecarts.every((x, i) => Math.abs(x - d[i][1]) < 1e-9) && [].concat(r.serie.n_temoins)[1] === 1
+        && Math.abs(r.tests.statistique[0] - tw) < 1e-8 && [].concat(r.tests.test).join() === 'welch,student,mann_whitney' && r.test === 'welch'
+        && Math.abs(r.difference[0] - (moy(ap) - moy(av))) < 1e-9 && /\(n = 5 avant et 5 après ; après : annee ≥ 2006\)\.$/.test(r.phrase), `BACI : ${r.phrase}`);
+      const seule = await api('baci', base);
+      verifier(!seule.tests && !seule.phrase && [].concat(seule.serie.ecart).length === 10, 'BACI sans événement : les écarts seuls');
+      const en = await api('baci', { ...base, evenement: 2004, fin: 2008, test: 'mann_whitney' }, 'en');
+      verifier(en.hors === 2 && /^Mann–Whitney test \(BACI\), densite gap impact \(S1\) − control \(S2, S3\)/.test(en.phrase)
+        && /\(n = 3 before and 5 after; after: 2004 ≤ annee ≤ 2008\)\.$/.test(en.phrase), `BACI en anglais, avec une fin : ${en.phrase}`);
+      let refus = '';
+      try { await api('baci', { ...base, evenement: 2002 }); } catch (err) { refus = err.message; }
+      verifier(/au moins deux valeurs de annee dans chaque période/.test(refus), `une seule année avant, refusé : « ${refus} »`);
+      // between classes: S1 and S2 paired by the year, each variable on its shared years (the paired t by default)
+      const tv = await api('tests_variables', { projet: q.id, classe: v.secteur, groupes: ['S1', 'S2'], appariement: v.annee, correction: 'BH' });
+      const dp = [];
+      for (let an = 2001; an <= 2010; an += 1) dp.push(val('S2', an) - val('S1', an));
+      const k = [].concat(tv.tableau.nom).indexOf('densite');
+      verifier(tv.test === 't_apparie' && tv.cle.nom === 'annee' && [].concat(tv.tableau.nom).sort().join() === 'densite,nnicad' && [].concat(tv.tableau.n_paires)[k] === 10
+        && Math.abs([].concat(tv.tableau.statistique)[k] - moy(dp) / Math.sqrt(vari(dp) / 10)) < 1e-8 && Math.abs([].concat(tv.tableau.d)[k] - moy(dp) / Math.sqrt(vari(dp))) < 1e-9,
+        `deux classes appariées : ${JSON.stringify(tv.tableau)}`);
+    });
     await etape('paquets de lecture des formats', async () => {
       const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });
       verifier(r.journal.some((e) => e.type === 'sortie' && e.texte.includes('[1] TRUE')), 'haven, readxl, foreign ou zip absent');

@@ -1507,23 +1507,26 @@ async function rendreCoomans(conteneur, ctx, p, loc) {
   });
 }
 
-// Statistical tests, computed in R, in three modes: between the classes of a qualitative
+// Statistical tests, computed in R, in four modes: between the classes of a qualitative
 // variable, variable by variable; two variables, with the test their types call for; the
-// correlation matrix of the quantitative variables.
+// correlation matrix of the quantitative variables; before/after with a control (BACI).
 export const valeurP = (v) => (v === null || v === undefined ? '' : v === 0 ? '< 1e-16' : v < 1e-4 ? v.toExponential(1) : v.toFixed(4));  // (0 : sous la précision de R)
 async function rendreTests(conteneur, ctx, p, loc) {
   loc.mode ??= 'classes';
-  const modes = choix('', [['classes', t('tests_mode_classes')], ['deux', t('tests_mode_deux')], ['correlations', t('tests_mode_correlations')]],
-    loc.mode, (x) => { loc.mode = x; ctx.rafraichir(); });
+  const modes = choix('', [['classes', t('tests_mode_classes')], ['deux', t('tests_mode_deux')], ['correlations', t('tests_mode_correlations')],
+    ['baci', t('tests_mode_baci')]], loc.mode, (x) => { loc.mode = x; ctx.rafraichir(); });
   if (loc.mode === 'deux') return rendreTestDeux(conteneur, ctx, p, loc, modes);
   if (loc.mode === 'correlations') return rendreCorrelations(conteneur, ctx, p, loc, modes);
+  if (loc.mode === 'baci') return rendreBaci(conteneur, ctx, p, loc, modes);
   return rendreTestsClasses(conteneur, ctx, p, loc, modes);
 }
 
 // Each quantitative variable compared between the classes of a qualitative one, p-values
 // corrected for multiple testing. Two classes: t-test or Mann–Whitney, and a volcano plot
 // (effect against -log10 p, the variables that pass both cut-offs coloured); all classes:
-// ANOVA or Kruskal–Wallis, and the variables ranked.
+// ANOVA or Kruskal–Wallis, and the variables ranked. Two classes can be paired by a key (the
+// year, for two sectors followed the same years): for each variable, the paired t-test or
+// Wilcoxon's signed-rank test on the keys both classes have, d_z for d, the pairs counted.
 async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
   const proj = ctx.projet(p.projet);
   const quals = proj.variables.filter((v) => v.qualitative && [].concat(v.categories).length >= 2);
@@ -1535,18 +1538,41 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
   const deux = loc.comparaison === 'deux';
   if (!cats.includes(loc.a)) loc.a = cats[0];
   if (!cats.includes(loc.b) || loc.b === loc.a) loc.b = cats.find((c) => c !== loc.a);
-  const tests = deux ? [['welch', t('test_welch')], ['student', t('test_student')], ['mann_whitney', 'Mann–Whitney']]
-    : [['anova', 'ANOVA'], ['kruskal', 'Kruskal–Wallis']];
+  // the pairing key: another variable or an observation ID
+  const ids = [].concat(proj.identifiants || []).map((i) => [`id:${i.rang}`, `${i.nom} (${t('identifiant')})`]);
+  const cles = deux ? proj.variables.filter((x) => x.uid !== v.uid).map((x) => [x.uid, x.nom]).concat(ids) : [];
+  const apparie = cles.some(([u]) => u === loc.apparier);
+  const tests = !deux ? [['anova', 'ANOVA'], ['kruskal', 'Kruskal–Wallis']]
+    : apparie ? [['t_apparie', t('test_t_apparie')], ['wilcoxon', t('test_wilcoxon')]]
+    : [['welch', t('test_welch')], ['student', t('test_student')], ['mann_whitney', 'Mann–Whitney']];
+  // (the rank test stays the rank test when the pairing changes)
+  if (apparie && loc.test === 'mann_whitney') loc.test = 'wilcoxon';
+  if (!apparie && loc.test === 'wilcoxon') loc.test = 'mann_whitney';
   if (!tests.some(([k]) => k === loc.test)) loc.test = tests[0][0];
   loc.correction ??= 'BH';
   loc.seuil ??= 0.05;
-  const cle = JSON.stringify([v.uid, deux ? [loc.a, loc.b] : null, loc.test, loc.correction]);
+  const lireCle = (x) => (String(x).startsWith('id:') ? x : Number(x));
+  const barre = (...fin) => outils(modes,
+    choix(t('classe_variable'), quals.map((q) => [q.uid, q.nom]), v.uid, (x) => { loc.classe = Number(x); ctx.rafraichir(); }),
+    choix('', [['deux', t('deux_classes')], ['toutes', t('toutes_classes')]], loc.comparaison, (x) => { loc.comparaison = x; ctx.rafraichir(); }),
+    deux ? choix('A', cats.map((c) => [c, c]), loc.a, (x) => { loc.a = x; ctx.rafraichir(); }) : null,
+    deux ? choix('B', cats.filter((c) => c !== loc.a).map((c) => [c, c]), loc.b, (x) => { loc.b = x; ctx.rafraichir(); }) : null,
+    deux ? choix(t('apparier_par'), [['', t('apparie_aucun')]].concat(cles), apparie ? loc.apparier : '',
+      (x) => { loc.apparier = x === '' ? null : lireCle(x); ctx.rafraichir(); }) : null,
+    choix(t('test'), tests, loc.test, (x) => { loc.test = x; ctx.rafraichir(); }),
+    choix(t('correction'), [['BH', t('correction_bh')], ['bonferroni', 'Bonferroni'], ['aucune', t('aucune')]], loc.correction, (x) => { loc.correction = x; ctx.rafraichir(); }),
+    ...fin);
+  const cle = JSON.stringify([v.uid, deux ? [loc.a, loc.b] : null, loc.test, loc.correction, apparie ? loc.apparier : null]);
   if (loc.cle !== cle) {
     conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
-    loc.res = await ctx.demander('tests_variables', { projet: p.projet, classe: v.uid, groupes: deux ? [loc.a, loc.b] : null,
-      test: loc.test, correction: loc.correction });
+    // (an error, a key repeated within a class, shows under the selectors, which stay)
+    try {
+      loc.res = await ctx.demander('tests_variables', { projet: p.projet, classe: v.uid, groupes: deux ? [loc.a, loc.b] : null,
+        test: loc.test, correction: loc.correction, ...(apparie ? { appariement: loc.apparier } : {}) });
+    } catch (e) { loc.res = { erreur: e.message }; }
     loc.cle = cle;
   }
+  if (loc.res.erreur) { conteneur.replaceChildren(barre(), el('p', { class: 'erreur' }, `${t('erreur')} : ${loc.res.erreur}`)); return; }
   const tab = loc.res.tableau;
   const col = (k) => [].concat(tab[k]);
   const noms = col('nom');
@@ -1565,17 +1591,14 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
   const bas = el('div', { class: 'bas' });
   const nomTest = Object.fromEntries(tests)[loc.test];
   const nomCorrection = { BH: t('correction_bh'), bonferroni: 'Bonferroni', aucune: t('aucune') }[loc.correction];
-  conteneur.replaceChildren(outils(modes,
-    choix(t('classe_variable'), quals.map((q) => [q.uid, q.nom]), v.uid, (x) => { loc.classe = Number(x); ctx.rafraichir(); }),
-    choix('', [['deux', t('deux_classes')], ['toutes', t('toutes_classes')]], loc.comparaison, (x) => { loc.comparaison = x; ctx.rafraichir(); }),
-    deux ? choix('A', cats.map((c) => [c, c]), loc.a, (x) => { loc.a = x; ctx.rafraichir(); }) : null,
-    deux ? choix('B', cats.filter((c) => c !== loc.a).map((c) => [c, c]), loc.b, (x) => { loc.b = x; ctx.rafraichir(); }) : null,
-    choix(t('test'), tests, loc.test, (x) => { loc.test = x; ctx.rafraichir(); }),
-    choix(t('correction'), [['BH', t('correction_bh')], ['bonferroni', 'Bonferroni'], ['aucune', t('aucune')]], loc.correction, (x) => { loc.correction = x; ctx.rafraichir(); }),
+  const nomCle = apparie ? loc.res.cle.nom : '';
+  const nomD = apparie ? 'd_z' : 'd';
+  conteneur.replaceChildren(barre(
     choix(t('seuil_p'), [[0.01, '0,01'], [0.05, '0,05'], [0.1, '0,1']], loc.seuil, (x) => { loc.seuil = Number(x); ctx.rafraichir(); }),
-    deux ? choix(t('effet'), [['log2', t('effet_log2')], ['d', t('effet_d')]], loc.axe, (x) => { loc.axe = x; ctx.rafraichir(); }) : null,
+    deux ? choix(t('effet'), [['log2', t('effet_log2')], ['d', t(apparie ? 'effet_dz' : 'effet_d')]], loc.axe, (x) => { loc.axe = x; ctx.rafraichir(); }) : null,
     deux ? choix(t('seuil_effet'), seuilsEffet, loc.effet, (x) => { loc.effet = Number(x); ctx.rafraichir(); }) : null),
-    el('p', { class: 'note' }, t(deux ? 'tests_note_deux' : 'tests_note_toutes', { test: nomTest, correction: nomCorrection, a: loc.a, b: loc.b, n: nRetenues, total: n })),
+    el('p', { class: 'note' }, t(!deux ? 'tests_note_toutes' : apparie ? 'tests_note_apparie' : 'tests_note_deux',
+      { test: nomTest, correction: nomCorrection, a: loc.a, b: loc.b, n: nRetenues, total: n, cle: nomCle })),
     graphe, bas);
   const c = couleursTheme();
   if (deux) {
@@ -1588,11 +1611,11 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
     for (const s of loc.effet > 0 ? [-loc.effet, loc.effet] : []) formes.push({ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: s, x1: s, line: { dash: 'dot', color: c.doux, width: 1 } });
     tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', x: effet, y, text: noms, marker: { color: couleur, size: 7 * FORMAT.points },
       customdata: noms.map((_, i) => [valeurP(pv[i]), valeurP(pa[i])]),
-      hovertemplate: `%{text}<br>${loc.axe === 'log2' ? 'log2(B/A)' : 'd'} = %{x:.3f}<br>p = %{customdata[0]} · ${t('p_ajuste')} = %{customdata[1]}<extra></extra>` },
+      hovertemplate: `%{text}<br>${loc.axe === 'log2' ? 'log2(B/A)' : nomD} = %{x:.3f}<br>p = %{customdata[0]} · ${t('p_ajuste')} = %{customdata[1]}<extra></extra>` },
     { type: 'scatter', mode: 'text', x: etiquettes.map((i) => effet[i]), y: etiquettes.map((i) => y[i]), text: etiquettes.map((i) => noms[i]),
       textposition: 'top center', textfont: { size: FORMAT.taille - 2 }, hoverinfo: 'skip' }],
-    { title: { text: `${t('volcan')} · ${loc.b} / ${loc.a}` }, showlegend: false, dragmode: 'zoom', shapes: formes,
-      xaxis: { title: { text: loc.axe === 'log2' ? t('effet_log2_axe', { a: loc.a, b: loc.b }) : t('effet_d_axe', { a: loc.a, b: loc.b }) } },
+    { title: { text: `${t('volcan')} · ${loc.b} / ${loc.a}${apparie ? ` (${t('paires_par', { cle: nomCle })})` : ''}` }, showlegend: false, dragmode: 'zoom', shapes: formes,
+      xaxis: { title: { text: loc.axe === 'log2' ? t('effet_log2_axe', { a: loc.a, b: loc.b }) : t(apparie ? 'effet_dz_axe' : 'effet_d_axe', { a: loc.a, b: loc.b }) } },
       yaxis: { title: { text: '-log10(p)' } } });
   } else {
     const ordre = noms.map((_, i) => i).filter((i) => pa[i] !== null).sort((i, j) => pa[i] - pa[j]).slice(0, 40);
@@ -1609,8 +1632,8 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
     : cats.map((k) => num(`moyenne ${k}`, `${t('moyenne')} ${k}`));
   tableau(bas, ctx, loc.table, {
     n, nom: 'Tests',
-    colonnes: [{ cle: 'nom', titre: t('variables') }].concat(deux ? [num('n_a', 'n A', 0), num('n_b', 'n B', 0)] : [], moyennes,
-      deux ? [num('log2_rapport', 'log2(B/A)', 3), num('d', 'd', 3)] : [], [num('statistique', t('statistique'), 3), num('p', 'p', 4, valeurP), num('p_ajuste', t('p_ajuste'), 4, valeurP)]),
+    colonnes: [{ cle: 'nom', titre: t('variables') }].concat(!deux ? [] : apparie ? [num('n_paires', t('n_paires'), 0)] : [num('n_a', 'n A', 0), num('n_b', 'n B', 0)], moyennes,
+      deux ? [num('log2_rapport', 'log2(B/A)', 3), num('d', nomD, 3)] : [], [num('statistique', t('statistique'), 3), num('p', 'p', 4, valeurP), num('p_ajuste', t('p_ajuste'), 4, valeurP)]),
     valeur: (i, k) => (k === 'nom' ? noms[i] : [].concat(tab[k])[i]),
   });
 }
@@ -1623,7 +1646,7 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
 // and groups can also be paired by a third variable or ID (the year, for two sectors): the
 // paired t-test and Wilcoxon's signed-rank test between two levels A and B, on the keys both
 // have.
-const NOMS_TESTS = () => ({ khi2: t('test_khi2'), fisher: t('test_fisher'), welch: t('test_welch'), mann_whitney: 'Mann–Whitney',
+const NOMS_TESTS = () => ({ khi2: t('test_khi2'), fisher: t('test_fisher'), welch: t('test_welch'), student: t('test_student'), mann_whitney: 'Mann–Whitney',
   anova: 'ANOVA', welch_anova: t('test_welch_anova'), kruskal: 'Kruskal–Wallis', pearson: t('test_pearson'), spearman: t('test_spearman'),
   t_apparie: t('test_t_apparie'), wilcoxon: t('test_wilcoxon') });
 const NOMS_EFFETS = () => ({ V: t('effet_v'), OR: t('effet_or'), d: t('effet_d'), dz: t('effet_dz'), r_rb: t('effet_rb'), eta2: 'η²', epsilon2: 'ε²', r: 'r', rho: 'ρ' });
@@ -1956,6 +1979,183 @@ async function rendreCorrelations(conteneur, ctx, p, loc, modes) {
       { cle: 'p_ajuste', titre: t('p_ajuste'), num: true, format: valeurP, alerte: significative }],
     valeur: (k, c) => { const [i, j] = paires[k]; return c === 'a' ? noms[i] : c === 'b' ? noms[j] : r[c][i][j]; },
     cliquer: (k) => tester(...paires[k]),
+  });
+}
+
+// Before/after with a control (BACI), as her script 13 (section 4): at each time (the year), the
+// gap d_t between the mean of the impact units' rows and that of the control units' rows; the
+// gaps after the event (its first "after" time, up to an optional end) compared with those
+// before, by Welch's t (the default), Student's t (her script's lm on the period) or
+// Mann–Whitney, with the change in the mean gap, its 95 % interval and a sentence for a report.
+// The plot shows d_t over time, the event and each period's mean; until an event is entered,
+// the gaps alone.
+const NOMS_PERIODES = () => ({ avant: t('baci_avant'), apres: t('baci_apres'), hors: t('baci_hors') });
+const texteTemps = (x) => (x === null || x === undefined ? '' : Number.isInteger(x) ? String(x) : String(+x.toPrecision(6)));
+async function rendreBaci(conteneur, ctx, p, loc, modes) {
+  const B = (loc.baci ??= {});
+  const cache = ((loc.cache ??= {}).baci ??= {});  // (the results: loc.cache isn't saved with the session)
+  const proj = ctx.projet(p.projet);
+  const vars = proj.variables;
+  const ids = [].concat(proj.identifiants || []).map((i) => [`id:${i.rang}`, `${i.nom} (${t('identifiant')})`]);
+  const lire = (x) => (String(x).startsWith('id:') ? x : Number(x));
+  const existe = (options, u) => options.some(([x]) => x === u);
+  // a quantitative response; a time (another quantitative variable or an ID: the year); a unit
+  // (a qualitative variable or an ID: the sector); first choices named like them, the sector
+  // before the site
+  const temporel = /^(ann[ée]e|an|year|date|temps|time|jour|day|mois|month|saison|season)\b/i;
+  const spatial = /unit|station|parcelle|plot|transect|zone|site/i;
+  const reponses = vars.filter((v) => !v.qualitative).map((v) => [v.uid, v.nom]);
+  if (!existe(reponses, B.y) && reponses.length) B.y = (reponses.find(([, n]) => !temporel.test(n)) || reponses[0])[0];
+  const tempsPossibles = reponses.filter(([u]) => u !== B.y).concat(ids);
+  if (!existe(tempsPossibles, B.temps) && tempsPossibles.length) B.temps = (tempsPossibles.find(([, n]) => temporel.test(n)) || ids[0] || tempsPossibles[0])[0];
+  const unitesPossibles = vars.filter((v) => v.qualitative).map((v) => [v.uid, `${v.nom} (${[].concat(v.categories).length} ${t('categories')})`])
+    .concat(ids).filter(([u]) => u !== B.temps);
+  if (!existe(unitesPossibles, B.unite) && unitesPossibles.length) {
+    B.unite = (unitesPossibles.find(([, n]) => /secteur|sector/i.test(n)) || unitesPossibles.find(([, n]) => spatial.test(n)) || unitesPossibles[0])[0];
+  }
+  if (!reponses.length || !tempsPossibles.length || !unitesPossibles.length) {
+    conteneur.replaceChildren(outils(modes), el('p', { class: 'infos' }, t('baci_peu')));
+    return;
+  }
+  if (cache.unite !== String(B.unite)) {
+    try { cache.niveaux = [].concat((await ctx.demander('niveaux', { projet: p.projet, variable: B.unite })).niveaux); } catch { cache.niveaux = []; }
+    cache.unite = String(B.unite);
+  }
+  const niveaux = cache.niveaux;
+  B.impact = [].concat(B.impact ?? []).filter((n) => niveaux.includes(n));
+  B.temoins = [].concat(B.temoins ?? []).filter((n) => niveaux.includes(n) && !B.impact.includes(n));
+  B.test ??= 'welch';
+  const nombre = (libelle, aide, valeur, changer) => el('label', { class: 'champ', title: aide }, el('span', {}, libelle),
+    el('input', { type: 'number', step: 'any', value: valeur ?? '', style: 'width:6.5em',
+      onchange: (e) => {
+        const s = String(e.target.value).trim();
+        const x = s === '' ? null : Number(s);
+        if (x === null || Number.isFinite(x)) { changer(x); ctx.rafraichir(); }
+      } }));
+  const barre = outils(modes,
+    choix(t('baci_reponse'), reponses, B.y, (x) => { B.y = Number(x); ctx.rafraichir(); }),
+    choix(t('baci_temps'), tempsPossibles, B.temps, (x) => { B.temps = lire(x); ctx.rafraichir(); }),
+    choix(t('baci_unite'), unitesPossibles, B.unite, (x) => { B.unite = lire(x); ctx.rafraichir(); }),
+    nombre(t('baci_evenement'), t('baci_evenement_aide'), B.evenement, (x) => { B.evenement = x; }),
+    nombre(t('baci_fin'), t('baci_fin_aide'), B.fin, (x) => { B.fin = x; }),
+    choix(t('test'), [['welch', t('test_welch')], ['student', t('test_student')], ['mann_whitney', 'Mann–Whitney']], B.test, (x) => { B.test = x; ctx.rafraichir(); }));
+  // the unit's levels, each ticked as impact or as control (not both)
+  const cocher = (role, autre) => el('div', { class: 'unites' }, el('span', { class: 'role' }, t(role === 'impact' ? 'baci_impact' : 'baci_temoins')),
+    niveaux.map((n) => el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: B[role].includes(n), disabled: B[autre].includes(n),
+      onchange: (e) => { B[role] = niveaux.filter((x) => (x === n ? e.target.checked : B[role].includes(x))); ctx.rafraichir(); } }), n)),
+    role === 'temoins' ? el('button', { disabled: niveaux.every((n) => B.impact.includes(n) || B.temoins.includes(n)),
+      onclick: () => { B.temoins = niveaux.filter((n) => !B.impact.includes(n)); ctx.rafraichir(); } }, t('baci_tous_autres')) : null);
+  const unites = el('div', { class: 'outils' }, cocher('impact', 'temoins'), cocher('temoins', 'impact'));
+  if (!B.impact.length || !B.temoins.length) { conteneur.replaceChildren(barre, unites, el('p', { class: 'infos' }, t('baci_choisir_unites'))); return; }
+  const evenement = Number.isFinite(B.evenement) ? B.evenement : null;
+  const q = { projet: p.projet, y: B.y, temps: B.temps, unite: B.unite, impact: B.impact, temoins: B.temoins, test: B.test,
+    evenement, fin: evenement !== null && Number.isFinite(B.fin) ? B.fin : null };
+  // (the language too: R writes the sentence)
+  const cle = JSON.stringify([q.y, q.temps, q.unite, q.impact, q.temoins, q.evenement, q.fin, q.test, langueActuelle()]);
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(barre, unites, el('p', { class: 'infos attente' }, t('calcul')));
+    try { cache.res = await ctx.demander('baci', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
+    cache.cle = cle;
+  }
+  if (!cache.res) { conteneur.replaceChildren(barre, unites, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  const r = cache.res;
+  const s = (k) => [].concat(r.serie[k]);
+  const xs = s('temps');
+  const ecarts = s('ecart');
+  const imp = s('impact');
+  const tem = s('temoins');
+  const ni = s('n_impact');
+  const nt = s('n_temoins');
+  const fait = Boolean(r.periodes);  // (the test, once an event is entered)
+  const periode = fait ? s('periode') : xs.map(() => '');
+  const pr = (k) => (fait ? [].concat(r.periodes[k]) : []);
+  const P = NOMS_PERIODES();
+  const fr = langueActuelle() === 'fr';
+  const liste = (v) => (v.length > 8 ? `${v.slice(0, 8).join(', ')}… (${v.length})` : v.join(', '));
+  // what the gaps are, and what was left out: times with one side only, rows without a value
+  const sansTemoin = [].concat(r.seuls.impact ?? []).map(texteTemps);
+  const sansImpact = [].concat(r.seuls.temoins ?? []).map(texteTemps);
+  const repetees = r.repetees ? [].concat(r.repetees.unite).map((u, i) => `${u}${fr ? ' : ' : ': '}${[].concat(r.repetees.temps)[i]}`) : [];
+  const douteuses = pr('periode').filter((_, i) => pr('shapiro_p')[i] !== null && pr('shapiro_p')[i] < 0.05).map((g) => P[g]);
+  const notes = [t('baci_note_ecart', { n: xs.length, temps: r.temps.nom }),
+    sansTemoin.length ? t('baci_sans_temoin', { temps: liste(sansTemoin) }) : '',
+    sansImpact.length ? t('baci_sans_impact', { temps: liste(sansImpact) }) : '',
+    r.manquantes ? t('baci_manquantes', { n: r.manquantes, y: r.y.nom, temps: r.temps.nom }) : '',
+    repetees.length ? t('baci_repetees', { detail: repetees.join(fr ? ' ; ' : '; ') }) : '',
+    r.hors ? t('baci_hors_note', { n: r.hors }) : '',
+    douteuses.length ? t('baci_normalite', { periodes: douteuses.join(', ') }) : '',
+    fait ? t('baci_note_autocorrelation') : t('baci_choisir_evenement')].filter(Boolean).join(' ');
+  const copier = el('button', { class: 'icone-seule', title: t('copier_phrase'),
+    onclick: () => navigator.clipboard.writeText(r.phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+  const graphe = el('div', { class: 'graphe' });
+  const details = el('div', { class: 'defile', style: { flex: '0 1 auto', maxHeight: '40%' } });
+  const bas = el('div', { class: 'bas' });
+  conteneur.replaceChildren(barre, unites, el('div', { class: 'note' }, ...(fait ? [el('b', {}, r.phrase), ' ', copier, el('br')] : []), notes),
+    graphe, ...(fait ? [details] : []), bas);
+
+  // the gaps joined in time order, each period in its colour, the event line and each period's mean
+  const c = couleursTheme();
+  const couleurs = { avant: PALETTE[0], apres: '#d1495b', hors: c.doux, '': PALETTE[0] };
+  const traces = [{ type: 'scatter', mode: 'lines', x: xs, y: ecarts, line: { color: c.ligne, width: 1 }, hoverinfo: 'skip', showlegend: false }];
+  for (const g of fait ? ['avant', 'apres', 'hors'] : ['']) {
+    const idx = xs.map((_, i) => i).filter((i) => periode[i] === g);
+    if (!idx.length) continue;
+    traces.push({ type: 'scatter', mode: 'markers', name: g ? P[g] : t('baci_ecart_court'), x: idx.map((i) => xs[i]), y: idx.map((i) => ecarts[i]),
+      marker: { color: couleurs[g], size: 8 }, customdata: idx.map((i) => [fmt(imp[i], 3), ni[i], fmt(tem[i], 3), nt[i]]),
+      hovertemplate: `${r.temps.nom} %{x}<br>d_t = %{y:.3f}<br>${t('baci_impact')} %{customdata[0]} (n = %{customdata[1]}) − ${t('baci_temoins')} %{customdata[2]} (n = %{customdata[3]})<extra></extra>` });
+  }
+  const formes = [];
+  const annotations = [];
+  if (fait) {
+    // (the line between the last time before and the event: half a year before it, for years)
+    const dernier = Math.max(...xs.filter((_, i) => periode[i] === 'avant'));
+    const xe = r.evenement - Math.min(0.5, (r.evenement - dernier) / 2);
+    formes.push({ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: xe, x1: xe, line: { dash: 'dash', color: c.texte, width: 1 } });
+    annotations.push({ x: xe, y: 1, yref: 'paper', xanchor: 'left', yanchor: 'top', showarrow: false, text: ` ${t('baci_evenement_court')} ${texteTemps(r.evenement)}`,
+      font: { size: FORMAT.taille - 2, color: c.doux } });
+    ['avant', 'apres'].forEach((g, j) => {
+      const m = pr('moyenne')[j];
+      traces.push({ type: 'scatter', mode: 'lines', name: t('baci_moyenne_periode', { periode: P[g], m: fmt(m, 2) }), x: j === 0 ? [pr('debut')[0], xe] : [xe, pr('fin')[1]],
+        y: [m, m], line: { color: couleurs[g], width: 2, dash: 'dot' }, hoverinfo: 'skip' });
+    });
+  }
+  tracer(ctx, graphe, traces, { title: { text: `${r.y.nom} · ${t('baci_titre')}` }, showlegend: true, dragmode: 'zoom', shapes: formes, annotations,
+    xaxis: { title: { text: r.temps.nom } }, yaxis: { title: { text: t('baci_axe_y') } } });
+
+  // the three tests (a click chooses the one the sentence gives) and the two periods
+  if (fait) {
+    const tc = (k) => [].concat(r.tests[k]);
+    const noms = NOMS_TESTS();
+    const effets = NOMS_EFFETS();
+    const difference = [].concat(r.difference)[0];
+    details.replaceChildren(el('table', { class: 'tableau compact' },
+      el('thead', {}, el('tr', {}, [t('test'), t('statistique'), t('ddl'), 'p', t('effet'), t('baci_ic_changement')].map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
+      el('tbody', {}, tc('test').map((k, i) => el('tr', { class: k === r.test ? 'choisie' : '', onclick: () => { B.test = k; ctx.rafraichir(); } },
+        el('td', {}, noms[k]),
+        el('td', { class: 'num' }, fmt(tc('statistique')[i], 3)),
+        el('td', { class: 'num' }, ddlTexte(tc('ddl1')[i])),
+        el('td', { class: 'num' }, valeurP(tc('p')[i])),
+        el('td', { class: 'num' }, tc('effet')[i] === null ? '' : `${effets[tc('nom_effet')[i]] || ''} = ${fmt(tc('effet')[i], 3)}`),
+        el('td', { class: 'num' }, tc('bas')[i] === null ? '' : `${fmt(difference, 3)} [${fmt(tc('bas')[i], 3)} ; ${fmt(tc('haut')[i], 3)}]`))))),
+    el('table', { class: 'tableau compact', style: { marginTop: '10px' } },
+      el('thead', {}, el('tr', {}, [t('baci_periode'), 'n', t('baci_de'), t('baci_a'), t('baci_ecart_moyen'), t('ecart_type'), t('baci_ecart_median'), t('shapiro_p')]
+        .map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
+      el('tbody', {}, pr('periode').map((g, i) => el('tr', {}, el('td', {}, P[g]), el('td', { class: 'num' }, String(pr('n')[i])),
+        el('td', { class: 'num' }, texteTemps(pr('debut')[i])), el('td', { class: 'num' }, texteTemps(pr('fin')[i])),
+        ['moyenne', 'ecart_type', 'mediane'].map((k) => el('td', { class: 'num' }, fmt(pr(k)[i], 3))),
+        el('td', { class: 'num' + (pr('shapiro_p')[i] !== null && pr('shapiro_p')[i] < 0.05 ? ' alerte' : '') }, valeurP(pr('shapiro_p')[i])))))));
+  }
+
+  // below: the gaps time by time
+  B.table ??= {};
+  const valeurs = { temps: xs, impact: imp, temoins: tem, ecart: ecarts, n_impact: ni, n_temoins: nt, periode: periode.map((g) => (g ? P[g] : '')) };
+  tableau(bas, ctx, B.table, {
+    n: xs.length, nom: t('baci_serie'), avant: [el('b', {}, t('baci_serie'))],
+    colonnes: [{ cle: 'temps', titre: r.temps.nom, num: true, format: texteTemps }, { cle: 'impact', titre: t('baci_moyenne_impact'), num: true, decimales: 3 },
+      { cle: 'temoins', titre: t('baci_moyenne_temoins'), num: true, decimales: 3 }, { cle: 'ecart', titre: t('baci_ecart_col'), num: true, decimales: 3 },
+      { cle: 'n_impact', titre: t('baci_n_impact'), num: true, decimales: 0 }, { cle: 'n_temoins', titre: t('baci_n_temoins'), num: true, decimales: 0 }]
+      .concat(fait ? [{ cle: 'periode', titre: t('baci_periode') }] : []),
+    valeur: (i, k) => valeurs[k][i],
   });
 }
 

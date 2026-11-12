@@ -754,8 +754,13 @@ DEMANDES <- list(
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
   # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R)
   series = function(q) series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux),
+  # avec q$appariement (une variable ou "id:k") : les tests appariés de deux classes, t apparié par défaut
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
-                                               q$test %||% "welch", q$correction %||% "BH"),
+                                               q$test %||% (if (length(q$appariement)) "t_apparie" else "welch"), q$correction %||% "BH",
+                                               appariement = q$appariement),
+  # avant/après avec témoin (comparaisons.R : baci) ; sans q$evenement, la série des écarts seule
+  baci = function(q) baci(projet(q$projet), q$y, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)),
+                          evenement = q$evenement, fin = q$fin, test = q$test %||% "welch"),
   # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux, et
   # avec q$dans (une variable ou "id:k" : le site), toutes les paires de niveaux d'un même groupe
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y, appariement = q$appariement,
