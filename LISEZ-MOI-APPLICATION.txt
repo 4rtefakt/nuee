@@ -439,12 +439,20 @@ année...) peut faire les groupes, comme une variable qualitative.
   signés de Wilcoxon (exact sous 50 paires), le test sur les rangs conseillé quand la
   normalité des différences est douteuse (Shapiro–Wilk p < 0,05). Il faut au moins trois
   paires, et une clé ne revient qu'une fois par niveau. Les lignes restées sans partenaire, et
-  celles sans valeur, sont comptées et listées ; le graphique relie chaque paire.
+  celles sans valeur, sont comptées et listées ; le graphique relie chaque paire. Avec trois
+  niveaux ou plus, le tableau du bas peut aussi lister toutes les paires de niveaux, chacune
+  sur ses propres clés communes, avec la correction de Holm, pour le test choisi au-dessus (un
+  clic sur un test) : quand tous les niveaux ont les mêmes clés, celles de pairwise.t.test()
+  et pairwise.wilcox.test() avec paired = TRUE. Un clic sur une paire la compare.
   Deux mesures : les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la
-  normalité de l'une des deux est douteuse.
+  normalité de l'une des deux est douteuse. Appariées par « l'observation (même ligne) », deux
+  mesures des mêmes lignes (avant et après, par exemple) sont comparées à la place : les
+  différences Variable 2 − Variable 1, sur les observations où les deux sont connues, par les
+  deux mêmes tests appariés.
 Le résultat du test conseillé est donné en une phrase, prête pour un rapport (le bouton à côté
 la copie), avec la taille de l'effet : V de Cramér, rapport des cotes, d ou d_z de Cohen,
-corrélation rang-bisériale, η², ε², r ou ρ.
+corrélation rang-bisériale, η², ε², r ou ρ. Celle de Mann–Whitney nomme les deux groupes avec
+leurs médianes.
 
 Matrice des corrélations : les corrélations de Pearson ou de Spearman de toutes les variables
 quantitatives (300 au plus), chaque paire sur les observations où les deux sont connues,

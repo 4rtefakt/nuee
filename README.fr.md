@@ -135,7 +135,9 @@ types, leurs conditions vérifiées : khi² ou test exact de Fisher, test t, ANO
 Kruskal–Wallis avec les comparaisons deux à deux, corrélation de Pearson ou de Spearman ; un
 identifiant des observations (site, année...) peut faire les groupes. Tests appariés sur des
 données en long (t apparié, rangs signés de Wilcoxon) : deux secteurs comparés sur les années
-qu'ils ont tous deux. Une matrice des corrélations avec les valeurs p corrigées.
+qu'ils ont tous deux, ou toutes les paires de secteurs avec la correction de Holm ; ou deux
+mesures des mêmes lignes (avant, après). Une matrice des corrélations avec les valeurs p
+corrigées.
 
 **Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
 (nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site) et une

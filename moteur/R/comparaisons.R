@@ -83,9 +83,13 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
 #     la normalité de l'une des deux est douteuse.
 # x et y : le numéro d'une variable, ou "id:k" pour le k-ième identifiant des observations
 # (site, secteur, année...), qui fait alors des groupes comme une variable qualitative.
-# Avec `appariement` (une variable ou "id:k" : la clé, l'année par exemple), une mesure et une
-# variable qualitative font un test apparié entre deux de ses niveaux (`niveaux` : A et B, les
-# deux premiers par défaut) : voir comparer_apparies().
+# Avec `appariement`, un test apparié :
+#   - une mesure et une variable qualitative, appariées par une clé (une variable ou "id:k" :
+#     l'année par exemple), entre deux de ses niveaux (`niveaux` : A et B, les deux premiers par
+#     défaut) : voir comparer_apparies() ;
+#   - deux mesures, appariées par l'observation (appariement = "observation" : la même ligne
+#     porte les deux valeurs, avant et après par exemple) : y − x, sur les observations où les
+#     deux sont connues.
 # Renvoie le type de comparaison, les tests (statistique, degrés de liberté, p, taille de
 # l'effet), le test conseillé et pourquoi (raison : "attendus", "normalite", "variances" ou
 # ""), ce qu'il faut pour les graphiques, et une phrase qui donne le résultat du test conseillé.
@@ -95,17 +99,34 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
   a <- valeurs_a_tester(projet, x, obs)
   b <- valeurs_a_tester(projet, y, obs)
   if (length(appariement)) {
-    if (a$qualitative == b$qualitative) {
-      stop(traduire("Un test apparié compare une mesure entre deux niveaux d'une variable qualitative : choisissez une variable quantitative et une qualitative",
-                    "A paired test compares a measurement between two levels of a qualitative variable: choose one quantitative and one qualitative variable"))
+    ligne <- identical(as.character(appariement), "observation")
+    if (a$qualitative && b$qualitative) {
+      stop(traduire("Un test apparié compare une mesure entre deux niveaux d'une variable qualitative, ou deux mesures d'une même observation",
+                    "A paired test compares a measurement between two levels of a qualitative variable, or two measurements of the same observation"))
     }
-    if (as.character(appariement) %in% c(as.character(x), as.character(y))) {
-      stop(traduire("La clé d'appariement doit être une troisième variable", "The pairing key must be a third variable"))
+    if (!a$qualitative && !b$qualitative) {
+      if (!ligne) stop(traduire("Deux mesures s'apparient par l'observation : la même ligne porte les deux valeurs",
+                                "Two measurements are paired by the observation: the same row holds both values"))
+      ok <- !is.na(a$valeurs) & !is.na(b$valeurs)
+      if (sum(ok) < 3) stop(sprintf(traduire("Il faut au moins trois paires : %d observation(s) seulement ont les deux valeurs",
+                                             "At least three pairs are needed: only %d observation(s) have both values"), sum(ok)))
+      noms <- unname(projet$noms_obs[as.character(obs[ok])])
+      r <- c(list(type = "apparie", ligne = TRUE, a = a$nom, b = b$nom, n = sum(ok), manquantes = sum(!ok),
+                  paires = list(cle = noms, a = a$valeurs[ok], b = b$valeurs[ok], difference = b$valeurs[ok] - a$valeurs[ok], nom_a = noms, nom_b = noms),
+                  sans_partenaire = list(a = character(0), b = character(0))),
+             tests_apparies(a$valeurs[ok], b$valeurs[ok], a$nom, b$nom))
+      k <- list(uid = "observation", nom = traduire("observation", "observation"), qualitative = TRUE)
+    } else {
+      if (ligne) stop(traduire("Une mesure et des groupes s'apparient par une troisième variable (l'année, pour deux secteurs)",
+                               "A measurement and groups are paired by a third variable (the year, for two sectors)"))
+      if (as.character(appariement) %in% c(as.character(x), as.character(y))) {
+        stop(traduire("La clé d'appariement doit être une troisième variable", "The pairing key must be a third variable"))
+      }
+      k <- valeurs_a_tester(projet, appariement, obs)
+      mesure <- if (a$qualitative) b else a
+      groupe <- if (a$qualitative) a else b
+      r <- comparer_apparies(mesure$valeurs, groupe$valeurs, as.character(k$valeurs), niveaux, unname(projet$noms_obs[as.character(obs)]), k$nom)
     }
-    k <- valeurs_a_tester(projet, appariement, obs)
-    mesure <- if (a$qualitative) b else a
-    groupe <- if (a$qualitative) a else b
-    r <- comparer_apparies(mesure$valeurs, groupe$valeurs, as.character(k$valeurs), niveaux, unname(projet$noms_obs[as.character(obs)]), k$nom)
     r <- c(list(x = a[c("uid", "nom", "qualitative")], y = b[c("uid", "nom", "qualitative")], cle = k[c("uid", "nom", "qualitative")]), r)
     r$phrase <- phrase_test(r)
     return(r)
@@ -319,13 +340,9 @@ correler <- function(x, y, noms) {
 # A et de B qui ont la même clé (cle, en texte : l'année, pour deux secteurs suivis les mêmes
 # années). Les données restent en long, une ligne par secteur et par année : les clés que les
 # deux niveaux ont toutes deux font les paires, les autres lignes restent sans partenaire. Une
-# clé ne désigne qu'une ligne par niveau, et il faut au moins trois paires. Sur les différences
-# B − A : le test t apparié (la différence moyenne et son intervalle à 95 %, le d_z de Cohen :
-# la différence moyenne sur l'écart-type des différences) et le test des rangs signés de
-# Wilcoxon (exact quand R le peut, sous 50 paires ; sinon par la loi normale), avec la
-# corrélation rang-bisériale appariée des différences non nulles (Kerby, 2014). Wilcoxon est
-# conseillé quand la normalité des différences est douteuse (Shapiro–Wilk, p < 0,05 ; tenue
-# pour vraie au-delà de 5 000 paires).
+# clé ne désigne qu'une ligne par niveau, et il faut au moins trois paires. Les tests sont ceux
+# de tests_apparies() ; avec trois niveaux ou plus, toutes leurs paires aussi
+# (paires_niveaux()).
 comparer_apparies <- function(x, f, cle, niveaux, noms, nom_cle) {
   presents <- levels(droplevels(f))
   niveaux <- as.character(unlist(niveaux))
@@ -355,21 +372,37 @@ comparer_apparies <- function(x, f, cle, niveaux, noms, nom_cle) {
   }
   ja <- ia[match(communes, cle[ia])]
   jb <- ib[match(communes, cle[ib])]
-  d <- x[jb] - x[ja]
+  r <- c(list(type = "apparie", ligne = FALSE, a = niveaux[1], b = niveaux[2], n = n, manquantes = sum(dans & !ok),
+              paires = list(cle = communes, a = x[ja], b = x[jb], difference = x[jb] - x[ja], nom_a = noms[ja], nom_b = noms[jb]),
+              sans_partenaire = list(a = ordre(setdiff(cle[ia], communes)), b = ordre(setdiff(cle[ib], communes)))),
+         tests_apparies(x[ja], x[jb], niveaux[1], niveaux[2]))
+  if (length(presents) > MAX_GROUPES_COMPARAISONS) {
+    r$note_comparaisons <- sprintf(traduire("Plus de %d groupes : pas de comparaisons deux à deux.", "More than %d groups: no pairwise comparisons."),
+                                   MAX_GROUPES_COMPARAISONS)
+  } else if (length(presents) > 2) r$toutes <- paires_niveaux(x, f, cle, presents)
+  r
+}
+
+# Les tests de valeurs appariées va (A) et vb (B), sur les différences B − A : le test t
+# apparié (la différence moyenne et son intervalle à 95 %, le d_z de Cohen : la différence
+# moyenne sur l'écart-type des différences) et le test des rangs signés de Wilcoxon (exact quand
+# R le peut, sous 50 paires ; sinon par la loi normale), avec la corrélation rang-bisériale
+# appariée des différences non nulles (Kerby, 2014). Wilcoxon est conseillé quand la normalité
+# des différences est douteuse (Shapiro–Wilk, p < 0,05 ; tenue pour vraie au-delà de 5 000
+# paires).
+tests_apparies <- function(va, vb, a, b) {
+  d <- vb - va
+  n <- length(d)
   if (all(d == 0)) {
-    stop(sprintf(traduire("%s et %s ont la même valeur dans chaque paire : rien à comparer", "%s and %s have the same value in every pair: nothing to compare"),
-                 niveaux[1], niveaux[2]))
+    stop(sprintf(traduire("%s et %s ont la même valeur dans chaque paire : rien à comparer", "%s and %s have the same value in every pair: nothing to compare"), a, b))
   }
-  tt <- essai_test(stats::t.test(x[jb], x[ja], paired = TRUE))
-  w <- essai_test(stats::wilcox.test(x[jb], x[ja], paired = TRUE))
+  tt <- essai_test(stats::t.test(vb, va, paired = TRUE))
+  w <- essai_test(stats::wilcox.test(vb, va, paired = TRUE))
   non_nulles <- d[d != 0]
   rangs <- rank(abs(non_nulles))
   shapiro <- if (n <= 5000 && diff(range(d)) > 0) stats::shapiro.test(d)$p.value else NA_real_
   normale <- n > 5000 || (!is.na(shapiro) && shapiro >= 0.05)
-  list(type = "apparie", a = niveaux[1], b = niveaux[2], n = n, manquantes = sum(dans & !ok),
-       paires = list(cle = communes, a = x[ja], b = x[jb], difference = d, nom_a = noms[ja], nom_b = noms[jb]),
-       sans_partenaire = list(a = ordre(setdiff(cle[ia], communes)), b = ordre(setdiff(cle[ib], communes))),
-       difference = c(mean(d), if (is.null(tt)) c(NA, NA) else as.numeric(tt$conf.int)), mediane = stats::median(d),
+  list(difference = c(mean(d), if (is.null(tt)) c(NA, NA) else as.numeric(tt$conf.int)), mediane = stats::median(d),
        shapiro_p = shapiro, exact = !is.null(w) && grepl("exact", w$method, fixed = TRUE),
        tests = data.frame(test = c("t_apparie", "wilcoxon"), statistique = c(champ_test(tt, "statistic"), champ_test(w, "statistic")),
                           ddl1 = c(champ_test(tt, "parameter"), NA), ddl2 = NA_real_, p = c(champ_test(tt, "p.value"), champ_test(w, "p.value")),
@@ -377,6 +410,36 @@ comparer_apparies <- function(x, f, cle, niveaux, noms, nom_cle) {
                                     (sum(rangs[non_nulles > 0]) - sum(rangs[non_nulles < 0])) / sum(rangs)),
                           nom_effet = c("dz", "r_rb"), stringsAsFactors = FALSE),
        conseille = if (normale) "t_apparie" else "wilcoxon", raison = if (normale) "" else "normalite")
+}
+
+# Toutes les paires de niveaux (dans l'ordre de TukeyHSD() : b − a pour chaque b après a),
+# chacune sur les clés que ses deux niveaux ont toutes deux : leur nombre, la différence moyenne
+# et son intervalle à 95 %, la différence médiane, les valeurs p du t apparié et de Wilcoxon,
+# et ces valeurs corrigées par Holm (1979) sur les paires testées. Quand tous les niveaux ont
+# les mêmes clés, ce sont celles de pairwise.t.test() et pairwise.wilcox.test() avec
+# paired = TRUE. Une paire de moins de trois clés communes, ou dont un niveau a une clé deux
+# fois, n'est pas testée.
+paires_niveaux <- function(x, f, cle, presents) {
+  ok <- !is.na(x) & !is.na(cle)
+  par <- lapply(presents, function(l) { i <- which(ok & f %in% l); stats::setNames(x[i], cle[i]) })
+  pg <- paires_groupes(length(presents))
+  lignes <- lapply(seq_along(pg$a), function(j) {
+    va <- par[[pg$a[j]]]
+    vb <- par[[pg$b[j]]]
+    doublon <- anyDuplicated(names(va)) > 0 || anyDuplicated(names(vb)) > 0
+    communes <- if (doublon) character(0) else intersect(names(va), names(vb))
+    d <- vb[communes] - va[communes]
+    teste <- length(d) >= 3 && any(d != 0)
+    tt <- if (teste) essai_test(stats::t.test(vb[communes], va[communes], paired = TRUE))
+    w <- if (teste) essai_test(stats::wilcox.test(vb[communes], va[communes], paired = TRUE))
+    data.frame(n = if (doublon) NA_integer_ else length(communes), difference = if (length(d)) mean(d) else NA_real_,
+               bas = if (is.null(tt)) NA_real_ else tt$conf.int[1], haut = if (is.null(tt)) NA_real_ else tt$conf.int[2],
+               p_t = champ_test(tt, "p.value"), mediane = if (length(d)) stats::median(d) else NA_real_, p_w = champ_test(w, "p.value"))
+  })
+  res <- cbind(data.frame(a = presents[pg$a], b = presents[pg$b], stringsAsFactors = FALSE), do.call(rbind, lignes))
+  res$p_t_holm <- stats::p.adjust(res$p_t, "holm")
+  res$p_w_holm <- stats::p.adjust(res$p_w, "holm")
+  res
 }
 
 # La phrase qui donne le résultat du test conseillé, dans la langue des messages, pour un
@@ -395,7 +458,10 @@ phrase_test <- function(r) {
     g <- r$groupes
     effectifs <- if (nrow(g) == 2) sprintf("n = %d %s %d", g$n[1], et, g$n[2]) else sprintf(if (fr) "N = %d, %d groupes" else "N = %d, %d groups", sum(g$n), nrow(g))
   }
-  if (r$type == "apparie") paires <- sprintf(if (fr) "n = %d paires, appariées par %s" else "n = %d pairs matched on %s", r$n, r$cle$nom)
+  if (r$type == "apparie") {
+    paires <- if (r$ligne) sprintf(if (fr) "n = %d paires, une par observation" else "n = %d pairs, one per observation", r$n)
+              else sprintf(if (fr) "n = %d paires, appariées par %s" else "n = %d pairs matched on %s", r$n, r$cle$nom)
+  }
   switch(r$conseille,
     khi2 = sprintf(if (fr) "Khi² d'indépendance de Pearson : χ²(%s, N = %d) = %s, %s ; V de Cramér = %s." else "Pearson's chi-square test of independence: χ²(%s, N = %d) = %s, %s; Cramér's V = %s.",
                    ddl(t$ddl1), r$n, nb(t$statistique), pv(t$p), nb(t$effet)),
@@ -404,8 +470,10 @@ phrase_test <- function(r) {
                      if (identical(t$nom_effet, "OR")) sprintf(if (fr) " ; rapport des cotes = %s%s" else "; odds ratio = %s%s", nb(t$effet), ic(r$ic_cotes)) else ""),
     welch = sprintf(if (fr) "Test t de Welch : t(%s) = %s, %s ; différence %s − %s = %s%s, d de Cohen = %s (%s)." else "Welch's t-test: t(%s) = %s, %s; difference %s − %s = %s%s, Cohen's d = %s (%s).",
                     ddl(t$ddl1), nb(t$statistique), pv(t$p), r$groupes$groupe[2], r$groupes$groupe[1], nb(r$difference[1]), ic(r$difference[2:3]), nb(t$effet), effectifs),
-    mann_whitney = sprintf(if (fr) "Test de Mann–Whitney : U = %s, %s ; corrélation rang-bisériale = %s (%s)." else "Mann–Whitney test: U = %s, %s; rank-biserial correlation = %s (%s).",
-                           ddl(t$statistique), pv(t$p), nb(t$effet), effectifs),
+    mann_whitney = sprintf(if (fr) "Test de Mann–Whitney : U = %s, %s ; médianes %s = %s et %s = %s, corrélation rang-bisériale = %s (%s)."
+                           else "Mann–Whitney test: U = %s, %s; medians %s = %s and %s = %s, rank-biserial correlation = %s (%s).",
+                           ddl(t$statistique), pv(t$p), r$groupes$groupe[1], nb(r$groupes$mediane[1]), r$groupes$groupe[2], nb(r$groupes$mediane[2]),
+                           nb(t$effet), effectifs),
     t_apparie = sprintf(if (fr) "Test t apparié : t(%s) = %s, %s ; différence moyenne %s − %s = %s%s, d_z de Cohen = %s (%s)." else "Paired t-test: t(%s) = %s, %s; mean difference %s − %s = %s%s, Cohen's d_z = %s (%s).",
                         ddl(t$ddl1), nb(t$statistique), pv(t$p), r$b, r$a, nb(r$difference[1]), ic(r$difference[2:3]), nb(t$effet), paires),
     wilcoxon = sprintf(if (fr) "Test des rangs signés de Wilcoxon (%s) : V = %s, %s ; différence médiane %s − %s = %s, corrélation rang-bisériale = %s (%s)."

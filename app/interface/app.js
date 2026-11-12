@@ -1065,17 +1065,22 @@ async function restaurerSession(pid, donnee = null) {
   statut(t('session_restauree', { n: Object.keys(ids).length }));
 }
 
-// After the project's data changed: its summary, the explorer, the colour and label lists,
-// and the views that keep a copy of its data (data table, variable statistics).
-function projetChange(res) {
-  etat.projets[res.id] = res;
+// The views that keep a copy of a project's data, or results computed from it (data table,
+// variable statistics, statistical tests; the history too, for a project replaced from the R
+// console): computed again once the data change.
+function oublierCalculs(pid) {
   for (const e of etat.panneaux.values()) {
-    if (e.params.projet === res.id && ['donnees', 'statistiques'].includes(e.vue)) {
-      delete e.loc.d;
-      delete e.loc.res;
-      delete e.loc.cleValeurs;
+    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'historique'].includes(e.vue)) {
+      for (const k of ['d', 'res', 'cle', 'cleValeurs', 'cache']) delete e.loc[k];
     }
   }
+}
+
+// After the project's data changed: its summary, the explorer, the colour and label lists,
+// and the views that keep a copy of its data.
+function projetChange(res) {
+  etat.projets[res.id] = res;
+  oublierCalculs(res.id);
   app.rafraichirExplorateur();
   rafraichirModele(null);
   diffuser('modeles');
@@ -1126,7 +1131,10 @@ function oublierProjet(pid) {
 // Everything the R server holds (for a new window, or after another window changed it).
 async function synchroniser() {
   const e = await demander('etat');
+  const avant = etat.projets;
   etat.projets = Object.fromEntries(e.projets.map((p) => [p.id, p]));
+  // (data changed in another window: R counts each change as a revision of the project)
+  for (const [id, p] of Object.entries(etat.projets)) if (avant[id] && avant[id].revision !== p.revision) oublierCalculs(id);
   const ids = new Set(e.modeles.map((m) => m.id));
   for (const m of e.modeles) etat.modeles[m.id] = m;
   for (const id of Object.keys(etat.modeles)) if (!ids.has(id)) { if (dock) oublierModele(id); else delete etat.modeles[id]; }

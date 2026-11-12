@@ -414,12 +414,19 @@ qualitative variable.
   by Wilcoxon's signed-rank test (exact below 50 pairs), the rank test recommended when the
   normality of the differences is doubtful (Shapiro–Wilk p < 0.05). At least three pairs are
   needed, and a key may appear only once per level. The rows left without a partner, and
-  those without a value, are counted and listed; the plot joins each pair.
+  those without a value, are counted and listed; the plot joins each pair. With three levels
+  or more, the table below can also list every pair of levels, each on its own shared keys,
+  with Holm's correction, for the test chosen above (a click on a test): when all the levels
+  share the same keys, those of pairwise.t.test() and pairwise.wilcox.test() with
+  paired = TRUE. A click on a pair compares it.
   Two measurements: Pearson's and Spearman's correlations; Spearman is recommended when
-  normality is doubtful for either.
+  normality is doubtful for either. Paired by "the observation (same row)", two measurements
+  of the same rows (before and after, say) are compared instead: the differences
+  Variable 2 − Variable 1, on the observations where both are known, by the same two paired
+  tests.
 The recommended test's result comes as a sentence ready for a report (copy it with the button
 next to it), with its effect size: Cramér's V, odds ratio, Cohen's d or d_z, rank-biserial
-correlation, η², ε², r or ρ.
+correlation, η², ε², r or ρ. Mann–Whitney's names both groups with their medians.
 
 Correlation matrix: the Pearson or Spearman correlations of all the quantitative variables (300
 at most), each pair on the observations where both are known, p values corrected for the number

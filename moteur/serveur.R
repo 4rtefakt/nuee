@@ -64,6 +64,7 @@ etat$modeles <- list()
 etat$predictions <- list()  # dernière prédiction de chaque modèle (pour l'export Excel)
 etat$compteur <- 0
 etat$annulations <- list()  # par projet : les états précédents, pour « Annuler » (Ctrl+Z)
+etat$revisions <- list()  # par projet : le nombre de changements de ses données (resume_projet)
 
 nouvel_id <- function(prefixe) {
   etat$compteur <- etat$compteur + 1
@@ -93,11 +94,14 @@ convertir_usp <- function(chemin) {
 }
 
 # Garde l'état actuel d'un projet avant de le changer, pour pouvoir revenir en arrière
-# (20 changements au plus par projet).
+# (20 changements au plus par projet). Chaque changement, et chaque retour en arrière, compte
+# une révision du projet : les vues qui gardent des calculs sur ses données les refont.
 memoriser <- function(p, etiquette) {
   pile <- c(list(list(etiquette = etiquette, projet = p)), etat$annulations[[p$id]] %||% list())
   etat$annulations[[p$id]] <- utils::head(pile, 20)
+  reviser(p$id)
 }
+reviser <- function(id) etat$revisions[[id]] <- (etat$revisions[[id]] %||% 0) + 1
 
 annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
@@ -109,6 +113,7 @@ annuler_demande <- function(q) {
   ancien$fichier_lu <- actuel$fichier_lu
   ancien$modifie <- TRUE
   etat$projets[[q$projet]] <- ancien
+  reviser(q$projet)
   list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
 }
 
@@ -214,7 +219,7 @@ resume_projet <- function(p) {
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
        table = p$table %||% NULL,
-       annulable = if (length(pile)) pile[[1]]$etiquette,
+       annulable = if (length(pile)) pile[[1]]$etiquette, revision = etat$revisions[[p$id]] %||% 0,
        chemin_enregistrement = p$chemin_enregistrement %||% (if (json) p$chemin),
        observations = list(uid = as.numeric(names(p$noms_obs)), nom = unname(p$noms_obs)),
        identifiants = identifiants_secondaires(p),

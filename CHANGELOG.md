@@ -3,6 +3,13 @@
 What changed in each version: the same list as *Help › What's new* in the application
 (in French: *Aide › Quoi de neuf*). Downloads: [Releases](https://github.com/4rtefakt/nuee/releases).
 
+## 0.9.5 — 2026-11-12
+
+- Paired tests of two measurements of the same row (before and after, say): in Plots › Statistical tests, Two variables mode, two quantitative variables can be paired by “the observation (same row)”. The differences Variable 2 − Variable 1, on the observations where both are known, go through the paired t-test and Wilcoxon’s signed-rank test, as for two levels paired by a key.
+- Every pair of levels: when a measurement is paired by a key between the levels of a variable that has three or more (sectors, by the year), the table below can list each pair of levels, on its own shared years, with the difference, its 95 % interval and the chosen test’s Holm-corrected p-values; a click on a pair compares it. When all the levels share the same years, these are the values of pairwise.t.test() and pairwise.wilcox.test() with paired = TRUE.
+- The Mann–Whitney sentence names both groups with their medians, so the sign of the rank-biserial correlation reads.
+- Fixed: the views that keep results computed from a project’s data (data, variable statistics, statistical tests) compute them again when its data change, in other windows too. Until now, an open test kept its result after an edit or a new variable.
+
 ## 0.9.4 — 2026-11-12
 
 - Paired tests: in Plots › Statistical tests, Two variables mode, a measurement and a qualitative variable (or an ID) can be paired by a third one (“Pair by”: the year). Two levels A and B, two sectors of a site for instance, are compared on the years both have, the data staying in long format (one row per sector and year): paired t-test (mean difference B − A, its 95 % interval, Cohen’s d_z) and Wilcoxon’s signed-rank test (exact below 50 pairs), recommended when the normality of the differences is doubtful. The number of pairs and the rows left without a partner are given, the result as a sentence ready for a report, and the plot joins each pair.

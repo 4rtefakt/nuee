@@ -181,13 +181,16 @@ async function principal() {
       await api('verifier', { projet: p.id, type: 'PCA', x });
     });
     await etape('nouvelle variable, modification, annuler', async () => {
+      // each change of the data, and each undo, is a revision of the project (the views that keep
+      // results computed from its data compute them again)
+      const avant = (await api('projet', { projet: p.id })).revision;
       let r = await api('variable_calculee', { projet: p.id, nom: 'x1x2', formule: 'x1 * x2' });
-      verifier(r.variables.length === 10 && r.annulable, 'variable calculée');
+      verifier(r.variables.length === 10 && r.annulable && r.revision === avant + 1, `variable calculée (révision ${r.revision})`);
       r = (await api('annuler', { projet: p.id })).projet;
-      verifier(r.variables.length === 9, 'annuler la variable');
-      await api('modifier_valeur', { projet: p.id, observation: 1, variable: uid.x1, valeur: '12,5' });
+      verifier(r.variables.length === 9 && r.revision === avant + 2, `annuler la variable (révision ${r.revision})`);
+      const m = await api('modifier_valeur', { projet: p.id, observation: 1, variable: uid.x1, valeur: '12,5' });
       const d = await api('donnees', { projet: p.id });
-      verifier(d.valeurs[d.variables.indexOf('x1')][0] === 12.5, 'valeur modifiée');
+      verifier(d.valeurs[d.variables.indexOf('x1')][0] === 12.5 && m.revision === avant + 3, 'valeur modifiée');
       await api('annuler', { projet: p.id });
     });
     await etape('notes, enregistrement avec séance, réouverture', async () => {
@@ -399,6 +402,19 @@ async function principal() {
         && [].concat(r.sans_partenaire.b).join() === '2001' && r.manquantes === 1 && /\(n = 8 paires, appariées par annee\)\.$/.test(r.phrase), `test apparié : ${r.phrase}`);
       const defaut = await api('test_deux_variables', { projet: q.id, x: v.secteur, y: v.densite, appariement: v.annee });
       verifier(defaut.a === 'S1' && defaut.b === 'S2' && defaut.tests.p[0] === r.tests.p[0], 'A et B : les deux premiers niveaux par défaut');
+      // three sectors: every pair of them, on its own shared years, Holm-corrected
+      const tp = r.toutes;
+      verifier([].concat(tp.a).join() === 'S1,S1,S2' && [].concat(tp.b).join() === 'S2,S3,S3' && [].concat(tp.n).join() === '8,9,9'
+        && tp.p_t[0] === r.tests.p[0] && tp.p_t_holm.every((x, i) => x >= tp.p_t[i]), `toutes les paires : ${JSON.stringify(tp)}`);
+      // two measurements of the same rows (before, after): paired by the observation
+      const large = await api('coller', { texte: ['nom\tavant\tapres', 'a\t5,1\t5,6', 'b\t4,2\t4,9', 'c\t6,3\t6,2', 'd\t5,0\t', 'e\t3,9\t4,8', 'f\t4,4\t5,0'].join('\r\n'), nom: 'Avant-après' });
+      const lv = Object.fromEntries(large.variables.map((x) => [x.nom, x.uid]));
+      const w = await api('test_deux_variables', { projet: large.id, x: lv.avant, y: lv.apres, appariement: 'observation' });
+      const dl = [5.6 - 5.1, 4.9 - 4.2, 6.2 - 6.3, 4.8 - 3.9, 5.0 - 4.4];
+      const ml = dl.reduce((s, x) => s + x, 0) / 5;
+      const sl = Math.sqrt(dl.reduce((s, x) => s + (x - ml) ** 2, 0) / 4);
+      verifier(w.type === 'apparie' && w.ligne === true && w.n === 5 && w.manquantes === 1 && Math.abs(w.tests.statistique[0] - ml / (sl / Math.sqrt(5))) < 1e-8
+        && [].concat(w.paires.cle).join() === 'a,b,c,e,f' && /une par observation\)\.$/.test(w.phrase), `en large : ${w.phrase}`);
       let refus = '';
       try { await api('test_deux_variables', { projet: q.id, x: v.densite, y: v.secteur, appariement: v.annee, niveaux: ['S1', 'S1'] }); } catch (err) { refus = err.message; }
       verifier(/deux niveaux différents/.test(refus), `deux fois le même niveau, refusé : « ${refus} »`);

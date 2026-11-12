@@ -87,6 +87,9 @@ verifier("2 groupes : t de Welch = t.test(), Mann–Whitney = wilcox.test(), r r
          isTRUE(all.equal(r$tests$effet[2], 2 * unname(w$statistic) / (length(a) * length(b)) - 1)) && is.null(r$posthoc))
 verifier("normalité douteuse (Shapiro–Wilk) : Mann–Whitney conseillé",
          r$conseille == "mann_whitney" && r$raison == "normalite" && min(r$groupes$shapiro_p) < 0.05)
+verifier(sprintf("la phrase de Mann–Whitney nomme les groupes avec leurs médianes : « %s »", r$phrase),
+         grepl(sprintf("; médianes bio = %s et conventionnel = %s, corrélation rang-bisériale = -?[0-9],[0-9]{2} \\(n = 60 et 60\\)\\.$",
+                       sub(".", ",", sprintf("%.2f", median(a)), fixed = TRUE), sub(".", ",", sprintf("%.2f", median(b)), fixed = TRUE)), r$phrase))
 set.seed(2)
 x <- c(rnorm(30, 10, 0.5), rnorm(30, 10.5, 2), rnorm(30, 11, 4))
 gx <- factor(rep(c("A", "B", "C"), each = 30))
@@ -188,8 +191,59 @@ peu <- numeros_observations(pl)[long$annee %in% c(2003, 2004)]
 verifier("moins de trois paires : refusé", grepl("au moins trois paires : S1 et S2 n'ont que 2 valeur", erreur(pl, densite, secteur, observations = peu, appariement = annee)))
 pa <- appariees(c(1, 2, 3, 5), 0)
 verifier("la même valeur dans chaque paire : refusé", grepl("même valeur dans chaque paire", erreur(pa, numeros(pa, "v"), numeros(pa, "g"), appariement = numeros(pa, "k"))))
-verifier("deux mesures, ou la clé parmi les deux variables : refusé", grepl("une variable quantitative et une qualitative", erreur(pl, densite, annee, appariement = secteur)) &&
-         grepl("troisième variable", erreur(pl, densite, secteur, appariement = densite)))
+verifier("deux mesures appariées par une clé, la clé parmi les deux variables, deux qualitatives : refusé",
+         grepl("s'apparient par l'observation", erreur(pl, densite, annee, appariement = secteur)) &&
+         grepl("troisième variable", erreur(pl, densite, secteur, appariement = densite)) &&
+         grepl("deux mesures d'une même observation", erreur(p, culture, variete, appariement = verger)))
+rt <- test_deux_variables(pl, densite, secteur, appariement = annee)
+ref_paire <- function(sa, sb) {
+  a <- long[long$secteur == sa & !is.na(long$densite), ]
+  b <- long[long$secteur == sb & !is.na(long$densite), ]
+  an <- intersect(a$annee, b$annee)
+  t.test(b$densite[match(an, b$annee)], a$densite[match(an, a$annee)], paired = TRUE)
+}
+pt <- lapply(list(c("S1", "S2"), c("S1", "S3"), c("S2", "S3")), function(s) ref_paire(s[1], s[2]))
+p2 <- appariees(1:5, c(1, 3, 2, 5, 4))
+verifier("trois secteurs : toutes les paires, chacune sur ses années communes = t.test(paired = TRUE), corrigées par Holm ; deux : aucune",
+         identical(paste(rt$toutes$a, rt$toutes$b), c("S1 S2", "S1 S3", "S2 S3")) && identical(rt$toutes$n, c(8L, 10L, 10L)) &&
+         isTRUE(all.equal(rt$toutes$p_t, vapply(pt, `[[`, 0, "p.value"))) && isTRUE(all.equal(rt$toutes$p_t_holm, p.adjust(rt$toutes$p_t, "holm"))) &&
+         isTRUE(all.equal(c(rt$toutes$bas[1], rt$toutes$haut[1]), as.numeric(pt[[1]]$conf.int))) &&
+         is.null(test_deux_variables(p2, numeros(p2, "v"), numeros(p2, "g"), appariement = numeros(p2, "k"))$toutes))
+s4 <- rbind(long, data.frame(nom = c("x1", "x2"), secteur = "S4", annee = c(2001, 2002), densite = c(4, 5)))
+p4 <- projet_depuis_tableau(s4, "secteurs")
+r4 <- test_deux_variables(p4, densite, secteur, appariement = annee)
+verifier("une paire de moins de trois années communes n'est pas testée, ni comptée dans la correction",
+         identical(r4$toutes$n[r4$toutes$b == "S4"], c(0L, 2L, 2L)) && all(is.na(r4$toutes$p_t[r4$toutes$b == "S4"])) &&
+         isTRUE(all.equal(r4$toutes$p_t_holm[r4$toutes$b != "S4"], rt$toutes$p_t_holm)))
+set.seed(7)
+complet <- expand.grid(annee = 2001:2008, secteur = c("S1", "S2", "S3", "S4"), stringsAsFactors = FALSE)
+complet$densite <- round(3 + rnorm(nrow(complet)) + 0.9 * (complet$secteur == "S3"), 2)
+pc <- projet_depuis_tableau(data.frame(nom = paste0("c", seq_len(nrow(complet))), complet[c("secteur", "annee", "densite")]), "complet")
+rc <- test_deux_variables(pc, numeros(pc, "densite"), numeros(pc, "secteur"), appariement = numeros(pc, "annee"))
+ptt <- pairwise.t.test(complet$densite, complet$secteur, paired = TRUE, p.adjust.method = "holm")$p.value
+pwt <- suppressWarnings(pairwise.wilcox.test(complet$densite, complet$secteur, paired = TRUE, p.adjust.method = "holm"))$p.value
+verifier("les mêmes années partout : = pairwise.t.test() et pairwise.wilcox.test() avec paired = TRUE, Holm",
+         isTRUE(all.equal(rc$toutes$p_t_holm, ptt[!is.na(ptt)])) && isTRUE(all.equal(rc$toutes$p_w_holm, pwt[!is.na(pwt)])))
+# en large : la même ligne porte les deux mesures (avant, après)
+set.seed(6)
+large <- data.frame(nom = paste0("o", 1:25), site = rep(c("A", "B"), length.out = 25), avant = round(rnorm(25, 5), 2))
+large$apres <- round(large$avant + rnorm(25, 0.3, 0.6), 2)
+large$apres[c(4, 9)] <- NA
+large$avant[17] <- NA
+pw <- projet_depuis_tableau(large, "avant-après")
+avant <- numeros(pw, "avant"); apres <- numeros(pw, "apres")
+ok <- complete.cases(large$avant, large$apres)
+tt <- t.test(large$apres[ok], large$avant[ok], paired = TRUE)
+w <- wilcox.test(large$apres[ok], large$avant[ok], paired = TRUE)
+r <- test_deux_variables(pw, avant, apres, appariement = "observation")
+verifier(sprintf("deux mesures d'une même ligne : après − avant = t.test() et wilcox.test(paired = TRUE), « %s »", r$phrase),
+         r$type == "apparie" && r$ligne && r$n == 22 && r$manquantes == 3 && r$a == "avant" && r$b == "apres" && is.null(r$toutes) &&
+         isTRUE(all.equal(r$tests$p, c(tt$p.value, w$p.value))) && isTRUE(all.equal(r$difference, c(unname(tt$estimate), as.numeric(tt$conf.int)))) &&
+         identical(r$paires$cle, large$nom[ok]) && grepl("\\(n = 22 paires, une par observation\\)\\.$", r$phrase))
+verifier("deux mesures par une clé, une mesure et des groupes par la ligne, moins de trois lignes complètes : refusé",
+         grepl("s'apparient par l'observation", erreur(pw, avant, apres, appariement = numeros(pw, "site"))) &&
+         grepl("par une troisième variable", erreur(pw, avant, numeros(pw, "site"), appariement = "observation")) &&
+         grepl("2 observation\\(s\\) seulement", erreur(pw, avant, apres, observations = c(1, 2, 4), appariement = "observation")))
 
 cat("Phrases\n")
 r <- test_deux_variables(p, variete, numeros(p, "sucre"))

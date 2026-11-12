@@ -1,6 +1,19 @@
 // What changed in each version, shown once after an update (and in Aide › Quoi de neuf).
 // The first entry is the current version.
 export const NOUVEAUTES = [
+  { version: '0.9.5', date: '2026-11-12',
+    fr: [
+      'Tests appariés de deux mesures d’une même ligne (avant et après, par exemple) : dans Graphiques › Tests statistiques, mode Deux variables, deux variables quantitatives s’apparient par « l’observation (même ligne) ». Les différences Variable 2 − Variable 1, sur les observations où les deux sont connues, passent par le test t apparié et le test des rangs signés de Wilcoxon, comme pour deux niveaux appariés par une clé.',
+      'Toutes les paires de niveaux : quand une mesure est appariée par une clé entre les niveaux d’une variable qui en a trois ou plus (des secteurs, par l’année), le tableau du bas peut lister chaque paire de niveaux, sur ses propres années communes, avec la différence, son intervalle à 95 % et les valeurs p corrigées par Holm du test choisi ; un clic sur une paire la compare. Quand tous les niveaux ont les mêmes années, ce sont les valeurs de pairwise.t.test() et pairwise.wilcox.test() avec paired = TRUE.',
+      'La phrase du test de Mann–Whitney nomme les deux groupes avec leurs médianes : le signe de la corrélation rang-bisériale se lit.',
+      'Corrigé : les vues qui gardent des résultats calculés sur les données d’un projet (données, statistiques des variables, tests statistiques) les recalculent quand ses données changent, dans les autres fenêtres aussi. Jusqu’ici, un test ouvert gardait son résultat après une modification ou une nouvelle variable.',
+    ],
+    en: [
+      'Paired tests of two measurements of the same row (before and after, say): in Plots › Statistical tests, Two variables mode, two quantitative variables can be paired by “the observation (same row)”. The differences Variable 2 − Variable 1, on the observations where both are known, go through the paired t-test and Wilcoxon’s signed-rank test, as for two levels paired by a key.',
+      'Every pair of levels: when a measurement is paired by a key between the levels of a variable that has three or more (sectors, by the year), the table below can list each pair of levels, on its own shared years, with the difference, its 95 % interval and the chosen test’s Holm-corrected p-values; a click on a pair compares it. When all the levels share the same years, these are the values of pairwise.t.test() and pairwise.wilcox.test() with paired = TRUE.',
+      'The Mann–Whitney sentence names both groups with their medians, so the sign of the rank-biserial correlation reads.',
+      'Fixed: the views that keep results computed from a project’s data (data, variable statistics, statistical tests) compute them again when its data change, in other windows too. Until now, an open test kept its result after an edit or a new variable.',
+    ] },
   { version: '0.9.4', date: '2026-11-12',
     fr: [
       'Tests appariés : dans Graphiques › Tests statistiques, mode Deux variables, une mesure et une variable qualitative (ou un identifiant) s’apparient par une troisième (« Apparier par » : l’année). Deux niveaux A et B, deux secteurs d’un site par exemple, sont comparés sur les années qu’ils ont tous deux, les données restant en long (une ligne par secteur et par année) : test t apparié (différence moyenne B − A, son intervalle à 95 %, d_z de Cohen) et test des rangs signés de Wilcoxon (exact sous 50 paires), conseillé quand la normalité des différences est douteuse. Le nombre de paires et les lignes restées sans partenaire sont donnés, le résultat en une phrase prête pour un rapport, et le graphique relie chaque paire.',
