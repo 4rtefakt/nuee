@@ -24,7 +24,7 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
 - Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl", "foreign", "nlme", "mgcv")).
+  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster")).
 Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
 RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
 
@@ -149,7 +149,9 @@ Nouveau modèle (Modèle › Nouveau modèle)
 ----------------------------------------
 Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA, modèles de classe, régression
 linéaire, modèle linéaire mixte, modèle linéaire généralisé, modèle additif : voir Modèles
-linéaires, généralisés et mixtes), nom, nombre de composantes
+linéaires, généralisés et mixtes ; RDA et CA : voir Analyse de redondance et analyse des
+correspondances ; arbre de décision, LDA et k-moyennes : voir Arbres de décision, analyse
+discriminante linéaire et k-moyennes), nom, nombre de composantes
 (automatique par défaut, par validation croisée), groupes de validation croisée (à tour de
 rôle, G groupes ; ou un groupe par valeur d'un identifiant ou d'une variable, voir Validation
 croisée), échelle par défaut.
@@ -165,7 +167,8 @@ le poids de la variable après sa mise à l'échelle. Le bouton « Transformatio
 applique aux variables affichées le log10 proposé (voir Statistiques des variables).
 Onglet Termes croisés : produits de deux ou trois variables X (A × B, A × B × C), carrés
 (A × A) et cubes (A × A × A) ; une variable qualitative y entre par chacune de ses catégories,
-une fois au plus.
+une fois au plus. Chaque terme croisé a sa propre échelle, son bloc et son modificateur, comme
+dans l'onglet Variables.
 Onglet Observations : cocher / décocher les observations du modèle, et le jeu de test (voir
 Jeu de test).
 « Modifier le modèle » (Ctrl+M) ouvre cette fenêtre réglée comme un modèle existant (y compris
@@ -448,9 +451,11 @@ Sans X : le modèle nul, utile pour comparer les AIC. L'échelle par défaut gar
 des variables (coefficients par unité) ; UV donne des coefficients par écart-type.
 Un modèle mixte (nlme) ajoute des effets aléatoires emboîtés, du plus large au plus fin : une
 ordonnée à l'origine aléatoire par site, puis par secteur dans son site (un identifiant des
-observations ou une variable qualitative). Il peut ajouter une autocorrélation dans le temps à
-l'intérieur du dernier niveau (CAR1, en temps continu : des années manquantes ne gênent pas ;
-le temps est un identifiant numérique ou une variable quantitative). Les coefficients et les
+observations ou une variable qualitative). Il peut ajouter une autocorrélation dans le temps
+(CAR1, en temps continu : des années manquantes ne gênent pas ; le temps est un identifiant
+numérique ou une variable quantitative) à l'intérieur du dernier niveau ou, par « dans
+chaque », d'un niveau plus fin qui n'a pas d'effet aléatoire à lui : le secteur dans son site,
+quand seul le site a un effet aléatoire. Les coefficients et les
 variances sont estimés en REML ; la log-vraisemblance, l'AIC, l'AICc et le BIC viennent de
 l'ajustement en ML, le seul qui compare des modèles aux effets fixes différents. La validation
 croisée se fait par défaut par le premier effet aléatoire : chaque site est prédit par les
@@ -463,11 +468,19 @@ Tweedie pour des densités avec des zéros (sa puissance p estimée) ; ou normal
 log (comptages, gamma, Tweedie), logit (binomiale) ou l'identité (normale). Effort
 (décalage) : une variable comme une surface, une durée ou un nombre de passages, dont le log
 entre dans le modèle avec un coefficient 1 : il décrit alors une densité (un effort nul ou
-négatif est refusé). Des effets aléatoires comme ci-dessus en font un GLMM ou un GAMM (sans
-autocorrélation). Dans un modèle additif, les variables X cochées dans la colonne Courbe de
-l'onglet Variables entrent par une courbe lissée (une spline) plutôt que par une droite, pour
-un effet qui monte puis descend, ou un seuil ; les données décident de sa courbure (son edf ;
-1 est une droite). Les courbes et les effets aléatoires sont estimés en REML, et l'AIC vient
+négatif est refusé). Des effets aléatoires comme ci-dessus en font un GLMM ou un GAMM. Avec la
+loi normale et au moins un effet aléatoire, un GLM ou un GAM peut prendre aussi
+l'autocorrélation dans le temps : il est alors ajusté par mgcv::gamm, comme un modèle mixte de
+nlme dont les courbes sont des effets aléatoires (coefficients, courbes, variances et φ en
+REML ; log-vraisemblance, AIC, AICc et BIC d'un ajustement en ML, comparables seulement à ceux
+d'autres modèles ajustés ainsi). Avec une autre loi, elle est refusée : mgcv::gamm passerait
+par une quasi-vraisemblance pénalisée (PQL), sans vraie vraisemblance ni AIC. Dans un modèle
+additif, les variables X cochées dans la colonne Courbe de l'onglet Variables entrent par une
+courbe lissée (une spline) plutôt que par une droite, pour un effet qui monte puis descend, ou
+un seuil ; les données décident de sa courbure (son edf ; 1 est une droite). Sa dimension de
+base k borne sa courbure : 10 au plus, moins quand la variable a peu de valeurs ; tapez-en une
+autre (de 3 à 100) dans la case à côté de la coche, comme s(x, k = 5) dans R. Les courbes et
+les effets aléatoires sont estimés en REML, et l'AIC vient
 d'un ajustement en ML ; un GLM sans eux est ajusté par maximum de vraisemblance, comme le font
 glm() et MASS::glm.nb(). Le résumé d'un modèle de Poisson prévient quand les comptages sont
 surdispersés (le khi² de Pearson au-delà de 1,5 fois ses degrés de liberté) : ses valeurs p
@@ -477,21 +490,29 @@ Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
 Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations
 (log, log10, log1p, exp, sqrt, I(x^p), I(a * x + b), le logit log((x - a) / (b - x))), les
 termes croisés (a:b ; a*b pour a, b et a:b ; I(a^2) quand a est aussi dans le modèle, sinon le
-carré de a), les courbes s(x), l'effort offset(log(x)) et les ordonnées à l'origine aléatoires
-emboîtées (1 | site/secteur), du plus large au plus fin. Une courbe rend le modèle additif, des
+carré de a), les courbes s(x) ou s(x, k = 5), l'effort offset(log(x)) et les ordonnées à
+l'origine aléatoires emboîtées (1 | site/secteur), du plus large au plus fin. Une courbe rend
+le modèle additif, des
 effets aléatoires le rendent mixte. R lit la formule sans jamais l'exécuter : tout le reste
 (une autre fonction, du code) est refusé en disant pourquoi, et la formule n'est pas gardée,
 seulement les réglages qu'elle donne.
 Vues : Résumé (R2, ou R2 marginal et conditionnel pour un modèle mixte, Nakagawa et
-Schielzeth ; R2 ajusté et déviance expliquée pour un GLM ou un GAM, avec l'edf et le test de
-chaque courbe ; Q2 et RMSEcv ; AIC ; la variance de chaque effet aléatoire et sa part ; φ de
+Schielzeth ; R2 ajusté et déviance expliquée pour un GLM ou un GAM (R2 marginal et
+conditionnel quand il est ajusté par mgcv::gamm, les courbes dans la partie fixe), avec l'edf,
+le test et la concurvité de chaque courbe (la part de la courbe que reproduisent les autres
+termes ; au-delà de 0,8, en rouge, elle se confond avec eux) ; Q2 et RMSEcv ; AIC ; la variance
+de chaque effet aléatoire et sa part ; φ de
 l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
 quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
 plus, avec le logit le rapport des cotes), Effets (l'effet de chaque terme quantitatif quand sa
 variable varie, les autres fixés, avec sa bande à 95 % et les valeurs observées dessous : les
-courbes d'un GAM, des droites sinon ; sur l'échelle du lien, log ou logit, quand il y en a un),
-Observé / prédit, Résidus (standardisés, contre les valeurs ajustées, droite de Henry, par
-groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire), Apport des blocs
+courbes d'un GAM, des droites sinon ; sur l'échelle du lien, log ou logit, quand il y en a un ;
+pour une courbe, Seuils : l'effet et sa pente avec des intervalles simultanés à 95 % tirés de
+2000 jeux de coefficients, les plages où la bande de la pente exclut 0, en hausse ou en baisse
+nette, colorées et listées, et l'edf, sous 1,5 presque une droite, comme Simpson (2018) lit les
+seuils), Observé / prédit, Résidus (standardisés, contre les valeurs ajustées, droite de
+Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire), Apport
+des blocs
 (AIC) : chaque bloc de la colonne Bloc (ou chaque variable) retiré et le modèle réajusté en
 ML ; un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
@@ -512,11 +533,12 @@ entre eux.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
 résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
 un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
-chaque terme, observé / prédit et les résidus.
+chaque terme, les seuils de chaque courbe, observé / prédit et les résidus.
 Fichier › Exporter vers R : un script ou un rapport pour une régression aussi, avec lm,
-nlme::lme ou mgcv::gam : ses lignes et ses termes, les ajustements (REML et ML), la validation
-croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les courbes, le
-jeu de test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
+nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML),
+la validation croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les
+courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), le jeu de
+test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------
@@ -530,16 +552,113 @@ deux des modèles, avec leurs limites en rouge ; la table donne, pour chaque cla
 ses observations que chaque modèle accepte (attendu : vers 95 % pour sa propre classe, 0 %
 pour les autres), puis les distances et les classes de chaque observation.
 
+Analyse de redondance et analyse des correspondances
+----------------------------------------------------
+Nouveau modèle › type « RDA (analyse de redondance) » : ce que des variables explicatives X
+expliquent d'un tableau de réponses Y (abondances d'espèces, mesures), et comment. Y : des
+variables quantitatives ; X : les variables explicatives (une variable qualitative par ses
+catégories, termes croisés compris) ; Z (covariable, dans la liste Rôle de l'onglet
+Variables) : des variables dont l'effet est retiré d'abord (RDA partielle : le site, un
+gradient connu...). Onglet Général : la transformation des réponses (Hellinger ou corde pour
+des abondances, Legendre et Gallagher 2001 ; log(x + 1) ; ou aucune) ; les réponses centrées
+(RDA sur les covariances, pour des réponses dans les mêmes unités) ou centrées-réduites (sur
+les corrélations) ; le nombre de permutations des tests (999 ; 0 : aucun test), les groupes à
+l'intérieur desquels elles restent (un identifiant ou une variable qualitative : un site suivi
+plusieurs années n'est permuté qu'avec lui-même) et leur graine (la même graine donne les mêmes
+permutations, donc les mêmes valeurs p). Une observation où une valeur manque, ou sans aucune
+abondance avec Hellinger ou corde, est laissée de côté.
+
+Vues : Résumé (l'inertie totale, la part des covariables, celle des X et ce qui reste ; R2 et
+R2 ajusté ; le pseudo-F et sa valeur p par permutation) ; Ordination, le triplot (les
+observations par leurs scores wa, sommes pondérées des réponses, ou lc, combinaisons linéaires
+des X ; les réponses ; une flèche par X quantitative, allongée pour remplir le graphique du
+facteur indiqué dans la légende, et un triangle au centroïde de chaque catégorie ; l'échelle 1
+garde les distances entre observations, l'échelle 2 les corrélations entre réponses) ; Valeurs
+propres (les axes contraints en bleu, les non contraints en gris) ; Tests par permutation
+(chaque axe contraint après les précédents, chaque terme après tous les autres ; Sélection pas
+à pas garde un terme qui augmente le R2 ajusté sans dépasser celui de tous les termes et dont
+le test donne p ≤ 0,05, Blanchet et al. 2008 ; Partition de la variance partage le R2 ajusté
+entre deux ou trois blocs de X, d'après la colonne Bloc de l'onglet Variables) ; les listes des
+observations et des variables. Les résultats sont ceux du paquet vegan (rda, anova.cca,
+RsquareAdj, ordiR2step, varpart) : mêmes valeurs propres, scores et pseudo-F, et pour les mêmes
+permutations, mêmes valeurs p.
+
+Type « Analyse des correspondances (CA) » : un tableau d'effectifs ou d'abondances (les
+variables X, une observation par ligne, des valeurs positives ou nulles) ; les observations et
+les variables sans aucune valeur sont laissées de côté. Vues : Résumé (l'inertie totale : le
+khi² du tableau divisé par son effectif total) ; Ordination (lignes et colonnes en échelle 1, 2
+ou 3 : distances du khi² entre observations, entre variables, ou symétrique) ; Valeurs
+propres ; Contributions et cos² (la part de chaque ligne et de chaque colonne dans l'inertie
+d'un axe, en bleu au-dessus de la moyenne, et la qualité de sa représentation) ; les listes.
+
+L'une et l'autre exportent leurs tableaux (Fichier › Exporter), écrivent leur texte des
+méthodes avec ses références et font un rapport. Fichier › Exporter vers R écrit un script, ou
+un rapport R Markdown ou Quarto, qui les refait avec R seul, leurs tests avec les mêmes
+permutations. Elles ne prédisent pas de nouvelles observations.
+
+Arbres de décision, analyse discriminante linéaire et k-moyennes
+----------------------------------------------------------------
+Nouveau modèle › type « Arbre de décision » (rpart) : une variable Y quantitative (arbre de
+régression) ou une variable de classe (arbre de classement), et des X par leurs valeurs
+brutes, pour que les seuils se lisent dans leurs unités ; les valeurs manquantes des X sont
+prises en charge par des variables de substitution. Onglet Général : au moins 20
+observations par feuille, mais au plus le sixième des observations, pour que l'arbre puisse
+se couper (un nœud n'est coupé que s'il en compte trois fois plus), au plus 5 niveaux,
+cp = 0,001, 5 substitutions,
+élagage par la règle 1-ET (le plus petit arbre à une erreur-type de l'erreur minimale) ou à
+l'erreur minimale. L'élagage vient d'une validation croisée interne par les groupes de
+validation croisée (pour des sites suivis plusieurs années, choisir le site), et le Q2 d'une
+validation croisée externe : chaque groupe est prédit par un arbre refait entièrement sans
+lui. Vues : Arbre (un clic sur un nœud choisit ses observations), Élagage, Règles des
+feuilles, Importance des variables, Stabilité de la première coupure (200 tirages
+bootstrap des groupes : la part des tirages où chaque variable fait la première coupure,
+et son seuil médian), Observé / prédit et Résidus, ou Classement pour un arbre de
+classement. Jeu de test et Prédire : une nouvelle observation suit l'arbre, substitutions
+comprises.
+
+Type « Analyse discriminante linéaire (LDA) » (MASS::lda) : une variable de classe et des X
+par leurs valeurs brutes ; probabilités a priori proportionnelles aux effectifs ou égales.
+Chaque observation va dans la classe de plus grande probabilité a posteriori ; en
+validation croisée, chaque groupe est classé par le modèle ajusté sans lui. Vues : Scores
+discriminants, Coefficients discriminants (corrélations de structure, coefficients dans
+les unités des variables ou pour des variables d'écart-type 1), Classement, Probabilités a
+posteriori. Jeu de test et Prédire.
+
+Type « k-moyennes » : des X mis à l'échelle comme le dit l'onglet Variables (UV par
+défaut), k groupes (algorithme de Hartigan et Wong, 25 départs, graine 1), numérotés du
+plus grand au plus petit ; une observation où une valeur manque est laissée de côté.
+Vues : Groupes (sur les deux premières composantes principales), Silhouettes, Choix de k
+(de 2 à 10 : somme des carrés intra-groupes et silhouette moyenne), Centres des groupes.
+« Groupes → variable » ajoute les groupes au projet comme une variable qualitative
+(Édition › Annuler la retire) ; Prédire range une nouvelle observation dans le groupe du
+centre le plus proche.
+
+Pour les trois : texte des méthodes avec ses références, Exporter, rapport PDF ou Word,
+Exporter vers R (un script ou un rapport R Markdown / Quarto qui refait l'analyse avec
+rpart, MASS ou cluster, livrés avec R). Comparer les modèles donne le Q2 et le RMSEcv d'un
+arbre de régression à côté des autres modèles.
+
 Modifier les données, créer des variables
 -----------------------------------------
 Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour
 annuler ; vide = valeur manquante ; pour une variable qualitative, le nom de la catégorie).
 Les modèles déjà ajustés ne changent pas : les réajuster.
-Édition › Nouvelle variable : par une formule R sur les autres variables, par exemple
-log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (un résultat en
-texte donne une variable qualitative) ; ou des classes d'après les valeurs d'une variable,
-à des bornes données (10 ; 20 donne « ≤ 10 », « ]10 ; 20] », « > 20 ») ou en classes
-d'effectifs égaux. Penser à enregistrer le projet.
+Édition › Nouvelle variable : par une formule R sur les autres variables et les identifiants
+des observations, par exemple log10(polyphenols), sucre / acidite, ifelse(poids >= 170,
+"gros", "petit") (un résultat en texte donne une variable qualitative) ; par groupe,
+moyenne_groupe(x, secteur), la moyenne de x dans le groupe de chaque observation (valeurs
+manquantes ignorées ; une observation sans groupe n'en a pas), et ecart_groupe(x, secteur),
+l'écart à cette moyenne : la moyenne d'un secteur comme covariable, ou une réponse centrée par
+secteur. Ou des classes d'après les valeurs d'une variable, à des bornes données (10 ; 20
+donne « ≤ 10 », « ]10 ; 20] », « > 20 ») ou en classes d'effectifs égaux. Ou Imputation
+(ACP) : les valeurs manquantes des variables quantitatives choisies remplies les unes par les
+autres par ACP itérative régularisée, comme le fait missMDA::imputePCA, avec le nombre de
+composantes choisi par validation croisée généralisée des variables réduites, de 0 à 5, comme
+le fait missMDA::estim_ncpPCA sur elles (0 : la moyenne de chaque variable), sauf si vous le
+donnez ; les valeurs observées inchangées, une observation à qui manquent plus de la moitié
+d'entre elles laissée manquante, les valeurs imputées gardées dans l'étendue observée de chaque
+variable sauf si on décoche ; en nouvelles variables « x (imputée) » ou dans les variables
+elles-mêmes (Ctrl+Z annule). Penser à enregistrer le projet.
 
 Historique du fichier
 ---------------------

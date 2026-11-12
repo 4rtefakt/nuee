@@ -1,6 +1,6 @@
 # Formules R des régressions (Nouveau modèle) : la formule des réglages d'un modèle, écrite comme
 # on l'écrit dans R (lm, mgcv, et lme4 pour les effets aléatoires), et une formule lue en réglages.
-#   note ~ sucre * fermete + log10(acidite) + I(sucre^2) + s(polyphenols) + offset(log(effort)) + (1 | site/secteur)
+#   note ~ sucre * fermete + log10(acidite) + I(sucre^2) + s(polyphenols, k = 5) + offset(log(effort)) + (1 | site/secteur)
 # Une formule lue n'est jamais évaluée : R la découpe (str2lang), puis seuls y sont acceptés des
 # noms de variables ou d'identifiants du projet, des nombres et quelques fonctions, chacune
 # reconnue à sa place. Elle devient les réglages de Nouveau modèle (rôles, transformations,
@@ -36,8 +36,8 @@ texte_transformation <- function(tr, x) {
 }
 
 # La formule des réglages `r` d'une régression, tels que Nouveau modèle les envoie (type, x, y,
-# transformations par numéro de variable, croises, lisses, aleatoires, decalage). Sans Y, une
-# formule sans réponse (« ~ x1 + x2 »).
+# transformations par numéro de variable, croises, lisses et leur k_courbes, aleatoires, decalage).
+# Sans Y, une formule sans réponse (« ~ x1 + x2 »).
 formule_reglages <- function(projet, r) {
   nom_variable <- function(u) as.character(variable_du_projet(projet, u)$ids[1])
   transformations <- r$transformations %||% list()
@@ -51,7 +51,11 @@ formule_reglages <- function(projet, r) {
   type <- as.character(r$type %||% "LM")[1]
   lisses <- if (identical(type, "GAM")) as.numeric(unlist(r$lisses)) else numeric(0)
   droite <- c(
-    vapply(as.numeric(unlist(r$x)), function(u) if (u %in% lisses) sprintf("s(%s)", terme(u)) else terme(u), ""),
+    vapply(as.numeric(unlist(r$x)), function(u) {
+      if (!u %in% lisses) return(terme(u))
+      k <- suppressWarnings(as.integer(unlist(r$k_courbes[[as.character(u)]])))
+      if (length(k) && !is.na(k[1])) sprintf("s(%s, k = %d)", terme(u), k[1]) else sprintf("s(%s)", terme(u))
+    }, ""),
     vapply(croises %||% list(), function(c) {
       c <- as.numeric(c)
       n <- table(factor(c, levels = unique(c)))
@@ -69,7 +73,7 @@ formule_reglages <- function(projet, r) {
 # Les réglages d'une formule R (texte), pour une régression de type `type` et de loi `famille` :
 # un modèle à effets aléatoires devient mixte (LM → LMM), sans eux linéaire (LMM → LM), une courbe
 # en fait un modèle additif (→ GAM). Une erreur qui dit ce qui ne va pas, sinon list(type, x, y,
-# transformations, croises, lisses, aleatoires, decalage).
+# transformations, croises, lisses, k_courbes, aleatoires, decalage).
 lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
   texte <- paste(as.character(texte), collapse = " ")
@@ -195,6 +199,7 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   puissances <- list()  # I(x^2) seuls : un terme croisé si x est aussi un terme principal, sinon x^2
   aleatoires <- list()
   decalage <- NULL
+  k_courbes <- list()   # par variable (son indice) : la dimension demandée de sa courbe
   ajouter <- function(s) {
     cle <- as.character(s$k)
     if (!is.null(principaux[[cle]]) && !identical(principaux[[cle]]$tr, s$tr)) {
@@ -242,14 +247,23 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
       decalage <- variable(a[[2]])
       next
     }
-    if (ft == "s") {
-      if (length(t) != 2 || !is.null(names(t)) && any(nzchar(names(t)))) {
-        err("Une courbe s'écrit s(x), une variable : Nuée choisit sa dimension (k).", "A curve reads s(x), one variable: Nuée sets its dimension (k).")
+    if (ft == "s") {  # s(x), ou s(x, k = 5) : sa dimension de base
+      arguments <- as.list(t)[-1]
+      noms_args <- names(arguments) %||% rep("", length(arguments))
+      k_s <- NULL
+      if (length(arguments) == 2 && !nzchar(noms_args[1]) && identical(noms_args[2], "k")) {
+        k_s <- nombre(arguments[[2]])
+        if (is.null(k_s) || k_s < 3 || k_s > 100 || k_s != round(k_s)) {
+          err("La dimension d'une courbe s'écrit k = un nombre entier de 3 à 100 : s(x, k = 5).", "A curve's dimension reads k = a whole number from 3 to 100: s(x, k = 5).")
+        }
+      } else if (length(arguments) != 1 || nzchar(noms_args[1])) {
+        err("Une courbe s'écrit s(x), ou s(x, k = 5) pour fixer sa dimension.", "A curve reads s(x), or s(x, k = 5) to set its dimension.")
       }
-      s <- simple(t[[2]])
+      s <- simple(arguments[[1]])
       if (!is.null(s$puissance)) refus(t)
       ajouter(s)
       courbes <- c(courbes, s$k)
+      if (!is.null(k_s)) k_courbes[[as.character(s$k)]] <- as.integer(k_s)
       next
     }
     if (ft == "*") {  # a*b*c : a, b, c et tous leurs termes croisés
@@ -313,5 +327,6 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   croises_uid <- unique(lapply(croises, function(c) uid(c$ks)))
   list(type = type, x = I(vapply(principaux, function(s) uid(s$k), 0, USE.NAMES = FALSE)), y = I(uid(reponse$k)),
        transformations = transformations, croises = I(croises_uid), lisses = I(vapply(courbes, uid, 0)),
+       k_courbes = stats::setNames(k_courbes, vapply(as.integer(names(k_courbes)), uid, 0)),
        aleatoires = I(aleatoires), decalage = if (!is.null(decalage)) uid(decalage))
 }

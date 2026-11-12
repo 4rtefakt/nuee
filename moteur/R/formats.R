@@ -919,6 +919,7 @@ tableau_projet <- function(projet) {
 # ajustées), variables (loadings, VIP...), composantes, coefficients et variables Y.
 tables_resultats <- function(projet, m) {
   if (inherits(m, "modele_regression")) return(tables_regression(projet, m))
+  if (isTRUE(m$type %in% AUTRES_ANALYSES)) return(fonction_analyse("tables_", m$type)(projet, m))  # analyses.R
   s <- m$statistiques
   obs <- s$observations
   obs <- cbind(data.frame(Observation = unname(projet$noms_obs[rownames(obs)]), stringsAsFactors = FALSE), obs)

@@ -292,6 +292,16 @@ attendu <- m3$x$X[, "variete(Gala)"] * m3$x$X[, "poids"] * m3$x$X[, "diametre"]
 verifier("un terme à trois facteurs est le produit de ses facteurs mis à l'échelle, mis à l'échelle à son tour",
          isTRUE(all.equal(unname(m3$x$X[, "variete(Gala)*poids*diametre"]), unname((attendu - mean(attendu)) / sd(attendu)))))
 verifier("Nouveau modèle depuis celui-ci garde les termes à trois facteurs", length(reglages_modele(p, d3)$croises) == 2 && all(lengths(reglages_modele(p, d3)$croises) == 3))
+# l'échelle, le bloc et le modificateur d'un terme croisé (ceux d'un fichier .usp aussi) : gardés
+# par Nouveau modèle depuis celui-ci, qui redonne le même modèle
+dc <- definir_modele(p, "PLS", x = complets[1:3], y = uid("note_gout"), A = 2, croises = list(complets[1:2], complets[c(3, 3)]),
+                     croises_reglages = stats::setNames(list(list(echelle = "Par", bloc = "C", modificateur = 0.5)), paste(complets[1:2], collapse = "*")))
+rc <- reglages_modele(p, dc)
+dc2 <- definir_modele(p, "PLS", x = rc$x, y = rc$y, A = 2, croises = rc$croises, croises_reglages = rc$croises_reglages)
+echelles_croises <- function(d) lapply(Filter(function(t) length(t$variables) > 1, d$x), `[[`, "scaling")
+verifier("Nouveau modèle depuis celui-ci garde l'échelle, le bloc et le modificateur des termes croisés",
+         identical(echelles_croises(dc)[[1]], list(type = "Par", block = "C", modifier = 0.5)) && identical(echelles_croises(dc2), echelles_croises(dc)) &&
+           isTRUE(all.equal(ajuster(p, dc2)$x$X, ajuster(p, dc)$x$X)))
 e <- tryCatch({ definir_modele(p, "PLS", x = c(uid("variete"), complets[1]), y = uid("note_gout"), croises = list(c(uid("variete"), complets[1], uid("variete")))); "" },
               error = function(e) conditionMessage(e))
 verifier(sprintf("une variable qualitative deux fois dans un terme : « %s »", e), grepl("qualitative", e))

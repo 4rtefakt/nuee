@@ -22,6 +22,7 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
                           renv = FALSE, rdata = FALSE, rproj = FALSE, version = "", langue = "fr") {
   donnees <- match.arg(donnees)
   langue <- if (identical(langue, "en")) "en" else "fr"
+  if (est_autre_analyse(d)) return(ecrire_script_analyse(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue))  # analyses.R
   format <- c(r = "R", rmd = "Rmd", qmd = "qmd")[[tolower(tools::file_ext(chemin_script))]]
   tab <- tableau_script(projet, ids_script(list(d)))
   nom_projet <- as.character(projet$source %||% "projet")
@@ -48,8 +49,24 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
   list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart)
 }
 
-# Les paquets des régressions (livrés avec R) : pour renv.lock.
-paquets_script <- function(b) c(if (isTRUE(b$lmm)) "nlme", if (isTRUE(b$mgcv)) "mgcv")
+# Les paquets des régressions (livrés avec R) : nlme (un modèle mixte, l'autocorrélation d'un
+# GAMM), mgcv, MASS (les tirages des seuils d'une courbe : MASS::mvrnorm) ; pour renv.lock et
+# l'en-tête du script.
+paquets_script <- function(b) c(if (isTRUE(b$lmm) || isTRUE(b$gamm)) "nlme", if (isTRUE(b$mgcv)) "mgcv", if (isTRUE(b$courbes)) "MASS")
+
+# Les paquets d'un script, pour son en-tête : « R et ses paquets nlme, mgcv et MASS (livrés avec
+# R) », ou « R seul » ; `versions` : « R 4.6.2 et mgcv 1.9-3 ».
+texte_paquets <- function(paquets, langue, versions = FALSE) {
+  tx <- function(fr, en) if (langue == "en") en else fr
+  if (versions) {
+    return(paste0("R ", paste(R.version$major, R.version$minor, sep = "."),
+                  paste(vapply(paquets, function(pq) sprintf(tx(" et %s %s", " and %s %s"), pq, utils::packageDescription(pq)$Version), ""), collapse = "")))
+  }
+  liste <- sub(", ([^,]*)$", tx(" et \\1", " and \\1"), paste(paquets, collapse = ", "))
+  if (length(paquets) > 1) sprintf(tx("R et ses paquets %s (livrés avec R)", "R and its packages %s (they come with R)"), liste)
+  else if (length(paquets)) sprintf(tx("R et son paquet %s (livré avec R)", "R and its package %s (it comes with R)"), liste)
+  else tx("R seul", "R alone")
+}
 
 # Le script d'un modèle de mgcv l'attache (library(mgcv) : ses lois nb() et tw() appellent ses
 # fonctions depuis l'environnement global). Il l'est ici avant que l'environnement où le script est
@@ -106,7 +123,7 @@ ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, do
                   code_valeurs(sprintf("%s = %s", x$objets, x$objets), sprintf("%s <- list(", noms[k]), ")", ouvrir = ""), "")
   }
   fichiers <- fichiers_script(chemin_script, donnees, rdata, renv, rproj, langue)
-  lignes <- c(entete_seance(plans, noms, nom_projet, version, fichiers, langue), "",
+  lignes <- c(entete_seance(plans, noms, nom_projet, version, fichiers, langue, paquets_script(b)), "",
               titre_partie(1, langue), fonctions,
               titre_partie(2, langue), donnees_script(tab, fichiers, langue), "",
               sprintf("# 3. %s ----", tx("Modèles et résultats", "Models and results")), "", morceaux)
@@ -273,7 +290,8 @@ besoins_script <- function(plans, seance) {
        # les régressions : leurs fonctions, et les termes mis à l'échelle (toujours pour les autres modèles)
        regression = length(reg) > 0, lmm = any(vapply(reg, function(pl) !pl$generalise && length(pl$niveaux) > 0, TRUE)),
        mgcv = any(vapply(reg, `[[`, TRUE, "generalise")), courbes = any(vapply(reg, function(pl) length(pl$lisses) > 0, TRUE)),
-       aleatoires_mgcv = any(vapply(reg, function(pl) pl$generalise && length(pl$niveaux) > 0, TRUE)),
+       aleatoires_mgcv = any(vapply(reg, function(pl) pl$generalise && !isTRUE(pl$gamm) && length(pl$niveaux) > 0, TRUE)),
+       gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
 }
@@ -964,6 +982,8 @@ plan_regression <- function(projet, d, m, tab) {
   specs <- specs_groupement(d$aleatoires)
   L <- length(specs)
   temps <- if (!is.null(d$correlation)) specs_groupement(d$correlation$temps)[[1]]
+  dans <- if (!is.null(d$correlation$dans)) specs_groupement(d$correlation$dans)[[1]]
+  gamm <- isTRUE(m$gamm)
   # le code qui lit dans `d` les valeurs d'un groupement (des textes), ou le temps (des nombres)
   lecture <- function(s, nombre = FALSE) {
     if (identical(as.character(s$by)[1], "id")) {
@@ -975,18 +995,23 @@ plan_regression <- function(projet, d, m, tab) {
     if (!length(v$categories)) return(col)
     if (nombre) sprintf("suppressWarnings(as.numeric(as.character(%s)))", col) else sprintf("as.character(%s)", col)
   }
-  # les noms affichés, puis leurs noms R : réponse, termes, niveaux (et pour mgcv les niveaux
-  # emboîtés, un facteur chacun : le secteur dans son site), temps, effort
-  emboites <- if (generalise && L >= 2) vapply(2:L, function(l) paste(m$niveaux[seq_len(l)], collapse = "_"), "") else character(0)
-  nr <- noms_r(c(m$y$noms, m$noms_termes, m$niveaux, emboites, m$temps, m$decalage))
+  # les noms affichés, puis leurs noms R : réponse, termes, niveaux (et pour mgcv::gam les niveaux
+  # emboîtés, un facteur chacun : le secteur dans son site), temps, groupe de l'autocorrélation, effort
+  emboites <- if (generalise && !gamm && L >= 2) vapply(2:L, function(l) paste(m$niveaux[seq_len(l)], collapse = "_"), "") else character(0)
+  nr <- noms_r(c(m$y$noms, m$noms_termes, m$niveaux, emboites, m$temps, m$dans, m$decalage))
   avant <- 1 + K + L + length(emboites)
   termes_r <- nr[1 + seq_len(K)]
   # les termes en courbe (GAM), dans l'ordre des termes, utiles ou non (le script choisit les utiles)
   lisses <- character(0)
+  k_demandes <- integer(0)  # (la dimension demandée d'une courbe, par nom R)
   if (identical(d$type, "GAM") && length(d$lisses)) {
     q <- m$quantitatifs
     en_courbe <- vapply(termes[match(q, m$termes)], function(t) as.numeric(t$variables) %in% as.numeric(d$lisses), TRUE)
     lisses <- termes_r[match(q[en_courbe], m$termes)]
+    for (t in q[en_courbe]) {
+      k <- d$k_courbes[[as.character(as.numeric(termes[[match(t, m$termes)]]$variables))]]
+      if (length(k)) k_demandes[termes_r[match(t, m$termes)]] <- as.integer(k)
+    }
   }
   x <- if (K) plan_bloc(projet, termes, m$bloc, tab, candidates, "X")$termes else list()
   ty <- d$y[[1]]
@@ -994,7 +1019,7 @@ plan_regression <- function(projet, d, m, tab) {
   groupes <- as.integer(m$vc$groupe)
   G <- as.integer(d$cv_groups %||% 7)
   list(nom = as.character(d$name %||% ""), titre = as.character(d$title %||% ""),
-       type = "regression", regression = TRUE, modele = as.character(d$type), generalise = generalise,
+       type = "regression", regression = TRUE, modele = as.character(d$type), generalise = generalise, gamm = gamm,
        famille = m$famille, lien = m$lien %||% "identity", plsda = FALSE, opls = FALSE,
        N = m$N, K = K, A = 0, Ap = 0, M = 1, manquantes = FALSE, y_manquantes = FALSE, vides = FALSE,
        rangs = unname(tab$rangs[as.character(d$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
@@ -1007,9 +1032,10 @@ plan_regression <- function(projet, d, m, tab) {
        niveaux = lapply(seq_len(L), function(l) list(nom = nr[1 + K + l], affiche = m$niveaux[l], code = lecture(specs[[l]]))),
        emboites = nr[1 + K + L + seq_along(emboites)],
        temps = if (!is.null(temps)) list(nom = nr[avant + 1], affiche = m$temps, code = lecture(temps, TRUE)),
+       dans = if (!is.null(dans)) list(nom = nr[avant + 2], affiche = m$dans, code = lecture(dans)),
        effort = if (!is.null(d$decalage)) list(nom = nr[length(nr)], affiche = m$decalage,
                                                code = sprintf("d[[%s]]", code_texte(tab$noms[[as.character(d$decalage)]]))),
-       lisses = lisses, n_courbes = length(m$lisses),
+       lisses = lisses, n_courbes = length(m$lisses), k_demandes = k_demandes,
        groupes_vc = groupes, en_tour = identical(groupes, as.integer((seq_along(groupes) - 1) %% G + 1)), G_tour = G,
        # (les groupes de la validation croisée sont-ils les niveaux du premier effet aléatoire, comme par défaut ?)
        vc_premier = L > 0 && length(d$groupes_vc$by) > 0 && as.character(d$groupes_vc$by)[1] %in% c("id", "variable") &&
@@ -1023,6 +1049,8 @@ type_regression <- function(pl, langue) {
   lois <- c(gaussienne = tx("normale", "normal"), poisson = tx("de Poisson", "Poisson"), binomiale_negative = tx("binomiale négative", "negative binomial"),
             binomiale = tx("binomiale", "binomial"), gamma = "gamma", tweedie = tx("de Tweedie", "Tweedie"))
   mixte <- if (length(pl$niveaux)) tx(" mixte", " mixed") else ""
+  if (isTRUE(pl$gamm)) return(sprintf(tx("modèle %s%s, loi normale, avec une autocorrélation CAR1 (mgcv::gamm)", "%s%s model, normal distribution, with a CAR1 autocorrelation (mgcv::gamm)"),
+                                      tx(if (identical(pl$modele, "GAM")) "additif généralisé" else "linéaire généralisé", if (identical(pl$modele, "GAM")) "generalized additive" else "generalized linear"), mixte))
   switch(pl$modele,
     LM = tx("régression linéaire", "linear regression"),
     LMM = tx("modèle linéaire mixte", "linear mixed model"),
@@ -1032,21 +1060,19 @@ type_regression <- function(pl, langue) {
 
 entete_regression <- function(pl, nom_projet, version, fichiers, langue) {
   tx <- function(fr, en) if (langue == "en") en else fr
-  paquet <- if (pl$generalise) "mgcv" else if (length(pl$niveaux)) "nlme" else ""
+  paquet <- c(if (isTRUE(pl$gamm)) c("mgcv", "nlme") else if (pl$generalise) "mgcv" else if (length(pl$niveaux)) "nlme", if (length(pl$lisses)) "MASS")
   c(sprintf(tx("# Modèle %s%s : %s, %d observations, %d termes X", "# Model %s%s: %s, %d observations, %d X terms"),
             texte_sur(pl$nom), if (nzchar(pl$titre)) sprintf(" (%s)", texte_sur(pl$titre)) else "", type_regression(pl, langue), pl$N, pl$K),
     sprintf(tx("# Script R écrit par Nuée %s le %s, à partir du projet « %s ».", "# R script written by Nuée %s on %s, from the project “%s”."), version, format(Sys.Date()), texte_sur(nom_projet)),
-    commentaire(tx(sprintf("Il refait ce modèle avec R%s, sans Nuée : le calcul est écrit pour ce modèle, de ses données à ses résultats, qui sont ceux de Nuée. Ses quatre parties :",
-                           if (nzchar(paquet)) sprintf(" et son paquet %s (livré avec R)", paquet) else " seul"),
-                   sprintf("It redoes this model with R%s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:",
-                           if (nzchar(paquet)) sprintf(" and its package %s (it comes with R)", paquet) else " alone"))),
+    commentaire(sprintf(tx("Il refait ce modèle avec %s, sans Nuée : le calcul est écrit pour ce modèle, de ses données à ses résultats, qui sont ceux de Nuée. Ses quatre parties :",
+                           "It redoes this model with %s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:"),
+                        texte_paquets(paquet, langue))),
     tx("#   1. Fonctions : termes utiles, AIC corrigé, validation croisée", "#   1. Functions: useful terms, corrected AIC, cross-validation"),
     tx("#   2. Données", "#   2. Data"),
     tx("#   3. Modèle : réponse et termes X, ajustement, validation croisée, statistiques", "#   3. Model: response and X terms, fit, cross-validation, statistics"),
     tx("#   4. Résultats : tableaux et graphiques", "#   4. Results: tables and plots"),
     tx("# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.", "# In RStudio, Ctrl+Shift+O shows these parts; Ctrl+Shift+S runs the whole script."),
-    sprintf(tx("# Écrit avec R %s%s.", "# Written with R %s%s."), paste(R.version$major, R.version$minor, sep = "."),
-            if (nzchar(paquet)) sprintf(tx(" et %s %s", " and %s %s"), paquet, utils::packageDescription(paquet)$Version) else ""),
+    sprintf(tx("# Écrit avec %s.", "# Written with %s."), texte_paquets(paquet, langue, versions = TRUE)),
     fichiers_a_cote(fichiers, langue, FALSE))
 }
 
@@ -1070,6 +1096,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   K <- pl$K
   L <- length(pl$niveaux)
   mgcv <- pl$generalise
+  gamm <- isTRUE(pl$gamm)
   mixte <- L > 0
   courbes <- length(pl$lisses) > 0
   car1 <- !is.null(pl$temps)
@@ -1093,8 +1120,12 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   re_mgcv <- c(r_niveaux[seq_len(min(L, 1))], pl$emboites)
   quoi <- c(tx("la réponse", "the response"), if (K) tx("les termes X", "the X terms"),
             if (mixte) tx("les groupes des effets aléatoires", "the groups of the random effects"), if (car1) tx("le temps", "the time"),
+            if (!is.null(pl$dans)) tx("le groupe de l'autocorrélation", "the group of the autocorrelation"),
             if (!is.null(pl$effort)) tx("l'effort", "the effort"))
-  lectures <- c(vapply(pl$niveaux, `[[`, "", "code"), pl$temps$code, pl$effort$code)
+  lectures <- c(vapply(pl$niveaux, `[[`, "", "code"), pl$temps$code, pl$dans$code, pl$effort$code)
+  # le groupe de l'autocorrélation : le dernier effet aléatoire, ou un niveau plus fin
+  groupes_car1 <- paste(c(r_niveaux, pl$dans$nom), collapse = " / ")
+  dans_affiche <- if (!is.null(pl$dans)) pl$dans$affiche else affiches[L]
   plx <- pl
   plx$manquantes <- pl$na_termes  # (les centres d'un terme croisé sans aucune valeur)
 
@@ -1106,6 +1137,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     vapply(seq_along(pl$emboites), function(l) sprintf("  tab[[%s]] <- interaction(%s, drop = TRUE)", code_texte(pl$emboites[l]),
                                                        paste(sprintf("tab[[%s]]", vapply(r_niveaux[seq_len(l + 1)], code_texte, "")), collapse = ", ")), ""),
     if (car1) sprintf("  tab[[%s]] <- %s[ici]", code_texte(pl$temps$nom), pl$temps$code),
+    if (!is.null(pl$dans)) sprintf("  tab[[%s]] <- factor(%s[ici])", code_texte(pl$dans$nom), pl$dans$code),
     if (!is.null(pl$effort)) sprintf("  tab[[%s]] <- %s[ici]", code_texte(pl$effort$nom), pl$effort$code),
     "  tab")
   filtre <- function(cadre, noms) if (pl$croises_tr) c(
@@ -1150,7 +1182,40 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   # --- l'ajustement
   formule <- function(droite) c(sprintf("  droite <- %s", droite),
                                 "  f <- reformulate(if (length(droite)) droite else \"1\", response = reponse)")
-  ajustement <- if (mgcv) {
+  ajustement <- if (gamm) {
+    droite_gamm <- paste(c(if (courbes) "setdiff(utiles, lis)" else "utiles", if (courbes) "sprintf(\"s(%s, k = %d)\", lis, kk)"), collapse = ", ")
+    c(commentaire(tx("La loi de la réponse : normale, lien identité (avec une autocorrélation, mgcv::gamm ne prend qu'elle : une autre loi passerait par une quasi-vraisemblance, sans AIC).",
+                     "The distribution of the response: normal, identity link (with an autocorrelation, mgcv::gamm takes only that one: another would go through a quasi-likelihood, with no AIC).")),
+      if (courbes) c(commentaire(tx("Les termes en courbe (des splines de régression en plaques minces) et la dimension de base de chacune.",
+                                    "The terms as curves (thin plate regression splines) and the basis dimension of each.")),
+                     code_valeurs(vapply(pl$lisses, code_texte, ""), "lisses <- "),
+                     if (length(pl$k_demandes)) sprintf("k_demandes <- c(%s)", paste(sprintf("%s = %dL", vapply(names(pl$k_demandes), code_texte, ""), pl$k_demandes), collapse = ", ")),
+                     sprintf("k <- vapply(lisses, function(t) dimension_courbe(cadre[[t]]%s), 0L)", if (length(pl$k_demandes)) ", k_demandes[t]" else "")),
+      commentaire(tx(sprintf("Les effets aléatoires (de nlme) : une ordonnée à l'origine aléatoire %s ; une autocorrélation des résidus en temps continu (CAR1) le long de %s, dans chaque %s.",
+                             emboitement, guillemets(pl$temps$affiche), guillemets(dans_affiche)),
+                     sprintf("The random effects (of nlme): a random intercept %s; a continuous-time autocorrelation of the residuals (CAR1) along %s, within each %s.",
+                             emboitement, guillemets(pl$temps$affiche), guillemets(dans_affiche)))),
+      code_valeurs(vapply(r_niveaux, code_texte, ""), "niveaux_aleatoires <- "),
+      "aleatoire <- setNames(rep(list(~ 1), length(niveaux_aleatoires)), niveaux_aleatoires)",
+      sprintf("correlation <- nlme::corCAR1(form = as.formula(%s))", code_texte(paste("~", pl$temps$nom, "|", groupes_car1))),
+      commentaire(tx("Ajustement : un modèle additif mixte (mgcv::gamm), ajusté comme un modèle linéaire mixte de nlme dont les courbes sont des effets aléatoires, avec les termes utiles sur ces lignes (termes_utiles()) ; REML pour les coefficients, les courbes, les variances et l'autocorrélation, ML (methode = \"ML\") pour la vraisemblance et l'AIC, ceux de sa partie nlme (m$lme). Un second essai passe par optim.",
+                     "Fit: a mixed additive model (mgcv::gamm), fitted as a linear mixed model of nlme whose curves are random effects, with the useful terms on these rows (useful_terms()); REML for the coefficients, the curves, the variances and the autocorrelation, ML (method = \"ML\") for the likelihood and the AIC, those of its nlme part (m$lme). A second attempt goes through optim.")),
+      "ajuster_modele <- function(tab, candidats = termes, methode = \"REML\") {",
+      "  utiles <- termes_utiles(tab, candidats)",
+      if (courbes) c("  lis <- intersect(lisses, utiles)",
+                     "  kk <- vapply(lis, function(t) dimension_courbe(tab[[t]], k[[t]]), 0L)",
+                     "  lis <- lis[kk >= 3]",
+                     "  kk <- kk[kk >= 3]"),
+      formule(sprintf("c(%s)", droite_gamm)),
+      "  tenter <- function(...) tryCatch(gamm(f, random = aleatoire, correlation = correlation, data = tab, method = methode, ...), error = function(e) NULL)",
+      "  m <- tenter()",
+      "  if (is.null(m)) m <- tenter(control = nlme::lmeControl(opt = \"optim\", maxIter = 200, msMaxIter = 200, returnObject = TRUE))",
+      "  m",
+      "}",
+      "m <- ajuster_modele(cadre)",
+      "m_ml <- ajuster_modele(cadre, methode = \"ML\")",
+      "utiles <- termes_utiles(cadre, termes)")
+  } else if (mgcv) {
     familles <- c(gaussienne = "gaussian()", poisson = "poisson()", binomiale = "binomial()", binomiale_negative = "nb()",
                   gamma = "Gamma(link = \"log\")", tweedie = "tw()")
     noms_lois <- c(gaussienne = tx("normale, lien identité", "normal, identity link"), poisson = tx("de Poisson, lien log", "Poisson, log link"),
@@ -1167,7 +1232,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       if (courbes) c(commentaire(tx("Les termes en courbe (des splines de régression en plaques minces) et la dimension de base de chacune.",
                                     "The terms as curves (thin plate regression splines) and the basis dimension of each.")),
                      code_valeurs(vapply(pl$lisses, code_texte, ""), "lisses <- "),
-                     "k <- vapply(lisses, function(t) dimension_courbe(cadre[[t]]), 0L)"),
+                     if (length(pl$k_demandes)) sprintf("k_demandes <- c(%s)", paste(sprintf("%s = %dL", vapply(names(pl$k_demandes), code_texte, ""), pl$k_demandes), collapse = ", ")),
+                     sprintf("k <- vapply(lisses, function(t) dimension_courbe(cadre[[t]]%s), 0L)", if (length(pl$k_demandes)) ", k_demandes[t]" else "")),
       if (mixte) c(commentaire(tx(sprintf("Les effets aléatoires (des termes pénalisés) : une ordonnée à l'origine aléatoire %s%s.", emboitement,
                                           if (length(pl$emboites)) " (mgcv : un facteur par niveau emboîté)" else ""),
                                   sprintf("The random effects (penalized terms): a random intercept %s%s.", emboitement,
@@ -1186,7 +1252,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       sprintf("ajuster_modele <- function(tab, candidats = termes, methode = %s) {", if (mixte) "\"REML\"" else if (penalise) "NULL" else "\"ML\""),
       "  utiles <- termes_utiles(tab, candidats)",
       if (courbes) c("  lis <- intersect(lisses, utiles)",
-                     "  kk <- pmin(k[lis], vapply(lis, function(t) dimension_courbe(tab[[t]]), 0L))",
+                     "  kk <- vapply(lis, function(t) dimension_courbe(tab[[t]], k[[t]]), 0L)",
                      "  lis <- lis[kk >= 3]",
                      "  kk <- kk[kk >= 3]"),
       formule(sprintf("c(%s)", droite)),
@@ -1201,11 +1267,11 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   } else if (mixte) {
     niveaux_txt <- paste(r_niveaux, collapse = " / ")
     c(commentaire(tx(sprintf("Les effets aléatoires : une ordonnée à l'origine aléatoire %s%s.", emboitement,
-                             if (car1) sprintf(" ; une autocorrélation des résidus en temps continu (CAR1) le long de %s, dans chaque %s", guillemets(pl$temps$affiche), guillemets(affiches[L])) else ""),
+                             if (car1) sprintf(" ; une autocorrélation des résidus en temps continu (CAR1) le long de %s, dans chaque %s", guillemets(pl$temps$affiche), guillemets(dans_affiche)) else ""),
                      sprintf("The random effects: a random intercept %s%s.", emboitement,
-                             if (car1) sprintf("; a continuous-time autocorrelation of the residuals (CAR1) along %s, within each %s", guillemets(pl$temps$affiche), guillemets(affiches[L])) else ""))),
+                             if (car1) sprintf("; a continuous-time autocorrelation of the residuals (CAR1) along %s, within each %s", guillemets(pl$temps$affiche), guillemets(dans_affiche)) else ""))),
       sprintf("aleatoire <- as.formula(%s)", code_texte(paste("~ 1 |", niveaux_txt))),
-      if (car1) sprintf("correlation <- nlme::corCAR1(form = as.formula(%s))", code_texte(paste("~", pl$temps$nom, "|", niveaux_txt))),
+      if (car1) sprintf("correlation <- nlme::corCAR1(form = as.formula(%s))", code_texte(paste("~", pl$temps$nom, "|", groupes_car1))),
       commentaire(tx("Ajustement : un modèle linéaire mixte (nlme::lme) avec les termes utiles sur ces lignes (termes_utiles()) ; REML pour les coefficients et les variances, ML (methode = \"ML\") pour la vraisemblance et l'AIC. L'optimisation essaie optim, puis nlminb.",
                      "Fit: a linear mixed model (nlme::lme) with the useful terms on these rows (useful_terms()); REML for the coefficients and the variances, ML (method = \"ML\") for the likelihood and the AIC. The optimisation tries optim, then nlminb.")),
       "ajuster_modele <- function(tab, candidats = termes, methode = \"REML\") {",
@@ -1237,7 +1303,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   # --- la validation croisée
   par <- if (nzchar(pl$vc_par)) tx(sprintf(", un par valeur de %s", guillemets(pl$vc_par)), sprintf(", one per value of %s", guillemets(pl$vc_par)))
          else tx(" (les observations à tour de rôle)", " (the observations in turn)")
-  predire <- if (mgcv) {
+  predire <- if (gamm) "function(m, nouvelles, appris) tryCatch(as.vector(predict(m$gam, nouvelles, type = \"response\")), error = function(e) NA_real_)"
+  else if (mgcv) {
     if (mixte) "function(m, nouvelles, appris) tryCatch(predire_fixes(m, nouvelles, appris, aleatoires), error = function(e) NA_real_)"
     else "function(m, nouvelles, appris) tryCatch(as.vector(predict(m, nouvelles, type = \"response\")), error = function(e) NA_real_)"
   } else if (mixte) "function(m, nouvelles, appris) predict(m, nouvelles, level = 0)" else "function(m, nouvelles, appris) predict(m, nouvelles)"
@@ -1255,7 +1322,36 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   # --- les statistiques
   ic <- tx("Les coefficients : estimation, erreur-type, degrés de liberté, t, p et intervalle de confiance à 95 %.",
            "The coefficients: estimate, standard error, degrees of freedom, t, p and 95% confidence interval.")
-  statistiques <- if (mgcv) c(
+  statistiques <- if (gamm) c(
+    commentaire(ic),
+    "g <- m$gam",
+    "sm <- summary(g)",
+    "pt <- sm$p.table",
+    "q <- qt(0.975, g$df.residual)",
+    sprintf("coefficients <- data.frame(terme = %s, estimation = pt[, 1], erreur_type = pt[, 2], ddl = g$df.residual, t = pt[, 3], p = pt[, 4],", terme_de("rownames(pt)")),
+    "                           bas = pt[, 1] - q * pt[, 2], haut = pt[, 1] + q * pt[, 2], row.names = NULL)",
+    if (courbes) c(commentaire(tx("Les courbes : leurs degrés de liberté effectifs (edf ; 1 est une droite) et leur test.", "The curves: their effective degrees of freedom (edf; 1 is a straight line) and their test.")),
+                   "lis <- intersect(lisses, utiles)",
+                   "st <- sm$s.table[sprintf(\"s(%s)\", lis), , drop = FALSE]",
+                   sprintf("courbes <- data.frame(terme = %s, edf = st[, 1], ref_ddl = st[, 2], statistique = st[, 3], p = st[, 4], row.names = NULL)",
+                           if (meme_noms) "lis" else "noms_termes[match(lis, termes)]"),
+                   tx("# la concurvité : la part de chaque courbe que les autres termes reproduisent (au-delà de 0,8, elle se confond avec eux)",
+                      "# the concurvity: the share of each curve the other terms reproduce (above 0.8, it is confounded with them)"),
+                   "cc <- concurvity(g, full = TRUE)",
+                   "courbes$concurvite <- unname(cc[\"estimate\", sprintf(\"s(%s)\", lis)])",
+                   "courbes$concurvite_pire <- unname(cc[\"worst\", sprintf(\"s(%s)\", lis)])",
+                   tx("# les seuils de chaque courbe (seuils_courbe ci-dessus), et la liste de leurs plages nettes",
+                      "# the thresholds of each curve (curve_thresholds above), and the list of their clear ranges"),
+                   "seuils <- lapply(lis, function(courbe) seuils_courbe(g, courbe, cadre, centre_x[match(courbe, termes)], poids_x[match(courbe, termes)]))",
+                   "names(seuils) <- courbes$terme",
+                   "plages_seuils <- do.call(rbind, lapply(names(seuils), function(n) data.frame(terme = rep(n, nrow(seuils[[n]]$plages)), seuils[[n]]$plages, row.names = NULL)))"),
+    commentaire(tx("Les variances (REML) : celle de chaque effet aléatoire (σ² fois sa matrice relative dans la partie nlme), puis la résiduelle ; le R² marginal et conditionnel ; l'autocorrélation φ.",
+                   "The variances (REML): that of each random effect (σ² times its relative matrix in the nlme part), then the residual one; the marginal and conditional R²; the autocorrelation φ.")),
+    sprintf("variances <- data.frame(composante = %s, variance = c(vapply(niveaux_aleatoires, function(n) m$lme$sigma^2 * as.matrix(m$lme$modelStruct$reStruct[[n]])[1, 1], 0), m$lme$sigma^2), row.names = NULL)",
+            code_textes(c(affiches, tx("résiduelle", "residual")))),
+    "r2 <- r2_gamm(m, niveaux_aleatoires)",
+    sprintf("phi <- unname(coef(m$lme$modelStruct$corStruct, unconstrained = FALSE))  # %s", tx("l'autocorrélation CAR1", "the CAR1 autocorrelation"))
+  ) else if (mgcv) c(
     commentaire(c(ic, if (identical(pl$lien, "log")) tx("Avec le lien log, exp(estimation) est l'effet multiplicatif d'une unité de plus.", "With the log link, exp(estimate) is the multiplicative effect of one more unit.")
                       else if (identical(pl$lien, "logit")) tx("Avec le lien logit, exp(estimation) est le rapport des cotes.", "With the logit link, exp(estimate) is the odds ratio."))),
     "sm <- summary(m)",
@@ -1271,7 +1367,17 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    "lis <- intersect(lisses, utiles)",
                    "st <- sm$s.table[sprintf(\"s(%s)\", lis), , drop = FALSE]",
                    sprintf("courbes <- data.frame(terme = %s, edf = st[, 1], ref_ddl = st[, 2], statistique = st[, 3], p = st[, 4], row.names = NULL)",
-                           if (meme_noms) "lis" else "noms_termes[match(lis, termes)]")),
+                           if (meme_noms) "lis" else "noms_termes[match(lis, termes)]"),
+                   tx("# la concurvité : la part de chaque courbe que les autres termes reproduisent (au-delà de 0,8, elle se confond avec eux)",
+                      "# the concurvity: the share of each curve the other terms reproduce (above 0.8, it is confounded with them)"),
+                   "cc <- concurvity(m, full = TRUE)",
+                   "courbes$concurvite <- unname(cc[\"estimate\", sprintf(\"s(%s)\", lis)])",
+                   "courbes$concurvite_pire <- unname(cc[\"worst\", sprintf(\"s(%s)\", lis)])",
+                   tx("# les seuils de chaque courbe (seuils_courbe ci-dessus), et la liste de leurs plages nettes",
+                      "# the thresholds of each curve (curve_thresholds above), and the list of their clear ranges"),
+                   "seuils <- lapply(lis, function(courbe) seuils_courbe(m, courbe, cadre, centre_x[match(courbe, termes)], poids_x[match(courbe, termes)]))",
+                   "names(seuils) <- courbes$terme",
+                   "plages_seuils <- do.call(rbind, lapply(names(seuils), function(n) data.frame(terme = rep(n, nrow(seuils[[n]]$plages)), seuils[[n]]$plages, row.names = NULL)))"),
     if (mixte) c(commentaire(tx("La variance de chaque effet aléatoire (gam.vcomp : ses écarts-types).", "The variance of each random effect (gam.vcomp: their standard deviations).")),
                  "vcomp <- tryCatch(gam.vcomp(m), error = function(e) NULL)",
                  "ecart_types <- if (is.matrix(vcomp)) vcomp[, 1] else if (is.list(vcomp) && is.matrix(vcomp$vc)) vcomp$vc[, 1]",
@@ -1307,21 +1413,24 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   statistiques <- c(statistiques, "",
     commentaire(tx("La vraisemblance (de l'ajustement en ML), son nombre de paramètres, l'AIC, l'AICc et le BIC.",
                    "The likelihood (of the ML fit), its number of parameters, the AIC, the AICc and the BIC.")),
-    "ll <- logLik(m_ml)",
-    "criteres <- c(logLik = as.numeric(ll), parametres = attr(ll, \"df\"), AIC = AIC(m_ml), AICc = aic_corrige(m_ml, nrow(cadre)), BIC = BIC(m_ml))",
+    if (gamm) "ll <- logLik(m_ml$lme)" else "ll <- logLik(m_ml)",
+    if (gamm) "criteres <- c(logLik = as.numeric(ll), parametres = attr(ll, \"df\"), AIC = AIC(m_ml$lme), AICc = aic_corrige(m_ml$lme, nrow(cadre)), BIC = BIC(m_ml$lme))"
+    else "criteres <- c(logLik = as.numeric(ll), parametres = attr(ll, \"df\"), AIC = AIC(m_ml), AICc = aic_corrige(m_ml, nrow(cadre)), BIC = BIC(m_ml))",
     "",
-    commentaire(tx(sprintf("Chaque observation : la réponse observée, ajustée%s, et son résidu standardisé%s.", if (mixte && !mgcv) " (avec les effets aléatoires ; ajuste_fixe : les effets fixes seuls)" else "",
+    commentaire(tx(sprintf("Chaque observation : la réponse observée, ajustée%s, et son résidu standardisé%s.", if (mixte && (!mgcv || gamm)) " (avec les effets aléatoires ; ajuste_fixe : les effets fixes seuls)" else "",
                            if (!mixte && !mgcv) " (et la distance de Cook)" else ""),
-                   sprintf("Each observation: the response observed, fitted%s, and its standardized residual%s.", if (mixte && !mgcv) " (with the random effects; fitted_fixed: the fixed effects only)" else "",
+                   sprintf("Each observation: the response observed, fitted%s, and its standardized residual%s.", if (mixte && (!mgcv || gamm)) " (with the random effects; fitted_fixed: the fixed effects only)" else "",
                            if (!mixte && !mgcv) " (and Cook's distance)" else ""))),
-    if (mgcv) "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m),"
+    if (gamm) "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m$lme),"
     else "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m),",
-    if (mgcv) "                           residu = residuals(m, type = \"deviance\") / sqrt(m$sig2 * pmax(1 - m$hat, 1e-8)), row.names = NULL)"
+    if (gamm) "                           residu = residuals(m$lme, type = \"normalized\"), ajuste_fixe = fitted(m$gam), row.names = NULL)"
+    else if (mgcv) "                           residu = residuals(m, type = \"deviance\") / sqrt(m$sig2 * pmax(1 - m$hat, 1e-8)), row.names = NULL)"
     else if (mixte) "                           residu = residuals(m, type = \"normalized\"), ajuste_fixe = fitted(m, level = 0), row.names = NULL)"
     else "                           residu = rstandard(m), cook = cooks.distance(m), row.names = NULL)")
 
   # --- le jeu de test
-  predire_test <- if (mgcv) (if (mixte) "predire_fixes(m, cadre_test, cadre, aleatoires)" else "as.vector(predict(m, cadre_test, type = \"response\"))")
+  predire_test <- if (gamm) "as.vector(predict(m$gam, cadre_test, type = \"response\"))"
+                  else if (mgcv) (if (mixte) "predire_fixes(m, cadre_test, cadre, aleatoires)" else "as.vector(predict(m, cadre_test, type = \"response\"))")
                   else if (mixte) "as.vector(predict(m, cadre_test, level = 0))" else "as.vector(predict(m, cadre_test))"
   code_test <- if (test) c(
     commentaire(tx(sprintf("Le jeu de test : ses observations prédites par le modèle%s ; RMSEP, biais (moyenne des erreurs), SEP (leur écart-type) et Q2 externe (par rapport à la moyenne des observations du modèle).",
@@ -1342,17 +1451,18 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   sortie <- c(
     ligne("print(coefficients)", "chaque terme : estimation, erreur-type, intervalle à 95 %, p", "each term: estimate, standard error, 95% interval, p"),
     ligne("print(criteres)", "vraisemblance et AIC (de l'ajustement en ML)", "likelihood and AIC (of the ML fit)"),
-    ligne("print(r2)", if (mgcv) "R² ajusté, part de la déviance expliquée" else if (mixte) "R² marginal et conditionnel" else "R² et R² ajusté",
-          if (mgcv) "adjusted R², share of the deviance explained" else if (mixte) "marginal and conditional R²" else "R² and adjusted R²"),
+    ligne("print(r2)", if (mgcv && !gamm) "R² ajusté, part de la déviance expliquée" else if (mixte) "R² marginal et conditionnel" else "R² et R² ajusté",
+          if (mgcv && !gamm) "adjusted R², share of the deviance explained" else if (mixte) "marginal and conditional R²" else "R² and adjusted R²"),
     if (mixte) ligne("print(variances)", "la variance de chaque effet aléatoire", "the variance of each random effect"),
     if (car1) ligne("print(phi)", "l'autocorrélation CAR1", "the CAR1 autocorrelation"),
     if (loi) ligne("print(parametre_loi)", "le paramètre de la loi", "the parameter of the distribution"),
     if (poisson) ligne("print(dispersion)", "au-delà de 1,5 : préférer la binomiale négative", "above 1.5: prefer the negative binomial"),
-    if (courbes) ligne("print(courbes)", "edf et test de chaque courbe", "edf and test of each curve"),
+    if (courbes) ligne("print(courbes)", "edf, test et concurvité de chaque courbe", "edf, test and concurvity of each curve"),
+    if (courbes) ligne("print(plages_seuils)", "les plages nettes de la pente et de l'effet des courbes", "the clear ranges of the curves' slope and effect"),
     ligne("print(c(Q2 = vc$Q2, RMSEcv = vc$RMSEcv))", "validation croisée", "cross-validation"),
     if (test) ligne("print(test)", "jeu de test : RMSEP, biais, SEP, Q2 externe", "test set: RMSEP, bias, SEP, external Q2"),
     ligne("print(head(observations))", "observée, ajustée, résidu standardisé", "observed, fitted, standardized residual"),
-    ligne("print(summary(m))", "le résumé de R", "R's own summary"))
+    ligne(if (gamm) "print(summary(m$gam))" else "print(summary(m))", "le résumé de R", "R's own summary"))
   ylab <- if (identical(pl$lien, "identity")) sprintf(tx("Effet sur %s", "Effect on %s"), pl$y$nom) else sprintf(tx("Effet (%s)", "Effect (%s)"), pl$lien)
   graphiques <- list(
     list(nom = "observe-ajuste", largeur = 5, hauteur = 5, code = c(
@@ -1374,7 +1484,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "  x <- seq(min(cadre[[courbe]]), max(cadre[[courbe]]), length.out = 80)",
       "  nd <- cadre[rep(1, length(x)), , drop = FALSE]",
       "  nd[[courbe]] <- x",
-      "  pr <- predict(m, nd, type = \"terms\", terms = sprintf(\"s(%s)\", courbe), se.fit = TRUE)",
+      sprintf("  pr <- predict(%s, nd, type = \"terms\", terms = sprintf(\"s(%%s)\", courbe), se.fit = TRUE)", if (gamm) "m$gam" else "m"),
       "  effet <- pr$fit[, 1]",
       "  se <- pr$se.fit[, 1]",
       sprintf("  abscisse <- x / poids_x[j] + centre_x[j]  # %s", tx("dans les unités de la variable", "in the variable's units")),
@@ -1384,9 +1494,24 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "  lines(abscisse, effet + 1.96 * se, lty = 2)",
       "  rug(cadre[[courbe]] / poids_x[j] + centre_x[j])",
       "}",
-      if (pl$n_courbes > 1) "par(op)")))
+      if (pl$n_courbes > 1) "par(op)")),
+    if (pl$n_courbes) list(nom = "seuils", largeur = 4 * pl$n_courbes, hauteur = 6, code = c(
+      sprintf("op <- par(mfcol = c(2, %d), mar = c(4, 4, 2, 1))", pl$n_courbes),
+      "for (n in names(seuils)) {",
+      "  s <- seuils[[n]]",
+      sprintf("  plot(s$x, s$effet, type = \"l\", ylim = range(s$bas, s$haut), xlab = \"\", ylab = %s, main = n)", code_texte(ylab)),
+      "  polygon(c(s$x, rev(s$x)), c(s$bas, rev(s$haut)), col = \"#80808040\", border = NA)",
+      "  abline(h = 0, col = \"grey\")",
+      sprintf("  plot(s$x_pente, s$pente, type = \"l\", ylim = range(s$pente_bas, s$pente_haut, 0), xlab = n, ylab = %s)", code_texte(tx("Pente", "Slope"))),
+      "  polygon(c(s$x_pente, rev(s$x_pente)), c(s$pente_bas, rev(s$pente_haut)), col = \"#80808040\", border = NA)",
+      "  abline(h = 0, col = \"grey\")",
+      sprintf("  nettes <- s$plages[s$plages$mesure == %s, ]", code_texte(tx("pente", "slope"))),
+      sprintf("  if (nrow(nettes)) rect(nettes$x_debut, par(\"usr\")[3], nettes$x_fin, par(\"usr\")[4], col = ifelse(nettes$sens == %s, \"#2a9d8f33\", \"#d1495b33\"), border = NA)",
+              code_texte(tx("hausse", "rise"))),
+      "}",
+      "par(op)")))
   objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations",
-              if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes) "courbes",
+              if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes) c("courbes", "seuils", "plages_seuils"),
               if (test) c("test", "predictions_test"))
   list(calcul = traduire_code(c(donnees, "", ajustement, "", validation, "", statistiques, if (test) c("", code_test)), langue),
        sortie = sortie, graphiques = lapply(Filter(Negate(is.null), graphiques), function(g) { g$code <- traduire_code(g$code, langue); g }),
@@ -1409,7 +1534,10 @@ ecart_regression <- function(pl, m, e, langue) {
     phi = if (!is.null(res$phi)) list(res$phi, r("phi")),
     "paramètre de la loi" = if (!is.null(res$parametre_loi)) list(res$parametre_loi$valeur, r("parametre_loi")),
     dispersion = if (!is.null(res$dispersion)) list(res$dispersion, r("dispersion")),
-    courbes = if (!is.null(res$courbes)) list(as.matrix(res$courbes[-1]), colonnes(r("courbes"), 2:5)),
+    courbes = if (!is.null(res$courbes)) list(as.matrix(res$courbes[-1]), colonnes(r("courbes"), seq_along(res$courbes)[-1])),
+    # (les courbes de ce modèle : dans une séance, `e` garde les seuils d'un modèle précédent)
+    "seuils des courbes" = if (!is.null(res$courbes)) list(unlist(lapply(res$courbes$terme, function(n) { s <- seuils_courbe(m, n); c(s$x, s$effet, s$pente) })),
+                                                      unlist(lapply(r("seuils")[res$courbes$terme], function(s) s[nom_script(c("x", "effet", "pente"), langue)]))),
     "validation croisée" = list(c(m$vc$Q2, m$vc$RMSEcv, m$vc$echecs), if (!is.null(vc)) c(vc$Q2, vc$RMSEcv, vc[[nom_script("echecs", langue)]])),
     "prédictions de la validation croisée" = list(m$vc$prediction, vc$prediction),
     "valeurs ajustées et résidus" = list(cbind(res$ajuste, res$residus), colonnes(r("observations"), 3:4)),
@@ -1444,7 +1572,8 @@ code_fonctions <- function(b, plans, langue) {
     if (!isFALSE(b$echelle)) modele_echelle(tx, !isTRUE(b$regression) || isTRUE(b$nipals)),
     if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx)),
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
-    if (isTRUE(b$courbes)) modele_dimension_courbe(tx),
+    if (isTRUE(b$gamm)) modele_r2_gamm(tx),
+    if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx)),
     if (isTRUE(b$aleatoires_mgcv)) modele_predire_fixes(tx),
     if (b$plsda) modele_la_plus_grande(tx),
     if (b$pls || b$opls) modele_permutations(tx, seul, na),
@@ -1834,9 +1963,62 @@ modele_r2_mixte <- function(tx) c(
   "}")
 
 modele_dimension_courbe <- function(tx) c(
-  commentaire(tx("La dimension de base d'une courbe : 10 au plus, moins quand la variable a peu de valeurs.",
-                 "The basis dimension of a curve: 10 at most, less when the variable has few values.")),
-  "dimension_courbe <- function(x) min(10L, length(unique(x)) - 1L)")
+  commentaire(tx("La dimension de base d'une courbe : `k` s'il est donné, sinon 10 au plus ; moins quand la variable a peu de valeurs.",
+                 "The basis dimension of a curve: `k` if given, else 10 at most; less when the variable has few values.")),
+  "dimension_courbe <- function(x, k = NA) min(if (!is.na(k)) as.integer(k) else 10L, length(unique(x)) - 1L)")
+
+modele_seuils_courbe <- function(tx) c(
+  commentaire(tx("Les seuils d'une courbe (Simpson, 2018) : son effet et sa pente sur 200 points du 2e au 98e centile de la variable, avec des intervalles simultanés à `niveau` tirés de `tirages` jeux de coefficients (MASS::mvrnorm) ; `centre` et `poids` ramènent la variable dans ses unités. Les plages où l'intervalle de la pente exclut 0 sont une hausse ou une baisse nette ; celles où l'intervalle de l'effet exclut 0, au-dessus ou au-dessous de la moyenne. Une courbe d'edf sous 1,5 est presque une droite.",
+                 "The thresholds of a curve (Simpson, 2018): its effect and slope at 200 points from the 2nd to the 98th percentile of the variable, with simultaneous intervals at `level` from `draws` sets of coefficients (MASS::mvrnorm); `centre` and `weight` bring the variable back to its units. The ranges where the slope's interval excludes 0 are a clear rise or fall; those where the effect's interval excludes 0, above or below the mean. A curve with an edf below 1.5 is nearly a straight line.")),
+  "seuils_courbe <- function(g, courbe, cadre, centre, poids, tirages = 2000, niveau = 0.95, graine = 1) {",
+  "  grille <- seq(quantile(cadre[[courbe]], 0.02), quantile(cadre[[courbe]], 0.98), length.out = 200)",
+  "  nd <- cadre[rep(1, length(grille)), , drop = FALSE]",
+  "  nd[[courbe]] <- grille",
+  "  Xp <- predict(g, nd, type = \"lpmatrix\")",
+  "  js <- which(startsWith(colnames(Xp), sprintf(\"s(%s).\", courbe)))",
+  "  set.seed(graine, kind = \"Mersenne-Twister\", normal.kind = \"Inversion\", sample.kind = \"Rejection\")",
+  "  B <- MASS::mvrnorm(tirages, coef(g), vcov(g))",
+  tx("  effet <- as.vector(Xp[, js, drop = FALSE] %*% coef(g)[js])  # (centrés : des écarts à la moyenne de la courbe)",
+     "  effet <- as.vector(Xp[, js, drop = FALSE] %*% coef(g)[js])  # (centred: deviations from the curve's mean)"),
+  "  simules <- Xp[, js, drop = FALSE] %*% t(B[, js, drop = FALSE])",
+  "  effet <- effet - mean(effet)",
+  "  simules <- sweep(simules, 2, colMeans(simules))",
+  "  bande <- function(estimation, simulation) {",
+  "    ecart_type <- apply(simulation, 1, sd)",
+  "    critique <- quantile(apply(abs(simulation - estimation) / ecart_type, 2, max), niveau, names = FALSE)",
+  "    list(bas = estimation - critique * ecart_type, haut = estimation + critique * ecart_type)",
+  "  }",
+  "  be <- bande(effet, simules)",
+  "  x <- grille / poids + centre",
+  "  h <- x[2] - x[1]",
+  "  pente <- diff(effet) / h",
+  "  bp <- bande(pente, apply(simules, 2, diff) / h)",
+  "  x_pente <- (x[-1] + x[-length(x)]) / 2",
+  "  plages <- function(mesure, etat, xs) {",
+  "    r <- rle(etat)",
+  "    fins <- cumsum(r$lengths)",
+  "    debuts <- c(1, head(fins, -1) + 1)",
+  "    nettes <- r$values != \"ns\"",
+  "    data.frame(mesure = rep(mesure, sum(nettes)), sens = r$values[nettes], x_debut = xs[debuts][nettes], x_fin = xs[fins][nettes], row.names = NULL)",
+  "  }",
+  tx("  sens_pente <- ifelse(bp$bas > 0, \"hausse\", ifelse(bp$haut < 0, \"baisse\", \"ns\"))",
+     "  sens_pente <- ifelse(bp$bas > 0, \"rise\", ifelse(bp$haut < 0, \"fall\", \"ns\"))"),
+  tx("  sens_effet <- ifelse(be$bas > 0, \"au-dessus\", ifelse(be$haut < 0, \"au-dessous\", \"ns\"))",
+     "  sens_effet <- ifelse(be$bas > 0, \"above\", ifelse(be$haut < 0, \"below\", \"ns\"))"),
+  "  list(x = x, effet = effet, bas = be$bas, haut = be$haut, x_pente = x_pente, pente = pente, pente_bas = bp$bas, pente_haut = bp$haut,",
+  tx("       plages = rbind(plages(\"pente\", sens_pente, x_pente), plages(\"effet\", sens_effet, x)))",
+     "       plages = rbind(plages(\"slope\", sens_pente, x_pente), plages(\"effect\", sens_effet, x)))"),
+  "}")
+
+modele_r2_gamm <- function(tx) c(
+  commentaire(tx("R² d'un modèle de mgcv::gamm (Nakagawa et Schielzeth, 2013) : marginal, la part de variance des effets fixes et des courbes (sa partie gam) ; conditionnel, avec les effets aléatoires `niveaux_aleatoires` de sa partie nlme.",
+                 "R² of an mgcv::gamm model (Nakagawa & Schielzeth, 2013): marginal, the share of variance of the fixed effects and curves (its gam part); conditional, with the random effects `random_levels` of its nlme part.")),
+  "r2_gamm <- function(m, niveaux_aleatoires) {",
+  "  fixes <- var(as.vector(fitted(m$gam)))",
+  "  aleatoires <- sum(vapply(niveaux_aleatoires, function(n) m$lme$sigma^2 * as.matrix(m$lme$modelStruct$reStruct[[n]])[1, 1], 0))",
+  "  totale <- fixes + aleatoires + m$lme$sigma^2",
+  "  c(marginal = fixes / totale, conditionnel = (fixes + aleatoires) / totale)",
+  "}")
 
 modele_predire_fixes <- function(tx) c(
   commentaire(tx("Les prédictions d'un modèle de mgcv sur l'échelle de la réponse, par ses seuls effets fixes : ses effets aléatoires (`aleatoires`, leurs colonnes) exclus, comme pour un groupe jamais vu ; chaque observation reçoit un groupe connu du modèle (`appris` : ses données), que l'exclusion annule.",
@@ -2006,11 +2188,16 @@ NOMS_SCRIPT_EN <- c(
   reponse = "response", noms_termes = "term_labels", connu = "known", tableau_modele = "model_table", noms_obs = "obs_names",
   noms_test = "test_names", cadre_test = "test_data", retenues = "complete_rows", aleatoire = "random_part",
   ajuster_modele = "fit_model", candidats = "candidates", methode = "method", utiles = "useful", tenter = "attempt",
-  reglages = "settings", lis = "smooths", famille = "distribution", lisses = "smooth_terms", penalise = "penalized",
+  reglages = "settings", lis = "smooths", famille = "distribution", lisses = "smooth_terms", niveaux_aleatoires = "random_levels", k_demandes = "k_requested", penalise = "penalized",
   estimation = "estimate", erreur_type = "std_error", ddl = "df", bas = "lower", haut = "upper",
   effet_multiplicatif = "multiplicative_effect", rapport_cotes = "odds_ratio", r2_ajuste = "r2_adjusted",
   deviance_expliquee = "deviance_explained", criteres = "criteria", parametres = "parameters", echelle_estimee = "scale_estimated",
-  courbes = "curves", ref_ddl = "ref_df", statistique = "statistic", ecart_types = "std_devs", parametre_loi = "distribution_parameter",
+  courbes = "curves", ref_ddl = "ref_df", statistique = "statistic", concurvite = "concurvity", concurvite_pire = "concurvity_worst",
+  seuils_courbe = "curve_thresholds", seuils = "thresholds", plages_seuils = "threshold_ranges", grille = "grid", tirages = "draws",
+  niveau = "level", graine = "seed", simules = "simulated", bande = "band", simulation = "simulation",
+  ecart_type = "std_dev", critique = "critical", pente = "slope", pente_bas = "slope_lower", pente_haut = "slope_upper",
+  x_pente = "x_slope", plages = "ranges", etat = "state", fins = "ends", debuts = "starts", nettes = "clear", sens = "direction",
+  sens_pente = "slope_direction", sens_effet = "effect_direction", x_debut = "x_start", x_fin = "x_end", be = "effect_band", bp = "slope_band", ecart_types = "std_devs", parametre_loi = "distribution_parameter",
   observe = "observed", ajuste = "fitted", residu = "residual", ajuste_fixe = "fitted_fixed", predit = "predicted",
   courbe = "curve", abscisse = "abscissa", effet = "effect", droite = "rhs")
 
@@ -2167,7 +2354,7 @@ entete_script <- function(pl, nom_projet, version, fichiers, langue) {
     fichiers_a_cote(fichiers, langue, FALSE))
 }
 
-entete_seance <- function(plans, noms, nom_projet, version, fichiers, langue) {
+entete_seance <- function(plans, noms, nom_projet, version, fichiers, langue, paquets = character(0)) {
   tx <- function(fr, en) if (langue == "en") en else fr
   modele <- function(k) {
     pl <- plans[[k]]
@@ -2181,16 +2368,23 @@ entete_seance <- function(plans, noms, nom_projet, version, fichiers, langue) {
   c(sprintf(tx("# Les %d modèles de la séance du projet « %s » :", "# The %d models of the session of the project “%s”:"), length(noms), texte_sur(nom_projet)),
     vapply(seq_along(noms), modele, ""),
     sprintf(tx("# Script R écrit par Nuée %s le %s.", "# R script written by Nuée %s on %s."), version, format(Sys.Date())),
-    tx("# Il refait ces modèles avec R seul, sans Nuée ni autre paquet : le calcul est écrit pour eux, de",
-       "# It redoes these models with R alone, without Nuée or any package: the computation is written for"),
-    tx("# leurs données à leurs résultats, qui sont ceux de Nuée. Ses parties :", "# them, from their data to their results, which are those of Nuée. Its parts:"),
+    if (length(paquets)) {
+      commentaire(sprintf(tx("Il refait ces modèles avec %s, sans Nuée : le calcul est écrit pour eux, de leurs données à leurs résultats, qui sont ceux de Nuée. Ses parties :",
+                             "It redoes these models with %s, without Nuée: the computation is written for them, from their data to their results, which are those of Nuée. Its parts:"),
+                          texte_paquets(paquets, langue)))
+    } else {
+      c(tx("# Il refait ces modèles avec R seul, sans Nuée ni autre paquet : le calcul est écrit pour eux, de",
+           "# It redoes these models with R alone, without Nuée or any package: the computation is written for"),
+        tx("# leurs données à leurs résultats, qui sont ceux de Nuée. Ses parties :", "# them, from their data to their results, which are those of Nuée. Its parts:"))
+    },
     tx("#   1. Fonctions : l'algorithme NIPALS, la validation croisée", "#   1. Functions: the NIPALS algorithm, the cross-validation"),
     tx("#   2. Données", "#   2. Data"),
     tx("#   3. Modèles et résultats : un bloc par modèle, ses résultats gardés dans une liste à son nom",
        "#   3. Models and results: one block per model, its results kept in a list under its name"),
     tx("# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.", "# In RStudio, Ctrl+Shift+O shows these parts; Ctrl+Shift+S runs the whole script."),
-    sprintf(tx("# Écrit avec R %s ; il n'utilise que R (stats et graphics sont livrés avec R).", "# Written with R %s; it uses R alone (stats and graphics come with R)."),
-            paste(R.version$major, R.version$minor, sep = ".")),
+    if (length(paquets)) sprintf(tx("# Écrit avec %s.", "# Written with %s."), texte_paquets(paquets, langue, versions = TRUE))
+    else sprintf(tx("# Écrit avec R %s ; il n'utilise que R (stats et graphics sont livrés avec R).", "# Written with R %s; it uses R alone (stats and graphics come with R)."),
+                 paste(R.version$major, R.version$minor, sep = ".")),
     fichiers_a_cote(fichiers, langue, TRUE))
 }
 
@@ -2215,6 +2409,7 @@ lignes_rapport <- function(format, pl, langue, methodes, fonctions, code_donnees
       if (length(pl$niveaux)) bloc("variances", kable("variances", 4)),
       # (« courbes » est le bloc de leurs graphiques : knitr refuse deux blocs du même nom)
       if (length(pl$lisses)) bloc("courbes-edf", kable("courbes", 3)),
+      if (length(pl$lisses)) bloc("plages-seuils", kable("plages_seuils", 3)),
       graphiques,
       if (test) bloc("test", kable("test", 3)))
   } else {
@@ -2311,7 +2506,8 @@ tableau_script <- function(projet, ids = character(0)) {
 ids_script <- function(definitions) {
   unique(unlist(lapply(definitions, function(d) {
     if (!est_regression(d)) return(NULL)
-    specs <- c(specs_groupement(d$aleatoires), if (!is.null(d$correlation)) specs_groupement(d$correlation$temps))
+    specs <- c(specs_groupement(d$aleatoires), if (!is.null(d$correlation)) specs_groupement(d$correlation$temps),
+               if (!is.null(d$correlation$dans)) specs_groupement(d$correlation$dans))
     vapply(Filter(function(s) identical(as.character(s$by)[1], "id"), specs), function(s) as.character(s$id)[1], "")
   })))
 }
@@ -2502,7 +2698,12 @@ code_definition <- function(projet, d, p = "p") {
       if (length(r$vc)) sprintf("vc <- %s  # groupes de la validation croisée", paste(deparse(r$vc, width.cutoff = 500L), collapse = "")),
       if (length(r$famille)) sprintf("famille <- %s  # loi de la réponse (regression.R)", q(r$famille)),
       if (length(r$lisses)) sprintf("lisses <- numeros(%s, %s)  # variables en courbe", p, vecteur(noms(r$lisses))),
+      if (length(r$k_courbes)) sprintf("k_courbes <- %s  # dimension de base des courbes, par numéro de variable",
+                                       paste(deparse(r$k_courbes, width.cutoff = 500L), collapse = "")),
       if (length(r$decalage)) sprintf("decalage <- numeros(%s, %s)  # l'effort, log en décalage", p, q(noms(r$decalage))),
+      if (length(r$croises_reglages)) sprintf("croises_reglages <- %s  # échelle, bloc et modificateur des termes croisés",
+                                              paste(deparse(r$croises_reglages, width.cutoff = 500L), collapse = "")),
+      if (length(r$options)) sprintf("options <- %s  # les réglages propres de l'analyse (analyses.R)", paste(deparse(r$options, width.cutoff = 500L), collapse = "")),
       "",
       sprintf("d <- definir_modele(%s, %s, x = x, y = y, classe = classe, observations = observations,", p, q(r$type)),
       sprintf("                    echelle = echelles, transformations = transformations, croises = croises,%s",
@@ -2510,7 +2711,8 @@ code_definition <- function(projet, d, p = "p") {
                        if (length(r$aleatoires)) " aleatoires = aleatoires,", if (length(r$correlation)) " correlation = correlation,",
                        if (length(r$blocs)) " blocs = blocs,", if (length(r$modificateurs)) " modificateurs = modificateurs,",
                        if (length(r$vc)) " vc = vc,", if (length(r$famille)) " famille = famille,", if (length(r$lisses)) " lisses = lisses,",
-                       if (length(r$decalage)) " decalage = decalage,"), collapse = "")),
+                       if (length(r$decalage)) " decalage = decalage,", if (length(r$croises_reglages)) " croises_reglages = croises_reglages,",
+                       if (length(r$k_courbes)) " k_courbes = k_courbes,", if (length(r$options)) " options = options,"), collapse = "")),
       sprintf("                    A = %s, G = %s, nom = %s, titre = %s)", q(r$A), q(r$G), q(r$nom), q(r$titre)))
   }
 }

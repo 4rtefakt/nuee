@@ -65,7 +65,7 @@ libraries, so it can't be carried along as on Windows).
   it needs FUSE 2, the `libfuse2` package on most distributions) or
   `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
   distribution first, then the packages, in R:
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster"))`.
   On Ubuntu 24.04 and later, prefer the `.deb`: it installs the AppArmor profile Chromium's
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 
@@ -122,24 +122,41 @@ RMSEP, bias, SEP and external Q2, or its classification.
 
 **Variables:** VIP with a cut-off placed automatically (or dragged by hand), coefficients,
 loadings, biplot, refit with the selected variables only. Variable statistics with suggested
-log transformations, histograms and a map of missing values. Tests by variable between two
-classes (Welch's or Student's t, Mann–Whitney) or across all of them (ANOVA, Kruskal–Wallis),
-with the Benjamini–Hochberg correction and a volcano plot. Tests between two variables, chosen
-from their types with their conditions checked: chi-square or Fisher's exact test, t test, ANOVA
-or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's correlation; an
-observation ID (site, year...) can make the groups. A correlation matrix with corrected p
-values.
+log transformations, histograms and a map of missing values, which regularized iterative PCA
+can fill in; new variables from R formulas, with group means and deviations. Tests by variable
+between two classes (Welch's or Student's t, Mann–Whitney) or across all of them (ANOVA,
+Kruskal–Wallis), with the Benjamini–Hochberg correction and a volcano plot. Tests between two
+variables, chosen from their types with their conditions checked: chi-square or Fisher's exact
+test, t test, ANOVA or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's
+correlation; an observation ID (site, year...) can make the groups. A correlation matrix with
+corrected p values.
 
 **Linear, generalized and mixed models:** linear regression and linear mixed models (nlme), with
 nested random effects (site, then sector within the site) and a continuous-time autocorrelation
 (CAR1); generalized linear and additive models (mgcv) for counts (Poisson, negative binomial),
 presence-absence, positive values and densities with zeros (Tweedie), with random effects, an
-effort as an offset, and smooth curves for effects that rise then fall or have a threshold;
-coefficients with their intervals, marginal and conditional R2, effect curves, residual plots,
-the AIC change when each block of variables is removed, and an AIC comparison (ΔAIC, Akaike
-weights) of the regressions of the same response, next to the cross-validated Q2 of every model.
-An R formula box sets the model (R reads it and never runs it), and regressions predict new
-observations and files, extrapolations flagged.
+effort as an offset, and smooth curves for effects that rise then fall or have a threshold
+(with CAR1 too, through mgcv::gamm, for a normal response); coefficients with their intervals,
+marginal and conditional R2, effect curves, each curve's thresholds (where the simultaneous
+band of its slope excludes 0) and concurvity, residual plots, the AIC change when each block of
+variables is removed, and an AIC comparison (ΔAIC, Akaike weights) of the regressions of the
+same response, next to the cross-validated Q2 of every model. An R formula box sets the model
+(R reads it and never runs it), and regressions predict new observations and files,
+extrapolations flagged.
+
+**Ordination of communities:** redundancy analysis (RDA) of responses such as species
+abundances (Hellinger, chord or log(x + 1) transformed) by explanatory variables, partial RDA
+with covariates, triplots in scaling 1 or 2, adjusted R2, permutation tests of the model, of
+each axis and of each term (within sites if needed), forward selection and variation
+partitioning; correspondence analysis (CA) of count tables, with contributions and cos². The
+results are those of the vegan package.
+
+**Trees, discriminant analysis, clustering:** decision trees (rpart) for a quantitative
+response or a class, on the raw variables so that thresholds read in their units, pruned by a
+cross-validation by site and validated by predicting each site with a tree rebuilt without it,
+with the stability of the first split; linear discriminant analysis (MASS::lda) with a
+cross-validated classification and posterior probabilities; k-means with silhouettes and the
+choice of k.
 
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 
@@ -249,7 +266,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.2) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.3) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).

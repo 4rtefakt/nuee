@@ -332,6 +332,8 @@ async function principal() {
       verifier(gam.type === 'GAM' && [].concat(gam.courbes.terme).length === 1, 'GAM, une courbe');
       const ef = await api('effets', { modele: gam.id });
       verifier([].concat(ef.effets).length === 2 && ef.effets[0].courbe === true && [].concat(ef.effets[0].x).length === 80, 'courbes d’effet');
+      const se = await api('seuils', { modele: gam.id, terme: 'sucre' });
+      verifier([].concat(se.x).length === 200 && [].concat(se.pente).length === 199 && se.edf > 0 && se.tirages === 2000, 'seuils d’une courbe (pente et bandes simultanées)');
       const cle = 'note_gout prédit';
       const pr = await api('predire', { modele: gam.id });
       verifier(pr.observations[cle].length === 120 && pr.observations[cle].every((x) => x !== null) && pr.observations.dans_modele.every(Boolean)
@@ -351,6 +353,10 @@ async function principal() {
       let refusF = '';
       try { await api('lire_formule', { projet: e.id, texte: 'note_gout ~ sucre + system("calc")', type: 'LM' }); } catch (err) { refusF = err.message; }
       verifier(/system/.test(refusF), 'une formule qui porte du code, refusée');
+      const im = await api('imputer', { projet: e.id, variables: [v('sucre'), v('fermete'), v('acidite'), v('polyphenols')], k: 2 });
+      verifier(im.imputation.valeurs === 11 && im.variables.find((x) => x.nom === 'polyphenols (imputée)').manquantes === 0 && im.variables.find((x) => x.nom === 'polyphenols').manquantes === 11
+        && !im.variables.some((x) => x.nom === 'sucre (imputée)'),
+        'imputation par ACP : une nouvelle variable pour celle qui avait des valeurs manquantes, moins de valeurs manquantes');
       let refusReg = '';
       try { await api('hca', { modele: lmm.id }); } catch (err) { refusReg = err.message; }
       verifier(/régression/.test(refusReg), 'une demande qui suppose des composantes, refusée pour une régression');
@@ -436,6 +442,107 @@ async function principal() {
       verifier(Array.isArray(c.choisir) && c.choisir.join() === 'a,b' && !c.id, 'liste des feuilles');
       const q = await api('ouvrir', { chemin: f, table: 'b' });
       verifier(q.observations.uid.length === 4 && q.table === 'b' && q.nom === 'deux (b).xlsx', q.nom);
+    });
+    await etape('RDA (Hellinger, partielle, permutée par site) et analyse des correspondances', async () => {
+      // 30 relevés de 6 espèces le long de deux gradients (température, sable), 5 sites
+      let g = 11;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\ttemp\tsable\tsp1\tsp2\tsp3\tsp4\tsp5\tsp6'];
+      for (let i = 1; i <= 30; i += 1) {
+        const temp = 8 + 10 * alea();
+        const sable = 100 * alea();
+        const sp = [temp, 20 - temp, sable / 10, 10 - sable / 10, (temp * sable) / 100, 3].map((v) => Math.round(v * (0.5 + alea())));
+        lignes.push([`r${i}`, `S${1 + (i % 5)}`, temp.toFixed(2), sable.toFixed(1), ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Relevés' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5', 'sp6'].map((n) => v[n]);
+      const rda = await api('ajuster', { projet: q.id, type: 'RDA', x: [v.temp], y: especes, echelle: 'none', nom: 'RDA',
+        options: { transformation: 'hellinger', permutations: 99, graine: 2, z: [v.sable], strates: { by: 'variable', variable: v.site } } });
+      verifier(rda.analyse === true && rda.prediction === false && rda.A === 0 && rda.N === 30 && /^R2aj /.test(rda.chiffres)
+        && rda.ordination['2'].sites.RDA1.length === 30 && [].concat(rda.vues_defaut).join() === 'ordination,valeurs_propres', `RDA : ${rda.chiffres}, N = ${rda.N}`);
+      verifier(rda.reglages.options.transformation === 'hellinger' && [].concat(rda.reglages.options.z).join() === String(v.sable) && rda.strates === 'site',
+        `réglages : ${JSON.stringify(rda.reglages.options)}`);
+      const tests = await api('rda_tests', { modele: rda.id });
+      verifier([].concat(tests.axes.axe).length === 2 && [].concat(tests.termes.terme).length === 2 && typeof [].concat(tests.axes.p)[0] === 'number', 'tests par axe et par terme');
+      const re = await api('reajuster', { modele: rda.id, exclues: [1] });
+      verifier(re.type === 'RDA' && re.N === 29 && re.A === 0, `réajustée : N = ${re.N}, A = ${re.A}`);
+      const s = await api('script_r', { modele: rda.id, chemin: path.join(dossier, 'rda.R'), version: 'essai' });
+      verifier(fs.existsSync(s.script) && !s.ecart && !/vegan::/.test(fs.readFileSync(s.script, 'utf8').replace(/#.*$/gm, '')), `script R : ${s.ecart || 'R seul'}`);
+      const e = await api('exporter', { modele: rda.id, chemin: path.join(dossier, 'rda.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      const mt = await api('methodes', { modele: rda.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /redundancy analysis/.test(x) && /Hellinger/.test(x)) && mt.references.some((x) => /Legendre/.test(x)), 'texte des méthodes');
+      let refus = '';
+      try { await api('hca', { modele: rda.id }); } catch (err) { refus = err.message; }
+      verifier(/autre analyse/.test(refus), `dendrogramme refusé : « ${refus} »`);
+      const ca = await api('ajuster', { projet: q.id, type: 'CA', x: especes, echelle: 'none', nom: 'CA' });
+      verifier(ca.type === 'CA' && [].concat(ca.contributions.colonnes.nom).length === 6 && [].concat(ca.valeurs_propres.axe).length === 5
+        && Object.keys(ca.ordination).join() === '1,2,3', `CA : ${ca.chiffres}`);
+      let refusCA = '';
+      try { await api('ajuster', { projet: q.id, type: 'CA', x: [v.temp, v.site], echelle: 'none' }); } catch (err) { refusCA = err.message; }
+      verifier(/quantitatives/.test(refusCA), `CA d'une variable qualitative refusée : « ${refusCA} »`);
+    });
+    await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
+      // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
+      let g = 5;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\tgel\thaie\tpluie\tsol\tdensite\tniveau'];
+      for (let i = 0; i < 72; i += 1) {
+        const gel = Math.round(30 * alea());
+        const haie = alea();
+        const densite = 2 + (gel > 12 ? -1.2 : 0) + (haie > 0.5 ? 0.6 : 0) + (alea() - 0.5);
+        lignes.push([`r${i + 1}`, `S${1 + Math.floor(i / 6)}`, i % 11 === 0 ? '' : gel, haie.toFixed(3), (200 * alea()).toFixed(1), ['argile', 'limon'][i % 2],
+          densite.toFixed(3), densite > 1.5 ? 'haute' : 'basse'].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Sites' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const xs = [v.gel, v.haie, v.pluie, v.sol];
+      const vc = { by: 'variable', variable: v.site };
+      const arbre = await api('ajuster', { projet: q.id, type: 'TREE', x: xs, y: [v.densite], vc, echelle: 'none', nom: 'Arbre', options: { minbucket: 8 } });
+      verifier(arbre.analyse === true && arbre.prediction === true && arbre.A === 0 && arbre.N === 72 && arbre.G === 12 && /^R2 .* feuilles$/.test(arbre.chiffres)
+        && [].concat(arbre.vues_defaut).join() === 'arbre,obspred' && arbre.arbre.id[0] === 1 && arbre.observations['densite ajusté'].length === 72
+        && typeof arbre.comparaison.Q2 === 'number' && arbre.reglages.options.minbucket === 8, `arbre : ${arbre.chiffres}, N = ${arbre.N}, G = ${arbre.G}`);
+      const st = await api('arbre_stabilite', { modele: arbre.id });
+      verifier(st.tirages === 200 && [].concat(st.stabilite.variable).length >= 1 && Math.abs([].concat(st.stabilite.frequence).reduce((a, b) => a + b, 0) - 100) < 1e-6,
+        `stabilité : ${JSON.stringify(st.stabilite)}`);
+      const classement = await api('ajuster', { projet: q.id, type: 'TREE', x: xs, classe: v.niveau, vc, echelle: 'none', nom: 'Arbre classes', options: { minbucket: 8 } });
+      verifier(classement.classement === true && [].concat(classement.vues_defaut).join() === 'arbre,classement' && classement.classification.vc.table.length === 2
+        && classement.reglages.classe === v.niveau, `arbre de classement : ${classement.chiffres}`);
+      const lda = await api('ajuster', { projet: q.id, type: 'LDA', x: [v.gel, v.haie, v.pluie], classe: v.niveau, vc, echelle: 'none', nom: 'LDA', options: { priors: 'egales' } });
+      verifier(lda.type === 'LDA' && [].concat(lda.axes).join() === 'LD1' && lda.N === 65 && lda.observations.LD1.length === 65 && lda.priors.prior[0] === 0.5
+        && [].concat(lda.vues_defaut).join() === 'lda_scores,classement', `LDA : ${lda.chiffres}, N = ${lda.N}`);
+      const km = await api('ajuster', { projet: q.id, type: 'KMEANS', x: [v.gel, v.haie, v.pluie], echelle: 'UV', nom: 'Groupes', options: { k: 3 } });
+      verifier(km.k === 3 && km.N === 65 && [].concat(km.tailles.n).reduce((a, b) => a + b, 0) === 65 && typeof km.silhouette === 'number'
+        && km.observations.CP2.length === 65, `k-moyennes : ${km.chiffres}`);
+      const ch = await api('kmeans_choix', { modele: km.id });
+      verifier([].concat(ch.choix.k).join() === '2,3,4,5,6,7,8,9,10', `choix de k : ${[].concat(ch.choix.k).join()}`);
+      const pv = await api('kmeans_variable', { projet: q.id, modele: km.id, nom: 'groupes km' });
+      const nv = pv.variables.find((x) => x.nom === 'groupes km');
+      verifier(nv && nv.qualitative && [].concat(nv.categories).join() === '1,2,3' && pv.annulable, 'groupes en variable du projet');
+      const an = (await api('annuler', { projet: q.id })).projet;
+      verifier(!an.variables.some((x) => x.nom === 'groupes km'), 'annuler la variable des groupes');
+      const pr = await api('predire', { modele: arbre.id });
+      verifier(pr.observations['densite prédit'].length === 72 && pr.observations.feuille.length === 72, 'prédire avec l’arbre');
+      const prl = await api('predire', { modele: lda.id });
+      verifier(prl.observations['classe prédite'].length === 72 && prl.observations['probabilité haute'].length === 72, 'prédire avec la LDA');
+      const re = await api('reajuster', { modele: arbre.id, exclues: [1, 2] });
+      verifier(re.type === 'TREE' && re.N === 70 && re.A === 0, `arbre réajusté : N = ${re.N}`);
+      for (const [m, f] of [[arbre, 'arbre.R'], [lda, 'lda.R'], [km, 'km.Rmd']]) {
+        const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, f), version: 'essai' });
+        verifier(fs.existsSync(s.script) && !s.ecart, `script ${f} : ${s.ecart || 'sans écart'}`);
+      }
+      const e = await api('exporter', { modele: classement.id, chemin: path.join(dossier, 'arbre.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats de l’arbre');
+      const mt = await api('methodes', { modele: arbre.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /rpart/.test(x)) && mt.paragraphes.some((x) => /1-SE rule/.test(x)) && mt.references.some((x) => /Breiman/.test(x)),
+        `texte des méthodes de l’arbre : ${mt.paragraphes.join(' ').slice(0, 300)}`);
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'TREE', x: xs, y: [v.densite], classe: v.niveau, vc, echelle: 'none' }); } catch (err) { refus = err.message; }
+      verifier(/pas les deux/.test(refus), `arbre à deux réponses refusé : « ${refus} »`);
+      let refusHCA = '';
+      try { await api('hca', { modele: km.id }); } catch (err) { refusHCA = err.message; }
+      verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
     });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;

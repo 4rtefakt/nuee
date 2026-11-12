@@ -19,8 +19,16 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/R/fichiers_spectres.R` | Spectra files: JCAMP-DX (AFFN, PAC, SQZ, DIF, DUP), SPC (new and old format), text; merged into one table, with a table of sample information joined by file name |
 | `moteur/R/script.R` | Export to R: a standalone script or R Markdown / Quarto report written for one model (or the session): the data, then only the steps that model uses (its terms and scaling, NIPALS, cross-validation, statistics, plots), in plain R with no package (a regression: its rows, terms and the same fits with `lm`, `nlme::lme` or `mgcv::gam`, cross-validation, statistics and plots); refitted and compared with the engine before it is written |
 | `moteur/R/methodes.R` | The Methods paragraph and its references, in French or English |
-| `moteur/R/regression.R` | Linear, generalized and mixed models: `lm` and `nlme::lme` (nested random effects, CAR1), REML estimates and ML likelihoods, marginal and conditional R2; `mgcv::gam` for GLMs, GLMMs and GAMs (normal, Poisson, negative binomial, binomial, gamma, Tweedie; an offset; smooth curves; random effects as `s(g, bs = "re")`), fitted by ML without a penalty and by REML with one, the AIC then from an ML refit; cross-validation by groups, block contributions by AIC, effect curves, Methods text |
+| `moteur/R/regression.R` | Linear, generalized and mixed models: `lm` and `nlme::lme` (nested random effects, CAR1), REML estimates and ML likelihoods, marginal and conditional R2; `mgcv::gam` for GLMs, GLMMs and GAMs (normal, Poisson, negative binomial, binomial, gamma, Tweedie; an offset; smooth curves; random effects as `s(g, bs = "re")`), fitted by ML without a penalty and by REML with one, the AIC then from an ML refit; `mgcv::gamm` for a normal GLM or GAM with random effects and CAR1 (an `nlme` mixed model whose curves are random effects; its likelihood from an ML refit); cross-validation by groups, block contributions by AIC, effect curves, a curve's thresholds (`seuils_courbe`: its slope with simultaneous bands from 2000 draws of the coefficients, as Simpson 2018) and concurvity (`mgcv::concurvity`), Methods text |
 | `moteur/R/formule.R` | The R formula of a regression: written from New model's settings, and read back into them with `str2lang` without ever being evaluated (only the project's variables and IDs, numbers and a few functions, each in its place) |
+| `moteur/R/variables.R` | New variables: an R formula on the variables and observation IDs (with `moyenne_groupe` / `group_mean` and `ecart_groupe` / `group_deviation` by group), classes from values, and the imputation of missing values by regularized iterative PCA (`imputer_acp`, as `missMDA::imputePCA`) |
+| `moteur/R/analyses.R` | The other analyses (RDA, correspondence analysis, LDA, decision trees, k-means): their types, and how the engine finds each one's functions by name (`ajuster_<type>`, `resultat_<type>`, `texte_methodes_<type>`, `tables_<type>`, `predire_<type>`, `ecrire_script_<type>`, requests `demande_analyse_<name>`) |
+| `moteur/R/ordination.R` | Redundancy analysis (RDA, partial RDA) and correspondence analysis (CA) with R's linear algebra, as vegan computes them: scores in scalings 1 to 3, adjusted R², permutation tests of the model, the axes and the terms (free or within groups, from a seed), forward selection (ordiR2step's double criterion), variation partitioning, Methods text, export tables |
+| `moteur/R/arbres.R` | Decision trees (TREE) with rpart: regression or classification, surrogates, pruning by the 1-SE rule through an internal cross-validation by the model's groups (the folds inside `rpart.control`), external validation by groups, leaf rules, importance, first-split stability; the helpers the three analyses share |
+| `moteur/R/discrimination.R` | Linear discriminant analysis (LDA) with `MASS::lda`: priors, cross-validation by groups, scores, structure correlations, coefficients, posterior probabilities |
+| `moteur/R/kmoyennes.R` | k-means (KMEANS): clusters numbered by size, silhouettes (`cluster::silhouette`), choice of k, centres, clusters saved as a variable |
+| `moteur/R/classement_script.R` | Export to R of a tree, an LDA or a k-means: rpart, MASS or cluster, compared with the engine before it is written |
+| `moteur/R/ordination_script.R` | Export to R of an RDA or a CA: plain R, the same permutations, compared with the engine before it is written |
 | `moteur/R/comparaisons.R` | Statistical tests: by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis) with multiple-testing correction; between two variables (chi-square or Fisher, groups with Tukey, Games–Howell or Dunn, correlations), the test chosen from their conditions; the correlation matrix |
 | `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
 | `moteur/tests/verifier_references.R` | Refits every model of a folder of exported `.usp` projects and compares with the results stored in them; for PLS models, also the files' own cross-validation (scaling from all the observations) with the groups read in the files, which gives back the stored Q2 when the groups are right |
@@ -30,11 +38,17 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/tests/verifier_ipls.R` | iPLS on made-up spectra with one informative band: intervals cover the spectrum in order, each RMSEcv equals that of a PLS on the range's columns of the whole preprocessed spectrum, the whole spectrum gives back the model, the band's interval comes out best |
 | `moteur/tests/verifier_jeu_test.R` | The test set: the model doesn't see it, RMSEP / bias / SEP / Q2ext recomputed by hand, PLS-DA classification, random and Kennard–Stone choice (the same observations as `prospectr::kenStone` when installed) |
 | `moteur/tests/verifier_opls.R` | OPLS against a second, plain-matrix writing of Trygg and Wold's algorithm (one Y, two Y, three classes); orthogonal scores unrelated to Y |
-| `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, and a whole session in one script, run in a fresh `Rscript --vanilla` without the engine, give the engine's results (regressions too: LM with categories and cross terms, nested LMM with CAR1 and a test set, GLMs with an effort, GAMMs, Tweedie, null models, a mixed session); reports compile with `knitr` when it is installed |
-| `moteur/tests/verifier_regression.R` | The regressions against `lm()`, `nlme::lme()`, `glm()`, `MASS::glm.nb()` and `mgcv::gam()`: coefficients, AIC, R2, θ, Tweedie's p, a random effect's variance, overdispersion, cross-validation, test set, block contributions, effect curves, CAR1, AIC sets, refused definitions, a saved definition read back, the prediction of observations and files, R formulas (read, written back, fitted like R fits them, refused, never run) |
+| `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, and a whole session in one script, run in a fresh `Rscript --vanilla` without the engine, give the engine's results (regressions too: LM with categories and cross terms, nested LMM with CAR1 and a test set, GLMs with an effort, GAMMs, Tweedie, null models, a mixed session; each curve's thresholds, bands included); reports compile with `knitr` when it is installed |
+| `moteur/tests/verifier_regression.R` | The regressions against `lm()`, `nlme::lme()`, `glm()`, `MASS::glm.nb()` and `mgcv::gam()`: coefficients, AIC, R2, θ, Tweedie's p, a random effect's variance, overdispersion, cross-validation, test set, block contributions, effect curves, CAR1, AIC sets, refused definitions, a saved definition read back, the prediction of observations and files, R formulas (read, written back, fitted like R fits them, refused, never run); `mgcv::gamm` with CAR1; a curve's thresholds against the same procedure written out by hand, on a made-up threshold and a straight line; concurvity against `mgcv::concurvity()`; group means and deviations; PCA imputation against the iterative algorithm written out by hand (bounds, replacing, refitting, refusals) |
+| `moteur/tests/verifier_ordination.R` | RDA and CA against vegan when it is installed (`NUEE_VEGAN=<library>` points at one): eigenvalues, scores, R², the tests with the same permutations, ordiR2step, varpart; CA against `MASS::corresp`; refusals, exports and scripts |
+| `moteur/tests/verifier_classement.R` | Trees, LDA and k-means against rpart, `MASS::lda`, `kmeans` and `cluster::silhouette`: the same splits, pruning, predictions and classes, the cross-validation by groups; their exported scripts and reports, run in a fresh R, FR and EN |
 | `moteur/tests/verifier_comparaisons.R` | The statistical tests against R's own test functions (Dunn and Games–Howell through their two-group identities with Kruskal–Wallis and Welch's t), class models, OPLS with several predictive components, the Methods text |
 | `moteur/tests/verifier_validation.R` | The cross-validation: the engine's PRESS equals refitting each group's model by hand and predicting the group with `predire()`; on pure noise the median Q2 stays at or below 0 for 6 to 30 observations (PCA, PLS, OPLS-DA, automatic or fixed A); no more components than the data's rank; the example's models keep a high Q2; the permutation test refits from the project; groups by the value of a variable or of an ID, or given as they are (the same groups and Q2 each way, observations without a value in a group of their own, a clear error for a single group); block scaling and modifiers (each weight, a block of UV terms of total variance 1, the same weights in prediction and in each sub-model, kept by the settings of New model from this one) |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
+| `app/installation.js` | Windows: whether Nuée is installed for all users or for this user only (its uninstall entry under HKLM or HKCU; without one, Program Files decides), for the updater |
+| `app/tests/essai_installation.js` | That decision with stand-in registries, then `reg.exe` itself |
+| `app/interface/vues_classement.js` | The views of a tree, an LDA and a k-means (tree, pruning, rules, importance, stability, scores, coefficients, probabilities, clusters, silhouettes, choice of k), their New model fields and report parts |
+| `app/interface/vues_ordination.js` | The views of an RDA and a CA (ordination, eigenvalues, permutation tests, contributions), their New model fields and report parts |
 | `app/tests/essai_api.js` | Check run before each build |
 | `app/tests/essai_appli.js` | The built program used end to end over the Chrome DevTools Protocol: the engine starts, the example project, a PLS model's views, an image of a plot, each fit in the R console, a `.nuee` given to a second start opens in the running window, then quitting stops R and removes its temporary folder (`node tests/essai_appli.js <program> [screenshot.png] [options]`; on Linux the program starts with no `LANG` and a short `PATH`, as from the desktop menu) |
 | `app/icone/` | The logo, drawn by `dessiner_icone.py` |
@@ -43,8 +57,9 @@ pop-out windows and Plotly plots, talking to a local R server.
 
 ## Running from the sources
 
-Requires R 4.6 with `jsonlite`, `httpuv`, `openxlsx`, `haven` and `readxl` (and `foreign`, `nlme` and
-`mgcv`, among R's recommended packages), Node, and Python 3 for the converter.
+Requires R 4.6 with `jsonlite`, `httpuv`, `openxlsx`, `haven` and `readxl` (and `foreign`,
+`nlme`, `mgcv`, `MASS`, `rpart` and `cluster`, among R's recommended packages), Node, and
+Python 3 for the converter.
 
 ```bash
 cd app && npm install && npm run vendor
@@ -76,6 +91,8 @@ Rscript moteur/tests/verifier_script.R
 Rscript moteur/tests/verifier_comparaisons.R
 Rscript moteur/tests/verifier_regression.R
 Rscript moteur/tests/verifier_validation.R
+Rscript moteur/tests/verifier_ordination.R
+Rscript moteur/tests/verifier_classement.R
 ```
 
 Before 0.9.0, the spectra readers were run on real files and compared with other readers:
@@ -167,7 +184,8 @@ link offers the one-click update (`app/main.js`): the installer is downloaded fr
 `github.com/4rtefakt/nuee/releases/download/` into `%TEMP%\nuee-mise-a-jour`, its SHA-256 must
 match, unsaved projects are saved or left as the user says, R is stopped, and a hidden
 `cmd.exe` waits two seconds, runs the installer silently (`/S`, `/currentuser`, or `/allusers`
-when Nuée is in Program Files, which Windows asks to allow; `/D=` the current folder), then
+when Nuée is installed for all users, which Windows asks to allow: its entry in Settings › Apps
+is under HKLM, else Program Files decides, `app/installation.js`; `/D=` the current folder), then
 starts Nuée again with the same `--user-data-dir`. That `cmd.exe` is started by a go-between
 that ends at once (`Nuee.exe` with `ELECTRON_RUN_AS_NODE`), so it isn't in Nuée's process
 tree: the installer closes `Nuee.exe` with everything it started, and in one test out of three
@@ -206,8 +224,9 @@ The build produces:
   - `Nuee-<version>-amd64.deb`, which depends on electron-builder's list plus `libgbm1` and
     `libasound2` (Electron loads them; a minimal Ubuntu 22.04 lacks `libgbm1`), then on
     `r-base-core` and `r-cran-httpuv`, `r-cran-jsonlite`, `r-cran-openxlsx`, `r-cran-haven`,
-    `r-cran-readxl`, `r-cran-foreign`, `r-cran-nlme`, `r-cran-mgcv` (Debian keeps R's recommended
-    packages, `foreign`, `nlme` and `mgcv` among them, out of `r-base-core`), and recommends `python3` and `r-recommended` (for the R
+    `r-cran-readxl`, `r-cran-foreign`, `r-cran-nlme`, `r-cran-mgcv`, `r-cran-mass`,
+    `r-cran-rpart`, `r-cran-cluster` (Debian keeps R's recommended packages, these six among
+    them, out of `r-base-core`), and recommends `python3` and `r-recommended` (for the R
     console, as on Windows). It installs into `/opt/Nuée`, adds `nuee.desktop` to the
     applications menu and, on Ubuntu 24.04 and later, the AppArmor profile Electron's sandbox
     needs;

@@ -20,6 +20,7 @@ REFERENCES <- list(
 texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   langue <- match.arg(langue)
   if (est_regression(d)) return(texte_methodes_regression(projet, d, m, langue, version))  # regression.R
+  if (est_autre_analyse(d)) return(fonction_analyse("texte_methodes_", d$type)(projet, d, m, langue, version))  # analyses.R
   fr <- langue == "fr"
   s <- m$statistiques
   nombre <- function(x, chiffres = 2) formatC(x, format = "f", digits = chiffres, decimal.mark = if (fr) "," else ".")

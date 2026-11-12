@@ -346,10 +346,15 @@ verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e
 
 cat("Régressions (lm, nlme, mgcv)\n")
 # Ce que le moteur donne d'une régression, et ce que son script a calculé (sous ses noms, dans sa langue).
-ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "vc", "observations", "test")
+ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test")
+COURBES_SEUILS <- c("x", "effet", "bas", "haut", "x_pente", "pente", "pente_bas", "pente_haut")
 moteur_regression <- function(m) {
   r <- m$resultat
+  seuils <- if (!is.null(r$courbes)) lapply(r$courbes$terme, function(t) seuils_courbe(m, t))
   list(coefficients = as.matrix(r$coefficients[c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]),
+       # (les seuils d'une courbe : sa pente et son effet, leurs bandes simultanées, leurs plages nettes)
+       "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, COURBES_SEUILS)),
+       "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- rbind(s$plages_pente, s$plages_effet); c(z$de, z$a) })),
        "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
        phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(r$courbes[-1]),
        "Q2 et RMSEcv" = c(m$vc$Q2, m$vc$RMSEcv), "prédictions de la validation croisée" = m$vc$prediction,
@@ -359,8 +364,12 @@ moteur_regression <- function(m) {
 script_regression <- function(s, langue) {
   n <- function(x) s[[nom_script(x, langue)]]
   colonnes <- function(x, k) if (!is.null(x)) as.matrix(x[k])
-  list(coefficients = colonnes(n("coefficients"), 2:8), "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
-       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = colonnes(n("courbes"), 2:5),
+  seuils <- n("seuils")
+  list(coefficients = colonnes(n("coefficients"), 2:8),
+       "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, nom_script(COURBES_SEUILS, langue))),
+       "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- s[[nom_script("plages", langue)]]; c(z[[3]], z[[4]]) })),
+       "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
+       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) colonnes(n("courbes"), seq_along(n("courbes"))[-1]),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
        "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "jeu de test" = colonnes(n("test"), 2:6))
 }
@@ -425,6 +434,18 @@ texte <- lignes_script(r)
 verifier("modèle mixte : ses sites (un identifiant) dans le tableau, nlme::lme, CAR1, groupes de validation par site",
          any(grepl("^  site = ", texte)) && any(grepl("nlme::lme\\(", texte)) && any(grepl("corCAR1", texte)) &&
            any(grepl("^groupes_vc <- as.integer\\(cadre\\[\\[\"site\"\\]\\]\\)", texte)))
+# (les scripts de seuils : un site aléatoire, l'autocorrélation le long des années dans chaque secteur)
+car1_secteur <- list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")), dans = par_secteur)
+r <- essayer_regression("gamm_car1_secteur", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",
+                        lisses = ur("x2"), k_courbes = stats::setNames(list(5), ur("x2")), aleatoires = list(par_site), correlation = car1_secteur))
+code <- code_hors_donnees(lignes_script(r))
+verifier("modèle additif avec autocorrélation : mgcv::gamm, l'autocorrélation dans chaque secteur de chaque site, la courbe de dimension 5",
+         any(grepl("gamm(f, random = aleatoire, correlation = correlation", code, fixed = TRUE)) && any(grepl("~ annee | site / secteur", code, fixed = TRUE)) &&
+           any(grepl("\"x2\" = 5L", code, fixed = TRUE)) && any(grepl("library(mgcv)", code, fixed = TRUE)))
+essayer_regression("gamm_car1_test_en", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",
+                   lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur, test = numeros_observations(pr)[seq(5, n, by = 16)]), langue = "en")
+essayer_regression("lmm_car1_secteur", pr, definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
+                   correlation = car1_secteur))
 r <- essayer_regression("glm_poisson_effort", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort"), echelle = "none"))
 verifier("GLM de Poisson : effort en décalage, effet multiplicatif, surdispersion", any(grepl("offset\\(log\\(effort\\)\\)", lignes_script(r))) &&
          any(grepl("effet_multiplicatif", lignes_script(r))) && any(grepl("^dispersion <- ", lignes_script(r))))
@@ -447,6 +468,17 @@ verifier("une séance avec une ACP, un modèle mixte et un GAM : chacun sous son
          is.null(r$ecart) && length(s) == 3 && meme(moteur(ms[[1]])$scores, s$A1$m$T) &&
            all(vapply(2:3, function(k) meme(moteur_regression(ms[[k]])$coefficients, as.matrix(s[[k]]$coefficients[2:8])) &&
                         meme(moteur_regression(ms[[k]])[["Q2 et RMSEcv"]], c(s[[k]]$vc$Q2, s[[k]]$vc$RMSEcv)), TRUE)))
+# la séance d'un GAM à courbe, puis d'une régression sans courbe : les seuils comparés au seul GAM
+definitions <- list(definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), famille = "gaussienne", lisses = ur("x2"), echelle = "none", nom = "R5"),
+                    definir_modele(pr, "LM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", nom = "R6"),
+                    definir_modele(pr, "GLM", x = ur("x1", "x2"), y = ur("compte"), famille = "poisson", echelle = "none", nom = "R7"))
+ms <- lapply(definitions, function(d) ajuster(pr, d))
+dir.create(ici <- file.path(dossier, "seance_courbe_d_abord"))
+r <- tryCatch(ecrire_script_seance(pr, definitions, ms, file.path(ici, "seance.R"), "moteur", version = "essai", renv = TRUE), error = function(e) e)
+entete <- if (!inherits(r, "error")) utils::head(readLines(r$script, encoding = "UTF-8"), 15)
+lock <- if (!inherits(r, "error")) jsonlite::fromJSON(r$chemins[grepl("renv\\.lock$", r$chemins)])
+verifier("une séance où un GAM à courbe précède une régression et un GLM sans courbe : écrite, sans écart ; mgcv et MASS nommés et dans renv.lock",
+         !inherits(r, "error") && is.null(r$ecart) && any(grepl("paquets mgcv et MASS", entete)) && all(c("mgcv", "MASS") %in% names(lock$Packages)))
 # les rapports d'une régression : méthodes et références, et ils se compilent
 for (k in 1:2) {
   d <- list(definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site, par_secteur), nom = "R3"),

@@ -13,6 +13,11 @@ import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
 import { ECRITURE, filtresOuverture, acceptOuverture, filtresSpectres, acceptSpectres } from './formats.js';
 import { ouvrirPalette } from './palette.js';
+// Analyses kept in modules of their own (vues_*.js): imported here, each adds its views to VUES
+// (panneaux.js), their icons (commandes.js: ICONES_VUES), its views per model type
+// (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
+import './vues_ordination.js';
+import './vues_classement.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -563,9 +568,12 @@ const app = {
   rapport: (id) => dialogueRapport(app, id),
   nouvelleVariable: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariable(app, p); },
   async ajouterVariable(pid, q) {
-    const res = await occupe(() => demander(q.formule !== undefined ? 'variable_calculee' : 'classes_valeurs', { projet: pid, ...q }));
+    const nom = q.imputation ? 'imputer' : q.formule !== undefined ? 'variable_calculee' : 'classes_valeurs';
+    const res = await occupe(() => demander(nom, { projet: pid, ...q }));
     projetChange(res);
-    statut(t('variable_ajoutee', { nom: q.nom }));
+    const im = res.imputation;
+    statut(q.imputation ? t(im.composantes === 0 ? 'imputation_moyennes' : im.choisies ? 'imputation_faite_choisies' : 'imputation_faite', { n: im.valeurs, k: im.composantes, tours: im.tours })
+      : t('variable_ajoutee', { nom: q.nom }));
   },
   async modifierValeur(pid, observation, variable, valeur) {
     const res = await occupe(() => demander('modifier_valeur', { projet: pid, observation, variable, valeur }));
@@ -1141,8 +1149,10 @@ function vuesParDefaut(id) {
   if (!interne.getPanel(r)) {
     app.ouvrirVue('resume', id, null, null, interne.panels.length ? { referencePanel: interne.panels[0].id, direction: 'left' } : undefined);
   }
-  // a regression: its coefficients and residuals (no scores or loadings: regression.R)
-  const [haut, bas] = etat.modeles[id].regression ? ['coefficients', etat.modeles[id].type === 'GAM' ? 'effets' : 'residus'] : ['scores', null];
+  // a regression: its coefficients and residuals (no scores or loadings: regression.R); another
+  // analysis: the two views it names (m.vues_defaut)
+  const [haut, bas] = etat.modeles[id].vues_defaut ? [].concat(etat.modeles[id].vues_defaut)
+    : etat.modeles[id].regression ? ['coefficients', etat.modeles[id].type === 'GAM' ? 'effets' : 'residus'] : ['scores', null];
   if (!interne.getPanel(`${haut}:${id}`)) app.ouvrirVue(haut, id, null, null, { referencePanel: r, direction: 'right' });
   // spectra: their loadings as lines rather than a scatter of hundreds of variables
   const vue = bas || ([].concat((etat.modeles[id].reglages || {}).spectres || []).length ? 'profils' : 'loadings');
@@ -1373,7 +1383,8 @@ function menuGraphique(e, div, entree) {
     '-',
     { libelle: t('effacer_selection'), actif: sel.length + vars.length > 0, action: () => app.effacerSelection(id) },
     { libelle: t('exclure_reajuster'), icone: 'eye-off', actif: sel.length > 0, action: () => app.reajuster(id, { exclues: sel }) },
-    { libelle: t('contributions'), icone: 'sliders-horizontal', actif: sel.length > 0 && !(etat.modeles[id] || {}).regression, action: () => app.ouvrirVue('contributions', id) },
+    { libelle: t('contributions'), icone: 'sliders-horizontal', actif: sel.length > 0 && !(etat.modeles[id] || {}).regression && !(etat.modeles[id] || {}).analyse,
+      action: () => app.ouvrirVue('contributions', id) },
     { libelle: t('classe_selection'), icone: 'tag', actif: sel.length > 0, action: () => app.classeSelection(id) },
     '-',
     VUE_SEULE ? { libelle: t('rattacher'), icone: 'undo-2', action: rattacher }
@@ -1474,7 +1485,7 @@ function majEtat() {
       el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); if (etat.nouvelleVersion.installateur) app.mettreAJour(); else window.open(etat.nouvelleVersion.page); } },
         icone('download'), t(etat.nouvelleVersion.installateur ? 'nouvelle_version_maj' : 'nouvelle_version', { v: etat.nouvelleVersion.version })),
       el('button', { class: 'icone-seule', title: t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
-    m ? el('span', {}, `${m.nom} · ${m.type}${m.regression ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
+    m ? el('span', {}, `${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
     nv ? el('span', { class: 'sel' }, t('variables_en_evidence', { n: nv })) : null,
     el('button', { class: 'icone-seule', title: t('theme_sombre'), onclick: () => app.changerTheme(!app.themeSombre()) }, icone(app.themeSombre() ? 'sun' : 'moon')),

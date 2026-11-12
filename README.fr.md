@@ -67,7 +67,7 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   lancer ; il demande FUSE 2, le paquet `libfuse2` dans la plupart des distributions) ou
   `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
   d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster"))`.
   Sous Ubuntu 24.04 et après, préférez le `.deb` : il installe le profil AppArmor dont le bac
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 
@@ -126,25 +126,43 @@ PLS-DA), puis prédit : RMSEP, biais, SEP et Q2 externe, ou son classement.
 
 **Variables :** VIP avec un seuil placé automatiquement (ou déplacé à la main), coefficients,
 loadings, biplot, réajustement avec les seules variables retenues. Statistiques des variables
-avec les transformations log proposées, histogrammes et carte des valeurs manquantes. Tests par
-variable entre deux classes (t de Welch ou de Student, Mann–Whitney) ou entre toutes (ANOVA,
-Kruskal–Wallis), avec la correction de Benjamini–Hochberg et un graphique volcan. Tests entre
-deux variables, choisis d'après leurs types, leurs conditions vérifiées : khi² ou test exact de
-Fisher, test t, ANOVA ou Kruskal–Wallis avec les comparaisons deux à deux, corrélation de
-Pearson ou de Spearman ; un identifiant des observations (site, année...) peut faire les
-groupes. Une matrice des corrélations avec les valeurs p corrigées.
+avec les transformations log proposées, histogrammes et carte des valeurs manquantes, que l'ACP
+itérative régularisée peut remplir ; nouvelles variables par des formules R, avec les moyennes
+et les écarts par groupe. Tests par variable entre deux classes (t de Welch ou de Student,
+Mann–Whitney) ou entre toutes (ANOVA, Kruskal–Wallis), avec la correction de
+Benjamini–Hochberg et un graphique volcan. Tests entre deux variables, choisis d'après leurs
+types, leurs conditions vérifiées : khi² ou test exact de Fisher, test t, ANOVA ou
+Kruskal–Wallis avec les comparaisons deux à deux, corrélation de Pearson ou de Spearman ; un
+identifiant des observations (site, année...) peut faire les groupes. Une matrice des
+corrélations avec les valeurs p corrigées.
 
 **Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
 (nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site) et une
 autocorrélation en temps continu (CAR1) ; modèles linéaires généralisés et additifs (mgcv) pour
 des comptages (Poisson, binomiale négative), la présence-absence, des valeurs positives et des
 densités avec des zéros (Tweedie), avec des effets aléatoires, un effort en décalage et des
-courbes lissées pour un effet qui monte puis descend ou un seuil ; les coefficients et leurs
-intervalles, R2 marginal et conditionnel, les courbes d'effet, les graphiques des résidus, la
-variation de l'AIC quand chaque bloc de variables est retiré, et la comparaison par l'AIC (ΔAIC,
-poids d'Akaike) des régressions de la même réponse, à côté du Q2 en validation croisée de tous
-les modèles. Une formule R règle le modèle (R la lit sans jamais l'exécuter), et les régressions
-prédisent de nouvelles observations et des fichiers, les extrapolations signalées.
+courbes lissées pour un effet qui monte puis descend ou un seuil (avec aussi le CAR1, par
+mgcv::gamm, pour une réponse normale) ; les coefficients et leurs intervalles, R2 marginal et
+conditionnel, les courbes d'effet, les seuils de chaque courbe (là où l'intervalle simultané de
+sa pente exclut 0) et sa concurvité, les graphiques des résidus, la variation de l'AIC quand
+chaque bloc de variables est retiré, et la comparaison par l'AIC (ΔAIC, poids d'Akaike) des
+régressions de la même réponse, à côté du Q2 en validation croisée de tous les modèles. Une
+formule R règle le modèle (R la lit sans jamais l'exécuter), et les régressions prédisent de
+nouvelles observations et des fichiers, les extrapolations signalées.
+
+**Ordination des communautés :** analyse de redondance (RDA) de réponses comme des abondances
+d'espèces (transformées par Hellinger, corde ou log(x + 1)) par des variables explicatives, RDA
+partielle avec des covariables, triplots en échelle 1 ou 2, R2 ajusté, tests par permutation
+du modèle, de chaque axe et de chaque terme (à l'intérieur des sites au besoin), sélection pas
+à pas et partition de la variance ; analyse des correspondances (CA) de tableaux d'effectifs,
+avec contributions et cos². Les résultats sont ceux du paquet vegan.
+
+**Arbres, analyse discriminante, groupes :** arbres de décision (rpart) pour une réponse
+quantitative ou une classe, sur les valeurs brutes des variables pour que les seuils se lisent
+dans leurs unités, élagués par une validation croisée par site et validés en prédisant chaque
+site par un arbre refait sans lui, avec la stabilité de la première coupure ; analyse
+discriminante linéaire (MASS::lda), classement en validation croisée et probabilités a
+posteriori ; k-moyennes avec silhouettes et choix de k.
 
 ![Tests par variable sur les pommes de l'exemple : un graphique volcan de Golden contre Gala, et la table des tests](docs/captures/volcan.png)
 
@@ -263,7 +281,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 0.9.2) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.3) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)

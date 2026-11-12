@@ -8,6 +8,7 @@
 
 predire <- function(projet, m, definition, observations) {
   if (est_regression(definition)) return(predire_observations_regression(projet, m, definition, observations))
+  if (est_autre_analyse(definition)) return(predire_analyse(projet, m, definition, observations))  # analyses.R
   pls <- identical(m$type, "PLS")
   bx <- construire_bloc(projet, definition$x, observations, imposees = m$x, spectres = definition$spectres)
   X <- preparer(bx$X)

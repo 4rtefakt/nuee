@@ -24,7 +24,7 @@ On Linux, Nuée uses the computer's R.
 - Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
   Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
   install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme",
-  "mgcv")).
+  "mgcv", "MASS", "rpart", "cluster")).
 .usp projects need python3. For another R than the PATH's: start Nuée with
 RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
 
@@ -138,7 +138,9 @@ New model (Model › New model)
 -----------------------------
 General tab: type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models, linear regression, linear
 mixed model, generalized linear model, additive model: see Linear, generalized and mixed
-models), name, number of components
+models; RDA and CA: see Redundancy analysis and correspondence analysis; decision tree, LDA
+and k-means: see Decision trees, linear discriminant analysis and k-means), name, number of
+components
 (automatic by default, by cross-validation), cross-validation groups (in turn, G groups; or
 one group per value of an observation ID or of a variable, see Cross-validation), default
 scaling.
@@ -154,6 +156,7 @@ transformations" button applies the suggested log10 to the variables shown (see 
 statistics).
 Cross terms tab: products of two or three X variables (A × B, A × B × C), squares (A × A) and
 cubes (A × A × A); a qualitative variable enters through each of its categories, once at most.
+Each cross term has its own scaling, block and modifier, as in the Variables tab.
 Observations tab: tick / untick the model's observations, and the test set (see Test set).
 "Edit model" (Ctrl+M) opens this window set like an existing model (imported models
 included) and makes a new model.
@@ -423,8 +426,10 @@ to compare AICs. The default scaling keeps the variables' units (coefficients pe
 gives coefficients per standard deviation.
 A mixed model (nlme) adds nested random effects, the widest first: a random intercept for each
 site, then for each sector within its site (an observation ID or a qualitative variable). It
-can add an autocorrelation in time within the last level (CAR1, continuous time: missing years
-are fine; the time is a numeric ID or a quantitative variable). Coefficients and variances are
+can add an autocorrelation in time (CAR1, continuous time: missing years are fine; the time is
+a numeric ID or a quantitative variable) within the last level or, through "within each",
+within a finer one that has no random effect of its own: the sector within its site, when only
+the site has a random effect. Coefficients and variances are
 estimated by REML; the log-likelihood, AIC, AICc and BIC come from the ML fit, the only one
 that compares models with different fixed effects. Cross-validation defaults to the first
 random effect: each site is predicted by the fixed effects of the model fitted without it, as a
@@ -436,10 +441,17 @@ values; Tweedie for densities with zeros (its power p estimated); or normal. The
 (counts, gamma, Tweedie), logit (binomial) or identity (normal). Effort (offset): a variable
 such as an area, a duration or a number of visits, whose log enters the model with a
 coefficient of 1, which then describes a density (an effort of 0 or less is refused). Random
-effects as above make a GLMM or a GAMM (without autocorrelation). In an additive model, the X
+effects as above make a GLMM or a GAMM. With the normal distribution and at least one random
+effect, a GLM or GAM can take the autocorrelation in time too: it is then fitted by
+mgcv::gamm, as an nlme mixed model whose curves are random effects (coefficients, curves,
+variances and φ by REML; logLik, AIC, AICc and BIC from an ML fit, comparable only with other
+models fitted that way). With another distribution it is refused: mgcv::gamm would use
+penalized quasi-likelihood (PQL), with no true likelihood nor AIC. In an additive model, the X
 variables ticked in the Curve column of the Variables tab enter through a smooth curve (a
 spline) instead of a straight line, for an effect that rises then falls, or a threshold; the
-data decide how curved it is (its edf; 1 is a straight line). Curves and random effects are
+data decide how curved it is (its edf; 1 is a straight line). Its basis dimension k bounds how
+curved it can be: 10 at most, less when the variable has few values; type another one (3 to
+100) in the box beside the tick, as s(x, k = 5) does in R. Curves and random effects are
 estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitted by maximum
 likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns when the
 counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of freedom): its p
@@ -449,19 +461,25 @@ R formula (General tab): the model written as in R, for instance
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
 log10, log1p, exp, sqrt, I(x^p), I(a * x + b), the logit log((x - a) / (b - x))), the cross
 terms (a:b; a*b for a, b and a:b; I(a^2) when a is in the model too, else the square of a), the
-curves s(x), the effort offset(log(x)) and the nested random intercepts (1 | site/sector), the
-widest first.
+curves s(x) or s(x, k = 5), the effort offset(log(x)) and the nested random intercepts
+(1 | site/sector), the widest first.
 A curve makes the model additive, random effects make it mixed. R reads the formula without
 ever running it: anything else (another function, code) is refused with the reason, and the
 formula isn't kept, only the settings it gives.
 Views: Summary (R2, or marginal and conditional R2 for a mixed model, Nakagawa and Schielzeth;
-adjusted R2 and deviance explained for a GLM or GAM, with each curve's edf and test; Q2 and
-RMSEcv; AIC; the variance of each random effect and its share; φ of the autocorrelation),
-Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05; with a log link,
-exp(estimate) is the multiplicative effect of one unit more, with the logit the odds ratio),
+adjusted R2 and deviance explained for a GLM or GAM (marginal and conditional R2 when fitted by
+mgcv::gamm, the curves in the fixed part), with each curve's edf, test and concurvity (the
+share of the curve the other terms reproduce; above 0.8, in red, it is confounded with them);
+Q2 and RMSEcv; AIC; the variance of each random effect and its share; φ of the
+autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
+with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
+the odds ratio),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
 95 % band and the observed values below it: a GAM's curves, straight lines otherwise; on the
-scale of the link, log or logit, when there is one), Observed / predicted, Residuals
+scale of the link, log or logit, when there is one; for a curve, Thresholds: the effect and its
+slope with 95 % simultaneous bands from 2000 draws of the coefficients, the ranges where the
+slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
+nearly a straight line, as Simpson (2018) reads thresholds), Observed / predicted, Residuals
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
 distance for a linear regression), Block contributions (AIC): each block of the Block column
 (or each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
@@ -480,12 +498,13 @@ model of them; Tweedie models with each other; GLMMs and GAMMs (mgcv's condition
 with each other.
 File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
 the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
-Model report: the summary and the coefficients, each term's effect, observed / predicted and
-the residuals.
-File › Export to R: a script or report for a regression too, with lm, nlme::lme or
-mgcv::gam: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
-then the coefficients, AIC, R2, variances, curves, test set and plots, checked against Nuée's
-results before it is written.
+Model report: the summary and the coefficients, each term's effect, each curve's thresholds,
+observed / predicted and the residuals.
+File › Export to R: a script or report for a regression too, with lm, nlme::lme, mgcv::gam
+or mgcv::gamm: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
+then the coefficients, AIC, R2, variances, curves with their concurvity and thresholds (the
+same draws as the Thresholds view), test set and plots, checked against Nuée's results before
+it is written.
 
 Class models and the Coomans plot
 ---------------------------------
@@ -498,16 +517,105 @@ observation's distances to two of the models, with their limits in red; the tabl
 each class, the share of its observations each model accepts (expected: about 95 % for its
 own class, 0 % for the others), then each observation's distances and classes.
 
+Redundancy analysis and correspondence analysis
+-----------------------------------------------
+New model › type "RDA (redundancy analysis)": how much of a table of responses Y (species
+abundances, measurements) the explanatory variables X explain, and how. Y: quantitative
+variables; X: the explanatory variables (a qualitative one through its categories, cross terms
+included); Z (covariate, in the Role list of the Variables tab): variables whose effect is
+removed first (partial RDA: the site, a known gradient...). General tab: the transformation of
+the responses (Hellinger or chord for abundances, Legendre and Gallagher 2001; log(x + 1); or
+none); the responses centred (covariance RDA, for responses in the same units) or standardized
+(correlation RDA); the number of permutations of the tests (999; 0: no test), the groups they
+stay within (an observation ID or a qualitative variable: a site followed over several years is
+permuted only with itself) and their seed (the same seed gives the same permutations, hence the
+same p values). An observation with a missing value, or with no abundance under Hellinger or
+chord, is left out.
+
+Views: Summary (the total inertia, the covariates' share, the X's share and what is left; R2
+and adjusted R2; the pseudo-F and its permutation p); Ordination, the triplot (the observations
+by their wa scores, weighted sums of the responses, or lc scores, linear combinations of the X;
+the responses; an arrow per quantitative X, lengthened to fill the plot by the factor shown in
+the legend, and a triangle at the centroid of each category; scaling 1 keeps the distances
+between observations, scaling 2 the correlations between responses); Eigenvalues (constrained
+axes in blue, unconstrained ones in grey); Permutation tests (each constrained axis after the
+previous ones, each term after all the others; Forward selection keeps a term that raises the
+adjusted R2 without going beyond that of all the terms and whose test gives p ≤ 0.05, Blanchet
+et al. 2008; Variation partitioning splits the adjusted R2 between two or three blocks of X,
+from the Block column of the Variables tab); the lists of observations and variables. The
+results are those of the vegan package (rda, anova.cca, RsquareAdj, ordiR2step, varpart): the
+same eigenvalues, scores and pseudo-F, and for the same permutations the same p values.
+
+Type "Correspondence analysis (CA)": a table of counts or abundances (the X variables, one
+observation per row, positive or zero values); observations and variables without any value are
+left out. Views: Summary (the total inertia: the table's chi-square divided by its grand
+total); Ordination (rows and columns in scaling 1, 2 or 3: chi-square distances between
+observations, between variables, or symmetric); Eigenvalues; Contributions and cos² (each row's
+and column's share of an axis's inertia, in blue above the mean, and the quality of its
+representation); the lists.
+
+Both export their tables (File › Export), write their Methods text with its references and make
+a report. File › Export to R writes a script, or an R Markdown or Quarto report, that redoes
+them with R alone, their tests with the same permutations. They don't predict new observations.
+
+Decision trees, linear discriminant analysis and k-means
+--------------------------------------------------------
+New model › type "Decision tree" (rpart): a quantitative Y variable (regression tree) or a
+class variable (classification tree), and X variables by their raw values, so that the
+thresholds read in their units; missing X values are handled by surrogate variables.
+General tab: at least 20 observations per leaf, but at most a sixth of the observations, so
+that the tree can split (a node is split only if it holds three times as many), at most 5
+levels, cp = 0.001, 5 surrogates, pruning by the 1-SE rule (the smallest tree within one
+standard error of the minimum error) or at the minimum error. The pruning comes from an
+internal cross-validation by the cross-validation groups (for sites followed over several
+years, choose the site), and Q2 from an external cross-validation: each group is predicted by
+a tree entirely rebuilt without it. Views: Tree (a click on a node selects its
+observations), Pruning, Leaf rules, Variable importance, First-split stability (200
+bootstrap draws of the groups: the share of the draws where each variable makes the first
+split, and its median threshold), Observed / predicted and Residuals, or Classification
+for a classification tree. Test set and Predict: a new observation follows the tree,
+surrogates included.
+
+Type "Linear discriminant analysis (LDA)" (MASS::lda): a class variable and X variables by
+their raw values; prior probabilities proportional to the class sizes or equal. Each
+observation goes to the class of largest posterior probability; cross-validated, each
+group is classified by the model fitted without it. Views: Discriminant scores,
+Discriminant coefficients (structure correlations, coefficients in the variables' units
+or for variables of standard deviation 1), Classification, Posterior probabilities. Test
+set and Predict.
+
+Type "k-means": X variables scaled as the Variables tab says (UV by default), k clusters
+(Hartigan and Wong algorithm, 25 starts, seed 1), numbered from the largest to the
+smallest; an observation with a missing value is left out. Views: Clusters (on the first
+two principal components), Silhouettes, Choice of k (2 to 10: within-cluster sum of
+squares and mean silhouette), Cluster centres. "Clusters → variable" adds the clusters to
+the project as a qualitative variable (Edit › Undo removes it); Predict assigns a new
+observation to the cluster of the nearest centre.
+
+For all three: Methods text with its references, Export, PDF or Word report, Export to R
+(a script or an R Markdown / Quarto report that redoes the analysis with rpart, MASS or
+cluster, which come with R). Compare models shows a regression tree's Q2 and RMSEcv beside
+the other models.
+
 Editing the data, making variables
 ----------------------------------
 In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; empty =
 missing value; for a qualitative variable, the category's name). Models already fitted don't
 change: refit them.
-Edit › New variable: from an R formula on the other variables, for example
-log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (a text result
-gives a qualitative variable); or classes from the values of a variable, at given limits
-(10 ; 20 gives "≤ 10", "]10 ; 20]", "> 20") or in classes of equal size. Remember to save
-the project.
+Edit › New variable: from an R formula on the other variables and the observation IDs, for
+example log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (a text
+result gives a qualitative variable); by group, group_mean(x, sector), the mean of x in each
+observation's group (missing values ignored; an observation without a group gets none), and
+group_deviation(x, sector), the deviation from it (moyenne_groupe and ecart_groupe in
+French): a sector mean as a covariate, or a response centred by sector. Or classes from the
+values of a variable, at given limits (10 ; 20 gives "≤ 10", "]10 ; 20]", "> 20") or in
+classes of equal size. Or Imputation (PCA): the chosen quantitative variables' missing values
+filled from each other by regularized iterative PCA, as missMDA::imputePCA does, with the
+number of components chosen by generalized cross-validation of the standardized variables,
+from 0 to 5, as missMDA::estim_ncpPCA does on them (0: each variable's mean), unless you give
+it; observed values unchanged, an observation missing more than half of them left missing,
+imputed values kept within each variable's observed range unless unticked; as new variables
+"x (imputed)" or in the variables themselves (Ctrl+Z undoes it). Remember to save the project.
 
 File history
 ------------

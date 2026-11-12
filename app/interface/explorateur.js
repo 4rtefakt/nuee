@@ -10,10 +10,14 @@ const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanov
 // (a regression has no components, scores or loadings: its own views, regression.R)
 const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'apports', 'liste_obs', 'predictions'];
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
-const vuesDe = (m) => (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
-  && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe)));
+// the views of another analysis, by its type (filled by its module, vues_*.js): a list, or a
+// function of the model that gives it (a regression tree and a classification tree differ)
+export const VUES_TYPES = {};
+// a model's views, as the explorer lists them (and the Plots menu offers another analysis's)
+export const vuesDe = (m) => ((typeof VUES_TYPES[m.type] === 'function' ? VUES_TYPES[m.type](m) : VUES_TYPES[m.type]) || (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
+  && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe))));
 // R2 and Q2 of a fitted model, for its line in the explorer
-const chiffresModele = (m) => (m.regression
+const chiffresModele = (m) => (m.chiffres ? m.chiffres : m.regression
   ? `${m.qualite.marginal !== undefined ? `R2m ${fmt(m.qualite.marginal, 2)} · R2c ${fmt(m.qualite.conditionnel, 2)}`
     : `R2 ${fmt(m.qualite.r2 ?? m.qualite.r2_ajuste, 2)}`} · Q2 ${fmt(m.qualite.Q2, 2)} · AIC ${fmt(m.qualite.AIC, 1)}`
   : `R2X ${fmt(m.composantes.R2Xcum[m.A - 1], 2)}${m.composantes.R2Ycum ? ' · R2Y ' + fmt(m.composantes.R2Ycum[m.A - 1], 2) : ''} · Q2 ${fmt(m.composantes.Q2cum[m.A - 1], 2)}`);
@@ -63,7 +67,7 @@ export function rendreExplorateur(conteneur, app) {
       const chiffres = s ? `R2X ${fmt(der(s.R2Xcum), 2)}${s.R2Ycum && der(s.R2Ycum) !== null ? ' · R2Y ' + fmt(der(s.R2Ycum), 2) : ''} · Q2 ${fmt(der(s.Q2cum), 2)}` : '';
       return noeud({
         cle: `${p.id}/def/${d.numero}`, niveau: 3, ic: 'box', classe: d.ajuste ? '' : 'inactif',
-        libelle: [el('b', {}, d.nom), ' ', el('span', { class: 'badge' }, d.type), REGRESSIONS.includes(d.type) ? '' : ` A=${d.A}`, d.note ? el('span', { class: 'note-icone' }, icone('pencil')) : null],
+        libelle: [el('b', {}, d.nom), ' ', el('span', { class: 'badge' }, d.type), REGRESSIONS.includes(d.type) || VUES_TYPES[d.type] ? '' : ` A=${d.A}`, d.note ? el('span', { class: 'note-icone' }, icone('pencil')) : null],
         details: d.ajuste ? chiffres : t('non_ajuste'), titre: [d.titre, d.note, d.ajuste ? '' : t('non_ajuste')].filter(Boolean).join(' — '),
         double: d.ajuste ? () => app.calculer(p.id, d.numero) : null,
         menu: () => [{ libelle: t('calculer_modele'), icone: 'refresh-cw', actif: !!d.ajuste, action: () => app.calculer(p.id, d.numero) }]
@@ -72,7 +76,7 @@ export function rendreExplorateur(conteneur, app) {
     };
     const modele = (m) => noeud({
       cle: `${p.id}/m/${m.id}`, niveau: 3, ic: 'box', classe: 'calcule',
-      libelle: [el('b', {}, m.nom), ' ', el('span', { class: 'badge' }, m.type), m.regression ? '' : ` A=${m.A}`, m.note ? el('span', { class: 'note-icone' }, icone('pencil')) : null],
+      libelle: [el('b', {}, m.nom), ' ', el('span', { class: 'badge' }, m.type), m.regression || m.analyse ? '' : ` A=${m.A}`, m.note ? el('span', { class: 'note-icone' }, icone('pencil')) : null],
       details: chiffresModele(m),
       titre: [m.titre, m.note].filter(Boolean).join(' — '), double: () => app.ouvrirModele(m.id),
       enfants: () => vuesDe(m).map((v) => noeud({
@@ -86,13 +90,13 @@ export function rendreExplorateur(conteneur, app) {
         { libelle: t('m_graphiques'), sous: vuesDe(m).map((v) => ({ libelle: t(v), icone: ICONES_VUES[v], action: () => app.ouvrirVue(v, m.id) })) },
         '-',
         { libelle: t('modifier_modele'), icone: 'square-pen', action: () => app.modifierModele(m.id) },
-      ].concat(m.regression ? [] : [
+      ].concat(m.regression || m.analyse ? [] : [
         { libelle: t('autoajuster'), icone: 'wand-sparkles', action: () => app.reajuster(m.id, { A: 0, auto: true }) },
         { libelle: t('plus_comp'), icone: 'circle-plus', action: () => app.reajuster(m.id, { A: m.A + 1 }) },
         { libelle: t('moins_comp'), icone: 'circle-minus', actif: m.A > 1, action: () => app.reajuster(m.id, { A: m.A - 1 }) },
       ], [
         { libelle: t('exclure_reajuster'), icone: 'eye-off', actif: app.selection(m.id).length > 0, action: () => app.reajuster(m.id, { exclues: app.selection(m.id) }) },
-      ], m.regression ? [] : [
+      ], m.regression || m.analyse ? [] : [
         '-',
         { libelle: t('scores_variables'), icone: 'git-merge', action: () => app.scoresEnVariables(m.id) },
       ], [

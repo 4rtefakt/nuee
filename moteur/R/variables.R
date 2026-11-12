@@ -110,11 +110,29 @@ modifier_valeur <- function(projet, observation, variable, valeur) {
   projet
 }
 
+# La moyenne de x dans le groupe de chaque observation (les valeurs manquantes ignorées), et
+# l'écart de x à cette moyenne : pour une formule de Nouvelle variable, par exemple la moyenne
+# d'une variable par secteur, ou une réponse centrée par secteur (ce qui varie d'une année à
+# l'autre dans un secteur). `groupe` : une variable qualitative, un identifiant des observations,
+# ou interaction(site, secteur). Une observation sans groupe (identifiant vide, catégorie
+# manquante) n'a ni moyenne ni écart.
+moyenne_groupe <- function(x, groupe) {
+  g <- as.character(groupe)
+  r <- stats::ave(as.numeric(x), g, FUN = function(v) if (all(is.na(v))) NA_real_ else mean(v, na.rm = TRUE))
+  r[is.na(g)] <- NA_real_  # (ave() leur laisse leur propre valeur)
+  r
+}
+ecart_groupe <- function(x, groupe) as.numeric(x) - moyenne_groupe(x, groupe)
+group_mean <- moyenne_groupe
+group_deviation <- ecart_groupe
+
 # Nouvelle variable calculée par une formule R sur les variables du projet, appelées par leur
 # nom (entre `accents graves` si le nom contient des espaces ou des signes), par exemple :
 #   log10(polyphenols)   sucre / acidite        ifelse(poids >= 170, "gros", "petit")
-# Une variable qualitative y vaut le nom de sa catégorie. Un résultat texte donne une variable
-# qualitative, un résultat logique aussi (catégories FALSE et TRUE).
+#   moyenne_groupe(sucre, verger)               ecart_groupe(densite, secteur)
+# Une variable qualitative y vaut le nom de sa catégorie ; un identifiant des observations
+# (site, secteur...) y vaut ses valeurs, sauf si une variable a le même nom. Un résultat texte
+# donne une variable qualitative, un résultat logique aussi (catégories FALSE et TRUE).
 variable_calculee <- function(projet, nom, formule) {
   nom <- trimws(nom)
   if (!nzchar(nom)) stop(traduire("Donner un nom à la nouvelle variable", "Give the new variable a name"))
@@ -124,6 +142,14 @@ variable_calculee <- function(projet, nom, formule) {
   for (v in Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)) {
     x <- projet$donnees[, as.character(v$uid)]
     assign(as.character(v$ids[1]), if (length(v$categories)) as.character(v$categories)[x] else unname(x), envir = env)
+  }
+  noms_id <- as.character(projet$observation_id_names %||% character(0))
+  for (k in seq_along(noms_id)[-1]) {
+    n <- noms_id[k]
+    if (!nzchar(n) || startsWith(n, "$") || exists(n, envir = env, inherits = FALSE)) next
+    ids <- identifiants_observations(projet, k, obs)
+    ids[!is.na(ids) & !nzchar(trimws(ids))] <- NA
+    assign(n, ids, envir = env)
   }
   r <- tryCatch(eval(parse(text = formule), envir = env), error = function(e) {
     m <- conditionMessage(e)
@@ -141,6 +167,137 @@ variable_calculee <- function(projet, nom, formule) {
   }
   if (!is.numeric(r)) stop(traduire("La formule doit donner des nombres ou du texte", "The formula must give numbers or text"))
   ajouter_colonne(projet, nom, obs, ifelse(is.finite(r), r, NA))
+}
+
+# Les valeurs manquantes de variables quantitatives remplies par ACP itérative régularisée
+# (Josse et Husson 2012), comme missMDA::imputePCA (méthode « Regularized », variables réduites) :
+# les manques d'abord à la moyenne ; à chaque tour, le tableau complété recentré et réduit, l'ACP
+# à k composantes, aux valeurs singulières réduites du bruit estimé sur les autres axes, le
+# reconstruit, et les manques en prennent les valeurs ; jusqu'à ce que l'écart du tableau à sa
+# reconstruction, sur les valeurs observées, change de moins de 1e-6 (au moins 5 tours). Sans
+# `k`, le nombre de composantes est choisi par validation croisée généralisée des variables
+# réduites, de 0 à 5, comme missMDA::estim_ncpPCA(scale(X)) (0 : la moyenne de chaque
+# variable). Les valeurs observées ne changent pas. Une observation à qui manquent plus de la
+# moitié de ces variables reste manquante, et ne compte pas dans l'ACP. Avec `bornes`, une valeur
+# imputée reste dans l'étendue observée de sa variable (une variable 0/1 entre 0 et 1, une
+# surface positive). De nouvelles variables « x (imputée) », ou, avec `remplacer`, les variables
+# elles-mêmes, pour celles qui ont reçu des valeurs (les complètes aident seulement à imputer les
+# autres). attr(, "imputation") : le nombre de valeurs remplies, de composantes (et si elles ont
+# été choisies) et de tours.
+imputer_acp <- function(projet, variables, k = NULL, maxit = 1000, bornes = TRUE, remplacer = FALSE) {
+  obs <- as.numeric(rownames(projet$donnees))
+  variables <- unique(as.numeric(variables))
+  for (u in variables) {
+    if (length(variable_du_projet(projet, u)$categories)) stop(traduire("L'imputation par ACP va avec des variables quantitatives.", "Imputation by PCA goes with quantitative variables."), call. = FALSE)
+  }
+  if (length(variables) < 2) stop(traduire("Choisir au moins deux variables : l'ACP complète chacune par les autres.", "Choose at least two variables: the PCA fills each one from the others."), call. = FALSE)
+  X <- vapply(variables, function(u) as.numeric(colonne(projet, u, obs)), numeric(length(obs)))
+  dimnames(X) <- NULL
+  if (!anyNA(X)) stop(traduire("Ces variables n'ont aucune valeur manquante.", "These variables have no missing values."), call. = FALSE)
+  utiles <- rowMeans(is.na(X)) <= 0.5
+  Xu <- X[utiles, , drop = FALSE]
+  s <- apply(Xu, 2, stats::sd, na.rm = TRUE)
+  if (any(!is.finite(s) | s == 0)) {
+    stop(sprintf(traduire("Une variable constante ou presque vide ne s'impute pas : %s.", "A constant or nearly empty variable can't be imputed: %s."),
+                 paste(projet$noms_var[as.character(variables[!is.finite(s) | s == 0])], collapse = ", ")), call. = FALSE)
+  }
+  n <- nrow(Xu)
+  p <- ncol(Xu)
+  M <- is.na(Xu)
+  if (!any(M)) {
+    stop(traduire("Aucune valeur à remplir : il manque à chaque observation incomplète plus de la moitié de ces variables.",
+                  "No value to fill: each incomplete observation misses more than half of these variables."), call. = FALSE)
+  }
+  if (n < 3) stop(traduire("Trop peu d'observations pour une ACP : il en faut au moins 3 à qui manque au plus la moitié de ces variables.",
+                           "Too few observations for a PCA: at least 3 are needed that miss at most half of these variables."), call. = FALSE)
+  choisies <- is.null(k) || is.na(k[1])
+  k <- if (choisies) composantes_imputation(Xu) else max(1L, min(as.integer(k[1]), p - 1L, n - 2L))
+  r <- acp_reguliere(Xu, k, maxit = maxit)
+  Xi <- r$complet
+  Xi[!M] <- Xu[!M]  # (exactement les valeurs observées)
+  if (bornes) {
+    for (j in seq_len(p)) {
+      b <- range(Xu[, j], na.rm = TRUE)
+      Xi[M[, j], j] <- pmin(pmax(Xi[M[, j], j], b[1]), b[2])
+    }
+  }
+  X[utiles, ] <- Xi
+  for (j in seq_len(p)) {
+    if (!any(M[, j])) next  # (une variable sans valeur remplie aide à imputer les autres, sans copie)
+    u <- variables[j]
+    if (remplacer) {
+      projet$donnees[, as.character(u)] <- X[, j]
+    } else {
+      # (imputée à nouveau, avec d'autres réglages : la même variable, mise à jour)
+      projet <- ajouter_colonne(projet, paste0(projet$noms_var[[as.character(u)]], traduire(" (imputée)", " (imputed)")), obs, X[, j])
+    }
+  }
+  attr(projet, "imputation") <- list(valeurs = sum(M), tours = r$tours, composantes = k, choisies = choisies, laissees = sum(!utiles))
+  projet
+}
+
+# missMDA::imputePCA (méthode « Regularized », variables réduites, chaque observation de poids
+# 1/n), avec la SVD complète de R au lieu d'irlba::irlba, qui en approche les premiers axes :
+# `complet`, le tableau aux manques remplis, `ajuste`, sa reconstruction par les k composantes,
+# dans les unités des variables, et `tours`. Avec k = 0, les manques à la moyenne.
+acp_reguliere <- function(X, k, seuil = 1e-6, maxit = 1000) {
+  n <- nrow(X)
+  p <- ncol(X)
+  M <- is.na(X)
+  moyennes <- colMeans(X, na.rm = TRUE)
+  Z <- sweep(X, 2, moyennes)
+  et <- sqrt(colMeans(Z^2, na.rm = TRUE))  # (l'écart-type des valeurs observées, en 1/n)
+  Z <- sweep(Z, 2, et, "/")
+  Z[M] <- 0
+  ajuste <- Z
+  ancien <- Inf
+  tours <- 0
+  while (k > 0) {
+    # le tableau complété par la reconstruction du tour d'avant, recentré et réduit
+    Z[M] <- ajuste[M]
+    Z <- sweep(sweep(Z, 2, et, "*"), 2, moyennes, "+")
+    moyennes <- colMeans(Z)
+    Z <- sweep(Z, 2, moyennes)
+    et <- sqrt(colMeans(Z^2))
+    Z <- sweep(Z, 2, et, "/")
+    vs <- svd(Z / sqrt(n))
+    # le bruit, estimé sur les axes au-delà de k, pas plus grand que la valeur propre k + 1
+    sigma2 <- n * p / min(p, n - 1) * (sum(Z^2) / n - sum(vs$d[seq_len(k)]^2)) / ((n - 1) * p - (n - 1) * k - p * k + k^2)
+    sigma2 <- min(sigma2, vs$d[k + 1]^2)
+    reduites <- (vs$d[seq_len(k)]^2 - sigma2) / vs$d[seq_len(k)]
+    ajuste <- sqrt(n) * vs$u[, seq_len(k), drop = FALSE] %*% (reduites * t(vs$v[, seq_len(k), drop = FALSE]))
+    ecart <- Z - ajuste
+    ecart[M] <- 0
+    critere <- sum(ecart^2) / n
+    evolution <- abs(1 - critere / ancien)
+    ancien <- critere
+    tours <- tours + 1
+    if ((!is.nan(evolution) && (evolution < seuil || critere < seuil) && tours >= 5) || tours >= maxit) break
+  }
+  remettre <- function(A) sweep(sweep(A, 2, et, "*"), 2, moyennes, "+")
+  complet <- X
+  complet[M] <- remettre(Z)[M]
+  list(complet = complet, ajuste = remettre(ajuste), tours = tours)
+}
+
+# Le nombre de composantes d'une imputation, comme missMDA::estim_ncpPCA sur les variables
+# réduites (estim_ncpPCA(scale(X))) : la validation croisée généralisée de 0 à `kmax` composantes
+# (0 : l'écart des valeurs observées à leur moyenne), et le premier nombre après lequel le
+# critère remonte. Réduites, chaque variable y compte autant, comme dans l'ACP ; dans leurs unités
+# (estim_ncpPCA(X)), celles de grande variance feraient seules le critère, souvent jusqu'à 0.
+composantes_imputation <- function(X, kmax = 5) {
+  X <- scale(X)
+  n <- nrow(X)
+  p <- ncol(X)
+  manques <- sum(is.na(X))
+  kmax <- min(kmax, p - 1, n - 2)
+  critere <- mean((X - rep(colMeans(X, na.rm = TRUE), each = n))^2, na.rm = TRUE)
+  for (q in seq_len(kmax)) {
+    ajuste <- acp_reguliere(X, q)$ajuste
+    critere <- c(critere, mean(((n * p - manques) * (X - ajuste) / ((n - 1) * p - manques - q * (n + p - q - 1)))^2, na.rm = TRUE))
+  }
+  hausses <- which(diff(critere) > 0)
+  as.integer((if (length(hausses)) hausses[1] else which.min(critere)) - 1)
 }
 
 # Variable qualitative d'après les valeurs d'une variable quantitative : des bornes

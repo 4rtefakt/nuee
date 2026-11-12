@@ -191,6 +191,62 @@ verifier("courbes d'effet : la courbe en x1, la droite en x2, avec leurs interva
          all(eg6[[1]]$haut >= eg6[[1]]$bas) && length(eg6[[2]]$x) == 80)
 ag6 <- apport_groupes(mg6)
 verifier("apport des termes d'un GAMM (réajusté en ML)", nrow(ag6) == 2 && all(!is.na(ag6$delta_aic)))
+# les seuils d'une courbe : la démarche des scripts qui ont servi de modèle, refaite ici sur
+# l'ajustement de mgcv fait à part (refr : mêmes termes dans le même ordre), avec la même graine
+s6 <- seuils_courbe(mg6, "x1")
+xs <- seq(quantile(tg$x1, .02), quantile(tg$x1, .98), length.out = 200)
+nds <- transform(tg[rep(1, 200), ], x1 = xs, site = factor(tg$site[1], levels = sort(unique(tg$site))))
+Xp <- predict(refr, nds, type = "lpmatrix")
+js <- grep("^s\\(x1\\)", colnames(Xp))
+set.seed(1)
+B <- MASS::mvrnorm(2000, coef(refr), vcov(refr))
+fit <- as.vector(Xp[, js] %*% coef(refr)[js])
+fit <- fit - mean(fit)
+sims <- sweep(Xp[, js] %*% t(B[, js]), 2, colMeans(Xp[, js] %*% t(B[, js])))
+se_f <- apply(sims, 1, sd)
+cf <- quantile(apply(abs(sims - fit) / se_f, 2, max), .95)
+der <- diff(fit) / diff(xs[1:2])
+dsim <- apply(sims, 2, diff) / diff(xs[1:2])
+se_d <- apply(dsim, 1, sd)
+cd <- quantile(apply(abs(dsim - der) / se_d, 2, max), .95)
+signe <- ifelse(der - cd * se_d > 0, "hausse", ifelse(der + cd * se_d < 0, "baisse", "ns"))
+verifier(sprintf("seuils d'une courbe = la démarche des scripts (2000 tirages, bandes simultanées ; %d plage(s) de pente nette)", nrow(s6$plages_pente)),
+         proche(s6$x, xs) && proche(s6$effet, fit, 1e-4) && proche(s6$bas, fit - cf * se_f, 1e-3) && proche(s6$pente, der, 1e-4) &&
+           proche(s6$pente_haut, der + cd * se_d, 1e-3) && identical(s6$sens, signe) && !s6$lineaire)
+set.seed(3)
+ts <- data.frame(nom = sprintf("S%03d", 1:300), x = runif(300), z = runif(300))
+ts$y <- 1 + 3 * pmax(0, ts$x - 0.5) + rnorm(300, sd = 0.3)
+ts$y_droit <- 1 + 2 * ts$x + rnorm(300, sd = 0.3)
+ps <- projet_depuis_tableau(ts, "seuil")
+seuil <- function(y) seuils_courbe(ajuster(ps, definir_modele(ps, "GAM", x = numeros(ps, c("x", "z")), y = numeros(ps, y), echelle = "none",
+                                                             lisses = numeros(ps, "x"))), "x")
+sc <- seuil("y")
+sd2 <- seuil("y_droit")
+verifier(sprintf("un seuil connu (pente nulle, puis 3 à partir de 0,5) : la pente devient nettement positive vers %.2f", sc$plages_pente$de[1]),
+         identical(sc$plages_pente$sens, "hausse") && sc$plages_pente$de[1] > 0.45 && sc$plages_pente$de[1] < 0.7 && !sc$lineaire)
+verifier(sprintf("une droite : edf %.2f, dite linéaire sous 1,5 seulement, une seule plage de hausse", sd2$edf),
+         sd2$edf < 2 && identical(sd2$lineaire, sd2$edf < 1.5) && identical(sd2$plages_pente$sens, "hausse"))
+verifier("des seuils sans courbe : refusés", grepl("courbe", refus(seuils_courbe(mg6, "x2"))))
+genre <- RNGkind()
+RNGkind("L'Ecuyer-CMRG", "Box-Muller")
+set.seed(11)
+avant <- .Random.seed
+s6b <- seuils_courbe(mg6, "x1")
+verifier("seuils : les mêmes bandes quel que soit le générateur de la session, rendu tel quel avec son état",
+         proche(s6b$bas, s6$bas, 1e-12) && proche(s6b$pente_haut, s6$pente_haut, 1e-12) && identical(RNGkind()[1:2], c("L'Ecuyer-CMRG", "Box-Muller")) &&
+           identical(.Random.seed, avant))
+RNGkind(genre[1], genre[2], genre[3])
+set.seed(8)
+tcv <- data.frame(nom = sprintf("C%03d", 1:200), a = runif(200), c = runif(200))
+tcv$b <- tcv$a + rnorm(200, sd = 0.02)
+tcv$y <- sin(3 * tcv$a) + tcv$c + rnorm(200, sd = 0.2)
+pcv <- projet_depuis_tableau(tcv, "concurvite")
+mcv <- ajuster(pcv, definir_modele(pcv, "GAM", x = numeros(pcv, c("a", "b", "c")), y = numeros(pcv, "y"), echelle = "none", lisses = numeros(pcv, c("a", "b", "c"))))
+cc <- mgcv::concurvity(mgcv::gam(y ~ s(a) + s(b) + s(c), data = tcv, method = "REML"), full = TRUE)
+verifier(sprintf("concurvité de chaque courbe = mgcv::concurvity() ; deux variables presque égales au-delà de 0,8 (%s)",
+                 paste(formatC(mcv$resultat$courbes$concurvite, digits = 2, format = "f"), collapse = ", ")),
+         proche(mcv$resultat$courbes$concurvite, unname(cc["estimate", c("s(a)", "s(b)", "s(c)")]), 1e-3) &&
+           all(mcv$resultat$courbes$concurvite[1:2] > 0.8) && mcv$resultat$courbes$concurvite[3] < 0.5)
 mg7 <- modele_g("GAM", "densite", c("x1", "x2"), famille = "tweedie", lisses = ug("x1"))
 verifier(sprintf("Tweedie (des zéros et des valeurs positives) : p = %.2f", mg7$resultat$parametre_loi$valeur),
          mg7$resultat$parametre_loi$valeur > 1 && mg7$resultat$parametre_loi$valeur < 2)
@@ -202,8 +258,91 @@ verifier("Poisson sur des valeurs non entières : refusé", grepl("comptages", r
 verifier("binomiale sur une réponse qui n'est pas 0/1 : refusé", grepl("0 ou 1", refus(modele_g("GLM", "compte", "x2", famille = "binomiale"))))
 verifier("un décalage avec la loi normale : refusé", grepl("lien log", refus(modele_g("GLM", "masse", "x2", decalage = ug("effort")))))
 verifier("une courbe dans un GLM : refusée", grepl("additif", refus(modele_g("GLM", "masse", c("x1", "x2"), famille = "gamma", lisses = ug("x1")))))
-verifier("l'autocorrélation avec un GLM : refusée", grepl("linéaire mixte", refus(modele_g("GLM", "masse", "x2", famille = "gamma",
+verifier("l'autocorrélation avec une loi gamma : refusée (mgcv::gamm passerait par la PQL, sans AIC)",
+         grepl("loi normale", refus(modele_g("GLM", "masse", "x2", famille = "gamma",
          aleatoires = list(list(by = "variable", variable = ug("site"))), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ug("x1")))))))
+
+cat("Modèle additif mixte avec une autocorrélation dans le temps (mgcv::gamm)\n")
+# comme les scripts de seuils : y ~ s(x, k = 5) + moyenne de x dans le secteur, un effet aléatoire
+# site, une autocorrélation CAR1 le long des années dans chaque secteur de chaque site
+set.seed(23)
+ta <- expand.grid(annee = c(2001:2005, 2007:2011), secteur = c("a", "b", "c"), site = sprintf("S%d", 1:7), stringsAsFactors = FALSE)
+na <- nrow(ta)
+ta$nom <- sprintf("A%03d", seq_len(na))
+ta$x <- round(runif(na, 0, 10), 3)
+ta$xbar <- ave(ta$x, ta$site, ta$secteur)
+bruit <- numeric(na)
+for (i in split(seq_len(na), paste(ta$site, ta$secteur))) bruit[i[order(ta$annee[i])]] <- as.vector(stats::filter(rnorm(length(i), 0, 0.4), 0.5, "recursive"))
+ta$y <- 1 + 1.2 * sin(ta$x / 2) + 0.25 * ta$xbar + rnorm(7, 0, 0.5)[as.integer(factor(ta$site))] + bruit
+pa <- projet_depuis_tableau(ta[c("nom", "site", "secteur", "annee", "x", "xbar", "y")], "seuils")
+ua <- function(...) numeros(pa, c(...))
+par_variable <- function(n) list(by = "variable", variable = ua(n))
+car1_a <- list(type = "CAR1", temps = par_variable("annee"), dans = par_variable("secteur"))
+da <- definir_modele(pa, "GAM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", famille = "gaussienne", lisses = ua("x"),
+                     k_courbes = stats::setNames(list(5), ua("x")), aleatoires = list(par_variable("site")), correlation = car1_a)
+ma <- ajuster(pa, da)
+ta$site_f <- factor(ta$site)
+ta$secteur_f <- factor(ta$secteur)
+fa <- stats::as.formula("y ~ s(x, k = 5) + xbar", env = new.env(parent = asNamespace("mgcv")))
+cor_a <- nlme::corCAR1(form = ~ annee | site_f / secteur_f)
+ref_reml <- mgcv::gamm(fa, random = list(site_f = ~1), correlation = cor_a, data = ta, method = "REML")
+ref_ml <- mgcv::gamm(fa, random = list(site_f = ~1), correlation = cor_a, data = ta, method = "ML")
+verifier(sprintf("= mgcv::gamm() : coefficients, edf de la courbe (%.2f, k = 5), φ (%.3f)", ma$resultat$courbes$edf, ma$resultat$phi),
+         isTRUE(ma$gamm) && ma$k[[1]] == 5 && proche(ma$resultat$coefficients$estimation, summary(ref_reml$gam)$p.table[, 1], 1e-5) &&
+           proche(ma$resultat$courbes$edf, summary(ref_reml$gam)$s.table[1, "edf"], 1e-5) &&
+           proche(ma$resultat$phi, unname(stats::coef(ref_reml$lme$modelStruct$corStruct, unconstrained = FALSE)), 1e-4))
+verifier(sprintf("= mgcv::gamm() : la variance du site (REML) ; logLik et AIC de l'ajustement en ML (AIC %.1f)", ma$resultat$AIC),
+         proche(ma$resultat$variances$variance[1], ref_reml$lme$sigma^2 * as.matrix(ref_reml$lme$modelStruct$reStruct$site_f)[1, 1], 1e-4) &&
+           proche(ma$resultat$variances$variance[2], ref_reml$lme$sigma^2, 1e-5) &&
+           proche(ma$resultat$logLik, as.numeric(stats::logLik(ref_ml$lme)), 1e-6) && proche(ma$resultat$AIC, stats::AIC(ref_ml$lme), 1e-6))
+verifier("valeurs ajustées : avec le site ($lme) et par les effets fixes ($gam) ; résidus normalisés",
+         proche(ma$resultat$ajuste, as.vector(stats::fitted(ref_reml$lme)), 1e-5) && proche(ma$resultat$ajuste_fixe, as.vector(stats::fitted(ref_reml$gam)), 1e-5) &&
+           proche(ma$resultat$residus, as.vector(stats::residuals(ref_reml$lme, type = "normalized")), 1e-4) &&
+           !is.null(ma$resultat$r2$marginal) && ma$resultat$r2$conditionnel >= ma$resultat$r2$marginal)
+pred_a <- rep(NA_real_, na)
+for (s in unique(ta$site)) {
+  ici <- ta$site == s
+  appris <- droplevels(ta[!ici, ])
+  mm <- mgcv::gamm(fa, random = list(site_f = ~1), correlation = cor_a, data = appris, method = "REML")
+  pred_a[ici] <- predict(mm$gam, ta[ici, ])
+}
+verifier(sprintf("validation croisée par site (le premier effet aléatoire) : Q2 = %.3f, recalculé à la main", ma$vc$Q2),
+         ma$G == 7 && proche(ma$vc$Q2, 1 - sum((ta$y - pred_a)^2) / sum((ta$y - mean(ta$y))^2), 1e-5))
+pra <- predire(pa, ma, da, numeros_observations(pa)[1:5])
+verifier("prédiction : par les effets fixes et la courbe, comme predict() de $gam",
+         proche(pra[["y prédit"]], as.vector(predict(ref_reml$gam, ta[1:5, ])), 1e-5))
+aa <- apport_groupes(ma)
+ea <- effets_regression(ma)
+verifier("apport des termes (réajustés en ML) ; la courbe d'effet de x", nrow(aa) == 2 && all(!is.na(aa$delta_aic)) && isTRUE(ea[[1]]$courbe) && length(ea[[1]]$x) == 80)
+ma0 <- ajuster(pa, definir_modele(pa, "GAM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", famille = "gaussienne", lisses = ua("x"),
+                                  k_courbes = stats::setNames(list(5), ua("x")), aleatoires = list(par_variable("site"))))
+verifier("la vraisemblance de mgcv::gamm a son propre ensemble AIC (pas celui du même modèle sans autocorrélation)",
+         grepl("gamm$", ma$signature) && ma$signature != ma0$signature && !isTRUE(ma0$gamm))
+fg <- stats::as.formula("y ~ s(x, k = 5) + xbar + s(site_f, bs = \"re\")", env = new.env(parent = asNamespace("mgcv")))
+ref_gam <- mgcv::gam(fg, data = ta, method = "REML")
+verifier(sprintf("sans autocorrélation, la courbe de dimension 5 aussi : = mgcv::gam() (edf %.2f, AIC de l'ajustement en ML)", ma0$resultat$courbes$edf),
+         ma0$k[[1]] == 5 && proche(ma0$resultat$courbes$edf, summary(ref_gam)$s.table["s(x)", "edf"], 1e-4) &&
+           proche(ma0$resultat$AIC, stats::AIC(mgcv::gam(fg, data = ta, method = "ML")), 1e-6))
+dl <- definir_modele(pa, "LMM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", aleatoires = list(par_variable("site")), correlation = car1_a)
+ml_ref <- nlme::lme(y ~ x + xbar, random = ~ 1 | site_f, correlation = cor_a, data = ta, method = "ML")
+verifier("modèle linéaire mixte : l'autocorrélation dans chaque secteur, seul le site aléatoire (= nlme::lme)", proche(ajuster(pa, dl)$resultat$AIC, stats::AIC(ml_ref), 1e-6))
+verifier("une autocorrélation sans effet aléatoire : refusée", grepl("effet aléatoire", refus(definir_modele(pa, "GAM", x = ua("x"), y = ua("y"), famille = "gaussienne",
+         correlation = car1_a))))
+verifier("une dimension de courbe impossible (k = 2) : refusée", grepl("dimension", refus(definir_modele(pa, "GAM", x = ua("x"), y = ua("y"), famille = "gaussienne",
+         lisses = ua("x"), k_courbes = stats::setNames(list(2), ua("x"))))))
+for (langue_a in c("fr", "en")) {
+  tma <- texte_methodes(pa, da, ma, langue_a, "essai")
+  verifier(sprintf("texte des méthodes (%s) : mgcv::gamm, l'autocorrélation dans chaque secteur, Wood et Pinheiro cités, R² marginal", langue_a),
+           any(grepl("gamm", tma$paragraphes)) && any(grepl("CAR1", tma$paragraphes)) && any(grepl("secteur", tma$paragraphes)) &&
+             any(grepl("Pinheiro", tma$references)) && any(grepl("Wood", tma$references)) && any(grepl("marginal", tma$paragraphes)) &&
+             !any(grepl("NA", tma$paragraphes, fixed = TRUE)))
+}
+fa_proj <- tempfile(fileext = ".nuee")
+pa$models <- list(da)
+enregistrer_projet(pa, fa_proj)
+qa <- lire_projet(fa_proj)
+ma2 <- ajuster(qa, qa$models[[1]])
+verifier("enregistré puis relu : le même modèle (autocorrélation dans chaque secteur, k = 5)", proche(ma2$resultat$AIC, ma$resultat$AIC, 1e-8) && ma2$k[[1]] == 5)
 
 cat("Prédiction\n")
 pr <- predire(p, m, d, obs)
@@ -278,6 +417,9 @@ verifier(sprintf("chaque transformation écrite en R se relit (%d)", length(code
 if (any(nzchar(relus))) cat("         ", relus[nzchar(relus)], sep = "\n          ")
 r2 <- lire_formule(p, "note_gout ~ s(sucre) + `fermete`", "LMM")
 verifier("une courbe : le type devient additif ; un nom entre accents graves", r2$type == "GAM" && r2$lisses == u("sucre") && setequal(r2$x, u("sucre", "fermete")))
+r2k <- lire_formule(p, "note_gout ~ s(sucre, k = 5) + fermete", "LM")
+verifier(sprintf("une courbe de dimension fixée, s(sucre, k = 5) : lue, et réécrite (%s)", formule_reglages(p, r2k)),
+         identical(r2k$k_courbes[[as.character(u("sucre"))]], 5L) && grepl("s(sucre, k = 5)", formule_reglages(p, r2k), fixed = TRUE))
 r3 <- lire_formule(p, "log(note_gout) ~ I(sucre^2) + variete", "LMM")
 verifier("sans effet aléatoire, un modèle linéaire ; x² seul, une transformation de x ; une réponse transformée",
          r3$type == "LM" && identical(r3$transformations[[as.character(u("sucre"))]], "puissance:1:0:2") && !length(r3$croises) &&
@@ -293,12 +435,107 @@ dangereuses <- c(sprintf("note_gout ~ sucre + file.create(\"%s\")", marqueur), s
                  "note_gout ~ (function() sucre)()", "note_gout ~ sucre; file.remove(\"x\")")
 verifier("du code dans une formule : refusé, jamais exécuté", all(vapply(dangereuses, function(f) nzchar(refus(lire_formule(p, f))), TRUE)) && !file.exists(marqueur))
 messages <- c("note_gout ~ sucre - 1" = "ordonnée", "note_gout ~ (sucre | verger)" = "aléatoires", "note_gout ~ sucre + (1 | verger) + (1 | culture)" = "emboîtés",
-              "note_gout ~ s(sucre, k = 5)" = "choisit", "note_gout ~ sucre:fermete" = "demande aussi", "note_gout ~ inconnue" = "pas une variable",
+              "note_gout ~ s(sucre, bs = \"cr\")" = "dimension", "note_gout ~ s(sucre, k = 2)" = "entier de 3", "note_gout ~ sucre:fermete" = "demande aussi",
+              "note_gout ~ inconnue" = "pas une variable",
               "note_gout ~ sucre^2" = "I\\(x\\^2\\)", "variete ~ sucre" = "qualitative", "note_gout ~ sucre + log(sucre)" = "deux façons",
               "note_gout ~ s(variete)" = "quantitative", "note_gout ~ sucre +" = "illisible")
 mauvais <- names(messages)[!vapply(names(messages), function(f) grepl(messages[[f]], refus(lire_formule(p, f))), TRUE)]
 verifier("une formule que Nuée ne sait pas faire : refusée, en disant pourquoi", !length(mauvais))
 if (length(mauvais)) cat("          ", mauvais, sep = "\n          ")
+
+cat("Variables par groupe (Nouvelle variable)\n")
+pv2 <- variable_calculee(variable_calculee(p, "sucre_verger", "moyenne_groupe(sucre, verger)"), "sucre_intra", "ecart_groupe(sucre, verger)")
+attendu <- ave(df$sucre, df$verger, FUN = function(v) mean(v, na.rm = TRUE))
+verifier("moyenne par groupe et écart à la moyenne = ave(), les valeurs manquantes ignorées",
+         proche(colonne(pv2, numeros(pv2, "sucre_verger"), obs), attendu) && proche(colonne(pv2, numeros(pv2, "sucre_intra"), obs), df$sucre - attendu))
+pid <- projet_depuis_tableau(data.frame(nom = sprintf("O%d", 1:6), x = c(1, 2, 3, 10, NA, 14)), "ids")
+pid$observation_id_names <- c("Observation", "secteur")
+for (i in seq_along(pid$observations)) pid$observations[[i]]$ids <- c(pid$observations[[i]]$ids[1], c("a", "a", "a", "b", "b", "b")[i])
+pid <- variable_calculee(pid, "x_secteur", "group_mean(x, secteur)")
+verifier("un identifiant des observations fait les groupes d'une formule (le secteur)",
+         proche(colonne(pid, numeros(pid, "x_secteur"), numeros_observations(pid)), c(2, 2, 2, 12, 12, 12)))
+pna <- pid
+pna$observations[[6]]$ids[2] <- ""
+pna <- variable_calculee(variable_calculee(pna, "x_moy", "moyenne_groupe(x, secteur)"), "x_ecart", "ecart_groupe(x, secteur)")
+verifier("une observation sans groupe (identifiant vide) n'a ni moyenne ni écart de groupe",
+         proche(colonne(pna, numeros(pna, "x_moy"), numeros_observations(pna)), c(2, 2, 2, 10, 10, NA)) &&
+           proche(colonne(pna, numeros(pna, "x_ecart"), numeros_observations(pna)), c(-1, 0, 1, 0, NA, NA)))
+
+cat("Imputation par ACP (Nouvelle variable)\n")
+set.seed(5)
+ni <- 80
+Xs <- matrix(rnorm(ni * 2), ni, 2) %*% matrix(runif(12, -1, 1), 2, 6) + matrix(rnorm(ni * 6, sd = 0.3), ni, 6)
+Xs[, 6] <- as.numeric(Xs[, 6] > 0)  # (une variable 0/1)
+Xs[matrix(runif(ni * 6) < 0.12, ni, 6)] <- NA
+Xs[3, 1:4] <- NA  # (une observation à qui manquent plus de la moitié des variables)
+pim <- projet_depuis_tableau(data.frame(nom = sprintf("I%02d", 1:ni), Xs), "imputation")
+vars_i <- numeros(pim, paste0("X", 1:6))
+imputees <- function(pr, suffixe = " (imputée)") sapply(paste0("X", 1:6, suffixe), function(n) colonne(pr, numeros(pr, n), numeros_observations(pr)))
+garde <- rowMeans(is.na(Xs)) <= 0.5
+# missMDA 1.23 sur Xs[garde, ] : imputePCA(, ncp = 2) et imputePCA(, ncp = 5), leurs $completeObs
+# aux valeurs manquantes (missMDA y prend la SVD complète, comme Nuée ; avec moins de composantes
+# que la moitié des variables, irlba en approche les axes, à 1e-4 écart-type près), et
+# estim_ncpPCA(scale(), method.cv = "gcv")$ncp = 2
+missmda_k2 <- c(-1.09850517903, 1.04203959962, -1.73667473728, -0.438784883781, 0.663782517243, -0.0286459197537, 0.203155717142,
+                -0.540916303339, 2.30493561298, -0.914166498774, 2.41190510925, 0.570652419912, -0.95297584875, 0.78306643049,
+                2.32153138477, -0.886453770496, 0.584939589276, 1.14015737256, -0.779022590792, -1.41463154333, -0.648719873629,
+                -1.4168851179, 0.113247444619, -0.855629269944, 0.556388291345, -1.01725244041, -0.629672060415, 1.31277881186,
+                -0.220629888486, -0.0204866993164, 0.152427337166, 0.743183162362, -0.485333815705, -0.123861140842, 0.00251778628088,
+                0.0892256365373, 0.45814831693, -0.179704318574, 0.0939651735591, -0.0735342424854, 0.00522104634458, 0.312763361681,
+                0.531569437827, 0.965269128194, 1.15244835102, 0.767184542815, 0.284176867314)
+missmda_k5 <- c(-1.12796455212, 1.07927088679, -1.75942242282, -0.431529947865, 0.775702367417, -0.0529214947845, 0.182114337709,
+                -0.561827231334, 2.54093418285, -0.833614672184, 2.61410366385, 0.845555081331, -1.14702157319, 1.00849467597,
+                2.46840004897, -0.94800899879, 0.465373713578, 0.996247063975, -0.494338974798, -1.66761875381, -1.05832269284,
+                -1.58882196161, -0.123239027108, -0.678874525175, 0.472324334004, -1.14706277089, -0.589011765487, 1.36753981623,
+                -0.442065499629, -0.15134121905, -0.0385084137836, 0.673409564667, -0.914683270068, -0.100853649257, -0.0539450398052,
+                0.115293616534, 0.320892251987, -0.13324437654, -0.281450863166, -0.00315337399132, 0.172338171825, 0.336642830671,
+                0.481419250049, 0.771627313328, 1.07302143933, 0.697801557394, 0.392247443088)
+manques_i <- is.na(Xs[garde, ])
+pi1 <- imputer_acp(pim, vars_i, k = 2, bornes = FALSE)
+got <- imputees(pi1)
+verifier(sprintf("imputation = missMDA::imputePCA, 2 et 5 composantes (%d valeurs, %d tours) ; les valeurs observées restent",
+                 attr(pi1, "imputation")$valeurs, attr(pi1, "imputation")$tours),
+         proche(got[garde, ][manques_i], missmda_k2, 1e-8) && proche(imputees(imputer_acp(pim, vars_i, k = 5, bornes = FALSE))[garde, ][manques_i], missmda_k5, 1e-8) &&
+           proche(got[!is.na(Xs)], Xs[!is.na(Xs)]) && attr(pi1, "imputation")$valeurs == sum(manques_i))
+pa <- imputer_acp(pim, vars_i, bornes = FALSE)
+verifier("sans nombre de composantes : 2, choisies comme missMDA::estim_ncpPCA des variables réduites (validation croisée généralisée)",
+         attr(pa, "imputation")$composantes == 2 && isTRUE(attr(pa, "imputation")$choisies) && !isTRUE(attr(pi1, "imputation")$choisies) &&
+           proche(imputees(pa)[garde, ][manques_i], missmda_k2, 1e-8))
+# (les variables de l'exemple, d'unités diverses : estim_ncpPCA(scale(X)) en choisit 5 ;
+# estim_ncpPCA(X), son critère dans leurs unités, 0, la moyenne de chaque variable)
+quantitatives <- Filter(function(v) !length(v$categories), p$variables)
+Xv <- sapply(quantitatives, function(v) as.numeric(colonne(p, as.numeric(v$uid), obs)))
+verifier("les variables de l'exemple, d'unités diverses : 5 composantes, comme estim_ncpPCA(scale(X)) (0 dans leurs unités)",
+         composantes_imputation(Xv[rowMeans(is.na(Xv)) <= 0.5, ]) == 5)
+# (15 observations, 6 variables, 5 composantes : sans la borne de missMDA, le bruit estimé dépasse
+# la 5e valeur propre et retourne cette composante ; imputePCA(, ncp = 5)$completeObs aux manques)
+set.seed(1)
+Xn <- matrix(rnorm(15 * 2), 15, 2) %*% matrix(runif(12, -1, 1), 2, 6) + matrix(rnorm(15 * 6, sd = 0.6), 15, 6)
+Xn[matrix(runif(15 * 6) < 0.1, 15, 6)] <- NA
+missmda_n <- c(0.935854308735, 0.655633624315, 0.897695637794, -1.36113634282, 0.481978961689, 1.18750581482, 0.483075381276,
+               0.0385306604179, 0.794020054969, -0.161098049444)
+pn <- projet_depuis_tableau(data.frame(nom = sprintf("N%02d", 1:15), Xn), "imputation")
+pn <- imputer_acp(pn, numeros(pn, paste0("X", 1:6)), k = 5, bornes = FALSE, remplacer = TRUE)
+xn <- sapply(paste0("X", 1:6), function(v) colonne(pn, numeros(pn, v), numeros_observations(pn)))
+verifier("autant de composantes ou presque que de variables : le bruit borné comme dans missMDA", proche(xn[is.na(Xn)], missmda_n, 1e-8))
+verifier("une observation à qui manquent plus de la moitié des variables reste manquante", all(is.na(got[3, 1:4])) && attr(pi1, "imputation")$laissees == 1)
+pi2 <- imputer_acp(pim, vars_i, k = 5)
+x6 <- imputees(pi2)[, 6]
+verifier("bornées : une variable 0/1 imputée reste entre 0 et 1", all(x6[!is.na(x6)] >= 0 & x6[!is.na(x6)] <= 1) && any(x6[garde & is.na(Xs[, 6])] %% 1 != 0))
+pi3 <- imputer_acp(pim, vars_i, k = 2, remplacer = TRUE)
+verifier("remplir les variables elles-mêmes : aucune nouvelle variable, plus de manques (sauf l'observation trop incomplète)",
+         length(pi3$variables) == length(pim$variables) && !anyNA(imputees(pi3, "")[garde, ]))
+pi4 <- imputer_acp(pi1, vars_i, k = 3, bornes = FALSE)
+verifier("imputée à nouveau, avec d'autres réglages : les mêmes variables, mises à jour", length(pi4$variables) == length(pi1$variables) &&
+           !proche(imputees(pi4)[garde, ], imputees(pi1)[garde, ], 1e-8))
+verifier("une seule variable, ou une variable qualitative : refusé", grepl("deux variables", refus(imputer_acp(pim, vars_i[1]))) &&
+           grepl("quantitatives", refus(imputer_acp(p, u("variete", "sucre")))))
+pc <- projet_depuis_tableau(data.frame(nom = sprintf("I%02d", 1:ni), Xs, C = rnorm(ni), D = rnorm(ni)), "imputation")
+pi5 <- imputer_acp(pc, numeros(pc, c(paste0("X", 1:6), "C")), k = 5)
+verifier("une variable complète aide à imputer les autres, sans copie « (imputée) » ; rien à remplir : refusé",
+         length(pi5$variables) == length(pc$variables) + 6 && !"C (imputée)" %in% unlist(pi5$noms_var) &&
+           grepl("aucune valeur manquante", refus(imputer_acp(pc, numeros(pc, c("C", "D"))))) &&
+           grepl("plus de la moitié", refus(imputer_acp(pi3, vars_i))))
 
 cat("Texte des méthodes\n")
 for (l in c("fr", "en")) {

@@ -1,20 +1,26 @@
 // Every action of the application, used by the menu bar, the toolbar, context menus and
 // keyboard shortcuts. `app` is the main window object built in app.js.
 import { t, langueActuelle } from './i18n.js';
+import { vuesDe } from './explorateur.js';
 
 export function creerCommandes(app) {
   const m = () => app.modeleActif();
   const avecModele = () => !!m();
   // (a regression has no components, scores or loadings: regression.R)
   const avecRegression = () => { const x = app.modele(m()); return !!x && !!x.regression; };
-  const avecLV = () => avecModele() && !avecRegression();
-  const avecPLS = () => { const x = app.modele(m()); return !!x && x.type !== 'PCA' && !x.regression; };
+  // a model of NIPALS components (PCA, PLS, OPLS): not a regression nor another analysis (x.analyse)
+  const avecLV = () => { const x = app.modele(m()); return !!x && !x.regression && !x.analyse; };
+  const avecPLS = () => { const x = app.modele(m()); return !!x && x.type !== 'PCA' && !x.regression && !x.analyse; };
+  // (another analysis predicts new observations only when it says so: x.prediction)
+  const avecPrediction = () => { const x = app.modele(m()); return !!x && (!x.analyse || x.prediction === true); };
   const avecSelection = () => avecModele() && app.selection(m()).length > 0;
   const avecPLSDA = () => { const x = app.modele(m()); return !!x && /-DA$/.test(x.type); };
   const avecOPLS = () => { const x = app.modele(m()); return !!x && !!x.opls; };
   const avecGroupe = () => { const x = app.modele(m()); return !!x && !!x.groupe; };
   const choixVIP = () => app.choixVIP(m()) || [].concat((app.modele(m()).seuil_vip || {}).retenues || []);
-  const vue = (nom, cond = avecModele) => ({ icone: ICONES_VUES[nom], actif: cond, action: () => app.ouvrirVue(nom, m()) });
+  // a view: another analysis has those its module lists (vues_*.js), the other models those `cond` allows
+  const vue = (nom, cond = avecModele) => ({ icone: ICONES_VUES[nom], action: () => app.ouvrirVue(nom, m()),
+    actif: () => { const x = app.modele(m()); return x && x.analyse ? vuesDe(x).includes(nom) : cond(); } });
 
   const C = {
     ouvrir: { icone: 'folder-open', raccourci: 'Ctrl+O', action: () => app.ouvrir() },
@@ -61,11 +67,11 @@ export function creerCommandes(app) {
     dendrogramme: vue('dendrogramme', avecLV), liste_obs: vue('liste_obs'), liste_vars: vue('liste_vars', avecLV),
     permutations: vue('permutations', avecPLS), cvanova: vue('cvanova', avecPLS), classification: vue('classification', avecPLSDA),
     contributions: vue('contributions', avecLV), biplot: vue('biplot', avecLV), scores3d: vue('scores3d', avecLV), splot: vue('splot', avecOPLS), coomans: vue('coomans', avecGroupe),
-    predire_fichier: { icone: 'file-input', actif: avecModele, action: () => app.predireFichierVue(m()) },
+    predire_fichier: { icone: 'file-input', actif: () => avecPrediction(), action: () => app.predireFichierVue(m()) },
     donnees: { icone: 'database', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('donnees', null, null, app.projetActif()) },
     statistiques: { icone: 'chart-column-big', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('statistiques', null, null, app.projetActif()) },
     tests: { icone: 'flask-conical', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('tests', null, null, app.projetActif()) },
-    predire: { icone: 'target', actif: avecModele, action: () => app.ouvrirVue('predictions', m()) },
+    predire: { icone: 'target', actif: () => avecPrediction(), action: () => app.ouvrirVue('predictions', m()) },
     comparaison: { icone: 'columns-2', action: () => app.ouvrirVue('comparaison') },
 
     nouvelle_fenetre: { icone: 'app-window', raccourci: 'Ctrl+Shift+N', action: () => app.nouvelleFenetre() },

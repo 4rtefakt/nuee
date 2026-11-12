@@ -3,7 +3,7 @@
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
-import { VUES } from './panneaux.js';
+import { VUES, resumeSeuils, notePhi } from './panneaux.js';
 import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
@@ -28,13 +28,20 @@ const PARTIES = [
   { cle: 'liste_vars', tableau: tableauVariables },
 ];
 
+// Another analysis's parts (RDA, LDA...), by its type: registered by its module (vues_*.js).
+export const PARTIES_TYPES = {};
+
 // A regression's parts (moteur/R/regression.R): its summary and coefficients as tables, its plots
 // as in their panels. `variantes`: one plot per setting of the view (each term's effect; the
-// residuals against the fitted values, then on a normal Q-Q plot).
+// residuals against the fitted values, then on a normal Q-Q plot). `si`: only for the models it
+// accepts (the thresholds: an additive model's curves).
+const avecCourbes = (m) => [].concat((m.courbes && m.courbes.terme) || []).length > 0;
 const PARTIES_REGRESSION = [
   { cle: 'resume', defaut: true, tableau: tableauRegression },
   { cle: 'coefficients', vue: 'coefficients', defaut: true, tableau: tableauCoefficientsRegression },
-  { cle: 'effets', vue: 'effets', defaut: true, variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme })) },
+  { cle: 'effets', vue: 'effets', defaut: true, variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
+  { cle: 'seuils', vue: 'effets', defaut: true, si: avecCourbes, tableau: resumesSeuils,
+    variantes: async (m) => [].concat(m.courbes.terme).map((terme) => ({ terme, seuils: true })) },
   { cle: 'obspred', vue: 'obspred', defaut: true },
   { cle: 'residus', vue: 'residus', defaut: true, variantes: async () => [{ mode: 'ajustes' }, { mode: 'qq' }] },
   { cle: 'apports', vue: 'apports' },
@@ -44,7 +51,7 @@ export function dialogueRapport(app, id) {
   const m = app.modele(id);
   if (!m) return;
   const pls = m.type !== 'PCA';
-  const parties = m.regression ? PARTIES_REGRESSION
+  const parties = PARTIES_TYPES[m.type] ? PARTIES_TYPES[m.type].filter((x) => !x.si || x.si(m)) : m.regression ? PARTIES_REGRESSION.filter((x) => !x.si || x.si(m))
     : PARTIES.filter((x) => (!x.pls || pls) && (!x.plsda || /-DA$/.test(m.type)) && (!x.min || m.A >= x.min) && (!x.opls || m.opls));
   const choix = new Set(parties.filter((x) => x.defaut).map((x) => x.cle));
   const st = { titre: `${m.nom}${m.titre ? ' — ' + m.titre : ''}`, commentaire: '', format: 'pdf' };
@@ -110,7 +117,7 @@ async function contenuRapport(app, m, parties, st) {
   }
   for (const x of parties) {
     blocs.push({ titre: t(x.cle), niveau: 1 });
-    if (x.tableau) blocs.push(...x.tableau(m));
+    if (x.tableau) blocs.push(...(await x.tableau(m)));  // (a table can ask the engine first: thresholds, tests computed on demand)
     if (x.vue) {
       for (const variante of x.variantes ? await x.variantes(m) : [{}]) {
         const image = await imageVue(app, x.vue, m, variante);
@@ -181,13 +188,25 @@ function tableauRegression(m) {
   }
   const cb = m.courbes;
   if (cb) {
-    blocs.push({ entetes: [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'],
-      lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]) });
+    const cv = cb.concurvite !== undefined;
+    blocs.push({ entetes: [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'].concat(cv ? [t('concurvite')] : []),
+      lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]
+        .concat(cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
   }
   const retires = [].concat(m.termes_retires || []);
-  return blocs.concat([m.phi !== null && m.phi !== undefined ? t('phi_note', { phi: fmt(m.phi, 3), temps: m.temps }) : '',
+  return blocs.concat([notePhi(m),
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
     retires.length ? t('termes_retires', { termes: retires.join(', ') }) : ''].filter(Boolean).map((texte) => ({ texte })));
+}
+
+// Each curve's thresholds in words, as above its plot in the Effects view (regression.R:
+// seuils_courbe, computed once per curve and kept by the engine).
+async function resumesSeuils(m) {
+  const blocs = [];
+  for (const terme of [].concat(m.courbes.terme)) {
+    blocs.push({ texte: `${terme} — ${resumeSeuils(await demander('seuils', { modele: m.id, terme }))}` });
+  }
+  return blocs;
 }
 
 // A regression's coefficients, as in its Coefficients panel (exp() of them with a log or logit link).

@@ -19,8 +19,8 @@ The installer, `Nuee-Setup-<version>.exe`, comes from the
 
 | | Command | Installs in |
 |---|---|---|
-| For the user running it | `Nuee-Setup-0.9.2.exe /S /currentuser` | `%LOCALAPPDATA%\Programs\Nuée` |
-| For every user of the computer (administrator, e.g. run as SYSTEM by SCCM or Intune) | `Nuee-Setup-0.9.2.exe /S /allusers` | `%ProgramFiles%\Nuée` |
+| For the user running it | `Nuee-Setup-0.9.3.exe /S /currentuser` | `%LOCALAPPDATA%\Programs\Nuée` |
+| For every user of the computer (administrator, e.g. run as SYSTEM by SCCM or Intune) | `Nuee-Setup-0.9.3.exe /S /allusers` | `%ProgramFiles%\Nuée` |
 
 `/D=D:\Apps\Nuée` (last, without quotes, even with spaces) installs elsewhere. The installer adds
 Start menu and desktop shortcuts, an entry in *Settings › Apps*, and opens `.nuee` projects in
@@ -40,7 +40,8 @@ everyone at their next start. This copy never checks for new versions.
 An installed copy asks GitHub at start-up whether a newer version exists: one HTTPS request to
 `api.github.com/repos/4rtefakt/nuee/releases/latest`. If there is one, a click in the status bar
 downloads the new installer from `github.com/4rtefakt/nuee/releases`, checks its SHA-256 against
-the one GitHub gives, and reinstalls silently in the same mode and folder. A per-computer
+the one GitHub gives, and reinstalls silently in the same mode and folder (all users or this
+user, as Nuée's entry in *Settings › Apps* says, wherever its folder is). A per-computer
 installation asks for administrator rights to do so. Users can turn the check off in *Help*.
 
 To turn it off for everyone (when you deploy updates yourself), set this policy value; the

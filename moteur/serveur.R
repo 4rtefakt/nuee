@@ -206,9 +206,10 @@ variables_avec_donnees <- function(p) {
 }
 
 resume_projet <- function(p) {
+  manquantes <- colSums(is.na(p$donnees))
   vars <- lapply(variables_avec_donnees(p), function(v) list(
     uid = v$uid, nom = as.character(v$ids[1]), qualitative = length(v$categories) > 0,
-    categories = I(as.character(v$categories %||% character(0)))))
+    categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[as.character(v$uid)])))
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
@@ -256,7 +257,9 @@ definition_interface <- function(p, q) {
                       spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)),
                       vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs),
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
-                      lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage))
+                      lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
+                      croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, k_courbes = if (length(q$k_courbes)) q$k_courbes,
+                      options = q$options)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -308,8 +311,9 @@ reajuster_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
   d <- e$definition
-  if (est_regression(d)) {  # (sans composantes ni VIP : seulement des observations en moins)
-    if (length(q$garder)) stop(traduire("Une régression n'a pas de VIP.", "A regression has no VIP."))
+  if (sans_composantes(d)) {  # (une régression, une autre analyse : sans composantes ni VIP, seulement des observations en moins)
+    if (length(q$garder)) stop(if (est_regression(d)) traduire("Une régression n'a pas de VIP.", "A regression has no VIP.")
+                               else traduire("Cette analyse n'a pas de VIP.", "This analysis has no VIP."))
     q$A <- NULL
   }
   exclues <- as.numeric(q$exclues %||% numeric(0))
@@ -339,7 +343,7 @@ reajuster_demande <- function(q) {
 }
 
 ajuster_et_garder <- function(p, d) {
-  if (!d$A && !est_regression(d)) d$A <- max(1, autoajuster(p, d))
+  if (!d$A && !sans_composantes(d)) d$A <- max(1, autoajuster(p, d))  # (ni une régression ni une autre analyse n'a de composantes)
   m <- ajuster(p, d)
   id <- nouvel_id("M")
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
@@ -375,6 +379,7 @@ resultat_regression <- function(id) {
        N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
        coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),
        famille = m$famille, lien = m$lien, parametre_loi = r$parametre_loi, courbes = r$courbes, decalage = m$decalage, dispersion = r$dispersion,
+       gamm = isTRUE(m$gamm), dans = m$dans,
        qualite = c(r$r2, list(AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres,
                               Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs)),
        variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),
@@ -387,6 +392,7 @@ resultat_regression <- function(id) {
 resultat_modele <- function(id) {
   e <- modele(id)
   if (est_regression(e$definition)) return(resultat_regression(id))
+  if (est_autre_analyse(e$definition)) return(fonction_analyse("resultat_", e$definition$type)(id))  # analyses.R
   p <- projet(e$projet)
   m <- e$modele
   d <- e$definition
@@ -507,6 +513,9 @@ methodes_demande <- function(q) {
 # Un modèle (q$modele), ou plusieurs du même projet (q$modeles : la séance, dans un script .R).
 script_demande <- function(q) {
   ids <- as.character(unlist(q$modeles %||% q$modele))
+  # (le script de la séance laisse de côté les autres analyses : elles s'exportent seules)
+  if (length(ids) > 1) ids <- Filter(function(id) !est_autre_analyse(modele(id)$definition), ids)
+  if (!length(ids)) stop(traduire("Ces analyses s'exportent une à une.", "These analyses are exported one by one."))
   e <- modele(ids[1])
   seance <- length(ids) > 1
   nom <- gsub("[^[:alnum:]_ -]", "_", if (seance) as.character(projet(e$projet)$source %||% "seance") else e$definition$name %||% "modele")
@@ -732,6 +741,18 @@ DEMANDES <- list(
   # lue sans jamais être exécutée (formule.R)
   formule = function(q) list(formule = formule_reglages(projet(q$projet), q)),
   lire_formule = function(q) lire_formule(projet(q$projet), q$texte %||% "", q$type, q$famille),
+  # les seuils d'une courbe (regression.R : seuils_courbe), gardés avec le modèle
+  seuils = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    terme <- as.character(q$terme)[1]
+    s <- e$modele$seuils[[terme]]
+    if (is.null(s)) {
+      s <- seuils_courbe(e$modele, terme)
+      etat$modeles[[q$modele]]$modele$seuils[[terme]] <- s
+    }
+    c(list(modele = q$modele), s)
+  },
   effets = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
@@ -750,6 +771,16 @@ DEMANDES <- list(
   modifier_valeur = function(q) changer_projet(q, function(p) modifier_valeur(p, q$observation, q$variable, q$valeur),
     sprintf("modification de %s", projet(q$projet)$noms_var[[as.character(q$variable)]])),
   variable_calculee = function(q) changer_projet(q, function(p) variable_calculee(p, q$nom, q$formule), sprintf("variable %s", q$nom)),
+  # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
+  imputer = function(q) {
+    memoriser(projet(q$projet), traduire("imputation", "imputation"))
+    p <- imputer_acp(projet(q$projet), unlist(q$variables), k = q$k, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
+    info <- attr(p, "imputation")
+    attr(p, "imputation") <- NULL
+    p$modifie <- TRUE
+    etat$projets[[p$id]] <- p
+    c(resume_projet(p), list(imputation = info))
+  },
   classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),
     sprintf("variable %s", q$nom)),
   annuler = annuler_demande,
@@ -807,6 +838,10 @@ DEMANDES <- list(
                              paquets = as.list(vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl", "foreign", "rmarkdown", "knitr"), function(x)
                                tryCatch(as.character(utils::packageVersion(x)), error = function(e) "-"), ""))))
 
+# Les demandes propres d'une autre analyse (analyses.R) : chaque fonction demande_analyse_<nom>(q)
+# du moteur est la demande <nom>.
+for (f in ls(globalenv(), pattern = "^demande_analyse_")) DEMANDES[[sub("^demande_analyse_", "", f)]] <- get(f, envir = globalenv())
+
 # Les valeurs non finies (NaN, Inf) deviennent des valeurs manquantes en JSON.
 fini <- function(x) {
   if (is.data.frame(x) || is.list(x)) {
@@ -860,8 +895,9 @@ appli <- list(
       f <- DEMANDES[[nom]]
       if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
       q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
-      if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) est_regression(modele(id)$definition), TRUE))) {
-        stop(traduire("Ce n'est pas pour une régression (pas de composantes ni de scores).", "This isn't for a regression (no components or scores)."))
+      if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
+        stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
+                      "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
       }
       r <- f(q)
       tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
