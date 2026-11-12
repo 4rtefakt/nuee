@@ -197,7 +197,7 @@ permutations_lignes <- function(n, B, strates = NULL, graine = 1) {
   ancien <- if (existait) get(".Random.seed", envir = globalenv())
   genre <- RNGkind()
   on.exit({
-    RNGkind(genre[1], genre[2], genre[3])
+    suppressWarnings(RNGkind(genre[1], genre[2], genre[3]))  # (le genre de la séance rendu, sans redire ses avertissements)
     if (existait) assign(".Random.seed", ancien, envir = globalenv())
     else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) rm(".Random.seed", envir = globalenv())
   })
