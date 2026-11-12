@@ -262,6 +262,11 @@ ma0 <- ajuster(pa, definir_modele(pa, "GAM", x = ua("x", "xbar"), y = ua("y"), e
                                   k_courbes = stats::setNames(list(5), ua("x")), aleatoires = list(par_variable("site"))))
 verifier("la vraisemblance de mgcv::gamm a son propre ensemble AIC (pas celui du même modèle sans autocorrélation)",
          grepl("gamm$", ma$signature) && ma$signature != ma0$signature && !isTRUE(ma0$gamm))
+fg <- stats::as.formula("y ~ s(x, k = 5) + xbar + s(site_f, bs = \"re\")", env = new.env(parent = asNamespace("mgcv")))
+ref_gam <- mgcv::gam(fg, data = ta, method = "REML")
+verifier(sprintf("sans autocorrélation, la courbe de dimension 5 aussi : = mgcv::gam() (edf %.2f, AIC de l'ajustement en ML)", ma0$resultat$courbes$edf),
+         ma0$k[[1]] == 5 && proche(ma0$resultat$courbes$edf, summary(ref_gam)$s.table["s(x)", "edf"], 1e-4) &&
+           proche(ma0$resultat$AIC, stats::AIC(mgcv::gam(fg, data = ta, method = "ML")), 1e-6))
 dl <- definir_modele(pa, "LMM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", aleatoires = list(par_variable("site")), correlation = car1_a)
 ml_ref <- nlme::lme(y ~ x + xbar, random = ~ 1 | site_f, correlation = cor_a, data = ta, method = "ML")
 verifier("modèle linéaire mixte : l'autocorrélation dans chaque secteur, seul le site aléatoire (= nlme::lme)", proche(ajuster(pa, dl)$resultat$AIC, stats::AIC(ml_ref), 1e-6))
