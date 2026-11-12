@@ -24,7 +24,7 @@ On Linux, Nuée uses the computer's R.
 - Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
   Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
   install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme",
-  "mgcv", "MASS", "rpart")).
+  "mgcv", "MASS", "rpart", "cluster")).
 .usp projects need python3. For another R than the PATH's: start Nuée with
 RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
 
@@ -138,7 +138,9 @@ New model (Model › New model)
 -----------------------------
 General tab: type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models, linear regression, linear
 mixed model, generalized linear model, additive model: see Linear, generalized and mixed
-models), name, number of components
+models; RDA and CA: see Redundancy analysis and correspondence analysis; decision tree, LDA
+and k-means: see Decision trees, linear discriminant analysis and k-means), name, number of
+components
 (automatic by default, by cross-validation), cross-validation groups (in turn, G groups; or
 one group per value of an observation ID or of a variable, see Cross-validation), default
 scaling.
@@ -555,6 +557,44 @@ representation); the lists.
 Both export their tables (File › Export), write their Methods text with its references and make
 a report. File › Export to R writes a script, or an R Markdown or Quarto report, that redoes
 them with R alone, their tests with the same permutations. They don't predict new observations.
+
+Decision trees, linear discriminant analysis and k-means
+--------------------------------------------------------
+New model › type "Decision tree" (rpart): a quantitative Y variable (regression tree) or a
+class variable (classification tree), and X variables by their raw values, so that the
+thresholds read in their units; missing X values are handled by surrogate variables.
+General tab: at least 20 observations per leaf, at most 5 levels, cp = 0.001, 5
+surrogates, pruning by the 1-SE rule (the smallest tree within one standard error of the
+minimum error) or at the minimum error. The pruning comes from an internal
+cross-validation by the cross-validation groups (for sites followed over several years,
+choose the site), and Q2 from an external cross-validation: each group is predicted by a
+tree entirely rebuilt without it. Views: Tree (a click on a node selects its
+observations), Pruning, Leaf rules, Variable importance, First-split stability (200
+bootstrap draws of the groups: the share of the draws where each variable makes the first
+split, and its median threshold), Observed / predicted and Residuals, or Classification
+for a classification tree. Test set and Predict: a new observation follows the tree,
+surrogates included.
+
+Type "Linear discriminant analysis (LDA)" (MASS::lda): a class variable and X variables by
+their raw values; prior probabilities proportional to the class sizes or equal. Each
+observation goes to the class of largest posterior probability; cross-validated, each
+group is classified by the model fitted without it. Views: Discriminant scores,
+Discriminant coefficients (structure correlations, coefficients in the variables' units
+or for variables of standard deviation 1), Classification, Posterior probabilities. Test
+set and Predict.
+
+Type "k-means": X variables scaled as the Variables tab says (UV by default), k clusters
+(Hartigan and Wong algorithm, 25 starts, seed 1), numbered from the largest to the
+smallest; an observation with a missing value is left out. Views: Clusters (on the first
+two principal components), Silhouettes, Choice of k (2 to 10: within-cluster sum of
+squares and mean silhouette), Cluster centres. "Clusters → variable" adds the clusters to
+the project as a qualitative variable (Edit › Undo removes it); Predict assigns a new
+observation to the cluster of the nearest centre.
+
+For all three: Methods text with its references, Export, PDF or Word report, Export to R
+(a script or an R Markdown / Quarto report that redoes the analysis with rpart, MASS or
+cluster, which come with R). Compare models shows a regression tree's Q2 and RMSEcv beside
+the other models.
 
 Editing the data, making variables
 ----------------------------------

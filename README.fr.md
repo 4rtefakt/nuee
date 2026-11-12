@@ -67,7 +67,7 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   lancer ; il demande FUSE 2, le paquet `libfuse2` dans la plupart des distributions) ou
   `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
   d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster"))`.
   Sous Ubuntu 24.04 et après, préférez le `.deb` : il installe le profil AppArmor dont le bac
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 
@@ -156,6 +156,13 @@ partielle avec des covariables, triplots en échelle 1 ou 2, R2 ajusté, tests p
 du modèle, de chaque axe et de chaque terme (à l'intérieur des sites au besoin), sélection pas
 à pas et partition de la variance ; analyse des correspondances (CA) de tableaux d'effectifs,
 avec contributions et cos². Les résultats sont ceux du paquet vegan.
+
+**Arbres, analyse discriminante, groupes :** arbres de décision (rpart) pour une réponse
+quantitative ou une classe, sur les valeurs brutes des variables pour que les seuils se lisent
+dans leurs unités, élagués par une validation croisée par site et validés en prédisant chaque
+site par un arbre refait sans lui, avec la stabilité de la première coupure ; analyse
+discriminante linéaire (MASS::lda), classement en validation croisée et probabilités a
+posteriori ; k-moyennes avec silhouettes et choix de k.
 
 ![Tests par variable sur les pommes de l'exemple : un graphique volcan de Golden contre Gala, et la table des tests](docs/captures/volcan.png)
 

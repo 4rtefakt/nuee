@@ -24,7 +24,7 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
 - Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart")).
+  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster")).
 Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
 RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
 
@@ -149,7 +149,9 @@ Nouveau modèle (Modèle › Nouveau modèle)
 ----------------------------------------
 Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA, modèles de classe, régression
 linéaire, modèle linéaire mixte, modèle linéaire généralisé, modèle additif : voir Modèles
-linéaires, généralisés et mixtes), nom, nombre de composantes
+linéaires, généralisés et mixtes ; RDA et CA : voir Analyse de redondance et analyse des
+correspondances ; arbre de décision, LDA et k-moyennes : voir Arbres de décision, analyse
+discriminante linéaire et k-moyennes), nom, nombre de composantes
 (automatique par défaut, par validation croisée), groupes de validation croisée (à tour de
 rôle, G groupes ; ou un groupe par valeur d'un identifiant ou d'une variable, voir Validation
 croisée), échelle par défaut.
@@ -593,6 +595,46 @@ L'une et l'autre exportent leurs tableaux (Fichier › Exporter), écrivent leur
 méthodes avec ses références et font un rapport. Fichier › Exporter vers R écrit un script, ou
 un rapport R Markdown ou Quarto, qui les refait avec R seul, leurs tests avec les mêmes
 permutations. Elles ne prédisent pas de nouvelles observations.
+
+Arbres de décision, analyse discriminante linéaire et k-moyennes
+----------------------------------------------------------------
+Nouveau modèle › type « Arbre de décision » (rpart) : une variable Y quantitative (arbre de
+régression) ou une variable de classe (arbre de classement), et des X par leurs valeurs
+brutes, pour que les seuils se lisent dans leurs unités ; les valeurs manquantes des X sont
+prises en charge par des variables de substitution. Onglet Général : au moins 20
+observations par feuille, au plus 5 niveaux, cp = 0,001, 5 substitutions, élagage par la
+règle 1-ET (le plus petit arbre à une erreur-type de l'erreur minimale) ou à l'erreur
+minimale. L'élagage vient d'une validation croisée interne par les groupes de validation
+croisée (pour des sites suivis plusieurs années, choisir le site), et le Q2 d'une
+validation croisée externe : chaque groupe est prédit par un arbre refait entièrement sans
+lui. Vues : Arbre (un clic sur un nœud choisit ses observations), Élagage, Règles des
+feuilles, Importance des variables, Stabilité de la première coupure (200 tirages
+bootstrap des groupes : la part des tirages où chaque variable fait la première coupure,
+et son seuil médian), Observé / prédit et Résidus, ou Classement pour un arbre de
+classement. Jeu de test et Prédire : une nouvelle observation suit l'arbre, substitutions
+comprises.
+
+Type « Analyse discriminante linéaire (LDA) » (MASS::lda) : une variable de classe et des X
+par leurs valeurs brutes ; probabilités a priori proportionnelles aux effectifs ou égales.
+Chaque observation va dans la classe de plus grande probabilité a posteriori ; en
+validation croisée, chaque groupe est classé par le modèle ajusté sans lui. Vues : Scores
+discriminants, Coefficients discriminants (corrélations de structure, coefficients dans
+les unités des variables ou pour des variables d'écart-type 1), Classement, Probabilités a
+posteriori. Jeu de test et Prédire.
+
+Type « k-moyennes » : des X mis à l'échelle comme le dit l'onglet Variables (UV par
+défaut), k groupes (algorithme de Hartigan et Wong, 25 départs, graine 1), numérotés du
+plus grand au plus petit ; une observation où une valeur manque est laissée de côté.
+Vues : Groupes (sur les deux premières composantes principales), Silhouettes, Choix de k
+(de 2 à 10 : somme des carrés intra-groupes et silhouette moyenne), Centres des groupes.
+« Groupes → variable » ajoute les groupes au projet comme une variable qualitative
+(Édition › Annuler la retire) ; Prédire range une nouvelle observation dans le groupe du
+centre le plus proche.
+
+Pour les trois : texte des méthodes avec ses références, Exporter, rapport PDF ou Word,
+Exporter vers R (un script ou un rapport R Markdown / Quarto qui refait l'analyse avec
+rpart, MASS ou cluster, livrés avec R). Comparer les modèles donne le Q2 et le RMSEcv d'un
+arbre de régression à côté des autres modèles.
 
 Modifier les données, créer des variables
 -----------------------------------------

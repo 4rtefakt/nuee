@@ -24,6 +24,10 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/R/variables.R` | New variables: an R formula on the variables and observation IDs (with `moyenne_groupe` / `group_mean` and `ecart_groupe` / `group_deviation` by group), classes from values, and the imputation of missing values by regularized iterative PCA (`imputer_acp`, as `missMDA::imputePCA`) |
 | `moteur/R/analyses.R` | The other analyses (RDA, correspondence analysis, LDA, decision trees, k-means): their types, and how the engine finds each one's functions by name (`ajuster_<type>`, `resultat_<type>`, `texte_methodes_<type>`, `tables_<type>`, `predire_<type>`, `ecrire_script_<type>`, requests `demande_analyse_<name>`) |
 | `moteur/R/ordination.R` | Redundancy analysis (RDA, partial RDA) and correspondence analysis (CA) with R's linear algebra, as vegan computes them: scores in scalings 1 to 3, adjusted R², permutation tests of the model, the axes and the terms (free or within groups, from a seed), forward selection (ordiR2step's double criterion), variation partitioning, Methods text, export tables |
+| `moteur/R/arbres.R` | Decision trees (TREE) with rpart: regression or classification, surrogates, pruning by the 1-SE rule through an internal cross-validation by the model's groups (the folds inside `rpart.control`), external validation by groups, leaf rules, importance, first-split stability; the helpers the three analyses share |
+| `moteur/R/discrimination.R` | Linear discriminant analysis (LDA) with `MASS::lda`: priors, cross-validation by groups, scores, structure correlations, coefficients, posterior probabilities |
+| `moteur/R/kmoyennes.R` | k-means (KMEANS): clusters numbered by size, silhouettes (`cluster::silhouette`), choice of k, centres, clusters saved as a variable |
+| `moteur/R/classement_script.R` | Export to R of a tree, an LDA or a k-means: rpart, MASS or cluster, compared with the engine before it is written |
 | `moteur/R/ordination_script.R` | Export to R of an RDA or a CA: plain R, the same permutations, compared with the engine before it is written |
 | `moteur/R/comparaisons.R` | Statistical tests: by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis) with multiple-testing correction; between two variables (chi-square or Fisher, groups with Tukey, Games–Howell or Dunn, correlations), the test chosen from their conditions; the correlation matrix |
 | `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
@@ -37,11 +41,13 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/tests/verifier_script.R` | Scripts and reports written for many kinds of models, and a whole session in one script, run in a fresh `Rscript --vanilla` without the engine, give the engine's results (regressions too: LM with categories and cross terms, nested LMM with CAR1 and a test set, GLMs with an effort, GAMMs, Tweedie, null models, a mixed session; each curve's thresholds, bands included); reports compile with `knitr` when it is installed |
 | `moteur/tests/verifier_regression.R` | The regressions against `lm()`, `nlme::lme()`, `glm()`, `MASS::glm.nb()` and `mgcv::gam()`: coefficients, AIC, R2, θ, Tweedie's p, a random effect's variance, overdispersion, cross-validation, test set, block contributions, effect curves, CAR1, AIC sets, refused definitions, a saved definition read back, the prediction of observations and files, R formulas (read, written back, fitted like R fits them, refused, never run); `mgcv::gamm` with CAR1; a curve's thresholds against the same procedure written out by hand, on a made-up threshold and a straight line; concurvity against `mgcv::concurvity()`; group means and deviations; PCA imputation against the iterative algorithm written out by hand (bounds, replacing, refitting, refusals) |
 | `moteur/tests/verifier_ordination.R` | RDA and CA against vegan when it is installed (`NUEE_VEGAN=<library>` points at one): eigenvalues, scores, R², the tests with the same permutations, ordiR2step, varpart; CA against `MASS::corresp`; refusals, exports and scripts |
+| `moteur/tests/verifier_classement.R` | Trees, LDA and k-means against rpart, `MASS::lda`, `kmeans` and `cluster::silhouette`: the same splits, pruning, predictions and classes, the cross-validation by groups; their exported scripts and reports, run in a fresh R, FR and EN |
 | `moteur/tests/verifier_comparaisons.R` | The statistical tests against R's own test functions (Dunn and Games–Howell through their two-group identities with Kruskal–Wallis and Welch's t), class models, OPLS with several predictive components, the Methods text |
 | `moteur/tests/verifier_validation.R` | The cross-validation: the engine's PRESS equals refitting each group's model by hand and predicting the group with `predire()`; on pure noise the median Q2 stays at or below 0 for 6 to 30 observations (PCA, PLS, OPLS-DA, automatic or fixed A); no more components than the data's rank; the example's models keep a high Q2; the permutation test refits from the project; groups by the value of a variable or of an ID, or given as they are (the same groups and Q2 each way, observations without a value in a group of their own, a clear error for a single group); block scaling and modifiers (each weight, a block of UV terms of total variance 1, the same weights in prediction and in each sub-model, kept by the settings of New model from this one) |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
 | `app/installation.js` | Windows: whether Nuée is installed for all users or for this user only (its uninstall entry under HKLM or HKCU; without one, Program Files decides), for the updater |
 | `app/tests/essai_installation.js` | That decision with stand-in registries, then `reg.exe` itself |
+| `app/interface/vues_classement.js` | The views of a tree, an LDA and a k-means (tree, pruning, rules, importance, stability, scores, coefficients, probabilities, clusters, silhouettes, choice of k), their New model fields and report parts |
 | `app/interface/vues_ordination.js` | The views of an RDA and a CA (ordination, eigenvalues, permutation tests, contributions), their New model fields and report parts |
 | `app/tests/essai_api.js` | Check run before each build |
 | `app/tests/essai_appli.js` | The built program used end to end over the Chrome DevTools Protocol: the engine starts, the example project, a PLS model's views, an image of a plot, each fit in the R console, a `.nuee` given to a second start opens in the running window, then quitting stops R and removes its temporary folder (`node tests/essai_appli.js <program> [screenshot.png] [options]`; on Linux the program starts with no `LANG` and a short `PATH`, as from the desktop menu) |
@@ -51,8 +57,9 @@ pop-out windows and Plotly plots, talking to a local R server.
 
 ## Running from the sources
 
-Requires R 4.6 with `jsonlite`, `httpuv`, `openxlsx`, `haven` and `readxl` (and `foreign`, `nlme`,
-`mgcv`, `MASS` and `rpart`, among R's recommended packages), Node, and Python 3 for the converter.
+Requires R 4.6 with `jsonlite`, `httpuv`, `openxlsx`, `haven` and `readxl` (and `foreign`,
+`nlme`, `mgcv`, `MASS`, `rpart` and `cluster`, among R's recommended packages), Node, and
+Python 3 for the converter.
 
 ```bash
 cd app && npm install && npm run vendor
@@ -85,6 +92,7 @@ Rscript moteur/tests/verifier_comparaisons.R
 Rscript moteur/tests/verifier_regression.R
 Rscript moteur/tests/verifier_validation.R
 Rscript moteur/tests/verifier_ordination.R
+Rscript moteur/tests/verifier_classement.R
 ```
 
 Before 0.9.0, the spectra readers were run on real files and compared with other readers:
@@ -216,8 +224,9 @@ The build produces:
   - `Nuee-<version>-amd64.deb`, which depends on electron-builder's list plus `libgbm1` and
     `libasound2` (Electron loads them; a minimal Ubuntu 22.04 lacks `libgbm1`), then on
     `r-base-core` and `r-cran-httpuv`, `r-cran-jsonlite`, `r-cran-openxlsx`, `r-cran-haven`,
-    `r-cran-readxl`, `r-cran-foreign`, `r-cran-nlme`, `r-cran-mgcv`, `r-cran-mass`, `r-cran-rpart`
-    (Debian keeps R's recommended packages, these five among them, out of `r-base-core`), and recommends `python3` and `r-recommended` (for the R
+    `r-cran-readxl`, `r-cran-foreign`, `r-cran-nlme`, `r-cran-mgcv`, `r-cran-mass`,
+    `r-cran-rpart`, `r-cran-cluster` (Debian keeps R's recommended packages, these six among
+    them, out of `r-base-core`), and recommends `python3` and `r-recommended` (for the R
     console, as on Windows). It installs into `/opt/Nuée`, adds `nuee.desktop` to the
     applications menu and, on Ubuntu 24.04 and later, the AppArmor profile Electron's sandbox
     needs;

@@ -65,7 +65,7 @@ libraries, so it can't be carried along as on Windows).
   it needs FUSE 2, the `libfuse2` package on most distributions) or
   `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
   distribution first, then the packages, in R:
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster"))`.
   On Ubuntu 24.04 and later, prefer the `.deb`: it installs the AppArmor profile Chromium's
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 
@@ -150,6 +150,13 @@ with covariates, triplots in scaling 1 or 2, adjusted R2, permutation tests of t
 each axis and of each term (within sites if needed), forward selection and variation
 partitioning; correspondence analysis (CA) of count tables, with contributions and cos². The
 results are those of the vegan package.
+
+**Trees, discriminant analysis, clustering:** decision trees (rpart) for a quantitative
+response or a class, on the raw variables so that thresholds read in their units, pruned by a
+cross-validation by site and validated by predicting each site with a tree rebuilt without it,
+with the stability of the first split; linear discriminant analysis (MASS::lda) with a
+cross-validated classification and posterior probabilities; k-means with silhouettes and the
+choice of k.
 
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 
