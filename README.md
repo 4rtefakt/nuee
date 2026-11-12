@@ -122,24 +122,27 @@ RMSEP, bias, SEP and external Q2, or its classification.
 
 **Variables:** VIP with a cut-off placed automatically (or dragged by hand), coefficients,
 loadings, biplot, refit with the selected variables only. Variable statistics with suggested
-log transformations, histograms and a map of missing values. Tests by variable between two
-classes (Welch's or Student's t, Mann–Whitney) or across all of them (ANOVA, Kruskal–Wallis),
-with the Benjamini–Hochberg correction and a volcano plot. Tests between two variables, chosen
-from their types with their conditions checked: chi-square or Fisher's exact test, t test, ANOVA
-or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's correlation; an
-observation ID (site, year...) can make the groups. A correlation matrix with corrected p
-values.
+log transformations, histograms and a map of missing values, which regularized iterative PCA
+can fill in; new variables from R formulas, with group means and deviations. Tests by variable
+between two classes (Welch's or Student's t, Mann–Whitney) or across all of them (ANOVA,
+Kruskal–Wallis), with the Benjamini–Hochberg correction and a volcano plot. Tests between two
+variables, chosen from their types with their conditions checked: chi-square or Fisher's exact
+test, t test, ANOVA or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's
+correlation; an observation ID (site, year...) can make the groups. A correlation matrix with
+corrected p values.
 
 **Linear, generalized and mixed models:** linear regression and linear mixed models (nlme), with
 nested random effects (site, then sector within the site) and a continuous-time autocorrelation
 (CAR1); generalized linear and additive models (mgcv) for counts (Poisson, negative binomial),
 presence-absence, positive values and densities with zeros (Tweedie), with random effects, an
-effort as an offset, and smooth curves for effects that rise then fall or have a threshold;
-coefficients with their intervals, marginal and conditional R2, effect curves, residual plots,
-the AIC change when each block of variables is removed, and an AIC comparison (ΔAIC, Akaike
-weights) of the regressions of the same response, next to the cross-validated Q2 of every model.
-An R formula box sets the model (R reads it and never runs it), and regressions predict new
-observations and files, extrapolations flagged.
+effort as an offset, and smooth curves for effects that rise then fall or have a threshold
+(with CAR1 too, through mgcv::gamm, for a normal response); coefficients with their intervals,
+marginal and conditional R2, effect curves, each curve's thresholds (where the simultaneous
+band of its slope excludes 0) and concurvity, residual plots, the AIC change when each block of
+variables is removed, and an AIC comparison (ΔAIC, Akaike weights) of the regressions of the
+same response, next to the cross-validated Q2 of every model. An R formula box sets the model
+(R reads it and never runs it), and regressions predict new observations and files,
+extrapolations flagged.
 
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 

@@ -154,6 +154,7 @@ transformations" button applies the suggested log10 to the variables shown (see 
 statistics).
 Cross terms tab: products of two or three X variables (A × B, A × B × C), squares (A × A) and
 cubes (A × A × A); a qualitative variable enters through each of its categories, once at most.
+Each cross term has its own scaling, block and modifier, as in the Variables tab.
 Observations tab: tick / untick the model's observations, and the test set (see Test set).
 "Edit model" (Ctrl+M) opens this window set like an existing model (imported models
 included) and makes a new model.
@@ -423,8 +424,10 @@ to compare AICs. The default scaling keeps the variables' units (coefficients pe
 gives coefficients per standard deviation.
 A mixed model (nlme) adds nested random effects, the widest first: a random intercept for each
 site, then for each sector within its site (an observation ID or a qualitative variable). It
-can add an autocorrelation in time within the last level (CAR1, continuous time: missing years
-are fine; the time is a numeric ID or a quantitative variable). Coefficients and variances are
+can add an autocorrelation in time (CAR1, continuous time: missing years are fine; the time is
+a numeric ID or a quantitative variable) within the last level or, through "within each",
+within a finer one that has no random effect of its own: the sector within its site, when only
+the site has a random effect. Coefficients and variances are
 estimated by REML; the log-likelihood, AIC, AICc and BIC come from the ML fit, the only one
 that compares models with different fixed effects. Cross-validation defaults to the first
 random effect: each site is predicted by the fixed effects of the model fitted without it, as a
@@ -436,10 +439,17 @@ values; Tweedie for densities with zeros (its power p estimated); or normal. The
 (counts, gamma, Tweedie), logit (binomial) or identity (normal). Effort (offset): a variable
 such as an area, a duration or a number of visits, whose log enters the model with a
 coefficient of 1, which then describes a density (an effort of 0 or less is refused). Random
-effects as above make a GLMM or a GAMM (without autocorrelation). In an additive model, the X
+effects as above make a GLMM or a GAMM. With the normal distribution and at least one random
+effect, a GLM or GAM can take the autocorrelation in time too: it is then fitted by
+mgcv::gamm, as an nlme mixed model whose curves are random effects (coefficients, curves,
+variances and φ by REML; logLik, AIC, AICc and BIC from an ML fit, comparable only with other
+models fitted that way). With another distribution it is refused: mgcv::gamm would use
+penalized quasi-likelihood (PQL), with no true likelihood nor AIC. In an additive model, the X
 variables ticked in the Curve column of the Variables tab enter through a smooth curve (a
 spline) instead of a straight line, for an effect that rises then falls, or a threshold; the
-data decide how curved it is (its edf; 1 is a straight line). Curves and random effects are
+data decide how curved it is (its edf; 1 is a straight line). Its basis dimension k bounds how
+curved it can be: 10 at most, less when the variable has few values; type another one (3 to
+100) in the box beside the tick, as s(x, k = 5) does in R. Curves and random effects are
 estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitted by maximum
 likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns when the
 counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of freedom): its p
@@ -449,19 +459,25 @@ R formula (General tab): the model written as in R, for instance
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
 log10, log1p, exp, sqrt, I(x^p), I(a * x + b), the logit log((x - a) / (b - x))), the cross
 terms (a:b; a*b for a, b and a:b; I(a^2) when a is in the model too, else the square of a), the
-curves s(x), the effort offset(log(x)) and the nested random intercepts (1 | site/sector), the
-widest first.
+curves s(x) or s(x, k = 5), the effort offset(log(x)) and the nested random intercepts
+(1 | site/sector), the widest first.
 A curve makes the model additive, random effects make it mixed. R reads the formula without
 ever running it: anything else (another function, code) is refused with the reason, and the
 formula isn't kept, only the settings it gives.
 Views: Summary (R2, or marginal and conditional R2 for a mixed model, Nakagawa and Schielzeth;
-adjusted R2 and deviance explained for a GLM or GAM, with each curve's edf and test; Q2 and
-RMSEcv; AIC; the variance of each random effect and its share; φ of the autocorrelation),
-Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05; with a log link,
-exp(estimate) is the multiplicative effect of one unit more, with the logit the odds ratio),
+adjusted R2 and deviance explained for a GLM or GAM (marginal and conditional R2 when fitted by
+mgcv::gamm, the curves in the fixed part), with each curve's edf, test and concurvity (the
+share of the curve the other terms reproduce; above 0.8, in red, it is confounded with them);
+Q2 and RMSEcv; AIC; the variance of each random effect and its share; φ of the
+autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
+with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
+the odds ratio),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
 95 % band and the observed values below it: a GAM's curves, straight lines otherwise; on the
-scale of the link, log or logit, when there is one), Observed / predicted, Residuals
+scale of the link, log or logit, when there is one; for a curve, Thresholds: the effect and its
+slope with 95 % simultaneous bands from 2000 draws of the coefficients, the ranges where the
+slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
+nearly a straight line, as Simpson (2018) reads thresholds), Observed / predicted, Residuals
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
 distance for a linear regression), Block contributions (AIC): each block of the Block column
 (or each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
@@ -503,11 +519,18 @@ Editing the data, making variables
 In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; empty =
 missing value; for a qualitative variable, the category's name). Models already fitted don't
 change: refit them.
-Edit › New variable: from an R formula on the other variables, for example
-log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (a text result
-gives a qualitative variable); or classes from the values of a variable, at given limits
-(10 ; 20 gives "≤ 10", "]10 ; 20]", "> 20") or in classes of equal size. Remember to save
-the project.
+Edit › New variable: from an R formula on the other variables and the observation IDs, for
+example log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (a text
+result gives a qualitative variable); by group, group_mean(x, sector), the mean of x in each
+observation's group (missing values ignored), and group_deviation(x, sector), the deviation
+from it (moyenne_groupe and ecart_groupe in French): a sector mean as a covariate, or a
+response centred by sector. Or classes from the values of a variable, at given limits
+(10 ; 20 gives "≤ 10", "]10 ; 20]", "> 20") or in classes of equal size. Or Imputation (PCA):
+the chosen quantitative variables' missing values filled from each other by regularized
+iterative PCA (as missMDA::imputePCA; 5 components by default), observed values unchanged, an
+observation missing more than half of them left missing, imputed values kept within each
+variable's observed range unless unticked; as new variables "x (imputed)" or in the variables
+themselves (Ctrl+Z undoes it). Remember to save the project.
 
 File history
 ------------
