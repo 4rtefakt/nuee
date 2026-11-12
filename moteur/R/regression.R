@@ -34,12 +34,15 @@ correlation_car1 <- function(donnees, niveaux) {
 
 # L'autocorrélation CAR1 demande un seul temps par groupe.
 verifier_temps_uniques <- function(donnees, niveaux) {
-  groupes <- donnees[c(paste0("g", seq_len(niveaux)), intersect("gc", names(donnees)))]
-  if (anyDuplicated(data.frame(interaction(groupes, drop = TRUE), donnees$temps))) {
+  if (anyDuplicated(data.frame(groupe_car1(donnees, niveaux), donnees$temps))) {
     stop(traduire("L'autocorrélation dans le temps demande un seul temps par groupe : plusieurs observations ont le même temps dans un même groupe.",
                   "Autocorrelation in time needs a single time per group: several observations have the same time in the same group."), call. = FALSE)
   }
 }
+
+# Le groupe de l'autocorrélation CAR1 de chaque observation : le plus fin des effets aléatoires,
+# ou le niveau plus fin où elle court (gc).
+groupe_car1 <- function(donnees, niveaux) interaction(donnees[c(paste0("g", seq_len(niveaux)), intersect("gc", names(donnees)))], drop = TRUE)
 
 # Un ajustement, ou NULL quand il échoue (nlme essaie optim, puis nlminb, comme le font les
 # scripts qui ont servi de modèle). methode : "REML" ou "ML".
@@ -122,7 +125,10 @@ resultat_lineaire <- function(donnees, termes, noms, niveaux = 0, car1 = FALSE, 
     if (car1) res$phi <- unname(stats::coef(estime$modelStruct$corStruct, unconstrained = FALSE))
     res$ajuste <- as.vector(stats::fitted(estime))                       # avec les effets aléatoires
     res$ajuste_fixe <- as.vector(stats::fitted(estime, level = 0))       # les effets fixes seuls
-    res$residus <- as.vector(stats::residuals(estime, type = "normalized"))
+    # (CAR1 : les résidus normalisés dans l'ordre du temps de chaque groupe, regression_diagnostics.R ;
+    # ceux de nlme ne sont justes que sur des lignes rangées par groupe, puis par temps)
+    res$residus <- if (car1) residus_normalises_car1(as.vector(stats::residuals(estime, type = "pearson")), donnees$temps, groupe_car1(donnees, niveaux), res$phi)
+                   else as.vector(stats::residuals(estime, type = "normalized"))
   } else {
     s <- summary(estime)
     res$r2 <- list(r2 = s$r.squared, r2_ajuste = s$adj.r.squared)
@@ -837,13 +843,14 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
   totale <- fixes + sum(v) + l$sigma^2
   ll <- stats::logLik(compare$lme)
   n <- nrow(donnees)
+  phi <- unname(stats::coef(l$modelStruct$corStruct, unconstrained = FALSE))
   list(N = n, coefficients = co, courbes = courbes, termes_retires = retires, logLik = as.numeric(ll), parametres = attr(ll, "df"),
        AIC = stats::AIC(compare$lme), AICc = aic_corrige(compare$lme, n), BIC = stats::BIC(compare$lme),
        r2 = list(marginal = fixes / totale, conditionnel = (fixes + sum(v)) / totale), variances = variances,
-       phi = unname(stats::coef(l$modelStruct$corStruct, unconstrained = FALSE)),
-       famille = "gaussienne", lien = "identity", echelle = l$sigma^2,
+       phi = phi, famille = "gaussienne", lien = "identity", echelle = l$sigma^2,
        ajuste = as.vector(stats::fitted(l)), ajuste_fixe = as.vector(stats::fitted(g)),
-       residus = as.vector(stats::residuals(l, type = "normalized")),
+       # (dans l'ordre du temps de chaque groupe : regression_diagnostics.R, residus_normalises_car1)
+       residus = residus_normalises_car1(as.vector(stats::residuals(l, type = "pearson")), donnees$temps, groupe_car1(donnees, niveaux), phi),
        utiles = utiles, k = k, ajustement = estime, ajustement_ml = compare)
 }
 

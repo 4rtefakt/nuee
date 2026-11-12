@@ -434,6 +434,18 @@ texte <- lignes_script(r)
 verifier("modèle mixte : ses sites (un identifiant) dans le tableau, nlme::lme, CAR1, groupes de validation par site",
          any(grepl("^  site = ", texte)) && any(grepl("nlme::lme\\(", texte)) && any(grepl("corCAR1", texte)) &&
            any(grepl("^groupes_vc <- as.integer\\(cadre\\[\\[\"site\"\\]\\]\\)", texte)))
+# (les mêmes données, les lignes dans l'ordre des années : les résidus normalisés du script, calculés
+# dans l'ordre du temps de chaque groupe, sont ceux du moteur ; ceux de nlme s'en écarteraient)
+oan <- order(tr$annee, site, tr$secteur)
+pra <- projet_depuis_tableau(tr[oan, ], "terrain par année")
+pra$observation_id_names <- c("Observation", "site")
+for (i in seq_along(pra$observations)) pra$observations[[i]]$ids <- c(pra$observations[[i]]$ids[1], site[oan][i])
+ura <- function(...) numeros(pra, c(...))
+car1_an <- list(type = "CAR1", temps = list(by = "variable", variable = ura("annee")), dans = list(by = "variable", variable = ura("secteur")))
+essayer_regression("lmm_car1_lignes_par_annee", pra, definir_modele(pra, "LMM", x = ura("x1", "x2"), y = ura("hauteur"), echelle = "none",
+                   aleatoires = list(par_site), correlation = car1_an))
+essayer_regression("gamm_car1_lignes_par_annee_en", pra, definir_modele(pra, "GAM", x = ura("x1", "x2"), y = ura("hauteur"), echelle = "none", famille = "gaussienne",
+                   lisses = ura("x2"), aleatoires = list(par_site), correlation = car1_an), langue = "en")
 # (les scripts de seuils : un site aléatoire, l'autocorrélation le long des années dans chaque secteur)
 car1_secteur <- list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")), dans = par_secteur)
 r <- essayer_regression("gamm_car1_secteur", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",

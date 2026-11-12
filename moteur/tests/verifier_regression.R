@@ -343,6 +343,25 @@ enregistrer_projet(pa, fa_proj)
 qa <- lire_projet(fa_proj)
 ma2 <- ajuster(qa, qa$models[[1]])
 verifier("enregistré puis relu : le même modèle (autocorrélation dans chaque secteur, k = 5)", proche(ma2$resultat$AIC, ma$resultat$AIC, 1e-8) && ma2$k[[1]] == 5)
+# (les mêmes lignes dans l'ordre des années : nlme ne donne des résidus normalisés justes que sur
+# des lignes rangées par groupe, puis par temps ; ceux de Nuée ne dépendent pas de l'ordre)
+oa <- order(ta$annee, ta$site, ta$secteur)
+pa_an <- projet_depuis_tableau(ta[oa, c("nom", "site", "secteur", "annee", "x", "xbar", "y")], "seuils par année")
+ua_an <- function(...) numeros(pa_an, c(...))
+car1_an <- list(type = "CAR1", temps = list(by = "variable", variable = ua_an("annee")), dans = list(by = "variable", variable = ua_an("secteur")))
+site_an <- list(list(by = "variable", variable = ua_an("site")))
+ma_an <- ajuster(pa_an, definir_modele(pa_an, "GAM", x = ua_an("x", "xbar"), y = ua_an("y"), echelle = "none", famille = "gaussienne", lisses = ua_an("x"),
+                                       k_courbes = stats::setNames(list(5), ua_an("x")), aleatoires = site_an, correlation = car1_an))
+ml_an <- ajuster(pa_an, definir_modele(pa_an, "LMM", x = ua_an("x", "xbar"), y = ua_an("y"), echelle = "none", aleatoires = site_an, correlation = car1_an))
+ml_gr <- ajuster(pa, definir_modele(pa, "LMM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", aleatoires = list(par_variable("site")), correlation = car1_a))
+par_nom <- function(pr, m) stats::setNames(m$resultat$residus, unname(unlist(pr$noms_obs[as.character(m$observations)])))
+rg <- par_nom(pa, ma); ra <- par_nom(pa_an, ma_an)
+lg <- par_nom(pa, ml_gr); la <- par_nom(pa_an, ml_an)
+nlme_an <- stats::setNames(as.vector(stats::residuals(ml_an$ajustement, type = "normalized")), names(la))
+verifier(sprintf("CAR1, lignes dans l'ordre des années : les mêmes résidus normalisés (GAMM et modèle mixte ; écart-type %.2f), là où ceux de nlme s'écartent jusqu'à %.1f",
+                 stats::sd(la), max(abs(nlme_an[names(lg)] - lg))),
+         proche(ra[names(rg)], rg, 1e-5) && proche(la[names(lg)], lg, 1e-5) && max(abs(nlme_an[names(lg)] - lg)) > 0.1 &&
+           proche(lg, as.vector(stats::residuals(ml_gr$ajustement, type = "normalized")), 1e-8))
 
 cat("Autocorrélation des résidus (regression_diagnostics.R)\n")
 # 8 sites suivis 10 ans (2005 manque), des résidus autocorrélés dans le temps ; des lignes rangées

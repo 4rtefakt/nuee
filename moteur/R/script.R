@@ -291,7 +291,7 @@ besoins_script <- function(plans, seance) {
        regression = length(reg) > 0, lmm = any(vapply(reg, function(pl) !pl$generalise && length(pl$niveaux) > 0, TRUE)),
        mgcv = any(vapply(reg, `[[`, TRUE, "generalise")), courbes = any(vapply(reg, function(pl) length(pl$lisses) > 0, TRUE)),
        aleatoires_mgcv = any(vapply(reg, function(pl) pl$generalise && !isTRUE(pl$gamm) && length(pl$niveaux) > 0, TRUE)),
-       gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)),
+       gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)), car1 = any(vapply(reg, function(pl) !is.null(pl$temps), TRUE)),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
 }
@@ -1125,6 +1125,9 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   lectures <- c(vapply(pl$niveaux, `[[`, "", "code"), pl$temps$code, pl$dans$code, pl$effort$code)
   # le groupe de l'autocorrélation : le dernier effet aléatoire, ou un niveau plus fin
   groupes_car1 <- paste(c(r_niveaux, pl$dans$nom), collapse = " / ")
+  # (pour les résidus normalisés d'un modèle avec CAR1 : le temps et ce groupe, colonnes du cadre)
+  temps_car1 <- if (car1) sprintf("cadre[[%s]]", code_texte(pl$temps$nom))
+  groupes_car1_code <- sprintf("interaction(cadre[c(%s)], drop = TRUE)", paste(vapply(c(r_niveaux, pl$dans$nom), code_texte, ""), collapse = ", "))
   dans_affiche <- if (!is.null(pl$dans)) pl$dans$affiche else affiches[L]
   plx <- pl
   plx$manquantes <- pl$na_termes  # (les centres d'un terme croisé sans aucune valeur)
@@ -1423,8 +1426,11 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                            if (!mixte && !mgcv) " (and Cook's distance)" else ""))),
     if (gamm) "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m$lme),"
     else "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m),",
-    if (gamm) "                           residu = residuals(m$lme, type = \"normalized\"), ajuste_fixe = fitted(m$gam), row.names = NULL)"
+    if (gamm) sprintf("                           residu = residus_normalises_car1(residuals(m$lme, type = \"pearson\"), %s, %s, phi), ajuste_fixe = fitted(m$gam), row.names = NULL)",
+                      temps_car1, groupes_car1_code)
     else if (mgcv) "                           residu = residuals(m, type = \"deviance\") / sqrt(m$sig2 * pmax(1 - m$hat, 1e-8)), row.names = NULL)"
+    else if (mixte && car1) sprintf("                           residu = residus_normalises_car1(residuals(m, type = \"pearson\"), %s, %s, phi), ajuste_fixe = fitted(m, level = 0), row.names = NULL)",
+                                    temps_car1, groupes_car1_code)
     else if (mixte) "                           residu = residuals(m, type = \"normalized\"), ajuste_fixe = fitted(m, level = 0), row.names = NULL)"
     else "                           residu = rstandard(m), cook = cooks.distance(m), row.names = NULL)")
 
@@ -1570,7 +1576,7 @@ code_fonctions <- function(b, plans, langue) {
                   modele_opls_noyau(tx, na, general), "", modele_opls(tx, na, b$vides, general), "",
                   modele_opls_predire(tx, na, general), "", modele_vc_opls(tx, na, general)),
     if (!isFALSE(b$echelle)) modele_echelle(tx, !isTRUE(b$regression) || isTRUE(b$nipals)),
-    if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx)),
+    if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx), if (isTRUE(b$car1)) c("", modele_residus_car1(tx))),
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
     if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx)),
@@ -1920,6 +1926,22 @@ modele_termes_utiles <- function(tx) c(
   "  termes[setdiff(garde, 1) - 1]",
   "}")
 
+# Les résidus normalisés d'un modèle avec CAR1, dans l'ordre du temps de chaque groupe (ceux de
+# regression_diagnostics.R : residus_normalises_car1).
+modele_residus_car1 <- function(tx) c(
+  commentaire(tx("Les résidus normalisés d'un modèle avec CAR1, dans l'ordre du temps de chaque groupe de l'autocorrélation : à chaque pas, le résidu de Pearson moins sa part attendue du précédent (phi^écart de temps), divisé par la racine de 1 moins le carré de cette part. residuals(m, type = \"normalized\") de nlme ne les donne justes que sur des lignes rangées par groupe, puis par temps.",
+                 "The normalized residuals of a model with CAR1, in each autocorrelation group's time order: at each step, the Pearson residual minus its expected share of the previous one (phi^time gap), divided by the square root of 1 minus the square of that share. nlme's residuals(m, type = \"normalized\") gets them right only on rows sorted by group, then by time.")),
+  "residus_normalises_car1 <- function(e, tps, g, phi) {",
+  "  z <- e",
+  "  for (i in split(seq_along(e), factor(g), drop = TRUE)) {",
+  "    if (length(i) < 2) next",
+  "    i <- i[order(tps[i])]",
+  "    r <- phi^diff(tps[i])",
+  "    z[i[-1]] <- (e[i[-1]] - r * e[i[-length(i)]]) / sqrt(1 - r^2)",
+  "  }",
+  "  z",
+  "}")
+
 modele_aic_corrige <- function(tx) c(
   commentaire(tx("AIC corrigé pour les petits échantillons (Hurvich et Tsai, 1989) ; n : le nombre d'observations.",
                  "AIC corrected for small samples (Hurvich & Tsai, 1989); n: the number of observations.")),
@@ -2158,6 +2180,7 @@ modele_ligne_base <- function(tx) c(
 # en anglais, ses noms (pas ses textes ni ses commentaires, écrits dans les deux langues) sont
 # remplacés d'après cette table. Les noms venus des données sont toujours dans des chaînes.
 NOMS_SCRIPT_EN <- c(
+  residus_normalises_car1 = "car1_normalized_residuals",
   donnees = "data", lignes = "rows", lignes_test = "test_rows", modele = "in_model", y_observe = "y_observed",
   centre_x = "centre_x", poids_x = "weight_x", ecart_x = "sd_x", centre_y = "centre_y", poids_y = "weight_y", ecart_y = "sd_y",
   centre_c = "centre_c", poids_c = "weight_c", ecart_c = "sd_c", centre_cy = "centre_cy", poids_cy = "weight_cy", ecart_cy = "sd_cy",
