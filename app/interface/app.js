@@ -61,11 +61,14 @@ const app = {
   noeudActif: () => etat.noeud,
 
   // Observation uids are those of the project, so a selection can apply to every model of
-  // the project at once (Édition › Sélection commune aux modèles du projet).
+  // the project at once (Édition › Sélection commune aux modèles du projet). A project view
+  // that shows the selection (Series: VUES[...].selection) keeps it under the project's id,
+  // shared with the models in the same way.
   choisir(id, uids) {
     const u = [...new Set(uids)];
     const m = etat.modeles[id];
-    const lies = etat.selectionLiee && m ? app.modelesDe(m.projet).map((x) => x.id) : [];
+    const pid = m ? m.projet : etat.projets[id] ? id : null;
+    const lies = etat.selectionLiee && pid ? [pid, ...app.modelesDe(pid).map((x) => x.id)] : [];
     for (const x of new Set([id, ...lies])) {
       etat.selection[x] = u;
       diffuser('selection', { modele: x, uids: u });
@@ -1066,11 +1069,11 @@ async function restaurerSession(pid, donnee = null) {
 }
 
 // The views that keep a copy of a project's data, or results computed from it (data table,
-// variable statistics, statistical tests; the history too, for a project replaced from the R
-// console): computed again once the data change.
+// variable statistics, statistical tests, series; the history too, for a project replaced from
+// the R console): computed again once the data change.
 function oublierCalculs(pid) {
   for (const e of etat.panneaux.values()) {
-    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'historique'].includes(e.vue)) {
+    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'historique'].includes(e.vue)) {
       for (const k of ['d', 'res', 'cle', 'cleValeurs', 'cache']) delete e.loc[k];
     }
   }
@@ -1103,10 +1106,11 @@ async function rafraichirProjet(pid) {
 
 async function garder(res) {
   etat.modeles[res.id] = res;
-  if (etat.selectionLiee) {  // a new model of the project takes up its current selection
+  if (etat.selectionLiee) {  // a new model of the project takes up its current selection (that of a Series view too)
     const autre = app.modelesDe(res.projet).find((m) => m.id !== res.id && (etat.selection[m.id] || []).length);
+    const courante = autre ? etat.selection[autre.id] : etat.selection[res.projet] || [];
     const dans = new Set(res.observations.uid);
-    if (autre) etat.selection[res.id] = etat.selection[autre.id].filter((u) => dans.has(u));
+    if (courante.length) etat.selection[res.id] = courante.filter((u) => dans.has(u));
   }
   etat.noeud = `${res.projet}/m/${res.id}`;
   etat.replies.delete(`${res.projet}/calcules`);
@@ -1374,8 +1378,10 @@ function rendrePanneau(entree) {
 }
 
 function rafraichirModele(id) {
+  // (a project id: the project views that show its selection)
+  const deProjet = (e) => !e.params.modele && e.params.projet === id && !!(VUES[e.vue] || {}).selection;
   for (const e of etat.panneaux.values()) {
-    if (!id || e.params.modele === id || e.vue === 'comparaison') if (e.vue !== 'explorateur' && e.vue !== 'accueil') rendrePanneau(e);
+    if (!id || e.params.modele === id || e.vue === 'comparaison' || deProjet(e)) if (e.vue !== 'explorateur' && e.vue !== 'accueil') rendrePanneau(e);
   }
 }
 
@@ -1388,7 +1394,9 @@ function toutRedessiner() {
 }
 
 function menuGraphique(e, div, entree) {
-  const id = entree.params.modele;
+  // (a project view's selection is under the project's id: it can be cleared, the rest needs a model)
+  const id = entree.params.modele || ((VUES[entree.vue] || {}).selection ? entree.params.projet : null);
+  const modele = !!etat.modeles[id];
   const sel = id ? app.selection(id) : [];
   const vars = id ? app.variablesChoisies(id) : [];
   menuContextuel(e.clientX, e.clientY, [
@@ -1399,10 +1407,10 @@ function menuGraphique(e, div, entree) {
     { libelle: t('image_svg'), action: () => enregistrerImage(div, 'svg') },
     '-',
     { libelle: t('effacer_selection'), actif: sel.length + vars.length > 0, action: () => app.effacerSelection(id) },
-    { libelle: t('exclure_reajuster'), icone: 'eye-off', actif: sel.length > 0, action: () => app.reajuster(id, { exclues: sel }) },
-    { libelle: t('contributions'), icone: 'sliders-horizontal', actif: sel.length > 0 && !(etat.modeles[id] || {}).regression && !(etat.modeles[id] || {}).analyse,
+    { libelle: t('exclure_reajuster'), icone: 'eye-off', actif: modele && sel.length > 0, action: () => app.reajuster(id, { exclues: sel }) },
+    { libelle: t('contributions'), icone: 'sliders-horizontal', actif: modele && sel.length > 0 && !etat.modeles[id].regression && !etat.modeles[id].analyse,
       action: () => app.ouvrirVue('contributions', id) },
-    { libelle: t('classe_selection'), icone: 'tag', actif: sel.length > 0, action: () => app.classeSelection(id) },
+    { libelle: t('classe_selection'), icone: 'tag', actif: modele && sel.length > 0, action: () => app.classeSelection(id) },
     '-',
     VUE_SEULE ? { libelle: t('rattacher'), icone: 'undo-2', action: rattacher }
       : { libelle: t('detacher'), icone: 'external-link', action: () => app.detacher(entree.id) },

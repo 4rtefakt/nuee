@@ -1310,6 +1310,146 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
   tracer(ctx, graphe, traces, lay);
 }
 
+// Series in time (Plots › Series): a variable over time, a line per group (the sector) and a
+// small plot per larger group (the site), in a grid with shared axes: the sectors of each site
+// compared year by year. R gives the long data (moteur/R/series.R), one row per observation with
+// a known time and value. Within a line, times one step apart (R's `pas`, the smallest gap
+// between two times) are joined, and a missing time breaks the line; a line that has the same
+// time twice is no series: its points are left unjoined (R counts them, a note says so).
+// Colours go by line within each panel (the palette, then dashes), the legend grouped by panel,
+// so that 30 sectors stay readable. Optionally the mean of each panel's lines (a thicker line), a
+// log scale, and events: times drawn as dashed lines in every panel. A click or a box selects
+// observations, kept under the project's id (with the shared selection, its models' too: app.js).
+const TIRETS = ['solid', 'dot', 'dash', 'dashdot'];
+async function rendreSeries(conteneur, ctx, p, loc) {
+  const proj = ctx.projet(p.projet);
+  const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
+  const ids = liste(proj.identifiants).map((i) => ({ valeur: `id:${i.rang}`, nom: i.nom, libelle: `${i.nom} (${t('identifiant')})` }));
+  const vars = proj.variables.map((v) => ({ valeur: v.uid, nom: v.nom, libelle: v.nom, qualitative: v.qualitative }));
+  const mesures = vars.filter((v) => !v.qualitative);
+  if (!mesures.length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('series_sans_mesure'))); return; }
+  // the time: a quantitative variable or an ID (the year); lines and panels: a qualitative
+  // variable or an ID, guessed from their names the first time (year, sector, site), then kept
+  const temps = [...mesures, ...ids];
+  const existe = (os, x) => os.some((o) => o.valeur === x);
+  const cherche = (os, re) => (os.find((o) => re.test(o.nom)) || {}).valeur;
+  if (!existe(temps, loc.temps)) loc.temps = cherche(temps, /ann[ée]e|year|date|temps|time|^an$/i) ?? temps[0].valeur;
+  const variables = mesures.filter((o) => o.valeur !== loc.temps);
+  if (!variables.length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('series_sans_mesure'))); return; }
+  if (!existe(variables, loc.variable)) loc.variable = variables[0].valeur;
+  const lignes = [...vars.filter((v) => v.qualitative), ...ids].filter((o) => o.valeur !== loc.temps);
+  if (loc.lignes === undefined) loc.lignes = cherche(lignes, /secteur|sector/i) ?? null;
+  if (!existe(lignes, loc.lignes)) loc.lignes = null;
+  const panneaux = lignes.filter((o) => o.valeur !== loc.lignes);
+  if (loc.panneaux === undefined) loc.panneaux = cherche(panneaux, /site/i) ?? null;
+  if (!existe(panneaux, loc.panneaux)) loc.panneaux = null;
+  const lire = (x) => (x === '' ? null : String(x).startsWith('id:') ? x : Number(x));
+  const options = (os) => os.map((o) => [o.valeur, o.libelle]);
+  const evenements = String(loc.evenements || '').split(/[;\s]+/).filter(Boolean).map((x) => Number(x.replace(',', '.'))).filter(Number.isFinite);
+  const barre = outils(
+    choix(t('series_variable'), options(variables), loc.variable, (x) => { loc.variable = lire(x); ctx.rafraichir(); }),
+    choix(t('series_temps'), options(temps), loc.temps, (x) => { loc.temps = lire(x); ctx.rafraichir(); }),
+    choix(t('series_lignes'), [['', t('aucune')]].concat(options(lignes)), loc.lignes ?? '', (x) => { loc.lignes = lire(x); ctx.rafraichir(); }),
+    choix(t('series_panneaux'), [['', t('aucun')]].concat(options(panneaux)), loc.panneaux ?? '', (x) => { loc.panneaux = lire(x); ctx.rafraichir(); }),
+    case_(t('series_moyenne'), !!loc.moyenne, (x) => { loc.moyenne = x; ctx.rafraichir(); }),
+    case_(t('series_log'), !!loc.log, (x) => { loc.log = x; ctx.rafraichir(); }),
+    el('label', { class: 'champ', title: t('series_evenements_aide') }, el('span', {}, t('series_evenements')),
+      el('input', { value: loc.evenements || '', placeholder: '2015 ; 2019', style: 'width:8em',
+        onchange: (e) => { loc.evenements = e.target.value; ctx.rafraichir(); } })));
+  const cache = (loc.cache ??= {});  // (the results: loc.cache isn't saved with the session)
+  const cle = JSON.stringify([loc.variable, loc.temps, loc.lignes, loc.panneaux, langueActuelle()]);
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
+    const q = { projet: p.projet, variable: loc.variable, temps: loc.temps,
+      ...(loc.lignes !== null ? { lignes: loc.lignes } : {}), ...(loc.panneaux !== null ? { panneaux: loc.panneaux } : {}) };
+    try { cache.res = await ctx.demander('series', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
+    cache.cle = cle;
+  }
+  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  const r = cache.res;
+  const T = liste(r.points.temps);
+  const Y = liste(r.points.valeur);
+  const LI = liste(r.points.ligne);
+  const PA = liste(r.points.panneau);
+  const U = liste(r.points.uid);
+  const N = liste(r.points.nom);
+  if (!T.length) { conteneur.replaceChildren(barre, el('p', { class: 'infos' }, t('series_vide'))); return; }
+  const parLignes = !!r.lignes;
+  const parPanneaux = !!r.panneaux;
+  const nomsP = parPanneaux ? liste(r.niveaux_panneaux) : [null];
+  const nomsL = parLignes ? liste(r.niveaux_lignes) : [null];
+  const montre = (y) => y !== null && (!loc.log || y > 0);  // (a log scale has no place for values ≤ 0)
+  // a line's points (indices, sorted by time), with a null where it breaks
+  const avecTrous = (idx, tps) => idx.flatMap((i, m) => (m && !(r.pas && Math.abs(tps[i] - tps[idx[m - 1]] - r.pas) <= 1e-9 * Math.max(1, r.pas)) ? [null, i] : [i]));
+  const de = (valeurs, suite) => suite.map((i) => (i === null ? null : valeurs[i]));
+  // the grid: the panels row by row; the bottom-left one has the main axes, and their titles
+  const nP = nomsP.length;
+  const C = nP <= 3 ? nP : Math.ceil(Math.sqrt(nP));
+  const R = Math.ceil(nP / C);
+  let numero = 1;
+  const suffixe = nomsP.map((_, k) => (k === (R - 1) * C ? '' : String(++numero)));
+  const gx = C > 1 ? 0.04 : 0;
+  const gy = R > 1 ? Math.min(0.12, 0.35 / R) : 0;
+  const c = couleursTheme();
+  const sel = new Set(ctx.selection(p.projet));
+  const axe = { gridcolor: c.grille, zerolinecolor: c.doux, linecolor: c.grille, showgrid: FORMAT.grille, automargin: true };
+  const lay = { title: { text: [r.variable.nom, r.temps.nom, parLignes ? r.lignes.nom : '', parPanneaux ? r.panneaux.nom : ''].filter(Boolean).join(' · ') },
+    showlegend: parLignes || !!loc.moyenne, margin: { l: 60, r: 18, t: parPanneaux ? 56 : 34, b: 48 }, annotations: [], shapes: [],
+    legend: { orientation: 'v', x: 1.01, xanchor: 'left', y: 1, yanchor: 'top', traceorder: 'grouped', groupclick: 'toggleitem', font: { size: FORMAT.taille - 1 } } };
+  const traces = [];
+  const moyennes = [];
+  const MP = liste(r.moyennes.panneau);
+  const MT = liste(r.moyennes.temps);
+  const MV = liste(r.moyennes.valeur);
+  const MN = liste(r.moyennes.n);
+  nomsP.forEach((nomP, k) => {
+    const s = suffixe[k];
+    const rang = Math.floor(k / C);
+    const col = k % C;
+    const dx = [col / C + (col ? gx / 2 : 0), (col + 1) / C - (col < C - 1 ? gx / 2 : 0)];
+    const dy = [1 - (rang + 1) / R + (rang < R - 1 ? gy / 2 : 0), 1 - rang / R - (rang ? gy / 2 : 0)];
+    // (the times under the lowest panel of each column, the values left of the first column)
+    lay['xaxis' + s] = { ...axe, domain: dx, anchor: 'y' + s, showticklabels: k + C >= nP, ...(s ? { matches: 'x' } : { title: { text: r.temps.nom } }) };
+    lay['yaxis' + s] = { ...axe, domain: dy, anchor: 'x' + s, showticklabels: col === 0, ...(loc.log ? { type: 'log' } : {}),
+      ...(s ? { matches: 'y' } : { title: { text: r.variable.nom } }) };
+    if (parPanneaux) lay.annotations.push({ text: nomP, xref: 'paper', yref: 'paper', x: dx[0], y: dy[1], xanchor: 'left', yanchor: 'bottom', showarrow: false, font: { size: FORMAT.taille } });
+    for (const e of evenements) lay.shapes.push({ type: 'line', xref: 'x' + s, yref: `y${s} domain`, x0: e, x1: e, y0: 0, y1: 1, line: { dash: 'dash', color: c.doux, width: 1 } });
+    const extra = parLignes ? '%{fullData.name}' : parPanneaux ? nomP : '';
+    const dansP = T.map((_, i) => i).filter((i) => (!parPanneaux || PA[i] === nomP) && montre(Y[i]));
+    nomsL.filter((nomL) => dansP.some((i) => !parLignes || LI[i] === nomL)).forEach((nomL, j) => {
+      const points = dansP.filter((i) => !parLignes || LI[i] === nomL);
+      // (a line with the same time twice isn't a series: its points, not joined)
+      const doublee = points.some((i, m) => m && T[i] === T[points[m - 1]]);
+      const suite = doublee ? points : avecTrous(points, T);
+      const couleur = PALETTE[j % PALETTE.length];
+      traces.push({ type: 'scatter', mode: doublee ? 'markers' : 'lines+markers', xaxis: 'x' + s, yaxis: 'y' + s, name: parLignes ? nomL : r.variable.nom,
+        legendgroup: `p${k}`, showlegend: parLignes, ...(parPanneaux && parLignes && j === 0 ? { legendgrouptitle: { text: nomP } } : {}),
+        x: de(T, suite), y: de(Y, suite), customdata: de(U, suite), hovertext: de(N, suite),
+        hovertemplate: `<b>%{hovertext}</b><br>${r.temps.nom} = %{x}<br>${r.variable.nom} = %{y:.4~g}<extra>${extra}</extra>`,
+        line: { color: couleur, width: 1.5, dash: TIRETS[Math.floor(j / PALETTE.length) % TIRETS.length] },
+        marker: marqueurs(de(U, suite), sel, couleur, 6) });
+    });
+    if (loc.moyenne) {
+      const suite = avecTrous(MT.map((_, i) => i).filter((i) => (!parPanneaux || MP[i] === nomP) && montre(MV[i])), MT);
+      moyennes.push({ type: 'scatter', mode: 'lines', xaxis: 'x' + s, yaxis: 'y' + s, name: t('series_moyenne'), legendgroup: 'moyenne', showlegend: k === 0,
+        x: de(MT, suite), y: de(MV, suite), text: de(MN, suite), line: { color: c.texte, width: 3.5 },
+        hovertemplate: `${t('series_moyenne')} · ${r.temps.nom} = %{x}<br>${r.variable.nom} = %{y:.4~g} (n = %{text})<extra>${parPanneaux ? nomP : ''}</extra>` });
+    }
+  });
+  const nonMontres = loc.log ? Y.filter((y) => !(y > 0)).length : 0;
+  const d = r.doubles || {};
+  const notes = [t('series_note', { n: T.length, l: parLignes ? nomsL.length : 1, p: nP }),
+    r.sans_temps_valeur ? t('series_sans_temps', { n: r.sans_temps_valeur }) : '',
+    r.sans_groupe ? t('series_sans_groupe', { n: r.sans_groupe }) : '',
+    d.n ? t('series_doubles', { n: d.n, exemple: [d.panneau, d.ligne, d.temps].filter((x) => x !== null && x !== undefined).join(' · ') }) : '',
+    nonMontres ? t('series_log_note', { n: nonMontres }) : '', sel.size ? `${sel.size} ${t('selectionnees')}` : ''].filter(Boolean).join(' ');
+  // many panels: a taller plot, which scrolls
+  const graphe = el('div', { class: 'graphe', ...(R > 3 ? { style: { height: `${R * 190 + 90}px`, flex: 'none' } } : {}) });
+  conteneur.replaceChildren(barre, el('p', { class: 'note' }, notes), R > 3 ? el('div', { class: 'defile' }, graphe) : graphe);
+  tracer(ctx, graphe, traces.concat(moyennes), lay);
+  brancherSelection(graphe, ctx, p.projet);
+}
+
 // Class models (one PCA per class, Wold 1976): every observation's distance (DModX) to two of
 // the group's models, with each model's critical limit (Coomans et al., 1984). Below the
 // limit of a model, the observation belongs to its class: to one class, several, or none. The
@@ -2288,6 +2428,8 @@ export const VUES = {
   donnees: { rendre: rendreDonnees, titre: (_, p) => `${p.nom || ''} · ${t('donnees')}`, projet: true },
   statistiques: { rendre: rendreStatistiques, titre: (_, p) => `${p.nom || ''} · ${t('statistiques')}`, projet: true },
   tests: { rendre: rendreTests, titre: (_, p) => `${p.nom || ''} · ${t('tests_variables')}`, projet: true },
+  // (selection: the view shows the observations selected under the project's id, app.js)
+  series: { rendre: rendreSeries, titre: (_, p) => `${p.nom || ''} · ${t('series')}`, projet: true, selection: true },
   historique: { rendre: rendreHistorique, titre: (_, p) => `${p.nom || ''} · ${t('historique')}`, projet: true },
   comparaison: { rendre: rendreComparaison, titre: () => t('comparaison'), global: true },
 };

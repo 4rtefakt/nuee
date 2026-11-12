@@ -752,6 +752,8 @@ DEMANDES <- list(
       as.list(contributions(e$modele, as.numeric(q$observations), q$type %||% "DModX", q$composante %||% 1, isTRUE(q$ponderee %||% TRUE))))
   },
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
+  # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R)
+  series = function(q) series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux),
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
                                                q$test %||% "welch", q$correction %||% "BH"),
   # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux, et

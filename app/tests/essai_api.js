@@ -438,6 +438,50 @@ async function principal() {
       try { await api('test_deux_variables', { projet: q.id, x: v.densite, y: v.secteur, appariement: v.annee, niveaux: ['S1', 'S1'] }); } catch (err) { refus = err.message; }
       verifier(/deux niveaux différents/.test(refus), `deux fois le même niveau, refusé : « ${refus} »`);
     });
+    await etape('séries : une variable au fil du temps, par secteur et par site (moteur/R/series.R)', async () => {
+      // S1 dans le site A, S2 et S3 dans B, de 2001 à 2006, dans le désordre : S2 n'a pas 2004,
+      // S3 n'a pas de densité en 2002 ; densité = année - 2000, + 10 pour S2, + 20 pour S3
+      const lignes = [];
+      for (const [s, site, plus] of [['S1', 'A', 0], ['S2', 'B', 10], ['S3', 'B', 20]]) {
+        for (let an = 2001; an <= 2006; an += 1) {
+          if (s !== 'S2' || an !== 2004) lignes.push([`${s}_${an}`, s, site, an, s === 'S3' && an === 2002 ? '' : String(an - 2000 + plus)]);
+        }
+      }
+      lignes.reverse();
+      const q = await api('coller', { texte: ['nom\tsecteur\tsite\tannee\tdensite', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Séries' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const r = await api('series', { projet: q.id, variable: v.densite, temps: v.annee, lignes: v.secteur, panneaux: v.site });
+      const col = (x, k) => [].concat(x[k]);
+      // the observations with a time and a value, by panel, line and time; S2's 2003 and 2005 are
+      // two steps apart: the interface breaks its line there
+      verifier(col(r.points, 'temps').join() === '2001,2002,2003,2004,2005,2006,2001,2002,2003,2005,2006,2001,2003,2004,2005,2006'
+        && col(r.points, 'ligne').join() === 'S1,S1,S1,S1,S1,S1,S2,S2,S2,S2,S2,S3,S3,S3,S3,S3' && col(r.points, 'panneau').join() === 'A,A,A,A,A,A,B,B,B,B,B,B,B,B,B,B'
+        && r.pas === 1 && r.sans_temps_valeur === 1 && r.sans_groupe === 0 && r.doubles.n === 0
+        && [].concat(r.niveaux_lignes).join() === 'S1,S2,S3' && [].concat(r.niveaux_panneaux).join() === 'A,B', `points : ${JSON.stringify(r.points)}`);
+      const i = col(r.points, 'nom').indexOf('S2_2005');
+      verifier(col(r.points, 'valeur')[i] === 15 && col(r.points, 'uid')[i] === lignes.findIndex((l) => l[0] === 'S2_2005') + 1, 'nom, uid et valeur d’un point');
+      // the mean of each panel's lines, year by year, over the sectors that have a value that year
+      verifier(col(r.moyennes, 'panneau').join() === 'A,A,A,A,A,A,B,B,B,B,B,B' && col(r.moyennes, 'valeur').join() === '1,2,3,4,5,6,16,12,18,24,20,21'
+        && col(r.moyennes, 'n').join() === '1,1,1,1,1,1,2,1,2,1,2,2', `moyennes : ${JSON.stringify(r.moyennes)}`);
+      // lines by site, without panels: two sectors of B the same year are counted as duplicates
+      const d = await api('series', { projet: q.id, variable: v.densite, temps: v.annee, lignes: v.site });
+      verifier(d.doubles.n === 4 && d.doubles.ligne === 'B' && d.doubles.temps === 2001 && d.panneaux === null, `doublons : ${JSON.stringify(d.doubles)}`);
+      // the same project with the site, the sector and the year as observation IDs (the year as text)
+      const f = path.join(dossier, 'series.json');
+      fs.writeFileSync(f, JSON.stringify({ format: 'usp-json/1', source: 'series.json', observation_id_names: ['Observation', 'site', 'secteur', 'an'],
+        variable_id_names: 'Variable', observations: lignes.map((l, k) => ({ uid: k + 1, ids: [l[0], l[2], l[1], String(l[3])] })),
+        variables: [{ uid: 1, ids: 'densite', formula: '' }],
+        datasets: [{ name: 'series', observations: lignes.map((_, k) => k + 1), variables: [1], values: lignes.map((l) => [l[4] === '' ? null : Number(l[4])]) }],
+        models: [], prediction_sets: [], dendrograms: [] }));
+      const pj = await api('ouvrir', { chemin: f });
+      const rang = Object.fromEntries([].concat(pj.identifiants).map((x) => [x.nom, `id:${x.rang}`]));
+      const ri = await api('series', { projet: pj.id, variable: 1, temps: rang.an, lignes: rang.secteur, panneaux: rang.site });
+      verifier(ri.temps.nom === 'an' && col(ri.points, 'nom').join() === col(r.points, 'nom').join() && col(ri.points, 'valeur').join() === col(r.points, 'valeur').join()
+        && col(ri.points, 'temps').join() === col(r.points, 'temps').join(), `par identifiants : ${JSON.stringify(ri.points)}`);
+      let refus = '';
+      try { await api('series', { projet: pj.id, variable: 1, temps: rang.secteur }); } catch (err) { refus = err.message; }
+      verifier(/numérique : « S3 » \(secteur\)/.test(refus), `un temps qui n’est pas un nombre, refusé : « ${refus} »`);
+    });
     await etape('paquets de lecture des formats', async () => {
       const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });
       verifier(r.journal.some((e) => e.type === 'sortie' && e.texte.includes('[1] TRUE')), 'haven, readxl, foreign ou zip absent');

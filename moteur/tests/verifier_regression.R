@@ -460,6 +460,52 @@ pna <- variable_calculee(variable_calculee(pna, "x_moy", "moyenne_groupe(x, sect
 verifier("une observation sans groupe (identifiant vide) n'a ni moyenne ni écart de groupe",
          proche(colonne(pna, numeros(pna, "x_moy"), numeros_observations(pna)), c(2, 2, 2, 10, 10, NA)) &&
            proche(colonne(pna, numeros(pna, "x_ecart"), numeros_observations(pna)), c(-1, 0, 1, 0, NA, NA)))
+# precedent(), suivant() et croissance() (previous, following, growth_rate) : deux sites qui ont
+# chacun un secteur S1, dans le désordre ; A-S1 n'a pas 2003, A-S2 n'a pas de densité en 2002
+ds <- data.frame(nom = sprintf("L%02d", 1:10),
+                 site = c("A", "B", "A", "A", "B", "A", "B", "A", "A", "B"),
+                 secteur = c("S1", "S1", "S1", "S2", "S2", "S1", "S1", "S1", "S2", "S1"),
+                 annee = c(2004, 2002, 2001, 2002, 2003, 2002, 2001, 2005, 2001, 2003),
+                 densite = c(5, 2, 2, NA, 6, 3, 1, 0, 4, 4))
+ds$code <- paste0(ds$site, "-", ds$secteur)
+pl <- projet_depuis_tableau(ds, "series")
+calcule <- function(pr, formule) {
+  pr <- variable_calculee(pr, "essai", formule)
+  colonne(pr, numeros(pr, "essai"), numeros_observations(pr))
+}
+avant <- c(NA, 1, NA, 4, NA, 2, NA, 5, NA, 2)
+apres <- c(0, 4, 3, NA, NA, NA, 2, NA, NA, NA)
+verifier("precedent() : la valeur de l'année d'avant du même secteur ; une année manquante donne NA, pas celle d'encore avant",
+         proche(calcule(pl, "precedent(densite, annee, interaction(site, secteur))"), avant))
+verifier("suivant() : celle de l'année d'après ; avec pas = 2, deux ans avant",
+         proche(calcule(pl, "suivant(densite, annee, interaction(site, secteur))"), apres) &&
+           proche(calcule(pl, "precedent(densite, annee, interaction(site, secteur), pas = 2)"), c(3, NA, NA, NA, NA, NA, NA, NA, NA, 1)))
+verifier("le groupe : une variable qualitative, comme interaction(site, secteur)", proche(calcule(pl, "precedent(densite, annee, code)"), avant))
+m_double <- refus(calcule(pl, "precedent(densite, annee, secteur)"))
+m_sans <- refus(calcule(pl, "suivant(densite, annee)"))
+verifier(sprintf("un couple (groupe, temps) qui revient est refusé, et nommé : « %s » ; sans groupe, un temps : « %s »", m_double, m_sans),
+         grepl("« S1 »", m_double, fixed = TRUE) && grepl("2002", m_double) && grepl("interaction(site, secteur)", m_double, fixed = TRUE) &&
+           startsWith(m_sans, "suivant()") && grepl("2002", m_sans))
+verifier("croissance() = log(x / x de l'année d'avant), NA sauf si les deux sont > 0 (un zéro, une valeur manquante)",
+         proche(calcule(pl, "croissance(densite, annee, code)"), c(NA, log(2), NA, NA, NA, log(1.5), NA, NA, NA, log(2))))
+verifier("previous(), following() et growth_rate() : les mêmes, en anglais",
+         proche(calcule(pl, "previous(densite, annee, code)"), avant) && proche(calcule(pl, "following(densite, annee, code)"), apres) &&
+           proche(calcule(pl, "growth_rate(densite, annee, code)"), calcule(pl, "croissance(densite, annee, code)")) &&
+           startsWith(refus(calcule(pl, "previous(densite, annee, secteur)")), "previous()"))
+pl_ids <- projet_depuis_tableau(ds[c("nom", "densite")], "series par identifiants")
+pl_ids$observation_id_names <- c("Observation", "site", "secteur", "an")
+for (i in seq_along(pl_ids$observations)) pl_ids$observations[[i]]$ids <- c(pl_ids$observations[[i]]$ids[1], ds$site[i], ds$secteur[i], as.character(ds$annee[i]))
+verifier("des identifiants des observations : le site et le secteur, et le temps fait de nombres (l'année)",
+         proche(calcule(pl_ids, "precedent(densite, an, interaction(site, secteur))"), avant))
+pl_vides <- pl_ids
+pl_vides$observations[[6]]$ids[4] <- ""  # (L06, A-S1 2002, sans année)
+pl_vides$observations[[2]]$ids[3] <- ""  # (L02, B-S1 2002, sans secteur)
+verifier("une observation sans temps ou sans groupe a NA, et ne compte pour aucune autre",
+         proche(calcule(pl_vides, "precedent(densite, an, interaction(site, secteur))"), c(NA, NA, NA, 4, NA, NA, NA, 5, NA, NA)) &&
+           proche(calcule(pl_vides, "suivant(densite, an, interaction(site, secteur))"), c(0, NA, NA, NA, NA, NA, NA, NA, NA, NA)))
+m_temps <- refus(calcule(pl_ids, "precedent(densite, secteur, site)"))
+verifier(sprintf("le temps doit être numérique : « %s » ; le pas, positif", m_temps),
+         grepl("numérique", m_temps) && grepl("« S1 »", m_temps, fixed = TRUE) && grepl("pas", refus(calcule(pl, "suivant(densite, annee, code, pas = 0)"))))
 
 cat("Imputation par ACP (Nouvelle variable)\n")
 set.seed(5)

@@ -38,6 +38,7 @@ appel_ouverture <- function(chemin, table = NULL) {
 # Les lignes R d'une action de l'interface (NULL pour celles qui ne font qu'afficher).
 journaliser <- function(nom, q, r) {
   pm <- function(id) etat$modeles[[id]]$projet
+  variable_r <- function(x) if (is.numeric(x)) as.character(x) else code_r(x)  # (un numéro de variable, ou "id:k")
   definition_modele <- function(id, commentaire) {
     e <- etat$modeles[[id]]
     c(commentaire, code_definition(projet(e$projet), e$definition, e$projet), sprintf("%s <- ajuster(%s, d)", id, e$projet))
@@ -68,6 +69,8 @@ journaliser <- function(nom, q, r) {
                               if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q$n)),
     modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
     statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
+    series = sprintf("series_variable(%s)", paste(c(q$projet, variable_r(q$variable), variable_r(q$temps),
+      if (length(q$lignes)) paste("lignes =", variable_r(q$lignes)), if (length(q$panneaux)) paste("panneaux =", variable_r(q$panneaux))), collapse = ", ")),
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
     script_r = if (length(q$modeles) > 1) {
