@@ -333,6 +333,10 @@ reajuster_demande <- function(q) {
                                else traduire("Cette analyse n'a pas de VIP.", "This analysis has no VIP."))
     q$A <- NULL
   }
+  if (!is.null(q$groupes_aic)) {  # Sélection par AIC › Ajuster ce modèle : les seuls termes de ces groupes (regression.R)
+    if (!est_regression(d)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    d <- definition_selection(d, e$modele, q$groupes_aic)
+  }
   exclues <- as.numeric(q$exclues %||% numeric(0))
   if (length(q$garder)) {  # ne garder que ces termes X (et les facteurs de leurs termes croisés)
     noms <- vapply(d$x, function(t) as.character(t$name), "")
@@ -816,6 +820,14 @@ DEMANDES <- list(
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     if (is.null(e$modele$apports)) etat$modeles[[q$modele]]$modele$apports <- apport_groupes(e$modele) %||% data.frame()
     list(modele = q$modele, apports = etat$modeles[[q$modele]]$modele$apports)
+  },
+  # la sélection des effets fixes par l'AIC (regression.R : selection_aic), calculée une fois et
+  # gardée avec le modèle (le texte des Méthodes la décrit alors)
+  selection_aic = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    if (is.null(e$modele$selection_aic)) etat$modeles[[q$modele]]$modele$selection_aic <- selection_aic(e$modele, e$definition)
+    c(list(modele = q$modele), etat$modeles[[q$modele]]$modele$selection_aic)
   },
   correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),
   historique = function(q) historique_projet(projet(q$projet)),

@@ -487,6 +487,132 @@ rcap <- rapports_vraisemblance(list(xz = m0_ac, x = mx_ac, nul = mn_ac, z = mz_a
 verifier("au plus max_paires paires, et combien il y en a ; un modèle et lui-même ne font pas une paire",
          nrow(rcap$paires) == 2 && rcap$total == 5 && rapports_vraisemblance(list(a = mx_ac, b = mx_ac))$total == 0)
 
+cat("Sélection par AIC\n")
+aicc_direct <- function(f, n) { k <- attr(stats::logLik(f), "df"); stats::AIC(f) + 2 * k * (k + 1) / (n - k - 1) }
+contenus_sel <- function(s) lapply(seq_len(nrow(s$modeles)), function(i) as.character(s$groupes)[vapply(s$contient, `[`, 0L, i) == 1L])
+cle_sel <- function(g) paste(sort(g), collapse = " + ")
+# une régression linéaire : cinq variables (une qualitative) et un terme croisé, sur les observations complètes du modèle
+dsel <- definir_modele(p, "LM", x = u("sucre", "fermete", "acidite", "polyphenols", "variete"), y = u("note_gout"), echelle = "none",
+                       croises = list(u("sucre", "fermete")))
+msel <- ajuster(p, dsel)
+ssel <- selection_aic(msel, dsel)
+csel <- stats::complete.cases(df[c("note", "sucre", "fermete", "acidite", "polyphenols", "variete")])
+morceaux <- c(sucre = "sucre", fermete = "fermete", acidite = "acidite", polyphenols = "polyphenols", variete = "variete", "sucre*fermete" = "I(sucre * fermete)")
+permises <- Filter(function(g) !"sucre*fermete" %in% g || all(c("sucre", "fermete") %in% g),
+                   lapply(0:63, function(b) names(morceaux)[bitwAnd(b, 2^(0:5)) > 0]))
+gsel <- contenus_sel(ssel)
+aicc_lm <- vapply(gsel, function(g) aicc_direct(lm(reformulate(if (length(g)) morceaux[g] else "1", "note"), data = df[csel, ]), sum(csel)), 0)
+verifier(sprintf("lm : les %d combinaisons permises des 6 groupes (le terme croisé avec ses deux effets principaux), chacune = lm() et son AICc", length(permises)),
+         ssel$methode == "toutes" && nrow(ssel$modeles) == length(permises) && setequal(vapply(gsel, cle_sel, ""), vapply(permises, cle_sel, "")) &&
+           proche(ssel$modeles$AICc, aicc_lm, 1e-8) && ssel$N == sum(csel) && sum(csel) < length(obs) && !is.unsorted(ssel$modeles$AICc))
+dl_aic <- aicc_lm - min(aicc_lm)
+w_aic <- exp(-dl_aic / 2) / sum(exp(-dl_aic / 2))
+imp_aic <- vapply(names(morceaux), function(g) sum(w_aic[vapply(gsel, function(x) g %in% x, TRUE)]), 0)
+verifier("ΔAICc, poids d'Akaike et leur cumul, l'importance de chaque groupe (la somme des poids des modèles qui le contiennent), recalculés",
+         proche(ssel$modeles$delta, dl_aic) && proche(ssel$modeles$poids, w_aic) && proche(ssel$modeles$poids_cumule, cumsum(w_aic)) &&
+           proche(ssel$importance$importance, imp_aic[ssel$importance$groupe]) && ssel$meilleur == which.min(aicc_lm))
+set.seed(8)
+tp <- data.frame(nom = sprintf("P%02d", 1:50), x1 = rnorm(50), x2 = rnorm(50), x3 = rnorm(50))
+tp$y <- 1 + 0.6 * tp$x1 + 0.2 * tp$x2 + rnorm(50)
+pp <- projet_depuis_tableau(tp, "parcimonie")
+dpar <- definir_modele(pp, "LM", x = numeros(pp, c("x1", "x2", "x3")), y = numeros(pp, "y"), echelle = "none")
+spar <- selection_aic(ajuster(pp, dpar), dpar)
+gpar <- contenus_sel(spar)
+proches <- which(spar$modeles$delta <= 2)
+verifier(sprintf("le plus parcimonieux à ΔAICc ≤ 2 : le moins de paramètres (%s, ΔAICc %.2f), quand le meilleur en a plus (%s)",
+                 cle_sel(gpar[[spar$parcimonieux]]), spar$modeles$delta[spar$parcimonieux], cle_sel(gpar[[1]])),
+         spar$parcimonieux == proches[order(spar$modeles$k[proches], spar$modeles$delta[proches])][1] && spar$parcimonieux != 1 &&
+           identical(gpar[[spar$parcimonieux]], "x1") && identical(gpar[[1]], c("x1", "x2")))
+dsel3 <- definir_modele(p, "LMM", x = u("sucre", "fermete", "acidite"), y = u("note_gout"), echelle = "none", aleatoires = list(list(by = "variable", variable = u("verger"))))
+ssel3 <- selection_aic(ajuster(p, dsel3), dsel3)
+c3 <- stats::complete.cases(df[c("note", "sucre", "fermete", "acidite")])
+aicc_lme <- vapply(contenus_sel(ssel3), function(g) aicc_direct(nlme::lme(reformulate(if (length(g)) g else "1", "note"), random = ~ 1 | verger, data = df[c3, ],
+                                                                          method = "ML", control = ctrl), sum(c3)), 0)
+verifier("modèle mixte : les 8 combinaisons = nlme::lme(method = \"ML\"), l'effet aléatoire gardé", nrow(ssel3$modeles) == 8 && proche(ssel3$modeles$AICc, aicc_lme, 1e-6))
+msel_l <- ajuster(pa, dl)
+ssel_l <- selection_aic(msel_l, dl)
+aicc_car1 <- vapply(contenus_sel(ssel_l), function(g) aicc_direct(nlme::lme(reformulate(if (length(g)) g else "1", "y"), random = ~ 1 | site_f, correlation = cor_a,
+                                                                            data = ta, method = "ML"), nrow(ta)), 0)
+verifier("avec l'autocorrélation CAR1 dans chaque secteur : = nlme::lme(method = \"ML\") avec la même corCAR1", nrow(ssel_l$modeles) == 4 && proche(ssel_l$modeles$AICc, aicc_car1, 1e-6))
+sma <- selection_aic(ma, da)
+aicc_gamm <- vapply(contenus_sel(sma), function(g) {
+  droite <- c(if ("x" %in% g) "s(x, k = 5)", if ("xbar" %in% g) "xbar")
+  r <- mgcv::gamm(stats::as.formula(paste("y ~", if (length(droite)) paste(droite, collapse = " + ") else "1"), env = new.env(parent = asNamespace("mgcv"))),
+                  random = list(site_f = ~1), correlation = cor_a, data = ta, method = "ML")
+  aicc_direct(r$lme, nrow(ta))
+}, 0)
+verifier("mgcv::gamm avec CAR1 : chaque combinaison = mgcv::gamm(method = \"ML\"), la courbe gardant sa dimension (k = 5)", proche(sma$modeles$AICc, aicc_gamm, 1e-6))
+dsel6 <- definir_modele(pg, "GAM", x = ug("x1", "x2"), y = ug("compte"), echelle = "none", famille = "binomiale_negative", lisses = ug("x1"), decalage = ug("effort"),
+                        aleatoires = list(list(by = "variable", variable = ug("site"))))
+ssel6 <- selection_aic(mg6, dsel6)
+tgf <- transform(tg, site = factor(site))
+aicc_gam <- vapply(contenus_sel(ssel6), function(g) {
+  droite <- c(if ("x2" %in% g) "x2", if ("x1" %in% g) "s(x1, k = 10)", "s(site, bs = \"re\")")
+  aicc_direct(mgcv::gam(stats::as.formula(paste("compte ~", paste(droite, collapse = " + ")), env = env), data = tgf, family = mgcv::nb(), method = "ML",
+                        offset = log(effort)), nrow(tg))
+}, 0)
+verifier("GAMM binomial négatif (courbe, site aléatoire, effort) : chaque combinaison = mgcv::gam(method = \"ML\")", nrow(ssel6$modeles) == 4 && proche(ssel6$modeles$AICc, aicc_gam, 1e-5))
+# au-delà de 8 groupes : l'élimination descendante, refaite ici avec lm() (un effet principal reste tant que son terme croisé est là)
+set.seed(31)
+tb <- data.frame(nom = sprintf("B%02d", 1:80), matrix(rnorm(800), 80, 10, dimnames = list(NULL, paste0("x", 1:10))))
+tb$y <- 1 + 0.8 * tb$x1 - 0.5 * tb$x2 + 0.3 * tb$x3 + rnorm(80)
+pb <- projet_depuis_tableau(tb, "descendante")
+db <- definir_modele(pb, "LM", x = numeros(pb, paste0("x", 1:10)), y = numeros(pb, "y"), echelle = "none", croises = list(numeros(pb, c("x1", "x2"))))
+sb <- selection_aic(ajuster(pb, db), db)
+morceaux_b <- c(stats::setNames(paste0("x", 1:10), paste0("x", 1:10)), "x1*x2" = "I(x1 * x2)")
+aicc_b <- function(v) aicc_direct(lm(reformulate(if (length(v)) morceaux_b[v] else "1", "y"), data = tb), 80)
+courant <- names(morceaux_b)
+a_b <- aicc_b(courant)
+retires_b <- character(0)
+essayes_b <- 1
+repeat {
+  retirables_b <- setdiff(courant, if ("x1*x2" %in% courant) c("x1", "x2"))
+  if (!length(retirables_b)) break
+  essais_b <- vapply(retirables_b, function(g) aicc_b(setdiff(courant, g)), 0)
+  essayes_b <- essayes_b + length(essais_b)
+  if (min(essais_b) >= a_b) break
+  retires_b <- c(retires_b, names(which.min(essais_b)))
+  courant <- setdiff(courant, names(which.min(essais_b)))
+  a_b <- min(essais_b)
+}
+gb <- contenus_sel(sb)
+verifier(sprintf("11 groupes (plus de 256 combinaisons) : élimination descendante = celle faite avec lm() (retirés : %s ; %d modèles essayés)", paste(retires_b, collapse = ", "), essayes_b),
+         sb$methode == "descendante" && identical(sb$chemin$retire[-1], retires_b) && setequal(gb[[1]], courant) && proche(sb$modeles$AICc[1], a_b, 1e-8) &&
+           nrow(sb$modeles) == essayes_b && all(vapply(gb, function(g) !"x1*x2" %in% g || all(c("x1", "x2") %in% g), TRUE)) &&
+           proche(sb$importance$importance, vapply(as.character(sb$groupes), function(g) sum(sb$modeles$poids[vapply(gb, function(x) g %in% x, TRUE)]), 0)))
+# Ajuster ce modèle : la définition du modèle choisi
+dch <- definition_selection(dsel, msel, c("sucre", "sucre*fermete"))
+verifier("Ajuster ce modèle : les seules variables des groupes choisis, un terme croisé gardant ses facteurs ; les autres réglages restent",
+         identical(vapply(dch$x, function(t) t$name, ""), c("sucre", "fermete", "sucre*fermete")) && identical(dch[c("type", "y", "cv_groups", "title")], dsel[c("type", "y", "cv_groups", "title")]))
+isf <- match("fermete + sucre", vapply(gsel, cle_sel, ""))
+mch <- ajuster(p, definition_selection(dsel, msel, c("sucre", "fermete")))
+verifier(sprintf("ajusté, le modèle choisi a l'AICc de sa ligne (%.2f), sur les observations de la sélection (%d : les valeurs manquantes d'une variable retirée n'en ajoutent pas)",
+                 mch$resultat$AICc, mch$N),
+         proche(mch$resultat$AICc, ssel$modeles$AICc[isf], 1e-8) && mch$N == msel$N && identical(sort(mch$observations), sort(msel$observations)) &&
+           identical(mch$resultat$coefficients$terme, c("(Intercept)", "sucre", "fermete")))
+dch6 <- definition_selection(dsel6, mg6, "x2")
+mch6 <- ajuster(pg, dch6)
+dcha <- definition_selection(da, ma, "x")
+verifier("sans la variable en courbe, ni courbe ni dimension ; l'effort, le site aléatoire, l'autocorrélation et la dimension d'une courbe gardée restent",
+         is.null(dch6$lisses) && is.null(dch6$k_courbes) && identical(dch6$decalage, dsel6$decalage) && identical(dch6$aleatoires, dsel6$aleatoires) &&
+           proche(mch6$resultat$AICc, ssel6$modeles$AICc[match("x2", vapply(contenus_sel(ssel6), cle_sel, ""))], 1e-6) &&
+           identical(dcha$lisses, da$lisses) && identical(dcha$k_courbes, da$k_courbes) && identical(dcha$correlation, da$correlation) && ajuster(pa, dcha)$k[[1]] == 5)
+verifier("Ajuster ce modèle : le modèle nul, et un groupe inconnu refusé",
+         !length(definition_selection(dsel, msel, character(0))$x) && grepl("inconnu", refus(definition_selection(dsel, msel, "absent"))))
+msel$selection_aic <- ssel
+mbs <- ajuster(pb, db)
+mbs$selection_aic <- sb
+for (langue_s in c("fr", "en")) {
+  tsel <- texte_methodes(p, dsel, msel, langue_s, "essai")
+  tdes <- texte_methodes(pb, db, mbs, langue_s, "essai")$paragraphes[2]
+  verifier(sprintf("texte des méthodes (%s) : la sélection (40 combinaisons, ML, AICc), le meilleur modèle, l'importance des groupes, Burnham et Anderson cités ; l'élimination descendante", langue_s),
+           grepl("AICc", tsel$paragraphes[2]) && grepl("40 ", tsel$paragraphes[2]) && grepl("(ML)", tsel$paragraphes[2], fixed = TRUE) &&
+             grepl("importance", tsel$paragraphes[2]) && length(tsel$paragraphes) == 5 && any(grepl("Burnham", tsel$references)) &&
+             grepl(if (langue_s == "fr") "élimination descendante" else "backward elimination", tdes) && !any(grepl("NA", c(tsel$paragraphes, tdes), fixed = TRUE)) &&
+             !grepl("AICc", texte_methodes(p, dsel, ajuster(p, dsel), langue_s, "essai")$paragraphes[2]))
+}
+verifier("le modèle nul : aucun groupe à choisir", identical(selection_aic(m0, definir_modele(p, "LM", x = NULL, y = u("note_gout"), echelle = "none"))$K, 0L))
+
 cat("Prédiction\n")
 pr <- predire(p, m, d, obs)
 xc <- stats::complete.cases(df[c("sucre", "fermete", "acidite", "polyphenols")])

@@ -326,6 +326,22 @@ async function principal() {
         && lm.signature === lmm.signature, 'modèle mixte validé par verger, même ensemble AIC que la régression');
       const ap = await api('apports', { modele: lmm.id });
       verifier([].concat(ap.apports.groupe).length === 2 && [].concat(ap.apports.delta_aic).every((d) => d !== null), 'apport des variables (AIC)');
+      // the AIC selection (regression.R: selection_aic), then "Fit this model" (reajuster with groupes_aic)
+      const sa = await api('selection_aic', { modele: lmm.id });
+      const poids = [].concat(sa.modeles.poids);
+      verifier(sa.methode === 'toutes' && [].concat(sa.groupes).length === 2 && poids.length === 4 && Math.abs(poids.reduce((a, b) => a + b, 0) - 1) < 1e-9
+        && [].concat(sa.importance.importance).length === 2 && sa.meilleur === 1 && sa.parcimonieux >= 1 && [].concat(sa.contient).length === 2,
+      `sélection par AIC : les 4 combinaisons, leurs poids, l’importance des groupes (${JSON.stringify(sa.modeles)})`);
+      const meilleur = [].concat(sa.groupes).filter((_, j) => [].concat(sa.contient[j])[0] === 1);
+      const choisi = await api('reajuster', { modele: lmm.id, groupes_aic: meilleur });
+      verifier(/^R2 \(\d+\)$/.test(choisi.nom) && choisi.type === 'LMM' && choisi.K === meilleur.length && choisi.N === lmm.N
+        && Math.abs(choisi.qualite.AICc - [].concat(sa.modeles.AICc)[0]) < 1e-6, `Ajuster ce modèle : ${choisi.nom}, K = ${choisi.K}, AICc ${choisi.qualite.AICc}`);
+      const nul = await api('reajuster', { modele: lmm.id, groupes_aic: [] });
+      const ligneNul = [].concat(sa.modeles.modele).indexOf('1');
+      verifier(nul.K === 0 && Math.abs(nul.qualite.AICc - [].concat(sa.modeles.AICc)[ligneNul]) < 1e-6, 'Ajuster ce modèle : le modèle nul');
+      const tsel = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
+      verifier([].concat(tsel.paragraphes).some((x) => /AICc/.test(x) && /combinations/.test(x)) && [].concat(tsel.references).some((x) => /Burnham/.test(x)),
+        'texte des méthodes : la sélection par AIC, une fois faite');
       const ex = await api('exporter', { modele: lmm.id, chemin: path.join(dossier, 'R2.csv') });
       verifier(ex.chemins.length === 4 && ex.chemins.every((c) => fs.existsSync(c)), 'exporter les résultats d’une régression (un fichier par tableau)');
       const sc = await api('script_r', { modele: lmm.id, version: 'essai', langue: 'fr', chemin: path.join(dossier, 'R2.R') });

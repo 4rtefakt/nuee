@@ -96,11 +96,10 @@ coefficients_lineaire <- function(m) {
 }
 
 # Le modèle ajusté sur toutes ses observations : REML pour les coefficients et les variances,
-# ML pour la vraisemblance et l'AIC. noms : le nom affiché de chaque terme t1..tK ; groupes :
-# ceux dont on mesure l'apport (retrait_groupes), une liste nommée de vecteurs de termes.
+# ML pour la vraisemblance et l'AIC. noms : le nom affiché de chaque terme t1..tK.
 # Renvoie des valeurs simples (pour l'interface), et les deux ajustements dans `ajustement`
 # et `ajustement_ml` (à ne pas envoyer).
-resultat_lineaire <- function(donnees, termes, noms, niveaux = 0, car1 = FALSE, groupes = list()) {
+resultat_lineaire <- function(donnees, termes, noms, niveaux = 0, car1 = FALSE) {
   if (car1) verifier_temps_uniques(donnees, niveaux)
   utiles <- termes_utiles(donnees, termes)
   retires <- noms[match(setdiff(termes, utiles), termes)]
@@ -137,33 +136,45 @@ resultat_lineaire <- function(donnees, termes, noms, niveaux = 0, car1 = FALSE, 
     res$levier <- as.vector(stats::hatvalues(estime))
     res$cook <- as.vector(stats::cooks.distance(estime))
   }
-  if (length(groupes)) {
-    res$retrait <- retrait_groupes(donnees, utiles, groupes, compare, niveaux, car1)
-    if (!is.null(res$retrait)) res$retrait$groupe <- as.character(res$retrait$groupe)
-  }
   res$utiles <- utiles
   res$ajustement <- estime
   res$ajustement_ml <- compare
   res
 }
 
-# L'apport de chaque groupe de termes (un bloc, ou un terme seul) : le modèle réajusté en ML
-# sans lui. ΔAIC = AIC sans le groupe - AIC du modèle complet (> 0 : le groupe améliore le
-# modèle ; > 2, nettement, Burnham et Anderson, 2002) ; test du rapport de vraisemblance.
-# groupes : une liste nommée de vecteurs de termes (t1..tK).
-retrait_groupes <- function(donnees, utiles, groupes, complet, niveaux = 0, car1 = FALSE) {
+# Le modèle `m` réajusté en ML avec les seuls termes `termes` (parmi ses termes utiles), tout le
+# reste comme dans le modèle : ses effets aléatoires, son autocorrélation, sa loi, son décalage,
+# ses courbes (celles de ces termes) et leur dimension. lm ou nlme::lme, mgcv::gam ou mgcv::gamm,
+# sur les observations du modèle ; renvoie l'ajustement dont viennent la vraisemblance et l'AIC (la
+# partie nlme d'un mgcv::gamm), ou NULL quand il échoue. Le modèle complet n'est pas refait.
+ajuster_termes_ml <- function(m, termes) {
+  gamm <- inherits(m$ajustement, "gamm")
+  if (setequal(termes, m$utiles)) return(if (gamm) m$ajustement_ml$lme else m$ajustement_ml)
+  niveaux <- length(m$niveaux)
+  if (!inherits(m$ajustement, c("gam", "gamm"))) return(ajuster_lineaire(m$donnees, termes, niveaux, m$car1, "ML"))
+  lis <- intersect(m$lisses, termes)
+  if (gamm) return(ajuster_gamm(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, "ML")$lme)
+  ajuster_mgcv(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, m$famille, !is.null(m$decalage), "ML")
+}
+
+# L'apport de chaque groupe de termes (un bloc, ou un terme seul) : le modèle `m` réajusté en ML
+# sans lui (ajuster_termes_ml). ΔAIC = AIC sans le groupe - AIC du modèle complet (> 0 : le groupe
+# améliore le modèle ; > 2, nettement, Burnham et Anderson, 2002) ; test du rapport de
+# vraisemblance. groupes : une liste nommée de vecteurs de termes (t1..tK).
+retrait_groupes <- function(m, groupes) {
+  complet <- ajuster_termes_ml(m, m$utiles)
   ll <- as.numeric(stats::logLik(complet))
   df <- attr(stats::logLik(complet), "df")
   lignes <- lapply(names(groupes), function(nom) {
-    sans <- setdiff(utiles, groupes[[nom]])
-    retires <- length(utiles) - length(sans)
+    sans <- setdiff(m$utiles, groupes[[nom]])
+    retires <- length(m$utiles) - length(sans)
     if (!retires) return(NULL)
-    m <- ajuster_lineaire(donnees, sans, niveaux, car1, "ML")
-    if (is.null(m)) return(data.frame(groupe = nom, termes = retires, delta_aic = NA_real_, khi2 = NA_real_, ddl = NA_real_, p = NA_real_))
-    khi2 <- 2 * (ll - as.numeric(stats::logLik(m)))
-    ddl <- df - attr(stats::logLik(m), "df")
-    data.frame(groupe = nom, termes = retires, delta_aic = stats::AIC(m) - stats::AIC(complet), khi2 = khi2, ddl = ddl,
-               p = stats::pchisq(khi2, ddl, lower.tail = FALSE), stringsAsFactors = FALSE)
+    a <- ajuster_termes_ml(m, sans)
+    if (is.null(a)) return(data.frame(groupe = nom, termes = retires, delta_aic = NA_real_, khi2 = NA_real_, ddl = NA_real_, p = NA_real_))
+    khi2 <- 2 * (ll - as.numeric(stats::logLik(a)))
+    ddl <- df - attr(stats::logLik(a), "df")
+    data.frame(groupe = nom, termes = retires, delta_aic = stats::AIC(a) - stats::AIC(complet), khi2 = khi2, ddl = ddl,
+               p = if (ddl > 0) stats::pchisq(khi2, ddl, lower.tail = FALSE) else NA_real_, stringsAsFactors = FALSE)
   })
   do.call(rbind, lignes)
 }
@@ -576,17 +587,146 @@ tables_regression <- function(projet, m) {
   tables
 }
 
+# Les groupes de termes d'un modèle : le bloc de chaque terme (colonne Bloc de Nouveau modèle),
+# sinon sa variable (groupes_termes), parmi ses termes utiles et dans leur ordre ; une liste
+# nommée de vecteurs de termes (t1..tK).
+groupes_modele <- function(m) {
+  g <- m$groupes_termes[m$utiles]
+  split(names(g), factor(unname(g), levels = unique(unname(g))))
+}
+
 # L'apport de chaque groupe de termes du modèle (son bloc, sinon sa variable), calculé à la
-# demande : retrait_groupes sur les données et l'ajustement en ML du modèle.
+# demande : retrait_groupes.
 apport_groupes <- function(m) {
   if (!length(m$utiles)) return(NULL)
-  g <- m$groupes_termes[m$utiles]
-  groupes <- split(names(g), factor(unname(g), levels = unique(unname(g))))
-  if (inherits(m$ajustement, "gamm")) return(retrait_gamm(m$donnees, m$utiles, m$lisses, m$k, groupes, m$ajustement_ml, length(m$niveaux)))
-  if (inherits(m$ajustement, "gam")) {
-    return(retrait_mgcv(m$donnees, m$utiles, m$lisses, m$k, groupes, m$ajustement_ml, length(m$niveaux), m$famille, !is.null(m$decalage)))
+  retrait_groupes(m, groupes_modele(m))
+}
+
+# ------------------------------------------------------------ sélection par l'AIC
+
+# Les groupes que demande chaque groupe de termes : ceux des facteurs de ses termes croisés et de
+# ses carrés (un terme croisé n'entre qu'avec ses effets principaux). `termes` : les termes X de
+# la définition, t1..tK dans l'ordre (termes_regression) ; une liste nommée comme `groupes`.
+groupes_requis <- function(groupes, termes) {
+  cles <- vapply(termes, function(t) if (length(t$variables) == 1) paste(t$variables[1], categorie(t)) else "", "")
+  groupe_de <- stats::setNames(rep(names(groupes), lengths(groupes)), unlist(groupes, use.names = FALSE))
+  lapply(stats::setNames(names(groupes), names(groupes)), function(nom) {
+    facteurs <- unlist(lapply(groupes[[nom]], function(tk) {
+      t <- termes[[as.integer(sub("^t", "", tk))]]
+      if (length(t$variables) < 2) return(character(0))
+      paste0("t", match(vapply(seq_along(t$variables), function(j) paste(t$variables[j], categorie(t, j)), ""), cles))
+    }))
+    setdiff(unique(unname(groupe_de[intersect(facteurs, names(groupe_de))])), nom)
+  })
+}
+
+# La sélection des effets fixes par l'AICc (Burnham et Anderson, 2002), calculée à la demande : les
+# combinaisons des groupes de termes du modèle `m` (groupes_modele), du modèle nul au modèle
+# complet, chacune ajustée en ML sur les observations du modèle (ajuster_termes_ml) ; ses effets
+# aléatoires, son autocorrélation, sa loi, son décalage et le réglage de ses courbes restent ceux
+# du modèle. Un terme croisé ou un carré n'entre qu'avec ses effets principaux (groupes_requis ;
+# `d` : la définition du modèle). Toutes les combinaisons quand 2^K ≤ `limite` (sur 240
+# observations, les 256 combinaisons de 8 groupes d'un nlme::lme avec CAR1 prennent une dizaine de
+# secondes, celles d'un mgcv::gamm avec deux courbes une demi-minute) ; au-delà, une élimination
+# descendante depuis le modèle complet : à chaque pas, le retrait qui baisse le plus l'AICc, jusqu'à
+# ce qu'aucun ne la baisse. Les modèles sont rangés par AICc : ΔAICc, poids d'Akaike (sur les
+# modèles ajustés) et leur cumul ; l'importance d'un groupe est la somme des poids des modèles qui
+# le contiennent. Le meilleur modèle a l'AICc le plus bas (le premier) ; le plus parcimonieux, le
+# moins de paramètres parmi ceux à ΔAICc ≤ 2 (Burnham et Anderson, 2002).
+selection_aic <- function(m, d, limite = 256) {
+  groupes <- groupes_modele(m)
+  K <- length(groupes)
+  n <- nrow(m$donnees)
+  if (!K) return(list(K = 0L, N = n))
+  noms <- names(groupes)
+  requis <- groupes_requis(groupes, termes_regression(d$x))
+  permis <- function(b) all(vapply(noms[b], function(g) all(requis[[g]] %in% noms[b]), TRUE))
+  evaluer <- function(b) {  # (un candidat : les groupes qu'il contient)
+    a <- ajuster_termes_ml(m, intersect(m$utiles, unlist(groupes[b], use.names = FALSE)))
+    if (is.null(a)) return(c(k = NA_real_, logLik = NA_real_, AICc = NA_real_))
+    ll <- stats::logLik(a)
+    c(k = attr(ll, "df"), logLik = as.numeric(ll), AICc = aic_corrige(a, n))
   }
-  retrait_groupes(m$donnees, m$utiles, groupes, m$ajustement_ml, length(m$niveaux), m$car1)
+  meilleure <- function(a, b) !is.na(a) && (is.na(b) || a < b)
+  toutes <- 2^K <= limite
+  chemin <- NULL
+  if (toutes) {
+    B <- as.matrix(expand.grid(rep(list(c(FALSE, TRUE)), K), KEEP.OUT.ATTRS = FALSE))
+    B <- B[apply(B, 1, permis), , drop = FALSE]
+    B <- B[order(rowSums(B)), , drop = FALSE]
+    valeurs <- t(apply(B, 1, evaluer))
+    etape <- rep(NA_integer_, nrow(B))
+  } else {
+    courant <- rep(TRUE, K)
+    B <- matrix(courant, 1)
+    valeurs <- t(evaluer(courant))
+    etape <- 0L
+    chemin <- data.frame(etape = 0L, retire = NA_character_, AICc = unname(valeurs[1, "AICc"]), stringsAsFactors = FALSE)
+    repeat {
+      # (un groupe ne se retire pas tant qu'un groupe gardé le demande)
+      retirables <- which(courant & !vapply(noms, function(g) any(vapply(noms[courant], function(h) g %in% requis[[h]], TRUE)), TRUE))
+      if (!length(retirables)) break
+      essais <- lapply(retirables, function(j) replace(courant, j, FALSE))
+      v <- t(vapply(essais, evaluer, c(k = 0, logLik = 0, AICc = 0)))
+      pas <- max(etape) + 1L
+      B <- rbind(B, do.call(rbind, essais))
+      valeurs <- rbind(valeurs, v)
+      etape <- c(etape, rep(pas, length(essais)))
+      j <- which.min(v[, "AICc"])
+      if (!length(j) || !meilleure(v[j, "AICc"], chemin$AICc[nrow(chemin)])) break
+      courant <- essais[[j]]
+      chemin <- rbind(chemin, data.frame(etape = pas, retire = noms[retirables[j]], AICc = unname(v[j, "AICc"]), stringsAsFactors = FALSE))
+    }
+    rownames(chemin) <- NULL
+  }
+  # le classement : AICc croissant (à égalité, le moins de paramètres d'abord), les échecs à la fin
+  ordre <- order(valeurs[, "AICc"], valeurs[, "k"], na.last = TRUE)
+  B <- B[ordre, , drop = FALSE]
+  valeurs <- valeurs[ordre, , drop = FALSE]
+  aicc <- valeurs[, "AICc"]
+  ok <- !is.na(aicc)
+  if (!any(ok)) stop(traduire("Aucun modèle n'a d'AICc : trop peu d'observations pour leurs paramètres.",
+                              "No model has an AICc: too few observations for their parameters."), call. = FALSE)
+  delta <- aicc - min(aicc[ok])
+  poids <- exp(-delta / 2) / sum(exp(-delta[ok] / 2))
+  cumul <- cumsum(ifelse(ok, poids, 0))
+  cumul[!ok] <- NA
+  proches <- which(ok & delta <= 2)
+  list(methode = if (toutes) "toutes" else "descendante", limite = limite, N = n, K = K, groupes = I(noms),
+       termes = unname(lapply(groupes, function(ts) I(m$noms_termes[match(ts, m$termes)]))), requis = unname(lapply(requis, I)),
+       modeles = data.frame(modele = apply(B, 1, function(b) if (any(b)) paste(noms[b], collapse = " + ") else "1"), n_groupes = rowSums(B),
+                            k = valeurs[, "k"], logLik = valeurs[, "logLik"], AICc = aicc, delta = delta, poids = poids, poids_cumule = cumul,
+                            etape = etape[ordre], row.names = NULL, stringsAsFactors = FALSE),
+       contient = lapply(seq_len(K), function(j) I(as.integer(B[, j]))),
+       importance = data.frame(groupe = noms, importance = colSums(B[ok, , drop = FALSE] * poids[ok]), row.names = NULL, stringsAsFactors = FALSE),
+       meilleur = 1L, parcimonieux = proches[order(valeurs[proches, "k"], delta[proches])][1], chemin = chemin, echecs = sum(!ok))
+}
+
+# La définition d'un modèle choisi dans la sélection par l'AIC (Ajuster ce modèle) : celle du
+# modèle `m` (de définition `d`) avec les seuls termes des groupes `choisis` (un terme croisé garde
+# ses facteurs) ; les mêmes réglages, les courbes et leur dimension de ses variables qui restent ;
+# ses observations, celles du modèle : la sélection les a toutes comparées sur elles (une valeur
+# manquante d'une variable retirée en écartait peut-être, qui restent écartées).
+definition_selection <- function(d, m, choisis) {
+  choisis <- as.character(unlist(choisis))
+  inconnus <- setdiff(choisis, names(groupes_modele(m)))
+  if (length(inconnus)) stop(sprintf(traduire("Groupe de termes inconnu dans ce modèle : %s", "Unknown group of terms in this model: %s"),
+                                     paste(inconnus, collapse = ", ")), call. = FALSE)
+  garde <- unname(m$groupes_termes) %in% choisis  # (le groupe de chaque terme de d$x, dans l'ordre)
+  simple <- vapply(d$x, function(t) length(t$variables) == 1, TRUE)
+  cle <- vapply(d$x, function(t) paste(t$variables[1], categorie(t)), "")
+  facteurs <- unlist(lapply(d$x[garde & !simple], function(t) vapply(seq_along(t$variables), function(j) paste(t$variables[j], categorie(t, j)), "")))
+  d$x <- d$x[garde | (simple & cle %in% facteurs)]
+  restantes <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1) as.numeric(t$variables)))
+  d$lisses <- intersect(as.numeric(d$lisses), restantes)
+  if (!length(d$lisses)) d$lisses <- NULL
+  d$k_courbes <- d$k_courbes[names(d$k_courbes) %in% as.character(d$lisses)]
+  if (!length(d$k_courbes)) d$k_courbes <- NULL
+  if (length(m$exclues)) {
+    d$exclues <- c(d$exclues, setdiff(d$observations, m$observations))
+    d$observations <- intersect(d$observations, m$observations)
+  }
+  d
 }
 
 # ------------------------------------------------------------ modèles généralisés et additifs
@@ -761,26 +901,6 @@ validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille
        RMSEcv = if (any(ok)) sqrt(mean((y[ok] - prediction[ok])^2)) else NA_real_)
 }
 
-# L'apport de chaque groupe de termes d'un modèle de mgcv (retrait_groupes) : réajusté en ML
-# sans lui (sans pénalité, les deux ajustements sont les mêmes).
-retrait_mgcv <- function(donnees, utiles, lisses, k, groupes, complet, niveaux, famille, decalage) {
-  ll <- as.numeric(stats::logLik(complet))
-  df <- attr(stats::logLik(complet), "df")
-  lignes <- lapply(names(groupes), function(nom) {
-    sans <- setdiff(utiles, groupes[[nom]])
-    retires <- length(utiles) - length(sans)
-    if (!retires) return(NULL)
-    lis <- intersect(lisses, sans)
-    m <- ajuster_mgcv(donnees, setdiff(sans, lis), lis, k, niveaux, famille, decalage, "ML")
-    if (is.null(m)) return(data.frame(groupe = nom, termes = retires, delta_aic = NA_real_, khi2 = NA_real_, ddl = NA_real_, p = NA_real_))
-    khi2 <- 2 * (ll - as.numeric(stats::logLik(m)))
-    ddl <- df - attr(stats::logLik(m), "df")
-    data.frame(groupe = nom, termes = retires, delta_aic = stats::AIC(m) - stats::AIC(complet), khi2 = khi2, ddl = ddl,
-               p = if (ddl > 0) stats::pchisq(khi2, ddl, lower.tail = FALSE) else NA_real_, stringsAsFactors = FALSE)
-  })
-  do.call(rbind, lignes)
-}
-
 # ------------------------------------------- avec une autocorrélation dans le temps (mgcv::gamm)
 
 # Un modèle à loi normale, avec des courbes ou non, des effets aléatoires et une autocorrélation
@@ -875,26 +995,6 @@ validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux) {
   list(prediction = prediction, echecs = echecs,
        Q2 = if (any(ok)) 1 - sum((y[ok] - prediction[ok])^2) / sum((y[ok] - mean(y[ok]))^2) else NA_real_,
        RMSEcv = if (any(ok)) sqrt(mean((y[ok] - prediction[ok])^2)) else NA_real_)
-}
-
-# L'apport de chaque groupe de termes d'un modèle de mgcv::gamm (retrait_groupes) : réajusté en ML
-# sans lui ; la vraisemblance de sa partie nlme.
-retrait_gamm <- function(donnees, utiles, lisses, k, groupes, complet, niveaux) {
-  ll <- as.numeric(stats::logLik(complet$lme))
-  df <- attr(stats::logLik(complet$lme), "df")
-  lignes <- lapply(names(groupes), function(nom) {
-    sans <- setdiff(utiles, groupes[[nom]])
-    retires <- length(utiles) - length(sans)
-    if (!retires) return(NULL)
-    lis <- intersect(lisses, sans)
-    m <- ajuster_gamm(donnees, setdiff(sans, lis), lis, k, niveaux, "ML")
-    if (is.null(m)) return(data.frame(groupe = nom, termes = retires, delta_aic = NA_real_, khi2 = NA_real_, ddl = NA_real_, p = NA_real_))
-    khi2 <- 2 * (ll - as.numeric(stats::logLik(m$lme)))
-    ddl <- df - attr(stats::logLik(m$lme), "df")
-    data.frame(groupe = nom, termes = retires, delta_aic = stats::AIC(m$lme) - stats::AIC(complet$lme), khi2 = khi2, ddl = ddl,
-               p = if (ddl > 0) stats::pchisq(khi2, ddl, lower.tail = FALSE) else NA_real_, stringsAsFactors = FALSE)
-  })
-  do.call(rbind, lignes)
 }
 
 # Les courbes d'effet d'une régression : pour chaque terme quantitatif, son effet sur
@@ -1082,6 +1182,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
       cite("zuur", if (fr) "Les coefficients et les variances ont été estimés par maximum de vraisemblance restreint (REML), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance (ML ; Zuur et al., 2009)."
                    else "Coefficients and variances were estimated by restricted maximum likelihood (REML), and models compared by the AIC of maximum-likelihood fits (ML; Zuur et al., 2009)."))
   }
+  # (la sélection par l'AIC, quand elle a été faite sur ce modèle)
+  if (isTRUE(m$selection_aic$K > 0)) p2 <- c(p2, cite("burnham", phrase_selection_aic(m, fr, nombre, liste, guillemets)))
 
   # --- validation croisée
   par <- if (length(d$groupes_vc$by)) as.character(d$groupes_vc$by) else ""
@@ -1138,6 +1240,52 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     mgcv = sprintf(REFERENCES_REGRESSION$mgcv, annee_mgcv, mgcv$Version),
     REFERENCES_REGRESSION[[k]]), "")
   list(paragraphes = c(p1, paste(p2, collapse = " "), p3, paste(p4, collapse = " "), p5), references = unname(sort(references)))
+}
+
+# La sélection par l'AIC dans le texte des Méthodes (selection_aic, quand elle a été faite) : les
+# modèles comparés et comment, le meilleur et le plus parcimonieux, l'importance des groupes en
+# tête (cinq au plus). `nombre`, `liste`, `guillemets` : ceux de texte_methodes_regression.
+phrase_selection_aic <- function(m, fr, nombre, liste, guillemets) {
+  s <- m$selection_aic
+  noms <- as.character(s$groupes)
+  mo <- s$modeles
+  toutes <- identical(s$methode, "toutes")
+  contenu <- function(i) {  # (les groupes d'un modèle du classement, en mots)
+    g <- noms[vapply(s$contient, function(x) x[i] == 1L, TRUE)]
+    if (!length(g)) return(if (fr) "était le modèle nul" else "was the null model")
+    if (length(g) == length(noms)) return(if (fr) "était le modèle complet" else "was the full model")
+    sprintf(if (fr) "contenait %s" else "contained %s", liste(guillemets(g)))
+  }
+  avec <- c(if (length(m$niveaux)) (if (fr) "les effets aléatoires" else "the random effects"), if (isTRUE(m$car1)) (if (fr) "l'autocorrélation" else "the autocorrelation"),
+            if (!is.null(m$decalage)) (if (fr) "l'effort en décalage" else "the effort offset"), if (length(m$lisses)) (if (fr) "le réglage des courbes" else "the curves' settings"))
+  avec <- if (length(avec)) sprintf(if (fr) ", avec %s du modèle" else ", with %s of the model", liste(avec)) else ""
+  echecs <- if (s$echecs) sprintf(if (fr) " (%d n'ont pas pu être ajustés)" else " (%d could not be fitted)", s$echecs) else ""
+  croises <- any(lengths(s$requis) > 0)
+  comparaison <- if (toutes) {
+    sprintf(if (fr) "Les effets fixes ont ensuite été choisis par l'AICc (Burnham et Anderson, 2002) : les %d combinaisons de leurs %d groupes de termes (%s), du modèle nul au modèle complet%s, ont été ajustées par maximum de vraisemblance (ML) sur les mêmes %d observations%s%s."
+            else "The fixed effects were then selected by AICc (Burnham & Anderson, 2002): the %d combinations of their %d groups of terms (%s), from the null model to the full model%s, were fitted by maximum likelihood (ML) on the same %d observations%s%s.",
+            nrow(mo), s$K, liste(guillemets(noms)), if (!croises) "" else if (fr) ", un terme croisé n'y entrant qu'avec ses effets principaux" else ", a cross term entering only with its main effects",
+            s$N, avec, echecs)
+  } else {
+    sprintf(if (fr) "Les effets fixes ont ensuite été choisis par élimination descendante sur l'AICc (Burnham et Anderson, 2002) : leurs %d groupes de termes donnant plus de %d combinaisons, chaque pas a retiré, depuis le modèle complet, le groupe dont le retrait baissait le plus l'AICc%s, jusqu'à ce qu'aucun retrait ne la baisse ; les %d modèles essayés ont été ajustés par maximum de vraisemblance (ML) sur les mêmes %d observations%s%s."
+            else "The fixed effects were then selected by backward elimination on AICc (Burnham & Anderson, 2002): their %d groups of terms giving more than %d combinations, each step removed, from the full model on, the group whose removal lowered AICc the most%s, until no removal lowered it; the %d models tried were fitted by maximum likelihood (ML) on the same %d observations%s%s.",
+            s$K, as.integer(s$limite), if (!croises) "" else if (fr) " (un effet principal restant tant qu'un terme croisé le demande)" else " (a main effect staying while a cross term needs it)",
+            nrow(mo), s$N, avec, echecs)
+  }
+  p <- s$parcimonieux
+  choix <- sprintf(if (fr) "Le meilleur modèle (l'AICc le plus bas, poids d'Akaike %s) %s ; %s." else "The best model (lowest AICc, Akaike weight %s) %s; %s.",
+                   nombre(mo$poids[1]), contenu(1),
+                   if (p == 1) (if (fr) "c'était aussi le plus parcimonieux à ΔAICc ≤ 2" else "it was also the most parsimonious within ΔAICc ≤ 2")
+                   else sprintf(if (fr) "le plus parcimonieux à ΔAICc ≤ 2 (le moins de paramètres) %s (ΔAICc = %s)" else "the most parsimonious within ΔAICc ≤ 2 (fewest parameters) %s (ΔAICc = %s)",
+                                contenu(p), nombre(mo$delta[p], 1)))
+  # (les groupes en tête, ceux d'une même importance ensemble : « 1,00 pour « a » et « b », 0,35 pour « c » »)
+  imp <- s$importance[order(-s$importance$importance), , drop = FALSE][seq_len(min(5, s$K)), , drop = FALSE]
+  valeurs <- nombre(imp$importance)
+  par_valeur <- split(imp$groupe, factor(valeurs, levels = unique(valeurs)))
+  importance <- sprintf(if (fr) "L'importance relative des groupes (la somme des poids d'Akaike des modèles qui les contiennent%s) était de %s." else "The relative importance of the groups (the sum of the Akaike weights of the models that contain them%s) was %s.",
+                        if (toutes) "" else if (fr) ", sur les modèles essayés" else ", over the models tried",
+                        liste(vapply(names(par_valeur), function(v) sprintf(if (fr) "%s pour %s" else "%s for %s", v, liste(guillemets(par_valeur[[v]]))), "")))
+  paste(comparaison, choix, importance)
 }
 
 # Les niveaux emboîtés d'effets aléatoires, en mots : « site », « secteur » dans chaque « site »...

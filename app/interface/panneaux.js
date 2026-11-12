@@ -2235,10 +2235,18 @@ function rendreResumeRegression(conteneur, ctx, m) {
     notePhi(m),
     retires.length ? t('termes_retires', { termes: retires.join(', ') }) : '',
     q.echecs_vc ? t('echecs_vc', { n: q.echecs_vc }) : '',
-    m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : ''].filter(Boolean);
+    m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
+    m.K ? indiceSelectionAIC(ctx, m) : ''].filter(Boolean);
   const notes = notesModele(conteneur, ctx, m);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, courbes, table, textes.map((x) => el('p', { class: 'note' }, x))));
   notes.retrouver();
+}
+
+// The Summary's pointer to the AIC selection: its words, with the view's name as a link to it.
+function indiceSelectionAIC(ctx, m) {
+  const [avant, apres] = t('selection_aic_indice').split('{lien}');
+  return [avant, el('a', { href: '#', style: { color: 'var(--accent)' }, onclick: (e) => { e.preventDefault(); ctx.ouvrirVue('selection_aic', m.id); } },
+    `${t('m_graphiques')} › ${t('selection_aic')}`), apres];
 }
 
 // The coefficients of a regression: each term's effect on Y with its 95 % interval (a forest
@@ -2537,6 +2545,83 @@ async function rendreApports(conteneur, ctx, p, loc) {
   });
 }
 
+// The selection of the fixed effects by AICc (regression.R: selection_aic): every combination of
+// the model's groups of terms, from the null model to the full one, each fitted by ML on the
+// model's observations (beyond 8 groups, a backward elimination). The suggested models, each
+// group's importance, the best models, and any of them fitted as a new model (reajuster:
+// groupes_aic). Computed in R on request, then kept with the model.
+export const SELECTION_AIC_MAX = 20;
+// the rows shown: the 20 best, or those within ΔAICc < 10 (failed fits left out)
+export const lignesSelectionAIC = (s, montrer = 'meilleurs') => {
+  const aicc = [].concat(s.modeles.AICc);
+  const delta = [].concat(s.modeles.delta);
+  return aicc.map((_, i) => i).filter((i) => aicc[i] !== null && (montrer === 'delta10' ? delta[i] < 10 : i < SELECTION_AIC_MAX));
+};
+// the groups of the i-th model of the ranking
+export const groupesSelectionAIC = (s, i) => [].concat(s.groupes).filter((_, j) => [].concat(s.contient[j])[i] === 1);
+export const nombreParametres = (k) => (k === null || k === undefined ? '' : Number.isInteger(k) ? String(k) : fmt(k, 1));
+
+async function rendreSelectionAIC(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  const cache = ((loc.cache ??= {}).selection ??= {});  // (loc.cache isn't saved with the session)
+  if (cache.id !== m.id) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul_selection_aic')));
+    cache.res = await ctx.demander('selection_aic', { modele: m.id });
+    cache.id = m.id;
+  }
+  const s = cache.res;
+  if (!s.K) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('selection_aic_vide'))); return; }
+  const col = (k) => [].concat(s.modeles[k] ?? []);
+  const [aicc, delta, poids, k] = [col('AICc'), col('delta'), col('poids'), col('k')];
+  const groupes = [].concat(s.groupes);
+  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || t('aic_modele_nul');
+  const ajuster = (i) => ctx.reajuster(m.id, { groupes_aic: groupesSelectionAIC(s, i) });
+  const bouton = (i) => el('button', { onclick: () => ajuster(i), title: `${t('ajuster_ce_modele_aide')}\n${nom(i)}` }, icone('file-plus'), t('ajuster_ce_modele'));
+  const suggestion = (titre, i, details) => el('div', { class: 'ligne' }, el('span', {}, el('small', {}, titre), ' ', el('b', {}, nom(i))),
+    el('span', { class: 'doux' }, details), bouton(i));
+  const pa = s.parcimonieux - 1;  // (the engine's rows count from 1)
+  const fiche = el('div', { class: 'fiche' },
+    suggestion(t('selection_aic_meilleur'), 0, `k ${nombreParametres(k[0])} · AICc ${fmt(aicc[0], 2)} · ${t('poids_akaike')} ${fmt(poids[0], 2)}`),
+    pa > 0 ? suggestion(t('selection_aic_parcimonieux'), pa, `k ${nombreParametres(k[pa])} · ΔAICc ${fmt(delta[pa], 2)} · ${t('poids_akaike')} ${fmt(poids[pa], 2)}`)
+      : el('p', { class: 'note' }, t('selection_aic_aussi')));
+  const retires = s.chemin ? [].concat(s.chemin.retire).slice(1) : [];
+  const note = [t('selection_aic_note', { n: s.N }),
+    s.methode === 'toutes' ? t('selection_aic_toutes', { n: aicc.length })
+      : t('selection_aic_descendante', { k: s.K, limite: s.limite, n: aicc.length, retires: retires.length ? retires.join(', ') : t('aic_aucun_retire') }),
+    s.echecs ? t('selection_aic_echecs', { n: s.echecs }) : ''].filter(Boolean).join(' ');
+  const graphe = el('div', { class: 'graphe petit', style: { flex: '0 0 180px', minHeight: '150px' } });  // (the table keeps room in a small panel)
+  const bas = el('div', { class: 'bas' });
+  conteneur.replaceChildren(el('p', { class: 'note' }, note), fiche, graphe, bas);
+  const gi = [].concat(s.importance.groupe);
+  const vi = [].concat(s.importance.importance);
+  const ordre = gi.map((_, j) => j).sort((a, b) => vi[b] - vi[a]);
+  tracer(ctx, graphe, [{ type: 'bar', x: ordre.map((j) => gi[j]), y: ordre.map((j) => vi[j]), marker: { color: PALETTE[0] },
+    hovertemplate: `<b>%{x}</b><br>${t('aic_importance')} = %{y:.3f}<extra></extra>` }],
+  { title: { text: `${m.nom} · ${t('aic_importance_titre')}` }, dragmode: false, xaxis: { tickangle: -30 }, yaxis: { title: { text: t('aic_importance') }, range: [0, 1.05] } });
+  // the table: one column per group (● when the model has it); a click on a row chooses it
+  loc.montrer ??= 'meilleurs';
+  const lignes = lignesSelectionAIC(s, loc.montrer);
+  const choisie = Math.max(0, lignes.findIndex((i) => nom(i) === loc.choisi));
+  loc.table ??= {};
+  const num = (cle, titre, decimales, format) => ({ cle, titre, num: true, decimales, format });
+  tableau(bas, ctx, loc.table, {
+    avant: [choix(t('aic_montrer'), [['meilleurs', t('aic_20_meilleurs', { n: SELECTION_AIC_MAX })], ['delta10', 'ΔAICc < 10']], loc.montrer, (v) => { loc.montrer = v; ctx.rafraichir(); }),
+      el('span', { class: 'infos' }, t('aic_ligne_choisie', { modele: nom(lignes[choisie]) })), bouton(lignes[choisie])],
+    n: lignes.length, nom: 'AICc',
+    colonnes: [num('rang', t('aic_rang'), 0), ...groupes.map((g, j) => ({ cle: `g${j}`, titre: g })), num('k', 'k', 1, nombreParametres), num('logLik', 'logLik', 2),
+      num('AICc', 'AICc', 2), num('delta', 'ΔAICc', 2), num('poids', t('poids_akaike'), 3), num('poids_cumule', t('aic_poids_cumule'), 3)]
+      .concat(s.methode === 'toutes' ? [] : [num('etape', t('aic_etape'), 0)]),
+    valeur: (r, c) => {
+      const i = lignes[r];
+      if (c === 'rang') return i + 1;
+      if (c[0] === 'g') return [].concat(s.contient[Number(c.slice(1))])[i] === 1 ? '●' : '';
+      return col(c)[i];
+    },
+    cliquer: (r) => { loc.choisi = nom(lignes[r]); ctx.rafraichir(); },
+    choisie: (r) => r === choisie,
+  });
+}
+
 // Every fitted model side by side. Q2 and RMSEcv compare all models validated by the same
 // groups; AIC, ΔAIC and Akaike weights only the regressions of the same response on the same
 // observations (an "AIC set", regression.R : signature).
@@ -2735,6 +2820,7 @@ export const VUES = {
   acf: { rendre: rendreACF, titre: (m) => `${m.nom} · ${t('acf')}` },
   effets: { rendre: rendreEffets, titre: (m) => `${m.nom} · ${t('effets')}` },
   apports: { rendre: rendreApports, titre: (m) => `${m.nom} · ${t('apports')}` },
+  selection_aic: { rendre: rendreSelectionAIC, titre: (m) => `${m.nom} · ${t('selection_aic')}` },
   obspred: { rendre: rendreObsPred, titre: (m) => `${m.nom} · ${t('obspred')}` },
   dendrogramme: { rendre: rendreDendrogramme, titre: (m) => `${m.nom} · ${t('dendrogramme')}` },
   predictions: { rendre: rendrePredictions, titre: (m) => `${m.nom} · ${t('predictions')}` },
