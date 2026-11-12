@@ -65,7 +65,7 @@ libraries, so it can't be carried along as on Windows).
   it needs FUSE 2, the `libfuse2` package on most distributions) or
   `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
   distribution first, then the packages, in R:
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart"))`.
   On Ubuntu 24.04 and later, prefer the `.deb`: it installs the AppArmor profile Chromium's
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 

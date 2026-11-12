@@ -51,8 +51,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 
 ## Running from the sources
 
-Requires R 4.6 with `jsonlite`, `httpuv`, `openxlsx`, `haven` and `readxl` (and `foreign`, `nlme` and
-`mgcv`, among R's recommended packages), Node, and Python 3 for the converter.
+Requires R 4.6 with `jsonlite`, `httpuv`, `openxlsx`, `haven` and `readxl` (and `foreign`, `nlme`,
+`mgcv`, `MASS` and `rpart`, among R's recommended packages), Node, and Python 3 for the converter.
 
 ```bash
 cd app && npm install && npm run vendor
@@ -216,8 +216,8 @@ The build produces:
   - `Nuee-<version>-amd64.deb`, which depends on electron-builder's list plus `libgbm1` and
     `libasound2` (Electron loads them; a minimal Ubuntu 22.04 lacks `libgbm1`), then on
     `r-base-core` and `r-cran-httpuv`, `r-cran-jsonlite`, `r-cran-openxlsx`, `r-cran-haven`,
-    `r-cran-readxl`, `r-cran-foreign`, `r-cran-nlme`, `r-cran-mgcv` (Debian keeps R's recommended
-    packages, `foreign`, `nlme` and `mgcv` among them, out of `r-base-core`), and recommends `python3` and `r-recommended` (for the R
+    `r-cran-readxl`, `r-cran-foreign`, `r-cran-nlme`, `r-cran-mgcv`, `r-cran-mass`, `r-cran-rpart`
+    (Debian keeps R's recommended packages, these five among them, out of `r-base-core`), and recommends `python3` and `r-recommended` (for the R
     console, as on Windows). It installs into `/opt/Nuée`, adds `nuee.desktop` to the
     applications menu and, on Ubuntu 24.04 and later, the AppArmor profile Electron's sandbox
     needs;

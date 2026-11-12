@@ -24,7 +24,7 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
 - Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl", "foreign", "nlme", "mgcv")).
+  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart")).
 Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
 RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
 

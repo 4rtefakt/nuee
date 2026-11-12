@@ -67,7 +67,7 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   lancer ; il demande FUSE 2, le paquet `libfuse2` dans la plupart des distributions) ou
   `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
   d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart"))`.
   Sous Ubuntu 24.04 et après, préférez le `.deb` : il installe le profil AppArmor dont le bac
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 

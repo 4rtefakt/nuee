@@ -15,6 +15,7 @@ export const NOUVEAUTES = [
       'Édition › Nouvelle variable › Imputation (ACP) : les valeurs manquantes des variables quantitatives choisies, remplies les unes par les autres par ACP itérative régularisée (comme missMDA::imputePCA) ; les valeurs observées ne changent pas, une observation à qui manquent plus de la moitié de ces variables reste manquante. En nouvelles variables « x (imputée) », ou dans les variables elles-mêmes (Ctrl+Z annule).',
       'Termes croisés : chacun a son échelle, son bloc et son modificateur, dans l’onglet Termes croisés. Modifier le modèle les garde ; jusqu’ici, il perdait ceux des termes croisés (d’un modèle importé d’un fichier .usp notamment), et le réajustement changeait leur pondération.',
       'Mise à jour en un clic : une installation pour tous les utilisateurs placée hors de Program Files était mise à jour en une seconde copie, pour le seul utilisateur courant ; Nuée lit maintenant son mode d’installation dans Windows.',
+      'Linux : le paquet .deb installe aussi les paquets R MASS et rpart ; avec l’AppImage ou l’archive .tar.gz, ajoutez-les aux paquets à installer dans R.',
     ],
     en: [
       'Redundancy analysis (RDA): New model › type “RDA”. Responses Y (species abundances, measurements) explained by variables X, optionally with covariates Z whose effect is removed first (partial RDA); responses transformed by Hellinger, chord or log(x + 1), centred or standardized; a triplot in scaling 1 or 2 (arrows of the X, centroids of the categories) and the adjusted R²; permutation tests of the model, of each axis and of each term, within a site if needed, with a fixed seed; forward selection (Blanchet’s double criterion) and variation partitioning between blocks of variables. The results are those of the vegan package.',
@@ -29,6 +30,7 @@ export const NOUVEAUTES = [
       'Edit › New variable › Imputation (PCA): the missing values of the chosen quantitative variables, filled from each other by regularized iterative PCA (as missMDA::imputePCA); observed values don’t change, and an observation missing more than half of these variables stays missing. As new variables “x (imputed)”, or in the variables themselves (Ctrl+Z undoes it).',
       'Cross terms: each has its own scaling, block and modifier, in the Cross terms tab. Edit model keeps them; until now it lost those of the cross terms (of a model imported from a .usp file, for instance), and refitting changed their weighting.',
       'One-click update: an installation for all users placed outside Program Files was updated as a second copy, for the current user only; Nuée now reads its installation mode from Windows.',
+      'Linux: the .deb also installs the R packages MASS and rpart; with the AppImage or the .tar.gz archive, add them to the packages you install in R.',
     ] },
   { version: '0.9.2', date: '2026-11-12',
     fr: [

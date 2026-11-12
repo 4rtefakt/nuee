@@ -17,6 +17,7 @@ What changed in each version: the same list as *Help › What's new* in the appl
 - Edit › New variable › Imputation (PCA): the missing values of the chosen quantitative variables, filled from each other by regularized iterative PCA (as missMDA::imputePCA); observed values don’t change, and an observation missing more than half of these variables stays missing. As new variables “x (imputed)”, or in the variables themselves (Ctrl+Z undoes it).
 - Cross terms: each has its own scaling, block and modifier, in the Cross terms tab. Edit model keeps them; until now it lost those of the cross terms (of a model imported from a .usp file, for instance), and refitting changed their weighting.
 - One-click update: an installation for all users placed outside Program Files was updated as a second copy, for the current user only; Nuée now reads its installation mode from Windows.
+- Linux: the .deb also installs the R packages MASS and rpart; with the AppImage or the .tar.gz archive, add them to the packages you install in R.
 
 ## 0.9.2 — 2026-11-12
 

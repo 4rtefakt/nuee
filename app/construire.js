@@ -185,13 +185,15 @@ async function construireLinux(dossier) {
       // electron-builder's own list (it is replaced, not added to) with libgbm1 and libasound2,
       // which Electron needs too (a minimal Ubuntu 22.04 lacks libgbm1), then R and the engine's
       // packages (foreign, for dBase and Weka files, nlme and mgcv, for mixed, generalized and
-      // additive models, are among R's recommended packages, which Debian keeps out of
-      // r-base-core; the others are for the R console, as on Windows)
+      // additive models, MASS, for a curve's thresholds, and rpart, for decision trees, are among
+      // R's recommended packages, which Debian keeps out of r-base-core; the others are for the R
+      // console, as on Windows)
       deb: {
         packageCategory: 'science',
         depends: ['libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6', 'xdg-utils', 'libatspi2.0-0', 'libuuid1', 'libsecret-1-0',
           'libgbm1', 'libasound2',
-          'r-base-core', 'r-cran-httpuv', 'r-cran-jsonlite', 'r-cran-openxlsx', 'r-cran-haven', 'r-cran-readxl', 'r-cran-foreign', 'r-cran-nlme', 'r-cran-mgcv'],
+          'r-base-core', 'r-cran-httpuv', 'r-cran-jsonlite', 'r-cran-openxlsx', 'r-cran-haven', 'r-cran-readxl', 'r-cran-foreign', 'r-cran-nlme', 'r-cran-mgcv',
+          'r-cran-mass', 'r-cran-rpart'],
         recommends: ['python3', 'r-recommended'],
       },
     },
