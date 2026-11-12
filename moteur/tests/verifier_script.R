@@ -425,6 +425,18 @@ texte <- lignes_script(r)
 verifier("modèle mixte : ses sites (un identifiant) dans le tableau, nlme::lme, CAR1, groupes de validation par site",
          any(grepl("^  site = ", texte)) && any(grepl("nlme::lme\\(", texte)) && any(grepl("corCAR1", texte)) &&
            any(grepl("^groupes_vc <- as.integer\\(cadre\\[\\[\"site\"\\]\\]\\)", texte)))
+# (les scripts de seuils : un site aléatoire, l'autocorrélation le long des années dans chaque secteur)
+car1_secteur <- list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")), dans = par_secteur)
+r <- essayer_regression("gamm_car1_secteur", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",
+                        lisses = ur("x2"), k_courbes = stats::setNames(list(5), ur("x2")), aleatoires = list(par_site), correlation = car1_secteur))
+code <- code_hors_donnees(lignes_script(r))
+verifier("modèle additif avec autocorrélation : mgcv::gamm, l'autocorrélation dans chaque secteur de chaque site, la courbe de dimension 5",
+         any(grepl("gamm(f, random = aleatoire, correlation = correlation", code, fixed = TRUE)) && any(grepl("~ annee | site / secteur", code, fixed = TRUE)) &&
+           any(grepl("\"x2\" = 5L", code, fixed = TRUE)) && any(grepl("library(mgcv)", code, fixed = TRUE)))
+essayer_regression("gamm_car1_test_en", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",
+                   lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur, test = numeros_observations(pr)[seq(5, n, by = 16)]), langue = "en")
+essayer_regression("lmm_car1_secteur", pr, definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
+                   correlation = car1_secteur))
 r <- essayer_regression("glm_poisson_effort", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort"), echelle = "none"))
 verifier("GLM de Poisson : effort en décalage, effet multiplicatif, surdispersion", any(grepl("offset\\(log\\(effort\\)\\)", lignes_script(r))) &&
          any(grepl("effet_multiplicatif", lignes_script(r))) && any(grepl("^dispersion <- ", lignes_script(r))))

@@ -257,7 +257,8 @@ definition_interface <- function(p, q) {
                       vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs),
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
                       lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
-                      croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, options = q$options)
+                      croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, k_courbes = if (length(q$k_courbes)) q$k_courbes,
+                      options = q$options)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -376,6 +377,7 @@ resultat_regression <- function(id) {
        N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
        coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),
        famille = m$famille, lien = m$lien, parametre_loi = r$parametre_loi, courbes = r$courbes, decalage = m$decalage, dispersion = r$dispersion,
+       gamm = isTRUE(m$gamm), dans = m$dans,
        qualite = c(r$r2, list(AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres,
                               Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs)),
        variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),

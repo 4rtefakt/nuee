@@ -194,14 +194,17 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   aleatoires : les effets aléatoires d'un modèle mixte, emboîtés, du plus large au plus fin,
 #   par exemple list(list(by = "id", id = "site"), list(by = "id", id = "secteur")) ;
 #   correlation : list(type = "CAR1", temps = list(by = "id", id = "annee")), une
-#   autocorrélation dans le temps à l'intérieur du dernier effet aléatoire. Les blocs n'y
+#   autocorrélation dans le temps à l'intérieur du dernier effet aléatoire, ou d'un niveau plus fin
+#   (dans = list(by = "id", id = "secteur") : le secteur dans le site, seul le site ayant un effet
+#   aléatoire) ; un modèle généralisé ou additif à loi normale la prend aussi (mgcv::gamm) ;
+#   k_courbes : la dimension de base d'une courbe, par numéro de variable (sinon 10 au plus). Les blocs n'y
 #   pondèrent rien : ils font les groupes de la table des apports. Sans groupes de validation
 #   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu).
 definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observations = NULL,
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
-                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, options = NULL) {
+                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -260,11 +263,15 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     d$A <- 0
     aleatoires <- specs_groupement(aleatoires)
     if (length(aleatoires)) d$aleatoires <- aleatoires
-    if (length(correlation$type)) d$correlation <- list(type = as.character(correlation$type)[1], temps = specs_groupement(correlation$temps)[[1]])
+    if (length(correlation$type)) {
+      d$correlation <- list(type = as.character(correlation$type)[1], temps = specs_groupement(correlation$temps)[[1]])
+      if (length(correlation$dans$by)) d$correlation$dans <- specs_groupement(correlation$dans)[[1]]
+    }
     if (type %in% GENERALISES) {  # (regression.R : la loi de la réponse, les variables en courbe, l'effort en décalage)
       d$famille <- as.character(famille %||% "gaussienne")[1]
       if (length(lisses)) d$lisses <- as.numeric(lisses)
       if (length(decalage)) d$decalage <- as.numeric(decalage)[1]
+      if (length(k_courbes)) d$k_courbes <- lapply(as.list(unlist(k_courbes)), as.integer)
     }
     if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]]
     verifier_regression(projet, d)
@@ -354,6 +361,7 @@ reglages_modele <- function(projet, d) {
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
+       k_courbes = d$k_courbes,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))), croises_reglages = croises_reglages,
        options = d$options,
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")

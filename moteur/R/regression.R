@@ -24,6 +24,23 @@ termes_utiles <- function(donnees, termes) {
   termes[setdiff(garde, 1) - 1]
 }
 
+# Les groupes à l'intérieur desquels court l'autocorrélation CAR1 : les niveaux des effets
+# aléatoires (g1/g2...), puis gc quand les données l'ont (un niveau plus fin, sans effet aléatoire
+# à lui : le secteur dans son site, quand seul le site a un effet aléatoire).
+groupement_car1 <- function(donnees, niveaux) paste(c(paste0("g", seq_len(niveaux)), if ("gc" %in% names(donnees)) "gc"), collapse = " / ")
+correlation_car1 <- function(donnees, niveaux) {
+  nlme::corCAR1(form = stats::as.formula(paste("~ temps |", groupement_car1(donnees, niveaux)), env = baseenv()))
+}
+
+# L'autocorrélation CAR1 demande un seul temps par groupe.
+verifier_temps_uniques <- function(donnees, niveaux) {
+  groupes <- donnees[c(paste0("g", seq_len(niveaux)), intersect("gc", names(donnees)))]
+  if (anyDuplicated(data.frame(interaction(groupes, drop = TRUE), donnees$temps))) {
+    stop(traduire("L'autocorrélation dans le temps demande un seul temps par groupe : plusieurs observations ont le même temps dans un même groupe.",
+                  "Autocorrelation in time needs a single time per group: several observations have the same time in the same group."), call. = FALSE)
+  }
+}
+
 # Un ajustement, ou NULL quand il échoue (nlme essaie optim, puis nlminb, comme le font les
 # scripts qui ont servi de modèle). methode : "REML" ou "ML".
 ajuster_lineaire <- function(donnees, termes, niveaux = 0, car1 = FALSE, methode = "REML") {
@@ -33,7 +50,7 @@ ajuster_lineaire <- function(donnees, termes, niveaux = 0, car1 = FALSE, methode
     return(tryCatch(stats::lm(f, data = donnees), error = function(e) NULL))
   }
   aleatoire <- stats::as.formula(paste("~ 1 |", paste0("g", seq_len(niveaux), collapse = " / ")), env = baseenv())
-  correlation <- if (car1) nlme::corCAR1(form = stats::as.formula(paste("~ temps |", paste0("g", seq_len(niveaux), collapse = " / ")), env = baseenv()))
+  correlation <- if (car1) correlation_car1(donnees, niveaux)
   essai <- function(reglages) tryCatch(nlme::lme(f, random = aleatoire, correlation = correlation, data = donnees, method = methode,
                                                  control = reglages), error = function(e) NULL)
   m <- essai(nlme::lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, returnObject = TRUE)) %||%
@@ -81,10 +98,7 @@ coefficients_lineaire <- function(m) {
 # Renvoie des valeurs simples (pour l'interface), et les deux ajustements dans `ajustement`
 # et `ajustement_ml` (à ne pas envoyer).
 resultat_lineaire <- function(donnees, termes, noms, niveaux = 0, car1 = FALSE, groupes = list()) {
-  if (car1 && anyDuplicated(data.frame(interaction(donnees[paste0("g", seq_len(niveaux))], drop = TRUE), donnees$temps))) {
-    stop(traduire("L'autocorrélation dans le temps demande un seul temps par groupe : plusieurs observations ont le même temps dans un même groupe.",
-                  "Autocorrelation in time needs a single time per group: several observations have the same time in the same group."), call. = FALSE)
-  }
+  if (car1) verifier_temps_uniques(donnees, niveaux)
   utiles <- termes_utiles(donnees, termes)
   retires <- noms[match(setdiff(termes, utiles), termes)]
   estime <- ajuster_lineaire(donnees, utiles, niveaux, car1, "REML")
@@ -252,10 +266,20 @@ verifier_regression <- function(projet, d) {
   if (d$type %in% GENERALISES) {
     famille <- as.character(d$famille %||% "gaussienne")[1]
     if (!famille %in% FAMILLES) err("Loi de la réponse inconnue.", "Unknown distribution of the response.")
-    if (!is.null(d$correlation)) err("L'autocorrélation dans le temps n'est possible qu'avec un modèle linéaire mixte.", "Autocorrelation in time is only possible with a linear mixed model.")
+    # (mgcv::gamm : avec une autre loi que la normale, une quasi-vraisemblance pénalisée, sans AIC)
+    if (!is.null(d$correlation) && famille != "gaussienne") {
+      err("L'autocorrélation dans le temps d'un modèle généralisé ou additif demande la loi normale : avec une autre loi, mgcv::gamm passe par une quasi-vraisemblance pénalisée (PQL), sans vraie vraisemblance ni AIC.",
+          "Autocorrelation in time in a generalized or additive model needs the normal distribution: with another one, mgcv::gamm uses penalized quasi-likelihood (PQL), with no true likelihood nor AIC.")
+    }
     if (length(d$lisses) && !identical(d$type, "GAM")) err("Les courbes demandent un modèle additif (GAM).", "Curves need an additive model (GAM).")
     simples_x <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) == 0) as.numeric(t$variables)))
     if (!all(as.numeric(d$lisses) %in% simples_x)) err("Une courbe se fait sur une variable X quantitative.", "A curve is made on a quantitative X variable.")
+    if (length(d$k_courbes)) {  # (la dimension de base d'une courbe, demandée : k)
+      k <- suppressWarnings(as.numeric(unlist(d$k_courbes)))
+      if (anyNA(k) || any(k < 3 | k > 100 | k != round(k)) || !all(names(d$k_courbes) %in% as.character(as.numeric(d$lisses)))) {
+        err("La dimension d'une courbe (k) est un nombre entier de 3 à 100, pour une variable en courbe.", "A curve's dimension (k) is a whole number from 3 to 100, for a variable in a curve.")
+      }
+    }
     if (!is.null(d$decalage)) {
       if (!famille %in% FAMILLES_LOG) err("Un décalage (l'effort) va avec une loi au lien log : Poisson, binomiale négative, gamma ou Tweedie.",
                                           "An offset (the effort) goes with a log-link distribution: Poisson, negative binomial, gamma or Tweedie.")
@@ -275,6 +299,13 @@ verifier_regression <- function(projet, d) {
     if (!identical(as.character(d$correlation$type)[1], "CAR1")) err("Autocorrélation inconnue.", "Unknown autocorrelation.")
     if (!length(aleatoires)) err("L'autocorrélation dans le temps se fait à l'intérieur des groupes d'un effet aléatoire.", "Autocorrelation in time works within the groups of a random effect.")
     valeurs_groupement(projet, d$correlation$temps, d$observations[1])
+    dans <- d$correlation$dans
+    if (!is.null(dans)) {  # (un niveau plus fin que le dernier effet aléatoire : le secteur dans son site)
+      if (identical(as.character(dans$by)[1], "variable") && !length(variable_du_projet(projet, dans$variable)$categories)) {
+        err("L'autocorrélation se fait à l'intérieur des groupes d'un identifiant ou d'une variable qualitative.", "Autocorrelation works within the groups of an ID or a qualitative variable.")
+      }
+      valeurs_groupement(projet, dans, d$observations[1])
+    }
   }
   invisible(TRUE)
 }
@@ -311,11 +342,12 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   bruts <- if (K) valeurs_bloc(projet, termes, obs) else matrix(numeric(0), length(obs), 0)
   simples <- which(vapply(termes, function(t) length(t$variables) == 1, TRUE))
   niveaux <- lapply(d$aleatoires %||% list(), function(s) valeurs_groupement(projet, s, obs))
-  temps <- NULL
+  temps <- dans <- NULL
   if (!is.null(d$correlation)) {
     temps <- suppressWarnings(as.numeric(valeurs_groupement(projet, d$correlation$temps, obs)))
     if (all(is.na(temps))) stop(traduire("Le temps de l'autocorrélation doit être un nombre (une année, un jour...).",
                                          "The time of the autocorrelation must be a number (a year, a day...)."), call. = FALSE)
+    if (!is.null(d$correlation$dans)) dans <- valeurs_groupement(projet, d$correlation$dans, obs)
   }
   decalage <- NULL
   if (!is.null(d$decalage)) {  # (l'effort : log(x) en décalage)
@@ -326,6 +358,7 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   connu <- !is.na(y) & stats::complete.cases(bruts[, simples, drop = FALSE])
   for (v in niveaux) connu <- connu & !is.na(v)
   if (!is.null(temps)) connu <- connu & !is.na(temps)
+  if (!is.null(dans)) connu <- connu & !is.na(dans)
   if (!is.null(decalage)) connu <- connu & !is.na(decalage)
   garde <- obs[connu]
   if (!length(garde)) stop(traduire("Aucune observation n'a toutes ses valeurs pour ce modèle.", "No observation has all its values for this model."), call. = FALSE)
@@ -337,6 +370,7 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   if (length(niveaux) >= 2) cadre$g12 <- interaction(cadre$g1, cadre$g2, drop = TRUE)
   if (length(niveaux) >= 3) cadre$g123 <- interaction(cadre$g1, cadre$g2, cadre$g3, drop = TRUE)
   if (!is.null(temps)) cadre$temps <- temps[connu]
+  if (!is.null(dans)) cadre$gc <- factor(dans[connu])  # (le groupe de l'autocorrélation, plus fin que les effets aléatoires)
   if (!is.null(decalage)) cadre$decalage <- decalage[connu]
   complet <- stats::complete.cases(cadre)  # (un terme croisé que sa transformation rend manquant)
   list(cadre = cadre[complet, , drop = FALSE], observations = garde[complet], exclues = setdiff(obs, garde[complet]),
@@ -349,7 +383,11 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
 ajuster_regression <- function(projet, d) {
   # (une définition relue d'un fichier : ses listes ont pu devenir des data.frames)
   d$aleatoires <- specs_groupement(d$aleatoires)
-  if (!is.null(d$correlation)) d$correlation <- list(type = as.character(d$correlation$type)[1], temps = specs_groupement(d$correlation$temps)[[1]])
+  if (!is.null(d$correlation)) {
+    correlation <- list(type = as.character(d$correlation$type)[1], temps = specs_groupement(d$correlation$temps)[[1]])
+    if (length(d$correlation$dans)) correlation$dans <- specs_groupement(d$correlation$dans)[[1]]
+    d$correlation <- correlation
+  }
   verifier_regression(projet, d)
   if (identical(d$type, "LMM") && !requireNamespace("nlme", quietly = TRUE)) {
     stop(traduire("Le paquet R nlme manque (il vient avec R) : installez-le pour les modèles mixtes.",
@@ -373,11 +411,23 @@ ajuster_regression <- function(projet, d) {
   quantitatifs <- cadre$termes[vapply(termes_x, function(t) length(t$variables) == 1 && categorie(t) == 0, TRUE)]
   famille <- if (generalise) as.character(d$famille %||% "gaussienne")[1] else "gaussienne"
   lisses <- character(0)
+  # (un modèle généralisé ou additif avec une autocorrélation : mgcv::gamm, nlme dessous)
+  gamm <- generalise && car1
   if (generalise) {
     verifier_reponse(cadre$cadre$y, famille)
     lisses <- quantitatifs[vapply(termes_x[match(quantitatifs, cadre$termes)], function(t) as.numeric(t$variables) %in% as.numeric(d$lisses), TRUE)]
-    r <- resultat_mgcv(cadre$cadre, cadre$termes, cadre$noms, lisses, niveaux, famille, !is.null(d$decalage))
-    vc <- validation_mgcv(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, famille, !is.null(d$decalage))
+    # la dimension demandée d'une courbe (k), par terme
+    k_demandes <- unlist(lapply(lisses, function(t) {
+      k <- d$k_courbes[[as.character(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
+      if (length(k)) stats::setNames(as.integer(k), t)
+    }))
+    if (gamm) {
+      r <- resultat_gamm(cadre$cadre, cadre$termes, cadre$noms, lisses, niveaux, k_demandes)
+      vc <- validation_gamm(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux)
+    } else {
+      r <- resultat_mgcv(cadre$cadre, cadre$termes, cadre$noms, lisses, niveaux, famille, !is.null(d$decalage), k_demandes)
+      vc <- validation_mgcv(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, famille, !is.null(d$decalage))
+    }
   } else {
     r <- resultat_lineaire(cadre$cadre, cadre$termes, cadre$noms, niveaux, car1)
     vc <- validation_lineaire(cadre$cadre, r$utiles, groupes, niveaux, car1)
@@ -391,7 +441,8 @@ ajuster_regression <- function(projet, d) {
             decalage = if (!is.null(d$decalage)) nom_groupement(projet, list(by = "variable", variable = d$decalage)),
             groupes_termes = stats::setNames(groupes_termes(projet, d$x), cadre$termes),
             niveaux = vapply(d$aleatoires %||% list(), function(s) nom_groupement(projet, s), ""),
-            temps = if (car1) nom_groupement(projet, d$correlation$temps), car1 = car1,
+            temps = if (car1) nom_groupement(projet, d$correlation$temps), car1 = car1, gamm = gamm,
+            dans = if (car1 && !is.null(d$correlation$dans)) nom_groupement(projet, d$correlation$dans),
             resultat = r[setdiff(names(r), c("ajustement", "ajustement_ml", "utiles", "k"))],
             ajustement = r$ajustement, ajustement_ml = r$ajustement_ml, donnees = cadre$cadre, bloc = cadre$bloc,
             G = length(unique(groupes)), vc_par = nom_groupes_vc(projet, d),
@@ -399,9 +450,9 @@ ajuster_regression <- function(projet, d) {
   # les modèles que l'AIC compare : même réponse sur les mêmes observations, une loi de même
   # mesure (une loi discrète ne se compare pas à une continue), et la même vraisemblance (celle
   # d'un modèle mixte de nlme, marginale, ne se compare pas à celle, conditionnelle, des effets
-  # aléatoires de mgcv)
+  # aléatoires de mgcv, ni à celle de mgcv::gamm, où les courbes sont des effets aléatoires)
   m$signature <- paste(m$y$uid, m$y$transformation, paste(sort(m$observations), collapse = ","), mesure_famille(famille),
-                       if (generalise && niveaux) "conditionnelle" else "marginale")
+                       if (gamm) "gamm" else if (generalise && niveaux) "conditionnelle" else "marginale")
   class(m) <- "modele_regression"
   if (length(d$test)) m$test <- tester_regression(projet, m, d)
   m
@@ -411,6 +462,7 @@ ajuster_regression <- function(projet, d) {
 # cadre_regression) : par les effets fixes seuls quand le modèle a des effets aléatoires.
 predire_regression <- function(m, nd) {
   a <- m$ajustement
+  if (inherits(a, "gamm")) return(as.vector(stats::predict(a$gam, nd, type = "response")))  # ($gam : sans les effets aléatoires)
   if (inherits(a, "gam")) return(predire_mgcv(a, nd, m$donnees, length(m$niveaux)))
   if (inherits(a, "lme")) return(as.vector(stats::predict(a, nd, level = 0)))
   as.vector(stats::predict(a, nd))
@@ -524,6 +576,7 @@ apport_groupes <- function(m) {
   if (!length(m$utiles)) return(NULL)
   g <- m$groupes_termes[m$utiles]
   groupes <- split(names(g), factor(unname(g), levels = unique(unname(g))))
+  if (inherits(m$ajustement, "gamm")) return(retrait_gamm(m$donnees, m$utiles, m$lisses, m$k, groupes, m$ajustement_ml, length(m$niveaux)))
   if (inherits(m$ajustement, "gam")) {
     return(retrait_mgcv(m$donnees, m$utiles, m$lisses, m$k, groupes, m$ajustement_ml, length(m$niveaux), m$famille, !is.null(m$decalage)))
   }
@@ -588,8 +641,9 @@ ajuster_mgcv <- function(donnees, parametriques, lisses, k, niveaux, famille, de
            error = function(e) NULL)
 }
 
-# La dimension de base d'une courbe : 10 au plus, moins quand la variable a peu de valeurs.
-dimension_courbe <- function(x) min(10L, length(unique(x)) - 1L)
+# La dimension de base d'une courbe : `k` si elle est demandée, sinon 10 au plus ; moins quand la
+# variable a peu de valeurs.
+dimension_courbe <- function(x, k = NA) min(if (length(k) && !is.na(k[1])) as.integer(k[1]) else 10L, length(unique(x)) - 1L)
 
 # Les prédictions d'un modèle de mgcv sur l'échelle de la réponse, par ses effets fixes (ses
 # effets aléatoires exclus : un groupe jamais vu ; on donne aux observations un groupe connu du
@@ -610,11 +664,11 @@ parametre_famille <- function(a, famille) {
 # coefficients, les courbes et les effets aléatoires (Wood, 2011), ML pour la vraisemblance et
 # l'AIC ; un modèle sans courbe ni effet aléatoire n'a qu'un ajustement. lisses : les termes
 # en courbe.
-resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decalage) {
+resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decalage, k_demandes = NULL) {
   utiles <- termes_utiles(donnees, termes)
   retires <- noms[match(setdiff(termes, utiles), termes)]
   lis <- intersect(lisses, utiles)
-  k <- vapply(lis, function(t) dimension_courbe(donnees[[t]]), 0L)
+  k <- vapply(lis, function(t) dimension_courbe(donnees[[t]], if (t %in% names(k_demandes)) k_demandes[[t]] else NA), 0L)
   if (any(k < 3)) {
     stop(sprintf(traduire("Trop peu de valeurs différentes pour une courbe : %s.", "Too few different values for a curve: %s."),
                  paste(noms[match(lis[k < 3], termes)], collapse = ", ")), call. = FALSE)
@@ -675,7 +729,7 @@ validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille
     appris <- droplevels(donnees[!ici, , drop = FALSE])
     u <- termes_utiles(appris, termes)
     lis <- intersect(lisses, u)
-    kk <- pmin(k[lis], vapply(lis, function(t) dimension_courbe(appris[[t]]), 0L))
+    kk <- vapply(lis, function(t) dimension_courbe(appris[[t]], k[[t]]), 0L)  # (la dimension du modèle, moins si ces lignes ont peu de valeurs)
     lis <- lis[kk >= 3]
     m <- ajuster_mgcv(appris, setdiff(u, lis), lis, kk, niveaux, famille, decalage, if (length(lis) || niveaux) "REML" else "ML")
     if (is.null(m)) { echecs <- echecs + 1; next }
@@ -708,12 +762,127 @@ retrait_mgcv <- function(donnees, utiles, lisses, k, groupes, complet, niveaux, 
   do.call(rbind, lignes)
 }
 
+# ------------------------------------------- avec une autocorrélation dans le temps (mgcv::gamm)
+
+# Un modèle à loi normale, avec des courbes ou non, des effets aléatoires et une autocorrélation
+# CAR1 : mgcv::gamm (Wood, 2017), qui l'ajuste comme un modèle mixte de nlme (Pinheiro et Bates,
+# 2000), ses courbes y devenant des effets aléatoires. Les effets aléatoires (g1 = ~1, g2 = ~1... :
+# emboîtés, comme nlme lit une liste) et la corrélation (correlation_car1) vont à nlme::lme ; la
+# formule est celle de mgcv sans effet aléatoire (formule_mgcv), son environnement donne s(). NULL
+# quand l'ajustement échoue, après un second essai par optim.
+ajuster_gamm <- function(donnees, parametriques, lisses, k, niveaux, methode = "REML") {
+  f <- formule_mgcv(parametriques, lisses, k, 0, FALSE)
+  aleatoire <- stats::setNames(lapply(seq_len(niveaux), function(l) stats::as.formula("~ 1", env = baseenv())), paste0("g", seq_len(niveaux)))
+  correlation <- correlation_car1(donnees, niveaux)
+  essai <- function(...) tryCatch(mgcv::gamm(f, random = aleatoire, correlation = correlation, data = donnees, method = methode, ...), error = function(e) NULL)
+  essai() %||% essai(control = nlme::lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, returnObject = TRUE))
+}
+
+# Le modèle ajusté sur toutes ses observations, comme resultat_mgcv : REML pour les coefficients,
+# les courbes, les variances et l'autocorrélation ; la vraisemblance, l'AIC, l'AICc et le BIC de
+# la partie nlme d'un ajustement en ML. R² marginal et conditionnel (Nakagawa et Schielzeth,
+# 2013), la partie fixe comprenant les courbes. Valeurs ajustées : avec les effets aléatoires
+# ($lme) et par les seuls effets fixes ($gam) ; résidus normalisés (l'autocorrélation retirée).
+resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = NULL) {
+  verifier_temps_uniques(donnees, niveaux)
+  utiles <- termes_utiles(donnees, termes)
+  retires <- noms[match(setdiff(termes, utiles), termes)]
+  lis <- intersect(lisses, utiles)
+  k <- vapply(lis, function(t) dimension_courbe(donnees[[t]], if (t %in% names(k_demandes)) k_demandes[[t]] else NA), 0L)
+  if (any(k < 3)) {
+    stop(sprintf(traduire("Trop peu de valeurs différentes pour une courbe : %s.", "Too few different values for a curve: %s."),
+                 paste(noms[match(lis[k < 3], termes)], collapse = ", ")), call. = FALSE)
+  }
+  par <- setdiff(utiles, lis)
+  estime <- ajuster_gamm(donnees, par, lis, k, niveaux, "REML")
+  compare <- ajuster_gamm(donnees, par, lis, k, niveaux, "ML")
+  if (is.null(estime) || is.null(compare)) {
+    stop(traduire("Le modèle n'a pas pu être ajusté (mgcv::gamm n'a pas convergé) : essayez moins de termes, de courbes ou d'effets aléatoires, ou sans l'autocorrélation.",
+                  "The model could not be fitted (mgcv::gamm did not converge): try fewer terms, curves or random effects, or no autocorrelation."), call. = FALSE)
+  }
+  g <- estime$gam
+  l <- estime$lme
+  s <- summary(g)
+  pt <- s$p.table
+  q <- stats::qt(0.975, g$df.residual)
+  co <- data.frame(terme = c("(Intercept)", noms[match(rownames(pt)[-1], termes)]), estimation = pt[, 1], erreur_type = pt[, 2],
+                   ddl = g$df.residual, t = pt[, 3], p = pt[, 4], bas = pt[, 1] - q * pt[, 2], haut = pt[, 1] + q * pt[, 2],
+                   row.names = NULL, stringsAsFactors = FALSE)
+  courbes <- NULL
+  if (length(lis)) {
+    st <- s$s.table
+    lignes <- sprintf("s(%s)", lis)
+    courbes <- data.frame(terme = noms[match(lis, termes)], edf = st[lignes, 1], ref_ddl = st[lignes, 2], statistique = st[lignes, 3], p = st[lignes, 4],
+                          row.names = NULL, stringsAsFactors = FALSE)
+  }
+  # la variance de chaque effet aléatoire (nlme : σ² fois sa matrice relative), puis la résiduelle
+  niveaux_g <- paste0("g", seq_len(niveaux))
+  v <- vapply(niveaux_g, function(n) l$sigma^2 * as.matrix(l$modelStruct$reStruct[[n]])[1, 1], 0)
+  variances <- data.frame(composante = c(niveaux_g, "residuelle"), variance = c(unname(v), l$sigma^2), stringsAsFactors = FALSE)
+  fixes <- stats::var(as.vector(stats::fitted(g)))
+  totale <- fixes + sum(v) + l$sigma^2
+  ll <- stats::logLik(compare$lme)
+  n <- nrow(donnees)
+  list(N = n, coefficients = co, courbes = courbes, termes_retires = retires, logLik = as.numeric(ll), parametres = attr(ll, "df"),
+       AIC = stats::AIC(compare$lme), AICc = aic_corrige(compare$lme, n), BIC = stats::BIC(compare$lme),
+       r2 = list(marginal = fixes / totale, conditionnel = (fixes + sum(v)) / totale), variances = variances,
+       phi = unname(stats::coef(l$modelStruct$corStruct, unconstrained = FALSE)),
+       famille = "gaussienne", lien = "identity", echelle = l$sigma^2,
+       ajuste = as.vector(stats::fitted(l)), ajuste_fixe = as.vector(stats::fitted(g)),
+       residus = as.vector(stats::residuals(l, type = "normalized")),
+       utiles = utiles, k = k, ajustement = estime, ajustement_ml = compare)
+}
+
+# Validation croisée d'un modèle de mgcv::gamm : chaque groupe prédit par le modèle ajusté sans
+# lui (REML), par ses effets fixes et ses courbes ($gam : un groupe jamais vu).
+validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux) {
+  prediction <- rep(NA_real_, nrow(donnees))
+  echecs <- 0
+  for (g in sort(unique(groupe))) {
+    ici <- groupe == g
+    appris <- droplevels(donnees[!ici, , drop = FALSE])
+    u <- termes_utiles(appris, termes)
+    lis <- intersect(lisses, u)
+    kk <- vapply(lis, function(t) dimension_courbe(appris[[t]], k[[t]]), 0L)
+    lis <- lis[kk >= 3]
+    m <- ajuster_gamm(appris, setdiff(u, lis), lis, kk, niveaux, "REML")
+    if (is.null(m)) { echecs <- echecs + 1; next }
+    prediction[ici] <- tryCatch(as.vector(stats::predict(m$gam, donnees[ici, , drop = FALSE], type = "response")), error = function(e) NA_real_)
+  }
+  ok <- !is.na(prediction)
+  y <- donnees$y
+  list(prediction = prediction, echecs = echecs,
+       Q2 = if (any(ok)) 1 - sum((y[ok] - prediction[ok])^2) / sum((y[ok] - mean(y[ok]))^2) else NA_real_,
+       RMSEcv = if (any(ok)) sqrt(mean((y[ok] - prediction[ok])^2)) else NA_real_)
+}
+
+# L'apport de chaque groupe de termes d'un modèle de mgcv::gamm (retrait_groupes) : réajusté en ML
+# sans lui ; la vraisemblance de sa partie nlme.
+retrait_gamm <- function(donnees, utiles, lisses, k, groupes, complet, niveaux) {
+  ll <- as.numeric(stats::logLik(complet$lme))
+  df <- attr(stats::logLik(complet$lme), "df")
+  lignes <- lapply(names(groupes), function(nom) {
+    sans <- setdiff(utiles, groupes[[nom]])
+    retires <- length(utiles) - length(sans)
+    if (!retires) return(NULL)
+    lis <- intersect(lisses, sans)
+    m <- ajuster_gamm(donnees, setdiff(sans, lis), lis, k, niveaux, "ML")
+    if (is.null(m)) return(data.frame(groupe = nom, termes = retires, delta_aic = NA_real_, khi2 = NA_real_, ddl = NA_real_, p = NA_real_))
+    khi2 <- 2 * (ll - as.numeric(stats::logLik(m$lme)))
+    ddl <- df - attr(stats::logLik(m$lme), "df")
+    data.frame(groupe = nom, termes = retires, delta_aic = stats::AIC(m$lme) - stats::AIC(complet$lme), khi2 = khi2, ddl = ddl,
+               p = if (ddl > 0) stats::pchisq(khi2, ddl, lower.tail = FALSE) else NA_real_, stringsAsFactors = FALSE)
+  })
+  do.call(rbind, lignes)
+}
+
 # Les courbes d'effet d'une régression : pour chaque terme quantitatif, son effet sur
 # l'échelle du lien quand sa variable parcourt ses valeurs (les autres termes fixés), avec
 # son intervalle à 95 % ; une courbe (GAM) telle que mgcv l'a ajustée, un terme linéaire comme
 # une droite. Les abscisses sont dans les unités de la variable (transformée s'il y a lieu).
 effets_regression <- function(m) {
   a <- m$ajustement
+  if (inherits(a, "gamm")) a <- a$gam  # (mgcv::gamm : ses courbes, dans sa partie gam)
   d <- m$donnees
   co <- m$resultat$coefficients
   termes <- intersect(m$quantitatifs, m$utiles)
@@ -762,7 +931,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   guillemets <- function(x) if (fr) sprintf("« %s »", x) else sprintf("“%s”", x)
   cites <- character(0)
   cite <- function(cle, texte) { cites <<- union(cites, cle); texte }
-  generalise <- inherits(m$ajustement, "gam")
+  generalise <- inherits(m$ajustement, c("gam", "gamm"))
+  gamm <- isTRUE(m$gamm)
   mixte <- length(m$niveaux) > 0 && !generalise
 
   # --- données
@@ -787,27 +957,31 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
             else c(gaussienne = "normal", poisson = "Poisson", binomiale_negative = "negative binomial", binomiale = "binomial", gamma = "gamma", tweedie = "Tweedie")
     lis <- m$noms_termes[match(m$lisses, m$termes)]
     courbes <- if (length(lis)) sprintf(if (fr) ", dont %s par des courbes (splines de régression en plaques minces)" else ", %s of them through curves (thin plate regression splines)", liste(lis)) else ""
-    aleatoire <- if (length(m$niveaux)) sprintf(if (fr) ", une ordonnée à l'origine aléatoire par %s (des termes pénalisés)" else ", a random intercept for %s (penalized terms)",
-                                                liste(vapply(m$niveaux, guillemets, ""))) else ""
+    aleatoire <- if (gamm) {
+      sprintf(if (fr) ", une ordonnée à l'origine aléatoire par %s, et une autocorrélation des résidus en temps continu (CAR1) le long de %s à l'intérieur de chaque %s"
+              else ", a random intercept for %s, and a continuous-time autocorrelation of the residuals (CAR1) along %s within each %s",
+              liste(niveaux_emboites(m$niveaux, fr, guillemets)), guillemets(m$temps), guillemets(m$dans %||% m$niveaux[length(m$niveaux)]))
+    } else if (length(m$niveaux)) sprintf(if (fr) ", une ordonnée à l'origine aléatoire par %s (des termes pénalisés)" else ", a random intercept for %s (penalized terms)",
+                                          liste(vapply(m$niveaux, guillemets, ""))) else ""
     effort <- if (!is.null(m$decalage)) sprintf(if (fr) ", et log(%s) en décalage (l'effort)" else ", and log(%s) as an offset (the effort)", guillemets(m$decalage)) else ""
     penalise <- length(lis) || length(m$niveaux)
     c(cite("wood2017", if (fr) sprintf("Nous avons ajusté un modèle %s (loi %s, lien %s ; Wood, 2017) avec %s%s%s%s. %s",
                                        if (identical(m$type, "GAM")) "additif généralisé" else "linéaire généralisé", lois[[m$famille]], m$lien, termes, courbes, aleatoire, effort, unites)
                        else sprintf("We fitted a %s model (%s distribution, %s link; Wood, 2017) with %s%s%s%s. %s",
                                     if (identical(m$type, "GAM")) "generalized additive" else "generalized linear", lois[[m$famille]], m$lien, termes, courbes, aleatoire, effort, unites)),
-      if (penalise) cite("wood2011", if (fr) "Les courbes et les effets aléatoires ont été estimés par maximum de vraisemblance restreint (REML ; Wood, 2011), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance."
+      if (gamm) cite("pinheiro", if (fr) "Le modèle a été ajusté par mgcv::gamm comme un modèle linéaire mixte de nlme (Pinheiro et Bates, 2000), dont les courbes sont des effets aléatoires : coefficients, courbes, variances et autocorrélation par maximum de vraisemblance restreint (REML), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance."
+                     else "The model was fitted with mgcv::gamm as a linear mixed model of nlme (Pinheiro & Bates, 2000), whose curves are random effects: coefficients, curves, variances and autocorrelation by restricted maximum likelihood (REML), and models compared by the AIC of maximum-likelihood fits.")
+      else if (penalise) cite("wood2011", if (fr) "Les courbes et les effets aléatoires ont été estimés par maximum de vraisemblance restreint (REML ; Wood, 2011), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance."
                                      else "Curves and random effects were estimated by restricted maximum likelihood (REML; Wood, 2011), and models compared by the AIC of maximum-likelihood fits.")
       else if (fr) "Le modèle a été ajusté par maximum de vraisemblance." else "The model was fitted by maximum likelihood.")
   } else if (!mixte) {
     if (fr) sprintf("Nous avons ajusté une régression linéaire multiple par les moindres carrés ordinaires, avec %s. %s", termes, unites)
     else sprintf("We fitted a multiple linear regression by ordinary least squares, with %s. %s", termes, unites)
   } else {
-    niveaux <- vapply(seq_along(m$niveaux), function(l) {
-      if (l == 1) guillemets(m$niveaux[l]) else sprintf(if (fr) "%s dans chaque %s" else "%s within each %s", guillemets(m$niveaux[l]), guillemets(m$niveaux[l - 1]))
-    }, "")
+    niveaux <- niveaux_emboites(m$niveaux, fr, guillemets)
     car1 <- if (m$car1) {
-      if (fr) sprintf(", et une autocorrélation des résidus en temps continu (CAR1) le long de %s à l'intérieur de chaque %s", guillemets(m$temps), guillemets(m$niveaux[length(m$niveaux)]))
-      else sprintf(", and a continuous-time autocorrelation of the residuals (CAR1) along %s within each %s", guillemets(m$temps), guillemets(m$niveaux[length(m$niveaux)]))
+      if (fr) sprintf(", et une autocorrélation des résidus en temps continu (CAR1) le long de %s à l'intérieur de chaque %s", guillemets(m$temps), guillemets(m$dans %||% m$niveaux[length(m$niveaux)]))
+      else sprintf(", and a continuous-time autocorrelation of the residuals (CAR1) along %s within each %s", guillemets(m$temps), guillemets(m$dans %||% m$niveaux[length(m$niveaux)]))
     } else ""
     c(cite("pinheiro", if (fr) sprintf("Nous avons ajusté un modèle linéaire mixte (Pinheiro et Bates, 2000) avec %s en effets fixes, une ordonnée à l'origine aléatoire par %s%s. %s",
                                        termes, liste(niveaux), car1, unites)
@@ -823,18 +997,18 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     if (fr) sprintf("%d groupes, un par valeur de %s", m$G, guillemets(m$vc_par)) else sprintf("%d groups, one per value of %s", m$G, guillemets(m$vc_par))
   } else if (fr) sprintf("%d groupes (l'observation i dans le groupe i modulo %d)", m$G, m$G) else sprintf("%d groups (observation i in group i modulo %d)", m$G, m$G)
   p3 <- if (fr) sprintf("La validation croisée comptait %s ; chaque groupe a été prédit par le modèle ajusté sans lui%s.", groupes,
-                        if (mixte) ", par ses seuls effets fixes (comme un groupe jamais vu)" else "")
+                        if (length(m$niveaux)) ", par ses seuls effets fixes (comme un groupe jamais vu)" else "")
         else sprintf("Cross-validation used %s; each group was predicted by the model fitted without it%s.", groupes,
-                     if (mixte) ", by its fixed effects only (as a group never seen)" else "")
+                     if (length(m$niveaux)) ", by its fixed effects only (as a group never seen)" else "")
 
   # --- qualité
   aic <- cite("burnham", sprintf("AIC = %s (Burnham %s Anderson, 2002)", nombre(r$AIC, 1), if (fr) "et" else "&"))
   loi <- r$parametre_loi
-  p4 <- if (generalise) {
+  p4 <- if (generalise && is.null(r$r2$marginal)) {
     sprintf(if (fr) "Le modèle explique %s de la déviance (R² ajusté = %s)%s ; %s ; en validation croisée, Q² = %s et RMSEcv = %s." else "The model explains %s of the deviance (adjusted R² = %s)%s; %s; in cross-validation, Q² = %s and RMSEcv = %s.",
             pourcent(r$r2$deviance_expliquee), nombre(r$r2$r2_ajuste), if (!is.null(loi)) sprintf(", %s = %s", if (loi$nom == "theta") "θ" else "p", nombre(loi$valeur)) else "",
             aic, nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
-  } else if (mixte) {
+  } else if (!is.null(r$r2$marginal)) {
     cite("nakagawa", if (fr) sprintf("Les effets fixes expliquent %s de la variance de la réponse (R² marginal), les effets fixes et aléatoires %s (R² conditionnel ; Nakagawa et Schielzeth, 2013) ; %s ; en validation croisée, Q² = %s et RMSEcv = %s.",
                                      pourcent(r$r2$marginal), pourcent(r$r2$conditionnel), aic, nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
                      else sprintf("The fixed effects explain %s of the response's variance (marginal R²), the fixed and random effects %s (conditional R²; Nakagawa & Schielzeth, 2013); %s; in cross-validation, Q² = %s and RMSEcv = %s.",
@@ -858,10 +1032,12 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   annee_nlme <- substr(nlme$Date %||% annee_r, 1, 4)
   mgcv <- if (generalise) utils::packageDescription("mgcv")
   annee_mgcv <- if (generalise) substr(mgcv$Date %||% annee_r, 1, 4)
-  cites <- union(cites, c("r", "nuee", if (mixte) "nlme", if (generalise) "mgcv"))
+  cites <- union(cites, c("r", "nuee", if (mixte || gamm) "nlme", if (generalise) "mgcv"))
   p5 <- sprintf(if (fr) "Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s)%s." else "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s)%s.",
                 if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r,
-                if (mixte) sprintf(if (fr) ", paquet nlme %s (Pinheiro et al., %s)" else ", package nlme %s (Pinheiro et al., %s)", nlme$Version, annee_nlme)
+                if (gamm) sprintf(if (fr) ", paquets mgcv %s (Wood, %s) et nlme %s (Pinheiro et al., %s)" else ", packages mgcv %s (Wood, %s) and nlme %s (Pinheiro et al., %s)",
+                                  mgcv$Version, annee_mgcv, nlme$Version, annee_nlme)
+                else if (mixte) sprintf(if (fr) ", paquet nlme %s (Pinheiro et al., %s)" else ", package nlme %s (Pinheiro et al., %s)", nlme$Version, annee_nlme)
                 else if (generalise) sprintf(if (fr) ", paquet mgcv %s (Wood, %s)" else ", package mgcv %s (Wood, %s)", mgcv$Version, annee_mgcv) else "")
   references <- vapply(cites, function(k) switch(k,
     r = sprintf(REFERENCES$r, annee_r),
@@ -871,6 +1047,11 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     REFERENCES_REGRESSION[[k]]), "")
   list(paragraphes = c(p1, paste(p2, collapse = " "), p3, paste(p4, collapse = " "), p5), references = unname(sort(references)))
 }
+
+# Les niveaux emboîtés d'effets aléatoires, en mots : « site », « secteur » dans chaque « site »...
+niveaux_emboites <- function(niveaux, fr, guillemets) vapply(seq_along(niveaux), function(l) {
+  if (l == 1) guillemets(niveaux[l]) else sprintf(if (fr) "%s dans chaque %s" else "%s within each %s", guillemets(niveaux[l]), guillemets(niveaux[l - 1]))
+}, "")
 
 # Ce que R affiche d'une régression (la console de l'application et son journal).
 print.modele_regression <- function(x, ...) {
@@ -882,7 +1063,8 @@ print.modele_regression <- function(x, ...) {
   cat(sprintf(traduire("Modèle %s (%s)%s\n", "Model %s (%s)%s\n"), x$nom, type, if (nzchar(x$titre %||% "")) paste(" :", x$titre) else ""))
   cat(sprintf(traduire("%d observations, réponse %s%s\n", "%d observations, response %s%s\n"), x$N, x$y$noms,
               if (length(x$niveaux)) sprintf(traduire(", effets aléatoires %s%s", ", random effects %s%s"), paste(x$niveaux, collapse = " / "),
-                                             if (x$car1) sprintf(traduire(", autocorrélation CAR1 dans le temps (%s)", ", CAR1 autocorrelation in time (%s)"), x$temps) else "") else ""))
+                                             if (x$car1) sprintf(traduire(", autocorrélation CAR1 dans le temps (%s, dans chaque %s)%s", ", CAR1 autocorrelation in time (%s, within each %s)%s"),
+                                                                 x$temps, x$dans %||% x$niveaux[length(x$niveaux)], if (isTRUE(x$gamm)) ", mgcv::gamm" else "") else "") else ""))
   co <- r$coefficients
   print(data.frame(terme = co$terme, estimation = signif(co$estimation, 4), IC95 = sprintf("[%s ; %s]", signif(co$bas, 3), signif(co$haut, 3)),
                    p = signif(co$p, 3)), row.names = FALSE)

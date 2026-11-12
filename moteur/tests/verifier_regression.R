@@ -202,8 +202,86 @@ verifier("Poisson sur des valeurs non entières : refusé", grepl("comptages", r
 verifier("binomiale sur une réponse qui n'est pas 0/1 : refusé", grepl("0 ou 1", refus(modele_g("GLM", "compte", "x2", famille = "binomiale"))))
 verifier("un décalage avec la loi normale : refusé", grepl("lien log", refus(modele_g("GLM", "masse", "x2", decalage = ug("effort")))))
 verifier("une courbe dans un GLM : refusée", grepl("additif", refus(modele_g("GLM", "masse", c("x1", "x2"), famille = "gamma", lisses = ug("x1")))))
-verifier("l'autocorrélation avec un GLM : refusée", grepl("linéaire mixte", refus(modele_g("GLM", "masse", "x2", famille = "gamma",
+verifier("l'autocorrélation avec une loi gamma : refusée (mgcv::gamm passerait par la PQL, sans AIC)",
+         grepl("loi normale", refus(modele_g("GLM", "masse", "x2", famille = "gamma",
          aleatoires = list(list(by = "variable", variable = ug("site"))), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ug("x1")))))))
+
+cat("Modèle additif mixte avec une autocorrélation dans le temps (mgcv::gamm)\n")
+# comme les scripts de seuils : y ~ s(x, k = 5) + moyenne de x dans le secteur, un effet aléatoire
+# site, une autocorrélation CAR1 le long des années dans chaque secteur de chaque site
+set.seed(23)
+ta <- expand.grid(annee = c(2001:2005, 2007:2011), secteur = c("a", "b", "c"), site = sprintf("S%d", 1:7), stringsAsFactors = FALSE)
+na <- nrow(ta)
+ta$nom <- sprintf("A%03d", seq_len(na))
+ta$x <- round(runif(na, 0, 10), 3)
+ta$xbar <- ave(ta$x, ta$site, ta$secteur)
+bruit <- numeric(na)
+for (i in split(seq_len(na), paste(ta$site, ta$secteur))) bruit[i[order(ta$annee[i])]] <- as.vector(stats::filter(rnorm(length(i), 0, 0.4), 0.5, "recursive"))
+ta$y <- 1 + 1.2 * sin(ta$x / 2) + 0.25 * ta$xbar + rnorm(7, 0, 0.5)[as.integer(factor(ta$site))] + bruit
+pa <- projet_depuis_tableau(ta[c("nom", "site", "secteur", "annee", "x", "xbar", "y")], "seuils")
+ua <- function(...) numeros(pa, c(...))
+par_variable <- function(n) list(by = "variable", variable = ua(n))
+car1_a <- list(type = "CAR1", temps = par_variable("annee"), dans = par_variable("secteur"))
+da <- definir_modele(pa, "GAM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", famille = "gaussienne", lisses = ua("x"),
+                     k_courbes = stats::setNames(list(5), ua("x")), aleatoires = list(par_variable("site")), correlation = car1_a)
+ma <- ajuster(pa, da)
+ta$site_f <- factor(ta$site)
+ta$secteur_f <- factor(ta$secteur)
+fa <- stats::as.formula("y ~ s(x, k = 5) + xbar", env = new.env(parent = asNamespace("mgcv")))
+cor_a <- nlme::corCAR1(form = ~ annee | site_f / secteur_f)
+ref_reml <- mgcv::gamm(fa, random = list(site_f = ~1), correlation = cor_a, data = ta, method = "REML")
+ref_ml <- mgcv::gamm(fa, random = list(site_f = ~1), correlation = cor_a, data = ta, method = "ML")
+verifier(sprintf("= mgcv::gamm() : coefficients, edf de la courbe (%.2f, k = 5), φ (%.3f)", ma$resultat$courbes$edf, ma$resultat$phi),
+         isTRUE(ma$gamm) && ma$k[[1]] == 5 && proche(ma$resultat$coefficients$estimation, summary(ref_reml$gam)$p.table[, 1], 1e-5) &&
+           proche(ma$resultat$courbes$edf, summary(ref_reml$gam)$s.table[1, "edf"], 1e-5) &&
+           proche(ma$resultat$phi, unname(stats::coef(ref_reml$lme$modelStruct$corStruct, unconstrained = FALSE)), 1e-4))
+verifier(sprintf("= mgcv::gamm() : la variance du site (REML) ; logLik et AIC de l'ajustement en ML (AIC %.1f)", ma$resultat$AIC),
+         proche(ma$resultat$variances$variance[1], ref_reml$lme$sigma^2 * as.matrix(ref_reml$lme$modelStruct$reStruct$site_f)[1, 1], 1e-4) &&
+           proche(ma$resultat$variances$variance[2], ref_reml$lme$sigma^2, 1e-5) &&
+           proche(ma$resultat$logLik, as.numeric(stats::logLik(ref_ml$lme)), 1e-6) && proche(ma$resultat$AIC, stats::AIC(ref_ml$lme), 1e-6))
+verifier("valeurs ajustées : avec le site ($lme) et par les effets fixes ($gam) ; résidus normalisés",
+         proche(ma$resultat$ajuste, as.vector(stats::fitted(ref_reml$lme)), 1e-5) && proche(ma$resultat$ajuste_fixe, as.vector(stats::fitted(ref_reml$gam)), 1e-5) &&
+           proche(ma$resultat$residus, as.vector(stats::residuals(ref_reml$lme, type = "normalized")), 1e-4) &&
+           !is.null(ma$resultat$r2$marginal) && ma$resultat$r2$conditionnel >= ma$resultat$r2$marginal)
+pred_a <- rep(NA_real_, na)
+for (s in unique(ta$site)) {
+  ici <- ta$site == s
+  appris <- droplevels(ta[!ici, ])
+  mm <- mgcv::gamm(fa, random = list(site_f = ~1), correlation = cor_a, data = appris, method = "REML")
+  pred_a[ici] <- predict(mm$gam, ta[ici, ])
+}
+verifier(sprintf("validation croisée par site (le premier effet aléatoire) : Q2 = %.3f, recalculé à la main", ma$vc$Q2),
+         ma$G == 7 && proche(ma$vc$Q2, 1 - sum((ta$y - pred_a)^2) / sum((ta$y - mean(ta$y))^2), 1e-5))
+pra <- predire(pa, ma, da, numeros_observations(pa)[1:5])
+verifier("prédiction : par les effets fixes et la courbe, comme predict() de $gam",
+         proche(pra[["y prédit"]], as.vector(predict(ref_reml$gam, ta[1:5, ])), 1e-5))
+aa <- apport_groupes(ma)
+ea <- effets_regression(ma)
+verifier("apport des termes (réajustés en ML) ; la courbe d'effet de x", nrow(aa) == 2 && all(!is.na(aa$delta_aic)) && isTRUE(ea[[1]]$courbe) && length(ea[[1]]$x) == 80)
+ma0 <- ajuster(pa, definir_modele(pa, "GAM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", famille = "gaussienne", lisses = ua("x"),
+                                  k_courbes = stats::setNames(list(5), ua("x")), aleatoires = list(par_variable("site"))))
+verifier("la vraisemblance de mgcv::gamm a son propre ensemble AIC (pas celui du même modèle sans autocorrélation)",
+         grepl("gamm$", ma$signature) && ma$signature != ma0$signature && !isTRUE(ma0$gamm))
+dl <- definir_modele(pa, "LMM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", aleatoires = list(par_variable("site")), correlation = car1_a)
+ml_ref <- nlme::lme(y ~ x + xbar, random = ~ 1 | site_f, correlation = cor_a, data = ta, method = "ML")
+verifier("modèle linéaire mixte : l'autocorrélation dans chaque secteur, seul le site aléatoire (= nlme::lme)", proche(ajuster(pa, dl)$resultat$AIC, stats::AIC(ml_ref), 1e-6))
+verifier("une autocorrélation sans effet aléatoire : refusée", grepl("effet aléatoire", refus(definir_modele(pa, "GAM", x = ua("x"), y = ua("y"), famille = "gaussienne",
+         correlation = car1_a))))
+verifier("une dimension de courbe impossible (k = 2) : refusée", grepl("dimension", refus(definir_modele(pa, "GAM", x = ua("x"), y = ua("y"), famille = "gaussienne",
+         lisses = ua("x"), k_courbes = stats::setNames(list(2), ua("x"))))))
+for (langue_a in c("fr", "en")) {
+  tma <- texte_methodes(pa, da, ma, langue_a, "essai")
+  verifier(sprintf("texte des méthodes (%s) : mgcv::gamm, l'autocorrélation dans chaque secteur, Wood et Pinheiro cités, R² marginal", langue_a),
+           any(grepl("gamm", tma$paragraphes)) && any(grepl("CAR1", tma$paragraphes)) && any(grepl("secteur", tma$paragraphes)) &&
+             any(grepl("Pinheiro", tma$references)) && any(grepl("Wood", tma$references)) && any(grepl("marginal", tma$paragraphes)) &&
+             !any(grepl("NA", tma$paragraphes, fixed = TRUE)))
+}
+fa_proj <- tempfile(fileext = ".nuee")
+pa$models <- list(da)
+enregistrer_projet(pa, fa_proj)
+qa <- lire_projet(fa_proj)
+ma2 <- ajuster(qa, qa$models[[1]])
+verifier("enregistré puis relu : le même modèle (autocorrélation dans chaque secteur, k = 5)", proche(ma2$resultat$AIC, ma$resultat$AIC, 1e-8) && ma2$k[[1]] == 5)
 
 cat("Prédiction\n")
 pr <- predire(p, m, d, obs)
@@ -278,6 +356,9 @@ verifier(sprintf("chaque transformation écrite en R se relit (%d)", length(code
 if (any(nzchar(relus))) cat("         ", relus[nzchar(relus)], sep = "\n          ")
 r2 <- lire_formule(p, "note_gout ~ s(sucre) + `fermete`", "LMM")
 verifier("une courbe : le type devient additif ; un nom entre accents graves", r2$type == "GAM" && r2$lisses == u("sucre") && setequal(r2$x, u("sucre", "fermete")))
+r2k <- lire_formule(p, "note_gout ~ s(sucre, k = 5) + fermete", "LM")
+verifier(sprintf("une courbe de dimension fixée, s(sucre, k = 5) : lue, et réécrite (%s)", formule_reglages(p, r2k)),
+         identical(r2k$k_courbes[[as.character(u("sucre"))]], 5L) && grepl("s(sucre, k = 5)", formule_reglages(p, r2k), fixed = TRUE))
 r3 <- lire_formule(p, "log(note_gout) ~ I(sucre^2) + variete", "LMM")
 verifier("sans effet aléatoire, un modèle linéaire ; x² seul, une transformation de x ; une réponse transformée",
          r3$type == "LM" && identical(r3$transformations[[as.character(u("sucre"))]], "puissance:1:0:2") && !length(r3$croises) &&
@@ -293,7 +374,8 @@ dangereuses <- c(sprintf("note_gout ~ sucre + file.create(\"%s\")", marqueur), s
                  "note_gout ~ (function() sucre)()", "note_gout ~ sucre; file.remove(\"x\")")
 verifier("du code dans une formule : refusé, jamais exécuté", all(vapply(dangereuses, function(f) nzchar(refus(lire_formule(p, f))), TRUE)) && !file.exists(marqueur))
 messages <- c("note_gout ~ sucre - 1" = "ordonnée", "note_gout ~ (sucre | verger)" = "aléatoires", "note_gout ~ sucre + (1 | verger) + (1 | culture)" = "emboîtés",
-              "note_gout ~ s(sucre, k = 5)" = "choisit", "note_gout ~ sucre:fermete" = "demande aussi", "note_gout ~ inconnue" = "pas une variable",
+              "note_gout ~ s(sucre, bs = \"cr\")" = "dimension", "note_gout ~ s(sucre, k = 2)" = "entier de 3", "note_gout ~ sucre:fermete" = "demande aussi",
+              "note_gout ~ inconnue" = "pas une variable",
               "note_gout ~ sucre^2" = "I\\(x\\^2\\)", "variete ~ sucre" = "qualitative", "note_gout ~ sucre + log(sucre)" = "deux façons",
               "note_gout ~ s(variete)" = "quantitative", "note_gout ~ sucre +" = "illisible")
 mauvais <- names(messages)[!vapply(names(messages), function(f) grepl(messages[[f]], refus(lire_formule(p, f))), TRUE)]

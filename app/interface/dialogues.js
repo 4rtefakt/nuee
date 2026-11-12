@@ -72,6 +72,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     aleatoires: r && r.aleatoires ? [].concat(r.aleatoires) : [], correlation: r && r.correlation ? r.correlation : null,
     // a generalized or additive model: the distribution of Y, the X in curves, the effort (offset)
     famille: r && r.famille ? r.famille : 'gaussienne', lisses: new Set(r && r.lisses ? [].concat(r.lisses).map(Number) : []),
+    // each curve's basis dimension (k), by variable; none: Nuée sets it (moteur/R/regression.R: dimension_courbe)
+    kCourbes: r && r.k_courbes && !Array.isArray(r.k_courbes) ? Object.fromEntries(Object.entries(r.k_courbes).map(([u, k]) => [u, Number([].concat(k)[0])])) : {},
     decalage: r && r.decalage !== undefined && r.decalage !== null ? Number(r.decalage) : null,
     // a regression as an R formula: written by R from the settings, or edited (not applied yet)
     formule: '', formuleModifiee: false,
@@ -160,11 +162,20 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       if (i === 0 && s && !st.vc) st.vc = s;  // validated by the widest one: a site never seen
       rendre();
     } }, groupements().map(([k, n]) => el('option', { value: k, selected: k === codeSpec(st.aleatoires[i]) }, n)))));
-  const autocorrelation = () => el('div', { class: 'ligne' },
-    el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: !!st.correlation,
-      onchange: (e) => { st.correlation = e.target.checked ? { type: 'CAR1', temps: null } : null; rendre(); } }), t('car1')),
-    st.correlation ? el('select', { onchange: (e) => { st.correlation.temps = lireSpec(e.target.value); } },
-      groupements(true).map(([k, n]) => el('option', { value: k, selected: k === codeSpec(st.correlation.temps) }, n))) : null);
+  // (a mixed model; a generalized or additive one with the normal distribution and random effects, then fitted by mgcv::gamm)
+  const avecCar1 = () => st.type === 'LMM' || (generalise() && st.famille === 'gaussienne' && st.aleatoires.length > 0);
+  const autocorrelation = () => el('div', {},
+    el('div', { class: 'ligne' },
+      el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: !!st.correlation,
+        onchange: (e) => { st.correlation = e.target.checked ? { type: 'CAR1', temps: null } : null; rendre(); } }), t('car1')),
+      st.correlation ? el('select', { onchange: (e) => { st.correlation.temps = lireSpec(e.target.value); } },
+        groupements(true).map(([k, n]) => el('option', { value: k, selected: k === codeSpec(st.correlation.temps) }, n))) : null),
+    // within the last random effect's groups, or a finer level (the sector within its site)
+    st.correlation ? el('div', { class: 'ligne' }, el('span', { class: 'doux' }, t('car1_dans')),
+      el('select', { title: t('car1_dans_aide'), onchange: (e) => {
+        const s = lireSpec(e.target.value);
+        if (s) st.correlation.dans = s; else delete st.correlation.dans;
+      } }, [['', t('car1_dernier')]].concat(groupements().slice(1)).map(([k, n]) => el('option', { value: k, selected: k === codeSpec(st.correlation.dans) }, n)))) : null);
 
   // The regression as an R formula (moteur/R/formule.R): written by R from the settings; edited
   // and applied (Ctrl+Enter), it sets them: roles, transformations, cross terms, curves, random
@@ -173,7 +184,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const cles = (r2) => Object.keys(st.roles).filter((k) => st.roles[k] === r2).map(Number);
     return { projet: p.id, type: st.type, x: cles('x'), y: cles('y').slice(0, 1), croises: st.croises,
       transformations: Object.fromEntries(Object.entries(st.transfos).filter(([u, v]) => v && v !== 'autre' && ['x', 'y'].includes(st.roles[u]))),
-      lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [],
+      lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [], k_courbes: kCourbesEnvoyes(),
       aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [],
       decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null };
   };
@@ -213,6 +224,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     Object.assign(st.transfos, f.transformations || {});
     st.croises = [].concat(f.croises || []).map((c) => [].concat(c).map(Number));
     st.lisses = new Set([].concat(f.lisses || []).map(Number));
+    st.kCourbes = f.k_courbes && !Array.isArray(f.k_courbes) ? Object.fromEntries(Object.entries(f.k_courbes).map(([u, k]) => [u, Number([].concat(k)[0])])) : {};
     st.aleatoires = [].concat(f.aleatoires || []);
     st.decalage = f.decalage === null || f.decalage === undefined ? null : Number(f.decalage);
     st.type = f.type;
@@ -235,7 +247,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     regression() ? [el('label', {}, ''), el('p', { class: 'note' }, t({ LM: 'lm_note', LMM: 'lmm_note', GLM: 'glm_note', GAM: 'gam_note' }[st.type]))] : null,
     generalise() ? loi() : null,
     ['LMM', 'GLM', 'GAM'].includes(st.type) ? [el('label', {}, t('effets_aleatoires')), aleatoires()] : null,
-    st.type === 'LMM' ? [el('label', {}, t('autocorrelation')), autocorrelation()] : null,
+    avecCar1() ? [el('label', {}, t('autocorrelation')), autocorrelation()] : null,
+    avecCar1() && generalise() && st.correlation ? [el('label', {}, ''), el('p', { class: 'note' }, t('car1_gamm_note'))] : null,
     regression() ? [el('label', { title: t('formule_aide') }, t('formule_r')), formule()] : null,
     ['OPLS', 'OPLS-DA'].includes(st.type) ? el('label', {}, '') : null,
     ['OPLS', 'OPLS-DA'].includes(st.type) ? el('p', { class: 'note' }, t('opls_note')) : null,
@@ -316,8 +329,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           el('td', {}, sel(optionsTransfo(st.transfos[v.uid]), st.transfos[v.uid] || '',
             (x) => (x === PERSO ? editeurTransfo(st.transfos[v.uid], (c) => { st.transfos[v.uid] = c; }, rendre) : (st.transfos[v.uid] = x)),
             !v.qualitative)),
-          st.type === 'GAM' ? el('td', {}, v.qualitative ? '' : el('input', { type: 'checkbox', checked: st.lisses.has(v.uid), title: t('courbe_aide'),
-            onchange: (e) => { if (e.target.checked) st.lisses.add(v.uid); else st.lisses.delete(v.uid); } })) : null))))));
+          st.type === 'GAM' ? el('td', {}, v.qualitative ? '' : courbe(v)) : null))))));
   };
 
   // The proposed transformation, worked out in R: log10(x + C2) for the variables
@@ -437,6 +449,20 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     erreur.textContent = '';
   }
 
+  // a curve's box, and its basis dimension k (empty: Nuée sets it)
+  function courbe(v) {
+    const k = el('input', { type: 'number', min: 3, max: 100, step: 1, placeholder: 'k', title: t('k_courbe_aide'), style: 'width:4.2em',
+      disabled: !st.lisses.has(v.uid), value: st.kCourbes[v.uid] ?? '',
+      oninput: (e) => { const x = parseInt(e.target.value, 10); if (x >= 3 && x <= 100) st.kCourbes[v.uid] = x; else delete st.kCourbes[v.uid]; } });
+    return el('span', { class: 'ligne' }, el('input', { type: 'checkbox', checked: st.lisses.has(v.uid), title: t('courbe_aide'),
+      onchange: (e) => { if (e.target.checked) st.lisses.add(v.uid); else st.lisses.delete(v.uid); k.disabled = !e.target.checked; } }), k);
+  }
+  // the k of the curves the model has
+  function kCourbesEnvoyes() {
+    if (st.type !== 'GAM') return {};
+    return Object.fromEntries(Object.entries(st.kCourbes).filter(([u]) => st.lisses.has(Number(u)) && st.roles[u] === 'x'));
+  }
+
   function valider() {
     if (regression() && st.formuleModifiee) {  // an edited formula is applied first
       appliquerFormule().then((ok) => { if (ok) valider(); });
@@ -449,7 +475,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     if (!x.length && !regression()) { erreur.textContent = t('x_requis'); return false; }  // (a regression without X: the null model)
     if (regression() && y.length !== 1) { erreur.textContent = t('regression_y_requis'); return false; }
     if (st.type === 'LMM' && !st.aleatoires.length) { erreur.textContent = t('lmm_aleatoire_requis'); return false; }
-    if (st.type === 'LMM' && st.correlation && !st.correlation.temps) { erreur.textContent = t('car1_temps_requis'); return false; }
+    if (avecCar1() && st.correlation && !st.correlation.temps) { erreur.textContent = t('car1_temps_requis'); return false; }
     if (avecY() && !y.length) { erreur.textContent = t('pls_y_requis'); return false; }
     if (avecClasse() && classe === undefined) { erreur.textContent = t('plsda_classe_requise'); return false; }
     const horsX = [...new Set(st.croises.flat().filter((u) => st.roles[u] !== 'x'))];
@@ -477,8 +503,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
       exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises,
       spectres: regression() ? [] : spectres, A: st.auto || regression() ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs: regression() ? {} : modificateurs,
-      aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [], correlation: st.type === 'LMM' ? st.correlation : null,
-      famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [],
+      aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [], correlation: avecCar1() ? st.correlation : null,
+      famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [], k_courbes: kCourbesEnvoyes(),
       decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, croises_reglages: croisesReglages, nom: st.nom, titre: st.titre };
     if (!enCours) verifierPuisAjuster(q);
     return false;  // the dialog closes once the model is fitted

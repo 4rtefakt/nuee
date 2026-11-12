@@ -1752,7 +1752,7 @@ function rendreResumeRegression(conteneur, ctx, m) {
       el('td', { class: 'num' + ([].concat(cb.p)[i] <= 0.05 ? ' alerte' : '') }, valeurP([].concat(cb.p)[i])))))) : null;
   const retires = [].concat(m.termes_retires || []);
   // (a GLM without curves or random effects: plain maximum likelihood)
-  const textes = [mixte ? t('regression_note_mixte') : ['GLM', 'GAM'].includes(m.type) ? t(cb || v ? 'generalise_note' : 'generalise_note_mv') : t('regression_note'),
+  const textes = [m.gamm ? t('gamm_note') : mixte ? t('regression_note_mixte') : ['GLM', 'GAM'].includes(m.type) ? t(cb || v ? 'generalise_note' : 'generalise_note_mv') : t('regression_note'),
     m.phi !== null && m.phi !== undefined ? t('phi_note', { phi: fmt(m.phi, 3), temps: m.temps }) : '',
     retires.length ? t('termes_retires', { termes: retires.join(', ') }) : '',
     q.echecs_vc ? t('echecs_vc', { n: q.echecs_vc }) : '',
