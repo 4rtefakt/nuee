@@ -407,10 +407,18 @@ qualitative variable.
   correction; up to 50 groups): a click on a test shows them. The rank test is recommended
   when normality is doubtful in a group (Shapiro–Wilk p < 0.05, or fewer than three
   observations), Welch's ANOVA when the variances differ (Brown–Forsythe p < 0.05).
+  A measurement and a qualitative variable, paired by a third variable or ID ("Pair by": the
+  year, for two sectors of a site followed over the same years): the data stay in long format,
+  one row per sector and year. Two levels A and B are compared on the keys both have: the
+  differences B − A by the paired t-test (mean difference, its 95 % interval, Cohen's d_z) and
+  by Wilcoxon's signed-rank test (exact below 50 pairs), the rank test recommended when the
+  normality of the differences is doubtful (Shapiro–Wilk p < 0.05). At least three pairs are
+  needed, and a key may appear only once per level. The rows left without a partner, and
+  those without a value, are counted and listed; the plot joins each pair.
   Two measurements: Pearson's and Spearman's correlations; Spearman is recommended when
   normality is doubtful for either.
 The recommended test's result comes as a sentence ready for a report (copy it with the button
-next to it), with its effect size: Cramér's V, odds ratio, Cohen's d, rank-biserial
+next to it), with its effect size: Cramér's V, odds ratio, Cohen's d or d_z, rank-biserial
 correlation, η², ε², r or ρ.
 
 Correlation matrix: the Pearson or Spearman correlations of all the quantitative variables (300

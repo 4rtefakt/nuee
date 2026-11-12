@@ -83,14 +83,33 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
 #     la normalité de l'une des deux est douteuse.
 # x et y : le numéro d'une variable, ou "id:k" pour le k-ième identifiant des observations
 # (site, secteur, année...), qui fait alors des groupes comme une variable qualitative.
+# Avec `appariement` (une variable ou "id:k" : la clé, l'année par exemple), une mesure et une
+# variable qualitative font un test apparié entre deux de ses niveaux (`niveaux` : A et B, les
+# deux premiers par défaut) : voir comparer_apparies().
 # Renvoie le type de comparaison, les tests (statistique, degrés de liberté, p, taille de
 # l'effet), le test conseillé et pourquoi (raison : "attendus", "normalite", "variances" ou
 # ""), ce qu'il faut pour les graphiques, et une phrase qui donne le résultat du test conseillé.
-test_deux_variables <- function(projet, x, y, observations = NULL) {
+test_deux_variables <- function(projet, x, y, observations = NULL, appariement = NULL, niveaux = NULL) {
   obs <- observations %||% numeros_observations(projet)
   if (identical(as.character(x), as.character(y))) stop(traduire("Choisissez deux variables différentes", "Choose two different variables"))
   a <- valeurs_a_tester(projet, x, obs)
   b <- valeurs_a_tester(projet, y, obs)
+  if (length(appariement)) {
+    if (a$qualitative == b$qualitative) {
+      stop(traduire("Un test apparié compare une mesure entre deux niveaux d'une variable qualitative : choisissez une variable quantitative et une qualitative",
+                    "A paired test compares a measurement between two levels of a qualitative variable: choose one quantitative and one qualitative variable"))
+    }
+    if (as.character(appariement) %in% c(as.character(x), as.character(y))) {
+      stop(traduire("La clé d'appariement doit être une troisième variable", "The pairing key must be a third variable"))
+    }
+    k <- valeurs_a_tester(projet, appariement, obs)
+    mesure <- if (a$qualitative) b else a
+    groupe <- if (a$qualitative) a else b
+    r <- comparer_apparies(mesure$valeurs, groupe$valeurs, as.character(k$valeurs), niveaux, unname(projet$noms_obs[as.character(obs)]), k$nom)
+    r <- c(list(x = a[c("uid", "nom", "qualitative")], y = b[c("uid", "nom", "qualitative")], cle = k[c("uid", "nom", "qualitative")]), r)
+    r$phrase <- phrase_test(r)
+    return(r)
+  }
   ok <- !is.na(a$valeurs) & !is.na(b$valeurs)
   noms <- unname(projet$noms_obs[as.character(obs[ok])])
   r <- if (a$qualitative && b$qualitative) contingence(a$valeurs[ok], b$valeurs[ok])
@@ -121,6 +140,14 @@ valeurs_a_tester <- function(projet, v, obs) {
   x <- colonne(projet, u, obs)
   list(uid = u, nom = as.character(variable$ids[1]), qualitative = length(cats) > 0,
        valeurs = if (length(cats)) factor(cats[x], levels = cats) else x)
+}
+
+# Les niveaux d'une variable qualitative ou d'un identifiant que portent les observations, dans
+# l'ordre des tests : ceux que l'interface propose pour A et B d'un test apparié.
+niveaux_a_tester <- function(projet, v, observations = NULL) {
+  x <- valeurs_a_tester(projet, v, observations %||% numeros_observations(projet))
+  if (!x$qualitative) stop(traduire("Cette variable n'est pas qualitative", "This variable is not qualitative"))
+  levels(droplevels(x$valeurs))
 }
 
 # (le résultat d'un test, ou NULL quand R ne peut pas le faire : valeurs toutes égales...)
@@ -288,6 +315,70 @@ correler <- function(x, y, noms) {
        valeurs = list(x = x, y = y, nom = noms))
 }
 
+# Une mesure x comparée entre deux niveaux A et B des groupes f, sur des paires : les lignes de
+# A et de B qui ont la même clé (cle, en texte : l'année, pour deux secteurs suivis les mêmes
+# années). Les données restent en long, une ligne par secteur et par année : les clés que les
+# deux niveaux ont toutes deux font les paires, les autres lignes restent sans partenaire. Une
+# clé ne désigne qu'une ligne par niveau, et il faut au moins trois paires. Sur les différences
+# B − A : le test t apparié (la différence moyenne et son intervalle à 95 %, le d_z de Cohen :
+# la différence moyenne sur l'écart-type des différences) et le test des rangs signés de
+# Wilcoxon (exact quand R le peut, sous 50 paires ; sinon par la loi normale), avec la
+# corrélation rang-bisériale appariée des différences non nulles (Kerby, 2014). Wilcoxon est
+# conseillé quand la normalité des différences est douteuse (Shapiro–Wilk, p < 0,05 ; tenue
+# pour vraie au-delà de 5 000 paires).
+comparer_apparies <- function(x, f, cle, niveaux, noms, nom_cle) {
+  presents <- levels(droplevels(f))
+  niveaux <- as.character(unlist(niveaux))
+  if (!length(niveaux)) niveaux <- presents[1:2]
+  if (length(niveaux) != 2 || anyNA(niveaux) || niveaux[1] == niveaux[2] || !all(niveaux %in% presents)) {
+    stop(traduire("Il faut deux niveaux différents à comparer", "Two different levels are needed to compare"))
+  }
+  dans <- f %in% niveaux
+  ok <- dans & !is.na(x) & !is.na(cle)
+  lignes <- lapply(niveaux, function(n) which(ok & f %in% n))
+  ordre <- function(v) v[order(suppressWarnings(as.numeric(v)), v)]
+  for (k in 1:2) {
+    doubles <- ordre(unique(cle[lignes[[k]]][duplicated(cle[lignes[[k]]])]))
+    if (length(doubles)) {
+      stop(sprintf(traduire("%s a plusieurs lignes pour la même valeur de %s (%s) : la clé d'appariement doit désigner une seule ligne par niveau",
+                            "%s has several rows for the same value of %s (%s): the pairing key must identify one row per level"),
+                   niveaux[k], nom_cle, paste(c(utils::head(doubles, 5), if (length(doubles) > 5) "…"), collapse = ", ")))
+    }
+  }
+  ia <- lignes[[1]]
+  ib <- lignes[[2]]
+  communes <- ordre(intersect(cle[ia], cle[ib]))
+  n <- length(communes)
+  if (n < 3) {
+    stop(sprintf(traduire("Il faut au moins trois paires : %s et %s n'ont que %d valeur(s) de %s en commun",
+                          "At least three pairs are needed: %s and %s share only %d value(s) of %s"), niveaux[1], niveaux[2], n, nom_cle))
+  }
+  ja <- ia[match(communes, cle[ia])]
+  jb <- ib[match(communes, cle[ib])]
+  d <- x[jb] - x[ja]
+  if (all(d == 0)) {
+    stop(sprintf(traduire("%s et %s ont la même valeur dans chaque paire : rien à comparer", "%s and %s have the same value in every pair: nothing to compare"),
+                 niveaux[1], niveaux[2]))
+  }
+  tt <- essai_test(stats::t.test(x[jb], x[ja], paired = TRUE))
+  w <- essai_test(stats::wilcox.test(x[jb], x[ja], paired = TRUE))
+  non_nulles <- d[d != 0]
+  rangs <- rank(abs(non_nulles))
+  shapiro <- if (n <= 5000 && diff(range(d)) > 0) stats::shapiro.test(d)$p.value else NA_real_
+  normale <- n > 5000 || (!is.na(shapiro) && shapiro >= 0.05)
+  list(type = "apparie", a = niveaux[1], b = niveaux[2], n = n, manquantes = sum(dans & !ok),
+       paires = list(cle = communes, a = x[ja], b = x[jb], difference = d, nom_a = noms[ja], nom_b = noms[jb]),
+       sans_partenaire = list(a = ordre(setdiff(cle[ia], communes)), b = ordre(setdiff(cle[ib], communes))),
+       difference = c(mean(d), if (is.null(tt)) c(NA, NA) else as.numeric(tt$conf.int)), mediane = stats::median(d),
+       shapiro_p = shapiro, exact = !is.null(w) && grepl("exact", w$method, fixed = TRUE),
+       tests = data.frame(test = c("t_apparie", "wilcoxon"), statistique = c(champ_test(tt, "statistic"), champ_test(w, "statistic")),
+                          ddl1 = c(champ_test(tt, "parameter"), NA), ddl2 = NA_real_, p = c(champ_test(tt, "p.value"), champ_test(w, "p.value")),
+                          effet = c(if (stats::sd(d) > 0) mean(d) / stats::sd(d) else NA,
+                                    (sum(rangs[non_nulles > 0]) - sum(rangs[non_nulles < 0])) / sum(rangs)),
+                          nom_effet = c("dz", "r_rb"), stringsAsFactors = FALSE),
+       conseille = if (normale) "t_apparie" else "wilcoxon", raison = if (normale) "" else "normalite")
+}
+
 # La phrase qui donne le résultat du test conseillé, dans la langue des messages, pour un
 # rapport : statistique, degrés de liberté, valeur p, taille de l'effet, effectifs.
 phrase_test <- function(r) {
@@ -304,6 +395,7 @@ phrase_test <- function(r) {
     g <- r$groupes
     effectifs <- if (nrow(g) == 2) sprintf("n = %d %s %d", g$n[1], et, g$n[2]) else sprintf(if (fr) "N = %d, %d groupes" else "N = %d, %d groups", sum(g$n), nrow(g))
   }
+  if (r$type == "apparie") paires <- sprintf(if (fr) "n = %d paires, appariées par %s" else "n = %d pairs matched on %s", r$n, r$cle$nom)
   switch(r$conseille,
     khi2 = sprintf(if (fr) "Khi² d'indépendance de Pearson : χ²(%s, N = %d) = %s, %s ; V de Cramér = %s." else "Pearson's chi-square test of independence: χ²(%s, N = %d) = %s, %s; Cramér's V = %s.",
                    ddl(t$ddl1), r$n, nb(t$statistique), pv(t$p), nb(t$effet)),
@@ -314,6 +406,12 @@ phrase_test <- function(r) {
                     ddl(t$ddl1), nb(t$statistique), pv(t$p), r$groupes$groupe[2], r$groupes$groupe[1], nb(r$difference[1]), ic(r$difference[2:3]), nb(t$effet), effectifs),
     mann_whitney = sprintf(if (fr) "Test de Mann–Whitney : U = %s, %s ; corrélation rang-bisériale = %s (%s)." else "Mann–Whitney test: U = %s, %s; rank-biserial correlation = %s (%s).",
                            ddl(t$statistique), pv(t$p), nb(t$effet), effectifs),
+    t_apparie = sprintf(if (fr) "Test t apparié : t(%s) = %s, %s ; différence moyenne %s − %s = %s%s, d_z de Cohen = %s (%s)." else "Paired t-test: t(%s) = %s, %s; mean difference %s − %s = %s%s, Cohen's d_z = %s (%s).",
+                        ddl(t$ddl1), nb(t$statistique), pv(t$p), r$b, r$a, nb(r$difference[1]), ic(r$difference[2:3]), nb(t$effet), paires),
+    wilcoxon = sprintf(if (fr) "Test des rangs signés de Wilcoxon (%s) : V = %s, %s ; différence médiane %s − %s = %s, corrélation rang-bisériale = %s (%s)."
+                       else "Wilcoxon signed-rank test (%s): V = %s, %s; median difference %s − %s = %s, rank-biserial correlation = %s (%s).",
+                       if (r$exact) (if (fr) "p exacte" else "exact p") else (if (fr) "p approchée par la loi normale" else "normal approximation"),
+                       ddl(t$statistique), pv(t$p), r$b, r$a, nb(r$mediane), nb(t$effet), paires),
     anova = sprintf(if (fr) "ANOVA à un facteur : F(%s, %s) = %s, %s ; η² = %s (%s)." else "One-way ANOVA: F(%s, %s) = %s, %s; η² = %s (%s).",
                     ddl(t$ddl1), ddl(t$ddl2), nb(t$statistique), pv(t$p), nb(t$effet), effectifs),
     welch_anova = sprintf(if (fr) "ANOVA de Welch : F(%s, %s) = %s, %s (%s)." else "Welch's ANOVA: F(%s, %s) = %s, %s (%s).",

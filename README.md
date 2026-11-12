@@ -128,8 +128,9 @@ between two classes (Welch's or Student's t, Mann–Whitney) or across all of th
 Kruskal–Wallis), with the Benjamini–Hochberg correction and a volcano plot. Tests between two
 variables, chosen from their types with their conditions checked: chi-square or Fisher's exact
 test, t test, ANOVA or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's
-correlation; an observation ID (site, year...) can make the groups. A correlation matrix with
-corrected p values.
+correlation; an observation ID (site, year...) can make the groups. Paired tests on long data
+(paired t, Wilcoxon's signed-rank test): two sectors compared over the years both have. A
+correlation matrix with corrected p values.
 
 **Linear, generalized and mixed models:** linear regression and linear mixed models (nlme), with
 nested random effects (site, then sector within the site) and a continuous-time autocorrelation

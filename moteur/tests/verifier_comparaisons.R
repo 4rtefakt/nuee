@@ -115,6 +115,82 @@ verifier("Pearson et Spearman = cor.test()", r$type == "correlation" &&
 r <- correler(exp(poids / 40), diametre, paste0("o", seq_along(poids)))
 verifier("une variable non normale : Spearman conseillée", r$conseille == "spearman" && r$raison == "normalite")
 
+cat("Mesures appariées\n")
+# en long, une ligne par secteur et par année, dans le désordre : S1 commence en 2003, S2
+# s'arrête en 2011 et n'a pas de densité en 2005
+set.seed(4)
+long <- expand.grid(annee = 2001:2012, secteur = c("S1", "S2", "S3"), stringsAsFactors = FALSE)
+long$densite <- round(5 + 0.8 * (long$secteur == "S2") + rnorm(nrow(long)), 3)
+long <- long[!(long$secteur == "S1" & long$annee %in% 2001:2002) & !(long$secteur == "S2" & long$annee == 2012), ]
+long$densite[long$secteur == "S2" & long$annee == 2005] <- NA
+long <- data.frame(nom = paste0("o", seq_len(nrow(long))), long[sample(nrow(long)), c("secteur", "annee", "densite")])
+pl <- projet_depuis_tableau(long, "secteurs")
+densite <- numeros(pl, "densite"); secteur <- numeros(pl, "secteur"); annee <- numeros(pl, "annee")
+communes <- c(2003, 2004, 2006:2011)
+serie <- function(s) long$densite[long$secteur == s][match(communes, long$annee[long$secteur == s])]
+a <- serie("S1"); b <- serie("S2")
+tt <- t.test(b, a, paired = TRUE)
+w <- wilcox.test(b, a, paired = TRUE)
+r <- test_deux_variables(pl, densite, secteur, appariement = annee, niveaux = c("S1", "S2"))
+verifier("t apparié = t.test(paired = TRUE) sur les années communes, quel que soit l'ordre des lignes", r$type == "apparie" && r$n == 8 &&
+         identical(as.numeric(r$paires$cle), communes) && isTRUE(all.equal(r$tests$statistique[1], unname(tt$statistic))) && r$tests$ddl1[1] == 7 &&
+         isTRUE(all.equal(r$tests$p[1], tt$p.value)) && isTRUE(all.equal(r$difference, c(unname(tt$estimate), as.numeric(tt$conf.int)))))
+verifier("d_z de Cohen = différence moyenne / écart-type des différences", isTRUE(all.equal(r$tests$effet[1], mean(b - a) / sd(b - a))))
+verifier("Wilcoxon = wilcox.test(paired = TRUE), exact sous 50 paires ; r rang-bisérial = 2V / (n(n + 1)/2) − 1",
+         isTRUE(all.equal(r$tests$statistique[2], unname(w$statistic))) && isTRUE(all.equal(r$tests$p[2], w$p.value)) &&
+         r$exact && grepl("exact", w$method) && isTRUE(all.equal(r$tests$effet[2], 2 * unname(w$statistic) / (8 * 9 / 2) - 1)))
+verifier("lignes sans partenaire (avec leur année) et sans valeur, comptées", identical(r$sans_partenaire$a, c("2005", "2012")) &&
+         identical(r$sans_partenaire$b, c("2001", "2002")) && r$manquantes == 1)
+verifier("le même test quel que soit l'ordre des variables, A et B par défaut les deux premiers niveaux",
+         isTRUE(all.equal(test_deux_variables(pl, secteur, densite, appariement = annee)$tests, r$tests)))
+pid <- pl
+pid$observation_id_names <- c("Observation", "secteur", "annee")
+for (i in seq_along(pid$observations)) pid$observations[[i]]$ids <- c(long$nom[i], long$secteur[i], long$annee[i])
+ri <- test_deux_variables(pid, "id:2", densite, appariement = "id:3", niveaux = c("S1", "S2"))
+verifier("des identifiants pour les groupes et pour la clé : les mêmes paires", isTRUE(all.equal(ri$tests, r$tests)) && ri$cle$nom == "annee")
+verifier("les niveaux d'un identifiant, dans l'ordre des nombres", identical(niveaux_a_tester(p3, "id:2"), c("9", "10", "100")) &&
+         identical(niveaux_a_tester(pid, "id:2"), c("S1", "S2", "S3")))
+verifier("phrase du t apparié, en français", grepl(paste0("^Test t apparié : t\\(7\\) = -?[0-9]+,[0-9]{2}, p [=<] 0,[0-9]+ ; différence moyenne S2 − S1 = -?[0-9]+,[0-9]{2} ",
+                                                    "\\[IC 95 % -?[0-9]+,[0-9]{2} ; -?[0-9]+,[0-9]{2}\\], d_z de Cohen = -?[0-9]+,[0-9]{2} \\(n = 8 paires, appariées par annee\\)\\.$"), r$phrase))
+options(nuee.langue = "en")
+re <- test_deux_variables(pl, densite, secteur, appariement = annee, niveaux = c("S3", "S1"))
+verifier(sprintf("en anglais : « %s »", re$phrase), grepl(paste0("^Paired t-test: t\\(9\\) = -?[0-9.]+, p [=<] 0\\.[0-9]+; mean difference S1 − S3 = -?[0-9.]+ ",
+                                                                  "\\[95% CI -?[0-9.]+, -?[0-9.]+\\], Cohen's d_z = -?[0-9.]+ \\(n = 10 pairs matched on annee\\)\\.$"), re$phrase))
+options(nuee.langue = NULL)
+appariees <- function(base, ecart, k = seq_along(base)) {
+  projet_depuis_tableau(data.frame(nom = paste0("o", seq_len(2 * length(base))), g = rep(c("A", "B"), each = length(base)), k = rep(k, 2),
+                                   v = c(base, base + ecart)), "paires")
+}
+pa <- appariees(c(3, 1, 4, 1, 5, 9, 2, 6), c(0.1, 0.2, 0.15, 0.3, 0.25, 0.12, 0.2, 5))
+r <- test_deux_variables(pa, numeros(pa, "v"), numeros(pa, "g"), appariement = numeros(pa, "k"))
+verifier(sprintf("différences non normales : Wilcoxon conseillé, « %s »", r$phrase), r$conseille == "wilcoxon" && r$raison == "normalite" && r$shapiro_p < 0.05 &&
+         grepl("^Test des rangs signés de Wilcoxon \\(p exacte\\) : V = 36, p = 0,00781 ; différence médiane B − A = 0,20, corrélation rang-bisériale = 1,00 \\(n = 8 paires, appariées par k\\)\\.$", r$phrase))
+ecart <- c(0, 1, 1, 2, -1, 0, 2, 2, 1, 3)
+pa <- appariees(1:10, ecart)
+r <- test_deux_variables(pa, numeros(pa, "v"), numeros(pa, "g"), appariement = numeros(pa, "k"))
+w <- wilcox.test((1:10) + ecart, 1:10, paired = TRUE)
+verifier("ex aequo et différences nulles : Wilcoxon = wilcox.test(), r rang-bisérial sur les différences non nulles",
+         isTRUE(all.equal(r$tests$p[2], w$p.value)) && identical(r$exact, grepl("exact", w$method)) && isTRUE(all.equal(r$tests$effet[2], 31 / 36)))
+set.seed(5)
+base <- rnorm(60)
+pa <- appariees(base, rnorm(60, 0.3))
+r <- test_deux_variables(pa, numeros(pa, "v"), numeros(pa, "g"), appariement = numeros(pa, "k"))
+r$conseille <- "wilcoxon"
+verifier("60 paires : Wilcoxon par la loi normale = wilcox.test(), et la phrase le dit", !r$exact &&
+         isTRUE(all.equal(r$tests$p[2], wilcox.test(r$paires$b, r$paires$a, paired = TRUE)$p.value)) && grepl("p approchée par la loi normale", phrase_test(r)))
+erreur <- function(...) tryCatch({ test_deux_variables(...); "" }, error = conditionMessage)
+double <- long
+double$annee[double$secteur == "S1" & double$annee == 2004] <- 2003
+pd <- projet_depuis_tableau(double, "secteurs")
+verifier("une année deux fois pour un secteur : refusé, l'année dite", grepl("S1 a plusieurs lignes pour la même valeur de annee \\(2003\\)",
+         erreur(pd, densite, secteur, appariement = annee, niveaux = c("S1", "S2"))))
+peu <- numeros_observations(pl)[long$annee %in% c(2003, 2004)]
+verifier("moins de trois paires : refusé", grepl("au moins trois paires : S1 et S2 n'ont que 2 valeur", erreur(pl, densite, secteur, observations = peu, appariement = annee)))
+pa <- appariees(c(1, 2, 3, 5), 0)
+verifier("la même valeur dans chaque paire : refusé", grepl("même valeur dans chaque paire", erreur(pa, numeros(pa, "v"), numeros(pa, "g"), appariement = numeros(pa, "k"))))
+verifier("deux mesures, ou la clé parmi les deux variables : refusé", grepl("une variable quantitative et une qualitative", erreur(pl, densite, annee, appariement = secteur)) &&
+         grepl("troisième variable", erreur(pl, densite, secteur, appariement = densite)))
+
 cat("Phrases\n")
 r <- test_deux_variables(p, variete, numeros(p, "sucre"))
 verifier(sprintf("en français : « %s »", r$phrase), grepl("^ANOVA à un facteur : F\\(3, 116\\) = [0-9]+,[0-9]{2}, p < 0,001 ; η² = 0,[0-9]{2} \\(N = 120, 4 groupes\\)\\.$", r$phrase))
