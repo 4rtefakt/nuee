@@ -10,8 +10,9 @@
 # et n'a pas de fonction inutile ; la séance en un script ; l'export en anglais ; les régressions
 # (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort et binomial, GAMM
 # binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
-# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, jeu de test), en
-# séance et en rapport ; les rapports R Markdown et Quarto (compilés avec knitr s'il est installé).
+# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, jeu de test ; la
+# sélection par l'AIC, toutes les combinaisons ou l'élimination descendante), en séance et en
+# rapport ; les rapports R Markdown et Quarto (compilés avec knitr s'il est installé).
 #   Rscript moteur/tests/verifier_script.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -346,7 +347,7 @@ verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e
 
 cat("Régressions (lm, nlme, mgcv)\n")
 # Ce que le moteur donne d'une régression, et ce que son script a calculé (sous ses noms, dans sa langue).
-ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test")
+ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection")
 COURBES_SEUILS <- c("x", "effet", "bas", "haut", "x_pente", "pente", "pente_bas", "pente_haut")
 moteur_regression <- function(m) {
   r <- m$resultat
@@ -359,7 +360,10 @@ moteur_regression <- function(m) {
        phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(r$courbes[-1]),
        "Q2 et RMSEcv" = c(m$vc$Q2, m$vc$RMSEcv), "prédictions de la validation croisée" = m$vc$prediction,
        "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus),
-       "jeu de test" = if (!is.null(m$test)) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")])
+       "jeu de test" = if (!is.null(m$test)) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")],
+       # (la sélection par l'AIC, quand elle a été faite : le classement et l'importance des groupes)
+       "sélection par l'AIC" = if (!is.null(m$selection_aic)) as.matrix(m$selection_aic$modeles[c("k", "logLik", "AICc", "delta", "poids", "poids_cumule")]),
+       "importance des groupes" = m$selection_aic$importance$importance)
 }
 script_regression <- function(s, langue) {
   n <- function(x) s[[nom_script(x, langue)]]
@@ -371,7 +375,9 @@ script_regression <- function(s, langue) {
        "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
        phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) colonnes(n("courbes"), seq_along(n("courbes"))[-1]),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
-       "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "jeu de test" = colonnes(n("test"), 2:6))
+       "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "jeu de test" = colonnes(n("test"), 2:6),
+       "sélection par l'AIC" = colonnes(n("selection")[[nom_script("modeles", langue)]], 2:7),
+       "importance des groupes" = if (!is.null(n("selection"))) unname(n("selection")[[nom_script("importance", langue)]]))
 }
 # Les blocs de code d'un rapport ont chacun leur nom : knitr refuse d'en compiler deux du même nom
 # (vérifié ici même sans knitr).
@@ -380,8 +386,10 @@ etiquettes_uniques <- function(texte) {
   !anyDuplicated(etiquettes)
 }
 # Écrit le script d'une régression, le lance dans une session neuve et compare ses résultats à ceux du moteur.
-essayer_regression <- function(nom, p, d, langue = "fr", ...) {
+# `selection` : la sélection par l'AIC faite d'abord (regression.R : selection_aic), que le script refait.
+essayer_regression <- function(nom, p, d, langue = "fr", selection = FALSE, ...) {
   m <- ajuster(p, d)
+  if (!isFALSE(selection)) m$selection_aic <- selection_aic(m, d, if (is.numeric(selection)) selection else 256)  # (un nombre : la limite des combinaisons)
   dir.create(ici <- file.path(dossier, nom))
   r <- ecrire_script(p, d, file.path(ici, paste0(nom, ".R")), "moteur", m = m, version = "essai", langue = langue, ...)
   s <- lancer(r$script, nom_script(ATTENDUS_REGRESSION, langue))
@@ -468,6 +476,19 @@ verifier("GAMM en anglais : mgcv attaché, une courbe, les secteurs emboîtés d
          any(grepl("^library\\(mgcv\\)", lignes_script(r))) && any(grepl("site_secteur", lignes_script(r))) && en_anglais(lignes_script(r)))
 essayer_regression("gam_tweedie_test", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("densite"), famille = "tweedie", lisses = ur("x2"), echelle = "none",
                                                           test = numeros_observations(pr)[seq(5, n, by = 10)]))
+# la sélection par l'AIC faite dans Nuée : le script la refait (toutes les combinaisons, ou l'élimination descendante)
+r <- essayer_regression("lm_selection_aic", p, definir_modele(p, "LM", x = uid(c("variete", "sucre", "fermete", "polyphenols")), y = uid("note_gout"),
+                        echelle = "none", croises = list(uid(c("sucre", "fermete")))), selection = TRUE)
+verifier("sélection par l'AIC : sa fonction, ses groupes (un terme croisé avec ses effets principaux), son tableau dans la sortie",
+         any(grepl("^selection_aic <- function", lignes_script(r))) && any(grepl("\"sucre*fermete\" = c(\"sucre\", \"fermete\")", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("print(head(selection$modeles, 20))", lignes_script(r), fixed = TRUE)))
+r <- essayer_regression("lmm_car1_selection_en", pr, definir_modele(pr, "LMM", x = ur("x1", "x2", "sol"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
+                        correlation = car1_secteur), langue = "en", selection = TRUE)
+verifier("sélection par l'AIC en anglais : ni nom ni commentaire en français", en_anglais(lignes_script(r)) && any(grepl("^aic_selection <- function", lignes_script(r))))
+essayer_regression("gam_selection_descendante", pr, definir_modele(pr, "GAM", x = ur("x1", "x2", "sol"), y = ur("compte"), famille = "binomiale_negative",
+                   lisses = ur("x2"), decalage = ur("effort"), aleatoires = list(par_site), echelle = "none"), selection = 4)
+essayer_regression("gamm_selection", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",
+                   lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur), selection = TRUE)
 # la séance : une ACP, un modèle mixte et un GAM dans le même script
 definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
                     definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),
@@ -521,6 +542,22 @@ for (k in 1:2) {
     setwd(avant)
     verifier(sprintf("%s.%s : le code de ses blocs R tourne (knitr n'est pas installé : pas compilé)", d$name, ext), is.null(attr(messages, "status")))
   }
+}
+# le rapport d'une régression dont la sélection par l'AIC a été faite : ses tableaux, la sélection dans les méthodes
+dsr <- definir_modele(pr, "LMM", x = ur("x1", "x2", "sol"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R8")
+msr <- ajuster(pr, dsr)
+msr$selection_aic <- selection_aic(msr, dsr)
+dir.create(ici <- file.path(dossier, "rapport_selection"))
+r <- ecrire_script(pr, dsr, file.path(ici, "R8.Rmd"), "moteur", m = msr, version = "essai")
+texte <- readLines(r$script, encoding = "UTF-8")
+verifier("R8.Rmd, après la sélection par l'AIC : ses tableaux, et la sélection dans le texte des méthodes",
+         is.null(r$ecart) && etiquettes_uniques(texte) && any(grepl("^```\\{r selection-aic\\}", texte)) && any(grepl("^```\\{r importance-aic\\}", texte)) &&
+           any(grepl("choisis par l'AICc (Burnham", texte, fixed = TRUE)))
+if (requireNamespace("knitr", quietly = TRUE)) {
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(file.path(dossier, "compiler.R")), shQuote(r$script)), stdout = TRUE, stderr = TRUE))
+  md <- file.path(ici, "R8.md")
+  verifier("R8.Rmd se compile, avec le tableau de la sélection", file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) &&
+           any(grepl("combinaison", readLines(md, encoding = "UTF-8"))))
 }
 
 cat("Rapports R Markdown et Quarto\n")

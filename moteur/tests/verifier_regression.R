@@ -1,7 +1,9 @@
 # Vérifie les régressions (moteur/R/regression.R) contre les fonctions de R elles-mêmes
 # (lm, nlme::lme) : coefficients, AIC en ML, R², validation croisée par groupes, jeu de test,
-# apport des blocs, autocorrélation dans le temps ; et que les définitions mal formées (un
-# fichier reçu) sont refusées, qu'une définition enregistrée se relit.
+# apport des blocs, autocorrélation dans le temps, sélection par l'AIC (chaque combinaison contre
+# lm, nlme::lme avec ou sans CAR1, mgcv::gam et mgcv::gamm en ML ; l'élimination descendante ; le
+# modèle choisi) ; et que les définitions mal formées (un fichier reçu) sont refusées, qu'une
+# définition enregistrée se relit.
 #   Rscript moteur/tests/verifier_regression.R
 
 source("moteur/charger.R", encoding = "UTF-8")
