@@ -28,6 +28,9 @@ const PARTIES = [
   { cle: 'liste_vars', tableau: tableauVariables },
 ];
 
+// Another analysis's parts (RDA, LDA...), by its type: registered by its module (vues_*.js).
+export const PARTIES_TYPES = {};
+
 // A regression's parts (moteur/R/regression.R): its summary and coefficients as tables, its plots
 // as in their panels. `variantes`: one plot per setting of the view (each term's effect; the
 // residuals against the fitted values, then on a normal Q-Q plot).
@@ -44,7 +47,7 @@ export function dialogueRapport(app, id) {
   const m = app.modele(id);
   if (!m) return;
   const pls = m.type !== 'PCA';
-  const parties = m.regression ? PARTIES_REGRESSION
+  const parties = PARTIES_TYPES[m.type] ? PARTIES_TYPES[m.type] : m.regression ? PARTIES_REGRESSION
     : PARTIES.filter((x) => (!x.pls || pls) && (!x.plsda || /-DA$/.test(m.type)) && (!x.min || m.A >= x.min) && (!x.opls || m.opls));
   const choix = new Set(parties.filter((x) => x.defaut).map((x) => x.cle));
   const st = { titre: `${m.nom}${m.titre ? ' — ' + m.titre : ''}`, commentaire: '', format: 'pdf' };

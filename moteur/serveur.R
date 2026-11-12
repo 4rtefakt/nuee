@@ -390,7 +390,7 @@ resultat_regression <- function(id) {
 resultat_modele <- function(id) {
   e <- modele(id)
   if (est_regression(e$definition)) return(resultat_regression(id))
-  if (est_autre_analyse(e$definition)) return(get(paste0("resultat_", tolower(e$definition$type)), mode = "function")(id))  # analyses.R
+  if (est_autre_analyse(e$definition)) return(fonction_analyse("resultat_", e$definition$type)(id))  # analyses.R
   p <- projet(e$projet)
   m <- e$modele
   d <- e$definition
@@ -511,6 +511,9 @@ methodes_demande <- function(q) {
 # Un modèle (q$modele), ou plusieurs du même projet (q$modeles : la séance, dans un script .R).
 script_demande <- function(q) {
   ids <- as.character(unlist(q$modeles %||% q$modele))
+  # (le script de la séance laisse de côté les autres analyses : elles s'exportent seules)
+  if (length(ids) > 1) ids <- Filter(function(id) !est_autre_analyse(modele(id)$definition), ids)
+  if (!length(ids)) stop(traduire("Ces analyses s'exportent une à une.", "These analyses are exported one by one."))
   e <- modele(ids[1])
   seance <- length(ids) > 1
   nom <- gsub("[^[:alnum:]_ -]", "_", if (seance) as.character(projet(e$projet)$source %||% "seance") else e$definition$name %||% "modele")
@@ -810,6 +813,10 @@ DEMANDES <- list(
                              locale = Sys.getlocale("LC_CTYPE"),
                              paquets = as.list(vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl", "foreign", "rmarkdown", "knitr"), function(x)
                                tryCatch(as.character(utils::packageVersion(x)), error = function(e) "-"), ""))))
+
+# Les demandes propres d'une autre analyse (analyses.R) : chaque fonction demande_analyse_<nom>(q)
+# du moteur est la demande <nom>.
+for (f in ls(globalenv(), pattern = "^demande_analyse_")) DEMANDES[[sub("^demande_analyse_", "", f)]] <- get(f, envir = globalenv())
 
 # Les valeurs non finies (NaN, Inf) deviennent des valeurs manquantes en JSON.
 fini <- function(x) {

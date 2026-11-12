@@ -22,6 +22,7 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
                           renv = FALSE, rdata = FALSE, rproj = FALSE, version = "", langue = "fr") {
   donnees <- match.arg(donnees)
   langue <- if (identical(langue, "en")) "en" else "fr"
+  if (est_autre_analyse(d)) return(ecrire_script_analyse(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue))  # analyses.R
   format <- c(r = "R", rmd = "Rmd", qmd = "qmd")[[tolower(tools::file_ext(chemin_script))]]
   tab <- tableau_script(projet, ids_script(list(d)))
   nom_projet <- as.character(projet$source %||% "projet")

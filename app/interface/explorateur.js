@@ -15,7 +15,7 @@ export const VUES_TYPES = {};
 const vuesDe = (m) => (VUES_TYPES[m.type] || (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
   && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe))));
 // R2 and Q2 of a fitted model, for its line in the explorer
-const chiffresModele = (m) => (m.regression
+const chiffresModele = (m) => (m.chiffres ? m.chiffres : m.regression
   ? `${m.qualite.marginal !== undefined ? `R2m ${fmt(m.qualite.marginal, 2)} · R2c ${fmt(m.qualite.conditionnel, 2)}`
     : `R2 ${fmt(m.qualite.r2 ?? m.qualite.r2_ajuste, 2)}`} · Q2 ${fmt(m.qualite.Q2, 2)} · AIC ${fmt(m.qualite.AIC, 1)}`
   : `R2X ${fmt(m.composantes.R2Xcum[m.A - 1], 2)}${m.composantes.R2Ycum ? ' · R2Y ' + fmt(m.composantes.R2Ycum[m.A - 1], 2) : ''} · Q2 ${fmt(m.composantes.Q2cum[m.A - 1], 2)}`);

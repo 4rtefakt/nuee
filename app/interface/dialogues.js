@@ -52,6 +52,17 @@ function editeurTransfo(initial, choisir, apres) {
         return true;
       } }] });
 }
+// Other analyses (moteur/R/analyses.R: RDA, CA, LDA, TREE, KMEANS), each registered by its module
+// (vues_*.js) under its type:
+//   libelle(): its name in the Type list; note(): a note under it;
+//   roles: the roles the Variables tab offers, among 'x', 'y', 'classe' (a qualitative variable)
+//     and 'z' (a covariate of a partial analysis, sent as options.z);
+//   echelle: the default scaling chosen with it; vc: false when cross-validation doesn't apply;
+//   spectres: true when spectral preprocessing applies;
+//   champs(st, rendre): its own fields in the General tab (label, element pairs), their values
+//     kept in st.options; valider(st, cles): '' or what's missing; options(st, cles): the options sent.
+export const ANALYSES = {};
+
 // spectral preprocessing steps (moteur/R/spectres.R); sg1 = Savitzky–Golay 1st derivative
 const ETAPES = ['', 'snv', 'msc', 'detrend', 'ligne_base', 'sg0', 'sg1', 'sg2'];
 
@@ -77,6 +88,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     decalage: r && r.decalage !== undefined && r.decalage !== null ? Number(r.decalage) : null,
     // a regression as an R formula: written by R from the settings, or edited (not applied yet)
     formule: '', formuleModifiee: false,
+    // another analysis's own settings (ANALYSES), as definir_modele() keeps them (d$options)
+    options: r && r.options && !Array.isArray(r.options) ? { ...r.options } : {},
   };
   if (r && ['LM', 'LMM', 'GLM', 'GAM'].includes(r.type) && !Object.keys(r.echelles || {}).length) st.echelle = 'none';
   const etapes = r && r.spectres ? [].concat(r.spectres) : [];
@@ -87,6 +100,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     [].concat(r.x || []).forEach((u) => { st.roles[u] = 'x'; });
     [].concat(r.y || []).forEach((u) => { st.roles[u] = 'y'; });
     if (r.classe !== null && r.classe !== undefined) st.roles[r.classe] = 'classe';
+    [].concat((r.options && r.options.z) || []).forEach((u) => { st.roles[u] = 'z'; });  // (a partial analysis's covariates)
     Object.assign(st.echelles, r.echelles || {});
     Object.assign(st.transfos, r.transformations || {});
     Object.assign(st.blocs, r.blocs || {});
@@ -140,6 +154,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   // nested random effects, from an observation ID or a qualitative variable, and an optional
   // autocorrelation in time within the last one (a numeric ID or a quantitative variable).
   const regression = () => ['LM', 'LMM', 'GLM', 'GAM'].includes(st.type);
+  const analyse = () => ANALYSES[st.type] || null;  // another analysis (RDA, LDA...)
+  const sansSpectres = () => regression() || (!!analyse() && !analyse().spectres);
   const generalise = () => ['GLM', 'GAM'].includes(st.type);
   const FAMILLES = ['gaussienne', 'poisson', 'binomiale_negative', 'binomiale', 'gamma', 'tweedie'];
   const FAMILLES_LOG = ['poisson', 'binomiale_negative', 'gamma', 'tweedie'];  // (an offset needs a log link)
@@ -239,11 +255,15 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       const avant = regression();
       st.type = e.target.value;
       if (!r && regression() !== avant) st.echelle = regression() ? 'none' : 'UV';  // a regression keeps the units
+      if (!r && analyse()) st.echelle = analyse().echelle || 'UV';
       rendre();
     } },
       [['PCA', 'ACP / PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')],
         ['LM', t('type_lm')], ['LMM', t('type_lmm')], ['GLM', t('type_glm')], ['GAM', t('type_gam')]]
+        .concat(Object.entries(ANALYSES).map(([k, a]) => [k, a.libelle()]))
         .map(([k, n]) => el('option', { value: k, selected: k === st.type }, n))),
+    analyse() && analyse().note ? [el('label', {}, ''), el('p', { class: 'note' }, analyse().note())] : null,
+    analyse() && analyse().champs ? analyse().champs(st, rendre) : null,
     regression() ? [el('label', {}, ''), el('p', { class: 'note' }, t({ LM: 'lm_note', LMM: 'lmm_note', GLM: 'glm_note', GAM: 'gam_note' }[st.type]))] : null,
     generalise() ? loi() : null,
     ['LMM', 'GLM', 'GAM'].includes(st.type) ? [el('label', {}, t('effets_aleatoires')), aleatoires()] : null,
@@ -256,11 +276,11 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     st.type === 'CLASSES' ? el('p', { class: 'note' }, t('classes_note')) : null,
     el('label', {}, t('nom')), el('input', { value: st.nom, oninput: (e) => { st.nom = e.target.value; } }),
     el('label', {}, t('titre_modele')), el('input', { value: st.titre, oninput: (e) => { st.titre = e.target.value; } }),
-    regression() ? null : [el('label', {}, t('nb_comp')), el('div', { class: 'ligne' },
+    regression() || analyse() ? null : [el('label', {}, t('nb_comp')), el('div', { class: 'ligne' },
       el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: st.auto, onchange: (e) => { st.auto = e.target.checked; rendre(); } }), t('auto')),
       el('input', { type: 'number', min: 1, max: 50, value: st.A || 2, disabled: st.auto, style: 'width:5em', oninput: (e) => { st.A = +e.target.value; } }))],
-    el('label', {}, t('groupes_vc')), groupesVC(),
-    st.vc ? el('label', {}, '') : null, st.vc ? el('p', { class: 'note' }, t(st.vc.by === 'groups' ? 'vc_fichier_note' : 'vc_note')) : null,
+    analyse() && analyse().vc === false ? null : [el('label', {}, t('groupes_vc')), groupesVC()],
+    st.vc && !(analyse() && analyse().vc === false) ? [el('label', {}, ''), el('p', { class: 'note' }, t(st.vc.by === 'groups' ? 'vc_fichier_note' : 'vc_note'))] : null,
     el('label', {}, t('echelle_defaut')), el('select', { onchange: (e) => { st.echelle = e.target.value; rendre(); } },
       ECHELLES.map((k) => el('option', { value: k, selected: k === st.echelle }, t('echelle_' + k)))),
     regression() ? null : el('label', {}, t('spectres')), regression() ? null : el('div', { class: 'ligne' },
@@ -273,10 +293,11 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           oninput: (e) => { st.degre = +e.target.value; } }))] : null),
     st.etapes.some(Boolean) && !regression() ? [el('label', {}, ''), el('p', { class: 'note' }, t('spectres_note'))] : null);
 
-  const avecY = () => ['PLS', 'OPLS', 'LM', 'LMM', 'GLM', 'GAM'].includes(st.type);
-  const avecClasse = () => ['PLS-DA', 'OPLS-DA', 'CLASSES'].includes(st.type);
+  const avecY = () => ['PLS', 'OPLS', 'LM', 'LMM', 'GLM', 'GAM'].includes(st.type) || (!!analyse() && analyse().roles.includes('y'));
+  const avecClasse = () => ['PLS-DA', 'OPLS-DA', 'CLASSES'].includes(st.type) || (!!analyse() && analyse().roles.includes('classe'));
+  const avecZ = () => !!analyse() && analyse().roles.includes('z');
   const roles = (v) => [['', t('role_aucun')], ['x', t('role_x')]].concat(avecY() ? [['y', t('role_y')]] : [])
-    .concat(avecClasse() && v.qualitative ? [['classe', t('role_classe')]] : []);
+    .concat(avecClasse() && v.qualitative ? [['classe', t('role_classe')]] : []).concat(avecZ() ? [['z', t('role_z')]] : []);
 
   const variables = () => {
     const f = st.filtre.toLowerCase();
@@ -476,8 +497,10 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     if (regression() && y.length !== 1) { erreur.textContent = t('regression_y_requis'); return false; }
     if (st.type === 'LMM' && !st.aleatoires.length) { erreur.textContent = t('lmm_aleatoire_requis'); return false; }
     if (avecCar1() && st.correlation && !st.correlation.temps) { erreur.textContent = t('car1_temps_requis'); return false; }
-    if (avecY() && !y.length) { erreur.textContent = t('pls_y_requis'); return false; }
-    if (avecClasse() && classe === undefined) { erreur.textContent = t('plsda_classe_requise'); return false; }
+    if (!analyse() && avecY() && !y.length) { erreur.textContent = t('pls_y_requis'); return false; }
+    if (!analyse() && avecClasse() && classe === undefined) { erreur.textContent = t('plsda_classe_requise'); return false; }
+    const manque = analyse() && analyse().valider ? analyse().valider(st, cles) : '';  // (another analysis's own checks)
+    if (manque) { erreur.textContent = manque; return false; }
     const horsX = [...new Set(st.croises.flat().filter((u) => st.roles[u] !== 'x'))];
     if (horsX.length) {
       erreur.textContent = t('croises_x_requis', { noms: horsX.map((u) => (p.variables.find((v) => v.uid === u) || {}).nom).join(', ') });
@@ -502,10 +525,11 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     }).filter(([, r2]) => Object.keys(r2).length));
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
       exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises,
-      spectres: regression() ? [] : spectres, A: st.auto || regression() ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs: regression() ? {} : modificateurs,
+      spectres: sansSpectres() ? [] : spectres, A: st.auto || regression() || analyse() ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs: regression() ? {} : modificateurs,
       aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [], correlation: avecCar1() ? st.correlation : null,
       famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [], k_courbes: kCourbesEnvoyes(),
-      decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, croises_reglages: croisesReglages, nom: st.nom, titre: st.titre };
+      decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, croises_reglages: croisesReglages, nom: st.nom, titre: st.titre,
+      options: analyse() && analyse().options ? analyse().options(st, cles) : undefined };
     if (!enCours) verifierPuisAjuster(q);
     return false;  // the dialog closes once the model is fitted
   }
