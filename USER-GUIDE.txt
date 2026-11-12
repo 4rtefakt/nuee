@@ -428,11 +428,13 @@ qualitative variable.
   Fisher's exact test is recommended; for a 2 × 2 table it is always given, with the odds
   ratio. Beyond 2 × 2 and 200 observations, its p value is simulated (100,000 tables).
   A measurement and a qualitative variable: the measurement compared between the groups, in box
-  plots. Two groups: Welch's t test and Mann–Whitney. More: one-way ANOVA, Welch's ANOVA and
-  Kruskal–Wallis, each with its pairwise comparisons (Tukey, Games–Howell, Dunn with Holm's
-  correction; up to 50 groups): a click on a test shows them. The rank test is recommended
-  when normality is doubtful in a group (Shapiro–Wilk p < 0.05, or fewer than three
-  observations), Welch's ANOVA when the variances differ (Brown–Forsythe p < 0.05).
+  plots. Two groups: Welch's t test and Mann–Whitney (exact below 50 values on each side with
+  no ties; otherwise by the normal approximation with continuity correction: the same
+  calculation on every R version). More: one-way ANOVA, Welch's ANOVA and Kruskal–Wallis, each
+  with its pairwise comparisons (Tukey, Games–Howell, Dunn with Holm's correction; up to 50
+  groups): a click on a test shows them. The rank test is recommended when normality is
+  doubtful in a group (Shapiro–Wilk p < 0.05, or fewer than three observations), Welch's ANOVA
+  when the variances differ (Brown–Forsythe p < 0.05).
   A measurement and a qualitative variable, paired by a third variable or ID ("Pair by": the
   year, for two sectors of a site followed over the same years): the data stay in long format,
   one row per sector and year. Two levels A and B are compared on the keys both have: the

@@ -453,12 +453,14 @@ année...) peut faire les groupes, comme une variable qualitative.
   donné, avec le rapport des cotes. Au-delà de 2 × 2 et de 200 observations, sa valeur p est
   simulée (100 000 tableaux).
   Une mesure et une variable qualitative : la mesure comparée entre les groupes, en boîtes à
-  moustaches. Deux groupes : test t de Welch et Mann–Whitney. Plus : ANOVA à un facteur, ANOVA
-  de Welch et Kruskal–Wallis, chacun avec ses comparaisons deux à deux (Tukey, Games–Howell,
-  Dunn avec la correction de Holm ; jusqu'à 50 groupes) : un clic sur un test les montre. Le
-  test sur les rangs est conseillé quand la normalité est douteuse dans un groupe
-  (Shapiro–Wilk p < 0,05, ou moins de trois observations), l'ANOVA de Welch quand les
-  variances diffèrent (Brown–Forsythe p < 0,05).
+  moustaches. Deux groupes : test t de Welch et Mann–Whitney (exact sous 50 valeurs de chaque
+  côté sans ex aequo ; sinon par la loi normale avec la correction de continuité : le même
+  calcul sous toutes les versions de R). Plus : ANOVA à un facteur, ANOVA de Welch et
+  Kruskal–Wallis, chacun avec ses comparaisons deux à deux (Tukey, Games–Howell, Dunn avec la
+  correction de Holm ; jusqu'à 50 groupes) : un clic sur un test les montre. Le test sur les
+  rangs est conseillé quand la normalité est douteuse dans un groupe (Shapiro–Wilk p < 0,05, ou
+  moins de trois observations), l'ANOVA de Welch quand les variances diffèrent
+  (Brown–Forsythe p < 0,05).
   Une mesure et une variable qualitative, appariées par une troisième variable ou un
   identifiant (« Apparier par » : l'année, pour deux secteurs d'un site suivis les mêmes
   années) : les données restent en long, une ligne par secteur et par année. Deux niveaux A et
