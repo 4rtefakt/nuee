@@ -531,7 +531,7 @@ entre eux.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
 résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
 un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
-chaque terme, observé / prédit et les résidus.
+chaque terme, les seuils de chaque courbe, observé / prédit et les résidus.
 Fichier › Exporter vers R : un script ou un rapport pour une régression aussi, avec lm,
 nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML),
 la validation croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les

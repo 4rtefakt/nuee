@@ -1812,7 +1812,7 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
 const PENTE = { hausse: '#2a9d8f', baisse: '#d1495b' };
 const nombreSeuil = (v) => fmt(v, Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2);
 const plagesSeuils = (pl) => [].concat((pl && pl.sens) || []).map((sens, i) => ({ sens, de: [].concat(pl.de)[i], a: [].concat(pl.a)[i] }));
-function resumeSeuils(s) {
+export function resumeSeuils(s) {
   const pente = plagesSeuils(s.plages_pente).map((z) => t('seuils_de_a', { sens: t(z.sens), de: nombreSeuil(z.de), a: nombreSeuil(z.a) }));
   const effet = plagesSeuils(s.plages_effet).map((z) => t('seuils_de_a', { sens: t(z.sens), de: nombreSeuil(z.de), a: nombreSeuil(z.a) }));
   return t('seuils_resume', { edf: fmt(s.edf, 2), forme: t(s.lineaire ? 'seuils_lineaire' : 'seuils_courbe'),

@@ -496,8 +496,8 @@ model of them; Tweedie models with each other; GLMMs and GAMMs (mgcv's condition
 with each other.
 File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
 the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
-Model report: the summary and the coefficients, each term's effect, observed / predicted and
-the residuals.
+Model report: the summary and the coefficients, each term's effect, each curve's thresholds,
+observed / predicted and the residuals.
 File › Export to R: a script or report for a regression too, with lm, nlme::lme, mgcv::gam
 or mgcv::gamm: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
 then the coefficients, AIC, R2, variances, curves with their concurvity and thresholds (the
