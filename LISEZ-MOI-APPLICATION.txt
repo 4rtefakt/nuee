@@ -445,9 +445,10 @@ année...) peut faire les groupes, comme une variable qualitative.
   clic sur un test) : quand tous les niveaux ont les mêmes clés, celles de pairwise.t.test()
   et pairwise.wilcox.test() avec paired = TRUE. Un clic sur une paire la compare. « Paires de
   niveaux dans chaque » (une variable qualitative ou un identifiant : le site) garde les paires
-  de niveaux d'un même groupe, avec la correction de Holm sur ces seules paires : les secteurs
-  de chaque site comparés deux à deux. Un niveau est du groupe que portent ses lignes : un
-  niveau aux lignes de plusieurs groupes est refusé, et ceux sans groupe sont listés.
+  de niveaux d'un même groupe, les secteurs de chaque site comparés deux à deux. La correction
+  de Holm porte sur toutes les paires listées, tous les groupes ensemble ; la valeur p brute se
+  lit site par site. Un niveau est du groupe que portent ses lignes : un niveau aux lignes de
+  plusieurs groupes est refusé, et ceux sans groupe sont listés.
   Deux mesures : les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la
   normalité de l'une des deux est douteuse. Appariées par « l'observation (même ligne) », deux
   mesures des mêmes lignes (avant et après, par exemple) sont comparées à la place : les

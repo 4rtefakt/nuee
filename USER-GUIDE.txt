@@ -419,10 +419,10 @@ qualitative variable.
   with Holm's correction, for the test chosen above (a click on a test): when all the levels
   share the same keys, those of pairwise.t.test() and pairwise.wilcox.test() with
   paired = TRUE. A click on a pair compares it. "Pairs of levels within each" (a qualitative
-  variable or an ID: the site) keeps to the pairs of levels of the same group, with Holm's
-  correction over these pairs only: the sectors of each site compared two by two. A level
-  belongs to the group its rows carry: one with rows in several groups is refused, and those
-  without a group are listed.
+  variable or an ID: the site) keeps to the pairs of levels of the same group, the sectors of
+  each site compared two by two. Holm's correction covers all the pairs listed, all groups
+  together; the raw p reads one site at a time. A level belongs to the group its rows carry:
+  one with rows in several groups is refused, and those without a group are listed.
   Two measurements: Pearson's and Spearman's correlations; Spearman is recommended when
   normality is doubtful for either. Paired by "the observation (same row)", two measurements
   of the same rows (before and after, say) are compared instead: the differences
