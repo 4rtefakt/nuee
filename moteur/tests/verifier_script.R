@@ -360,7 +360,7 @@ script_regression <- function(s, langue) {
   n <- function(x) s[[nom_script(x, langue)]]
   colonnes <- function(x, k) if (!is.null(x)) as.matrix(x[k])
   list(coefficients = colonnes(n("coefficients"), 2:8), "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
-       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = colonnes(n("courbes"), 2:5),
+       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) colonnes(n("courbes"), seq_along(n("courbes"))[-1]),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
        "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "jeu de test" = colonnes(n("test"), 2:6))
 }
