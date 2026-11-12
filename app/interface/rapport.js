@@ -44,6 +44,7 @@ const PARTIES_REGRESSION = [
     variantes: async (m) => [].concat(m.courbes.terme).map((terme) => ({ terme, seuils: true })) },
   { cle: 'obspred', vue: 'obspred', defaut: true },
   { cle: 'residus', vue: 'residus', defaut: true, variantes: async () => [{ mode: 'ajustes' }, { mode: 'qq' }] },
+  { cle: 'acf', vue: 'acf' },  // (the time and groups of its panel, else CAR1's or those it guesses)
   { cle: 'apports', vue: 'apports' },
 ];
 

@@ -63,7 +63,7 @@ export function creerCommandes(app) {
 
     resume: vue('resume'), scores: vue('scores', avecLV), loadings: vue('loadings', avecLV), profils: vue('profils', avecLV), dmodx: vue('dmodx', avecLV), t2: vue('t2', avecLV),
     vip: vue('vip', avecPLS), coefficients: vue('coefficients', () => avecPLS() || avecRegression()), obspred: vue('obspred', () => avecPLS() || avecRegression()),
-    ipls: vue('ipls', avecPLS), residus: vue('residus', avecRegression), apports: vue('apports', avecRegression), effets: vue('effets', avecRegression),
+    ipls: vue('ipls', avecPLS), residus: vue('residus', avecRegression), acf: vue('acf', avecRegression), apports: vue('apports', avecRegression), effets: vue('effets', avecRegression),
     dendrogramme: vue('dendrogramme', avecLV), liste_obs: vue('liste_obs'), liste_vars: vue('liste_vars', avecLV),
     permutations: vue('permutations', avecPLS), cvanova: vue('cvanova', avecPLS), classification: vue('classification', avecPLSDA),
     contributions: vue('contributions', avecLV), biplot: vue('biplot', avecLV), scores3d: vue('scores3d', avecLV), splot: vue('splot', avecOPLS), coomans: vue('coomans', avecGroupe),
@@ -104,7 +104,7 @@ export function creerCommandes(app) {
 
 export const ICONES_VUES = {
   resume: 'table-2', scores: 'chart-scatter', loadings: 'scan-search', profils: 'chart-spline', dmodx: 'chart-line', t2: 'ruler',
-  vip: 'chart-bar', coefficients: 'chart-column', residus: 'chart-scatter', apports: 'chart-bar', effets: 'chart-spline', ipls: 'chart-column-big', obspred: 'sigma', dendrogramme: 'network',
+  vip: 'chart-bar', coefficients: 'chart-column', residus: 'chart-scatter', acf: 'chart-column', apports: 'chart-bar', effets: 'chart-spline', ipls: 'chart-column-big', obspred: 'sigma', dendrogramme: 'network',
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
   statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
@@ -136,7 +136,7 @@ export function menus(app, C) {
     { cle: 'm_modele', items: () => [it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
-      it('vip'), it('coefficients'), it('obspred'), it('effets'), it('residus'), it('apports'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
+      it('vip'), it('coefficients'), it('obspred'), it('effets'), it('residus'), it('acf'), it('apports'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
       it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
     { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]

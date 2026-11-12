@@ -8,7 +8,7 @@ const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot
   'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
 const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanova'];
 // (a regression has no components, scores or loadings: its own views, regression.R)
-const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'apports', 'liste_obs', 'predictions'];
+const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'acf', 'apports', 'liste_obs', 'predictions'];
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 // the views of another analysis, by its type (filled by its module, vues_*.js): a list, or a
 // function of the model that gives it (a regression tree and a classification tree differ)

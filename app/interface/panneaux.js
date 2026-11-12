@@ -2224,6 +2224,83 @@ function rendreResidus(conteneur, ctx, p, loc) {
   brancherSelection(graphe, ctx, m.id);
 }
 
+// The autocorrelation of a regression's residuals along time, within each group, the groups pooled
+// (moteur/R/regression_diagnostics.R: autocorrelation_residus, as nlme::ACF): a bar per lag (k steps
+// apart in each group's time order) and the band ±1.96/√n of each lag, n its pairs. A model with
+// CAR1 brings its time and groups, and two series: its residuals without the autocorrelation, and
+// the normalized ones, with none left when CAR1 is enough. For another model, the time (an ID or a
+// quantitative variable) and the groups (its random effects, or an ID or a qualitative variable and
+// a finer level within it) are chosen here, and for a GLM or a GAM its residuals (Pearson or
+// deviance). Computed in R, then kept.
+const RESIDUS_ACF = { pearson: 'acf_pearson', deviance: 'acf_deviance', normalises: 'acf_normalises' };
+// what lag 1 says: beyond the band, CAR1 may be needed; the normalized residuals within it, CAR1 is enough
+function noteACF(r, bande, series) {
+  const r1 = [].concat(series[0].acf)[1];
+  const b1 = bande[1];
+  const valeurs = { r: fmt(r1, 2), b: fmt(b1, 2), phi: fmt(r.phi, 3) };
+  const z1 = r.car1 ? [].concat(series[1].acf)[1] : null;
+  const verdict = r.car1 ? t(Math.abs(z1) <= b1 ? 'acf_car1_suffit' : 'acf_car1_reste', { ...valeurs, z: fmt(z1, 2) })
+    : t(r1 > b1 ? 'acf_car1_conseil' : r1 < -b1 ? 'acf_negative' : 'acf_dans_bande', valeurs);
+  return [t(r.groupe ? 'acf_note' : 'acf_note_un', { temps: r.temps, groupe: r.groupe, g: r.groupes, n: r.n }),
+    r.laissees ? t('acf_laissees', { n: r.laissees }) : null, verdict].filter(Boolean).join(' ');
+}
+
+async function rendreACF(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  const proj = ctx.projet(m.projet) || {};
+  const car1 = m.phi !== null && m.phi !== undefined;
+  const mgcv = ['GLM', 'GAM'].includes(m.type) && !m.gamm;
+  const niveaux = [].concat(m.niveaux || []);
+  const ids = [].concat(proj.identifiants || []).map((i) => [`id:${i.nom}`, `${i.nom} (${t('identifiant')})`]);
+  const variables = [].concat(proj.variables || []);
+  const temps = ids.concat(variables.filter((v) => !v.qualitative).map((v) => [`var:${v.uid}`, v.nom]));
+  const simples = ids.concat(variables.filter((v) => v.qualitative).map((v) => [`var:${v.uid}`, v.nom]));
+  const groupes = [['', t('aucun')]].concat(niveaux.length ? [['effets', niveaux.join(' / ')]] : [], simples);
+  // by default a time named like one (a year, a date...), and the groups of the model's random effects;
+  // a group can take a finer level within it (the sector within its site, when sector names repeat)
+  if (!temps.some(([k]) => k === loc.temps)) loc.temps = (temps.find(([, n]) => /ann[ée]e|year|date|temps|time|saison|season/i.test(n)) || [''])[0];
+  if (!groupes.some(([k]) => k === loc.groupe)) loc.groupe = niveaux.length ? 'effets' : '';
+  const emboitable = !!loc.groupe && loc.groupe !== 'effets';
+  const fins = [['', '—']].concat(simples.filter(([k]) => k !== loc.groupe));
+  if (!emboitable || !fins.some(([k]) => k === loc.groupe_fin)) loc.groupe_fin = '';
+  if (!['pearson', 'deviance'].includes(loc.type)) loc.type = 'pearson';
+  const spec = (v) => (v.startsWith('id:') ? { by: 'id', id: v.slice(3) } : { by: 'variable', variable: Number(v.slice(4)) });
+  const barre = outils(car1 ? null : choix(t('acf_temps'), [['', '—']].concat(temps), loc.temps, (v) => { loc.temps = v; ctx.rafraichir(); }),
+    car1 ? null : choix(t('acf_groupes'), groupes, loc.groupe, (v) => { loc.groupe = v; ctx.rafraichir(); }),
+    !car1 && emboitable ? el('span', { title: t('acf_groupe_fin_aide') }, choix('/', fins, loc.groupe_fin, (v) => { loc.groupe_fin = v; ctx.rafraichir(); })) : null,
+    mgcv ? el('span', { title: t('acf_type_aide') }, choix(t('residus'), [['pearson', t('acf_pearson')], ['deviance', t('acf_deviance')]], loc.type,
+      (v) => { loc.type = v; ctx.rafraichir(); })) : null);
+  if (!car1 && !loc.temps) { conteneur.replaceChildren(barre, el('p', { class: 'infos' }, t('acf_choisir_temps'))); return; }
+  const cle = JSON.stringify(car1 ? [m.id] : [m.id, loc.temps, loc.groupe, loc.groupe_fin, mgcv ? loc.type : '']);
+  const cache = ((loc.cache ??= {}).acf ??= {});  // (loc.cache isn't saved with the session)
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
+    try {
+      cache.res = await ctx.demander('autocorrelation_residus', car1 ? { modele: m.id } : { modele: m.id, temps: spec(loc.temps), type: loc.type,
+        groupe: loc.groupe === 'effets' ? { by: 'effets' } : emboitable ? [loc.groupe, loc.groupe_fin].filter(Boolean).map(spec) : null });
+      cache.erreur = null;
+    } catch (e) { cache.res = null; cache.erreur = e.message; }
+    cache.cle = cle;
+  }
+  const r = cache.res;
+  if (!r) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, cache.erreur)); return; }
+  const decalages = [].concat(r.decalage);
+  const bande = [].concat(r.bande);
+  const series = [].concat(r.series);
+  const c = couleursTheme();
+  const graphe = el('div', { class: 'graphe' });
+  conteneur.replaceChildren(barre, el('p', { class: 'note' }, noteACF(r, bande, series)), graphe);
+  const apres = decalages.slice(1);
+  tracer(ctx, graphe, series.map((s, j) => ({ type: 'bar', x: decalages, y: [].concat(s.acf), customdata: [].concat(r.paires),
+    name: t(r.car1 && s.residus !== 'normalises' ? 'acf_sans_car1' : RESIDUS_ACF[s.residus]), marker: { color: PALETTE[j ? 2 : 0] },
+    hovertemplate: `${t('acf_decalage')} %{x} : %{y:.3f}<br>n = %{customdata}<extra>%{fullData.name}</extra>` }))
+    .concat([1, -1].map((signe) => ({ type: 'scatter', mode: 'lines', x: apres, y: apres.map((k) => signe * bande[k]), name: t('acf_bande'),
+      showlegend: signe > 0, line: { color: c.doux, width: 1, dash: 'dash' }, hoverinfo: 'skip' }))),
+  { title: { text: `${m.nom} · ${t('acf')}` }, barmode: 'group', dragmode: 'zoom', showlegend: true,
+    xaxis: { title: { text: t('acf_decalage') }, dtick: 1 }, yaxis: { title: { text: t('autocorrelation') } },
+    shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1 } }] });
+}
+
 // The contribution of each group of terms (a block, or a variable): the model refitted
 // without it, by ML. ΔAIC above 2: the group clearly improves the model (computed in R on
 // request, then kept).
@@ -2268,7 +2345,8 @@ function rendreComparaison(conteneur, ctx, p, loc) {
   const cum = (v) => (v && v.length ? v[v.length - 1] : null);
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
-  conteneur.replaceChildren(el('p', { class: 'note' }, t('comparaison_note')), graphe, bas);
+  const emboites = el('div', { class: 'bas' });
+  conteneur.replaceChildren(el('p', { class: 'note' }, t('comparaison_note')), graphe, bas, emboites);
   const lignes = ms.map((m) => {
     // another analysis (RDA, LDA...): no components nor Q2, the figures it gives (m.comparaison)
     if (m.analyse) return { id: m.id, nom: m.nom, projet: (ctx.projet(m.projet) || {}).nom, type: m.type, A: null, N: m.N, K: m.K, ...(m.comparaison || {}) };
@@ -2304,6 +2382,7 @@ function rendreComparaison(conteneur, ctx, p, loc) {
       .map(([cle, titre]) => ({ cle, titre, decimales: ['A', 'N', 'K'].includes(cle) ? 0 : undefined })),
     valeur: (i, k) => (typeof lignes[i][k] === 'number' && !['A', 'N', 'K'].includes(k) ? Number(lignes[i][k].toFixed(4)) : lignes[i][k]),
   });
+  rendreEmboites(emboites, ctx, loc, lignes);
   if (!ms.length) return;
   const noms = lignes.map((l) => l.nom);
   tracer(ctx, graphe, [
@@ -2311,6 +2390,48 @@ function rendreComparaison(conteneur, ctx, p, loc) {
     { type: 'bar', name: regressions ? `R2Y(cum) / ${t('r2_regression')}` : 'R2Y(cum)', x: noms, y: lignes.map((l) => l.R2Y ?? l.R2 ?? null), marker: { color: '#3b9a5b' } },
     { type: 'bar', name: 'Q2(cum)', x: noms, y: lignes.map((l) => l.Q2), marker: { color: '#2f6fb5' } }],
   { barmode: 'group', dragmode: false, title: { text: t('comparaison') }, margin: { t: 30, b: 50 } });
+}
+
+// Under the AIC table, the likelihood-ratio tests between the nested regressions of each AIC set
+// (moteur/R/regression_diagnostics.R: rapports_vraisemblance, as anova(m1, m2) on ML fits): the
+// bigger and the smaller model, Δdf, χ² and p, approximate with curves or mgcv's random effects.
+// Computed in R again when the models change; 50 pairs at most, the search box finds a model's.
+function rendreEmboites(conteneur, ctx, loc, lignes) {
+  const regressions = lignes.filter((l) => l.ensemble);
+  const parEnsemble = {};
+  regressions.forEach((l) => { parEnsemble[l.ensemble] = (parEnsemble[l.ensemble] || 0) + 1; });
+  if (!Object.values(parEnsemble).some((n) => n > 1)) { conteneur.remove(); return; }
+  const cle = regressions.map((l) => `${l.id}:${l.AIC}`).join('|');
+  const cache = ((loc.cache ??= {}).emboites ??= {});  // (loc.cache isn't saved with the session)
+  if (cache.cle !== cle) {
+    Object.assign(cache, { cle, res: null, erreur: null });
+    ctx.demander('rapports_vraisemblance', { modeles: regressions.map((l) => l.id) })
+      .then((r) => { if (cache.cle === cle) { cache.res = r; ctx.rafraichir(); } })
+      .catch((e) => { if (cache.cle === cle) { cache.erreur = e.message; ctx.rafraichir(); } });
+  }
+  const titre = el('h4', { class: 'titre-section' }, t('rv_titre'));
+  if (!cache.res) { conteneur.replaceChildren(titre, el('p', { class: cache.erreur ? 'erreur' : 'infos attente' }, cache.erreur || t('calcul'))); return; }
+  const r = cache.res.paires || {};
+  const col = (k) => [].concat(r[k] ?? []);
+  const grand = col('grand');
+  if (!grand.length) { conteneur.replaceChildren(titre, el('p', { class: 'note' }, t('rv_aucune'))); return; }
+  const petit = col('petit');
+  const p = col('p');
+  const approche = col('approche');
+  const parId = Object.fromEntries(lignes.map((l) => [l.id, l]));
+  const table = el('div', { class: 'bas' });
+  conteneur.replaceChildren(titre, el('p', { class: 'note' }, t('rv_note'),
+    cache.res.total > grand.length ? ` ${t('rv_limite', { total: cache.res.total, max: grand.length })}` : ''), table);
+  loc.emboites ??= {};
+  tableau(table, ctx, loc.emboites, {
+    n: grand.length, nom: 'LRT',
+    colonnes: [{ cle: 'ensemble', titre: t('ensemble_aic') }, { cle: 'grand', titre: t('rv_grand') }, { cle: 'petit', titre: t('rv_petit') },
+      { cle: 'ddl', titre: t('rv_ddl'), num: true, format: (v) => (Number.isInteger(v) ? String(v) : fmt(v, 2)) },
+      { cle: 'khi2', titre: 'χ²', num: true, decimales: 3 }, { cle: 'p', titre: 'p', num: true, format: valeurP, alerte: (i) => p[i] !== null && p[i] <= 0.05 },
+      { cle: 'test', titre: t('rv_test') }],
+    valeur: (i, k) => (k === 'ensemble' ? (parId[grand[i]] || {}).ensemble : k === 'grand' ? (parId[grand[i]] || {}).nom
+      : k === 'petit' ? (parId[petit[i]] || {}).nom : k === 'test' ? t(approche[i] ? 'rv_approche' : 'rv_ml') : col(k)[i]),
+  });
 }
 
 // Permutation test: R² and Q² of models refitted with the order of one Y
@@ -2411,6 +2532,7 @@ export const VUES = {
   vip: { rendre: rendreVIP, titre: (m) => `${m.nom} · VIP` },
   coefficients: { rendre: rendreCoefficients, titre: (m) => `${m.nom} · ${t('coefficients')}` },
   residus: { rendre: rendreResidus, titre: (m) => `${m.nom} · ${t('residus')}` },
+  acf: { rendre: rendreACF, titre: (m) => `${m.nom} · ${t('acf')}` },
   effets: { rendre: rendreEffets, titre: (m) => `${m.nom} · ${t('effets')}` },
   apports: { rendre: rendreApports, titre: (m) => `${m.nom} · ${t('apports')}` },
   obspred: { rendre: rendreObsPred, titre: (m) => `${m.nom} · ${t('obspred')}` },

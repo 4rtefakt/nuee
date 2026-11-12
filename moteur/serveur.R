@@ -787,6 +787,25 @@ DEMANDES <- list(
     if (is.null(e$modele$effets)) etat$modeles[[q$modele]]$modele$effets <- effets_regression(e$modele)
     list(modele = q$modele, lien = e$modele$lien, effets = etat$modeles[[q$modele]]$modele$effets)
   },
+  # l'autocorrélation des résidus d'une régression dans le temps (regression_diagnostics.R) ; sans
+  # CAR1, q$temps : un groupement ({ by: "id" | "variable" }) ; q$groupe : un ou plusieurs
+  # (emboîtés), { by: "effets" } (ses effets aléatoires) ou rien ; q$type : les résidus d'un modèle de mgcv
+  autocorrelation_residus = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    groupement <- function(s, tous = FALSE) {
+      if (!length(s$by)) return(NULL)
+      if (identical(as.character(s$by)[1], "effets")) return(list(by = "effets"))
+      if (tous) specs_groupement(s) else specs_groupement(s)[[1]]
+    }
+    c(list(modele = q$modele), autocorrelation_residus(projet(e$projet), e$modele, groupement(q$temps), groupement(q$groupe, TRUE), q$type %||% "pearson"))
+  },
+  # les tests du rapport de vraisemblance entre les régressions emboîtées de q$modeles
+  # (regression_diagnostics.R), pour Comparer les modèles
+  rapports_vraisemblance = function(q) {
+    ids <- Filter(function(id) !is.null(etat$modeles[[id]]) && est_regression(etat$modeles[[id]]$definition), as.character(unlist(q$modeles)))
+    rapports_vraisemblance(stats::setNames(lapply(ids, function(id) etat$modeles[[id]]$modele), ids))
+  },
   apports = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))

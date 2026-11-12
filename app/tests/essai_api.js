@@ -482,6 +482,46 @@ async function principal() {
       try { await api('series', { projet: pj.id, variable: 1, temps: rang.secteur }); } catch (err) { refus = err.message; }
       verifier(/numérique : « S3 » \(secteur\)/.test(refus), `un temps qui n’est pas un nombre, refusé : « ${refus} »`);
     });
+    await etape('autocorrélation des résidus, rapports de vraisemblance entre modèles emboîtés', async () => {
+      // 6 sites suivis 10 ans (2006 manque), un bruit autocorrélé dans chaque site (moteur/R/regression_diagnostics.R)
+      let g = 11;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D', 'E', 'F']) {
+        const effet = alea();
+        let bruit = 0;
+        for (const an of [2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009, 2010, 2011]) {
+          bruit = 0.7 * bruit + alea();
+          const x = 2 * alea();
+          lignes.push([`${s}${an}`, s, an, x.toFixed(4), (2 * alea()).toFixed(4), (1 + 0.5 * x + effet + bruit).toFixed(4)]);
+        }
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tannee\tx\tz\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Sites' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const mixte = (nom, x, correlation) => api('ajuster', { projet: q.id, type: 'LMM', x, y: [v.y], echelle: 'none', nom,
+        aleatoires: [{ by: 'variable', variable: v.site }], ...(correlation ? { correlation: { type: 'CAR1', temps: { by: 'variable', variable: v.annee } } } : {}) });
+      const c1 = await mixte('C1', [v.x, v.z], true);
+      const a = await api('autocorrelation_residus', { modele: c1.id });
+      verifier(a.car1 === true && a.temps === 'annee' && a.groupe === 'site' && a.groupes === 6 && [].concat(a.decalage).length === 10
+        && a.series.length === 2 && a.series[1].residus === 'normalises' && a.series[0].acf[0] === 1 && [].concat(a.bande).length === 10,
+      `CAR1 : ses résidus et ses résidus normalisés : ${JSON.stringify(a).slice(0, 300)}`);
+      const m2 = await mixte('M2', [v.x, v.z]);
+      const m1 = await mixte('M1', [v.x]);
+      const b = await api('autocorrelation_residus', { modele: m2.id, temps: { by: 'variable', variable: v.annee }, groupe: { by: 'effets' } });
+      verifier(b.car1 === false && b.series.length === 1 && b.series[0].residus === 'pearson' && b.groupe === 'site' && b.n === 60,
+        `sans CAR1, le temps et les groupes choisis : ${JSON.stringify(b).slice(0, 300)}`);
+      const b2 = await api('autocorrelation_residus', { modele: m2.id, temps: { by: 'variable', variable: v.annee }, groupe: [{ by: 'variable', variable: v.site }] });
+      verifier(b2.groupe === 'site' && b2.groupes === 6 && JSON.stringify(b2.series[0].acf) === JSON.stringify(b.series[0].acf),
+        `les groupes d'une variable (une liste de groupements emboîtés) : ${JSON.stringify(b2).slice(0, 300)}`);
+      let refusT = '';
+      try { await api('autocorrelation_residus', { modele: m2.id, temps: { by: 'variable', variable: v.annee }, groupe: null }); } catch (err) { refusT = err.message; }
+      verifier(/même temps/.test(refusT), `les années de tous les sites en une série, refusé : « ${refusT} »`);
+      const r = await api('rapports_vraisemblance', { modeles: [m2.id, m1.id, c1.id, q.id] });
+      const khi2 = 2 * (m2.qualite.logLik - m1.qualite.logLik);
+      verifier(r.total === 1 && [].concat(r.paires.grand)[0] === m2.id && [].concat(r.paires.petit)[0] === m1.id && [].concat(r.paires.ddl)[0] === 1
+        && Math.abs([].concat(r.paires.khi2)[0] - Math.max(0, khi2)) < 1e-8 && [].concat(r.paires.approche)[0] === false,
+      `x + z contre x (pas le modèle avec CAR1) : ${JSON.stringify(r)}`);
+    });
     await etape('paquets de lecture des formats', async () => {
       const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });
       verifier(r.journal.some((e) => e.type === 'sortie' && e.texte.includes('[1] TRUE')), 'haven, readxl, foreign ou zip absent');

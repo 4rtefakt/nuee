@@ -344,6 +344,130 @@ qa <- lire_projet(fa_proj)
 ma2 <- ajuster(qa, qa$models[[1]])
 verifier("enregistré puis relu : le même modèle (autocorrélation dans chaque secteur, k = 5)", proche(ma2$resultat$AIC, ma$resultat$AIC, 1e-8) && ma2$k[[1]] == 5)
 
+cat("Autocorrélation des résidus (regression_diagnostics.R)\n")
+# 8 sites suivis 10 ans (2005 manque), des résidus autocorrélés dans le temps ; des lignes rangées
+# par site puis par année, l'ordre où nlme::ACF lit juste
+set.seed(12)
+tac <- data.frame(nom = sprintf("R%03d", 1:80), site = rep(sprintf("S%d", 1:8), each = 10), annee = rep(c(2001:2004, 2006:2011), 8))
+tac$x <- rnorm(80)
+tac$z <- rnorm(80)
+tac$y <- 1 + 0.5 * tac$x + 0.3 * tac$z + rep(rnorm(8), each = 10) + as.vector(stats::filter(rnorm(80), 0.6, "recursive"))
+tac$compte <- stats::rpois(80, exp(0.5 + 0.3 * tac$x))
+pac <- projet_depuis_tableau(tac, "acf")
+uac <- function(...) numeros(pac, c(...))
+annee_ac <- list(by = "variable", variable = uac("annee"))
+site_ac <- list(by = "variable", variable = uac("site"))
+car1_ac <- list(type = "CAR1", temps = annee_ac)
+regr_ac <- function(type, x, ...) ajuster(pac, definir_modele(pac, type, x = if (length(x)) uac(x), y = uac("y"), echelle = "none", ...))
+# (l'autocorrélation refaite autrement : chaque décalage sur les paires de chaque groupe, rangé par temps)
+acf_main <- function(e, temps, groupe, L) {
+  r <- vapply(0:L, function(k) {
+    s <- n <- 0
+    for (g in unique(groupe)) {
+      x <- e[groupe == g][order(temps[groupe == g])]
+      if (length(x) > k) { s <- s + sum(x[seq_len(length(x) - k)] * x[(k + 1):length(x)]); n <- n + length(x) - k }
+    }
+    s / n
+  }, 0)
+  r / r[1]
+}
+mc_ac <- regr_ac("LMM", c("x", "z"), aleatoires = list(site_ac), correlation = car1_ac)
+rc_ac <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ annee | site), data = tac, method = "REML", control = ctrl)
+ac <- autocorrelation_residus(pac, mc_ac)
+Lac <- max(ac$decalage)
+verifier(sprintf("CAR1 : résidus et résidus normalisés = nlme::ACF() (décalages 0 à %d, les paires de chaque décalage, la bande ±1,96/√n)", Lac),
+         Lac == 9 && proche(ac$series[[1]]$acf, nlme::ACF(rc_ac, maxLag = Lac, resType = "pearson")$ACF) &&
+           proche(ac$series[[2]]$acf, nlme::ACF(rc_ac, maxLag = Lac, resType = "normalized")$ACF, 1e-5) &&
+           identical(as.numeric(ac$paires), as.numeric(attr(nlme::ACF(rc_ac, maxLag = Lac), "n.used"))) && proche(ac$bande, qnorm(0.975) / sqrt(ac$paires)) &&
+           identical(c(ac$temps, ac$groupe), c("annee", "site")) && ac$groupes == 8 && isTRUE(ac$car1))
+verifier("résidus normalisés de CAR1 = residuals(type = \"normalized\") de nlme, sur ces lignes rangées",
+         proche(residus_normalises_car1(residuals(rc_ac, type = "pearson"), tac$annee, tac$site, ac$phi), as.vector(residuals(rc_ac, type = "normalized")), 1e-5))
+o_ac <- order(tac$annee, tac$site)
+pac2 <- projet_depuis_tableau(tac[o_ac, ], "acf")
+mc2_ac <- ajuster(pac2, definir_modele(pac2, "LMM", x = numeros(pac2, c("x", "z")), y = numeros(pac2, "y"), echelle = "none",
+                                       aleatoires = list(list(by = "variable", variable = numeros(pac2, "site"))),
+                                       correlation = list(type = "CAR1", temps = list(by = "variable", variable = numeros(pac2, "annee")))))
+ac2 <- autocorrelation_residus(pac2, mc2_ac)
+rc2_ac <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ annee | site), data = tac[o_ac, ], method = "REML", control = ctrl)
+verifier("lignes rangées par année puis par site : la même autocorrélation (celle des résidus normalisés de nlme est alors fausse)",
+         proche(ac2$series[[1]]$acf, ac$series[[1]]$acf, 1e-5) && proche(ac2$series[[2]]$acf, ac$series[[2]]$acf, 1e-5) &&
+           !proche(nlme::ACF(rc2_ac, maxLag = Lac, resType = "normalized")$ACF, ac$series[[2]]$acf, 1e-2))
+m0_ac <- regr_ac("LMM", c("x", "z"), aleatoires = list(site_ac))
+r0_ac <- nlme::lme(y ~ x + z, random = ~ 1 | site, data = tac, method = "REML", control = ctrl)
+a0 <- autocorrelation_residus(pac, m0_ac, temps = annee_ac, groupe = list(by = "effets"))
+verifier(sprintf("sans CAR1, dans les groupes de l'effet aléatoire : = nlme::ACF() ; au décalage 1, %.2f, au-delà de la bande (%.2f)", a0$series[[1]]$acf[2], a0$bande[2]),
+         length(a0$series) == 1 && proche(a0$series[[1]]$acf, nlme::ACF(r0_ac, maxLag = 9, resType = "pearson")$ACF) && a0$series[[1]]$acf[2] > a0$bande[2] &&
+           identical(a0$groupe, "site") && !isTRUE(a0$car1))
+ml_ac <- regr_ac("LM", c("x", "z"))
+al <- autocorrelation_residus(pac, ml_ac, temps = annee_ac, groupe = site_ac)
+verifier("régression linéaire, les groupes d'une variable : = nlme::ACF() de gls(), form = ~ 1 | site",
+         proche(al$series[[1]]$acf, nlme::ACF(nlme::gls(y ~ x + z, data = tac), maxLag = 9, form = ~ 1 | site)$ACF, 1e-8))
+mg_ac <- regr_ac("GLM", c("x", "z"), famille = "gaussienne", aleatoires = list(site_ac))
+verifier("mgcv (GLMM normal, le site aléatoire en REML) : = nlme::ACF() du même modèle ajusté par nlme",
+         proche(autocorrelation_residus(pac, mg_ac, temps = annee_ac, groupe = list(by = "effets"))$series[[1]]$acf, nlme::ACF(r0_ac, maxLag = 9)$ACF, 1e-5))
+mp_ac <- ajuster(pac, definir_modele(pac, "GLM", x = uac("x"), y = uac("compte"), echelle = "none", famille = "poisson"))
+gp_ac <- glm(compte ~ x, family = poisson, data = tac)
+ad <- autocorrelation_residus(pac, mp_ac, temps = annee_ac, groupe = site_ac, type = "deviance")
+verifier("GLM de Poisson : résidus de déviance ou de Pearson de glm(), l'autocorrélation refaite à la main",
+         proche(ad$series[[1]]$acf, acf_main(residuals(gp_ac, type = "deviance"), tac$annee, tac$site, 9)) && identical(ad$series[[1]]$residus, "deviance") &&
+           proche(autocorrelation_residus(pac, mp_ac, temps = annee_ac, groupe = site_ac)$series[[1]]$acf, acf_main(residuals(gp_ac, type = "pearson"), tac$annee, tac$site, 9)))
+mgm_ac <- regr_ac("GAM", c("x", "z"), famille = "gaussienne", lisses = uac("x"), aleatoires = list(site_ac), correlation = car1_ac)
+agm <- autocorrelation_residus(pac, mgm_ac)
+verifier("mgcv::gamm avec CAR1 : sa partie $lme, résidus et résidus normalisés = nlme::ACF()",
+         isTRUE(mgm_ac$gamm) && proche(agm$series[[1]]$acf, nlme::ACF(mgm_ac$ajustement$lme, maxLag = 9, resType = "pearson")$ACF) &&
+           proche(agm$series[[2]]$acf, nlme::ACF(mgm_ac$ajustement$lme, maxLag = 9, resType = "normalized")$ACF, 1e-5))
+asect <- autocorrelation_residus(pa, ma)
+secteurs <- paste(ta$site, ta$secteur)
+verifier("CAR1 dans chaque secteur de chaque site (mgcv::gamm) : 21 groupes, les résidus normalisés de nlme (lignes rangées), l'autocorrélation refaite à la main",
+         asect$groupes == 21 && identical(asect$groupe, "secteur") && max(asect$decalage) == 9 &&
+           proche(asect$series[[2]]$acf, acf_main(as.vector(residuals(ref_reml$lme, type = "normalized")), ta$annee, secteurs, 9), 1e-4))
+mla <- ajuster(pa, definir_modele(pa, "LM", x = ua("x", "xbar"), y = ua("y"), echelle = "none"))
+ala <- autocorrelation_residus(pa, mla, temps = par_variable("annee"), groupe = list(par_variable("site"), par_variable("secteur")))
+verifier("des groupes emboîtés, le secteur dans son site (ses noms se répètent d'un site à l'autre) : 21 séries ; le secteur seul, refusé",
+         ala$groupes == 21 && identical(ala$groupe, "site / secteur") && proche(ala$series[[1]]$acf, acf_main(residuals(lm(y ~ x + xbar, data = ta)), ta$annee, secteurs, 9)) &&
+           grepl("même temps", refus(autocorrelation_residus(pa, mla, temps = par_variable("annee"), groupe = par_variable("secteur")))))
+verifier("plusieurs observations au même temps dans un groupe, ou pas de temps : refusé, en disant pourquoi",
+         grepl("même temps", refus(autocorrelation_residus(pac, ml_ac, temps = annee_ac))) && grepl("temps", refus(autocorrelation_residus(pac, ml_ac))))
+
+cat("Tests du rapport de vraisemblance (regression_diagnostics.R)\n")
+mx_ac <- regr_ac("LMM", "x", aleatoires = list(site_ac))
+mn_ac <- regr_ac("LMM", NULL, aleatoires = list(site_ac))
+mz_ac <- regr_ac("LMM", "z", aleatoires = list(site_ac))
+rv <- rapports_vraisemblance(list(xz = m0_ac, x = mx_ac, nul = mn_ac, z = mz_ac, lm = ml_ac, car1 = mc_ac, glmm = mg_ac))
+paire_rv <- function(r, g, p) which(r$paires$grand == g & r$paires$petit == p)
+ml_lme <- function(f, ...) nlme::lme(f, random = ~ 1 | site, data = tac, method = "ML", control = ctrl, ...)
+an <- anova(ml_lme(y ~ x), ml_lme(y ~ x + z))
+i_rv <- paire_rv(rv, "xz", "x")
+verifier(sprintf("modèles mixtes emboîtés (nlme, en ML) : χ² et p = anova(m1, m2) de nlme (χ² = %.3f, p = %.3f)", an$L.Ratio[2], an$`p-value`[2]),
+         length(i_rv) == 1 && proche(rv$paires$khi2[i_rv], an$L.Ratio[2]) && proche(rv$paires$p[i_rv], an$`p-value`[2]) && rv$paires$ddl[i_rv] == 1)
+verifier("les paires : x + z avec x, z et le modèle nul, x et z avec le modèle nul ; ni x avec z, ni la régression sans effet aléatoire, le modèle avec CAR1 ou celui de mgcv",
+         setequal(paste(rv$paires$grand, rv$paires$petit), c("xz x", "xz nul", "xz z", "x nul", "z nul")) && rv$total == 5 && !any(rv$paires$approche))
+mcx_ac <- regr_ac("LMM", "x", aleatoires = list(site_ac), correlation = car1_ac)
+rv1 <- rapports_vraisemblance(list(grand = mc_ac, petit = mcx_ac))
+an1 <- anova(ml_lme(y ~ x, correlation = nlme::corCAR1(form = ~ annee | site)), ml_lme(y ~ x + z, correlation = nlme::corCAR1(form = ~ annee | site)))
+verifier("la même autocorrélation CAR1 dans les deux : = anova() de nlme", rv1$total == 1 && identical(rv1$paires$grand, "grand") &&
+           proche(rv1$paires$khi2, an1$L.Ratio[2], 1e-5) && proche(rv1$paires$p, an1$`p-value`[2], 1e-5))
+l1_ac <- lm(y ~ x, data = tac)
+l2_ac <- lm(y ~ x + z, data = tac)
+khi2_lm <- 2 * (as.numeric(logLik(l2_ac)) - as.numeric(logLik(l1_ac)))
+rl <- rapports_vraisemblance(list(petit = regr_ac("LM", "x"), grand = ml_ac))
+# (anova(test = "Chisq") de deux lm() rapporte l'écart des sommes de carrés à σ² du grand modèle : un autre test)
+verifier("régressions linéaires : χ² = 2 Δ logLik de lm(), sur 1 ddl", rl$total == 1 && identical(rl$paires$grand, "grand") &&
+           proche(rl$paires$khi2, khi2_lm) && proche(rl$paires$p, pchisq(khi2_lm, 1, lower.tail = FALSE)) && rl$paires$ddl == 1)
+mg2b <- modele_g("GLM", "compte", "x2", famille = "poisson", decalage = ug("effort"))
+rg <- rapports_vraisemblance(list(petit = mg2b, grand = mg2, nb = mg3, sans_effort = mg1))
+an_glm <- anova(glm(compte ~ x2, family = poisson, data = tg, offset = log(effort)), glm(compte ~ x1 + x2, family = poisson, data = tg, offset = log(effort)), test = "Chisq")
+verifier("GLM de Poisson avec l'effort : χ² et p = anova(test = \"Chisq\") de glm() ; ni la binomiale négative (une autre loi), ni sans l'effort",
+         rg$total == 1 && identical(rg$paires$grand, "grand") && proche(rg$paires$khi2, an_glm$Deviance[2]) && proche(rg$paires$p, an_glm$`Pr(>Chi)`[2]))
+mga <- modele_g("GAM", "compte", c("x1", "x2"), famille = "poisson", lisses = ug("x1"), decalage = ug("effort"))
+rga <- rapports_vraisemblance(list(gam = mga, glm = mg2, petit = mg2b))
+verifier("une courbe : la droite de x1 est dans sa courbe, et le test est approché (des edf)",
+         rga$total == 3 && all(rga$paires$approche[rga$paires$grand == "gam"]) && !rga$paires$approche[paire_rv(rga, "glm", "petit")] &&
+           length(paire_rv(rga, "gam", "glm")) == 1)
+rcap <- rapports_vraisemblance(list(xz = m0_ac, x = mx_ac, nul = mn_ac, z = mz_ac), max_paires = 2)
+verifier("au plus max_paires paires, et combien il y en a ; un modèle et lui-même ne font pas une paire",
+         nrow(rcap$paires) == 2 && rcap$total == 5 && rapports_vraisemblance(list(a = mx_ac, b = mx_ac))$total == 0)
+
 cat("Prédiction\n")
 pr <- predire(p, m, d, obs)
 xc <- stats::complete.cases(df[c("sucre", "fermete", "acidite", "polyphenols")])
