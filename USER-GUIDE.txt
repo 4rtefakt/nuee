@@ -610,11 +610,11 @@ French): a sector mean as a covariate, or a response centred by sector. Or class
 values of a variable, at given limits (10 ; 20 gives "≤ 10", "]10 ; 20]", "> 20") or in
 classes of equal size. Or Imputation (PCA): the chosen quantitative variables' missing values
 filled from each other by regularized iterative PCA, as missMDA::imputePCA does, with the
-number of components missMDA::estim_ncpPCA chooses (generalized cross-validation, from 0 to
-5; 0: each variable's mean) unless you give it; observed values unchanged, an observation
-missing more than half of them left missing, imputed values kept within each variable's
-observed range unless unticked; as new variables "x (imputed)" or in the variables themselves
-(Ctrl+Z undoes it). Remember to save the project.
+number of components chosen by generalized cross-validation of the standardized variables,
+from 0 to 5, as missMDA::estim_ncpPCA does on them (0: each variable's mean), unless you give
+it; observed values unchanged, an observation missing more than half of them left missing,
+imputed values kept within each variable's observed range unless unticked; as new variables
+"x (imputed)" or in the variables themselves (Ctrl+Z undoes it). Remember to save the project.
 
 File history
 ------------

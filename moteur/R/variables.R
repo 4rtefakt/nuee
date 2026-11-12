@@ -175,14 +175,15 @@ variable_calculee <- function(projet, nom, formule) {
 # à k composantes, aux valeurs singulières réduites du bruit estimé sur les autres axes, le
 # reconstruit, et les manques en prennent les valeurs ; jusqu'à ce que l'écart du tableau à sa
 # reconstruction, sur les valeurs observées, change de moins de 1e-6 (au moins 5 tours). Sans
-# `k`, le nombre de composantes est choisi par validation croisée généralisée, de 0 à 5, comme
-# missMDA::estim_ncpPCA (0 : la moyenne de chaque variable). Les valeurs observées ne changent
-# pas. Une observation à qui manquent plus de la moitié de ces variables reste manquante, et ne
-# compte pas dans l'ACP. Avec `bornes`, une valeur imputée reste dans l'étendue observée de sa
-# variable (une variable 0/1 entre 0 et 1, une surface positive). De nouvelles variables
-# « x (imputée) », ou, avec `remplacer`, les variables elles-mêmes, pour celles qui ont reçu des
-# valeurs (les complètes aident seulement à imputer les autres). attr(, "imputation") : le nombre
-# de valeurs remplies, de composantes (et si elles ont été choisies) et de tours.
+# `k`, le nombre de composantes est choisi par validation croisée généralisée des variables
+# réduites, de 0 à 5, comme missMDA::estim_ncpPCA(scale(X)) (0 : la moyenne de chaque
+# variable). Les valeurs observées ne changent pas. Une observation à qui manquent plus de la
+# moitié de ces variables reste manquante, et ne compte pas dans l'ACP. Avec `bornes`, une valeur
+# imputée reste dans l'étendue observée de sa variable (une variable 0/1 entre 0 et 1, une
+# surface positive). De nouvelles variables « x (imputée) », ou, avec `remplacer`, les variables
+# elles-mêmes, pour celles qui ont reçu des valeurs (les complètes aident seulement à imputer les
+# autres). attr(, "imputation") : le nombre de valeurs remplies, de composantes (et si elles ont
+# été choisies) et de tours.
 imputer_acp <- function(projet, variables, k = NULL, maxit = 1000, bornes = TRUE, remplacer = FALSE) {
   obs <- as.numeric(rownames(projet$donnees))
   variables <- unique(as.numeric(variables))
@@ -279,10 +280,13 @@ acp_reguliere <- function(X, k, seuil = 1e-6, maxit = 1000) {
   list(complet = complet, ajuste = remettre(ajuste), tours = tours)
 }
 
-# Le nombre de composantes d'une imputation, comme missMDA::estim_ncpPCA : la validation croisée
-# généralisée de 0 à `kmax` composantes (0 : l'écart des valeurs observées à leur moyenne), et
-# le premier nombre après lequel le critère remonte.
+# Le nombre de composantes d'une imputation, comme missMDA::estim_ncpPCA sur les variables
+# réduites (estim_ncpPCA(scale(X))) : la validation croisée généralisée de 0 à `kmax` composantes
+# (0 : l'écart des valeurs observées à leur moyenne), et le premier nombre après lequel le
+# critère remonte. Réduites, chaque variable y compte autant, comme dans l'ACP ; dans leurs unités
+# (estim_ncpPCA(X)), celles de grande variance feraient seules le critère, souvent jusqu'à 0.
 composantes_imputation <- function(X, kmax = 5) {
+  X <- scale(X)
   n <- nrow(X)
   p <- ncol(X)
   manques <- sum(is.na(X))

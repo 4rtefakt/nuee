@@ -475,7 +475,7 @@ garde <- rowMeans(is.na(Xs)) <= 0.5
 # missMDA 1.23 sur Xs[garde, ] : imputePCA(, ncp = 2) et imputePCA(, ncp = 5), leurs $completeObs
 # aux valeurs manquantes (missMDA y prend la SVD complète, comme Nuée ; avec moins de composantes
 # que la moitié des variables, irlba en approche les axes, à 1e-4 écart-type près), et
-# estim_ncpPCA(, method.cv = "gcv")$ncp = 2
+# estim_ncpPCA(scale(), method.cv = "gcv")$ncp = 2
 missmda_k2 <- c(-1.09850517903, 1.04203959962, -1.73667473728, -0.438784883781, 0.663782517243, -0.0286459197537, 0.203155717142,
                 -0.540916303339, 2.30493561298, -0.914166498774, 2.41190510925, 0.570652419912, -0.95297584875, 0.78306643049,
                 2.32153138477, -0.886453770496, 0.584939589276, 1.14015737256, -0.779022590792, -1.41463154333, -0.648719873629,
@@ -498,9 +498,15 @@ verifier(sprintf("imputation = missMDA::imputePCA, 2 et 5 composantes (%d valeur
          proche(got[garde, ][manques_i], missmda_k2, 1e-8) && proche(imputees(imputer_acp(pim, vars_i, k = 5, bornes = FALSE))[garde, ][manques_i], missmda_k5, 1e-8) &&
            proche(got[!is.na(Xs)], Xs[!is.na(Xs)]) && attr(pi1, "imputation")$valeurs == sum(manques_i))
 pa <- imputer_acp(pim, vars_i, bornes = FALSE)
-verifier("sans nombre de composantes : 2, choisies comme missMDA::estim_ncpPCA (validation croisée généralisée)",
+verifier("sans nombre de composantes : 2, choisies comme missMDA::estim_ncpPCA des variables réduites (validation croisée généralisée)",
          attr(pa, "imputation")$composantes == 2 && isTRUE(attr(pa, "imputation")$choisies) && !isTRUE(attr(pi1, "imputation")$choisies) &&
            proche(imputees(pa)[garde, ][manques_i], missmda_k2, 1e-8))
+# (les variables de l'exemple, d'unités diverses : estim_ncpPCA(scale(X)) en choisit 5 ;
+# estim_ncpPCA(X), son critère dans leurs unités, 0, la moyenne de chaque variable)
+quantitatives <- Filter(function(v) !length(v$categories), p$variables)
+Xv <- sapply(quantitatives, function(v) as.numeric(colonne(p, as.numeric(v$uid), obs)))
+verifier("les variables de l'exemple, d'unités diverses : 5 composantes, comme estim_ncpPCA(scale(X)) (0 dans leurs unités)",
+         composantes_imputation(Xv[rowMeans(is.na(Xv)) <= 0.5, ]) == 5)
 # (15 observations, 6 variables, 5 composantes : sans la borne de missMDA, le bruit estimé dépasse
 # la 5e valeur propre et retourne cette composante ; imputePCA(, ncp = 5)$completeObs aux manques)
 set.seed(1)
