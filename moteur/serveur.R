@@ -64,6 +64,8 @@ etat$modeles <- list()
 etat$predictions <- list()  # dernière prédiction de chaque modèle (pour l'export Excel)
 etat$compteur <- 0
 etat$annulations <- list()  # par projet : les états précédents, pour « Annuler » (Ctrl+Z)
+etat$revisions <- list()  # par projet : le nombre de changements de ses données (resume_projet)
+etat$paires <- list()  # les tableaux de toutes les paires des tests appariés (memo_paires)
 
 nouvel_id <- function(prefixe) {
   etat$compteur <- etat$compteur + 1
@@ -98,6 +100,20 @@ memoriser <- function(p, etiquette) {
   pile <- c(list(list(etiquette = etiquette, projet = p)), etat$annulations[[p$id]] %||% list())
   etat$annulations[[p$id]] <- utils::head(pile, 20)
 }
+# Chaque changement des données d'un projet, une fois fait, et chaque retour en arrière comptent
+# une révision du projet : les vues qui gardent des calculs sur ses données les refont.
+reviser <- function(id) etat$revisions[[id]] <- (etat$revisions[[id]] %||% 0) + 1
+
+# Le tableau de toutes les paires d'un test apparié (comparaisons.R : comparer_apparies), gardé
+# d'une demande à l'autre (A et B, la langue mise à part, ne le changent pas) tant que les données
+# du projet ne changent pas : 20 au plus.
+memo_paires <- function(p, q) {
+  cle <- paste(c(p$id, etat$revisions[[p$id]] %||% 0, q$x, q$y, q$appariement, q$dans %||% "", getOption("nuee.langue") %||% "fr"), collapse = "|")
+  function(calcul) {
+    if (is.null(etat$paires[[cle]])) etat$paires <- utils::tail(c(etat$paires, stats::setNames(list(calcul()), cle)), 20)
+    etat$paires[[cle]]
+  }
+}
 
 annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
@@ -109,6 +125,7 @@ annuler_demande <- function(q) {
   ancien$fichier_lu <- actuel$fichier_lu
   ancien$modifie <- TRUE
   etat$projets[[q$projet]] <- ancien
+  reviser(q$projet)
   list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
 }
 
@@ -214,7 +231,7 @@ resume_projet <- function(p) {
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
        table = p$table %||% NULL,
-       annulable = if (length(pile)) pile[[1]]$etiquette,
+       annulable = if (length(pile)) pile[[1]]$etiquette, revision = etat$revisions[[p$id]] %||% 0,
        chemin_enregistrement = p$chemin_enregistrement %||% (if (json) p$chemin),
        observations = list(uid = as.numeric(names(p$noms_obs)), nom = unname(p$noms_obs)),
        identifiants = identifiants_secondaires(p),
@@ -315,6 +332,10 @@ reajuster_demande <- function(q) {
     if (length(q$garder)) stop(if (est_regression(d)) traduire("Une régression n'a pas de VIP.", "A regression has no VIP.")
                                else traduire("Cette analyse n'a pas de VIP.", "This analysis has no VIP."))
     q$A <- NULL
+  }
+  if (!is.null(q$groupes_aic)) {  # Sélection par AIC › Ajuster ce modèle : les seuls termes de ces groupes (regression.R)
+    if (!est_regression(d)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    d <- definition_selection(d, e$modele, q$groupes_aic)
   }
   exclues <- as.numeric(q$exclues %||% numeric(0))
   if (length(q$garder)) {  # ne garder que ces termes X (et les facteurs de leurs termes croisés)
@@ -486,6 +507,7 @@ scores_demande <- function(q) {
   r <- scores_en_variables(p, e$modele)
   r$projet$modifie <- TRUE
   etat$projets[[p$id]] <- r$projet
+  reviser(p$id)
   list(projet = resume_projet(r$projet), noms = I(r$noms), modeles = I(modeles_utilisant(r$projet, r$noms)))
 }
 
@@ -494,6 +516,7 @@ changer_projet <- function(q, f, etiquette) {
   p <- f(projet(q$projet))
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
+  reviser(p$id)
   resume_projet(p)
 }
 
@@ -502,6 +525,7 @@ classe_demande <- function(q) {
   p <- ajouter_classe(projet(q$projet), q$variable, q$etiquette, as.numeric(q$observations))
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
+  reviser(p$id)
   resume_projet(p)
 }
 
@@ -732,11 +756,20 @@ DEMANDES <- list(
       as.list(contributions(e$modele, as.numeric(q$observations), q$type %||% "DModX", q$composante %||% 1, isTRUE(q$ponderee %||% TRUE))))
   },
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
+  # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R)
+  series = function(q) series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux),
+  # avec q$appariement (une variable ou "id:k") : les tests appariés de deux classes, t apparié par défaut
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
-                                               q$test %||% "welch", q$correction %||% "BH"),
-  # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux
+                                               q$test %||% (if (length(q$appariement)) "t_apparie" else "welch"), q$correction %||% "BH",
+                                               appariement = q$appariement),
+  # avant/après avec témoin (comparaisons.R : baci) ; sans q$evenement, la série des écarts seule
+  baci = function(q) baci(projet(q$projet), q$y, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)),
+                          evenement = q$evenement, fin = q$fin, test = q$test %||% "welch"),
+  # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux, et
+  # avec q$dans (une variable ou "id:k" : le site), toutes les paires de niveaux d'un même groupe
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y, appariement = q$appariement,
-                                                        niveaux = if (length(q$niveaux)) as.character(unlist(q$niveaux))),
+                                                        niveaux = if (length(q$niveaux)) as.character(unlist(q$niveaux)), dans = q$dans,
+                                                        memo = memo_paires(projet(q$projet), q)),
   # les niveaux d'une variable qualitative ou d'un identifiant ("id:k"), dans l'ordre des tests
   niveaux = function(q) list(niveaux = I(niveaux_a_tester(projet(q$projet), q$variable))),
   # l'apport de chaque groupe de termes d'une régression (regression.R), calculé une fois
@@ -763,11 +796,42 @@ DEMANDES <- list(
     if (is.null(e$modele$effets)) etat$modeles[[q$modele]]$modele$effets <- effets_regression(e$modele)
     list(modele = q$modele, lien = e$modele$lien, effets = etat$modeles[[q$modele]]$modele$effets)
   },
+  # l'autocorrélation des résidus d'une régression dans le temps (regression_diagnostics.R) ; sans
+  # CAR1, q$temps : un groupement ({ by: "id" | "variable" }) ; q$groupe : un ou plusieurs
+  # (emboîtés, du plus large au plus fin), dont { by: "effets" } (ses effets aléatoires), ou rien ;
+  # q$type : les résidus d'un modèle de mgcv
+  autocorrelation_residus = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    groupement <- function(s, tous = FALSE) {
+      if (!length(s$by)) return(NULL)
+      # (plusieurs groupements arrivent en data.frame, une ligne chacun)
+      if (is.data.frame(s)) s <- lapply(seq_len(nrow(s)), function(i) as.list(s[i, , drop = FALSE]))
+      if (!is.null(s$by)) s <- list(s)
+      specs <- lapply(s, function(x) if (identical(as.character(x$by)[1], "effets")) list(by = "effets") else specs_groupement(x)[[1]])
+      if (tous) specs else specs[[1]]
+    }
+    c(list(modele = q$modele), autocorrelation_residus(projet(e$projet), e$modele, groupement(q$temps), groupement(q$groupe, TRUE), q$type %||% "pearson"))
+  },
+  # les tests du rapport de vraisemblance entre les régressions emboîtées de q$modeles
+  # (regression_diagnostics.R), pour Comparer les modèles
+  rapports_vraisemblance = function(q) {
+    ids <- Filter(function(id) !is.null(etat$modeles[[id]]) && est_regression(etat$modeles[[id]]$definition), as.character(unlist(q$modeles)))
+    rapports_vraisemblance(stats::setNames(lapply(ids, function(id) etat$modeles[[id]]$modele), ids))
+  },
   apports = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     if (is.null(e$modele$apports)) etat$modeles[[q$modele]]$modele$apports <- apport_groupes(e$modele) %||% data.frame()
     list(modele = q$modele, apports = etat$modeles[[q$modele]]$modele$apports)
+  },
+  # la sélection des effets fixes par l'AIC (regression.R : selection_aic), calculée une fois et
+  # gardée avec le modèle (le texte des Méthodes la décrit alors)
+  selection_aic = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    if (is.null(e$modele$selection_aic)) etat$modeles[[q$modele]]$modele$selection_aic <- selection_aic(e$modele, e$definition)
+    c(list(modele = q$modele), etat$modeles[[q$modele]]$modele$selection_aic)
   },
   correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),
   historique = function(q) historique_projet(projet(q$projet)),
@@ -783,6 +847,7 @@ DEMANDES <- list(
     attr(p, "imputation") <- NULL
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
+    reviser(p$id)
     c(resume_projet(p), list(imputation = info))
   },
   classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),

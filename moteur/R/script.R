@@ -8,7 +8,8 @@
 # test ; des graphiques en R de base. Une régression (regression.R) a son propre code : ses termes
 # et sa réponse comme le moteur les fait, l'ajustement de lm, nlme::lme ou mgcv::gam (ces deux
 # paquets sont livrés avec R), ses coefficients, sa vraisemblance et son AIC, sa validation
-# croisée par les mêmes groupes, son jeu de test. D'après l'extension du chemin : un script (.R), ou
+# croisée par les mêmes groupes, son jeu de test, et sa sélection par l'AIC quand elle a été faite
+# (selection_aic). D'après l'extension du chemin : un script (.R), ou
 # un rapport R Markdown (.Rmd) ou Quarto (.qmd) qui y ajoute le texte des méthodes (methodes.R) et
 # les références ; il se compile avec knitr (bouton Knit de RStudio, ou quarto render).
 #   donnees : "script" (les données dans le script) ou "csv" (un fichier à côté du script) ;
@@ -291,7 +292,8 @@ besoins_script <- function(plans, seance) {
        regression = length(reg) > 0, lmm = any(vapply(reg, function(pl) !pl$generalise && length(pl$niveaux) > 0, TRUE)),
        mgcv = any(vapply(reg, `[[`, TRUE, "generalise")), courbes = any(vapply(reg, function(pl) length(pl$lisses) > 0, TRUE)),
        aleatoires_mgcv = any(vapply(reg, function(pl) pl$generalise && !isTRUE(pl$gamm) && length(pl$niveaux) > 0, TRUE)),
-       gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)),
+       gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)), car1 = any(vapply(reg, function(pl) !is.null(pl$temps), TRUE)),
+       selection_aic = any(vapply(reg, function(pl) !is.null(pl$selection), TRUE)),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
 }
@@ -1018,6 +1020,13 @@ plan_regression <- function(projet, d, m, tab) {
   vy <- variable_du_projet(projet, ty$variables[1])
   groupes <- as.integer(m$vc$groupe)
   G <- as.integer(d$cv_groups %||% 7)
+  # la sélection par l'AIC, quand elle a été faite (regression.R : selection_aic) : ses groupes de
+  # termes (leurs noms R), ceux que demande chacun, toutes les combinaisons ou l'élimination descendante
+  selection <- if (isTRUE(m$selection_aic$K > 0)) {
+    gm <- groupes_modele(m)
+    list(toutes = identical(m$selection_aic$methode, "toutes"), limite = m$selection_aic$limite,
+         groupes = lapply(gm, function(ts) termes_r[match(ts, m$termes)]), requis = Filter(length, groupes_requis(gm, termes)))
+  }
   list(nom = as.character(d$name %||% ""), titre = as.character(d$title %||% ""),
        type = "regression", regression = TRUE, modele = as.character(d$type), generalise = generalise, gamm = gamm,
        famille = m$famille, lien = m$lien %||% "identity", plsda = FALSE, opls = FALSE,
@@ -1040,7 +1049,12 @@ plan_regression <- function(projet, d, m, tab) {
        # (les groupes de la validation croisée sont-ils les niveaux du premier effet aléatoire, comme par défaut ?)
        vc_premier = L > 0 && length(d$groupes_vc$by) > 0 && as.character(d$groupes_vc$by)[1] %in% c("id", "variable") &&
          identical(specs_groupement(d$groupes_vc)[[1]], specs[[1]]),
-       vc_par = as.character(m$vc_par %||% ""))
+       vc_par = as.character(m$vc_par %||% ""), selection = selection,
+       # (un modèle choisi par la sélection par AIC : les lignes de d que le modèle complet n'a pas
+       # ajustées, faute de valeurs, restent de côté ; regression.R, definition_selection)
+       choisi = if (!is.null(d$selection_origine) && length(d$termes_complets))
+         list(modele = as.character(d$selection_origine$modele)[1],
+              hors = match(setdiff(as.numeric(d$observations), m$observations), as.numeric(d$observations))))
 }
 
 # Le type d'une régression, en mots (en-têtes des scripts).
@@ -1067,9 +1081,11 @@ entete_regression <- function(pl, nom_projet, version, fichiers, langue) {
     commentaire(sprintf(tx("Il refait ce modèle avec %s, sans Nuée : le calcul est écrit pour ce modèle, de ses données à ses résultats, qui sont ceux de Nuée. Ses quatre parties :",
                            "It redoes this model with %s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:"),
                         texte_paquets(paquet, langue))),
-    tx("#   1. Fonctions : termes utiles, AIC corrigé, validation croisée", "#   1. Functions: useful terms, corrected AIC, cross-validation"),
+    paste0(tx("#   1. Fonctions : termes utiles, AIC corrigé, validation croisée", "#   1. Functions: useful terms, corrected AIC, cross-validation"),
+           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection")),
     tx("#   2. Données", "#   2. Data"),
-    tx("#   3. Modèle : réponse et termes X, ajustement, validation croisée, statistiques", "#   3. Model: response and X terms, fit, cross-validation, statistics"),
+    paste0(tx("#   3. Modèle : réponse et termes X, ajustement, validation croisée, statistiques", "#   3. Model: response and X terms, fit, cross-validation, statistics"),
+           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection")),
     tx("#   4. Résultats : tableaux et graphiques", "#   4. Results: tables and plots"),
     tx("# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.", "# In RStudio, Ctrl+Shift+O shows these parts; Ctrl+Shift+S runs the whole script."),
     sprintf(tx("# Écrit avec %s.", "# Written with %s."), texte_paquets(paquet, langue, versions = TRUE)),
@@ -1125,6 +1141,9 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   lectures <- c(vapply(pl$niveaux, `[[`, "", "code"), pl$temps$code, pl$dans$code, pl$effort$code)
   # le groupe de l'autocorrélation : le dernier effet aléatoire, ou un niveau plus fin
   groupes_car1 <- paste(c(r_niveaux, pl$dans$nom), collapse = " / ")
+  # (pour les résidus normalisés d'un modèle avec CAR1 : le temps et ce groupe, colonnes du cadre)
+  temps_car1 <- if (car1) sprintf("cadre[[%s]]", code_texte(pl$temps$nom))
+  groupes_car1_code <- sprintf("interaction(cadre[c(%s)], drop = TRUE)", paste(vapply(c(r_niveaux, pl$dans$nom), code_texte, ""), collapse = ", "))
   dans_affiche <- if (!is.null(pl$dans)) pl$dans$affiche else affiches[L]
   plx <- pl
   plx$manquantes <- pl$na_termes  # (les centres d'un terme croisé sans aucune valeur)
@@ -1155,6 +1174,13 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    sprintf("The rows where %s are known (`known`). Those of the model (`training`) give the centres and weights of the terms, then the table of the model%s.",
                            liste(quoi), if (test) "; the others, that of the test set" else ""))),
     sprintf("connu <- complete.cases(%s)", paste(c("y", if (K) "X", lectures), collapse = ", ")),
+    if (length(pl$choisi$hors)) c(
+      commentaire(tx(sprintf("Ce modèle est celui que la sélection par l'AICc du modèle %s a choisi : il est ajusté sur les lignes de %s, où la sélection l'a comparé aux autres ; les %d lignes que %s n'a pas ajustées, faute de valeurs, restent de côté.",
+                             guillemets(pl$choisi$modele), guillemets(pl$choisi$modele), length(pl$choisi$hors), guillemets(pl$choisi$modele)),
+                     sprintf("This model is the one the AICc selection of model %s chose: it is fitted on the rows of %s, where the selection compared it with the others; the %d rows %s did not fit, for missing values, stay out.",
+                             guillemets(pl$choisi$modele), guillemets(pl$choisi$modele), length(pl$choisi$hors), guillemets(pl$choisi$modele)))),
+      code_valeurs(morceaux_rangs(pl$choisi$hors), "hors_selection <- "),
+      "connu[hors_selection] <- FALSE"),
     if (test) "apprentissage <- intersect(which(connu), modele)" else "apprentissage <- which(connu)",
     if (K) c("", code_echelle_bloc(pl$x, "X", "x", plx, tx, "X")),
     "",
@@ -1423,10 +1449,39 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                            if (!mixte && !mgcv) " (and Cook's distance)" else ""))),
     if (gamm) "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m$lme),"
     else "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m),",
-    if (gamm) "                           residu = residuals(m$lme, type = \"normalized\"), ajuste_fixe = fitted(m$gam), row.names = NULL)"
+    if (gamm) sprintf("                           residu = residus_normalises_car1(residuals(m$lme, type = \"pearson\"), %s, %s, phi), ajuste_fixe = fitted(m$gam), row.names = NULL)",
+                      temps_car1, groupes_car1_code)
     else if (mgcv) "                           residu = residuals(m, type = \"deviance\") / sqrt(m$sig2 * pmax(1 - m$hat, 1e-8)), row.names = NULL)"
+    else if (mixte && car1) sprintf("                           residu = residus_normalises_car1(residuals(m, type = \"pearson\"), %s, %s, phi), ajuste_fixe = fitted(m, level = 0), row.names = NULL)",
+                                    temps_car1, groupes_car1_code)
     else if (mixte) "                           residu = residuals(m, type = \"normalized\"), ajuste_fixe = fitted(m, level = 0), row.names = NULL)"
     else "                           residu = rstandard(m), cook = cooks.distance(m), row.names = NULL)")
+
+  # --- la sélection par l'AIC (regression.R : selection_aic), quand elle a été faite dans Nuée
+  sel <- pl$selection
+  code_liste <- function(x, nom) {
+    v <- sprintf("%s = %s", vapply(names(x), code_texte, ""), vapply(x, code_textes, ""))
+    if (length(v) <= 1) sprintf("%s <- list(%s)", nom, paste(v, collapse = "")) else code_valeurs(v, paste(nom, "<- "), ouvrir = "list(")
+  }
+  selection <- if (!is.null(sel)) {
+    avec <- c(if (mixte) tx("ses effets aléatoires", "its random effects"), if (car1) tx("son autocorrélation", "its autocorrelation"),
+              if (!is.null(pl$effort)) tx("son effort", "its effort"), if (courbes) tx("ses courbes et leur dimension", "its curves and their dimension"))
+    c(commentaire(tx(sprintf("La sélection par l'AIC faite dans Nuée (selection_aic ci-dessus) : %s ; chaque modèle est ajusté en ML sur les lignes du modèle%s, un terme croisé n'entrant qu'avec ses effets principaux (requis_aic).",
+                             if (sel$toutes) "chaque combinaison des groupes de termes du modèle (le bloc de chaque terme, sinon sa variable)"
+                             else sprintf("une élimination descendante depuis le modèle complet, ses groupes de termes (le bloc de chaque terme, sinon sa variable) donnant plus de %d combinaisons", as.integer(sel$limite)),
+                             if (length(avec)) sprintf(", avec %s", liste(avec)) else ""),
+                     sprintf("The AIC selection done in Nuée (aic_selection above): %s; each model is fitted by ML on the model's rows%s, a cross term entering only with its main effects (aic_required).",
+                             if (sel$toutes) "every combination of the model's groups of terms (each term's block, otherwise its variable)"
+                             else sprintf("a backward elimination from the full model, its groups of terms (each term's block, otherwise its variable) giving more than %d combinations", as.integer(sel$limite)),
+                             if (length(avec)) sprintf(", with %s", liste(avec)) else ""))),
+      code_liste(sel$groupes, "groupes_aic"),
+      code_liste(sel$requis, "requis_aic"),
+      sprintf("ajuster_ml <- function(termes_aic) %s",
+              if (gamm) "ajuster_modele(cadre, intersect(utiles, termes_aic), methode = \"ML\")$lme"
+              else if (mgcv || mixte) "ajuster_modele(cadre, intersect(utiles, termes_aic), methode = \"ML\")"
+              else "ajuster_modele(cadre, intersect(utiles, termes_aic))"),
+      sprintf("selection <- selection_aic(groupes_aic, requis_aic, ajuster_ml, nrow(cadre)%s)", if (sel$toutes) "" else ", toutes = FALSE"))
+  }
 
   # --- le jeu de test
   predire_test <- if (gamm) "as.vector(predict(m$gam, cadre_test, type = \"response\"))"
@@ -1460,6 +1515,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     if (courbes) ligne("print(courbes)", "edf, test et concurvité de chaque courbe", "edf, test and concurvity of each curve"),
     if (courbes) ligne("print(plages_seuils)", "les plages nettes de la pente et de l'effet des courbes", "the clear ranges of the curves' slope and effect"),
     ligne("print(c(Q2 = vc$Q2, RMSEcv = vc$RMSEcv))", "validation croisée", "cross-validation"),
+    if (!is.null(sel)) ligne("print(head(selection$modeles, 20))", "sélection par l'AIC : les 20 meilleurs modèles", "AIC selection: the 20 best models"),
+    if (!is.null(sel)) ligne("print(selection$importance)", "l'importance de chaque groupe de termes", "the importance of each group of terms"),
     if (test) ligne("print(test)", "jeu de test : RMSEP, biais, SEP, Q2 externe", "test set: RMSEP, bias, SEP, external Q2"),
     ligne("print(head(observations))", "observée, ajustée, résidu standardisé", "observed, fitted, standardized residual"),
     ligne(if (gamm) "print(summary(m$gam))" else "print(summary(m))", "le résumé de R", "R's own summary"))
@@ -1512,8 +1569,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "par(op)")))
   objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations",
               if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes) c("courbes", "seuils", "plages_seuils"),
-              if (test) c("test", "predictions_test"))
-  list(calcul = traduire_code(c(donnees, "", ajustement, "", validation, "", statistiques, if (test) c("", code_test)), langue),
+              if (!is.null(sel)) "selection", if (test) c("test", "predictions_test"))
+  list(calcul = traduire_code(c(donnees, "", ajustement, "", validation, "", statistiques, if (!is.null(sel)) c("", selection), if (test) c("", code_test)), langue),
        sortie = sortie, graphiques = lapply(Filter(Negate(is.null), graphiques), function(g) { g$code <- traduire_code(g$code, langue); g }),
        objets = nom_script(objets, langue))
 }
@@ -1541,6 +1598,9 @@ ecart_regression <- function(pl, m, e, langue) {
     "validation croisée" = list(c(m$vc$Q2, m$vc$RMSEcv, m$vc$echecs), if (!is.null(vc)) c(vc$Q2, vc$RMSEcv, vc[[nom_script("echecs", langue)]])),
     "prédictions de la validation croisée" = list(m$vc$prediction, vc$prediction),
     "valeurs ajustées et résidus" = list(cbind(res$ajuste, res$residus), colonnes(r("observations"), 3:4)),
+    "sélection par l'AIC" = if (!is.null(pl$selection)) list(as.matrix(m$selection_aic$modeles[c("k", "logLik", "AICc", "delta", "poids", "poids_cumule")]),
+                                                             colonnes(r("selection")[[nom_script("modeles", langue)]], 2:7)),
+    "importance des groupes" = if (!is.null(pl$selection)) list(m$selection_aic$importance$importance, unname(r("selection")[[nom_script("importance", langue)]])),
     test = if (!is.null(m$test)) list(m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")], colonnes(r("test"), 2:6)))
   ecarts <- vapply(Filter(Negate(is.null), paires), function(p) ecart_valeurs(p[[1]], p[[2]]), 0)
   if (all(ecarts < 1e-8)) return(NULL)
@@ -1570,7 +1630,8 @@ code_fonctions <- function(b, plans, langue) {
                   modele_opls_noyau(tx, na, general), "", modele_opls(tx, na, b$vides, general), "",
                   modele_opls_predire(tx, na, general), "", modele_vc_opls(tx, na, general)),
     if (!isFALSE(b$echelle)) modele_echelle(tx, !isTRUE(b$regression) || isTRUE(b$nipals)),
-    if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx)),
+    if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx), if (isTRUE(b$car1)) c("", modele_residus_car1(tx))),
+    if (isTRUE(b$selection_aic)) modele_selection_aic(tx),
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
     if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx)),
@@ -1920,12 +1981,80 @@ modele_termes_utiles <- function(tx) c(
   "  termes[setdiff(garde, 1) - 1]",
   "}")
 
+# Les résidus normalisés d'un modèle avec CAR1, dans l'ordre du temps de chaque groupe (ceux de
+# regression_diagnostics.R : residus_normalises_car1).
+modele_residus_car1 <- function(tx) c(
+  commentaire(tx("Les résidus normalisés d'un modèle avec CAR1, dans l'ordre du temps de chaque groupe de l'autocorrélation : à chaque pas, le résidu de Pearson moins sa part attendue du précédent (phi^écart de temps), divisé par la racine de 1 moins le carré de cette part. residuals(m, type = \"normalized\") de nlme ne les donne justes que sur des lignes rangées par groupe, puis par temps.",
+                 "The normalized residuals of a model with CAR1, in each autocorrelation group's time order: at each step, the Pearson residual minus its expected share of the previous one (phi^time gap), divided by the square root of 1 minus the square of that share. nlme's residuals(m, type = \"normalized\") gets them right only on rows sorted by group, then by time.")),
+  "residus_normalises_car1 <- function(e, tps, g, phi) {",
+  "  z <- e",
+  "  for (i in split(seq_along(e), factor(g), drop = TRUE)) {",
+  "    if (length(i) < 2) next",
+  "    i <- i[order(tps[i])]",
+  "    r <- phi^diff(tps[i])",
+  "    z[i[-1]] <- (e[i[-1]] - r * e[i[-length(i)]]) / sqrt(1 - r^2)",
+  "  }",
+  "  z",
+  "}")
+
 modele_aic_corrige <- function(tx) c(
   commentaire(tx("AIC corrigé pour les petits échantillons (Hurvich et Tsai, 1989) ; n : le nombre d'observations.",
                  "AIC corrected for small samples (Hurvich & Tsai, 1989); n: the number of observations.")),
   "aic_corrige <- function(m, n) {",
   "  k <- attr(logLik(m), \"df\")",
   "  AIC(m) + if (n - k - 1 > 0) 2 * k * (k + 1) / (n - k - 1) else NA_real_",
+  "}")
+
+# La sélection des effets fixes par l'AICc (regression.R : selection_aic), écrite pour le script.
+modele_selection_aic <- function(tx) c(
+  commentaire(tx("La sélection des effets fixes par l'AICc (Burnham et Anderson, 2002), comme dans Nuée : chaque combinaison des groupes de termes `groupes_aic` (une liste nommée de termes), du modèle nul au modèle complet, un groupe n'entrant qu'avec ceux que `requis_aic` lui demande (les effets principaux d'un terme croisé) ; ou, avec `toutes = FALSE`, une élimination descendante depuis le modèle complet (à chaque pas, le retrait qui baisse le plus l'AICc, jusqu'à ce qu'aucun ne la baisse). `ajuster(termes)` : l'ajustement en ML avec ces termes ; n : le nombre d'observations. Les modèles sont rangés par AICc, avec leur ΔAICc, leur poids d'Akaike et le cumul des poids ; l'importance d'un groupe est la somme des poids des modèles qui le contiennent.",
+                 "The selection of the fixed effects by AICc (Burnham & Anderson, 2002), as in Nuée: every combination of the groups of terms `aic_groups` (a named list of terms), from the null model to the full model, a group entering only with those `aic_required` asks of it (the main effects of a cross term); or, with `all_subsets = FALSE`, a backward elimination from the full model (at each step, the removal that lowers AICc the most, until none lowers it). `fit(terms)`: the ML fit with these terms; n: the number of observations. The models are ranked by AICc, with their ΔAICc, their Akaike weight and the cumulative weight; a group's importance is the sum of the weights of the models that contain it.")),
+  "selection_aic <- function(groupes_aic, requis_aic, ajuster, n, toutes = TRUE) {",
+  "  criteres_aic <- function(choisis) {",
+  "    a <- ajuster(unlist(groupes_aic[choisis], use.names = FALSE))",
+  "    if (is.null(a)) return(c(k = NA_real_, logLik = NA_real_, AICc = NA_real_))",
+  "    ll <- logLik(a)",
+  "    c(k = attr(ll, \"df\"), logLik = as.numeric(ll), AICc = aic_corrige(a, n))",
+  "  }",
+  "  permise <- function(choisis) all(unlist(requis_aic[choisis]) %in% choisis)",
+  "  if (toutes) {",
+  "    combinaisons <- lapply(0:length(groupes_aic), function(k) combn(names(groupes_aic), k, simplify = FALSE))",
+  "    combinaisons <- Filter(permise, unlist(combinaisons, recursive = FALSE))",
+  "    valeurs_aic <- t(vapply(combinaisons, criteres_aic, c(k = 0, logLik = 0, AICc = 0)))",
+  "    etapes_aic <- rep(NA_integer_, length(combinaisons))",
+  "  } else {",
+  "    courant <- names(groupes_aic)",
+  "    combinaisons <- list(courant)",
+  "    valeurs_aic <- t(criteres_aic(courant))",
+  "    etapes_aic <- 0L",
+  "    aicc_courant <- valeurs_aic[1, \"AICc\"]",
+  "    repeat {",
+  "      retirables <- setdiff(courant, unlist(requis_aic[courant]))",
+  "      if (!length(retirables)) break",
+  "      essais <- lapply(retirables, function(g) setdiff(courant, g))",
+  "      v <- t(vapply(essais, criteres_aic, c(k = 0, logLik = 0, AICc = 0)))",
+  "      combinaisons <- c(combinaisons, essais)",
+  "      valeurs_aic <- rbind(valeurs_aic, v)",
+  "      etapes_aic <- c(etapes_aic, rep(max(etapes_aic) + 1L, length(essais)))",
+  "      j <- which.min(v[, \"AICc\"])",
+  "      if (!length(j) || !(is.na(aicc_courant) || v[j, \"AICc\"] < aicc_courant)) break",
+  "      courant <- essais[[j]]",
+  "      aicc_courant <- v[j, \"AICc\"]",
+  "    }",
+  "  }",
+  "  ordre <- order(valeurs_aic[, \"AICc\"], valeurs_aic[, \"k\"], na.last = TRUE)",
+  "  valeurs_aic <- valeurs_aic[ordre, , drop = FALSE]",
+  "  combinaisons <- combinaisons[ordre]",
+  "  ok <- !is.na(valeurs_aic[, \"AICc\"])",
+  "  delta <- valeurs_aic[, \"AICc\"] - min(valeurs_aic[, \"AICc\"], na.rm = TRUE)",
+  "  poids <- exp(-delta / 2) / sum(exp(-delta[ok] / 2))",
+  "  libelle_aic <- function(g) if (length(g)) paste(g, collapse = \" + \") else \"1\"",
+  "  modeles_aic <- data.frame(combinaison = vapply(combinaisons, libelle_aic, \"\"), valeurs_aic, delta = delta,",
+  "                            poids = poids, poids_cumule = ifelse(ok, cumsum(ifelse(ok, poids, 0)), NA_real_),",
+  "                            etape = etapes_aic[ordre], row.names = NULL)",
+  "  contient_aic <- function(g) vapply(combinaisons, function(x) g %in% x, TRUE)",
+  "  importance_aic <- vapply(names(groupes_aic), function(g) sum(poids[ok & contient_aic(g)]), 0)",
+  "  list(modeles = modeles_aic, importance = importance_aic)",
   "}")
 
 modele_validation_regression <- function(tx) c(
@@ -2158,6 +2287,7 @@ modele_ligne_base <- function(tx) c(
 # en anglais, ses noms (pas ses textes ni ses commentaires, écrits dans les deux langues) sont
 # remplacés d'après cette table. Les noms venus des données sont toujours dans des chaînes.
 NOMS_SCRIPT_EN <- c(
+  residus_normalises_car1 = "car1_normalized_residuals",
   donnees = "data", lignes = "rows", lignes_test = "test_rows", modele = "in_model", y_observe = "y_observed",
   centre_x = "centre_x", poids_x = "weight_x", ecart_x = "sd_x", centre_y = "centre_y", poids_y = "weight_y", ecart_y = "sd_y",
   centre_c = "centre_c", poids_c = "weight_c", ecart_c = "sd_c", centre_cy = "centre_cy", poids_cy = "weight_cy", ecart_cy = "sd_cy",
@@ -2199,7 +2329,12 @@ NOMS_SCRIPT_EN <- c(
   x_pente = "x_slope", plages = "ranges", etat = "state", fins = "ends", debuts = "starts", nettes = "clear", sens = "direction",
   sens_pente = "slope_direction", sens_effet = "effect_direction", x_debut = "x_start", x_fin = "x_end", be = "effect_band", bp = "slope_band", ecart_types = "std_devs", parametre_loi = "distribution_parameter",
   observe = "observed", ajuste = "fitted", residu = "residual", ajuste_fixe = "fitted_fixed", predit = "predicted",
-  courbe = "curve", abscisse = "abscissa", effet = "effect", droite = "rhs")
+  courbe = "curve", abscisse = "abscissa", effet = "effect", droite = "rhs",
+  selection_aic = "aic_selection", groupes_aic = "aic_groups", requis_aic = "aic_required", criteres_aic = "aic_criteria", choisis = "chosen",
+  permise = "allowed", combinaisons = "combinations", combinaison = "combination", valeurs_aic = "aic_values", etapes_aic = "aic_steps",
+  courant = "current", retirables = "removable", essais = "trials", aicc_courant = "current_aicc", modeles_aic = "aic_models",
+  importance_aic = "aic_importance", poids_cumule = "cumulative_weight", etape = "step", toutes = "all_subsets", termes_aic = "aic_terms",
+  modeles = "models", ajuster_ml = "fit_ml", libelle_aic = "aic_label", contient_aic = "aic_contains", hors_selection = "outside_selection")
 
 nom_script <- function(x, langue) if (identical(langue, "en")) ifelse(x %in% names(NOMS_SCRIPT_EN), NOMS_SCRIPT_EN[x], x) else x
 
@@ -2410,6 +2545,8 @@ lignes_rapport <- function(format, pl, langue, methodes, fonctions, code_donnees
       # (« courbes » est le bloc de leurs graphiques : knitr refuse deux blocs du même nom)
       if (length(pl$lisses)) bloc("courbes-edf", kable("courbes", 3)),
       if (length(pl$lisses)) bloc("plages-seuils", kable("plages_seuils", 3)),
+      if (!is.null(pl$selection)) bloc("selection-aic", kable("head(selection$modeles, 20)", 3)),
+      if (!is.null(pl$selection)) bloc("importance-aic", kable("selection$importance", 3)),
       graphiques,
       if (test) bloc("test", kable("test", 3)))
   } else {

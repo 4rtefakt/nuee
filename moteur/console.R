@@ -38,6 +38,7 @@ appel_ouverture <- function(chemin, table = NULL) {
 # Les lignes R d'une action de l'interface (NULL pour celles qui ne font qu'afficher).
 journaliser <- function(nom, q, r) {
   pm <- function(id) etat$modeles[[id]]$projet
+  variable_r <- function(x) if (is.numeric(x)) as.character(x) else code_r(x)  # (un numéro de variable, ou "id:k")
   definition_modele <- function(id, commentaire) {
     e <- etat$modeles[[id]]
     c(commentaire, code_definition(projet(e$projet), e$definition, e$projet), sprintf("%s <- ajuster(%s, d)", id, e$projet))
@@ -52,7 +53,9 @@ journaliser <- function(nom, q, r) {
     fermer_projet = sprintf("rm(%s)  # projet fermé", q$projet),
     ajuster = definition_modele(r$id, sprintf("# modèle %s (%s) du projet %s", r$nom, r$type, projet(r$projet)$nom)),
     reajuster = definition_modele(r$id, sprintf("# modèle %s, d'après %s%s", r$nom, q$modele,
-      if (length(q$exclues)) sprintf(", sans %d observation(s)", length(q$exclues)) else if (length(q$garder)) ", variables VIP" else "")),
+      if (length(q$exclues)) sprintf(", sans %d observation(s)", length(q$exclues)) else if (length(q$garder)) ", variables VIP"
+      else if (!is.null(q$groupes_aic)) ", choisi par la sélection par AIC" else "")),
+    selection_aic = sprintf("selection_aic(%s, definition(%s))", q$modele, code_r(q$modele)),
     predire = sprintf("predire(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele),
                       if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),
     predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),
@@ -68,6 +71,8 @@ journaliser <- function(nom, q, r) {
                               if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q$n)),
     modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
     statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
+    series = sprintf("series_variable(%s)", paste(c(q$projet, variable_r(q$variable), variable_r(q$temps),
+      if (length(q$lignes)) paste("lignes =", variable_r(q$lignes)), if (length(q$panneaux)) paste("panneaux =", variable_r(q$panneaux))), collapse = ", ")),
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
     script_r = if (length(q$modeles) > 1) {
@@ -105,6 +110,7 @@ lier_objets <- function() {
       v$id <- k
       v$modifie <- TRUE
       etat$projets[[k]] <- v
+      reviser(k)
       etat$console_modifies <- unique(c(etat$console_modifies, k))
     }, console)
   })

@@ -1,7 +1,9 @@
 # Vérifie les régressions (moteur/R/regression.R) contre les fonctions de R elles-mêmes
 # (lm, nlme::lme) : coefficients, AIC en ML, R², validation croisée par groupes, jeu de test,
-# apport des blocs, autocorrélation dans le temps ; et que les définitions mal formées (un
-# fichier reçu) sont refusées, qu'une définition enregistrée se relit.
+# apport des blocs, autocorrélation dans le temps, sélection par l'AIC (chaque combinaison contre
+# lm, nlme::lme avec ou sans CAR1, mgcv::gam et mgcv::gamm en ML ; l'élimination descendante ; le
+# modèle choisi) ; et que les définitions mal formées (un fichier reçu) sont refusées, qu'une
+# définition enregistrée se relit.
 #   Rscript moteur/tests/verifier_regression.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -343,6 +345,334 @@ enregistrer_projet(pa, fa_proj)
 qa <- lire_projet(fa_proj)
 ma2 <- ajuster(qa, qa$models[[1]])
 verifier("enregistré puis relu : le même modèle (autocorrélation dans chaque secteur, k = 5)", proche(ma2$resultat$AIC, ma$resultat$AIC, 1e-8) && ma2$k[[1]] == 5)
+# (les mêmes lignes dans l'ordre des années : nlme ne donne des résidus normalisés justes que sur
+# des lignes rangées par groupe, puis par temps ; ceux de Nuée ne dépendent pas de l'ordre)
+oa <- order(ta$annee, ta$site, ta$secteur)
+pa_an <- projet_depuis_tableau(ta[oa, c("nom", "site", "secteur", "annee", "x", "xbar", "y")], "seuils par année")
+ua_an <- function(...) numeros(pa_an, c(...))
+car1_an <- list(type = "CAR1", temps = list(by = "variable", variable = ua_an("annee")), dans = list(by = "variable", variable = ua_an("secteur")))
+site_an <- list(list(by = "variable", variable = ua_an("site")))
+ma_an <- ajuster(pa_an, definir_modele(pa_an, "GAM", x = ua_an("x", "xbar"), y = ua_an("y"), echelle = "none", famille = "gaussienne", lisses = ua_an("x"),
+                                       k_courbes = stats::setNames(list(5), ua_an("x")), aleatoires = site_an, correlation = car1_an))
+ml_an <- ajuster(pa_an, definir_modele(pa_an, "LMM", x = ua_an("x", "xbar"), y = ua_an("y"), echelle = "none", aleatoires = site_an, correlation = car1_an))
+ml_gr <- ajuster(pa, definir_modele(pa, "LMM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", aleatoires = list(par_variable("site")), correlation = car1_a))
+par_nom <- function(pr, m) stats::setNames(m$resultat$residus, unname(unlist(pr$noms_obs[as.character(m$observations)])))
+rg <- par_nom(pa, ma); ra <- par_nom(pa_an, ma_an)
+lg <- par_nom(pa, ml_gr); la <- par_nom(pa_an, ml_an)
+nlme_an <- stats::setNames(as.vector(stats::residuals(ml_an$ajustement, type = "normalized")), names(la))
+verifier(sprintf("CAR1, lignes dans l'ordre des années : les mêmes résidus normalisés (GAMM et modèle mixte ; écart-type %.2f), là où ceux de nlme s'écartent jusqu'à %.1f",
+                 stats::sd(la), max(abs(nlme_an[names(lg)] - lg))),
+         proche(ra[names(rg)], rg, 1e-5) && proche(la[names(lg)], lg, 1e-5) && max(abs(nlme_an[names(lg)] - lg)) > 0.1 &&
+           proche(lg, as.vector(stats::residuals(ml_gr$ajustement, type = "normalized")), 1e-8))
+
+cat("Autocorrélation des résidus (regression_diagnostics.R)\n")
+# 8 sites suivis 10 ans (2005 manque), des résidus autocorrélés dans le temps ; des lignes rangées
+# par site puis par année, l'ordre où nlme::ACF lit juste
+set.seed(12)
+tac <- data.frame(nom = sprintf("R%03d", 1:80), site = rep(sprintf("S%d", 1:8), each = 10), annee = rep(c(2001:2004, 2006:2011), 8))
+tac$x <- rnorm(80)
+tac$z <- rnorm(80)
+tac$y <- 1 + 0.5 * tac$x + 0.3 * tac$z + rep(rnorm(8), each = 10) + as.vector(stats::filter(rnorm(80), 0.6, "recursive"))
+tac$compte <- stats::rpois(80, exp(0.5 + 0.3 * tac$x))
+pac <- projet_depuis_tableau(tac, "acf")
+uac <- function(...) numeros(pac, c(...))
+annee_ac <- list(by = "variable", variable = uac("annee"))
+site_ac <- list(by = "variable", variable = uac("site"))
+car1_ac <- list(type = "CAR1", temps = annee_ac)
+regr_ac <- function(type, x, ...) ajuster(pac, definir_modele(pac, type, x = if (length(x)) uac(x), y = uac("y"), echelle = "none", ...))
+# (l'autocorrélation refaite autrement : chaque décalage sur les paires de chaque groupe, rangé par temps)
+acf_main <- function(e, temps, groupe, L) {
+  r <- vapply(0:L, function(k) {
+    s <- n <- 0
+    for (g in unique(groupe)) {
+      x <- e[groupe == g][order(temps[groupe == g])]
+      if (length(x) > k) { s <- s + sum(x[seq_len(length(x) - k)] * x[(k + 1):length(x)]); n <- n + length(x) - k }
+    }
+    s / n
+  }, 0)
+  r / r[1]
+}
+mc_ac <- regr_ac("LMM", c("x", "z"), aleatoires = list(site_ac), correlation = car1_ac)
+rc_ac <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ annee | site), data = tac, method = "REML", control = ctrl)
+ac <- autocorrelation_residus(pac, mc_ac)
+Lac <- max(ac$decalage)
+verifier(sprintf("CAR1 : résidus et résidus normalisés = nlme::ACF() (décalages 0 à %d, les paires de chaque décalage, la bande ±1,96/√n)", Lac),
+         Lac == 9 && proche(ac$series[[1]]$acf, nlme::ACF(rc_ac, maxLag = Lac, resType = "pearson")$ACF) &&
+           proche(ac$series[[2]]$acf, nlme::ACF(rc_ac, maxLag = Lac, resType = "normalized")$ACF, 1e-5) &&
+           identical(as.numeric(ac$paires), as.numeric(attr(nlme::ACF(rc_ac, maxLag = Lac), "n.used"))) && proche(ac$bande, qnorm(0.975) / sqrt(ac$paires)) &&
+           identical(c(ac$temps, ac$groupe), c("annee", "site")) && ac$groupes == 8 && isTRUE(ac$car1))
+verifier("résidus normalisés de CAR1 = residuals(type = \"normalized\") de nlme, sur ces lignes rangées",
+         proche(residus_normalises_car1(residuals(rc_ac, type = "pearson"), tac$annee, tac$site, ac$phi), as.vector(residuals(rc_ac, type = "normalized")), 1e-5))
+o_ac <- order(tac$annee, tac$site)
+pac2 <- projet_depuis_tableau(tac[o_ac, ], "acf")
+mc2_ac <- ajuster(pac2, definir_modele(pac2, "LMM", x = numeros(pac2, c("x", "z")), y = numeros(pac2, "y"), echelle = "none",
+                                       aleatoires = list(list(by = "variable", variable = numeros(pac2, "site"))),
+                                       correlation = list(type = "CAR1", temps = list(by = "variable", variable = numeros(pac2, "annee")))))
+ac2 <- autocorrelation_residus(pac2, mc2_ac)
+rc2_ac <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ annee | site), data = tac[o_ac, ], method = "REML", control = ctrl)
+verifier("lignes rangées par année puis par site : la même autocorrélation (celle des résidus normalisés de nlme est alors fausse)",
+         proche(ac2$series[[1]]$acf, ac$series[[1]]$acf, 1e-5) && proche(ac2$series[[2]]$acf, ac$series[[2]]$acf, 1e-5) &&
+           !proche(nlme::ACF(rc2_ac, maxLag = Lac, resType = "normalized")$ACF, ac$series[[2]]$acf, 1e-2))
+m0_ac <- regr_ac("LMM", c("x", "z"), aleatoires = list(site_ac))
+r0_ac <- nlme::lme(y ~ x + z, random = ~ 1 | site, data = tac, method = "REML", control = ctrl)
+a0 <- autocorrelation_residus(pac, m0_ac, temps = annee_ac, groupe = list(by = "effets"))
+verifier(sprintf("sans CAR1, dans les groupes de l'effet aléatoire : = nlme::ACF() ; au décalage 1, %.2f, au-delà de la bande (%.2f)", a0$series[[1]]$acf[2], a0$bande[2]),
+         length(a0$series) == 1 && proche(a0$series[[1]]$acf, nlme::ACF(r0_ac, maxLag = 9, resType = "pearson")$ACF) && a0$series[[1]]$acf[2] > a0$bande[2] &&
+           identical(a0$groupe, "site") && !isTRUE(a0$car1))
+ml_ac <- regr_ac("LM", c("x", "z"))
+al <- autocorrelation_residus(pac, ml_ac, temps = annee_ac, groupe = site_ac)
+verifier("régression linéaire, les groupes d'une variable : = nlme::ACF() de gls(), form = ~ 1 | site",
+         proche(al$series[[1]]$acf, nlme::ACF(nlme::gls(y ~ x + z, data = tac), maxLag = 9, form = ~ 1 | site)$ACF, 1e-8))
+mg_ac <- regr_ac("GLM", c("x", "z"), famille = "gaussienne", aleatoires = list(site_ac))
+verifier("mgcv (GLMM normal, le site aléatoire en REML) : = nlme::ACF() du même modèle ajusté par nlme",
+         proche(autocorrelation_residus(pac, mg_ac, temps = annee_ac, groupe = list(by = "effets"))$series[[1]]$acf, nlme::ACF(r0_ac, maxLag = 9)$ACF, 1e-5))
+mp_ac <- ajuster(pac, definir_modele(pac, "GLM", x = uac("x"), y = uac("compte"), echelle = "none", famille = "poisson"))
+gp_ac <- glm(compte ~ x, family = poisson, data = tac)
+ad <- autocorrelation_residus(pac, mp_ac, temps = annee_ac, groupe = site_ac, type = "deviance")
+verifier("GLM de Poisson : résidus de déviance ou de Pearson de glm(), l'autocorrélation refaite à la main",
+         proche(ad$series[[1]]$acf, acf_main(residuals(gp_ac, type = "deviance"), tac$annee, tac$site, 9)) && identical(ad$series[[1]]$residus, "deviance") &&
+           proche(autocorrelation_residus(pac, mp_ac, temps = annee_ac, groupe = site_ac)$series[[1]]$acf, acf_main(residuals(gp_ac, type = "pearson"), tac$annee, tac$site, 9)))
+mgm_ac <- regr_ac("GAM", c("x", "z"), famille = "gaussienne", lisses = uac("x"), aleatoires = list(site_ac), correlation = car1_ac)
+agm <- autocorrelation_residus(pac, mgm_ac)
+verifier("mgcv::gamm avec CAR1 : sa partie $lme, résidus et résidus normalisés = nlme::ACF()",
+         isTRUE(mgm_ac$gamm) && proche(agm$series[[1]]$acf, nlme::ACF(mgm_ac$ajustement$lme, maxLag = 9, resType = "pearson")$ACF) &&
+           proche(agm$series[[2]]$acf, nlme::ACF(mgm_ac$ajustement$lme, maxLag = 9, resType = "normalized")$ACF, 1e-5))
+asect <- autocorrelation_residus(pa, ma)
+secteurs <- paste(ta$site, ta$secteur)
+verifier("CAR1 dans chaque secteur de chaque site (mgcv::gamm) : 21 groupes, les résidus normalisés de nlme (lignes rangées), l'autocorrélation refaite à la main",
+         asect$groupes == 21 && identical(asect$groupe, "secteur") && max(asect$decalage) == 9 &&
+           proche(asect$series[[2]]$acf, acf_main(as.vector(residuals(ref_reml$lme, type = "normalized")), ta$annee, secteurs, 9), 1e-4))
+mla <- ajuster(pa, definir_modele(pa, "LM", x = ua("x", "xbar"), y = ua("y"), echelle = "none"))
+ala <- autocorrelation_residus(pa, mla, temps = par_variable("annee"), groupe = list(par_variable("site"), par_variable("secteur")))
+verifier("des groupes emboîtés, le secteur dans son site (ses noms se répètent d'un site à l'autre) : 21 séries ; le secteur seul, refusé",
+         ala$groupes == 21 && identical(ala$groupe, "site / secteur") && proche(ala$series[[1]]$acf, acf_main(residuals(lm(y ~ x + xbar, data = ta)), ta$annee, secteurs, 9)) &&
+           grepl("même temps", refus(autocorrelation_residus(pa, mla, temps = par_variable("annee"), groupe = par_variable("secteur")))))
+# (un modèle mixte au site aléatoire, sans CAR1 : ses groupes, puis le secteur dans chacun)
+mle_a <- ajuster(pa, definir_modele(pa, "LMM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", aleatoires = list(par_variable("site"))))
+r_lme_a <- nlme::lme(y ~ x + xbar, random = ~ 1 | site, data = ta, method = "REML", control = ctrl)
+aef <- autocorrelation_residus(pa, mle_a, temps = par_variable("annee"), groupe = list(list(by = "effets"), par_variable("secteur")))
+verifier("les groupes des effets aléatoires, puis un niveau plus fin (le secteur dans son site) : 21 séries, l'autocorrélation refaite à la main ; les effets seuls, refusés",
+         aef$groupes == 21 && identical(aef$groupe, "site / secteur") &&
+           proche(aef$series[[1]]$acf, acf_main(as.vector(residuals(r_lme_a, type = "pearson")), ta$annee, secteurs, 9), 1e-5) &&
+           grepl("même temps", refus(autocorrelation_residus(pa, mle_a, temps = par_variable("annee"), groupe = list(by = "effets")))))
+verifier("plusieurs observations au même temps dans un groupe, ou pas de temps : refusé, en disant pourquoi",
+         grepl("même temps", refus(autocorrelation_residus(pac, ml_ac, temps = annee_ac))) && grepl("temps", refus(autocorrelation_residus(pac, ml_ac))))
+
+cat("Tests du rapport de vraisemblance (regression_diagnostics.R)\n")
+mx_ac <- regr_ac("LMM", "x", aleatoires = list(site_ac))
+mn_ac <- regr_ac("LMM", NULL, aleatoires = list(site_ac))
+mz_ac <- regr_ac("LMM", "z", aleatoires = list(site_ac))
+rv <- rapports_vraisemblance(list(xz = m0_ac, x = mx_ac, nul = mn_ac, z = mz_ac, lm = ml_ac, car1 = mc_ac, glmm = mg_ac))
+paire_rv <- function(r, g, p) which(r$paires$grand == g & r$paires$petit == p)
+# (la formule écrite dans l'appel du modèle : anova() de nlme 3.1-155, celui d'Ubuntu 22.04, lit
+# la réponse de chaque modèle dans son appel, où `f` ou `...` ne diraient rien)
+ml_lme <- function(f, correlation = NULL) eval(bquote(nlme::lme(.(f), random = ~ 1 | site, data = tac, method = "ML", control = ctrl, correlation = .(correlation))))
+an <- anova(ml_lme(y ~ x), ml_lme(y ~ x + z))
+i_rv <- paire_rv(rv, "xz", "x")
+verifier(sprintf("modèles mixtes emboîtés (nlme, en ML) : χ² et p = anova(m1, m2) de nlme (χ² = %.3f, p = %.3f)", an$L.Ratio[2], an$`p-value`[2]),
+         length(i_rv) == 1 && proche(rv$paires$khi2[i_rv], an$L.Ratio[2]) && proche(rv$paires$p[i_rv], an$`p-value`[2]) && rv$paires$ddl[i_rv] == 1)
+verifier("les paires : x + z avec x, z et le modèle nul, x et z avec le modèle nul ; ni x avec z, ni la régression sans effet aléatoire, le modèle avec CAR1 ou celui de mgcv",
+         setequal(paste(rv$paires$grand, rv$paires$petit), c("xz x", "xz nul", "xz z", "x nul", "z nul")) && rv$total == 5 && !any(rv$paires$approche))
+mcx_ac <- regr_ac("LMM", "x", aleatoires = list(site_ac), correlation = car1_ac)
+rv1 <- rapports_vraisemblance(list(grand = mc_ac, petit = mcx_ac))
+an1 <- anova(ml_lme(y ~ x, correlation = nlme::corCAR1(form = ~ annee | site)), ml_lme(y ~ x + z, correlation = nlme::corCAR1(form = ~ annee | site)))
+verifier("la même autocorrélation CAR1 dans les deux : = anova() de nlme", rv1$total == 1 && identical(rv1$paires$grand, "grand") &&
+           proche(rv1$paires$khi2, an1$L.Ratio[2], 1e-5) && proche(rv1$paires$p, an1$`p-value`[2], 1e-5))
+l1_ac <- lm(y ~ x, data = tac)
+l2_ac <- lm(y ~ x + z, data = tac)
+khi2_lm <- 2 * (as.numeric(logLik(l2_ac)) - as.numeric(logLik(l1_ac)))
+rl <- rapports_vraisemblance(list(petit = regr_ac("LM", "x"), grand = ml_ac))
+# (anova(test = "Chisq") de deux lm() rapporte l'écart des sommes de carrés à σ² du grand modèle : un autre test)
+verifier("régressions linéaires : χ² = 2 Δ logLik de lm(), sur 1 ddl", rl$total == 1 && identical(rl$paires$grand, "grand") &&
+           proche(rl$paires$khi2, khi2_lm) && proche(rl$paires$p, pchisq(khi2_lm, 1, lower.tail = FALSE)) && rl$paires$ddl == 1)
+mg2b <- modele_g("GLM", "compte", "x2", famille = "poisson", decalage = ug("effort"))
+rg <- rapports_vraisemblance(list(petit = mg2b, grand = mg2, nb = mg3, sans_effort = mg1))
+an_glm <- anova(glm(compte ~ x2, family = poisson, data = tg, offset = log(effort)), glm(compte ~ x1 + x2, family = poisson, data = tg, offset = log(effort)), test = "Chisq")
+verifier("GLM de Poisson avec l'effort : χ² et p = anova(test = \"Chisq\") de glm() ; ni la binomiale négative (une autre loi), ni sans l'effort",
+         rg$total == 1 && identical(rg$paires$grand, "grand") && proche(rg$paires$khi2, an_glm$Deviance[2]) && proche(rg$paires$p, an_glm$`Pr(>Chi)`[2]))
+mga <- modele_g("GAM", "compte", c("x1", "x2"), famille = "poisson", lisses = ug("x1"), decalage = ug("effort"))
+rga <- rapports_vraisemblance(list(gam = mga, glm = mg2, petit = mg2b))
+verifier("une courbe : la droite de x1 est dans sa courbe, et le test est approché (des edf)",
+         rga$total == 3 && all(rga$paires$approche[rga$paires$grand == "gam"]) && !rga$paires$approche[paire_rv(rga, "glm", "petit")] &&
+           length(paire_rv(rga, "gam", "glm")) == 1)
+rcap <- rapports_vraisemblance(list(xz = m0_ac, x = mx_ac, nul = mn_ac, z = mz_ac), max_paires = 2)
+verifier("au plus max_paires paires, et combien il y en a ; un modèle et lui-même ne font pas une paire",
+         nrow(rcap$paires) == 2 && rcap$total == 5 && rapports_vraisemblance(list(a = mx_ac, b = mx_ac))$total == 0)
+
+cat("Sélection par AIC\n")
+aicc_direct <- function(f, n) { k <- attr(stats::logLik(f), "df"); stats::AIC(f) + 2 * k * (k + 1) / (n - k - 1) }
+contenus_sel <- function(s) lapply(seq_len(nrow(s$modeles)), function(i) as.character(s$groupes)[vapply(s$contient, `[`, 0L, i) == 1L])
+cle_sel <- function(g) paste(sort(g), collapse = " + ")
+# une régression linéaire : cinq variables (une qualitative) et un terme croisé, sur les observations complètes du modèle
+dsel <- definir_modele(p, "LM", x = u("sucre", "fermete", "acidite", "polyphenols", "variete"), y = u("note_gout"), echelle = "none",
+                       croises = list(u("sucre", "fermete")))
+msel <- ajuster(p, dsel)
+ssel <- selection_aic(msel, dsel)
+csel <- stats::complete.cases(df[c("note", "sucre", "fermete", "acidite", "polyphenols", "variete")])
+morceaux <- c(sucre = "sucre", fermete = "fermete", acidite = "acidite", polyphenols = "polyphenols", variete = "variete", "sucre*fermete" = "I(sucre * fermete)")
+permises <- Filter(function(g) !"sucre*fermete" %in% g || all(c("sucre", "fermete") %in% g),
+                   lapply(0:63, function(b) names(morceaux)[bitwAnd(b, 2^(0:5)) > 0]))
+gsel <- contenus_sel(ssel)
+aicc_lm <- vapply(gsel, function(g) aicc_direct(lm(reformulate(if (length(g)) morceaux[g] else "1", "note"), data = df[csel, ]), sum(csel)), 0)
+verifier(sprintf("lm : les %d combinaisons permises des 6 groupes (le terme croisé avec ses deux effets principaux), chacune = lm() et son AICc", length(permises)),
+         ssel$methode == "toutes" && nrow(ssel$modeles) == length(permises) && setequal(vapply(gsel, cle_sel, ""), vapply(permises, cle_sel, "")) &&
+           proche(ssel$modeles$AICc, aicc_lm, 1e-8) && ssel$N == sum(csel) && sum(csel) < length(obs) && !is.unsorted(ssel$modeles$AICc))
+dl_aic <- aicc_lm - min(aicc_lm)
+w_aic <- exp(-dl_aic / 2) / sum(exp(-dl_aic / 2))
+imp_aic <- vapply(names(morceaux), function(g) sum(w_aic[vapply(gsel, function(x) g %in% x, TRUE)]), 0)
+verifier("ΔAICc, poids d'Akaike et leur cumul, l'importance de chaque groupe (la somme des poids des modèles qui le contiennent), recalculés",
+         proche(ssel$modeles$delta, dl_aic) && proche(ssel$modeles$poids, w_aic) && proche(ssel$modeles$poids_cumule, cumsum(w_aic)) &&
+           proche(ssel$importance$importance, imp_aic[ssel$importance$groupe]) && ssel$meilleur == which.min(aicc_lm))
+set.seed(8)
+tp <- data.frame(nom = sprintf("P%02d", 1:50), x1 = rnorm(50), x2 = rnorm(50), x3 = rnorm(50))
+tp$y <- 1 + 0.6 * tp$x1 + 0.2 * tp$x2 + rnorm(50)
+pp <- projet_depuis_tableau(tp, "parcimonie")
+dpar <- definir_modele(pp, "LM", x = numeros(pp, c("x1", "x2", "x3")), y = numeros(pp, "y"), echelle = "none")
+spar <- selection_aic(ajuster(pp, dpar), dpar)
+gpar <- contenus_sel(spar)
+proches <- which(spar$modeles$delta <= 2)
+verifier(sprintf("le plus parcimonieux à ΔAICc ≤ 2 : le moins de paramètres (%s, ΔAICc %.2f), quand le meilleur en a plus (%s)",
+                 cle_sel(gpar[[spar$parcimonieux]]), spar$modeles$delta[spar$parcimonieux], cle_sel(gpar[[1]])),
+         spar$parcimonieux == proches[order(spar$modeles$k[proches], spar$modeles$delta[proches])][1] && spar$parcimonieux != 1 &&
+           identical(gpar[[spar$parcimonieux]], "x1") && identical(gpar[[1]], c("x1", "x2")))
+dsel3 <- definir_modele(p, "LMM", x = u("sucre", "fermete", "acidite"), y = u("note_gout"), echelle = "none", aleatoires = list(list(by = "variable", variable = u("verger"))))
+ssel3 <- selection_aic(ajuster(p, dsel3), dsel3)
+c3 <- stats::complete.cases(df[c("note", "sucre", "fermete", "acidite")])
+aicc_lme <- vapply(contenus_sel(ssel3), function(g) aicc_direct(nlme::lme(reformulate(if (length(g)) g else "1", "note"), random = ~ 1 | verger, data = df[c3, ],
+                                                                          method = "ML", control = ctrl), sum(c3)), 0)
+verifier("modèle mixte : les 8 combinaisons = nlme::lme(method = \"ML\"), l'effet aléatoire gardé", nrow(ssel3$modeles) == 8 && proche(ssel3$modeles$AICc, aicc_lme, 1e-6))
+msel_l <- ajuster(pa, dl)
+ssel_l <- selection_aic(msel_l, dl)
+aicc_car1 <- vapply(contenus_sel(ssel_l), function(g) aicc_direct(nlme::lme(reformulate(if (length(g)) g else "1", "y"), random = ~ 1 | site_f, correlation = cor_a,
+                                                                            data = ta, method = "ML"), nrow(ta)), 0)
+verifier("avec l'autocorrélation CAR1 dans chaque secteur : = nlme::lme(method = \"ML\") avec la même corCAR1", nrow(ssel_l$modeles) == 4 && proche(ssel_l$modeles$AICc, aicc_car1, 1e-6))
+sma <- selection_aic(ma, da)
+aicc_gamm <- vapply(contenus_sel(sma), function(g) {
+  droite <- c(if ("x" %in% g) "s(x, k = 5)", if ("xbar" %in% g) "xbar")
+  r <- mgcv::gamm(stats::as.formula(paste("y ~", if (length(droite)) paste(droite, collapse = " + ") else "1"), env = new.env(parent = asNamespace("mgcv"))),
+                  random = list(site_f = ~1), correlation = cor_a, data = ta, method = "ML")
+  aicc_direct(r$lme, nrow(ta))
+}, 0)
+verifier("mgcv::gamm avec CAR1 : chaque combinaison = mgcv::gamm(method = \"ML\"), la courbe gardant sa dimension (k = 5)", proche(sma$modeles$AICc, aicc_gamm, 1e-6))
+dsel6 <- definir_modele(pg, "GAM", x = ug("x1", "x2"), y = ug("compte"), echelle = "none", famille = "binomiale_negative", lisses = ug("x1"), decalage = ug("effort"),
+                        aleatoires = list(list(by = "variable", variable = ug("site"))))
+ssel6 <- selection_aic(mg6, dsel6)
+tgf <- transform(tg, site = factor(site))
+aicc_gam <- vapply(contenus_sel(ssel6), function(g) {
+  droite <- c(if ("x2" %in% g) "x2", if ("x1" %in% g) "s(x1, k = 10)", "s(site, bs = \"re\")")
+  aicc_direct(mgcv::gam(stats::as.formula(paste("compte ~", paste(droite, collapse = " + ")), env = env), data = tgf, family = mgcv::nb(), method = "ML",
+                        offset = log(effort)), nrow(tg))
+}, 0)
+verifier("GAMM binomial négatif (courbe, site aléatoire, effort) : chaque combinaison = mgcv::gam(method = \"ML\")", nrow(ssel6$modeles) == 4 && proche(ssel6$modeles$AICc, aicc_gam, 1e-5))
+# au-delà de 8 groupes : l'élimination descendante, refaite ici avec lm() (un effet principal reste tant que son terme croisé est là)
+set.seed(31)
+tb <- data.frame(nom = sprintf("B%02d", 1:80), matrix(rnorm(800), 80, 10, dimnames = list(NULL, paste0("x", 1:10))))
+tb$y <- 1 + 0.8 * tb$x1 - 0.5 * tb$x2 + 0.3 * tb$x3 + rnorm(80)
+pb <- projet_depuis_tableau(tb, "descendante")
+db <- definir_modele(pb, "LM", x = numeros(pb, paste0("x", 1:10)), y = numeros(pb, "y"), echelle = "none", croises = list(numeros(pb, c("x1", "x2"))))
+sb <- selection_aic(ajuster(pb, db), db)
+morceaux_b <- c(stats::setNames(paste0("x", 1:10), paste0("x", 1:10)), "x1*x2" = "I(x1 * x2)")
+aicc_b <- function(v) aicc_direct(lm(reformulate(if (length(v)) morceaux_b[v] else "1", "y"), data = tb), 80)
+courant <- names(morceaux_b)
+a_b <- aicc_b(courant)
+retires_b <- character(0)
+essayes_b <- 1
+repeat {
+  retirables_b <- setdiff(courant, if ("x1*x2" %in% courant) c("x1", "x2"))
+  if (!length(retirables_b)) break
+  essais_b <- vapply(retirables_b, function(g) aicc_b(setdiff(courant, g)), 0)
+  essayes_b <- essayes_b + length(essais_b)
+  if (min(essais_b) >= a_b) break
+  retires_b <- c(retires_b, names(which.min(essais_b)))
+  courant <- setdiff(courant, names(which.min(essais_b)))
+  a_b <- min(essais_b)
+}
+gb <- contenus_sel(sb)
+verifier(sprintf("11 groupes (plus de 256 combinaisons) : élimination descendante = celle faite avec lm() (retirés : %s ; %d modèles essayés)", paste(retires_b, collapse = ", "), essayes_b),
+         sb$methode == "descendante" && identical(sb$chemin$retire[-1], retires_b) && setequal(gb[[1]], courant) && proche(sb$modeles$AICc[1], a_b, 1e-8) &&
+           nrow(sb$modeles) == essayes_b && all(vapply(gb, function(g) !"x1*x2" %in% g || all(c("x1", "x2") %in% g), TRUE)) &&
+           proche(sb$importance$importance, vapply(as.character(sb$groupes), function(g) sum(sb$modeles$poids[vapply(gb, function(x) g %in% x, TRUE)]), 0)))
+# Ajuster ce modèle : la définition du modèle choisi
+dch <- definition_selection(dsel, msel, c("sucre", "sucre*fermete"))
+verifier("Ajuster ce modèle : les seules variables des groupes choisis, un terme croisé gardant ses facteurs ; les autres réglages restent",
+         identical(vapply(dch$x, function(t) t$name, ""), c("sucre", "fermete", "sucre*fermete")) && identical(dch[c("type", "y", "cv_groups", "title")], dsel[c("type", "y", "cv_groups", "title")]))
+isf <- match("fermete + sucre", vapply(gsel, cle_sel, ""))
+mch <- ajuster(p, definition_selection(dsel, msel, c("sucre", "fermete")))
+verifier(sprintf("ajusté, le modèle choisi a l'AICc de sa ligne (%.2f), sur les observations de la sélection (%d : les valeurs manquantes d'une variable retirée n'en ajoutent pas)",
+                 mch$resultat$AICc, mch$N),
+         proche(mch$resultat$AICc, ssel$modeles$AICc[isf], 1e-8) && mch$N == msel$N && identical(sort(mch$observations), sort(msel$observations)) &&
+           identical(mch$resultat$coefficients$terme, c("(Intercept)", "sucre", "fermete")))
+# (les mêmes groupes de validation croisée « à tour de rôle » : la liste des observations ne change
+# pas, celles où manque une variable retirée restent de côté faute de valeurs, et le texte le dit)
+set.seed(2)
+dv <- data.frame(nom = sprintf("o%02d", 1:60), x1 = rnorm(60), x2 = rnorm(60), x3 = rnorm(60))
+dv$y <- 1 + dv$x1 + 0.5 * dv$x2 + rnorm(60)
+dv$x3[c(4, 11, 17, 30, 41)] <- NA
+pvc <- projet_depuis_tableau(dv, "vc")
+dvc <- definir_modele(pvc, "LM", x = numeros(pvc, c("x1", "x2", "x3")), y = numeros(pvc, "y"), echelle = "none")
+mvc <- ajuster(pvc, dvc)
+svc <- selection_aic(mvc, dvc)
+mtous <- ajuster(pvc, definition_selection(dvc, mvc, as.character(svc$groupes)))
+dx1 <- definition_selection(dvc, mvc, c("x1", "x2"))
+mx1 <- ajuster(pvc, dx1)
+tx1 <- paste(texte_methodes(pvc, dx1, mx1, "fr", "essai")$paragraphes, collapse = " ")
+verifier(sprintf("Ajuster ce modèle : les mêmes groupes de validation croisée que le modèle complet (Q2 %.4f, le même) ; 5 observations sans x3 laissées de côté faute de valeurs, dites dans le texte",
+                 mtous$vc$Q2),
+         proche(mtous$vc$Q2, mvc$vc$Q2, 1e-12) && identical(dx1$observations, dvc$observations) && length(mx1$exclues) == 5 && mx1$N == 55 &&
+           grepl("5 autres", tx1) && grepl("sélection par l'AICc du modèle", tx1))
+# (un log10 que des comptages nuls mettent hors de son domaine : le modèle complet laisse ces lignes
+# de côté ; le modèle choisi sans ce terme aussi, et son AICc est celui de sa ligne de la sélection)
+set.seed(31)
+dz <- data.frame(nom = sprintf("z%02d", 1:60), x1 = rnorm(60), x2 = rnorm(60), compte = stats::rpois(60, 1.5))
+dz$y <- 1 + dz$x1 + 0.4 * dz$x2 + rnorm(60)
+pz <- projet_depuis_tableau(dz, "zéros")
+uz <- function(...) numeros(pz, c(...))
+complet_z <- function(...) definir_modele(pz, "LM", x = uz("x1", "x2", "compte"), y = uz("y"), echelle = "none", nom = "M1",
+                                          transformations = stats::setNames(list("log10"), uz("compte")), ...)
+dzc <- complet_z()
+mzc <- ajuster(pz, dzc)
+szc <- selection_aic(mzc, dzc)
+dz1 <- definition_selection(dzc, mzc, c("x1", "x2"))
+mz1 <- ajuster(pz, dz1)
+zeros <- sum(dz$compte == 0)
+tz1 <- paste(texte_methodes(pz, dz1, mz1, "fr", "essai")$paragraphes, collapse = " ")
+dz2 <- dz1
+dz2$observations <- setdiff(dz2$observations, mz1$observations[1:2])  # (deux observations exclues ensuite)
+tz2 <- paste(texte_methodes(pz, dz2, ajuster(pz, dz2), "fr", "essai")$paragraphes, collapse = " ")
+verifier(sprintf("Ajuster ce modèle sans un log10 que %d comptages nuls mettent hors de son domaine : les %d lignes du modèle complet, l'AICc de sa ligne de la sélection ; « les mêmes observations » tant qu'aucune n'est exclue",
+                 zeros, mzc$N),
+         zeros > 0 && mzc$N == 60 - zeros && identical(mz1$observations, mzc$observations) &&
+           proche(mz1$resultat$AICc, szc$modeles$AICc[match("x1 + x2", vapply(contenus_sel(szc), cle_sel, ""))], 1e-8) &&
+           grepl("du modèle .{1,2}M1.{1,2} a retenus", tz1) && grepl("sur les mêmes observations que lui", tz1) &&
+           grepl("a retenus", tz2) && !grepl("mêmes observations", tz2))
+test_z <- numeros_observations(pz)[51:60]
+mzt <- ajuster(pz, complet_z(test = test_z))
+mzt1 <- ajuster(pz, definition_selection(complet_z(test = test_z), mzt, c("x1", "x2")))
+nuls_test <- sum(colonne(pz, uz("compte"), test_z) == 0)
+verifier(sprintf("un jeu de test garde ses observations : le modèle choisi prédit aussi les %d au comptage nul", nuls_test),
+         nuls_test > 0 && mzt1$test$statistiques$n == 10 && mzt$test$statistiques$n == 10 - nuls_test && identical(mzt1$observations, mzt$observations))
+dch6 <- definition_selection(dsel6, mg6, "x2")
+mch6 <- ajuster(pg, dch6)
+dcha <- definition_selection(da, ma, "x")
+verifier("sans la variable en courbe, ni courbe ni dimension ; l'effort, le site aléatoire, l'autocorrélation et la dimension d'une courbe gardée restent",
+         is.null(dch6$lisses) && is.null(dch6$k_courbes) && identical(dch6$decalage, dsel6$decalage) && identical(dch6$aleatoires, dsel6$aleatoires) &&
+           proche(mch6$resultat$AICc, ssel6$modeles$AICc[match("x2", vapply(contenus_sel(ssel6), cle_sel, ""))], 1e-6) &&
+           identical(dcha$lisses, da$lisses) && identical(dcha$k_courbes, da$k_courbes) && identical(dcha$correlation, da$correlation) && ajuster(pa, dcha)$k[[1]] == 5)
+verifier("Ajuster ce modèle : le modèle nul, et un groupe inconnu refusé",
+         !length(definition_selection(dsel, msel, character(0))$x) && grepl("inconnu", refus(definition_selection(dsel, msel, "absent"))))
+msel$selection_aic <- ssel
+mbs <- ajuster(pb, db)
+mbs$selection_aic <- sb
+for (langue_s in c("fr", "en")) {
+  tsel <- texte_methodes(p, dsel, msel, langue_s, "essai")
+  tdes <- texte_methodes(pb, db, mbs, langue_s, "essai")$paragraphes[2]
+  verifier(sprintf("texte des méthodes (%s) : la sélection (40 combinaisons, ML, AICc), le meilleur modèle, l'importance des groupes, Burnham et Anderson cités ; l'élimination descendante", langue_s),
+           grepl("AICc", tsel$paragraphes[2]) && grepl("40 ", tsel$paragraphes[2]) && grepl("(ML)", tsel$paragraphes[2], fixed = TRUE) &&
+             grepl("importance", tsel$paragraphes[2]) && length(tsel$paragraphes) == 5 && any(grepl("Burnham", tsel$references)) &&
+             grepl(if (langue_s == "fr") "élimination descendante" else "backward elimination", tdes) && !any(grepl("NA", c(tsel$paragraphes, tdes), fixed = TRUE)) &&
+             !grepl("AICc", texte_methodes(p, dsel, ajuster(p, dsel), langue_s, "essai")$paragraphes[2]))
+}
+verifier("le modèle nul : aucun groupe à choisir", identical(selection_aic(m0, definir_modele(p, "LM", x = NULL, y = u("note_gout"), echelle = "none"))$K, 0L))
 
 cat("Prédiction\n")
 pr <- predire(p, m, d, obs)
@@ -460,6 +790,52 @@ pna <- variable_calculee(variable_calculee(pna, "x_moy", "moyenne_groupe(x, sect
 verifier("une observation sans groupe (identifiant vide) n'a ni moyenne ni écart de groupe",
          proche(colonne(pna, numeros(pna, "x_moy"), numeros_observations(pna)), c(2, 2, 2, 10, 10, NA)) &&
            proche(colonne(pna, numeros(pna, "x_ecart"), numeros_observations(pna)), c(-1, 0, 1, 0, NA, NA)))
+# precedent(), suivant() et croissance() (previous, following, growth_rate) : deux sites qui ont
+# chacun un secteur S1, dans le désordre ; A-S1 n'a pas 2003, A-S2 n'a pas de densité en 2002
+ds <- data.frame(nom = sprintf("L%02d", 1:10),
+                 site = c("A", "B", "A", "A", "B", "A", "B", "A", "A", "B"),
+                 secteur = c("S1", "S1", "S1", "S2", "S2", "S1", "S1", "S1", "S2", "S1"),
+                 annee = c(2004, 2002, 2001, 2002, 2003, 2002, 2001, 2005, 2001, 2003),
+                 densite = c(5, 2, 2, NA, 6, 3, 1, 0, 4, 4))
+ds$code <- paste0(ds$site, "-", ds$secteur)
+pl <- projet_depuis_tableau(ds, "series")
+calcule <- function(pr, formule) {
+  pr <- variable_calculee(pr, "essai", formule)
+  colonne(pr, numeros(pr, "essai"), numeros_observations(pr))
+}
+avant <- c(NA, 1, NA, 4, NA, 2, NA, 5, NA, 2)
+apres <- c(0, 4, 3, NA, NA, NA, 2, NA, NA, NA)
+verifier("precedent() : la valeur de l'année d'avant du même secteur ; une année manquante donne NA, pas celle d'encore avant",
+         proche(calcule(pl, "precedent(densite, annee, interaction(site, secteur))"), avant))
+verifier("suivant() : celle de l'année d'après ; avec pas = 2, deux ans avant",
+         proche(calcule(pl, "suivant(densite, annee, interaction(site, secteur))"), apres) &&
+           proche(calcule(pl, "precedent(densite, annee, interaction(site, secteur), pas = 2)"), c(3, NA, NA, NA, NA, NA, NA, NA, NA, 1)))
+verifier("le groupe : une variable qualitative, comme interaction(site, secteur)", proche(calcule(pl, "precedent(densite, annee, code)"), avant))
+m_double <- refus(calcule(pl, "precedent(densite, annee, secteur)"))
+m_sans <- refus(calcule(pl, "suivant(densite, annee)"))
+verifier(sprintf("un couple (groupe, temps) qui revient est refusé, et nommé : « %s » ; sans groupe, un temps : « %s »", m_double, m_sans),
+         grepl("« S1 »", m_double, fixed = TRUE) && grepl("2002", m_double) && grepl("interaction(site, secteur)", m_double, fixed = TRUE) &&
+           startsWith(m_sans, "suivant()") && grepl("2002", m_sans))
+verifier("croissance() = log(x / x de l'année d'avant), NA sauf si les deux sont > 0 (un zéro, une valeur manquante)",
+         proche(calcule(pl, "croissance(densite, annee, code)"), c(NA, log(2), NA, NA, NA, log(1.5), NA, NA, NA, log(2))))
+verifier("previous(), following() et growth_rate() : les mêmes, en anglais",
+         proche(calcule(pl, "previous(densite, annee, code)"), avant) && proche(calcule(pl, "following(densite, annee, code)"), apres) &&
+           proche(calcule(pl, "growth_rate(densite, annee, code)"), calcule(pl, "croissance(densite, annee, code)")) &&
+           startsWith(refus(calcule(pl, "previous(densite, annee, secteur)")), "previous()"))
+pl_ids <- projet_depuis_tableau(ds[c("nom", "densite")], "series par identifiants")
+pl_ids$observation_id_names <- c("Observation", "site", "secteur", "an")
+for (i in seq_along(pl_ids$observations)) pl_ids$observations[[i]]$ids <- c(pl_ids$observations[[i]]$ids[1], ds$site[i], ds$secteur[i], as.character(ds$annee[i]))
+verifier("des identifiants des observations : le site et le secteur, et le temps fait de nombres (l'année)",
+         proche(calcule(pl_ids, "precedent(densite, an, interaction(site, secteur))"), avant))
+pl_vides <- pl_ids
+pl_vides$observations[[6]]$ids[4] <- ""  # (L06, A-S1 2002, sans année)
+pl_vides$observations[[2]]$ids[3] <- ""  # (L02, B-S1 2002, sans secteur)
+verifier("une observation sans temps ou sans groupe a NA, et ne compte pour aucune autre",
+         proche(calcule(pl_vides, "precedent(densite, an, interaction(site, secteur))"), c(NA, NA, NA, 4, NA, NA, NA, 5, NA, NA)) &&
+           proche(calcule(pl_vides, "suivant(densite, an, interaction(site, secteur))"), c(0, NA, NA, NA, NA, NA, NA, NA, NA, NA)))
+m_temps <- refus(calcule(pl_ids, "precedent(densite, secteur, site)"))
+verifier(sprintf("le temps doit être numérique : « %s » ; le pas, positif", m_temps),
+         grepl("numérique", m_temps) && grepl("« S1 »", m_temps, fixed = TRUE) && grepl("pas", refus(calcule(pl, "suivant(densite, annee, code, pas = 0)"))))
 
 cat("Imputation par ACP (Nouvelle variable)\n")
 set.seed(5)

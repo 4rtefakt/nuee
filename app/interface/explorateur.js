@@ -8,7 +8,7 @@ const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot
   'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
 const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanova'];
 // (a regression has no components, scores or loadings: its own views, regression.R)
-const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'apports', 'liste_obs', 'predictions'];
+const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'acf', 'apports', 'selection_aic', 'liste_obs', 'predictions'];
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 // the views of another analysis, by its type (filled by its module, vues_*.js): a list, or a
 // function of the model that gives it (a regression tree and a classification tree differ)
@@ -117,6 +117,7 @@ export function rendreExplorateur(conteneur, app) {
         { libelle: t('donnees'), icone: 'database', action: () => app.ouvrirVue('donnees', null, null, p.id) },
         { libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) },
         { libelle: t('tests_variables'), icone: 'flask-conical', action: () => app.ouvrirVue('tests', null, null, p.id) },
+        { libelle: t('series'), icone: ICONES_VUES.series, action: () => app.ouvrirVue('series', null, null, p.id) },
         '-',
         { libelle: t('enregistrer'), icone: 'save', action: () => app.enregistrer(p.id, false) },
         { libelle: t('enregistrer_sous'), action: () => app.enregistrer(p.id, true) },
@@ -141,6 +142,9 @@ export function rendreExplorateur(conteneur, app) {
         noeud({ cle: `${p.id}/tests`, niveau: 2, ic: 'flask-conical', libelle: t('tests_variables'),
           double: () => app.ouvrirVue('tests', null, null, p.id),
           menu: () => [{ libelle: t('tests_variables'), icone: 'flask-conical', action: () => app.ouvrirVue('tests', null, null, p.id) }] }),
+        noeud({ cle: `${p.id}/series`, niveau: 2, ic: ICONES_VUES.series, libelle: t('series'),
+          double: () => app.ouvrirVue('series', null, null, p.id),
+          menu: () => [{ libelle: t('series'), icone: ICONES_VUES.series, action: () => app.ouvrirVue('series', null, null, p.id) }] }),
         groupe('importes', t('modeles_fichier'), 'layout-dashboard', importes, def),
         groupe('propres', t('modeles_projet'), 'layout-dashboard', propres, def),
         groupe('calcules', t('modeles_r'), 'sigma', calcules, modele),

@@ -135,7 +135,11 @@ types, leurs conditions vérifiées : khi² ou test exact de Fisher, test t, ANO
 Kruskal–Wallis avec les comparaisons deux à deux, corrélation de Pearson ou de Spearman ; un
 identifiant des observations (site, année...) peut faire les groupes. Tests appariés sur des
 données en long (t apparié, rangs signés de Wilcoxon) : deux secteurs comparés sur les années
-qu'ils ont tous deux. Une matrice des corrélations avec les valeurs p corrigées.
+qu'ils ont tous deux, ou toutes les paires de secteurs avec la correction de Holm ; ou deux
+mesures des mêmes lignes (avant, après) ; variable par variable, deux classes appariées par une
+clé. Des comparaisons avant/après avec témoin (BACI) : l'écart impact − témoins à chaque temps,
+après contre avant. Une matrice des corrélations avec les valeurs p corrigées. Des séries dans
+le temps, une ligne par secteur et un panneau par site.
 
 **Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
 (nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site) et une
@@ -145,9 +149,13 @@ densités avec des zéros (Tweedie), avec des effets aléatoires, un effort en d
 courbes lissées pour un effet qui monte puis descend ou un seuil (avec aussi le CAR1, par
 mgcv::gamm, pour une réponse normale) ; les coefficients et leurs intervalles, R2 marginal et
 conditionnel, les courbes d'effet, les seuils de chaque courbe (là où l'intervalle simultané de
-sa pente exclut 0) et sa concurvité, les graphiques des résidus, la variation de l'AIC quand
-chaque bloc de variables est retiré, et la comparaison par l'AIC (ΔAIC, poids d'Akaike) des
-régressions de la même réponse, à côté du Q2 en validation croisée de tous les modèles. Une
+sa pente exclut 0) et sa concurvité, les graphiques des résidus et l'autocorrélation des
+résidus dans le temps, la variation de l'AIC quand chaque bloc de variables est retiré, une
+sélection par l'AIC qui ajuste toutes les combinaisons des blocs et suggère un modèle à ajuster
+d'un clic, et la comparaison par l'AIC (ΔAIC, poids d'Akaike, tests du rapport de
+vraisemblance des modèles emboîtés) des régressions de la même réponse, à côté du Q2 en
+validation croisée de tous les modèles. De nouvelles variables peuvent prendre la valeur de
+l'année d'avant dans un secteur, ou le taux de croissance. Une
 formule R règle le modèle (R la lit sans jamais l'exécuter), et les régressions prédisent de
 nouvelles observations et des fichiers, les extrapolations signalées.
 
@@ -282,7 +290,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 0.9.4) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.5) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)

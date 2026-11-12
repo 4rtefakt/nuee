@@ -399,9 +399,28 @@ constante C2 s'il y a des 0). Un clic sur une ligne montre l'histogramme de la v
 côté de celui de la variable transformée. L'autre vue est la carte des valeurs manquantes
 (observations × variables).
 
+Séries
+------
+Graphiques › Séries (ou dans l'explorateur, sous le projet) : une variable au fil du temps,
+comme des figures de séries par secteur, une page par site. Choisir la variable, le temps (une
+variable numérique, ou un identifiant fait de nombres comme l'année), les lignes (une variable
+qualitative ou un identifiant : le secteur) et, au choix, les panneaux (le site) : un petit
+graphique par panneau, en grille, aux axes communs. Dans une ligne, les temps qui se suivent à
+son propre pas (son plus petit écart) sont reliés, et un secteur compté une année sur deux
+reste une ligne ; un temps manquant coupe la ligne, et l'année sans comptage se voit. Les
+couleurs vont par ligne dans chaque panneau, la légende est rangée par panneau (un clic sur une
+entrée cache sa ligne) : elle reste lisible avec 30 secteurs. Au choix : la moyenne des lignes
+de chaque panneau, temps par temps (trait épais), une échelle log (les valeurs ≤ 0 n'y sont pas
+montrées) et des événements, des temps tapés « 2015 ; 2019 », en tirets dans chaque panneau. Le
+survol donne le nom de l'observation, le temps et la valeur ; un clic ou un cadre sélectionne
+des observations, qui le sont aussi dans les modèles du projet quand la sélection leur est
+commune. Les observations sans temps, sans valeur, sans ligne ou sans panneau sont laissées de
+côté et comptées ; une ligne qui a deux fois le même temps (des secteurs choisis sans leur
+site) est signalée et montrée en points. Clic droit : copier ou enregistrer l'image.
+
 Tests statistiques
 ------------------
-Graphiques › Tests statistiques (ou dans l'explorateur, sous le projet), en trois modes, au
+Graphiques › Tests statistiques (ou dans l'explorateur, sous le projet), en quatre modes, au
 choix en haut à gauche.
 
 Entre classes, variable par variable : chaque variable quantitative comparée entre les classes
@@ -409,6 +428,15 @@ d'une variable qualitative.
   Deux classes (A, la référence, et B) : test t de Welch (par défaut, variances inégales), t de
   Student ou Mann–Whitney (sur les rangs). Effet : log2 du rapport des moyennes B / A (quand les
   deux moyennes sont positives) ou d de Cohen. Graphique volcan : l'effet contre -log10(p).
+  Deux classes appariées par une clé (« Apparier par » : une variable ou un identifiant des
+  observations, l'année pour deux secteurs suivis les mêmes années) : pour chaque variable, les
+  lignes de A et de B qui ont la même clé, et une valeur, font les paires, et les différences
+  B − A passent par le test t apparié (par défaut) ou par le test des rangs signés de Wilcoxon.
+  Le tableau donne le nombre de paires de chaque variable et les moyennes de A et de B sur ces
+  paires ; l'effet est le log2 du rapport de ces moyennes (quand les deux sont positives) ou le
+  d_z de Cohen (la différence moyenne sur l'écart-type des différences). Une variable de moins
+  de trois paires n'est pas testée. Une clé ne revient qu'une fois par classe : une clé en
+  double dans A ou dans B est refusée, comme dans « Deux variables ».
   Toutes les classes : ANOVA à un facteur ou Kruskal–Wallis ; les variables rangées par p.
 Les valeurs p sont corrigées pour les comparaisons multiples : Benjamini–Hochberg (taux de
 fausses découvertes, par défaut), Bonferroni, ou aucune. En couleur : les variables dont le p
@@ -425,31 +453,77 @@ année...) peut faire les groupes, comme une variable qualitative.
   donné, avec le rapport des cotes. Au-delà de 2 × 2 et de 200 observations, sa valeur p est
   simulée (100 000 tableaux).
   Une mesure et une variable qualitative : la mesure comparée entre les groupes, en boîtes à
-  moustaches. Deux groupes : test t de Welch et Mann–Whitney. Plus : ANOVA à un facteur, ANOVA
-  de Welch et Kruskal–Wallis, chacun avec ses comparaisons deux à deux (Tukey, Games–Howell,
-  Dunn avec la correction de Holm ; jusqu'à 50 groupes) : un clic sur un test les montre. Le
-  test sur les rangs est conseillé quand la normalité est douteuse dans un groupe
-  (Shapiro–Wilk p < 0,05, ou moins de trois observations), l'ANOVA de Welch quand les
-  variances diffèrent (Brown–Forsythe p < 0,05).
+  moustaches. Deux groupes : test t de Welch et Mann–Whitney (exact sous 50 valeurs de chaque
+  côté sans ex aequo ; sinon par la loi normale avec la correction de continuité : le même
+  calcul sous toutes les versions de R). Plus : ANOVA à un facteur, ANOVA de Welch et
+  Kruskal–Wallis, chacun avec ses comparaisons deux à deux (Tukey, Games–Howell, Dunn avec la
+  correction de Holm ; jusqu'à 50 groupes) : un clic sur un test les montre. Le test sur les
+  rangs est conseillé quand la normalité est douteuse dans un groupe (Shapiro–Wilk p < 0,05, ou
+  moins de trois observations), l'ANOVA de Welch quand les variances diffèrent
+  (Brown–Forsythe p < 0,05).
   Une mesure et une variable qualitative, appariées par une troisième variable ou un
   identifiant (« Apparier par » : l'année, pour deux secteurs d'un site suivis les mêmes
   années) : les données restent en long, une ligne par secteur et par année. Deux niveaux A et
   B sont comparés sur les clés qu'ils ont tous deux : les différences B − A par le test t
   apparié (différence moyenne, son intervalle à 95 %, d_z de Cohen) et par le test des rangs
-  signés de Wilcoxon (exact sous 50 paires), le test sur les rangs conseillé quand la
-  normalité des différences est douteuse (Shapiro–Wilk p < 0,05). Il faut au moins trois
-  paires, et une clé ne revient qu'une fois par niveau. Les lignes restées sans partenaire, et
-  celles sans valeur, sont comptées et listées ; le graphique relie chaque paire.
+  signés de Wilcoxon, le test sur les rangs conseillé quand la normalité des différences est
+  douteuse (Shapiro–Wilk p < 0,05 ; pas testée au-delà de 5 000 paires, ni avec des
+  différences constantes, qui ne laissent que Wilcoxon). La p de Wilcoxon est exacte sous 50
+  paires quand aucune différence n'est nulle ni ex aequo ; sinon, les différences nulles
+  retirées, elle vient de la loi normale avec la correction de continuité, la même sous toutes
+  les versions de R. Il faut au moins trois paires, et une clé ne revient qu'une fois par
+  niveau. Les lignes restées sans partenaire, et celles sans valeur, sont comptées et
+  listées ; le graphique relie chaque paire. Avec trois niveaux ou plus, le tableau du bas peut
+  aussi lister toutes les paires de niveaux, chacune sur ses propres clés communes, avec la
+  correction de Holm sur les paires testées, pour le test choisi au-dessus (un clic sur un
+  test) : quand tous les niveaux ont les mêmes clés, celles de pairwise.t.test() et
+  pairwise.wilcox.test() avec paired = TRUE. Une paire non testée (moins de trois clés
+  communes, une clé deux fois dans un niveau, la même valeur dans chaque paire) dit pourquoi,
+  et un clic sur une paire la compare ; quand A et B ne se comparent pas, le tableau reste,
+  sous leur raison. « Paires de niveaux dans chaque » (une variable qualitative ou un
+  identifiant : le site) garde les paires de niveaux d'un même groupe, les secteurs de chaque
+  site comparés deux à deux. La correction de Holm porte sur les paires testées, tous les
+  groupes ensemble ; la valeur p brute se lit site par site. Un niveau est du groupe que
+  portent ses lignes : un niveau aux lignes de plusieurs groupes est refusé, et ceux sans
+  groupe sont listés.
   Deux mesures : les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la
-  normalité de l'une des deux est douteuse.
+  normalité de l'une des deux est douteuse. Appariées par « l'observation (même ligne) », deux
+  mesures des mêmes lignes (avant et après, par exemple) sont comparées à la place : les
+  différences Variable 2 − Variable 1, sur les observations où les deux sont connues, par les
+  deux mêmes tests appariés.
 Le résultat du test conseillé est donné en une phrase, prête pour un rapport (le bouton à côté
 la copie), avec la taille de l'effet : V de Cramér, rapport des cotes, d ou d_z de Cohen,
-corrélation rang-bisériale, η², ε², r ou ρ.
+corrélation rang-bisériale, η², ε², r ou ρ. Celle de Mann–Whitney nomme les deux groupes avec
+leurs médianes.
 
 Matrice des corrélations : les corrélations de Pearson ou de Spearman de toutes les variables
 quantitatives (300 au plus), chaque paire sur les observations où les deux sont connues,
 valeurs p corrigées pour le nombre de paires. Un clic sur une paire, dans la table ou le
 graphique, la teste dans « Deux variables ».
+
+Avant/après (BACI) : un changement de gestion sur certaines unités (l'impact) comparé à des
+unités restées comme elles étaient (les témoins), comme dans un plan avant/après avec témoin.
+Choisir une réponse quantitative, un temps (une variable quantitative ou un identifiant des
+observations : l'année) et une unité (une variable qualitative ou un identifiant : le
+secteur), puis cocher la ou les unités d'impact et la ou les unités témoins. À chaque temps,
+l'écart d_t est la moyenne des lignes de l'impact moins celle des lignes des témoins, aux
+temps où les deux ont une valeur (une ligne par unité et par temps donne la moyenne des
+unités ; les temps d'un seul côté sont listés et laissés de côté). L'événement est le premier
+temps compté « après » : pour une densité de printemps qui répond à la gestion de l'année
+d'avant, l'année qui suit le changement. Les temps qui le précèdent sont « avant » ; « après »
+court jusqu'à une fin facultative, les temps suivants en gris, hors du test. Avec au moins
+deux temps dans chaque période, les écarts d'après sont comparés à ceux d'avant : test t de
+Welch (par défaut), t de Student (variances égales : un modèle linéaire de l'écart sur la
+période) ou Mann–Whitney (sur les rangs) ; l'effet est le changement de l'écart moyen, après
+moins avant, avec son intervalle à 95 %, et le résultat vient en une phrase prête pour un
+rapport. Le graphique montre les écarts dans le temps, l'événement et la moyenne de chaque
+période ; tant qu'aucun événement n'est entré, les écarts seuls. Les temps sont tenus pour
+indépendants : des écarts successifs qui se ressemblent (autocorrélation) rendent la valeur p
+trop petite. Un modèle mixte en tient compte : y ~ période × impact + (1 | unité), avec CAR1
+dans le temps au besoin (Nouveau modèle › Modèle linéaire mixte). La période et l'impact se
+font en nouvelles variables valant 0 ou 1, ifelse(annee >= 2007, 1, 0) et
+ifelse(secteur %in% c("S1", "S2"), 1, 0) : une régression ne prend pas encore de terme croisé
+avec une variable qualitative.
 
 Modèles linéaires, généralisés et mixtes
 ----------------------------------------
@@ -526,6 +600,44 @@ des blocs
 ML ; un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
+Graphiques › Autocorrélation des résidus : l'autocorrélation des résidus d'une régression dans
+le temps, à l'intérieur de chaque groupe, les groupes mis en commun, comme la calcule
+nlme::ACF : au décalage k, les observations à k pas l'une de l'autre dans l'ordre du temps de
+leur groupe (une année manquante est sautée), des décalages 0 à 10 au plus, avec la bande
+±1,96/√n de chaque décalage (n : ses paires), comme la trace nlme. Un modèle avec CAR1 garde
+son temps et ses groupes et montre deux séries : ses résidus sans l'autocorrélation, et ses
+résidus normalisés, qui n'en montrent plus quand CAR1 suffit (la note lit le décalage 1). Pour
+un autre modèle, choisir le temps (un identifiant ou une variable quantitative : l'année) et
+les groupes : par défaut ceux de ses effets aléatoires (le secteur dans son site), sinon un
+identifiant ou une variable qualitative ; les uns comme les autres peuvent prendre un niveau
+plus fin dedans (le secteur dans le site d'un effet aléatoire, ou un secteur dont les noms se
+répètent d'un site à l'autre). Au-delà de la bande au décalage 1, la note propose une
+autocorrélation CAR1, à comparer par l'AIC. Pour un GLM ou un GAM, les résidus de Pearson
+((y − ajusté) / √variance) ou de déviance (la part signée de chaque observation dans la
+déviance), les mêmes pour la loi normale ; les résidus d'un modèle mixte sont ceux de
+l'intérieur de ses groupes (sachant les effets aléatoires), comme dans nlme::ACF. Nuée calcule
+les résidus normalisés dans l'ordre du temps de chaque groupe : ceux de nlme ne sont justes que
+sur des lignes rangées par groupe, puis par temps. Fichier › Rapport du modèle peut reprendre
+le graphique.
+Graphiques › Sélection par AIC (aussi sous chaque régression, dans l'explorateur) : quelles
+variables garder. Chaque combinaison des groupes de termes du modèle (les blocs de la colonne
+Bloc, sinon les variables), du modèle nul au modèle complet, est ajustée en ML sur les mêmes
+observations et rangée par AICc ; un terme croisé ou un carré n'entre qu'avec ses effets
+principaux. Seuls les effets fixes sont choisis : les effets aléatoires, l'autocorrélation,
+l'effort et le réglage des courbes restent ceux du modèle. Jusqu'à 8 groupes (256
+combinaisons), toutes les combinaisons sont ajustées (un modèle mixte avec CAR1 sur 240 lignes
+prend une dizaine de secondes) ; au-delà, une élimination descendante depuis le modèle complet
+retire pas à pas le groupe dont le retrait baisse le plus l'AICc. La vue suggère le meilleur
+modèle (l'AICc le plus bas) et, s'il diffère, le plus parcimonieux à ΔAICc ≤ 2 (le moins de
+paramètres ; Burnham et Anderson, 2002) ; elle trace l'importance de chaque groupe (la somme
+des poids d'Akaike des modèles qui le contiennent) et liste les 20 meilleurs modèles, ou ceux à
+ΔAICc < 10, avec une colonne par groupe, k, logLik, AICc, ΔAICc, le poids et le poids cumulé.
+Ajuster ce modèle, sur la suggestion ou sur n'importe quelle ligne (un clic la choisit
+d'abord), en fait un nouveau modèle : les mêmes réglages avec les seules variables de ces
+groupes (un terme croisé garde ses facteurs), sur les mêmes observations, ajusté comme les
+autres (REML pour les estimations) et nommé comme un réajustement (M1 (1)). Une fois la
+sélection faite, le texte des méthodes la décrit, le rapport du modèle peut la contenir et
+Exporter vers R la refait.
 Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
 un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
 comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par
@@ -539,6 +651,18 @@ B...), et seulement celles dont les vraisemblances se comparent : des modèles d
 binomiaux négatifs des mêmes comptages, mais pas un modèle normal de ces comptages ; des
 modèles de Tweedie entre eux ; des GLMM et des GAMM (la vraisemblance conditionnelle de mgcv)
 entre eux.
+Sous le tableau des AIC, Modèles emboîtés : le test du rapport de vraisemblance entre chaque
+paire de régressions emboîtées d'un même ensemble AIC, comme anova(m1, m2) sur des ajustements
+en ML. Les termes fixes du petit modèle sont parmi ceux du grand (ses colonnes dans celles du
+grand), avec la même loi, le même effort, les mêmes effets aléatoires et la même
+autocorrélation ; χ² = 2 × (logLik du grand − logLik du petit) sur Δddl, la différence de
+leurs nombres de paramètres, et son p. Pour des régressions linéaires et des GLM, c'est l'écart
+de leurs logLik (de leurs déviances pour un GLM de Poisson ou binomial, comme anova(glm1,
+glm2, test = "Chisq")). Les effets aléatoires et l'autocorrélation ne se testent pas ainsi :
+une variance nulle est au bord de son domaine, où la loi du χ² ne tient plus ; comparez-les
+par l'AIC. Avec des courbes ou des effets aléatoires de mgcv, les ddl sont des edf et le test
+est approché, comme le dit le tableau. Toutes les paires emboîtées sont listées (2000 au
+plus) ; la recherche du tableau trouve celles d'un modèle.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
 résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
 un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
@@ -668,6 +792,17 @@ donnez ; les valeurs observées inchangées, une observation à qui manquent plu
 d'entre elles laissée manquante, les valeurs imputées gardées dans l'étendue observée de chaque
 variable sauf si on décoche ; en nouvelles variables « x (imputée) » ou dans les variables
 elles-mêmes (Ctrl+Z annule). Penser à enregistrer le projet.
+Dans une formule de Nouvelle variable, d'une année à l'autre : precedent(x, annee, secteur), la
+valeur de x l'année d'avant dans le même secteur, et suivant(x, annee, secteur), celle de
+l'année d'après (pas = 2 : deux ans avant ou après). L'année cherchée doit exister : une année
+manquante donne une valeur manquante, jamais celle d'une année plus ancienne, comme une
+observation sans secteur ou sans année. Le temps est numérique (un identifiant fait de nombres,
+comme l'année, convient) ; le groupe, une variable qualitative, un identifiant ou
+interaction(site, secteur) pour un secteur dans un site ; un même secteur deux fois la même
+année est refusé, en le nommant. croissance(x, annee, secteur) donne le taux de croissance
+log(x / x de l'année d'avant), manquant sauf si les deux valeurs sont positives : pour la
+dépendance à la densité, la croissance contre precedent(densite, annee, secteur). En anglais :
+previous, following et growth_rate.
 
 Historique du fichier
 ---------------------

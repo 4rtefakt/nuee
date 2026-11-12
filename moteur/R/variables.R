@@ -126,6 +126,78 @@ ecart_groupe <- function(x, groupe) as.numeric(x) - moyenne_groupe(x, groupe)
 group_mean <- moyenne_groupe
 group_deviation <- ecart_groupe
 
+# La valeur de x au temps `temps - pas` (precedent) ou `temps + pas` (suivant) dans le groupe de
+# chaque observation, et le taux de croissance d'une année à l'autre : pour une formule de
+# Nouvelle variable, aligner l'année n sur l'année n - 1 (la densité de l'année d'avant), ou la
+# dépendance à la densité (la croissance selon la densité précédente). `temps` : des nombres
+# (l'année ; un identifiant fait de nombres convient). `groupe` : comme pour moyenne_groupe (le
+# secteur, ou interaction(site, secteur)) ; sans groupe, toutes les observations font une seule
+# série. Le temps cherché doit exister : une année manquante donne NA, pas la valeur d'une année
+# plus ancienne. Une observation sans groupe ou sans temps a NA ; un couple (groupe, temps) qui
+# revient est une erreur.
+precedent <- function(x, temps, groupe = NULL, pas = 1) valeur_decalee(x, temps, groupe, pas, -1, nom_appel(sys.call(), "precedent"))
+suivant <- function(x, temps, groupe = NULL, pas = 1) valeur_decalee(x, temps, groupe, pas, 1, nom_appel(sys.call(), "suivant"))
+# Le taux de croissance de la population, log(x_t / x_t-1) ; NA sauf si les deux valeurs sont > 0.
+croissance <- function(x, temps, groupe = NULL) {
+  nom <- nom_appel(sys.call(), "croissance")
+  if (!is.numeric(x)) stop(sprintf(traduire("%s() : x doit être numérique", "%s(): x must be numeric"), nom), call. = FALSE)
+  avant <- valeur_decalee(x, temps, groupe, 1, -1, nom)
+  r <- rep(NA_real_, length(x))
+  ok <- !is.na(x) & !is.na(avant) & x > 0 & avant > 0
+  r[ok] <- log(x[ok] / avant[ok])
+  r
+}
+previous <- precedent
+following <- suivant
+growth_rate <- croissance
+
+# (le nom sous lequel la fonction a été appelée, pour ses messages : precedent ou previous)
+nom_appel <- function(appel, defaut) if (is.name(appel[[1]])) as.character(appel[[1]]) else defaut
+
+valeur_decalee <- function(x, temps, groupe, pas, sens, nom) {
+  if (!is.numeric(pas) || length(pas) != 1 || !is.finite(pas) || pas <= 0) {
+    stop(sprintf(traduire("%s() : le pas doit être un nombre positif (1 : l'année d'avant ou d'après)", "%s(): the step must be a positive number (1: the year before or after)"), nom), call. = FALSE)
+  }
+  t <- temps_en_nombres(temps)
+  if (!is.null(attr(t, "refus"))) {
+    stop(sprintf(traduire("%s() : le temps doit être numérique (l'année, par exemple) ; « %s » n'est pas un nombre", "%s(): the time must be numeric (the year, for example); “%s” isn't a number"),
+                 nom, attr(t, "refus")), call. = FALSE)
+  }
+  g <- if (is.null(groupe)) rep("", length(t)) else as.character(groupe)
+  if (length(x) != length(t) || length(g) != length(t)) {
+    stop(sprintf(traduire("%s() : x, le temps et le groupe doivent avoir une valeur par observation", "%s(): x, the time and the group must have one value per observation"), nom), call. = FALSE)
+  }
+  connu <- !is.na(t) & !is.na(g)
+  cle <- function(tt) ifelse(connu, paste(g, as.character(round(tt, 8)), sep = "\r"), NA_character_)
+  ici <- cle(t)
+  double <- which(duplicated(ici, incomparables = NA))
+  if (length(double)) {
+    i <- double[1]
+    stop(if (is.null(groupe)) sprintf(traduire("%s() : deux observations ont le temps %s ; chaque temps ne doit venir qu'une fois (donner le groupe : le secteur, ou interaction(site, secteur))",
+                                               "%s(): two observations have the time %s; each time must come only once (give the group: the sector, or interaction(site, sector))"), nom, format(t[i]))
+         else sprintf(traduire("%s() : deux observations ont le groupe « %s » et le temps %s ; chaque couple (groupe, temps) ne doit venir qu'une fois (un secteur dans un site : interaction(site, secteur))",
+                               "%s(): two observations have the group “%s” and the time %s; each (group, time) pair must come only once (a sector within a site: interaction(site, sector))"), nom, g[i], format(t[i])),
+         call. = FALSE)
+  }
+  x[match(cle(t + sens * pas), ici, incomparables = NA)]
+}
+
+# Des temps en nombres : des nombres, ou du texte fait de nombres (un identifiant des observations,
+# l'année). attr(, "refus") : la première valeur qui n'est pas un nombre.
+temps_en_nombres <- function(x) {
+  if (is.numeric(x)) {
+    x <- as.numeric(x)
+    x[!is.finite(x)] <- NA
+    return(x)
+  }
+  texte <- trimws(as.character(x))
+  n <- suppressWarnings(as.numeric(sub(",", ".", texte, fixed = TRUE)))
+  faux <- which(!is.na(texte) & nzchar(texte) & !is.finite(n))
+  n[!is.finite(n)] <- NA
+  if (length(faux)) attr(n, "refus") <- texte[faux[1]]
+  n
+}
+
 # Nouvelle variable calculée par une formule R sur les variables du projet, appelées par leur
 # nom (entre `accents graves` si le nom contient des espaces ou des signes), par exemple :
 #   log10(polyphenols)   sucre / acidite        ifelse(poids >= 170, "gros", "petit")

@@ -19,8 +19,8 @@ The installer, `Nuee-Setup-<version>.exe`, comes from the
 
 | | Command | Installs in |
 |---|---|---|
-| For the user running it | `Nuee-Setup-0.9.4.exe /S /currentuser` | `%LOCALAPPDATA%\Programs\Nuée` |
-| For every user of the computer (administrator, e.g. run as SYSTEM by SCCM or Intune) | `Nuee-Setup-0.9.4.exe /S /allusers` | `%ProgramFiles%\Nuée` |
+| For the user running it | `Nuee-Setup-0.9.5.exe /S /currentuser` | `%LOCALAPPDATA%\Programs\Nuée` |
+| For every user of the computer (administrator, e.g. run as SYSTEM by SCCM or Intune) | `Nuee-Setup-0.9.5.exe /S /allusers` | `%ProgramFiles%\Nuée` |
 
 `/D=D:\Apps\Nuée` (last, without quotes, even with spaces) installs elsewhere. The installer adds
 Start menu and desktop shortcuts, an entry in *Settings › Apps*, and opens `.nuee` projects in

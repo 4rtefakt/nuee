@@ -15,7 +15,7 @@ const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkl
   maximize-2 panel-left app-window chevron-right chevron-down sigma scan-search sliders-horizontal
   layout-dashboard ruler arrow-up-down scissors file-spreadsheet undo-2 check shuffle grid-3x3 scale git-merge
   rotate-ccw x-circle file-code tag file-input chart-column-big axis-3d file-text palette pencil history calculator crosshair square-terminal apple clipboard-paste file-output chart-spline download
-  quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search`.split(/\s+/);
+  quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search trending-up`.split(/\s+/);
 const icones = {};
 for (const n of ICONES) {
   const svg = fs.readFileSync(path.join(__dirname, 'node_modules', 'lucide-static', 'icons', n + '.svg'), 'utf8');
