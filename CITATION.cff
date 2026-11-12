@@ -5,7 +5,7 @@ title: "Nuée"
 abstract: "Desktop application for multivariate data analysis (PCA, PLS, PLS-DA, OPLS and OPLS-DA, class models), linear, generalized and mixed models compared by AIC, and statistical tests, computed in R, with export to R scripts and reports."
 authors:
   - name: "4rtefakt"
-version: "0.9.2"
+version: "0.9.3"
 license: GPL-3.0-or-later
 repository-code: "https://github.com/4rtefakt/nuee"
 url: "https://github.com/4rtefakt/nuee"
