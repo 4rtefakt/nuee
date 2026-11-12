@@ -377,9 +377,26 @@ mean, skewness, skewness test and kurtosis. In red: Min/Max < 0.1 and a skewness
 A click on a row shows the variable's histogram, next to that of the transformed variable.
 The other view is the map of missing values (observations × variables).
 
+Series
+------
+Plots › Series (or in the explorer, under the project): a variable over time, like figures of
+series by sector, one page per site. Choose the variable, the time (a numeric variable, or an
+ID made of numbers like the year), the lines (a qualitative variable or an ID: the sector)
+and, optionally, the panels (the site): one small plot per panel, in a grid with shared axes.
+Within a line, times that follow each other are joined; a missing time breaks the line, so a
+year without a count shows. Colours go by line within each panel and the legend is grouped by
+panel (a click on an entry hides its line): it stays readable with 30 sectors. Optionally:
+the mean of each panel's lines, time by time (a thick line), a log scale (values ≤ 0 aren't
+shown on it) and events, times typed as "2015; 2019", drawn as dashed lines in every panel.
+Hovering gives the observation's name, the time and the value; a click or a box selects
+observations, also in the project's models when the selection is shared with them.
+Observations without a time, a value, a line or a panel are left out and counted; a line
+with the same time twice (sectors chosen without their site) is flagged and shown as points.
+Right-click: copy or save the image.
+
 Statistical tests
 -----------------
-Plots › Statistical tests (or in the explorer, under the project), in three modes chosen at the
+Plots › Statistical tests (or in the explorer, under the project), in four modes chosen at the
 top left.
 
 Between classes, variable by variable: each quantitative variable compared between the classes
@@ -387,6 +404,15 @@ of a qualitative variable.
   Two classes (A, the reference, and B): Welch's t test (the default, unequal variances),
   Student's t or Mann–Whitney (on ranks). Effect: log2 of the ratio of the means B / A (when
   both means are positive) or Cohen's d. Volcano plot: the effect against -log10(p).
+  Two classes paired by a key ("Pair by": a variable or an observation ID, the year for two
+  sectors followed over the same years): for each variable, the rows of A and B that share a
+  key, and have a value, make the pairs, and the differences B − A go through the paired t
+  test (the default) or Wilcoxon's signed-rank test. The table gives each variable's number of
+  pairs and the means of A and B over those pairs; the effect is log2 of the ratio of those
+  means (when both are positive) or Cohen's d_z (the mean difference over the standard
+  deviation of the differences). A variable with fewer than three pairs is not tested. A key
+  may appear only once per class: one repeated within A or B is refused, as in "Two
+  variables".
   All classes: one-way ANOVA or Kruskal–Wallis; the variables ranked by p.
 p values are corrected for multiple comparisons: Benjamini–Hochberg (false discovery rate, the
 default), Bonferroni, or none. In colour: the variables whose corrected p passes the threshold
@@ -441,6 +467,25 @@ correlation, η², ε², r or ρ. Mann–Whitney's names both groups with their 
 Correlation matrix: the Pearson or Spearman correlations of all the quantitative variables (300
 at most), each pair on the observations where both are known, p values corrected for the number
 of pairs. A click on a pair, in the table or the plot, tests it in "Two variables".
+
+Before/after (BACI): a change of management on some units (the impact) compared with units
+left as they were (the controls), as in a before-after control-impact design. Choose a
+quantitative response, a time (a quantitative variable or an observation ID: the year) and a
+unit (a qualitative variable or an ID: the sector), then tick the impact unit(s) and the
+control unit(s). At each time, the gap d_t is the mean of the impact rows minus the mean of
+the control rows, at the times where both have a value (one row per unit and time gives the
+mean of the units; the times with one side only are listed and left out). The event is the
+first time counted as "after": for a spring density that responds to the previous year's
+management, the year after the change. The times before it are "before"; "after" runs to an
+optional end, the later times shown in grey, out of the test. With at least two times in each
+period, the gaps after are compared with those before: Welch's t test (the default),
+Student's t (equal variances: a linear model of the gap on the period) or Mann–Whitney (on
+ranks); the effect is the change in the mean gap, after minus before, with its 95 % interval,
+and the result comes as a sentence ready for a report. The plot shows the gaps over time, the
+event and each period's mean; until an event is entered, the gaps alone. The times are treated
+as independent: successive gaps that resemble each other (autocorrelation) make the p value
+too small. A mixed model accounts for it: y ~ period × impact + (1 | unit), with CAR1 in time
+if needed (New model › Linear mixed model, the period and the impact made as new variables).
 
 Linear, generalized and mixed models
 ------------------------------------
@@ -510,6 +555,21 @@ distance for a linear regression), Block contributions (AIC): each block of the 
 (or each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
 Y, X, a random effect, the time or the effort are left out (the summary counts them).
+Plots › Residual autocorrelation: the autocorrelation of a regression's residuals in time
+within each group, the groups pooled, as nlme::ACF computes it: at lag k, observations k steps
+apart in their group's time order (a missing year is skipped), lags 0 to 10 at most, with the
+band ±1.96/√n of each lag (n: its pairs), as nlme draws it. A model with CAR1 keeps its time
+and groups and shows two series: its residuals without the autocorrelation, and its normalized
+residuals, which show none left when CAR1 is enough (the note reads lag 1). For another model,
+choose the time (an ID or a quantitative variable: the year) and the groups: by default those
+of its random effects (the sector within its site), otherwise an ID or a qualitative variable,
+with a finer level within it if needed (the sector, when its names repeat from one site to
+another). Beyond the band at lag 1, the note suggests a CAR1 autocorrelation, to compare by
+AIC. For a GLM or a GAM, Pearson residuals ((y − fitted) / √variance) or deviance residuals
+(each observation's signed share of the deviance), the same for the normal distribution; a
+mixed model's residuals are those within its groups (given the random effects), as in
+nlme::ACF. Nuée computes the normalized residuals in each group's time order: nlme's own are
+right only on rows sorted by group, then by time. File › Model report can include the plot.
 Prediction › Predict observations, Predict a file: Y predicted by the fixed effects (for a
 mixed model, a group never seen), on the model's scale of Y (its transformation included), next
 to Y observed when it is known. A file's columns are matched to the model's variables by name,
@@ -521,6 +581,17 @@ response on the same observations only (an "AIC set", lettered A, B...), and onl
 likelihoods compare: Poisson and negative binomial models of the same counts, but not a normal
 model of them; Tweedie models with each other; GLMMs and GAMMs (mgcv's conditional likelihood)
 with each other.
+Under the AIC table, Nested models: the likelihood-ratio test between each pair of nested
+regressions of the same AIC set, as anova(m1, m2) on ML fits. The smaller model's fixed terms
+are among the bigger one's (its columns lie within the bigger one's), with the same
+distribution, effort, random effects and autocorrelation; χ² = 2 × (logLik of the bigger −
+logLik of the smaller) on Δdf, the difference in their numbers of parameters, and its p. For
+linear regressions and GLMs it is the difference of their logLik (of their deviances for a
+Poisson or binomial GLM, as anova(glm1, glm2, test = "Chisq")). Random effects and
+autocorrelation aren't tested this way: a zero variance is on the boundary of its range,
+where the χ² distribution no longer holds; compare them by AIC. With curves or mgcv random
+effects, the df are edf and the test is approximate, as the table says. 50 pairs at most; the
+table's search box finds those of a model.
 File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
 the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
 Model report: the summary and the coefficients, each term's effect, each curve's thresholds,
@@ -641,6 +712,16 @@ from 0 to 5, as missMDA::estim_ncpPCA does on them (0: each variable's mean), un
 it; observed values unchanged, an observation missing more than half of them left missing,
 imputed values kept within each variable's observed range unless unticked; as new variables
 "x (imputed)" or in the variables themselves (Ctrl+Z undoes it). Remember to save the project.
+In a New variable formula, from one year to the next: previous(x, year, sector), the value of x
+the year before in the same sector, and following(x, year, sector), that of the year after
+(pas = 2: two years before or after). The year sought must exist: a missing year gives a
+missing value, never that of an older year, as does an observation without a sector or a year.
+The time is numeric (an ID made of numbers, like the year, will do); the group, a qualitative
+variable, an ID or interaction(site, sector) for a sector within a site; the same sector twice
+in one year is refused, naming it. growth_rate(x, year, sector) gives the growth rate log(x / x
+of the year before), missing unless both values are positive: for density dependence, the
+growth rate against previous(density, year, sector). In French: precedent, suivant and
+croissance.
 
 File history
 ------------
