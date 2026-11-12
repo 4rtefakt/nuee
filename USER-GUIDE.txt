@@ -563,13 +563,13 @@ Decision trees, linear discriminant analysis and k-means
 New model › type "Decision tree" (rpart): a quantitative Y variable (regression tree) or a
 class variable (classification tree), and X variables by their raw values, so that the
 thresholds read in their units; missing X values are handled by surrogate variables.
-General tab: at least 20 observations per leaf (a node is split only if it holds three
-times as many: with fewer than 60 observations, lower it), at most 5 levels, cp = 0.001, 5
-surrogates, pruning by the 1-SE rule (the smallest tree within one standard error of the
-minimum error) or at the minimum error. The pruning comes from an internal
-cross-validation by the cross-validation groups (for sites followed over several years,
-choose the site), and Q2 from an external cross-validation: each group is predicted by a
-tree entirely rebuilt without it. Views: Tree (a click on a node selects its
+General tab: at least 20 observations per leaf, but at most a sixth of the observations, so
+that the tree can split (a node is split only if it holds three times as many), at most 5
+levels, cp = 0.001, 5 surrogates, pruning by the 1-SE rule (the smallest tree within one
+standard error of the minimum error) or at the minimum error. The pruning comes from an
+internal cross-validation by the cross-validation groups (for sites followed over several
+years, choose the site), and Q2 from an external cross-validation: each group is predicted by
+a tree entirely rebuilt without it. Views: Tree (a click on a node selects its
 observations), Pruning, Leaf rules, Variable importance, First-split stability (200
 bootstrap draws of the groups: the share of the draws where each variable makes the first
 split, and its median threshold), Observed / predicted and Residuals, or Classification

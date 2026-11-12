@@ -3,8 +3,9 @@
 # les valeurs brutes des variables X (transformées s'il y a lieu) pour que ses seuils se lisent
 # dans leurs unités ; les valeurs manquantes des X sont prises en charge par des variables de
 # substitution. Comme le script d'arbres de régression de référence :
-#   - un arbre volontairement grand (au moins `minbucket` observations par feuille, au plus
-#     `maxdepth` niveaux, cp = 0,001, `maxsurrogate` variables de substitution), puis élagué par
+#   - un arbre volontairement grand (au moins `minbucket` observations par feuille, mais au plus
+#     le sixième des observations, au plus `maxdepth` niveaux, cp = 0,001, `maxsurrogate`
+#     variables de substitution), puis élagué par
 #     une validation croisée INTERNE par les groupes de la définition (un site, par exemple) : le
 #     plus petit arbre dont l'erreur de validation croisée ne dépasse pas l'erreur minimale de
 #     plus d'une erreur-type (règle « 1-ET »), ou celui de l'erreur minimale ;
@@ -28,7 +29,7 @@ avec_graine <- function(graine, expr) {
   avant <- if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) get(".Random.seed", envir = globalenv())
   genre <- RNGkind()
   on.exit({
-    RNGkind(genre[1], genre[2], genre[3])
+    suppressWarnings(RNGkind(genre[1], genre[2], genre[3]))  # (le genre de la séance rendu, sans redire ses avertissements)
     if (is.null(avant)) {
       if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) rm(".Random.seed", envir = globalenv())
     } else assign(".Random.seed", avant, envir = globalenv())
@@ -157,6 +158,13 @@ reglages_arbre <- function(d) list(
   minbucket = option_nombre(d, "minbucket", 20, 1, 1e6, TRUE), cp = option_nombre(d, "cp", 0.001, 0, 1),
   maxdepth = option_nombre(d, "maxdepth", 5, 1, 30, TRUE), maxsurrogate = option_nombre(d, "maxsurrogate", 5, 0, 20, TRUE),
   elagage = option_choix(d, "elagage", c("1se", "min")), tirages = option_nombre(d, "tirages", 200, 10, 2000, TRUE))
+
+# Le minimum d'observations par feuille : celui demandé, mais au plus le sixième des `n`
+# observations. rpart ne coupe un nœud que s'il en compte trois fois plus (minsplit) : ainsi la
+# racine et ses deux enfants peuvent se couper, où 20 par feuille sur 50 observations ne
+# laisseraient aucune coupure ; l'élagage par validation croisée choisit ensuite la taille. À
+# partir de six fois le nombre demandé (120 observations pour 20), il reste tel quel.
+minimum_feuille <- function(demande, n) as.integer(min(demande, max(1, n %/% 6)))
 
 # Les variables X d'un arbre : numéro, nom, colonne (son nom dans le tableau de rpart, unique),
 # catégories (une qualitative), transformation et bloc.
@@ -367,7 +375,7 @@ ajuster_tree <- function(projet, d) {
   }
   dat <- data.frame(.y = if (classement) droplevels(y[connu]) else y[connu], X[connu, , drop = FALSE], check.names = FALSE)
   if (classement && nlevels(dat$.y) < 2) stop(traduire("Un arbre de classement demande au moins deux classes.", "A classification tree needs at least two classes."), call. = FALSE)
-  ctl <- rpart::rpart.control(minbucket = r$minbucket, cp = r$cp, maxdepth = r$maxdepth, maxsurrogate = r$maxsurrogate)
+  ctl <- rpart::rpart.control(minbucket = minimum_feuille(r$minbucket, nrow(dat)), cp = r$cp, maxdepth = r$maxdepth, maxsurrogate = r$maxsurrogate)
   methode <- if (classement) "class" else "anova"
   e <- arbre_elague(dat, groupes, methode, ctl, r$elagage)
   vc <- validation_arbre(dat, groupes, methode, ctl, r$elagage)
@@ -517,6 +525,7 @@ resultat_tree <- function(id) {
        RMSEE = if (!m$classement) stats::setNames(list(rmsee), y), RMSEcv = if (!m$classement) stats::setNames(list(m$vc$RMSEcv), y),
        comparaison = if (!m$classement) list(R2 = m$r2, Q2 = m$vc$Q2, RMSEE = rmsee, RMSEcv = m$vc$RMSEcv),
        stabilite = stabilite_affichee(m$stabilite), exclues_manquantes = length(m$exclues), manquantes_x = m$manquantes_x,
+       minbucket_utilise = m$controle$minbucket,
        variables_x = I(vapply(m$variables, `[[`, "", "nom")),
        G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app),
        note = d$note %||% "", test = m$test, demande = d$demande %||% list(type = d$type, numero = d$number),
@@ -606,10 +615,13 @@ texte_methodes_tree <- function(projet, d, m, langue = "fr", version = "") {
                 m$N, laissees, reponse)
   explicatives <- if (length(noms) <= 12) sprintf(if (fr) "%d variables explicatives (%s)" else "%d explanatory variables (%s)", length(noms), liste_mots(noms, fr))
                   else sprintf(if (fr) "%d variables explicatives" else "%d explanatory variables", length(noms))
-  p2 <- sprintf(if (fr) "Un arbre de %s a été construit avec rpart (Therneau & Atkinson ; Breiman et al., 1984) sur les valeurs brutes de %s, pour que ses seuils se lisent dans leurs unités ; les valeurs manquantes (%d observations en ont au moins une) sont prises en charge par des variables de substitution (%d au plus par coupure). Chaque feuille compte au moins %d observations (un nœud n'est coupé que s'il en compte au moins %d) et l'arbre a au plus %d niveaux (paramètre de complexité initial %s)."
-                else "A %s tree was built with rpart (Therneau & Atkinson; Breiman et al., 1984) on the raw values of %s, so that its thresholds read in their units; missing values (%d observations have at least one) are handled by surrogate variables (%d at most per split). Each leaf holds at least %d observations (a node is split only if it holds at least %d) and the tree has at most %d levels (initial complexity parameter %s).",
+  p2 <- sprintf(if (fr) "Un arbre de %s a été construit avec rpart (Therneau & Atkinson ; Breiman et al., 1984) sur les valeurs brutes de %s, pour que ses seuils se lisent dans leurs unités ; les valeurs manquantes (%d observations en ont au moins une) sont prises en charge par des variables de substitution (%d au plus par coupure). Chaque feuille compte au moins %d observations%s (un nœud n'est coupé que s'il en compte au moins %d) et l'arbre a au plus %d niveaux (paramètre de complexité initial %s)."
+                else "A %s tree was built with rpart (Therneau & Atkinson; Breiman et al., 1984) on the raw values of %s, so that its thresholds read in their units; missing values (%d observations have at least one) are handled by surrogate variables (%d at most per split). Each leaf holds at least %d observations%s (a node is split only if it holds at least %d) and the tree has at most %d levels (initial complexity parameter %s).",
                 if (m$classement) (if (fr) "classement (indice de Gini)" else "classification (Gini index)") else (if (fr) "régression" else "regression"),
-                explicatives, m$manquantes_x, r$maxsurrogate, r$minbucket, m$controle$minsplit, r$maxdepth, format(r$cp, decimal.mark = if (fr) "," else "."))
+                explicatives, m$manquantes_x, r$maxsurrogate, m$controle$minbucket,
+                if (m$controle$minbucket < r$minbucket) sprintf(if (fr) " (%d demandées, ramenées au sixième des %d observations pour que l'arbre puisse se couper)"
+                                                                else " (%d requested, lowered to a sixth of the %d observations so that the tree can split)", r$minbucket, m$N) else "",
+                m$controle$minsplit, r$maxdepth, format(r$cp, decimal.mark = if (fr) "," else "."))
   p3 <- sprintf(if (fr) "Sa taille a été choisie par une validation croisée interne %s : %s. Sa capacité de prédiction a été estimée par une validation croisée externe, chaque groupe étant prédit par un arbre refait entièrement sans lui, sa validation croisée interne et son élagage compris%s."
                 else "Its size was chosen by an internal cross-validation %s: %s. Its predictive ability was estimated by an external cross-validation, each group being predicted by a tree entirely rebuilt without it, its internal cross-validation and pruning included%s.",
                 groupes_texte(m$vc_par, m$G, fr),

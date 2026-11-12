@@ -131,6 +131,19 @@ set.seed(2); n2 <- arbre_elague(dat, site, "anova", ctl0, "1se")$complet$cptable
 verifier("xval à côté de control : 10 groupes au hasard (deux graines, deux résultats) ; dans le contrôle : par site, sans hasard",
          !isTRUE(all.equal(h1, h2)) && identical(n1, n2) && proche(n1, m$complet$cptable[, "xerror"]))
 
+# 48 observations (6 sites) : 20 par feuille, il faudrait 60 observations pour une coupure ; le
+# minimum ramené au sixième (8), l'arbre se coupe, comme rpart avec 8 par feuille
+d48 <- definir_modele(p, "TREE", x = xs, y = u("densite"), echelle = "none", vc = vc, observations = 1:48)
+m48 <- ajuster(p, d48)
+a48 <- rpart::rpart(.y ~ ., data.frame(.y = y[1:48], Xd[1:48, ], check.names = FALSE), method = "anova",
+                    control = rpart::rpart.control(minbucket = 8, cp = 0.001, maxdepth = 5, maxsurrogate = 5, xval = as.integer(factor(site[1:48]))))
+garder("S1", d48, m48)
+verifier(sprintf("48 observations : 20 par feuille ramenées à 8 (coupure à partir de 24), l'arbre complet de rpart (%d nœuds) ; dit dans le texte et le résultat",
+                 nrow(m48$complet$frame)),
+         m48$controle$minbucket == 8 && m48$controle$minsplit == 24 && nrow(m48$complet$frame) > 1 && identical(as.character(m48$complet$frame$var), as.character(a48$frame$var)) &&
+           proche(m48$complet$cptable, a48$cptable) && any(grepl("ramenées au sixième des 48", texte_methodes(p, d48, m48, "fr", "essai")$paragraphes)) &&
+           identical(resultat("S1")$minbucket_utilise, 8L) && minimum_feuille(20, 120) == 20 && minimum_feuille(20, 119) == 19)
+
 cat("Arbre de classement, réglages, prédiction, jeu de test\n")
 dc <- definir_modele(p, "TREE", x = xs, classe = u("classe"), echelle = "none", vc = vc, options = list(minbucket = 10, elagage = "min"))
 mc <- ajuster(p, dc)
@@ -339,7 +352,7 @@ s2 <- stabilite_arbre(etat$modeles$A1$modele)
 verifier("stabilité : les mêmes tirages quel que soit le générateur de la session, rendu tel quel",
          identical(s1, s2) && identical(RNGkind()[3], "Rounding"))
 RNGkind(genre[1], genre[2], genre[3])
-d1 <- definir_modele(p, "TREE", x = u("prairie"), y = u("densite"), echelle = "none", vc = vc, observations = 1:50)
+d1 <- definir_modele(p, "TREE", x = u("prairie"), y = u("densite"), echelle = "none", vc = vc, observations = 1:50, options = list(cp = 0.9))
 m1 <- ajuster(p, d1)
 m1$stabilite <- stabilite_arbre(m1)
 t_en <- texte_methodes(p, d1, m1, "en", "essai")$paragraphes
@@ -364,7 +377,7 @@ lancer <- function(script, objets) {
   if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
 }
 cas <- list(list(id = "A1", langue = "fr", quoi = "arbre de régression, stabilité"), list(id = "T1", langue = "en", quoi = "arbre de régression, jeu de test"),
-            list(id = "A2", langue = "en", quoi = "arbre de classement"), list(id = "L1", langue = "fr", quoi = "LDA"), list(id = "K1", langue = "en", quoi = "k-moyennes, choix de k"))
+            list(id = "A2", langue = "en", quoi = "arbre de classement"), list(id = "S1", langue = "fr", quoi = "arbre sur 48 observations, 8 par feuille"), list(id = "L1", langue = "fr", quoi = "LDA"), list(id = "K1", langue = "en", quoi = "k-moyennes, choix de k"))
 for (k in cas) {
   e <- etat$modeles[[k$id]]
   r <- ecrire_script(p, e$definition, file.path(dossier, paste0(k$id, ".R")), "moteur", m = e$modele, version = "essai", langue = k$langue)

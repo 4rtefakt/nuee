@@ -200,18 +200,21 @@ code_calcul_arbre <- function(projet, d, m, tab, langue) {
                                    sprintf("The response: “%s”%s.", texte_sur(m$y$nom), if (!is.null(m$y$transform)) ", transformed" else ""))),
                     sprintf("y <- %s", if (!is.null(m$y$transform)) code_transformation(m$y$transform, ycode, TRUE) else ycode))
   regle <- code_texte(r$elagage)
+  mb <- m$controle$minbucket  # (au plus le sixième des observations : arbres.R, minimum_feuille)
   arguments <- sprintf("\"%s\", controle, %s", methode, regle)
   test <- !is.null(m$test)
   c(code_lignes_modele(projet, m, tab, tx, c("réponse ou toutes les valeurs X manquantes", "response or all X values missing")), "",
     code_x_arbre(m, tab, tx), "X <- variables_x(d)", "",
     reponse, "",
     code_groupes_modele(m, tx), "",
-    commentaire(tx(sprintf("L'arbre : au moins %d observations par feuille, au plus %d niveaux, cp = %s, au plus %d variables de substitution par coupure ; élagué par la règle %s.",
-                           r$minbucket, r$maxdepth, format(r$cp), r$maxsurrogate, if (r$elagage == "1se") "1-ET (1se)" else "de l'erreur minimale (min)"),
-                   sprintf("The tree: at least %d observations per leaf, at most %d levels, cp = %s, at most %d surrogate variables per split; pruned by the %s rule.",
-                           r$minbucket, r$maxdepth, format(r$cp), r$maxsurrogate, if (r$elagage == "1se") "1-SE (1se)" else "minimum error (min)"))),
+    commentaire(tx(sprintf("L'arbre : au moins %d observations par feuille%s, au plus %d niveaux, cp = %s, au plus %d variables de substitution par coupure ; élagué par la règle %s.",
+                           mb, if (mb < r$minbucket) sprintf(" (%d demandées, ramenées au sixième des %d observations pour que l'arbre puisse se couper)", r$minbucket, m$N) else "",
+                           r$maxdepth, format(r$cp), r$maxsurrogate, if (r$elagage == "1se") "1-ET (1se)" else "de l'erreur minimale (min)"),
+                   sprintf("The tree: at least %d observations per leaf%s, at most %d levels, cp = %s, at most %d surrogate variables per split; pruned by the %s rule.",
+                           mb, if (mb < r$minbucket) sprintf(" (%d requested, lowered to a sixth of the %d observations so that the tree can split)", r$minbucket, m$N) else "",
+                           r$maxdepth, format(r$cp), r$maxsurrogate, if (r$elagage == "1se") "1-SE (1se)" else "minimum error (min)"))),
     "cadre <- data.frame(.y = y, X, check.names = FALSE)",
-    sprintf("controle <- rpart::rpart.control(minbucket = %d, cp = %s, maxdepth = %d, maxsurrogate = %d)", r$minbucket, texte_exact(r$cp), r$maxdepth, r$maxsurrogate),
+    sprintf("controle <- rpart::rpart.control(minbucket = %d, cp = %s, maxdepth = %d, maxsurrogate = %d)", mb, texte_exact(r$cp), r$maxdepth, r$maxsurrogate),
     sprintf("resultat <- arbre_elague(cadre, groupes_vc, %s)", arguments),
     "arbre <- resultat$arbre",
     "elagage <- resultat$complet$cptable",

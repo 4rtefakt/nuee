@@ -224,6 +224,16 @@ async function rendreStabilite(conteneur, ctx, p, loc) {
   });
 }
 
+// A tree's settings in words: the minimum per leaf used (at most a sixth of the observations,
+// moteur/R/arbres.R: minimum_feuille), and the one asked when it was lowered.
+function noteReglagesArbre(m) {
+  const r = m.reglages_arbre;
+  const mb = m.minbucket_utilise ?? r.minbucket;
+  return t('arb_reglages', { minbucket: mb, maxdepth: r.maxdepth, cp: r.cp, maxsurrogate: r.maxsurrogate,
+    regle: t(r.elagage === 'min' ? 'arb_regle_min' : 'arb_regle_1se'), manquantes: m.manquantes_x })
+    + (mb < r.minbucket ? ` ${t('arb_minbucket_ramene', { demande: r.minbucket, minbucket: mb, n: m.N })}` : '');
+}
+
 function rendreResumeArbre(conteneur, ctx, m) {
   const q = m.qualite;
   const r = m.reglages_arbre;
@@ -239,8 +249,7 @@ function rendreResumeArbre(conteneur, ctx, m) {
   const notes = notesModele(conteneur, ctx, m);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ,
     el('p', { class: 'note' }, t(m.classement ? 'arb_resume_classement' : 'arb_resume_regression', { y: m.noms_y[0] })),
-    el('p', { class: 'note' }, t('arb_reglages', { minbucket: r.minbucket, maxdepth: r.maxdepth, cp: r.cp, maxsurrogate: r.maxsurrogate,
-      regle: t(r.elagage === 'min' ? 'arb_regle_min' : 'arb_regle_1se'), manquantes: m.manquantes_x })),
+    el('p', { class: 'note' }, noteReglagesArbre(m)),
     el('p', { class: 'note' }, t('arb_vc_note'))));
   notes.retrouver();
 }
@@ -574,8 +583,7 @@ const blocsResumeArbre = (m) => {
     m.classement ? { entetes: [t('bien_classes'), t('bien_classes_vc'), t('arb_feuilles_titre'), 'cp'], lignes: [[pct(q.bien_classes), pct(q.bien_classes_vc), String(liste(m.regles.feuille).length), fmt(m.elagage.cp, 4)]] }
       : { entetes: ['R2', 'Q2', 'RMSEE', 'RMSEcv', t('arb_feuilles_titre'), 'cp'], lignes: [[fmt(q.r2, 3), fmt(q.Q2, 3), fmt(q.RMSEE, 4), fmt(q.RMSEcv, 4), String(liste(m.regles.feuille).length), fmt(m.elagage.cp, 4)]] },
     m.premiere && m.premiere.regle ? { texte: `${t('arb_premiere')} : ${m.premiere.regle}` } : null,
-    { texte: t('arb_reglages', { minbucket: m.reglages_arbre.minbucket, maxdepth: m.reglages_arbre.maxdepth, cp: m.reglages_arbre.cp, maxsurrogate: m.reglages_arbre.maxsurrogate,
-      regle: t(m.reglages_arbre.elagage === 'min' ? 'arb_regle_min' : 'arb_regle_1se'), manquantes: m.manquantes_x }) }].filter(Boolean);
+    { texte: noteReglagesArbre(m) }].filter(Boolean);
 };
 const blocsRegles = (m) => [{ entetes: [t('arb_feuille'), 'n', m.classement ? t('classe') : t('arb_moyenne'), t('arb_regle')],
   lignes: lignesDe(m.regles, ['feuille', 'n', 'valeur', 'regle', 'part']).map((l) => [String(l[0]), String(l[1]),
@@ -671,7 +679,8 @@ ajouterTextes({
   arb_minbucket: 'Observations par feuille (au moins)', arb_maxdepth: 'niveaux (au plus)', arb_maxsurrogate: 'substitutions (au plus)',
   arb_elagage: 'Élagage', arb_regle_1se: 'règle 1-ET (le plus petit arbre à une erreur-type du minimum)', arb_regle_min: 'erreur minimale',
   arb_tirages_champ: 'tirages bootstrap (stabilité)',
-  arb_reglages_note: 'Par défaut : 20 observations par feuille (un nœud n’est coupé que s’il en compte trois fois plus), 5 niveaux, cp = 0,001, 5 variables de substitution, règle 1-ET. Il faut au moins trois groupes de validation croisée.',
+  arb_reglages_note: 'Par défaut : 20 observations par feuille, mais au plus le sixième des observations (un nœud n’est coupé que s’il en compte trois fois plus), 5 niveaux, cp = 0,001, 5 variables de substitution, règle 1-ET. Il faut au moins trois groupes de validation croisée.',
+  arb_minbucket_ramene: '{demande} observations par feuille demandées, ramenées à {minbucket}, le sixième des {n} observations, pour que l’arbre puisse se couper.',
   arb_reponse_requise: 'Un arbre demande une réponse : une variable Y quantitative (arbre de régression) ou une variable de classe (arbre de classement), pas les deux.',
   arb_y_quantitative: 'La réponse d’un arbre de régression est quantitative ; une variable qualitative prend le rôle Classe (arbre de classement).',
   arb_croises: 'Un arbre fait lui-même ses interactions : retirer les termes croisés.',
@@ -727,7 +736,8 @@ ajouterTextes({
   arb_minbucket: 'Observations per leaf (at least)', arb_maxdepth: 'levels (at most)', arb_maxsurrogate: 'surrogates (at most)',
   arb_elagage: 'Pruning', arb_regle_1se: '1-SE rule (the smallest tree within one standard error of the minimum)', arb_regle_min: 'minimum error',
   arb_tirages_champ: 'bootstrap draws (stability)',
-  arb_reglages_note: 'By default: 20 observations per leaf (a node is split only if it holds three times as many), 5 levels, cp = 0.001, 5 surrogate variables, 1-SE rule. At least three cross-validation groups are needed.',
+  arb_reglages_note: 'By default: 20 observations per leaf, but at most a sixth of the observations (a node is split only if it holds three times as many), 5 levels, cp = 0.001, 5 surrogate variables, 1-SE rule. At least three cross-validation groups are needed.',
+  arb_minbucket_ramene: '{demande} observations per leaf requested, lowered to {minbucket}, a sixth of the {n} observations, so that the tree can split.',
   arb_reponse_requise: 'A tree needs a response: a quantitative Y variable (regression tree) or a class variable (classification tree), not both.',
   arb_y_quantitative: 'A regression tree’s response is quantitative; a qualitative variable takes the Class role (classification tree).',
   arb_croises: 'A tree makes its own interactions: remove the cross terms.',

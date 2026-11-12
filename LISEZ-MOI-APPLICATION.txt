@@ -602,8 +602,9 @@ Nouveau modèle › type « Arbre de décision » (rpart) : une variable Y quant
 régression) ou une variable de classe (arbre de classement), et des X par leurs valeurs
 brutes, pour que les seuils se lisent dans leurs unités ; les valeurs manquantes des X sont
 prises en charge par des variables de substitution. Onglet Général : au moins 20
-observations par feuille (un nœud n'est coupé que s'il en compte trois fois plus : avec moins
-de 60 observations, baisser ce nombre), au plus 5 niveaux, cp = 0,001, 5 substitutions,
+observations par feuille, mais au plus le sixième des observations, pour que l'arbre puisse
+se couper (un nœud n'est coupé que s'il en compte trois fois plus), au plus 5 niveaux,
+cp = 0,001, 5 substitutions,
 élagage par la règle 1-ET (le plus petit arbre à une erreur-type de l'erreur minimale) ou à
 l'erreur minimale. L'élagage vient d'une validation croisée interne par les groupes de
 validation croisée (pour des sites suivis plusieurs années, choisir le site), et le Q2 d'une
