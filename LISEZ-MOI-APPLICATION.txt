@@ -605,8 +605,8 @@ prises en charge par des variables de substitution. Onglet Général : au moins 
 observations par feuille (un nœud n'est coupé que s'il en compte trois fois plus : avec moins
 de 60 observations, baisser ce nombre), au plus 5 niveaux, cp = 0,001, 5 substitutions,
 élagage par la règle 1-ET (le plus petit arbre à une erreur-type de l'erreur minimale) ou à
-l'erreur minimale. L'élagage vient d'une validation croisée interne par les groupes de validation
-croisée (pour des sites suivis plusieurs années, choisir le site), et le Q2 d'une
+l'erreur minimale. L'élagage vient d'une validation croisée interne par les groupes de
+validation croisée (pour des sites suivis plusieurs années, choisir le site), et le Q2 d'une
 validation croisée externe : chaque groupe est prédit par un arbre refait entièrement sans
 lui. Vues : Arbre (un clic sur un nœud choisit ses observations), Élagage, Règles des
 feuilles, Importance des variables, Stabilité de la première coupure (200 tirages
