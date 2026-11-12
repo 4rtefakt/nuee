@@ -184,8 +184,10 @@ function tableauRegression(m) {
   }
   const cb = m.courbes;
   if (cb) {
-    blocs.push({ entetes: [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'],
-      lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]) });
+    const cv = cb.concurvite !== undefined;
+    blocs.push({ entetes: [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'].concat(cv ? [t('concurvite')] : []),
+      lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]
+        .concat(cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
   }
   const retires = [].concat(m.termes_retires || []);
   return blocs.concat([m.phi !== null && m.phi !== undefined ? t('phi_note', { phi: fmt(m.phi, 3), temps: m.temps }) : '',

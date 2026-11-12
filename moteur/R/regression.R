@@ -664,6 +664,18 @@ parametre_famille <- function(a, famille) {
 # coefficients, les courbes et les effets aléatoires (Wood, 2011), ML pour la vraisemblance et
 # l'AIC ; un modèle sans courbe ni effet aléatoire n'a qu'un ajustement. lisses : les termes
 # en courbe.
+# La concurvité de chaque courbe (mgcv::concurvity, full = TRUE), ajoutée au tableau des courbes :
+# la part de la courbe que les autres termes du modèle reproduisent, de 0 à 1 (« estimate », et
+# « worst », le pire cas) ; au-delà de 0,8, la courbe se confond avec eux et son estimation est
+# instable (Wood 2017). Le tableau tel quel quand mgcv ne la calcule pas.
+concurvite_courbes <- function(a, lignes, courbes) {
+  cc <- tryCatch(mgcv::concurvity(a, full = TRUE), error = function(e) NULL)
+  if (is.null(cc) || !all(lignes %in% colnames(cc))) return(courbes)
+  courbes$concurvite <- unname(cc["estimate", lignes])
+  courbes$concurvite_pire <- unname(cc["worst", lignes])
+  courbes
+}
+
 resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decalage, k_demandes = NULL) {
   utiles <- termes_utiles(donnees, termes)
   retires <- noms[match(setdiff(termes, utiles), termes)]
@@ -696,6 +708,7 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
     lignes <- sprintf("s(%s)", lis)
     courbes <- data.frame(terme = noms[match(lis, termes)], edf = st[lignes, 1], ref_ddl = st[lignes, 2], statistique = st[lignes, 3], p = st[lignes, 4],
                           row.names = NULL, stringsAsFactors = FALSE)
+    courbes <- concurvite_courbes(estime, lignes, courbes)
   }
   variances <- NULL
   if (niveaux) {
@@ -814,6 +827,7 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
     lignes <- sprintf("s(%s)", lis)
     courbes <- data.frame(terme = noms[match(lis, termes)], edf = st[lignes, 1], ref_ddl = st[lignes, 2], statistique = st[lignes, 3], p = st[lignes, 4],
                           row.names = NULL, stringsAsFactors = FALSE)
+    courbes <- concurvite_courbes(g, lignes, courbes)
   }
   # la variance de chaque effet aléatoire (nlme : σ² fois sa matrice relative), puis la résiduelle
   niveaux_g <- paste0("g", seq_len(niveaux))

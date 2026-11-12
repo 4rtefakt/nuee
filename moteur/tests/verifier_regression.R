@@ -227,6 +227,17 @@ verifier(sprintf("un seuil connu (pente nulle, puis 3 à partir de 0,5) : la pen
 verifier(sprintf("une droite : edf %.2f, dite linéaire sous 1,5 seulement, une seule plage de hausse", sd2$edf),
          sd2$edf < 2 && identical(sd2$lineaire, sd2$edf < 1.5) && identical(sd2$plages_pente$sens, "hausse"))
 verifier("des seuils sans courbe : refusés", grepl("courbe", refus(seuils_courbe(mg6, "x2"))))
+set.seed(8)
+tcv <- data.frame(nom = sprintf("C%03d", 1:200), a = runif(200), c = runif(200))
+tcv$b <- tcv$a + rnorm(200, sd = 0.02)
+tcv$y <- sin(3 * tcv$a) + tcv$c + rnorm(200, sd = 0.2)
+pcv <- projet_depuis_tableau(tcv, "concurvite")
+mcv <- ajuster(pcv, definir_modele(pcv, "GAM", x = numeros(pcv, c("a", "b", "c")), y = numeros(pcv, "y"), echelle = "none", lisses = numeros(pcv, c("a", "b", "c"))))
+cc <- mgcv::concurvity(mgcv::gam(y ~ s(a) + s(b) + s(c), data = tcv, method = "REML"), full = TRUE)
+verifier(sprintf("concurvité de chaque courbe = mgcv::concurvity() ; deux variables presque égales au-delà de 0,8 (%s)",
+                 paste(formatC(mcv$resultat$courbes$concurvite, digits = 2, format = "f"), collapse = ", ")),
+         proche(mcv$resultat$courbes$concurvite, unname(cc["estimate", c("s(a)", "s(b)", "s(c)")]), 1e-3) &&
+           all(mcv$resultat$courbes$concurvite[1:2] > 0.8) && mcv$resultat$courbes$concurvite[3] < 0.5)
 mg7 <- modele_g("GAM", "densite", c("x1", "x2"), famille = "tweedie", lisses = ug("x1"))
 verifier(sprintf("Tweedie (des zéros et des valeurs positives) : p = %.2f", mg7$resultat$parametre_loi$valeur),
          mg7$resultat$parametre_loi$valeur > 1 && mg7$resultat$parametre_loi$valeur < 2)

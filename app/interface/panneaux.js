@@ -1745,11 +1745,15 @@ function rendreResumeRegression(conteneur, ctx, m) {
     el('tbody', {}, [].concat(v.composante).map((c, i) => el('tr', {}, el('td', {}, c), el('td', { class: 'num' }, fmt(variances[i], 4)),
       el('td', { class: 'num' }, fmt(Math.sqrt(variances[i]), 4)), parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`) : null)))) : null;
   const cb = m.courbes;
+  // (with each curve's concurvity: in red above 0.8, a curve confounded with the other terms)
+  const concurvite = cb && cb.concurvite !== undefined;
   const courbes = cb ? el('table', { class: 'tableau compact' },
-    el('thead', {}, el('tr', {}, [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'].map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
+    el('thead', {}, el('tr', {}, [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'].map((h, j) => el('th', { class: j ? 'num' : '' }, h)),
+      concurvite ? el('th', { class: 'num', title: t('concurvite_aide') }, t('concurvite')) : null)),
     el('tbody', {}, [].concat(cb.terme).map((n, i) => el('tr', {}, el('td', {}, n), el('td', { class: 'num' }, fmt([].concat(cb.edf)[i], 2)),
       el('td', { class: 'num' }, fmt([].concat(cb.ref_ddl)[i], 2)), el('td', { class: 'num' }, fmt([].concat(cb.statistique)[i], 2)),
-      el('td', { class: 'num' + ([].concat(cb.p)[i] <= 0.05 ? ' alerte' : '') }, valeurP([].concat(cb.p)[i])))))) : null;
+      el('td', { class: 'num' + ([].concat(cb.p)[i] <= 0.05 ? ' alerte' : '') }, valeurP([].concat(cb.p)[i])),
+      concurvite ? el('td', { class: 'num' + ([].concat(cb.concurvite)[i] > 0.8 ? ' erreur' : ''), title: t('concurvite_aide') }, fmt([].concat(cb.concurvite)[i], 2)) : null)))) : null;
   const retires = [].concat(m.termes_retires || []);
   // (a GLM without curves or random effects: plain maximum likelihood)
   const textes = [m.gamm ? t('gamm_note') : mixte ? t('regression_note_mixte') : ['GLM', 'GAM'].includes(m.type) ? t(cb || v ? 'generalise_note' : 'generalise_note_mv') : t('regression_note'),
