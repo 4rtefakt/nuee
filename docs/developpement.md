@@ -184,16 +184,22 @@ network-share copy or when running from the sources). If the release has a
 `Nuee-Setup-<version>.exe` asset with a SHA-256 `digest` (GitHub computes it on upload), the
 link offers the one-click update (`app/main.js`): the installer is downloaded from
 `github.com/4rtefakt/nuee/releases/download/` into `%TEMP%\nuee-mise-a-jour`, its SHA-256 must
-match, unsaved projects are saved or left as the user says, R is stopped, and a hidden
-`cmd.exe` waits two seconds, runs the installer silently (`/S`, `/currentuser`, or `/allusers`
-when Nuée is installed for all users, which Windows asks to allow: its entry in Settings › Apps
-is under HKLM, else Program Files decides, `app/installation.js`; `/D=` the current folder), then
-starts Nuée again with the same `--user-data-dir`. That `cmd.exe` is started by a go-between
-that ends at once (`Nuee.exe` with `ELECTRON_RUN_AS_NODE`), so it isn't in Nuée's process
-tree: the installer closes `Nuee.exe` with everything it started, and in one test out of three
-it killed a `cmd.exe` started directly by Nuée, before installing anything. The installer
-removes the old version first (keeping the settings) and keeps each file's original date; the
-next start deletes the downloaded installer.
+match, unsaved projects are saved or left as the user says, R is stopped, and a `cmd.exe`
+without a console waits two seconds (by running `Nuee.exe` as Node: `ping`, a console program,
+opened a black window up to 0.9.5), runs the installer silently (`/S`, `/currentuser`, or
+`/allusers` when Nuée is installed for all users, which Windows asks to allow: its entry in
+Settings › Apps is under HKLM, else Program Files decides, `app/installation.js`; `/D=` the
+current folder), then starts Nuée again with the same `--user-data-dir`. That `cmd.exe` is
+started by a go-between that ends at once (`Nuee.exe` with `ELECTRON_RUN_AS_NODE`), so it isn't
+in Nuée's process tree: the installer closes `Nuee.exe` with everything it started, and in one
+test out of three it killed a `cmd.exe` started directly by Nuée, before installing anything.
+The installer removes the old version first (keeping the settings) and keeps each file's
+original date; the next start deletes the downloaded installer. The new version then shows its
+own interface: the engine serves it with `Cache-Control: no-cache` (a `304` when nothing
+changed), and the first start of a new version empties Chromium's HTTP cache (`reglages.json`
+keeps the version). Up to 0.9.5 the interface came without `Cache-Control`, Chromium kept it
+fresh for a tenth of its age, and right after an update the new version showed the old
+interface.
 
 To test it without a release, set `NUEE_SOURCE_MAJ` to an address answering like the GitHub
 API (a `tag_name` above the installed version and an asset with `name`, `size`,

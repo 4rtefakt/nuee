@@ -544,18 +544,21 @@ async function telechargerInstallateur(a, progression) {
 
 // Once Nuée has closed, the installer runs silently, in the same mode (for all users when it
 // was installed so, which Windows asks to allow: installation.js; for this user otherwise) and folder;
-// then Nuée starts again, with the same profile. cmd.exe waits two seconds (Nuée has closed),
-// then for the installer; the paths reach it through environment variables. A go-between
-// starts it and ends at once (this executable run as Node), so it isn't a child of Nuée: the
-// installer stops Nuée and everything Nuée started, and would stop it too.
+// then Nuée starts again, with the same profile. cmd.exe waits two seconds (Nuée has closed) by
+// running this executable as Node, a program without a console (ping, a console program run by
+// a cmd.exe that has none, opened a black window), then for the installer; the paths reach it
+// through environment variables. A go-between starts it and ends at once (this executable run
+// as Node), so it isn't a child of Nuée: the installer stops Nuée and everything Nuée started,
+// and would stop it too.
 function installerPuisRelancer(fichier) {
   const dossier = path.dirname(process.execPath);
   const pourTous = require('./installation').pourTousLesUtilisateurs(dossier);
   const relance = process.argv.slice(1).filter((x) => /^--(user-data-dir|remote-debugging-port)=/.test(x)).map((x) => `"${x}"`).join(' ');
-  const commande = `ping -n 3 127.0.0.1 > nul & start "" /wait "%NUEE_INSTALLATEUR%" /S ${pourTous ? '/allusers' : '/currentuser'}`
+  const commande = `start "" /wait "%NUEE_EXE%" -e "setTimeout(Boolean, 2000)" & set "ELECTRON_RUN_AS_NODE="`
+    + ` & start "" /wait "%NUEE_INSTALLATEUR%" /S ${pourTous ? '/allusers' : '/currentuser'}`
     + (/^[^&|<>^%"]+$/.test(dossier) ? ' /D=%NUEE_DOSSIER%' : '') + ` & start "" "%NUEE_EXE%"${relance ? ' %NUEE_RELANCE%' : ''}`;
-  const relais = `const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-    require('child_process').spawn('cmd.exe', ['/d', '/s', '/c', '"' + env.NUEE_COMMANDE + '"'], { env, detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();`;
+  // (cmd.exe keeps ELECTRON_RUN_AS_NODE for the wait, then drops it: the installer, then Nuée)
+  const relais = `require('child_process').spawn('cmd.exe', ['/d', '/s', '/c', '"' + process.env.NUEE_COMMANDE + '"'], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();`;
   spawn(process.execPath, ['-e', relais], {
     detached: true, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NUEE_COMMANDE: commande, NUEE_INSTALLATEUR: fichier, NUEE_DOSSIER: dossier, NUEE_EXE: process.execPath,
@@ -596,6 +599,15 @@ function enregistrerProgramme() {
 
 async function demarrer() {
   lireReglages();
+  // A new version (an update): Chromium's HTTP cache may still hold the interface of the version
+  // before, which the engine served up to 0.9.5 without Cache-Control; Chromium kept it fresh for
+  // a tenth of its age and showed it again without asking, the new Nuée with the old interface.
+  // Forgotten once, before any window; since 0.9.6 each load asks the engine (moteur/serveur.R).
+  if (reglages.version !== app.getVersion()) {
+    await session.defaultSession.clearCache().catch(() => {});
+    reglages.version = app.getVersion();
+    ecrireReglages();
+  }
   // (the recovery copies of an earlier stop, before this launch writes any: fermerSecours)
   secoursDuDemarrage = new Set(copiesEnAttente().map((e) => path.basename(String((e && e.fichier) || ''))));
   enregistrerProgramme();

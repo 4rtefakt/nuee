@@ -112,6 +112,15 @@ async function principal() {
       verifier(/HttpOnly/.test(c.entetes['set-cookie']) && /SameSite=Strict/.test(c.entetes['set-cookie'])
         && String(c.entetes['set-cookie']).startsWith(cookie), `cookie posé : ${c.entetes['set-cookie']}`);
     });
+    await etape("l'interface est relue à chaque chargement : Cache-Control no-cache, 304 quand rien n'a changé", async () => {
+      for (const chemin of ['/', '/nouveautes.js']) {
+        const r = await brute(chemin, {});
+        verifier(r.statut === 200 && r.entetes['cache-control'] === 'no-cache' && !!r.entetes['last-modified'],
+          `${chemin} : HTTP ${r.statut}, Cache-Control ${r.entetes['cache-control']}, Last-Modified ${r.entetes['last-modified']}`);
+        const r2 = await brute(chemin, { 'If-Modified-Since': r.entetes['last-modified'] });
+        verifier(r2.statut === 304, `${chemin} revalidé : HTTP ${r2.statut}`);
+      }
+    });
     await etape('ouvrir un tableau', async () => {
       p = await api('ouvrir', { chemin: tableau() });
       for (const v of p.variables) uid[v.nom] = v.uid;

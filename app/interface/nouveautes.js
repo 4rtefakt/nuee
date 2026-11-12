@@ -1,6 +1,15 @@
 // What changed in each version, shown once after an update (and in Aide › Quoi de neuf).
 // The first entry is the current version.
 export const NOUVEAUTES = [
+  { version: '0.9.6', date: '2026-11-13',
+    fr: [
+      'Corrigé : après une mise à jour en un clic, Nuée pouvait montrer un moment l’interface de la version d’avant, gardée par le cache de sa fenêtre : la nouvelle version s’affichait sous l’ancien numéro, disait être la dernière et ne montrait pas ses nouveautés. Le premier démarrage d’une nouvelle version vide maintenant ce cache, et l’interface est relue à chaque chargement.',
+      'La mise à jour en un clic n’ouvre plus de fenêtre noire pendant qu’elle attend la fermeture de Nuée (à partir de la prochaine : celle qui installe 0.9.6 vient de la version d’avant).',
+    ],
+    en: [
+      'Fixed: after a one-click update, Nuée could show the previous version’s interface for a while, kept by its window’s cache: the new version showed the old number, said it was the latest and didn’t show what was new. The first start of a new version now empties that cache, and the interface is read again at each load.',
+      'The one-click update no longer opens a black window while it waits for Nuée to close (from the next one: the update that installs 0.9.6 comes from the version before).',
+    ] },
   { version: '0.9.5', date: '2026-11-12',
     fr: [
       'Sélection par AIC : sous chaque régression (et dans Graphiques), Nuée compare par l’AICc toutes les combinaisons des groupes de termes du modèle (ses blocs, sinon ses variables), du modèle nul au modèle complet, chacune ajustée en ML sur les mêmes observations, avec les effets aléatoires, l’autocorrélation, l’effort et les courbes du modèle ; un terme croisé n’entre qu’avec ses effets principaux. Au-delà de 8 groupes, une élimination descendante. La vue suggère le meilleur modèle et, s’il diffère, le plus parcimonieux à ΔAICc ≤ 2 ; elle montre l’importance de chaque groupe et les meilleurs modèles avec leurs poids d’Akaike.',

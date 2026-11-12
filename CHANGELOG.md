@@ -3,6 +3,11 @@
 What changed in each version: the same list as *Help › What's new* in the application
 (in French: *Aide › Quoi de neuf*). Downloads: [Releases](https://github.com/4rtefakt/nuee/releases).
 
+## 0.9.6 — 2026-11-13
+
+- Fixed: after a one-click update, Nuée could show the previous version’s interface for a while, kept by its window’s cache: the new version showed the old number, said it was the latest and didn’t show what was new. The first start of a new version now empties that cache, and the interface is read again at each load.
+- The one-click update no longer opens a black window while it waits for Nuée to close (from the next one: the update that installs 0.9.6 comes from the version before).
+
 ## 0.9.5 — 2026-11-12
 
 - AIC selection: under each regression (and in Plots), Nuée compares by AICc every combination of the model’s groups of terms (its blocks, otherwise its variables), from the null model to the full one, each fitted by ML on the same observations, with the model’s random effects, autocorrelation, effort and curves; a cross term enters only with its main effects. Beyond 8 groups, a backward elimination. The view suggests the best model and, when it differs, the most parsimonious within ΔAICc ≤ 2; it shows each group’s importance and the best models with their Akaike weights.
