@@ -464,7 +464,9 @@ mn_ac <- regr_ac("LMM", NULL, aleatoires = list(site_ac))
 mz_ac <- regr_ac("LMM", "z", aleatoires = list(site_ac))
 rv <- rapports_vraisemblance(list(xz = m0_ac, x = mx_ac, nul = mn_ac, z = mz_ac, lm = ml_ac, car1 = mc_ac, glmm = mg_ac))
 paire_rv <- function(r, g, p) which(r$paires$grand == g & r$paires$petit == p)
-ml_lme <- function(f, ...) nlme::lme(f, random = ~ 1 | site, data = tac, method = "ML", control = ctrl, ...)
+# (la formule écrite dans l'appel du modèle : anova() de nlme 3.1-155, celui d'Ubuntu 22.04, lit
+# la réponse de chaque modèle dans son appel, où `f` ou `...` ne diraient rien)
+ml_lme <- function(f, correlation = NULL) eval(bquote(nlme::lme(.(f), random = ~ 1 | site, data = tac, method = "ML", control = ctrl, correlation = .(correlation))))
 an <- anova(ml_lme(y ~ x), ml_lme(y ~ x + z))
 i_rv <- paire_rv(rv, "xz", "x")
 verifier(sprintf("modèles mixtes emboîtés (nlme, en ML) : χ² et p = anova(m1, m2) de nlme (χ² = %.3f, p = %.3f)", an$L.Ratio[2], an$`p-value`[2]),
