@@ -144,6 +144,13 @@ same response, next to the cross-validated Q2 of every model. An R formula box s
 (R reads it and never runs it), and regressions predict new observations and files,
 extrapolations flagged.
 
+**Ordination of communities:** redundancy analysis (RDA) of responses such as species
+abundances (Hellinger, chord or log(x + 1) transformed) by explanatory variables, partial RDA
+with covariates, triplots in scaling 1 or 2, adjusted R2, permutation tests of the model, of
+each axis and of each term (within sites if needed), forward selection and variation
+partitioning; correspondence analysis (CA) of count tables, with contributions and cos². The
+results are those of the vegan package.
+
 ![Tests by variable on the example apples: a volcano plot of Golden against Gala, and the table of tests](docs/captures/volcan.png)
 
 **Observations:** scores in 2D and 3D, Hotelling's T2 and DModX with their limits,

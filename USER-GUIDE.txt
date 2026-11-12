@@ -515,6 +515,47 @@ observation's distances to two of the models, with their limits in red; the tabl
 each class, the share of its observations each model accepts (expected: about 95 % for its
 own class, 0 % for the others), then each observation's distances and classes.
 
+Redundancy analysis and correspondence analysis
+-----------------------------------------------
+New model › type "RDA (redundancy analysis)": how much of a table of responses Y (species
+abundances, measurements) the explanatory variables X explain, and how. Y: quantitative
+variables; X: the explanatory variables (a qualitative one through its categories, cross terms
+included); Z (covariate, in the Role list of the Variables tab): variables whose effect is
+removed first (partial RDA: the site, a known gradient...). General tab: the transformation of
+the responses (Hellinger or chord for abundances, Legendre and Gallagher 2001; log(x + 1); or
+none); the responses centred (covariance RDA, for responses in the same units) or standardized
+(correlation RDA); the number of permutations of the tests (999; 0: no test), the groups they
+stay within (an observation ID or a qualitative variable: a site followed over several years is
+permuted only with itself) and their seed (the same seed gives the same permutations, hence the
+same p values). An observation with a missing value, or with no abundance under Hellinger or
+chord, is left out.
+
+Views: Summary (the total inertia, the covariates' share, the X's share and what is left; R2
+and adjusted R2; the pseudo-F and its permutation p); Ordination, the triplot (the observations
+by their wa scores, weighted sums of the responses, or lc scores, linear combinations of the X;
+the responses; an arrow per quantitative X, lengthened to fill the plot by the factor shown in
+the legend, and a triangle at the centroid of each category; scaling 1 keeps the distances
+between observations, scaling 2 the correlations between responses); Eigenvalues (constrained
+axes in blue, unconstrained ones in grey); Permutation tests (each constrained axis after the
+previous ones, each term after all the others; Forward selection keeps a term that raises the
+adjusted R2 without going beyond that of all the terms and whose test gives p ≤ 0.05, Blanchet
+et al. 2008; Variation partitioning splits the adjusted R2 between two or three blocks of X,
+from the Block column of the Variables tab); the lists of observations and variables. The
+results are those of the vegan package (rda, anova.cca, RsquareAdj, ordiR2step, varpart): the
+same eigenvalues, scores and pseudo-F, and for the same permutations the same p values.
+
+Type "Correspondence analysis (CA)": a table of counts or abundances (the X variables, one
+observation per row, positive or zero values); observations and variables without any value are
+left out. Views: Summary (the total inertia: the table's chi-square divided by its grand
+total); Ordination (rows and columns in scaling 1, 2 or 3: chi-square distances between
+observations, between variables, or symmetric); Eigenvalues; Contributions and cos² (each row's
+and column's share of an axis's inertia, in blue above the mean, and the quality of its
+representation); the lists.
+
+Both export their tables (File › Export), write their Methods text with its references and make
+a report. File › Export to R writes a script, or an R Markdown or Quarto report, that redoes
+them with R alone, their tests with the same permutations. They don't predict new observations.
+
 Editing the data, making variables
 ----------------------------------
 In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; empty =

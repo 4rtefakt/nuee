@@ -550,6 +550,50 @@ deux des modèles, avec leurs limites en rouge ; la table donne, pour chaque cla
 ses observations que chaque modèle accepte (attendu : vers 95 % pour sa propre classe, 0 %
 pour les autres), puis les distances et les classes de chaque observation.
 
+Analyse de redondance et analyse des correspondances
+----------------------------------------------------
+Nouveau modèle › type « RDA (analyse de redondance) » : ce que des variables explicatives X
+expliquent d'un tableau de réponses Y (abondances d'espèces, mesures), et comment. Y : des
+variables quantitatives ; X : les variables explicatives (une variable qualitative par ses
+catégories, termes croisés compris) ; Z (covariable, dans la liste Rôle de l'onglet
+Variables) : des variables dont l'effet est retiré d'abord (RDA partielle : le site, un
+gradient connu...). Onglet Général : la transformation des réponses (Hellinger ou corde pour
+des abondances, Legendre et Gallagher 2001 ; log(x + 1) ; ou aucune) ; les réponses centrées
+(RDA sur les covariances, pour des réponses dans les mêmes unités) ou centrées-réduites (sur
+les corrélations) ; le nombre de permutations des tests (999 ; 0 : aucun test), les groupes à
+l'intérieur desquels elles restent (un identifiant ou une variable qualitative : un site suivi
+plusieurs années n'est permuté qu'avec lui-même) et leur graine (la même graine donne les mêmes
+permutations, donc les mêmes valeurs p). Une observation où une valeur manque, ou sans aucune
+abondance avec Hellinger ou corde, est laissée de côté.
+
+Vues : Résumé (l'inertie totale, la part des covariables, celle des X et ce qui reste ; R2 et
+R2 ajusté ; le pseudo-F et sa valeur p par permutation) ; Ordination, le triplot (les
+observations par leurs scores wa, sommes pondérées des réponses, ou lc, combinaisons linéaires
+des X ; les réponses ; une flèche par X quantitative, allongée pour remplir le graphique du
+facteur indiqué dans la légende, et un triangle au centroïde de chaque catégorie ; l'échelle 1
+garde les distances entre observations, l'échelle 2 les corrélations entre réponses) ; Valeurs
+propres (les axes contraints en bleu, les non contraints en gris) ; Tests par permutation
+(chaque axe contraint après les précédents, chaque terme après tous les autres ; Sélection pas
+à pas garde un terme qui augmente le R2 ajusté sans dépasser celui de tous les termes et dont
+le test donne p ≤ 0,05, Blanchet et al. 2008 ; Partition de la variance partage le R2 ajusté
+entre deux ou trois blocs de X, d'après la colonne Bloc de l'onglet Variables) ; les listes des
+observations et des variables. Les résultats sont ceux du paquet vegan (rda, anova.cca,
+RsquareAdj, ordiR2step, varpart) : mêmes valeurs propres, scores et pseudo-F, et pour les mêmes
+permutations, mêmes valeurs p.
+
+Type « Analyse des correspondances (CA) » : un tableau d'effectifs ou d'abondances (les
+variables X, une observation par ligne, des valeurs positives ou nulles) ; les observations et
+les variables sans aucune valeur sont laissées de côté. Vues : Résumé (l'inertie totale : le
+khi² du tableau divisé par son effectif total) ; Ordination (lignes et colonnes en échelle 1, 2
+ou 3 : distances du khi² entre observations, entre variables, ou symétrique) ; Valeurs
+propres ; Contributions et cos² (la part de chaque ligne et de chaque colonne dans l'inertie
+d'un axe, en bleu au-dessus de la moyenne, et la qualité de sa représentation) ; les listes.
+
+L'une et l'autre exportent leurs tableaux (Fichier › Exporter), écrivent leur texte des
+méthodes avec ses références et font un rapport. Fichier › Exporter vers R écrit un script, ou
+un rapport R Markdown ou Quarto, qui les refait avec R seul, leurs tests avec les mêmes
+permutations. Elles ne prédisent pas de nouvelles observations.
+
 Modifier les données, créer des variables
 -----------------------------------------
 Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour

@@ -5,6 +5,9 @@ What changed in each version: the same list as *Help › What's new* in the appl
 
 ## 0.9.3 — 2026-11-12
 
+- Redundancy analysis (RDA): New model › type “RDA”. Responses Y (species abundances, measurements) explained by variables X, optionally with covariates Z whose effect is removed first (partial RDA); responses transformed by Hellinger, chord or log(x + 1), centred or standardized; a triplot in scaling 1 or 2 (arrows of the X, centroids of the categories) and the adjusted R²; permutation tests of the model, of each axis and of each term, within a site if needed, with a fixed seed; forward selection (Blanchet’s double criterion) and variation partitioning between blocks of variables. The results are those of the vegan package.
+- Correspondence analysis (CA) of a table of counts or abundances: rows and columns in scaling 1, 2 or 3, eigenvalues, contributions and cos².
+- RDA and CA have their Methods text with its references, their export tables and their PDF or Word report; File › Export to R writes a script or an R Markdown / Quarto report that redoes them with R alone.
 - Autocorrelation in time in additive and generalized models: with the normal distribution and random effects, a GAM or GLM takes the CAR1 autocorrelation and is fitted by mgcv::gamm, as gamm(y ~ s(x, k = 5) + z, random = list(site = ~1), correlation = corCAR1(form = ~ year | site/sector)). Coefficients, curves, variances and φ by REML, AIC by ML, marginal and conditional R²; Export to R refits it.
 - The autocorrelation can run within a finer level than the last random effect (“within each”: the sector within its site, only the site having a random effect), in a mixed model too.
 - A curve’s basis dimension (k): in the box beside its tick, Curve column, or s(x, k = 5) in the R formula.

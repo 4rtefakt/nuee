@@ -3,6 +3,9 @@
 export const NOUVEAUTES = [
   { version: '0.9.3', date: '2026-11-12',
     fr: [
+      'Analyse de redondance (RDA) : Nouveau modèle › type « RDA ». Des réponses Y (abondances d’espèces, mesures) expliquées par des variables X, avec au choix des covariables Z dont l’effet est retiré d’abord (RDA partielle) ; les réponses transformées par Hellinger, corde ou log(x + 1), centrées ou réduites ; un triplot en échelle 1 ou 2 (flèches des X, centroïdes des catégories) et le R² ajusté ; des tests par permutation du modèle, de chaque axe et de chaque terme, à l’intérieur d’un site au besoin, avec une graine fixe ; la sélection pas à pas (double critère de Blanchet) et la partition de la variance entre les blocs de variables. Les résultats sont ceux du paquet vegan.',
+      'Analyse des correspondances (CA) d’un tableau d’effectifs ou d’abondances : lignes et colonnes en échelle 1, 2 ou 3, valeurs propres, contributions et cos².',
+      'La RDA et la CA ont leur texte des méthodes avec ses références, leurs tableaux à exporter et leur rapport PDF ou Word ; Fichier › Exporter vers R écrit un script ou un rapport R Markdown / Quarto qui les refait avec R seul.',
       'Autocorrélation dans le temps dans les modèles additifs et généralisés : avec la loi normale et des effets aléatoires, un GAM ou un GLM prend l’autocorrélation CAR1 et s’ajuste par mgcv::gamm, comme gamm(y ~ s(x, k = 5) + z, random = list(site = ~1), correlation = corCAR1(form = ~ annee | site/secteur)). Coefficients, courbes, variances et φ en REML, AIC en ML, R² marginal et conditionnel ; l’export vers R le refait.',
       'L’autocorrélation peut courir dans un niveau plus fin que le dernier effet aléatoire (« dans chaque » : le secteur dans son site, seul le site ayant un effet aléatoire), dans un modèle mixte aussi.',
       'La dimension de base d’une courbe (k) : dans la case à côté de sa coche, colonne Courbe, ou s(x, k = 5) dans la formule R.',
@@ -14,6 +17,9 @@ export const NOUVEAUTES = [
       'Mise à jour en un clic : une installation pour tous les utilisateurs placée hors de Program Files était mise à jour en une seconde copie, pour le seul utilisateur courant ; Nuée lit maintenant son mode d’installation dans Windows.',
     ],
     en: [
+      'Redundancy analysis (RDA): New model › type “RDA”. Responses Y (species abundances, measurements) explained by variables X, optionally with covariates Z whose effect is removed first (partial RDA); responses transformed by Hellinger, chord or log(x + 1), centred or standardized; a triplot in scaling 1 or 2 (arrows of the X, centroids of the categories) and the adjusted R²; permutation tests of the model, of each axis and of each term, within a site if needed, with a fixed seed; forward selection (Blanchet’s double criterion) and variation partitioning between blocks of variables. The results are those of the vegan package.',
+      'Correspondence analysis (CA) of a table of counts or abundances: rows and columns in scaling 1, 2 or 3, eigenvalues, contributions and cos².',
+      'RDA and CA have their Methods text with its references, their export tables and their PDF or Word report; File › Export to R writes a script or an R Markdown / Quarto report that redoes them with R alone.',
       'Autocorrelation in time in additive and generalized models: with the normal distribution and random effects, a GAM or GLM takes the CAR1 autocorrelation and is fitted by mgcv::gamm, as gamm(y ~ s(x, k = 5) + z, random = list(site = ~1), correlation = corCAR1(form = ~ year | site/sector)). Coefficients, curves, variances and φ by REML, AIC by ML, marginal and conditional R²; Export to R refits it.',
       'The autocorrelation can run within a finer level than the last random effect (“within each”: the sector within its site, only the site having a random effect), in a mixed model too.',
       'A curve’s basis dimension (k): in the box beside its tick, Curve column, or s(x, k = 5) in the R formula.',

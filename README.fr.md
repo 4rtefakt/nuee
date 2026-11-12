@@ -150,6 +150,13 @@ régressions de la même réponse, à côté du Q2 en validation croisée de tou
 formule R règle le modèle (R la lit sans jamais l'exécuter), et les régressions prédisent de
 nouvelles observations et des fichiers, les extrapolations signalées.
 
+**Ordination des communautés :** analyse de redondance (RDA) de réponses comme des abondances
+d'espèces (transformées par Hellinger, corde ou log(x + 1)) par des variables explicatives, RDA
+partielle avec des covariables, triplots en échelle 1 ou 2, R2 ajusté, tests par permutation
+du modèle, de chaque axe et de chaque terme (à l'intérieur des sites au besoin), sélection pas
+à pas et partition de la variance ; analyse des correspondances (CA) de tableaux d'effectifs,
+avec contributions et cos². Les résultats sont ceux du paquet vegan.
+
 ![Tests par variable sur les pommes de l'exemple : un graphique volcan de Golden contre Gala, et la table des tests](docs/captures/volcan.png)
 
 **Observations :** scores en 2D et en 3D, T2 de Hotelling et DModX avec leurs limites,

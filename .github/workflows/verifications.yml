@@ -28,12 +28,12 @@ jobs:
           Add-Content $env:GITHUB_PATH 'C:\R\bin'
 
       - name: Paquets R
-        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'prospectr', 'knitr', 'jmvReadWrite'), repos = 'https://cloud.r-project.org')"
+        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan'), repos = 'https://cloud.r-project.org')"
 
       - name: Vérifications du moteur
         shell: bash
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation ordination; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -60,12 +60,12 @@ jobs:
       - name: R d'Ubuntu, avec les paquets dont dépend le .deb
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends r-base-core r-cran-httpuv r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign r-cran-nlme r-cran-mgcv r-cran-knitr r-cran-mass xvfb xauth
+          sudo apt-get install -y --no-install-recommends r-base-core r-cran-httpuv r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign r-cran-nlme r-cran-mgcv r-cran-knitr r-cran-mass r-cran-vegan xvfb xauth
           Rscript -e 'cat(R.version.string, "\n")'
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation ordination; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -163,7 +163,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation ordination; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
