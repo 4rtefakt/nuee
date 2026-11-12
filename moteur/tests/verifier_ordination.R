@@ -28,6 +28,10 @@ refus <- function(expr) tryCatch({ force(expr); "" }, error = conditionMessage)
 # vegan, s'il est installé (NUEE_VEGAN : une bibliothèque où il l'est)
 if (nzchar(Sys.getenv("NUEE_VEGAN"))) .libPaths(c(Sys.getenv("NUEE_VEGAN"), .libPaths()))
 avec_vegan <- requireNamespace("vegan", quietly = TRUE)
+# (les tests par axe, et avec eux la sélection pas à pas, sont ceux de vegan 2.7 : vegan 2.6, celui
+# de Debian 12 par exemple, les calcule autrement ; avec lui, ils ne sont pas comparés)
+vegan_27 <- avec_vegan && utils::packageVersion("vegan") >= "2.7"
+if (avec_vegan && !vegan_27) cat("(vegan avant 2.7 : tests par axe et sélection pas à pas non comparés)\n")
 cat(if (avec_vegan) sprintf("(vegan %s installé : comparaisons avec lui)\n", utils::packageVersion("vegan")) else "(vegan absent : calculs directs seulement)\n")
 
 # ---------------------------------------------------------------- les données
@@ -169,7 +173,7 @@ if (avec_vegan) {
   verifier("test global : F et p = anova.cca avec les mêmes permutations", proche(m$test$F, av$F[1]) && identical(m$test$p, av[["Pr(>F)"]][1]))
   ta <- tests_axes_rda(m, P)
   vax <- vegan::anova.cca(rv, by = "axis", permutations = pv(P))
-  verifier("tests par axe = anova.cca(by = \"axis\")", proche(ta$F, vax$F) && isTRUE(all.equal(ta$p, vax[["Pr(>F)"]])) && proche(ta$ddl, vax$Df))
+  if (vegan_27) verifier("tests par axe = anova.cca(by = \"axis\")", proche(ta$F, vax$F) && isTRUE(all.equal(ta$p, vax[["Pr(>F)"]])) && proche(ta$ddl, vax$Df))
   tt <- tests_termes_rda(m, P)
   vma <- vegan::anova.cca(rv, by = "margin", permutations = pv(P))
   verifier("tests par terme (marginaux) = anova.cca(by = \"margin\")", proche(tt$F, vma$F) && isTRUE(all.equal(tt$p, vma[["Pr(>F)"]])) &&
@@ -179,10 +183,10 @@ if (avec_vegan) {
              proche(kz$residuel$eig, rzv$CA$eig) && proche(mz$r2_ajuste, vegan::RsquareAdj(rzv)$adj.r.squared))
   avz <- vegan::anova.cca(rzv, permutations = pv(Pz))
   verifier("RDA partielle permutée par site : F et p = anova.cca", proche(mz$test$F, avz$F[1]) && identical(mz$test$p, avz[["Pr(>F)"]][1]))
-  verifier("RDA partielle : tests par axe et par terme = anova.cca", {
+  verifier(if (vegan_27) "RDA partielle : tests par axe et par terme = anova.cca" else "RDA partielle : tests par terme = anova.cca", {
     a <- tests_axes_rda(mz, Pz); va <- vegan::anova.cca(rzv, by = "axis", permutations = pv(Pz))
     t <- tests_termes_rda(mz, Pz); vt <- vegan::anova.cca(rzv, by = "margin", permutations = pv(Pz))
-    proche(a$F, va$F) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])) && proche(t$F, vt$F) && isTRUE(all.equal(t$p, vt[["Pr(>F)"]]))
+    (!vegan_27 || (proche(a$F, va$F) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])))) && proche(t$F, vt$F) && isTRUE(all.equal(t$p, vt[["Pr(>F)"]]))
   })
   ss <- vegan::scores(rzv, choices = seq_along(c(rzv$CCA$eig, rzv$CA$eig)), display = c("sites", "lc", "species", "bp"), scaling = 2)
   sz <- scores_rda(mz, 2)
@@ -194,7 +198,7 @@ if (avec_vegan) {
   pas <- suppressMessages(vegan::ordiR2step(r0, scope = stats::formula(rsel), permutations = pv(permutations_rda(msel)), trace = FALSE))
   detach("package:vegan")
   retenus_v <- attr(stats::terms(pas), "term.labels")
-  verifier(sprintf("sélection pas à pas = ordiR2step (%s)", paste(sel$retenus, collapse = ", ")),
+  if (vegan_27) verifier(sprintf("sélection pas à pas = ordiR2step (%s)", paste(sel$retenus, collapse = ", ")),
            identical(sel$retenus, retenus_v) && (!length(retenus_v) || proche(sel$etapes$p[sel$etapes$retenu], pas$anova[["Pr(>F)"]][seq_along(retenus_v)])) &&
              (!length(retenus_v) || proche(sel$etapes$r2_ajuste[sel$etapes$retenu], pas$anova$R2.adj[seq_along(retenus_v)])))
   vp3 <- vegan::varpart(hel, ~ temp + altitude, ~ pente, ~ habitat, data = env)
@@ -247,7 +251,7 @@ if (avec_vegan) {
                                              permutations = pv(permutations_rda(mv)), trace = FALSE))
   detach("package:vegan")
   tv <- attr(stats::terms(pasv), "term.labels")
-  verifier(sprintf("vegan::varespec : sélection pas à pas en %d pas (%s), R² ajustés et p = ordiR2step", length(tv), paste(tv, collapse = ", ")),
+  if (vegan_27) verifier(sprintf("vegan::varespec : sélection pas à pas en %d pas (%s), R² ajustés et p = ordiR2step", length(tv), paste(tv, collapse = ", ")),
            length(tv) >= 2 && identical(sv$retenus, tv) && proche(sv$etapes$r2_ajuste[sv$etapes$retenu], pasv$anova$R2.adj[seq_along(tv)]) &&
              proche(sv$etapes$p[sv$etapes$retenu], pasv$anova[["Pr(>F)"]][seq_along(tv)]))
 }
