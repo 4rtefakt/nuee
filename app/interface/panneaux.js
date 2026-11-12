@@ -1479,10 +1479,14 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
 // a contingency table and the chi-square or Fisher's exact test; a measurement compared
 // between groups (t-test, ANOVA or their rank versions, and the pairwise comparisons); or a
 // correlation. The recommended test's result comes as a sentence, ready for a report; with
-// three groups or more, clicking another test shows its pairwise comparisons.
+// three groups or more, clicking another test shows its pairwise comparisons. A measurement
+// and groups can also be paired by a third variable or ID (the year, for two sectors): the
+// paired t-test and Wilcoxon's signed-rank test between two levels A and B, on the keys both
+// have.
 const NOMS_TESTS = () => ({ khi2: t('test_khi2'), fisher: t('test_fisher'), welch: t('test_welch'), mann_whitney: 'Mann–Whitney',
-  anova: 'ANOVA', welch_anova: t('test_welch_anova'), kruskal: 'Kruskal–Wallis', pearson: t('test_pearson'), spearman: t('test_spearman') });
-const NOMS_EFFETS = () => ({ V: t('effet_v'), OR: t('effet_or'), d: t('effet_d'), r_rb: t('effet_rb'), eta2: 'η²', epsilon2: 'ε²', r: 'r', rho: 'ρ' });
+  anova: 'ANOVA', welch_anova: t('test_welch_anova'), kruskal: 'Kruskal–Wallis', pearson: t('test_pearson'), spearman: t('test_spearman'),
+  t_apparie: t('test_t_apparie'), wilcoxon: t('test_wilcoxon') });
+const NOMS_EFFETS = () => ({ V: t('effet_v'), OR: t('effet_or'), d: t('effet_d'), dz: t('effet_dz'), r_rb: t('effet_rb'), eta2: 'η²', epsilon2: 'ε²', r: 'r', rho: 'ρ' });
 const ddlTexte = (x) => (x === null || x === undefined ? '' : Math.abs(x - Math.round(x)) < 1e-8 ? String(Math.round(x)) : fmt(x, 1));
 // (normality checked: p ≥ 0.05, or more than 5,000 observations; R's rule, comparaisons.R)
 const normaliteDouteuse = (p, n) => p.map((v, i) => !(n[i] > 5000 || (v !== null && v >= 0.05)));
@@ -1500,13 +1504,32 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   if (!existe(L.x)) L.x = (vars.find((v) => v.qualitative) || {}).uid ?? (ids.length ? ids[0][0] : vars[0].uid);
   if (!existe(L.y) || L.y === L.x) L.y = (vars.find((v) => !v.qualitative && v.uid !== L.x) || {}).uid ?? options.find(([u]) => u !== L.x)[0];
   const lire = (x) => (String(x).startsWith('id:') ? x : Number(x));
+  // a measurement and groups (a qualitative variable or an ID) can be paired by a third one
+  const qualitative = (u) => String(u).startsWith('id:') || Boolean((vars.find((v) => v.uid === u) || {}).qualitative);
+  const groupe = qualitative(L.x) === qualitative(L.y) ? null : qualitative(L.x) ? L.x : L.y;
+  const candidates = options.filter(([u]) => u !== L.x && u !== L.y);
+  const apparie = groupe !== null && candidates.some(([u]) => u === L.apparier);
+  if (apparie && cache.groupe !== String(groupe)) {
+    // the levels A and B are chosen from, there even when a pair of levels can't be tested
+    try { cache.niveaux = [].concat((await ctx.demander('niveaux', { projet: p.projet, variable: groupe })).niveaux); } catch { cache.niveaux = []; }
+    cache.groupe = String(groupe);
+  }
+  const niveaux = apparie ? cache.niveaux : [];
+  if (apparie && !niveaux.includes(L.a)) L.a = niveaux[0];
+  if (apparie && (!niveaux.includes(L.b) || L.b === L.a)) L.b = niveaux.find((c) => c !== L.a);
   const barre = outils(modes,
     choix(t('tests_var1'), options, L.x, (x) => { L.x = lire(x); ctx.rafraichir(); }),
-    choix(t('tests_var2'), options.filter(([u]) => u !== L.x), L.y, (x) => { L.y = lire(x); ctx.rafraichir(); }));
-  const cle = `${L.x}|${L.y}`;
+    choix(t('tests_var2'), options.filter(([u]) => u !== L.x), L.y, (x) => { L.y = lire(x); ctx.rafraichir(); }),
+    groupe !== null ? choix(t('apparier_par'), [['', t('apparie_aucun')]].concat(candidates), apparie ? L.apparier : '',
+      (x) => { L.apparier = x === '' ? null : lire(x); ctx.rafraichir(); }) : null,
+    apparie ? choix('A', niveaux.map((c) => [c, c]), L.a, (x) => { L.a = x; ctx.rafraichir(); }) : null,
+    apparie ? choix('B', niveaux.filter((c) => c !== L.a).map((c) => [c, c]), L.b, (x) => { L.b = x; ctx.rafraichir(); }) : null);
+  // (the language too: R writes the sentence)
+  const cle = JSON.stringify(apparie ? [L.x, L.y, L.apparier, L.a, L.b, langueActuelle()] : [L.x, L.y, langueActuelle()]);
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
-    try { cache.res = await ctx.demander('test_deux_variables', { projet: p.projet, x: L.x, y: L.y }); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
+    const q = { projet: p.projet, x: L.x, y: L.y, ...(apparie ? { appariement: L.apparier, niveaux: [L.a, L.b] } : {}) };
+    try { cache.res = await ctx.demander('test_deux_variables', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
     L.test = null;
   }
@@ -1531,7 +1554,9 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   const liste = (xs) => (xs.length > 8 ? `${xs.slice(0, 8).join(', ')}… (${xs.length})` : xs.join(', '));
   const decimal = (s) => (langueActuelle() === 'fr' ? s.replace('.', ',') : s);  // (in a sentence)
   let raison;
-  if (r.raison === 'attendus') raison = t('raison_attendus', { part: `${fmt(100 * r.part_attendus_faibles, 0)} %`, min: decimal(fmt(r.attendu_min, 2)) });
+  if (r.type === 'apparie') {
+    raison = t(r.raison === 'normalite' ? 'raison_normalite_apparie' : 'raison_ok_apparie', { p: r.shapiro_p === null ? '—' : decimal(valeurP(r.shapiro_p)) });
+  } else if (r.raison === 'attendus') raison = t('raison_attendus', { part: `${fmt(100 * r.part_attendus_faibles, 0)} %`, min: decimal(fmt(r.attendu_min, 2)) });
   else if (r.raison === 'variances') raison = t('raison_variances', { p: decimal(valeurP(r.variances.p)) });
   else if (r.raison === 'normalite' && r.type === 'groupes') {
     const d = normaliteDouteuse([].concat(r.groupes.shapiro_p), [].concat(r.groupes.n));
@@ -1544,15 +1569,59 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
       : groupes.length === 2 ? t('raison_ok_deux_groupes') : t('raison_ok_groupes', { p: decimal(valeurP(r.variances.p)) });
   }
   const ecartes = [].concat(r.ecartes ?? []);
-  const notes = [raison, r.manquantes ? t('tests_manquantes', { n: r.manquantes }) : '', ecartes.length ? t('tests_ecartes', { groupes: liste(ecartes) }) : '',
-    r.note_comparaisons || ''].filter(Boolean).join(' ');
+  // paired: how many pairs, the rows left without a partner (with their keys), and without a value
+  const seules = r.type === 'apparie' ? [[r.a, [].concat(r.sans_partenaire.a)], [r.b, [].concat(r.sans_partenaire.b)]].filter(([, l]) => l.length) : [];
+  const nSeules = seules.reduce((n, [, l]) => n + l.length, 0);
+  const notes = (r.type === 'apparie'
+    ? [raison, t('apparie_paires', { n: r.n, cle: r.cle.nom, a: r.a, b: r.b }),
+      nSeules ? t('apparie_seules', { n: nSeules, detail: seules.map(([g, l]) => `${g} (${liste(l)})`).join(langueActuelle() === 'fr' ? ' ; ' : '; ') }) : '',
+      r.manquantes ? t('apparie_manquantes', { n: r.manquantes, a: r.a, b: r.b }) : '']
+    : [raison, r.manquantes ? t('tests_manquantes', { n: r.manquantes }) : '', ecartes.length ? t('tests_ecartes', { groupes: liste(ecartes) }) : '',
+      r.note_comparaisons || '']).filter(Boolean).join(' ');
   const copier = el('button', { class: 'icone-seule', title: t('copier_phrase'),
     onclick: () => navigator.clipboard.writeText(r.phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
   const graphe = el('div', { class: 'graphe' });
   const details = el('div', { class: 'defile', style: { flex: '0 1 auto', maxHeight: '40%' } });
   const bas = el('div', { class: 'bas' });
   const ph = r.posthoc && r.posthoc[L.test];
-  conteneur.replaceChildren(...[barre, el('div', { class: 'note' }, el('b', {}, r.phrase), ' ', copier, el('br'), notes), graphe, details, ph ? bas : null].filter(Boolean));
+  conteneur.replaceChildren(...[barre, el('div', { class: 'note' }, el('b', {}, r.phrase), ' ', copier, el('br'), notes), graphe, details,
+    ph || r.type === 'apparie' ? bas : null].filter(Boolean));
+
+  if (r.type === 'apparie') {
+    // the two levels' boxes, each pair joined by a line: red where B is higher, blue where lower
+    const pc = (k) => [].concat(r.paires[k]);
+    const cl = pc('cle');
+    const va = pc('a');
+    const vb = pc('b');
+    const dif = pc('difference');
+    const nomsObs = [pc('nom_a'), pc('nom_b')];
+    const mesure = r.x.qualitative ? r.y.nom : r.x.nom;
+    const facteur = r.x.qualitative ? r.x.nom : r.y.nom;
+    const c = couleursTheme();
+    const traces = [[r.a, va], [r.b, vb]].map(([g, v]) => ({ type: 'box', name: g, x: v.map(() => g), y: v, boxpoints: false, boxmean: true,
+      fillcolor: 'rgba(0,0,0,0)', line: { width: 1, color: c.doux }, showlegend: false, hoverinfo: 'skip' }));
+    for (const [garde, couleur, signe] of [[(d) => d > 0, '#d1495b', '>'], [(d) => d < 0, PALETTE[0], '<'], [(d) => d === 0, c.doux, '=']]) {
+      const idx = dif.map((_, i) => i).filter((i) => garde(dif[i]));
+      if (!idx.length) continue;
+      traces.push({ type: 'scatter', mode: 'lines+markers', name: `${r.b} ${signe} ${r.a} (${idx.length})`,
+        x: idx.flatMap(() => [r.a, r.b, null]), y: idx.flatMap((i) => [va[i], vb[i], null]),
+        text: idx.flatMap((i) => [cl[i], cl[i], null]), customdata: idx.flatMap((i) => [nomsObs[0][i], nomsObs[1][i], null]),
+        line: { color: couleur, width: 1 }, marker: { color: couleur, size: 6 * FORMAT.points },
+        hovertemplate: `%{customdata} · ${r.cle.nom} %{text}<br>${mesure} = %{y}<extra></extra>` });
+    }
+    tracer(ctx, graphe, traces, { title: { text: `${mesure} · ${r.b} − ${r.a}` }, showlegend: true, dragmode: 'zoom',
+      xaxis: { title: { text: facteur }, type: 'category' }, yaxis: { title: { text: mesure } } });
+    details.replaceChildren(tableTests);
+    L.tablePaires ??= {};
+    const colonnes = { cle: cl, a: va, b: vb, difference: dif };
+    tableau(bas, ctx, L.tablePaires, {
+      n: cl.length, nom: t('paires'), avant: [el('b', {}, t('paires'))],
+      colonnes: [{ cle: 'cle', titre: r.cle.nom }, { cle: 'a', titre: r.a, num: true, decimales: 3 }, { cle: 'b', titre: r.b, num: true, decimales: 3 },
+        { cle: 'difference', titre: `${r.b} − ${r.a}`, num: true, decimales: 3 }],
+      valeur: (i, k) => colonnes[k][i],
+    });
+    return;
+  }
 
   if (r.type === 'contingence') {
     const lignes = [].concat(r.lignes);

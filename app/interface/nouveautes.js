@@ -1,6 +1,15 @@
 // What changed in each version, shown once after an update (and in Aide › Quoi de neuf).
 // The first entry is the current version.
 export const NOUVEAUTES = [
+  { version: '0.9.4', date: '2026-11-12',
+    fr: [
+      'Tests appariés : dans Graphiques › Tests statistiques, mode Deux variables, une mesure et une variable qualitative (ou un identifiant) s’apparient par une troisième (« Apparier par » : l’année). Deux niveaux A et B, deux secteurs d’un site par exemple, sont comparés sur les années qu’ils ont tous deux, les données restant en long (une ligne par secteur et par année) : test t apparié (différence moyenne B − A, son intervalle à 95 %, d_z de Cohen) et test des rangs signés de Wilcoxon (exact sous 50 paires), conseillé quand la normalité des différences est douteuse. Le nombre de paires et les lignes restées sans partenaire sont donnés, le résultat en une phrase prête pour un rapport, et le graphique relie chaque paire.',
+      'La phrase d’un test à deux variables suit la langue de l’interface : changer de langue la récrit.',
+    ],
+    en: [
+      'Paired tests: in Plots › Statistical tests, Two variables mode, a measurement and a qualitative variable (or an ID) can be paired by a third one (“Pair by”: the year). Two levels A and B, two sectors of a site for instance, are compared on the years both have, the data staying in long format (one row per sector and year): paired t-test (mean difference B − A, its 95 % interval, Cohen’s d_z) and Wilcoxon’s signed-rank test (exact below 50 pairs), recommended when the normality of the differences is doubtful. The number of pairs and the rows left without a partner are given, the result as a sentence ready for a report, and the plot joins each pair.',
+      'A two-variable test’s sentence follows the interface language: switching language rewrites it.',
+    ] },
   { version: '0.9.3', date: '2026-11-12',
     fr: [
       'Analyse de redondance (RDA) : Nouveau modèle › type « RDA ». Des réponses Y (abondances d’espèces, mesures) expliquées par des variables X, avec au choix des covariables Z dont l’effet est retiré d’abord (RDA partielle) ; les réponses transformées par Hellinger, corde ou log(x + 1), centrées ou réduites ; un triplot en échelle 1 ou 2 (flèches des X, centroïdes des catégories) et le R² ajusté ; des tests par permutation du modèle, de chaque axe et de chaque terme, à l’intérieur d’un site au besoin, avec une graine fixe ; la sélection pas à pas (double critère de Blanchet) et la partition de la variance entre les blocs de variables. Les résultats sont ceux du paquet vegan.',

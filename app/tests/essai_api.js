@@ -371,6 +371,38 @@ async function principal() {
       const o = await api('ajuster', { projet: e.id, type: 'OPLS-DA', x, classe: v('variete'), echelle: 'UV', A: 0 });
       verifier(o.Ap === 3 && o.A >= 3, `OPLS-DA : Ap = ${o.Ap}`);
     });
+    await etape('test apparié : deux secteurs sur leurs années communes', async () => {
+      // 3 secteurs suivis de 2001 à 2010, une ligne par secteur et par année, dans le désordre ;
+      // S1 commence en 2002, S2 n'a pas de densité en 2006
+      let g = 3;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = [];
+      for (const s of ['S1', 'S2', 'S3']) {
+        for (let an = 2001; an <= 2010; an += 1) {
+          if (s !== 'S1' || an > 2001) lignes.push([`${s}_${an}`, s, an, s === 'S2' && an === 2006 ? '' : (2 + (s === 'S2' ? 0.5 : 0) + alea()).toFixed(3)]);
+        }
+      }
+      lignes.sort((a, b) => (a[2] % 3) - (b[2] % 3) || a[0].localeCompare(b[0]));
+      const q = await api('coller', { texte: ['nom\tsecteur\tannee\tdensite', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Secteurs' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const n = await api('niveaux', { projet: q.id, variable: v.secteur });
+      verifier([].concat(n.niveaux).join() === 'S1,S2,S3', `niveaux : ${JSON.stringify(n.niveaux)}`);
+      const r = await api('test_deux_variables', { projet: q.id, x: v.densite, y: v.secteur, appariement: v.annee, niveaux: ['S1', 'S2'] });
+      // the paired t of the S2 − S1 differences over the years both have, computed here
+      const val = (s, an) => { const l = lignes.find((x) => x[1] === s && x[2] === an); return l && l[3] !== '' ? Number(l[3]) : null; };
+      const d = [];
+      for (let an = 2001; an <= 2010; an += 1) if (val('S1', an) !== null && val('S2', an) !== null) d.push(val('S2', an) - val('S1', an));
+      const m = d.reduce((s, x) => s + x, 0) / d.length;
+      const et = Math.sqrt(d.reduce((s, x) => s + (x - m) ** 2, 0) / (d.length - 1));
+      verifier(r.type === 'apparie' && r.n === 8 && d.length === 8 && Math.abs(r.tests.statistique[0] - m / (et / Math.sqrt(8))) < 1e-8 && r.tests.ddl1[0] === 7
+        && [].concat(r.tests.test).join() === 't_apparie,wilcoxon' && [].concat(r.sans_partenaire.a).join() === '2006'
+        && [].concat(r.sans_partenaire.b).join() === '2001' && r.manquantes === 1 && /\(n = 8 paires, appariées par annee\)\.$/.test(r.phrase), `test apparié : ${r.phrase}`);
+      const defaut = await api('test_deux_variables', { projet: q.id, x: v.secteur, y: v.densite, appariement: v.annee });
+      verifier(defaut.a === 'S1' && defaut.b === 'S2' && defaut.tests.p[0] === r.tests.p[0], 'A et B : les deux premiers niveaux par défaut');
+      let refus = '';
+      try { await api('test_deux_variables', { projet: q.id, x: v.densite, y: v.secteur, appariement: v.annee, niveaux: ['S1', 'S1'] }); } catch (err) { refus = err.message; }
+      verifier(/deux niveaux différents/.test(refus), `deux fois le même niveau, refusé : « ${refus} »`);
+    });
     await etape('paquets de lecture des formats', async () => {
       const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });
       verifier(r.journal.some((e) => e.type === 'sortie' && e.texte.includes('[1] TRUE')), 'haven, readxl, foreign ou zip absent');

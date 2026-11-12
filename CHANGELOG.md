@@ -3,6 +3,11 @@
 What changed in each version: the same list as *Help › What's new* in the application
 (in French: *Aide › Quoi de neuf*). Downloads: [Releases](https://github.com/4rtefakt/nuee/releases).
 
+## 0.9.4 — 2026-11-12
+
+- Paired tests: in Plots › Statistical tests, Two variables mode, a measurement and a qualitative variable (or an ID) can be paired by a third one (“Pair by”: the year). Two levels A and B, two sectors of a site for instance, are compared on the years both have, the data staying in long format (one row per sector and year): paired t-test (mean difference B − A, its 95 % interval, Cohen’s d_z) and Wilcoxon’s signed-rank test (exact below 50 pairs), recommended when the normality of the differences is doubtful. The number of pairs and the rows left without a partner are given, the result as a sentence ready for a report, and the plot joins each pair.
+- A two-variable test’s sentence follows the interface language: switching language rewrites it.
+
 ## 0.9.3 — 2026-11-12
 
 - Redundancy analysis (RDA): New model › type “RDA”. Responses Y (species abundances, measurements) explained by variables X, optionally with covariates Z whose effect is removed first (partial RDA); responses transformed by Hellinger, chord or log(x + 1), centred or standardized; a triplot in scaling 1 or 2 (arrows of the X, centroids of the categories) and the adjusted R²; permutation tests of the model, of each axis and of each term, within a site if needed, with a fixed seed; forward selection (Blanchet’s double criterion) and variation partitioning between blocks of variables. The results are those of the vegan package.

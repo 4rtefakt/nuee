@@ -431,10 +431,19 @@ année...) peut faire les groupes, comme une variable qualitative.
   test sur les rangs est conseillé quand la normalité est douteuse dans un groupe
   (Shapiro–Wilk p < 0,05, ou moins de trois observations), l'ANOVA de Welch quand les
   variances diffèrent (Brown–Forsythe p < 0,05).
+  Une mesure et une variable qualitative, appariées par une troisième variable ou un
+  identifiant (« Apparier par » : l'année, pour deux secteurs d'un site suivis les mêmes
+  années) : les données restent en long, une ligne par secteur et par année. Deux niveaux A et
+  B sont comparés sur les clés qu'ils ont tous deux : les différences B − A par le test t
+  apparié (différence moyenne, son intervalle à 95 %, d_z de Cohen) et par le test des rangs
+  signés de Wilcoxon (exact sous 50 paires), le test sur les rangs conseillé quand la
+  normalité des différences est douteuse (Shapiro–Wilk p < 0,05). Il faut au moins trois
+  paires, et une clé ne revient qu'une fois par niveau. Les lignes restées sans partenaire, et
+  celles sans valeur, sont comptées et listées ; le graphique relie chaque paire.
   Deux mesures : les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la
   normalité de l'une des deux est douteuse.
 Le résultat du test conseillé est donné en une phrase, prête pour un rapport (le bouton à côté
-la copie), avec la taille de l'effet : V de Cramér, rapport des cotes, d de Cohen,
+la copie), avec la taille de l'effet : V de Cramér, rapport des cotes, d ou d_z de Cohen,
 corrélation rang-bisériale, η², ε², r ou ρ.
 
 Matrice des corrélations : les corrélations de Pearson ou de Spearman de toutes les variables
