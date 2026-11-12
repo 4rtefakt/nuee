@@ -3,6 +3,18 @@
 What changed in each version: the same list as *Help › What's new* in the application
 (in French: *Aide › Quoi de neuf*). Downloads: [Releases](https://github.com/4rtefakt/nuee/releases).
 
+## 0.9.3 — 2026-11-12
+
+- Autocorrelation in time in additive and generalized models: with the normal distribution and random effects, a GAM or GLM takes the CAR1 autocorrelation and is fitted by mgcv::gamm, as gamm(y ~ s(x, k = 5) + z, random = list(site = ~1), correlation = corCAR1(form = ~ year | site/sector)). Coefficients, curves, variances and φ by REML, AIC by ML, marginal and conditional R²; Export to R refits it.
+- The autocorrelation can run within a finer level than the last random effect (“within each”: the sector within its site, only the site having a random effect), in a mixed model too.
+- A curve’s basis dimension (k): in the box beside its tick, Curve column, or s(x, k = 5) in the R formula.
+- A curve’s thresholds: in an additive model’s Effects view, the Thresholds box shows the curve’s effect and slope with 95 % simultaneous intervals (2000 draws of the coefficients, as in Simpson 2018), shades and lists the ranges where the slope clearly rises or falls, and gives the edf (below 1.5, nearly a straight line). The model report includes them, and Export to R computes them with the same draws.
+- Concurvity: an additive model’s Summary gives for each curve the share the other terms reproduce (mgcv::concurvity), in red above 0.8: the curve is then confounded with them.
+- Variables by group: in a New variable formula, group_mean(x, sector) gives the mean of x in each observation’s group and group_deviation(x, sector) the deviation from it (moyenne_groupe and ecart_groupe in French): a sector’s mean as a covariate, or a response centred by sector. Observation IDs (site, sector…) can be used there too.
+- Edit › New variable › Imputation (PCA): the missing values of the chosen quantitative variables, filled from each other by regularized iterative PCA (as missMDA::imputePCA); observed values don’t change, and an observation missing more than half of these variables stays missing. As new variables “x (imputed)”, or in the variables themselves (Ctrl+Z undoes it).
+- Cross terms: each has its own scaling, block and modifier, in the Cross terms tab. Edit model keeps them; until now it lost those of the cross terms (of a model imported from a .usp file, for instance), and refitting changed their weighting.
+- One-click update: an installation for all users placed outside Program Files was updated as a second copy, for the current user only; Nuée now reads its installation mode from Windows.
+
 ## 0.9.2 — 2026-11-12
 
 - Regression models, next to PLS: New model › type “Linear regression” or “Linear mixed model” (nlme), built from the Variables tab like the other models. A mixed model takes nested random effects (the site, then the sector within the site: an observation ID or a qualitative variable) and, optionally, an autocorrelation in time (CAR1, continuous time). Coefficients and variances by REML, AIC by ML; marginal and conditional R²; cross-validation defaults to the first random effect, each site predicted as a site never seen.
