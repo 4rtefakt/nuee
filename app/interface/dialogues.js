@@ -59,8 +59,9 @@ function editeurTransfo(initial, choisir, apres) {
 //     and 'z' (a covariate of a partial analysis, sent as options.z);
 //   echelle: the default scaling chosen with it; vc: false when cross-validation doesn't apply;
 //   spectres: true when spectral preprocessing applies;
-//   champs(st, rendre): its own fields in the General tab (label, element pairs), their values
-//     kept in st.options; valider(st, cles): '' or what's missing; options(st, cles): the options sent.
+//   champs(st, rendre, p): its own fields in the General tab (label, element pairs), their values
+//     kept in st.options; valider(st, cles, p): '' or what's missing; options(st, cles, p): the
+//     options sent (p: the project summary, its variables and IDs).
 export const ANALYSES = {};
 
 // spectral preprocessing steps (moteur/R/spectres.R); sg1 = Savitzky–Golay 1st derivative
@@ -263,7 +264,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         .concat(Object.entries(ANALYSES).map(([k, a]) => [k, a.libelle()]))
         .map(([k, n]) => el('option', { value: k, selected: k === st.type }, n))),
     analyse() && analyse().note ? [el('label', {}, ''), el('p', { class: 'note' }, analyse().note())] : null,
-    analyse() && analyse().champs ? analyse().champs(st, rendre) : null,
+    analyse() && analyse().champs ? analyse().champs(st, rendre, p) : null,
     regression() ? [el('label', {}, ''), el('p', { class: 'note' }, t({ LM: 'lm_note', LMM: 'lmm_note', GLM: 'glm_note', GAM: 'gam_note' }[st.type]))] : null,
     generalise() ? loi() : null,
     ['LMM', 'GLM', 'GAM'].includes(st.type) ? [el('label', {}, t('effets_aleatoires')), aleatoires()] : null,
@@ -499,7 +500,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     if (avecCar1() && st.correlation && !st.correlation.temps) { erreur.textContent = t('car1_temps_requis'); return false; }
     if (!analyse() && avecY() && !y.length) { erreur.textContent = t('pls_y_requis'); return false; }
     if (!analyse() && avecClasse() && classe === undefined) { erreur.textContent = t('plsda_classe_requise'); return false; }
-    const manque = analyse() && analyse().valider ? analyse().valider(st, cles) : '';  // (another analysis's own checks)
+    const manque = analyse() && analyse().valider ? analyse().valider(st, cles, p) : '';  // (another analysis's own checks)
     if (manque) { erreur.textContent = manque; return false; }
     const horsX = [...new Set(st.croises.flat().filter((u) => st.roles[u] !== 'x'))];
     if (horsX.length) {
@@ -529,7 +530,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [], correlation: avecCar1() ? st.correlation : null,
       famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [], k_courbes: kCourbesEnvoyes(),
       decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, croises_reglages: croisesReglages, nom: st.nom, titre: st.titre,
-      options: analyse() && analyse().options ? analyse().options(st, cles) : undefined };
+      options: analyse() && analyse().options ? analyse().options(st, cles, p) : undefined };
     if (!enCours) verifierPuisAjuster(q);
     return false;  // the dialog closes once the model is fitted
   }

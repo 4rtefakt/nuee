@@ -1987,6 +1987,8 @@ function rendreComparaison(conteneur, ctx, p, loc) {
   const bas = el('div', { class: 'bas' });
   conteneur.replaceChildren(el('p', { class: 'note' }, t('comparaison_note')), graphe, bas);
   const lignes = ms.map((m) => {
+    // another analysis (RDA, LDA...): no components nor Q2, the figures it gives (m.comparaison)
+    if (m.analyse) return { id: m.id, nom: m.nom, projet: (ctx.projet(m.projet) || {}).nom, type: m.type, A: null, N: m.N, K: m.K, ...(m.comparaison || {}) };
     if (m.regression) {
       const q = m.qualite;
       return { id: m.id, nom: m.nom, projet: (ctx.projet(m.projet) || {}).nom, type: m.type, A: null, N: m.N, K: m.K,

@@ -117,7 +117,7 @@ async function contenuRapport(app, m, parties, st) {
   }
   for (const x of parties) {
     blocs.push({ titre: t(x.cle), niveau: 1 });
-    if (x.tableau) blocs.push(...(await x.tableau(m)));
+    if (x.tableau) blocs.push(...(await x.tableau(m)));  // (a table can ask the engine first: thresholds, tests computed on demand)
     if (x.vue) {
       for (const variante of x.variantes ? await x.variantes(m) : [{}]) {
         const image = await imageVue(app, x.vue, m, variante);

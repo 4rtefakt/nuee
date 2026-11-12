@@ -443,6 +443,46 @@ async function principal() {
       const q = await api('ouvrir', { chemin: f, table: 'b' });
       verifier(q.observations.uid.length === 4 && q.table === 'b' && q.nom === 'deux (b).xlsx', q.nom);
     });
+    await etape('RDA (Hellinger, partielle, permutée par site) et analyse des correspondances', async () => {
+      // 30 relevés de 6 espèces le long de deux gradients (température, sable), 5 sites
+      let g = 11;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\ttemp\tsable\tsp1\tsp2\tsp3\tsp4\tsp5\tsp6'];
+      for (let i = 1; i <= 30; i += 1) {
+        const temp = 8 + 10 * alea();
+        const sable = 100 * alea();
+        const sp = [temp, 20 - temp, sable / 10, 10 - sable / 10, (temp * sable) / 100, 3].map((v) => Math.round(v * (0.5 + alea())));
+        lignes.push([`r${i}`, `S${1 + (i % 5)}`, temp.toFixed(2), sable.toFixed(1), ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Relevés' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5', 'sp6'].map((n) => v[n]);
+      const rda = await api('ajuster', { projet: q.id, type: 'RDA', x: [v.temp], y: especes, echelle: 'none', nom: 'RDA',
+        options: { transformation: 'hellinger', permutations: 99, graine: 2, z: [v.sable], strates: { by: 'variable', variable: v.site } } });
+      verifier(rda.analyse === true && rda.prediction === false && rda.A === 0 && rda.N === 30 && /^R2aj /.test(rda.chiffres)
+        && rda.ordination['2'].sites.RDA1.length === 30 && [].concat(rda.vues_defaut).join() === 'ordination,valeurs_propres', `RDA : ${rda.chiffres}, N = ${rda.N}`);
+      verifier(rda.reglages.options.transformation === 'hellinger' && [].concat(rda.reglages.options.z).join() === String(v.sable) && rda.strates === 'site',
+        `réglages : ${JSON.stringify(rda.reglages.options)}`);
+      const tests = await api('rda_tests', { modele: rda.id });
+      verifier([].concat(tests.axes.axe).length === 2 && [].concat(tests.termes.terme).length === 2 && typeof [].concat(tests.axes.p)[0] === 'number', 'tests par axe et par terme');
+      const re = await api('reajuster', { modele: rda.id, exclues: [1] });
+      verifier(re.type === 'RDA' && re.N === 29 && re.A === 0, `réajustée : N = ${re.N}, A = ${re.A}`);
+      const s = await api('script_r', { modele: rda.id, chemin: path.join(dossier, 'rda.R'), version: 'essai' });
+      verifier(fs.existsSync(s.script) && !s.ecart && !/vegan::/.test(fs.readFileSync(s.script, 'utf8').replace(/#.*$/gm, '')), `script R : ${s.ecart || 'R seul'}`);
+      const e = await api('exporter', { modele: rda.id, chemin: path.join(dossier, 'rda.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      const mt = await api('methodes', { modele: rda.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /redundancy analysis/.test(x) && /Hellinger/.test(x)) && mt.references.some((x) => /Legendre/.test(x)), 'texte des méthodes');
+      let refus = '';
+      try { await api('hca', { modele: rda.id }); } catch (err) { refus = err.message; }
+      verifier(/autre analyse/.test(refus), `dendrogramme refusé : « ${refus} »`);
+      const ca = await api('ajuster', { projet: q.id, type: 'CA', x: especes, echelle: 'none', nom: 'CA' });
+      verifier(ca.type === 'CA' && [].concat(ca.contributions.colonnes.nom).length === 6 && [].concat(ca.valeurs_propres.axe).length === 5
+        && Object.keys(ca.ordination).join() === '1,2,3', `CA : ${ca.chiffres}`);
+      let refusCA = '';
+      try { await api('ajuster', { projet: q.id, type: 'CA', x: [v.temp, v.site], echelle: 'none' }); } catch (err) { refusCA = err.message; }
+      verifier(/quantitatives/.test(refusCA), `CA d'une variable qualitative refusée : « ${refusCA} »`);
+    });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;
       const r = await api('supprimer_modele', { modele: da.id, definition: true });

@@ -311,7 +311,7 @@ reajuster_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
   d <- e$definition
-  if (est_regression(d)) {  # (sans composantes ni VIP : seulement des observations en moins)
+  if (sans_composantes(d)) {  # (une régression, une autre analyse : sans composantes ni VIP, seulement des observations en moins)
     if (length(q$garder)) stop(traduire("Une régression n'a pas de VIP.", "A regression has no VIP."))
     q$A <- NULL
   }
@@ -342,7 +342,7 @@ reajuster_demande <- function(q) {
 }
 
 ajuster_et_garder <- function(p, d) {
-  if (!d$A && !est_regression(d)) d$A <- max(1, autoajuster(p, d))
+  if (!d$A && !sans_composantes(d)) d$A <- max(1, autoajuster(p, d))  # (ni une régression ni une autre analyse n'a de composantes)
   m <- ajuster(p, d)
   id <- nouvel_id("M")
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
