@@ -65,6 +65,7 @@ etat$predictions <- list()  # dernière prédiction de chaque modèle (pour l'ex
 etat$compteur <- 0
 etat$annulations <- list()  # par projet : les états précédents, pour « Annuler » (Ctrl+Z)
 etat$revisions <- list()  # par projet : le nombre de changements de ses données (resume_projet)
+etat$paires <- list()  # les tableaux de toutes les paires des tests appariés (memo_paires)
 
 nouvel_id <- function(prefixe) {
   etat$compteur <- etat$compteur + 1
@@ -94,14 +95,25 @@ convertir_usp <- function(chemin) {
 }
 
 # Garde l'état actuel d'un projet avant de le changer, pour pouvoir revenir en arrière
-# (20 changements au plus par projet). Chaque changement, et chaque retour en arrière, compte
-# une révision du projet : les vues qui gardent des calculs sur ses données les refont.
+# (20 changements au plus par projet).
 memoriser <- function(p, etiquette) {
   pile <- c(list(list(etiquette = etiquette, projet = p)), etat$annulations[[p$id]] %||% list())
   etat$annulations[[p$id]] <- utils::head(pile, 20)
-  reviser(p$id)
 }
+# Chaque changement des données d'un projet, une fois fait, et chaque retour en arrière comptent
+# une révision du projet : les vues qui gardent des calculs sur ses données les refont.
 reviser <- function(id) etat$revisions[[id]] <- (etat$revisions[[id]] %||% 0) + 1
+
+# Le tableau de toutes les paires d'un test apparié (comparaisons.R : comparer_apparies), gardé
+# d'une demande à l'autre (A et B, la langue mise à part, ne le changent pas) tant que les données
+# du projet ne changent pas : 20 au plus.
+memo_paires <- function(p, q) {
+  cle <- paste(c(p$id, etat$revisions[[p$id]] %||% 0, q$x, q$y, q$appariement, q$dans %||% "", getOption("nuee.langue") %||% "fr"), collapse = "|")
+  function(calcul) {
+    if (is.null(etat$paires[[cle]])) etat$paires <- utils::tail(c(etat$paires, stats::setNames(list(calcul()), cle)), 20)
+    etat$paires[[cle]]
+  }
+}
 
 annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
@@ -491,6 +503,7 @@ scores_demande <- function(q) {
   r <- scores_en_variables(p, e$modele)
   r$projet$modifie <- TRUE
   etat$projets[[p$id]] <- r$projet
+  reviser(p$id)
   list(projet = resume_projet(r$projet), noms = I(r$noms), modeles = I(modeles_utilisant(r$projet, r$noms)))
 }
 
@@ -499,6 +512,7 @@ changer_projet <- function(q, f, etiquette) {
   p <- f(projet(q$projet))
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
+  reviser(p$id)
   resume_projet(p)
 }
 
@@ -507,6 +521,7 @@ classe_demande <- function(q) {
   p <- ajouter_classe(projet(q$projet), q$variable, q$etiquette, as.numeric(q$observations))
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
+  reviser(p$id)
   resume_projet(p)
 }
 
@@ -742,7 +757,8 @@ DEMANDES <- list(
   # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux, et
   # avec q$dans (une variable ou "id:k" : le site), toutes les paires de niveaux d'un même groupe
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y, appariement = q$appariement,
-                                                        niveaux = if (length(q$niveaux)) as.character(unlist(q$niveaux)), dans = q$dans),
+                                                        niveaux = if (length(q$niveaux)) as.character(unlist(q$niveaux)), dans = q$dans,
+                                                        memo = memo_paires(projet(q$projet), q)),
   # les niveaux d'une variable qualitative ou d'un identifiant ("id:k"), dans l'ordre des tests
   niveaux = function(q) list(niveaux = I(niveaux_a_tester(projet(q$projet), q$variable))),
   # l'apport de chaque groupe de termes d'une régression (regression.R), calculé une fois
@@ -789,6 +805,7 @@ DEMANDES <- list(
     attr(p, "imputation") <- NULL
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
+    reviser(p$id)
     c(resume_projet(p), list(imputation = info))
   },
   classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),

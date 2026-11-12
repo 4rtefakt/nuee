@@ -436,19 +436,26 @@ année...) peut faire les groupes, comme une variable qualitative.
   années) : les données restent en long, une ligne par secteur et par année. Deux niveaux A et
   B sont comparés sur les clés qu'ils ont tous deux : les différences B − A par le test t
   apparié (différence moyenne, son intervalle à 95 %, d_z de Cohen) et par le test des rangs
-  signés de Wilcoxon (exact sous 50 paires), le test sur les rangs conseillé quand la
-  normalité des différences est douteuse (Shapiro–Wilk p < 0,05). Il faut au moins trois
-  paires, et une clé ne revient qu'une fois par niveau. Les lignes restées sans partenaire, et
-  celles sans valeur, sont comptées et listées ; le graphique relie chaque paire. Avec trois
-  niveaux ou plus, le tableau du bas peut aussi lister toutes les paires de niveaux, chacune
-  sur ses propres clés communes, avec la correction de Holm, pour le test choisi au-dessus (un
-  clic sur un test) : quand tous les niveaux ont les mêmes clés, celles de pairwise.t.test()
-  et pairwise.wilcox.test() avec paired = TRUE. Un clic sur une paire la compare. « Paires de
-  niveaux dans chaque » (une variable qualitative ou un identifiant : le site) garde les paires
-  de niveaux d'un même groupe, les secteurs de chaque site comparés deux à deux. La correction
-  de Holm porte sur toutes les paires listées, tous les groupes ensemble ; la valeur p brute se
-  lit site par site. Un niveau est du groupe que portent ses lignes : un niveau aux lignes de
-  plusieurs groupes est refusé, et ceux sans groupe sont listés.
+  signés de Wilcoxon, le test sur les rangs conseillé quand la normalité des différences est
+  douteuse (Shapiro–Wilk p < 0,05 ; pas testée au-delà de 5 000 paires, ni avec des
+  différences constantes, qui ne laissent que Wilcoxon). La p de Wilcoxon est exacte sous 50
+  paires quand aucune différence n'est nulle ni ex aequo ; sinon, les différences nulles
+  retirées, elle vient de la loi normale avec la correction de continuité, la même sous toutes
+  les versions de R. Il faut au moins trois paires, et une clé ne revient qu'une fois par
+  niveau. Les lignes restées sans partenaire, et celles sans valeur, sont comptées et
+  listées ; le graphique relie chaque paire. Avec trois niveaux ou plus, le tableau du bas peut
+  aussi lister toutes les paires de niveaux, chacune sur ses propres clés communes, avec la
+  correction de Holm sur les paires testées, pour le test choisi au-dessus (un clic sur un
+  test) : quand tous les niveaux ont les mêmes clés, celles de pairwise.t.test() et
+  pairwise.wilcox.test() avec paired = TRUE. Une paire non testée (moins de trois clés
+  communes, une clé deux fois dans un niveau, la même valeur dans chaque paire) dit pourquoi,
+  et un clic sur une paire la compare ; quand A et B ne se comparent pas, le tableau reste,
+  sous leur raison. « Paires de niveaux dans chaque » (une variable qualitative ou un
+  identifiant : le site) garde les paires de niveaux d'un même groupe, les secteurs de chaque
+  site comparés deux à deux. La correction de Holm porte sur les paires testées, tous les
+  groupes ensemble ; la valeur p brute se lit site par site. Un niveau est du groupe que
+  portent ses lignes : un niveau aux lignes de plusieurs groupes est refusé, et ceux sans
+  groupe sont listés.
   Deux mesures : les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la
   normalité de l'une des deux est douteuse. Appariées par « l'observation (même ligne) », deux
   mesures des mêmes lignes (avant et après, par exemple) sont comparées à la place : les

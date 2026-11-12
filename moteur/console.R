@@ -105,6 +105,7 @@ lier_objets <- function() {
       v$id <- k
       v$modifie <- TRUE
       etat$projets[[k]] <- v
+      reviser(k)
       etat$console_modifies <- unique(c(etat$console_modifies, k))
     }, console)
   })

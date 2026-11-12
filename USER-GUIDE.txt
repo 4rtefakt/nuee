@@ -411,18 +411,24 @@ qualitative variable.
   year, for two sectors of a site followed over the same years): the data stay in long format,
   one row per sector and year. Two levels A and B are compared on the keys both have: the
   differences B − A by the paired t-test (mean difference, its 95 % interval, Cohen's d_z) and
-  by Wilcoxon's signed-rank test (exact below 50 pairs), the rank test recommended when the
-  normality of the differences is doubtful (Shapiro–Wilk p < 0.05). At least three pairs are
-  needed, and a key may appear only once per level. The rows left without a partner, and
-  those without a value, are counted and listed; the plot joins each pair. With three levels
-  or more, the table below can also list every pair of levels, each on its own shared keys,
-  with Holm's correction, for the test chosen above (a click on a test): when all the levels
-  share the same keys, those of pairwise.t.test() and pairwise.wilcox.test() with
-  paired = TRUE. A click on a pair compares it. "Pairs of levels within each" (a qualitative
-  variable or an ID: the site) keeps to the pairs of levels of the same group, the sectors of
-  each site compared two by two. Holm's correction covers all the pairs listed, all groups
-  together; the raw p reads one site at a time. A level belongs to the group its rows carry:
-  one with rows in several groups is refused, and those without a group are listed.
+  by Wilcoxon's signed-rank test, the rank test recommended when the normality of the
+  differences is doubtful (Shapiro–Wilk p < 0.05; not tested beyond 5,000 pairs, nor with
+  constant differences, which leave Wilcoxon alone). Wilcoxon's p is exact below 50 pairs
+  when no difference is zero or tied; otherwise the zero differences are dropped and p comes
+  from the normal approximation with continuity correction, the same on every R version. At
+  least three pairs are needed, and a key may appear only once per level. The rows left
+  without a partner, and those without a value, are counted and listed; the plot joins each
+  pair. With three levels or more, the table below can also list every pair of levels, each
+  on its own shared keys, with Holm's correction over the pairs tested, for the test chosen
+  above (a click on a test): when all the levels share the same keys, those of
+  pairwise.t.test() and pairwise.wilcox.test() with paired = TRUE. A pair not tested (fewer
+  than three shared keys, a key twice in a level, the same value in every pair) says why, and
+  a click on a pair compares it; when A and B can't be compared, the table stays, under their
+  reason. "Pairs of levels within each" (a qualitative variable or an ID: the site) keeps to
+  the pairs of levels of the same group, the sectors of each site compared two by two. Holm's
+  correction covers the pairs tested, all groups together; the raw p reads one site at a
+  time. A level belongs to the group its rows carry: one with rows in several groups is
+  refused, and those without a group are listed.
   Two measurements: Pearson's and Spearman's correlations; Spearman is recommended when
   normality is doubtful for either. Paired by "the observation (same row)", two measurements
   of the same rows (before and after, say) are compared instead: the differences

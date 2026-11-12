@@ -368,7 +368,7 @@ const app = {
     let r;
     try { r = await demander('note_modele', { modele: id, note }); } catch (e) { statut(`${t('erreur')} : ${e.message}`, true); return; }
     if (etat.modeles[id]) etat.modeles[id].note = r.note;
-    etat.projets[r.projet.id] = r.projet;
+    projetRecu(r.projet);
     app.rafraichirExplorateur();
     majEtat();
     diffuser('modeles');
@@ -847,7 +847,7 @@ function apresExport(r) {
 }
 
 async function apresOuverture(res, session = null) {
-  etat.projets[res.id] = res;
+  projetRecu(res);
   etat.noeud = res.id;
   diffuser('modeles');
   app.rafraichirExplorateur();
@@ -1076,11 +1076,20 @@ function oublierCalculs(pid) {
   }
 }
 
-// After the project's data changed: its summary, the explorer, the colour and label lists,
-// and the views that keep a copy of its data.
-function projetChange(res) {
+// A project's summary from R, kept. R counts each change of its data, made in this window or
+// another, as a revision: when the revision differs from the summary kept so far, the views
+// computed from the data are forgotten (every summary goes through here, so that a revision is
+// never kept without them).
+function projetRecu(res) {
+  const avant = etat.projets[res.id];
   etat.projets[res.id] = res;
-  oublierCalculs(res.id);
+  if (avant && avant.revision !== res.revision) oublierCalculs(res.id);
+}
+
+// After the project changed (its data, or its models): its summary, the explorer, the colour
+// and label lists, and the views that keep a copy of its data when the data changed.
+function projetChange(res) {
+  projetRecu(res);
   app.rafraichirExplorateur();
   rafraichirModele(null);
   diffuser('modeles');
@@ -1088,7 +1097,7 @@ function projetChange(res) {
 }
 
 async function rafraichirProjet(pid) {
-  etat.projets[pid] = await demander('projet', { projet: pid });
+  projetRecu(await demander('projet', { projet: pid }));
   app.rafraichirExplorateur();
 }
 

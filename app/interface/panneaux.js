@@ -1511,6 +1511,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   const groupe = qualitative(L.x) === qualitative(L.y) ? null : qualitative(L.x) ? L.x : L.y;
   const candidates = groupe !== null ? options.filter(([u]) => u !== L.x && u !== L.y) : mesures ? [['observation', t('apparie_observation')]] : [];
   const apparie = candidates.some(([u]) => u === L.apparier);
+  if (!apparie) L.apparier = null;  // (a pairing that no longer applies is forgotten, not kept for later)
   const parNiveaux = apparie && groupe !== null;
   if (parNiveaux && cache.groupe !== String(groupe)) {
     // the levels A and B are chosen from, there even when a pair of levels can't be tested
@@ -1524,6 +1525,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   // group (the sectors of a site): a qualitative variable or an ID other than the three above
   const candidatsDans = parNiveaux && niveaux.length >= 3 ? options.filter(([u]) => u !== L.x && u !== L.y && u !== L.apparier && qualitative(u)) : [];
   const dans = candidatsDans.some(([u]) => u === L.dans) ? L.dans : null;
+  L.dans = dans;
   const barre = outils(modes,
     choix(t('tests_var1'), options, L.x, (x) => { L.x = lire(x); ctx.rafraichir(); }),
     choix(t('tests_var2'), options.filter(([u]) => u !== L.x), L.y, (x) => { L.y = lire(x); ctx.rafraichir(); }),
@@ -1540,13 +1542,46 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     const q = { projet: p.projet, x: L.x, y: L.y, ...(apparie ? { appariement: L.apparier, niveaux: parNiveaux ? [L.a, L.b] : null, ...(dans !== null ? { dans } : {}) } : {}) };
     try { cache.res = await ctx.demander('test_deux_variables', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
-    // (another pair A, B keeps the test chosen for the table of all pairs)
+    // (another pair A, B, or a change of the data, keeps the test chosen for the table of all
+    // pairs: kept out of the cache, which a change of the data empties)
     const base = JSON.stringify([L.x, L.y, apparie ? L.apparier : null]);
-    if (cache.base !== base) L.test = null;
-    cache.base = base;
+    if (L.baseTest !== base) L.test = null;
+    L.baseTest = base;
   }
   if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
   const r = cache.res;
+  const liste = (xs) => (xs.length > 8 ? `${xs.slice(0, 8).join(', ')}… (${xs.length})` : xs.join(', '));
+  // every pair of levels (within each group, if one is chosen), with the columns of the test
+  // chosen above and why a pair wasn't tested; a click on a row compares that pair
+  const nomToutes = r.dans ? t('paires_dans_groupe', { groupe: r.dans.nom }) : t('toutes_paires');
+  const tableauToutes = (bas, avant) => {
+    const tp = (k) => [].concat(r.toutes[k]);
+    const wilcoxon = L.test === 'wilcoxon';
+    // (the same keys for both tests: a table sorted by p stays so when the test changes)
+    const champ = { difference: wilcoxon ? 'mediane' : 'difference', p: wilcoxon ? 'p_w' : 'p_t', p_holm: wilcoxon ? 'p_w_holm' : 'p_t_holm' };
+    const valeur = (i, k) => tp(champ[k] || k)[i];
+    const num = (cle, titreCol, decimales, format, alerte) => ({ cle, titre: titreCol, num: true, decimales, format, alerte });
+    const colonnes = [...(r.dans ? [{ cle: 'groupe', titre: r.dans.nom }] : []), { cle: 'a', titre: 'A' }, { cle: 'b', titre: 'B' }, num('n', 'n', 0),
+      num('difference', t(wilcoxon ? 'difference_mediane_ba' : 'difference_ba'), 3),
+      ...(wilcoxon ? [] : [num('bas', t('ic_bas'), 3), num('haut', t('ic_haut'), 3)]),
+      num('p', 'p', 4, valeurP), num('p_holm', t('p_holm'), 4, valeurP, (i) => valeur(i, 'p_holm') !== null && valeur(i, 'p_holm') <= 0.05),
+      { cle: 'non_teste', titre: t('non_teste') }];
+    L.tableToutes ??= {};
+    if (L.tableToutes.tri && !colonnes.some((c) => c.cle === L.tableToutes.tri.cle)) delete L.tableToutes.tri;
+    tableau(bas, ctx, L.tableToutes, {
+      n: tp('a').length, nom: nomToutes, avant, colonnes, valeur,
+      cliquer: (i) => { L.a = tp('a')[i]; L.b = tp('b')[i]; ctx.rafraichir(); },
+      choisie: (i) => [tp('a')[i], tp('b')[i]].sort().join('\u0000') === [r.a, r.b].sort().join('\u0000'),
+    });
+  };
+  if (r.type === 'apparie' && r.erreur) {
+    // the pair A–B can't be tested: why, and the table of all pairs still there
+    const bas = el('div', { class: 'bas' });
+    conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${r.erreur}`),
+      r.sans_groupe ? el('p', { class: 'note' }, t('paires_sans_groupe', { groupe: r.dans.nom, niveaux: liste([].concat(r.sans_groupe)) })) : '', bas);
+    tableauToutes(bas, [el('b', {}, nomToutes)]);
+    return;
+  }
   const col = (k) => [].concat(r.tests[k]);
   const cles = col('test');
   if (!cles.includes(L.test)) L.test = r.conseille;
@@ -1563,11 +1598,13 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
       el('td', {}, k === r.conseille ? el('b', {}, t('conseille')) : '')))));
   // why this test: its conditions, checked in R
   const groupes = r.groupes ? [].concat(r.groupes.groupe) : [];
-  const liste = (xs) => (xs.length > 8 ? `${xs.slice(0, 8).join(', ')}… (${xs.length})` : xs.join(', '));
   const decimal = (s) => (langueActuelle() === 'fr' ? s.replace('.', ',') : s);  // (in a sentence)
   let raison;
   if (r.type === 'apparie') {
-    raison = t(r.raison === 'normalite' ? 'raison_normalite_apparie' : 'raison_ok_apparie', { p: r.shapiro_p === null ? '—' : decimal(valeurP(r.shapiro_p)) });
+    // (normality not tested: constant differences, more than 5,000 pairs, Shapiro–Wilk impossible)
+    const cleRaison = { normalite: 'raison_normalite_apparie', constantes: 'raison_constantes_apparie', nombre: 'raison_nombre_apparie',
+      non_testee: 'raison_non_testee_apparie' }[r.raison] || 'raison_ok_apparie';
+    raison = t(cleRaison, { p: r.shapiro_p === null ? '—' : decimal(valeurP(r.shapiro_p)) });
   } else if (r.raison === 'attendus') raison = t('raison_attendus', { part: `${fmt(100 * r.part_attendus_faibles, 0)} %`, min: decimal(fmt(r.attendu_min, 2)) });
   else if (r.raison === 'variances') raison = t('raison_variances', { p: decimal(valeurP(r.variances.p)) });
   else if (r.raison === 'normalite' && r.type === 'groupes') {
@@ -1631,25 +1668,10 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     // each group, if one is chosen) with the chosen test (a click on a test above), a click on a
     // row comparing that pair
     L.tableauPaires ??= 'paires';
-    const toutes = Boolean(r.toutes) && L.tableauPaires === 'toutes';
-    const nomToutes = r.dans ? t('paires_dans_groupe', { groupe: r.dans.nom }) : t('toutes_paires');
     const avant = r.toutes ? [choix('', [['paires', t('paires_ab', { a: r.a, b: r.b })], ['toutes', nomToutes]], L.tableauPaires,
       (x) => { L.tableauPaires = x; ctx.rafraichir(); })] : [el('b', {}, t('paires'))];
-    if (toutes) {
-      const tp = (k) => [].concat(r.toutes[k]);
-      const num = (cle, titreCol, decimales, format, alerte) => ({ cle, titre: titreCol, num: true, decimales, format, alerte });
-      const sous = (k) => (i) => tp(k)[i] !== null && tp(k)[i] <= 0.05;
-      L.tableToutes ??= {};
-      tableau(bas, ctx, L.tableToutes, {
-        n: tp('a').length, nom: nomToutes, avant,
-        colonnes: [...(r.dans ? [{ cle: 'groupe', titre: r.dans.nom }] : []), { cle: 'a', titre: 'A' }, { cle: 'b', titre: 'B' }, num('n', 'n', 0)].concat(L.test === 'wilcoxon'
-          ? [num('mediane', t('difference_mediane_ba'), 3), num('p_w', 'p', 4, valeurP), num('p_w_holm', t('p_holm'), 4, valeurP, sous('p_w_holm'))]
-          : [num('difference', t('difference_ba'), 3), num('bas', t('ic_bas'), 3), num('haut', t('ic_haut'), 3), num('p_t', 'p', 4, valeurP),
-            num('p_t_holm', t('p_holm'), 4, valeurP, sous('p_t_holm'))]),
-        valeur: (i, k) => tp(k)[i],
-        cliquer: (i) => { L.a = tp('a')[i]; L.b = tp('b')[i]; ctx.rafraichir(); },
-        choisie: (i) => [tp('a')[i], tp('b')[i]].sort().join('\u0000') === [r.a, r.b].sort().join('\u0000'),
-      });
+    if (r.toutes && L.tableauPaires === 'toutes') {
+      tableauToutes(bas, avant);
       return;
     }
     L.tablePaires ??= {};
@@ -1766,7 +1788,8 @@ async function rendreCorrelations(conteneur, ctx, p, loc, modes) {
   for (let i = 0; i < K; i += 1) for (let j = i + 1; j < K; j += 1) paires.push([i, j]);
   const significative = (k) => { const [i, j] = paires[k]; return r.p_ajuste[i][j] !== null && r.p_ajuste[i][j] <= C.seuil; };
   const nSig = paires.filter((_, k) => significative(k)).length;
-  const tester = (i, j) => { loc.mode = 'deux'; Object.assign((loc.deux ??= {}), { x: uid[i], y: uid[j] }); ctx.rafraichir(); };
+  // (a correlation: no pairing left over from an earlier test)
+  const tester = (i, j) => { loc.mode = 'deux'; Object.assign((loc.deux ??= {}), { x: uid[i], y: uid[j], apparier: null, dans: null }); ctx.rafraichir(); };
   const lettre = C.methode === 'pearson' ? 'r' : 'ρ';
   const nomCorrection = { BH: t('correction_bh'), bonferroni: 'Bonferroni', aucune: t('aucune') }[C.correction];
   const graphe = el('div', { class: 'graphe' });

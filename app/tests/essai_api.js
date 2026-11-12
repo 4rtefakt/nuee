@@ -192,6 +192,11 @@ async function principal() {
       const d = await api('donnees', { projet: p.id });
       verifier(d.valeurs[d.variables.indexOf('x1')][0] === 12.5 && m.revision === avant + 3, 'valeur modifiée');
       await api('annuler', { projet: p.id });
+      // a change that fails isn't one: no revision
+      const apres = (await api('projet', { projet: p.id })).revision;
+      let refus = '';
+      try { await api('variable_calculee', { projet: p.id, nom: 'mauvaise', formule: 'x1 *' }); } catch (err) { refus = err.message; }
+      verifier(refus && (await api('projet', { projet: p.id })).revision === apres, `un changement refusé compte une révision (${refus})`);
     });
     await etape('notes, enregistrement avec séance, réouverture', async () => {
       verifier((await api('note_modele', { modele: pls.id, note: 'essai' })).note === 'essai', 'note');
@@ -413,6 +418,13 @@ async function principal() {
       const ts = (await api('test_deux_variables', { projet: ls.id, x: vs.densite, y: vs.secteur, appariement: vs.annee, dans: vs.site })).toutes;
       verifier([].concat(ts.groupe).join() === 'A' && [].concat(ts.a).join() === 'S1' && [].concat(ts.b).join() === 'S2'
         && [].concat(ts.p_t)[0] === r.tests.p[0] && [].concat(ts.p_t_holm)[0] === [].concat(ts.p_t)[0], `paires dans chaque site : ${JSON.stringify(ts)}`);
+      // a pair A–B that can't be tested (S3 has two years): its error apart, the table of all pairs still there, with why
+      const deux = await api('coller', { texte: ['nom\tsecteur\tannee\tdensite', ...[2001, 2002, 2003, 2004].flatMap((an, i) => [`a${an}\tS1\t${an}\t${2 + i / 10}`,
+        `b${an}\tS2\t${an}\t${3 + (i % 3) / 10}`]), 'c2001\tS3\t2001\t4', 'c2002\tS3\t2002\t5'].join('\r\n'), nom: 'Deux années' });
+      const dv = Object.fromEntries(deux.variables.map((x) => [x.nom, x.uid]));
+      const ab = await api('test_deux_variables', { projet: deux.id, x: dv.densite, y: dv.secteur, appariement: dv.annee, niveaux: ['S1', 'S3'] });
+      verifier(/au moins trois paires/.test(ab.erreur) && !ab.tests && !ab.phrase && [].concat(ab.toutes.non_teste).join('|') === '|2 valeur(s) de annee en commun, il en faut 3|2 valeur(s) de annee en commun, il en faut 3',
+        `paire A–B non testée : ${JSON.stringify(ab)}`);
       // two measurements of the same rows (before, after): paired by the observation
       const large = await api('coller', { texte: ['nom\tavant\tapres', 'a\t5,1\t5,6', 'b\t4,2\t4,9', 'c\t6,3\t6,2', 'd\t5,0\t', 'e\t3,9\t4,8', 'f\t4,4\t5,0'].join('\r\n'), nom: 'Avant-après' });
       const lv = Object.fromEntries(large.variables.map((x) => [x.nom, x.uid]));

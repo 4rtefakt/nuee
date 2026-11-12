@@ -119,6 +119,12 @@ r <- correler(exp(poids / 40), diametre, paste0("o", seq_along(poids)))
 verifier("une variable non normale : Spearman conseillée", r$conseille == "spearman" && r$raison == "normalite")
 
 cat("Mesures appariées\n")
+# Wilcoxon apparié de référence, le même sous toutes les versions de R : exact sous 50 différences
+# sans zéro ni ex aequo, sinon par la loi normale avec la correction de continuité (zéros retirés)
+wilcox_ref <- function(b, a) {
+  d <- b - a
+  suppressWarnings(wilcox.test(b, a, paired = TRUE, exact = all(d != 0) && length(d) < 50 && !anyDuplicated(abs(d)), correct = TRUE))
+}
 # en long, une ligne par secteur et par année, dans le désordre : S1 commence en 2003, S2
 # s'arrête en 2011 et n'a pas de densité en 2005
 set.seed(4)
@@ -133,13 +139,13 @@ communes <- c(2003, 2004, 2006:2011)
 serie <- function(s) long$densite[long$secteur == s][match(communes, long$annee[long$secteur == s])]
 a <- serie("S1"); b <- serie("S2")
 tt <- t.test(b, a, paired = TRUE)
-w <- wilcox.test(b, a, paired = TRUE)
+w <- wilcox_ref(b, a)
 r <- test_deux_variables(pl, densite, secteur, appariement = annee, niveaux = c("S1", "S2"))
 verifier("t apparié = t.test(paired = TRUE) sur les années communes, quel que soit l'ordre des lignes", r$type == "apparie" && r$n == 8 &&
          identical(as.numeric(r$paires$cle), communes) && isTRUE(all.equal(r$tests$statistique[1], unname(tt$statistic))) && r$tests$ddl1[1] == 7 &&
          isTRUE(all.equal(r$tests$p[1], tt$p.value)) && isTRUE(all.equal(r$difference, c(unname(tt$estimate), as.numeric(tt$conf.int)))))
 verifier("d_z de Cohen = différence moyenne / écart-type des différences", isTRUE(all.equal(r$tests$effet[1], mean(b - a) / sd(b - a))))
-verifier("Wilcoxon = wilcox.test(paired = TRUE), exact sous 50 paires ; r rang-bisérial = 2V / (n(n + 1)/2) − 1",
+verifier("Wilcoxon = wilcox.test(paired = TRUE), exact sous 50 paires sans zéro ni ex aequo ; r rang-bisérial = 2V / (n(n + 1)/2) − 1",
          isTRUE(all.equal(r$tests$statistique[2], unname(w$statistic))) && isTRUE(all.equal(r$tests$p[2], w$p.value)) &&
          r$exact && grepl("exact", w$method) && isTRUE(all.equal(r$tests$effet[2], 2 * unname(w$statistic) / (8 * 9 / 2) - 1)))
 verifier("lignes sans partenaire (avec leur année) et sans valeur, comptées", identical(r$sans_partenaire$a, c("2005", "2012")) &&
@@ -171,24 +177,49 @@ verifier(sprintf("différences non normales : Wilcoxon conseillé, « %s »", r$
 ecart <- c(0, 1, 1, 2, -1, 0, 2, 2, 1, 3)
 pa <- appariees(1:10, ecart)
 r <- test_deux_variables(pa, numeros(pa, "v"), numeros(pa, "g"), appariement = numeros(pa, "k"))
-w <- wilcox.test((1:10) + ecart, 1:10, paired = TRUE)
-verifier("ex aequo et différences nulles : Wilcoxon = wilcox.test(), r rang-bisérial sur les différences non nulles",
-         isTRUE(all.equal(r$tests$p[2], w$p.value)) && identical(r$exact, grepl("exact", w$method)) && isTRUE(all.equal(r$tests$effet[2], 31 / 36)))
+w <- wilcox.test((1:10) + ecart, 1:10, paired = TRUE, exact = FALSE, correct = TRUE)
+r$conseille <- "wilcoxon"
+verifier("ex aequo et différences nulles : zéros retirés, loi normale avec correction de continuité = wilcox.test(exact = FALSE) ; r de ces rangs",
+         !r$exact && isTRUE(all.equal(r$tests$statistique[2], unname(w$statistic))) && isTRUE(all.equal(r$tests$p[2], w$p.value)) &&
+         r$tests$statistique[2] == 33.5 && isTRUE(all.equal(r$tests$effet[2], 31 / 36)) &&
+         grepl("p approchée par la loi normale, avec correction de continuité", phrase_test(r)))
+# les données de la revue : sous R 4.6, wilcox.test() donnerait V = 29 (zéros classés) et une p exacte ;
+# avant 4.6 (Linux), V = 19 par la loi normale : Nuée donne partout ce dernier calcul
+ra <- c(5.1, 4.8, 6.0, 5.5, 4.9, 5.2, 6.1, 5.0)
+rv <- tests_apparies(ra, ra + c(0, 0, 0.5, 0.5, 1, -0.5, 1.5, 2), "A", "B")
+w <- wilcox.test(ra + c(0, 0, 0.5, 0.5, 1, -0.5, 1.5, 2), ra, paired = TRUE, exact = FALSE, correct = TRUE)
+verifier("le même Wilcoxon sous toutes les versions de R : V = 19, p de la loi normale, r = 2V/21 − 1",
+         rv$tests$statistique[2] == 19 && isTRUE(all.equal(rv$tests$p[2], w$p.value)) && !rv$exact && isTRUE(all.equal(rv$tests$effet[2], 2 * 19 / 21 - 1)))
+# des différences constantes (après = avant + 0,1, au bruit des nombres à virgule près) : ni
+# test t ni d_z, la normalité pas testée, Wilcoxon ; au-delà de 5 000 paires, la normalité pas
+# testée et le t apparié
+rk <- tests_apparies(c(5.1, 4.3, 6.7, 5.5, 3.9, 4.4), c(5.2, 4.4, 6.8, 5.6, 4.0, 4.5), "avant", "apres")
+set.seed(9)
+rg5 <- tests_apparies(rnorm(5001), rnorm(5001, 0.1), "A", "B")
+verifier("différences constantes : pas de test t ni de d_z, Wilcoxon conseillé ; plus de 5 000 paires : normalité pas testée, t apparié",
+         rk$raison == "constantes" && rk$conseille == "wilcoxon" && all(is.na(c(rk$tests$statistique[1], rk$tests$p[1], rk$tests$effet[1], rk$shapiro_p))) &&
+         !is.na(rk$tests$p[2]) && rg5$raison == "nombre" && rg5$conseille == "t_apparie" && is.na(rg5$shapiro_p) && !is.na(rg5$tests$p[1]))
 set.seed(5)
 base <- rnorm(60)
 pa <- appariees(base, rnorm(60, 0.3))
 r <- test_deux_variables(pa, numeros(pa, "v"), numeros(pa, "g"), appariement = numeros(pa, "k"))
 r$conseille <- "wilcoxon"
 verifier("60 paires : Wilcoxon par la loi normale = wilcox.test(), et la phrase le dit", !r$exact &&
-         isTRUE(all.equal(r$tests$p[2], wilcox.test(r$paires$b, r$paires$a, paired = TRUE)$p.value)) && grepl("p approchée par la loi normale", phrase_test(r)))
+         isTRUE(all.equal(r$tests$p[2], wilcox.test(r$paires$b, r$paires$a, paired = TRUE)$p.value)) &&
+         grepl("p approchée par la loi normale, avec correction de continuité", phrase_test(r)))
 erreur <- function(...) tryCatch({ test_deux_variables(...); "" }, error = conditionMessage)
 double <- long
 double$annee[double$secteur == "S1" & double$annee == 2004] <- 2003
 pd <- projet_depuis_tableau(double, "secteurs")
-verifier("une année deux fois pour un secteur : refusé, l'année dite", grepl("S1 a plusieurs lignes pour la même valeur de annee \\(2003\\)",
-         erreur(pd, densite, secteur, appariement = annee, niveaux = c("S1", "S2"))))
+rd <- test_deux_variables(pd, densite, secteur, appariement = annee, niveaux = c("S1", "S2"))
+verifier("une année deux fois pour un secteur : la paire A–B refusée, l'année dite, ses paires non testées et pourquoi",
+         grepl("S1 a plusieurs lignes pour la même valeur de annee \\(2003\\)", rd$erreur) && is.null(rd$tests) && is.null(rd$phrase) &&
+         identical(rd$toutes$non_teste, c(rep("S1 a deux lignes pour une même valeur de annee", 2), "")) && !is.na(rd$toutes$p_t[3]))
 peu <- numeros_observations(pl)[long$annee %in% c(2003, 2004)]
-verifier("moins de trois paires : refusé", grepl("au moins trois paires : S1 et S2 n'ont que 2 valeur", erreur(pl, densite, secteur, observations = peu, appariement = annee)))
+p2b <- appariees(c(1, 2), c(1, 2))
+verifier("moins de trois paires : l'erreur de la paire A–B, le tableau des paires à côté ; deux niveaux seulement : refusé",
+         grepl("au moins trois paires : S1 et S2 n'ont que 2 valeur", test_deux_variables(pl, densite, secteur, observations = peu, appariement = annee)$erreur) &&
+         grepl("au moins trois paires : A et B n'ont que 2 valeur", erreur(p2b, numeros(p2b, "v"), numeros(p2b, "g"), appariement = numeros(p2b, "k"))))
 pa <- appariees(c(1, 2, 3, 5), 0)
 verifier("la même valeur dans chaque paire : refusé", grepl("même valeur dans chaque paire", erreur(pa, numeros(pa, "v"), numeros(pa, "g"), appariement = numeros(pa, "k"))))
 verifier("deux mesures appariées par une clé, la clé parmi les deux variables, deux qualitatives : refusé",
@@ -212,12 +243,32 @@ verifier("trois secteurs : toutes les paires, chacune sur ses années communes =
 s4 <- rbind(long, data.frame(nom = c("x1", "x2"), secteur = "S4", annee = c(2001, 2002), densite = c(4, 5)))
 p4 <- projet_depuis_tableau(s4, "secteurs")
 r4 <- test_deux_variables(p4, densite, secteur, appariement = annee)
-verifier("une paire de moins de trois années communes n'est pas testée, ni comptée dans la correction",
+verifier("une paire de moins de trois années communes n'est pas testée, ni comptée dans la correction, et dit pourquoi",
          identical(r4$toutes$n[r4$toutes$b == "S4"], c(0L, 2L, 2L)) && all(is.na(r4$toutes$p_t[r4$toutes$b == "S4"])) &&
-         isTRUE(all.equal(r4$toutes$p_t_holm[r4$toutes$b != "S4"], rt$toutes$p_t_holm)))
+         isTRUE(all.equal(r4$toutes$p_t_holm[r4$toutes$b != "S4"], rt$toutes$p_t_holm)) &&
+         identical(r4$toutes$non_teste[r4$toutes$b == "S4"], c("aucune valeur de annee en commun", rep("2 valeur(s) de annee en commun, il en faut 3", 2))) &&
+         all(r4$toutes$non_teste[r4$toutes$b != "S4"] == ""))
+# B = A partout, C = A + 1 : la paire A–B n'a que des différences nulles, A–C et B–C des
+# différences constantes (Wilcoxon seul)
+trois <- projet_depuis_tableau(data.frame(nom = paste0("t", 1:12), g = rep(c("A", "B", "C"), each = 4), k = rep(1:4, 3),
+                                          v = c(1, 2, 3, 5, 1, 2, 3, 5, 2, 3, 4, 6)), "trois")
+rz <- test_deux_variables(trois, numeros(trois, "v"), numeros(trois, "g"), appariement = numeros(trois, "k"), niveaux = c("A", "C"))
+verifier("des différences toutes nulles : la paire pas testée ; constantes : Wilcoxon seul, et pourquoi pas de t",
+         identical(rz$toutes$non_teste, c("la même valeur dans chaque paire", rep("différences constantes : pas de test t", 2))) &&
+         all(is.na(rz$toutes$p_t)) && all(is.na(rz$toutes$p_w[1])) && all(!is.na(rz$toutes$p_w[2:3])) && rz$raison == "constantes" && !grepl("NA", rz$phrase))
+# le tableau de toutes les paires se garde d'une demande à l'autre (memo : le serveur, par
+# révision du projet) : un autre A–B ne le refait pas
+calculs <- 0
+garde <- NULL
+memo <- function(calcul) { if (is.null(garde)) { calculs <<- calculs + 1; garde <<- calcul() }; garde }
+m1 <- test_deux_variables(pl, densite, secteur, appariement = annee, niveaux = c("S1", "S2"), memo = memo)
+m2 <- test_deux_variables(pl, densite, secteur, appariement = annee, niveaux = c("S2", "S3"), memo = memo)
+verifier("le tableau de toutes les paires gardé : fait une fois pour deux paires A–B", calculs == 1 && identical(m1$toutes, m2$toutes) &&
+         identical(m1$toutes, rt$toutes) && m2$a == "S2")
 set.seed(7)
 complet <- expand.grid(annee = 2001:2008, secteur = c("S1", "S2", "S3", "S4"), stringsAsFactors = FALSE)
-complet$densite <- round(3 + rnorm(nrow(complet)) + 0.9 * (complet$secteur == "S3"), 2)
+# (sans ex aequo : le Wilcoxon de chaque paire est exact, comme celui de pairwise.wilcox.test())
+complet$densite <- 3 + rnorm(nrow(complet)) + 0.9 * (complet$secteur == "S3")
 pc <- projet_depuis_tableau(data.frame(nom = paste0("c", seq_len(nrow(complet))), complet[c("secteur", "annee", "densite")]), "complet")
 rc <- test_deux_variables(pc, numeros(pc, "densite"), numeros(pc, "secteur"), appariement = numeros(pc, "annee"))
 ptt <- pairwise.t.test(complet$densite, complet$secteur, paired = TRUE, p.adjust.method = "holm")$p.value
@@ -249,7 +300,7 @@ ref <- do.call(rbind, lapply(split(names(sites), sites), function(s) {
     vb <- b$densite[match(an, b$annee)]
     tt <- t.test(vb, va, paired = TRUE)
     data.frame(groupe = sites[[cb[1]]], a = cb[1], b = cb[2], n = length(an), bas = tt$conf.int[1], haut = tt$conf.int[2], p_t = tt$p.value,
-               p_w = suppressWarnings(wilcox.test(vb, va, paired = TRUE))$p.value, stringsAsFactors = FALSE)
+               p_w = wilcox_ref(vb, va)$p.value, stringsAsFactors = FALSE)
   }))
 }))
 verifier("dans chaque site : les paires de ses secteurs, site après site, = t.test() et wilcox.test(paired = TRUE), Holm sur ces paires seules",
@@ -287,6 +338,13 @@ nombreux$densite <- round(rnorm(nrow(nombreux), 5), 2)
 pn <- projet_depuis_tableau(data.frame(nom = paste0("n", seq_len(nrow(nombreux))), nombreux[c("secteur", "site", "annee", "densite")]), "nombreux")
 nv <- function(nom) numeros(pn, nom)
 rgn <- test_deux_variables(pn, nv("densite"), nv("secteur"), appariement = nv("annee"), dans = nv("site"))
+decale <- lg
+decale$annee[decale$secteur == "S4"] <- decale$annee[decale$secteur == "S4"] + 20
+rsep <- dans_site(projet_depuis_tableau(decale, "sites"), niveaux = c("S1", "S4"), dans = gv("site"))
+verifier("dans chaque site, A et B de deux sites sans année commune : leur erreur à part, le tableau des paires des sites toujours là",
+         grepl("au moins trois paires : S1 et S4 n'ont que 0 valeur", rsep$erreur) && is.null(rsep$tests) &&
+         identical(paste(rsep$toutes$a, rsep$toutes$b), c("S1 S2", "S1 S3", "S2 S3", "S4 S5")) &&
+         identical(rsep$toutes$non_teste, c("", "", "", "aucune valeur de annee en commun")) && isTRUE(all.equal(rsep$toutes$p_t[1:3], rg$toutes$p_t[1:3])))
 verifier("60 secteurs, 2 par site : les 30 paires de chaque site (au-delà de 50 niveaux, c'est le plus grand groupe qui compte)",
          nrow(rgn$toutes) == 30 && all(rgn$toutes$n == 4) && is.null(rgn$note_comparaisons) &&
          is.null(test_deux_variables(pn, nv("densite"), nv("secteur"), appariement = nv("annee"))$toutes))
@@ -300,7 +358,7 @@ pw <- projet_depuis_tableau(large, "avant-après")
 avant <- numeros(pw, "avant"); apres <- numeros(pw, "apres")
 ok <- complete.cases(large$avant, large$apres)
 tt <- t.test(large$apres[ok], large$avant[ok], paired = TRUE)
-w <- wilcox.test(large$apres[ok], large$avant[ok], paired = TRUE)
+w <- wilcox_ref(large$apres[ok], large$avant[ok])
 r <- test_deux_variables(pw, avant, apres, appariement = "observation")
 verifier(sprintf("deux mesures d'une même ligne : après − avant = t.test() et wilcox.test(paired = TRUE), « %s »", r$phrase),
          r$type == "apparie" && r$ligne && r$n == 22 && r$manquantes == 3 && r$a == "avant" && r$b == "apres" && is.null(r$toutes) &&
