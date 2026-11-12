@@ -613,6 +613,25 @@ l'intérieur de ses groupes (sachant les effets aléatoires), comme dans nlme::A
 les résidus normalisés dans l'ordre du temps de chaque groupe : ceux de nlme ne sont justes que
 sur des lignes rangées par groupe, puis par temps. Fichier › Rapport du modèle peut reprendre
 le graphique.
+Graphiques › Sélection par AIC (aussi sous chaque régression, dans l'explorateur) : quelles
+variables garder. Chaque combinaison des groupes de termes du modèle (les blocs de la colonne
+Bloc, sinon les variables), du modèle nul au modèle complet, est ajustée en ML sur les mêmes
+observations et rangée par AICc ; un terme croisé ou un carré n'entre qu'avec ses effets
+principaux. Seuls les effets fixes sont choisis : les effets aléatoires, l'autocorrélation,
+l'effort et le réglage des courbes restent ceux du modèle. Jusqu'à 8 groupes (256
+combinaisons), toutes les combinaisons sont ajustées (un modèle mixte avec CAR1 sur 240 lignes
+prend une dizaine de secondes) ; au-delà, une élimination descendante depuis le modèle complet
+retire pas à pas le groupe dont le retrait baisse le plus l'AICc. La vue suggère le meilleur
+modèle (l'AICc le plus bas) et, s'il diffère, le plus parcimonieux à ΔAICc ≤ 2 (le moins de
+paramètres ; Burnham et Anderson, 2002) ; elle trace l'importance de chaque groupe (la somme
+des poids d'Akaike des modèles qui le contiennent) et liste les 20 meilleurs modèles, ou ceux à
+ΔAICc < 10, avec une colonne par groupe, k, logLik, AICc, ΔAICc, le poids et le poids cumulé.
+Ajuster ce modèle, sur la suggestion ou sur n'importe quelle ligne (un clic la choisit
+d'abord), en fait un nouveau modèle : les mêmes réglages avec les seules variables de ces
+groupes (un terme croisé garde ses facteurs), sur les mêmes observations, ajusté comme les
+autres (REML pour les estimations) et nommé comme un réajustement (M1 (1)). Une fois la
+sélection faite, le texte des méthodes la décrit, le rapport du modèle peut la contenir et
+Exporter vers R la refait.
 Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
 un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
 comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par

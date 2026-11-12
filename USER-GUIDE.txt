@@ -570,6 +570,23 @@ AIC. For a GLM or a GAM, Pearson residuals ((y − fitted) / √variance) or dev
 mixed model's residuals are those within its groups (given the random effects), as in
 nlme::ACF. Nuée computes the normalized residuals in each group's time order: nlme's own are
 right only on rows sorted by group, then by time. File › Model report can include the plot.
+Plots › AIC selection (also under each regression in the explorer): which variables to keep.
+Each combination of the model's groups of terms (the blocks of the Block column, otherwise the
+variables), from the null model to the full model, is fitted by ML on the same observations and
+ranked by AICc; a cross term or a square enters only with its main effects. Only the fixed
+effects are chosen: the random effects, the autocorrelation, the effort and the curves'
+settings stay those of the model. Up to 8 groups (256 combinations), every combination is
+fitted (a mixed model with CAR1 on 240 rows takes about 10 s); beyond, a backward elimination
+from the full model removes, step by step, the group whose removal lowers AICc the most. The
+view suggests the best model (lowest AICc) and, when it differs, the most parsimonious within
+ΔAICc ≤ 2 (fewest parameters; Burnham and Anderson, 2002); it plots each group's importance
+(the sum of the Akaike weights of the models that contain it) and lists the 20 best models, or
+those within ΔAICc < 10, with a column per group, k, logLik, AICc, ΔAICc, the weight and the
+cumulative weight. Fit this model, on the suggestion or on any row (click the row first), makes
+it a new model: the same settings with only those groups' variables (a cross term keeps its
+factors), on the same observations, fitted as usual (REML for the estimates) and named like a
+refit (M1 (1)). Once the selection has run, the Methods text describes it, the model report can
+include it, and Export to R redoes it.
 Prediction › Predict observations, Predict a file: Y predicted by the fixed effects (for a
 mixed model, a group never seen), on the model's scale of Y (its transformation included), next
 to Y observed when it is known. A file's columns are matched to the model's variables by name,
