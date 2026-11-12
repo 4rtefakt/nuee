@@ -249,6 +249,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   regression <- type %in% REGRESSIONS
   autre <- type %in% AUTRES_ANALYSES  # (analyses.R : RDA, CA, LDA, TREE, KMEANS)
+  if (autre && length(test) && is.null(fonction_analyse("tester_", type))) {
+    stop(traduire("Cette analyse ne prédit pas d'observations laissées de côté : elle ne prend pas de jeu de test.",
+                  "This analysis doesn't predict left-out observations: it takes no test set."), call. = FALSE)
+  }
   d <- list(type = if (regression || autre) type else if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
             observations = obs, A = A %||% 0, cv_groups = G,

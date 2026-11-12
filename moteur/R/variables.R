@@ -114,8 +114,14 @@ modifier_valeur <- function(projet, observation, variable, valeur) {
 # l'écart de x à cette moyenne : pour une formule de Nouvelle variable, par exemple la moyenne
 # d'une variable par secteur, ou une réponse centrée par secteur (ce qui varie d'une année à
 # l'autre dans un secteur). `groupe` : une variable qualitative, un identifiant des observations,
-# ou interaction(site, secteur).
-moyenne_groupe <- function(x, groupe) stats::ave(as.numeric(x), as.character(groupe), FUN = function(v) if (all(is.na(v))) NA_real_ else mean(v, na.rm = TRUE))
+# ou interaction(site, secteur). Une observation sans groupe (identifiant vide, catégorie
+# manquante) n'a ni moyenne ni écart.
+moyenne_groupe <- function(x, groupe) {
+  g <- as.character(groupe)
+  r <- stats::ave(as.numeric(x), g, FUN = function(v) if (all(is.na(v))) NA_real_ else mean(v, na.rm = TRUE))
+  r[is.na(g)] <- NA_real_  # (ave() leur laisse leur propre valeur)
+  r
+}
 ecart_groupe <- function(x, groupe) as.numeric(x) - moyenne_groupe(x, groupe)
 group_mean <- moyenne_groupe
 group_deviation <- ecart_groupe
@@ -164,17 +170,20 @@ variable_calculee <- function(projet, nom, formule) {
 }
 
 # Les valeurs manquantes de variables quantitatives remplies par ACP itérative régularisée
-# (Josse et Husson 2012 ; missMDA::imputePCA, méthode « Regularized ») : les variables centrées
-# et réduites, leurs manques d'abord à la moyenne ; à chaque tour, l'ACP à k composantes, aux
-# valeurs singulières réduites du bruit estimé sur les autres, reconstruit le tableau, dont les
-# manques prennent les valeurs, et les colonnes sont recentrées ; jusqu'à ce que les valeurs
-# imputées bougent de moins de `tol` écart-type. Les valeurs observées ne changent pas. Une
-# observation à qui manquent plus de la moitié de ces variables reste manquante. Avec `bornes`,
-# une valeur imputée reste dans l'étendue observée de sa variable (une variable 0/1 entre 0 et
-# 1, une surface positive). De nouvelles variables « x (imputée) », ou, avec `remplacer`, les
-# variables elles-mêmes, pour celles qui ont reçu des valeurs (les complètes aident seulement à
-# imputer les autres). attr(, "imputation") : le nombre de valeurs remplies et de tours.
-imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, bornes = TRUE, remplacer = FALSE) {
+# (Josse et Husson 2012), comme missMDA::imputePCA (méthode « Regularized », variables réduites) :
+# les manques d'abord à la moyenne ; à chaque tour, le tableau complété recentré et réduit, l'ACP
+# à k composantes, aux valeurs singulières réduites du bruit estimé sur les autres axes, le
+# reconstruit, et les manques en prennent les valeurs ; jusqu'à ce que l'écart du tableau à sa
+# reconstruction, sur les valeurs observées, change de moins de 1e-6 (au moins 5 tours). Sans
+# `k`, le nombre de composantes est choisi par validation croisée généralisée, de 0 à 5, comme
+# missMDA::estim_ncpPCA (0 : la moyenne de chaque variable). Les valeurs observées ne changent
+# pas. Une observation à qui manquent plus de la moitié de ces variables reste manquante, et ne
+# compte pas dans l'ACP. Avec `bornes`, une valeur imputée reste dans l'étendue observée de sa
+# variable (une variable 0/1 entre 0 et 1, une surface positive). De nouvelles variables
+# « x (imputée) », ou, avec `remplacer`, les variables elles-mêmes, pour celles qui ont reçu des
+# valeurs (les complètes aident seulement à imputer les autres). attr(, "imputation") : le nombre
+# de valeurs remplies, de composantes (et si elles ont été choisies) et de tours.
+imputer_acp <- function(projet, variables, k = NULL, maxit = 1000, bornes = TRUE, remplacer = FALSE) {
   obs <- as.numeric(rownames(projet$donnees))
   variables <- unique(as.numeric(variables))
   for (u in variables) {
@@ -186,7 +195,6 @@ imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, born
   if (!anyNA(X)) stop(traduire("Ces variables n'ont aucune valeur manquante.", "These variables have no missing values."), call. = FALSE)
   utiles <- rowMeans(is.na(X)) <= 0.5
   Xu <- X[utiles, , drop = FALSE]
-  mu <- colMeans(Xu, na.rm = TRUE)
   s <- apply(Xu, 2, stats::sd, na.rm = TRUE)
   if (any(!is.finite(s) | s == 0)) {
     stop(sprintf(traduire("Une variable constante ou presque vide ne s'impute pas : %s.", "A constant or nearly empty variable can't be imputed: %s."),
@@ -194,36 +202,22 @@ imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, born
   }
   n <- nrow(Xu)
   p <- ncol(Xu)
-  k <- max(1, min(as.integer(k), p - 1, n - 2))
-  Z <- sweep(sweep(Xu, 2, mu), 2, s, "/")
-  M <- is.na(Z)
+  M <- is.na(Xu)
   if (!any(M)) {
     stop(traduire("Aucune valeur à remplir : il manque à chaque observation incomplète plus de la moitié de ces variables.",
                   "No value to fill: each incomplete observation misses more than half of these variables."), call. = FALSE)
   }
-  Z[M] <- 0
-  cumul <- rep(0, p)
-  it <- 0
-  for (it in seq_len(maxit)) {
-    sv <- svd(Z)
-    valeurs <- sv$d^2 / n
-    sigma2 <- n * p / min(p, n - 1) * sum(valeurs[-seq_len(k)]) / ((n - 1) * p - (n - 1) * k - p * k + k^2)
-    reduites <- (valeurs[seq_len(k)] - sigma2) / sqrt(valeurs[seq_len(k)]) * sqrt(n)
-    R <- sv$u[, seq_len(k), drop = FALSE] %*% diag(reduites, k) %*% t(sv$v[, seq_len(k), drop = FALSE])
-    ecart <- sqrt(mean((Z[M] - R[M])^2))
-    Z[M] <- R[M]
-    moyennes <- colMeans(Z)
-    Z <- sweep(Z, 2, moyennes)
-    cumul <- cumul + moyennes
-    if (ecart < tol) break
-  }
-  Z <- sweep(Z, 2, cumul, "+")
-  Xi <- sweep(sweep(Z, 2, s, "*"), 2, mu, "+")
+  if (n < 3) stop(traduire("Trop peu d'observations pour une ACP : il en faut au moins 3 à qui manque au plus la moitié de ces variables.",
+                           "Too few observations for a PCA: at least 3 are needed that miss at most half of these variables."), call. = FALSE)
+  choisies <- is.null(k) || is.na(k[1])
+  k <- if (choisies) composantes_imputation(Xu) else max(1L, min(as.integer(k[1]), p - 1L, n - 2L))
+  r <- acp_reguliere(Xu, k, maxit = maxit)
+  Xi <- r$complet
   Xi[!M] <- Xu[!M]  # (exactement les valeurs observées)
   if (bornes) {
     for (j in seq_len(p)) {
-      r <- range(Xu[, j], na.rm = TRUE)
-      Xi[M[, j], j] <- pmin(pmax(Xi[M[, j], j], r[1]), r[2])
+      b <- range(Xu[, j], na.rm = TRUE)
+      Xi[M[, j], j] <- pmin(pmax(Xi[M[, j], j], b[1]), b[2])
     }
   }
   X[utiles, ] <- Xi
@@ -237,8 +231,69 @@ imputer_acp <- function(projet, variables, k = 5, tol = 1e-4, maxit = 1000, born
       projet <- ajouter_colonne(projet, paste0(projet$noms_var[[as.character(u)]], traduire(" (imputée)", " (imputed)")), obs, X[, j])
     }
   }
-  attr(projet, "imputation") <- list(valeurs = sum(M), tours = it, composantes = k, laissees = sum(!utiles))
+  attr(projet, "imputation") <- list(valeurs = sum(M), tours = r$tours, composantes = k, choisies = choisies, laissees = sum(!utiles))
   projet
+}
+
+# missMDA::imputePCA (méthode « Regularized », variables réduites, chaque observation de poids
+# 1/n), avec la SVD complète de R au lieu d'irlba::irlba, qui en approche les premiers axes :
+# `complet`, le tableau aux manques remplis, `ajuste`, sa reconstruction par les k composantes,
+# dans les unités des variables, et `tours`. Avec k = 0, les manques à la moyenne.
+acp_reguliere <- function(X, k, seuil = 1e-6, maxit = 1000) {
+  n <- nrow(X)
+  p <- ncol(X)
+  M <- is.na(X)
+  moyennes <- colMeans(X, na.rm = TRUE)
+  Z <- sweep(X, 2, moyennes)
+  et <- sqrt(colMeans(Z^2, na.rm = TRUE))  # (l'écart-type des valeurs observées, en 1/n)
+  Z <- sweep(Z, 2, et, "/")
+  Z[M] <- 0
+  ajuste <- Z
+  ancien <- Inf
+  tours <- 0
+  while (k > 0) {
+    # le tableau complété par la reconstruction du tour d'avant, recentré et réduit
+    Z[M] <- ajuste[M]
+    Z <- sweep(sweep(Z, 2, et, "*"), 2, moyennes, "+")
+    moyennes <- colMeans(Z)
+    Z <- sweep(Z, 2, moyennes)
+    et <- sqrt(colMeans(Z^2))
+    Z <- sweep(Z, 2, et, "/")
+    vs <- svd(Z / sqrt(n))
+    # le bruit, estimé sur les axes au-delà de k, pas plus grand que la valeur propre k + 1
+    sigma2 <- n * p / min(p, n - 1) * (sum(Z^2) / n - sum(vs$d[seq_len(k)]^2)) / ((n - 1) * p - (n - 1) * k - p * k + k^2)
+    sigma2 <- min(sigma2, vs$d[k + 1]^2)
+    reduites <- (vs$d[seq_len(k)]^2 - sigma2) / vs$d[seq_len(k)]
+    ajuste <- sqrt(n) * vs$u[, seq_len(k), drop = FALSE] %*% (reduites * t(vs$v[, seq_len(k), drop = FALSE]))
+    ecart <- Z - ajuste
+    ecart[M] <- 0
+    critere <- sum(ecart^2) / n
+    evolution <- abs(1 - critere / ancien)
+    ancien <- critere
+    tours <- tours + 1
+    if ((!is.nan(evolution) && (evolution < seuil || critere < seuil) && tours >= 5) || tours >= maxit) break
+  }
+  remettre <- function(A) sweep(sweep(A, 2, et, "*"), 2, moyennes, "+")
+  complet <- X
+  complet[M] <- remettre(Z)[M]
+  list(complet = complet, ajuste = remettre(ajuste), tours = tours)
+}
+
+# Le nombre de composantes d'une imputation, comme missMDA::estim_ncpPCA : la validation croisée
+# généralisée de 0 à `kmax` composantes (0 : l'écart des valeurs observées à leur moyenne), et
+# le premier nombre après lequel le critère remonte.
+composantes_imputation <- function(X, kmax = 5) {
+  n <- nrow(X)
+  p <- ncol(X)
+  manques <- sum(is.na(X))
+  kmax <- min(kmax, p - 1, n - 2)
+  critere <- mean((X - rep(colMeans(X, na.rm = TRUE), each = n))^2, na.rm = TRUE)
+  for (q in seq_len(kmax)) {
+    ajuste <- acp_reguliere(X, q)$ajuste
+    critere <- c(critere, mean(((n * p - manques) * (X - ajuste) / ((n - 1) * p - manques - q * (n + p - q - 1)))^2, na.rm = TRUE))
+  }
+  hausses <- which(diff(critere) > 0)
+  as.integer((if (length(hausses)) hausses[1] else which.min(critere)) - 1)
 }
 
 # Variable qualitative d'après les valeurs d'une variable quantitative : des bornes

@@ -227,6 +227,15 @@ verifier(sprintf("un seuil connu (pente nulle, puis 3 à partir de 0,5) : la pen
 verifier(sprintf("une droite : edf %.2f, dite linéaire sous 1,5 seulement, une seule plage de hausse", sd2$edf),
          sd2$edf < 2 && identical(sd2$lineaire, sd2$edf < 1.5) && identical(sd2$plages_pente$sens, "hausse"))
 verifier("des seuils sans courbe : refusés", grepl("courbe", refus(seuils_courbe(mg6, "x2"))))
+genre <- RNGkind()
+RNGkind("L'Ecuyer-CMRG", "Box-Muller")
+set.seed(11)
+avant <- .Random.seed
+s6b <- seuils_courbe(mg6, "x1")
+verifier("seuils : les mêmes bandes quel que soit le générateur de la session, rendu tel quel avec son état",
+         proche(s6b$bas, s6$bas, 1e-12) && proche(s6b$pente_haut, s6$pente_haut, 1e-12) && identical(RNGkind()[1:2], c("L'Ecuyer-CMRG", "Box-Muller")) &&
+           identical(.Random.seed, avant))
+RNGkind(genre[1], genre[2], genre[3])
 set.seed(8)
 tcv <- data.frame(nom = sprintf("C%03d", 1:200), a = runif(200), c = runif(200))
 tcv$b <- tcv$a + rnorm(200, sd = 0.02)
@@ -445,29 +454,14 @@ for (i in seq_along(pid$observations)) pid$observations[[i]]$ids <- c(pid$observ
 pid <- variable_calculee(pid, "x_secteur", "group_mean(x, secteur)")
 verifier("un identifiant des observations fait les groupes d'une formule (le secteur)",
          proche(colonne(pid, numeros(pid, "x_secteur"), numeros_observations(pid)), c(2, 2, 2, 12, 12, 12)))
+pna <- pid
+pna$observations[[6]]$ids[2] <- ""
+pna <- variable_calculee(variable_calculee(pna, "x_moy", "moyenne_groupe(x, secteur)"), "x_ecart", "ecart_groupe(x, secteur)")
+verifier("une observation sans groupe (identifiant vide) n'a ni moyenne ni écart de groupe",
+         proche(colonne(pna, numeros(pna, "x_moy"), numeros_observations(pna)), c(2, 2, 2, 10, 10, NA)) &&
+           proche(colonne(pna, numeros(pna, "x_ecart"), numeros_observations(pna)), c(-1, 0, 1, 0, NA, NA)))
 
 cat("Imputation par ACP (Nouvelle variable)\n")
-# la fonction des scripts de préparation qui ont servi de modèle (ACP itérative régularisée,
-# comme missMDA::imputePCA), telle quelle
-impute_ref <- function(X, k = 5, tol = 1e-4, maxit = 1000) {
-  mu <- colMeans(X, na.rm = TRUE); s <- apply(X, 2, sd, na.rm = TRUE)
-  Z <- sweep(sweep(X, 2, mu), 2, s, "/"); M <- is.na(Z); Z[M] <- 0
-  n <- nrow(Z); p <- ncol(Z)
-  cumul <- rep(0, p)
-  for (it in seq_len(maxit)) {
-    sv <- svd(Z)
-    eig <- sv$d^2 / n
-    sigma2 <- n * p / min(p, n - 1) * sum(eig[-(1:k)]) / ((n - 1) * p - (n - 1) * k - p * k + k^2)
-    dreg <- (eig[1:k] - sigma2) / sqrt(eig[1:k]) * sqrt(n)
-    R <- sv$u[, 1:k] %*% diag(dreg, k) %*% t(sv$v[, 1:k])
-    delta <- sqrt(mean((Z[M] - R[M])^2))
-    Z[M] <- R[M]
-    m2 <- colMeans(Z); Z <- sweep(Z, 2, m2); cumul <- cumul + m2
-    if (delta < tol) break
-  }
-  Z <- sweep(Z, 2, cumul, "+")
-  sweep(sweep(Z, 2, s, "*"), 2, mu, "+")
-}
 set.seed(5)
 ni <- 80
 Xs <- matrix(rnorm(ni * 2), ni, 2) %*% matrix(runif(12, -1, 1), 2, 6) + matrix(rnorm(ni * 6, sd = 0.3), ni, 6)
@@ -478,12 +472,46 @@ pim <- projet_depuis_tableau(data.frame(nom = sprintf("I%02d", 1:ni), Xs), "impu
 vars_i <- numeros(pim, paste0("X", 1:6))
 imputees <- function(pr, suffixe = " (imputée)") sapply(paste0("X", 1:6, suffixe), function(n) colonne(pr, numeros(pr, n), numeros_observations(pr)))
 garde <- rowMeans(is.na(Xs)) <= 0.5
-ref <- impute_ref(Xs[garde, ], k = 5)
-pi1 <- imputer_acp(pim, vars_i, k = 5, bornes = FALSE)
+# missMDA 1.23 sur Xs[garde, ] : imputePCA(, ncp = 2) et imputePCA(, ncp = 5), leurs $completeObs
+# aux valeurs manquantes (missMDA y prend la SVD complète, comme Nuée ; avec moins de composantes
+# que la moitié des variables, irlba en approche les axes, à 1e-4 écart-type près), et
+# estim_ncpPCA(, method.cv = "gcv")$ncp = 2
+missmda_k2 <- c(-1.09850517903, 1.04203959962, -1.73667473728, -0.438784883781, 0.663782517243, -0.0286459197537, 0.203155717142,
+                -0.540916303339, 2.30493561298, -0.914166498774, 2.41190510925, 0.570652419912, -0.95297584875, 0.78306643049,
+                2.32153138477, -0.886453770496, 0.584939589276, 1.14015737256, -0.779022590792, -1.41463154333, -0.648719873629,
+                -1.4168851179, 0.113247444619, -0.855629269944, 0.556388291345, -1.01725244041, -0.629672060415, 1.31277881186,
+                -0.220629888486, -0.0204866993164, 0.152427337166, 0.743183162362, -0.485333815705, -0.123861140842, 0.00251778628088,
+                0.0892256365373, 0.45814831693, -0.179704318574, 0.0939651735591, -0.0735342424854, 0.00522104634458, 0.312763361681,
+                0.531569437827, 0.965269128194, 1.15244835102, 0.767184542815, 0.284176867314)
+missmda_k5 <- c(-1.12796455212, 1.07927088679, -1.75942242282, -0.431529947865, 0.775702367417, -0.0529214947845, 0.182114337709,
+                -0.561827231334, 2.54093418285, -0.833614672184, 2.61410366385, 0.845555081331, -1.14702157319, 1.00849467597,
+                2.46840004897, -0.94800899879, 0.465373713578, 0.996247063975, -0.494338974798, -1.66761875381, -1.05832269284,
+                -1.58882196161, -0.123239027108, -0.678874525175, 0.472324334004, -1.14706277089, -0.589011765487, 1.36753981623,
+                -0.442065499629, -0.15134121905, -0.0385084137836, 0.673409564667, -0.914683270068, -0.100853649257, -0.0539450398052,
+                0.115293616534, 0.320892251987, -0.13324437654, -0.281450863166, -0.00315337399132, 0.172338171825, 0.336642830671,
+                0.481419250049, 0.771627313328, 1.07302143933, 0.697801557394, 0.392247443088)
+manques_i <- is.na(Xs[garde, ])
+pi1 <- imputer_acp(pim, vars_i, k = 2, bornes = FALSE)
 got <- imputees(pi1)
-verifier(sprintf("imputation = l'ACP itérative régularisée des scripts (%d valeurs, %d tours) ; les valeurs observées restent",
+verifier(sprintf("imputation = missMDA::imputePCA, 2 et 5 composantes (%d valeurs, %d tours) ; les valeurs observées restent",
                  attr(pi1, "imputation")$valeurs, attr(pi1, "imputation")$tours),
-         proche(unname(got[garde, ]), unname(ref), 1e-8) && proche(got[!is.na(Xs)], Xs[!is.na(Xs)]) && attr(pi1, "imputation")$valeurs == sum(is.na(Xs[garde, ])))
+         proche(got[garde, ][manques_i], missmda_k2, 1e-8) && proche(imputees(imputer_acp(pim, vars_i, k = 5, bornes = FALSE))[garde, ][manques_i], missmda_k5, 1e-8) &&
+           proche(got[!is.na(Xs)], Xs[!is.na(Xs)]) && attr(pi1, "imputation")$valeurs == sum(manques_i))
+pa <- imputer_acp(pim, vars_i, bornes = FALSE)
+verifier("sans nombre de composantes : 2, choisies comme missMDA::estim_ncpPCA (validation croisée généralisée)",
+         attr(pa, "imputation")$composantes == 2 && isTRUE(attr(pa, "imputation")$choisies) && !isTRUE(attr(pi1, "imputation")$choisies) &&
+           proche(imputees(pa)[garde, ][manques_i], missmda_k2, 1e-8))
+# (15 observations, 6 variables, 5 composantes : sans la borne de missMDA, le bruit estimé dépasse
+# la 5e valeur propre et retourne cette composante ; imputePCA(, ncp = 5)$completeObs aux manques)
+set.seed(1)
+Xn <- matrix(rnorm(15 * 2), 15, 2) %*% matrix(runif(12, -1, 1), 2, 6) + matrix(rnorm(15 * 6, sd = 0.6), 15, 6)
+Xn[matrix(runif(15 * 6) < 0.1, 15, 6)] <- NA
+missmda_n <- c(0.935854308735, 0.655633624315, 0.897695637794, -1.36113634282, 0.481978961689, 1.18750581482, 0.483075381276,
+               0.0385306604179, 0.794020054969, -0.161098049444)
+pn <- projet_depuis_tableau(data.frame(nom = sprintf("N%02d", 1:15), Xn), "imputation")
+pn <- imputer_acp(pn, numeros(pn, paste0("X", 1:6)), k = 5, bornes = FALSE, remplacer = TRUE)
+xn <- sapply(paste0("X", 1:6), function(v) colonne(pn, numeros(pn, v), numeros_observations(pn)))
+verifier("autant de composantes ou presque que de variables : le bruit borné comme dans missMDA", proche(xn[is.na(Xn)], missmda_n, 1e-8))
 verifier("une observation à qui manquent plus de la moitié des variables reste manquante", all(is.na(got[3, 1:4])) && attr(pi1, "imputation")$laissees == 1)
 pi2 <- imputer_acp(pim, vars_i, k = 5)
 x6 <- imputees(pi2)[, 6]

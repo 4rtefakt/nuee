@@ -3,7 +3,7 @@
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
-import { VUES, resumeSeuils } from './panneaux.js';
+import { VUES, resumeSeuils, notePhi } from './panneaux.js';
 import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
@@ -194,7 +194,7 @@ function tableauRegression(m) {
         .concat(cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
   }
   const retires = [].concat(m.termes_retires || []);
-  return blocs.concat([m.phi !== null && m.phi !== undefined ? t('phi_note', { phi: fmt(m.phi, 3), temps: m.temps }) : '',
+  return blocs.concat([notePhi(m),
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
     retires.length ? t('termes_retires', { termes: retires.join(', ') }) : ''].filter(Boolean).map((texte) => ({ texte })));
 }

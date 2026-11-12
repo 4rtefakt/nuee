@@ -12,7 +12,8 @@ const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 // the views of another analysis, by its type (filled by its module, vues_*.js)
 export const VUES_TYPES = {};
-const vuesDe = (m) => (VUES_TYPES[m.type] || (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
+// a model's views, as the explorer lists them (and the Plots menu offers another analysis's)
+export const vuesDe = (m) => (VUES_TYPES[m.type] || (m.regression ? VUES_REGRESSION : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
   && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe))));
 // R2 and Q2 of a fitted model, for its line in the explorer
 const chiffresModele = (m) => (m.chiffres ? m.chiffres : m.regression

@@ -866,9 +866,14 @@ texte_methodes_ordination <- function(projet, d, m, langue = "fr", version = "")
                                                   "The effect of the covariates (%s) was removed first (partial RDA): they explain %s of the total inertia. "),
                                                liste(m$Z$noms), pourcent(k$conditionnelle / k$totale)) else ""
     cite("peresneto")
-    p2 <- sprintf(tx("%sLes variables explicatives expliquent %s de l'inertie totale (R² = %s, R² ajusté = %s ; Peres-Neto et al., 2006) ; les deux premiers axes contraints en portent %s. Les scores sont donnés dans l'échelle 1 (distances entre observations) et 2 (corrélations entre réponses ; ter Braak, 1994).",
-                     "%sThe explanatory variables explain %s of the total inertia (R² = %s, adjusted R² = %s; Peres-Neto et al., 2006); the first two constrained axes carry %s of it. Scores are given in scaling 1 (distances between observations) and 2 (correlations between responses; ter Braak, 1994)."),
-                  partielle, pourcent(m$r2), nombre(m$r2, 3), nombre(m$r2_ajuste, 3), pourcent(sum(utils::head(k$contraint$eig, 2)) / k$contraint$inertie))
+    # (la part des deux premiers axes contraints : de l'inertie expliquée ; un seul axe la porte toute)
+    axes <- if (length(k$contraint$eig) > 1) {
+      sprintf(tx("les deux premiers axes contraints portent %s de cette inertie expliquée", "the first two constrained axes carry %s of this explained inertia"),
+              pourcent(sum(utils::head(k$contraint$eig, 2)) / k$contraint$inertie))
+    } else tx("un seul axe contraint la porte", "a single constrained axis carries it")
+    p2 <- sprintf(tx("%sLes variables explicatives expliquent %s de l'inertie totale (R² = %s, R² ajusté = %s ; Peres-Neto et al., 2006) ; %s. Les scores sont donnés dans l'échelle 1 (distances entre observations) et 2 (corrélations entre réponses ; ter Braak, 1994).",
+                     "%sThe explanatory variables explain %s of the total inertia (R² = %s, adjusted R² = %s; Peres-Neto et al., 2006); %s. Scores are given in scaling 1 (distances between observations) and 2 (correlations between responses; ter Braak, 1994)."),
+                  partielle, pourcent(m$r2), nombre(m$r2, 3), nombre(m$r2_ajuste, 3), axes)
     p3 <- if (m$test$permutations > 0) {
       groupes <- if (!is.null(o$strates)) sprintf(tx(" à l'intérieur de chaque %s", " within each %s"), nom_groupement(projet, o$strates)) else ""
       plus <- if (!is.null(m$tests)) {
@@ -900,9 +905,11 @@ texte_methodes_ordination <- function(projet, d, m, langue = "fr", version = "")
                   m$N, exclues, length(m$colonnes), court(m$colonnes),
                   if (length(m$variables_vides)) sprintf(tx(" ; %s, sans aucune valeur, en a été retiré", "; %s, without any value, was left out"), liste(m$variables_vides)) else "")
     eig <- k$eig
-    p2 <- sprintf(tx("L'inertie totale (khi² du tableau divisé par son effectif total) vaut %s ; les deux premiers axes en portent %s et %s. Les lignes et les colonnes sont représentées dans l'échelle 1 (distances du khi² entre observations), 2 (entre variables) ou 3 (symétrique).",
-                     "The total inertia (chi-square of the table divided by its grand total) is %s; the first two axes carry %s and %s of it. Rows and columns are shown in scaling 1 (chi-square distances between observations), 2 (between variables) or 3 (symmetric)."),
-                  nombre(k$totale, 4), pourcent(eig[1] / k$totale), if (length(eig) > 1) pourcent(eig[2] / k$totale) else "—")
+    axes <- if (length(eig) > 1) sprintf(tx("les deux premiers axes en portent %s et %s", "the first two axes carry %s and %s of it"), pourcent(eig[1] / k$totale), pourcent(eig[2] / k$totale))
+            else tx("un seul axe la porte", "a single axis carries it")
+    p2 <- sprintf(tx("L'inertie totale (khi² du tableau divisé par son effectif total) vaut %s ; %s. Les lignes et les colonnes sont représentées dans l'échelle 1 (distances du khi² entre observations), 2 (entre variables) ou 3 (symétrique).",
+                     "The total inertia (chi-square of the table divided by its grand total) is %s; %s. Rows and columns are shown in scaling 1 (chi-square distances between observations), 2 (between variables) or 3 (symmetric)."),
+                  nombre(k$totale, 4), axes)
     paragraphes <- c(p1, p2)
   }
   annee_r <- R.version$year

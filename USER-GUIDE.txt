@@ -564,15 +564,17 @@ change: refit them.
 Edit › New variable: from an R formula on the other variables and the observation IDs, for
 example log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (a text
 result gives a qualitative variable); by group, group_mean(x, sector), the mean of x in each
-observation's group (missing values ignored), and group_deviation(x, sector), the deviation
-from it (moyenne_groupe and ecart_groupe in French): a sector mean as a covariate, or a
-response centred by sector. Or classes from the values of a variable, at given limits
-(10 ; 20 gives "≤ 10", "]10 ; 20]", "> 20") or in classes of equal size. Or Imputation (PCA):
-the chosen quantitative variables' missing values filled from each other by regularized
-iterative PCA (as missMDA::imputePCA; 5 components by default), observed values unchanged, an
-observation missing more than half of them left missing, imputed values kept within each
-variable's observed range unless unticked; as new variables "x (imputed)" or in the variables
-themselves (Ctrl+Z undoes it). Remember to save the project.
+observation's group (missing values ignored; an observation without a group gets none), and
+group_deviation(x, sector), the deviation from it (moyenne_groupe and ecart_groupe in
+French): a sector mean as a covariate, or a response centred by sector. Or classes from the
+values of a variable, at given limits (10 ; 20 gives "≤ 10", "]10 ; 20]", "> 20") or in
+classes of equal size. Or Imputation (PCA): the chosen quantitative variables' missing values
+filled from each other by regularized iterative PCA, as missMDA::imputePCA does, with the
+number of components missMDA::estim_ncpPCA chooses (generalized cross-validation, from 0 to
+5; 0: each variable's mean) unless you give it; observed values unchanged, an observation
+missing more than half of them left missing, imputed values kept within each variable's
+observed range unless unticked; as new variables "x (imputed)" or in the variables themselves
+(Ctrl+Z undoes it). Remember to save the project.
 
 File history
 ------------

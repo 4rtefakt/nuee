@@ -58,7 +58,8 @@ function editeurTransfo(initial, choisir, apres) {
 //   roles: the roles the Variables tab offers, among 'x', 'y', 'classe' (a qualitative variable)
 //     and 'z' (a covariate of a partial analysis, sent as options.z);
 //   echelle: the default scaling chosen with it; vc: false when cross-validation doesn't apply;
-//   spectres: true when spectral preprocessing applies;
+//   spectres: true when spectral preprocessing applies; test: true when it predicts a test set
+//     (moteur/R/analyses.R: tester_<type>), which the Observations tab offers only then;
 //   champs(st, rendre, p): its own fields in the General tab (label, element pairs), their values
 //     kept in st.options; valider(st, cles, p): '' or what's missing; options(st, cles, p): the
 //     options sent (p: the project summary, its variables and IDs).
@@ -114,7 +115,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   const majResume = () => {
     const x = Object.values(st.roles).filter((v) => v === 'x').length;
     const y = Object.values(st.roles).filter((v) => v === 'y' || v === 'classe').length;
-    const test = [...st.test].filter((u) => !st.exclues.has(u)).length;
+    const test = avecTest() ? [...st.test].filter((u) => !st.exclues.has(u)).length : 0;
     resume.textContent = t('resume_dialogue', { x, y, n: p.observations.uid.length - st.exclues.size - test }) + (test ? ` · ${t('n_test', { n: test })}` : '');
   };
 
@@ -157,6 +158,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   const regression = () => ['LM', 'LMM', 'GLM', 'GAM'].includes(st.type);
   const analyse = () => ANALYSES[st.type] || null;  // another analysis (RDA, LDA...)
   const sansSpectres = () => regression() || (!!analyse() && !analyse().spectres);
+  const avecTest = () => !analyse() || !!analyse().test;
+  // each type's default scaling: a regression keeps the units, another analysis says its own
+  const echelleType = () => (regression() ? 'none' : analyse() ? analyse().echelle || 'UV' : 'UV');
   const generalise = () => ['GLM', 'GAM'].includes(st.type);
   const FAMILLES = ['gaussienne', 'poisson', 'binomiale_negative', 'binomiale', 'gamma', 'tweedie'];
   const FAMILLES_LOG = ['poisson', 'binomiale_negative', 'gamma', 'tweedie'];  // (an offset needs a log link)
@@ -253,10 +257,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
 
   const general = () => el('div', { class: 'grille-champs' },
     el('label', {}, t('type')), el('select', { onchange: (e) => {
-      const avant = regression();
+      const avant = echelleType();
       st.type = e.target.value;
-      if (!r && regression() !== avant) st.echelle = regression() ? 'none' : 'UV';  // a regression keeps the units
-      if (!r && analyse()) st.echelle = analyse().echelle || 'UV';
+      if (!r && echelleType() !== avant) st.echelle = echelleType();
       rendre();
     } },
       [['PCA', 'ACP / PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')],
@@ -270,7 +273,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     ['LMM', 'GLM', 'GAM'].includes(st.type) ? [el('label', {}, t('effets_aleatoires')), aleatoires()] : null,
     avecCar1() ? [el('label', {}, t('autocorrelation')), autocorrelation()] : null,
     avecCar1() && generalise() && st.correlation ? [el('label', {}, ''), el('p', { class: 'note' }, t('car1_gamm_note'))] : null,
-    regression() ? [el('label', { title: t('formule_aide') }, t('formule_r')), formule()] : null,
+    regression() ? [el('label', { title: t('formule_r_aide') }, t('formule_r')), formule()] : null,
     ['OPLS', 'OPLS-DA'].includes(st.type) ? el('label', {}, '') : null,
     ['OPLS', 'OPLS-DA'].includes(st.type) ? el('p', { class: 'note' }, t('opls_note')) : null,
     st.type === 'CLASSES' ? el('label', {}, '') : null,
@@ -382,7 +385,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           onclick: () => { app.selection(modele.id).forEach((u) => st.exclues.add(u)); rendre(); } }, icone('eye-off'), t('exclure_selection')) : null,
         el('span', { class: 'infos' }, `${o.uid.length - st.exclues.size} / ${o.uid.length} ${t('incluses')}`)),
       // test set: observations left out of the model, then predicted by it (moteur/R/jeu_test.R)
-      el('div', { class: 'outils' }, el('span', { title: t('jeu_test_aide') }, t('jeu_test')),
+      !avecTest() ? null : el('div', { class: 'outils' }, el('span', { title: t('jeu_test_aide') }, t('jeu_test')),
         el('select', { onchange: (e) => { st.methodeTest = e.target.value; } },
           [['hasard', t('test_hasard')], ['kennard_stone', t('test_kennard_stone')]].map(([k, n]) => el('option', { value: k, selected: k === st.methodeTest }, n))),
         el('input', { type: 'number', min: 5, max: 50, value: st.partTest, style: 'width:4.5em', oninput: (e) => { st.partTest = +e.target.value || 25; } }), '%',
@@ -400,11 +403,11 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           onclick: () => { app.selection(modele.id).forEach((u) => st.test.add(u)); rendre(); } }, t('selection_en_test')) : null,
         st.test.size ? el('button', { onclick: () => { st.test.clear(); rendre(); } }, t('vider_test')) : null),
       el('div', { class: 'defile' }, el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('inclure')), el('th', { title: t('jeu_test_aide') }, t('test')), el('th', {}, t('observations')))),
-        el('tbody', {}, idx.slice(0, 3000).map((i) => el('tr', { class: st.exclues.has(o.uid[i]) ? 'exclue' : st.test.has(o.uid[i]) ? 'en-test' : '' },
+        el('thead', {}, el('tr', {}, el('th', {}, t('inclure')), avecTest() ? el('th', { title: t('jeu_test_aide') }, t('test')) : null, el('th', {}, t('observations')))),
+        el('tbody', {}, idx.slice(0, 3000).map((i) => el('tr', { class: st.exclues.has(o.uid[i]) ? 'exclue' : avecTest() && st.test.has(o.uid[i]) ? 'en-test' : '' },
           el('td', {}, el('input', { type: 'checkbox', checked: !st.exclues.has(o.uid[i]),
             onchange: (e) => { if (e.target.checked) st.exclues.delete(o.uid[i]); else st.exclues.add(o.uid[i]); rendre(); } })),
-          el('td', {}, el('input', { type: 'checkbox', checked: st.test.has(o.uid[i]), disabled: st.exclues.has(o.uid[i]),
+          !avecTest() ? null : el('td', {}, el('input', { type: 'checkbox', checked: st.test.has(o.uid[i]), disabled: st.exclues.has(o.uid[i]),
             onchange: (e) => { if (e.target.checked) st.test.add(o.uid[i]); else st.test.delete(o.uid[i]); majResume(); e.target.closest('tr').classList.toggle('en-test', e.target.checked); } })),
           el('td', {}, o.nom[i])))))));
   };
@@ -525,7 +528,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       return [fs.join('*'), garde];
     }).filter(([, r2]) => Object.keys(r2).length));
     const q = { projet: p.id, type: st.type, x, y: avecY() ? y : [], classe: avecClasse() ? classe : null,
-      exclues: [...st.exclues], test: [...st.test].filter((u) => !st.exclues.has(u)), echelle: st.echelle, echelles, transformations, croises: st.croises,
+      exclues: [...st.exclues], test: avecTest() ? [...st.test].filter((u) => !st.exclues.has(u)) : [], echelle: st.echelle, echelles, transformations, croises: st.croises,
       spectres: sansSpectres() ? [] : spectres, A: st.auto || regression() || analyse() ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs: regression() ? {} : modificateurs,
       aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [], correlation: avecCar1() ? st.correlation : null,
       famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [], k_courbes: kCourbesEnvoyes(),
@@ -784,7 +787,8 @@ export function dialogueVariable(app, p, mode = 'formule') {
   const quantitatives = p.variables.filter((v) => !v.qualitative);
   const st = { mode, nom: '', formule: '', variable: quantitatives.length ? quantitatives[0].uid : null, parBornes: true, bornes: '', n: 3,
     // imputation by PCA (moteur/R/variables.R: imputer_acp): every quantitative variable takes part, as in a PCA of them
-    imputees: new Set(quantitatives.map((v) => v.uid)), k: Math.max(1, Math.min(5, quantitatives.length - 1)), bornes2: true, remplacer: false };
+    // (the number of components chosen as missMDA::estim_ncpPCA does, unless given: 2 by default, as imputePCA)
+    imputees: new Set(quantitatives.map((v) => v.uid)), kAuto: true, k: 2, bornes2: true, remplacer: false };
   const contenu = el('div', { class: 'dialogue-variable' });
   const erreur = el('p', { class: 'erreur' });
   const nomR = (n) => (/^[\p{L}.][\p{L}\p{N}._]*$/u.test(n) ? n : `\`${n}\``);
@@ -809,7 +813,7 @@ export function dialogueVariable(app, p, mode = 'formule') {
       el('label', {}, ''), el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'decoupage', checked: !st.parBornes, onchange: () => { st.parBornes = false; rendre(); } }), t('par_effectifs')),
       el('label', {}, t('nb_classes')), el('input', { type: 'number', min: 2, max: 20, value: st.n, style: 'width:5em', disabled: st.parBornes, oninput: (e) => { st.n = +e.target.value; } })];
     const imputation = () => {
-      const manquent = quantitatives.filter((v) => v.manquantes > 0).length;
+      const manquent = quantitatives.filter((v) => st.imputees.has(v.uid) && v.manquantes > 0).length;
       return [
         el('label', {}, t('variables')), el('div', {},
           el('div', { class: 'ligne' }, el('button', { onclick: () => { st.imputees = new Set(quantitatives.map((v) => v.uid)); rendre(); } }, t('tout_cocher')),
@@ -818,7 +822,9 @@ export function dialogueVariable(app, p, mode = 'formule') {
           el('div', { class: 'liste-imputation' }, quantitatives.map((v) => el('label', { class: 'champ' },
             el('input', { type: 'checkbox', checked: st.imputees.has(v.uid), onchange: (e) => { if (e.target.checked) st.imputees.add(v.uid); else st.imputees.delete(v.uid); rendre(); } }),
             v.nom, v.manquantes ? el('span', { class: 'doux' }, ` · ${t('manquantes_n', { n: v.manquantes })}`) : '')))),
-        el('label', {}, t('imputation_k')), el('input', { type: 'number', min: 1, max: 50, value: st.k, style: 'width:5em', oninput: (e) => { st.k = +e.target.value || 5; } }),
+        el('label', {}, t('imputation_k')), el('div', { class: 'ligne' },
+          el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: st.kAuto, onchange: (e) => { st.kAuto = e.target.checked; rendre(); } }), t('imputation_auto')),
+          el('input', { type: 'number', min: 1, max: 50, value: st.k, disabled: st.kAuto, style: 'width:5em', oninput: (e) => { st.k = Math.max(1, Math.round(+e.target.value) || 2); } })),
         el('label', {}, ''), el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: st.bornes2, onchange: (e) => { st.bornes2 = e.target.checked; } }), t('imputation_bornes')),
         el('label', {}, ''), el('div', {},
           el('label', { class: 'champ' }, el('input', { type: 'radio', name: 'imputer', checked: !st.remplacer, onchange: () => { st.remplacer = false; } }), t('imputation_nouvelles')),
@@ -834,7 +840,7 @@ export function dialogueVariable(app, p, mode = 'formule') {
   async function valider() {
     erreur.textContent = '';
     let q;
-    if (st.mode === 'imputation') q = { imputation: true, variables: [...st.imputees], k: st.k, bornes: st.bornes2, remplacer: st.remplacer };
+    if (st.mode === 'imputation') q = { imputation: true, variables: [...st.imputees], k: st.kAuto ? null : st.k, bornes: st.bornes2, remplacer: st.remplacer };
     else if (st.mode === 'formule') q = { nom: st.nom, formule: st.formule };
     else if (st.parBornes) q = { nom: st.nom, variable: st.variable, bornes: st.bornes.split(/[;\s]+/).filter(Boolean).map((x) => Number(x.replace(',', '.'))) };
     else q = { nom: st.nom, variable: st.variable, n: st.n };

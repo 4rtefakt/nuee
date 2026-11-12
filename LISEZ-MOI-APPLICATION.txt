@@ -603,12 +603,14 @@ Les modèles déjà ajustés ne changent pas : les réajuster.
 des observations, par exemple log10(polyphenols), sucre / acidite, ifelse(poids >= 170,
 "gros", "petit") (un résultat en texte donne une variable qualitative) ; par groupe,
 moyenne_groupe(x, secteur), la moyenne de x dans le groupe de chaque observation (valeurs
-manquantes ignorées), et ecart_groupe(x, secteur), l'écart à cette moyenne : la moyenne d'un
-secteur comme covariable, ou une réponse centrée par secteur. Ou des classes d'après les
-valeurs d'une variable, à des bornes données (10 ; 20 donne « ≤ 10 », « ]10 ; 20] », « > 20 »)
-ou en classes d'effectifs égaux. Ou Imputation (ACP) : les valeurs manquantes des variables
-quantitatives choisies remplies les unes par les autres par ACP itérative régularisée (comme
-missMDA::imputePCA ; 5 composantes par défaut), les valeurs observées inchangées, une
+manquantes ignorées ; une observation sans groupe n'en a pas), et ecart_groupe(x, secteur),
+l'écart à cette moyenne : la moyenne d'un secteur comme covariable, ou une réponse centrée par
+secteur. Ou des classes d'après les valeurs d'une variable, à des bornes données (10 ; 20
+donne « ≤ 10 », « ]10 ; 20] », « > 20 ») ou en classes d'effectifs égaux. Ou Imputation
+(ACP) : les valeurs manquantes des variables quantitatives choisies remplies les unes par les
+autres par ACP itérative régularisée, comme le fait missMDA::imputePCA, avec le nombre de
+composantes que choisit missMDA::estim_ncpPCA (validation croisée généralisée, de 0 à 5 ; 0 :
+la moyenne de chaque variable) sauf si vous le donnez ; les valeurs observées inchangées, une
 observation à qui manquent plus de la moitié d'entre elles laissée manquante, les valeurs
 imputées gardées dans l'étendue observée de chaque variable sauf si on décoche ; en nouvelles
 variables « x (imputée) » ou dans les variables elles-mêmes (Ctrl+Z annule). Penser à

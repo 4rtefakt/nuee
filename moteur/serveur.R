@@ -312,7 +312,8 @@ reajuster_demande <- function(q) {
   p <- projet(e$projet)
   d <- e$definition
   if (sans_composantes(d)) {  # (une régression, une autre analyse : sans composantes ni VIP, seulement des observations en moins)
-    if (length(q$garder)) stop(traduire("Une régression n'a pas de VIP.", "A regression has no VIP."))
+    if (length(q$garder)) stop(if (est_regression(d)) traduire("Une régression n'a pas de VIP.", "A regression has no VIP.")
+                               else traduire("Cette analyse n'a pas de VIP.", "This analysis has no VIP."))
     q$A <- NULL
   }
   exclues <- as.numeric(q$exclues %||% numeric(0))
@@ -773,7 +774,7 @@ DEMANDES <- list(
   # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
   imputer = function(q) {
     memoriser(projet(q$projet), traduire("imputation", "imputation"))
-    p <- imputer_acp(projet(q$projet), unlist(q$variables), k = q$k %||% 5, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
+    p <- imputer_acp(projet(q$projet), unlist(q$variables), k = q$k, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
     info <- attr(p, "imputation")
     attr(p, "imputation") <- NULL
     p$modifie <- TRUE

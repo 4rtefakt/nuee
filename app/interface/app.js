@@ -570,7 +570,8 @@ const app = {
     const nom = q.imputation ? 'imputer' : q.formule !== undefined ? 'variable_calculee' : 'classes_valeurs';
     const res = await occupe(() => demander(nom, { projet: pid, ...q }));
     projetChange(res);
-    statut(q.imputation ? t('imputation_faite', { n: res.imputation.valeurs, k: res.imputation.composantes, tours: res.imputation.tours })
+    const im = res.imputation;
+    statut(q.imputation ? t(im.composantes === 0 ? 'imputation_moyennes' : im.choisies ? 'imputation_faite_choisies' : 'imputation_faite', { n: im.valeurs, k: im.composantes, tours: im.tours })
       : t('variable_ajoutee', { nom: q.nom }));
   },
   async modifierValeur(pid, observation, variable, valeur) {

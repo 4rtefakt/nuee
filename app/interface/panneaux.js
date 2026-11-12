@@ -1757,7 +1757,7 @@ function rendreResumeRegression(conteneur, ctx, m) {
   const retires = [].concat(m.termes_retires || []);
   // (a GLM without curves or random effects: plain maximum likelihood)
   const textes = [m.gamm ? t('gamm_note') : mixte ? t('regression_note_mixte') : ['GLM', 'GAM'].includes(m.type) ? t(cb || v ? 'generalise_note' : 'generalise_note_mv') : t('regression_note'),
-    m.phi !== null && m.phi !== undefined ? t('phi_note', { phi: fmt(m.phi, 3), temps: m.temps }) : '',
+    notePhi(m),
     retires.length ? t('termes_retires', { termes: retires.join(', ') }) : '',
     q.echecs_vc ? t('echecs_vc', { n: q.echecs_vc }) : '',
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : ''].filter(Boolean);
@@ -1812,6 +1812,14 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
 const PENTE = { hausse: '#2a9d8f', baisse: '#d1495b' };
 const nombreSeuil = (v) => fmt(v, Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2);
 const plagesSeuils = (pl) => [].concat((pl && pl.sens) || []).map((sens, i) => ({ sens, de: [].concat(pl.de)[i], a: [].concat(pl.a)[i] }));
+// A model's CAR1 autocorrelation: φ along its time, within each group (moteur/R/regression.R:
+// the "within each" level, or else the last random effect).
+export function notePhi(m) {
+  if (m.phi === null || m.phi === undefined) return '';
+  const groupe = m.dans || [].concat(m.niveaux || []).slice(-1)[0];
+  return t(groupe ? 'phi_note_dans' : 'phi_note', { phi: fmt(m.phi, 3), temps: m.temps, groupe });
+}
+
 export function resumeSeuils(s) {
   const pente = plagesSeuils(s.plages_pente).map((z) => t('seuils_de_a', { sens: t(z.sens), de: nombreSeuil(z.de), a: nombreSeuil(z.a) }));
   const effet = plagesSeuils(s.plages_effet).map((z) => t('seuils_de_a', { sens: t(z.sens), de: nombreSeuil(z.de), a: nombreSeuil(z.a) }));

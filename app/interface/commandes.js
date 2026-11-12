@@ -1,6 +1,7 @@
 // Every action of the application, used by the menu bar, the toolbar, context menus and
 // keyboard shortcuts. `app` is the main window object built in app.js.
 import { t, langueActuelle } from './i18n.js';
+import { vuesDe } from './explorateur.js';
 
 export function creerCommandes(app) {
   const m = () => app.modeleActif();
@@ -17,7 +18,9 @@ export function creerCommandes(app) {
   const avecOPLS = () => { const x = app.modele(m()); return !!x && !!x.opls; };
   const avecGroupe = () => { const x = app.modele(m()); return !!x && !!x.groupe; };
   const choixVIP = () => app.choixVIP(m()) || [].concat((app.modele(m()).seuil_vip || {}).retenues || []);
-  const vue = (nom, cond = avecModele) => ({ icone: ICONES_VUES[nom], actif: cond, action: () => app.ouvrirVue(nom, m()) });
+  // a view: another analysis has those its module lists (vues_*.js), the other models those `cond` allows
+  const vue = (nom, cond = avecModele) => ({ icone: ICONES_VUES[nom], action: () => app.ouvrirVue(nom, m()),
+    actif: () => { const x = app.modele(m()); return x && x.analyse ? vuesDe(x).includes(nom) : cond(); } });
 
   const C = {
     ouvrir: { icone: 'folder-open', raccourci: 'Ctrl+O', action: () => app.ouvrir() },

@@ -13,6 +13,9 @@
 #   texte_methodes_<type>(projet, d, m, langue, version)   son texte des méthodes (methodes.R) ;
 #   tables_<type>(projet, m)         ses tableaux pour Exporter (formats.R : tables_resultats) ;
 #   predire_<type>(projet, m, d, observations)             ses prédictions (prediction.R), si elle prédit ;
+#   tester_<type>(projet, m, d)      son jeu de test (d$test, jeu_test.R), si elle en prend un : ses
+#                                    observations prédites, rangées dans m$test ; sans cette
+#                                    fonction, definir_modele() refuse un jeu de test ;
 #   ecrire_script_<type>(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue)
 #                                    son export vers R (script.R : ecrire_script), rendu comme
 #                                    ecrire_script : list(script, chemins, ecart) ;
@@ -37,7 +40,9 @@ fonction_analyse <- function(prefixe, type) get0(paste0(prefixe, tolower(as.char
 ajuster_analyse <- function(projet, d) {
   f <- fonction_analyse("ajuster_", d$type)
   if (is.null(f)) stop(sprintf(traduire("Analyse inconnue : %s", "Unknown analysis: %s"), d$type), call. = FALSE)
-  f(projet, d)
+  m <- f(projet, d)
+  if (length(d$test)) m$test <- fonction_analyse("tester_", d$type)(projet, m, d)
+  m
 }
 
 predire_analyse <- function(projet, m, d, observations) {

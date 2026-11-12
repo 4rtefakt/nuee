@@ -468,6 +468,17 @@ verifier("une séance avec une ACP, un modèle mixte et un GAM : chacun sous son
          is.null(r$ecart) && length(s) == 3 && meme(moteur(ms[[1]])$scores, s$A1$m$T) &&
            all(vapply(2:3, function(k) meme(moteur_regression(ms[[k]])$coefficients, as.matrix(s[[k]]$coefficients[2:8])) &&
                         meme(moteur_regression(ms[[k]])[["Q2 et RMSEcv"]], c(s[[k]]$vc$Q2, s[[k]]$vc$RMSEcv)), TRUE)))
+# la séance d'un GAM à courbe, puis d'une régression sans courbe : les seuils comparés au seul GAM
+definitions <- list(definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), famille = "gaussienne", lisses = ur("x2"), echelle = "none", nom = "R5"),
+                    definir_modele(pr, "LM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", nom = "R6"),
+                    definir_modele(pr, "GLM", x = ur("x1", "x2"), y = ur("compte"), famille = "poisson", echelle = "none", nom = "R7"))
+ms <- lapply(definitions, function(d) ajuster(pr, d))
+dir.create(ici <- file.path(dossier, "seance_courbe_d_abord"))
+r <- tryCatch(ecrire_script_seance(pr, definitions, ms, file.path(ici, "seance.R"), "moteur", version = "essai", renv = TRUE), error = function(e) e)
+entete <- if (!inherits(r, "error")) utils::head(readLines(r$script, encoding = "UTF-8"), 15)
+lock <- if (!inherits(r, "error")) jsonlite::fromJSON(r$chemins[grepl("renv\\.lock$", r$chemins)])
+verifier("une séance où un GAM à courbe précède une régression et un GLM sans courbe : écrite, sans écart ; mgcv et MASS nommés et dans renv.lock",
+         !inherits(r, "error") && is.null(r$ecart) && any(grepl("paquets mgcv et MASS", entete)) && all(c("mgcv", "MASS") %in% names(lock$Packages)))
 # les rapports d'une régression : méthodes et références, et ils se compilent
 for (k in 1:2) {
   d <- list(definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site, par_secteur), nom = "R3"),

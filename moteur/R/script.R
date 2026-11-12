@@ -49,8 +49,24 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
   list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart)
 }
 
-# Les paquets des régressions (livrés avec R) : pour renv.lock.
-paquets_script <- function(b) c(if (isTRUE(b$lmm)) "nlme", if (isTRUE(b$mgcv)) "mgcv")
+# Les paquets des régressions (livrés avec R) : nlme (un modèle mixte, l'autocorrélation d'un
+# GAMM), mgcv, MASS (les tirages des seuils d'une courbe : MASS::mvrnorm) ; pour renv.lock et
+# l'en-tête du script.
+paquets_script <- function(b) c(if (isTRUE(b$lmm) || isTRUE(b$gamm)) "nlme", if (isTRUE(b$mgcv)) "mgcv", if (isTRUE(b$courbes)) "MASS")
+
+# Les paquets d'un script, pour son en-tête : « R et ses paquets nlme, mgcv et MASS (livrés avec
+# R) », ou « R seul » ; `versions` : « R 4.6.2 et mgcv 1.9-3 ».
+texte_paquets <- function(paquets, langue, versions = FALSE) {
+  tx <- function(fr, en) if (langue == "en") en else fr
+  if (versions) {
+    return(paste0("R ", paste(R.version$major, R.version$minor, sep = "."),
+                  paste(vapply(paquets, function(pq) sprintf(tx(" et %s %s", " and %s %s"), pq, utils::packageDescription(pq)$Version), ""), collapse = "")))
+  }
+  liste <- sub(", ([^,]*)$", tx(" et \\1", " and \\1"), paste(paquets, collapse = ", "))
+  if (length(paquets) > 1) sprintf(tx("R et ses paquets %s (livrés avec R)", "R and its packages %s (they come with R)"), liste)
+  else if (length(paquets)) sprintf(tx("R et son paquet %s (livré avec R)", "R and its package %s (it comes with R)"), liste)
+  else tx("R seul", "R alone")
+}
 
 # Le script d'un modèle de mgcv l'attache (library(mgcv) : ses lois nb() et tw() appellent ses
 # fonctions depuis l'environnement global). Il l'est ici avant que l'environnement où le script est
@@ -107,7 +123,7 @@ ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, do
                   code_valeurs(sprintf("%s = %s", x$objets, x$objets), sprintf("%s <- list(", noms[k]), ")", ouvrir = ""), "")
   }
   fichiers <- fichiers_script(chemin_script, donnees, rdata, renv, rproj, langue)
-  lignes <- c(entete_seance(plans, noms, nom_projet, version, fichiers, langue), "",
+  lignes <- c(entete_seance(plans, noms, nom_projet, version, fichiers, langue, paquets_script(b)), "",
               titre_partie(1, langue), fonctions,
               titre_partie(2, langue), donnees_script(tab, fichiers, langue), "",
               sprintf("# 3. %s ----", tx("Modèles et résultats", "Models and results")), "", morceaux)
@@ -1044,21 +1060,19 @@ type_regression <- function(pl, langue) {
 
 entete_regression <- function(pl, nom_projet, version, fichiers, langue) {
   tx <- function(fr, en) if (langue == "en") en else fr
-  paquet <- if (isTRUE(pl$gamm)) c("mgcv", "nlme") else if (pl$generalise) "mgcv" else if (length(pl$niveaux)) "nlme" else ""
+  paquet <- c(if (isTRUE(pl$gamm)) c("mgcv", "nlme") else if (pl$generalise) "mgcv" else if (length(pl$niveaux)) "nlme", if (length(pl$lisses)) "MASS")
   c(sprintf(tx("# Modèle %s%s : %s, %d observations, %d termes X", "# Model %s%s: %s, %d observations, %d X terms"),
             texte_sur(pl$nom), if (nzchar(pl$titre)) sprintf(" (%s)", texte_sur(pl$titre)) else "", type_regression(pl, langue), pl$N, pl$K),
     sprintf(tx("# Script R écrit par Nuée %s le %s, à partir du projet « %s ».", "# R script written by Nuée %s on %s, from the project “%s”."), version, format(Sys.Date()), texte_sur(nom_projet)),
-    commentaire(tx(sprintf("Il refait ce modèle avec R%s, sans Nuée : le calcul est écrit pour ce modèle, de ses données à ses résultats, qui sont ceux de Nuée. Ses quatre parties :",
-                           if (length(paquet) > 1) sprintf(" et ses paquets %s (livrés avec R)", paste(paquet, collapse = " et ")) else if (nzchar(paquet)) sprintf(" et son paquet %s (livré avec R)", paquet) else " seul"),
-                   sprintf("It redoes this model with R%s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:",
-                           if (length(paquet) > 1) sprintf(" and its packages %s (they come with R)", paste(paquet, collapse = " and ")) else if (nzchar(paquet)) sprintf(" and its package %s (it comes with R)", paquet) else " alone"))),
+    commentaire(sprintf(tx("Il refait ce modèle avec %s, sans Nuée : le calcul est écrit pour ce modèle, de ses données à ses résultats, qui sont ceux de Nuée. Ses quatre parties :",
+                           "It redoes this model with %s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:"),
+                        texte_paquets(paquet, langue))),
     tx("#   1. Fonctions : termes utiles, AIC corrigé, validation croisée", "#   1. Functions: useful terms, corrected AIC, cross-validation"),
     tx("#   2. Données", "#   2. Data"),
     tx("#   3. Modèle : réponse et termes X, ajustement, validation croisée, statistiques", "#   3. Model: response and X terms, fit, cross-validation, statistics"),
     tx("#   4. Résultats : tableaux et graphiques", "#   4. Results: tables and plots"),
     tx("# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.", "# In RStudio, Ctrl+Shift+O shows these parts; Ctrl+Shift+S runs the whole script."),
-    sprintf(tx("# Écrit avec R %s%s.", "# Written with R %s%s."), paste(R.version$major, R.version$minor, sep = "."),
-            if (nzchar(paquet[1])) paste(vapply(paquet, function(pq) sprintf(tx(" et %s %s", " and %s %s"), pq, utils::packageDescription(pq)$Version), ""), collapse = "") else ""),
+    sprintf(tx("# Écrit avec %s.", "# Written with %s."), texte_paquets(paquet, langue, versions = TRUE)),
     fichiers_a_cote(fichiers, langue, FALSE))
 }
 
@@ -1521,8 +1535,9 @@ ecart_regression <- function(pl, m, e, langue) {
     "paramètre de la loi" = if (!is.null(res$parametre_loi)) list(res$parametre_loi$valeur, r("parametre_loi")),
     dispersion = if (!is.null(res$dispersion)) list(res$dispersion, r("dispersion")),
     courbes = if (!is.null(res$courbes)) list(as.matrix(res$courbes[-1]), colonnes(r("courbes"), seq_along(res$courbes)[-1])),
-    "seuils des courbes" = if (length(r("seuils"))) list(unlist(lapply(names(r("seuils")), function(n) { s <- seuils_courbe(m, n); c(s$x, s$effet, s$pente) })),
-                                                    unlist(lapply(r("seuils"), function(s) s[nom_script(c("x", "effet", "pente"), langue)]))),
+    # (les courbes de ce modèle : dans une séance, `e` garde les seuils d'un modèle précédent)
+    "seuils des courbes" = if (!is.null(res$courbes)) list(unlist(lapply(res$courbes$terme, function(n) { s <- seuils_courbe(m, n); c(s$x, s$effet, s$pente) })),
+                                                      unlist(lapply(r("seuils")[res$courbes$terme], function(s) s[nom_script(c("x", "effet", "pente"), langue)]))),
     "validation croisée" = list(c(m$vc$Q2, m$vc$RMSEcv, m$vc$echecs), if (!is.null(vc)) c(vc$Q2, vc$RMSEcv, vc[[nom_script("echecs", langue)]])),
     "prédictions de la validation croisée" = list(m$vc$prediction, vc$prediction),
     "valeurs ajustées et résidus" = list(cbind(res$ajuste, res$residus), colonnes(r("observations"), 3:4)),
@@ -1961,7 +1976,7 @@ modele_seuils_courbe <- function(tx) c(
   "  nd[[courbe]] <- grille",
   "  Xp <- predict(g, nd, type = \"lpmatrix\")",
   "  js <- which(startsWith(colnames(Xp), sprintf(\"s(%s).\", courbe)))",
-  "  set.seed(graine)",
+  "  set.seed(graine, kind = \"Mersenne-Twister\", normal.kind = \"Inversion\", sample.kind = \"Rejection\")",
   "  B <- MASS::mvrnorm(tirages, coef(g), vcov(g))",
   tx("  effet <- as.vector(Xp[, js, drop = FALSE] %*% coef(g)[js])  # (centrés : des écarts à la moyenne de la courbe)",
      "  effet <- as.vector(Xp[, js, drop = FALSE] %*% coef(g)[js])  # (centred: deviations from the curve's mean)"),
@@ -2339,7 +2354,7 @@ entete_script <- function(pl, nom_projet, version, fichiers, langue) {
     fichiers_a_cote(fichiers, langue, FALSE))
 }
 
-entete_seance <- function(plans, noms, nom_projet, version, fichiers, langue) {
+entete_seance <- function(plans, noms, nom_projet, version, fichiers, langue, paquets = character(0)) {
   tx <- function(fr, en) if (langue == "en") en else fr
   modele <- function(k) {
     pl <- plans[[k]]
@@ -2353,16 +2368,23 @@ entete_seance <- function(plans, noms, nom_projet, version, fichiers, langue) {
   c(sprintf(tx("# Les %d modèles de la séance du projet « %s » :", "# The %d models of the session of the project “%s”:"), length(noms), texte_sur(nom_projet)),
     vapply(seq_along(noms), modele, ""),
     sprintf(tx("# Script R écrit par Nuée %s le %s.", "# R script written by Nuée %s on %s."), version, format(Sys.Date())),
-    tx("# Il refait ces modèles avec R seul, sans Nuée ni autre paquet : le calcul est écrit pour eux, de",
-       "# It redoes these models with R alone, without Nuée or any package: the computation is written for"),
-    tx("# leurs données à leurs résultats, qui sont ceux de Nuée. Ses parties :", "# them, from their data to their results, which are those of Nuée. Its parts:"),
+    if (length(paquets)) {
+      commentaire(sprintf(tx("Il refait ces modèles avec %s, sans Nuée : le calcul est écrit pour eux, de leurs données à leurs résultats, qui sont ceux de Nuée. Ses parties :",
+                             "It redoes these models with %s, without Nuée: the computation is written for them, from their data to their results, which are those of Nuée. Its parts:"),
+                          texte_paquets(paquets, langue)))
+    } else {
+      c(tx("# Il refait ces modèles avec R seul, sans Nuée ni autre paquet : le calcul est écrit pour eux, de",
+           "# It redoes these models with R alone, without Nuée or any package: the computation is written for"),
+        tx("# leurs données à leurs résultats, qui sont ceux de Nuée. Ses parties :", "# them, from their data to their results, which are those of Nuée. Its parts:"))
+    },
     tx("#   1. Fonctions : l'algorithme NIPALS, la validation croisée", "#   1. Functions: the NIPALS algorithm, the cross-validation"),
     tx("#   2. Données", "#   2. Data"),
     tx("#   3. Modèles et résultats : un bloc par modèle, ses résultats gardés dans une liste à son nom",
        "#   3. Models and results: one block per model, its results kept in a list under its name"),
     tx("# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.", "# In RStudio, Ctrl+Shift+O shows these parts; Ctrl+Shift+S runs the whole script."),
-    sprintf(tx("# Écrit avec R %s ; il n'utilise que R (stats et graphics sont livrés avec R).", "# Written with R %s; it uses R alone (stats and graphics come with R)."),
-            paste(R.version$major, R.version$minor, sep = ".")),
+    if (length(paquets)) sprintf(tx("# Écrit avec %s.", "# Written with %s."), texte_paquets(paquets, langue, versions = TRUE))
+    else sprintf(tx("# Écrit avec R %s ; il n'utilise que R (stats et graphics sont livrés avec R).", "# Written with R %s; it uses R alone (stats and graphics come with R)."),
+                 paste(R.version$major, R.version$minor, sep = ".")),
     fichiers_a_cote(fichiers, langue, TRUE))
 }
 

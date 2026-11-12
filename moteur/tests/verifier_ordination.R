@@ -306,6 +306,9 @@ verifier("refus : RDA sans Y, Y qualitative, Hellinger de valeurs négatives, CA
            grepl("au moins deux", refus(ajuster(p, definir_modele(p, "CA", x = u("temp"), echelle = "none")))) &&
            grepl("plusieurs", refus(ajuster(p, definir_modele(p, "RDA", x = u("temp"), y = u(especes), echelle = "none",
                                                               options = list(strates = list(by = "variable", variable = u("altitude"))))))))
+verifier("refus : un jeu de test, qu'une RDA ou une CA ne prédit pas",
+         grepl("jeu de test", refus(definir_modele(p, "RDA", x = u("temp"), y = u(especes), echelle = "none", test = 1:5))) &&
+           grepl("jeu de test", refus(definir_modele(p, "CA", x = u(especes), echelle = "none", test = 1:5))))
 verifier("refus : trop de variables X pour les observations", grepl("degré de liberté", refus(ajuster(p, definir_modele(p, "RDA", x = u(especes[1:12]), y = u("temp", "ph", "altitude"),
                                                                                                       echelle = "none", observations = 1:12)))))
 
@@ -345,6 +348,9 @@ for (k in cas) {
              (k$langue == "fr" || (any(grepl("^redundancy_analysis <- function|^correspondence_analysis <- function", texte)) && !any(grepl("^ *#(fr|en)( |$)", texte)))))
   if (!is.null(r$ecart) || !isTRUE(memes)) cat("    écart :", r$ecart, "/", utils::tail(attr(s, "messages"), 3), "\n")
 }
+texte <- readLines(file.path(dossier, "M1.R"), encoding = "UTF-8")
+verifier("le script en français : la dernière ligne des tests par axe et par terme est « Résidus »",
+         sum(grepl("permutations, \"Résidus\")", texte, fixed = TRUE)) == 2 && !any(grepl("\"Residual\"", texte, fixed = TRUE)))
 for (ext in c("Rmd", "qmd")) {
   r <- ecrire_script(p, d, file.path(dossier, paste0("rapport.", ext)), "moteur", m = etat$modeles$M1$modele, version = "essai", langue = if (ext == "Rmd") "fr" else "en",
                      donnees = "csv", rdata = TRUE)

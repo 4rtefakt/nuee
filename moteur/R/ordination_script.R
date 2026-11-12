@@ -20,7 +20,7 @@ NOMS_ORDINATION_EN <- c(
   facteurs = "factors", etendre = "widen", centroides = "centroids", reponses = "responses", obs = "obs_scaling", s_rep = "resp_scaling",
   permuter = "permute_rows", strates = "strata", graine = "seed", groupes = "groups", base_orthonormee = "orthonormal_basis",
   stats_permutees = "permuted_stats", premier = "first", partielle = "partial", ip = "perm", Ep = "Ep", Qb = "Qb", ss = "ss",
-  num = "num", den = "den", valeur_p = "p_value", test_rda = "rda_test", chi_z = "chi_model", chi_xz = "chi_residual",
+  num = "num", den = "den", valeur_p = "p_value", residu = "residual_label", test_rda = "rda_test", chi_z = "chi_model", chi_xz = "chi_residual",
   test_emboites = "nested_test", petit = "small", grand = "large", sans_x = "without_x", ddl = "df", res_g = "res_large",
   res_p = "res_small", rp = "df_small", rg = "df_large", num_p = "num_small", sg = "stats_large",
   tests_axes_rda = "axis_tests", tests_termes_rda = "term_tests", testes = "tested", Ybar = "Ybar", terme = "term", axe = "axis",
@@ -280,7 +280,7 @@ CODE_TESTS <- r"---(
 #fr où les k - 1 précédents sont retirés des réponses ; p ne décroît pas d'un axe au suivant.
 #en The constrained axes one after another (vegan::anova(by = "axis")): axis k, first axis of the model
 #en where the k - 1 previous ones are removed from the responses; p doesn't decrease from one axis to the next.
-tests_axes_rda <- function(m, Ybar, Z, P) {
+tests_axes_rda <- function(m, Ybar, Z, P, residu) {
   lambda <- m$contraint$valeurs_propres
   u <- m$contraint$u
   ddl <- m$n - length(lambda) - m$rang_z - 1
@@ -293,19 +293,19 @@ tests_axes_rda <- function(m, Ybar, Z, P) {
     ps[i] <- if (i > 1) max(tst[["p"]], ps[i - 1]) else tst[["p"]]
     if (ps[i] >= 1) break
   }
-  data.frame(axe = c(names(lambda), "Residual"), ddl = c(rep(1, length(lambda)), ddl), inertie = c(unname(lambda), m$residuel$inertie),
+  data.frame(axe = c(names(lambda), residu), ddl = c(rep(1, length(lambda)), ddl), inertie = c(unname(lambda), m$residuel$inertie),
              F = c(Fs, NA), p = c(ps, NA))
 }
 
 #fr Chaque terme après tous les autres (vegan::anova(by = "margin")) : le modèle sans ses colonnes de X.
 #en Each term after all the others (vegan::anova(by = "margin")): the model without its columns of X.
-tests_termes_rda <- function(m, Ybar, X, Z, groupes, P) {
+tests_termes_rda <- function(m, Ybar, X, Z, groupes, P, residu) {
   testes <- Filter(function(g) !any(vapply(unique(groupes), function(h) contenu_dans(g, h), TRUE)), unique(groupes))
   sg <- stats_permutees(m, P)
   res <- t(vapply(testes, function(g) test_emboites(analyse_redondance(Ybar, X[, groupes != g, drop = FALSE], Z), m, P, sg), numeric(4)))
   #fr (les colonnes de res : degrés de liberté, inertie, F, p)
   #en (the columns of res: degrees of freedom, inertia, F, p)
-  data.frame(terme = c(testes, "Residual"), ddl = c(res[, 1], m$n - m$Q$rank - 1), inertie = c(res[, 2], m$residuel$inertie),
+  data.frame(terme = c(testes, residu), ddl = c(res[, 1], m$n - m$Q$rank - 1), inertie = c(res[, 2], m$residuel$inertie),
              F = c(res[, 3], NA), p = c(res[, 4], NA))
 }
 )---"
@@ -559,12 +559,12 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
     if (!is.null(m$tests) || !is.null(m$selection)) c("", commentaire(tx("Le terme de chaque colonne de X (une variable, toutes ses catégories ensemble).", "The term of each column of X (a variable, all its categories together).")),
                                                      code_valeurs(vapply(m$X$groupes, code_texte, "", USE.NAMES = FALSE), "groupes <- ")),
     if (!is.null(m$tests)) c(commentaire(tx("Les tests par axe et par terme (quelques secondes).", "The tests by axis and by term (a few seconds).")),
-                             sprintf("tests_axes <- tests_axes_rda(m, Ybar, %s, permutations)", if (avec_z) "Z" else "NULL"),
-                             sprintf("tests_termes <- tests_termes_rda(m, Ybar, X, %s, groupes, permutations)", if (avec_z) "Z" else "NULL")),
+                             sprintf("tests_axes <- tests_axes_rda(m, Ybar, %s, permutations, %s)", if (avec_z) "Z" else "NULL", code_texte(tx("Résidus", "Residual"))),
+                             sprintf("tests_termes <- tests_termes_rda(m, Ybar, X, %s, groupes, permutations, %s)", if (avec_z) "Z" else "NULL", code_texte(tx("Résidus", "Residual")))),
     if (!is.null(m$selection)) c(commentaire(tx("La sélection pas à pas (quelques secondes).", "The forward selection (a few seconds).")),
                                  sprintf("selection <- selection_rda(Ybar, X, %s, groupes, permutations, tous = r2$ajuste, seuil = %s)", if (avec_z) "Z" else "NULL", texte_exact(m$selection$seuil))),
     if (!is.null(m$partition)) c("", commentaire(tx("Le bloc de chaque colonne de X, pour la partition de la variance.", "The block of each column of X, for variation partitioning.")),
-                                 code_valeurs(vapply(ifelse(is.na(m$X$blocs), traduire("(sans bloc)", "(no block)"), m$X$blocs), code_texte, "", USE.NAMES = FALSE), "blocs <- "),
+                                 code_valeurs(vapply(ifelse(is.na(m$X$blocs), tx("(sans bloc)", "(no block)"), m$X$blocs), code_texte, "", USE.NAMES = FALSE), "blocs <- "),
                                  "partition <- partition_rda(Ybar, X, blocs)"))
 }
 

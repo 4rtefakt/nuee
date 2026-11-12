@@ -943,10 +943,18 @@ seuils_courbe <- function(m, terme, tirages = 2000, niveau = 0.95, graine = 1) {
   nd[[t]] <- grille
   Xp <- stats::predict(a, nd, type = "lpmatrix")
   js <- grep(sprintf("^s\\(%s\\)\\.", t), colnames(Xp))
-  # (une graine fixe : les mêmes bandes à chaque calcul ; le hasard de la session est rendu)
-  avant <- if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) get(".Random.seed", envir = globalenv())
-  on.exit(if (is.null(avant)) rm(".Random.seed", envir = globalenv()) else assign(".Random.seed", avant, envir = globalenv()))
-  set.seed(graine)
+  # (une graine fixe et le générateur de R par défaut, comme dans le script exporté : les mêmes
+  # bandes à chaque calcul, même si la console R en a choisi un autre ; le hasard de la session,
+  # et son générateur, sont rendus)
+  existait <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  ancien <- if (existait) get(".Random.seed", envir = globalenv())
+  genre <- RNGkind()
+  on.exit({
+    RNGkind(genre[1], genre[2], genre[3])
+    if (existait) assign(".Random.seed", ancien, envir = globalenv())
+    else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) rm(".Random.seed", envir = globalenv())
+  })
+  set.seed(graine, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
   B <- MASS::mvrnorm(tirages, stats::coef(a), stats::vcov(a))
   ajuste <- as.vector(Xp[, js, drop = FALSE] %*% stats::coef(a)[js])
   simules <- Xp[, js, drop = FALSE] %*% t(B[, js, drop = FALSE])
