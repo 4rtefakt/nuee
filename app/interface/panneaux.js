@@ -338,11 +338,14 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
 
 // ------------------------------------------------------------ views
 
-// The test set's line of a summary (jeu_test.R).
+// The test set's line of a summary (jeu_test.R); a regression's observations without a prediction
+// (a category the model hasn't seen: regression.R, tester_regression), counted apart.
 export function ficheTest(m) {
   if (!m.test) return null;
   return el('div', { class: 'fiche-chiffres', title: t('jeu_test_aide') },
     el('span', {}, el('small', {}, t('jeu_test')), ' ', el('b', {}, m.test.n)),
+    m.test.inconnues ? el('span', { class: 'erreur', title: t('test_sans_prediction_aide', { facteurs: [].concat(m.test.facteurs_inconnus || []).join(', ') }) },
+      el('small', {}, t('test_sans_prediction')), ' ', el('b', {}, m.test.inconnues)) : null,
     m.test.statistiques ? [].concat(m.test.statistiques.y).map((y, j) => [['RMSEP', 'RMSEP', 4], ['biais', t('biais'), 4], ['Q2ext', 'Q2ext', 3]]
       .map(([k, n, d]) => el('span', {}, el('small', {}, `${n}${[].concat(m.test.statistiques.y).length > 1 ? ` ${y}` : ''}`), ' ', el('b', {}, fmt([].concat(m.test.statistiques[k])[j], d))))) : null,
     m.test.classement ? el('span', {}, el('small', {}, t('bien_classes_test')), ' ', el('b', {}, `${fmt(100 * m.test.classement.bien_classees, 1)} %`)) : null,
@@ -984,7 +987,8 @@ async function rendreDendrogramme(conteneur, ctx, p, loc) {
 // Predictions: the project's observations, one of its prediction sets, or a file (CSV or
 // Excel; its columns are matched to the model's variables by name, in R). The model's own
 // observations stay in grey behind; predictions outside the model's domain (DModX above
-// DCrit or T2 above T2Crit 95 %) are marked.
+// DCrit or T2 above T2Crit 95 %) are marked, and so are a regression's observations of a category
+// the model hasn't seen, left without a prediction (moteur/R/regression.R: categorie_inconnue).
 async function rendrePredictions(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const proj = ctx.projet(m.projet);
@@ -996,7 +1000,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   }
   const r = loc.res;
   const o = r.observations;
-  const cols = Object.keys(o).filter((k) => !['uid', 'nom', 'dans_modele', 'hors_domaine'].includes(k));
+  const cols = Object.keys(o).filter((k) => !['uid', 'nom', 'dans_modele', 'hors_domaine', 'categorie_inconnue'].includes(k));
   const haut = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
   const fichier = loc.jeu === 'fichier';
@@ -1010,8 +1014,10 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
     ctx.rafraichir();
   });
   const hors = o.hors_domaine ? o.hors_domaine.filter(Boolean).length : 0;
+  const inconnues = o.categorie_inconnue ? o.categorie_inconnue.filter(Boolean).length : 0;
   const infos = el('span', { class: 'infos' }, `${o.nom.length} ${t('obs')}`,
     hors ? ` · ${hors} ${t(m.regression ? 'extrapolations' : 'hors_domaine')}` : '',
+    inconnues ? el('span', { class: 'erreur', title: t('categorie_inconnue_aide') }, ` · ${inconnues} ${t('categories_inconnues')}`) : '',
     fichier && r.absentes && [].concat(r.absentes).length ? el('span', { class: 'erreur' }, ` · ${t('variables_absentes')} : ${[].concat(r.absentes).join(', ')}`) : '',
     // values of the file read as missing (text in a quantitative column: <0.5, nd...)
     fichier && r.note && [].concat(r.note).length ? el('span', { class: 'erreur' }, ` · ${[].concat(r.note).join(' ; ')}`) : '');
@@ -1024,8 +1030,9 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   tableau(bas, ctx, loc.table, {
     avant: [jeu], n: o.nom.length, nom: 'Table',
     colonnes: [{ cle: 'nom', titre: 'observation' }, { cle: 'dans_modele', titre: t('dans_modele') }, { cle: 'hors_domaine', titre: t('hors_domaine_court') }]
-      .concat(cols.map((k) => ({ cle: k, titre: k }))),
-    valeur: (i, k) => (k === 'dans_modele' ? (o.dans_modele[i] ? '✓' : '') : k === 'hors_domaine' ? (o.hors_domaine && o.hors_domaine[i] ? '⚠' : '') : o[k][i]),
+      .concat(inconnues ? [{ cle: 'categorie_inconnue', titre: t('categorie_inconnue_court') }] : [], cols.map((k) => ({ cle: k, titre: k }))),
+    valeur: (i, k) => (k === 'dans_modele' ? (o.dans_modele[i] ? '✓' : '') : k === 'hors_domaine' ? (o.hors_domaine && o.hors_domaine[i] ? '⚠' : '')
+      : k === 'categorie_inconnue' ? (o.categorie_inconnue[i] ? '⊘' : '') : o[k][i]),
   });
   const mo = m.observations;
   const yk = m.A > 1 ? 't2' : 'T2';
@@ -2388,12 +2395,17 @@ function rendreResumeRegression(conteneur, ctx, m) {
       correlations ? el('td', { class: 'num', title: t('correlation_ordonnee_aide') }, fmt([].concat(v.correlation)[i], 3)) : null,
       parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`) : null)))) : null;
   const cb = m.courbes;
-  // (with each curve's concurvity: in red above 0.8, a curve confounded with the other terms)
+  // (with each curve's concurvity: in red above 0.8, a curve confounded with the other terms; a curve
+  // per category, s(x, by = f): a row per category, named in its own column)
   const concurvite = cb && cb.concurvite !== undefined;
+  const categories = cb && cb.niveau !== undefined;
   const courbes = cb ? el('table', { class: 'tableau compact' },
-    el('thead', {}, el('tr', {}, [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'].map((h, j) => el('th', { class: j ? 'num' : '' }, h)),
+    el('thead', {}, el('tr', {}, el('th', {}, t('courbe')), categories ? el('th', { title: t('courbe_categorie_aide') }, t('categorie')) : null,
+      ['edf', t('ddl'), t('statistique'), 'p'].map((h) => el('th', { class: 'num' }, h)),
       concurvite ? el('th', { class: 'num', title: t('concurvite_aide') }, t('concurvite')) : null)),
-    el('tbody', {}, [].concat(cb.terme).map((n, i) => el('tr', {}, el('td', {}, n), el('td', { class: 'num' }, fmt([].concat(cb.edf)[i], 2)),
+    el('tbody', {}, [].concat(cb.terme).map((n, i) => el('tr', {}, el('td', {}, n),
+      categories ? el('td', {}, [].concat(cb.niveau)[i] === null ? '' : `${[].concat(cb.par)[i]} ${[].concat(cb.niveau)[i]}`) : null,
+      el('td', { class: 'num' }, fmt([].concat(cb.edf)[i], 2)),
       el('td', { class: 'num' }, fmt([].concat(cb.ref_ddl)[i], 2)), el('td', { class: 'num' }, fmt([].concat(cb.statistique)[i], 2)),
       el('td', { class: 'num' + ([].concat(cb.p)[i] <= 0.05 ? ' alerte' : '') }, valeurP([].concat(cb.p)[i])),
       concurvite ? el('td', { class: 'num' + ([].concat(cb.concurvite)[i] > 0.8 ? ' erreur' : ''), title: t('concurvite_aide') }, fmt([].concat(cb.concurvite)[i], 2)) : null)))) : null;
@@ -2403,12 +2415,24 @@ function rendreResumeRegression(conteneur, ctx, m) {
     notePhi(m),
     ...notesTermesRetires(m),
     q.echecs_vc ? t('echecs_vc', { n: q.echecs_vc }) : '',
-    q.sans_pente_vc ? t('sans_pente_vc', { n: q.sans_pente_vc }) : '',
+    noteSansCategorie(m),
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
     m.K ? indiceSelectionAIC(ctx, m) : ''].filter(Boolean);
   const notes = notesModele(conteneur, ctx, m);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, courbes, table, textes.map((x) => el('p', { class: 'note' }, x))));
   notes.retrouver();
+}
+
+// The cross-validation's observations left without a prediction (regression.R: niveaux_inconnus):
+// their category, or combination of categories, was missing from the other groups. With none
+// predicted, Q2 is missing: the model can't be cross-validated by these groups with that factor as
+// a fixed X.
+export function noteSansCategorie(m) {
+  const q = m.qualite || {};
+  if (!q.sans_categorie_vc) return '';
+  const facteurs = [].concat(q.facteurs_vc || []).join(', ');
+  return q.Q2 === null || q.Q2 === undefined ? t('sans_categorie_vc_toutes', { facteurs, groupes: m.vc_par || t('ces_groupes') })
+    : t('sans_categorie_vc', { n: q.sans_categorie_vc, facteurs });
 }
 
 // The terms a regression's fit left out, in words (regression.R: termes_retires, termes_absents):
@@ -2520,7 +2544,8 @@ export function resumeSeuils(s) {
 }
 
 // The curve and its slope, one above the other, with their 95 % simultaneous bands; the ranges
-// where the slope's band excludes 0 shaded (rising, falling).
+// where the slope's band excludes 0 shaded (rising, falling). A category's curve (s.categorie) is
+// named in the title, and its observed values along the axis are those of the category.
 function tracerSeuils(ctx, graphe, m, e, s, lien) {
   const c = couleursTheme();
   const bandeGrise = (xs, bas, haut, axe) => ({ type: 'scatter', mode: 'lines', x: xs.concat([...xs].reverse()), y: bas.concat([...haut].reverse()), yaxis: axe,
@@ -2539,7 +2564,7 @@ function tracerSeuils(ctx, graphe, m, e, s, lien) {
     bandeGrise(xp, [].concat(s.pente_bas), [].concat(s.pente_haut), 'y2'),
     { type: 'scatter', mode: 'lines', x: xp, y: [].concat(s.pente), yaxis: 'y2', line: { color: c.texte, width: 1.5 }, name: t('pente'),
       hovertemplate: `${e.terme} = %{x:.3f}<br>${t('pente')} = %{y:.4g}<extra></extra>` }],
-  { title: { text: `${m.nom} · ${t('seuils')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
+  { title: { text: `${m.nom} · ${t('seuils')} · ${e.terme}${s.categorie ? ` · ${s.par} ${s.categorie}` : ''}` }, showlegend: false, dragmode: 'zoom',
     xaxis: { title: { text: e.terme }, anchor: 'y2' },
     yaxis: { domain: [0.4, 1], title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
     yaxis2: { domain: [0, 0.3], title: { text: t('pente') } },
@@ -2563,22 +2588,30 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   const e = effets.find((x) => x.terme === loc.terme);
   const graphe = el('div', { class: 'graphe' });
   const lien = cache.res.lien || 'identity';
-  // a curve's thresholds (regression.R: seuils_courbe): computed on demand, kept per term
-  const avecSeuils = e.courbe && !!loc.seuils;
-  const seuils = (cache.seuils ??= {});
-  if (avecSeuils && !seuils[e.terme]) {
-    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
-    seuils[e.terme] = await ctx.demander('seuils', { modele: m.id, terme: e.terme });
-  }
-  const s = avecSeuils ? seuils[e.terme] : null;
-  // (a term crossed with categories: one line, or curve, per category; regression.R: effets_par_niveau)
+  // (a term crossed with categories: one line, or curve, per category, regression.R: effets_par_niveau;
+  // a curve per category, s(x, by = f): effets_par_courbe)
   const niveaux = e.niveaux ? [].concat(e.niveaux) : null;
-  const note = niveaux ? t(e.courbe ? 'effets_note_niveaux_courbe' : 'effets_note_niveaux', { par: e.par, terme: e.terme, lien: lien === 'identity' ? '' : t('effets_lien', { lien }) })
-    : t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien });
+  // a curve's thresholds (regression.R: seuils_courbe): computed on demand, kept per term and category;
+  // a curve with one per category has those of the category chosen (loc.categorie)
+  const avecSeuils = e.courbe && !!loc.seuils;
+  const categories = e.courbe && niveaux ? niveaux.map((n) => n.niveau) : [];
+  if (categories.length && !categories.includes(loc.categorie)) loc.categorie = categories[0];
+  const categorie = categories.length ? loc.categorie : '';
+  const cleSeuils = `${e.terme}\r${categorie}`;
+  const seuils = (cache.seuils ??= {});
+  if (avecSeuils && !seuils[cleSeuils]) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    seuils[cleSeuils] = await ctx.demander('seuils', { modele: m.id, terme: e.terme, ...(categorie ? { categorie } : {}) });
+  }
+  const s = avecSeuils ? seuils[cleSeuils] : null;
+  const valeursLien = { par: e.par, terme: e.terme, lien: lien === 'identity' ? '' : t('effets_lien', { lien }) };
+  const note = !niveaux ? t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien })
+    : t(e.par_categorie ? 'effets_note_par_categorie' : e.courbe ? 'effets_note_niveaux_courbe' : 'effets_note_niveaux', valeursLien);
   conteneur.replaceChildren(outils(choix(t('terme'), effets.map((x) => [x.terme, x.courbe ? `${x.terme} (${t('courbe').toLowerCase()})` : x.terme]), loc.terme,
     (v) => { loc.terme = v; ctx.rafraichir(); }),
     e.courbe ? el('label', { class: 'champ', title: t('seuils_aide') }, el('input', { type: 'checkbox', checked: avecSeuils,
       onchange: (ev) => { loc.seuils = ev.target.checked; ctx.rafraichir(); } }), t('seuils')) : null,
+    avecSeuils && categories.length ? choix(e.par, categories.map((c) => [c, c]), categorie, (v) => { loc.categorie = v; ctx.rafraichir(); }) : null,
     el('span', { class: 'infos' }, s ? resumeSeuils(s) : note)), graphe);
   if (s) { tracerSeuils(ctx, graphe, m, e, s, lien); return; }
   if (niveaux) { tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien); return; }

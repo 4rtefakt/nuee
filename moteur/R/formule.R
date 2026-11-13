@@ -36,8 +36,8 @@ texte_transformation <- function(tr, x) {
 }
 
 # La formule des réglages `r` d'une régression, tels que Nouveau modèle les envoie (type, x, y,
-# transformations par numéro de variable, croises, lisses et leur k_courbes, aleatoires, decalage).
-# Sans Y, une formule sans réponse (« ~ x1 + x2 »).
+# transformations par numéro de variable, croises, lisses et leur k_courbes et par_courbes,
+# aleatoires, decalage). Sans Y, une formule sans réponse (« ~ x1 + x2 »).
 formule_reglages <- function(projet, r) {
   nom_variable <- function(u) as.character(variable_du_projet(projet, u)$ids[1])
   transformations <- r$transformations %||% list()
@@ -54,7 +54,9 @@ formule_reglages <- function(projet, r) {
     vapply(as.numeric(unlist(r$x)), function(u) {
       if (!u %in% lisses) return(terme(u))
       k <- suppressWarnings(as.integer(unlist(r$k_courbes[[as.character(u)]])))
-      if (length(k) && !is.na(k[1])) sprintf("s(%s, k = %d)", terme(u), k[1]) else sprintf("s(%s)", terme(u))
+      f <- suppressWarnings(as.numeric(unlist(r$par_courbes[[as.character(u)]])))  # (une courbe par catégorie de f)
+      sprintf("s(%s)", paste(c(terme(u), if (length(f) && !is.na(f[1])) sprintf("by = %s", nom_formule(nom_variable(f[1]))),
+                               if (length(k) && !is.na(k[1])) sprintf("k = %d", k[1])), collapse = ", "))
     }, ""),
     vapply(croises %||% list(), function(c) {
       c <- as.numeric(c)
@@ -78,7 +80,7 @@ formule_reglages <- function(projet, r) {
 # Les réglages d'une formule R (texte), pour une régression de type `type` et de loi `famille` :
 # un modèle à effets aléatoires devient mixte (LM → LMM), sans eux linéaire (LMM → LM), une courbe
 # en fait un modèle additif (→ GAM). Une erreur qui dit ce qui ne va pas, sinon list(type, x, y,
-# transformations, croises, lisses, k_courbes, aleatoires, decalage).
+# transformations, croises, lisses, k_courbes, par_courbes, aleatoires, decalage).
 lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
   texte <- paste(as.character(texte), collapse = " ")
@@ -229,6 +231,7 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   barres <- list()      # les termes (… | groupe) : leur côté gauche (gauche_aleatoire) et leurs groupes
   decalage <- NULL
   k_courbes <- list()   # par variable (son indice) : la dimension demandée de sa courbe
+  par_courbes <- list() # par variable (son indice) : la variable qualitative d'une courbe par catégorie (son indice)
   ajouter <- function(s) {
     cle <- as.character(s$k)
     if (!is.null(principaux[[cle]]) && !identical(principaux[[cle]]$tr, s$tr)) {
@@ -270,20 +273,31 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
       decalage <- variable(a[[2]])
       next
     }
-    if (ft == "s") {  # s(x), ou s(x, k = 5) : sa dimension de base
+    if (ft == "s") {  # s(x), s(x, k = 5) : sa dimension de base ; s(x, by = f) : une courbe par catégorie de f
       arguments <- as.list(t)[-1]
       noms_args <- names(arguments) %||% rep("", length(arguments))
+      if (!length(arguments) || nzchar(noms_args[1]) || !all(noms_args[-1] %in% c("k", "by")) || anyDuplicated(noms_args[-1])) {
+        err("Une courbe s'écrit s(x), s(x, k = 5) pour fixer sa dimension, ou s(x, by = f) pour une courbe par catégorie de la variable qualitative f.",
+            "A curve reads s(x), s(x, k = 5) to set its dimension, or s(x, by = f) for a curve per category of the qualitative variable f.")
+      }
       k_s <- NULL
-      if (length(arguments) == 2 && !nzchar(noms_args[1]) && identical(noms_args[2], "k")) {
-        k_s <- nombre(arguments[[2]])
+      if ("k" %in% noms_args) {
+        k_s <- nombre(arguments[["k"]])
         if (is.null(k_s) || k_s < 3 || k_s > 100 || k_s != round(k_s)) {
           err("La dimension d'une courbe s'écrit k = un nombre entier de 3 à 100 : s(x, k = 5).", "A curve's dimension reads k = a whole number from 3 to 100: s(x, k = 5).")
         }
-      } else if (length(arguments) != 1 || nzchar(noms_args[1])) {
-        err("Une courbe s'écrit s(x), ou s(x, k = 5) pour fixer sa dimension.", "A curve reads s(x), or s(x, k = 5) to set its dimension.")
       }
       s <- simple(arguments[[1]])
       if (!is.null(s$puissance)) refus(t)
+      if ("by" %in% noms_args) {
+        if (!is.name(arguments[["by"]])) refus(t)
+        f_s <- variable(arguments[["by"]])
+        if (!qualitative(f_s)) {
+          err("« %s » est quantitative : une courbe par catégorie, s(x, by = f), se fait avec une variable qualitative (Nuée ne prend pas un coefficient qui varie avec une variable quantitative).",
+              "\"%s\" is quantitative: a curve per category, s(x, by = f), is made with a qualitative variable (Nuée doesn't take a coefficient varying with a quantitative variable).", noms[f_s])
+        }
+        par_courbes[[as.character(s$k)]] <- f_s
+      }
       ajouter(s)
       courbes <- c(courbes, s$k)
       if (!is.null(k_s)) k_courbes[[as.character(s$k)]] <- as.integer(k_s)
@@ -326,6 +340,16 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
     }
     if (!identical(p$tr, s$tr)) {
       err("« %s » est transformée d'une autre façon dans le terme croisé.", "\"%s\" is transformed another way in the cross term.", noms[s$k])
+    }
+  }
+  # (la variable d'une courbe par catégorie est aussi un terme : son effet principal, sans lequel
+  # chaque catégorie aurait la même moyenne, les courbes de mgcv étant centrées)
+  for (cle in names(par_courbes)) {
+    f_s <- par_courbes[[cle]]
+    if (is.null(principaux[[as.character(f_s)]])) {
+      err("« %s » a une courbe par catégorie de « %s » : « %s » doit être aussi un terme de la formule, son effet principal (y ~ %s + s(%s, by = %s)). Chaque courbe de mgcv est centrée : sans lui, toutes les catégories auraient la même moyenne.",
+          "\"%s\" has a curve per category of \"%s\": \"%s\" must also be a term of the formula, its main effect (y ~ %s + s(%s, by = %s)). Each mgcv curve is centred: without it, every category would have the same mean.",
+          noms[as.integer(cle)], noms[f_s], noms[f_s], noms[f_s], noms[as.integer(cle)], noms[f_s])
     }
   }
   # les effets aléatoires, emboîtés du plus large au plus fin : un seul terme, (1 + annee | site/secteur)
@@ -388,6 +412,7 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   list(type = type, x = I(vapply(principaux, function(s) uid(s$k), 0, USE.NAMES = FALSE)), y = I(uid(reponse$k)),
        transformations = transformations, croises = I(croises_uid), lisses = I(vapply(courbes, uid, 0)),
        k_courbes = stats::setNames(k_courbes, vapply(as.integer(names(k_courbes)), uid, 0)),
+       par_courbes = stats::setNames(lapply(par_courbes, uid), vapply(as.integer(names(par_courbes)), uid, 0)),
        aleatoires = I(lapply(aleatoires, function(a) { if (length(a$pentes)) a$pentes <- I(uid(a$pentes)); a })),
        decalage = if (!is.null(decalage)) uid(decalage))
 }

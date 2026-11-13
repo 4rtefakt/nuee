@@ -111,10 +111,12 @@ coefficients_cote_a_cote <- function(modeles, erreur = "ic") {
     if (is.na(i) || is.na(v$correlation[i])) "" else nombre_tableau(v$correlation[i], 3)
   }, ""))
   ajouter("φ (CAR1)", chaque(function(m) nombre_tableau(m$resultat$phi, 3)))
-  courbes <- unique(unlist(lapply(modeles, function(m) as.character(m$resultat$courbes$terme)), use.names = FALSE))
+  # (une courbe par catégorie : une ligne par catégorie, « annee (secteur S1) »)
+  etiquettes <- function(cb) if (is.null(cb$niveau)) as.character(cb$terme) else ifelse(is.na(cb$niveau), as.character(cb$terme), sprintf("%s (%s %s)", cb$terme, cb$par, cb$niveau))
+  courbes <- unique(unlist(lapply(modeles, function(m) etiquettes(m$resultat$courbes)), use.names = FALSE))
   for (k in courbes) ajouter(paste("edf", k), chaque(function(m) {
     cb <- m$resultat$courbes
-    i <- if (!is.null(cb)) match(k, as.character(cb$terme)) else NA
+    i <- if (!is.null(cb)) match(k, etiquettes(cb)) else NA
     if (is.na(i)) "" else nombre_tableau(cb$edf[i], 2)
   }))
   statistiques <- vapply(lignes, `[[`, "", "nom")

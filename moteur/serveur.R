@@ -279,7 +279,7 @@ definition_interface <- function(p, q) {
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
                       lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
                       croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, k_courbes = if (length(q$k_courbes)) q$k_courbes,
-                      options = q$options, condition = q$condition)
+                      options = q$options, condition = q$condition, par_courbes = if (length(q$par_courbes)) q$par_courbes)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -464,7 +464,9 @@ resultat_regression <- function(id) {
        famille = m$famille, lien = m$lien, parametre_loi = r$parametre_loi, courbes = r$courbes, decalage = m$decalage, dispersion = r$dispersion,
        gamm = isTRUE(m$gamm), dans = m$dans,
        qualite = c(r$r2, list(AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres,
-                              Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs, sans_pente_vc = m$vc$sans_pente %||% 0)),
+                              Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs,
+                              # (les observations sans prédiction en validation croisée : leur catégorie manquait aux autres groupes)
+                              sans_categorie_vc = m$vc$sans_categorie %||% 0, facteurs_vc = I(m$vc$facteurs %||% character(0)))),
        variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),
        # (les pentes aléatoires de chaque niveau, les parts de variance des niveaux et les signes d'un ajustement singulier)
        pentes = pentes_regression(m), parts_variance = parts_regression(m), singularites = singularites_regression(m),
@@ -964,15 +966,18 @@ DEMANDES <- list(
   # lue sans jamais être exécutée (formule.R)
   formule = function(q) list(formule = formule_reglages(projet(q$projet), q)),
   lire_formule = function(q) lire_formule(projet(q$projet), q$texte %||% "", q$type, q$famille),
-  # les seuils d'une courbe (regression.R : seuils_courbe), gardés avec le modèle
+  # les seuils d'une courbe (regression.R : seuils_courbe), gardés avec le modèle ; q$categorie :
+  # la catégorie d'une courbe par catégorie (sans elle, la première)
   seuils = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     terme <- as.character(q$terme)[1]
-    s <- e$modele$seuils[[terme]]
+    categorie <- if (length(q$categorie) && nzchar(as.character(q$categorie)[1])) as.character(q$categorie)[1]
+    cle <- paste(c(terme, categorie), collapse = "\r")
+    s <- e$modele$seuils[[cle]]
     if (is.null(s)) {
-      s <- seuils_courbe(e$modele, terme)
-      etat$modeles[[q$modele]]$modele$seuils[[terme]] <- s
+      s <- seuils_courbe(e$modele, terme, categorie)
+      etat$modeles[[q$modele]]$modele$seuils[[cle]] <- s
     }
     c(list(modele = q$modele), s)
   },

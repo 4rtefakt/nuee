@@ -713,7 +713,17 @@ additif, les variables X cochées dans la colonne Courbe de l'onglet Variables e
 courbe lissée (une spline) plutôt que par une droite, pour un effet qui monte puis descend, ou
 un seuil ; les données décident de sa courbure (son edf ; 1 est une droite). Sa dimension de
 base k borne sa courbure : 10 au plus, moins quand la variable a peu de valeurs ; tapez-en une
-autre (de 3 à 100) dans la case à côté de la coche, comme s(x, k = 5) dans R. Les courbes et
+autre (de 3 à 100) dans la case à côté de la coche, comme s(x, k = 5) dans R. Une courbe par
+catégorie : la liste à côté de k offre les variables qualitatives X du modèle (« une par
+secteur »), comme s(annee, by = secteur) dans mgcv : chaque secteur a sa courbe, de dimension k
+chacune, avec son edf, son test, sa concurvité, son effet et ses seuils. Chacune est centrée sur
+les observations de sa catégorie (la contrainte d'identifiabilité de mgcv) : la variable
+qualitative doit rester en X, son effet principal donnant l'écart de niveau entre les
+catégories ; sans lui, toutes les catégories auraient la même moyenne, et Nuée refuse alors le
+modèle plutôt que d'ajouter ce terme sans le dire. Le facteur que mgcv voit vient des colonnes
+0/1 des catégories du modèle (ses niveaux, les catégories observées, dans leur ordre). Une
+variable en courbe par catégorie n'est pas aussi dans un terme croisé avec une variable
+qualitative (chaque catégorie a déjà sa courbe). Les courbes et
 les effets aléatoires sont estimés en REML, et l'AIC vient
 d'un ajustement en ML ; un GLM sans eux est ajusté par maximum de vraisemblance, comme le font
 glm() et MASS::glm.nb(). Le résumé d'un modèle de Poisson prévient quand les comptages sont
@@ -725,7 +735,8 @@ Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs t
 (log, log10, log1p, exp, sqrt, I(x^p), I(a * x + b), le logit log((x - a) / (b - x))), les
 termes croisés (a:b ; a*b pour a, b et a:b ; a:b sans a : a entre sans effet principal ;
 I(a^2) quand a est aussi dans le modèle, sinon le
-carré de a), les courbes s(x) ou s(x, k = 5), l'effort offset(log(x)) et les ordonnées à
+carré de a), les courbes s(x), s(x, k = 5) et s(x, by = f) (une par catégorie de f, qui doit
+être aussi un terme ; s(x, by = f, k = 5)), l'effort offset(log(x)) et les ordonnées à
 l'origine aléatoires emboîtées (1 | site/secteur), du plus large au plus fin, avec leurs pentes
 aléatoires comme lme4 les écrit : (1 + annee | site) ou (annee | site) ;
 (1 + annee | site/secteur), une pente à chaque niveau ; un terme par niveau,
@@ -737,23 +748,29 @@ Vues : Résumé (R2, ou R2 marginal et conditionnel pour un modèle mixte, Nakag
 Schielzeth ; R2 ajusté et déviance expliquée pour un GLM ou un GAM (R2 marginal et
 conditionnel quand il est ajusté par mgcv::gamm, les courbes dans la partie fixe), avec l'edf,
 le test et la concurvité de chaque courbe (la part de la courbe que reproduisent les autres
-termes ; au-delà de 0,8, en rouge, elle se confond avec eux) ; Q2 et RMSEcv ; AIC ; la variance
+termes ; au-delà de 0,8, en rouge, elle se confond avec eux ; une ligne par catégorie d'une
+courbe par catégorie) ; Q2 et RMSEcv ; AIC ; la variance
 de chaque effet aléatoire et sa part (avec des pentes aléatoires, voir plus haut) ; φ de
 l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
 quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
 plus, avec le logit le rapport des cotes), Effets (l'effet de chaque terme quantitatif quand sa
 variable varie, les autres fixés, avec sa bande à 95 % et les valeurs observées dessous : les
 courbes d'un GAM, des droites sinon, une par catégorie pour un terme croisé avec une variable
-qualitative ; sur l'échelle du lien, log ou logit, quand il y en a un ;
+qualitative ou une courbe par catégorie, avec la légende des catégories ; sur l'échelle du
+lien, log ou logit, quand il y en a un ;
 pour une courbe, Seuils : l'effet et sa pente avec des intervalles simultanés à 95 % tirés de
 2000 jeux de coefficients, les plages où la bande de la pente exclut 0, en hausse ou en baisse
 nette, colorées et listées, et l'edf, sous 1,5 presque une droite, comme Simpson (2018) lit les
-seuils), Observé / prédit, Résidus (standardisés, contre les valeurs ajustées, droite de
+seuils ; une courbe qui en a une par catégorie (une courbe par catégorie, ou une courbe croisée
+avec une variable qualitative) a les seuils de la catégorie choisie dans la liste à côté de la
+case, sur les percentiles de la variable dans cette catégorie), Observé / prédit, Résidus
+(standardisés, contre les valeurs ajustées, droite de
 Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire ; aussi
 les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,
 ci-dessous), Apport des blocs
 (AIC) : chaque bloc de la colonne Bloc (ou chaque variable) retiré et le modèle réajusté en
-ML, un effet principal avec les termes croisés qui le contiennent (la colonne Avec les nomme) ;
+ML, un effet principal avec les termes croisés qui le contiennent et les courbes par catégorie
+qu'il fait (la colonne Avec les nomme) ;
 un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
@@ -801,7 +818,8 @@ variables garder. Chaque combinaison des groupes de termes du modèle (les blocs
 Bloc, sinon les variables), du modèle nul au modèle complet, est ajustée en ML sur les mêmes
 observations et rangée par AICc ; un terme croisé ou un carré n'entre qu'avec ses effets
 principaux (une variable qualitative par toutes ses catégories) et les termes croisés d'une
-partie de ses facteurs. Seuls les effets fixes sont choisis : les effets aléatoires,
+partie de ses facteurs, une courbe par catégorie qu'avec l'effet principal de sa variable
+qualitative. Seuls les effets fixes sont choisis : les effets aléatoires,
 l'autocorrélation, l'effort et le réglage des courbes restent ceux du modèle, et le groupe
 d'une variable qui a une pente aléatoire reste dans chaque modèle, hors des groupes à choisir.
 Jusqu'à 8 groupes (256 combinaisons), toutes les combinaisons sont ajustées (un modèle mixte
@@ -927,16 +945,27 @@ estimée : elle est laissée de côté, et le Résumé la nomme parmi les termes
 Effets : un terme quantitatif croisé avec des catégories a une droite par catégorie (une courbe
 quand le terme est une courbe d'un GAM), de pente son coefficient plus celui de son produit
 avec la catégorie, avec sa bande à 95 % tirée de la covariance des coefficients et, sous le
-graphique, chaque pente par unité avec son intervalle. Dans la sélection par AIC et la table
+graphique, chaque pente par unité avec son intervalle. Pour une courbe, les Seuils sont ceux de
+la catégorie choisie : la courbe commune plus la pente de cette catégorie ; une courbe par
+catégorie (s(x, by = f), plus haut) donne à chaque catégorie sa propre forme, et non la même
+courbe inclinée. Dans la sélection par AIC et la table
 des apports, un terme croisé entre et sort en entier (toutes ses catégories), seulement avec
 ses effets principaux et ses termes croisés d'ordre plus bas. Le texte des Méthodes nomme
 chaque catégorie de référence et dit ce que valent les coefficients des termes croisés.
-Prédiction : une catégorie que le modèle a vue a sa propre prédiction ; une catégorie qu'il n'a
-pas vue (absente de ses observations, ou des autres groupes en validation croisée : des
-secteurs propres à un site, validés par site) est prédite comme la catégorie de référence, sauf
-dans un terme croisé dont la variable quantitative n'a pas d'effet principal, où elle reste sans
-prédiction (elle n'aurait pas de pente), et le Résumé le dit ; une catégorie que le projet ne
-connaît pas (dans un fichier) n'est pas prédite.
+Prédiction : une catégorie que le modèle a vue a sa propre prédiction ; une catégorie, ou une
+combinaison de catégories, qu'il n'a pas vue (absente de ses observations, des autres groupes
+en validation croisée, ou inconnue du projet dans un fichier) n'en a pas : le modèle la
+prédirait comme la catégorie de référence, ou sans sa pente, et R refuse de même un niveau qu'il
+n'a pas vu. C'est la règle de chaque variable qualitative d'une régression (effets principaux,
+termes croisés, courbes par catégorie ; LM, LMM, GLM, GAM, mgcv::gamm), pas des autres modèles
+(PLS...). Ces observations sont comptées et nommées : en validation croisée, le Résumé dit
+combien sont restées sans prédiction et de quelle variable, Q2 et RMSEcv étant calculés sur les
+autres ; quand il n'en reste aucune (des secteurs propres à chaque site, validés par site), Q2
+manque, et le Résumé dit que le modèle ne peut pas être validé par ces groupes avec cette
+variable en X fixe : faites-en un effet aléatoire, ou choisissez d'autres groupes de validation
+croisée. Le jeu de test les compte à part de son RMSEP, de son biais et de son Q2 externe ;
+Prédiction › Prédire les marque ⊘ (colonne Catégorie non vue, dans le tableau exporté aussi).
+Le texte des Méthodes et le script d'Exporter vers R font de même.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------

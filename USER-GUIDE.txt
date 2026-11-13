@@ -666,7 +666,16 @@ variables ticked in the Curve column of the Variables tab enter through a smooth
 spline) instead of a straight line, for an effect that rises then falls, or a threshold; the
 data decide how curved it is (its edf; 1 is a straight line). Its basis dimension k bounds how
 curved it can be: 10 at most, less when the variable has few values; type another one (3 to
-100) in the box beside the tick, as s(x, k = 5) does in R. Curves and random effects are
+100) in the box beside the tick, as s(x, k = 5) does in R. A curve per category: the list
+beside k offers the model's qualitative X variables ("one per sector"), as s(year, by = sector)
+does in mgcv: each sector has its own curve, each of dimension k, with its edf, test,
+concurvity, effect and thresholds. Each is centred on its category's observations (mgcv's
+identifiability constraint): the qualitative variable must stay in X, its main effect giving the
+difference in level between the categories; without it every category would have the same
+mean, and Nuée then refuses the model rather than add that term without saying so. The factor
+mgcv sees comes from the model's 0/1 category columns (its levels, the categories observed, in
+their order). A variable with a curve per category can't also be in a cross term with a
+qualitative variable (each category already has its curve). Curves and random effects are
 estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitted by maximum
 likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns when the
 counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of freedom): its p
@@ -677,7 +686,8 @@ Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformation
 log10, log1p, exp, sqrt, I(x^p), I(a * x + b), the logit log((x - a) / (b - x))), the cross
 terms (a:b; a*b for a, b and a:b; a:b without a: a enters without a main effect; I(a^2) when
 a is in the model too, else the square of a), the
-curves s(x) or s(x, k = 5), the effort offset(log(x)) and the nested random intercepts
+curves s(x), s(x, k = 5) and s(x, by = f) (one per category of f, which must also be a term;
+s(x, by = f, k = 5)), the effort offset(log(x)) and the nested random intercepts
 (1 | site/sector), the widest first, with their random slopes as lme4 writes them:
 (1 + year | site) or (year | site); (1 + year | site/sector), a slope at each level; one term
 per level, (1 + year | site) + (1 | site:sector).
@@ -687,7 +697,8 @@ formula isn't kept, only the settings it gives.
 Views: Summary (R2, or marginal and conditional R2 for a mixed model, Nakagawa and Schielzeth;
 adjusted R2 and deviance explained for a GLM or GAM (marginal and conditional R2 when fitted by
 mgcv::gamm, the curves in the fixed part), with each curve's edf, test and concurvity (the
-share of the curve the other terms reproduce; above 0.8, in red, it is confounded with them);
+share of the curve the other terms reproduce; above 0.8, in red, it is confounded with them; a
+row per category for a curve per category);
 Q2 and RMSEcv; AIC; the variance of each random effect and its share (with random slopes, see
 above); φ of the
 autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
@@ -695,16 +706,21 @@ with a log link, exp(estimate) is the multiplicative effect of one unit more, wi
 the odds ratio),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
 95 % band and the observed values below it: a GAM's curves, straight lines otherwise, one per
-category for a term crossed with a qualitative variable; on the
+category for a term crossed with a qualitative variable or a curve per category, with the
+categories' legend; on the
 scale of the link, log or logit, when there is one; for a curve, Thresholds: the effect and its
 slope with 95 % simultaneous bands from 2000 draws of the coefficients, the ranges where the
 slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
-nearly a straight line, as Simpson (2018) reads thresholds), Observed / predicted, Residuals
+nearly a straight line, as Simpson (2018) reads thresholds; a curve with one per category (a
+curve per category, or a curve crossed with a qualitative variable) has the thresholds of the
+category chosen in the list beside the box, over the variable's percentiles in that category),
+Observed / predicted, Residuals
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
 distance for a linear regression; the quantile residuals too for counts, presence-absence and
 positive values, below), Block contributions (AIC): each block of the Block column
 (or each variable) removed and the model refitted by ML, a main effect with the cross terms
-that contain it (the With column names them); ΔAIC above 2 means the block clearly
+that contain it and the curves per category it makes (the With column names them); ΔAIC above
+2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
 Y, X, a random effect, the time or the effort are left out (the summary counts them).
 Residuals of a GLM or GAM with the Poisson, negative binomial, binomial or gamma distribution:
@@ -746,7 +762,8 @@ Plots › AIC selection (also under each regression in the explorer): which vari
 Each combination of the model's groups of terms (the blocks of the Block column, otherwise the
 variables), from the null model to the full model, is fitted by ML on the same observations and
 ranked by AICc; a cross term or a square enters only with its main effects (a qualitative
-variable through all its categories) and the cross terms of part of its factors. Only the fixed
+variable through all its categories) and the cross terms of part of its factors, a curve per
+category only with its qualitative variable's main effect. Only the fixed
 effects are chosen: the random effects, the autocorrelation, the effort and the curves'
 settings stay those of the model, and the group of a variable with a random slope stays in
 every model, out of the groups to choose. Up to 8 groups (256 combinations), every combination
@@ -862,15 +879,26 @@ factors whose first level is Nuée's reference. A combination of categories no o
 it among the terms never observed. Effects: a quantitative term crossed with categories has one
 line per category (a curve when the term is a GAM's curve), its slope being its coefficient
 plus that of its product with the category, with its 95 % band from the coefficients'
-covariance and, under the plot, each slope per unit with its interval. In the AIC selection and
+covariance and, under the plot, each slope per unit with its interval. For a curve, Thresholds
+are those of the category chosen: the shared curve plus that category's slope; a curve per
+category (s(x, by = f), above) gives each category its own shape, not the same curve tilted. In
+the AIC selection and
 the contributions table, a cross term enters and leaves whole (all its categories), only with
 its main effects and its lower-order cross terms. The Methods text names each reference
 category and says what the cross terms' coefficients are. Prediction: a category the model has
-seen gets its own prediction; one it hasn't (absent from the model's observations, or from the
-other groups in cross-validation: sectors proper to a site, validated by site) is predicted as
-the reference category, except in a cross term whose quantitative variable has no main effect,
-where it stays without a prediction (it would have no slope), as the Summary says; a category
-the project doesn't know (in a file) is not predicted.
+seen gets its own prediction; a category, or a combination of categories, it hasn't seen (absent
+from the model's observations, from the other groups in cross-validation, or unknown to the
+project in a file) gets none: the model would predict it as the reference category, or without
+its slope, and R likewise refuses a level it hasn't seen. This is the rule for every qualitative
+variable of a regression (main effects, cross terms, curves per category; LM, LMM, GLM, GAM,
+mgcv::gamm), not for the other models (PLS...). Such observations are counted and named: in
+cross-validation, the Summary gives how many stayed without a prediction and of which variable,
+Q2 and RMSEcv being computed on the others; when none is left (sectors proper to each site,
+cross-validated by site), Q2 is missing, and the Summary says the model can't be
+cross-validated by these groups with that variable as a fixed X: make it a random effect, or
+choose other cross-validation groups. The test set counts them apart from its RMSEP, bias and
+external Q2; Prediction › Predict marks them ⊘ (column Unseen category, in the exported table
+too). The Methods text and the script of Export to R do the same.
 
 Class models and the Coomans plot
 ---------------------------------

@@ -3,7 +3,7 @@
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
-import { VUES, resumeSeuils, notePhi, notesTermesRetires, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites } from './panneaux.js';
+import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites } from './panneaux.js';
 import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
@@ -43,7 +43,7 @@ const PARTIES_REGRESSION = [
   { cle: 'effets', vue: 'effets', defaut: true, tableau: tableauPentes,
     variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
   { cle: 'seuils', vue: 'effets', defaut: true, si: avecCourbes, tableau: resumesSeuils,
-    variantes: async (m) => [].concat(m.courbes.terme).map((terme) => ({ terme, seuils: true })) },
+    variantes: async (m) => (await variantesSeuils(m)).map((v) => ({ terme: v.terme, seuils: true, ...(v.categorie ? { categorie: v.categorie } : {}) })) },
   { cle: 'obspred', vue: 'obspred', defaut: true },
   { cle: 'residus', vue: 'residus', defaut: true, tableau: (m) => (m.residus_quantiles ? [{ texte: t('residus_note_quantiles') }] : []),
     variantes: async (m) => (m.residus_quantiles ? ['standard', 'quantiles'] : ['standard']).flatMap((residus) => [{ mode: 'ajustes', residus }, { mode: 'qq', residus }]) },
@@ -201,13 +201,15 @@ function tableauRegression(m) {
   const cb = m.courbes;
   if (cb) {
     const cv = cb.concurvite !== undefined;
-    blocs.push({ entetes: [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'].concat(cv ? [t('concurvite')] : []),
-      lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]
-        .concat(cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
+    const categories = cb.niveau !== undefined;  // (a curve per category: a row per category)
+    blocs.push({ entetes: [t('courbe')].concat(categories ? [t('categorie')] : [], ['edf', t('ddl'), t('statistique'), 'p'], cv ? [t('concurvite')] : []),
+      lignes: [].concat(cb.terme).map((n, i) => [n].concat(categories ? [[].concat(cb.niveau)[i] === null ? '' : `${[].concat(cb.par)[i]} ${[].concat(cb.niveau)[i]}`] : [],
+        [nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])],
+        cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
   }
   return blocs.concat([...notesPentes(m), notePhi(m),
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
-    ...notesTermesRetires(m), q.sans_pente_vc ? t('sans_pente_vc', { n: q.sans_pente_vc }) : ''].filter(Boolean).map((texte) => ({ texte })));
+    ...notesTermesRetires(m), noteSansCategorie(m)].filter(Boolean).map((texte) => ({ texte })));
 }
 
 // The slope per category of each term crossed with categories, as under its plot in the Effects
@@ -218,12 +220,21 @@ async function tableauPentes(m) {
     lignes: [].concat(e.niveaux).map((n) => [n.niveau, nombre(n.pente), nombre(n.pente_bas), nombre(n.pente_haut)]) }));
 }
 
+// The thresholds a regression has: each curve's, and each category's for a curve with one per
+// category (a curve per category, or a curve crossed with categories: regression.R, courbes_seuils),
+// as the Effects view lists its curves.
+async function variantesSeuils(m) {
+  const effets = [].concat((await demander('effets', { modele: m.id })).effets || []).filter((e) => e.courbe);
+  return effets.flatMap((e) => (e.niveaux ? [].concat(e.niveaux).map((n) => ({ terme: e.terme, categorie: n.niveau, par: e.par })) : [{ terme: e.terme }]));
+}
+
 // Each curve's thresholds in words, as above its plot in the Effects view (regression.R:
-// seuils_courbe, computed once per curve and kept by the engine).
+// seuils_courbe, computed once per curve and category and kept by the engine).
 async function resumesSeuils(m) {
   const blocs = [];
-  for (const terme of [].concat(m.courbes.terme)) {
-    blocs.push({ texte: `${terme} — ${resumeSeuils(await demander('seuils', { modele: m.id, terme }))}` });
+  for (const v of await variantesSeuils(m)) {
+    const s = await demander('seuils', { modele: m.id, terme: v.terme, ...(v.categorie ? { categorie: v.categorie } : {}) });
+    blocs.push({ texte: `${v.terme}${v.categorie ? ` (${v.par} ${v.categorie})` : ''} — ${resumeSeuils(s)}` });
   }
   return blocs;
 }

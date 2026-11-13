@@ -353,7 +353,9 @@ ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "
 COURBES_SEUILS <- c("x", "effet", "bas", "haut", "x_pente", "pente", "pente_bas", "pente_haut")
 moteur_regression <- function(m) {
   r <- m$resultat
-  seuils <- if (!is.null(r$courbes)) lapply(r$courbes$terme, function(t) seuils_courbe(m, t))
+  # (les seuils de chaque courbe, et de chaque catégorie d'une courbe qui en a une par catégorie)
+  v <- variantes_seuils(m)
+  seuils <- if (!is.null(r$courbes)) lapply(seq_len(nrow(v)), function(i) seuils_courbe(m, v$terme[i], v$categorie[i]))
   list(coefficients = as.matrix(r$coefficients[c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]),
        # (les seuils d'une courbe : sa pente et son effet, leurs bandes simultanées, leurs plages nettes)
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, COURBES_SEUILS)),
@@ -361,7 +363,7 @@ moteur_regression <- function(m) {
        "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
        # (la corrélation de chaque pente aléatoire avec l'ordonnée à l'origine de son niveau, nlme)
        "corrélations des pentes" = if (any(!is.na(r$variances$correlation))) r$variances$correlation,
-       phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(r$courbes[-1]),
+       phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(Filter(is.numeric, r$courbes)),
        "Q2 et RMSEcv" = c(m$vc$Q2, m$vc$RMSEcv), "prédictions de la validation croisée" = m$vc$prediction,
        "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus), "résidus quantiles" = r$residus_quantiles,
        "jeu de test" = if (!is.null(m$test)) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")],
@@ -376,13 +378,13 @@ moteur_regression <- function(m) {
 script_regression <- function(s, langue) {
   n <- function(x) s[[nom_script(x, langue)]]
   colonnes <- function(x, k) if (!is.null(x)) as.matrix(x[k])
-  seuils <- n("seuils")
+  seuils <- unname(n("seuils"))
   list(coefficients = colonnes(n("coefficients"), 2:8),
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, nom_script(COURBES_SEUILS, langue))),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- s[[nom_script("plages", langue)]]; c(z[[3]], z[[4]]) })),
        "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = n("variances")$variance,
        "corrélations des pentes" = n("variances")$correlation,
-       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) colonnes(n("courbes"), seq_along(n("courbes"))[-1]),
+       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) as.matrix(Filter(is.numeric, n("courbes"))),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
        "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "résidus quantiles" = n("observations")[[nom_script("residu_quantile", langue)]],
        "jeu de test" = colonnes(n("test"), 2:6),
@@ -636,7 +638,9 @@ tq$habitat <- ifelse(tq$site %in% c("A", "B"), "H1", "H2")
 tq$traitement <- c("T1", "T2", "T3")[(seq_len(nq) %% 3) + 1]
 tq$densite <- 3 + c(S1 = 0.05, S2 = 0.25, S3 = -0.1)[tq$secteur] * (tq$annee - 2000) + rep(rnorm(4, 0, 0.5), each = 30) + rnorm(nq, 0, 0.5)
 tq$compte <- stats::rpois(nq, exp(0.4 + 0.5 * (tq$habitat == "H1") + 0.4 * (tq$traitement == "T2") * (tq$habitat == "H2")))
-pq <- projet_depuis_tableau(tq[c("nom", "site", "secteur", "secteur_site", "habitat", "traitement", "annee", "densite", "compte")], "croisés")
+# (le secteur S3 du site A devient S4, celui du site D S5 : des catégories d'un seul site)
+tq$secteur4 <- ifelse(tq$secteur != "S3", tq$secteur, c(A = "S4", B = "S3", C = "S3", D = "S5")[tq$site])
+pq <- projet_depuis_tableau(tq[c("nom", "site", "secteur", "secteur_site", "secteur4", "habitat", "traitement", "annee", "densite", "compte")], "croisés")
 uq <- function(...) numeros(pq, c(...))
 site_q <- list(by = "variable", variable = uq("site"))
 r <- essayer_regression("lm_annee_secteur", pq, definir_modele(pq, "LM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none",
@@ -655,7 +659,37 @@ essayer_regression("glm_poisson_habitat_traitement", pq, definir_modele(pq, "GLM
 r <- essayer_regression("lm_pente_par_secteur", pq, definir_modele(pq, "LM", x = uq("secteur_site"), y = uq("densite"), echelle = "none",
                         croises = list(uq("annee", "secteur_site")), vc = site_q, test = numeros_observations(pq)[tq$site == "D"]))
 verifier("une pente par secteur sans effet principal : les termes candidats sans l'année, et les secteurs jamais vus sans prédiction",
-         any(grepl("^termes_candidats <- ", lignes_script(r))) && any(grepl("niveaux_inconnus(appris, nouvelles, pentes_seules)", lignes_script(r), fixed = TRUE)))
+         any(grepl("^termes_candidats <- ", lignes_script(r))) && any(grepl("niveaux_inconnus(appris, nouvelles, cellules)", lignes_script(r), fixed = TRUE)))
+# une partie seulement sans prédiction : S4 (le seul site A) en validation croisée par site, S5 (le seul
+# site D, en jeu de test) dans le jeu de test ; en anglais
+mr4 <- ajuster(pq, dr4 <- definir_modele(pq, "LM", x = uq("annee", "secteur4"), y = uq("densite"), echelle = "none", vc = site_q, test = numeros_observations(pq)[tq$site == "D"]))
+r <- essayer_regression("lm_categories_non_vues_en", pq, dr4, langue = "en")
+verifier(sprintf("des catégories non vues dans une partie des groupes (%d lignes) et du jeu de test (%d sur %d) : le script les laisse sans prédiction, en anglais",
+                 mr4$vc$sans_categorie, mr4$test$inconnues, mr4$test$n),
+         mr4$vc$sans_categorie == 10 && !is.na(mr4$vc$Q2) && mr4$test$inconnues == 10 && mr4$test$statistiques$n == 20 &&
+           any(grepl("unseen_levels(model_data, test_data, category_cells)", lignes_script(r), fixed = TRUE)) && en_anglais(lignes_script(r)))
+# une courbe par catégorie (s(annee, by = secteur)) : un GAM ; un GAMM avec CAR1 dans chaque secteur, par
+# secteur4 (S4, du seul site A, sans prédiction en validation croisée ; S5, du site D en test, dans le jeu
+# de test), en anglais ; une courbe et son terme croisé avec le secteur, les seuils de chaque secteur
+k5 <- stats::setNames(list(5), uq("annee"))
+r <- essayer_regression("gam_courbe_par_secteur", pq, definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne",
+                        lisses = uq("annee"), par_courbes = stats::setNames(list(uq("secteur")), uq("annee")), k_courbes = k5))
+verifier("une courbe par secteur : s(annee, by = secteur_f), son facteur fait de ses colonnes 0/1, les seuils de chaque secteur",
+         any(grepl("par_courbes <- c(\"annee\" = \"secteur_f\")", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("tab[[\"secteur_f\"]] <- facteur_courbe(tab[c(\"secteur_S1\", \"secteur_S2\", \"secteur_S3\")], c(\"S1\", \"S2\", \"S3\"))", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("\"annee (secteur S2)\" = seuils_courbe(m, \"annee\", cadre", lignes_script(r), fixed = TRUE)))
+car1_q4 <- list(type = "CAR1", temps = list(by = "variable", variable = uq("annee")), dans = list(by = "variable", variable = uq("secteur4")))
+dr5 <- definir_modele(pq, "GAM", x = uq("annee", "secteur4"), y = uq("densite"), echelle = "none", famille = "gaussienne", lisses = uq("annee"), k_courbes = k5,
+                      par_courbes = stats::setNames(list(uq("secteur4")), uq("annee")), aleatoires = list(site_q), correlation = car1_q4,
+                      test = numeros_observations(pq)[tq$site == "D"])
+mr5 <- ajuster(pq, dr5)
+r <- essayer_regression("gamm_courbe_par_secteur_car1_en", pq, dr5, langue = "en")
+verifier(sprintf("mgcv::gamm, une courbe par secteur, CAR1 : S4 sans prédiction en validation croisée (%d lignes), S5 dans le jeu de test (%d) ; en anglais",
+                 mr5$vc$sans_categorie, mr5$test$inconnues),
+         mr5$vc$sans_categorie == 10 && mr5$test$inconnues == 10 && en_anglais(lignes_script(r)) &&
+           any(grepl("fitted_levels(new_rows, learnt, curves_by)", lignes_script(r), fixed = TRUE)))
+essayer_regression("gam_courbe_croisee_secteur", pq, definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne",
+                                                                    lisses = uq("annee"), croises = list(uq("annee", "secteur")), k_courbes = k5))
 # la séance : une ACP, un modèle mixte et un GAM dans le même script
 definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
                     definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),

@@ -1300,44 +1300,82 @@ verifier(sprintf("une combinaison jamais observée (H2 avec T3) : laissée de c�
                  paste(mz_q$resultat$termes_absents, collapse = ", ")),
          identical(as.character(mz_q$resultat$termes_absents), "habitat(H2)*traitement(T3)") && "habitat(H1)*traitement(T2)" %in% mz_q$resultat$termes_retires &&
            proche(mz_q$resultat$coefficients$estimation, stats::na.omit(coef(lz_q))) && proche(mz_q$resultat$ajuste, fitted(lz_q)))
-# une catégorie que l'ajustement n'a pas vue (des secteurs propres à chaque site, la validation croisée par site)
-vc_site <- list(by = "variable", variable = uq("site"))
-mv1 <- ajuster(pq, definir_modele(pq, "LM", x = uq("annee", "secteur_site"), y = uq("densite"), echelle = "none", croises = list(uq("annee", "secteur_site")), vc = vc_site))
-pred_v1 <- rep(NA_real_, nq)
-for (s in unique(tq$site)) {  # (le secteur jamais vu : prédit comme la catégorie de référence du sous-modèle, la dernière qu'il a)
+# une catégorie, ou une combinaison de catégories, que l'ajustement n'a pas vue : pas de prédiction
+# (validation croisée, jeu de test, prédire les observations, prédire un fichier ; regression.R :
+# niveaux_inconnus). Le secteur S3 du site A devient S4 : une catégorie d'un seul site.
+tq$secteur4 <- ifelse(tq$site == "A" & tq$secteur == "S3", "S4", tq$secteur)
+pi4 <- projet_depuis_tableau(tq[c("nom", "site", "secteur", "secteur4", "secteur_site", "habitat", "traitement", "annee", "densite")], "catégories non vues")
+ui4 <- function(...) numeros(pi4, c(...))
+obs_i4 <- numeros_observations(pi4)
+vc_site4 <- list(by = "variable", variable = ui4("site"))
+# la validation croisée par site, une partie des groupes sans catégorie inconnue : sans le site A, les
+# autres n'ont pas S4 ; ses autres lignes, comme celles des autres sites, = predict(lm()) sans elles
+mi1 <- ajuster(pi4, definir_modele(pi4, "LM", x = ui4("annee", "secteur4"), y = ui4("densite"), echelle = "none", vc = vc_site4))
+attendu_i1 <- rep(NA_real_, nq)
+for (s in unique(tq$site)) {
   ici <- tq$site == s
-  appris <- tq[!ici, ]
-  ref <- sort(unique(appris$secteur_site))
-  l <- lm(densite ~ annee * f, data = transform(appris, f = factor(secteur_site, levels = c(ref[length(ref)], ref[-length(ref)]))))
-  pred_v1[ici] <- coef(l)[1] + coef(l)[2] * tq$annee[ici]
+  vus <- ici & tq$secteur4 %in% tq$secteur4[!ici]
+  attendu_i1[vus] <- predict(lm(densite ~ annee + secteur4, data = tq[!ici, ]), tq[vus, ])
 }
-mv2 <- ajuster(pq, definir_modele(pq, "LM", x = uq("secteur_site"), y = uq("densite"), echelle = "none", croises = list(uq("annee", "secteur_site")), vc = vc_site))
-verifier(sprintf("validation croisée par site : un secteur jamais vu prédit comme la catégorie de référence (avec l'effet principal de l'année) ; sans lui, pas de pente, pas de prédiction (%d)", mv2$vc$sans_pente),
-         proche(mv1$vc$prediction, pred_v1) && mv1$vc$sans_pente == 0 && mv2$vc$sans_pente == nq && all(is.na(mv2$vc$prediction)) && is.na(mv2$vc$Q2))
-# prédire : comme predict(lm()) ; une catégorie inconnue du projet, sans prédiction ; une catégorie hors du modèle, comme la référence, ou sans prédiction sans effet principal
-obs_q <- numeros_observations(pq)
-garde_q <- tq$secteur != "S2"
-dg1 <- lm_q(c("annee", "secteur"), list(c("annee", "secteur")), observations = obs_q[garde_q])
-mg1 <- ajuster(pq, dg1)
-lg1 <- lm(densite ~ annee * secteur_f, data = droplevels(tq[garde_q, ]))
-prq <- predire(pq, mg1, dg1, obs_q)
-dg2 <- lm_q("secteur", list(c("annee", "secteur")), observations = obs_q[garde_q])
-prq2 <- predire(pq, ajuster(pq, dg2), dg2, obs_q)
-verifier("prédire : les observations du modèle = predict(lm()) ; une catégorie hors du modèle (S2) prédite comme la référence, ou sans prédiction quand l'année n'a pas d'effet principal",
-         proche(prq[["densite prédit"]][garde_q], predict(lg1, tq[garde_q, ])) && proche(prq[["densite prédit"]][!garde_q], coef(lg1)[1] + coef(lg1)[2] * tq$annee[!garde_q]) &&
-           all(is.na(prq2[["densite prédit"]][!garde_q])) && !anyNA(prq2[["densite prédit"]][garde_q]))
+ok_i1 <- !is.na(attendu_i1)
+q2_i1 <- 1 - sum((tq$densite[ok_i1] - attendu_i1[ok_i1])^2) / sum((tq$densite[ok_i1] - mean(tq$densite[ok_i1]))^2)
+verifier(sprintf("validation croisée par site : les %d lignes de S4 (un seul site l'a) sans prédiction, les autres = predict(lm()) ; Q2 et RMSEcv sur les lignes prédites (Q2 = %.3f)", sum(!ok_i1), q2_i1),
+         sum(!ok_i1) == 10 && proche(mi1$vc$prediction, attendu_i1) && mi1$vc$sans_categorie == 10 && identical(mi1$vc$facteurs, "secteur4") &&
+           proche(mi1$vc$Q2, q2_i1) && proche(mi1$vc$RMSEcv, sqrt(mean((tq$densite[ok_i1] - attendu_i1[ok_i1])^2))))
+# toutes les lignes sans prédiction : des secteurs propres à chaque site, validés par site, avec ou sans
+# l'effet principal de l'année (le terme croisé annee × secteur_site) ; Q2 manque, le texte des méthodes dit pourquoi
+mi2 <- ajuster(pi4, definir_modele(pi4, "LM", x = ui4("annee", "secteur_site"), y = ui4("densite"), echelle = "none", croises = list(ui4("annee", "secteur_site")), vc = vc_site4))
+di3 <- definir_modele(pi4, "LM", x = ui4("secteur_site"), y = ui4("densite"), echelle = "none", croises = list(ui4("annee", "secteur_site")), vc = vc_site4)
+mi3 <- ajuster(pi4, di3)
+ti3 <- vapply(c("fr", "en"), function(l) paste(texte_methodes(pi4, di3, mi3, l, "essai")$paragraphes, collapse = " "), "")
+verifier("validation croisée par site, des secteurs propres à chaque site (terme croisé avec l'année, avec ou sans son effet principal) : aucune prédiction, Q2 et RMSEcv manquent ; le texte des méthodes dit pourquoi, sans « NA »",
+         all(is.na(mi2$vc$prediction)) && mi2$vc$sans_categorie == nq && is.na(mi2$vc$Q2) && is.na(mi2$vc$RMSEcv) && identical(mi2$vc$facteurs, "secteur_site") &&
+           all(is.na(mi3$vc$prediction)) && mi3$vc$sans_categorie == nq && is.na(mi3$vc$Q2) &&
+           grepl("Q² n'a pas pu être calculé", ti3[["fr"]], fixed = TRUE) && grepl("Q² couldn't be computed", ti3[["en"]], fixed = TRUE) && !any(grepl("NA", ti3, fixed = TRUE)))
+# un jeu de test (le site A) : ses lignes de S4, une catégorie absente des observations du modèle, sans
+# prédiction et hors des statistiques ; les autres = predict(lm())
+di4 <- definir_modele(pi4, "LM", x = ui4("annee", "secteur4"), y = ui4("densite"), echelle = "none", test = obs_i4[tq$site == "A"])
+mi4 <- ajuster(pi4, di4)
+vus4 <- tq$site == "A" & tq$secteur4 != "S4"
+e4 <- predict(lm(densite ~ annee + secteur4, data = tq[tq$site != "A", ]), tq[vus4, ]) - tq$densite[vus4]
+ti4 <- texte_methodes(pi4, di4, mi4, "fr", "essai")$paragraphes
+verifier(sprintf("jeu de test : %d observations, les %d de S4 sans prédiction (« secteur4 »), RMSEP, biais et Q2 externe sur les %d autres = predict(lm()) ; le texte des méthodes les compte",
+                 mi4$test$n, mi4$test$inconnues, sum(vus4)),
+         mi4$test$n == 30 && mi4$test$inconnues == 10 && identical(as.character(mi4$test$facteurs_inconnus), "secteur4") && mi4$test$statistiques$n == 20 &&
+           proche(mi4$test$statistiques$RMSEP, sqrt(mean(e4^2))) && proche(mi4$test$statistiques$biais, mean(e4)) &&
+           proche(mi4$test$statistiques$Q2ext, 1 - sum(e4^2) / sum((tq$densite[vus4] - mean(tq$densite[tq$site != "A"]))^2)) &&
+           all(is.na(mi4$test$observations[["densite prédit"]][tq$secteur4[tq$site == "A"] == "S4"])) &&
+           any(grepl("10 d'entre elles, d'une catégorie (« secteur4 ») absente des observations du modèle", ti4, fixed = TRUE)))
+mt_q <- ajuster(pi4, definir_modele(pi4, "LM", x = ui4("secteur_site"), y = ui4("densite"), echelle = "none", croises = list(ui4("annee", "secteur_site")), test = obs_i4[tq$site == "F"]))
+verifier("jeu de test d'un site entier, une pente par secteur sans effet principal : ses secteurs jamais vus restent sans prédiction, hors des statistiques",
+         mt_q$test$statistiques$n == 0 && mt_q$test$inconnues == 30 && all(is.na(mt_q$test$observations[["densite prédit"]])))
+# prédire les observations : celles d'une catégorie que le modèle n'a pas (S2), ou d'une combinaison de
+# catégories qu'il n'a pas vue (H2 avec T3, dans un terme croisé), sans prédiction et marquées ; les autres = predict(lm())
+garde_i5 <- tq$secteur != "S2"
+di5 <- definir_modele(pi4, "LM", x = ui4("annee", "secteur"), y = ui4("densite"), echelle = "none", croises = list(ui4("annee", "secteur")), observations = obs_i4[garde_i5])
+mi5 <- ajuster(pi4, di5)
+li5 <- lm(densite ~ annee * secteur, data = tq[garde_i5, ])
+pr5 <- predire(pi4, mi5, di5, obs_i4)
+garde_i6 <- !(tq$habitat == "H2" & tq$traitement == "T3")
+di6 <- definir_modele(pi4, "LM", x = ui4("habitat", "traitement"), y = ui4("densite"), echelle = "none", croises = list(ui4("habitat", "traitement")), observations = obs_i4[garde_i6])
+pr6 <- predire(pi4, ajuster(pi4, di6), di6, obs_i4)
+li6 <- lm(densite ~ habitat * traitement, data = tq[garde_i6, ])
+verifier("prédire : une catégorie hors du modèle (S2), une combinaison jamais vue (H2 avec T3) : sans prédiction, marquées (categorie_inconnue) ; les autres = predict(lm())",
+         all(is.na(pr5[["densite prédit"]][!garde_i5])) && identical(pr5$categorie_inconnue, !garde_i5) && proche(pr5[["densite prédit"]][garde_i5], predict(li5, tq[garde_i5, ])) &&
+           all(is.na(pr6[["densite prédit"]][!garde_i6])) && identical(pr6$categorie_inconnue, !garde_i6) &&
+           proche(pr6[["densite prédit"]][garde_i6], suppressWarnings(predict(li6, tq[garde_i6, ]))) &&
+           is.null(predire(pi4, mi1, definir_modele(pi4, "LM", x = ui4("annee", "secteur4"), y = ui4("densite"), echelle = "none"), obs_i4)$categorie_inconnue))
+# prédire un fichier : une catégorie du modèle = predict(lm()) ; une catégorie du projet que le modèle n'a
+# pas (S2), une que le projet n'a pas (S9) : sans prédiction, marquées
 dossier_q <- tempfile("prediction")
 dir.create(dossier_q)
 fq <- file.path(dossier_q, "secteurs.csv")
-utils::write.csv(data.frame(nom = c("a", "b"), annee = c(2005, 2005), secteur = c("S1", "S9")), fq, row.names = FALSE)
-rfq <- predire_fichier(pq, mq1, dq1, fq)
-verifier("prédire un fichier : une catégorie connue = predict(lm()), une catégorie inconnue du projet (S9) sans prédiction",
-         proche(rfq$observations[["densite prédit"]][1], predict(lq1, data.frame(annee = 2005, secteur_f = factor("S1", levels = levels(tq$secteur_f))))) &&
-           is.na(rfq$observations[["densite prédit"]][2]))
+utils::write.csv(data.frame(nom = c("a", "b", "c", "d"), annee = 2005, secteur = c("S1", "S2", "S9", NA)), fq, row.names = FALSE)
+rfq <- predire_fichier(pi4, mi5, di5, fq)$observations
+verifier("prédire un fichier : une catégorie du modèle (S1) = predict(lm()) ; S2 (hors du modèle) et S9 (hors du projet) sans prédiction et marquées ; un secteur manquant, sans prédiction ni marque",
+         proche(rfq[["densite prédit"]][1], predict(li5, data.frame(annee = 2005, secteur = "S1"))) && all(is.na(rfq[["densite prédit"]][2:4])) &&
+           identical(rfq$categorie_inconnue, c(FALSE, TRUE, TRUE, FALSE)))
 unlink(dossier_q, recursive = TRUE)
-mt_q <- ajuster(pq, lm_q("secteur_site", list(c("annee", "secteur_site")), test = obs_q[tq$site == "F"]))
-verifier("jeu de test d'un site entier, une pente par secteur sans effet principal : ses secteurs jamais vus restent sans prédiction, hors des statistiques",
-         mt_q$test$statistiques$n == 0 && all(is.na(mt_q$test$observations[["densite prédit"]])))
 # refusés, en nommant le terme
 verifier("une variable qualitative au carré ou deux fois dans un terme croisé : refusé, en nommant le terme",
          grepl("« secteur × secteur »", refus(lm_q("secteur", list(c("secteur", "secteur"))))) &&
@@ -1378,6 +1416,208 @@ for (l in c("fr", "en")) {
              grepl(if (l == "fr") "l'écart de la pente de « annee » à sa pente dans « S3 »" else "the difference between the slope of “annee” in it and its slope in “S3”", tq1) &&
              grepl(if (l == "fr") "n'ayant pas d'effet principal, les coefficients de « annee × secteur » sont la pente" else "has no main effect, the coefficients of “annee × secteur” are the slope", tq3) &&
              grepl(if (l == "fr") "ce même effet dans « H2 »" else "the same effect in “H2”", tq2) && !any(grepl("NA", c(tq1, tq2, tq3), fixed = TRUE)))
+}
+
+cat("Une courbe par catégorie (s(x, by = f))\n")
+# quatre sites suivis quinze ans, trois secteurs dans chacun : chaque secteur sa forme (une bosse, une
+# baisse, une cuvette), un effet du site, une autocorrélation dans chaque secteur ; secteur_b : le
+# secteur S3 du site A devient S4, une catégorie d'un seul site
+set.seed(5)
+tc <- expand.grid(annee = 2001:2015, secteur = c("S1", "S2", "S3"), site = c("A", "B", "C", "D"), stringsAsFactors = FALSE)
+nc <- nrow(tc)
+tc$nom <- sprintf("C%03d", seq_len(nc))
+forme_c <- list(S1 = function(a) sin((a - 2000) / 2.5), S2 = function(a) -0.15 * (a - 2008), S3 = function(a) 0.02 * (a - 2008)^2 - 0.5)
+effet_c <- vapply(seq_len(nc), function(i) forme_c[[tc$secteur[i]]](tc$annee[i]), 0)
+bruit_c <- numeric(nc)
+for (i in split(seq_len(nc), paste(tc$site, tc$secteur))) bruit_c[i] <- as.vector(stats::filter(rnorm(length(i), 0, 0.3), 0.4, "recursive"))
+tc$y <- 3 + c(S1 = 0.5, S2 = -0.3, S3 = 0)[tc$secteur] + effet_c + rnorm(4, 0, 0.4)[as.integer(factor(tc$site))] + bruit_c
+tc$compte <- stats::rpois(nc, exp(0.5 + 0.4 * effet_c))
+tc$secteur_b <- ifelse(tc$site == "A" & tc$secteur == "S3", "S4", tc$secteur)
+pc <- projet_depuis_tableau(tc[c("nom", "site", "secteur", "secteur_b", "annee", "y", "compte")], "courbes par secteur")
+uc <- function(...) numeros(pc, c(...))
+obs_c <- numeros_observations(pc)
+par_c <- stats::setNames(list(uc("secteur")), uc("annee"))
+gam_c <- function(y = "y", x = c("annee", "secteur"), par = par_c, ...) {
+  definir_modele(pc, "GAM", x = uc(x), y = uc(y), echelle = "none", famille = if (y == "compte") "poisson" else "gaussienne", lisses = uc("annee"), par_courbes = par, ...)
+}
+# (les colonnes de Nuée : l'indicatrice de chaque secteur sauf S3, la référence ; le facteur des courbes, ses catégories dans leur ordre)
+tc$s1 <- as.numeric(tc$secteur == "S1")
+tc$s2 <- as.numeric(tc$secteur == "S2")
+tc$f <- factor(tc$secteur, levels = c("S1", "S2", "S3"))
+tc$site_f <- factor(tc$site)
+env_c <- new.env(parent = asNamespace("mgcv"))
+formule_c <- function(texte) stats::as.formula(texte, env = env_c)
+etiq_c <- sprintf("s(annee):f%s", c("S1", "S2", "S3"))
+dc1 <- gam_c()
+mc1 <- ajuster(pc, dc1)
+rc1 <- mgcv::gam(formule_c("y ~ s1 + s2 + s(annee, by = f, k = 10)"), data = tc, method = "REML")
+rc1_ml <- mgcv::gam(formule_c("y ~ s1 + s2 + s(annee, by = f, k = 10)"), data = tc, method = "ML")
+st_c <- summary(rc1)$s.table
+cc_c <- mgcv::concurvity(rc1, full = TRUE)
+verifier(sprintf("une courbe par secteur = mgcv::gam(y ~ secteur + s(annee, by = secteur)) : valeurs ajustées, coefficients, AIC (ML), edf, F et p de chaque courbe (edf %s), concurvité",
+                 paste(formatC(mc1$resultat$courbes$edf, digits = 2, format = "f"), collapse = ", ")),
+         proche(mc1$resultat$ajuste, fitted(rc1), 1e-8) && proche(mc1$resultat$coefficients$estimation, summary(rc1)$p.table[, 1], 1e-6) &&
+           proche(mc1$resultat$AIC, AIC(rc1_ml), 1e-8) && identical(mc1$resultat$courbes$niveau, c("S1", "S2", "S3")) &&
+           identical(mc1$resultat$courbes$par, rep("secteur", 3)) && identical(mc1$resultat$courbes$terme, rep("annee", 3)) &&
+           proche(as.matrix(mc1$resultat$courbes[c("edf", "ref_ddl", "statistique", "p")]), unname(st_c[etiq_c, ]), 1e-6) &&
+           max(abs(mc1$resultat$courbes$concurvite - cc_c["estimate", etiq_c])) < 1e-8)
+mc2 <- ajuster(pc, gam_c("compte"))
+rc2 <- mgcv::gam(formule_c("compte ~ s1 + s2 + s(annee, by = f, k = 10)"), data = tc, family = poisson, method = "REML")
+verifier("de Poisson = mgcv::gam(family = poisson) : valeurs ajustées, edf et p de chaque courbe",
+         proche(mc2$resultat$ajuste, fitted(rc2), 1e-6) && proche(mc2$resultat$courbes$edf, unname(summary(rc2)$s.table[etiq_c, 1]), 1e-5) &&
+           proche(mc2$resultat$courbes$p, unname(summary(rc2)$s.table[etiq_c, 4]), 1e-4))
+# les effets : la courbe de chaque secteur, celle de mgcv, sur les années du secteur
+ec1 <- effets_regression(mc1)[[1]]
+nd_c <- transform(tc[tc$secteur == "S2", ][rep(1, 80), ], annee = seq(2001, 2015, length.out = 80))
+pr_c <- stats::predict(rc1, nd_c, type = "terms", terms = "s(annee):fS2", se.fit = TRUE)
+verifier("Effets : une courbe par secteur, celle de mgcv (predict(type = \"terms\")), avec sa bande à 95 %",
+         identical(ec1$par, "secteur") && isTRUE(ec1$courbe) && identical(vapply(ec1$niveaux, `[[`, "", "niveau"), c("S1", "S2", "S3")) &&
+           proche(ec1$niveaux[[2]]$effet, as.vector(pr_c$fit[, 1]), 1e-6) && proche(ec1$niveaux[[2]]$haut - ec1$niveaux[[2]]$effet, 1.96 * as.vector(pr_c$se.fit[, 1]), 1e-5))
+# les seuils de la courbe d'un secteur : la démarche des scripts (2000 tirages, la même graine) refaite sur
+# l'ajustement de mgcv, ses colonnes, sur les années de ce secteur ; `ajout` : la pente d'un terme croisé
+seuils_attendus <- function(g, lignes, colonnes, ajout = NULL) {
+  xs <- seq(quantile(tc$annee[lignes], .02), quantile(tc$annee[lignes], .98), length.out = 200)
+  Xp <- stats::predict(g, transform(tc[lignes, ][rep(1, 200), ], annee = xs), type = "lpmatrix")
+  js <- which(startsWith(colnames(Xp), colonnes))
+  L <- Xp[, js, drop = FALSE]
+  if (!is.null(ajout)) { L <- cbind(L, xs); js <- c(js, match(ajout, names(coef(g)))) }
+  set.seed(1)
+  B <- MASS::mvrnorm(2000, coef(g), vcov(g))
+  fit <- as.vector(L %*% coef(g)[js])
+  fit <- fit - mean(fit)
+  sims <- L %*% t(B[, js])
+  sims <- sweep(sims, 2, colMeans(sims))
+  der <- diff(fit) / diff(xs[1:2])
+  dsim <- apply(sims, 2, diff) / diff(xs[1:2])
+  se_d <- apply(dsim, 1, sd)
+  list(x = xs, effet = fit, pente = der, pente_haut = der + quantile(apply(abs(dsim - der) / se_d, 2, max), .95) * se_d)
+}
+sc2 <- seuils_courbe(mc1, "annee", "S2")
+ac2 <- seuils_attendus(rc1, tc$secteur == "S2", "s(annee):fS2.")
+verifier(sprintf("seuils de la courbe d'un secteur (S2, edf %.2f) = la démarche des scripts sur mgcv ; une catégorie inconnue, refusée", sc2$edf),
+         identical(sc2$categorie, "S2") && identical(sc2$par, "secteur") && proche(sc2$x, ac2$x) && proche(sc2$effet, ac2$effet, 1e-6) &&
+           proche(sc2$pente, ac2$pente, 1e-6) && proche(sc2$pente_haut, ac2$pente_haut, 1e-4) && proche(sc2$edf, st_c["s(annee):fS2", 1], 1e-6) &&
+           identical(variantes_seuils(mc1)$categorie, c("S1", "S2", "S3")) && grepl("catégorie", refus(seuils_courbe(mc1, "annee", "S9"))))
+# une courbe et ses termes croisés avec le secteur (le cas d'avant 0.9.7) : les seuils de chaque secteur, la
+# courbe commune plus la pente de son terme croisé
+dc3 <- definir_modele(pc, "GAM", x = uc("annee", "secteur"), y = uc("y"), echelle = "none", famille = "gaussienne", lisses = uc("annee"), croises = list(uc("annee", "secteur")))
+mc3 <- ajuster(pc, dc3)
+tc$p1 <- tc$annee * tc$s1
+tc$p2 <- tc$annee * tc$s2
+rc3 <- mgcv::gam(formule_c("y ~ s1 + s2 + p1 + p2 + s(annee, k = 10)"), data = tc, method = "REML")
+sc3 <- seuils_courbe(mc3, "annee", "S1")
+ac3 <- seuils_attendus(rc3, tc$secteur == "S1", "s(annee).", "p1")
+verifier("une courbe et son terme croisé avec le secteur : les seuils de chaque secteur, la courbe plus la pente du secteur (= la démarche des scripts sur mgcv)",
+         proche(mc3$resultat$ajuste, fitted(rc3), 1e-8) && identical(variantes_seuils(mc3)$categorie, c("S1", "S2", "S3")) && identical(sc3$categorie, "S1") &&
+           proche(sc3$effet, ac3$effet, 1e-6) && proche(sc3$pente, ac3$pente, 1e-6) && proche(sc3$pente_haut, ac3$pente_haut, 1e-4) &&
+           !proche(seuils_courbe(mc3, "annee", "S3")$pente, sc3$pente, 1e-3))
+# mgcv::gamm : le site aléatoire, CAR1 le long des années dans chaque secteur, k = 6
+dc4 <- gam_c(aleatoires = list(list(by = "variable", variable = uc("site"))), k_courbes = stats::setNames(list(6), uc("annee")),
+             correlation = list(type = "CAR1", temps = list(by = "variable", variable = uc("annee")), dans = list(by = "variable", variable = uc("secteur"))))
+mc4 <- ajuster(pc, dc4)
+cor_c <- nlme::corCAR1(form = ~ annee | site_f / f)
+rc4 <- mgcv::gamm(formule_c("y ~ s1 + s2 + s(annee, by = f, k = 6)"), random = list(site_f = ~1), correlation = cor_c, data = tc, method = "REML")
+rc4_ml <- mgcv::gamm(formule_c("y ~ s1 + s2 + s(annee, by = f, k = 6)"), random = list(site_f = ~1), correlation = cor_c, data = tc, method = "ML")
+verifier(sprintf("mgcv::gamm (site aléatoire, CAR1 dans chaque secteur) : coefficients, edf et p de chaque courbe, AIC de la partie nlme en ML (φ = %.3f)", mc4$resultat$phi),
+         isTRUE(mc4$gamm) && proche(mc4$resultat$coefficients$estimation, summary(rc4$gam)$p.table[, 1], 1e-4) &&
+           proche(mc4$resultat$courbes$edf, unname(summary(rc4$gam)$s.table[etiq_c, 1]), 1e-4) && proche(mc4$resultat$courbes$p, unname(summary(rc4$gam)$s.table[etiq_c, 4]), 1e-3) &&
+           proche(mc4$resultat$AIC, AIC(rc4_ml$lme), 1e-6) && length(seuils_courbe(mc4, "annee", "S3")$x) == 200)
+# prédire : un secteur que le modèle n'a pas (S2) sans prédiction et marqué ; les autres = predict(mgcv::gam())
+gc5 <- tc$secteur != "S2"
+dc5 <- gam_c(observations = obs_c[gc5])
+mc5 <- ajuster(pc, dc5)
+rc5 <- mgcv::gam(formule_c("y ~ s1 + s(annee, by = f, k = 10)"), data = transform(tc[gc5, ], f = droplevels(f)), method = "REML")
+pr5 <- predire(pc, mc5, dc5, obs_c)
+dossier_c <- tempfile("prediction")
+dir.create(dossier_c)
+fc <- file.path(dossier_c, "secteurs.csv")
+utils::write.csv(data.frame(nom = c("a", "b", "c"), annee = 2008, secteur = c("S1", "S2", "S3")), fc, row.names = FALSE)
+rfc <- predire_fichier(pc, mc5, dc5, fc)$observations
+unlink(dossier_c, recursive = TRUE)
+verifier("prédire avec des courbes par secteur : un secteur que le modèle n'a pas (S2), sans prédiction et marqué, dans le projet et dans un fichier ; les autres = predict(mgcv::gam())",
+         all(is.na(pr5[["y prédit"]][!gc5])) && identical(pr5$categorie_inconnue, !gc5) &&
+           proche(pr5[["y prédit"]][gc5], as.vector(stats::predict(rc5, transform(tc[gc5, ], f = droplevels(f)))), 1e-6) &&
+           identical(rfc$categorie_inconnue, c(FALSE, TRUE, FALSE)) && is.na(rfc[["y prédit"]][2]) &&
+           proche(rfc[["y prédit"]][c(1, 3)], as.vector(stats::predict(rc5, data.frame(annee = 2008, s1 = c(1, 0), f = factor(c("S1", "S3"), levels = c("S1", "S3"))))), 1e-6))
+# un jeu de test (le site D) où S2 n'a pas été vu (le modèle n'a pas S2) : sans prédiction, hors des statistiques
+dc6 <- gam_c(observations = obs_c[tc$site != "D" & tc$secteur != "S2"], test = obs_c[tc$site == "D"])
+mc6 <- ajuster(pc, dc6)
+rc6 <- mgcv::gam(formule_c("y ~ s1 + s(annee, by = f, k = 10)"), data = transform(tc[tc$site != "D" & tc$secteur != "S2", ], f = droplevels(f)), method = "REML")
+vus6 <- tc$site == "D" & tc$secteur != "S2"
+e6 <- as.vector(stats::predict(rc6, transform(tc[vus6, ], f = droplevels(f)))) - tc$y[vus6]
+verifier(sprintf("jeu de test avec des courbes par secteur : les %d lignes de S2 sans prédiction, RMSEP sur les %d autres = predict(mgcv::gam())", mc6$test$inconnues, sum(vus6)),
+         mc6$test$inconnues == 15 && mc6$test$statistiques$n == 30 && proche(mc6$test$statistiques$RMSEP, sqrt(mean(e6^2)), 1e-6))
+# la validation croisée par site, des courbes par secteur_b : sans le site A, S4 manque (ses lignes restent sans
+# prédiction) ; les autres lignes = predict(mgcv::gam()) ajusté sans leur site, ses colonnes et son facteur sur
+# les catégories que ces lignes-là ont
+dc7 <- gam_c(x = c("annee", "secteur_b"), par = stats::setNames(list(uc("secteur_b")), uc("annee")), vc = list(by = "variable", variable = uc("site")))
+mc7 <- ajuster(pc, dc7)
+vc7 <- rep(NA_real_, nc)
+for (s in unique(tc$site)) {
+  ici <- tc$site == s
+  app <- tc[!ici, ]
+  nv <- intersect(c("S1", "S2", "S3", "S4"), app$secteur_b)
+  colonnes_b <- function(x) { for (k in nv) x[[k]] <- as.numeric(x$secteur_b == k); x$fb <- factor(x$secteur_b, levels = nv); x }
+  g <- mgcv::gam(formule_c(sprintf("y ~ %s + s(annee, by = fb, k = 10)", paste(nv[-length(nv)], collapse = " + "))), data = colonnes_b(app), method = "REML")
+  vus <- ici & tc$secteur_b %in% nv
+  vc7[vus] <- as.vector(stats::predict(g, colonnes_b(tc[vus, ])))
+}
+ok7 <- !is.na(vc7)
+verifier(sprintf("validation croisée par site, des courbes par secteur : les %d lignes de S4 (le seul site A) sans prédiction, les autres = predict(mgcv::gam()) sans leur site",
+                 sum(!ok7)),
+         sum(!ok7) == 15 && mc7$vc$sans_categorie == 15 && proche(mc7$vc$prediction, vc7, 1e-6) &&
+           proche(mc7$vc$Q2, 1 - sum((tc$y[ok7] - vc7[ok7])^2) / sum((tc$y[ok7] - mean(tc$y[ok7]))^2), 1e-6))
+mc8 <- ajuster(pc, gam_c(vc = list(by = "variable", variable = uc("secteur"))))
+verifier("validation croisée par secteur avec une courbe par secteur : aucune prédiction, Q2 manque",
+         all(is.na(mc8$vc$prediction)) && mc8$vc$sans_categorie == nc && is.na(mc8$vc$Q2) && identical(mc8$vc$facteurs, "secteur"))
+# la sélection par l'AIC et les apports : la courbe par secteur n'entre qu'avec l'effet principal du secteur
+aicc_c <- function(g) { k <- attr(logLik(g), "df"); AIC(g) + 2 * k * (k + 1) / (nc - k - 1) }
+sc1 <- selection_aic(mc1, dc1)
+attendus_c <- c("annee + secteur" = aicc_c(rc1_ml), secteur = aicc_c(mgcv::gam(formule_c("y ~ s1 + s2"), data = tc, method = "ML")),
+                "1" = aicc_c(mgcv::gam(formule_c("y ~ 1"), data = tc, method = "ML")))
+ac1 <- apport_groupes(mc1)
+verifier("sélection par l'AIC : la courbe par secteur avec l'effet principal du secteur, jamais sans (3 modèles = mgcv::gam() en ML) ; l'apport du secteur, avec sa courbe",
+         nrow(sc1$modeles) == 3 && setequal(sc1$modeles$modele, names(attendus_c)) && proche(sc1$modeles$AICc, attendus_c[sc1$modeles$modele], 1e-6) &&
+           identical(as.character(sc1$requis[[match("annee", sc1$groupes)]]), "secteur") && identical(ac1$avec, c("", "annee")) &&
+           proche(ac1$delta_aic, c(AIC(mgcv::gam(formule_c("y ~ s1 + s2"), data = tc, method = "ML")), AIC(mgcv::gam(formule_c("y ~ 1"), data = tc, method = "ML"))) - AIC(rc1_ml), 1e-6))
+mc1$selection_aic <- sc1
+tsel_c <- texte_methodes(pc, dc1, mc1, "fr", "essai")$paragraphes[2]
+dsel_c <- definition_selection(dc1, mc1, c("annee", "secteur"))
+verifier("Ajuster ce modèle garde la courbe par secteur ; le texte des méthodes de la sélection le dit",
+         identical(dsel_c$par_courbes, dc1$par_courbes) && proche(ajuster(pc, dsel_c)$resultat$AIC, mc1$resultat$AIC, 1e-10) &&
+           grepl("une courbe par catégorie n'y entrant qu'avec ses effets principaux", tsel_c, fixed = TRUE))
+# refusés, en disant pourquoi : sans l'effet principal du secteur, par une variable quantitative, pour une variable
+# qui n'est pas une courbe, avec un terme croisé de la courbe avec une variable qualitative, dans un GLM
+verifier("une courbe par catégorie refusée : sans l'effet principal de sa variable qualitative, par une variable quantitative, hors des courbes, avec un terme croisé qualitatif, dans un GLM",
+         grepl("doit être aussi une variable X du modèle", refus(ajuster(pc, gam_c(x = "annee")))) &&
+           grepl("variable qualitative", refus(gam_c(par = stats::setNames(list(uc("compte")), uc("annee"))))) &&
+           grepl("n'est pas une courbe", refus(definir_modele(pc, "GAM", x = uc("annee", "secteur"), y = uc("y"), echelle = "none", famille = "gaussienne", par_courbes = par_c))) &&
+           grepl("terme croisé", refus(gam_c(croises = list(uc("annee", "secteur"))))) &&
+           grepl("GAM|additif", refus(definir_modele(pc, "GLM", x = uc("annee", "secteur"), y = uc("y"), echelle = "none", famille = "gaussienne", par_courbes = par_c))))
+# la formule R : écrite et relue, avec k ; refusée sans l'effet principal, par une variable quantitative, avec un autre argument
+lu_c <- lire_formule(pc, "y ~ secteur + s(annee, by = secteur, k = 6)")
+verifier(sprintf("formule R : %s ; %s relue en les mêmes réglages ; refusée sans l'effet principal du secteur, par une variable quantitative, avec bs = \"cr\"",
+                 formule_reglages(pc, reglages_modele(pc, dc1)), formule_reglages(pc, reglages_modele(pc, dc4))),
+         identical(formule_reglages(pc, reglages_modele(pc, dc1)), "y ~ s(annee, by = secteur) + secteur") &&
+           grepl("s(annee, by = secteur, k = 6)", formule_reglages(pc, reglages_modele(pc, dc4)), fixed = TRUE) &&
+           lu_c$type == "GAM" && identical(as.numeric(unlist(lu_c$par_courbes[[as.character(uc("annee"))]])), as.numeric(uc("secteur"))) &&
+           identical(lu_c$k_courbes[[as.character(uc("annee"))]], 6L) &&
+           identical(formule_reglages(pc, c(lu_c[c("type", "x", "y", "lisses", "k_courbes", "par_courbes")], list(croises = list()))), "y ~ secteur + s(annee, by = secteur, k = 6)") &&
+           grepl("doit être aussi un terme de la formule", refus(lire_formule(pc, "y ~ s(annee, by = secteur)"))) &&
+           grepl("quantitative", refus(lire_formule(pc, "y ~ secteur + s(annee, by = compte)"))) &&
+           grepl("by = f", refus(lire_formule(pc, "y ~ secteur + s(annee, by = secteur, bs = \"cr\")"))))
+# enregistré puis relu ; le texte des méthodes
+fpc <- tempfile(fileext = ".nuee")
+pc_e <- pc
+pc_e$models <- list(dc4)
+enregistrer_projet(pc_e, fpc)
+qc <- lire_projet(fpc)
+verifier("enregistré puis relu : la courbe par secteur du modèle, le même modèle", proche(ajuster(qc, qc$models[[1]])$resultat$AIC, mc4$resultat$AIC, 1e-10))
+for (l in c("fr", "en")) {
+  tc1 <- paste(texte_methodes(pc, dc4, mc4, l, "essai")$paragraphes, collapse = " ")
+  verifier(sprintf("texte des méthodes (%s) : une courbe pour chaque catégorie de « secteur », centrée", l),
+           grepl(if (l == "fr") "annee par une courbe pour chaque catégorie de « secteur »" else "annee through a curve for each category of “secteur”", tc1, fixed = TRUE) &&
+             !any(grepl("NA", tc1, fixed = TRUE)))
 }
 
 cat("Pentes aléatoires\n")

@@ -348,7 +348,10 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   autocorrélation dans le temps à l'intérieur du dernier effet aléatoire, ou d'un niveau plus fin
 #   (dans = list(by = "id", id = "secteur") : le secteur dans le site, seul le site ayant un effet
 #   aléatoire) ; un modèle généralisé ou additif à loi normale la prend aussi (mgcv::gamm) ;
-#   k_courbes : la dimension de base d'une courbe, par numéro de variable (sinon 10 au plus). Les blocs n'y
+#   k_courbes : la dimension de base d'une courbe, par numéro de variable (sinon 10 au plus) ;
+#   par_courbes : une courbe par catégorie d'une variable qualitative X, par numéro de la variable
+#   en courbe, par exemple list(`7` = 4) pour s(annee, by = secteur) (regression.R :
+#   verifier_par_courbes). Les blocs n'y
 #   pondèrent rien : ils font les groupes de la table des apports. Sans groupes de validation
 #   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu). Un
 #   facteur d'un terme croisé qui n'est pas dans x y entre sans effet principal (R : y ~ secteur +
@@ -359,7 +362,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
                            famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
-                           condition = NULL) {
+                           condition = NULL, par_courbes = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -442,6 +445,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
       if (length(lisses)) d$lisses <- as.numeric(lisses)
       if (length(decalage)) d$decalage <- as.numeric(decalage)[1]
       if (length(k_courbes)) d$k_courbes <- lapply(as.list(unlist(k_courbes)), as.integer)
+      if (length(par_courbes)) d$par_courbes <- lapply(as.list(unlist(par_courbes)), as.numeric)
     }
     if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]][setdiff(names(aleatoires[[1]]), "pentes")]  # (ses groupes, sans ses pentes)
     verifier_regression(projet, d)
@@ -540,7 +544,7 @@ reglages_modele <- function(projet, d) {
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
-       k_courbes = d$k_courbes,
+       k_courbes = d$k_courbes, par_courbes = d$par_courbes,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))), croises_reglages = croises_reglages,
        options = d$options,
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")

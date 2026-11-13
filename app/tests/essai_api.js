@@ -788,6 +788,59 @@ async function principal() {
         && sel.K === 1 && [].concat(sel.gardes).join() === 'annee' && [].concat(sel.groupes).join() === 'x',
         `Ajuster avec CAR1 garde la pente (φ ${car.phi}) ; la sélection garde l'année : ${JSON.stringify({ gardes: sel.gardes, groupes: sel.groupes })}`);
     });
+    await etape('catégories que le modèle n’a pas vues ; une courbe par catégorie, s(annee, by = secteur)', async () => {
+      // 4 sites followed 12 years, 3 sectors each, each sector its own shape; secteur_b: site A's S3 renamed
+      // S4 (a category of one site); secteur_site: sectors proper to each site (moteur/R/regression.R:
+      // niveaux_inconnus, par_courbes)
+      let g = 11;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const forme = { S1: (a) => Math.sin((a - 2000) / 2.5), S2: (a) => -0.15 * (a - 2006), S3: (a) => 0.02 * (a - 2006) ** 2 - 0.5 };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D']) for (const sec of ['S1', 'S2', 'S3']) for (let an = 2001; an <= 2012; an += 1) {
+        lignes.push([`${s}${sec}${an}`, s, sec, s === 'A' && sec === 'S3' ? 'S4' : sec, `${s}${sec}`, an, (3 + forme[sec](an) + 0.6 * alea()).toFixed(4)]);
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tsecteur\tsecteur_b\tsecteur_site\tannee\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Courbes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const parSite = { by: 'variable', variable: v.site };
+      const siteA = q.observations.uid.filter((_, i) => q.observations.nom[i].startsWith('A'));
+      // cross-validation by site: S4 (site A only) left without a prediction, out of Q2; sectors proper to each site: none predicted
+      const c1 = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee, v.secteur_b], y: [v.y], echelle: 'none', nom: 'K1', vc: parSite });
+      const c2 = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee, v.secteur_site], y: [v.y], echelle: 'none', nom: 'K2', vc: parSite });
+      verifier(c1.qualite.sans_categorie_vc === 12 && [].concat(c1.qualite.facteurs_vc).join() === 'secteur_b' && Number.isFinite(c1.qualite.Q2)
+        && c2.qualite.sans_categorie_vc === 144 && c2.qualite.Q2 === null && [].concat(c2.qualite.facteurs_vc).join() === 'secteur_site',
+      `validation croisée par site : ${c1.qualite.sans_categorie_vc} lignes de S4 sans prédiction ; des secteurs propres à chaque site, Q2 ${c2.qualite.Q2}`);
+      // the test set (site A): its S4 rows, a category the model hasn't seen, without a prediction, counted; Predict marks them
+      const c3 = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee, v.secteur_b], y: [v.y], echelle: 'none', nom: 'K3', test: siteA });
+      const pr3 = await api('predire', { modele: c3.id });
+      const marquees = pr3.observations.uid.filter((_, i) => pr3.observations.categorie_inconnue[i]);
+      verifier(c3.test.n === 36 && c3.test.inconnues === 12 && [].concat(c3.test.facteurs_inconnus).join() === 'secteur_b' && [].concat(c3.test.statistiques.n)[0] === 24
+        && marquees.length === 12 && marquees.every((u) => siteA.includes(u)) && pr3.observations['y prédit'].filter((x) => x === null).length === 12,
+      `jeu de test : ${c3.test.inconnues} sans prédiction sur ${c3.test.n} ; prédire : ${marquees.length} marquées`);
+      // a curve per sector: its rows in the curves table, one curve per sector in Effects, the thresholds of the sector chosen
+      const reglages = { projet: q.id, type: 'GAM', x: [v.annee, v.secteur], y: [v.y], echelle: 'none', famille: 'gaussienne', lisses: [v.annee],
+        par_courbes: { [v.annee]: v.secteur } };
+      const gc = await api('ajuster', { ...reglages, nom: 'K4' });
+      const efc = (await api('effets', { modele: gc.id })).effets.find((x) => x.terme === 'annee');
+      const se2 = await api('seuils', { modele: gc.id, terme: 'annee', categorie: 'S2' });
+      const se0 = await api('seuils', { modele: gc.id, terme: 'annee' });
+      verifier([].concat(gc.courbes.niveau).join() === 'S1,S2,S3' && [].concat(gc.courbes.par).every((x) => x === 'secteur') && [].concat(gc.courbes.edf).every(Number.isFinite)
+        && Number(gc.reglages.par_courbes[v.annee]) === v.secteur && efc.par_categorie === true && efc.courbe === true && [].concat(efc.niveaux).length === 3
+        && se2.categorie === 'S2' && se2.par === 'secteur' && [].concat(se2.x).length === 200 && se0.categorie === 'S1',
+      `une courbe par secteur : ${JSON.stringify(gc.courbes).slice(0, 300)}`);
+      const fo = await api('formule', { ...gc.reglages, projet: q.id, type: 'GAM' });
+      const lu = await api('lire_formule', { projet: q.id, texte: 'y ~ secteur + s(annee, by = secteur, k = 5)', type: 'LM' });
+      let refusX = '';
+      try { await api('ajuster', { ...reglages, x: [v.annee], nom: 'K5' }); } catch (err) { refusX = err.message; }
+      verifier(fo.formule === 'y ~ s(annee, by = secteur) + secteur' && lu.type === 'GAM' && Number(lu.par_courbes[v.annee]) === v.secteur && Number(lu.k_courbes[v.annee]) === 5
+        && /doit être aussi une variable X/.test(refusX), `formule ${fo.formule} ; relue ${JSON.stringify(lu.par_courbes)} ; sans le secteur en X : « ${refusX} »`);
+      // fitted without S2: its rows predicted by nothing, marked; the export to R redoes the model
+      const sansS2 = q.observations.uid.filter((_, i) => q.observations.nom[i].includes('S2'));
+      const gc6 = await api('ajuster', { ...reglages, nom: 'K6', exclues: sansS2 });
+      const pr6 = await api('predire', { modele: gc6.id });
+      const sc = await api('script_r', { modele: gc.id, version: 'essai', langue: 'fr', chemin: path.join(dossier, 'K4.R') });
+      verifier(pr6.observations.uid.filter((_, i) => pr6.observations.categorie_inconnue[i]).length === 48 && !sc.ecart && fs.readFileSync(sc.script, 'utf8').includes('by = '),
+        `sans S2 : ses lignes marquées ; le script R sans écart (${sc.ecart || ''})`);
+    });
     await etape('coefficients côte à côte ; puissance pour détecter une tendance', async () => {
       // 6 sites of 2 sectors counted from 2001 to 2010, a decline and an autocorrelated noise in each sector
       let g = 17;
