@@ -715,6 +715,20 @@ rbm <- baci(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 
 verifier("baci() dit le plus petit nombre de temps d'une unité, jusqu'à la fin (CAR1 par défaut à partir de trois)", rbm$temps_unites == 9 &&
            baci(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), evenement = 2008)$temps_unites == 13)
 
+# (le temps en dates, le jour d'abord, une variable qualitative ; l'événement tapé en date)
+bmd <- bm
+bmd$jour <- format(as.Date(sprintf("%d-06-15", bmd$annee)), "%d/%m/%Y")
+pmd <- projet_depuis_tableau(bmd[c("nom", "secteur", "jour", "densite")], "baci mixte en dates")
+bd <- modele_baci(pmd, numeros(pmd, "densite"), numeros(pmd, "jour"), numeros(pmd, "secteur"), "S1", c("S2", "S3"), "15/06/2008", car1 = TRUE)
+md <- ajuster(bd$projet, bd$definition)
+dd <- transform(lignes_baci(), decimale = annee + (as.POSIXlt(as.Date(sprintf("%d-06-15", annee)))$yday) / ifelse(annee %% 4 == 0, 366, 365))
+ld <- nlme::lme(densite ~ periode * impact, random = ~ 1 | secteur, correlation = nlme::corCAR1(form = ~ decimale | secteur), data = dd, method = "REML", control = ctrl_b)
+ed <- effet_baci(md, bd$definition)
+verifier(sprintf("le modèle mixte BACI sur des dates (jj/mm/aaaa) et un événement tapé en date : la période nommée par sa date, = nlme::lme() le long des années décimales ; « %s »", ed$phrase),
+         identical(bd$nouvelles[1], "période BACI (2008-06-15)") && proche(md$resultat$coefficients$estimation, nlme::fixef(ld), 1e-4) &&
+           proche(md$resultat$phi, coef(ld$modelStruct$corStruct, unconstrained = FALSE), 1e-3) && grepl("2008-06-15", ed$phrase, fixed = TRUE) &&
+           isTRUE(bd$definition$baci_origine$dates) && grepl("2008-06-15", bd$definition$title, fixed = TRUE))
+
 cat("Le même calcul sous toutes les versions de R (ex aequo, différences nulles)\n")
 # des comptages : S1 et S2 suivis 10 ans, des différences nulles et ex aequo ; une variable aux
 # différences constantes à 1e-9 près

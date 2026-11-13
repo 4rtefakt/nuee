@@ -591,6 +591,10 @@ for (i in seq_along(pdi_t$observations)) pdi_t$observations[[i]]$ids <- c(pdi_t$
 verifier("CAR1 le long de dates ISO en identifiant des observations : le même modèle",
          proche(ajuster(pdi_t, definir_modele(pdi_t, "LMM", x = udt("x", "z"), y = udt("y"), echelle = "none", aleatoires = list(site_d),
                                               correlation = list(type = "CAR1", temps = list(by = "id", id = "jour"))))$resultat$AIC, mc_d$resultat$AIC, 1e-10))
+dcar_d <- definition_car1(pdt, definir_modele(pdt, "LMM", x = udt("x", "z"), y = udt("y"), echelle = "none", aleatoires = list(site_d)),
+                          temps_d, list(list(by = "effets")))
+verifier("Ajuster avec CAR1 le long de dates : le même modèle que CAR1 défini sur ces dates",
+         identical(dcar_d$correlation$temps, temps_d) && proche(ajuster(pdt, dcar_d)$resultat$AIC, mc_d$resultat$AIC, 1e-10))
 tdt2 <- tdt
 tdt2$date[tdt2$date == tdt2$date[5]] <- "31/02/2005"
 pdt2 <- projet_depuis_tableau(tdt2, "date impossible")

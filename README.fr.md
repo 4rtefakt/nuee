@@ -135,11 +135,13 @@ types, leurs conditions vérifiées : khi² ou test exact de Fisher, test t, ANO
 Kruskal–Wallis avec les comparaisons deux à deux, corrélation de Pearson ou de Spearman ; un
 identifiant des observations (site, année...) peut faire les groupes. Tests appariés sur des
 données en long (t apparié, rangs signés de Wilcoxon) : deux secteurs comparés sur les années
-qu'ils ont tous deux, ou toutes les paires de secteurs avec la correction de Holm ; ou deux
-mesures des mêmes lignes (avant, après) ; variable par variable, deux classes appariées par une
-clé. Des comparaisons avant/après avec témoin (BACI) : l'écart impact − témoins à chaque temps,
-après contre avant. Une matrice des corrélations avec les valeurs p corrigées. Des séries dans
-le temps, une ligne par secteur et un panneau par site.
+qu'ils ont tous deux, ou toutes les paires de secteurs avec la correction de Holm après le test
+de Friedman ; ou deux mesures des mêmes lignes (avant, après) ; variable par variable, deux
+classes appariées par une clé. Des comparaisons avant/après avec témoin (BACI) : l'écart impact
+− témoins à chaque temps, après contre avant, et le modèle mixte BACI ajusté d'un clic. Une
+matrice des corrélations avec les valeurs p corrigées. Des séries dans le temps, une ligne par
+secteur et un panneau par site, avec les tests de tendance de Mann–Kendall et les pentes de
+Sen. Des dates de relevé peuvent faire le temps.
 
 **Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
 (nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site) et une
@@ -149,15 +151,16 @@ densités avec des zéros (Tweedie), avec des effets aléatoires, un effort en d
 courbes lissées pour un effet qui monte puis descend ou un seuil (avec aussi le CAR1, par
 mgcv::gamm, pour une réponse normale) ; les coefficients et leurs intervalles, R2 marginal et
 conditionnel, les courbes d'effet, les seuils de chaque courbe (là où l'intervalle simultané de
-sa pente exclut 0) et sa concurvité, les graphiques des résidus et l'autocorrélation des
-résidus dans le temps, la variation de l'AIC quand chaque bloc de variables est retiré, une
-sélection par l'AIC qui ajuste toutes les combinaisons des blocs et suggère un modèle à ajuster
-d'un clic, et la comparaison par l'AIC (ΔAIC, poids d'Akaike, tests du rapport de
-vraisemblance des modèles emboîtés) des régressions de la même réponse, à côté du Q2 en
-validation croisée de tous les modèles. De nouvelles variables peuvent prendre la valeur de
-l'année d'avant dans un secteur, ou le taux de croissance. Une
-formule R règle le modèle (R la lit sans jamais l'exécuter), et les régressions prédisent de
-nouvelles observations et des fichiers, les extrapolations signalées.
+sa pente exclut 0) et sa concurvité, les graphiques des résidus (avec les résidus quantiles
+randomisés des comptages) et l'autocorrélation des résidus dans le temps (réajustée avec CAR1
+d'un clic), la variation de l'AIC quand chaque bloc de variables est retiré, une sélection par
+l'AIC qui ajuste toutes les combinaisons des blocs et suggère un modèle à ajuster d'un clic, et
+la comparaison par l'AIC (ΔAIC, poids d'Akaike, tests du rapport de vraisemblance des modèles
+emboîtés) des régressions de la même réponse, à côté du Q2 en validation croisée de tous les
+modèles. De nouvelles variables peuvent prendre la valeur de l'année d'avant dans un secteur,
+ou le taux de croissance. Une formule R règle le modèle (R la lit sans jamais l'exécuter), et
+les régressions prédisent de nouvelles observations et des fichiers, les extrapolations
+signalées.
 
 **Ordination des communautés :** analyse de redondance (RDA) de réponses comme des abondances
 d'espèces (transformées par Hellinger, corde ou log(x + 1)) par des variables explicatives, RDA
