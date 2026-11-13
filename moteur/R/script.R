@@ -1931,6 +1931,9 @@ code_moyennes_regression <- function(pl, tx, guillemets, liste) {
   modele <- if (gamm) "m$gam" else "m"
   ligne_modele <- if (mgcv) {
     c("  nd <- as.data.frame(Xg)",
+      # (le facteur d'une courbe par catégorie, lu dans les colonnes 0/1 de ses catégories, aux niveaux de l'ajustement)
+      vapply(pl$facteurs, function(f) sprintf("  nd[[%s]] <- facteur_courbe(nd[%s], %s)", code_texte(f$nom), code_textes(unname(f$colonnes)), code_textes(names(f$colonnes))), ""),
+      if (length(pl$par)) "  nd <- niveaux_appris(nd, cadre, par_courbes)",
       if (length(pl$niveaux) && !gamm) "  for (g in aleatoires) nd[[g]] <- factor(rep(levels(cadre[[g]])[1], nrow(nd)), levels = levels(cadre[[g]]))",
       if (!is.null(pl$effort)) sprintf("  nd[[%s]] <- 1", code_texte(pl$effort$nom)),
       if (length(pl$niveaux) && !gamm) "  exclus <- vapply(Filter(function(s) inherits(s, \"random.effect\"), m$smooth), function(s) s$label, \"\")",

@@ -177,6 +177,11 @@ lignes_modele <- function(m, X) {
     nd <- as.data.frame(X)
     for (g in intersect(c("g1", "g12", "g123"), names(m$donnees))) nd[[g]] <- factor(rep(levels(m$donnees[[g]])[1], nrow(nd)), levels = levels(m$donnees[[g]]))
     if ("decalage" %in% names(m$donnees)) nd$decalage <- 0
+    # (le facteur d'une courbe par catégorie, lu dans les colonnes 0/1 de ses catégories, aux niveaux du
+    # modèle, comme predire_regression)
+    for (f in names(m$facteurs_courbes)) {
+      nd[[f]] <- niveaux_appris(facteur_courbe(nd, m$facteurs_courbes[[f]]$colonnes, levels(m$donnees[[f]])), levels(m$donnees[[f]]))
+    }
     aleatoires <- vapply(Filter(function(s) inherits(s, "random.effect"), a$smooth), function(s) s$label, "")
     L <- stats::predict(a, nd, type = "lpmatrix", exclude = aleatoires)
     attr(L, "model.offset") <- NULL

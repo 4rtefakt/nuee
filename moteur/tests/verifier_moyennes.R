@@ -215,6 +215,19 @@ hH <- a_la_main(stats::predict(gH$gam, grilleG, type = "lpmatrix"), as.list(1:3)
 verifier("mgcv::gamm (CAR1) : sa partie gam, = emmeans et le calcul d'ici", isTRUE(mH$gamm) && proche(rH$moyennes$estimation, EMMEANS$H$emmean, 1e-3) &&
            proche(rH$moyennes$erreur_type, EMMEANS$H$SE, 1e-3) && proche(rH$moyennes$ddl, EMMEANS$H$df, 1e-3) &&
            proche(rH$moyennes$estimation, hH$est, 1e-4) && proche(rH$moyennes$erreur_type, hH$se, 1e-3) && proche(rH$moyennes$ddl, rep(gH$gam$df.residual, 3), 1e-4))
+# une courbe par secteur (s(annee, by = secteur)) : la grille porte le facteur de la courbe
+dI <- definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne",
+                     lisses = uq("annee"), par_courbes = stats::setNames(list(uq("secteur")), uq("annee")))
+mI <- ajuster(pq, dI)
+rI <- moyennes_ajustees(pq, mI, dI)
+kI <- unlist(mI$k)[1]  # (la dimension que Nuée a prise pour la courbe : dimension_courbe)
+gI <- mgcv::gam(stats::as.formula(sprintf("densite ~ secteur + s(annee, by = secteur, k = %d)", kI), env = env_mgcv),
+                data = transform(tq, secteur = factor(secteur)), method = "REML")
+grilleI <- data.frame(secteur = factor(c("S1", "S2", "S3"), levels = sort(unique(tq$secteur))), annee = mean(tq$annee))
+hI <- a_la_main(stats::predict(gI, grilleI, type = "lpmatrix"), as.list(1:3), coef(gI), vcov(gI), gI$df.residual)
+verifier(sprintf("une courbe par secteur : la grille porte le facteur de la courbe ; = la matrice lpmatrix de mgcv (%s)",
+                 paste(signif(rI$moyennes$estimation, 4), collapse = ", ")),
+         proche(rI$moyennes$estimation, hI$est, 1e-5) && proche(rI$moyennes$erreur_type, hI$se, 1e-4))
 
 cat("Un carré et un terme croisé de deux nombres\n")
 dI <- definir_modele(pq, "LM", x = uq("x", "annee", "secteur"), y = uq("densite"), echelle = "UV", croises = list(uq("x", "annee"), uq("x", "x"), uq("x", "secteur")))

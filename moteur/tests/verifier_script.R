@@ -721,6 +721,11 @@ verifier("les moyennes d'un GAM : sa matrice lpmatrix sur la grille", any(grepl(
 essayer_regression("gamm_moyennes", pr, definir_modele(pr, "GAM", x = ur("x1", "sol"), y = ur("hauteur"), famille = "gaussienne", echelle = "none", aleatoires = list(par_site),
                    correlation = list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")), dans = par_secteur)), moyennes = list())
 essayer_regression("glmm_poisson_moyennes", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", aleatoires = list(par_site)), moyennes = list())
+# les moyennes ajustées d'un GAM à une courbe par secteur (s(annee, by = secteur)) : la grille porte le
+# facteur de la courbe, dans Nuée comme dans le script
+essayer_regression("gam_par_courbe_moyennes", pq, definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none",
+                   famille = "gaussienne", lisses = uq("annee"), par_courbes = stats::setNames(list(uq("secteur")), uq("annee")), k_courbes = k5),
+                   moyennes = list())
 tz <- tq[!(tq$habitat == "H2" & tq$traitement == "T3"), ]
 pz <- projet_depuis_tableau(tz[c("nom", "habitat", "traitement", "densite")], "cellule vide")
 dz <- definir_modele(pz, "LM", x = numeros(pz, c("habitat", "traitement")), y = numeros(pz, "densite"), echelle = "none", croises = list(numeros(pz, c("habitat", "traitement"))))
