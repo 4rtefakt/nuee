@@ -519,8 +519,8 @@ phrase_methodes_moyennes <- function(m, d, fr, liste, guillemets) {
   tr_pente <- if (pentes) termes_regression(d$x)[[match(r$pente$terme, m$termes)]]$transform
   par_unite <- if (pentes) (if (!is.null(tr_pente)) formule_transformation(tr_pente, guillemets(r$pente$nom), fr) else guillemets(r$pente$nom))
   quoi <- if (pentes) {
-    sprintf(if (fr) "La pente de %s dans chaque catégorie de %s%s (par unité de %s ; la dérivée de la prédiction du modèle, par une différence finie d'un millième de l'étendue de la variable, comme emtrends du paquet emmeans ; Lenth, 2026)"
-            else "The slope of %s in each category of %s%s (per unit of %s; the derivative of the model's prediction, by a finite difference of a thousandth of the variable's range, as emtrends of the emmeans package does; Lenth, 2026)",
+    sprintf(if (fr) "La pente de %s dans chaque catégorie de %s%s (par unité de %s) a été calculée comme le fait emtrends du paquet emmeans (Lenth, 2026)"
+            else "The slope of %s in each category of %s%s (per unit of %s) was computed as emtrends of the emmeans package does (Lenth, 2026)",
             guillemets(r$pente$nom), guillemets(r$facteur$nom), if (!is.null(r$dans)) sprintf(if (fr) " et de %s" else " and of %s", guillemets(r$dans$nom)) else "",
             par_unite)
   } else {
@@ -542,7 +542,8 @@ phrase_methodes_moyennes <- function(m, d, fr, liste, guillemets) {
               if (!is.null(g$decalage)) sprintf(if (fr) "un effort de 1 (%s en décalage : des densités)" else "an effort of 1 (%s as an offset: densities)", guillemets(g$decalage)))
   phrase1 <- sprintf(if (fr) "%s : %s du modèle sur une grille de référence formée des catégories de ses variables qualitatives%s%s, leurs erreurs-types tirées de la matrice de covariance des coefficients%s."
                      else "%s: %s of the model on a reference grid made of the categories of its qualitative variables%s%s, their standard errors from the covariance matrix of the coefficients%s.",
-                     quoi, if (pentes) (if (fr) "à partir des prédictions" else "from the predictions") else (if (fr) "les prédictions" else "the predictions"),
+                     quoi, if (pentes) (if (fr) "la dérivée, par une différence finie d'un millième de l'étendue de la variable, des prédictions" else "the derivative, by a finite difference of a thousandth of the variable's range, of the predictions")
+                           else (if (fr) "les prédictions" else "the predictions"),
                      if (length(grille)) sprintf(if (fr) ", avec %s" else ", with %s", liste(grille)) else "",
                      if (length(cov) && nrow(cov) && any(lengths(lapply(m$composition, `[[`, "variables")) > 1)) (if (fr) " (les termes croisés évalués à ces valeurs)" else " (the cross terms evaluated at these values)") else "",
                      if (inherits(m$ajustement, c("gam", "gamm"))) (if (fr) " (la covariance bayésienne de mgcv)" else " (mgcv's Bayesian covariance)") else "")
