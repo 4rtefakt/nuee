@@ -303,6 +303,8 @@ besoins_script <- function(plans, seance) {
        # (les fonctions de Nouvelle variable qu'appelle la condition d'un modèle : condition.R)
        fonctions_condition = unique(unlist(lapply(plans, function(pl) pl$condition$fonctions))),
        pentes = any(vapply(reg, function(pl) length(pl$pentes) > 0, TRUE)),
+       puissance = any(vapply(reg, function(pl) !is.null(pl$puissance), TRUE)),
+       simulation_puissance = any(vapply(reg, function(pl) !is.null(pl$puissance$resultat$simulation), TRUE)),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
 }
@@ -1088,6 +1090,9 @@ plan_regression <- function(projet, d, m, tab) {
        vc_premier = L > 0 && length(d$groupes_vc$by) > 0 && as.character(d$groupes_vc$by)[1] %in% c("id", "variable") &&
          identical(specs_groupement(d$groupes_vc)[[1]], specs[[1]][setdiff(names(specs[[1]]), "pentes")]),
        vc_par = as.character(m$vc_par %||% ""), selection = selection,
+       # (la puissance pour une tendance, quand elle a été calculée : puissance.R)
+       puissance = if (!is.null(m$puissance_tendance)) list(resultat = m$puissance_tendance,
+                                                             temps = termes_r[match(m$termes[match(m$puissance_tendance$reglages$terme, m$noms_termes)], m$termes)]),
        # (un modèle choisi par la sélection par AIC : les lignes de d que le modèle complet n'a pas
        # ajustées, faute de valeurs, restent de côté ; regression.R, definition_selection)
        choisi = if (!is.null(d$selection_origine) && length(d$termes_complets))
@@ -1120,10 +1125,10 @@ entete_regression <- function(pl, nom_projet, version, fichiers, langue) {
                            "It redoes this model with %s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:"),
                         texte_paquets(paquet, langue))),
     paste0(tx("#   1. Fonctions : termes utiles, AIC corrigé, validation croisée", "#   1. Functions: useful terms, corrected AIC, cross-validation"),
-           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection")),
+           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection"), if (!is.null(pl$puissance)) tx(", puissance pour une tendance", ", trend power")),
     tx("#   2. Données", "#   2. Data"),
     paste0(tx("#   3. Modèle : réponse et termes X, ajustement, validation croisée, statistiques", "#   3. Model: response and X terms, fit, cross-validation, statistics"),
-           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection")),
+           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection"), if (!is.null(pl$puissance)) tx(", puissance pour une tendance", ", trend power")),
     tx("#   4. Résultats : tableaux et graphiques", "#   4. Results: tables and plots"),
     tx("# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.", "# In RStudio, Ctrl+Shift+O shows these parts; Ctrl+Shift+S runs the whole script."),
     sprintf(tx("# Écrit avec %s.", "# Written with %s."), texte_paquets(paquet, langue, versions = TRUE)),
@@ -1591,6 +1596,48 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       sprintf("selection <- selection_aic(groupes_aic, requis_aic, ajuster_ml, nrow(cadre)%s)", if (sel$toutes) "" else ", toutes = FALSE"))
   }
 
+  # --- la puissance pour détecter une tendance (puissance.R : puissance_tendance), quand elle a été
+  # calculée dans Nuée : le temps dans ses unités, le plan des données, les variances du modèle
+  # (REML), la pente à détecter, la puissance de chaque plan et, si elle a été faite, la simulation
+  pu <- pl$puissance
+  code_puissance <- if (!is.null(pu)) {
+    rp <- pu$resultat
+    g <- rp$reglages
+    j <- match(pu$temps, pl$termes)
+    base <- log_reponse(rp$forme)
+    pente <- if (identical(g$unite, "pourcent")) sprintf("%s(1 + (%s) / 100)", if (base$type == "log10") "log10" else "log", code_nombres(g$tendance)) else code_nombres(g$tendance)
+    s <- rp$simulation
+    c(commentaire(tx(sprintf("La puissance pour détecter une tendance, calculée dans Nuée (Graphiques › Puissance pour une tendance) : %s, le long de %s, pour des suivis de %d à %d ans et %s, chaque unité comptée chaque année ; les variances du modèle (REML) tenues pour connues, un test bilatéral au seuil %s.",
+                             texte_tendance(rp, TRUE), guillemets(g$terme), as.integer(g$annees[1]), as.integer(g$annees[2]),
+                             if (L) sprintf("de %s à %s unités de %s", min(g$unites), max(g$unites), guillemets(affiches[1])) else sprintf("de %s à %s observations par an", min(g$unites), max(g$unites)),
+                             texte_exact(g$alpha)),
+                     sprintf("The power to detect a trend, computed in Nuée (Plots › Trend power): %s, along %s, for monitoring of %d to %d years and %s, every unit counted every year; the model's variances (REML) taken as known, a two-sided test at %s.",
+                             texte_tendance(rp, FALSE), guillemets(g$terme), as.integer(g$annees[1]), as.integer(g$annees[2]),
+                             if (L) sprintf("%s to %s units of %s", min(g$unites), max(g$unites), guillemets(affiches[1])) else sprintf("%s to %s observations per year", min(g$unites), max(g$unites)),
+                             texte_exact(g$alpha)))),
+      sprintf("temps_puissance <- cadre[[%s]] / poids_x[%d] + centre_x[%d]  # %s", code_texte(pu$temps), j, j, tx("le temps, dans ses unités", "the time, in its units")),
+      sprintf("plan_puissance <- plan_donnees_puissance(cadre, temps_puissance, %s%s%s)", if (L) code_textes(r_niveaux) else "character(0)",
+              if (!is.null(pl$dans)) sprintf(", %s", code_texte(pl$dans$nom)) else "", if (car1) ", car1 = TRUE" else ""),
+      if (mixte) "sigma2 <- m$sigma^2" else "sigma2 <- summary(m)$sigma^2",
+      if (mixte) sprintf("variances_puissance <- vapply(%s, function(n) m$sigma^2 * as.matrix(m$modelStruct$reStruct[[n]])[1, 1], 0)  # %s", code_textes(r_niveaux),
+                         tx("la variance de chaque effet aléatoire (la simulation les tire)", "the variance of each random effect (the simulation draws them)")),
+      sprintf("phi_puissance <- %s", if (car1) "phi" else "0"),
+      sprintf("pente <- %s  # %s", pente, tx("la pente à détecter, sur l'échelle de la réponse du modèle", "the slope to detect, on the scale of the model's response")),
+      sprintf("puissance <- expand.grid(annees = %d:%d, unites = %s)", as.integer(g$annees[1]), as.integer(g$annees[2]), code_nombres(as.numeric(g$unites))),
+      "puissance$observations <- puissance$annees * puissance$unites * plan_puissance$series * plan_puissance$repetitions",
+      "puissance$erreur_type <- sqrt(mapply(variance_pente, annees = puissance$annees, unites = puissance$unites,",
+      "                                     MoreArgs = list(sigma2 = sigma2, phi = phi_puissance, series = plan_puissance$series, repetitions = plan_puissance$repetitions)))",
+      sprintf("puissance$puissance <- puissance_normale(pente, puissance$erreur_type, %s)", texte_exact(g$alpha)),
+      tx("# pour chaque nombre d'unités, les années qu'il faut pour une puissance de 80 % (NA : pas dans ces années)",
+         "# for each number of units, the years needed for 80% power (NA: not within these years)"),
+      "annees_80 <- do.call(rbind, lapply(split(puissance, puissance$unites), function(x) data.frame(unites = x$unites[1], annees = if (any(x$puissance >= 0.8)) min(x$annees[x$puissance >= 0.8]) else NA)))",
+      if (!is.null(s)) c(
+        commentaire(tx(sprintf("La simulation faite dans Nuée (simuler_puissance ci-dessus) : %d jeux de données à %d ans et %d unités, chacun réajusté avec la structure du modèle.", s$n, s$annees, s$unites),
+                       sprintf("The simulation done in Nuée (simulate_power above): %d data sets at %d years and %d units, each refitted with the model's structure.", s$n, s$annees, s$unites))),
+        sprintf("simulation_puissance <- simuler_puissance(pente, sigma2, %s, phi_puissance, %s, %s, annees = %d, unites = %d, plan_puissance, n = %d)",
+                if (mixte) "variances_puissance" else "numeric(0)", if (car1) "TRUE" else "FALSE", texte_exact(g$alpha), s$annees, s$unites, s$n)))
+  }
+
   # --- le jeu de test
   predire_test <- if (gamm) "as.vector(predict(m$gam, cadre_test, type = \"response\"))"
                   else if (mgcv) (if (mixte) "predire_fixes(m, cadre_test, cadre, aleatoires)" else "as.vector(predict(m, cadre_test, type = \"response\"))")
@@ -1632,6 +1679,9 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     ligne("print(c(Q2 = vc$Q2, RMSEcv = vc$RMSEcv))", "validation croisée", "cross-validation"),
     if (!is.null(sel)) ligne("print(head(selection$modeles, 20))", "sélection par l'AIC : les 20 meilleurs modèles", "AIC selection: the 20 best models"),
     if (!is.null(sel)) ligne("print(selection$importance)", "l'importance de chaque groupe de termes", "the importance of each group of terms"),
+    if (!is.null(pu)) ligne("print(annees_80)", "puissance : les années qu'il faut pour 80 % à chaque nombre d'unités", "power: the years needed for 80% at each number of units"),
+    if (!is.null(pu$resultat$simulation)) ligne("print(simulation_puissance$puissance)", "la puissance simulée (son erreur de Monte-Carlo : simulation_puissance$erreur_mc)",
+                                               "the simulated power (its Monte Carlo error: power_simulation$mc_error)"),
     if (test) ligne("print(test)", "jeu de test : RMSEP, biais, SEP, Q2 externe", "test set: RMSEP, bias, SEP, external Q2"),
     if (quantiles) ligne("print(head(observations))", "observée, ajustée, résidu standardisé et résidu quantile", "observed, fitted, standardized residual and quantile residual")
     else ligne("print(head(observations))", "observée, ajustée, résidu standardisé", "observed, fitted, standardized residual"),
@@ -1690,11 +1740,21 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       sprintf("  if (nrow(nettes)) rect(nettes$x_debut, par(\"usr\")[3], nettes$x_fin, par(\"usr\")[4], col = ifelse(nettes$sens == %s, \"#2a9d8f33\", \"#d1495b33\"), border = NA)",
               code_texte(tx("hausse", "rise"))),
       "}",
-      "par(op)")))
+      "par(op)")),
+    if (!is.null(pu)) list(nom = "puissance", largeur = 6, hauteur = 4.5, code = c(
+      sprintf("plot(NULL, xlim = range(puissance$annees), ylim = c(0, 1), xlab = %s, ylab = %s, main = %s)", code_texte(tx("Années de suivi", "Years of monitoring")),
+              code_texte(tx("Puissance", "Power")), code_texte(tx("Puissance pour une tendance", "Trend power"))),
+      "for (k in seq_along(unique(puissance$unites))) with(puissance[puissance$unites == unique(puissance$unites)[k], ], lines(annees, puissance, col = k, lwd = 2))",
+      "abline(h = 0.8, lty = 2, col = \"grey\")",
+      if (!is.null(pu$resultat$simulation)) "points(simulation_puissance$annees, simulation_puissance$puissance, pch = 18, cex = 1.5)",
+      sprintf("legend(\"bottomright\", legend = unique(puissance$unites), col = seq_along(unique(puissance$unites)), lwd = 2, title = %s, bty = \"n\")",
+              code_texte(if (L) affiches[1] else tx("Observations par an", "Observations per year"))))))
   objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations",
               if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes) c("courbes", "seuils", "plages_seuils"),
-              if (!is.null(sel)) "selection", if (test) c("test", "predictions_test"))
-  list(calcul = traduire_code(c(donnees, "", ajustement, "", validation, "", statistiques, if (!is.null(sel)) c("", selection), if (test) c("", code_test)), langue),
+              if (!is.null(sel)) "selection", if (!is.null(pu)) c("puissance", "annees_80"), if (!is.null(pu$resultat$simulation)) "simulation_puissance",
+              if (test) c("test", "predictions_test"))
+  list(calcul = traduire_code(c(donnees, "", ajustement, "", validation, "", statistiques, if (!is.null(sel)) c("", selection), if (!is.null(pu)) c("", code_puissance),
+                                if (test) c("", code_test)), langue),
        sortie = sortie, graphiques = lapply(Filter(Negate(is.null), graphiques), function(g) { g$code <- traduire_code(g$code, langue); g }),
        objets = nom_script(objets, langue))
 }
@@ -1729,6 +1789,14 @@ ecart_regression <- function(pl, m, e, langue) {
     "sélection par l'AIC" = if (!is.null(pl$selection)) list(as.matrix(m$selection_aic$modeles[c("k", "logLik", "AICc", "delta", "poids", "poids_cumule")]),
                                                              colonnes(r("selection")[[nom_script("modeles", langue)]], 2:7)),
     "importance des groupes" = if (!is.null(pl$selection)) list(m$selection_aic$importance$importance, unname(r("selection")[[nom_script("importance", langue)]])),
+    "puissance pour une tendance" = if (!is.null(pl$puissance)) list(as.matrix(pl$puissance$resultat$tableau[c("observations", "erreur_type", "puissance")]),
+                                                                       colonnes(r("puissance"), 3:5)),
+    "années pour 80 %" = if (!is.null(pl$puissance)) list(pl$puissance$resultat$annees_80$annees, r("annees_80")[[2]]),
+    "simulation de la puissance" = if (!is.null(pl$puissance$resultat$simulation)) {
+      s <- pl$puissance$resultat$simulation
+      rs <- r("simulation_puissance")
+      list(c(s$puissance, s$echecs, s$p), c(rs[[nom_script("puissance", langue)]], rs[[nom_script("echecs", langue)]], rs$p))
+    },
     test = if (!is.null(m$test)) list(m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")], colonnes(r("test"), 2:6)))
   ecarts <- vapply(Filter(Negate(is.null), paires), function(p) ecart_valeurs(p[[1]], p[[2]]), 0)
   if (all(ecarts < 1e-8)) return(NULL)
@@ -1763,6 +1831,7 @@ code_fonctions <- function(b, plans, langue) {
     if (isTRUE(b$selection_aic)) modele_selection_aic(tx),
     if (isTRUE(b$lmm) || isTRUE(b$gamm)) modele_variances_niveaux(tx),
     if (isTRUE(b$pentes_nlme)) modele_variances_pentes(tx),
+    if (isTRUE(b$puissance)) modele_puissance_tendance(tx, isTRUE(b$simulation_puissance)),
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
     if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx)),
@@ -2238,6 +2307,70 @@ modele_selection_aic <- function(tx) c(
   "  list(modeles = modeles_aic, importance = importance_aic)",
   "}")
 
+# La puissance pour détecter une tendance (puissance.R : puissance_tendance), écrite pour le script :
+# la variance de la pente d'un plan, la puissance par la loi normale, le plan des données et, quand
+# elle a été faite (`simulation`), la simulation, avec les mêmes tirages et les mêmes ajustements.
+modele_puissance_tendance <- function(tx, simulation) c(
+  commentaire(tx("La puissance pour détecter une tendance (Diggle et al., 2002). variance_pente() : la variance de l'estimateur des moindres carrés généralisés de la pente d'un plan de `unites` unités, chacune de `series` séries comptées `repetitions` fois par an pendant `annees` ans (temps 1, 2...), les variances connues : sigma2 [(X' R⁻¹ X)⁻¹] de la pente d'une série, sur le nombre de séries ; R est la corrélation CAR1 d'une série (phi, 0 sans), par laquelle X = (1, temps) est blanchi. Chaque unité étant comptée chaque année, ses ordonnées à l'origine aléatoires n'y changent rien. puissance_normale() : la puissance d'un test bilatéral au seuil alpha, par la loi normale.",
+                 "The power to detect a trend (Diggle et al., 2002). slope_variance(): the variance of the generalized least squares estimator of the slope of a design of `units` units, each of `series` series counted `repetitions` times a year for `years` years (times 1, 2...), the variances known: sigma2 [(X' R⁻¹ X)⁻¹] of the slope of one series, over the number of series; R is a series' CAR1 correlation (phi, 0 without), by which X = (1, time) is whitened. Every unit being counted every year, its random intercepts change nothing. normal_power(): the power of a two-sided test at alpha, by the normal distribution.")),
+  "variance_pente <- function(sigma2, phi, annees, unites, series = 1, repetitions = 1) {",
+  "  X <- cbind(1, seq_len(annees))",
+  "  if (phi > 0) X <- rbind(X[1, ], (X[-1, , drop = FALSE] - phi * X[-annees, , drop = FALSE]) / sqrt(1 - phi^2))",
+  "  sigma2 * solve(crossprod(X))[2, 2] / (unites * series * repetitions)",
+  "}",
+  "puissance_normale <- function(pente, erreur_type, alpha) {",
+  "  z <- qnorm(1 - alpha / 2)",
+  "  pnorm(abs(pente) / erreur_type - z) + pnorm(-abs(pente) / erreur_type - z)",
+  "}",
+  commentaire(tx("Le plan des données (`cadre` ; `temps`, le temps dans ses unités ; `niveaux`, les colonnes des effets aléatoires, du plus large au plus fin ; `dans`, celle du groupe de CAR1 quand il est plus fin) : les années couvertes, le nombre d'unités du premier niveau (sans effet aléatoire : d'observations par an), et, arrondis (au moins 1), le nombre moyen d'unités de chaque niveau dans celle du niveau d'avant, de groupes de CAR1 dans l'unité la plus fine et d'observations par série et par an (une avec CAR1) ; `series` : les séries d'une unité.",
+                 "The design of the data (`model_data`; `temps`, the time in its units; `level_columns`, the columns of the random effects, widest first; `finer_group`, that of the CAR1 group when it is finer): the years covered, the number of units of the first level (without a random effect: of observations per year), and, rounded (at least 1), the mean number of units of each level within one of the level before, of CAR1 groups within the finest unit and of observations per series and per year (one with CAR1); `series`: the series of a unit.")),
+  "plan_donnees_puissance <- function(cadre, temps, niveaux, dans = NULL, car1 = FALSE) {",
+  "  distincts <- function(colonnes) nlevels(interaction(cadre[colonnes], drop = TRUE))",
+  "  arrondi <- function(v) as.integer(pmax(1, round(v)))",
+  "  annees <- round(max(temps) - min(temps)) + 1",
+  "  L <- length(niveaux)",
+  "  emboites <- if (L >= 2) arrondi(vapply(2:L, function(l) distincts(niveaux[1:l]) / distincts(niveaux[1:(l - 1)]), 0)) else integer(0)",
+  "  dans_n <- if (L && length(dans)) arrondi(distincts(c(niveaux, dans)) / distincts(niveaux)) else 0L",
+  "  repetitions <- if (L && !car1) arrondi(nrow(cadre) / nlevels(interaction(interaction(cadre[c(niveaux, dans)], drop = TRUE), floor(temps), drop = TRUE))) else 1L",
+  "  list(annees = annees, unites = if (L) nlevels(droplevels(factor(cadre[[niveaux[1]]]))) else max(1L, as.integer(round(nrow(cadre) / annees))),",
+  "       emboites = emboites, dans = dans_n, repetitions = repetitions, series = as.integer(prod(emboites) * max(1L, dans_n)))",
+  "}",
+  if (simulation) c(
+    commentaire(tx("La simulation (Johnson et al., 2015), comme dans Nuée : `n` jeux de données d'un plan de `annees` ans et `unites` unités (leurs niveaux et leurs séries comme dans `plan`, plan_donnees_puissance()), tirés du modèle avec la tendance `pente` : les effets aléatoires de chaque niveau (racine de `variances` fois rnorm(), un tirage par unité, niveau après niveau), puis les erreurs (racine de `sigma2` fois rnorm(), un par ligne ; avec CAR1, e[t] = phi e[t - 1] + racine(1 - phi^2) fois le tirage, dans chaque série) ; chacun réajusté avec la même structure (lm, ou nlme::lme en REML, optim puis nlminb), la puissance étant la part des pentes de p ≤ alpha parmi les ajustements réussis, avec son erreur de Monte-Carlo. La graine et le générateur de Nuée : les mêmes jeux.",
+                   "The simulation (Johnson et al., 2015), as in Nuée: `n` data sets of a design of `years` years and `units` units (their levels and series as in `design`, power_data_design()), drawn from the model with the trend `slope`: the random effects of each level (the square root of `variances` times rnorm(), one draw per unit, level after level), then the errors (the square root of `sigma2` times rnorm(), one per row; with CAR1, e[t] = phi e[t - 1] + sqrt(1 - phi^2) times the draw, within each series); each refitted with the same structure (lm, or nlme::lme by REML, optim then nlminb), the power being the share of slopes with p ≤ alpha among the fits that worked, with its Monte Carlo error. Nuée's seed and generator: the same data sets.")),
+    "simuler_puissance <- function(pente, sigma2, variances, phi, car1, alpha, annees, unites, plan, n, graine = 1) {",
+    "  L <- length(variances)",
+    "  niveaux <- paste0(\"g\", seq_len(max(L, 1)))",
+    "  g <- c(list(temps = seq_len(annees), repetition = seq_len(plan$repetitions)), if (plan$dans > 0) list(gc = seq_len(plan$dans)),",
+    "         setNames(lapply(rev(seq_len(max(L, 1))[-1]), function(l) seq_len(plan$emboites[l - 1])), rev(niveaux[-1])), list(g1 = seq_len(unites)))",
+    "  sim <- expand.grid(g, KEEP.OUT.ATTRS = FALSE)",
+    "  sim <- sim[c(niveaux, intersect(\"gc\", names(sim)), \"repetition\", \"temps\")]",
+    "  for (l in seq_len(max(L, 1))) sim[[paste0(\"u\", l)]] <- match(do.call(paste, sim[niveaux[seq_len(l)]]), unique(do.call(paste, sim[niveaux[seq_len(l)]])))",
+    "  for (k in intersect(c(niveaux, \"gc\"), names(sim))) sim[[k]] <- factor(sim[[k]])",
+    "  if (L) aleatoire <- as.formula(paste(\"~ 1 |\", paste(niveaux[seq_len(L)], collapse = \" / \")))",
+    "  correlation <- if (car1) nlme::corCAR1(form = as.formula(paste(\"~ temps |\", paste(c(niveaux[seq_len(L)], intersect(\"gc\", names(sim))), collapse = \" / \"))))",
+    "  set.seed(graine, kind = \"Mersenne-Twister\", normal.kind = \"Inversion\", sample.kind = \"Rejection\")",
+    "  p <- vapply(seq_len(n), function(k) {",
+    "    y <- pente * sim$temps",
+    "    for (l in seq_len(L)) y <- y + sqrt(variances[l]) * rnorm(max(sim[[paste0(\"u\", l)]]))[sim[[paste0(\"u\", l)]]]",
+    "    e <- sqrt(sigma2) * rnorm(nrow(sim))",
+    "    if (phi > 0) for (t in seq_len(annees)[-1]) {",
+    "      i <- which(sim$temps == t)",
+    "      e[i] <- phi * e[i - 1] + sqrt(1 - phi^2) * e[i]",
+    "    }",
+    "    sim$y <- y + e",
+    "    if (!L) return(summary(lm(y ~ temps, data = sim))$coefficients[\"temps\", 4])",
+    "    tenter <- function(reglages) tryCatch(nlme::lme(y ~ temps, random = aleatoire, correlation = correlation, data = sim, method = \"REML\", control = reglages),",
+    "                                          error = function(x) NULL)",
+    "    a <- tenter(nlme::lmeControl(opt = \"optim\", maxIter = 200, msMaxIter = 200, returnObject = TRUE))",
+    "    if (is.null(a)) a <- tenter(nlme::lmeControl(maxIter = 500, msMaxIter = 500, returnObject = TRUE))",
+    "    if (is.null(a)) NA_real_ else summary(a)$tTable[\"temps\", \"p-value\"]",
+    "  }, 0)",
+    "  ok <- !is.na(p)",
+    "  puissance <- mean(p[ok] <= alpha)",
+    "  list(annees = annees, unites = unites, n = n, puissance = puissance, erreur_mc = sqrt(puissance * (1 - puissance) / sum(ok)), echecs = sum(!ok), p = p)",
+    "}"))
+
 modele_validation_regression <- function(tx) c(
   commentaire(tx("Validation croisée d'une régression : chaque groupe prédit par le modèle ajusté sans lui (`ajuster`, sur les autres lignes de `cadre`) ; `predire(m, nouvelles, appris)` donne ses prédictions. Un ajustement qui échoue laisse son groupe sans prédiction (`echecs`). Q2 et RMSEcv sur la réponse, la première colonne de `cadre`.",
                  "Cross-validation of a regression: each group predicted by the model fitted without it (`fit`, on the other rows of `frame`); `predict_group(m, new_rows, learnt)` gives its predictions. A fit that fails leaves its group without prediction (`failures`). Q2 and RMSEcv on the response, the first column of `frame`.")),
@@ -2566,7 +2699,13 @@ NOMS_SCRIPT_EN <- c(
   modeles = "models", ajuster_ml = "fit_ml", libelle_aic = "aic_label", contient_aic = "aic_contains", hors_selection = "outside_selection",
   termes_candidats = "candidate_terms", pentes_seules = "level_slopes", niveaux_inconnus = "unseen_levels", pentes = "slopes", sans = "unseen",
   variances_niveaux = "level_variances", variances_pentes = "slope_variances", noms_niveaux = "level_labels", nom_residuelle = "residual_label",
-  pentes_aleatoires = "random_slopes", termes_gardes = "kept_terms", exclus = "excluded")
+  pentes_aleatoires = "random_slopes", termes_gardes = "kept_terms", exclus = "excluded",
+  # (la puissance pour une tendance ; ni temps, ni repetition, ni y, ni g1 : aussi des noms de colonnes en texte)
+  variance_pente = "slope_variance", puissance_normale = "normal_power", plan_donnees_puissance = "power_data_design", simuler_puissance = "simulate_power",
+  temps_puissance = "power_time", plan_puissance = "power_design", variances_puissance = "power_variances", phi_puissance = "power_phi",
+  puissance = "power", annees_80 = "years_80", simulation_puissance = "power_simulation", annees = "years", unites = "units", series = "series",
+  repetitions = "repetitions", emboites = "nested", distincts = "distinct", arrondi = "rounded", dans_n = "within_n", erreur_mc = "mc_error",
+  plan = "design", dans = "finer_group", niveaux = "level_columns", sim = "simulated_data")
 
 nom_script <- function(x, langue) if (identical(langue, "en")) ifelse(x %in% names(NOMS_SCRIPT_EN), NOMS_SCRIPT_EN[x], x) else x
 
@@ -2779,6 +2918,7 @@ lignes_rapport <- function(format, pl, langue, methodes, fonctions, code_donnees
       if (length(pl$lisses)) bloc("plages-seuils", kable("plages_seuils", 3)),
       if (!is.null(pl$selection)) bloc("selection-aic", kable("head(selection$modeles, 20)", 3)),
       if (!is.null(pl$selection)) bloc("importance-aic", kable("selection$importance", 3)),
+      if (!is.null(pl$puissance)) bloc("puissance-80", kable("annees_80", NA)),
       graphiques,
       if (test) bloc("test", kable("test", 3)))
   } else {

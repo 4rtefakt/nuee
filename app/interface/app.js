@@ -286,6 +286,12 @@ const app = {
     const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), m.nom, true);
     if (choix) apresExport(await occupe(() => demander('exporter', { modele: id, ...choix })));
   },
+  // the coefficients side by side shown in Compare models (coefficientsActifs): the table as
+  // copied, and each model's coefficients in numbers (moteur/R/coefficients_modeles.R)
+  async exporterCoefficients(q) {
+    const choix = await choisirExport(t('exporter_coefficients_titre'), 'coefficients', true);
+    if (choix) apresExport(await occupe(() => demander('exporter_coefficients', { ...q, ...choix })));
+  },
   async exporterDonnees(pid) {
     const p = etat.projets[pid];
     if (!p) { statut(t('choisir_projet'), true); return; }
@@ -1485,6 +1491,13 @@ app.tableauActif = () => {
   };
 };
 app.copierTableau = () => { const f = app.tableauActif(); if (f) f(); };
+// The coefficients side by side of the active panel (Compare models, in that mode: panneaux.js,
+// rendreCoteACote), for File › Export model results: { modeles, erreur }, or null.
+app.coefficientsActifs = () => {
+  const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
+  const e = p && etat.panneaux.get(p.id);
+  return (e && e.vue === 'comparaison' && e.element && e.element._coefficients) || null;
+};
 app.palette = () => ouvrirPalette(app, C);
 app.miseEnForme = () => {
   const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();

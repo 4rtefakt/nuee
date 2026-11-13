@@ -761,6 +761,36 @@ it a new model: the same settings with only those groups' variables (a cross ter
 factors), on the same observations, fitted as usual (REML for the estimates) and named like a
 refit (M1 (1)). Once the selection has run, the Methods text describes it, the model report can
 include it, and Export to R redoes it.
+Plots › Trend power (also under each linear regression or linear mixed model in the explorer):
+with this many sites counted every year, how many years until a trend is detected? Choose the
+time (a quantitative X, untransformed: the year), the trend to detect (a change per year in the
+units of the model's Y; with a log10 or ln response, also in % per year, converted to the slope
+log(1 + %/100) on that scale, an approximation with log10(x + 1), close only where x is large
+against 1), α (a two-sided test), the numbers of years (from, to) and the numbers of units of the
+first random effect (the sites; the data's own number is always among them). Every unit is
+counted once a year, its nested levels as in the data, their mean numbers rounded (2.75 sectors
+per site: 3); a linear regression counts observations per year. The variances are the model's
+REML estimates (random effects, residual variance, CAR1 φ), and the model's other terms stay out
+of the designs (their effects held constant). For each design, the variance of the generalized
+least squares estimator of the slope with these variances known, (X'V⁻¹X)⁻¹ with V the design's
+covariance (Diggle et al., 2002), gives the power Φ(|β|/se − z) + Φ(−|β|/se − z): power against
+the number of years, a line per number of units, the 80 % line, a sentence ready for a report
+("With 12 units of “site”, each counted every year, a decline of 3% per year in “densite” is
+detected with 80% power after 11 years"), and the table. Every unit being counted every year,
+the random intercepts change nothing in the slope's variance: the residual variance, φ, the years
+and the number of series counted decide it. A simulation checks the formula at one design (by
+default the data's own): N data sets (200 by default) drawn from the model with the trend, each
+refitted by nlme with the same structure (REML), the power being the share of slopes with p ≤ α
+(Johnson et al., 2015), with its Monte Carlo error. Its seed is fixed (the same data sets every
+time; the session's random numbers are left as they were), and the view says first how long it
+will take: the R engine fits one model at a time and does nothing else meanwhile (a simulation
+that would take more than 15 minutes, or of more than 20,000 observations per data set, is
+refused). The two may differ: the simulation estimates the variances and φ in each data set
+(from few units or years they are uncertain) and tests the slope with nlme's t, where the
+formula takes them as known and uses the normal distribution. Not covered, and refused with the
+reason: GLMs and GAMs, random slopes, a model without a quantitative X that can be the time, a
+CAR1 along a time in other units than the trend's. Once computed, the Methods text describes it,
+the model report can include it, and Export to R redoes it (the simulation with the same draws).
 Prediction › Predict observations, Predict a file: Y predicted by the fixed effects (for a
 mixed model, a group never seen), on the model's scale of Y (its transformation included), next
 to Y observed when it is known. A file's columns are matched to the model's variables by name,
@@ -784,6 +814,21 @@ autocorrelation aren't tested this way: a zero variance is on the boundary of it
 where the χ² distribution no longer holds; compare them by AIC. With curves or mgcv random
 effects, the df are edf and the test is approximate, as the table says. Every nested pair is
 listed (2000 at most); the table's search box finds those of a model.
+Prediction › Compare models › Coefficients side by side (the choice at the top of the view):
+several regressions as papers present them, a row per term and a column per model. Tick the
+project's regressions to show (all of them at first). Each cell is the estimate with its 95 %
+interval, or with its standard error, from the model's Coefficients table (its decimals those of
+two significant digits of the standard error), in red when p ≤ 0.05, empty when the model lacks
+the term. The rows are the intercept and the first model's terms, then the others' terms in
+their order: two models share a row when they have a term of the same name. Below: n, AIC and
+AICc (ML fit), R² (a linear regression), the marginal and conditional R² (a mixed model) or the
+share of the deviance explained (a GLM or GAM), the standard deviation σ of each random effect
+(and the residual one of an nlme model), CAR1's φ and each curve's edf. A model with a log or
+logit link keeps its estimates on the link's scale, as in its Coefficients view, and the note
+says so. Ctrl+C (or the copy button) puts the table on the clipboard as text and as a table,
+which Excel and Word paste as a table, with stars for p (* ≤ 0.05, ** ≤ 0.01, *** ≤ 0.001) and
+their legend; File › Export model results (Ctrl+E), from this view, writes it, with each model's
+coefficients in numbers beside it.
 File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
 the coefficients, the fit statistics, the random effects (each random intercept and slope, and
 their correlation) and the curves, a table each. File ›

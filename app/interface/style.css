@@ -218,6 +218,7 @@ pre.diagnostic { margin: 0; padding: 8px 10px; background: var(--fond-barre); bo
 .tableau td.diagonale { font-weight: 700; color: var(--ok); }
 .tableau td.erreur-classe { color: var(--erreur); }
 .tableau tr.total td { border-top: 1px solid var(--bord); font-weight: 600; }
+.tableau tr.debut-section td { border-top: 1px solid var(--bord); }
 .badge.bon { background: transparent; color: var(--ok); border: 1px solid var(--ok); }
 .badge.alerte { border: 1px solid var(--attention); }
 .onglet-termes { display: flex; flex-direction: column; flex: 1; min-height: 0; }

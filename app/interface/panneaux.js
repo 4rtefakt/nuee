@@ -2906,16 +2906,149 @@ async function rendreSelectionAIC(conteneur, ctx, p, loc) {
   });
 }
 
+// Trend power (moteur/R/puissance.R: puissance_tendance), for a linear or linear mixed model with a
+// time among its quantitative X: the power to detect a trend (a slope per unit of time in Y's units,
+// or a % per year when Y is in log10 or ln) for designs of so many years and units (the first random
+// effect's, every unit counted every year), from the variance of the GLS estimator of the slope with
+// the model's REML variances taken as known; power against the years, a line per number of units,
+// the 80 % line, the sentence for a report and the table. A simulation at one design checks it: N
+// data sets refitted by nlme, the time it takes said first (the R engine fits one model at a time).
+// Computed in R and kept with the model, whose Methods text, report and R script then include it;
+// loc.reglages holds the settings changed here (null: those of the engine's last computation).
+const ALPHAS_PUISSANCE = [0.01, 0.05, 0.1];
+const dureeTexte = (s) => (s < 60 ? `${Math.max(1, Math.round(s))} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`);
+// a number of units of the first random effect, as the plot's legend says it ("12 site"); an LM's, observations per year
+export const libelleUnites = (r, u) => (r.niveaux && [].concat(r.niveaux).length ? `${u} ${[].concat(r.niveaux)[0]}` : `${u} ${t('puissance_obs_an_court')}`);
+// what the computation took from the model and the data, in words (the view's note, the report)
+export function notesPuissance(r) {
+  const niveaux = [].concat(r.niveaux || []);
+  const pl = r.plan;
+  const v = r.variances;
+  const dedans = [[].concat(pl.emboites).map((k, j) => t('puissance_plan_niveau', { k, niveau: niveaux[j + 1], moyenne: fmt([].concat(pl.moyennes)[j], 2) })),
+    pl.dans > 0 && r.dans ? [t('puissance_plan_niveau', { k: pl.dans, niveau: r.dans, moyenne: fmt(pl.moyenne_dans, 2) })] : [],
+    pl.repetitions > 1 ? [t('puissance_plan_repetitions', { k: pl.repetitions, moyenne: fmt(pl.moyenne_repetitions, 2) })] : []].flat();
+  const plan = niveaux.length ? t('puissance_plan', { niveau: niveaux[0], n: pl.unites, annees: pl.annees, dedans: dedans.length ? t('puissance_plan_dedans', { liste: dedans.join(', ') }) : '' })
+    : t('puissance_plan_lm', { n: pl.unites, annees: pl.annees, N: pl.N });
+  const variances = t('puissance_variances', { s2: fmt(v.sigma2, 4), phi: v.phi !== null && v.phi !== undefined ? t('puissance_phi', { phi: fmt(v.phi, 3) }) : '',
+    aleatoires: niveaux.length ? t('puissance_aleatoires', { liste: [].concat(v.niveaux).map((x, j) => `${niveaux[j]} ${fmt(x, 4)}`).join(', ') }) : '' });
+  const pente = t('puissance_pente', { pente: Number(r.pente.toPrecision(3)), y: r.y_modele,
+    modele: r.pente_modele === null || r.pente_modele === undefined ? '—' : Number(r.pente_modele.toPrecision(3)) });
+  return [t('puissance_note'), plan, variances, pente, r.approchee ? t('puissance_approchee', { y: r.reponse }) : '',
+    [].concat(r.croises || []).length ? t('puissance_croises', { termes: [].concat(r.croises).join(', ') }) : ''].filter(Boolean).join(' ');
+}
+// the simulation's result against the formula's, and why they may differ
+export const resultatSimulation = (r, s) => `${t('puissance_resultat', { p: fmt(s.puissance, 2), e: fmt(s.erreur_mc, 2), annees: s.annees, unites: libelleUnites(r, s.unites),
+  n: s.n, a: fmt(s.analytique, 2), duree: dureeTexte(s.duree), echecs: s.echecs ? t('puissance_echecs', { n: s.echecs }) : '' })} ${t('puissance_ecart')}`;
+async function rendrePuissance(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  const cache = ((loc.cache ??= {}).puissance ??= {});  // (loc.cache isn't saved with the session)
+  const cle = JSON.stringify([m.id, loc.reglages || null, langueActuelle()]);
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    try {
+      cache.res = await ctx.demander('puissance_tendance', { modele: m.id, ...(loc.reglages || {}) });
+      cache.dernier = cache.res;
+      cache.erreur = null;
+    } catch (e) { cache.res = null; cache.erreur = e.message; }
+    cache.cle = cle;
+  }
+  // (settings refused: the last result's controls, to correct them, and the reason)
+  const r = cache.res || (loc.reglages && cache.dernier);
+  if (!r) { conteneur.replaceChildren(el('p', { class: 'erreur' }, cache.erreur)); return; }
+  const g = { ...r.reglages, ...(loc.reglages || {}) };
+  const changer = (k, v) => { loc.reglages = { ...g, [k]: v }; ctx.rafraichir(); };
+  const nombreSaisi = (valeur, largeur, f) => el('input', { type: 'number', value: valeur, style: `width:${largeur}`, onchange: (e) => f(Number(e.target.value)) });
+  const niveaux = [].concat(r.niveaux || []);
+  const annees = [].concat(g.annees);
+  const sim = g.simulation;
+  const barre = outils(choix(t('puissance_temps'), [].concat(r.termes).map((n) => [n, n]), g.terme, (v) => changer('terme', v)),
+    el('label', { class: 'champ' }, el('span', {}, t('puissance_tendance')), nombreSaisi(g.tendance, '6em', (v) => changer('tendance', v)),
+      // (another unit: the engine's default trend for it, -3 % or 3 % of Y's mean)
+      r.pourcent_possible ? el('select', { onchange: (e) => { loc.reglages = { ...g, unite: e.target.value, tendance: undefined }; ctx.rafraichir(); } },
+        [['pourcent', t('puissance_pourcent')], ['pente', t('puissance_par_an', { y: r.reponse })]].map(([k, n]) => el('option', { value: k, selected: k === g.unite }, n)))
+        : el('span', {}, t('puissance_par_an', { y: r.reponse }))),
+    choix('α', ALPHAS_PUISSANCE.map((a) => [a, String(a)]), g.alpha, (v) => changer('alpha', Number(v))));
+  const barre2 = outils(el('label', { class: 'champ' }, el('span', {}, t('puissance_annees_de')), nombreSaisi(annees[0], '4.5em', (v) => changer('annees', [v, annees[1]])),
+    el('span', {}, t('puissance_annees_a')), nombreSaisi(annees[1], '4.5em', (v) => changer('annees', [annees[0], v]))),
+  el('label', { class: 'champ', title: t('puissance_unites_aide') }, el('span', {}, niveaux.length ? t('puissance_unites', { niveau: niveaux[0] }) : t('puissance_obs_an')),
+    el('input', { value: [].concat(g.unites).join(', '), style: 'width:12em',
+      onchange: (e) => changer('unites', e.target.value.split(/[\s,;]+/).filter(Boolean).map(Number)) })));
+  const erreur = cache.erreur ? el('p', { class: 'erreur' }, cache.erreur) : null;
+  const pl = r.plan;
+  const copier = el('button', { class: 'icone-seule', title: t('copier_phrase'),
+    onclick: () => navigator.clipboard.writeText(r.phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+  // the simulation at one design: its settings, the time it will take, its result against the formula's
+  const s = r.simulation;
+  const e = r.estimation || {};
+  const simuler = async () => {
+    cache.enCours = true;
+    ctx.rafraichir();
+    try {
+      cache.res = await ctx.demander('puissance_tendance', { modele: m.id, ...g, simuler: true });
+      cache.dernier = cache.res;
+      cache.erreur = null;
+    } catch (x) { cache.erreur = x.message; }
+    cache.enCours = false;
+    ctx.rafraichir();
+  };
+  const ligneSim = el('div', { class: 'ligne', style: { flexWrap: 'wrap' } },
+    el('span', { class: 'champ' }, el('b', {}, t('puissance_simulation'))),
+    el('label', { class: 'champ' }, el('span', {}, t('puissance_annees')), nombreSaisi(sim.annees, '4.5em', (x) => changer('simulation', { ...sim, annees: x }))),
+    el('label', { class: 'champ' }, el('span', {}, niveaux.length ? niveaux[0] : t('puissance_obs_an')), nombreSaisi(sim.unites, '5em', (x) => changer('simulation', { ...sim, unites: x }))),
+    el('label', { class: 'champ' }, el('span', {}, t('puissance_jeux')), nombreSaisi(sim.n, '5em', (x) => changer('simulation', { ...sim, n: x }))),
+    cache.enCours ? el('span', { class: 'infos attente', style: { margin: 0 } }, t('puissance_en_cours', { n: sim.n, duree: e.duree ? dureeTexte(e.duree) : '?' }))
+      : el('button', { onclick: simuler, title: t('puissance_simuler_aide') }, icone('shuffle'), t('puissance_simuler')),
+    !cache.enCours && e.duree ? el('span', { class: 'infos' }, t('puissance_estimation', { duree: dureeTexte(e.duree) })) : null);
+  const resultatSim = s ? el('p', { class: 'note' }, resultatSimulation(r, s)) : null;
+  const graphe = el('div', { class: 'graphe' });
+  const bas = el('div', { class: 'bas' });
+  conteneur.replaceChildren(...[barre, barre2, erreur, el('p', { class: 'note' }, notesPuissance(r)),
+    el('div', { class: 'note' }, el('b', {}, r.phrase), ' ', copier), graphe, ligneSim, resultatSim, bas].filter(Boolean));
+  const tab = r.tableau;
+  const col = (k) => [].concat(tab[k]);
+  const [ta, tu, tp] = [col('annees'), col('unites'), col('puissance')];
+  const unites = [].concat(g.unites).filter((u) => tu.includes(u));
+  const c = couleursTheme();
+  tracer(ctx, graphe, unites.map((u, k) => {
+    const i = ta.map((_, j) => j).filter((j) => tu[j] === u);
+    const propre = u === pl.unites;
+    return { type: 'scatter', mode: 'lines', x: i.map((j) => ta[j]), y: i.map((j) => tp[j]), line: { color: PALETTE[k % PALETTE.length], width: propre ? 3 : 1.5 },
+      name: propre ? `${libelleUnites(r, u)} (${t('puissance_donnees')})` : libelleUnites(r, u),
+      hovertemplate: `${libelleUnites(r, u)} · %{x} ${t('puissance_ans')} : %{y:.2f}<extra></extra>` };
+  }).concat(s ? [{ type: 'scatter', mode: 'markers', x: [s.annees], y: [s.puissance], name: t('puissance_simulee'),
+    error_y: { type: 'data', array: [1.96 * s.erreur_mc], color: c.texte }, marker: { symbol: 'diamond', size: 10, color: c.texte },
+    hovertemplate: `${t('puissance_simulee')} · ${libelleUnites(r, s.unites)} · %{x} ${t('puissance_ans')} : %{y:.2f}<extra></extra>` }] : []),
+  { title: { text: `${m.nom} · ${t('puissance')}` }, dragmode: 'zoom', showlegend: true,
+    xaxis: { title: { text: t('puissance_axe_annees') } }, yaxis: { title: { text: t('puissance_axe') }, range: [0, 1.02] },
+    shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: r.seuil, y1: r.seuil, line: { color: '#d1495b', width: 1, dash: 'dash' } }] });
+  loc.table ??= {};
+  const num = (cle2, titre, decimales) => ({ cle: cle2, titre, num: true, decimales });
+  tableau(bas, ctx, loc.table, {
+    n: ta.length, nom: t('puissance'),
+    colonnes: [num('annees', t('puissance_annees'), 0), num('unites', niveaux.length ? niveaux[0] : t('puissance_obs_an'), 0), num('observations', t('observations'), 0),
+      num('erreur_type', t('erreur_type'), 5), num('puissance', t('puissance_axe'), 3)],
+    valeur: (i, k) => col(k)[i],
+  });
+}
+
 // Every fitted model side by side. Q2 and RMSEcv compare all models validated by the same
 // groups; AIC, ΔAIC and Akaike weights only the regressions of the same response on the same
-// observations (an "AIC set", regression.R : signature).
+// observations (an "AIC set", regression.R : signature). Its second mode: the coefficients of the
+// regressions ticked, side by side (rendreCoteACote).
 function rendreComparaison(conteneur, ctx, p, loc) {
+  loc.mode ??= 'ajustement';
+  // (Ctrl+C and File › Export: the side-by-side table sets its own; here Ctrl+C copies the first table, as shown)
+  conteneur._copierTableau = null;
+  conteneur._coefficients = null;
+  const mode = outils(choix('', [['ajustement', t('comparaison_ajustement')], ['coefficients', t('cote_a_cote')]], loc.mode,
+    (v) => { loc.mode = v; ctx.rafraichir(); }));
+  if (loc.mode === 'coefficients') { rendreCoteACote(conteneur, ctx, loc, mode); return; }
   const ms = ctx.tousModeles();
   const cum = (v) => (v && v.length ? v[v.length - 1] : null);
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
   const emboites = el('div', { class: 'bas' });
-  conteneur.replaceChildren(el('p', { class: 'note' }, t('comparaison_note')), graphe, bas, emboites);
+  conteneur.replaceChildren(mode, el('p', { class: 'note' }, t('comparaison_note')), graphe, bas, emboites);
   const lignes = ms.map((m) => {
     // another analysis (RDA, LDA...): no components nor Q2, the figures it gives (m.comparaison)
     if (m.analyse) return { id: m.id, nom: m.nom, projet: (ctx.projet(m.projet) || {}).nom, type: m.type, A: null, N: m.N, K: m.K, ...(m.comparaison || {}) };
@@ -3001,6 +3134,66 @@ function rendreEmboites(conteneur, ctx, loc, lignes) {
     valeur: (i, k) => (k === 'ensemble' ? (parId[grand[i]] || {}).ensemble : k === 'grand' ? (parId[grand[i]] || {}).nom
       : k === 'petit' ? (parId[petit[i]] || {}).nom : k === 'test' ? t(approche[i] ? 'rv_approche' : 'rv_ml') : col(k)[i]),
   });
+}
+
+// The coefficients of the regressions ticked, side by side (moteur/R/coefficients_modeles.R), as
+// papers present them: a row per term of their coefficient tables, a column per model, each cell
+// the estimate with its 95 % interval or its standard error, red when p ≤ 0.05 as in the
+// Coefficients view; below, n, AIC, AICc, R², σ of each random effect, φ and each curve's edf, as
+// the engine words them. The regressions of one project, every one ticked until unticked. Ctrl+C
+// (and the copy button) puts it on the clipboard as text and as a table, for Excel and Word, with
+// stars for p; File › Export model results writes it (app.js: coefficientsActifs).
+const echapperHTML = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function rendreCoteACote(conteneur, ctx, loc, barre) {
+  const s = (loc.coef ??= { coches: {}, erreur: 'ic' });
+  const regressions = ctx.tousModeles().filter((m) => m.regression);
+  if (!regressions.length) { conteneur.replaceChildren(barre, el('p', { class: 'infos' }, t('cote_a_cote_vide'))); return; }
+  const projets = [...new Set(regressions.map((m) => m.projet))];
+  if (!projets.includes(s.projet)) s.projet = projets.includes(ctx.projetActif()) ? ctx.projetActif() : projets[0];
+  const ici = regressions.filter((m) => m.projet === s.projet);
+  const ids = ici.filter((m) => s.coches[m.id] !== false).map((m) => m.id);
+  barre.append(...[projets.length > 1 ? choix(t('projets'), projets.map((id) => [id, (ctx.projet(id) || {}).nom || id]), s.projet, (v) => { s.projet = v; ctx.rafraichir(); }) : null,
+    choix('', [['ic', t('cote_a_cote_ic')], ['et', t('cote_a_cote_et')]], s.erreur, (v) => { s.erreur = v; ctx.rafraichir(); })].filter(Boolean));
+  const cases = el('div', { class: 'outils' }, ici.map((m) => el('label', { class: 'champ', title: m.titre || '' },
+    el('input', { type: 'checkbox', checked: s.coches[m.id] !== false, onchange: (e) => { s.coches[m.id] = e.target.checked; ctx.rafraichir(); } }),
+    m.nom, el('span', { class: 'badge' }, m.type))));
+  if (!ids.length) { conteneur.replaceChildren(barre, cases, el('p', { class: 'infos' }, t('cote_a_cote_aucun'))); return; }
+  const cle = JSON.stringify([ids, s.erreur, langueActuelle()]);
+  const cache = ((loc.cache ??= {}).coefficients ??= {});  // (loc.cache isn't saved with the session)
+  if (cache.cle !== cle) {
+    Object.assign(cache, { cle, res: null, erreur: null });
+    ctx.demander('coefficients_modeles', { modeles: ids, erreur: s.erreur })
+      .then((r) => { if (cache.cle === cle) { cache.res = r; ctx.rafraichir(); } })
+      .catch((e) => { if (cache.cle === cle) { cache.erreur = e.message; ctx.rafraichir(); } });
+  }
+  const r = cache.res;
+  if (!r) { conteneur.replaceChildren(barre, cases, el('p', { class: cache.erreur ? 'erreur' : 'infos attente' }, cache.erreur || t('calcul'))); return; }
+  const noms = [].concat(r.modeles);
+  const statistiques = [].concat(r.statistiques);
+  const notes = [].concat(r.copie.notes);
+  const table = el('table', { class: 'tableau compact' },
+    el('thead', {}, el('tr', {}, el('th', {}, r.entete), noms.map((n) => el('th', { class: 'num' }, n)))),
+    el('tbody', {},
+      [].concat(r.termes).map((terme, i) => el('tr', {}, el('td', {}, terme), noms.map((_, j) => {
+        const pv = r.p[i][j];
+        return el('td', { class: 'num' + (pv !== null && pv <= 0.05 ? ' alerte' : ''), title: pv === null ? '' : `p = ${valeurP(pv)}` }, r.cellules[i][j]);
+      }))),
+      statistiques.map((nom, i) => el('tr', { class: i ? '' : 'debut-section' }, el('td', {}, nom), noms.map((_, j) => el('td', { class: 'num' }, r.valeurs[i][j]))))));
+  // the copy: the engine's rows, with the stars of p (r.copie), as tab-separated text (Excel) and as an HTML table (Word)
+  const copier = () => {
+    const lignes = [[].concat(r.copie.entetes), ...r.copie.lignes];
+    const texte = [...lignes.map((l) => l.join('\t')), '', ...notes].join('\n');
+    const cellule = (v, k, balise) => `<${balise}${k ? ' style="text-align:right"' : ''}>${echapperHTML(v)}</${balise}>`;
+    const html = `<table border="1" cellspacing="0" cellpadding="3" style="border-collapse:collapse"><thead><tr>${lignes[0].map((v, k) => cellule(v, k, 'th')).join('')}</tr></thead><tbody>${
+      lignes.slice(1).map((l) => `<tr>${l.map((v, k) => cellule(v, k, 'td')).join('')}</tr>`).join('')}</tbody></table>${notes.map((n) => `<p>${echapperHTML(n)}</p>`).join('')}`;
+    navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([texte], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })])
+      .then(() => ctx.statut(t('table_copiee')));
+  };
+  conteneur._copierTableau = copier;  // Ctrl+C (app.js)
+  conteneur._coefficients = { modeles: ids, erreur: s.erreur };  // File › Export model results (app.js)
+  barre.append(espace(), el('button', { class: 'icone-seule', title: t('copier_tableau'), onclick: copier }, icone('copy')));
+  conteneur.replaceChildren(barre, cases, el('p', { class: 'note' }, t('cote_a_cote_note')),
+    el('div', { class: 'defile' }, table, notes.map((n) => el('p', { class: 'note' }, n))));
 }
 
 // Permutation test: R² and Q² of models refitted with the order of one Y
@@ -3105,6 +3298,7 @@ export const VUES = {
   effets: { rendre: rendreEffets, titre: (m) => `${m.nom} · ${t('effets')}` },
   apports: { rendre: rendreApports, titre: (m) => `${m.nom} · ${t('apports')}` },
   selection_aic: { rendre: rendreSelectionAIC, titre: (m) => `${m.nom} · ${t('selection_aic')}` },
+  puissance: { rendre: rendrePuissance, titre: (m) => `${m.nom} · ${t('puissance')}` },
   obspred: { rendre: rendreObsPred, titre: (m) => `${m.nom} · ${t('obspred')}` },
   dendrogramme: { rendre: rendreDendrogramme, titre: (m) => `${m.nom} · ${t('dendrogramme')}` },
   predictions: { rendre: rendrePredictions, titre: (m) => `${m.nom} · ${t('predictions')}` },

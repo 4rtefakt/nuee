@@ -348,7 +348,8 @@ verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e
 
 cat("Régressions (lm, nlme, mgcv)\n")
 # Ce que le moteur donne d'une régression, et ce que son script a calculé (sous ses noms, dans sa langue).
-ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection")
+ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection",
+                         "puissance", "annees_80", "simulation_puissance")
 COURBES_SEUILS <- c("x", "effet", "bas", "haut", "x_pente", "pente", "pente_bas", "pente_haut")
 moteur_regression <- function(m) {
   r <- m$resultat
@@ -366,7 +367,11 @@ moteur_regression <- function(m) {
        "jeu de test" = if (!is.null(m$test)) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")],
        # (la sélection par l'AIC, quand elle a été faite : le classement et l'importance des groupes)
        "sélection par l'AIC" = if (!is.null(m$selection_aic)) as.matrix(m$selection_aic$modeles[c("k", "logLik", "AICc", "delta", "poids", "poids_cumule")]),
-       "importance des groupes" = m$selection_aic$importance$importance)
+       "importance des groupes" = m$selection_aic$importance$importance,
+       # (la puissance pour une tendance, quand elle a été calculée : chaque plan, les années pour 80 %, la simulation et ses p)
+       "puissance pour une tendance" = if (!is.null(m$puissance_tendance)) as.matrix(m$puissance_tendance$tableau[c("observations", "erreur_type", "puissance")]),
+       "années pour 80 %" = m$puissance_tendance$annees_80$annees,
+       "simulation de la puissance" = if (!is.null(m$puissance_tendance$simulation)) with(m$puissance_tendance$simulation, c(puissance, echecs, p)))
 }
 script_regression <- function(s, langue) {
   n <- function(x) s[[nom_script(x, langue)]]
@@ -382,7 +387,10 @@ script_regression <- function(s, langue) {
        "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "résidus quantiles" = n("observations")[[nom_script("residu_quantile", langue)]],
        "jeu de test" = colonnes(n("test"), 2:6),
        "sélection par l'AIC" = colonnes(n("selection")[[nom_script("modeles", langue)]], 2:7),
-       "importance des groupes" = if (!is.null(n("selection"))) unname(n("selection")[[nom_script("importance", langue)]]))
+       "importance des groupes" = if (!is.null(n("selection"))) unname(n("selection")[[nom_script("importance", langue)]]),
+       "puissance pour une tendance" = colonnes(n("puissance"), 3:5), "années pour 80 %" = n("annees_80")[[2]],
+       "simulation de la puissance" = if (!is.null(n("simulation_puissance"))) c(n("simulation_puissance")[[nom_script("puissance", langue)]],
+                                                                                n("simulation_puissance")[[nom_script("echecs", langue)]], n("simulation_puissance")$p))
 }
 # Les blocs de code d'un rapport ont chacun leur nom : knitr refuse d'en compiler deux du même nom
 # (vérifié ici même sans knitr).
@@ -391,10 +399,12 @@ etiquettes_uniques <- function(texte) {
   !anyDuplicated(etiquettes)
 }
 # Écrit le script d'une régression, le lance dans une session neuve et compare ses résultats à ceux du moteur.
-# `selection` : la sélection par l'AIC faite d'abord (regression.R : selection_aic), que le script refait.
-essayer_regression <- function(nom, p, d, langue = "fr", selection = FALSE, ...) {
+# `selection` : la sélection par l'AIC faite d'abord (regression.R : selection_aic), que le script refait ;
+# `puissance` : les réglages de la puissance pour une tendance calculée d'abord (puissance.R), de même.
+essayer_regression <- function(nom, p, d, langue = "fr", selection = FALSE, puissance = NULL, ...) {
   m <- ajuster(p, d)
   if (!isFALSE(selection)) m$selection_aic <- selection_aic(m, d, if (is.numeric(selection)) selection else 256)  # (un nombre : la limite des combinaisons)
+  if (!is.null(puissance)) m$puissance_tendance <- puissance_tendance(m, d, puissance)
   dir.create(ici <- file.path(dossier, nom))
   r <- ecrire_script(p, d, file.path(ici, paste0(nom, ".R")), "moteur", m = m, version = "essai", langue = langue, ...)
   s <- lancer(r$script, nom_script(ATTENDUS_REGRESSION, langue))
@@ -549,6 +559,22 @@ essayer_regression("gam_selection_descendante", pr, definir_modele(pr, "GAM", x 
                    lisses = ur("x2"), decalage = ur("effort"), aleatoires = list(par_site), echelle = "none"), selection = 4)
 essayer_regression("gamm_selection", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",
                    lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur), selection = TRUE)
+# la puissance pour une tendance calculée dans Nuée (puissance.R) : le script la refait, avec sa simulation
+# (les mêmes jeux de données, les mêmes p) ; le temps mis à l'échelle (UV), CAR1 dans chaque secteur ; des
+# répétitions sans CAR1 ; une régression linéaire en anglais
+r <- essayer_regression("lmm_car1_puissance", pr, definir_modele(pr, "LMM", x = ur("x1", "annee"), y = ur("hauteur"), echelle = "UV", aleatoires = list(par_site),
+                        correlation = car1_secteur), puissance = list(unite = "pente", tendance = -0.05, simuler = TRUE, simulation = list(annees = 6, unites = 4, n = 20)))
+verifier("puissance pour une tendance : ses fonctions, le temps dans ses unités, la simulation, le tableau des années pour 80 % dans la sortie",
+         any(grepl("^variance_pente <- function", lignes_script(r))) && any(grepl("^simuler_puissance <- function", lignes_script(r))) &&
+           any(grepl("temps_puissance <- cadre[[\"annee\"]] / poids_x[2] + centre_x[2]", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("print(annees_80)", lignes_script(r), fixed = TRUE)))
+essayer_regression("lmm_repetitions_puissance", pr, definir_modele(pr, "LMM", x = ur("annee"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site)),
+                   puissance = list(unite = "pente", tendance = 0.04, annees = c(4, 12), unites = c(3, 10)))
+r <- essayer_regression("lm_puissance_en", pr, definir_modele(pr, "LM", x = ur("annee", "x2"), y = ur("masse"), echelle = "none",
+                                                              transformations = stats::setNames(list("ln:1:0"), ur("masse"))), langue = "en",
+                        puissance = list(tendance = -4, simuler = TRUE, simulation = list(n = 20)))
+verifier("puissance pour une tendance en anglais : simulate_power(), ni nom ni commentaire en français", en_anglais(lignes_script(r)) &&
+           any(grepl("^simulate_power <- function", lignes_script(r))) && any(grepl("slope <- log(1 + (-4) / 100)", lignes_script(r), fixed = TRUE)))
 # Ajuster ce modèle (sélection par l'AIC) : le modèle choisi garde les lignes du modèle complet (sans
 # x1, ou une densité nulle que son log10 rend manquante) ; son script les laisse de côté de même
 dcomplet <- definir_modele(pr, "LM", x = ur("x1", "x2", "densite"), y = ur("hauteur"), echelle = "none", nom = "M1",
@@ -731,6 +757,16 @@ r <- ecrire_script_seance(pr, definitions, ms, file.path(ici, "seance.R"), "mote
 s <- lancer(r$script, c("A2", "R9"))
 verifier("une séance de deux modèles à condition (un identifiant, group_mean()) : les résultats du moteur",
          is.null(r$ecart) && length(s) == 2 && meme(moteur(ms[[1]])$scores, s$A2$m$T) && meme(moteur_regression(ms[[2]])$coefficients, as.matrix(s$R9$coefficients[2:8])))
+
+# le rapport d'une régression dont la puissance pour une tendance a été calculée : son tableau, la puissance dans les méthodes
+msp <- ajuster(pr, dsp <- definir_modele(pr, "LMM", x = ur("annee"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R9"))
+msp$puissance_tendance <- puissance_tendance(msp, dsp, list(unite = "pente", tendance = -0.05))
+dir.create(ici <- file.path(dossier, "rapport_puissance"))
+r <- ecrire_script(pr, dsp, file.path(ici, "R9.Rmd"), "moteur", m = msp, version = "essai")
+texte <- readLines(r$script, encoding = "UTF-8")
+verifier("R9.Rmd, après la puissance pour une tendance : son tableau et son graphique, et la puissance dans le texte des méthodes",
+         is.null(r$ecart) && etiquettes_uniques(texte) && any(grepl("^```\\{r puissance-80\\}", texte)) && any(grepl("^```\\{r puissance,", texte)) &&
+           any(grepl("La puissance de détecter une baisse de 0,05 par an", texte, fixed = TRUE)) && any(grepl("^- Diggle, P. J.", texte)))
 
 cat("Rapports R Markdown et Quarto\n")
 for (i in seq_along(p$models)) {

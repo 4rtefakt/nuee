@@ -788,6 +788,61 @@ async function principal() {
         && sel.K === 1 && [].concat(sel.gardes).join() === 'annee' && [].concat(sel.groupes).join() === 'x',
         `Ajuster avec CAR1 garde la pente (φ ${car.phi}) ; la sélection garde l'année : ${JSON.stringify({ gardes: sel.gardes, groupes: sel.groupes })}`);
     });
+    await etape('coefficients côte à côte ; puissance pour détecter une tendance', async () => {
+      // 6 sites of 2 sectors counted from 2001 to 2010, a decline and an autocorrelated noise in each sector
+      let g = 17;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D', 'E', 'F']) {
+        const effet = alea();
+        for (const sec of ['a', 'b']) {
+          let bruit = 0;
+          for (let an = 2001; an <= 2010; an += 1) {
+            bruit = 0.4 * bruit + 0.3 * alea();
+            lignes.push([`${s}${sec}${an}`, s, sec, an, (2 * alea()).toFixed(3), (3 - 0.03 * (an - 2000) + effet + bruit).toFixed(4)]);
+          }
+        }
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tsecteur\tannee\tz\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Suivi' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const lm = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee, v.z], y: [v.y], echelle: 'none', nom: 'P1' });
+      const lmm = await api('ajuster', { projet: q.id, type: 'LMM', x: [v.annee], y: [v.y], echelle: 'none', nom: 'P2',
+        aleatoires: [{ by: 'variable', variable: v.site }], correlation: { type: 'CAR1', temps: { by: 'variable', variable: v.annee }, dans: { by: 'variable', variable: v.secteur } } });
+      // (moteur/R/coefficients_modeles.R) the rows of both tables, a cell per model, empty where it lacks the term
+      const c = await api('coefficients_modeles', { modeles: [lm.id, lmm.id], erreur: 'ic' });
+      const ligne = (x) => [].concat(c.termes).indexOf(x);
+      verifier([].concat(c.modeles).join() === 'P1,P2' && [].concat(c.termes).join() === '(Intercept),annee,z' && c.cellules.length === 3 && c.cellules[0].length === 2
+        && c.cellules[ligne('z')][1] === '' && c.p[ligne('z')][1] === null && Math.abs(c.p[ligne('annee')][0] - lm.coefficients_regression.p[1]) < 1e-12
+        && [].concat(c.statistiques).includes('φ (CAR1)') && c.copie.lignes.length === 3 + [].concat(c.statistiques).length && c.copie.entetes.length === 3
+        && /^\* p ≤ 0,05/.test([].concat(c.copie.notes)[0]), `coefficients côte à côte : ${JSON.stringify(c).slice(0, 400)}`);
+      const un = await api('coefficients_modeles', { modeles: [lmm.id], erreur: 'et' }, 'en');
+      verifier(un.cellules.length === 2 && un.cellules[1].length === 1 && /^-?\d+\.\d+ \(\d+\.\d+\)$/.test(un.cellules[1][0]) && un.entete === 'Estimate (SE)',
+        `un seul modèle, en anglais, avec l’erreur-type : ${JSON.stringify(un.cellules)}`);
+      const ex = await api('exporter_coefficients', { modeles: [lm.id, lmm.id], erreur: 'ic', chemin: path.join(dossier, 'cote.csv') });
+      verifier(ex.chemins.length === 2 && ex.chemins.every((f) => fs.existsSync(f)) && fs.readFileSync(ex.chemins[0], 'utf8').includes('P2'), 'exporter les coefficients côte à côte');
+      // (moteur/R/puissance.R) the defaults: the time named like one, a slope (Y untransformed), the data's 6 sites among the designs
+      const pu = await api('puissance_tendance', { modele: lmm.id });
+      const tab = pu.tableau;
+      verifier(pu.reglages.terme === 'annee' && pu.reglages.unite === 'pente' && [].concat(pu.reglages.unites).includes(6) && pu.plan.unites === 6 && pu.plan.annees === 10
+        && pu.plan.dans === 2 && tab.annees.length === tab.puissance.length && tab.puissance.every((x) => x >= 0 && x <= 1) && /^Avec 6 unités de « site »/.test(pu.phrase)
+        && pu.estimation.par_ajustement > 0, `puissance par défaut : ${JSON.stringify(pu).slice(0, 400)}`);
+      const pr = await api('puissance_tendance', { modele: lmm.id, terme: 'annee', unite: 'pente', tendance: -0.03, alpha: 0.05, annees: [5, 12], unites: [4, 10],
+        simulation: { annees: 8, unites: 6, n: 10 }, simuler: true });
+      const s = pr.simulation;
+      verifier(pr.tableau.annees.length === 8 * 3 && [].concat(pr.reglages.unites).join() === '4,6,10' && s.n === 10 && [].concat(s.p).length === 10
+        && s.puissance >= 0 && s.puissance <= 1 && s.analytique > 0, `réglages et simulation : ${JSON.stringify(s).slice(0, 300)}`);
+      const garde = await api('puissance_tendance', { modele: lmm.id });
+      const tm = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
+      verifier(garde.simulation && JSON.stringify(garde.simulation.p) === JSON.stringify(s.p) && garde.reglages.tendance === -0.03
+        && [].concat(tm.paragraphes).some((x) => /The power to detect a decline of 0.03 per year/.test(x)) && [].concat(tm.references).some((x) => /^Diggle/.test(x))
+        && [].concat(tm.references).some((x) => /^Johnson/.test(x)), 'gardée avec le modèle ; dans le texte des méthodes');
+      const sc = await api('script_r', { modele: lmm.id, version: 'essai', langue: 'fr', chemin: path.join(dossier, 'P2.R') });
+      verifier(!sc.ecart && fs.readFileSync(sc.script, 'utf8').includes('simuler_puissance('), 'exporter vers R : le script refait la puissance et sa simulation');
+      const glm = await api('ajuster', { projet: q.id, type: 'GLM', x: [v.annee], y: [v.y], echelle: 'none', nom: 'P3', famille: 'gamma' });
+      let refus = '';
+      try { await api('puissance_tendance', { modele: glm.id }); } catch (err) { refus = err.message; }
+      verifier(/GLM, GAM/.test(refus), `un GLM, refusé : « ${refus} »`);
+    });
     await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
       // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the
       // impact) rises from 2006; S3 has no row in 2002; S4 is neither impact nor control

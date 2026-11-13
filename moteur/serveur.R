@@ -662,6 +662,14 @@ exporter_demande <- function(q) {
   list(chemin = chemins[1], chemins = I(chemins))
 }
 
+# Les régressions `ids` de la séance, dans cet ordre, nommées comme leurs colonnes dans les
+# coefficients côte à côte (coefficients_modeles.R) : leur nom, numéroté quand deux modèles de
+# projets différents ont le même.
+regressions_demande <- function(ids) {
+  ms <- lapply(as.character(unlist(ids)), function(id) modele(id)$modele)
+  stats::setNames(ms, make.unique(vapply(ms, function(m) as.character(m$nom %||% ""), ""), sep = " "))
+}
+
 # Les données d'un projet, dans le format de l'extension du chemin.
 exporter_donnees_demande <- function(q) {
   p <- projet(q$projet)
@@ -990,6 +998,15 @@ DEMANDES <- list(
     ids <- Filter(function(id) !is.null(etat$modeles[[id]]) && est_regression(etat$modeles[[id]]$definition), as.character(unlist(q$modeles)))
     rapports_vraisemblance(stats::setNames(lapply(ids, function(id) etat$modeles[[id]]$modele), ids))
   },
+  # les coefficients de plusieurs régressions côte à côte (coefficients_modeles.R), pour Comparer
+  # les modèles : q$modeles, leurs identifiants dans l'ordre des colonnes ; q$erreur, "ic" ou "et" ;
+  # exporter_coefficients : le même tableau en fichiers (formats.R : ecrire_tables)
+  coefficients_modeles = function(q) coefficients_cote_a_cote(regressions_demande(q$modeles), q$erreur %||% "ic"),
+  exporter_coefficients = function(q) {
+    if (is.null(q$chemin)) q$chemin <- chemin_temporaire(paste0("coefficients.", q$format %||% "xlsx"))
+    chemins <- ecrire_tables(tables_cote_a_cote(regressions_demande(q$modeles), q$erreur %||% "ic"), q$chemin, objet = "coefficients")
+    list(chemin = chemins[1], chemins = I(chemins))
+  },
   apports = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
@@ -1003,6 +1020,20 @@ DEMANDES <- list(
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     if (is.null(e$modele$selection_aic)) etat$modeles[[q$modele]]$modele$selection_aic <- selection_aic(e$modele, e$definition)
     c(list(modele = q$modele), etat$modeles[[q$modele]]$modele$selection_aic)
+  },
+  # la puissance pour détecter une tendance (puissance.R), gardée avec le modèle (le texte des
+  # Méthodes, le rapport et le script la reprennent alors) : q$terme, q$tendance, q$unite, q$alpha,
+  # q$annees (de, à), q$unites, q$simulation (annees, unites, n) ; q$simuler : la simulation, faite.
+  # Sans réglage, celle de la dernière fois (sa phrase dans la langue de la demande), ou celle des
+  # réglages par défaut.
+  puissance_tendance = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    avant <- e$modele$puissance_tendance
+    r <- if (!length(setdiff(names(q), "modele")) && !is.null(avant)) utils::modifyList(avant, list(phrase = phrase_puissance(avant)))
+         else puissance_tendance(e$modele, e$definition, q, avant)
+    etat$modeles[[q$modele]]$modele$puissance_tendance <- r
+    c(list(modele = q$modele), r)
   },
   correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),
   historique = function(q) historique_projet(projet(q$projet)),

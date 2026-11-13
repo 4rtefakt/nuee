@@ -1619,6 +1619,8 @@ REFERENCES_REGRESSION <- list(
   wood2017 = "Wood, S. N. (2017). Generalized additive models: An introduction with R (2nd ed.). Chapman and Hall/CRC. https://doi.org/10.1201/9781315370279",
   wood2011 = "Wood, S. N. (2011). Fast stable restricted maximum likelihood and marginal likelihood estimation of semiparametric generalized linear models. Journal of the Royal Statistical Society: Series B, 73(1), 3–36. https://doi.org/10.1111/j.1467-9868.2010.00749.x",
   stewart_oaten = "Stewart-Oaten, A., Murdoch, W. W., & Parker, K. R. (1986). Environmental impact assessment: \"Pseudoreplication\" in time? Ecology, 67(4), 929–940. https://doi.org/10.2307/1939815",
+  diggle = "Diggle, P. J., Heagerty, P., Liang, K.-Y., & Zeger, S. L. (2002). Analysis of longitudinal data (2nd ed.). Oxford University Press.",
+  johnson = "Johnson, P. C. D., Barry, S. J. E., Ferguson, H. M., & Müller, P. (2015). Power analysis for generalized linear mixed models in ecology and evolution. Methods in Ecology and Evolution, 6(2), 133–142. https://doi.org/10.1111/2041-210X.12306",
   mgcv = "Wood, S. N. (%s). mgcv: Mixed GAM computation vehicle with automatic smoothness estimation (R package version %s). https://CRAN.R-project.org/package=mgcv")
 
 texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "") {
@@ -1745,6 +1747,12 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
                 else sprintf("A test set of %d observations, left out of the model and of the cross-validation, was then predicted: RMSEP = %s, bias = %s, external Q² = %s.",
                              m$test$n, nombre(st$RMSEP, 3), nombre(st$biais, 3), nombre(st$Q2ext)))
   }
+  # (la puissance pour détecter une tendance, quand elle a été calculée sur ce modèle : puissance.R)
+  p_puissance <- if (!is.null(m$puissance_tendance)) {
+    pp <- phrase_methodes_puissance(m, fr, nombre, liste, guillemets)
+    cites <- union(cites, pp$cites)
+    pp$texte
+  }
 
   # --- logiciel
   annee_r <- R.version$year
@@ -1766,7 +1774,7 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     nlme = sprintf(REFERENCES_REGRESSION$nlme, annee_nlme, nlme$Version),
     mgcv = sprintf(REFERENCES_REGRESSION$mgcv, annee_mgcv, mgcv$Version),
     REFERENCES_REGRESSION[[k]]), "")
-  list(paragraphes = c(p1, paste(p2, collapse = " "), p3, paste(p4, collapse = " "), p5), references = unname(sort(references)))
+  list(paragraphes = c(p1, paste(p2, collapse = " "), p3, paste(p4, collapse = " "), p_puissance, p5), references = unname(sort(references)))
 }
 
 # La sélection par l'AIC dans le texte des Méthodes (selection_aic, quand elle a été faite) : les

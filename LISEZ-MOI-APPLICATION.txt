@@ -817,6 +817,39 @@ variables de ces groupes (un terme croisé garde ses facteurs), sur les mêmes o
 ajusté comme les autres (REML pour les estimations) et nommé comme un réajustement (M1 (1)).
 Une fois la sélection faite, le texte des méthodes la décrit, le rapport du modèle peut la
 contenir et Exporter vers R la refait.
+Graphiques › Puissance pour une tendance (aussi sous chaque régression linéaire ou modèle
+linéaire mixte, dans l'explorateur) : avec tant de sites comptés chaque année, en combien
+d'années une tendance est-elle détectée ? Choisissez le temps (un X quantitatif, non transformé :
+l'année), la tendance à détecter (un changement par an dans les unités du Y du modèle ; avec une
+réponse en log10 ou en ln, aussi en % par an, converti en la pente log(1 + %/100) sur cette
+échelle, une approximation avec log10(x + 1), juste seulement là où x est grand devant 1), α (un
+test bilatéral), les nombres d'années (de, à) et les nombres d'unités du premier effet aléatoire
+(les sites ; celui des données y est toujours). Chaque unité est comptée une fois par an, ses
+niveaux emboîtés comme dans les données, leurs nombres moyens arrondis (2,75 secteurs par site :
+3) ; une régression linéaire compte des observations par an. Les variances sont les estimations
+REML du modèle (effets aléatoires, variance résiduelle, φ de CAR1), et ses autres termes restent
+hors des plans (leurs effets tenus pour constants). Pour chaque plan, la variance de
+l'estimateur des moindres carrés généralisés de la pente, ces variances connues, (X'V⁻¹X)⁻¹ avec
+V la covariance du plan (Diggle et al., 2002), donne la puissance Φ(|β|/et − z) + Φ(−|β|/et −
+z) : la puissance selon le nombre d'années, une ligne par nombre d'unités, la ligne des 80 %, une
+phrase prête pour un rapport (« Avec 12 unités de « site », chacune comptée chaque année, une
+baisse de 3 % par an de « densite » est détectée avec une puissance de 80 % après 11 ans »), et
+le tableau. Chaque unité étant comptée chaque année, les ordonnées à l'origine aléatoires ne
+changent rien à la variance de la pente : la variance résiduelle, φ, les années et le nombre de
+séries comptées la font. Une simulation vérifie la formule à un plan (par défaut celui des
+données) : N jeux de données (200 par défaut) tirés du modèle avec la tendance, chacun réajusté
+par nlme avec la même structure (REML), la puissance étant la part des pentes de p ≤ α (Johnson
+et al., 2015), avec son erreur de Monte-Carlo. Sa graine est fixe (les mêmes jeux à chaque fois ;
+le hasard de la session reste tel qu'il était), et la vue dit d'abord combien de temps elle
+prendra : le moteur R ajuste un modèle à la fois et ne fait rien d'autre en attendant (une
+simulation qui prendrait plus d'un quart d'heure, ou de plus de 20 000 observations par jeu, est
+refusée). Les deux peuvent différer : la simulation estime les variances et φ dans chaque jeu
+(avec peu d'unités ou d'années, elles sont incertaines) et teste la pente par le t de nlme, quand
+la formule les tient pour connues et prend la loi normale. Pas couverts, et refusés avec la
+raison : les GLM et les GAM, des pentes aléatoires, un modèle sans X quantitatif qui puisse être
+le temps, une autocorrélation CAR1 le long d'un temps d'autres unités que celui de la tendance.
+Une fois calculée, le texte des méthodes la décrit, le rapport du modèle peut la contenir et
+Exporter vers R la refait (la simulation avec les mêmes tirages).
 Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
 un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
 comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par
@@ -843,6 +876,22 @@ une variance nulle est au bord de son domaine, où la loi du χ² ne tient plus 
 par l'AIC. Avec des courbes ou des effets aléatoires de mgcv, les ddl sont des edf et le test
 est approché, comme le dit le tableau. Toutes les paires emboîtées sont listées (2000 au
 plus) ; la recherche du tableau trouve celles d'un modèle.
+Prédiction › Comparer les modèles › Coefficients côte à côte (le choix en haut de la vue) :
+plusieurs régressions comme les articles les présentent, une ligne par terme et une colonne par
+modèle. Cochez les régressions du projet à montrer (toutes d'abord). Chaque case est
+l'estimation avec son intervalle à 95 %, ou avec son erreur-type, du tableau de la vue
+Coefficients du modèle (ses décimales celles de deux chiffres significatifs de l'erreur-type), en
+rouge quand p ≤ 0,05, vide quand le modèle n'a pas le terme. Les lignes sont la constante et les
+termes du premier modèle, puis ceux des autres dans leur ordre : deux modèles partagent une ligne
+quand ils ont un terme du même nom. Dessous : n, AIC et AICc (ajustement en ML), R² (une
+régression linéaire), R² marginal et conditionnel (un modèle mixte) ou part de la déviance
+expliquée (un GLM ou un GAM), l'écart-type σ de chaque effet aléatoire (et le résiduel d'un
+modèle de nlme), φ de CAR1 et l'edf de chaque courbe. Un modèle de lien log ou logit garde ses
+estimations sur l'échelle du lien, comme dans sa vue Coefficients, et la note le dit. Ctrl+C (ou
+le bouton de copie) met le tableau dans le presse-papiers en texte et en tableau, qu'Excel et
+Word collent en tableau, avec des étoiles pour p (* ≤ 0,05, ** ≤ 0,01, *** ≤ 0,001) et leur
+légende ; Fichier › Exporter les résultats du modèle (Ctrl+E), depuis cette vue, l'écrit, avec à
+côté les coefficients de chaque modèle en nombres.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
 résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires (chaque
 ordonnée à l'origine et pente aléatoire, et leur corrélation) et les courbes, un tableau

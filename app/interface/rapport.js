@@ -3,7 +3,7 @@
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
-import { VUES, resumeSeuils, notePhi, notesTermesRetires, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres } from './panneaux.js';
+import { VUES, resumeSeuils, notePhi, notesTermesRetires, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites } from './panneaux.js';
 import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
@@ -35,7 +35,7 @@ export const PARTIES_TYPES = {};
 // as in their panels. `variantes`: one plot per setting of the view (each term's effect; the
 // residuals against the fitted values, then on a normal Q-Q plot, and so the quantile residuals of
 // a model of counts, presence-absence or positive values). `si`: only for the models it accepts
-// (the thresholds: an additive model's curves).
+// (the thresholds: an additive model's curves; the trend power: a linear or linear mixed model).
 const avecCourbes = (m) => [].concat((m.courbes && m.courbes.terme) || []).length > 0;
 const PARTIES_REGRESSION = [
   { cle: 'resume', defaut: true, tableau: tableauRegression },
@@ -50,6 +50,7 @@ const PARTIES_REGRESSION = [
   { cle: 'acf', vue: 'acf' },  // (the time and groups of its panel, else CAR1's or those it guesses)
   { cle: 'apports', vue: 'apports' },
   { cle: 'selection_aic', vue: 'selection_aic', tableau: tableauSelectionAIC },
+  { cle: 'puissance', vue: 'puissance', si: (m) => ['LM', 'LMM'].includes(m.type), tableau: tableauPuissance },
 ];
 
 export function dialogueRapport(app, id) {
@@ -248,6 +249,21 @@ async function tableauSelectionAIC(m) {
     { entetes: [t('aic_rang'), ...groupes, 'k', 'logLik', 'AICc', 'ΔAICc', t('poids_akaike'), t('aic_poids_cumule')],
       lignes: lignesSelectionAIC(s).map((i) => [String(i + 1), ...groupes.map((_, j) => ([].concat(s.contient[j])[i] === 1 ? '●' : '')), nombreParametres(col('k')[i]),
         nombre(col('logLik')[i], 2), nombre(col('AICc')[i], 2), nombre(col('delta')[i], 2), nombre(col('poids')[i], 3), nombre(col('poids_cumule')[i], 3)]) }];
+}
+
+// The trend power, as in its panel (moteur/R/puissance.R: computed and kept by the engine, the last
+// settings of its view, otherwise the defaults): the sentence, what it took from the model, the
+// simulation's result if it was run, and the power for each number of years and of units.
+async function tableauPuissance(m) {
+  let r;
+  try { r = await demander('puissance_tendance', { modele: m.id }); } catch (e) { return [{ texte: e.message }]; }
+  const tab = r.tableau;
+  const col = (k) => [].concat(tab[k]);
+  const puissance = new Map(col('puissance').map((p, i) => [`${col('annees')[i]}:${col('unites')[i]}`, p]));
+  const unites = [].concat(r.reglages.unites);
+  return [{ texte: r.phrase }, { texte: notesPuissance(r) }].concat(r.simulation ? [{ texte: resultatSimulation(r, r.simulation) }] : [],
+    [{ entetes: [t('puissance_annees'), ...unites.map((u) => libelleUnites(r, u))],
+      lignes: [...new Set(col('annees'))].map((a) => [String(a), ...unites.map((u) => nombre(puissance.get(`${a}:${u}`), 2))]) }]);
 }
 
 // A regression's coefficients, as in its Coefficients panel (exp() of them with a log or logit link).
