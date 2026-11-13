@@ -48,12 +48,16 @@ File › Open (Ctrl+O):
     A column of measurements with a few text cells (<0.5, <LOD, nd, n.d., #N/A...) stays a
     quantitative variable: those cells are read as missing, and the status bar says how many,
     in which variables (and which are below the detection limit). Excel dates and times stay
-    dates (2024-05-03). A text file with a line holding more values than the header is refused,
-    with the line number, rather than shifting the columns. An R file must hold tables; any
-    other object is refused. R files open only with R 4.4 or newer (included on Windows): with
-    an older R, such as that of Ubuntu 22.04 or 24.04 or Debian 12, a .rds or .RData file could
-    run code as soon as it is read (CVE-2024-27322), so Nuée refuses it; save the table as CSV
-    or Excel instead.
+    dates (2024-05-03), as text, like those of a text file (as written: 14/05/2019) or of R: a
+    column of dates is a qualitative variable when dates repeat (sectors counted the same day),
+    a secondary identifier when they all differ, the observation names when it is the first
+    column (move it further to make it a time); variable or identifier, it can be the time (see
+    Dates as time). An Excel number without a date format (43599) stays a number. A text file
+    with a line holding more values than the header is refused, with the line number, rather
+    than shifting the columns. An R file must hold tables; any other object is refused. R files
+    open only with R 4.4 or newer (included on Windows): with an older R, such as that of
+    Ubuntu 22.04 or 24.04 or Debian 12, a .rds or .RData file could run code as soon as it is
+    read (CVE-2024-27322), so Nuée refuses it; save the table as CSV or Excel instead.
 File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).
@@ -377,22 +381,52 @@ mean, skewness, skewness test and kurtosis. In red: Min/Max < 0.1 and a skewness
 A click on a row shows the variable's histogram, next to that of the transformed variable.
 The other view is the map of missing values (observations × variables).
 
+Dates as time
+-------------
+Wherever a time is asked for (Series, BACI, Residual autocorrelation, a mixed model's CAR1
+autocorrelation, previous() and following() in New variable), it can be numbers (the year;
+2019.5) or dates: 2019-05-14 (ISO, with the time of day if needed: 2019-05-14 10:30) or
+14/05/2019, also 14-05-2019 and 14.05.2019, with a four-digit year. The day always comes
+first, as in France: 05/04/2019 is 5 April, never 4 May. A date becomes a decimal year: the
+year + (the day of the year − 1 + the fraction of the day) / the number of days in the year
+(366 in leap years); 1 January 2019 is 2019, 14 May 2019 is 2019.364. Years and dates thus read
+alike: a Sen slope or the CAR1 φ is per year. A time is made of numbers or of dates, not both:
+a value of the other kind, or a date that doesn't exist (31/02/2019), is refused, naming it. A
+number stays a number: an Excel day number (43599) can't be told from a year. previous() and
+following() keep their rule, the time exactly one step before: they go with regular times
+(years); with dates that time rarely exists, and no nearby date is taken instead. The export to
+R reads the dates the same way.
+
 Series
 ------
 Plots › Series (or in the explorer, under the project): a variable over time, like figures of
-series by sector, one page per site. Choose the variable, the time (a numeric variable, or an
-ID made of numbers like the year), the lines (a qualitative variable or an ID: the sector)
-and, optionally, the panels (the site): one small plot per panel, in a grid with shared axes.
-Within a line, times that follow each other at its own step (its smallest gap) are joined, so a
-sector counted every other year stays one line; a missing time breaks the line, so a year
-without a count shows. Colours go by line within each panel and the legend is grouped by panel
-(a click on an entry hides its line): it stays readable with 30 sectors. Optionally: the mean
-of each panel's lines, time by time (a thick line), a log scale (values ≤ 0 aren't shown on it)
-and events, times typed as "2015; 2019", drawn as dashed lines in every panel. Hovering gives
-the observation's name, the time and the value; a click or a box selects observations, also in
-the project's models when the selection is shared with them. Observations without a time, a
-value, a line or a panel are left out and counted; a line with the same time twice (sectors
-chosen without their site) is flagged and shown as points. Right-click: copy or save the image.
+series by sector, one page per site. Choose the variable, the time (a variable or an ID made of
+numbers, like the year, or of dates: see Dates as time), the lines (a qualitative variable or
+an ID: the sector) and, optionally, the panels (the site): one small plot per panel, in a grid
+with shared axes. Within a line, times that follow each other at its own step (its smallest
+gap) are joined, so a sector counted every other year stays one line; a missing time breaks
+the line, so a year without a count shows. Dates, rarely evenly spaced, go on a date axis, and
+a line joins all its points. Colours go by line within each panel and the legend is grouped by
+panel (a click on an entry hides its line): it stays readable with 30 sectors. Optionally: the
+mean of each panel's lines, time by time (a thick line), a log scale (values ≤ 0 aren't shown
+on it) and events, times typed as "2015; 2019" (with dates, also 2019-05-14 or 14/05/2019),
+drawn as dashed lines in every panel. Hovering gives the observation's name, the time and the
+value; a click or a box selects observations, also in the project's models when the selection
+is shared with them. Observations without a time, a value, a line or a panel are left out and
+counted; a line with the same time twice (sectors chosen without their site) is flagged and
+shown as points. Right-click: copy or save the image.
+Trends (the toolbar's box): under the plot, a table gives for each line of each panel, marked
+with its colour, n (its times with a value), its first and last time; Sen's slope (Sen, 1968:
+the median of the slopes between all pairs of its times, per time unit, per year with dates)
+and its 95 % interval (Gilbert, 1987: the ranked slopes, taken around the median from the
+variance of S; no bounds when there are too few times); Kendall's τ (tau-b), the Mann–Kendall
+S and its two-sided p by the normal approximation (variance corrected for ties, continuity
+correction, as trend::mk.test and Kendall::MannKendall do); and the p corrected over the lines
+(Benjamini–Hochberg, or Holm as a choice). A line with fewer than 4 times, the same time twice
+or the same value at every time isn't tested, and the table says why; Ctrl+C copies it. The
+test takes the times as independent: positive autocorrelation (years that resemble each other)
+makes p too small. For a trend that accounts for it: Plots › Residual autocorrelation, then a
+mixed model with a CAR1 autocorrelation, the year as an X.
 
 Statistical tests
 -----------------
@@ -479,17 +513,19 @@ of pairs. A click on a pair, in the table or the plot, tests it in "Two variable
 
 Before/after (BACI): a change of management on some units (the impact) compared with units
 left as they were (the controls), as in a before-after control-impact design. Choose a
-quantitative response, a time (a quantitative variable or an observation ID: the year) and a
-unit (a qualitative variable or an ID: the sector), then tick the impact unit(s) and the
-control unit(s). At each time, the gap d_t is the mean of the impact rows minus the mean of
-the control rows, at the times where both have a value (one row per unit and time gives the
-mean of the units; the times with one side only are listed and left out). The event is the
-first time counted as "after": for a spring density that responds to the previous year's
-management, the year after the change. The times before it are "before"; "after" runs to an
-optional end, the later times shown in grey, out of the test. With at least two times in each
-period, the gaps after are compared with those before: Welch's t test (the default),
-Student's t (equal variances: a linear model of the gap on the period) or Mann–Whitney (on
-ranks); the effect is the change in the mean gap, after minus before, with its 95 % interval,
+quantitative response, a time (a variable or an observation ID: the year, or dates) and a unit
+(a qualitative variable or an ID: the sector), then tick the impact unit(s) and the control
+unit(s). At each time, the gap d_t is the mean of the impact rows minus the mean of the
+control rows, at the times where both have a value (one row per unit and time gives the mean
+of the units; the times with one side only are listed and left out): with dates, the impact
+and the controls counted on the same day; to compare years, take the year. The event is the
+first time counted as "after" (a number or a date; with dates, a year is its 1 January): for a
+spring density that responds to the previous year's management, the year after the change.
+The times before it are "before"; "after" runs to an optional end, the later times shown in
+grey, out of the test. With at least two times in each period, the gaps after are compared
+with those before: Welch's t test (the default), Student's t (equal variances: a linear model
+of the gap on the period) or Mann–Whitney (on ranks); the effect is the change in the mean
+gap, after minus before, with its 95 % interval,
 and the result comes as a sentence ready for a report. The plot shows the gaps over time, the
 event and each period's mean; until an event is entered, the gaps alone. The times are treated
 as independent: successive gaps that resemble each other (autocorrelation) make the p value
@@ -518,9 +554,10 @@ gives coefficients per standard deviation.
 A mixed model (nlme) adds nested random effects, the widest first: a random intercept for each
 site, then for each sector within its site (an observation ID or a qualitative variable). It
 can add an autocorrelation in time (CAR1, continuous time: missing years are fine; the time is
-a numeric ID or a quantitative variable) within the last level or, through "within each",
-within a finer one that has no random effect of its own: the sector within its site, when only
-the site has a random effect. Coefficients and variances are
+an ID or a variable, of numbers or of dates, and φ is then from one year to the next: see Dates
+as time) within the last level or, through "within each", within a finer one that has no
+random effect of its own: the sector within its site, when only the site has a random effect.
+Coefficients and variances are
 estimated by REML; the log-likelihood, AIC, AICc and BIC come from the ML fit, the only one
 that compares models with different fixed effects. Cross-validation defaults to the first
 random effect: each site is predicted by the fixed effects of the model fitted without it, as a
@@ -594,15 +631,15 @@ apart in their group's time order (a missing year is skipped), lags 0 to 10 at m
 band ±1.96/√n of each lag (n: its pairs), as nlme draws it. A model with CAR1 keeps its time
 and groups and shows two series: its residuals without the autocorrelation, and its normalized
 residuals, which show none left when CAR1 is enough (the note reads lag 1). For another model,
-choose the time (an ID or a quantitative variable: the year) and the groups: by default those
-of its random effects (the sector within its site), otherwise an ID or a qualitative variable;
-either can take a finer level within it (the sector within the site of a random effect, or a
-sector whose names repeat from one site to another). Beyond the band at lag 1, the note
-suggests a CAR1 autocorrelation, to compare by AIC. For a GLM or a GAM, Pearson residuals
-((y − fitted) / √variance) or deviance residuals (each observation's signed share of the
-deviance), the same for the normal distribution; a mixed model's residuals are those within its
-groups (given the random effects), as in nlme::ACF. Nuée computes the normalized residuals in
-each group's time order: nlme's own are right only on rows sorted by group, then by time.
+choose the time (an ID or a variable, of numbers or of dates: the year) and the groups: by
+default those of its random effects (the sector within its site), otherwise an ID or a
+qualitative variable; either can take a finer level within it (the sector within the site of a
+random effect, or a sector whose names repeat from one site to another). Beyond the band at lag
+1, the note suggests a CAR1 autocorrelation, to compare by AIC. For a GLM or a GAM, Pearson
+residuals ((y − fitted) / √variance) or deviance residuals (each observation's signed share of
+the deviance), the same for the normal distribution; a mixed model's residuals are those within
+its groups (given the random effects), as in nlme::ACF. Nuée computes the normalized residuals
+in each group's time order: nlme's own are right only on rows sorted by group, then by time.
 Within the groups of its random effects, with or without a finer level, Fit with CAR1 makes it
 a new model: the same settings with a CAR1 autocorrelation along that time within those groups
 (an LMM, or a GLM or GAM with the normal distribution, then fitted by mgcv::gamm; the button is
@@ -611,8 +648,7 @@ selected with its default views open. An LMM on the same observations stays in t
 the model without CAR1: the two compare by AIC in Prediction › Compare models (the
 likelihood-ratio test doesn't test an autocorrelation). The note says when they don't:
 observations without a time or a group stay out of the new model, and mgcv::gamm's likelihood
-doesn't compare with mgcv::gam's.
-File › Model report can include the plot.
+doesn't compare with mgcv::gam's. File › Model report can include the plot.
 Plots › AIC selection (also under each regression in the explorer): which variables to keep.
 Each combination of the model's groups of terms (the blocks of the Block column, otherwise the
 variables), from the null model to the full model, is fitted by ML on the same observations and
@@ -777,12 +813,12 @@ In a New variable formula, from one year to the next: previous(x, year, sector),
 the year before in the same sector, and following(x, year, sector), that of the year after
 (pas = 2: two years before or after). The year sought must exist: a missing year gives a
 missing value, never that of an older year, as does an observation without a sector or a year.
-The time is numeric (an ID made of numbers, like the year, will do); the group, a qualitative
-variable, an ID or interaction(site, sector) for a sector within a site; the same sector twice
-in one year is refused, naming it. growth_rate(x, year, sector) gives the growth rate log(x / x
-of the year before), missing unless both values are positive: for density dependence, the
-growth rate against previous(density, year, sector). In French: precedent, suivant and
-croissance.
+The time is made of numbers (an ID made of numbers, like the year, will do); dates too, but
+these functions go with regular times (see Dates as time); the group, a qualitative variable,
+an ID or interaction(site, sector) for a sector within a site; the same sector twice in one
+year is refused, naming it. growth_rate(x, year, sector) gives the growth rate log(x / x of
+the year before), missing unless both values are positive: for density dependence, the growth
+rate against previous(density, year, sector). In French: precedent, suivant and croissance.
 
 File history
 ------------

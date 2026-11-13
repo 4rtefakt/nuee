@@ -551,6 +551,55 @@ verifier("refusé, en disant pourquoi : sans effet aléatoire, une loi de Poisso
            grepl("choisissez ses effets aléatoires", refus(definition_car1(pac, d0_ac, annee_ac, list(site_ac)))) &&
            grepl("choisissez ses effets aléatoires", refus(definition_car1(pac, d0_ac, annee_ac, NULL))) &&
            grepl("déjà", refus(definition_car1(pac, dcar_ac, annee_ac, car1_effets))))
+cat("Le temps en dates : l'autocorrélation des résidus et CAR1\n")
+# les mêmes 8 sites, comptés chaque année un même jour de mai ou de juin (qui change d'une année à
+# l'autre) : la date en texte, le jour d'abord (une variable qualitative : chaque date revient pour
+# les 8 sites), et la même en années décimales refaite avec R (le jour de l'année de as.POSIXlt)
+set.seed(13)
+jours_an <- as.Date(sprintf("%d-05-01", 2001:2011)) + sample(0:45, 11, TRUE)
+tdt <- tac
+tdt$date <- format(jours_an[tac$annee - 2000], "%d/%m/%Y")
+tdt$decimale <- tac$annee + as.POSIXlt(jours_an[tac$annee - 2000])$yday / ifelse(tac$annee %% 4 == 0, 366, 365)
+pdt <- projet_depuis_tableau(tdt, "dates")
+udt <- function(...) numeros(pdt, c(...))
+temps_d <- list(by = "variable", variable = udt("date"))
+temps_n <- list(by = "variable", variable = udt("decimale"))
+site_d <- list(by = "variable", variable = udt("site"))
+ml_d <- ajuster(pdt, definir_modele(pdt, "LM", x = udt("x", "z"), y = udt("y"), echelle = "none"))
+ad_d <- autocorrelation_residus(pdt, ml_d, temps = temps_d, groupe = site_d)
+ad_n <- autocorrelation_residus(pdt, ml_d, temps = temps_n, groupe = site_d)
+verifier("sans CAR1, le temps en dates (une variable qualitative) : la même autocorrélation qu'en années décimales, et qu'en années (le même ordre dans chaque site)",
+         length(variable_du_projet(pdt, udt("date"))$categories) == 10 && proche(ad_d$series[[1]]$acf, ad_n$series[[1]]$acf, 1e-12) &&
+           identical(ad_d$paires, ad_n$paires) && ad_d$n == 80 && ad_d$temps == "date" && proche(ad_d$series[[1]]$acf, al$series[[1]]$acf, 1e-10))
+car1_d <- function(tps) definir_modele(pdt, "LMM", x = udt("x", "z"), y = udt("y"), echelle = "none", aleatoires = list(site_d), correlation = list(type = "CAR1", temps = tps))
+mc_d <- ajuster(pdt, car1_d(temps_d))
+mc_n <- ajuster(pdt, car1_d(temps_n))
+rc_d <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ decimale | site), data = tdt, method = "REML", control = ctrl)
+rc_d_ml <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ decimale | site), data = tdt, method = "ML", control = ctrl)
+verifier(sprintf("CAR1 le long des dates : coefficients, φ (%.3f par an), AIC et résidus normalisés = ceux des années décimales, et = nlme::lme(corCAR1(form = ~ decimale | site))", mc_d$resultat$phi),
+         proche(mc_d$resultat$coefficients$estimation, mc_n$resultat$coefficients$estimation, 1e-10) && proche(mc_d$resultat$phi, mc_n$resultat$phi, 1e-10) &&
+           proche(mc_d$resultat$AIC, mc_n$resultat$AIC, 1e-10) && proche(mc_d$resultat$residus, mc_n$resultat$residus, 1e-10) &&
+           proche(mc_d$resultat$coefficients$estimation, nlme::fixef(rc_d), 1e-5) && proche(mc_d$resultat$phi, unname(stats::coef(rc_d$modelStruct$corStruct, unconstrained = FALSE)), 1e-4) &&
+           proche(mc_d$resultat$AIC, AIC(rc_d_ml), 1e-6))
+ac_d <- autocorrelation_residus(pdt, mc_d)
+verifier("CAR1 le long des dates, l'autocorrélation de ses résidus et de ses résidus normalisés : celle des années décimales",
+         isTRUE(ac_d$car1) && proche(ac_d$series[[1]]$acf, autocorrelation_residus(pdt, mc_n)$series[[1]]$acf, 1e-10) &&
+           proche(ac_d$series[[2]]$acf, autocorrelation_residus(pdt, mc_n)$series[[2]]$acf, 1e-8))
+pdi_t <- pdt
+pdi_t$observation_id_names <- c("Observation", "jour")
+for (i in seq_along(pdi_t$observations)) pdi_t$observations[[i]]$ids <- c(pdi_t$observations[[i]]$ids[1], format(jours_an[tac$annee[i] - 2000]))
+verifier("CAR1 le long de dates ISO en identifiant des observations : le même modèle",
+         proche(ajuster(pdi_t, definir_modele(pdi_t, "LMM", x = udt("x", "z"), y = udt("y"), echelle = "none", aleatoires = list(site_d),
+                                              correlation = list(type = "CAR1", temps = list(by = "id", id = "jour"))))$resultat$AIC, mc_d$resultat$AIC, 1e-10))
+tdt2 <- tdt
+tdt2$date[tdt2$date == tdt2$date[5]] <- "31/02/2005"
+pdt2 <- projet_depuis_tableau(tdt2, "date impossible")
+m_imp <- refus(ajuster(pdt2, definir_modele(pdt2, "LMM", x = numeros(pdt2, c("x", "z")), y = numeros(pdt2, "y"), echelle = "none",
+                                            aleatoires = list(list(by = "variable", variable = numeros(pdt2, "site"))),
+                                            correlation = list(type = "CAR1", temps = list(by = "variable", variable = numeros(pdt2, "date"))))))
+verifier(sprintf("une date qui n'existe pas dans le temps de CAR1 ou de l'autocorrélation des résidus : refusée, nommée (« %s »)", m_imp),
+         grepl("^Le temps \\(date\\) doit être fait de nombres .*« 31/02/2005 » n'est pas une date qui existe$", m_imp) &&
+           grepl("« 31/02/2005 »", refus(autocorrelation_residus(pdt2, ml_d, temps = list(by = "variable", variable = numeros(pdt2, "date")))), fixed = TRUE))
 
 cat("Tests du rapport de vraisemblance (regression_diagnostics.R)\n")
 mx_ac <- regr_ac("LMM", "x", aleatoires = list(site_ac))
@@ -928,8 +977,15 @@ verifier("une observation sans temps ou sans groupe a NA, et ne compte pour aucu
          proche(calcule(pl_vides, "precedent(densite, an, interaction(site, secteur))"), c(NA, NA, NA, 4, NA, NA, NA, 5, NA, NA)) &&
            proche(calcule(pl_vides, "suivant(densite, an, interaction(site, secteur))"), c(0, NA, NA, NA, NA, NA, NA, NA, NA, NA)))
 m_temps <- refus(calcule(pl_ids, "precedent(densite, secteur, site)"))
-verifier(sprintf("le temps doit être numérique : « %s » ; le pas, positif", m_temps),
-         grepl("numérique", m_temps) && grepl("« S1 »", m_temps, fixed = TRUE) && grepl("pas", refus(calcule(pl, "suivant(densite, annee, code, pas = 0)"))))
+verifier(sprintf("le temps doit être fait de nombres ou de dates : « %s » ; le pas, positif", m_temps),
+         startsWith(m_temps, "precedent() : le temps doit être fait de nombres") && grepl("« S1 » n'est ni un nombre ni une date", m_temps, fixed = TRUE) &&
+           grepl("pas", refus(calcule(pl, "suivant(densite, annee, code, pas = 0)"))))
+# (des dates : la même règle, le temps exactement un an avant en années décimales : le 1er janvier
+# d'une année est l'année même ; le 15 mai 2004, d'une année bissextile, n'est pas 2003,367 + 1)
+pl_dates <- projet_depuis_tableau(data.frame(nom = paste0("j", 1:4), secteur = "a", date = c("01/01/2003", "01/01/2004", "15/05/2003", "15/05/2004"),
+                                             densite = c(2, 3, 4, 5)), "décalages en dates")
+verifier("des dates : le temps exactement un pas avant, comme avec des années (le 1er janvier 2003 un an avant le 1er janvier 2004 ; pas le 15 mai 2003 avant le 15 mai 2004)",
+         proche(calcule(pl_dates, "precedent(densite, date, secteur)"), c(NA, 2, NA, NA)))
 
 cat("Imputation par ACP (Nouvelle variable)\n")
 set.seed(5)

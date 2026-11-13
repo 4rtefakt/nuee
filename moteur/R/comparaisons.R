@@ -691,12 +691,16 @@ paires_niveaux <- function(x, f, cle, presents, groupes = NULL, nom_cle = "") {
 }
 
 # Pour les phrases, les noms et les titres du BACI, dans la langue des messages : des unités (trois
-# nommées au plus : « S1, S2, S3… (5) »), un temps (la virgule décimale en français) et la période
-# après (« annee ≥ 2007 », ou « 2007 ≤ annee ≤ 2012 » avec une fin).
+# nommées au plus : « S1, S2, S3… (5) »), un temps (la virgule décimale en français ; une date quand
+# le temps est fait de dates : `dates`) et la période après (« annee ≥ 2007 », ou « 2007 ≤ annee ≤
+# 2012 » avec une fin).
 texte_unites <- function(x) if (length(x) > 3) sprintf("%s… (%d)", paste(x[1:3], collapse = ", "), length(x)) else paste(x, collapse = ", ")
-texte_temps <- function(x) trimws(formatC(x, digits = 10, format = "fg", decimal.mark = if (identical(getOption("nuee.langue"), "en")) "." else ","))
-texte_apres <- function(evenement, fin, nom_temps) {
-  if (length(fin)) sprintf("%s ≤ %s ≤ %s", texte_temps(evenement), nom_temps, texte_temps(fin)) else sprintf("%s ≥ %s", nom_temps, texte_temps(evenement))
+texte_temps <- function(x, dates = FALSE) {
+  if (isTRUE(dates)) return(date_decimale(x))
+  trimws(formatC(x, digits = 10, format = "fg", decimal.mark = if (identical(getOption("nuee.langue"), "en")) "." else ","))
+}
+texte_apres <- function(evenement, fin, nom_temps, dates = FALSE) {
+  if (length(fin)) sprintf("%s ≤ %s ≤ %s", texte_temps(evenement, dates), nom_temps, texte_temps(fin, dates)) else sprintf("%s ≥ %s", nom_temps, texte_temps(evenement, dates))
 }
 
 # La phrase qui donne le résultat du test conseillé, dans la langue des messages, pour un
@@ -716,7 +720,7 @@ phrase_test <- function(r) {
     quoi <- sprintf(if (fr) "écart de %s impact (%s) − témoins (%s), après contre avant" else "%s gap impact (%s) − control (%s), after against before",
                     r$y$nom, texte_unites(r$impact), texte_unites(r$temoins))
     n <- sprintf(if (fr) "n = %d avant et %d après ; après : %s" else "n = %d before and %d after; after: %s", p$n[1], p$n[2],
-                 texte_apres(r$evenement, r$fin, r$temps$nom))
+                 texte_apres(r$evenement, r$fin, r$temps$nom, r$dates))
     if (r$test == "mann_whitney") {
       return(sprintf(if (fr) "Test de Mann–Whitney (BACI), %s : U = %s, %s ; écart médian %s avant et %s après, corrélation rang-bisériale = %s (%s)."
                      else "Mann–Whitney test (BACI), %s: U = %s, %s; median gap %s before and %s after, rank-biserial correlation = %s (%s).",
@@ -740,7 +744,7 @@ phrase_test <- function(r) {
     return(sprintf(if (fr) "Modèle linéaire mixte (BACI), %s ; %s, impact (%s) contre témoins (%s) : effet BACI (période × impact) = %s%s, t(%s) = %s, %s (n = %d observations de %d unités ; après : %s)."
                    else "Linear mixed model (BACI), %s; %s, impact (%s) against control (%s): BACI effect (period × impact) = %s%s, t(%s) = %s, %s (n = %d observations of %d units; after: %s).",
                    tient, o$noms$y, texte_unites(o$impact), texte_unites(o$temoins), nb(r$estimation), ic(c(r$bas, r$haut)), ddl(r$ddl), nb(r$t), pv(r$p),
-                   r$N, r$unites, texte_apres(o$evenement, o$fin, o$noms$temps)))
+                   r$N, r$unites, texte_apres(o$evenement, o$fin, o$noms$temps, o$dates)))
   }
   # le test de Friedman avant les paires de niveaux (tests_friedman()) : une ligne de son tableau,
   # dans un groupe (le site) avec sa valeur p corrigée par Holm sur les groupes testés
@@ -815,8 +819,9 @@ phrase_test <- function(r) {
 # sont tenus pour indépendants : l'autocorrélation des écarts n'est pas prise en compte (le modèle
 # mixte y ~ période × impact + (1 | unité), avec CAR1, le fait : modele_baci()).
 # y : le numéro d'une variable quantitative ; temps : une variable ou "id:k" aux valeurs
-# numériques (l'année) ; unite : une variable qualitative ou "id:k" (le secteur) ; impact et
-# temoins : ses niveaux. Sans evenement, la série des écarts seule.
+# numériques (l'année) ou des dates (temps_en_nombres : en années décimales ; `dates` le dit) ;
+# unite : une variable qualitative ou "id:k" (le secteur) ; impact et temoins : ses niveaux. Sans
+# evenement, la série des écarts seule ; l'événement et la fin sont un nombre ou une date.
 baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin = NULL, test = "welch", observations = NULL) {
   obs <- observations %||% numeros_observations(projet)
   liste <- function(v) paste(c(utils::head(v, 5), if (length(v) > 5) "…"), collapse = ", ")
@@ -827,12 +832,11 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   vy <- valeurs_a_tester(projet, y, obs)
   if (vy$qualitative) stop(traduire("La réponse doit être une variable quantitative", "The response must be a quantitative variable"))
   vt <- valeurs_a_tester(projet, temps, obs)
-  tv <- as.vector(temps_en_nombres(if (vt$qualitative) as.character(vt$valeurs) else vt$valeurs))
-  autres <- if (vt$qualitative) levels(droplevels(vt$valeurs[is.na(tv)])) else character(0)
-  if (length(autres)) {
-    stop(sprintf(traduire("Le temps doit être numérique : %s a des valeurs qui ne sont pas des nombres (%s)",
-                          "The time must be numeric: %s has values that aren't numbers (%s)"), vt$nom, liste(autres)))
-  }
+  tv <- temps_en_nombres(vt$valeurs)
+  if (!is.null(attr(tv, "refus"))) stop(refus_temps(tv, vt$nom))
+  dates <- isTRUE(attr(tv, "dates"))
+  ecrire <- if (dates) date_decimale else format
+  tv <- as.vector(tv)
   vu <- valeurs_a_tester(projet, unite, obs)
   if (!vu$qualitative) stop(traduire("L'unité doit être une variable qualitative ou un identifiant", "The unit must be a qualitative variable or an ID"))
   impact <- unique(as.character(unlist(impact)))
@@ -864,18 +868,21 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   serie$ecart <- serie$impact - serie$temoins
   cles <- paste(u[i], ti, sep = "\r")
   plusieurs <- table(factor(sub("\r.*", "", unique(cles[duplicated(cles)])), levels = c(impact, temoins)))
-  r <- list(type = "baci", y = vy[c("uid", "nom")], temps = vt[c("uid", "nom")], unite = vu[c("uid", "nom")], impact = impact, temoins = temoins,
+  r <- list(type = "baci", y = vy[c("uid", "nom")], temps = vt[c("uid", "nom")], dates = dates, unite = vu[c("uid", "nom")], impact = impact, temoins = temoins,
             serie = serie, seuls = seuls, manquantes = sum(!is.na(role)) - length(i),
             repetees = if (any(plusieurs > 0)) data.frame(unite = names(plusieurs)[plusieurs > 0], temps = as.integer(plusieurs[plusieurs > 0]), stringsAsFactors = FALSE))
   if (!length(evenement)) return(r)
-  evenement <- suppressWarnings(as.numeric(evenement))
-  if (length(evenement) != 1 || is.na(evenement)) stop(traduire("Le temps de l'événement doit être un nombre", "The event time must be a number"))
+  # (l'événement et la fin : un nombre, ou une date, lus comme le temps ; une année avec des dates
+  # est son 1er janvier)
+  un_temps <- function(x) { x <- temps_en_nombres(x); if (length(x) == 1 && !is.na(x)) as.vector(x) else NA_real_ }
+  evenement <- un_temps(evenement)
+  if (is.na(evenement)) stop(traduire("Le temps de l'événement doit être un nombre ou une date", "The event time must be a number or a date"))
   if (length(fin)) {
-    fin <- suppressWarnings(as.numeric(fin))
-    if (length(fin) != 1 || is.na(fin)) stop(traduire("La fin de la période après doit être un nombre", "The end of the after period must be a number"))
+    fin <- un_temps(fin)
+    if (is.na(fin)) stop(traduire("La fin de la période après doit être un nombre ou une date", "The end of the after period must be a number or a date"))
     if (fin < evenement) {
       stop(sprintf(traduire("La fin de la période après (%s) vient avant l'événement (%s)", "The end of the after period (%s) comes before the event (%s)"),
-                   format(fin), format(evenement)))
+                   ecrire(fin), ecrire(evenement)))
     }
   } else fin <- NULL
   hors <- if (length(fin)) serie$temps > fin else rep(FALSE, nrow(serie))
@@ -888,7 +895,7 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   if (nb < 2 || na < 2) {
     stop(sprintf(traduire("Il faut au moins deux valeurs de %s dans chaque période, avant et après %s : il y en a %d avant et %d après",
                           "At least two values of %s are needed in each period, before and after %s: there are %d before and %d after"),
-                 vt$nom, format(evenement), nb, na))
+                 vt$nom, ecrire(evenement), nb, na))
   }
   if (diff(range(c(db, da))) == 0) stop(traduire("L'écart est le même à chaque temps : rien à comparer", "The gap is the same at every time: nothing to compare"))
   w <- essai_test(stats::t.test(da, db))
@@ -956,7 +963,9 @@ modele_baci <- function(projet, y, temps, unite, impact, temoins, evenement, fin
 variables_baci <- function(projet, temps, unite, impact, temoins, evenement) {
   obs <- as.numeric(rownames(projet$donnees))
   vt <- valeurs_a_tester(projet, temps, obs)
-  tv <- as.vector(temps_en_nombres(if (vt$qualitative) as.character(vt$valeurs) else vt$valeurs))
+  tv <- temps_en_nombres(if (vt$qualitative) as.character(vt$valeurs) else vt$valeurs)
+  dates <- isTRUE(attr(tv, "dates"))
+  tv <- as.vector(tv)
   vu <- valeurs_a_tester(projet, unite, obs)
   u <- as.character(vu$valeurs)
   # (dans l'ordre des niveaux : les mêmes noms quel que soit l'ordre des cases cochées)
@@ -964,11 +973,11 @@ variables_baci <- function(projet, temps, unite, impact, temoins, evenement) {
   impact <- ordre(impact)
   temoins <- ordre(temoins)
   evenement <- as.numeric(evenement)
-  noms <- c(periode = sprintf(traduire("période BACI (%s)", "BACI period (%s)"), texte_temps(evenement)),
+  noms <- c(periode = sprintf(traduire("période BACI (%s)", "BACI period (%s)"), texte_temps(evenement, dates)),
             impact = sprintf(traduire("impact BACI (%s contre %s)", "BACI impact (%s vs %s)"), texte_unites(impact), texte_unites(temoins)))
   valeurs <- list(periode = ifelse(is.na(tv), NA_real_, as.numeric(tv >= evenement)),
                   impact = ifelse(u %in% impact, 1, ifelse(u %in% temoins, 0, NA_real_)))
-  regles <- c(periode = sprintf(traduire("1 quand %s ≥ %s, 0 avant", "1 when %s ≥ %s, 0 before"), vt$nom, texte_temps(evenement)),
+  regles <- c(periode = sprintf(traduire("1 quand %s ≥ %s, 0 avant", "1 when %s ≥ %s, 0 before"), vt$nom, texte_temps(evenement, dates)),
               impact = sprintf(traduire("1 pour %s, 0 pour %s, manquante ailleurs", "1 for %s, 0 for %s, missing elsewhere"), texte_unites(impact), texte_unites(temoins)))
   nouvelles <- character(0)
   for (k in names(noms)) {
@@ -1009,9 +1018,10 @@ definition_baci <- function(projet, b, v, car1 = FALSE) {
                       aleatoires = list(groupement(b$unite$uid)), correlation = if (car1) list(type = "CAR1", temps = groupement(b$temps$uid)),
                       nom = sprintf("BACI %s", b$y$nom),
                       titre = sprintf(traduire("impact %s contre témoins %s ; après : %s%s", "impact %s against control %s; after: %s%s"),
-                                      texte_unites(v$impact), texte_unites(v$temoins), texte_apres(b$evenement, b$fin, b$temps$nom), if (car1) ", CAR1" else ""))
+                                      texte_unites(v$impact), texte_unites(v$temoins), texte_apres(b$evenement, b$fin, b$temps$nom, b$dates), if (car1) ", CAR1" else ""))
   d$baci_origine <- list(y = b$y$uid, temps = b$temps$uid, unite = b$unite$uid, impact = v$impact, temoins = v$temoins, evenement = b$evenement,
-                         fin = b$fin, car1 = car1, noms = list(y = b$y$nom, temps = b$temps$nom, unite = b$unite$nom), variables = as.list(v$noms))
+                         fin = b$fin, car1 = car1, dates = isTRUE(b$dates), noms = list(y = b$y$nom, temps = b$temps$nom, unite = b$unite$nom),
+                         variables = as.list(v$noms))
   d
 }
 

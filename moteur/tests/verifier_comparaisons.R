@@ -558,7 +558,7 @@ verifier("moins de deux années dans une période, une unité impact et témoin,
          grepl("au moins une unité d'impact et une unité témoin", erreur_b(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", character(0), evenement = 2007)))
 verifier("une fin avant l'événement, un temps qui n'est pas un nombre, une unité ou une réponse du mauvais type, une variable pour deux rôles : refusé",
          grepl("vient avant l'événement", erreur_b(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", "S2", evenement = 2007, fin = 2005)) &&
-         grepl("^Le temps doit être numérique : secteur_id a des valeurs qui ne sont pas des nombres \\(S1, S2, S3, S4\\)$",
+         grepl("^Le temps \\(secteur_id\\) doit être fait de nombres \\(l'année\\) ou de dates .*, pas des deux : « S[1-4] » n'est ni un nombre ni une date$",
                erreur_b(pbi, bv("densite"), "id:2", bv("secteur"), "S1", "S2", evenement = 2007)) &&
          grepl("qualitative ou un identifiant", erreur_b(pbi, bv("densite"), "id:3", bv("annee"), "S1", "S2", evenement = 2007)) &&
          grepl("réponse doit être une variable quantitative", erreur_b(pb, bv("secteur"), bv("annee"), "id:1", "S1", "S2")) &&
@@ -755,6 +755,138 @@ pq2 <- projet_depuis_tableau(bq2, "baci virgule")
 rq2 <- baci(pq2, numeros(pq2, "compte"), numeros(pq2, "annee"), numeros(pq2, "secteur"), "I", "T", evenement = 2007, test = "welch")
 verifier("BACI, un temps écrit avec une virgule décimale : lu comme dans les séries", isTRUE(all.equal(rq2$tests$p, baci(pq, numeros(pq, "compte"), numeros(pq, "annee"),
          numeros(pq, "secteur"), "I", "T", evenement = 2007, test = "welch")$tests$p)))
+
+cat("Le temps en dates (variables.R : temps_en_nombres)\n")
+# l'année décimale refaite avec les dates de R (strptime, son jour de l'année) : l'année + (le jour
+# de l'année − 1 + la fraction du jour) / le nombre de jours de l'année
+annee_r <- function(x, format = "%Y-%m-%d") {
+  l <- as.POSIXlt(strptime(x, format, tz = "UTC"))
+  a <- 1900 + l$year
+  a + (l$yday + (l$hour * 3600 + l$min * 60 + l$sec) / 86400) / as.numeric(as.Date(sprintf("%d-01-01", a + 1)) - as.Date(sprintf("%d-01-01", a)))
+}
+egal <- function(a, b) isTRUE(all.equal(as.vector(a), as.vector(b), tolerance = 1e-12))
+jours <- c("2019-05-14", "2020-02-29", "2020-12-31", "2019-12-31", "2019-01-01", "2000-12-31", "1900-03-01")
+tj <- temps_en_nombres(jours)
+verifier("des dates ISO : l'année + (le jour de l'année − 1) / ses jours, 366 les années bissextiles (2000 l'est, 1900 non) ; le 1er janvier, l'année même",
+         isTRUE(attr(tj, "dates")) && egal(tj, annee_r(jours)) && tj[5] == 2019 && egal(tj[2], 2020 + 59 / 366) && egal(tj[3], 2020 + 365 / 366) &&
+           egal(tj[4], 2019 + 364 / 365) && egal(tj[6], 2000 + 365 / 366) && egal(tj[7], 1900 + 59 / 365))
+verifier("avec l'heure : la fraction du jour (10:30, 23:59:59 ; un T après la date ISO)",
+         egal(temps_en_nombres(c("2019-05-14 10:30", "2019-12-31 23:59")), annee_r(c("2019-05-14 10:30", "2019-12-31 23:59"), "%Y-%m-%d %H:%M")) &&
+           egal(temps_en_nombres("2019-12-31 23:59:59"), annee_r("2019-12-31 23:59:59", "%Y-%m-%d %H:%M:%S")) &&
+           egal(temps_en_nombres("2019-05-14T10:30"), temps_en_nombres("2019-05-14 10:30")) && egal(temps_en_nombres("2019-05-14 10:30"), 2019 + (133 + 10.5 / 24) / 365))
+verifier("le jour d'abord, toujours (05/04/2019 : le 5 avril), avec /, - ou . ; avec l'heure aussi",
+         egal(temps_en_nombres(c("14/05/2019", "14-05-2019", "14.05.2019", "4/5/2019", "05/04/2019")), annee_r(c("2019-05-14", "2019-05-14", "2019-05-14", "2019-05-04", "2019-04-05"))) &&
+           egal(temps_en_nombres("14/05/2019 10:30"), temps_en_nombres("2019-05-14 10:30")))
+verifier("des dates de R (Date, POSIXct à l'heure de sa zone), un facteur de dates : les mêmes années décimales",
+         egal(temps_en_nombres(as.Date(jours)), tj) && egal(temps_en_nombres(factor(jours)), tj) &&
+           egal(temps_en_nombres(as.POSIXct("2019-05-14 10:30", tz = "Europe/Paris")), temps_en_nombres("2019-05-14 10:30")))
+tnb <- temps_en_nombres(c("2019", "2020,5", "", NA))
+verifier("des nombres restent des nombres (la virgule décimale lue), sans être des dates",
+         egal(tnb, c(2019, 2020.5, NA, NA)) && is.null(attr(tnb, "dates")) && is.null(attr(tnb, "refus")) && egal(temps_en_nombres(c(2019, NA, Inf)), c(2019, NA, NA)))
+refus_t <- function(...) { r <- temps_en_nombres(c(...)); c(attr(r, "refus") %||% "", attr(r, "raison") %||% "") }
+verifier("un mélange de nombres et de dates est refusé, la première valeur de l'autre genre nommée : une année parmi des dates, une date parmi des années",
+         identical(refus_t("2019-05-14", "14/06/2020", "2021"), c("2021", "nombre")) && identical(refus_t("2019", "2020", "14/05/2021"), c("14/05/2021", "date")))
+verifier("une date qui n'existe pas (31/02/2019, 29/02/2019, 24:00), une année en deux chiffres ou un texte : refusés, en disant pourquoi",
+         identical(refus_t("31/02/2019", "01/03/2019"), c("31/02/2019", "impossible")) && identical(refus_t("2019-02-29", "2020-02-29"), c("2019-02-29", "impossible")) &&
+           identical(refus_t("2019-05-14 24:00", "2019-05-15"), c("2019-05-14 24:00", "impossible")) && identical(refus_t("14/05/19", "14/05/2020"), c("14/05/19", "illisible")) &&
+           identical(refus_t("S1", "S2"), c("S1", "illisible")) &&
+           identical(refus_temps(temps_en_nombres(c("31/02/2019", "01/03/2019")), "date"),
+                     "Le temps (date) doit être fait de nombres (l'année) ou de dates (2019-05-14, 14/05/2019), pas des deux : « 31/02/2019 » n'est pas une date qui existe"))
+verifier("une année décimale en date, pour les textes : l'inverse", identical(date_decimale(tj[1:2]), c("2019-05-14", "2020-02-29")) &&
+           identical(date_decimale(temps_en_nombres("2019-05-14 10:30")), "2019-05-14 10:30"))
+# trois secteurs comptés chaque printemps de 2001 à 2010, le même jour dans une année (qui change
+# d'une année à l'autre) : la date en texte, le jour d'abord (une variable qualitative, chaque date
+# revient pour les trois secteurs), et la même en années décimales, refaite avec R
+set.seed(31)
+jd <- expand.grid(secteur = c("S1", "S2", "S3"), annee = 2001:2010, stringsAsFactors = FALSE)
+jour <- as.Date(sprintf("%d-04-20", 2001:2010)) + sample(0:30, 10, TRUE)
+jd$date <- format(jour[jd$annee - 2000], "%d/%m/%Y")
+jd$decimale <- annee_r(format(jour[jd$annee - 2000]))
+jd$densite <- round(5 + 0.3 * (jd$annee - 2000) * (jd$secteur == "S1") + 1.5 * (jd$secteur == "S1" & jd$annee >= 2006) + rnorm(nrow(jd)), 2)
+pd <- projet_depuis_tableau(data.frame(nom = paste0("d", seq_len(nrow(jd))), jd[c("secteur", "date", "decimale", "densite")]), "dates")
+dv <- function(nom) numeros(pd, nom)
+sd <- series_variable(pd, dv("densite"), dv("date"), dv("secteur"))
+sn <- series_variable(pd, dv("densite"), dv("decimale"), dv("secteur"))
+verifier("Séries : une variable qualitative de dates donne les mêmes points et moyennes que ses années décimales, et le dit",
+         length(variable_du_projet(pd, dv("date"))$categories) == 10 && isTRUE(sd$dates) && identical(sn$dates, FALSE) &&
+           isTRUE(all.equal(sd$points, sn$points)) && isTRUE(all.equal(sd$moyennes, sn$moyennes)))
+pdi <- pd
+pdi$observation_id_names <- c("Observation", "jour")
+for (i in seq_along(pdi$observations)) pdi$observations[[i]]$ids <- c(pdi$observations[[i]]$ids[1], format(jour[jd$annee[i] - 2000]))
+verifier("Séries : des dates ISO en identifiant des observations, de même", isTRUE(all.equal(series_variable(pdi, dv("densite"), "id:2", dv("secteur"))$points, sn$points)))
+bd <- baci(pd, dv("densite"), dv("date"), dv("secteur"), "S1", c("S2", "S3"), evenement = "2006-01-01")
+bn <- baci(pd, dv("densite"), dv("decimale"), dv("secteur"), "S1", c("S2", "S3"), evenement = 2006)
+verifier(sprintf("BACI sur des dates : les mêmes écarts et tests qu'en années décimales, l'événement en date ou en année ; la phrase avec la date (« …%s »)", sub("^.*\\(n = ", "(n = ", bd$phrase)),
+         isTRUE(bd$dates) && identical(bn$dates, FALSE) && isTRUE(all.equal(bd$serie, bn$serie)) && isTRUE(all.equal(bd$tests, bn$tests)) &&
+           isTRUE(all.equal(baci(pd, dv("densite"), dv("date"), dv("secteur"), "S1", c("S2", "S3"), evenement = 2006)$tests, bd$tests)) &&
+           grepl("après : date ≥ 2006-01-01\\)\\.$", bd$phrase))
+bdf <- baci(pd, dv("densite"), dv("date"), dv("secteur"), "S1", c("S2", "S3"), evenement = "01/01/2006", fin = "31/12/2008", test = "mann_whitney")
+bnf <- baci(pd, dv("densite"), dv("decimale"), dv("secteur"), "S1", c("S2", "S3"), evenement = 2006, fin = 2009, test = "mann_whitney")
+verifier("BACI, la fin en date : les mêmes périodes et tests ; un événement qui n'est pas une date, refusé",
+         bdf$hors == 2 && identical(bdf$serie$periode, bnf$serie$periode) && isTRUE(all.equal(bdf$tests, bnf$tests)) &&
+           grepl("doit être un nombre ou une date", erreur_b(pd, dv("densite"), dv("date"), dv("secteur"), "S1", "S2", evenement = "31/02/2006")))
+
+cat("Tendances des séries (series.R : tendances_series)\n")
+# Mann–Kendall et la pente de Sen refaits à la main : S (les signes de toutes les paires dans
+# l'ordre du temps) et sa variance corrigée pour les ex aequo, la p de la formule classique (loi
+# normale, correction de continuité), les pentes de toutes les paires, leur médiane et ses rangs à
+# 95 % (Gilbert, 1987), le tau-b de cor()
+mk_main <- function(t, y) {
+  n <- length(y)
+  S <- 0
+  pentes <- numeric(0)
+  for (i in 1:(n - 1)) for (j in (i + 1):n) {
+    S <- S + sign(y[j] - y[i])
+    pentes <- c(pentes, (y[j] - y[i]) / (t[j] - t[i]))
+  }
+  ex <- table(y)
+  v <- (n * (n - 1) * (2 * n + 5) - sum(ex * (ex - 1) * (2 * ex + 5))) / 18
+  z <- if (S > 0) (S - 1) / sqrt(v) else if (S < 0) (S + 1) / sqrt(v) else 0
+  N <- length(pentes)
+  C <- qnorm(0.975) * sqrt(v)
+  o <- sort(pentes)
+  list(S = S, var_S = v, p = 2 * (1 - pnorm(abs(z))), pente = median(pentes), ic = c(o[round((N - C) / 2)], o[round((N + C) / 2 + 1)]),
+       tau = cor(t, y, method = "kendall"))
+}
+# deux sites : A-s1, 12 ans aux valeurs ex aequo ; A-s2, 3 ans ; A-s3, 4 ans ; B-s1, des années
+# irrégulières, en baisse ; B-s2, la même valeur chaque année ; B-s3, l'année 2002 deux fois
+ts <- rbind(data.frame(site = "A", secteur = "s1", annee = 2001:2012, y = c(3, 5, 5, 4, 7, 7, 7, 9, 8, 10, 10, 12)),
+            data.frame(site = "A", secteur = "s2", annee = c(2001, 2005, 2010), y = c(4, 6, 5)),
+            data.frame(site = "A", secteur = "s3", annee = 2001:2004, y = c(1, 3, 2, 4)),
+            data.frame(site = "B", secteur = "s1", annee = c(2001, 2002, 2004, 2007, 2008, 2011), y = c(9, 8, 8, 6, 7, 3)),
+            data.frame(site = "B", secteur = "s2", annee = 2003:2007, y = 5),
+            data.frame(site = "B", secteur = "s3", annee = c(2001, 2002, 2002, 2003, 2004), y = c(2, 3, 4, 5, 6)))
+pt <- projet_depuis_tableau(data.frame(nom = paste0("t", seq_len(nrow(ts))), ts[sample(nrow(ts)), ]), "tendances")
+st <- series_variable(pt, numeros(pt, "y"), numeros(pt, "annee"), numeros(pt, "secteur"), numeros(pt, "site"))
+tr <- tendances_series(st$points)
+ligne_tr <- function(s, se) tr[tr$panneau == s & tr$ligne == se, ]
+verif_mk <- function(s, se) {
+  r <- ligne_tr(s, se)
+  d <- ts[ts$site == s & ts$secteur == se, ]
+  h <- mk_main(d$annee, d$y)
+  isTRUE(all.equal(c(r$S, r$var_S, r$p, r$pente, r$bas, r$haut, r$tau), c(h$S, h$var_S, h$p, h$pente, h$ic, h$tau))) &&
+    r$n == nrow(d) && r$debut == min(d$annee) && r$fin == max(d$annee) && !nzchar(r$non_teste)
+}
+verifier(sprintf("A-s1, des ex aequo : S = %g et sa variance (%g) refaits à la main, p de la formule classique, τ = cor(method = \"kendall\"), Sen = la médiane des pentes et son intervalle (%.3f ; %.3f)",
+                 ligne_tr("A", "s1")$S, ligne_tr("A", "s1")$var_S, ligne_tr("A", "s1")$bas, ligne_tr("A", "s1")$haut),
+         verif_mk("A", "s1") && ligne_tr("A", "s1")$var_S < 12 * 11 * 29 / 18)
+verifier("B-s1, des années irrégulières : les pentes sur les vrais écarts de temps, la même chose", verif_mk("B", "s1") && ligne_tr("B", "s1")$S < 0)
+a3 <- ligne_tr("A", "s3")
+h3 <- mk_main(2001:2004, c(1, 3, 2, 4))
+verifier("4 temps : testé (S, p, pente, τ), mais trop peu pour un intervalle à 95 % de la pente (le rang (N − C)/2 arrondi est 0)",
+         isTRUE(all.equal(c(a3$S, a3$var_S, a3$p, a3$pente, a3$tau), c(h3$S, h3$var_S, h3$p, h3$pente, h3$tau))) && is.na(a3$bas) && is.na(a3$haut))
+verifier("3 temps, la même valeur chaque année, un même temps deux fois : pas de test, la ligne dit pourquoi",
+         is.na(ligne_tr("A", "s2")$p) && ligne_tr("A", "s2")$n == 3 && ligne_tr("A", "s2")$non_teste == "3 temps : il en faut au moins 4" &&
+           is.na(ligne_tr("B", "s2")$pente) && grepl("même valeur", ligne_tr("B", "s2")$non_teste) && grepl("deux fois", ligne_tr("B", "s3")$non_teste) &&
+           identical(paste(tr$panneau, tr$ligne), c("A s1", "A s2", "A s3", "B s1", "B s2", "B s3")))
+th <- tendances_series(st$points, "holm")
+verifier("la valeur p corrigée sur les lignes testées : Benjamini–Hochberg par défaut, Holm au choix (= p.adjust())",
+         isTRUE(all.equal(tr$p_ajuste, p.adjust(tr$p, "BH"))) && isTRUE(all.equal(th$p_ajuste, p.adjust(tr$p, "holm"))) && sum(!is.na(tr$p_ajuste)) == 3 &&
+           grepl("Correction inconnue", tryCatch(tendances_series(st$points, "bonferroni"), error = conditionMessage)))
+tdd <- tendances_series(sd$points)
+verifier(sprintf("sur des dates : les mêmes tendances qu'en années décimales, la pente par an (S1 : %.2f par an)", tdd$pente[1]),
+         isTRUE(all.equal(tdd, tendances_series(sn$points))) && tdd$pente[1] > 0 &&
+           isTRUE(all.equal(tdd$pente[1], mk_main(jd$decimale[jd$secteur == "S1"], jd$densite[jd$secteur == "S1"])$pente)))
 
 cat("Phrases\n")
 r <- test_deux_variables(p, variete, numeros(p, "sucre"))

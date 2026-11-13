@@ -60,9 +60,10 @@ residus_normalises_car1 <- function(e, temps, groupe, phi) {
 # "pearson" de nlme ; mgcv::gamm : ceux de sa partie $lme) et ses résidus normalisés
 # (residus_normalises_car1), qui n'en montrent plus si CAR1 en rend compte. Sinon `temps` et
 # `groupe` disent où la chercher, comme les groupements d'un modèle (valeurs_groupement : un
-# identifiant, une variable ; pour `groupe`, une liste de groupements emboîtés, du plus large au
-# plus fin : le site, puis le secteur dans le site) ; groupe = list(by = "effets") : les groupes de
-# ses effets aléatoires, emboîtés ; NULL : toutes les observations en une série. Une série :
+# identifiant, une variable ; le temps fait de nombres ou de dates, lu par temps_en_nombres ; pour
+# `groupe`, une liste de groupements emboîtés, du plus large au plus fin : le site, puis le
+# secteur dans le site) ; groupe = list(by = "effets") : les groupes de ses effets aléatoires,
+# emboîtés ; NULL : toutes les observations en une série. Une série :
 # les résidus de Pearson (lm, nlme), ou ceux de `type` pour un modèle de mgcv ("pearson" : (y −
 # ajusté) / √variance ; "deviance" : la part signée de chaque observation dans la déviance).
 autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type = "pearson") {
@@ -79,10 +80,11 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
     nom_temps <- m$temps
     nom_groupe <- m$dans %||% m$niveaux[length(m$niveaux)]
   } else {
-    if (is.null(temps)) stop(traduire("Choisissez le temps (une année, un jour...) : un identifiant ou une variable quantitative.",
-                                      "Choose the time (a year, a day...): an ID or a quantitative variable."), call. = FALSE)
-    t <- suppressWarnings(as.numeric(valeurs_groupement(projet, temps, m$observations)))
+    if (is.null(temps)) stop(traduire("Choisissez le temps (une année, une date...) : un identifiant ou une variable.",
+                                      "Choose the time (a year, a date...): an ID or a variable."), call. = FALSE)
     nom_temps <- nom_groupement(projet, temps)
+    t <- temps_en_nombres(valeurs_groupement(projet, temps, m$observations))  # (des nombres, ou des dates en années décimales)
+    if (!is.null(attr(t, "refus"))) stop(refus_temps(t, nom_temps), call. = FALSE)
     nom_groupe <- NULL
     if (is.null(groupe)) {
       g <- rep("1", length(e))
@@ -100,7 +102,7 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
     }
   }
   garde <- !is.na(t) & !is.na(g)
-  if (!any(garde)) stop(traduire("Le temps doit être un nombre (une année, un jour...).", "The time must be a number (a year, a day...)."), call. = FALSE)
+  if (!any(garde)) stop(traduire("Aucune observation du modèle n'a à la fois un temps et un groupe.", "No observation of the model has both a time and a group."), call. = FALSE)
   e <- e[garde]
   t <- t[garde]
   g <- factor(as.character(g[garde]))

@@ -295,6 +295,7 @@ besoins_script <- function(plans, seance) {
        aleatoires_mgcv = any(vapply(reg, function(pl) pl$generalise && !isTRUE(pl$gamm) && length(pl$niveaux) > 0, TRUE)),
        gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)), car1 = any(vapply(reg, function(pl) !is.null(pl$temps), TRUE)),
        residus_quantiles = any(vapply(reg, function(pl) isTRUE(pl$quantiles), TRUE)),
+       dates = any(vapply(reg, function(pl) isTRUE(pl$temps$dates), TRUE)),
        selection_aic = any(vapply(reg, function(pl) !is.null(pl$selection), TRUE)),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
@@ -988,16 +989,20 @@ plan_regression <- function(projet, d, m, tab) {
   temps <- if (!is.null(d$correlation)) specs_groupement(d$correlation$temps)[[1]]
   dans <- if (!is.null(d$correlation$dans)) specs_groupement(d$correlation$dans)[[1]]
   gamm <- isTRUE(m$gamm)
-  # le code qui lit dans `d` les valeurs d'un groupement (des textes), ou le temps (des nombres)
+  # (un temps fait de dates : le script les lit en années décimales, comme le moteur)
+  dates <- !is.null(temps) && isTRUE(attr(temps_en_nombres(valeurs_groupement(projet, temps, candidates)), "dates"))
+  # le code qui lit dans `d` les valeurs d'un groupement (des textes), ou le temps (des nombres ;
+  # des dates par temps_en_nombres(), une fonction du script)
   lecture <- function(s, nombre = FALSE) {
     if (identical(as.character(s$by)[1], "id")) {
       col <- sprintf("d[[%s]]", code_texte(tab$ids[[as.character(s$id)[1]]]))
-      return(if (nombre) sprintf("suppressWarnings(as.numeric(%s))", col) else col)
+      return(if (nombre && dates) sprintf("temps_en_nombres(%s)", col) else if (nombre) sprintf("suppressWarnings(as.numeric(%s))", col) else col)
     }
     v <- variable_du_projet(projet, s$variable)
     col <- sprintf("d[[%s]]", code_texte(tab$noms[[as.character(v$uid)]]))
     if (!length(v$categories)) return(col)
-    if (nombre) sprintf("suppressWarnings(as.numeric(as.character(%s)))", col) else sprintf("as.character(%s)", col)
+    if (nombre && dates) sprintf("temps_en_nombres(%s)", col)
+    else if (nombre) sprintf("suppressWarnings(as.numeric(as.character(%s)))", col) else sprintf("as.character(%s)", col)
   }
   # les noms affichés, puis leurs noms R : réponse, termes, niveaux (et pour mgcv::gam les niveaux
   # emboîtés, un facteur chacun : le secteur dans son site), temps, groupe de l'autocorrélation, effort
@@ -1042,7 +1047,7 @@ plan_regression <- function(projet, d, m, tab) {
        reponse = nr[1], termes = termes_r, noms_termes = m$noms_termes,
        niveaux = lapply(seq_len(L), function(l) list(nom = nr[1 + K + l], affiche = m$niveaux[l], code = lecture(specs[[l]]))),
        emboites = nr[1 + K + L + seq_along(emboites)],
-       temps = if (!is.null(temps)) list(nom = nr[avant + 1], affiche = m$temps, code = lecture(temps, TRUE)),
+       temps = if (!is.null(temps)) list(nom = nr[avant + 1], affiche = m$temps, code = lecture(temps, TRUE), dates = dates),
        dans = if (!is.null(dans)) list(nom = nr[avant + 2], affiche = m$dans, code = lecture(dans)),
        effort = if (!is.null(d$decalage)) list(nom = nr[length(nr)], affiche = m$decalage,
                                                code = sprintf("d[[%s]]", code_texte(tab$noms[[as.character(d$decalage)]]))),
@@ -1658,7 +1663,8 @@ code_fonctions <- function(b, plans, langue) {
                   modele_opls_noyau(tx, na, general), "", modele_opls(tx, na, b$vides, general), "",
                   modele_opls_predire(tx, na, general), "", modele_vc_opls(tx, na, general)),
     if (!isFALSE(b$echelle)) modele_echelle(tx, !isTRUE(b$regression) || isTRUE(b$nipals)),
-    if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx), if (isTRUE(b$car1)) c("", modele_residus_car1(tx))),
+    if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx), if (isTRUE(b$car1)) c("", modele_residus_car1(tx)),
+                                if (isTRUE(b$dates)) c("", modele_temps_dates(tx))),
     if (isTRUE(b$selection_aic)) modele_selection_aic(tx),
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
@@ -2026,6 +2032,38 @@ modele_residus_car1 <- function(tx) c(
   "  z",
   "}")
 
+# Le temps fait de dates, en années décimales : le calcul d'annees_decimales (variables.R), écrit
+# pour le script, les mêmes opérations dans le même ordre (les mêmes nombres, à la dernière
+# décimale). Les valeurs sont celles que Nuée a lues : il ne les vérifie pas.
+modele_temps_dates <- function(tx) c(
+  commentaire(tx("Le temps, fait de dates, en années décimales comme Nuée les lit : 2019-05-14 (au besoin avec l'heure, 2019-05-14 10:30) ou 14/05/2019 (toujours le jour d'abord ; aussi 14-05-2019 et 14.05.2019) donnent l'année + (le jour de l'année - 1 + la fraction du jour) / le nombre de jours de l'année (366 les années bissextiles). Le 1er janvier est l'année elle-même, et φ est d'une année à l'autre. Une valeur qui n'est pas une date reste manquante.",
+                 "The time, made of dates, as decimal years as Nuée reads them: 2019-05-14 (with the time if needed, 2019-05-14 10:30) or 14/05/2019 (always day first; also 14-05-2019 and 14.05.2019) give the year + (the day of the year - 1 + the fraction of the day) / the number of days in the year (366 in leap years). 1 January is the year itself, and φ is from one year to the next. A value that isn't a date stays missing.")),
+  "temps_en_nombres <- function(x) {",
+  "  x <- trimws(as.character(x))",
+  "  x[is.na(x)] <- \"\"",
+  tx("  # les morceaux de chaque date, une colonne chacun : année, mois, jour, heure, minutes, secondes",
+     "  # the parts of each date, a column each: year, month, day, hour, minutes, seconds"),
+  "  morceaux <- function(motif, numeros) {",
+  "    m <- regexpr(motif, x, perl = TRUE)",
+  "    debut <- attr(m, \"capture.start\")[, numeros, drop = FALSE]",
+  "    fin <- debut + attr(m, \"capture.length\")[, numeros, drop = FALSE] - 1L",
+  "    p <- matrix(suppressWarnings(as.numeric(substring(rep(x, length(numeros)), debut, fin))), ncol = length(numeros))",
+  "    p[m == -1L, ] <- NA",
+  "    p",
+  "  }",
+  "  heure <- \"([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?\"",
+  tx("  # les dates ISO (année-mois-jour), puis celles écrites le jour d'abord (jma : jour/mois/année)",
+     "  # the ISO dates (year-month-day), then those written day first (day/month/year)"),
+  "  p <- morceaux(sprintf(\"^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})(?:[ T]%s)?$\", heure), 1:6)",
+  "  jma <- morceaux(sprintf(\"^([0-9]{1,2})([/.-])([0-9]{1,2})\\\\2([0-9]{4})(?: %s)?$\", heure), c(4, 3, 1, 5, 6, 7))",
+  "  p[is.na(p[, 1]), ] <- jma[is.na(p[, 1]), ]",
+  "  p[, 4:6][is.na(p[, 4:6])] <- 0",
+  "  a <- p[, 1]",
+  "  bissextile <- (a %% 4 == 0 & a %% 100 != 0) | a %% 400 == 0",
+  "  jour_annee <- c(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)[p[, 2]] + p[, 3] + (p[, 2] > 2 & bissextile)",
+  "  a + (jour_annee - 1 + (p[, 4] * 3600 + p[, 5] * 60 + p[, 6]) / 86400) / (365 + bissextile)",
+  "}")
+
 modele_aic_corrige <- function(tx) c(
   commentaire(tx("AIC corrigé pour les petits échantillons (Hurvich et Tsai, 1989) ; n : le nombre d'observations.",
                  "AIC corrected for small samples (Hurvich & Tsai, 1989); n: the number of observations.")),
@@ -2337,6 +2375,8 @@ modele_ligne_base <- function(tx) c(
 # remplacés d'après cette table. Les noms venus des données sont toujours dans des chaînes.
 NOMS_SCRIPT_EN <- c(
   residus_normalises_car1 = "car1_normalized_residuals",
+  temps_en_nombres = "times_as_numbers", morceaux = "parts", motif = "pattern", numeros = "group_numbers", debut = "first", fin = "last",
+  heure = "time_of_day", jma = "day_first", bissextile = "leap", jour_annee = "day_of_year",
   donnees = "data", lignes = "rows", lignes_test = "test_rows", modele = "in_model", y_observe = "y_observed",
   centre_x = "centre_x", poids_x = "weight_x", ecart_x = "sd_x", centre_y = "centre_y", poids_y = "weight_y", ecart_y = "sd_y",
   centre_c = "centre_c", poids_c = "weight_c", ecart_c = "sd_c", centre_cy = "centre_cy", poids_cy = "weight_cy", ecart_cy = "sd_cy",

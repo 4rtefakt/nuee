@@ -535,7 +535,38 @@ async function principal() {
         && col(ri.points, 'temps').join() === col(r.points, 'temps').join(), `par identifiants : ${JSON.stringify(ri.points)}`);
       let refus = '';
       try { await api('series', { projet: pj.id, variable: 1, temps: rang.secteur }); } catch (err) { refus = err.message; }
-      verifier(/numérique : « S3 » \(secteur\)/.test(refus), `un temps qui n’est pas un nombre, refusé : « ${refus} »`);
+      verifier(/: Le temps \(secteur\) doit être fait de nombres .* : « S3 » n'est ni un nombre ni une date$/.test(refus), `un temps qui n’est pas un nombre, refusé : « ${refus} »`);
+    });
+    await etape('séries sur des dates, et leurs tendances (Mann–Kendall, pente de Sen)', async () => {
+      // two sectors counted on a spring day of 2011 to 2018 (the same day for both, a different
+      // one each year), the date written day first: a qualitative variable that can be the time;
+      // S2 has 3 years only
+      const jours = ['14/05/2011', '02/05/2012', '20/05/2013', '09/05/2014', '27/04/2015', '18/05/2016', '05/05/2017', '22/05/2018'];
+      const s1 = [3, 5, 5, 4, 7, 7, 9, 8];
+      const lignes = jours.map((j, k) => [`a${k}`, 'S1', j, s1[k]]).concat(jours.slice(0, 3).map((j, k) => [`b${k}`, 'S2', j, 10 - k]));
+      const q = await api('coller', { texte: ['nom\tsecteur\tdate\tdensite', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Dates' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x]));
+      verifier(v.date.qualitative && v.date.temps === true && v.secteur.temps === false, `une variable de dates, qui peut être le temps : ${JSON.stringify(v.date)}`);
+      // the decimal year computed here: the year + (day of the year − 1) / the days in the year
+      const decimale = (s) => { const [j, m, a] = s.split('/').map(Number); const d0 = Date.UTC(a, 0, 1); return a + (Date.UTC(a, m - 1, j) - d0) / (Date.UTC(a + 1, 0, 1) - d0); };
+      const r = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid, lignes: v.secteur.uid, tendances: true });
+      const col = (x, k) => [].concat(x[k]);
+      const attendus = jours.map(decimale).concat(jours.slice(0, 3).map(decimale));
+      verifier(r.dates === true && col(r.points, 'temps').every((x, i) => Math.abs(x - attendus[i]) < 1e-9), `les dates en années décimales : ${JSON.stringify(r.points.temps)}`);
+      // S1: S and its variance with the ties (two 5s, two 7s), p by the normal approximation with the continuity correction
+      let S = 0;
+      for (let i = 0; i < 8; i += 1) for (let j = i + 1; j < 8; j += 1) S += Math.sign(s1[j] - s1[i]);
+      const varS = (8 * 7 * 21 - 2 * (2 * 1 * 9)) / 18;
+      const z = (Math.abs(S) - 1) / Math.sqrt(varS);
+      const erfc = (x) => { const t = 1 / (1 + 0.3275911 * x); return t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-x * x); };
+      const p = erfc(z / Math.SQRT2);  // (two-sided: 2 × (1 − Φ(z)))
+      const tr = r.tendances;
+      verifier(col(tr, 'ligne').join() === 'S1,S2' && col(tr, 'S')[0] === S && Math.abs(col(tr, 'var_S')[0] - varS) < 1e-9 && Math.abs(col(tr, 'p')[0] - p) < 1e-6
+        && col(tr, 'n').join() === '8,3' && col(tr, 'p')[1] === null && /3 temps/.test(col(tr, 'non_teste')[1]) && col(tr, 'p_ajuste')[0] === col(tr, 'p')[0]
+        && Math.abs(col(tr, 'debut')[0] - attendus[0]) < 1e-9 && col(tr, 'pente')[0] > 0, `tendances : ${JSON.stringify(tr)}`);
+      const h = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid, lignes: v.secteur.uid, tendances: true, correction: 'holm' });
+      const sans = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid });
+      verifier(col(h.tendances, 'p_ajuste')[0] === col(tr, 'p')[0] && sans.tendances === undefined && sans.dates === true, 'Holm sur une seule ligne testée ; sans tendances, pas de tableau');
     });
     await etape('autocorrélation des résidus, rapports de vraisemblance entre modèles emboîtés', async () => {
       // 6 sites suivis 10 ans (2006 manque), un bruit autocorrélé dans chaque site (moteur/R/regression_diagnostics.R)

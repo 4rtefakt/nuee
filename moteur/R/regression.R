@@ -223,9 +223,9 @@ REGRESSIONS <- c("LM", "LMM", "GLM", "GAM")
 GENERALISES <- c("GLM", "GAM")
 est_regression <- function(d) isTRUE(as.character(d$type %||% "") %in% REGRESSIONS)
 
-# Les valeurs qui font les groupes d'un effet aléatoire, ou le temps de l'autocorrélation : un
-# identifiant des observations (list(by = "id", id = "site")) ou une variable
-# (list(by = "variable", variable = 4)), pour les observations `obs` (NA quand il manque).
+# Les valeurs qui font les groupes d'un effet aléatoire, ou le temps de l'autocorrélation (que
+# temps_en_nombres lit) : un identifiant des observations (list(by = "id", id = "site")) ou une
+# variable (list(by = "variable", variable = 4)), pour les observations `obs` (NA quand il manque).
 valeurs_groupement <- function(projet, spec, obs) {
   par <- if (length(spec$by)) as.character(spec$by)[1] else ""
   switch(par,
@@ -361,9 +361,10 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   niveaux <- lapply(d$aleatoires %||% list(), function(s) valeurs_groupement(projet, s, obs))
   temps <- dans <- NULL
   if (!is.null(d$correlation)) {
-    temps <- suppressWarnings(as.numeric(valeurs_groupement(projet, d$correlation$temps, obs)))
-    if (all(is.na(temps))) stop(traduire("Le temps de l'autocorrélation doit être un nombre (une année, un jour...).",
-                                         "The time of the autocorrelation must be a number (a year, a day...)."), call. = FALSE)
+    # (des nombres, ou des dates en années décimales : φ est alors d'une année à l'autre)
+    temps <- temps_en_nombres(valeurs_groupement(projet, d$correlation$temps, obs))
+    if (!is.null(attr(temps, "refus"))) stop(refus_temps(temps, nom_groupement(projet, d$correlation$temps)), call. = FALSE)
+    if (all(is.na(temps))) stop(traduire("Aucune observation n'a de temps pour l'autocorrélation.", "No observation has a time for the autocorrelation."), call. = FALSE)
     if (!is.null(d$correlation$dans)) dans <- valeurs_groupement(projet, d$correlation$dans, obs)
   }
   decalage <- NULL

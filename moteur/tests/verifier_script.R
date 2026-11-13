@@ -469,6 +469,32 @@ essayer_regression("gamm_car1_test_en", pr, definir_modele(pr, "GAM", x = ur("x1
                    lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur, test = numeros_observations(pr)[seq(5, n, by = 16)]), langue = "en")
 essayer_regression("lmm_car1_secteur", pr, definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
                    correlation = car1_secteur))
+# (le temps de CAR1 fait de dates, le jour d'abord, un même jour pour tous les secteurs d'une année :
+# une variable qualitative ; le script les lit en années décimales comme Nuée, par sa fonction
+# temps_en_nombres, et donne le modèle que les années décimales donnent, refaites ici avec R)
+trd <- tr
+jours_tr <- as.Date(sprintf("%d-05-01", 2001:2009)) + c(3, 17, 9, 25, 0, 12, 30, 6, 21)
+trd$date <- format(jours_tr[trd$annee - 2000], "%d/%m/%Y")
+trd$decimale <- trd$annee + as.POSIXlt(jours_tr[trd$annee - 2000])$yday / ifelse(trd$annee %% 4 == 0, 366, 365)
+prd <- projet_depuis_tableau(trd, "terrain en dates")
+prd$observation_id_names <- c("Observation", "site")
+for (i in seq_along(prd$observations)) prd$observations[[i]]$ids <- c(prd$observations[[i]]$ids[1], site[i])
+urd <- function(...) numeros(prd, c(...))
+car1_dates <- function(tps) list(type = "CAR1", temps = list(by = "variable", variable = urd(tps)), dans = list(by = "variable", variable = urd("secteur")))
+r <- essayer_regression("lmm_car1_dates", prd, definir_modele(prd, "LMM", x = urd("x1", "x2"), y = urd("hauteur"), echelle = "none", aleatoires = list(par_site),
+                        correlation = car1_dates("date")))
+code <- code_hors_donnees(lignes_script(r))
+m_decimale <- ajuster(prd, definir_modele(prd, "LMM", x = urd("x1", "x2"), y = urd("hauteur"), echelle = "none", aleatoires = list(par_site),
+                                          correlation = car1_dates("decimale")))
+verifier(sprintf("CAR1 le long de dates : le script les lit par sa fonction temps_en_nombres() ; φ = %.4f, celui des années décimales", m_decimale$resultat$phi),
+         any(grepl("^temps_en_nombres <- function\\(x\\) \\{$", code)) && any(grepl("temps_en_nombres(d[[\"date\"]])", code, fixed = TRUE)) &&
+           isTRUE(all.equal(ajuster(prd, definir_modele(prd, "LMM", x = urd("x1", "x2"), y = urd("hauteur"), echelle = "none", aleatoires = list(par_site),
+                                                        correlation = car1_dates("date")))$resultat$phi, m_decimale$resultat$phi, tolerance = 1e-10)))
+r <- essayer_regression("gamm_car1_dates_csv_en", prd, definir_modele(prd, "GAM", x = urd("x1", "x2"), y = urd("hauteur"), echelle = "none", famille = "gaussienne",
+                        lisses = urd("x2"), aleatoires = list(par_site), correlation = car1_dates("date")), langue = "en", donnees = "csv")
+verifier("CAR1 le long de dates, en anglais, les données en CSV (les dates en texte) : times_as_numbers(), ni nom ni commentaire en français",
+         any(grepl("^times_as_numbers <- function\\(x\\) \\{$", lignes_script(r))) && en_anglais(lignes_script(r)))
+verifier("CAR1 le long des années (le modèle mixte emboîté plus haut) : le script n'a pas cette fonction", !any(grepl("temps_en_nombres", texte, fixed = TRUE)))
 r <- essayer_regression("glm_poisson_effort", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort"), echelle = "none"))
 verifier("GLM de Poisson : effort en décalage, effet multiplicatif, surdispersion", any(grepl("offset\\(log\\(effort\\)\\)", lignes_script(r))) &&
          any(grepl("effet_multiplicatif", lignes_script(r))) && any(grepl("^dispersion <- ", lignes_script(r))))

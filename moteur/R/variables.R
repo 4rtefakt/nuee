@@ -130,11 +130,13 @@ group_deviation <- ecart_groupe
 # chaque observation, et le taux de croissance d'une année à l'autre : pour une formule de
 # Nouvelle variable, aligner l'année n sur l'année n - 1 (la densité de l'année d'avant), ou la
 # dépendance à la densité (la croissance selon la densité précédente). `temps` : des nombres
-# (l'année ; un identifiant fait de nombres convient). `groupe` : comme pour moyenne_groupe (le
-# secteur, ou interaction(site, secteur)) ; sans groupe, toutes les observations font une seule
-# série. Le temps cherché doit exister : une année manquante donne NA, pas la valeur d'une année
-# plus ancienne. Une observation sans groupe ou sans temps a NA ; un couple (groupe, temps) qui
-# revient est une erreur.
+# (l'année ; un identifiant fait de nombres convient), ou des dates (temps_en_nombres : en années
+# décimales). `groupe` : comme pour moyenne_groupe (le secteur, ou interaction(site, secteur)) ;
+# sans groupe, toutes les observations font une seule série. Le temps cherché doit exister : une
+# année manquante donne NA, pas la valeur d'une année plus ancienne. Ces fonctions vont donc avec
+# des temps réguliers (des années) : avec des dates, le temps exactement un pas avant existe
+# rarement, et aucune date « la plus proche » n'est prise à sa place. Une observation sans groupe
+# ou sans temps a NA ; un couple (groupe, temps) qui revient est une erreur.
 precedent <- function(x, temps, groupe = NULL, pas = 1) valeur_decalee(x, temps, groupe, pas, -1, nom_appel(sys.call(), "precedent"))
 suivant <- function(x, temps, groupe = NULL, pas = 1) valeur_decalee(x, temps, groupe, pas, 1, nom_appel(sys.call(), "suivant"))
 # Le taux de croissance de la population, log(x_t / x_t-1) ; NA sauf si les deux valeurs sont > 0.
@@ -159,10 +161,8 @@ valeur_decalee <- function(x, temps, groupe, pas, sens, nom) {
     stop(sprintf(traduire("%s() : le pas doit être un nombre positif (1 : l'année d'avant ou d'après)", "%s(): the step must be a positive number (1: the year before or after)"), nom), call. = FALSE)
   }
   t <- temps_en_nombres(temps)
-  if (!is.null(attr(t, "refus"))) {
-    stop(sprintf(traduire("%s() : le temps doit être numérique (l'année, par exemple) ; « %s » n'est pas un nombre", "%s(): the time must be numeric (the year, for example); “%s” isn't a number"),
-                 nom, attr(t, "refus")), call. = FALSE)
-  }
+  if (!is.null(attr(t, "refus"))) stop(refus_temps(t, fonction = nom), call. = FALSE)
+  ecrire <- if (isTRUE(attr(t, "dates"))) date_decimale else format
   g <- if (is.null(groupe)) rep("", length(t)) else as.character(groupe)
   if (length(x) != length(t) || length(g) != length(t)) {
     stop(sprintf(traduire("%s() : x, le temps et le groupe doivent avoir une valeur par observation", "%s(): x, the time and the group must have one value per observation"), nom), call. = FALSE)
@@ -174,28 +174,131 @@ valeur_decalee <- function(x, temps, groupe, pas, sens, nom) {
   if (length(double)) {
     i <- double[1]
     stop(if (is.null(groupe)) sprintf(traduire("%s() : deux observations ont le temps %s ; chaque temps ne doit venir qu'une fois (donner le groupe : le secteur, ou interaction(site, secteur))",
-                                               "%s(): two observations have the time %s; each time must come only once (give the group: the sector, or interaction(site, sector))"), nom, format(t[i]))
+                                               "%s(): two observations have the time %s; each time must come only once (give the group: the sector, or interaction(site, sector))"), nom, ecrire(t[i]))
          else sprintf(traduire("%s() : deux observations ont le groupe « %s » et le temps %s ; chaque couple (groupe, temps) ne doit venir qu'une fois (un secteur dans un site : interaction(site, secteur))",
-                               "%s(): two observations have the group “%s” and the time %s; each (group, time) pair must come only once (a sector within a site: interaction(site, sector))"), nom, g[i], format(t[i])),
+                               "%s(): two observations have the group “%s” and the time %s; each (group, time) pair must come only once (a sector within a site: interaction(site, sector))"), nom, g[i], ecrire(t[i])),
          call. = FALSE)
   }
   x[match(cle(t + sens * pas), ici, incomparables = NA)]
 }
 
-# Des temps en nombres : des nombres, ou du texte fait de nombres (un identifiant des observations,
-# l'année). attr(, "refus") : la première valeur qui n'est pas un nombre.
+# Des temps en nombres, la conversion que font les séries, BACI, les décalages de Nouvelle variable,
+# l'autocorrélation des résidus et l'autocorrélation CAR1 des régressions (et l'export vers R, qui
+# l'écrit dans son script) : des nombres ; du texte fait de nombres (un identifiant des
+# observations, l'année ; « 2019,5 » avec la virgule) ; ou des dates, en années décimales
+# (annees_decimales : 2019-05-14 ou 14/05/2019, au besoin avec l'heure), ce que deviennent aussi
+# les dates de R (Date, POSIXct). Les catégories d'une variable qualitative, un facteur, se lisent
+# comme du texte. Un nombre reste un nombre : un numéro de jour d'Excel ne se distingue pas d'une
+# année. Les valeurs connues sont toutes des nombres, ou toutes des dates (attr(, "dates") : TRUE),
+# selon ce que sont la plupart d'entre elles ; la première qui n'est pas du même genre est refusée :
+# attr(, "refus") la donne, et attr(, "raison") pourquoi ("nombre" ou "date" parmi des valeurs de
+# l'autre genre, "impossible" pour une date qui n'existe pas comme 31/02/2019, "illisible" pour une
+# valeur qui n'est ni l'un ni l'autre) ; refus_temps() en fait le message.
 temps_en_nombres <- function(x) {
+  if (inherits(x, c("Date", "POSIXt"))) x <- format(x, "%Y-%m-%d %H:%M:%S")
   if (is.numeric(x)) {
     x <- as.numeric(x)
     x[!is.finite(x)] <- NA
     return(x)
   }
   texte <- trimws(as.character(x))
+  connu <- !is.na(texte) & nzchar(texte)
   n <- suppressWarnings(as.numeric(sub(",", ".", texte, fixed = TRUE)))
-  faux <- which(!is.na(texte) & nzchar(texte) & !is.finite(n))
-  n[!is.finite(n)] <- NA
-  if (length(faux)) attr(n, "refus") <- texte[faux[1]]
-  n
+  nombre <- connu & is.finite(n)
+  # (les dates cherchées seulement parmi les valeurs qui ne sont pas des nombres)
+  a <- rep(NA_real_, length(texte))
+  forme <- rep(FALSE, length(texte))
+  autres <- which(connu & !nombre)
+  if (length(autres)) {
+    d <- annees_decimales(texte[autres])
+    a[autres] <- d
+    forme[autres] <- attr(d, "forme")
+  }
+  date <- !is.na(a)
+  dates <- sum(date) > sum(nombre)
+  bon <- if (dates) date else nombre
+  r <- if (dates) a else n
+  r[!bon] <- NA
+  if (dates) attr(r, "dates") <- TRUE
+  faux <- which(connu & !bon)
+  if (length(faux)) {
+    k <- faux[1]
+    attr(r, "refus") <- texte[k]
+    attr(r, "raison") <- if (nombre[k]) "nombre" else if (date[k]) "date" else if (forme[k]) "impossible" else "illisible"
+  }
+  r
+}
+
+# Le message d'un temps refusé par temps_en_nombres() (`t` : son résultat) : `nom`, celui du temps
+# (sa variable ou son identifiant), `fonction`, celle de Nouvelle variable qui l'a lu.
+refus_temps <- function(t, nom = NULL, fonction = NULL) {
+  v <- attr(t, "refus")
+  pourquoi <- switch(attr(t, "raison"),
+    nombre = sprintf(traduire("« %s » est un nombre parmi des dates", "“%s” is a number among dates"), v),
+    date = sprintf(traduire("« %s » est une date parmi des nombres", "“%s” is a date among numbers"), v),
+    impossible = sprintf(traduire("« %s » n'est pas une date qui existe", "“%s” isn't a date that exists"), v),
+    sprintf(traduire("« %s » n'est ni un nombre ni une date", "“%s” is neither a number nor a date"), v))
+  temps <- if (is.null(nom)) traduire("le temps", "the time") else sprintf(traduire("le temps (%s)", "the time (%s)"), nom)
+  phrase <- sprintf(traduire("%s doit être fait de nombres (l'année) ou de dates (2019-05-14, 14/05/2019), pas des deux : %s",
+                             "%s must be numbers (the year) or dates (2019-05-14, 14/05/2019), not both: %s"), temps, pourquoi)
+  if (!is.null(fonction)) return(sprintf(traduire("%s() : %s", "%s(): %s"), fonction, phrase))
+  paste0(toupper(substr(phrase, 1, 1)), substring(phrase, 2))
+}
+
+# Des dates écrites en texte, en années décimales : l'année + (le jour de l'année − 1 + la fraction
+# du jour) / le nombre de jours de l'année (366 les années bissextiles). Ainsi le 1er janvier est
+# l'année elle-même, et une pente, un écart ou le φ d'une autocorrélation sont « par an ». Les
+# dates : 2019-05-14 (ISO), ou 14/05/2019, toujours le jour d'abord (comme en France ; aussi
+# 14-05-2019 et 14.05.2019), l'année en quatre chiffres ; au besoin avec l'heure, 10:30 ou 10:30:15
+# (après une espace, ou un T après une date ISO). NA pour une valeur qui n'est pas une date, ou une
+# date qui n'existe pas (31/02/2019, 25:00) ; attr(, "forme") : la valeur est écrite comme une date.
+# (Le script de l'export vers R refait ce calcul de la même façon : script.R, modele_temps_dates.)
+annees_decimales <- function(texte) {
+  texte[is.na(texte)] <- ""
+  # les morceaux de chaque date, une colonne chacun : année, mois, jour, heure, minutes, secondes
+  # (les groupes du motif dans cet ordre ; NA sans date, et pour une heure absente)
+  morceaux <- function(motif, ordre) {
+    m <- regexpr(motif, texte, perl = TRUE)
+    debut <- attr(m, "capture.start")[, ordre, drop = FALSE]
+    fin <- debut + attr(m, "capture.length")[, ordre, drop = FALSE] - 1L
+    x <- matrix(suppressWarnings(as.numeric(substring(rep(texte, length(ordre)), debut, fin))), ncol = length(ordre))
+    x[m == -1L, ] <- NA
+    x
+  }
+  heure <- "([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?"
+  p <- morceaux(sprintf("^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})(?:[ T]%s)?$", heure), 1:6)
+  jour <- morceaux(sprintf("^([0-9]{1,2})([/.-])([0-9]{1,2})\\2([0-9]{4})(?: %s)?$", heure), c(4, 3, 1, 5, 6, 7))
+  p[is.na(p[, 1]), ] <- jour[is.na(p[, 1]), ]
+  forme <- !is.na(p[, 1])
+  a <- p[, 1]
+  mois <- p[, 2]
+  j <- p[, 3]
+  h <- p[, 4]
+  mi <- p[, 5]
+  s <- p[, 6]
+  h[is.na(h)] <- 0
+  mi[is.na(mi)] <- 0
+  s[is.na(s)] <- 0
+  bissextile <- (a %% 4 == 0 & a %% 100 != 0) | a %% 400 == 0
+  valide <- forme & mois >= 1 & mois <= 12 & h <= 23 & mi <= 59 & s <= 59
+  valide[is.na(valide)] <- FALSE
+  fin_mois <- rep(NA_real_, length(a))
+  fin_mois[valide] <- c(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)[mois[valide]] + (mois[valide] == 2 & bissextile[valide])
+  valide <- valide & j >= 1 & j <= fin_mois
+  valide[is.na(valide)] <- FALSE
+  r <- rep(NA_real_, length(a))
+  jour_annee <- c(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)[mois[valide]] + j[valide] + (mois[valide] > 2 & bissextile[valide])
+  r[valide] <- a[valide] + (jour_annee - 1 + (h[valide] * 3600 + mi[valide] * 60 + s[valide]) / 86400) / (365 + bissextile[valide])
+  structure(r, forme = forme)
+}
+
+# Une année décimale en date (« 2019-05-14 », avec l'heure quand elle n'est pas minuit) : l'inverse
+# d'annees_decimales, pour les textes (la phrase de BACI, les messages).
+date_decimale <- function(x) {
+  a <- floor(x)
+  secondes <- round((x - a) * (365 + ((a %% 4 == 0 & a %% 100 != 0) | a %% 400 == 0)) * 86400)
+  d <- ISOdatetime(a, 1, 1, 0, 0, 0, tz = "UTC") + secondes
+  format(d, if (any(secondes %% 86400 != 0, na.rm = TRUE)) "%Y-%m-%d %H:%M" else "%Y-%m-%d", tz = "UTC")
 }
 
 # Nouvelle variable calculée par une formule R sur les variables du projet, appelées par leur

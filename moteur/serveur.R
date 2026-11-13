@@ -222,11 +222,14 @@ variables_avec_donnees <- function(p) {
   Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
 }
 
+# (temps : une variable qualitative dont les catégories sont toutes des dates, ou toutes des
+# nombres, qui peut servir de temps comme une variable quantitative : temps_en_nombres)
 resume_projet <- function(p) {
   manquantes <- colSums(is.na(p$donnees))
   vars <- lapply(variables_avec_donnees(p), function(v) list(
     uid = v$uid, nom = as.character(v$ids[1]), qualitative = length(v$categories) > 0,
-    categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[as.character(v$uid)])))
+    categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[as.character(v$uid)]),
+    temps = length(v$categories) > 0 && is.null(attr(temps_en_nombres(as.character(v$categories)), "refus"))))
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
@@ -811,8 +814,14 @@ DEMANDES <- list(
       as.list(contributions(e$modele, as.numeric(q$observations), q$type %||% "DModX", q$composante %||% 1, isTRUE(q$ponderee %||% TRUE))))
   },
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
-  # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R)
-  series = function(q) series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux),
+  # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R) ;
+  # avec q$tendances, la tendance de chaque ligne (Mann–Kendall, pente de Sen), p corrigée par
+  # q$correction ("BH" par défaut, ou "holm")
+  series = function(q) {
+    r <- series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux)
+    if (isTRUE(q$tendances)) r$tendances <- tendances_series(r$points, q$correction %||% "BH")
+    r
+  },
   # avec q$appariement (une variable ou "id:k") : les tests appariés de deux classes, t apparié par défaut
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
                                                q$test %||% (if (length(q$appariement)) "t_apparie" else "welch"), q$correction %||% "BH",
