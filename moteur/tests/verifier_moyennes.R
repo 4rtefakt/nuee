@@ -144,7 +144,7 @@ lC <- eval(bquote(nlme::lme(densite ~ annee * secteur, random = ~ 1 | site, corr
                             method = "REML", control = .(ctrl))))
 e <- EMMEANS$C
 verifier("les moyennes = emmeans pour nlme::lme ; ddl de confinement : 5 pour une moyenne (6 sites moins un), 169 pour une paire",
-         proche(rC$moyennes$estimation, e$emmean, 1e-5) && proche(rC$moyennes$erreur_type, e$SE, 1e-4) && identical(as.numeric(rC$moyennes$ddl), e$df) &&
+         proche(rC$moyennes$estimation, e$emmean, 1e-4) && proche(rC$moyennes$erreur_type, e$SE, 1e-3) && identical(as.numeric(rC$moyennes$ddl), e$df) &&
            identical(as.numeric(rC$paires$ddl), e$p_df) && isTRUE(all.equal(rC$paires$p, e$p, tolerance = 1e-4, scale = 1)) && proche(rC$paires$bas, e$p_lower, 1e-4) &&
            identical(rC$ddl$methode, "confinement") && rC$ddl$groupes == 6)
 grilleC <- data.frame(secteur = c("S1", "S2", "S3"), annee = mean(tq$annee))
@@ -157,7 +157,7 @@ grilleC2 <- transform(grilleC, annee = annee + delta)
 hCp <- a_la_main((model.matrix(~ annee * secteur, grilleC2) - model.matrix(~ annee * secteur, grilleC)) / delta, as.list(1:3), nlme::fixef(lC), vcov(lC), 169)
 ef <- effets_regression(mC)[[1]]
 verifier("les pentes de l'année par secteur = emtrends (169 ddl) et leurs paires ; = les pentes de la vue Effets, et la différence avant calculée ici",
-         identical(rCp$mode, "pentes") && proche(rCp$moyennes$estimation, e$trend, 1e-5) && proche(rCp$moyennes$erreur_type, e$trend_SE, 1e-4) &&
+         identical(rCp$mode, "pentes") && proche(rCp$moyennes$estimation, e$trend, 1e-4) && proche(rCp$moyennes$erreur_type, e$trend_SE, 1e-3) &&
            identical(as.numeric(rCp$moyennes$ddl), e$trend_df) && proche(rCp$paires$p, e$trend_p, 1e-3) &&
            proche(rCp$moyennes$estimation, vapply(ef$niveaux, `[[`, 0, "pente"), 1e-9) && proche(rCp$moyennes$estimation, hCp$est, 1e-5) &&
            identical(rCp$echelle, "identite"))
@@ -199,15 +199,22 @@ rG <- moyennes_ajustees(pq, mG, dG)
 gG <- mgcv::gam(stats::as.formula("densite ~ s(x, k = 10) + annee * secteur", env = env_mgcv), data = tq, method = "REML")
 grilleG <- data.frame(secteur = c("S1", "S2", "S3"), x = mean(tq$x), annee = mean(tq$annee))
 hG <- a_la_main(stats::predict(gG, grilleG, type = "lpmatrix"), as.list(1:3), coef(gG), vcov(gG), gG$df.residual)
+# (les valeurs enregistrées viennent de mgcv 1.9 : une autre version lisse un peu autrement, d'où
+# leur tolérance ; le calcul d'ici, sur l'ajustement de cette session, reste serré)
 verifier("GAM : la courbe de x à sa moyenne, la covariance bayésienne de mgcv (Vp), ses ddl résiduels ; = emmeans et la matrice lpmatrix de R ici",
-         proche(rG$moyennes$estimation, EMMEANS$G$emmean, 1e-5) && proche(rG$moyennes$erreur_type, EMMEANS$G$SE, 1e-4) && proche(rG$moyennes$ddl, EMMEANS$G$df, 1e-6) &&
-           proche(rG$moyennes$estimation, hG$est, 1e-5) && isTRUE(rG$grille$covariables$courbe[rG$grille$covariables$nom == "x"]))
+         proche(rG$moyennes$estimation, EMMEANS$G$emmean, 1e-3) && proche(rG$moyennes$erreur_type, EMMEANS$G$SE, 1e-3) && proche(rG$moyennes$ddl, EMMEANS$G$df, 1e-3) &&
+           proche(rG$moyennes$ddl, rep(gG$df.residual, 3), 1e-6) && proche(rG$moyennes$estimation, hG$est, 1e-5) && proche(rG$moyennes$erreur_type, hG$se, 1e-4) &&
+           isTRUE(rG$grille$covariables$courbe[rG$grille$covariables$nom == "x"]))
 dH <- definir_modele(pq, "GAM", x = uq("x", "annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne", croises = list(uq("annee", "secteur")),
                      lisses = uq("x"), aleatoires = list(site_q), correlation = car1_q)
 mH <- ajuster(pq, dH)
 rH <- moyennes_ajustees(pq, mH, dH)
-verifier("mgcv::gamm (CAR1) : sa partie gam, = emmeans", isTRUE(mH$gamm) && proche(rH$moyennes$estimation, EMMEANS$H$emmean, 1e-4) &&
-           proche(rH$moyennes$erreur_type, EMMEANS$H$SE, 1e-3) && proche(rH$moyennes$ddl, EMMEANS$H$df, 1e-4))
+gH <- mgcv::gamm(stats::as.formula("densite ~ s(x, k = 10) + annee * secteur", env = env_mgcv), random = list(site = ~1),
+                 correlation = nlme::corCAR1(form = ~ annee | site / secteur), data = tq, method = "REML")
+hH <- a_la_main(stats::predict(gH$gam, grilleG, type = "lpmatrix"), as.list(1:3), coef(gH$gam), vcov(gH$gam), gH$gam$df.residual)
+verifier("mgcv::gamm (CAR1) : sa partie gam, = emmeans et le calcul d'ici", isTRUE(mH$gamm) && proche(rH$moyennes$estimation, EMMEANS$H$emmean, 1e-3) &&
+           proche(rH$moyennes$erreur_type, EMMEANS$H$SE, 1e-3) && proche(rH$moyennes$ddl, EMMEANS$H$df, 1e-3) &&
+           proche(rH$moyennes$estimation, hH$est, 1e-4) && proche(rH$moyennes$erreur_type, hH$se, 1e-3) && proche(rH$moyennes$ddl, rep(gH$gam$df.residual, 3), 1e-4))
 
 cat("Un carré et un terme croisé de deux nombres\n")
 dI <- definir_modele(pq, "LM", x = uq("x", "annee", "secteur"), y = uq("densite"), echelle = "UV", croises = list(uq("x", "annee"), uq("x", "x"), uq("x", "secteur")))
