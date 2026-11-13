@@ -1160,6 +1160,7 @@ REFERENCES_REGRESSION <- list(
   zuur = "Zuur, A. F., Ieno, E. N., Walker, N. J., Saveliev, A. A., & Smith, G. M. (2009). Mixed effects models and extensions in ecology with R. Springer. https://doi.org/10.1007/978-0-387-87458-6",
   wood2017 = "Wood, S. N. (2017). Generalized additive models: An introduction with R (2nd ed.). Chapman and Hall/CRC. https://doi.org/10.1201/9781315370279",
   wood2011 = "Wood, S. N. (2011). Fast stable restricted maximum likelihood and marginal likelihood estimation of semiparametric generalized linear models. Journal of the Royal Statistical Society: Series B, 73(1), 3–36. https://doi.org/10.1111/j.1467-9868.2010.00749.x",
+  stewart_oaten = "Stewart-Oaten, A., Murdoch, W. W., & Parker, K. R. (1986). Environmental impact assessment: \"Pseudoreplication\" in time? Ecology, 67(4), 929–940. https://doi.org/10.2307/1939815",
   mgcv = "Wood, S. N. (%s). mgcv: Mixed GAM computation vehicle with automatic smoothness estimation (R package version %s). https://CRAN.R-project.org/package=mgcv")
 
 texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "") {
@@ -1242,6 +1243,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
                                         guillemets(as.character(o$modele)[1]), if (length(groupes)) liste(groupes) else (if (fr) "aucun : le modèle nul" else "none: the null model"),
                                         if (!memes) "" else if (fr) ", sur les mêmes observations que lui" else ", on the same observations as that model")))
   }
+  # (le modèle mixte de la vue BACI : comparaisons.R, definition_baci)
+  if (!is.null(d$baci_origine)) p2 <- c(p2, cite("stewart_oaten", phrase_methodes_baci(d$baci_origine, fr, liste, guillemets)))
 
   # --- validation croisée
   par <- if (length(d$groupes_vc$by)) as.character(d$groupes_vc$by) else ""
@@ -1344,6 +1347,26 @@ phrase_selection_aic <- function(m, fr, nombre, liste, guillemets) {
                         if (toutes) "" else if (fr) ", sur les modèles essayés" else ", over the models tried",
                         liste(vapply(names(par_valeur), function(v) sprintf(if (fr) "%s pour %s" else "%s for %s", v, liste(guillemets(par_valeur[[v]]))), "")))
   paste(comparaison, choix, importance)
+}
+
+# Le modèle mixte BACI dans le texte des Méthodes (comparaisons.R : definition_baci ; `o` :
+# d$baci_origine) : ce que valent ses deux variables 0/1, ce qu'est le coefficient de leur terme
+# croisé, et ses observations. `liste`, `guillemets` : ceux de texte_methodes_regression.
+phrase_methodes_baci <- function(o, fr, liste, guillemets) {
+  quand <- function(x) trimws(formatC(as.numeric(x), digits = 10, format = "fg", decimal.mark = if (fr) "," else "."))
+  # (les unités nommées, dix au plus ; au-delà, leur nombre)
+  unites <- function(x, un, plusieurs, nombreuses) {
+    x <- as.character(unlist(x))
+    if (length(x) > 10) sprintf(nombreuses, length(x)) else sprintf(if (length(x) > 1) plusieurs else un, liste(x))
+  }
+  temps <- as.character(o$noms$temps)
+  fin <- if (length(o$fin)) sprintf(if (fr) ", jusqu'à %s = %s," else ", up to %s = %s,", temps, quand(o$fin)) else ""
+  sprintf(if (fr) "C'est le modèle BACI (avant/après avec témoin ; Stewart-Oaten et al., 1986) : %s vaut 1 à partir de %s = %s et 0 avant, %s vaut 1 pour %s et 0 pour %s, et le coefficient de leur terme croisé, l'effet BACI, est le changement de l'écart entre l'impact et les témoins après l'événement ; seules les observations de ces unités%s y entrent."
+          else "This is the BACI model (before-after control-impact; Stewart-Oaten et al., 1986): %s is 1 from %s = %s on and 0 before, %s is 1 for %s and 0 for %s, and the coefficient of their cross term, the BACI effect, is the change in the gap between the impact and the controls after the event; only the observations of these units%s enter it.",
+          guillemets(as.character(o$variables$periode)), temps, quand(o$evenement), guillemets(as.character(o$variables$impact)),
+          unites(o$impact, if (fr) "l'unité d'impact %s" else "the impact unit %s", if (fr) "les unités d'impact %s" else "the impact units %s",
+                 if (fr) "les %d unités d'impact" else "the %d impact units"),
+          unites(o$temoins, if (fr) "le témoin %s" else "the control %s", if (fr) "les témoins %s" else "the controls %s", if (fr) "les %d témoins" else "the %d controls"), fin)
 }
 
 # Les niveaux emboîtés d'effets aléatoires, en mots : « site », « secteur » dans chaque « site »...

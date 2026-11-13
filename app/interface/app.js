@@ -344,6 +344,18 @@ const app = {
     await garder(res);
     vuesParDefaut(res.id);
   },
+  // Statistical tests › BACI › Fit the mixed model: its two 0/1 variables (new ones are undone by
+  // Ctrl+Z, as a New variable) and the model, which joins the project; the views of the project's
+  // data are drawn again (the BACI view then shows the model's effect), and the model's views open
+  async ajusterBaci(q) {
+    const r = await occupe(() => demander('baci_modele', q));
+    await garder(r.modele);
+    projetChange(etat.projets[r.modele.projet]);
+    vuesParDefaut(r.modele.id);
+    const nouvelles = [].concat(r.nouvelles || []);
+    const entre = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
+    statut(t(nouvelles.length ? 'baci_modele_variables' : 'baci_modele_ajoute', { nom: r.modele.nom, variables: nouvelles.map(entre).join(', ') }));
+  },
   // Removing a computed model asks first. Its definition stays in the project (it can be
   // computed again), unless it was made in the application and the box is ticked.
   supprimerModele(id) {
@@ -1340,7 +1352,7 @@ function contexte(entree) {
     modele: app.modele, projet: app.projet, tousModeles: app.tousModeles, selection: app.selection,
     choisir: app.choisir, variablesChoisies: app.variablesChoisies, choisirVariables: app.choisirVariables,
     groupesHCA: etat.groupesHCA, demander, valeurs: app.valeurs,
-    ouvrirVue: app.ouvrirVue, reajuster: app.reajuster, statut,
+    ouvrirVue: app.ouvrirVue, reajuster: app.reajuster, ajusterBaci: app.ajusterBaci, statut,
     rafraichir: () => rendrePanneau(entree),
     definirGraphe: (div) => { entree.graphe = div; },
     grapheCourant: () => entree.graphe,

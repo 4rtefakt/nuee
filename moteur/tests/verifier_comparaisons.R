@@ -348,6 +348,65 @@ verifier("dans chaque site, A et B de deux sites sans année commune : leur erre
 verifier("60 secteurs, 2 par site : les 30 paires de chaque site (au-delà de 50 niveaux, c'est le plus grand groupe qui compte)",
          nrow(rgn$toutes) == 30 && all(rgn$toutes$n == 4) && is.null(rgn$note_comparaisons) &&
          is.null(test_deux_variables(pn, nv("densite"), nv("secteur"), appariement = nv("annee"))$toutes))
+# le test de Friedman avant les paires : les blocs complets (les années où chaque secteur a une
+# valeur) en matrice, faits ici, pour friedman.test() ; le W de Kendall = χ² / (n (k − 1)) à la main
+blocs_complets <- function(donnees, niveaux) {
+  vus <- lapply(niveaux, function(s) donnees[donnees$secteur == s & !is.na(donnees$densite), ])
+  annees <- sort(Reduce(intersect, lapply(vus, `[[`, "annee")))
+  list(M = vapply(vus, function(x) x$densite[match(annees, x$annee)], numeric(length(annees))),
+       laissees = length(unique(unlist(lapply(vus, `[[`, "annee")))) - length(annees))
+}
+bc <- blocs_complets(long, c("S1", "S2", "S3"))
+ft <- friedman.test(bc$M)
+fr3 <- rt$friedman
+verifier(sprintf("Friedman avant les paires : = friedman.test() sur les %d années où les trois secteurs ont une valeur, %d laissées de côté ; W = χ² / (n (k − 1))",
+                 nrow(bc$M), bc$laissees),
+         nrow(fr3) == 1 && fr3$n == 8 && fr3$k == 3 && fr3$laissees == 4 && bc$laissees == 4 && isTRUE(all.equal(fr3$statistique, unname(ft$statistic))) &&
+           fr3$ddl == 2 && isTRUE(all.equal(fr3$p, ft$p.value)) && isTRUE(all.equal(fr3$W, unname(ft$statistic) / (8 * 2))) && fr3$non_teste == "")
+verifier(sprintf("la phrase de Friedman, en français : « %s »", fr3$phrase),
+         grepl(paste0("^Test de Friedman : χ²\\(2\\) = [0-9]+,[0-9]{2}, p [=<] 0,[0-9]+ ; W de Kendall = [0-9],[0-9]{2} ",
+                      "\\(n = 8 valeurs de annee où les 3 niveaux ont tous une valeur ; 4 laissées de côté, un niveau sans valeur\\)\\.$"), fr3$phrase))
+# (W de Kendall à la main, sans ex aequo : 12 S / (n² k (k² − 1)), S la somme des carrés des écarts des
+# sommes de rangs des k = 4 secteurs à leur moyenne, les rangs pris dans chacune des n = 8 années)
+M4 <- vapply(c("S1", "S2", "S3", "S4"), function(s) complet$densite[complet$secteur == s][order(complet$annee[complet$secteur == s])], numeric(8))
+R4 <- colSums(t(apply(M4, 1, rank)))
+w_main <- 12 * sum((R4 - 8 * 5 / 2)^2) / (8^2 * 4 * (4^2 - 1))
+fc <- friedman.test(densite ~ secteur | annee, data = complet)
+verifier("toutes les années complètes : = friedman.test(densite ~ secteur | annee), W de Kendall = 12 S / (n² k (k² − 1)) à la main",
+         rc$friedman$n == 8 && rc$friedman$laissees == 0 && isTRUE(all.equal(rc$friedman$p, fc$p.value)) && isTRUE(all.equal(rc$friedman$W, w_main)) &&
+           isTRUE(all.equal(rc$friedman$statistique, unname(fc$statistic))) && !grepl("laissée", rc$friedman$phrase))
+verifier("le test de Friedman ne dépend pas de A et B (il est celui des deux tests appariés)",
+         identical(test_deux_variables(pc, numeros(pc, "densite"), numeros(pc, "secteur"), appariement = numeros(pc, "annee"), niveaux = c("S3", "S4"))$friedman, rc$friedman))
+# dans chaque site : A et B ont trois secteurs (A sans 2001 pour S3), C deux, D trois qui n'ont
+# qu'une année en commun ; un test par site testable, Holm sur ces sites
+set.seed(12)
+sites2 <- c(S1 = "A", S2 = "A", S3 = "A", S4 = "B", S5 = "B", S6 = "B", S7 = "C", S8 = "C", S9 = "D", S10 = "D", S11 = "D")
+lf <- expand.grid(annee = 2001:2009, secteur = names(sites2), stringsAsFactors = FALSE)
+lf$site <- unname(sites2[lf$secteur])
+lf$densite <- round(3 + rnorm(nrow(lf)) + 0.8 * (lf$secteur %in% c("S2", "S6")), 3)
+lf <- lf[!(lf$secteur == "S3" & lf$annee == 2001) & !(lf$secteur == "S9" & lf$annee > 2003) & !(lf$secteur == "S10" & lf$annee < 2003) &
+           !(lf$secteur == "S11" & lf$annee == 2005), ]
+lf <- data.frame(nom = paste0("f", seq_len(nrow(lf))), lf[sample(nrow(lf)), c("secteur", "site", "annee", "densite")])
+pf <- projet_depuis_tableau(lf, "sites friedman")
+rf2 <- test_deux_variables(pf, numeros(pf, "densite"), numeros(pf, "secteur"), appariement = numeros(pf, "annee"), dans = numeros(pf, "site"))$friedman
+fa <- friedman.test(blocs_complets(lf, c("S1", "S2", "S3"))$M)
+fb <- friedman.test(blocs_complets(lf, c("S4", "S5", "S6"))$M)
+verifier("dans chaque site : un test de Friedman par site sur ses secteurs et ses années complètes = friedman.test(), Holm sur les sites testés = p.adjust()",
+         identical(rf2$groupe, c("A", "B", "C", "D")) && identical(rf2$n[1:2], c(8L, 9L)) && isTRUE(all.equal(rf2$p[1:2], c(fa$p.value, fb$p.value))) &&
+           isTRUE(all.equal(rf2$p_holm[1:2], p.adjust(c(fa$p.value, fb$p.value), "holm"))) && all(is.na(rf2$p[3:4])) && all(is.na(rf2$p_holm[3:4])) &&
+           grepl("^Test de Friedman dans A \\(site\\) : χ²\\(2\\) = .*, p de Holm [=<] [0-9]+(,[0-9]+)? sur 2 tests ; W de Kendall = .* où ses 3 niveaux ont tous une valeur ; 1 laissée de côté, un niveau sans valeur\\)\\.$",
+                 rf2$phrase[1]))
+verifier("un site de deux secteurs, un site sans deux années complètes : pas de test, et pourquoi",
+         identical(rf2$non_teste[3:4], c("2 niveau(x), il en faut 3", "1 valeur(s) de annee où chaque niveau a une valeur, il en faut 2")) &&
+           all(is.na(rf2$phrase[3:4])) && rf2$n[4] == 1)
+verifier("une année deux fois pour un secteur : pas de test de Friedman, et pourquoi", is.na(rd$friedman$p) &&
+           identical(rd$friedman$non_teste, "S1 a deux lignes pour une même valeur de annee"))
+options(nuee.langue = "en")
+fen <- test_deux_variables(pf, numeros(pf, "densite"), numeros(pf, "secteur"), appariement = numeros(pf, "annee"), dans = numeros(pf, "site"))$friedman
+options(nuee.langue = NULL)
+verifier(sprintf("en anglais : « %s »", fen$phrase[2]),
+         grepl("^Friedman test within B \\(site\\): χ²\\(2\\) = [0-9.]+, p [=<] [0-9.]+, Holm's p [=<] [0-9.]+ over 2 tests; Kendall's W = [0-9.]+ \\(n = 9 values of annee where its 3 levels all have a value\\)\\.$",
+               fen$phrase[2]) && identical(fen$non_teste[3], "2 level(s), 3 needed"))
 # en large : la même ligne porte les deux mesures (avant, après)
 set.seed(6)
 large <- data.frame(nom = paste0("o", 1:25), site = rep(c("A", "B"), length.out = 25), avant = round(rnorm(25, 5), 2))
@@ -521,6 +580,140 @@ verifier(sprintf("en anglais, Student, deux unités d'impact (2003 compte alors 
          grepl("^Student's t-test \\(BACI\\), densite gap impact \\(S1, S4\\) − control \\(S2, S3\\), after against before: t\\(9\\) = .*\\[95% CI .*\\(n = 6 before and 5 after; after: annee ≥ 2007\\)\\.$",
                rt$phrase) && isTRUE(all.equal(rt$difference[2:3], c(rt$tests$bas[2], rt$tests$haut[2]))))
 verifier("aucune phrase BACI avec NA", !any(grepl("NA", c(rb$phrase, re$phrase, rt$phrase, rf$phrase), fixed = TRUE)))
+
+cat("Le modèle mixte BACI\n")
+# quatre secteurs suivis de 2001 à 2014, un effet par secteur et un bruit autocorrélé dans chacun :
+# S1 (l'impact) gagne 1,5 à partir de 2008 et n'a pas de densité en 2004 ; S3 n'a pas de ligne en
+# 2014 ; S4 n'est ni impact ni témoin ; dans le désordre
+set.seed(13)
+bm <- expand.grid(annee = 2001:2014, secteur = c("S1", "S2", "S3", "S4"), stringsAsFactors = FALSE)
+bm$densite <- round(5 + c(S1 = 0.4, S2 = -0.6, S3 = 0.3, S4 = 0)[bm$secteur] + 1.5 * (bm$secteur == "S1" & bm$annee >= 2008) +
+                      unlist(lapply(1:4, function(k) as.vector(stats::filter(rnorm(14, 0, 0.5), 0.6, "recursive")))), 3)
+bm$densite[bm$secteur == "S1" & bm$annee == 2004] <- NA
+bm <- bm[!(bm$secteur == "S3" & bm$annee == 2014), ]
+bm <- data.frame(nom = paste0("m", seq_len(nrow(bm))), bm[sample(nrow(bm)), c("secteur", "annee", "densite")])
+pm <- projet_depuis_tableau(bm, "baci mixte")
+mv <- function(nom) numeros(pm, nom)
+proche <- function(a, b, tol) isTRUE(all.equal(unname(a), unname(b), tolerance = tol, check.attributes = FALSE))
+erreur_m <- function(...) tryCatch({ modele_baci(...); "" }, error = conditionMessage)
+# (les témoins dans le désordre : les noms et les valeurs suivent l'ordre des niveaux)
+b0 <- modele_baci(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S3", "S2"), 2008)
+pv0 <- b0$projet
+o0 <- numeros_observations(pv0)
+periode0 <- colonne(pv0, numeros(pv0, "période BACI (2008)"), o0)
+impact0 <- colonne(pv0, numeros(pv0, "impact BACI (S1 contre S2, S3)"), o0)
+verifier("les deux variables 0/1 : la période (1 à partir de 2008, 0 avant), l'impact (1 pour S1, 0 pour les témoins S2 et S3, manquante pour S4), nommées d'après les réglages",
+         identical(b0$nouvelles, c("période BACI (2008)", "impact BACI (S1 contre S2, S3)")) && identical(unname(b0$variables), b0$nouvelles) &&
+           identical(unname(periode0), as.numeric(bm$annee >= 2008)) && identical(unname(impact0), ifelse(bm$secteur == "S1", 1, ifelse(bm$secteur %in% c("S2", "S3"), 0, NA))) &&
+           length(pv0$variables) == length(pm$variables) + 2)
+# les lignes du modèle, faites ici : S1, S2 et S3 avec une densité (nlme::lme les veut toutes connues), jusqu'à la fin
+lignes_baci <- function(fin = Inf) {
+  r <- bm[bm$secteur %in% c("S1", "S2", "S3") & !is.na(bm$densite) & bm$annee <= fin, ]
+  transform(r, periode = as.numeric(annee >= 2008), impact = as.numeric(secteur == "S1"))
+}
+ctrl_b <- nlme::lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, returnObject = TRUE)
+d0 <- lignes_baci()
+l0 <- nlme::lme(densite ~ periode * impact, random = ~ 1 | secteur, data = d0, method = "REML", control = ctrl_b)
+m0 <- ajuster(pv0, b0$definition)
+verifier("sans CAR1 : = nlme::lme(densite ~ periode * impact, random = ~ 1 | secteur, method = \"REML\") sur les lignes de l'impact et des témoins ; la densité manquante laissée de côté",
+         proche(m0$resultat$coefficients$estimation, nlme::fixef(l0), 1e-6) && proche(m0$resultat$coefficients$p, summary(l0)$tTable[, "p-value"], 1e-5) &&
+           m0$N == nrow(d0) && length(m0$exclues) == 1 && is.null(b0$definition$correlation) && b0$definition$type == "LMM" &&
+           identical(b0$definition$name, "BACI densite") && identical(m0$niveaux, "secteur"))
+b1 <- modele_baci(pv0, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008, car1 = TRUE)
+m1 <- ajuster(b1$projet, b1$definition)
+l1 <- nlme::lme(densite ~ periode * impact, random = ~ 1 | secteur, correlation = nlme::corCAR1(form = ~ annee | secteur), data = d0, method = "REML", control = ctrl_b)
+verifier(sprintf("avec CAR1 : = nlme::lme(..., correlation = corCAR1(form = ~ annee | secteur)) (φ = %.3f) ; les variables, qui existent avec ces valeurs, resservent", m1$resultat$phi),
+         proche(m1$resultat$coefficients$estimation, nlme::fixef(l1), 1e-4) && proche(m1$resultat$phi, coef(l1$modelStruct$corStruct, unconstrained = FALSE), 1e-3) &&
+           m1$resultat$phi > 0.1 && !length(b1$nouvelles) && identical(b1$projet$variables, pv0$variables) && m1$car1 && identical(m1$temps, "annee"))
+b2 <- modele_baci(pv0, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008, fin = 2012, car1 = TRUE)
+m2 <- ajuster(b2$projet, b2$definition)
+d2 <- lignes_baci(2012)
+l2 <- nlme::lme(densite ~ periode * impact, random = ~ 1 | secteur, correlation = nlme::corCAR1(form = ~ annee | secteur), data = d2, method = "REML", control = ctrl_b)
+verifier("avec une fin (2012) : les seules lignes jusqu'à la fin, = nlme::lme() sur elles",
+         m2$N == nrow(d2) && proche(m2$resultat$coefficients$estimation, nlme::fixef(l2), 1e-4) &&
+           all(colonne(pm, mv("annee"), b2$definition$observations) <= 2012))
+e1 <- effet_baci(m1, b1$definition)
+e0 <- effet_baci(m0, b0$definition)
+c1 <- summary(l1)$tTable["periode:impact", ]
+nb2 <- function(x) formatC(x, format = "f", digits = 2, decimal.mark = ",")
+p_texte <- function(p) if (p < 0.001) "p < 0,001" else paste("p =", formatC(p, digits = 3, format = "g", decimal.mark = ","))
+verifier(sprintf("l'effet BACI = le coefficient periode:impact de nlme, son intervalle à 95 %% (la loi t de ses degrés de liberté), son t et sa valeur p, dans la phrase : « %s »", e1$phrase),
+         proche(e1$estimation, c1[["Value"]], 1e-4) && proche(c(e1$bas, e1$haut), c1[["Value"]] + c(-1, 1) * qt(0.975, c1[["DF"]]) * c1[["Std.Error"]], 1e-4) &&
+           proche(e1$p, c1[["p-value"]], 1e-3) && e1$ddl == c1[["DF"]] && e1$car1 &&
+           grepl(sprintf("effet BACI (période × impact) = %s [IC 95 %% %s ; %s], t(%d) = %s, %s (n = %d observations de 3 unités ; après : annee ≥ 2008).",
+                         nb2(e1$estimation), nb2(e1$bas), nb2(e1$haut), as.integer(c1[["DF"]]), nb2(e1$t), p_texte(e1$p), m1$N), e1$phrase, fixed = TRUE) &&
+           startsWith(e1$phrase, sprintf("Modèle linéaire mixte (BACI), avec une ordonnée à l'origine aléatoire par secteur et une autocorrélation CAR1 le long de annee (φ = %s), qui tiennent compte des unités et de l'autocorrélation dans le temps ; densite, impact (S1) contre témoins (S2, S3) : ",
+                                         nb2(m1$resultat$phi))))
+verifier(sprintf("sans CAR1, la phrase dit qu'il tient compte des unités : « %s »", e0$phrase),
+         startsWith(e0$phrase, "Modèle linéaire mixte (BACI), avec une ordonnée à l'origine aléatoire par secteur, qui tient compte des unités ; densite, impact (S1) contre témoins (S2, S3) : effet BACI") &&
+           !e0$car1 && proche(e0$estimation, nlme::fixef(l0)[["periode:impact"]], 1e-6))
+options(nuee.langue = "en")
+e1en <- effet_baci(m1, b1$definition)
+bm_en <- modele_baci(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)
+t2en <- texte_methodes(b2$projet, b2$definition, m2, "en", "essai")
+options(nuee.langue = NULL)
+verifier(sprintf("en anglais : « %s » ; les variables nommées en anglais", e1en$phrase),
+         grepl(paste0("^Linear mixed model \\(BACI\\), with a random intercept per secteur and a CAR1 autocorrelation along annee \\(φ = [0-9.]+\\), which account for the units and for the autocorrelation in time; ",
+                      "densite, impact \\(S1\\) against control \\(S2, S3\\): BACI effect \\(period × impact\\) = [0-9.-]+ \\[95% CI [0-9.-]+, [0-9.-]+\\], t\\([0-9]+\\) = [0-9.-]+, p [=<] [0-9.]+ ",
+                      "\\(n = [0-9]+ observations of 3 units; after: annee ≥ 2008\\)\\.$"), e1en$phrase) &&
+           identical(bm_en$nouvelles, c("BACI period (2008)", "BACI impact (S1 vs S2, S3)")))
+t1 <- texte_methodes(b1$projet, b1$definition, m1, "fr", "essai")
+t2 <- texte_methodes(b2$projet, b2$definition, m2, "fr", "essai")
+verifier("le texte des Méthodes dit que c'est le modèle BACI, ce que valent ses deux variables, et cite Stewart-Oaten et al. (1986) ; avec une fin, jusqu'où",
+         grepl("C'est le modèle BACI (avant/après avec témoin ; Stewart-Oaten et al., 1986) : « période BACI (2008) » vaut 1 à partir de annee = 2008 et 0 avant, « impact BACI (S1 contre S2, S3) » vaut 1 pour l'unité d'impact S1 et 0 pour les témoins S2 et S3, et le coefficient de leur terme croisé, l'effet BACI,",
+               t1$paragraphes[2], fixed = TRUE) && grepl("seules les observations de ces unités y entrent.", t1$paragraphes[2], fixed = TRUE) &&
+           grepl("seules les observations de ces unités, jusqu'à annee = 2012, y entrent.", t2$paragraphes[2], fixed = TRUE) &&
+           any(grepl("^Stewart-Oaten, A\\., Murdoch", t1$references)) && grepl("only the observations of these units, up to annee = 2012, enter it.", t2en$paragraphes[2], fixed = TRUE) &&
+           !any(grepl("NA", c(t1$paragraphes, t2$paragraphes, t2en$paragraphes), fixed = TRUE)) &&
+           !grepl("C'est le modèle BACI", texte_methodes(pv0, utils::modifyList(b0$definition, list(baci_origine = NULL)), m0, "fr", "essai")$paragraphes[2], fixed = TRUE))
+# les réglages gardés avec la définition : le même modèle se reconnaît, même relu d'un fichier (une
+# seule unité d'impact, pas de fin : ce que le JSON en fait)
+f_baci <- tempfile(fileext = ".nuee")
+pq_baci <- b1$projet
+pq_baci$models <- list(b1$definition)
+enregistrer_projet(pq_baci, f_baci)
+relu <- lire_projet(f_baci)$models[[1]]
+autre <- b1$definition$baci_origine
+autre$temoins <- c("S3", "S2")
+verifier("les mêmes réglages se reconnaissent (les témoins dans un autre ordre, la définition relue d'un fichier) ; un autre événement, une fin ou CAR1, non",
+         memes_reglages_baci(relu$baci_origine, b1$definition$baci_origine) && memes_reglages_baci(autre, b1$definition$baci_origine) &&
+           !memes_reglages_baci(b0$definition$baci_origine, b1$definition$baci_origine) && memes_reglages_baci(b0$definition$baci_origine, b1$definition$baci_origine, car1 = FALSE) &&
+           !memes_reglages_baci(b2$definition$baci_origine, b1$definition$baci_origine) &&
+           !memes_reglages_baci(modele_baci(pv0, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2009, car1 = TRUE)$definition$baci_origine, b1$definition$baci_origine) &&
+           proche(ajuster(lire_projet(f_baci), relu)$resultat$coefficients$estimation, m1$resultat$coefficients$estimation, 1e-10) &&
+           identical(texte_methodes(lire_projet(f_baci), relu, m1, "fr", "essai")$paragraphes, t1$paragraphes))
+# l'unité et le temps en identifiants des observations : le même modèle
+pmi <- pv0
+pmi$observation_id_names <- c("Observation", "secteur_id", "an")
+for (i in seq_along(pmi$observations)) pmi$observations[[i]]$ids <- c(bm$nom[i], bm$secteur[i], bm$annee[i])
+bi <- modele_baci(pmi, mv("densite"), "id:3", "id:2", "S1", c("S2", "S3"), 2008, car1 = TRUE)
+mi <- ajuster(bi$projet, bi$definition)
+verifier("l'unité et le temps en identifiants : un effet aléatoire et CAR1 par identifiants, le même modèle ; les variables d'avant resservent",
+         identical(bi$definition$aleatoires, list(list(by = "id", id = "secteur_id"))) && identical(bi$definition$correlation$temps, list(by = "id", id = "an")) &&
+           proche(mi$resultat$coefficients$estimation, m1$resultat$coefficients$estimation, 1e-6) && !length(bi$nouvelles))
+pc0 <- variable_calculee(pm, "période BACI (2008)", "ifelse(annee >= 2009, 1, 0)")
+pc1 <- variable_calculee(pm, "période BACI (2008)", "ifelse(annee >= 2008, 1, 0)")
+pc2 <- variable_calculee(pm, "impact BACI (S1 contre S2, S3)", "ifelse(secteur == \"S1\", \"oui\", \"non\")")
+verifier("un nom pris par une variable aux autres valeurs, ou qualitative : refusé, et le message dit pourquoi ; aux mêmes valeurs (faite à la main) : elle ressert",
+         grepl("^Une variable s'appelle déjà « période BACI \\(2008\\) », sans les valeurs que le modèle BACI lui donne \\(1 quand annee ≥ 2008, 0 avant\\) : elle n'est pas remplacée, et le modèle n'est pas ajusté\\.$",
+               erreur_m(pc0, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)) &&
+           grepl("« impact BACI \\(S1 contre S2, S3\\) », sans les valeurs que le modèle BACI lui donne \\(1 pour S1, 0 pour S2, S3, manquante ailleurs\\)",
+                 erreur_m(pc2, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)) &&
+           identical(modele_baci(pc1, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)$nouvelles, "impact BACI (S1 contre S2, S3)"))
+bs_m <- bm
+bs_m$site <- c(S1 = "A", S2 = "B", S3 = "B", S4 = "C")[bs_m$secteur]
+pms <- projet_depuis_tableau(bs_m, "baci sites")
+bms <- modele_baci(pms, numeros(pms, "densite"), numeros(pms, "annee"), numeros(pms, "site"), "A", "B", 2008)
+verifier("sans événement, ou CAR1 avec plusieurs lignes d'une unité au même temps (l'unité = le site) : refusé ; sans CAR1, le site va",
+         grepl("Entrez l'événement", erreur_m(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), NULL)) &&
+           grepl("^Plusieurs lignes d'une même unité au même temps \\(B\\) : l'autocorrélation CAR1 demande un seul temps par unité",
+                 erreur_m(pms, numeros(pms, "densite"), numeros(pms, "annee"), numeros(pms, "site"), "A", "B", 2008, car1 = TRUE)) &&
+           # (deux unités : l'effet principal de l'impact n'a pas de degré de liberté entre unités, nlme le dit)
+           suppressWarnings(ajuster(bms$projet, bms$definition))$N == nrow(d0) &&
+           grepl("au moins deux valeurs de annee dans chaque période", erreur_m(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2014)))
+rbm <- baci(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), evenement = 2008, fin = 2010)
+verifier("baci() dit le plus petit nombre de temps d'une unité, jusqu'à la fin (CAR1 par défaut à partir de trois)", rbm$temps_unites == 9 &&
+           baci(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), evenement = 2008)$temps_unites == 13)
 
 cat("Le même calcul sous toutes les versions de R (ex aequo, différences nulles)\n")
 # des comptages : S1 et S2 suivis 10 ans, des différences nulles et ex aequo ; une variable aux

@@ -381,9 +381,10 @@ reajuster_demande <- function(q) {
   ajuster_et_garder(p, d)
 }
 
-ajuster_et_garder <- function(p, d) {
+# (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande)
+ajuster_et_garder <- function(p, d, m = NULL) {
   if (!d$A && !sans_composantes(d)) d$A <- max(1, autoajuster(p, d))  # (ni une régression ni une autre analyse n'a de composantes)
-  m <- ajuster(p, d)
+  if (is.null(m)) m <- ajuster(p, d)
   id <- nouvel_id("M")
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
     d$number <- d$number %||% (max(c(0, vapply(p$models, function(x) as.numeric(x$number %||% 0), 0))) + 1)
@@ -395,6 +396,40 @@ ajuster_et_garder <- function(p, d) {
   }
   etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m)
   resultat_modele(id)
+}
+
+# Avant/après (BACI) › Ajuster le modèle mixte (comparaisons.R : modele_baci) : ses deux variables
+# 0/1, ajoutées au projet comme une Nouvelle variable (Ctrl+Z les retire) ou reprises, puis le
+# modèle, qui rejoint le projet comme ceux d'Ajuster ce modèle. Le modèle des mêmes réglages déjà
+# dans le projet garde son nom et son numéro (il est ajusté à nouveau) ; un autre prend un nom libre,
+# « BACI y (2) »... Le modèle est ajusté avant que le projet ne change : un échec ne laisse rien.
+baci_modele_demande <- function(q) {
+  p <- projet(q$projet)
+  b <- modele_baci(p, q$y, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)), q$evenement, q$fin, isTRUE(q$car1))
+  d <- b$definition
+  d$app <- TRUE
+  meme <- Find(function(x) !is.null(x$baci_origine) && memes_reglages_baci(x$baci_origine, d$baci_origine), p$models)
+  if (!is.null(meme)) {
+    d$name <- meme$name
+    d$number <- meme$number
+  } else {
+    pris <- c(vapply(p$models, function(x) as.character(x$name %||% ""), ""),
+              vapply(Filter(function(e) identical(e$projet, p$id), etat$modeles), function(e) as.character(e$definition$name %||% ""), ""))
+    base <- d$name
+    k <- 1
+    while (d$name %in% pris) {
+      k <- k + 1
+      d$name <- sprintf("%s (%d)", base, k)
+    }
+  }
+  m <- ajuster(b$projet, d)
+  if (length(b$nouvelles)) {
+    memoriser(p, sprintf(if (length(b$nouvelles) > 1) "variables %s" else "variable %s", paste(b$nouvelles, collapse = ", ")))
+    b$projet$modifie <- TRUE
+    etat$projets[[p$id]] <- b$projet
+    reviser(p$id)
+  }
+  list(modele = ajuster_et_garder(projet(p$id), d, m), variables = I(unname(b$variables)), nouvelles = I(b$nouvelles))
 }
 
 # Les demandes qui supposent des composantes et des scores : refusées pour une régression
@@ -782,9 +817,23 @@ DEMANDES <- list(
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
                                                q$test %||% (if (length(q$appariement)) "t_apparie" else "welch"), q$correction %||% "BH",
                                                appariement = q$appariement),
-  # avant/après avec témoin (comparaisons.R : baci) ; sans q$evenement, la série des écarts seule
-  baci = function(q) baci(projet(q$projet), q$y, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)),
-                          evenement = q$evenement, fin = q$fin, test = q$test %||% "welch"),
+  # avant/après avec témoin (comparaisons.R : baci) ; sans q$evenement, la série des écarts seule.
+  # Avec un événement, `modeles` : l'effet des modèles mixtes BACI de ces réglages ajustés dans la
+  # séance (avec ou sans CAR1), du plus ancien au plus récent (comparaisons.R : effet_baci)
+  baci = function(q) {
+    r <- baci(projet(q$projet), q$y, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)),
+              evenement = q$evenement, fin = q$fin, test = q$test %||% "welch")
+    if (is.null(r$periodes)) return(r)
+    o <- list(y = r$y$uid, temps = r$temps$uid, unite = r$unite$uid, impact = r$impact, temoins = r$temoins, evenement = r$evenement, fin = r$fin)
+    ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, q$projet) && !is.null(etat$modeles[[id]]$definition$baci_origine) &&
+                    memes_reglages_baci(etat$modeles[[id]]$definition$baci_origine, o, car1 = FALSE), names(etat$modeles))
+    r$modeles <- unname(Filter(Negate(is.null), lapply(ids, function(id) {
+      e <- effet_baci(etat$modeles[[id]]$modele, etat$modeles[[id]]$definition)
+      if (!is.null(e)) c(list(id = id), e)
+    })))
+    r
+  },
+  baci_modele = baci_modele_demande,
   # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux, et
   # avec q$dans (une variable ou "id:k" : le site), toutes les paires de niveaux d'un même groupe
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y, appariement = q$appariement,

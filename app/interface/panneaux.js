@@ -1720,8 +1720,24 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   const r = cache.res;
   const liste = (xs) => (xs.length > 8 ? `${xs.slice(0, 8).join(', ')}… (${xs.length})` : xs.join(', '));
   // every pair of levels (within each group, if one is chosen), with the columns of the test
-  // chosen above and why a pair wasn't tested; a click on a row compares that pair
+  // chosen above and why a pair wasn't tested; a click on a row compares that pair. Before the
+  // pairs, the omnibus test for both paired tests: Friedman's test on the keys where every level
+  // has a value, or one per group (Holm over the groups), each as a sentence; why not, otherwise.
   const nomToutes = r.dans ? t('paires_dans_groupe', { groupe: r.dans.nom }) : t('toutes_paires');
+  const friedman = () => {
+    if (!r.friedman) return null;
+    const fc = (k) => [].concat(r.friedman[k]);
+    const phrases = fc('phrase');
+    const raisons = fc('non_teste');
+    const groupesF = r.friedman.groupe !== undefined ? fc('groupe') : null;
+    const sans = phrases.map((_, i) => i).filter((i) => phrases[i] === null);
+    const bouton = (phrase) => el('button', { class: 'icone-seule', title: t('copier_phrase'),
+      onclick: () => navigator.clipboard.writeText(phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+    return el('div', { class: 'note', style: { flex: '0 1 auto', maxHeight: '35%', overflow: 'auto' } },
+      phrases.map((x) => (x === null ? null : [el('b', {}, x), ' ', bouton(x), el('br')])),
+      !sans.length ? null : groupesF ? t('friedman_sans_test', { groupes: sans.map((i) => `${groupesF[i]} (${raisons[i]})`).join(', ') })
+        : t('friedman_non_teste', { raison: raisons[sans[0]] }));
+  };
   const tableauToutes = (bas, avant) => {
     const tp = (k) => [].concat(r.toutes[k]);
     const wilcoxon = L.test === 'wilcoxon';
@@ -1736,7 +1752,9 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
       { cle: 'non_teste', titre: t('non_teste') }];
     L.tableToutes ??= {};
     if (L.tableToutes.tri && !colonnes.some((c) => c.cle === L.tableToutes.tri.cle)) delete L.tableToutes.tri;
-    tableau(bas, ctx, L.tableToutes, {
+    const paires = el('div', { class: 'bas' });
+    bas.replaceChildren(...[friedman(), paires].filter(Boolean));
+    tableau(paires, ctx, L.tableToutes, {
       n: tp('a').length, nom: nomToutes, avant, colonnes, valeur,
       cliquer: (i) => { L.a = tp('a')[i]; L.b = tp('b')[i]; ctx.rafraichir(); },
       choisie: (i) => [tp('a')[i], tp('b')[i]].sort().join('\u0000') === [r.a, r.b].sort().join('\u0000'),
@@ -2037,13 +2055,19 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
         const x = s === '' ? null : Number(s);
         if (x === null || Number.isFinite(x)) { changer(x); ctx.rafraichir(); }
       } }));
+  // (the mixed model's box and button are in the bar from the start, so that it keeps its height
+  // while R computes; they are set once the result is known)
+  const entreeCar1 = el('input', { type: 'checkbox', disabled: true });
+  const champCar1 = el('label', { class: 'champ', title: t('baci_car1_aide') }, entreeCar1, t('baci_car1'));
+  const boutonModele = el('button', { disabled: true, title: t('baci_modele_evenement') }, icone('file-plus'), t('baci_modele'));
   const barre = outils(modes,
     choix(t('baci_reponse'), reponses, B.y, (x) => { B.y = Number(x); ctx.rafraichir(); }),
     choix(t('baci_temps'), tempsPossibles, B.temps, (x) => { B.temps = lire(x); ctx.rafraichir(); }),
     choix(t('baci_unite'), unitesPossibles, B.unite, (x) => { B.unite = lire(x); ctx.rafraichir(); }),
     nombre(t('baci_evenement'), t('baci_evenement_aide'), B.evenement, (x) => { B.evenement = x; }),
     nombre(t('baci_fin'), t('baci_fin_aide'), B.fin, (x) => { B.fin = x; }),
-    choix(t('test'), [['welch', t('test_welch')], ['student', t('test_student')], ['mann_whitney', 'Mann–Whitney']], B.test, (x) => { B.test = x; ctx.rafraichir(); }));
+    choix(t('test'), [['welch', t('test_welch')], ['student', t('test_student')], ['mann_whitney', 'Mann–Whitney']], B.test, (x) => { B.test = x; ctx.rafraichir(); }),
+    champCar1, boutonModele);
   // the unit's levels, each ticked as impact or as control (not both)
   const cocher = (role, autre) => el('div', { class: 'unites' }, el('span', { class: 'role' }, t(role === 'impact' ? 'baci_impact' : 'baci_temoins')),
     niveaux.map((n) => el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: B[role].includes(n), disabled: B[autre].includes(n),
@@ -2055,8 +2079,10 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
   const evenement = Number.isFinite(B.evenement) ? B.evenement : null;
   const q = { projet: p.projet, y: B.y, temps: B.temps, unite: B.unite, impact: B.impact, temoins: B.temoins, test: B.test,
     evenement, fin: evenement !== null && Number.isFinite(B.fin) ? B.fin : null };
-  // (the language too: R writes the sentence)
-  const cle = JSON.stringify([q.y, q.temps, q.unite, q.impact, q.temoins, q.evenement, q.fin, q.test, langueActuelle()]);
+  // (the language too: R writes the sentences; and the project's fitted models: R gives the effect
+  // of the BACI mixed models of these settings, asked again once one is fitted or removed)
+  const modeles = ctx.tousModeles().filter((m) => m.projet === p.projet).map((m) => m.id);
+  const cle = JSON.stringify([q.y, q.temps, q.unite, q.impact, q.temoins, q.evenement, q.fin, q.test, langueActuelle(), modeles]);
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, unites, el('p', { class: 'infos attente' }, t('calcul')));
     try { cache.res = await ctx.demander('baci', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
@@ -2090,13 +2116,32 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
     r.hors ? t('baci_hors_note', { n: r.hors }) : '',
     douteuses.length ? t('baci_normalite', { periodes: douteuses.join(', ') }) : '',
     fait ? t('baci_note_autocorrelation') : t('baci_choisir_evenement')].filter(Boolean).join(' ');
-  const copier = el('button', { class: 'icone-seule', title: t('copier_phrase'),
-    onclick: () => navigator.clipboard.writeText(r.phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+  const copier = (phrase) => el('button', { class: 'icone-seule', title: t('copier_phrase'),
+    onclick: () => navigator.clipboard.writeText(phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+  // the mixed model y ~ period × impact + (1 | unit), once an event is entered: CAR1 in time by
+  // default when every unit has 3 times or more, impossible with several rows of a unit at the same
+  // time (one time per unit); the effect of the latest model of these settings fitted, next to the
+  // test's sentence; a refusal (a name taken by another variable) under the settings
+  const car1Possible = fait && !r.repetees;
+  const car1 = car1Possible && (B.car1 ?? r.temps_unites >= 3);
+  const modele = [].concat(r.modeles || []).filter((x) => x.car1 === car1).pop();
+  const cleModele = JSON.stringify([cle, car1]);
+  entreeCar1.checked = car1;
+  entreeCar1.disabled = !car1Possible;
+  entreeCar1.onchange = (e) => { B.car1 = e.target.checked; ctx.rafraichir(); };
+  if (fait && !car1Possible) champCar1.title = t('baci_car1_repetees');
+  boutonModele.disabled = !fait;
+  if (fait) boutonModele.title = t('baci_modele_aide');
+  boutonModele.onclick = async () => {
+    try { await ctx.ajusterBaci({ ...q, car1 }); } catch (e) { cache.erreurModele = { cle: cleModele, message: e.message }; ctx.rafraichir(); }
+  };
+  const refus = cache.erreurModele && cache.erreurModele.cle === cleModele ? el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreurModele.message}`) : null;
   const graphe = el('div', { class: 'graphe' });
   const details = el('div', { class: 'defile', style: { flex: '0 1 auto', maxHeight: '40%' } });
   const bas = el('div', { class: 'bas' });
-  conteneur.replaceChildren(barre, unites, el('div', { class: 'note' }, ...(fait ? [el('b', {}, r.phrase), ' ', copier, el('br')] : []), notes),
-    graphe, ...(fait ? [details] : []), bas);
+  conteneur.replaceChildren(...[barre, unites, refus, el('div', { class: 'note' }, ...(fait ? [el('b', {}, r.phrase), ' ', copier(r.phrase), el('br')] : []),
+    ...(modele ? [el('b', {}, modele.phrase), ' ', copier(modele.phrase), el('br')] : []), notes),
+  graphe, ...(fait ? [details] : []), bas].filter(Boolean));
 
   // the gaps joined in time order, each period in its colour, the event line and each period's mean
   const c = couleursTheme();

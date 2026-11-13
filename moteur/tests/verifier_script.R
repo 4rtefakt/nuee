@@ -11,8 +11,9 @@
 # (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort, binomial et gamma,
 # GAMM binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
 # paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, résidus quantiles,
-# jeu de test ; la sélection par l'AIC, toutes les combinaisons ou l'élimination descendante), en
-# séance et en rapport ; les rapports R Markdown et Quarto (compilés avec knitr s'il est installé).
+# jeu de test ; la sélection par l'AIC, toutes les combinaisons ou l'élimination descendante ; le
+# modèle mixte de la vue BACI, avec CAR1 ou une fin), en séance et en rapport ; les rapports R
+# Markdown et Quarto (compilés avec knitr s'il est installé).
 #   Rscript moteur/tests/verifier_script.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -514,6 +515,26 @@ verifier(sprintf("le modèle choisi par la sélection : les %d lignes du modèle
 r <- essayer_regression("lm_choisi_selection_en", pr, dchoisi, langue = "en")
 verifier("le modèle choisi, en anglais : ni nom ni commentaire en français", en_anglais(lignes_script(r)) &&
            any(grepl("^known\\[outside_selection\\] <- FALSE", lignes_script(r))))
+# le modèle mixte de la vue BACI (comparaisons.R : modele_baci) : ses deux variables 0/1 dans le
+# tableau, leur terme croisé, le secteur aléatoire et CAR1 dans chaque secteur ; ses lignes, celles
+# de l'impact et des témoins (jusqu'à la fin), une densité manquante laissée de côté
+set.seed(13)
+tb <- expand.grid(annee = 2001:2014, secteur = c("S1", "S2", "S3", "S4"), stringsAsFactors = FALSE)
+tb$densite <- round(5 + c(S1 = 0.4, S2 = -0.6, S3 = 0.3, S4 = 0)[tb$secteur] + 1.5 * (tb$secteur == "S1" & tb$annee >= 2008) +
+                      unlist(lapply(1:4, function(k) as.vector(stats::filter(rnorm(14, 0, 0.5), 0.6, "recursive")))), 3)
+tb$densite[tb$secteur == "S1" & tb$annee == 2004] <- NA
+pbaci <- projet_depuis_tableau(data.frame(nom = paste0("m", seq_len(nrow(tb))), tb[sample(nrow(tb)), c("secteur", "annee", "densite")]), "baci")
+ub <- function(nom) numeros(pbaci, nom)
+bb <- modele_baci(pbaci, ub("densite"), ub("annee"), ub("secteur"), "S1", c("S2", "S3"), 2008, car1 = TRUE)
+r <- essayer_regression("lmm_baci_car1", bb$projet, bb$definition)
+code <- code_hors_donnees(lignes_script(r))
+verifier("le modèle mixte BACI : nlme::lme avec CAR1 dans chaque secteur, le terme croisé de la période et de l'impact, les lignes de l'impact et des témoins",
+         any(grepl("corCAR1", code, fixed = TRUE)) && any(grepl("période BACI (2008)*impact BACI (S1 contre S2, S3)", lignes_script(r), fixed = TRUE)) &&
+           ajuster(bb$projet, bb$definition)$N == sum(tb$secteur %in% c("S1", "S2", "S3") & !is.na(tb$densite)))
+options(nuee.langue = "en")
+bbf <- modele_baci(pbaci, ub("densite"), ub("annee"), ub("secteur"), "S1", c("S2", "S3"), 2008, fin = 2012)
+options(nuee.langue = NULL)
+essayer_regression("lmm_baci_fin_en", bbf$projet, bbf$definition, langue = "en")
 # la séance : une ACP, un modèle mixte et un GAM dans le même script
 definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
                     definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),

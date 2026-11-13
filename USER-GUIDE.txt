@@ -456,7 +456,14 @@ qualitative variable.
   the pairs of levels of the same group, the sectors of each site compared two by two. Holm's
   correction covers the pairs tested, all groups together; the raw p reads one site at a
   time. A level belongs to the group its rows carry: one with rows in several groups is
-  refused, and those without a group are listed.
+  refused, and those without a group are listed. Above the pairs comes the omnibus test, for
+  both paired tests: Friedman's test on the keys where every level has a value (complete
+  blocks; the keys left out for a missing level are counted), its χ², degrees of freedom and
+  p, with Kendall's W = χ² / (n (k − 1)) as effect size (0: no agreement from one key to the
+  next, 1: the same ranking of the levels at every key), as a sentence. Within each group,
+  one Friedman test per group, on its own levels and complete keys, its p corrected by Holm
+  over the groups tested; a group with fewer than three levels or fewer than two complete keys
+  gets no test, and the reason is given.
   Two measurements: Pearson's and Spearman's correlations; Spearman is recommended when
   normality is doubtful for either. Paired by "the observation (same row)", two measurements
   of the same rows (before and after, say) are compared instead: the differences
@@ -486,10 +493,20 @@ ranks); the effect is the change in the mean gap, after minus before, with its 9
 and the result comes as a sentence ready for a report. The plot shows the gaps over time, the
 event and each period's mean; until an event is entered, the gaps alone. The times are treated
 as independent: successive gaps that resemble each other (autocorrelation) make the p value
-too small. A mixed model accounts for it: y ~ period × impact + (1 | unit), with CAR1 in time
-if needed (New model › Linear mixed model). Make the period and the impact as new variables
-worth 0 or 1, ifelse(year >= 2007, 1, 0) and ifelse(sector %in% c("S1", "S2"), 1, 0): a
-regression doesn't take a cross term with a qualitative variable yet.
+too small. "Fit the mixed model" accounts for it: it adds to the project two variables worth
+0 or 1, "BACI period (2007)" (1 from the event on, 0 before) and "BACI impact (S1 vs S2, S3)"
+(1 for the impact units, 0 for the controls, missing for the other units), then the linear
+mixed model y ~ period × impact + (1 | unit) on the rows of the impact and control units with
+a known time, up to the end if there is one: a random intercept per unit and, with "with CAR1
+in time" (ticked by default when every unit has at least three times; impossible when a unit
+has several rows at the same time), a CAR1 autocorrelation along the time within each unit.
+The variables are used as they are when they already exist with these values, and refused
+when another variable has their name; Ctrl+Z removes them, as for a new variable. The model
+joins the project (named "BACI <response>"; the same settings refit the same model) and its
+views open. Back in the BACI view, its BACI effect, the period × impact coefficient with its
+95 % interval and p value, comes as a sentence under the test's, saying that this model
+accounts for the units and, with CAR1, for the autocorrelation. Its Methods text says it is
+the BACI model and what its two variables are worth.
 
 Linear, generalized and mixed models
 ------------------------------------

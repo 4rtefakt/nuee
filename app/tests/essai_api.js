@@ -442,13 +442,37 @@ async function principal() {
       const tp = r.toutes;
       verifier([].concat(tp.a).join() === 'S1,S1,S2' && [].concat(tp.b).join() === 'S2,S3,S3' && [].concat(tp.n).join() === '8,9,9'
         && tp.p_t[0] === r.tests.p[0] && tp.p_t_holm.every((x, i) => x >= tp.p_t[i]), `toutes les paires : ${JSON.stringify(tp)}`);
+      // before the pairs, Friedman's test on the 8 years where the three sectors have a value (2001
+      // and 2006 left out), computed here: the ranks within each year (ties at their mean rank)
+      const complets = [];
+      for (let an = 2001; an <= 2010; an += 1) if (['S1', 'S2', 'S3'].every((s) => val(s, an) !== null)) complets.push(['S1', 'S2', 'S3'].map((s) => val(s, an)));
+      const sommes = [0, 0, 0];
+      let liens = 0;
+      for (const b of complets) {
+        b.forEach((x, j) => {
+          const egaux = b.filter((y) => y === x).length;
+          sommes[j] += b.filter((y) => y < x).length + (egaux + 1) / 2;
+          if (j === b.indexOf(x)) liens += egaux ** 3 - egaux;
+        });
+      }
+      const nb = complets.length;
+      const khi2 = (12 * sommes.reduce((s, R) => s + (R - (nb * 4) / 2) ** 2, 0)) / (nb * 3 * 4 - liens / 2);
+      // (a table of one test: each column a list of one value)
+      const f = Object.fromEntries(Object.entries(r.friedman).map(([cle, x]) => [cle, [].concat(x)[0]]));
+      verifier(nb === 8 && f.n === 8 && f.k === 3 && f.laissees === 2 && f.ddl === 2 && Math.abs(f.statistique - khi2) < 1e-9 && Math.abs(f.W - khi2 / (8 * 2)) < 1e-12
+        && /^Test de Friedman : χ²\(2\) = .* \(n = 8 valeurs de annee où les 3 niveaux ont tous une valeur ; 2 laissées de côté, un niveau sans valeur\)\.$/.test(f.phrase),
+      `Friedman avant les paires : ${JSON.stringify(r.friedman)}`);
       // within each site: only the pairs of sectors of the same site (S1 and S2 in A, S3 alone in B), Holm over those
       const ls = await api('coller', { texte: ['nom\tsecteur\tsite\tannee\tdensite', ...lignes.map((l) => [l[0], l[1], l[1] === 'S3' ? 'B' : 'A', l[2], l[3]].join('\t'))].join('\r\n'),
         nom: 'Secteurs et sites' });
       const vs = Object.fromEntries(ls.variables.map((x) => [x.nom, x.uid]));
-      const ts = (await api('test_deux_variables', { projet: ls.id, x: vs.densite, y: vs.secteur, appariement: vs.annee, dans: vs.site })).toutes;
+      const rs = await api('test_deux_variables', { projet: ls.id, x: vs.densite, y: vs.secteur, appariement: vs.annee, dans: vs.site });
+      const ts = rs.toutes;
       verifier([].concat(ts.groupe).join() === 'A' && [].concat(ts.a).join() === 'S1' && [].concat(ts.b).join() === 'S2'
         && [].concat(ts.p_t)[0] === r.tests.p[0] && [].concat(ts.p_t_holm)[0] === [].concat(ts.p_t)[0], `paires dans chaque site : ${JSON.stringify(ts)}`);
+      // (one Friedman test per site: two sectors in A, one in B, so neither has one, and why)
+      verifier([].concat(rs.friedman.groupe).join() === 'A,B' && [].concat(rs.friedman.phrase).every((x) => x === null)
+        && [].concat(rs.friedman.non_teste).join('|') === '2 niveau(x), il en faut 3|1 niveau(x), il en faut 3', `Friedman dans chaque site : ${JSON.stringify(rs.friedman)}`);
       // a pair A–B that can't be tested (S3 has two years): its error apart, the table of all pairs still there, with why
       const deux = await api('coller', { texte: ['nom\tsecteur\tannee\tdensite', ...[2001, 2002, 2003, 2004].flatMap((an, i) => [`a${an}\tS1\t${an}\t${2 + i / 10}`,
         `b${an}\tS2\t${an}\t${3 + (i % 3) / 10}`]), 'c2001\tS3\t2001\t4', 'c2002\tS3\t2002\t5'].join('\r\n'), nom: 'Deux années' });
@@ -612,6 +636,44 @@ async function principal() {
       verifier(tv.test === 't_apparie' && tv.cle.nom === 'annee' && [].concat(tv.tableau.nom).sort().join() === 'densite,nnicad' && [].concat(tv.tableau.n_paires)[k] === 10
         && Math.abs([].concat(tv.tableau.statistique)[k] - moy(dp) / Math.sqrt(vari(dp) / 10)) < 1e-8 && Math.abs([].concat(tv.tableau.d)[k] - moy(dp) / Math.sqrt(vari(dp))) < 1e-9,
         `deux classes appariées : ${JSON.stringify(tv.tableau)}`);
+      // Fit the mixed model (comparaisons.R: modele_baci): its two 0/1 variables, added to the
+      // project (Ctrl+Z removes them), and the model y ~ period × impact + (1 | sector) in it
+      const nVariables = q.variables.length;
+      const bm = await api('baci_modele', { ...base, evenement: 2006, car1: false });
+      const dn = await api('donnees', { projet: q.id });
+      const colonne = (nom) => dn.valeurs[dn.variables.indexOf(nom)];
+      const periode = colonne('période BACI (2006)');
+      const impact = colonne('impact BACI (S1 contre S2, S3)');
+      const pb = await api('projet', { projet: q.id });
+      verifier(bm.modele.type === 'LMM' && bm.modele.nom === 'BACI densite' && [].concat(bm.nouvelles).join('|') === 'période BACI (2006)|impact BACI (S1 contre S2, S3)'
+        && pb.variables.length === nVariables + 2 && /^variables période BACI/.test(pb.annulable) && pb.modeles.some((m) => m.nom === 'BACI densite' && m.type === 'LMM')
+        && lignes.every((l, i) => periode[i] === (l[2] >= 2006 ? 1 : 0) && impact[i] === ({ S1: 1, S2: 0, S3: 0 }[l[1]] ?? null))
+        && bm.modele.N === lignes.filter((l) => l[1] !== 'S4').length && bm.modele.vc_par === 'secteur',
+      `modèle mixte BACI : ${bm.modele.nom}, ${JSON.stringify(bm.nouvelles)}, N = ${bm.modele.N}`);
+      // the BACI view then gives its effect, the period × impact coefficient, as a sentence
+      const avec = await api('baci', { ...base, evenement: 2006 });
+      const ef = [].concat(avec.modeles);
+      const co = bm.modele.coefficients_regression;
+      const kc = [].concat(co.terme).indexOf('période BACI (2006)*impact BACI (S1 contre S2, S3)');
+      verifier(ef.length === 1 && ef[0].id === bm.modele.id && ef[0].car1 === false && kc === 3 && ef[0].estimation === co.estimation[kc] && ef[0].p === co.p[kc]
+        && ef[0].bas === co.bas[kc] && /^Modèle linéaire mixte \(BACI\), avec une ordonnée à l'origine aléatoire par secteur, qui tient compte des unités ; densite, impact \(S1\) contre témoins \(S2, S3\) : effet BACI/.test(ef[0].phrase)
+        && avec.temps_unites === 9, `effet BACI : ${JSON.stringify(ef)}`);
+      // with CAR1, another model; the same settings again, the same model refitted (its name, its number)
+      const bc = await api('baci_modele', { ...base, evenement: 2006, car1: true });
+      const bs = await api('baci_modele', { ...base, evenement: 2006, car1: false });
+      const en2 = await api('baci', { ...base, evenement: 2006 }, 'en');
+      const ef2 = [].concat(en2.modeles);
+      verifier(bc.modele.nom === 'BACI densite (2)' && !bc.nouvelles.length && /CAR1/.test(bc.modele.titre) && bs.modele.nom === 'BACI densite' && bs.modele.numero === bm.modele.numero
+        && ef2.length === 3 && ef2.map((x) => x.car1).join() === 'false,true,false' && ef2[2].id === bs.modele.id
+        && /^Linear mixed model \(BACI\), with a random intercept per secteur and a CAR1 autocorrelation along annee \(φ = /.test(ef2[1].phrase),
+      `CAR1, puis les mêmes réglages : ${bc.modele.nom}, ${bs.modele.nom} ; ${JSON.stringify(ef2.map((x) => x.phrase))}`);
+      const sansVar = (await api('annuler', { projet: q.id })).projet;
+      verifier(sansVar.variables.length === nVariables && !sansVar.modeles.some((m) => /^BACI/.test(m.nom)), 'annuler : les deux variables et le modèle quittent le projet');
+      await api('variable_calculee', { projet: q.id, nom: 'période BACI (2006)', formule: 'ifelse(annee >= 2007, 1, 0)' });
+      let refusM = '';
+      try { await api('baci_modele', { ...base, evenement: 2006 }); } catch (err) { refusM = err.message; }
+      verifier(/Une variable s'appelle déjà « période BACI \(2006\) », sans les valeurs que le modèle BACI lui donne \(1 quand annee ≥ 2006, 0 avant\)/.test(refusM)
+        && (await api('projet', { projet: q.id })).variables.length === nVariables + 1, `un nom pris par une autre variable, refusé sans rien changer : « ${refusM} »`);
     });
     await etape('paquets de lecture des formats', async () => {
       const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });

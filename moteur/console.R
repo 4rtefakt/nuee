@@ -55,6 +55,10 @@ journaliser <- function(nom, q, r) {
     reajuster = definition_modele(r$id, sprintf("# modèle %s, d'après %s%s", r$nom, q$modele,
       if (length(q$exclues)) sprintf(", sans %d observation(s)", length(q$exclues)) else if (length(q$garder)) ", variables VIP"
       else if (!is.null(q$groupes_aic)) ", choisi par la sélection par AIC" else if (!is.null(q$car1)) ", avec une autocorrélation CAR1" else "")),
+    baci_modele = c(if (length(r$nouvelles)) sprintf("%s <- variables_baci(%s, %s, %s, %s, %s, %s)$projet  # variables 0/1 de la période et de l'impact",
+                                                     q$projet, q$projet, variable_r(q$temps), variable_r(q$unite), vecteur_r(as.character(unlist(q$impact))),
+                                                     vecteur_r(as.character(unlist(q$temoins))), code_r(q$evenement)),
+                    definition_modele(r$modele$id, sprintf("# modèle mixte BACI %s du projet %s", r$modele$nom, projet(r$modele$projet)$nom))),
     selection_aic = sprintf("selection_aic(%s, definition(%s))", q$modele, code_r(q$modele)),
     predire = sprintf("predire(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele),
                       if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),
@@ -86,8 +90,9 @@ journaliser <- function(nom, q, r) {
     NULL)
   if (length(lignes)) noter("appel", lignes)
   # un modèle ajusté : ce que R en affiche, comme après l'avoir tapé dans la console
-  if (nom %in% c("ajuster", "reajuster") && !is.null(etat$modeles[[r$id]])) {
-    noter("resultat", utils::capture.output(print(etat$modeles[[r$id]]$modele)))
+  if (nom %in% c("ajuster", "reajuster", "baci_modele")) {
+    id <- if (nom == "baci_modele") r$modele$id else r$id
+    if (!is.null(etat$modeles[[id]])) noter("resultat", utils::capture.output(print(etat$modeles[[id]]$modele)))
   }
 }
 

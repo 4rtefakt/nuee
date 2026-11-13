@@ -485,7 +485,14 @@ année...) peut faire les groupes, comme une variable qualitative.
   site comparés deux à deux. La correction de Holm porte sur les paires testées, tous les
   groupes ensemble ; la valeur p brute se lit site par site. Un niveau est du groupe que
   portent ses lignes : un niveau aux lignes de plusieurs groupes est refusé, et ceux sans
-  groupe sont listés.
+  groupe sont listés. Au-dessus des paires vient le test d'ensemble, pour les deux tests
+  appariés : le test de Friedman sur les clés où chaque niveau a une valeur (les blocs
+  complets ; les clés laissées de côté faute d'un niveau sont comptées), son χ², ses degrés de
+  liberté et sa valeur p, avec le W de Kendall = χ² / (n (k − 1)) pour taille de l'effet (0 :
+  aucun accord d'une clé à l'autre, 1 : le même classement des niveaux à chaque clé), en une
+  phrase. Dans chaque groupe, un test de Friedman par groupe, sur ses propres niveaux et ses
+  clés complètes, sa valeur p corrigée par Holm sur les groupes testés ; un groupe de moins de
+  trois niveaux ou de moins de deux clés complètes n'a pas de test, et la raison est dite.
   Deux mesures : les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la
   normalité de l'une des deux est douteuse. Appariées par « l'observation (même ligne) », deux
   mesures des mêmes lignes (avant et après, par exemple) sont comparées à la place : les
@@ -519,11 +526,22 @@ moins avant, avec son intervalle à 95 %, et le résultat vient en une phrase pr
 rapport. Le graphique montre les écarts dans le temps, l'événement et la moyenne de chaque
 période ; tant qu'aucun événement n'est entré, les écarts seuls. Les temps sont tenus pour
 indépendants : des écarts successifs qui se ressemblent (autocorrélation) rendent la valeur p
-trop petite. Un modèle mixte en tient compte : y ~ période × impact + (1 | unité), avec CAR1
-dans le temps au besoin (Nouveau modèle › Modèle linéaire mixte). La période et l'impact se
-font en nouvelles variables valant 0 ou 1, ifelse(annee >= 2007, 1, 0) et
-ifelse(secteur %in% c("S1", "S2"), 1, 0) : une régression ne prend pas encore de terme croisé
-avec une variable qualitative.
+trop petite. « Ajuster le modèle mixte » en tient compte : il ajoute au projet deux variables
+valant 0 ou 1, « période BACI (2007) » (1 à partir de l'événement, 0 avant) et « impact BACI
+(S1 contre S2, S3) » (1 pour les unités d'impact, 0 pour les témoins, manquante pour les
+autres unités), puis le modèle linéaire mixte y ~ période × impact + (1 | unité) sur les
+lignes des unités d'impact et témoins dont le temps est connu, jusqu'à la fin s'il y en a
+une : une ordonnée à l'origine aléatoire par unité et, avec « avec CAR1 dans le temps »
+(cochée d'office quand chaque unité a au moins trois temps ; impossible quand une unité a
+plusieurs lignes au même temps), une autocorrélation CAR1 le long du temps dans chaque unité.
+Les variables servent telles quelles quand elles existent déjà avec ces valeurs, et sont
+refusées quand une autre variable porte leur nom ; Ctrl+Z les retire, comme une nouvelle
+variable. Le modèle rejoint le projet (nommé « BACI <réponse> » ; les mêmes réglages
+réajustent le même modèle) et ses vues s'ouvrent. De retour dans la vue BACI, son effet BACI,
+le coefficient période × impact avec son intervalle à 95 % et sa valeur p, vient en une phrase
+sous celle du test, qui dit que ce modèle tient compte des unités et, avec CAR1, de
+l'autocorrélation. Son texte des Méthodes dit que c'est le modèle BACI et ce que valent ses
+deux variables.
 
 Modèles linéaires, généralisés et mixtes
 ----------------------------------------
