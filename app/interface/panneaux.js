@@ -3098,7 +3098,7 @@ export function notesMoyennes(r) {
   const nonPaires = [].concat(r.non_estimables.paires || []);
   return [quoi, grille.length ? t('moyennes_grille', { grille: grille.join(' ; ') }) : '', ddl, echelle,
     t(`moyennes_${r.reglages.ajustement}`),
-    croisee.length && !r.dans ? t('moyennes_croisee', { facteur: r.facteur.nom, variables: liste(croisee) }) : '',
+    croisee.length && !r.dans && !pentes ? t('moyennes_croisee', { facteur: r.facteur.nom, variables: liste(croisee) }) : '',
     nonMoy.length ? t(pentes ? 'moyennes_non_estimables_pentes' : 'moyennes_non_estimables', { liste: liste(nonMoy) }) : '',
     nonPaires.length ? t('moyennes_paires_non_estimables', { liste: liste(nonPaires) }) : ''].filter(Boolean).join(' ');
 }
