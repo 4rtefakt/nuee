@@ -182,6 +182,87 @@ valeur_decalee <- function(x, temps, groupe, pas, sens, nom) {
   x[match(cle(t + sens * pas), ici, incomparables = NA)]
 }
 
+# Les indices de diversité de chaque observation, pour une formule de Nouvelle variable, sur
+# plusieurs colonnes d'espèces de sa ligne (des comptages, des densités, des recouvrements) :
+#   richesse(...) (richness) : S, le nombre de colonnes > 0, comme vegan::specnumber ;
+#   shannon(...) : H′ = −Σ p_i ln p_i (le logarithme népérien), p_i = x_i / Σ x, comme
+#     vegan::diversity(index = "shannon") ;
+#   simpson(...) : 1 − Σ p_i² (l'indice de Gini–Simpson, le « simpson » de vegan::diversity) ;
+#   pielou(...) : l'équitabilité de Pielou, J = H′ / ln S, manquante quand S ≤ 1.
+# Les colonnes : nommées (shannon(Ablette, Brochet, Gardon)), une plage dans l'ordre des colonnes
+# du tableau (shannon(Ablette:Vandoise), comme dplyr la lit : de l'une à l'autre, les deux
+# comprises), ou les deux ensemble ; une colonne nommée deux fois ne compte qu'une fois ; une autre
+# expression compte comme une colonne de ses valeurs. Une ligne de zéros a S = 0, H′ = 0, un Simpson
+# de 0 (vegan::diversity y donne 1 : 1 moins une somme vide) et pas de J ; une valeur manquante dans
+# l'une des colonnes rend l'indice manquant pour la ligne ; une valeur négative est refusée, en
+# nommant sa variable. (L'ordre des colonnes vient de variable_calculee, qui le met en attribut de
+# l'environnement où la formule est évaluée.)
+richesse <- function(...) indice_diversite("richesse", nom_appel(sys.call(), "richesse"), substitute(list(...)), parent.frame())
+richness <- richesse
+shannon <- function(...) indice_diversite("shannon", "shannon", substitute(list(...)), parent.frame())
+simpson <- function(...) indice_diversite("simpson", "simpson", substitute(list(...)), parent.frame())
+pielou <- function(...) indice_diversite("pielou", "pielou", substitute(list(...)), parent.frame())
+
+# (le calcul des quatre : `indice`, lequel ; `nom`, le nom de la fonction appelée, pour les
+# messages ; `appel`, ses arguments non évalués, list(...) ; `env`, l'environnement de la formule)
+indice_diversite <- function(indice, nom, appel, env) {
+  arguments <- as.list(appel)[-1]
+  if (!length(arguments)) {
+    stop(sprintf(traduire("%s() : donner les colonnes des espèces, par exemple %s(Ablette, Brochet) ou %s(Ablette:Vandoise)",
+                          "%s(): give the species columns, for example %s(Ablette, Brochet) or %s(Ablette:Vandoise)"), nom, nom, nom), call. = FALSE)
+  }
+  colonnes <- attr(env, "colonnes")
+  noms <- character(0)
+  valeurs <- list()
+  for (a in arguments) {
+    if (is.call(a) && identical(a[[1]], as.name(":")) && length(a) == 3 && is.name(a[[2]]) && is.name(a[[3]])) {
+      bornes <- c(as.character(a[[2]]), as.character(a[[3]]))
+      k <- match(bornes, colonnes)
+      if (anyNA(k)) {
+        stop(sprintf(traduire("%s() : %s n'est pas une colonne du tableau, pour la plage %s:%s (une plage va d'une colonne à une autre dans l'ordre du tableau)",
+                              "%s(): %s isn't a column of the table, for the range %s:%s (a range goes from one column to another in the table's order)"),
+                     nom, bornes[is.na(k)][1], bornes[1], bornes[2]), call. = FALSE)
+      }
+      ajout <- colonnes[k[1]:k[2]]
+      noms <- c(noms, ajout)
+      valeurs <- c(valeurs, lapply(ajout, get, envir = env))
+    } else {
+      noms <- c(noms, if (is.name(a)) as.character(a) else paste(deparse(a), collapse = " "))
+      valeurs <- c(valeurs, list(eval(a, env)))
+    }
+  }
+  garder <- !duplicated(noms)
+  noms <- noms[garder]
+  valeurs <- valeurs[garder]
+  n <- length(valeurs[[1]])
+  for (j in seq_along(valeurs)) {
+    x <- valeurs[[j]]
+    if (!is.numeric(x)) {
+      stop(sprintf(traduire("%s() : %s n'est pas une variable quantitative (des abondances : comptages, densités, recouvrements)",
+                            "%s(): %s isn't a quantitative variable (abundances: counts, densities, covers)"), nom, noms[j]), call. = FALSE)
+    }
+    if (length(x) != n) stop(sprintf(traduire("%s() : %s n'a pas une valeur par observation", "%s(): %s doesn't have one value per observation"), nom, noms[j]), call. = FALSE)
+    if (any(x < 0, na.rm = TRUE)) {
+      stop(sprintf(traduire("%s() : %s a une valeur négative (%s) ; les indices de diversité demandent des abondances positives ou nulles",
+                            "%s(): %s has a negative value (%s); diversity indices need abundances that are positive or zero"),
+                   nom, noms[j], formatC(x[which(x < 0)[1]], format = "g", decimal.mark = traduire(",", "."))), call. = FALSE)
+    }
+  }
+  X <- matrix(unlist(valeurs, use.names = FALSE), nrow = n)
+  total <- rowSums(X)
+  S <- rowSums(X > 0)
+  # (les termes des espèces présentes seulement : 0 × ln 0 compte 0)
+  P <- X / total
+  H <- -rowSums(ifelse(X > 0, P * log(P), 0))
+  r <- switch(indice,
+              richesse = S,
+              shannon = H,
+              simpson = ifelse(total > 0, 1 - rowSums(ifelse(X > 0, P^2, 0)), 0),
+              pielou = ifelse(S > 1, H / log(S), NA_real_))
+  r[is.na(total)] <- NA
+  as.numeric(r)
+}
+
 # Des temps en nombres, la conversion que font les séries, BACI, les décalages de Nouvelle variable,
 # l'autocorrélation des résidus et l'autocorrélation CAR1 des régressions (et l'export vers R, qui
 # l'écrit dans son script) : des nombres ; du texte fait de nombres (un identifiant des
@@ -308,6 +389,7 @@ date_decimale <- function(x) {
 # nom (entre `accents graves` si le nom contient des espaces ou des signes), par exemple :
 #   log10(polyphenols)   sucre / acidite        ifelse(poids >= 170, "gros", "petit")
 #   moyenne_groupe(sucre, verger)               ecart_groupe(densite, secteur)
+#   shannon(Ablette:Vandoise)                   richesse(Ablette, Brochet, Gardon)
 # Une variable qualitative y vaut le nom de sa catégorie ; un identifiant des observations
 # (site, secteur...) y vaut ses valeurs, sauf si une variable a le même nom. Un résultat texte
 # donne une variable qualitative, un résultat logique aussi (catégories FALSE et TRUE).
@@ -317,6 +399,10 @@ variable_calculee <- function(projet, nom, formule) {
   if (nom %in% projet$noms_var) stop(sprintf(traduire("Une variable s'appelle déjà « %s »", "A variable is already called “%s”"), nom))
   obs <- as.numeric(rownames(projet$donnees))
   env <- environnement_formule(projet)
+  # (l'ordre des colonnes du tableau, celui de la vue Données, pour les plages des indices de
+  # diversité : shannon(Ablette:Vandoise))
+  attr(env, "colonnes") <- vapply(Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables),
+                                  function(v) as.character(v$ids[1]), "")
   r <- tryCatch(eval(parse(text = formule), envir = env), error = function(e) {
     m <- conditionMessage(e)
     absent <- regmatches(m, regexec("^obje?c?t '(.*)' (not found|introuvable)", m))[[1]]

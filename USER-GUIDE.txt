@@ -857,6 +857,18 @@ an ID or interaction(site, sector) for a sector within a site; the same sector t
 year is refused, naming it. growth_rate(x, year, sector) gives the growth rate log(x / x of
 the year before), missing unless both values are positive: for density dependence, the growth
 rate against previous(density, year, sector). In French: precedent, suivant and croissance.
+In a New variable formula, the diversity of each survey, over several species columns of its
+row (counts, densities, covers: numbers ≥ 0), as vegan::specnumber and vegan::diversity compute
+it: richness(...), S, the number of columns > 0; shannon(...), H′ = −Σ p ln p (natural log, p
+each species' share of the row's total); simpson(...), 1 − Σ p² (the Gini–Simpson index, vegan's
+"simpson"); pielou(...), Pielou's evenness J = H′ / ln S, missing when S ≤ 1. The columns are
+listed (shannon(Ablette, Brochet, Gardon)), or a range in the table's column order, from one
+column to another, both included (shannon(Ablette:Vandoise), as dplyr reads it), or both; a
+column named twice counts once, and any other expression counts as a column of its values. A
+survey of zeros has S = 0, H′ = 0 and a Simpson of 0 (vegan gives 1: one minus an empty sum),
+and no J; a missing value in any of the columns makes the index missing for that survey (a
+missing value isn't read as an absence); a negative value is refused, naming its variable. In
+French: richesse.
 
 File history
 ------------

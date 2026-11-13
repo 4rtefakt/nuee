@@ -925,6 +925,19 @@ année est refusé, en le nommant. croissance(x, annee, secteur) donne le taux d
 log(x / x de l'année d'avant), manquant sauf si les deux valeurs sont positives : pour la
 dépendance à la densité, la croissance contre precedent(densite, annee, secteur). En anglais :
 previous, following et growth_rate.
+Dans une formule de Nouvelle variable, la diversité de chaque relevé, sur plusieurs colonnes
+d'espèces de sa ligne (comptages, densités, recouvrements : des nombres ≥ 0), comme la calculent
+vegan::specnumber et vegan::diversity : richesse(...), S, le nombre de colonnes > 0 ;
+shannon(...), H′ = −Σ p ln p (logarithme népérien, p la part de chaque espèce dans le total de
+la ligne) ; simpson(...), 1 − Σ p² (l'indice de Gini–Simpson, le « simpson » de vegan) ;
+pielou(...), l'équitabilité de Pielou J = H′ / ln S, manquante quand S ≤ 1. Les colonnes sont
+nommées (shannon(Ablette, Brochet, Gardon)), ou une plage dans l'ordre des colonnes du tableau,
+de l'une à l'autre, les deux comprises (shannon(Ablette:Vandoise), comme dplyr la lit), ou les
+deux ; une colonne nommée deux fois compte une fois, et toute autre expression compte comme une
+colonne de ses valeurs. Un relevé de zéros a S = 0, H′ = 0 et un Simpson de 0 (vegan donne 1 :
+1 moins une somme vide), et pas de J ; une valeur manquante dans l'une des colonnes rend
+l'indice manquant pour ce relevé (une valeur manquante n'est pas lue comme une absence) ; une
+valeur négative est refusée, en nommant sa variable. En anglais : richness.
 
 Historique du fichier
 ---------------------

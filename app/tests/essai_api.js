@@ -207,6 +207,24 @@ async function principal() {
       try { await api('variable_calculee', { projet: p.id, nom: 'mauvaise', formule: 'x1 *' }); } catch (err) { refus = err.message; }
       verifier(refus && (await api('projet', { projet: p.id })).revision === apres, `un changement refusé compte une révision (${refus})`);
     });
+    await etape('indices de diversité en Nouvelle variable (richesse, shannon, simpson, pielou)', async () => {
+      // three surveys of four species, the site before them: an ordinary one (10, 5, 0, 1), an empty
+      // one, a missing value; the columns by a range in the table's order, a list, or both
+      const lignes = [['r1', 'A', 10, 5, 0, 1], ['r2', 'A', 0, 0, 0, 0], ['r3', 'B', 3, '', 2, 1]];
+      const q = await api('coller', { texte: ['nom\tsite\tAblette\tBrochet\tGardon\tVandoise', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Poissons' });
+      await api('variable_calculee', { projet: q.id, nom: 'H', formule: 'shannon(Ablette:Vandoise)' });
+      await api('variable_calculee', { projet: q.id, nom: 'S', formule: 'richesse(Ablette, Brochet, Gardon, Vandoise)' });
+      const r = await api('variable_calculee', { projet: q.id, nom: 'D', formule: 'simpson(Ablette:Brochet, Gardon, Vandoise)' });
+      const d = await api('donnees', { projet: q.id });
+      const col = (n) => d.valeurs[d.variables.indexOf(n)];
+      const H1 = -[10, 5, 1].map((x) => x / 16).reduce((s, x) => s + x * Math.log(x), 0);
+      verifier(Math.abs(col('H')[0] - H1) < 1e-12 && col('H')[1] === 0 && col('H')[2] === null && col('S').join() === '3,0,' && Math.abs(col('D')[0] - 130 / 256) < 1e-12
+        && col('D')[1] === 0 && col('D')[2] === null && r.annulable, `indices : ${JSON.stringify([col('H'), col('S'), col('D')])}`);
+      const a = (await api('annuler', { projet: q.id })).projet;
+      let refus = '';
+      try { await api('variable_calculee', { projet: q.id, nom: 'J', formule: 'pielou(Ablette, Brochet - 6)' }); } catch (err) { refus = err.message; }
+      verifier(/: pielou\(\) : Brochet - 6 a une valeur négative \(-1\)/.test(refus) && a.variables.length === 7, `refusé : ${refus} ; annuler : ${a.variables.length} variables`);
+    });
     await etape('notes, enregistrement avec séance, réouverture', async () => {
       verifier((await api('note_modele', { modele: pls.id, note: 'essai' })).note === 'essai', 'note');
       const f = path.join(dossier, 'projet.nuee');

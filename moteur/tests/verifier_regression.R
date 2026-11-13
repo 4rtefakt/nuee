@@ -1017,6 +1017,65 @@ pl_dates <- projet_depuis_tableau(data.frame(nom = paste0("j", 1:4), secteur = "
 verifier("des dates : le temps exactement un pas avant, comme avec des années (le 1er janvier 2003 un an avant le 1er janvier 2004 ; pas le 15 mai 2003 avant le 15 mai 2004)",
          proche(calcule(pl_dates, "precedent(densite, date, secteur)"), c(NA, 2, NA, NA)))
 
+cat("Indices de diversité (Nouvelle variable)\n")
+# cinq relevés de quatre espèces, le site (qualitatif) devant elles : un relevé ordinaire (10, 5, 0,
+# 1), un relevé vide, une valeur manquante, une seule espèce, quatre espèces à égalité ; les indices
+# calculés ici à la main
+dv <- data.frame(nom = paste0("r", 1:5), site = c("A", "A", "B", "B", "B"),
+                 Ablette = c(10, 0, 3, 0, 2), Brochet = c(5, 0, NA, 7, 2), Gardon = c(0, 0, 2, 0, 2), Vandoise = c(1, 0, 1, 0, 2))
+pdv <- projet_depuis_tableau(dv, "diversite")
+H1 <- -(10 / 16 * log(10 / 16) + 5 / 16 * log(5 / 16) + 1 / 16 * log(1 / 16))
+verifier(sprintf("richesse, shannon, simpson et pielou à la main : S = 3, H′ = %.4f, 1 − Σp² = 130/256, J = H′/ln 3 ; quatre à égalité : ln 4, 3/4 et 1", H1),
+         proche(calcule(pdv, "richesse(Ablette, Brochet, Gardon, Vandoise)"), c(3, 0, NA, 1, 4)) &&
+           proche(calcule(pdv, "shannon(Ablette, Brochet, Gardon, Vandoise)"), c(H1, 0, NA, 0, log(4)), 1e-12) &&
+           proche(calcule(pdv, "simpson(Ablette, Brochet, Gardon, Vandoise)"), c(130 / 256, 0, NA, 0, 0.75), 1e-12) &&
+           proche(calcule(pdv, "pielou(Ablette, Brochet, Gardon, Vandoise)"), c(H1 / log(3), NA, NA, NA, 1), 1e-12))
+verifier("un relevé de zéros : S = 0, H′ = 0, Simpson = 0, pas de J ; une espèce seule : pas de J ; une valeur manquante : aucun indice",
+         identical(vapply(c("richesse", "shannon", "simpson", "pielou"), function(f) calcule(pdv, sprintf("%s(Ablette:Vandoise)", f))[2], 0),
+                   c(richesse = 0, shannon = 0, simpson = 0, pielou = NA_real_)) &&
+           is.na(calcule(pdv, "pielou(Ablette:Vandoise)")[4]) && all(is.na(vapply(c("richesse", "shannon", "simpson", "pielou"), function(f) calcule(pdv, sprintf("%s(Ablette:Vandoise)", f))[3], 0))))
+h_liste <- calcule(pdv, "shannon(Ablette, Brochet, Gardon, Vandoise)")
+verifier("une plage dans l'ordre du tableau (Ablette:Vandoise, à l'envers aussi), une liste, les deux mêlées ; une colonne nommée deux fois compte une fois",
+         proche(calcule(pdv, "shannon(Ablette:Vandoise)"), h_liste, 1e-14) && proche(calcule(pdv, "shannon(Vandoise:Ablette)"), h_liste, 1e-14) &&
+           proche(calcule(pdv, "shannon(Ablette:Brochet, Gardon, Vandoise)"), h_liste, 1e-14) &&
+           proche(calcule(pdv, "shannon(Ablette:Gardon, Brochet, Vandoise)"), h_liste, 1e-14) &&
+           proche(calcule(pdv, "shannon(Brochet:Gardon)"), calcule(pdv, "shannon(Brochet, Gardon)"), 1e-14))
+verifier("richness() : richesse() en anglais ; une expression compte comme une colonne de ses valeurs",
+         proche(calcule(pdv, "richness(Ablette:Vandoise)"), c(3, 0, NA, 1, 4)) &&
+           proche(calcule(pdv, "shannon(Ablette + Brochet, Gardon)"), c(0, 0, NA, 0, -(4 / 6 * log(4 / 6) + 2 / 6 * log(2 / 6))), 1e-12))
+pneg <- pdv
+pneg$donnees[4, as.character(numeros(pdv, "Gardon"))] <- -2
+m_neg <- refus(calcule(pneg, "shannon(Ablette:Vandoise)"))
+verifier(sprintf("refusés, en nommant la variable : une valeur négative (« %s »), une variable qualitative, une plage hors du tableau, aucune colonne ; le nom appelé dans le message",
+                 m_neg),
+         m_neg == "shannon() : Gardon a une valeur négative (-2) ; les indices de diversité demandent des abondances positives ou nulles" &&
+           startsWith(refus(calcule(pdv, "simpson(Ablette, site)")), "simpson() : site n'est pas une variable quantitative") &&
+           startsWith(refus(calcule(pdv, "pielou(Ablette:Truite)")), "pielou() : Truite n'est pas une colonne du tableau, pour la plage Ablette:Truite") &&
+           startsWith(refus(calcule(pdv, "richness()")), "richness() : donner les colonnes des espèces") &&
+           startsWith(refus(calcule(pdv, "richesse(Ablette, Truite)")), "Variable introuvable : Truite"))
+# contre vegan::diversity et vegan::specnumber, s'il est installé (NUEE_VEGAN : une bibliothèque où il
+# l'est, mise après les autres : nlme et mgcv restent ceux de R), sur 40 relevés de 8 espèces tirés
+# au hasard (des absences, des relevés vides) ; vegan donne 1 au Simpson d'un relevé vide (1 moins
+# une somme vide), Nuée 0, et ln 0 au dénominateur de J
+if (nzchar(Sys.getenv("NUEE_VEGAN"))) .libPaths(c(.libPaths(), Sys.getenv("NUEE_VEGAN")))
+if (requireNamespace("vegan", quietly = TRUE)) {
+  set.seed(53)
+  comptes <- matrix(rpois(40 * 8, rep(c(0.3, 1, 3, 8), each = 80)) * rbinom(320, 1, 0.6), 40, 8, dimnames = list(NULL, paste0("sp", 1:8)))
+  comptes[c(5, 17), ] <- 0
+  pc <- projet_depuis_tableau(data.frame(nom = paste0("c", 1:40), zone = rep(c("a", "b"), 20), comptes), "vegan")
+  vide <- rowSums(comptes) == 0
+  sv <- vegan::specnumber(comptes)
+  hv <- vegan::diversity(comptes, "shannon")
+  dvv <- vegan::diversity(comptes, "simpson")
+  verifier(sprintf("contre vegan %s : richesse = specnumber(), shannon = diversity(), simpson = diversity(index = \"simpson\") (relevés vides : 0 contre 1), pielou = H′ / ln S quand S > 1",
+                   as.character(utils::packageVersion("vegan"))),
+           proche(calcule(pc, "richesse(sp1:sp8)"), sv, 1e-14) && proche(calcule(pc, "shannon(sp1:sp8)"), hv, 1e-12) &&
+             proche(calcule(pc, "simpson(sp1:sp8)")[!vide], dvv[!vide], 1e-12) && all(calcule(pc, "simpson(sp1:sp8)")[vide] == 0) && all(dvv[vide] == 1) &&
+             proche(calcule(pc, "pielou(sp1:sp8)")[sv > 1], (hv / log(sv))[sv > 1], 1e-12) && all(is.na(calcule(pc, "pielou(sp1:sp8)")[sv <= 1])))
+} else {
+  cat("  (vegan absent : les indices de diversité ne sont pas comparés à vegan ; NUEE_VEGAN=<bibliothèque> pour le faire)\n")
+}
+
 cat("Imputation par ACP (Nouvelle variable)\n")
 set.seed(5)
 ni <- 80
