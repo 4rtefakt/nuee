@@ -75,8 +75,8 @@ lire_condition <- function(projet, texte) {
       if (!is.name(f) || !as.character(f) %in% FONCTIONS_CONDITION) {
         quoi <- if (!is.name(f)) paste(deparse(f, width.cutoff = 500L), collapse = " ")
                 else if (identical(make.names(as.character(f)), as.character(f))) paste0(as.character(f), "()") else as.character(f)
-        err("« %s » n'est pas permis dans une condition : des comparaisons (==, !=, <, >=…), &, |, !, %%in%%, is.na(), ifelse(), des calculs (+, log10()…) et les fonctions des formules de Nouvelle variable (moyenne_groupe(), precedent()…).",
-            "\"%s\" isn't allowed in a condition: comparisons (==, !=, <, >=…), &, |, !, %%in%%, is.na(), ifelse(), arithmetic (+, log10()…) and the functions of New variable formulas (group_mean(), previous()…).",
+        err("« %s » n'est pas permis dans une condition : des comparaisons (==, !=, <, >=…), &, |, !, %%in%%, is.na(), ifelse(), des calculs (+, log10()…) et les fonctions de groupe et de décalage des formules de Nouvelle variable (moyenne_groupe(), precedent()…).",
+            "\"%s\" isn't allowed in a condition: comparisons (==, !=, <, >=…), &, |, !, %%in%%, is.na(), ifelse(), arithmetic (+, log10()…) and the group and lag functions of New variable formulas (group_mean(), previous()…).",
             quoi)
       }
       arguments <- as.list(x)[-1]

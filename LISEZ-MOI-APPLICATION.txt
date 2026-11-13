@@ -1057,7 +1057,8 @@ les fonctions de Nouvelle variable moyenne_groupe(), ecart_groupe(), precedent()
 croissance() (et leurs noms anglais). Rien d'autre : une condition est gardée dans le fichier du
 projet et refaite à chaque ajustement, un projet reçu ne peut donc rien exécuter d'autre par
 elle (une formule de Nouvelle variable, tapée et calculée une fois, n'est pas gardée et n'a pas
-cette limite).
+cette limite). Pour un indice de diversité (shannon()...), en faire d'abord une Nouvelle
+variable, puis employer cette variable dans la condition.
 
 Fenêtres
 --------

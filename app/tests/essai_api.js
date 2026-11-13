@@ -205,7 +205,10 @@ async function principal() {
       const apres = (await api('projet', { projet: p.id })).revision;
       let refus = '';
       try { await api('variable_calculee', { projet: p.id, nom: 'mauvaise', formule: 'x1 *' }); } catch (err) { refus = err.message; }
-      verifier(refus && (await api('projet', { projet: p.id })).revision === apres, `un changement refusé compte une révision (${refus})`);
+      // nor a step back for Ctrl+Z (both changes above were undone: nothing is left to undo)
+      const apresRefus = await api('projet', { projet: p.id });
+      verifier(refus && apresRefus.revision === apres && !apresRefus.annulable,
+        `un changement refusé ne compte ni révision ni retour en arrière (${refus} ; ${apresRefus.annulable})`);
     });
     await etape('indices de diversité en Nouvelle variable (richesse, shannon, simpson, pielou)', async () => {
       // three surveys of four species, the site before them: an ordinary one (10, 5, 0, 1), an empty

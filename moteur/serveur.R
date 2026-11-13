@@ -565,17 +565,20 @@ exporter_prediction_demande <- function(q) {
 scores_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
-  memoriser(p, sprintf("scores de %s en variables", e$definition$name %||% q$modele))
   r <- scores_en_variables(p, e$modele)
+  memoriser(p, sprintf("scores de %s en variables", e$definition$name %||% q$modele))
   r$projet$modifie <- TRUE
   etat$projets[[p$id]] <- r$projet
   reviser(p$id)
   list(projet = resume_projet(r$projet), noms = I(r$noms), modeles = I(modeles_utilisant(r$projet, r$noms)))
 }
 
+# Un changement du projet q$projet par f, retenu pour Ctrl+Z (memoriser) une fois fait : un
+# changement refusé (une formule qui ne se calcule pas...) ne laisse pas de retour en arrière vide.
 changer_projet <- function(q, f, etiquette) {
-  memoriser(projet(q$projet), etiquette)
-  p <- f(projet(q$projet))
+  avant <- projet(q$projet)
+  p <- f(avant)
+  memoriser(avant, etiquette)
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
   reviser(p$id)
@@ -583,8 +586,9 @@ changer_projet <- function(q, f, etiquette) {
 }
 
 classe_demande <- function(q) {
-  memoriser(projet(q$projet), sprintf("classe %s", q$etiquette))
-  p <- ajouter_classe(projet(q$projet), q$variable, q$etiquette, as.numeric(q$observations))
+  avant <- projet(q$projet)
+  p <- ajouter_classe(avant, q$variable, q$etiquette, as.numeric(q$observations))
+  memoriser(avant, sprintf("classe %s", q$etiquette))
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
   reviser(p$id)
@@ -935,8 +939,9 @@ DEMANDES <- list(
   variable_calculee = function(q) changer_projet(q, function(p) variable_calculee(p, q$nom, q$formule), sprintf("variable %s", q$nom)),
   # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
   imputer = function(q) {
-    memoriser(projet(q$projet), traduire("imputation", "imputation"))
-    p <- imputer_acp(projet(q$projet), unlist(q$variables), k = q$k, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
+    avant <- projet(q$projet)
+    p <- imputer_acp(avant, unlist(q$variables), k = q$k, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
+    memoriser(avant, traduire("imputation", "imputation"))
     info <- attr(p, "imputation")
     attr(p, "imputation") <- NULL
     p$modifie <- TRUE

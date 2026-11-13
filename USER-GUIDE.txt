@@ -980,7 +980,8 @@ min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), and the New vari
 group_mean(), group_deviation(), previous(), following() and growth_rate() (and their French
 names). Nothing else: a condition is kept in the project file and run again at each fit, so a
 project received from someone can't run other code through it (a New variable formula, typed
-and computed once, is not kept and has no such limit).
+and computed once, is not kept and has no such limit). For a diversity index (shannon()...),
+make it a New variable first, then use that variable in the condition.
 
 Windows
 -------
