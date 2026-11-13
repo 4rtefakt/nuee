@@ -90,12 +90,12 @@ coefficients_cote_a_cote <- function(modeles, erreur = "ic") {
   }))
   # (l'écart-type de chaque ligne des tableaux des variances, dans l'ordre où elles viennent ; une
   # pente aléatoire, à son niveau, avec son terme : « σ site (annee) », puis sa corrélation avec
-  # l'ordonnée à l'origine de son niveau)
+  # l'ordonnée à l'origine de son niveau ; la résiduelle, sans terme, sur la ligne de celle des autres)
   variances <- lapply(modeles, variances_regression)
   cle <- function(v) {
     k <- as.character(v$composante)
     if (!is.null(v$terme)) {
-      pente <- !is.na(v$terme) & v$terme != "(Intercept)"
+      pente <- !is.na(v$terme) & nzchar(v$terme) & v$terme != "(Intercept)"
       k[pente] <- sprintf("%s (%s)", k[pente], v$terme[pente])
     }
     k

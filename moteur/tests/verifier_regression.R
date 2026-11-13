@@ -1417,6 +1417,32 @@ for (l in c("fr", "en")) {
              grepl(if (l == "fr") "n'ayant pas d'effet principal, les coefficients de « annee × secteur » sont la pente" else "has no main effect, the coefficients of “annee × secteur” are the slope", tq3) &&
              grepl(if (l == "fr") "ce même effet dans « H2 »" else "the same effect in “H2”", tq2) && !any(grepl("NA", c(tq1, tq2, tq3), fixed = TRUE)))
 }
+# le coefficient d'une catégorie d'une variable croisée : son écart à la référence là où ses termes
+# croisés valent 0, l'année à 0 dans ses unités (S1 − S3 en l'an 0, calculé ici sur lm()), à sa
+# moyenne quand elle est centrée (UV), le traitement dans sa référence ; sans terme croisé, l'écart seul
+dq1c <- definir_modele(pq, "LM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "UV", croises = list(uq("annee", "secteur")))
+mq1c <- ajuster(pq, dq1c)
+ecart_q <- function(l, a, b) unname(diff(stats::predict(l, rbind(b, a))))
+lq2 <- lm(densite ~ habitat_f * traitement_f, data = tq)
+co_q <- function(m, terme) m$resultat$coefficients$estimation[m$resultat$coefficients$terme == terme]
+verifier(sprintf("le coefficient de secteur(S1) croisé avec l'année : S1 − S3 en l'an 0 (%.1f), en 2006,1 avec l'année centrée (%.3f) ; celui de habitat(H1), H1 − H2 dans T3 (= lm())",
+                 co_q(mq1, "secteur(S1)"), co_q(mq1c, "secteur(S1)")),
+         proche(co_q(mq1, "secteur(S1)"), ecart_q(lq1, data.frame(annee = 0, secteur_f = "S1"), data.frame(annee = 0, secteur_f = "S3")), 1e-8) &&
+           proche(co_q(mq1c, "secteur(S1)"), ecart_q(lq1, data.frame(annee = mean(tq$annee), secteur_f = "S1"), data.frame(annee = mean(tq$annee), secteur_f = "S3")), 1e-8) &&
+           proche(co_q(mq2, "habitat(H1)"), ecart_q(lq2, data.frame(habitat_f = "H1", traitement_f = "T3"), data.frame(habitat_f = "H2", traitement_f = "T3")), 1e-8))
+dq0 <- lm_q(c("annee", "secteur"), list())
+mq0 <- ajuster(pq, dq0)
+for (l in c("fr", "en")) {
+  tx_q <- function(d, m) texte_methodes(pq, d, m, l, "essai")$paragraphes[2]
+  verifier(sprintf("texte des méthodes (%s) : le coefficient d'une catégorie croisée, là où l'année vaut 0, à sa moyenne quand elle est centrée, dans la référence du traitement ; sans terme croisé, l'écart seul", l),
+           grepl(if (l == "fr") "est son écart à la catégorie de référence ; « secteur » étant croisée avec « annee », cet écart est pris là où « annee » vaut 0."
+                 else "is its difference from the reference category; as “secteur” is crossed with “annee”, that difference is taken where “annee” is 0.", tx_q(dq1, mq1), fixed = TRUE) &&
+             grepl(if (l == "fr") "cet écart est pris là où « annee » est à sa moyenne (2006,1)." else "that difference is taken where “annee” is at its mean (2006.1).", tx_q(dq1c, mq1c), fixed = TRUE) &&
+             grepl(if (l == "fr") "« habitat » étant croisée avec « traitement », cet écart est pris dans la catégorie « T3 » de « traitement »"
+                   else "as “habitat” is crossed with “traitement”, that difference is taken in category “T3” of “traitement”",
+                   tx_q(lm_q(c("habitat", "traitement"), list(c("habitat", "traitement"))), mq2), fixed = TRUE) &&
+             endsWith(tx_q(dq0, mq0), if (l == "fr") "est son écart à la catégorie de référence." else "is its difference from the reference category."))
+}
 
 cat("Une courbe par catégorie (s(x, by = f))\n")
 # quatre sites suivis quinze ans, trois secteurs dans chacun : chaque secteur sa forme (une bosse, une
@@ -1619,6 +1645,55 @@ for (l in c("fr", "en")) {
            grepl(if (l == "fr") "annee par une courbe pour chaque catégorie de « secteur »" else "annee through a curve for each category of “secteur”", tc1, fixed = TRUE) &&
              !any(grepl("NA", tc1, fixed = TRUE)))
 }
+# une catégorie ajoutée aux données après la définition du modèle (S1 du site A devient S4 à partir de
+# 2010) : elle n'a pas de courbe, ses lignes restent de côté comme celles d'une valeur manquante, avant
+# les centres et poids ; le modèle est celui défini sans elles (l'année en UV, sur leurs seules années),
+# = mgcv, validé par site ; de même relu d'un fichier, sans d'autres observations (Exclure la sélection et
+# réajuster), choisi par la sélection par l'AIC (Ajuster ce modèle, avec ou sans la courbe) ; dans un
+# jeu de test, sans prédiction
+s4_c <- tc$site == "A" & tc$secteur == "S1" & tc$annee >= 2010
+pc4 <- pc
+for (o in obs_c[s4_c]) pc4 <- modifier_valeur(pc4, o, uc("secteur"), "S4")
+gam_uv_c <- function(...) definir_modele(pc, "GAM", x = uc("annee", "secteur"), y = uc("y"), echelle = "UV", famille = "gaussienne", lisses = uc("annee"),
+                                         par_courbes = par_c, vc = list(by = "variable", variable = uc("site")), ...)
+dn4 <- gam_uv_c()
+mn4 <- ajuster(pc4, dn4)
+sans4 <- ajuster(pc, gam_uv_c(observations = obs_c[!s4_c]))
+tc4 <- transform(tc[!s4_c, ], f = droplevels(f), annee_uv = (annee - mean(annee)) / sd(annee))
+rn4 <- mgcv::gam(formule_c("y ~ s1 + s2 + s(annee_uv, by = f, k = 10)"), data = tc4, method = "REML")
+on4 <- observations_regression(pc4, mn4)
+memes_c <- function(a, b) a$N == b$N && proche(a$resultat$coefficients$estimation, b$resultat$coefficients$estimation, 1e-10) &&
+  proche(a$resultat$AIC, b$resultat$AIC, 1e-10) && proche(a$vc$prediction, b$vc$prediction, 1e-10) && proche(a$bloc$centre, b$bloc$centre, 1e-12)
+verifier(sprintf("une catégorie sans courbe (S4, ajoutée aux données) : ses %d lignes laissées de côté (N = %d), le modèle défini sans elles (centres, coefficients, validation croisée : Q2 = %.3f), = mgcv::gam() ; ses observations et ses tables",
+                 sum(s4_c), mn4$N, mn4$vc$Q2),
+         mn4$N == nc - sum(s4_c) && setequal(mn4$exclues, obs_c[s4_c]) && length(mn4$resultat$ajuste) == mn4$N && memes_c(mn4, sans4) &&
+           proche(mn4$bloc$centre[1], mean(tc4$annee), 1e-12) && mean(tc4$annee) != mean(tc$annee) &&
+           !anyNA(mn4$vc$prediction) && mn4$vc$sans_categorie == 0 && proche(mn4$resultat$ajuste, fitted(rn4), 1e-6) &&
+           nrow(on4) == mn4$N && identical(on4[["y ajusté"]], mn4$resultat$ajuste) && !nzchar(refus(tables_regression(pc4, mn4))))
+pc4_e <- pc4
+pc4_e$models <- list(dn4)
+fpc4 <- tempfile(fileext = ".nuee")
+enregistrer_projet(pc4_e, fpc4)
+qc4 <- lire_projet(fpc4)
+moins_c <- obs_c[tc$site == "B"][1:5]
+dx4 <- dn4
+dx4$observations <- setdiff(dx4$observations, moins_c)  # (comme reajuster_demande)
+sc4 <- selection_aic(mn4, dn4)
+ds4 <- definition_selection(dn4, mn4, "secteur")
+mcs4 <- ajuster(pc4, ds4)
+mcc4 <- ajuster(pc4, definition_selection(dn4, mn4, c("annee", "secteur")))
+pc4_s <- pc4
+pc4_s$models <- list(ds4)
+enregistrer_projet(pc4_s, fpc4)
+qs4 <- lire_projet(fpc4)
+verifier(sprintf("une catégorie sans courbe : de même relu d'un fichier, sans 5 autres observations (N = %d), et par Ajuster ce modèle, sans la courbe (AICc %.2f, celui de la sélection ; relu de même) ou avec",
+                 ajuster(pc4, dx4)$N, mcs4$resultat$AICc),
+         memes_c(ajuster(qc4, qc4$models[[1]]), mn4) && memes_c(ajuster(pc4, dx4), ajuster(pc, gam_uv_c(observations = setdiff(obs_c[!s4_c], moins_c)))) &&
+           is.null(ds4$par_courbes) && mcs4$N == mn4$N && proche(mcs4$resultat$AICc, sc4$modeles$AICc[sc4$modeles$modele == "secteur"], 1e-8) &&
+           memes_c(ajuster(qs4, qs4$models[[1]]), mcs4) && mcc4$N == mn4$N && proche(mcc4$resultat$AIC, mn4$resultat$AIC, 1e-10))
+mt4 <- ajuster(pc4, gam_c(observations = obs_c[tc$site != "A"], test = obs_c[tc$site == "A"]))
+verifier(sprintf("une catégorie sans courbe dans le jeu de test : ses %d lignes sans prédiction, hors des statistiques (sur les %d autres)", mt4$test$inconnues, mt4$test$statistiques$n),
+         mt4$test$n == 45 && mt4$test$inconnues == sum(s4_c) && mt4$test$statistiques$n == 45 - sum(s4_c) && identical(as.character(mt4$test$facteurs_inconnus), "secteur"))
 
 cat("Pentes aléatoires\n")
 # 8 sites suivis 11 ans, deux secteurs par site : chaque site sa pente de l'année autour de la pente
@@ -1737,11 +1812,12 @@ verifier(sprintf("validation croisée par site (Q2 = %.3f) : chaque site prédit
          mpe$G == ns && proche(mpe$vc$Q2, 1 - sum((tp$y - pred)^2) / sum((tp$y - mean(tp$y))^2), 1e-5))
 cat("Pentes aléatoires : refus, formule, sélection, modèles emboîtés\n")
 avec_pente <- function(u) list(list(by = "variable", variable = up("site"), pentes = up(u)))
-verifier("une pente aléatoire hors des X, sur une variable qualitative, sur une courbe, sur un terme constant : refusées, en la nommant",
+verifier("une pente aléatoire hors des X, sur une variable qualitative, sur une courbe, sur un terme constant, sur une variable qui n'entre que par un terme croisé (sans pente fixe) : refusées, en la nommant",
          grepl("« annee » a une pente aléatoire", refus(dmp(x = "x"))) &&
            grepl("« secteur » a une pente aléatoire", refus(dmp(x = c("x", "secteur"), aleatoires = avec_pente("secteur")))) &&
            grepl("« annee » a une pente aléatoire : elle ne peut pas être aussi une courbe", refus(dmp(type = "GAM", famille = "gaussienne", lisses = up("annee")))) &&
-           grepl("« constante » ne peut pas être estimé", refus(mp(x = c("x", "constante"), aleatoires = avec_pente("constante")))))
+           grepl("« constante » ne peut pas être estimé", refus(mp(x = c("x", "constante"), aleatoires = avec_pente("constante")))) &&
+           grepl("« annee » a une pente aléatoire : elle doit être aussi un terme X du modèle", refus(dmp(x = c("x", "secteur"), croises = list(up("annee", "secteur"))))))
 dm <- dp
 dm$aleatoires[[1]]$pentes <- up("site")
 verifier("une définition reçue dont la pente est la variable de groupes : refusée", grepl("pente aléatoire", refus(ajuster(pp, dm))))
@@ -1827,9 +1903,10 @@ verifier("Exporter : chaque ordonnée à l'origine et pente aléatoire, et la co
 for (l in c("fr", "en")) {
   tm <- texte_methodes(pp, dp, mpe, l, "essai")
   tpois <- texte_methodes(pp, dmp(type = "GLM", famille = "poisson"), m_pois, l, "essai")
-  verifier(sprintf("texte des méthodes (%s) : la pente aléatoire du site, corrélée (nlme) ou indépendante (mgcv), Johnson (2014) cité", l),
+  verifier(sprintf("texte des méthodes (%s) : la pente aléatoire du site, corrélée (nlme) ou indépendante (mgcv), Johnson (2014) cité, seul", l),
            grepl(if (l == "fr") "une pente aléatoire de « annee » par « site » (corrélée" else "a random slope of “annee” for “site” (correlated", tm$paragraphes[2], fixed = TRUE) &&
-             any(grepl("Johnson, P. C. D. (2014)", tm$references, fixed = TRUE)) && grepl(if (l == "fr") "indépendant de l'ordonnée" else "independent of the intercept", tpois$paragraphes[2], fixed = TRUE))
+             any(grepl("Johnson, P. C. D. (2014)", tm$references, fixed = TRUE)) && sum(grepl("^Johnson", tm$references)) == 1 &&
+             grepl(if (l == "fr") "indépendant de l'ordonnée" else "independent of the intercept", tpois$paragraphes[2], fixed = TRUE))
 }
 verifier("ce que R affiche du modèle : la pente du site", any(grepl("site (pente annee)", utils::capture.output(print(mpe)), fixed = TRUE)))
 

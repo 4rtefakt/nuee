@@ -674,12 +674,14 @@ identifiability constraint): the qualitative variable must stay in X, its main e
 difference in level between the categories; without it every category would have the same
 mean, and Nuée then refuses the model rather than add that term without saying so. The factor
 mgcv sees comes from the model's 0/1 category columns (its levels, the categories observed, in
-their order). A variable with a curve per category can't also be in a cross term with a
-qualitative variable (each category already has its curve). Curves and random effects are
-estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitted by maximum
-likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns when the
-counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of freedom): its p
-values are then too small, and the negative binomial suits the counts better.
+their order); a category added to the data after the model was defined has no column, hence no
+curve: its rows are left out of the model with the incomplete observations, and in a test set
+they stay without a prediction. A variable with a curve per category can't also be in a cross
+term with a qualitative variable (each category already has its curve). Curves and random
+effects are estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitted
+by maximum likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns
+when the counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of
+freedom): its p values are then too small, and the negative binomial suits the counts better.
 R formula (General tab): the model written as in R, for instance
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
@@ -833,9 +835,12 @@ the predictions as emtrends takes it (a forward difference of a thousandth of x'
 the pairs of slopes; for a straight line, the slopes of the Effects view. The degrees of
 freedom are those emmeans takes by default: the residual ones for a linear regression, and for
 a GLM or GAM whose scale is estimated (normal, gamma, Tweedie); nlme's containment rule for a
-mixed model (the smallest of those of the coefficients a mean or a pair involves, the intercept
-counting for the number of groups of the first random effect minus one: typically, the mean of
-a sector has the number of sites minus one, a pair of sectors within sites the inner df); z
+mixed model (the smallest of those of the coefficients a mean or a pair involves in R's default
+coding, the first category as reference, as emmeans on R's own fit; the intercept counting for
+the number of groups of the first random effect minus one: typically, the mean of a sector has
+the number of sites minus one, a pair of sectors within sites the inner df; for a habitat that
+varies only between sites, the mean of the first habitat has the number of sites minus one, the
+others and the pairs the habitat's df, the sites minus one minus its coefficients); z
 (asymptotic) for a Poisson, binomial or negative binomial distribution, as emmeans for glm()
 and as the model's Coefficients (on an mgcv::gam object, emmeans uses the residual df whatever
 the distribution). With a log or logit link, the means are on the response scale (exp; inverse
@@ -915,29 +920,32 @@ year × sector is the year's slope in that sector; without the sector in X (y ~ 
 year:sector), the slopes differ but the sectors share one intercept. habitat × treatment: each
 coefficient is the difference between a treatment's effect (compared with the reference
 treatment) in a habitat and the same effect in the reference habitat; three variables (year ×
-sector × habitat) give differences of differences. The columns are ordered as R orders its
-terms, the main effects first, so that the results are those of lm(), nlme::lme() and mgcv with
-factors whose first level is Nuée's reference. A combination of categories no observation has
-(a treatment never given in a habitat) can't be estimated: it is left out, and the Summary names
-it among the terms never observed. Effects: a quantitative term crossed with categories has one
-line per category (a curve when the term is a GAM's curve), its slope being its coefficient
-plus that of its product with the category, with its 95 % band from the coefficients'
-covariance and, under the plot, each slope per unit with its interval. For a curve, Thresholds
-are those of the category chosen: the shared curve plus that category's slope; a curve per
-category (s(x, by = f), above) gives each category its own shape, not the same curve tilted. In
-the AIC selection and
-the contributions table, a cross term enters and leaves whole (all its categories), only with
-its main effects and its lower-order cross terms. The Methods text names each reference
-category and says what the cross terms' coefficients are. Prediction: a category the model has
-seen gets its own prediction; a category, or a combination of categories, it hasn't seen (absent
-from the model's observations, from the other groups in cross-validation, or unknown to the
-project in a file) gets none: the model would predict it as the reference category, or without
-its slope, and R likewise refuses a level it hasn't seen. This is the rule for every qualitative
-variable of a regression (main effects, cross terms, curves per category; LM, LMM, GLM, GAM,
-mgcv::gamm), not for the other models (PLS...). Such observations are counted and named: in
-cross-validation, the Summary gives how many stayed without a prediction and of which variable,
-Q2 and RMSEcv being computed on the others; when none is left (sectors proper to each site,
-cross-validated by site), Q2 is missing, and the Summary says the model can't be
+sector × habitat) give differences of differences. A category's own coefficient (sector(S2)) is
+then its difference from the reference category where the terms crossed with it are 0: where
+the year is 0 (with the years in their units, year 0, far outside the data; at the mean year
+when the year is centred, Ctr or UV), in the reference habitat for habitat × treatment. The
+columns are ordered as R orders its terms, the main effects first, so that the results are
+those of lm(), nlme::lme() and mgcv with factors whose first level is Nuée's reference. A
+combination of categories no observation has (a treatment never given in a habitat) can't be
+estimated: it is left out, and the Summary names it among the terms never observed. Effects: a
+quantitative term crossed with categories has one line per category (a curve when the term is a
+GAM's curve), its slope being its coefficient plus that of its product with the category, with
+its 95 % band from the coefficients' covariance and, under the plot, each slope per unit with
+its interval. For a curve, Thresholds are those of the category chosen: the shared curve plus
+that category's slope; a curve per category (s(x, by = f), above) gives each category its own
+shape, not the same curve tilted. In the AIC selection and the contributions table, a cross
+term enters and leaves whole (all its categories), only with its main effects and its
+lower-order cross terms. The Methods text names each reference category and says what a
+category's coefficient and the cross terms' coefficients are. Prediction: a category the model
+has seen gets its own prediction; a category, or a combination of categories, it hasn't seen
+(absent from the model's observations, from the other groups in cross-validation, or unknown to
+the project in a file) gets none: the model would predict it as the reference category, or
+without its slope, and R likewise refuses a level it hasn't seen. This is the rule for every
+qualitative variable of a regression (main effects, cross terms, curves per category; LM, LMM,
+GLM, GAM, mgcv::gamm), not for the other models (PLS...). Such observations are counted and
+named: in cross-validation, the Summary gives how many stayed without a prediction and of which
+variable, Q2 and RMSEcv being computed on the others; when none is left (sectors proper to each
+site, cross-validated by site), Q2 is missing, and the Summary says the model can't be
 cross-validated by these groups with that variable as a fixed X: make it a random effect, or
 choose other cross-validation groups. The test set counts them apart from its RMSEP, bias and
 external Q2; Prediction › Predict marks them ⊘ (column Unseen category, in the exported table

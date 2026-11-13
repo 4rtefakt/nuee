@@ -220,20 +220,53 @@ estimables <- function(L, N, tol = 1e-8) {
 # Les moyennes, à poids égaux, des lignes de `M` de chaque groupe de `groupes` (des rangs de lignes).
 moyennes_lignes <- function(M, groupes) do.call(rbind, lapply(groupes, function(i) colMeans(M[i, , drop = FALSE])))
 
+# Les colonnes du codage par défaut de R (contr.treatment, la première catégorie observée de chaque
+# variable qualitative en référence) parmi la constante et les termes paramétriques candidats d'un
+# modèle de nlme `m` (`quals` : qualitatives_modele), et pour chacune le coefficient de l'ajustement
+# dont elle prend les degrés de liberté de confinement : le sien, ou pour une colonne que Nuée laisse
+# de côté (sa catégorie de référence est la dernière), un coefficient du même terme (ses colonnes ont
+# ceux de leur strate). Une variable qualitative est codée dans un terme par ses contrastes quand le
+# terme sans elle est aussi dans le modèle (la constante, pour un effet principal), sinon par une
+# colonne par catégorie (Chambers et Hastie, 1992). Un vecteur nommé par ces colonnes.
+colonnes_ddl <- function(m, quals) {
+  comp <- m$composition
+  dfx <- m$ajustement$fixDF$X
+  termes <- setdiff(m$candidats, m$lisses)
+  cle <- function(t) paste(sort(comp[[t]]$variables), collapse = " ")
+  cles <- vapply(termes, cle, "")
+  de_r <- vapply(termes, function(t) {
+    ct <- comp[[t]]
+    for (j in which(ct$categories != 0)) {
+      reste <- paste(sort(ct$variables[-j]), collapse = " ")
+      if ((!nzchar(reste) || reste %in% cles) && isTRUE(ct$categories[j] == quals[[as.character(ct$variables[j])]]$categories[1])) return(FALSE)
+    }
+    TRUE
+  }, TRUE)
+  de <- vapply(termes[de_r], function(t) {
+    if (t %in% names(dfx)) return(t)
+    memes <- intersect(termes[cles == cle(t)], names(dfx))
+    if (length(memes)) memes[which.min(dfx[memes])] else NA_character_
+  }, "")
+  c(`(Intercept)` = "(Intercept)", de[!is.na(de)])
+}
+
 # Les degrés de liberté de chaque ligne `L` (et `L_brut`, la même dans le codage de R sans mise à
-# l'échelle) : ceux qu'emmeans prend par défaut. lm : les degrés de liberté résiduels ; nlme::lme : la
-# règle de confinement de nlme (fixDF), le plus petit de ceux des coefficients que la ligne fait
-# intervenir (|L| > 1e-4), l'ordonnée à l'origine comptant pour le nombre de groupes du premier effet
+# l'échelle) : ceux qu'emmeans prend par défaut sur l'ajustement de R. lm : les degrés de liberté
+# résiduels ; nlme::lme : la règle de confinement de nlme (fixDF), le plus petit de ceux des
+# coefficients que la ligne fait intervenir (|L| > 1e-4) dans le codage par défaut de R (`colonnes` :
+# colonnes_ddl ; dans celui de Nuée, dont la référence est la dernière catégorie, une moyenne prendrait
+# ceux d'une autre), l'ordonnée à l'origine comptant pour le nombre de groupes du premier effet
 # aléatoire moins un ; mgcv : les degrés de liberté résiduels quand l'échelle est estimée (loi
 # normale, gamma, Tweedie), l'infini (z, asymptotique) pour une loi à l'échelle connue (Poisson,
 # binomiale, binomiale négative), comme le résumé de mgcv et les coefficients de Nuée, et comme
 # emmeans pour un glm().
-ddl_lignes <- function(m, L_brut) {
+ddl_lignes <- function(m, L_brut, colonnes = NULL) {
   a <- m$ajustement
   if (inherits(a, "lme")) {
     dfx <- a$fixDF$X
     dfx[["(Intercept)"]] <- nlevels(a$groups[[1]]) - 1
-    k <- L_brut[, names(dfx), drop = FALSE]
+    dfx <- dfx[colonnes]
+    k <- L_brut[, names(colonnes), drop = FALSE]
     return(apply(k, 1, function(x) { i <- which(abs(x) > 1e-4); if (length(i)) min(dfx[i]) else NA_real_ }))
   }
   # (mgcv : un gam est aussi un lm, il passe d'abord)
@@ -320,7 +353,8 @@ moyennes_ajustees <- function(projet, m, d, q = list()) {
   Lpc <- moyennes_lignes(Lp, groupes)
   ec <- estimables(Lpc, N)
   Lbc <- moyennes_lignes(Lb, groupes)
-  dfc <- ddl_lignes(m, Lbc)
+  cddl <- if (inherits(m$ajustement, "lme")) colonnes_ddl(m, quals)
+  dfc <- ddl_lignes(m, Lbc, cddl)
   est <- as.vector(Lc %*% b)
   se <- sqrt(pmax(0, rowSums((Lc %*% V) * Lc)))
   # (avec le lien log ou logit, sur l'échelle de la réponse ; les pentes restent sur celle du lien, comme emtrends)
@@ -366,7 +400,7 @@ moyennes_ajustees <- function(projet, m, d, q = list()) {
       s1 <- sqrt(max(0, sum((Ld %*% V) * Ld)))
       paires[[length(paires) + 1]] <- data.frame(groupe = if (is.null(fb)) NA_character_ else fb$niveaux[gb],
                                                  niveau_1 = fa$niveaux[cellules$a[i]], niveau_2 = fa$niveaux[cellules$a[j]],
-                                                 difference = d1, erreur_type_lien = s1, ddl = ddl_lignes(m, Lbc[i, , drop = FALSE] - Lbc[j, , drop = FALSE]),
+                                                 difference = d1, erreur_type_lien = s1, ddl = ddl_lignes(m, Lbc[i, , drop = FALSE] - Lbc[j, , drop = FALSE], cddl),
                                                  stringsAsFactors = FALSE)
     }
   }
@@ -554,8 +588,8 @@ phrase_methodes_moyennes <- function(m, d, fr, liste, guillemets) {
                      if (inherits(m$ajustement, c("gam", "gamm"))) (if (fr) " (la covariance bayésienne de mgcv)" else " (mgcv's Bayesian covariance)") else "")
   dl <- r$ddl
   ddl <- switch(dl$methode,
-    confinement = { cites <- c(cites, "pinheiro"); sprintf(if (fr) "Les intervalles à 95 %% et les tests suivent la loi t, avec les degrés de liberté de la règle de confinement de nlme (Pinheiro et Bates, 2000) comme emmeans les prend : le plus petit de ceux des coefficients qu'une combinaison fait intervenir, l'ordonnée à l'origine comptant pour le nombre de %s moins un (%d)."
-                                                          else "The 95%% intervals and tests use the t distribution, with the degrees of freedom of nlme's containment rule (Pinheiro & Bates, 2000) as emmeans takes them: the smallest of those of the coefficients a combination involves, the intercept counting for the number of %s minus one (%d).",
+    confinement = { cites <- c(cites, "pinheiro"); sprintf(if (fr) "Les intervalles à 95 %% et les tests suivent la loi t, avec les degrés de liberté de la règle de confinement de nlme (Pinheiro et Bates, 2000) comme emmeans les prend : le plus petit de ceux des coefficients qu'une combinaison fait intervenir dans le codage par défaut de R (la première catégorie en référence), l'ordonnée à l'origine comptant pour le nombre de %s moins un (%d)."
+                                                          else "The 95%% intervals and tests use the t distribution, with the degrees of freedom of nlme's containment rule (Pinheiro & Bates, 2000) as emmeans takes them: the smallest of those of the coefficients a combination involves in R's default coding (the first category as reference), the intercept counting for the number of %s minus one (%d).",
                                                           guillemets(dl$groupe), as.integer(dl$groupes) - 1L) },
     asymptotique = if (fr) "Les intervalles à 95 % et les tests suivent la loi normale (z, asymptotiques), l'échelle de la loi étant connue." else "The 95% intervals and tests use the normal distribution (z, asymptotic), the distribution's scale being known.",
     if (fr) "Les intervalles à 95 % et les tests suivent la loi t, avec les degrés de liberté résiduels du modèle." else "The 95% intervals and tests use the t distribution, with the model's residual degrees of freedom.")

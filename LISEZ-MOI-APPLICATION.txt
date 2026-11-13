@@ -721,14 +721,16 @@ les observations de sa catégorie (la contrainte d'identifiabilité de mgcv) : l
 qualitative doit rester en X, son effet principal donnant l'écart de niveau entre les
 catégories ; sans lui, toutes les catégories auraient la même moyenne, et Nuée refuse alors le
 modèle plutôt que d'ajouter ce terme sans le dire. Le facteur que mgcv voit vient des colonnes
-0/1 des catégories du modèle (ses niveaux, les catégories observées, dans leur ordre). Une
-variable en courbe par catégorie n'est pas aussi dans un terme croisé avec une variable
-qualitative (chaque catégorie a déjà sa courbe). Les courbes et
-les effets aléatoires sont estimés en REML, et l'AIC vient
-d'un ajustement en ML ; un GLM sans eux est ajusté par maximum de vraisemblance, comme le font
-glm() et MASS::glm.nb(). Le résumé d'un modèle de Poisson prévient quand les comptages sont
-surdispersés (le khi² de Pearson au-delà de 1,5 fois ses degrés de liberté) : ses valeurs p
-sont alors trop petites, et la binomiale négative convient mieux à ces comptages.
+0/1 des catégories du modèle (ses niveaux, les catégories observées, dans leur ordre) ; une
+catégorie ajoutée aux données après la définition du modèle n'y a pas de colonne, donc pas de
+courbe : ses lignes restent hors du modèle avec les observations incomplètes, et dans un jeu de
+test, sans prédiction. Une variable en courbe par catégorie n'est pas aussi dans un terme
+croisé avec une variable qualitative (chaque catégorie a déjà sa courbe). Les courbes et les
+effets aléatoires sont estimés en REML, et l'AIC vient d'un ajustement en ML ; un GLM sans eux
+est ajusté par maximum de vraisemblance, comme le font glm() et MASS::glm.nb(). Le résumé d'un
+modèle de Poisson prévient quand les comptages sont surdispersés (le khi² de Pearson au-delà
+de 1,5 fois ses degrés de liberté) : ses valeurs p sont alors trop petites, et la binomiale
+négative convient mieux à ces comptages.
 Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/secteur).
 Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations
@@ -896,27 +898,30 @@ millième de l'étendue de x), et les paires de pentes ; pour une droite, les pe
 Effets. Les degrés de liberté sont ceux qu'emmeans prend par défaut : les degrés de liberté
 résiduels pour une régression linéaire, et pour un GLM ou un GAM dont l'échelle est estimée
 (loi normale, gamma, Tweedie) ; la règle de confinement de nlme pour un modèle mixte (le plus
-petit de ceux des coefficients qu'une moyenne ou une paire fait intervenir, l'ordonnée à
-l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un : en général,
-la moyenne d'un secteur a le nombre de sites moins un, une paire de secteurs dans les sites les
-degrés de liberté intérieurs) ; z (asymptotique) pour une loi de Poisson, binomiale ou
-binomiale négative, comme emmeans pour glm() et comme les Coefficients du modèle (sur un objet
-mgcv::gam, emmeans prend les degrés de liberté résiduels quelle que soit la loi). Avec un lien
-log ou logit, les moyennes sont sur l'échelle de la réponse (exp ; logit inverse : des
-probabilités), leurs intervalles transformés depuis l'échelle du lien, et les paires sont des
-rapports de moyennes ou des rapports des cotes, testés sur l'échelle du lien, comme type =
-"response" dans emmeans ; l'échelle du lien au choix. Une variable Y transformée (log10, ln…)
-reste sur son échelle, et la vue le dit : ramenée sur l'échelle de la variable, une moyenne de
-logarithmes est une médiane (une moyenne géométrique), non une moyenne. Une combinaison de
-catégories qu'aucune observation n'a n'est pas estimable (emmeans : nonEst) : sa moyenne et ses
-paires sont laissées de côté, et nommées. Un clic sur une paire du tableau donne sa phrase pour
-un rapport (bouton copier) ; Ctrl+C copie les deux tableaux. Une fois calculées, le texte des
-méthodes les décrit (Searle et al. 1980, emmeans de Lenth, Tukey 1953 et Kramer 1956, ou Holm
-1979), le rapport du modèle peut les inclure, et Exporter vers R les refait en R de base (la
-grille, les lignes L du modèle, la covariance et les degrés de liberté : les mêmes nombres).
-Non couvert : d'autres poids qu'égaux (weights = "proportional"… d'emmeans), d'autres
-contrastes que les paires (contre un témoin), une variable quantitative à une autre valeur que
-sa moyenne.
+petit de ceux des coefficients qu'une moyenne ou une paire fait intervenir dans le codage par
+défaut de R, la première catégorie en référence, comme emmeans sur l'ajustement de R ;
+l'ordonnée à l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un :
+en général, la moyenne d'un secteur a le nombre de sites moins un, une paire de secteurs dans
+les sites les degrés de liberté intérieurs ; pour un habitat qui ne change que d'un site à
+l'autre, la moyenne du premier habitat a le nombre de sites moins un, les autres et les paires
+ceux de l'habitat, les sites moins un moins ses coefficients) ; z (asymptotique) pour une loi
+de Poisson, binomiale ou binomiale négative, comme emmeans pour glm() et comme les Coefficients
+du modèle (sur un objet mgcv::gam, emmeans prend les degrés de liberté résiduels quelle que
+soit la loi). Avec un lien log ou logit, les moyennes sont sur l'échelle de la réponse (exp ;
+logit inverse : des probabilités), leurs intervalles transformés depuis l'échelle du lien, et
+les paires sont des rapports de moyennes ou des rapports des cotes, testés sur l'échelle du
+lien, comme type = "response" dans emmeans ; l'échelle du lien au choix. Une variable Y
+transformée (log10, ln…) reste sur son échelle, et la vue le dit : ramenée sur l'échelle de la
+variable, une moyenne de logarithmes est une médiane (une moyenne géométrique), non une
+moyenne. Une combinaison de catégories qu'aucune observation n'a n'est pas estimable (emmeans :
+nonEst) : sa moyenne et ses paires sont laissées de côté, et nommées. Un clic sur une paire du
+tableau donne sa phrase pour un rapport (bouton copier) ; Ctrl+C copie les deux tableaux. Une
+fois calculées, le texte des méthodes les décrit (Searle et al. 1980, emmeans de Lenth, Tukey
+1953 et Kramer 1956, ou Holm 1979), le rapport du modèle peut les inclure, et Exporter vers R
+les refait en R de base (la grille, les lignes L du modèle, la covariance et les degrés de
+liberté : les mêmes nombres). Non couvert : d'autres poids qu'égaux (weights = "proportional"…
+d'emmeans), d'autres contrastes que les paires (contre un témoin), une variable quantitative à
+une autre valeur que sa moyenne.
 Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
 un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
 comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par
@@ -986,35 +991,39 @@ dans ce secteur ; sans le secteur en X (y ~ année + année:secteur), les pentes
 les secteurs partagent une même ordonnée à l'origine. habitat × traitement : chaque coefficient
 est l'écart entre l'effet d'un traitement (par rapport au traitement de référence) dans un
 habitat et ce même effet dans l'habitat de référence ; trois variables (année × secteur ×
-habitat) donnent des écarts d'écarts. Les colonnes sont rangées comme R range ses termes, les
-effets principaux d'abord : les résultats sont ceux de lm(), nlme::lme() et mgcv avec des
-facteurs dont le premier niveau est la référence de Nuée. Une combinaison de catégories
-qu'aucune observation n'a (un traitement jamais donné dans un habitat) ne peut pas être
-estimée : elle est laissée de côté, et le Résumé la nomme parmi les termes jamais observés.
-Effets : un terme quantitatif croisé avec des catégories a une droite par catégorie (une courbe
-quand le terme est une courbe d'un GAM), de pente son coefficient plus celui de son produit
-avec la catégorie, avec sa bande à 95 % tirée de la covariance des coefficients et, sous le
-graphique, chaque pente par unité avec son intervalle. Pour une courbe, les Seuils sont ceux de
-la catégorie choisie : la courbe commune plus la pente de cette catégorie ; une courbe par
+habitat) donnent des écarts d'écarts. Le coefficient d'une catégorie elle-même (secteur(S2))
+est alors son écart à la catégorie de référence là où les termes croisés avec elle valent 0 :
+là où l'année vaut 0 (avec les années dans leurs unités, l'an 0, loin des données ; l'année
+moyenne quand l'année est centrée, Ctr ou UV), dans l'habitat de référence pour habitat ×
+traitement. Les colonnes sont rangées comme R range ses termes, les effets principaux
+d'abord : les résultats sont ceux de lm(), nlme::lme() et mgcv avec des facteurs dont le
+premier niveau est la référence de Nuée. Une combinaison de catégories qu'aucune observation
+n'a (un traitement jamais donné dans un habitat) ne peut pas être estimée : elle est laissée
+de côté, et le Résumé la nomme parmi les termes jamais observés. Effets : un terme
+quantitatif croisé avec des catégories a une droite par catégorie (une courbe quand le terme
+est une courbe d'un GAM), de pente son coefficient plus celui de son produit avec la
+catégorie, avec sa bande à 95 % tirée de la covariance des coefficients et, sous le graphique,
+chaque pente par unité avec son intervalle. Pour une courbe, les Seuils sont ceux de la
+catégorie choisie : la courbe commune plus la pente de cette catégorie ; une courbe par
 catégorie (s(x, by = f), plus haut) donne à chaque catégorie sa propre forme, et non la même
-courbe inclinée. Dans la sélection par AIC et la table
-des apports, un terme croisé entre et sort en entier (toutes ses catégories), seulement avec
-ses effets principaux et ses termes croisés d'ordre plus bas. Le texte des Méthodes nomme
-chaque catégorie de référence et dit ce que valent les coefficients des termes croisés.
-Prédiction : une catégorie que le modèle a vue a sa propre prédiction ; une catégorie, ou une
-combinaison de catégories, qu'il n'a pas vue (absente de ses observations, des autres groupes
-en validation croisée, ou inconnue du projet dans un fichier) n'en a pas : le modèle la
-prédirait comme la catégorie de référence, ou sans sa pente, et R refuse de même un niveau qu'il
-n'a pas vu. C'est la règle de chaque variable qualitative d'une régression (effets principaux,
-termes croisés, courbes par catégorie ; LM, LMM, GLM, GAM, mgcv::gamm), pas des autres modèles
+courbe inclinée. Dans la sélection par AIC et la table des apports, un terme croisé entre et
+sort en entier (toutes ses catégories), seulement avec ses effets principaux et ses termes
+croisés d'ordre plus bas. Le texte des Méthodes nomme chaque catégorie de référence et dit ce
+que valent le coefficient d'une catégorie et ceux des termes croisés. Prédiction : une
+catégorie que le modèle a vue a sa propre prédiction ; une catégorie, ou une combinaison de
+catégories, qu'il n'a pas vue (absente de ses observations, des autres groupes en validation
+croisée, ou inconnue du projet dans un fichier) n'en a pas : le modèle la prédirait comme la
+catégorie de référence, ou sans sa pente, et R refuse de même un niveau qu'il n'a pas vu.
+C'est la règle de chaque variable qualitative d'une régression (effets principaux, termes
+croisés, courbes par catégorie ; LM, LMM, GLM, GAM, mgcv::gamm), pas des autres modèles
 (PLS...). Ces observations sont comptées et nommées : en validation croisée, le Résumé dit
-combien sont restées sans prédiction et de quelle variable, Q2 et RMSEcv étant calculés sur les
-autres ; quand il n'en reste aucune (des secteurs propres à chaque site, validés par site), Q2
-manque, et le Résumé dit que le modèle ne peut pas être validé par ces groupes avec cette
-variable en X fixe : faites-en un effet aléatoire, ou choisissez d'autres groupes de validation
-croisée. Le jeu de test les compte à part de son RMSEP, de son biais et de son Q2 externe ;
-Prédiction › Prédire les marque ⊘ (colonne Catégorie non vue, dans le tableau exporté aussi).
-Le texte des Méthodes et le script d'Exporter vers R font de même.
+combien sont restées sans prédiction et de quelle variable, Q2 et RMSEcv étant calculés sur
+les autres ; quand il n'en reste aucune (des secteurs propres à chaque site, validés par
+site), Q2 manque, et le Résumé dit que le modèle ne peut pas être validé par ces groupes avec
+cette variable en X fixe : faites-en un effet aléatoire, ou choisissez d'autres groupes de
+validation croisée. Le jeu de test les compte à part de son RMSEP, de son biais et de son Q2
+externe ; Prédiction › Prédire les marque ⊘ (colonne Catégorie non vue, dans le tableau
+exporté aussi). Le texte des Méthodes et le script d'Exporter vers R font de même.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------

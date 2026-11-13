@@ -6,7 +6,9 @@
 # covariable transformée (la moyenne de x avant sa transformation), facteur × facteur et les effets
 # simples (Holm, intervalles de Bonferroni), un modèle mixte de nlme avec facteur × année et CAR1
 # (les degrés de liberté de confinement, les pentes par catégorie et leurs paires, égales à celles de
-# la vue Effets), un GLM de Poisson sur l'échelle de la réponse (rapports, z), avec un effort, un GLM
+# la vue Effets), des variables qui ne changent que d'un site à l'autre (les degrés de liberté de
+# confinement dans le codage par défaut de R, calculés aussi ici sur l'ajustement de R), un GLM de
+# Poisson sur l'échelle de la réponse (rapports, z), avec un effort, un GLM
 # binomial (rapports des cotes), un GAM et un mgcv::gamm (la covariance bayésienne), un carré et un
 # terme croisé de deux nombres, une combinaison jamais observée (laissée de côté, la famille de Tukey
 # des paires estimables) ; les refus, les phrases et le texte des Méthodes.
@@ -46,7 +48,7 @@ car1_q <- list(type = "CAR1", temps = list(by = "variable", variable = uq("annee
 ctrl <- nlme::lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, returnObject = TRUE)
 env_mgcv <- new.env(parent = asNamespace("mgcv"))
 
-# Les valeurs d'emmeans 2.0.4 sur ces données, par les modèles de R écrits plus bas (lA... lJ) :
+# Les valeurs d'emmeans 2.0.4 sur ces données, par les modèles de R écrits plus bas (lA... lM) :
 # emmeans(), pairs(..., infer = TRUE), emtrends(), type = "response", offset = 0 (E). Leurs facteurs
 # ont les niveaux par défaut de R (dans l'ordre alphabétique, celui des catégories de Nuée).
 EMMEANS <- list(
@@ -71,7 +73,13 @@ EMMEANS <- list(
            trend_SE = c(0.0375026616947, 0.0431290715539, 0.0406096754191), trend_p = c(0.515192007392, 0.984855510242, 0.637042533479)),
   J = list(emmean = c(3.0993725189, 3.31980344577), estimate = -0.220430926871, p = 0.428646036941, lower = -0.769319602983,
            simple_estimate = c(-0.141439994161, 0.0543330010519, 0.195772995213, -0.29942185958), simple_p = c(0.931043454108, 0.989505128902, 0.872153512459, 0.447070926171),
-           simple_lower = c(-1.07147225657, -0.875699261357, -0.734259267196, -1.07566766957)))
+           simple_lower = c(-1.07147225657, -0.875699261357, -0.734259267196, -1.07566766957)),
+  K = list(emmean = c(3.12956049213, 3.21999116232), df = c(5, 4), lower = c(2.17262654538, 2.18642182186), upper = c(4.08649443888, 4.25356050278),
+           p_df = 4, p = 0.871957452404, p_lower = -1.55211844912),
+  L = list(emmean = c(3.359337629, 2.97420416266, 3.19078569001), df = c(5, 3, 3), lower = c(2.06289923166, 1.36918014419, 1.58576167154), p_df = c(3, 3, 3),
+           p = c(0.858493299331, 0.969987321085, 0.951249006129)),
+  M = list(emmean = c(3.10052482776, 3.24196482192, 3.04619182671, 3.09822021004, 3.39764206962, 3.16411120731), df = c(5, 5, 5, 4, 4, 4),
+           lower = c(1.98355783198, 2.12499782614, 1.92922483093, 1.89180168443, 2.19122354401, 1.9576926817), p_df = rep(170, 6)))
 
 # emmeans lui-même, s'il est installé (NUEE_EMMEANS : une bibliothèque où il l'est) : les valeurs
 # enregistrées refaites, à la fin
@@ -163,6 +171,54 @@ verifier("les pentes de l'année par secteur = emtrends (169 ddl) et leurs paire
            identical(rCp$echelle, "identite"))
 verifier("les choix : « secteur », sans variable qualitative croisée, la pente de « annee »",
          length(rC$options) == 1 && identical(rC$options[[1]]$nom, "secteur") && !length(rC$options[[1]]$dans) && identical(rC$options[[1]]$pentes[[1]]$nom, "annee"))
+
+cat("Modèle mixte (nlme) : une variable qui ne change que d'un site à l'autre\n")
+# l'habitat (trois sites chacun), trois zones (deux sites chacune) : les degrés de liberté de
+# confinement d'une moyenne sont pris dans le codage par défaut de R (la première catégorie en
+# référence), comme emmeans sur l'ajustement de R ; dans celui de Nuée (la dernière en référence), la
+# première et la dernière catégories échangeraient les leurs
+tq$zone <- c(A = "Z1", B = "Z1", C = "Z2", D = "Z2", E = "Z3", F = "Z3")[as.character(tq$site)]
+ps <- projet_depuis_tableau(tq[c("nom", "site", "habitat", "zone", "traitement", "annee", "densite")], "sites")
+us <- function(...) numeros(ps, c(...))
+lmm_s <- function(x, croises = list()) definir_modele(ps, "LMM", x = us(x), y = us("densite"), echelle = "none", croises = lapply(croises, function(c) us(c)),
+                                                     aleatoires = list(list(by = "variable", variable = us("site"))))
+# (le calcul d'ici, sur l'ajustement de R : chaque ligne de sa matrice sur la grille, le plus petit des
+# fixDF$X des coefficients qu'elle fait intervenir, la constante comptant pour les sites moins un)
+ddl_r <- function(l, X) {
+  dfx <- l$fixDF$X
+  dfx[["(Intercept)"]] <- nlevels(l$groups[[1]]) - 1
+  unname(apply(X[, names(dfx), drop = FALSE], 1, function(x) min(dfx[abs(x) > 1e-4])))
+}
+dK <- lmm_s(c("habitat", "annee"))
+mK <- ajuster(ps, dK)
+rK <- moyennes_ajustees(ps, mK, dK)
+lK <- eval(bquote(nlme::lme(densite ~ habitat + annee, random = ~ 1 | site, data = tq, method = "REML", control = .(ctrl))))
+e <- EMMEANS$K
+verifier("un habitat au niveau du site : 5 degrés de liberté pour la moyenne de H1 (les sites moins un), 4 pour H2 et la paire (ceux du coefficient de l'habitat), = emmeans et le calcul d'ici ; leurs intervalles",
+         identical(as.numeric(rK$moyennes$ddl), e$df) && identical(as.numeric(rK$moyennes$ddl), ddl_r(lK, model.matrix(~ habitat + annee, data.frame(habitat = c("H1", "H2"), annee = mean(tq$annee))))) &&
+           proche(rK$moyennes$estimation, e$emmean, 1e-5) && proche(rK$moyennes$bas, e$lower, 1e-4) && proche(rK$moyennes$haut, e$upper, 1e-4) &&
+           identical(as.numeric(rK$paires$ddl), e$p_df) && proche(rK$paires$p, e$p, 1e-4) && proche(rK$paires$bas, e$p_lower, 1e-4))
+dZ <- lmm_s(c("zone", "annee"))
+mZ <- ajuster(ps, dZ)
+rZ <- moyennes_ajustees(ps, mZ, dZ)
+lZ <- eval(bquote(nlme::lme(densite ~ zone + annee, random = ~ 1 | site, data = tq, method = "REML", control = .(ctrl))))
+e <- EMMEANS$L
+verifier("trois zones au niveau du site : 5, 3 et 3 degrés de liberté, 3 pour chaque paire, = emmeans et le calcul d'ici",
+         identical(as.numeric(rZ$moyennes$ddl), e$df) && identical(as.numeric(rZ$moyennes$ddl), ddl_r(lZ, model.matrix(~ zone + annee, data.frame(zone = c("Z1", "Z2", "Z3"), annee = mean(tq$annee))))) &&
+           proche(rZ$moyennes$estimation, e$emmean, 1e-5) && proche(rZ$moyennes$bas, e$lower, 1e-4) && identical(as.numeric(rZ$paires$ddl), e$p_df) && proche(rZ$paires$p, e$p, 1e-4))
+dM <- lmm_s(c("habitat", "traitement"), list(c("habitat", "traitement")))
+mM <- ajuster(ps, dM)
+rM <- moyennes_ajustees(ps, mM, dM, list(facteur = us("traitement"), dans = us("habitat")))
+lM <- eval(bquote(nlme::lme(densite ~ habitat * traitement, random = ~ 1 | site, data = tq, method = "REML", control = .(ctrl))))
+e <- EMMEANS$M
+verifier("habitat × traitement, chaque traitement dans chaque habitat : 5 degrés de liberté dans H1, 4 dans H2, 170 pour les paires (dans les sites), = emmeans et le calcul d'ici",
+         identical(as.numeric(rM$moyennes$ddl), e$df) &&
+           identical(as.numeric(rM$moyennes$ddl), ddl_r(lM, model.matrix(~ habitat * traitement, expand.grid(traitement = c("T1", "T2", "T3"), habitat = c("H1", "H2"), stringsAsFactors = FALSE)))) &&
+           proche(rM$moyennes$estimation, e$emmean, 1e-5) && proche(rM$moyennes$bas, e$lower, 1e-4) && identical(as.numeric(rM$paires$ddl), e$p_df))
+mK$moyennes <- rK
+verifier("le texte des Méthodes le dit : les coefficients qu'une combinaison fait intervenir dans le codage par défaut de R",
+         any(grepl("the coefficients a combination involves in R's default coding (the first category as reference), the intercept counting for the number of “site” minus one (5)",
+                   texte_methodes(ps, dK, mK, "en", "essai")$paragraphes, fixed = TRUE)))
 
 cat("GLM de Poisson : l'échelle de la réponse\n")
 dD <- definir_modele(pq, "GLM", x = uq("habitat", "traitement"), y = uq("compte"), echelle = "none", famille = "poisson", croises = list(uq("habitat", "traitement")))
@@ -312,8 +368,12 @@ if (avec_emmeans) {
   sA <- summary(emmeans::emmeans(lA, ~ secteur))
   sC <- summary(emmeans::emmeans(lC, ~ secteur))
   sD <- summary(graphics::pairs(emmeans::emmeans(glm(compte ~ habitat * traitement, family = poisson, data = tq), ~ traitement, type = "response")), infer = TRUE)
-  verifier("les valeurs enregistrées d'emmeans refaites (régression linéaire, modèle mixte, rapports de Poisson)",
-           proche(sA$emmean, EMMEANS$A$emmean, 1e-9) && proche(sC$emmean, EMMEANS$C$emmean, 1e-5) && proche(sC$df, EMMEANS$C$df) && proche(sD$ratio, EMMEANS$D$ratio, 1e-9))
+  sK <- summary(emmeans::emmeans(lK, ~ habitat))
+  sZ <- summary(emmeans::emmeans(lZ, ~ zone))
+  sM <- summary(emmeans::emmeans(lM, ~ traitement | habitat))
+  verifier("les valeurs enregistrées d'emmeans refaites (régression linéaire, modèle mixte, rapports de Poisson ; les degrés de liberté d'un habitat, de zones, de traitements dans chaque habitat)",
+           proche(sA$emmean, EMMEANS$A$emmean, 1e-9) && proche(sC$emmean, EMMEANS$C$emmean, 1e-5) && proche(sC$df, EMMEANS$C$df) && proche(sD$ratio, EMMEANS$D$ratio, 1e-9) &&
+             proche(sK$df, EMMEANS$K$df) && proche(sK$lower.CL, EMMEANS$K$lower, 1e-5) && proche(sZ$df, EMMEANS$L$df) && proche(sM$df, EMMEANS$M$df))
 } else cat("(emmeans n'est pas installé : NUEE_EMMEANS désigne une bibliothèque où il l'est ; les valeurs enregistrées font foi)\n")
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")

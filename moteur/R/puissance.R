@@ -436,7 +436,7 @@ phrase_puissance <- function(r) {
 # La puissance dans le texte des Méthodes (texte_methodes_regression, quand elle a été calculée) :
 # la tendance et sa pente, les plans, la méthode et les variances, la phrase, et la simulation si
 # elle a été faite. `nombre`, `liste`, `guillemets` : ceux de texte_methodes_regression. Renvoie le
-# texte et les références à citer (diggle, johnson).
+# texte et les références à citer (diggle, johnson2015).
 phrase_methodes_puissance <- function(m, fr, nombre, liste, guillemets) {
   r <- m$puissance_tendance
   ancien <- options(nuee.langue = if (fr) "fr" else "en")  # (texte_tendance, phrase_puissance : la langue du texte)
@@ -458,7 +458,7 @@ phrase_methodes_puissance <- function(m, fr, nombre, liste, guillemets) {
   texte <- paste(texte, phrase_puissance(r))
   s <- r$simulation
   if (!is.null(s)) {
-    cites <- c(cites, "johnson")
+    cites <- c(cites, "johnson2015")
     texte <- paste(texte, sprintf(if (fr) "Une simulation de %d jeux de données tirés du modèle avec cette tendance, à %s et %d ans, chacun réajusté avec la même structure (REML) et la pente testée, a donné une puissance de %s (± %s, erreur de Monte-Carlo ; la formule : %s ; Johnson et al., 2015)%s."
                                   else "A simulation of %d data sets drawn from the model with this trend, at %s and %d years, each refitted with the same structure (REML) and the slope tested, gave a power of %s (± %s, Monte Carlo error; the formula: %s; Johnson et al., 2015)%s.",
                                   s$n, texte_plan_unites(r, s$unites, fr), s$annees, nombre(s$puissance, 2), nombre(s$erreur_mc, 2), nombre(s$analytique, 2),

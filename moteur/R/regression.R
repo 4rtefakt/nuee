@@ -450,8 +450,8 @@ verifier_regression <- function(projet, d) {
   }
   if (length(aleatoires) > 3) err("Trois effets aléatoires emboîtés au plus.", "Three nested random effects at most.")
   # (une pente aléatoire varie autour de la pente fixe de sa variable : un terme X quantitatif seul,
-  # transformé ou non, en droite)
-  simples_x <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) == 0) as.numeric(t$variables)))
+  # transformé ou non, en droite ; non un facteur seul, sans effet principal, qui n'a pas de pente fixe)
+  simples_x <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) == 0 && !isTRUE(t$facteur_seul)) as.numeric(t$variables)))
   for (s in aleatoires) {
     if (identical(as.character(s$by)[1], "variable") && !length(variable_du_projet(projet, s$variable)$categories)) {
       err("Un effet aléatoire se fait sur un identifiant ou une variable qualitative.", "A random effect is made from an ID or a qualitative variable.")
@@ -575,13 +575,30 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
     if (any(effort <= 0, na.rm = TRUE)) stop(traduire("Le décalage (l'effort) doit être strictement positif.", "The offset (the effort) must be strictly positive."), call. = FALSE)
     decalage <- log(effort)
   }
+  noms_t <- if (K) paste0("t", seq_len(K)) else character(0)
+  composition <- stats::setNames(composition_termes(projet, termes), noms_t)
+  # (une courbe par catégorie, s(x, by = f) : le facteur de sa variable qualitative, une colonne)
+  facteurs <- if (identical(d$type, "GAM")) facteurs_courbes(d, composition) else list()
   connu <- !is.na(y) & stats::complete.cases(bruts[, simples, drop = FALSE])
+  # (les lignes d'une catégorie qu'une courbe par catégorie n'a pas restent de côté, comme celles d'une
+  # valeur manquante, avant les centres et poids ; un jeu de test les garde, sans prédiction :
+  # lignes_avec_courbe)
+  if (is.null(imposees) && length(facteurs)) connu <- connu & lignes_avec_courbe(bruts, composition, facteurs)
   # (un modèle choisi par la sélection par AIC, pour son ajustement : les observations où manque un
-  # terme du modèle complet, ou que sa transformation rend manquant, restent de côté, comme dans
-  # celui-ci ; un jeu de test garde les siennes ; definition_selection)
+  # terme du modèle complet, ou que sa transformation rend manquant, ou d'une catégorie sans courbe
+  # dans le modèle complet, restent de côté, comme dans celui-ci ; un jeu de test garde les siennes ;
+  # definition_selection)
   complets <- if (is.null(imposees) && length(d$termes_complets)) termes_regression(d$termes_complets)
   simples_complets <- vapply(complets, function(t) length(t$variables) == 1, TRUE)
-  if (length(complets)) connu <- connu & stats::complete.cases(valeurs_bloc(projet, complets, obs)[, simples_complets, drop = FALSE])
+  if (length(complets)) {
+    bruts_complets <- valeurs_bloc(projet, complets, obs)
+    connu <- connu & stats::complete.cases(bruts_complets[, simples_complets, drop = FALSE])
+    if (length(d$courbes_du_complet)) {
+      cc <- stats::setNames(composition_termes(projet, complets), paste0("t", seq_along(complets)))
+      fc <- facteurs_courbes(list(par_courbes = d$courbes_du_complet, lisses = as.numeric(names(d$courbes_du_complet))), cc)
+      connu <- connu & lignes_avec_courbe(bruts_complets, cc, fc)
+    }
+  }
   for (v in niveaux) connu <- connu & !is.na(v)
   if (!is.null(temps)) connu <- connu & !is.na(temps)
   if (!is.null(dans)) connu <- connu & !is.na(dans)
@@ -600,11 +617,7 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   if (!is.null(decalage)) cadre$decalage <- decalage[connu]
   complet <- stats::complete.cases(cadre)  # (un terme croisé que sa transformation rend manquant)
   if (!all(simples_complets)) complet <- complet & stats::complete.cases(construire_bloc(projet, complets, garde)$X)  # (de même dans le modèle complet)
-  noms_t <- if (K) paste0("t", seq_len(K)) else character(0)
-  composition <- stats::setNames(composition_termes(projet, termes), noms_t)
   cadre <- cadre[complet, , drop = FALSE]
-  # (une courbe par catégorie, s(x, by = f) : le facteur de sa variable qualitative, une colonne)
-  facteurs <- if (identical(d$type, "GAM")) facteurs_courbes(d, composition) else list()
   for (f in names(facteurs)) cadre[[f]] <- facteur_courbe(cadre, facteurs[[f]]$colonnes)
   list(cadre = cadre, observations = garde[complet], exclues = setdiff(obs, garde[complet]),
        termes = noms_t, noms = if (K) bloc$noms else character(0), bloc = bloc,
@@ -635,6 +648,18 @@ facteur_courbe <- function(donnees, colonnes, niveaux = NULL) {
   x <- rep(NA_character_, nrow(donnees))
   for (k in names(colonnes)) x[!is.na(donnees[[colonnes[[k]]]]) & donnees[[colonnes[[k]]]] == 1] <- k
   factor(x, levels = niveaux %||% intersect(names(colonnes), x))
+}
+
+# Les lignes de `bruts` (les valeurs des termes simples, valeurs_bloc : une colonne par terme de
+# `composition`) qui ont une catégorie dans chaque courbe par catégorie `facteurs`
+# (facteurs_courbes) : l'une de ses colonnes 0/1 à 1. Une catégorie que la définition du modèle n'a
+# pas, ajoutée depuis aux données, a toutes ses colonnes à 0 et pas de courbe : mgcv laisserait ses
+# lignes de côté sans le dire.
+lignes_avec_courbe <- function(bruts, composition, facteurs) {
+  donnees <- stats::setNames(as.data.frame(bruts), names(composition))
+  ok <- rep(TRUE, nrow(donnees))
+  for (f in facteurs) ok <- ok & !is.na(facteur_courbe(donnees, f$colonnes))
+  ok
 }
 
 # Un facteur aux niveaux `niveaux` (ceux d'un ajustement de mgcv) : une valeur que l'ajustement n'a
@@ -1194,6 +1219,8 @@ definition_selection <- function(d, m, choisis) {
   # la sélection l'a comparé aux autres ; la liste des observations ne change pas, ni les groupes de
   # la validation croisée « à tour de rôle », qui sont des rangs dans cette liste)
   complets <- if (length(d$termes_complets)) d$termes_complets else d$x
+  # (de même ses courbes par catégorie : une catégorie qui n'y a pas de courbe reste de côté)
+  par_complet <- if (length(d$termes_complets)) d$courbes_du_complet else d$par_courbes[names(d$par_courbes) %in% as.character(as.numeric(d$lisses))]
   inconnus <- setdiff(choisis, names(groupes_modele(m)))
   if (length(inconnus)) stop(sprintf(traduire("Groupe de termes inconnu dans ce modèle : %s", "Unknown group of terms in this model: %s"),
                                      paste(inconnus, collapse = ", ")), call. = FALSE)
@@ -1214,6 +1241,7 @@ definition_selection <- function(d, m, choisis) {
   d$par_courbes <- Filter(function(f) as.numeric(unlist(f))[1] %in% principales, d$par_courbes[names(d$par_courbes) %in% as.character(d$lisses)])
   if (!length(d$par_courbes)) d$par_courbes <- NULL
   d$termes_complets <- complets
+  d$courbes_du_complet <- if (length(par_complet)) par_complet
   d$selection_origine <- c(list(modele = as.character(d$name %||% ""), groupes = choisis, n = length(m$observations)), if (length(gardes)) list(gardes = gardes))
   # (un modèle mixte BACI : sans le terme croisé période × impact, ce n'est plus lui ; avec, il en dérive)
   if (!is.null(d$baci_origine)) {
@@ -1873,14 +1901,14 @@ REFERENCES_REGRESSION <- list(
   pinheiro = "Pinheiro, J. C., & Bates, D. M. (2000). Mixed-effects models in S and S-PLUS. Springer. https://doi.org/10.1007/b98882",
   nlme = "Pinheiro, J., Bates, D., & R Core Team (%s). nlme: Linear and nonlinear mixed effects models (R package version %s). https://CRAN.R-project.org/package=nlme",
   nakagawa = "Nakagawa, S., & Schielzeth, H. (2013). A general and simple method for obtaining R² from generalized linear mixed-effects models. Methods in Ecology and Evolution, 4(2), 133–142. https://doi.org/10.1111/j.2041-210x.2012.00261.x",
-  johnson = "Johnson, P. C. D. (2014). Extension of Nakagawa & Schielzeth's R²GLMM to random slopes models. Methods in Ecology and Evolution, 5(9), 944–946. https://doi.org/10.1111/2041-210X.12225",
+  johnson2014 = "Johnson, P. C. D. (2014). Extension of Nakagawa & Schielzeth's R²GLMM to random slopes models. Methods in Ecology and Evolution, 5(9), 944–946. https://doi.org/10.1111/2041-210X.12225",
   burnham = "Burnham, K. P., & Anderson, D. R. (2002). Model selection and multimodel inference: A practical information-theoretic approach (2nd ed.). Springer. https://doi.org/10.1007/b97636",
   zuur = "Zuur, A. F., Ieno, E. N., Walker, N. J., Saveliev, A. A., & Smith, G. M. (2009). Mixed effects models and extensions in ecology with R. Springer. https://doi.org/10.1007/978-0-387-87458-6",
   wood2017 = "Wood, S. N. (2017). Generalized additive models: An introduction with R (2nd ed.). Chapman and Hall/CRC. https://doi.org/10.1201/9781315370279",
   wood2011 = "Wood, S. N. (2011). Fast stable restricted maximum likelihood and marginal likelihood estimation of semiparametric generalized linear models. Journal of the Royal Statistical Society: Series B, 73(1), 3–36. https://doi.org/10.1111/j.1467-9868.2010.00749.x",
   stewart_oaten = "Stewart-Oaten, A., Murdoch, W. W., & Parker, K. R. (1986). Environmental impact assessment: \"Pseudoreplication\" in time? Ecology, 67(4), 929–940. https://doi.org/10.2307/1939815",
   diggle = "Diggle, P. J., Heagerty, P., Liang, K.-Y., & Zeger, S. L. (2002). Analysis of longitudinal data (2nd ed.). Oxford University Press.",
-  johnson = "Johnson, P. C. D., Barry, S. J. E., Ferguson, H. M., & Müller, P. (2015). Power analysis for generalized linear mixed models in ecology and evolution. Methods in Ecology and Evolution, 6(2), 133–142. https://doi.org/10.1111/2041-210X.12306",
+  johnson2015 = "Johnson, P. C. D., Barry, S. J. E., Ferguson, H. M., & Müller, P. (2015). Power analysis for generalized linear mixed models in ecology and evolution. Methods in Ecology and Evolution, 6(2), 133–142. https://doi.org/10.1111/2041-210X.12306",
   mgcv = "Wood, S. N. (%s). mgcv: Mixed GAM computation vehicle with automatic smoothness estimation (R package version %s). https://CRAN.R-project.org/package=mgcv")
 
 texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "") {
@@ -1963,7 +1991,7 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
                    else "Coefficients and variances were estimated by restricted maximum likelihood (REML), and models compared by the AIC of maximum-likelihood fits (ML; Zuur et al., 2009)."))
   }
   # (ses variables qualitatives, leur catégorie de référence, et ce que valent les coefficients de leurs termes croisés)
-  p2 <- c(p2[1], phrases_qualitatives(m, fr, liste, guillemets), p2[-1])
+  p2 <- c(p2[1], phrases_qualitatives(m, d, fr, liste, guillemets), p2[-1])
   # (la sélection par l'AIC, quand elle a été faite sur ce modèle ; un modèle qu'elle a choisi le dit)
   if (isTRUE(m$selection_aic$K > 0)) p2 <- c(p2, cite("burnham", phrase_selection_aic(m, fr, nombre, liste, guillemets)))
   if (!is.null(d$selection_origine)) {
@@ -2017,7 +2045,7 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
             aic, vc)
   } else if (!is.null(r$r2$marginal)) {
     # (avec des pentes aléatoires, la variance des effets aléatoires de Johnson, 2014 : variances_niveaux)
-    johnson <- if (length(unlist(m$pentes))) cite("johnson", if (fr) ", étendu aux pentes aléatoires par Johnson, 2014" else ", extended to random slopes by Johnson, 2014") else ""
+    johnson <- if (length(unlist(m$pentes))) cite("johnson2014", if (fr) ", étendu aux pentes aléatoires par Johnson, 2014" else ", extended to random slopes by Johnson, 2014") else ""
     cite("nakagawa", if (fr) sprintf("Les effets fixes expliquent %s de la variance de la réponse (R² marginal), les effets fixes et aléatoires %s (R² conditionnel ; Nakagawa et Schielzeth, 2013%s) ; %s ; %s.",
                                      pourcent(r$r2$marginal), pourcent(r$r2$conditionnel), johnson, aic, vc)
                      else sprintf("The fixed effects explain %s of the response's variance (marginal R²), the fixed and random effects %s (conditional R²; Nakagawa & Schielzeth, 2013%s); %s; %s.",
@@ -2185,13 +2213,16 @@ references_qualitatives <- function(m) {
 }
 
 # Les variables qualitatives d'une régression dans le texte des Méthodes : la catégorie de
-# référence de chacune (references_qualitatives), ce que vaut le coefficient d'une catégorie, et
-# celui des termes croisés qui en ont une : une pente de la variable quantitative dans une
-# catégorie moins sa pente dans la catégorie de référence, ou la pente de chaque catégorie sans
-# l'effet principal de cette variable ; l'effet d'une catégorie d'une variable qualitative dans
-# une catégorie de l'autre moins ce même effet dans sa catégorie de référence. `liste`,
-# `guillemets` : ceux de texte_methodes_regression.
-phrases_qualitatives <- function(m, fr, liste, guillemets) {
+# référence de chacune (references_qualitatives), ce que vaut le coefficient d'une catégorie (son
+# écart à la catégorie de référence ; pour une variable croisée avec d'autres, là où ses termes
+# croisés valent 0 : chaque variable quantitative à 0, ou à sa moyenne quand elle est centrée, et
+# chaque variable qualitative dans sa catégorie de référence), et celui des termes croisés qui en
+# ont une : une pente de la variable quantitative dans une catégorie moins sa pente dans la
+# catégorie de référence, ou la pente de chaque catégorie sans l'effet principal de cette
+# variable ; l'effet d'une catégorie d'une variable qualitative dans une catégorie de l'autre moins
+# ce même effet dans sa catégorie de référence. `d` : la définition du modèle (les transformations
+# de ses termes) ; `liste`, `guillemets` : ceux de texte_methodes_regression.
+phrases_qualitatives <- function(m, d, fr, liste, guillemets) {
   comp <- m$composition
   refs <- references_qualitatives(m)
   if (!length(refs)) return(character(0))
@@ -2200,15 +2231,39 @@ phrases_qualitatives <- function(m, fr, liste, guillemets) {
   ref <- function(u) refs[[as.character(u)]] %||% NA_character_
   # (le terme de son effet principal parmi les candidats : une catégorie, ou la variable quantitative)
   principal <- function(u, categorie) Find(function(t) length(comp[[t]]$variables) == 1 && comp[[t]]$variables == u && (comp[[t]]$categories != 0) == categorie, m$candidats)
+  # les termes croisés qui ont une variable qualitative
+  croises <- Filter(function(t) length(comp[[t]]$variables) > 1 && any(comp[[t]]$categories != 0), m$candidats)
+  # (où se lit l'écart d'une catégorie de `u` à sa référence quand ses termes croisés de l'ajustement
+  # l'ont : là où ils valent 0 ; "" sans terme croisé)
+  termes_d <- termes_regression(d$x)
+  valeur <- function(x) trimws(formatC(x, digits = 6, format = "fg", decimal.mark = if (fr) "," else "."))
+  ou_ecart <- function(u) {
+    autres <- unique(unlist(lapply(comp[intersect(croises, m$utiles)], function(ct) if (u %in% ct$variables) setdiff(ct$variables, u))))
+    if (!length(autres)) return("")
+    ou <- vapply(autres, function(w) {
+      if (as.character(w) %in% names(refs)) {
+        return(if (is.na(ref(w))) sprintf(if (fr) "dans la catégorie de référence de %s" else "in the reference category of %s", nom(w))
+               else sprintf(if (fr) "dans la catégorie %s de %s" else "in category %s of %s", guillemets(ref(w)), nom(w)))
+      }
+      # (son terme simple, effet principal ou facteur seul : sa transformation et son centre)
+      k <- which(vapply(comp, function(ct) length(ct$variables) == 1 && ct$variables == w && ct$categories == 0, TRUE))[1]
+      x <- if (is.na(k) || is.null(termes_d[[k]]$transform)) nom(w) else formule_transformation(termes_d[[k]]$transform, nom(w), fr)
+      centre <- if (!is.na(k)) m$bloc$centre[k] else 0
+      if (!isTRUE(centre != 0)) sprintf(if (fr) "là où %s vaut 0" else "where %s is 0", x)
+      else sprintf(if (fr) "là où %s est à sa moyenne (%s)" else "where %s is at its mean (%s)", x, valeur(centre))
+    }, "")
+    sprintf(if (fr) " ; %s étant croisée avec %s, cet écart est pris %s" else "; as %s is crossed with %s, that difference is taken %s",
+            nom(u), liste(vapply(autres, nom, "")), liste(ou))
+  }
   phrases <- character(0)
   avec <- Filter(function(u) !is.null(principal(u, TRUE)) && !is.na(ref(u)), as.numeric(names(refs)))
   if (length(avec)) {
     quelles <- liste(vapply(avec, function(u) sprintf(if (fr) "%s pour %s" else "%s for %s", guillemets(ref(u)), nom(u)), ""))
-    phrases <- sprintf(if (fr) "Une variable qualitative entre par une indicatrice (0 ou 1) par catégorie, sauf sa catégorie de référence (%s) : le coefficient d'une catégorie est son écart à la catégorie de référence."
-                       else "A qualitative variable enters through one indicator (0 or 1) per category, except its reference category (%s): a category's coefficient is its difference from the reference category.", quelles)
+    phrases <- sprintf(if (fr) "Une variable qualitative entre par une indicatrice (0 ou 1) par catégorie, sauf sa catégorie de référence (%s) : le coefficient d'une catégorie est son écart à la catégorie de référence%s."
+                       else "A qualitative variable enters through one indicator (0 or 1) per category, except its reference category (%s): a category's coefficient is its difference from the reference category%s.",
+                       quelles, paste(vapply(avec, ou_ecart, ""), collapse = ""))
   }
-  # les termes croisés qui ont une variable qualitative, un par groupe de variables
-  croises <- Filter(function(t) length(comp[[t]]$variables) > 1 && any(comp[[t]]$categories != 0), m$candidats)
+  # les termes croisés, un par groupe de variables
   for (vs in unique(lapply(croises, function(t) comp[[t]]$variables))) {
     ct <- comp[[Find(function(t) identical(comp[[t]]$variables, vs), croises)]]
     terme <- guillemets(paste(ct$noms, collapse = " × "))

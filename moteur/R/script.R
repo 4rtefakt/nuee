@@ -1055,6 +1055,12 @@ plan_regression <- function(projet, d, m, tab) {
       if (length(f)) par[termes_r[match(t, m$termes)]] <- noms_f[match(paste0("f", as.numeric(unlist(f))[1]), names(facteurs))]
     }
   }
+  # (des lignes du modèle d'une catégorie qu'une courbe par catégorie n'a pas, toutes ses colonnes 0/1
+  # à 0, que le moteur laisse de côté avant les centres et poids : regression.R, lignes_avec_courbe)
+  sans_courbe <- length(facteurs) > 0 && {
+    b <- valeurs_bloc(projet, termes, as.numeric(d$observations))
+    any(!lignes_avec_courbe(b, m$composition, facteurs) & stats::complete.cases(b[, match(unlist(lapply(facteurs, `[[`, "colonnes")), m$termes), drop = FALSE]))
+  }
   x <- if (K) plan_bloc(projet, termes, m$bloc, tab, candidates, "X")$termes else list()
   ty <- d$y[[1]]
   vy <- variable_du_projet(projet, ty$variables[1])
@@ -1099,6 +1105,7 @@ plan_regression <- function(projet, d, m, tab) {
        lisses = lisses, n_courbes = NROW(m$resultat$courbes), k_demandes = k_demandes,
        par = par, facteurs = lapply(seq_along(facteurs), function(j) list(nom = noms_f[j], affiche = facteurs[[j]]$nom,
                                                                           colonnes = stats::setNames(termes_r[match(facteurs[[j]]$colonnes, m$termes)], names(facteurs[[j]]$colonnes)))),
+       sans_courbe = sans_courbe,
        # (les seuils de chaque courbe, et de chaque catégorie d'une courbe par catégorie ou de termes
        # croisés : regression.R, variantes_seuils et courbes_seuils ; vide pour des courbes seules)
        seuils = plan_seuils(m, termes_r, par),
@@ -1160,11 +1167,15 @@ plan_moyennes <- function(d, m, termes_r) {
     if (ct$categories != 0) return(list(type = "categorie", variable = ct$noms[1], niveau = as.character(ct$niveaux[1])))
     list(type = "quantitative", nom = cov$nom[match(m$termes[k], cov$terme)], tr = termes[[k]]$transform)
   })
+  # (nlme : les colonnes du codage par défaut de R et le coefficient dont chacune prend ses degrés de
+  # liberté, en noms R ; moyennes.R, colonnes_ddl)
+  cd <- if (inherits(m$ajustement, "lme")) colonnes_ddl(m, quals)
+  nom_r <- function(t) ifelse(t == "(Intercept)", t, termes_r[match(t, m$termes)])
   list(reglages = r$reglages, mode = r$mode, echelle = r$echelle, lien = r$lien, ddl = r$ddl$methode,
        quals = unname(lapply(quals, function(f) list(nom = f$nom, niveaux = f$niveaux))), facteur = r$facteur$nom, dans = r$dans$nom,
        covariables = if (length(cov) && nrow(cov)) stats::setNames(cov$moyenne, cov$nom), colonnes = colonnes,
        pente = if (!is.null(r$pente)) list(nom = r$pente$nom, delta = r$pente$delta, tr = termes[[match(r$pente$terme, m$termes)]]$transform),
-       param = termes_r[match(setdiff(m$candidats, m$lisses), m$termes)])
+       param = termes_r[match(setdiff(m$candidats, m$lisses), m$termes)], colonnes_ddl = if (length(cd)) stats::setNames(nom_r(unname(cd)), nom_r(names(cd))))
 }
 
 # Le type d'une régression, en mots (en-têtes des scripts).
@@ -1331,7 +1342,22 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                              guillemets(pl$choisi$modele), guillemets(pl$choisi$modele), length(pl$choisi$hors), guillemets(pl$choisi$modele)))),
       code_valeurs(morceaux_rangs(pl$choisi$hors), "hors_selection <- "),
       "connu[hors_selection] <- FALSE"),
-    if (test) "apprentissage <- intersect(which(connu), modele)" else "apprentissage <- which(connu)",
+    # (des lignes d'une catégorie qu'une courbe par catégorie n'a pas : hors du modèle, comme celles d'une
+    # valeur manquante ; un jeu de test les garde, sans prédiction : regression.R, lignes_avec_courbe)
+    if (pl$sans_courbe) {
+      simples_x <- which(!vapply(pl$x, `[[`, TRUE, "croise"))
+      noms_sx <- vapply(pl$x[simples_x], `[[`, "", "nom")
+      colonnes_x <- function(rs) {
+        k <- match(match(rs, pl$termes), simples_x)
+        if (anyDuplicated(noms_sx)) sprintf("c(%s)", paste(k, collapse = ", ")) else code_textes(noms_sx[k])
+      }
+      c(commentaire(tx(sprintf("Une catégorie de %s ajoutée aux données depuis la définition du modèle (aucune de ses colonnes 0/1 ne vaut 1) n'a pas de courbe : ses lignes restent hors du modèle, comme celles d'une valeur manquante%s.",
+                               liste(guillemets(vapply(pl$facteurs, `[[`, "", "affiche"))), if (test) " ; dans le jeu de test, elles restent sans prédiction" else ""),
+                       sprintf("A category of %s added to the data since the model was defined (none of its 0/1 columns is 1) has no curve: its rows stay out of the model, like those of a missing value%s.",
+                               liste(guillemets(vapply(pl$facteurs, `[[`, "", "affiche"))), if (test) "; in the test set, they stay without a prediction" else ""))),
+        sprintf("avec_courbe <- %s", paste(vapply(pl$facteurs, function(f) sprintf("rowSums(X[, %s, drop = FALSE]) > 0", colonnes_x(unname(f$colonnes))), ""), collapse = " & ")))
+    },
+    sprintf(if (test) "apprentissage <- intersect(which(%s), modele)" else "apprentissage <- which(%s)", if (pl$sans_courbe) "connu & avec_courbe" else "connu"),
     if (K) c("", code_echelle_bloc(pl$x, "X", "x", plx, tx, "X")),
     "",
     commentaire(tx(sprintf("Le tableau du modèle pour les lignes `ici` de d : la réponse, %s%s%s%s. Ses colonnes ont des noms R (`reponse`, `termes`%s).",
@@ -1965,7 +1991,7 @@ code_moyennes_regression <- function(pl, tx, guillemets, liste) {
                      if (is.null(mo$dans)) "" else sprintf(" & grille_ref[[%s]] == cellules$b[i]", code_texte(mo$dans)))
   coefficients <- if (lme) "nlme::fixef(m)" else sprintf("coef(%s)", modele)
   ddl <- switch(mo$ddl,
-    confinement = "function(Lb) ddl_confinement(m, Lb)",
+    confinement = "function(Lb) ddl_confinement(m, Lb, colonnes_ddl)",
     asymptotique = "function(Lb) rep(Inf, nrow(Lb))",
     if (mgcv) sprintf("function(Lb) rep(%s$df.residual, nrow(Lb))", modele) else "function(Lb) rep(df.residual(m), nrow(Lb))")
   quoi <- if (pentes) tx(sprintf("la pente de %s dans chaque catégorie de %s%s", guillemets(pe$nom), guillemets(mo$facteur), if (!is.null(mo$dans)) sprintf(" et de %s", guillemets(mo$dans)) else ""),
@@ -1995,6 +2021,10 @@ code_moyennes_regression <- function(pl, tx, guillemets, liste) {
     "lg <- lignes_grille(simples_grille(moyennes_x))",
     pente,
     cellules, groupes,
+    if (identical(mo$ddl, "confinement")) c(
+      commentaire(tx("Les degrés de liberté de nlme comme emmeans les prend sur l'ajustement de R, dans son codage par défaut (la première catégorie observée de chaque variable qualitative en référence ; dans celui de ce modèle, la dernière, une moyenne prendrait ceux d'une autre) : chaque colonne de ce codage, et le coefficient de son terme dont elle prend les degrés de liberté.",
+                     "nlme's degrees of freedom as emmeans takes them on R's fit, in its default coding (the first observed category of each qualitative variable as reference; in this model's, the last, a mean would take another's): each column of that coding, and the coefficient of its term whose degrees of freedom it takes.")),
+      code_valeurs(sprintf("%s = %s", vapply(names(mo$colonnes_ddl), code_texte, ""), vapply(unname(mo$colonnes_ddl), code_texte, "")), "colonnes_ddl <- c(", ")", ouvrir = "")),
     sprintf("moyennes_ajustees <- moyennes_grille(lg, cellules, groupes_grille, b = %s, V = vcov(%s), N = base_nulle(cbind(1, as.matrix(cadre[termes_param]))),", coefficients, modele),
     sprintf("                                     ddl = %s, ajustement = %s, lien = %s, echelle_reponse = %s)", ddl, code_texte(g$ajustement), code_texte(mo$lien),
             if (identical(mo$echelle, "reponse")) "TRUE" else "FALSE"))
@@ -2656,12 +2686,13 @@ modele_moyennes_ajustees <- function(tx, confinement) c(
   tx("# la moyenne, à poids égaux, des lignes de M de chaque groupe (des rangs de lignes)", "# the mean, with equal weights, of the rows of M of each group (row ranks)"),
   "moyennes_lignes <- function(M, groupes) do.call(rbind, lapply(groupes, function(i) colMeans(M[i, , drop = FALSE])))",
   if (confinement) c(
-    commentaire(tx("Les degrés de liberté d'une ligne d'un modèle de nlme (`Lb` : dans le codage de R sans mise à l'échelle), ceux qu'emmeans prend par défaut : la règle de confinement de nlme (m$fixDF), le plus petit de ceux des coefficients que la ligne fait intervenir (|L| > 1e-4), l'ordonnée à l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un.",
-                   "The degrees of freedom of a row of an nlme model (`Lb`: in R's coding without scaling), those emmeans takes by default: nlme's containment rule (m$fixDF), the smallest of those of the coefficients the row involves (|L| > 1e-4), the intercept counting for the number of groups of the first random effect minus one.")),
-    "ddl_confinement <- function(m, Lb) {",
+    commentaire(tx("Les degrés de liberté d'une ligne d'un modèle de nlme (`Lb` : dans le codage de R sans mise à l'échelle), ceux qu'emmeans prend par défaut sur l'ajustement de R : la règle de confinement de nlme (m$fixDF), le plus petit de ceux des coefficients que la ligne fait intervenir (|L| > 1e-4) dans le codage par défaut de R (`codage` : chaque colonne de ce codage, et le coefficient dont elle prend les degrés de liberté), l'ordonnée à l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un.",
+                   "The degrees of freedom of a row of an nlme model (`Lb`: in R's coding without scaling), those emmeans takes by default on R's fit: nlme's containment rule (m$fixDF), the smallest of those of the coefficients the row involves (|L| > 1e-4) in R's default coding (`coding`: each column of that coding, and the coefficient whose degrees of freedom it takes), the intercept counting for the number of groups of the first random effect minus one.")),
+    "ddl_confinement <- function(m, Lb, codage) {",
     "  dfx <- m$fixDF$X",
     "  dfx[[\"(Intercept)\"]] <- nlevels(m$groups[[1]]) - 1",
-    "  apply(Lb[, names(dfx), drop = FALSE], 1, function(x) {",
+    "  dfx <- dfx[codage]",
+    "  apply(Lb[, names(codage), drop = FALSE], 1, function(x) {",
     "    i <- which(abs(x) > 1e-4)",
     "    if (length(i)) min(dfx[i]) else NA_real_",
     "  })",
@@ -3108,7 +3139,7 @@ NOMS_SCRIPT_EN <- c(
   importance_aic = "aic_importance", poids_cumule = "cumulative_weight", etape = "step", toutes = "all_subsets", termes_aic = "aic_terms",
   modeles = "models", ajuster_ml = "fit_ml", libelle_aic = "aic_label", contient_aic = "aic_contains", hors_selection = "outside_selection",
   termes_candidats = "candidate_terms", niveaux_inconnus = "unseen_levels", cellules = "category_cells", dans_cellule = "in_cell", cel = "cell", sans = "unseen",
-  par_courbes = "curves_by", noms_facteurs = "factor_labels", facteur_courbe = "category_factor", niveaux_appris = "fitted_levels",
+  par_courbes = "curves_by", noms_facteurs = "factor_labels", facteur_courbe = "category_factor", niveaux_appris = "fitted_levels", avec_courbe = "with_curve",
   etiquettes_courbes = "curve_labels", etiquettes = "labels", etiquette = "label", produits = "products", lisse = "smooth_term",
   facteurs = "factors", facteur = "factor_column",
   variances_niveaux = "level_variances", variances_pentes = "slope_variances", noms_niveaux = "level_labels", nom_residuelle = "residual_label",
@@ -3121,7 +3152,7 @@ NOMS_SCRIPT_EN <- c(
   plan = "design", dans = "finer_group", niveaux = "level_columns", sim = "simulated_data",
   # (les moyennes ajustées ; ni a ni b : des colonnes de `cellules` aussi en texte)
   moyennes_ajustees = "adjusted_means", moyennes_grille = "grid_means", colonnes_grille = "grid_columns", base_nulle = "null_basis",
-  estimables = "estimable_rows", moyennes_lignes = "row_means", ddl_confinement = "containment_df", ajuster_paires = "adjust_pairs",
+  estimables = "estimable_rows", moyennes_lignes = "row_means", ddl_confinement = "containment_df", colonnes_ddl = "df_columns", codage = "coding", ajuster_paires = "adjust_pairs",
   grille_ref = "reference_grid", moyennes_x = "x_means", simples_grille = "grid_simple_terms", facteurs_grille = "grid_factors",
   termes_param = "parametric_terms", lignes_grille = "grid_rows", lg = "grid_lines", lg_plus = "grid_lines_plus", cellules = "grid_cells",
   groupes_grille = "grid_groups", moyennes = "means", paires = "pairs", non_estimables = "non_estimable", non_paires = "non_estimable_pairs",

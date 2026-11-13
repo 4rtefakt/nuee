@@ -80,20 +80,23 @@ verifier(sprintf("modèle mixte : AIC de l'ajustement en ML, R² marginal et con
            identical(r$valeurs[k("σ résiduelle"), 2], formatC(l2$sigma, format = "f", digits = 2 - floor(log10(l2$sigma)), decimal.mark = ",")) &&
            r$valeurs[k("σ verger"), 1] == "" && r$valeurs[k("R²"), 2] == "")
 # une pente aléatoire : sa ligne à elle, « σ verger (sucre) », et sa corrélation avec l'ordonnée à
-# l'origine du verger, sans prendre la place de l'écart-type de l'ordonnée à l'origine
+# l'origine du verger, sans prendre la place de l'écart-type de l'ordonnée à l'origine ; la
+# résiduelle (sans terme dans son tableau des variances) sur la ligne de celle de l'autre modèle
 m6 <- ajuster(p, definir_modele(p, "LMM", x = u("sucre", "acidite"), y = u("note_gout"), echelle = "Ctr", nom = "R6",
                                 aleatoires = list(list(by = "variable", variable = u("verger"), pentes = u("sucre")))))
 v6 <- variances_regression(m6)
 rp <- coefficients_cote_a_cote(list(R2 = m2, R6 = m6), "ic")
 kp <- function(nom) match(nom, rp$statistiques)
 pente6 <- which(v6$terme == "sucre")
-verifier(sprintf("une pente aléatoire : son σ et sa corrélation sur leurs lignes, l'ordonnée à l'origine sur la sienne (%s ; %s)",
-                 rp$valeurs[kp("σ verger (sucre)"), 2], rp$valeurs[kp("ρ verger (sucre)"), 2]),
+verifier(sprintf("une pente aléatoire : son σ et sa corrélation sur leurs lignes, l'ordonnée à l'origine et la résiduelle sur les leurs (%s ; %s ; σ résiduelle %s et %s)",
+                 rp$valeurs[kp("σ verger (sucre)"), 2], rp$valeurs[kp("ρ verger (sucre)"), 2], rp$valeurs[kp("σ résiduelle"), 1], rp$valeurs[kp("σ résiduelle"), 2]),
          identical(rp$valeurs[kp("σ verger"), 2], trois_chiffres(sqrt(v6$variance[v6$terme == "(Intercept)"]))) &&
            identical(rp$valeurs[kp("σ verger (sucre)"), 2], trois_chiffres(sqrt(v6$variance[pente6]))) &&
            identical(rp$valeurs[kp("ρ verger (sucre)"), 2], nombre_tableau(v6$correlation[pente6], 3)) &&
            identical(rp$valeurs[kp("σ verger"), 1], trois_chiffres(sqrt(vc2))) && rp$valeurs[kp("σ verger (sucre)"), 1] == "" &&
-           rp$valeurs[kp("ρ verger (sucre)"), 1] == "")
+           rp$valeurs[kp("ρ verger (sucre)"), 1] == "" && identical(v6$terme[v6$composante == "résiduelle"], "") &&
+           identical(rp$valeurs[kp("σ résiduelle"), 1], trois_chiffres(l2$sigma)) && identical(rp$valeurs[kp("σ résiduelle"), 2], trois_chiffres(m6$ajustement$sigma)) &&
+           !any(grepl("résiduelle (", rp$statistiques, fixed = TRUE)))
 verifier("GLM et GAM : la part de la déviance expliquée (1 − déviance / déviance nulle), l'edf de la courbe de mgcv",
          identical(r$valeurs[k("Déviance expliquée"), 3], paste(nb(100 * (1 - g3$deviance / g3$null.deviance), 1), "%")) &&
            identical(r$valeurs[k("edf sucre"), 4], nb(summary(g4)$s.table[1, 1], 2)) && r$valeurs[k("edf sucre"), 1] == "")
@@ -293,10 +296,16 @@ cat("Puissance dans le texte des Méthodes\n")
 mc$puissance_tendance <- puissance_tendance(mc, dc, list(annees = c(5, 20), simuler = TRUE, simulation = list(annees = 8, unites = 6, n = 20)))
 tm <- texte_methodes(pt, dc, mc, "fr", "essai")
 pp <- tm$paragraphes[5]
-verifier("le texte des Méthodes : la tendance et sa pente, les plans, la méthode, la phrase, la simulation ; Diggle et al. et Johnson et al. dans les références",
+verifier("le texte des Méthodes : la tendance et sa pente, les plans, la méthode, la phrase, la simulation ; Diggle et al. et Johnson et al. (2015) dans les références, pas Johnson (2014)",
          length(tm$paragraphes) == 6 && grepl("La puissance de détecter une baisse de 3 % par an de « densite » (une pente de -0,0132 par an sur log10(« densite »))", pp, fixed = TRUE) &&
-           grepl("moindres carrés généralisés", pp) && grepl("Avec 8 unités de « site »", pp) && grepl("Une simulation de 20 jeux de données", pp) &&
-           any(grepl("^Diggle, P. J.", tm$references)) && any(grepl("^Johnson, P. C. D.", tm$references)))
+           grepl("moindres carrés généralisés", pp) && grepl("Avec 8 unités de « site »", pp) && grepl("Une simulation de 20 jeux de données", pp) && grepl("Johnson et al., 2015", pp, fixed = TRUE) &&
+           any(grepl("^Diggle, P. J.", tm$references)) && sum(grepl("^Johnson", tm$references)) == 1 &&
+           any(startsWith(tm$references, "Johnson, P. C. D., Barry, S. J. E., Ferguson, H. M., & Müller, P. (2015). Power analysis")))
+# (deux références d'une même liste sous une même clé : [[ ]] ne rend que la première ; les régressions
+# cherchent leurs clés dans REFERENCES_REGRESSION puis REFERENCES_MOYENNES)
+listes_ref <- list(REFERENCES, REFERENCES_REGRESSION, REFERENCES_MOYENNES, REFERENCES_ORDINATION, REFERENCES_CLASSEMENT)
+verifier("les clés des références : uniques dans chaque liste, et entre celles des régressions et des moyennes ajustées",
+         !any(vapply(listes_ref, function(l) anyDuplicated(names(l)) > 0, TRUE)) && !length(intersect(names(REFERENCES_REGRESSION), names(REFERENCES_MOYENNES))))
 tme <- texte_methodes(pt, dc, mc, "en", "essai")
 verifier("en anglais", grepl("The power to detect a decline of 3% per year in “densite”", tme$paragraphes[5]) && grepl("With 8 units of “site”", tme$paragraphes[5]))
 mr$puissance_tendance <- rr

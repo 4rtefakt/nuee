@@ -685,6 +685,17 @@ verifier("une courbe par secteur : s(annee, by = secteur_f), son facteur fait de
          any(grepl("par_courbes <- c(\"annee\" = \"secteur_f\")", lignes_script(r), fixed = TRUE)) &&
            any(grepl("tab[[\"secteur_f\"]] <- facteur_courbe(tab[c(\"secteur_S1\", \"secteur_S2\", \"secteur_S3\")], c(\"S1\", \"S2\", \"S3\"))", lignes_script(r), fixed = TRUE)) &&
            any(grepl("\"annee (secteur S2)\" = seuils_courbe(m, \"annee\", cadre", lignes_script(r), fixed = TRUE)))
+# une catégorie ajoutée aux données depuis la définition du modèle (S1 du site A devient S4 à partir de
+# 2008) : sans courbe, ses lignes restent hors du modèle, avant les centres et poids (l'année en UV), dans
+# le script comme dans Nuée ; en anglais
+dr6 <- definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "UV", famille = "gaussienne", lisses = uq("annee"), k_courbes = k5,
+                      par_courbes = stats::setNames(list(uq("secteur")), uq("annee")))
+pq6 <- pq
+for (o in numeros_observations(pq)[tq$site == "A" & tq$secteur == "S1" & tq$annee >= 2008]) pq6 <- modifier_valeur(pq6, o, uq("secteur"), "S4")
+r <- essayer_regression("gam_courbe_categorie_ajoutee_en", pq6, dr6, langue = "en")
+verifier("une catégorie sans courbe (4 lignes) : le script les laisse hors du modèle avant les centres et poids, en anglais",
+         ajuster(pq6, dr6)$N == nq - 4 && any(grepl("with_curve <- rowSums(X[, c(\"secteur(S1)\", \"secteur(S2)\", \"secteur(S3)\"), drop = FALSE]) > 0", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("training <- which(known & with_curve)", lignes_script(r), fixed = TRUE)) && en_anglais(lignes_script(r)))
 car1_q4 <- list(type = "CAR1", temps = list(by = "variable", variable = uq("annee")), dans = list(by = "variable", variable = uq("secteur4")))
 dr5 <- definir_modele(pq, "GAM", x = uq("annee", "secteur4"), y = uq("densite"), echelle = "none", famille = "gaussienne", lisses = uq("annee"), k_courbes = k5,
                       par_courbes = stats::setNames(list(uq("secteur4")), uq("annee")), aleatoires = list(site_q), correlation = car1_q4,
@@ -712,7 +723,16 @@ r <- essayer_regression("lmm_car1_pentes_en", pq, definir_modele(pq, "LMM", x = 
                         langue = "en", moyennes = list(pente = uq("annee")))
 verifier("les pentes par secteur d'un modèle mixte avec CAR1, en anglais : la différence avant, les degrés de liberté de confinement",
          any(grepl("grid_lines <- Map(function(a, b) (b - a) / h, grid_lines, grid_lines_plus)", lignes_script(r), fixed = TRUE)) &&
-           any(grepl("df = function(Lb) containment_df(m, Lb)", lignes_script(r), fixed = TRUE)))
+           any(grepl("df = function(Lb) containment_df(m, Lb, df_columns)", lignes_script(r), fixed = TRUE)))
+# un habitat au niveau du site : les degrés de liberté de ses moyennes dans le codage par défaut de R
+# (H1 en référence : 3, les sites moins un ; H2 : 2, ceux de son coefficient), comme emmeans sur
+# l'ajustement de R ; la colonne de H2, que l'ajustement de Nuée n'a pas, prend ceux de H1
+r <- essayer_regression("lmm_moyennes_habitat_site", pq, dh <- definir_modele(pq, "LMM", x = uq("habitat", "annee"), y = uq("densite"), echelle = "none", aleatoires = list(site_q)),
+                        moyennes = list())
+mh <- ajuster(pq, dh)
+verifier("les moyennes d'un habitat au niveau du site : 3 et 2 degrés de liberté, le codage par défaut de R écrit dans le script",
+         identical(as.numeric(moyennes_ajustees(pq, mh, dh)$moyennes$ddl), c(3, 2)) &&
+           any(grepl("colonnes_ddl <- c(\"(Intercept)\" = \"(Intercept)\", \"habitat_H2\" = \"habitat_H1\", \"annee\" = \"annee\")", lignes_script(r), fixed = TRUE)))
 essayer_regression("glm_poisson_effort_moyennes", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort")),
                    moyennes = list(ajustement = "aucun"))
 r <- essayer_regression("gam_courbe_moyennes", pr, definir_modele(pr, "GAM", x = ur("x1", "x2", "sol"), y = ur("hauteur"), famille = "gaussienne", lisses = ur("x2"), echelle = "none"),
