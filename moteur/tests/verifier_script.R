@@ -561,6 +561,37 @@ options(nuee.langue = "en")
 bbf <- modele_baci(pbaci, ub("densite"), ub("annee"), ub("secteur"), "S1", c("S2", "S3"), 2008, fin = 2012)
 options(nuee.langue = NULL)
 essayer_regression("lmm_baci_fin_en", bbf$projet, bbf$definition, langue = "en")
+# des termes croisés avec une variable qualitative (regression.R : candidats_regression) : quatre sites,
+# trois secteurs dans chacun (S1 à S3, et propres à chaque site), deux habitats, dix ans dont un manque
+set.seed(17)
+tq <- expand.grid(annee = c(2001:2004, 2006:2011), secteur = c("S1", "S2", "S3"), site = c("A", "B", "C", "D"), stringsAsFactors = FALSE)
+nq <- nrow(tq)
+tq$nom <- sprintf("Q%03d", seq_len(nq))
+tq$secteur_site <- paste0(tq$site, tq$secteur)
+tq$habitat <- ifelse(tq$site %in% c("A", "B"), "H1", "H2")
+tq$traitement <- c("T1", "T2", "T3")[(seq_len(nq) %% 3) + 1]
+tq$densite <- 3 + c(S1 = 0.05, S2 = 0.25, S3 = -0.1)[tq$secteur] * (tq$annee - 2000) + rep(rnorm(4, 0, 0.5), each = 30) + rnorm(nq, 0, 0.5)
+tq$compte <- stats::rpois(nq, exp(0.4 + 0.5 * (tq$habitat == "H1") + 0.4 * (tq$traitement == "T2") * (tq$habitat == "H2")))
+pq <- projet_depuis_tableau(tq[c("nom", "site", "secteur", "secteur_site", "habitat", "traitement", "annee", "densite", "compte")], "croisés")
+uq <- function(...) numeros(pq, c(...))
+site_q <- list(by = "variable", variable = uq("site"))
+r <- essayer_regression("lm_annee_secteur", pq, definir_modele(pq, "LM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none",
+                                                               croises = list(uq("annee", "secteur"))), selection = TRUE)
+verifier("annee × secteur : ses produits par catégorie dans le tableau ; la sélection, le terme croisé avec ses effets principaux",
+         any(grepl("\"annee*secteur(S1)\" = X[, \"annee\"] * X[, \"secteur(S1)\"]", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("requis_aic <- list(\"annee*secteur\" = c(\"annee\", \"secteur\"))", lignes_script(r), fixed = TRUE)))
+essayer_regression("lmm_annee_secteur_car1_en", pq, definir_modele(pq, "LMM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none",
+                   croises = list(uq("annee", "secteur")), aleatoires = list(site_q),
+                   correlation = list(type = "CAR1", temps = list(by = "variable", variable = uq("annee")), dans = list(by = "variable", variable = uq("secteur")))),
+                   langue = "en")
+essayer_regression("glm_poisson_habitat_traitement", pq, definir_modele(pq, "GLM", x = uq("habitat", "traitement"), y = uq("compte"), echelle = "none",
+                                                                       famille = "poisson", croises = list(uq("habitat", "traitement"))))
+# une pente par secteur sans effet principal de l'année, validée par site, un site en jeu de test : ses
+# secteurs, jamais vus, restent sans prédiction, dans le script comme dans Nuée (niveaux_inconnus)
+r <- essayer_regression("lm_pente_par_secteur", pq, definir_modele(pq, "LM", x = uq("secteur_site"), y = uq("densite"), echelle = "none",
+                        croises = list(uq("annee", "secteur_site")), vc = site_q, test = numeros_observations(pq)[tq$site == "D"]))
+verifier("une pente par secteur sans effet principal : les termes candidats sans l'année, et les secteurs jamais vus sans prédiction",
+         any(grepl("^termes_candidats <- ", lignes_script(r))) && any(grepl("niveaux_inconnus(appris, nouvelles, pentes_seules)", lignes_script(r), fixed = TRUE)))
 # la séance : une ACP, un modèle mixte et un GAM dans le même script
 definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
                     definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),

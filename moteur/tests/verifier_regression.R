@@ -938,13 +938,17 @@ dangereuses <- c(sprintf("note_gout ~ sucre + file.create(\"%s\")", marqueur), s
                  "note_gout ~ (function() sucre)()", "note_gout ~ sucre; file.remove(\"x\")")
 verifier("du code dans une formule : refusé, jamais exécuté", all(vapply(dangereuses, function(f) nzchar(refus(lire_formule(p, f))), TRUE)) && !file.exists(marqueur))
 messages <- c("note_gout ~ sucre - 1" = "ordonnée", "note_gout ~ (sucre | verger)" = "aléatoires", "note_gout ~ sucre + (1 | verger) + (1 | culture)" = "emboîtés",
-              "note_gout ~ s(sucre, bs = \"cr\")" = "dimension", "note_gout ~ s(sucre, k = 2)" = "entier de 3", "note_gout ~ sucre:fermete" = "demande aussi",
-              "note_gout ~ inconnue" = "pas une variable",
+              "note_gout ~ s(sucre, bs = \"cr\")" = "dimension", "note_gout ~ s(sucre, k = 2)" = "entier de 3", "note_gout ~ sucre:log(fermete) + fermete" = "autre façon",
+              "note_gout ~ inconnue" = "pas une variable", "note_gout ~ variete:sucre:variete" = "une fois", "note_gout ~ variete + I(variete^2)" = "une fois",
+              "note_gout ~ sucre:note_gout" = "la réponse",
               "note_gout ~ sucre^2" = "I\\(x\\^2\\)", "variete ~ sucre" = "qualitative", "note_gout ~ sucre + log(sucre)" = "deux façons",
               "note_gout ~ s(variete)" = "quantitative", "note_gout ~ sucre +" = "illisible")
 mauvais <- names(messages)[!vapply(names(messages), function(f) grepl(messages[[f]], refus(lire_formule(p, f))), TRUE)]
 verifier("une formule que Nuée ne sait pas faire : refusée, en disant pourquoi", !length(mauvais))
 if (length(mauvais)) cat("          ", mauvais, sep = "\n          ")
+r_sf <- lire_formule(p, "note_gout ~ sucre:fermete")
+verifier("a:b sans a ni b : le terme croisé seul, ses facteurs sans effet principal (= lm(y ~ sucre:fermete))",
+         !length(r_sf$x) && proche(ajuster(p, reglees(p, r_sf))$resultat$AIC, AIC(lm(note ~ sucre:fermete, data = df))))
 
 cat("Variables par groupe (Nouvelle variable)\n")
 pv2 <- variable_calculee(variable_calculee(p, "sucre_verger", "moyenne_groupe(sucre, verger)"), "sucre_intra", "ecart_groupe(sucre, verger)")
@@ -1151,6 +1155,230 @@ verifier("une variable complète aide à imputer les autres, sans copie « (impu
          length(pi5$variables) == length(pc$variables) + 6 && !"C (imputée)" %in% unlist(pi5$noms_var) &&
            grepl("aucune valeur manquante", refus(imputer_acp(pc, numeros(pc, c("C", "D"))))) &&
            grepl("plus de la moitié", refus(imputer_acp(pi3, vars_i))))
+
+cat("Termes croisés avec une variable qualitative\n")
+# six sites suivis dix ans (2005 manque), trois secteurs dans chacun (leurs noms se répètent d'un site
+# à l'autre), deux habitats (trois sites chacun), trois traitements ; la pente de l'année change d'un
+# secteur à l'autre, l'effet du traitement d'un habitat à l'autre. La catégorie de référence de Nuée
+# est la dernière (la colonne que l'ajustement laisse de côté) : les facteurs de R ont la même en premier.
+set.seed(21)
+tq <- expand.grid(annee = c(2001:2004, 2006:2011), secteur = c("S1", "S2", "S3"), site = c("A", "B", "C", "D", "E", "F"), stringsAsFactors = FALSE)
+nq <- nrow(tq)
+tq$nom <- sprintf("Q%03d", seq_len(nq))
+tq$habitat <- ifelse(tq$site %in% c("A", "B", "C"), "H1", "H2")
+tq$traitement <- c("T1", "T2", "T3")[(seq_len(nq) %% 3) + 1]
+tq$x <- round(runif(nq, 0, 10), 3)
+tq$secteur_site <- paste0(tq$site, tq$secteur)  # (des secteurs propres à chaque site)
+bruit_q <- numeric(nq)
+for (i in split(seq_len(nq), paste(tq$site, tq$secteur))) bruit_q[i[order(tq$annee[i])]] <- as.vector(stats::filter(rnorm(length(i), 0, 0.5), 0.5, "recursive"))
+tq$densite <- 3 + c(S1 = 0.05, S2 = 0.25, S3 = -0.1)[tq$secteur] * (tq$annee - 2000) + sin(tq$x / 2) + rnorm(6, 0, 0.6)[as.integer(factor(tq$site))] + bruit_q
+tq$compte <- stats::rpois(nq, exp(0.4 + 0.5 * (tq$habitat == "H1") + 0.4 * (tq$traitement == "T2") * (tq$habitat == "H2") + 0.3 * sin(tq$x / 2)))
+pq <- projet_depuis_tableau(tq[c("nom", "site", "secteur", "secteur_site", "habitat", "traitement", "annee", "x", "densite", "compte")], "croisés")
+uq <- function(...) numeros(pq, c(...))
+tq$secteur_f <- factor(tq$secteur, levels = c("S3", "S1", "S2"))
+tq$habitat_f <- factor(tq$habitat, levels = c("H2", "H1"))
+tq$traitement_f <- factor(tq$traitement, levels = c("T3", "T1", "T2"))
+tq$site_f <- factor(tq$site)
+site_q <- list(by = "variable", variable = uq("site"))
+car1_q <- list(type = "CAR1", temps = list(by = "variable", variable = uq("annee")), dans = list(by = "variable", variable = uq("secteur")))
+lm_q <- function(x, croises, ...) definir_modele(pq, "LM", x = uq(x), y = uq("densite"), echelle = "none", croises = lapply(croises, function(c) uq(c)), ...)
+ajuste_q <- function(m, l, tol = 1e-8) proche(m$resultat$coefficients$estimation, coef(l), tol) && proche(m$resultat$coefficients$erreur_type, coef(summary(l))[, 2], tol) &&
+  proche(m$resultat$logLik, as.numeric(logLik(l)), tol) && proche(m$resultat$AIC, AIC(l), tol) && proche(m$resultat$ajuste, fitted(l), tol)
+dq1 <- lm_q(c("annee", "secteur"), list(c("annee", "secteur")))
+mq1 <- ajuster(pq, dq1)
+lq1 <- lm(densite ~ annee * secteur_f, data = tq)
+verifier(sprintf("annee × secteur = lm(y ~ annee * secteur) : coefficients, erreurs-types, logLik, AIC, valeurs ajustées ; « %s » la catégorie de référence", "S3"),
+         ajuste_q(mq1, lq1) && identical(mq1$resultat$coefficients$terme, c("(Intercept)", "annee", "secteur(S1)", "secteur(S2)", "annee*secteur(S1)", "annee*secteur(S2)")) &&
+           identical(as.character(mq1$resultat$termes_retires), c("secteur(S3)", "annee*secteur(S3)")) && !length(mq1$resultat$termes_absents))
+mq2 <- ajuster(pq, lm_q(c("habitat", "traitement"), list(c("habitat", "traitement"))))
+verifier("habitat × traitement = lm(y ~ habitat * traitement) (deux variables qualitatives)", ajuste_q(mq2, lm(densite ~ habitat_f * traitement_f, data = tq)) &&
+           identical(mq2$resultat$coefficients$terme[6], "habitat(H1)*traitement(T2)"))
+dq3 <- lm_q("secteur", list(c("annee", "secteur")))
+mq3 <- ajuster(pq, dq3)
+lq3 <- lm(densite ~ secteur_f + secteur_f:annee, data = tq)
+# (R range les pentes par niveau, la référence S3 d'abord)
+verifier("secteur + annee × secteur (l'année sans effet principal) = lm(y ~ secteur + secteur:annee) : une pente par secteur",
+         proche(mq3$resultat$coefficients$estimation, coef(lq3)[c(1:3, 5, 6, 4)]) && proche(mq3$resultat$coefficients$erreur_type, coef(summary(lq3))[c(1:3, 5, 6, 4), 2]) &&
+           proche(mq3$resultat$AIC, AIC(lq3)) && proche(mq3$resultat$ajuste, fitted(lq3)) && isTRUE(dq3$x[[4]]$facteur_seul) &&
+           identical(mq3$resultat$coefficients$terme[4:6], c("annee*secteur(S1)", "annee*secteur(S2)", "annee*secteur(S3)")))
+mq4 <- ajuster(pq, lm_q("annee", list(c("annee", "secteur"))))
+verifier("annee + annee × secteur (le secteur sans effet principal) = lm(y ~ annee + annee:secteur)", ajuste_q(mq4, lm(densite ~ annee + annee:secteur_f, data = tq), 1e-7))
+lq5 <- lm(densite ~ habitat_f + habitat_f:traitement_f, data = tq)
+mq5 <- ajuster(pq, lm_q("habitat", list(c("habitat", "traitement"))))
+verifier("habitat + habitat × traitement (le traitement sans effet principal) = lm(y ~ habitat + habitat:traitement)",
+         proche(sort(mq5$resultat$coefficients$estimation), sort(coef(lq5))) && proche(mq5$resultat$AIC, AIC(lq5)) && proche(mq5$resultat$ajuste, fitted(lq5)))
+# trois variables, et le terme de trois listé avant ceux de deux : les termes d'ordre plus bas d'abord, comme R
+lq6 <- lm(densite ~ annee * secteur_f * habitat_f, data = tq)
+trois <- list(c("annee", "secteur", "habitat"), c("annee", "secteur"), c("annee", "habitat"), c("secteur", "habitat"))
+mq6 <- ajuster(pq, lm_q(c("annee", "secteur", "habitat"), trois))
+verifier("annee × secteur × habitat, le terme de trois listé en premier = lm(y ~ annee * secteur * habitat) (les termes d'ordre plus bas d'abord)",
+         proche(sort(mq6$resultat$coefficients$estimation), sort(coef(lq6))) && proche(mq6$resultat$AIC, AIC(lq6)) &&
+           identical(mq6$resultat$coefficients$terme[11:12], c("annee*secteur(S1)*habitat(H1)", "annee*secteur(S2)*habitat(H1)")))
+mq7 <- ajuster(pq, definir_modele(pq, "LMM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", croises = list(uq("annee", "secteur")), aleatoires = list(site_q)))
+rq7 <- nlme::lme(densite ~ annee * secteur_f, random = ~ 1 | site_f, data = tq, method = "REML", control = ctrl)
+rq7_ml <- nlme::lme(densite ~ annee * secteur_f, random = ~ 1 | site_f, data = tq, method = "ML", control = ctrl)
+verifier("modèle mixte = nlme::lme(y ~ annee * secteur, random = ~ 1 | site) : coefficients et erreurs-types (REML), logLik et AIC (ML), valeurs ajustées",
+         proche(mq7$resultat$coefficients$estimation, nlme::fixef(rq7), 1e-5) && proche(mq7$resultat$coefficients$erreur_type, summary(rq7)$tTable[, 2], 1e-4) &&
+           proche(mq7$resultat$logLik, as.numeric(logLik(rq7_ml)), 1e-6) && proche(mq7$resultat$AIC, AIC(rq7_ml), 1e-6) && proche(mq7$resultat$ajuste, fitted(rq7), 1e-5))
+dq8 <- definir_modele(pq, "LMM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", croises = list(uq("annee", "secteur")), aleatoires = list(site_q), correlation = car1_q)
+mq8 <- ajuster(pq, dq8)
+cor_q <- nlme::corCAR1(form = ~ annee | site_f / secteur_f)
+rq8 <- nlme::lme(densite ~ annee * secteur_f, random = ~ 1 | site_f, correlation = cor_q, data = tq, method = "REML", control = ctrl)
+rq8_ml <- nlme::lme(densite ~ annee * secteur_f, random = ~ 1 | site_f, correlation = cor_q, data = tq, method = "ML", control = ctrl)
+verifier(sprintf("avec CAR1 dans chaque secteur = nlme::lme(correlation = corCAR1(form = ~ annee | site/secteur)) (φ = %.3f)", mq8$resultat$phi),
+         proche(mq8$resultat$coefficients$estimation, nlme::fixef(rq8), 1e-4) && proche(mq8$resultat$coefficients$erreur_type, summary(rq8)$tTable[, 2], 1e-3) &&
+           proche(mq8$resultat$AIC, AIC(rq8_ml), 1e-6) && proche(mq8$resultat$phi, coef(rq8$modelStruct$corStruct, unconstrained = FALSE), 1e-3) &&
+           proche(mq8$resultat$ajuste, fitted(rq8), 1e-4))
+mq9 <- ajuster(pq, definir_modele(pq, "GLM", x = uq("habitat", "traitement"), y = uq("compte"), echelle = "none", famille = "poisson", croises = list(uq("habitat", "traitement"))))
+rq9 <- mgcv::gam(compte ~ habitat_f * traitement_f, family = poisson, data = tq)
+verifier("GLM de Poisson = mgcv::gam(compte ~ habitat * traitement, family = poisson) et glm() : coefficients, erreurs-types, AIC, valeurs ajustées",
+         proche(mq9$resultat$coefficients$estimation, coef(rq9)) && proche(mq9$resultat$coefficients$erreur_type, summary(rq9)$p.table[, 2]) &&
+           proche(mq9$resultat$AIC, AIC(glm(compte ~ habitat_f * traitement_f, family = poisson, data = tq))) && proche(mq9$resultat$ajuste, fitted(rq9)))
+env_q <- new.env(parent = asNamespace("mgcv"))
+f_q <- stats::as.formula("compte ~ s(x, k = 10) + habitat_f * traitement_f", env = env_q)
+mq10 <- ajuster(pq, definir_modele(pq, "GAM", x = uq("x", "habitat", "traitement"), y = uq("compte"), echelle = "none", famille = "poisson",
+                                   croises = list(uq("habitat", "traitement")), lisses = uq("x")))
+rq10 <- mgcv::gam(f_q, family = poisson, data = tq, method = "REML")
+verifier(sprintf("GAM, une courbe et un terme croisé qualitatif = mgcv::gam(compte ~ s(x) + habitat * traitement) (edf %.2f ; AIC de l'ajustement en ML)", mq10$resultat$courbes$edf),
+         proche(mq10$resultat$coefficients$estimation, summary(rq10)$p.table[, 1], 1e-5) && proche(mq10$resultat$coefficients$erreur_type, summary(rq10)$p.table[, 2], 1e-4) &&
+           proche(mq10$resultat$AIC, AIC(mgcv::gam(f_q, family = poisson, data = tq, method = "ML")), 1e-6) && proche(mq10$resultat$ajuste, fitted(rq10), 1e-5))
+f_qg <- stats::as.formula("densite ~ s(x, k = 10) + annee * secteur_f", env = env_q)
+mq11 <- ajuster(pq, definir_modele(pq, "GAM", x = uq("x", "annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne", croises = list(uq("annee", "secteur")),
+                                   lisses = uq("x"), aleatoires = list(site_q), correlation = car1_q))
+rq11 <- mgcv::gamm(f_qg, random = list(site_f = ~1), correlation = cor_q, data = tq, method = "REML")
+verifier("mgcv::gamm (courbe, site aléatoire, CAR1) avec annee × secteur = mgcv::gamm() : coefficients, AIC de la partie nlme en ML",
+         isTRUE(mq11$gamm) && proche(mq11$resultat$coefficients$estimation, summary(rq11$gam)$p.table[, 1], 1e-4) &&
+           proche(mq11$resultat$AIC, AIC(mgcv::gamm(f_qg, random = list(site_f = ~1), correlation = cor_q, data = tq, method = "ML")$lme), 1e-6))
+# les effets : une droite par secteur, de pente le coefficient de l'année plus celui de son produit avec le secteur
+eq7 <- effets_regression(mq7)[[1]]
+b7 <- nlme::fixef(rq7)
+V7 <- stats::vcov(rq7)
+l7 <- function(k) { l <- stats::setNames(rep(0, length(b7)), names(b7)); l["annee"] <- 1; if (nzchar(k)) l[k] <- 1; l }
+pentes7 <- vapply(c("annee:secteur_fS1", "annee:secteur_fS2", ""), function(k) sum(l7(k) * b7), 0)
+se7 <- vapply(c("annee:secteur_fS1", "annee:secteur_fS2", ""), function(k) sqrt(as.numeric(t(l7(k)) %*% V7 %*% l7(k))), 0)
+verifier(sprintf("Effets, modèle mixte : une droite par secteur, de pente %s, son intervalle tiré de vcov() de nlme",
+                 paste(sprintf("%.3f", pentes7), collapse = ", ")),
+         identical(eq7$terme, "annee") && identical(eq7$par, "secteur") && identical(vapply(eq7$niveaux, `[[`, "", "niveau"), c("S1", "S2", "S3")) &&
+           proche(vapply(eq7$niveaux, `[[`, 0, "pente"), pentes7, 1e-5) && proche(vapply(eq7$niveaux, function(n) (n$pente_haut - n$pente) / 1.96, 0), se7, 1e-4) &&
+           proche(eq7$niveaux[[2]]$effet, pentes7[2] * (eq7$niveaux[[2]]$x - mean(tq$annee)), 1e-5) && is.null(eq7$x))
+eq3 <- effets_regression(mq3)
+verifier("Effets, l'année sans effet principal : la pente de chaque secteur, le coefficient de son produit",
+         length(eq3) == 1 && proche(vapply(eq3[[1]]$niveaux, `[[`, 0, "pente"), coef(lq3)[c(5, 6, 4)]) &&
+           proche(vapply(eq3[[1]]$niveaux, function(n) (n$pente_haut - n$pente) / 1.96, 0), coef(summary(lq3))[c(5, 6, 4), 2]))
+eq11 <- effets_regression(mq11)
+verifier("Effets d'un GAMM : la courbe de x telle quelle, une droite par secteur pour l'année",
+         length(eq11) == 2 && isTRUE(eq11[[1]]$courbe) && length(eq11[[1]]$x) == 80 && length(eq11[[2]]$niveaux) == 3 && !isTRUE(eq11[[2]]$courbe))
+# l'apport des groupes, la sélection par l'AIC, Ajuster ce modèle, les modèles emboîtés
+aq1 <- apport_groupes(mq1)
+verifier("apport des groupes : un effet principal sort avec le terme croisé qui le contient (= lm() réajustés) ; le terme croisé, seul",
+         identical(aq1$groupe, c("annee", "secteur", "annee*secteur")) && identical(aq1$avec, c("annee*secteur", "annee*secteur", "")) &&
+           identical(as.numeric(aq1$termes), c(3, 4, 2)) && proche(aq1$delta_aic, c(AIC(lm(densite ~ secteur_f, tq)), AIC(lm(densite ~ annee, tq)),
+                                                                                     AIC(lm(densite ~ annee + secteur_f, tq))) - AIC(lq1)))
+sq1 <- selection_aic(mq1, dq1)
+aicc_q <- function(f) { l <- lm(f, data = tq); k <- attr(logLik(l), "df"); AIC(l) + 2 * k * (k + 1) / (nq - k - 1) }
+attendus_q <- c("annee + secteur + annee*secteur" = aicc_q(densite ~ annee * secteur_f), "annee + secteur" = aicc_q(densite ~ annee + secteur_f),
+                "secteur" = aicc_q(densite ~ secteur_f), "annee" = aicc_q(densite ~ annee), "1" = aicc_q(densite ~ 1))
+verifier("sélection par l'AIC : les 5 combinaisons permises (le terme croisé avec ses deux effets principaux, le secteur par toutes ses catégories), = lm()",
+         nrow(sq1$modeles) == 5 && setequal(sq1$modeles$modele, names(attendus_q)) && proche(sq1$modeles$AICc, attendus_q[sq1$modeles$modele]) &&
+           identical(as.character(sq1$requis[[3]]), c("annee", "secteur")))
+mq1b <- ajuster(pq, definition_selection(dq1, mq1, c("annee", "secteur")))
+verifier("Ajuster ce modèle (annee + secteur) : = lm(y ~ annee + secteur)", ajuste_q(mq1b, lm(densite ~ annee + secteur_f, data = tq)))
+sq6 <- selection_aic(mq6, lm_q(c("annee", "secteur", "habitat"), trois))
+verifier("un terme croisé de trois variables n'entre qu'avec ses effets principaux et ses termes croisés de deux",
+         setequal(unlist(sq6$requis[sq6$groupes == "annee*secteur*habitat"]), c("annee", "secteur", "habitat", "annee*secteur", "annee*habitat", "secteur*habitat")))
+rvq <- rapports_vraisemblance(list(croise = mq1, additif = ajuster(pq, lm_q(c("annee", "secteur"), list())), seul = mq4))
+khi2_q <- 2 * (as.numeric(logLik(lq1)) - as.numeric(logLik(lm(densite ~ annee + secteur_f, tq))))
+i_q <- which(rvq$paires$grand == "croise" & rvq$paires$petit == "additif")
+verifier(sprintf("y ~ annee + secteur emboîté dans y ~ annee * secteur : χ² = 2 Δ logLik de lm() = %.3f sur 2 ddl", khi2_q),
+         length(i_q) == 1 && proche(rvq$paires$khi2[i_q], khi2_q) && rvq$paires$ddl[i_q] == 2 && any(rvq$paires$grand == "croise" & rvq$paires$petit == "seul"))
+# une combinaison jamais observée : laissée de côté, et nommée comme telle
+pz_q <- projet_depuis_tableau(tq[!(tq$habitat == "H2" & tq$traitement == "T3"), c("nom", "habitat", "traitement", "densite")], "cellule vide")
+mz_q <- ajuster(pz_q, definir_modele(pz_q, "LM", x = numeros(pz_q, c("habitat", "traitement")), y = numeros(pz_q, "densite"), echelle = "none",
+                                     croises = list(numeros(pz_q, c("habitat", "traitement")))))
+lz_q <- lm(densite ~ habitat_f * traitement_f, data = tq[!(tq$habitat == "H2" & tq$traitement == "T3"), ])
+verifier(sprintf("une combinaison jamais observée (H2 avec T3) : laissée de côté et nommée (« %s »), un produit qui s'en déduit laissé de côté comme par lm() (NA)",
+                 paste(mz_q$resultat$termes_absents, collapse = ", ")),
+         identical(as.character(mz_q$resultat$termes_absents), "habitat(H2)*traitement(T3)") && "habitat(H1)*traitement(T2)" %in% mz_q$resultat$termes_retires &&
+           proche(mz_q$resultat$coefficients$estimation, stats::na.omit(coef(lz_q))) && proche(mz_q$resultat$ajuste, fitted(lz_q)))
+# une catégorie que l'ajustement n'a pas vue (des secteurs propres à chaque site, la validation croisée par site)
+vc_site <- list(by = "variable", variable = uq("site"))
+mv1 <- ajuster(pq, definir_modele(pq, "LM", x = uq("annee", "secteur_site"), y = uq("densite"), echelle = "none", croises = list(uq("annee", "secteur_site")), vc = vc_site))
+pred_v1 <- rep(NA_real_, nq)
+for (s in unique(tq$site)) {  # (le secteur jamais vu : prédit comme la catégorie de référence du sous-modèle, la dernière qu'il a)
+  ici <- tq$site == s
+  appris <- tq[!ici, ]
+  ref <- sort(unique(appris$secteur_site))
+  l <- lm(densite ~ annee * f, data = transform(appris, f = factor(secteur_site, levels = c(ref[length(ref)], ref[-length(ref)]))))
+  pred_v1[ici] <- coef(l)[1] + coef(l)[2] * tq$annee[ici]
+}
+mv2 <- ajuster(pq, definir_modele(pq, "LM", x = uq("secteur_site"), y = uq("densite"), echelle = "none", croises = list(uq("annee", "secteur_site")), vc = vc_site))
+verifier(sprintf("validation croisée par site : un secteur jamais vu prédit comme la catégorie de référence (avec l'effet principal de l'année) ; sans lui, pas de pente, pas de prédiction (%d)", mv2$vc$sans_pente),
+         proche(mv1$vc$prediction, pred_v1) && mv1$vc$sans_pente == 0 && mv2$vc$sans_pente == nq && all(is.na(mv2$vc$prediction)) && is.na(mv2$vc$Q2))
+# prédire : comme predict(lm()) ; une catégorie inconnue du projet, sans prédiction ; une catégorie hors du modèle, comme la référence, ou sans prédiction sans effet principal
+obs_q <- numeros_observations(pq)
+garde_q <- tq$secteur != "S2"
+dg1 <- lm_q(c("annee", "secteur"), list(c("annee", "secteur")), observations = obs_q[garde_q])
+mg1 <- ajuster(pq, dg1)
+lg1 <- lm(densite ~ annee * secteur_f, data = droplevels(tq[garde_q, ]))
+prq <- predire(pq, mg1, dg1, obs_q)
+dg2 <- lm_q("secteur", list(c("annee", "secteur")), observations = obs_q[garde_q])
+prq2 <- predire(pq, ajuster(pq, dg2), dg2, obs_q)
+verifier("prédire : les observations du modèle = predict(lm()) ; une catégorie hors du modèle (S2) prédite comme la référence, ou sans prédiction quand l'année n'a pas d'effet principal",
+         proche(prq[["densite prédit"]][garde_q], predict(lg1, tq[garde_q, ])) && proche(prq[["densite prédit"]][!garde_q], coef(lg1)[1] + coef(lg1)[2] * tq$annee[!garde_q]) &&
+           all(is.na(prq2[["densite prédit"]][!garde_q])) && !anyNA(prq2[["densite prédit"]][garde_q]))
+dossier_q <- tempfile("prediction")
+dir.create(dossier_q)
+fq <- file.path(dossier_q, "secteurs.csv")
+utils::write.csv(data.frame(nom = c("a", "b"), annee = c(2005, 2005), secteur = c("S1", "S9")), fq, row.names = FALSE)
+rfq <- predire_fichier(pq, mq1, dq1, fq)
+verifier("prédire un fichier : une catégorie connue = predict(lm()), une catégorie inconnue du projet (S9) sans prédiction",
+         proche(rfq$observations[["densite prédit"]][1], predict(lq1, data.frame(annee = 2005, secteur_f = factor("S1", levels = levels(tq$secteur_f))))) &&
+           is.na(rfq$observations[["densite prédit"]][2]))
+unlink(dossier_q, recursive = TRUE)
+mt_q <- ajuster(pq, lm_q("secteur_site", list(c("annee", "secteur_site")), test = obs_q[tq$site == "F"]))
+verifier("jeu de test d'un site entier, une pente par secteur sans effet principal : ses secteurs jamais vus restent sans prédiction, hors des statistiques",
+         mt_q$test$statistiques$n == 0 && all(is.na(mt_q$test$observations[["densite prédit"]])))
+# refusés, en nommant le terme
+verifier("une variable qualitative au carré ou deux fois dans un terme croisé : refusé, en nommant le terme",
+         grepl("« secteur × secteur »", refus(lm_q("secteur", list(c("secteur", "secteur"))))) &&
+           grepl("une fois", refus(lm_q(c("annee", "secteur"), list(c("secteur", "annee", "secteur"))))))
+dq_mal <- dq1
+dq_mal$x[[7]] <- list(variables = uq("secteur", "secteur"), categories = c(1, 2), name = "secteur(S1)*secteur(S2)", transform = NULL, scaling = list(type = "none"))
+dq_seul <- dq3
+dq_seul$x <- dq_seul$x[-(5:7)]  # (l'année, facteur seul, sans le terme croisé qui la demandait)
+verifier("une définition lue d'un fichier : un terme croisé d'une variable qualitative deux fois, un facteur seul d'aucun terme croisé, refusés",
+         grepl("une fois", refus(ajuster(pq, dq_mal))) && grepl("aucun terme croisé", refus(ajuster(pq, dq_seul))))
+# les réglages, la formule R, enregistrer et relire
+rgq <- reglages_modele(pq, dq3)
+verifier("les réglages du modèle sans effet principal (Modifier le modèle) : X le secteur, le terme croisé annee × secteur",
+         identical(as.numeric(rgq$x), uq("secteur")) && identical(rgq$croises, list(uq("annee", "secteur"))))
+fq3 <- formule_reglages(pq, rgq)
+lu_q <- lire_formule(pq, fq3)
+lu_q2 <- lire_formule(pq, "densite ~ log(annee):secteur + secteur")
+mq_lu <- ajuster(pq, definir_modele(pq, "LM", x = lu_q2$x, y = lu_q2$y, echelle = "none", croises = lu_q2$croises, transformations = unlist(lu_q2$transformations)))
+verifier(sprintf("formule R : %s, relue en les mêmes réglages ; log(annee):secteur + secteur = lm(y ~ secteur + secteur:log(annee))", fq3),
+         identical(fq3, "densite ~ secteur + annee:secteur") && identical(as.numeric(lu_q$x), uq("secteur")) && identical(unclass(lu_q$croises), list(uq("annee", "secteur"))) &&
+           identical(lu_q2$transformations[[as.character(uq("annee"))]], "ln:1:0") &&
+           proche(mq_lu$resultat$AIC, AIC(lm(densite ~ secteur_f + secteur_f:log(annee), data = tq))))
+lu_q3 <- lire_formule(pq, "densite ~ annee * secteur + (1 | site)")
+verifier("formule R : annee * secteur avec une variable qualitative règle le terme croisé ; réécrite, la même",
+         lu_q3$type == "LMM" && identical(unclass(lu_q3$croises), list(uq("annee", "secteur"))) &&
+           identical(formule_reglages(pq, lu_q3), "densite ~ annee + secteur + annee:secteur + (1 | site)"))
+fsq <- tempfile(fileext = ".nuee")
+pq$models <- list(dq3)
+enregistrer_projet(pq, fsq)
+qq <- lire_projet(fsq)
+verifier("enregistré puis relu : le modèle sans effet principal, le même", proche(ajuster(qq, qq$models[[1]])$resultat$AIC, mq3$resultat$AIC, 1e-10))
+for (l in c("fr", "en")) {
+  tq1 <- paste(texte_methodes(pq, dq1, mq1, l, "essai")$paragraphes, collapse = " ")
+  tq3 <- paste(texte_methodes(pq, dq3, mq3, l, "essai")$paragraphes, collapse = " ")
+  tq2 <- paste(texte_methodes(pq, lm_q(c("habitat", "traitement"), list(c("habitat", "traitement"))), mq2, l, "essai")$paragraphes, collapse = " ")
+  verifier(sprintf("texte des méthodes (%s) : la catégorie de référence nommée, ce que valent les coefficients des termes croisés (écart de pente, pente de chaque secteur, écart d'effet)", l),
+           grepl(if (l == "fr") "« S3 » pour « secteur »" else "“S3” for “secteur”", tq1) &&
+             grepl(if (l == "fr") "l'écart de la pente de « annee » à sa pente dans « S3 »" else "the difference between the slope of “annee” in it and its slope in “S3”", tq1) &&
+             grepl(if (l == "fr") "n'ayant pas d'effet principal, les coefficients de « annee × secteur » sont la pente" else "has no main effect, the coefficients of “annee × secteur” are the slope", tq3) &&
+             grepl(if (l == "fr") "ce même effet dans « H2 »" else "the same effect in “H2”", tq2) && !any(grepl("NA", c(tq1, tq2, tq3), fixed = TRUE)))
+}
 
 cat("Texte des méthodes\n")
 for (l in c("fr", "en")) {

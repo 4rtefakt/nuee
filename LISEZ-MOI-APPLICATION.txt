@@ -173,7 +173,9 @@ applique aux variables affichées le log10 proposé (voir Statistiques des varia
 Onglet Termes croisés : produits de deux ou trois variables X (A × B, A × B × C), carrés
 (A × A) et cubes (A × A × A) ; une variable qualitative y entre par chacune de ses catégories,
 une fois au plus. Chaque terme croisé a sa propre échelle, son bloc et son modificateur, comme
-dans l'onglet Variables.
+dans l'onglet Variables. Dans une régression, un facteur peut aussi être une variable sans rôle
+(sous « Pas en X : sans effet principal ») : elle n'entre alors que par le terme croisé (voir
+Termes croisés avec une variable qualitative).
 Onglet Observations : cocher / décocher les observations du modèle, et le jeu de test (voir
 Jeu de test) ; « Garder seulement les observations où… » les choisit par une condition (voir
 Observations choisies par une condition).
@@ -671,7 +673,8 @@ Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/secteur).
 Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations
 (log, log10, log1p, exp, sqrt, I(x^p), I(a * x + b), le logit log((x - a) / (b - x))), les
-termes croisés (a:b ; a*b pour a, b et a:b ; I(a^2) quand a est aussi dans le modèle, sinon le
+termes croisés (a:b ; a*b pour a, b et a:b ; a:b sans a : a entre sans effet principal ;
+I(a^2) quand a est aussi dans le modèle, sinon le
 carré de a), les courbes s(x) ou s(x, k = 5), l'effort offset(log(x)) et les ordonnées à
 l'origine aléatoires emboîtées (1 | site/secteur), du plus large au plus fin. Une courbe rend
 le modèle additif, des
@@ -688,7 +691,8 @@ l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle �
 quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
 plus, avec le logit le rapport des cotes), Effets (l'effet de chaque terme quantitatif quand sa
 variable varie, les autres fixés, avec sa bande à 95 % et les valeurs observées dessous : les
-courbes d'un GAM, des droites sinon ; sur l'échelle du lien, log ou logit, quand il y en a un ;
+courbes d'un GAM, des droites sinon, une par catégorie pour un terme croisé avec une variable
+qualitative ; sur l'échelle du lien, log ou logit, quand il y en a un ;
 pour une courbe, Seuils : l'effet et sa pente avec des intervalles simultanés à 95 % tirés de
 2000 jeux de coefficients, les plages où la bande de la pente exclut 0, en hausse ou en baisse
 nette, colorées et listées, et l'edf, sous 1,5 presque une droite, comme Simpson (2018) lit les
@@ -697,7 +701,8 @@ Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression 
 les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,
 ci-dessous), Apport des blocs
 (AIC) : chaque bloc de la colonne Bloc (ou chaque variable) retiré et le modèle réajusté en
-ML ; un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
+ML, un effet principal avec les termes croisés qui le contiennent (la colonne Avec les nomme) ;
+un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
 Résidus d'un GLM ou d'un GAM à loi de Poisson, binomiale négative, binomiale ou gamma : à côté
@@ -743,11 +748,13 @@ Graphiques › Sélection par AIC (aussi sous chaque régression, dans l'explora
 variables garder. Chaque combinaison des groupes de termes du modèle (les blocs de la colonne
 Bloc, sinon les variables), du modèle nul au modèle complet, est ajustée en ML sur les mêmes
 observations et rangée par AICc ; un terme croisé ou un carré n'entre qu'avec ses effets
-principaux. Seuls les effets fixes sont choisis : les effets aléatoires, l'autocorrélation,
-l'effort et le réglage des courbes restent ceux du modèle. Jusqu'à 8 groupes (256
-combinaisons), toutes les combinaisons sont ajustées (un modèle mixte avec CAR1 sur 240 lignes
-prend une dizaine de secondes) ; au-delà, une élimination descendante depuis le modèle complet
-retire pas à pas le groupe dont le retrait baisse le plus l'AICc. La vue suggère le meilleur
+principaux (une variable qualitative par toutes ses catégories) et les termes croisés d'une
+partie de ses facteurs. Seuls les effets fixes sont choisis : les effets aléatoires,
+l'autocorrélation, l'effort et le réglage des courbes restent ceux du modèle. Jusqu'à 8
+groupes (256 combinaisons), toutes les combinaisons sont ajustées (un modèle mixte avec CAR1
+sur 240 lignes prend une dizaine de secondes) ; au-delà, une élimination descendante depuis le
+modèle complet retire pas à pas le groupe dont le retrait baisse le plus l'AICc. La vue
+suggère le meilleur
 modèle (l'AICc le plus bas) et, s'il diffère, le plus parcimonieux à ΔAICc ≤ 2 (le moins de
 paramètres ; Burnham et Anderson, 2002) ; elle trace l'importance de chaque groupe (la somme
 des poids d'Akaike des modèles qui le contiennent) et liste les 20 meilleurs modèles, ou ceux à
@@ -794,6 +801,39 @@ la validation croisée par ses groupes, puis les coefficients, l'AIC, le R2, les
 courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), les résidus
 quantiles (les mêmes tirages que la vue Résidus), le jeu de test et les graphiques, vérifiés
 contre les résultats de Nuée avant d'être écrits.
+Termes croisés avec une variable qualitative (onglet Termes croisés, ou a * b et a:b dans la
+formule R) : une variable qualitative entre dans un terme croisé par chacune de ses catégories,
+une fois au plus (ni au carré ni au cube). année × secteur laisse la pente de l'année changer
+d'un secteur à l'autre : ses coefficients sont, pour chaque secteur sauf celui de référence,
+l'écart entre la pente de l'année dans ce secteur et sa pente dans le secteur de référence, qui
+est le coefficient de l'année. La catégorie de référence est celle que l'ajustement laisse de
+côté (la dernière catégorie observée), la même dans l'effet principal et dans le terme croisé.
+Pour une densité suivie par secteur, un coefficient de 0,2 pour annee*secteur(S2), celui de
+l'année valant 0,05, se lit : la densité gagne 0,25 par an dans S2, 0,2 de plus que dans le
+secteur de référence. Sans l'année en X (un facteur sans rôle dans l'onglet Termes croisés, ou
+y ~ secteur + secteur:année), chaque coefficient de année × secteur est la pente de l'année
+dans ce secteur ; sans le secteur en X (y ~ année + année:secteur), les pentes diffèrent mais
+les secteurs partagent une même ordonnée à l'origine. habitat × traitement : chaque coefficient
+est l'écart entre l'effet d'un traitement (par rapport au traitement de référence) dans un
+habitat et ce même effet dans l'habitat de référence ; trois variables (année × secteur ×
+habitat) donnent des écarts d'écarts. Les colonnes sont rangées comme R range ses termes, les
+effets principaux d'abord : les résultats sont ceux de lm(), nlme::lme() et mgcv avec des
+facteurs dont le premier niveau est la référence de Nuée. Une combinaison de catégories
+qu'aucune observation n'a (un traitement jamais donné dans un habitat) ne peut pas être
+estimée : elle est laissée de côté, et le Résumé la nomme parmi les termes jamais observés.
+Effets : un terme quantitatif croisé avec des catégories a une droite par catégorie (une courbe
+quand le terme est une courbe d'un GAM), de pente son coefficient plus celui de son produit
+avec la catégorie, avec sa bande à 95 % tirée de la covariance des coefficients et, sous le
+graphique, chaque pente par unité avec son intervalle. Dans la sélection par AIC et la table
+des apports, un terme croisé entre et sort en entier (toutes ses catégories), seulement avec
+ses effets principaux et ses termes croisés d'ordre plus bas. Le texte des Méthodes nomme
+chaque catégorie de référence et dit ce que valent les coefficients des termes croisés.
+Prédiction : une catégorie que le modèle a vue a sa propre prédiction ; une catégorie qu'il n'a
+pas vue (absente de ses observations, ou des autres groupes en validation croisée : des
+secteurs propres à un site, validés par site) est prédite comme la catégorie de référence, sauf
+dans un terme croisé dont la variable quantitative n'a pas d'effet principal, où elle reste sans
+prédiction (elle n'aurait pas de pente), et le Résumé le dit ; une catégorie que le projet ne
+connaît pas (dans un fichier) n'est pas prédite.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------

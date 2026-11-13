@@ -300,6 +300,7 @@ besoins_script <- function(plans, seance) {
        selection_aic = any(vapply(reg, function(pl) !is.null(pl$selection), TRUE)),
        # (les fonctions de Nouvelle variable qu'appelle la condition d'un modèle : condition.R)
        fonctions_condition = unique(unlist(lapply(plans, function(pl) pl$condition$fonctions))),
+       pentes = any(vapply(reg, function(pl) length(pl$pentes) > 0, TRUE)),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
 }
@@ -1047,7 +1048,7 @@ plan_regression <- function(projet, d, m, tab) {
   selection <- if (isTRUE(m$selection_aic$K > 0)) {
     gm <- groupes_modele(m)
     list(toutes = identical(m$selection_aic$methode, "toutes"), limite = m$selection_aic$limite,
-         groupes = lapply(gm, function(ts) termes_r[match(ts, m$termes)]), requis = Filter(length, groupes_requis(gm, termes)))
+         groupes = lapply(gm, function(ts) termes_r[match(ts, m$termes)]), requis = Filter(length, groupes_requis(gm, m$composition)))
   }
   list(nom = as.character(d$name %||% ""), titre = as.character(d$title %||% ""),
        type = "regression", regression = TRUE, modele = as.character(d$type), generalise = generalise, gamm = gamm,
@@ -1061,6 +1062,11 @@ plan_regression <- function(projet, d, m, tab) {
        y = list(colonne = tab$noms[[as.character(vy$uid)]], nom = m$y$noms, tr = ty$transform,
                 garde = !is.null(ty$transform) && hors_domaine(ty$transform, valeurs_simples(projet, ty, candidates))),
        reponse = nr[1], termes = termes_r, noms_termes = m$noms_termes,
+       # (les termes qui peuvent entrer dans l'ajustement, d'ordre plus bas d'abord, sans les facteurs
+       # seuls ; et les pentes de chaque catégorie sans effet principal : regression.R, candidats_regression
+       # et pentes_sans_effet_principal)
+       candidats = termes_r[match(m$candidats, m$termes)],
+       pentes = termes_r[match(pentes_sans_effet_principal(m$composition, m$candidats), m$termes)],
        niveaux = lapply(seq_len(L), function(l) list(nom = nr[1 + K + l], affiche = m$niveaux[l], code = lecture(specs[[l]]))),
        emboites = nr[1 + K + L + seq_along(emboites)],
        temps = if (!is.null(temps)) list(nom = nr[avant + 1], affiche = m$temps, code = lecture(temps, TRUE), dates = dates),
@@ -1172,6 +1178,12 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   dans_affiche <- if (!is.null(pl$dans)) pl$dans$affiche else affiches[L]
   plx <- pl
   plx$manquantes <- pl$na_termes  # (les centres d'un terme croisé sans aucune valeur)
+  # les termes qui peuvent entrer dans l'ajustement : tous, dans leur ordre, ou termes_candidats
+  # (sans les facteurs seuls, d'ordre plus bas d'abord : regression.R, candidats_regression)
+  candidats <- if (identical(pl$candidats, pl$termes)) "termes" else "termes_candidats"
+  pentes <- length(pl$pentes) > 0
+  # (une catégorie que l'ajustement n'a pas vue, dans une pente sans effet principal : sans prédiction)
+  sans_inconnus <- function(prediction, appris, nouvelles) if (!pentes) prediction else sprintf("replace(%s, niveaux_inconnus(%s, %s, pentes_seules), NA)", prediction, appris, nouvelles)
 
   # --- les observations, les termes, la réponse, le tableau du modèle
   colonnes <- c(
@@ -1222,6 +1234,14 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     sprintf("reponse <- %s", code_texte(pl$reponse)),
     if (K) code_valeurs(vapply(pl$termes, code_texte, ""), "termes <- ") else "termes <- character(0)",
     if (!meme_noms) code_valeurs(vapply(pl$noms_termes, code_texte, ""), "noms_termes <- "),
+    if (candidats != "termes") c(
+      commentaire(tx("Les termes qui peuvent entrer dans l'ajustement, dans l'ordre où termes_utiles() les prend : sans ceux des variables qui n'ont pas d'effet principal (ils ne servent qu'à calculer les termes croisés), les termes d'ordre plus bas d'abord, comme R les range : la catégorie de référence d'une variable qualitative, et les colonnes d'un terme croisé qui se déduisent de ses effets principaux, sont laissées de côté.",
+                     "The terms that can enter the fit, in the order useful_terms() takes them: without those of the variables that have no main effect (they only serve to compute the cross terms), the lower-order terms first, as R orders them: the reference category of a qualitative variable, and the columns of a cross term that follow from its main effects, are left out.")),
+      code_valeurs(vapply(pl$candidats, code_texte, ""), "termes_candidats <- ")),
+    if (pentes) c(
+      commentaire(tx("La pente de chaque catégorie, sans l'effet principal de sa variable quantitative (niveaux_inconnus() ci-dessus).",
+                     "Each category's slope, without the main effect of its quantitative variable (unseen_levels() above).")),
+      code_valeurs(vapply(pl$pentes, code_texte, ""), "pentes_seules <- ")),
     "tableau_modele <- function(ici) {", colonnes, "}",
     "cadre <- tableau_modele(apprentissage)",
     "noms_obs <- d[[\"Observation\"]][apprentissage]",
@@ -1251,7 +1271,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       sprintf("correlation <- nlme::corCAR1(form = as.formula(%s))", code_texte(paste("~", pl$temps$nom, "|", groupes_car1))),
       commentaire(tx("Ajustement : un modèle additif mixte (mgcv::gamm), ajusté comme un modèle linéaire mixte de nlme dont les courbes sont des effets aléatoires, avec les termes utiles sur ces lignes (termes_utiles()) ; REML pour les coefficients, les courbes, les variances et l'autocorrélation, ML (methode = \"ML\") pour la vraisemblance et l'AIC, ceux de sa partie nlme (m$lme). Un second essai passe par optim.",
                      "Fit: a mixed additive model (mgcv::gamm), fitted as a linear mixed model of nlme whose curves are random effects, with the useful terms on these rows (useful_terms()); REML for the coefficients, the curves, the variances and the autocorrelation, ML (method = \"ML\") for the likelihood and the AIC, those of its nlme part (m$lme). A second attempt goes through optim.")),
-      "ajuster_modele <- function(tab, candidats = termes, methode = \"REML\") {",
+      sprintf("ajuster_modele <- function(tab, candidats = %s, methode = \"REML\") {", candidats),
       "  utiles <- termes_utiles(tab, candidats)",
       if (courbes) c("  lis <- intersect(lisses, utiles)",
                      "  kk <- vapply(lis, function(t) dimension_courbe(tab[[t]], k[[t]]), 0L)",
@@ -1265,7 +1285,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "}",
       "m <- ajuster_modele(cadre)",
       "m_ml <- ajuster_modele(cadre, methode = \"ML\")",
-      "utiles <- termes_utiles(cadre, termes)")
+      sprintf("utiles <- termes_utiles(cadre, %s)", candidats))
   } else if (mgcv) {
     familles <- c(gaussienne = "gaussian()", poisson = "poisson()", binomiale = "binomial()", binomiale_negative = "nb()",
                   gamma = "Gamma(link = \"log\")", tweedie = "tw()")
@@ -1300,7 +1320,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                              if (courbes) ", a curve for each term of `smooth_terms` (its dimension reduced if these rows have too few values; below 3, it stays a straight line)" else "",
                              if (!is.null(pl$effort)) sprintf(", and log(%s) as an offset (the effort)", guillemets(pl$effort$affiche)) else "",
                              if (penalise) "REML for the curves and the random effects (method = \"ML\": the fit that gives the likelihood and the AIC)" else "by maximum likelihood (no penalized term)"))),
-      sprintf("ajuster_modele <- function(tab, candidats = termes, methode = %s) {", if (mixte) "\"REML\"" else if (penalise) "NULL" else "\"ML\""),
+      sprintf("ajuster_modele <- function(tab, candidats = %s, methode = %s) {", candidats, if (mixte) "\"REML\"" else if (penalise) "NULL" else "\"ML\""),
       "  utiles <- termes_utiles(tab, candidats)",
       if (courbes) c("  lis <- intersect(lisses, utiles)",
                      "  kk <- vapply(lis, function(t) dimension_courbe(tab[[t]], k[[t]]), 0L)",
@@ -1311,7 +1331,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "  tryCatch(gam(f, data = tab, family = famille(), method = methode), error = function(e) NULL)",
       "}",
       "m <- ajuster_modele(cadre)",
-      "utiles <- termes_utiles(cadre, termes)",
+      sprintf("utiles <- termes_utiles(cadre, %s)", candidats),
       if (!penalise) tx("m_ml <- m  # (sans terme pénalisé : un seul ajustement, en ML)", "m_ml <- m  # (no penalized term: a single fit, by ML)")
       else if (mixte) "m_ml <- ajuster_modele(cadre, methode = \"ML\")"
       else "m_ml <- if (length(intersect(lisses, utiles))) ajuster_modele(cadre, methode = \"ML\") else m")
@@ -1325,7 +1345,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       if (car1) sprintf("correlation <- nlme::corCAR1(form = as.formula(%s))", code_texte(paste("~", pl$temps$nom, "|", groupes_car1))),
       commentaire(tx("Ajustement : un modèle linéaire mixte (nlme::lme) avec les termes utiles sur ces lignes (termes_utiles()) ; REML pour les coefficients et les variances, ML (methode = \"ML\") pour la vraisemblance et l'AIC. L'optimisation essaie optim, puis nlminb.",
                      "Fit: a linear mixed model (nlme::lme) with the useful terms on these rows (useful_terms()); REML for the coefficients and the variances, ML (method = \"ML\") for the likelihood and the AIC. The optimisation tries optim, then nlminb.")),
-      "ajuster_modele <- function(tab, candidats = termes, methode = \"REML\") {",
+      sprintf("ajuster_modele <- function(tab, candidats = %s, methode = \"REML\") {", candidats),
       "  utiles <- termes_utiles(tab, candidats)",
       "  f <- reformulate(if (length(utiles)) utiles else \"1\", response = reponse)",
       sprintf("  tenter <- function(reglages) tryCatch(nlme::lme(f, random = aleatoire, %sdata = tab, method = methode, control = reglages),", if (car1) "correlation = correlation, " else ""),
@@ -1338,27 +1358,28 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "}",
       "m <- ajuster_modele(cadre)",
       "m_ml <- ajuster_modele(cadre, methode = \"ML\")",
-      "utiles <- termes_utiles(cadre, termes)")
+      sprintf("utiles <- termes_utiles(cadre, %s)", candidats))
   } else {
     c(commentaire(tx("Ajustement : une régression linéaire par les moindres carrés ordinaires (lm), avec les termes utiles sur ces lignes (termes_utiles()).",
                      "Fit: a linear regression by ordinary least squares (lm), with the useful terms on these rows (useful_terms()).")),
-      "ajuster_modele <- function(tab, candidats = termes) {",
+      sprintf("ajuster_modele <- function(tab, candidats = %s) {", candidats),
       "  utiles <- termes_utiles(tab, candidats)",
       "  tryCatch(lm(reformulate(if (length(utiles)) utiles else \"1\", response = reponse), data = tab), error = function(e) NULL)",
       "}",
       "m <- ajuster_modele(cadre)",
       tx("m_ml <- m  # (moindres carrés : la vraisemblance est celle de cet ajustement)", "m_ml <- m  # (least squares: the likelihood is that of this fit)"),
-      "utiles <- termes_utiles(cadre, termes)")
+      sprintf("utiles <- termes_utiles(cadre, %s)", candidats))
   }
 
   # --- la validation croisée
   par <- if (nzchar(pl$vc_par)) tx(sprintf(", un par valeur de %s", guillemets(pl$vc_par)), sprintf(", one per value of %s", guillemets(pl$vc_par)))
          else tx(" (les observations à tour de rôle)", " (the observations in turn)")
-  predire <- if (gamm) "function(m, nouvelles, appris) tryCatch(as.vector(predict(m$gam, nouvelles, type = \"response\")), error = function(e) NA_real_)"
-  else if (mgcv) {
-    if (mixte) "function(m, nouvelles, appris) tryCatch(predire_fixes(m, nouvelles, appris, aleatoires), error = function(e) NA_real_)"
-    else "function(m, nouvelles, appris) tryCatch(as.vector(predict(m, nouvelles, type = \"response\")), error = function(e) NA_real_)"
-  } else if (mixte) "function(m, nouvelles, appris) predict(m, nouvelles, level = 0)" else "function(m, nouvelles, appris) predict(m, nouvelles)"
+  predire <- paste("function(m, nouvelles, appris)", sans_inconnus(
+    if (gamm) "tryCatch(as.vector(predict(m$gam, nouvelles, type = \"response\")), error = function(e) NA_real_)"
+    else if (mgcv) {
+      if (mixte) "tryCatch(predire_fixes(m, nouvelles, appris, aleatoires), error = function(e) NA_real_)"
+      else "tryCatch(as.vector(predict(m, nouvelles, type = \"response\")), error = function(e) NA_real_)"
+    } else if (mixte) "predict(m, nouvelles, level = 0)" else "predict(m, nouvelles)", "appris", "nouvelles"))
   validation <- c(
     commentaire(tx(sprintf("Validation croisée en %d groupes%s : chaque groupe prédit par le modèle ajusté sans lui, avec ses termes utiles parmi ceux du modèle%s.",
                            length(unique(pl$groupes_vc)), par, if (mixte) ", par ses seuls effets fixes (comme un groupe jamais vu)" else ""),
@@ -1530,10 +1551,15 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                            if (mixte) ", par ses seuls effets fixes (il ne connaît pas leurs groupes)" else ""),
                    sprintf("The test set: its observations predicted by the model%s; RMSEP, bias (mean of the errors), SEP (their standard deviation) and external Q2 (against the mean of the model's observations).",
                            if (mixte) ", by its fixed effects only (it doesn't know their groups)" else ""))),
-    sprintf("y_predit <- %s", predire_test),
+    sprintf("y_predit <- %s", sans_inconnus(predire_test, "cadre", "cadre_test")),
     "erreur <- y_predit - cadre_test[[1]]",
-    sprintf("test <- data.frame(y = %s, n = length(erreur), RMSEP = sqrt(mean(erreur^2)), biais = mean(erreur),", code_texte(pl$y$nom)),
-    "                   SEP = if (length(erreur) > 1) sd(erreur) else NA_real_, Q2ext = 1 - sum(erreur^2) / sum((cadre_test[[1]] - mean(cadre[[1]]))^2))",
+    if (!pentes) c(
+      sprintf("test <- data.frame(y = %s, n = length(erreur), RMSEP = sqrt(mean(erreur^2)), biais = mean(erreur),", code_texte(pl$y$nom)),
+      "                   SEP = if (length(erreur) > 1) sd(erreur) else NA_real_, Q2ext = 1 - sum(erreur^2) / sum((cadre_test[[1]] - mean(cadre[[1]]))^2))")
+    else c(
+      sprintf("ok <- !is.na(erreur)  # %s", tx("(sans prédiction : une catégorie que le modèle n'a pas vue)", "(no prediction: a category the model hasn't seen)")),
+      sprintf("test <- data.frame(y = %s, n = sum(ok), RMSEP = sqrt(mean(erreur[ok]^2)), biais = mean(erreur[ok]),", code_texte(pl$y$nom)),
+      "                   SEP = if (sum(ok) > 1) sd(erreur[ok]) else NA_real_, Q2ext = 1 - sum(erreur[ok]^2) / sum((cadre_test[[1]][ok] - mean(cadre[[1]]))^2))"),
     "predictions_test <- data.frame(observation = noms_test, observe = cadre_test[[1]], predit = y_predit, row.names = NULL)")
 
   # --- la sortie et les graphiques
@@ -1680,7 +1706,7 @@ code_fonctions <- function(b, plans, langue) {
                   modele_opls_predire(tx, na, general), "", modele_vc_opls(tx, na, general)),
     if (!isFALSE(b$echelle)) modele_echelle(tx, !isTRUE(b$regression) || isTRUE(b$nipals)),
     if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx), if (isTRUE(b$car1)) c("", modele_residus_car1(tx)),
-                                if (isTRUE(b$dates)) c("", modele_temps_dates(tx))),
+                                if (isTRUE(b$dates)) c("", modele_temps_dates(tx)), if (isTRUE(b$pentes)) c("", modele_niveaux_inconnus(tx))),
     if (isTRUE(b$selection_aic)) modele_selection_aic(tx),
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
@@ -2031,6 +2057,22 @@ modele_termes_utiles <- function(tx) c(
   "  q <- qr(cbind(1, as.matrix(tab[termes])), tol = 1e-9)",
   "  garde <- sort(q$pivot[seq_len(q$rank)])",
   "  termes[setdiff(garde, 1) - 1]",
+  "}")
+
+# Les lignes d'une catégorie que l'ajustement n'a pas vue, dans une pente sans effet principal :
+# celles de regression.R (niveaux_inconnus), écrites pour le script.
+modele_niveaux_inconnus <- function(tx) c(
+  commentaire(tx("Les lignes de `nouvelles` d'une catégorie que les lignes `appris` n'ont pas, dans l'une des `pentes` (la pente de chaque catégorie, sans l'effet principal de leur variable quantitative) : sa colonne est constante sur `appris`, et l'ajustement l'a laissée de côté. Prédites, elles auraient une pente nulle, celle d'aucune catégorie : elles restent sans prédiction, comme dans Nuée (R refuse de même un niveau qu'il n'a pas vu).",
+                 "The rows of `new_rows` of a category the rows `learnt` don't have, in one of the `slopes` (each category's slope, without the main effect of their quantitative variable): its column is constant on `learnt`, and the fit left it out. Predicted, they would have a zero slope, that of no category: they stay without a prediction, as in Nuée (R likewise refuses a level it hasn't seen).")),
+  "niveaux_inconnus <- function(appris, nouvelles, pentes) {",
+  "  sans <- rep(FALSE, nrow(nouvelles))",
+  "  for (k in pentes) {",
+  "    v <- appris[[k]]",
+  "    tol <- 1e-9 * max(1, abs(v))",
+  "    if (any(abs(v - v[1]) > tol)) next",
+  "    sans <- sans | (!is.na(nouvelles[[k]]) & abs(nouvelles[[k]] - v[1]) > tol)",
+  "  }",
+  "  sans",
   "}")
 
 # Les résidus normalisés d'un modèle avec CAR1, dans l'ordre du temps de chaque groupe (ceux de
@@ -2442,7 +2484,8 @@ NOMS_SCRIPT_EN <- c(
   permise = "allowed", combinaisons = "combinations", combinaison = "combination", valeurs_aic = "aic_values", etapes_aic = "aic_steps",
   courant = "current", retirables = "removable", essais = "trials", aicc_courant = "current_aicc", modeles_aic = "aic_models",
   importance_aic = "aic_importance", poids_cumule = "cumulative_weight", etape = "step", toutes = "all_subsets", termes_aic = "aic_terms",
-  modeles = "models", ajuster_ml = "fit_ml", libelle_aic = "aic_label", contient_aic = "aic_contains", hors_selection = "outside_selection")
+  modeles = "models", ajuster_ml = "fit_ml", libelle_aic = "aic_label", contient_aic = "aic_contains", hors_selection = "outside_selection",
+  termes_candidats = "candidate_terms", pentes_seules = "level_slopes", niveaux_inconnus = "unseen_levels", pentes = "slopes", sans = "unseen")
 
 nom_script <- function(x, langue) if (identical(langue, "en")) ifelse(x %in% names(NOMS_SCRIPT_EN), NOMS_SCRIPT_EN[x], x) else x
 

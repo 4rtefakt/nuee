@@ -2389,17 +2389,26 @@ function rendreResumeRegression(conteneur, ctx, m) {
       el('td', { class: 'num' }, fmt([].concat(cb.ref_ddl)[i], 2)), el('td', { class: 'num' }, fmt([].concat(cb.statistique)[i], 2)),
       el('td', { class: 'num' + ([].concat(cb.p)[i] <= 0.05 ? ' alerte' : '') }, valeurP([].concat(cb.p)[i])),
       concurvite ? el('td', { class: 'num' + ([].concat(cb.concurvite)[i] > 0.8 ? ' erreur' : ''), title: t('concurvite_aide') }, fmt([].concat(cb.concurvite)[i], 2)) : null)))) : null;
-  const retires = [].concat(m.termes_retires || []);
   // (a GLM without curves or random effects: plain maximum likelihood)
   const textes = [m.gamm ? t('gamm_note') : mixte ? t('regression_note_mixte') : ['GLM', 'GAM'].includes(m.type) ? t(cb || v ? 'generalise_note' : 'generalise_note_mv') : t('regression_note'),
     notePhi(m),
-    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : '',
+    ...notesTermesRetires(m),
     q.echecs_vc ? t('echecs_vc', { n: q.echecs_vc }) : '',
+    q.sans_pente_vc ? t('sans_pente_vc', { n: q.sans_pente_vc }) : '',
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
     m.K ? indiceSelectionAIC(ctx, m) : ''].filter(Boolean);
   const notes = notesModele(conteneur, ctx, m);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, courbes, table, textes.map((x) => el('p', { class: 'note' }, x))));
   notes.retrouver();
+}
+
+// The terms a regression's fit left out, in words (regression.R: termes_retires, termes_absents):
+// the redundant or constant ones (a qualitative variable's reference category, its products in a
+// cross term), then the categories or combinations of categories no observation has.
+export function notesTermesRetires(m) {
+  const absents = [].concat(m.termes_absents || []);
+  const retires = [].concat(m.termes_retires || []).filter((x) => !absents.includes(x));
+  return [retires.length ? t('termes_retires', { termes: retires.join(', ') }) : '', absents.length ? t('termes_absents', { termes: absents.join(', ') }) : ''];
 }
 
 // The Summary's pointer to the AIC selection: its words, with the view's name as a link to it.
@@ -2421,11 +2430,10 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
   const pv = col('p');
   const graphe = el('div', { class: 'graphe' });
   const table = el('div', { class: 'bas' });
-  const retires = [].concat(m.termes_retires || []);
   const multiplicatif = ['log', 'logit'].includes(m.lien);
   conteneur.replaceChildren(el('p', { class: 'note' }, [t('coefficients_regression_note', { y: m.noms_y[0] }),
     m.lien && m.lien !== 'identity' ? t(multiplicatif ? `coefficients_lien_${m.lien}` : 'coefficients_lien', { lien: m.lien }) : '',
-    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : ''].filter(Boolean).join(' ')), graphe, table);
+    ...notesTermesRetires(m)].filter(Boolean).join(' ')), graphe, table);
   const idx = termes.map((_, i) => i).filter((i) => termes[i] !== '(Intercept)');
   tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => est[i]),
     error_x: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: '#888', thickness: 1.5 },
@@ -2522,12 +2530,17 @@ async function rendreEffets(conteneur, ctx, p, loc) {
     seuils[e.terme] = await ctx.demander('seuils', { modele: m.id, terme: e.terme });
   }
   const s = avecSeuils ? seuils[e.terme] : null;
+  // (a term crossed with categories: one line, or curve, per category; regression.R: effets_par_niveau)
+  const niveaux = e.niveaux ? [].concat(e.niveaux) : null;
+  const note = niveaux ? t(e.courbe ? 'effets_note_niveaux_courbe' : 'effets_note_niveaux', { par: e.par, terme: e.terme, lien: lien === 'identity' ? '' : t('effets_lien', { lien }) })
+    : t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien });
   conteneur.replaceChildren(outils(choix(t('terme'), effets.map((x) => [x.terme, x.courbe ? `${x.terme} (${t('courbe').toLowerCase()})` : x.terme]), loc.terme,
     (v) => { loc.terme = v; ctx.rafraichir(); }),
     e.courbe ? el('label', { class: 'champ', title: t('seuils_aide') }, el('input', { type: 'checkbox', checked: avecSeuils,
       onchange: (ev) => { loc.seuils = ev.target.checked; ctx.rafraichir(); } }), t('seuils')) : null,
-    el('span', { class: 'infos' }, s ? resumeSeuils(s) : t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien }))), graphe);
+    el('span', { class: 'infos' }, s ? resumeSeuils(s) : note)), graphe);
   if (s) { tracerSeuils(ctx, graphe, m, e, s, lien); return; }
+  if (niveaux) { tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien); return; }
   const x = [].concat(e.x);
   const c = couleursTheme();
   const valeurs = [].concat(e.valeurs);
@@ -2542,6 +2555,35 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   { title: { text: `${m.nom} · ${t('effets')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
     xaxis: { title: { text: e.terme } }, yaxis: { title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
     shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
+}
+
+// A term crossed with categories (regression.R: effets_par_niveau): each category's line (or
+// curve) with its 95 % band, in its colour, over the values of that category, a legend by
+// category, all the observed values along the axis; under the plot, each line's slope per unit
+// of the term with its 95 % interval.
+const translucide = (couleur, a) => `rgba(${[1, 3, 5].map((i) => parseInt(couleur.slice(i, i + 2), 16)).join(', ')}, ${a})`;
+function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien) {
+  const c = couleursTheme();
+  const valeurs = [].concat(e.valeurs);
+  const basMin = Math.min(...niveaux.flatMap((n) => [].concat(n.bas)));
+  tracer(ctx, graphe, niveaux.flatMap((n, k) => {
+    const x = [].concat(n.x);
+    const couleur = PALETTE[k % PALETTE.length];
+    return [
+      { type: 'scatter', mode: 'lines', x: x.concat([...x].reverse()), y: [].concat(n.bas).concat([...[].concat(n.haut)].reverse()), fill: 'toself',
+        fillcolor: translucide(couleur, 0.16), line: { width: 0 }, hoverinfo: 'skip', legendgroup: n.niveau, showlegend: false, name: n.niveau },
+      { type: 'scatter', mode: 'lines', x, y: [].concat(n.effet), line: { color: couleur, width: 2 }, name: n.niveau, legendgroup: n.niveau,
+        hovertemplate: `${n.niveau}<br>${e.terme} = %{x:.3f}<br>${t('effet')} = %{y:.3f}<extra></extra>` }];
+  }).concat([{ type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux },
+    hoverinfo: 'skip', name: t('observations'), showlegend: false }]),
+  { title: { text: `${m.nom} · ${t('effets')} · ${e.terme} × ${e.par}` }, showlegend: true, dragmode: 'zoom',
+    xaxis: { title: { text: e.terme } }, yaxis: { title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
+    shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
+  if (e.courbe) return;
+  conteneur.append(el('div', { class: 'bas' }, el('table', { class: 'tableau compact' },
+    el('thead', {}, el('tr', {}, [e.par, t('pente_niveau', { terme: e.terme }), t('ic_bas'), t('ic_haut')].map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
+    el('tbody', {}, niveaux.map((n) => el('tr', {}, el('td', {}, n.niveau),
+      ...[n.pente, n.pente_bas, n.pente_haut].map((v) => el('td', { class: 'num' }, fmt(v, 4)))))))));
 }
 
 // The residuals of a regression: against the fitted values, on a normal Q-Q plot, by group of
@@ -2735,7 +2777,8 @@ async function rendreApports(conteneur, ctx, p, loc) {
   tableau(bas, ctx, loc.table, {
     n: groupes.length, nom: 'AIC',
     colonnes: [{ cle: 'groupe', titre: t('groupe') }, num('termes', t('nb_termes'), 0), num('delta_aic', 'ΔAIC', 2, undefined, (i) => delta[i] > 2),
-      num('khi2', 'χ²', 2), num('ddl', t('ddl'), 0), num('p', 'p', 4, valeurP)],
+      num('khi2', 'χ²', 2), num('ddl', t('ddl'), 0), num('p', 'p', 4, valeurP)]
+      .concat(col('avec').some(Boolean) ? [{ cle: 'avec', titre: t('apports_avec') }] : []),  // (a main effect leaves with its cross terms)
     valeur: (i, k) => col(k)[i],
   });
 }

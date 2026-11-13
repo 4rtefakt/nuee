@@ -468,6 +468,23 @@ async function principal() {
       let refusF = '';
       try { await api('lire_formule', { projet: e.id, texte: 'note_gout ~ sucre + system("calc")', type: 'LM' }); } catch (err) { refusF = err.message; }
       verifier(/system/.test(refusF), 'une formule qui porte du code, refusée');
+      // a cross term with a qualitative variable (moteur/R/regression.R): its products by category, one
+      // line per category in Effects, a main effect leaving with it in the contributions; without the
+      // main effect of the number, one slope per category, and the formula that says so
+      const cq = await api('ajuster', { projet: e.id, type: 'LM', x: [v('sucre'), v('variete')], y: [v('note_gout')], echelle: 'none', nom: 'RQ1',
+        croises: [[v('sucre'), v('variete')]] });
+      const efq = (await api('effets', { modele: cq.id })).effets.find((x) => x.terme === 'sucre');
+      const apq = await api('apports', { modele: cq.id });
+      verifier([].concat(cq.coefficients_regression.terme).filter((x) => /^sucre\*variete\(/.test(x)).length === 3 && [].concat(cq.termes_retires).length === 2
+        && efq.par === 'variete' && [].concat(efq.niveaux).length === 4 && efq.niveaux.every((n) => Number.isFinite(n.pente) && [].concat(n.x).length === 80)
+        && [].concat(apq.apports.avec)[0] === 'sucre*variete',
+      `terme croisé avec une variable qualitative : coefficients, une droite par catégorie, l’apport d’un effet principal avec son terme croisé (${JSON.stringify(apq.apports).slice(0, 200)})`);
+      const luq = await api('lire_formule', { projet: e.id, texte: 'note_gout ~ variete + sucre:variete', type: 'LM' });
+      const cq2 = await api('ajuster', { projet: e.id, type: 'LM', x: luq.x, y: luq.y, echelle: 'none', nom: 'RQ2', croises: luq.croises });
+      const foq = await api('formule', { projet: e.id, ...cq2.reglages, type: 'LM' });
+      verifier([].concat(luq.x).length === 1 && [].concat(cq2.coefficients_regression.terme).filter((x) => /^sucre\*variete\(/.test(x)).length === 4
+        && [].concat(cq2.reglages.x).length === 1 && foq.formule === 'note_gout ~ variete + sucre:variete',
+      `sans l’effet principal du sucre : une pente par variété, et la formule réécrite (${foq.formule})`);
       const im = await api('imputer', { projet: e.id, variables: [v('sucre'), v('fermete'), v('acidite'), v('polyphenols')], k: 2 });
       verifier(im.imputation.valeurs === 11 && im.variables.find((x) => x.nom === 'polyphenols (imputée)').manquantes === 0 && im.variables.find((x) => x.nom === 'polyphenols').manquantes === 11
         && !im.variables.some((x) => x.nom === 'sucre (imputée)'),

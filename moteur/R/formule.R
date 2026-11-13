@@ -209,8 +209,11 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
     principaux[[cle]] <<- list(k = s$k, tr = s$tr)
   }
   facteurs <- function(e) if (fonction(e) == ":" && length(e) == 3) c(facteurs(e[[2]]), facteurs(e[[3]])) else list(e)
+  qualitative <- function(k) length(projet$variables[[k]]$categories) > 0
   croiser <- function(fs) {
     ks <- unlist(lapply(fs, function(s) rep(s$k, s$puissance %||% 1)))
+    # (une variable qualitative une fois au plus : ni son carré, ni a:b:a)
+    if (any(duplicated(ks) & vapply(ks, qualitative, TRUE))) err("%s", "%s", refus_qualitative_double(noms[ks]))
     croises[[length(croises) + 1]] <<- list(ks = ks, fs = fs)
   }
   for (t in termes(f[[3]])) {
@@ -290,11 +293,16 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
       ajouter(list(k = s$k, tr = sprintf("puissance:1:0:%s", nb(s$puissance))))
     } else croiser(list(s))
   }
+  # (un facteur d'un terme croisé sans effet principal, a:b sans a : il n'entre que par ses termes
+  # croisés, comme y ~ secteur + secteur:annee dans R, une pente par secteur ; sa transformation est
+  # la même dans chacun)
+  seuls <- list()
   for (c in croises) for (s in c$fs) {
-    p <- principaux[[as.character(s$k)]]
+    cle <- as.character(s$k)
+    p <- principaux[[cle]] %||% seuls[[cle]]
     if (is.null(p)) {
-      err("Le terme croisé avec « %s » demande aussi « %s » seul dans la formule (a*b ajoute a, b et a:b).",
-          "The cross term with \"%s\" also needs \"%s\" alone in the formula (a*b adds a, b and a:b).", noms[s$k], noms[s$k])
+      seuls[[cle]] <- list(k = s$k, tr = s$tr)
+      next
     }
     if (!identical(p$tr, s$tr)) {
       err("« %s » est transformée d'une autre façon dans le terme croisé.", "\"%s\" is transformed another way in the cross term.", noms[s$k])
@@ -303,9 +311,10 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   # la réponse
   reponse <- simple(f[[2]])
   if (!is.null(reponse$puissance)) reponse <- list(k = reponse$k, tr = sprintf("puissance:1:0:%s", nb(reponse$puissance)))
-  if (!is.null(principaux[[as.character(reponse$k)]])) err("« %s » est la réponse : elle ne peut pas être aussi un terme.", "\"%s\" is the response: it can't also be a term.", noms[reponse$k])
-  qualitative <- function(k) length(projet$variables[[k]]$categories) > 0
-  for (s in c(principaux, list(reponse))) {
+  if (!is.null(principaux[[as.character(reponse$k)]]) || !is.null(seuls[[as.character(reponse$k)]])) {
+    err("« %s » est la réponse : elle ne peut pas être aussi un terme.", "\"%s\" is the response: it can't also be a term.", noms[reponse$k])
+  }
+  for (s in c(principaux, seuls, list(reponse))) {
     if (qualitative(s$k) && !is.null(s$tr)) err("« %s » est qualitative : elle ne se transforme pas.", "\"%s\" is qualitative: it can't be transformed.", noms[s$k])
   }
   if (qualitative(reponse$k)) err("La réponse « %s » est qualitative : une régression demande une réponse quantitative.", "The response \"%s\" is qualitative: a regression needs a quantitative response.", noms[reponse$k])
@@ -323,7 +332,7 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
         "The effort (offset) goes with a GLM or GAM with a Poisson, negative binomial, gamma or Tweedie distribution: choose the type and the distribution of Y first.")
   }
   transformations <- stats::setNames(list(), character(0))
-  for (s in c(principaux, list(reponse))) if (!is.null(s$tr)) transformations[[as.character(uid(s$k))]] <- s$tr
+  for (s in c(principaux, seuls, list(reponse))) if (!is.null(s$tr)) transformations[[as.character(uid(s$k))]] <- s$tr
   croises_uid <- unique(lapply(croises, function(c) uid(c$ks)))
   list(type = type, x = I(vapply(principaux, function(s) uid(s$k), 0, USE.NAMES = FALSE)), y = I(uid(reponse$k)),
        transformations = transformations, croises = I(croises_uid), lisses = I(vapply(courbes, uid, 0)),

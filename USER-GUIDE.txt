@@ -160,7 +160,10 @@ transformations" button applies the suggested log10 to the variables shown (see 
 statistics).
 Cross terms tab: products of two or three X variables (A × B, A × B × C), squares (A × A) and
 cubes (A × A × A); a qualitative variable enters through each of its categories, once at most.
-Each cross term has its own scaling, block and modifier, as in the Variables tab.
+Each cross term has its own scaling, block and modifier, as in the Variables tab. In a
+regression, a factor can also be a variable without a role (listed under "Not X: no main
+effect"): it then enters only through the cross term (see Cross terms with a qualitative
+variable).
 Observations tab: tick / untick the model's observations, and the test set (see Test set);
 "Keep only the observations where..." chooses them by a condition (see Observations chosen by
 a condition).
@@ -626,7 +629,8 @@ R formula (General tab): the model written as in R, for instance
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
 log10, log1p, exp, sqrt, I(x^p), I(a * x + b), the logit log((x - a) / (b - x))), the cross
-terms (a:b; a*b for a, b and a:b; I(a^2) when a is in the model too, else the square of a), the
+terms (a:b; a*b for a, b and a:b; a:b without a: a enters without a main effect; I(a^2) when
+a is in the model too, else the square of a), the
 curves s(x) or s(x, k = 5), the effort offset(log(x)) and the nested random intercepts
 (1 | site/sector), the widest first.
 A curve makes the model additive, random effects make it mixed. R reads the formula without
@@ -641,7 +645,8 @@ autocorrelation), Coefficients (each term's effect with its 95 % interval, red w
 with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
 the odds ratio),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
-95 % band and the observed values below it: a GAM's curves, straight lines otherwise; on the
+95 % band and the observed values below it: a GAM's curves, straight lines otherwise, one per
+category for a term crossed with a qualitative variable; on the
 scale of the link, log or logit, when there is one; for a curve, Thresholds: the effect and its
 slope with 95 % simultaneous bands from 2000 draws of the coefficients, the ranges where the
 slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
@@ -649,7 +654,8 @@ nearly a straight line, as Simpson (2018) reads thresholds), Observed / predicte
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
 distance for a linear regression; the quantile residuals too for counts, presence-absence and
 positive values, below), Block contributions (AIC): each block of the Block column
-(or each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
+(or each variable) removed and the model refitted by ML, a main effect with the cross terms
+that contain it (the With column names them); ΔAIC above 2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
 Y, X, a random effect, the time or the effort are left out (the summary counts them).
 Residuals of a GLM or GAM with the Poisson, negative binomial, binomial or gamma distribution:
@@ -690,7 +696,8 @@ doesn't compare with mgcv::gam's. File › Model report can include the plot.
 Plots › AIC selection (also under each regression in the explorer): which variables to keep.
 Each combination of the model's groups of terms (the blocks of the Block column, otherwise the
 variables), from the null model to the full model, is fitted by ML on the same observations and
-ranked by AICc; a cross term or a square enters only with its main effects. Only the fixed
+ranked by AICc; a cross term or a square enters only with its main effects (a qualitative
+variable through all its categories) and the cross terms of part of its factors. Only the fixed
 effects are chosen: the random effects, the autocorrelation, the effort and the curves'
 settings stay those of the model. Up to 8 groups (256 combinations), every combination is
 fitted (a mixed model with CAR1 on 240 rows takes about 10 s); beyond, a backward elimination
@@ -736,6 +743,37 @@ or mgcv::gamm: its rows and terms, the fits (REML and ML), the cross-validation 
 then the coefficients, AIC, R2, variances, curves with their concurvity and thresholds (the
 same draws as the Thresholds view), the quantile residuals (the same draws as the Residuals
 view), test set and plots, checked against Nuée's results before it is written.
+Cross terms with a qualitative variable (Cross terms tab, or a * b and a:b in the R formula): a
+qualitative variable enters a cross term through each of its categories, once at most (neither
+squared nor cubed). year × sector lets the slope of the year differ from one sector to
+another: its coefficients are, for each sector but the reference one, the difference between
+the year's slope in that sector and its slope in the reference sector, which is the
+coefficient of the year. The reference category is the one the fit leaves out (the last
+category observed), the same in the main effect and in the cross term. For a density monitored
+by sector, a coefficient of 0.2 for year*sector(S2), the year's being 0.05, reads: the density
+rises by 0.25 a year in S2, 0.2 more than in the reference sector. Without the year in X (a
+factor without a role in the Cross terms tab, or y ~ sector + sector:year), each coefficient of
+year × sector is the year's slope in that sector; without the sector in X (y ~ year +
+year:sector), the slopes differ but the sectors share one intercept. habitat × treatment: each
+coefficient is the difference between a treatment's effect (compared with the reference
+treatment) in a habitat and the same effect in the reference habitat; three variables (year ×
+sector × habitat) give differences of differences. The columns are ordered as R orders its
+terms, the main effects first, so that the results are those of lm(), nlme::lme() and mgcv with
+factors whose first level is Nuée's reference. A combination of categories no observation has
+(a treatment never given in a habitat) can't be estimated: it is left out, and the Summary names
+it among the terms never observed. Effects: a quantitative term crossed with categories has one
+line per category (a curve when the term is a GAM's curve), its slope being its coefficient
+plus that of its product with the category, with its 95 % band from the coefficients'
+covariance and, under the
+plot, each slope per unit with its interval. In the AIC selection and the contributions table,
+a cross term enters and leaves whole (all its categories), only with its main effects and its
+lower-order cross terms. The Methods text names each reference category and says what the
+cross terms' coefficients are. Prediction: a category the model has seen gets its own
+prediction; one it hasn't (absent from the model's observations, or from the other groups in
+cross-validation: sectors proper to a site, validated by site) is predicted as the reference
+category, except in a cross term whose quantitative variable has no main effect, where it stays
+without a prediction (it would have no slope), as the Summary says; a category the project
+doesn't know (in a file) is not predicted.
 
 Class models and the Coomans plot
 ---------------------------------

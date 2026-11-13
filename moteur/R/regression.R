@@ -264,7 +264,8 @@ nom_groupement <- function(projet, spec) {
 }
 
 # Une définition de régression qu'on peut ajuster : une réponse quantitative ; des termes X
-# sans spectres ni terme croisé d'une variable qualitative ; des effets aléatoires pour un
+# sans spectres, une variable qualitative une fois au plus dans un terme croisé, un facteur sans
+# effet principal (facteur_seul) facteur d'un terme croisé ; des effets aléatoires pour un
 # modèle mixte (aucun pour un modèle linéaire), une autocorrélation seulement avec eux. Une
 # définition lue dans un fichier passe aussi par là.
 verifier_regression <- function(projet, d) {
@@ -274,8 +275,19 @@ verifier_regression <- function(projet, d) {
     err("Une régression demande une seule variable Y, quantitative.", "A regression needs a single Y variable, a quantitative one.")
   }
   if (length(d$spectres)) err("Une régression ne prend pas de prétraitement de spectres.", "A regression takes no spectral preprocessing.")
-  for (t in d$x) if (length(t$variables) > 1 && any(vapply(seq_along(t$variables), function(j) categorie(t, j) != 0, TRUE))) {
-    err("Une régression ne prend pas encore de terme croisé avec une variable qualitative.", "A regression doesn't take a cross term with a qualitative variable yet.")
+  facteurs <- character(0)  # (les facteurs des termes croisés, « variable catégorie »)
+  for (t in d$x) {
+    if (length(t$variables) < 2) next
+    vs <- lapply(t$variables, function(u) variable_du_projet(projet, u))
+    qualitative <- vapply(vs, function(v) length(v$categories) > 0, TRUE)
+    if (any(duplicated(as.numeric(t$variables)) & qualitative)) stop(refus_qualitative_double(vapply(vs, function(v) as.character(v$ids[1]), "")), call. = FALSE)
+    facteurs <- c(facteurs, vapply(seq_along(t$variables), function(j) paste(t$variables[j], categorie(t, j)), ""))
+  }
+  for (t in Filter(function(t) isTRUE(t$facteur_seul), d$x)) {
+    if (length(t$variables) != 1 || !paste(t$variables[1], categorie(t)) %in% facteurs) {
+      stop(sprintf(traduire("« %s » n'a pas d'effet principal et n'est le facteur d'aucun terme croisé du modèle.",
+                            "\"%s\" has no main effect and is a factor of none of the model's cross terms."), t$name), call. = FALSE)
+    }
   }
   aleatoires <- d$aleatoires %||% list()
   if (identical(d$type, "LMM") && !length(aleatoires)) err("Un modèle mixte demande au moins un effet aléatoire.", "A mixed model needs at least one random effect.")
@@ -289,7 +301,7 @@ verifier_regression <- function(projet, d) {
           "Autocorrelation in time in a generalized or additive model needs the normal distribution: with another one, mgcv::gamm uses penalized quasi-likelihood (PQL), with no true likelihood nor AIC.")
     }
     if (length(d$lisses) && !identical(d$type, "GAM")) err("Les courbes demandent un modèle additif (GAM).", "Curves need an additive model (GAM).")
-    simples_x <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) == 0) as.numeric(t$variables)))
+    simples_x <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) == 0 && !isTRUE(t$facteur_seul)) as.numeric(t$variables)))
     if (!all(as.numeric(d$lisses) %in% simples_x)) err("Une courbe se fait sur une variable X quantitative.", "A curve is made on a quantitative X variable.")
     if (length(d$k_courbes)) {  # (la dimension de base d'une courbe, demandée : k)
       k <- suppressWarnings(as.numeric(unlist(d$k_courbes)))
@@ -338,19 +350,22 @@ termes_regression <- function(termes) lapply(termes, function(t) {
 })
 
 # Le groupe de chaque terme dans la table des apports : son bloc s'il en a un, sinon sa
-# variable (les catégories d'une variable qualitative ensemble) ; un terme croisé, lui-même.
+# variable (les catégories d'une variable qualitative ensemble) ; un terme croisé, lui-même, ses
+# variables jointes par « * » (« annee*secteur » : les produits de chaque catégorie ensemble).
 groupes_termes <- function(projet, termes) {
   vapply(termes, function(t) {
     b <- t$scaling$block
     if (length(b) && !is.na(b[1]) && nzchar(as.character(b[1]))) return(as.character(b[1]))
-    if (length(t$variables) == 1) as.character(variable_du_projet(projet, t$variables)$ids[1]) else as.character(t$name)
+    paste(vapply(t$variables, function(u) as.character(variable_du_projet(projet, u)$ids[1]), ""), collapse = "*")
   }, "")
 }
 
 # Les données d'une régression pour les observations `obs` : y (la réponse, transformée, sans
 # mise à l'échelle), t1..tK (les termes X, construire_bloc), g1..gL (les effets aléatoires,
 # du plus large au plus fin) et temps. Seules restent les observations où tout est connu.
-# `imposees` : les centres et poids d'un modèle déjà ajusté (pour un jeu de test).
+# `imposees` : les centres et poids d'un modèle déjà ajusté (pour un jeu de test). Renvoie aussi
+# les termes qui peuvent entrer dans l'ajustement (`candidats`, candidats_regression) et ce que
+# chacun croise (`composition`, composition_termes).
 cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   ty <- d$y[[1]]
   y <- transformer(valeurs_simples(projet, ty, obs), ty$transform)
@@ -400,8 +415,93 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   if (!is.null(decalage)) cadre$decalage <- decalage[connu]
   complet <- stats::complete.cases(cadre)  # (un terme croisé que sa transformation rend manquant)
   if (!all(simples_complets)) complet <- complet & stats::complete.cases(construire_bloc(projet, complets, garde)$X)  # (de même dans le modèle complet)
+  noms_t <- if (K) paste0("t", seq_len(K)) else character(0)
   list(cadre = cadre[complet, , drop = FALSE], observations = garde[complet], exclues = setdiff(obs, garde[complet]),
-       termes = if (K) paste0("t", seq_len(K)) else character(0), noms = if (K) bloc$noms else character(0), bloc = bloc)
+       termes = noms_t, noms = if (K) bloc$noms else character(0), bloc = bloc,
+       candidats = candidats_regression(termes, noms_t), composition = stats::setNames(composition_termes(projet, termes), noms_t))
+}
+
+# Les termes t1..tK qui peuvent entrer dans l'ajustement, dans l'ordre où termes_utiles les
+# prend : sans les facteurs seuls (ils ne servent qu'à calculer les termes croisés), les termes
+# d'ordre plus bas d'abord (le nombre de leurs variables : effets principaux et carrés, puis
+# termes croisés de deux variables, puis de trois), dans leur ordre à ordre égal. C'est la règle
+# de R (terms() range les termes par ordre) : les colonnes des catégories de référence, et celles
+# d'un terme croisé qui se déduisent de ses effets principaux, sont retirées, comme R code un
+# facteur par des contrastes quand l'effet de l'autre facteur est dans le modèle, sinon par une
+# colonne par catégorie (Chambers et Hastie, 1992).
+candidats_regression <- function(termes, noms_t) {
+  seuls <- vapply(termes, function(t) isTRUE(t$facteur_seul), TRUE)
+  ordre <- vapply(termes, function(t) length(unique(as.numeric(t$variables))), 0L)
+  noms_t[!seuls][order(ordre[!seuls])]
+}
+
+# Ce que croise chaque terme t1..tK d'une régression : ses variables (leurs numéros et leurs
+# noms), la catégorie de chacune (0 pour une variable quantitative) et son nom (NA pour une
+# variable quantitative), et s'il est un facteur seul (sans effet principal). Gardé avec le
+# modèle (m$composition), pour ne jamais relire le nom d'une colonne.
+composition_termes <- function(projet, termes) {
+  lapply(termes, function(t) {
+    vs <- lapply(t$variables, function(u) variable_du_projet(projet, u))
+    cats <- vapply(seq_along(vs), function(j) as.numeric(categorie(t, j)), 0)
+    niveaux <- vapply(seq_along(vs), function(j) if (cats[j] != 0 && length(vs[[j]]$categories) >= cats[j]) as.character(vs[[j]]$categories[cats[j]]) else NA_character_, "")
+    list(variables = as.numeric(t$variables), noms = vapply(vs, function(v) as.character(v$ids[1]), ""), categories = cats, niveaux = niveaux,
+         facteur_seul = isTRUE(t$facteur_seul))
+  })
+}
+
+# Les lignes de `donnees` (le tableau d'une régression) qui ont toutes les catégories du terme `t`
+# (0 ou 1 chacune), lues dans les colonnes 0/1 de ces catégories (leurs termes simples, effets
+# principaux ou facteurs seuls) ; TRUE pour un terme sans catégorie.
+lignes_cellule <- function(donnees, composition, t) {
+  ct <- composition[[t]]
+  dans <- rep(TRUE, nrow(donnees))
+  for (j in which(ct$categories != 0)) {
+    cle <- Find(function(s) length(composition[[s]]$variables) == 1 && composition[[s]]$variables == ct$variables[j] &&
+                  composition[[s]]$categories == ct$categories[j], names(composition))
+    if (!is.null(cle)) dans <- dans & !is.na(donnees[[cle]]) & donnees[[cle]] == 1
+  }
+  dans
+}
+
+# Le terme `t` porte-t-il une catégorie, ou une combinaison de catégories, qu'aucune ligne de
+# `donnees` n'a ? (une combinaison jamais observée : sa colonne est constante, et l'ajustement la
+# laisse de côté)
+cellule_vide <- function(donnees, composition, t) any(composition[[t]]$categories != 0) && !any(lignes_cellule(donnees, composition, t))
+
+# Les termes croisés, parmi `candidats`, d'une ou plusieurs catégories et d'une variable quantitative
+# dont le modèle n'a pas l'effet principal (y ~ secteur + secteur:annee) : chacun est la pente d'une
+# catégorie, et non son écart à celle de la catégorie de référence.
+pentes_sans_effet_principal <- function(composition, candidats) {
+  numerique <- function(ct) paste(sort(ct$variables[ct$categories == 0]), collapse = " ")
+  effets <- vapply(composition[candidats], function(ct) if (all(ct$categories == 0)) numerique(ct) else NA_character_, "")
+  as.character(Filter(function(t) {
+    ct <- composition[[t]]
+    any(ct$categories != 0) && any(ct$categories == 0) && !numerique(ct) %in% effets
+  }, candidats))
+}
+
+# Les lignes de `nouvelles` d'une catégorie que les lignes `appris` n'ont pas, dans une pente sans
+# effet principal (`pentes` : pentes_sans_effet_principal) : sa colonne, constante sur `appris`
+# (l'ajustement la laisse de côté), a une autre valeur pour elles. Prédites, elles auraient une pente
+# nulle, celle d'aucune catégorie : elles restent sans prédiction (R refuse de même un niveau qu'il
+# n'a pas vu). Une catégorie inconnue d'un effet principal, ou d'un terme croisé dont la variable
+# quantitative a son effet principal, est prédite comme la catégorie de référence.
+niveaux_inconnus <- function(appris, nouvelles, pentes) {
+  sans <- rep(FALSE, nrow(nouvelles))
+  for (t in pentes) {
+    v <- appris[[t]]
+    tol <- 1e-9 * max(1, abs(v))
+    if (!length(v) || any(abs(v - v[1]) > tol)) next
+    sans <- sans | (!is.na(nouvelles[[t]]) & abs(nouvelles[[t]] - v[1]) > tol)
+  }
+  sans
+}
+
+# Q2 et RMSEcv des prédictions de validation croisée `prediction` (sans celles qui manquent).
+qualite_prediction <- function(y, prediction) {
+  ok <- !is.na(prediction)
+  list(Q2 = if (any(ok)) 1 - sum((y[ok] - prediction[ok])^2) / sum((y[ok] - mean(y[ok]))^2) else NA_real_,
+       RMSEcv = if (any(ok)) sqrt(mean((y[ok] - prediction[ok])^2)) else NA_real_)
 }
 
 # Ajuste une définition de régression (definir_modele, type "LM", "LMM", "GLM" ou "GAM") : le
@@ -428,14 +528,17 @@ ajuster_regression <- function(projet, d) {
   cadre <- cadre_regression(projet, d)
   niveaux <- length(d$aleatoires %||% list())
   car1 <- !is.null(d$correlation)
-  if (nrow(cadre$cadre) <= length(cadre$termes) + 1) {
+  # (les termes qui peuvent entrer dans l'ajustement, d'ordre plus bas d'abord : candidats_regression)
+  candidats <- cadre$candidats
+  noms_candidats <- cadre$noms[match(candidats, cadre$termes)]
+  if (nrow(cadre$cadre) <= length(candidats) + 1) {
     stop(sprintf(traduire("Trop peu d'observations complètes (%d) pour %d termes.", "Too few complete observations (%d) for %d terms."),
-                 nrow(cadre$cadre), length(cadre$termes)), call. = FALSE)
+                 nrow(cadre$cadre), length(candidats)), call. = FALSE)
   }
   G <- d$cv_groups %||% 7
   groupes <- groupes_definition(projet, d, G)[match(cadre$observations, d$observations)]
   termes_x <- termes_regression(d$x)
-  quantitatifs <- cadre$termes[vapply(termes_x, function(t) length(t$variables) == 1 && categorie(t) == 0, TRUE)]
+  quantitatifs <- cadre$termes[vapply(termes_x, function(t) length(t$variables) == 1 && categorie(t) == 0 && !isTRUE(t$facteur_seul), TRUE)]
   famille <- if (generalise) as.character(d$famille %||% "gaussienne")[1] else "gaussienne"
   lisses <- character(0)
   # (un modèle généralisé ou additif avec une autocorrélation : mgcv::gamm, nlme dessous)
@@ -449,21 +552,39 @@ ajuster_regression <- function(projet, d) {
       if (length(k)) stats::setNames(as.integer(k), t)
     }))
     if (gamm) {
-      r <- resultat_gamm(cadre$cadre, cadre$termes, cadre$noms, lisses, niveaux, k_demandes)
+      r <- resultat_gamm(cadre$cadre, candidats, noms_candidats, lisses, niveaux, k_demandes)
       vc <- validation_gamm(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux)
     } else {
-      r <- resultat_mgcv(cadre$cadre, cadre$termes, cadre$noms, lisses, niveaux, famille, !is.null(d$decalage), k_demandes)
+      r <- resultat_mgcv(cadre$cadre, candidats, noms_candidats, lisses, niveaux, famille, !is.null(d$decalage), k_demandes)
       vc <- validation_mgcv(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, famille, !is.null(d$decalage))
     }
   } else {
-    r <- resultat_lineaire(cadre$cadre, cadre$termes, cadre$noms, niveaux, car1)
+    r <- resultat_lineaire(cadre$cadre, candidats, noms_candidats, niveaux, car1)
     vc <- validation_lineaire(cadre$cadre, r$utiles, groupes, niveaux, car1)
+  }
+  # (les termes laissés de côté qu'aucune observation n'a : une catégorie, une combinaison de catégories)
+  retires <- setdiff(candidats, r$utiles)
+  r$termes_absents <- cadre$noms[match(retires[vapply(retires, function(t) cellule_vide(cadre$cadre, cadre$composition, t), TRUE)], cadre$termes)]
+  # (une catégorie que les lignes d'apprentissage d'un groupe n'ont pas, dans la pente d'un terme
+  # croisé sans l'effet principal de sa variable quantitative : pas de prédiction, plutôt qu'une pente
+  # nulle ; niveaux_inconnus)
+  vc$sans_pente <- 0L
+  pentes <- pentes_sans_effet_principal(cadre$composition, candidats)
+  if (length(pentes)) {
+    for (g in unique(groupes)) {
+      ici <- which(groupes == g)
+      sans <- ici[niveaux_inconnus(cadre$cadre[-ici, , drop = FALSE], cadre$cadre[ici, , drop = FALSE], pentes) & !is.na(vc$prediction[ici])]
+      vc$prediction[sans] <- NA
+      vc$sans_pente <- vc$sans_pente + length(sans)
+    }
+    vc[c("Q2", "RMSEcv")] <- qualite_prediction(cadre$cadre$y, vc$prediction)
   }
   y <- d$y[[1]]
   m <- list(type = d$type, regression = TRUE, plsda = FALSE, opls = FALSE, A = 0, nom = d$name %||% "", titre = d$title %||% "",
             N = nrow(cadre$cadre), K = length(r$utiles), observations = cadre$observations, exclues = cadre$exclues,
             y = list(uid = as.numeric(y$variables), noms = as.character(y$name), transformation = nom_transformation(y$transform) %||% ""),
             noms_termes = cadre$noms, termes = cadre$termes, utiles = r$utiles, quantitatifs = quantitatifs,
+            candidats = candidats, composition = cadre$composition,
             lisses = intersect(lisses, r$utiles), k = r$k, famille = famille, lien = r$lien %||% "identity",
             decalage = if (!is.null(d$decalage)) nom_groupement(projet, list(by = "variable", variable = d$decalage)),
             groupes_termes = stats::setNames(groupes_termes(projet, d$x), cadre$termes),
@@ -473,7 +594,7 @@ ajuster_regression <- function(projet, d) {
             resultat = r[setdiff(names(r), c("ajustement", "ajustement_ml", "utiles", "k"))],
             ajustement = r$ajustement, ajustement_ml = r$ajustement_ml, donnees = cadre$cadre, bloc = cadre$bloc,
             G = length(unique(groupes)), vc_par = nom_groupes_vc(projet, d),
-            vc = list(Q2 = vc$Q2, RMSEcv = vc$RMSEcv, prediction = vc$prediction, groupe = groupes, echecs = vc$echecs))
+            vc = list(Q2 = vc$Q2, RMSEcv = vc$RMSEcv, prediction = vc$prediction, groupe = groupes, echecs = vc$echecs, sans_pente = vc$sans_pente))
   # les modèles que l'AIC compare : même réponse sur les mêmes observations, une loi de même
   # mesure (une loi discrète ne se compare pas à une continue), et la même vraisemblance (celle
   # d'un modèle mixte de nlme, marginale, ne se compare pas à celle, conditionnelle, des effets
@@ -486,13 +607,17 @@ ajuster_regression <- function(projet, d) {
 }
 
 # Les prédictions d'une régression pour des observations nouvelles (les colonnes de
-# cadre_regression) : par les effets fixes seuls quand le modèle a des effets aléatoires.
+# cadre_regression) : par les effets fixes seuls quand le modèle a des effets aléatoires ; sans
+# prédiction, une catégorie que le modèle n'a pas vue dans une pente sans effet principal
+# (niveaux_inconnus).
 predire_regression <- function(m, nd) {
   a <- m$ajustement
-  if (inherits(a, "gamm")) return(as.vector(stats::predict(a$gam, nd, type = "response")))  # ($gam : sans les effets aléatoires)
-  if (inherits(a, "gam")) return(predire_mgcv(a, nd, m$donnees, length(m$niveaux)))
-  if (inherits(a, "lme")) return(as.vector(stats::predict(a, nd, level = 0)))
-  as.vector(stats::predict(a, nd))
+  p <- if (inherits(a, "gamm")) as.vector(stats::predict(a$gam, nd, type = "response"))  # ($gam : sans les effets aléatoires)
+       else if (inherits(a, "gam")) predire_mgcv(a, nd, m$donnees, length(m$niveaux))
+       else if (inherits(a, "lme")) as.vector(stats::predict(a, nd, level = 0))
+       else as.vector(stats::predict(a, nd))
+  p[niveaux_inconnus(m$donnees, nd, pentes_sans_effet_principal(m$composition, m$candidats))] <- NA
+  p
 }
 
 # Le jeu de test d'une régression : ses observations prédites par les effets fixes (un modèle
@@ -506,9 +631,10 @@ tester_regression <- function(projet, m, d) {
   obs <- data.frame(uid = t$observations, nom = unname(projet$noms_obs[as.character(t$observations)]), hors_domaine = FALSE, stringsAsFactors = FALSE)
   obs[[paste(y, "observé")]] <- nd$y
   obs[[paste(y, "prédit")]] <- as.vector(predit)
+  ok <- !is.na(e)  # (sans prédiction : une catégorie que le modèle n'a pas vue, dans une pente sans effet principal)
   list(n = nrow(nd), hors_domaine = 0, observations = obs,
-       statistiques = data.frame(y = y, n = length(e), RMSEP = sqrt(mean(e^2)), biais = mean(e), SEP = if (length(e) > 1) stats::sd(e) else NA_real_,
-                                 Q2ext = 1 - sum(e^2) / sum((nd$y - mean(m$donnees$y))^2), stringsAsFactors = FALSE))
+       statistiques = data.frame(y = y, n = sum(ok), RMSEP = sqrt(mean(e[ok]^2)), biais = mean(e[ok]), SEP = if (sum(ok) > 1) stats::sd(e[ok]) else NA_real_,
+                                 Q2ext = 1 - sum(e[ok]^2) / sum((nd$y[ok] - mean(m$donnees$y))^2), stringsAsFactors = FALSE))
 }
 
 # Les prédictions d'une régression pour des observations du projet, d'un jeu de prédiction ou
@@ -613,27 +739,37 @@ groupes_modele <- function(m) {
 }
 
 # L'apport de chaque groupe de termes du modèle (son bloc, sinon sa variable), calculé à la
-# demande : retrait_groupes.
+# demande : retrait_groupes. Un groupe sort avec ceux qui le demandent (groupes_requis), de proche
+# en proche : un effet principal avec ses termes croisés, qui n'entrent qu'avec lui ; `avec` les
+# nomme.
 apport_groupes <- function(m) {
   if (!length(m$utiles)) return(NULL)
-  retrait_groupes(m, groupes_modele(m))
+  groupes <- groupes_modele(m)
+  requis <- groupes_requis(groupes, m$composition)
+  avec <- function(g) repeat {
+    plus <- union(g, names(requis)[vapply(requis, function(r) any(r %in% g), TRUE)])
+    if (length(plus) == length(g)) return(g)
+    g <- plus
+  }
+  a <- retrait_groupes(m, lapply(stats::setNames(names(groupes), names(groupes)), function(g) unlist(groupes[avec(g)], use.names = FALSE)))
+  if (!is.null(a)) a$avec <- vapply(a$groupe, function(g) paste(setdiff(avec(g), g), collapse = ", "), "", USE.NAMES = FALSE)
+  a
 }
 
 # ------------------------------------------------------------ sélection par l'AIC
 
-# Les groupes que demande chaque groupe de termes : ceux des facteurs de ses termes croisés et de
-# ses carrés (un terme croisé n'entre qu'avec ses effets principaux). `termes` : les termes X de
-# la définition, t1..tK dans l'ordre (termes_regression) ; une liste nommée comme `groupes`.
-groupes_requis <- function(groupes, termes) {
-  cles <- vapply(termes, function(t) if (length(t$variables) == 1) paste(t$variables[1], categorie(t)) else "", "")
+# Les groupes que demande chaque groupe de termes : ceux des termes d'ordre plus bas que ses termes
+# croisés contiennent, ses effets principaux (une variable qualitative par toutes ses catégories)
+# et les termes croisés d'une partie de ses facteurs (a × b dans a × b × c, x × x dans x × x ×
+# secteur) ; un terme croisé n'entre qu'avec eux. `composition` : ce que croise chaque terme
+# (m$composition, composition_termes) ; une liste nommée comme `groupes`.
+groupes_requis <- function(groupes, composition) {
+  cles <- function(t) paste(composition[[t]]$variables, composition[[t]]$categories)
+  contenu <- function(a, b) length(a) < length(b) && all(vapply(unique(a), function(k) sum(a == k) <= sum(b == k), TRUE))
   groupe_de <- stats::setNames(rep(names(groupes), lengths(groupes)), unlist(groupes, use.names = FALSE))
   lapply(stats::setNames(names(groupes), names(groupes)), function(nom) {
-    facteurs <- unlist(lapply(groupes[[nom]], function(tk) {
-      t <- termes[[as.integer(sub("^t", "", tk))]]
-      if (length(t$variables) < 2) return(character(0))
-      paste0("t", match(vapply(seq_along(t$variables), function(j) paste(t$variables[j], categorie(t, j)), ""), cles))
-    }))
-    setdiff(unique(unname(groupe_de[intersect(facteurs, names(groupe_de))])), nom)
+    demandes <- unlist(lapply(groupes[[nom]], function(tk) Filter(function(s) contenu(cles(s), cles(tk)), names(groupe_de))))
+    setdiff(unique(unname(groupe_de[demandes])), nom)
   })
 }
 
@@ -641,8 +777,9 @@ groupes_requis <- function(groupes, termes) {
 # combinaisons des groupes de termes du modèle `m` (groupes_modele), du modèle nul au modèle
 # complet, chacune ajustée en ML sur les observations du modèle (ajuster_termes_ml) ; ses effets
 # aléatoires, son autocorrélation, sa loi, son décalage et le réglage de ses courbes restent ceux
-# du modèle. Un terme croisé ou un carré n'entre qu'avec ses effets principaux (groupes_requis ;
-# `d` : la définition du modèle). Toutes les combinaisons quand 2^K ≤ `limite` (sur 240
+# du modèle. Un terme croisé ou un carré n'entre qu'avec ses effets principaux et les termes croisés
+# d'une partie de ses facteurs (groupes_requis, d'après m$composition ; `d`, la définition du
+# modèle, n'y sert plus). Toutes les combinaisons quand 2^K ≤ `limite` (sur 240
 # observations, les 256 combinaisons de 8 groupes d'un nlme::lme avec CAR1 prennent une dizaine de
 # secondes, celles d'un mgcv::gamm avec deux courbes une demi-minute) ; au-delà, une élimination
 # descendante depuis le modèle complet : à chaque pas, le retrait qui baisse le plus l'AICc, jusqu'à
@@ -656,7 +793,7 @@ selection_aic <- function(m, d, limite = 256) {
   n <- nrow(m$donnees)
   if (!K) return(list(K = 0L, N = n))
   noms <- names(groupes)
-  requis <- groupes_requis(groupes, termes_regression(d$x))
+  requis <- groupes_requis(groupes, m$composition)
   permis <- function(b) all(vapply(noms[b], function(g) all(requis[[g]] %in% noms[b]), TRUE))
   evaluer <- function(b) {  # (un candidat : les groupes qu'il contient)
     a <- ajuster_termes_ml(m, intersect(m$utiles, unlist(groupes[b], use.names = FALSE)))
@@ -1064,18 +1201,25 @@ validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux) {
 # Les courbes d'effet d'une régression : pour chaque terme quantitatif, son effet sur
 # l'échelle du lien quand sa variable parcourt ses valeurs (les autres termes fixés), avec
 # son intervalle à 95 % ; une courbe (GAM) telle que mgcv l'a ajustée, un terme linéaire comme
-# une droite. Les abscisses sont dans les unités de la variable (transformée s'il y a lieu).
+# une droite. Les abscisses sont dans les unités de la variable (transformée s'il y a lieu). Un
+# terme quantitatif croisé avec une ou plusieurs variables qualitatives (annee × secteur), ou qui
+# n'entre que par un tel terme croisé (sans effet principal), a une droite (ou une courbe) par
+# catégorie, dans `niveaux` : effets_par_niveau. Un terme croisé avec une autre variable
+# quantitative garde sa droite seule : le coefficient de son effet principal, sa pente là où
+# l'autre vaut 0.
 effets_regression <- function(m) {
   a <- m$ajustement
   if (inherits(a, "gamm")) a <- a$gam  # (mgcv::gamm : ses courbes, dans sa partie gam)
   d <- m$donnees
   co <- m$resultat$coefficients
-  termes <- intersect(m$quantitatifs, m$utiles)
+  croises <- pentes_croisees(m)
+  termes <- c(intersect(m$quantitatifs, m$utiles), setdiff(names(croises), m$quantitatifs))
   lapply(termes, function(t) {
     i <- match(t, m$termes)
     centre <- m$bloc$centre[i]
     poids <- m$bloc$poids[i]
     if (!isTRUE(poids > 0)) poids <- 1
+    if (!is.null(croises[[t]])) return(effets_par_niveau(m, a, t, croises[[t]], centre, poids))
     x <- seq(min(d[[t]]), max(d[[t]]), length.out = 80)
     if (t %in% m$lisses) {
       nd <- d[rep(1, length(x)), , drop = FALSE]
@@ -1092,6 +1236,91 @@ effets_regression <- function(m) {
     list(terme = m$noms_termes[i], courbe = t %in% m$lisses, x = x / poids + centre, effet = effet,
          bas = effet - 1.96 * se, haut = effet + 1.96 * se, valeurs = d[[t]] / poids + centre)
   })
+}
+
+# Les termes croisés (utiles) d'une variable quantitative, une fois, avec des catégories seules
+# (annee*secteur(S1), annee*secteur(S1)*habitat(H2)...), par terme simple de cette variable (son
+# effet principal, ou son facteur seul) : list(t5 = c("t9", "t10")...). La pente de la variable
+# y change d'une catégorie à l'autre.
+pentes_croisees <- function(m) {
+  comp <- m$composition
+  simples <- Filter(function(t) length(comp[[t]]$variables) == 1 && comp[[t]]$categories == 0, names(comp))
+  res <- lapply(stats::setNames(simples, simples), function(t) {
+    u <- comp[[t]]$variables
+    Filter(function(p) {
+      ct <- comp[[p]]
+      length(ct$variables) > 1 && sum(ct$variables == u) == 1 && ct$categories[ct$variables == u] == 0 && all(ct$categories[ct$variables != u] != 0)
+    }, m$utiles)
+  })
+  res[lengths(res) > 0]
+}
+
+# Les coefficients d'un ajustement et leur matrice de covariance (nlme : ses effets fixes).
+coefficients_covariance <- function(a) {
+  if (inherits(a, "lme")) return(list(b = nlme::fixef(a), V = a$varFix))
+  list(b = stats::coef(a), V = stats::vcov(a))
+}
+
+# L'effet du terme quantitatif `t` dans chaque catégorie (ou combinaison de catégories) des
+# variables qualitatives de ses termes croisés `produits` (pentes_croisees), là où le modèle a des
+# observations : sa pente dans la catégorie de référence (le coefficient de son effet principal,
+# 0 sans lui ; une courbe pour un GAM), plus le coefficient de son produit avec cette catégorie fois
+# le poids de ce produit (sa dérivée), avec une bande à 95 % tirée de la matrice de covariance des
+# coefficients ; centré, comme une droite seule, sur la moyenne de la variable dans le modèle, et
+# tracé sur l'étendue de ses valeurs dans la catégorie. Une droite donne aussi sa pente par unité
+# de la variable, avec son intervalle à 95 %. `a` : l'ajustement (sa partie gam pour mgcv::gamm).
+effets_par_niveau <- function(m, a, t, produits, centre, poids) {
+  d <- m$donnees
+  comp <- m$composition
+  cb <- coefficients_covariance(a)
+  courbe <- t %in% m$lisses
+  # la catégorie de chaque ligne pour chaque variable qualitative croisée (lue dans ses colonnes 0/1)
+  qual <- unique(unlist(lapply(produits, function(p) comp[[p]]$variables[comp[[p]]$categories != 0])))
+  colonnes <- lapply(qual, function(u) Filter(function(s) length(comp[[s]]$variables) == 1 && comp[[s]]$variables == u && comp[[s]]$categories != 0, names(comp)))
+  lignes <- matrix(vapply(colonnes, function(ss) {
+    r <- rep(NA_real_, nrow(d))
+    for (s in ss) r[!is.na(d[[s]]) & d[[s]] == 1] <- comp[[s]]$categories
+    r
+  }, numeric(nrow(d))), nrow(d))
+  connues <- stats::complete.cases(lignes)
+  cellules <- unique(lignes[connues, , drop = FALSE])
+  cellules <- cellules[do.call(order, unname(as.data.frame(cellules))), , drop = FALSE]
+  niveau <- function(j, k) comp[[Find(function(s) comp[[s]]$categories == k, colonnes[[j]])]]$niveaux
+  moyenne <- mean(d[[t]])
+  niveaux <- lapply(seq_len(nrow(cellules)), function(r) {
+    cellule <- cellules[r, ]
+    ici <- connues & apply(lignes, 1, function(l) all(l == cellule))
+    x <- seq(min(d[[t]][ici]), max(d[[t]][ici]), length.out = 80)
+    # l'effet en chaque point de x : L %*% coefficients
+    L <- matrix(0, length(x), length(cb$b), dimnames = list(NULL, names(cb$b)))
+    if (courbe) {  # (la courbe : ses colonnes de base, mgcv)
+      nd <- d[rep(1, length(x)), , drop = FALSE]
+      nd[[t]] <- x
+      Xp <- stats::predict(a, nd, type = "lpmatrix")
+      js <- grep(sprintf("^s\\(%s\\)\\.", t), colnames(Xp))
+      L[, colnames(Xp)[js]] <- Xp[, js]
+    } else if (t %in% names(cb$b)) L[, t] <- x - moyenne
+    dans <- Filter(function(p) {  # (les produits de cette catégorie)
+      ct <- comp[[p]]
+      all(vapply(which(ct$categories != 0), function(j) cellule[match(ct$variables[j], qual)] == ct$categories[j], TRUE))
+    }, produits)
+    for (p in intersect(dans, names(cb$b))) L[, p] <- (x - moyenne) * m$bloc$poids[match(p, m$termes)]
+    effet <- as.vector(L %*% cb$b)
+    se <- sqrt(pmax(0, rowSums((L %*% cb$V) * L)))
+    pente <- NULL
+    if (!courbe) {  # (la pente, par unité de la variable : la dérivée de l'effet, le poids de la variable compris)
+      l1 <- stats::setNames(rep(0, length(cb$b)), names(cb$b))
+      if (t %in% names(cb$b)) l1[t] <- 1
+      for (p in intersect(dans, names(cb$b))) l1[p] <- m$bloc$poids[match(p, m$termes)]
+      s <- sum(l1 * cb$b)
+      e <- sqrt(max(0, sum(l1 * (cb$V %*% l1))))
+      pente <- list(pente = s * poids, pente_bas = (s - 1.96 * e) * poids, pente_haut = (s + 1.96 * e) * poids)
+    }
+    c(list(niveau = paste(vapply(seq_along(qual), function(j) niveau(j, cellule[j]), ""), collapse = " · "), x = x / poids + centre,
+           effet = effet, bas = effet - 1.96 * se, haut = effet + 1.96 * se, valeurs = d[[t]][ici] / poids + centre), pente)
+  })
+  list(terme = m$noms_termes[match(t, m$termes)], courbe = courbe, par = paste(vapply(colonnes, function(ss) comp[[ss[1]]]$noms, ""), collapse = " × "),
+       valeurs = d[[t]] / poids + centre, niveaux = niveaux)
 }
 
 # Les seuils d'une courbe (GAM) : son effet et sa pente sur une grille de 200 valeurs entre les
@@ -1247,6 +1476,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
       cite("zuur", if (fr) "Les coefficients et les variances ont été estimés par maximum de vraisemblance restreint (REML), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance (ML ; Zuur et al., 2009)."
                    else "Coefficients and variances were estimated by restricted maximum likelihood (REML), and models compared by the AIC of maximum-likelihood fits (ML; Zuur et al., 2009)."))
   }
+  # (ses variables qualitatives, leur catégorie de référence, et ce que valent les coefficients de leurs termes croisés)
+  p2 <- c(p2[1], phrases_qualitatives(m, fr, liste, guillemets), p2[-1])
   # (la sélection par l'AIC, quand elle a été faite sur ce modèle ; un modèle qu'elle a choisi le dit)
   if (isTRUE(m$selection_aic$K > 0)) p2 <- c(p2, cite("burnham", phrase_selection_aic(m, fr, nombre, liste, guillemets)))
   if (!is.null(d$selection_origine)) {
@@ -1383,6 +1614,85 @@ phrase_methodes_baci <- function(o, fr, liste, guillemets) {
           unites(o$impact, if (fr) "l'unité d'impact %s" else "the impact unit %s", if (fr) "les unités d'impact %s" else "the impact units %s",
                  if (fr) "les %d unités d'impact" else "the %d impact units"),
           unites(o$temoins, if (fr) "le témoin %s" else "the control %s", if (fr) "les témoins %s" else "the controls %s", if (fr) "les %d témoins" else "the %d controls"), fin)
+}
+
+# La catégorie de référence de chaque variable qualitative du modèle `m` (par son numéro, NA
+# quand il n'y en a pas une seule) : la catégorie observée que l'ajustement a laissée de côté dans
+# son effet principal ; sans lui, dans ses termes croisés avec une variable quantitative qui a le
+# sien (y ~ annee + annee:secteur). Sans l'un ni l'autre, chaque catégorie a son coefficient.
+references_qualitatives <- function(m) {
+  comp <- m$composition
+  qual <- unique(unlist(lapply(comp[m$candidats], function(ct) ct$variables[ct$categories != 0])))
+  principal <- function(u, categorie) Filter(function(t) length(comp[[t]]$variables) == 1 && comp[[t]]$variables == u &&
+                                                (if (categorie) comp[[t]]$categories != 0 else comp[[t]]$categories == 0), m$candidats)
+  # (la catégorie de u des colonnes `ts` laissées de côté parmi celles qu'ont des observations, si elle est seule)
+  laissee <- function(u, ts) {
+    niveaux <- unique(vapply(Filter(function(t) !t %in% m$utiles && !cellule_vide(m$donnees, comp, t), ts),
+                             function(t) comp[[t]]$niveaux[comp[[t]]$variables == u], ""))
+    if (length(niveaux) == 1) niveaux else NA_character_
+  }
+  stats::setNames(lapply(qual, function(u) {
+    principaux <- principal(u, TRUE)
+    if (length(principaux)) return(laissee(u, principaux))
+    pentes <- Filter(function(t) {  # (u croisée avec une variable quantitative qui a son effet principal)
+      ct <- comp[[t]]
+      length(ct$variables) == 2 && u %in% ct$variables && sum(ct$categories == 0) == 1 && length(principal(ct$variables[ct$categories == 0], FALSE)) > 0
+    }, m$candidats)
+    if (length(pentes)) laissee(u, pentes) else NA_character_
+  }), qual)
+}
+
+# Les variables qualitatives d'une régression dans le texte des Méthodes : la catégorie de
+# référence de chacune (references_qualitatives), ce que vaut le coefficient d'une catégorie, et
+# celui des termes croisés qui en ont une : une pente de la variable quantitative dans une
+# catégorie moins sa pente dans la catégorie de référence, ou la pente de chaque catégorie sans
+# l'effet principal de cette variable ; l'effet d'une catégorie d'une variable qualitative dans
+# une catégorie de l'autre moins ce même effet dans sa catégorie de référence. `liste`,
+# `guillemets` : ceux de texte_methodes_regression.
+phrases_qualitatives <- function(m, fr, liste, guillemets) {
+  comp <- m$composition
+  refs <- references_qualitatives(m)
+  if (!length(refs)) return(character(0))
+  noms <- unlist(lapply(unname(comp), function(ct) stats::setNames(ct$noms, ct$variables)))
+  nom <- function(u) guillemets(noms[[as.character(u)]])
+  ref <- function(u) refs[[as.character(u)]] %||% NA_character_
+  # (le terme de son effet principal parmi les candidats : une catégorie, ou la variable quantitative)
+  principal <- function(u, categorie) Find(function(t) length(comp[[t]]$variables) == 1 && comp[[t]]$variables == u && (comp[[t]]$categories != 0) == categorie, m$candidats)
+  phrases <- character(0)
+  avec <- Filter(function(u) !is.null(principal(u, TRUE)) && !is.na(ref(u)), as.numeric(names(refs)))
+  if (length(avec)) {
+    quelles <- liste(vapply(avec, function(u) sprintf(if (fr) "%s pour %s" else "%s for %s", guillemets(ref(u)), nom(u)), ""))
+    phrases <- sprintf(if (fr) "Une variable qualitative entre par une indicatrice (0 ou 1) par catégorie, sauf sa catégorie de référence (%s) : le coefficient d'une catégorie est son écart à la catégorie de référence."
+                       else "A qualitative variable enters through one indicator (0 or 1) per category, except its reference category (%s): a category's coefficient is its difference from the reference category.", quelles)
+  }
+  # les termes croisés qui ont une variable qualitative, un par groupe de variables
+  croises <- Filter(function(t) length(comp[[t]]$variables) > 1 && any(comp[[t]]$categories != 0), m$candidats)
+  for (vs in unique(lapply(croises, function(t) comp[[t]]$variables))) {
+    ct <- comp[[Find(function(t) identical(comp[[t]]$variables, vs), croises)]]
+    terme <- guillemets(paste(ct$noms, collapse = " × "))
+    q <- vs[ct$categories != 0]
+    x <- vs[ct$categories == 0]
+    px <- if (length(x) == 1) principal(x, FALSE)
+    phrases <- c(phrases, if (length(x) == 1 && length(q) == 1 && is.null(px)) {
+      sprintf(if (fr) "%s n'ayant pas d'effet principal, les coefficients de %s sont la pente de %s dans chaque catégorie de %s."
+              else "As %s has no main effect, the coefficients of %s are the slope of %s in each category of %s.", nom(x), terme, nom(x), nom(q))
+    } else if (length(x) == 1 && length(q) == 1 && !is.na(ref(q)) && px %in% m$lisses) {
+      sprintf(if (fr) "Les coefficients de %s sont, pour chaque autre catégorie de %s, la pente qui s'ajoute dans cette catégorie à la courbe de %s, celle de %s."
+              else "The coefficients of %s are, for each other category of %s, the slope added in that category to the curve of %s, that of %s.",
+              terme, nom(q), nom(x), guillemets(ref(q)))
+    } else if (length(x) == 1 && length(q) == 1 && !is.na(ref(q))) {
+      sprintf(if (fr) "Les coefficients de %s sont, pour chaque autre catégorie de %s, l'écart de la pente de %s à sa pente dans %s (le coefficient de %s)."
+              else "The coefficients of %s are, for each other category of %s, the difference between the slope of %s in it and its slope in %s (the coefficient of %s).",
+              terme, nom(q), nom(x), guillemets(ref(q)), nom(x))
+    } else if (!length(x) && length(q) == 2 && !is.null(principal(q[1], TRUE)) && !is.null(principal(q[2], TRUE)) && !anyNA(c(ref(q[1]), ref(q[2])))) {
+      sprintf(if (fr) "Les coefficients de %s sont, pour chaque autre catégorie de %s et de %s, l'écart entre l'effet de la catégorie de %s (par rapport à %s) dans celle de %s et ce même effet dans %s."
+              else "The coefficients of %s are, for each other category of %s and of %s, the difference between the effect of the category of %s (compared with %s) in that of %s and the same effect in %s.",
+              terme, nom(q[1]), nom(q[2]), nom(q[2]), guillemets(ref(q[2])), nom(q[1]), guillemets(ref(q[1])))
+    } else {
+      sprintf(if (fr) "Les coefficients de %s se lisent par rapport aux catégories de référence de ses variables qualitatives." else "The coefficients of %s read against the reference categories of its qualitative variables.", terme)
+    })
+  }
+  phrases
 }
 
 # Les niveaux emboîtés d'effets aléatoires, en mots : « site », « secteur » dans chaque « site »...

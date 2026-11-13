@@ -211,7 +211,7 @@ resume_modele <- function(d) {
   list(numero = d$number %||% NA, nom = d$name %||% "", titre = d$title %||% "",
        type = paste0(if (isTRUE(d$opls)) "O" else "", if (isTRUE(d$plsda)) "PLS-DA" else d$type %||% ""), A = d$A %||% 0,
        ajuste = isTRUE(d$fitted) || !is.null(d$app), erreur = d$error %||% NULL,
-       n_obs = length(d$observations), x = vapply(d$x, function(t) as.character(t$name), ""),
+       n_obs = length(d$observations), x = vapply(Filter(function(t) !isTRUE(t$facteur_seul), d$x), function(t) as.character(t$name), ""),  # (sans les facteurs seuls d'une régression)
        y = vapply(d$y, function(t) as.character(t$name), ""), stocke = composantes_stockees(d), note = d$note %||% "",
        version_origine = if (!isTRUE(d$app)) d$version_origine %||% NULL)
 }
@@ -460,11 +460,11 @@ resultat_regression <- function(id) {
   list(id = id, projet = p$id, nom = m$nom, titre = m$titre, type = m$type, regression = TRUE, opls = FALSE, Ap = 0, A = 0,
        N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
        residus_quantiles = if (!is.null(r$residus_quantiles)) list(residu = r$residus_quantiles, quantile_normal = quantiles_henry(r$residus_quantiles)),
-       coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),
+       coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires), termes_absents = I(r$termes_absents %||% character(0)),
        famille = m$famille, lien = m$lien, parametre_loi = r$parametre_loi, courbes = r$courbes, decalage = m$decalage, dispersion = r$dispersion,
        gamm = isTRUE(m$gamm), dans = m$dans,
        qualite = c(r$r2, list(AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres,
-                              Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs)),
+                              Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs, sans_pente_vc = m$vc$sans_pente %||% 0)),
        variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),
        signature = m$signature, RMSEE = stats::setNames(list(sqrt(mean((m$donnees$y - r$ajuste)^2))), y),
        RMSEcv = stats::setNames(list(m$vc$RMSEcv), y), composantes = NULL,

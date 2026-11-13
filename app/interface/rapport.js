@@ -3,7 +3,7 @@
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
-import { VUES, resumeSeuils, notePhi, lignesSelectionAIC, groupesSelectionAIC, nombreParametres } from './panneaux.js';
+import { VUES, resumeSeuils, notePhi, notesTermesRetires, lignesSelectionAIC, groupesSelectionAIC, nombreParametres } from './panneaux.js';
 import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
@@ -40,7 +40,8 @@ const avecCourbes = (m) => [].concat((m.courbes && m.courbes.terme) || []).lengt
 const PARTIES_REGRESSION = [
   { cle: 'resume', defaut: true, tableau: tableauRegression },
   { cle: 'coefficients', vue: 'coefficients', defaut: true, tableau: tableauCoefficientsRegression },
-  { cle: 'effets', vue: 'effets', defaut: true, variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
+  { cle: 'effets', vue: 'effets', defaut: true, tableau: tableauPentes,
+    variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
   { cle: 'seuils', vue: 'effets', defaut: true, si: avecCourbes, tableau: resumesSeuils,
     variantes: async (m) => [].concat(m.courbes.terme).map((terme) => ({ terme, seuils: true })) },
   { cle: 'obspred', vue: 'obspred', defaut: true },
@@ -199,10 +200,17 @@ function tableauRegression(m) {
       lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]
         .concat(cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
   }
-  const retires = [].concat(m.termes_retires || []);
   return blocs.concat([notePhi(m),
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
-    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : ''].filter(Boolean).map((texte) => ({ texte })));
+    ...notesTermesRetires(m), q.sans_pente_vc ? t('sans_pente_vc', { n: q.sans_pente_vc }) : ''].filter(Boolean).map((texte) => ({ texte })));
+}
+
+// The slope per category of each term crossed with categories, as under its plot in the Effects
+// view (regression.R: effets_par_niveau).
+async function tableauPentes(m) {
+  const effets = [].concat((await demander('effets', { modele: m.id })).effets || []).filter((e) => e.niveaux && !e.courbe);
+  return effets.map((e) => ({ entetes: [e.par, t('pente_niveau', { terme: e.terme }), t('ic_bas'), t('ic_haut')],
+    lignes: [].concat(e.niveaux).map((n) => [n.niveau, nombre(n.pente), nombre(n.pente_bas), nombre(n.pente_haut)]) }));
 }
 
 // Each curve's thresholds in words, as above its plot in the Effects view (regression.R:

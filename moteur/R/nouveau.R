@@ -348,7 +348,10 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   aléatoire) ; un modèle généralisé ou additif à loi normale la prend aussi (mgcv::gamm) ;
 #   k_courbes : la dimension de base d'une courbe, par numéro de variable (sinon 10 au plus). Les blocs n'y
 #   pondèrent rien : ils font les groupes de la table des apports. Sans groupes de validation
-#   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu).
+#   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu). Un
+#   facteur d'un terme croisé qui n'est pas dans x y entre sans effet principal (R : y ~ secteur +
+#   secteur:annee, une pente par secteur) : ses termes, marqués facteur_seul, ne servent qu'à
+#   calculer les termes croisés (regression.R : cadre_regression).
 definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observations = NULL,
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
@@ -370,7 +373,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   # un terme croisé et ses réglages (croises_reglages) : son échelle, son bloc, son modificateur
   croise <- function(paire) {
     r <- croises_reglages[[paste(as.numeric(paire), collapse = "*")]]
-    lapply(termes_croises(projet, paire, x, as.character(r$echelle %||% ech("defaut"))[1]), function(t) {
+    lapply(termes_croises(projet, paire, c(x, seuls), as.character(r$echelle %||% ech("defaut"))[1]), function(t) {
       b <- r$bloc
       if (length(b) && !is.na(b[1]) && nzchar(as.character(b[1]))) t$scaling$block <- as.character(b[1])
       mo <- suppressWarnings(as.numeric(r$modificateur))
@@ -402,6 +405,9 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   regression <- type %in% REGRESSIONS
+  # (une régression : les facteurs de ses termes croisés qui ne sont pas en X, sans effet principal)
+  seuls <- if (regression) setdiff(unique(as.numeric(unlist(croises))), x) else numeric(0)
+  facteur_seul <- function(u) lapply(termes(u), function(t) c(t, list(facteur_seul = TRUE)))
   autre <- type %in% AUTRES_ANALYSES  # (analyses.R : RDA, CA, LDA, TREE, KMEANS)
   if (autre && length(test) && is.null(fonction_analyse("tester_", type))) {
     stop(traduire("Cette analyse ne prédit pas d'observations laissées de côté : elle ne prend pas de jeu de test.",
@@ -410,7 +416,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   d <- list(type = if (regression || autre) type else if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
             observations = obs, A = A %||% 0, cv_groups = G,
-            x = c(unlist(lapply(x, termes), recursive = FALSE),
+            x = c(unlist(lapply(x, termes), recursive = FALSE), unlist(lapply(seuls, facteur_seul), recursive = FALSE),
                   unlist(lapply(croises, croise), recursive = FALSE)),
             y = if (plsda) yt else unlist(lapply(y, termes), recursive = FALSE))
   if (nzchar(condition)) {
@@ -460,9 +466,7 @@ termes_croises <- function(projet, paire, x, echelle = "UV") {
   if (!all(paire %in% x)) stop(traduire("Un terme croisé ne peut utiliser que des variables X", "A cross term can only use X variables"))
   vs <- lapply(paire, function(u) variable_du_projet(projet, u))
   qualitative <- vapply(vs, function(v) length(v$categories) > 0, TRUE)
-  if (any(duplicated(paire) & qualitative)) {
-    stop(traduire("Pas de carré pour une variable qualitative : ", "No square for a qualitative variable: "), vs[[which(duplicated(paire) & qualitative)[1]]]$ids[1])
-  }
+  if (any(duplicated(paire) & qualitative)) stop(refus_qualitative_double(vapply(vs, function(v) as.character(v$ids[1]), "")), call. = FALSE)
   options <- lapply(vs, function(v) if (length(v$categories)) seq_along(v$categories) else 0)
   combinaisons <- expand.grid(options)
   lapply(seq_len(nrow(combinaisons)), function(i) {
@@ -476,13 +480,21 @@ termes_croises <- function(projet, paire, x, echelle = "UV") {
   })
 }
 
+# Le refus d'une variable qualitative deux fois dans un terme croisé (son carré, son cube, ou
+# a:b:a), qui nomme le terme : `noms`, les noms de ses variables.
+refus_qualitative_double <- function(noms) {
+  sprintf(traduire("Une variable qualitative n'entre qu'une fois dans un terme croisé, ni au carré ni au cube : « %s ».",
+                   "A qualitative variable enters a cross term once at most, neither squared nor cubed: \"%s\"."), paste(noms, collapse = " × "))
+}
+
 # Les réglages d'un modèle, sous la forme de definir_modele() (pour les modifier) :
 # variables X et Y, classe, observations exclues (décochées : celles qu'écarte sa condition n'en
 # sont pas) et condition, échelle, bloc, modificateur et transformation par variable, termes
 # croisés et leurs réglages, groupes de la validation croisée.
 reglages_modele <- function(projet, d) {
+  # (sans les facteurs seuls d'une régression : ni en X ni en Y, ils viennent de ses termes croisés)
   simples <- function(termes) unique(unlist(lapply(termes, function(t)
-    if (length(t$variables) == 1) as.numeric(t$variables))))
+    if (length(t$variables) == 1 && !isTRUE(t$facteur_seul)) as.numeric(t$variables))))
   echelles <- list()
   transformations <- list()
   blocs <- list()
