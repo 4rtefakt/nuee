@@ -11,7 +11,13 @@
 #   - le test de permutation réajuste tout le modèle à partir du projet ;
 #   - les groupes par valeur d'une variable ou d'un identifiant (toutes les observations d'un
 #     verger dans le même groupe), ou donnés tels quels, et la pondération par blocs et les
-#     modificateurs (pretraitement.R), y compris dans les sous-modèles.
+#     modificateurs (pretraitement.R), y compris dans les sous-modèles ;
+#   - un terme qui ne varie presque plus sans le groupe caché prend le poids du modèle complet ;
+#     validée avec les centres seuls recalculés, ou avec les centres et poids du modèle complet
+#     (chaque composante sur les résidus
+#     du modèle complet, écrit à nouveau d'après Wold, 1978 ; l'ACP comme Nuée 0.8) ;
+#   - le Q2 honnête d'un modèle hiérarchique refait ses modèles de base sans le groupe caché ;
+#   - comparer_references() valide comme le fichier et compte le Q2 dans son statut.
 #   Rscript moteur/tests/verifier_validation.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -112,7 +118,9 @@ cas <- list(
     transformations = stats::setNames(c("ln:1:1", "puissance:2:1:0.33", "neglog:0.5:2", "lineaire:-1:300", "exp:0.01:0", "logit:0:40"), as.character(complets[1:6])),
     croises = list(c(uid("variete"), complets[1], complets[2]), c(complets[3], complets[3], complets[3])))))
 for (k in names(cas)) {
-  e <- press_a_la_main(cas[[k]][[1]], cas[[k]][[2]])
+  dk <- cas[[k]][[2]]
+  dk$validation <- "sans_fuite"  # (les sous-modèles faits à la main recalculent aussi les poids)
+  e <- press_a_la_main(cas[[k]][[1]], dk)
   verifier(sprintf("%s : PRESS du moteur = PRESS à la main (écart relatif %.1g)", k, e), e < 1e-10)
 }
 
@@ -305,6 +313,256 @@ verifier("Nouveau modèle depuis celui-ci garde l'échelle, le bloc et le modifi
 e <- tryCatch({ definir_modele(p, "PLS", x = c(uid("variete"), complets[1]), y = uid("note_gout"), croises = list(c(uid("variete"), complets[1], uid("variete")))); "" },
               error = function(e) conditionMessage(e))
 verifier(sprintf("une variable qualitative deux fois dans un terme : « %s »", e), grepl("qualitative", e))
+
+cat("Trois façons de valider : sans fuite (garde-fou des termes presque constants), centres seuls, centres et poids du modèle complet\n")
+# Six sites de six ans ; « rare » ne varie que sur le site S6 (ailleurs 1, au millième près), comme
+# a_nbjtx0 sans le site 208 d'un projet réel (0,5 % de son écart-type) ; validation par site.
+set.seed(11)
+site <- rep(sprintf("S%d", 1:6), each = 6)
+Xr <- matrix(rnorm(36 * 4), 36, 4, dimnames = list(NULL, paste0("x", 1:4)))
+rare <- ifelse(site == "S6", rnorm(36, 3, 1), 1 + rnorm(36, 0, 1e-3))
+pr <- projet_depuis_tableau(data.frame(nom = sprintf("O%02d", 1:36), site = site, y = Xr[, 1] + 0.5 * Xr[, 2] + 0.3 * rare + rnorm(36, 0, 0.5),
+                                       Xr, rare = rare, check.names = FALSE), "rare")
+pr$donnees[c("3", "20"), as.character(numeros(pr, "x2"))] <- NA
+par_site <- list(by = "variable", variable = numeros(pr, "site"))
+xr <- numeros(pr, c(paste0("x", 1:4), "rare"))
+dr <- definir_modele(pr, "PLS", x = xr, y = numeros(pr, "y"), A = 2, vc = par_site)
+verifier("par défaut, un modèle est validé avec les centres recalculés et les poids du modèle complet",
+         identical(mode_validation(dr), "centres") && identical(ajuster(pr, dr)$validation, "centres"))
+dr$validation <- "sans_fuite"
+mr <- ajuster(pr, dr)
+gr <- gardes_vc(pr, dr, mr)
+verifier(sprintf("sans fuite : sans S6, « rare » garde %.2g %% de son écart-type et prend le poids du modèle complet (le seul terme)",
+                 100 * gr$part[1]), identical(mr$validation, "sans_fuite") &&
+           nrow(gr) == 1 && identical(gr$terme, "rare") && identical(gr$groupe, "S6") && gr$part < 0.01)
+# à la main : un modèle ajusté sans chaque site (le poids d'un terme imposé quand il le faut,
+# comme une échelle enregistrée), qui prédit ce site (predire)
+press_impose <- function(p, d, m, imposer) {
+  obs <- d$observations
+  g <- groupes_definition(p, d)
+  press <- matrix(0, m$A, ncol(m$Y))
+  for (h in sort(unique(g))) {
+    dg <- imposer(d, g != h)
+    dg$observations <- obs[g != h]
+    mg <- ajuster(p, dg, orienter = FALSE)
+    for (a in seq_len(m$A)) {
+      ma <- mg
+      ma$A <- a
+      for (k in c("T", "P", "W", "C", "U")) ma[[k]] <- mg[[k]][, seq_len(a), drop = FALSE]
+      y <- as.matrix(predire(p, ma, dg, obs[g == h])[paste(m$y$noms, "prédit")])
+      press[a, ] <- press[a, ] + colSums(((m$Y[g == h, , drop = FALSE] - sweep(sweep(y, 2, m$y$centre), 2, m$y$poids, "*")) * m$MY[g == h, , drop = FALSE])^2)
+    }
+  }
+  max(abs(press - m$press)) / max(abs(m$press))
+}
+# un terme au centre des lignes d'apprentissage et au poids du modèle complet (échelle enregistrée)
+au_poids_complet <- function(p, d, garde, k) {
+  x <- colonne(p, d$x[[k]]$variables, d$observations[garde])
+  d$x[[k]]$scaling <- list(centre = mean(x, na.rm = TRUE), weight = 1 / sd(colonne(p, d$x[[k]]$variables, d$observations), na.rm = TRUE))
+  d
+}
+k_rare <- which(vapply(dr$x, `[[`, "", "name") == "rare")
+e <- press_impose(pr, dr, mr, function(d, garde) if (!garde[length(garde)]) au_poids_complet(pr, d, garde, k_rare) else d)
+verifier(sprintf("sans fuite : PRESS du moteur = PRESS à la main, « rare » au poids du modèle complet sans S6 (écart relatif %.1g)", e), e < 1e-10)
+ancien <- SEUIL_ECART_VC
+SEUIL_ECART_VC <- 0
+m0 <- ajuster(pr, dr)
+SEUIL_ECART_VC <- ancien
+verifier(sprintf("sans le garde-fou, le Q2 explose (%.3g) ; avec, il reste sensé (%.3f)", m0$q2cum[2], mr$q2cum[2]), m0$q2cum[2] < -5 && mr$q2cum[2] > -1)
+dc <- dr
+dc$validation <- "centres"
+mc <- ajuster(pr, dc)
+e <- press_impose(pr, dc, mc, function(d, garde) { for (k in seq_along(d$x)) d <- au_poids_complet(pr, d, garde, k); d })
+verifier(sprintf("centres seuls : chaque terme au centre des autres sites et au poids du modèle complet (écart relatif %.1g), sans terme signalé", e),
+         e < 1e-10 && is.null(mc$gardes) && identical(reglages_modele(pr, dc)$validation, "centres"))
+
+# Centres et poids du modèle complet, écrit à nouveau d'après Wold (1978) : chaque composante validée sur les résidus du
+# modèle complet, une composante ajustée sans chaque groupe ; Q2(cum) = 1 - produit des (1 - Q2),
+# chacun ramené à -0,1 au plus bas
+q2_complet_main <- function(m, groupes) {
+  E <- m$X; ME <- m$MX; F <- m$Y; MF <- m$MY
+  q2 <- numeric(m$A)
+  q2v <- matrix(0, m$A, ncol(F))
+  for (a in seq_len(m$A)) {
+    press <- 0
+    for (g in sort(unique(groupes))) {
+      h <- groupes == g
+      k <- composante_pls(E[!h, , drop = FALSE], ME[!h, , drop = FALSE], F[!h, , drop = FALSE], MF[!h, , drop = FALSE])
+      press <- press + colSums(((F[h, , drop = FALSE] - outer(projeter(E[h, , drop = FALSE], ME[h, , drop = FALSE], k$w), k$c)) * MF[h, , drop = FALSE])^2)
+    }
+    q2[a] <- 1 - sum(press) / sum(F^2)
+    q2v[a, ] <- 1 - press / colSums(F^2)
+    t0 <- ifelse(is.na(m$T[, a]), 0, m$T[, a])
+    E <- (E - outer(t0, m$P[, a])) * ME
+    F <- (F - outer(t0, m$C[, a])) * MF
+  }
+  list(q2 = q2, cum = 1 - cumprod(1 - pmax(q2, -0.1)), cumv = 1 - apply(1 - pmax(q2v, -0.1), 2, prod))
+}
+for (k in c("PLS, valeurs manquantes", "PLS à 2 Y, transformations et échelles mêlées", "PLS-DA", "PLS, blocs et modificateur, un groupe par verger, valeurs manquantes")) {
+  pk <- cas[[k]][[1]]
+  dk <- cas[[k]][[2]]
+  dk$validation <- "complet"
+  mk <- ajuster(pk, dk)
+  attendu <- q2_complet_main(mk, groupes_definition(pk, dk))
+  ecart <- max(abs(c(mk$q2 - attendu$q2, mk$q2cum - attendu$cum, mk$statistiques$variables_y$Q2V_cum - attendu$cumv)))
+  verifier(sprintf("modèle complet, %s : Q2, Q2(cum) et Q2V(cum) de l'article (écart %.1g)", k, ecart), ecart < 1e-10)
+}
+ds <- dr
+ds$validation <- "complet"
+ms <- ajuster(pr, ds)
+# le Y prédit en validation croisée (RMSEcv, CV-ANOVA, classement) : celui de sous-modèles ajustés
+# sur les autres lignes des matrices du modèle complet, avec A composantes
+gs <- groupes_definition(pr, ds)
+attendu <- matrix(NA_real_, nrow(ms$Y), ncol(ms$Y))
+for (h in sort(unique(gs))) {
+  i <- gs == h
+  sm <- ajuster_matrices(list(E = ms$X[!i, , drop = FALSE], M = ms$MX[!i, , drop = FALSE]), list(E = ms$Y[!i, , drop = FALSE], M = ms$MY[!i, , drop = FALSE]), ms$A)
+  E <- ms$X[i, , drop = FALSE]
+  M <- ms$MX[i, , drop = FALSE]
+  y <- 0
+  for (a in seq_len(ms$A)) {  # (comme une nouvelle observation, prediction.R)
+    th <- projeter(E, M, sm$W[, a])
+    E <- (E - outer(th, sm$P[, a])) * M
+    y <- y + outer(th, sm$C[, a])
+  }
+  attendu[i, ] <- y
+}
+verifier("modèle complet : le Y prédit en validation croisée vient de sous-modèles ajustés sans chaque groupe, sur les matrices du modèle complet",
+         isTRUE(all.equal(unname(ms$vc$predictions[[ms$A]]), unname(attendu))))
+# sur du bruit pur, ces prédictions ne valent pas mieux que la moyenne : la CV-ANOVA n'est que
+# rarement significative, et une PLS-DA de classes tirées au hasard classe au hasard
+significatifs <- 0
+bien_classes <- numeric(0)
+for (graine in 1:20) {
+  set.seed(500 + graine)
+  pb <- projet_depuis_tableau(data.frame(nom = sprintf("O%02d", 1:24), y = rnorm(24), classe = rep(c("a", "b"), 12),
+                                         matrix(rnorm(24 * 40), 24, 40, dimnames = list(NULL, paste0("X", 1:40))), check.names = FALSE), "bruit")
+  x <- numeros(pb, paste0("X", 1:40))
+  m1 <- ajuster(pb, definir_modele(pb, "PLS", x = x, y = numeros(pb, "y"), A = 3, validation = "complet"))
+  significatifs <- significatifs + (m1$statistiques$cv_anova[[1]]$p[2] < 0.05)
+  m2 <- ajuster(pb, definir_modele(pb, "PLS-DA", x = x, classe = numeros(pb, "classe"), A = 3, validation = "complet"))
+  bien_classes <- c(bien_classes, m2$statistiques$classification$vc$global)
+}
+verifier(sprintf("modèle complet, bruit pur (20 jeux) : CV-ANOVA significative %d fois, classement en validation croisée %.0f %% en médiane",
+                 significatifs, 100 * stats::median(bien_classes)), significatifs <= 3 && stats::median(bien_classes) < 0.7)
+du <- definir_modele(pr, "PLS", x = xr, y = numeros(pr, "y"), A = 2, vc = par_site)
+du$reference <- list(components = list(list(`R2X(cum)` = 0.5)))
+verifier("un modèle venu d'un fichier .usp est validé comme les autres par défaut (centres recalculés), sauf s'il en choisit une autre façon",
+         identical(mode_validation(du), "centres") && identical(mode_validation(c(du, list(validation = "complet"))), "complet"))
+# l'ACP avec les centres et poids du modèle complet : la validation de Nuée 0.8 (Krzanowski, 1987 : p sans le groupe
+# d'observations, t sans le groupe de termes), écrite à nouveau
+press_acp_main <- function(m, groupes, groupes_var) {
+  E <- m$X; ME <- m$MX
+  press <- matrix(0, m$A, ncol(E))
+  for (a in seq_len(m$A)) {
+    complet <- list(t = ifelse(is.na(m$T[, a]), 0, m$T[, a]), p = m$P[, a])
+    P <- matrix(0, ncol(E), nrow(E))
+    Tc <- matrix(0, nrow(E), ncol(E))
+    for (g in sort(unique(groupes))) {
+      h <- groupes == g
+      k <- composante_acp(E[!h, , drop = FALSE], ME[!h, , drop = FALSE])
+      P[, h] <- k$p * sign(sum(k$p * complet$p))
+    }
+    for (g in sort(unique(groupes_var))) {
+      cases <- groupes_var == g
+      k <- composante_acp(E[, !cases, drop = FALSE], ME[, !cases, drop = FALSE])
+      Tc[, cases] <- k$t * sign(sum(k$t * complet$t))
+    }
+    press[a, ] <- colSums(((E - Tc * t(P)) * ME)^2)
+    E <- (E - outer(complet$t, complet$p)) * ME
+  }
+  press
+}
+for (k in c("ACP", "ACP, valeurs manquantes")) {
+  dk <- cas[[k]][[2]]
+  dk$validation <- "complet"
+  mk <- ajuster(cas[[k]][[1]], dk)
+  e <- max(abs(mk$press - press_acp_main(mk, groupes_definition(cas[[k]][[1]], dk), groupes_validation(mk$K, mk$G)))) / max(mk$press)
+  verifier(sprintf("modèle complet, %s : la validation de Nuée 0.8 (écart relatif %.1g)", k, e), e < 1e-10)
+}
+# l'OPLS avec les centres et poids du modèle complet : chaque sous-modèle ajusté sur les lignes des matrices du modèle complet (déjà
+# centrées et mises à l'échelle), toutes ses composantes orthogonales retirées pour prédire ; sur 12
+# observations, ce Q2 s'écarte nettement de celui sans fuite
+for (k in c("OPLS", "OPLS-DA à 4 classes")) {
+  pk <- cas[[k]][[1]]
+  dk <- cas[[k]][[2]]
+  classe <- colonne(pk, uid("variete"), dk$observations)
+  dk$observations <- dk$observations[unlist(lapply(split(seq_along(classe), classe), `[`, 1:3))]  # (3 de chaque variété)
+  dk$validation <- "complet"
+  mk <- ajuster(pk, dk)
+  g <- groupes_definition(pk, dk)
+  press <- 0
+  for (h in sort(unique(g))) {
+    i <- g == h
+    nk <- opls_noyau(mk$X[!i, , drop = FALSE], mk$MX[!i, , drop = FALSE], mk$Y[!i, , drop = FALSE], mk$MY[!i, , drop = FALSE], mk$A - mk$Ap, mk$Ap, jusqua = TRUE)
+    y <- opls_predire(nk, mk$X[i, , drop = FALSE], mk$MX[i, , drop = FALSE], min(mk$A - mk$Ap, ncol(nk$Wo) %||% 0), min(mk$Ap, length(nk$pred)))
+    press <- press + colSums(((mk$Y[i, , drop = FALSE] - y) * mk$MY[i, , drop = FALSE])^2)
+  }
+  sf <- cas[[k]][[2]]
+  sf$observations <- dk$observations
+  e <- max(abs(press - mk$press[mk$A, ])) / max(press)
+  verifier(sprintf("modèle complet, %s sur 12 observations (3 par variété) : sous-modèles sur les matrices du modèle complet (écart relatif %.1g) ; Q2cum %.3f, par défaut %.3f",
+                   k, e, mk$q2cum[mk$A], ajuster(pk, sf)$q2cum[mk$A]), e < 1e-10 && identical(mk$validation, "complet"))
+}
+
+cat("Modèle hiérarchique : le Q2 honnête refait les modèles de base sans le groupe caché\n")
+db <- definir_modele(pr, "PLS", x = numeros(pr, paste0("x", 1:4)), y = numeros(pr, "y"), A = 2, vc = par_site, nom = "B1")
+db$fitted <- TRUE
+ph <- pr
+ph$models <- list(db)
+sv <- scores_en_variables(ph, ajuster(ph, db))
+ph <- sv$projet
+dh <- definir_modele(ph, "PLS", x = c(numeros(ph, sv$noms), numeros(ph, "rare")), y = numeros(ph, "y"), A = 1, vc = par_site)
+mh <- ajuster(ph, dh)
+h <- mh$hierarchique
+verifier(sprintf("son modèle de base est retrouvé par le nom de ses scores (%s) ; Q2 honnête %.3f, Q2 aux scores tels quels %.3f",
+                 paste(sv$noms, collapse = ", "), h$q2cum[1], mh$q2cum[1]), identical(as.character(h$bases), "B1") && is.finite(h$q2cum[1]) &&
+           identical(h$validation, "centres") && !isTRUE(all.equal(h$q2cum, mh$q2cum)))
+gh <- groupes_definition(ph, dh)
+p1 <- projet_sans_groupe(ph, dh, gh == 1, modeles_de_base(ph, dh)$bases)
+d1 <- db
+d1$observations <- db$observations[gh != 1]
+t1 <- predire(ph, ajuster(ph, d1, orienter = FALSE), d1, db$observations)$t1
+v1 <- p1$donnees[as.character(db$observations), as.character(numeros(ph, sv$noms[1]))]
+verifier("dans un tour, ses scores sont ceux d'un modèle de base ajusté sans le groupe caché, pour toutes les observations (au signe près)",
+         isTRUE(all.equal(abs(unname(v1)), abs(unname(t1)))))
+ph2 <- ph
+ph2$models <- list()
+h2 <- ajuster(ph2, dh)$hierarchique
+verifier("sans son modèle de base dans le projet, ses scores sont pris tels quels, et le résumé le dit", is.null(h2$q2cum) && identical(sort(as.character(h2$absents)), sort(sv$noms)))
+verifier("un modèle sans score d'un autre modèle n'a pas de Q2 honnête", is.null(mr$hierarchique))
+# un modèle de base retrouvé deux fois (directement, par sa 2e composante, et par un autre modèle
+# de base, par sa 1re) : ses deux variables sont refaites, quel que soit l'ordre des termes
+db2 <- definir_modele(ph, "PLS", x = c(numeros(ph, sv$noms[1]), numeros(ph, "rare")), y = numeros(ph, "y"), A = 1, vc = par_site, nom = "B2")
+db2$fitted <- TRUE
+ph3 <- ph
+ph3$models <- list(db, db2)
+sv2 <- scores_en_variables(ph3, ajuster(ph3, db2))
+ph3 <- sv2$projet
+haut <- function(ordre) definir_modele(ph3, "PLS", x = numeros(ph3, c(sv$noms[2], sv2$noms[1])[ordre]), y = numeros(ph3, "y"), A = 1, vc = par_site)
+b1 <- modeles_de_base(ph3, haut(1:2))$bases
+b2 <- modeles_de_base(ph3, haut(2:1))$bases
+q_1 <- ajuster(ph3, haut(1:2))$hierarchique$q2cum
+q_2 <- ajuster(ph3, haut(2:1))$hierarchique$q2cum
+verifier(sprintf("un modèle de base retrouvé deux fois : ses deux composantes sont refaites, B1 avant B2, dans les deux ordres (Q2 honnête %.4f et %.4f)", q_1, q_2),
+         identical(names(b1), c("B1", "B2")) && identical(names(b2), c("B1", "B2")) && length(b1$B1$variables) == 2 && length(b2$B1$variables) == 2 &&
+           isTRUE(all.equal(q_1, q_2)))
+dacp <- definir_modele(ph, "PCA", x = c(numeros(ph, sv$noms), numeros(ph, "rare")), A = 1, vc = par_site)
+verifier("une ACP sur des scores n'a pas de Q2 honnête (pas de Y dont ses scores se serviraient)", is.null(ajuster(ph, dacp)$hierarchique))
+
+cat("comparer_references() : validé comme le fichier, le Q2 compte dans le statut\n")
+dref <- ds
+dref$validation <- "sans_fuite"  # (le modèle du projet est validé sans fuite : la comparaison le valide comme le fichier)
+dref$fitted <- TRUE
+cs <- resume_composantes(ms)
+dref$reference <- list(components = lapply(seq_len(ms$A), function(a) list(`R2X(cum)` = cs$R2Xcum[a], `R2Y(cum)` = cs$R2Ycum[a], `Q2(cum)` = ms$q2cum[a])))
+pref <- pr
+pref$models <- list(dref)
+r1 <- comparer_references(pref)
+pref$models[[1]]$reference$components[[2]][["Q2(cum)"]] <- ms$q2cum[2] + 0.05
+r2 <- comparer_references(pref)
+verifier(sprintf("le même Q2 que le fichier : « %s » ; 0,05 de plus dans le fichier : « %s » (écart de Q2 %s)", r1$statut, r2$statut, r2$Q2),
+         identical(r1$statut, "identique") && identical(r2$statut, "différent") && isTRUE(all.equal(r2$Q2, 0.05)))
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
