@@ -206,6 +206,9 @@ plan_modele <- function(projet, d, m, tab) {
        A = A, N = N, K = K, G = m$G, Ap = if (opls) m$Ap %||% 1 else 0, M = if (pls) ncol(m$Y) else 0,
        groupes_vc = if (length(groupes) && !identical(groupes, as.integer(groupes_validation(N, m$G)))) groupes,
        vc_par = m$vc_par %||% "", vc_fichier = identical(as.character(d$groupes_vc$by), "groups"),
+       # la façon de valider (validation_croisee.R : sans_fuite, centres ou complet), et des termes UV
+       # ou Pareto, dont l'écart-type d'un sous-modèle peut venir du modèle complet
+       validation = mode_validation(d), ecarts = any(vapply(c(x$termes, y$termes), function(t) t$type %in% c("UV", "Par"), TRUE)),
        rangs = unname(tab$rangs[as.character(m$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
        condition = plan_condition(projet, d, tab),  # (condition.R)
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
@@ -285,7 +288,14 @@ besoins_script <- function(plans, seance) {
   types <- vapply(plans, `[[`, "", "type")
   etapes <- unique(unlist(lapply(plans, function(pl) vapply(pl$spectres$etapes, `[[`, "", "type"))))
   reg <- Filter(function(pl) isTRUE(pl$regression), plans)
+  # la validation croisée de chaque modèle : avec les centres et les poids du modèle complet (mode
+  # « complet » : validation_modele_complet_*), ou par des sous-modèles (validation_croisee_*) ;
+  # l'écart-type gardé d'un terme sans le groupe caché (ecart_vc) pour celle « sans fuite »
+  modele_complet <- vapply(plans, function(pl) identical(pl$validation, "complet"), TRUE)
   list(acp = any(types == "acp"), pls = any(types == "pls"), opls = any(types == "opls"),
+       vc_acp = any(types == "acp" & !modele_complet), vc_pls = any(types == "pls" & !modele_complet), vc_opls = any(types == "opls" & !modele_complet),
+       complet_acp = any(types == "acp" & modele_complet), complet_pls = any(types == "pls" & modele_complet), complet_opls = any(types == "opls" & modele_complet),
+       ecart_vc = any(vapply(plans, function(pl) identical(pl$validation, "sans_fuite") && isTRUE(pl$ecarts), TRUE)),
        opls_general = any(vapply(plans, function(pl) pl$type == "opls" && pl$Ap > 1, TRUE)),
        manquantes = any(vapply(plans, `[[`, TRUE, "manquantes")), y_manquantes = any(vapply(plans, `[[`, TRUE, "y_manquantes")),
        vides = any(vapply(plans, `[[`, TRUE, "vides")),
@@ -553,7 +563,7 @@ code_echelle_bloc <- function(termes, M, sfx, pl, tx, blocs = M) {
   noms_s <- vapply(termes[simples], `[[`, "", "nom")
   sur <- function(V, n) sprintf("%s[apprentissage, %s]", V, if (n == 1) ", drop = FALSE" else "")
   lignes <- c(if (!is.null(blocs)) commentaire(texte_echelle(termes[simples], blocs, pl, tx)),
-              code_echelle(termes[simples], M, sfx, sur(M, length(simples)), tx, pl$manquantes),
+              code_echelle(termes[simples], M, sfx, sur(M, length(simples)), tx, pl$manquantes, pl$validation),
               sprintf("%s <- mettre_a_echelle(%s, centre_%s, poids_%s)", M, M, sfx, sfx))
   if (!length(croises)) return(lignes)
   C <- if (M == "X") "croises" else "croises_y"
@@ -574,7 +584,7 @@ code_echelle_bloc <- function(termes, M, sfx, pl, tx, blocs = M) {
       ref <- ref_colonne(C, i, noms[croises])
       sprintf("%s <- %s  # %s", ref, code_transformation(t$tr, ref, TRUE), nom_transformation_script(t$tr, TRUE, tx))
     })),
-    code_echelle(termes[croises], C, sc, sur(C, length(croises)), tx, pl$manquantes),
+    code_echelle(termes[croises], C, sc, sur(C, length(croises)), tx, pl$manquantes, pl$validation),
     sprintf("%s <- cbind(%s, mettre_a_echelle(%s, centre_%s, poids_%s))", M, M, C, sc, sc),
     sprintf("centre_%s <- c(centre_%s, centre_%s)", sfx, sfx, sc),
     sprintf("poids_%s <- c(poids_%s, poids_%s)", sfx, sfx, sc),
@@ -609,7 +619,11 @@ type_echelle_base <- function(types) {
 # seul, aucune, ou enregistrée dans le projet), calculés sur `sur` (les lignes d'apprentissage).
 # Sur les lignes d'un sous-modèle de la validation croisée, un terme peut être constant (poids 0),
 # ou, avec des valeurs manquantes (`na`), n'avoir aucune valeur (centre 0) : comme dans Nuée.
-code_echelle <- function(ts, M, sfx, sur, tx, na) {
+# `mode` : la façon de valider du modèle (validation_croisee.R) ; dans un sous-modèle (sans_fuite,
+# centres), l'écart-type d'un terme UV ou Pareto peut venir du modèle complet (`complet`, le
+# prétraitement du modèle complet : ecart_vc, ou tous pour « centres ») ; pretraiter() le rend
+# (ecart_rendu).
+code_echelle <- function(ts, M, sfx, sur, tx, na, mode = "complet") {
   types <- vapply(ts, `[[`, "", "type")
   noms <- vapply(ts, `[[`, "", "nom")
   ref <- function(ks) paste(if (!anyDuplicated(noms)) code_valeurs(vapply(noms[ks], code_texte, "", USE.NAMES = FALSE), "")
@@ -624,12 +638,15 @@ code_echelle <- function(ts, M, sfx, sur, tx, na) {
   base <- type_echelle_base(types)  # la plus fréquente ; les autres ensuite, terme par terme
   autres <- setdiff(unique(types), base)
   moyennes <- any(types %in% c("UV", "Par", "Ctr"))
-  ecart <- if (any(autres %in% c("UV", "Par"))) sprintf("ecart_%s", sfx)
+  rendu <- ecart_rendu(ts, mode)
+  ecart <- if (rendu || any(autres %in% c("UV", "Par"))) sprintf("ecart_%s", sfx)
   et <- sprintf("apply(%s, 2, sd, na.rm = TRUE)", sur)
+  calcul <- if (!rendu) et else if (identical(mode, "centres")) sprintf("if (is.null(complet)) %s else complet$%s", et, ecart)
+            else sprintf("ecart_vc(%s, complet$%s)", et, ecart)
   un <- function(v) if (length(autres)) sprintf("setNames(rep(%s, ncol(%s)), colnames(%s))", v, M, M) else sprintf("rep(%s, ncol(%s))", v, M)
   note <- function(ligne, fr, en) paste0(ligne, "  # ", tx(fr, en))
   lignes <- c(if (moyennes) sprintf("%s <- apply(%s, 2, mean, na.rm = TRUE)", centre, sur) else sprintf("%s <- %s", centre, un("0")),
-              if (!is.null(ecart)) sprintf("%s <- %s", ecart, et),
+              if (!is.null(ecart)) sprintf("%s <- %s", ecart, calcul),
               sprintf("%s <- %s", poids, switch(base, UV = sprintf("1 / %s", ecart %||% et), Par = sprintf("1 / sqrt(%s)", ecart %||% et), un("1"))),
               if (base == "none" && moyennes) sprintf("%s[%s] <- 0", centre, ref(which(types == "none"))))
   for (ty in autres) {
@@ -668,25 +685,48 @@ code_ponderation <- function(ts, poids, tx) {
     code_valeurs(texte_exact(f), sprintf("%s <- %s * ", poids, poids)))
 }
 
+# Des termes (d'un bloc : les simples ou les croisés de X ou de Y) dont pretraiter() rend
+# l'écart-type, que le sous-modèle d'une validation croisée sans_fuite ou centres peut prendre du
+# modèle complet : ses termes UV et Pareto (validation_croisee.R ; avec les centres et les poids du
+# modèle complet, mode « complet », pas de sous-modèle prétraité à part ; une régression n'a pas ces
+# modes).
+ecart_rendu <- function(ts, mode) isTRUE(mode %in% c("sans_fuite", "centres")) && any(vapply(ts, function(t) t$type %in% c("UV", "Par"), TRUE))
+
 # Le prétraitement des termes, en une fonction que l'ajustement et chaque sous-modèle de la
 # validation croisée appliquent : ce qui se calcule à partir des observations (spectre moyen du
 # MSC, centres et poids, termes croisés) l'est d'après les lignes `apprentissage`, puis appliqué à
-# toutes les lignes.
+# toutes les lignes. Pour un sous-modèle (sans_fuite, centres), `complet` est le prétraitement du
+# modèle complet : l'écart-type d'un terme UV ou Pareto peut en venir (code_echelle). Avec les
+# centres et les poids du modèle complet (mode « complet »), la validation croisée garde son
+# prétraitement : pretraiter() n'en a que faire.
 code_pretraiter <- function(pl, tx, ensemble) {
   pls <- pl$type != "acp"
   croises <- any(vapply(pl$x, `[[`, TRUE, "croise"))
+  modele_complet <- identical(pl$validation, "complet")
+  bloc <- function(ts, croise) Filter(function(t) identical(t$croise, croise), ts)
+  ecarts <- c(x = ecart_rendu(bloc(pl$x, FALSE), pl$validation), c = ecart_rendu(bloc(pl$x, TRUE), pl$validation),
+              y = pls && ecart_rendu(bloc(pl$y, FALSE), pl$validation), cy = pls && ecart_rendu(bloc(pl$y, TRUE), pl$validation))
+  rendus <- c("X = X", if (pls) "Y = Y", "centre_x = centre_x", "poids_x = poids_x", if (pls) c("centre_y = centre_y", "poids_y = poids_y"),
+              sprintf("ecart_%s = ecart_%s", names(ecarts), names(ecarts))[ecarts])
   corps <- c(if (length(pl$spectres)) c(code_spectres(pl, tx), ""),
              code_echelle_bloc(pl$x, "X", "x", pl, tx, if (ensemble) c("X", "Y") else "X"),
              if (pls) c(if (!ensemble) "", code_echelle_bloc(pl$y, "Y", "y", pl, tx, if (ensemble) NULL else "Y")),
-             if (pls) "list(X = X, Y = Y, centre_x = centre_x, poids_x = poids_x, centre_y = centre_y, poids_y = poids_y)"
-             else "list(X = X, centre_x = centre_x, poids_x = poids_x)")
+             code_valeurs(rendus, "", ouvrir = "list("))
   quoi <- c(if (length(pl$spectres)) tx("le prétraitement des spectres", "the spectral preprocessing"),
             tx("la mise à l'échelle", "the scaling"), if (croises) tx("les termes croisés", "the cross terms"))
-  c(commentaire(tx(sprintf("Le prétraitement des termes (%s) : ce qu'il calcule à partir des observations l'est d'après les lignes `apprentissage` (toutes celles du modèle, ou celles d'un sous-modèle de la validation croisée), puis appliqué à toutes les lignes. Il rend %s prétraités, avec leurs centres et poids.",
-                           liste_textes(quoi, "et"), if (pls) "X et Y" else "X"),
-                   sprintf("The preprocessing of the terms (%s): what it computes from the observations comes from the rows `training` (all those of the model, or those of a sub-model of the cross-validation), then is applied to all the rows. It returns %s preprocessed, with their centres and weights.",
-                           liste_textes(quoi, "and"), if (pls) "X and Y" else "X"))),
-    sprintf("pretraiter <- function(%s, apprentissage) {", if (pls) "X, Y" else "X"),
+  rend <- if (any(ecarts)) tx("leurs centres, poids et écarts-types", "their centres, weights and standard deviations") else tx("leurs centres et poids", "their centres and weights")
+  vc <- if (!any(ecarts)) NULL
+        else if (identical(pl$validation, "centres")) tx("Validation croisée « centres seulement » : dans un sous-modèle, seuls les centres sont recalculés sans le groupe caché ; chaque terme garde l'écart-type du modèle complet (`complet`, son prétraitement).",
+                                                         "Cross-validation \"centres only\": in a sub-model, only the centres are recomputed without the held-out group; each term keeps the full model's standard deviation (`full`, its preprocessing).")
+        else tx("Dans un sous-modèle, `complet` (le prétraitement du modèle complet) donne l'écart-type d'un terme qui ne varie presque plus sans le groupe caché (ecart_vc).",
+                "In a sub-model, `full` (the full model's preprocessing) gives the standard deviation of a term that hardly varies without the held-out group (cv_sd).")
+  c(commentaire(c(tx(sprintf("Le prétraitement des termes (%s) : ce qu'il calcule à partir des observations l'est d'après les lignes `apprentissage` (%s), puis appliqué à toutes les lignes. Il rend %s prétraités, avec %s.",
+                             liste_textes(quoi, "et"), if (modele_complet) "toutes celles du modèle : sa validation croisée, avec les centres et les poids du modèle complet, garde ce prétraitement" else "toutes celles du modèle, ou celles d'un sous-modèle de la validation croisée",
+                             if (pls) "X et Y" else "X", rend),
+                     sprintf("The preprocessing of the terms (%s): what it computes from the observations comes from the rows `training` (%s), then is applied to all the rows. It returns %s preprocessed, with %s.",
+                             liste_textes(quoi, "and"), if (modele_complet) "all those of the model: its cross-validation, with the full model's centres and weights, keeps this preprocessing" else "all those of the model, or those of a sub-model of the cross-validation",
+                             if (pls) "X and Y" else "X", rend)), vc)),
+    sprintf("pretraiter <- function(%s, apprentissage%s) {", if (pls) "X, Y" else "X", if (modele_complet) "" else ", complet = NULL"),
     ifelse(nzchar(corps), paste0("  ", corps), ""),
     "}")
 }
@@ -706,12 +746,14 @@ code_ajustement <- function(pl, b, tx) {
   G <- pl$G
   general <- pl$type == "opls" && b$opls_general
   groupes <- arguments_groupes(pl)
+  modele_complet <- identical(pl$validation, "complet")
   appel <- switch(pl$type,
-    acp = c("m <- acp(s$X, A)", sprintf("vc <- validation_croisee_acp(X, A, pretraiter, %s)", groupes)),
-    pls = c("m <- pls(s$X, s$Y, A)", sprintf("vc <- validation_croisee_pls(X, Y, A, pretraiter, %s)", groupes)),
+    acp = c("m <- acp(s$X, A)", if (modele_complet) sprintf("vc <- validation_modele_complet_acp(s, m, %s)", groupes) else sprintf("vc <- validation_croisee_acp(X, A, pretraiter, %s)", groupes)),
+    pls = c("m <- pls(s$X, s$Y, A)", if (modele_complet) sprintf("vc <- validation_modele_complet_pls(s, m, %s)", groupes) else sprintf("vc <- validation_croisee_pls(X, Y, A, pretraiter, %s)", groupes)),
     opls = if (general) c(sprintf("Ap <- %d  # %s", pl$Ap, tx("composantes prédictives", "predictive components")),
-                          "m <- opls(s$X, s$Y, Ap, A - Ap)", sprintf("vc <- validation_croisee_opls(X, Y, Ap, A - Ap, pretraiter, %s)", groupes))
-           else c("m <- opls(s$X, s$Y, A - 1)", sprintf("vc <- validation_croisee_opls(X, Y, A - 1, pretraiter, %s)", groupes)))
+                          "m <- opls(s$X, s$Y, Ap, A - Ap)",
+                          if (modele_complet) sprintf("vc <- validation_modele_complet_opls(s, Ap, A - Ap, %s)", groupes) else sprintf("vc <- validation_croisee_opls(X, Y, Ap, A - Ap, pretraiter, %s)", groupes))
+           else c("m <- opls(s$X, s$Y, A - 1)", if (modele_complet) sprintf("vc <- validation_modele_complet_opls(s, A - 1, %s)", groupes) else sprintf("vc <- validation_croisee_opls(X, Y, A - 1, pretraiter, %s)", groupes)))
   quoi <- if (pl$type == "opls") {
     Ao <- A - pl$Ap
     tx(sprintf("%d composante%s prédictive%s et %d orthogonale%s", pl$Ap, if (pl$Ap > 1) "s" else "", if (pl$Ap > 1) "s" else "", Ao, if (Ao > 1) "s" else ""),
@@ -722,8 +764,22 @@ code_ajustement <- function(pl, b, tx) {
     else tx(sprintf(", un par valeur de « %s » (groupes_vc : le groupe de chaque observation, les observations de même valeur ensemble)", texte_sur(pl$vc_par)),
             sprintf(", one per value of \"%s\" (cv_groups: each observation's group, the observations with the same value together)", texte_sur(pl$vc_par)))
   } else ""
-  c(commentaire(tx(sprintf("Ajustement : %s ; validation croisée en %d groupes%s, chacun prédit par un modèle ajusté sans lui (prétraitement compris).", quoi, G, par),
-                   sprintf("Fit: %s; cross-validation in %d groups%s, each predicted by a model fitted without it (preprocessing included).", quoi, G, par))),
+  validation <- if (modele_complet && pl$type != "opls") {
+    tx(sprintf("validation croisée en %d groupes%s, avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes%s", G, par,
+               if (pl$type == "pls") " ; elle redonne les Q2 enregistrés dans les fichiers .usp" else ""),
+       sprintf("cross-validation in %d groups%s, with the full model's centres and weights, each component validated on what the previous ones leave%s", G, par,
+               if (pl$type == "pls") "; it gives back the Q2 stored in .usp files" else ""))
+  } else if (modele_complet) {
+    tx(sprintf("validation croisée en %d groupes%s, avec les centres et les poids du modèle complet : chacun prédit par un modèle ajusté sans lui sur les termes prétraités du modèle complet", G, par),
+       sprintf("cross-validation in %d groups%s, with the full model's centres and weights: each predicted by a model fitted without it on the full model's preprocessed terms", G, par))
+  } else if (identical(pl$validation, "centres") && pl$ecarts) {
+    tx(sprintf("validation croisée en %d groupes%s, chacun prédit par un modèle ajusté sans lui (ses centres recalculés sans lui, les écarts-types du modèle complet)", G, par),
+       sprintf("cross-validation in %d groups%s, each predicted by a model fitted without it (its centres recomputed without it, the full model's standard deviations)", G, par))
+  } else {
+    tx(sprintf("validation croisée en %d groupes%s, chacun prédit par un modèle ajusté sans lui (prétraitement compris)", G, par),
+       sprintf("cross-validation in %d groups%s, each predicted by a model fitted without it (preprocessing included)", G, par))
+  }
+  c(commentaire(tx(sprintf("Ajustement : %s ; %s.", quoi, validation), sprintf("Fit: %s; %s.", quoi, validation))),
     if (!is.null(pl$groupes_vc)) code_groupes_vc(pl$groupes_vc),
     sprintf("A <- %d", A),
     sprintf("s <- pretraiter(%s, seq_len(nrow(X)))  # %s", if (pl$type != "acp") "X, Y" else "X",
@@ -769,8 +825,23 @@ code_statistiques <- function(pl, tx) {
   noms_obs <- if (length(pl$rangs_test)) "d[[\"Observation\"]][modele]" else "d[[\"Observation\"]]"
   dmodx <- if (pl$dmodx) c(", DModX", if (pl$pondere) ", DModX_pondere") else ""
   K <- pl$K
-  c(commentaire(if (pls) tx("R2 : la part de la variation de X et de Y que chaque composante explique ; Q2cum : la part de Y prédite en validation croisée, 1 - PRESS / SS, et Q2 ce qu'y ajoute chaque composante, 1 - PRESS / PRESS de la précédente ; valeur propre : R2X × min(N, K).",
-                            "R2: the share of the variation of X and Y that each component explains; Q2cum: the share of Y predicted in cross-validation, 1 - PRESS / SS, and Q2 what each component adds to it, 1 - PRESS / PRESS of the previous one; eigenvalue: R2X × min(N, K).")
+  modele_complet <- identical(pl$validation, "complet")
+  # avec les centres et les poids du modèle complet (mode « complet ») : le Q2 d'une composante d'ACP
+  # ou de PLS sur ce que laissent les précédentes ; Q2cum, comme dans les fichiers .usp, le produit
+  # des (1 - Q2), chacun compté pour -0,1 au plus bas
+  q2 <- if (modele_complet && pl$type != "opls") {
+    tx(sprintf("Q2 : la part de ce que laissent les composantes précédentes (les résidus de %s du modèle complet avant elle) que chaque composante prédit en validation croisée, 1 - PRESS / SS", if (pls) "Y" else "X"),
+       sprintf("Q2: the share of what the previous components leave (the full model's %s residuals before it) that each component predicts in cross-validation, 1 - PRESS / SS", if (pls) "Y" else "X"))
+  } else if (modele_complet) {
+    tx("Q2 : ce que chaque composante ajoute à la part de Y prédite en validation croisée, 1 - PRESS / PRESS de la précédente",
+       "Q2: what each component adds to the share of Y predicted in cross-validation, 1 - PRESS / PRESS of the previous one")
+  }
+  q2cum <- if (modele_complet) tx("Q2cum, comme dans les fichiers .usp : 1 - le produit des (1 - Q2) de ses composantes, chaque Q2 compté pour -0,1 au plus bas",
+                         "Q2cum, as in .usp files: 1 - the product of its components' (1 - Q2), each Q2 counted as -0.1 at worst")
+  c(commentaire(if (modele_complet) tx(sprintf("R2 : la part de la variation de %s que chaque composante explique ; %s ; %s ; valeur propre : R2X × min(N, K).", if (pls) "X et de Y" else "X", q2, q2cum),
+                              sprintf("R2: the share of the variation of %s that each component explains; %s; %s; eigenvalue: R2X × min(N, K).", if (pls) "X and Y" else "X", q2, q2cum))
+                else if (pls) tx("R2 : la part de la variation de X et de Y que chaque composante explique ; Q2cum : la part de Y prédite en validation croisée, 1 - PRESS / SS, et Q2 ce qu'y ajoute chaque composante, 1 - PRESS / PRESS de la précédente ; valeur propre : R2X × min(N, K).",
+                                 "R2: the share of the variation of X and Y that each component explains; Q2cum: the share of Y predicted in cross-validation, 1 - PRESS / SS, and Q2 what each component adds to it, 1 - PRESS / PRESS of the previous one; eigenvalue: R2X × min(N, K).")
                 else tx("R2 : la part de la variation de X que chaque composante explique ; Q2cum : la part de X prédite en validation croisée, 1 - PRESS / SS, et Q2 ce qu'y ajoute chaque composante, 1 - PRESS / PRESS de la précédente ; valeur propre : R2X × min(N, K).",
                         "R2: the share of the variation of X that each component explains; Q2cum: the share of X predicted in cross-validation, 1 - PRESS / SS, and Q2 what each component adds to it, 1 - PRESS / PRESS of the previous one; eigenvalue: R2X × min(N, K).")),
     "a <- 1:A",
@@ -779,7 +850,8 @@ code_statistiques <- function(pl, tx) {
     "rapport <- rowSums(vc$press) / rowSums(vc$ss)",
     "composantes <- data.frame(composante = a, R2X = (ssx[a] - ssx[a + 1]) / ssx[1], R2Xcum = 1 - ssx[a + 1] / ssx[1],",
     if (pls) "                          R2Y = (ssy[a] - ssy[a + 1]) / ssy[1], R2Ycum = 1 - ssy[a + 1] / ssy[1],",
-    "                          Q2 = 1 - rapport, Q2cum = 1 - rowSums(vc$press) / sum(vc$ss[1, ]))",
+    if (modele_complet) "                          Q2 = 1 - rapport, Q2cum = 1 - cumprod(1 - pmax(1 - rapport, -0.1)))"
+    else "                          Q2 = 1 - rapport, Q2cum = 1 - rowSums(vc$press) / sum(vc$ss[1, ]))",
     "composantes$valeur_propre <- composantes$R2X * min(N, K)",
     "",
     commentaire(tx("T2 de Hotelling : la distance de chaque observation au centre du modèle, dans l'espace des scores (chaque score rapporté à sa variance) ; ses limites à 95 % et 99 %.",
@@ -933,11 +1005,17 @@ appel_permutations <- function(pl, tx, liste = NULL) {
   ajuster <- switch(pl$type, pls = sprintf("pls(s$X, s$Y, %d)", pl$A),
                     opls = if (pl$Ap > 1) sprintf("opls(s$X, s$Y, %d, %d)", pl$Ap, pl$A - pl$Ap) else sprintf("opls(s$X, s$Y, %d)", pl$A - 1))
   g <- arguments_groupes(pl, liste)
-  vc <- switch(pl$type, pls = sprintf("validation_croisee_pls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A, liste, g),
-               opls = if (pl$Ap > 1) sprintf("validation_croisee_opls(%s$X, Yp, %d, %d, %s$pretraiter, %s)", liste, pl$Ap, pl$A - pl$Ap, liste, g)
-                      else sprintf("validation_croisee_opls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A - 1, liste, g))
+  modele_complet <- identical(pl$validation, "complet")
+  vc <- if (modele_complet) {  # (avec les centres et les poids du modèle complet de Yp : ses termes prétraités s et, pour une PLS, ses composantes m)
+    switch(pl$type, pls = sprintf("validation_modele_complet_pls(s, m, %s)", g),
+           opls = if (pl$Ap > 1) sprintf("validation_modele_complet_opls(s, %d, %d, %s)", pl$Ap, pl$A - pl$Ap, g) else sprintf("validation_modele_complet_opls(s, %d, %s)", pl$A - 1, g))
+  } else switch(pl$type, pls = sprintf("validation_croisee_pls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A, liste, g),
+                opls = if (pl$Ap > 1) sprintf("validation_croisee_opls(%s$X, Yp, %d, %d, %s$pretraiter, %s)", liste, pl$Ap, pl$A - pl$Ap, liste, g)
+                       else sprintf("validation_croisee_opls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A - 1, liste, g))
+  avec_m <- modele_complet && pl$type == "pls"
   appel <- traduire_code(c("permutations(function(Yp) {", sprintf("  s <- %s$pretraiter(%s$X, Yp, seq_len(nrow(Yp)))", liste, liste),
-                           sprintf("  list(%s, %s)", ajuster, vc), sprintf("}, %s$Y%s)", liste, if (pl$plsda) ", classes = TRUE" else "")), langue)
+                           if (avec_m) c(sprintf("  m <- %s", ajuster), sprintf("  list(m, %s)", vc)) else sprintf("  list(%s, %s)", ajuster, vc),
+                           sprintf("}, %s$Y%s)", liste, if (pl$plsda) ", classes = TRUE" else "")), langue)
   c(if (langue == "en") "# Permutation test (a few seconds):" else "# Test de permutation (quelques secondes) :", paste("#", appel))
 }
 
@@ -2099,14 +2177,17 @@ code_fonctions <- function(b, plans, langue) {
     if (isTRUE(b$mgcv)) c(commentaire(tx("Les modèles généralisés et additifs : mgcv (livré avec R), attaché pour que ses lois (nb(), tw()) trouvent ses fonctions.",
                                          "Generalized and additive models: mgcv (it comes with R), attached so that its distributions (nb(), tw()) find its functions.")),
                           "library(mgcv)"),
-    if (na || b$acp) modele_projeter(tx),  # (la validation croisée d'une ACP ignore des termes comme des valeurs manquantes)
-    if (b$acp) c(modele_composante_acp(tx, na), "", modele_acp(tx, na, b$vides), "", modele_vc_acp(tx, na)),
+    if (na || isTRUE(b$vc_acp)) modele_projeter(tx),  # (la validation croisée d'une ACP ignore des termes comme des valeurs manquantes)
+    if (b$acp) c(modele_composante_acp(tx, na), "", modele_acp(tx, na, b$vides), if (b$vc_acp) c("", modele_vc_acp(tx, na)),
+                 if (b$complet_acp) c("", modele_complet_acp(tx, na, b$vides))),
     if (b$pls || b$opls) modele_composante_pls(tx, na),
-    if (b$pls) c(modele_pls(tx, na, b$vides), "", modele_vc_pls(tx, na, b$y_manquantes)),
+    if (b$pls) c(modele_pls(tx, na, b$vides), if (b$vc_pls) c("", modele_vc_pls(tx, na, b$y_manquantes)),
+                 if (b$complet_pls) c("", modele_complet_pls(tx, na, b$vides))),
     if (b$opls) c(if (general) c(modele_composantes_pls(tx, na), "", modele_base_poids_y(tx, na), ""),
                   modele_opls_noyau(tx, na, general), "", modele_opls(tx, na, b$vides, general), "",
-                  modele_opls_predire(tx, na, general), "", modele_vc_opls(tx, na, general)),
-    if (!isFALSE(b$echelle)) modele_echelle(tx, !isTRUE(b$regression) || isTRUE(b$nipals)),
+                  modele_opls_predire(tx, na, general), if (b$vc_opls) c("", modele_vc_opls(tx, na, general)),
+                  if (b$complet_opls) c("", modele_vc_opls(tx, na, general, modele_complet = TRUE))),
+    if (!isFALSE(b$echelle)) c(modele_echelle(tx, !isTRUE(b$regression) || isTRUE(b$nipals)), if (b$ecart_vc) c("", modele_ecart_vc(tx))),
     if (isTRUE(b$regression)) c(modele_termes_utiles(tx), "", modele_aic_corrige(tx), "", modele_validation_regression(tx), if (isTRUE(b$car1)) c("", modele_residus_car1(tx)),
                                 if (isTRUE(b$dates)) c("", modele_temps_dates(tx)), if (isTRUE(b$cellules)) c("", modele_niveaux_inconnus(tx))),
     if (isTRUE(b$selection_aic)) modele_selection_aic(tx),
@@ -2199,15 +2280,15 @@ modele_acp <- function(tx, na, vides) c(
 
 # La validation croisée d'une ACP.
 modele_vc_acp <- function(tx, na) c(
-  commentaire(tx("La validation croisée de l'ACP : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation ; les termes en G groupes à tour de rôle. Chaque groupe d'observations est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une ACP à A composantes. Pour chaque groupe de termes, les valeurs de ces termes sont prédites par les scores de chaque observation calculés sans eux (comme des valeurs manquantes), composante après composante ; puis ramenées dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante) et dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction, avec 1, 2... A composantes ; SS : celle de la composante précédente (celle de X pour la 1re).",
-                 "The cross-validation of the PCA: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group; the terms to G groups in turn. Each group of observations is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then a PCA with A components. For each group of terms, the values of these terms are predicted by the scores of each observation computed without them (as missing values), component after component; then brought back to the units of the data (a term constant in the sub-model: its constant value) and to those of the full model. PRESS: the sum of squared prediction errors, with 1, 2... A components; SS: that of the previous component (that of X for the 1st).")),
+  commentaire(tx("La validation croisée de l'ACP : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation ; les termes en G groupes à tour de rôle. Chaque groupe d'observations est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes et le modèle complet (`complet`), puis une ACP à A composantes. Pour chaque groupe de termes, les valeurs de ces termes sont prédites par les scores de chaque observation calculés sans eux (comme des valeurs manquantes), composante après composante ; puis ramenées dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante) et dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction, avec 1, 2... A composantes ; SS : celle de la composante précédente (celle de X pour la 1re).",
+                 "The cross-validation of the PCA: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group; the terms to G groups in turn. Each group of observations is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows and the full model (`full`), then a PCA with A components. For each group of terms, the values of these terms are predicted by the scores of each observation computed without them (as missing values), component after component; then brought back to the units of the data (a term constant in the sub-model: its constant value) and to those of the full model. PRESS: the sum of squared prediction errors, with 1, 2... A components; SS: that of the previous component (that of X for the 1st).")),
   "validation_croisee_acp <- function(X, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
   "  complet <- pretraiter(X, seq_len(nrow(X)))",
   "  groupe_terme <- (seq_len(ncol(complet$X)) - 1) %% G + 1",
   "  vc <- list(press = matrix(0, A, ncol(complet$X)))",
   "  for (g in unique(groupe)) {",
   "    hors <- groupe == g",
-  "    s <- pretraiter(X, !hors)",
+  "    s <- pretraiter(X, !hors, complet)",
   "    mg <- acp(s$X[!hors, , drop = FALSE], A)",
   "    for (h in unique(groupe_terme)) {",
   "      cases <- groupe_terme == h",
@@ -2260,14 +2341,14 @@ modele_pls <- function(tx, na, vides) c(
 
 # La validation croisée d'une PLS.
 modele_vc_pls <- function(tx, na, y_na) c(
-  commentaire(tx("La validation croisée de la PLS : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une PLS à A composantes ; les lignes du groupe, prétraitées de même, sont projetées sur ses composantes une à une. Le Y prédit avec 1, 2... A composantes est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction ; SS : celle de la composante précédente (celle de Y pour la 1re) ; y_vc : Y prédit en validation croisée avec A composantes.",
-                 "The cross-validation of the PLS: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then a PLS with A components; the rows of the group, preprocessed likewise, are projected on its components one by one. The Y predicted with 1, 2... A components is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS: the sum of squared prediction errors; SS: that of the previous component (that of Y for the 1st); y_vc: Y predicted in cross-validation with A components.")),
+  commentaire(tx("La validation croisée de la PLS : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes et le modèle complet (`complet`), puis une PLS à A composantes ; les lignes du groupe, prétraitées de même, sont projetées sur ses composantes une à une. Le Y prédit avec 1, 2... A composantes est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction ; SS : celle de la composante précédente (celle de Y pour la 1re) ; y_vc : Y prédit en validation croisée avec A composantes ; Q2V : le Q2 cumulé de chaque Y, 1 - PRESS / SS.",
+                 "The cross-validation of the PLS: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows and the full model (`full`), then a PLS with A components; the rows of the group, preprocessed likewise, are projected on its components one by one. The Y predicted with 1, 2... A components is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS: the sum of squared prediction errors; SS: that of the previous component (that of Y for the 1st); y_vc: Y predicted in cross-validation with A components; Q2V: the cumulative Q2 of each Y, 1 - PRESS / SS.")),
   "validation_croisee_pls <- function(X, Y, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
   "  complet <- pretraiter(X, Y, seq_len(nrow(X)))",
   "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y)",
   "  for (g in unique(groupe)) {",
   "    hors <- groupe == g",
-  "    s <- pretraiter(X, Y, !hors)",
+  "    s <- pretraiter(X, Y, !hors, complet)",
   "    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], A)",
   if (na) c("    M <- 1 * !is.na(s$X[hors, , drop = FALSE])", "    E <- replace(s$X[hors, , drop = FALSE], M == 0, 0)") else "    E <- s$X[hors, , drop = FALSE]",
   "    prediction <- matrix(0, sum(hors), ncol(complet$Y))",
@@ -2285,8 +2366,83 @@ modele_vc_pls <- function(tx, na, y_na) c(
   "    vc$y_vc[hors, ] <- y",
   "  }",
   sprintf("  vc$ss <- rbind(colSums(complet$Y^2%s), vc$press[-A, , drop = FALSE])", if (y_na) ", na.rm = TRUE" else ""),
+  "  vc$Q2V <- 1 - vc$press[A, ] / vc$ss[1, ]",
   "  vc",
   "}")
+
+# La validation croisée d'une ACP avec les centres et les poids du modèle complet (mode « complet » ;
+# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`.
+modele_complet_acp <- function(tx, na, vides) {
+  t0 <- if (vides) "T0" else "m$T"
+  c(commentaire(tx("La validation croisée de l'ACP avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes (`s` : les termes prétraités du modèle complet, `m` : ses composantes). Les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation ; les termes en G groupes à tour de rôle. Pour chaque composante, sur les résidus E du modèle complet avant elle, chaque case est prédite par t × p : le loading p ajusté sans le groupe de son observation, et le score t sans le groupe de son terme (Krzanowski, 1987), chacun orienté comme la composante du modèle complet (0 pour un groupe dont les autres lignes, ou les autres termes, n'ont plus de variation). PRESS : la somme des carrés des erreurs de prédiction ; SS : la somme des carrés de E. Ce Q2 s'écarte de 0,01 en médiane de ceux enregistrés dans les fichiers .usp : le logiciel qui les écrit ne publie pas tout le détail de sa validation.",
+                   "The cross-validation of the PCA with the full model's centres and weights, each component validated on what the previous ones leave (`s`: the full model's preprocessed terms, `m`: its components). The observations are assigned in turn to G groups, or after `group`, each observation's group; the terms to G groups in turn. For each component, on the full model's residuals E before it, each cell is predicted by t × p: the loading p fitted without its observation's group, and the score t without its term's group (Krzanowski, 1987), each oriented like the full model's component (0 for a group whose other rows, or other terms, have no variation left). PRESS: the sum of squared prediction errors; SS: the sum of squares of E. This Q2 is 0.01 away, in median, from those stored in .usp files: the software that writes them does not publish every detail of its validation.")),
+    "validation_modele_complet_acp <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %% G + 1) {",
+    if (na) c("  M <- 1 * !is.na(s$X)", "  E <- replace(s$X, M == 0, 0)") else "  E <- s$X",
+    if (vides) "  T0 <- replace(m$T, is.na(m$T), 0)",
+    "  depart <- sum(E^2)",
+    "  groupe_terme <- (seq_len(ncol(E)) - 1) %% G + 1",
+    "  sens <- function(v, ref) if (sum(v * ref) < 0) -1 else 1",
+    "  vc <- list()",
+    "  for (a in 1:ncol(m$T)) {",
+    tx("    P <- matrix(0, ncol(E), nrow(E))  # le loading de chaque observation, ajusté sans son groupe",
+       "    P <- matrix(0, ncol(E), nrow(E))  # the loading of each observation, fitted without its group"),
+    tx("    Tc <- matrix(0, nrow(E), ncol(E))  # le score de chaque terme, ajusté sans son groupe",
+       "    Tc <- matrix(0, nrow(E), ncol(E))  # the score of each term, fitted without its group"),
+    "    for (g in unique(groupe)) {",
+    "      hors <- groupe == g",
+    "      if (sum(E[!hors, ]^2) > 1e-12 * depart) {",
+    sprintf("        k <- composante_acp(E[!hors, , drop = FALSE]%s)", if (na) ", M[!hors, , drop = FALSE]" else ""),
+    "        P[, hors] <- k$p * sens(k$p, m$P[, a])",
+    "      }",
+    "    }",
+    "    for (h in unique(groupe_terme)) {",
+    "      cases <- groupe_terme == h",
+    "      if (!all(cases) && sum(E[, !cases]^2) > 1e-12 * depart) {",
+    sprintf("        k <- composante_acp(E[, !cases, drop = FALSE]%s)", if (na) ", M[, !cases, drop = FALSE]" else ""),
+    sprintf("        Tc[, cases] <- k$t * sens(k$t, %s[, a])", t0),
+    "      }",
+    "    }",
+    sprintf("    vc$press <- rbind(vc$press, colSums(((E - Tc * t(P))%s)^2))", if (na) " * M" else ""),
+    "    vc$ss <- rbind(vc$ss, colSums(E^2))",
+    sprintf("    E <- %s", if (na) sprintf("(E - outer(%s[, a], m$P[, a])) * M", t0) else sprintf("E - outer(%s[, a], m$P[, a])", t0)),
+    "  }",
+    "  vc",
+    "}")
+}
+
+# La validation croisée d'une PLS avec les centres et les poids du modèle complet (mode « complet » ;
+# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`.
+modele_complet_pls <- function(tx, na, vides) {
+  t0 <- if (vides) "T0" else "m$T"
+  c(commentaire(tx("La validation croisée de la PLS avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes ; elle redonne les Q2 enregistrés dans les fichiers .usp (`s` : les termes prétraités du modèle complet, `m` : ses composantes). Les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Pour chaque composante, sur les résidus E et F du modèle complet avant elle, une composante PLS est ajustée sans chaque groupe, et le F du groupe en est prédit (0 quand les autres lignes n'ont plus de variation). PRESS : la somme des carrés des erreurs de prédiction de F ; SS : la somme des carrés de F ; y_vc : le Y ajusté par le modèle complet avec A - 1 composantes, plus la prédiction de la dernière ; Q2V : le Q2 cumulé de chaque Y, 1 - le produit des (1 - Q2) des composantes, chaque Q2 compté pour -0,1 au plus bas (comme dans les fichiers .usp).",
+                   "The cross-validation of the PLS with the full model's centres and weights, each component validated on what the previous ones leave; it gives back the Q2 stored in .usp files (`s`: the full model's preprocessed terms, `m`: its components). The observations are assigned in turn to G groups, or after `group`, each observation's group. For each component, on the full model's residuals E and F before it, a PLS component is fitted without each group, and the group's F is predicted from it (0 when the other rows have no variation left). PRESS: the sum of squared prediction errors of F; SS: the sum of squares of F; y_vc: the Y fitted by the full model with A - 1 components, plus the prediction of the last one; Q2V: the cumulative Q2 of each Y, 1 - the product of the components' (1 - Q2), each Q2 counted as -0.1 at worst (as in .usp files).")),
+    "validation_modele_complet_pls <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %% G + 1) {",
+    if (na) c("  MX <- 1 * !is.na(s$X)", "  MY <- 1 * !is.na(s$Y)", "  E <- replace(s$X, MX == 0, 0)", "  F <- replace(s$Y, MY == 0, 0)") else c("  E <- s$X", "  F <- s$Y"),
+    if (vides) "  T0 <- replace(m$T, is.na(m$T), 0)",
+    "  F0 <- F",
+    "  depart <- c(sum(E^2), sum(F^2))",
+    "  vc <- list()",
+    "  for (a in 1:ncol(m$T)) {",
+    tx("    erreur <- F  # l'erreur de prédiction de F (prédit par 0 sans composante)", "    erreur <- F  # the prediction error of F (predicted by 0 without a component)"),
+    "    for (g in unique(groupe)) {",
+    "      hors <- groupe == g",
+    "      if (sum(E[!hors, ]^2) > 1e-12 * depart[1] && sum(F[!hors, ]^2) > 1e-12 * depart[2]) {",
+    if (na) "        k <- composante_pls(E[!hors, , drop = FALSE], MX[!hors, , drop = FALSE], F[!hors, , drop = FALSE], MY[!hors, , drop = FALSE])"
+    else "        k <- composante_pls(E[!hors, , drop = FALSE], F[!hors, , drop = FALSE])",
+    if (na) "        tt <- projeter(E[hors, , drop = FALSE], MX[hors, , drop = FALSE], k$w)" else "        tt <- drop(E[hors, , drop = FALSE] %*% k$w) / sum(k$w^2)",
+    "        erreur[hors, ] <- F[hors, , drop = FALSE] - outer(tt, k$c)",
+    "      }",
+    "    }",
+    sprintf("    vc$press <- rbind(vc$press, colSums(%s^2))", if (na) "(erreur * MY)" else "erreur"),
+    "    vc$ss <- rbind(vc$ss, colSums(F^2))",
+    if (na) c(sprintf("    E <- (E - outer(%s[, a], m$P[, a])) * MX", t0), sprintf("    F <- (F - outer(%s[, a], m$C[, a])) * MY", t0))
+    else c(sprintf("    E <- E - outer(%s[, a], m$P[, a])", t0), sprintf("    F <- F - outer(%s[, a], m$C[, a])", t0)),
+    "  }",
+    "  vc$y_vc <- F0 - erreur",
+    "  vc$Q2V <- 1 - apply(1 - pmax(1 - vc$press / vc$ss, -0.1), 2, prod)",
+    "  vc",
+    "}")
+}
 
 # OPLS à plusieurs composantes prédictives : les Ap premières composantes PLS.
 modele_composantes_pls <- function(tx, na) c(
@@ -2405,38 +2561,51 @@ modele_opls_predire <- function(tx, na, general) c(
   else if (na) "  outer(projeter(E, M, kp$w), kp$c)" else "  outer(drop(E %*% kp$w) / sum(kp$w^2), kp$c)",
   "}")
 
-# La validation croisée d'une OPLS.
-modele_vc_opls <- function(tx, na, general) c(
-  commentaire(tx(sprintf("La validation croisée de l'OPLS : les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes, puis une OPLS aux mêmes composantes (moins si ses données n'en permettent pas autant : il prédit avec celles qu'il a) ; les lignes du groupe, prétraitées de même, sont prédites avec %s puis avec 1, 2... Ao orthogonales. Le Y prédit est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS de chaque composante ; SS : celui de la précédente (la somme des carrés de Y pour la 1re). y_vc : Y prédit en validation croisée.",
-                         if (general) "1, 2... Ap composantes prédictives," else "la composante prédictive seule,"),
-                 sprintf("The cross-validation of the OPLS: the observations are assigned in turn to G groups, or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows, then an OPLS with the same components (fewer if its data do not allow as many: it predicts with those it has); the rows of the group, preprocessed likewise, are predicted with %s then with 1, 2... Ao orthogonal ones. The predicted Y is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS of each component; SS: that of the previous one (the sum of squares of Y for the 1st). y_vc: Y predicted in cross-validation.",
-                         if (general) "1, 2... Ap predictive components," else "the predictive component alone,"))),
-  sprintf("validation_croisee_opls <- function(X, Y, %sAo, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %%%% G + 1) {", if (general) "Ap, " else ""),
-  if (general) "  A <- Ap + Ao" else "  A <- 1 + Ao",
-  "  complet <- pretraiter(X, Y, seq_len(nrow(X)))",
-  "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y)",
-  "  for (g in unique(groupe)) {",
-  "    hors <- groupe == g",
-  "    s <- pretraiter(X, Y, !hors)",
-  if (na) c("    MX <- 1 * !is.na(s$X)", "    MY <- 1 * !is.na(s$Y)", "    s$X <- replace(s$X, MX == 0, 0)", "    s$Y <- replace(s$Y, MY == 0, 0)",
-            sprintf("    og <- opls_noyau(s$X[!hors, , drop = FALSE], MX[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], MY[!hors, , drop = FALSE], %sAo)", if (general) "Ap, " else ""))
-  else sprintf("    og <- opls_noyau(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], %sAo)", if (general) "Ap, " else ""),
-  tx("    ao <- length(og$predictives) - 1  # ses composantes orthogonales (moins quand ses données n'ont plus de variation)",
-     "    ao <- length(og$predictives) - 1  # its orthogonal components (fewer when its data have no variation left)"),
-  "    for (r in 1:A) {",
-  if (general) c("      k <- min(max(0, r - Ap), ao)",
-                 "      a <- min(r, Ap, length(og$predictives[[k + 1]]))",
-                 sprintf("      prediction <- if (a == 0) matrix(0, sum(hors), ncol(complet$Y)) else opls_predire(og, s$X[hors, , drop = FALSE], %sk, a)", if (na) "MX[hors, , drop = FALSE], " else ""))
-  else sprintf("      prediction <- if (ao < 0) matrix(0, sum(hors), ncol(complet$Y)) else opls_predire(og, s$X[hors, , drop = FALSE], %smin(r - 1, ao))", if (na) "MX[hors, , drop = FALSE], " else ""),
-  "      y <- sweep(sweep(prediction, 2, ifelse(s$poids_y > 0, s$poids_y, Inf), \"/\"), 2, s$centre_y, \"+\")",
-  "      y <- mettre_a_echelle(y, complet$centre_y, complet$poids_y)",
-  sprintf("      vc$press[r, ] <- vc$press[r, ] + colSums((complet$Y[hors, , drop = FALSE] - y)^2%s)", if (na) ", na.rm = TRUE" else ""),
-  "    }",
-  "    vc$y_vc[hors, ] <- y",
-  "  }",
-  sprintf("  vc$ss <- rbind(colSums(complet$Y^2%s), vc$press[-A, , drop = FALSE])", if (na) ", na.rm = TRUE" else ""),
-  "  vc",
-  "}")
+# La validation croisée d'une OPLS : par des sous-modèles (validation_croisee_opls), ou avec les
+# centres et les poids du modèle complet (mode « complet », validation_modele_complet_opls : des
+# sous-modèles ajustés sur les lignes de ses termes prétraités, sans prétraitement recalculé ;
+# validation_croisee.R).
+modele_vc_opls <- function(tx, na, general, modele_complet = FALSE) {
+  noyau <- sprintf("s$X[!hors, , drop = FALSE], %ss$Y[!hors, , drop = FALSE], %s%sAo", if (na) "MX[!hors, , drop = FALSE], " else "",
+                   if (na) "MY[!hors, , drop = FALSE], " else "", if (general) "Ap, " else "")
+  Z <- if (modele_complet) "s$Y" else "complet$Y"
+  y <- if (modele_complet) "y" else "prediction"
+  avec <- tx(if (general) "1, 2... Ap composantes prédictives," else "la composante prédictive seule,",
+             if (general) "1, 2... Ap predictive components," else "the predictive component alone,")
+  c(commentaire(if (modele_complet) tx(sprintf("La validation croisée de l'OPLS avec les centres et les poids du modèle complet (`s`, ses termes prétraités : aucun prétraitement recalculé) : les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par une OPLS aux mêmes composantes ajustée sur les autres lignes de s (moins si elles n'en permettent pas autant : elle prédit avec celles qu'elle a), avec %s puis avec 1, 2... Ao orthogonales. PRESS de chaque composante ; SS : celui de la précédente (la somme des carrés de Y pour la 1re) ; y_vc : Y prédit en validation croisée ; Q2V : le Q2 cumulé de chaque Y, 1 - le produit des (1 - Q2) des composantes, chaque Q2 compté pour -0,1 au plus bas, comme dans les fichiers .usp.", avec),
+                              sprintf("The cross-validation of the OPLS with the full model's centres and weights (`s`, its preprocessed terms: no preprocessing recomputed): the observations are assigned in turn to G groups, or after `group`, each observation's group. Each group is predicted by an OPLS with the same components fitted on the other rows of s (fewer if they do not allow as many: it predicts with those it has), with %s then with 1, 2... Ao orthogonal ones. PRESS of each component; SS: that of the previous one (the sum of squares of Y for the 1st); y_vc: Y predicted in cross-validation; Q2V: the cumulative Q2 of each Y, 1 - the product of the components' (1 - Q2), each Q2 counted as -0.1 at worst, as in .usp files.", avec))
+                else tx(sprintf("La validation croisée de l'OPLS : les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes et le modèle complet (`complet`), puis une OPLS aux mêmes composantes (moins si ses données n'en permettent pas autant : il prédit avec celles qu'il a) ; les lignes du groupe, prétraitées de même, sont prédites avec %s puis avec 1, 2... Ao orthogonales. Le Y prédit est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS de chaque composante ; SS : celui de la précédente (la somme des carrés de Y pour la 1re). y_vc : Y prédit en validation croisée ; Q2V : le Q2 cumulé de chaque Y, 1 - PRESS / SS.", avec),
+                        sprintf("The cross-validation of the OPLS: the observations are assigned in turn to G groups, or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows and the full model (`full`), then an OPLS with the same components (fewer if its data do not allow as many: it predicts with those it has); the rows of the group, preprocessed likewise, are predicted with %s then with 1, 2... Ao orthogonal ones. The predicted Y is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS of each component; SS: that of the previous one (the sum of squares of Y for the 1st). y_vc: Y predicted in cross-validation; Q2V: the cumulative Q2 of each Y, 1 - PRESS / SS.", avec))),
+    if (modele_complet) sprintf("validation_modele_complet_opls <- function(s, %sAo, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %%%% G + 1) {", if (general) "Ap, " else "")
+    else sprintf("validation_croisee_opls <- function(X, Y, %sAo, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %%%% G + 1) {", if (general) "Ap, " else ""),
+    if (general) "  A <- Ap + Ao" else "  A <- 1 + Ao",
+    if (modele_complet && na) c("  MX <- 1 * !is.na(s$X)", "  MY <- 1 * !is.na(s$Y)", "  s$X <- replace(s$X, MX == 0, 0)", "  s$Y <- replace(s$Y, MY == 0, 0)"),
+    if (!modele_complet) "  complet <- pretraiter(X, Y, seq_len(nrow(X)))",
+    sprintf("  vc <- list(press = matrix(0, A, ncol(%s)), y_vc = 0 * %s)", Z, Z),
+    "  for (g in unique(groupe)) {",
+    "    hors <- groupe == g",
+    if (!modele_complet) c("    s <- pretraiter(X, Y, !hors, complet)",
+                  if (na) c("    MX <- 1 * !is.na(s$X)", "    MY <- 1 * !is.na(s$Y)", "    s$X <- replace(s$X, MX == 0, 0)", "    s$Y <- replace(s$Y, MY == 0, 0)")),
+    sprintf("    og <- opls_noyau(%s)", noyau),
+    tx("    ao <- length(og$predictives) - 1  # ses composantes orthogonales (moins quand ses données n'ont plus de variation)",
+       "    ao <- length(og$predictives) - 1  # its orthogonal components (fewer when its data have no variation left)"),
+    "    for (r in 1:A) {",
+    if (general) c("      k <- min(max(0, r - Ap), ao)",
+                   "      a <- min(r, Ap, length(og$predictives[[k + 1]]))",
+                   sprintf("      %s <- if (a == 0) matrix(0, sum(hors), ncol(%s)) else opls_predire(og, s$X[hors, , drop = FALSE], %sk, a)", y, Z, if (na) "MX[hors, , drop = FALSE], " else ""))
+    else sprintf("      %s <- if (ao < 0) matrix(0, sum(hors), ncol(%s)) else opls_predire(og, s$X[hors, , drop = FALSE], %smin(r - 1, ao))", y, Z, if (na) "MX[hors, , drop = FALSE], " else ""),
+    if (!modele_complet) c("      y <- sweep(sweep(prediction, 2, ifelse(s$poids_y > 0, s$poids_y, Inf), \"/\"), 2, s$centre_y, \"+\")",
+                  "      y <- mettre_a_echelle(y, complet$centre_y, complet$poids_y)",
+                  sprintf("      vc$press[r, ] <- vc$press[r, ] + colSums((complet$Y[hors, , drop = FALSE] - y)^2%s)", if (na) ", na.rm = TRUE" else ""))
+    else sprintf("      vc$press[r, ] <- vc$press[r, ] + colSums(%s^2)", if (na) "((s$Y[hors, , drop = FALSE] - y) * MY[hors, , drop = FALSE])" else "(s$Y[hors, , drop = FALSE] - y)"),
+    "    }",
+    "    vc$y_vc[hors, ] <- y",
+    "  }",
+    sprintf("  vc$ss <- rbind(colSums(%s^2%s), vc$press[-A, , drop = FALSE])", Z, if (na && !modele_complet) ", na.rm = TRUE" else ""),
+    if (modele_complet) "  vc$Q2V <- 1 - apply(1 - pmax(1 - vc$press / vc$ss, -0.1), 2, prod)" else "  vc$Q2V <- 1 - vc$press[A, ] / vc$ss[1, ]",
+    "  vc",
+    "}")
+}
 
 modele_echelle <- function(tx, nommer = TRUE) c(
   if (nommer) commentaire(tx("Chaque colonne de X centrée puis multipliée par son poids : (x - centre) * poids ; et des noms de colonnes numérotés (t1, t2...).",
@@ -2447,6 +2616,16 @@ modele_echelle <- function(tx, nommer = TRUE) c(
                 "  colnames(M) <- paste0(prefixe, seq_len(ncol(M)))",
                 "  M",
                 "}"))
+
+# L'écart-type d'un terme UV ou Pareto dans un sous-modèle de la validation croisée « sans fuite »
+# (validation_croisee.R : SEUIL_ECART_VC).
+modele_ecart_vc <- function(tx) c(
+  commentaire(tx("L'écart-type de chaque terme dans un sous-modèle de la validation croisée (`complet` : ceux du modèle complet). Un terme qui ne varie presque plus sans le groupe caché (son écart-type sous 0,1 fois celui du modèle complet) prend celui du modèle complet : sinon son poids, 1 / écart-type, serait multiplié d'autant, et les prédictions du groupe caché exploseraient.",
+                 "The standard deviation of each term in a sub-model of the cross-validation (`full`: those of the full model). A term that hardly varies without the held-out group (its standard deviation under 0.1 times the full model's) takes the full model's: otherwise its weight, 1 / standard deviation, would grow as much, and the predictions of the held-out group would blow up.")),
+  "ecart_vc <- function(ecart, complet) {",
+  "  if (is.null(complet)) return(ecart)",
+  "  ifelse(complet > 0 & (is.na(ecart) | ecart < 0.1 * complet), complet, ecart)",
+  "}")
 
 modele_la_plus_grande <- function(tx) c(
   commentaire(tx("La classe de chaque ligne de Y : celle de sa plus grande valeur.", "The class of each row of Y: that of its largest value.")),
@@ -2960,11 +3139,12 @@ modele_residus_quantiles <- function(tx) c(
 # séance, `ajuster(Yp)` donne l'ajustement et la validation croisée de chaque modèle.
 modele_permutations <- function(tx, pl, na) {
   G <- if (!is.null(pl) && (pl$G != 7 || !is.null(pl$groupes_vc))) paste0(", ", arguments_groupes(pl)) else ""
+  modele_complet <- !is.null(pl) && identical(pl$validation, "complet")
   mesure <- if (is.null(pl)) c("    r <- ajuster(Yp)", "    A <- ncol(r[[1]]$T)", "    m <- r[[1]]", "    vc <- r[[2]]")
   else c("    s <- pretraiter(X, Yp, seq_len(nrow(X)))", switch(pl$type,
-    pls = c("    m <- pls(s$X, s$Y, A)", sprintf("    vc <- validation_croisee_pls(X, Yp, A, pretraiter%s)", G)),
-    opls = if (pl$Ap > 1) c("    m <- opls(s$X, s$Y, Ap, Ao)", sprintf("    vc <- validation_croisee_opls(X, Yp, Ap, Ao, pretraiter%s)", G), "    A <- Ap + Ao")
-           else c("    m <- opls(s$X, s$Y, Ao)", sprintf("    vc <- validation_croisee_opls(X, Yp, Ao, pretraiter%s)", G), "    A <- 1 + Ao")))
+    pls = c("    m <- pls(s$X, s$Y, A)", if (modele_complet) sprintf("    vc <- validation_modele_complet_pls(s, m%s)", G) else sprintf("    vc <- validation_croisee_pls(X, Yp, A, pretraiter%s)", G)),
+    opls = if (pl$Ap > 1) c("    m <- opls(s$X, s$Y, Ap, Ao)", if (modele_complet) sprintf("    vc <- validation_modele_complet_opls(s, Ap, Ao%s)", G) else sprintf("    vc <- validation_croisee_opls(X, Yp, Ap, Ao, pretraiter%s)", G), "    A <- Ap + Ao")
+           else c("    m <- opls(s$X, s$Y, Ao)", if (modele_complet) sprintf("    vc <- validation_modele_complet_opls(s, Ao%s)", G) else sprintf("    vc <- validation_croisee_opls(X, Yp, Ao, pretraiter%s)", G), "    A <- 1 + Ao")))
   arguments <- if (is.null(pl)) "ajuster, Y" else switch(pl$type, pls = "X, Y, A", opls = if (pl$Ap > 1) "X, Y, Ap, Ao" else "X, Y, Ao")
   permuter <- if (is.null(pl)) c("    Yp <- Y", "    if (classes) Yp <- Y[ordre, , drop = FALSE] else Yp[, j] <- Y[ordre, j]")
               else if (pl$plsda) tx("    Yp <- Y[ordre, , drop = FALSE]  # les classes : toutes les indicatrices ensemble",
@@ -2977,7 +3157,7 @@ modele_permutations <- function(tx, pl, na) {
     sprintf("permutations <- function(%s, n = 20, j = 1%s) {", arguments, if (is.null(pl)) ", classes = FALSE" else ""),
     "  mesure <- function(Yp) {",
     mesure,
-    "    c(R2 = 1 - unname(m$ssy[j, A + 1] / m$ssy[j, 1]), Q2 = 1 - unname(vc$press[A, j] / vc$ss[1, j]))",
+    "    c(R2 = 1 - unname(m$ssy[j, A + 1] / m$ssy[j, 1]), Q2 = unname(vc$Q2V[j]))",
     "  }",
     "  set.seed(1)",
     "  points <- data.frame(correlation = 1, t(mesure(Y)))",
@@ -3098,6 +3278,8 @@ NOMS_SCRIPT_EN <- c(
   composantes_pls = "pls_components", base_poids_y = "y_weight_basis", acp = "pca", opls_noyau = "opls_core",
   opls_predire = "opls_predict", validation_croisee_acp = "cross_validation_pca", validation_croisee_pls = "cross_validation_pls",
   validation_croisee_opls = "cross_validation_opls", mettre_a_echelle = "scale_columns", nommer = "number_columns",
+  validation_modele_complet_acp = "full_model_cross_validation_pca", validation_modele_complet_pls = "full_model_cross_validation_pls",
+  validation_modele_complet_opls = "full_model_cross_validation_opls", ecart_vc = "cv_sd",
   prefixe = "prefix", la_plus_grande = "largest", coefficients_sg = "sg_coefficients", ligne_base = "baseline",
   enveloppe_basse = "lower_hull", fenetre = "window", degre = "degree", derivee = "derivative", corrige = "corrected",
   moyenne = "means", ecart = "sds", complet = "full", centre = "centre", poids = "weight", t_suivant = "t_next",
@@ -3203,11 +3385,13 @@ ecart_script <- function(pl, m, e, langue) {
   # X entièrement décrit par le modèle : ses résidus ne sont que des erreurs d'arrondi, et DModX
   # (leur écart-type rapporté au leur) n'a pas de sens, ici comme dans le moteur
   bruit <- m$ssx[m$A + 1] < 1e-20 * m$ssx[1]
+  # (seulement ce que le modèle a : dans un script de séance, ce que d'autres modèles ont calculé
+  # avant lui reste dans `e`, par exemple les VIP d'une PLS avant une ACP)
   paires <- list(
     "R2/Q2" = list(s$composantes, r("composantes")), scores = list(m$T, ms$T), T2 = list(s$observations$T2, r("T2")),
-    DModX = if (!bruit) list(s$observations$DModX, r("DModX")), "DModX (pond.)" = if (!bruit) list(s$observations$DModX_pondere, r("DModX_pondere")),
+    DModX = if (!bruit && pl$dmodx) list(s$observations$DModX, r("DModX")), "DModX (pond.)" = if (!bruit && pl$pondere) list(s$observations$DModX_pondere, r("DModX_pondere")),
     limites = list(unlist(s$limites), r("limites")),
-    VIP = list(s$variables$VIP, r("VIP")),
+    VIP = if (pls) list(s$variables$VIP, r("VIP")),
     coefficients = if (pls) list(as.matrix(s$coefficients[paste("Coeff", ny)]), r("coefficients")),
     "CV-ANOVA" = if (pl$cv_anova) list(do.call(rbind, lapply(s$cv_anova, `[`, colonnes_cv)), do.call(rbind, lapply(r("cv_anova"), `[`, colonnes_cv))),
     classification = if (pl$plsda) list(s$classification$vc$table, r("classification")),
