@@ -337,7 +337,7 @@ pg$observation_id_names <- c("Observation", "site")
 for (i in seq_along(pg$observations)) pg$observations[[i]]$ids <- c(pg$observations[[i]]$ids[1], sites[i])
 xg <- numeros(pg, c("x1", "x2", "x3", "a_nbjtx0"))
 par_site_g <- list(by = "id", id = "site")
-dg <- definir_modele(pg, "PLS", x = xg, y = numeros(pg, c("y", "y_208")), A = 2, vc = par_site_g, croises = list(numeros(pg, c("a_nbjtx0", "x1"))))
+dg <- definir_modele(pg, "PLS", x = xg, y = numeros(pg, c("y", "y_208")), A = 2, vc = par_site_g, croises = list(numeros(pg, c("a_nbjtx0", "x1"))), validation = "sans_fuite")
 mg <- ajuster(pg, dg)
 gardes <- gardes_vc(pg, dg, mg)
 verifier(sprintf("le moteur garde l'écart-type du modèle complet sans le site 208 : %s", paste(sprintf("%s (%.2f %%)", gardes$terme, 100 * gardes$part), collapse = ", ")),
@@ -347,15 +347,15 @@ appel <- grep("^vc <- validation_croisee_pls\\(", lignes_script(r), value = TRUE
 sans <- lancer(r$script, "composantes", paste("ecart_vc <- function(ecart, complet) ecart;", appel, "; 1 - rowSums(vc$press) / sum(vc$ss[1, ])"))
 verifier(sprintf("sans la garde (ecart_vc, dans pretraiter()), le script donnerait Q2cum = %.3g au lieu de %.3g", sans$suite[2] %||% NA, mg$q2cum[2]),
          length(appel) == 1 && isTRUE(sans$suite[2] < mg$q2cum[2] - 1))
-essayer("garde_site_acp", pg, definir_modele(pg, "PCA", x = xg, A = 2, vc = par_site_g))
-essayer("garde_site_opls", pg, definir_modele(pg, "OPLS", x = xg, y = numeros(pg, "y"), A = 2, vc = par_site_g), permutations = TRUE)
+essayer("garde_site_acp", pg, definir_modele(pg, "PCA", x = xg, A = 2, vc = par_site_g, validation = "sans_fuite"))
+essayer("garde_site_opls", pg, definir_modele(pg, "OPLS", x = xg, y = numeros(pg, "y"), A = 2, vc = par_site_g, validation = "sans_fuite"), permutations = TRUE)
 
 cat("Une séance aux trois façons de valider\n")
 # Des modèles qui valident chacun à sa façon dans le même script : les fonctions de chaque façon,
 # une fois ; les résultats du moteur ; le test de permutation d'une PLS validée avec les centres et
 # les poids du modèle complet, tel que le script l'écrit (en commentaire).
 dir.create(ici <- file.path(dossier, "seance_modes"))
-defs <- list(definir_modele(qm, "PLS", x = complets[1:4], y = uid("note_gout"), A = 2, nom = "PLS_sans_fuite"),
+defs <- list(definir_modele(qm, "PLS", x = complets[1:4], y = uid("note_gout"), A = 2, nom = "PLS_sans_fuite", validation = "sans_fuite"),
              definir_modele(qm, "PLS", x = complets[1:4], y = uid("note_gout"), A = 2, nom = "PLS_centres", validation = "centres"),
              definir_modele(qm, "PLS", x = complets[1:4], y = uid("note_gout"), A = 2, nom = "PLS_complet", validation = "complet"),
              definir_modele(qm, "PCA", x = complets[1:6], A = 3, nom = "ACP_complet", validation = "complet"),

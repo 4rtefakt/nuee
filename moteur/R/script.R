@@ -2414,12 +2414,11 @@ modele_complet_acp <- function(tx, na, vides) {
 # validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`.
 modele_complet_pls <- function(tx, na, vides) {
   t0 <- if (vides) "T0" else "m$T"
-  c(commentaire(tx("La validation croisée de la PLS avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes ; elle redonne les Q2 enregistrés dans les fichiers .usp (`s` : les termes prétraités du modèle complet, `m` : ses composantes). Les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Pour chaque composante, sur les résidus E et F du modèle complet avant elle, une composante PLS est ajustée sans chaque groupe, et le F du groupe en est prédit (0 quand les autres lignes n'ont plus de variation). PRESS : la somme des carrés des erreurs de prédiction de F ; SS : la somme des carrés de F ; y_vc : le Y ajusté par le modèle complet avec A - 1 composantes, plus la prédiction de la dernière ; Q2V : le Q2 cumulé de chaque Y, 1 - le produit des (1 - Q2) des composantes, chaque Q2 compté pour -0,1 au plus bas (comme dans les fichiers .usp).",
-                   "The cross-validation of the PLS with the full model's centres and weights, each component validated on what the previous ones leave; it gives back the Q2 stored in .usp files (`s`: the full model's preprocessed terms, `m`: its components). The observations are assigned in turn to G groups, or after `group`, each observation's group. For each component, on the full model's residuals E and F before it, a PLS component is fitted without each group, and the group's F is predicted from it (0 when the other rows have no variation left). PRESS: the sum of squared prediction errors of F; SS: the sum of squares of F; y_vc: the Y fitted by the full model with A - 1 components, plus the prediction of the last one; Q2V: the cumulative Q2 of each Y, 1 - the product of the components' (1 - Q2), each Q2 counted as -0.1 at worst (as in .usp files).")),
+  c(commentaire(tx("La validation croisée de la PLS avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes ; elle redonne les Q2 enregistrés dans les fichiers .usp (`s` : les termes prétraités du modèle complet, `m` : ses composantes). Les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Pour chaque composante, sur les résidus E et F du modèle complet avant elle, une composante PLS est ajustée sans chaque groupe, et le F du groupe en est prédit (0 quand les autres lignes n'ont plus de variation). PRESS : la somme des carrés des erreurs de prédiction de F ; SS : la somme des carrés de F ; y_vc : le Y du groupe prédit par une PLS à A composantes ajustée sur les autres lignes de `s` (RMSEcv, CV-ANOVA, classement) ; Q2V : le Q2 cumulé de chaque Y, 1 - le produit des (1 - Q2) des composantes, chaque Q2 compté pour -0,1 au plus bas (comme dans les fichiers .usp).",
+                   "The cross-validation of the PLS with the full model's centres and weights, each component validated on what the previous ones leave; it gives back the Q2 stored in .usp files (`s`: the full model's preprocessed terms, `m`: its components). The observations are assigned in turn to G groups, or after `group`, each observation's group. For each component, on the full model's residuals E and F before it, a PLS component is fitted without each group, and the group's F is predicted from it (0 when the other rows have no variation left). PRESS: the sum of squared prediction errors of F; SS: the sum of squares of F; y_vc: the group's Y predicted by a PLS with A components fitted on the other rows of `s` (RMSEcv, CV-ANOVA, classification); Q2V: the cumulative Q2 of each Y, 1 - the product of the components' (1 - Q2), each Q2 counted as -0.1 at worst (as in .usp files).")),
     "validation_modele_complet_pls <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %% G + 1) {",
     if (na) c("  MX <- 1 * !is.na(s$X)", "  MY <- 1 * !is.na(s$Y)", "  E <- replace(s$X, MX == 0, 0)", "  F <- replace(s$Y, MY == 0, 0)") else c("  E <- s$X", "  F <- s$Y"),
     if (vides) "  T0 <- replace(m$T, is.na(m$T), 0)",
-    "  F0 <- F",
     "  depart <- c(sum(E^2), sum(F^2))",
     "  vc <- list()",
     "  for (a in 1:ncol(m$T)) {",
@@ -2438,7 +2437,19 @@ modele_complet_pls <- function(tx, na, vides) {
     if (na) c(sprintf("    E <- (E - outer(%s[, a], m$P[, a])) * MX", t0), sprintf("    F <- (F - outer(%s[, a], m$C[, a])) * MY", t0))
     else c(sprintf("    E <- E - outer(%s[, a], m$P[, a])", t0), sprintf("    F <- F - outer(%s[, a], m$C[, a])", t0)),
     "  }",
-    "  vc$y_vc <- F0 - erreur",
+    "  vc$y_vc <- 0 * s$Y",
+    "  for (g in unique(groupe)) {",
+    "    hors <- groupe == g",
+    "    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], ncol(m$T))",
+    if (na) c("    Mh <- 1 * !is.na(s$X[hors, , drop = FALSE])", "    Eh <- replace(s$X[hors, , drop = FALSE], Mh == 0, 0)") else "    Eh <- s$X[hors, , drop = FALSE]",
+    "    y <- matrix(0, sum(hors), ncol(s$Y))",
+    "    for (a in seq_len(NCOL(mg$W))) {",
+    if (na) c("      tt <- projeter(Eh, Mh, mg$W[, a])", "      Eh <- (Eh - outer(tt, mg$P[, a])) * Mh")
+    else c("      tt <- drop(Eh %*% mg$W[, a]) / sum(mg$W[, a]^2)", "      Eh <- Eh - outer(tt, mg$P[, a])"),
+    "      y <- y + outer(tt, mg$C[, a])",
+    "    }",
+    "    vc$y_vc[hors, ] <- y",
+    "  }",
     "  vc$Q2V <- 1 - apply(1 - pmax(1 - vc$press / vc$ss, -0.1), 2, prod)",
     "  vc",
     "}")
