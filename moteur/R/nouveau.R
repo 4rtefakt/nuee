@@ -189,7 +189,9 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   par exemple list(by = "id", id = "site") ou list(by = "variable", variable = 4) ;
 #   blocs : vecteur nommé par numéro de variable, le bloc de chaque variable pondérée par blocs
 #   (ses termes : poids divisé par la racine du nombre de termes du bloc) ; modificateurs : de
-#   même, un facteur du poids (pretraitement.R : facteurs_ponderation).
+#   même, un facteur du poids (pretraitement.R : facteurs_ponderation) ;
+#   condition : garder seulement les observations où cette expression R est vraie, par exemple
+#   "site == \"S1\" & annee >= 2010" (condition.R) ; d$cochees garde les observations sans elle.
 # Régressions (regression.R) : type "LM" (linéaire) ou "LMM" (mixte), une seule variable Y ;
 #   aleatoires : les effets aléatoires d'un modèle mixte, emboîtés, du plus large au plus fin,
 #   par exemple list(list(by = "id", id = "site"), list(by = "id", id = "secteur")) ;
@@ -204,7 +206,8 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
-                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL) {
+                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
+                           condition = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -244,6 +247,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     # seules les observations dont la classe est connue entrent dans le modèle
     obs <- obs[!is.na(colonne(projet, classe, obs))]
   }
+  # une condition (onglet Observations) : les observations cochées où elle est vraie (condition.R)
+  condition <- texte_condition(condition)
+  cochees <- obs
+  if (nzchar(condition)) obs <- observations_condition(projet, condition, cochees)
   Ap <- if (opls) (if (plsda) length(unique(colonne(projet, classe, obs))) - 1 else length(y))
   if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
@@ -259,6 +266,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
             x = c(unlist(lapply(x, termes), recursive = FALSE),
                   unlist(lapply(croises, croise), recursive = FALSE)),
             y = if (plsda) yt else unlist(lapply(y, termes), recursive = FALSE))
+  if (nzchar(condition)) {
+    d$condition <- condition
+    d$cochees <- cochees
+  }
   if (plsda) d$classe <- classe
   if (opls) d$Ap <- Ap
   if (length(spectres)) d$spectres <- spectres
@@ -319,8 +330,9 @@ termes_croises <- function(projet, paire, x, echelle = "UV") {
 }
 
 # Les réglages d'un modèle, sous la forme de definir_modele() (pour les modifier) :
-# variables X et Y, classe, observations exclues, échelle, bloc, modificateur et transformation
-# par variable, termes croisés et leurs réglages, groupes de la validation croisée.
+# variables X et Y, classe, observations exclues (décochées : celles qu'écarte sa condition n'en
+# sont pas) et condition, échelle, bloc, modificateur et transformation par variable, termes
+# croisés et leurs réglages, groupes de la validation croisée.
 reglages_modele <- function(projet, d) {
   simples <- function(termes) unique(unlist(lapply(termes, function(t)
     if (length(t$variables) == 1) as.numeric(t$variables))))
@@ -362,7 +374,8 @@ reglages_modele <- function(projet, d) {
   plsda <- isTRUE(d$plsda) && !is.null(d$classe)
   list(type = paste0(if (isTRUE(d$opls)) "O" else "", if (plsda) "PLS-DA" else d$type), x = I(simples(d$x) %||% numeric(0)),
        y = I(if (plsda) numeric(0) else simples(d$y) %||% numeric(0)), classe = if (plsda || est_autre_analyse(d)) d$classe else NULL,
-       exclues = I(setdiff(tous, c(d$observations, d$test))), echelles = echelles,
+       exclues = I(setdiff(tous, c(if (avec_condition(d)) unlist(d$cochees %||% d$observations) else d$observations, d$test))),
+       condition = if (avec_condition(d)) texte_condition(d$condition) else "", echelles = echelles,
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,

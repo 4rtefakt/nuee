@@ -114,6 +114,8 @@ async function contenuRapport(app, m, parties, st) {
   const date = new Date().toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'long', timeStyle: 'short' });
   const blocs = [{ titre: st.titre || m.nom, niveau: 0 },
     { texte: `${t('projet_rapport')} : ${p.nom || ''} · ${t('genere_le')} ${date}` }];
+  // the condition that chose the model's observations (moteur/R/condition.R)
+  if (m.reglages && m.reglages.condition) blocs.push({ texte: t('condition_modele', { condition: m.reglages.condition }) });
   if (st.commentaire.trim()) st.commentaire.trim().split(/\n+/).forEach((x) => blocs.push({ texte: x }));
   if ((m.note || '').trim()) {
     blocs.push({ titre: t('notes'), niveau: 1 });

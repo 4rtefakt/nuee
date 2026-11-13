@@ -1195,9 +1195,9 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   # --- données
   ty <- d$y[[1]]
   reponse <- if (is.null(ty$transform)) guillemets(m$y$noms) else formule_transformation(ty$transform, guillemets(m$y$noms), fr)
-  p1 <- if (fr) sprintf("Le modèle porte sur %d observations%s ; la réponse est %s.", m$N,
+  p1 <- if (fr) sprintf("Le modèle porte sur %s%s ; la réponse est %s.", observations_texte(m$N, d, fr),
                         if (length(m$exclues)) sprintf(" (%d autres laissées de côté faute de valeurs)", length(m$exclues)) else "", reponse)
-        else sprintf("The model uses %d observations%s; the response is %s.", m$N,
+        else sprintf("The model uses %s%s; the response is %s.", observations_texte(m$N, d, fr),
                      if (length(m$exclues)) sprintf(" (%d others left out for missing values)", length(m$exclues)) else "", reponse)
 
   # --- modèle

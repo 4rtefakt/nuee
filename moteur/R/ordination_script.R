@@ -464,7 +464,10 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
   ca <- identical(m$type, "CA")
   obs <- as.numeric(d$observations)
   rangs <- unname(tab$rangs[as.character(obs)])
-  lignes_obs <- if (identical(as.integer(rangs), seq_len(nrow(tab$donnees)))) {
+  pc <- plan_condition(projet, d, tab)  # (une condition les choisit : condition.R)
+  lignes_obs <- if (!is.null(pc)) {
+    c(code_condition(pc, tx, tx(sprintf("Les %d observations du modèle.", length(obs)), sprintf("The %d observations of the model.", length(obs)))), "d <- donnees[lignes, ]")
+  } else if (identical(as.integer(rangs), seq_len(nrow(tab$donnees)))) {
     c(commentaire(tx(sprintf("Les %d observations du tableau.", length(obs)), sprintf("The %d observations of the table.", length(obs)))), "d <- donnees")
   } else {
     c(commentaire(tx(sprintf("Les %d observations du modèle (leurs rangs dans le tableau).", length(obs)), sprintf("The %d observations of the model (their rows in the table).", length(obs)))),
@@ -691,10 +694,12 @@ ecrire_script_ordination <- function(projet, d, chemin_script, m, donnees = "scr
   format <- c(r = "R", rmd = "Rmd", qmd = "qmd")[[tolower(tools::file_ext(chemin_script))]]
   ca <- identical(m$type, "CA")
   st <- if (!ca) m$options$strates
-  tab <- tableau_script(projet, if (!is.null(st) && identical(as.character(st$by)[1], "id")) as.character(st$id)[1] else character(0))
+  # (avec les identifiants que lit sa condition, et les fonctions de Nouvelle variable qu'elle appelle : condition.R)
+  tab <- tableau_script(projet, unique(c(if (!is.null(st) && identical(as.character(st$by)[1], "id")) as.character(st$id)[1], ids_condition(projet, d))))
   fichiers <- fichiers_script(chemin_script, donnees, rdata, renv, rproj, langue)
   code_donnees <- donnees_script(tab, fichiers, langue)
-  fonctions <- traduire_ordination(code_fonctions_ordination(m), langue)
+  fc <- plan_condition(projet, d, tab)$fonctions
+  fonctions <- traduire_ordination(c(code_fonctions_ordination(m), if (length(fc)) code_fonctions_condition(fc, tx)), langue)
   calcul <- traduire_ordination(code_calcul_ordination(projet, d, m, tab, langue), langue)
   e <- environnement_script(tab, fonctions, langue)
   probleme <- evaluer_script(calcul, e)

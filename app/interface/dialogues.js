@@ -78,6 +78,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     vc: r && r.vc && r.vc.by ? r.vc : null, blocs: {}, modificateurs: {}, bloc: '',
     exclues: new Set(r ? [].concat(r.exclues || []) : []), onglet: 'variables', filtre: '', filtreObs: '',
     test: new Set(r ? [].concat(r.test || []).map(Number) : []), methodeTest: 'hasard', partTest: 25,
+    // keep only the observations where this R condition is TRUE (moteur/R/condition.R); compte: how
+    // many ticked observations meet it ({ n, total }, from the engine), or why it doesn't read
+    condition: r && r.condition ? r.condition : '', compte: null, erreurCondition: '',
     croises: r && r.croises ? r.croises.map((c) => [].concat(c).map(Number)) : [], a: '', b: '', c: '',
     // each cross term's scaling, block and modifier, by its key "3*5" (moteur/R/nouveau.R: croises_reglages)
     croisesReglages: r && r.croises_reglages && !Array.isArray(r.croises_reglages) ? { ...r.croises_reglages } : {},
@@ -116,7 +119,42 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const x = Object.values(st.roles).filter((v) => v === 'x').length;
     const y = Object.values(st.roles).filter((v) => v === 'y' || v === 'classe').length;
     const test = avecTest() ? [...st.test].filter((u) => !st.exclues.has(u)).length : 0;
-    resume.textContent = t('resume_dialogue', { x, y, n: p.observations.uid.length - st.exclues.size - test }) + (test ? ` · ${t('n_test', { n: test })}` : '');
+    const n = st.condition.trim() && st.compte ? st.compte.n : p.observations.uid.length - st.exclues.size - test;
+    resume.textContent = t('resume_dialogue', { x, y, n }) + (test ? ` · ${t('n_test', { n: test })}` : '');
+  };
+
+  // The condition's count (or its error) under its field, asked of the engine once the typing
+  // stops, and again when the ticks change; an answer that a newer question overtook is dropped.
+  let minuterieCondition = null;
+  let cleCondition = null;
+  const afficherCondition = () => {
+    const c = contenu.querySelector('.compte-condition');
+    const e = contenu.querySelector('.erreur-condition');
+    const avec = !!st.condition.trim();
+    if (c) c.textContent = avec && st.compte ? t('condition_compte', { n: st.compte.n, total: st.compte.total }) : '';
+    if (e) e.textContent = avec ? st.erreurCondition : '';
+  };
+  const compterCondition = () => {
+    clearTimeout(minuterieCondition);
+    minuterieCondition = setTimeout(async () => {
+      const condition = st.condition.trim();
+      const test = avecTest() ? [...st.test].filter((u) => !st.exclues.has(u)) : [];
+      const cle = JSON.stringify([condition, [...st.exclues].sort((a, b) => a - b), test.sort((a, b) => a - b)]);
+      if (cle === cleCondition) return;
+      cleCondition = cle;
+      if (condition) {
+        try {
+          const res = await demander('condition_observations', { projet: p.id, condition, exclues: [...st.exclues], test }, { silencieux: true });
+          if (cle !== cleCondition) return;
+          Object.assign(st, { compte: res, erreurCondition: '' });
+        } catch (e) {
+          if (cle !== cleCondition) return;
+          Object.assign(st, { compte: null, erreurCondition: e.message });
+        }
+      } else Object.assign(st, { compte: null, erreurCondition: '' });
+      afficherCondition();
+      majResume();
+    }, 300);
   };
 
   const onglets = () => el('div', { class: 'onglets' }, [['general', t('general')], ['variables', t('variables')],
@@ -385,6 +423,14 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         modele && modele.projet === p.id ? el('button', { disabled: !app.selection(modele.id).length,
           onclick: () => { app.selection(modele.id).forEach((u) => st.exclues.add(u)); rendre(); } }, icone('eye-off'), t('exclure_selection')) : null,
         el('span', { class: 'infos' }, `${o.uid.length - st.exclues.size} / ${o.uid.length} ${t('incluses')}`)),
+      // keep only the ticked observations where an R condition is TRUE, evaluated by the engine at
+      // each fit (moteur/R/condition.R); the ticks below stay as they are
+      el('div', { class: 'formule-r condition-obs' },
+        el('label', { title: t('condition_aide') }, t('condition_obs')),
+        el('textarea', { class: 'formule', rows: 1, spellcheck: 'false', placeholder: t('condition_exemple'), title: t('condition_aide'), 'aria-label': t('condition_obs'),
+          oninput: (e) => { st.condition = e.target.value; compterCondition(); } }, st.condition),
+        el('div', { class: 'ligne' }, el('span', { class: 'infos compte-condition' }), el('span', { class: 'erreur erreur-condition' })),
+        el('p', { class: 'note' }, t('condition_note'))),
       // test set: observations left out of the model, then predicted by it (moteur/R/jeu_test.R)
       !avecTest() ? null : el('div', { class: 'outils' }, el('span', { title: t('jeu_test_aide') }, t('jeu_test')),
         el('select', { onchange: (e) => { st.methodeTest = e.target.value; } },
@@ -472,6 +518,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     contenu.replaceChildren(onglets(), el('div', { class: 'onglet' },
       st.onglet === 'general' ? general() : st.onglet === 'variables' ? variables() : st.onglet === 'termes' ? termes() : observations()));
     majResume();
+    afficherCondition();
+    compterCondition();  // (the ticks may have changed)
     erreur.textContent = '';
   }
 
@@ -534,7 +582,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [], correlation: avecCar1() ? st.correlation : null,
       famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [], k_courbes: kCourbesEnvoyes(),
       decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, croises_reglages: croisesReglages, nom: st.nom, titre: st.titre,
-      options: analyse() && analyse().options ? analyse().options(st, cles, p) : undefined };
+      options: analyse() && analyse().options ? analyse().options(st, cles, p) : undefined, condition: st.condition.trim() };
     if (!enCours) verifierPuisAjuster(q);
     return false;  // the dialog closes once the model is fitted
   }
@@ -622,7 +670,7 @@ const AIDE = {
       ['Projet d’exemple', 'Aide › Projet d’exemple : 120 pommes inventées et quatre modèles prêts (ACP, PLS, PLS-DA, OPLS-DA), pour essayer l’application.'],
       ['Explorateur', 'À gauche : projets, données, modèles importés d’un fichier .usp, modèles calculés et leurs vues. Double-clic pour ouvrir, clic droit pour les actions.'],
       ['Modèles importés', 'Double-cliquer un modèle importé le recalcule en R. Le résumé marque chaque valeur : = identique à la valeur enregistrée dans le fichier, ≈ proche, ≠ différente.'],
-      ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA, OPLS), rôle, échelle, bloc, modificateur et transformation de chaque variable (racine, log10, ou personnalisée : log10, ln, −log10, exp, logit, puissance ou linéaire, avec ses constantes), termes croisés (A × B, A × B × C, carrés et cubes, chacun avec son échelle, son bloc et son modificateur), observations incluses, nombre de composantes (automatique par défaut), groupes de validation croisée (à tour de rôle, ou un groupe par valeur d’un identifiant ou d’une variable : toutes les années d’un site ensemble).'],
+      ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA, OPLS), rôle, échelle, bloc, modificateur et transformation de chaque variable (racine, log10, ou personnalisée : log10, ln, −log10, exp, logit, puissance ou linéaire, avec ses constantes), termes croisés (A × B, A × B × C, carrés et cubes, chacun avec son échelle, son bloc et son modificateur), observations incluses, nombre de composantes (automatique par défaut), groupes de validation croisée (à tour de rôle, ou un groupe par valeur d’un identifiant ou d’une variable : toutes les années d’un site ensemble). Onglet Observations, « Garder seulement les observations où… » : une condition écrite comme une formule de Nouvelle variable, site == "S1" & annee >= 2010, !is.na(densite) ou habitat %in% c("marais", "prairie") ; dessous, combien d’observations cochées la remplissent, ou pourquoi elle ne se lit pas. Elle est gardée avec le modèle et refaite sur les données du projet à chaque ajustement et réajustement ; le modèle prend les observations cochées où elle est vraie (un résultat manquant compte pour faux). Les cases cochées ne changent pas (la vider rend les observations qu’elle écartait), le jeu de test garde les siennes, et celles qu’elle écarte sont hors du modèle, comme des décochées : Prédire les observations les prédit. Le texte des méthodes, le rapport et l’export vers R la donnent.'],
       ['Sélection', 'Cadre ou lasso dans un graphique, clic sur un point ou une ligne de liste : la sélection apparaît dans toutes les vues et toutes les fenêtres du modèle. Échap l’efface ; Ctrl+Suppr exclut les observations et réajuste.'],
       ['Variables en évidence', 'Un clic sur une variable (barre des VIP, des coefficients ou des loadings, point des loadings, du biplot ou du S-plot, ligne d’un profil ou de la liste des variables) la met en évidence sur tous les graphiques du modèle ; un cadre en choisit plusieurs dans les nuages de points. Échap les efface.'],
       ['Fenêtres', 'Un onglet par modèle : sa page montre résumé, scores et loadings, ses autres vues s’y ajoutent en onglets. Les vues se déplacent par leur onglet (glisser-déposer), se divisent et s’empilent ; glisser l’onglet d’un modèle à côté d’un autre pour les comparer. Clic droit sur un onglet : détacher dans une fenêtre, agrandir, fermer. Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète.'],
@@ -672,7 +720,7 @@ const AIDE = {
       ['Example project', 'Help › Example project: 120 made-up apples and four ready models (PCA, PLS, PLS-DA, OPLS-DA), to try the application.'],
       ['Explorer', 'On the left: projects, data, models imported from a .usp file, fitted models and their views. Double-click to open, right-click for actions.'],
       ['Imported models', 'Double-clicking an imported model recomputes it in R. The summary marks each value: = same as the value stored in the file, ≈ close, ≠ different.'],
-      ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA, OPLS), each variable’s role, scaling, block, modifier and transform (root, log10, or custom: log10, ln, −log10, exp, logit, power or linear, with its constants), cross terms (A × B, A × B × C, squares and cubes, each with its own scaling, block and modifier), included observations, number of components (automatic by default), cross-validation groups (in turn, or one group per value of an ID or of a variable: all the years of a site together).'],
+      ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA, OPLS), each variable’s role, scaling, block, modifier and transform (root, log10, or custom: log10, ln, −log10, exp, logit, power or linear, with its constants), cross terms (A × B, A × B × C, squares and cubes, each with its own scaling, block and modifier), included observations, number of components (automatic by default), cross-validation groups (in turn, or one group per value of an ID or of a variable: all the years of a site together). Observations tab, “Keep only the observations where…”: a condition written like a New variable formula, site == "S1" & year >= 2010, !is.na(density) or habitat %in% c("marsh", "meadow"); under it, how many ticked observations meet it, or why it doesn’t read. It is saved with the model and evaluated again on the project’s data at each fit and refit; the model takes the ticked observations where it is TRUE (a missing result counts as FALSE). The ticks don’t change (clearing it brings back the observations it set aside), the test set keeps its own, and those it sets aside are out of the model, as unticked ones, so Predict observations predicts them. The Methods text, the report and Export to R give it.'],
       ['Selection', 'Box or lasso in a plot, click a point or a list row: the selection shows in every view and window of the model. Esc clears it; Ctrl+Delete excludes the observations and refits.'],
       ['Highlighted variables', 'Clicking a variable (a bar of the VIP, coefficients or loadings, a point of the loadings, biplot or S-plot, a line of a profile or of the variable list) highlights it on all the model’s graphs; a box picks several in the scatter plots. Esc clears them.'],
       ['Windows', 'One tab per model: its page shows the summary, scores and loadings, and its other views join it as tabs. Drag views by their tab to move, split and stack them; drag a model’s tab beside another to compare them. Right-click a tab to move it to a new window, maximize or close it. Window › New window opens a second full window.'],

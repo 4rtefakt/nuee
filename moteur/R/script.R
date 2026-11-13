@@ -26,7 +26,7 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
   langue <- if (identical(langue, "en")) "en" else "fr"
   if (est_autre_analyse(d)) return(ecrire_script_analyse(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue))  # analyses.R
   format <- c(r = "R", rmd = "Rmd", qmd = "qmd")[[tolower(tools::file_ext(chemin_script))]]
-  tab <- tableau_script(projet, ids_script(list(d)))
+  tab <- tableau_script(projet, ids_script(list(d), projet))
   nom_projet <- as.character(projet$source %||% "projet")
   m <- m %||% ajuster(projet, d)
   pl <- plan_modele(projet, d, m, tab)
@@ -85,7 +85,7 @@ ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, do
                                  renv = FALSE, rdata = FALSE, rproj = FALSE, version = "", langue = "fr") {
   donnees <- match.arg(donnees)
   langue <- if (identical(langue, "en")) "en" else "fr"
-  tab <- tableau_script(projet, ids_script(definitions))
+  tab <- tableau_script(projet, ids_script(definitions, projet))
   nom_projet <- as.character(projet$source %||% "projet")
   plans <- lapply(seq_along(definitions), function(k) plan_modele(projet, definitions[[k]], modeles[[k]], tab))
   b <- besoins_script(plans, seance = TRUE)
@@ -207,6 +207,7 @@ plan_modele <- function(projet, d, m, tab) {
        groupes_vc = if (length(groupes) && !identical(groupes, as.integer(groupes_validation(N, m$G)))) groupes,
        vc_par = m$vc_par %||% "", vc_fichier = identical(as.character(d$groupes_vc$by), "groups"),
        rangs = unname(tab$rangs[as.character(m$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
+       condition = plan_condition(projet, d, tab),  # (condition.R)
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
        x = x$termes, y = y$termes, spectres = plan_spectres(projet, d, x$termes),
        manquantes = any(m$MX == 0) || (pls && any(m$MY == 0)) || anyNA(bt),
@@ -297,6 +298,8 @@ besoins_script <- function(plans, seance) {
        residus_quantiles = any(vapply(reg, function(pl) isTRUE(pl$quantiles), TRUE)),
        dates = any(vapply(reg, function(pl) isTRUE(pl$temps$dates), TRUE)),
        selection_aic = any(vapply(reg, function(pl) !is.null(pl$selection), TRUE)),
+       # (les fonctions de Nouvelle variable qu'appelle la condition d'un modèle : condition.R)
+       fonctions_condition = unique(unlist(lapply(plans, function(pl) pl$condition$fonctions))),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
 }
@@ -335,12 +338,13 @@ code_modele <- function(pl, b, langue, seance = NULL, signes = NULL) {
        objets = nom_script(objets, langue))
 }
 
-# Les observations du modèle (et du jeu de test) : le tableau `d`.
+# Les observations du modèle (et du jeu de test) : le tableau `d`. Un modèle à condition les choisit
+# par elle (pl$condition : condition.R, code_condition).
 code_observations <- function(pl, tx) {
   n <- length(pl$rangs)
   nt <- length(pl$rangs_test)
   total <- length(pl$noms_tableau)
-  if (!nt && identical(as.integer(pl$rangs), seq_len(total))) {
+  if (!nt && is.null(pl$condition) && identical(as.integer(pl$rangs), seq_len(total))) {
     return(c(commentaire(tx(sprintf("Les %d observations du tableau.", n), sprintf("The %d observations of the table.", n))), "d <- donnees"))
   }
   exclues <- setdiff(seq_len(total), c(pl$rangs, pl$rangs_test))
@@ -350,13 +354,24 @@ code_observations <- function(pl, tx) {
     else tx(sprintf(" : %d exclues", length(exclues)), sprintf(": %d excluded", length(exclues)))
   } else if (is.unsorted(pl$rangs, strictly = TRUE)) tx(", dans l'ordre du modèle", ", in the model's order") else ""
   if (!nt) {
+    if (!is.null(pl$condition)) {
+      return(c(code_condition(pl$condition, tx, tx(sprintf("Les %d observations du modèle%s.", n, sauf), sprintf("The %d observations of the model%s.", n, sauf))),
+               "d <- donnees[lignes, ]"))
+    }
     return(c(commentaire(tx(sprintf("Les %d observations du modèle (leurs rangs dans le tableau)%s.", n, sauf),
                             sprintf("The %d observations of the model (their rows in the table)%s.", n, sauf))),
              code_valeurs(morceaux_rangs(pl$rangs), "lignes <- "), "d <- donnees[lignes, ]"))
   }
-  c(commentaire(tx(sprintf("Les %d observations du modèle%s, puis les %d du jeu de test : laissées hors du modèle (ni l'ajustement ni la validation croisée ne les voient), puis prédites par lui. Leurs rangs dans le tableau.", n, sauf, nt),
-                   sprintf("The %d observations of the model%s, then the %d of the test set: left out of the model (neither the fit nor the cross-validation sees them), then predicted by it. Their rows in the table.", n, sauf, nt))),
-    code_valeurs(morceaux_rangs(pl$rangs), "lignes <- "),
+  modele_test <- if (!is.null(pl$condition)) {
+    c(code_condition(pl$condition, tx, tx(sprintf("Les %d observations du modèle%s.", n, sauf), sprintf("The %d observations of the model%s.", n, sauf))),
+      commentaire(tx(sprintf("Les %d observations du jeu de test (leurs rangs dans le tableau), cochées à part, sans la condition : laissées hors du modèle (ni l'ajustement ni la validation croisée ne les voient), puis prédites par lui.", nt),
+                     sprintf("The %d observations of the test set (their rows in the table), ticked apart, without the condition: left out of the model (neither the fit nor the cross-validation sees them), then predicted by it.", nt))))
+  } else {
+    c(commentaire(tx(sprintf("Les %d observations du modèle%s, puis les %d du jeu de test : laissées hors du modèle (ni l'ajustement ni la validation croisée ne les voient), puis prédites par lui. Leurs rangs dans le tableau.", n, sauf, nt),
+                     sprintf("The %d observations of the model%s, then the %d of the test set: left out of the model (neither the fit nor the cross-validation sees them), then predicted by it. Their rows in the table.", n, sauf, nt))),
+      code_valeurs(morceaux_rangs(pl$rangs), "lignes <- "))
+  }
+  c(modele_test,
     code_valeurs(morceaux_rangs(pl$rangs_test), "lignes_test <- "),
     "d <- donnees[c(lignes, lignes_test), ]",
     tx("modele <- seq_along(lignes)  # les lignes de d qui font le modèle", "modele <- seq_along(lignes)  # the rows of d that make the model"))
@@ -1039,6 +1054,7 @@ plan_regression <- function(projet, d, m, tab) {
        famille = m$famille, lien = m$lien %||% "identity", plsda = FALSE, opls = FALSE,
        N = m$N, K = K, A = 0, Ap = 0, M = 1, manquantes = FALSE, y_manquantes = FALSE, vides = FALSE,
        rangs = unname(tab$rangs[as.character(d$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
+       condition = plan_condition(projet, d, tab),  # (condition.R)
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
        x = x, na_termes = K > 0 && anyNA(m$bloc$X),
        croises_tr = any(vapply(x, function(t) t$croise && !is.null(t$tr) && !identite(t$tr), TRUE)),
@@ -1677,7 +1693,8 @@ code_fonctions <- function(b, plans, langue) {
     if ("msc" %in% b$spectres) modele_msc(tx),
     if ("sg" %in% b$spectres) modele_savitzky_golay(tx),
     if ("detrend" %in% b$spectres) modele_detrend(tx, na),
-    if ("ligne_base" %in% b$spectres) modele_ligne_base(tx))
+    if ("ligne_base" %in% b$spectres) modele_ligne_base(tx),
+    if (length(b$fonctions_condition)) utils::head(code_fonctions_condition(b$fonctions_condition, tx, dates = !isTRUE(b$dates)), -1))
   traduire_code(unlist(lapply(Filter(length, morceaux), function(x) c(x, ""))), langue)
 }
 
@@ -2378,6 +2395,7 @@ NOMS_SCRIPT_EN <- c(
   temps_en_nombres = "times_as_numbers", morceaux = "parts", motif = "pattern", numeros = "group_numbers", debut = "first", fin = "last",
   heure = "time_of_day", jma = "day_first", bissextile = "leap", jour_annee = "day_of_year",
   donnees = "data", lignes = "rows", lignes_test = "test_rows", modele = "in_model", y_observe = "y_observed",
+  cochees = "ticked", donnees_texte = "data_as_text", valeur_decalee = "shifted_value", lire_temps = "read_time",
   centre_x = "centre_x", poids_x = "weight_x", ecart_x = "sd_x", centre_y = "centre_y", poids_y = "weight_y", ecart_y = "sd_y",
   centre_c = "centre_c", poids_c = "weight_c", ecart_c = "sd_c", centre_cy = "centre_cy", poids_cy = "weight_cy", ecart_cy = "sd_cy",
   croises = "cross", croises_y = "cross_y", ordre_x = "order_x", ordre_y = "order_y", spectre = "spectrum", abscisses = "abscissas",
@@ -2729,13 +2747,15 @@ tableau_script <- function(projet, ids = character(0)) {
 }
 
 # Les identifiants des observations dont les régressions de `definitions` font leurs groupes (effets
-# aléatoires, temps de l'autocorrélation) : le script les ajoute à son tableau.
-ids_script <- function(definitions) {
+# aléatoires, temps de l'autocorrélation), et ceux que lit la condition d'un modèle (condition.R) : le
+# script les ajoute à son tableau.
+ids_script <- function(definitions, projet) {
   unique(unlist(lapply(definitions, function(d) {
-    if (!est_regression(d)) return(NULL)
+    conditions <- ids_condition(projet, d)
+    if (!est_regression(d)) return(conditions)
     specs <- c(specs_groupement(d$aleatoires), if (!is.null(d$correlation)) specs_groupement(d$correlation$temps),
                if (!is.null(d$correlation$dans)) specs_groupement(d$correlation$dans))
-    vapply(Filter(function(s) identical(as.character(s$by)[1], "id"), specs), function(s) as.character(s$id)[1], "")
+    c(vapply(Filter(function(s) identical(as.character(s$by)[1], "id"), specs), function(s) as.character(s$id)[1], ""), conditions)
   })))
 }
 
@@ -2931,6 +2951,7 @@ code_definition <- function(projet, d, p = "p") {
       if (length(r$croises_reglages)) sprintf("croises_reglages <- %s  # échelle, bloc et modificateur des termes croisés",
                                               paste(deparse(r$croises_reglages, width.cutoff = 500L), collapse = "")),
       if (length(r$options)) sprintf("options <- %s  # les réglages propres de l'analyse (analyses.R)", paste(deparse(r$options, width.cutoff = 500L), collapse = "")),
+      if (nzchar(r$condition)) sprintf("condition <- %s  # seulement les observations où elle est vraie (condition.R)", q(r$condition)),
       "",
       sprintf("d <- definir_modele(%s, %s, x = x, y = y, classe = classe, observations = observations,", p, q(r$type)),
       sprintf("                    echelle = echelles, transformations = transformations, croises = croises,%s",
@@ -2939,7 +2960,8 @@ code_definition <- function(projet, d, p = "p") {
                        if (length(r$blocs)) " blocs = blocs,", if (length(r$modificateurs)) " modificateurs = modificateurs,",
                        if (length(r$vc)) " vc = vc,", if (length(r$famille)) " famille = famille,", if (length(r$lisses)) " lisses = lisses,",
                        if (length(r$decalage)) " decalage = decalage,", if (length(r$croises_reglages)) " croises_reglages = croises_reglages,",
-                       if (length(r$k_courbes)) " k_courbes = k_courbes,", if (length(r$options)) " options = options,"), collapse = "")),
+                       if (length(r$k_courbes)) " k_courbes = k_courbes,", if (length(r$options)) " options = options,",
+                       if (nzchar(r$condition)) " condition = condition,"), collapse = "")),
       sprintf("                    A = %s, G = %s, nom = %s, titre = %s)", q(r$A), q(r$G), q(r$nom), q(r$titre)))
   }
 }

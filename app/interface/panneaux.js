@@ -349,6 +349,13 @@ export function ficheTest(m) {
     m.regression ? null : el('span', {}, el('small', {}, t('hors_domaine_court')), ' ', el('b', {}, m.test.hors_domaine)));
 }
 
+// The condition that chose the model's observations (New model › Observations, moteur/R/condition.R),
+// under its summary's figures; nothing without one.
+export function ficheCondition(m) {
+  const c = m.reglages && m.reglages.condition;
+  return c ? el('p', { class: 'note' }, t('condition_modele', { condition: c })) : null;
+}
+
 // Notes on the model, saved with its definition in the project. While typing, a redraw keeps
 // the text and the cursor: retrouver() once the field is back in the page.
 export function notesModele(conteneur, ctx, m) {
@@ -387,7 +394,7 @@ function rendreResume(conteneur, ctx, p) {
       pls && m.cv_anova ? Object.entries(m.cv_anova).map(([y, a]) => el('span', { title: 'CV-ANOVA' }, el('small', {}, `CV-ANOVA p ${y}`), ' ',
         el('b', {}, a.p[1] === null ? '—' : a.p[1] < 0.001 ? Number(a.p[1]).toExponential(1) : fmt(a.p[1], 3)))) : null,
       m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null),
-    ficheTest(m));
+    ficheTest(m), ficheCondition(m));
   const table = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, t('comp')), cols.map(([, n]) => el('th', { class: 'num' }, n)))),
     el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > (m.Ap || 1) ? `O${a - (m.Ap || 1)}` : (m.Ap || 1) > 1 ? `P${a}` : 'P') : a),
@@ -2330,7 +2337,7 @@ function rendreResumeRegression(conteneur, ctx, m) {
       chiffre('Q2', q.Q2), chiffre(`RMSEE ${y}`, m.RMSEE[y], 4), chiffre(`RMSEcv ${y}`, q.RMSEcv, 4)),
     el('div', { class: 'fiche-chiffres', title: t('aic_aide') },
       chiffre('AIC', q.AIC, 1), chiffre('AICc', q.AICc, 1), chiffre('BIC', q.BIC, 1), chiffre('logLik', q.logLik, 2), chiffre(t('parametres'), q.parametres, 0)),
-    ficheTest(m));
+    ficheTest(m), ficheCondition(m));
   const v = m.variances;
   const variances = v ? [].concat(v.variance) : [];
   const total = variances.reduce((a, b) => a + b, 0);

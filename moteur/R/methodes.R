@@ -41,12 +41,12 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   plsda <- isTRUE(d$plsda)
   pls <- identical(d$type, "PLS")
 
-  # --- données
-  p1 <- if (fr) sprintf("Le modèle porte sur %d observations%s et %d variables X%s%s.", m$N,
+  # --- données (observations_texte : « les 312 observations où… » avec une condition, condition.R)
+  p1 <- if (fr) sprintf("Le modèle porte sur %s%s et %d variables X%s%s.", observations_texte(m$N, d, fr),
                         if (m$N < total_obs) sprintf(" (sur %d ; %d exclues)", total_obs, total_obs - m$N) else "",
                         length(uids), if (length(qualitatives)) sprintf(", dont %d qualitatives codées par des indicatrices 0/1", length(qualitatives)) else "",
                         if (length(croises)) sprintf(", avec %d termes croisés ou carrés", length(croises)) else "")
-        else sprintf("The model uses %d observations%s and %d X variables%s%s.", m$N,
+        else sprintf("The model uses %s%s and %d X variables%s%s.", observations_texte(m$N, d, fr),
                      if (m$N < total_obs) sprintf(" (of %d; %d excluded)", total_obs, total_obs - m$N) else "",
                      length(uids), if (length(qualitatives)) sprintf(", %d of them qualitative, coded as 0/1 dummy variables", length(qualitatives)) else "",
                      if (length(croises)) sprintf(", with %d cross or squared terms", length(croises)) else "")

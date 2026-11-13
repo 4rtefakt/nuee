@@ -611,8 +611,8 @@ texte_methodes_tree <- function(projet, d, m, langue = "fr", version = "") {
                                              else " (%d others left out: their response or all their X values are missing)", length(m$exclues)) else ""
   reponse <- if (m$classement) sprintf(if (fr) "la classe %s (%d classes)" else "the class %s (%d classes)", g(m$y$nom), length(m$classes))
              else if (!is.null(m$y$transform)) formule_transformation(m$y$transform, g(m$y$nom), fr) else g(m$y$nom)
-  p1 <- sprintf(if (fr) "L'arbre porte sur %d observations%s ; sa réponse est %s." else "The tree uses %d observations%s; its response is %s.",
-                m$N, laissees, reponse)
+  p1 <- sprintf(if (fr) "L'arbre porte sur %s%s ; sa réponse est %s." else "The tree uses %s%s; its response is %s.",
+                observations_texte(m$N, d, fr), laissees, reponse)
   explicatives <- if (length(noms) <= 12) sprintf(if (fr) "%d variables explicatives (%s)" else "%d explanatory variables (%s)", length(noms), liste_mots(noms, fr))
                   else sprintf(if (fr) "%d variables explicatives" else "%d explanatory variables", length(noms))
   p2 <- sprintf(if (fr) "Un arbre de %s a été construit avec rpart (Therneau & Atkinson ; Breiman et al., 1984) sur les valeurs brutes de %s, pour que ses seuils se lisent dans leurs unités ; les valeurs manquantes (%d observations en ont au moins une) sont prises en charge par des variables de substitution (%d au plus par coupure). Chaque feuille compte au moins %d observations%s (un nœud n'est coupé que s'il en compte au moins %d) et l'arbre a au plus %d niveaux (paramètre de complexité initial %s)."

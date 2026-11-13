@@ -316,6 +316,32 @@ variable_calculee <- function(projet, nom, formule) {
   if (!nzchar(nom)) stop(traduire("Donner un nom à la nouvelle variable", "Give the new variable a name"))
   if (nom %in% projet$noms_var) stop(sprintf(traduire("Une variable s'appelle déjà « %s »", "A variable is already called “%s”"), nom))
   obs <- as.numeric(rownames(projet$donnees))
+  env <- environnement_formule(projet)
+  r <- tryCatch(eval(parse(text = formule), envir = env), error = function(e) {
+    m <- conditionMessage(e)
+    absent <- regmatches(m, regexec("^obje?c?t '(.*)' (not found|introuvable)", m))[[1]]
+    stop(if (length(absent)) variable_introuvable(absent[2]) else m, call. = FALSE)
+  })
+  if (is.factor(r) || is.logical(r)) r <- as.character(r)
+  if (length(r) == 1) r <- rep(r, length(obs))
+  if (length(r) != length(obs)) {
+    stop(sprintf(traduire("La formule doit donner une valeur par observation (%d) ; elle en donne %d", "The formula must give one value per observation (%d); it gives %d"), length(obs), length(r)))
+  }
+  if (is.character(r)) {
+    cats <- sort(unique(stats::na.omit(r)))
+    return(ajouter_colonne(projet, nom, obs, match(r, cats), categories = cats))
+  }
+  if (!is.numeric(r)) stop(traduire("La formule doit donner des nombres ou du texte", "The formula must give numbers or text"))
+  ajouter_colonne(projet, nom, obs, ifelse(is.finite(r), r, NA))
+}
+
+# L'environnement où se calcule une formule de Nouvelle variable (variable_calculee), et une
+# condition d'observations (condition.R) : chaque variable du projet par son nom (une variable
+# qualitative y vaut le nom de sa catégorie), puis chaque identifiant des observations (site,
+# secteur...) par le sien, sauf si une variable a le même nom ; une valeur par observation, dans
+# l'ordre des lignes de projet$donnees.
+environnement_formule <- function(projet) {
+  obs <- as.numeric(rownames(projet$donnees))
   env <- new.env(parent = globalenv())
   for (v in Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)) {
     x <- projet$donnees[, as.character(v$uid)]
@@ -329,22 +355,13 @@ variable_calculee <- function(projet, nom, formule) {
     ids[!is.na(ids) & !nzchar(trimws(ids))] <- NA
     assign(n, ids, envir = env)
   }
-  r <- tryCatch(eval(parse(text = formule), envir = env), error = function(e) {
-    m <- conditionMessage(e)
-    absent <- regmatches(m, regexec("^obje?c?t '(.*)' (not found|introuvable)", m))[[1]]
-    stop(if (length(absent)) sprintf(traduire("Variable introuvable : %s (vérifier le nom ; un nom avec des espaces ou des signes s'écrit entre `accents graves`)", "Variable not found: %s (check the name; a name with spaces or signs is written between `backticks`)"), absent[2]) else m, call. = FALSE)
-  })
-  if (is.factor(r) || is.logical(r)) r <- as.character(r)
-  if (length(r) == 1) r <- rep(r, length(obs))
-  if (length(r) != length(obs)) {
-    stop(sprintf(traduire("La formule doit donner une valeur par observation (%d) ; elle en donne %d", "The formula must give one value per observation (%d); it gives %d"), length(obs), length(r)))
-  }
-  if (is.character(r)) {
-    cats <- sort(unique(stats::na.omit(r)))
-    return(ajouter_colonne(projet, nom, obs, match(r, cats), categories = cats))
-  }
-  if (!is.numeric(r)) stop(traduire("La formule doit donner des nombres ou du texte", "The formula must give numbers or text"))
-  ajouter_colonne(projet, nom, obs, ifelse(is.finite(r), r, NA))
+  env
+}
+
+# Le message d'un nom qu'une formule de Nouvelle variable ou une condition ne trouve pas.
+variable_introuvable <- function(nom) {
+  sprintf(traduire("Variable introuvable : %s (vérifier le nom ; un nom avec des espaces ou des signes s'écrit entre `accents graves`)",
+                   "Variable not found: %s (check the name; a name with spaces or signs is written between `backticks`)"), nom)
 }
 
 # Les valeurs manquantes de variables quantitatives remplies par ACP itérative régularisée

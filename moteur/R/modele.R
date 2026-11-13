@@ -14,8 +14,11 @@
 #   coup, ne l'appelle pas : avec `arret`, elle s'arrête aux composantes orthogonales que ses
 #   données permettent, au lieu de le dire par une erreur.
 #   projets_vc : pour l'iPLS, le projet de chaque groupe de la validation croisée (validation_croisee.R).
+# Une définition à condition prend d'abord les observations où elle est vraie sur les données du
+# moment (condition.R : resoudre_observations), quel que soit le type du modèle.
 ajuster <- function(projet, definition, A = definition$A, G = definition$cv_groups %||% 7,
                     poids = "calcules", orienter = TRUE, arret = NULL, projets_vc = NULL) {
+  definition <- resoudre_observations(projet, definition)
   if (est_regression(definition)) return(ajuster_regression(projet, definition))  # regression.R
   if (est_autre_analyse(definition)) return(ajuster_analyse(projet, definition))  # analyses.R
   modele <- calculer_modele(projet, definition, A, G, poids, arret, projets_vc)

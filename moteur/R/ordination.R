@@ -858,9 +858,9 @@ texte_methodes_ordination <- function(projet, d, m, langue = "fr", version = "")
       corde = { cite("gallagher"); tx("transformées en cordes (chaque observation ramenée à une longueur 1 ; Legendre et Gallagher, 2001)", "chord-transformed (each observation scaled to unit length; Legendre and Gallagher, 2001)") },
       log1p = tx("transformées en log(x + 1)", "log(x + 1)-transformed"), NULL)
     centrage <- if (o$reduire) tx("centrées et réduites (RDA sur les corrélations)", "centred and standardized (correlation RDA)") else tx("centrées (RDA sur les covariances)", "centred (covariance RDA)")
-    p1 <- sprintf(tx("Une analyse de redondance (RDA ; Legendre et Legendre, 2012 ; Borcard et al., 2018) a mis en relation %d réponses (%s) avec %d variables explicatives (%s), sur %d observations%s. Les réponses ont été %s.",
-                     "A redundancy analysis (RDA; Legendre and Legendre, 2012; Borcard et al., 2018) related %d responses (%s) to %d explanatory variables (%s), on %d observations%s. The responses were %s."),
-                  length(m$Y$noms), court(m$Y$noms), length(unique(m$X$groupes)), court(unique(m$X$groupes)), m$N, exclues,
+    p1 <- sprintf(tx("Une analyse de redondance (RDA ; Legendre et Legendre, 2012 ; Borcard et al., 2018) a mis en relation %d réponses (%s) avec %d variables explicatives (%s), sur %s%s. Les réponses ont été %s.",
+                     "A redundancy analysis (RDA; Legendre and Legendre, 2012; Borcard et al., 2018) related %d responses (%s) to %d explanatory variables (%s), on %s%s. The responses were %s."),
+                  length(m$Y$noms), court(m$Y$noms), length(unique(m$X$groupes)), court(unique(m$X$groupes)), observations_texte(m$N, d, fr), exclues,
                   paste(c(tr, centrage), collapse = tx(", puis ", ", then ")))
     partielle <- if (length(m$Z$noms)) sprintf(tx("L'effet des covariables (%s) a d'abord été retiré (RDA partielle) : elles expliquent %s de l'inertie totale. ",
                                                   "The effect of the covariates (%s) was removed first (partial RDA): they explain %s of the total inertia. "),
@@ -900,9 +900,9 @@ texte_methodes_ordination <- function(projet, d, m, langue = "fr", version = "")
     paragraphes <- c(p1, paste(p2, p3), p4, p5)
   } else {
     cite("greenacre")
-    p1 <- sprintf(tx("Une analyse des correspondances (Legendre et Legendre, 2012 ; Greenacre, 2017) a porté sur le tableau de %d observations%s et %d variables (%s)%s.",
-                     "A correspondence analysis (Legendre and Legendre, 2012; Greenacre, 2017) was performed on the table of %d observations%s and %d variables (%s)%s."),
-                  m$N, exclues, length(m$colonnes), court(m$colonnes),
+    p1 <- sprintf(tx("Une analyse des correspondances (Legendre et Legendre, 2012 ; Greenacre, 2017) a porté sur le tableau %s%s et %d variables (%s)%s.",
+                     "A correspondence analysis (Legendre and Legendre, 2012; Greenacre, 2017) was performed on the table %s%s and %d variables (%s)%s."),
+                  observations_texte(m$N, d, fr, de = TRUE), exclues, length(m$colonnes), court(m$colonnes),
                   if (length(m$variables_vides)) sprintf(tx(" ; %s, sans aucune valeur, en a été retiré", "; %s, without any value, was left out"), liste(m$variables_vides)) else "")
     eig <- k$eig
     axes <- if (length(eig) > 1) sprintf(tx("les deux premiers axes en portent %s et %s", "the first two axes carry %s and %s of it"), pourcent(eig[1] / k$totale), pourcent(eig[2] / k$totale))

@@ -279,7 +279,7 @@ definition_interface <- function(p, q) {
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
                       lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
                       croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, k_courbes = if (length(q$k_courbes)) q$k_courbes,
-                      options = q$options)
+                      options = q$options, condition = q$condition)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -372,6 +372,7 @@ reajuster_demande <- function(q) {
   }
   if (length(exclues)) {
     if (!is.null(d$baci_origine)) d$baci_origine$derive <- TRUE  # (le modèle BACI sans ces observations : il en dérive)
+    if (avec_condition(d)) d$cochees <- setdiff(as.numeric(unlist(d$cochees %||% d$observations)), exclues)  # (décochées : condition.R)
     d$observations <- setdiff(d$observations, exclues)
     d$exclues <- c(d$exclues, exclues)
     d$solution <- NULL
@@ -385,8 +386,10 @@ reajuster_demande <- function(q) {
   ajuster_et_garder(p, d)
 }
 
-# (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande)
+# (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande). Une définition
+# à condition est gardée avec les observations qu'elle donne sur les données du moment (condition.R).
 ajuster_et_garder <- function(p, d, m = NULL) {
+  d <- resoudre_observations(p, d)
   if (!d$A && !sans_composantes(d)) d$A <- max(1, autoajuster(p, d))  # (ni une régression ni une autre analyse n'a de composantes)
   if (is.null(m)) m <- ajuster(p, d)
   id <- nouvel_id("M")
@@ -799,6 +802,16 @@ DEMANDES <- list(
     obs <- setdiff(vapply(p$observations, function(o) as.numeric(o$uid), 0), as.numeric(q$exclues %||% numeric(0)))
     list(test = I(choisir_test(p, as.numeric(q$x), obs, q$methode %||% "hasard", as.numeric(q$part %||% 0.25),
                                if (length(q$classe)) as.numeric(q$classe))))
+  },
+  # combien d'observations cochées (sans q$exclues ni le jeu de test q$test) remplissent la condition
+  # q$condition (condition.R), pour l'onglet Observations de Nouveau modèle ; une condition qui ne se
+  # lit pas, ou qui ne donne pas une valeur logique par observation, est une erreur qui le dit
+  condition_observations = function(q) {
+    p <- projet(q$projet)
+    cochees <- setdiff(numeros_observations(p), as.numeric(c(unlist(q$exclues), unlist(q$test))))
+    if (!nzchar(texte_condition(q$condition))) return(list(n = length(cochees), total = length(cochees)))
+    vraie <- valeurs_condition(p, q$condition)
+    list(n = sum(vraie[match(as.character(cochees), rownames(p$donnees))], na.rm = TRUE), total = length(cochees))
   },
   importer_spectres = importer_spectres_demande,
   predire_fichier = predire_fichier_demande,

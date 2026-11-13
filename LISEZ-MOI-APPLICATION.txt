@@ -175,7 +175,8 @@ Onglet Termes croisés : produits de deux ou trois variables X (A × B, A × B �
 une fois au plus. Chaque terme croisé a sa propre échelle, son bloc et son modificateur, comme
 dans l'onglet Variables.
 Onglet Observations : cocher / décocher les observations du modèle, et le jeu de test (voir
-Jeu de test).
+Jeu de test) ; « Garder seulement les observations où… » les choisit par une condition (voir
+Observations choisies par une condition).
 « Modifier le modèle » (Ctrl+M) ouvre cette fenêtre réglée comme un modèle existant (y compris
 les modèles importés) et crée un nouveau modèle.
 Avant le calcul, l'application vérifie les données : variables ou observations avec plus de
@@ -969,6 +970,46 @@ pour une PLS-DA, la part du jeu de test bien classée ; pour tous, le nombre d'o
 test hors du domaine du modèle. Observé / prédit les montre en losanges rouges. Le jeu de test
 est enregistré avec le modèle, repris par Exporter vers R et par le texte des méthodes.
 
+Observations choisies par une condition
+---------------------------------------
+Nouveau modèle › Observations › « Garder seulement les observations où… » : une condition écrite
+en R comme une formule de Nouvelle variable, sur les variables et les identifiants des
+observations par leur nom (un nom avec des espaces entre `accents graves`), par exemple
+site == "S1" & annee >= 2010, !is.na(densite), habitat %in% c("marais", "prairie") ou
+annee != 2015. Sous le champ, combien des observations cochées la remplissent (« 312
+observations sur 480 »), ou pourquoi elle ne se lit pas : un nom inconnu, une fonction qui n'est
+pas permise, un résultat qui n'est pas TRUE ou FALSE (ou 1 et 0) pour chaque observation. Elle
+est évaluée sur toutes les observations du projet, comme une formule de Nouvelle variable :
+densite > median(densite, na.rm = TRUE) compare à la médiane de toutes les observations, pas à
+celle des cochées. Le modèle prend les observations cochées où elle est vraie ; un résultat
+manquant (densite > 5 pour une observation sans densité) compte pour faux.
+La condition est enregistrée avec le modèle et refaite sur les données du projet à chaque
+ajustement ou réajustement : à la réouverture du projet, à l'ajustement automatique, en ajoutant
+ou en retirant une composante, Exclure la sélection et réajuster, Réajuster avec les variables
+VIP, Ajuster ce modèle de la sélection par AIC, Ajuster avec CAR1. Après un changement des
+données, un réajustement peut prendre d'autres observations. Les cases cochées ne changent pas :
+vider la condition rend les observations qu'elle écartait. Le jeu de test garde ses propres
+cases : la condition ne s'y applique pas. Les observations qu'elle écarte sont hors du modèle,
+comme des décochées : Prédire les observations les prédit. Un modèle importé d'un fichier .usp
+garde les observations de son fichier ; Modifier le modèle en fait un nouveau modèle, qui peut
+prendre une condition. Deux modèles aux observations différentes ne sont jamais comparés par
+leur AIC.
+Le texte des méthodes dit « les 312 observations où site == "S1" & annee >= 2010 », le résumé
+et le rapport du modèle donnent la condition, et Exporter vers R l'écrit en R avec les noms des
+variables du script : les lignes cochées, la condition évaluée sur toutes les lignes du tableau
+par with(), puis les lignes cochées où elle est vraie, exactement celles de Nuée (une fonction
+de Nouvelle variable qu'elle appelle est écrite dans le script).
+Permis dans une condition : les comparaisons, &, |, !, xor(), %in%, :, les calculs
+(+ - * / ^ %% %/%), c(), is.na(), ifelse(), abs(), sqrt(), exp(), log(), log10(), log2(),
+log1p(), round(), floor(), ceiling(), trunc(), signif(), as.numeric(), as.character(), nchar(),
+substr(), substring(), startsWith(), endsWith(), tolower(), toupper(), trimws(), paste(),
+paste0(), mean(), median(), min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), et
+les fonctions de Nouvelle variable moyenne_groupe(), ecart_groupe(), precedent(), suivant() et
+croissance() (et leurs noms anglais). Rien d'autre : une condition est gardée dans le fichier du
+projet et refaite à chaque ajustement, un projet reçu ne peut donc rien exécuter d'autre par
+elle (une formule de Nouvelle variable, tapée et calculée une fois, n'est pas gardée et n'a pas
+cette limite).
+
 Fenêtres
 --------
 Au centre, un onglet par modèle (« M1 · PLS »), et un onglet pour chaque vue du projet
@@ -1049,6 +1090,7 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   spectres.R             prétraitement des spectres (SNV, MSC, detrend, ligne de base, Savitzky–Golay)
   fichiers_spectres.R    lecture des spectres (JCAMP-DX, SPC, texte), informations jointes
   jeu_test.R             jeu de test : prédiction, RMSEP, Q2 externe, Kennard–Stone
+  condition.R            les observations d'un modèle choisies par une condition
   langue.R               langue des messages (traduire("français", "English"))
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustement)
 Dans R : source("resources/moteur/charger.R"), puis par exemple

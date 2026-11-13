@@ -161,7 +161,9 @@ statistics).
 Cross terms tab: products of two or three X variables (A × B, A × B × C), squares (A × A) and
 cubes (A × A × A); a qualitative variable enters through each of its categories, once at most.
 Each cross term has its own scaling, block and modifier, as in the Variables tab.
-Observations tab: tick / untick the model's observations, and the test set (see Test set).
+Observations tab: tick / untick the model's observations, and the test set (see Test set);
+"Keep only the observations where..." chooses them by a condition (see Observations chosen by
+a condition).
 "Edit model" (Ctrl+M) opens this window set like an existing model (imported models
 included) and makes a new model.
 Before fitting, the application checks the data: variables or observations with more than
@@ -899,6 +901,43 @@ for a PLS-DA, the share of the test set correctly classified; for all, the numbe
 observations outside the model's domain. Observed / predicted shows them as red diamonds. The
 test set is saved with the model, and kept by Export to R and by the Methods text.
 
+Observations chosen by a condition
+----------------------------------
+New model › Observations › "Keep only the observations where...": a condition written in R like
+a New variable formula, on the variables and the observation IDs by their names (a name with
+spaces between `backticks`), for example site == "S1" & year >= 2010, !is.na(density),
+habitat %in% c("marsh", "meadow") or year != 2015. Under the field, how many of the ticked
+observations meet it ("312 of 480 observations"), or why it doesn't read: an unknown name, a
+function that isn't allowed, a result that isn't TRUE or FALSE (or 1 and 0) for each
+observation. It is evaluated on all the project's observations, as a New variable formula is:
+density > median(density, na.rm = TRUE) compares with the median of every observation, not of
+the ticked ones. The model takes the ticked observations where it is TRUE; a missing result
+(density > 5 for an observation without a density) counts as FALSE.
+The condition is saved with the model and evaluated again on the project's current data each
+time the model is fitted or refitted: reopening the project, automatic fitting, a component
+added or removed, Exclude the selection and refit, Refit with the VIP variables, the AIC
+selection's Fit this model, Fit with CAR1. After a change to the data, a refit can take other
+observations. The ticks don't change: clearing the condition brings back the observations it
+set aside. The test set keeps its own ticks: the condition doesn't apply to it. The
+observations the condition sets aside are out of the model, as unticked ones, so Predict
+observations predicts them. A model imported from a .usp file keeps its file's observations;
+Edit model on it makes a new model, which can take a condition. Two models with different
+observations are never compared by their AIC.
+The Methods text says "the 312 observations where site == "S1" & year >= 2010", the model's
+summary and report give the condition, and Export to R writes it in R with the script's own
+names for the variables: the ticked rows, the condition evaluated on every row of the table
+with with(), then the ticked rows where it is TRUE, exactly Nuée's rows (a New variable function
+it calls is written in the script).
+Allowed in a condition: comparisons, &, |, !, xor(), %in%, :, arithmetic (+ - * / ^ %% %/%),
+c(), is.na(), ifelse(), abs(), sqrt(), exp(), log(), log10(), log2(), log1p(), round(), floor(),
+ceiling(), trunc(), signif(), as.numeric(), as.character(), nchar(), substr(), substring(),
+startsWith(), endsWith(), tolower(), toupper(), trimws(), paste(), paste0(), mean(), median(),
+min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), and the New variable functions
+group_mean(), group_deviation(), previous(), following() and growth_rate() (and their French
+names). Nothing else: a condition is kept in the project file and run again at each fit, so a
+project received from someone can't run other code through it (a New variable formula, typed
+and computed once, is not kept and has no such limit).
+
 Windows
 -------
 In the centre, one tab per model ("M1 · PLS"), and a tab for each view of the project (Data,
@@ -975,6 +1014,7 @@ Every computation is in resources\moteur\R (R, commented in French):
   spectres.R             spectral preprocessing (SNV, MSC, detrend, baseline, Savitzky–Golay)
   fichiers_spectres.R    reading spectra (JCAMP-DX, SPC, text), joined information
   jeu_test.R             test set: prediction, RMSEP, external Q2, Kennard–Stone
+  condition.R            a model's observations chosen by a condition
   langue.R               language of the messages (traduire("français", "English"))
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fitting)
 In R: source("resources/moteur/charger.R"), then for example

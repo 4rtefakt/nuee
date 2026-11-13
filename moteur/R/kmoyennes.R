@@ -197,9 +197,9 @@ echelles_texte <- function(echelles, fr) {
 texte_methodes_kmeans <- function(projet, d, m, langue = "fr", version = "") {
   fr <- langue == "fr"
   noms <- m$bloc$noms
-  p1 <- sprintf(if (fr) "Les k-moyennes portent sur %d observations%s et %s, %s."
-                else "The k-means use %d observations%s and %s, %s.",
-                m$N, if (length(m$exclues)) sprintf(if (fr) " (%d autres laissées de côté : une valeur y manque)" else " (%d others left out: a value is missing)", length(m$exclues)) else "",
+  p1 <- sprintf(if (fr) "Les k-moyennes portent sur %s%s et %s, %s."
+                else "The k-means use %s%s and %s, %s.",
+                observations_texte(m$N, d, fr), if (length(m$exclues)) sprintf(if (fr) " (%d autres laissées de côté : une valeur y manque)" else " (%d others left out: a value is missing)", length(m$exclues)) else "",
                 if (length(noms) == 1) sprintf(if (fr) "1 terme (%s)" else "1 term (%s)", noms)
                 else if (length(noms) <= 12) sprintf(if (fr) "%d termes (%s)" else "%d terms (%s)", length(noms), liste_mots(noms, fr)) else sprintf(if (fr) "%d termes" else "%d terms", length(noms)),
                 echelles_texte(m$echelles, fr))

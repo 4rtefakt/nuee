@@ -14,9 +14,12 @@ modeles_classe <- function(projet, d, classe, nom = d$name) {
   v <- variable_du_projet(projet, classe)
   if (!length(v$categories)) stop(traduire("La variable de classe doit être qualitative", "The class variable must be qualitative"))
   valeurs <- colonne(projet, classe, d$observations)
+  # (une condition, condition.R : les observations cochées de chaque classe, où elle sera refaite)
+  cochees <- if (avec_condition(d)) as.numeric(unlist(d$cochees))
   ds <- lapply(seq_along(v$categories), function(k) {
     e <- d
     e$observations <- d$observations[!is.na(valeurs) & valeurs == k]
+    if (!is.null(cochees)) e$cochees <- cochees[colonne(projet, classe, cochees) %in% k]
     e$name <- sprintf("%s.%s", nom, v$categories[k])
     e$groupe_classes <- list(nom = nom, variable = as.numeric(classe), classe = as.character(v$categories[k]))
     # groupes par identifiant ou variable (validation_croisee.R) : une classe dont toutes les
