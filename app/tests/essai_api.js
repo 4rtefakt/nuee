@@ -622,6 +622,35 @@ async function principal() {
       const h = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid, lignes: v.secteur.uid, tendances: true, correction: 'holm' });
       const sans = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid });
       verifier(col(h.tendances, 'p_ajuste')[0] === col(tr, 'p')[0] && sans.tendances === undefined && sans.dates === true, 'Holm sur une seule ligne testée ; sans tendances, pas de tableau');
+      verifier(col(tr, 'test').join() === 'mann_kendall,mann_kendall', `le test de chaque ligne : ${JSON.stringify(tr.test)}`);
+      // Hamed and Rao's correction: 8 years, no autocorrelation of the ranks beyond ±1.96/√8, so n/n* = 1 and the same p
+      const base = { projet: q.id, variable: v.densite.uid, temps: v.date.uid, lignes: v.secteur.uid, tendances: true };
+      const hr = await api('series', { ...base, autocorrelation: true });
+      verifier(col(hr.tendances, 'test').join() === 'hamed_rao,hamed_rao' && col(hr.tendances, 'n_n_etoile')[0] === 1 && col(hr.tendances, 'p')[0] === col(tr, 'p')[0],
+        `Hamed et Rao : ${JSON.stringify(hr.tendances)}`);
+      // the seasonal test by the month of the dates: S1 seen in May 7 years (April 2015 once: that season
+      // doesn't count), S over those years and its variance with the two 5s; S2, 3 years: no test
+      const mai = s1.filter((_, k) => k !== 4);
+      let Sm = 0;
+      for (let i = 0; i < mai.length; i += 1) for (let j = i + 1; j < mai.length; j += 1) Sm += Math.sign(mai[j] - mai[i]);
+      const varSm = (7 * 6 * 19 - 2 * 1 * 9) / 18;
+      const sa = await api('series', { ...base, saisons: 'mois' });
+      const ts = sa.tendances;
+      verifier(col(ts, 'test').join() === 'saisonnier,saisonnier' && col(ts, 'S')[0] === Sm && Math.abs(col(ts, 'var_S')[0] - varSm) < 1e-9
+        && Math.abs(col(ts, 'p')[0] - erfc((Math.abs(Sm) - 1) / Math.sqrt(varSm) / Math.SQRT2)) < 1e-6 && col(ts, 'saisons').join() === '1,1'
+        && col(ts, 'p')[1] === null && /^trop peu d'années par saison : 3 valeur/.test(col(ts, 'non_teste')[1]) && sa.saisons.uid === 'mois'
+        && sa.sans_saison === 0 && col(sa.points, 'saison').join() === '5,5,5,5,4,5,5,5,5,5,5', `Kendall saisonnier par mois : ${JSON.stringify(ts)}`);
+      // the R console's log: the trends' call on the series' points, which gives the same S when run
+      const appel = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel' && e.texte.startsWith('tendances_series(')).pop();
+      const refait = appel ? await api('console', { code: `cat(${appel.texte}$S[1])` }) : { journal: [] };
+      verifier(appel && /saisons = "mois"\)\$points, "BH"\)$/.test(appel.texte) && refait.journal.some((e) => e.type === 'sortie' && e.texte.trim() === String(Sm)),
+        `journal : ${appel && appel.texte}`);
+      // options refused: the plot stays, the trends say why (a quantitative variable for the seasons;
+      // the correction with the seasonal test is never sent by the interface, and refused by R)
+      const ref = await api('series', { ...base, saisons: v.densite.uid });
+      const ref2 = await api('series', { ...base, saisons: 'mois', autocorrelation: true });
+      verifier(ref.tendances === undefined && /^Les saisons se font par une variable qualitative/.test(ref.tendances_erreur) && col(ref.points, 'valeur').length === 11
+        && /^Le test saisonnier tient les saisons pour indépendantes/.test(ref2.tendances_erreur), `options refusées : ${ref.tendances_erreur} / ${ref2.tendances_erreur}`);
     });
     await etape('autocorrélation des résidus, rapports de vraisemblance entre modèles emboîtés', async () => {
       // 6 sites suivis 10 ans (2006 manque), un bruit autocorrélé dans chaque site (moteur/R/regression_diagnostics.R)

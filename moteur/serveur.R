@@ -830,11 +830,19 @@ DEMANDES <- list(
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
   # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R) ;
   # avec q$tendances, la tendance de chaque ligne (Mann–Kendall, pente de Sen), p corrigée par
-  # q$correction ("BH" par défaut, ou "holm")
+  # q$correction ("BH" par défaut, ou "holm") ; avec q$autocorrelation, la correction de Hamed et Rao ;
+  # avec q$saisons ("mois", une variable qualitative ou "id:k"), le test de Kendall saisonnier. Des
+  # options refusées (des saisons par mois sans dates...) n'empêchent pas le graphique :
+  # tendances_erreur le dit, et l'interface garde le tableau et ses options pour les changer.
   series = function(q) {
-    r <- series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux)
-    if (isTRUE(q$tendances)) r$tendances <- tendances_series(r$points, q$correction %||% "BH")
-    r
+    p <- projet(q$projet)
+    r <- series_variable(p, q$variable, q$temps, q$lignes, q$panneaux)
+    if (!isTRUE(q$tendances)) return(r)
+    tryCatch({
+      s <- if (length(q$saisons) && nzchar(as.character(q$saisons))) ajouter_saisons(p, r, q$saisons) else r
+      s$tendances <- tendances_series(s$points, q$correction %||% "BH", isTRUE(q$autocorrelation))
+      s
+    }, error = function(e) c(r, list(tendances_erreur = conditionMessage(e))))
   },
   # avec q$appariement (une variable ou "id:k") : les tests appariés de deux classes, t apparié par défaut
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),

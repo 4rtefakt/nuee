@@ -429,6 +429,38 @@ or the same value at every time isn't tested, and the table says why; Ctrl+C cop
 test takes the times as independent: positive autocorrelation (years that resemble each other)
 makes p too small. For a trend that accounts for it: Plots › Residual autocorrelation, then a
 mixed model with a CAR1 autocorrelation, the year as an X.
+In the table's toolbar, two options change the test. Allow for autocorrelation: Hamed and
+Rao's (1998) modified Mann–Kendall test, computed as modifiedmk::mmkh computes it: the line
+detrended by its Sen slope (over its actual times), the ranks of what remains, their
+autocorrelation at each lag (from one time to the next: a missing year isn't a lag), those
+beyond ±1.96/√n kept (the others count 0), and the variance of S multiplied by
+n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k); p and the slope's interval
+come from that variance, and the n/n* column gives the factor (1: no autocorrelation kept; a
+factor that isn't positive, from a strong negative autocorrelation, leaves the line untested).
+It needs a long series: an autocorrelation is poorly estimated from few times (Box and Jenkins,
+1976, ask for about 50), and with 15 times only one beyond ±0.51 counts; even with 60 to 90
+times the corrected test still rejects a true absence of trend too often when the
+autocorrelation is strong (Blain, 2013). It corrects each line on its own: it is no substitute
+for a mixed model with a CAR1 autocorrelation, which estimates the trend shared by the sites
+and their sectors, with the autocorrelation within each.
+Seasons: the seasonal Kendall test (Hirsch, Slack and Smith, 1982), for samples taken several
+times a year, the season given by the month of a time made of dates, or by a qualitative
+variable or an ID (season, month). The year of a value is the whole part of its time (the
+calendar year of a date); several values in a season of the same year count as one, their
+median (as some implementations do; EnvStats would keep them all, as ties in time), and a note
+says how many. In each season seen in at least 2 years: the Mann–Kendall S between its years
+and its variance with ties; S and Var(S) are summed over the seasons, taken as independent, and
+p comes from the normal approximation with the continuity correction, as trend::smk.test and
+EnvStats::kendallSeasonalTrendTest compute them. The seasonal Sen slope is the median of the
+slopes between years within each season (per year, or per time unit), its 95 % interval taken
+from Var(S) as Gilbert (1987) does (the ranks rounded, as for the Sen slope above; EnvStats
+interpolates between them); τ is EnvStats': the seasons' τ averaged, weighted by their years.
+A season seen in a single year doesn't count; a line with fewer than 4 values in the seasons
+that count, or with the same value every year in each season, isn't tested; observations
+without a season are left out of the test, and counted. The seasonal test takes the seasons as
+independent: autocorrelation from one month to the next makes p too small, and Allow for
+autocorrelation doesn't apply to it (Hirsch and Slack, 1984, give a correction, not done here).
+The Test column gives each line's test; the correction over the lines stays the same.
 
 Statistical tests
 -----------------

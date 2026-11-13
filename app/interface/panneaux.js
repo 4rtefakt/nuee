@@ -1386,6 +1386,10 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   const options = (os) => os.map((o) => [o.valeur, o.libelle]);
   const saisis = String(loc.evenements || '').split(/[;\s]+/).filter(Boolean);
   if (!['BH', 'holm'].includes(loc.correction)) loc.correction = 'BH';
+  // the trends' seasons: none, the month of a time made of dates ('mois': R refuses it for numbers,
+  // and the table says so), or a qualitative variable or an ID other than the time, lines and panels
+  const saisons = [...vars.filter((v) => v.qualitative), ...ids].filter((o) => ![loc.temps, loc.lignes, loc.panneaux].includes(o.valeur));
+  if (!loc.saisons || (loc.saisons !== 'mois' && !existe(saisons, loc.saisons))) loc.saisons = '';
   const barre = outils(
     choix(t('series_variable'), options(variables), loc.variable, (x) => { loc.variable = lire(x); ctx.rafraichir(); }),
     choix(t('series_temps'), options(temps), loc.temps, (x) => { loc.temps = lire(x); ctx.rafraichir(); }),
@@ -1399,12 +1403,15 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     el('span', { title: t('series_tendances_aide') }, case_(t('series_tendances'), !!loc.tendances, (x) => { loc.tendances = x; ctx.rafraichir(); })),
     loc.tendances ? choix(t('correction'), [['BH', t('correction_bh')], ['holm', 'Holm']], loc.correction, (x) => { loc.correction = x; ctx.rafraichir(); }) : null);
   const cache = (loc.cache ??= {});  // (the results: loc.cache isn't saved with the session)
-  const cle = JSON.stringify([loc.variable, loc.temps, loc.lignes, loc.panneaux, loc.tendances ? loc.correction : null, langueActuelle()]);
+  // (the seasonal test takes the seasons as independent: no autocorrelation correction with it)
+  const optionsTendances = loc.tendances ? { tendances: true, correction: loc.correction,
+    ...(loc.saisons ? { saisons: loc.saisons } : loc.autocorrelation ? { autocorrelation: true } : {}) } : {};
+  const cle = JSON.stringify([loc.variable, loc.temps, loc.lignes, loc.panneaux, optionsTendances, langueActuelle()]);
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
     const q = { projet: p.projet, variable: loc.variable, temps: loc.temps,
       ...(loc.lignes !== null ? { lignes: loc.lignes } : {}), ...(loc.panneaux !== null ? { panneaux: loc.panneaux } : {}),
-      ...(loc.tendances ? { tendances: true, correction: loc.correction } : {}) };
+      ...optionsTendances };
     try { cache.res = await ctx.demander('series', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
@@ -1502,31 +1509,55 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     d.n ? t('series_doubles', { n: d.n, exemple: [d.panneau, d.ligne, tps(d.temps)].filter((x) => x !== null && x !== undefined).join(' · ') }) : '',
     nonMontres ? t('series_log_note', { n: nonMontres }) : '', sel.size ? `${sel.size} ${t('selectionnees')}` : ''].filter(Boolean).join(' ');
   // the trends, under the plot: a row per line of each panel (R: tendances_series), its name marked
-  // with its colour in the plot; the times as dates, like the plot's
+  // with its colour in the plot; the times as dates, like the plot's. The table's own toolbar has
+  // the test's options: Hamed and Rao's correction for autocorrelation, or the seasons of the
+  // seasonal Kendall test (which takes them as independent: the correction is then greyed out).
+  // Options R refuses (seasons by month without dates) leave the plot: the toolbar stays, with why.
   let bas = null;
-  if (loc.tendances && r.tendances) {
-    const col = (k) => liste(r.tendances[k]);
-    const sig = (v) => String(+Number(v).toPrecision(4));
+  let noteTendances = null;
+  if (loc.tendances && (r.tendances || r.tendances_erreur)) {
+    const autocorrelation = el('span', { title: t(loc.saisons ? 'series_autocorrelation_saisons' : 'series_autocorrelation_aide') },
+      case_(t('series_autocorrelation'), !!loc.autocorrelation && !loc.saisons, (x) => { loc.autocorrelation = x; ctx.rafraichir(); }));
+    autocorrelation.querySelector('input').disabled = !!loc.saisons;
+    const optionsSaisons = [['', t('aucune')], ...(dates || loc.saisons === 'mois' ? [['mois', t('series_mois')]] : []), ...options(saisons)];
+    const avant = [autocorrelation, el('span', { title: t('series_saisons_aide') },
+      choix(t('series_saisons'), optionsSaisons, loc.saisons, (x) => { loc.saisons = x === '' || x === 'mois' ? x : lire(x); ctx.rafraichir(); }))];
     bas = el('div', { class: 'bas', style: { flex: '0 1 auto', maxHeight: '45%' } });  // (the plot first; the table scrolls)
-    tableau(bas, ctx, (loc.tableTendances ??= {}), {
-      n: col('n').length, nom: t('series_tendances'),
-      colonnes: [...(parPanneaux ? [{ cle: 'panneau', titre: r.panneaux.nom }] : []),
-        { cle: 'ligne', titre: parLignes ? r.lignes.nom : t('series_variable'), couleur: (i) => couleurs.get(`${col('panneau')[i]}\r${col('ligne')[i]}`) },
-        { cle: 'n', titre: 'n', num: true, decimales: 0 },
-        { cle: 'debut', titre: t('series_debut'), num: true, format: texteTemps }, { cle: 'fin', titre: t('series_fin'), num: true, format: texteTemps },
-        { cle: 'pente', titre: t('series_pente', { temps: dates ? t('series_an') : r.temps.nom }), num: true, format: sig },
-        { cle: 'bas', titre: t('ic_bas'), num: true, format: sig }, { cle: 'haut', titre: t('ic_haut'), num: true, format: sig },
-        { cle: 'tau', titre: 'τ', num: true, decimales: 3 }, { cle: 'S', titre: 'S', num: true, decimales: 0 },
-        { cle: 'p', titre: 'p', num: true, format: valeurP },
-        { cle: 'p_ajuste', titre: `${t('p_ajuste')} (${loc.correction === 'holm' ? 'Holm' : 'BH'})`, num: true, format: valeurP },
-        { cle: 'non_teste', titre: t('non_teste') }],
-      valeur: (i, k) => (k === 'ligne' && !parLignes ? r.variable.nom : dates && (k === 'debut' || k === 'fin') ? dateDecimale(col(k)[i]) : col(k)[i]),
-    });
+    if (r.tendances_erreur) {
+      bas.replaceChildren(outils(...avant), el('p', { class: 'erreur' }, `${t('erreur')} : ${r.tendances_erreur}`));
+    } else {
+      const col = (k) => liste(r.tendances[k]);
+      const sig = (v) => String(+Number(v).toPrecision(4));
+      const somme = (k) => col(k).reduce((s, x) => s + (x || 0), 0);
+      tableau(bas, ctx, (loc.tableTendances ??= {}), {
+        n: col('n').length, nom: t('series_tendances'), avant,
+        colonnes: [...(parPanneaux ? [{ cle: 'panneau', titre: r.panneaux.nom }] : []),
+          { cle: 'ligne', titre: parLignes ? r.lignes.nom : t('series_variable'), couleur: (i) => couleurs.get(`${col('panneau')[i]}\r${col('ligne')[i]}`) },
+          { cle: 'test', titre: t('series_test') },
+          { cle: 'n', titre: 'n', num: true, decimales: 0 },
+          ...(loc.saisons ? [{ cle: 'saisons', titre: t('series_saisons'), num: true, decimales: 0 }] : []),
+          { cle: 'debut', titre: t('series_debut'), num: true, format: texteTemps }, { cle: 'fin', titre: t('series_fin'), num: true, format: texteTemps },
+          { cle: 'pente', titre: t('series_pente', { temps: dates ? t('series_an') : r.temps.nom }), num: true, format: sig },
+          { cle: 'bas', titre: t('ic_bas'), num: true, format: sig }, { cle: 'haut', titre: t('ic_haut'), num: true, format: sig },
+          { cle: 'tau', titre: 'τ', num: true, decimales: 3 }, { cle: 'S', titre: 'S', num: true, decimales: 0 },
+          ...(loc.autocorrelation && !loc.saisons ? [{ cle: 'n_n_etoile', titre: 'n/n*', num: true, format: sig }] : []),
+          { cle: 'p', titre: 'p', num: true, format: valeurP },
+          { cle: 'p_ajuste', titre: `${t('p_ajuste')} (${loc.correction === 'holm' ? 'Holm' : 'BH'})`, num: true, format: valeurP },
+          { cle: 'non_teste', titre: t('non_teste') }],
+        valeur: (i, k) => (k === 'ligne' && !parLignes ? r.variable.nom : k === 'test' ? t(`series_test_${col(k)[i]}`)
+          : dates && (k === 'debut' || k === 'fin') ? dateDecimale(col(k)[i]) : col(k)[i]),
+      });
+      // what the test did, and what it left out: observations without a season, several values in a
+      // season of one year (their median)
+      noteTendances = [t(loc.saisons ? 'series_saisons_note' : loc.autocorrelation ? 'series_autocorrelation_note' : 'series_tendances_note'),
+        r.sans_saison ? t('series_sans_saison', { n: r.sans_saison }) : '',
+        loc.saisons && somme('medianes') ? t('series_medianes', { n: somme('medianes') }) : ''].filter(Boolean).join(' ');
+    }
   }
   // many panels: a taller plot, which scrolls
   const graphe = el('div', { class: 'graphe', ...(R > 3 ? { style: { height: `${R * 190 + 90}px`, flex: 'none' } } : {}) });
   conteneur.replaceChildren(barre, el('p', { class: 'note' }, notes), R > 3 ? el('div', { class: 'defile' }, graphe) : graphe,
-    ...(bas ? [bas, el('p', { class: 'note' }, t('series_tendances_note'))] : []));
+    ...(bas ? [bas] : []), ...(noteTendances ? [el('p', { class: 'note' }, noteTendances)] : []));
   tracer(ctx, graphe, traces.concat(moyennes), lay);
   brancherSelection(graphe, ctx, p.projet);
 }

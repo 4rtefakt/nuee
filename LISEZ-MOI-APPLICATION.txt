@@ -455,6 +455,41 @@ fois ou la même valeur à chaque temps n'est pas testée, et le tableau dit pou
 copie. Le test tient les temps pour indépendants : une autocorrélation positive (des années qui
 se ressemblent) rend p trop petite. Pour une tendance qui en tient compte : Graphiques ›
 Autocorrélation des résidus, puis un modèle mixte avec une autocorrélation CAR1, l'année en X.
+Dans la barre du tableau, deux options changent le test. Tenir compte de l'autocorrélation : le
+test de Mann–Kendall modifié de Hamed et Rao (1998), calculé comme le calcule modifiedmk::mmkh :
+la ligne privée de sa tendance (sa pente de Sen, sur ses vrais temps), les rangs de ce qui
+reste, leur autocorrélation à chaque décalage (d'un temps au suivant : une année manquante n'est
+pas un décalage), celles au-delà de ±1,96/√n gardées (les autres comptent 0), et la variance de
+S multipliée par n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k) ; p et
+l'intervalle de la pente viennent de cette variance, et la colonne n/n* donne le facteur (1 :
+aucune autocorrélation gardée ; un facteur qui n'est pas positif, d'une forte autocorrélation
+négative, laisse la ligne sans test). Il faut une longue série : une autocorrélation s'estime
+mal sur peu de temps (Box et Jenkins, 1976, en demandent une cinquantaine), et avec 15 temps
+seule une autocorrélation au-delà de ±0,51 compte ; même sur 60 à 90 temps, le test corrigé
+rejette encore trop souvent une absence de tendance quand l'autocorrélation est forte (Blain,
+2013). Il corrige chaque ligne seule : il ne remplace pas un modèle mixte avec une
+autocorrélation CAR1, qui estime la tendance commune aux sites et à leurs secteurs, avec
+l'autocorrélation dans chacun.
+Saisons : le test de Kendall saisonnier (Hirsch, Slack et Smith, 1982), pour des relevés faits
+plusieurs fois par an, la saison donnée par le mois d'un temps fait de dates, ou par une
+variable qualitative ou un identifiant (la saison, le mois). L'année d'une valeur est la partie
+entière de son temps (l'année civile d'une date) ; plusieurs valeurs d'une saison la même année
+n'en font qu'une, leur médiane (comme le font certaines mises en œuvre ; EnvStats les
+garderait toutes, en ex aequo de temps), et une note dit combien. Dans chaque saison vue au
+moins 2 années : le S de Mann–Kendall entre ses années et sa variance avec les ex aequo ; S et
+Var(S) sont additionnés sur les saisons, tenues pour indépendantes, et p vient de la loi normale
+avec la correction de continuité, comme les calculent trend::smk.test et
+EnvStats::kendallSeasonalTrendTest. La pente de Sen saisonnière est la médiane des pentes entre
+années au sein de chaque saison (par an, ou par unité de temps), son intervalle à 95 % tiré de
+Var(S) comme le fait Gilbert (1987) (les rangs arrondis, comme pour la pente de Sen plus haut ;
+EnvStats interpole entre eux) ; τ est celui d'EnvStats : les τ des saisons en moyenne, pondérée
+par leurs années. Une saison vue une seule année ne compte pas ; une ligne de moins de 4 valeurs
+dans les saisons qui comptent, ou de la même valeur chaque année dans chaque saison, n'est pas
+testée ; les observations sans saison sont laissées de côté par le test, et comptées. Le test
+saisonnier tient les saisons pour indépendantes : une autocorrélation d'un mois au suivant rend
+p trop petite, et Tenir compte de l'autocorrélation ne s'y applique pas (Hirsch et Slack, 1984,
+donnent une correction, qui n'est pas faite ici). La colonne Test donne le test de chaque
+ligne ; la correction sur les lignes reste la même.
 
 Tests statistiques
 ------------------

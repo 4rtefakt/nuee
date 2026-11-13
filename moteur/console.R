@@ -75,8 +75,14 @@ journaliser <- function(nom, q, r) {
                               if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q$n)),
     modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
     statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
-    series = sprintf("series_variable(%s)", paste(c(q$projet, variable_r(q$variable), variable_r(q$temps),
-      if (length(q$lignes)) paste("lignes =", variable_r(q$lignes)), if (length(q$panneaux)) paste("panneaux =", variable_r(q$panneaux))), collapse = ", ")),
+    series = {
+      # (avec les tendances, leur appel sur les points, et les saisons du test saisonnier)
+      appel <- sprintf("series_variable(%s)", paste(c(q$projet, variable_r(q$variable), variable_r(q$temps),
+        if (length(q$lignes)) paste("lignes =", variable_r(q$lignes)), if (length(q$panneaux)) paste("panneaux =", variable_r(q$panneaux)),
+        if (isTRUE(q$tendances) && length(q$saisons) && nzchar(as.character(q$saisons))) paste("saisons =", variable_r(q$saisons))), collapse = ", "))
+      if (isTRUE(q$tendances)) sprintf("tendances_series(%s$points, %s%s)", appel, code_r(q$correction %||% "BH"),
+                                       if (isTRUE(q$autocorrelation)) ", autocorrelation = TRUE" else "") else appel
+    },
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
     script_r = if (length(q$modeles) > 1) {
