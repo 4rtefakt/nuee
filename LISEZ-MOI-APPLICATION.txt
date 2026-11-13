@@ -644,6 +644,56 @@ variances sont estimés en REML ; la log-vraisemblance, l'AIC, l'AICc et le BIC 
 l'ajustement en ML, le seul qui compare des modèles aux effets fixes différents. La validation
 croisée se fait par défaut par le premier effet aléatoire : chaque site est prédit par les
 effets fixes du modèle ajusté sans lui, comme un site jamais vu.
+Pentes aléatoires : sous chaque effet aléatoire choisi, « Pentes aléatoires par site » coche
+les variables X quantitatives dont la pente change d'un site à l'autre, le plus souvent
+l'année : chaque site a sa propre tendance, qui varie autour de la pente fixe du modèle ; c'est
+(1 + annee | site) dans une formule R. La variable doit être aussi un terme X du modèle,
+quantitatif et seul (transformé ou non), pas en courbe : sinon le modèle est refusé, en la
+nommant. Avec nlme (un modèle mixte, ou un GLM ou un GAM à loi normale avec CAR1, ajusté par
+mgcv::gamm), chaque niveau a la matrice de covariance générale de nlme
+(random = ~ annee | site ; avec des niveaux emboîtés, la liste list(site = ~ annee,
+secteur = ~ 1)) : la variance de son ordonnée à l'origine, celle de chaque pente et leur
+corrélation. L'écart-type d'une pente, en unités de Y par unité de X, dit combien les tendances
+des sites s'écartent de la tendance moyenne : environ 95 % des sites sont à ±2 écarts-types de
+la pente fixe. La corrélation dit si les sites hauts ont des pentes plus fortes (au-dessus de
+0) ou plus faibles (au-dessous) ; elle est celle de l'ordonnée à l'origine prise à x = 0. Le
+Résumé donne la variance et l'écart-type de chaque ordonnée à l'origine et de chaque pente, et
+la corrélation de chaque pente avec l'ordonnée à l'origine de son niveau (avec plusieurs pentes
+à un niveau, leurs corrélations entre elles sont estimées mais pas dans ce tableau : summary(m)
+du script d'Exporter vers R les donne). Avec une pente, la variance d'un niveau change avec x
+et sa part de la variance aléatoire n'a plus une seule valeur : le Résumé donne la part de
+chaque niveau, de sa variance moyenne sur les observations, et les R2 marginal et conditionnel
+la prennent aussi, comme Johnson (2014) étend ceux de Nakagawa et Schielzeth : la moyenne sur
+les observations de zᵢᵀΣzᵢ, Σ la matrice du niveau et zᵢ = (1, les valeurs de ses pentes).
+Centrer : une variable loin de 0, comme l'année (≈ 2010), met l'ordonnée à l'origine aléatoire
+loin des données (à l'an 0), où sa corrélation avec la pente est près de ±1 ; l'ajustement s'y
+arrête souvent trop tôt, sur une pente d'écart-type presque nul. Nuée ne centre pas sans le
+dire : le Résumé signale un ajustement singulier (une corrélation au-delà de ±0,99, ou
+l'écart-type d'une pente, fois celui de sa variable sur les observations, sous 1 % de
+l'écart-type résiduel) et, quand la variable est loin de 0 (sa moyenne au-delà de son
+écart-type), conseille de la centrer, échelle Ctr ou UV dans l'onglet Variables : c'est le même
+modèle, que nlme trouve alors le plus souvent, l'ordonnée à l'origine prise à la moyenne de la
+variable. Une variable centrée et un ajustement singulier : les données ne permettent pas
+d'estimer cette pente ou cette corrélation ; comparez par l'AIC le modèle sans elle. Un échec
+de l'ajustement reste « Le modèle n'a pas pu être ajusté ».
+Dans un GLM ou un GAM ajusté par mgcv::gam (une autre loi que la normale, ou sans CAR1), une
+pente aléatoire est un terme s(site, annee, bs = "re") (Wood, 2017) : indépendante de
+l'ordonnée à l'origine aléatoire, sans corrélation, mgcv ne sachant pas les corréler. Ce modèle
+dépend de l'endroit où x vaut 0 : x centré, l'ordonnée à l'origine aléatoire est le niveau de
+chaque site à la moyenne de x ; l'année non centrée ne laisse guère de place à la variance de
+la pente. Le Résumé le dit. Refait avec CAR1 (mgcv::gamm), un tel modèle a ses pentes
+corrélées, comme nlme.
+Avec des pentes aléatoires : la validation croisée prédit un site jamais vu par les effets
+fixes ; la sélection par AIC ne choisit que les effets fixes, et le groupe d'une variable qui a
+une pente aléatoire reste dans chaque modèle (une pente aléatoire suit la pente fixe de sa
+variable) ; dans Apport des blocs, sans cette variable, sa pente fixe seule est retirée et sa
+pente aléatoire reste (le test de la pente moyenne, avec les mêmes effets aléatoires) ; deux
+modèles aux pentes aléatoires différentes n'ont pas les mêmes effets aléatoires : pas de test
+du rapport de vraisemblance entre eux, ils se comparent par l'AIC sur les mêmes observations ;
+Ajuster avec CAR1 garde les pentes ; les prédictions sont celles des effets fixes. Non
+couvert : dans nlme, une pente non corrélée à l'ordonnée à l'origine ((0 + annee | site),
+(1 | site) + (0 + annee | site), ||), refusée dans la formule R ; la pente aléatoire d'une
+variable qualitative, d'un terme croisé ou d'une courbe.
 Type « Modèle linéaire généralisé (GLM) » ou « Modèle additif (GAM) » (mgcv), pour une
 variable Y qui ne suit pas une loi normale. Loi de Y : Poisson pour des comptages ; binomiale
 négative pour des comptages qui varient plus qu'une loi de Poisson ne le permet (son θ
@@ -676,8 +726,10 @@ Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs t
 termes croisés (a:b ; a*b pour a, b et a:b ; a:b sans a : a entre sans effet principal ;
 I(a^2) quand a est aussi dans le modèle, sinon le
 carré de a), les courbes s(x) ou s(x, k = 5), l'effort offset(log(x)) et les ordonnées à
-l'origine aléatoires emboîtées (1 | site/secteur), du plus large au plus fin. Une courbe rend
-le modèle additif, des
+l'origine aléatoires emboîtées (1 | site/secteur), du plus large au plus fin, avec leurs pentes
+aléatoires comme lme4 les écrit : (1 + annee | site) ou (annee | site) ;
+(1 + annee | site/secteur), une pente à chaque niveau ; un terme par niveau,
+(1 + annee | site) + (1 | site:secteur). Une courbe rend le modèle additif, des
 effets aléatoires le rendent mixte. R lit la formule sans jamais l'exécuter : tout le reste
 (une autre fonction, du code) est refusé en disant pourquoi, et la formule n'est pas gardée,
 seulement les réglages qu'elle donne.
@@ -686,7 +738,7 @@ Schielzeth ; R2 ajusté et déviance expliquée pour un GLM ou un GAM (R2 margin
 conditionnel quand il est ajusté par mgcv::gamm, les courbes dans la partie fixe), avec l'edf,
 le test et la concurvité de chaque courbe (la part de la courbe que reproduisent les autres
 termes ; au-delà de 0,8, en rouge, elle se confond avec eux) ; Q2 et RMSEcv ; AIC ; la variance
-de chaque effet aléatoire et sa part ; φ de
+de chaque effet aléatoire et sa part (avec des pentes aléatoires, voir plus haut) ; φ de
 l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
 quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
 plus, avec le logit le rapport des cotes), Effets (l'effet de chaque terme quantitatif quand sa
@@ -750,21 +802,21 @@ Bloc, sinon les variables), du modèle nul au modèle complet, est ajustée en M
 observations et rangée par AICc ; un terme croisé ou un carré n'entre qu'avec ses effets
 principaux (une variable qualitative par toutes ses catégories) et les termes croisés d'une
 partie de ses facteurs. Seuls les effets fixes sont choisis : les effets aléatoires,
-l'autocorrélation, l'effort et le réglage des courbes restent ceux du modèle. Jusqu'à 8
-groupes (256 combinaisons), toutes les combinaisons sont ajustées (un modèle mixte avec CAR1
-sur 240 lignes prend une dizaine de secondes) ; au-delà, une élimination descendante depuis le
-modèle complet retire pas à pas le groupe dont le retrait baisse le plus l'AICc. La vue
-suggère le meilleur
-modèle (l'AICc le plus bas) et, s'il diffère, le plus parcimonieux à ΔAICc ≤ 2 (le moins de
-paramètres ; Burnham et Anderson, 2002) ; elle trace l'importance de chaque groupe (la somme
-des poids d'Akaike des modèles qui le contiennent) et liste les 20 meilleurs modèles, ou ceux à
-ΔAICc < 10, avec une colonne par groupe, k, logLik, AICc, ΔAICc, le poids et le poids cumulé.
-Ajuster ce modèle, sur la suggestion ou sur n'importe quelle ligne (un clic la choisit
-d'abord), en fait un nouveau modèle : les mêmes réglages avec les seules variables de ces
-groupes (un terme croisé garde ses facteurs), sur les mêmes observations, ajusté comme les
-autres (REML pour les estimations) et nommé comme un réajustement (M1 (1)). Une fois la
-sélection faite, le texte des méthodes la décrit, le rapport du modèle peut la contenir et
-Exporter vers R la refait.
+l'autocorrélation, l'effort et le réglage des courbes restent ceux du modèle, et le groupe
+d'une variable qui a une pente aléatoire reste dans chaque modèle, hors des groupes à choisir.
+Jusqu'à 8 groupes (256 combinaisons), toutes les combinaisons sont ajustées (un modèle mixte
+avec CAR1 sur 240 lignes prend une dizaine de secondes) ; au-delà, une élimination descendante
+depuis le modèle complet retire pas à pas le groupe dont le retrait baisse le plus l'AICc. La
+vue suggère le meilleur modèle (l'AICc le plus bas) et, s'il diffère, le plus parcimonieux à
+ΔAICc ≤ 2 (le moins de paramètres ; Burnham et Anderson, 2002) ; elle trace l'importance de
+chaque groupe (la somme des poids d'Akaike des modèles qui le contiennent) et liste les 20
+meilleurs modèles, ou ceux à ΔAICc < 10, avec une colonne par groupe, k, logLik, AICc, ΔAICc,
+le poids et le poids cumulé. Ajuster ce modèle, sur la suggestion ou sur n'importe quelle ligne
+(un clic la choisit d'abord), en fait un nouveau modèle : les mêmes réglages avec les seules
+variables de ces groupes (un terme croisé garde ses facteurs), sur les mêmes observations,
+ajusté comme les autres (REML pour les estimations) et nommé comme un réajustement (M1 (1)).
+Une fois la sélection faite, le texte des méthodes la décrit, le rapport du modèle peut la
+contenir et Exporter vers R la refait.
 Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
 un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
 comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par
@@ -781,9 +833,10 @@ entre eux.
 Sous le tableau des AIC, Modèles emboîtés : le test du rapport de vraisemblance entre chaque
 paire de régressions emboîtées d'un même ensemble AIC, comme anova(m1, m2) sur des ajustements
 en ML. Les termes fixes du petit modèle sont parmi ceux du grand (ses colonnes dans celles du
-grand), avec la même loi, le même effort, les mêmes effets aléatoires et la même
-autocorrélation ; χ² = 2 × (logLik du grand − logLik du petit) sur Δddl, la différence de
-leurs nombres de paramètres, et son p. Pour des régressions linéaires et des GLM, c'est l'écart
+grand), avec la même loi, le même effort, les mêmes effets aléatoires (leurs pentes comprises)
+et la même autocorrélation ; χ² = 2 × (logLik du grand − logLik du petit) sur Δddl, la
+différence de leurs nombres de paramètres, et son p. Pour des régressions linéaires et des GLM,
+c'est l'écart
 de leurs logLik (de leurs déviances pour un GLM de Poisson ou binomial, comme anova(glm1,
 glm2, test = "Chisq")). Les effets aléatoires et l'autocorrélation ne se testent pas ainsi :
 une variance nulle est au bord de son domaine, où la loi du χ² ne tient plus ; comparez-les
@@ -791,16 +844,17 @@ par l'AIC. Avec des courbes ou des effets aléatoires de mgcv, les ddl sont des 
 est approché, comme le dit le tableau. Toutes les paires emboîtées sont listées (2000 au
 plus) ; la recherche du tableau trouve celles d'un modèle.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
-résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
-un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
+résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires (chaque
+ordonnée à l'origine et pente aléatoire, et leur corrélation) et les courbes, un tableau
+chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
 chaque terme, les seuils de chaque courbe, observé / prédit et les résidus (aussi les résidus
 quantiles, pour des comptages, une présence-absence ou des valeurs positives).
 Fichier › Exporter vers R : un script ou un rapport pour une régression aussi, avec lm,
-nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML),
-la validation croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les
-courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), les résidus
-quantiles (les mêmes tirages que la vue Résidus), le jeu de test et les graphiques, vérifiés
-contre les résultats de Nuée avant d'être écrits.
+nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML ;
+ses pentes aléatoires comprises), la validation croisée par ses groupes, puis les coefficients,
+l'AIC, le R2, les variances, les courbes avec leur concurvité et leurs seuils (les mêmes
+tirages que la vue Seuils), les résidus quantiles (les mêmes tirages que la vue Résidus), le
+jeu de test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
 Termes croisés avec une variable qualitative (onglet Termes croisés, ou a * b et a:b dans la
 formule R) : une variable qualitative entre dans un terme croisé par chacune de ses catégories,
 une fois au plus (ni au carré ni au cube). année × secteur laisse la pente de l'année changer

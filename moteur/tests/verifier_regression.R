@@ -937,7 +937,7 @@ dangereuses <- c(sprintf("note_gout ~ sucre + file.create(\"%s\")", marqueur), s
                  sprintf("note_gout ~ s(sucre, k = file.create(\"%s\"))", marqueur), "note_gout ~ sucre[1]", "note_gout ~ get(\"sucre\")", "note_gout ~ \"sucre\"",
                  "note_gout ~ (function() sucre)()", "note_gout ~ sucre; file.remove(\"x\")")
 verifier("du code dans une formule : refusé, jamais exécuté", all(vapply(dangereuses, function(f) nzchar(refus(lire_formule(p, f))), TRUE)) && !file.exists(marqueur))
-messages <- c("note_gout ~ sucre - 1" = "ordonnée", "note_gout ~ (sucre | verger)" = "aléatoires", "note_gout ~ sucre + (1 | verger) + (1 | culture)" = "emboîtés",
+messages <- c("note_gout ~ sucre - 1" = "ordonnée", "note_gout ~ (sucre | verger)" = "terme fixe", "note_gout ~ sucre + (1 | verger) + (1 | culture)" = "emboîtés",
               "note_gout ~ s(sucre, bs = \"cr\")" = "dimension", "note_gout ~ s(sucre, k = 2)" = "entier de 3", "note_gout ~ sucre:log(fermete) + fermete" = "autre façon",
               "note_gout ~ inconnue" = "pas une variable", "note_gout ~ variete:sucre:variete" = "une fois", "note_gout ~ variete + I(variete^2)" = "une fois",
               "note_gout ~ sucre:note_gout" = "la réponse",
@@ -1379,6 +1379,207 @@ for (l in c("fr", "en")) {
              grepl(if (l == "fr") "n'ayant pas d'effet principal, les coefficients de « annee × secteur » sont la pente" else "has no main effect, the coefficients of “annee × secteur” are the slope", tq3) &&
              grepl(if (l == "fr") "ce même effet dans « H2 »" else "the same effect in “H2”", tq2) && !any(grepl("NA", c(tq1, tq2, tq3), fixed = TRUE)))
 }
+
+cat("Pentes aléatoires\n")
+# 8 sites suivis 11 ans, deux secteurs par site : chaque site sa pente de l'année autour de la pente
+# fixe, des comptages de même ; l'année centrée (échelle Ctr) ou dans ses unités (≈ 2006)
+set.seed(21)
+ns <- 8
+tp <- expand.grid(annee = 2001:2011, secteur = c("a", "b"), site = sprintf("S%d", 1:ns), stringsAsFactors = FALSE)
+tp <- data.frame(nom = sprintf("P%03d", seq_len(nrow(tp))), site = tp$site, secteur = tp$secteur, annee = tp$annee)
+si <- as.integer(factor(tp$site))
+ss <- as.integer(factor(paste(tp$site, tp$secteur)))
+tp$x <- rnorm(nrow(tp))
+tp$z <- rnorm(nrow(tp))
+tp$constante <- 5
+tp$y <- 3 + 0.5 * tp$x + 0.1 * (tp$annee - 2006) + rnorm(ns, 0, 1)[si] + rnorm(ns, 0, 0.15)[si] * (tp$annee - 2006) +
+  rnorm(2 * ns, 0, 0.3)[ss] + rnorm(nrow(tp), 0, 0.4)
+tp$compte <- stats::rpois(nrow(tp), exp(1 + 0.3 * tp$x + 0.05 * (tp$annee - 2006) + rnorm(ns, 0, 0.4)[si] + rnorm(ns, 0, 0.06)[si] * (tp$annee - 2006)))
+pp <- projet_depuis_tableau(tp, "pentes")
+up <- function(...) numeros(pp, c(...))
+centree <- c(defaut = "none", stats::setNames("Ctr", up("annee")))  # (l'année centrée, les autres dans leurs unités)
+par_site <- list(by = "variable", variable = up("site"), pentes = up("annee"))
+par_secteur <- list(by = "variable", variable = up("secteur"))
+dmp <- function(x = c("x", "annee"), aleatoires = list(par_site), ech = centree, type = "LMM", ...) {
+  definir_modele(pp, type, x = up(x), y = up(if (identical(list(...)$famille, "poisson")) "compte" else "y"), echelle = ech, aleatoires = aleatoires, ...)
+}
+mp <- function(...) ajuster(pp, dmp(...))
+tp$ac <- tp$annee - mean(tp$annee)
+tp$site_f <- factor(tp$site)
+dp <- dmp()
+mpe <- ajuster(pp, dp)
+ref_reml <- nlme::lme(y ~ x + ac, random = ~ ac | site, data = tp, method = "REML", control = ctrl)
+ref_ml <- nlme::lme(y ~ x + ac, random = ~ ac | site, data = tp, method = "ML", control = ctrl)
+S <- as.matrix(nlme::getVarCov(ref_reml))
+vp <- mpe$resultat$variances
+verifier(sprintf("(1 + annee | site), l'année centrée : effets fixes, variances (ordonnée, pente, résiduelle), corrélation = nlme::lme(random = ~ annee | site) (r = %.3f)",
+                 S[1, 2] / sqrt(S[1, 1] * S[2, 2])),
+         proche(mpe$resultat$coefficients$estimation, nlme::fixef(ref_reml), 1e-6) && identical(vp$terme, c("(Intercept)", "t2", "")) &&
+           proche(vp$variance, c(S[1, 1], S[2, 2], ref_reml$sigma^2), 1e-6) && proche(vp$correlation[2], S[1, 2] / sqrt(S[1, 1] * S[2, 2]), 1e-6) &&
+           all(is.na(vp$correlation[-2])))
+verifier("log-vraisemblance REML et ML, AIC = nlme::lme()", proche(as.numeric(logLik(mpe$ajustement)), as.numeric(logLik(ref_reml)), 1e-8) &&
+           proche(mpe$resultat$logLik, as.numeric(logLik(ref_ml)), 1e-8) && proche(mpe$resultat$AIC, AIC(ref_ml), 1e-8) && mpe$resultat$parametres == 7)
+# le R² de Johnson (2014) écrit à la main : la variance des effets aléatoires, la moyenne sur les
+# observations de zᵢᵀ Σ zᵢ, zᵢ = (1, année centrée)
+vf <- var(as.vector(model.matrix(~ x + ac, tp) %*% nlme::fixef(ref_reml)))
+Z <- cbind(1, tp$ac)
+vz <- mean(diag(Z %*% S %*% t(Z)))
+s2 <- ref_reml$sigma^2
+verifier(sprintf("R² marginal et conditionnel avec la pente (Johnson, 2014), à la main : %.3f et %.3f ; sans elle, un autre R² conditionnel", vf / (vf + vz + s2), (vf + vz) / (vf + vz + s2)),
+         proche(mpe$resultat$r2$marginal, vf / (vf + vz + s2), 1e-6) && proche(mpe$resultat$r2$conditionnel, (vf + vz) / (vf + vz + s2), 1e-6) &&
+           !proche(mpe$resultat$r2$conditionnel, (vf + S[1, 1]) / (vf + S[1, 1] + s2), 1e-3))
+verifier("la part de chaque niveau : sa variance moyenne sur les observations, et la résiduelle", proche(mpe$resultat$parts$part, c(vz, s2) / (vz + s2), 1e-6) &&
+           identical(parts_regression(mpe)$composante, c("site", "résiduelle")) && is.null(mpe$resultat$singularites))
+# l'année dans ses unités (≈ 2006) : le même modèle, mais nlme s'arrête sur une pente d'écart-type presque nul
+m_nc <- mp(ech = "none")
+ref_nc <- nlme::lme(y ~ x + annee, random = ~ annee | site, data = tp, method = "ML", control = ctrl)
+sg <- singularites_regression(m_nc)
+verifier(sprintf("l'année non centrée : l'AIC de nlme::lme() même là (%.1f), signalé singulier (écart-type de la pente %.2g, l'année loin de 0), la log-vraisemblance REML sous celle du modèle centré (%.1f contre %.1f)",
+                 m_nc$resultat$AIC, sg$valeur[1], as.numeric(logLik(m_nc$ajustement)), as.numeric(logLik(mpe$ajustement))),
+         proche(m_nc$resultat$AIC, AIC(ref_nc), 1e-6) && identical(sg$type, "ecart_type") && identical(sg$terme, "annee") && identical(sg$niveau, "site") &&
+           isTRUE(sg$loin) && proche(sg$moyenne, 2006) && as.numeric(logLik(m_nc$ajustement)) < as.numeric(logLik(mpe$ajustement)) - 1)
+# niveaux emboîtés : des pentes aux deux niveaux, ou au site seul
+m_emb <- mp(aleatoires = list(par_site, c(par_secteur, list(pentes = up("annee")))))
+ref_emb <- nlme::lme(y ~ x + ac, random = list(site = ~ ac, secteur = ~ ac), data = tp, method = "ML", control = ctrl)
+m_site <- mp(aleatoires = list(par_site, par_secteur))
+ref_site <- nlme::lme(y ~ x + ac, random = list(site = ~ ac, secteur = ~ 1), data = tp, method = "ML", control = ctrl)
+ref_site_reml <- nlme::lme(y ~ x + ac, random = list(site = ~ ac, secteur = ~ 1), data = tp, method = "REML", control = ctrl)
+vc <- nlme::VarCorr(ref_site_reml)  # (lu autrement : les valeurs que nlme affiche)
+vv <- suppressWarnings(as.numeric(vc[, "Variance"]))
+Ss <- matrix(c(vv[2], rep(as.numeric(vc[3, "Corr"]) * sqrt(vv[2] * vv[3]), 2), vv[3]), 2)
+vz2 <- mean(diag(Z %*% Ss %*% t(Z))) + vv[5]
+vf2 <- var(as.vector(model.matrix(~ x + ac, tp) %*% nlme::fixef(ref_site_reml)))
+verifier("emboîtés : pentes aux deux niveaux (list(site = ~ annee, secteur = ~ annee)), au site seul (secteur = ~ 1) : AIC = nlme::lme() ; R² de Johnson sur les deux niveaux",
+         proche(m_emb$resultat$AIC, AIC(ref_emb), 1e-6) && nrow(m_emb$resultat$variances) == 5 && proche(m_site$resultat$AIC, AIC(ref_site), 1e-6) &&
+           identical(m_site$resultat$variances$terme, c("(Intercept)", "t2", "(Intercept)", "")) &&
+           proche(m_site$resultat$r2$conditionnel, (vf2 + vz2) / (vf2 + vz2 + vv[6]), 1e-5))
+# avec CAR1 dans chaque secteur de chaque site
+car1_secteur <- list(type = "CAR1", temps = list(by = "variable", variable = up("annee")), dans = par_secteur)
+m_car1 <- mp(correlation = car1_secteur)
+ref_car1 <- nlme::lme(y ~ x + ac, random = ~ ac | site, correlation = nlme::corCAR1(form = ~ annee | site / secteur), data = tp, method = "ML", control = ctrl)
+ref_car1_reml <- nlme::lme(y ~ x + ac, random = ~ ac | site, correlation = nlme::corCAR1(form = ~ annee | site / secteur), data = tp, method = "REML", control = ctrl)
+verifier(sprintf("avec CAR1 : AIC et φ = nlme::lme(random = ~ annee | site, corCAR1) (φ = %.3f)", m_car1$resultat$phi),
+         proche(m_car1$resultat$AIC, AIC(ref_car1), 1e-6) && proche(m_car1$resultat$phi, coef(ref_car1_reml$modelStruct$corStruct, unconstrained = FALSE), 1e-4))
+# un GLM à loi normale avec CAR1 : mgcv::gamm, la même pente corrélée (la liste de nlme)
+m_gamm <- mp(type = "GLM", famille = "gaussienne", correlation = car1_secteur)
+verifier("GLM normal avec CAR1 (mgcv::gamm) : la pente corrélée de nlme, le même AIC et les mêmes variances que nlme::lme() (à l'arrêt de leurs optimisations près)",
+         isTRUE(m_gamm$gamm) && proche(m_gamm$resultat$AIC, AIC(ref_car1), 1e-6) &&
+           proche(as.numeric(logLik(m_gamm$ajustement$lme)), as.numeric(logLik(ref_car1_reml)), 1e-6) &&
+           proche(m_gamm$resultat$variances$variance[1:2], diag(as.matrix(nlme::getVarCov(ref_car1_reml))), 1e-3) && !is.na(m_gamm$resultat$variances$correlation[2]))
+# un GLMM de Poisson (mgcv::gam) : s(site, annee, bs = "re"), une pente indépendante de l'ordonnée à l'origine
+m_pois <- mp(type = "GLM", famille = "poisson")
+fp <- function(methode) mgcv::gam(stats::as.formula("compte ~ x + ac + s(site_f, bs = \"re\") + s(site_f, ac, bs = \"re\")", env = new.env(parent = asNamespace("mgcv"))),
+                                  data = tp, family = poisson(), method = methode)
+ref_pois <- fp("REML")
+vcomp <- mgcv::gam.vcomp(ref_pois)
+et_pois <- (if (is.matrix(vcomp)) vcomp else vcomp$vc)[c("s(site_f)", "s(site_f,ac)"), 1]
+verifier(sprintf("GLMM de Poisson : AIC (ML) = mgcv::gam() avec s(site, annee, bs = \"re\") ; variances = gam.vcomp() (pente : écart-type %.3f), sans corrélation", et_pois[2]),
+         proche(m_pois$resultat$AIC, AIC(fp("ML")), 1e-6) && proche(m_pois$resultat$variances$variance, unname(et_pois)^2, 1e-4) &&
+           all(is.na(m_pois$resultat$variances$correlation)) && is.null(m_pois$resultat$singularites))
+m_pois_nc <- mp(type = "GLM", famille = "poisson", ech = "none")
+sgp <- singularites_regression(m_pois_nc)
+verifier(sprintf("GLMM de Poisson, l'année non centrée : la variance de la pente indépendante presque nulle (écart-type %.2g, contre %.3f centrée), signalée, l'année loin de 0",
+                 sgp$valeur[1], et_pois[2]),
+         identical(sgp$type, "ecart_type") && isTRUE(sgp$loin) && sgp$valeur[1] < et_pois[2] / 100)
+verifier("prédictions par les effets fixes seuls (nlme, niveau 0 ; mgcv, ordonnées et pentes aléatoires exclues)",
+         proche(predire_observations_regression(pp, mpe, dp, numeros_observations(pp))[[1]], as.vector(predict(ref_reml, tp, level = 0)), 1e-6) &&
+           proche(predire_observations_regression(pp, m_pois, dmp(type = "GLM", famille = "poisson"), numeros_observations(pp))[[1]],
+                  as.vector(predict(ref_pois, tp, type = "response", exclude = c("s(site_f)", "s(site_f,ac)"))), 1e-4))
+# la validation croisée par site : un site jamais vu, prédit par les effets fixes du modèle ajusté sans lui
+pred <- rep(NA_real_, nrow(tp))
+for (g in unique(tp$site)) {
+  ici <- tp$site == g
+  pred[ici] <- predict(nlme::lme(y ~ x + ac, random = ~ ac | site, data = tp[!ici, ], method = "REML", control = ctrl), tp[ici, ], level = 0)
+}
+verifier(sprintf("validation croisée par site (Q2 = %.3f) : chaque site prédit sans lui, à la main", mpe$vc$Q2),
+         mpe$G == ns && proche(mpe$vc$Q2, 1 - sum((tp$y - pred)^2) / sum((tp$y - mean(tp$y))^2), 1e-5))
+cat("Pentes aléatoires : refus, formule, sélection, modèles emboîtés\n")
+avec_pente <- function(u) list(list(by = "variable", variable = up("site"), pentes = up(u)))
+verifier("une pente aléatoire hors des X, sur une variable qualitative, sur une courbe, sur un terme constant : refusées, en la nommant",
+         grepl("« annee » a une pente aléatoire", refus(dmp(x = "x"))) &&
+           grepl("« secteur » a une pente aléatoire", refus(dmp(x = c("x", "secteur"), aleatoires = avec_pente("secteur")))) &&
+           grepl("« annee » a une pente aléatoire : elle ne peut pas être aussi une courbe", refus(dmp(type = "GAM", famille = "gaussienne", lisses = up("annee")))) &&
+           grepl("« constante » ne peut pas être estimé", refus(mp(x = c("x", "constante"), aleatoires = avec_pente("constante")))))
+dm <- dp
+dm$aleatoires[[1]]$pentes <- up("site")
+verifier("une définition reçue dont la pente est la variable de groupes : refusée", grepl("pente aléatoire", refus(ajuster(pp, dm))))
+fichier <- tempfile(fileext = ".nuee")
+pq <- pp
+pq$models <- list(dp)
+enregistrer_projet(pq, fichier)
+qp <- lire_projet(fichier)
+verifier("enregistrée puis relue : la pente du site (un champ de son effet aléatoire), le même modèle",
+         identical(as.numeric(qp$models[[1]]$aleatoires[[1]]$pentes), as.numeric(up("annee"))) && proche(ajuster(qp, qp$models[[1]])$resultat$AIC, mpe$resultat$AIC, 1e-10))
+sg2 <- specs_groupement(jsonlite::fromJSON(sprintf('[{"by": "variable", "variable": %d, "pentes": [%d]}, {"by": "variable", "variable": %d}]',
+                                                   up("site"), up("annee"), up("secteur")), simplifyVector = TRUE))
+verifier("des effets aléatoires reçus de l'interface (un data.frame) : la pente du premier niveau, aucune au second",
+         identical(sg2[[1]]$pentes, as.numeric(up("annee"))) && is.null(sg2[[2]]$pentes) && identical(dp$groupes_vc, list(by = "variable", variable = up("site"))))
+rf <- lire_formule(pp, "y ~ x + annee + (1 + annee | site)")
+rf2 <- lire_formule(pp, "y ~ x + annee + (annee | site)")
+rf3 <- lire_formule(pp, "y ~ x + annee + (1 + annee | site/secteur)")
+rf4 <- lire_formule(pp, "y ~ x + annee + (1 + annee | site) + (1 | site:secteur)")
+verifier("formule : (1 + annee | site) et (annee | site), la pente du site ; (1 + annee | site/secteur), une pente à chaque niveau ; un terme par niveau",
+         rf$type == "LMM" && identical(as.numeric(rf$aleatoires[[1]]$pentes), as.numeric(up("annee"))) && identical(rf2$aleatoires, rf$aleatoires) &&
+           length(rf3$aleatoires) == 2 && all(vapply(rf3$aleatoires, function(a) identical(as.numeric(a$pentes), as.numeric(up("annee"))), TRUE)) &&
+           length(rf4$aleatoires) == 2 && !is.null(rf4$aleatoires[[1]]$pentes) && is.null(rf4$aleatoires[[2]]$pentes))
+verifier(sprintf("écrites puis relues, les mêmes réglages : %s ; %s", formule_reglages(pp, rf3), formule_reglages(pp, rf4)),
+         formule_reglages(pp, rf3) == "y ~ x + annee + (1 + annee | site/secteur)" && formule_reglages(pp, rf4) == "y ~ x + annee + (1 + annee | site) + (1 | site:secteur)" &&
+           identical(lire_formule(pp, formule_reglages(pp, rf4))$aleatoires, rf4$aleatoires) && formule_reglages(pp, rf) == "y ~ x + annee + (1 + annee | site)")
+mf <- ajuster(pp, definir_modele(pp, rf4$type, x = rf4$x, y = rf4$y, echelle = centree, aleatoires = rf4$aleatoires))
+verifier("ajusté, le modèle de la formule à un terme par niveau = nlme::lme(random = list(site = ~ annee, secteur = ~ 1))", proche(mf$resultat$AIC, AIC(ref_site), 1e-6))
+pentes_refusees <- c("y ~ x + annee + (0 + annee | site)", "y ~ x + annee + (1 | site) + (0 + annee | site)", "y ~ x + annee + (1 + annee || site)",
+                     "y ~ x + annee + (annee - 1 | site)")
+verifier("des pentes non corrélées à l'ordonnée à l'origine (0 + annee, (1 | site) + (0 + annee | site), ||) : refusées, en disant pourquoi",
+         all(vapply(pentes_refusees, function(f) grepl("indépendante de l'ordonnée à l'origine", refus(lire_formule(pp, f))), TRUE)) &&
+           grepl("terme fixe", refus(lire_formule(pp, "y ~ x + (1 + annee | site)"))) && grepl("emboîtés", refus(lire_formule(pp, "y ~ x + annee + (1 | site:secteur)"))))
+# les tests du rapport de vraisemblance : les mêmes pentes, des effets fixes emboîtés ; d'autres pentes, l'AIC seul
+mb <- mp(x = "annee")
+mc <- mp(aleatoires = list(list(by = "variable", variable = up("site"))))
+rv <- rapports_vraisemblance(list(A = mpe, B = mb, C = mc))
+verifier("rapport de vraisemblance : x + annee contre annee, les mêmes pentes ; pas entre deux modèles aux pentes différentes, qui se comparent par l'AIC",
+         rv$total == 1 && rv$paires$grand == "A" && rv$paires$petit == "B" && proche(rv$paires$khi2, 2 * (mpe$resultat$logLik - mb$resultat$logLik)) &&
+           identical(mpe$signature, mc$signature))
+k <- seq_len(mpe$N)
+verifier("les mêmes effets aléatoires : l'année centrée ou non (nlme, la même matrice générale) ; pas avec des pentes de mgcv indépendantes (centrer change ce modèle)",
+         memes_aleatoires(mpe, m_nc, k) && !memes_aleatoires(m_pois, m_pois_nc, k) && memes_aleatoires(m_pois, mp(x = c("x", "annee"), type = "GLM", famille = "poisson",
+                                                                                                                   ech = c(defaut = "none", stats::setNames("UV", up("annee")))), k))
+# la sélection par l'AIC : l'année, qui porte la pente, reste dans chaque modèle
+dsel <- dmp(x = c("x", "z", "annee"))
+msel <- ajuster(pp, dsel)
+ssel <- selection_aic(msel, dsel)
+nul_sel <- nlme::lme(y ~ ac, random = ~ ac | site, data = tp, method = "ML", control = ctrl)
+verifier(sprintf("sélection par AIC : %d groupes à choisir (x, z), l'année dans chaque modèle ; le plus petit = nlme::lme(y ~ annee, random = ~ annee | site) en ML", ssel$K),
+         ssel$K == 2 && identical(as.character(ssel$groupes), c("x", "z")) && identical(as.character(ssel$gardes), "annee") && nrow(ssel$modeles) == 4 &&
+           proche(ssel$modeles$logLik[ssel$modeles$modele == "1"], as.numeric(logLik(nul_sel)), 1e-6))
+dch <- definition_selection(dsel, msel, "x")
+mch <- ajuster(pp, dch)
+verifier("Ajuster ce modèle (x) : l'année et sa pente aléatoire restent", proche(mch$resultat$AIC, mpe$resultat$AIC, 1e-8) && identical(unlist(mch$pentes), "t2") &&
+           identical(as.character(unlist(dch$selection_origine$gardes)), "annee"))
+msel$selection_aic <- ssel
+verifier("le texte des méthodes de la sélection : l'année gardée dans chaque modèle", grepl("« annee », qui porte une pente aléatoire, est resté dans chaque modèle", texte_methodes(pp, dsel, msel, "fr")$paragraphes[2], fixed = TRUE))
+# l'apport de l'année : sa pente fixe retirée, sa pente aléatoire gardée
+sans_annee <- nlme::lme(y ~ x, random = ~ ac | site, data = tp, method = "ML", control = ctrl)
+ap <- apport_groupes(mpe)
+verifier("apport de l'année : la pente fixe seule retirée, la pente aléatoire reste (ΔAIC = nlme::lme(y ~ x, random = ~ annee | site))",
+         proche(ap$delta_aic[ap$groupe == "annee"], AIC(sans_annee) - AIC(ref_ml), 1e-6))
+# Ajuster avec CAR1 : la même définition, ses pentes comprises
+dcar <- definition_car1(pp, dp, list(by = "variable", variable = up("annee")), list(list(by = "effets"), list(by = "variable", variable = up("secteur"))))
+verifier("Ajuster avec CAR1 garde la pente du site : le modèle CAR1 de nlme", identical(dcar$aleatoires[[1]]$pentes, as.numeric(up("annee"))) &&
+           proche(ajuster(pp, dcar)$resultat$AIC, AIC(ref_car1), 1e-6))
+acp <- autocorrelation_residus(pp, mpe, list(by = "variable", variable = up("annee")), list(list(by = "effets"), par_secteur))
+verifier("l'autocorrélation des résidus d'un modèle à pentes : dans les groupes de ses effets aléatoires (le secteur dans son site)",
+         acp$groupes == 2 * ns && acp$n == mpe$N && acp$groupe == "site / secteur")
+xp <- tables_resultats(pp, mpe)$effets_aleatoires
+verifier("Exporter : chaque ordonnée à l'origine et pente aléatoire, et la corrélation", identical(xp$composante, c("site", "site", "résiduelle")) &&
+           identical(xp$terme, c("(Intercept)", "annee", "")) && proche(xp$correlation[2], vp$correlation[2]))
+for (l in c("fr", "en")) {
+  tm <- texte_methodes(pp, dp, mpe, l, "essai")
+  tpois <- texte_methodes(pp, dmp(type = "GLM", famille = "poisson"), m_pois, l, "essai")
+  verifier(sprintf("texte des méthodes (%s) : la pente aléatoire du site, corrélée (nlme) ou indépendante (mgcv), Johnson (2014) cité", l),
+           grepl(if (l == "fr") "une pente aléatoire de « annee » par « site » (corrélée" else "a random slope of “annee” for “site” (correlated", tm$paragraphes[2], fixed = TRUE) &&
+             any(grepl("Johnson, P. C. D. (2014)", tm$references, fixed = TRUE)) && grepl(if (l == "fr") "indépendant de l'ordonnée" else "independent of the intercept", tpois$paragraphes[2], fixed = TRUE))
+}
+verifier("ce que R affiche du modèle : la pente du site", any(grepl("site (pente annee)", utils::capture.output(print(mpe)), fixed = TRUE)))
 
 cat("Texte des méthodes\n")
 for (l in c("fr", "en")) {

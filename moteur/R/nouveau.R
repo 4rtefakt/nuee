@@ -341,7 +341,9 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   "site == \"S1\" & annee >= 2010" (condition.R) ; d$cochees garde les observations sans elle.
 # Régressions (regression.R) : type "LM" (linéaire) ou "LMM" (mixte), une seule variable Y ;
 #   aleatoires : les effets aléatoires d'un modèle mixte, emboîtés, du plus large au plus fin,
-#   par exemple list(list(by = "id", id = "site"), list(by = "id", id = "secteur")) ;
+#   par exemple list(list(by = "id", id = "site"), list(by = "id", id = "secteur")) ; pentes : les
+#   numéros des variables X quantitatives qui ont une pente aléatoire à ce niveau,
+#   list(by = "id", id = "site", pentes = 7) pour (1 + annee | site) ;
 #   correlation : list(type = "CAR1", temps = list(by = "id", id = "annee")), une
 #   autocorrélation dans le temps à l'intérieur du dernier effet aléatoire, ou d'un niveau plus fin
 #   (dans = list(by = "id", id = "secteur") : le secteur dans le site, seul le site ayant un effet
@@ -441,7 +443,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
       if (length(decalage)) d$decalage <- as.numeric(decalage)[1]
       if (length(k_courbes)) d$k_courbes <- lapply(as.list(unlist(k_courbes)), as.integer)
     }
-    if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]]
+    if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]][setdiff(names(aleatoires[[1]]), "pentes")]  # (ses groupes, sans ses pentes)
     verifier_regression(projet, d)
   }
   if (autre) {

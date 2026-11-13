@@ -358,6 +358,8 @@ moteur_regression <- function(m) {
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, COURBES_SEUILS)),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- rbind(s$plages_pente, s$plages_effet); c(z$de, z$a) })),
        "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
+       # (la corrélation de chaque pente aléatoire avec l'ordonnée à l'origine de son niveau, nlme)
+       "corrélations des pentes" = if (any(!is.na(r$variances$correlation))) r$variances$correlation,
        phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(r$courbes[-1]),
        "Q2 et RMSEcv" = c(m$vc$Q2, m$vc$RMSEcv), "prédictions de la validation croisée" = m$vc$prediction,
        "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus), "résidus quantiles" = r$residus_quantiles,
@@ -373,7 +375,8 @@ script_regression <- function(s, langue) {
   list(coefficients = colonnes(n("coefficients"), 2:8),
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, nom_script(COURBES_SEUILS, langue))),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- s[[nom_script("plages", langue)]]; c(z[[3]], z[[4]]) })),
-       "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
+       "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = n("variances")$variance,
+       "corrélations des pentes" = n("variances")$correlation,
        phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) colonnes(n("courbes"), seq_along(n("courbes"))[-1]),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
        "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "résidus quantiles" = n("observations")[[nom_script("residu_quantile", langue)]],
@@ -469,6 +472,25 @@ essayer_regression("gamm_car1_test_en", pr, definir_modele(pr, "GAM", x = ur("x1
                    lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur, test = numeros_observations(pr)[seq(5, n, by = 16)]), langue = "en")
 essayer_regression("lmm_car1_secteur", pr, definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
                    correlation = car1_secteur))
+# une pente aléatoire de l'année par site (l'année centrée, échelle Ctr) : nlme::lme(random = ~ annee | site),
+# sa sélection par l'AIC (l'année dans chaque modèle) ; avec CAR1 et le secteur emboîté (la liste de nlme),
+# en anglais ; dans un GLMM de Poisson, la pente indépendante de mgcv, s(site, annee, bs = "re")
+pente_site <- list(by = "id", id = "site", pentes = ur("annee"))
+annee_centree <- c(defaut = "none", stats::setNames("Ctr", ur("annee")))
+r <- essayer_regression("lmm_pente_annee", pr, definir_modele(pr, "LMM", x = ur("x1", "x2", "annee"), y = ur("hauteur"), echelle = annee_centree,
+                        aleatoires = list(pente_site)), selection = TRUE)
+verifier("pente aléatoire : random = ~ annee | site, ses variances et sa corrélation (variances_pentes), le R² de Johnson (variances_niveaux), l'année gardée par la sélection",
+         any(grepl("aleatoire <- as.formula(\"~ annee | site\")", lignes_script(r), fixed = TRUE)) && any(grepl("^variances_pentes <- function", lignes_script(r))) &&
+           any(grepl("^variances_niveaux <- function", lignes_script(r))) && any(grepl("^termes_gardes <- \"annee\"", lignes_script(r))))
+r <- essayer_regression("lmm_pente_car1_en", pr, definir_modele(pr, "LMM", x = ur("x1", "x2", "annee"), y = ur("hauteur"), echelle = annee_centree,
+                        aleatoires = list(pente_site, par_secteur), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")))), langue = "en")
+verifier("pente aléatoire avec CAR1, en anglais : la liste de nlme (site = ~ annee, secteur = ~ 1), ni nom ni commentaire en français",
+         any(grepl("random_part <- setNames(lapply(c(\"~ annee\", \"~ 1\"), as.formula), random_levels)", lignes_script(r), fixed = TRUE)) && en_anglais(lignes_script(r)))
+r <- essayer_regression("glmm_poisson_pente", pr, definir_modele(pr, "GLM", x = ur("x1", "annee"), y = ur("compte"), famille = "poisson", decalage = ur("effort"),
+                        echelle = annee_centree, aleatoires = list(pente_site)))
+verifier("GLMM à pente aléatoire (mgcv) : s(site, annee, bs = \"re\"), indépendante ; ses effets aléatoires exclus des prédictions par leur classe",
+         any(grepl("pentes_aleatoires <- setNames(\"annee\", \"site\")", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("inherits(s, \"random.effect\")", lignes_script(r), fixed = TRUE)))
 # (le temps de CAR1 fait de dates, le jour d'abord, un même jour pour tous les secteurs d'une année :
 # une variable qualitative ; le script les lit en années décimales comme Nuée, par sa fonction
 # temps_en_nombres, et donne le modèle que les années décimales donnent, refaites ici avec R)

@@ -2372,13 +2372,21 @@ function rendreResumeRegression(conteneur, ctx, m) {
   const v = m.variances;
   const variances = v ? [].concat(v.variance) : [];
   const total = variances.reduce((a, b) => a + b, 0);
+  // (with random slopes, a row per term of each level, and each slope's correlation with its level's
+  // intercept, nlme; each level's share then comes in a note, notesPentes: its terms have none)
+  const avecPentes = !!v && v.terme !== undefined;
+  const correlations = avecPentes && [].concat(v.correlation).some((r) => r !== null && r !== undefined);
   // (the share of each variance: only with the residual one, nlme)
-  const parts = v && [].concat(v.composante).length > [].concat(m.niveaux || []).length;
+  const parts = v && !avecPentes && [].concat(v.composante).length > [].concat(m.niveaux || []).length;
   const table = v ? el('table', { class: 'tableau compact' },
-    el('thead', {}, el('tr', {}, [t('effet_aleatoire'), t('variance'), t('ecart_type'), parts ? t('part') : null].filter(Boolean)
-      .map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
-    el('tbody', {}, [].concat(v.composante).map((c, i) => el('tr', {}, el('td', {}, c), el('td', { class: 'num' }, fmt(variances[i], 4)),
-      el('td', { class: 'num' }, fmt(Math.sqrt(variances[i]), 4)), parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`) : null)))) : null;
+    el('thead', {}, el('tr', {}, el('th', {}, t('effet_aleatoire')), avecPentes ? el('th', {}, t('terme')) : null,
+      [t('variance'), t('ecart_type')].map((h) => el('th', { class: 'num' }, h)),
+      correlations ? el('th', { class: 'num', title: t('correlation_ordonnee_aide') }, t('correlation_ordonnee')) : null,
+      parts ? el('th', { class: 'num' }, t('part')) : null)),
+    el('tbody', {}, [].concat(v.composante).map((c, i) => el('tr', {}, el('td', {}, c), avecPentes ? el('td', {}, [].concat(v.terme)[i]) : null,
+      el('td', { class: 'num' }, fmt(variances[i], 4)), el('td', { class: 'num' }, fmt(Math.sqrt(variances[i]), 4)),
+      correlations ? el('td', { class: 'num', title: t('correlation_ordonnee_aide') }, fmt([].concat(v.correlation)[i], 3)) : null,
+      parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`) : null)))) : null;
   const cb = m.courbes;
   // (with each curve's concurvity: in red above 0.8, a curve confounded with the other terms)
   const concurvite = cb && cb.concurvite !== undefined;
@@ -2391,6 +2399,7 @@ function rendreResumeRegression(conteneur, ctx, m) {
       concurvite ? el('td', { class: 'num' + ([].concat(cb.concurvite)[i] > 0.8 ? ' erreur' : ''), title: t('concurvite_aide') }, fmt([].concat(cb.concurvite)[i], 2)) : null)))) : null;
   // (a GLM without curves or random effects: plain maximum likelihood)
   const textes = [m.gamm ? t('gamm_note') : mixte ? t('regression_note_mixte') : ['GLM', 'GAM'].includes(m.type) ? t(cb || v ? 'generalise_note' : 'generalise_note_mv') : t('regression_note'),
+    ...notesPentes(m),
     notePhi(m),
     ...notesTermesRetires(m),
     q.echecs_vc ? t('echecs_vc', { n: q.echecs_vc }) : '',
@@ -2463,6 +2472,38 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
 const PENTE = { hausse: '#2a9d8f', baisse: '#d1495b' };
 const nombreSeuil = (v) => fmt(v, Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2);
 const plagesSeuils = (pl) => [].concat((pl && pl.sens) || []).map((sens, i) => ({ sens, de: [].concat(pl.de)[i], a: [].concat(pl.a)[i] }));
+// A model's random slopes in words (moteur/R/regression.R): what their variance and correlation
+// say; for an mgcv model (not mgcv::gamm), that they are independent of the intercept; each level's
+// share of the random variance (parts_variance, Johnson 2014); and the signs of a singular fit
+// (singularites_pentes), with what centring the variable does when it is far from 0.
+export function notesPentes(m) {
+  if (!m.pentes || ![].concat(m.pentes).some((p) => [].concat(p ?? []).length)) return [];
+  const mgcvSeul = ['GLM', 'GAM'].includes(m.type) && !m.gamm;
+  const notes = [t('pentes_note')];
+  if (mgcvSeul) notes.push(t('pentes_independantes'));
+  const pv = m.parts_variance;
+  if (pv) notes.push(t('pentes_parts', { parts: [].concat(pv.composante).map((c, i) => `${c} ${fmt(100 * [].concat(pv.part)[i], 1)} %`).join(', ') }));
+  const s = m.singularites;
+  if (s) {
+    const col = (k) => [].concat(s[k]);
+    const loin = new Map();
+    col('terme').forEach((terme, i) => {
+      const groupe = col('niveau')[i];
+      const avec = col('avec')[i];
+      notes.push(col('type')[i] === 'correlation'
+        ? t('singulier_correlation', { groupe, terme, r: fmt(col('valeur')[i], 3), avec: avec === '(Intercept)' ? t('ordonnee_origine') : t('pente_de', { terme: avec }) })
+        : t('singulier_ecart_type', { terme, groupe, et: Number(col('valeur')[i]).toPrecision(2) }));
+      loin.set(terme, col('loin')[i] ? i : (loin.get(terme) ?? -1));
+    });
+    // (what to do, once per slope: centre it when it is far from 0, otherwise compare without it)
+    for (const [terme, i] of loin) {
+      notes.push(i >= 0 ? t(mgcvSeul ? 'singulier_loin_mgcv' : 'singulier_loin', { terme, moyenne: nombreSeuil(col('moyenne')[i]), et: nombreSeuil(col('ecart_type_x')[i]) })
+        : t('singulier_centre'));
+    }
+  }
+  return notes;
+}
+
 // A model's CAR1 autocorrelation: φ along its time, within each group (moteur/R/regression.R:
 // the "within each" level, or else the last random effect).
 export function notePhi(m) {
@@ -2762,7 +2803,9 @@ async function rendreApports(conteneur, ctx, p, loc) {
   const groupes = col('groupe');
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
-  conteneur.replaceChildren(el('p', { class: 'note' }, t('apports_note')), graphe, bas);
+  // (a term with a random slope: removed, its fixed slope only goes, regression.R: retrait_groupes)
+  const pentes = [...new Set([].concat(m.pentes ?? []).flatMap((p) => [].concat(p ?? [])))];
+  conteneur.replaceChildren(el('p', { class: 'note' }, [t('apports_note'), pentes.length ? t('apports_pentes', { termes: pentes.join(', ') }) : ''].join(' ')), graphe, bas);
   if (!groupes.length) { graphe.replaceChildren(el('p', { class: 'infos' }, t('apports_vide'))); return; }
   const delta = col('delta_aic');
   const ordre = groupes.map((_, i) => i).sort((i, j) => (delta[j] ?? -Infinity) - (delta[i] ?? -Infinity));
@@ -2808,11 +2851,13 @@ async function rendreSelectionAIC(conteneur, ctx, p, loc) {
     cache.id = m.id;
   }
   const s = cache.res;
-  if (!s.K) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('selection_aic_vide'))); return; }
+  // (the groups that carry a random slope stay in every model: regression.R, groupes_gardes)
+  const gardes = [].concat(s.gardes ?? []);
+  if (!s.K) { conteneur.replaceChildren(el('p', { class: 'infos' }, [t('selection_aic_vide'), gardes.length ? t('selection_aic_gardes', { groupes: gardes.join(', ') }) : ''].join(' '))); return; }
   const col = (k) => [].concat(s.modeles[k] ?? []);
   const [aicc, delta, poids, k] = [col('AICc'), col('delta'), col('poids'), col('k')];
   const groupes = [].concat(s.groupes);
-  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || t('aic_modele_nul');
+  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || (gardes.length ? t('aic_modele_gardes', { groupes: gardes.join(' + ') }) : t('aic_modele_nul'));
   const ajuster = (i) => ctx.reajuster(m.id, { groupes_aic: groupesSelectionAIC(s, i) });
   const bouton = (i) => el('button', { onclick: () => ajuster(i), title: `${t('ajuster_ce_modele_aide')}\n${nom(i)}` }, icone('file-plus'), t('ajuster_ce_modele'));
   const suggestion = (titre, i, details) => el('div', { class: 'ligne' }, el('span', {}, el('small', {}, titre), ' ', el('b', {}, nom(i))),
@@ -2824,6 +2869,7 @@ async function rendreSelectionAIC(conteneur, ctx, p, loc) {
       : el('p', { class: 'note' }, t('selection_aic_aussi')));
   const retires = s.chemin ? [].concat(s.chemin.retire).slice(1) : [];
   const note = [t('selection_aic_note', { n: s.N }),
+    gardes.length ? t('selection_aic_gardes', { groupes: gardes.join(', ') }) : '',
     s.methode === 'toutes' ? t('selection_aic_toutes', { n: aicc.length })
       : t('selection_aic_descendante', { k: s.K, limite: s.limite, n: aicc.length, retires: retires.length ? retires.join(', ') : t('aic_aucun_retire') }),
     s.echecs ? t('selection_aic_echecs', { n: s.echecs }) : ''].filter(Boolean).join(' ');

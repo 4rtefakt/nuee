@@ -466,6 +466,8 @@ resultat_regression <- function(id) {
        qualite = c(r$r2, list(AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres,
                               Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs, sans_pente_vc = m$vc$sans_pente %||% 0)),
        variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),
+       # (les pentes aléatoires de chaque niveau, les parts de variance des niveaux et les signes d'un ajustement singulier)
+       pentes = pentes_regression(m), parts_variance = parts_regression(m), singularites = singularites_regression(m),
        signature = m$signature, RMSEE = stats::setNames(list(sqrt(mean((m$donnees$y - r$ajuste)^2))), y),
        RMSEcv = stats::setNames(list(m$vc$RMSEcv), y), composantes = NULL,
        G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app),

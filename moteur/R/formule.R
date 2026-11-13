@@ -63,8 +63,13 @@ formule_reglages <- function(projet, r) {
     }, ""),
     if (length(r$decalage) && type %in% GENERALISES) sprintf("offset(log(%s))", nom_formule(nom_variable(as.numeric(r$decalage)[1]))),
     {
+      # (comme lme4 : (1 | site/secteur) ; avec des pentes aléatoires, (1 + annee | site/secteur) quand
+      # chaque niveau a les mêmes, sinon un terme par niveau, (1 + annee | site) + (1 | site:secteur))
       a <- if (type %in% c("LMM", GENERALISES)) specs_groupement(r$aleatoires) else list()
-      if (length(a)) sprintf("(1 | %s)", paste(vapply(a, function(s) nom_formule(nom_groupement(projet, s)), ""), collapse = "/"))
+      groupes <- vapply(a, function(s) nom_formule(nom_groupement(projet, s)), "")
+      gauches <- vapply(a, function(s) paste(c("1", vapply(as.numeric(s$pentes %||% numeric(0)), terme, "")), collapse = " + "), "")
+      if (length(a) && all(gauches == gauches[1])) sprintf("(%s | %s)", gauches[1], paste(groupes, collapse = "/"))
+      else vapply(seq_along(a), function(l) sprintf("(%s | %s)", gauches[l], paste(groupes[seq_len(l)], collapse = ":")), "")
     })
   y <- as.numeric(unlist(r$y))
   paste(if (length(y)) paste0(terme(y[1]), " "), "~ ", if (length(droite)) paste(droite, collapse = " + ") else "1", sep = "")
@@ -192,12 +197,36 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   }
   # les termes séparés par « + »
   termes <- function(e) if (fonction(e) == "+" && length(e) == 3) c(termes(e[[2]]), termes(e[[3]])) else list(e)
+  # une pente aléatoire sans son ordonnée à l'origine, ou à part d'elle (|| ; 0 + x ; (1 | site) +
+  # (0 + x | site)) : des effets indépendants, que Nuée ne prend pas (un modèle qui dépend alors de
+  # l'endroit où x vaut 0)
+  independantes <- function(t) {
+    err("« %s » : une pente aléatoire indépendante de l'ordonnée à l'origine (||, 0 + x, ou un terme à part de (1 | groupe)) ne se prend pas : Nuée estime chaque pente aléatoire avec sa corrélation à l'ordonnée à l'origine de son groupe, (1 + x | groupe), un modèle qui ne dépend pas de l'endroit où x vaut 0.",
+        "\"%s\": a random slope independent of the intercept (||, 0 + x, or a term apart from (1 | group)) isn't taken: Nuée estimates each random slope with its correlation to its group's intercept, (1 + x | group), a model that doesn't depend on where x is 0.", texte_de(t))
+  }
+  # le côté gauche d'un effet aléatoire (1, 1 + annee, annee : lme4 y met l'ordonnée à l'origine) :
+  # ses pentes, des termes simples (transformés ou non : simple) ; l'ordonnée à l'origine ôtée
+  # (0 + x, x - 1) est refusée. `t` : le terme entier, pour le message.
+  gauche_aleatoire <- function(e, t) {
+    if (fonction(e) == "-" && length(e) == 3 && identical(nombre(e[[3]]), 1)) independantes(t)
+    pentes <- list()
+    for (x in termes(e)) {
+      n <- nombre(x)
+      if (identical(n, 1)) next
+      if (!is.null(n)) { if (n %in% c(0, -1)) independantes(t) else refus(x) }
+      s <- simple(x)
+      if (!is.null(s$puissance)) refus(x)
+      pentes[[length(pentes) + 1]] <- s
+    }
+    pentes
+  }
   # ce que la formule demande
   principaux <- list()  # par variable (son indice) : sa transformation
   courbes <- integer(0)
   croises <- list()     # des vecteurs d'indices, un par terme croisé
   puissances <- list()  # I(x^2) seuls : un terme croisé si x est aussi un terme principal, sinon x^2
   aleatoires <- list()
+  barres <- list()      # les termes (… | groupe) : leur côté gauche (gauche_aleatoire) et leurs groupes
   decalage <- NULL
   k_courbes <- list()   # par variable (son indice) : la dimension demandée de sa courbe
   ajouter <- function(s) {
@@ -223,18 +252,9 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
       err("Nuée garde toujours l'ordonnée à l'origine : « + 0 » ou « - 1 » n'y ont pas de sens.", "Nuée always keeps the intercept: \"+ 0\" or \"- 1\" don't apply.")
     }
     if (ft == "-") err("Retirer un terme (« - x ») : ne l'écrivez pas. Nuée garde toujours l'ordonnée à l'origine.", "To remove a term (\"- x\"), leave it out. Nuée always keeps the intercept.")
-    if (ft == "(" && length(t) == 2 && fonction(t[[2]]) == "|") {
-      barre <- t[[2]]
-      if (!identical(nombre(barre[[2]]), 1)) err("Seules des ordonnées à l'origine aléatoires : (1 | site), (1 | site/secteur).", "Only random intercepts: (1 | site), (1 | site/sector).")
-      if (length(aleatoires)) {
-        err("Les effets aléatoires de Nuée sont emboîtés, du plus large au plus fin : un seul terme, (1 | site/secteur).",
-            "Nuée's random effects are nested, the widest first: a single term, (1 | site/sector).")
-      }
-      niveaux <- function(e) if (fonction(e) == "/" && length(e) == 3) c(niveaux(e[[2]]), niveaux(e[[3]])) else list(e)
-      for (g in niveaux(barre[[3]])) {
-        if (!is.name(g)) refus(g)
-        aleatoires[[length(aleatoires) + 1]] <- groupement(g)
-      }
+    if (ft == "(" && length(t) == 2 && fonction(t[[2]]) %in% c("|", "||")) {  # un effet aléatoire, lu après la boucle
+      if (fonction(t[[2]]) == "||") independantes(t)
+      barres[[length(barres) + 1]] <- list(gauche = gauche_aleatoire(t[[2]][[2]], t), droite = t[[2]][[3]])
       next
     }
     if (ft == "(" && length(t) == 2) {
@@ -308,6 +328,37 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
       err("« %s » est transformée d'une autre façon dans le terme croisé.", "\"%s\" is transformed another way in the cross term.", noms[s$k])
     }
   }
+  # les effets aléatoires, emboîtés du plus large au plus fin : un seul terme, (1 + annee | site/secteur)
+  # (ses pentes à chaque niveau, comme lme4 le lit), ou un terme par niveau, (1 + annee | site) +
+  # (1 | site:secteur) ; chaque pente aléatoire est aussi un terme fixe, transformé de même
+  emboitement <- function() err("Les effets aléatoires de Nuée sont emboîtés, du plus large au plus fin : (1 | site/secteur), ou un terme par niveau, (1 + annee | site) + (1 | site:secteur).",
+                                "Nuée's random effects are nested, the widest first: (1 | site/sector), or one term per level, (1 + year | site) + (1 | site:sector).")
+  chaine <- function(e, op) if (fonction(e) == op && length(e) == 3) c(chaine(e[[2]], op), chaine(e[[3]], op)) else list(e)
+  niveau <- function(g, pentes) {
+    if (!is.name(g)) refus(g)
+    for (s in pentes) {
+      if (length(projet$variables[[s$k]]$categories)) err("« %s » est qualitative : une pente aléatoire se fait sur une variable quantitative.",
+                                                         "\"%s\" is qualitative: a random slope is made on a quantitative variable.", noms[s$k])
+      p <- principaux[[as.character(s$k)]]
+      if (is.null(p) || !identical(p$tr, s$tr)) {
+        err("« %s » a une pente aléatoire : elle doit être aussi un terme fixe de la formule, transformée de la même façon (y ~ annee + (1 + annee | site)).",
+            "\"%s\" has a random slope: it must also be a fixed term of the formula, transformed the same way (y ~ year + (1 + year | site)).", noms[s$k])
+      }
+      if (s$k %in% courbes) err("« %s » a une pente aléatoire : elle ne peut pas être aussi une courbe (une pente aléatoire varie autour d'une pente fixe, une droite).",
+                                "\"%s\" has a random slope: it can't also be a curve (a random slope varies around a fixed slope, a straight line).", noms[s$k])
+    }
+    c(groupement(g), if (length(pentes)) list(pentes = unique(vapply(pentes, function(s) s$k, 0))))
+  }
+  if (length(barres) == 1 && fonction(barres[[1]]$droite) != ":") {
+    aleatoires <- lapply(chaine(barres[[1]]$droite, "/"), niveau, barres[[1]]$gauche)
+  } else {
+    for (l in seq_along(barres)) {
+      g <- chaine(barres[[l]]$droite, ":")
+      if (length(g) != l || !all(vapply(g, is.name, TRUE)) ||
+          (l > 1 && !identical(vapply(g[-l], as.character, ""), vapply(chaine(barres[[l - 1]]$droite, ":"), as.character, "")))) emboitement()
+      aleatoires[[l]] <- niveau(g[[l]], barres[[l]]$gauche)
+    }
+  }
   # la réponse
   reponse <- simple(f[[2]])
   if (!is.null(reponse$puissance)) reponse <- list(k = reponse$k, tr = sprintf("puissance:1:0:%s", nb(reponse$puissance)))
@@ -337,5 +388,6 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   list(type = type, x = I(vapply(principaux, function(s) uid(s$k), 0, USE.NAMES = FALSE)), y = I(uid(reponse$k)),
        transformations = transformations, croises = I(croises_uid), lisses = I(vapply(courbes, uid, 0)),
        k_courbes = stats::setNames(k_courbes, vapply(as.integer(names(k_courbes)), uid, 0)),
-       aleatoires = I(aleatoires), decalage = if (!is.null(decalage)) uid(decalage))
+       aleatoires = I(lapply(aleatoires, function(a) { if (length(a$pentes)) a$pentes <- I(uid(a$pentes)); a })),
+       decalage = if (!is.null(decalage)) uid(decalage))
 }

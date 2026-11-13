@@ -744,6 +744,50 @@ async function principal() {
       try { await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'variable', variable: v.site }] } }); } catch (err) { refusC = err.message; }
       verifier(/choisissez ses effets aléatoires/.test(refusC), `d'autres groupes que ceux des effets aléatoires, refusé : « ${refusC} »`);
     });
+    await etape('pentes aléatoires : (1 + annee | site), sa formule, ses refus, CAR1 et la sélection par AIC', async () => {
+      // 8 sites followed 11 years, each with its own trend around the mean one (moteur/R/regression.R: pentes)
+      let g = 3;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+        const effet = 2 * alea();
+        const pente = 0.4 * alea();
+        for (let an = 2001; an <= 2011; an += 1) {
+          const x = 2 * alea();
+          lignes.push([`${s}${an}`, s, an, x.toFixed(4), (1 + 0.5 * x + 0.1 * (an - 2006) + effet + pente * (an - 2006) + alea()).toFixed(4)]);
+        }
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tannee\tx\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Pentes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const aleatoires = [{ by: 'variable', variable: v.site, pentes: [v.annee] }];
+      const reglages = { projet: q.id, type: 'LMM', x: [v.x, v.annee], y: [v.y], echelle: 'none', echelles: { [v.annee]: 'Ctr' }, aleatoires };
+      const p1 = await api('ajuster', { ...reglages, nom: 'P1' });
+      const vp = p1.variances;
+      const parts = [].concat(p1.parts_variance.part);
+      verifier([].concat(vp.terme).join('|') === '(Intercept)|annee|' && [].concat(vp.composante).join('|') === 'site|site|résiduelle'
+        && Math.abs([].concat(vp.correlation)[1]) < 1 && [].concat(p1.pentes[0]).join() === 'annee' && parts.length === 2
+        && Math.abs(parts[0] + parts[1] - 1) < 1e-9 && [].concat(p1.reglages.aleatoires[0].pentes).map(Number).join() === String(v.annee)
+        && p1.qualite.conditionnel > p1.qualite.marginal, `pente aléatoire de l'année par site : ${JSON.stringify({ vp, parts: p1.parts_variance, pentes: p1.pentes })}`);
+      const fo = await api('formule', { ...reglages, croises: [], transformations: {}, decalage: null });
+      const lu = await api('lire_formule', { projet: q.id, texte: 'y ~ x + annee + (annee | site)', type: 'LM' });
+      verifier(fo.formule === 'y ~ x + annee + (1 + annee | site)' && lu.type === 'LMM' && [].concat(lu.aleatoires[0].pentes).map(Number).join() === String(v.annee),
+        `formule de la pente : ${fo.formule} ; relue : ${JSON.stringify(lu.aleatoires)}`);
+      let refusF = '';
+      try { await api('lire_formule', { projet: q.id, texte: 'y ~ x + annee + (1 | site) + (0 + annee | site)', type: 'LM' }); } catch (err) { refusF = err.message; }
+      let refusX = '';
+      try { await api('ajuster', { ...reglages, x: [v.x], nom: 'P2' }); } catch (err) { refusX = err.message; }
+      verifier(/indépendante de l'ordonnée à l'origine/.test(refusF) && /« annee » a une pente aléatoire/.test(refusX),
+        `une pente non corrélée, une pente hors des X : refusées (« ${refusF} » ; « ${refusX} »)`);
+      // the year left in its units (≈ 2006): the fit is signalled as singular, with the advice to centre it
+      const nc = await api('ajuster', { ...reglages, echelles: {}, nom: 'P3' });
+      verifier(nc.singularites && [].concat(nc.singularites.terme)[0] === 'annee' && [].concat(nc.singularites.loin)[0] === true,
+        `l'année non centrée : ajustement singulier signalé (${JSON.stringify(nc.singularites)})`);
+      const car = await api('reajuster', { modele: p1.id, car1: { temps: { by: 'variable', variable: v.annee }, groupe: [{ by: 'effets' }] } });
+      const sel = await api('selection_aic', { modele: p1.id });
+      verifier(car.phi !== null && [].concat(car.pentes[0]).join() === 'annee' && [].concat(car.variances.terme).includes('annee')
+        && sel.K === 1 && [].concat(sel.gardes).join() === 'annee' && [].concat(sel.groupes).join() === 'x',
+        `Ajuster avec CAR1 garde la pente (φ ${car.phi}) ; la sélection garde l'année : ${JSON.stringify({ gardes: sel.gardes, groupes: sel.groupes })}`);
+    });
     await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
       // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the
       // impact) rises from 2006; S3 has no row in 2002; S4 is neither impact nor control

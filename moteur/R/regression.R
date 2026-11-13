@@ -1,7 +1,8 @@
 # Modèles de régression : linéaire (stats::lm) et linéaire mixte (nlme::lme, Pinheiro et
-# Bates, 2000), avec des effets aléatoires emboîtés (site, puis secteur dans le site...) et,
-# au choix, une autocorrélation dans le temps à l'intérieur du dernier niveau (corCAR1 : temps
-# continu, les années manquantes comprises).
+# Bates, 2000), avec des effets aléatoires emboîtés (site, puis secteur dans le site...), au choix
+# des pentes aléatoires (chaque site sa pente de l'année autour de la pente fixe) et une
+# autocorrélation dans le temps à l'intérieur du dernier niveau (corCAR1 : temps continu, les
+# années manquantes comprises).
 #
 # Les données arrivent en un data.frame aux noms sûrs, faits ici et jamais tirés d'un texte :
 # y (la réponse), t1..tK (les termes, déjà transformés), g1..gL (les niveaux des effets
@@ -44,15 +45,29 @@ verifier_temps_uniques <- function(donnees, niveaux) {
 # ou le niveau plus fin où elle court (gc).
 groupe_car1 <- function(donnees, niveaux) interaction(donnees[c(paste0("g", seq_len(niveaux)), intersect("gc", names(donnees)))], drop = TRUE)
 
+# La partie aléatoire d'un modèle de nlme : ~ 1 | g1 / g2..., des ordonnées à l'origine
+# emboîtées ; avec des pentes aléatoires (`pentes` : les termes t1..tK de chaque niveau, du plus
+# large au plus fin), ~ t3 | g1 pour un seul niveau, sinon la liste nommée list(g1 = ~ t3, g2 = ~ 1),
+# chaque niveau dans le précédent, comme nlme lit une liste (`liste` : toujours elle, pour
+# mgcv::gamm, qui ne prend qu'elle). Chaque niveau a la matrice générale de nlme (pdLogChol) : la
+# variance de son ordonnée à l'origine, celles de ses pentes et leurs corrélations.
+aleatoire_nlme <- function(niveaux, pentes = NULL, liste = FALSE) {
+  g <- paste0("g", seq_len(niveaux))
+  droites <- vapply(seq_len(niveaux), function(l) if (length(pentes[[l]])) paste(pentes[[l]], collapse = " + ") else "1", "")
+  if (!liste && all(droites == "1")) return(stats::as.formula(paste("~ 1 |", paste(g, collapse = " / ")), env = baseenv()))
+  if (!liste && niveaux == 1) return(stats::as.formula(paste("~", droites, "| g1"), env = baseenv()))
+  stats::setNames(lapply(droites, function(x) stats::as.formula(paste("~", x), env = baseenv())), g)
+}
+
 # Un ajustement, ou NULL quand il échoue (nlme essaie optim, puis nlminb, comme le font les
-# scripts qui ont servi de modèle). methode : "REML" ou "ML".
-ajuster_lineaire <- function(donnees, termes, niveaux = 0, car1 = FALSE, methode = "REML") {
+# scripts qui ont servi de modèle). methode : "REML" ou "ML" ; pentes : aleatoire_nlme.
+ajuster_lineaire <- function(donnees, termes, niveaux = 0, car1 = FALSE, methode = "REML", pentes = NULL) {
   f <- stats::reformulate(if (length(termes)) termes else "1", response = "y")
   if (!niveaux) {
     environment(f) <- baseenv()
     return(tryCatch(stats::lm(f, data = donnees), error = function(e) NULL))
   }
-  aleatoire <- stats::as.formula(paste("~ 1 |", paste0("g", seq_len(niveaux), collapse = " / ")), env = baseenv())
+  aleatoire <- aleatoire_nlme(niveaux, pentes)
   correlation <- if (car1) correlation_car1(donnees, niveaux)
   essai <- function(reglages) tryCatch(nlme::lme(f, random = aleatoire, correlation = correlation, data = donnees, method = methode,
                                                  control = reglages), error = function(e) NULL)
@@ -70,14 +85,117 @@ aic_corrige <- function(m, n) {
   stats::AIC(m) + if (n - k - 1 > 0) 2 * k * (k + 1) / (n - k - 1) else NA_real_
 }
 
-# R² d'un modèle mixte (Nakagawa et Schielzeth, 2013) : marginal, la part de variance des
-# effets fixes ; conditionnel, celle des effets fixes et aléatoires ensemble.
-r2_mixte <- function(m) {
+# Les matrices de variance des effets aléatoires d'un ajustement de nlme `l` (un lme, ou la partie
+# $lme d'un mgcv::gamm), une par niveau g1..gL, du plus large au plus fin : σ² fois la matrice
+# relative du niveau (nlme les range du plus fin au plus large : par leur nom), ses lignes et
+# colonnes nommées par ses termes, (Intercept) puis ses pentes.
+matrices_nlme <- function(l, niveaux) lapply(paste0("g", seq_len(niveaux)), function(n) l$sigma^2 * as.matrix(l$modelStruct$reStruct[[n]]))
+
+# La variance de chaque niveau d'effets aléatoires sur les observations `donnees` : celle de son
+# ordonnée à l'origine quand il n'a pas de pente aléatoire ; avec, la moyenne sur les observations
+# de zᵢᵀ Σ zᵢ, zᵢ = (1, les valeurs de ses termes en pente) et Σ sa matrice (Johnson, 2014) : la
+# variance d'un niveau change alors avec x.
+variances_niveaux <- function(matrices, donnees, pentes = NULL) vapply(seq_along(matrices), function(l) {
+  termes <- c("(Intercept)", pentes[[l]])
+  S <- matrices[[l]][termes, termes, drop = FALSE]
+  if (length(termes) == 1) return(S[1, 1])
+  Z <- cbind(1, as.matrix(donnees[pentes[[l]]]))
+  mean(rowSums((Z %*% S) * Z))
+}, 0)
+
+# R² d'un modèle mixte de nlme `m` (Nakagawa et Schielzeth, 2013) : marginal, la part de variance
+# des effets fixes ; conditionnel, celle des effets fixes et aléatoires ensemble ; avec des pentes
+# aléatoires, la variance des effets aléatoires est celle de Johnson (2014), variances_niveaux.
+r2_mixte <- function(m, pentes = NULL) {
   fixes <- stats::var(as.vector(stats::model.matrix(stats::formula(m), m$data) %*% nlme::fixef(m)))
-  vc <- nlme::VarCorr(m)
-  aleatoires <- sum(suppressWarnings(as.numeric(vc[grepl("Intercept", rownames(vc)), "Variance"])), na.rm = TRUE)
+  aleatoires <- sum(variances_niveaux(matrices_nlme(m, length(m$modelStruct$reStruct)), m$data, pentes))
   totale <- fixes + aleatoires + m$sigma^2
   c(marginal = fixes / totale, conditionnel = (fixes + aleatoires) / totale)
+}
+
+# Le tableau des variances des effets aléatoires (`matrices` : une par niveau, matrices_nlme), puis
+# la variance résiduelle s'il y en a une (nlme ; pas mgcv). Sans pente aléatoire, une ligne par
+# niveau (composante g1..gL, variance), comme jusqu'à 0.9.6 ; avec, une ligne par terme de chaque
+# niveau, son ordonnée à l'origine puis ses pentes (terme), et la corrélation de chaque pente avec
+# l'ordonnée à l'origine du niveau (NA quand le modèle les tient pour indépendantes : mgcv).
+tableau_variances <- function(matrices, residuelle = NULL, pentes = NULL, independantes = FALSE) {
+  L <- length(matrices)
+  if (!length(unlist(pentes))) {
+    return(data.frame(composante = c(paste0("g", seq_len(L)), if (!is.null(residuelle)) "residuelle"),
+                      variance = c(vapply(matrices, function(S) S[1, 1], 0), residuelle), stringsAsFactors = FALSE))
+  }
+  lignes <- lapply(seq_len(L), function(l) {
+    termes <- c("(Intercept)", pentes[[l]])
+    S <- matrices[[l]][termes, termes, drop = FALSE]
+    r <- if (independantes) rep(NA_real_, length(termes)) else S[, 1] / sqrt(S[1, 1] * diag(S))
+    data.frame(composante = paste0("g", l), terme = termes, variance = unname(diag(S)), correlation = c(NA_real_, unname(r[-1])), stringsAsFactors = FALSE)
+  })
+  if (!is.null(residuelle)) lignes <- c(lignes, list(data.frame(composante = "residuelle", terme = "", variance = residuelle, correlation = NA_real_, stringsAsFactors = FALSE)))
+  do.call(rbind, lignes)
+}
+
+# La part de chaque niveau d'effets aléatoires dans la variance aléatoire, et celle de la variance
+# résiduelle : avec une pente aléatoire, la variance d'un niveau change avec x ; seule sa moyenne sur
+# les observations (variances_niveaux, Johnson 2014) a une part, ni son ordonnée à l'origine ni sa
+# pente n'en ont une à elles.
+parts_variance <- function(matrices, donnees, pentes, residuelle) {
+  v <- c(variances_niveaux(matrices, donnees, pentes), residuelle)
+  data.frame(composante = c(paste0("g", seq_along(matrices)), "residuelle"), variance = v, part = v / sum(v), stringsAsFactors = FALSE)
+}
+
+# Les signes d'un ajustement singulier des pentes aléatoires, au bord du domaine de ses variances :
+# deux termes d'un même niveau corrélés au-delà de ±0,99 (`correlation` ; pas pour un modèle qui les
+# tient pour indépendants), ou une pente dont l'écart-type, fois l'écart-type de sa variable dans les
+# observations, fait moins de 1 % de l'écart-type résiduel `sigma` (`ecart_type`, presque nul). Une
+# ligne par pente en cause : son niveau (g1..gL), son terme, l'autre terme de la corrélation, la
+# valeur, et la moyenne et l'écart-type de sa variable sur les observations (loin de 0 quand la
+# moyenne dépasse l'écart-type : l'ordonnée à l'origine est alors celle d'un x loin des données,
+# où l'ajustement trouve mal sa corrélation avec la pente). NULL quand rien ne l'est.
+singularites_pentes <- function(matrices, donnees, pentes, sigma, independantes = FALSE) {
+  lignes <- list()
+  ajouter <- function(l, terme, avec, type, valeur) {
+    x <- donnees[[terme]]
+    lignes[[length(lignes) + 1]] <<- data.frame(niveau = paste0("g", l), terme = terme, avec = avec, type = type, valeur = valeur,
+                                               moyenne = mean(x), ecart_type_x = stats::sd(x), loin = abs(mean(x)) > stats::sd(x), stringsAsFactors = FALSE)
+  }
+  for (l in seq_along(matrices)) {
+    if (!length(pentes[[l]])) next
+    termes <- c("(Intercept)", pentes[[l]])
+    S <- matrices[[l]][termes, termes, drop = FALSE]
+    et <- sqrt(pmax(unname(diag(S)), 0))
+    for (j in seq_along(termes)[-1]) {
+      if (et[j] * stats::sd(donnees[[termes[j]]]) < 0.01 * sigma) { ajouter(l, termes[j], "", "ecart_type", et[j]); next }
+      if (independantes) next
+      for (i in seq_len(j - 1)) {
+        r <- S[i, j] / (et[i] * et[j])
+        if (is.finite(r) && abs(r) > 0.99) ajouter(l, termes[j], termes[i], "correlation", r)
+      }
+    }
+  }
+  if (length(lignes)) do.call(rbind, lignes)
+}
+
+# Les termes en pente aléatoire de chaque niveau d'effet aléatoire de la définition `d` (une liste,
+# du plus large au plus fin) : les colonnes t1..tK (cadre_regression) des termes simples
+# quantitatifs de leurs variables, que verifier_regression a vérifiés.
+pentes_definition <- function(d) {
+  termes <- termes_regression(d$x)
+  simples <- vapply(termes, function(t) if (length(t$variables) == 1 && categorie(t) == 0) as.numeric(t$variables) else NA_real_, 0)
+  lapply(d$aleatoires %||% list(), function(s) {
+    k <- match(as.numeric(s$pentes %||% numeric(0)), simples)
+    if (length(k)) paste0("t", k) else character(0)
+  })
+}
+
+# Une pente aléatoire suit la pente fixe de son terme : un terme que les observations ne permettent
+# pas d'estimer (constant, ou déduit des autres : hors des termes utiles) n'en a pas.
+verifier_pentes_utiles <- function(pentes, utiles, termes, noms) {
+  hors <- setdiff(unlist(pentes), utiles)
+  if (length(hors)) {
+    stop(sprintf(traduire("« %s » ne peut pas être estimé sur ces observations (constant, ou déduit des autres termes) : sa pente aléatoire non plus.",
+                          "\"%s\" can't be estimated on these observations (constant, or implied by the other terms): nor can its random slope."),
+                 paste(noms[match(hors, termes)], collapse = ", ")), call. = FALSE)
+  }
 }
 
 # Les coefficients : estimation, erreur-type, degrés de liberté, t, p et intervalle à 95 %.
@@ -96,15 +214,17 @@ coefficients_lineaire <- function(m) {
 }
 
 # Le modèle ajusté sur toutes ses observations : REML pour les coefficients et les variances,
-# ML pour la vraisemblance et l'AIC. noms : le nom affiché de chaque terme t1..tK.
+# ML pour la vraisemblance et l'AIC. noms : le nom affiché de chaque terme t1..tK ; pentes : les
+# termes en pente aléatoire de chaque niveau (pentes_definition).
 # Renvoie des valeurs simples (pour l'interface), et les deux ajustements dans `ajustement`
 # et `ajustement_ml` (à ne pas envoyer).
-resultat_lineaire <- function(donnees, termes, noms, niveaux = 0, car1 = FALSE) {
+resultat_lineaire <- function(donnees, termes, noms, niveaux = 0, car1 = FALSE, pentes = NULL) {
   if (car1) verifier_temps_uniques(donnees, niveaux)
   utiles <- termes_utiles(donnees, termes)
+  verifier_pentes_utiles(pentes, utiles, termes, noms)
   retires <- noms[match(setdiff(termes, utiles), termes)]
-  estime <- ajuster_lineaire(donnees, utiles, niveaux, car1, "REML")
-  compare <- if (niveaux) ajuster_lineaire(donnees, utiles, niveaux, car1, "ML") else estime
+  estime <- ajuster_lineaire(donnees, utiles, niveaux, car1, "REML", pentes)
+  compare <- if (niveaux) ajuster_lineaire(donnees, utiles, niveaux, car1, "ML", pentes) else estime
   if (is.null(estime) || is.null(compare)) {
     stop(traduire("Le modèle n'a pas pu être ajusté (l'optimisation n'a pas convergé) : essayez moins de termes ou d'effets aléatoires.",
                   "The model could not be fitted (the optimisation did not converge): try fewer terms or random effects."), call. = FALSE)
@@ -116,11 +236,13 @@ resultat_lineaire <- function(donnees, termes, noms, niveaux = 0, car1 = FALSE) 
   res <- list(N = n, coefficients = co, termes_retires = retires,
               logLik = as.numeric(ll), parametres = attr(ll, "df"), AIC = stats::AIC(compare), AICc = aic_corrige(compare, n), BIC = stats::BIC(compare))
   if (niveaux) {
-    vc <- nlme::VarCorr(estime)
-    variances <- suppressWarnings(as.numeric(vc[, "Variance"]))
-    res$variances <- data.frame(composante = c(paste0("g", seq_len(niveaux)), "residuelle"),
-                                variance = c(variances[!is.na(variances)][seq_len(niveaux)], estime$sigma^2), stringsAsFactors = FALSE)
-    res$r2 <- as.list(r2_mixte(estime))
+    S <- matrices_nlme(estime, niveaux)
+    res$variances <- tableau_variances(S, estime$sigma^2, pentes)
+    res$r2 <- as.list(r2_mixte(estime, pentes))
+    if (length(unlist(pentes))) {
+      res$parts <- parts_variance(S, donnees, pentes, estime$sigma^2)
+      res$singularites <- singularites_pentes(S, donnees, pentes, estime$sigma)
+    }
     if (car1) res$phi <- unname(stats::coef(estime$modelStruct$corStruct, unconstrained = FALSE))
     res$ajuste <- as.vector(stats::fitted(estime))                       # avec les effets aléatoires
     res$ajuste_fixe <- as.vector(stats::fitted(estime, level = 0))       # les effets fixes seuls
@@ -151,16 +273,19 @@ ajuster_termes_ml <- function(m, termes) {
   gamm <- inherits(m$ajustement, "gamm")
   if (setequal(termes, m$utiles)) return(if (gamm) m$ajustement_ml$lme else m$ajustement_ml)
   niveaux <- length(m$niveaux)
-  if (!inherits(m$ajustement, c("gam", "gamm"))) return(ajuster_lineaire(m$donnees, termes, niveaux, m$car1, "ML"))
+  if (!inherits(m$ajustement, c("gam", "gamm"))) return(ajuster_lineaire(m$donnees, termes, niveaux, m$car1, "ML", m$pentes))
   lis <- intersect(m$lisses, termes)
-  if (gamm) return(ajuster_gamm(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, "ML")$lme)
-  ajuster_mgcv(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, m$famille, !is.null(m$decalage), "ML")
+  if (gamm) return(ajuster_gamm(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, "ML", m$pentes)$lme)
+  ajuster_mgcv(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, m$famille, !is.null(m$decalage), "ML", m$pentes)
 }
 
 # L'apport de chaque groupe de termes (un bloc, ou un terme seul) : le modèle `m` réajusté en ML
 # sans lui (ajuster_termes_ml). ΔAIC = AIC sans le groupe - AIC du modèle complet (> 0 : le groupe
 # améliore le modèle ; > 2, nettement, Burnham et Anderson, 2002) ; test du rapport de
-# vraisemblance. groupes : une liste nommée de vecteurs de termes (t1..tK).
+# vraisemblance. groupes : une liste nommée de vecteurs de termes (t1..tK). Les effets aléatoires
+# restent ceux du modèle : sans le terme d'une pente aléatoire, sa pente fixe seule est retirée, et
+# les pentes des groupes varient alors autour de 0 (le test de la pente moyenne, à effets aléatoires
+# égaux).
 retrait_groupes <- function(m, groupes) {
   complet <- ajuster_termes_ml(m, m$utiles)
   ll <- as.numeric(stats::logLik(complet))
@@ -183,13 +308,13 @@ retrait_groupes <- function(m, groupes) {
 # seuls termes utiles sur ces observations ; un modèle mixte prédit un groupe qu'il n'a pas vu
 # par ses effets fixes (niveau 0 : un site jamais vu). groupe : le numéro du groupe de chaque
 # observation. Renvoie les prédictions (NA quand un ajustement échoue), Q2 et RMSEcv.
-validation_lineaire <- function(donnees, termes, groupe, niveaux = 0, car1 = FALSE) {
+validation_lineaire <- function(donnees, termes, groupe, niveaux = 0, car1 = FALSE, pentes = NULL) {
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
     ici <- groupe == g
     apprentissage <- droplevels(donnees[!ici, , drop = FALSE])
-    m <- ajuster_lineaire(apprentissage, termes_utiles(apprentissage, termes), niveaux, car1, "REML")
+    m <- ajuster_lineaire(apprentissage, termes_utiles(apprentissage, termes), niveaux, car1, "REML", pentes)
     if (is.null(m)) { echecs <- echecs + 1; next }
     prediction[ici] <- if (niveaux) stats::predict(m, donnees[ici, , drop = FALSE], level = 0) else stats::predict(m, donnees[ici, , drop = FALSE])
   }
@@ -245,16 +370,21 @@ valeurs_groupement <- function(projet, spec, obs) {
 }
 
 # Les groupements tels que l'interface les envoie (un data.frame, une ligne par effet aléatoire,
-# ou une liste) en une liste de list(by = "id", id = ...) ou list(by = "variable", variable = ...).
+# ou une liste) en une liste de list(by = "id", id = ...) ou list(by = "variable", variable = ...) ;
+# un effet aléatoire garde les numéros des variables de ses pentes aléatoires (pentes), s'il en a.
 specs_groupement <- function(x) {
   if (is.null(x) || !length(x)) return(list())
   if (is.data.frame(x)) x <- lapply(seq_len(nrow(x)), function(i) as.list(x[i, , drop = FALSE]))
   if (!is.null(x$by)) x <- list(x)
   lapply(x, function(s) {
     par <- as.character(s$by)[1]
-    if (identical(par, "id")) return(list(by = "id", id = as.character(s$id)[1]))
-    if (identical(par, "variable")) return(list(by = "variable", variable = as.numeric(s$variable)[1]))
-    stop(sprintf(traduire("Groupement « %s » inconnu", "Unknown grouping \"%s\""), par), call. = FALSE)
+    spec <- if (identical(par, "id")) list(by = "id", id = as.character(s$id)[1])
+            else if (identical(par, "variable")) list(by = "variable", variable = as.numeric(s$variable)[1])
+            else stop(sprintf(traduire("Groupement « %s » inconnu", "Unknown grouping \"%s\""), par), call. = FALSE)
+    pentes <- suppressWarnings(as.numeric(unlist(s$pentes)))
+    pentes <- unique(pentes[!is.na(pentes)])
+    if (length(pentes)) spec$pentes <- pentes
+    spec
   })
 }
 
@@ -318,11 +448,25 @@ verifier_regression <- function(projet, d) {
     err("Lois, courbes et décalage demandent un modèle généralisé (GLM) ou additif (GAM).", "Distributions, curves and offsets need a generalized (GLM) or additive (GAM) model.")
   }
   if (length(aleatoires) > 3) err("Trois effets aléatoires emboîtés au plus.", "Three nested random effects at most.")
+  # (une pente aléatoire varie autour de la pente fixe de sa variable : un terme X quantitatif seul,
+  # transformé ou non, en droite)
+  simples_x <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) == 0) as.numeric(t$variables)))
   for (s in aleatoires) {
     if (identical(as.character(s$by)[1], "variable") && !length(variable_du_projet(projet, s$variable)$categories)) {
       err("Un effet aléatoire se fait sur un identifiant ou une variable qualitative.", "A random effect is made from an ID or a qualitative variable.")
     }
     valeurs_groupement(projet, s, d$observations[1])
+    for (u in as.numeric(unlist(s$pentes))) {
+      nom <- tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) as.character(u))
+      if (!u %in% simples_x) {
+        stop(sprintf(traduire("« %s » a une pente aléatoire : elle doit être aussi un terme X du modèle, quantitatif et seul (transformé ou non), la pente fixe autour de laquelle varient celles des groupes.",
+                              "\"%s\" has a random slope: it must also be an X term of the model, quantitative and on its own (transformed or not), the fixed slope around which the groups' slopes vary."), nom), call. = FALSE)
+      }
+      if (u %in% as.numeric(d$lisses)) {
+        stop(sprintf(traduire("« %s » a une pente aléatoire : elle ne peut pas être aussi une courbe (une pente aléatoire varie autour d'une pente fixe, une droite).",
+                              "\"%s\" has a random slope: it can't also be a curve (a random slope varies around a fixed slope, a straight line)."), nom), call. = FALSE)
+      }
+    }
   }
   if (!is.null(d$correlation)) {
     if (!identical(as.character(d$correlation$type)[1], "CAR1")) err("Autocorrélation inconnue.", "Unknown autocorrelation.")
@@ -527,6 +671,7 @@ ajuster_regression <- function(projet, d) {
   }
   cadre <- cadre_regression(projet, d)
   niveaux <- length(d$aleatoires %||% list())
+  pentes <- pentes_definition(d)  # (les termes en pente aléatoire de chaque niveau)
   car1 <- !is.null(d$correlation)
   # (les termes qui peuvent entrer dans l'ajustement, d'ordre plus bas d'abord : candidats_regression)
   candidats <- cadre$candidats
@@ -552,15 +697,15 @@ ajuster_regression <- function(projet, d) {
       if (length(k)) stats::setNames(as.integer(k), t)
     }))
     if (gamm) {
-      r <- resultat_gamm(cadre$cadre, candidats, noms_candidats, lisses, niveaux, k_demandes)
-      vc <- validation_gamm(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux)
+      r <- resultat_gamm(cadre$cadre, candidats, noms_candidats, lisses, niveaux, k_demandes, pentes)
+      vc <- validation_gamm(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, pentes)
     } else {
-      r <- resultat_mgcv(cadre$cadre, candidats, noms_candidats, lisses, niveaux, famille, !is.null(d$decalage), k_demandes)
-      vc <- validation_mgcv(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, famille, !is.null(d$decalage))
+      r <- resultat_mgcv(cadre$cadre, candidats, noms_candidats, lisses, niveaux, famille, !is.null(d$decalage), k_demandes, pentes)
+      vc <- validation_mgcv(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, famille, !is.null(d$decalage), pentes)
     }
   } else {
-    r <- resultat_lineaire(cadre$cadre, candidats, noms_candidats, niveaux, car1)
-    vc <- validation_lineaire(cadre$cadre, r$utiles, groupes, niveaux, car1)
+    r <- resultat_lineaire(cadre$cadre, candidats, noms_candidats, niveaux, car1, pentes)
+    vc <- validation_lineaire(cadre$cadre, r$utiles, groupes, niveaux, car1, pentes)
   }
   # (les termes laissés de côté qu'aucune observation n'a : une catégorie, une combinaison de catégories)
   retires <- setdiff(candidats, r$utiles)
@@ -569,11 +714,11 @@ ajuster_regression <- function(projet, d) {
   # croisé sans l'effet principal de sa variable quantitative : pas de prédiction, plutôt qu'une pente
   # nulle ; niveaux_inconnus)
   vc$sans_pente <- 0L
-  pentes <- pentes_sans_effet_principal(cadre$composition, candidats)
-  if (length(pentes)) {
+  pentes_seules <- pentes_sans_effet_principal(cadre$composition, candidats)
+  if (length(pentes_seules)) {
     for (g in unique(groupes)) {
       ici <- which(groupes == g)
-      sans <- ici[niveaux_inconnus(cadre$cadre[-ici, , drop = FALSE], cadre$cadre[ici, , drop = FALSE], pentes) & !is.na(vc$prediction[ici])]
+      sans <- ici[niveaux_inconnus(cadre$cadre[-ici, , drop = FALSE], cadre$cadre[ici, , drop = FALSE], pentes_seules) & !is.na(vc$prediction[ici])]
       vc$prediction[sans] <- NA
       vc$sans_pente <- vc$sans_pente + length(sans)
     }
@@ -588,7 +733,7 @@ ajuster_regression <- function(projet, d) {
             lisses = intersect(lisses, r$utiles), k = r$k, famille = famille, lien = r$lien %||% "identity",
             decalage = if (!is.null(d$decalage)) nom_groupement(projet, list(by = "variable", variable = d$decalage)),
             groupes_termes = stats::setNames(groupes_termes(projet, d$x), cadre$termes),
-            niveaux = vapply(d$aleatoires %||% list(), function(s) nom_groupement(projet, s), ""),
+            niveaux = vapply(d$aleatoires %||% list(), function(s) nom_groupement(projet, s), ""), pentes = pentes,
             temps = if (car1) nom_groupement(projet, d$correlation$temps), car1 = car1, gamm = gamm,
             dans = if (car1 && !is.null(d$correlation$dans)) nom_groupement(projet, d$correlation$dans),
             resultat = r[setdiff(names(r), c("ajustement", "ajustement_ml", "utiles", "k"))],
@@ -706,11 +851,35 @@ observations_regression <- function(projet, m) {
 }
 
 # Les variances des effets aléatoires, nommées par leur groupement (nlme : avec la variance
-# résiduelle ; mgcv : les effets aléatoires seuls), ou NULL.
+# résiduelle ; mgcv : les effets aléatoires seuls), ou NULL ; avec des pentes aléatoires, chaque
+# terme nommé par le nom de son terme X (tableau_variances).
 variances_regression <- function(m) {
   v <- m$resultat$variances
-  if (!is.null(v)) v$composante <- c(m$niveaux, traduire("résiduelle", "residual"))[seq_len(nrow(v))]
+  if (is.null(v)) return(NULL)
+  v$composante <- c(m$niveaux, traduire("résiduelle", "residual"))[match(v$composante, c(paste0("g", seq_along(m$niveaux)), "residuelle"))]
+  if (!is.null(v$terme)) v$terme <- ifelse(v$terme %in% m$termes, m$noms_termes[match(v$terme, m$termes)], v$terme)
   v
+}
+
+# Les termes en pente aléatoire de chaque niveau d'effet aléatoire, par leur nom (une liste, du
+# niveau le plus large au plus fin).
+pentes_regression <- function(m) lapply(m$pentes %||% list(), function(p) I(m$noms_termes[match(p, m$termes)]))
+
+# Les parts de variance des niveaux d'un modèle à pentes aléatoires (parts_variance) et ses signes
+# d'ajustement singulier (singularites_pentes), nommés par leurs groupements et leurs termes, ou NULL.
+parts_regression <- function(m) {
+  p <- m$resultat$parts
+  if (!is.null(p)) p$composante <- c(m$niveaux, traduire("résiduelle", "residual"))[match(p$composante, c(paste0("g", seq_along(m$niveaux)), "residuelle"))]
+  p
+}
+singularites_regression <- function(m) {
+  s <- m$resultat$singularites
+  if (is.null(s)) return(NULL)
+  nom <- function(t) ifelse(t %in% m$termes, m$noms_termes[match(t, m$termes)], t)
+  s$niveau <- m$niveaux[match(s$niveau, paste0("g", seq_along(m$niveaux)))]
+  s$terme <- nom(s$terme)
+  s$avec <- nom(s$avec)
+  s
 }
 
 # Les résultats d'une régression en tableaux (formats.R : tables_resultats, pour Exporter) :
@@ -773,6 +942,21 @@ groupes_requis <- function(groupes, composition) {
   })
 }
 
+# Les groupes de termes que la sélection par l'AIC garde dans chaque modèle : ceux qui portent une
+# pente aléatoire (elle varie autour de la pente fixe de son terme, qui reste), et ceux qu'ils
+# demandent (groupes_requis : les effets principaux de leurs termes croisés). `d` : la définition.
+groupes_gardes <- function(m, d) {
+  tous <- groupes_modele(m)
+  gardes <- names(tous)[vapply(tous, function(ts) any(ts %in% unlist(m$pentes)), TRUE)]
+  requis <- groupes_requis(tous, termes_regression(d$x))
+  repeat {
+    plus <- setdiff(unlist(requis[gardes]), gardes)
+    if (!length(plus)) break
+    gardes <- c(gardes, plus)
+  }
+  gardes
+}
+
 # La sélection des effets fixes par l'AICc (Burnham et Anderson, 2002), calculée à la demande : les
 # combinaisons des groupes de termes du modèle `m` (groupes_modele), du modèle nul au modèle
 # complet, chacune ajustée en ML sur les observations du modèle (ajuster_termes_ml) ; ses effets
@@ -787,16 +971,21 @@ groupes_requis <- function(groupes, composition) {
 # modèles ajustés) et leur cumul ; l'importance d'un groupe est la somme des poids des modèles qui
 # le contiennent. Le meilleur modèle a l'AICc le plus bas (le premier) ; le plus parcimonieux, le
 # moins de paramètres parmi ceux à ΔAICc ≤ 2 (Burnham et Anderson, 2002).
+# Les groupes qui portent une pente aléatoire restent dans chaque modèle, hors des groupes à
+# choisir (groupes_gardes : `gardes`).
 selection_aic <- function(m, d, limite = 256) {
-  groupes <- groupes_modele(m)
+  tous <- groupes_modele(m)
+  gardes <- groupes_gardes(m, d)
+  groupes <- tous[setdiff(names(tous), gardes)]
+  fixes <- unlist(tous[gardes], use.names = FALSE)  # (les termes de chaque modèle)
   K <- length(groupes)
   n <- nrow(m$donnees)
-  if (!K) return(list(K = 0L, N = n))
+  if (!K) return(list(K = 0L, N = n, gardes = I(gardes)))
   noms <- names(groupes)
   requis <- groupes_requis(groupes, m$composition)
   permis <- function(b) all(vapply(noms[b], function(g) all(requis[[g]] %in% noms[b]), TRUE))
   evaluer <- function(b) {  # (un candidat : les groupes qu'il contient)
-    a <- ajuster_termes_ml(m, intersect(m$utiles, unlist(groupes[b], use.names = FALSE)))
+    a <- ajuster_termes_ml(m, intersect(m$utiles, c(fixes, unlist(groupes[b], use.names = FALSE))))
     if (is.null(a)) return(c(k = NA_real_, logLik = NA_real_, AICc = NA_real_))
     ll <- stats::logLik(a)
     c(k = attr(ll, "df"), logLik = as.numeric(ll), AICc = aic_corrige(a, n))
@@ -846,7 +1035,7 @@ selection_aic <- function(m, d, limite = 256) {
   cumul <- cumsum(ifelse(ok, poids, 0))
   cumul[!ok] <- NA
   proches <- which(ok & delta <= 2)
-  list(methode = if (toutes) "toutes" else "descendante", limite = limite, N = n, K = K, groupes = I(noms),
+  list(methode = if (toutes) "toutes" else "descendante", limite = limite, N = n, K = K, groupes = I(noms), gardes = I(gardes),
        termes = unname(lapply(groupes, function(ts) I(m$noms_termes[match(ts, m$termes)]))), requis = unname(lapply(requis, I)),
        modeles = data.frame(modele = apply(B, 1, function(b) if (any(b)) paste(noms[b], collapse = " + ") else "1"), n_groupes = rowSums(B),
                             k = valeurs[, "k"], logLik = valeurs[, "logLik"], AICc = aicc, delta = delta, poids = poids, poids_cumule = cumul,
@@ -871,7 +1060,9 @@ definition_selection <- function(d, m, choisis) {
   inconnus <- setdiff(choisis, names(groupes_modele(m)))
   if (length(inconnus)) stop(sprintf(traduire("Groupe de termes inconnu dans ce modèle : %s", "Unknown group of terms in this model: %s"),
                                      paste(inconnus, collapse = ", ")), call. = FALSE)
-  garde <- unname(m$groupes_termes) %in% choisis  # (le groupe de chaque terme de d$x, dans l'ordre)
+  # (les groupes qui portent une pente aléatoire, dans chaque modèle de la sélection : groupes_gardes)
+  gardes <- groupes_gardes(m, d)
+  garde <- unname(m$groupes_termes) %in% union(choisis, gardes)  # (le groupe de chaque terme de d$x, dans l'ordre)
   simple <- vapply(d$x, function(t) length(t$variables) == 1, TRUE)
   cle <- vapply(d$x, function(t) paste(t$variables[1], categorie(t)), "")
   facteurs <- unlist(lapply(d$x[garde & !simple], function(t) vapply(seq_along(t$variables), function(j) paste(t$variables[j], categorie(t, j)), "")))
@@ -882,7 +1073,7 @@ definition_selection <- function(d, m, choisis) {
   d$k_courbes <- d$k_courbes[names(d$k_courbes) %in% as.character(d$lisses)]
   if (!length(d$k_courbes)) d$k_courbes <- NULL
   d$termes_complets <- complets
-  d$selection_origine <- list(modele = as.character(d$name %||% ""), groupes = choisis, n = length(m$observations))
+  d$selection_origine <- c(list(modele = as.character(d$name %||% ""), groupes = choisis, n = length(m$observations)), if (length(gardes)) list(gardes = gardes))
   # (un modèle mixte BACI : sans le terme croisé période × impact, ce n'est plus lui ; avec, il en dérive)
   if (!is.null(d$baci_origine)) {
     if (any(vapply(d$x, function(t) length(t$variables) > 1, TRUE))) d$baci_origine$derive <- TRUE else d$baci_origine <- NULL
@@ -973,16 +1164,19 @@ verifier_reponse <- function(y, famille) {
 }
 
 # La formule d'un modèle de mgcv, écrite avec les seuls noms internes : termes paramétriques,
-# courbes s(tk, k = ...), effets aléatoires s(g1, bs = "re") (g12 : le niveau 2 dans le 1...),
-# décalage. Son environnement donne s() de mgcv, qui relit ces termes : ils ne viennent que d'ici.
-formule_mgcv <- function(parametriques, lisses, k, niveaux, decalage) {
-  aleatoires <- c("s(g1, bs = \"re\")", "s(g12, bs = \"re\")", "s(g123, bs = \"re\")")[seq_len(niveaux)]
+# courbes s(tk, k = ...), effets aléatoires s(g1, bs = "re") (g12 : le niveau 2 dans le 1...) et
+# leurs pentes aléatoires s(g1, t3, bs = "re") (`pentes` : les termes de chaque niveau ; une pente
+# indépendante de l'ordonnée à l'origine, mgcv ne les corrèle pas), décalage. Son environnement
+# donne s() de mgcv, qui relit ces termes : ils ne viennent que d'ici.
+formule_mgcv <- function(parametriques, lisses, k, niveaux, decalage, pentes = NULL) {
+  groupes <- c("g1", "g12", "g123")[seq_len(niveaux)]
+  aleatoires <- c(sprintf("s(%s, bs = \"re\")", groupes), unlist(lapply(seq_len(niveaux), function(l) sprintf("s(%s, %s, bs = \"re\")", groupes[l], pentes[[l]]))))
   termes <- c(parametriques, if (length(lisses)) sprintf("s(%s, k = %d)", lisses, as.integer(k[lisses])), aleatoires, if (decalage) "offset(decalage)")
   stats::as.formula(paste("y ~", if (length(termes)) paste(termes, collapse = " + ") else "1"), env = new.env(parent = asNamespace("mgcv")))
 }
 
-ajuster_mgcv <- function(donnees, parametriques, lisses, k, niveaux, famille, decalage, methode = "REML") {
-  tryCatch(mgcv::gam(formule_mgcv(parametriques, lisses, k, niveaux, decalage), data = donnees, family = famille_mgcv(famille), method = methode),
+ajuster_mgcv <- function(donnees, parametriques, lisses, k, niveaux, famille, decalage, methode = "REML", pentes = NULL) {
+  tryCatch(mgcv::gam(formule_mgcv(parametriques, lisses, k, niveaux, decalage, pentes), data = donnees, family = famille_mgcv(famille), method = methode),
            error = function(e) NULL)
 }
 
@@ -991,12 +1185,13 @@ ajuster_mgcv <- function(donnees, parametriques, lisses, k, niveaux, famille, de
 dimension_courbe <- function(x, k = NA) min(if (length(k) && !is.na(k[1])) as.integer(k[1]) else 10L, length(unique(x)) - 1L)
 
 # Les prédictions d'un modèle de mgcv sur l'échelle de la réponse, par ses effets fixes (ses
-# effets aléatoires exclus : un groupe jamais vu ; on donne aux observations un groupe connu du
-# modèle, que l'exclusion annule).
+# effets aléatoires exclus, ordonnées à l'origine et pentes : un groupe jamais vu ; on donne aux
+# observations un groupe connu du modèle, que l'exclusion annule).
 predire_mgcv <- function(a, nd, appris, niveaux) {
   noms <- c("g1", "g12", "g123")[seq_len(niveaux)]
   for (g in noms) nd[[g]] <- factor(rep(levels(appris[[g]])[1], nrow(nd)), levels = levels(appris[[g]]))
-  as.vector(stats::predict(a, nd, type = "response", exclude = sprintf("s(%s)", noms)))
+  aleatoires <- vapply(Filter(function(s) inherits(s, "random.effect"), a$smooth), function(s) s$label, "")
+  as.vector(stats::predict(a, nd, type = "response", exclude = aleatoires))
 }
 
 parametre_famille <- function(a, famille) {
@@ -1021,8 +1216,9 @@ concurvite_courbes <- function(a, lignes, courbes) {
   courbes
 }
 
-resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decalage, k_demandes = NULL) {
+resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decalage, k_demandes = NULL, pentes = NULL) {
   utiles <- termes_utiles(donnees, termes)
+  verifier_pentes_utiles(pentes, utiles, termes, noms)
   retires <- noms[match(setdiff(termes, utiles), termes)]
   lis <- intersect(lisses, utiles)
   k <- vapply(lis, function(t) dimension_courbe(donnees[[t]], if (t %in% names(k_demandes)) k_demandes[[t]] else NA), 0L)
@@ -1034,8 +1230,8 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
   # (sans courbe ni effet aléatoire, un modèle linéaire généralisé ordinaire : en ML, comme glm()
   # et MASS::glm.nb(), le θ de la binomiale négative compris)
   penalise <- length(lis) > 0 || niveaux > 0
-  estime <- ajuster_mgcv(donnees, par, lis, k, niveaux, famille, decalage, if (penalise) "REML" else "ML")
-  compare <- if (penalise) ajuster_mgcv(donnees, par, lis, k, niveaux, famille, decalage, "ML") else estime
+  estime <- ajuster_mgcv(donnees, par, lis, k, niveaux, famille, decalage, if (penalise) "REML" else "ML", pentes)
+  compare <- if (penalise) ajuster_mgcv(donnees, par, lis, k, niveaux, famille, decalage, "ML", pentes) else estime
   if (is.null(estime) || is.null(compare)) {
     stop(traduire("Le modèle n'a pas pu être ajusté : essayez moins de termes, de courbes ou d'effets aléatoires, ou une autre loi.",
                   "The model could not be fitted: try fewer terms, curves or random effects, or another distribution."), call. = FALSE)
@@ -1055,18 +1251,28 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
                           row.names = NULL, stringsAsFactors = FALSE)
     courbes <- concurvite_courbes(estime, lignes, courbes)
   }
-  variances <- NULL
+  variances <- singularites <- NULL
   if (niveaux) {
     vc <- tryCatch(mgcv::gam.vcomp(estime), error = function(e) NULL)
     et <- if (is.matrix(vc)) vc[, 1] else if (is.list(vc) && is.matrix(vc$vc)) vc$vc[, 1] else NULL  # (les écarts-types, nommés)
-    noms_re <- c("s(g1)", "s(g12)", "s(g123)")[seq_len(niveaux)]
-    if (!is.null(et)) variances <- data.frame(composante = paste0("g", seq_len(niveaux)), variance = unname(et[noms_re])^2, stringsAsFactors = FALSE)
+    if (!is.null(et)) {
+      # (une matrice diagonale par niveau, son ordonnée à l'origine s(g1) puis ses pentes s(g1,t3) :
+      # mgcv les tient pour indépendantes)
+      groupes <- c("g1", "g12", "g123")[seq_len(niveaux)]
+      S <- lapply(seq_len(niveaux), function(l) {
+        termes_l <- c("(Intercept)", pentes[[l]])
+        v <- unname(et[c(sprintf("s(%s)", groupes[l]), sprintf("s(%s,%s)", groupes[l], pentes[[l]]))])^2
+        matrix(diag(v, length(v)), length(v), dimnames = list(termes_l, termes_l))
+      })
+      variances <- tableau_variances(S, NULL, pentes, independantes = TRUE)
+      singularites <- if (length(unlist(pentes))) singularites_pentes(S, donnees, pentes, sqrt(estime$sig2), independantes = TRUE)
+    }
   }
   ll <- stats::logLik(compare)
   n <- nrow(donnees)
   list(N = n, coefficients = co, courbes = courbes, termes_retires = retires, logLik = as.numeric(ll), parametres = attr(ll, "df"),
        AIC = stats::AIC(compare), AICc = aic_corrige(compare, n), BIC = stats::BIC(compare),
-       r2 = list(r2_ajuste = s$r.sq, deviance_expliquee = s$dev.expl), variances = variances,
+       r2 = list(r2_ajuste = s$r.sq, deviance_expliquee = s$dev.expl), variances = variances, singularites = singularites,
        famille = famille, lien = estime$family$link, parametre_loi = parametre_famille(estime, famille), echelle = estime$sig2,
        # (Poisson : la dispersion, khi² de Pearson sur ses degrés de liberté ; au-delà de 1,5, des
        # comptages surdispersés, que la binomiale négative modélise. Une réponse 0 ou 1 ne la montre pas.)
@@ -1081,7 +1287,7 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
 # Validation croisée d'un modèle de mgcv : chaque groupe prédit (échelle de la réponse) par le
 # modèle ajusté sans lui ; une courbe dont la variable a trop peu de valeurs sur ces
 # observations y devient un terme linéaire.
-validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille, decalage) {
+validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille, decalage, pentes = NULL) {
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
@@ -1091,7 +1297,7 @@ validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille
     lis <- intersect(lisses, u)
     kk <- vapply(lis, function(t) dimension_courbe(appris[[t]], k[[t]]), 0L)  # (la dimension du modèle, moins si ces lignes ont peu de valeurs)
     lis <- lis[kk >= 3]
-    m <- ajuster_mgcv(appris, setdiff(u, lis), lis, kk, niveaux, famille, decalage, if (length(lis) || niveaux) "REML" else "ML")
+    m <- ajuster_mgcv(appris, setdiff(u, lis), lis, kk, niveaux, famille, decalage, if (length(lis) || niveaux) "REML" else "ML", pentes)
     if (is.null(m)) { echecs <- echecs + 1; next }
     prediction[ici] <- tryCatch(predire_mgcv(m, donnees[ici, , drop = FALSE], appris, niveaux), error = function(e) NA_real_)
   }
@@ -1107,12 +1313,13 @@ validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille
 # Un modèle à loi normale, avec des courbes ou non, des effets aléatoires et une autocorrélation
 # CAR1 : mgcv::gamm (Wood, 2017), qui l'ajuste comme un modèle mixte de nlme (Pinheiro et Bates,
 # 2000), ses courbes y devenant des effets aléatoires. Les effets aléatoires (g1 = ~1, g2 = ~1... :
-# emboîtés, comme nlme lit une liste) et la corrélation (correlation_car1) vont à nlme::lme ; la
-# formule est celle de mgcv sans effet aléatoire (formule_mgcv), son environnement donne s(). NULL
-# quand l'ajustement échoue, après un second essai par optim.
-ajuster_gamm <- function(donnees, parametriques, lisses, k, niveaux, methode = "REML") {
+# emboîtés, comme nlme lit une liste ; g1 = ~ t3 avec une pente aléatoire, aleatoire_nlme) et la
+# corrélation (correlation_car1) vont à nlme::lme ; la formule est celle de mgcv sans effet
+# aléatoire (formule_mgcv), son environnement donne s(). NULL quand l'ajustement échoue, après un
+# second essai par optim.
+ajuster_gamm <- function(donnees, parametriques, lisses, k, niveaux, methode = "REML", pentes = NULL) {
   f <- formule_mgcv(parametriques, lisses, k, 0, FALSE)
-  aleatoire <- stats::setNames(lapply(seq_len(niveaux), function(l) stats::as.formula("~ 1", env = baseenv())), paste0("g", seq_len(niveaux)))
+  aleatoire <- aleatoire_nlme(niveaux, pentes, liste = TRUE)
   correlation <- correlation_car1(donnees, niveaux)
   essai <- function(...) tryCatch(mgcv::gamm(f, random = aleatoire, correlation = correlation, data = donnees, method = methode, ...), error = function(e) NULL)
   essai() %||% essai(control = nlme::lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, returnObject = TRUE))
@@ -1121,11 +1328,13 @@ ajuster_gamm <- function(donnees, parametriques, lisses, k, niveaux, methode = "
 # Le modèle ajusté sur toutes ses observations, comme resultat_mgcv : REML pour les coefficients,
 # les courbes, les variances et l'autocorrélation ; la vraisemblance, l'AIC, l'AICc et le BIC de
 # la partie nlme d'un ajustement en ML. R² marginal et conditionnel (Nakagawa et Schielzeth,
-# 2013), la partie fixe comprenant les courbes. Valeurs ajustées : avec les effets aléatoires
-# ($lme) et par les seuls effets fixes ($gam) ; résidus normalisés (l'autocorrélation retirée).
-resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = NULL) {
+# 2013 ; avec des pentes aléatoires, Johnson 2014), la partie fixe comprenant les courbes. Valeurs
+# ajustées : avec les effets aléatoires ($lme) et par les seuls effets fixes ($gam) ; résidus
+# normalisés (l'autocorrélation retirée).
+resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = NULL, pentes = NULL) {
   verifier_temps_uniques(donnees, niveaux)
   utiles <- termes_utiles(donnees, termes)
+  verifier_pentes_utiles(pentes, utiles, termes, noms)
   retires <- noms[match(setdiff(termes, utiles), termes)]
   lis <- intersect(lisses, utiles)
   k <- vapply(lis, function(t) dimension_courbe(donnees[[t]], if (t %in% names(k_demandes)) k_demandes[[t]] else NA), 0L)
@@ -1134,8 +1343,8 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
                  paste(noms[match(lis[k < 3], termes)], collapse = ", ")), call. = FALSE)
   }
   par <- setdiff(utiles, lis)
-  estime <- ajuster_gamm(donnees, par, lis, k, niveaux, "REML")
-  compare <- ajuster_gamm(donnees, par, lis, k, niveaux, "ML")
+  estime <- ajuster_gamm(donnees, par, lis, k, niveaux, "REML", pentes)
+  compare <- ajuster_gamm(donnees, par, lis, k, niveaux, "ML", pentes)
   if (is.null(estime) || is.null(compare)) {
     stop(traduire("Le modèle n'a pas pu être ajusté (mgcv::gamm n'a pas convergé) : essayez moins de termes, de courbes ou d'effets aléatoires, ou sans l'autocorrélation.",
                   "The model could not be fitted (mgcv::gamm did not converge): try fewer terms, curves or random effects, or no autocorrelation."), call. = FALSE)
@@ -1157,17 +1366,20 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
     courbes <- concurvite_courbes(g, lignes, courbes)
   }
   # la variance de chaque effet aléatoire (nlme : σ² fois sa matrice relative), puis la résiduelle
-  niveaux_g <- paste0("g", seq_len(niveaux))
-  v <- vapply(niveaux_g, function(n) l$sigma^2 * as.matrix(l$modelStruct$reStruct[[n]])[1, 1], 0)
-  variances <- data.frame(composante = c(niveaux_g, "residuelle"), variance = c(unname(v), l$sigma^2), stringsAsFactors = FALSE)
+  S <- matrices_nlme(l, niveaux)
+  variances <- tableau_variances(S, l$sigma^2, pentes)
+  v <- variances_niveaux(S, donnees, pentes)
   fixes <- stats::var(as.vector(stats::fitted(g)))
   totale <- fixes + sum(v) + l$sigma^2
   ll <- stats::logLik(compare$lme)
   n <- nrow(donnees)
   phi <- unname(stats::coef(l$modelStruct$corStruct, unconstrained = FALSE))
+  avec_pentes <- length(unlist(pentes)) > 0
   list(N = n, coefficients = co, courbes = courbes, termes_retires = retires, logLik = as.numeric(ll), parametres = attr(ll, "df"),
        AIC = stats::AIC(compare$lme), AICc = aic_corrige(compare$lme, n), BIC = stats::BIC(compare$lme),
        r2 = list(marginal = fixes / totale, conditionnel = (fixes + sum(v)) / totale), variances = variances,
+       parts = if (avec_pentes) parts_variance(S, donnees, pentes, l$sigma^2),
+       singularites = if (avec_pentes) singularites_pentes(S, donnees, pentes, l$sigma),
        phi = phi, famille = "gaussienne", lien = "identity", echelle = l$sigma^2,
        ajuste = as.vector(stats::fitted(l)), ajuste_fixe = as.vector(stats::fitted(g)),
        # (dans l'ordre du temps de chaque groupe : regression_diagnostics.R, residus_normalises_car1)
@@ -1177,7 +1389,7 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
 
 # Validation croisée d'un modèle de mgcv::gamm : chaque groupe prédit par le modèle ajusté sans
 # lui (REML), par ses effets fixes et ses courbes ($gam : un groupe jamais vu).
-validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux) {
+validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux, pentes = NULL) {
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
@@ -1187,7 +1399,7 @@ validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux) {
     lis <- intersect(lisses, u)
     kk <- vapply(lis, function(t) dimension_courbe(appris[[t]], k[[t]]), 0L)
     lis <- lis[kk >= 3]
-    m <- ajuster_gamm(appris, setdiff(u, lis), lis, kk, niveaux, "REML")
+    m <- ajuster_gamm(appris, setdiff(u, lis), lis, kk, niveaux, "REML", pentes)
     if (is.null(m)) { echecs <- echecs + 1; next }
     prediction[ici] <- tryCatch(as.vector(stats::predict(m$gam, donnees[ici, , drop = FALSE], type = "response")), error = function(e) NA_real_)
   }
@@ -1401,6 +1613,7 @@ REFERENCES_REGRESSION <- list(
   pinheiro = "Pinheiro, J. C., & Bates, D. M. (2000). Mixed-effects models in S and S-PLUS. Springer. https://doi.org/10.1007/b98882",
   nlme = "Pinheiro, J., Bates, D., & R Core Team (%s). nlme: Linear and nonlinear mixed effects models (R package version %s). https://CRAN.R-project.org/package=nlme",
   nakagawa = "Nakagawa, S., & Schielzeth, H. (2013). A general and simple method for obtaining R² from generalized linear mixed-effects models. Methods in Ecology and Evolution, 4(2), 133–142. https://doi.org/10.1111/j.2041-210x.2012.00261.x",
+  johnson = "Johnson, P. C. D. (2014). Extension of Nakagawa & Schielzeth's R²GLMM to random slopes models. Methods in Ecology and Evolution, 5(9), 944–946. https://doi.org/10.1111/2041-210X.12225",
   burnham = "Burnham, K. P., & Anderson, D. R. (2002). Model selection and multimodel inference: A practical information-theoretic approach (2nd ed.). Springer. https://doi.org/10.1007/b97636",
   zuur = "Zuur, A. F., Ieno, E. N., Walker, N. J., Saveliev, A. A., & Smith, G. M. (2009). Mixed effects models and extensions in ecology with R. Springer. https://doi.org/10.1007/978-0-387-87458-6",
   wood2017 = "Wood, S. N. (2017). Generalized additive models: An introduction with R (2nd ed.). Chapman and Hall/CRC. https://doi.org/10.1201/9781315370279",
@@ -1444,11 +1657,11 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     lis <- m$noms_termes[match(m$lisses, m$termes)]
     courbes <- if (length(lis)) sprintf(if (fr) ", dont %s par des courbes (splines de régression en plaques minces)" else ", %s of them through curves (thin plate regression splines)", liste(lis)) else ""
     aleatoire <- if (gamm) {
-      sprintf(if (fr) ", une ordonnée à l'origine aléatoire par %s, et une autocorrélation des résidus en temps continu (CAR1) le long de %s à l'intérieur de chaque %s"
-              else ", a random intercept for %s, and a continuous-time autocorrelation of the residuals (CAR1) along %s within each %s",
-              liste(niveaux_emboites(m$niveaux, fr, guillemets)), guillemets(m$temps), guillemets(m$dans %||% m$niveaux[length(m$niveaux)]))
-    } else if (length(m$niveaux)) sprintf(if (fr) ", une ordonnée à l'origine aléatoire par %s (des termes pénalisés)" else ", a random intercept for %s (penalized terms)",
-                                          liste(vapply(m$niveaux, guillemets, ""))) else ""
+      sprintf(if (fr) ", une ordonnée à l'origine aléatoire par %s%s, et une autocorrélation des résidus en temps continu (CAR1) le long de %s à l'intérieur de chaque %s"
+              else ", a random intercept for %s%s, and a continuous-time autocorrelation of the residuals (CAR1) along %s within each %s",
+              liste(niveaux_emboites(m$niveaux, fr, guillemets)), phrase_pentes(m, fr, liste, guillemets), guillemets(m$temps), guillemets(m$dans %||% m$niveaux[length(m$niveaux)]))
+    } else if (length(m$niveaux)) sprintf(if (fr) ", une ordonnée à l'origine aléatoire par %s (des termes pénalisés)%s" else ", a random intercept for %s (penalized terms)%s",
+                                          liste(vapply(m$niveaux, guillemets, "")), phrase_pentes(m, fr, liste, guillemets, independantes = TRUE)) else ""
     effort <- if (!is.null(m$decalage)) sprintf(if (fr) ", et log(%s) en décalage (l'effort)" else ", and log(%s) as an offset (the effort)", guillemets(m$decalage)) else ""
     penalise <- length(lis) || length(m$niveaux)
     c(cite("wood2017", if (fr) sprintf("Nous avons ajusté un modèle %s (loi %s, lien %s ; Wood, 2017) avec %s%s%s%s. %s",
@@ -1469,10 +1682,10 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
       if (fr) sprintf(", et une autocorrélation des résidus en temps continu (CAR1) le long de %s à l'intérieur de chaque %s", guillemets(m$temps), guillemets(m$dans %||% m$niveaux[length(m$niveaux)]))
       else sprintf(", and a continuous-time autocorrelation of the residuals (CAR1) along %s within each %s", guillemets(m$temps), guillemets(m$dans %||% m$niveaux[length(m$niveaux)]))
     } else ""
-    c(cite("pinheiro", if (fr) sprintf("Nous avons ajusté un modèle linéaire mixte (Pinheiro et Bates, 2000) avec %s en effets fixes, une ordonnée à l'origine aléatoire par %s%s. %s",
-                                       termes, liste(niveaux), car1, unites)
-                       else sprintf("We fitted a linear mixed model (Pinheiro & Bates, 2000) with %s as fixed effects, a random intercept for %s%s. %s",
-                                    termes, liste(niveaux), car1, unites)),
+    c(cite("pinheiro", if (fr) sprintf("Nous avons ajusté un modèle linéaire mixte (Pinheiro et Bates, 2000) avec %s en effets fixes, une ordonnée à l'origine aléatoire par %s%s%s. %s",
+                                       termes, liste(niveaux), phrase_pentes(m, fr, liste, guillemets), car1, unites)
+                       else sprintf("We fitted a linear mixed model (Pinheiro & Bates, 2000) with %s as fixed effects, a random intercept for %s%s%s. %s",
+                                    termes, liste(niveaux), phrase_pentes(m, fr, liste, guillemets), car1, unites)),
       cite("zuur", if (fr) "Les coefficients et les variances ont été estimés par maximum de vraisemblance restreint (REML), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance (ML ; Zuur et al., 2009)."
                    else "Coefficients and variances were estimated by restricted maximum likelihood (REML), and models compared by the AIC of maximum-likelihood fits (ML; Zuur et al., 2009)."))
   }
@@ -1485,9 +1698,13 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     groupes <- as.character(unlist(o$groupes))
     # (les mêmes observations tant qu'aucune n'a été exclue depuis : ses lignes sont celles du modèle complet)
     memes <- isTRUE(as.numeric(o$n)[1] == length(m$observations))
-    p2 <- c(p2, cite("burnham", sprintf(if (fr) "Ses termes sont ceux que la sélection par l'AICc du modèle %s a retenus (%s)%s (Burnham et Anderson, 2002)."
-                                        else "Its terms are those the AICc selection of model %s kept (%s)%s (Burnham & Anderson, 2002).",
-                                        guillemets(as.character(o$modele)[1]), if (length(groupes)) liste(groupes) else (if (fr) "aucun : le modèle nul" else "none: the null model"),
+    # (les groupes qui portaient une pente aléatoire étaient dans chaque modèle de la sélection)
+    gardes <- as.character(unlist(o$gardes))
+    p2 <- c(p2, cite("burnham", sprintf(if (fr) "Ses termes sont ceux que la sélection par l'AICc du modèle %s a retenus (%s)%s%s (Burnham et Anderson, 2002)."
+                                        else "Its terms are those the AICc selection of model %s kept (%s)%s%s (Burnham & Anderson, 2002).",
+                                        guillemets(as.character(o$modele)[1]),
+                                        if (length(groupes)) liste(groupes) else if (length(gardes)) (if (fr) "aucun" else "none") else (if (fr) "aucun : le modèle nul" else "none: the null model"),
+                                        if (!length(gardes)) "" else sprintf(if (fr) ", avec %s, gardé dans chaque modèle pour sa pente aléatoire" else ", with %s, kept in every model for its random slope", liste(guillemets(gardes))),
                                         if (!memes) "" else if (fr) ", sur les mêmes observations que lui" else ", on the same observations as that model")))
   }
   # (le modèle mixte de la vue BACI : comparaisons.R, definition_baci)
@@ -1511,10 +1728,12 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
             pourcent(r$r2$deviance_expliquee), nombre(r$r2$r2_ajuste), if (!is.null(loi)) sprintf(", %s = %s", if (loi$nom == "theta") "θ" else "p", nombre(loi$valeur)) else "",
             aic, nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
   } else if (!is.null(r$r2$marginal)) {
-    cite("nakagawa", if (fr) sprintf("Les effets fixes expliquent %s de la variance de la réponse (R² marginal), les effets fixes et aléatoires %s (R² conditionnel ; Nakagawa et Schielzeth, 2013) ; %s ; en validation croisée, Q² = %s et RMSEcv = %s.",
-                                     pourcent(r$r2$marginal), pourcent(r$r2$conditionnel), aic, nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
-                     else sprintf("The fixed effects explain %s of the response's variance (marginal R²), the fixed and random effects %s (conditional R²; Nakagawa & Schielzeth, 2013); %s; in cross-validation, Q² = %s and RMSEcv = %s.",
-                                  pourcent(r$r2$marginal), pourcent(r$r2$conditionnel), aic, nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3)))
+    # (avec des pentes aléatoires, la variance des effets aléatoires de Johnson, 2014 : variances_niveaux)
+    johnson <- if (length(unlist(m$pentes))) cite("johnson", if (fr) ", étendu aux pentes aléatoires par Johnson, 2014" else ", extended to random slopes by Johnson, 2014") else ""
+    cite("nakagawa", if (fr) sprintf("Les effets fixes expliquent %s de la variance de la réponse (R² marginal), les effets fixes et aléatoires %s (R² conditionnel ; Nakagawa et Schielzeth, 2013%s) ; %s ; en validation croisée, Q² = %s et RMSEcv = %s.",
+                                     pourcent(r$r2$marginal), pourcent(r$r2$conditionnel), johnson, aic, nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
+                     else sprintf("The fixed effects explain %s of the response's variance (marginal R²), the fixed and random effects %s (conditional R²; Nakagawa & Schielzeth, 2013%s); %s; in cross-validation, Q² = %s and RMSEcv = %s.",
+                                  pourcent(r$r2$marginal), pourcent(r$r2$conditionnel), johnson, aic, nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3)))
   } else if (fr) sprintf("Le modèle explique %s de la variance de la réponse (R² ajusté = %s) ; %s ; en validation croisée, Q² = %s et RMSEcv = %s.",
                          pourcent(r$r2$r2), nombre(r$r2$r2_ajuste), aic, nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
   else sprintf("The model explains %s of the response's variance (adjusted R² = %s); %s; in cross-validation, Q² = %s and RMSEcv = %s.",
@@ -1580,6 +1799,14 @@ phrase_selection_aic <- function(m, fr, nombre, liste, guillemets) {
             s$K, as.integer(s$limite), if (!croises) "" else if (fr) " (un effet principal restant tant qu'un terme croisé le demande)" else " (a main effect staying while a cross term needs it)",
             nrow(mo), s$N, avec, echecs)
   }
+  # (les groupes qui portent une pente aléatoire : dans chaque modèle, hors des groupes choisis)
+  gardes <- as.character(unlist(s$gardes))
+  plusieurs <- length(gardes) > 1
+  if (length(gardes)) comparaison <- paste(comparaison, sprintf(if (fr) "%s, qui %s dans chaque modèle (une pente aléatoire varie autour de la pente fixe de sa variable)."
+                                                                else "%s, which %s in every model (a random slope varies around its variable's fixed slope).",
+                                                                liste(guillemets(gardes)),
+                                                                if (fr) (if (plusieurs) "portent une pente aléatoire, sont restés" else "porte une pente aléatoire, est resté")
+                                                                else (if (plusieurs) "carry a random slope, stayed" else "carries a random slope, stayed")))
   p <- s$parcimonieux
   choix <- sprintf(if (fr) "Le meilleur modèle (l'AICc le plus bas, poids d'Akaike %s) %s ; %s." else "The best model (lowest AICc, Akaike weight %s) %s; %s.",
                    nombre(mo$poids[1]), contenu(1),
@@ -1700,6 +1927,25 @@ niveaux_emboites <- function(niveaux, fr, guillemets) vapply(seq_along(niveaux),
   if (l == 1) guillemets(niveaux[l]) else sprintf(if (fr) "%s dans chaque %s" else "%s within each %s", guillemets(niveaux[l]), guillemets(niveaux[l - 1]))
 }, "")
 
+# Les pentes aléatoires d'une régression en mots, après ses ordonnées à l'origine aléatoires : la
+# variable de chacune, son niveau (niveaux_emboites), et son lien à l'ordonnée à l'origine de son
+# niveau, corrélées (nlme : une matrice de covariance générale) ou indépendantes (mgcv) ; "" sans
+# pente aléatoire. `liste`, `guillemets` : ceux de texte_methodes_regression.
+phrase_pentes <- function(m, fr, liste, guillemets, independantes = FALSE) {
+  pentes <- m$pentes %||% list()
+  avec <- which(lengths(pentes) > 0)
+  if (!length(avec)) return("")
+  niveaux <- niveaux_emboites(m$niveaux, fr, guillemets)
+  quoi <- vapply(avec, function(l) sprintf(if (fr) "de %s par %s" else "of %s for %s", liste(guillemets(m$noms_termes[match(pentes[[l]], m$termes)])), niveaux[l]), "")
+  une <- length(unlist(pentes)) == 1
+  lien <- if (independantes) {
+    if (fr) (if (une) "un terme pénalisé, indépendant de l'ordonnée à l'origine" else "des termes pénalisés, indépendants des ordonnées à l'origine")
+    else (if (une) "a penalized term, independent of the intercept" else "penalized terms, independent of the intercepts")
+  } else if (fr) (if (une) "corrélée à l'ordonnée à l'origine de son niveau : une matrice de covariance générale" else "corrélées à l'ordonnée à l'origine de leur niveau : une matrice de covariance générale par niveau")
+  else (if (une) "correlated with its level's intercept: a general covariance matrix" else "correlated with their level's intercept: a general covariance matrix per level")
+  sprintf(", %s %s (%s)", if (une) (if (fr) "une pente aléatoire" else "a random slope") else (if (fr) "des pentes aléatoires" else "random slopes"), liste(quoi), lien)
+}
+
 # Ce que R affiche d'une régression (la console de l'application et son journal).
 print.modele_regression <- function(x, ...) {
   r <- x$resultat
@@ -1708,8 +1954,13 @@ print.modele_regression <- function(x, ...) {
                  GAM = sprintf(traduire("modèle additif généralisé, loi %s", "generalized additive model, %s distribution"), sub("_", " ", x$famille)),
                  traduire("régression linéaire", "linear regression"))
   cat(sprintf(traduire("Modèle %s (%s)%s\n", "Model %s (%s)%s\n"), x$nom, type, if (nzchar(x$titre %||% "")) paste(" :", x$titre) else ""))
+  # (chaque niveau, et ses pentes aléatoires : « site (pente annee) »)
+  niveaux <- vapply(seq_along(x$niveaux), function(l) {
+    p <- x$noms_termes[match(x$pentes[[l]], x$termes)]
+    if (length(p)) sprintf("%s (%s %s)", x$niveaux[l], traduire("pente", "slope"), paste(p, collapse = ", ")) else x$niveaux[l]
+  }, "")
   cat(sprintf(traduire("%d observations, réponse %s%s\n", "%d observations, response %s%s\n"), x$N, x$y$noms,
-              if (length(x$niveaux)) sprintf(traduire(", effets aléatoires %s%s", ", random effects %s%s"), paste(x$niveaux, collapse = " / "),
+              if (length(x$niveaux)) sprintf(traduire(", effets aléatoires %s%s", ", random effects %s%s"), paste(niveaux, collapse = " / "),
                                              if (x$car1) sprintf(traduire(", autocorrélation CAR1 dans le temps (%s, dans chaque %s)%s", ", CAR1 autocorrelation in time (%s, within each %s)%s"),
                                                                  x$temps, x$dans %||% x$niveaux[length(x$niveaux)], if (isTRUE(x$gamm)) ", mgcv::gamm" else "") else "") else ""))
   co <- r$coefficients

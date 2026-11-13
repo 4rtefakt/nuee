@@ -3,7 +3,7 @@
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
-import { VUES, resumeSeuils, notePhi, notesTermesRetires, lignesSelectionAIC, groupesSelectionAIC, nombreParametres } from './panneaux.js';
+import { VUES, resumeSeuils, notePhi, notesTermesRetires, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres } from './panneaux.js';
 import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
@@ -190,8 +190,12 @@ function tableauRegression(m) {
   const v = m.variances;
   if (v) {
     const variances = [].concat(v.variance);
-    blocs.push({ entetes: [t('effet_aleatoire'), t('variance'), t('ecart_type')],
-      lignes: [].concat(v.composante).map((c, i) => [c, nombre(variances[i]), nombre(Math.sqrt(variances[i]))]) });
+    // (with random slopes: a row per term of each level, and each slope's correlation with the intercept)
+    const pentes = v.terme !== undefined;
+    const correlations = pentes && [].concat(v.correlation).some((r) => r !== null && r !== undefined);
+    blocs.push({ entetes: [t('effet_aleatoire')].concat(pentes ? [t('terme')] : [], [t('variance'), t('ecart_type')], correlations ? [t('correlation_ordonnee')] : []),
+      lignes: [].concat(v.composante).map((c, i) => [c].concat(pentes ? [[].concat(v.terme)[i]] : [], [nombre(variances[i]), nombre(Math.sqrt(variances[i]))],
+        correlations ? [nombre([].concat(v.correlation)[i], 3)] : [])) });
   }
   const cb = m.courbes;
   if (cb) {
@@ -200,7 +204,7 @@ function tableauRegression(m) {
       lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]
         .concat(cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
   }
-  return blocs.concat([notePhi(m),
+  return blocs.concat([...notesPentes(m), notePhi(m),
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
     ...notesTermesRetires(m), q.sans_pente_vc ? t('sans_pente_vc', { n: q.sans_pente_vc }) : ''].filter(Boolean).map((texte) => ({ texte })));
 }
@@ -227,15 +231,18 @@ async function resumesSeuils(m) {
 // engine): the suggested models in words, then the table of the best models.
 async function tableauSelectionAIC(m) {
   const s = await demander('selection_aic', { modele: m.id });
-  if (!s.K) return [{ texte: t('selection_aic_vide') }];
+  // (the groups that carry a random slope, in every model)
+  const gardes = [].concat(s.gardes ?? []);
+  const noteGardes = gardes.length ? t('selection_aic_gardes', { groupes: gardes.join(', ') }) : '';
+  if (!s.K) return [{ texte: [t('selection_aic_vide'), noteGardes].filter(Boolean).join(' ') }];
   const col = (k) => [].concat(s.modeles[k]);
   const groupes = [].concat(s.groupes);
-  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || t('aic_modele_nul');
+  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || (gardes.length ? t('aic_modele_gardes', { groupes: gardes.join(' + ') }) : t('aic_modele_nul'));
   const pa = s.parcimonieux - 1;
   const retires = s.chemin ? [].concat(s.chemin.retire).slice(1) : [];
   return [
-    { texte: [t('selection_aic_note', { n: s.N }), s.methode === 'toutes' ? t('selection_aic_toutes', { n: col('AICc').length })
-      : t('selection_aic_descendante', { k: s.K, limite: s.limite, n: col('AICc').length, retires: retires.length ? retires.join(', ') : t('aic_aucun_retire') })].join(' ') },
+    { texte: [t('selection_aic_note', { n: s.N }), noteGardes, s.methode === 'toutes' ? t('selection_aic_toutes', { n: col('AICc').length })
+      : t('selection_aic_descendante', { k: s.K, limite: s.limite, n: col('AICc').length, retires: retires.length ? retires.join(', ') : t('aic_aucun_retire') })].filter(Boolean).join(' ') },
     { texte: `${t('selection_aic_meilleur')} ${nom(0)} (k ${nombreParametres(col('k')[0])}, AICc ${nombre(col('AICc')[0], 2)}, ${t('poids_akaike')} ${nombre(col('poids')[0], 2)})` },
     { texte: pa > 0 ? `${t('selection_aic_parcimonieux')} ${nom(pa)} (k ${nombreParametres(col('k')[pa])}, ΔAICc ${nombre(col('delta')[pa], 2)})` : t('selection_aic_aussi') },
     { entetes: [t('aic_rang'), ...groupes, 'k', 'logLik', 'AICc', 'ΔAICc', t('poids_akaike'), t('aic_poids_cumule')],

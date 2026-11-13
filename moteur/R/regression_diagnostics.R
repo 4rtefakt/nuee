@@ -170,13 +170,14 @@ residus_quantiles <- function(a, famille, graine = 1) {
 
 # Le tableau des effets fixes d'une régression sur ses observations (dans l'ordre de
 # m$observations) : la constante et ses termes utiles (lm, nlme), ou les colonnes de son
-# ajustement de mgcv en ML sans celles des effets aléatoires (ses termes, la base de chaque courbe).
+# ajustement de mgcv en ML sans celles des effets aléatoires, ordonnées à l'origine s(g1) et pentes
+# s(g1,t3) (ses termes, la base de chaque courbe).
 effets_fixes_regression <- function(m) {
   a <- m$ajustement_ml
   if (inherits(a, "gamm")) a <- a$gam
   if (!inherits(a, "gam")) return(cbind(1, as.matrix(m$donnees[m$utiles])))
   X <- stats::predict(a, m$donnees, type = "lpmatrix")
-  X[, !grepl("^s\\(g(1|12|123)\\)\\.", colnames(X)), drop = FALSE]
+  X[, !grepl("^s\\(g(1|12|123)(,t[0-9]+)?\\)\\.", colnames(X)), drop = FALSE]
 }
 
 # Les colonnes de A dans l'espace engendré par celles de B, aux erreurs d'arrondi près.
@@ -192,9 +193,30 @@ memes_groupes <- function(a, b) {
   nlevels(a) == nlevels(b) && nlevels(interaction(a, b, drop = TRUE)) == nlevels(a)
 }
 
+# Les pentes aléatoires du niveau `l` de deux régressions (`k` : les lignes de mb dans l'ordre de
+# ma) : les mêmes à une transformation près qui ne change pas le modèle. Avec la matrice générale
+# de nlme, ses colonnes (1, pentes) engendrent le même espace (l'année ou l'année centrée : un même
+# modèle) ; avec des pentes indépendantes de l'ordonnée à l'origine (mgcv), chaque colonne est
+# proportionnelle à l'une de l'autre (centrer x change ce modèle-là, pas le mettre à l'échelle).
+memes_pentes <- function(ma, mb, k, l) {
+  pentes <- function(m) if (length(m$pentes) >= l) m$pentes[[l]] else character(0)
+  pa <- pentes(ma)
+  pb <- pentes(mb)
+  if (length(pa) != length(pb)) return(FALSE)
+  if (!length(pa)) return(TRUE)
+  Za <- as.matrix(ma$donnees[pa])
+  Zb <- as.matrix(mb$donnees[k, pb, drop = FALSE])
+  if (inherits(ma$ajustement, "gam")) {
+    return(all(vapply(seq_len(ncol(Za)), function(j) any(vapply(seq_len(ncol(Zb)), function(i) dans_espace(Za[, j, drop = FALSE], Zb[, i, drop = FALSE]), TRUE)), TRUE)))
+  }
+  dans_espace(cbind(1, Za), cbind(1, Zb)) && dans_espace(cbind(1, Zb), cbind(1, Za))
+}
+
 # Deux régressions du même ensemble AIC qui ne diffèrent, au plus, que par leurs effets fixes : la
-# même loi, la même réponse, le même effort, les mêmes groupes à chaque niveau d'effet aléatoire,
-# la même autocorrélation (le même temps, les mêmes groupes). k : les lignes de mb dans l'ordre de ma.
+# même loi, la même réponse, le même effort, les mêmes groupes à chaque niveau d'effet aléatoire et
+# les mêmes pentes aléatoires (memes_pentes ; deux modèles aux pentes différentes n'ont pas les
+# mêmes effets aléatoires : ils se comparent par l'AIC), la même autocorrélation (le même temps,
+# les mêmes groupes). k : les lignes de mb dans l'ordre de ma.
 memes_aleatoires <- function(ma, mb, k) {
   egaux <- function(x, y) isTRUE(all.equal(as.numeric(x), as.numeric(y), tolerance = 1e-10))
   if (!identical(ma$famille, mb$famille) || !identical(ma$decalage, mb$decalage) || !identical(isTRUE(ma$car1), isTRUE(mb$car1)) ||
@@ -205,6 +227,7 @@ memes_aleatoires <- function(ma, mb, k) {
   niveaux <- sprintf("g%d", seq_along(ma$niveaux))
   groupes <- function(x, colonnes) interaction(x[colonnes], drop = TRUE)
   for (l in seq_along(niveaux)) if (!memes_groupes(groupes(da, niveaux[1:l]), groupes(db, niveaux[1:l]))) return(FALSE)
+  for (l in seq_along(niveaux)) if (!memes_pentes(ma, mb, k, l)) return(FALSE)
   if (!isTRUE(ma$car1)) return(TRUE)
   egaux(da$temps, db$temps) && memes_groupes(groupes(da, c(niveaux, intersect("gc", names(da)))), groupes(db, c(niveaux, intersect("gc", names(db)))))
 }

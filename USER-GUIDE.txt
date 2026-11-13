@@ -603,6 +603,52 @@ estimated by REML; the log-likelihood, AIC, AICc and BIC come from the ML fit, t
 that compares models with different fixed effects. Cross-validation defaults to the first
 random effect: each site is predicted by the fixed effects of the model fitted without it, as a
 site never seen.
+Random slopes: under each random effect chosen, "Random slopes by site" ticks the quantitative
+X variables whose slope changes from one site to another, most often the year: each site has
+its own trend, which varies around the model's fixed slope; it is (1 + year | site) in an R
+formula. The variable must also be an X term of the model, quantitative and on its own
+(transformed or not), not a curve: otherwise the model is refused, naming it. With nlme (a
+mixed model, or a GLM or GAM with the normal distribution and CAR1, fitted by mgcv::gamm), each
+level has nlme's general covariance matrix (random = ~ year | site; with nested levels, the
+list list(site = ~ year, sector = ~ 1)): the variance of its intercept, that of each slope and
+their correlation. A slope's standard deviation, in units of Y per unit of X, says how much the
+sites' trends differ from the mean trend: about 95 % of the sites are within ±2 standard
+deviations of the fixed slope. The correlation says whether the high sites have steeper slopes
+(above 0) or shallower ones (below); it is that of the intercept taken at x = 0. The Summary
+gives the variance and standard deviation of each intercept and each slope, and each slope's
+correlation with its level's intercept (with several slopes at one level, their correlations
+with each other are estimated but not in this table: summary(m) in the script of Export to R
+gives them). With a slope, a level's variance changes with x and its share of the random
+variance has no single value: the Summary gives each level's share of its mean variance over
+the observations, and the marginal and conditional R2 take it too, as Johnson (2014) extends
+those of Nakagawa and Schielzeth: the mean over the observations of zᵢᵀΣzᵢ, Σ the level's
+matrix and zᵢ = (1, the values of its slopes).
+Centring: a variable far from 0, such as the year (≈ 2010), puts the random intercept far from
+the data (at year 0), where its correlation with the slope is near ±1; the fit often stops
+short there, on a slope whose standard deviation is nearly 0. Nuée doesn't centre without
+saying so: the Summary flags a singular fit (a correlation beyond ±0.99, or a slope's standard
+deviation, times that of its variable over the observations, below 1 % of the residual standard
+deviation) and, when the variable is far from 0 (its mean beyond its standard deviation),
+advises centring it, scaling Ctr or UV in the Variables tab: it is the same model, which nlme
+then usually finds, the intercept taken at the variable's mean. A centred variable and a
+singular fit: the data can't estimate this slope or this correlation; compare by AIC with the
+model without it. A failed fit still reads "The model could not be fitted".
+In a GLM or GAM fitted by mgcv::gam (another distribution than the normal, or without CAR1), a
+random slope is a term s(site, year, bs = "re") (Wood, 2017): independent of the random
+intercept, with no correlation, as mgcv can't correlate them. That model depends on where x is
+0: with x centred, the random intercept is each site's level at the mean of x; the year left
+uncentred leaves little room for the slope's variance. The Summary says so. Refitted with CAR1
+(mgcv::gamm), such a model has its slopes correlated, as in nlme.
+With random slopes: cross-validation predicts a site never seen by the fixed effects; the AIC
+selection chooses only the fixed effects, and the group of a variable with a random slope stays
+in every model (a random slope goes around its variable's fixed slope); in Block contributions,
+without that variable, only its fixed slope is removed and its random slope stays (the test of
+the mean slope, with the same random effects); two models with different random slopes don't
+have the same random effects: no likelihood-ratio test between them, they compare by AIC on the
+same observations; Fit with CAR1 keeps the slopes; predictions are those of the fixed effects.
+Not covered: in nlme, a slope uncorrelated with the intercept ((0 + year | site),
+(1 | site) + (0 + year | site), ||), refused in the R formula; the random slope of a
+qualitative variable, a cross term or a curve.
 Type "Generalized linear model (GLM)" or "Additive model (GAM)" (mgcv), for a Y that isn't
 normal. Distribution of Y: Poisson for counts; negative binomial for counts that vary more than
 a Poisson allows (its θ estimated); binomial for presence-absence (0 or 1); gamma for positive
@@ -632,7 +678,9 @@ log10, log1p, exp, sqrt, I(x^p), I(a * x + b), the logit log((x - a) / (b - x)))
 terms (a:b; a*b for a, b and a:b; a:b without a: a enters without a main effect; I(a^2) when
 a is in the model too, else the square of a), the
 curves s(x) or s(x, k = 5), the effort offset(log(x)) and the nested random intercepts
-(1 | site/sector), the widest first.
+(1 | site/sector), the widest first, with their random slopes as lme4 writes them:
+(1 + year | site) or (year | site); (1 + year | site/sector), a slope at each level; one term
+per level, (1 + year | site) + (1 | site:sector).
 A curve makes the model additive, random effects make it mixed. R reads the formula without
 ever running it: anything else (another function, code) is refused with the reason, and the
 formula isn't kept, only the settings it gives.
@@ -640,7 +688,8 @@ Views: Summary (R2, or marginal and conditional R2 for a mixed model, Nakagawa a
 adjusted R2 and deviance explained for a GLM or GAM (marginal and conditional R2 when fitted by
 mgcv::gamm, the curves in the fixed part), with each curve's edf, test and concurvity (the
 share of the curve the other terms reproduce; above 0.8, in red, it is confounded with them);
-Q2 and RMSEcv; AIC; the variance of each random effect and its share; φ of the
+Q2 and RMSEcv; AIC; the variance of each random effect and its share (with random slopes, see
+above); φ of the
 autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
 with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
 the odds ratio),
@@ -699,8 +748,9 @@ variables), from the null model to the full model, is fitted by ML on the same o
 ranked by AICc; a cross term or a square enters only with its main effects (a qualitative
 variable through all its categories) and the cross terms of part of its factors. Only the fixed
 effects are chosen: the random effects, the autocorrelation, the effort and the curves'
-settings stay those of the model. Up to 8 groups (256 combinations), every combination is
-fitted (a mixed model with CAR1 on 240 rows takes about 10 s); beyond, a backward elimination
+settings stay those of the model, and the group of a variable with a random slope stays in
+every model, out of the groups to choose. Up to 8 groups (256 combinations), every combination
+is fitted (a mixed model with CAR1 on 240 rows takes about 10 s); beyond, a backward elimination
 from the full model removes, step by step, the group whose removal lowers AICc the most. The
 view suggests the best model (lowest AICc) and, when it differs, the most parsimonious within
 ΔAICc ≤ 2 (fewest parameters; Burnham and Anderson, 2002); it plots each group's importance
@@ -725,8 +775,9 @@ with each other.
 Under the AIC table, Nested models: the likelihood-ratio test between each pair of nested
 regressions of the same AIC set, as anova(m1, m2) on ML fits. The smaller model's fixed terms
 are among the bigger one's (its columns lie within the bigger one's), with the same
-distribution, effort, random effects and autocorrelation; χ² = 2 × (logLik of the bigger −
-logLik of the smaller) on Δdf, the difference in their numbers of parameters, and its p. For
+distribution, effort, random effects (their slopes included) and autocorrelation;
+χ² = 2 × (logLik of the bigger − logLik of the smaller) on Δdf, the difference in their numbers
+of parameters, and its p. For
 linear regressions and GLMs it is the difference of their logLik (of their deviances for a
 Poisson or binomial GLM, as anova(glm1, glm2, test = "Chisq")). Random effects and
 autocorrelation aren't tested this way: a zero variance is on the boundary of its range,
@@ -734,15 +785,17 @@ where the χ² distribution no longer holds; compare them by AIC. With curves or
 effects, the df are edf and the test is approximate, as the table says. Every nested pair is
 listed (2000 at most); the table's search box finds those of a model.
 File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
-the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
+the coefficients, the fit statistics, the random effects (each random intercept and slope, and
+their correlation) and the curves, a table each. File ›
 Model report: the summary and the coefficients, each term's effect, each curve's thresholds,
 observed / predicted and the residuals (the quantile residuals too, for counts, presence-absence
 and positive values).
-File › Export to R: a script or report for a regression too, with lm, nlme::lme, mgcv::gam
-or mgcv::gamm: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
-then the coefficients, AIC, R2, variances, curves with their concurvity and thresholds (the
-same draws as the Thresholds view), the quantile residuals (the same draws as the Residuals
-view), test set and plots, checked against Nuée's results before it is written.
+File › Export to R: a script or report for a regression too, with lm, nlme::lme, mgcv::gam or
+mgcv::gamm: its rows and terms, the fits (REML and ML; its random slopes included), the
+cross-validation by its groups, then the coefficients, AIC, R2, variances, curves with their
+concurvity and thresholds (the same draws as the Thresholds view), the quantile residuals (the
+same draws as the Residuals view), test set and plots, checked against Nuée's results before it
+is written.
 Cross terms with a qualitative variable (Cross terms tab, or a * b and a:b in the R formula): a
 qualitative variable enters a cross term through each of its categories, once at most (neither
 squared nor cubed). year × sector lets the slope of the year differ from one sector to
@@ -764,16 +817,15 @@ factors whose first level is Nuée's reference. A combination of categories no o
 it among the terms never observed. Effects: a quantitative term crossed with categories has one
 line per category (a curve when the term is a GAM's curve), its slope being its coefficient
 plus that of its product with the category, with its 95 % band from the coefficients'
-covariance and, under the
-plot, each slope per unit with its interval. In the AIC selection and the contributions table,
-a cross term enters and leaves whole (all its categories), only with its main effects and its
-lower-order cross terms. The Methods text names each reference category and says what the
-cross terms' coefficients are. Prediction: a category the model has seen gets its own
-prediction; one it hasn't (absent from the model's observations, or from the other groups in
-cross-validation: sectors proper to a site, validated by site) is predicted as the reference
-category, except in a cross term whose quantitative variable has no main effect, where it stays
-without a prediction (it would have no slope), as the Summary says; a category the project
-doesn't know (in a file) is not predicted.
+covariance and, under the plot, each slope per unit with its interval. In the AIC selection and
+the contributions table, a cross term enters and leaves whole (all its categories), only with
+its main effects and its lower-order cross terms. The Methods text names each reference
+category and says what the cross terms' coefficients are. Prediction: a category the model has
+seen gets its own prediction; one it hasn't (absent from the model's observations, or from the
+other groups in cross-validation: sectors proper to a site, validated by site) is predicted as
+the reference category, except in a cross term whose quantitative variable has no main effect,
+where it stays without a prediction (it would have no slope), as the Summary says; a category
+the project doesn't know (in a file) is not predicted.
 
 Class models and the Coomans plot
 ---------------------------------
