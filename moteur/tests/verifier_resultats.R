@@ -79,6 +79,21 @@ verifier(sprintf("modèle mixte : AIC de l'ajustement en ML, R² marginal et con
            identical(r$valeurs[k("σ verger"), 2], formatC(sqrt(vc2), format = "f", digits = 2 - floor(log10(sqrt(vc2))), decimal.mark = ",")) &&
            identical(r$valeurs[k("σ résiduelle"), 2], formatC(l2$sigma, format = "f", digits = 2 - floor(log10(l2$sigma)), decimal.mark = ",")) &&
            r$valeurs[k("σ verger"), 1] == "" && r$valeurs[k("R²"), 2] == "")
+# une pente aléatoire : sa ligne à elle, « σ verger (sucre) », et sa corrélation avec l'ordonnée à
+# l'origine du verger, sans prendre la place de l'écart-type de l'ordonnée à l'origine
+m6 <- ajuster(p, definir_modele(p, "LMM", x = u("sucre", "acidite"), y = u("note_gout"), echelle = "Ctr", nom = "R6",
+                                aleatoires = list(list(by = "variable", variable = u("verger"), pentes = u("sucre")))))
+v6 <- variances_regression(m6)
+rp <- coefficients_cote_a_cote(list(R2 = m2, R6 = m6), "ic")
+kp <- function(nom) match(nom, rp$statistiques)
+pente6 <- which(v6$terme == "sucre")
+verifier(sprintf("une pente aléatoire : son σ et sa corrélation sur leurs lignes, l'ordonnée à l'origine sur la sienne (%s ; %s)",
+                 rp$valeurs[kp("σ verger (sucre)"), 2], rp$valeurs[kp("ρ verger (sucre)"), 2]),
+         identical(rp$valeurs[kp("σ verger"), 2], trois_chiffres(sqrt(v6$variance[v6$terme == "(Intercept)"]))) &&
+           identical(rp$valeurs[kp("σ verger (sucre)"), 2], trois_chiffres(sqrt(v6$variance[pente6]))) &&
+           identical(rp$valeurs[kp("ρ verger (sucre)"), 2], nombre_tableau(v6$correlation[pente6], 3)) &&
+           identical(rp$valeurs[kp("σ verger"), 1], trois_chiffres(sqrt(vc2))) && rp$valeurs[kp("σ verger (sucre)"), 1] == "" &&
+           rp$valeurs[kp("ρ verger (sucre)"), 1] == "")
 verifier("GLM et GAM : la part de la déviance expliquée (1 − déviance / déviance nulle), l'edf de la courbe de mgcv",
          identical(r$valeurs[k("Déviance expliquée"), 3], paste(nb(100 * (1 - g3$deviance / g3$null.deviance), 1), "%")) &&
            identical(r$valeurs[k("edf sucre"), 4], nb(summary(g4)$s.table[1, 1], 2)) && r$valeurs[k("edf sucre"), 1] == "")

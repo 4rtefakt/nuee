@@ -88,12 +88,27 @@ coefficients_cote_a_cote <- function(modeles, erreur = "ic") {
     v <- m$resultat$r2$deviance_expliquee
     if (is.null(m$resultat$r2$marginal) && !is.null(v)) paste0(nombre_tableau(100 * v, 1), if (fr) " %" else "%") else ""
   }))
-  # (l'écart-type de chaque ligne des tableaux des variances, dans l'ordre où elles viennent)
+  # (l'écart-type de chaque ligne des tableaux des variances, dans l'ordre où elles viennent ; une
+  # pente aléatoire, à son niveau, avec son terme : « σ site (annee) », puis sa corrélation avec
+  # l'ordonnée à l'origine de son niveau)
   variances <- lapply(modeles, variances_regression)
-  composantes <- unique(unlist(lapply(variances, function(v) as.character(v$composante)), use.names = FALSE))
+  cle <- function(v) {
+    k <- as.character(v$composante)
+    if (!is.null(v$terme)) {
+      pente <- !is.na(v$terme) & v$terme != "(Intercept)"
+      k[pente] <- sprintf("%s (%s)", k[pente], v$terme[pente])
+    }
+    k
+  }
+  composantes <- unique(unlist(lapply(variances, function(v) if (!is.null(v)) cle(v)), use.names = FALSE))
   for (k in composantes) ajouter(paste("σ", k), vapply(variances, function(v) {
-    i <- match(k, as.character(v$composante))
-    if (is.null(v) || is.na(i)) "" else trois_chiffres(sqrt(v$variance[i]))
+    i <- if (is.null(v)) NA else match(k, cle(v))
+    if (is.na(i)) "" else trois_chiffres(sqrt(v$variance[i]))
+  }, ""))
+  pentes <- unique(unlist(lapply(variances, function(v) if (!is.null(v$correlation)) cle(v)[!is.na(v$correlation)]), use.names = FALSE))
+  for (k in pentes) ajouter(paste("ρ", k), vapply(variances, function(v) {
+    i <- if (is.null(v$correlation)) NA else match(k, cle(v))
+    if (is.na(i) || is.na(v$correlation[i])) "" else nombre_tableau(v$correlation[i], 3)
   }, ""))
   ajouter("φ (CAR1)", chaque(function(m) nombre_tableau(m$resultat$phi, 3)))
   courbes <- unique(unlist(lapply(modeles, function(m) as.character(m$resultat$courbes$terme)), use.names = FALSE))

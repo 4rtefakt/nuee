@@ -1259,7 +1259,8 @@ let langue = lire('langue') || 'fr';
 
 export function t(cle, valeurs) {
   let s = (TEXTES[langue] && TEXTES[langue][cle]) || TEXTES.fr[cle] || cle;
-  if (valeurs) for (const [k, v] of Object.entries(valeurs)) s = s.replace(`{${k}}`, v);
+  // (every occurrence of a placeholder: a message may name its term twice)
+  if (valeurs) for (const [k, v] of Object.entries(valeurs)) s = s.split(`{${k}}`).join(v);
   return s;
 }
 
