@@ -897,25 +897,26 @@ Effets. Les degrés de liberté sont ceux qu'emmeans prend par défaut : les deg
 résiduels pour une régression linéaire, et pour un GLM ou un GAM dont l'échelle est estimée
 (loi normale, gamma, Tweedie) ; la règle de confinement de nlme pour un modèle mixte (le plus
 petit de ceux des coefficients qu'une moyenne ou une paire fait intervenir, l'ordonnée à
-l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un : une moyenne
-a le nombre de sites moins un, une paire de secteurs dans les sites les degrés de liberté
-intérieurs) ; z (asymptotique) pour une loi de Poisson, binomiale ou binomiale négative, comme
-emmeans pour glm() et comme les Coefficients du modèle (sur un objet mgcv::gam, emmeans prend
-les degrés de liberté résiduels quelle que soit la loi). Avec un lien log ou logit, les
-moyennes sont sur l'échelle de la réponse (exp ; logit inverse : des probabilités), leurs
-intervalles transformés depuis l'échelle du lien, et les paires sont des rapports de moyennes
-ou des rapports des cotes, testés sur l'échelle du lien, comme type = "response" dans emmeans ;
-l'échelle du lien au choix. Une variable Y transformée (log10, ln…) reste sur son échelle, et
-la vue le dit : ramenée sur l'échelle de la variable, une moyenne de logarithmes est une
-médiane (une moyenne géométrique), non une moyenne. Une combinaison de catégories qu'aucune
-observation n'a n'est pas estimable (emmeans : nonEst) : sa moyenne et ses paires sont laissées
-de côté, et nommées. Un clic sur une paire du tableau donne sa phrase pour un rapport (bouton
-copier) ; Ctrl+C copie les deux tableaux. Une fois calculées, le texte des méthodes les décrit
-(Searle et al. 1980, emmeans de Lenth, Tukey 1953 et Kramer 1956, ou Holm 1979), le rapport du
-modèle peut les inclure, et Exporter vers R les refait en R de base (la grille, les lignes L du
-modèle, la covariance et les degrés de liberté : les mêmes nombres). Non couvert : d'autres
-poids qu'égaux (weights = "proportional"… d'emmeans), d'autres contrastes que les paires
-(contre un témoin), une variable quantitative à une autre valeur que sa moyenne.
+l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un : en général,
+la moyenne d'un secteur a le nombre de sites moins un, une paire de secteurs dans les sites les
+degrés de liberté intérieurs) ; z (asymptotique) pour une loi de Poisson, binomiale ou
+binomiale négative, comme emmeans pour glm() et comme les Coefficients du modèle (sur un objet
+mgcv::gam, emmeans prend les degrés de liberté résiduels quelle que soit la loi). Avec un lien
+log ou logit, les moyennes sont sur l'échelle de la réponse (exp ; logit inverse : des
+probabilités), leurs intervalles transformés depuis l'échelle du lien, et les paires sont des
+rapports de moyennes ou des rapports des cotes, testés sur l'échelle du lien, comme type =
+"response" dans emmeans ; l'échelle du lien au choix. Une variable Y transformée (log10, ln…)
+reste sur son échelle, et la vue le dit : ramenée sur l'échelle de la variable, une moyenne de
+logarithmes est une médiane (une moyenne géométrique), non une moyenne. Une combinaison de
+catégories qu'aucune observation n'a n'est pas estimable (emmeans : nonEst) : sa moyenne et ses
+paires sont laissées de côté, et nommées. Un clic sur une paire du tableau donne sa phrase pour
+un rapport (bouton copier) ; Ctrl+C copie les deux tableaux. Une fois calculées, le texte des
+méthodes les décrit (Searle et al. 1980, emmeans de Lenth, Tukey 1953 et Kramer 1956, ou Holm
+1979), le rapport du modèle peut les inclure, et Exporter vers R les refait en R de base (la
+grille, les lignes L du modèle, la covariance et les degrés de liberté : les mêmes nombres).
+Non couvert : d'autres poids qu'égaux (weights = "proportional"… d'emmeans), d'autres
+contrastes que les paires (contre un témoin), une variable quantitative à une autre valeur que
+sa moyenne.
 Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
 un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
 comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par
