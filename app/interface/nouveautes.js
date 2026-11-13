@@ -3,10 +3,14 @@
 export const NOUVEAUTES = [
   { version: '0.9.6', date: '2026-11-13',
     fr: [
+      '« Ajuster avec CAR1 » : dans Graphiques › Autocorrélation des résidus, un bouton ajuste le même modèle avec une autocorrélation CAR1 dans le temps et les groupes choisis (ses effets aléatoires, ou un niveau plus fin en dedans), comme « Ajuster ce modèle ». Les deux se comparent ensuite par l’AIC dans Prédiction › Comparer les modèles ; un GLM ou un GAM, refait alors par mgcv::gamm, a son propre ensemble AIC, ce que la note dit.',
+      'Résidus quantiles (Dunn et Smyth, 1996) : pour un GLM ou un GAM de Poisson, binomial négatif, binomial ou gamma, la vue Résidus propose des résidus quantiles randomisés, normaux quand le modèle est juste, là où les résidus de comptages ne le sont pas même alors ; tirés avec une graine fixe, ils sont aussi dans le rapport du modèle et dans Exporter vers R.',
       'Corrigé : après une mise à jour en un clic, Nuée pouvait montrer un moment l’interface de la version d’avant, gardée par le cache de sa fenêtre : la nouvelle version s’affichait sous l’ancien numéro, disait être la dernière et ne montrait pas ses nouveautés. Le premier démarrage d’une nouvelle version vide maintenant ce cache, et l’interface est relue à chaque chargement.',
       'La mise à jour en un clic n’ouvre plus de fenêtre noire pendant qu’elle attend la fermeture de Nuée (à partir de la prochaine : celle qui installe 0.9.6 vient de la version d’avant).',
     ],
     en: [
+      '“Fit with CAR1”: in Plots › Residual autocorrelation, a button fits the same model with a CAR1 autocorrelation in the time and groups chosen (its random effects, or a finer level within them), like “Fit this model”. The two then compare by AIC in Prediction › Compare models; a GLM or GAM, then refitted by mgcv::gamm, has its own AIC set, as the note says.',
+      'Quantile residuals (Dunn & Smyth, 1996): for a Poisson, negative binomial, binomial or gamma GLM or GAM, the Residuals view offers randomized quantile residuals, normal when the model is right, where residuals of counts aren’t even then; drawn with a fixed seed, they are also in the model report and in Export to R.',
       'Fixed: after a one-click update, Nuée could show the previous version’s interface for a while, kept by its window’s cache: the new version showed the old number, said it was the latest and didn’t show what was new. The first start of a new version now empties that cache, and the interface is read again at each load.',
       'The one-click update no longer opens a black window while it waits for Nuée to close (from the next one: the update that installs 0.9.6 comes from the version before).',
     ] },
