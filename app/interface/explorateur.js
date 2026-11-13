@@ -8,15 +8,16 @@ const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot
   'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
 const PLS_SEULEMENT = ['vip', 'coefficients', 'obspred', 'permutations', 'cvanova'];
 // (a regression has no components, scores or loadings: its own views, regression.R; the trend power
-// only for a linear or linear mixed model, puissance.R)
-const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'obspred', 'residus', 'acf', 'apports', 'selection_aic', 'puissance', 'liste_obs', 'predictions'];
+// only for a linear or linear mixed model, puissance.R; the adjusted means only with a qualitative
+// variable, moyennes.R)
+const VUES_REGRESSION = ['resume', 'coefficients', 'effets', 'moyennes', 'obspred', 'residus', 'acf', 'apports', 'selection_aic', 'puissance', 'liste_obs', 'predictions'];
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 // the views of another analysis, by its type (filled by its module, vues_*.js): a list, or a
 // function of the model that gives it (a regression tree and a classification tree differ)
 export const VUES_TYPES = {};
 // a model's views, as the explorer lists them (and the Plots menu offers another analysis's)
 export const vuesDe = (m) => ((typeof VUES_TYPES[m.type] === 'function' ? VUES_TYPES[m.type](m) : VUES_TYPES[m.type])
-  || (m.regression ? VUES_REGRESSION.filter((v) => v !== 'puissance' || ['LM', 'LMM'].includes(m.type)) : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
+  || (m.regression ? VUES_REGRESSION.filter((v) => (v !== 'puissance' || ['LM', 'LMM'].includes(m.type)) && (v !== 'moyennes' || [].concat(m.qualitatives || []).length > 0)) : VUES_MODELE.filter((v) => (m.type !== 'PCA' || !PLS_SEULEMENT.includes(v))
   && (v !== 'classification' || /-DA$/.test(m.type)) && (v !== 'splot' || m.opls) && (v !== 'coomans' || m.groupe))));
 // R2 and Q2 of a fitted model, for its line in the explorer
 const chiffresModele = (m) => (m.chiffres ? m.chiffres : m.regression

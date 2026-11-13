@@ -470,6 +470,8 @@ resultat_regression <- function(id) {
        variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),
        # (les pentes aléatoires de chaque niveau, les parts de variance des niveaux et les signes d'un ajustement singulier)
        pentes = pentes_regression(m), parts_variance = parts_regression(m), singularites = singularites_regression(m),
+       # (ses variables qualitatives : celles qui ont des moyennes ajustées, moyennes.R)
+       qualitatives = I(unname(vapply(qualitatives_modele(m), `[[`, "", "nom"))),
        signature = m$signature, RMSEE = stats::setNames(list(sqrt(mean((m$donnees$y - r$ajuste)^2))), y),
        RMSEcv = stats::setNames(list(m$vc$RMSEcv), y), composantes = NULL,
        G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app),
@@ -1038,6 +1040,18 @@ DEMANDES <- list(
     r <- if (!length(setdiff(names(q), "modele")) && !is.null(avant)) utils::modifyList(avant, list(phrase = phrase_puissance(avant)))
          else puissance_tendance(e$modele, e$definition, q, avant)
     etat$modeles[[q$modele]]$modele$puissance_tendance <- r
+    c(list(modele = q$modele), r)
+  },
+  # les moyennes ajustées d'une régression (moyennes.R), gardées avec le modèle (le texte des
+  # Méthodes, le rapport et le script les reprennent alors) : q$facteur, q$dans, q$pente (des numéros
+  # de variables), q$ajustement, q$echelle ; sans réglage, ceux de la dernière fois (ses phrases dans la
+  # langue de la demande), ou ceux par défaut
+  moyennes = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    reglages <- q[setdiff(names(q), "modele")]
+    r <- moyennes_ajustees(projet(e$projet), e$modele, e$definition, if (length(reglages)) reglages else e$modele$moyennes$reglages %||% list())
+    etat$modeles[[q$modele]]$modele$moyennes <- r
     c(list(modele = q$modele), r)
   },
   correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),

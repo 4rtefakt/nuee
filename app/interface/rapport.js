@@ -3,7 +3,8 @@
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
-import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites } from './panneaux.js';
+import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites,
+  notesMoyennes, titreMoyenne, titrePaire, libellePaire } from './panneaux.js';
 import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
@@ -35,7 +36,8 @@ export const PARTIES_TYPES = {};
 // as in their panels. `variantes`: one plot per setting of the view (each term's effect; the
 // residuals against the fitted values, then on a normal Q-Q plot, and so the quantile residuals of
 // a model of counts, presence-absence or positive values). `si`: only for the models it accepts
-// (the thresholds: an additive model's curves; the trend power: a linear or linear mixed model).
+// (the thresholds: an additive model's curves; the trend power: a linear or linear mixed model; the
+// adjusted means: a model with a qualitative variable).
 const avecCourbes = (m) => [].concat((m.courbes && m.courbes.terme) || []).length > 0;
 const PARTIES_REGRESSION = [
   { cle: 'resume', defaut: true, tableau: tableauRegression },
@@ -44,6 +46,7 @@ const PARTIES_REGRESSION = [
     variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
   { cle: 'seuils', vue: 'effets', defaut: true, si: avecCourbes, tableau: resumesSeuils,
     variantes: async (m) => (await variantesSeuils(m)).map((v) => ({ terme: v.terme, seuils: true, ...(v.categorie ? { categorie: v.categorie } : {}) })) },
+  { cle: 'moyennes', vue: 'moyennes', si: (m) => [].concat(m.qualitatives || []).length > 0, tableau: tableauMoyennes },
   { cle: 'obspred', vue: 'obspred', defaut: true },
   { cle: 'residus', vue: 'residus', defaut: true, tableau: (m) => (m.residus_quantiles ? [{ texte: t('residus_note_quantiles') }] : []),
     variantes: async (m) => (m.residus_quantiles ? ['standard', 'quantiles'] : ['standard']).flatMap((residus) => [{ mode: 'ajustes', residus }, { mode: 'qq', residus }]) },
@@ -275,6 +278,26 @@ async function tableauPuissance(m) {
   return [{ texte: r.phrase }, { texte: notesPuissance(r) }].concat(r.simulation ? [{ texte: resultatSimulation(r, r.simulation) }] : [],
     [{ entetes: [t('puissance_annees'), ...unites.map((u) => libelleUnites(r, u))],
       lignes: [...new Set(col('annees'))].map((a) => [String(a), ...unites.map((u) => nombre(puissance.get(`${a}:${u}`), 2))]) }]);
+}
+
+// The adjusted means, as in their panel (moteur/R/moyennes.R: computed and kept by the engine, the
+// last settings of its view, otherwise the defaults): what was computed and how, the sentence of the
+// first pair, the means (or slopes) and the pairs.
+async function tableauMoyennes(m) {
+  let r;
+  try { r = await demander('moyennes', { modele: m.id }); } catch (e) { return [{ texte: e.message }]; }
+  const cm = (k) => [].concat(r.moyennes[k] ?? []);
+  const cp = (k) => [].concat(r.paires[k] ?? []);
+  const ddl = (x) => (x === null || x === undefined ? '∞' : nombre(x, Number.isInteger(x) ? 0 : 1));
+  const phrases = [].concat(r.phrases || []);
+  return [{ texte: notesMoyennes(r) }].concat(phrases.length ? [{ texte: phrases[0] }] : [],
+    [{ entetes: [r.facteur.nom].concat(r.dans ? [r.dans.nom] : [], [titreMoyenne(r), t('erreur_type'), t('ddl'), t('ic_bas'), t('ic_haut')]),
+      lignes: cm('niveau').map((n, i) => [n].concat(r.dans ? [cm('groupe')[i]] : [], [nombre(cm('estimation')[i]), nombre(cm('erreur_type')[i]), ddl(cm('ddl')[i]),
+        nombre(cm('bas')[i]), nombre(cm('haut')[i])])) }],
+    cp('estimation').length ? [{ entetes: (r.dans ? [r.dans.nom] : []).concat([t('moyennes_paire'), titrePaire(r), t('erreur_type'), t('ddl'),
+      cp('ddl').every((x) => x === null) ? 'z' : 't', r.reglages.ajustement === 'aucun' ? 'p' : t('p_ajuste'), t('ic_bas'), t('ic_haut')]),
+    lignes: cp('estimation').map((_, i) => (r.dans ? [cp('groupe')[i]] : []).concat([libellePaire(r, i), nombre(cp('estimation')[i]), nombre(cp('erreur_type')[i]),
+      ddl(cp('ddl')[i]), nombre(cp('t')[i], 3), valeurP(cp('p')[i]), nombre(cp('bas')[i]), nombre(cp('haut')[i])])) }] : []);
 }
 
 // A regression's coefficients, as in its Coefficients panel (exp() of them with a log or logit link).

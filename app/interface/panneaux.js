@@ -3064,6 +3064,146 @@ async function rendrePuissance(conteneur, ctx, p, loc) {
   });
 }
 
+// Adjusted means (moteur/R/moyennes.R: moyennes_ajustees), as the emmeans package computes them:
+// for a qualitative X of a regression, each category's mean adjusted for the other terms (the
+// model's predictions on a reference grid: the other quantitative variables at their mean, the
+// other qualitative ones averaged with equal weights), with its 95 % interval, and every pair of
+// categories (Tukey, Holm or none); optionally within each category of a factor crossed with it, or
+// the slope of a quantitative variable crossed with it in each category (as emtrends). Computed in R
+// and kept with the model, whose Methods text, report and R script then include it; loc.reglages
+// holds the settings chosen here (null: those of the engine's last computation), loc.paire the
+// pair whose sentence is shown.
+const ddlMoyenne = (x) => (x === null || x === undefined ? '∞' : ddlTexte(x));
+// what the grid took from the model, the degrees of freedom, the scale and the adjustment, in words
+// (the view's note, the report)
+export function notesMoyennes(r) {
+  const liste = (x) => [].concat(x || []).join(', ');
+  const cov = r.grille.covariables;
+  const valeurs = cov ? [].concat(cov.nom).map((n, i) => t([].concat(cov.courbe)[i] ? 'moyennes_grille_courbe' : 'moyennes_grille_valeur',
+    { variable: n, valeur: Number([].concat(cov.moyenne)[i].toPrecision(6)) })) : [];
+  const moyennees = [].concat(r.grille.moyennees || []);
+  const grille = [...valeurs, moyennees.length ? t('moyennes_grille_moyennees', { variables: liste(moyennees) }) : '',
+    r.grille.decalage ? t('moyennes_grille_effort', { effort: r.grille.decalage }) : ''].filter(Boolean);
+  const pentes = r.mode === 'pentes';
+  const quoi = pentes ? t('moyennes_note_pentes', { x: r.pente.nom, unite: r.pente.forme || r.pente.nom, facteur: r.facteur.nom })
+    : t('moyennes_note', { facteur: r.facteur.nom });
+  const d = r.ddl;
+  const ddl = d.methode === 'confinement' ? t('moyennes_ddl_confinement', { groupe: d.groupe, n: d.groupes - 1 })
+    : d.methode === 'asymptotique' ? t('moyennes_ddl_asymptotique') : t('moyennes_ddl_residuels');
+  const echelle = r.echelle === 'reponse' ? t(r.lien === 'logit' ? 'moyennes_echelle_logit' : 'moyennes_echelle_log')
+    : r.echelle === 'lien' ? t(pentes ? 'moyennes_pentes_lien' : 'moyennes_echelle_lien_note', { lien: r.lien })
+      : r.forme_y && !pentes ? t(r.log_y ? 'moyennes_y_log' : 'moyennes_y_transformee', { y: r.forme_y }) : '';
+  const croisee = [].concat(r.croisee || []);
+  const nonMoy = [].concat(r.non_estimables.moyennes || []);
+  const nonPaires = [].concat(r.non_estimables.paires || []);
+  return [quoi, grille.length ? t('moyennes_grille', { grille: grille.join(' ; ') }) : '', ddl, echelle,
+    t(`moyennes_${r.reglages.ajustement}`),
+    croisee.length && !r.dans ? t('moyennes_croisee', { facteur: r.facteur.nom, variables: liste(croisee) }) : '',
+    nonMoy.length ? t(pentes ? 'moyennes_non_estimables_pentes' : 'moyennes_non_estimables', { liste: liste(nonMoy) }) : '',
+    nonPaires.length ? t('moyennes_paires_non_estimables', { liste: liste(nonPaires) }) : ''].filter(Boolean).join(' ');
+}
+// the header of the estimate column of the means table, and of the pairs table
+export const titreMoyenne = (r) => (r.mode === 'pentes' ? t('pente') : r.echelle === 'reponse' && r.lien === 'logit' ? t('moyennes_probabilite') : t('moyennes_moyenne'));
+export const titrePaire = (r) => (r.echelle === 'reponse' ? t(r.lien === 'logit' ? 'rapport_cotes' : 'moyennes_rapport') : t('moyennes_difference'));
+// a pair's label: "S1 − S2", or "S1 / S2" for a ratio
+export const libellePaire = (r, i) => `${[].concat(r.paires.niveau_1)[i]} ${r.echelle === 'reponse' ? '/' : '−'} ${[].concat(r.paires.niveau_2)[i]}`;
+async function rendreMoyennes(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  conteneur._copierTableau = null;
+  const cache = ((loc.cache ??= {}).moyennes ??= {});  // (loc.cache isn't saved with the session)
+  const cle = JSON.stringify([m.id, loc.reglages || null, langueActuelle()]);
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    try {
+      cache.res = await ctx.demander('moyennes', { modele: m.id, ...(loc.reglages || {}) });
+      cache.dernier = cache.res;
+      cache.erreur = null;
+    } catch (e) {
+      cache.res = null;
+      cache.erreur = e.message;
+      // (settings kept with the session that no longer fit the model: its defaults, with the reason)
+      if (loc.reglages && !cache.dernier) {
+        try { cache.dernier = await ctx.demander('moyennes', { modele: m.id }); } catch { /* the reason stays */ }
+      }
+    }
+    cache.cle = cle;
+  }
+  // (settings refused: the last result's controls, to correct them, and the reason)
+  const r = cache.res || (loc.reglages && cache.dernier);
+  if (!r) { conteneur.replaceChildren(el('p', { class: 'erreur' }, cache.erreur)); return; }
+  const g = { facteur: null, dans: null, pente: null, ...r.reglages };
+  const changer = (k, v) => { loc.reglages = { ...g, [k]: v === '' ? null : v, ...(k === 'facteur' ? { dans: null, pente: null } : {}) }; loc.paire = 0; ctx.rafraichir(); };
+  const options = [].concat(r.options);
+  const f = options.find((o) => String(o.uid) === String(g.facteur)) || options[0];
+  const pentes = r.mode === 'pentes';
+  const barre = outils(choix(t('moyennes_facteur'), options.map((o) => [o.uid, o.nom]), g.facteur, (v) => changer('facteur', v)),
+    choix(t('moyennes_dans'), [['', t('moyennes_dans_aucun')], ...[].concat(f.dans || []).map((o) => [o.uid, o.nom])], g.dans ?? '', (v) => changer('dans', v)),
+    choix(t('moyennes_mode'), [['', t('moyennes_mode_moyennes')], ...[].concat(f.pentes || []).map((o) => [o.uid, t('moyennes_mode_pente', { x: o.nom })])], g.pente ?? '', (v) => changer('pente', v)),
+    choix(t('moyennes_ajustement'), [['tukey', 'Tukey'], ['holm', 'Holm'], ['aucun', t('aucun')]], g.ajustement, (v) => changer('ajustement', v)),
+    ['log', 'logit'].includes(r.lien) && !pentes ? choix(t('moyennes_echelle'), [['reponse', t('moyennes_echelle_reponse')], ['lien', t('moyennes_echelle_lien', { lien: r.lien })]],
+      g.echelle, (v) => changer('echelle', v)) : null);
+  const erreur = cache.erreur ? el('p', { class: 'erreur' }, cache.erreur) : null;
+  const mo = r.moyennes;
+  const pa = r.paires;
+  const cm = (k) => [].concat(mo[k] ?? []);
+  const cp = (k) => [].concat(pa[k] ?? []);
+  const nPaires = cp('estimation').length;
+  if (!(loc.paire >= 0 && loc.paire < nPaires)) loc.paire = 0;
+  const phrases = [].concat(r.phrases || []);
+  const phrase = nPaires ? phrases[loc.paire] : null;
+  const copier = phrase ? el('button', { class: 'icone-seule', title: t('copier_phrase'),
+    onclick: () => navigator.clipboard.writeText(phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy')) : null;
+  const graphe = el('div', { class: 'graphe' });
+  const basMoy = el('div', { class: 'bas', style: { flex: '2 1 0', minWidth: 0 } });
+  const basPaires = el('div', { class: 'bas', style: { flex: '3 1 0', minWidth: 0 } });
+  conteneur.replaceChildren(...[barre, erreur, el('p', { class: 'note' }, notesMoyennes(r)),
+    phrase ? el('div', { class: 'note' }, el('b', {}, phrase), ' ', copier, ' ', el('span', {}, t('moyennes_choisir_paire'))) : el('p', { class: 'note' }, t('moyennes_aucune_paire')),
+    graphe, el('div', { style: { display: 'flex', gap: '10px', flex: '1 1 0', minHeight: '140px' } }, basMoy, basPaires)].filter(Boolean));
+
+  // the plot: each mean (or slope) with its 95 % interval; within each level of `dans`, one colour per level
+  const niveaux = [].concat(r.facteur.niveaux);
+  const groupes = r.dans ? [].concat(r.dans.niveaux) : [null];
+  const c = couleursTheme();
+  const decalage = (k) => (groupes.length > 1 ? (k - (groupes.length - 1) / 2) * Math.min(0.12, 0.6 / groupes.length) : 0);
+  const est = cm('estimation');
+  const bas = cm('bas');
+  const haut = cm('haut');
+  tracer(ctx, graphe, groupes.map((gr, k) => {
+    const idx = cm('niveau').map((_, i) => i).filter((i) => gr === null || cm('groupe')[i] === gr);
+    return { type: 'scatter', mode: 'markers', name: gr === null ? r.facteur.nom : `${r.dans.nom} = ${gr}`,
+      x: idx.map((i) => niveaux.indexOf(cm('niveau')[i]) + decalage(k)), y: idx.map((i) => est[i]),
+      error_y: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: PALETTE[k % PALETTE.length], thickness: 1.5 },
+      marker: { size: 9, color: PALETTE[k % PALETTE.length] },
+      customdata: idx.map((i) => [cm('niveau')[i], fmt(bas[i], 4), fmt(haut[i], 4)]),
+      hovertemplate: `%{customdata[0]}${gr === null ? '' : ` · ${gr}`}<br>%{y:.4g} [%{customdata[1]} ; %{customdata[2]}]<extra></extra>` };
+  }), { title: { text: `${m.nom} · ${pentes ? t('moyennes_titre_pentes', { x: r.pente.nom }) : t('moyennes')}` }, dragmode: 'zoom', showlegend: groupes.length > 1,
+    xaxis: { title: { text: r.facteur.nom }, tickmode: 'array', tickvals: niveaux.map((_, i) => i), ticktext: niveaux, range: [-0.5, niveaux.length - 0.5], zeroline: false },
+    yaxis: { title: { text: pentes ? t('moyennes_axe_pente', { x: r.pente.nom }) : t('moyennes_axe', { y: r.reponse }) } },
+    shapes: pentes || r.echelle !== 'reponse' ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] : [] });
+
+  // the tables: the means (or slopes), then the pairs, a click on a pair giving its sentence
+  const num = (cle2, titre, decimales, format, alerte) => ({ cle: cle2, titre, num: true, decimales, format, alerte });
+  loc.tableMoyennes ??= {};
+  loc.tablePaires ??= {};
+  const colonnesMoy = [{ cle: 'niveau', titre: r.facteur.nom }, ...(r.dans ? [{ cle: 'groupe', titre: r.dans.nom }] : []),
+    num('estimation', titreMoyenne(r), 4), num('erreur_type', t('erreur_type'), 4), num('ddl', t('ddl'), 0, ddlMoyenne), num('bas', t('ic_bas'), 4), num('haut', t('ic_haut'), 4)];
+  const valeurMoy = (i, k) => (k === 'ddl' ? (cm('ddl')[i] ?? '∞') : cm(k)[i]);
+  tableau(basMoy, ctx, loc.tableMoyennes, { n: est.length, nom: t('moyennes'), avant: [el('b', {}, pentes ? t('moyennes_titre_pentes', { x: r.pente.nom }) : t('moyennes'))],
+    colonnes: colonnesMoy, valeur: valeurMoy });
+  const z = cp('ddl').every((x) => x === null);
+  const colonnesPaires = [...(r.dans ? [{ cle: 'groupe', titre: r.dans.nom }] : []), { cle: 'paire', titre: t('moyennes_paire') },
+    num('estimation', titrePaire(r), 4), num('erreur_type', t('erreur_type'), 4), num('ddl', t('ddl'), 0, ddlMoyenne), num('t', z ? 'z' : 't', 3),
+    num('p', r.reglages.ajustement === 'aucun' ? 'p' : t('p_ajuste'), 4, valeurP, (i) => cp('p')[i] !== null && cp('p')[i] <= 0.05), num('bas', t('ic_bas'), 4), num('haut', t('ic_haut'), 4)];
+  const valeurPaire = (i, k) => (k === 'paire' ? libellePaire(r, i) : k === 'ddl' ? (cp('ddl')[i] ?? '∞') : cp(k)[i]);
+  tableau(basPaires, ctx, loc.tablePaires, { n: nPaires, nom: t('moyennes_paires'), avant: [el('b', {}, t('moyennes_paires'))],
+    colonnes: colonnesPaires, valeur: valeurPaire, cliquer: (i) => { loc.paire = i; ctx.rafraichir(); }, choisie: (i) => i === loc.paire });
+  // Ctrl+C (app.js): both tables, as shown, one after the other
+  const texte = (colonnes, n, valeur) => [colonnes.map((x) => x.titre).join('\t'),
+    ...Array.from({ length: n }, (_, i) => colonnes.map((x) => { const v = valeur(i, x.cle); return v === null || v === undefined ? '' : v; }).join('\t'))].join('\n');
+  conteneur._copierTableau = () => navigator.clipboard.writeText([texte(colonnesMoy, est.length, valeurMoy), '', texte(colonnesPaires, nPaires, valeurPaire)].join('\n'))
+    .then(() => ctx.statut(t('table_copiee')));
+}
+
 // Every fitted model side by side. Q2 and RMSEcv compare all models validated by the same
 // groups; AIC, ΔAIC and Akaike weights only the regressions of the same response on the same
 // observations (an "AIC set", regression.R : signature). Its second mode: the coefficients of the
@@ -3332,6 +3472,7 @@ export const VUES = {
   apports: { rendre: rendreApports, titre: (m) => `${m.nom} · ${t('apports')}` },
   selection_aic: { rendre: rendreSelectionAIC, titre: (m) => `${m.nom} · ${t('selection_aic')}` },
   puissance: { rendre: rendrePuissance, titre: (m) => `${m.nom} · ${t('puissance')}` },
+  moyennes: { rendre: rendreMoyennes, titre: (m) => `${m.nom} · ${t('moyennes')}` },
   obspred: { rendre: rendreObsPred, titre: (m) => `${m.nom} · ${t('obspred')}` },
   dendrogramme: { rendre: rendreDendrogramme, titre: (m) => `${m.nom} · ${t('dendrogramme')}` },
   predictions: { rendre: rendrePredictions, titre: (m) => `${m.nom} · ${t('predictions')}` },

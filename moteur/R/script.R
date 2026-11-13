@@ -307,6 +307,9 @@ besoins_script <- function(plans, seance) {
        cellules = any(vapply(reg, function(pl) length(pl$cellules) > 0, TRUE)),
        puissance = any(vapply(reg, function(pl) !is.null(pl$puissance), TRUE)),
        simulation_puissance = any(vapply(reg, function(pl) !is.null(pl$puissance$resultat$simulation), TRUE)),
+       # (les moyennes ajustées, et les degrés de liberté de nlme pour celles d'un modèle mixte)
+       moyennes = any(vapply(reg, function(pl) !is.null(pl$moyennes), TRUE)),
+       moyennes_confinement = any(vapply(reg, function(pl) identical(pl$moyennes$ddl, "confinement"), TRUE)),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
 }
@@ -1108,6 +1111,8 @@ plan_regression <- function(projet, d, m, tab) {
        # (la puissance pour une tendance, quand elle a été calculée : puissance.R)
        puissance = if (!is.null(m$puissance_tendance)) list(resultat = m$puissance_tendance,
                                                              temps = termes_r[match(m$termes[match(m$puissance_tendance$reglages$terme, m$noms_termes)], m$termes)]),
+       # (les moyennes ajustées, quand elles ont été calculées : moyennes.R)
+       moyennes = if (!is.null(m$moyennes)) plan_moyennes(d, m, termes_r),
        # (un modèle choisi par la sélection par AIC : les lignes de d que le modèle complet n'a pas
        # ajustées, faute de valeurs, restent de côté ; regression.R, definition_selection)
        choisi = if (!is.null(d$selection_origine) && length(d$termes_complets))
@@ -1135,6 +1140,33 @@ plan_seuils <- function(m, termes_r, par) {
   }), recursive = FALSE)
 }
 
+# Les moyennes ajustées dans le plan d'une régression (moyennes.R : moyennes_ajustees, celles gardées
+# avec le modèle `m`, de définition `d`) : leurs réglages et leur échelle ; la grille, les catégories
+# observées de chaque variable qualitative (par son nom) et la moyenne de chaque variable quantitative
+# (avant sa transformation) ; chaque terme dans la grille, une catégorie (sa variable, son nom), une
+# variable quantitative (son nom, sa transformation) ou un terme croisé (les rangs de ses facteurs, sa
+# transformation) ; la variable de la pente et son pas ; les termes paramétriques candidats (pour
+# l'estimabilité), en noms R (`termes_r`).
+plan_moyennes <- function(d, m, termes_r) {
+  r <- m$moyennes
+  quals <- qualitatives_modele(m)
+  termes <- termes_regression(d$x)
+  comp <- m$composition
+  cov <- r$grille$covariables
+  cles <- vapply(comp, function(ct) if (length(ct$variables) == 1) paste(ct$variables, ct$categories) else "", "")
+  colonnes <- lapply(seq_along(m$termes), function(k) {
+    ct <- comp[[k]]
+    if (length(ct$variables) > 1) return(list(type = "croise", facteurs = match(paste(ct$variables, ct$categories), cles), tr = termes[[k]]$transform))
+    if (ct$categories != 0) return(list(type = "categorie", variable = ct$noms[1], niveau = as.character(ct$niveaux[1])))
+    list(type = "quantitative", nom = cov$nom[match(m$termes[k], cov$terme)], tr = termes[[k]]$transform)
+  })
+  list(reglages = r$reglages, mode = r$mode, echelle = r$echelle, lien = r$lien, ddl = r$ddl$methode,
+       quals = unname(lapply(quals, function(f) list(nom = f$nom, niveaux = f$niveaux))), facteur = r$facteur$nom, dans = r$dans$nom,
+       covariables = if (length(cov) && nrow(cov)) stats::setNames(cov$moyenne, cov$nom), colonnes = colonnes,
+       pente = if (!is.null(r$pente)) list(nom = r$pente$nom, delta = r$pente$delta, tr = termes[[match(r$pente$terme, m$termes)]]$transform),
+       param = termes_r[match(setdiff(m$candidats, m$lisses), m$termes)])
+}
+
 # Le type d'une régression, en mots (en-têtes des scripts).
 type_regression <- function(pl, langue) {
   tx <- function(fr, en) if (identical(langue, "en")) en else fr
@@ -1160,10 +1192,12 @@ entete_regression <- function(pl, nom_projet, version, fichiers, langue) {
                            "It redoes this model with %s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:"),
                         texte_paquets(paquet, langue))),
     paste0(tx("#   1. Fonctions : termes utiles, AIC corrigé, validation croisée", "#   1. Functions: useful terms, corrected AIC, cross-validation"),
-           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection"), if (!is.null(pl$puissance)) tx(", puissance pour une tendance", ", trend power")),
+           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection"), if (!is.null(pl$puissance)) tx(", puissance pour une tendance", ", trend power"),
+           if (!is.null(pl$moyennes)) tx(", moyennes ajustées", ", adjusted means")),
     tx("#   2. Données", "#   2. Data"),
     paste0(tx("#   3. Modèle : réponse et termes X, ajustement, validation croisée, statistiques", "#   3. Model: response and X terms, fit, cross-validation, statistics"),
-           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection"), if (!is.null(pl$puissance)) tx(", puissance pour une tendance", ", trend power")),
+           if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection"), if (!is.null(pl$puissance)) tx(", puissance pour une tendance", ", trend power"),
+           if (!is.null(pl$moyennes)) tx(", moyennes ajustées", ", adjusted means")),
     tx("#   4. Résultats : tableaux et graphiques", "#   4. Results: tables and plots"),
     tx("# Dans RStudio, Ctrl+Maj+O affiche ces parties ; Ctrl+Maj+S lance tout le script.", "# In RStudio, Ctrl+Shift+O shows these parts; Ctrl+Shift+S runs the whole script."),
     sprintf(tx("# Écrit avec %s.", "# Written with %s."), texte_paquets(paquet, langue, versions = TRUE)),
@@ -1702,6 +1736,10 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                 if (mixte) "variances_puissance" else "numeric(0)", if (car1) "TRUE" else "FALSE", texte_exact(g$alpha), s$annees, s$unites, s$n)))
   }
 
+  # --- les moyennes ajustées (moyennes.R : moyennes_ajustees), quand elles ont été calculées dans Nuée
+  mo <- pl$moyennes
+  code_moyennes <- if (!is.null(mo)) code_moyennes_regression(pl, tx, guillemets, liste)
+
   # --- le jeu de test
   nt <- aligne("cadre_test", "cadre")
   predire_test <- if (gamm) sprintf("as.vector(predict(m$gam, %s, type = \"response\"))", nt)
@@ -1747,6 +1785,9 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     if (!is.null(pu)) ligne("print(annees_80)", "puissance : les années qu'il faut pour 80 % à chaque nombre d'unités", "power: the years needed for 80% at each number of units"),
     if (!is.null(pu$resultat$simulation)) ligne("print(simulation_puissance$puissance)", "la puissance simulée (son erreur de Monte-Carlo : simulation_puissance$erreur_mc)",
                                                "the simulated power (its Monte Carlo error: power_simulation$mc_error)"),
+    if (!is.null(mo)) ligne("print(moyennes_ajustees$moyennes)", if (identical(mo$mode, "pentes")) "la pente dans chaque catégorie, son intervalle à 95 %" else "les moyennes ajustées, leur intervalle à 95 %",
+                            if (identical(mo$mode, "pentes")) "the slope in each category, its 95% interval" else "the adjusted means, their 95% interval"),
+    if (!is.null(mo)) ligne("print(moyennes_ajustees$paires)", "les paires de catégories : différence (ou rapport), intervalle et p ajustés", "the pairs of categories: difference (or ratio), adjusted interval and p"),
     if (test) ligne("print(test)", "jeu de test : RMSEP, biais, SEP, Q2 externe", "test set: RMSEP, bias, SEP, external Q2"),
     if (quantiles) ligne("print(head(observations))", "observée, ajustée, résidu standardisé et résidu quantile", "observed, fitted, standardized residual and quantile residual")
     else ligne("print(head(observations))", "observée, ajustée, résidu standardisé", "observed, fitted, standardized residual"),
@@ -1834,15 +1875,126 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "abline(h = 0.8, lty = 2, col = \"grey\")",
       if (!is.null(pu$resultat$simulation)) "points(simulation_puissance$annees, simulation_puissance$puissance, pch = 18, cex = 1.5)",
       sprintf("legend(\"bottomright\", legend = unique(puissance$unites), col = seq_along(unique(puissance$unites)), lwd = 2, title = %s, bty = \"n\")",
-              code_texte(if (L) affiches[1] else tx("Observations par an", "Observations per year"))))))
+              code_texte(if (L) affiches[1] else tx("Observations par an", "Observations per year"))))),
+    # (les moyennes ajustées, ou les pentes, et leur intervalle à 95 %)
+    if (!is.null(mo)) list(nom = "moyennes-ajustees", largeur = 6, hauteur = 4.5, code = c(
+      "mo <- moyennes_ajustees$moyennes",
+      "x <- seq_len(nrow(mo))",
+      sprintf("plot(x, mo$estimation, ylim = range(mo$bas, mo$haut), xaxt = \"n\", pch = 19, xlab = %s, ylab = %s, main = %s)", code_texte(mo$facteur),
+              code_texte(if (identical(mo$mode, "pentes")) sprintf(tx("Pente de %s", "Slope of %s"), mo$pente$nom) else pl$y$nom),
+              code_texte(if (identical(mo$mode, "pentes")) tx("Pentes par catégorie", "Slopes by category") else tx("Moyennes ajustées", "Adjusted means"))),
+      "arrows(x, mo$bas, x, mo$haut, angle = 90, code = 3, length = 0.04)",
+      "axis(1, at = x, labels = if (all(is.na(mo$groupe))) mo$niveau else paste(mo$niveau, mo$groupe, sep = \" · \"))")))
   objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations",
               if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes) c("courbes", "seuils", "plages_seuils"),
               if (!is.null(sel)) "selection", if (!is.null(pu)) c("puissance", "annees_80"), if (!is.null(pu$resultat$simulation)) "simulation_puissance",
-              if (test) c("test", "predictions_test"))
+              if (!is.null(mo)) "moyennes_ajustees", if (test) c("test", "predictions_test"))
   list(calcul = traduire_code(c(donnees, "", ajustement, "", validation, "", statistiques, if (!is.null(sel)) c("", selection), if (!is.null(pu)) c("", code_puissance),
-                                if (test) c("", code_test)), langue),
+                                if (!is.null(mo)) c("", code_moyennes), if (test) c("", code_test)), langue),
        sortie = sortie, graphiques = lapply(Filter(Negate(is.null), graphiques), function(g) { g$code <- traduire_code(g$code, langue); g }),
        objets = nom_script(objets, langue))
+}
+
+# Le code des moyennes ajustées d'une régression (moyennes.R : moyennes_ajustees ; `pl$moyennes` :
+# plan_moyennes), après son ajustement : la grille de référence (les catégories observées des
+# variables qualitatives, la moyenne de chaque variable quantitative sur les observations du modèle),
+# les termes simples à chaque ligne de la grille, les lignes L du modèle (lm, nlme : la constante et
+# les termes utiles ; mgcv : sa matrice lpmatrix), et les moyennes, ou les pentes, et leurs paires
+# (moyennes_grille, une fonction du script). `guillemets`, `liste` : ceux de code_regression.
+code_moyennes_regression <- function(pl, tx, guillemets, liste) {
+  mo <- pl$moyennes
+  g <- mo$reglages
+  mgcv <- pl$generalise
+  gamm <- isTRUE(pl$gamm)
+  lme <- length(pl$niveaux) > 0 && !mgcv
+  pentes <- identical(mo$mode, "pentes")
+  quals <- mo$quals
+  noms_q <- vapply(quals, `[[`, "", "nom")
+  cov <- mo$covariables
+  # la grille et les termes simples à chacune de ses lignes (une fonction de la valeur des variables quantitatives)
+  grille <- code_valeurs(vapply(quals, function(f) sprintf("%s = %s", code_texte(f$nom), code_textes(f$niveaux)), ""), "grille_ref <- expand.grid(list(", "), stringsAsFactors = FALSE)", ouvrir = "")
+  valeurs <- vapply(mo$colonnes, function(cl) switch(cl$type,
+    croise = "NA",
+    categorie = sprintf("as.numeric(grille_ref[[%s]] == %s)", code_texte(cl$variable), code_texte(cl$niveau)),
+    quantitative = {
+      v <- sprintf("v[[%s]]", code_texte(cl$nom))
+      sprintf("rep(%s, nrow(grille_ref))", if (!is.null(cl$tr) && !identite(cl$tr)) code_transformation(cl$tr, v, FALSE) else v)
+    }), "")
+  simples <- code_valeurs(sprintf("%s = %s", vapply(pl$x, function(t) code_texte(t$nom), ""), valeurs), "simples_grille <- function(v) cbind(", ")", ouvrir = "")
+  facteurs <- code_valeurs(vapply(mo$colonnes, function(cl) if (identical(cl$type, "croise")) sprintf("c(%s)", paste0(cl$facteurs, "L", collapse = ", ")) else "integer(0)", ""),
+                           "facteurs_grille <- list(", ")", ouvrir = "")
+  # (un terme croisé transformé : sa transformation, appliquée au produit)
+  avec_tr <- which(vapply(mo$colonnes, function(cl) identical(cl$type, "croise") && !is.null(cl$tr) && !identite(cl$tr), TRUE))
+  transformations <- if (length(avec_tr)) sprintf(", list(%s)", paste(vapply(avec_tr, function(k) sprintf("\"%d\" = function(x) %s", k, code_transformation(mo$colonnes[[k]]$tr, "x", TRUE)), ""), collapse = ", ")) else ""
+  # les lignes L du modèle à des lignes de la grille, celles des termes paramétriques candidats (Lp :
+  # l'estimabilité) et, pour nlme, dans le codage de R sans mise à l'échelle (Lb : ses degrés de liberté)
+  modele <- if (gamm) "m$gam" else "m"
+  ligne_modele <- if (mgcv) {
+    c("  nd <- as.data.frame(Xg)",
+      if (length(pl$niveaux) && !gamm) "  for (g in aleatoires) nd[[g]] <- factor(rep(levels(cadre[[g]])[1], nrow(nd)), levels = levels(cadre[[g]]))",
+      if (!is.null(pl$effort)) sprintf("  nd[[%s]] <- 1", code_texte(pl$effort$nom)),
+      if (length(pl$niveaux) && !gamm) "  exclus <- vapply(Filter(function(s) inherits(s, \"random.effect\"), m$smooth), function(s) s$label, \"\")",
+      sprintf("  L <- predict(%s, nd, type = \"lpmatrix\"%s)", modele, if (length(pl$niveaux) && !gamm) ", exclude = exclus" else ""))
+  } else "  L <- cbind(\"(Intercept)\" = 1, Xg[, utiles, drop = FALSE])"
+  lignes <- c("lignes_grille <- function(S) {",
+              sprintf("  Xg <- colonnes_grille(S, facteurs_grille, centre_x, poids_x%s)", transformations),
+              "  colnames(Xg) <- termes",
+              ligne_modele,
+              if (lme) c(sprintf("  Xb <- colonnes_grille(S, facteurs_grille, 0 * centre_x, 0 * poids_x + 1%s)", transformations),
+                         "  colnames(Xb) <- termes"),
+              sprintf("  list(L = L, Lp = cbind(1, Xg[, termes_param, drop = FALSE])%s)", if (lme) ", Lb = cbind(\"(Intercept)\" = 1, Xb)" else ""),
+              "}")
+  # la pente (emtrends) : la différence avant de la prédiction, la variable augmentée d'un millième de son étendue
+  pe <- mo$pente
+  pente <- if (pentes) {
+    v <- sprintf("moyennes_x[[%s]]", code_texte(pe$nom))
+    plus <- sprintf("moyennes_x[[%s]] + delta", code_texte(pe$nom))
+    transformee <- !is.null(pe$tr) && !identite(pe$tr)
+    c(sprintf("delta <- %s  # %s", texte_exact(pe$delta), tx(sprintf("un millième de l'étendue de %s sur les observations du modèle", guillemets(pe$nom)),
+                                                            sprintf("a thousandth of the range of %s over the model's observations", guillemets(pe$nom)))),
+      sprintf("h <- %s", if (transformee) sprintf("%s - %s", code_transformation(pe$tr, sprintf("(%s)", plus), FALSE), code_transformation(pe$tr, v, FALSE)) else "delta"),
+      sprintf("lg_plus <- lignes_grille(simples_grille(replace(moyennes_x, %s, %s)))", code_texte(pe$nom), plus),
+      "lg <- Map(function(a, b) (b - a) / h, lg, lg_plus)")
+  }
+  cellules <- if (is.null(mo$dans)) sprintf("cellules <- data.frame(a = %s, stringsAsFactors = FALSE)", code_textes(quals[[match(mo$facteur, noms_q)]]$niveaux))
+              else sprintf("cellules <- expand.grid(a = %s, b = %s, stringsAsFactors = FALSE)", code_textes(quals[[match(mo$facteur, noms_q)]]$niveaux), code_textes(quals[[match(mo$dans, noms_q)]]$niveaux))
+  groupes <- sprintf("groupes_grille <- lapply(seq_len(nrow(cellules)), function(i) which(grille_ref[[%s]] == cellules$a[i]%s))", code_texte(mo$facteur),
+                     if (is.null(mo$dans)) "" else sprintf(" & grille_ref[[%s]] == cellules$b[i]", code_texte(mo$dans)))
+  coefficients <- if (lme) "nlme::fixef(m)" else sprintf("coef(%s)", modele)
+  ddl <- switch(mo$ddl,
+    confinement = "function(Lb) ddl_confinement(m, Lb)",
+    asymptotique = "function(Lb) rep(Inf, nrow(Lb))",
+    if (mgcv) sprintf("function(Lb) rep(%s$df.residual, nrow(Lb))", modele) else "function(Lb) rep(df.residual(m), nrow(Lb))")
+  quoi <- if (pentes) tx(sprintf("la pente de %s dans chaque catégorie de %s%s", guillemets(pe$nom), guillemets(mo$facteur), if (!is.null(mo$dans)) sprintf(" et de %s", guillemets(mo$dans)) else ""),
+                         sprintf("the slope of %s in each category of %s%s", guillemets(pe$nom), guillemets(mo$facteur), if (!is.null(mo$dans)) sprintf(" and of %s", guillemets(mo$dans)) else ""))
+          else tx(sprintf("la moyenne ajustée de chaque catégorie de %s%s", guillemets(mo$facteur), if (!is.null(mo$dans)) sprintf(" dans chaque catégorie de %s", guillemets(mo$dans)) else ""),
+                  sprintf("the adjusted mean of each category of %s%s", guillemets(mo$facteur), if (!is.null(mo$dans)) sprintf(" within each category of %s", guillemets(mo$dans)) else ""))
+  ajustement <- switch(g$ajustement, tukey = tx("ajustées par la méthode de Tukey", "adjusted by Tukey's method"),
+                       holm = tx("ajustées par la méthode de Holm (leurs intervalles par celle de Bonferroni)", "adjusted by Holm's method (their intervals by Bonferroni's)"),
+                       tx("sans ajustement", "unadjusted"))
+  c(commentaire(tx(sprintf("Les moyennes ajustées faites dans Nuée (Graphiques › Moyennes ajustées), comme les calcule le paquet emmeans : %s, d'après les prédictions du modèle sur une grille de référence, chaque combinaison des catégories observées de %s, chaque variable quantitative à sa moyenne sur les observations du modèle (avant sa transformation), en moyenne à poids égaux sur les catégories des autres variables qualitatives%s ; les paires de catégories, %s.",
+                           quoi, liste(guillemets(noms_q)), if (!is.null(pl$effort)) ", l'effort à 1 (des densités)" else "", ajustement),
+                   sprintf("The adjusted means done in Nuée (Plots › Adjusted means), as the emmeans package computes them: %s, from the model's predictions on a reference grid, each combination of the observed categories of %s, each quantitative variable at its mean over the model's observations (before its transformation), averaged with equal weights over the categories of the other qualitative variables%s; the pairs of categories, %s.",
+                           quoi, liste(guillemets(noms_q)), if (!is.null(pl$effort)) ", the effort at 1 (densities)" else "", ajustement))),
+    grille,
+    if (length(cov)) code_valeurs(sprintf("%s = %s", vapply(names(cov), code_texte, ""), texte_exact(unname(cov))), "moyennes_x <- c(", ")", ouvrir = "") else "moyennes_x <- numeric(0)",
+    commentaire(tx("Les termes simples à chaque ligne de la grille (une catégorie : 0 ou 1 ; une variable quantitative : sa valeur `v`, transformée) ; les termes croisés en découlent (facteurs_grille : les rangs de leurs facteurs).",
+                   "The simple terms at each row of the grid (a category: 0 or 1; a quantitative variable: its value `v`, transformed); the cross terms follow from them (grid_factors: the ranks of their factors).")),
+    simples, facteurs,
+    code_valeurs(vapply(mo$param, code_texte, ""), "termes_param <- c(", ")", ouvrir = ""),
+    commentaire(c(tx(sprintf("Les lignes L du modèle à des lignes de la grille (%s) ; Lp, celles des termes paramétriques candidats (l'estimabilité)%s.",
+                             if (mgcv) "sa matrice lpmatrix, ses effets aléatoires exclus" else "la constante et les termes utiles",
+                             if (lme) " ; Lb, dans le codage de R sans mise à l'échelle (les degrés de liberté de nlme)" else ""),
+                     sprintf("The model's rows L at rows of the grid (%s); Lp, those of the candidate parametric terms (estimability)%s.",
+                             if (mgcv) "its lpmatrix, its random effects excluded" else "the intercept and the useful terms",
+                             if (lme) "; Lb, in R's coding without scaling (nlme's degrees of freedom)" else "")))),
+    lignes,
+    "lg <- lignes_grille(simples_grille(moyennes_x))",
+    pente,
+    cellules, groupes,
+    sprintf("moyennes_ajustees <- moyennes_grille(lg, cellules, groupes_grille, b = %s, V = vcov(%s), N = base_nulle(cbind(1, as.matrix(cadre[termes_param]))),", coefficients, modele),
+    sprintf("                                     ddl = %s, ajustement = %s, lien = %s, echelle_reponse = %s)", ddl, code_texte(g$ajustement), code_texte(mo$lien),
+            if (identical(mo$echelle, "reponse")) "TRUE" else "FALSE"))
 }
 
 # Écart entre les résultats du script d'une régression (dans `e`) et ceux de `m` : NULL s'il n'y en
@@ -1888,6 +2040,11 @@ ecart_regression <- function(pl, m, e, langue) {
       rs <- r("simulation_puissance")
       list(c(s$puissance, s$echecs, s$p), c(rs[[nom_script("puissance", langue)]], rs[[nom_script("echecs", langue)]], rs$p))
     },
+    # (les moyennes ajustées, ou les pentes, et leurs paires : estimation, erreur-type, degrés de liberté, t, p, intervalle)
+    "moyennes ajustées" = if (!is.null(pl$moyennes)) list(as.matrix(m$moyennes$moyennes[c("estimation", "erreur_type", "ddl", "bas", "haut")]),
+                                                         colonnes(r("moyennes_ajustees")[[nom_script("moyennes", langue)]], 3:7)),
+    "paires de catégories" = if (!is.null(pl$moyennes) && nrow(m$moyennes$paires)) list(as.matrix(m$moyennes$paires[c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]),
+                                                                                       colonnes(r("moyennes_ajustees")[[nom_script("paires", langue)]], 4:10)),
     test = if (!is.null(m$test)) list(m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")], colonnes(r("test"), 2:6)))
   ecarts <- vapply(Filter(Negate(is.null), paires), function(p) ecart_valeurs(p[[1]], p[[2]]), 0)
   if (all(ecarts < 1e-8)) return(NULL)
@@ -1923,6 +2080,7 @@ code_fonctions <- function(b, plans, langue) {
     if (isTRUE(b$lmm) || isTRUE(b$gamm)) modele_variances_niveaux(tx),
     if (isTRUE(b$pentes_nlme)) modele_variances_pentes(tx),
     if (isTRUE(b$puissance)) modele_puissance_tendance(tx, isTRUE(b$simulation_puissance)),
+    if (isTRUE(b$moyennes)) modele_moyennes_ajustees(tx, isTRUE(b$moyennes_confinement)),
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
     if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx), if (isTRUE(b$par_courbes)) c("", modele_courbes_par_categorie(tx))),
@@ -2458,6 +2616,132 @@ modele_puissance_tendance <- function(tx, simulation) c(
     "  list(annees = annees, unites = unites, n = n, puissance = puissance, erreur_mc = sqrt(puissance * (1 - puissance) / sum(ok)), echecs = sum(!ok), p = p)",
     "}"))
 
+# Les moyennes ajustées (moyennes.R : moyennes_ajustees), écrites pour le script : les colonnes du
+# modèle à des lignes de la grille, l'estimabilité, les degrés de liberté de nlme (`confinement`),
+# l'ajustement des paires, et les moyennes (ou les pentes) et leurs paires.
+modele_moyennes_ajustees <- function(tx, confinement) c(
+  commentaire(tx("Les moyennes ajustées (des moyennes marginales estimées ; Searle et al., 1980), comme les calcule le paquet emmeans (Lenth) : les prédictions du modèle sur une grille de référence. colonnes_grille() : les colonnes du modèle à des lignes de la grille, comme celles des données ; les termes simples (`S` : leur valeur, transformée) centrés et mis à l'échelle (`centre`, `poids`), puis chaque terme croisé, le produit de ses facteurs mis à l'échelle (`facteurs` : leurs rangs), transformé s'il l'est (`transformations`), mis à l'échelle à son tour.",
+                 "Adjusted means (estimated marginal means; Searle et al., 1980), as the emmeans package computes them (Lenth): the model's predictions on a reference grid. grid_columns(): the model's columns at rows of the grid, as those of the data; the simple terms (`S`: their value, transformed) centred and scaled (`centre`, `weight`), then each cross term, the product of its scaled factors (`factors`: their ranks), transformed if it is (`transformations`), scaled in turn.")),
+  "colonnes_grille <- function(S, facteurs, centre, poids, transformations = list()) {",
+  "  X <- sweep(sweep(S, 2, centre), 2, poids, \"*\")",
+  "  for (k in which(lengths(facteurs) > 0)) {",
+  "    x <- apply(X[, facteurs[[k]], drop = FALSE], 1, prod)",
+  "    if (!is.null(transformations[[as.character(k)]])) x <- transformations[[as.character(k)]](x)",
+  "    X[, k] <- (x - centre[k]) * poids[k]",
+  "  }",
+  "  X",
+  "}",
+  commentaire(tx("Une ligne L est estimable quand elle est orthogonale à l'espace nul des colonnes du modèle `X` (base_nulle() : une base orthonormée de cet espace, de rang celui de la décomposition QR pivotée de lm()) ; une combinaison de catégories qu'aucune observation n'a ne l'est pas. Le critère du paquet estimability, que prend emmeans.",
+                 "A row L is estimable when it is orthogonal to the null space of the model's columns `X` (null_basis(): an orthonormal basis of that space, of the rank of lm()'s pivoted QR decomposition); a combination of categories no observation has isn't. The criterion of the estimability package, which emmeans uses.")),
+  "base_nulle <- function(X, tol = 1e-7) {",
+  "  q <- qr(X, tol = tol)",
+  "  r <- q$rank",
+  "  p <- ncol(X)",
+  "  if (r == p) return(NULL)",
+  "  R <- qr.R(q)",
+  "  N <- matrix(0, p, p - r)",
+  "  N[q$pivot[seq_len(r)], ] <- -backsolve(R[seq_len(r), seq_len(r), drop = FALSE], R[seq_len(r), (r + 1):p, drop = FALSE])",
+  "  N[q$pivot[(r + 1):p], ] <- diag(p - r)",
+  "  qr.Q(qr(N))",
+  "}",
+  "estimables <- function(L, N, tol = 1e-8) {",
+  "  if (is.null(N)) return(rep(TRUE, nrow(L)))",
+  "  ssq <- rowSums(L^2)",
+  "  ssq[ssq < tol] <- 1",
+  "  rowSums((L %*% N)^2) < tol * ssq",
+  "}",
+  tx("# la moyenne, à poids égaux, des lignes de M de chaque groupe (des rangs de lignes)", "# the mean, with equal weights, of the rows of M of each group (row ranks)"),
+  "moyennes_lignes <- function(M, groupes) do.call(rbind, lapply(groupes, function(i) colMeans(M[i, , drop = FALSE])))",
+  if (confinement) c(
+    commentaire(tx("Les degrés de liberté d'une ligne d'un modèle de nlme (`Lb` : dans le codage de R sans mise à l'échelle), ceux qu'emmeans prend par défaut : la règle de confinement de nlme (m$fixDF), le plus petit de ceux des coefficients que la ligne fait intervenir (|L| > 1e-4), l'ordonnée à l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un.",
+                   "The degrees of freedom of a row of an nlme model (`Lb`: in R's coding without scaling), those emmeans takes by default: nlme's containment rule (m$fixDF), the smallest of those of the coefficients the row involves (|L| > 1e-4), the intercept counting for the number of groups of the first random effect minus one.")),
+    "ddl_confinement <- function(m, Lb) {",
+    "  dfx <- m$fixDF$X",
+    "  dfx[[\"(Intercept)\"]] <- nlevels(m$groups[[1]]) - 1",
+    "  apply(Lb[, names(dfx), drop = FALSE], 1, function(x) {",
+    "    i <- which(abs(x) > 1e-4)",
+    "    if (length(i)) min(dfx[i]) else NA_real_",
+    "  })",
+    "}"),
+  commentaire(tx("Les valeurs p et les intervalles à 95 % des paires `pa` (la différence sur l'échelle du lien, son erreur-type, ses degrés de liberté ; `groupe` : la catégorie de « dans chaque niveau de »), ajustés comme emmeans les ajuste dans chaque groupe, sur ses n paires estimables : \"tukey\", la loi du maximum studentisé pour une famille de (1 + racine(1 + 8n)) / 2 moyennes (Tukey, 1953 ; Kramer, 1956) ; \"holm\", les valeurs p de Holm (1979) et les intervalles de Bonferroni (emmeans ne donne pas d'intervalles de Holm) ; \"aucun\". Une seule paire n'a rien à ajuster, sauf pour Tukey quand des paires ne sont pas estimables (`adaptatif`, comme emmeans).",
+                 "The p-values and 95% intervals of the pairs `pa` (the difference on the link scale, its standard error, its degrees of freedom; `group`: the category of \"within each level of\"), adjusted as emmeans adjusts them within each group, over its n estimable pairs: \"tukey\", the studentized range distribution for a family of (1 + sqrt(1 + 8n)) / 2 means (Tukey, 1953; Kramer, 1956); \"holm\", Holm's p-values (1979) and Bonferroni's intervals (emmeans gives no Holm intervals); \"aucun\" (none). A single pair has nothing to adjust, except for Tukey when some pairs aren't estimable (`adaptive`, as emmeans does).")),
+  "ajuster_paires <- function(pa, ajustement, adaptatif = FALSE) {",
+  "  pa$t <- pa$difference / pa$erreur_type_lien",
+  "  df <- ifelse(is.na(pa$ddl), Inf, pa$ddl)",
+  "  p_brute <- 2 * pt(abs(pa$t), df, lower.tail = FALSE)",
+  "  p <- p_brute",
+  "  critique <- qt(0.975, df)",
+  "  taille_famille <- rep(NA_real_, nrow(pa))",
+  "  for (g in unique(pa$groupe)) {",
+  "    ici <- which(pa$groupe %in% g)",
+  "    nc <- length(ici)",
+  "    if (ajustement == \"aucun\" || nc < 1 || (nc < 2 && !(adaptatif && ajustement == \"tukey\"))) next",
+  "    if (ajustement == \"tukey\") {",
+  "      k <- (1 + sqrt(1 + 8 * nc)) / 2",
+  "      taille_famille[ici] <- k",
+  "      p[ici] <- ptukey(sqrt(2) * abs(pa$t[ici]), k, zapsmall(df[ici]), lower.tail = FALSE)",
+  "      critique[ici] <- qtukey(0.95, k, df[ici]) / sqrt(2)",
+  "    } else {",
+  "      taille_famille[ici] <- nc",
+  "      p[ici] <- p.adjust(p_brute[ici], \"holm\")",
+  "      critique[ici] <- qt(1 - 0.05 / nc / 2, df[ici])",
+  "    }",
+  "  }",
+  "  pa$p <- p",
+  "  pa$taille_famille <- taille_famille",
+  "  pa$bas_lien <- pa$difference - critique * pa$erreur_type_lien",
+  "  pa$haut_lien <- pa$difference + critique * pa$erreur_type_lien",
+  "  pa",
+  "}",
+  commentaire(tx("Les moyennes ajustées : `lignes`, les lignes de la grille (L, celles du modèle ; Lp, celles des termes paramétriques candidats, pour l'estimabilité ; Lb, pour les degrés de liberté de nlme) ; la moyenne de chaque cellule (`cellules` : sa catégorie a, et b de « dans chaque niveau de » ; `groupes` : ses lignes de la grille) est celle de ses lignes, à poids égaux, son estimation L b, son erreur-type racine(L V L'), son intervalle à 95 % ; avec le lien log ou logit et `echelle_reponse`, ramenée sur l'échelle de la réponse. Puis toutes les paires de catégories dans chaque b, la différence (ou le rapport sur l'échelle de la réponse), ajustées (ajuster_paires). Ce qui n'est pas estimable est laissé de côté, et nommé.",
+                 "The adjusted means: `rows`, the rows of the grid (L, the model's; Lp, those of the candidate parametric terms, for estimability; Lb, for nlme's degrees of freedom); the mean of each cell (`cells`: its category a, and b of \"within each level of\"; `groups`: its rows of the grid) is that of its rows, with equal weights, its estimate L b, its standard error sqrt(L V L'), its 95% interval; with the log or logit link and `response_scale`, back-transformed to the response scale. Then every pair of categories within each b, the difference (or the ratio on the response scale), adjusted (adjust_pairs). What isn't estimable is left out, and named.")),
+  "moyennes_grille <- function(lignes, cellules, groupes, b, V, N, ddl, ajustement, lien = \"identity\", echelle_reponse = FALSE) {",
+  "  Lc <- moyennes_lignes(lignes$L[, names(b), drop = FALSE], groupes)",
+  "  Lpc <- moyennes_lignes(lignes$Lp, groupes)",
+  "  Lbc <- moyennes_lignes(if (is.null(lignes$Lb)) lignes$L else lignes$Lb, groupes)",
+  "  ec <- estimables(Lpc, N)",
+  "  est <- as.vector(Lc %*% b)",
+  "  se <- sqrt(pmax(0, rowSums((Lc %*% V) * Lc)))",
+  "  dfc <- ddl(Lbc)",
+  "  qt95 <- qt(0.975, ifelse(is.na(dfc), Inf, dfc))",
+  "  inverse <- if (lien == \"logit\") plogis else exp",
+  "  derivee <- if (lien == \"logit\") dlogis else exp",
+  "  groupe <- if (is.null(cellules$b)) rep(NA_character_, nrow(cellules)) else cellules$b",
+  "  moy <- data.frame(niveau = cellules$a, groupe = groupe, estimation = est, erreur_type = se, ddl = dfc, bas = est - qt95 * se, haut = est + qt95 * se)",
+  "  if (echelle_reponse) {",
+  "    moy$estimation <- inverse(est)",
+  "    moy$erreur_type <- abs(derivee(est)) * se",
+  "    moy$bas <- inverse(est - qt95 * se)",
+  "    moy$haut <- inverse(est + qt95 * se)",
+  "  }",
+  "  etiquettes <- if (is.null(cellules$b)) cellules$a else paste(cellules$a, cellules$b, sep = \" · \")",
+  "  paires <- list()",
+  "  non_paires <- character(0)",
+  "  for (g in unique(groupe)) {",
+  "    ici <- which(groupe %in% g)",
+  "    if (length(ici) < 2) next",
+  "    ij <- combn(ici, 2)",
+  "    for (k in seq_len(ncol(ij))) {",
+  "      i <- ij[1, k]",
+  "      j <- ij[2, k]",
+  "      etiquette <- paste(cellules$a[i], \"−\", cellules$a[j])",
+  "      if (!estimables(Lpc[i, , drop = FALSE] - Lpc[j, , drop = FALSE], N)) {",
+  "        non_paires <- c(non_paires, if (is.na(g)) etiquette else sprintf(\"%s (%s)\", etiquette, g))",
+  "        next",
+  "      }",
+  "      Ld <- Lc[i, , drop = FALSE] - Lc[j, , drop = FALSE]",
+  "      paires[[length(paires) + 1]] <- data.frame(groupe = g, niveau_1 = cellules$a[i], niveau_2 = cellules$a[j], difference = sum(Ld * b),",
+  "                                                 erreur_type_lien = sqrt(max(0, sum((Ld %*% V) * Ld))), ddl = ddl(Lbc[i, , drop = FALSE] - Lbc[j, , drop = FALSE]))",
+  "    }",
+  "  }",
+  "  pa <- if (length(paires)) ajuster_paires(do.call(rbind, paires), ajustement, adaptatif = length(non_paires) > 0)",
+  "  rapport <- function(x) if (echelle_reponse) exp(x) else x",
+  "  pa <- if (!is.null(pa)) data.frame(groupe = pa$groupe, niveau_1 = pa$niveau_1, niveau_2 = pa$niveau_2, estimation = rapport(pa$difference),",
+  "                                     erreur_type = if (echelle_reponse) exp(pa$difference) * pa$erreur_type_lien else pa$erreur_type_lien,",
+  "                                     ddl = pa$ddl, t = pa$t, p = pa$p, bas = rapport(pa$bas_lien), haut = rapport(pa$haut_lien))",
+  "  list(moyennes = moy[ec, , drop = FALSE], paires = pa, non_estimables = list(moyennes = etiquettes[!ec], paires = non_paires))",
+  "}")
+
 modele_validation_regression <- function(tx) c(
   commentaire(tx("Validation croisée d'une régression : chaque groupe prédit par le modèle ajusté sans lui (`ajuster`, sur les autres lignes de `cadre`) ; `predire(m, nouvelles, appris)` donne ses prédictions. Un ajustement qui échoue laisse son groupe sans prédiction (`echecs`). Q2 et RMSEcv sur la réponse, la première colonne de `cadre`.",
                  "Cross-validation of a regression: each group predicted by the model fitted without it (`fit`, on the other rows of `frame`); `predict_group(m, new_rows, learnt)` gives its predictions. A fit that fails leaves its group without prediction (`failures`). Q2 and RMSEcv on the response, the first column of `frame`.")),
@@ -2831,7 +3115,17 @@ NOMS_SCRIPT_EN <- c(
   temps_puissance = "power_time", plan_puissance = "power_design", variances_puissance = "power_variances", phi_puissance = "power_phi",
   puissance = "power", annees_80 = "years_80", simulation_puissance = "power_simulation", annees = "years", unites = "units", series = "series",
   repetitions = "repetitions", emboites = "nested", distincts = "distinct", arrondi = "rounded", dans_n = "within_n", erreur_mc = "mc_error",
-  plan = "design", dans = "finer_group", niveaux = "level_columns", sim = "simulated_data")
+  plan = "design", dans = "finer_group", niveaux = "level_columns", sim = "simulated_data",
+  # (les moyennes ajustées ; ni a ni b : des colonnes de `cellules` aussi en texte)
+  moyennes_ajustees = "adjusted_means", moyennes_grille = "grid_means", colonnes_grille = "grid_columns", base_nulle = "null_basis",
+  estimables = "estimable_rows", moyennes_lignes = "row_means", ddl_confinement = "containment_df", ajuster_paires = "adjust_pairs",
+  grille_ref = "reference_grid", moyennes_x = "x_means", simples_grille = "grid_simple_terms", facteurs_grille = "grid_factors",
+  termes_param = "parametric_terms", lignes_grille = "grid_rows", lg = "grid_lines", lg_plus = "grid_lines_plus", cellules = "grid_cells",
+  groupes_grille = "grid_groups", moyennes = "means", paires = "pairs", non_estimables = "non_estimable", non_paires = "non_estimable_pairs",
+  niveau_1 = "level_1", niveau_2 = "level_2", erreur_type_lien = "link_std_error", bas_lien = "link_lower", haut_lien = "link_upper",
+  p_brute = "raw_p", taille_famille = "family_size", adaptatif = "adaptive", ajustement = "adjustment", lien = "link",
+  echelle_reponse = "response_scale", etiquettes = "labels", etiquette = "label", moy = "means_table", dfc = "cell_df",
+  facteurs = "factors", groupes = "groups")
 
 nom_script <- function(x, langue) if (identical(langue, "en")) ifelse(x %in% names(NOMS_SCRIPT_EN), NOMS_SCRIPT_EN[x], x) else x
 
@@ -3045,6 +3339,8 @@ lignes_rapport <- function(format, pl, langue, methodes, fonctions, code_donnees
       if (!is.null(pl$selection)) bloc("selection-aic", kable("head(selection$modeles, 20)", 3)),
       if (!is.null(pl$selection)) bloc("importance-aic", kable("selection$importance", 3)),
       if (!is.null(pl$puissance)) bloc("puissance-80", kable("annees_80", NA)),
+      if (!is.null(pl$moyennes)) bloc("tableau-moyennes", kable("moyennes_ajustees$moyennes", 4)),
+      if (!is.null(pl$moyennes)) bloc("paires-moyennes", kable("moyennes_ajustees$paires", 4)),
       graphiques,
       if (test) bloc("test", kable("test", 3)))
   } else {

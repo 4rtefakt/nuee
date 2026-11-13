@@ -83,6 +83,7 @@ journaliser <- function(nom, q, r) {
                     definition_modele(r$modele$id, sprintf("# modèle mixte BACI %s du projet %s", r$modele$nom, projet(r$modele$projet)$nom))),
     selection_aic = sprintf("selection_aic(%s, definition(%s))", q$modele, code_r(q$modele)),
     puissance_tendance = if (length(setdiff(names(q), "modele"))) sprintf("puissance_tendance(%s, definition(%s), %s)", q$modele, code_r(q$modele), code_r(q[setdiff(names(q), "modele")])),
+    moyennes = if (length(setdiff(names(q), "modele"))) sprintf("moyennes_ajustees(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q[setdiff(names(q), "modele")])),
     predire = sprintf("predire(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele),
                       if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),
     predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),

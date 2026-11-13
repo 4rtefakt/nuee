@@ -868,6 +868,54 @@ raison : les GLM et les GAM, des pentes aléatoires, un modèle sans X quantitat
 le temps, une autocorrélation CAR1 le long d'un temps d'autres unités que celui de la tendance.
 Une fois calculée, le texte des méthodes la décrit, le rapport du modèle peut la contenir et
 Exporter vers R la refait (la simulation avec les mêmes tirages).
+Graphiques › Moyennes ajustées (aussi sous chaque régression qui a une variable qualitative,
+dans l'explorateur) : la moyenne de chaque catégorie d'une variable qualitative X ajustée sur
+les autres termes du modèle, comme le calcule le paquet emmeans de R (Lenth ; ses conventions
+par défaut, sans le paquet) : les moyennes marginales estimées de Searle, Speed et Milliken
+(1980). Choisir la variable (un effet principal, ou un facteur d'un terme croisé). Chaque
+moyenne est la prédiction du modèle sur une grille de référence, moyennée : la grille a chaque
+combinaison des catégories observées des variables qualitatives du modèle ; chaque variable
+quantitative y est à sa moyenne sur les observations du modèle (une variable transformée, à la
+transformation de sa moyenne, comme emmeans : le log10 de la moyenne de x, non la moyenne de
+log10(x)), les termes croisés et les carrés évalués à ces valeurs (le produit des moyennes),
+une courbe (GAM) à la moyenne de sa variable, l'effort à 1 (des densités, comme offset = 0 dans
+emmeans) ; la moyenne d'une catégorie est celle des lignes de la grille qui l'ont, à poids
+égaux sur les catégories des autres variables qualitatives. Son erreur-type est √(L V Lᵀ), V la
+covariance des coefficients (celle de nlme pour un modèle mixte, celle, bayésienne, de mgcv
+pour un GLM ou un GAM, comme emmeans), avec son intervalle à 95 %. Dessous, toutes les paires
+de catégories : la différence avec son intervalle et sa valeur p, ajustés par la méthode de
+Tukey (par défaut : la loi du maximum studentisé pour le nombre de moyennes comparées ; Tukey
+1953, Kramer 1956), par celle de Holm (les valeurs p ; les intervalles par celle de Bonferroni,
+comme emmeans, la méthode de Holm n'en donnant pas) ou sans ajustement. « Dans chaque niveau de
+» une autre variable qualitative croisée avec la première (le traitement dans chaque habitat) :
+les catégories de la première comparées dans chaque catégorie de l'autre, l'ajustement dans
+chacune. « Pour chaque catégorie › la pente de x », pour une variable quantitative croisée avec
+elle (annee × secteur) : la pente de x dans chaque catégorie (par unité du terme, transformé
+s'il l'est), la dérivée des prédictions comme emtrends la prend (une différence avant d'un
+millième de l'étendue de x), et les paires de pentes ; pour une droite, les pentes de la vue
+Effets. Les degrés de liberté sont ceux qu'emmeans prend par défaut : les degrés de liberté
+résiduels pour une régression linéaire, et pour un GLM ou un GAM dont l'échelle est estimée
+(loi normale, gamma, Tweedie) ; la règle de confinement de nlme pour un modèle mixte (le plus
+petit de ceux des coefficients qu'une moyenne ou une paire fait intervenir, l'ordonnée à
+l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un : une moyenne
+a le nombre de sites moins un, une paire de secteurs dans les sites les degrés de liberté
+intérieurs) ; z (asymptotique) pour une loi de Poisson, binomiale ou binomiale négative, comme
+emmeans pour glm() et comme les Coefficients du modèle (sur un objet mgcv::gam, emmeans prend
+les degrés de liberté résiduels quelle que soit la loi). Avec un lien log ou logit, les
+moyennes sont sur l'échelle de la réponse (exp ; logit inverse : des probabilités), leurs
+intervalles transformés depuis l'échelle du lien, et les paires sont des rapports de moyennes
+ou des rapports des cotes, testés sur l'échelle du lien, comme type = "response" dans emmeans ;
+l'échelle du lien au choix. Une variable Y transformée (log10, ln…) reste sur son échelle, et
+la vue le dit : ramenée sur l'échelle de la variable, une moyenne de logarithmes est une
+médiane (une moyenne géométrique), non une moyenne. Une combinaison de catégories qu'aucune
+observation n'a n'est pas estimable (emmeans : nonEst) : sa moyenne et ses paires sont laissées
+de côté, et nommées. Un clic sur une paire du tableau donne sa phrase pour un rapport (bouton
+copier) ; Ctrl+C copie les deux tableaux. Une fois calculées, le texte des méthodes les décrit
+(Searle et al. 1980, emmeans de Lenth, Tukey 1953 et Kramer 1956, ou Holm 1979), le rapport du
+modèle peut les inclure, et Exporter vers R les refait en R de base (la grille, les lignes L du
+modèle, la covariance et les degrés de liberté : les mêmes nombres). Non couvert : d'autres
+poids qu'égaux (weights = "proportional"… d'emmeans), d'autres contrastes que les paires
+(contre un témoin), une variable quantitative à une autre valeur que sa moyenne.
 Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
 un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
 comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par

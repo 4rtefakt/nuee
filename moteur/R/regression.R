@@ -2049,6 +2049,12 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     cites <- union(cites, pp$cites)
     pp$texte
   }
+  # (les moyennes ajustées, quand elles ont été calculées sur ce modèle : moyennes.R)
+  p_moyennes <- if (!is.null(m$moyennes)) {
+    pm <- phrase_methodes_moyennes(m, d, fr, liste, guillemets)
+    cites <- union(cites, pm$cites)
+    pm$texte
+  }
 
   # --- logiciel
   annee_r <- R.version$year
@@ -2069,8 +2075,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     nuee = sprintf(REFERENCES$nuee, annee_nuee, if (nzchar(version)) sprintf(" (version %s)", version) else ""),
     nlme = sprintf(REFERENCES_REGRESSION$nlme, annee_nlme, nlme$Version),
     mgcv = sprintf(REFERENCES_REGRESSION$mgcv, annee_mgcv, mgcv$Version),
-    REFERENCES_REGRESSION[[k]]), "")
-  list(paragraphes = c(p1, paste(p2, collapse = " "), p3, paste(p4, collapse = " "), p_puissance, p5), references = unname(sort(references)))
+    REFERENCES_REGRESSION[[k]] %||% REFERENCES_MOYENNES[[k]]), "")
+  list(paragraphes = c(p1, paste(p2, collapse = " "), p3, paste(p4, collapse = " "), p_puissance, p_moyennes, p5), references = unname(sort(references)))
 }
 
 # La sélection par l'AIC dans le texte des Méthodes (selection_aic, quand elle a été faite) : les

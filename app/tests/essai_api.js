@@ -896,6 +896,50 @@ async function principal() {
       try { await api('puissance_tendance', { modele: glm.id }); } catch (err) { refus = err.message; }
       verifier(/GLM, GAM/.test(refus), `un GLM, refusé : « ${refus} »`);
     });
+    await etape('moyennes ajustées (comme emmeans) : les moyennes, les paires, les pentes par catégorie, gardées avec le modèle', async () => {
+      // 4 sites of 3 sectors counted from 2001 to 2008, a slope per sector, a habitat per site
+      let g = 23;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const pentes = { S1: 0.1, S2: 0.3, S3: -0.1 };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D']) {
+        for (const sec of ['S1', 'S2', 'S3']) {
+          for (let an = 2001; an <= 2008; an += 1) lignes.push([`${s}${sec}${an}`, s, sec, s < 'C' ? 'H1' : 'H2', an, (3 + pentes[sec] * (an - 2000) + 0.3 * alea()).toFixed(4)]);
+        }
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tsecteur\thabitat\tannee\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Moyennes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const lmm = await api('ajuster', { projet: q.id, type: 'LMM', x: [v.annee, v.secteur, v.habitat], y: [v.y], echelle: 'none', nom: 'MA1',
+        croises: [[v.annee, v.secteur]], aleatoires: [{ by: 'variable', variable: v.site }] });
+      const lm0 = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee], y: [v.y], echelle: 'none', nom: 'MA0' });
+      // (moteur/R/moyennes.R) by default: the first qualitative variable, its 3 means, their 3 pairs (Tukey), a sentence each
+      const r = await api('moyennes', { modele: lmm.id });
+      const col = (t, k) => [].concat(t[k]);
+      const ddlMoy = col(r.moyennes, 'ddl');
+      const ddlPaires = col(r.paires, 'ddl');
+      verifier([].concat(lmm.qualitatives).join() === 'secteur,habitat' && [].concat(lm0.qualitatives).length === 0 && String(r.reglages.facteur) === String(v.secteur)
+        && col(r.moyennes, 'niveau').join() === 'S1,S2,S3' && col(r.paires, 'niveau_1').join() === 'S1,S1,S2' && col(r.paires, 'p').every((p) => p >= 0 && p <= 1)
+        && ddlMoy.every((d) => d === ddlMoy[0]) && ddlPaires.every((d) => d > ddlMoy[0]) && r.ddl.methode === 'confinement' && [].concat(r.phrases).length === 3
+        && /^Moyennes ajustées de « y » par « secteur » \(modèle linéaire mixte\) : S1 − S2 = /.test(r.phrases[0]) && [].concat(r.grille.moyennees).join() === 'habitat'
+        && r.options.length === 2 && [].concat(r.options[0].pentes).map((o) => o.nom).join() === 'annee' && [].concat(r.options[1].dans).length === 0,
+      `moyennes par défaut : ${JSON.stringify({ reglages: r.reglages, moyennes: r.moyennes, ddl: r.ddl }).slice(0, 500)}`);
+      // the slope of the year in each sector, Holm, in English; then kept with the model, in its Methods text
+      const p = await api('moyennes', { modele: lmm.id, facteur: v.secteur, dans: null, pente: v.annee, ajustement: 'holm', echelle: 'reponse' }, 'en');
+      const est = col(p.moyennes, 'estimation');
+      const garde = await api('moyennes', { modele: lmm.id });
+      const tm = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
+      verifier(p.mode === 'pentes' && est.every((x, i) => Math.abs(x - [0.1, 0.3, -0.1][i]) < 0.05) && col(p.paires, 'famille').every((k) => k === 3)
+        && /^Slopes of “annee” by “secteur” \(linear mixed model\): S1 − S2 = .*\(Holm, 3 pairs\)/.test(p.phrases[0])
+        && garde.mode === 'pentes' && garde.reglages.ajustement === 'holm'
+        && [].concat(tm.paragraphes).some((x) => /The slope of “annee” in each category of “secteur”/.test(x)) && [].concat(tm.references).some((x) => /^Searle/.test(x)),
+      `pentes par secteur, gardées, dans le texte des méthodes : ${JSON.stringify(est)} ${p.phrases[0]}`);
+      let refusDans = '';
+      try { await api('moyennes', { modele: lmm.id, facteur: v.secteur, dans: v.habitat }); } catch (err) { refusDans = err.message; }
+      let refusSans = '';
+      try { await api('moyennes', { modele: lm0.id }); } catch (err) { refusSans = err.message; }
+      verifier(/n'est croisée avec « secteur » dans aucun terme/.test(refusDans) && /pas de variable qualitative/.test(refusSans),
+        `refus : « ${refusDans} » ; « ${refusSans} »`);
+    });
     await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
       // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the
       // impact) rises from 2006; S3 has no row in 2002; S4 is neither impact nor control

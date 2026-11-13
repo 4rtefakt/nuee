@@ -349,7 +349,7 @@ verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e
 cat("Régressions (lm, nlme, mgcv)\n")
 # Ce que le moteur donne d'une régression, et ce que son script a calculé (sous ses noms, dans sa langue).
 ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection",
-                         "puissance", "annees_80", "simulation_puissance")
+                         "puissance", "annees_80", "simulation_puissance", "moyennes_ajustees")
 COURBES_SEUILS <- c("x", "effet", "bas", "haut", "x_pente", "pente", "pente_bas", "pente_haut")
 moteur_regression <- function(m) {
   r <- m$resultat
@@ -373,7 +373,10 @@ moteur_regression <- function(m) {
        # (la puissance pour une tendance, quand elle a été calculée : chaque plan, les années pour 80 %, la simulation et ses p)
        "puissance pour une tendance" = if (!is.null(m$puissance_tendance)) as.matrix(m$puissance_tendance$tableau[c("observations", "erreur_type", "puissance")]),
        "années pour 80 %" = m$puissance_tendance$annees_80$annees,
-       "simulation de la puissance" = if (!is.null(m$puissance_tendance$simulation)) with(m$puissance_tendance$simulation, c(puissance, echecs, p)))
+       "simulation de la puissance" = if (!is.null(m$puissance_tendance$simulation)) with(m$puissance_tendance$simulation, c(puissance, echecs, p)),
+       # (les moyennes ajustées, quand elles ont été calculées : moyennes, ou pentes, et paires)
+       "moyennes ajustées" = if (!is.null(m$moyennes)) as.matrix(m$moyennes$moyennes[c("estimation", "erreur_type", "ddl", "bas", "haut")]),
+       "paires de catégories" = if (!is.null(m$moyennes)) as.matrix(m$moyennes$paires[c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]))
 }
 script_regression <- function(s, langue) {
   n <- function(x) s[[nom_script(x, langue)]]
@@ -392,7 +395,9 @@ script_regression <- function(s, langue) {
        "importance des groupes" = if (!is.null(n("selection"))) unname(n("selection")[[nom_script("importance", langue)]]),
        "puissance pour une tendance" = colonnes(n("puissance"), 3:5), "années pour 80 %" = n("annees_80")[[2]],
        "simulation de la puissance" = if (!is.null(n("simulation_puissance"))) c(n("simulation_puissance")[[nom_script("puissance", langue)]],
-                                                                                n("simulation_puissance")[[nom_script("echecs", langue)]], n("simulation_puissance")$p))
+                                                                                n("simulation_puissance")[[nom_script("echecs", langue)]], n("simulation_puissance")$p),
+       "moyennes ajustées" = colonnes(n("moyennes_ajustees")[[nom_script("moyennes", langue)]], 3:7),
+       "paires de catégories" = colonnes(n("moyennes_ajustees")[[nom_script("paires", langue)]], 4:10))
 }
 # Les blocs de code d'un rapport ont chacun leur nom : knitr refuse d'en compiler deux du même nom
 # (vérifié ici même sans knitr).
@@ -402,11 +407,13 @@ etiquettes_uniques <- function(texte) {
 }
 # Écrit le script d'une régression, le lance dans une session neuve et compare ses résultats à ceux du moteur.
 # `selection` : la sélection par l'AIC faite d'abord (regression.R : selection_aic), que le script refait ;
-# `puissance` : les réglages de la puissance pour une tendance calculée d'abord (puissance.R), de même.
-essayer_regression <- function(nom, p, d, langue = "fr", selection = FALSE, puissance = NULL, ...) {
+# `puissance` : les réglages de la puissance pour une tendance calculée d'abord (puissance.R), de même ;
+# `moyennes` : ceux des moyennes ajustées (moyennes.R).
+essayer_regression <- function(nom, p, d, langue = "fr", selection = FALSE, puissance = NULL, moyennes = NULL, ...) {
   m <- ajuster(p, d)
   if (!isFALSE(selection)) m$selection_aic <- selection_aic(m, d, if (is.numeric(selection)) selection else 256)  # (un nombre : la limite des combinaisons)
   if (!is.null(puissance)) m$puissance_tendance <- puissance_tendance(m, d, puissance)
+  if (!is.null(moyennes)) m$moyennes <- moyennes_ajustees(p, m, d, moyennes)
   dir.create(ici <- file.path(dossier, nom))
   r <- ecrire_script(p, d, file.path(ici, paste0(nom, ".R")), "moteur", m = m, version = "essai", langue = langue, ...)
   s <- lancer(r$script, nom_script(ATTENDUS_REGRESSION, langue))
@@ -690,6 +697,42 @@ verifier(sprintf("mgcv::gamm, une courbe par secteur, CAR1 : S4 sans prédiction
            any(grepl("fitted_levels(new_rows, learnt, curves_by)", lignes_script(r), fixed = TRUE)))
 essayer_regression("gam_courbe_croisee_secteur", pq, definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne",
                                                                     lisses = uq("annee"), croises = list(uq("annee", "secteur")), k_courbes = k5))
+# les moyennes ajustées (moyennes.R), refaites par le script : leur grille, les lignes du modèle, sa
+# covariance et ses degrés de liberté
+r <- essayer_regression("lm_moyennes_log_uv", pr, definir_modele(pr, "LM", x = ur("x1", "sol", "x2"), y = ur("hauteur"), echelle = "UV",
+                        transformations = stats::setNames("log10", ur("x2"))), moyennes = list())
+verifier("moyennes ajustées d'une régression linéaire : la grille (la moyenne de x2 avant son log10), Tukey",
+         any(grepl("rep(log10(v[[\"x2\"]]), nrow(grille_ref))", lignes_script(r), fixed = TRUE)) && any(grepl("^moyennes_ajustees <- moyennes_grille\\(lg, cellules", lignes_script(r))) &&
+           any(grepl("ajustement = \"tukey\"", lignes_script(r), fixed = TRUE)))
+essayer_regression("lm_moyennes_dans_holm", pq, definir_modele(pq, "LM", x = uq("habitat", "traitement"), y = uq("densite"), echelle = "none",
+                   croises = list(uq("habitat", "traitement"))), moyennes = list(facteur = uq("traitement"), dans = uq("habitat"), ajustement = "holm"))
+r <- essayer_regression("lmm_car1_pentes_en", pq, definir_modele(pq, "LMM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "UV",
+                        croises = list(uq("annee", "secteur")), aleatoires = list(site_q),
+                        correlation = list(type = "CAR1", temps = list(by = "variable", variable = uq("annee")), dans = list(by = "variable", variable = uq("secteur")))),
+                        langue = "en", moyennes = list(pente = uq("annee")))
+verifier("les pentes par secteur d'un modèle mixte avec CAR1, en anglais : la différence avant, les degrés de liberté de confinement",
+         any(grepl("grid_lines <- Map(function(a, b) (b - a) / h, grid_lines, grid_lines_plus)", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("df = function(Lb) containment_df(m, Lb)", lignes_script(r), fixed = TRUE)))
+essayer_regression("glm_poisson_effort_moyennes", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort")),
+                   moyennes = list(ajustement = "aucun"))
+r <- essayer_regression("gam_courbe_moyennes", pr, definir_modele(pr, "GAM", x = ur("x1", "x2", "sol"), y = ur("hauteur"), famille = "gaussienne", lisses = ur("x2"), echelle = "none"),
+                        moyennes = list())
+verifier("les moyennes d'un GAM : sa matrice lpmatrix sur la grille", any(grepl("L <- predict(m, nd, type = \"lpmatrix\")", lignes_script(r), fixed = TRUE)))
+essayer_regression("gamm_moyennes", pr, definir_modele(pr, "GAM", x = ur("x1", "sol"), y = ur("hauteur"), famille = "gaussienne", echelle = "none", aleatoires = list(par_site),
+                   correlation = list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")), dans = par_secteur)), moyennes = list())
+essayer_regression("glmm_poisson_moyennes", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", aleatoires = list(par_site)), moyennes = list())
+tz <- tq[!(tq$habitat == "H2" & tq$traitement == "T3"), ]
+pz <- projet_depuis_tableau(tz[c("nom", "habitat", "traitement", "densite")], "cellule vide")
+dz <- definir_modele(pz, "LM", x = numeros(pz, c("habitat", "traitement")), y = numeros(pz, "densite"), echelle = "none", croises = list(numeros(pz, c("habitat", "traitement"))))
+essayer_regression("lm_moyennes_cellule_vide", pz, dz, moyennes = list(facteur = numeros(pz, "traitement"), dans = numeros(pz, "habitat")))
+mz <- ajuster(pz, dz)
+mz$moyennes <- moyennes_ajustees(pz, mz, dz, list(facteur = numeros(pz, "traitement")))
+dir.create(ici <- file.path(dossier, "moyennes_rmd"))
+r <- ecrire_script(pz, dz, file.path(ici, "vide.Rmd"), "moteur", m = mz, version = "essai")
+texte <- readLines(r$script, encoding = "UTF-8")
+verifier("dans un rapport R Markdown : les tableaux des moyennes et des paires, leurs blocs nommés une fois, les mêmes nombres",
+         is.null(r$ecart) && etiquettes_uniques(texte) && any(grepl("^```\\{r tableau-moyennes\\}", texte)) && any(grepl("^```\\{r paires-moyennes\\}", texte)) &&
+           any(grepl("^```\\{r moyennes-ajustees,", texte)))
 # la séance : une ACP, un modèle mixte et un GAM dans le même script
 definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
                     definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),
