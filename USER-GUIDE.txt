@@ -555,10 +555,22 @@ slope with 95 % simultaneous bands from 2000 draws of the coefficients, the rang
 slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
 nearly a straight line, as Simpson (2018) reads thresholds), Observed / predicted, Residuals
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
-distance for a linear regression), Block contributions (AIC): each block of the Block column
+distance for a linear regression; the quantile residuals too for counts, presence-absence and
+positive values, below), Block contributions (AIC): each block of the Block column
 (or each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
 Y, X, a random effect, the time or the effort are left out (the summary counts them).
+Residuals of a GLM or GAM with the Poisson, negative binomial, binomial or gamma distribution:
+beside the standardized deviance residuals (the default), the randomized quantile residuals of
+Dunn and Smyth (1996), r = Φ⁻¹(u), F the model's distribution at each observation's fitted
+value (its random effects and effort included; the negative binomial with its fitted θ, the
+binomial with one trial, the gamma with the shape 1 / its estimated scale): u = F(y) for the
+gamma, and for counts or 0/1 u drawn uniformly between F(y − 1) and F(y), with a fixed seed, so
+that the plot doesn't change from one look to the next (the session's random numbers are left
+as they were). The Pearson or deviance residuals of counts are far from normal even when the
+model is right; these residuals are normal when it is. Not offered for Tweedie (no distribution
+function in the packages that come with R) nor for the normal distribution, where they would
+be the standardized residuals.
 Plots › Residual autocorrelation: the autocorrelation of a regression's residuals in time
 within each group, the groups pooled, as nlme::ACF computes it: at lag k, observations k steps
 apart in their group's time order (a missing year is skipped), lags 0 to 10 at most, with the
@@ -574,6 +586,15 @@ suggests a CAR1 autocorrelation, to compare by AIC. For a GLM or a GAM, Pearson 
 deviance), the same for the normal distribution; a mixed model's residuals are those within its
 groups (given the random effects), as in nlme::ACF. Nuée computes the normalized residuals in
 each group's time order: nlme's own are right only on rows sorted by group, then by time.
+Within the groups of its random effects, with or without a finer level, Fit with CAR1 makes it
+a new model: the same settings with a CAR1 autocorrelation along that time within those groups
+(an LMM, or a GLM or GAM with the normal distribution, then fitted by mgcv::gamm; the button is
+offered only then, and a refusal of the engine is shown), named like a refit (M1 (1)) and
+selected with its default views open. An LMM on the same observations stays in the AIC set of
+the model without CAR1: the two compare by AIC in Prediction › Compare models (the
+likelihood-ratio test doesn't test an autocorrelation). The note says when they don't:
+observations without a time or a group stay out of the new model, and mgcv::gamm's likelihood
+doesn't compare with mgcv::gam's.
 File › Model report can include the plot.
 Plots › AIC selection (also under each regression in the explorer): which variables to keep.
 Each combination of the model's groups of terms (the blocks of the Block column, otherwise the
@@ -617,12 +638,13 @@ listed (2000 at most); the table's search box finds those of a model.
 File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
 the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
 Model report: the summary and the coefficients, each term's effect, each curve's thresholds,
-observed / predicted and the residuals.
+observed / predicted and the residuals (the quantile residuals too, for counts, presence-absence
+and positive values).
 File › Export to R: a script or report for a regression too, with lm, nlme::lme, mgcv::gam
 or mgcv::gamm: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
 then the coefficients, AIC, R2, variances, curves with their concurvity and thresholds (the
-same draws as the Thresholds view), test set and plots, checked against Nuée's results before
-it is written.
+same draws as the Thresholds view), the quantile residuals (the same draws as the Residuals
+view), test set and plots, checked against Nuée's results before it is written.
 
 Class models and the Coomans plot
 ---------------------------------

@@ -363,6 +363,12 @@ async function principal() {
       const gam = await api('ajuster', { projet: e.id, type: 'GAM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], echelle: 'none', nom: 'R4',
         famille: 'gaussienne', lisses: [v('sucre')] });
       verifier(gam.type === 'GAM' && [].concat(gam.courbes.terme).length === 1, 'GAM, une courbe');
+      // the randomized quantile residuals of counts (moteur/R/regression_diagnostics.R), with their normal quantiles: the same when refitted
+      const rq = glm.residus_quantiles;
+      const glm2 = await api('reajuster', { modele: glm.id });
+      verifier(rq && [].concat(rq.residu).length === glm.N && [].concat(rq.residu).every(Number.isFinite) && [].concat(rq.quantile_normal).length === glm.N
+        && JSON.stringify(glm2.residus_quantiles) === JSON.stringify(rq) && lm.residus_quantiles === null && gam.residus_quantiles === null,
+      `résidus quantiles d'un GLM de Poisson, les mêmes réajusté ; ni pour une régression linéaire ni pour la loi normale : ${JSON.stringify(rq).slice(0, 200)}`);
       const ef = await api('effets', { modele: gam.id });
       verifier([].concat(ef.effets).length === 2 && ef.effets[0].courbe === true && [].concat(ef.effets[0].x).length === 80, 'courbes d’effet');
       const se = await api('seuils', { modele: gam.id, terme: 'sucre' });
@@ -549,6 +555,17 @@ async function principal() {
       verifier(r.total === 1 && [].concat(r.paires.grand)[0] === m2.id && [].concat(r.paires.petit)[0] === m1.id && [].concat(r.paires.ddl)[0] === 1
         && Math.abs([].concat(r.paires.khi2)[0] - Math.max(0, khi2)) < 1e-8 && [].concat(r.paires.approche)[0] === false,
       `x + z contre x (pas le modèle avec CAR1) : ${JSON.stringify(r)}`);
+      // Fit with CAR1 (reajuster with car1): M2 again with CAR1 along the year in each site, which is C1
+      const annee = { by: 'variable', variable: v.annee };
+      const car = await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'effets' }] } });
+      verifier(/^M2 \(\d+\)$/.test(car.nom) && car.type === 'LMM' && car.app === true && car.temps === 'annee' && !car.dans && car.signature === m2.signature
+        && Math.abs(car.phi - c1.phi) < 1e-8 && Math.abs(car.qualite.AIC - c1.qualite.AIC) < 1e-8,
+      `Ajuster avec CAR1 : ${car.nom}, φ ${car.phi} (C1 : ${c1.phi}), AIC ${car.qualite.AIC} (C1 : ${c1.qualite.AIC})`);
+      const fin = await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'effets' }, { by: 'variable', variable: v.periode }] } });
+      verifier(fin.dans === 'periode' && fin.phi !== null && fin.signature === m2.signature, `Ajuster avec CAR1 dans chaque période de chaque site : ${fin.dans}`);
+      let refusC = '';
+      try { await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'variable', variable: v.site }] } }); } catch (err) { refusC = err.message; }
+      verifier(/choisissez ses effets aléatoires/.test(refusC), `d'autres groupes que ceux des effets aléatoires, refusé : « ${refusC} »`);
     });
     await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
       // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the

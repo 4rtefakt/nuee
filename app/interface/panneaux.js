@@ -2390,12 +2390,18 @@ async function rendreEffets(conteneur, ctx, p, loc) {
 }
 
 // The residuals of a regression: against the fitted values, on a normal Q-Q plot, by group of
-// each random effect, and Cook's distances (linear model). Points are linked to the selection.
+// each random effect, and Cook's distances (linear model). Points are linked to the selection. A
+// GLM or GAM of counts, presence-absence or positive values (Poisson, negative binomial, binomial,
+// gamma) also has its randomized quantile residuals (moteur/R/regression_diagnostics.R:
+// residus_quantiles), normal when the model is right, which the deviance residuals of counts aren't
+// even then: a choice beside the residuals, those by default (loc.residus).
 function rendreResidus(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const o = m.observations;
   const y = m.noms_y[0];
-  const residu = [].concat(o.residu);
+  const rq = m.residus_quantiles;
+  const quantiles = !!rq && loc.residus === 'quantiles';
+  const residu = [].concat(quantiles ? rq.residu : o.residu);
   const niveaux = [].concat(m.niveaux || []);
   const modes = [['ajustes', t('residus_ajustes')], ['qq', t('residus_qq')]].concat(niveaux.map((n) => [`g:${n}`, t('residus_par', { groupe: n })]),
     o.cook ? [['cook', t('distance_cook')]] : []);
@@ -2403,9 +2409,13 @@ function rendreResidus(conteneur, ctx, p, loc) {
   loc.couleur ??= '';
   const graphe = el('div', { class: 'graphe' });
   const parGroupe = loc.mode.startsWith('g:');
+  const nomResidus = quantiles ? t('residus_quantiles') : t('residus_std');
+  const suffixe = quantiles ? ` · ${t('residus_quantiles')}` : '';
   conteneur.replaceChildren(outils(choix('', modes, loc.mode, (v) => { loc.mode = v; ctx.rafraichir(); }),
+    rq ? el('span', { title: t('residus_quantiles_aide') }, choix('', [['standard', t('residus_deviance_std')], ['quantiles', t('residus_quantiles')]],
+      quantiles ? 'quantiles' : 'standard', (v) => { loc.residus = v; ctx.rafraichir(); })) : null,
     parGroupe ? null : controleCouleur(ctx, m, loc), parGroupe ? null : controleEtiquettes(ctx, m, loc),
-    el('span', { class: 'infos' }, t(niveaux.length ? 'residus_note_mixte' : 'residus_note'))), graphe);
+    el('span', { class: 'infos' }, t(quantiles ? 'residus_note_quantiles' : niveaux.length ? 'residus_note_mixte' : 'residus_note'))), graphe);
   const c = couleursTheme();
   const lignes = (valeurs) => valeurs.map((v) => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v, y1: v,
     line: { color: v ? '#d1495b' : c.doux, width: 1, dash: 'dot' } }));
@@ -2416,11 +2426,11 @@ function rendreResidus(conteneur, ctx, p, loc) {
       const idx = g.map((_, i) => i).filter((i) => g[i] === v);
       return { type: 'box', name: v, y: idx.map((i) => residu[i]), text: idx.map((i) => o.nom[i]), boxpoints: idx.length <= 300 ? 'all' : 'outliers',
         jitter: 0.4, pointpos: 0, marker: { color: PALETTE[k % PALETTE.length], size: 4 }, line: { width: 1 } };
-    }), { title: { text: `${m.nom} · ${t('residus_par', { groupe: loc.mode.slice(2) })}` }, showlegend: false, dragmode: 'zoom',
-      yaxis: { title: { text: t('residus_std') } }, shapes: lignes([0, -2, 2]) });
+    }), { title: { text: `${m.nom} · ${t('residus_par', { groupe: loc.mode.slice(2) })}${suffixe}` }, showlegend: false, dragmode: 'zoom',
+      yaxis: { title: { text: nomResidus } }, shapes: lignes([0, -2, 2]) });
     return;
   }
-  const [xs, ys, titreX, formes] = loc.mode === 'qq' ? [[].concat(o.quantile_normal), residu, t('quantiles_normaux'), []]
+  const [xs, ys, titreX, formes] = loc.mode === 'qq' ? [[].concat(quantiles ? rq.quantile_normal : o.quantile_normal), residu, t('quantiles_normaux'), []]
     : loc.mode === 'cook' ? [[].concat(o[`${y} ajusté`]), [].concat(o.cook), t('valeurs_ajustees'), lignes([4 / m.N])]
       : [[].concat(o[`${y} ajusté`]), residu, t('valeurs_ajustees'), lignes([0, -2, 2])];
   if (loc.mode === 'qq') {  // the line of a normal distribution: through the quartiles
@@ -2432,8 +2442,8 @@ function rendreResidus(conteneur, ctx, p, loc) {
     formes.push({ type: 'line', x0: rx[0], x1: rx[rx.length - 1], y0: origine + pente * rx[0], y1: origine + pente * rx[rx.length - 1],
       line: { color: '#d1495b', width: 1, dash: 'dot' } });
   }
-  tracer(ctx, graphe, pointsObservations(ctx, m, loc, xs, ys), { title: { text: `${m.nom} · ${modes.find(([k]) => k === loc.mode)[1]}` },
-    xaxis: { title: { text: titreX } }, yaxis: { title: { text: loc.mode === 'cook' ? t('distance_cook') : t('residus_std') } }, shapes: formes });
+  tracer(ctx, graphe, pointsObservations(ctx, m, loc, xs, ys), { title: { text: `${m.nom} · ${modes.find(([k]) => k === loc.mode)[1]}${suffixe}` },
+    xaxis: { title: { text: titreX } }, yaxis: { title: { text: loc.mode === 'cook' ? t('distance_cook') : nomResidus } }, shapes: formes });
   brancherSelection(graphe, ctx, m.id);
 }
 
@@ -2444,16 +2454,18 @@ function rendreResidus(conteneur, ctx, p, loc) {
 // the normalized ones, with none left when CAR1 is enough. For another model, the time (an ID or a
 // quantitative variable) and the groups (its random effects, or an ID or a qualitative variable and
 // a finer level within it) are chosen here, and for a GLM or a GAM its residuals (Pearson or
-// deviance). Computed in R, then kept.
+// deviance). Computed in R, then kept. Within the groups of its random effects, "Fit with CAR1"
+// makes the same model with a CAR1 autocorrelation along this time (reajuster: car1).
 const RESIDUS_ACF = { pearson: 'acf_pearson', deviance: 'acf_deviance', normalises: 'acf_normalises' };
-// what lag 1 says: beyond the band, CAR1 may be needed; the normalized residuals within it, CAR1 is enough
-function noteACF(r, bande, series) {
+// what lag 1 says: beyond the band, CAR1 may be needed (with "Fit with CAR1" at hand, `bouton`, said
+// without pointing to New model); the normalized residuals within it, CAR1 is enough
+function noteACF(r, bande, series, bouton) {
   const r1 = [].concat(series[0].acf)[1];
   const b1 = bande[1];
   const valeurs = { r: fmt(r1, 2), b: fmt(b1, 2), phi: fmt(r.phi, 3) };
   const z1 = r.car1 ? [].concat(series[1].acf)[1] : null;
   const verdict = r.car1 ? t(Math.abs(z1) <= b1 ? 'acf_car1_suffit' : 'acf_car1_reste', { ...valeurs, z: fmt(z1, 2) })
-    : t(r1 > b1 ? 'acf_car1_conseil' : r1 < -b1 ? 'acf_negative' : 'acf_dans_bande', valeurs);
+    : t(r1 > b1 ? (bouton ? 'acf_car1_conseil_court' : 'acf_car1_conseil') : r1 < -b1 ? 'acf_negative' : 'acf_dans_bande', valeurs);
   return [t(r.groupe ? 'acf_note' : 'acf_note_un', { temps: r.temps, groupe: r.groupe, g: r.groupes, n: r.n }),
     r.laissees ? t('acf_laissees', { n: r.laissees }) : null, verdict].filter(Boolean).join(' ');
 }
@@ -2510,7 +2522,21 @@ async function rendreACF(conteneur, ctx, p, loc) {
   const series = [].concat(r.series);
   const c = couleursTheme();
   const graphe = el('div', { class: 'graphe' });
-  conteneur.replaceChildren(barre, el('p', { class: 'note' }, noteACF(r, bande, series)), graphe);
+  // "Fit with CAR1": only where the engine allows it (moteur/R/regression.R: definition_car1): CAR1
+  // within the groups of the random effects (or a finer level within them) of an LMM, or of a GLM
+  // or GAM with the normal distribution (then fitted by mgcv::gamm). A new model, selected with its
+  // default views, as after Fit this model; a refusal is shown here. Whether it compares with this
+  // one by AIC (regression.R: signature): an LMM on the same observations (none left out for want of
+  // a time or a group) is in its AIC set; mgcv::gamm's likelihood isn't mgcv::gam's.
+  const bouton = !car1 && niveaux.length > 0 && loc.groupe === 'effets' && (m.type === 'LMM' || m.famille === 'gaussienne');
+  const refus = cache.car1 && cache.car1.cle === cle ? cache.car1.erreur : null;
+  const ajusterCar1 = () => ctx.reajuster(m.id, { car1: { temps: spec(loc.temps), groupe: [{ by: 'effets' }].concat(loc.groupe_fin ? [spec(loc.groupe_fin)] : []) } })
+    .catch((e) => { cache.car1 = { cle, erreur: e.message }; ctx.rafraichir(); });
+  const ligneCar1 = bouton ? el('div', { class: 'ligne' },
+    el('button', { onclick: ajusterCar1, title: t('acf_ajuster_car1_aide'), style: { flex: 'none' } }, icone('file-plus'), t('acf_ajuster_car1')),
+    el('span', { class: 'note' }, t(m.type !== 'LMM' ? 'acf_car1_gamm' : r.laissees ? 'acf_car1_laissees' : 'acf_car1_aic', { temps: r.temps, groupe: r.groupe, n: r.laissees }),
+      refus ? el('span', { class: 'erreur' }, ` ${refus}`) : null)) : null;
+  conteneur.replaceChildren(...[barre, el('p', { class: 'note' }, noteACF(r, bande, series, bouton)), ligneCar1, graphe].filter(Boolean));
   const apres = decalages.slice(1);
   tracer(ctx, graphe, series.map((s, j) => ({ type: 'bar', x: decalages, y: [].concat(s.acf), customdata: [].concat(r.paires),
     name: t(r.car1 && s.residus !== 'normalises' ? 'acf_sans_car1' : RESIDUS_ACF[s.residus]), marker: { color: PALETTE[j ? 2 : 0] },

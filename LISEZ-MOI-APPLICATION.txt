@@ -594,12 +594,24 @@ pour une courbe, Seuils : l'effet et sa pente avec des intervalles simultanés �
 2000 jeux de coefficients, les plages où la bande de la pente exclut 0, en hausse ou en baisse
 nette, colorées et listées, et l'edf, sous 1,5 presque une droite, comme Simpson (2018) lit les
 seuils), Observé / prédit, Résidus (standardisés, contre les valeurs ajustées, droite de
-Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire), Apport
-des blocs
+Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire ; aussi
+les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,
+ci-dessous), Apport des blocs
 (AIC) : chaque bloc de la colonne Bloc (ou chaque variable) retiré et le modèle réajusté en
 ML ; un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
+Résidus d'un GLM ou d'un GAM à loi de Poisson, binomiale négative, binomiale ou gamma : à côté
+des résidus de déviance standardisés (ceux par défaut), les résidus quantiles randomisés de Dunn
+et Smyth (1996), r = Φ⁻¹(u), F la loi du modèle à la valeur ajustée de chaque observation (ses
+effets aléatoires et son effort compris ; la binomiale négative de son θ estimé, la binomiale
+d'une épreuve, la gamma de forme 1 / son échelle estimée) : u = F(y) pour la loi gamma, et pour
+des comptages ou des 0/1, u tiré uniformément entre F(y − 1) et F(y), avec une graine fixe, pour
+que le graphique ne change pas d'un regard à l'autre (le hasard de la séance reste tel qu'il
+était). Les résidus de Pearson ou de déviance de comptages sont loin de la loi normale même
+quand le modèle est juste ; ces résidus la suivent quand il l'est. Pas pour Tweedie (les paquets
+livrés avec R n'ont pas sa fonction de répartition), ni pour la loi normale, où ce seraient les
+résidus standardisés.
 Graphiques › Autocorrélation des résidus : l'autocorrélation des résidus d'une régression dans
 le temps, à l'intérieur de chaque groupe, les groupes mis en commun, comme la calcule
 nlme::ACF : au décalage k, les observations à k pas l'une de l'autre dans l'ordre du temps de
@@ -617,8 +629,17 @@ autocorrélation CAR1, à comparer par l'AIC. Pour un GLM ou un GAM, les résidu
 déviance), les mêmes pour la loi normale ; les résidus d'un modèle mixte sont ceux de
 l'intérieur de ses groupes (sachant les effets aléatoires), comme dans nlme::ACF. Nuée calcule
 les résidus normalisés dans l'ordre du temps de chaque groupe : ceux de nlme ne sont justes que
-sur des lignes rangées par groupe, puis par temps. Fichier › Rapport du modèle peut reprendre
-le graphique.
+sur des lignes rangées par groupe, puis par temps.
+Dans les groupes de ses effets aléatoires, avec ou sans niveau plus fin, Ajuster avec CAR1 en
+fait un nouveau modèle : les mêmes réglages, avec une autocorrélation CAR1 le long de ce temps
+dans ces groupes (un modèle mixte, ou un GLM ou un GAM à loi normale, alors ajusté par
+mgcv::gamm ; le bouton n'est proposé qu'alors, et un refus du moteur s'affiche), nommé comme un
+réajustement (M1 (1)) et choisi avec ses vues par défaut. Un modèle mixte sur les mêmes
+observations reste dans l'ensemble AIC du modèle sans CAR1 : les deux se comparent par l'AIC
+dans Prédiction › Comparer les modèles (le test du rapport de vraisemblance ne teste pas une
+autocorrélation). La note dit quand ils ne se comparent pas : des observations sans temps ou
+sans groupe restent hors du nouveau modèle, et la vraisemblance de mgcv::gamm ne se compare pas
+à celle de mgcv::gam. Fichier › Rapport du modèle peut reprendre le graphique.
 Graphiques › Sélection par AIC (aussi sous chaque régression, dans l'explorateur) : quelles
 variables garder. Chaque combinaison des groupes de termes du modèle (les blocs de la colonne
 Bloc, sinon les variables), du modèle nul au modèle complet, est ajustée en ML sur les mêmes
@@ -666,12 +687,14 @@ plus) ; la recherche du tableau trouve celles d'un modèle.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
 résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
 un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
-chaque terme, les seuils de chaque courbe, observé / prédit et les résidus.
+chaque terme, les seuils de chaque courbe, observé / prédit et les résidus (aussi les résidus
+quantiles, pour des comptages, une présence-absence ou des valeurs positives).
 Fichier › Exporter vers R : un script ou un rapport pour une régression aussi, avec lm,
 nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML),
 la validation croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les
-courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), le jeu de
-test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
+courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), les résidus
+quantiles (les mêmes tirages que la vue Résidus), le jeu de test et les graphiques, vérifiés
+contre les résultats de Nuée avant d'être écrits.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------

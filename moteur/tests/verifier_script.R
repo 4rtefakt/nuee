@@ -8,11 +8,11 @@
 # ceux du moteur : scores, R2 et Q2, T2, DModX et leurs limites, VIP, coefficients, CV-ANOVA,
 # classification, jeu de test, test de permutation. Puis : le script d'une PLS simple est court
 # et n'a pas de fonction inutile ; la séance en un script ; l'export en anglais ; les régressions
-# (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort et binomial, GAMM
-# binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
-# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, jeu de test ; la
-# sélection par l'AIC, toutes les combinaisons ou l'élimination descendante), en séance et en
-# rapport ; les rapports R Markdown et Quarto (compilés avec knitr s'il est installé).
+# (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort, binomial et gamma,
+# GAMM binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
+# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, résidus quantiles,
+# jeu de test ; la sélection par l'AIC, toutes les combinaisons ou l'élimination descendante), en
+# séance et en rapport ; les rapports R Markdown et Quarto (compilés avec knitr s'il est installé).
 #   Rscript moteur/tests/verifier_script.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -359,7 +359,7 @@ moteur_regression <- function(m) {
        "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
        phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(r$courbes[-1]),
        "Q2 et RMSEcv" = c(m$vc$Q2, m$vc$RMSEcv), "prédictions de la validation croisée" = m$vc$prediction,
-       "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus),
+       "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus), "résidus quantiles" = r$residus_quantiles,
        "jeu de test" = if (!is.null(m$test)) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")],
        # (la sélection par l'AIC, quand elle a été faite : le classement et l'importance des groupes)
        "sélection par l'AIC" = if (!is.null(m$selection_aic)) as.matrix(m$selection_aic$modeles[c("k", "logLik", "AICc", "delta", "poids", "poids_cumule")]),
@@ -375,7 +375,8 @@ script_regression <- function(s, langue) {
        "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
        phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) colonnes(n("courbes"), seq_along(n("courbes"))[-1]),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
-       "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "jeu de test" = colonnes(n("test"), 2:6),
+       "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "résidus quantiles" = n("observations")[[nom_script("residu_quantile", langue)]],
+       "jeu de test" = colonnes(n("test"), 2:6),
        "sélection par l'AIC" = colonnes(n("selection")[[nom_script("modeles", langue)]], 2:7),
        "importance des groupes" = if (!is.null(n("selection"))) unname(n("selection")[[nom_script("importance", langue)]]))
 }
@@ -419,6 +420,7 @@ tr$hauteur <- 1 + 0.6 * tr$x1 - 0.8 * tr$x2 + effet_site + rep(rnorm(12, 0, 0.3)
 tr$compte <- stats::rnbinom(n, mu = exp(0.5 + 0.4 * tr$x1 + sin(3 * tr$x2) + effet_site / 2) * tr$effort, size = 3)
 tr$presence <- as.numeric(runif(n) < stats::plogis(-0.3 + 1.1 * tr$x1))
 tr$densite <- ifelse(runif(n) < 0.3, 0, stats::rgamma(n, shape = 2, rate = 2 / exp(0.2 + 0.5 * tr$x2)))
+tr$masse <- stats::rgamma(n, shape = 3, rate = 3 / exp(0.3 + 0.4 * tr$x2))  # des valeurs positives (loi gamma)
 tr$x1[c(7, 40)] <- NA  # deux observations sans x1 : laissées de côté
 pr <- projet_depuis_tableau(tr, "terrain")
 pr$observation_id_names <- c("Observation", "site")
@@ -469,13 +471,22 @@ essayer_regression("lmm_car1_secteur", pr, definir_modele(pr, "LMM", x = ur("x1"
 r <- essayer_regression("glm_poisson_effort", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort"), echelle = "none"))
 verifier("GLM de Poisson : effort en décalage, effet multiplicatif, surdispersion", any(grepl("offset\\(log\\(effort\\)\\)", lignes_script(r))) &&
          any(grepl("effet_multiplicatif", lignes_script(r))) && any(grepl("^dispersion <- ", lignes_script(r))))
+verifier("GLM de Poisson : ses résidus quantiles (residus_quantiles, de ppois à ses valeurs ajustées) et leur graphique",
+         any(grepl("^residus_quantiles <- function", lignes_script(r))) &&
+           any(grepl("observations$residu_quantile <- residus_quantiles(cadre[[1]], function(q, ...) ppois(q, fitted(m), ...))", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("qqnorm(observations$residu_quantile", lignes_script(r), fixed = TRUE)))
+r <- essayer_regression("glm_gamma_en", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("masse"), famille = "gamma", echelle = "none"), langue = "en")
+verifier("GLM gamma en anglais : ses résidus quantiles sans tirage (discrete = FALSE), ni nom ni commentaire en français",
+         any(grepl("quantile_residuals(model_data[[1]], function(q, ...) pgamma(", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("discrete = FALSE)", lignes_script(r), fixed = TRUE)) && en_anglais(lignes_script(r)))
 essayer_regression("glm_binomiale", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("presence"), famille = "binomiale", echelle = "none"))
 r <- essayer_regression("gamm_binomiale_negative", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("compte"), famille = "binomiale_negative",
                         lisses = ur("x2"), decalage = ur("effort"), aleatoires = list(par_site, par_secteur), echelle = "none"), langue = "en")
 verifier("GAMM en anglais : mgcv attaché, une courbe, les secteurs emboîtés dans les sites, ni nom ni commentaire en français",
          any(grepl("^library\\(mgcv\\)", lignes_script(r))) && any(grepl("site_secteur", lignes_script(r))) && en_anglais(lignes_script(r)))
-essayer_regression("gam_tweedie_test", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("densite"), famille = "tweedie", lisses = ur("x2"), echelle = "none",
-                                                          test = numeros_observations(pr)[seq(5, n, by = 10)]))
+r <- essayer_regression("gam_tweedie_test", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("densite"), famille = "tweedie", lisses = ur("x2"), echelle = "none",
+                                                               test = numeros_observations(pr)[seq(5, n, by = 10)]))
+verifier("Tweedie : pas de résidus quantiles (les paquets livrés avec R n'ont pas sa fonction de répartition)", !any(grepl("residus_quantiles|residu_quantile", lignes_script(r))))
 # la sélection par l'AIC faite dans Nuée : le script la refait (toutes les combinaisons, ou l'élimination descendante)
 r <- essayer_regression("lm_selection_aic", p, definir_modele(p, "LM", x = uid(c("variete", "sucre", "fermete", "polyphenols")), y = uid("note_gout"),
                         echelle = "none", croises = list(uid(c("sucre", "fermete")))), selection = TRUE)

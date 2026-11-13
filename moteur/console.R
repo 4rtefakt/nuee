@@ -54,7 +54,7 @@ journaliser <- function(nom, q, r) {
     ajuster = definition_modele(r$id, sprintf("# modèle %s (%s) du projet %s", r$nom, r$type, projet(r$projet)$nom)),
     reajuster = definition_modele(r$id, sprintf("# modèle %s, d'après %s%s", r$nom, q$modele,
       if (length(q$exclues)) sprintf(", sans %d observation(s)", length(q$exclues)) else if (length(q$garder)) ", variables VIP"
-      else if (!is.null(q$groupes_aic)) ", choisi par la sélection par AIC" else "")),
+      else if (!is.null(q$groupes_aic)) ", choisi par la sélection par AIC" else if (!is.null(q$car1)) ", avec une autocorrélation CAR1" else "")),
     selection_aic = sprintf("selection_aic(%s, definition(%s))", q$modele, code_r(q$modele)),
     predire = sprintf("predire(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele),
                       if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),

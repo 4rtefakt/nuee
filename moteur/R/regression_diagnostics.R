@@ -1,7 +1,9 @@
 # Diagnostics des régressions (regression.R), calculés à la demande sur les modèles ajustés :
 # l'autocorrélation des résidus dans le temps, à l'intérieur de chaque groupe (une autocorrélation
 # CAR1 est-elle nécessaire ? suffit-elle ?), et les tests du rapport de vraisemblance entre des
-# modèles emboîtés (Prédiction › Comparer les modèles), comme anova(m1, m2).
+# modèles emboîtés (Prédiction › Comparer les modèles), comme anova(m1, m2). Et des résidus que
+# l'ajustement calcule : les résidus normalisés d'une autocorrélation CAR1, les résidus quantiles
+# randomisés d'un modèle de comptages, de présence-absence ou de valeurs positives.
 
 # ------------------------------------------------------------ autocorrélation des résidus
 
@@ -111,6 +113,53 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
   if (car1) series[[2]] <- list(residus = "normalises", acf = acf_groupes(residus_normalises_car1(e, t, g, m$resultat$phi), t, g, max(base$decalage))$acf)
   list(car1 = car1, phi = if (car1) m$resultat$phi, temps = nom_temps, groupe = nom_groupe, n = length(e), groupes = nlevels(g),
        longueur = max(table(g)), laissees = sum(!garde), decalage = base$decalage, paires = base$paires, bande = base$bande, series = series)
+}
+
+# ------------------------------------------------------------ résidus quantiles
+
+# Les résidus quantiles randomisés (Dunn et Smyth, 1996) d'un modèle de mgcv `a` à loi de Poisson,
+# binomiale négative (son θ estimé), binomiale (une réponse 0 ou 1 : une épreuve) ou gamma (de forme
+# 1 / son échelle estimée) : r = Φ⁻¹(u), F la loi du modèle à la moyenne ajustée de chaque
+# observation (ses effets aléatoires et son effort compris) ; u = F(y) pour la loi gamma, et pour
+# une loi discrète, u tiré uniformément entre F(y − 1) et F(y). Ils suivent la loi normale quand le
+# modèle est juste, ce que ne font pas les résidus de Pearson ou de déviance d'un comptage, même
+# d'un modèle juste. Au-delà de 0,5, r se calcule par 1 − u, dans la queue de droite de F : un
+# comptage loin au-dessus de sa moyenne garde son résidu au lieu de Φ⁻¹(1) = Inf. Les tirages se
+# font avec une graine fixe et le générateur de R par défaut, comme seuils_courbe : les mêmes
+# résidus à chaque calcul, le hasard de la session et son générateur rendus. NULL pour une autre
+# loi : la normale (ses résidus standardisés le sont déjà), Tweedie (les paquets livrés avec R
+# n'ont pas sa fonction de répartition).
+residus_quantiles <- function(a, famille, graine = 1) {
+  y <- as.vector(a$y)
+  mu <- as.vector(stats::fitted(a))
+  theta <- if (identical(famille, "binomiale_negative")) a$family$getTheta(TRUE)
+  repartition <- switch(famille,  # (F ; 1 − F avec lower.tail = FALSE)
+    poisson = function(q, ...) stats::ppois(q, mu, ...),
+    binomiale_negative = function(q, ...) stats::pnbinom(q, size = theta, mu = mu, ...),
+    binomiale = function(q, ...) stats::pbinom(q, 1, mu, ...),
+    gamma = function(q, ...) stats::pgamma(q, shape = 1 / a$sig2, rate = 1 / (a$sig2 * mu), ...),
+    return(NULL))
+  discrete <- !identical(famille, "gamma")
+  y0 <- if (discrete) y - 1 else y
+  F0 <- repartition(y0)                      # F(y − 1)
+  F1 <- repartition(y)                       # F(y)
+  S0 <- repartition(y0, lower.tail = FALSE)  # 1 − F(y − 1)
+  S1 <- repartition(y, lower.tail = FALSE)   # 1 − F(y)
+  v <- 0
+  if (discrete) {
+    existait <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    ancien <- if (existait) get(".Random.seed", envir = globalenv())
+    genre <- RNGkind()
+    on.exit({
+      suppressWarnings(RNGkind(genre[1], genre[2], genre[3]))  # (le genre de la séance rendu, sans redire ses avertissements)
+      if (existait) assign(".Random.seed", ancien, envir = globalenv())
+      else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) rm(".Random.seed", envir = globalenv())
+    })
+    set.seed(graine, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
+    v <- stats::runif(length(y))
+  }
+  u <- F0 + v * (F1 - F0)
+  ifelse(u <= 0.5, stats::qnorm(u), stats::qnorm(S0 - v * (S0 - S1), lower.tail = FALSE))
 }
 
 # ------------------------------------------------- tests du rapport de vraisemblance

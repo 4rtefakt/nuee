@@ -545,6 +545,15 @@ predire_observations_regression <- function(projet, m, d, observations, effort_a
   out
 }
 
+# Le quantile de la loi normale de chaque résidu de `e` (la droite de Henry, positions de Blom), NA
+# pour un résidu manquant.
+quantiles_henry <- function(e) {
+  q <- rep(NA_real_, length(e))
+  ok <- !is.na(e)
+  q[ok] <- stats::qnorm((rank(e[ok]) - 0.375) / (sum(ok) + 0.25))
+  q
+}
+
 # Les observations d'une régression : Y observé, ajusté (et par les effets fixes seuls), prédit
 # en validation croisée, résidu standardisé et son quantile normal, levier et distance de Cook
 # (lm), groupes des effets aléatoires et de la validation croisée.
@@ -557,9 +566,7 @@ observations_regression <- function(projet, m) {
   if (!is.null(r$ajuste_fixe)) obs[[paste(y, "ajusté (effets fixes)")]] <- r$ajuste_fixe
   obs[[paste(y, "prédit (VC)")]] <- m$vc$prediction
   obs$residu <- r$residus
-  ok <- !is.na(r$residus)  # (la droite de Henry : le quantile de la loi normale de chaque résidu, positions de Blom)
-  obs$quantile_normal <- NA_real_
-  obs$quantile_normal[ok] <- stats::qnorm((rank(r$residus[ok]) - 0.375) / (sum(ok) + 0.25))
+  obs$quantile_normal <- quantiles_henry(r$residus)
   if (!is.null(r$levier)) {
     obs$levier <- r$levier
     obs$cook <- r$cook
@@ -739,6 +746,35 @@ definition_selection <- function(d, m, choisis) {
   d
 }
 
+# ------------------------------------------------ une autocorrélation ajoutée (Ajuster avec CAR1)
+
+# La définition d'un modèle refait avec une autocorrélation CAR1 (Autocorrélation des résidus ›
+# Ajuster avec CAR1) : celle du modèle, `d`, avec une autocorrélation le long de `temps` (un
+# groupement : un identifiant ou une variable quantitative) à l'intérieur des groupes de ses effets
+# aléatoires, ou d'un niveau plus fin en eux (le secteur dans son site). `groupe` : ces groupes tels
+# qu'autocorrelation_residus les prend, list(by = "effets"), puis au besoin le niveau plus fin, qui
+# devient `dans`. Le reste ne change pas. Refusée quand le modèle ne la prend pas : sans effet
+# aléatoire, avec déjà une autocorrélation, d'autres groupes que ceux de ses effets aléatoires (CAR1
+# court dans le dernier ou dans un niveau plus fin), une autre loi que la normale (verifier_regression).
+definition_car1 <- function(projet, d, temps, groupe) {
+  err <- function(fr, en) stop(traduire(fr, en), call. = FALSE)
+  d$aleatoires <- specs_groupement(d$aleatoires)  # (une définition relue d'un fichier : ses listes ont pu devenir des data.frames)
+  if (!length(d$aleatoires)) err("Ce modèle n'a pas d'effet aléatoire : une autocorrélation CAR1 se fait à l'intérieur des groupes d'un effet aléatoire.",
+                                 "This model has no random effect: a CAR1 autocorrelation works within the groups of a random effect.")
+  if (!is.null(d$correlation)) err("Ce modèle a déjà une autocorrélation CAR1.", "This model already has a CAR1 autocorrelation.")
+  if (is.null(temps)) err("Choisissez le temps (une année, un jour...) : un identifiant ou une variable quantitative.",
+                          "Choose the time (a year, a day...): an ID or a quantitative variable.")
+  if (!is.null(groupe$by)) groupe <- list(groupe)
+  effets <- vapply(groupe, function(s) identical(as.character(s$by)[1], "effets"), TRUE)
+  if (!length(effets) || !effets[1] || length(effets) > 2 || any(effets[-1])) {
+    err("L'autocorrélation CAR1 se fait à l'intérieur des groupes des effets aléatoires du modèle, ou d'un niveau plus fin en eux : choisissez ses effets aléatoires comme groupes.",
+        "A CAR1 autocorrelation works within the groups of the model's random effects, or of a finer level within them: choose its random effects as the groups.")
+  }
+  d$correlation <- c(list(type = "CAR1", temps = specs_groupement(temps)[[1]]), if (length(groupe) == 2) list(dans = specs_groupement(groupe[[2]])[[1]]))
+  verifier_regression(projet, d)
+  d
+}
+
 # ------------------------------------------------------------ modèles généralisés et additifs
 
 # Les lois de la réponse (mgcv) : leur lien est le lien canonique, log pour la loi gamma. Une
@@ -884,6 +920,8 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
        dispersion = if (famille == "poisson") sum(stats::residuals(estime, type = "pearson")^2) / estime$df.residual,
        ajuste = as.vector(stats::fitted(estime)),
        residus = as.vector(stats::residuals(estime, type = "deviance")) / sqrt(estime$sig2 * pmax(1 - estime$hat, 1e-8)),
+       # (comptages, présence-absence, valeurs positives : les résidus quantiles, regression_diagnostics.R ; NULL sinon)
+       residus_quantiles = residus_quantiles(estime, famille),
        utiles = utiles, k = k, ajustement = estime, ajustement_ml = compare)
 }
 

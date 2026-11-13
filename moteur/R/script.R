@@ -8,8 +8,9 @@
 # test ; des graphiques en R de base. Une régression (regression.R) a son propre code : ses termes
 # et sa réponse comme le moteur les fait, l'ajustement de lm, nlme::lme ou mgcv::gam (ces deux
 # paquets sont livrés avec R), ses coefficients, sa vraisemblance et son AIC, sa validation
-# croisée par les mêmes groupes, son jeu de test, et sa sélection par l'AIC quand elle a été faite
-# (selection_aic). D'après l'extension du chemin : un script (.R), ou
+# croisée par les mêmes groupes, son jeu de test, les résidus quantiles d'un modèle de comptages,
+# de présence-absence ou de valeurs positives (les mêmes tirages), et sa sélection par l'AIC quand
+# elle a été faite (selection_aic). D'après l'extension du chemin : un script (.R), ou
 # un rapport R Markdown (.Rmd) ou Quarto (.qmd) qui y ajoute le texte des méthodes (methodes.R) et
 # les références ; il se compile avec knitr (bouton Knit de RStudio, ou quarto render).
 #   donnees : "script" (les données dans le script) ou "csv" (un fichier à côté du script) ;
@@ -293,6 +294,7 @@ besoins_script <- function(plans, seance) {
        mgcv = any(vapply(reg, `[[`, TRUE, "generalise")), courbes = any(vapply(reg, function(pl) length(pl$lisses) > 0, TRUE)),
        aleatoires_mgcv = any(vapply(reg, function(pl) pl$generalise && !isTRUE(pl$gamm) && length(pl$niveaux) > 0, TRUE)),
        gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)), car1 = any(vapply(reg, function(pl) !is.null(pl$temps), TRUE)),
+       residus_quantiles = any(vapply(reg, function(pl) isTRUE(pl$quantiles), TRUE)),
        selection_aic = any(vapply(reg, function(pl) !is.null(pl$selection), TRUE)),
        echelle = any(vapply(plans, function(pl) !isTRUE(pl$regression) || pl$K > 0, TRUE)),
        nipals = any(vapply(plans, function(pl) !isTRUE(pl$regression), TRUE)))
@@ -1045,6 +1047,7 @@ plan_regression <- function(projet, d, m, tab) {
        effort = if (!is.null(d$decalage)) list(nom = nr[length(nr)], affiche = m$decalage,
                                                code = sprintf("d[[%s]]", code_texte(tab$noms[[as.character(d$decalage)]]))),
        lisses = lisses, n_courbes = length(m$lisses), k_demandes = k_demandes,
+       quantiles = !is.null(m$resultat$residus_quantiles),  # (les résidus quantiles d'un modèle de comptages... : regression_diagnostics.R)
        groupes_vc = groupes, en_tour = identical(groupes, as.integer((seq_along(groupes) - 1) %% G + 1)), G_tour = G,
        # (les groupes de la validation croisée sont-ils les niveaux du premier effet aléatoire, comme par défaut ?)
        vc_premier = L > 0 && length(d$groupes_vc$by) > 0 && as.character(d$groupes_vc$by)[1] %in% c("id", "variable") &&
@@ -1118,6 +1121,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   car1 <- !is.null(pl$temps)
   loi <- pl$famille %in% c("binomiale_negative", "tweedie")
   poisson <- identical(pl$famille, "poisson")
+  quantiles <- isTRUE(pl$quantiles)
   guillemets <- function(x) tx(sprintf("« %s »", texte_sur(x)), sprintf("“%s”", texte_sur(x)))
   liste <- function(x) liste_textes(x, tx("et", "and"))
   affiches <- vapply(pl$niveaux, `[[`, "", "affiche")
@@ -1456,6 +1460,19 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                                     temps_car1, groupes_car1_code)
     else if (mixte) "                           residu = residuals(m, type = \"normalized\"), ajuste_fixe = fitted(m, level = 0), row.names = NULL)"
     else "                           residu = rstandard(m), cook = cooks.distance(m), row.names = NULL)")
+  if (quantiles) {
+    # (la loi du modèle à ses valeurs ajustées, comme regression_diagnostics.R : residus_quantiles ; continue pour la loi gamma)
+    arguments <- c(poisson = "function(q, ...) ppois(q, fitted(m), ...)",
+                   binomiale_negative = "function(q, ...) pnbinom(q, size = m$family$getTheta(TRUE), mu = fitted(m), ...)",
+                   binomiale = "function(q, ...) pbinom(q, 1, fitted(m), ...)",
+                   gamma = "function(q, ...) pgamma(q, shape = 1 / m$sig2, rate = 1 / (m$sig2 * fitted(m)), ...), discrete = FALSE")[[pl$famille]]
+    lois <- c(poisson = "Poisson", binomiale_negative = tx("binomiale négative, de son θ estimé", "negative binomial with its estimated θ"),
+              binomiale = tx("binomiale, une épreuve : 0 ou 1", "binomial, one trial: 0 or 1"), gamma = tx("gamma de forme 1 / l'échelle estimée", "gamma of shape 1 / the estimated scale"))
+    statistiques <- c(statistiques,
+      commentaire(tx(sprintf("Et ses résidus quantiles randomisés (residus_quantiles ci-dessus), de la loi du modèle (%s) à sa valeur ajustée : normaux quand le modèle est juste.", lois[[pl$famille]]),
+                     sprintf("And its randomized quantile residuals (quantile_residuals above), from the model's distribution (%s) at its fitted value: normal when the model is right.", lois[[pl$famille]]))),
+      sprintf("observations$residu_quantile <- residus_quantiles(cadre[[1]], %s)", arguments))
+  }
 
   # --- la sélection par l'AIC (regression.R : selection_aic), quand elle a été faite dans Nuée
   sel <- pl$selection
@@ -1518,7 +1535,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     if (!is.null(sel)) ligne("print(head(selection$modeles, 20))", "sélection par l'AIC : les 20 meilleurs modèles", "AIC selection: the 20 best models"),
     if (!is.null(sel)) ligne("print(selection$importance)", "l'importance de chaque groupe de termes", "the importance of each group of terms"),
     if (test) ligne("print(test)", "jeu de test : RMSEP, biais, SEP, Q2 externe", "test set: RMSEP, bias, SEP, external Q2"),
-    ligne("print(head(observations))", "observée, ajustée, résidu standardisé", "observed, fitted, standardized residual"),
+    if (quantiles) ligne("print(head(observations))", "observée, ajustée, résidu standardisé et résidu quantile", "observed, fitted, standardized residual and quantile residual")
+    else ligne("print(head(observations))", "observée, ajustée, résidu standardisé", "observed, fitted, standardized residual"),
     ligne(if (gamm) "print(summary(m$gam))" else "print(summary(m))", "le résumé de R", "R's own summary"))
   ylab <- if (identical(pl$lien, "identity")) sprintf(tx("Effet sur %s", "Effect on %s"), pl$y$nom) else sprintf(tx("Effet (%s)", "Effect (%s)"), pl$lien)
   graphiques <- list(
@@ -1533,6 +1551,14 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "abline(h = c(-2, 0, 2), lty = c(2, 1, 2), col = \"grey\")",
       sprintf("qqnorm(observations$residu, pch = 19, main = %s)", code_texte(tx("Droite de Henry", "Normal Q-Q plot"))),
       "qqline(observations$residu, col = \"grey\")",
+      "par(op)")),
+    if (quantiles) list(nom = "residus-quantiles", largeur = 8, hauteur = 4, code = c(
+      "op <- par(mfrow = c(1, 2))",
+      sprintf("plot(observations$ajuste, observations$residu_quantile, pch = 19, xlab = %s, ylab = %s, main = %s)", code_texte(tx("Ajusté", "Fitted")),
+              code_texte(tx("Résidu quantile", "Quantile residual")), code_texte(tx("Résidus quantiles", "Quantile residuals"))),
+      "abline(h = c(-2, 0, 2), lty = c(2, 1, 2), col = \"grey\")",
+      sprintf("qqnorm(observations$residu_quantile, pch = 19, main = %s)", code_texte(tx("Droite de Henry, résidus quantiles", "Normal Q-Q plot, quantile residuals"))),
+      "qqline(observations$residu_quantile, col = \"grey\")",
       "par(op)")),
     if (pl$n_courbes) list(nom = "courbes", largeur = 4 * pl$n_courbes, hauteur = 4, code = c(
       if (pl$n_courbes > 1) sprintf("op <- par(mfrow = c(1, %d))", pl$n_courbes),
@@ -1577,7 +1603,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
 
 # Écart entre les résultats du script d'une régression (dans `e`) et ceux de `m` : NULL s'il n'y en
 # a pas, sinon les écarts relatifs de ce qui diffère (coefficients, vraisemblance et AIC, R²,
-# variances, paramètres, courbes, validation croisée, valeurs ajustées et résidus, jeu de test).
+# variances, paramètres, courbes, validation croisée, valeurs ajustées et résidus, résidus
+# quantiles, jeu de test).
 ecart_regression <- function(pl, m, e, langue) {
   r <- function(x) get0(nom_script(x, langue), envir = e, inherits = FALSE)
   colonnes <- function(x, k) if (!is.null(x) && length(x) >= max(k)) as.matrix(x[k])
@@ -1598,6 +1625,7 @@ ecart_regression <- function(pl, m, e, langue) {
     "validation croisée" = list(c(m$vc$Q2, m$vc$RMSEcv, m$vc$echecs), if (!is.null(vc)) c(vc$Q2, vc$RMSEcv, vc[[nom_script("echecs", langue)]])),
     "prédictions de la validation croisée" = list(m$vc$prediction, vc$prediction),
     "valeurs ajustées et résidus" = list(cbind(res$ajuste, res$residus), colonnes(r("observations"), 3:4)),
+    "résidus quantiles" = if (!is.null(res$residus_quantiles)) list(res$residus_quantiles, r("observations")[[nom_script("residu_quantile", langue)]]),
     "sélection par l'AIC" = if (!is.null(pl$selection)) list(as.matrix(m$selection_aic$modeles[c("k", "logLik", "AICc", "delta", "poids", "poids_cumule")]),
                                                              colonnes(r("selection")[[nom_script("modeles", langue)]], 2:7)),
     "importance des groupes" = if (!is.null(pl$selection)) list(m$selection_aic$importance$importance, unname(r("selection")[[nom_script("importance", langue)]])),
@@ -1636,6 +1664,7 @@ code_fonctions <- function(b, plans, langue) {
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
     if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx)),
     if (isTRUE(b$aleatoires_mgcv)) modele_predire_fixes(tx),
+    if (isTRUE(b$residus_quantiles)) modele_residus_quantiles(tx),
     if (b$plsda) modele_la_plus_grande(tx),
     if (b$pls || b$opls) modele_permutations(tx, seul, na),
     if ("snv" %in% b$spectres) modele_snv(tx),
@@ -2157,6 +2186,26 @@ modele_predire_fixes <- function(tx) c(
   "  as.vector(predict(m, nouvelles, type = \"response\", exclude = sprintf(\"s(%s)\", aleatoires)))",
   "}")
 
+# Les résidus quantiles randomisés (regression_diagnostics.R : residus_quantiles), écrits pour le
+# script : les mêmes tirages, de la même graine.
+modele_residus_quantiles <- function(tx) c(
+  commentaire(tx("Les résidus quantiles randomisés (Dunn et Smyth, 1996) : r = qnorm(u), u = F(y) pour une loi continue et, pour une loi discrète (`discrete`), tiré uniformément entre F(y − 1) et F(y) avec la graine `graine` ; `repartition(q, lower.tail)` : la fonction de répartition du modèle à la valeur ajustée de chaque observation. Ils suivent la loi normale quand le modèle est juste. Au-delà de 0,5, r se calcule par 1 − u (lower.tail = FALSE) : un comptage loin au-dessus de sa moyenne garde son résidu, au lieu de qnorm(1) = Inf.",
+                 "The randomized quantile residuals (Dunn & Smyth, 1996): r = qnorm(u), u = F(y) for a continuous distribution and, for a discrete one (`discrete`), drawn uniformly between F(y − 1) and F(y) with the seed `seed`; `distribution_function(q, lower.tail)`: the model's distribution function at each observation's fitted value. They are normal when the model is right. Beyond 0.5, r is computed from 1 − u (lower.tail = FALSE): a count far above its mean keeps its residual, instead of qnorm(1) = Inf.")),
+  "residus_quantiles <- function(y, repartition, discrete = TRUE, graine = 1) {",
+  "  y0 <- if (discrete) y - 1 else y",
+  "  F0 <- repartition(y0)                      # F(y - 1)",
+  "  F1 <- repartition(y)                       # F(y)",
+  "  S0 <- repartition(y0, lower.tail = FALSE)  # 1 - F(y - 1)",
+  "  S1 <- repartition(y, lower.tail = FALSE)   # 1 - F(y)",
+  "  v <- 0",
+  "  if (discrete) {",
+  "    set.seed(graine, kind = \"Mersenne-Twister\", normal.kind = \"Inversion\", sample.kind = \"Rejection\")",
+  "    v <- runif(length(y))",
+  "  }",
+  "  u <- F0 + v * (F1 - F0)",
+  "  ifelse(u <= 0.5, qnorm(u), qnorm(S0 - v * (S0 - S1), lower.tail = FALSE))",
+  "}")
+
 # Le test de permutation : dans un script d'un modèle, il réajuste ce modèle ; dans un script de
 # séance, `ajuster(Yp)` donne l'ajustement et la validation croisée de chaque modèle.
 modele_permutations <- function(tx, pl, na) {
@@ -2329,6 +2378,7 @@ NOMS_SCRIPT_EN <- c(
   x_pente = "x_slope", plages = "ranges", etat = "state", fins = "ends", debuts = "starts", nettes = "clear", sens = "direction",
   sens_pente = "slope_direction", sens_effet = "effect_direction", x_debut = "x_start", x_fin = "x_end", be = "effect_band", bp = "slope_band", ecart_types = "std_devs", parametre_loi = "distribution_parameter",
   observe = "observed", ajuste = "fitted", residu = "residual", ajuste_fixe = "fitted_fixed", predit = "predicted",
+  residus_quantiles = "quantile_residuals", residu_quantile = "quantile_residual", repartition = "distribution_function",
   courbe = "curve", abscisse = "abscissa", effet = "effect", droite = "rhs",
   selection_aic = "aic_selection", groupes_aic = "aic_groups", requis_aic = "aic_required", criteres_aic = "aic_criteria", choisis = "chosen",
   permise = "allowed", combinaisons = "combinations", combinaison = "combination", valeurs_aic = "aic_values", etapes_aic = "aic_steps",

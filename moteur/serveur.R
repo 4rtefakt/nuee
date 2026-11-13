@@ -323,7 +323,21 @@ ajuster_demande <- function(q) {
   ajuster_et_garder(p, d)
 }
 
-# Réajuste un modèle sans certaines observations, ou avec un autre nombre de composantes.
+# Les groupements d'une demande ({ by: "id" | "variable" }, ou { by: "effets" } : les effets
+# aléatoires d'une régression) en ceux du moteur (regression.R : specs_groupement) : le premier, ou
+# tous (`tous`, du plus large au plus fin) ; NULL sans groupement.
+groupements_demande <- function(s, tous = FALSE) {
+  if (!length(s$by)) return(NULL)
+  # (plusieurs groupements arrivent en data.frame, une ligne chacun)
+  if (is.data.frame(s)) s <- lapply(seq_len(nrow(s)), function(i) as.list(s[i, , drop = FALSE]))
+  if (!is.null(s$by)) s <- list(s)
+  specs <- lapply(s, function(x) if (identical(as.character(x$by)[1], "effets")) list(by = "effets") else specs_groupement(x)[[1]])
+  if (tous) specs else specs[[1]]
+}
+
+# Réajuste un modèle sans certaines observations, ou avec un autre nombre de composantes ; une
+# régression, aussi avec une autocorrélation CAR1 (q$car1 : son temps et ses groupes, comme pour
+# l'autocorrélation des résidus).
 reajuster_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
@@ -336,6 +350,10 @@ reajuster_demande <- function(q) {
   if (!is.null(q$groupes_aic)) {  # Sélection par AIC › Ajuster ce modèle : les seuls termes de ces groupes (regression.R)
     if (!est_regression(d)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     d <- definition_selection(d, e$modele, q$groupes_aic)
+  }
+  if (!is.null(q$car1)) {  # Autocorrélation des résidus › Ajuster avec CAR1 : la même définition, avec CAR1 (regression.R)
+    if (!est_regression(d)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    d <- definition_car1(p, d, groupements_demande(q$car1$temps), groupements_demande(q$car1$groupe, TRUE))
   }
   exclues <- as.numeric(q$exclues %||% numeric(0))
   if (length(q$garder)) {  # ne garder que ces termes X (et les facteurs de leurs termes croisés)
@@ -386,7 +404,8 @@ SANS_REGRESSION <- c("hca", "permutations", "scores_en_variables",
 
 # Ce que l'interface reçoit d'une régression : comme resultat_modele pour ce qui est commun
 # (observations observées et ajustées, RMSEE, RMSEcv, jeu de test, réglages), et ses propres
-# résultats (coefficients, qualité, variances, apports sur demande).
+# résultats (coefficients, qualité, variances, apports sur demande ; les résidus quantiles d'un
+# modèle de comptages, de présence-absence ou de valeurs positives, et leurs quantiles normaux).
 resultat_regression <- function(id) {
   e <- modele(id)
   p <- projet(e$projet)
@@ -398,6 +417,7 @@ resultat_regression <- function(id) {
   variances <- variances_regression(m)
   list(id = id, projet = p$id, nom = m$nom, titre = m$titre, type = m$type, regression = TRUE, opls = FALSE, Ap = 0, A = 0,
        N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
+       residus_quantiles = if (!is.null(r$residus_quantiles)) list(residu = r$residus_quantiles, quantile_normal = quantiles_henry(r$residus_quantiles)),
        coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),
        famille = m$famille, lien = m$lien, parametre_loi = r$parametre_loi, courbes = r$courbes, decalage = m$decalage, dispersion = r$dispersion,
        gamm = isTRUE(m$gamm), dans = m$dans,
@@ -803,15 +823,8 @@ DEMANDES <- list(
   autocorrelation_residus = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
-    groupement <- function(s, tous = FALSE) {
-      if (!length(s$by)) return(NULL)
-      # (plusieurs groupements arrivent en data.frame, une ligne chacun)
-      if (is.data.frame(s)) s <- lapply(seq_len(nrow(s)), function(i) as.list(s[i, , drop = FALSE]))
-      if (!is.null(s$by)) s <- list(s)
-      specs <- lapply(s, function(x) if (identical(as.character(x$by)[1], "effets")) list(by = "effets") else specs_groupement(x)[[1]])
-      if (tous) specs else specs[[1]]
-    }
-    c(list(modele = q$modele), autocorrelation_residus(projet(e$projet), e$modele, groupement(q$temps), groupement(q$groupe, TRUE), q$type %||% "pearson"))
+    c(list(modele = q$modele), autocorrelation_residus(projet(e$projet), e$modele, groupements_demande(q$temps), groupements_demande(q$groupe, TRUE),
+                                                       q$type %||% "pearson"))
   },
   # les tests du rapport de vraisemblance entre les régressions emboîtées de q$modeles
   # (regression_diagnostics.R), pour Comparer les modèles
