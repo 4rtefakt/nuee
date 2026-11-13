@@ -202,7 +202,8 @@ chemin_temporaire <- function(nom) {
 composantes_stockees <- function(d) {
   ref <- d$reference$components
   if (is.null(ref) || !length(ref)) return(NULL)
-  cle <- function(k) vapply(ref, function(x) as.numeric(x[[k]] %||% NA), 0)
+  # (I() : une liste même pour une seule composante, que l'interface lit composante par composante)
+  cle <- function(k) I(vapply(ref, function(x) as.numeric(x[[k]] %||% NA), 0))
   list(R2X = cle("R2X"), R2Xcum = cle("R2X(cum)"), R2Y = cle("R2Y"), R2Ycum = cle("R2Y(cum)"),
        Q2 = cle("Q2"), Q2cum = cle("Q2(cum)"))
 }
@@ -279,7 +280,8 @@ definition_interface <- function(p, q) {
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
                       lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
                       croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, k_courbes = if (length(q$k_courbes)) q$k_courbes,
-                      options = q$options, condition = q$condition, par_courbes = if (length(q$par_courbes)) q$par_courbes)
+                      options = q$options, condition = q$condition, par_courbes = if (length(q$par_courbes)) q$par_courbes,
+                      validation = q$validation)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -504,6 +506,10 @@ resultat_modele <- function(id) {
        ellipse = list(`95` = 2 * (Nt - 1) / (Nt - 2) * stats::qf(0.95, 2, Nt - 2),
                       `99` = 2 * (Nt - 1) / (Nt - 2) * stats::qf(0.99, 2, Nt - 2)),
        stocke = composantes_stockees(d), version_origine = d$version_origine %||% NULL,
+       # (la façon de valider, et les termes qui ont pris le poids du modèle complet dans un
+       # sous-modèle, avec le nom de son groupe : validation_croisee.R)
+       validation = m$validation, gardes_vc = gardes_vc(p, d, m),
+       hierarchique = m$hierarchique,  # (le Q2 honnête d'un modèle hiérarchique : hierarchique.R)
        noms_y = I(m$y$noms %||% character(0)),  # I() : un seul Y reste une liste
        G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "",
        cv_anova = s$cv_anova, classification = s$classification, test = m$test,

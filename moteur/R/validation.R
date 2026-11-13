@@ -13,7 +13,7 @@ permutations <- function(projet, m, definition, y = 1, n = 20, graine = 1) {
   A <- m$A
   d <- definition
   d$test <- NULL  # (le jeu de test ne change ni R2 ni Q2)
-  mesure <- function(r) c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$ssyv[y, 1]), Q2 = 1 - unname(r$press[A, y] / r$ss_vc[1, y]))
+  mesure <- function(r) c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$ssyv[y, 1]), Q2 = unname(r$q2v_cum[y]))
   lignes_y <- match(as.character(m$observations), rownames(projet$donnees))
   # (une PLS-DA d'un fichier .usp a une variable 0/1 par classe, celle de l'application une variable de classe)
   variables <- unique(vapply(if (m$plsda) d$y else d$y[y], function(t) as.character(t$variables[1]), ""))

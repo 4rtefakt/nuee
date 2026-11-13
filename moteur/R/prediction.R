@@ -10,22 +10,11 @@ predire <- function(projet, m, definition, observations) {
   if (est_regression(definition)) return(predire_observations_regression(projet, m, definition, observations))
   if (est_autre_analyse(definition)) return(predire_analyse(projet, m, definition, observations))  # analyses.R
   pls <- identical(m$type, "PLS")
-  bx <- construire_bloc(projet, definition$x, observations, imposees = m$x, spectres = definition$spectres)
-  X <- preparer(bx$X)
-  E <- X$E
   A <- m$A
-  n <- nrow(E)
-  T <- matrix(NA_real_, n, A)
-  # OPLS : les composantes orthogonales (après les Ap prédictives) sont retirées avant les prédictives
-  Ap <- m$Ap %||% 1
-  ordre <- if (isTRUE(m$opls)) c(seq_len(A)[-seq_len(Ap)], seq_len(Ap)) else seq_len(A)
-  for (a in ordre) {
-    v <- if (pls) m$W[, a] else m$P[, a]
-    tt <- projeter(E, X$M, v)
-    tt[rowSums(X$M) == 0] <- NA
-    T[, a] <- tt
-    E <- (E - outer(ifelse(is.na(tt), 0, tt), m$P[, a])) * X$M
-  }
+  sp <- scores_projetes(projet, m, definition, observations)  # (hierarchique.R)
+  T <- sp$T
+  E <- sp$E
+  X <- list(M = sp$M)
   s <- m$statistiques
   notes <- !is.na(m$T[, 1])
   var_t <- colSums(m$T[notes, , drop = FALSE]^2) / (sum(notes) - 1)

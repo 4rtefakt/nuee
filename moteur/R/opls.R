@@ -109,7 +109,7 @@ ajuster_opls <- function(X, Y, Ao, Ap = 1, vc = NULL, jusqua = FALSE) {
   M <- ncol(Y$E)
   avec_x <- rowSums(X$M) > 0
   n <- opls_noyau(X$E, X$M, Y$E, Y$M, Ao, Ap, jusqua = jusqua)
-  if (length(n$pred) < Ap) stop(trop_de_composantes(length(n$pred) + 1), call. = FALSE)
+  if (length(n$pred) < Ap) stop(erreur_composantes(length(n$pred) + 1))
   Ao <- ncol(n$Wo) %||% 0
   A <- Ap + Ao
   colonnes <- function(cle) do.call(cbind, lapply(n$pred, `[[`, cle))

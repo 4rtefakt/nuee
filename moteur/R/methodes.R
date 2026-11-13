@@ -172,10 +172,28 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   } else if (par == "groups") {
     if (fr) sprintf("%d groupes, repris du fichier d'origine", G) else sprintf("%d groups, taken from the original file", G)
   } else if (fr) sprintf("%d groupes (l'observation i dans le groupe i modulo %d)", G, G) else sprintf("%d groups (observation i in group i modulo %d)", G, G)
-  p3 <- if (fr) sprintf("Nous avons ajusté %s par l'algorithme NIPALS%s, avec %s. La validation croisée comptait %s ; chaque groupe a été prédit par un modèle ajusté sans lui, avec un centrage et une mise à l'échelle recalculés sur les autres observations.",
-                        nom_methode, manq, composantes, groupes)
-        else sprintf("We fitted %s with the NIPALS algorithm%s, with %s. Cross-validation used %s; each group was predicted by a model fitted without it, with centring and scaling recomputed on the other observations.",
-                     nom_methode, manq, composantes, groupes)
+  # (la façon de valider : validation_croisee.R)
+  gardes <- if (!is.null(m$gardes)) nrow(m$gardes) else 0
+  facon <- switch(m$validation %||% "sans_fuite",
+    centres = if (fr) "chaque groupe a été prédit par un modèle ajusté sans lui, avec un centrage recalculé sur les autres observations et la mise à l'échelle du modèle complet"
+              else "each group was predicted by a model fitted without it, with centring recomputed on the other observations and the scaling of the full model",
+    complet = if (isTRUE(m$opls)) {
+      if (fr) "chaque groupe a été prédit par un modèle ajusté sans lui avec le centrage et la mise à l'échelle du modèle complet"
+      else "each group was predicted by a model fitted without it with the centring and scaling of the full model"
+    } else {
+      if (fr) "avec le centrage et la mise à l'échelle du modèle complet, chaque composante a été validée sur les résidus des précédentes, et le Q² cumulé est 1 moins le produit des (1 − Q²) des composantes, chacun compté pour −0,1 au plus bas"
+      else "with the centring and scaling of the full model, each component was validated on the residuals of the previous ones, and the cumulative Q² is 1 minus the product of the components' (1 − Q²), each counted as −0.1 at worst"
+    },
+    paste0(if (fr) "chaque groupe a été prédit par un modèle ajusté sans lui, avec un centrage et une mise à l'échelle recalculés sur les autres observations"
+           else "each group was predicted by a model fitted without it, with centring and scaling recomputed on the other observations",
+           if (gardes > 0) {
+             if (fr) sprintf(" ; un terme qui ne gardait pas 10 %% de son écart-type sans le groupe caché y a pris le poids du modèle complet (%d cas)", gardes)
+             else sprintf("; a term that kept less than 10%% of its standard deviation without the held-out group took the full model's weight there (%d case%s)", gardes, if (gardes > 1) "s" else "")
+           }))
+  p3 <- if (fr) sprintf("Nous avons ajusté %s par l'algorithme NIPALS%s, avec %s. La validation croisée comptait %s ; %s.",
+                        nom_methode, manq, composantes, groupes, facon)
+        else sprintf("We fitted %s with the NIPALS algorithm%s, with %s. Cross-validation used %s; %s.",
+                     nom_methode, manq, composantes, groupes, facon)
 
   # --- qualité
   cp <- s$composantes
@@ -186,6 +204,13 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
         else sprintf("The model explains %s of the variance of X (cumulative R²X)%s; its cross-validated predictive ability is Q² = %s.",
                      pourcent(dernier$R2Xcum), if (!is.null(dernier$R2Ycum)) sprintf(" and %s of that of Y (cumulative R²Y)", pourcent(dernier$R2Ycum)) else "",
                      nombre(dernier$Q2cum))
+  h <- m$hierarchique
+  if (!is.null(h$q2cum)) {
+    p4 <- c(p4, if (fr) sprintf("Ses modèles de base (%s) refaits sans le groupe caché à chaque tour, pour que leurs scores ne se servent pas du Y de ce groupe, Q² = %s.",
+                                paste(h$bases, collapse = ", "), nombre(utils::tail(h$q2cum, 1)))
+                else sprintf("With its base models (%s) refitted without the held-out group in each round, so that their scores don't use that group's Y, Q² = %s.",
+                             paste(h$bases, collapse = ", "), nombre(utils::tail(h$q2cum, 1))))
+  }
   if (pls && length(s$cv_anova) && (length(s$cv_anova) == 1 || (plsda && length(s$cv_anova) == 2))) {
     p <- s$cv_anova[[1]]$p[2]
     if (!is.na(p)) p4 <- c(p4, cite("cv_anova", if (fr) sprintf("CV-ANOVA (Eriksson et al., 2008) : F = %s, %s.", nombre(s$cv_anova[[1]]$F[2]), valeur_p(p))

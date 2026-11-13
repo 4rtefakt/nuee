@@ -62,16 +62,17 @@ valeurs_simples <- function(projet, terme, observations, j = 1) {
 
 # Centre et poids d'échelle d'un terme, calculés sur les observations du modèle.
 # UV : variance unité (poids 1/écart-type) ; Par : Pareto (1/racine de l'écart-type) ;
-# Ctr : centrage seul ; none : ni centrage ni mise à l'échelle.
-echelle <- function(x, type) {
+# Ctr : centrage seul ; none : ni centrage ni mise à l'échelle. `ecart` : l'écart-type sur lequel
+# le poids est calculé (UV, Pareto ; manquant sinon), par défaut celui de x.
+echelle <- function(x, type, ecart = NULL) {
   v <- x[!is.na(x)]
   moy <- if (length(v)) mean(v) else 0
-  et <- if (length(v) > 1) stats::sd(v) else 0
+  et <- ecart %||% (if (length(v) > 1) stats::sd(v) else 0)
   switch(type,
-         UV = c(centre = moy, poids = if (et > 0) 1 / et else 0),
-         Par = c(centre = moy, poids = if (et > 0) 1 / sqrt(et) else 0),
-         Ctr = c(centre = moy, poids = 1),
-         none = c(centre = 0, poids = 1),
+         UV = c(centre = moy, poids = if (et > 0) 1 / et else 0, ecart = et),
+         Par = c(centre = moy, poids = if (et > 0) 1 / sqrt(et) else 0, ecart = et),
+         Ctr = c(centre = moy, poids = 1, ecart = NA),
+         none = c(centre = 0, poids = 1, ecart = NA),
          stop(traduire("Mise à l'échelle inconnue : ", "Unknown scaling: "), type))
 }
 
@@ -108,12 +109,19 @@ facteurs_ponderation <- function(termes) {
 # termes quantitatifs simples, observation par observation, avant la mise à l'échelle.
 # `bruts` : les valeurs des termes simples de ces observations (valeurs_bloc), déjà lues (la
 # validation croisée les lit une fois pour tous ses sous-modèles).
+# `complet` (un sous-modèle de la validation croisée, validation_croisee.R) : list(ecart, seuil),
+# l'écart-type de chaque terme dans le modèle complet ; un terme UV ou Pareto dont l'écart-type
+# sur ces observations est sous `seuil` fois le sien prend le poids du modèle complet (seuil
+# infini : tous). Le bloc rend dans `gardes` la part de son écart-type que garde chacun de ces
+# termes, pour un seuil fini et un terme qui n'est pas constant (constant, il est prédit de même
+# avec le poids du modèle complet ou un poids 0).
 construire_bloc <- function(projet, termes, observations, poids = c("calcules", "enregistres"),
-                            facteurs = NULL, imposees = NULL, spectres = NULL, bruts = NULL) {
+                            facteurs = NULL, imposees = NULL, spectres = NULL, bruts = NULL, complet = NULL) {
   poids <- match.arg(poids)
   K <- length(termes)
   X <- matrix(NA_real_, length(observations), K)
-  centre <- poids_k <- rep(NA_real_, K)
+  centre <- poids_k <- ecart <- rep(NA_real_, K)
+  gardes <- stats::setNames(numeric(0), character(0))
   type <- character(K)
   noms <- vapply(termes, function(t) as.character(t$name), "")
   simples <- if (is.null(facteurs)) list() else facteurs
@@ -135,9 +143,15 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
       type[k] <<- if (connu) ech$type else "fixe"
     } else {
       cw <- echelle(x, ech$type)
+      ec <- complet$ecart[k]
+      if (!is.null(ec) && ech$type %in% c("UV", "Par") && isTRUE(ec > 0) && cw[["ecart"]] < complet$seuil * ec) {
+        if (cw[["ecart"]] > 0 && is.finite(complet$seuil)) gardes[[noms[k]]] <<- cw[["ecart"]] / ec
+        cw <- echelle(x, ech$type, ecart = ec)
+      }
       cw[["poids"]] <- cw[["poids"]] * ponderation[k]
       facteur[k] <<- ponderation[k]
       type[k] <<- ech$type
+      ecart[k] <<- cw[["ecart"]]
     }
     centre[k] <<- cw[["centre"]]
     poids_k[k] <<- cw[["poids"]]
@@ -172,7 +186,8 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
   }
   colnames(X) <- noms
   rownames(X) <- as.character(observations)
-  list(X = X, centre = centre, poids = poids_k, type = type, facteur = facteur, noms = noms, simples = simples, reference = reference)
+  list(X = X, centre = centre, poids = poids_k, type = type, facteur = facteur, noms = noms, simples = simples, reference = reference,
+       ecart = ecart, gardes = gardes)
 }
 
 # Les valeurs des termes simples d'un bloc pour des observations, transformées (une colonne par

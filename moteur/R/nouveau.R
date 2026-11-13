@@ -338,7 +338,9 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   (ses termes : poids divisé par la racine du nombre de termes du bloc) ; modificateurs : de
 #   même, un facteur du poids (pretraitement.R : facteurs_ponderation) ;
 #   condition : garder seulement les observations où cette expression R est vraie, par exemple
-#   "site == \"S1\" & annee >= 2010" (condition.R) ; d$cochees garde les observations sans elle.
+#   "site == \"S1\" & annee >= 2010" (condition.R) ; d$cochees garde les observations sans elle ;
+#   validation (ACP, PLS, OPLS) : "sans_fuite", "centres" ou "complet", la façon de faire la
+#   validation croisée (validation_croisee.R : mode_validation).
 # Régressions (regression.R) : type "LM" (linéaire) ou "LMM" (mixte), une seule variable Y ;
 #   aleatoires : les effets aléatoires d'un modèle mixte, emboîtés, du plus large au plus fin,
 #   par exemple list(list(by = "id", id = "site"), list(by = "id", id = "secteur")) ; pentes : les
@@ -362,7 +364,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
                            famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
-                           condition = NULL, par_courbes = NULL) {
+                           condition = NULL, par_courbes = NULL, validation = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -455,6 +457,8 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     if (length(options)) d$options <- options  # (les réglages propres de l'analyse)
     if (length(classe) && !is.na(classe[1])) d$classe <- as.numeric(classe)[1]  # (sa variable de classe : LDA, arbre de classement)
   }
+  # (ACP, PLS, OPLS : la façon de valider, validation_croisee.R : mode_validation)
+  if (!regression && !autre && length(validation) && as.character(validation)[1] %in% MODES_VALIDATION) d$validation <- as.character(validation)[1]
   if (length(vc$by) && !identical(as.character(vc$by), "order")) {
     d$groupes_vc <- vc
     groupes_definition(projet, d)  # (une erreur claire maintenant : un seul groupe, identifiant inconnu)
@@ -543,6 +547,7 @@ reglages_modele <- function(projet, d) {
        condition = if (avec_condition(d)) texte_condition(d$condition) else "", echelles = echelles,
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
+       validation = if (!est_regression(d) && !est_autre_analyse(d)) mode_validation(d),
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
        k_courbes = d$k_courbes, par_courbes = d$par_courbes,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))), croises_reglages = croises_reglages,

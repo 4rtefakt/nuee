@@ -124,8 +124,8 @@ Projects, data, models imported from a .usp file, fitted models and their views.
 Double-click: open. Right-click: every action (fit, edit, add or remove a component,
 export, delete...). Double-clicking an imported model refits it in R; the Summary marks each
 value: "=" the same as the value stored in the file, "≈" close (less than 0.01), "≠"
-different. Q2 nearly always differs: Nuée doesn't cross-validate the way the software that
-wrote the file did (see "What differs").
+different. Q2 usually differs: an imported model is validated like the others (see
+"Cross-validation"); "Full model's centres and weights (like SIMCA)" gives back the file's.
 
 Menus and toolbar
 -----------------
@@ -365,10 +365,10 @@ share's copy replaces it; to keep a correction, make it in the same file on the 
 (application\resources\moteur\R).
 A long command blocks the application until the computation ends.
 Checking the engine: verifier_moteur() refits the imported models of the open projects and
-compares them with the values stored in their files (R2X, R2Y, Q2); verifier_moteur("folder")
-does the same for the .usp and .json files of a folder. To do after a correction of the
-engine. Q2 is shown but left out of the verdict: Nuée's cross-validation isn't the files' (see
-"What differs").
+compares them with the values stored in their files (R2X, R2Y, Q2), validated like the files;
+verifier_moteur("folder") does the same for the .usp and .json files of a folder. To do after a
+correction of the engine. Q2 counts in the verdict, except a PCA's, only close (see "What
+differs").
 
 Model report
 ------------
@@ -1178,17 +1178,46 @@ Cross-validation groups): with "site", all the years of a site are in the same g
 site is predicted by a model that has never seen it; observations without a value make a group
 of their own. Models from .usp files keep their groups: by an ID when the file groups the
 observations with the same value, or else the file's groups as they are (shown "groups from the
-file"). Each group is predicted by a model fitted without it, like new observations: the
-centring, the scaling (and MSC's mean spectrum, the cross terms) are computed again on the
-other observations, with the same number of components. PRESS: the sum of squared prediction
-errors; Q2(cum) = 1 - PRESS / SS (SS: the variation of Y, or of X for a PCA); a component's Q2,
-1 - PRESS / PRESS of the previous one. PCA: each value is predicted by the scores of its
-observation computed without the variables of its group of variables (also assigned to G
-groups). This Q2 sees nothing of the observations it predicts: with few observations, it is
-much lower than a validation done with the scaling of all the observations (on pure noise, 6
-observations and 20 variables, the latter gave Q2 = 0.98 for an OPLS-DA; Nuée now gives less
-than 0). RMSEcv, CV-ANOVA, the cross-validated classification and the confidence intervals
-(jack-knife, over the G sub-models) come from it.
+file").
+Three ways to validate a PCA, PLS or OPLS (New model › Cross-validation):
+- Centres recomputed, full model's weights (the default, for every model, imported ones
+  included): each group is predicted by a model fitted without it, like new observations; its
+  centres (and MSC's mean spectrum, the cross terms) are computed again on the other
+  observations, with the same number of components. The model knows nothing of the Y of the
+  group it predicts. Its weights stay the full model's: the standard deviations of X don't
+  depend on Y (a single Y: its weight doesn't change the predictions), and nothing is rescaled
+  on fewer observations, so no prediction blows up.
+- Centres and weights recomputed without the held-out group (the validation of 0.9.0 to
+  0.9.7): likewise, but the weights are computed again on the other observations too.
+  Stricter: a term that varies little without the held-out group gets a large weight there,
+  and the group's predictions stray. A guard: a term whose standard deviation on the other
+  observations falls under 10 % of the full model's (a variable that varies at one site only,
+  validated by site) keeps the full model's weight; otherwise its weight, 1 / standard
+  deviation, would be multiplied as much, and the held-out group's predictions would blow up
+  (Q2 of -8e11 on a real project). The Summary says which ones, without which group.
+- Full model's centres and weights (like SIMCA): the full model's centring and scaling; each
+  component is validated on what the full model's previous components leave, one component
+  fitted without each group. A component's Q2: 1 - PRESS / SS of the residuals before it;
+  Q2(cum): 1 - the product of the components' (1 - Q2), each counted as -0.1 at worst. It is
+  the validation of .usp files: it gives back their Q2, their Q2 per variable and their
+  coefficients' confidence intervals. The Y predicted in cross-validation (RMSEcv, CV-ANOVA,
+  classification) comes from sub-models fitted without each group on the full model's
+  matrices. More optimistic, especially with few observations or groups by site: Y's centre and
+  the previous components already know the held-out group (on pure noise, 6 observations and 20
+  variables, it gave Q2 = 0.98 for an OPLS-DA; the other two, less than 0). An OPLS has its
+  sub-models fitted on the full model's matrices.
+The first two: PRESS, the sum of squared prediction errors; Q2(cum) = 1 - PRESS / SS (SS: the
+variation of Y, or of X for a PCA); a component's Q2, 1 - PRESS / PRESS of the previous one.
+PCA: each value is predicted by the scores of its observation computed without the variables of
+its group of variables (also assigned to G groups). RMSEcv, CV-ANOVA, the cross-validated
+classification, the confidence intervals (jack-knife, over the G sub-models), the permutation
+test and autofit follow the validation chosen.
+Hierarchical model (a PLS whose X include scores of other models of the project, $M1.t1...):
+its Q2 takes these scores as they are, though they were computed with the held-out group's Y.
+Its Summary also gives an honest Q2(cum): in each round, its base models are refitted without
+the held-out group (the whole site when the groups are by site), then their scores, with the
+model's validation (centres recomputed when it is the full model's); a base model with no
+variation left without that group gives scores of zero.
 
 Validation (PLS and PLS-DA)
 ---------------------------
@@ -1288,17 +1317,19 @@ and DCrit, VIP, coefficients, RMSEE.
 What differs
 ------------
 - Q2 (and what comes from the cross-validation: Q2 per variable, RMSEcv, CV-ANOVA, the
-  cross-validated classification, confidence intervals): Nuée predicts each group by a model
-  fitted without it, centring and scaling included (see "Cross-validation"); the stored values
-  come from a validation done with the scaling of all the observations. Median difference from
-  the stored Q2(cum): 0.003 for PLS models with over 200 observations, 0.02 from 50 to 200,
-  0.11 from 20 to 50, 0.27 up to 20, Nuée's Q2 being nearly always lower; a few hundredths for
-  PCA. With groups by an ID (a site, a sector), the difference is larger: the model fitted
-  without a site doesn't know that site's mean level either. With the file's own validation
-  (the scaling of all the observations), the stored Q2 of .usp models comes back exactly,
-  groups by ID included (moteur/tests/verifier_references.R). 18 models out of 944, with a
-  variable that varies on almost one observation only, lose much more (without it, its scaling
-  enlarges it a lot).
+  cross-validated classification, confidence intervals): by default, Nuée predicts each group
+  by a model fitted without it, its centres recomputed (see "Cross-validation"); the stored
+  values come from a validation done with the centring and scaling of all the observations.
+  Median difference from the stored Q2(cum), over the test corpus: 0.003 for PLS models with
+  over 200 observations, 0.01 from 50 to 200, 0.10 from 20 to 50, 0.22 below, Nuée's Q2 being
+  nearly always lower; 0.04 for PCA. With groups by an ID (a site, a sector), the difference is
+  larger: the model fitted without a site doesn't know that site's mean level either. Validated
+  with "Full model's centres and weights (like SIMCA)", the stored Q2 comes back exactly, groups
+  by ID included: 773 PLS models out of 809 of the test corpus (220 out of 220 without missing
+  data), 441 out of 443 of four real projects (moteur/tests/verifier_references.R), where the
+  other two have a round without any variation, whose stored value comes from rounding errors.
+  For a PCA, it is off by 0.02 in median: the details of the files' validation aren't
+  published.
 
 - Sign of the components of new models: arbitrary (imported models are oriented as in the
   file).
@@ -1316,7 +1347,8 @@ The code
 Every computation is in resources\moteur\R (R, commented in French):
   pretraitement.R        transformations, centring, scaling
   nipals.R               PCA and PLS (NIPALS algorithm, missing data)
-  validation_croisee.R   cross-validation (a sub-model without each group), Q2
+  validation_croisee.R   cross-validation (three ways), Q2
+  hierarchique.R         hierarchical models: honest Q2 (base models refitted)
   regression.R           regression models (lm, nlme, mgcv), AIC, block contributions
   statistiques.R         T2, DModX, VIP, coefficients, intervals, limits
   validation.R           permutations, CV-ANOVA, PLS-DA classification and ROC curves

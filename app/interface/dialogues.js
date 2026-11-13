@@ -65,6 +65,9 @@ function editeurTransfo(initial, choisir, apres) {
 //     options sent (p: the project summary, its variables and IDs).
 export const ANALYSES = {};
 
+// the ways to cross-validate a PCA, PLS or OPLS (moteur/R/validation_croisee.R: MODES_VALIDATION)
+const MODES_VALIDATION = ['sans_fuite', 'centres', 'complet'];
+
 // spectral preprocessing steps (moteur/R/spectres.R); sg1 = Savitzky–Golay 1st derivative
 const ETAPES = ['', 'snv', 'msc', 'detrend', 'ligne_base', 'sg0', 'sg1', 'sg2'];
 
@@ -76,6 +79,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     A: r ? r.A : 0, auto: !r, G: r ? r.G || 7 : 7, echelle: 'UV', roles: {}, echelles: {}, transfos: {},
     // cross-validation groups: null = in turn (G groups), else { by: 'id', id } | { by: 'variable', variable } | { by: 'groups', … } (moteur/R/validation_croisee.R)
     vc: r && r.vc && r.vc.by ? r.vc : null, blocs: {}, modificateurs: {}, bloc: '',
+    // how a PCA, PLS or OPLS is cross-validated: 'sans_fuite' | 'centres' | 'complet' (moteur/R/validation_croisee.R: mode_validation)
+    validation: r && r.validation ? r.validation : 'centres',
     exclues: new Set(r ? [].concat(r.exclues || []) : []), onglet: 'variables', filtre: '', filtreObs: '',
     test: new Set(r ? [].concat(r.test || []).map(Number) : []), methodeTest: 'hasard', partTest: 25,
     // keep only the observations where this R condition is TRUE (moteur/R/condition.R); compte: how
@@ -350,6 +355,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       el('input', { type: 'number', min: 1, max: 50, value: st.A || 2, disabled: st.auto, style: 'width:5em', oninput: (e) => { st.A = +e.target.value; } }))],
     analyse() && analyse().vc === false ? null : [el('label', {}, t('groupes_vc')), groupesVC()],
     st.vc && !(analyse() && analyse().vc === false) ? [el('label', {}, ''), el('p', { class: 'note' }, t(st.vc.by === 'groups' ? 'vc_fichier_note' : 'vc_note'))] : null,
+    regression() || analyse() ? null : [el('label', {}, t('validation_vc')), el('select', { onchange: (e) => { st.validation = e.target.value; rendre(); } },
+      MODES_VALIDATION.map((k) => el('option', { value: k, selected: k === st.validation }, t('validation_' + k)))),
+    el('label', {}, ''), el('p', { class: 'note' }, t('validation_note_' + st.validation))],
     el('label', {}, t('echelle_defaut')), el('select', { onchange: (e) => { st.echelle = e.target.value; rendre(); } },
       ECHELLES.map((k) => el('option', { value: k, selected: k === st.echelle }, t('echelle_' + k)))),
     sansSpectres() ? null : el('label', {}, t('spectres')), sansSpectres() ? null : el('div', { class: 'ligne' },
@@ -631,7 +639,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       spectres: sansSpectres() ? [] : spectres, A: st.auto || regression() || analyse() ? 0 : st.A, G: st.G, vc: st.vc, blocs, modificateurs: regression() ? {} : modificateurs,
       aleatoires: ['LMM', 'GLM', 'GAM'].includes(st.type) ? st.aleatoires : [], correlation: avecCar1() ? st.correlation : null,
       famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [], k_courbes: kCourbesEnvoyes(),
-      par_courbes: parCourbesEnvoyes(),
+      par_courbes: parCourbesEnvoyes(), validation: regression() || analyse() ? undefined : st.validation,
       decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, croises_reglages: croisesReglages, nom: st.nom, titre: st.titre,
       options: analyse() && analyse().options ? analyse().options(st, cles, p) : undefined, condition: st.condition.trim() };
     if (!enCours) verifierPuisAjuster(q);
@@ -768,12 +776,12 @@ const AIDE = {
       ['Code', `Tous les calculs sont en R, commentés en français, dans ${MOTEUR}.`],
     ],
     differences: [
-      ['Identique aux valeurs enregistrées', 'Vérifié sur 944 modèles de 133 projets .usp : mise à l’échelle (pondération par blocs et modificateurs compris), groupes de validation croisée, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.'],
-      ['Validation croisée', 'Chaque groupe est prédit par un modèle ajusté sans lui, centrage et mise à l’échelle recalculés sur les autres observations. Q2, RMSEcv, CV-ANOVA et classement en validation croisée s’écartent donc des valeurs enregistrées, d’autant plus que les observations sont peu nombreuses (PLS, écart médian du Q2 : 0,003 au-delà de 200 observations, 0,02 de 50 à 200, 0,1 à 0,3 en dessous) ; le Q2 de Nuée est le plus souvent plus bas. Avec des groupes par identifiant (un site, un secteur), l’écart est plus grand : le modèle ajusté sans un site ne connaît pas non plus son niveau moyen.'],
+      ['Identique aux valeurs enregistrées', 'Vérifié sur 944 modèles de 133 projets .usp : mise à l’échelle (pondération par blocs et modificateurs compris), groupes de validation croisée, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE. Validés comme leurs fichiers, avec les centres et les poids du modèle complet (la façon des modèles importés) : Q2, Q2 par variable et intervalles de confiance des coefficients (773 PLS sur 809, toutes celles sans données manquantes ; 441 sur 443 de quatre projets réels).'],
+      ['Validation croisée', 'Par défaut, chaque groupe est prédit par un modèle ajusté sans lui, ses centres recalculés sur les autres observations : Q2, RMSEcv, CV-ANOVA et classement en validation croisée s’écartent des valeurs enregistrées, d’autant plus que les observations sont peu nombreuses (PLS, écart médian du Q2 : 0,003 au-delà de 200 observations, 0,01 de 50 à 200, 0,1 à 0,2 en dessous) ; ce Q2 est le plus souvent plus bas. Avec des groupes par identifiant (un site, un secteur), l’écart est plus grand : le modèle ajusté sans un site ne connaît pas non plus son niveau moyen. Nouveau modèle › Validation croisée › « Centres et poids du modèle complet (comme SIMCA) » valide comme les fichiers : le Q2 redonne celui du fichier (une ACP à 0,02 près en médiane : le détail de cette validation n’est pas publié).'],
       ['Signe des composantes', 'Arbitraire pour les nouveaux modèles ; les modèles importés sont orientés comme la solution enregistrée.'],
       ['Dendrogrammes', 'Méthode de Ward exacte : les fusions du haut de l’arbre peuvent différer de celles enregistrées.'],
-      ['Intervalles de confiance', 'Jack-knife sur les sous-modèles de la validation croisée, chacun dans sa propre mise à l’échelle : ils diffèrent des valeurs enregistrées.'],
-      ['Ajustement automatique', 'Règles publiées R1, R2, N3, N4, sur le Q2 de cette validation croisée : le nombre de composantes peut différer ; pour l’ACP, la limite exacte n’est pas publiée.'],
+      ['Intervalles de confiance', 'Jack-knife sur les sous-modèles de la validation croisée : validés avec les centres et les poids du modèle complet, ceux des coefficients sont les valeurs enregistrées ; par défaut, ils en diffèrent.'],
+      ['Ajustement automatique', 'Règles publiées R1, R2, N3, N4, sur le Q2 de la validation choisie : par défaut, le nombre de composantes peut différer ; pour l’ACP, la limite exacte n’est pas publiée.'],
       ['Seuil VIP', 'Plus grande marche des VIP triés autour de 0,8 : méthode de l’application.'],
     ],
   },
@@ -825,12 +833,12 @@ const AIDE = {
       ['Code', `All computations are in R, commented in French, in ${MOTEUR}.`],
     ],
     differences: [
-      ['Same as the stored values', 'Checked on 944 models from 133 .usp projects: scaling (block scaling and modifiers included), cross-validation groups, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE.'],
-      ['Cross-validation', 'Each group is predicted by a model fitted without it, with centring and scaling recomputed on the other observations. Q2, RMSEcv, CV-ANOVA and the cross-validated classification therefore differ from the stored values, more so with few observations (PLS, median Q2 difference: 0.003 above 200 observations, 0.02 from 50 to 200, 0.1 to 0.3 below); Nuée’s Q2 is usually lower. With groups by an ID (a site, a sector), the difference is larger: the model fitted without a site doesn’t know its mean level either.'],
+      ['Same as the stored values', 'Checked on 944 models from 133 .usp projects: scaling (block scaling and modifiers included), cross-validation groups, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE. Validated like their files, with the full model’s centres and weights (the way of imported models): Q2, Q2 per variable and the coefficients’ confidence intervals (773 PLS models out of 809, all those without missing data; 441 out of 443 of four real projects).'],
+      ['Cross-validation', 'By default, each group is predicted by a model fitted without it, its centres recomputed on the other observations: Q2, RMSEcv, CV-ANOVA and the cross-validated classification differ from the stored values, more so with few observations (PLS, median Q2 difference: 0.003 above 200 observations, 0.01 from 50 to 200, 0.1 to 0.2 below); this Q2 is usually lower. With groups by an ID (a site, a sector), the difference is larger: the model fitted without a site doesn’t know its mean level either. New model › Cross-validation › “Full model’s centres and weights (like SIMCA)” validates like the files: its Q2 gives back the file’s (a PCA to 0.02 in median: the details of that validation aren’t published).'],
       ['Component signs', 'Arbitrary for new models; imported models are oriented like their stored solution.'],
       ['Dendrograms', 'Exact Ward linkage: the top merges can differ from the stored ones.'],
-      ['Confidence intervals', 'Jack-knife over the cross-validation sub-models, each in its own scaling: they differ from the stored ones.'],
-      ['Autofit', 'Published rules R1, R2, N3, N4, on the Q2 of this cross-validation: the number of components can differ; for PCA, the exact limit is not published.'],
+      ['Confidence intervals', 'Jack-knife over the cross-validation sub-models: validated with the full model’s centres and weights, the coefficients’ ones are the stored values; by default, they differ from them.'],
+      ['Autofit', 'Published rules R1, R2, N3, N4, on the Q2 of the validation chosen: by default, the number of components can differ; for PCA, the exact limit is not published.'],
       ['VIP cut-off', 'Largest step in the sorted VIPs around 0.8: the application’s method.'],
     ],
   },

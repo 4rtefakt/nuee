@@ -2,8 +2,10 @@
 # ajuste (ACP, PLS à un ou plusieurs Y, PLS-DA, OPLS, OPLS-DA à deux classes et plus) et ses
 # options (transformations, mises à l'échelle par variable, termes qualitatifs, croisés et carrés,
 # spectres, valeurs manquantes, jeu de test, modèle d'un .usp orienté comme sa solution
-# enregistrée, modèle hiérarchique, sous-modèles de la validation croisée à court de variation),
-# le script est écrit, lancé dans une session R neuve
+# enregistrée, modèle hiérarchique, sous-modèles de la validation croisée à court de variation ;
+# les trois façons de valider, sans fuite, centres seulement et avec les centres et les poids du
+# modèle complet, et la garde d'un terme qui ne varie presque que dans un groupe), le script est
+# écrit, lancé dans une session R neuve
 # (Rscript --vanilla, sans le moteur) depuis un autre dossier, et ses résultats sont comparés à
 # ceux du moteur : scores, R2 et Q2, T2, DModX et leurs limites, VIP, coefficients, CV-ANOVA,
 # classification, jeu de test, test de permutation. Puis : le script d'une PLS simple est court
@@ -281,6 +283,108 @@ d$title <- "Ligne 1\nstop(\"code injecté\") `r 1 + 1`"
 r <- essayer("titre", p, d)
 verifier("un titre avec saut de ligne et `r ...` reste dans les commentaires", !any(grepl("^stop\\(", lignes_script(r))))
 
+cat("Trois façons de valider : sans fuite, centres seulement, avec les centres et les poids du modèle complet\n")
+# La validation croisée de chaque modèle (d$validation, validation_croisee.R : mode_validation) :
+# sans fuite (centres et écarts-types recalculés sans le groupe caché, avec la garde d'un terme
+# presque constant), centres seulement (les écarts-types du modèle complet), ou avec les centres et
+# les poids du modèle complet (chaque composante d'une ACP ou d'une PLS validée sur ce que laissent
+# les précédentes, le Q2cum compté comme dans les fichiers .usp). Une PLS avec des valeurs
+# manquantes (Y, X, une observation sans valeur X), une ACP avec des valeurs manquantes, une
+# OPLS-DA à quatre classes : chaque mode donne son Q2, et le script celui du moteur avec les
+# fonctions de ce mode (et le test de permutation de la PLS et de l'OPLS-DA).
+qm <- p
+qm$donnees[c(5, 17, 40), as.character(uid("note_gout"))] <- NA
+qm$donnees[9, as.character(complets[1:4])] <- NA  # une observation sans aucune valeur X
+qm$donnees[c(12, 30), as.character(complets[6])] <- NA
+# (la façon de valider d'un script, sous le nom de son mode)
+facon <- function(texte) c(sans_fuite = any(grepl("ecart_vc(apply(", texte, fixed = TRUE)), centres = any(grepl("else complet$ecart_", texte, fixed = TRUE)),
+                           complet = any(grepl("^vc <- validation_modele_complet_(acp|pls|opls)\\(s, ", texte)))
+modes_valides <- function(nom, projet, definir, permutations = FALSE) {
+  q2 <- vapply(MODES_VALIDATION, function(mode) {
+    d <- definir(mode)
+    f <- facon(lignes_script(essayer(sprintf("%s_%s", nom, mode), projet, d, permutations = permutations)))
+    verifier(sprintf("%s_%s : le script valide ainsi (%s)", nom, mode, paste(names(f)[f], collapse = ", ")), identical(names(f)[f], mode))
+    utils::tail(ajuster(projet, d)$q2cum, 1)
+  }, 0)
+  verifier(sprintf("%s : un Q2cum par mode (%s)", nom, paste(sprintf("%s %.4f", names(q2), q2), collapse = ", ")), !anyDuplicated(signif(q2, 8)))
+}
+modes_valides("pls_manquants", qm, function(mode) definir_modele(qm, "PLS", x = complets[1:4], y = uid("note_gout"), A = 2, validation = mode), permutations = TRUE)
+modes_valides("acp_manquants", qm, function(mode) definir_modele(qm, "PCA", x = complets[1:6], A = 3, validation = mode))
+modes_valides("oplsda", p, function(mode) definir_modele(p, "OPLS-DA", x = complets, classe = uid("variete"), A = 4, validation = mode), permutations = TRUE)
+# un modèle d'un fichier .usp, avec les résultats enregistrés dans le fichier, valide comme les
+# autres par défaut : centres recalculés, poids du modèle complet (mode_validation)
+du <- definir_modele(p, "PLS-DA", x = complets, classe = uid("variete"), A = 3)
+du$reference <- list(components = list(list("R2X(cum)" = 0.5, "Q2(cum)" = 0.4)))
+r <- essayer("usp_modele_complet", p, du, permutations = TRUE)
+verifier("un modèle d'un fichier .usp, avec les résultats enregistrés dans le fichier, valide par défaut avec les centres recalculés et les poids du modèle complet",
+         is.null(du$validation) && identical(names(which(facon(lignes_script(r)))), "centres"))
+
+cat("La garde d'un terme qui ne varie presque que dans un groupe (validation sans fuite)\n")
+# Comme a_nbjtx0 dans un vrai projet venu d'un fichier .usp, qui garde 0,5 % de son écart-type sans
+# le site 208 : des sites (un identifiant des observations), la validation croisée par site, un
+# terme qui ne varie presque que sur le site 208, son terme croisé avec x1, et un Y de même. Sans le
+# site 208, leur poids (1 / écart-type) serait 200 fois celui du modèle complet : ils prennent
+# l'écart-type du modèle complet (ecart_vc dans le script), et le script redonne le moteur ; sans la
+# garde, son Q2 s'effondre. De même pour une ACP et une OPLS.
+set.seed(9)
+sites <- rep(c(201, 204, 205, 208, 211, 215), each = 8)
+gd <- data.frame(nom = sprintf("O%02d", seq_along(sites)), x1 = rnorm(48), x2 = rnorm(48), x3 = rnorm(48),
+                 a_nbjtx0 = ifelse(sites == 208, rpois(48, 5), 0) + rnorm(48, 0, 0.01))
+gd$y <- gd$x1 - 0.5 * gd$x2 + 0.3 * gd$a_nbjtx0 + rnorm(48, 0, 0.5)
+gd$y_208 <- ifelse(sites == 208, rnorm(48, 3), 0) + rnorm(48, 0, 0.01)
+pg <- projet_depuis_tableau(gd, "sites")
+pg$observation_id_names <- c("Observation", "site")
+for (i in seq_along(pg$observations)) pg$observations[[i]]$ids <- c(pg$observations[[i]]$ids[1], sites[i])
+xg <- numeros(pg, c("x1", "x2", "x3", "a_nbjtx0"))
+par_site_g <- list(by = "id", id = "site")
+dg <- definir_modele(pg, "PLS", x = xg, y = numeros(pg, c("y", "y_208")), A = 2, vc = par_site_g, croises = list(numeros(pg, c("a_nbjtx0", "x1"))), validation = "sans_fuite")
+mg <- ajuster(pg, dg)
+gardes <- gardes_vc(pg, dg, mg)
+verifier(sprintf("le moteur garde l'écart-type du modèle complet sans le site 208 : %s", paste(sprintf("%s (%.2f %%)", gardes$terme, 100 * gardes$part), collapse = ", ")),
+         setequal(gardes$terme, c("a_nbjtx0", "a_nbjtx0*x1", "y_208")) && all(gardes$groupe == "208") && all(gardes$part < 0.01))
+r <- essayer("garde_site", pg, dg, permutations = TRUE)
+appel <- grep("^vc <- validation_croisee_pls\\(", lignes_script(r), value = TRUE)
+sans <- lancer(r$script, "composantes", paste("ecart_vc <- function(ecart, complet) ecart;", appel, "; 1 - rowSums(vc$press) / sum(vc$ss[1, ])"))
+verifier(sprintf("sans la garde (ecart_vc, dans pretraiter()), le script donnerait Q2cum = %.3g au lieu de %.3g", sans$suite[2] %||% NA, mg$q2cum[2]),
+         length(appel) == 1 && isTRUE(sans$suite[2] < mg$q2cum[2] - 1))
+essayer("garde_site_acp", pg, definir_modele(pg, "PCA", x = xg, A = 2, vc = par_site_g, validation = "sans_fuite"))
+essayer("garde_site_opls", pg, definir_modele(pg, "OPLS", x = xg, y = numeros(pg, "y"), A = 2, vc = par_site_g, validation = "sans_fuite"), permutations = TRUE)
+
+cat("Une séance aux trois façons de valider\n")
+# Des modèles qui valident chacun à sa façon dans le même script : les fonctions de chaque façon,
+# une fois ; les résultats du moteur ; le test de permutation d'une PLS validée avec les centres et
+# les poids du modèle complet, tel que le script l'écrit (en commentaire).
+dir.create(ici <- file.path(dossier, "seance_modes"))
+defs <- list(definir_modele(qm, "PLS", x = complets[1:4], y = uid("note_gout"), A = 2, nom = "PLS_sans_fuite", validation = "sans_fuite"),
+             definir_modele(qm, "PLS", x = complets[1:4], y = uid("note_gout"), A = 2, nom = "PLS_centres", validation = "centres"),
+             definir_modele(qm, "PLS", x = complets[1:4], y = uid("note_gout"), A = 2, nom = "PLS_complet", validation = "complet"),
+             definir_modele(qm, "PCA", x = complets[1:6], A = 3, nom = "ACP_complet", validation = "complet"),
+             definir_modele(qm, "OPLS-DA", x = complets[1:6], classe = uid("variete"), A = 4, nom = "OPLSDA_complet", validation = "complet"),
+             definir_modele(qm, "OPLS", x = complets[1:6], y = uid("note_gout"), A = 2, nom = "OPLS_centres", validation = "centres"))
+ms_modes <- lapply(defs, function(d) ajuster(qm, d))
+r <- ecrire_script_seance(qm, defs, ms_modes, file.path(ici, "seance.R"), "moteur", version = "essai")
+texte <- lignes_script(r)
+noms <- sub(" <- list\\(.*", "", grep("^[A-Za-z][A-Za-z0-9_.]* <- list\\(m = ", texte, value = TRUE))
+debuts <- grep("^# permutations\\(function\\(Yp\\) \\{", texte)
+appels <- lapply(debuts, function(i) sub("^# ", "", texte[i:(i - 1 + grep("^# \\}, ", texte[i:length(texte)])[1])]))
+appel <- Filter(function(a) grepl("PLS_complet$Y", a[length(a)], fixed = TRUE), appels)[[1]]
+appel[length(appel)] <- sub("\\)$", ", n = 3)", appel[length(appel)])
+sortie <- lancer(r$script, noms, paste(appel, collapse = "\n"))
+memes <- vapply(seq_along(noms), function(k) {
+  a <- moteur(ms_modes[[k]])
+  x <- sortie[[noms[k]]]
+  !is.null(x) && meme(a$scores, x$m$T) && meme(a[["R2, Q2"]], x$composantes) && meme(a$T2, x$observations$T2) && meme(a$DModX, x$observations$DModX) &&
+    meme(a$limites, x$limites) && meme(a$VIP, x$variables$VIP) && meme(a$coefficients, x$coefficients) && meme(a[["CV-ANOVA"]], cv(x$cv_anova)) &&
+    meme(a$classification, x$classification)
+}, TRUE)
+fonctions <- c("ecart_vc", "validation_croisee_pls", "validation_croisee_opls", "validation_modele_complet_pls", "validation_modele_complet_acp", "validation_modele_complet_opls")
+verifier(sprintf("%d modèles (%s) : les mêmes résultats que le moteur, et les fonctions de chaque façon de valider une fois", length(noms), paste(noms, collapse = ", ")),
+         is.null(r$ecart) && identical(noms, vapply(defs, function(d) d$name, "")) && all(memes) &&
+           all(vapply(fonctions, function(f) sum(grepl(sprintf("^%s <- function", f), texte)) == 1, TRUE)) && !any(grepl("^validation_croisee_acp <- function", texte)))
+attendu <- permutations(qm, ms_modes[[3]], defs[[3]], n = 3)
+verifier("le test de permutation de PLS_complet, comme le script l'écrit, donne celui du moteur",
+         length(appel) == 5 && grepl("validation_modele_complet_pls(s, m, G = 7)", appel[4], fixed = TRUE) && meme(sortie$suite$points, attendu$points[c("correlation", "R2", "Q2")]))
+
 cat("En anglais\n")
 r <- essayer("anglais", p, definir_modele(p, "OPLS-DA", x = c(complets, uid("polyphenols")), classe = uid("variete"), A = 4, test = numeros_observations(p)[seq(4, 120, by = 6)]),
              langue = "en", permutations = TRUE)
@@ -300,8 +404,13 @@ autres <- list(definir_modele(q, "PCA", x = complets[1:4], A = 2), definir_model
                definir_modele(p, "PLS-DA", x = c(uid("verger"), complets[1:6]), classe = uid("culture"), A = 2, croises = list(c(uid("verger"), complets[1])),
                               echelle = stats::setNames(c("Par", "Ctr", "none"), as.character(complets[1:3]))),
                definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = vc_verger, blocs = blocs,
-                              modificateurs = stats::setNames(2, as.character(complets[7]))))
-projets <- list(q, q, p, p, p)
+                              modificateurs = stats::setNames(2, as.character(complets[7]))),
+               # (les trois façons de valider, et la garde d'un terme presque constant)
+               definir_modele(qm, "PLS-DA", x = complets[1:6], classe = uid("variete"), A = 2, validation = "complet"),
+               definir_modele(qm, "PCA", x = complets[1:6], A = 2, blocs = blocs, validation = "centres"),
+               definir_modele(p, "OPLS", x = complets, y = uid(c("note_gout", "jus")), A = 4, validation = "complet"),
+               dg)
+projets <- list(q, q, p, p, p, qm, qm, p, pg)
 ecarts <- character(0)
 anglais <- vapply(seq_along(autres), function(k) {
   r <- ecrire_script(projets[[k]], autres[[k]], file.path(dossier, sprintf("anglais_%d.R", k)), "moteur", version = "essai", langue = "en", donnees = "csv")
@@ -314,9 +423,10 @@ r_sp <- ecrire_script(s, definir_modele(s, "PLS", x = numeros(s, sprintf("%.0f n
                       file.path(dossier, "anglais_spectres.R"), "moteur", version = "essai", langue = "en")
 ms <- lapply(p$models, function(d) ajuster(p, d))
 r_seance <- ecrire_script_seance(p, p$models, ms, file.path(dossier, "anglais_seance.R"), "moteur", version = "essai", langue = "en")
-verifier("ni nom ni commentaire en français (OPLS-DA et jeu de test, ACP et PLS avec valeurs manquantes, OPLS à 2 Y, termes croisés et échelles mêlées, spectres, séance)",
-         en_anglais(lignes_script(r)) && all(anglais) && en_anglais(lignes_script(r_sp)) && en_anglais(lignes_script(r_seance)) &&
-           !length(ecarts) && is.null(r_sp$ecart) && is.null(r_seance$ecart))
+r_modes <- ecrire_script_seance(qm, defs, ms_modes, file.path(dossier, "anglais_seance_modes.R"), "moteur", version = "essai", langue = "en")
+verifier("ni nom ni commentaire en français (OPLS-DA et jeu de test, ACP et PLS avec valeurs manquantes, OPLS à 2 Y, termes croisés et échelles mêlées, spectres, séance ; validations centres seulement et avec les centres et les poids du modèle complet, garde, séance aux trois façons)",
+         en_anglais(lignes_script(r)) && all(anglais) && en_anglais(lignes_script(r_sp)) && en_anglais(lignes_script(r_seance)) && en_anglais(lignes_script(r_modes)) &&
+           !length(ecarts) && is.null(r_sp$ecart) && is.null(r_seance$ecart) && is.null(r_modes$ecart))
 
 cat("Toute la séance dans un script\n")
 dir.create(ici <- file.path(dossier, "seance"))

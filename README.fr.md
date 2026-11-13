@@ -111,8 +111,10 @@ en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en angl
 **Méthodes :** ACP, PLS, PLS-DA, et OPLS / OPLS-DA (plusieurs Y ou plus de deux classes donnent
 plusieurs composantes prédictives), avec les valeurs manquantes traitées par NIPALS et une
 validation croisée (7 groupes à tour de rôle, ou un groupe par valeur d'un identifiant ou d'une
-variable, un site par exemple) où chaque groupe est prédit par un modèle ajusté sans lui,
-centrage et mise à l'échelle compris (R2, Q2, et Q2 par variable). Pondération par blocs et
+variable, un site par exemple) où chaque groupe est prédit par un modèle ajusté sans lui, ses
+centres recalculés (R2, Q2, et Q2 par variable) ; ou ses poids aussi, ou, comme dans les
+fichiers `.usp`, les centres et les poids du modèle complet. Un Q2 honnête pour les modèles
+hiérarchiques, leurs modèles de base refaits à chaque tour. Pondération par blocs et
 modificateurs, transformations personnalisées, termes croisés de deux ou trois variables. Modèles de classe : une ACP par
 classe, et le graphique de Coomans pour dire à quelle classe appartient une observation, à
 plusieurs, ou à aucune.
@@ -285,12 +287,14 @@ et les valeurs avec lesquelles ces modèles ont été enregistrés. Il recalcule
 et marque chaque valeur du résumé comme identique, proche ou différente. Sur 944 modèles de 133
 projets, R2X, R2Y, les scores, les loadings, T2, DModX, les VIP et les coefficients sont ceux
 enregistrés, à quelques modèles avec données manquantes près ; *Aide › Résultats et écarts
-connus* liste les écarts connus. Le Q2 est celui de Nuée : sa validation croisée réajuste le
-modèle de chaque groupe sans lui, mise à l'échelle comprise, ce que les valeurs enregistrées
-ne faisaient pas. Les deux s'accordent pour de grands jeux de données (un écart médian de 0,003
+connus* liste les écarts connus. Le Q2 est par défaut celui de Nuée : le modèle de chaque
+groupe est réajusté sans lui, ses centres recalculés, ce que les valeurs enregistrées ne
+faisaient pas. Les deux s'accordent pour de grands jeux de données (un écart médian de 0,003
 pour les PLS de plus de 200 observations) et s'éloignent avec moins d'observations, où le Q2 de
-Nuée est plus bas (de 0,11 en médiane de 20 à 50 observations, de 0,27 jusqu'à 20). Le RMSEcv,
-la CV-ANOVA et le classement en validation croisée suivent.
+Nuée est plus bas (de 0,10 en médiane de 20 à 50 observations, de 0,22 en dessous). *Nouveau
+modèle › Validation croisée › Centres et poids du modèle complet* valide comme les fichiers : le
+Q2 enregistré revient (773 PLS sur 809, toutes celles sans données manquantes), avec les
+intervalles de confiance des coefficients.
 
 ## Signaler un problème
 
@@ -302,7 +306,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 0.9.7) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.8) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)
