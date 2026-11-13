@@ -24,6 +24,7 @@ ajuster <- function(projet, definition, A = definition$A, G = definition$cv_grou
   modele <- calculer_modele(projet, definition, A, G, poids, arret, projets_vc)
   if (orienter && !is.null(definition[["solution"]][["T"]])) modele <- orienter_comme(modele, definition[["solution"]][["T"]])
   modele$statistiques <- statistiques(modele)
+  modele$hierarchique <- q2_hierarchique(projet, definition, modele)  # (hierarchique.R : NULL sans score d'un autre modèle)
   if (length(definition$test)) modele$test <- evaluer_test(projet, modele, definition)  # jeu_test.R
   modele
 }
@@ -76,11 +77,12 @@ ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL) {
     # plus de variation à décrire (nipals.R) : l'ajustement automatique (arret) s'arrête là ;
     # sinon l'erreur dit combien de composantes le modèle peut avoir
     comp <- tryCatch(if (pls) composante_pls(E, X$M, F, Y$M, depart) else composante_acp(E, X$M, depart),
-                     sans_variation = function(e) if (!is.null(arret) && a > 1) NULL else stop(trop_de_composantes(a), call. = FALSE))
+                     sans_variation = function(e) if (!is.null(arret) && a > 1) NULL else stop(erreur_composantes(a)))
     if (is.null(comp)) break
     tt <- comp$t
     tt[!avec_x] <- NA
     t0 <- ifelse(is.na(tt), 0, tt)
+    avant <- list(E = E, F = F)  # (les résidus avant cette composante : la validation avec les centres et poids du modèle complet part d'eux)
     E <- (E - outer(t0, comp$p)) * X$M
     res$T <- cbind(res$T, tt)
     res$P <- cbind(res$P, comp$p)
@@ -95,14 +97,20 @@ ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL) {
       res$ssyv <- cbind(res$ssyv, colSums(F[avec_x, , drop = FALSE]^2))
     }
     if (!is.null(vc)) {  # (PRESS et SS jusqu'à cette composante, pour `arret`)
-      vc <- composante_validation(vc, a)
+      vc <- composante_validation(vc, a, avant$E, avant$F, comp)
       res$press <- vc$press
-      res$ss_vc <- rbind(vc$ss, vc$press[-a, , drop = FALSE], deparse.level = 0)
+      res$ss_vc <- ss_validation(vc, a)
     }
     if (!is.null(arret) && arret(res, a)) break
   }
   c(res[setdiff(names(res), c("press", "ss_vc"))], if (!is.null(vc)) fin_validation(vc, ncol(res$T)),
     list(ssx = colSums(res$ssxv), ssy = if (pls) colSums(res$ssyv), residus_x = E, residus_y = F, avec_x = avec_x))
+}
+
+# L'erreur d'un modèle qui ne peut pas avoir sa composante a (classe « trop_de_composantes »,
+# que hierarchique.R reconnaît : un modèle de base sans variation dans un tour).
+erreur_composantes <- function(a) {
+  structure(class = c("trop_de_composantes", "error", "condition"), list(message = trop_de_composantes(a), call = NULL))
 }
 
 trop_de_composantes <- function(a) {

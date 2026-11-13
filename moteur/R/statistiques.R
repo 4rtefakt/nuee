@@ -53,7 +53,7 @@ statistiques <- function(m, niveau = 0.95) {
   for (a in seq_len(A)) vars[[paste0("p", a)]] <- m$P[, a]
   vars$R2V_cum <- 1 - m$ssxv[, A + 1] / m$ssxv[, 1]
   if (!pls) {
-    vars$Q2V_cum <- 1 - m$press[A, ] / m$ss_vc[1, ]
+    vars$Q2V_cum <- m$q2v_cum
     ic <- intervalles_acp(m, niveau)
     for (a in seq_len(A)) vars[[paste0("p", a, "_IC")]] <- ic[, a]
   }
@@ -109,7 +109,7 @@ statistiques <- function(m, niveau = 0.95) {
       yv[[paste0("c", a, "_IC")]] <- ic$c[, a]
     }
     yv$R2V_cum <- 1 - m$ssyv[, A + 1] / m$ssyv[, 1]
-    yv$Q2V_cum <- 1 - m$press[A, ] / m$ss_vc[1, ]
+    yv$Q2V_cum <- m$q2v_cum
     yv$centre <- m$y$centre
     yv$poids <- m$y$poids
     yv$RMSEE <- s$RMSEE
