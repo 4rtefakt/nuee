@@ -2,7 +2,9 @@
 # (lm, nlme::lme) : coefficients, AIC en ML, R², validation croisée par groupes, jeu de test,
 # apport des blocs, autocorrélation dans le temps, sélection par l'AIC (chaque combinaison contre
 # lm, nlme::lme avec ou sans CAR1, mgcv::gam et mgcv::gamm en ML ; l'élimination descendante ; le
-# modèle choisi) ; et que les définitions mal formées (un fichier reçu) sont refusées, qu'une
+# modèle choisi), Ajuster avec CAR1 (contre nlme::lme et mgcv::gamm avec corCAR1), les résidus
+# quantiles randomisés (refaits avec les fonctions de répartition de R d'après glm() et mgcv::gam(),
+# et leur graine) ; et que les définitions mal formées (un fichier reçu) sont refusées, qu'une
 # définition enregistrée se relit.
 #   Rscript moteur/tests/verifier_regression.R
 
@@ -264,6 +266,60 @@ verifier("l'autocorrélation avec une loi gamma : refusée (mgcv::gamm passerait
          grepl("loi normale", refus(modele_g("GLM", "masse", "x2", famille = "gamma",
          aleatoires = list(list(by = "variable", variable = ug("site"))), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ug("x1")))))))
 
+cat("Résidus quantiles randomisés (Dunn et Smyth, 1996)\n")
+# (refaits ici d'après R : u tiré entre F(y − 1) et F(y) avec la même graine, F la loi ajustée par
+# glm(), MASS::glm.nb() ou mgcv::gam(), puis r = qnorm(u))
+tirer_entre <- function(a, b) {
+  set.seed(1, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
+  stats::runif(length(a), a, b)
+}
+ref_p <- glm(compte ~ x1 + x2, family = poisson, data = tg)
+u_p <- tirer_entre(ppois(tg$compte - 1, fitted(ref_p)), ppois(tg$compte, fitted(ref_p)))
+rq_p <- mg1$resultat$residus_quantiles
+# (des comptages surdispersés : loin dans la queue de droite, qnorm(u) de R perd ses chiffres, que
+# Nuée garde en calculant 1 − u ; les probabilités se comparent partout, les résidus sous 0,5)
+verifier(sprintf("Poisson = glm() : u entre ppois(y − 1) et ppois(y), r = qnorm(u) ; sur des comptages surdispersés, un écart-type de %.1f", stats::sd(rq_p)),
+         proche(pnorm(rq_p), u_p, 1e-6) && proche(rq_p[u_p <= 0.5], qnorm(u_p[u_p <= 0.5]), 1e-6) && all(is.finite(rq_p)) && stats::sd(rq_p) > 1.5)
+# (la binomiale négative de mgcv et son θ : celle que Nuée ajuste, comparée plus haut à MASS::glm.nb())
+a3 <- mg3$ajustement
+rq_nb <- mg3$resultat$residus_quantiles
+verifier(sprintf("binomiale négative : pnbinom() de son θ (%.2f) à ses valeurs ajustées ; des comptages de cette loi, des résidus presque normaux (moyenne %.2f, écart-type %.2f)",
+                 a3$family$getTheta(TRUE), mean(rq_nb), stats::sd(rq_nb)),
+         proche(rq_nb, qnorm(tirer_entre(pnbinom(tg$compte - 1, size = a3$family$getTheta(TRUE), mu = fitted(a3)), pnbinom(tg$compte, size = a3$family$getTheta(TRUE), mu = fitted(a3)))), 1e-10) &&
+           abs(mean(rq_nb)) < 0.2 && abs(stats::sd(rq_nb) - 1) < 0.15)
+theta6 <- refr$family$getTheta(TRUE)
+verifier("GAMM binomial négatif (courbe, site aléatoire, effort) : la loi à la valeur ajustée, le site et l'effort compris, = mgcv::gam() et son θ",
+         proche(mg6$resultat$residus_quantiles, qnorm(tirer_entre(pnbinom(tg$compte - 1, size = theta6, mu = fitted(refr)), pnbinom(tg$compte, size = theta6, mu = fitted(refr)))), 1e-4))
+ref_b <- glm(presence ~ x2, family = binomial, data = tg)
+verifier("binomiale 0/1 = glm() : une épreuve, u entre 1 − p et 1 pour une présence, entre 0 et 1 − p pour une absence",
+         proche(mg4$resultat$residus_quantiles, qnorm(tirer_entre(pbinom(tg$presence - 1, 1, fitted(ref_b)), pbinom(tg$presence, 1, fitted(ref_b)))), 1e-6))
+a5 <- mg5$ajustement
+verifier("gamma : u = pgamma(y) de la loi ajustée (sa moyenne, sa forme 1 / l'échelle estimée), sans tirage",
+         proche(mg5$resultat$residus_quantiles, qnorm(pgamma(tg$masse, shape = 1 / a5$sig2, rate = 1 / (a5$sig2 * fitted(a5)))), 1e-10))
+verifier("ni pour la loi normale (ses résidus standardisés le sont déjà), ni pour Tweedie, ni pour une régression linéaire",
+         is.null(modele_g("GLM", "masse", "x2")$resultat$residus_quantiles) && is.null(mg7$resultat$residus_quantiles) && is.null(mg8$resultat$residus_quantiles))
+# (un comptage loin au-dessus de sa moyenne : ppois(y − 1) y vaut 1 en double précision, et qnorm(u) donnerait Inf)
+pq <- projet_depuis_tableau(data.frame(nom = sprintf("Q%02d", 1:31), x = c(seq(0, 1, length.out = 30), 0.5), compte = c(rep(1:3, 10), 45)), "queue")
+mq <- ajuster(pq, definir_modele(pq, "GLM", x = numeros(pq, "x"), y = numeros(pq, "compte"), echelle = "none", famille = "poisson"))
+mu45 <- unname(fitted(mq$ajustement)[31])
+r45 <- mq$resultat$residus_quantiles[31]
+verifier(sprintf("un comptage de 45 pour une moyenne de %.1f : un résidu fini (%.1f), P(Y > 45) ≤ 1 − Φ(r) ≤ P(Y ≥ 45)", mu45, r45),
+         ppois(44, mu45) == 1 && is.finite(r45) && pnorm(r45, lower.tail = FALSE) >= ppois(45, mu45, lower.tail = FALSE) * (1 - 1e-10) &&
+           pnorm(r45, lower.tail = FALSE) <= ppois(44, mu45, lower.tail = FALSE) * (1 + 1e-10))
+genre <- RNGkind()
+RNGkind("L'Ecuyer-CMRG", "Box-Muller")
+set.seed(11)
+avant <- .Random.seed
+rq1 <- residus_quantiles(mg1$ajustement, "poisson")
+rq2 <- residus_quantiles(mg1$ajustement, "poisson")
+verifier("la graine : les mêmes résidus à un second calcul et quel que soit le générateur de la session, rendu tel quel avec son état",
+         identical(rq1, rq2) && identical(rq1, rq_p) && identical(RNGkind()[1:2], c("L'Ecuyer-CMRG", "Box-Muller")) && identical(.Random.seed, avant))
+RNGkind(genre[1], genre[2], genre[3])
+rm(".Random.seed", envir = globalenv())
+mg1b <- modele_g("GLM", "compte", c("x1", "x2"), famille = "poisson")
+verifier("une session qui n'a encore rien tiré au hasard : l'ajustement ne lui laisse pas de .Random.seed, et donne les mêmes résidus",
+         !exists(".Random.seed", envir = globalenv(), inherits = FALSE) && identical(mg1b$resultat$residus_quantiles, rq_p))
+
 cat("Modèle additif mixte avec une autocorrélation dans le temps (mgcv::gamm)\n")
 # comme les scripts de seuils : y ~ s(x, k = 5) + moyenne de x dans le secteur, un effet aléatoire
 # site, une autocorrélation CAR1 le long des années dans chaque secteur de chaque site
@@ -457,6 +513,123 @@ verifier("les groupes des effets aléatoires, puis un niveau plus fin (le secteu
            grepl("même temps", refus(autocorrelation_residus(pa, mle_a, temps = par_variable("annee"), groupe = list(by = "effets")))))
 verifier("plusieurs observations au même temps dans un groupe, ou pas de temps : refusé, en disant pourquoi",
          grepl("même temps", refus(autocorrelation_residus(pac, ml_ac, temps = annee_ac))) && grepl("temps", refus(autocorrelation_residus(pac, ml_ac))))
+
+cat("Ajuster avec CAR1 (Autocorrélation des résidus)\n")
+# la définition du modèle sans CAR1, avec l'autocorrélation le long du temps choisi dans les groupes
+# de ses effets aléatoires (regression.R : definition_car1), ajustée comme nlme::lme() et
+# mgcv::gamm() l'ajustent avec corCAR1
+d0_ac <- definir_modele(pac, "LMM", x = uac("x", "z"), y = uac("y"), echelle = "none", aleatoires = list(site_ac))
+dcar_ac <- definition_car1(pac, d0_ac, annee_ac, list(list(by = "effets")))
+mcar_ac <- ajuster(pac, dcar_ac)
+mlcar_ac <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ annee | site), data = tac, method = "ML", control = ctrl)
+verifier(sprintf("modèle mixte : la même définition, CAR1 dans chaque site en plus ; = nlme::lme(correlation = corCAR1(form = ~ annee | site)) (φ = %.3f), dans l'ensemble AIC du modèle sans CAR1",
+                 mcar_ac$resultat$phi),
+         identical(dcar_ac$correlation, list(type = "CAR1", temps = annee_ac)) && identical(dcar_ac[names(dcar_ac) != "correlation"], d0_ac) &&
+           proche(mcar_ac$resultat$coefficients$estimation, nlme::fixef(rc_ac), 1e-5) &&
+           proche(mcar_ac$resultat$phi, coef(rc_ac$modelStruct$corStruct, unconstrained = FALSE), 1e-4) && proche(mcar_ac$resultat$AIC, AIC(mlcar_ac), 1e-6) &&
+           identical(mcar_ac$signature, m0_ac$signature))
+dle_a <- definir_modele(pa, "LMM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", aleatoires = list(par_variable("site")))
+dsec_a <- definition_car1(pa, dle_a, par_variable("annee"), list(list(by = "effets"), par_variable("secteur")))
+msec_a <- ajuster(pa, dsec_a)
+reml_sec <- nlme::lme(y ~ x + xbar, random = ~ 1 | site_f, correlation = cor_a, data = ta, method = "REML", control = ctrl)
+verifier("un niveau plus fin, le secteur dans son site (dans) : = nlme::lme(correlation = corCAR1(form = ~ annee | site/secteur)), dans l'ensemble AIC du modèle sans CAR1",
+         identical(dsec_a$correlation, car1_a) && proche(msec_a$resultat$coefficients$estimation, nlme::fixef(reml_sec), 1e-5) &&
+           proche(msec_a$resultat$phi, coef(reml_sec$modelStruct$corStruct, unconstrained = FALSE), 1e-4) && proche(msec_a$resultat$AIC, AIC(ml_ref), 1e-6) &&
+           identical(msec_a$signature, mle_a$signature))
+da0 <- definir_modele(pa, "GAM", x = ua("x", "xbar"), y = ua("y"), echelle = "none", famille = "gaussienne", lisses = ua("x"),
+                      k_courbes = stats::setNames(list(5), ua("x")), aleatoires = list(par_variable("site")))
+mgam_a <- ajuster(pa, definition_car1(pa, da0, par_variable("annee"), list(list(by = "effets"), par_variable("secteur"))))
+verifier("un GAM à loi normale et au site aléatoire : mgcv::gamm, = mgcv::gamm(correlation = corCAR1(form = ~ annee | site/secteur)) ; un autre ensemble AIC que le GAM (mgcv::gam)",
+         isTRUE(mgam_a$gamm) && proche(mgam_a$resultat$coefficients$estimation, summary(ref_reml$gam)$p.table[, 1], 1e-5) &&
+           proche(mgam_a$resultat$phi, unname(stats::coef(ref_reml$lme$modelStruct$corStruct, unconstrained = FALSE)), 1e-4) &&
+           proche(mgam_a$resultat$AIC, stats::AIC(ref_ml$lme), 1e-6) && mgam_a$signature != ma0$signature)
+car1_effets <- list(list(by = "effets"))
+verifier("refusé, en disant pourquoi : sans effet aléatoire, une loi de Poisson, d'autres groupes que ceux des effets aléatoires (ou aucun), déjà une autocorrélation",
+         grepl("pas d'effet aléatoire", refus(definition_car1(pac, definir_modele(pac, "LM", x = uac("x"), y = uac("y")), annee_ac, car1_effets))) &&
+           grepl("loi normale", refus(definition_car1(pac, definir_modele(pac, "GLM", x = uac("x"), y = uac("compte"), famille = "poisson", aleatoires = list(site_ac)),
+                                                      annee_ac, car1_effets))) &&
+           grepl("choisissez ses effets aléatoires", refus(definition_car1(pac, d0_ac, annee_ac, list(site_ac)))) &&
+           grepl("choisissez ses effets aléatoires", refus(definition_car1(pac, d0_ac, annee_ac, NULL))) &&
+           grepl("déjà", refus(definition_car1(pac, dcar_ac, annee_ac, car1_effets))))
+cat("Le temps en dates : l'autocorrélation des résidus et CAR1\n")
+# les mêmes 8 sites, comptés chaque année un même jour de mai ou de juin (qui change d'une année à
+# l'autre) : la date en texte, le jour d'abord (une variable qualitative : chaque date revient pour
+# les 8 sites), et la même en années décimales refaite avec R (le jour de l'année de as.POSIXlt)
+set.seed(13)
+jours_an <- as.Date(sprintf("%d-05-01", 2001:2011)) + sample(0:45, 11, TRUE)
+tdt <- tac
+tdt$date <- format(jours_an[tac$annee - 2000], "%d/%m/%Y")
+tdt$decimale <- tac$annee + as.POSIXlt(jours_an[tac$annee - 2000])$yday / ifelse(tac$annee %% 4 == 0, 366, 365)
+pdt <- projet_depuis_tableau(tdt, "dates")
+udt <- function(...) numeros(pdt, c(...))
+temps_d <- list(by = "variable", variable = udt("date"))
+temps_n <- list(by = "variable", variable = udt("decimale"))
+site_d <- list(by = "variable", variable = udt("site"))
+ml_d <- ajuster(pdt, definir_modele(pdt, "LM", x = udt("x", "z"), y = udt("y"), echelle = "none"))
+ad_d <- autocorrelation_residus(pdt, ml_d, temps = temps_d, groupe = site_d)
+ad_n <- autocorrelation_residus(pdt, ml_d, temps = temps_n, groupe = site_d)
+verifier("sans CAR1, le temps en dates (une variable qualitative) : la même autocorrélation qu'en années décimales, et qu'en années (le même ordre dans chaque site)",
+         length(variable_du_projet(pdt, udt("date"))$categories) == 10 && proche(ad_d$series[[1]]$acf, ad_n$series[[1]]$acf, 1e-12) &&
+           identical(ad_d$paires, ad_n$paires) && ad_d$n == 80 && ad_d$temps == "date" && proche(ad_d$series[[1]]$acf, al$series[[1]]$acf, 1e-10))
+car1_d <- function(tps) definir_modele(pdt, "LMM", x = udt("x", "z"), y = udt("y"), echelle = "none", aleatoires = list(site_d), correlation = list(type = "CAR1", temps = tps))
+mc_d <- ajuster(pdt, car1_d(temps_d))
+mc_n <- ajuster(pdt, car1_d(temps_n))
+rc_d <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ decimale | site), data = tdt, method = "REML", control = ctrl)
+rc_d_ml <- nlme::lme(y ~ x + z, random = ~ 1 | site, correlation = nlme::corCAR1(form = ~ decimale | site), data = tdt, method = "ML", control = ctrl)
+verifier(sprintf("CAR1 le long des dates : coefficients, φ (%.3f par an), AIC et résidus normalisés = ceux des années décimales, et = nlme::lme(corCAR1(form = ~ decimale | site))", mc_d$resultat$phi),
+         proche(mc_d$resultat$coefficients$estimation, mc_n$resultat$coefficients$estimation, 1e-10) && proche(mc_d$resultat$phi, mc_n$resultat$phi, 1e-10) &&
+           proche(mc_d$resultat$AIC, mc_n$resultat$AIC, 1e-10) && proche(mc_d$resultat$residus, mc_n$resultat$residus, 1e-10) &&
+           proche(mc_d$resultat$coefficients$estimation, nlme::fixef(rc_d), 1e-5) && proche(mc_d$resultat$phi, unname(stats::coef(rc_d$modelStruct$corStruct, unconstrained = FALSE)), 1e-4) &&
+           proche(mc_d$resultat$AIC, AIC(rc_d_ml), 1e-6))
+ac_d <- autocorrelation_residus(pdt, mc_d)
+verifier("CAR1 le long des dates, l'autocorrélation de ses résidus et de ses résidus normalisés : celle des années décimales",
+         isTRUE(ac_d$car1) && proche(ac_d$series[[1]]$acf, autocorrelation_residus(pdt, mc_n)$series[[1]]$acf, 1e-10) &&
+           proche(ac_d$series[[2]]$acf, autocorrelation_residus(pdt, mc_n)$series[[2]]$acf, 1e-8))
+pdi_t <- pdt
+pdi_t$observation_id_names <- c("Observation", "jour")
+for (i in seq_along(pdi_t$observations)) pdi_t$observations[[i]]$ids <- c(pdi_t$observations[[i]]$ids[1], format(jours_an[tac$annee[i] - 2000]))
+verifier("CAR1 le long de dates ISO en identifiant des observations : le même modèle",
+         proche(ajuster(pdi_t, definir_modele(pdi_t, "LMM", x = udt("x", "z"), y = udt("y"), echelle = "none", aleatoires = list(site_d),
+                                              correlation = list(type = "CAR1", temps = list(by = "id", id = "jour"))))$resultat$AIC, mc_d$resultat$AIC, 1e-10))
+dcar_d <- definition_car1(pdt, definir_modele(pdt, "LMM", x = udt("x", "z"), y = udt("y"), echelle = "none", aleatoires = list(site_d)),
+                          temps_d, list(list(by = "effets")))
+verifier("Ajuster avec CAR1 le long de dates : le même modèle que CAR1 défini sur ces dates",
+         identical(dcar_d$correlation$temps, temps_d) && proche(ajuster(pdt, dcar_d)$resultat$AIC, mc_d$resultat$AIC, 1e-10))
+# (Ajuster avec CAR1 d'un modèle mixte BACI : le long de son temps dans ses unités, le modèle BACI
+# avec CAR1, qui en dérive ; le long d'un autre temps, plus de réglages BACI)
+bq <- expand.grid(annee = 2001:2012, secteur = c("S1", "S2", "S3"), stringsAsFactors = FALSE)
+set.seed(5)
+bq$densite <- round(5 + rnorm(nrow(bq)), 3)
+bq$autre_temps <- bq$annee * 2
+bq <- data.frame(nom = paste0("q", seq_len(nrow(bq))), bq)
+pbq <- projet_depuis_tableau(bq, "baci car1")
+mbq <- modele_baci(pbq, numeros(pbq, "densite"), numeros(pbq, "annee"), numeros(pbq, "secteur"), "S1", c("S2", "S3"), 2007)
+c1bq <- definition_car1(mbq$projet, mbq$definition, list(by = "variable", variable = numeros(pbq, "annee")), list(list(by = "effets")))
+c2bq <- definition_car1(mbq$projet, mbq$definition, list(by = "variable", variable = numeros(pbq, "autre_temps")), list(list(by = "effets")))
+verifier("Ajuster avec CAR1 d'un modèle BACI : le long de son temps, ses réglages avec CAR1, marqués dérivés ; le long d'un autre temps, plus de réglages BACI",
+         isTRUE(c1bq$baci_origine$car1) && isTRUE(c1bq$baci_origine$derive) && is.null(c2bq$baci_origine))
+# (un temps de nombres avec une valeur illisible : sa ligne laissée de côté, comme jusqu'à 0.9.5)
+tnd <- tac
+tnd$an <- as.character(tnd$annee)
+tnd$an[7] <- "nd"
+pnd <- projet_depuis_tableau(tnd, "temps nd")
+dnd <- definir_modele(pnd, "LMM", x = numeros(pnd, c("x", "z")), y = numeros(pnd, "y"), echelle = "none",
+                      aleatoires = list(list(by = "variable", variable = numeros(pnd, "site"))),
+                      correlation = list(type = "CAR1", temps = list(by = "variable", variable = numeros(pnd, "an"))))
+mnd <- ajuster(pnd, dnd)
+and <- autocorrelation_residus(pnd, ajuster(pnd, definir_modele(pnd, "LM", x = numeros(pnd, c("x", "z")), y = numeros(pnd, "y"), echelle = "none")),
+                               temps = list(by = "variable", variable = numeros(pnd, "an")), groupe = list(by = "variable", variable = numeros(pnd, "site")))
+verifier("CAR1 et l'autocorrélation des résidus le long d'un temps de nombres où une valeur est illisible (« nd ») : sa ligne laissée de côté, comme jusqu'à 0.9.5",
+         mnd$N == nrow(tnd) - 1 && length(mnd$exclues) == 1 && and$laissees == 1)
+tdt2 <- tdt
+tdt2$date[tdt2$date == tdt2$date[5]] <- "31/02/2005"
+pdt2 <- projet_depuis_tableau(tdt2, "date impossible")
+m_imp <- refus(ajuster(pdt2, definir_modele(pdt2, "LMM", x = numeros(pdt2, c("x", "z")), y = numeros(pdt2, "y"), echelle = "none",
+                                            aleatoires = list(list(by = "variable", variable = numeros(pdt2, "site"))),
+                                            correlation = list(type = "CAR1", temps = list(by = "variable", variable = numeros(pdt2, "date"))))))
+verifier(sprintf("une date qui n'existe pas dans le temps de CAR1 ou de l'autocorrélation des résidus : refusée, nommée (« %s »)", m_imp),
+         grepl("^Le temps \\(date\\) doit être fait de nombres .*« 31/02/2005 » n'est pas une date qui existe$", m_imp) &&
+           grepl("« 31/02/2005 »", refus(autocorrelation_residus(pdt2, ml_d, temps = list(by = "variable", variable = numeros(pdt2, "date")))), fixed = TRUE))
 
 cat("Tests du rapport de vraisemblance (regression_diagnostics.R)\n")
 mx_ac <- regr_ac("LMM", "x", aleatoires = list(site_ac))
@@ -834,8 +1007,15 @@ verifier("une observation sans temps ou sans groupe a NA, et ne compte pour aucu
          proche(calcule(pl_vides, "precedent(densite, an, interaction(site, secteur))"), c(NA, NA, NA, 4, NA, NA, NA, 5, NA, NA)) &&
            proche(calcule(pl_vides, "suivant(densite, an, interaction(site, secteur))"), c(0, NA, NA, NA, NA, NA, NA, NA, NA, NA)))
 m_temps <- refus(calcule(pl_ids, "precedent(densite, secteur, site)"))
-verifier(sprintf("le temps doit être numérique : « %s » ; le pas, positif", m_temps),
-         grepl("numérique", m_temps) && grepl("« S1 »", m_temps, fixed = TRUE) && grepl("pas", refus(calcule(pl, "suivant(densite, annee, code, pas = 0)"))))
+verifier(sprintf("le temps doit être fait de nombres ou de dates : « %s » ; le pas, positif", m_temps),
+         startsWith(m_temps, "precedent() : le temps doit être fait de nombres") && grepl("« S1 » n'est ni un nombre ni une date", m_temps, fixed = TRUE) &&
+           grepl("pas", refus(calcule(pl, "suivant(densite, annee, code, pas = 0)"))))
+# (des dates : la même règle, le temps exactement un an avant en années décimales : le 1er janvier
+# d'une année est l'année même ; le 15 mai 2004, d'une année bissextile, n'est pas 2003,367 + 1)
+pl_dates <- projet_depuis_tableau(data.frame(nom = paste0("j", 1:4), secteur = "a", date = c("01/01/2003", "01/01/2004", "15/05/2003", "15/05/2004"),
+                                             densite = c(2, 3, 4, 5)), "décalages en dates")
+verifier("des dates : le temps exactement un pas avant, comme avec des années (le 1er janvier 2003 un an avant le 1er janvier 2004 ; pas le 15 mai 2003 avant le 15 mai 2004)",
+         proche(calcule(pl_dates, "precedent(densite, date, secteur)"), c(NA, 2, NA, NA)))
 
 cat("Imputation par ACP (Nouvelle variable)\n")
 set.seed(5)

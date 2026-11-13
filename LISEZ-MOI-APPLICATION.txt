@@ -50,13 +50,18 @@ Fichier › Ouvrir (Ctrl+O) :
     Une colonne de mesures qui a quelques cellules de texte (<0,5, <LOD, nd, n.d., #N/A...)
     reste une variable quantitative : ces cellules sont lues comme manquantes, et la barre d'état
     dit combien, dans quelles variables (dont celles sous la limite de détection). Les dates et
-    heures d'Excel restent des dates (2024-05-03). Un fichier texte dont une ligne a plus de
-    valeurs que l'en-tête est refusé, avec le numéro de la ligne, plutôt que de décaler les
-    colonnes. Un fichier R doit contenir des tableaux ; tout autre objet est refusé. Les fichiers
-    R ne s'ouvrent qu'avec R 4.4 ou plus récent (celui de Windows) : avec un R plus ancien, comme
-    celui d'Ubuntu 22.04 ou 24.04 ou de Debian 12, un .rds ou un .RData pourrait exécuter du code
-    dès sa lecture (CVE-2024-27322) ; Nuée le refuse donc : enregistrez le tableau en CSV ou en
-    Excel.
+    heures d'Excel restent des dates (2024-05-03), en texte, comme celles d'un fichier texte
+    (telles qu'écrites : 14/05/2019) ou de R : une colonne de dates est une variable qualitative
+    quand des dates reviennent (des secteurs comptés le même jour), un identifiant secondaire
+    quand toutes diffèrent, le nom des observations si c'est la première colonne (la mettre
+    alors plus loin pour en faire un temps) ; variable ou identifiant, elle peut être le temps
+    (voir Le temps en dates). Un nombre d'Excel sans format de date (43599) reste un nombre. Un
+    fichier texte dont une ligne a plus de valeurs que l'en-tête est refusé, avec le numéro de
+    la ligne, plutôt que de décaler les colonnes. Un fichier R doit contenir des tableaux ; tout
+    autre objet est refusé. Les fichiers R ne s'ouvrent qu'avec R 4.4 ou plus récent (celui de
+    Windows) : avec un R plus ancien, comme celui d'Ubuntu 22.04 ou 24.04 ou de Debian 12, un
+    .rds ou un .RData pourrait exécuter du code dès sa lecture (CVE-2024-27322) ; Nuée le refuse
+    donc : enregistrez le tableau en CSV ou en Excel.
 Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google
 Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
 projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).
@@ -399,24 +404,56 @@ constante C2 s'il y a des 0). Un clic sur une ligne montre l'histogramme de la v
 côté de celui de la variable transformée. L'autre vue est la carte des valeurs manquantes
 (observations × variables).
 
+Le temps en dates
+-----------------
+Partout où un temps est demandé (Séries, BACI, Autocorrélation des résidus, l'autocorrélation
+CAR1 d'un modèle mixte, precedent() et suivant() de Nouvelle variable), il peut être fait de
+nombres (l'année ; 2019,5) ou de dates : 2019-05-14 (ISO, au besoin avec l'heure :
+2019-05-14 10:30) ou 14/05/2019, aussi 14-05-2019 et 14.05.2019, l'année en quatre chiffres.
+Le jour vient toujours d'abord, comme en France : 05/04/2019 est le 5 avril, jamais le 4 mai.
+Une date devient une année décimale : l'année + (le jour de l'année − 1 + la fraction du jour)
+/ le nombre de jours de l'année (366 les années bissextiles) ; le 1er janvier 2019 est 2019, le
+14 mai 2019 est 2019,364. Années et dates se lisent ainsi de la même façon : une pente de Sen
+ou le φ de CAR1 sont par an. Un temps est fait de nombres ou de dates, pas des deux : une
+valeur de l'autre genre, ou une date qui n'existe pas (31/02/2019), est refusée en la nommant.
+Un nombre reste un nombre : un numéro de jour d'Excel (43599) ne se distingue pas d'une année.
+precedent() et suivant() gardent leur règle, le temps exactement un pas avant : elles vont
+avec des temps réguliers (des années) ; avec des dates, ce temps-là existe rarement, et aucune
+date proche n'est prise à sa place. L'export vers R lit les dates de la même façon.
+
 Séries
 ------
 Graphiques › Séries (ou dans l'explorateur, sous le projet) : une variable au fil du temps,
 comme des figures de séries par secteur, une page par site. Choisir la variable, le temps (une
-variable numérique, ou un identifiant fait de nombres comme l'année), les lignes (une variable
-qualitative ou un identifiant : le secteur) et, au choix, les panneaux (le site) : un petit
-graphique par panneau, en grille, aux axes communs. Dans une ligne, les temps qui se suivent à
-son propre pas (son plus petit écart) sont reliés, et un secteur compté une année sur deux
-reste une ligne ; un temps manquant coupe la ligne, et l'année sans comptage se voit. Les
-couleurs vont par ligne dans chaque panneau, la légende est rangée par panneau (un clic sur une
-entrée cache sa ligne) : elle reste lisible avec 30 secteurs. Au choix : la moyenne des lignes
-de chaque panneau, temps par temps (trait épais), une échelle log (les valeurs ≤ 0 n'y sont pas
-montrées) et des événements, des temps tapés « 2015 ; 2019 », en tirets dans chaque panneau. Le
-survol donne le nom de l'observation, le temps et la valeur ; un clic ou un cadre sélectionne
-des observations, qui le sont aussi dans les modèles du projet quand la sélection leur est
-commune. Les observations sans temps, sans valeur, sans ligne ou sans panneau sont laissées de
-côté et comptées ; une ligne qui a deux fois le même temps (des secteurs choisis sans leur
-site) est signalée et montrée en points. Clic droit : copier ou enregistrer l'image.
+variable ou un identifiant fait de nombres, comme l'année, ou de dates : voir Le temps en
+dates), les lignes (une variable qualitative ou un identifiant : le secteur) et, au choix, les
+panneaux (le site) : un petit graphique par panneau, en grille, aux axes communs. Dans une
+ligne, les temps qui se suivent à son propre pas (son plus petit écart) sont reliés, et un
+secteur compté une année sur deux reste une ligne ; un temps manquant coupe la ligne, et
+l'année sans comptage se voit. Des dates, rarement régulières, vont sur un axe de dates, et une
+ligne relie tous ses points. Les couleurs vont par ligne dans chaque panneau, la légende est
+rangée par panneau (un clic sur une entrée cache sa ligne) : elle reste lisible avec 30
+secteurs. Au choix : la moyenne des lignes de chaque panneau, temps par temps (trait épais),
+une échelle log (les valeurs ≤ 0 n'y sont pas montrées) et des événements, des temps tapés
+« 2015 ; 2019 » (avec des dates, aussi 2019-05-14 ou 14/05/2019), en tirets dans chaque
+panneau. Le survol donne le nom de l'observation, le temps et la valeur ; un clic ou un cadre
+sélectionne des observations, qui le sont aussi dans les modèles du projet quand la sélection
+leur est commune. Les observations sans temps, sans valeur, sans ligne ou sans panneau sont
+laissées de côté et comptées ; une ligne qui a deux fois le même temps (des secteurs choisis
+sans leur site) est signalée et montrée en points. Clic droit : copier ou enregistrer l'image.
+Tendances (la case de la barre) : sous le graphique, un tableau donne pour chaque ligne de
+chaque panneau, marquée de sa couleur, n (ses temps qui ont une valeur), son premier et son
+dernier temps ; la pente de Sen (Sen, 1968 : la médiane des pentes entre toutes ses paires de
+temps, par unité de temps, par an avec des dates) et son intervalle à 95 % (Gilbert, 1987 : les
+pentes rangées, prises autour de la médiane d'après la variance de S ; sans bornes quand il y a
+trop peu de temps) ; le τ de Kendall (tau-b), le S de Mann–Kendall et sa valeur p bilatérale
+par la loi normale (variance corrigée pour les ex aequo, correction de continuité, comme
+trend::mk.test et Kendall::MannKendall) ; et la valeur p corrigée sur les lignes
+(Benjamini–Hochberg, ou Holm au choix). Une ligne de moins de 4 temps, qui a un même temps deux
+fois ou la même valeur à chaque temps n'est pas testée, et le tableau dit pourquoi ; Ctrl+C le
+copie. Le test tient les temps pour indépendants : une autocorrélation positive (des années qui
+se ressemblent) rend p trop petite. Pour une tendance qui en tient compte : Graphiques ›
+Autocorrélation des résidus, puis un modèle mixte avec une autocorrélation CAR1, l'année en X.
 
 Tests statistiques
 ------------------
@@ -485,7 +522,14 @@ année...) peut faire les groupes, comme une variable qualitative.
   site comparés deux à deux. La correction de Holm porte sur les paires testées, tous les
   groupes ensemble ; la valeur p brute se lit site par site. Un niveau est du groupe que
   portent ses lignes : un niveau aux lignes de plusieurs groupes est refusé, et ceux sans
-  groupe sont listés.
+  groupe sont listés. Au-dessus des paires vient le test d'ensemble, pour les deux tests
+  appariés : le test de Friedman sur les clés où chaque niveau a une valeur (les blocs
+  complets ; les clés laissées de côté faute d'un niveau sont comptées), son χ², ses degrés de
+  liberté et sa valeur p, avec le W de Kendall = χ² / (n (k − 1)) pour taille de l'effet (0 :
+  aucun accord d'une clé à l'autre, 1 : le même classement des niveaux à chaque clé), en une
+  phrase. Dans chaque groupe, un test de Friedman par groupe, sur ses propres niveaux et ses
+  clés complètes, sa valeur p corrigée par Holm sur les groupes testés ; un groupe de moins de
+  trois niveaux ou de moins de deux clés complètes n'a pas de test, et la raison est dite.
   Deux mesures : les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la
   normalité de l'une des deux est douteuse. Appariées par « l'observation (même ligne) », deux
   mesures des mêmes lignes (avant et après, par exemple) sont comparées à la place : les
@@ -503,27 +547,44 @@ graphique, la teste dans « Deux variables ».
 
 Avant/après (BACI) : un changement de gestion sur certaines unités (l'impact) comparé à des
 unités restées comme elles étaient (les témoins), comme dans un plan avant/après avec témoin.
-Choisir une réponse quantitative, un temps (une variable quantitative ou un identifiant des
-observations : l'année) et une unité (une variable qualitative ou un identifiant : le
-secteur), puis cocher la ou les unités d'impact et la ou les unités témoins. À chaque temps,
-l'écart d_t est la moyenne des lignes de l'impact moins celle des lignes des témoins, aux
-temps où les deux ont une valeur (une ligne par unité et par temps donne la moyenne des
-unités ; les temps d'un seul côté sont listés et laissés de côté). L'événement est le premier
-temps compté « après » : pour une densité de printemps qui répond à la gestion de l'année
-d'avant, l'année qui suit le changement. Les temps qui le précèdent sont « avant » ; « après »
-court jusqu'à une fin facultative, les temps suivants en gris, hors du test. Avec au moins
-deux temps dans chaque période, les écarts d'après sont comparés à ceux d'avant : test t de
-Welch (par défaut), t de Student (variances égales : un modèle linéaire de l'écart sur la
-période) ou Mann–Whitney (sur les rangs) ; l'effet est le changement de l'écart moyen, après
+Choisir une réponse quantitative, un temps (une variable ou un identifiant des observations :
+l'année, ou des dates) et une unité (une variable qualitative ou un identifiant : le secteur),
+puis cocher la ou les unités d'impact et la ou les unités témoins. À chaque temps, l'écart d_t
+est la moyenne des lignes de l'impact moins celle des lignes des témoins, aux temps où les deux
+ont une valeur (une ligne par unité et par temps donne la moyenne des unités ; les temps d'un
+seul côté sont listés et laissés de côté) : avec des dates, l'impact et les témoins comptés le
+même jour ; pour comparer des années, prendre l'année. L'événement est le premier temps compté
+« après » (un nombre pour un temps fait de nombres ; une date pour un temps fait de dates, où
+une année est son 1er janvier) : pour une densité de printemps qui répond à la gestion de
+l'année d'avant, l'année qui suit le changement. Les temps qui le précèdent sont « avant » ; «
+après » court jusqu'à une fin facultative, elle aussi du genre du temps (avec des dates,
+31/12/2012 pour la fin de 2012 : une année seule est refusée, comme une date pour un temps fait
+de nombres), les temps suivants en gris, hors du test. Avec au moins deux temps dans chaque
+période, les écarts d'après sont comparés à ceux d'avant : test t de Welch (par défaut), t de
+Student (variances égales : un modèle linéaire de l'écart sur la période) ou Mann–Whitney (sur
+les rangs) ; l'effet est le changement de l'écart moyen, après
 moins avant, avec son intervalle à 95 %, et le résultat vient en une phrase prête pour un
 rapport. Le graphique montre les écarts dans le temps, l'événement et la moyenne de chaque
 période ; tant qu'aucun événement n'est entré, les écarts seuls. Les temps sont tenus pour
 indépendants : des écarts successifs qui se ressemblent (autocorrélation) rendent la valeur p
-trop petite. Un modèle mixte en tient compte : y ~ période × impact + (1 | unité), avec CAR1
-dans le temps au besoin (Nouveau modèle › Modèle linéaire mixte). La période et l'impact se
-font en nouvelles variables valant 0 ou 1, ifelse(annee >= 2007, 1, 0) et
-ifelse(secteur %in% c("S1", "S2"), 1, 0) : une régression ne prend pas encore de terme croisé
-avec une variable qualitative.
+trop petite. « Ajuster le modèle mixte » en tient compte : il ajoute au projet deux variables
+valant 0 ou 1, « période BACI (2007) » (1 à partir de l'événement, 0 avant) et « impact BACI
+(S1 contre S2, S3) » (1 pour les unités d'impact, 0 pour les témoins, manquante pour les
+autres unités), puis le modèle linéaire mixte y ~ période × impact + (1 | unité) sur les
+lignes des unités d'impact et témoins dont le temps est connu, jusqu'à la fin s'il y en a
+une : une ordonnée à l'origine aléatoire par unité et, avec « avec CAR1 dans le temps »
+(cochée d'office quand chaque unité a au moins trois temps ; impossible quand une unité a
+plusieurs lignes au même temps), une autocorrélation CAR1 le long du temps dans chaque unité.
+Une variable de ce nom, ou de ce nom suivi de (2), (3)…, ou de son nom dans l'autre langue, qui
+a déjà ces valeurs sert telle quelle ; sinon la variable prend le premier de ces noms qui est
+libre (un nom tenu par d'autres valeurs : d'autres unités au-delà des trois nommées, un autre
+temps, un temps corrigé depuis) ; Ctrl+Z les retire, comme une nouvelle
+variable. Le modèle rejoint le projet (nommé « BACI <réponse> » ; les mêmes réglages
+réajustent le même modèle) et ses vues s'ouvrent. De retour dans la vue BACI, son effet BACI,
+le coefficient période × impact avec son intervalle à 95 % et sa valeur p, vient en une phrase
+sous celle du test, qui dit que ce modèle tient compte des unités et, avec CAR1, de
+l'autocorrélation. Son texte des Méthodes dit que c'est le modèle BACI et ce que valent ses
+deux variables.
 
 Modèles linéaires, généralisés et mixtes
 ----------------------------------------
@@ -535,10 +596,11 @@ des variables (coefficients par unité) ; UV donne des coefficients par écart-t
 Un modèle mixte (nlme) ajoute des effets aléatoires emboîtés, du plus large au plus fin : une
 ordonnée à l'origine aléatoire par site, puis par secteur dans son site (un identifiant des
 observations ou une variable qualitative). Il peut ajouter une autocorrélation dans le temps
-(CAR1, en temps continu : des années manquantes ne gênent pas ; le temps est un identifiant
-numérique ou une variable quantitative) à l'intérieur du dernier niveau ou, par « dans
-chaque », d'un niveau plus fin qui n'a pas d'effet aléatoire à lui : le secteur dans son site,
-quand seul le site a un effet aléatoire. Les coefficients et les
+(CAR1, en temps continu : des années manquantes ne gênent pas ; le temps est un identifiant ou
+une variable, de nombres ou de dates, et φ est alors d'une année à l'autre : voir Le temps en
+dates) à l'intérieur du dernier niveau ou, par « dans chaque », d'un niveau plus fin qui n'a
+pas d'effet aléatoire à lui : le secteur dans son site, quand seul le site a un effet
+aléatoire. Les coefficients et les
 variances sont estimés en REML ; la log-vraisemblance, l'AIC, l'AICc et le BIC viennent de
 l'ajustement en ML, le seul qui compare des modèles aux effets fixes différents. La validation
 croisée se fait par défaut par le premier effet aléatoire : chaque site est prédit par les
@@ -594,12 +656,24 @@ pour une courbe, Seuils : l'effet et sa pente avec des intervalles simultanés �
 2000 jeux de coefficients, les plages où la bande de la pente exclut 0, en hausse ou en baisse
 nette, colorées et listées, et l'edf, sous 1,5 presque une droite, comme Simpson (2018) lit les
 seuils), Observé / prédit, Résidus (standardisés, contre les valeurs ajustées, droite de
-Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire), Apport
-des blocs
+Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire ; aussi
+les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,
+ci-dessous), Apport des blocs
 (AIC) : chaque bloc de la colonne Bloc (ou chaque variable) retiré et le modèle réajusté en
 ML ; un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
+Résidus d'un GLM ou d'un GAM à loi de Poisson, binomiale négative, binomiale ou gamma : à côté
+des résidus de déviance standardisés (ceux par défaut), les résidus quantiles randomisés de Dunn
+et Smyth (1996), r = Φ⁻¹(u), F la loi du modèle à la valeur ajustée de chaque observation (ses
+effets aléatoires et son effort compris ; la binomiale négative de son θ estimé, la binomiale
+d'une épreuve, la gamma de forme 1 / son échelle estimée) : u = F(y) pour la loi gamma, et pour
+des comptages ou des 0/1, u tiré uniformément entre F(y − 1) et F(y), avec une graine fixe, pour
+que le graphique ne change pas d'un regard à l'autre (le hasard de la séance reste tel qu'il
+était). Les résidus de Pearson ou de déviance de comptages sont loin de la loi normale même
+quand le modèle est juste ; ces résidus la suivent quand il l'est. Pas pour Tweedie (les paquets
+livrés avec R n'ont pas sa fonction de répartition), ni pour la loi normale, où ce seraient les
+résidus standardisés.
 Graphiques › Autocorrélation des résidus : l'autocorrélation des résidus d'une régression dans
 le temps, à l'intérieur de chaque groupe, les groupes mis en commun, comme la calcule
 nlme::ACF : au décalage k, les observations à k pas l'une de l'autre dans l'ordre du temps de
@@ -607,18 +681,27 @@ leur groupe (une année manquante est sautée), des décalages 0 à 10 au plus, 
 ±1,96/√n de chaque décalage (n : ses paires), comme la trace nlme. Un modèle avec CAR1 garde
 son temps et ses groupes et montre deux séries : ses résidus sans l'autocorrélation, et ses
 résidus normalisés, qui n'en montrent plus quand CAR1 suffit (la note lit le décalage 1). Pour
-un autre modèle, choisir le temps (un identifiant ou une variable quantitative : l'année) et
-les groupes : par défaut ceux de ses effets aléatoires (le secteur dans son site), sinon un
-identifiant ou une variable qualitative ; les uns comme les autres peuvent prendre un niveau
-plus fin dedans (le secteur dans le site d'un effet aléatoire, ou un secteur dont les noms se
-répètent d'un site à l'autre). Au-delà de la bande au décalage 1, la note propose une
+un autre modèle, choisir le temps (un identifiant ou une variable, de nombres ou de dates :
+l'année) et les groupes : par défaut ceux de ses effets aléatoires (le secteur dans son site),
+sinon un identifiant ou une variable qualitative ; les uns comme les autres peuvent prendre un
+niveau plus fin dedans (le secteur dans le site d'un effet aléatoire, ou un secteur dont les
+noms se répètent d'un site à l'autre). Au-delà de la bande au décalage 1, la note propose une
 autocorrélation CAR1, à comparer par l'AIC. Pour un GLM ou un GAM, les résidus de Pearson
 ((y − ajusté) / √variance) ou de déviance (la part signée de chaque observation dans la
 déviance), les mêmes pour la loi normale ; les résidus d'un modèle mixte sont ceux de
 l'intérieur de ses groupes (sachant les effets aléatoires), comme dans nlme::ACF. Nuée calcule
 les résidus normalisés dans l'ordre du temps de chaque groupe : ceux de nlme ne sont justes que
-sur des lignes rangées par groupe, puis par temps. Fichier › Rapport du modèle peut reprendre
-le graphique.
+sur des lignes rangées par groupe, puis par temps.
+Dans les groupes de ses effets aléatoires, avec ou sans niveau plus fin, Ajuster avec CAR1 en
+fait un nouveau modèle : les mêmes réglages, avec une autocorrélation CAR1 le long de ce temps
+dans ces groupes (un modèle mixte, ou un GLM ou un GAM à loi normale, alors ajusté par
+mgcv::gamm ; le bouton n'est proposé qu'alors, et un refus du moteur s'affiche), nommé comme un
+réajustement (M1 (1)) et choisi avec ses vues par défaut. Un modèle mixte sur les mêmes
+observations reste dans l'ensemble AIC du modèle sans CAR1 : les deux se comparent par l'AIC
+dans Prédiction › Comparer les modèles (le test du rapport de vraisemblance ne teste pas une
+autocorrélation). La note dit quand ils ne se comparent pas : des observations sans temps ou
+sans groupe restent hors du nouveau modèle, et la vraisemblance de mgcv::gamm ne se compare pas
+à celle de mgcv::gam. Fichier › Rapport du modèle peut reprendre le graphique.
 Graphiques › Sélection par AIC (aussi sous chaque régression, dans l'explorateur) : quelles
 variables garder. Chaque combinaison des groupes de termes du modèle (les blocs de la colonne
 Bloc, sinon les variables), du modèle nul au modèle complet, est ajustée en ML sur les mêmes
@@ -666,12 +749,14 @@ plus) ; la recherche du tableau trouve celles d'un modèle.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
 résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
 un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
-chaque terme, les seuils de chaque courbe, observé / prédit et les résidus.
+chaque terme, les seuils de chaque courbe, observé / prédit et les résidus (aussi les résidus
+quantiles, pour des comptages, une présence-absence ou des valeurs positives).
 Fichier › Exporter vers R : un script ou un rapport pour une régression aussi, avec lm,
 nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML),
 la validation croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les
-courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), le jeu de
-test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
+courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), les résidus
+quantiles (les mêmes tirages que la vue Résidus), le jeu de test et les graphiques, vérifiés
+contre les résultats de Nuée avant d'être écrits.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------
@@ -796,8 +881,9 @@ Dans une formule de Nouvelle variable, d'une année à l'autre : precedent(x, an
 valeur de x l'année d'avant dans le même secteur, et suivant(x, annee, secteur), celle de
 l'année d'après (pas = 2 : deux ans avant ou après). L'année cherchée doit exister : une année
 manquante donne une valeur manquante, jamais celle d'une année plus ancienne, comme une
-observation sans secteur ou sans année. Le temps est numérique (un identifiant fait de nombres,
-comme l'année, convient) ; le groupe, une variable qualitative, un identifiant ou
+observation sans secteur ou sans année. Le temps est fait de nombres (un identifiant fait de
+nombres, comme l'année, convient) ; des dates aussi, mais ces fonctions vont avec des temps
+réguliers (voir Le temps en dates) ; le groupe, une variable qualitative, un identifiant ou
 interaction(site, secteur) pour un secteur dans un site ; un même secteur deux fois la même
 année est refusé, en le nommant. croissance(x, annee, secteur) donne le taux de croissance
 log(x / x de l'année d'avant), manquant sauf si les deux valeurs sont positives : pour la

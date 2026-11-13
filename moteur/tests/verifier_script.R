@@ -8,11 +8,12 @@
 # ceux du moteur : scores, R2 et Q2, T2, DModX et leurs limites, VIP, coefficients, CV-ANOVA,
 # classification, jeu de test, test de permutation. Puis : le script d'une PLS simple est court
 # et n'a pas de fonction inutile ; la séance en un script ; l'export en anglais ; les régressions
-# (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort et binomial, GAMM
-# binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
-# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, jeu de test ; la
-# sélection par l'AIC, toutes les combinaisons ou l'élimination descendante), en séance et en
-# rapport ; les rapports R Markdown et Quarto (compilés avec knitr s'il est installé).
+# (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort, binomial et gamma,
+# GAMM binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
+# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, résidus quantiles,
+# jeu de test ; la sélection par l'AIC, toutes les combinaisons ou l'élimination descendante ; le
+# modèle mixte de la vue BACI, avec CAR1 ou une fin), en séance et en rapport ; les rapports R
+# Markdown et Quarto (compilés avec knitr s'il est installé).
 #   Rscript moteur/tests/verifier_script.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -359,7 +360,7 @@ moteur_regression <- function(m) {
        "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
        phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(r$courbes[-1]),
        "Q2 et RMSEcv" = c(m$vc$Q2, m$vc$RMSEcv), "prédictions de la validation croisée" = m$vc$prediction,
-       "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus),
+       "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus), "résidus quantiles" = r$residus_quantiles,
        "jeu de test" = if (!is.null(m$test)) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")],
        # (la sélection par l'AIC, quand elle a été faite : le classement et l'importance des groupes)
        "sélection par l'AIC" = if (!is.null(m$selection_aic)) as.matrix(m$selection_aic$modeles[c("k", "logLik", "AICc", "delta", "poids", "poids_cumule")]),
@@ -375,7 +376,8 @@ script_regression <- function(s, langue) {
        "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
        phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) colonnes(n("courbes"), seq_along(n("courbes"))[-1]),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
-       "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "jeu de test" = colonnes(n("test"), 2:6),
+       "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "résidus quantiles" = n("observations")[[nom_script("residu_quantile", langue)]],
+       "jeu de test" = colonnes(n("test"), 2:6),
        "sélection par l'AIC" = colonnes(n("selection")[[nom_script("modeles", langue)]], 2:7),
        "importance des groupes" = if (!is.null(n("selection"))) unname(n("selection")[[nom_script("importance", langue)]]))
 }
@@ -419,6 +421,7 @@ tr$hauteur <- 1 + 0.6 * tr$x1 - 0.8 * tr$x2 + effet_site + rep(rnorm(12, 0, 0.3)
 tr$compte <- stats::rnbinom(n, mu = exp(0.5 + 0.4 * tr$x1 + sin(3 * tr$x2) + effet_site / 2) * tr$effort, size = 3)
 tr$presence <- as.numeric(runif(n) < stats::plogis(-0.3 + 1.1 * tr$x1))
 tr$densite <- ifelse(runif(n) < 0.3, 0, stats::rgamma(n, shape = 2, rate = 2 / exp(0.2 + 0.5 * tr$x2)))
+tr$masse <- stats::rgamma(n, shape = 3, rate = 3 / exp(0.3 + 0.4 * tr$x2))  # des valeurs positives (loi gamma)
 tr$x1[c(7, 40)] <- NA  # deux observations sans x1 : laissées de côté
 pr <- projet_depuis_tableau(tr, "terrain")
 pr$observation_id_names <- c("Observation", "site")
@@ -466,16 +469,51 @@ essayer_regression("gamm_car1_test_en", pr, definir_modele(pr, "GAM", x = ur("x1
                    lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur, test = numeros_observations(pr)[seq(5, n, by = 16)]), langue = "en")
 essayer_regression("lmm_car1_secteur", pr, definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
                    correlation = car1_secteur))
+# (le temps de CAR1 fait de dates, le jour d'abord, un même jour pour tous les secteurs d'une année :
+# une variable qualitative ; le script les lit en années décimales comme Nuée, par sa fonction
+# temps_en_nombres, et donne le modèle que les années décimales donnent, refaites ici avec R)
+trd <- tr
+jours_tr <- as.Date(sprintf("%d-05-01", 2001:2009)) + c(3, 17, 9, 25, 0, 12, 30, 6, 21)
+trd$date <- format(jours_tr[trd$annee - 2000], "%d/%m/%Y")
+trd$decimale <- trd$annee + as.POSIXlt(jours_tr[trd$annee - 2000])$yday / ifelse(trd$annee %% 4 == 0, 366, 365)
+prd <- projet_depuis_tableau(trd, "terrain en dates")
+prd$observation_id_names <- c("Observation", "site")
+for (i in seq_along(prd$observations)) prd$observations[[i]]$ids <- c(prd$observations[[i]]$ids[1], site[i])
+urd <- function(...) numeros(prd, c(...))
+car1_dates <- function(tps) list(type = "CAR1", temps = list(by = "variable", variable = urd(tps)), dans = list(by = "variable", variable = urd("secteur")))
+r <- essayer_regression("lmm_car1_dates", prd, definir_modele(prd, "LMM", x = urd("x1", "x2"), y = urd("hauteur"), echelle = "none", aleatoires = list(par_site),
+                        correlation = car1_dates("date")))
+code <- code_hors_donnees(lignes_script(r))
+m_decimale <- ajuster(prd, definir_modele(prd, "LMM", x = urd("x1", "x2"), y = urd("hauteur"), echelle = "none", aleatoires = list(par_site),
+                                          correlation = car1_dates("decimale")))
+verifier(sprintf("CAR1 le long de dates : le script les lit par sa fonction temps_en_nombres() ; φ = %.4f, celui des années décimales", m_decimale$resultat$phi),
+         any(grepl("^temps_en_nombres <- function\\(x\\) \\{$", code)) && any(grepl("temps_en_nombres(d[[\"date\"]])", code, fixed = TRUE)) &&
+           isTRUE(all.equal(ajuster(prd, definir_modele(prd, "LMM", x = urd("x1", "x2"), y = urd("hauteur"), echelle = "none", aleatoires = list(par_site),
+                                                        correlation = car1_dates("date")))$resultat$phi, m_decimale$resultat$phi, tolerance = 1e-10)))
+r <- essayer_regression("gamm_car1_dates_csv_en", prd, definir_modele(prd, "GAM", x = urd("x1", "x2"), y = urd("hauteur"), echelle = "none", famille = "gaussienne",
+                        lisses = urd("x2"), aleatoires = list(par_site), correlation = car1_dates("date")), langue = "en", donnees = "csv")
+verifier("CAR1 le long de dates, en anglais, les données en CSV (les dates en texte) : times_as_numbers(), ni nom ni commentaire en français",
+         any(grepl("^times_as_numbers <- function\\(x\\) \\{$", lignes_script(r))) && en_anglais(lignes_script(r)))
+verifier("CAR1 le long des années (le modèle mixte emboîté plus haut) : le script n'a pas cette fonction", !any(grepl("temps_en_nombres", texte, fixed = TRUE)))
 r <- essayer_regression("glm_poisson_effort", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort"), echelle = "none"))
 verifier("GLM de Poisson : effort en décalage, effet multiplicatif, surdispersion", any(grepl("offset\\(log\\(effort\\)\\)", lignes_script(r))) &&
          any(grepl("effet_multiplicatif", lignes_script(r))) && any(grepl("^dispersion <- ", lignes_script(r))))
+verifier("GLM de Poisson : ses résidus quantiles (residus_quantiles, de ppois à ses valeurs ajustées) et leur graphique",
+         any(grepl("^residus_quantiles <- function", lignes_script(r))) &&
+           any(grepl("observations$residu_quantile <- residus_quantiles(cadre[[1]], function(q, ...) ppois(q, fitted(m), ...))", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("qqnorm(observations$residu_quantile", lignes_script(r), fixed = TRUE)))
+r <- essayer_regression("glm_gamma_en", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("masse"), famille = "gamma", echelle = "none"), langue = "en")
+verifier("GLM gamma en anglais : ses résidus quantiles sans tirage (discrete = FALSE), ni nom ni commentaire en français",
+         any(grepl("quantile_residuals(model_data[[1]], function(q, ...) pgamma(", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("discrete = FALSE)", lignes_script(r), fixed = TRUE)) && en_anglais(lignes_script(r)))
 essayer_regression("glm_binomiale", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("presence"), famille = "binomiale", echelle = "none"))
 r <- essayer_regression("gamm_binomiale_negative", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("compte"), famille = "binomiale_negative",
                         lisses = ur("x2"), decalage = ur("effort"), aleatoires = list(par_site, par_secteur), echelle = "none"), langue = "en")
 verifier("GAMM en anglais : mgcv attaché, une courbe, les secteurs emboîtés dans les sites, ni nom ni commentaire en français",
          any(grepl("^library\\(mgcv\\)", lignes_script(r))) && any(grepl("site_secteur", lignes_script(r))) && en_anglais(lignes_script(r)))
-essayer_regression("gam_tweedie_test", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("densite"), famille = "tweedie", lisses = ur("x2"), echelle = "none",
-                                                          test = numeros_observations(pr)[seq(5, n, by = 10)]))
+r <- essayer_regression("gam_tweedie_test", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("densite"), famille = "tweedie", lisses = ur("x2"), echelle = "none",
+                                                               test = numeros_observations(pr)[seq(5, n, by = 10)]))
+verifier("Tweedie : pas de résidus quantiles (les paquets livrés avec R n'ont pas sa fonction de répartition)", !any(grepl("residus_quantiles|residu_quantile", lignes_script(r))))
 # la sélection par l'AIC faite dans Nuée : le script la refait (toutes les combinaisons, ou l'élimination descendante)
 r <- essayer_regression("lm_selection_aic", p, definir_modele(p, "LM", x = uid(c("variete", "sucre", "fermete", "polyphenols")), y = uid("note_gout"),
                         echelle = "none", croises = list(uid(c("sucre", "fermete")))), selection = TRUE)
@@ -503,6 +541,26 @@ verifier(sprintf("le modèle choisi par la sélection : les %d lignes du modèle
 r <- essayer_regression("lm_choisi_selection_en", pr, dchoisi, langue = "en")
 verifier("le modèle choisi, en anglais : ni nom ni commentaire en français", en_anglais(lignes_script(r)) &&
            any(grepl("^known\\[outside_selection\\] <- FALSE", lignes_script(r))))
+# le modèle mixte de la vue BACI (comparaisons.R : modele_baci) : ses deux variables 0/1 dans le
+# tableau, leur terme croisé, le secteur aléatoire et CAR1 dans chaque secteur ; ses lignes, celles
+# de l'impact et des témoins (jusqu'à la fin), une densité manquante laissée de côté
+set.seed(13)
+tb <- expand.grid(annee = 2001:2014, secteur = c("S1", "S2", "S3", "S4"), stringsAsFactors = FALSE)
+tb$densite <- round(5 + c(S1 = 0.4, S2 = -0.6, S3 = 0.3, S4 = 0)[tb$secteur] + 1.5 * (tb$secteur == "S1" & tb$annee >= 2008) +
+                      unlist(lapply(1:4, function(k) as.vector(stats::filter(rnorm(14, 0, 0.5), 0.6, "recursive")))), 3)
+tb$densite[tb$secteur == "S1" & tb$annee == 2004] <- NA
+pbaci <- projet_depuis_tableau(data.frame(nom = paste0("m", seq_len(nrow(tb))), tb[sample(nrow(tb)), c("secteur", "annee", "densite")]), "baci")
+ub <- function(nom) numeros(pbaci, nom)
+bb <- modele_baci(pbaci, ub("densite"), ub("annee"), ub("secteur"), "S1", c("S2", "S3"), 2008, car1 = TRUE)
+r <- essayer_regression("lmm_baci_car1", bb$projet, bb$definition)
+code <- code_hors_donnees(lignes_script(r))
+verifier("le modèle mixte BACI : nlme::lme avec CAR1 dans chaque secteur, le terme croisé de la période et de l'impact, les lignes de l'impact et des témoins",
+         any(grepl("corCAR1", code, fixed = TRUE)) && any(grepl("période BACI (2008)*impact BACI (S1 contre S2, S3)", lignes_script(r), fixed = TRUE)) &&
+           ajuster(bb$projet, bb$definition)$N == sum(tb$secteur %in% c("S1", "S2", "S3") & !is.na(tb$densite)))
+options(nuee.langue = "en")
+bbf <- modele_baci(pbaci, ub("densite"), ub("annee"), ub("secteur"), "S1", c("S2", "S3"), 2008, fin = 2012)
+options(nuee.langue = NULL)
+essayer_regression("lmm_baci_fin_en", bbf$projet, bbf$definition, langue = "en")
 # la séance : une ACP, un modèle mixte et un GAM dans le même script
 definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
                     definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),

@@ -112,6 +112,15 @@ async function principal() {
       verifier(/HttpOnly/.test(c.entetes['set-cookie']) && /SameSite=Strict/.test(c.entetes['set-cookie'])
         && String(c.entetes['set-cookie']).startsWith(cookie), `cookie posé : ${c.entetes['set-cookie']}`);
     });
+    await etape("l'interface est relue à chaque chargement : Cache-Control no-cache, 304 quand rien n'a changé", async () => {
+      for (const chemin of ['/', '/nouveautes.js']) {
+        const r = await brute(chemin, {});
+        verifier(r.statut === 200 && r.entetes['cache-control'] === 'no-cache' && !!r.entetes['last-modified'],
+          `${chemin} : HTTP ${r.statut}, Cache-Control ${r.entetes['cache-control']}, Last-Modified ${r.entetes['last-modified']}`);
+        const r2 = await brute(chemin, { 'If-Modified-Since': r.entetes['last-modified'] });
+        verifier(r2.statut === 304, `${chemin} revalidé : HTTP ${r2.statut}`);
+      }
+    });
     await etape('ouvrir un tableau', async () => {
       p = await api('ouvrir', { chemin: tableau() });
       for (const v of p.variables) uid[v.nom] = v.uid;
@@ -354,6 +363,12 @@ async function principal() {
       const gam = await api('ajuster', { projet: e.id, type: 'GAM', x: [v('sucre'), v('fermete')], y: [v('note_gout')], echelle: 'none', nom: 'R4',
         famille: 'gaussienne', lisses: [v('sucre')] });
       verifier(gam.type === 'GAM' && [].concat(gam.courbes.terme).length === 1, 'GAM, une courbe');
+      // the randomized quantile residuals of counts (moteur/R/regression_diagnostics.R), with their normal quantiles: the same when refitted
+      const rq = glm.residus_quantiles;
+      const glm2 = await api('reajuster', { modele: glm.id });
+      verifier(rq && [].concat(rq.residu).length === glm.N && [].concat(rq.residu).every(Number.isFinite) && [].concat(rq.quantile_normal).length === glm.N
+        && JSON.stringify(glm2.residus_quantiles) === JSON.stringify(rq) && lm.residus_quantiles === null && gam.residus_quantiles === null,
+      `résidus quantiles d'un GLM de Poisson, les mêmes réajusté ; ni pour une régression linéaire ni pour la loi normale : ${JSON.stringify(rq).slice(0, 200)}`);
       const ef = await api('effets', { modele: gam.id });
       verifier([].concat(ef.effets).length === 2 && ef.effets[0].courbe === true && [].concat(ef.effets[0].x).length === 80, 'courbes d’effet');
       const se = await api('seuils', { modele: gam.id, terme: 'sucre' });
@@ -427,13 +442,37 @@ async function principal() {
       const tp = r.toutes;
       verifier([].concat(tp.a).join() === 'S1,S1,S2' && [].concat(tp.b).join() === 'S2,S3,S3' && [].concat(tp.n).join() === '8,9,9'
         && tp.p_t[0] === r.tests.p[0] && tp.p_t_holm.every((x, i) => x >= tp.p_t[i]), `toutes les paires : ${JSON.stringify(tp)}`);
+      // before the pairs, Friedman's test on the 8 years where the three sectors have a value (2001
+      // and 2006 left out), computed here: the ranks within each year (ties at their mean rank)
+      const complets = [];
+      for (let an = 2001; an <= 2010; an += 1) if (['S1', 'S2', 'S3'].every((s) => val(s, an) !== null)) complets.push(['S1', 'S2', 'S3'].map((s) => val(s, an)));
+      const sommes = [0, 0, 0];
+      let liens = 0;
+      for (const b of complets) {
+        b.forEach((x, j) => {
+          const egaux = b.filter((y) => y === x).length;
+          sommes[j] += b.filter((y) => y < x).length + (egaux + 1) / 2;
+          if (j === b.indexOf(x)) liens += egaux ** 3 - egaux;
+        });
+      }
+      const nb = complets.length;
+      const khi2 = (12 * sommes.reduce((s, R) => s + (R - (nb * 4) / 2) ** 2, 0)) / (nb * 3 * 4 - liens / 2);
+      // (a table of one test: each column a list of one value)
+      const f = Object.fromEntries(Object.entries(r.friedman).map(([cle, x]) => [cle, [].concat(x)[0]]));
+      verifier(nb === 8 && f.n === 8 && f.k === 3 && f.laissees === 2 && f.ddl === 2 && Math.abs(f.statistique - khi2) < 1e-9 && Math.abs(f.W - khi2 / (8 * 2)) < 1e-12
+        && /^Test de Friedman : χ²\(2\) = .* \(n = 8 valeurs de annee où les 3 niveaux ont tous une valeur ; 2 laissées de côté, un niveau sans valeur\)\.$/.test(f.phrase),
+      `Friedman avant les paires : ${JSON.stringify(r.friedman)}`);
       // within each site: only the pairs of sectors of the same site (S1 and S2 in A, S3 alone in B), Holm over those
       const ls = await api('coller', { texte: ['nom\tsecteur\tsite\tannee\tdensite', ...lignes.map((l) => [l[0], l[1], l[1] === 'S3' ? 'B' : 'A', l[2], l[3]].join('\t'))].join('\r\n'),
         nom: 'Secteurs et sites' });
       const vs = Object.fromEntries(ls.variables.map((x) => [x.nom, x.uid]));
-      const ts = (await api('test_deux_variables', { projet: ls.id, x: vs.densite, y: vs.secteur, appariement: vs.annee, dans: vs.site })).toutes;
+      const rs = await api('test_deux_variables', { projet: ls.id, x: vs.densite, y: vs.secteur, appariement: vs.annee, dans: vs.site });
+      const ts = rs.toutes;
       verifier([].concat(ts.groupe).join() === 'A' && [].concat(ts.a).join() === 'S1' && [].concat(ts.b).join() === 'S2'
         && [].concat(ts.p_t)[0] === r.tests.p[0] && [].concat(ts.p_t_holm)[0] === [].concat(ts.p_t)[0], `paires dans chaque site : ${JSON.stringify(ts)}`);
+      // (one Friedman test per site: two sectors in A, one in B, so neither has one, and why)
+      verifier([].concat(rs.friedman.groupe).join() === 'A,B' && [].concat(rs.friedman.phrase).every((x) => x === null)
+        && [].concat(rs.friedman.non_teste).join('|') === '2 niveau(x), il en faut 3|1 niveau(x), il en faut 3', `Friedman dans chaque site : ${JSON.stringify(rs.friedman)}`);
       // a pair A–B that can't be tested (S3 has two years): its error apart, the table of all pairs still there, with why
       const deux = await api('coller', { texte: ['nom\tsecteur\tannee\tdensite', ...[2001, 2002, 2003, 2004].flatMap((an, i) => [`a${an}\tS1\t${an}\t${2 + i / 10}`,
         `b${an}\tS2\t${an}\t${3 + (i % 3) / 10}`]), 'c2001\tS3\t2001\t4', 'c2002\tS3\t2002\t5'].join('\r\n'), nom: 'Deux années' });
@@ -496,7 +535,38 @@ async function principal() {
         && col(ri.points, 'temps').join() === col(r.points, 'temps').join(), `par identifiants : ${JSON.stringify(ri.points)}`);
       let refus = '';
       try { await api('series', { projet: pj.id, variable: 1, temps: rang.secteur }); } catch (err) { refus = err.message; }
-      verifier(/numérique : « S3 » \(secteur\)/.test(refus), `un temps qui n’est pas un nombre, refusé : « ${refus} »`);
+      verifier(/: Le temps \(secteur\) doit être fait de nombres .* : « S3 » n'est ni un nombre ni une date$/.test(refus), `un temps qui n’est pas un nombre, refusé : « ${refus} »`);
+    });
+    await etape('séries sur des dates, et leurs tendances (Mann–Kendall, pente de Sen)', async () => {
+      // two sectors counted on a spring day of 2011 to 2018 (the same day for both, a different
+      // one each year), the date written day first: a qualitative variable that can be the time;
+      // S2 has 3 years only
+      const jours = ['14/05/2011', '02/05/2012', '20/05/2013', '09/05/2014', '27/04/2015', '18/05/2016', '05/05/2017', '22/05/2018'];
+      const s1 = [3, 5, 5, 4, 7, 7, 9, 8];
+      const lignes = jours.map((j, k) => [`a${k}`, 'S1', j, s1[k]]).concat(jours.slice(0, 3).map((j, k) => [`b${k}`, 'S2', j, 10 - k]));
+      const q = await api('coller', { texte: ['nom\tsecteur\tdate\tdensite', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Dates' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x]));
+      verifier(v.date.qualitative && v.date.temps === true && v.secteur.temps === false, `une variable de dates, qui peut être le temps : ${JSON.stringify(v.date)}`);
+      // the decimal year computed here: the year + (day of the year − 1) / the days in the year
+      const decimale = (s) => { const [j, m, a] = s.split('/').map(Number); const d0 = Date.UTC(a, 0, 1); return a + (Date.UTC(a, m - 1, j) - d0) / (Date.UTC(a + 1, 0, 1) - d0); };
+      const r = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid, lignes: v.secteur.uid, tendances: true });
+      const col = (x, k) => [].concat(x[k]);
+      const attendus = jours.map(decimale).concat(jours.slice(0, 3).map(decimale));
+      verifier(r.dates === true && col(r.points, 'temps').every((x, i) => Math.abs(x - attendus[i]) < 1e-9), `les dates en années décimales : ${JSON.stringify(r.points.temps)}`);
+      // S1: S and its variance with the ties (two 5s, two 7s), p by the normal approximation with the continuity correction
+      let S = 0;
+      for (let i = 0; i < 8; i += 1) for (let j = i + 1; j < 8; j += 1) S += Math.sign(s1[j] - s1[i]);
+      const varS = (8 * 7 * 21 - 2 * (2 * 1 * 9)) / 18;
+      const z = (Math.abs(S) - 1) / Math.sqrt(varS);
+      const erfc = (x) => { const t = 1 / (1 + 0.3275911 * x); return t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-x * x); };
+      const p = erfc(z / Math.SQRT2);  // (two-sided: 2 × (1 − Φ(z)))
+      const tr = r.tendances;
+      verifier(col(tr, 'ligne').join() === 'S1,S2' && col(tr, 'S')[0] === S && Math.abs(col(tr, 'var_S')[0] - varS) < 1e-9 && Math.abs(col(tr, 'p')[0] - p) < 1e-6
+        && col(tr, 'n').join() === '8,3' && col(tr, 'p')[1] === null && /3 temps/.test(col(tr, 'non_teste')[1]) && col(tr, 'p_ajuste')[0] === col(tr, 'p')[0]
+        && Math.abs(col(tr, 'debut')[0] - attendus[0]) < 1e-9 && col(tr, 'pente')[0] > 0, `tendances : ${JSON.stringify(tr)}`);
+      const h = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid, lignes: v.secteur.uid, tendances: true, correction: 'holm' });
+      const sans = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid });
+      verifier(col(h.tendances, 'p_ajuste')[0] === col(tr, 'p')[0] && sans.tendances === undefined && sans.dates === true, 'Holm sur une seule ligne testée ; sans tendances, pas de tableau');
     });
     await etape('autocorrélation des résidus, rapports de vraisemblance entre modèles emboîtés', async () => {
       // 6 sites suivis 10 ans (2006 manque), un bruit autocorrélé dans chaque site (moteur/R/regression_diagnostics.R)
@@ -540,6 +610,17 @@ async function principal() {
       verifier(r.total === 1 && [].concat(r.paires.grand)[0] === m2.id && [].concat(r.paires.petit)[0] === m1.id && [].concat(r.paires.ddl)[0] === 1
         && Math.abs([].concat(r.paires.khi2)[0] - Math.max(0, khi2)) < 1e-8 && [].concat(r.paires.approche)[0] === false,
       `x + z contre x (pas le modèle avec CAR1) : ${JSON.stringify(r)}`);
+      // Fit with CAR1 (reajuster with car1): M2 again with CAR1 along the year in each site, which is C1
+      const annee = { by: 'variable', variable: v.annee };
+      const car = await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'effets' }] } });
+      verifier(/^M2 \(\d+\)$/.test(car.nom) && car.type === 'LMM' && car.app === true && car.temps === 'annee' && !car.dans && car.signature === m2.signature
+        && Math.abs(car.phi - c1.phi) < 1e-8 && Math.abs(car.qualite.AIC - c1.qualite.AIC) < 1e-8,
+      `Ajuster avec CAR1 : ${car.nom}, φ ${car.phi} (C1 : ${c1.phi}), AIC ${car.qualite.AIC} (C1 : ${c1.qualite.AIC})`);
+      const fin = await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'effets' }, { by: 'variable', variable: v.periode }] } });
+      verifier(fin.dans === 'periode' && fin.phi !== null && fin.signature === m2.signature, `Ajuster avec CAR1 dans chaque période de chaque site : ${fin.dans}`);
+      let refusC = '';
+      try { await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'variable', variable: v.site }] } }); } catch (err) { refusC = err.message; }
+      verifier(/choisissez ses effets aléatoires/.test(refusC), `d'autres groupes que ceux des effets aléatoires, refusé : « ${refusC} »`);
     });
     await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
       // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the
@@ -586,6 +667,43 @@ async function principal() {
       verifier(tv.test === 't_apparie' && tv.cle.nom === 'annee' && [].concat(tv.tableau.nom).sort().join() === 'densite,nnicad' && [].concat(tv.tableau.n_paires)[k] === 10
         && Math.abs([].concat(tv.tableau.statistique)[k] - moy(dp) / Math.sqrt(vari(dp) / 10)) < 1e-8 && Math.abs([].concat(tv.tableau.d)[k] - moy(dp) / Math.sqrt(vari(dp))) < 1e-9,
         `deux classes appariées : ${JSON.stringify(tv.tableau)}`);
+      // Fit the mixed model (comparaisons.R: modele_baci): its two 0/1 variables, added to the
+      // project (Ctrl+Z removes them), and the model y ~ period × impact + (1 | sector) in it
+      const nVariables = q.variables.length;
+      const bm = await api('baci_modele', { ...base, evenement: 2006, car1: false });
+      const dn = await api('donnees', { projet: q.id });
+      const colonne = (nom) => dn.valeurs[dn.variables.indexOf(nom)];
+      const periode = colonne('période BACI (2006)');
+      const impact = colonne('impact BACI (S1 contre S2, S3)');
+      const pb = await api('projet', { projet: q.id });
+      verifier(bm.modele.type === 'LMM' && bm.modele.nom === 'BACI densite' && [].concat(bm.nouvelles).join('|') === 'période BACI (2006)|impact BACI (S1 contre S2, S3)'
+        && pb.variables.length === nVariables + 2 && /^variables période BACI/.test(pb.annulable) && pb.modeles.some((m) => m.nom === 'BACI densite' && m.type === 'LMM')
+        && lignes.every((l, i) => periode[i] === (l[2] >= 2006 ? 1 : 0) && impact[i] === ({ S1: 1, S2: 0, S3: 0 }[l[1]] ?? null))
+        && bm.modele.N === lignes.filter((l) => l[1] !== 'S4').length && bm.modele.vc_par === 'secteur',
+      `modèle mixte BACI : ${bm.modele.nom}, ${JSON.stringify(bm.nouvelles)}, N = ${bm.modele.N}`);
+      // the BACI view then gives its effect, the period × impact coefficient, as a sentence
+      const avec = await api('baci', { ...base, evenement: 2006 });
+      const ef = [].concat(avec.modeles);
+      const co = bm.modele.coefficients_regression;
+      const kc = [].concat(co.terme).indexOf('période BACI (2006)*impact BACI (S1 contre S2, S3)');
+      verifier(ef.length === 1 && ef[0].id === bm.modele.id && ef[0].car1 === false && kc === 3 && ef[0].estimation === co.estimation[kc] && ef[0].p === co.p[kc]
+        && ef[0].bas === co.bas[kc] && /^Modèle linéaire mixte \(BACI\), avec une ordonnée à l'origine aléatoire par secteur, qui tient compte des unités ; densite, impact \(S1\) contre témoins \(S2, S3\) : effet BACI/.test(ef[0].phrase)
+        && avec.temps_unites === 9, `effet BACI : ${JSON.stringify(ef)}`);
+      // with CAR1, another model; the same settings again, the same model refitted (its name, its number)
+      const bc = await api('baci_modele', { ...base, evenement: 2006, car1: true });
+      const bs = await api('baci_modele', { ...base, evenement: 2006, car1: false });
+      const en2 = await api('baci', { ...base, evenement: 2006 }, 'en');
+      const ef2 = [].concat(en2.modeles);
+      verifier(bc.modele.nom === 'BACI densite (2)' && !bc.nouvelles.length && /CAR1/.test(bc.modele.titre) && bs.modele.nom === 'BACI densite' && bs.modele.numero === bm.modele.numero
+        && ef2.length === 3 && ef2.map((x) => x.car1).join() === 'false,true,false' && ef2[2].id === bs.modele.id
+        && /^Linear mixed model \(BACI\), with a random intercept per secteur and a CAR1 autocorrelation along annee \(φ = /.test(ef2[1].phrase),
+      `CAR1, puis les mêmes réglages : ${bc.modele.nom}, ${bs.modele.nom} ; ${JSON.stringify(ef2.map((x) => x.phrase))}`);
+      const sansVar = (await api('annuler', { projet: q.id })).projet;
+      verifier(sansVar.variables.length === nVariables && !sansVar.modeles.some((m) => /^BACI/.test(m.nom)), 'annuler : les deux variables et le modèle quittent le projet');
+      await api('variable_calculee', { projet: q.id, nom: 'période BACI (2006)', formule: 'ifelse(annee >= 2007, 1, 0)' });
+      const libre = await api('baci_modele', { ...base, evenement: 2006 });
+      verifier([].concat(libre.nouvelles).join() === 'période BACI (2006) (2),impact BACI (S1 contre S2, S3)'
+        && (await api('projet', { projet: q.id })).variables.length === nVariables + 3, `un nom pris par une autre variable : le nom libre suivant (${[].concat(libre.nouvelles).join(', ')})`);
     });
     await etape('paquets de lecture des formats', async () => {
       const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });

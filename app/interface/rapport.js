@@ -33,8 +33,9 @@ export const PARTIES_TYPES = {};
 
 // A regression's parts (moteur/R/regression.R): its summary and coefficients as tables, its plots
 // as in their panels. `variantes`: one plot per setting of the view (each term's effect; the
-// residuals against the fitted values, then on a normal Q-Q plot). `si`: only for the models it
-// accepts (the thresholds: an additive model's curves).
+// residuals against the fitted values, then on a normal Q-Q plot, and so the quantile residuals of
+// a model of counts, presence-absence or positive values). `si`: only for the models it accepts
+// (the thresholds: an additive model's curves).
 const avecCourbes = (m) => [].concat((m.courbes && m.courbes.terme) || []).length > 0;
 const PARTIES_REGRESSION = [
   { cle: 'resume', defaut: true, tableau: tableauRegression },
@@ -43,7 +44,8 @@ const PARTIES_REGRESSION = [
   { cle: 'seuils', vue: 'effets', defaut: true, si: avecCourbes, tableau: resumesSeuils,
     variantes: async (m) => [].concat(m.courbes.terme).map((terme) => ({ terme, seuils: true })) },
   { cle: 'obspred', vue: 'obspred', defaut: true },
-  { cle: 'residus', vue: 'residus', defaut: true, variantes: async () => [{ mode: 'ajustes' }, { mode: 'qq' }] },
+  { cle: 'residus', vue: 'residus', defaut: true, tableau: (m) => (m.residus_quantiles ? [{ texte: t('residus_note_quantiles') }] : []),
+    variantes: async (m) => (m.residus_quantiles ? ['standard', 'quantiles'] : ['standard']).flatMap((residus) => [{ mode: 'ajustes', residus }, { mode: 'qq', residus }]) },
   { cle: 'acf', vue: 'acf' },  // (the time and groups of its panel, else CAR1's or those it guesses)
   { cle: 'apports', vue: 'apports' },
   { cle: 'selection_aic', vue: 'selection_aic', tableau: tableauSelectionAIC },

@@ -3,6 +3,17 @@
 What changed in each version: the same list as *Help › What's new* in the application
 (in French: *Aide › Quoi de neuf*). Downloads: [Releases](https://github.com/4rtefakt/nuee/releases).
 
+## 0.9.6 — 2026-11-13
+
+- BACI mixed model in one click: in the Before/after (BACI) mode of Statistical tests, “Fit the mixed model” creates the 0/1 period and impact variables and fits y ~ period × impact + (1 | unit), optionally with a CAR1 autocorrelation in time. The BACI effect (the period × impact coefficient, its 95 % interval and p-value) comes as a sentence under the t-test’s, accounting for the units and the autocorrelation. The model joins the project, with its Methods text (Stewart-Oaten et al., 1986).
+- Trends in Series: in Plots › Series, “Trends” gives for each line the Mann–Kendall test (Kendall’s τ, S and its p-value, the variance corrected for ties) and Sen’s slope per year with its 95 % interval, the p-values corrected over the lines (Benjamini–Hochberg or Holm); a note recalls that autocorrelated years make p too small.
+- Friedman’s test: when a measurement is paired by a key between three or more levels (sectors, by the year), Friedman’s test on the keys where every level has a value comes before the table of pairs, with Kendall’s W; “within each” site, one test per site, Holm-corrected.
+- “Fit with CAR1”: in Plots › Residual autocorrelation, a button fits the same model with a CAR1 autocorrelation in the time and groups chosen (its random effects, or a finer level within them), like “Fit this model”. The two then compare by AIC in Prediction › Compare models; a GLM or GAM, then refitted by mgcv::gamm, has its own AIC set, as the note says.
+- Quantile residuals (Dunn & Smyth, 1996): for a Poisson, negative binomial, binomial or gamma GLM or GAM, the Residuals view offers randomized quantile residuals, normal when the model is right, where residuals of counts aren’t even then; drawn with a fixed seed, they are also in the model report and in Export to R.
+- Dates as time: wherever a time is asked for (Series, previous and following, BACI, residual autocorrelation, CAR1 of mixed models and their Export to R), sampling dates (2019-05-14 or 14/05/2019, day first, with the time of day if needed) are read as decimal years; Series and BACI show them as dates. A column of repeated dates, a qualitative variable, can now be the time.
+- Fixed: after a one-click update, Nuée could show the previous version’s interface for a while, kept by its window’s cache: the new version showed the old number, said it was the latest and didn’t show what was new. The first start of a new version now empties that cache, and the interface is read again at each load.
+- The one-click update no longer opens a black window while it waits for Nuée to close (from the next one: the update that installs 0.9.6 comes from the version before).
+
 ## 0.9.5 — 2026-11-12
 
 - AIC selection: under each regression (and in Plots), Nuée compares by AICc every combination of the model’s groups of terms (its blocks, otherwise its variables), from the null model to the full one, each fitted by ML on the same observations, with the model’s random effects, autocorrelation, effort and curves; a cross term enters only with its main effects. Beyond 8 groups, a backward elimination. The view suggests the best model and, when it differs, the most parsimonious within ΔAICc ≤ 2; it shows each group’s importance and the best models with their Akaike weights.

@@ -130,26 +130,29 @@ variables, chosen from their types with their conditions checked: chi-square or 
 test, t test, ANOVA or Kruskal–Wallis with pairwise comparisons, Pearson's or Spearman's
 correlation; an observation ID (site, year...) can make the groups. Paired tests on long data
 (paired t, Wilcoxon's signed-rank test): two sectors compared over the years both have, or
-every pair of sectors with Holm's correction; or two measurements of the same rows (before,
-after); variable by variable, two classes paired by a key. Before/after comparisons with
-controls (BACI): the impact − control gap at each time, after against before. A correlation
-matrix with corrected p values. Series over time, one line per sector and a panel per site.
+every pair of sectors with Holm's correction after Friedman's test; or two measurements of the
+same rows (before, after); variable by variable, two classes paired by a key. Before/after
+comparisons with controls (BACI): the impact − control gap at each time, after against before,
+and the BACI mixed model fitted in one click. A correlation matrix with corrected p values.
+Series over time, one line per sector and a panel per site, with Mann–Kendall trend tests and
+Sen's slopes. Sampling dates can be the time.
 
-**Linear, generalized and mixed models:** linear regression and linear mixed models (nlme), with
-nested random effects (site, then sector within the site) and a continuous-time autocorrelation
-(CAR1); generalized linear and additive models (mgcv) for counts (Poisson, negative binomial),
-presence-absence, positive values and densities with zeros (Tweedie), with random effects, an
-effort as an offset, and smooth curves for effects that rise then fall or have a threshold
-(with CAR1 too, through mgcv::gamm, for a normal response); coefficients with their intervals,
-marginal and conditional R2, effect curves, each curve's thresholds (where the simultaneous
-band of its slope excludes 0) and concurvity, residual plots and the residuals' autocorrelation
-in time, the AIC change when each block of variables is removed, an AIC selection that fits
-every combination of the blocks and suggests a model to fit in one click, and an AIC comparison
-(ΔAIC, Akaike weights, likelihood-ratio tests of nested models) of the regressions of the same
-response, next to the cross-validated Q2 of every model. New variables can take the previous
-year's value in a sector, or the growth rate. An R formula box sets the model
-(R reads it and never runs it), and regressions predict new observations and files,
-extrapolations flagged.
+**Linear, generalized and mixed models:** linear regression and linear mixed models (nlme),
+with nested random effects (site, then sector within the site) and a continuous-time
+autocorrelation (CAR1); generalized linear and additive models (mgcv) for counts (Poisson,
+negative binomial), presence-absence, positive values and densities with zeros (Tweedie), with
+random effects, an effort as an offset, and smooth curves for effects that rise then fall or
+have a threshold (with CAR1 too, through mgcv::gamm, for a normal response); coefficients with
+their intervals, marginal and conditional R2, effect curves, each curve's thresholds (where the
+simultaneous band of its slope excludes 0) and concurvity, residual plots (with randomized
+quantile residuals for counts) and the residuals' autocorrelation in time (refitted with CAR1
+in one click), the AIC change when each block of variables is removed, an AIC selection that
+fits every combination of the blocks and suggests a model to fit in one click, and an AIC
+comparison (ΔAIC, Akaike weights, likelihood-ratio tests of nested models) of the regressions
+of the same response, next to the cross-validated Q2 of every model. New variables can take the
+previous year's value in a sector, or the growth rate. An R formula box sets the model (R reads
+it and never runs it), and regressions predict new observations and files, extrapolations
+flagged.
 
 **Ordination of communities:** redundancy analysis (RDA) of responses such as species
 abundances (Hellinger, chord or log(x + 1) transformed) by explanatory variables, partial RDA
@@ -273,7 +276,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.5) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.6) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).

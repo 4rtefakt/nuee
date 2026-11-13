@@ -255,7 +255,8 @@ export function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', su
 // Sortable, filterable table. colonnes: [{ cle, titre, num }]; valeur(i, cle); uid(i) links
 // rows to the selection of model `idModele`.
 // Rows not tied to observations can instead call cliquer(i), with choisie(i) marking the
-// current one; a column's alerte(i) shows that cell in red. Cells of `modifiable` columns
+// current one; a column's alerte(i) shows that cell in red, its couleur(i) marks the cell with
+// a colour (a line's own in a plot). Cells of `modifiable` columns
 // are edited by double-click, then modifier(i, cle, texte) (Enter or leaving the cell: keep;
 // Escape: cancel).
 export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier }) {
@@ -279,6 +280,8 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     const v = valeur(i, c.cle);
     const td = el('td', { class: (c.num || typeof v === 'number' ? 'num' : '') + (c.alerte && c.alerte(i) ? ' alerte' : '') },
       typeof v === 'number' ? (c.format ? c.format(v) : fmt(v, c.decimales ?? 4)) : v ?? '');
+    const couleur = c.couleur && c.couleur(i);
+    if (couleur) td.style.boxShadow = `inset 4px 0 0 ${couleur}`;
     if (modifier && c.modifiable) {
       td.title = t('double_clic_modifier');
       td.addEventListener('dblclick', (e) => {
@@ -1310,27 +1313,56 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
   tracer(ctx, graphe, traces, lay);
 }
 
+// A decimal year back as a date: 'YYYY-MM-DD', with 'HH:MM' (and ':SS' if any) when it isn't
+// midnight. The inverse of R's annees_decimales (moteur/R/variables.R), which reads a time made
+// of dates as the year + (day of the year − 1 + fraction of the day) / days in the year; for
+// display only (date axes, tables), to the second.
+function dateDecimale(a) {
+  if (a === null || a === undefined) return null;
+  const an = Math.floor(a);
+  const debut = Date.UTC(an, 0, 1);
+  const iso = new Date(debut + Math.round((a - an) * (Date.UTC(an + 1, 0, 1) - debut) / 1000) * 1000).toISOString();
+  if (iso.slice(11, 19) === '00:00:00') return iso.slice(0, 10);
+  return `${iso.slice(0, 10)} ${iso.slice(11, iso.slice(17, 19) === '00' ? 16 : 19)}`;
+}
+// A time typed by the user (Series events) on a date axis: a date as R reads one (2019-05-14, or
+// 14/05/2019 day first, also with - or .), or a number, a decimal year (2015: 1 January); null otherwise.
+function dateSaisie(x) {
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(x);
+  const jma = /^(\d{1,2})([/.-])(\d{1,2})\2(\d{4})$/.exec(x);
+  const deux = (s) => s.padStart(2, '0');
+  if (iso) return `${iso[1]}-${deux(iso[2])}-${deux(iso[3])}`;
+  if (jma) return `${jma[4]}-${deux(jma[3])}-${deux(jma[1])}`;
+  const n = Number(x.replace(',', '.'));
+  return Number.isFinite(n) ? dateDecimale(n) : null;
+}
+
 // Series in time (Plots › Series): a variable over time, a line per group (the sector) and a
 // small plot per larger group (the site), in a grid with shared axes: the sectors of each site
 // compared year by year. R gives the long data (moteur/R/series.R), one row per observation with
 // a known time and value. Within a line, times one step apart (the line's own step, the smallest
 // gap between its times) are joined, and a missing time breaks the line; a line that has the same
-// time twice is no series: its points are left unjoined (R counts them, a note says so).
+// time twice is no series: its points are left unjoined (R counts them, a note says so). A time
+// made of dates (R gives decimal years, and says so) is drawn on a date axis, and a line joins all
+// its points: dates are rarely evenly spaced.
 // Colours go by line within each panel (the palette, then dashes), the legend grouped by panel,
 // so that 30 sectors stay readable. Optionally the mean of each panel's lines (a thicker line), a
 // log scale, and events: times drawn as dashed lines in every panel. A click or a box selects
 // observations, kept under the project's id (with the shared selection, its models' too: app.js).
+// Optionally too, the trends: under the plot, for each line of each panel (its colour in the plot
+// marks its row), R's Mann–Kendall test and Sen's slope, p corrected over the lines.
 const TIRETS = ['solid', 'dot', 'dash', 'dashdot'];
 async function rendreSeries(conteneur, ctx, p, loc) {
   const proj = ctx.projet(p.projet);
   const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
   const ids = liste(proj.identifiants).map((i) => ({ valeur: `id:${i.rang}`, nom: i.nom, libelle: `${i.nom} (${t('identifiant')})` }));
-  const vars = proj.variables.map((v) => ({ valeur: v.uid, nom: v.nom, libelle: v.nom, qualitative: v.qualitative }));
+  const vars = proj.variables.map((v) => ({ valeur: v.uid, nom: v.nom, libelle: v.nom, qualitative: v.qualitative, temps: v.temps }));
   const mesures = vars.filter((v) => !v.qualitative);
   if (!mesures.length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('series_sans_mesure'))); return; }
-  // the time: a quantitative variable or an ID (the year); lines and panels: a qualitative
-  // variable or an ID, guessed from their names the first time (year, sector, site), then kept
-  const temps = [...mesures, ...ids];
+  // the time: a quantitative variable, a qualitative one made of dates (R says which: v.temps) or
+  // an ID (the year); lines and panels: a qualitative variable or an ID, guessed from their names
+  // the first time (year, sector, site), then kept
+  const temps = [...mesures, ...vars.filter((v) => v.qualitative && v.temps), ...ids];
   const existe = (os, x) => os.some((o) => o.valeur === x);
   const cherche = (os, re) => (os.find((o) => re.test(o.nom)) || {}).valeur;
   if (!existe(temps, loc.temps)) loc.temps = cherche(temps, /ann[ée]e|year|date|temps|time|^an$/i) ?? temps[0].valeur;
@@ -1345,7 +1377,8 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   if (!existe(panneaux, loc.panneaux)) loc.panneaux = null;
   const lire = (x) => (x === '' ? null : String(x).startsWith('id:') ? x : Number(x));
   const options = (os) => os.map((o) => [o.valeur, o.libelle]);
-  const evenements = String(loc.evenements || '').split(/[;\s]+/).filter(Boolean).map((x) => Number(x.replace(',', '.'))).filter(Number.isFinite);
+  const saisis = String(loc.evenements || '').split(/[;\s]+/).filter(Boolean);
+  if (!['BH', 'holm'].includes(loc.correction)) loc.correction = 'BH';
   const barre = outils(
     choix(t('series_variable'), options(variables), loc.variable, (x) => { loc.variable = lire(x); ctx.rafraichir(); }),
     choix(t('series_temps'), options(temps), loc.temps, (x) => { loc.temps = lire(x); ctx.rafraichir(); }),
@@ -1355,13 +1388,16 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     case_(t('series_log'), !!loc.log, (x) => { loc.log = x; ctx.rafraichir(); }),
     el('label', { class: 'champ', title: t('series_evenements_aide') }, el('span', {}, t('series_evenements')),
       el('input', { value: loc.evenements || '', placeholder: '2015 ; 2019', style: 'width:8em',
-        onchange: (e) => { loc.evenements = e.target.value; ctx.rafraichir(); } })));
+        onchange: (e) => { loc.evenements = e.target.value; ctx.rafraichir(); } })),
+    el('span', { title: t('series_tendances_aide') }, case_(t('series_tendances'), !!loc.tendances, (x) => { loc.tendances = x; ctx.rafraichir(); })),
+    loc.tendances ? choix(t('correction'), [['BH', t('correction_bh')], ['holm', 'Holm']], loc.correction, (x) => { loc.correction = x; ctx.rafraichir(); }) : null);
   const cache = (loc.cache ??= {});  // (the results: loc.cache isn't saved with the session)
-  const cle = JSON.stringify([loc.variable, loc.temps, loc.lignes, loc.panneaux, langueActuelle()]);
+  const cle = JSON.stringify([loc.variable, loc.temps, loc.lignes, loc.panneaux, loc.tendances ? loc.correction : null, langueActuelle()]);
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
     const q = { projet: p.projet, variable: loc.variable, temps: loc.temps,
-      ...(loc.lignes !== null ? { lignes: loc.lignes } : {}), ...(loc.panneaux !== null ? { panneaux: loc.panneaux } : {}) };
+      ...(loc.lignes !== null ? { lignes: loc.lignes } : {}), ...(loc.panneaux !== null ? { panneaux: loc.panneaux } : {}),
+      ...(loc.tendances ? { tendances: true, correction: loc.correction } : {}) };
     try { cache.res = await ctx.demander('series', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
@@ -1374,6 +1410,11 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   const U = liste(r.points.uid);
   const N = liste(r.points.nom);
   if (!T.length) { conteneur.replaceChildren(barre, el('p', { class: 'infos' }, t('series_vide'))); return; }
+  // dates: the x values as dates on a date axis (and in the hover), the events typed as dates or years
+  const dates = !!r.dates;
+  const X = dates ? T.map(dateDecimale) : T;
+  const tps = (x) => (dates ? dateDecimale(x) : x);
+  const evenements = saisis.map((x) => (dates ? dateSaisie(x) : Number(x.replace(',', '.')))).filter((x) => (dates ? x !== null : Number.isFinite(x)));
   const parLignes = !!r.lignes;
   const parPanneaux = !!r.panneaux;
   const nomsP = parPanneaux ? liste(r.niveaux_panneaux) : [null];
@@ -1405,8 +1446,10 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   const moyennes = [];
   const MP = liste(r.moyennes.panneau);
   const MT = liste(r.moyennes.temps);
+  const MX = dates ? MT.map(dateDecimale) : MT;
   const MV = liste(r.moyennes.valeur);
   const MN = liste(r.moyennes.n);
+  const couleurs = new Map();  // (each line's colour, by panel and line, for the table of trends)
   nomsP.forEach((nomP, k) => {
     const s = suffixe[k];
     const rang = Math.floor(k / C);
@@ -1414,7 +1457,8 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     const dx = [col / C + (col ? gx / 2 : 0), (col + 1) / C - (col < C - 1 ? gx / 2 : 0)];
     const dy = [1 - (rang + 1) / R + (rang < R - 1 ? gy / 2 : 0), 1 - rang / R - (rang ? gy / 2 : 0)];
     // (the times under the lowest panel of each column, the values left of the first column)
-    lay['xaxis' + s] = { ...axe, domain: dx, anchor: 'y' + s, showticklabels: k + C >= nP, ...(s ? { matches: 'x' } : { title: { text: r.temps.nom } }) };
+    lay['xaxis' + s] = { ...axe, domain: dx, anchor: 'y' + s, showticklabels: k + C >= nP, ...(dates ? { type: 'date' } : {}),
+      ...(s ? { matches: 'x' } : { title: { text: r.temps.nom } }) };
     lay['yaxis' + s] = { ...axe, domain: dy, anchor: 'x' + s, showticklabels: col === 0, ...(loc.log ? { type: 'log' } : {}),
       ...(s ? { matches: 'y' } : { title: { text: r.variable.nom } }) };
     if (parPanneaux) lay.annotations.push({ text: nomP, xref: 'paper', yref: 'paper', x: dx[0], y: dy[1], xanchor: 'left', yanchor: 'bottom', showarrow: false, font: { size: FORMAT.taille } });
@@ -1423,34 +1467,59 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     const dansP = T.map((_, i) => i).filter((i) => (!parPanneaux || PA[i] === nomP) && montre(Y[i]));
     nomsL.filter((nomL) => dansP.some((i) => !parLignes || LI[i] === nomL)).forEach((nomL, j) => {
       const points = dansP.filter((i) => !parLignes || LI[i] === nomL);
-      // (a line with the same time twice isn't a series: its points, not joined)
+      // (a line with the same time twice isn't a series: its points, not joined; with dates, all joined)
       const doublee = points.some((i, m) => m && T[i] === T[points[m - 1]]);
-      const suite = doublee ? points : avecTrous(points, T);
+      const suite = doublee || dates ? points : avecTrous(points, T);
       const couleur = PALETTE[j % PALETTE.length];
+      couleurs.set(`${nomP}\r${nomL}`, couleur);
       traces.push({ type: 'scatter', mode: doublee ? 'markers' : 'lines+markers', xaxis: 'x' + s, yaxis: 'y' + s, name: parLignes ? nomL : r.variable.nom,
         legendgroup: `p${k}`, showlegend: parLignes, ...(parPanneaux && parLignes && j === 0 ? { legendgrouptitle: { text: nomP } } : {}),
-        x: de(T, suite), y: de(Y, suite), customdata: de(U, suite), hovertext: de(N, suite),
-        hovertemplate: `<b>%{hovertext}</b><br>${r.temps.nom} = %{x}<br>${r.variable.nom} = %{y:.4~g}<extra>${extra}</extra>`,
+        x: de(X, suite), y: de(Y, suite), customdata: de(U, suite), hovertext: de(N, suite), text: de(X, suite),
+        hovertemplate: `<b>%{hovertext}</b><br>${r.temps.nom} = %{text}<br>${r.variable.nom} = %{y:.4~g}<extra>${extra}</extra>`,
         line: { color: couleur, width: 1.5, dash: TIRETS[Math.floor(j / PALETTE.length) % TIRETS.length] },
         marker: marqueurs(de(U, suite), sel, couleur, 6) });
     });
     if (loc.moyenne) {
-      const suite = avecTrous(MT.map((_, i) => i).filter((i) => (!parPanneaux || MP[i] === nomP) && montre(MV[i])), MT);
+      const idx = MT.map((_, i) => i).filter((i) => (!parPanneaux || MP[i] === nomP) && montre(MV[i]));
+      const suite = dates ? idx : avecTrous(idx, MT);
       moyennes.push({ type: 'scatter', mode: 'lines', xaxis: 'x' + s, yaxis: 'y' + s, name: t('series_moyenne'), legendgroup: 'moyenne', showlegend: k === 0,
-        x: de(MT, suite), y: de(MV, suite), text: de(MN, suite), line: { color: c.texte, width: 3.5 },
-        hovertemplate: `${t('series_moyenne')} · ${r.temps.nom} = %{x}<br>${r.variable.nom} = %{y:.4~g} (n = %{text})<extra>${parPanneaux ? nomP : ''}</extra>` });
+        x: de(MX, suite), y: de(MV, suite), text: de(MN, suite), customdata: de(MX, suite), line: { color: c.texte, width: 3.5 },
+        hovertemplate: `${t('series_moyenne')} · ${r.temps.nom} = %{customdata}<br>${r.variable.nom} = %{y:.4~g} (n = %{text})<extra>${parPanneaux ? nomP : ''}</extra>` });
     }
   });
   const nonMontres = loc.log ? Y.filter((y) => !(y > 0)).length : 0;
   const d = r.doubles || {};
-  const notes = [t('series_note', { n: T.length, l: parLignes ? nomsL.length : 1, p: nP }),
+  const notes = [t(dates ? 'series_note_dates' : 'series_note', { n: T.length, l: parLignes ? nomsL.length : 1, p: nP }),
     r.sans_temps_valeur ? t('series_sans_temps', { n: r.sans_temps_valeur }) : '',
     r.sans_groupe ? t('series_sans_groupe', { n: r.sans_groupe }) : '',
-    d.n ? t('series_doubles', { n: d.n, exemple: [d.panneau, d.ligne, d.temps].filter((x) => x !== null && x !== undefined).join(' · ') }) : '',
+    d.n ? t('series_doubles', { n: d.n, exemple: [d.panneau, d.ligne, tps(d.temps)].filter((x) => x !== null && x !== undefined).join(' · ') }) : '',
     nonMontres ? t('series_log_note', { n: nonMontres }) : '', sel.size ? `${sel.size} ${t('selectionnees')}` : ''].filter(Boolean).join(' ');
+  // the trends, under the plot: a row per line of each panel (R: tendances_series), its name marked
+  // with its colour in the plot; the times as dates, like the plot's
+  let bas = null;
+  if (loc.tendances && r.tendances) {
+    const col = (k) => liste(r.tendances[k]);
+    const sig = (v) => String(+Number(v).toPrecision(4));
+    bas = el('div', { class: 'bas', style: { flex: '0 1 auto', maxHeight: '45%' } });  // (the plot first; the table scrolls)
+    tableau(bas, ctx, (loc.tableTendances ??= {}), {
+      n: col('n').length, nom: t('series_tendances'),
+      colonnes: [...(parPanneaux ? [{ cle: 'panneau', titre: r.panneaux.nom }] : []),
+        { cle: 'ligne', titre: parLignes ? r.lignes.nom : t('series_variable'), couleur: (i) => couleurs.get(`${col('panneau')[i]}\r${col('ligne')[i]}`) },
+        { cle: 'n', titre: 'n', num: true, decimales: 0 },
+        { cle: 'debut', titre: t('series_debut'), num: true, format: texteTemps }, { cle: 'fin', titre: t('series_fin'), num: true, format: texteTemps },
+        { cle: 'pente', titre: t('series_pente', { temps: dates ? t('series_an') : r.temps.nom }), num: true, format: sig },
+        { cle: 'bas', titre: t('ic_bas'), num: true, format: sig }, { cle: 'haut', titre: t('ic_haut'), num: true, format: sig },
+        { cle: 'tau', titre: 'τ', num: true, decimales: 3 }, { cle: 'S', titre: 'S', num: true, decimales: 0 },
+        { cle: 'p', titre: 'p', num: true, format: valeurP },
+        { cle: 'p_ajuste', titre: `${t('p_ajuste')} (${loc.correction === 'holm' ? 'Holm' : 'BH'})`, num: true, format: valeurP },
+        { cle: 'non_teste', titre: t('non_teste') }],
+      valeur: (i, k) => (k === 'ligne' && !parLignes ? r.variable.nom : dates && (k === 'debut' || k === 'fin') ? dateDecimale(col(k)[i]) : col(k)[i]),
+    });
+  }
   // many panels: a taller plot, which scrolls
   const graphe = el('div', { class: 'graphe', ...(R > 3 ? { style: { height: `${R * 190 + 90}px`, flex: 'none' } } : {}) });
-  conteneur.replaceChildren(barre, el('p', { class: 'note' }, notes), R > 3 ? el('div', { class: 'defile' }, graphe) : graphe);
+  conteneur.replaceChildren(barre, el('p', { class: 'note' }, notes), R > 3 ? el('div', { class: 'defile' }, graphe) : graphe,
+    ...(bas ? [bas, el('p', { class: 'note' }, t('series_tendances_note'))] : []));
   tracer(ctx, graphe, traces.concat(moyennes), lay);
   brancherSelection(graphe, ctx, p.projet);
 }
@@ -1720,8 +1789,24 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   const r = cache.res;
   const liste = (xs) => (xs.length > 8 ? `${xs.slice(0, 8).join(', ')}… (${xs.length})` : xs.join(', '));
   // every pair of levels (within each group, if one is chosen), with the columns of the test
-  // chosen above and why a pair wasn't tested; a click on a row compares that pair
+  // chosen above and why a pair wasn't tested; a click on a row compares that pair. Before the
+  // pairs, the omnibus test for both paired tests: Friedman's test on the keys where every level
+  // has a value, or one per group (Holm over the groups), each as a sentence; why not, otherwise.
   const nomToutes = r.dans ? t('paires_dans_groupe', { groupe: r.dans.nom }) : t('toutes_paires');
+  const friedman = () => {
+    if (!r.friedman) return null;
+    const fc = (k) => [].concat(r.friedman[k]);
+    const phrases = fc('phrase');
+    const raisons = fc('non_teste');
+    const groupesF = r.friedman.groupe !== undefined ? fc('groupe') : null;
+    const sans = phrases.map((_, i) => i).filter((i) => phrases[i] === null);
+    const bouton = (phrase) => el('button', { class: 'icone-seule', title: t('copier_phrase'),
+      onclick: () => navigator.clipboard.writeText(phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+    return el('div', { class: 'note', style: { flex: '0 1 auto', maxHeight: '35%', overflow: 'auto' } },
+      phrases.map((x) => (x === null ? null : [el('b', {}, x), ' ', bouton(x), el('br')])),
+      !sans.length ? null : groupesF ? t('friedman_sans_test', { groupes: sans.map((i) => `${groupesF[i]} (${raisons[i]})`).join(', ') })
+        : t('friedman_non_teste', { raison: raisons[sans[0]] }));
+  };
   const tableauToutes = (bas, avant) => {
     const tp = (k) => [].concat(r.toutes[k]);
     const wilcoxon = L.test === 'wilcoxon';
@@ -1736,7 +1821,9 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
       { cle: 'non_teste', titre: t('non_teste') }];
     L.tableToutes ??= {};
     if (L.tableToutes.tri && !colonnes.some((c) => c.cle === L.tableToutes.tri.cle)) delete L.tableToutes.tri;
-    tableau(bas, ctx, L.tableToutes, {
+    const paires = el('div', { class: 'bas' });
+    bas.replaceChildren(...[friedman(), paires].filter(Boolean));
+    tableau(paires, ctx, L.tableToutes, {
       n: tp('a').length, nom: nomToutes, avant, colonnes, valeur,
       cliquer: (i) => { L.a = tp('a')[i]; L.b = tp('b')[i]; ctx.rafraichir(); },
       choisie: (i) => [tp('a')[i], tp('b')[i]].sort().join('\u0000') === [r.a, r.b].sort().join('\u0000'),
@@ -1993,7 +2080,8 @@ async function rendreCorrelations(conteneur, ctx, p, loc, modes) {
 // before, by Welch's t (the default), Student's t (her script's lm on the period) or
 // Mann–Whitney, with the change in the mean gap, its 95 % interval and a sentence for a report.
 // The plot shows d_t over time, the event and each period's mean; until an event is entered,
-// the gaps alone.
+// the gaps alone. A time made of dates (decimal years from R, which says so) is shown as dates;
+// the event and the end are typed as a number or a date, and R reads them like the time.
 const NOMS_PERIODES = () => ({ avant: t('baci_avant'), apres: t('baci_apres'), hors: t('baci_hors') });
 const texteTemps = (x) => (x === null || x === undefined ? '' : Number.isInteger(x) ? String(x) : String(+x.toPrecision(6)));
 async function rendreBaci(conteneur, ctx, p, loc, modes) {
@@ -2004,14 +2092,15 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
   const ids = [].concat(proj.identifiants || []).map((i) => [`id:${i.rang}`, `${i.nom} (${t('identifiant')})`]);
   const lire = (x) => (String(x).startsWith('id:') ? x : Number(x));
   const existe = (options, u) => options.some(([x]) => x === u);
-  // a quantitative response; a time (another quantitative variable or an ID: the year); a unit
+  // a quantitative response; a time (another quantitative variable, dates or an ID: the year); a unit
   // (a qualitative variable or an ID: the sector); first choices named like them, the sector
   // before the site
   const temporel = /^(ann[ée]e|an|year|date|temps|time|jour|day|mois|month|saison|season)\b/i;
   const spatial = /unit|station|parcelle|plot|transect|zone|site/i;
   const reponses = vars.filter((v) => !v.qualitative).map((v) => [v.uid, v.nom]);
   if (!existe(reponses, B.y) && reponses.length) B.y = (reponses.find(([, n]) => !temporel.test(n)) || reponses[0])[0];
-  const tempsPossibles = reponses.filter(([u]) => u !== B.y).concat(ids);
+  // (the time can also be a qualitative variable made of dates: R says which, v.temps)
+  const tempsPossibles = reponses.filter(([u]) => u !== B.y).concat(vars.filter((v) => v.qualitative && v.temps).map((v) => [v.uid, v.nom]), ids);
   if (!existe(tempsPossibles, B.temps) && tempsPossibles.length) B.temps = (tempsPossibles.find(([, n]) => temporel.test(n)) || ids[0] || tempsPossibles[0])[0];
   const unitesPossibles = vars.filter((v) => v.qualitative).map((v) => [v.uid, `${v.nom} (${[].concat(v.categories).length} ${t('categories')})`])
     .concat(ids).filter(([u]) => u !== B.temps);
@@ -2030,20 +2119,23 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
   B.impact = [].concat(B.impact ?? []).filter((n) => niveaux.includes(n));
   B.temoins = [].concat(B.temoins ?? []).filter((n) => niveaux.includes(n) && !B.impact.includes(n));
   B.test ??= 'welch';
-  const nombre = (libelle, aide, valeur, changer) => el('label', { class: 'champ', title: aide }, el('span', {}, libelle),
-    el('input', { type: 'number', step: 'any', value: valeur ?? '', style: 'width:6.5em',
-      onchange: (e) => {
-        const s = String(e.target.value).trim();
-        const x = s === '' ? null : Number(s);
-        if (x === null || Number.isFinite(x)) { changer(x); ctx.rafraichir(); }
-      } }));
+  // the event and the end: a number (the year) or a date, as typed; R reads them like the time
+  const saisie = (libelle, aide, valeur, changer) => el('label', { class: 'champ', title: aide }, el('span', {}, libelle),
+    el('input', { value: valeur ?? '', style: 'width:6.5em',
+      onchange: (e) => { const s = String(e.target.value).trim(); changer(s === '' ? null : s); ctx.rafraichir(); } }));
+  // (the mixed model's box and button are in the bar from the start, so that it keeps its height
+  // while R computes; they are set once the result is known)
+  const entreeCar1 = el('input', { type: 'checkbox', disabled: true });
+  const champCar1 = el('label', { class: 'champ', title: t('baci_car1_aide') }, entreeCar1, t('baci_car1'));
+  const boutonModele = el('button', { disabled: true, title: t('baci_modele_evenement') }, icone('file-plus'), t('baci_modele'));
   const barre = outils(modes,
     choix(t('baci_reponse'), reponses, B.y, (x) => { B.y = Number(x); ctx.rafraichir(); }),
     choix(t('baci_temps'), tempsPossibles, B.temps, (x) => { B.temps = lire(x); ctx.rafraichir(); }),
     choix(t('baci_unite'), unitesPossibles, B.unite, (x) => { B.unite = lire(x); ctx.rafraichir(); }),
-    nombre(t('baci_evenement'), t('baci_evenement_aide'), B.evenement, (x) => { B.evenement = x; }),
-    nombre(t('baci_fin'), t('baci_fin_aide'), B.fin, (x) => { B.fin = x; }),
-    choix(t('test'), [['welch', t('test_welch')], ['student', t('test_student')], ['mann_whitney', 'Mann–Whitney']], B.test, (x) => { B.test = x; ctx.rafraichir(); }));
+    saisie(t('baci_evenement'), t('baci_evenement_aide'), B.evenement, (x) => { B.evenement = x; }),
+    saisie(t('baci_fin'), t('baci_fin_aide'), B.fin, (x) => { B.fin = x; }),
+    choix(t('test'), [['welch', t('test_welch')], ['student', t('test_student')], ['mann_whitney', 'Mann–Whitney']], B.test, (x) => { B.test = x; ctx.rafraichir(); }),
+    champCar1, boutonModele);
   // the unit's levels, each ticked as impact or as control (not both)
   const cocher = (role, autre) => el('div', { class: 'unites' }, el('span', { class: 'role' }, t(role === 'impact' ? 'baci_impact' : 'baci_temoins')),
     niveaux.map((n) => el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: B[role].includes(n), disabled: B[autre].includes(n),
@@ -2052,11 +2144,14 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
       onclick: () => { B.temoins = niveaux.filter((n) => !B.impact.includes(n)); ctx.rafraichir(); } }, t('baci_tous_autres')) : null);
   const unites = el('div', { class: 'outils' }, cocher('impact', 'temoins'), cocher('temoins', 'impact'));
   if (!B.impact.length || !B.temoins.length) { conteneur.replaceChildren(barre, unites, el('p', { class: 'infos' }, t('baci_choisir_unites'))); return; }
-  const evenement = Number.isFinite(B.evenement) ? B.evenement : null;
+  const saisi = (x) => (x === null || x === undefined || x === '' ? null : x);  // (text as typed, or a number from an older session)
+  const evenement = saisi(B.evenement);
   const q = { projet: p.projet, y: B.y, temps: B.temps, unite: B.unite, impact: B.impact, temoins: B.temoins, test: B.test,
-    evenement, fin: evenement !== null && Number.isFinite(B.fin) ? B.fin : null };
-  // (the language too: R writes the sentence)
-  const cle = JSON.stringify([q.y, q.temps, q.unite, q.impact, q.temoins, q.evenement, q.fin, q.test, langueActuelle()]);
+    evenement, fin: evenement !== null ? saisi(B.fin) : null };
+  // (the language too: R writes the sentences; and the project's fitted models: R gives the effect
+  // of the BACI mixed models of these settings, asked again once one is fitted or removed)
+  const modeles = ctx.tousModeles().filter((m) => m.projet === p.projet).map((m) => m.id);
+  const cle = JSON.stringify([q.y, q.temps, q.unite, q.impact, q.temoins, q.evenement, q.fin, q.test, langueActuelle(), modeles]);
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, unites, el('p', { class: 'infos attente' }, t('calcul')));
     try { cache.res = await ctx.demander('baci', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
@@ -2066,6 +2161,9 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
   const r = cache.res;
   const s = (k) => [].concat(r.serie[k]);
   const xs = s('temps');
+  // a time made of dates (decimal years from R): dates on the plot's axis and in the texts
+  const tps = r.dates ? dateDecimale : texteTemps;
+  const enX = (x) => (r.dates ? dateDecimale(x) : x);
   const ecarts = s('ecart');
   const imp = s('impact');
   const tem = s('temoins');
@@ -2078,8 +2176,8 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
   const fr = langueActuelle() === 'fr';
   const liste = (v) => (v.length > 8 ? `${v.slice(0, 8).join(', ')}… (${v.length})` : v.join(', '));
   // what the gaps are, and what was left out: times with one side only, rows without a value
-  const sansTemoin = [].concat(r.seuls.impact ?? []).map(texteTemps);
-  const sansImpact = [].concat(r.seuls.temoins ?? []).map(texteTemps);
+  const sansTemoin = [].concat(r.seuls.impact ?? []).map(tps);
+  const sansImpact = [].concat(r.seuls.temoins ?? []).map(tps);
   const repetees = r.repetees ? [].concat(r.repetees.unite).map((u, i) => `${u}${fr ? ' : ' : ': '}${[].concat(r.repetees.temps)[i]}`) : [];
   const douteuses = pr('periode').filter((_, i) => pr('shapiro_p')[i] !== null && pr('shapiro_p')[i] < 0.05).map((g) => P[g]);
   const notes = [t('baci_note_ecart', { n: xs.length, temps: r.temps.nom }),
@@ -2090,42 +2188,61 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
     r.hors ? t('baci_hors_note', { n: r.hors }) : '',
     douteuses.length ? t('baci_normalite', { periodes: douteuses.join(', ') }) : '',
     fait ? t('baci_note_autocorrelation') : t('baci_choisir_evenement')].filter(Boolean).join(' ');
-  const copier = el('button', { class: 'icone-seule', title: t('copier_phrase'),
-    onclick: () => navigator.clipboard.writeText(r.phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+  const copier = (phrase) => el('button', { class: 'icone-seule', title: t('copier_phrase'),
+    onclick: () => navigator.clipboard.writeText(phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+  // the mixed model y ~ period × impact + (1 | unit), once an event is entered: CAR1 in time by
+  // default when every unit has 3 times or more, impossible with several rows of a unit at the same
+  // time among the model's rows, up to the end (one time per unit); the effect of the latest model of
+  // these settings fitted, next to the test's sentence; a refusal under the settings
+  const car1Possible = fait && !r.repetees_modele;
+  const car1 = car1Possible && (B.car1 ?? r.temps_unites >= 3);
+  const modele = [].concat(r.modeles || []).filter((x) => x.car1 === car1).pop();
+  const cleModele = JSON.stringify([cle, car1]);
+  entreeCar1.checked = car1;
+  entreeCar1.disabled = !car1Possible;
+  entreeCar1.onchange = (e) => { B.car1 = e.target.checked; ctx.rafraichir(); };
+  if (fait && !car1Possible) champCar1.title = t('baci_car1_repetees');
+  boutonModele.disabled = !fait;
+  if (fait) boutonModele.title = t('baci_modele_aide');
+  boutonModele.onclick = async () => {
+    try { await ctx.ajusterBaci({ ...q, car1 }); } catch (e) { cache.erreurModele = { cle: cleModele, message: e.message }; ctx.rafraichir(); }
+  };
+  const refus = cache.erreurModele && cache.erreurModele.cle === cleModele ? el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreurModele.message}`) : null;
   const graphe = el('div', { class: 'graphe' });
   const details = el('div', { class: 'defile', style: { flex: '0 1 auto', maxHeight: '40%' } });
   const bas = el('div', { class: 'bas' });
-  conteneur.replaceChildren(barre, unites, el('div', { class: 'note' }, ...(fait ? [el('b', {}, r.phrase), ' ', copier, el('br')] : []), notes),
-    graphe, ...(fait ? [details] : []), bas);
+  conteneur.replaceChildren(...[barre, unites, refus, el('div', { class: 'note' }, ...(fait ? [el('b', {}, r.phrase), ' ', copier(r.phrase), el('br')] : []),
+    ...(modele ? [el('b', {}, modele.phrase), ' ', copier(modele.phrase), el('br')] : []), notes),
+  graphe, ...(fait ? [details] : []), bas].filter(Boolean));
 
   // the gaps joined in time order, each period in its colour, the event line and each period's mean
   const c = couleursTheme();
   const couleurs = { avant: PALETTE[0], apres: '#d1495b', hors: c.doux, '': PALETTE[0] };
-  const traces = [{ type: 'scatter', mode: 'lines', x: xs, y: ecarts, line: { color: c.ligne, width: 1 }, hoverinfo: 'skip', showlegend: false }];
+  const traces = [{ type: 'scatter', mode: 'lines', x: xs.map(enX), y: ecarts, line: { color: c.ligne, width: 1 }, hoverinfo: 'skip', showlegend: false }];
   for (const g of fait ? ['avant', 'apres', 'hors'] : ['']) {
     const idx = xs.map((_, i) => i).filter((i) => periode[i] === g);
     if (!idx.length) continue;
-    traces.push({ type: 'scatter', mode: 'markers', name: g ? P[g] : t('baci_ecart_court'), x: idx.map((i) => xs[i]), y: idx.map((i) => ecarts[i]),
-      marker: { color: couleurs[g], size: 8 }, customdata: idx.map((i) => [fmt(imp[i], 3), ni[i], fmt(tem[i], 3), nt[i]]),
-      hovertemplate: `${r.temps.nom} %{x}<br>d_t = %{y:.3f}<br>${t('baci_impact')} %{customdata[0]} (n = %{customdata[1]}) − ${t('baci_temoins')} %{customdata[2]} (n = %{customdata[3]})<extra></extra>` });
+    traces.push({ type: 'scatter', mode: 'markers', name: g ? P[g] : t('baci_ecart_court'), x: idx.map((i) => enX(xs[i])), y: idx.map((i) => ecarts[i]),
+      marker: { color: couleurs[g], size: 8 }, customdata: idx.map((i) => [fmt(imp[i], 3), ni[i], fmt(tem[i], 3), nt[i]]), text: idx.map((i) => tps(xs[i])),
+      hovertemplate: `${r.temps.nom} %{text}<br>d_t = %{y:.3f}<br>${t('baci_impact')} %{customdata[0]} (n = %{customdata[1]}) − ${t('baci_temoins')} %{customdata[2]} (n = %{customdata[3]})<extra></extra>` });
   }
   const formes = [];
   const annotations = [];
   if (fait) {
     // (the line between the last time before and the event: half a year before it, for years)
     const dernier = Math.max(...xs.filter((_, i) => periode[i] === 'avant'));
-    const xe = r.evenement - Math.min(0.5, (r.evenement - dernier) / 2);
+    const xe = enX(r.evenement - Math.min(0.5, (r.evenement - dernier) / 2));
     formes.push({ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: xe, x1: xe, line: { dash: 'dash', color: c.texte, width: 1 } });
-    annotations.push({ x: xe, y: 1, yref: 'paper', xanchor: 'left', yanchor: 'top', showarrow: false, text: ` ${t('baci_evenement_court')} ${texteTemps(r.evenement)}`,
+    annotations.push({ x: xe, y: 1, yref: 'paper', xanchor: 'left', yanchor: 'top', showarrow: false, text: ` ${t('baci_evenement_court')} ${tps(r.evenement)}`,
       font: { size: FORMAT.taille - 2, color: c.doux } });
     ['avant', 'apres'].forEach((g, j) => {
       const m = pr('moyenne')[j];
-      traces.push({ type: 'scatter', mode: 'lines', name: t('baci_moyenne_periode', { periode: P[g], m: fmt(m, 2) }), x: j === 0 ? [pr('debut')[0], xe] : [xe, pr('fin')[1]],
+      traces.push({ type: 'scatter', mode: 'lines', name: t('baci_moyenne_periode', { periode: P[g], m: fmt(m, 2) }), x: j === 0 ? [enX(pr('debut')[0]), xe] : [xe, enX(pr('fin')[1])],
         y: [m, m], line: { color: couleurs[g], width: 2, dash: 'dot' }, hoverinfo: 'skip' });
     });
   }
   tracer(ctx, graphe, traces, { title: { text: `${r.y.nom} · ${t('baci_titre')}` }, showlegend: true, dragmode: 'zoom', shapes: formes, annotations,
-    xaxis: { title: { text: r.temps.nom } }, yaxis: { title: { text: t('baci_axe_y') } } });
+    xaxis: { title: { text: r.temps.nom }, ...(r.dates ? { type: 'date' } : {}) }, yaxis: { title: { text: t('baci_axe_y') } } });
 
   // the three tests (a click chooses the one the sentence gives) and the two periods
   if (fait) {
@@ -2146,14 +2263,14 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
       el('thead', {}, el('tr', {}, [t('baci_periode'), 'n', t('baci_de'), t('baci_a'), t('baci_ecart_moyen'), t('ecart_type'), t('baci_ecart_median'), t('shapiro_p')]
         .map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
       el('tbody', {}, pr('periode').map((g, i) => el('tr', {}, el('td', {}, P[g]), el('td', { class: 'num' }, String(pr('n')[i])),
-        el('td', { class: 'num' }, texteTemps(pr('debut')[i])), el('td', { class: 'num' }, texteTemps(pr('fin')[i])),
+        el('td', { class: 'num' }, tps(pr('debut')[i])), el('td', { class: 'num' }, tps(pr('fin')[i])),
         ['moyenne', 'ecart_type', 'mediane'].map((k) => el('td', { class: 'num' }, fmt(pr(k)[i], 3))),
         el('td', { class: 'num' + (pr('shapiro_p')[i] !== null && pr('shapiro_p')[i] < 0.05 ? ' alerte' : '') }, valeurP(pr('shapiro_p')[i])))))));
   }
 
   // below: the gaps time by time
   B.table ??= {};
-  const valeurs = { temps: xs, impact: imp, temoins: tem, ecart: ecarts, n_impact: ni, n_temoins: nt, periode: periode.map((g) => (g ? P[g] : '')) };
+  const valeurs = { temps: r.dates ? xs.map(dateDecimale) : xs, impact: imp, temoins: tem, ecart: ecarts, n_impact: ni, n_temoins: nt, periode: periode.map((g) => (g ? P[g] : '')) };
   tableau(bas, ctx, B.table, {
     n: xs.length, nom: t('baci_serie'), avant: [el('b', {}, t('baci_serie'))],
     colonnes: [{ cle: 'temps', titre: r.temps.nom, num: true, format: texteTemps }, { cle: 'impact', titre: t('baci_moyenne_impact'), num: true, decimales: 3 },
@@ -2390,12 +2507,18 @@ async function rendreEffets(conteneur, ctx, p, loc) {
 }
 
 // The residuals of a regression: against the fitted values, on a normal Q-Q plot, by group of
-// each random effect, and Cook's distances (linear model). Points are linked to the selection.
+// each random effect, and Cook's distances (linear model). Points are linked to the selection. A
+// GLM or GAM of counts, presence-absence or positive values (Poisson, negative binomial, binomial,
+// gamma) also has its randomized quantile residuals (moteur/R/regression_diagnostics.R:
+// residus_quantiles), normal when the model is right, which the deviance residuals of counts aren't
+// even then: a choice beside the residuals, those by default (loc.residus).
 function rendreResidus(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const o = m.observations;
   const y = m.noms_y[0];
-  const residu = [].concat(o.residu);
+  const rq = m.residus_quantiles;
+  const quantiles = !!rq && loc.residus === 'quantiles';
+  const residu = [].concat(quantiles ? rq.residu : o.residu);
   const niveaux = [].concat(m.niveaux || []);
   const modes = [['ajustes', t('residus_ajustes')], ['qq', t('residus_qq')]].concat(niveaux.map((n) => [`g:${n}`, t('residus_par', { groupe: n })]),
     o.cook ? [['cook', t('distance_cook')]] : []);
@@ -2403,9 +2526,13 @@ function rendreResidus(conteneur, ctx, p, loc) {
   loc.couleur ??= '';
   const graphe = el('div', { class: 'graphe' });
   const parGroupe = loc.mode.startsWith('g:');
+  const nomResidus = quantiles ? t('residus_quantiles') : t('residus_std');
+  const suffixe = quantiles ? ` · ${t('residus_quantiles')}` : '';
   conteneur.replaceChildren(outils(choix('', modes, loc.mode, (v) => { loc.mode = v; ctx.rafraichir(); }),
+    rq ? el('span', { title: t('residus_quantiles_aide') }, choix('', [['standard', t('residus_deviance_std')], ['quantiles', t('residus_quantiles')]],
+      quantiles ? 'quantiles' : 'standard', (v) => { loc.residus = v; ctx.rafraichir(); })) : null,
     parGroupe ? null : controleCouleur(ctx, m, loc), parGroupe ? null : controleEtiquettes(ctx, m, loc),
-    el('span', { class: 'infos' }, t(niveaux.length ? 'residus_note_mixte' : 'residus_note'))), graphe);
+    el('span', { class: 'infos' }, t(quantiles ? 'residus_note_quantiles' : niveaux.length ? 'residus_note_mixte' : 'residus_note'))), graphe);
   const c = couleursTheme();
   const lignes = (valeurs) => valeurs.map((v) => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v, y1: v,
     line: { color: v ? '#d1495b' : c.doux, width: 1, dash: 'dot' } }));
@@ -2416,11 +2543,11 @@ function rendreResidus(conteneur, ctx, p, loc) {
       const idx = g.map((_, i) => i).filter((i) => g[i] === v);
       return { type: 'box', name: v, y: idx.map((i) => residu[i]), text: idx.map((i) => o.nom[i]), boxpoints: idx.length <= 300 ? 'all' : 'outliers',
         jitter: 0.4, pointpos: 0, marker: { color: PALETTE[k % PALETTE.length], size: 4 }, line: { width: 1 } };
-    }), { title: { text: `${m.nom} · ${t('residus_par', { groupe: loc.mode.slice(2) })}` }, showlegend: false, dragmode: 'zoom',
-      yaxis: { title: { text: t('residus_std') } }, shapes: lignes([0, -2, 2]) });
+    }), { title: { text: `${m.nom} · ${t('residus_par', { groupe: loc.mode.slice(2) })}${suffixe}` }, showlegend: false, dragmode: 'zoom',
+      yaxis: { title: { text: nomResidus } }, shapes: lignes([0, -2, 2]) });
     return;
   }
-  const [xs, ys, titreX, formes] = loc.mode === 'qq' ? [[].concat(o.quantile_normal), residu, t('quantiles_normaux'), []]
+  const [xs, ys, titreX, formes] = loc.mode === 'qq' ? [[].concat(quantiles ? rq.quantile_normal : o.quantile_normal), residu, t('quantiles_normaux'), []]
     : loc.mode === 'cook' ? [[].concat(o[`${y} ajusté`]), [].concat(o.cook), t('valeurs_ajustees'), lignes([4 / m.N])]
       : [[].concat(o[`${y} ajusté`]), residu, t('valeurs_ajustees'), lignes([0, -2, 2])];
   if (loc.mode === 'qq') {  // the line of a normal distribution: through the quartiles
@@ -2432,8 +2559,8 @@ function rendreResidus(conteneur, ctx, p, loc) {
     formes.push({ type: 'line', x0: rx[0], x1: rx[rx.length - 1], y0: origine + pente * rx[0], y1: origine + pente * rx[rx.length - 1],
       line: { color: '#d1495b', width: 1, dash: 'dot' } });
   }
-  tracer(ctx, graphe, pointsObservations(ctx, m, loc, xs, ys), { title: { text: `${m.nom} · ${modes.find(([k]) => k === loc.mode)[1]}` },
-    xaxis: { title: { text: titreX } }, yaxis: { title: { text: loc.mode === 'cook' ? t('distance_cook') : t('residus_std') } }, shapes: formes });
+  tracer(ctx, graphe, pointsObservations(ctx, m, loc, xs, ys), { title: { text: `${m.nom} · ${modes.find(([k]) => k === loc.mode)[1]}${suffixe}` },
+    xaxis: { title: { text: titreX } }, yaxis: { title: { text: loc.mode === 'cook' ? t('distance_cook') : nomResidus } }, shapes: formes });
   brancherSelection(graphe, ctx, m.id);
 }
 
@@ -2442,18 +2569,20 @@ function rendreResidus(conteneur, ctx, p, loc) {
 // apart in each group's time order) and the band ±1.96/√n of each lag, n its pairs. A model with
 // CAR1 brings its time and groups, and two series: its residuals without the autocorrelation, and
 // the normalized ones, with none left when CAR1 is enough. For another model, the time (an ID or a
-// quantitative variable) and the groups (its random effects, or an ID or a qualitative variable and
+// variable, of numbers or of dates) and the groups (its random effects, or an ID or a qualitative variable and
 // a finer level within it) are chosen here, and for a GLM or a GAM its residuals (Pearson or
-// deviance). Computed in R, then kept.
+// deviance). Computed in R, then kept. Within the groups of its random effects, "Fit with CAR1"
+// makes the same model with a CAR1 autocorrelation along this time (reajuster: car1).
 const RESIDUS_ACF = { pearson: 'acf_pearson', deviance: 'acf_deviance', normalises: 'acf_normalises' };
-// what lag 1 says: beyond the band, CAR1 may be needed; the normalized residuals within it, CAR1 is enough
-function noteACF(r, bande, series) {
+// what lag 1 says: beyond the band, CAR1 may be needed (with "Fit with CAR1" at hand, `bouton`, said
+// without pointing to New model); the normalized residuals within it, CAR1 is enough
+function noteACF(r, bande, series, bouton) {
   const r1 = [].concat(series[0].acf)[1];
   const b1 = bande[1];
   const valeurs = { r: fmt(r1, 2), b: fmt(b1, 2), phi: fmt(r.phi, 3) };
   const z1 = r.car1 ? [].concat(series[1].acf)[1] : null;
   const verdict = r.car1 ? t(Math.abs(z1) <= b1 ? 'acf_car1_suffit' : 'acf_car1_reste', { ...valeurs, z: fmt(z1, 2) })
-    : t(r1 > b1 ? 'acf_car1_conseil' : r1 < -b1 ? 'acf_negative' : 'acf_dans_bande', valeurs);
+    : t(r1 > b1 ? (bouton ? 'acf_car1_conseil_court' : 'acf_car1_conseil') : r1 < -b1 ? 'acf_negative' : 'acf_dans_bande', valeurs);
   return [t(r.groupe ? 'acf_note' : 'acf_note_un', { temps: r.temps, groupe: r.groupe, g: r.groupes, n: r.n }),
     r.laissees ? t('acf_laissees', { n: r.laissees }) : null, verdict].filter(Boolean).join(' ');
 }
@@ -2466,7 +2595,8 @@ async function rendreACF(conteneur, ctx, p, loc) {
   const niveaux = [].concat(m.niveaux || []);
   const ids = [].concat(proj.identifiants || []).map((i) => [`id:${i.nom}`, `${i.nom} (${t('identifiant')})`]);
   const variables = [].concat(proj.variables || []);
-  const temps = ids.concat(variables.filter((v) => !v.qualitative).map((v) => [`var:${v.uid}`, v.nom]));
+  // (the time: an ID, a quantitative variable or a qualitative one made of dates, v.temps)
+  const temps = ids.concat(variables.filter((v) => !v.qualitative || v.temps).map((v) => [`var:${v.uid}`, v.nom]));
   const simples = ids.concat(variables.filter((v) => v.qualitative).map((v) => [`var:${v.uid}`, v.nom]));
   // (a grouping's own name: an ID's entry reads "site (ID)"; the variable or the ID of a single
   // random effect is the same groups as "its random effects", and a random effect's level adds
@@ -2510,7 +2640,21 @@ async function rendreACF(conteneur, ctx, p, loc) {
   const series = [].concat(r.series);
   const c = couleursTheme();
   const graphe = el('div', { class: 'graphe' });
-  conteneur.replaceChildren(barre, el('p', { class: 'note' }, noteACF(r, bande, series)), graphe);
+  // "Fit with CAR1": only where the engine allows it (moteur/R/regression.R: definition_car1): CAR1
+  // within the groups of the random effects (or a finer level within them) of an LMM, or of a GLM
+  // or GAM with the normal distribution (then fitted by mgcv::gamm). A new model, selected with its
+  // default views, as after Fit this model; a refusal is shown here. Whether it compares with this
+  // one by AIC (regression.R: signature): an LMM on the same observations (none left out for want of
+  // a time or a group) is in its AIC set; mgcv::gamm's likelihood isn't mgcv::gam's.
+  const bouton = !car1 && niveaux.length > 0 && loc.groupe === 'effets' && (m.type === 'LMM' || m.famille === 'gaussienne');
+  const refus = cache.car1 && cache.car1.cle === cle ? cache.car1.erreur : null;
+  const ajusterCar1 = () => ctx.reajuster(m.id, { car1: { temps: spec(loc.temps), groupe: [{ by: 'effets' }].concat(loc.groupe_fin ? [spec(loc.groupe_fin)] : []) } })
+    .catch((e) => { cache.car1 = { cle, erreur: e.message }; ctx.rafraichir(); });
+  const ligneCar1 = bouton ? el('div', { class: 'ligne' },
+    el('button', { onclick: ajusterCar1, title: t('acf_ajuster_car1_aide'), style: { flex: 'none' } }, icone('file-plus'), t('acf_ajuster_car1')),
+    el('span', { class: 'note' }, t(m.type !== 'LMM' ? 'acf_car1_gamm' : r.laissees ? 'acf_car1_laissees' : 'acf_car1_aic', { temps: r.temps, groupe: r.groupe, n: r.laissees }),
+      refus ? el('span', { class: 'erreur' }, ` ${refus}`) : null)) : null;
+  conteneur.replaceChildren(...[barre, el('p', { class: 'note' }, noteACF(r, bande, series, bouton)), ligneCar1, graphe].filter(Boolean));
   const apres = decalages.slice(1);
   tracer(ctx, graphe, series.map((s, j) => ({ type: 'bar', x: decalages, y: [].concat(s.acf), customdata: [].concat(r.paires),
     name: t(r.car1 && s.residus !== 'normalises' ? 'acf_sans_car1' : RESIDUS_ACF[s.residus]), marker: { color: PALETTE[j ? 2 : 0] },

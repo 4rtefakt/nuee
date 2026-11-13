@@ -1,7 +1,9 @@
 # Diagnostics des régressions (regression.R), calculés à la demande sur les modèles ajustés :
 # l'autocorrélation des résidus dans le temps, à l'intérieur de chaque groupe (une autocorrélation
 # CAR1 est-elle nécessaire ? suffit-elle ?), et les tests du rapport de vraisemblance entre des
-# modèles emboîtés (Prédiction › Comparer les modèles), comme anova(m1, m2).
+# modèles emboîtés (Prédiction › Comparer les modèles), comme anova(m1, m2). Et des résidus que
+# l'ajustement calcule : les résidus normalisés d'une autocorrélation CAR1, les résidus quantiles
+# randomisés d'un modèle de comptages, de présence-absence ou de valeurs positives.
 
 # ------------------------------------------------------------ autocorrélation des résidus
 
@@ -58,9 +60,10 @@ residus_normalises_car1 <- function(e, temps, groupe, phi) {
 # "pearson" de nlme ; mgcv::gamm : ceux de sa partie $lme) et ses résidus normalisés
 # (residus_normalises_car1), qui n'en montrent plus si CAR1 en rend compte. Sinon `temps` et
 # `groupe` disent où la chercher, comme les groupements d'un modèle (valeurs_groupement : un
-# identifiant, une variable ; pour `groupe`, une liste de groupements emboîtés, du plus large au
-# plus fin : le site, puis le secteur dans le site) ; groupe = list(by = "effets") : les groupes de
-# ses effets aléatoires, emboîtés ; NULL : toutes les observations en une série. Une série :
+# identifiant, une variable ; le temps fait de nombres ou de dates, lu par temps_en_nombres ; pour
+# `groupe`, une liste de groupements emboîtés, du plus large au plus fin : le site, puis le
+# secteur dans le site) ; groupe = list(by = "effets") : les groupes de ses effets aléatoires,
+# emboîtés ; NULL : toutes les observations en une série. Une série :
 # les résidus de Pearson (lm, nlme), ou ceux de `type` pour un modèle de mgcv ("pearson" : (y −
 # ajusté) / √variance ; "deviance" : la part signée de chaque observation dans la déviance).
 autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type = "pearson") {
@@ -77,10 +80,13 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
     nom_temps <- m$temps
     nom_groupe <- m$dans %||% m$niveaux[length(m$niveaux)]
   } else {
-    if (is.null(temps)) stop(traduire("Choisissez le temps (une année, un jour...) : un identifiant ou une variable quantitative.",
-                                      "Choose the time (a year, a day...): an ID or a quantitative variable."), call. = FALSE)
-    t <- suppressWarnings(as.numeric(valeurs_groupement(projet, temps, m$observations)))
+    if (is.null(temps)) stop(traduire("Choisissez le temps (une année, une date...) : un identifiant ou une variable.",
+                                      "Choose the time (a year, a date...): an ID or a variable."), call. = FALSE)
     nom_temps <- nom_groupement(projet, temps)
+    t <- temps_en_nombres(valeurs_groupement(projet, temps, m$observations))  # (des nombres, ou des dates en années décimales)
+    # (un temps de nombres laisse de côté la ligne d'une valeur illisible, comme jusqu'à 0.9.5 ; un
+    # temps de dates refuse une valeur qui n'en est pas une)
+    if (!is.null(attr(t, "refus")) && isTRUE(attr(t, "dates"))) stop(refus_temps(t, nom_temps), call. = FALSE)
     nom_groupe <- NULL
     if (is.null(groupe)) {
       g <- rep("1", length(e))
@@ -98,7 +104,7 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
     }
   }
   garde <- !is.na(t) & !is.na(g)
-  if (!any(garde)) stop(traduire("Le temps doit être un nombre (une année, un jour...).", "The time must be a number (a year, a day...)."), call. = FALSE)
+  if (!any(garde)) stop(traduire("Aucune observation du modèle n'a à la fois un temps et un groupe.", "No observation of the model has both a time and a group."), call. = FALSE)
   e <- e[garde]
   t <- t[garde]
   g <- factor(as.character(g[garde]))
@@ -111,6 +117,53 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
   if (car1) series[[2]] <- list(residus = "normalises", acf = acf_groupes(residus_normalises_car1(e, t, g, m$resultat$phi), t, g, max(base$decalage))$acf)
   list(car1 = car1, phi = if (car1) m$resultat$phi, temps = nom_temps, groupe = nom_groupe, n = length(e), groupes = nlevels(g),
        longueur = max(table(g)), laissees = sum(!garde), decalage = base$decalage, paires = base$paires, bande = base$bande, series = series)
+}
+
+# ------------------------------------------------------------ résidus quantiles
+
+# Les résidus quantiles randomisés (Dunn et Smyth, 1996) d'un modèle de mgcv `a` à loi de Poisson,
+# binomiale négative (son θ estimé), binomiale (une réponse 0 ou 1 : une épreuve) ou gamma (de forme
+# 1 / son échelle estimée) : r = Φ⁻¹(u), F la loi du modèle à la moyenne ajustée de chaque
+# observation (ses effets aléatoires et son effort compris) ; u = F(y) pour la loi gamma, et pour
+# une loi discrète, u tiré uniformément entre F(y − 1) et F(y). Ils suivent la loi normale quand le
+# modèle est juste, ce que ne font pas les résidus de Pearson ou de déviance d'un comptage, même
+# d'un modèle juste. Au-delà de 0,5, r se calcule par 1 − u, dans la queue de droite de F : un
+# comptage loin au-dessus de sa moyenne garde son résidu au lieu de Φ⁻¹(1) = Inf. Les tirages se
+# font avec une graine fixe et le générateur de R par défaut, comme seuils_courbe : les mêmes
+# résidus à chaque calcul, le hasard de la session et son générateur rendus. NULL pour une autre
+# loi : la normale (ses résidus standardisés le sont déjà), Tweedie (les paquets livrés avec R
+# n'ont pas sa fonction de répartition).
+residus_quantiles <- function(a, famille, graine = 1) {
+  y <- as.vector(a$y)
+  mu <- as.vector(stats::fitted(a))
+  theta <- if (identical(famille, "binomiale_negative")) a$family$getTheta(TRUE)
+  repartition <- switch(famille,  # (F ; 1 − F avec lower.tail = FALSE)
+    poisson = function(q, ...) stats::ppois(q, mu, ...),
+    binomiale_negative = function(q, ...) stats::pnbinom(q, size = theta, mu = mu, ...),
+    binomiale = function(q, ...) stats::pbinom(q, 1, mu, ...),
+    gamma = function(q, ...) stats::pgamma(q, shape = 1 / a$sig2, rate = 1 / (a$sig2 * mu), ...),
+    return(NULL))
+  discrete <- !identical(famille, "gamma")
+  y0 <- if (discrete) y - 1 else y
+  F0 <- repartition(y0)                      # F(y − 1)
+  F1 <- repartition(y)                       # F(y)
+  S0 <- repartition(y0, lower.tail = FALSE)  # 1 − F(y − 1)
+  S1 <- repartition(y, lower.tail = FALSE)   # 1 − F(y)
+  v <- 0
+  if (discrete) {
+    existait <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    ancien <- if (existait) get(".Random.seed", envir = globalenv())
+    genre <- RNGkind()
+    on.exit({
+      suppressWarnings(RNGkind(genre[1], genre[2], genre[3]))  # (le genre de la séance rendu, sans redire ses avertissements)
+      if (existait) assign(".Random.seed", ancien, envir = globalenv())
+      else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) rm(".Random.seed", envir = globalenv())
+    })
+    set.seed(graine, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
+    v <- stats::runif(length(y))
+  }
+  u <- F0 + v * (F1 - F0)
+  ifelse(u <= 0.5, stats::qnorm(u), stats::qnorm(S0 - v * (S0 - S1), lower.tail = FALSE))
 }
 
 # ------------------------------------------------- tests du rapport de vraisemblance

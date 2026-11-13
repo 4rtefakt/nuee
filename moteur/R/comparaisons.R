@@ -449,7 +449,8 @@ paire_niveaux <- function(x, f, cle, niveaux, noms, nom_cle) {
 
 # Le tableau de toutes les paires de niveaux (paires_niveaux()), ou de celles d'un même groupe :
 # un niveau est du groupe que portent ses lignes, ceux qui n'en portent aucun sont listés
-# (sans_groupe), et un niveau aux lignes de plusieurs groupes est refusé.
+# (sans_groupe), et un niveau aux lignes de plusieurs groupes est refusé. Avant les paires, le test
+# d'ensemble de Friedman (tests_friedman()).
 tableau_paires <- function(x, f, cle, presents, groupe_ligne, nom_groupe, nom_cle) {
   r <- list()
   groupes <- NULL
@@ -473,8 +474,72 @@ tableau_paires <- function(x, f, cle, presents, groupe_ligne, nom_groupe, nom_cl
   } else if (taille < 2) {
     r$note_comparaisons <- sprintf(traduire("Aucune valeur de %s ne réunit deux niveaux : pas de paires à comparer.",
                                             "No value of %s holds two levels: no pairs to compare."), nom_groupe)
-  } else r$toutes <- paires_niveaux(x, f, cle, presents, groupes, nom_cle)
+  } else {
+    r$toutes <- paires_niveaux(x, f, cle, presents, groupes, nom_cle)
+    r$friedman <- tests_friedman(x, f, cle, presents, groupes, nom_cle, nom_groupe)
+  }
   r
+}
+
+# Le test d'ensemble avant les paires de niveaux, pour le t apparié comme pour Wilcoxon : le test
+# de Friedman de tous les niveaux (friedman_niveaux()), ou, avec le groupe de chaque niveau
+# (`groupes`, un facteur : le site), un test par groupe sur ses niveaux, groupe après groupe, ses
+# valeurs p corrigées par Holm (1979) sur les groupes testés (p_holm). Un groupe de moins de trois
+# niveaux n'a pas de test, et le dit (non_teste). Une ligne par test, avec sa phrase pour un
+# rapport (NA pour un test qui ne se fait pas).
+tests_friedman <- function(x, f, cle, presents, groupes, nom_cle, nom_groupe) {
+  res <- if (is.null(groupes)) friedman_niveaux(x, f, cle, presents, nom_cle)
+         else do.call(rbind, lapply(levels(droplevels(groupes)), function(g) {
+           cbind(data.frame(groupe = g, stringsAsFactors = FALSE), friedman_niveaux(x, f, cle, presents[!is.na(groupes) & groupes == g], nom_cle))
+         }))
+  res$p_holm <- stats::p.adjust(res$p, "holm")
+  res$phrase <- vapply(seq_len(nrow(res)), function(i) {
+    if (is.na(res$p[i])) return(NA_character_)
+    phrase_test(c(list(type = "friedman", nom_cle = nom_cle, nom_groupe = nom_groupe, tests = sum(!is.na(res$p))), as.list(res[i, , drop = FALSE])))
+  }, "")
+  res
+}
+
+# Le test de Friedman (1937) des niveaux `niveaux` de la mesure x (f : le niveau de chaque ligne,
+# cle : sa clé, en texte), sur les blocs complets : les clés où chaque niveau a une valeur, les
+# autres laissées de côté et comptées (laissees) ; stats::friedman.test() sur les rangs de chaque
+# bloc (les ex aequo à leur rang moyen, avec sa correction), et le W de Kendall = χ² / (n (k − 1)),
+# la concordance des niveaux d'un bloc à l'autre (0 : aucune, 1 : le même classement dans chaque
+# bloc). Pas de test, et pourquoi (non_teste), avec moins de trois niveaux, une clé deux fois dans
+# un niveau, moins de deux blocs complets ou la même valeur pour tous les niveaux dans chaque bloc.
+friedman_niveaux <- function(x, f, cle, niveaux, nom_cle) {
+  ligne <- data.frame(k = length(niveaux), n = NA_integer_, laissees = NA_integer_, statistique = NA_real_, ddl = NA_real_, p = NA_real_, W = NA_real_,
+                      non_teste = "", stringsAsFactors = FALSE)
+  if (length(niveaux) < 3) {
+    ligne$non_teste <- sprintf(traduire("%d niveau(x), il en faut 3", "%d level(s), 3 needed"), length(niveaux))
+    return(ligne)
+  }
+  ok <- !is.na(x) & !is.na(cle)
+  par <- lapply(niveaux, function(l) { i <- which(ok & f %in% l); stats::setNames(x[i], cle[i]) })
+  doublon <- vapply(par, function(v) anyDuplicated(names(v)) > 0, TRUE)
+  if (any(doublon)) {
+    ligne$non_teste <- sprintf(traduire("%s a deux lignes pour une même valeur de %s", "%s has two rows for one value of %s"), niveaux[which(doublon)[1]], nom_cle)
+    return(ligne)
+  }
+  completes <- ordre_cles(Reduce(intersect, lapply(par, names)))
+  ligne$n <- length(completes)
+  ligne$laissees <- length(unique(unlist(lapply(par, names)))) - length(completes)
+  if (length(completes) < 2) {
+    ligne$non_teste <- sprintf(traduire("%d valeur(s) de %s où chaque niveau a une valeur, il en faut 2", "%d value(s) of %s where every level has a value, 2 needed"),
+                               length(completes), nom_cle)
+    return(ligne)
+  }
+  blocs <- vapply(par, function(v) unname(v[completes]), numeric(length(completes)))  # (une ligne par clé, une colonne par niveau)
+  ft <- essai_test(stats::friedman.test(blocs))
+  if (is.null(ft) || !is.finite(ft$statistic)) {
+    ligne$non_teste <- sprintf(traduire("la même valeur pour tous les niveaux à chaque valeur de %s", "the same value for every level at each value of %s"), nom_cle)
+    return(ligne)
+  }
+  ligne$statistique <- unname(ft$statistic)
+  ligne$ddl <- unname(ft$parameter)
+  ligne$p <- ft$p.value
+  ligne$W <- ligne$statistique / (ligne$n * (ligne$k - 1))
+  ligne
 }
 
 # Les paires d'une mesure x entre deux niveaux A et B (niveaux) des groupes f : les lignes de A
@@ -625,6 +690,19 @@ paires_niveaux <- function(x, f, cle, presents, groupes = NULL, nom_cle = "") {
   res
 }
 
+# Pour les phrases, les noms et les titres du BACI, dans la langue des messages : des unités (trois
+# nommées au plus : « S1, S2, S3… (5) »), un temps (la virgule décimale en français ; une date quand
+# le temps est fait de dates : `dates`) et la période après (« annee ≥ 2007 », ou « 2007 ≤ annee ≤
+# 2012 » avec une fin).
+texte_unites <- function(x) if (length(x) > 3) sprintf("%s… (%d)", paste(x[1:3], collapse = ", "), length(x)) else paste(x, collapse = ", ")
+texte_temps <- function(x, dates = FALSE) {
+  if (isTRUE(dates)) return(date_decimale(x))
+  trimws(formatC(x, digits = 10, format = "fg", decimal.mark = if (identical(getOption("nuee.langue"), "en")) "." else ","))
+}
+texte_apres <- function(evenement, fin, nom_temps, dates = FALSE) {
+  if (length(fin)) sprintf("%s ≤ %s ≤ %s", texte_temps(evenement, dates), nom_temps, texte_temps(fin, dates)) else sprintf("%s ≥ %s", nom_temps, texte_temps(evenement, dates))
+}
+
 # La phrase qui donne le résultat du test conseillé, dans la langue des messages, pour un
 # rapport : statistique, degrés de liberté, valeur p, taille de l'effet, effectifs.
 phrase_test <- function(r) {
@@ -639,12 +717,10 @@ phrase_test <- function(r) {
   if (identical(r$type, "baci")) {
     t <- r$tests[r$tests$test == r$test, ]
     p <- r$periodes
-    noms <- function(v) if (length(v) > 3) sprintf("%s… (%d)", paste(v[1:3], collapse = ", "), length(v)) else paste(v, collapse = ", ")
-    temps <- function(x) trimws(formatC(x, digits = 10, format = "fg", decimal.mark = marque))
-    apres <- if (length(r$fin)) sprintf("%s ≤ %s ≤ %s", temps(r$evenement), r$temps$nom, temps(r$fin)) else sprintf("%s ≥ %s", r$temps$nom, temps(r$evenement))
     quoi <- sprintf(if (fr) "écart de %s impact (%s) − témoins (%s), après contre avant" else "%s gap impact (%s) − control (%s), after against before",
-                    r$y$nom, noms(r$impact), noms(r$temoins))
-    n <- sprintf(if (fr) "n = %d avant et %d après ; après : %s" else "n = %d before and %d after; after: %s", p$n[1], p$n[2], apres)
+                    r$y$nom, texte_unites(r$impact), texte_unites(r$temoins))
+    n <- sprintf(if (fr) "n = %d avant et %d après ; après : %s" else "n = %d before and %d after; after: %s", p$n[1], p$n[2],
+                 texte_apres(r$evenement, r$fin, r$temps$nom, r$dates))
     if (r$test == "mann_whitney") {
       return(sprintf(if (fr) "Test de Mann–Whitney (BACI), %s : U = %s, %s ; écart médian %s avant et %s après, corrélation rang-bisériale = %s (%s)."
                      else "Mann–Whitney test (BACI), %s: U = %s, %s; median gap %s before and %s after, rank-biserial correlation = %s (%s).",
@@ -654,6 +730,35 @@ phrase_test <- function(r) {
                    else "%s's t-test (BACI), %s: t(%s) = %s, %s; mean gap %s before and %s after, change = %s%s, Cohen's d = %s (%s).",
                    if (r$test == "welch") "Welch" else "Student", quoi, ddl(t$ddl1), nb(t$statistique), pv(t$p), nb(p$moyenne[1]), nb(p$moyenne[2]),
                    nb(p$moyenne[2] - p$moyenne[1]), ic(c(t$bas, t$haut)), nb(t$effet), n))
+  }
+  # le modèle mixte BACI (effet_baci()) : ce dont il tient compte (les unités, l'autocorrélation),
+  # l'effet BACI, le coefficient période × impact, et ses observations
+  if (identical(r$type, "baci_modele")) {
+    o <- r$o
+    unite <- as.character(o$noms$unite)
+    tient <- if (r$car1) {
+      sprintf(if (fr) "avec une ordonnée à l'origine aléatoire par %s et une autocorrélation CAR1 le long de %s (φ = %s), qui tiennent compte des unités et de l'autocorrélation dans le temps"
+              else "with a random intercept per %s and a CAR1 autocorrelation along %s (φ = %s), which account for the units and for the autocorrelation in time",
+              unite, o$noms$temps, nb(r$phi))
+    } else sprintf(if (fr) "avec une ordonnée à l'origine aléatoire par %s, qui tient compte des unités" else "with a random intercept per %s, which accounts for the units", unite)
+    return(sprintf(if (fr) "Modèle linéaire mixte (BACI), %s ; %s, impact (%s) contre témoins (%s) : effet BACI (période × impact) = %s%s, t(%s) = %s, %s (n = %d observations de %d unités ; après : %s)."
+                   else "Linear mixed model (BACI), %s; %s, impact (%s) against control (%s): BACI effect (period × impact) = %s%s, t(%s) = %s, %s (n = %d observations of %d units; after: %s).",
+                   tient, o$noms$y, texte_unites(o$impact), texte_unites(o$temoins), nb(r$estimation), ic(c(r$bas, r$haut)), ddl(r$ddl), nb(r$t), pv(r$p),
+                   r$N, r$unites, texte_apres(o$evenement, o$fin, o$noms$temps, o$dates)))
+  }
+  # le test de Friedman avant les paires de niveaux (tests_friedman()) : une ligne de son tableau,
+  # dans un groupe (le site) avec sa valeur p corrigée par Holm sur les groupes testés
+  if (identical(r$type, "friedman")) {
+    groupe <- !is.null(r$groupe)
+    laissees <- if (!isTRUE(r$laissees > 0)) ""
+                else if (fr) sprintf(" ; %d laissée%s de côté, un niveau sans valeur", r$laissees, if (r$laissees > 1) "s" else "")
+                else sprintf("; %d left out for a missing level", r$laissees)
+    return(sprintf(if (fr) "Test de Friedman%s : χ²(%s) = %s, %s%s ; W de Kendall = %s (n = %d valeurs de %s où %s %d niveaux ont tous une valeur%s)."
+                   else "Friedman test%s: χ²(%s) = %s, %s%s; Kendall's W = %s (n = %d values of %s where %s %d levels all have a value%s).",
+                   if (!groupe) "" else sprintf(if (fr) " dans %s (%s)" else " within %s (%s)", r$groupe, r$nom_groupe),
+                   ddl(r$ddl), nb(r$statistique), pv(r$p),
+                   if (groupe && r$tests > 1) sprintf(if (fr) ", %s sur %d tests" else ", %s over %d tests", sub("^p", if (fr) "p de Holm" else "Holm's p", pv(r$p_holm)), r$tests) else "",
+                   nb(r$W), r$n, r$nom_cle, if (groupe) (if (fr) "ses" else "its") else (if (fr) "les" else "the"), r$k, laissees))
   }
   t <- r$tests[r$tests$test == r$conseille, ]
   et <- if (fr) "et" else "and"
@@ -711,11 +816,12 @@ phrase_test <- function(r) {
 # Student (variances égales : le lm(écart ~ période) du script, son intervalle et sa valeur p) ou
 # Mann–Whitney (sur les rangs) ; l'effet est la moyenne des écarts d'après moins celle d'avant,
 # avec son intervalle à 95 % (celui de Welch, ou de Student si c'est le test choisi). Les temps y
-# sont tenus pour indépendants : l'autocorrélation des écarts n'est pas prise en compte (un modèle
-# mixte y ~ période × impact + (1 | unité), avec CAR1, le fait).
+# sont tenus pour indépendants : l'autocorrélation des écarts n'est pas prise en compte (le modèle
+# mixte y ~ période × impact + (1 | unité), avec CAR1, le fait : modele_baci()).
 # y : le numéro d'une variable quantitative ; temps : une variable ou "id:k" aux valeurs
-# numériques (l'année) ; unite : une variable qualitative ou "id:k" (le secteur) ; impact et
-# temoins : ses niveaux. Sans evenement, la série des écarts seule.
+# numériques (l'année) ou des dates (temps_en_nombres : en années décimales ; `dates` le dit) ;
+# unite : une variable qualitative ou "id:k" (le secteur) ; impact et temoins : ses niveaux. Sans
+# evenement, la série des écarts seule ; l'événement et la fin sont un nombre ou une date.
 baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin = NULL, test = "welch", observations = NULL) {
   obs <- observations %||% numeros_observations(projet)
   liste <- function(v) paste(c(utils::head(v, 5), if (length(v) > 5) "…"), collapse = ", ")
@@ -726,12 +832,11 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   vy <- valeurs_a_tester(projet, y, obs)
   if (vy$qualitative) stop(traduire("La réponse doit être une variable quantitative", "The response must be a quantitative variable"))
   vt <- valeurs_a_tester(projet, temps, obs)
-  tv <- as.vector(temps_en_nombres(if (vt$qualitative) as.character(vt$valeurs) else vt$valeurs))
-  autres <- if (vt$qualitative) levels(droplevels(vt$valeurs[is.na(tv)])) else character(0)
-  if (length(autres)) {
-    stop(sprintf(traduire("Le temps doit être numérique : %s a des valeurs qui ne sont pas des nombres (%s)",
-                          "The time must be numeric: %s has values that aren't numbers (%s)"), vt$nom, liste(autres)))
-  }
+  tv <- temps_en_nombres(vt$valeurs)
+  if (!is.null(attr(tv, "refus"))) stop(refus_temps(tv, vt$nom))
+  dates <- isTRUE(attr(tv, "dates"))
+  ecrire <- if (dates) date_decimale else format
+  tv <- as.vector(tv)
   vu <- valeurs_a_tester(projet, unite, obs)
   if (!vu$qualitative) stop(traduire("L'unité doit être une variable qualitative ou un identifiant", "The unit must be a qualitative variable or an ID"))
   impact <- unique(as.character(unlist(impact)))
@@ -761,20 +866,43 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
                           "No value of %s where both the impact and the controls have a value of %s"), vt$nom, vy$nom))
   }
   serie$ecart <- serie$impact - serie$temoins
-  cles <- paste(u[i], ti, sep = "\r")
-  plusieurs <- table(factor(sub("\r.*", "", unique(cles[duplicated(cles)])), levels = c(impact, temoins)))
-  r <- list(type = "baci", y = vy[c("uid", "nom")], temps = vt[c("uid", "nom")], unite = vu[c("uid", "nom")], impact = impact, temoins = temoins,
-            serie = serie, seuls = seuls, manquantes = sum(!is.na(role)) - length(i),
-            repetees = if (any(plusieurs > 0)) data.frame(unite = names(plusieurs)[plusieurs > 0], temps = as.integer(plusieurs[plusieurs > 0]), stringsAsFactors = FALSE))
+  # (les unités qui ont plusieurs lignes à un même temps, et combien de temps, parmi les lignes `garde`)
+  repetees <- function(garde) {
+    cles <- paste(u[i], ti, sep = "\r")[garde]
+    plusieurs <- table(factor(sub("\r.*", "", unique(cles[duplicated(cles)])), levels = c(impact, temoins)))
+    if (any(plusieurs > 0)) data.frame(unite = names(plusieurs)[plusieurs > 0], temps = as.integer(plusieurs[plusieurs > 0]), stringsAsFactors = FALSE)
+  }
+  r <- list(type = "baci", y = vy[c("uid", "nom")], temps = vt[c("uid", "nom")], dates = dates, unite = vu[c("uid", "nom")], impact = impact, temoins = temoins,
+            serie = serie, seuls = seuls, manquantes = sum(!is.na(role)) - length(i), repetees = repetees(rep(TRUE, length(i))))
   if (!length(evenement)) return(r)
-  evenement <- suppressWarnings(as.numeric(evenement))
-  if (length(evenement) != 1 || is.na(evenement)) stop(traduire("Le temps de l'événement doit être un nombre", "The event time must be a number"))
+  # (l'événement et la fin, lus comme le temps et de son genre : des nombres pour un temps fait de
+  # nombres ; des dates pour un temps fait de dates, où un événement en année est son 1er janvier
+  # mais une fin en année est refusée : elle couperait l'année presque entière)
+  un_temps <- function(x, fin = FALSE) {
+    t <- temps_en_nombres(x)
+    v <- if (length(t) == 1) as.vector(t) else NA_real_
+    if (is.na(v)) {
+      stop(if (fin) traduire("La fin de la période après doit être un nombre ou une date", "The end of the after period must be a number or a date")
+           else traduire("Le temps de l'événement doit être un nombre ou une date", "The event time must be a number or a date"))
+    }
+    if (isTRUE(attr(t, "dates")) && !dates) {
+      stop(sprintf(if (fin) traduire("Le temps (%s) est fait de nombres : entrez la fin en nombre (2012), pas en date",
+                                     "The time (%s) is made of numbers: enter the end as a number (2012), not a date")
+                   else traduire("Le temps (%s) est fait de nombres : entrez l'événement en nombre (2008), pas en date",
+                                 "The time (%s) is made of numbers: enter the event as a number (2008), not a date"), vt$nom))
+    }
+    if (fin && dates && !isTRUE(attr(t, "dates"))) {
+      stop(sprintf(traduire("Le temps (%s) est fait de dates : entrez la fin en date (31/12/2012) ; une année seule serait son 1er janvier",
+                            "The time (%s) is made of dates: enter the end as a date (31/12/2012); a year alone would be its 1 January"), vt$nom))
+    }
+    v
+  }
+  evenement <- un_temps(evenement)
   if (length(fin)) {
-    fin <- suppressWarnings(as.numeric(fin))
-    if (length(fin) != 1 || is.na(fin)) stop(traduire("La fin de la période après doit être un nombre", "The end of the after period must be a number"))
+    fin <- un_temps(fin, fin = TRUE)
     if (fin < evenement) {
       stop(sprintf(traduire("La fin de la période après (%s) vient avant l'événement (%s)", "The end of the after period (%s) comes before the event (%s)"),
-                   format(fin), format(evenement)))
+                   ecrire(fin), ecrire(evenement)))
     }
   } else fin <- NULL
   hors <- if (length(fin)) serie$temps > fin else rep(FALSE, nrow(serie))
@@ -787,7 +915,7 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   if (nb < 2 || na < 2) {
     stop(sprintf(traduire("Il faut au moins deux valeurs de %s dans chaque période, avant et après %s : il y en a %d avant et %d après",
                           "At least two values of %s are needed in each period, before and after %s: there are %d before and %d after"),
-                 vt$nom, format(evenement), nb, na))
+                 vt$nom, ecrire(evenement), nb, na))
   }
   if (diff(range(c(db, da))) == 0) stop(traduire("L'écart est le même à chaque temps : rien à comparer", "The gap is the same at every time: nothing to compare"))
   w <- essai_test(stats::t.test(da, db))
@@ -811,9 +939,163 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   r$evenement <- evenement
   r["fin"] <- list(fin)
   r$hors <- sum(hors)
+  # (le plus petit nombre de temps d'une unité d'impact ou témoin, jusqu'à la fin : avec trois au
+  # moins, le modèle mixte de la vue prend une autocorrélation CAR1 dans chaque unité par défaut)
+  jusqua <- if (length(fin)) tv[i] <= fin else rep(TRUE, length(i))
+  r$temps_unites <- min(vapply(c(impact, temoins), function(k) length(unique(tv[i][jusqua & u[i] == k])), 0L))
+  # (les lignes répétées parmi celles du modèle mixte, jusqu'à la fin : CAR1 n'y veut qu'un temps par unité)
+  r["repetees_modele"] <- list(repetees(jusqua))
   r$test <- test
   r$phrase <- phrase_test(r)
   r
+}
+
+# ------------------------------------------------------------ le modèle mixte BACI
+
+# Le modèle mixte de la vue BACI (Ajuster le modèle mixte) : y ~ période × impact + (1 | unité), avec
+# au choix (car1) une autocorrélation CAR1 le long du temps dans chaque unité, qui tient compte des
+# unités et de l'autocorrélation que le test des écarts laisse de côté. Les réglages sont vérifiés par
+# baci() (les mêmes refus ; l'événement est demandé) ; CAR1 demande un seul temps par unité : refusée
+# quand une unité a plusieurs lignes au même temps (les secteurs, quand l'unité est le site). Renvoie
+# le projet avec les deux variables 0/1 (variables_baci()), la définition du modèle
+# (definition_baci()), les noms des deux variables et ceux des nouvelles.
+modele_baci <- function(projet, y, temps, unite, impact, temoins, evenement, fin = NULL, car1 = FALSE) {
+  if (!length(evenement)) {
+    stop(traduire("Entrez l'événement, le premier temps compté « après » : le modèle mixte compare les deux périodes.",
+                  "Enter the event, the first time counted as “after”: the mixed model compares the two periods."))
+  }
+  b <- baci(projet, y, temps, unite, impact, temoins, evenement = evenement, fin = fin)
+  if (car1 && !is.null(b$repetees_modele)) {
+    stop(sprintf(traduire("Plusieurs lignes d'une même unité au même temps (%s) : l'autocorrélation CAR1 demande un seul temps par unité. Ajustez le modèle sans CAR1, ou prenez une unité plus fine (le secteur plutôt que le site).",
+                          "Several rows of the same unit at the same time (%s): CAR1 autocorrelation needs a single time per unit. Fit the model without CAR1, or choose a finer unit (the sector rather than the site)."),
+                 paste(b$repetees_modele$unite, collapse = ", ")))
+  }
+  v <- variables_baci(projet, temps, unite, b$impact, b$temoins, b$evenement)
+  list(projet = v$projet, definition = definition_baci(v$projet, b, v, car1), variables = v$noms, nouvelles = v$nouvelles)
+}
+
+# Les deux variables 0/1 du modèle mixte BACI : la période, 1 à partir de l'événement et 0 avant
+# (manquante sans temps), et l'impact, 1 pour les unités d'impact et 0 pour les témoins (manquante
+# pour les autres unités et sans unité), nommées d'après ces réglages : « période BACI (2007) » et
+# « impact BACI (S1 contre S2, S3) » (trois unités nommées au plus). Une variable de ce nom, ou de ce
+# nom suivi de « (2) », « (3) »…, ou de son nom dans l'autre langue de l'interface, qui a déjà ces
+# valeurs (un autre modèle BACI sur les mêmes réglages) sert telle quelle ; sinon la variable prend le
+# premier de ces noms qui est libre (un nom pris par une variable aux autres valeurs : d'autres unités
+# au-delà des trois nommées, un autre temps, un temps corrigé depuis). Les nouvelles s'ajoutent comme
+# une Nouvelle variable (ajouter_colonne). L'événement est lu comme le temps (temps_en_nombres : un
+# nombre, ou une date tapée, quand le journal de la console refait le modèle). Renvoie le projet, les
+# noms et numéros des deux variables, les unités d'impact et témoins dans l'ordre de leurs niveaux, et
+# les noms des variables nouvelles.
+variables_baci <- function(projet, temps, unite, impact, temoins, evenement) {
+  obs <- as.numeric(rownames(projet$donnees))
+  vt <- valeurs_a_tester(projet, temps, obs)
+  tv <- temps_en_nombres(if (vt$qualitative) as.character(vt$valeurs) else vt$valeurs)
+  dates <- isTRUE(attr(tv, "dates"))
+  tv <- as.vector(tv)
+  vu <- valeurs_a_tester(projet, unite, obs)
+  u <- as.character(vu$valeurs)
+  # (dans l'ordre des niveaux : les mêmes noms quel que soit l'ordre des cases cochées)
+  ordre <- function(x) { x <- unique(as.character(unlist(x))); x[order(match(x, levels(vu$valeurs)))] }
+  impact <- ordre(impact)
+  temoins <- ordre(temoins)
+  evenement <- as.vector(temps_en_nombres(evenement))[1]
+  valeurs <- list(periode = ifelse(is.na(tv), NA_real_, as.numeric(tv >= evenement)),
+                  impact = ifelse(u %in% impact, 1, ifelse(u %in% temoins, 0, NA_real_)))
+  # (les noms dans la langue de l'interface, puis dans l'autre)
+  nommer <- function(langue) {
+    ancien <- options(nuee.langue = langue)
+    on.exit(options(ancien))
+    c(periode = sprintf(traduire("période BACI (%s)", "BACI period (%s)"), texte_temps(evenement, dates)),
+      impact = sprintf(traduire("impact BACI (%s contre %s)", "BACI impact (%s vs %s)"), texte_unites(impact), texte_unites(temoins)))
+  }
+  ici <- if (identical(getOption("nuee.langue"), "en")) "en" else "fr"
+  bases <- list(nommer(ici), nommer(if (ici == "en") "fr" else "en"))
+  pris <- vapply(projet$variables, function(v) as.character(v$ids[1]), "")
+  suite <- function(base) c(base, sprintf("%s (%d)", base, 2:99))
+  memes_valeurs <- function(nom, valeurs) {
+    v <- projet$variables[[match(nom, pris)]]
+    x <- colonne(projet, v$uid, obs)
+    !length(v$categories) && all(is.na(x) == is.na(valeurs)) && all(x == valeurs, na.rm = TRUE)
+  }
+  noms <- c(periode = "", impact = "")
+  nouvelles <- character(0)
+  for (k in names(noms)) {
+    existante <- Find(function(n) memes_valeurs(n, valeurs[[k]]), intersect(unique(c(suite(bases[[1]][[k]]), suite(bases[[2]][[k]]))), pris))
+    if (!is.null(existante)) {
+      noms[[k]] <- existante
+      next
+    }
+    noms[[k]] <- setdiff(suite(bases[[1]][[k]]), pris)[1]
+    projet <- ajouter_colonne(projet, noms[[k]], obs, valeurs[[k]])
+    pris <- c(pris, noms[[k]])
+    nouvelles <- c(nouvelles, noms[[k]])
+  }
+  list(projet = projet, noms = noms, uid = stats::setNames(numeros(projet, noms), names(noms)), impact = impact, temoins = temoins, nouvelles = nouvelles)
+}
+
+# La définition du modèle mixte BACI, d'après le résultat de baci() (`b` : les réglages vérifiés) et
+# ses deux variables (`v` : variables_baci()) : la réponse ; la période, l'impact et leur terme croisé,
+# sans centrage ni mise à l'échelle (le coefficient du terme croisé est l'effet BACI, dans les unités
+# de y : le changement de l'écart impact − témoins après l'événement) ; une ordonnée à l'origine
+# aléatoire par unité (une variable qualitative ou un identifiant) et, avec car1, une autocorrélation
+# CAR1 le long du temps dans chaque unité ; sur les lignes des unités d'impact et témoins dont le temps
+# est connu, jusqu'à la fin comprise. Un modèle linéaire mixte (nlme), validé par unité (son effet
+# aléatoire), nommé « BACI y ». d$baci_origine garde ses réglages : le texte des Méthodes le dit
+# (regression.R), la vue BACI retrouve le modèle de ses réglages (memes_reglages_baci()).
+definition_baci <- function(projet, b, v, car1 = FALSE) {
+  obs <- numeros_observations(projet)
+  groupement <- function(x) groupement_baci(projet, x)
+  vt <- valeurs_a_tester(projet, b$temps$uid, obs)
+  tv <- as.vector(temps_en_nombres(if (vt$qualitative) as.character(vt$valeurs) else vt$valeurs))
+  u <- as.character(valeurs_a_tester(projet, b$unite$uid, obs)$valeurs)
+  garde <- u %in% c(v$impact, v$temoins) & !is.na(tv) & (if (length(b$fin)) tv <= b$fin else TRUE)
+  d <- definir_modele(projet, "LMM", x = unname(v$uid), y = b$y$uid, observations = obs[garde], echelle = "none", croises = list(unname(v$uid)),
+                      aleatoires = list(groupement(b$unite$uid)), correlation = if (car1) list(type = "CAR1", temps = groupement(b$temps$uid)),
+                      nom = sprintf("BACI %s", b$y$nom),
+                      titre = sprintf(traduire("impact %s contre témoins %s ; après : %s%s", "impact %s against control %s; after: %s%s"),
+                                      texte_unites(v$impact), texte_unites(v$temoins), texte_apres(b$evenement, b$fin, b$temps$nom, b$dates), if (car1) ", CAR1" else ""))
+  d$baci_origine <- list(y = b$y$uid, temps = b$temps$uid, unite = b$unite$uid, impact = v$impact, temoins = v$temoins, evenement = b$evenement,
+                         fin = b$fin, car1 = car1, dates = isTRUE(b$dates), noms = list(y = b$y$nom, temps = b$temps$nom, unite = b$unite$nom),
+                         variables = as.list(v$noms))
+  d
+}
+
+# Le temps ou l'unité du BACI (un numéro de variable, ou "id:k") en groupement de modèle :
+# list(by = "variable", variable = ...) ou list(by = "id", id = ...).
+groupement_baci <- function(projet, x) {
+  if (is.character(x) && startsWith(x, "id:")) return(list(by = "id", id = as.character(projet$observation_id_names)[as.integer(substring(x, 4))]))
+  list(by = "variable", variable = as.numeric(x))
+}
+
+# Deux réglages de modèle mixte BACI (d$baci_origine) qui font le même modèle : la même réponse, le
+# même temps, la même unité, les mêmes unités d'impact et témoins, le même événement et la même fin ;
+# avec car1, la même autocorrélation aussi. Un modèle qui en dérive (Ajuster avec CAR1, des
+# observations exclues, la sélection par l'AIC : `derive`) n'est pas celui des réglages : la vue BACI
+# ne donne pas son effet, et Ajuster le modèle mixte ne le remplace pas.
+memes_reglages_baci <- function(a, b, car1 = TRUE) {
+  if (isTRUE(a$derive) || isTRUE(b$derive)) return(FALSE)
+  texte <- function(k) list(as.character(unlist(a[[k]])), as.character(unlist(b[[k]])))
+  nombres <- function(k) { x <- as.numeric(unlist(a[[k]])); y <- as.numeric(unlist(b[[k]])); length(x) == length(y) && all(x == y) }
+  all(vapply(c("y", "temps", "unite"), function(k) do.call(identical, texte(k)), TRUE)) &&
+    all(vapply(c("impact", "temoins"), function(k) do.call(setequal, texte(k)), TRUE)) && nombres("evenement") && nombres("fin") &&
+    (!car1 || identical(isTRUE(as.logical(a$car1)), isTRUE(as.logical(b$car1))))
+}
+
+# L'effet BACI d'un modèle mixte BACI ajusté (`m`, de définition `d` : definition_baci()) : le
+# coefficient du terme croisé période × impact, son intervalle à 95 %, son t et sa valeur p (ceux de
+# nlme : coefficients_lineaire()), et sa phrase pour un rapport (phrase_test()), à côté de celle du
+# test des écarts : elle dit que ce modèle tient compte des unités (une ordonnée à l'origine
+# aléatoire par unité) et, avec CAR1, de l'autocorrélation dans le temps. NULL quand le terme croisé
+# n'a pas été estimé (retiré des termes utiles).
+effet_baci <- function(m, d) {
+  croise <- Find(function(t) length(t$variables) > 1, d$x)
+  if (is.null(croise)) return(NULL)
+  co <- m$resultat$coefficients
+  k <- match(croise$name, co$terme)
+  if (is.na(k)) return(NULL)
+  e <- c(list(nom = m$nom, car1 = isTRUE(m$car1)), as.list(co[k, c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]))
+  e$phrase <- phrase_test(c(e, list(type = "baci_modele", o = d$baci_origine, N = m$N, unites = length(unique(m$donnees$g1)), phi = m$resultat$phi)))
+  e
 }
 
 # --------------------------------------------------------------- matrice des corrélations

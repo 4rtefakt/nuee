@@ -222,11 +222,14 @@ variables_avec_donnees <- function(p) {
   Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
 }
 
+# (temps : une variable qualitative dont les catégories sont toutes des dates, ou toutes des
+# nombres, qui peut servir de temps comme une variable quantitative : temps_en_nombres)
 resume_projet <- function(p) {
   manquantes <- colSums(is.na(p$donnees))
   vars <- lapply(variables_avec_donnees(p), function(v) list(
     uid = v$uid, nom = as.character(v$ids[1]), qualitative = length(v$categories) > 0,
-    categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[as.character(v$uid)])))
+    categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[as.character(v$uid)]),
+    temps = length(v$categories) > 0 && is.null(attr(temps_en_nombres(as.character(v$categories)), "refus"))))
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
@@ -323,7 +326,21 @@ ajuster_demande <- function(q) {
   ajuster_et_garder(p, d)
 }
 
-# Réajuste un modèle sans certaines observations, ou avec un autre nombre de composantes.
+# Les groupements d'une demande ({ by: "id" | "variable" }, ou { by: "effets" } : les effets
+# aléatoires d'une régression) en ceux du moteur (regression.R : specs_groupement) : le premier, ou
+# tous (`tous`, du plus large au plus fin) ; NULL sans groupement.
+groupements_demande <- function(s, tous = FALSE) {
+  if (!length(s$by)) return(NULL)
+  # (plusieurs groupements arrivent en data.frame, une ligne chacun)
+  if (is.data.frame(s)) s <- lapply(seq_len(nrow(s)), function(i) as.list(s[i, , drop = FALSE]))
+  if (!is.null(s$by)) s <- list(s)
+  specs <- lapply(s, function(x) if (identical(as.character(x$by)[1], "effets")) list(by = "effets") else specs_groupement(x)[[1]])
+  if (tous) specs else specs[[1]]
+}
+
+# Réajuste un modèle sans certaines observations, ou avec un autre nombre de composantes ; une
+# régression, aussi avec une autocorrélation CAR1 (q$car1 : son temps et ses groupes, comme pour
+# l'autocorrélation des résidus).
 reajuster_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
@@ -336,6 +353,10 @@ reajuster_demande <- function(q) {
   if (!is.null(q$groupes_aic)) {  # Sélection par AIC › Ajuster ce modèle : les seuls termes de ces groupes (regression.R)
     if (!est_regression(d)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     d <- definition_selection(d, e$modele, q$groupes_aic)
+  }
+  if (!is.null(q$car1)) {  # Autocorrélation des résidus › Ajuster avec CAR1 : la même définition, avec CAR1 (regression.R)
+    if (!est_regression(d)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    d <- definition_car1(p, d, groupements_demande(q$car1$temps), groupements_demande(q$car1$groupe, TRUE))
   }
   exclues <- as.numeric(q$exclues %||% numeric(0))
   if (length(q$garder)) {  # ne garder que ces termes X (et les facteurs de leurs termes croisés)
@@ -350,6 +371,7 @@ reajuster_demande <- function(q) {
     if (is.null(q$A)) d$A <- 0
   }
   if (length(exclues)) {
+    if (!is.null(d$baci_origine)) d$baci_origine$derive <- TRUE  # (le modèle BACI sans ces observations : il en dérive)
     d$observations <- setdiff(d$observations, exclues)
     d$exclues <- c(d$exclues, exclues)
     d$solution <- NULL
@@ -363,9 +385,10 @@ reajuster_demande <- function(q) {
   ajuster_et_garder(p, d)
 }
 
-ajuster_et_garder <- function(p, d) {
+# (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande)
+ajuster_et_garder <- function(p, d, m = NULL) {
   if (!d$A && !sans_composantes(d)) d$A <- max(1, autoajuster(p, d))  # (ni une régression ni une autre analyse n'a de composantes)
-  m <- ajuster(p, d)
+  if (is.null(m)) m <- ajuster(p, d)
   id <- nouvel_id("M")
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
     d$number <- d$number %||% (max(c(0, vapply(p$models, function(x) as.numeric(x$number %||% 0), 0))) + 1)
@@ -379,6 +402,40 @@ ajuster_et_garder <- function(p, d) {
   resultat_modele(id)
 }
 
+# Avant/après (BACI) › Ajuster le modèle mixte (comparaisons.R : modele_baci) : ses deux variables
+# 0/1, ajoutées au projet comme une Nouvelle variable (Ctrl+Z les retire) ou reprises, puis le
+# modèle, qui rejoint le projet comme ceux d'Ajuster ce modèle. Le modèle des mêmes réglages déjà
+# dans le projet garde son nom et son numéro (il est ajusté à nouveau) ; un autre prend un nom libre,
+# « BACI y (2) »... Le modèle est ajusté avant que le projet ne change : un échec ne laisse rien.
+baci_modele_demande <- function(q) {
+  p <- projet(q$projet)
+  b <- modele_baci(p, q$y, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)), q$evenement, q$fin, isTRUE(q$car1))
+  d <- b$definition
+  d$app <- TRUE
+  meme <- Find(function(x) !is.null(x$baci_origine) && memes_reglages_baci(x$baci_origine, d$baci_origine), p$models)
+  if (!is.null(meme)) {
+    d$name <- meme$name
+    d$number <- meme$number
+  } else {
+    pris <- c(vapply(p$models, function(x) as.character(x$name %||% ""), ""),
+              vapply(Filter(function(e) identical(e$projet, p$id), etat$modeles), function(e) as.character(e$definition$name %||% ""), ""))
+    base <- d$name
+    k <- 1
+    while (d$name %in% pris) {
+      k <- k + 1
+      d$name <- sprintf("%s (%d)", base, k)
+    }
+  }
+  m <- ajuster(b$projet, d)
+  if (length(b$nouvelles)) {
+    memoriser(p, sprintf(if (length(b$nouvelles) > 1) "variables %s" else "variable %s", paste(b$nouvelles, collapse = ", ")))
+    b$projet$modifie <- TRUE
+    etat$projets[[p$id]] <- b$projet
+    reviser(p$id)
+  }
+  list(modele = ajuster_et_garder(projet(p$id), d, m), variables = I(unname(b$variables)), nouvelles = I(b$nouvelles))
+}
+
 # Les demandes qui supposent des composantes et des scores : refusées pour une régression
 # (regression.R), avant d'arriver à un code qui ne les trouverait pas.
 SANS_REGRESSION <- c("hca", "permutations", "scores_en_variables",
@@ -386,7 +443,8 @@ SANS_REGRESSION <- c("hca", "permutations", "scores_en_variables",
 
 # Ce que l'interface reçoit d'une régression : comme resultat_modele pour ce qui est commun
 # (observations observées et ajustées, RMSEE, RMSEcv, jeu de test, réglages), et ses propres
-# résultats (coefficients, qualité, variances, apports sur demande).
+# résultats (coefficients, qualité, variances, apports sur demande ; les résidus quantiles d'un
+# modèle de comptages, de présence-absence ou de valeurs positives, et leurs quantiles normaux).
 resultat_regression <- function(id) {
   e <- modele(id)
   p <- projet(e$projet)
@@ -398,6 +456,7 @@ resultat_regression <- function(id) {
   variances <- variances_regression(m)
   list(id = id, projet = p$id, nom = m$nom, titre = m$titre, type = m$type, regression = TRUE, opls = FALSE, Ap = 0, A = 0,
        N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
+       residus_quantiles = if (!is.null(r$residus_quantiles)) list(residu = r$residus_quantiles, quantile_normal = quantiles_henry(r$residus_quantiles)),
        coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),
        famille = m$famille, lien = m$lien, parametre_loi = r$parametre_loi, courbes = r$courbes, decalage = m$decalage, dispersion = r$dispersion,
        gamm = isTRUE(m$gamm), dans = m$dans,
@@ -756,15 +815,36 @@ DEMANDES <- list(
       as.list(contributions(e$modele, as.numeric(q$observations), q$type %||% "DModX", q$composante %||% 1, isTRUE(q$ponderee %||% TRUE))))
   },
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
-  # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R)
-  series = function(q) series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux),
+  # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R) ;
+  # avec q$tendances, la tendance de chaque ligne (Mann–Kendall, pente de Sen), p corrigée par
+  # q$correction ("BH" par défaut, ou "holm")
+  series = function(q) {
+    r <- series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux)
+    if (isTRUE(q$tendances)) r$tendances <- tendances_series(r$points, q$correction %||% "BH")
+    r
+  },
   # avec q$appariement (une variable ou "id:k") : les tests appariés de deux classes, t apparié par défaut
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
                                                q$test %||% (if (length(q$appariement)) "t_apparie" else "welch"), q$correction %||% "BH",
                                                appariement = q$appariement),
-  # avant/après avec témoin (comparaisons.R : baci) ; sans q$evenement, la série des écarts seule
-  baci = function(q) baci(projet(q$projet), q$y, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)),
-                          evenement = q$evenement, fin = q$fin, test = q$test %||% "welch"),
+  # avant/après avec témoin (comparaisons.R : baci) ; sans q$evenement, la série des écarts seule.
+  # Avec un événement, `modeles` : l'effet des modèles mixtes BACI de ces réglages ajustés dans la
+  # séance (avec ou sans CAR1), du plus ancien au plus récent (comparaisons.R : effet_baci)
+  baci = function(q) {
+    r <- baci(projet(q$projet), q$y, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)),
+              evenement = q$evenement, fin = q$fin, test = q$test %||% "welch")
+    if (is.null(r$periodes)) return(r)
+    o <- list(y = r$y$uid, temps = r$temps$uid, unite = r$unite$uid, impact = r$impact, temoins = r$temoins, evenement = r$evenement, fin = r$fin)
+    ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, q$projet) && !is.null(etat$modeles[[id]]$definition$baci_origine) &&
+                    memes_reglages_baci(etat$modeles[[id]]$definition$baci_origine, o, car1 = FALSE), names(etat$modeles))
+    r$modeles <- unname(Filter(Negate(is.null), lapply(ids, function(id) {
+      # (un modèle qui ne donnerait pas son effet n'empêche pas la vue de donner le test des écarts)
+      e <- tryCatch(effet_baci(etat$modeles[[id]]$modele, etat$modeles[[id]]$definition), error = function(err) NULL)
+      if (!is.null(e)) c(list(id = id), e)
+    })))
+    r
+  },
+  baci_modele = baci_modele_demande,
   # avec q$appariement (une variable ou "id:k") : le test apparié entre les niveaux q$niveaux, et
   # avec q$dans (une variable ou "id:k" : le site), toutes les paires de niveaux d'un même groupe
   test_deux_variables = function(q) test_deux_variables(projet(q$projet), q$x, q$y, appariement = q$appariement,
@@ -803,15 +883,8 @@ DEMANDES <- list(
   autocorrelation_residus = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
-    groupement <- function(s, tous = FALSE) {
-      if (!length(s$by)) return(NULL)
-      # (plusieurs groupements arrivent en data.frame, une ligne chacun)
-      if (is.data.frame(s)) s <- lapply(seq_len(nrow(s)), function(i) as.list(s[i, , drop = FALSE]))
-      if (!is.null(s$by)) s <- list(s)
-      specs <- lapply(s, function(x) if (identical(as.character(x$by)[1], "effets")) list(by = "effets") else specs_groupement(x)[[1]])
-      if (tous) specs else specs[[1]]
-    }
-    c(list(modele = q$modele), autocorrelation_residus(projet(e$projet), e$modele, groupement(q$temps), groupement(q$groupe, TRUE), q$type %||% "pearson"))
+    c(list(modele = q$modele), autocorrelation_residus(projet(e$projet), e$modele, groupements_demande(q$temps), groupements_demande(q$groupe, TRUE),
+                                                       q$type %||% "pearson"))
   },
   # les tests du rapport de vraisemblance entre les régressions emboîtées de q$modeles
   # (regression_diagnostics.R), pour Comparer les modèles
@@ -977,7 +1050,10 @@ appli <- list(
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },
-  staticPaths = list("/" = httpuv::staticPath(interface, indexhtml = TRUE),
+  # (l'interface relue à chaque chargement : no-cache, et 304 quand rien n'a changé. Sans
+  # Cache-Control, Chromium la tenait pour fraîche un dixième de son âge, et une nouvelle version
+  # montrait celle d'avant : app/main.js, demarrer)
+  staticPaths = list("/" = httpuv::staticPath(interface, indexhtml = TRUE, headers = list("Cache-Control" = "no-cache")),
                      "/api" = httpuv::excludeStaticPath())  # les demandes vont à call()
 )
 

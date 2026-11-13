@@ -223,9 +223,9 @@ REGRESSIONS <- c("LM", "LMM", "GLM", "GAM")
 GENERALISES <- c("GLM", "GAM")
 est_regression <- function(d) isTRUE(as.character(d$type %||% "") %in% REGRESSIONS)
 
-# Les valeurs qui font les groupes d'un effet aléatoire, ou le temps de l'autocorrélation : un
-# identifiant des observations (list(by = "id", id = "site")) ou une variable
-# (list(by = "variable", variable = 4)), pour les observations `obs` (NA quand il manque).
+# Les valeurs qui font les groupes d'un effet aléatoire, ou le temps de l'autocorrélation (que
+# temps_en_nombres lit) : un identifiant des observations (list(by = "id", id = "site")) ou une
+# variable (list(by = "variable", variable = 4)), pour les observations `obs` (NA quand il manque).
 valeurs_groupement <- function(projet, spec, obs) {
   par <- if (length(spec$by)) as.character(spec$by)[1] else ""
   switch(par,
@@ -361,9 +361,12 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   niveaux <- lapply(d$aleatoires %||% list(), function(s) valeurs_groupement(projet, s, obs))
   temps <- dans <- NULL
   if (!is.null(d$correlation)) {
-    temps <- suppressWarnings(as.numeric(valeurs_groupement(projet, d$correlation$temps, obs)))
-    if (all(is.na(temps))) stop(traduire("Le temps de l'autocorrélation doit être un nombre (une année, un jour...).",
-                                         "The time of the autocorrelation must be a number (a year, a day...)."), call. = FALSE)
+    # (des nombres, ou des dates en années décimales : φ est alors d'une année à l'autre)
+    temps <- temps_en_nombres(valeurs_groupement(projet, d$correlation$temps, obs))
+    # (un temps de nombres laisse de côté la ligne d'une valeur illisible, comme jusqu'à 0.9.5 et
+    # comme le script ; un temps de dates refuse une valeur qui n'en est pas une)
+    if (!is.null(attr(temps, "refus")) && isTRUE(attr(temps, "dates"))) stop(refus_temps(temps, nom_groupement(projet, d$correlation$temps)), call. = FALSE)
+    if (all(is.na(temps))) stop(traduire("Aucune observation n'a de temps pour l'autocorrélation.", "No observation has a time for the autocorrelation."), call. = FALSE)
     if (!is.null(d$correlation$dans)) dans <- valeurs_groupement(projet, d$correlation$dans, obs)
   }
   decalage <- NULL
@@ -545,6 +548,15 @@ predire_observations_regression <- function(projet, m, d, observations, effort_a
   out
 }
 
+# Le quantile de la loi normale de chaque résidu de `e` (la droite de Henry, positions de Blom), NA
+# pour un résidu manquant.
+quantiles_henry <- function(e) {
+  q <- rep(NA_real_, length(e))
+  ok <- !is.na(e)
+  q[ok] <- stats::qnorm((rank(e[ok]) - 0.375) / (sum(ok) + 0.25))
+  q
+}
+
 # Les observations d'une régression : Y observé, ajusté (et par les effets fixes seuls), prédit
 # en validation croisée, résidu standardisé et son quantile normal, levier et distance de Cook
 # (lm), groupes des effets aléatoires et de la validation croisée.
@@ -557,9 +569,7 @@ observations_regression <- function(projet, m) {
   if (!is.null(r$ajuste_fixe)) obs[[paste(y, "ajusté (effets fixes)")]] <- r$ajuste_fixe
   obs[[paste(y, "prédit (VC)")]] <- m$vc$prediction
   obs$residu <- r$residus
-  ok <- !is.na(r$residus)  # (la droite de Henry : le quantile de la loi normale de chaque résidu, positions de Blom)
-  obs$quantile_normal <- NA_real_
-  obs$quantile_normal[ok] <- stats::qnorm((rank(r$residus[ok]) - 0.375) / (sum(ok) + 0.25))
+  obs$quantile_normal <- quantiles_henry(r$residus)
   if (!is.null(r$levier)) {
     obs$levier <- r$levier
     obs$cook <- r$cook
@@ -736,6 +746,48 @@ definition_selection <- function(d, m, choisis) {
   if (!length(d$k_courbes)) d$k_courbes <- NULL
   d$termes_complets <- complets
   d$selection_origine <- list(modele = as.character(d$name %||% ""), groupes = choisis, n = length(m$observations))
+  # (un modèle mixte BACI : sans le terme croisé période × impact, ce n'est plus lui ; avec, il en dérive)
+  if (!is.null(d$baci_origine)) {
+    if (any(vapply(d$x, function(t) length(t$variables) > 1, TRUE))) d$baci_origine$derive <- TRUE else d$baci_origine <- NULL
+  }
+  d
+}
+
+# ------------------------------------------------ une autocorrélation ajoutée (Ajuster avec CAR1)
+
+# La définition d'un modèle refait avec une autocorrélation CAR1 (Autocorrélation des résidus ›
+# Ajuster avec CAR1) : celle du modèle, `d`, avec une autocorrélation le long de `temps` (un
+# groupement : un identifiant ou une variable quantitative) à l'intérieur des groupes de ses effets
+# aléatoires, ou d'un niveau plus fin en eux (le secteur dans son site). `groupe` : ces groupes tels
+# qu'autocorrelation_residus les prend, list(by = "effets"), puis au besoin le niveau plus fin, qui
+# devient `dans`. Le reste ne change pas. Refusée quand le modèle ne la prend pas : sans effet
+# aléatoire, avec déjà une autocorrélation, d'autres groupes que ceux de ses effets aléatoires (CAR1
+# court dans le dernier ou dans un niveau plus fin), une autre loi que la normale (verifier_regression).
+definition_car1 <- function(projet, d, temps, groupe) {
+  err <- function(fr, en) stop(traduire(fr, en), call. = FALSE)
+  d$aleatoires <- specs_groupement(d$aleatoires)  # (une définition relue d'un fichier : ses listes ont pu devenir des data.frames)
+  if (!length(d$aleatoires)) err("Ce modèle n'a pas d'effet aléatoire : une autocorrélation CAR1 se fait à l'intérieur des groupes d'un effet aléatoire.",
+                                 "This model has no random effect: a CAR1 autocorrelation works within the groups of a random effect.")
+  if (!is.null(d$correlation)) err("Ce modèle a déjà une autocorrélation CAR1.", "This model already has a CAR1 autocorrelation.")
+  if (is.null(temps)) err("Choisissez le temps (une année, un jour...) : un identifiant ou une variable quantitative.",
+                          "Choose the time (a year, a day...): an ID or a quantitative variable.")
+  if (!is.null(groupe$by)) groupe <- list(groupe)
+  effets <- vapply(groupe, function(s) identical(as.character(s$by)[1], "effets"), TRUE)
+  if (!length(effets) || !effets[1] || length(effets) > 2 || any(effets[-1])) {
+    err("L'autocorrélation CAR1 se fait à l'intérieur des groupes des effets aléatoires du modèle, ou d'un niveau plus fin en eux : choisissez ses effets aléatoires comme groupes.",
+        "A CAR1 autocorrelation works within the groups of the model's random effects, or of a finer level within them: choose its random effects as the groups.")
+  }
+  d$correlation <- c(list(type = "CAR1", temps = specs_groupement(temps)[[1]]), if (length(groupe) == 2) list(dans = specs_groupement(groupe[[2]])[[1]]))
+  verifier_regression(projet, d)
+  # (un modèle mixte BACI : CAR1 le long de son temps dans ses unités en fait le modèle BACI avec CAR1,
+  # qui en dérive ; une autre autocorrélation n'est plus celle que ses phrases décrivent)
+  if (!is.null(d$baci_origine)) {
+    o <- d$baci_origine
+    if (is.null(d$correlation$dans) && identical(d$correlation$temps, groupement_baci(projet, o$temps))) {
+      d$baci_origine$car1 <- TRUE
+      d$baci_origine$derive <- TRUE
+    } else d$baci_origine <- NULL
+  }
   d
 }
 
@@ -884,6 +936,8 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
        dispersion = if (famille == "poisson") sum(stats::residuals(estime, type = "pearson")^2) / estime$df.residual,
        ajuste = as.vector(stats::fitted(estime)),
        residus = as.vector(stats::residuals(estime, type = "deviance")) / sqrt(estime$sig2 * pmax(1 - estime$hat, 1e-8)),
+       # (comptages, présence-absence, valeurs positives : les résidus quantiles, regression_diagnostics.R ; NULL sinon)
+       residus_quantiles = residus_quantiles(estime, famille),
        utiles = utiles, k = k, ajustement = estime, ajustement_ml = compare)
 }
 
@@ -1122,6 +1176,7 @@ REFERENCES_REGRESSION <- list(
   zuur = "Zuur, A. F., Ieno, E. N., Walker, N. J., Saveliev, A. A., & Smith, G. M. (2009). Mixed effects models and extensions in ecology with R. Springer. https://doi.org/10.1007/978-0-387-87458-6",
   wood2017 = "Wood, S. N. (2017). Generalized additive models: An introduction with R (2nd ed.). Chapman and Hall/CRC. https://doi.org/10.1201/9781315370279",
   wood2011 = "Wood, S. N. (2011). Fast stable restricted maximum likelihood and marginal likelihood estimation of semiparametric generalized linear models. Journal of the Royal Statistical Society: Series B, 73(1), 3–36. https://doi.org/10.1111/j.1467-9868.2010.00749.x",
+  stewart_oaten = "Stewart-Oaten, A., Murdoch, W. W., & Parker, K. R. (1986). Environmental impact assessment: \"Pseudoreplication\" in time? Ecology, 67(4), 929–940. https://doi.org/10.2307/1939815",
   mgcv = "Wood, S. N. (%s). mgcv: Mixed GAM computation vehicle with automatic smoothness estimation (R package version %s). https://CRAN.R-project.org/package=mgcv")
 
 texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "") {
@@ -1204,6 +1259,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
                                         guillemets(as.character(o$modele)[1]), if (length(groupes)) liste(groupes) else (if (fr) "aucun : le modèle nul" else "none: the null model"),
                                         if (!memes) "" else if (fr) ", sur les mêmes observations que lui" else ", on the same observations as that model")))
   }
+  # (le modèle mixte de la vue BACI : comparaisons.R, definition_baci)
+  if (!is.null(d$baci_origine)) p2 <- c(p2, cite("stewart_oaten", phrase_methodes_baci(d$baci_origine, fr, liste, guillemets)))
 
   # --- validation croisée
   par <- if (length(d$groupes_vc$by)) as.character(d$groupes_vc$by) else ""
@@ -1306,6 +1363,26 @@ phrase_selection_aic <- function(m, fr, nombre, liste, guillemets) {
                         if (toutes) "" else if (fr) ", sur les modèles essayés" else ", over the models tried",
                         liste(vapply(names(par_valeur), function(v) sprintf(if (fr) "%s pour %s" else "%s for %s", v, liste(guillemets(par_valeur[[v]]))), "")))
   paste(comparaison, choix, importance)
+}
+
+# Le modèle mixte BACI dans le texte des Méthodes (comparaisons.R : definition_baci ; `o` :
+# d$baci_origine) : ce que valent ses deux variables 0/1, ce qu'est le coefficient de leur terme
+# croisé, et ses observations. `liste`, `guillemets` : ceux de texte_methodes_regression.
+phrase_methodes_baci <- function(o, fr, liste, guillemets) {
+  quand <- function(x) if (isTRUE(o$dates)) date_decimale(as.numeric(x)) else trimws(formatC(as.numeric(x), digits = 10, format = "fg", decimal.mark = if (fr) "," else "."))
+  # (les unités nommées, dix au plus ; au-delà, leur nombre)
+  unites <- function(x, un, plusieurs, nombreuses) {
+    x <- as.character(unlist(x))
+    if (length(x) > 10) sprintf(nombreuses, length(x)) else sprintf(if (length(x) > 1) plusieurs else un, liste(x))
+  }
+  temps <- as.character(o$noms$temps)
+  fin <- if (length(o$fin)) sprintf(if (fr) ", jusqu'à %s = %s," else ", up to %s = %s,", temps, quand(o$fin)) else ""
+  sprintf(if (fr) "C'est le modèle BACI (avant/après avec témoin ; Stewart-Oaten et al., 1986) : %s vaut 1 à partir de %s = %s et 0 avant, %s vaut 1 pour %s et 0 pour %s, et le coefficient de leur terme croisé, l'effet BACI, est le changement de l'écart entre l'impact et les témoins après l'événement ; seules les observations de ces unités%s y entrent."
+          else "This is the BACI model (before-after control-impact; Stewart-Oaten et al., 1986): %s is 1 from %s = %s on and 0 before, %s is 1 for %s and 0 for %s, and the coefficient of their cross term, the BACI effect, is the change in the gap between the impact and the controls after the event; only the observations of these units%s enter it.",
+          guillemets(as.character(o$variables$periode)), temps, quand(o$evenement), guillemets(as.character(o$variables$impact)),
+          unites(o$impact, if (fr) "l'unité d'impact %s" else "the impact unit %s", if (fr) "les unités d'impact %s" else "the impact units %s",
+                 if (fr) "les %d unités d'impact" else "the %d impact units"),
+          unites(o$temoins, if (fr) "le témoin %s" else "the control %s", if (fr) "les témoins %s" else "the controls %s", if (fr) "les %d témoins" else "the %d controls"), fin)
 }
 
 # Les niveaux emboîtés d'effets aléatoires, en mots : « site », « secteur » dans chaque « site »...
