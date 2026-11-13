@@ -432,8 +432,8 @@ mixed model with a CAR1 autocorrelation, the year as an X.
 In the table's toolbar, two options change the test. Allow for autocorrelation: Hamed and
 Rao's (1998) modified Mann–Kendall test, computed as modifiedmk::mmkh computes it: the line
 detrended by its Sen slope (over its actual times), the ranks of what remains, their
-autocorrelation at each lag (from one time to the next: a missing year isn't a lag), those
-beyond ±1.96/√n kept (the others count 0), and the variance of S multiplied by
+autocorrelation at each lag (counted from one time to the next: the time after a missing year
+is one lag away), those beyond ±1.96/√n kept (the others count 0), and Var(S) multiplied by
 n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k); p and the slope's interval
 come from that variance, and the n/n* column gives the factor (1: no autocorrelation kept; a
 factor that isn't positive, from a strong negative autocorrelation, leaves the line untested).

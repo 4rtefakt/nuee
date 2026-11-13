@@ -458,12 +458,13 @@ Autocorrélation des résidus, puis un modèle mixte avec une autocorrélation C
 Dans la barre du tableau, deux options changent le test. Tenir compte de l'autocorrélation : le
 test de Mann–Kendall modifié de Hamed et Rao (1998), calculé comme le calcule modifiedmk::mmkh :
 la ligne privée de sa tendance (sa pente de Sen, sur ses vrais temps), les rangs de ce qui
-reste, leur autocorrélation à chaque décalage (d'un temps au suivant : une année manquante n'est
-pas un décalage), celles au-delà de ±1,96/√n gardées (les autres comptent 0), et la variance de
-S multipliée par n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k) ; p et
-l'intervalle de la pente viennent de cette variance, et la colonne n/n* donne le facteur (1 :
-aucune autocorrélation gardée ; un facteur qui n'est pas positif, d'une forte autocorrélation
-négative, laisse la ligne sans test). Il faut une longue série : une autocorrélation s'estime
+reste, leur autocorrélation à chaque décalage (compté d'un temps au suivant : le temps qui suit
+une année manquante est à un décalage), celles au-delà de ±1,96/√n gardées (les autres
+comptent 0), et Var(S) multipliée par
+n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k) ; p et l'intervalle de la
+pente viennent de cette variance, et la colonne n/n* donne le facteur (1 : aucune
+autocorrélation gardée ; un facteur qui n'est pas positif, d'une forte autocorrélation négative,
+laisse la ligne sans test). Il faut une longue série : une autocorrélation s'estime
 mal sur peu de temps (Box et Jenkins, 1976, en demandent une cinquantaine), et avec 15 temps
 seule une autocorrélation au-delà de ±0,51 compte ; même sur 60 à 90 temps, le test corrigé
 rejette encore trop souvent une absence de tendance quand l'autocorrélation est forte (Blain,
