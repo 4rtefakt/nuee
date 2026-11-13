@@ -856,6 +856,55 @@ s <- lancer(r$script, c("A2", "R9"))
 verifier("une séance de deux modèles à condition (un identifiant, group_mean()) : les résultats du moteur",
          is.null(r$ecart) && length(s) == 2 && meme(moteur(ms[[1]])$scores, s$A2$m$T) && meme(moteur_regression(ms[[2]])$coefficients, as.matrix(s$R9$coefficients[2:8])))
 
+# une condition avec un commentaire, des tabulations, une apostrophe, un saut de ligne : écrite
+# propre sur une ligne (depuis l'expression validée, deparse), le script tourne et reproduit
+cat("Une condition avec un commentaire, des tabulations, une apostrophe\n")
+for (cnd in list(c("commentaire", "sucre > 12 # haut sucre", "donnees", "sucre > 12"),
+                 c("tabulations", "variete == \"Gala\"\t|\tsucre > 12", "donnees_texte", "variete == \"Gala\" | sucre > 12"),
+                 c("apostrophe", "variete == \"Gal\\\"a\" | variete == \"Gala\"", "donnees_texte", "variete == \"Gal\\\"a\" | variete == \"Gala\""),
+                 c("saut", "variete == \"Gala\" &\n sucre > 12", "donnees_texte", "variete == \"Gala\" & sucre > 12"))) {
+  r <- essayer(sprintf("cond_%s", cnd[1]), p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, condition = cnd[2]))
+  texte <- lignes_script(r)
+  attendu <- sprintf("condition <- with(%s, %s)", cnd[3], cnd[4])
+  verifier(sprintf("condition avec %s : écrite propre sur une ligne (sans # ni tabulation), le script reproduit", cnd[1]),
+           any(texte == attendu) && !any(grepl("^condition <- with.*[#\t]", texte)) && is.null(r$ecart))
+}
+
+# un texte venu des données (nom de variable, de modèle, de projet, de bloc, une catégorie) écrit
+# dans un commentaire ne peut pas exécuter de code : un retour chariot ou un saut de ligne suivi
+# d'un appel, dans un projet reçu, ne crée pas le fichier témoin quand le script exporté est sourcé
+cat("Un texte des données (nom, modèle, catégorie, bloc) ne sort pas d'un commentaire, FR et EN\n")
+dir.create(file.path(dossier, "injection"))
+marque <- gsub("\\\\", "/", file.path(dossier, "injection", "PWNE.txt"))
+inj <- function(prefixe, saut = "\r") sprintf("%s%sfile.create(\"%s\")%s#", prefixe, saut, marque, saut)  # préfixe, coupure, appel, coupure, #
+ok_coupures <- function(f) { b <- readBin(f, "raw", file.info(f)$size); s <- rawToChar(b); Encoding(s) <- "UTF-8"
+  !any(b == as.raw(13)) && !grepl("[  ]", s) }  # ni retour chariot, ni séparateur de ligne Unicode
+set.seed(3)
+ni <- 120
+dinj <- data.frame(nom = sprintf("o%03d", 1:ni), site = rep(sprintf("S%d", 1:6), each = 20), annee = rep(2001:2020, 6),
+                   x1 = rnorm(ni), x2 = runif(ni), stringsAsFactors = FALSE)
+dinj[[inj("densite")]] <- 3 + 0.5 * dinj$x1 + rep(rnorm(6, 0, 0.5), each = 20) + rnorm(ni, 0, 0.3)  # nom de variable forgé (\r)
+dinj[[inj("habitat", "\n")]] <- rep(c(inj("marais", " "), "prairie", "foret"), length.out = ni)  # catégorie forgée (U+2028), variable au nom forgé (\n)
+pinj <- projet_depuis_tableau(dinj, inj("projet", "\n"))  # nom de projet forgé
+pinj$observation_id_names <- c("Observation", "site")
+for (i in seq_along(pinj$observations)) pinj$observations[[i]]$ids <- c(pinj$observations[[i]]$ids[1], dinj$site[i])
+uinj <- function(x) numeros(pinj, x)
+dinjr <- definir_modele(pinj, "LMM", x = c(uinj("annee"), uinj(inj("habitat", "\n"))), y = uinj(inj("densite")), echelle = "none",
+                        aleatoires = list(list(by = "id", id = "site")), nom = inj("Mon modèle", "\n"), titre = inj("Titre", "\n"))
+for (lg in c("fr", "en")) {
+  unlink(marque)
+  r <- essayer_regression(sprintf("injection_%s", lg), pinj, dinjr, langue = lg, moyennes = list(facteur = uinj(inj("habitat", "\n"))))
+  verifier(sprintf("injection (%s) : aucun appel injecté ne tourne au source du script, aucune coupure de ligne, les nombres du moteur", lg),
+           !file.exists(marque) && ok_coupures(r$script) && is.null(r$ecart))
+}
+# une PLS avec un nom de bloc de pondération forgé et des noms de variables forgés
+dinjp <- definir_modele(pinj, "PLS", x = c(uinj("x1"), uinj("x2"), uinj(inj("densite"))), y = uinj("annee"), A = 2,
+                        blocs = stats::setNames(c(inj("taille"), inj("taille"), "gout"), as.character(c(uinj("x1"), uinj("x2"), uinj(inj("densite"))))))
+unlink(marque)
+r <- essayer("injection_bloc", pinj, dinjp)
+verifier("injection (nom de bloc de pondération) : aucun appel injecté ne tourne, aucune coupure de ligne",
+         !file.exists(marque) && ok_coupures(r$script) && is.null(r$ecart))
+
 # le rapport d'une régression dont la puissance pour une tendance a été calculée : son tableau, la puissance dans les méthodes
 msp <- ajuster(pr, dsp <- definir_modele(pr, "LMM", x = ur("annee"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R9"))
 msp$puissance_tendance <- puissance_tendance(msp, dsp, list(unite = "pente", tendance = -0.05))

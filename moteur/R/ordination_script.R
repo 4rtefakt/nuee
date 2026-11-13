@@ -42,6 +42,7 @@ NOMS_ORDINATION_EN <- c(
 # code en anglais pour un script en anglais.
 traduire_ordination <- function(lignes, langue) {
   lignes <- unlist(lapply(lignes, function(l) if (grepl("\n", l, fixed = TRUE)) strsplit(l, "\n", fixed = TRUE)[[1]] else l))
+  lignes <- gsub("\r", " ", lignes)  # (par sûreté : un « \r » isolé finirait la ligne quand on source le script)
   if (!length(lignes)) return(lignes)
   autre <- if (identical(langue, "en")) "fr" else "en"
   lignes <- lignes[!grepl(sprintf("^\\s*#%s( |$)", autre), lignes)]

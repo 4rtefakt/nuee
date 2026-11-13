@@ -31,6 +31,7 @@ NOMS_CLASSEMENT_EN <- c(
 # de ce fichier).
 traduire_classement <- function(lignes, langue) {
   lignes <- unlist(lapply(lignes, function(l) if (grepl("\n", l, fixed = TRUE)) strsplit(l, "\n", fixed = TRUE)[[1]] else l))
+  lignes <- gsub("\r", " ", lignes)  # (par sûreté : un « \r » isolé finirait la ligne quand on source le script)
   if (!length(lignes) || !identical(langue, "en")) return(lignes)
   noms <- c(NOMS_CLASSEMENT_EN, NOMS_SCRIPT_EN)
   pd <- utils::getParseData(parse(text = lignes, keep.source = TRUE, encoding = "UTF-8"), includeText = TRUE)

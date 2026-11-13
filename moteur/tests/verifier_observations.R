@@ -175,11 +175,26 @@ for (k in list(list("sucer > 12", "Variable introuvable : sucer"), list("site ==
                list("{ sucre > 12 }", "« { » n'est pas permis"), list("sucre > 12; TRUE", "une seule expression"), list("sucre >", "Condition illisible"),
                list("c(TRUE, FALSE)", "une valeur par observation (120) ; elle en donne 2"), list("mean(sucre) > 12", "elle en donne 1"),
                list("variete", "elle donne du texte"), list("interaction(variete, verger)", "elle donne du texte"), list("sucre", "d'autres nombres (13"),
-               list("quantile(sucre, c(1, , 2))", "il y manque un argument"))) {
+               list("quantile(sucre, c(1, , 2))", "il y manque un argument"),
+               list("sucre %in% fermete:acidite", "ne va qu'entre deux nombres"), list("round(sucre) %in% round(sucre):12", "ne va qu'entre deux nombres"),
+               list("round(sucre) %in% 1:1e8", "est trop longue"))) {
   m <- refus(valeurs_condition(p, k[[1]]))
   verifier(sprintf("%s : refusé (« %s »)", k[[1]], substr(m, 1, 60)), grepl(k[[2]], m, fixed = TRUE))
 }
 verifier("le code refusé n'a pas été exécuté", !file.exists(intrus))
+
+# un « : » ou interaction() bornés : un projet reçu ne peut pas figer le moteur, mais les
+# conditions normales marchent (une plage d'années, interaction() comme clé de groupe)
+verifier("une plage « : » normale (annee %in% 2005:2010) marche",
+         identical(as.vector(valeurs_condition(pr, "annee %in% 2005:2010")), with(tr, annee %in% 2005:2010)))
+verifier("interaction(site, secteur) marche (drop = TRUE : pas le produit de tous les niveaux)",
+         identical(as.vector(valeurs_condition(pr, 'interaction(site, secteur) %in% c("S1.a", "S3.b")')),
+                   with(tr, interaction(site, secteur) %in% c("S1.a", "S3.b"))))
+t0 <- Sys.time()
+lente <- refus(valeurs_condition(p, "sucre > 12 | sum(nchar(paste0(1:1e8))) < 0"))
+ecoule <- as.numeric(Sys.time() - t0, units = "secs")
+verifier(sprintf("une condition faite pour être lente (1:1e8) est refusée aussitôt (%.2f s)", ecoule),
+         grepl("est trop longue", lente, fixed = TRUE) && ecoule < 1)
 verifier("aucune observation cochée ne la remplit : le modèle est refusé, et le dit",
          grepl("Aucune des 120 observations cochées ne remplit la condition sucre > 100", refus(definir_modele(p, "PCA", x = x, A = 2, condition = "sucre > 100")), fixed = TRUE))
 verifier("en anglais aussi", {

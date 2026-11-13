@@ -35,6 +35,21 @@ FONCTIONS_NUEE_CONDITION <- c("moyenne_groupe", "ecart_groupe", "group_mean", "g
 # (des noms de R que lit une condition quand aucune variable ne les porte)
 CONSTANTES_CONDITION <- c("T", "F", "pi")
 
+# La plus longue plage « a:b » qu'une condition peut écrire : au-delà, elle est refusée. Une
+# condition courte (annee %in% 2005:2010) n'en approche jamais ; la borne empêche qu'un « : »
+# forgé (1:1e9) ne construise un vecteur qui épuise le temps ou la mémoire à chaque ajustement.
+MAX_PLAGE_CONDITION <- 100000L
+
+# La valeur d'un nombre littéral (un nombre, ou un moins/plus unaire devant un nombre : -5), NULL
+# sinon. Les bornes d'un « : » d'une condition doivent en être : une variable y serait sans borne.
+litteral_numerique <- function(x) {
+  if (is.numeric(x) && length(x) == 1) return(as.numeric(x))
+  if (is.call(x) && length(x) == 2 && as.character(x[[1]]) %in% c("-", "+") && is.numeric(x[[2]]) && length(x[[2]]) == 1) {
+    return((if (identical(as.character(x[[1]]), "-")) -1 else 1) * as.numeric(x[[2]]))
+  }
+  NULL
+}
+
 # Une condition est-elle donnée ? (d$condition absente ou vide : non)
 avec_condition <- function(d) length(d$condition) > 0 && nzchar(texte_condition(d$condition))
 
@@ -80,6 +95,18 @@ lire_condition <- function(projet, texte) {
             quoi)
       }
       arguments <- as.list(x)[-1]
+      # « : » seulement entre deux nombres littéraux (−5:5 compris), d'une plage bornée : une borne
+      # variable serait sans limite, et une plage énorme (1:1e9) figerait le moteur à chaque ajustement.
+      if (identical(as.character(f), ":")) {
+        bornes <- lapply(arguments, litteral_numerique)
+        if (length(arguments) != 2 || any(vapply(bornes, is.null, TRUE))) {
+          err("Dans une condition, « : » ne va qu'entre deux nombres, comme annee %%in%% 2005:2010.",
+              "In a condition, \":\" only goes between two numbers, like year %%in%% 2005:2010.")
+        }
+        if (abs(bornes[[2]] - bornes[[1]]) + 1 > MAX_PLAGE_CONDITION) {
+          err("Cette plage « : » est trop longue (plus de %s valeurs).", "This \":\" range is too long (more than %s values).", format(MAX_PLAGE_CONDITION, scientific = FALSE))
+        }
+      }
       for (i in seq_along(arguments)) {
         # (un argument vide, c(1, , 2) : le symbole vide, qu'on ne peut pas passer plus loin)
         if (identical(arguments[[i]], quote(expr = ))) err("Condition incomplète : il y manque un argument.", "Incomplete condition: an argument is missing.")
@@ -105,6 +132,17 @@ valeurs_condition <- function(projet, condition) {
   err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
   e <- lire_condition(projet, condition)
   env <- environnement_formule(projet, all.names(e))  # (les seules variables qu'elle lit)
+  # interaction() ne sert dans une condition qu'à faire des groupes : forcée à drop = TRUE (le
+  # produit de tous les niveaux, sinon, peut épuiser la mémoire — la condition est réévaluée à
+  # chaque ajustement). Mise dans le parent de `env` : une variable nommée « interaction » y reste
+  # une donnée (R saute une liaison non-fonction quand il cherche une fonction à appeler).
+  pe <- new.env(parent = parent.env(env))
+  pe$interaction <- function(...) {
+    args <- list(...)
+    garde <- if (is.null(names(args))) rep(TRUE, length(args)) else names(args) != "drop"
+    do.call(base::interaction, c(args[garde], list(drop = TRUE)))
+  }
+  parent.env(env) <- pe
   avertit <- FALSE
   r <- tryCatch(withCallingHandlers(eval(e, envir = env), warning = function(w) {
     avertit <<- TRUE
@@ -176,15 +214,19 @@ ids_condition <- function(projet, d) {
 # l'évalue alors sur les catégories en texte, comme Nuée) ; `fonctions`, celles des formules de
 # Nouvelle variable qu'elle appelle (le script les écrit : code_fonctions_condition) ; `avertit`, si
 # R avertit en l'évaluant (le script tait alors ces avertissements, comme Nuée).
+#   `texte` part de l'expression validée (lire_condition), redéparsée sur une seule ligne : pas de
+# commentaire (qui mettrait en commentaire la parenthèse fermante du with()), pas de tabulation (qui
+# décalerait les colonnes de getParseData), les chaînes et les noms échappés. Ses symboles sont
+# ensuite renommés en les noms des colonnes du tableau du script.
 plan_condition <- function(projet, d, tab) {
   if (!avec_condition(d)) return(NULL)
-  texte <- texte_condition(d$condition)
+  e <- lire_condition(projet, d$condition)
+  texte <- paste(deparse(e, width.cutoff = 500L, control = c("keepInteger", "digits17"), backtick = TRUE), collapse = " ")
   n <- noms_condition(projet)
   traduits <- c(names(NOMS_SCRIPT_EN), names(NOMS_CLASSEMENT_EN), names(NOMS_ORDINATION_EN))
   pd <- utils::getParseData(parse(text = texte, keep.source = TRUE, encoding = "UTF-8"))
   pd <- pd[pd$terminal & pd$token == "SYMBOL", , drop = FALSE]
-  pd <- pd[order(-pd$line1, -pd$col1), , drop = FALSE]
-  lignes <- strsplit(texte, "\n", fixed = TRUE)[[1]]
+  pd <- pd[order(-pd$col1), , drop = FALSE]  # (une seule ligne : de droite à gauche)
   qualitatives <- FALSE
   for (i in seq_len(nrow(pd))) {
     nom <- as.character(str2lang(pd$text[i]))
@@ -194,13 +236,15 @@ plan_condition <- function(projet, d, tab) {
       unname(tab$noms[as.character(v$uid)])
     } else if (nom %in% n$ids) unname(tab$ids[[nom]])
     if (is.null(colonne)) next  # (T, F, pi)
-    ecrit <- if (identical(make.names(colonne), colonne) && !colonne %in% traduits) colonne else paste0("`", gsub("`", "\\`", colonne, fixed = TRUE), "`")
-    l <- lignes[pd$line1[i]]
-    lignes[pd$line1[i]] <- paste0(substr(l, 1, pd$col1[i] - 1), ecrit, substr(l, pd$col2[i] + 1, nchar(l)))
+    # un nom qui n'est pas un nom R, ou que la traduction du script changerait, entre accents graves
+    # (deparse échappe un retour chariot ou un accent grave du nom, comme l'en-tête des données)
+    ecrit <- if (identical(make.names(colonne), colonne) && !colonne %in% traduits) colonne
+             else { bt <- deparse(as.name(colonne), backtick = TRUE); if (startsWith(bt, "`")) bt else paste0("`", colonne, "`") }
+    texte <- paste0(substr(texte, 1, pd$col1[i] - 1), ecrit, substr(texte, pd$col2[i] + 1, nchar(texte)))
   }
-  list(texte = paste(lignes, collapse = "\n"), cochees = unname(tab$rangs[as.character(d$cochees %||% d$observations)]),
-       qualitatives = qualitatives, fonctions = intersect(all.names(lire_condition(projet, texte)), FONCTIONS_NUEE_CONDITION),
-       avertit = isTRUE(attr(valeurs_condition(projet, texte), "avertissement")), n_lignes = nrow(tab$donnees))
+  list(texte = texte, cochees = unname(tab$rangs[as.character(d$cochees %||% d$observations)]),
+       qualitatives = qualitatives, fonctions = intersect(all.names(e), FONCTIONS_NUEE_CONDITION),
+       avertit = isTRUE(attr(valeurs_condition(projet, d$condition), "avertissement")), n_lignes = nrow(tab$donnees))
 }
 
 # Le code du script qui choisit les lignes d'un modèle à condition (`pc` : plan_condition) : les

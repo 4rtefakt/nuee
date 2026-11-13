@@ -3136,6 +3136,7 @@ nom_script <- function(x, langue) if (identical(langue, "en")) ifelse(x %in% nam
 traduire_code <- function(lignes, langue) {
   if (!identical(langue, "en") || !length(lignes)) return(lignes)
   lignes <- unlist(lapply(lignes, function(l) if (grepl("\n", l, fixed = TRUE)) strsplit(l, "\n", fixed = TRUE)[[1]] else l))
+  lignes <- gsub("\r", " ", lignes)  # (par sûreté : un « \r » isolé finirait la ligne quand on source le script)
   pd <- utils::getParseData(parse(text = lignes, keep.source = TRUE, encoding = "UTF-8"), includeText = TRUE)
   pd <- pd[pd$terminal & pd$token %in% c("SYMBOL", "SYMBOL_FUNCTION_CALL", "SYMBOL_SUB", "SYMBOL_FORMALS") & pd$text %in% names(NOMS_SCRIPT_EN), ]
   pd <- pd[order(pd$line1, -pd$col1), ]
@@ -3214,11 +3215,20 @@ ecart_valeurs <- function(a, b) {
 # sauts de ligne deviennent des espaces, les accents graves des apostrophes.
 texte_sur <- function(x) gsub("`", "'", gsub("[\r\n\u2028\u2029]+", " ", x))
 
+# Les coupures de ligne d'un texte (retour chariot, saut de ligne, séparateurs de ligne Unicode)
+# remplacées par une espace ; une tabulation est laissée (elle ne finit pas une ligne). Un texte
+# venu des données qui en contient finirait un commentaire ou une chaîne de code : la suite, sur
+# la ligne d'après, s'exécuterait quand on source le script. (texte_sur en fait autant, et retire
+# aussi les accents graves, pour le texte d'un rapport Rmd/Qmd.)
+sans_coupure <- function(x) gsub("[\r\n  ]+", " ", x)
+
 # Un commentaire de script, coupé en lignes d'au plus `largeur` caractères. Les signes précédés
-# d'une espace (« ; », « : », « ? », « ! », « » ») restent avec le mot d'avant.
+# d'une espace (« ; », « : », « ? », « ! », « » ») restent avec le mot d'avant. Les coupures de
+# ligne d'un texte venu des données sont neutralisées (sans_coupure) : sans quoi un retour chariot
+# dans un nom finirait le commentaire et ce qui suit s'exécuterait quand on source le script.
 commentaire <- function(texte, retrait = "", largeur = 98) {
   if (!length(texte)) return(character(0))
-  mots <- strsplit(paste(texte, collapse = " "), " ", fixed = TRUE)[[1]]
+  mots <- strsplit(sans_coupure(paste(texte, collapse = " ")), " ", fixed = TRUE)[[1]]
   mots <- mots[nzchar(mots)]
   unites <- character(0)
   for (w in mots) {
@@ -3260,7 +3270,7 @@ fichiers_a_cote <- function(fichiers, langue, modeles) {
                     else tx("les données et le modèle ajusté : load() les rend sans recalculer", "the data and the fitted model: load() gives them back without computing"),
             renv = tx("les versions de R et des paquets : renv::restore() installe les mêmes", "the versions of R and the packages: renv::restore() installs the same"),
             rproj = tx("le projet RStudio : l'ouvrir ouvre ce dossier", "the RStudio project: opening it opens this folder"))
-  c(tx("# À côté de ce script :", "# Next to this script:"), sprintf("#   %s : %s", basename(autres), quoi[names(autres)]))
+  c(tx("# À côté de ce script :", "# Next to this script:"), sprintf("#   %s : %s", texte_sur(basename(autres)), quoi[names(autres)]))
 }
 
 entete_script <- function(pl, nom_projet, version, fichiers, langue) {
@@ -3324,7 +3334,7 @@ lignes_rapport <- function(format, pl, langue, methodes, fonctions, code_donnees
   tx <- function(fr, en) if (langue == "en") en else fr
   bloc <- function(options, code) c(sprintf("```{r%s}", if (nzchar(options)) paste0(" ", options) else ""), code, "```", "")
   kable <- function(objet, chiffres) traduire_code(sprintf("knitr::kable(%s%s)", objet, if (is.na(chiffres)) "" else sprintf(", digits = %d", chiffres)), langue)
-  titre <- sprintf("%s %s%s", tx("Modèle", "Model"), pl$nom, if (nzchar(pl$titre)) paste(" —", pl$titre) else "")
+  titre <- sprintf("%s %s%s", tx("Modèle", "Model"), texte_sur(pl$nom), if (nzchar(pl$titre)) paste(" —", texte_sur(pl$titre)) else "")
   yaml <- c("---", sprintf("title: %s", code_texte(titre)), sprintf("date: %s", code_texte(format(Sys.Date()))), sprintf("lang: %s", langue),
             if (format == "Rmd") c("output:", "  html_document:", "    code_folding: hide") else c("format:", "  html:", "    embed-resources: true", "    code-fold: true"),
             "---", "")

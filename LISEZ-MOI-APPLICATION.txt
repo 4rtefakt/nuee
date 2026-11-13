@@ -1341,7 +1341,10 @@ les fonctions de Nouvelle variable moyenne_groupe(), ecart_groupe(), precedent()
 croissance() (et leurs noms anglais). Rien d'autre : une condition est gardée dans le fichier du
 projet et refaite à chaque ajustement, un projet reçu ne peut donc rien exécuter d'autre par
 elle (une formule de Nouvelle variable, tapée et calculée une fois, n'est pas gardée et n'a pas
-cette limite). Pour un indice de diversité (shannon()...), en faire d'abord une Nouvelle
+cette limite). Pour que cet ajustement reste rapide et borné, « : » ne va qu'entre deux nombres
+entiers (annee %in% 2005:2010) et sur une plage d'au plus 100000 valeurs, et interaction() laisse
+de côté les combinaisons vides : une condition courte ne peut pas construire un vecteur énorme qui
+figerait un ajustement. Pour un indice de diversité (shannon()...), en faire d'abord une Nouvelle
 variable, puis employer cette variable dans la condition.
 
 Fenêtres
