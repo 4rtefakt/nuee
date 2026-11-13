@@ -258,6 +258,26 @@ if (avec_vegan) {
              proche(sv$etapes$p[sv$etapes$retenu], pasv$anova[["Pr(>F)"]][seq_along(tv)]))
 }
 
+cat("Une condition (onglet Observations : condition.R)\n")
+# la RDA des relevés où habitat != "marais" & altitude > 760 (le relevé sans pH laissé de côté
+# s'il en est) : celle des mêmes lignes calculée directement, et celle de vegan quand il est là
+dcond <- definir_modele(p, "RDA", x = u("temp", "ph"), y = u(especes), echelle = "none", options = list(transformation = "hellinger", permutations = B, graine = 3),
+                        condition = 'habitat != "marais" & altitude > 760')
+mcond <- ajuster(p, dcond)
+lc <- which(env$habitat != "marais" & env$altitude > 760 & garde)
+Yl <- centre(hel[lc, ])
+al <- stats::lm.fit(stats::model.matrix(~ temp + ph, env[lc, ]), Yl)$fitted.values
+verifier(sprintf("RDA à condition : ses %d relevés, valeurs propres et R² des mêmes lignes calculés directement", length(lc)),
+         identical(mcond$observations, numeros_observations(p)[lc]) && proche(mcond$noyau$contraint$eig, (svd(al)$d^2 / (length(lc) - 1))[1:2]) &&
+           proche(mcond$r2, sum(al^2) / sum(Yl^2)))
+if (avec_vegan) {
+  rvc <- vegan::rda(hel[lc, ] ~ temp + ph, data = env[lc, ])
+  verifier("RDA à condition = vegan::rda sur ces relevés (valeurs propres, R² ajusté)",
+           proche(mcond$noyau$contraint$eig, rvc$CCA$eig) && proche(mcond$noyau$residuel$eig, rvc$CA$eig) && proche(mcond$r2_ajuste, vegan::RsquareAdj(rvc)$adj.r.squared))
+}
+tcond <- texte_methodes(p, dcond, mcond, "en")$paragraphes[1]
+verifier("son texte des méthodes : « on the N observations where … »", grepl(sprintf("on the %d observations where habitat != \"marais\" & altitude > 760", mcond$N), tcond, fixed = TRUE))
+
 cat("Ce que l'interface reçoit, texte des méthodes, tableaux, refus\n")
 etat <- new.env()
 etat$projets <- list(P1 = c(p, list(id = "P1")))
@@ -285,6 +305,8 @@ verifier("partition refusée sans deux ensembles, et pour une RDA partielle",
 invisible(garder("M3", dsel, msel))
 rp <- demande_analyse_rda_partition(list(modele = "M3"))
 verifier("partition à la demande", nrow(rp$fractions) == 8 && inherits(json(rp), "json"))
+invisible(garder("M5", dcond, mcond))
+verifier("RDA à condition : sa condition dans ses réglages (Modifier le modèle)", identical(resultat("M5")$reglages$condition, dcond$condition))
 rc <- resultat(garder("M4", dc, mc))
 verifier("CA : contributions et cos² des lignes et des colonnes, échelles 1 à 3", isTRUE(rc$analyse) && nrow(rc$contributions$lignes) == 40 &&
            all(c("ctr_CA1", "cos2_CA1", "masse", "inertie") %in% names(rc$contributions$colonnes)) && length(rc$ordination) == 3 && inherits(json(rc), "json"))
@@ -336,7 +358,8 @@ lancer <- function(script, objets) {
   if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
 }
 cas <- list(list(id = "M1", langue = "fr", quoi = "RDA, tests par axe et par terme, sélection"), list(id = "M2", langue = "en", quoi = "RDA partielle permutée par site"),
-            list(id = "M3", langue = "fr", quoi = "RDA, partition de la variance"), list(id = "M4", langue = "en", quoi = "analyse des correspondances"))
+            list(id = "M3", langue = "fr", quoi = "RDA, partition de la variance"), list(id = "M4", langue = "en", quoi = "analyse des correspondances"),
+            list(id = "M5", langue = "en", quoi = "RDA à condition, ses lignes choisies par elle"))
 for (k in cas) {
   e <- etat$modeles[[k$id]]
   r <- ecrire_script(p, e$definition, file.path(dossier, paste0(k$id, ".R")), "moteur", m = e$modele, version = "essai", langue = k$langue)
@@ -354,6 +377,9 @@ for (k in cas) {
              (k$langue == "fr" || (any(grepl("^redundancy_analysis <- function|^correspondence_analysis <- function", texte)) && !any(grepl("^ *#(fr|en)( |$)", texte)))))
   if (!is.null(r$ecart) || !isTRUE(memes)) cat("    écart :", r$ecart, "/", utils::tail(attr(s, "messages"), 3), "\n")
 }
+texte <- readLines(file.path(dossier, "M5.R"), encoding = "UTF-8")
+verifier("RDA à condition : son script choisit ses lignes par la condition, écrite en R", any(texte == "condition <- with(data_as_text, habitat != \"marais\" & altitude > 760)") &&
+           any(texte == "rows <- ticked[condition[ticked] %in% TRUE]"))
 texte <- readLines(file.path(dossier, "M1.R"), encoding = "UTF-8")
 verifier("le script en français : la dernière ligne des tests par axe et par terme est « Résidus »",
          sum(grepl("permutations, \"Résidus\")", texte, fixed = TRUE)) == 2 && !any(grepl("\"Residual\"", texte, fixed = TRUE)))

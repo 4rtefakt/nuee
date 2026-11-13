@@ -270,6 +270,61 @@ async function principal() {
       const m = await api('ajuster', { projet: p.id, type: 'PLS', x: [uid.x1, uid.x2, uid.x3], y: [uid.y], A: 2, nom: 'Test', test: t.test });
       verifier(m.N === 45 && m.test.n === 15 && [].concat(m.test.statistiques.RMSEP)[0] > 0 && [].concat(m.reglages.test).length === 15, `N ${m.N}, test ${m.test.n}`);
     });
+    await etape('une condition (onglet Observations) : le compte, les refus, le modèle, ses réajustements, l’enregistrement', async () => {
+      const condition = 'zone != "A" & x1 > 0';
+      const t = await api('donnees', { projet: p.id });
+      const zone = t.valeurs[t.variables.indexOf('zone')];
+      const x1 = t.valeurs[t.variables.indexOf('x1')];
+      const vraie = t.uid_observations.map((u, i) => zone[i] !== 'A' && x1[i] !== null && x1[i] > 0);
+      const parmi = (exclues) => t.uid_observations.filter((u, i) => vraie[i] && !exclues.includes(u));
+      // the count under the field: the ticked observations, without the test set, where it is TRUE
+      const c = await api('condition_observations', { projet: p.id, condition, exclues: [1, 2], test: [3] });
+      verifier(c.n === parmi([1, 2, 3]).length && c.total === 57, `compte : ${JSON.stringify(c)}, attendu ${parmi([1, 2, 3]).length} sur 57`);
+      const vide = await api('condition_observations', { projet: p.id, condition: ' ', exclues: [], test: [] });
+      verifier(vide.n === 60 && vide.total === 60, `sans condition : ${JSON.stringify(vide)}`);
+      // refused, saying why, and never run
+      for (const [cond, motif] of [['zones == "A"', /Variable introuvable : zones/], ['file.create("intrus.txt")', /file\.create\(\) » n'est pas permis/],
+        ['c(TRUE, FALSE)', /une valeur par observation \(60\) ; elle en donne 2/], ['x1', /TRUE ou FALSE/], ['x1 >', /Condition illisible/]]) {
+        let refus = '';
+        try { await api('condition_observations', { projet: p.id, condition: cond }); } catch (e) { refus = e.message; }
+        verifier(motif.test(refus), `${cond} : « ${refus} »`);
+      }
+      let anglais = '';
+      try { await api('condition_observations', { projet: p.id, condition: 'system("dir") == 0' }, 'en'); } catch (e) { anglais = e.message; }
+      verifier(/isn't allowed in a condition/.test(anglais), `en anglais : « ${anglais} »`);
+      // the model takes the ticked observations where it is TRUE; its settings keep the ticks and the condition
+      const m = await api('ajuster', { projet: p.id, type: 'PLS', x, y: [uid.y], A: 2, nom: 'PLScond', exclues: [1, 2], condition });
+      const attendues = parmi([1, 2]);
+      verifier(m.N === attendues.length && JSON.stringify(m.observations.uid) === JSON.stringify(attendues), `N ${m.N}, attendu ${attendues.length}`);
+      verifier(m.reglages.condition === condition && JSON.stringify([].concat(m.reglages.exclues)) === '[1,2]', `réglages : ${JSON.stringify([m.reglages.condition, m.reglages.exclues])}`);
+      // refits keep it: a component more, the VIP variables, the selection excluded (ticks too)
+      const r1 = await api('reajuster', { modele: m.id, A: 3 });
+      const r2 = await api('reajuster', { modele: m.id, garder: ['x1', 'x2', 'x4'] });
+      const sel = m.observations.uid.slice(0, 2);
+      const r3 = await api('reajuster', { modele: m.id, exclues: sel, A: 2 });
+      verifier(r1.N === m.N && r2.N === m.N && r3.N === m.N - 2 && [r1, r2, r3].every((r) => r.reglages.condition === condition)
+        && sel.every((u) => [].concat(r3.reglages.exclues).includes(u)), `réajustés : N ${r1.N}, ${r2.N}, ${r3.N}`);
+      // a regression's AIC selection, then Fit this model: the same observations
+      const lm = await api('ajuster', { projet: p.id, type: 'LM', x: [uid.x1, uid.x2], y: [uid.y], echelle: 'none', nom: 'LMcond', condition });
+      await api('selection_aic', { modele: lm.id });
+      const choisi = await api('reajuster', { modele: lm.id, groupes_aic: ['x2'] });
+      verifier(choisi.N === lm.N && choisi.reglages.condition === condition, `Ajuster ce modèle : N ${choisi.N} (${lm.N})`);
+      // the data changed: refitted, the condition takes the new values; undone, back as it was
+      const i = t.uid_observations.findIndex((u, k) => zone[k] !== 'A' && x1[k] !== null && x1[k] <= 0 && ![1, 2].includes(u));
+      await api('modifier_valeur', { projet: p.id, observation: t.uid_observations[i], variable: uid.x1, valeur: '5' });
+      const apres = await api('ajuster', { projet: p.id, numero: m.numero });
+      await api('annuler', { projet: p.id });
+      const revenu = await api('ajuster', { projet: p.id, numero: m.numero });
+      verifier(apres.N === m.N + 1 && revenu.N === m.N, `après le changement : N ${apres.N}, annulé : ${revenu.N}`);
+      // saved with the project and its session: reopened, refitted with the condition
+      const f = path.join(dossier, 'condition.nuee');
+      await api('enregistrer', { projet: p.id, chemin: f, session: JSON.stringify({ version: 2, modeles: [{ numero: m.numero, A: 2 }] }) });
+      const lu = JSON.parse(fs.readFileSync(f, 'utf8')).models.find((d) => d.name === 'PLScond');
+      verifier(lu.condition === condition && [].concat(lu.cochees).length === 58 && [].concat(lu.observations).length === m.N, 'définition enregistrée');
+      const q = await api('ouvrir', { chemin: f });
+      const relu = await api('ajuster', { projet: q.id, numero: m.numero, A: 2 });
+      verifier(relu.N === m.N && relu.reglages.condition === condition && JSON.stringify(relu.observations.uid) === JSON.stringify(attendues), `relu : N ${relu.N}`);
+    });
     await etape('messages en anglais (X-Langue)', async () => {
       const essai = (langue) => api('ouvrir', { chemin: path.join(dossier, 'x.zzz') }, langue).then(() => '', (e) => e.message);
       verifier(/Unrecognised file format/.test(await essai('en')) && /Format de fichier non reconnu/.test(await essai(null)), await essai('en'));

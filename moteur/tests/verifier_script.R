@@ -632,6 +632,53 @@ if (requireNamespace("knitr", quietly = TRUE)) {
            any(grepl("combinaison", readLines(md, encoding = "UTF-8"))))
 }
 
+cat("Une condition (onglet Observations : condition.R)\n")
+# les lignes du modèle, celles des cochées où sa condition est vraie, écrite en R avec les noms du
+# tableau du script : une PLS (des observations décochées, une variable qualitative, lue en texte) ;
+# en anglais, un nom que la traduction du script changerait (entre accents graves) ; un modèle mixte
+# avec un jeu de test (cochées à part) et precedent() ; un arbre, dont des lignes sont laissées de
+# côté faute de valeurs ; des k-moyennes sur un identifiant et ecart_groupe() ; une séance
+r <- essayer("pls_condition", p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, observations = numeros_observations(p)[-(1:6)],
+                                               condition = 'variete %in% c("Gala", "Golden") & sucre > 11'))
+texte <- lignes_script(r)
+verifier("PLS : ses lignes, les cochées où la condition est vraie, les variables qualitatives en texte",
+         any(texte == "cochees <- 7:120") && any(texte == "donnees_texte <- lapply(donnees, function(x) if (is.factor(x)) as.character(x) else x)") &&
+           any(texte == "condition <- with(donnees_texte, variete %in% c(\"Gala\", \"Golden\") & sucre > 11)") && any(texte == "lignes <- cochees[condition[cochees] %in% TRUE]"))
+r <- essayer("pls_condition_en", p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, condition = "poids > median(poids) & verger != \"A\""), langue = "en")
+texte <- lignes_script(r)
+verifier("in English: `poids`, a name the translation would change, between backticks; the same rows",
+         any(texte == "condition <- with(data_as_text, `poids` > median(`poids`) & verger != \"A\")") && any(texte == "rows <- ticked[condition[ticked] %in% TRUE]"))
+r <- essayer_regression("lmm_condition_test_en", pr, definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
+                        test = numeros_observations(pr)[seq(3, n, by = 12)], condition = 'site != "S2" & !is.na(precedent(hauteur, annee, interaction(site, secteur)))'),
+                        langue = "en")
+texte <- lignes_script(r)
+verifier("mixed model in English: precedent() written in the script; the test set ticked apart",
+         any(grepl("^precedent <- function", texte)) && any(grepl("^shifted_value <- function", texte)) && any(grepl("^test_rows <- ", texte)) &&
+           any(grepl("^condition <- with\\(data_as_text, site != \"S2\" & !is.na\\(precedent\\(hauteur, annee, interaction\\(site, secteur\\)\\)\\)\\)$", texte)))
+dir.create(ici <- file.path(dossier, "classement_condition"))
+dt <- definir_modele(p, "TREE", x = uid(c("sucre", "fermete", "acidite")), y = uid("polyphenols"), echelle = "none", condition = 'culture == "bio" | sucre > 12')
+mt <- ajuster(p, dt)
+r <- ecrire_script(p, dt, file.path(ici, "arbre.R"), "moteur", m = mt, version = "essai")
+s <- lancer(r$script, c("elagage", "vc"))
+verifier(sprintf("arbre : les lignes de la condition, puis les %d sans polyphénols écartées ; lancé seul, le même élagage et la même validation", length(mt$exclues)),
+         is.null(r$ecart) && length(mt$exclues) > 0 && length(s) > 0 && meme(s$elagage, mt$complet$cptable) && meme(s$vc, mt$vc$prediction) &&
+           any(grepl("^lignes <- setdiff\\(lignes, ", lignes_script(r))))
+dk <- definir_modele(pr, "KMEANS", x = ur("x2", "hauteur"), options = list(k = 3), condition = 'site %in% c("S1", "S3", "S4") & ecart_groupe(hauteur, secteur) > -1')
+mk <- ajuster(pr, dk)
+r <- ecrire_script(pr, dk, file.path(ici, "kmeans.R"), "moteur", m = mk, version = "essai", langue = "en")
+s <- lancer(r$script, nom_classement(c("groupe", "r2"), "en"))
+texte <- lignes_script(r)
+verifier("k-means in English: an ID (site) and ecart_groupe() in its condition; run alone, the same clusters",
+         is.null(r$ecart) && length(s) > 0 && identical(as.numeric(s[[nom_classement("groupe", "en")]]), as.numeric(mk$groupe)) && meme(s[[nom_classement("r2", "en")]], mk$r2) &&
+           any(grepl("^  site = ", texte)) && any(grepl("^ecart_groupe <- function", texte)) && any(grepl("^moyenne_groupe <- function", texte)))
+definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A2", condition = 'site %in% c("S1", "S2")'),
+                    definir_modele(pr, "LM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", nom = "R9", condition = "group_mean(hauteur, site) > 0"))
+ms <- lapply(definitions, function(d) ajuster(pr, d))
+r <- ecrire_script_seance(pr, definitions, ms, file.path(ici, "seance.R"), "moteur", version = "essai")
+s <- lancer(r$script, c("A2", "R9"))
+verifier("une séance de deux modèles à condition (un identifiant, group_mean()) : les résultats du moteur",
+         is.null(r$ecart) && length(s) == 2 && meme(moteur(ms[[1]])$scores, s$A2$m$T) && meme(moteur_regression(ms[[2]])$coefficients, as.matrix(s$R9$coefficients[2:8])))
+
 cat("Rapports R Markdown et Quarto\n")
 for (i in seq_along(p$models)) {
   d <- p$models[[i]]

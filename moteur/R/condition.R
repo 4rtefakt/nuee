@@ -104,7 +104,7 @@ lire_condition <- function(projet, texte) {
 valeurs_condition <- function(projet, condition) {
   err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
   e <- lire_condition(projet, condition)
-  env <- environnement_formule(projet)
+  env <- environnement_formule(projet, all.names(e))  # (les seules variables qu'elle lit)
   avertit <- FALSE
   r <- tryCatch(withCallingHandlers(eval(e, envir = env), warning = function(w) {
     avertit <<- TRUE
@@ -211,8 +211,8 @@ code_condition <- function(pc, tx, quoi) {
   donnees <- if (pc$qualitatives) "donnees_texte" else "donnees"
   appel <- sprintf("with(%s, %s)", donnees, pc$texte)
   if (pc$avertit) appel <- sprintf("suppressWarnings(%s)", appel)
-  c(commentaire(c(quoi, tx("Elles sont celles que Nuée prend (les cases cochées de Nouveau modèle, leurs rangs dans le tableau) où la condition du modèle est vraie : elle est évaluée sur toutes les lignes du tableau, comme dans Nuée, et une valeur manquante compte pour fausse.",
-                           "They are those Nuée takes (the boxes ticked in New model, their rows in the table) where the model's condition is TRUE: it is evaluated on every row of the table, as in Nuée, and a missing value counts as FALSE."),
+  c(commentaire(c(quoi, tx("Les observations que Nuée prend (les cases cochées de Nouveau modèle : `cochees`, leurs rangs dans le tableau), puis celles où la condition du modèle est vraie (`lignes`) : elle est évaluée sur toutes les lignes du tableau, comme dans Nuée, et une valeur manquante compte pour fausse.",
+                           "The observations Nuée takes (the boxes ticked in New model: `ticked`, their rows in the table), then those where the model's condition is TRUE (`rows`): it is evaluated on every row of the table, as in Nuée, and a missing value counts as FALSE."),
                   if (pc$qualitatives) tx("Les variables qualitatives y sont lues en texte, comme Nuée les lit.", "The qualitative variables are read as text there, as Nuée reads them."),
                   if (pc$avertit) tx("Les avertissements de R en l'évaluant sont tus, comme dans Nuée.", "R's warnings while evaluating it are silenced, as in Nuée."))),
     if (identical(as.integer(pc$cochees), seq_len(pc$n_lignes))) "cochees <- seq_len(nrow(donnees))" else code_valeurs(morceaux_rangs(pc$cochees), "cochees <- "),

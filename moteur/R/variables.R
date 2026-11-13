@@ -339,18 +339,24 @@ variable_calculee <- function(projet, nom, formule) {
 # condition d'observations (condition.R) : chaque variable du projet par son nom (une variable
 # qualitative y vaut le nom de sa catégorie), puis chaque identifiant des observations (site,
 # secteur...) par le sien, sauf si une variable a le même nom ; une valeur par observation, dans
-# l'ordre des lignes de projet$donnees.
-environnement_formule <- function(projet) {
+# l'ordre des lignes de projet$donnees. `noms` : seulement ceux-là (ceux que lit une condition :
+# un tableau de spectres a des milliers de variables).
+environnement_formule <- function(projet, noms = NULL) {
   obs <- as.numeric(rownames(projet$donnees))
   env <- new.env(parent = globalenv())
-  for (v in Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)) {
+  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  pris <- vapply(vars, function(v) as.character(v$ids[1]), "")
+  for (v in vars) {
+    if (!is.null(noms) && !as.character(v$ids[1]) %in% noms) next
     x <- projet$donnees[, as.character(v$uid)]
     assign(as.character(v$ids[1]), if (length(v$categories)) as.character(v$categories)[x] else unname(x), envir = env)
   }
   noms_id <- as.character(projet$observation_id_names %||% character(0))
   for (k in seq_along(noms_id)[-1]) {
     n <- noms_id[k]
-    if (!nzchar(n) || startsWith(n, "$") || exists(n, envir = env, inherits = FALSE)) next
+    if (!nzchar(n) || startsWith(n, "$") || n %in% pris) next
+    pris <- c(pris, n)
+    if (!is.null(noms) && !n %in% noms) next
     ids <- identifiants_observations(projet, k, obs)
     ids[!is.na(ids) & !nzchar(trimws(ids))] <- NA
     assign(n, ids, envir = env)

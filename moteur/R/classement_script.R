@@ -59,7 +59,8 @@ code_lignes_modele <- function(projet, d, m, tab, tx, quoi) {
   pc <- plan_condition(projet, d, tab)
   lignes <- if (!is.null(pc)) {
     c(code_condition(pc, tx, tx(sprintf("Les %d observations du modèle%s.", length(rangs), pourquoi), sprintf("The %d observations of the model%s.", length(rangs), pourquoi))),
-      if (exclues) code_valeurs(morceaux_rangs(unname(tab$rangs[as.character(m$exclues)])), "lignes <- setdiff(lignes, ", ")"),
+      if (exclues) c(commentaire(tx(sprintf("Sans celles que le modèle laisse de côté (%s).", quoi[1]), sprintf("Without those the model leaves out (%s).", quoi[2]))),
+                     code_valeurs(morceaux_rangs(unname(tab$rangs[as.character(m$exclues)])), "lignes <- setdiff(lignes, ", ")")),
       "d <- donnees[lignes, ]")
   } else if (!length(test) && identical(as.integer(rangs), seq_len(nrow(tab$donnees)))) {
     c(commentaire(tx(sprintf("Les %d observations du tableau%s.", length(rangs), pourquoi), sprintf("The %d observations of the table%s.", length(rangs), pourquoi))), "d <- donnees")
