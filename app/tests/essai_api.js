@@ -205,7 +205,28 @@ async function principal() {
       const apres = (await api('projet', { projet: p.id })).revision;
       let refus = '';
       try { await api('variable_calculee', { projet: p.id, nom: 'mauvaise', formule: 'x1 *' }); } catch (err) { refus = err.message; }
-      verifier(refus && (await api('projet', { projet: p.id })).revision === apres, `un changement refusé compte une révision (${refus})`);
+      // nor a step back for Ctrl+Z (both changes above were undone: nothing is left to undo)
+      const apresRefus = await api('projet', { projet: p.id });
+      verifier(refus && apresRefus.revision === apres && !apresRefus.annulable,
+        `un changement refusé ne compte ni révision ni retour en arrière (${refus} ; ${apresRefus.annulable})`);
+    });
+    await etape('indices de diversité en Nouvelle variable (richesse, shannon, simpson, pielou)', async () => {
+      // three surveys of four species, the site before them: an ordinary one (10, 5, 0, 1), an empty
+      // one, a missing value; the columns by a range in the table's order, a list, or both
+      const lignes = [['r1', 'A', 10, 5, 0, 1], ['r2', 'A', 0, 0, 0, 0], ['r3', 'B', 3, '', 2, 1]];
+      const q = await api('coller', { texte: ['nom\tsite\tAblette\tBrochet\tGardon\tVandoise', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Poissons' });
+      await api('variable_calculee', { projet: q.id, nom: 'H', formule: 'shannon(Ablette:Vandoise)' });
+      await api('variable_calculee', { projet: q.id, nom: 'S', formule: 'richesse(Ablette, Brochet, Gardon, Vandoise)' });
+      const r = await api('variable_calculee', { projet: q.id, nom: 'D', formule: 'simpson(Ablette:Brochet, Gardon, Vandoise)' });
+      const d = await api('donnees', { projet: q.id });
+      const col = (n) => d.valeurs[d.variables.indexOf(n)];
+      const H1 = -[10, 5, 1].map((x) => x / 16).reduce((s, x) => s + x * Math.log(x), 0);
+      verifier(Math.abs(col('H')[0] - H1) < 1e-12 && col('H')[1] === 0 && col('H')[2] === null && col('S').join() === '3,0,' && Math.abs(col('D')[0] - 130 / 256) < 1e-12
+        && col('D')[1] === 0 && col('D')[2] === null && r.annulable, `indices : ${JSON.stringify([col('H'), col('S'), col('D')])}`);
+      const a = (await api('annuler', { projet: q.id })).projet;
+      let refus = '';
+      try { await api('variable_calculee', { projet: q.id, nom: 'J', formule: 'pielou(Ablette, Brochet - 6)' }); } catch (err) { refus = err.message; }
+      verifier(/: pielou\(\) : Brochet - 6 a une valeur négative \(-1\)/.test(refus) && a.variables.length === 7, `refusé : ${refus} ; annuler : ${a.variables.length} variables`);
     });
     await etape('notes, enregistrement avec séance, réouverture', async () => {
       verifier((await api('note_modele', { modele: pls.id, note: 'essai' })).note === 'essai', 'note');
@@ -269,6 +290,61 @@ async function principal() {
       verifier([].concat(t.test).length === 15, `${[].concat(t.test).length} observations en test`);
       const m = await api('ajuster', { projet: p.id, type: 'PLS', x: [uid.x1, uid.x2, uid.x3], y: [uid.y], A: 2, nom: 'Test', test: t.test });
       verifier(m.N === 45 && m.test.n === 15 && [].concat(m.test.statistiques.RMSEP)[0] > 0 && [].concat(m.reglages.test).length === 15, `N ${m.N}, test ${m.test.n}`);
+    });
+    await etape('une condition (onglet Observations) : le compte, les refus, le modèle, ses réajustements, l’enregistrement', async () => {
+      const condition = 'zone != "A" & x1 > 0';
+      const t = await api('donnees', { projet: p.id });
+      const zone = t.valeurs[t.variables.indexOf('zone')];
+      const x1 = t.valeurs[t.variables.indexOf('x1')];
+      const vraie = t.uid_observations.map((u, i) => zone[i] !== 'A' && x1[i] !== null && x1[i] > 0);
+      const parmi = (exclues) => t.uid_observations.filter((u, i) => vraie[i] && !exclues.includes(u));
+      // the count under the field: the ticked observations, without the test set, where it is TRUE
+      const c = await api('condition_observations', { projet: p.id, condition, exclues: [1, 2], test: [3] });
+      verifier(c.n === parmi([1, 2, 3]).length && c.total === 57, `compte : ${JSON.stringify(c)}, attendu ${parmi([1, 2, 3]).length} sur 57`);
+      const vide = await api('condition_observations', { projet: p.id, condition: ' ', exclues: [], test: [] });
+      verifier(vide.n === 60 && vide.total === 60, `sans condition : ${JSON.stringify(vide)}`);
+      // refused, saying why, and never run
+      for (const [cond, motif] of [['zones == "A"', /Variable introuvable : zones/], ['file.create("intrus.txt")', /file\.create\(\) » n'est pas permis/],
+        ['c(TRUE, FALSE)', /une valeur par observation \(60\) ; elle en donne 2/], ['x1', /TRUE ou FALSE/], ['x1 >', /Condition illisible/]]) {
+        let refus = '';
+        try { await api('condition_observations', { projet: p.id, condition: cond }); } catch (e) { refus = e.message; }
+        verifier(motif.test(refus), `${cond} : « ${refus} »`);
+      }
+      let anglais = '';
+      try { await api('condition_observations', { projet: p.id, condition: 'system("dir") == 0' }, 'en'); } catch (e) { anglais = e.message; }
+      verifier(/isn't allowed in a condition/.test(anglais), `en anglais : « ${anglais} »`);
+      // the model takes the ticked observations where it is TRUE; its settings keep the ticks and the condition
+      const m = await api('ajuster', { projet: p.id, type: 'PLS', x, y: [uid.y], A: 2, nom: 'PLScond', exclues: [1, 2], condition });
+      const attendues = parmi([1, 2]);
+      verifier(m.N === attendues.length && JSON.stringify(m.observations.uid) === JSON.stringify(attendues), `N ${m.N}, attendu ${attendues.length}`);
+      verifier(m.reglages.condition === condition && JSON.stringify([].concat(m.reglages.exclues)) === '[1,2]', `réglages : ${JSON.stringify([m.reglages.condition, m.reglages.exclues])}`);
+      // refits keep it: a component more, the VIP variables, the selection excluded (ticks too)
+      const r1 = await api('reajuster', { modele: m.id, A: 3 });
+      const r2 = await api('reajuster', { modele: m.id, garder: ['x1', 'x2', 'x4'] });
+      const sel = m.observations.uid.slice(0, 2);
+      const r3 = await api('reajuster', { modele: m.id, exclues: sel, A: 2 });
+      verifier(r1.N === m.N && r2.N === m.N && r3.N === m.N - 2 && [r1, r2, r3].every((r) => r.reglages.condition === condition)
+        && sel.every((u) => [].concat(r3.reglages.exclues).includes(u)), `réajustés : N ${r1.N}, ${r2.N}, ${r3.N}`);
+      // a regression's AIC selection, then Fit this model: the same observations
+      const lm = await api('ajuster', { projet: p.id, type: 'LM', x: [uid.x1, uid.x2], y: [uid.y], echelle: 'none', nom: 'LMcond', condition });
+      await api('selection_aic', { modele: lm.id });
+      const choisi = await api('reajuster', { modele: lm.id, groupes_aic: ['x2'] });
+      verifier(choisi.N === lm.N && choisi.reglages.condition === condition, `Ajuster ce modèle : N ${choisi.N} (${lm.N})`);
+      // the data changed: refitted, the condition takes the new values; undone, back as it was
+      const i = t.uid_observations.findIndex((u, k) => zone[k] !== 'A' && x1[k] !== null && x1[k] <= 0 && ![1, 2].includes(u));
+      await api('modifier_valeur', { projet: p.id, observation: t.uid_observations[i], variable: uid.x1, valeur: '5' });
+      const apres = await api('ajuster', { projet: p.id, numero: m.numero });
+      await api('annuler', { projet: p.id });
+      const revenu = await api('ajuster', { projet: p.id, numero: m.numero });
+      verifier(apres.N === m.N + 1 && revenu.N === m.N, `après le changement : N ${apres.N}, annulé : ${revenu.N}`);
+      // saved with the project and its session: reopened, refitted with the condition
+      const f = path.join(dossier, 'condition.nuee');
+      await api('enregistrer', { projet: p.id, chemin: f, session: JSON.stringify({ version: 2, modeles: [{ numero: m.numero, A: 2 }] }) });
+      const lu = JSON.parse(fs.readFileSync(f, 'utf8')).models.find((d) => d.name === 'PLScond');
+      verifier(lu.condition === condition && [].concat(lu.cochees).length === 58 && [].concat(lu.observations).length === m.N, 'définition enregistrée');
+      const q = await api('ouvrir', { chemin: f });
+      const relu = await api('ajuster', { projet: q.id, numero: m.numero, A: 2 });
+      verifier(relu.N === m.N && relu.reglages.condition === condition && JSON.stringify(relu.observations.uid) === JSON.stringify(attendues), `relu : N ${relu.N}`);
     });
     await etape('messages en anglais (X-Langue)', async () => {
       const essai = (langue) => api('ouvrir', { chemin: path.join(dossier, 'x.zzz') }, langue).then(() => '', (e) => e.message);
@@ -392,6 +468,23 @@ async function principal() {
       let refusF = '';
       try { await api('lire_formule', { projet: e.id, texte: 'note_gout ~ sucre + system("calc")', type: 'LM' }); } catch (err) { refusF = err.message; }
       verifier(/system/.test(refusF), 'une formule qui porte du code, refusée');
+      // a cross term with a qualitative variable (moteur/R/regression.R): its products by category, one
+      // line per category in Effects, a main effect leaving with it in the contributions; without the
+      // main effect of the number, one slope per category, and the formula that says so
+      const cq = await api('ajuster', { projet: e.id, type: 'LM', x: [v('sucre'), v('variete')], y: [v('note_gout')], echelle: 'none', nom: 'RQ1',
+        croises: [[v('sucre'), v('variete')]] });
+      const efq = (await api('effets', { modele: cq.id })).effets.find((x) => x.terme === 'sucre');
+      const apq = await api('apports', { modele: cq.id });
+      verifier([].concat(cq.coefficients_regression.terme).filter((x) => /^sucre\*variete\(/.test(x)).length === 3 && [].concat(cq.termes_retires).length === 2
+        && efq.par === 'variete' && [].concat(efq.niveaux).length === 4 && efq.niveaux.every((n) => Number.isFinite(n.pente) && [].concat(n.x).length === 80)
+        && [].concat(apq.apports.avec)[0] === 'sucre*variete',
+      `terme croisé avec une variable qualitative : coefficients, une droite par catégorie, l’apport d’un effet principal avec son terme croisé (${JSON.stringify(apq.apports).slice(0, 200)})`);
+      const luq = await api('lire_formule', { projet: e.id, texte: 'note_gout ~ variete + sucre:variete', type: 'LM' });
+      const cq2 = await api('ajuster', { projet: e.id, type: 'LM', x: luq.x, y: luq.y, echelle: 'none', nom: 'RQ2', croises: luq.croises });
+      const foq = await api('formule', { projet: e.id, ...cq2.reglages, type: 'LM' });
+      verifier([].concat(luq.x).length === 1 && [].concat(cq2.coefficients_regression.terme).filter((x) => /^sucre\*variete\(/.test(x)).length === 4
+        && [].concat(cq2.reglages.x).length === 1 && foq.formule === 'note_gout ~ variete + sucre:variete',
+      `sans l’effet principal du sucre : une pente par variété, et la formule réécrite (${foq.formule})`);
       const im = await api('imputer', { projet: e.id, variables: [v('sucre'), v('fermete'), v('acidite'), v('polyphenols')], k: 2 });
       verifier(im.imputation.valeurs === 11 && im.variables.find((x) => x.nom === 'polyphenols (imputée)').manquantes === 0 && im.variables.find((x) => x.nom === 'polyphenols').manquantes === 11
         && !im.variables.some((x) => x.nom === 'sucre (imputée)'),
@@ -567,6 +660,35 @@ async function principal() {
       const h = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid, lignes: v.secteur.uid, tendances: true, correction: 'holm' });
       const sans = await api('series', { projet: q.id, variable: v.densite.uid, temps: v.date.uid });
       verifier(col(h.tendances, 'p_ajuste')[0] === col(tr, 'p')[0] && sans.tendances === undefined && sans.dates === true, 'Holm sur une seule ligne testée ; sans tendances, pas de tableau');
+      verifier(col(tr, 'test').join() === 'mann_kendall,mann_kendall', `le test de chaque ligne : ${JSON.stringify(tr.test)}`);
+      // Hamed and Rao's correction: 8 years, no autocorrelation of the ranks beyond ±1.96/√8, so n/n* = 1 and the same p
+      const base = { projet: q.id, variable: v.densite.uid, temps: v.date.uid, lignes: v.secteur.uid, tendances: true };
+      const hr = await api('series', { ...base, autocorrelation: true });
+      verifier(col(hr.tendances, 'test').join() === 'hamed_rao,hamed_rao' && col(hr.tendances, 'n_n_etoile')[0] === 1 && col(hr.tendances, 'p')[0] === col(tr, 'p')[0],
+        `Hamed et Rao : ${JSON.stringify(hr.tendances)}`);
+      // the seasonal test by the month of the dates: S1 seen in May 7 years (April 2015 once: that season
+      // doesn't count), S over those years and its variance with the two 5s; S2, 3 years: no test
+      const mai = s1.filter((_, k) => k !== 4);
+      let Sm = 0;
+      for (let i = 0; i < mai.length; i += 1) for (let j = i + 1; j < mai.length; j += 1) Sm += Math.sign(mai[j] - mai[i]);
+      const varSm = (7 * 6 * 19 - 2 * 1 * 9) / 18;
+      const sa = await api('series', { ...base, saisons: 'mois' });
+      const ts = sa.tendances;
+      verifier(col(ts, 'test').join() === 'saisonnier,saisonnier' && col(ts, 'S')[0] === Sm && Math.abs(col(ts, 'var_S')[0] - varSm) < 1e-9
+        && Math.abs(col(ts, 'p')[0] - erfc((Math.abs(Sm) - 1) / Math.sqrt(varSm) / Math.SQRT2)) < 1e-6 && col(ts, 'saisons').join() === '1,1'
+        && col(ts, 'p')[1] === null && /^trop peu d'années par saison : 3 valeur/.test(col(ts, 'non_teste')[1]) && sa.saisons.uid === 'mois'
+        && sa.sans_saison === 0 && col(sa.points, 'saison').join() === '5,5,5,5,4,5,5,5,5,5,5', `Kendall saisonnier par mois : ${JSON.stringify(ts)}`);
+      // the R console's log: the trends' call on the series' points, which gives the same S when run
+      const appel = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel' && e.texte.startsWith('tendances_series(')).pop();
+      const refait = appel ? await api('console', { code: `cat(${appel.texte}$S[1])` }) : { journal: [] };
+      verifier(appel && /saisons = "mois"\)\$points, "BH"\)$/.test(appel.texte) && refait.journal.some((e) => e.type === 'sortie' && e.texte.trim() === String(Sm)),
+        `journal : ${appel && appel.texte}`);
+      // options refused: the plot stays, the trends say why (a quantitative variable for the seasons;
+      // the correction with the seasonal test is never sent by the interface, and refused by R)
+      const ref = await api('series', { ...base, saisons: v.densite.uid });
+      const ref2 = await api('series', { ...base, saisons: 'mois', autocorrelation: true });
+      verifier(ref.tendances === undefined && /^Les saisons se font par une variable qualitative/.test(ref.tendances_erreur) && col(ref.points, 'valeur').length === 11
+        && /^Le test saisonnier tient les saisons pour indépendantes/.test(ref2.tendances_erreur), `options refusées : ${ref.tendances_erreur} / ${ref2.tendances_erreur}`);
     });
     await etape('autocorrélation des résidus, rapports de vraisemblance entre modèles emboîtés', async () => {
       // 6 sites suivis 10 ans (2006 manque), un bruit autocorrélé dans chaque site (moteur/R/regression_diagnostics.R)
@@ -621,6 +743,202 @@ async function principal() {
       let refusC = '';
       try { await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'variable', variable: v.site }] } }); } catch (err) { refusC = err.message; }
       verifier(/choisissez ses effets aléatoires/.test(refusC), `d'autres groupes que ceux des effets aléatoires, refusé : « ${refusC} »`);
+    });
+    await etape('pentes aléatoires : (1 + annee | site), sa formule, ses refus, CAR1 et la sélection par AIC', async () => {
+      // 8 sites followed 11 years, each with its own trend around the mean one (moteur/R/regression.R: pentes)
+      let g = 3;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+        const effet = 2 * alea();
+        const pente = 0.4 * alea();
+        for (let an = 2001; an <= 2011; an += 1) {
+          const x = 2 * alea();
+          lignes.push([`${s}${an}`, s, an, x.toFixed(4), (1 + 0.5 * x + 0.1 * (an - 2006) + effet + pente * (an - 2006) + alea()).toFixed(4)]);
+        }
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tannee\tx\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Pentes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const aleatoires = [{ by: 'variable', variable: v.site, pentes: [v.annee] }];
+      const reglages = { projet: q.id, type: 'LMM', x: [v.x, v.annee], y: [v.y], echelle: 'none', echelles: { [v.annee]: 'Ctr' }, aleatoires };
+      const p1 = await api('ajuster', { ...reglages, nom: 'P1' });
+      const vp = p1.variances;
+      const parts = [].concat(p1.parts_variance.part);
+      verifier([].concat(vp.terme).join('|') === '(Intercept)|annee|' && [].concat(vp.composante).join('|') === 'site|site|résiduelle'
+        && Math.abs([].concat(vp.correlation)[1]) < 1 && [].concat(p1.pentes[0]).join() === 'annee' && parts.length === 2
+        && Math.abs(parts[0] + parts[1] - 1) < 1e-9 && [].concat(p1.reglages.aleatoires[0].pentes).map(Number).join() === String(v.annee)
+        && p1.qualite.conditionnel > p1.qualite.marginal, `pente aléatoire de l'année par site : ${JSON.stringify({ vp, parts: p1.parts_variance, pentes: p1.pentes })}`);
+      const fo = await api('formule', { ...reglages, croises: [], transformations: {}, decalage: null });
+      const lu = await api('lire_formule', { projet: q.id, texte: 'y ~ x + annee + (annee | site)', type: 'LM' });
+      verifier(fo.formule === 'y ~ x + annee + (1 + annee | site)' && lu.type === 'LMM' && [].concat(lu.aleatoires[0].pentes).map(Number).join() === String(v.annee),
+        `formule de la pente : ${fo.formule} ; relue : ${JSON.stringify(lu.aleatoires)}`);
+      let refusF = '';
+      try { await api('lire_formule', { projet: q.id, texte: 'y ~ x + annee + (1 | site) + (0 + annee | site)', type: 'LM' }); } catch (err) { refusF = err.message; }
+      let refusX = '';
+      try { await api('ajuster', { ...reglages, x: [v.x], nom: 'P2' }); } catch (err) { refusX = err.message; }
+      verifier(/indépendante de l'ordonnée à l'origine/.test(refusF) && /« annee » a une pente aléatoire/.test(refusX),
+        `une pente non corrélée, une pente hors des X : refusées (« ${refusF} » ; « ${refusX} »)`);
+      // the year left in its units (≈ 2006): the fit is signalled as singular, with the advice to centre it
+      const nc = await api('ajuster', { ...reglages, echelles: {}, nom: 'P3' });
+      verifier(nc.singularites && [].concat(nc.singularites.terme)[0] === 'annee' && [].concat(nc.singularites.loin)[0] === true,
+        `l'année non centrée : ajustement singulier signalé (${JSON.stringify(nc.singularites)})`);
+      const car = await api('reajuster', { modele: p1.id, car1: { temps: { by: 'variable', variable: v.annee }, groupe: [{ by: 'effets' }] } });
+      const sel = await api('selection_aic', { modele: p1.id });
+      verifier(car.phi !== null && [].concat(car.pentes[0]).join() === 'annee' && [].concat(car.variances.terme).includes('annee')
+        && sel.K === 1 && [].concat(sel.gardes).join() === 'annee' && [].concat(sel.groupes).join() === 'x',
+        `Ajuster avec CAR1 garde la pente (φ ${car.phi}) ; la sélection garde l'année : ${JSON.stringify({ gardes: sel.gardes, groupes: sel.groupes })}`);
+    });
+    await etape('catégories que le modèle n’a pas vues ; une courbe par catégorie, s(annee, by = secteur)', async () => {
+      // 4 sites followed 12 years, 3 sectors each, each sector its own shape; secteur_b: site A's S3 renamed
+      // S4 (a category of one site); secteur_site: sectors proper to each site (moteur/R/regression.R:
+      // niveaux_inconnus, par_courbes)
+      let g = 11;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const forme = { S1: (a) => Math.sin((a - 2000) / 2.5), S2: (a) => -0.15 * (a - 2006), S3: (a) => 0.02 * (a - 2006) ** 2 - 0.5 };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D']) for (const sec of ['S1', 'S2', 'S3']) for (let an = 2001; an <= 2012; an += 1) {
+        lignes.push([`${s}${sec}${an}`, s, sec, s === 'A' && sec === 'S3' ? 'S4' : sec, `${s}${sec}`, an, (3 + forme[sec](an) + 0.6 * alea()).toFixed(4)]);
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tsecteur\tsecteur_b\tsecteur_site\tannee\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Courbes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const parSite = { by: 'variable', variable: v.site };
+      const siteA = q.observations.uid.filter((_, i) => q.observations.nom[i].startsWith('A'));
+      // cross-validation by site: S4 (site A only) left without a prediction, out of Q2; sectors proper to each site: none predicted
+      const c1 = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee, v.secteur_b], y: [v.y], echelle: 'none', nom: 'K1', vc: parSite });
+      const c2 = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee, v.secteur_site], y: [v.y], echelle: 'none', nom: 'K2', vc: parSite });
+      verifier(c1.qualite.sans_categorie_vc === 12 && [].concat(c1.qualite.facteurs_vc).join() === 'secteur_b' && Number.isFinite(c1.qualite.Q2)
+        && c2.qualite.sans_categorie_vc === 144 && c2.qualite.Q2 === null && [].concat(c2.qualite.facteurs_vc).join() === 'secteur_site',
+      `validation croisée par site : ${c1.qualite.sans_categorie_vc} lignes de S4 sans prédiction ; des secteurs propres à chaque site, Q2 ${c2.qualite.Q2}`);
+      // the test set (site A): its S4 rows, a category the model hasn't seen, without a prediction, counted; Predict marks them
+      const c3 = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee, v.secteur_b], y: [v.y], echelle: 'none', nom: 'K3', test: siteA });
+      const pr3 = await api('predire', { modele: c3.id });
+      const marquees = pr3.observations.uid.filter((_, i) => pr3.observations.categorie_inconnue[i]);
+      verifier(c3.test.n === 36 && c3.test.inconnues === 12 && [].concat(c3.test.facteurs_inconnus).join() === 'secteur_b' && [].concat(c3.test.statistiques.n)[0] === 24
+        && marquees.length === 12 && marquees.every((u) => siteA.includes(u)) && pr3.observations['y prédit'].filter((x) => x === null).length === 12,
+      `jeu de test : ${c3.test.inconnues} sans prédiction sur ${c3.test.n} ; prédire : ${marquees.length} marquées`);
+      // a curve per sector: its rows in the curves table, one curve per sector in Effects, the thresholds of the sector chosen
+      const reglages = { projet: q.id, type: 'GAM', x: [v.annee, v.secteur], y: [v.y], echelle: 'none', famille: 'gaussienne', lisses: [v.annee],
+        par_courbes: { [v.annee]: v.secteur } };
+      const gc = await api('ajuster', { ...reglages, nom: 'K4' });
+      const efc = (await api('effets', { modele: gc.id })).effets.find((x) => x.terme === 'annee');
+      const se2 = await api('seuils', { modele: gc.id, terme: 'annee', categorie: 'S2' });
+      const se0 = await api('seuils', { modele: gc.id, terme: 'annee' });
+      verifier([].concat(gc.courbes.niveau).join() === 'S1,S2,S3' && [].concat(gc.courbes.par).every((x) => x === 'secteur') && [].concat(gc.courbes.edf).every(Number.isFinite)
+        && Number(gc.reglages.par_courbes[v.annee]) === v.secteur && efc.par_categorie === true && efc.courbe === true && [].concat(efc.niveaux).length === 3
+        && se2.categorie === 'S2' && se2.par === 'secteur' && [].concat(se2.x).length === 200 && se0.categorie === 'S1',
+      `une courbe par secteur : ${JSON.stringify(gc.courbes).slice(0, 300)}`);
+      const fo = await api('formule', { ...gc.reglages, projet: q.id, type: 'GAM' });
+      const lu = await api('lire_formule', { projet: q.id, texte: 'y ~ secteur + s(annee, by = secteur, k = 5)', type: 'LM' });
+      let refusX = '';
+      try { await api('ajuster', { ...reglages, x: [v.annee], nom: 'K5' }); } catch (err) { refusX = err.message; }
+      verifier(fo.formule === 'y ~ s(annee, by = secteur) + secteur' && lu.type === 'GAM' && Number(lu.par_courbes[v.annee]) === v.secteur && Number(lu.k_courbes[v.annee]) === 5
+        && /doit être aussi une variable X/.test(refusX), `formule ${fo.formule} ; relue ${JSON.stringify(lu.par_courbes)} ; sans le secteur en X : « ${refusX} »`);
+      // fitted without S2: its rows predicted by nothing, marked; the export to R redoes the model
+      const sansS2 = q.observations.uid.filter((_, i) => q.observations.nom[i].includes('S2'));
+      const gc6 = await api('ajuster', { ...reglages, nom: 'K6', exclues: sansS2 });
+      const pr6 = await api('predire', { modele: gc6.id });
+      const sc = await api('script_r', { modele: gc.id, version: 'essai', langue: 'fr', chemin: path.join(dossier, 'K4.R') });
+      verifier(pr6.observations.uid.filter((_, i) => pr6.observations.categorie_inconnue[i]).length === 48 && !sc.ecart && fs.readFileSync(sc.script, 'utf8').includes('by = '),
+        `sans S2 : ses lignes marquées ; le script R sans écart (${sc.ecart || ''})`);
+    });
+    await etape('coefficients côte à côte ; puissance pour détecter une tendance', async () => {
+      // 6 sites of 2 sectors counted from 2001 to 2010, a decline and an autocorrelated noise in each sector
+      let g = 17;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D', 'E', 'F']) {
+        const effet = alea();
+        for (const sec of ['a', 'b']) {
+          let bruit = 0;
+          for (let an = 2001; an <= 2010; an += 1) {
+            bruit = 0.4 * bruit + 0.3 * alea();
+            lignes.push([`${s}${sec}${an}`, s, sec, an, (2 * alea()).toFixed(3), (3 - 0.03 * (an - 2000) + effet + bruit).toFixed(4)]);
+          }
+        }
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tsecteur\tannee\tz\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Suivi' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const lm = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee, v.z], y: [v.y], echelle: 'none', nom: 'P1' });
+      const lmm = await api('ajuster', { projet: q.id, type: 'LMM', x: [v.annee], y: [v.y], echelle: 'none', nom: 'P2',
+        aleatoires: [{ by: 'variable', variable: v.site }], correlation: { type: 'CAR1', temps: { by: 'variable', variable: v.annee }, dans: { by: 'variable', variable: v.secteur } } });
+      // (moteur/R/coefficients_modeles.R) the rows of both tables, a cell per model, empty where it lacks the term
+      const c = await api('coefficients_modeles', { modeles: [lm.id, lmm.id], erreur: 'ic' });
+      const ligne = (x) => [].concat(c.termes).indexOf(x);
+      verifier([].concat(c.modeles).join() === 'P1,P2' && [].concat(c.termes).join() === '(Intercept),annee,z' && c.cellules.length === 3 && c.cellules[0].length === 2
+        && c.cellules[ligne('z')][1] === '' && c.p[ligne('z')][1] === null && Math.abs(c.p[ligne('annee')][0] - lm.coefficients_regression.p[1]) < 1e-12
+        && [].concat(c.statistiques).includes('φ (CAR1)') && c.copie.lignes.length === 3 + [].concat(c.statistiques).length && c.copie.entetes.length === 3
+        && /^\* p ≤ 0,05/.test([].concat(c.copie.notes)[0]), `coefficients côte à côte : ${JSON.stringify(c).slice(0, 400)}`);
+      const un = await api('coefficients_modeles', { modeles: [lmm.id], erreur: 'et' }, 'en');
+      verifier(un.cellules.length === 2 && un.cellules[1].length === 1 && /^-?\d+\.\d+ \(\d+\.\d+\)$/.test(un.cellules[1][0]) && un.entete === 'Estimate (SE)',
+        `un seul modèle, en anglais, avec l’erreur-type : ${JSON.stringify(un.cellules)}`);
+      const ex = await api('exporter_coefficients', { modeles: [lm.id, lmm.id], erreur: 'ic', chemin: path.join(dossier, 'cote.csv') });
+      verifier(ex.chemins.length === 2 && ex.chemins.every((f) => fs.existsSync(f)) && fs.readFileSync(ex.chemins[0], 'utf8').includes('P2'), 'exporter les coefficients côte à côte');
+      // (moteur/R/puissance.R) the defaults: the time named like one, a slope (Y untransformed), the data's 6 sites among the designs
+      const pu = await api('puissance_tendance', { modele: lmm.id });
+      const tab = pu.tableau;
+      verifier(pu.reglages.terme === 'annee' && pu.reglages.unite === 'pente' && [].concat(pu.reglages.unites).includes(6) && pu.plan.unites === 6 && pu.plan.annees === 10
+        && pu.plan.dans === 2 && tab.annees.length === tab.puissance.length && tab.puissance.every((x) => x >= 0 && x <= 1) && /^Avec 6 unités de « site »/.test(pu.phrase)
+        && pu.estimation.par_ajustement > 0, `puissance par défaut : ${JSON.stringify(pu).slice(0, 400)}`);
+      const pr = await api('puissance_tendance', { modele: lmm.id, terme: 'annee', unite: 'pente', tendance: -0.03, alpha: 0.05, annees: [5, 12], unites: [4, 10],
+        simulation: { annees: 8, unites: 6, n: 10 }, simuler: true });
+      const s = pr.simulation;
+      verifier(pr.tableau.annees.length === 8 * 3 && [].concat(pr.reglages.unites).join() === '4,6,10' && s.n === 10 && [].concat(s.p).length === 10
+        && s.puissance >= 0 && s.puissance <= 1 && s.analytique > 0, `réglages et simulation : ${JSON.stringify(s).slice(0, 300)}`);
+      const garde = await api('puissance_tendance', { modele: lmm.id });
+      const tm = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
+      verifier(garde.simulation && JSON.stringify(garde.simulation.p) === JSON.stringify(s.p) && garde.reglages.tendance === -0.03
+        && [].concat(tm.paragraphes).some((x) => /The power to detect a decline of 0.03 per year/.test(x)) && [].concat(tm.references).some((x) => /^Diggle/.test(x))
+        && [].concat(tm.references).some((x) => /^Johnson/.test(x)), 'gardée avec le modèle ; dans le texte des méthodes');
+      const sc = await api('script_r', { modele: lmm.id, version: 'essai', langue: 'fr', chemin: path.join(dossier, 'P2.R') });
+      verifier(!sc.ecart && fs.readFileSync(sc.script, 'utf8').includes('simuler_puissance('), 'exporter vers R : le script refait la puissance et sa simulation');
+      const glm = await api('ajuster', { projet: q.id, type: 'GLM', x: [v.annee], y: [v.y], echelle: 'none', nom: 'P3', famille: 'gamma' });
+      let refus = '';
+      try { await api('puissance_tendance', { modele: glm.id }); } catch (err) { refus = err.message; }
+      verifier(/GLM, GAM/.test(refus), `un GLM, refusé : « ${refus} »`);
+    });
+    await etape('moyennes ajustées (comme emmeans) : les moyennes, les paires, les pentes par catégorie, gardées avec le modèle', async () => {
+      // 4 sites of 3 sectors counted from 2001 to 2008, a slope per sector, a habitat per site
+      let g = 23;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const pentes = { S1: 0.1, S2: 0.3, S3: -0.1 };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D']) {
+        for (const sec of ['S1', 'S2', 'S3']) {
+          for (let an = 2001; an <= 2008; an += 1) lignes.push([`${s}${sec}${an}`, s, sec, s < 'C' ? 'H1' : 'H2', an, (3 + pentes[sec] * (an - 2000) + 0.3 * alea()).toFixed(4)]);
+        }
+      }
+      const q = await api('coller', { texte: ['nom\tsite\tsecteur\thabitat\tannee\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Moyennes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const lmm = await api('ajuster', { projet: q.id, type: 'LMM', x: [v.annee, v.secteur, v.habitat], y: [v.y], echelle: 'none', nom: 'MA1',
+        croises: [[v.annee, v.secteur]], aleatoires: [{ by: 'variable', variable: v.site }] });
+      const lm0 = await api('ajuster', { projet: q.id, type: 'LM', x: [v.annee], y: [v.y], echelle: 'none', nom: 'MA0' });
+      // (moteur/R/moyennes.R) by default: the first qualitative variable, its 3 means, their 3 pairs (Tukey), a sentence each
+      const r = await api('moyennes', { modele: lmm.id });
+      const col = (t, k) => [].concat(t[k]);
+      const ddlMoy = col(r.moyennes, 'ddl');
+      const ddlPaires = col(r.paires, 'ddl');
+      verifier([].concat(lmm.qualitatives).join() === 'secteur,habitat' && [].concat(lm0.qualitatives).length === 0 && String(r.reglages.facteur) === String(v.secteur)
+        && col(r.moyennes, 'niveau').join() === 'S1,S2,S3' && col(r.paires, 'niveau_1').join() === 'S1,S1,S2' && col(r.paires, 'p').every((p) => p >= 0 && p <= 1)
+        && ddlMoy.every((d) => d === ddlMoy[0]) && ddlPaires.every((d) => d > ddlMoy[0]) && r.ddl.methode === 'confinement' && [].concat(r.phrases).length === 3
+        && /^Moyennes ajustées de « y » par « secteur » \(modèle linéaire mixte\) : S1 − S2 = /.test(r.phrases[0]) && [].concat(r.grille.moyennees).join() === 'habitat'
+        && r.options.length === 2 && [].concat(r.options[0].pentes).map((o) => o.nom).join() === 'annee' && [].concat(r.options[1].dans).length === 0,
+      `moyennes par défaut : ${JSON.stringify({ reglages: r.reglages, moyennes: r.moyennes, ddl: r.ddl }).slice(0, 500)}`);
+      // the slope of the year in each sector, Holm, in English; then kept with the model, in its Methods text
+      const p = await api('moyennes', { modele: lmm.id, facteur: v.secteur, dans: null, pente: v.annee, ajustement: 'holm', echelle: 'reponse' }, 'en');
+      const est = col(p.moyennes, 'estimation');
+      const garde = await api('moyennes', { modele: lmm.id });
+      const tm = await api('methodes', { modele: lmm.id, langue: 'en', version: 'essai' });
+      verifier(p.mode === 'pentes' && est.every((x, i) => Math.abs(x - [0.1, 0.3, -0.1][i]) < 0.05) && col(p.paires, 'famille').every((k) => k === 3)
+        && /^Slopes of “annee” by “secteur” \(linear mixed model\): S1 − S2 = .*\(Holm, 3 pairs\)/.test(p.phrases[0])
+        && garde.mode === 'pentes' && garde.reglages.ajustement === 'holm'
+        && [].concat(tm.paragraphes).some((x) => /The slope of “annee” in each category of “secteur”/.test(x)) && [].concat(tm.references).some((x) => /^Searle/.test(x)),
+      `pentes par secteur, gardées, dans le texte des méthodes : ${JSON.stringify(est)} ${p.phrases[0]}`);
+      let refusDans = '';
+      try { await api('moyennes', { modele: lmm.id, facteur: v.secteur, dans: v.habitat }); } catch (err) { refusDans = err.message; }
+      let refusSans = '';
+      try { await api('moyennes', { modele: lm0.id }); } catch (err) { refusSans = err.message; }
+      verifier(/n'est croisée avec « secteur » dans aucun terme/.test(refusDans) && /pas de variable qualitative/.test(refusSans),
+        `refus : « ${refusDans} » ; « ${refusSans} »`);
     });
     await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
       // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the
@@ -712,6 +1030,58 @@ async function principal() {
     await etape('coller un tableau', async () => {
       const r = await api('coller', { texte: 'nom\tx\ty\r\na\t1,5\t2\r\nb\t3\t4,25\r\nc\t5\t1\r\n', nom: 'Collé' });
       verifier(r.nom === 'Collé' && r.modifie && r.variables.length === 2 && r.observations.nom[2] === 'c', `${r.variables.length} variables`);
+    });
+    await etape('ajouter des colonnes d’un tableau par une clé (une, puis deux), annuler ; résumer par groupe', async () => {
+      // deux placettes par site et par année, de 2019 à 2021, sur les sites S1 à S3 ; densité = année − 2018 + placette
+      const lignes = [];
+      for (const s of ['S1', 'S2', 'S3']) for (const an of [2019, 2020, 2021]) for (const pl of [1, 2]) lignes.push([`${s}-${an}-${pl}`, s, an, an - 2018 + pl]);
+      const q = await api('coller', { texte: ['nom\tsite\tannee\tdensite', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Placettes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      // a table of sites in a file (S4 matches no row, S3 has no row): its columns and the key proposed by name
+      const f = path.join(dossier, 'sites.csv');
+      fs.writeFileSync(f, 'Site;altitude;sol\nS2;200;argile\nS1;100;sable\nS4;400;limon\n');
+      const t = await api('table_a_joindre', { projet: q.id, chemin: f });
+      verifier(t.n === 3 && t.colonnes.nom.join() === 'Site,altitude,sol' && t.colonnes.nombres.join() === 'false,true,false'
+        && t.cles.length === 1 && t.cles[0].projet === v.site && t.cles[0].table === 'Site', `tableau lu : ${JSON.stringify(t)}`);
+      const avant = q.revision;
+      const r = await api('ajouter_colonnes', { projet: q.id, chemin: t.chemin, nom: t.nom, cles_projet: [v.site], cles_table: ['Site'], colonnes: ['altitude', 'sol'] });
+      const d = await api('donnees', { projet: q.id });
+      const alt = { S1: 100, S2: 200 };
+      verifier(r.variables.length === 5 && r.revision === avant + 1 && r.annulable === 'colonnes de sites.csv'
+        && d.valeurs[d.variables.indexOf('altitude')].every((x, i) => x === (alt[lignes[i][1]] ?? null))
+        && r.jointure.trouvees === 12 && r.jointure.sans_correspondance === 6 && r.jointure.cles_seules === 1
+        && [].concat(r.jointure.phrases)[2] === '6 observation(s) sans correspondance, aux valeurs manquantes : S3-2019-1, S3-2019-2, S3-2020-1, S3-2020-2, S3-2021-1 et 1 autre(s).',
+      `colonnes ajoutées : ${JSON.stringify(r.jointure)}`);
+      // pasted weather by site and year: two keys, proposed; a name already taken gets " (2)"
+      const c = await api('table_a_joindre', { projet: q.id, texte: 'site\tannee\tpluie\taltitude\r\nS1\t2019\t600\t1\r\nS1\t2020\t700\t2\r\nS2\t2019\t650\t3\r\n' });
+      verifier(c.colle && c.cles.map((x) => `${x.projet}=${x.table}`).join() === `${v.site}=site,${v.annee}=annee` && c.colonnes.nom_ajoute.join() === 'site (2),annee (2),pluie,altitude (2)',
+        `cellules collées : ${JSON.stringify(c)}`);
+      const r2 = await api('ajouter_colonnes', { projet: q.id, chemin: c.chemin, nom: c.nom, colle: true, cles_projet: [v.site, v.annee], cles_table: ['site', 'annee'], colonnes: ['pluie', 'altitude'] });
+      const d2 = await api('donnees', { projet: q.id });
+      const pluie = { 'S1 2019': 600, 'S1 2020': 700, 'S2 2019': 650 };
+      verifier([].concat(r2.jointure.noms).join() === 'pluie,altitude (2)' && d2.valeurs[d2.variables.indexOf('pluie')].every((x, i) => x === (pluie[`${lignes[i][1]} ${lignes[i][2]}`] ?? null)),
+        `deux clés : ${JSON.stringify(r2.jointure)}`);
+      let refus = '';
+      try { await api('ajouter_colonnes', { projet: q.id, chemin: c.chemin, cles_projet: [v.site], cles_table: ['site'], colonnes: ['pluie'] }); } catch (e) { refus = e.message; }
+      verifier(/La clé « S1 » revient 2 fois dans le tableau/.test(refus) && (await api('projet', { projet: q.id })).revision === avant + 2, `une clé qui revient : « ${refus} »`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${q.id} <- ajouter_colonnes_table(${q.id}, tableau, cles_projet = c(${v.site}, ${v.annee}), cles_table = c("site", "annee"), colonnes = c("pluie", "altitude"))`)
+        && j.includes('k <- match(paste(trimws(d$site), d$annee), paste(trimws(tableau$site), tableau$annee))') && j.includes('textes = c("site", "annee"))  # cellules collées'),
+      'journal : ajouter_colonnes_table et match()');
+      // Ctrl+Z, twice: the columns leave the project
+      await api('annuler', { projet: q.id });
+      const u = (await api('annuler', { projet: q.id })).projet;
+      verifier(u.variables.map((x) => x.nom).join() === 'site,annee,densite' && !u.annulable, `annuler : ${u.variables.map((x) => x.nom).join()}`);
+      // summarize by site: the mean and n of each site, a new project beside the first
+      const s = await api('resumer_groupes', { projet: q.id, groupes: [v.site], variables: [v.densite], statistiques: ['moyenne', 'n'] });
+      const ds = await api('donnees', { projet: s.id });
+      const moyenne = (site) => { const x = lignes.filter((l) => l[1] === site).map((l) => l[3]); return x.reduce((a, b) => a + b, 0) / x.length; };
+      verifier(s.id !== q.id && s.nom === 'Placettes par site' && s.modifie && ds.observations.join() === 'S1,S2,S3'
+        && ds.variables.join() === 'site,densite (moyenne),densite (n)' && ds.valeurs[1].every((x, i) => Math.abs(x - moyenne(['S1', 'S2', 'S3'][i])) < 1e-12)
+        && ds.valeurs[2].every((x) => x === 6) && s.resume.groupes === 3, `résumé : ${JSON.stringify(ds)}`);
+      const js = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(js.includes(`${s.id} <- resumer_par_groupe(${q.id}, ${v.site}, variables = ${v.densite}, statistiques = c("moyenne", "n"))`)
+        && js.includes('aggregate(d["densite"], d["site"], function(x) c(moyenne = mean(x, na.rm = TRUE), n = sum(!is.na(x))))'), 'journal : resumer_par_groupe et aggregate()');
     });
     await etape('importer des spectres (texte et JCAMP-DX), avec un tableau d’informations', async () => {
       const onde = Array.from({ length: 30 }, (_, k) => 1000 + 4 * k);

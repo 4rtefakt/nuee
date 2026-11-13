@@ -160,8 +160,13 @@ transformations" button applies the suggested log10 to the variables shown (see 
 statistics).
 Cross terms tab: products of two or three X variables (A × B, A × B × C), squares (A × A) and
 cubes (A × A × A); a qualitative variable enters through each of its categories, once at most.
-Each cross term has its own scaling, block and modifier, as in the Variables tab.
-Observations tab: tick / untick the model's observations, and the test set (see Test set).
+Each cross term has its own scaling, block and modifier, as in the Variables tab. In a
+regression, a factor can also be a variable without a role (listed under "Not X: no main
+effect"): it then enters only through the cross term (see Cross terms with a qualitative
+variable).
+Observations tab: tick / untick the model's observations, and the test set (see Test set);
+"Keep only the observations where..." chooses them by a condition (see Observations chosen by
+a condition).
 "Edit model" (Ctrl+M) opens this window set like an existing model (imported models
 included) and makes a new model.
 Before fitting, the application checks the data: variables or observations with more than
@@ -427,6 +432,38 @@ or the same value at every time isn't tested, and the table says why; Ctrl+C cop
 test takes the times as independent: positive autocorrelation (years that resemble each other)
 makes p too small. For a trend that accounts for it: Plots › Residual autocorrelation, then a
 mixed model with a CAR1 autocorrelation, the year as an X.
+In the table's toolbar, two options change the test. Allow for autocorrelation: Hamed and
+Rao's (1998) modified Mann–Kendall test, computed as modifiedmk::mmkh computes it: the line
+detrended by its Sen slope (over its actual times), the ranks of what remains, their
+autocorrelation at each lag (counted from one time to the next: the time after a missing year
+is one lag away), those beyond ±1.96/√n kept (the others count 0), and Var(S) multiplied by
+n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k); p and the slope's interval
+come from that variance, and the n/n* column gives the factor (1: no autocorrelation kept; a
+factor that isn't positive, from a strong negative autocorrelation, leaves the line untested).
+It needs a long series: an autocorrelation is poorly estimated from few times (Box and Jenkins,
+1976, ask for about 50), and with 15 times only one beyond ±0.51 counts; even with 60 to 90
+times the corrected test still rejects a true absence of trend too often when the
+autocorrelation is strong (Blain, 2013). It corrects each line on its own: it is no substitute
+for a mixed model with a CAR1 autocorrelation, which estimates the trend shared by the sites
+and their sectors, with the autocorrelation within each.
+Seasons: the seasonal Kendall test (Hirsch, Slack and Smith, 1982), for samples taken several
+times a year, the season given by the month of a time made of dates, or by a qualitative
+variable or an ID (season, month). The year of a value is the whole part of its time (the
+calendar year of a date); several values in a season of the same year count as one, their
+median (as some implementations do; EnvStats would keep them all, as ties in time), and a note
+says how many. In each season seen in at least 2 years: the Mann–Kendall S between its years
+and its variance with ties; S and Var(S) are summed over the seasons, taken as independent, and
+p comes from the normal approximation with the continuity correction, as trend::smk.test and
+EnvStats::kendallSeasonalTrendTest compute them. The seasonal Sen slope is the median of the
+slopes between years within each season (per year, or per time unit), its 95 % interval taken
+from Var(S) as Gilbert (1987) does (the ranks rounded, as for the Sen slope above; EnvStats
+interpolates between them); τ is EnvStats': the seasons' τ averaged, weighted by their years.
+A season seen in a single year doesn't count; a line with fewer than 4 values in the seasons
+that count, or with the same value every year in each season, isn't tested; observations
+without a season are left out of the test, and counted. The seasonal test takes the seasons as
+independent: autocorrelation from one month to the next makes p too small, and Allow for
+autocorrelation doesn't apply to it (Hirsch and Slack, 1984, give a correction, not done here).
+The Test column gives each line's test; the correction over the lines stays the same.
 
 Statistical tests
 -----------------
@@ -566,6 +603,52 @@ estimated by REML; the log-likelihood, AIC, AICc and BIC come from the ML fit, t
 that compares models with different fixed effects. Cross-validation defaults to the first
 random effect: each site is predicted by the fixed effects of the model fitted without it, as a
 site never seen.
+Random slopes: under each random effect chosen, "Random slopes by site" ticks the quantitative
+X variables whose slope changes from one site to another, most often the year: each site has
+its own trend, which varies around the model's fixed slope; it is (1 + year | site) in an R
+formula. The variable must also be an X term of the model, quantitative and on its own
+(transformed or not), not a curve: otherwise the model is refused, naming it. With nlme (a
+mixed model, or a GLM or GAM with the normal distribution and CAR1, fitted by mgcv::gamm), each
+level has nlme's general covariance matrix (random = ~ year | site; with nested levels, the
+list list(site = ~ year, sector = ~ 1)): the variance of its intercept, that of each slope and
+their correlation. A slope's standard deviation, in units of Y per unit of X, says how much the
+sites' trends differ from the mean trend: about 95 % of the sites are within ±2 standard
+deviations of the fixed slope. The correlation says whether the high sites have steeper slopes
+(above 0) or shallower ones (below); it is that of the intercept taken at x = 0. The Summary
+gives the variance and standard deviation of each intercept and each slope, and each slope's
+correlation with its level's intercept (with several slopes at one level, their correlations
+with each other are estimated but not in this table: summary(m) in the script of Export to R
+gives them). With a slope, a level's variance changes with x and its share of the random
+variance has no single value: the Summary gives each level's share of its mean variance over
+the observations, and the marginal and conditional R2 take it too, as Johnson (2014) extends
+those of Nakagawa and Schielzeth: the mean over the observations of zᵢᵀΣzᵢ, Σ the level's
+matrix and zᵢ = (1, the values of its slopes).
+Centring: a variable far from 0, such as the year (≈ 2010), puts the random intercept far from
+the data (at year 0), where its correlation with the slope is near ±1; the fit often stops
+short there, on a slope whose standard deviation is nearly 0. Nuée doesn't centre without
+saying so: the Summary flags a singular fit (a correlation beyond ±0.99, or a slope's standard
+deviation, times that of its variable over the observations, below 1 % of the residual standard
+deviation) and, when the variable is far from 0 (its mean beyond its standard deviation),
+advises centring it, scaling Ctr or UV in the Variables tab: it is the same model, which nlme
+then usually finds, the intercept taken at the variable's mean. A centred variable and a
+singular fit: the data can't estimate this slope or this correlation; compare by AIC with the
+model without it. A failed fit still reads "The model could not be fitted".
+In a GLM or GAM fitted by mgcv::gam (another distribution than the normal, or without CAR1), a
+random slope is a term s(site, year, bs = "re") (Wood, 2017): independent of the random
+intercept, with no correlation, as mgcv can't correlate them. That model depends on where x is
+0: with x centred, the random intercept is each site's level at the mean of x; the year left
+uncentred leaves little room for the slope's variance. The Summary says so. Refitted with CAR1
+(mgcv::gamm), such a model has its slopes correlated, as in nlme.
+With random slopes: cross-validation predicts a site never seen by the fixed effects; the AIC
+selection chooses only the fixed effects, and the group of a variable with a random slope stays
+in every model (a random slope goes around its variable's fixed slope); in Block contributions,
+without that variable, only its fixed slope is removed and its random slope stays (the test of
+the mean slope, with the same random effects); two models with different random slopes don't
+have the same random effects: no likelihood-ratio test between them, they compare by AIC on the
+same observations; Fit with CAR1 keeps the slopes; predictions are those of the fixed effects.
+Not covered: in nlme, a slope uncorrelated with the intercept ((0 + year | site),
+(1 | site) + (0 + year | site), ||), refused in the R formula; the random slope of a
+qualitative variable, a cross term or a curve.
 Type "Generalized linear model (GLM)" or "Additive model (GAM)" (mgcv), for a Y that isn't
 normal. Distribution of Y: Poisson for counts; negative binomial for counts that vary more than
 a Poisson allows (its θ estimated); binomial for presence-absence (0 or 1); gamma for positive
@@ -583,39 +666,63 @@ variables ticked in the Curve column of the Variables tab enter through a smooth
 spline) instead of a straight line, for an effect that rises then falls, or a threshold; the
 data decide how curved it is (its edf; 1 is a straight line). Its basis dimension k bounds how
 curved it can be: 10 at most, less when the variable has few values; type another one (3 to
-100) in the box beside the tick, as s(x, k = 5) does in R. Curves and random effects are
-estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitted by maximum
-likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns when the
-counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of freedom): its p
-values are then too small, and the negative binomial suits the counts better.
+100) in the box beside the tick, as s(x, k = 5) does in R. A curve per category: the list
+beside k offers the model's qualitative X variables ("one per sector"), as s(year, by = sector)
+does in mgcv: each sector has its own curve, each of dimension k, with its edf, test,
+concurvity, effect and thresholds. Each is centred on its category's observations (mgcv's
+identifiability constraint): the qualitative variable must stay in X, its main effect giving the
+difference in level between the categories; without it every category would have the same
+mean, and Nuée then refuses the model rather than add that term without saying so. The factor
+mgcv sees comes from the model's 0/1 category columns (its levels, the categories observed, in
+their order); a category added to the data after the model was defined has no column, hence no
+curve: its rows are left out of the model with the incomplete observations, and in a test set
+they stay without a prediction. A variable with a curve per category can't also be in a cross
+term with a qualitative variable (each category already has its curve). Curves and random
+effects are estimated by REML, and the AIC comes from an ML fit; a GLM without them is fitted
+by maximum likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns
+when the counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of
+freedom): its p values are then too small, and the negative binomial suits the counts better.
 R formula (General tab): the model written as in R, for instance
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
 log10, log1p, exp, sqrt, I(x^p), I(a * x + b), the logit log((x - a) / (b - x))), the cross
-terms (a:b; a*b for a, b and a:b; I(a^2) when a is in the model too, else the square of a), the
-curves s(x) or s(x, k = 5), the effort offset(log(x)) and the nested random intercepts
-(1 | site/sector), the widest first.
+terms (a:b; a*b for a, b and a:b; a:b without a: a enters without a main effect; I(a^2) when
+a is in the model too, else the square of a), the
+curves s(x), s(x, k = 5) and s(x, by = f) (one per category of f, which must also be a term;
+s(x, by = f, k = 5)), the effort offset(log(x)) and the nested random intercepts
+(1 | site/sector), the widest first, with their random slopes as lme4 writes them:
+(1 + year | site) or (year | site); (1 + year | site/sector), a slope at each level; one term
+per level, (1 + year | site) + (1 | site:sector).
 A curve makes the model additive, random effects make it mixed. R reads the formula without
 ever running it: anything else (another function, code) is refused with the reason, and the
 formula isn't kept, only the settings it gives.
 Views: Summary (R2, or marginal and conditional R2 for a mixed model, Nakagawa and Schielzeth;
 adjusted R2 and deviance explained for a GLM or GAM (marginal and conditional R2 when fitted by
 mgcv::gamm, the curves in the fixed part), with each curve's edf, test and concurvity (the
-share of the curve the other terms reproduce; above 0.8, in red, it is confounded with them);
-Q2 and RMSEcv; AIC; the variance of each random effect and its share; φ of the
+share of the curve the other terms reproduce; above 0.8, in red, it is confounded with them; a
+row per category for a curve per category);
+Q2 and RMSEcv; AIC; the variance of each random effect and its share (with random slopes, see
+above); φ of the
 autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
 with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
 the odds ratio),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
-95 % band and the observed values below it: a GAM's curves, straight lines otherwise; on the
+95 % band and the observed values below it: a GAM's curves, straight lines otherwise, one per
+category for a term crossed with a qualitative variable or a curve per category, with the
+categories' legend; on the
 scale of the link, log or logit, when there is one; for a curve, Thresholds: the effect and its
 slope with 95 % simultaneous bands from 2000 draws of the coefficients, the ranges where the
 slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
-nearly a straight line, as Simpson (2018) reads thresholds), Observed / predicted, Residuals
+nearly a straight line, as Simpson (2018) reads thresholds; a curve with one per category (a
+curve per category, or a curve crossed with a qualitative variable) has the thresholds of the
+category chosen in the list beside the box, over the variable's percentiles in that category),
+Observed / predicted, Residuals
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
 distance for a linear regression; the quantile residuals too for counts, presence-absence and
 positive values, below), Block contributions (AIC): each block of the Block column
-(or each variable) removed and the model refitted by ML; ΔAIC above 2 means the block clearly
+(or each variable) removed and the model refitted by ML, a main effect with the cross terms
+that contain it and the curves per category it makes (the With column names them); ΔAIC above
+2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
 Y, X, a random effect, the time or the effort are left out (the summary counts them).
 Residuals of a GLM or GAM with the Poisson, negative binomial, binomial or gamma distribution:
@@ -656,10 +763,13 @@ doesn't compare with mgcv::gam's. File › Model report can include the plot.
 Plots › AIC selection (also under each regression in the explorer): which variables to keep.
 Each combination of the model's groups of terms (the blocks of the Block column, otherwise the
 variables), from the null model to the full model, is fitted by ML on the same observations and
-ranked by AICc; a cross term or a square enters only with its main effects. Only the fixed
+ranked by AICc; a cross term or a square enters only with its main effects (a qualitative
+variable through all its categories) and the cross terms of part of its factors, a curve per
+category only with its qualitative variable's main effect. Only the fixed
 effects are chosen: the random effects, the autocorrelation, the effort and the curves'
-settings stay those of the model. Up to 8 groups (256 combinations), every combination is
-fitted (a mixed model with CAR1 on 240 rows takes about 10 s); beyond, a backward elimination
+settings stay those of the model, and the group of a variable with a random slope stays in
+every model, out of the groups to choose. Up to 8 groups (256 combinations), every combination
+is fitted (a mixed model with CAR1 on 240 rows takes about 10 s); beyond, a backward elimination
 from the full model removes, step by step, the group whose removal lowers AICc the most. The
 view suggests the best model (lowest AICc) and, when it differs, the most parsimonious within
 ΔAICc ≤ 2 (fewest parameters; Burnham and Anderson, 2002); it plots each group's importance
@@ -670,6 +780,82 @@ it a new model: the same settings with only those groups' variables (a cross ter
 factors), on the same observations, fitted as usual (REML for the estimates) and named like a
 refit (M1 (1)). Once the selection has run, the Methods text describes it, the model report can
 include it, and Export to R redoes it.
+Plots › Trend power (also under each linear regression or linear mixed model in the explorer):
+with this many sites counted every year, how many years until a trend is detected? Choose the
+time (a quantitative X, untransformed: the year), the trend to detect (a change per year in the
+units of the model's Y; with a log10 or ln response, also in % per year, converted to the slope
+log(1 + %/100) on that scale, an approximation with log10(x + 1), close only where x is large
+against 1), α (a two-sided test), the numbers of years (from, to) and the numbers of units of the
+first random effect (the sites; the data's own number is always among them). Every unit is
+counted once a year, its nested levels as in the data, their mean numbers rounded (2.75 sectors
+per site: 3); a linear regression counts observations per year. The variances are the model's
+REML estimates (random effects, residual variance, CAR1 φ), and the model's other terms stay out
+of the designs (their effects held constant). For each design, the variance of the generalized
+least squares estimator of the slope with these variances known, (X'V⁻¹X)⁻¹ with V the design's
+covariance (Diggle et al., 2002), gives the power Φ(|β|/se − z) + Φ(−|β|/se − z): power against
+the number of years, a line per number of units, the 80 % line, a sentence ready for a report
+("With 12 units of “site”, each counted every year, a decline of 3% per year in “densite” is
+detected with 80% power after 11 years"), and the table. Every unit being counted every year,
+the random intercepts change nothing in the slope's variance: the residual variance, φ, the years
+and the number of series counted decide it. A simulation checks the formula at one design (by
+default the data's own): N data sets (200 by default) drawn from the model with the trend, each
+refitted by nlme with the same structure (REML), the power being the share of slopes with p ≤ α
+(Johnson et al., 2015), with its Monte Carlo error. Its seed is fixed (the same data sets every
+time; the session's random numbers are left as they were), and the view says first how long it
+will take: the R engine fits one model at a time and does nothing else meanwhile (a simulation
+that would take more than 15 minutes, or of more than 20,000 observations per data set, is
+refused). The two may differ: the simulation estimates the variances and φ in each data set
+(from few units or years they are uncertain) and tests the slope with nlme's t, where the
+formula takes them as known and uses the normal distribution. Not covered, and refused with the
+reason: GLMs and GAMs, random slopes, a model without a quantitative X that can be the time, a
+CAR1 along a time in other units than the trend's. Once computed, the Methods text describes it,
+the model report can include it, and Export to R redoes it (the simulation with the same draws).
+Plots › Adjusted means (also under each regression that has a qualitative variable, in the
+explorer): the mean of each category of a qualitative X adjusted for the model's other terms,
+as R's emmeans package computes it (Lenth; its default conventions, without the package): the
+estimated marginal means of Searle, Speed and Milliken (1980). Choose the variable (a main
+effect or a factor of a cross term). Each mean is the model's prediction on a reference grid,
+averaged: the grid has every combination of the observed categories of the model's qualitative
+variables; each quantitative variable is at its mean over the model's observations (a
+transformed variable at the transform of its mean, as emmeans: log10 of the mean of x, not the
+mean of log10(x)), the cross terms and squares evaluated at these values (the product of the
+means), a curve (GAM) at the mean of its variable, the effort at 1 (densities, as emmeans'
+offset = 0); the mean of a category averages the grid's rows that have it, with equal weights
+over the categories of the other qualitative variables. Its standard error is √(L V Lᵀ), V the
+covariance of the coefficients (nlme's for a mixed model, mgcv's Bayesian one for a GLM or GAM,
+as emmeans), with its 95 % interval. Below, every pair of categories: the difference with its
+interval and p, adjusted by Tukey's method (the default: the studentized range for the number
+of means compared; Tukey 1953, Kramer 1956), by Holm's (the p-values; the intervals by
+Bonferroni's, as emmeans, Holm's method giving none) or unadjusted. "Within each level of"
+another qualitative variable crossed with the first (the treatment within each habitat): the
+first's categories compared within each category of the other, the adjustment within each. "For
+each category › the slope of x", for a quantitative variable crossed with it (year × sector):
+the slope of x in each category (per unit of the term, transformed if it is), the derivative of
+the predictions as emtrends takes it (a forward difference of a thousandth of x's range), and
+the pairs of slopes; for a straight line, the slopes of the Effects view. The degrees of
+freedom are those emmeans takes by default: the residual ones for a linear regression, and for
+a GLM or GAM whose scale is estimated (normal, gamma, Tweedie); nlme's containment rule for a
+mixed model (the smallest of those of the coefficients a mean or a pair involves in R's default
+coding, the first category as reference, as emmeans on R's own fit; the intercept counting for
+the number of groups of the first random effect minus one: typically, the mean of a sector has
+the number of sites minus one, a pair of sectors within sites the inner df; for a habitat that
+varies only between sites, the mean of the first habitat has the number of sites minus one, the
+others and the pairs the habitat's df, the sites minus one minus its coefficients); z
+(asymptotic) for a Poisson, binomial or negative binomial distribution, as emmeans for glm()
+and as the model's Coefficients (on an mgcv::gam object, emmeans uses the residual df whatever
+the distribution). With a log or logit link, the means are on the response scale (exp; inverse
+logit: probabilities), their intervals transformed from the link scale, and the pairs are
+ratios of means or odds ratios, tested on the link scale, as emmeans' type = "response"; the
+link scale on demand. A transformed Y (log10, ln…) stays on its scale, as the view says:
+back-transformed, a mean of logarithms is a median (a geometric mean), not a mean. A
+combination of categories that no observation has is not estimable (emmeans: nonEst): its mean
+and its pairs are left out, and named. A click on a pair in the table gives its sentence ready
+for a report (copy button); Ctrl+C copies both tables. Once computed, the Methods text
+describes it (Searle et al. 1980, Lenth's emmeans, Tukey 1953 and Kramer 1956, or Holm 1979),
+the model report can include it, and Export to R redoes it in base R (the grid, the model's
+rows L, the covariance and the degrees of freedom: the same numbers). Not covered: weights
+other than equal (emmeans' weights = "proportional"…), contrasts other than pairs (against a
+control), a quantitative variable at another value than its mean.
 Prediction › Predict observations, Predict a file: Y predicted by the fixed effects (for a
 mixed model, a group never seen), on the model's scale of Y (its transformation included), next
 to Y observed when it is known. A file's columns are matched to the model's variables by name,
@@ -684,24 +870,86 @@ with each other.
 Under the AIC table, Nested models: the likelihood-ratio test between each pair of nested
 regressions of the same AIC set, as anova(m1, m2) on ML fits. The smaller model's fixed terms
 are among the bigger one's (its columns lie within the bigger one's), with the same
-distribution, effort, random effects and autocorrelation; χ² = 2 × (logLik of the bigger −
-logLik of the smaller) on Δdf, the difference in their numbers of parameters, and its p. For
+distribution, effort, random effects (their slopes included) and autocorrelation;
+χ² = 2 × (logLik of the bigger − logLik of the smaller) on Δdf, the difference in their numbers
+of parameters, and its p. For
 linear regressions and GLMs it is the difference of their logLik (of their deviances for a
 Poisson or binomial GLM, as anova(glm1, glm2, test = "Chisq")). Random effects and
 autocorrelation aren't tested this way: a zero variance is on the boundary of its range,
 where the χ² distribution no longer holds; compare them by AIC. With curves or mgcv random
 effects, the df are edf and the test is approximate, as the table says. Every nested pair is
 listed (2000 at most); the table's search box finds those of a model.
+Prediction › Compare models › Coefficients side by side (the choice at the top of the view):
+several regressions as papers present them, a row per term and a column per model. Tick the
+project's regressions to show (all of them at first). Each cell is the estimate with its 95 %
+interval, or with its standard error, from the model's Coefficients table (its decimals those of
+two significant digits of the standard error), in red when p ≤ 0.05, empty when the model lacks
+the term. The rows are the intercept and the first model's terms, then the others' terms in
+their order: two models share a row when they have a term of the same name. Below: n, AIC and
+AICc (ML fit), R² (a linear regression), the marginal and conditional R² (a mixed model) or the
+share of the deviance explained (a GLM or GAM), the standard deviation σ of each random effect
+(and the residual one of an nlme model), CAR1's φ and each curve's edf. A model with a log or
+logit link keeps its estimates on the link's scale, as in its Coefficients view, and the note
+says so. Ctrl+C (or the copy button) puts the table on the clipboard as text and as a table,
+which Excel and Word paste as a table, with stars for p (* ≤ 0.05, ** ≤ 0.01, *** ≤ 0.001) and
+their legend; File › Export model results (Ctrl+E), from this view, writes it, with each model's
+coefficients in numbers beside it.
 File › Export: the observations (observed, fitted, predicted in cross-validation, residuals),
-the coefficients, the fit statistics, the random effects and the curves, a table each. File ›
+the coefficients, the fit statistics, the random effects (each random intercept and slope, and
+their correlation) and the curves, a table each. File ›
 Model report: the summary and the coefficients, each term's effect, each curve's thresholds,
 observed / predicted and the residuals (the quantile residuals too, for counts, presence-absence
 and positive values).
-File › Export to R: a script or report for a regression too, with lm, nlme::lme, mgcv::gam
-or mgcv::gamm: its rows and terms, the fits (REML and ML), the cross-validation by its groups,
-then the coefficients, AIC, R2, variances, curves with their concurvity and thresholds (the
-same draws as the Thresholds view), the quantile residuals (the same draws as the Residuals
-view), test set and plots, checked against Nuée's results before it is written.
+File › Export to R: a script or report for a regression too, with lm, nlme::lme, mgcv::gam or
+mgcv::gamm: its rows and terms, the fits (REML and ML; its random slopes included), the
+cross-validation by its groups, then the coefficients, AIC, R2, variances, curves with their
+concurvity and thresholds (the same draws as the Thresholds view), the quantile residuals (the
+same draws as the Residuals view), test set and plots, checked against Nuée's results before it
+is written.
+Cross terms with a qualitative variable (Cross terms tab, or a * b and a:b in the R formula): a
+qualitative variable enters a cross term through each of its categories, once at most (neither
+squared nor cubed). year × sector lets the slope of the year differ from one sector to
+another: its coefficients are, for each sector but the reference one, the difference between
+the year's slope in that sector and its slope in the reference sector, which is the
+coefficient of the year. The reference category is the one the fit leaves out (the last
+category observed), the same in the main effect and in the cross term. For a density monitored
+by sector, a coefficient of 0.2 for year*sector(S2), the year's being 0.05, reads: the density
+rises by 0.25 a year in S2, 0.2 more than in the reference sector. Without the year in X (a
+factor without a role in the Cross terms tab, or y ~ sector + sector:year), each coefficient of
+year × sector is the year's slope in that sector; without the sector in X (y ~ year +
+year:sector), the slopes differ but the sectors share one intercept. habitat × treatment: each
+coefficient is the difference between a treatment's effect (compared with the reference
+treatment) in a habitat and the same effect in the reference habitat; three variables (year ×
+sector × habitat) give differences of differences. A category's own coefficient (sector(S2)) is
+then its difference from the reference category where the terms crossed with it are 0: where
+the year is 0 (with the years in their units, year 0, far outside the data; at the mean year
+when the year is centred, Ctr or UV), in the reference habitat for habitat × treatment. The
+columns are ordered as R orders its terms, the main effects first, so that the results are
+those of lm(), nlme::lme() and mgcv with factors whose first level is Nuée's reference. A
+combination of categories no observation has (a treatment never given in a habitat) can't be
+estimated: it is left out, and the Summary names it among the terms never observed. Effects: a
+quantitative term crossed with categories has one line per category (a curve when the term is a
+GAM's curve), its slope being its coefficient plus that of its product with the category, with
+its 95 % band from the coefficients' covariance and, under the plot, each slope per unit with
+its interval. For a curve, Thresholds are those of the category chosen: the shared curve plus
+that category's slope; a curve per category (s(x, by = f), above) gives each category its own
+shape, not the same curve tilted. In the AIC selection and the contributions table, a cross
+term enters and leaves whole (all its categories), only with its main effects and its
+lower-order cross terms. The Methods text names each reference category and says what a
+category's coefficient and the cross terms' coefficients are. Prediction: a category the model
+has seen gets its own prediction; a category, or a combination of categories, it hasn't seen
+(absent from the model's observations, from the other groups in cross-validation, or unknown to
+the project in a file) gets none: the model would predict it as the reference category, or
+without its slope, and R likewise refuses a level it hasn't seen. This is the rule for every
+qualitative variable of a regression (main effects, cross terms, curves per category; LM, LMM,
+GLM, GAM, mgcv::gamm), not for the other models (PLS...). Such observations are counted and
+named: in cross-validation, the Summary gives how many stayed without a prediction and of which
+variable, Q2 and RMSEcv being computed on the others; when none is left (sectors proper to each
+site, cross-validated by site), Q2 is missing, and the Summary says the model can't be
+cross-validated by these groups with that variable as a fixed X: make it a random effect, or
+choose other cross-validation groups. The test set counts them apart from its RMSEP, bias and
+external Q2; Prediction › Predict marks them ⊘ (column Unseen category, in the exported table
+too). The Methods text and the script of Export to R do the same.
 
 Class models and the Coomans plot
 ---------------------------------
@@ -794,6 +1042,63 @@ For all three: Methods text with its references, Export, PDF or Word report, Exp
 cluster, which come with R). Compare models shows a regression tree's Q2 and RMSEcv beside
 the other models.
 
+Adding columns from another table
+---------------------------------
+Edit › Add columns from a table (or right-click on the project's data in the explorer): the
+columns of another table added to the observations by a key, as one would do in a spreadsheet:
+the habitat and altitude of each site from a table of sites, the weather of each year, or of
+each site and each year. The table: a file in any format File › Open reads (with its sheet or
+table for a workbook or an R file; a Nuée project gives its data), or cells copied from a
+spreadsheet (Paste cells).
+The key: one or more columns of the project (variables, IDs or the observation names), each
+beside the matching column of the table. The application proposes columns with the same names
+(ignoring capitals and the spaces at the ends, as Predict a file does): those with which each
+key comes once in the table and the most observations find theirs, from the table's first
+columns, as few as possible: the site for a table of sites, the site and the year for weather
+by site and year; change them as needed. Each key must come only once in the table: a key that
+comes twice is refused, named, rather than one of its rows taken at random.
+Keys are compared as numbers when the project's column is a quantitative variable: 2019 and
+2019.0 are the same year (the table's values read as numbers, as File › Open reads them).
+Otherwise they are compared as text, as written in the table and in the project, without the
+spaces at the ends, capitals counting: "S1" isn't "s1", nor "01" "1" (a key column of "01",
+"02" isn't read as numbers here); a number of the table is then written as R writes it (2019).
+A key with a missing part matches nothing.
+Columns to add: every column of the table but the key, ticked by default. A column of numbers
+gives a quantitative variable; text, an R factor or a labelled SPSS or Stata variable gives a
+qualitative one (a factor's categories in their order, otherwise the texts sorted), as when a
+table is opened. A name already taken in the project, by a variable or an ID, becomes
+"name (2)", "name (3)"...: nothing is overwritten.
+Each observation takes the values of the table's row that has its key, and the observations
+keep their order: as k <- match(key of the project, key of the table), then table[k, columns]
+(merge() would sort the rows). An observation with no such row gets missing values. The result
+says what was added and counts the observations without a match and the table's keys that
+match no observation, naming the first five of each; rows of the table without a key are
+counted too. If no observation finds its key, nothing is added, and the message shows keys of
+both sides. Edit › Undo (Ctrl+Z) removes the added columns; models already fitted don't
+change. The R console's "Application actions" shows the call, and the same computation written
+with match() on the project's data table.
+
+Summarizing by group
+--------------------
+Edit › Summarize by group (or right-click on the project's data): a new project with one row per
+group, beside the project, which doesn't change: the mean density of each sector and each year
+from several plots, before BACI or Series. The groups: one or more variables or IDs (the
+sector and the year; the site, the sector and the year). Each group becomes an observation
+named from its values ("S1 2019"); the groups come in the order of these columns (a
+qualitative variable's categories in their order, numbers in theirs), and the columns stay
+variables or IDs, as in the project. An observation without a value in one of them is left
+out, and counted.
+The quantitative variables to summarize (all but those of the groups, ticked by default) and
+the statistics, one or several, for each of them: mean (by default), sum, median, minimum,
+maximum, standard deviation (n − 1, as sd() computes it), number of values (n), in columns
+"density (mean)", "density (n)"... (named in the interface's language). Missing values are
+ignored and n counts the known values; a group with no known value has missing statistics, and
+n = 0. As aggregate(d[variables], d[groups], FUN) on the project's data table: the R console's
+"Application actions" shows it with the call.
+A qualitative variable or an ID whose known values are the same within every group (the habitat
+of a sector, the site of a sector) is kept, with that value; the others are left out, and the
+status bar names them. The new project has no file yet: save it (Ctrl+S).
+
 Editing the data, making variables
 ----------------------------------
 In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; empty =
@@ -823,6 +1128,18 @@ an ID or interaction(site, sector) for a sector within a site; the same sector t
 year is refused, naming it. growth_rate(x, year, sector) gives the growth rate log(x / x of
 the year before), missing unless both values are positive: for density dependence, the growth
 rate against previous(density, year, sector). In French: precedent, suivant and croissance.
+In a New variable formula, the diversity of each survey, over several species columns of its
+row (counts, densities, covers: numbers ≥ 0), as vegan::specnumber and vegan::diversity compute
+it: richness(...), S, the number of columns > 0; shannon(...), H′ = −Σ p ln p (natural log, p
+each species' share of the row's total); simpson(...), 1 − Σ p² (the Gini–Simpson index, vegan's
+"simpson"); pielou(...), Pielou's evenness J = H′ / ln S, missing when S ≤ 1. The columns are
+listed (shannon(Ablette, Brochet, Gardon)), or a range in the table's column order, from one
+column to another, both included (shannon(Ablette:Vandoise), as dplyr reads it), or both; a
+column named twice counts once, and any other expression counts as a column of its values. A
+survey of zeros has S = 0, H′ = 0 and a Simpson of 0 (vegan gives 1: one minus an empty sum),
+and no J; a missing value in any of the columns makes the index missing for that survey (a
+missing value isn't read as an absence); a negative value is refused, naming its variable. In
+French: richesse.
 
 File history
 ------------
@@ -898,6 +1215,47 @@ fitting, the Summary gives, for each Y:
 for a PLS-DA, the share of the test set correctly classified; for all, the number of test
 observations outside the model's domain. Observed / predicted shows them as red diamonds. The
 test set is saved with the model, and kept by Export to R and by the Methods text.
+
+Observations chosen by a condition
+----------------------------------
+New model › Observations › "Keep only the observations where...": a condition written in R like
+a New variable formula, on the variables and the observation IDs by their names (a name with
+spaces between `backticks`), for example site == "S1" & year >= 2010, !is.na(density),
+habitat %in% c("marsh", "meadow") or year != 2015. Under the field, how many of the ticked
+observations meet it ("312 of 480 observations"), or why it doesn't read: an unknown name, a
+function that isn't allowed, a result that isn't TRUE or FALSE (or 1 and 0) for each
+observation. It is evaluated on all the project's observations, as a New variable formula is:
+density > median(density, na.rm = TRUE) compares with the median of every observation, not of
+the ticked ones. The model takes the ticked observations where it is TRUE; a missing result
+(density > 5 for an observation without a density) counts as FALSE.
+The condition is saved with the model and evaluated again on the project's current data each
+time the model is fitted or refitted: reopening the project, automatic fitting, a component
+added or removed, Exclude the selection and refit, Refit with the VIP variables, the AIC
+selection's Fit this model, Fit with CAR1. After a change to the data, a refit can take other
+observations. The ticks don't change: clearing the condition brings back the observations it
+set aside. The test set keeps its own ticks: the condition doesn't apply to it. The
+observations the condition sets aside are out of the model, as unticked ones, so Predict
+observations predicts them. A model imported from a .usp file keeps its file's observations;
+Edit model on it makes a new model, which can take a condition. Two models with different
+observations are never compared by their AIC.
+The Methods text says "the 312 observations where site == "S1" & year >= 2010", the model's
+summary and report give the condition, and Export to R writes it in R with the script's own
+names for the variables: the ticked rows, the condition evaluated on every row of the table
+with with(), then the ticked rows where it is TRUE, exactly Nuée's rows (a New variable function
+it calls is written in the script).
+Allowed in a condition: comparisons, &, |, !, xor(), %in%, :, arithmetic (+ - * / ^ %% %/%),
+c(), is.na(), ifelse(), abs(), sqrt(), exp(), log(), log10(), log2(), log1p(), round(), floor(),
+ceiling(), trunc(), signif(), as.numeric(), as.character(), nchar(), substr(), substring(),
+startsWith(), endsWith(), tolower(), toupper(), trimws(), paste(), paste0(), mean(), median(),
+min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), and the New variable functions
+group_mean(), group_deviation(), previous(), following() and growth_rate() (and their French
+names). Nothing else: a condition is kept in the project file and run again at each fit, so a
+project received from someone can't run other code through it (a New variable formula, typed
+and computed once, is not kept and has no such limit). To keep that run quick and bounded, ":"
+goes only between two whole numbers (year %in% 2005:2010) and over a range of at most 100000
+values, and interaction() drops the empty combinations: a short condition can't build a huge
+vector that would tie up a fit. For a diversity index (shannon()...), make it a New variable
+first, then use that variable in the condition.
 
 Windows
 -------
@@ -975,6 +1333,7 @@ Every computation is in resources\moteur\R (R, commented in French):
   spectres.R             spectral preprocessing (SNV, MSC, detrend, baseline, Savitzky–Golay)
   fichiers_spectres.R    reading spectra (JCAMP-DX, SPC, text), joined information
   jeu_test.R             test set: prediction, RMSEP, external Q2, Kennard–Stone
+  condition.R            a model's observations chosen by a condition
   langue.R               language of the messages (traduire("français", "English"))
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fitting)
 In R: source("resources/moteur/charger.R"), then for example

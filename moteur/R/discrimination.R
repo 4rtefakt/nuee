@@ -218,9 +218,9 @@ texte_methodes_lda <- function(projet, d, m, langue = "fr", version = "") {
   g <- function(x) guillemets_texte(x, fr)
   r <- m$classification
   effectifs <- sprintf("%s (%d)", m$classes, m$effectifs)
-  p1 <- sprintf(if (fr) "L'analyse porte sur %d observations%s, réparties en %d classes de %s : %s."
-                else "The analysis uses %d observations%s, in %d classes of %s: %s.",
-                m$N, if (length(m$exclues)) sprintf(if (fr) " (%d autres laissées de côté : leur classe ou une valeur X manque)" else " (%d others left out: their class or an X value is missing)", length(m$exclues)) else "",
+  p1 <- sprintf(if (fr) "L'analyse porte sur %s%s, réparties en %d classes de %s : %s."
+                else "The analysis uses %s%s, in %d classes of %s: %s.",
+                observations_texte(m$N, d, fr), if (length(m$exclues)) sprintf(if (fr) " (%d autres laissées de côté : leur classe ou une valeur X manque)" else " (%d others left out: their class or an X value is missing)", length(m$exclues)) else "",
                 length(m$classes), g(m$classe_nom), liste_mots(effectifs, fr))
   noms <- m$colonnes
   p2 <- sprintf(if (fr) "Une analyse discriminante linéaire (Fisher, 1936) a été ajustée avec la fonction lda du paquet MASS (Venables & Ripley, 2002) sur %s, par leurs valeurs brutes%s ; les probabilités a priori des classes sont %s. Chaque observation est rangée dans la classe de plus grande probabilité a posteriori."

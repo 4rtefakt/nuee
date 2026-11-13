@@ -128,7 +128,8 @@ PLS-DA), puis prédit : RMSEP, biais, SEP et Q2 externe, ou son classement.
 loadings, biplot, réajustement avec les seules variables retenues. Statistiques des variables
 avec les transformations log proposées, histogrammes et carte des valeurs manquantes, que l'ACP
 itérative régularisée peut remplir ; nouvelles variables par des formules R, avec les moyennes
-et les écarts par groupe. Tests par variable entre deux classes (t de Welch ou de Student,
+et les écarts par groupe et des indices de diversité (richesse, Shannon, Simpson, Pielou) sur
+des colonnes d'espèces. Tests par variable entre deux classes (t de Welch ou de Student,
 Mann–Whitney) ou entre toutes (ANOVA, Kruskal–Wallis), avec la correction de
 Benjamini–Hochberg et un graphique volcan. Tests entre deux variables, choisis d'après leurs
 types, leurs conditions vérifiées : khi² ou test exact de Fisher, test t, ANOVA ou
@@ -140,16 +141,20 @@ de Friedman ; ou deux mesures des mêmes lignes (avant, après) ; variable par v
 classes appariées par une clé. Des comparaisons avant/après avec témoin (BACI) : l'écart impact
 − témoins à chaque temps, après contre avant, et le modèle mixte BACI ajusté d'un clic. Une
 matrice des corrélations avec les valeurs p corrigées. Des séries dans le temps, une ligne par
-secteur et un panneau par site, avec les tests de tendance de Mann–Kendall et les pentes de
+secteur et un panneau par site, avec les tests de tendance de Mann–Kendall (aussi le test de
+Hamed et Rao pour des séries autocorrélées, et le test de Kendall saisonnier) et les pentes de
 Sen. Des dates de relevé peuvent faire le temps.
 
 **Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
-(nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site) et une
-autocorrélation en temps continu (CAR1) ; modèles linéaires généralisés et additifs (mgcv) pour
-des comptages (Poisson, binomiale négative), la présence-absence, des valeurs positives et des
-densités avec des zéros (Tweedie), avec des effets aléatoires, un effort en décalage et des
-courbes lissées pour un effet qui monte puis descend ou un seuil (avec aussi le CAR1, par
-mgcv::gamm, pour une réponse normale) ; les coefficients et leurs intervalles, R2 marginal et
+(nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site), des pentes
+aléatoires (chaque site sa tendance) et une autocorrélation en temps continu (CAR1) ; modèles
+linéaires généralisés et additifs (mgcv) pour des comptages (Poisson, binomiale négative), la
+présence-absence, des valeurs positives et des densités avec des zéros (Tweedie), avec des
+effets aléatoires, un effort en décalage et des courbes lissées pour un effet qui monte puis
+descend ou un seuil, une par catégorie au besoin (avec aussi le CAR1, par mgcv::gamm, pour une
+réponse normale) ; des variables qualitatives dans les termes croisés (la pente de l'année par
+secteur) ; les coefficients et leurs intervalles, les moyennes ajustées et les paires de
+niveaux comme emmeans les donne, R2 marginal et
 conditionnel, les courbes d'effet, les seuils de chaque courbe (là où l'intervalle simultané de
 sa pente exclut 0) et sa concurvité, les graphiques des résidus (avec les résidus quantiles
 randomisés des comptages) et l'autocorrélation des résidus dans le temps (réajustée avec CAR1
@@ -157,10 +162,11 @@ d'un clic), la variation de l'AIC quand chaque bloc de variables est retiré, un
 l'AIC qui ajuste toutes les combinaisons des blocs et suggère un modèle à ajuster d'un clic, et
 la comparaison par l'AIC (ΔAIC, poids d'Akaike, tests du rapport de vraisemblance des modèles
 emboîtés) des régressions de la même réponse, à côté du Q2 en validation croisée de tous les
-modèles. De nouvelles variables peuvent prendre la valeur de l'année d'avant dans un secteur,
-ou le taux de croissance. Une formule R règle le modèle (R la lit sans jamais l'exécuter), et
-les régressions prédisent de nouvelles observations et des fichiers, les extrapolations
-signalées.
+modèles, avec leurs coefficients côte à côte ; la puissance pour détecter une tendance, pour un
+plan de suivi. De nouvelles variables peuvent prendre la valeur de l'année d'avant dans un
+secteur, ou le taux de croissance. Une formule R règle le modèle (R la lit sans jamais
+l'exécuter), et les régressions prédisent de nouvelles observations et des fichiers, les
+extrapolations signalées.
 
 **Ordination des communautés :** analyse de redondance (RDA) de réponses comme des abondances
 d'espèces (transformées par Hellinger, corde ou log(x + 1)) par des variables explicatives, RDA
@@ -208,7 +214,10 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   modifications des données ;
 - des notes sur chaque modèle ;
 - la modification des données et de nouvelles variables par des formules R ou des classes de
-  valeurs ;
+  valeurs ; des colonnes ajoutées d'un autre tableau par une clé, et des tableaux résumés par
+  groupe ;
+- les observations d'un modèle choisies par une condition (`site == "S1" & annee >= 2010`),
+  refaite à chaque ajustement ;
 - plusieurs fenêtres, et des vues qui se détachent sur un second écran ;
 - des graphiques mis en forme pour une publication (polices, palettes, taille) et exportés en
   PNG ou SVG ;
@@ -293,7 +302,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 0.9.6) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.7) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)

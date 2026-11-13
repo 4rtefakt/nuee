@@ -31,6 +31,7 @@ NOMS_CLASSEMENT_EN <- c(
 # de ce fichier).
 traduire_classement <- function(lignes, langue) {
   lignes <- unlist(lapply(lignes, function(l) if (grepl("\n", l, fixed = TRUE)) strsplit(l, "\n", fixed = TRUE)[[1]] else l))
+  lignes <- gsub("\r", " ", lignes)  # (par sûreté : un « \r » isolé finirait la ligne quand on source le script)
   if (!length(lignes) || !identical(langue, "en")) return(lignes)
   noms <- c(NOMS_CLASSEMENT_EN, NOMS_SCRIPT_EN)
   pd <- utils::getParseData(parse(text = lignes, keep.source = TRUE, encoding = "UTF-8"), includeText = TRUE)
@@ -47,14 +48,22 @@ nom_classement <- function(x, langue) {
   vapply(x, function(n) if (n %in% names(NOMS_CLASSEMENT_EN)) NOMS_CLASSEMENT_EN[[n]] else nom_script(n, langue), "", USE.NAMES = FALSE)
 }
 
-# Les lignes du modèle (et du jeu de test) dans le tableau du script.
-code_lignes_modele <- function(projet, m, tab, tx, quoi) {
+# Les lignes du modèle (et du jeu de test) dans le tableau du script. Un modèle à condition les
+# choisit par elle (condition.R : code_condition), puis écarte celles que le moteur a laissées de
+# côté faute de valeurs.
+code_lignes_modele <- function(projet, d, m, tab, tx, quoi) {
   rangs <- unname(tab$rangs[as.character(m$observations)])
   test <- unname(tab$rangs[as.character(m$test$observations$uid %||% numeric(0))])
   exclues <- length(m$exclues)
   pourquoi <- if (exclues) tx(sprintf(" (%d autre%s laissée%s de côté, %s)", exclues, if (exclues > 1) "s" else "", if (exclues > 1) "s" else "", quoi[1]),
                                sprintf(" (%d other%s left out, %s)", exclues, if (exclues > 1) "s" else "", quoi[2])) else ""
-  lignes <- if (!length(test) && identical(as.integer(rangs), seq_len(nrow(tab$donnees)))) {
+  pc <- plan_condition(projet, d, tab)
+  lignes <- if (!is.null(pc)) {
+    c(code_condition(pc, tx, tx(sprintf("Les %d observations du modèle%s.", length(rangs), pourquoi), sprintf("The %d observations of the model%s.", length(rangs), pourquoi))),
+      if (exclues) c(commentaire(tx(sprintf("Sans celles que le modèle laisse de côté (%s).", quoi[1]), sprintf("Without those the model leaves out (%s).", quoi[2]))),
+                     code_valeurs(morceaux_rangs(unname(tab$rangs[as.character(m$exclues)])), "lignes <- setdiff(lignes, ", ")")),
+      "d <- donnees[lignes, ]")
+  } else if (!length(test) && identical(as.integer(rangs), seq_len(nrow(tab$donnees)))) {
     c(commentaire(tx(sprintf("Les %d observations du tableau%s.", length(rangs), pourquoi), sprintf("The %d observations of the table%s.", length(rangs), pourquoi))), "d <- donnees")
   } else {
     c(commentaire(tx(sprintf("Les %d observations du modèle%s : leurs rangs dans le tableau.", length(rangs), pourquoi),
@@ -203,7 +212,7 @@ code_calcul_arbre <- function(projet, d, m, tab, langue) {
   mb <- m$controle$minbucket  # (au plus le sixième des observations : arbres.R, minimum_feuille)
   arguments <- sprintf("\"%s\", controle, %s", methode, regle)
   test <- !is.null(m$test)
-  c(code_lignes_modele(projet, m, tab, tx, c("réponse ou toutes les valeurs X manquantes", "response or all X values missing")), "",
+  c(code_lignes_modele(projet, d, m, tab, tx, c("réponse ou toutes les valeurs X manquantes", "response or all X values missing")), "",
     code_x_arbre(m, tab, tx), "X <- variables_x(d)", "",
     reponse, "",
     code_groupes_modele(m, tx), "",
@@ -374,7 +383,7 @@ code_calcul_lda <- function(projet, d, m, tab, langue) {
   tx <- function(fr, en) if (langue == "en") en else fr
   col <- tab$noms[[as.character(d$classe)]]
   priors <- code_texte(m$reglages_lda$priors)
-  c(code_lignes_modele(projet, m, tab, tx, c("classe ou une valeur X manquante", "class or an X value missing")), "",
+  c(code_lignes_modele(projet, d, m, tab, tx, c("classe ou une valeur X manquante", "class or an X value missing")), "",
     code_fonction_bloc(projet, m$termes, m$observations, tab, langue), "X <- variables_x(d)", "",
     commentaire(tx(sprintf("La classe : « %s » (ses classes présentes).", texte_sur(m$classe_nom)), sprintf("The class: “%s” (its classes present).", texte_sur(m$classe_nom)))),
     sprintf("classe <- droplevels(d[[%s]])", code_texte(col)),
@@ -494,7 +503,7 @@ code_calcul_kmeans <- function(projet, d, m, tab, langue) {
     if (!is.null(t$transform)) produit <- code_transformation(t$transform, sprintf("(%s)", produit), TRUE)
     sprintf("X <- cbind(X, %s = echelle_terme(%s, %s, %s))", code_texte(noms[k]), produit, code_texte(as.character(t$scaling$type %||% "UV")[1]), texte_exact(ponderations[k]))
   }))
-  c(code_lignes_modele(projet, m, tab, tx, c("une valeur manquante", "a value missing")), "",
+  c(code_lignes_modele(projet, d, m, tab, tx, c("une valeur manquante", "a value missing")), "",
     code_fonction_bloc(projet, termes_bruts(simples), m$observations, tab, langue), "bruts <- variables_x(d)", "",
     commentaire(tx("Chaque terme mis à l'échelle comme dans Nuée (onglet Variables : son échelle ; sa pondération : bloc et modificateur), sur les observations du modèle.",
                    "Each term scaled as in Nuée (Variables tab: its scaling; its weighting: block and modifier), over the model's observations.")),
@@ -585,7 +594,7 @@ ecrire_script_classement <- function(projet, d, chemin_script, m, donnees = "scr
   tx <- function(fr, en) if (langue == "en") en else fr
   format <- c(r = "R", rmd = "Rmd", qmd = "qmd")[[tolower(tools::file_ext(chemin_script))]]
   type <- m$type
-  tab <- tableau_script(projet)
+  tab <- tableau_script(projet, ids_condition(projet, d))  # (les identifiants que lit sa condition : condition.R)
   fichiers <- fichiers_script(chemin_script, donnees, rdata, renv, rproj, langue)
   code_donnees <- donnees_script(tab, fichiers, langue)
   piece <- switch(type,
@@ -599,7 +608,8 @@ ecrire_script_classement <- function(projet, d, chemin_script, m, donnees = "scr
     KMEANS = list(fonctions = code_fonctions_kmeans(m, tx), calcul = code_calcul_kmeans(projet, d, m, tab, langue), sortie = code_sortie_kmeans, graphiques = code_graphiques_kmeans,
                   ecart = ecart_kmeans, paquet = if (!is.null(m$silhouette)) "cluster", quoi = tx(sprintf("k-moyennes en %d groupes", m$k), sprintf("k-means in %d clusters", m$k)),
                   objets = c("resultat", "groupe", "r2", "tailles", "sil", "acp", "plan", "centres_unites", "choix", "X", "bruts")))
-  fonctions <- traduire_classement(piece$fonctions, langue)
+  fc <- plan_condition(projet, d, tab)$fonctions  # (celles de Nouvelle variable qu'appelle sa condition : condition.R)
+  fonctions <- traduire_classement(c(piece$fonctions, if (length(fc)) c("", utils::head(code_fonctions_condition(fc, tx), -1))), langue)
   calcul <- traduire_classement(piece$calcul, langue)
   e <- environnement_script(tab, fonctions, langue)
   probleme <- evaluer_script(calcul, e, avertissements = FALSE)

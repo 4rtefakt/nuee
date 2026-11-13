@@ -338,15 +338,25 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
 
 // ------------------------------------------------------------ views
 
-// The test set's line of a summary (jeu_test.R).
+// The test set's line of a summary (jeu_test.R); a regression's observations without a prediction
+// (a category the model hasn't seen: regression.R, tester_regression), counted apart.
 export function ficheTest(m) {
   if (!m.test) return null;
   return el('div', { class: 'fiche-chiffres', title: t('jeu_test_aide') },
     el('span', {}, el('small', {}, t('jeu_test')), ' ', el('b', {}, m.test.n)),
+    m.test.inconnues ? el('span', { class: 'erreur', title: t('test_sans_prediction_aide', { facteurs: [].concat(m.test.facteurs_inconnus || []).join(', ') }) },
+      el('small', {}, t('test_sans_prediction')), ' ', el('b', {}, m.test.inconnues)) : null,
     m.test.statistiques ? [].concat(m.test.statistiques.y).map((y, j) => [['RMSEP', 'RMSEP', 4], ['biais', t('biais'), 4], ['Q2ext', 'Q2ext', 3]]
       .map(([k, n, d]) => el('span', {}, el('small', {}, `${n}${[].concat(m.test.statistiques.y).length > 1 ? ` ${y}` : ''}`), ' ', el('b', {}, fmt([].concat(m.test.statistiques[k])[j], d))))) : null,
     m.test.classement ? el('span', {}, el('small', {}, t('bien_classes_test')), ' ', el('b', {}, `${fmt(100 * m.test.classement.bien_classees, 1)} %`)) : null,
     m.regression ? null : el('span', {}, el('small', {}, t('hors_domaine_court')), ' ', el('b', {}, m.test.hors_domaine)));
+}
+
+// The condition that chose the model's observations (New model › Observations, moteur/R/condition.R),
+// under its summary's figures; nothing without one.
+export function ficheCondition(m) {
+  const c = m.reglages && m.reglages.condition;
+  return c ? el('p', { class: 'note' }, t('condition_modele', { condition: c })) : null;
 }
 
 // Notes on the model, saved with its definition in the project. While typing, a redraw keeps
@@ -387,7 +397,7 @@ function rendreResume(conteneur, ctx, p) {
       pls && m.cv_anova ? Object.entries(m.cv_anova).map(([y, a]) => el('span', { title: 'CV-ANOVA' }, el('small', {}, `CV-ANOVA p ${y}`), ' ',
         el('b', {}, a.p[1] === null ? '—' : a.p[1] < 0.001 ? Number(a.p[1]).toExponential(1) : fmt(a.p[1], 3)))) : null,
       m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null),
-    ficheTest(m));
+    ficheTest(m), ficheCondition(m));
   const table = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, t('comp')), cols.map(([, n]) => el('th', { class: 'num' }, n)))),
     el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > (m.Ap || 1) ? `O${a - (m.Ap || 1)}` : (m.Ap || 1) > 1 ? `P${a}` : 'P') : a),
@@ -977,7 +987,8 @@ async function rendreDendrogramme(conteneur, ctx, p, loc) {
 // Predictions: the project's observations, one of its prediction sets, or a file (CSV or
 // Excel; its columns are matched to the model's variables by name, in R). The model's own
 // observations stay in grey behind; predictions outside the model's domain (DModX above
-// DCrit or T2 above T2Crit 95 %) are marked.
+// DCrit or T2 above T2Crit 95 %) are marked, and so are a regression's observations of a category
+// the model hasn't seen, left without a prediction (moteur/R/regression.R: categorie_inconnue).
 async function rendrePredictions(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const proj = ctx.projet(m.projet);
@@ -989,7 +1000,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   }
   const r = loc.res;
   const o = r.observations;
-  const cols = Object.keys(o).filter((k) => !['uid', 'nom', 'dans_modele', 'hors_domaine'].includes(k));
+  const cols = Object.keys(o).filter((k) => !['uid', 'nom', 'dans_modele', 'hors_domaine', 'categorie_inconnue'].includes(k));
   const haut = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
   const fichier = loc.jeu === 'fichier';
@@ -1003,8 +1014,10 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
     ctx.rafraichir();
   });
   const hors = o.hors_domaine ? o.hors_domaine.filter(Boolean).length : 0;
+  const inconnues = o.categorie_inconnue ? o.categorie_inconnue.filter(Boolean).length : 0;
   const infos = el('span', { class: 'infos' }, `${o.nom.length} ${t('obs')}`,
     hors ? ` · ${hors} ${t(m.regression ? 'extrapolations' : 'hors_domaine')}` : '',
+    inconnues ? el('span', { class: 'erreur', title: t('categorie_inconnue_aide') }, ` · ${inconnues} ${t('categories_inconnues')}`) : '',
     fichier && r.absentes && [].concat(r.absentes).length ? el('span', { class: 'erreur' }, ` · ${t('variables_absentes')} : ${[].concat(r.absentes).join(', ')}`) : '',
     // values of the file read as missing (text in a quantitative column: <0.5, nd...)
     fichier && r.note && [].concat(r.note).length ? el('span', { class: 'erreur' }, ` · ${[].concat(r.note).join(' ; ')}`) : '');
@@ -1017,8 +1030,9 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   tableau(bas, ctx, loc.table, {
     avant: [jeu], n: o.nom.length, nom: 'Table',
     colonnes: [{ cle: 'nom', titre: 'observation' }, { cle: 'dans_modele', titre: t('dans_modele') }, { cle: 'hors_domaine', titre: t('hors_domaine_court') }]
-      .concat(cols.map((k) => ({ cle: k, titre: k }))),
-    valeur: (i, k) => (k === 'dans_modele' ? (o.dans_modele[i] ? '✓' : '') : k === 'hors_domaine' ? (o.hors_domaine && o.hors_domaine[i] ? '⚠' : '') : o[k][i]),
+      .concat(inconnues ? [{ cle: 'categorie_inconnue', titre: t('categorie_inconnue_court') }] : [], cols.map((k) => ({ cle: k, titre: k }))),
+    valeur: (i, k) => (k === 'dans_modele' ? (o.dans_modele[i] ? '✓' : '') : k === 'hors_domaine' ? (o.hors_domaine && o.hors_domaine[i] ? '⚠' : '')
+      : k === 'categorie_inconnue' ? (o.categorie_inconnue[i] ? '⊘' : '') : o[k][i]),
   });
   const mo = m.observations;
   const yk = m.A > 1 ? 't2' : 'T2';
@@ -1379,6 +1393,10 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   const options = (os) => os.map((o) => [o.valeur, o.libelle]);
   const saisis = String(loc.evenements || '').split(/[;\s]+/).filter(Boolean);
   if (!['BH', 'holm'].includes(loc.correction)) loc.correction = 'BH';
+  // the trends' seasons: none, the month of a time made of dates ('mois': R refuses it for numbers,
+  // and the table says so), or a qualitative variable or an ID other than the time, lines and panels
+  const saisons = [...vars.filter((v) => v.qualitative), ...ids].filter((o) => ![loc.temps, loc.lignes, loc.panneaux].includes(o.valeur));
+  if (!loc.saisons || (loc.saisons !== 'mois' && !existe(saisons, loc.saisons))) loc.saisons = '';
   const barre = outils(
     choix(t('series_variable'), options(variables), loc.variable, (x) => { loc.variable = lire(x); ctx.rafraichir(); }),
     choix(t('series_temps'), options(temps), loc.temps, (x) => { loc.temps = lire(x); ctx.rafraichir(); }),
@@ -1392,12 +1410,15 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     el('span', { title: t('series_tendances_aide') }, case_(t('series_tendances'), !!loc.tendances, (x) => { loc.tendances = x; ctx.rafraichir(); })),
     loc.tendances ? choix(t('correction'), [['BH', t('correction_bh')], ['holm', 'Holm']], loc.correction, (x) => { loc.correction = x; ctx.rafraichir(); }) : null);
   const cache = (loc.cache ??= {});  // (the results: loc.cache isn't saved with the session)
-  const cle = JSON.stringify([loc.variable, loc.temps, loc.lignes, loc.panneaux, loc.tendances ? loc.correction : null, langueActuelle()]);
+  // (the seasonal test takes the seasons as independent: no autocorrelation correction with it)
+  const optionsTendances = loc.tendances ? { tendances: true, correction: loc.correction,
+    ...(loc.saisons ? { saisons: loc.saisons } : loc.autocorrelation ? { autocorrelation: true } : {}) } : {};
+  const cle = JSON.stringify([loc.variable, loc.temps, loc.lignes, loc.panneaux, optionsTendances, langueActuelle()]);
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
     const q = { projet: p.projet, variable: loc.variable, temps: loc.temps,
       ...(loc.lignes !== null ? { lignes: loc.lignes } : {}), ...(loc.panneaux !== null ? { panneaux: loc.panneaux } : {}),
-      ...(loc.tendances ? { tendances: true, correction: loc.correction } : {}) };
+      ...optionsTendances };
     try { cache.res = await ctx.demander('series', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
@@ -1495,31 +1516,55 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     d.n ? t('series_doubles', { n: d.n, exemple: [d.panneau, d.ligne, tps(d.temps)].filter((x) => x !== null && x !== undefined).join(' · ') }) : '',
     nonMontres ? t('series_log_note', { n: nonMontres }) : '', sel.size ? `${sel.size} ${t('selectionnees')}` : ''].filter(Boolean).join(' ');
   // the trends, under the plot: a row per line of each panel (R: tendances_series), its name marked
-  // with its colour in the plot; the times as dates, like the plot's
+  // with its colour in the plot; the times as dates, like the plot's. The table's own toolbar has
+  // the test's options: Hamed and Rao's correction for autocorrelation, or the seasons of the
+  // seasonal Kendall test (which takes them as independent: the correction is then greyed out).
+  // Options R refuses (seasons by month without dates) leave the plot: the toolbar stays, with why.
   let bas = null;
-  if (loc.tendances && r.tendances) {
-    const col = (k) => liste(r.tendances[k]);
-    const sig = (v) => String(+Number(v).toPrecision(4));
+  let noteTendances = null;
+  if (loc.tendances && (r.tendances || r.tendances_erreur)) {
+    const autocorrelation = el('span', { title: t(loc.saisons ? 'series_autocorrelation_saisons' : 'series_autocorrelation_aide') },
+      case_(t('series_autocorrelation'), !!loc.autocorrelation && !loc.saisons, (x) => { loc.autocorrelation = x; ctx.rafraichir(); }));
+    autocorrelation.querySelector('input').disabled = !!loc.saisons;
+    const optionsSaisons = [['', t('aucune')], ...(dates || loc.saisons === 'mois' ? [['mois', t('series_mois')]] : []), ...options(saisons)];
+    const avant = [autocorrelation, el('span', { title: t('series_saisons_aide') },
+      choix(t('series_saisons'), optionsSaisons, loc.saisons, (x) => { loc.saisons = x === '' || x === 'mois' ? x : lire(x); ctx.rafraichir(); }))];
     bas = el('div', { class: 'bas', style: { flex: '0 1 auto', maxHeight: '45%' } });  // (the plot first; the table scrolls)
-    tableau(bas, ctx, (loc.tableTendances ??= {}), {
-      n: col('n').length, nom: t('series_tendances'),
-      colonnes: [...(parPanneaux ? [{ cle: 'panneau', titre: r.panneaux.nom }] : []),
-        { cle: 'ligne', titre: parLignes ? r.lignes.nom : t('series_variable'), couleur: (i) => couleurs.get(`${col('panneau')[i]}\r${col('ligne')[i]}`) },
-        { cle: 'n', titre: 'n', num: true, decimales: 0 },
-        { cle: 'debut', titre: t('series_debut'), num: true, format: texteTemps }, { cle: 'fin', titre: t('series_fin'), num: true, format: texteTemps },
-        { cle: 'pente', titre: t('series_pente', { temps: dates ? t('series_an') : r.temps.nom }), num: true, format: sig },
-        { cle: 'bas', titre: t('ic_bas'), num: true, format: sig }, { cle: 'haut', titre: t('ic_haut'), num: true, format: sig },
-        { cle: 'tau', titre: 'τ', num: true, decimales: 3 }, { cle: 'S', titre: 'S', num: true, decimales: 0 },
-        { cle: 'p', titre: 'p', num: true, format: valeurP },
-        { cle: 'p_ajuste', titre: `${t('p_ajuste')} (${loc.correction === 'holm' ? 'Holm' : 'BH'})`, num: true, format: valeurP },
-        { cle: 'non_teste', titre: t('non_teste') }],
-      valeur: (i, k) => (k === 'ligne' && !parLignes ? r.variable.nom : dates && (k === 'debut' || k === 'fin') ? dateDecimale(col(k)[i]) : col(k)[i]),
-    });
+    if (r.tendances_erreur) {
+      bas.replaceChildren(outils(...avant), el('p', { class: 'erreur' }, `${t('erreur')} : ${r.tendances_erreur}`));
+    } else {
+      const col = (k) => liste(r.tendances[k]);
+      const sig = (v) => String(+Number(v).toPrecision(4));
+      const somme = (k) => col(k).reduce((s, x) => s + (x || 0), 0);
+      tableau(bas, ctx, (loc.tableTendances ??= {}), {
+        n: col('n').length, nom: t('series_tendances'), avant,
+        colonnes: [...(parPanneaux ? [{ cle: 'panneau', titre: r.panneaux.nom }] : []),
+          { cle: 'ligne', titre: parLignes ? r.lignes.nom : t('series_variable'), couleur: (i) => couleurs.get(`${col('panneau')[i]}\r${col('ligne')[i]}`) },
+          { cle: 'test', titre: t('series_test') },
+          { cle: 'n', titre: 'n', num: true, decimales: 0 },
+          ...(loc.saisons ? [{ cle: 'saisons', titre: t('series_saisons'), num: true, decimales: 0 }] : []),
+          { cle: 'debut', titre: t('series_debut'), num: true, format: texteTemps }, { cle: 'fin', titre: t('series_fin'), num: true, format: texteTemps },
+          { cle: 'pente', titre: t('series_pente', { temps: dates ? t('series_an') : r.temps.nom }), num: true, format: sig },
+          { cle: 'bas', titre: t('ic_bas'), num: true, format: sig }, { cle: 'haut', titre: t('ic_haut'), num: true, format: sig },
+          { cle: 'tau', titre: 'τ', num: true, decimales: 3 }, { cle: 'S', titre: 'S', num: true, decimales: 0 },
+          ...(loc.autocorrelation && !loc.saisons ? [{ cle: 'n_n_etoile', titre: 'n/n*', num: true, format: sig }] : []),
+          { cle: 'p', titre: 'p', num: true, format: valeurP },
+          { cle: 'p_ajuste', titre: `${t('p_ajuste')} (${loc.correction === 'holm' ? 'Holm' : 'BH'})`, num: true, format: valeurP },
+          { cle: 'non_teste', titre: t('non_teste') }],
+        valeur: (i, k) => (k === 'ligne' && !parLignes ? r.variable.nom : k === 'test' ? t(`series_test_${col(k)[i]}`)
+          : dates && (k === 'debut' || k === 'fin') ? dateDecimale(col(k)[i]) : col(k)[i]),
+      });
+      // what the test did, and what it left out: observations without a season, several values in a
+      // season of one year (their median)
+      noteTendances = [t(loc.saisons ? 'series_saisons_note' : loc.autocorrelation ? 'series_autocorrelation_note' : 'series_tendances_note'),
+        r.sans_saison ? t('series_sans_saison', { n: r.sans_saison }) : '',
+        loc.saisons && somme('medianes') ? t('series_medianes', { n: somme('medianes') }) : ''].filter(Boolean).join(' ');
+    }
   }
   // many panels: a taller plot, which scrolls
   const graphe = el('div', { class: 'graphe', ...(R > 3 ? { style: { height: `${R * 190 + 90}px`, flex: 'none' } } : {}) });
   conteneur.replaceChildren(barre, el('p', { class: 'note' }, notes), R > 3 ? el('div', { class: 'defile' }, graphe) : graphe,
-    ...(bas ? [bas, el('p', { class: 'note' }, t('series_tendances_note'))] : []));
+    ...(bas ? [bas] : []), ...(noteTendances ? [el('p', { class: 'note' }, noteTendances)] : []));
   tracer(ctx, graphe, traces.concat(moyennes), lay);
   brancherSelection(graphe, ctx, p.projet);
 }
@@ -2330,38 +2375,73 @@ function rendreResumeRegression(conteneur, ctx, m) {
       chiffre('Q2', q.Q2), chiffre(`RMSEE ${y}`, m.RMSEE[y], 4), chiffre(`RMSEcv ${y}`, q.RMSEcv, 4)),
     el('div', { class: 'fiche-chiffres', title: t('aic_aide') },
       chiffre('AIC', q.AIC, 1), chiffre('AICc', q.AICc, 1), chiffre('BIC', q.BIC, 1), chiffre('logLik', q.logLik, 2), chiffre(t('parametres'), q.parametres, 0)),
-    ficheTest(m));
+    ficheTest(m), ficheCondition(m));
   const v = m.variances;
   const variances = v ? [].concat(v.variance) : [];
   const total = variances.reduce((a, b) => a + b, 0);
+  // (with random slopes, a row per term of each level, and each slope's correlation with its level's
+  // intercept, nlme; each level's share then comes in a note, notesPentes: its terms have none)
+  const avecPentes = !!v && v.terme !== undefined;
+  const correlations = avecPentes && [].concat(v.correlation).some((r) => r !== null && r !== undefined);
   // (the share of each variance: only with the residual one, nlme)
-  const parts = v && [].concat(v.composante).length > [].concat(m.niveaux || []).length;
+  const parts = v && !avecPentes && [].concat(v.composante).length > [].concat(m.niveaux || []).length;
   const table = v ? el('table', { class: 'tableau compact' },
-    el('thead', {}, el('tr', {}, [t('effet_aleatoire'), t('variance'), t('ecart_type'), parts ? t('part') : null].filter(Boolean)
-      .map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
-    el('tbody', {}, [].concat(v.composante).map((c, i) => el('tr', {}, el('td', {}, c), el('td', { class: 'num' }, fmt(variances[i], 4)),
-      el('td', { class: 'num' }, fmt(Math.sqrt(variances[i]), 4)), parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`) : null)))) : null;
+    el('thead', {}, el('tr', {}, el('th', {}, t('effet_aleatoire')), avecPentes ? el('th', {}, t('terme')) : null,
+      [t('variance'), t('ecart_type')].map((h) => el('th', { class: 'num' }, h)),
+      correlations ? el('th', { class: 'num', title: t('correlation_ordonnee_aide') }, t('correlation_ordonnee')) : null,
+      parts ? el('th', { class: 'num' }, t('part')) : null)),
+    el('tbody', {}, [].concat(v.composante).map((c, i) => el('tr', {}, el('td', {}, c), avecPentes ? el('td', {}, [].concat(v.terme)[i]) : null,
+      el('td', { class: 'num' }, fmt(variances[i], 4)), el('td', { class: 'num' }, fmt(Math.sqrt(variances[i]), 4)),
+      correlations ? el('td', { class: 'num', title: t('correlation_ordonnee_aide') }, fmt([].concat(v.correlation)[i], 3)) : null,
+      parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`) : null)))) : null;
   const cb = m.courbes;
-  // (with each curve's concurvity: in red above 0.8, a curve confounded with the other terms)
+  // (with each curve's concurvity: in red above 0.8, a curve confounded with the other terms; a curve
+  // per category, s(x, by = f): a row per category, named in its own column)
   const concurvite = cb && cb.concurvite !== undefined;
+  const categories = cb && cb.niveau !== undefined;
   const courbes = cb ? el('table', { class: 'tableau compact' },
-    el('thead', {}, el('tr', {}, [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'].map((h, j) => el('th', { class: j ? 'num' : '' }, h)),
+    el('thead', {}, el('tr', {}, el('th', {}, t('courbe')), categories ? el('th', { title: t('courbe_categorie_aide') }, t('categorie')) : null,
+      ['edf', t('ddl'), t('statistique'), 'p'].map((h) => el('th', { class: 'num' }, h)),
       concurvite ? el('th', { class: 'num', title: t('concurvite_aide') }, t('concurvite')) : null)),
-    el('tbody', {}, [].concat(cb.terme).map((n, i) => el('tr', {}, el('td', {}, n), el('td', { class: 'num' }, fmt([].concat(cb.edf)[i], 2)),
+    el('tbody', {}, [].concat(cb.terme).map((n, i) => el('tr', {}, el('td', {}, n),
+      categories ? el('td', {}, [].concat(cb.niveau)[i] === null ? '' : `${[].concat(cb.par)[i]} ${[].concat(cb.niveau)[i]}`) : null,
+      el('td', { class: 'num' }, fmt([].concat(cb.edf)[i], 2)),
       el('td', { class: 'num' }, fmt([].concat(cb.ref_ddl)[i], 2)), el('td', { class: 'num' }, fmt([].concat(cb.statistique)[i], 2)),
       el('td', { class: 'num' + ([].concat(cb.p)[i] <= 0.05 ? ' alerte' : '') }, valeurP([].concat(cb.p)[i])),
       concurvite ? el('td', { class: 'num' + ([].concat(cb.concurvite)[i] > 0.8 ? ' erreur' : ''), title: t('concurvite_aide') }, fmt([].concat(cb.concurvite)[i], 2)) : null)))) : null;
-  const retires = [].concat(m.termes_retires || []);
   // (a GLM without curves or random effects: plain maximum likelihood)
   const textes = [m.gamm ? t('gamm_note') : mixte ? t('regression_note_mixte') : ['GLM', 'GAM'].includes(m.type) ? t(cb || v ? 'generalise_note' : 'generalise_note_mv') : t('regression_note'),
+    ...notesPentes(m),
     notePhi(m),
-    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : '',
+    ...notesTermesRetires(m),
     q.echecs_vc ? t('echecs_vc', { n: q.echecs_vc }) : '',
+    noteSansCategorie(m),
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
     m.K ? indiceSelectionAIC(ctx, m) : ''].filter(Boolean);
   const notes = notesModele(conteneur, ctx, m);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, courbes, table, textes.map((x) => el('p', { class: 'note' }, x))));
   notes.retrouver();
+}
+
+// The cross-validation's observations left without a prediction (regression.R: niveaux_inconnus):
+// their category, or combination of categories, was missing from the other groups. With none
+// predicted, Q2 is missing: the model can't be cross-validated by these groups with that factor as
+// a fixed X.
+export function noteSansCategorie(m) {
+  const q = m.qualite || {};
+  if (!q.sans_categorie_vc) return '';
+  const facteurs = [].concat(q.facteurs_vc || []).join(', ');
+  return q.Q2 === null || q.Q2 === undefined ? t('sans_categorie_vc_toutes', { facteurs, groupes: m.vc_par || t('ces_groupes') })
+    : t('sans_categorie_vc', { n: q.sans_categorie_vc, facteurs });
+}
+
+// The terms a regression's fit left out, in words (regression.R: termes_retires, termes_absents):
+// the redundant or constant ones (a qualitative variable's reference category, its products in a
+// cross term), then the categories or combinations of categories no observation has.
+export function notesTermesRetires(m) {
+  const absents = [].concat(m.termes_absents || []);
+  const retires = [].concat(m.termes_retires || []).filter((x) => !absents.includes(x));
+  return [retires.length ? t('termes_retires', { termes: retires.join(', ') }) : '', absents.length ? t('termes_absents', { termes: absents.join(', ') }) : ''];
 }
 
 // The Summary's pointer to the AIC selection: its words, with the view's name as a link to it.
@@ -2383,11 +2463,10 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
   const pv = col('p');
   const graphe = el('div', { class: 'graphe' });
   const table = el('div', { class: 'bas' });
-  const retires = [].concat(m.termes_retires || []);
   const multiplicatif = ['log', 'logit'].includes(m.lien);
   conteneur.replaceChildren(el('p', { class: 'note' }, [t('coefficients_regression_note', { y: m.noms_y[0] }),
     m.lien && m.lien !== 'identity' ? t(multiplicatif ? `coefficients_lien_${m.lien}` : 'coefficients_lien', { lien: m.lien }) : '',
-    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : ''].filter(Boolean).join(' ')), graphe, table);
+    ...notesTermesRetires(m)].filter(Boolean).join(' ')), graphe, table);
   const idx = termes.map((_, i) => i).filter((i) => termes[i] !== '(Intercept)');
   tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => est[i]),
     error_x: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: '#888', thickness: 1.5 },
@@ -2417,6 +2496,38 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
 const PENTE = { hausse: '#2a9d8f', baisse: '#d1495b' };
 const nombreSeuil = (v) => fmt(v, Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2);
 const plagesSeuils = (pl) => [].concat((pl && pl.sens) || []).map((sens, i) => ({ sens, de: [].concat(pl.de)[i], a: [].concat(pl.a)[i] }));
+// A model's random slopes in words (moteur/R/regression.R): what their variance and correlation
+// say; for an mgcv model (not mgcv::gamm), that they are independent of the intercept; each level's
+// share of the random variance (parts_variance, Johnson 2014); and the signs of a singular fit
+// (singularites_pentes), with what centring the variable does when it is far from 0.
+export function notesPentes(m) {
+  if (!m.pentes || ![].concat(m.pentes).some((p) => [].concat(p ?? []).length)) return [];
+  const mgcvSeul = ['GLM', 'GAM'].includes(m.type) && !m.gamm;
+  const notes = [t('pentes_note')];
+  if (mgcvSeul) notes.push(t('pentes_independantes'));
+  const pv = m.parts_variance;
+  if (pv) notes.push(t('pentes_parts', { parts: [].concat(pv.composante).map((c, i) => `${c} ${fmt(100 * [].concat(pv.part)[i], 1)} %`).join(', ') }));
+  const s = m.singularites;
+  if (s) {
+    const col = (k) => [].concat(s[k]);
+    const loin = new Map();
+    col('terme').forEach((terme, i) => {
+      const groupe = col('niveau')[i];
+      const avec = col('avec')[i];
+      notes.push(col('type')[i] === 'correlation'
+        ? t('singulier_correlation', { groupe, terme, r: fmt(col('valeur')[i], 3), avec: avec === '(Intercept)' ? t('ordonnee_origine') : t('pente_de', { terme: avec }) })
+        : t('singulier_ecart_type', { terme, groupe, et: Number(col('valeur')[i]).toPrecision(2) }));
+      loin.set(terme, col('loin')[i] ? i : (loin.get(terme) ?? -1));
+    });
+    // (what to do, once per slope: centre it when it is far from 0, otherwise compare without it)
+    for (const [terme, i] of loin) {
+      notes.push(i >= 0 ? t(mgcvSeul ? 'singulier_loin_mgcv' : 'singulier_loin', { terme, moyenne: nombreSeuil(col('moyenne')[i]), et: nombreSeuil(col('ecart_type_x')[i]) })
+        : t('singulier_centre'));
+    }
+  }
+  return notes;
+}
+
 // A model's CAR1 autocorrelation: φ along its time, within each group (moteur/R/regression.R:
 // the "within each" level, or else the last random effect).
 export function notePhi(m) {
@@ -2433,7 +2544,8 @@ export function resumeSeuils(s) {
 }
 
 // The curve and its slope, one above the other, with their 95 % simultaneous bands; the ranges
-// where the slope's band excludes 0 shaded (rising, falling).
+// where the slope's band excludes 0 shaded (rising, falling). A category's curve (s.categorie) is
+// named in the title, and its observed values along the axis are those of the category.
 function tracerSeuils(ctx, graphe, m, e, s, lien) {
   const c = couleursTheme();
   const bandeGrise = (xs, bas, haut, axe) => ({ type: 'scatter', mode: 'lines', x: xs.concat([...xs].reverse()), y: bas.concat([...haut].reverse()), yaxis: axe,
@@ -2452,7 +2564,7 @@ function tracerSeuils(ctx, graphe, m, e, s, lien) {
     bandeGrise(xp, [].concat(s.pente_bas), [].concat(s.pente_haut), 'y2'),
     { type: 'scatter', mode: 'lines', x: xp, y: [].concat(s.pente), yaxis: 'y2', line: { color: c.texte, width: 1.5 }, name: t('pente'),
       hovertemplate: `${e.terme} = %{x:.3f}<br>${t('pente')} = %{y:.4g}<extra></extra>` }],
-  { title: { text: `${m.nom} · ${t('seuils')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
+  { title: { text: `${m.nom} · ${t('seuils')} · ${e.terme}${s.categorie ? ` · ${s.par} ${s.categorie}` : ''}` }, showlegend: false, dragmode: 'zoom',
     xaxis: { title: { text: e.terme }, anchor: 'y2' },
     yaxis: { domain: [0.4, 1], title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
     yaxis2: { domain: [0, 0.3], title: { text: t('pente') } },
@@ -2476,20 +2588,33 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   const e = effets.find((x) => x.terme === loc.terme);
   const graphe = el('div', { class: 'graphe' });
   const lien = cache.res.lien || 'identity';
-  // a curve's thresholds (regression.R: seuils_courbe): computed on demand, kept per term
+  // (a term crossed with categories: one line, or curve, per category, regression.R: effets_par_niveau;
+  // a curve per category, s(x, by = f): effets_par_courbe)
+  const niveaux = e.niveaux ? [].concat(e.niveaux) : null;
+  // a curve's thresholds (regression.R: seuils_courbe): computed on demand, kept per term and category;
+  // a curve with one per category has those of the category chosen (loc.categorie)
   const avecSeuils = e.courbe && !!loc.seuils;
+  const categories = e.courbe && niveaux ? niveaux.map((n) => n.niveau) : [];
+  if (categories.length && !categories.includes(loc.categorie)) loc.categorie = categories[0];
+  const categorie = categories.length ? loc.categorie : '';
+  const cleSeuils = `${e.terme}\r${categorie}`;
   const seuils = (cache.seuils ??= {});
-  if (avecSeuils && !seuils[e.terme]) {
+  if (avecSeuils && !seuils[cleSeuils]) {
     conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
-    seuils[e.terme] = await ctx.demander('seuils', { modele: m.id, terme: e.terme });
+    seuils[cleSeuils] = await ctx.demander('seuils', { modele: m.id, terme: e.terme, ...(categorie ? { categorie } : {}) });
   }
-  const s = avecSeuils ? seuils[e.terme] : null;
+  const s = avecSeuils ? seuils[cleSeuils] : null;
+  const valeursLien = { par: e.par, terme: e.terme, lien: lien === 'identity' ? '' : t('effets_lien', { lien }) };
+  const note = !niveaux ? t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien })
+    : t(e.par_categorie ? 'effets_note_par_categorie' : e.courbe ? 'effets_note_niveaux_courbe' : 'effets_note_niveaux', valeursLien);
   conteneur.replaceChildren(outils(choix(t('terme'), effets.map((x) => [x.terme, x.courbe ? `${x.terme} (${t('courbe').toLowerCase()})` : x.terme]), loc.terme,
     (v) => { loc.terme = v; ctx.rafraichir(); }),
     e.courbe ? el('label', { class: 'champ', title: t('seuils_aide') }, el('input', { type: 'checkbox', checked: avecSeuils,
       onchange: (ev) => { loc.seuils = ev.target.checked; ctx.rafraichir(); } }), t('seuils')) : null,
-    el('span', { class: 'infos' }, s ? resumeSeuils(s) : t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien }))), graphe);
+    avecSeuils && categories.length ? choix(e.par, categories.map((c) => [c, c]), categorie, (v) => { loc.categorie = v; ctx.rafraichir(); }) : null,
+    el('span', { class: 'infos' }, s ? resumeSeuils(s) : note)), graphe);
   if (s) { tracerSeuils(ctx, graphe, m, e, s, lien); return; }
+  if (niveaux) { tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien); return; }
   const x = [].concat(e.x);
   const c = couleursTheme();
   const valeurs = [].concat(e.valeurs);
@@ -2504,6 +2629,35 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   { title: { text: `${m.nom} · ${t('effets')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
     xaxis: { title: { text: e.terme } }, yaxis: { title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
     shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
+}
+
+// A term crossed with categories (regression.R: effets_par_niveau): each category's line (or
+// curve) with its 95 % band, in its colour, over the values of that category, a legend by
+// category, all the observed values along the axis; under the plot, each line's slope per unit
+// of the term with its 95 % interval.
+const translucide = (couleur, a) => `rgba(${[1, 3, 5].map((i) => parseInt(couleur.slice(i, i + 2), 16)).join(', ')}, ${a})`;
+function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien) {
+  const c = couleursTheme();
+  const valeurs = [].concat(e.valeurs);
+  const basMin = Math.min(...niveaux.flatMap((n) => [].concat(n.bas)));
+  tracer(ctx, graphe, niveaux.flatMap((n, k) => {
+    const x = [].concat(n.x);
+    const couleur = PALETTE[k % PALETTE.length];
+    return [
+      { type: 'scatter', mode: 'lines', x: x.concat([...x].reverse()), y: [].concat(n.bas).concat([...[].concat(n.haut)].reverse()), fill: 'toself',
+        fillcolor: translucide(couleur, 0.16), line: { width: 0 }, hoverinfo: 'skip', legendgroup: n.niveau, showlegend: false, name: n.niveau },
+      { type: 'scatter', mode: 'lines', x, y: [].concat(n.effet), line: { color: couleur, width: 2 }, name: n.niveau, legendgroup: n.niveau,
+        hovertemplate: `${n.niveau}<br>${e.terme} = %{x:.3f}<br>${t('effet')} = %{y:.3f}<extra></extra>` }];
+  }).concat([{ type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux },
+    hoverinfo: 'skip', name: t('observations'), showlegend: false }]),
+  { title: { text: `${m.nom} · ${t('effets')} · ${e.terme} × ${e.par}` }, showlegend: true, dragmode: 'zoom',
+    xaxis: { title: { text: e.terme } }, yaxis: { title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
+    shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
+  if (e.courbe) return;
+  conteneur.append(el('div', { class: 'bas' }, el('table', { class: 'tableau compact' },
+    el('thead', {}, el('tr', {}, [e.par, t('pente_niveau', { terme: e.terme }), t('ic_bas'), t('ic_haut')].map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
+    el('tbody', {}, niveaux.map((n) => el('tr', {}, el('td', {}, n.niveau),
+      ...[n.pente, n.pente_bas, n.pente_haut].map((v) => el('td', { class: 'num' }, fmt(v, 4)))))))));
 }
 
 // The residuals of a regression: against the fitted values, on a normal Q-Q plot, by group of
@@ -2682,7 +2836,9 @@ async function rendreApports(conteneur, ctx, p, loc) {
   const groupes = col('groupe');
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
-  conteneur.replaceChildren(el('p', { class: 'note' }, t('apports_note')), graphe, bas);
+  // (a term with a random slope: removed, its fixed slope only goes, regression.R: retrait_groupes)
+  const pentes = [...new Set([].concat(m.pentes ?? []).flatMap((p) => [].concat(p ?? [])))];
+  conteneur.replaceChildren(el('p', { class: 'note' }, [t('apports_note'), pentes.length ? t('apports_pentes', { termes: pentes.join(', ') }) : ''].join(' ')), graphe, bas);
   if (!groupes.length) { graphe.replaceChildren(el('p', { class: 'infos' }, t('apports_vide'))); return; }
   const delta = col('delta_aic');
   const ordre = groupes.map((_, i) => i).sort((i, j) => (delta[j] ?? -Infinity) - (delta[i] ?? -Infinity));
@@ -2697,7 +2853,8 @@ async function rendreApports(conteneur, ctx, p, loc) {
   tableau(bas, ctx, loc.table, {
     n: groupes.length, nom: 'AIC',
     colonnes: [{ cle: 'groupe', titre: t('groupe') }, num('termes', t('nb_termes'), 0), num('delta_aic', 'ΔAIC', 2, undefined, (i) => delta[i] > 2),
-      num('khi2', 'χ²', 2), num('ddl', t('ddl'), 0), num('p', 'p', 4, valeurP)],
+      num('khi2', 'χ²', 2), num('ddl', t('ddl'), 0), num('p', 'p', 4, valeurP)]
+      .concat(col('avec').some(Boolean) ? [{ cle: 'avec', titre: t('apports_avec') }] : []),  // (a main effect leaves with its cross terms)
     valeur: (i, k) => col(k)[i],
   });
 }
@@ -2727,11 +2884,13 @@ async function rendreSelectionAIC(conteneur, ctx, p, loc) {
     cache.id = m.id;
   }
   const s = cache.res;
-  if (!s.K) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('selection_aic_vide'))); return; }
+  // (the groups that carry a random slope stay in every model: regression.R, groupes_gardes)
+  const gardes = [].concat(s.gardes ?? []);
+  if (!s.K) { conteneur.replaceChildren(el('p', { class: 'infos' }, [t('selection_aic_vide'), gardes.length ? t('selection_aic_gardes', { groupes: gardes.join(', ') }) : ''].join(' '))); return; }
   const col = (k) => [].concat(s.modeles[k] ?? []);
   const [aicc, delta, poids, k] = [col('AICc'), col('delta'), col('poids'), col('k')];
   const groupes = [].concat(s.groupes);
-  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || t('aic_modele_nul');
+  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || (gardes.length ? t('aic_modele_gardes', { groupes: gardes.join(' + ') }) : t('aic_modele_nul'));
   const ajuster = (i) => ctx.reajuster(m.id, { groupes_aic: groupesSelectionAIC(s, i) });
   const bouton = (i) => el('button', { onclick: () => ajuster(i), title: `${t('ajuster_ce_modele_aide')}\n${nom(i)}` }, icone('file-plus'), t('ajuster_ce_modele'));
   const suggestion = (titre, i, details) => el('div', { class: 'ligne' }, el('span', {}, el('small', {}, titre), ' ', el('b', {}, nom(i))),
@@ -2743,6 +2902,7 @@ async function rendreSelectionAIC(conteneur, ctx, p, loc) {
       : el('p', { class: 'note' }, t('selection_aic_aussi')));
   const retires = s.chemin ? [].concat(s.chemin.retire).slice(1) : [];
   const note = [t('selection_aic_note', { n: s.N }),
+    gardes.length ? t('selection_aic_gardes', { groupes: gardes.join(', ') }) : '',
     s.methode === 'toutes' ? t('selection_aic_toutes', { n: aicc.length })
       : t('selection_aic_descendante', { k: s.K, limite: s.limite, n: aicc.length, retires: retires.length ? retires.join(', ') : t('aic_aucun_retire') }),
     s.echecs ? t('selection_aic_echecs', { n: s.echecs }) : ''].filter(Boolean).join(' ');
@@ -2779,16 +2939,289 @@ async function rendreSelectionAIC(conteneur, ctx, p, loc) {
   });
 }
 
+// Trend power (moteur/R/puissance.R: puissance_tendance), for a linear or linear mixed model with a
+// time among its quantitative X: the power to detect a trend (a slope per unit of time in Y's units,
+// or a % per year when Y is in log10 or ln) for designs of so many years and units (the first random
+// effect's, every unit counted every year), from the variance of the GLS estimator of the slope with
+// the model's REML variances taken as known; power against the years, a line per number of units,
+// the 80 % line, the sentence for a report and the table. A simulation at one design checks it: N
+// data sets refitted by nlme, the time it takes said first (the R engine fits one model at a time).
+// Computed in R and kept with the model, whose Methods text, report and R script then include it;
+// loc.reglages holds the settings changed here (null: those of the engine's last computation).
+const ALPHAS_PUISSANCE = [0.01, 0.05, 0.1];
+const dureeTexte = (s) => (s < 60 ? `${Math.max(1, Math.round(s))} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`);
+// a number of units of the first random effect, as the plot's legend says it ("12 site"); an LM's, observations per year
+export const libelleUnites = (r, u) => (r.niveaux && [].concat(r.niveaux).length ? `${u} ${[].concat(r.niveaux)[0]}` : `${u} ${t('puissance_obs_an_court')}`);
+// what the computation took from the model and the data, in words (the view's note, the report)
+export function notesPuissance(r) {
+  const niveaux = [].concat(r.niveaux || []);
+  const pl = r.plan;
+  const v = r.variances;
+  const dedans = [[].concat(pl.emboites).map((k, j) => t('puissance_plan_niveau', { k, niveau: niveaux[j + 1], moyenne: fmt([].concat(pl.moyennes)[j], 2) })),
+    pl.dans > 0 && r.dans ? [t('puissance_plan_niveau', { k: pl.dans, niveau: r.dans, moyenne: fmt(pl.moyenne_dans, 2) })] : [],
+    pl.repetitions > 1 ? [t('puissance_plan_repetitions', { k: pl.repetitions, moyenne: fmt(pl.moyenne_repetitions, 2) })] : []].flat();
+  const plan = niveaux.length ? t('puissance_plan', { niveau: niveaux[0], n: pl.unites, annees: pl.annees, dedans: dedans.length ? t('puissance_plan_dedans', { liste: dedans.join(', ') }) : '' })
+    : t('puissance_plan_lm', { n: pl.unites, annees: pl.annees, N: pl.N });
+  const variances = t('puissance_variances', { s2: fmt(v.sigma2, 4), phi: v.phi !== null && v.phi !== undefined ? t('puissance_phi', { phi: fmt(v.phi, 3) }) : '',
+    aleatoires: niveaux.length ? t('puissance_aleatoires', { liste: [].concat(v.niveaux).map((x, j) => `${niveaux[j]} ${fmt(x, 4)}`).join(', ') }) : '' });
+  const pente = t('puissance_pente', { pente: Number(r.pente.toPrecision(3)), y: r.y_modele,
+    modele: r.pente_modele === null || r.pente_modele === undefined ? '—' : Number(r.pente_modele.toPrecision(3)) });
+  return [t('puissance_note'), plan, variances, pente, r.approchee ? t('puissance_approchee', { y: r.reponse }) : '',
+    [].concat(r.croises || []).length ? t('puissance_croises', { termes: [].concat(r.croises).join(', ') }) : ''].filter(Boolean).join(' ');
+}
+// the simulation's result against the formula's, and why they may differ
+export const resultatSimulation = (r, s) => `${t('puissance_resultat', { p: fmt(s.puissance, 2), e: fmt(s.erreur_mc, 2), annees: s.annees, unites: libelleUnites(r, s.unites),
+  n: s.n, a: fmt(s.analytique, 2), duree: dureeTexte(s.duree), echecs: s.echecs ? t('puissance_echecs', { n: s.echecs }) : '' })} ${t('puissance_ecart')}`;
+async function rendrePuissance(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  const cache = ((loc.cache ??= {}).puissance ??= {});  // (loc.cache isn't saved with the session)
+  const cle = JSON.stringify([m.id, loc.reglages || null, langueActuelle()]);
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    try {
+      cache.res = await ctx.demander('puissance_tendance', { modele: m.id, ...(loc.reglages || {}) });
+      cache.dernier = cache.res;
+      cache.erreur = null;
+    } catch (e) { cache.res = null; cache.erreur = e.message; }
+    cache.cle = cle;
+  }
+  // (settings refused: the last result's controls, to correct them, and the reason)
+  const r = cache.res || (loc.reglages && cache.dernier);
+  if (!r) { conteneur.replaceChildren(el('p', { class: 'erreur' }, cache.erreur)); return; }
+  const g = { ...r.reglages, ...(loc.reglages || {}) };
+  const changer = (k, v) => { loc.reglages = { ...g, [k]: v }; ctx.rafraichir(); };
+  const nombreSaisi = (valeur, largeur, f) => el('input', { type: 'number', value: valeur, style: `width:${largeur}`, onchange: (e) => f(Number(e.target.value)) });
+  const niveaux = [].concat(r.niveaux || []);
+  const annees = [].concat(g.annees);
+  const sim = g.simulation;
+  const barre = outils(choix(t('puissance_temps'), [].concat(r.termes).map((n) => [n, n]), g.terme, (v) => changer('terme', v)),
+    el('label', { class: 'champ' }, el('span', {}, t('puissance_tendance')), nombreSaisi(g.tendance, '6em', (v) => changer('tendance', v)),
+      // (another unit: the engine's default trend for it, -3 % or 3 % of Y's mean)
+      r.pourcent_possible ? el('select', { onchange: (e) => { loc.reglages = { ...g, unite: e.target.value, tendance: undefined }; ctx.rafraichir(); } },
+        [['pourcent', t('puissance_pourcent')], ['pente', t('puissance_par_an', { y: r.reponse })]].map(([k, n]) => el('option', { value: k, selected: k === g.unite }, n)))
+        : el('span', {}, t('puissance_par_an', { y: r.reponse }))),
+    choix('α', ALPHAS_PUISSANCE.map((a) => [a, String(a)]), g.alpha, (v) => changer('alpha', Number(v))));
+  const barre2 = outils(el('label', { class: 'champ' }, el('span', {}, t('puissance_annees_de')), nombreSaisi(annees[0], '4.5em', (v) => changer('annees', [v, annees[1]])),
+    el('span', {}, t('puissance_annees_a')), nombreSaisi(annees[1], '4.5em', (v) => changer('annees', [annees[0], v]))),
+  el('label', { class: 'champ', title: t('puissance_unites_aide') }, el('span', {}, niveaux.length ? t('puissance_unites', { niveau: niveaux[0] }) : t('puissance_obs_an')),
+    el('input', { value: [].concat(g.unites).join(', '), style: 'width:12em',
+      onchange: (e) => changer('unites', e.target.value.split(/[\s,;]+/).filter(Boolean).map(Number)) })));
+  const erreur = cache.erreur ? el('p', { class: 'erreur' }, cache.erreur) : null;
+  const pl = r.plan;
+  const copier = el('button', { class: 'icone-seule', title: t('copier_phrase'),
+    onclick: () => navigator.clipboard.writeText(r.phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
+  // the simulation at one design: its settings, the time it will take, its result against the formula's
+  const s = r.simulation;
+  const e = r.estimation || {};
+  const simuler = async () => {
+    cache.enCours = true;
+    ctx.rafraichir();
+    try {
+      cache.res = await ctx.demander('puissance_tendance', { modele: m.id, ...g, simuler: true });
+      cache.dernier = cache.res;
+      cache.erreur = null;
+    } catch (x) { cache.erreur = x.message; }
+    cache.enCours = false;
+    ctx.rafraichir();
+  };
+  const ligneSim = el('div', { class: 'ligne', style: { flexWrap: 'wrap' } },
+    el('span', { class: 'champ' }, el('b', {}, t('puissance_simulation'))),
+    el('label', { class: 'champ' }, el('span', {}, t('puissance_annees')), nombreSaisi(sim.annees, '4.5em', (x) => changer('simulation', { ...sim, annees: x }))),
+    el('label', { class: 'champ' }, el('span', {}, niveaux.length ? niveaux[0] : t('puissance_obs_an')), nombreSaisi(sim.unites, '5em', (x) => changer('simulation', { ...sim, unites: x }))),
+    el('label', { class: 'champ' }, el('span', {}, t('puissance_jeux')), nombreSaisi(sim.n, '5em', (x) => changer('simulation', { ...sim, n: x }))),
+    cache.enCours ? el('span', { class: 'infos attente', style: { margin: 0 } }, t('puissance_en_cours', { n: sim.n, duree: e.duree ? dureeTexte(e.duree) : '?' }))
+      : el('button', { onclick: simuler, title: t('puissance_simuler_aide') }, icone('shuffle'), t('puissance_simuler')),
+    !cache.enCours && e.duree ? el('span', { class: 'infos' }, t('puissance_estimation', { duree: dureeTexte(e.duree) })) : null);
+  const resultatSim = s ? el('p', { class: 'note' }, resultatSimulation(r, s)) : null;
+  const graphe = el('div', { class: 'graphe' });
+  const bas = el('div', { class: 'bas' });
+  conteneur.replaceChildren(...[barre, barre2, erreur, el('p', { class: 'note' }, notesPuissance(r)),
+    el('div', { class: 'note' }, el('b', {}, r.phrase), ' ', copier), graphe, ligneSim, resultatSim, bas].filter(Boolean));
+  const tab = r.tableau;
+  const col = (k) => [].concat(tab[k]);
+  const [ta, tu, tp] = [col('annees'), col('unites'), col('puissance')];
+  const unites = [].concat(g.unites).filter((u) => tu.includes(u));
+  const c = couleursTheme();
+  tracer(ctx, graphe, unites.map((u, k) => {
+    const i = ta.map((_, j) => j).filter((j) => tu[j] === u);
+    const propre = u === pl.unites;
+    return { type: 'scatter', mode: 'lines', x: i.map((j) => ta[j]), y: i.map((j) => tp[j]), line: { color: PALETTE[k % PALETTE.length], width: propre ? 3 : 1.5 },
+      name: propre ? `${libelleUnites(r, u)} (${t('puissance_donnees')})` : libelleUnites(r, u),
+      hovertemplate: `${libelleUnites(r, u)} · %{x} ${t('puissance_ans')} : %{y:.2f}<extra></extra>` };
+  }).concat(s ? [{ type: 'scatter', mode: 'markers', x: [s.annees], y: [s.puissance], name: t('puissance_simulee'),
+    error_y: { type: 'data', array: [1.96 * s.erreur_mc], color: c.texte }, marker: { symbol: 'diamond', size: 10, color: c.texte },
+    hovertemplate: `${t('puissance_simulee')} · ${libelleUnites(r, s.unites)} · %{x} ${t('puissance_ans')} : %{y:.2f}<extra></extra>` }] : []),
+  { title: { text: `${m.nom} · ${t('puissance')}` }, dragmode: 'zoom', showlegend: true,
+    xaxis: { title: { text: t('puissance_axe_annees') } }, yaxis: { title: { text: t('puissance_axe') }, range: [0, 1.02] },
+    shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: r.seuil, y1: r.seuil, line: { color: '#d1495b', width: 1, dash: 'dash' } }] });
+  loc.table ??= {};
+  const num = (cle2, titre, decimales) => ({ cle: cle2, titre, num: true, decimales });
+  tableau(bas, ctx, loc.table, {
+    n: ta.length, nom: t('puissance'),
+    colonnes: [num('annees', t('puissance_annees'), 0), num('unites', niveaux.length ? niveaux[0] : t('puissance_obs_an'), 0), num('observations', t('observations'), 0),
+      num('erreur_type', t('erreur_type'), 5), num('puissance', t('puissance_axe'), 3)],
+    valeur: (i, k) => col(k)[i],
+  });
+}
+
+// Adjusted means (moteur/R/moyennes.R: moyennes_ajustees), as the emmeans package computes them:
+// for a qualitative X of a regression, each category's mean adjusted for the other terms (the
+// model's predictions on a reference grid: the other quantitative variables at their mean, the
+// other qualitative ones averaged with equal weights), with its 95 % interval, and every pair of
+// categories (Tukey, Holm or none); optionally within each category of a factor crossed with it, or
+// the slope of a quantitative variable crossed with it in each category (as emtrends). Computed in R
+// and kept with the model, whose Methods text, report and R script then include it; loc.reglages
+// holds the settings chosen here (null: those of the engine's last computation), loc.paire the
+// pair whose sentence is shown.
+const ddlMoyenne = (x) => (x === null || x === undefined ? '∞' : ddlTexte(x));
+// what the grid took from the model, the degrees of freedom, the scale and the adjustment, in words
+// (the view's note, the report)
+export function notesMoyennes(r) {
+  const liste = (x) => [].concat(x || []).join(', ');
+  const cov = r.grille.covariables;
+  const valeurs = cov ? [].concat(cov.nom).map((n, i) => t([].concat(cov.courbe)[i] ? 'moyennes_grille_courbe' : 'moyennes_grille_valeur',
+    { variable: n, valeur: Number([].concat(cov.moyenne)[i].toPrecision(6)) })) : [];
+  const moyennees = [].concat(r.grille.moyennees || []);
+  const grille = [...valeurs, moyennees.length ? t('moyennes_grille_moyennees', { variables: liste(moyennees) }) : '',
+    r.grille.decalage ? t('moyennes_grille_effort', { effort: r.grille.decalage }) : ''].filter(Boolean);
+  const pentes = r.mode === 'pentes';
+  const quoi = pentes ? t('moyennes_note_pentes', { x: r.pente.nom, unite: r.pente.forme || r.pente.nom, facteur: r.facteur.nom })
+    : t('moyennes_note', { facteur: r.facteur.nom });
+  const d = r.ddl;
+  const ddl = d.methode === 'confinement' ? t('moyennes_ddl_confinement', { groupe: d.groupe, n: d.groupes - 1 })
+    : d.methode === 'asymptotique' ? t('moyennes_ddl_asymptotique') : t('moyennes_ddl_residuels');
+  const echelle = r.echelle === 'reponse' ? t(r.lien === 'logit' ? 'moyennes_echelle_logit' : 'moyennes_echelle_log')
+    : r.echelle === 'lien' ? t(pentes ? 'moyennes_pentes_lien' : 'moyennes_echelle_lien_note', { lien: r.lien })
+      : r.forme_y && !pentes ? t(r.log_y ? 'moyennes_y_log' : 'moyennes_y_transformee', { y: r.forme_y }) : '';
+  const croisee = [].concat(r.croisee || []);
+  const nonMoy = [].concat(r.non_estimables.moyennes || []);
+  const nonPaires = [].concat(r.non_estimables.paires || []);
+  return [quoi, grille.length ? t('moyennes_grille', { grille: grille.join(' ; ') }) : '', ddl, echelle,
+    t(`moyennes_${r.reglages.ajustement}`),
+    croisee.length && !r.dans && !pentes ? t('moyennes_croisee', { facteur: r.facteur.nom, variables: liste(croisee) }) : '',
+    nonMoy.length ? t(pentes ? 'moyennes_non_estimables_pentes' : 'moyennes_non_estimables', { liste: liste(nonMoy) }) : '',
+    nonPaires.length ? t('moyennes_paires_non_estimables', { liste: liste(nonPaires) }) : ''].filter(Boolean).join(' ');
+}
+// the header of the estimate column of the means table, and of the pairs table
+export const titreMoyenne = (r) => (r.mode === 'pentes' ? t('pente') : r.echelle === 'reponse' && r.lien === 'logit' ? t('moyennes_probabilite') : t('moyennes_moyenne'));
+export const titrePaire = (r) => (r.echelle === 'reponse' ? t(r.lien === 'logit' ? 'rapport_cotes' : 'moyennes_rapport') : t('moyennes_difference'));
+// a pair's label: "S1 − S2", or "S1 / S2" for a ratio
+export const libellePaire = (r, i) => `${[].concat(r.paires.niveau_1)[i]} ${r.echelle === 'reponse' ? '/' : '−'} ${[].concat(r.paires.niveau_2)[i]}`;
+async function rendreMoyennes(conteneur, ctx, p, loc) {
+  const m = ctx.modele(p.modele);
+  conteneur._copierTableau = null;
+  const cache = ((loc.cache ??= {}).moyennes ??= {});  // (loc.cache isn't saved with the session)
+  const cle = JSON.stringify([m.id, loc.reglages || null, langueActuelle()]);
+  if (cache.cle !== cle) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    try {
+      cache.res = await ctx.demander('moyennes', { modele: m.id, ...(loc.reglages || {}) });
+      cache.dernier = cache.res;
+      cache.erreur = null;
+    } catch (e) {
+      cache.res = null;
+      cache.erreur = e.message;
+      // (settings kept with the session that no longer fit the model: its defaults, with the reason)
+      if (loc.reglages && !cache.dernier) {
+        try { cache.dernier = await ctx.demander('moyennes', { modele: m.id }); } catch { /* the reason stays */ }
+      }
+    }
+    cache.cle = cle;
+  }
+  // (settings refused: the last result's controls, to correct them, and the reason)
+  const r = cache.res || (loc.reglages && cache.dernier);
+  if (!r) { conteneur.replaceChildren(el('p', { class: 'erreur' }, cache.erreur)); return; }
+  const g = { facteur: null, dans: null, pente: null, ...r.reglages };
+  const changer = (k, v) => { loc.reglages = { ...g, [k]: v === '' ? null : v, ...(k === 'facteur' ? { dans: null, pente: null } : {}) }; loc.paire = 0; ctx.rafraichir(); };
+  const options = [].concat(r.options);
+  const f = options.find((o) => String(o.uid) === String(g.facteur)) || options[0];
+  const pentes = r.mode === 'pentes';
+  const barre = outils(choix(t('moyennes_facteur'), options.map((o) => [o.uid, o.nom]), g.facteur, (v) => changer('facteur', v)),
+    choix(t('moyennes_dans'), [['', t('moyennes_dans_aucun')], ...[].concat(f.dans || []).map((o) => [o.uid, o.nom])], g.dans ?? '', (v) => changer('dans', v)),
+    choix(t('moyennes_mode'), [['', t('moyennes_mode_moyennes')], ...[].concat(f.pentes || []).map((o) => [o.uid, t('moyennes_mode_pente', { x: o.nom })])], g.pente ?? '', (v) => changer('pente', v)),
+    choix(t('moyennes_ajustement'), [['tukey', 'Tukey'], ['holm', 'Holm'], ['aucun', t('aucun')]], g.ajustement, (v) => changer('ajustement', v)),
+    ['log', 'logit'].includes(r.lien) && !pentes ? choix(t('moyennes_echelle'), [['reponse', t('moyennes_echelle_reponse')], ['lien', t('moyennes_echelle_lien', { lien: r.lien })]],
+      g.echelle, (v) => changer('echelle', v)) : null);
+  const erreur = cache.erreur ? el('p', { class: 'erreur' }, cache.erreur) : null;
+  const mo = r.moyennes;
+  const pa = r.paires;
+  const cm = (k) => [].concat(mo[k] ?? []);
+  const cp = (k) => [].concat(pa[k] ?? []);
+  const nPaires = cp('estimation').length;
+  if (!(loc.paire >= 0 && loc.paire < nPaires)) loc.paire = 0;
+  const phrases = [].concat(r.phrases || []);
+  const phrase = nPaires ? phrases[loc.paire] : null;
+  const copier = phrase ? el('button', { class: 'icone-seule', title: t('copier_phrase'),
+    onclick: () => navigator.clipboard.writeText(phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy')) : null;
+  const graphe = el('div', { class: 'graphe' });
+  const basMoy = el('div', { class: 'bas', style: { flex: '2 1 0', minWidth: 0 } });
+  const basPaires = el('div', { class: 'bas', style: { flex: '3 1 0', minWidth: 0 } });
+  conteneur.replaceChildren(...[barre, erreur, el('p', { class: 'note' }, notesMoyennes(r)),
+    phrase ? el('div', { class: 'note' }, el('b', {}, phrase), ' ', copier, ' ', el('span', {}, t('moyennes_choisir_paire'))) : el('p', { class: 'note' }, t('moyennes_aucune_paire')),
+    graphe, el('div', { style: { display: 'flex', gap: '10px', flex: '1 1 0', minHeight: '140px' } }, basMoy, basPaires)].filter(Boolean));
+
+  // the plot: each mean (or slope) with its 95 % interval; within each level of `dans`, one colour per level
+  const niveaux = [].concat(r.facteur.niveaux);
+  const groupes = r.dans ? [].concat(r.dans.niveaux) : [null];
+  const c = couleursTheme();
+  const decalage = (k) => (groupes.length > 1 ? (k - (groupes.length - 1) / 2) * Math.min(0.12, 0.6 / groupes.length) : 0);
+  const est = cm('estimation');
+  const bas = cm('bas');
+  const haut = cm('haut');
+  tracer(ctx, graphe, groupes.map((gr, k) => {
+    const idx = cm('niveau').map((_, i) => i).filter((i) => gr === null || cm('groupe')[i] === gr);
+    return { type: 'scatter', mode: 'markers', name: gr === null ? r.facteur.nom : `${r.dans.nom} = ${gr}`,
+      x: idx.map((i) => niveaux.indexOf(cm('niveau')[i]) + decalage(k)), y: idx.map((i) => est[i]),
+      error_y: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: PALETTE[k % PALETTE.length], thickness: 1.5 },
+      marker: { size: 9, color: PALETTE[k % PALETTE.length] },
+      customdata: idx.map((i) => [cm('niveau')[i], fmt(bas[i], 4), fmt(haut[i], 4)]),
+      hovertemplate: `%{customdata[0]}${gr === null ? '' : ` · ${gr}`}<br>%{y:.4g} [%{customdata[1]} ; %{customdata[2]}]<extra></extra>` };
+  }), { title: { text: `${m.nom} · ${pentes ? t('moyennes_titre_pentes', { x: r.pente.nom }) : t('moyennes')}` }, dragmode: 'zoom', showlegend: groupes.length > 1,
+    xaxis: { title: { text: r.facteur.nom }, tickmode: 'array', tickvals: niveaux.map((_, i) => i), ticktext: niveaux, range: [-0.5, niveaux.length - 0.5], zeroline: false },
+    yaxis: { title: { text: pentes ? t('moyennes_axe_pente', { x: r.pente.nom }) : t('moyennes_axe', { y: r.reponse }) } },
+    shapes: pentes || r.echelle !== 'reponse' ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] : [] });
+
+  // the tables: the means (or slopes), then the pairs, a click on a pair giving its sentence
+  const num = (cle2, titre, decimales, format, alerte) => ({ cle: cle2, titre, num: true, decimales, format, alerte });
+  loc.tableMoyennes ??= {};
+  loc.tablePaires ??= {};
+  const colonnesMoy = [{ cle: 'niveau', titre: r.facteur.nom }, ...(r.dans ? [{ cle: 'groupe', titre: r.dans.nom }] : []),
+    num('estimation', titreMoyenne(r), 4), num('erreur_type', t('erreur_type'), 4), num('ddl', t('ddl'), 0, ddlMoyenne), num('bas', t('ic_bas'), 4), num('haut', t('ic_haut'), 4)];
+  const valeurMoy = (i, k) => (k === 'ddl' ? (cm('ddl')[i] ?? '∞') : cm(k)[i]);
+  tableau(basMoy, ctx, loc.tableMoyennes, { n: est.length, nom: t('moyennes'), avant: [el('b', {}, pentes ? t('moyennes_titre_pentes', { x: r.pente.nom }) : t('moyennes'))],
+    colonnes: colonnesMoy, valeur: valeurMoy });
+  const z = cp('ddl').every((x) => x === null);
+  const colonnesPaires = [...(r.dans ? [{ cle: 'groupe', titre: r.dans.nom }] : []), { cle: 'paire', titre: t('moyennes_paire') },
+    num('estimation', titrePaire(r), 4), num('erreur_type', t('erreur_type'), 4), num('ddl', t('ddl'), 0, ddlMoyenne), num('t', z ? 'z' : 't', 3),
+    num('p', r.reglages.ajustement === 'aucun' ? 'p' : t('p_ajuste'), 4, valeurP, (i) => cp('p')[i] !== null && cp('p')[i] <= 0.05), num('bas', t('ic_bas'), 4), num('haut', t('ic_haut'), 4)];
+  const valeurPaire = (i, k) => (k === 'paire' ? libellePaire(r, i) : k === 'ddl' ? (cp('ddl')[i] ?? '∞') : cp(k)[i]);
+  tableau(basPaires, ctx, loc.tablePaires, { n: nPaires, nom: t('moyennes_paires'), avant: [el('b', {}, t('moyennes_paires'))],
+    colonnes: colonnesPaires, valeur: valeurPaire, cliquer: (i) => { loc.paire = i; ctx.rafraichir(); }, choisie: (i) => i === loc.paire });
+  // Ctrl+C (app.js): both tables, as shown, one after the other
+  const texte = (colonnes, n, valeur) => [colonnes.map((x) => x.titre).join('\t'),
+    ...Array.from({ length: n }, (_, i) => colonnes.map((x) => { const v = valeur(i, x.cle); return v === null || v === undefined ? '' : v; }).join('\t'))].join('\n');
+  conteneur._copierTableau = () => navigator.clipboard.writeText([texte(colonnesMoy, est.length, valeurMoy), '', texte(colonnesPaires, nPaires, valeurPaire)].join('\n'))
+    .then(() => ctx.statut(t('table_copiee')));
+}
+
 // Every fitted model side by side. Q2 and RMSEcv compare all models validated by the same
 // groups; AIC, ΔAIC and Akaike weights only the regressions of the same response on the same
-// observations (an "AIC set", regression.R : signature).
+// observations (an "AIC set", regression.R : signature). Its second mode: the coefficients of the
+// regressions ticked, side by side (rendreCoteACote).
 function rendreComparaison(conteneur, ctx, p, loc) {
+  loc.mode ??= 'ajustement';
+  // (Ctrl+C and File › Export: the side-by-side table sets its own; here Ctrl+C copies the first table, as shown)
+  conteneur._copierTableau = null;
+  conteneur._coefficients = null;
+  const mode = outils(choix('', [['ajustement', t('comparaison_ajustement')], ['coefficients', t('cote_a_cote')]], loc.mode,
+    (v) => { loc.mode = v; ctx.rafraichir(); }));
+  if (loc.mode === 'coefficients') { rendreCoteACote(conteneur, ctx, loc, mode); return; }
   const ms = ctx.tousModeles();
   const cum = (v) => (v && v.length ? v[v.length - 1] : null);
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
   const emboites = el('div', { class: 'bas' });
-  conteneur.replaceChildren(el('p', { class: 'note' }, t('comparaison_note')), graphe, bas, emboites);
+  conteneur.replaceChildren(mode, el('p', { class: 'note' }, t('comparaison_note')), graphe, bas, emboites);
   const lignes = ms.map((m) => {
     // another analysis (RDA, LDA...): no components nor Q2, the figures it gives (m.comparaison)
     if (m.analyse) return { id: m.id, nom: m.nom, projet: (ctx.projet(m.projet) || {}).nom, type: m.type, A: null, N: m.N, K: m.K, ...(m.comparaison || {}) };
@@ -2874,6 +3307,66 @@ function rendreEmboites(conteneur, ctx, loc, lignes) {
     valeur: (i, k) => (k === 'ensemble' ? (parId[grand[i]] || {}).ensemble : k === 'grand' ? (parId[grand[i]] || {}).nom
       : k === 'petit' ? (parId[petit[i]] || {}).nom : k === 'test' ? t(approche[i] ? 'rv_approche' : 'rv_ml') : col(k)[i]),
   });
+}
+
+// The coefficients of the regressions ticked, side by side (moteur/R/coefficients_modeles.R), as
+// papers present them: a row per term of their coefficient tables, a column per model, each cell
+// the estimate with its 95 % interval or its standard error, red when p ≤ 0.05 as in the
+// Coefficients view; below, n, AIC, AICc, R², σ of each random effect, φ and each curve's edf, as
+// the engine words them. The regressions of one project, every one ticked until unticked. Ctrl+C
+// (and the copy button) puts it on the clipboard as text and as a table, for Excel and Word, with
+// stars for p; File › Export model results writes it (app.js: coefficientsActifs).
+const echapperHTML = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function rendreCoteACote(conteneur, ctx, loc, barre) {
+  const s = (loc.coef ??= { coches: {}, erreur: 'ic' });
+  const regressions = ctx.tousModeles().filter((m) => m.regression);
+  if (!regressions.length) { conteneur.replaceChildren(barre, el('p', { class: 'infos' }, t('cote_a_cote_vide'))); return; }
+  const projets = [...new Set(regressions.map((m) => m.projet))];
+  if (!projets.includes(s.projet)) s.projet = projets.includes(ctx.projetActif()) ? ctx.projetActif() : projets[0];
+  const ici = regressions.filter((m) => m.projet === s.projet);
+  const ids = ici.filter((m) => s.coches[m.id] !== false).map((m) => m.id);
+  barre.append(...[projets.length > 1 ? choix(t('projets'), projets.map((id) => [id, (ctx.projet(id) || {}).nom || id]), s.projet, (v) => { s.projet = v; ctx.rafraichir(); }) : null,
+    choix('', [['ic', t('cote_a_cote_ic')], ['et', t('cote_a_cote_et')]], s.erreur, (v) => { s.erreur = v; ctx.rafraichir(); })].filter(Boolean));
+  const cases = el('div', { class: 'outils' }, ici.map((m) => el('label', { class: 'champ', title: m.titre || '' },
+    el('input', { type: 'checkbox', checked: s.coches[m.id] !== false, onchange: (e) => { s.coches[m.id] = e.target.checked; ctx.rafraichir(); } }),
+    m.nom, el('span', { class: 'badge' }, m.type))));
+  if (!ids.length) { conteneur.replaceChildren(barre, cases, el('p', { class: 'infos' }, t('cote_a_cote_aucun'))); return; }
+  const cle = JSON.stringify([ids, s.erreur, langueActuelle()]);
+  const cache = ((loc.cache ??= {}).coefficients ??= {});  // (loc.cache isn't saved with the session)
+  if (cache.cle !== cle) {
+    Object.assign(cache, { cle, res: null, erreur: null });
+    ctx.demander('coefficients_modeles', { modeles: ids, erreur: s.erreur })
+      .then((r) => { if (cache.cle === cle) { cache.res = r; ctx.rafraichir(); } })
+      .catch((e) => { if (cache.cle === cle) { cache.erreur = e.message; ctx.rafraichir(); } });
+  }
+  const r = cache.res;
+  if (!r) { conteneur.replaceChildren(barre, cases, el('p', { class: cache.erreur ? 'erreur' : 'infos attente' }, cache.erreur || t('calcul'))); return; }
+  const noms = [].concat(r.modeles);
+  const statistiques = [].concat(r.statistiques);
+  const notes = [].concat(r.copie.notes);
+  const table = el('table', { class: 'tableau compact' },
+    el('thead', {}, el('tr', {}, el('th', {}, r.entete), noms.map((n) => el('th', { class: 'num' }, n)))),
+    el('tbody', {},
+      [].concat(r.termes).map((terme, i) => el('tr', {}, el('td', {}, terme), noms.map((_, j) => {
+        const pv = r.p[i][j];
+        return el('td', { class: 'num' + (pv !== null && pv <= 0.05 ? ' alerte' : ''), title: pv === null ? '' : `p = ${valeurP(pv)}` }, r.cellules[i][j]);
+      }))),
+      statistiques.map((nom, i) => el('tr', { class: i ? '' : 'debut-section' }, el('td', {}, nom), noms.map((_, j) => el('td', { class: 'num' }, r.valeurs[i][j]))))));
+  // the copy: the engine's rows, with the stars of p (r.copie), as tab-separated text (Excel) and as an HTML table (Word)
+  const copier = () => {
+    const lignes = [[].concat(r.copie.entetes), ...r.copie.lignes];
+    const texte = [...lignes.map((l) => l.join('\t')), '', ...notes].join('\n');
+    const cellule = (v, k, balise) => `<${balise}${k ? ' style="text-align:right"' : ''}>${echapperHTML(v)}</${balise}>`;
+    const html = `<table border="1" cellspacing="0" cellpadding="3" style="border-collapse:collapse"><thead><tr>${lignes[0].map((v, k) => cellule(v, k, 'th')).join('')}</tr></thead><tbody>${
+      lignes.slice(1).map((l) => `<tr>${l.map((v, k) => cellule(v, k, 'td')).join('')}</tr>`).join('')}</tbody></table>${notes.map((n) => `<p>${echapperHTML(n)}</p>`).join('')}`;
+    navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([texte], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })])
+      .then(() => ctx.statut(t('table_copiee')));
+  };
+  conteneur._copierTableau = copier;  // Ctrl+C (app.js)
+  conteneur._coefficients = { modeles: ids, erreur: s.erreur };  // File › Export model results (app.js)
+  barre.append(espace(), el('button', { class: 'icone-seule', title: t('copier_tableau'), onclick: copier }, icone('copy')));
+  conteneur.replaceChildren(barre, cases, el('p', { class: 'note' }, t('cote_a_cote_note')),
+    el('div', { class: 'defile' }, table, notes.map((n) => el('p', { class: 'note' }, n))));
 }
 
 // Permutation test: R² and Q² of models refitted with the order of one Y
@@ -2978,6 +3471,8 @@ export const VUES = {
   effets: { rendre: rendreEffets, titre: (m) => `${m.nom} · ${t('effets')}` },
   apports: { rendre: rendreApports, titre: (m) => `${m.nom} · ${t('apports')}` },
   selection_aic: { rendre: rendreSelectionAIC, titre: (m) => `${m.nom} · ${t('selection_aic')}` },
+  puissance: { rendre: rendrePuissance, titre: (m) => `${m.nom} · ${t('puissance')}` },
+  moyennes: { rendre: rendreMoyennes, titre: (m) => `${m.nom} · ${t('moyennes')}` },
   obspred: { rendre: rendreObsPred, titre: (m) => `${m.nom} · ${t('obspred')}` },
   dendrogramme: { rendre: rendreDendrogramme, titre: (m) => `${m.nom} · ${t('dendrogramme')}` },
   predictions: { rendre: rendrePredictions, titre: (m) => `${m.nom} · ${t('predictions')}` },

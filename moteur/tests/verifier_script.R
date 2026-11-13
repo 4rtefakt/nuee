@@ -348,38 +348,56 @@ verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e
 
 cat("Régressions (lm, nlme, mgcv)\n")
 # Ce que le moteur donne d'une régression, et ce que son script a calculé (sous ses noms, dans sa langue).
-ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection")
+ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection",
+                         "puissance", "annees_80", "simulation_puissance", "moyennes_ajustees")
 COURBES_SEUILS <- c("x", "effet", "bas", "haut", "x_pente", "pente", "pente_bas", "pente_haut")
 moteur_regression <- function(m) {
   r <- m$resultat
-  seuils <- if (!is.null(r$courbes)) lapply(r$courbes$terme, function(t) seuils_courbe(m, t))
+  # (les seuils de chaque courbe, et de chaque catégorie d'une courbe qui en a une par catégorie)
+  v <- variantes_seuils(m)
+  seuils <- if (!is.null(r$courbes)) lapply(seq_len(nrow(v)), function(i) seuils_courbe(m, v$terme[i], v$categorie[i]))
   list(coefficients = as.matrix(r$coefficients[c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]),
        # (les seuils d'une courbe : sa pente et son effet, leurs bandes simultanées, leurs plages nettes)
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, COURBES_SEUILS)),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- rbind(s$plages_pente, s$plages_effet); c(z$de, z$a) })),
        "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
-       phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(r$courbes[-1]),
+       # (la corrélation de chaque pente aléatoire avec l'ordonnée à l'origine de son niveau, nlme)
+       "corrélations des pentes" = if (any(!is.na(r$variances$correlation))) r$variances$correlation,
+       phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(Filter(is.numeric, r$courbes)),
        "Q2 et RMSEcv" = c(m$vc$Q2, m$vc$RMSEcv), "prédictions de la validation croisée" = m$vc$prediction,
        "valeurs ajustées et résidus" = cbind(r$ajuste, r$residus), "résidus quantiles" = r$residus_quantiles,
        "jeu de test" = if (!is.null(m$test)) m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")],
        # (la sélection par l'AIC, quand elle a été faite : le classement et l'importance des groupes)
        "sélection par l'AIC" = if (!is.null(m$selection_aic)) as.matrix(m$selection_aic$modeles[c("k", "logLik", "AICc", "delta", "poids", "poids_cumule")]),
-       "importance des groupes" = m$selection_aic$importance$importance)
+       "importance des groupes" = m$selection_aic$importance$importance,
+       # (la puissance pour une tendance, quand elle a été calculée : chaque plan, les années pour 80 %, la simulation et ses p)
+       "puissance pour une tendance" = if (!is.null(m$puissance_tendance)) as.matrix(m$puissance_tendance$tableau[c("observations", "erreur_type", "puissance")]),
+       "années pour 80 %" = m$puissance_tendance$annees_80$annees,
+       "simulation de la puissance" = if (!is.null(m$puissance_tendance$simulation)) with(m$puissance_tendance$simulation, c(puissance, echecs, p)),
+       # (les moyennes ajustées, quand elles ont été calculées : moyennes, ou pentes, et paires)
+       "moyennes ajustées" = if (!is.null(m$moyennes)) as.matrix(m$moyennes$moyennes[c("estimation", "erreur_type", "ddl", "bas", "haut")]),
+       "paires de catégories" = if (!is.null(m$moyennes)) as.matrix(m$moyennes$paires[c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]))
 }
 script_regression <- function(s, langue) {
   n <- function(x) s[[nom_script(x, langue)]]
   colonnes <- function(x, k) if (!is.null(x)) as.matrix(x[k])
-  seuils <- n("seuils")
+  seuils <- unname(n("seuils"))
   list(coefficients = colonnes(n("coefficients"), 2:8),
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, nom_script(COURBES_SEUILS, langue))),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- s[[nom_script("plages", langue)]]; c(z[[3]], z[[4]]) })),
-       "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = colonnes(n("variances"), 2),
-       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) colonnes(n("courbes"), seq_along(n("courbes"))[-1]),
+       "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = n("variances")$variance,
+       "corrélations des pentes" = n("variances")$correlation,
+       phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) as.matrix(Filter(is.numeric, n("courbes"))),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
        "valeurs ajustées et résidus" = colonnes(n("observations"), 3:4), "résidus quantiles" = n("observations")[[nom_script("residu_quantile", langue)]],
        "jeu de test" = colonnes(n("test"), 2:6),
        "sélection par l'AIC" = colonnes(n("selection")[[nom_script("modeles", langue)]], 2:7),
-       "importance des groupes" = if (!is.null(n("selection"))) unname(n("selection")[[nom_script("importance", langue)]]))
+       "importance des groupes" = if (!is.null(n("selection"))) unname(n("selection")[[nom_script("importance", langue)]]),
+       "puissance pour une tendance" = colonnes(n("puissance"), 3:5), "années pour 80 %" = n("annees_80")[[2]],
+       "simulation de la puissance" = if (!is.null(n("simulation_puissance"))) c(n("simulation_puissance")[[nom_script("puissance", langue)]],
+                                                                                n("simulation_puissance")[[nom_script("echecs", langue)]], n("simulation_puissance")$p),
+       "moyennes ajustées" = colonnes(n("moyennes_ajustees")[[nom_script("moyennes", langue)]], 3:7),
+       "paires de catégories" = colonnes(n("moyennes_ajustees")[[nom_script("paires", langue)]], 4:10))
 }
 # Les blocs de code d'un rapport ont chacun leur nom : knitr refuse d'en compiler deux du même nom
 # (vérifié ici même sans knitr).
@@ -388,10 +406,14 @@ etiquettes_uniques <- function(texte) {
   !anyDuplicated(etiquettes)
 }
 # Écrit le script d'une régression, le lance dans une session neuve et compare ses résultats à ceux du moteur.
-# `selection` : la sélection par l'AIC faite d'abord (regression.R : selection_aic), que le script refait.
-essayer_regression <- function(nom, p, d, langue = "fr", selection = FALSE, ...) {
+# `selection` : la sélection par l'AIC faite d'abord (regression.R : selection_aic), que le script refait ;
+# `puissance` : les réglages de la puissance pour une tendance calculée d'abord (puissance.R), de même ;
+# `moyennes` : ceux des moyennes ajustées (moyennes.R).
+essayer_regression <- function(nom, p, d, langue = "fr", selection = FALSE, puissance = NULL, moyennes = NULL, ...) {
   m <- ajuster(p, d)
   if (!isFALSE(selection)) m$selection_aic <- selection_aic(m, d, if (is.numeric(selection)) selection else 256)  # (un nombre : la limite des combinaisons)
+  if (!is.null(puissance)) m$puissance_tendance <- puissance_tendance(m, d, puissance)
+  if (!is.null(moyennes)) m$moyennes <- moyennes_ajustees(p, m, d, moyennes)
   dir.create(ici <- file.path(dossier, nom))
   r <- ecrire_script(p, d, file.path(ici, paste0(nom, ".R")), "moteur", m = m, version = "essai", langue = langue, ...)
   s <- lancer(r$script, nom_script(ATTENDUS_REGRESSION, langue))
@@ -469,6 +491,41 @@ essayer_regression("gamm_car1_test_en", pr, definir_modele(pr, "GAM", x = ur("x1
                    lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur, test = numeros_observations(pr)[seq(5, n, by = 16)]), langue = "en")
 essayer_regression("lmm_car1_secteur", pr, definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
                    correlation = car1_secteur))
+# une pente aléatoire de l'année par site (l'année centrée, échelle Ctr) : nlme::lme(random = ~ annee | site),
+# sa sélection par l'AIC (l'année dans chaque modèle) ; avec CAR1 et le secteur emboîté (la liste de nlme),
+# en anglais ; dans un GLMM de Poisson, la pente indépendante de mgcv, s(site, annee, bs = "re")
+pente_site <- list(by = "id", id = "site", pentes = ur("annee"))
+annee_centree <- c(defaut = "none", stats::setNames("Ctr", ur("annee")))
+r <- essayer_regression("lmm_pente_annee", pr, definir_modele(pr, "LMM", x = ur("x1", "x2", "annee"), y = ur("hauteur"), echelle = annee_centree,
+                        aleatoires = list(pente_site)), selection = TRUE)
+verifier("pente aléatoire : random = ~ annee | site, ses variances et sa corrélation (variances_pentes), le R² de Johnson (variances_niveaux), l'année gardée par la sélection",
+         any(grepl("aleatoire <- as.formula(\"~ annee | site\")", lignes_script(r), fixed = TRUE)) && any(grepl("^variances_pentes <- function", lignes_script(r))) &&
+           any(grepl("^variances_niveaux <- function", lignes_script(r))) && any(grepl("^termes_gardes <- \"annee\"", lignes_script(r))))
+r <- essayer_regression("lmm_pente_car1_en", pr, definir_modele(pr, "LMM", x = ur("x1", "x2", "annee"), y = ur("hauteur"), echelle = annee_centree,
+                        aleatoires = list(pente_site, par_secteur), correlation = list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")))), langue = "en")
+verifier("pente aléatoire avec CAR1, en anglais : la liste de nlme (site = ~ annee, secteur = ~ 1), ni nom ni commentaire en français",
+         any(grepl("random_part <- setNames(lapply(c(\"~ annee\", \"~ 1\"), as.formula), random_levels)", lignes_script(r), fixed = TRUE)) && en_anglais(lignes_script(r)))
+r <- essayer_regression("glmm_poisson_pente", pr, definir_modele(pr, "GLM", x = ur("x1", "annee"), y = ur("compte"), famille = "poisson", decalage = ur("effort"),
+                        echelle = annee_centree, aleatoires = list(pente_site)))
+verifier("GLMM à pente aléatoire (mgcv) : s(site, annee, bs = \"re\"), indépendante ; ses effets aléatoires exclus des prédictions par leur classe",
+         any(grepl("pentes_aleatoires <- setNames(\"annee\", \"site\")", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("inherits(s, \"random.effect\")", lignes_script(r), fixed = TRUE)))
+# les morceaux de 0.9.7 ensemble, dans un même script : un terme croisé qualitatif (la pente de
+# l'année par secteur), une pente aléatoire de l'année par site, le secteur emboîté avec CAR1, une
+# condition sur les observations et la sélection par l'AIC, en français puis en anglais ; un GLMM de
+# Poisson avec un terme croisé qualitatif, la pente indépendante de mgcv et une condition
+car1_annee <- list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")))
+d_ensemble <- definir_modele(pr, "LMM", x = ur("x1", "secteur", "annee"), y = ur("hauteur"), echelle = annee_centree,
+                             croises = list(ur("annee", "secteur")), aleatoires = list(pente_site, par_secteur), correlation = car1_annee,
+                             condition = 'annee != 2003 & x2 < 0.9')
+r <- essayer_regression("lmm_croise_pente_condition", pr, d_ensemble, selection = TRUE)
+verifier("ensemble : la condition, la pente aléatoire et le terme croisé qualitatif dans le même script",
+         any(grepl("annee != 2003 & x2 < 0.9", lignes_script(r), fixed = TRUE)) && any(grepl("~ annee", lignes_script(r), fixed = TRUE)))
+r <- essayer_regression("lmm_croise_pente_condition_en", pr, d_ensemble, langue = "en")
+verifier("ensemble, en anglais : ni nom ni commentaire en français", en_anglais(lignes_script(r)))
+r <- essayer_regression("glmm_croise_pente_condition", pr, definir_modele(pr, "GLM", x = ur("x1", "sol", "annee"), y = ur("compte"), famille = "poisson",
+                        decalage = ur("effort"), echelle = annee_centree, croises = list(ur("annee", "sol")), aleatoires = list(pente_site),
+                        condition = 'sol != "limon"'))
 # (le temps de CAR1 fait de dates, le jour d'abord, un même jour pour tous les secteurs d'une année :
 # une variable qualitative ; le script les lit en années décimales comme Nuée, par sa fonction
 # temps_en_nombres, et donne le modèle que les années décimales donnent, refaites ici avec R)
@@ -527,6 +584,22 @@ essayer_regression("gam_selection_descendante", pr, definir_modele(pr, "GAM", x 
                    lisses = ur("x2"), decalage = ur("effort"), aleatoires = list(par_site), echelle = "none"), selection = 4)
 essayer_regression("gamm_selection", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", famille = "gaussienne",
                    lisses = ur("x2"), aleatoires = list(par_site), correlation = car1_secteur), selection = TRUE)
+# la puissance pour une tendance calculée dans Nuée (puissance.R) : le script la refait, avec sa simulation
+# (les mêmes jeux de données, les mêmes p) ; le temps mis à l'échelle (UV), CAR1 dans chaque secteur ; des
+# répétitions sans CAR1 ; une régression linéaire en anglais
+r <- essayer_regression("lmm_car1_puissance", pr, definir_modele(pr, "LMM", x = ur("x1", "annee"), y = ur("hauteur"), echelle = "UV", aleatoires = list(par_site),
+                        correlation = car1_secteur), puissance = list(unite = "pente", tendance = -0.05, simuler = TRUE, simulation = list(annees = 6, unites = 4, n = 20)))
+verifier("puissance pour une tendance : ses fonctions, le temps dans ses unités, la simulation, le tableau des années pour 80 % dans la sortie",
+         any(grepl("^variance_pente <- function", lignes_script(r))) && any(grepl("^simuler_puissance <- function", lignes_script(r))) &&
+           any(grepl("temps_puissance <- cadre[[\"annee\"]] / poids_x[2] + centre_x[2]", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("print(annees_80)", lignes_script(r), fixed = TRUE)))
+essayer_regression("lmm_repetitions_puissance", pr, definir_modele(pr, "LMM", x = ur("annee"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site)),
+                   puissance = list(unite = "pente", tendance = 0.04, annees = c(4, 12), unites = c(3, 10)))
+r <- essayer_regression("lm_puissance_en", pr, definir_modele(pr, "LM", x = ur("annee", "x2"), y = ur("masse"), echelle = "none",
+                                                              transformations = stats::setNames(list("ln:1:0"), ur("masse"))), langue = "en",
+                        puissance = list(tendance = -4, simuler = TRUE, simulation = list(n = 20)))
+verifier("puissance pour une tendance en anglais : simulate_power(), ni nom ni commentaire en français", en_anglais(lignes_script(r)) &&
+           any(grepl("^simulate_power <- function", lignes_script(r))) && any(grepl("slope <- log(1 + (-4) / 100)", lignes_script(r), fixed = TRUE)))
 # Ajuster ce modèle (sélection par l'AIC) : le modèle choisi garde les lignes du modèle complet (sans
 # x1, ou une densité nulle que son log10 rend manquante) ; son script les laisse de côté de même
 dcomplet <- definir_modele(pr, "LM", x = ur("x1", "x2", "densite"), y = ur("hauteur"), echelle = "none", nom = "M1",
@@ -561,6 +634,130 @@ options(nuee.langue = "en")
 bbf <- modele_baci(pbaci, ub("densite"), ub("annee"), ub("secteur"), "S1", c("S2", "S3"), 2008, fin = 2012)
 options(nuee.langue = NULL)
 essayer_regression("lmm_baci_fin_en", bbf$projet, bbf$definition, langue = "en")
+# des termes croisés avec une variable qualitative (regression.R : candidats_regression) : quatre sites,
+# trois secteurs dans chacun (S1 à S3, et propres à chaque site), deux habitats, dix ans dont un manque
+set.seed(17)
+tq <- expand.grid(annee = c(2001:2004, 2006:2011), secteur = c("S1", "S2", "S3"), site = c("A", "B", "C", "D"), stringsAsFactors = FALSE)
+nq <- nrow(tq)
+tq$nom <- sprintf("Q%03d", seq_len(nq))
+tq$secteur_site <- paste0(tq$site, tq$secteur)
+tq$habitat <- ifelse(tq$site %in% c("A", "B"), "H1", "H2")
+tq$traitement <- c("T1", "T2", "T3")[(seq_len(nq) %% 3) + 1]
+tq$densite <- 3 + c(S1 = 0.05, S2 = 0.25, S3 = -0.1)[tq$secteur] * (tq$annee - 2000) + rep(rnorm(4, 0, 0.5), each = 30) + rnorm(nq, 0, 0.5)
+tq$compte <- stats::rpois(nq, exp(0.4 + 0.5 * (tq$habitat == "H1") + 0.4 * (tq$traitement == "T2") * (tq$habitat == "H2")))
+# (le secteur S3 du site A devient S4, celui du site D S5 : des catégories d'un seul site)
+tq$secteur4 <- ifelse(tq$secteur != "S3", tq$secteur, c(A = "S4", B = "S3", C = "S3", D = "S5")[tq$site])
+pq <- projet_depuis_tableau(tq[c("nom", "site", "secteur", "secteur_site", "secteur4", "habitat", "traitement", "annee", "densite", "compte")], "croisés")
+uq <- function(...) numeros(pq, c(...))
+site_q <- list(by = "variable", variable = uq("site"))
+r <- essayer_regression("lm_annee_secteur", pq, definir_modele(pq, "LM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none",
+                                                               croises = list(uq("annee", "secteur"))), selection = TRUE)
+verifier("annee × secteur : ses produits par catégorie dans le tableau ; la sélection, le terme croisé avec ses effets principaux",
+         any(grepl("\"annee*secteur(S1)\" = X[, \"annee\"] * X[, \"secteur(S1)\"]", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("requis_aic <- list(\"annee*secteur\" = c(\"annee\", \"secteur\"))", lignes_script(r), fixed = TRUE)))
+essayer_regression("lmm_annee_secteur_car1_en", pq, definir_modele(pq, "LMM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none",
+                   croises = list(uq("annee", "secteur")), aleatoires = list(site_q),
+                   correlation = list(type = "CAR1", temps = list(by = "variable", variable = uq("annee")), dans = list(by = "variable", variable = uq("secteur")))),
+                   langue = "en")
+essayer_regression("glm_poisson_habitat_traitement", pq, definir_modele(pq, "GLM", x = uq("habitat", "traitement"), y = uq("compte"), echelle = "none",
+                                                                       famille = "poisson", croises = list(uq("habitat", "traitement"))))
+# une pente par secteur sans effet principal de l'année, validée par site, un site en jeu de test : ses
+# secteurs, jamais vus, restent sans prédiction, dans le script comme dans Nuée (niveaux_inconnus)
+r <- essayer_regression("lm_pente_par_secteur", pq, definir_modele(pq, "LM", x = uq("secteur_site"), y = uq("densite"), echelle = "none",
+                        croises = list(uq("annee", "secteur_site")), vc = site_q, test = numeros_observations(pq)[tq$site == "D"]))
+verifier("une pente par secteur sans effet principal : les termes candidats sans l'année, et les secteurs jamais vus sans prédiction",
+         any(grepl("^termes_candidats <- ", lignes_script(r))) && any(grepl("niveaux_inconnus(appris, nouvelles, cellules)", lignes_script(r), fixed = TRUE)))
+# une partie seulement sans prédiction : S4 (le seul site A) en validation croisée par site, S5 (le seul
+# site D, en jeu de test) dans le jeu de test ; en anglais
+mr4 <- ajuster(pq, dr4 <- definir_modele(pq, "LM", x = uq("annee", "secteur4"), y = uq("densite"), echelle = "none", vc = site_q, test = numeros_observations(pq)[tq$site == "D"]))
+r <- essayer_regression("lm_categories_non_vues_en", pq, dr4, langue = "en")
+verifier(sprintf("des catégories non vues dans une partie des groupes (%d lignes) et du jeu de test (%d sur %d) : le script les laisse sans prédiction, en anglais",
+                 mr4$vc$sans_categorie, mr4$test$inconnues, mr4$test$n),
+         mr4$vc$sans_categorie == 10 && !is.na(mr4$vc$Q2) && mr4$test$inconnues == 10 && mr4$test$statistiques$n == 20 &&
+           any(grepl("unseen_levels(model_data, test_data, category_cells)", lignes_script(r), fixed = TRUE)) && en_anglais(lignes_script(r)))
+# une courbe par catégorie (s(annee, by = secteur)) : un GAM ; un GAMM avec CAR1 dans chaque secteur, par
+# secteur4 (S4, du seul site A, sans prédiction en validation croisée ; S5, du site D en test, dans le jeu
+# de test), en anglais ; une courbe et son terme croisé avec le secteur, les seuils de chaque secteur
+k5 <- stats::setNames(list(5), uq("annee"))
+r <- essayer_regression("gam_courbe_par_secteur", pq, definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne",
+                        lisses = uq("annee"), par_courbes = stats::setNames(list(uq("secteur")), uq("annee")), k_courbes = k5))
+verifier("une courbe par secteur : s(annee, by = secteur_f), son facteur fait de ses colonnes 0/1, les seuils de chaque secteur",
+         any(grepl("par_courbes <- c(\"annee\" = \"secteur_f\")", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("tab[[\"secteur_f\"]] <- facteur_courbe(tab[c(\"secteur_S1\", \"secteur_S2\", \"secteur_S3\")], c(\"S1\", \"S2\", \"S3\"))", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("\"annee (secteur S2)\" = seuils_courbe(m, \"annee\", cadre", lignes_script(r), fixed = TRUE)))
+# une catégorie ajoutée aux données depuis la définition du modèle (S1 du site A devient S4 à partir de
+# 2008) : sans courbe, ses lignes restent hors du modèle, avant les centres et poids (l'année en UV), dans
+# le script comme dans Nuée ; en anglais
+dr6 <- definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "UV", famille = "gaussienne", lisses = uq("annee"), k_courbes = k5,
+                      par_courbes = stats::setNames(list(uq("secteur")), uq("annee")))
+pq6 <- pq
+for (o in numeros_observations(pq)[tq$site == "A" & tq$secteur == "S1" & tq$annee >= 2008]) pq6 <- modifier_valeur(pq6, o, uq("secteur"), "S4")
+r <- essayer_regression("gam_courbe_categorie_ajoutee_en", pq6, dr6, langue = "en")
+verifier("une catégorie sans courbe (4 lignes) : le script les laisse hors du modèle avant les centres et poids, en anglais",
+         ajuster(pq6, dr6)$N == nq - 4 && any(grepl("with_curve <- rowSums(X[, c(\"secteur(S1)\", \"secteur(S2)\", \"secteur(S3)\"), drop = FALSE]) > 0", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("training <- which(known & with_curve)", lignes_script(r), fixed = TRUE)) && en_anglais(lignes_script(r)))
+car1_q4 <- list(type = "CAR1", temps = list(by = "variable", variable = uq("annee")), dans = list(by = "variable", variable = uq("secteur4")))
+dr5 <- definir_modele(pq, "GAM", x = uq("annee", "secteur4"), y = uq("densite"), echelle = "none", famille = "gaussienne", lisses = uq("annee"), k_courbes = k5,
+                      par_courbes = stats::setNames(list(uq("secteur4")), uq("annee")), aleatoires = list(site_q), correlation = car1_q4,
+                      test = numeros_observations(pq)[tq$site == "D"])
+mr5 <- ajuster(pq, dr5)
+r <- essayer_regression("gamm_courbe_par_secteur_car1_en", pq, dr5, langue = "en")
+verifier(sprintf("mgcv::gamm, une courbe par secteur, CAR1 : S4 sans prédiction en validation croisée (%d lignes), S5 dans le jeu de test (%d) ; en anglais",
+                 mr5$vc$sans_categorie, mr5$test$inconnues),
+         mr5$vc$sans_categorie == 10 && mr5$test$inconnues == 10 && en_anglais(lignes_script(r)) &&
+           any(grepl("fitted_levels(new_rows, learnt, curves_by)", lignes_script(r), fixed = TRUE)))
+essayer_regression("gam_courbe_croisee_secteur", pq, definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne",
+                                                                    lisses = uq("annee"), croises = list(uq("annee", "secteur")), k_courbes = k5))
+# les moyennes ajustées (moyennes.R), refaites par le script : leur grille, les lignes du modèle, sa
+# covariance et ses degrés de liberté
+r <- essayer_regression("lm_moyennes_log_uv", pr, definir_modele(pr, "LM", x = ur("x1", "sol", "x2"), y = ur("hauteur"), echelle = "UV",
+                        transformations = stats::setNames("log10", ur("x2"))), moyennes = list())
+verifier("moyennes ajustées d'une régression linéaire : la grille (la moyenne de x2 avant son log10), Tukey",
+         any(grepl("rep(log10(v[[\"x2\"]]), nrow(grille_ref))", lignes_script(r), fixed = TRUE)) && any(grepl("^moyennes_ajustees <- moyennes_grille\\(lg, cellules", lignes_script(r))) &&
+           any(grepl("ajustement = \"tukey\"", lignes_script(r), fixed = TRUE)))
+essayer_regression("lm_moyennes_dans_holm", pq, definir_modele(pq, "LM", x = uq("habitat", "traitement"), y = uq("densite"), echelle = "none",
+                   croises = list(uq("habitat", "traitement"))), moyennes = list(facteur = uq("traitement"), dans = uq("habitat"), ajustement = "holm"))
+r <- essayer_regression("lmm_car1_pentes_en", pq, definir_modele(pq, "LMM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "UV",
+                        croises = list(uq("annee", "secteur")), aleatoires = list(site_q),
+                        correlation = list(type = "CAR1", temps = list(by = "variable", variable = uq("annee")), dans = list(by = "variable", variable = uq("secteur")))),
+                        langue = "en", moyennes = list(pente = uq("annee")))
+verifier("les pentes par secteur d'un modèle mixte avec CAR1, en anglais : la différence avant, les degrés de liberté de confinement",
+         any(grepl("grid_lines <- Map(function(a, b) (b - a) / h, grid_lines, grid_lines_plus)", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("df = function(Lb) containment_df(m, Lb, df_columns)", lignes_script(r), fixed = TRUE)))
+# un habitat au niveau du site : les degrés de liberté de ses moyennes dans le codage par défaut de R
+# (H1 en référence : 3, les sites moins un ; H2 : 2, ceux de son coefficient), comme emmeans sur
+# l'ajustement de R ; la colonne de H2, que l'ajustement de Nuée n'a pas, prend ceux de H1
+r <- essayer_regression("lmm_moyennes_habitat_site", pq, dh <- definir_modele(pq, "LMM", x = uq("habitat", "annee"), y = uq("densite"), echelle = "none", aleatoires = list(site_q)),
+                        moyennes = list())
+mh <- ajuster(pq, dh)
+verifier("les moyennes d'un habitat au niveau du site : 3 et 2 degrés de liberté, le codage par défaut de R écrit dans le script",
+         identical(as.numeric(moyennes_ajustees(pq, mh, dh)$moyennes$ddl), c(3, 2)) &&
+           any(grepl("colonnes_ddl <- c(\"(Intercept)\" = \"(Intercept)\", \"habitat_H2\" = \"habitat_H1\", \"annee\" = \"annee\")", lignes_script(r), fixed = TRUE)))
+essayer_regression("glm_poisson_effort_moyennes", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", decalage = ur("effort")),
+                   moyennes = list(ajustement = "aucun"))
+r <- essayer_regression("gam_courbe_moyennes", pr, definir_modele(pr, "GAM", x = ur("x1", "x2", "sol"), y = ur("hauteur"), famille = "gaussienne", lisses = ur("x2"), echelle = "none"),
+                        moyennes = list())
+verifier("les moyennes d'un GAM : sa matrice lpmatrix sur la grille", any(grepl("L <- predict(m, nd, type = \"lpmatrix\")", lignes_script(r), fixed = TRUE)))
+essayer_regression("gamm_moyennes", pr, definir_modele(pr, "GAM", x = ur("x1", "sol"), y = ur("hauteur"), famille = "gaussienne", echelle = "none", aleatoires = list(par_site),
+                   correlation = list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")), dans = par_secteur)), moyennes = list())
+essayer_regression("glmm_poisson_moyennes", pr, definir_modele(pr, "GLM", x = ur("x1", "sol"), y = ur("compte"), famille = "poisson", aleatoires = list(par_site)), moyennes = list())
+# les moyennes ajustées d'un GAM à une courbe par secteur (s(annee, by = secteur)) : la grille porte le
+# facteur de la courbe, dans Nuée comme dans le script
+essayer_regression("gam_par_courbe_moyennes", pq, definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none",
+                   famille = "gaussienne", lisses = uq("annee"), par_courbes = stats::setNames(list(uq("secteur")), uq("annee")), k_courbes = k5),
+                   moyennes = list())
+tz <- tq[!(tq$habitat == "H2" & tq$traitement == "T3"), ]
+pz <- projet_depuis_tableau(tz[c("nom", "habitat", "traitement", "densite")], "cellule vide")
+dz <- definir_modele(pz, "LM", x = numeros(pz, c("habitat", "traitement")), y = numeros(pz, "densite"), echelle = "none", croises = list(numeros(pz, c("habitat", "traitement"))))
+essayer_regression("lm_moyennes_cellule_vide", pz, dz, moyennes = list(facteur = numeros(pz, "traitement"), dans = numeros(pz, "habitat")))
+mz <- ajuster(pz, dz)
+mz$moyennes <- moyennes_ajustees(pz, mz, dz, list(facteur = numeros(pz, "traitement")))
+dir.create(ici <- file.path(dossier, "moyennes_rmd"))
+r <- ecrire_script(pz, dz, file.path(ici, "vide.Rmd"), "moteur", m = mz, version = "essai")
+texte <- readLines(r$script, encoding = "UTF-8")
+verifier("dans un rapport R Markdown : les tableaux des moyennes et des paires, leurs blocs nommés une fois, les mêmes nombres",
+         is.null(r$ecart) && etiquettes_uniques(texte) && any(grepl("^```\\{r tableau-moyennes\\}", texte)) && any(grepl("^```\\{r paires-moyennes\\}", texte)) &&
+           any(grepl("^```\\{r moyennes-ajustees,", texte)))
 # la séance : une ACP, un modèle mixte et un GAM dans le même script
 definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A1"),
                     definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R1"),
@@ -631,6 +828,112 @@ if (requireNamespace("knitr", quietly = TRUE)) {
   verifier("R8.Rmd se compile, avec le tableau de la sélection", file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) &&
            any(grepl("combinaison", readLines(md, encoding = "UTF-8"))))
 }
+
+cat("Une condition (onglet Observations : condition.R)\n")
+# les lignes du modèle, celles des cochées où sa condition est vraie, écrite en R avec les noms du
+# tableau du script : une PLS (des observations décochées, une variable qualitative, lue en texte) ;
+# en anglais, un nom que la traduction du script changerait (entre accents graves) ; un modèle mixte
+# avec un jeu de test (cochées à part) et precedent() ; un arbre, dont des lignes sont laissées de
+# côté faute de valeurs ; des k-moyennes sur un identifiant et ecart_groupe() ; une séance
+r <- essayer("pls_condition", p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, observations = numeros_observations(p)[-(1:6)],
+                                               condition = 'variete %in% c("Gala", "Golden") & sucre > 11'))
+texte <- lignes_script(r)
+verifier("PLS : ses lignes, les cochées où la condition est vraie, les variables qualitatives en texte",
+         any(texte == "cochees <- 7:120") && any(texte == "donnees_texte <- lapply(donnees, function(x) if (is.factor(x)) as.character(x) else x)") &&
+           any(texte == "condition <- with(donnees_texte, variete %in% c(\"Gala\", \"Golden\") & sucre > 11)") && any(texte == "lignes <- cochees[condition[cochees] %in% TRUE]"))
+r <- essayer("pls_condition_en", p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, condition = "poids > median(poids) & verger != \"A\""), langue = "en")
+texte <- lignes_script(r)
+verifier("in English: `poids`, a name the translation would change, between backticks; the same rows",
+         any(texte == "condition <- with(data_as_text, `poids` > median(`poids`) & verger != \"A\")") && any(texte == "rows <- ticked[condition[ticked] %in% TRUE]"))
+r <- essayer_regression("lmm_condition_test_en", pr, definir_modele(pr, "LMM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site),
+                        test = numeros_observations(pr)[seq(3, n, by = 12)], condition = 'site != "S2" & !is.na(precedent(hauteur, annee, interaction(site, secteur)))'),
+                        langue = "en")
+texte <- lignes_script(r)
+verifier("mixed model in English: precedent() written in the script; the test set ticked apart",
+         any(grepl("^precedent <- function", texte)) && any(grepl("^shifted_value <- function", texte)) && any(grepl("^test_rows <- ", texte)) &&
+           any(grepl("^condition <- with\\(data_as_text, site != \"S2\" & !is.na\\(precedent\\(hauteur, annee, interaction\\(site, secteur\\)\\)\\)\\)$", texte)))
+dir.create(ici <- file.path(dossier, "classement_condition"))
+dt <- definir_modele(p, "TREE", x = uid(c("sucre", "fermete", "acidite")), y = uid("polyphenols"), echelle = "none", condition = 'culture == "bio" | sucre > 12')
+mt <- ajuster(p, dt)
+r <- ecrire_script(p, dt, file.path(ici, "arbre.R"), "moteur", m = mt, version = "essai")
+s <- lancer(r$script, c("elagage", "vc"))
+verifier(sprintf("arbre : les lignes de la condition, puis les %d sans polyphénols écartées ; lancé seul, le même élagage et la même validation", length(mt$exclues)),
+         is.null(r$ecart) && length(mt$exclues) > 0 && length(s) > 0 && meme(s$elagage, mt$complet$cptable) && meme(s$vc, mt$vc$prediction) &&
+           any(grepl("^lignes <- setdiff\\(lignes, ", lignes_script(r))))
+dk <- definir_modele(pr, "KMEANS", x = ur("x2", "hauteur"), options = list(k = 3), condition = 'site %in% c("S1", "S3", "S4") & ecart_groupe(hauteur, secteur) > -1')
+mk <- ajuster(pr, dk)
+r <- ecrire_script(pr, dk, file.path(ici, "kmeans.R"), "moteur", m = mk, version = "essai", langue = "en")
+s <- lancer(r$script, nom_classement(c("groupe", "r2"), "en"))
+texte <- lignes_script(r)
+verifier("k-means in English: an ID (site) and ecart_groupe() in its condition; run alone, the same clusters",
+         is.null(r$ecart) && length(s) > 0 && identical(as.numeric(s[[nom_classement("groupe", "en")]]), as.numeric(mk$groupe)) && meme(s[[nom_classement("r2", "en")]], mk$r2) &&
+           any(grepl("^  site = ", texte)) && any(grepl("^ecart_groupe <- function", texte)) && any(grepl("^moyenne_groupe <- function", texte)))
+definitions <- list(definir_modele(pr, "PCA", x = ur("x1", "x2", "effort"), A = 2, nom = "A2", condition = 'site %in% c("S1", "S2")'),
+                    definir_modele(pr, "LM", x = ur("x1", "x2"), y = ur("hauteur"), echelle = "none", nom = "R9", condition = "group_mean(hauteur, site) > 0"))
+ms <- lapply(definitions, function(d) ajuster(pr, d))
+r <- ecrire_script_seance(pr, definitions, ms, file.path(ici, "seance.R"), "moteur", version = "essai")
+s <- lancer(r$script, c("A2", "R9"))
+verifier("une séance de deux modèles à condition (un identifiant, group_mean()) : les résultats du moteur",
+         is.null(r$ecart) && length(s) == 2 && meme(moteur(ms[[1]])$scores, s$A2$m$T) && meme(moteur_regression(ms[[2]])$coefficients, as.matrix(s$R9$coefficients[2:8])))
+
+# une condition avec un commentaire, des tabulations, une apostrophe, un saut de ligne : écrite
+# propre sur une ligne (depuis l'expression validée, deparse), le script tourne et reproduit
+cat("Une condition avec un commentaire, des tabulations, une apostrophe\n")
+for (cnd in list(c("commentaire", "sucre > 12 # haut sucre", "donnees", "sucre > 12"),
+                 c("tabulations", "variete == \"Gala\"\t|\tsucre > 12", "donnees_texte", "variete == \"Gala\" | sucre > 12"),
+                 c("apostrophe", "variete == \"Gal\\\"a\" | variete == \"Gala\"", "donnees_texte", "variete == \"Gal\\\"a\" | variete == \"Gala\""),
+                 c("saut", "variete == \"Gala\" &\n sucre > 12", "donnees_texte", "variete == \"Gala\" & sucre > 12"))) {
+  r <- essayer(sprintf("cond_%s", cnd[1]), p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, condition = cnd[2]))
+  texte <- lignes_script(r)
+  attendu <- sprintf("condition <- with(%s, %s)", cnd[3], cnd[4])
+  verifier(sprintf("condition avec %s : écrite propre sur une ligne (sans # ni tabulation), le script reproduit", cnd[1]),
+           any(texte == attendu) && !any(grepl("^condition <- with.*[#\t]", texte)) && is.null(r$ecart))
+}
+
+# un texte venu des données (nom de variable, de modèle, de projet, de bloc, une catégorie) écrit
+# dans un commentaire ne peut pas exécuter de code : un retour chariot ou un saut de ligne suivi
+# d'un appel, dans un projet reçu, ne crée pas le fichier témoin quand le script exporté est sourcé
+cat("Un texte des données (nom, modèle, catégorie, bloc) ne sort pas d'un commentaire, FR et EN\n")
+dir.create(file.path(dossier, "injection"))
+marque <- gsub("\\\\", "/", file.path(dossier, "injection", "PWNE.txt"))
+inj <- function(prefixe, saut = "\r") sprintf("%s%sfile.create(\"%s\")%s#", prefixe, saut, marque, saut)  # préfixe, coupure, appel, coupure, #
+ok_coupures <- function(f) { b <- readBin(f, "raw", file.info(f)$size); s <- rawToChar(b); Encoding(s) <- "UTF-8"
+  !any(b == as.raw(13)) && !grepl("[  ]", s) }  # ni retour chariot, ni séparateur de ligne Unicode
+set.seed(3)
+ni <- 120
+dinj <- data.frame(nom = sprintf("o%03d", 1:ni), site = rep(sprintf("S%d", 1:6), each = 20), annee = rep(2001:2020, 6),
+                   x1 = rnorm(ni), x2 = runif(ni), stringsAsFactors = FALSE)
+dinj[[inj("densite")]] <- 3 + 0.5 * dinj$x1 + rep(rnorm(6, 0, 0.5), each = 20) + rnorm(ni, 0, 0.3)  # nom de variable forgé (\r)
+dinj[[inj("habitat", "\n")]] <- rep(c(inj("marais", " "), "prairie", "foret"), length.out = ni)  # catégorie forgée (U+2028), variable au nom forgé (\n)
+pinj <- projet_depuis_tableau(dinj, inj("projet", "\n"))  # nom de projet forgé
+pinj$observation_id_names <- c("Observation", "site")
+for (i in seq_along(pinj$observations)) pinj$observations[[i]]$ids <- c(pinj$observations[[i]]$ids[1], dinj$site[i])
+uinj <- function(x) numeros(pinj, x)
+dinjr <- definir_modele(pinj, "LMM", x = c(uinj("annee"), uinj(inj("habitat", "\n"))), y = uinj(inj("densite")), echelle = "none",
+                        aleatoires = list(list(by = "id", id = "site")), nom = inj("Mon modèle", "\n"), titre = inj("Titre", "\n"))
+for (lg in c("fr", "en")) {
+  unlink(marque)
+  r <- essayer_regression(sprintf("injection_%s", lg), pinj, dinjr, langue = lg, moyennes = list(facteur = uinj(inj("habitat", "\n"))))
+  verifier(sprintf("injection (%s) : aucun appel injecté ne tourne au source du script, aucune coupure de ligne, les nombres du moteur", lg),
+           !file.exists(marque) && ok_coupures(r$script) && is.null(r$ecart))
+}
+# une PLS avec un nom de bloc de pondération forgé et des noms de variables forgés
+dinjp <- definir_modele(pinj, "PLS", x = c(uinj("x1"), uinj("x2"), uinj(inj("densite"))), y = uinj("annee"), A = 2,
+                        blocs = stats::setNames(c(inj("taille"), inj("taille"), "gout"), as.character(c(uinj("x1"), uinj("x2"), uinj(inj("densite"))))))
+unlink(marque)
+r <- essayer("injection_bloc", pinj, dinjp)
+verifier("injection (nom de bloc de pondération) : aucun appel injecté ne tourne, aucune coupure de ligne",
+         !file.exists(marque) && ok_coupures(r$script) && is.null(r$ecart))
+
+# le rapport d'une régression dont la puissance pour une tendance a été calculée : son tableau, la puissance dans les méthodes
+msp <- ajuster(pr, dsp <- definir_modele(pr, "LMM", x = ur("annee"), y = ur("hauteur"), echelle = "none", aleatoires = list(par_site), nom = "R9"))
+msp$puissance_tendance <- puissance_tendance(msp, dsp, list(unite = "pente", tendance = -0.05))
+dir.create(ici <- file.path(dossier, "rapport_puissance"))
+r <- ecrire_script(pr, dsp, file.path(ici, "R9.Rmd"), "moteur", m = msp, version = "essai")
+texte <- readLines(r$script, encoding = "UTF-8")
+verifier("R9.Rmd, après la puissance pour une tendance : son tableau et son graphique, et la puissance dans le texte des méthodes",
+         is.null(r$ecart) && etiquettes_uniques(texte) && any(grepl("^```\\{r puissance-80\\}", texte)) && any(grepl("^```\\{r puissance,", texte)) &&
+           any(grepl("La puissance de détecter une baisse de 0,05 par an", texte, fixed = TRUE)) && any(grepl("^- Diggle, P. J.", texte)))
 
 cat("Rapports R Markdown et Quarto\n")
 for (i in seq_along(p$models)) {

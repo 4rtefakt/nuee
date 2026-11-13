@@ -218,6 +218,7 @@ pre.diagnostic { margin: 0; padding: 8px 10px; background: var(--fond-barre); bo
 .tableau td.diagonale { font-weight: 700; color: var(--ok); }
 .tableau td.erreur-classe { color: var(--erreur); }
 .tableau tr.total td { border-top: 1px solid var(--bord); font-weight: 600; }
+.tableau tr.debut-section td { border-top: 1px solid var(--bord); }
 .badge.bon { background: transparent; color: var(--ok); border: 1px solid var(--ok); }
 .badge.alerte { border: 1px solid var(--attention); }
 .onglet-termes { display: flex; flex-direction: column; flex: 1; min-height: 0; }
@@ -294,5 +295,12 @@ body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed
 /* the R formula of a regression (New model) */
 .formule-r { display: flex; flex-direction: column; gap: 4px; }
 .formule-r textarea.formule { font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; font-size: 12px; width: 100%; box-sizing: border-box; resize: vertical; }
-/* imputation by PCA (New variable): the variables, ticked */
+/* the condition that keeps a model's observations (New model › Observations) */
+.condition-obs { padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px solid var(--grille); }
+.condition-obs .note { margin: 0; }
+/* imputation by PCA (New variable): the variables, ticked; also the columns of Add columns from a table and Summarize by group */
 .liste-imputation { max-height: 14em; overflow: auto; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--bord); border-radius: 4px; padding: 4px 6px; margin-top: 4px; }
+/* Add columns from a table: a key's two columns side by side; Summarize by group: the statistics */
+.dialogue-colonnes .grille-champs, .dialogue-resume .grille-champs { grid-template-columns: max-content minmax(0, 460px); }
+.dialogue-colonnes .ligne select { max-width: 13em; }
+.statistiques-groupe { display: flex; flex-wrap: wrap; gap: 4px 14px; }

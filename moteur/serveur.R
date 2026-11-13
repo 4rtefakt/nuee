@@ -211,7 +211,7 @@ resume_modele <- function(d) {
   list(numero = d$number %||% NA, nom = d$name %||% "", titre = d$title %||% "",
        type = paste0(if (isTRUE(d$opls)) "O" else "", if (isTRUE(d$plsda)) "PLS-DA" else d$type %||% ""), A = d$A %||% 0,
        ajuste = isTRUE(d$fitted) || !is.null(d$app), erreur = d$error %||% NULL,
-       n_obs = length(d$observations), x = vapply(d$x, function(t) as.character(t$name), ""),
+       n_obs = length(d$observations), x = vapply(Filter(function(t) !isTRUE(t$facteur_seul), d$x), function(t) as.character(t$name), ""),  # (sans les facteurs seuls d'une régression)
        y = vapply(d$y, function(t) as.character(t$name), ""), stocke = composantes_stockees(d), note = d$note %||% "",
        version_origine = if (!isTRUE(d$app)) d$version_origine %||% NULL)
 }
@@ -279,7 +279,7 @@ definition_interface <- function(p, q) {
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
                       lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
                       croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, k_courbes = if (length(q$k_courbes)) q$k_courbes,
-                      options = q$options)
+                      options = q$options, condition = q$condition, par_courbes = if (length(q$par_courbes)) q$par_courbes)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
   d$demande <- q
@@ -372,6 +372,7 @@ reajuster_demande <- function(q) {
   }
   if (length(exclues)) {
     if (!is.null(d$baci_origine)) d$baci_origine$derive <- TRUE  # (le modèle BACI sans ces observations : il en dérive)
+    if (avec_condition(d)) d$cochees <- setdiff(as.numeric(unlist(d$cochees %||% d$observations)), exclues)  # (décochées : condition.R)
     d$observations <- setdiff(d$observations, exclues)
     d$exclues <- c(d$exclues, exclues)
     d$solution <- NULL
@@ -385,8 +386,10 @@ reajuster_demande <- function(q) {
   ajuster_et_garder(p, d)
 }
 
-# (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande)
+# (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande). Une définition
+# à condition est gardée avec les observations qu'elle donne sur les données du moment (condition.R).
 ajuster_et_garder <- function(p, d, m = NULL) {
+  d <- resoudre_observations(p, d)
   if (!d$A && !sans_composantes(d)) d$A <- max(1, autoajuster(p, d))  # (ni une régression ni une autre analyse n'a de composantes)
   if (is.null(m)) m <- ajuster(p, d)
   id <- nouvel_id("M")
@@ -457,12 +460,18 @@ resultat_regression <- function(id) {
   list(id = id, projet = p$id, nom = m$nom, titre = m$titre, type = m$type, regression = TRUE, opls = FALSE, Ap = 0, A = 0,
        N = m$N, K = m$K, noms_y = I(y), transformation_y = m$y$transformation, observations = obs,
        residus_quantiles = if (!is.null(r$residus_quantiles)) list(residu = r$residus_quantiles, quantile_normal = quantiles_henry(r$residus_quantiles)),
-       coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires),
+       coefficients_regression = r$coefficients, termes_retires = I(r$termes_retires), termes_absents = I(r$termes_absents %||% character(0)),
        famille = m$famille, lien = m$lien, parametre_loi = r$parametre_loi, courbes = r$courbes, decalage = m$decalage, dispersion = r$dispersion,
        gamm = isTRUE(m$gamm), dans = m$dans,
        qualite = c(r$r2, list(AIC = r$AIC, AICc = r$AICc, BIC = r$BIC, logLik = r$logLik, parametres = r$parametres,
-                              Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs)),
+                              Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, echecs_vc = m$vc$echecs,
+                              # (les observations sans prédiction en validation croisée : leur catégorie manquait aux autres groupes)
+                              sans_categorie_vc = m$vc$sans_categorie %||% 0, facteurs_vc = I(m$vc$facteurs %||% character(0)))),
        variances = variances, phi = r$phi, niveaux = I(m$niveaux), temps = m$temps, exclues_manquantes = length(m$exclues),
+       # (les pentes aléatoires de chaque niveau, les parts de variance des niveaux et les signes d'un ajustement singulier)
+       pentes = pentes_regression(m), parts_variance = parts_regression(m), singularites = singularites_regression(m),
+       # (ses variables qualitatives : celles qui ont des moyennes ajustées, moyennes.R)
+       qualitatives = I(unname(vapply(qualitatives_modele(m), `[[`, "", "nom"))),
        signature = m$signature, RMSEE = stats::setNames(list(sqrt(mean((m$donnees$y - r$ajuste)^2))), y),
        RMSEcv = stats::setNames(list(m$vc$RMSEcv), y), composantes = NULL,
        G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app),
@@ -562,17 +571,20 @@ exporter_prediction_demande <- function(q) {
 scores_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
-  memoriser(p, sprintf("scores de %s en variables", e$definition$name %||% q$modele))
   r <- scores_en_variables(p, e$modele)
+  memoriser(p, sprintf("scores de %s en variables", e$definition$name %||% q$modele))
   r$projet$modifie <- TRUE
   etat$projets[[p$id]] <- r$projet
   reviser(p$id)
   list(projet = resume_projet(r$projet), noms = I(r$noms), modeles = I(modeles_utilisant(r$projet, r$noms)))
 }
 
+# Un changement du projet q$projet par f, retenu pour Ctrl+Z (memoriser) une fois fait : un
+# changement refusé (une formule qui ne se calcule pas...) ne laisse pas de retour en arrière vide.
 changer_projet <- function(q, f, etiquette) {
-  memoriser(projet(q$projet), etiquette)
-  p <- f(projet(q$projet))
+  avant <- projet(q$projet)
+  p <- f(avant)
+  memoriser(avant, etiquette)
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
   reviser(p$id)
@@ -580,8 +592,9 @@ changer_projet <- function(q, f, etiquette) {
 }
 
 classe_demande <- function(q) {
-  memoriser(projet(q$projet), sprintf("classe %s", q$etiquette))
-  p <- ajouter_classe(projet(q$projet), q$variable, q$etiquette, as.numeric(q$observations))
+  avant <- projet(q$projet)
+  p <- ajouter_classe(avant, q$variable, q$etiquette, as.numeric(q$observations))
+  memoriser(avant, sprintf("classe %s", q$etiquette))
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
   reviser(p$id)
@@ -653,6 +666,14 @@ exporter_demande <- function(q) {
   list(chemin = chemins[1], chemins = I(chemins))
 }
 
+# Les régressions `ids` de la séance, dans cet ordre, nommées comme leurs colonnes dans les
+# coefficients côte à côte (coefficients_modeles.R) : leur nom, numéroté quand deux modèles de
+# projets différents ont le même.
+regressions_demande <- function(ids) {
+  ms <- lapply(as.character(unlist(ids)), function(id) modele(id)$modele)
+  stats::setNames(ms, make.unique(vapply(ms, function(m) as.character(m$nom %||% ""), ""), sep = " "))
+}
+
 # Les données d'un projet, dans le format de l'extension du chemin.
 exporter_donnees_demande <- function(q) {
   p <- projet(q$projet)
@@ -690,6 +711,77 @@ importer_spectres_demande <- function(q) {
   r <- resume_projet(p)
   r$note <- I(p$note %||% character(0))
   r
+}
+
+# Le tableau d'un fichier dont on ajoute des colonnes au projet (Édition › Ajouter des colonnes d'un
+# tableau), dans tout format que lit Fichier › Ouvrir : un tableau (formats.R : lire_tableau ;
+# `textes` : les colonnes de la clé, lues telles qu'écrites), ou les données d'un projet (.nuee,
+# .json, .usp ; formats.R : tableau_projet).
+tableau_a_joindre <- function(chemin, table = NULL, textes = NULL) {
+  switch(extension(chemin),
+         nuee = , json = tableau_projet(lire_projet(chemin)),
+         usp = tableau_projet(lire_projet(convertir_usp(chemin))),
+         lire_tableau(chemin, table, textes = textes))
+}
+
+# Ajouter des colonnes d'un tableau, avant d'ajouter : le tableau d'un fichier (q$chemin ; q$table,
+# sa feuille ou son tableau, le premier sinon) ou des cellules collées (q$texte), gardées dans un
+# fichier de la session comme Coller un tableau ; ses tableaux, ses colonnes (des nombres ou non,
+# et le nom qu'elles prendraient dans le projet : variables.R, nom_libre) et les clés proposées
+# (variables.R : proposer_cles).
+table_a_joindre_demande <- function(q) {
+  p <- projet(q$projet)
+  chemin <- as.character(q$chemin %||% "")
+  colle <- !is.null(q$texte)
+  if (colle) {
+    texte <- as.character(q$texte)
+    if (!grepl("[\t;,]", texte) || !grepl("\n.", texte)) stop(traduire("Le presse-papiers ne contient pas de tableau (au moins deux lignes et deux colonnes)", "The clipboard holds no table (at least two rows and two columns)"))
+    chemin <- chemin_temporaire("tableau colle.tsv")
+    writeLines(enc2utf8(texte), chemin, useBytes = TRUE)
+  }
+  ext <- extension(chemin)
+  if (!ext %in% c("nuee", "json", "usp", FORMATS_LECTURE)) stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext)
+  tables <- if (ext %in% FORMATS_LECTURE) tables_fichier(chemin)
+  table <- if (length(tables) > 1) as.character(q$table %||% tables[1])
+  df <- tableau_a_joindre(chemin, table)
+  pris <- c(as.character(p$noms_var), as.character(p$observation_id_names %||% character(0)))
+  noms <- character(0)
+  for (n in names(df)) noms <- c(noms, nom_libre(n, c(pris, noms)))
+  list(chemin = chemin, nom = if (colle) traduire("cellules collées", "pasted cells") else basename(chemin), colle = colle,
+       tables = if (length(tables) > 1) I(tables), table = table, n = nrow(df),
+       colonnes = list(nom = I(names(df)), nombres = I(unname(vapply(df, is.numeric, TRUE))), nom_ajoute = I(noms)),
+       cles = proposer_cles(p, df))
+}
+
+# Les colonnes d'un tableau ajoutées au projet par une clé (variables.R : ajouter_colonnes_table), le
+# tableau relu avec les colonnes de la clé telles qu'écrites ; comme une Nouvelle variable, Ctrl+Z
+# les retire. q$nom : le nom du tableau, pour Annuler.
+ajouter_colonnes_demande <- function(q) {
+  p <- projet(q$projet)
+  cles_table <- as.character(unlist(q$cles_table))
+  tableau <- tableau_a_joindre(q$chemin, q$table, textes = cles_table)
+  n <- ajouter_colonnes_table(p, tableau, as.character(unlist(q$cles_projet)), cles_table, if (!is.null(q$colonnes)) as.character(unlist(q$colonnes)))
+  memoriser(p, sprintf(traduire("colonnes de %s", "columns from %s"), q$nom %||% basename(q$chemin)))
+  info <- attr(n, "jointure")
+  attr(n, "jointure") <- NULL
+  n$modifie <- TRUE
+  etat$projets[[p$id]] <- n
+  reviser(p$id)
+  c(resume_projet(n), list(jointure = info))
+}
+
+# Résumer par groupe : un nouveau projet, une ligne par groupe (nouveau.R : resumer_par_groupe), sans
+# fichier, à enregistrer comme un tableau collé.
+resumer_groupes_demande <- function(q) {
+  p <- resumer_par_groupe(projet(q$projet), as.character(unlist(q$groupes)),
+                          variables = if (!is.null(q$variables)) as.numeric(unlist(q$variables)), statistiques = as.character(unlist(q$statistiques %||% "moyenne")))
+  info <- attr(p, "resume")
+  attr(p, "resume") <- NULL
+  p$id <- nouvel_id("P")
+  p$nom <- p$source
+  p$modifie <- TRUE
+  etat$projets[[p$id]] <- p
+  c(resume_projet(p), list(resume = info))
 }
 
 # ---------------------------------------------------------------- HTTP
@@ -800,6 +892,16 @@ DEMANDES <- list(
     list(test = I(choisir_test(p, as.numeric(q$x), obs, q$methode %||% "hasard", as.numeric(q$part %||% 0.25),
                                if (length(q$classe)) as.numeric(q$classe))))
   },
+  # combien d'observations cochées (sans q$exclues ni le jeu de test q$test) remplissent la condition
+  # q$condition (condition.R), pour l'onglet Observations de Nouveau modèle ; une condition qui ne se
+  # lit pas, ou qui ne donne pas une valeur logique par observation, est une erreur qui le dit
+  condition_observations = function(q) {
+    p <- projet(q$projet)
+    cochees <- setdiff(numeros_observations(p), as.numeric(c(unlist(q$exclues), unlist(q$test))))
+    if (!nzchar(texte_condition(q$condition))) return(list(n = length(cochees), total = length(cochees)))
+    vraie <- valeurs_condition(p, q$condition)
+    list(n = sum(vraie[match(as.character(cochees), rownames(p$donnees))], na.rm = TRUE), total = length(cochees))
+  },
   importer_spectres = importer_spectres_demande,
   predire_fichier = predire_fichier_demande,
   exporter_prediction = exporter_prediction_demande,
@@ -817,11 +919,19 @@ DEMANDES <- list(
   statistiques_variables = function(q) statistiques_variables(projet(q$projet)),
   # une variable au fil du temps, par lignes (le secteur) et par panneaux (le site), en long (series.R) ;
   # avec q$tendances, la tendance de chaque ligne (Mann–Kendall, pente de Sen), p corrigée par
-  # q$correction ("BH" par défaut, ou "holm")
+  # q$correction ("BH" par défaut, ou "holm") ; avec q$autocorrelation, la correction de Hamed et Rao ;
+  # avec q$saisons ("mois", une variable qualitative ou "id:k"), le test de Kendall saisonnier. Des
+  # options refusées (des saisons par mois sans dates...) n'empêchent pas le graphique :
+  # tendances_erreur le dit, et l'interface garde le tableau et ses options pour les changer.
   series = function(q) {
-    r <- series_variable(projet(q$projet), q$variable, q$temps, q$lignes, q$panneaux)
-    if (isTRUE(q$tendances)) r$tendances <- tendances_series(r$points, q$correction %||% "BH")
-    r
+    p <- projet(q$projet)
+    r <- series_variable(p, q$variable, q$temps, q$lignes, q$panneaux)
+    if (!isTRUE(q$tendances)) return(r)
+    tryCatch({
+      s <- if (length(q$saisons) && nzchar(as.character(q$saisons))) ajouter_saisons(p, r, q$saisons) else r
+      s$tendances <- tendances_series(s$points, q$correction %||% "BH", isTRUE(q$autocorrelation))
+      s
+    }, error = function(e) c(r, list(tendances_erreur = conditionMessage(e))))
   },
   # avec q$appariement (une variable ou "id:k") : les tests appariés de deux classes, t apparié par défaut
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
@@ -858,15 +968,18 @@ DEMANDES <- list(
   # lue sans jamais être exécutée (formule.R)
   formule = function(q) list(formule = formule_reglages(projet(q$projet), q)),
   lire_formule = function(q) lire_formule(projet(q$projet), q$texte %||% "", q$type, q$famille),
-  # les seuils d'une courbe (regression.R : seuils_courbe), gardés avec le modèle
+  # les seuils d'une courbe (regression.R : seuils_courbe), gardés avec le modèle ; q$categorie :
+  # la catégorie d'une courbe par catégorie (sans elle, la première)
   seuils = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     terme <- as.character(q$terme)[1]
-    s <- e$modele$seuils[[terme]]
+    categorie <- if (length(q$categorie) && nzchar(as.character(q$categorie)[1])) as.character(q$categorie)[1]
+    cle <- paste(c(terme, categorie), collapse = "\r")
+    s <- e$modele$seuils[[cle]]
     if (is.null(s)) {
-      s <- seuils_courbe(e$modele, terme)
-      etat$modeles[[q$modele]]$modele$seuils[[terme]] <- s
+      s <- seuils_courbe(e$modele, terme, categorie)
+      etat$modeles[[q$modele]]$modele$seuils[[cle]] <- s
     }
     c(list(modele = q$modele), s)
   },
@@ -892,6 +1005,15 @@ DEMANDES <- list(
     ids <- Filter(function(id) !is.null(etat$modeles[[id]]) && est_regression(etat$modeles[[id]]$definition), as.character(unlist(q$modeles)))
     rapports_vraisemblance(stats::setNames(lapply(ids, function(id) etat$modeles[[id]]$modele), ids))
   },
+  # les coefficients de plusieurs régressions côte à côte (coefficients_modeles.R), pour Comparer
+  # les modèles : q$modeles, leurs identifiants dans l'ordre des colonnes ; q$erreur, "ic" ou "et" ;
+  # exporter_coefficients : le même tableau en fichiers (formats.R : ecrire_tables)
+  coefficients_modeles = function(q) coefficients_cote_a_cote(regressions_demande(q$modeles), q$erreur %||% "ic"),
+  exporter_coefficients = function(q) {
+    if (is.null(q$chemin)) q$chemin <- chemin_temporaire(paste0("coefficients.", q$format %||% "xlsx"))
+    chemins <- ecrire_tables(tables_cote_a_cote(regressions_demande(q$modeles), q$erreur %||% "ic"), q$chemin, objet = "coefficients")
+    list(chemin = chemins[1], chemins = I(chemins))
+  },
   apports = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
@@ -906,6 +1028,32 @@ DEMANDES <- list(
     if (is.null(e$modele$selection_aic)) etat$modeles[[q$modele]]$modele$selection_aic <- selection_aic(e$modele, e$definition)
     c(list(modele = q$modele), etat$modeles[[q$modele]]$modele$selection_aic)
   },
+  # la puissance pour détecter une tendance (puissance.R), gardée avec le modèle (le texte des
+  # Méthodes, le rapport et le script la reprennent alors) : q$terme, q$tendance, q$unite, q$alpha,
+  # q$annees (de, à), q$unites, q$simulation (annees, unites, n) ; q$simuler : la simulation, faite.
+  # Sans réglage, celle de la dernière fois (sa phrase dans la langue de la demande), ou celle des
+  # réglages par défaut.
+  puissance_tendance = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    avant <- e$modele$puissance_tendance
+    r <- if (!length(setdiff(names(q), "modele")) && !is.null(avant)) utils::modifyList(avant, list(phrase = phrase_puissance(avant)))
+         else puissance_tendance(e$modele, e$definition, q, avant)
+    etat$modeles[[q$modele]]$modele$puissance_tendance <- r
+    c(list(modele = q$modele), r)
+  },
+  # les moyennes ajustées d'une régression (moyennes.R), gardées avec le modèle (le texte des
+  # Méthodes, le rapport et le script les reprennent alors) : q$facteur, q$dans, q$pente (des numéros
+  # de variables), q$ajustement, q$echelle ; sans réglage, ceux de la dernière fois (ses phrases dans la
+  # langue de la demande), ou ceux par défaut
+  moyennes = function(q) {
+    e <- modele(q$modele)
+    if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    reglages <- q[setdiff(names(q), "modele")]
+    r <- moyennes_ajustees(projet(e$projet), e$modele, e$definition, if (length(reglages)) reglages else e$modele$moyennes$reglages %||% list())
+    etat$modeles[[q$modele]]$modele$moyennes <- r
+    c(list(modele = q$modele), r)
+  },
   correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),
   historique = function(q) historique_projet(projet(q$projet)),
   # données modifiées et variables ajoutées : le projet est à enregistrer
@@ -914,8 +1062,9 @@ DEMANDES <- list(
   variable_calculee = function(q) changer_projet(q, function(p) variable_calculee(p, q$nom, q$formule), sprintf("variable %s", q$nom)),
   # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
   imputer = function(q) {
-    memoriser(projet(q$projet), traduire("imputation", "imputation"))
-    p <- imputer_acp(projet(q$projet), unlist(q$variables), k = q$k, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
+    avant <- projet(q$projet)
+    p <- imputer_acp(avant, unlist(q$variables), k = q$k, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
+    memoriser(avant, traduire("imputation", "imputation"))
     info <- attr(p, "imputation")
     attr(p, "imputation") <- NULL
     p$modifie <- TRUE
@@ -925,6 +1074,11 @@ DEMANDES <- list(
   },
   classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),
     sprintf("variable %s", q$nom)),
+  # Édition › Ajouter des colonnes d'un tableau : le tableau et les clés proposées, puis l'ajout
+  table_a_joindre = table_a_joindre_demande,
+  ajouter_colonnes = ajouter_colonnes_demande,
+  # Édition › Résumer par groupe : un nouveau projet
+  resumer_groupes = resumer_groupes_demande,
   annuler = annuler_demande,
   # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur prétraitement.
   spectres = function(q) {

@@ -35,6 +35,25 @@ appel_ouverture <- function(chemin, table = NULL) {
   sprintf("importer_tableau(%s)", code_r(chemin))
 }
 
+# La lecture du tableau d'Ajouter des colonnes d'un tableau (serveur.R : tableau_a_joindre).
+appel_tableau <- function(chemin, table = NULL, textes = NULL) {
+  ext <- tolower(tools::file_ext(chemin))
+  if (ext == "usp") return(sprintf("tableau_projet(lire_projet(convertir_usp(%s)))", code_r(chemin)))
+  if (ext %in% c("nuee", "json")) return(sprintf("tableau_projet(lire_projet(%s))", code_r(chemin)))
+  sprintf("lire_tableau(%s%s%s)", code_r(chemin), if (!is.null(table)) sprintf(", table = %s", code_r(table)) else "",
+          if (length(textes)) sprintf(", textes = %s", vecteur_r(textes)) else "")
+}
+
+# Des colonnes du projet (des numéros de variables, ou "id:k") en R : 4, "id:2", c("id:2", 4).
+colonnes_projet_r <- function(x) {
+  x <- as.character(unlist(x))
+  e <- ifelse(startsWith(x, "id:"), vapply(x, code_r, ""), x)
+  if (length(e) == 1) e else paste0("c(", paste(e, collapse = ", "), ")")
+}
+
+# Une colonne d'un data.frame en R : d$site, ou d[["habitat (2)"]] pour un nom qui n'est pas un nom de R.
+colonne_r <- function(df, nom) if (identical(make.names(nom), nom)) sprintf("%s$%s", df, nom) else sprintf("%s[[%s]]", df, code_r(nom))
+
 # Les lignes R d'une action de l'interface (NULL pour celles qui ne font qu'afficher).
 journaliser <- function(nom, q, r) {
   pm <- function(id) etat$modeles[[id]]$projet
@@ -50,6 +69,9 @@ journaliser <- function(nom, q, r) {
                                 if (length(q$infos) && nzchar(q$infos)) sprintf(", infos = %s", code_r(q$infos)) else "", code_r(r$nom)),
     exporter = sprintf("ecrire_tables(tables_resultats(%s, %s), %s)", pm(q$modele), q$modele, code_r(r$chemin)),
     exporter_donnees = sprintf("ecrire_tableau(tableau_projet(%s), %s)", q$projet, code_r(r$chemin)),
+    exporter_coefficients = sprintf("ecrire_tables(tables_cote_a_cote(list(%s), %s), %s)",
+                                    paste(sprintf("%s = %s", vapply(names(regressions_demande(q$modeles)), code_r, ""), as.character(unlist(q$modeles))), collapse = ", "),
+                                    code_r(q$erreur %||% "ic"), code_r(r$chemin)),
     fermer_projet = sprintf("rm(%s)  # projet fermé", q$projet),
     ajuster = definition_modele(r$id, sprintf("# modèle %s (%s) du projet %s", r$nom, r$type, projet(r$projet)$nom)),
     reajuster = definition_modele(r$id, sprintf("# modèle %s, d'après %s%s", r$nom, q$modele,
@@ -60,6 +82,8 @@ journaliser <- function(nom, q, r) {
                                                      vecteur_r(as.character(unlist(q$temoins))), code_r(q$evenement)),
                     definition_modele(r$modele$id, sprintf("# modèle mixte BACI %s du projet %s", r$modele$nom, projet(r$modele$projet)$nom))),
     selection_aic = sprintf("selection_aic(%s, definition(%s))", q$modele, code_r(q$modele)),
+    puissance_tendance = if (length(setdiff(names(q), "modele"))) sprintf("puissance_tendance(%s, definition(%s), %s)", q$modele, code_r(q$modele), code_r(q[setdiff(names(q), "modele")])),
+    moyennes = if (length(setdiff(names(q), "modele"))) sprintf("moyennes_ajustees(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q[setdiff(names(q), "modele")])),
     predire = sprintf("predire(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele),
                       if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),
     predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),
@@ -73,10 +97,44 @@ journaliser <- function(nom, q, r) {
     variable_calculee = sprintf("%s <- variable_calculee(%s, %s, %s)", q$projet, q$projet, code_r(q$nom), code_r(q$formule)),
     classes_valeurs = sprintf("%s <- classes_valeurs(%s, %s, %s, %s)", q$projet, q$projet, code_r(q$nom), q$variable,
                               if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q$n)),
+    # (et, en commentaire, le même calcul fait avec match() sur le tableau des données)
+    ajouter_colonnes = {
+      p <- projet(q$projet)
+      cles <- as.character(unlist(q$cles_table))
+      parties <- lapply(seq_along(cles), function(j) {
+        v <- colonne_ou_identifiant(p, as.character(unlist(q$cles_projet))[j], numeros_observations(p)[1])
+        texte <- function(x) if (v$nombres) x else sprintf("trimws(%s)", x)
+        c(texte(colonne_r("d", v$nom)), texte(colonne_r("tableau", cles[j])))
+      })
+      cle <- function(k) if (length(parties) == 1) parties[[1]][k] else sprintf("paste(%s)", paste(vapply(parties, `[`, "", k), collapse = ", "))
+      c(sprintf("tableau <- %s%s", appel_tableau(q$chemin, q$table, cles), if (isTRUE(q$colle)) "  # cellules collées, gardées dans un fichier de la session" else ""),
+        sprintf("%s <- ajouter_colonnes_table(%s, tableau, cles_projet = %s, cles_table = %s, colonnes = %s)", q$projet, q$projet,
+                colonnes_projet_r(q$cles_projet), vecteur_r(cles), vecteur_r(r$jointure$colonnes)),
+        sprintf("# soit, sur le tableau des données : d <- tableau_projet(%s) ; k <- match(%s, %s) ; d[%s] <- tableau[k, %s]", q$projet,
+                cle(1), cle(2), vecteur_r(r$jointure$noms), vecteur_r(r$jointure$colonnes)))
+    },
+    resumer_groupes = {
+      p <- projet(q$projet)
+      groupes <- as.character(unlist(q$groupes))
+      noms_groupes <- vapply(groupes, function(x) colonne_ou_identifiant(p, x, numeros_observations(p)[1])$nom, "", USE.NAMES = FALSE)
+      variables <- as.numeric(unlist(q$variables))
+      stats <- as.character(unlist(q$statistiques %||% "moyenne"))
+      en_r <- c(moyenne = "mean(x, na.rm = TRUE)", somme = "sum(x, na.rm = TRUE)", mediane = "median(x, na.rm = TRUE)", minimum = "min(x, na.rm = TRUE)",
+                maximum = "max(x, na.rm = TRUE)", ecart_type = "sd(x, na.rm = TRUE)", n = "sum(!is.na(x))")
+      c(sprintf("%s <- resumer_par_groupe(%s, %s, variables = %s, statistiques = %s)", r$id, q$projet, colonnes_projet_r(groupes), vecteur_r(variables), vecteur_r(stats)),
+        sprintf("# soit, sur le tableau des données : d <- tableau_projet(%s) ; aggregate(d[%s], d[%s], function(x) c(%s))", q$projet,
+                vecteur_r(unname(p$noms_var[as.character(variables)])), vecteur_r(noms_groupes), paste(sprintf("%s = %s", stats, en_r[stats]), collapse = ", ")))
+    },
     modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
     statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
-    series = sprintf("series_variable(%s)", paste(c(q$projet, variable_r(q$variable), variable_r(q$temps),
-      if (length(q$lignes)) paste("lignes =", variable_r(q$lignes)), if (length(q$panneaux)) paste("panneaux =", variable_r(q$panneaux))), collapse = ", ")),
+    series = {
+      # (avec les tendances, leur appel sur les points, et les saisons du test saisonnier)
+      appel <- sprintf("series_variable(%s)", paste(c(q$projet, variable_r(q$variable), variable_r(q$temps),
+        if (length(q$lignes)) paste("lignes =", variable_r(q$lignes)), if (length(q$panneaux)) paste("panneaux =", variable_r(q$panneaux)),
+        if (isTRUE(q$tendances) && length(q$saisons) && nzchar(as.character(q$saisons))) paste("saisons =", variable_r(q$saisons))), collapse = ", "))
+      if (isTRUE(q$tendances)) sprintf("tendances_series(%s$points, %s%s)", appel, code_r(q$correction %||% "BH"),
+                                       if (isTRUE(q$autocorrelation)) ", autocorrelation = TRUE" else "") else appel
+    },
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
     script_r = if (length(q$modeles) > 1) {

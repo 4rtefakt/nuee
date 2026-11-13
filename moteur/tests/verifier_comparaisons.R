@@ -951,6 +951,192 @@ tdd <- tendances_series(sd$points)
 verifier(sprintf("sur des dates : les mêmes tendances qu'en années décimales, la pente par an (S1 : %.2f par an)", tdd$pente[1]),
          isTRUE(all.equal(tdd, tendances_series(sn$points))) && tdd$pente[1] > 0 &&
            isTRUE(all.equal(tdd$pente[1], mk_main(jd$decimale[jd$secteur == "S1"], jd$densite[jd$secteur == "S1"])$pente)))
+verifier("sans option, chaque ligne dit son test : Mann–Kendall", all(tr$test == "mann_kendall") && all(is.na(tr$n_n_etoile)))
+
+cat("Tendances : la correction de Hamed et Rao (series.R : facteur_hamed_rao)\n")
+# Hamed et Rao (1998) refait à la main : la pente de Sen de mk_main, la ligne moins pente × temps,
+# ses rangs, leur autocorrélation à chaque décalage écrite en sommes, gardée au-delà de 1,96/√n,
+# n/n* = 1 + 2 / (n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k) ; Var(S) × n/n*, p et
+# l'intervalle de Gilbert d'après elle
+hr_main <- function(t, y) {
+  h <- mk_main(t, y)
+  n <- length(y)
+  R <- rank(round(y - h$pente * (t - t[1]), 9))
+  m <- mean(R)
+  rho <- vapply(1:(n - 1), function(k) sum((R[1:(n - k)] - m) * (R[(k + 1):n] - m)) / sum((R - m)^2), 0)
+  rho[abs(rho) <= qnorm(0.975) / sqrt(n)] <- 0
+  f <- 1 + 2 / (n * (n - 1) * (n - 2)) * sum(vapply(1:(n - 1), function(k) (n - k) * (n - k - 1) * (n - k - 2) * rho[k], 0))
+  if (f <= 0) return(list(f = f))
+  v <- h$var_S * f
+  z <- if (h$S > 0) (h$S - 1) / sqrt(v) else if (h$S < 0) (h$S + 1) / sqrt(v) else 0
+  o <- sort(unlist(lapply(1:(n - 1), function(i) (y[(i + 1):n] - y[i]) / (t[(i + 1):n] - t[i]))))
+  N <- length(o)
+  C <- qnorm(0.975) * sqrt(v)
+  list(f = f, var_S = v, p = 2 * (1 - pnorm(abs(z))), S = h$S, pente = h$pente,
+       ic = if (round((N - C) / 2) >= 1) c(o[round((N - C) / 2)], o[round((N + C) / 2 + 1)]) else c(NA, NA))
+}
+# des lignes d'un site : A, 40 ans autocorrélés (un AR(1) de 0,6 et une hausse, tiré une fois) ;
+# B, 12 ans aux ex aequo (A-s1 plus haut) ; C, 30 ans dont 2010 et 2015 manquent ; D, 20 ans d'une
+# autocorrélation fortement négative (un AR(1) de −0,8) ; E, une droite
+yA <- c(8.47, 7.99, 8.88, 9.19, 10.51, 9.83, 9.38, 9.1, 9.61, 9.51, 10.26, 10.44, 10.51, 10.36, 9.72, 9.89, 9.25, 8.76, 8.64, 10.21,
+        8.91, 8.85, 10.19, 10.33, 12.17, 11.13, 10.79, 9.31, 10.09, 11.45, 10.52, 11.74, 11.25, 9.13, 10.94, 11.89, 11.97, 12.6, 11.98, 11.03)
+anC <- setdiff(2001:2032, c(2010, 2015))
+yD <- c(6.6, 4.1, 7.1, 3.3, 6.8, 3.5, 4.8, 4.7, 4.8, 5.1, 6, 4.9, 4.9, 4.8, 5.8, 4.9, 4.4, 4.8, 5.5, 5.3)
+th <- rbind(data.frame(secteur = "A", annee = 1981:2020, y = yA),
+            data.frame(secteur = "B", annee = 2001:2012, y = c(3, 5, 5, 4, 7, 7, 7, 9, 8, 10, 10, 12)),
+            data.frame(secteur = "C", annee = anC, y = yA[seq_along(anC)]),
+            data.frame(secteur = "D", annee = 2001:2020, y = yD),
+            data.frame(secteur = "E", annee = 2001:2010, y = 2 * (2001:2010) + 1))
+ph <- projet_depuis_tableau(data.frame(nom = paste0("h", seq_len(nrow(th))), th[sample(nrow(th)), ]), "hamed_rao")
+sh <- series_variable(ph, numeros(ph, "y"), numeros(ph, "annee"), numeros(ph, "secteur"))
+trh <- tendances_series(sh$points, autocorrelation = TRUE)
+ligne_h <- function(s) trh[trh$ligne == s, ]
+verif_hr <- function(s) {
+  r <- ligne_h(s)
+  d <- th[th$secteur == s, ]
+  h <- hr_main(d$annee, d$y)
+  isTRUE(all.equal(c(r$n_n_etoile, r$var_S, r$p, r$S, r$pente, r$bas, r$haut), c(h$f, h$var_S, h$p, h$S, h$pente, h$ic))) && r$test == "hamed_rao" && !nzchar(r$non_teste)
+}
+verifier(sprintf("A, 40 ans autocorrélés : n/n* = %.3f, Var(S) corrigée, p (%.4f, %.6f sans correction) et l'intervalle de la pente d'après elle, refaits à la main",
+                 ligne_h("A")$n_n_etoile, ligne_h("A")$p, mk_main(1981:2020, yA)$p),
+         verif_hr("A") && ligne_h("A")$n_n_etoile > 1.5 && ligne_h("A")$p > 10 * mk_main(1981:2020, yA)$p)
+verifier("B, 12 ans : aucune autocorrélation au-delà de ±1,96/√12, n/n* = 1, le test de Mann–Kendall lui-même",
+         verif_hr("B") && ligne_h("B")$n_n_etoile == 1 && isTRUE(all.equal(ligne_h("B")$p, tr[tr$panneau == "A" & tr$ligne == "s1", "p"])))
+verifier("C, deux années manquantes : la tendance retirée sur les vrais temps, les décalages d'un temps au suivant", verif_hr("C"))
+verifier(sprintf("D, une forte autocorrélation négative : n/n* = %.3f n'est pas positif, pas de test (« %s »)", ligne_h("D")$n_n_etoile, ligne_h("D")$non_teste),
+         isTRUE(all.equal(ligne_h("D")$n_n_etoile, hr_main(2001:2020, yD)$f)) && ligne_h("D")$n_n_etoile < 0 && is.na(ligne_h("D")$p) &&
+           startsWith(ligne_h("D")$non_teste, "n/n* = -0,341 n'est pas positif") && !is.na(ligne_h("D")$pente))
+verifier("E, une droite : ce qui reste est constant, aucune autocorrélation (n/n* = 1)",
+         ligne_h("E")$n_n_etoile == 1 && isTRUE(all.equal(ligne_h("E")$p, mk_main(2001:2010, 2 * (2001:2010) + 1)$p)))
+verifier("la correction sur les lignes, la même : p.adjust() des p corrigées", isTRUE(all.equal(trh$p_ajuste, p.adjust(trh$p, "BH"))))
+# modifiedmk::mmkh (version 1.6, ci = 0.95), lancé une fois sur deux séries des données de R : son
+# n/n*, sa variance corrigée et sa valeur p, ici à 1e-12 près
+mmkh_nile <- c(n_n_etoile = 2.1428983270987203, var_S = 241565.35691662686, p = 0.0048026763101827385)
+mmkh_huron <- c(n_n_etoile = 3.2865665584217432, var_S = 348825.21928902238, p = 0.0044245889154761785)
+hr_serie <- function(t, y) unlist(mann_kendall(t, y, TRUE)[c("n_n_etoile", "var_S", "p")])
+verifier(sprintf("le Nil (1871–1970) et le lac Huron (1875–1972) : n/n* (%.4f, %.4f), Var(S) et p de modifiedmk::mmkh",
+                 mmkh_nile[["n_n_etoile"]], mmkh_huron[["n_n_etoile"]]),
+         isTRUE(all.equal(hr_serie(1871:1970, c(Nile)), mmkh_nile, tolerance = 1e-12)) &&
+           isTRUE(all.equal(hr_serie(1875:1972, c(LakeHuron)), mmkh_huron, tolerance = 1e-12)))
+
+cat("Tendances : le test de Kendall saisonnier (series.R : kendall_saisonnier)\n")
+# le test saisonnier refait à la main : une valeur par saison et par année (la médiane), dans chaque
+# saison vue au moins 2 années S_g et sa variance avec les ex aequo, les pentes entre années ; S et
+# Var(S) additionnés, p de la formule classique, la médiane des pentes et son intervalle de Gilbert,
+# le τ d'EnvStats (la moyenne des 2 S_g / (n_g(n_g − 1)) pondérée par n_g)
+saisonnier_main <- function(annee, saison, y) {
+  m <- aggregate(list(y = y), list(saison = saison, annee = annee), median)
+  S <- 0
+  V <- 0
+  pentes <- numeric(0)
+  taus <- numeric(0)
+  ns <- numeric(0)
+  for (g in unique(m$saison)) {
+    d <- m[m$saison == g, ]
+    d <- d[order(d$annee), ]
+    n <- nrow(d)
+    if (n < 2) next
+    Sg <- 0
+    for (i in 1:(n - 1)) for (j in (i + 1):n) {
+      Sg <- Sg + sign(d$y[j] - d$y[i])
+      pentes <- c(pentes, (d$y[j] - d$y[i]) / (d$annee[j] - d$annee[i]))
+    }
+    ex <- table(d$y)
+    S <- S + Sg
+    V <- V + (n * (n - 1) * (2 * n + 5) - sum(ex * (ex - 1) * (2 * ex + 5))) / 18
+    taus <- c(taus, 2 * Sg / (n * (n - 1)))
+    ns <- c(ns, n)
+  }
+  z <- if (S > 0) (S - 1) / sqrt(V) else if (S < 0) (S + 1) / sqrt(V) else 0
+  N <- length(pentes)
+  C <- qnorm(0.975) * sqrt(V)
+  o <- sort(pentes)
+  list(S = S, var_S = V, p = 2 * (1 - pnorm(abs(z))), pente = median(pentes), tau = sum(ns * taus) / sum(ns), saisons = length(ns),
+       ic = if (round((N - C) / 2) >= 1) c(o[round((N - C) / 2)], o[round((N + C) / 2 + 1)]) else c(NA, NA))
+}
+# trois secteurs relevés en avril, juin, août et octobre de 2008 à 2015, le même jour pour les trois
+# (les dates, le jour d'abord, une variable qualitative) ; des comptages entiers (des ex aequo) ; en
+# S1 juin 2010 manque, un relevé de décembre 2012 (une saison vue une année : elle ne compte pas) et
+# deux relevés en août 2011 (leur médiane) ; S3, un relevé par saison (trop peu d'années)
+set.seed(41)
+js <- expand.grid(mois = c(4, 6, 8, 10), annee = 2008:2015)
+js$jour <- sprintf("%02d/%02d/%d", sample(5:25, nrow(js), TRUE), js$mois, js$annee)
+ds <- do.call(rbind, lapply(c("S1", "S2"), function(s) data.frame(secteur = s, date = js$jour, mois = js$mois, annee = js$annee,
+  y = round(20 + (s == "S1") * 1.5 * (js$annee - 2008) + 3 * sin(js$mois) + rnorm(nrow(js), sd = 3)))))
+ds <- ds[!(ds$secteur == "S1" & ds$mois == 6 & ds$annee == 2010), ]
+ds <- rbind(ds, data.frame(secteur = "S1", date = c("14/12/2012", "27/08/2011"), mois = c(12, 8), annee = c(2012, 2011), y = c(60, 1)),
+            data.frame(secteur = "S3", date = js$jour[c(1, 6, 11)], mois = js$mois[c(1, 6, 11)], annee = js$annee[c(1, 6, 11)], y = c(3, 5, 4)),
+            data.frame(secteur = "S4", date = js$jour[c(1, 2, 5, 6, 9, 10)], mois = js$mois[c(1, 2, 5, 6, 9, 10)], annee = js$annee[c(1, 2, 5, 6, 9, 10)], y = c(5, 7, 5, 7, 5, 7)))
+o <- sample(nrow(ds))  # (les observations dans le désordre, chacune nommée par sa ligne de ds)
+ps <- projet_depuis_tableau(data.frame(nom = paste0("s", o), ds[o, c("secteur", "date", "y")]), "saisons")
+ss <- series_variable(ps, numeros(ps, "y"), numeros(ps, "date"), numeros(ps, "secteur"), saisons = "mois")
+trs <- tendances_series(ss$points)
+ligne_s <- function(s) trs[trs$ligne == s, ]
+verif_s <- function(s) {
+  r <- ligne_s(s)
+  d <- ds[ds$secteur == s, ]
+  h <- saisonnier_main(d$annee, d$mois, d$y)
+  isTRUE(all.equal(c(r$S, r$var_S, r$p, r$pente, r$bas, r$haut, r$tau, r$saisons), c(h$S, h$var_S, h$p, h$pente, h$ic, h$tau, h$saisons))) &&
+    r$test == "saisonnier" && r$n == nrow(d) && !nzchar(r$non_teste)
+}
+verifier(sprintf("le mois des dates (le jour d'abord) : la saison de chaque point, de 1 à 12 ; une variable qualitative de dates, %s",
+                 paste(range(ss$points$saison), collapse = " à ")),
+         isTRUE(ss$dates) && identical(ss$saisons$uid, "mois") && ss$sans_saison == 0 &&
+           identical(as.integer(ss$points$saison), as.integer(format(as.Date(ds$date[match(ss$points$nom, paste0("s", seq_len(nrow(ds))))], "%d/%m/%Y"), "%m"))))
+verifier(sprintf("S1 : une saison-année manquante, une saison vue une seule année, deux valeurs en août 2011 (leur médiane), des ex aequo : S = %g, Var(S) = %g, p = %.2g, pente %.3f par an [%.3f ; %.3f], τ = %.3f, refaits à la main",
+                 ligne_s("S1")$S, ligne_s("S1")$var_S, ligne_s("S1")$p, ligne_s("S1")$pente, ligne_s("S1")$bas, ligne_s("S1")$haut, ligne_s("S1")$tau),
+         verif_s("S1") && ligne_s("S1")$saisons == 4 && ligne_s("S1")$medianes == 1 && ligne_s("S1")$p < 0.05)
+verifier("S2, sans tendance : de même", verif_s("S2") && ligne_s("S2")$medianes == 0)
+verifier(sprintf("S3, une année par saison : pas de test (« %s ») ; S4, la même valeur chaque année dans chaque saison : pas de test",
+                 ligne_s("S3")$non_teste),
+         is.na(ligne_s("S3")$p) && ligne_s("S3")$saisons == 0 &&
+           ligne_s("S3")$non_teste == "trop peu d'années par saison : 0 valeur(s) dans les saisons vues au moins 2 années, il en faut au moins 4" &&
+           is.na(ligne_s("S4")$p) && ligne_s("S4")$non_teste == "la même valeur chaque année dans chaque saison" &&
+           isTRUE(all.equal(trs$p_ajuste, p.adjust(trs$p, "BH"))))
+# les mêmes comptages, la saison par une variable qualitative (printemps, été, automne : avril et juin
+# font le printemps, donc deux valeurs par printemps, leur médiane), et le temps en années
+ds$saison <- c(`4` = "printemps", `6` = "printemps", `8` = "ete", `10` = "automne", `12` = "hiver")[as.character(ds$mois)]
+pq <- projet_depuis_tableau(data.frame(nom = paste0("q", seq_len(nrow(ds))), ds[c("secteur", "annee", "saison", "y")]), "saisons_variable")
+sq <- series_variable(pq, numeros(pq, "y"), numeros(pq, "annee"), numeros(pq, "secteur"), saisons = numeros(pq, "saison"))
+trq <- tendances_series(sq$points)
+hq <- saisonnier_main(ds$annee[ds$secteur == "S1"], ds$saison[ds$secteur == "S1"], ds$y[ds$secteur == "S1"])
+rq <- trq[trq$ligne == "S1", ]
+verifier(sprintf("la saison par une variable qualitative, le temps en années (le même temps deux fois dans une saison : la médiane) : S = %g, p = %.4f, refaits à la main",
+                 rq$S, rq$p),
+         isTRUE(all.equal(c(rq$S, rq$var_S, rq$p, rq$pente, rq$bas, rq$haut, rq$tau), c(hq$S, hq$var_S, hq$p, hq$pente, hq$ic, hq$tau))) &&
+           identical(sq$saisons$nom, "saison") && rq$saisons == 3 && rq$medianes == 8)
+pqi <- pq
+pqi$observation_id_names <- c("Observation", "periode")
+for (i in seq_along(pqi$observations)) pqi$observations[[i]]$ids <- c(pqi$observations[[i]]$ids[1], ds$saison[i])
+verifier("la saison par un identifiant des observations : le même test",
+         isTRUE(all.equal(tendances_series(series_variable(pqi, numeros(pq, "y"), numeros(pq, "annee"), numeros(pq, "secteur"), saisons = "id:2")$points), trq)))
+# nottem (des températures mensuelles à Nottingham, 1920–1939, dans les données de R) : trend::smk.test
+# et trend::sea.sens.slope (version 1.1.10) donnent S = 224, Var(S) = 11364, p = 0.0364481815726198
+# et une pente de 0,05 ; EnvStats::kendallSeasonalTrendTest (3.1.0) le τ, 224 / (12 × 190)
+pn <- projet_depuis_tableau(data.frame(nom = paste0("n", 1:240), temps = as.numeric(time(nottem)), mois = month.abb[cycle(nottem)], temperature = c(nottem)), "nottem")
+rn <- tendances_series(series_variable(pn, numeros(pn, "temperature"), numeros(pn, "temps"), saisons = numeros(pn, "mois"))$points)
+verifier("nottem : S, Var(S), p et la pente de trend::smk.test et trend::sea.sens.slope, le τ d'EnvStats",
+         isTRUE(all.equal(c(rn$S, rn$var_S, rn$p, rn$pente, rn$tau), c(224, 11364, 0.0364481815726198, 0.05, 224 / (12 * 190)), tolerance = 1e-12)) &&
+           rn$saisons == 12 && rn$n == 240)
+# des observations sans saison : laissées de côté et comptées
+pm <- pq
+pm$donnees[ds$secteur == "S2" & ds$annee == 2015, as.character(numeros(pq, "saison"))] <- NA
+sm <- series_variable(pm, numeros(pq, "y"), numeros(pq, "annee"), numeros(pq, "secteur"), saisons = numeros(pq, "saison"))
+hm <- with(ds[ds$secteur == "S2" & ds$annee != 2015, ], saisonnier_main(annee, saison, y))
+rm2 <- tendances_series(sm$points)
+verifier("des observations sans saison : comptées, laissées de côté par le test (pas par le graphique)",
+         sm$sans_saison == 4 && nrow(sm$points) == nrow(sq$points) && rm2$n[rm2$ligne == "S2"] == sum(ds$secteur == "S2") - 4 &&
+           isTRUE(all.equal(rm2$S[rm2$ligne == "S2"], hm$S)) && isTRUE(all.equal(rm2$p[rm2$ligne == "S2"], hm$p)))
+k4 <- kendall_saisonnier(c(2001.3, 2001.7, 2002.3, 2002.7), c(1, 5, 2, 6), c("a", "b", "a", "b"))
+k3 <- kendall_saisonnier(c(2001.3, 2002.3, 2003.3, 2003.7), c(1, 2, 3, 9), c("a", "a", "a", "b"))
+verifier(sprintf("4 valeurs dans les saisons qui comptent, testé (deux saisons de 2 ans : S = 2, Var(S) = 2) ; 3, pas de test (« %s »)", k3$non_teste),
+         k4$S == 2 && k4$var_S == 2 && isTRUE(all.equal(k4$p, 2 * pnorm(-1 / sqrt(2)))) && !nzchar(k4$non_teste) &&
+           is.na(k3$p) && k3$saisons == 1 && startsWith(k3$non_teste, "trop peu d'années par saison : 3 valeur(s)"))
+refus_s <- function(expr) tryCatch({ expr; "" }, error = conditionMessage)
+verifier("refusés : le mois avec un temps fait de nombres, une variable quantitative pour saisons, la correction de Hamed et Rao avec le test saisonnier",
+         refus_s(series_variable(pq, numeros(pq, "y"), numeros(pq, "annee"), saisons = "mois")) == "Les saisons par mois de l'année demandent un temps fait de dates" &&
+           refus_s(series_variable(pq, numeros(pq, "y"), numeros(pq, "annee"), saisons = numeros(pq, "y"))) == "Les saisons se font par une variable qualitative ou un identifiant" &&
+           startsWith(refus_s(tendances_series(sq$points, autocorrelation = TRUE)), "Le test saisonnier tient les saisons pour indépendantes"))
 
 cat("Phrases\n")
 r <- test_deux_variables(p, variete, numeros(p, "sucre"))

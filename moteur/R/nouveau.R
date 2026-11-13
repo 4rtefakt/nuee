@@ -68,6 +68,153 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
   p
 }
 
+# Les statistiques de Résumer par groupe : leur nom dans les colonnes du résumé (« densite
+# (moyenne) », dans la langue de l'interface), et leur calcul sur les valeurs connues d'un groupe
+# (jamais vides : un groupe sans valeur connue n'a que des valeurs manquantes, sauf n, 0).
+# L'écart-type est celui de sd() (n − 1) : il manque pour une seule valeur.
+STATISTIQUES_GROUPE <- list(
+  moyenne = list(fr = "moyenne", en = "mean", f = mean),
+  somme = list(fr = "somme", en = "sum", f = sum),
+  mediane = list(fr = "médiane", en = "median", f = stats::median),
+  minimum = list(fr = "min", en = "min", f = min),
+  maximum = list(fr = "max", en = "max", f = max),
+  ecart_type = list(fr = "écart-type", en = "sd", f = function(v) if (length(v) > 1) stats::sd(v) else NA_real_),
+  n = list(fr = "n", en = "n", f = length))
+
+# Un nouveau projet d'une ligne par groupe (Édition › Résumer par groupe) : les densités de chaque
+# secteur et de chaque année d'après celles de plusieurs placettes, avant BACI ou les séries.
+# `groupes` : les colonnes qui font les groupes, des numéros de variables ou "id:k" pour un
+# identifiant des observations (variables.R : colonne_ou_identifiant), le secteur et l'année, ou le
+# site, le secteur et l'année ; une observation sans valeur dans l'une d'elles est laissée de côté,
+# et comptée. `variables` : les variables quantitatives à résumer (par défaut toutes, sauf celles des
+# groupes) ; `statistiques` : une ou plusieurs de STATISTIQUES_GROUPE, chacune pour toutes ces
+# variables, en colonnes « densite (moyenne) », « densite (n) »… ; les valeurs manquantes sont
+# ignorées, n compte les valeurs connues. Comme aggregate(d[variables], d[groupes], FUN) sur le
+# tableau des données (formats.R : tableau_projet). Les groupes viennent dans l'ordre de leurs
+# colonnes (les catégories d'une variable qualitative dans leur ordre, des nombres dans le leur, un
+# identifiant fait de nombres dans l'ordre des nombres), chacun une observation nommée par ses
+# valeurs (« S1 2019 ») ; les colonnes des groupes restent ce qu'elles étaient, des variables ou des
+# identifiants. Une variable qualitative ou un identifiant dont les valeurs connues sont les mêmes
+# dans chaque groupe (l'habitat d'un secteur) est gardé, avec cette valeur (manquante pour un
+# groupe qui n'en a aucune) ; les autres sont laissés de côté, et nommés. Le projet s'appelle
+# « <projet> par secteur, annee ». attr(, "resume") : le nombre de groupes, d'observations résumées
+# et laissées de côté, les colonnes gardées et laissées de côté, et la phrase qui le dit.
+resumer_par_groupe <- function(projet, groupes, variables = NULL, statistiques = "moyenne") {
+  obs <- numeros_observations(projet)
+  groupes <- unique(as.character(groupes))
+  if (!length(groupes)) stop(traduire("Choisir au moins une colonne qui fait les groupes", "Choose at least one column to make the groups"), call. = FALSE)
+  statistiques <- unique(as.character(statistiques))
+  if (!length(statistiques)) stop(traduire("Choisir au moins une statistique", "Choose at least one statistic"), call. = FALSE)
+  inconnue <- setdiff(statistiques, names(STATISTIQUES_GROUPE))
+  if (length(inconnue)) stop(traduire("Statistique inconnue : ", "Unknown statistic: "), inconnue[1], call. = FALSE)
+  g <- lapply(groupes, function(x) colonne_ou_identifiant(projet, x, obs))
+  noms_groupes <- vapply(g, `[[`, "", "nom")
+  # « site, secteur et annee »
+  enumerer <- function(et) if (length(noms_groupes) == 1) noms_groupes else paste(paste(utils::head(noms_groupes, -1), collapse = ", "), utils::tail(noms_groupes, 1), sep = et)
+  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  uids <- vapply(vars, function(v) as.numeric(v$uid), 0)
+  dans_groupes <- uids %in% suppressWarnings(as.numeric(groupes[!startsWith(groupes, "id:")]))
+  qualitative <- vapply(vars, function(v) length(v$categories) > 0, TRUE)
+  variables <- if (is.null(variables)) uids[!qualitative & !dans_groupes] else unique(as.numeric(variables))
+  for (u in variables) {
+    v <- variable_du_projet(projet, u)
+    if (length(v$categories)) {
+      stop(sprintf(traduire("« %s » est qualitative : seules les variables quantitatives se résument (une variable qualitative est gardée si elle ne change pas dans un groupe)",
+                            "“%s” is qualitative: only quantitative variables are summarized (a qualitative variable is kept when it doesn't vary within a group)"), v$ids[1]), call. = FALSE)
+    }
+  }
+  variables <- uids[uids %in% variables & !dans_groupes]  # (dans l'ordre du projet)
+  if (!length(variables)) stop(traduire("Choisir au moins une variable quantitative à résumer", "Choose at least one quantitative variable to summarize"), call. = FALSE)
+  connu <- Reduce(`&`, lapply(g, function(x) !is.na(x$valeurs)))
+  if (!any(connu)) {
+    stop(sprintf(traduire("Aucune observation n'a de valeur de %s", "No observation has a value of %s"), enumerer(traduire(" et ", " and "))), call. = FALSE)
+  }
+  lignes <- which(connu)
+  # le rang de chaque valeur dans l'ordre de sa colonne, puis les groupes rangés par ces rangs
+  rangs <- lapply(g, function(x) {
+    v <- x$valeurs[lignes]
+    match(v, if (x$nombres) sort(unique(v)) else if (!is.null(x$categories)) x$categories else ordre_cles(unique(v)))
+  })
+  cle <- cle_composee(rangs)
+  premiers <- which(!duplicated(cle))
+  premiers <- premiers[do.call(order, lapply(rangs, function(r) r[premiers]))]
+  groupe <- match(cle, cle[premiers])
+  G <- length(premiers)
+  par_groupe <- function(v) unname(split(v[lignes], factor(groupe, levels = seq_len(G))))
+  ecrire <- function(x, v) if (x$nombres) sprintf("%.15g", v + 0) else as.character(v)
+  noms_obs <- do.call(paste, lapply(g, function(x) ecrire(x, x$valeurs[lignes][premiers])))
+  # les colonnes du nouveau projet : celles des groupes, les qualitatives et les identifiants qui
+  # ne changent pas dans un groupe, puis les résumés
+  colonnes <- lapply(g, function(x) {
+    v <- x$valeurs[lignes][premiers]
+    list(nom = x$nom, valeurs = v, id = !is.na(x$rang), categories = if (!is.null(x$categories)) x$categories[x$categories %in% v])
+  })
+  # (la valeur de chaque groupe, ou NULL quand elle change dans l'un d'eux)
+  constante <- function(v) {
+    u <- lapply(par_groupe(v), function(z) unique(z[!is.na(z)]))
+    if (any(lengths(u) > 1)) return(NULL)
+    vapply(u, function(z) if (length(z)) as.character(z) else NA_character_, "")
+  }
+  gardees <- character(0)
+  laissees <- character(0)
+  garder <- function(x, id) {
+    val <- constante(x$valeurs)
+    if (is.null(val)) {
+      laissees <<- c(laissees, x$nom)
+      return(NULL)
+    }
+    gardees <<- c(gardees, x$nom)
+    list(list(nom = x$nom, valeurs = val, id = id, categories = if (!id) x$categories[x$categories %in% val]))
+  }
+  for (k in which(qualitative & !dans_groupes)) colonnes <- c(colonnes, garder(colonne_ou_identifiant(projet, uids[k], obs), FALSE))
+  noms_id <- as.character(projet$observation_id_names %||% character(0))
+  for (k in seq_along(noms_id)[-1]) {
+    if (k %in% vapply(g, `[[`, 0L, "rang") || !nzchar(noms_id[k]) || startsWith(noms_id[k], "$")) next
+    x <- colonne_ou_identifiant(projet, sprintf("id:%d", k), obs)
+    if (any(!is.na(x$valeurs))) colonnes <- c(colonnes, garder(x, TRUE))
+  }
+  for (u in variables) {
+    x <- colonne_ou_identifiant(projet, u, obs)
+    connues <- lapply(par_groupe(as.numeric(x$valeurs)), function(z) z[!is.na(z)])
+    for (s in statistiques) {
+      f <- STATISTIQUES_GROUPE[[s]]$f
+      val <- vapply(connues, function(z) if (length(z) || s == "n") as.numeric(f(z)) else NA_real_, 0)
+      colonnes <- c(colonnes, list(list(nom = sprintf("%s (%s)", x$nom, traduire(STATISTIQUES_GROUPE[[s]]$fr, STATISTIQUES_GROUPE[[s]]$en)), valeurs = val, id = FALSE)))
+    }
+  }
+  pris <- "Observation"  # (le nom des observations)
+  for (k in seq_along(colonnes)) {
+    colonnes[[k]]$nom <- nom_libre(colonnes[[k]]$nom, pris)
+    pris <- c(pris, colonnes[[k]]$nom)
+  }
+  ids <- Filter(function(x) x$id, colonnes)
+  vs <- Filter(function(x) !x$id, colonnes)
+  donnees <- matrix(unlist(lapply(vs, function(x) if (!is.null(x$categories)) as.numeric(match(x$valeurs, x$categories)) else as.numeric(x$valeurs))),
+                    nrow = G, dimnames = list(as.character(seq_len(G)), as.character(seq_along(vs))))
+  base <- tools::file_path_sans_ext(as.character(projet$nom %||% projet$source %||% ""))
+  if (!nzchar(base)) base <- traduire("projet", "project")
+  nom <- sprintf(traduire("%s par %s", "%s by %s"), base, paste(noms_groupes, collapse = ", "))
+  p <- list(format = "usp-json/1", source = nom,
+            observation_id_names = c("Observation", vapply(ids, `[[`, "", "nom")), variable_id_names = "Variable",
+            observations = lapply(seq_len(G), function(i) {
+              list(uid = i, ids = c(noms_obs[i], vapply(ids, function(x) if (is.na(x$valeurs[i])) "" else as.character(x$valeurs[i]), "")))
+            }),
+            variables = lapply(seq_along(vs), function(k) list(uid = k, ids = vs[[k]]$nom, categories = vs[[k]]$categories, formula = "")),
+            datasets = list(list(name = nom, observations = seq_len(G), variables = seq_along(vs))),
+            models = list(), prediction_sets = list(), dendrograms = list(), donnees = donnees)
+  p$noms_obs <- stats::setNames(noms_obs, as.character(seq_len(G)))
+  p$noms_var <- stats::setNames(vapply(vs, `[[`, "", "nom"), as.character(seq_along(vs)))
+  class(p) <- "projet_nuee"
+  attr(p, "resume") <- list(
+    groupes = G, observations = length(lignes), sans_groupe = sum(!connu), gardees = gardees, laissees = laissees,
+    phrase = paste0(sprintf(traduire("%d groupe(s), d'après %d observation(s)", "%d group(s), from %d observation(s)"), G, length(lignes)),
+                    if (any(!connu)) sprintf(traduire(" ; %d observation(s) sans valeur de %s laissée(s) de côté", "; %d observation(s) without a value of %s left out"),
+                                             sum(!connu), enumerer(traduire(" ou ", " or "))),
+                    if (length(laissees)) sprintf(traduire(" ; laissées de côté, car elles changent dans un groupe : %s", "; left out, as they vary within a group: %s"), paste(laissees, collapse = ", ")),
+                    "."))
+  p
+}
+
 # Transformations proposées pour une variable, et leur nom quand on relit un modèle.
 TRANSFORMATIONS <- list(
   racine2 = list(type = 7, params = c(NA, 1, 0, 0.5)),
@@ -189,22 +336,33 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   par exemple list(by = "id", id = "site") ou list(by = "variable", variable = 4) ;
 #   blocs : vecteur nommé par numéro de variable, le bloc de chaque variable pondérée par blocs
 #   (ses termes : poids divisé par la racine du nombre de termes du bloc) ; modificateurs : de
-#   même, un facteur du poids (pretraitement.R : facteurs_ponderation).
+#   même, un facteur du poids (pretraitement.R : facteurs_ponderation) ;
+#   condition : garder seulement les observations où cette expression R est vraie, par exemple
+#   "site == \"S1\" & annee >= 2010" (condition.R) ; d$cochees garde les observations sans elle.
 # Régressions (regression.R) : type "LM" (linéaire) ou "LMM" (mixte), une seule variable Y ;
 #   aleatoires : les effets aléatoires d'un modèle mixte, emboîtés, du plus large au plus fin,
-#   par exemple list(list(by = "id", id = "site"), list(by = "id", id = "secteur")) ;
+#   par exemple list(list(by = "id", id = "site"), list(by = "id", id = "secteur")) ; pentes : les
+#   numéros des variables X quantitatives qui ont une pente aléatoire à ce niveau,
+#   list(by = "id", id = "site", pentes = 7) pour (1 + annee | site) ;
 #   correlation : list(type = "CAR1", temps = list(by = "id", id = "annee")), une
 #   autocorrélation dans le temps à l'intérieur du dernier effet aléatoire, ou d'un niveau plus fin
 #   (dans = list(by = "id", id = "secteur") : le secteur dans le site, seul le site ayant un effet
 #   aléatoire) ; un modèle généralisé ou additif à loi normale la prend aussi (mgcv::gamm) ;
-#   k_courbes : la dimension de base d'une courbe, par numéro de variable (sinon 10 au plus). Les blocs n'y
+#   k_courbes : la dimension de base d'une courbe, par numéro de variable (sinon 10 au plus) ;
+#   par_courbes : une courbe par catégorie d'une variable qualitative X, par numéro de la variable
+#   en courbe, par exemple list(`7` = 4) pour s(annee, by = secteur) (regression.R :
+#   verifier_par_courbes). Les blocs n'y
 #   pondèrent rien : ils font les groupes de la table des apports. Sans groupes de validation
-#   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu).
+#   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu). Un
+#   facteur d'un terme croisé qui n'est pas dans x y entre sans effet principal (R : y ~ secteur +
+#   secteur:annee, une pente par secteur) : ses termes, marqués facteur_seul, ne servent qu'à
+#   calculer les termes croisés (regression.R : cadre_regression).
 definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observations = NULL,
                            echelle = "UV", A = NULL, nom = NULL, titre = "", G = 7,
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
-                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL) {
+                           famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
+                           condition = NULL, par_courbes = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -220,7 +378,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   # un terme croisé et ses réglages (croises_reglages) : son échelle, son bloc, son modificateur
   croise <- function(paire) {
     r <- croises_reglages[[paste(as.numeric(paire), collapse = "*")]]
-    lapply(termes_croises(projet, paire, x, as.character(r$echelle %||% ech("defaut"))[1]), function(t) {
+    lapply(termes_croises(projet, paire, c(x, seuls), as.character(r$echelle %||% ech("defaut"))[1]), function(t) {
       b <- r$bloc
       if (length(b) && !is.na(b[1]) && nzchar(as.character(b[1]))) t$scaling$block <- as.character(b[1])
       mo <- suppressWarnings(as.numeric(r$modificateur))
@@ -244,10 +402,17 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     # seules les observations dont la classe est connue entrent dans le modèle
     obs <- obs[!is.na(colonne(projet, classe, obs))]
   }
+  # une condition (onglet Observations) : les observations cochées où elle est vraie (condition.R)
+  condition <- texte_condition(condition)
+  cochees <- obs
+  if (nzchar(condition)) obs <- observations_condition(projet, condition, cochees)
   Ap <- if (opls) (if (plsda) length(unique(colonne(projet, classe, obs))) - 1 else length(y))
   if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   regression <- type %in% REGRESSIONS
+  # (une régression : les facteurs de ses termes croisés qui ne sont pas en X, sans effet principal)
+  seuls <- if (regression) setdiff(unique(as.numeric(unlist(croises))), x) else numeric(0)
+  facteur_seul <- function(u) lapply(termes(u), function(t) c(t, list(facteur_seul = TRUE)))
   autre <- type %in% AUTRES_ANALYSES  # (analyses.R : RDA, CA, LDA, TREE, KMEANS)
   if (autre && length(test) && is.null(fonction_analyse("tester_", type))) {
     stop(traduire("Cette analyse ne prédit pas d'observations laissées de côté : elle ne prend pas de jeu de test.",
@@ -256,9 +421,13 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   d <- list(type = if (regression || autre) type else if (type == "PCA") "PCA" else "PLS", plsda = plsda, opls = opls,
             name = nom %||% paste0("M", length(projet$models) + 1), title = titre,
             observations = obs, A = A %||% 0, cv_groups = G,
-            x = c(unlist(lapply(x, termes), recursive = FALSE),
+            x = c(unlist(lapply(x, termes), recursive = FALSE), unlist(lapply(seuls, facteur_seul), recursive = FALSE),
                   unlist(lapply(croises, croise), recursive = FALSE)),
             y = if (plsda) yt else unlist(lapply(y, termes), recursive = FALSE))
+  if (nzchar(condition)) {
+    d$condition <- condition
+    d$cochees <- cochees
+  }
   if (plsda) d$classe <- classe
   if (opls) d$Ap <- Ap
   if (length(spectres)) d$spectres <- spectres
@@ -276,8 +445,9 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
       if (length(lisses)) d$lisses <- as.numeric(lisses)
       if (length(decalage)) d$decalage <- as.numeric(decalage)[1]
       if (length(k_courbes)) d$k_courbes <- lapply(as.list(unlist(k_courbes)), as.integer)
+      if (length(par_courbes)) d$par_courbes <- lapply(as.list(unlist(par_courbes)), as.numeric)
     }
-    if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]]
+    if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]][setdiff(names(aleatoires[[1]]), "pentes")]  # (ses groupes, sans ses pentes)
     verifier_regression(projet, d)
   }
   if (autre) {
@@ -302,9 +472,7 @@ termes_croises <- function(projet, paire, x, echelle = "UV") {
   if (!all(paire %in% x)) stop(traduire("Un terme croisé ne peut utiliser que des variables X", "A cross term can only use X variables"))
   vs <- lapply(paire, function(u) variable_du_projet(projet, u))
   qualitative <- vapply(vs, function(v) length(v$categories) > 0, TRUE)
-  if (any(duplicated(paire) & qualitative)) {
-    stop(traduire("Pas de carré pour une variable qualitative : ", "No square for a qualitative variable: "), vs[[which(duplicated(paire) & qualitative)[1]]]$ids[1])
-  }
+  if (any(duplicated(paire) & qualitative)) stop(refus_qualitative_double(vapply(vs, function(v) as.character(v$ids[1]), "")), call. = FALSE)
   options <- lapply(vs, function(v) if (length(v$categories)) seq_along(v$categories) else 0)
   combinaisons <- expand.grid(options)
   lapply(seq_len(nrow(combinaisons)), function(i) {
@@ -318,12 +486,21 @@ termes_croises <- function(projet, paire, x, echelle = "UV") {
   })
 }
 
+# Le refus d'une variable qualitative deux fois dans un terme croisé (son carré, son cube, ou
+# a:b:a), qui nomme le terme : `noms`, les noms de ses variables.
+refus_qualitative_double <- function(noms) {
+  sprintf(traduire("Une variable qualitative n'entre qu'une fois dans un terme croisé, ni au carré ni au cube : « %s ».",
+                   "A qualitative variable enters a cross term once at most, neither squared nor cubed: \"%s\"."), paste(noms, collapse = " × "))
+}
+
 # Les réglages d'un modèle, sous la forme de definir_modele() (pour les modifier) :
-# variables X et Y, classe, observations exclues, échelle, bloc, modificateur et transformation
-# par variable, termes croisés et leurs réglages, groupes de la validation croisée.
+# variables X et Y, classe, observations exclues (décochées : celles qu'écarte sa condition n'en
+# sont pas) et condition, échelle, bloc, modificateur et transformation par variable, termes
+# croisés et leurs réglages, groupes de la validation croisée.
 reglages_modele <- function(projet, d) {
+  # (sans les facteurs seuls d'une régression : ni en X ni en Y, ils viennent de ses termes croisés)
   simples <- function(termes) unique(unlist(lapply(termes, function(t)
-    if (length(t$variables) == 1) as.numeric(t$variables))))
+    if (length(t$variables) == 1 && !isTRUE(t$facteur_seul)) as.numeric(t$variables))))
   echelles <- list()
   transformations <- list()
   blocs <- list()
@@ -362,11 +539,12 @@ reglages_modele <- function(projet, d) {
   plsda <- isTRUE(d$plsda) && !is.null(d$classe)
   list(type = paste0(if (isTRUE(d$opls)) "O" else "", if (plsda) "PLS-DA" else d$type), x = I(simples(d$x) %||% numeric(0)),
        y = I(if (plsda) numeric(0) else simples(d$y) %||% numeric(0)), classe = if (plsda || est_autre_analyse(d)) d$classe else NULL,
-       exclues = I(setdiff(tous, c(d$observations, d$test))), echelles = echelles,
+       exclues = I(setdiff(tous, c(if (avec_condition(d)) unlist(d$cochees %||% d$observations) else d$observations, d$test))),
+       condition = if (avec_condition(d)) texte_condition(d$condition) else "", echelles = echelles,
        blocs = blocs, modificateurs = modificateurs,
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
-       k_courbes = d$k_courbes,
+       k_courbes = d$k_courbes, par_courbes = d$par_courbes,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))), croises_reglages = croises_reglages,
        options = d$options,
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")

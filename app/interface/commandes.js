@@ -29,7 +29,9 @@ export function creerCommandes(app) {
     enregistrer: { icone: 'save', raccourci: 'Ctrl+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), false) },
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
     exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
-    exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: avecModele, action: () => app.exporter(m()) },
+    // (from Compare models showing the coefficients side by side: that table)
+    exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: () => avecModele() || !!app.coefficientsActifs(),
+      action: () => (app.coefficientsActifs() ? app.exporterCoefficients(app.coefficientsActifs()) : app.exporter(m())) },
     script_r: { icone: 'file-code', actif: avecModele, action: () => app.exporterScript(m()) },
     rapport: { icone: 'file-text', actif: avecModele, action: () => app.rapport(m()) },
     texte_methodes: { icone: 'quote', actif: avecModele, action: () => app.texteMethodes(m()) },
@@ -50,6 +52,8 @@ export function creerCommandes(app) {
       action: () => app.annulerAction(app.projetActif()) },
     selection_liee: { coche: () => app.selectionLiee(), action: () => app.basculerSelectionLiee() },
     nouvelle_variable: { icone: 'calculator', actif: () => !!app.projetActif(), action: () => app.nouvelleVariable(app.projetActif()) },
+    ajouter_colonnes: { icone: 'file-spreadsheet', actif: () => !!app.projetActif(), action: () => app.ajouterColonnes(app.projetActif()) },
+    resumer_groupes: { icone: 'sigma', actif: () => !!app.projetActif(), action: () => app.resumerGroupes(app.projetActif()) },
 
     nouveau_modele: { icone: 'file-plus', raccourci: 'Ctrl+N', actif: () => !!app.projetActif(), action: () => app.nouveauModele(app.projetActif()) },
     modifier_modele: { icone: 'square-pen', raccourci: 'Ctrl+M', actif: avecModele, action: () => app.modifierModele(m()) },
@@ -65,6 +69,10 @@ export function creerCommandes(app) {
     vip: vue('vip', avecPLS), coefficients: vue('coefficients', () => avecPLS() || avecRegression()), obspred: vue('obspred', () => avecPLS() || avecRegression()),
     ipls: vue('ipls', avecPLS), residus: vue('residus', avecRegression), acf: vue('acf', avecRegression), apports: vue('apports', avecRegression), effets: vue('effets', avecRegression),
     selection_aic: vue('selection_aic', avecRegression),
+    // (every regression: a GLM or GAM is refused with the reason, in the view)
+    puissance: vue('puissance', avecRegression),
+    // (a regression with a qualitative variable, moyennes.R)
+    moyennes: vue('moyennes', () => avecRegression() && [].concat(app.modele(m()).qualitatives || []).length > 0),
     dendrogramme: vue('dendrogramme', avecLV), liste_obs: vue('liste_obs'), liste_vars: vue('liste_vars', avecLV),
     permutations: vue('permutations', avecPLS), cvanova: vue('cvanova', avecPLS), classification: vue('classification', avecPLSDA),
     contributions: vue('contributions', avecLV), biplot: vue('biplot', avecLV), scores3d: vue('scores3d', avecLV), splot: vue('splot', avecOPLS), coomans: vue('coomans', avecGroupe),
@@ -106,7 +114,7 @@ export function creerCommandes(app) {
 export const ICONES_VUES = {
   resume: 'table-2', scores: 'chart-scatter', loadings: 'scan-search', profils: 'chart-spline', dmodx: 'chart-line', t2: 'ruler',
   vip: 'chart-bar', coefficients: 'chart-column', residus: 'chart-scatter', acf: 'chart-column', apports: 'chart-bar', effets: 'chart-spline', ipls: 'chart-column-big', obspred: 'sigma', dendrogramme: 'network',
-  selection_aic: 'filter',
+  selection_aic: 'filter', puissance: 'chart-line', moyennes: 'scale',
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
   statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
@@ -134,11 +142,11 @@ export function menus(app, C) {
       '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
-      it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable')] },
+      it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable'), it('ajouter_colonnes'), it('resumer_groupes')] },
     { cle: 'm_modele', items: () => [it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
-      it('vip'), it('coefficients'), it('obspred'), it('effets'), it('residus'), it('acf'), it('apports'), it('selection_aic'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
+      it('vip'), it('coefficients'), it('obspred'), it('effets'), it('moyennes'), it('residus'), it('acf'), it('apports'), it('selection_aic'), it('puissance'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
       it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
     { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]

@@ -7,7 +7,7 @@ import { VUES } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, fermerMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
-import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable } from './dialogues.js';
+import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
 import { dialogueRapport } from './rapport.js';
 import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
@@ -285,6 +285,12 @@ const app = {
     if (!m) return;
     const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), m.nom, true);
     if (choix) apresExport(await occupe(() => demander('exporter', { modele: id, ...choix })));
+  },
+  // the coefficients side by side shown in Compare models (coefficientsActifs): the table as
+  // copied, and each model's coefficients in numbers (moteur/R/coefficients_modeles.R)
+  async exporterCoefficients(q) {
+    const choix = await choisirExport(t('exporter_coefficients_titre'), 'coefficients', true);
+    if (choix) apresExport(await occupe(() => demander('exporter_coefficients', { ...q, ...choix })));
   },
   async exporterDonnees(pid) {
     const p = etat.projets[pid];
@@ -589,6 +595,32 @@ const app = {
     const im = res.imputation;
     statut(q.imputation ? t(im.composantes === 0 ? 'imputation_moyennes' : im.choisies ? 'imputation_faite_choisies' : 'imputation_faite', { n: im.valeurs, k: im.composantes, tours: im.tours })
       : t('variable_ajoutee', { nom: q.nom }));
+  },
+  // Edit › Add columns from a table: the dialog, then the columns added by R (Ctrl+Z removes them)
+  ajouterColonnes: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueColonnes(app, p); },
+  async joindreColonnes(pid, q) {
+    const res = await occupe(() => demander('ajouter_colonnes', { projet: pid, ...q }));
+    projetChange(res);
+    statut([].concat(res.jointure.phrases)[0]);
+    return res;
+  },
+  // a table to read (Add columns from a table): its path, or null; in the browser the file is sent to the engine first
+  async choisirTableau() {
+    if (bureau) return bureau.choisirFichier(filtresOuverture());
+    const f = await choisirFichierNavigateur(acceptOuverture());
+    if (!f) return null;
+    return (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
+  },
+  async lirePressePapiers() {
+    try { return (bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText()) || ''; } catch { return ''; }
+  },
+  // Edit › Summarize by group: a new project beside this one, one row per group; its data open
+  resumerGroupes: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueResume(app, p); },
+  async resumer(pid, q) {
+    const res = await occupe(() => demander('resumer_groupes', { projet: pid, ...q }));
+    await apresOuverture(res);
+    app.ouvrirVue('donnees', null, null, res.id);
+    statut(res.resume.phrase);
   },
   async modifierValeur(pid, observation, variable, valeur) {
     const res = await occupe(() => demander('modifier_valeur', { projet: pid, observation, variable, valeur }));
@@ -1459,6 +1491,13 @@ app.tableauActif = () => {
   };
 };
 app.copierTableau = () => { const f = app.tableauActif(); if (f) f(); };
+// The coefficients side by side of the active panel (Compare models, in that mode: panneaux.js,
+// rendreCoteACote), for File › Export model results: { modeles, erreur }, or null.
+app.coefficientsActifs = () => {
+  const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
+  const e = p && etat.panneaux.get(p.id);
+  return (e && e.vue === 'comparaison' && e.element && e.element._coefficients) || null;
+};
 app.palette = () => ouvrirPalette(app, C);
 app.miseEnForme = () => {
   const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();

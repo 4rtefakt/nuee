@@ -8,7 +8,7 @@ import { t, ajouterTextes } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
-  notesModele, ficheTest } from './panneaux.js';
+  notesModele, ficheTest, ficheCondition } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
 import { ICONES_VUES } from './commandes.js';
@@ -245,7 +245,7 @@ function rendreResumeArbre(conteneur, ctx, m) {
       ? [chiffre(t('bien_classes'), pct(q.bien_classes)), chiffre(t('bien_classes_vc'), pct(q.bien_classes_vc))]
       : [chiffre('R2', q.r2), chiffre('Q2', q.Q2), chiffre('RMSEE', q.RMSEE, 4), chiffre('RMSEcv', q.RMSEcv, 4)],
     m.premiere && m.premiere.regle ? chiffre(t('arb_premiere'), m.premiere.regle) : null),
-    ficheTest(m));
+    ficheTest(m), ficheCondition(m));
   const notes = notesModele(conteneur, ctx, m);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ,
     el('p', { class: 'note' }, t(m.classement ? 'arb_resume_classement' : 'arb_resume_regression', { y: m.noms_y[0] })),
@@ -350,7 +350,7 @@ function rendreResumeLDA(conteneur, ctx, m) {
       chiffre(t('groupes_vc'), groupesVC(m)), m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
     el('div', { class: 'fiche-chiffres' }, chiffre(t('bien_classes'), pct(q.bien_classes)), chiffre(t('bien_classes_vc'), pct(q.bien_classes_vc)),
       liste(m.axes).slice(0, 3).map((a, k) => chiffre(a, pct(liste(m.part)[k])))),
-    ficheTest(m));
+    ficheTest(m), ficheCondition(m));
   const textes = [t('lda_resume_note', { priors: t(m.reglages_lda.priors === 'egales' ? 'lda_priors_egales' : 'lda_priors_proportionnelles') })];
   if (liste(m.termes_retires).length) textes.push(t('lda_retires', { termes: liste(m.termes_retires).join(', ') }));
   if (m.colineaires) textes.push(t('lda_colineaires'));
@@ -489,7 +489,7 @@ function rendreResumeKmeans(conteneur, ctx, m) {
       m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
     el('div', { class: 'fiche-chiffres' }, chiffre('R2', m.inertie.r2), chiffre(t('km_silhouette_moyenne'), m.silhouette),
       chiffre(t('km_intra'), m.inertie.intra, 4), chiffre(t('km_totale'), m.inertie.totale, 4)),
-    ficheTest(m));
+    ficheTest(m), ficheCondition(m));
   const notes = notesModele(conteneur, ctx, m);
   const silhouettes = liste(ta.silhouette);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ,

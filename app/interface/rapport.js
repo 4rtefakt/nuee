@@ -3,7 +3,8 @@
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
-import { VUES, resumeSeuils, notePhi, lignesSelectionAIC, groupesSelectionAIC, nombreParametres } from './panneaux.js';
+import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites,
+  notesMoyennes, titreMoyenne, titrePaire, libellePaire } from './panneaux.js';
 import { demander } from './api.js';
 
 const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
@@ -35,20 +36,24 @@ export const PARTIES_TYPES = {};
 // as in their panels. `variantes`: one plot per setting of the view (each term's effect; the
 // residuals against the fitted values, then on a normal Q-Q plot, and so the quantile residuals of
 // a model of counts, presence-absence or positive values). `si`: only for the models it accepts
-// (the thresholds: an additive model's curves).
+// (the thresholds: an additive model's curves; the trend power: a linear or linear mixed model; the
+// adjusted means: a model with a qualitative variable).
 const avecCourbes = (m) => [].concat((m.courbes && m.courbes.terme) || []).length > 0;
 const PARTIES_REGRESSION = [
   { cle: 'resume', defaut: true, tableau: tableauRegression },
   { cle: 'coefficients', vue: 'coefficients', defaut: true, tableau: tableauCoefficientsRegression },
-  { cle: 'effets', vue: 'effets', defaut: true, variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
+  { cle: 'effets', vue: 'effets', defaut: true, tableau: tableauPentes,
+    variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
   { cle: 'seuils', vue: 'effets', defaut: true, si: avecCourbes, tableau: resumesSeuils,
-    variantes: async (m) => [].concat(m.courbes.terme).map((terme) => ({ terme, seuils: true })) },
+    variantes: async (m) => (await variantesSeuils(m)).map((v) => ({ terme: v.terme, seuils: true, ...(v.categorie ? { categorie: v.categorie } : {}) })) },
+  { cle: 'moyennes', vue: 'moyennes', si: (m) => [].concat(m.qualitatives || []).length > 0, tableau: tableauMoyennes },
   { cle: 'obspred', vue: 'obspred', defaut: true },
   { cle: 'residus', vue: 'residus', defaut: true, tableau: (m) => (m.residus_quantiles ? [{ texte: t('residus_note_quantiles') }] : []),
     variantes: async (m) => (m.residus_quantiles ? ['standard', 'quantiles'] : ['standard']).flatMap((residus) => [{ mode: 'ajustes', residus }, { mode: 'qq', residus }]) },
   { cle: 'acf', vue: 'acf' },  // (the time and groups of its panel, else CAR1's or those it guesses)
   { cle: 'apports', vue: 'apports' },
   { cle: 'selection_aic', vue: 'selection_aic', tableau: tableauSelectionAIC },
+  { cle: 'puissance', vue: 'puissance', si: (m) => ['LM', 'LMM'].includes(m.type), tableau: tableauPuissance },
 ];
 
 export function dialogueRapport(app, id) {
@@ -114,6 +119,8 @@ async function contenuRapport(app, m, parties, st) {
   const date = new Date().toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'long', timeStyle: 'short' });
   const blocs = [{ titre: st.titre || m.nom, niveau: 0 },
     { texte: `${t('projet_rapport')} : ${p.nom || ''} · ${t('genere_le')} ${date}` }];
+  // the condition that chose the model's observations (moteur/R/condition.R)
+  if (m.reglages && m.reglages.condition) blocs.push({ texte: t('condition_modele', { condition: m.reglages.condition }) });
   if (st.commentaire.trim()) st.commentaire.trim().split(/\n+/).forEach((x) => blocs.push({ texte: x }));
   if ((m.note || '').trim()) {
     blocs.push({ titre: t('notes'), niveau: 1 });
@@ -187,28 +194,50 @@ function tableauRegression(m) {
   const v = m.variances;
   if (v) {
     const variances = [].concat(v.variance);
-    blocs.push({ entetes: [t('effet_aleatoire'), t('variance'), t('ecart_type')],
-      lignes: [].concat(v.composante).map((c, i) => [c, nombre(variances[i]), nombre(Math.sqrt(variances[i]))]) });
+    // (with random slopes: a row per term of each level, and each slope's correlation with the intercept)
+    const pentes = v.terme !== undefined;
+    const correlations = pentes && [].concat(v.correlation).some((r) => r !== null && r !== undefined);
+    blocs.push({ entetes: [t('effet_aleatoire')].concat(pentes ? [t('terme')] : [], [t('variance'), t('ecart_type')], correlations ? [t('correlation_ordonnee')] : []),
+      lignes: [].concat(v.composante).map((c, i) => [c].concat(pentes ? [[].concat(v.terme)[i]] : [], [nombre(variances[i]), nombre(Math.sqrt(variances[i]))],
+        correlations ? [nombre([].concat(v.correlation)[i], 3)] : [])) });
   }
   const cb = m.courbes;
   if (cb) {
     const cv = cb.concurvite !== undefined;
-    blocs.push({ entetes: [t('courbe'), 'edf', t('ddl'), t('statistique'), 'p'].concat(cv ? [t('concurvite')] : []),
-      lignes: [].concat(cb.terme).map((n, i) => [n, nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])]
-        .concat(cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
+    const categories = cb.niveau !== undefined;  // (a curve per category: a row per category)
+    blocs.push({ entetes: [t('courbe')].concat(categories ? [t('categorie')] : [], ['edf', t('ddl'), t('statistique'), 'p'], cv ? [t('concurvite')] : []),
+      lignes: [].concat(cb.terme).map((n, i) => [n].concat(categories ? [[].concat(cb.niveau)[i] === null ? '' : `${[].concat(cb.par)[i]} ${[].concat(cb.niveau)[i]}`] : [],
+        [nombre([].concat(cb.edf)[i], 2), nombre([].concat(cb.ref_ddl)[i], 2), nombre([].concat(cb.statistique)[i], 2), valeurP([].concat(cb.p)[i])],
+        cv ? [nombre([].concat(cb.concurvite)[i], 2)] : [])) });
   }
-  const retires = [].concat(m.termes_retires || []);
-  return blocs.concat([notePhi(m),
+  return blocs.concat([...notesPentes(m), notePhi(m),
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
-    retires.length ? t('termes_retires', { termes: retires.join(', ') }) : ''].filter(Boolean).map((texte) => ({ texte })));
+    ...notesTermesRetires(m), noteSansCategorie(m)].filter(Boolean).map((texte) => ({ texte })));
+}
+
+// The slope per category of each term crossed with categories, as under its plot in the Effects
+// view (regression.R: effets_par_niveau).
+async function tableauPentes(m) {
+  const effets = [].concat((await demander('effets', { modele: m.id })).effets || []).filter((e) => e.niveaux && !e.courbe);
+  return effets.map((e) => ({ entetes: [e.par, t('pente_niveau', { terme: e.terme }), t('ic_bas'), t('ic_haut')],
+    lignes: [].concat(e.niveaux).map((n) => [n.niveau, nombre(n.pente), nombre(n.pente_bas), nombre(n.pente_haut)]) }));
+}
+
+// The thresholds a regression has: each curve's, and each category's for a curve with one per
+// category (a curve per category, or a curve crossed with categories: regression.R, courbes_seuils),
+// as the Effects view lists its curves.
+async function variantesSeuils(m) {
+  const effets = [].concat((await demander('effets', { modele: m.id })).effets || []).filter((e) => e.courbe);
+  return effets.flatMap((e) => (e.niveaux ? [].concat(e.niveaux).map((n) => ({ terme: e.terme, categorie: n.niveau, par: e.par })) : [{ terme: e.terme }]));
 }
 
 // Each curve's thresholds in words, as above its plot in the Effects view (regression.R:
-// seuils_courbe, computed once per curve and kept by the engine).
+// seuils_courbe, computed once per curve and category and kept by the engine).
 async function resumesSeuils(m) {
   const blocs = [];
-  for (const terme of [].concat(m.courbes.terme)) {
-    blocs.push({ texte: `${terme} — ${resumeSeuils(await demander('seuils', { modele: m.id, terme }))}` });
+  for (const v of await variantesSeuils(m)) {
+    const s = await demander('seuils', { modele: m.id, terme: v.terme, ...(v.categorie ? { categorie: v.categorie } : {}) });
+    blocs.push({ texte: `${v.terme}${v.categorie ? ` (${v.par} ${v.categorie})` : ''} — ${resumeSeuils(s)}` });
   }
   return blocs;
 }
@@ -217,20 +246,58 @@ async function resumesSeuils(m) {
 // engine): the suggested models in words, then the table of the best models.
 async function tableauSelectionAIC(m) {
   const s = await demander('selection_aic', { modele: m.id });
-  if (!s.K) return [{ texte: t('selection_aic_vide') }];
+  // (the groups that carry a random slope, in every model)
+  const gardes = [].concat(s.gardes ?? []);
+  const noteGardes = gardes.length ? t('selection_aic_gardes', { groupes: gardes.join(', ') }) : '';
+  if (!s.K) return [{ texte: [t('selection_aic_vide'), noteGardes].filter(Boolean).join(' ') }];
   const col = (k) => [].concat(s.modeles[k]);
   const groupes = [].concat(s.groupes);
-  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || t('aic_modele_nul');
+  const nom = (i) => groupesSelectionAIC(s, i).join(' + ') || (gardes.length ? t('aic_modele_gardes', { groupes: gardes.join(' + ') }) : t('aic_modele_nul'));
   const pa = s.parcimonieux - 1;
   const retires = s.chemin ? [].concat(s.chemin.retire).slice(1) : [];
   return [
-    { texte: [t('selection_aic_note', { n: s.N }), s.methode === 'toutes' ? t('selection_aic_toutes', { n: col('AICc').length })
-      : t('selection_aic_descendante', { k: s.K, limite: s.limite, n: col('AICc').length, retires: retires.length ? retires.join(', ') : t('aic_aucun_retire') })].join(' ') },
+    { texte: [t('selection_aic_note', { n: s.N }), noteGardes, s.methode === 'toutes' ? t('selection_aic_toutes', { n: col('AICc').length })
+      : t('selection_aic_descendante', { k: s.K, limite: s.limite, n: col('AICc').length, retires: retires.length ? retires.join(', ') : t('aic_aucun_retire') })].filter(Boolean).join(' ') },
     { texte: `${t('selection_aic_meilleur')} ${nom(0)} (k ${nombreParametres(col('k')[0])}, AICc ${nombre(col('AICc')[0], 2)}, ${t('poids_akaike')} ${nombre(col('poids')[0], 2)})` },
     { texte: pa > 0 ? `${t('selection_aic_parcimonieux')} ${nom(pa)} (k ${nombreParametres(col('k')[pa])}, ΔAICc ${nombre(col('delta')[pa], 2)})` : t('selection_aic_aussi') },
     { entetes: [t('aic_rang'), ...groupes, 'k', 'logLik', 'AICc', 'ΔAICc', t('poids_akaike'), t('aic_poids_cumule')],
       lignes: lignesSelectionAIC(s).map((i) => [String(i + 1), ...groupes.map((_, j) => ([].concat(s.contient[j])[i] === 1 ? '●' : '')), nombreParametres(col('k')[i]),
         nombre(col('logLik')[i], 2), nombre(col('AICc')[i], 2), nombre(col('delta')[i], 2), nombre(col('poids')[i], 3), nombre(col('poids_cumule')[i], 3)]) }];
+}
+
+// The trend power, as in its panel (moteur/R/puissance.R: computed and kept by the engine, the last
+// settings of its view, otherwise the defaults): the sentence, what it took from the model, the
+// simulation's result if it was run, and the power for each number of years and of units.
+async function tableauPuissance(m) {
+  let r;
+  try { r = await demander('puissance_tendance', { modele: m.id }); } catch (e) { return [{ texte: e.message }]; }
+  const tab = r.tableau;
+  const col = (k) => [].concat(tab[k]);
+  const puissance = new Map(col('puissance').map((p, i) => [`${col('annees')[i]}:${col('unites')[i]}`, p]));
+  const unites = [].concat(r.reglages.unites);
+  return [{ texte: r.phrase }, { texte: notesPuissance(r) }].concat(r.simulation ? [{ texte: resultatSimulation(r, r.simulation) }] : [],
+    [{ entetes: [t('puissance_annees'), ...unites.map((u) => libelleUnites(r, u))],
+      lignes: [...new Set(col('annees'))].map((a) => [String(a), ...unites.map((u) => nombre(puissance.get(`${a}:${u}`), 2))]) }]);
+}
+
+// The adjusted means, as in their panel (moteur/R/moyennes.R: computed and kept by the engine, the
+// last settings of its view, otherwise the defaults): what was computed and how, the sentence of the
+// first pair, the means (or slopes) and the pairs.
+async function tableauMoyennes(m) {
+  let r;
+  try { r = await demander('moyennes', { modele: m.id }); } catch (e) { return [{ texte: e.message }]; }
+  const cm = (k) => [].concat(r.moyennes[k] ?? []);
+  const cp = (k) => [].concat(r.paires[k] ?? []);
+  const ddl = (x) => (x === null || x === undefined ? '∞' : nombre(x, Number.isInteger(x) ? 0 : 1));
+  const phrases = [].concat(r.phrases || []);
+  return [{ texte: notesMoyennes(r) }].concat(phrases.length ? [{ texte: phrases[0] }] : [],
+    [{ entetes: [r.facteur.nom].concat(r.dans ? [r.dans.nom] : [], [titreMoyenne(r), t('erreur_type'), t('ddl'), t('ic_bas'), t('ic_haut')]),
+      lignes: cm('niveau').map((n, i) => [n].concat(r.dans ? [cm('groupe')[i]] : [], [nombre(cm('estimation')[i]), nombre(cm('erreur_type')[i]), ddl(cm('ddl')[i]),
+        nombre(cm('bas')[i]), nombre(cm('haut')[i])])) }],
+    cp('estimation').length ? [{ entetes: (r.dans ? [r.dans.nom] : []).concat([t('moyennes_paire'), titrePaire(r), t('erreur_type'), t('ddl'),
+      cp('ddl').every((x) => x === null) ? 'z' : 't', r.reglages.ajustement === 'aucun' ? 'p' : t('p_ajuste'), t('ic_bas'), t('ic_haut')]),
+    lignes: cp('estimation').map((_, i) => (r.dans ? [cp('groupe')[i]] : []).concat([libellePaire(r, i), nombre(cp('estimation')[i]), nombre(cp('erreur_type')[i]),
+      ddl(cp('ddl')[i]), nombre(cp('t')[i], 3), valeurP(cp('p')[i]), nombre(cp('bas')[i]), nombre(cp('haut')[i])])) }] : []);
 }
 
 // A regression's coefficients, as in its Coefficients panel (exp() of them with a log or logit link).

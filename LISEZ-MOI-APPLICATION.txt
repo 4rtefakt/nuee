@@ -173,9 +173,12 @@ applique aux variables affichées le log10 proposé (voir Statistiques des varia
 Onglet Termes croisés : produits de deux ou trois variables X (A × B, A × B × C), carrés
 (A × A) et cubes (A × A × A) ; une variable qualitative y entre par chacune de ses catégories,
 une fois au plus. Chaque terme croisé a sa propre échelle, son bloc et son modificateur, comme
-dans l'onglet Variables.
+dans l'onglet Variables. Dans une régression, un facteur peut aussi être une variable sans rôle
+(sous « Pas en X : sans effet principal ») : elle n'entre alors que par le terme croisé (voir
+Termes croisés avec une variable qualitative).
 Onglet Observations : cocher / décocher les observations du modèle, et le jeu de test (voir
-Jeu de test).
+Jeu de test) ; « Garder seulement les observations où… » les choisit par une condition (voir
+Observations choisies par une condition).
 « Modifier le modèle » (Ctrl+M) ouvre cette fenêtre réglée comme un modèle existant (y compris
 les modèles importés) et crée un nouveau modèle.
 Avant le calcul, l'application vérifie les données : variables ou observations avec plus de
@@ -454,6 +457,42 @@ fois ou la même valeur à chaque temps n'est pas testée, et le tableau dit pou
 copie. Le test tient les temps pour indépendants : une autocorrélation positive (des années qui
 se ressemblent) rend p trop petite. Pour une tendance qui en tient compte : Graphiques ›
 Autocorrélation des résidus, puis un modèle mixte avec une autocorrélation CAR1, l'année en X.
+Dans la barre du tableau, deux options changent le test. Tenir compte de l'autocorrélation : le
+test de Mann–Kendall modifié de Hamed et Rao (1998), calculé comme le calcule modifiedmk::mmkh :
+la ligne privée de sa tendance (sa pente de Sen, sur ses vrais temps), les rangs de ce qui
+reste, leur autocorrélation à chaque décalage (compté d'un temps au suivant : le temps qui suit
+une année manquante est à un décalage), celles au-delà de ±1,96/√n gardées (les autres
+comptent 0), et Var(S) multipliée par
+n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k) ; p et l'intervalle de la
+pente viennent de cette variance, et la colonne n/n* donne le facteur (1 : aucune
+autocorrélation gardée ; un facteur qui n'est pas positif, d'une forte autocorrélation négative,
+laisse la ligne sans test). Il faut une longue série : une autocorrélation s'estime
+mal sur peu de temps (Box et Jenkins, 1976, en demandent une cinquantaine), et avec 15 temps
+seule une autocorrélation au-delà de ±0,51 compte ; même sur 60 à 90 temps, le test corrigé
+rejette encore trop souvent une absence de tendance quand l'autocorrélation est forte (Blain,
+2013). Il corrige chaque ligne seule : il ne remplace pas un modèle mixte avec une
+autocorrélation CAR1, qui estime la tendance commune aux sites et à leurs secteurs, avec
+l'autocorrélation dans chacun.
+Saisons : le test de Kendall saisonnier (Hirsch, Slack et Smith, 1982), pour des relevés faits
+plusieurs fois par an, la saison donnée par le mois d'un temps fait de dates, ou par une
+variable qualitative ou un identifiant (la saison, le mois). L'année d'une valeur est la partie
+entière de son temps (l'année civile d'une date) ; plusieurs valeurs d'une saison la même année
+n'en font qu'une, leur médiane (comme le font certaines mises en œuvre ; EnvStats les
+garderait toutes, en ex aequo de temps), et une note dit combien. Dans chaque saison vue au
+moins 2 années : le S de Mann–Kendall entre ses années et sa variance avec les ex aequo ; S et
+Var(S) sont additionnés sur les saisons, tenues pour indépendantes, et p vient de la loi normale
+avec la correction de continuité, comme les calculent trend::smk.test et
+EnvStats::kendallSeasonalTrendTest. La pente de Sen saisonnière est la médiane des pentes entre
+années au sein de chaque saison (par an, ou par unité de temps), son intervalle à 95 % tiré de
+Var(S) comme le fait Gilbert (1987) (les rangs arrondis, comme pour la pente de Sen plus haut ;
+EnvStats interpole entre eux) ; τ est celui d'EnvStats : les τ des saisons en moyenne, pondérée
+par leurs années. Une saison vue une seule année ne compte pas ; une ligne de moins de 4 valeurs
+dans les saisons qui comptent, ou de la même valeur chaque année dans chaque saison, n'est pas
+testée ; les observations sans saison sont laissées de côté par le test, et comptées. Le test
+saisonnier tient les saisons pour indépendantes : une autocorrélation d'un mois au suivant rend
+p trop petite, et Tenir compte de l'autocorrélation ne s'y applique pas (Hirsch et Slack, 1984,
+donnent une correction, qui n'est pas faite ici). La colonne Test donne le test de chaque
+ligne ; la correction sur les lignes reste la même.
 
 Tests statistiques
 ------------------
@@ -605,6 +644,56 @@ variances sont estimés en REML ; la log-vraisemblance, l'AIC, l'AICc et le BIC 
 l'ajustement en ML, le seul qui compare des modèles aux effets fixes différents. La validation
 croisée se fait par défaut par le premier effet aléatoire : chaque site est prédit par les
 effets fixes du modèle ajusté sans lui, comme un site jamais vu.
+Pentes aléatoires : sous chaque effet aléatoire choisi, « Pentes aléatoires par site » coche
+les variables X quantitatives dont la pente change d'un site à l'autre, le plus souvent
+l'année : chaque site a sa propre tendance, qui varie autour de la pente fixe du modèle ; c'est
+(1 + annee | site) dans une formule R. La variable doit être aussi un terme X du modèle,
+quantitatif et seul (transformé ou non), pas en courbe : sinon le modèle est refusé, en la
+nommant. Avec nlme (un modèle mixte, ou un GLM ou un GAM à loi normale avec CAR1, ajusté par
+mgcv::gamm), chaque niveau a la matrice de covariance générale de nlme
+(random = ~ annee | site ; avec des niveaux emboîtés, la liste list(site = ~ annee,
+secteur = ~ 1)) : la variance de son ordonnée à l'origine, celle de chaque pente et leur
+corrélation. L'écart-type d'une pente, en unités de Y par unité de X, dit combien les tendances
+des sites s'écartent de la tendance moyenne : environ 95 % des sites sont à ±2 écarts-types de
+la pente fixe. La corrélation dit si les sites hauts ont des pentes plus fortes (au-dessus de
+0) ou plus faibles (au-dessous) ; elle est celle de l'ordonnée à l'origine prise à x = 0. Le
+Résumé donne la variance et l'écart-type de chaque ordonnée à l'origine et de chaque pente, et
+la corrélation de chaque pente avec l'ordonnée à l'origine de son niveau (avec plusieurs pentes
+à un niveau, leurs corrélations entre elles sont estimées mais pas dans ce tableau : summary(m)
+du script d'Exporter vers R les donne). Avec une pente, la variance d'un niveau change avec x
+et sa part de la variance aléatoire n'a plus une seule valeur : le Résumé donne la part de
+chaque niveau, de sa variance moyenne sur les observations, et les R2 marginal et conditionnel
+la prennent aussi, comme Johnson (2014) étend ceux de Nakagawa et Schielzeth : la moyenne sur
+les observations de zᵢᵀΣzᵢ, Σ la matrice du niveau et zᵢ = (1, les valeurs de ses pentes).
+Centrer : une variable loin de 0, comme l'année (≈ 2010), met l'ordonnée à l'origine aléatoire
+loin des données (à l'an 0), où sa corrélation avec la pente est près de ±1 ; l'ajustement s'y
+arrête souvent trop tôt, sur une pente d'écart-type presque nul. Nuée ne centre pas sans le
+dire : le Résumé signale un ajustement singulier (une corrélation au-delà de ±0,99, ou
+l'écart-type d'une pente, fois celui de sa variable sur les observations, sous 1 % de
+l'écart-type résiduel) et, quand la variable est loin de 0 (sa moyenne au-delà de son
+écart-type), conseille de la centrer, échelle Ctr ou UV dans l'onglet Variables : c'est le même
+modèle, que nlme trouve alors le plus souvent, l'ordonnée à l'origine prise à la moyenne de la
+variable. Une variable centrée et un ajustement singulier : les données ne permettent pas
+d'estimer cette pente ou cette corrélation ; comparez par l'AIC le modèle sans elle. Un échec
+de l'ajustement reste « Le modèle n'a pas pu être ajusté ».
+Dans un GLM ou un GAM ajusté par mgcv::gam (une autre loi que la normale, ou sans CAR1), une
+pente aléatoire est un terme s(site, annee, bs = "re") (Wood, 2017) : indépendante de
+l'ordonnée à l'origine aléatoire, sans corrélation, mgcv ne sachant pas les corréler. Ce modèle
+dépend de l'endroit où x vaut 0 : x centré, l'ordonnée à l'origine aléatoire est le niveau de
+chaque site à la moyenne de x ; l'année non centrée ne laisse guère de place à la variance de
+la pente. Le Résumé le dit. Refait avec CAR1 (mgcv::gamm), un tel modèle a ses pentes
+corrélées, comme nlme.
+Avec des pentes aléatoires : la validation croisée prédit un site jamais vu par les effets
+fixes ; la sélection par AIC ne choisit que les effets fixes, et le groupe d'une variable qui a
+une pente aléatoire reste dans chaque modèle (une pente aléatoire suit la pente fixe de sa
+variable) ; dans Apport des blocs, sans cette variable, sa pente fixe seule est retirée et sa
+pente aléatoire reste (le test de la pente moyenne, avec les mêmes effets aléatoires) ; deux
+modèles aux pentes aléatoires différentes n'ont pas les mêmes effets aléatoires : pas de test
+du rapport de vraisemblance entre eux, ils se comparent par l'AIC sur les mêmes observations ;
+Ajuster avec CAR1 garde les pentes ; les prédictions sont celles des effets fixes. Non
+couvert : dans nlme, une pente non corrélée à l'ordonnée à l'origine ((0 + annee | site),
+(1 | site) + (0 + annee | site), ||), refusée dans la formule R ; la pente aléatoire d'une
+variable qualitative, d'un terme croisé ou d'une courbe.
 Type « Modèle linéaire généralisé (GLM) » ou « Modèle additif (GAM) » (mgcv), pour une
 variable Y qui ne suit pas une loi normale. Loi de Y : Poisson pour des comptages ; binomiale
 négative pour des comptages qui varient plus qu'une loi de Poisson ne le permet (son θ
@@ -624,20 +713,36 @@ additif, les variables X cochées dans la colonne Courbe de l'onglet Variables e
 courbe lissée (une spline) plutôt que par une droite, pour un effet qui monte puis descend, ou
 un seuil ; les données décident de sa courbure (son edf ; 1 est une droite). Sa dimension de
 base k borne sa courbure : 10 au plus, moins quand la variable a peu de valeurs ; tapez-en une
-autre (de 3 à 100) dans la case à côté de la coche, comme s(x, k = 5) dans R. Les courbes et
-les effets aléatoires sont estimés en REML, et l'AIC vient
-d'un ajustement en ML ; un GLM sans eux est ajusté par maximum de vraisemblance, comme le font
-glm() et MASS::glm.nb(). Le résumé d'un modèle de Poisson prévient quand les comptages sont
-surdispersés (le khi² de Pearson au-delà de 1,5 fois ses degrés de liberté) : ses valeurs p
-sont alors trop petites, et la binomiale négative convient mieux à ces comptages.
+autre (de 3 à 100) dans la case à côté de la coche, comme s(x, k = 5) dans R. Une courbe par
+catégorie : la liste à côté de k offre les variables qualitatives X du modèle (« une par
+secteur »), comme s(annee, by = secteur) dans mgcv : chaque secteur a sa courbe, de dimension k
+chacune, avec son edf, son test, sa concurvité, son effet et ses seuils. Chacune est centrée sur
+les observations de sa catégorie (la contrainte d'identifiabilité de mgcv) : la variable
+qualitative doit rester en X, son effet principal donnant l'écart de niveau entre les
+catégories ; sans lui, toutes les catégories auraient la même moyenne, et Nuée refuse alors le
+modèle plutôt que d'ajouter ce terme sans le dire. Le facteur que mgcv voit vient des colonnes
+0/1 des catégories du modèle (ses niveaux, les catégories observées, dans leur ordre) ; une
+catégorie ajoutée aux données après la définition du modèle n'y a pas de colonne, donc pas de
+courbe : ses lignes restent hors du modèle avec les observations incomplètes, et dans un jeu de
+test, sans prédiction. Une variable en courbe par catégorie n'est pas aussi dans un terme
+croisé avec une variable qualitative (chaque catégorie a déjà sa courbe). Les courbes et les
+effets aléatoires sont estimés en REML, et l'AIC vient d'un ajustement en ML ; un GLM sans eux
+est ajusté par maximum de vraisemblance, comme le font glm() et MASS::glm.nb(). Le résumé d'un
+modèle de Poisson prévient quand les comptages sont surdispersés (le khi² de Pearson au-delà
+de 1,5 fois ses degrés de liberté) : ses valeurs p sont alors trop petites, et la binomiale
+négative convient mieux à ces comptages.
 Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/secteur).
 Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations
 (log, log10, log1p, exp, sqrt, I(x^p), I(a * x + b), le logit log((x - a) / (b - x))), les
-termes croisés (a:b ; a*b pour a, b et a:b ; I(a^2) quand a est aussi dans le modèle, sinon le
-carré de a), les courbes s(x) ou s(x, k = 5), l'effort offset(log(x)) et les ordonnées à
-l'origine aléatoires emboîtées (1 | site/secteur), du plus large au plus fin. Une courbe rend
-le modèle additif, des
+termes croisés (a:b ; a*b pour a, b et a:b ; a:b sans a : a entre sans effet principal ;
+I(a^2) quand a est aussi dans le modèle, sinon le
+carré de a), les courbes s(x), s(x, k = 5) et s(x, by = f) (une par catégorie de f, qui doit
+être aussi un terme ; s(x, by = f, k = 5)), l'effort offset(log(x)) et les ordonnées à
+l'origine aléatoires emboîtées (1 | site/secteur), du plus large au plus fin, avec leurs pentes
+aléatoires comme lme4 les écrit : (1 + annee | site) ou (annee | site) ;
+(1 + annee | site/secteur), une pente à chaque niveau ; un terme par niveau,
+(1 + annee | site) + (1 | site:secteur). Une courbe rend le modèle additif, des
 effets aléatoires le rendent mixte. R lit la formule sans jamais l'exécuter : tout le reste
 (une autre fonction, du code) est refusé en disant pourquoi, et la formule n'est pas gardée,
 seulement les réglages qu'elle donne.
@@ -645,22 +750,30 @@ Vues : Résumé (R2, ou R2 marginal et conditionnel pour un modèle mixte, Nakag
 Schielzeth ; R2 ajusté et déviance expliquée pour un GLM ou un GAM (R2 marginal et
 conditionnel quand il est ajusté par mgcv::gamm, les courbes dans la partie fixe), avec l'edf,
 le test et la concurvité de chaque courbe (la part de la courbe que reproduisent les autres
-termes ; au-delà de 0,8, en rouge, elle se confond avec eux) ; Q2 et RMSEcv ; AIC ; la variance
-de chaque effet aléatoire et sa part ; φ de
+termes ; au-delà de 0,8, en rouge, elle se confond avec eux ; une ligne par catégorie d'une
+courbe par catégorie) ; Q2 et RMSEcv ; AIC ; la variance
+de chaque effet aléatoire et sa part (avec des pentes aléatoires, voir plus haut) ; φ de
 l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
 quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
 plus, avec le logit le rapport des cotes), Effets (l'effet de chaque terme quantitatif quand sa
 variable varie, les autres fixés, avec sa bande à 95 % et les valeurs observées dessous : les
-courbes d'un GAM, des droites sinon ; sur l'échelle du lien, log ou logit, quand il y en a un ;
+courbes d'un GAM, des droites sinon, une par catégorie pour un terme croisé avec une variable
+qualitative ou une courbe par catégorie, avec la légende des catégories ; sur l'échelle du
+lien, log ou logit, quand il y en a un ;
 pour une courbe, Seuils : l'effet et sa pente avec des intervalles simultanés à 95 % tirés de
 2000 jeux de coefficients, les plages où la bande de la pente exclut 0, en hausse ou en baisse
 nette, colorées et listées, et l'edf, sous 1,5 presque une droite, comme Simpson (2018) lit les
-seuils), Observé / prédit, Résidus (standardisés, contre les valeurs ajustées, droite de
+seuils ; une courbe qui en a une par catégorie (une courbe par catégorie, ou une courbe croisée
+avec une variable qualitative) a les seuils de la catégorie choisie dans la liste à côté de la
+case, sur les percentiles de la variable dans cette catégorie), Observé / prédit, Résidus
+(standardisés, contre les valeurs ajustées, droite de
 Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire ; aussi
 les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,
 ci-dessous), Apport des blocs
 (AIC) : chaque bloc de la colonne Bloc (ou chaque variable) retiré et le modèle réajusté en
-ML ; un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
+ML, un effet principal avec les termes croisés qui le contiennent et les courbes par catégorie
+qu'il fait (la colonne Avec les nomme) ;
+un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
 Résidus d'un GLM ou d'un GAM à loi de Poisson, binomiale négative, binomiale ou gamma : à côté
@@ -706,21 +819,109 @@ Graphiques › Sélection par AIC (aussi sous chaque régression, dans l'explora
 variables garder. Chaque combinaison des groupes de termes du modèle (les blocs de la colonne
 Bloc, sinon les variables), du modèle nul au modèle complet, est ajustée en ML sur les mêmes
 observations et rangée par AICc ; un terme croisé ou un carré n'entre qu'avec ses effets
-principaux. Seuls les effets fixes sont choisis : les effets aléatoires, l'autocorrélation,
-l'effort et le réglage des courbes restent ceux du modèle. Jusqu'à 8 groupes (256
-combinaisons), toutes les combinaisons sont ajustées (un modèle mixte avec CAR1 sur 240 lignes
-prend une dizaine de secondes) ; au-delà, une élimination descendante depuis le modèle complet
-retire pas à pas le groupe dont le retrait baisse le plus l'AICc. La vue suggère le meilleur
-modèle (l'AICc le plus bas) et, s'il diffère, le plus parcimonieux à ΔAICc ≤ 2 (le moins de
-paramètres ; Burnham et Anderson, 2002) ; elle trace l'importance de chaque groupe (la somme
-des poids d'Akaike des modèles qui le contiennent) et liste les 20 meilleurs modèles, ou ceux à
-ΔAICc < 10, avec une colonne par groupe, k, logLik, AICc, ΔAICc, le poids et le poids cumulé.
-Ajuster ce modèle, sur la suggestion ou sur n'importe quelle ligne (un clic la choisit
-d'abord), en fait un nouveau modèle : les mêmes réglages avec les seules variables de ces
-groupes (un terme croisé garde ses facteurs), sur les mêmes observations, ajusté comme les
-autres (REML pour les estimations) et nommé comme un réajustement (M1 (1)). Une fois la
-sélection faite, le texte des méthodes la décrit, le rapport du modèle peut la contenir et
-Exporter vers R la refait.
+principaux (une variable qualitative par toutes ses catégories) et les termes croisés d'une
+partie de ses facteurs, une courbe par catégorie qu'avec l'effet principal de sa variable
+qualitative. Seuls les effets fixes sont choisis : les effets aléatoires,
+l'autocorrélation, l'effort et le réglage des courbes restent ceux du modèle, et le groupe
+d'une variable qui a une pente aléatoire reste dans chaque modèle, hors des groupes à choisir.
+Jusqu'à 8 groupes (256 combinaisons), toutes les combinaisons sont ajustées (un modèle mixte
+avec CAR1 sur 240 lignes prend une dizaine de secondes) ; au-delà, une élimination descendante
+depuis le modèle complet retire pas à pas le groupe dont le retrait baisse le plus l'AICc. La
+vue suggère le meilleur modèle (l'AICc le plus bas) et, s'il diffère, le plus parcimonieux à
+ΔAICc ≤ 2 (le moins de paramètres ; Burnham et Anderson, 2002) ; elle trace l'importance de
+chaque groupe (la somme des poids d'Akaike des modèles qui le contiennent) et liste les 20
+meilleurs modèles, ou ceux à ΔAICc < 10, avec une colonne par groupe, k, logLik, AICc, ΔAICc,
+le poids et le poids cumulé. Ajuster ce modèle, sur la suggestion ou sur n'importe quelle ligne
+(un clic la choisit d'abord), en fait un nouveau modèle : les mêmes réglages avec les seules
+variables de ces groupes (un terme croisé garde ses facteurs), sur les mêmes observations,
+ajusté comme les autres (REML pour les estimations) et nommé comme un réajustement (M1 (1)).
+Une fois la sélection faite, le texte des méthodes la décrit, le rapport du modèle peut la
+contenir et Exporter vers R la refait.
+Graphiques › Puissance pour une tendance (aussi sous chaque régression linéaire ou modèle
+linéaire mixte, dans l'explorateur) : avec tant de sites comptés chaque année, en combien
+d'années une tendance est-elle détectée ? Choisissez le temps (un X quantitatif, non transformé :
+l'année), la tendance à détecter (un changement par an dans les unités du Y du modèle ; avec une
+réponse en log10 ou en ln, aussi en % par an, converti en la pente log(1 + %/100) sur cette
+échelle, une approximation avec log10(x + 1), juste seulement là où x est grand devant 1), α (un
+test bilatéral), les nombres d'années (de, à) et les nombres d'unités du premier effet aléatoire
+(les sites ; celui des données y est toujours). Chaque unité est comptée une fois par an, ses
+niveaux emboîtés comme dans les données, leurs nombres moyens arrondis (2,75 secteurs par site :
+3) ; une régression linéaire compte des observations par an. Les variances sont les estimations
+REML du modèle (effets aléatoires, variance résiduelle, φ de CAR1), et ses autres termes restent
+hors des plans (leurs effets tenus pour constants). Pour chaque plan, la variance de
+l'estimateur des moindres carrés généralisés de la pente, ces variances connues, (X'V⁻¹X)⁻¹ avec
+V la covariance du plan (Diggle et al., 2002), donne la puissance Φ(|β|/et − z) + Φ(−|β|/et −
+z) : la puissance selon le nombre d'années, une ligne par nombre d'unités, la ligne des 80 %, une
+phrase prête pour un rapport (« Avec 12 unités de « site », chacune comptée chaque année, une
+baisse de 3 % par an de « densite » est détectée avec une puissance de 80 % après 11 ans »), et
+le tableau. Chaque unité étant comptée chaque année, les ordonnées à l'origine aléatoires ne
+changent rien à la variance de la pente : la variance résiduelle, φ, les années et le nombre de
+séries comptées la font. Une simulation vérifie la formule à un plan (par défaut celui des
+données) : N jeux de données (200 par défaut) tirés du modèle avec la tendance, chacun réajusté
+par nlme avec la même structure (REML), la puissance étant la part des pentes de p ≤ α (Johnson
+et al., 2015), avec son erreur de Monte-Carlo. Sa graine est fixe (les mêmes jeux à chaque fois ;
+le hasard de la session reste tel qu'il était), et la vue dit d'abord combien de temps elle
+prendra : le moteur R ajuste un modèle à la fois et ne fait rien d'autre en attendant (une
+simulation qui prendrait plus d'un quart d'heure, ou de plus de 20 000 observations par jeu, est
+refusée). Les deux peuvent différer : la simulation estime les variances et φ dans chaque jeu
+(avec peu d'unités ou d'années, elles sont incertaines) et teste la pente par le t de nlme, quand
+la formule les tient pour connues et prend la loi normale. Pas couverts, et refusés avec la
+raison : les GLM et les GAM, des pentes aléatoires, un modèle sans X quantitatif qui puisse être
+le temps, une autocorrélation CAR1 le long d'un temps d'autres unités que celui de la tendance.
+Une fois calculée, le texte des méthodes la décrit, le rapport du modèle peut la contenir et
+Exporter vers R la refait (la simulation avec les mêmes tirages).
+Graphiques › Moyennes ajustées (aussi sous chaque régression qui a une variable qualitative,
+dans l'explorateur) : la moyenne de chaque catégorie d'une variable qualitative X ajustée sur
+les autres termes du modèle, comme le calcule le paquet emmeans de R (Lenth ; ses conventions
+par défaut, sans le paquet) : les moyennes marginales estimées de Searle, Speed et Milliken
+(1980). Choisir la variable (un effet principal, ou un facteur d'un terme croisé). Chaque
+moyenne est la prédiction du modèle sur une grille de référence, moyennée : la grille a chaque
+combinaison des catégories observées des variables qualitatives du modèle ; chaque variable
+quantitative y est à sa moyenne sur les observations du modèle (une variable transformée, à la
+transformation de sa moyenne, comme emmeans : le log10 de la moyenne de x, non la moyenne de
+log10(x)), les termes croisés et les carrés évalués à ces valeurs (le produit des moyennes),
+une courbe (GAM) à la moyenne de sa variable, l'effort à 1 (des densités, comme offset = 0 dans
+emmeans) ; la moyenne d'une catégorie est celle des lignes de la grille qui l'ont, à poids
+égaux sur les catégories des autres variables qualitatives. Son erreur-type est √(L V Lᵀ), V la
+covariance des coefficients (celle de nlme pour un modèle mixte, celle, bayésienne, de mgcv
+pour un GLM ou un GAM, comme emmeans), avec son intervalle à 95 %. Dessous, toutes les paires
+de catégories : la différence avec son intervalle et sa valeur p, ajustés par la méthode de
+Tukey (par défaut : la loi du maximum studentisé pour le nombre de moyennes comparées ; Tukey
+1953, Kramer 1956), par celle de Holm (les valeurs p ; les intervalles par celle de Bonferroni,
+comme emmeans, la méthode de Holm n'en donnant pas) ou sans ajustement. « Dans chaque niveau de
+» une autre variable qualitative croisée avec la première (le traitement dans chaque habitat) :
+les catégories de la première comparées dans chaque catégorie de l'autre, l'ajustement dans
+chacune. « Pour chaque catégorie › la pente de x », pour une variable quantitative croisée avec
+elle (annee × secteur) : la pente de x dans chaque catégorie (par unité du terme, transformé
+s'il l'est), la dérivée des prédictions comme emtrends la prend (une différence avant d'un
+millième de l'étendue de x), et les paires de pentes ; pour une droite, les pentes de la vue
+Effets. Les degrés de liberté sont ceux qu'emmeans prend par défaut : les degrés de liberté
+résiduels pour une régression linéaire, et pour un GLM ou un GAM dont l'échelle est estimée
+(loi normale, gamma, Tweedie) ; la règle de confinement de nlme pour un modèle mixte (le plus
+petit de ceux des coefficients qu'une moyenne ou une paire fait intervenir dans le codage par
+défaut de R, la première catégorie en référence, comme emmeans sur l'ajustement de R ;
+l'ordonnée à l'origine comptant pour le nombre de groupes du premier effet aléatoire moins un :
+en général, la moyenne d'un secteur a le nombre de sites moins un, une paire de secteurs dans
+les sites les degrés de liberté intérieurs ; pour un habitat qui ne change que d'un site à
+l'autre, la moyenne du premier habitat a le nombre de sites moins un, les autres et les paires
+ceux de l'habitat, les sites moins un moins ses coefficients) ; z (asymptotique) pour une loi
+de Poisson, binomiale ou binomiale négative, comme emmeans pour glm() et comme les Coefficients
+du modèle (sur un objet mgcv::gam, emmeans prend les degrés de liberté résiduels quelle que
+soit la loi). Avec un lien log ou logit, les moyennes sont sur l'échelle de la réponse (exp ;
+logit inverse : des probabilités), leurs intervalles transformés depuis l'échelle du lien, et
+les paires sont des rapports de moyennes ou des rapports des cotes, testés sur l'échelle du
+lien, comme type = "response" dans emmeans ; l'échelle du lien au choix. Une variable Y
+transformée (log10, ln…) reste sur son échelle, et la vue le dit : ramenée sur l'échelle de la
+variable, une moyenne de logarithmes est une médiane (une moyenne géométrique), non une
+moyenne. Une combinaison de catégories qu'aucune observation n'a n'est pas estimable (emmeans :
+nonEst) : sa moyenne et ses paires sont laissées de côté, et nommées. Un clic sur une paire du
+tableau donne sa phrase pour un rapport (bouton copier) ; Ctrl+C copie les deux tableaux. Une
+fois calculées, le texte des méthodes les décrit (Searle et al. 1980, emmeans de Lenth, Tukey
+1953 et Kramer 1956, ou Holm 1979), le rapport du modèle peut les inclure, et Exporter vers R
+les refait en R de base (la grille, les lignes L du modèle, la covariance et les degrés de
+liberté : les mêmes nombres). Non couvert : d'autres poids qu'égaux (weights = "proportional"…
+d'emmeans), d'autres contrastes que les paires (contre un témoin), une variable quantitative à
+une autre valeur que sa moyenne.
 Prédiction › Prédire les observations, Prédire un fichier : Y prédit par les effets fixes (pour
 un modèle mixte, un groupe jamais vu), sur l'échelle de Y du modèle (sa transformation
 comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier sont reconnues par
@@ -737,26 +938,92 @@ entre eux.
 Sous le tableau des AIC, Modèles emboîtés : le test du rapport de vraisemblance entre chaque
 paire de régressions emboîtées d'un même ensemble AIC, comme anova(m1, m2) sur des ajustements
 en ML. Les termes fixes du petit modèle sont parmi ceux du grand (ses colonnes dans celles du
-grand), avec la même loi, le même effort, les mêmes effets aléatoires et la même
-autocorrélation ; χ² = 2 × (logLik du grand − logLik du petit) sur Δddl, la différence de
-leurs nombres de paramètres, et son p. Pour des régressions linéaires et des GLM, c'est l'écart
+grand), avec la même loi, le même effort, les mêmes effets aléatoires (leurs pentes comprises)
+et la même autocorrélation ; χ² = 2 × (logLik du grand − logLik du petit) sur Δddl, la
+différence de leurs nombres de paramètres, et son p. Pour des régressions linéaires et des GLM,
+c'est l'écart
 de leurs logLik (de leurs déviances pour un GLM de Poisson ou binomial, comme anova(glm1,
 glm2, test = "Chisq")). Les effets aléatoires et l'autocorrélation ne se testent pas ainsi :
 une variance nulle est au bord de son domaine, où la loi du χ² ne tient plus ; comparez-les
 par l'AIC. Avec des courbes ou des effets aléatoires de mgcv, les ddl sont des edf et le test
 est approché, comme le dit le tableau. Toutes les paires emboîtées sont listées (2000 au
 plus) ; la recherche du tableau trouve celles d'un modèle.
+Prédiction › Comparer les modèles › Coefficients côte à côte (le choix en haut de la vue) :
+plusieurs régressions comme les articles les présentent, une ligne par terme et une colonne par
+modèle. Cochez les régressions du projet à montrer (toutes d'abord). Chaque case est
+l'estimation avec son intervalle à 95 %, ou avec son erreur-type, du tableau de la vue
+Coefficients du modèle (ses décimales celles de deux chiffres significatifs de l'erreur-type), en
+rouge quand p ≤ 0,05, vide quand le modèle n'a pas le terme. Les lignes sont la constante et les
+termes du premier modèle, puis ceux des autres dans leur ordre : deux modèles partagent une ligne
+quand ils ont un terme du même nom. Dessous : n, AIC et AICc (ajustement en ML), R² (une
+régression linéaire), R² marginal et conditionnel (un modèle mixte) ou part de la déviance
+expliquée (un GLM ou un GAM), l'écart-type σ de chaque effet aléatoire (et le résiduel d'un
+modèle de nlme), φ de CAR1 et l'edf de chaque courbe. Un modèle de lien log ou logit garde ses
+estimations sur l'échelle du lien, comme dans sa vue Coefficients, et la note le dit. Ctrl+C (ou
+le bouton de copie) met le tableau dans le presse-papiers en texte et en tableau, qu'Excel et
+Word collent en tableau, avec des étoiles pour p (* ≤ 0,05, ** ≤ 0,01, *** ≤ 0,001) et leur
+légende ; Fichier › Exporter les résultats du modèle (Ctrl+E), depuis cette vue, l'écrit, avec à
+côté les coefficients de chaque modèle en nombres.
 Fichier › Exporter : les observations (observées, ajustées, prédites en validation croisée,
-résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires et les courbes,
-un tableau chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
+résidus), les coefficients, la qualité de l'ajustement, les effets aléatoires (chaque
+ordonnée à l'origine et pente aléatoire, et leur corrélation) et les courbes, un tableau
+chacun. Fichier › Rapport du modèle : le résumé et les coefficients, l'effet de
 chaque terme, les seuils de chaque courbe, observé / prédit et les résidus (aussi les résidus
 quantiles, pour des comptages, une présence-absence ou des valeurs positives).
 Fichier › Exporter vers R : un script ou un rapport pour une régression aussi, avec lm,
-nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML),
-la validation croisée par ses groupes, puis les coefficients, l'AIC, le R2, les variances, les
-courbes avec leur concurvité et leurs seuils (les mêmes tirages que la vue Seuils), les résidus
-quantiles (les mêmes tirages que la vue Résidus), le jeu de test et les graphiques, vérifiés
-contre les résultats de Nuée avant d'être écrits.
+nlme::lme, mgcv::gam ou mgcv::gamm : ses lignes et ses termes, les ajustements (REML et ML ;
+ses pentes aléatoires comprises), la validation croisée par ses groupes, puis les coefficients,
+l'AIC, le R2, les variances, les courbes avec leur concurvité et leurs seuils (les mêmes
+tirages que la vue Seuils), les résidus quantiles (les mêmes tirages que la vue Résidus), le
+jeu de test et les graphiques, vérifiés contre les résultats de Nuée avant d'être écrits.
+Termes croisés avec une variable qualitative (onglet Termes croisés, ou a * b et a:b dans la
+formule R) : une variable qualitative entre dans un terme croisé par chacune de ses catégories,
+une fois au plus (ni au carré ni au cube). année × secteur laisse la pente de l'année changer
+d'un secteur à l'autre : ses coefficients sont, pour chaque secteur sauf celui de référence,
+l'écart entre la pente de l'année dans ce secteur et sa pente dans le secteur de référence, qui
+est le coefficient de l'année. La catégorie de référence est celle que l'ajustement laisse de
+côté (la dernière catégorie observée), la même dans l'effet principal et dans le terme croisé.
+Pour une densité suivie par secteur, un coefficient de 0,2 pour annee*secteur(S2), celui de
+l'année valant 0,05, se lit : la densité gagne 0,25 par an dans S2, 0,2 de plus que dans le
+secteur de référence. Sans l'année en X (un facteur sans rôle dans l'onglet Termes croisés, ou
+y ~ secteur + secteur:année), chaque coefficient de année × secteur est la pente de l'année
+dans ce secteur ; sans le secteur en X (y ~ année + année:secteur), les pentes diffèrent mais
+les secteurs partagent une même ordonnée à l'origine. habitat × traitement : chaque coefficient
+est l'écart entre l'effet d'un traitement (par rapport au traitement de référence) dans un
+habitat et ce même effet dans l'habitat de référence ; trois variables (année × secteur ×
+habitat) donnent des écarts d'écarts. Le coefficient d'une catégorie elle-même (secteur(S2))
+est alors son écart à la catégorie de référence là où les termes croisés avec elle valent 0 :
+là où l'année vaut 0 (avec les années dans leurs unités, l'an 0, loin des données ; l'année
+moyenne quand l'année est centrée, Ctr ou UV), dans l'habitat de référence pour habitat ×
+traitement. Les colonnes sont rangées comme R range ses termes, les effets principaux
+d'abord : les résultats sont ceux de lm(), nlme::lme() et mgcv avec des facteurs dont le
+premier niveau est la référence de Nuée. Une combinaison de catégories qu'aucune observation
+n'a (un traitement jamais donné dans un habitat) ne peut pas être estimée : elle est laissée
+de côté, et le Résumé la nomme parmi les termes jamais observés. Effets : un terme
+quantitatif croisé avec des catégories a une droite par catégorie (une courbe quand le terme
+est une courbe d'un GAM), de pente son coefficient plus celui de son produit avec la
+catégorie, avec sa bande à 95 % tirée de la covariance des coefficients et, sous le graphique,
+chaque pente par unité avec son intervalle. Pour une courbe, les Seuils sont ceux de la
+catégorie choisie : la courbe commune plus la pente de cette catégorie ; une courbe par
+catégorie (s(x, by = f), plus haut) donne à chaque catégorie sa propre forme, et non la même
+courbe inclinée. Dans la sélection par AIC et la table des apports, un terme croisé entre et
+sort en entier (toutes ses catégories), seulement avec ses effets principaux et ses termes
+croisés d'ordre plus bas. Le texte des Méthodes nomme chaque catégorie de référence et dit ce
+que valent le coefficient d'une catégorie et ceux des termes croisés. Prédiction : une
+catégorie que le modèle a vue a sa propre prédiction ; une catégorie, ou une combinaison de
+catégories, qu'il n'a pas vue (absente de ses observations, des autres groupes en validation
+croisée, ou inconnue du projet dans un fichier) n'en a pas : le modèle la prédirait comme la
+catégorie de référence, ou sans sa pente, et R refuse de même un niveau qu'il n'a pas vu.
+C'est la règle de chaque variable qualitative d'une régression (effets principaux, termes
+croisés, courbes par catégorie ; LM, LMM, GLM, GAM, mgcv::gamm), pas des autres modèles
+(PLS...). Ces observations sont comptées et nommées : en validation croisée, le Résumé dit
+combien sont restées sans prédiction et de quelle variable, Q2 et RMSEcv étant calculés sur
+les autres ; quand il n'en reste aucune (des secteurs propres à chaque site, validés par
+site), Q2 manque, et le Résumé dit que le modèle ne peut pas être validé par ces groupes avec
+cette variable en X fixe : faites-en un effet aléatoire, ou choisissez d'autres groupes de
+validation croisée. Le jeu de test les compte à part de son RMSEP, de son biais et de son Q2
+externe ; Prédiction › Prédire les marque ⊘ (colonne Catégorie non vue, dans le tableau
+exporté aussi). Le texte des Méthodes et le script d'Exporter vers R font de même.
 
 Modèles de classe et graphique de Coomans
 -----------------------------------------
@@ -856,6 +1123,69 @@ Exporter vers R (un script ou un rapport R Markdown / Quarto qui refait l'analys
 rpart, MASS ou cluster, livrés avec R). Comparer les modèles donne le Q2 et le RMSEcv d'un
 arbre de régression à côté des autres modèles.
 
+Ajouter des colonnes d'un autre tableau
+---------------------------------------
+Édition › Ajouter des colonnes d'un tableau (ou clic droit sur les données du projet dans
+l'explorateur) : les colonnes d'un autre tableau ajoutées aux observations par une clé, comme on
+le ferait dans un tableur : l'habitat et l'altitude de chaque site d'un tableau des sites, la
+météo de chaque année, ou de chaque site et de chaque année. Le tableau : un fichier dans tout
+format que lit Fichier › Ouvrir (avec sa feuille ou son tableau pour un classeur ou un fichier
+R ; un projet Nuée donne ses données), ou des cellules copiées dans un tableur (Coller des
+cellules).
+La clé : une ou plusieurs colonnes du projet (des variables, des identifiants ou le nom des
+observations), chacune à côté de la colonne du tableau qui lui répond. L'application propose
+des colonnes de même nom (sans tenir compte des majuscules ni des espaces autour, comme Prédire
+un fichier) : celles avec lesquelles chaque clé ne vient qu'une fois dans le tableau et le plus
+d'observations trouvent la leur, parmi les premières colonnes du tableau, le moins possible : le
+site pour un tableau des sites, le site et l'année pour la météo par site et par année ; les
+changer au besoin. Chaque clé ne doit venir qu'une fois dans le tableau : une clé qui revient
+est refusée, en la nommant, plutôt que de prendre l'une de ses lignes au hasard.
+Les clés se comparent en nombres quand la colonne du projet est une variable quantitative :
+2019 et 2019,0 sont la même année (les valeurs du tableau lues en nombres comme les lit
+Fichier › Ouvrir). Sinon, elles se comparent en texte, tel qu'écrit dans le tableau et dans le
+projet, sans les espaces autour, les majuscules comptant : « S1 » n'est pas « s1 », ni « 01 »
+« 1 » (une colonne de clé faite de « 01 », « 02 » n'est pas lue ici en nombres) ; un nombre du
+tableau s'écrit alors comme R l'écrit (2019). Une clé dont une partie manque ne répond à rien.
+Les colonnes à ajouter : toutes celles du tableau sauf la clé, cochées par défaut. Une colonne
+de nombres donne une variable quantitative ; du texte, un facteur R ou une variable étiquetée
+de SPSS ou Stata, une variable qualitative (les catégories d'un facteur dans leur ordre, sinon
+les textes triés), comme à l'ouverture d'un tableau. Un nom déjà pris dans le projet, par une
+variable ou un identifiant, devient « nom (2) », « nom (3) »... : rien n'est écrasé.
+Chaque observation prend les valeurs de la ligne du tableau qui a sa clé, et les observations
+gardent leur ordre : comme k <- match(clé du projet, clé du tableau), puis tableau[k, colonnes]
+(merge() rangerait les lignes autrement). Une observation sans ligne qui lui réponde a des
+valeurs manquantes. Le résultat dit ce qui a été ajouté et compte les observations sans
+correspondance et les clés du tableau qui ne répondent à aucune observation, en nommant les
+cinq premières de chacune ; les lignes du tableau sans clé sont comptées aussi. Si aucune
+observation ne trouve sa clé, rien n'est ajouté, et le message montre des clés de chaque côté.
+Édition › Annuler (Ctrl+Z) retire les colonnes ajoutées ; les modèles déjà ajustés ne changent
+pas. Les « Actions de l'application » de la console R montrent l'appel, et le même calcul écrit
+avec match() sur le tableau des données du projet.
+
+Résumer par groupe
+------------------
+Édition › Résumer par groupe (ou clic droit sur les données du projet) : un nouveau projet d'une
+ligne par groupe, à côté du projet, qui ne change pas : la densité moyenne de chaque secteur et
+de chaque année d'après plusieurs placettes, avant BACI ou les séries. Les groupes : une ou
+plusieurs variables ou identifiants (le secteur et l'année ; le site, le secteur et l'année).
+Chaque groupe devient une observation nommée par ses valeurs (« S1 2019 ») ; les groupes
+viennent dans l'ordre de ces colonnes (les catégories d'une variable qualitative dans leur
+ordre, les nombres dans le leur), et ces colonnes restent des variables ou des identifiants,
+comme dans le projet. Une observation sans valeur dans l'une d'elles est laissée de côté, et
+comptée.
+Les variables quantitatives à résumer (toutes sauf celles des groupes, cochées par défaut) et
+les statistiques, une ou plusieurs, pour chacune d'elles : moyenne (par défaut), somme,
+médiane, minimum, maximum, écart-type (n − 1, comme le calcule sd()), nombre de valeurs (n), en
+colonnes « densite (moyenne) », « densite (n) »... (nommées dans la langue de l'interface). Les
+valeurs manquantes sont ignorées et n compte les valeurs connues ; un groupe sans valeur connue
+a des statistiques manquantes, et n = 0. Comme aggregate(d[variables], d[groupes], FUN) sur le
+tableau des données du projet : les « Actions de l'application » de la console R le montrent
+avec l'appel.
+Une variable qualitative ou un identifiant dont les valeurs connues sont les mêmes dans chaque
+groupe (l'habitat d'un secteur, le site d'un secteur) est gardé, avec cette valeur ; les autres
+sont laissés de côté, et la barre d'état les nomme. Le nouveau projet n'a pas encore de
+fichier : l'enregistrer (Ctrl+S).
+
 Modifier les données, créer des variables
 -----------------------------------------
 Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour
@@ -889,6 +1219,19 @@ année est refusé, en le nommant. croissance(x, annee, secteur) donne le taux d
 log(x / x de l'année d'avant), manquant sauf si les deux valeurs sont positives : pour la
 dépendance à la densité, la croissance contre precedent(densite, annee, secteur). En anglais :
 previous, following et growth_rate.
+Dans une formule de Nouvelle variable, la diversité de chaque relevé, sur plusieurs colonnes
+d'espèces de sa ligne (comptages, densités, recouvrements : des nombres ≥ 0), comme la calculent
+vegan::specnumber et vegan::diversity : richesse(...), S, le nombre de colonnes > 0 ;
+shannon(...), H′ = −Σ p ln p (logarithme népérien, p la part de chaque espèce dans le total de
+la ligne) ; simpson(...), 1 − Σ p² (l'indice de Gini–Simpson, le « simpson » de vegan) ;
+pielou(...), l'équitabilité de Pielou J = H′ / ln S, manquante quand S ≤ 1. Les colonnes sont
+nommées (shannon(Ablette, Brochet, Gardon)), ou une plage dans l'ordre des colonnes du tableau,
+de l'une à l'autre, les deux comprises (shannon(Ablette:Vandoise), comme dplyr la lit), ou les
+deux ; une colonne nommée deux fois compte une fois, et toute autre expression compte comme une
+colonne de ses valeurs. Un relevé de zéros a S = 0, H′ = 0 et un Simpson de 0 (vegan donne 1 :
+1 moins une somme vide), et pas de J ; une valeur manquante dans l'une des colonnes rend
+l'indice manquant pour ce relevé (une valeur manquante n'est pas lue comme une absence) ; une
+valeur négative est refusée, en nommant sa variable. En anglais : richness.
 
 Historique du fichier
 ---------------------
@@ -968,6 +1311,50 @@ que chaque classe soit dans les deux. Après l'ajustement, le Résumé donne, po
 pour une PLS-DA, la part du jeu de test bien classée ; pour tous, le nombre d'observations du
 test hors du domaine du modèle. Observé / prédit les montre en losanges rouges. Le jeu de test
 est enregistré avec le modèle, repris par Exporter vers R et par le texte des méthodes.
+
+Observations choisies par une condition
+---------------------------------------
+Nouveau modèle › Observations › « Garder seulement les observations où… » : une condition écrite
+en R comme une formule de Nouvelle variable, sur les variables et les identifiants des
+observations par leur nom (un nom avec des espaces entre `accents graves`), par exemple
+site == "S1" & annee >= 2010, !is.na(densite), habitat %in% c("marais", "prairie") ou
+annee != 2015. Sous le champ, combien des observations cochées la remplissent (« 312
+observations sur 480 »), ou pourquoi elle ne se lit pas : un nom inconnu, une fonction qui n'est
+pas permise, un résultat qui n'est pas TRUE ou FALSE (ou 1 et 0) pour chaque observation. Elle
+est évaluée sur toutes les observations du projet, comme une formule de Nouvelle variable :
+densite > median(densite, na.rm = TRUE) compare à la médiane de toutes les observations, pas à
+celle des cochées. Le modèle prend les observations cochées où elle est vraie ; un résultat
+manquant (densite > 5 pour une observation sans densité) compte pour faux.
+La condition est enregistrée avec le modèle et refaite sur les données du projet à chaque
+ajustement ou réajustement : à la réouverture du projet, à l'ajustement automatique, en ajoutant
+ou en retirant une composante, Exclure la sélection et réajuster, Réajuster avec les variables
+VIP, Ajuster ce modèle de la sélection par AIC, Ajuster avec CAR1. Après un changement des
+données, un réajustement peut prendre d'autres observations. Les cases cochées ne changent pas :
+vider la condition rend les observations qu'elle écartait. Le jeu de test garde ses propres
+cases : la condition ne s'y applique pas. Les observations qu'elle écarte sont hors du modèle,
+comme des décochées : Prédire les observations les prédit. Un modèle importé d'un fichier .usp
+garde les observations de son fichier ; Modifier le modèle en fait un nouveau modèle, qui peut
+prendre une condition. Deux modèles aux observations différentes ne sont jamais comparés par
+leur AIC.
+Le texte des méthodes dit « les 312 observations où site == "S1" & annee >= 2010 », le résumé
+et le rapport du modèle donnent la condition, et Exporter vers R l'écrit en R avec les noms des
+variables du script : les lignes cochées, la condition évaluée sur toutes les lignes du tableau
+par with(), puis les lignes cochées où elle est vraie, exactement celles de Nuée (une fonction
+de Nouvelle variable qu'elle appelle est écrite dans le script).
+Permis dans une condition : les comparaisons, &, |, !, xor(), %in%, :, les calculs
+(+ - * / ^ %% %/%), c(), is.na(), ifelse(), abs(), sqrt(), exp(), log(), log10(), log2(),
+log1p(), round(), floor(), ceiling(), trunc(), signif(), as.numeric(), as.character(), nchar(),
+substr(), substring(), startsWith(), endsWith(), tolower(), toupper(), trimws(), paste(),
+paste0(), mean(), median(), min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), et
+les fonctions de Nouvelle variable moyenne_groupe(), ecart_groupe(), precedent(), suivant() et
+croissance() (et leurs noms anglais). Rien d'autre : une condition est gardée dans le fichier du
+projet et refaite à chaque ajustement, un projet reçu ne peut donc rien exécuter d'autre par
+elle (une formule de Nouvelle variable, tapée et calculée une fois, n'est pas gardée et n'a pas
+cette limite). Pour que cet ajustement reste rapide et borné, « : » ne va qu'entre deux nombres
+entiers (annee %in% 2005:2010) et sur une plage d'au plus 100000 valeurs, et interaction() laisse
+de côté les combinaisons vides : une condition courte ne peut pas construire un vecteur énorme qui
+figerait un ajustement. Pour un indice de diversité (shannon()...), en faire d'abord une Nouvelle
+variable, puis employer cette variable dans la condition.
 
 Fenêtres
 --------
@@ -1049,6 +1436,7 @@ Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   spectres.R             prétraitement des spectres (SNV, MSC, detrend, ligne de base, Savitzky–Golay)
   fichiers_spectres.R    lecture des spectres (JCAMP-DX, SPC, texte), informations jointes
   jeu_test.R             jeu de test : prédiction, RMSEP, Q2 externe, Kennard–Stone
+  condition.R            les observations d'un modèle choisies par une condition
   langue.R               langue des messages (traduire("français", "English"))
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustement)
 Dans R : source("resources/moteur/charger.R"), puis par exemple

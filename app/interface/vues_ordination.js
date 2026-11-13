@@ -5,7 +5,7 @@ import { t, ajouterTextes } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
-  notesModele, valeurP } from './panneaux.js';
+  notesModele, valeurP, ficheCondition } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
 import { ICONES_VUES } from './commandes.js';
@@ -279,6 +279,7 @@ function rendreResumeOrdination(conteneur, ctx, m) {
     if (liste(m.variables_vides).length) textes.push(t('ord_variables_vides', { noms: liste(m.variables_vides).join(', ') }));
     textes.push(t('ord_resume_ca'));
   }
+  fiche.append(...[ficheCondition(m)].filter(Boolean));
   const notes = notesModele(conteneur, ctx, m);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, table, textes.map((x) => el('p', { class: 'note' }, x))));
   notes.retrouver();

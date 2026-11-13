@@ -86,6 +86,7 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
   donnees <- matrix(NA_real_, length(obs), length(utilises), dimnames = list(as.character(obs), as.character(utilises)))
   absentes <- character(0)
   effort_absent <- FALSE
+  inconnue <- rep(FALSE, length(obs))  # (une catégorie d'une variable X qualitative que le projet n'a pas)
   for (u in utilises) {
     v <- variable_du_projet(projet, u)
     nom <- as.character(v$ids[1])
@@ -101,11 +102,15 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
     if (length(v$categories)) {  # catégories reconnues par leur nom
       etiquettes <- if (length(tableau$variables[[k]]$categories)) tableau$variables[[k]]$categories[x] else as.character(x)
       x <- match(norme(etiquettes), norme(v$categories))
+      if (u %in% variables_x) inconnue <- inconnue | (!is.na(etiquettes) & nzchar(trimws(etiquettes)) & is.na(x))
     }
     donnees[, as.character(u)] <- x
   }
   provisoire <- list(donnees = donnees)
   out <- if (regression) predire_observations_regression(provisoire, m, definition, obs, effort_absent) else predire(provisoire, m, definition, obs)
+  # (une régression : une catégorie que le projet n'a pas, sans prédiction, est aussi une catégorie que
+  # le modèle n'a pas vue)
+  if (regression && any(inconnue)) out$categorie_inconnue <- inconnue | (out$categorie_inconnue %||% FALSE)
   out$nom <- unname(tableau$noms_obs[as.character(obs)])
   # ce qu'il faut dire de la lecture : du fichier, et des colonnes des variables X
   note <- attr(df, "note") %||% character(0)
