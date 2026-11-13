@@ -372,6 +372,41 @@ export function notesModele(conteneur, ctx, m) {
   return { champ, retrouver: () => { if (enCours) { champ.focus(); champ.setSelectionRange(enCours[1], enCours[2]); } } };
 }
 
+// The terms that took the full model's weight in a cross-validation round, because they hardly
+// varied without the held-out group (moteur/R/validation_croisee.R: gardes_vc): the first in
+// words, all of them on hover.
+function noteGardes(m) {
+  // (a table, sent column by column; a single row may come as plain values)
+  const c = m.gardes_vc;
+  if (!c || m.validation !== 'sans_fuite') return null;
+  const groupes = [].concat(c.groupe ?? []);
+  const parts = [].concat(c.part ?? []);
+  const g = [].concat(c.terme ?? []).map((terme, i) => ({ terme, groupe: groupes[i], part: parts[i] }));
+  if (!g.length) return null;
+  const pct = (x) => (x < 1e-4 ? `< ${fmt(0.01, 2)} %` : `${fmt(100 * x, x < 0.01 ? 2 : 1)} %`);
+  const tous = g.map((x) => t('garde_vc_ligne', { terme: x.terme, groupe: x.groupe, part: pct(x.part) })).join('\n');
+  return el('p', { class: 'note', title: tous }, t('garde_vc', { terme: g[0].terme, groupe: g[0].groupe, part: pct(g[0].part) }),
+    g.length > 1 ? ' ' + t('garde_vc_autres', { n: g.length }) : '');
+}
+
+// A hierarchical model's honest Q2 (moteur/R/hierarchique.R): its cross-validation with the base
+// models refitted without the held-out group in each round.
+function chiffreHierarchique(m) {
+  const h = m.hierarchique;
+  if (!h || !h.bases || ![].concat(h.bases).length) return null;
+  const bases = [].concat(h.bases).join(', ');
+  const q = h.q2cum ? [].concat(h.q2cum) : [];
+  return el('span', { title: h.erreur ? t('q2_honnete_erreur', { erreur: h.erreur })
+    : t('q2_honnete_aide', { bases }) + (h.validation && h.validation !== m.validation ? ' ' + t('q2_honnete_validation', { validation: t('validation_' + h.validation) }) : '') },
+    el('small', {}, t('q2_honnete')), ' ', el('b', {}, q.length ? fmt(q[q.length - 1], 3) : '—'));
+}
+
+function noteHierarchique(m) {
+  const h = m.hierarchique;
+  const absents = h && h.absents ? [].concat(h.absents) : [];
+  return absents.length ? el('p', { class: 'note' }, t('q2_honnete_absents', { variables: absents.join(', ') })) : null;
+}
+
 function rendreResume(conteneur, ctx, p) {
   const m = ctx.modele(p.modele);
   if (m.regression) { rendreResumeRegression(conteneur, ctx, m); return; }
@@ -390,6 +425,8 @@ function rendreResume(conteneur, ctx, p) {
     el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, m.type), m.titre ? el('span', { class: 'doux' }, m.titre) : null),
     el('div', { class: 'fiche-chiffres' },
       [['A', m.A], ['N', m.N], ['K', m.K], [t('groupes_vc'), m.vc_par ? `${m.G} (${m.vc_par})` : m.G]].map(([k, v]) => el('span', {}, el('small', {}, k), ' ', el('b', {}, v))),
+      m.validation ? el('span', { title: t('validation_note_' + m.validation) }, el('small', {}, t('validation_vc')), ' ', el('b', {}, t('validation_' + m.validation))) : null,
+      chiffreHierarchique(m),
       m.reglages && [].concat(m.reglages.spectres || []).length
         ? el('span', {}, el('small', {}, t('spectres')), ' ', el('b', {}, libelleSpectres(m.reglages.spectres))) : null,
       pls && m.RMSEE ? Object.entries(m.RMSEE).map(([y, v]) => el('span', {}, el('small', {}, `RMSEE ${y}`), ' ', el('b', {}, fmt(v, 4)))) : null,
@@ -397,13 +434,13 @@ function rendreResume(conteneur, ctx, p) {
       pls && m.cv_anova ? Object.entries(m.cv_anova).map(([y, a]) => el('span', { title: 'CV-ANOVA' }, el('small', {}, `CV-ANOVA p ${y}`), ' ',
         el('b', {}, a.p[1] === null ? '—' : a.p[1] < 0.001 ? Number(a.p[1]).toExponential(1) : fmt(a.p[1], 3)))) : null,
       m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null),
-    ficheTest(m), ficheCondition(m));
+    ficheTest(m), ficheCondition(m), noteGardes(m), noteHierarchique(m));
   const table = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, t('comp')), cols.map(([, n]) => el('th', { class: 'num' }, n)))),
     el('tbody', {}, c.composante.map((a, i) => el('tr', {}, el('td', {}, m.opls ? (a > (m.Ap || 1) ? `O${a - (m.Ap || 1)}` : (m.Ap || 1) > 1 ? `P${a}` : 'P') : a),
       cols.map(([k]) => el('td', { class: 'num' }, fmt(c[k][i]), s && s[k] && k !== 'valeur_propre' ? marque(c[k][i], s[k][i]) : null))))));
   const note = s ? el('p', { class: 'note' }, el('span', { class: 'marque egal' }, '='), ' ', el('span', { class: 'marque proche' }, '≈'), ' ',
-    el('span', { class: 'marque diff' }, '≠'), ' ', t('valeurs_fichier'), '. ' + t('note_q2')) : null;
+    el('span', { class: 'marque diff' }, '≠'), ' ', t('valeurs_fichier'), '. ' + t(m.validation === 'complet' ? 'note_q2_complet' : 'note_q2')) : null;
   const graphe = el('div', { class: 'graphe petit' });
   const notes = notesModele(conteneur, ctx, m);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, table, note, graphe));
