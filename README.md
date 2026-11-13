@@ -108,9 +108,11 @@ English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 **Methods:** PCA, PLS, PLS-DA, and OPLS / OPLS-DA (several Y or more than two classes give
 several predictive components), with missing values handled by NIPALS and cross-validation
 (7 groups in turn, or one group per value of an ID or a variable, such as a site) in which each
-group is predicted by a model fitted without it, centring and scaling included (R2, Q2, and Q2
-per variable). Block scaling and modifiers, custom transforms, cross terms of two or three
-variables. Class models: one PCA per class, and the
+group is predicted by a model fitted without it, its centres recomputed (R2, Q2, and Q2 per
+variable); or its weights too, or, as in the `.usp` files, the full model's centres and weights.
+An honest Q2 for hierarchical models, their base models refitted in each round. Block scaling
+and modifiers, custom transforms, cross terms of two or three variables. Class models: one PCA
+per class, and the
 Coomans plot to tell which class an observation belongs to, several, or none.
 
 **Validation:** permutation tests, CV-ANOVA, PLS-DA classification tables and ROC curves,
@@ -268,11 +270,13 @@ those models were saved with. It recomputes each model in R and marks every valu
 summary as identical, close or different. On 944 models from 133 projects, R2X, R2Y, scores,
 loadings, T2, DModX, VIP and coefficients match the stored values, apart from a few models with
 missing data; *Help › Results and known differences* lists the known differences. Q2 is
-Nuée's own: its cross-validation refits each group's model without it, scaling included,
+Nuée's own by default: each group's model is refitted without it, its centres recomputed,
 which the stored values didn't do. The two agree for large data sets (a median difference of
 0.003 for PLS models with over 200 observations) and part with fewer observations, where
-Nuée's Q2 is lower (0.11 lower in median from 20 to 50 observations, 0.27 up to 20). RMSEcv,
-CV-ANOVA and the cross-validated classification follow.
+Nuée's Q2 is lower (0.10 lower in median from 20 to 50 observations, 0.22 below). *New model ›
+Cross-validation › Full model's centres and weights* validates as the files did: the stored Q2
+comes back (773 of 809 PLS models, every one without missing data), with the coefficients'
+confidence intervals.
 
 ## Reporting a problem
 
@@ -284,7 +288,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.7) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.8) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).

@@ -135,9 +135,9 @@ Projets, données, modèles importés d'un fichier .usp, modèles calculés et l
 Double-clic : ouvrir. Clic droit : toutes les actions (calculer, modifier, ajouter ou
 retirer une composante, exporter, supprimer...). Double-cliquer un modèle importé le
 recalcule en R ; le Résumé marque chaque valeur : « = » identique à la valeur enregistrée
-dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente. Le Q2 diffère presque
-toujours : Nuée ne fait pas sa validation croisée comme le logiciel qui a écrit le fichier
-(voir « Ce qui diffère »).
+dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente. Le Q2 diffère en général : un
+modèle importé est validé comme les autres (voir « Validation croisée ») ; « Centres et poids du
+modèle complet (comme SIMCA) » redonne celui du fichier.
 
 Menus et barre d'outils
 -----------------------
@@ -384,11 +384,11 @@ une correction, recharger_moteur() les relit, puis réajuster le modèle. Ce dos
 copie faite sur l'ordinateur : au lancement suivant, la copie du NAS la remplace. Pour garder
 une correction, la reporter dans le même fichier sur le NAS (application\resources\moteur\R).
 Une commande longue bloque l'application jusqu'à la fin du calcul.
-Vérifier le moteur : verifier_moteur() recalcule les modèles importés des projets ouverts et
-les compare aux valeurs enregistrées dans leurs fichiers (R2X, R2Y, Q2) ;
-verifier_moteur("dossier") fait de même pour les fichiers .usp et .json d'un dossier.
-À faire après une correction du moteur. Le Q2 est donné mais n'entre pas dans le verdict :
-la validation croisée de Nuée n'est pas celle des fichiers (voir « Ce qui diffère »).
+Vérifier le moteur : verifier_moteur() recalcule les modèles importés des projets ouverts,
+validés comme leurs fichiers, et les compare aux valeurs enregistrées dans leurs fichiers (R2X,
+R2Y, Q2) ; verifier_moteur("dossier") fait de même pour les fichiers .usp et .json d'un
+dossier. À faire après une correction du moteur. Le Q2 entre dans le verdict, sauf celui d'une
+ACP, seulement proche (voir « Ce qui diffère »).
 
 Rapport du modèle
 -----------------
@@ -1272,19 +1272,48 @@ variable (Nouveau modèle › Groupes de validation croisée) : avec « site »,
 d'un site sont dans le même groupe, et chaque site est prédit par un modèle qui ne l'a jamais
 vu ; les observations sans valeur forment un groupe à part. Les modèles des fichiers .usp
 gardent leurs groupes : par identifiant quand le fichier groupe les observations de même
-valeur, sinon les groupes du fichier tels quels (« groupes du fichier »). Chaque groupe est
-prédit par un modèle ajusté sans lui, comme de nouvelles observations : le centrage, la mise à
-l'échelle (et le spectre moyen du MSC, les termes croisés) sont recalculés sur les autres
-observations, avec le même nombre de composantes. PRESS : la somme des carrés des erreurs de
-prédiction ; Q2(cum) = 1 - PRESS / SS (SS : la variation de Y, ou de X pour une ACP) ; le Q2
-d'une composante, 1 - PRESS / PRESS de la précédente. ACP : chaque valeur est prédite par les
-scores de son observation calculés sans les variables de son groupe de variables (réparties
-elles aussi en G groupes). Ce Q2 ne voit rien des observations qu'il prédit : avec peu
-d'observations, il est bien plus bas qu'une validation faite avec la mise à l'échelle de toutes
-les observations (sur du bruit pur, 6 observations et 20 variables, celle-ci donnait Q2 = 0,98
-pour une OPLS-DA ; Nuée donne maintenant moins de 0). Le RMSEcv, la CV-ANOVA, le classement en
-validation croisée et les intervalles de confiance (jack-knife, sur les G sous-modèles) en
-viennent.
+valeur, sinon les groupes du fichier tels quels (« groupes du fichier »).
+Trois façons de valider une ACP, une PLS ou une OPLS (Nouveau modèle › Validation croisée) :
+- Centres recalculés, poids du modèle complet (par défaut, pour tous les modèles, importés
+  compris) : chaque groupe est prédit par un modèle ajusté sans lui, comme de nouvelles
+  observations ; ses centres (et le spectre moyen du MSC, les termes croisés) sont recalculés
+  sur les autres observations, avec le même nombre de composantes. Le modèle ne sait rien du Y
+  du groupe qu'il prédit. Ses poids restent ceux du modèle complet : les écarts-types de X ne
+  dépendent pas de Y (une seule variable Y : son poids ne change pas les prédictions), et rien
+  n'est remis à l'échelle sur moins d'observations, si bien qu'aucune prédiction n'explose.
+- Centres et poids recalculés sans le groupe caché (la validation de 0.9.0 à 0.9.7) : de même,
+  mais les poids aussi sont recalculés sur les autres observations. Plus sévère : un terme qui
+  varie peu sans le groupe caché y prend un grand poids, et les prédictions du groupe s'en
+  écartent. Garde-fou : un terme dont l'écart-type sur les autres observations tombe sous 10 %
+  de celui du modèle complet (une variable qui ne varie que sur un site, validée par site)
+  garde le poids du modèle complet ; sinon son poids, 1 / écart-type, serait multiplié
+  d'autant, et les prédictions du groupe caché exploseraient (des Q2 de -8e11 sur un projet
+  réel). Le Résumé dit lesquels, sans quel groupe.
+- Centres et poids du modèle complet (comme SIMCA) : le centrage et la mise à l'échelle du
+  modèle complet ; chaque composante est validée sur ce que laissent les précédentes du modèle
+  complet, une composante ajustée sans chaque groupe. Q2 d'une composante : 1 - PRESS / SS des
+  résidus avant elle ; Q2(cum) : 1 - le produit des (1 - Q2) des composantes, chacun compté
+  pour -0,1 au plus bas. C'est la validation des fichiers .usp : elle redonne leurs Q2, leurs Q2
+  par variable et les intervalles de confiance de leurs coefficients. Le Y prédit en
+  validation croisée (RMSEcv, CV-ANOVA, classement) vient de sous-modèles ajustés sans chaque
+  groupe sur les matrices du modèle complet. Plus optimiste, surtout avec peu d'observations ou
+  des groupes par site : le centre de Y et les composantes précédentes connaissent déjà le
+  groupe caché (sur du bruit pur, 6 observations et 20 variables, elle donnait Q2 = 0,98 pour
+  une OPLS-DA ; les deux autres, moins de 0). Une OPLS a ses sous-modèles ajustés sur les
+  matrices du modèle complet.
+Les deux premières : PRESS, la somme des carrés des erreurs de prédiction ; Q2(cum) = 1 - PRESS
+/ SS (SS : la variation de Y, ou de X pour une ACP) ; le Q2 d'une composante, 1 - PRESS / PRESS
+de la précédente. ACP : chaque valeur est prédite par les scores de son observation calculés
+sans les variables de son groupe de variables (réparties elles aussi en G groupes). Le RMSEcv,
+la CV-ANOVA, le classement en validation croisée, les intervalles de confiance (jack-knife,
+sur les G sous-modèles), le test de permutation et l'ajustement automatique suivent la
+validation choisie.
+Modèle hiérarchique (une PLS dont des X sont les scores d'autres modèles du projet,
+$M1.t1...) : son Q2 prend ces scores tels quels, alors qu'ils ont été calculés avec le Y du
+groupe caché. Son Résumé donne aussi un Q2(cum) honnête : à chaque tour, ses modèles de base
+sont refaits sans le groupe caché (le site entier quand les groupes sont par site), puis leurs
+scores, avec la validation du modèle (centres recalculés quand elle est celle du modèle
+complet) ; un modèle de base qui n'a plus de variation sans ce groupe donne des scores nuls.
 
 Validation (PLS et PLS-DA)
 --------------------------
@@ -1389,18 +1418,20 @@ Mise à l'échelle, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite
 Ce qui diffère
 --------------
 - Q2 (et ce qui vient de la validation croisée : Q2 par variable, RMSEcv, CV-ANOVA, classement
-  en validation croisée, intervalles de confiance) : Nuée prédit chaque groupe par un modèle
-  ajusté sans lui, centrage et mise à l'échelle compris (voir « Validation croisée ») ; les
-  valeurs enregistrées viennent d'une validation faite avec la mise à l'échelle de toutes les
-  observations. Écart au Q2(cum) enregistré, en médiane : 0,003 pour les PLS de plus de 200
-  observations, 0,02 de 50 à 200, 0,11 de 20 à 50, 0,27 jusqu'à 20, le Q2 de Nuée étant presque
-  toujours plus bas ; de quelques centièmes pour les ACP. Avec des groupes par identifiant (un
-  site, un secteur), l'écart est plus grand : le modèle ajusté sans un site ne connaît pas non
-  plus le niveau moyen de ce site. Avec la validation des fichiers (la mise à l'échelle de
-  toutes les observations), le Q2 enregistré des modèles .usp revient exactement, groupes par
-  identifiant compris (moteur/tests/verifier_references.R). 18 modèles sur 944, dont une
-  variable ne varie presque que sur une observation, perdent bien plus (sans elle, sa mise à
-  l'échelle l'agrandit beaucoup).
+  en validation croisée, intervalles de confiance) : par défaut, Nuée prédit chaque groupe par
+  un modèle ajusté sans lui, ses centres recalculés (voir « Validation croisée ») ; les valeurs
+  enregistrées viennent d'une validation faite avec le centrage et la mise à l'échelle de toutes
+  les observations. Écart au Q2(cum) enregistré, en médiane, sur le corpus d'essai : 0,003 pour
+  les PLS de plus de 200 observations, 0,01 de 50 à 200, 0,10 de 20 à 50, 0,22 en dessous, le
+  Q2 de Nuée étant presque toujours plus bas ; 0,04 pour les ACP. Avec des groupes par
+  identifiant (un site, un secteur), l'écart est plus grand : le modèle ajusté sans un site ne
+  connaît pas non plus le niveau moyen de ce site. Validé avec « Centres et poids du modèle
+  complet (comme SIMCA) », le Q2 enregistré revient exactement, groupes par identifiant
+  compris : 773 PLS sur 809 du corpus d'essai (220 sur 220 sans données manquantes), 441 sur
+  443 de quatre projets réels (moteur/tests/verifier_references.R), où les deux autres ont un
+  tour sans aucune variation, dont la valeur enregistrée vient d'erreurs d'arrondi. Pour une
+  ACP, il s'en écarte de 0,02 en médiane : le détail de la validation des fichiers n'est pas
+  publié.
 
 - Signe des composantes de nouveaux modèles : arbitraire (les modèles importés sont
   orientés comme dans le fichier).
@@ -1419,7 +1450,8 @@ Le code
 Tous les calculs sont dans resources\moteur\R (R, commenté en français) :
   pretraitement.R        transformations, centrage, mise à l'échelle
   nipals.R               ACP et PLS (algorithme NIPALS, données manquantes)
-  validation_croisee.R   validation croisée (un sous-modèle sans chaque groupe), Q2
+  validation_croisee.R   validation croisée (trois façons), Q2
+  hierarchique.R         modèles hiérarchiques : Q2 honnête (modèles de base refaits)
   regression.R           modèles de régression (lm, nlme, mgcv), AIC, apport des blocs
   statistiques.R         T2, DModX, VIP, coefficients, intervalles, limites
   validation.R           permutations, CV-ANOVA, classement PLS-DA et courbes ROC
