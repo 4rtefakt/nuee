@@ -501,6 +501,22 @@ r <- essayer_regression("glmm_poisson_pente", pr, definir_modele(pr, "GLM", x = 
 verifier("GLMM à pente aléatoire (mgcv) : s(site, annee, bs = \"re\"), indépendante ; ses effets aléatoires exclus des prédictions par leur classe",
          any(grepl("pentes_aleatoires <- setNames(\"annee\", \"site\")", lignes_script(r), fixed = TRUE)) &&
            any(grepl("inherits(s, \"random.effect\")", lignes_script(r), fixed = TRUE)))
+# les morceaux de 0.9.7 ensemble, dans un même script : un terme croisé qualitatif (la pente de
+# l'année par secteur), une pente aléatoire de l'année par site, le secteur emboîté avec CAR1, une
+# condition sur les observations et la sélection par l'AIC, en français puis en anglais ; un GLMM de
+# Poisson avec un terme croisé qualitatif, la pente indépendante de mgcv et une condition
+car1_annee <- list(type = "CAR1", temps = list(by = "variable", variable = ur("annee")))
+d_ensemble <- definir_modele(pr, "LMM", x = ur("x1", "secteur", "annee"), y = ur("hauteur"), echelle = annee_centree,
+                             croises = list(ur("annee", "secteur")), aleatoires = list(pente_site, par_secteur), correlation = car1_annee,
+                             condition = 'annee != 2003 & x2 < 0.9')
+r <- essayer_regression("lmm_croise_pente_condition", pr, d_ensemble, selection = TRUE)
+verifier("ensemble : la condition, la pente aléatoire et le terme croisé qualitatif dans le même script",
+         any(grepl("annee != 2003 & x2 < 0.9", lignes_script(r), fixed = TRUE)) && any(grepl("~ annee", lignes_script(r), fixed = TRUE)))
+r <- essayer_regression("lmm_croise_pente_condition_en", pr, d_ensemble, langue = "en")
+verifier("ensemble, en anglais : ni nom ni commentaire en français", en_anglais(lignes_script(r)))
+r <- essayer_regression("glmm_croise_pente_condition", pr, definir_modele(pr, "GLM", x = ur("x1", "sol", "annee"), y = ur("compte"), famille = "poisson",
+                        decalage = ur("effort"), echelle = annee_centree, croises = list(ur("annee", "sol")), aleatoires = list(pente_site),
+                        condition = 'sol != "limon"'))
 # (le temps de CAR1 fait de dates, le jour d'abord, un même jour pour tous les secteurs d'une année :
 # une variable qualitative ; le script les lit en années décimales comme Nuée, par sa fonction
 # temps_en_nombres, et donne le modèle que les années décimales donnent, refaites ici avec R)
