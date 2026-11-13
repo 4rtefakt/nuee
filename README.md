@@ -123,7 +123,8 @@ RMSEP, bias, SEP and external Q2, or its classification.
 **Variables:** VIP with a cut-off placed automatically (or dragged by hand), coefficients,
 loadings, biplot, refit with the selected variables only. Variable statistics with suggested
 log transformations, histograms and a map of missing values, which regularized iterative PCA
-can fill in; new variables from R formulas, with group means and deviations. Tests by variable
+can fill in; new variables from R formulas, with group means and deviations and diversity
+indices (richness, Shannon, Simpson, Pielou) over species columns. Tests by variable
 between two classes (Welch's or Student's t, Mann–Whitney) or across all of them (ANOVA,
 Kruskal–Wallis), with the Benjamini–Hochberg correction and a volcano plot. Tests between two
 variables, chosen from their types with their conditions checked: chi-square or Fisher's exact
@@ -134,22 +135,26 @@ every pair of sectors with Holm's correction after Friedman's test; or two measu
 same rows (before, after); variable by variable, two classes paired by a key. Before/after
 comparisons with controls (BACI): the impact − control gap at each time, after against before,
 and the BACI mixed model fitted in one click. A correlation matrix with corrected p values.
-Series over time, one line per sector and a panel per site, with Mann–Kendall trend tests and
-Sen's slopes. Sampling dates can be the time.
+Series over time, one line per sector and a panel per site, with Mann–Kendall trend tests (also
+Hamed and Rao's test for autocorrelated series, and the seasonal Kendall test) and Sen's slopes.
+Sampling dates can be the time.
 
 **Linear, generalized and mixed models:** linear regression and linear mixed models (nlme),
-with nested random effects (site, then sector within the site) and a continuous-time
-autocorrelation (CAR1); generalized linear and additive models (mgcv) for counts (Poisson,
-negative binomial), presence-absence, positive values and densities with zeros (Tweedie), with
-random effects, an effort as an offset, and smooth curves for effects that rise then fall or
-have a threshold (with CAR1 too, through mgcv::gamm, for a normal response); coefficients with
-their intervals, marginal and conditional R2, effect curves, each curve's thresholds (where the
+with nested random effects (site, then sector within the site), random slopes (each site its
+own trend) and a continuous-time autocorrelation (CAR1); generalized linear and additive models
+(mgcv) for counts (Poisson, negative binomial), presence-absence, positive values and densities
+with zeros (Tweedie), with random effects, an effort as an offset, and smooth curves for effects
+that rise then fall or have a threshold, one per category if wanted (with CAR1 too, through
+mgcv::gamm, for a normal response); qualitative variables in cross terms (the year's slope by
+sector); coefficients with their intervals, adjusted means and pairs of levels as emmeans gives
+them, marginal and conditional R2, effect curves, each curve's thresholds (where the
 simultaneous band of its slope excludes 0) and concurvity, residual plots (with randomized
 quantile residuals for counts) and the residuals' autocorrelation in time (refitted with CAR1
 in one click), the AIC change when each block of variables is removed, an AIC selection that
 fits every combination of the blocks and suggests a model to fit in one click, and an AIC
 comparison (ΔAIC, Akaike weights, likelihood-ratio tests of nested models) of the regressions
-of the same response, next to the cross-validated Q2 of every model. New variables can take the
+of the same response, next to the cross-validated Q2 of every model, with their coefficients
+side by side; the power to detect a trend, for a monitoring design. New variables can take the
 previous year's value in a sector, or the growth rate. An R formula box sets the model (R reads
 it and never runs it), and regressions predict new observations and files, extrapolations
 flagged.
@@ -197,7 +202,10 @@ the model's domain, and export the results.
   of your panels, plot settings and selections;
 - a recovery copy every two minutes, offered back after a crash, and undo for data changes;
 - notes on each model;
-- data editing and new variables from R formulas or value ranges;
+- data editing and new variables from R formulas or value ranges; columns added from another
+  table by a key, and tables summarized by group;
+- a model's observations chosen by a condition (`site == "S1" & year >= 2010`), applied again at
+  each fit;
 - several windows, and views that pop out onto a second screen;
 - plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG;
 - Ctrl+C on any result table copies it, ready to paste into Excel;
@@ -276,7 +284,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.6) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.7) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).
