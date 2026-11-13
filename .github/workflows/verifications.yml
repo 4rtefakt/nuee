@@ -33,7 +33,7 @@ jobs:
       - name: Vérifications du moteur
         shell: bash
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation ordination classement; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script observations validation ordination classement; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -65,7 +65,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation ordination classement; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script observations validation ordination classement; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -163,7 +163,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script validation ordination classement; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression script observations validation ordination classement; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
