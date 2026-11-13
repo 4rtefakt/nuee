@@ -1081,11 +1081,11 @@ requis_courbes <- function(m) lapply(m$par %||% character(0), function(f) unname
 
 # Les groupes de termes que la sélection par l'AIC garde dans chaque modèle : ceux qui portent une
 # pente aléatoire (elle varie autour de la pente fixe de son terme, qui reste), et ceux qu'ils
-# demandent (groupes_requis : les effets principaux de leurs termes croisés). `d` : la définition.
-groupes_gardes <- function(m, d) {
+# demandent (groupes_requis : les effets principaux de leurs termes croisés).
+groupes_gardes <- function(m) {
   tous <- groupes_modele(m)
   gardes <- names(tous)[vapply(tous, function(ts) any(ts %in% unlist(m$pentes)), TRUE)]
-  requis <- groupes_requis(tous, termes_regression(d$x))
+  requis <- groupes_requis(tous, m$composition, requis_courbes(m))
   repeat {
     plus <- setdiff(unlist(requis[gardes]), gardes)
     if (!length(plus)) break
@@ -1112,7 +1112,7 @@ groupes_gardes <- function(m, d) {
 # choisir (groupes_gardes : `gardes`).
 selection_aic <- function(m, d, limite = 256) {
   tous <- groupes_modele(m)
-  gardes <- groupes_gardes(m, d)
+  gardes <- groupes_gardes(m)
   groupes <- tous[setdiff(names(tous), gardes)]
   fixes <- unlist(tous[gardes], use.names = FALSE)  # (les termes de chaque modèle)
   K <- length(groupes)
@@ -1198,7 +1198,7 @@ definition_selection <- function(d, m, choisis) {
   if (length(inconnus)) stop(sprintf(traduire("Groupe de termes inconnu dans ce modèle : %s", "Unknown group of terms in this model: %s"),
                                      paste(inconnus, collapse = ", ")), call. = FALSE)
   # (les groupes qui portent une pente aléatoire, dans chaque modèle de la sélection : groupes_gardes)
-  gardes <- groupes_gardes(m, d)
+  gardes <- groupes_gardes(m)
   garde <- unname(m$groupes_termes) %in% union(choisis, gardes)  # (le groupe de chaque terme de d$x, dans l'ordre)
   simple <- vapply(d$x, function(t) length(t$variables) == 1, TRUE)
   cle <- vapply(d$x, function(t) paste(t$variables[1], categorie(t)), "")

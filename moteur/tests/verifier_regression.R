@@ -1797,6 +1797,16 @@ dch <- definition_selection(dsel, msel, "x")
 mch <- ajuster(pp, dch)
 verifier("Ajuster ce modèle (x) : l'année et sa pente aléatoire restent", proche(mch$resultat$AIC, mpe$resultat$AIC, 1e-8) && identical(unlist(mch$pentes), "t2") &&
            identical(as.character(unlist(dch$selection_origine$gardes)), "annee"))
+# une pente dont le groupe porte un terme croisé avec une variable qualitative : le bloc « temps »
+# (l'année et l'année × secteur) reste dans chaque modèle, et avec lui l'effet principal du secteur
+# que ce terme croisé demande (groupes_gardes : groupes_requis sur la composition du modèle)
+dbt <- dmp(x = c("x", "secteur", "annee"), croises = list(up("annee", "secteur")), blocs = stats::setNames("temps", up("annee")),
+           croises_reglages = stats::setNames(list(list(bloc = "temps")), paste(up("annee", "secteur"), collapse = "*")))
+mbt <- ajuster(pp, dbt)
+sbt <- selection_aic(mbt, dbt)
+verifier(sprintf("une pente dans un bloc qui a un terme croisé : le bloc et l'effet principal que ce terme demande restent (gardés : %s ; à choisir : %s)",
+                 paste(sbt$gardes, collapse = ", "), paste(sbt$groupes, collapse = ", ")),
+         setequal(as.character(sbt$gardes), c("temps", "secteur")) && identical(as.character(sbt$groupes), "x"))
 msel$selection_aic <- ssel
 verifier("le texte des méthodes de la sélection : l'année gardée dans chaque modèle", grepl("« annee », qui porte une pente aléatoire, est resté dans chaque modèle", texte_methodes(pp, dsel, msel, "fr")$paragraphes[2], fixed = TRUE))
 # l'apport de l'année : sa pente fixe retirée, sa pente aléatoire gardée
