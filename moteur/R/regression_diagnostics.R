@@ -84,7 +84,9 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
                                       "Choose the time (a year, a date...): an ID or a variable."), call. = FALSE)
     nom_temps <- nom_groupement(projet, temps)
     t <- temps_en_nombres(valeurs_groupement(projet, temps, m$observations))  # (des nombres, ou des dates en années décimales)
-    if (!is.null(attr(t, "refus"))) stop(refus_temps(t, nom_temps), call. = FALSE)
+    # (un temps de nombres laisse de côté la ligne d'une valeur illisible, comme jusqu'à 0.9.5 ; un
+    # temps de dates refuse une valeur qui n'en est pas une)
+    if (!is.null(attr(t, "refus")) && isTRUE(attr(t, "dates"))) stop(refus_temps(t, nom_temps), call. = FALSE)
     nom_groupe <- NULL
     if (is.null(groupe)) {
       g <- rep("1", length(e))

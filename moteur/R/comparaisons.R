@@ -866,20 +866,40 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
                           "No value of %s where both the impact and the controls have a value of %s"), vt$nom, vy$nom))
   }
   serie$ecart <- serie$impact - serie$temoins
-  cles <- paste(u[i], ti, sep = "\r")
-  plusieurs <- table(factor(sub("\r.*", "", unique(cles[duplicated(cles)])), levels = c(impact, temoins)))
+  # (les unités qui ont plusieurs lignes à un même temps, et combien de temps, parmi les lignes `garde`)
+  repetees <- function(garde) {
+    cles <- paste(u[i], ti, sep = "\r")[garde]
+    plusieurs <- table(factor(sub("\r.*", "", unique(cles[duplicated(cles)])), levels = c(impact, temoins)))
+    if (any(plusieurs > 0)) data.frame(unite = names(plusieurs)[plusieurs > 0], temps = as.integer(plusieurs[plusieurs > 0]), stringsAsFactors = FALSE)
+  }
   r <- list(type = "baci", y = vy[c("uid", "nom")], temps = vt[c("uid", "nom")], dates = dates, unite = vu[c("uid", "nom")], impact = impact, temoins = temoins,
-            serie = serie, seuls = seuls, manquantes = sum(!is.na(role)) - length(i),
-            repetees = if (any(plusieurs > 0)) data.frame(unite = names(plusieurs)[plusieurs > 0], temps = as.integer(plusieurs[plusieurs > 0]), stringsAsFactors = FALSE))
+            serie = serie, seuls = seuls, manquantes = sum(!is.na(role)) - length(i), repetees = repetees(rep(TRUE, length(i))))
   if (!length(evenement)) return(r)
-  # (l'événement et la fin : un nombre, ou une date, lus comme le temps ; une année avec des dates
-  # est son 1er janvier)
-  un_temps <- function(x) { x <- temps_en_nombres(x); if (length(x) == 1 && !is.na(x)) as.vector(x) else NA_real_ }
+  # (l'événement et la fin, lus comme le temps et de son genre : des nombres pour un temps fait de
+  # nombres ; des dates pour un temps fait de dates, où un événement en année est son 1er janvier
+  # mais une fin en année est refusée : elle couperait l'année presque entière)
+  un_temps <- function(x, fin = FALSE) {
+    t <- temps_en_nombres(x)
+    v <- if (length(t) == 1) as.vector(t) else NA_real_
+    if (is.na(v)) {
+      stop(if (fin) traduire("La fin de la période après doit être un nombre ou une date", "The end of the after period must be a number or a date")
+           else traduire("Le temps de l'événement doit être un nombre ou une date", "The event time must be a number or a date"))
+    }
+    if (isTRUE(attr(t, "dates")) && !dates) {
+      stop(sprintf(if (fin) traduire("Le temps (%s) est fait de nombres : entrez la fin en nombre (2012), pas en date",
+                                     "The time (%s) is made of numbers: enter the end as a number (2012), not a date")
+                   else traduire("Le temps (%s) est fait de nombres : entrez l'événement en nombre (2008), pas en date",
+                                 "The time (%s) is made of numbers: enter the event as a number (2008), not a date"), vt$nom))
+    }
+    if (fin && dates && !isTRUE(attr(t, "dates"))) {
+      stop(sprintf(traduire("Le temps (%s) est fait de dates : entrez la fin en date (31/12/2012) ; une année seule serait son 1er janvier",
+                            "The time (%s) is made of dates: enter the end as a date (31/12/2012); a year alone would be its 1 January"), vt$nom))
+    }
+    v
+  }
   evenement <- un_temps(evenement)
-  if (is.na(evenement)) stop(traduire("Le temps de l'événement doit être un nombre ou une date", "The event time must be a number or a date"))
   if (length(fin)) {
-    fin <- un_temps(fin)
-    if (is.na(fin)) stop(traduire("La fin de la période après doit être un nombre ou une date", "The end of the after period must be a number or a date"))
+    fin <- un_temps(fin, fin = TRUE)
     if (fin < evenement) {
       stop(sprintf(traduire("La fin de la période après (%s) vient avant l'événement (%s)", "The end of the after period (%s) comes before the event (%s)"),
                    ecrire(fin), ecrire(evenement)))
@@ -923,6 +943,8 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   # moins, le modèle mixte de la vue prend une autocorrélation CAR1 dans chaque unité par défaut)
   jusqua <- if (length(fin)) tv[i] <= fin else rep(TRUE, length(i))
   r$temps_unites <- min(vapply(c(impact, temoins), function(k) length(unique(tv[i][jusqua & u[i] == k])), 0L))
+  # (les lignes répétées parmi celles du modèle mixte, jusqu'à la fin : CAR1 n'y veut qu'un temps par unité)
+  r["repetees_modele"] <- list(repetees(jusqua))
   r$test <- test
   r$phrase <- phrase_test(r)
   r
@@ -943,10 +965,10 @@ modele_baci <- function(projet, y, temps, unite, impact, temoins, evenement, fin
                   "Enter the event, the first time counted as “after”: the mixed model compares the two periods."))
   }
   b <- baci(projet, y, temps, unite, impact, temoins, evenement = evenement, fin = fin)
-  if (car1 && !is.null(b$repetees)) {
+  if (car1 && !is.null(b$repetees_modele)) {
     stop(sprintf(traduire("Plusieurs lignes d'une même unité au même temps (%s) : l'autocorrélation CAR1 demande un seul temps par unité. Ajustez le modèle sans CAR1, ou prenez une unité plus fine (le secteur plutôt que le site).",
                           "Several rows of the same unit at the same time (%s): CAR1 autocorrelation needs a single time per unit. Fit the model without CAR1, or choose a finer unit (the sector rather than the site)."),
-                 paste(b$repetees$unite, collapse = ", ")))
+                 paste(b$repetees_modele$unite, collapse = ", ")))
   }
   v <- variables_baci(projet, temps, unite, b$impact, b$temoins, b$evenement)
   list(projet = v$projet, definition = definition_baci(v$projet, b, v, car1), variables = v$noms, nouvelles = v$nouvelles)
@@ -955,11 +977,15 @@ modele_baci <- function(projet, y, temps, unite, impact, temoins, evenement, fin
 # Les deux variables 0/1 du modèle mixte BACI : la période, 1 à partir de l'événement et 0 avant
 # (manquante sans temps), et l'impact, 1 pour les unités d'impact et 0 pour les témoins (manquante
 # pour les autres unités et sans unité), nommées d'après ces réglages : « période BACI (2007) » et
-# « impact BACI (S1 contre S2, S3) » (trois unités nommées au plus). Une variable qui porte déjà ce nom
-# et ces valeurs (un autre modèle BACI sur les mêmes réglages) sert telle quelle ; un nom pris par une
-# variable aux autres valeurs est refusé. Les nouvelles s'ajoutent comme une Nouvelle variable
-# (ajouter_colonne). Renvoie le projet, les noms et numéros des deux variables, les unités d'impact et
-# témoins dans l'ordre de leurs niveaux, et les noms des variables nouvelles.
+# « impact BACI (S1 contre S2, S3) » (trois unités nommées au plus). Une variable de ce nom, ou de ce
+# nom suivi de « (2) », « (3) »…, ou de son nom dans l'autre langue de l'interface, qui a déjà ces
+# valeurs (un autre modèle BACI sur les mêmes réglages) sert telle quelle ; sinon la variable prend le
+# premier de ces noms qui est libre (un nom pris par une variable aux autres valeurs : d'autres unités
+# au-delà des trois nommées, un autre temps, un temps corrigé depuis). Les nouvelles s'ajoutent comme
+# une Nouvelle variable (ajouter_colonne). L'événement est lu comme le temps (temps_en_nombres : un
+# nombre, ou une date tapée, quand le journal de la console refait le modèle). Renvoie le projet, les
+# noms et numéros des deux variables, les unités d'impact et témoins dans l'ordre de leurs niveaux, et
+# les noms des variables nouvelles.
 variables_baci <- function(projet, temps, unite, impact, temoins, evenement) {
   obs <- as.numeric(rownames(projet$donnees))
   vt <- valeurs_a_tester(projet, temps, obs)
@@ -972,27 +998,37 @@ variables_baci <- function(projet, temps, unite, impact, temoins, evenement) {
   ordre <- function(x) { x <- unique(as.character(unlist(x))); x[order(match(x, levels(vu$valeurs)))] }
   impact <- ordre(impact)
   temoins <- ordre(temoins)
-  evenement <- as.numeric(evenement)
-  noms <- c(periode = sprintf(traduire("période BACI (%s)", "BACI period (%s)"), texte_temps(evenement, dates)),
-            impact = sprintf(traduire("impact BACI (%s contre %s)", "BACI impact (%s vs %s)"), texte_unites(impact), texte_unites(temoins)))
+  evenement <- as.vector(temps_en_nombres(evenement))[1]
   valeurs <- list(periode = ifelse(is.na(tv), NA_real_, as.numeric(tv >= evenement)),
                   impact = ifelse(u %in% impact, 1, ifelse(u %in% temoins, 0, NA_real_)))
-  regles <- c(periode = sprintf(traduire("1 quand %s ≥ %s, 0 avant", "1 when %s ≥ %s, 0 before"), vt$nom, texte_temps(evenement, dates)),
-              impact = sprintf(traduire("1 pour %s, 0 pour %s, manquante ailleurs", "1 for %s, 0 for %s, missing elsewhere"), texte_unites(impact), texte_unites(temoins)))
+  # (les noms dans la langue de l'interface, puis dans l'autre)
+  nommer <- function(langue) {
+    ancien <- options(nuee.langue = langue)
+    on.exit(options(ancien))
+    c(periode = sprintf(traduire("période BACI (%s)", "BACI period (%s)"), texte_temps(evenement, dates)),
+      impact = sprintf(traduire("impact BACI (%s contre %s)", "BACI impact (%s vs %s)"), texte_unites(impact), texte_unites(temoins)))
+  }
+  ici <- if (identical(getOption("nuee.langue"), "en")) "en" else "fr"
+  bases <- list(nommer(ici), nommer(if (ici == "en") "fr" else "en"))
+  pris <- vapply(projet$variables, function(v) as.character(v$ids[1]), "")
+  suite <- function(base) c(base, sprintf("%s (%d)", base, 2:99))
+  memes_valeurs <- function(nom, valeurs) {
+    v <- projet$variables[[match(nom, pris)]]
+    x <- colonne(projet, v$uid, obs)
+    !length(v$categories) && all(is.na(x) == is.na(valeurs)) && all(x == valeurs, na.rm = TRUE)
+  }
+  noms <- c(periode = "", impact = "")
   nouvelles <- character(0)
   for (k in names(noms)) {
-    v <- Filter(function(x) identical(as.character(x$ids[1]), noms[[k]]), projet$variables)
-    if (!length(v)) {
-      projet <- ajouter_colonne(projet, noms[[k]], obs, valeurs[[k]])
-      nouvelles <- c(nouvelles, noms[[k]])
+    existante <- Find(function(n) memes_valeurs(n, valeurs[[k]]), intersect(unique(c(suite(bases[[1]][[k]]), suite(bases[[2]][[k]]))), pris))
+    if (!is.null(existante)) {
+      noms[[k]] <- existante
       next
     }
-    x <- colonne(projet, v[[1]]$uid, obs)
-    if (length(v[[1]]$categories) || !all(is.na(x) == is.na(valeurs[[k]])) || any(x != valeurs[[k]], na.rm = TRUE)) {
-      stop(sprintf(traduire("Une variable s'appelle déjà « %s », sans les valeurs que le modèle BACI lui donne (%s) : elle n'est pas remplacée, et le modèle n'est pas ajusté.",
-                            "A variable is already called “%s”, without the values the BACI model gives it (%s): it isn't replaced, and the model isn't fitted."),
-                   noms[[k]], regles[[k]]))
-    }
+    noms[[k]] <- setdiff(suite(bases[[1]][[k]]), pris)[1]
+    projet <- ajouter_colonne(projet, noms[[k]], obs, valeurs[[k]])
+    pris <- c(pris, noms[[k]])
+    nouvelles <- c(nouvelles, noms[[k]])
   }
   list(projet = projet, noms = noms, uid = stats::setNames(numeros(projet, noms), names(noms)), impact = impact, temoins = temoins, nouvelles = nouvelles)
 }
@@ -1008,8 +1044,7 @@ variables_baci <- function(projet, temps, unite, impact, temoins, evenement) {
 # (regression.R), la vue BACI retrouve le modèle de ses réglages (memes_reglages_baci()).
 definition_baci <- function(projet, b, v, car1 = FALSE) {
   obs <- numeros_observations(projet)
-  groupement <- function(x) if (is.character(x) && startsWith(x, "id:")) list(by = "id", id = as.character(projet$observation_id_names)[as.integer(substring(x, 4))])
-                            else list(by = "variable", variable = as.numeric(x))
+  groupement <- function(x) groupement_baci(projet, x)
   vt <- valeurs_a_tester(projet, b$temps$uid, obs)
   tv <- as.vector(temps_en_nombres(if (vt$qualitative) as.character(vt$valeurs) else vt$valeurs))
   u <- as.character(valeurs_a_tester(projet, b$unite$uid, obs)$valeurs)
@@ -1025,10 +1060,20 @@ definition_baci <- function(projet, b, v, car1 = FALSE) {
   d
 }
 
+# Le temps ou l'unité du BACI (un numéro de variable, ou "id:k") en groupement de modèle :
+# list(by = "variable", variable = ...) ou list(by = "id", id = ...).
+groupement_baci <- function(projet, x) {
+  if (is.character(x) && startsWith(x, "id:")) return(list(by = "id", id = as.character(projet$observation_id_names)[as.integer(substring(x, 4))]))
+  list(by = "variable", variable = as.numeric(x))
+}
+
 # Deux réglages de modèle mixte BACI (d$baci_origine) qui font le même modèle : la même réponse, le
 # même temps, la même unité, les mêmes unités d'impact et témoins, le même événement et la même fin ;
-# avec car1, la même autocorrélation aussi.
+# avec car1, la même autocorrélation aussi. Un modèle qui en dérive (Ajuster avec CAR1, des
+# observations exclues, la sélection par l'AIC : `derive`) n'est pas celui des réglages : la vue BACI
+# ne donne pas son effet, et Ajuster le modèle mixte ne le remplace pas.
 memes_reglages_baci <- function(a, b, car1 = TRUE) {
+  if (isTRUE(a$derive) || isTRUE(b$derive)) return(FALSE)
   texte <- function(k) list(as.character(unlist(a[[k]])), as.character(unlist(b[[k]])))
   nombres <- function(k) { x <- as.numeric(unlist(a[[k]])); y <- as.numeric(unlist(b[[k]])); length(x) == length(y) && all(x == y) }
   all(vapply(c("y", "temps", "unite"), function(k) do.call(identical, texte(k)), TRUE)) &&
@@ -1043,9 +1088,10 @@ memes_reglages_baci <- function(a, b, car1 = TRUE) {
 # aléatoire par unité) et, avec CAR1, de l'autocorrélation dans le temps. NULL quand le terme croisé
 # n'a pas été estimé (retiré des termes utiles).
 effet_baci <- function(m, d) {
-  croise <- Find(function(t) length(t$variables) > 1, d$x)$name
+  croise <- Find(function(t) length(t$variables) > 1, d$x)
+  if (is.null(croise)) return(NULL)
   co <- m$resultat$coefficients
-  k <- match(croise, co$terme)
+  k <- match(croise$name, co$terme)
   if (is.na(k)) return(NULL)
   e <- c(list(nom = m$nom, car1 = isTRUE(m$car1)), as.list(co[k, c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]))
   e$phrase <- phrase_test(c(e, list(type = "baci_modele", o = d$baci_origine, N = m$N, unites = length(unique(m$donnees$g1)), phi = m$resultat$phi)))

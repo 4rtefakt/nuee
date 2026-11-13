@@ -2192,9 +2192,9 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
     onclick: () => navigator.clipboard.writeText(phrase).then(() => ctx.statut(t('phrase_copiee'))) }, icone('copy'));
   // the mixed model y ~ period × impact + (1 | unit), once an event is entered: CAR1 in time by
   // default when every unit has 3 times or more, impossible with several rows of a unit at the same
-  // time (one time per unit); the effect of the latest model of these settings fitted, next to the
-  // test's sentence; a refusal (a name taken by another variable) under the settings
-  const car1Possible = fait && !r.repetees;
+  // time among the model's rows, up to the end (one time per unit); the effect of the latest model of
+  // these settings fitted, next to the test's sentence; a refusal under the settings
+  const car1Possible = fait && !r.repetees_modele;
   const car1 = car1Possible && (B.car1 ?? r.temps_unites >= 3);
   const modele = [].concat(r.modeles || []).filter((x) => x.car1 === car1).pop();
   const cleModele = JSON.stringify([cle, car1]);

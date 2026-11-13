@@ -558,7 +558,7 @@ verifier("moins de deux années dans une période, une unité impact et témoin,
          grepl("au moins une unité d'impact et une unité témoin", erreur_b(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", character(0), evenement = 2007)))
 verifier("une fin avant l'événement, un temps qui n'est pas un nombre, une unité ou une réponse du mauvais type, une variable pour deux rôles : refusé",
          grepl("vient avant l'événement", erreur_b(pb, bv("densite"), bv("annee"), bv("secteur"), "S1", "S2", evenement = 2007, fin = 2005)) &&
-         grepl("^Le temps \\(secteur_id\\) doit être fait de nombres \\(l'année\\) ou de dates .*, pas des deux : « S[1-4] » n'est ni un nombre ni une date$",
+         grepl("^Le temps \\(secteur_id\\) doit être fait de nombres \\(l'année\\) ou de dates \\([^)]*\\) : « S[1-4] » n'est ni un nombre ni une date$",
                erreur_b(pbi, bv("densite"), "id:2", bv("secteur"), "S1", "S2", evenement = 2007)) &&
          grepl("qualitative ou un identifiant", erreur_b(pbi, bv("densite"), "id:3", bv("annee"), "S1", "S2", evenement = 2007)) &&
          grepl("réponse doit être une variable quantitative", erreur_b(pb, bv("secteur"), bv("annee"), "id:1", "S1", "S2")) &&
@@ -694,11 +694,11 @@ verifier("l'unité et le temps en identifiants : un effet aléatoire et CAR1 par
 pc0 <- variable_calculee(pm, "période BACI (2008)", "ifelse(annee >= 2009, 1, 0)")
 pc1 <- variable_calculee(pm, "période BACI (2008)", "ifelse(annee >= 2008, 1, 0)")
 pc2 <- variable_calculee(pm, "impact BACI (S1 contre S2, S3)", "ifelse(secteur == \"S1\", \"oui\", \"non\")")
-verifier("un nom pris par une variable aux autres valeurs, ou qualitative : refusé, et le message dit pourquoi ; aux mêmes valeurs (faite à la main) : elle ressert",
-         grepl("^Une variable s'appelle déjà « période BACI \\(2008\\) », sans les valeurs que le modèle BACI lui donne \\(1 quand annee ≥ 2008, 0 avant\\) : elle n'est pas remplacée, et le modèle n'est pas ajusté\\.$",
-               erreur_m(pc0, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)) &&
-           grepl("« impact BACI \\(S1 contre S2, S3\\) », sans les valeurs que le modèle BACI lui donne \\(1 pour S1, 0 pour S2, S3, manquante ailleurs\\)",
-                 erreur_m(pc2, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)) &&
+verifier("un nom pris par une variable aux autres valeurs, ou qualitative : le nom libre suivant, « … (2) » ; aux mêmes valeurs (faite à la main) : elle ressert",
+         identical(modele_baci(pc0, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)$nouvelles,
+                   c("période BACI (2008) (2)", "impact BACI (S1 contre S2, S3)")) &&
+           identical(modele_baci(pc2, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)$nouvelles,
+                     c("période BACI (2008)", "impact BACI (S1 contre S2, S3) (2)")) &&
            identical(modele_baci(pc1, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), 2008)$nouvelles, "impact BACI (S1 contre S2, S3)"))
 bs_m <- bm
 bs_m$site <- c(S1 = "A", S2 = "B", S3 = "B", S4 = "C")[bs_m$secteur]
@@ -728,6 +728,55 @@ verifier(sprintf("le modèle mixte BACI sur des dates (jj/mm/aaaa) et un événe
          identical(bd$nouvelles[1], "période BACI (2008-06-15)") && proche(md$resultat$coefficients$estimation, nlme::fixef(ld), 1e-4) &&
            proche(md$resultat$phi, coef(ld$modelStruct$corStruct, unconstrained = FALSE), 1e-3) && grepl("2008-06-15", ed$phrase, fixed = TRUE) &&
            isTRUE(bd$definition$baci_origine$dates) && grepl("2008-06-15", bd$definition$title, fixed = TRUE))
+
+cat("Le modèle mixte BACI : ses cas limites\n")
+# (huit secteurs : deux réglages qui ne diffèrent qu'au-delà des trois unités nommées)
+set.seed(17)
+b8 <- expand.grid(annee = 2001:2012, secteur = sprintf("S%d", 1:8), stringsAsFactors = FALSE)
+b8$densite <- round(5 + rnorm(nrow(b8)), 3)
+b8 <- data.frame(nom = paste0("h", seq_len(nrow(b8))), b8)
+p8 <- projet_depuis_tableau(b8, "huit secteurs")
+v8 <- function(n) numeros(p8, n)
+a8 <- modele_baci(p8, v8("densite"), v8("annee"), v8("secteur"), sprintf("S%d", 1:5), c("S7", "S8"), 2007)
+b8b <- modele_baci(a8$projet, v8("densite"), v8("annee"), v8("secteur"), sprintf("S%d", c(1:4, 6)), c("S7", "S8"), 2007)
+en8 <- local({ ancien <- options(nuee.langue = "en"); on.exit(options(ancien)); modele_baci(b8b$projet, v8("densite"), v8("annee"), v8("secteur"), sprintf("S%d", 1:5), c("S7", "S8"), 2007) })
+verifier("d'autres unités au-delà des trois nommées : le nom libre suivant, « (2) », au lieu d'un refus ; les mêmes réglages dans l'autre langue reprennent les variables de même valeurs",
+         identical(b8b$nouvelles, "impact BACI (S1, S2, S3… (5) contre S7, S8) (2)") && identical(unname(b8b$variables[1]), "période BACI (2007)") &&
+           !length(en8$nouvelles) && identical(unname(en8$variables), unname(a8$variables)))
+# (S1 a deux lignes en 2012, après la fin 2010 : le modèle ne les prend pas)
+b2l <- rbind(b8, data.frame(nom = "h_double", annee = 2012, secteur = "S1", densite = 6))
+p2l <- projet_depuis_tableau(b2l, "deux lignes après la fin")
+r2l <- baci(p2l, numeros(p2l, "densite"), numeros(p2l, "annee"), numeros(p2l, "secteur"), "S1", c("S2", "S3"), evenement = 2007, fin = 2010)
+m2l <- modele_baci(p2l, numeros(p2l, "densite"), numeros(p2l, "annee"), numeros(p2l, "secteur"), "S1", c("S2", "S3"), 2007, fin = 2010, car1 = TRUE)
+verifier("deux lignes d'une unité au même temps, après la fin : dites pour la série des écarts, mais CAR1 accepté (le modèle s'arrête à la fin) ; avant la fin, refusé",
+         identical(r2l$repetees$unite, "S1") && is.null(r2l$repetees_modele) && !is.null(m2l$definition$correlation) &&
+           grepl("plusieurs lignes|Plusieurs lignes", erreur_m(p2l, numeros(p2l, "densite"), numeros(p2l, "annee"), numeros(p2l, "secteur"), "S1", c("S2", "S3"), 2007, car1 = TRUE)))
+erreur_k <- function(...) tryCatch({ baci(...); "" }, error = conditionMessage)
+verifier("l'événement et la fin du genre du temps : une date pour un temps d'années, refusée ; avec des dates, une fin en année refusée, un événement en année pris pour son 1er janvier",
+         grepl("est fait de nombres : entrez l'événement en nombre", erreur_k(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), evenement = "2008-06-01")) &&
+           grepl("est fait de nombres : entrez la fin en nombre", erreur_k(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), evenement = 2008, fin = "31/12/2012")) &&
+           grepl("est fait de dates : entrez la fin en date", erreur_k(pmd, numeros(pmd, "densite"), numeros(pmd, "jour"), numeros(pmd, "secteur"), "S1", c("S2", "S3"), evenement = "15/06/2008", fin = 2012)) &&
+           baci(pmd, numeros(pmd, "densite"), numeros(pmd, "jour"), numeros(pmd, "secteur"), "S1", c("S2", "S3"), evenement = 2008)$evenement == 2008 &&
+           baci(pm, mv("densite"), mv("annee"), mv("secteur"), "S1", c("S2", "S3"), evenement = "2008")$evenement == 2008)
+vd <- variables_baci(pmd, numeros(pmd, "jour"), numeros(pmd, "secteur"), "S1", c("S2", "S3"), "15/06/2008")
+vy <- variables_baci(pm, mv("annee"), mv("secteur"), "S1", c("S2", "S3"), "2008,5")
+verifier("le journal de la console refait les variables d'un événement tapé en date ou avec une virgule : les mêmes valeurs",
+         identical(unname(vd$noms[1]), "période BACI (2008-06-15)") &&
+           identical(unname(colonne(vd$projet, vd$uid[["periode"]], numeros_observations(pmd))), as.numeric(bmd$annee >= 2008)) &&
+           identical(unname(colonne(vy$projet, vy$uid[["periode"]], numeros_observations(pm))), as.numeric(bm$annee >= 2008.5)))
+tmd <- paste(texte_methodes(bd$projet, bd$definition, md, "fr", "essai")$paragraphes, collapse = " ")
+verifier("le texte des méthodes du modèle BACI sur des dates : l'événement en date, pas en année décimale",
+         grepl("à partir de jour = 2008-06-15", tmd, fixed = TRUE) && !grepl("2008,4", tmd, fixed = TRUE))
+# (la sélection par l'AIC d'un modèle BACI : sans le terme croisé, ce n'est plus lui)
+mb0 <- ajuster(pv0, b0$definition)
+sb0 <- selection_aic(mb0, b0$definition)
+sans_croise <- definition_selection(b0$definition, mb0, setdiff(as.character(sb0$groupes), grep("\\*", as.character(sb0$groupes), value = TRUE)))
+avec_croise <- definition_selection(b0$definition, mb0, as.character(sb0$groupes))
+verifier("Ajuster ce modèle d'un modèle BACI : sans le terme croisé, plus de réglages BACI ni d'effet (la vue BACI garde son test) ; avec, un modèle qui en dérive, que les mêmes réglages ne reprennent pas",
+         is.null(sans_croise$baci_origine) && is.null(effet_baci(ajuster(pv0, sans_croise), sans_croise)) &&
+           is.null(effet_baci(ajuster(pv0, sans_croise), c(sans_croise, list(baci_origine = b0$definition$baci_origine)))) &&
+           isTRUE(avec_croise$baci_origine$derive) && !memes_reglages_baci(avec_croise$baci_origine, b0$definition$baci_origine) &&
+           memes_reglages_baci(b0$definition$baci_origine, b0$definition$baci_origine))
 
 cat("Le même calcul sous toutes les versions de R (ex aequo, différences nulles)\n")
 # des comptages : S1 et S2 suivis 10 ans, des différences nulles et ex aequo ; une variable aux
@@ -805,7 +854,8 @@ verifier("une date qui n'existe pas (31/02/2019, 29/02/2019, 24:00), une année 
            identical(refus_t("2019-05-14 24:00", "2019-05-15"), c("2019-05-14 24:00", "impossible")) && identical(refus_t("14/05/19", "14/05/2020"), c("14/05/19", "illisible")) &&
            identical(refus_t("S1", "S2"), c("S1", "illisible")) &&
            identical(refus_temps(temps_en_nombres(c("31/02/2019", "01/03/2019")), "date"),
-                     "Le temps (date) doit être fait de nombres (l'année) ou de dates (2019-05-14, 14/05/2019), pas des deux : « 31/02/2019 » n'est pas une date qui existe"))
+                     "Le temps (date) doit être fait de nombres (l'année) ou de dates (2019-05-14, 14/05/2019) : « 31/02/2019 » n'est pas une date qui existe") &&
+           grepl(", pas des deux : « 2021 » est un nombre parmi des dates$", refus_temps(temps_en_nombres(c("2019-05-14", "14/06/2020", "2021")), "date")))
 verifier("une année décimale en date, pour les textes : l'inverse", identical(date_decimale(tj[1:2]), c("2019-05-14", "2020-02-29")) &&
            identical(date_decimale(temps_en_nombres("2019-05-14 10:30")), "2019-05-14 10:30"))
 # trois secteurs comptés chaque printemps de 2001 à 2010, le même jour dans une année (qui change

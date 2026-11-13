@@ -239,8 +239,11 @@ refus_temps <- function(t, nom = NULL, fonction = NULL) {
     impossible = sprintf(traduire("« %s » n'est pas une date qui existe", "“%s” isn't a date that exists"), v),
     sprintf(traduire("« %s » n'est ni un nombre ni une date", "“%s” is neither a number nor a date"), v))
   temps <- if (is.null(nom)) traduire("le temps", "the time") else sprintf(traduire("le temps (%s)", "the time (%s)"), nom)
-  phrase <- sprintf(traduire("%s doit être fait de nombres (l'année) ou de dates (2019-05-14, 14/05/2019), pas des deux : %s",
-                             "%s must be numbers (the year) or dates (2019-05-14, 14/05/2019), not both: %s"), temps, pourquoi)
+  melange <- attr(t, "raison") %in% c("nombre", "date")
+  phrase <- sprintf(if (melange) traduire("%s doit être fait de nombres (l'année) ou de dates (2019-05-14, 14/05/2019), pas des deux : %s",
+                                          "%s must be numbers (the year) or dates (2019-05-14, 14/05/2019), not both: %s")
+                    else traduire("%s doit être fait de nombres (l'année) ou de dates (2019-05-14, 14/05/2019) : %s",
+                                  "%s must be numbers (the year) or dates (2019-05-14, 14/05/2019): %s"), temps, pourquoi)
   if (!is.null(fonction)) return(sprintf(traduire("%s() : %s", "%s(): %s"), fonction, phrase))
   paste0(toupper(substr(phrase, 1, 1)), substring(phrase, 2))
 }

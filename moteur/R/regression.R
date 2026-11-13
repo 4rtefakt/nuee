@@ -363,7 +363,9 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   if (!is.null(d$correlation)) {
     # (des nombres, ou des dates en années décimales : φ est alors d'une année à l'autre)
     temps <- temps_en_nombres(valeurs_groupement(projet, d$correlation$temps, obs))
-    if (!is.null(attr(temps, "refus"))) stop(refus_temps(temps, nom_groupement(projet, d$correlation$temps)), call. = FALSE)
+    # (un temps de nombres laisse de côté la ligne d'une valeur illisible, comme jusqu'à 0.9.5 et
+    # comme le script ; un temps de dates refuse une valeur qui n'en est pas une)
+    if (!is.null(attr(temps, "refus")) && isTRUE(attr(temps, "dates"))) stop(refus_temps(temps, nom_groupement(projet, d$correlation$temps)), call. = FALSE)
     if (all(is.na(temps))) stop(traduire("Aucune observation n'a de temps pour l'autocorrélation.", "No observation has a time for the autocorrelation."), call. = FALSE)
     if (!is.null(d$correlation$dans)) dans <- valeurs_groupement(projet, d$correlation$dans, obs)
   }
@@ -744,6 +746,10 @@ definition_selection <- function(d, m, choisis) {
   if (!length(d$k_courbes)) d$k_courbes <- NULL
   d$termes_complets <- complets
   d$selection_origine <- list(modele = as.character(d$name %||% ""), groupes = choisis, n = length(m$observations))
+  # (un modèle mixte BACI : sans le terme croisé période × impact, ce n'est plus lui ; avec, il en dérive)
+  if (!is.null(d$baci_origine)) {
+    if (any(vapply(d$x, function(t) length(t$variables) > 1, TRUE))) d$baci_origine$derive <- TRUE else d$baci_origine <- NULL
+  }
   d
 }
 
@@ -773,6 +779,15 @@ definition_car1 <- function(projet, d, temps, groupe) {
   }
   d$correlation <- c(list(type = "CAR1", temps = specs_groupement(temps)[[1]]), if (length(groupe) == 2) list(dans = specs_groupement(groupe[[2]])[[1]]))
   verifier_regression(projet, d)
+  # (un modèle mixte BACI : CAR1 le long de son temps dans ses unités en fait le modèle BACI avec CAR1,
+  # qui en dérive ; une autre autocorrélation n'est plus celle que ses phrases décrivent)
+  if (!is.null(d$baci_origine)) {
+    o <- d$baci_origine
+    if (is.null(d$correlation$dans) && identical(d$correlation$temps, groupement_baci(projet, o$temps))) {
+      d$baci_origine$car1 <- TRUE
+      d$baci_origine$derive <- TRUE
+    } else d$baci_origine <- NULL
+  }
   d
 }
 
@@ -1354,7 +1369,7 @@ phrase_selection_aic <- function(m, fr, nombre, liste, guillemets) {
 # d$baci_origine) : ce que valent ses deux variables 0/1, ce qu'est le coefficient de leur terme
 # croisé, et ses observations. `liste`, `guillemets` : ceux de texte_methodes_regression.
 phrase_methodes_baci <- function(o, fr, liste, guillemets) {
-  quand <- function(x) trimws(formatC(as.numeric(x), digits = 10, format = "fg", decimal.mark = if (fr) "," else "."))
+  quand <- function(x) if (isTRUE(o$dates)) date_decimale(as.numeric(x)) else trimws(formatC(as.numeric(x), digits = 10, format = "fg", decimal.mark = if (fr) "," else "."))
   # (les unités nommées, dix au plus ; au-delà, leur nombre)
   unites <- function(x, un, plusieurs, nombreuses) {
     x <- as.character(unlist(x))

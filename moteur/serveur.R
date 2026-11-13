@@ -371,6 +371,7 @@ reajuster_demande <- function(q) {
     if (is.null(q$A)) d$A <- 0
   }
   if (length(exclues)) {
+    if (!is.null(d$baci_origine)) d$baci_origine$derive <- TRUE  # (le modèle BACI sans ces observations : il en dérive)
     d$observations <- setdiff(d$observations, exclues)
     d$exclues <- c(d$exclues, exclues)
     d$solution <- NULL
@@ -837,7 +838,8 @@ DEMANDES <- list(
     ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, q$projet) && !is.null(etat$modeles[[id]]$definition$baci_origine) &&
                     memes_reglages_baci(etat$modeles[[id]]$definition$baci_origine, o, car1 = FALSE), names(etat$modeles))
     r$modeles <- unname(Filter(Negate(is.null), lapply(ids, function(id) {
-      e <- effet_baci(etat$modeles[[id]]$modele, etat$modeles[[id]]$definition)
+      # (un modèle qui ne donnerait pas son effet n'empêche pas la vue de donner le test des écarts)
+      e <- tryCatch(effet_baci(etat$modeles[[id]]$modele, etat$modeles[[id]]$definition), error = function(err) NULL)
       if (!is.null(e)) c(list(id = id), e)
     })))
     r

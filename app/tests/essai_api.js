@@ -701,10 +701,9 @@ async function principal() {
       const sansVar = (await api('annuler', { projet: q.id })).projet;
       verifier(sansVar.variables.length === nVariables && !sansVar.modeles.some((m) => /^BACI/.test(m.nom)), 'annuler : les deux variables et le modèle quittent le projet');
       await api('variable_calculee', { projet: q.id, nom: 'période BACI (2006)', formule: 'ifelse(annee >= 2007, 1, 0)' });
-      let refusM = '';
-      try { await api('baci_modele', { ...base, evenement: 2006 }); } catch (err) { refusM = err.message; }
-      verifier(/Une variable s'appelle déjà « période BACI \(2006\) », sans les valeurs que le modèle BACI lui donne \(1 quand annee ≥ 2006, 0 avant\)/.test(refusM)
-        && (await api('projet', { projet: q.id })).variables.length === nVariables + 1, `un nom pris par une autre variable, refusé sans rien changer : « ${refusM} »`);
+      const libre = await api('baci_modele', { ...base, evenement: 2006 });
+      verifier([].concat(libre.nouvelles).join() === 'période BACI (2006) (2),impact BACI (S1 contre S2, S3)'
+        && (await api('projet', { projet: q.id })).variables.length === nVariables + 3, `un nom pris par une autre variable : le nom libre suivant (${[].concat(libre.nouvelles).join(', ')})`);
     });
     await etape('paquets de lecture des formats', async () => {
       const r = await api('console', { code: 'all(vapply(c("haven", "readxl", "foreign", "zip"), requireNamespace, TRUE, quietly = TRUE))' });

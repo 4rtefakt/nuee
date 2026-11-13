@@ -554,10 +554,12 @@ est la moyenne des lignes de l'impact moins celle des lignes des témoins, aux t
 ont une valeur (une ligne par unité et par temps donne la moyenne des unités ; les temps d'un
 seul côté sont listés et laissés de côté) : avec des dates, l'impact et les témoins comptés le
 même jour ; pour comparer des années, prendre l'année. L'événement est le premier temps compté
-« après » (un nombre ou une date ; avec des dates, une année est son 1er janvier) : pour une
-densité de printemps qui répond à la gestion de l'année d'avant, l'année qui suit le
-changement. Les temps qui le précèdent sont « avant » ; « après » court jusqu'à une fin
-facultative, les temps suivants en gris, hors du test. Avec au moins deux temps dans chaque
+« après » (un nombre pour un temps fait de nombres ; une date pour un temps fait de dates, où
+une année est son 1er janvier) : pour une densité de printemps qui répond à la gestion de
+l'année d'avant, l'année qui suit le changement. Les temps qui le précèdent sont « avant » ; «
+après » court jusqu'à une fin facultative, elle aussi du genre du temps (avec des dates,
+31/12/2012 pour la fin de 2012 : une année seule est refusée, comme une date pour un temps fait
+de nombres), les temps suivants en gris, hors du test. Avec au moins deux temps dans chaque
 période, les écarts d'après sont comparés à ceux d'avant : test t de Welch (par défaut), t de
 Student (variances égales : un modèle linéaire de l'écart sur la période) ou Mann–Whitney (sur
 les rangs) ; l'effet est le changement de l'écart moyen, après
@@ -573,8 +575,10 @@ lignes des unités d'impact et témoins dont le temps est connu, jusqu'à la fin
 une : une ordonnée à l'origine aléatoire par unité et, avec « avec CAR1 dans le temps »
 (cochée d'office quand chaque unité a au moins trois temps ; impossible quand une unité a
 plusieurs lignes au même temps), une autocorrélation CAR1 le long du temps dans chaque unité.
-Les variables servent telles quelles quand elles existent déjà avec ces valeurs, et sont
-refusées quand une autre variable porte leur nom ; Ctrl+Z les retire, comme une nouvelle
+Une variable de ce nom, ou de ce nom suivi de (2), (3)…, ou de son nom dans l'autre langue, qui
+a déjà ces valeurs sert telle quelle ; sinon la variable prend le premier de ces noms qui est
+libre (un nom tenu par d'autres valeurs : d'autres unités au-delà des trois nommées, un autre
+temps, un temps corrigé depuis) ; Ctrl+Z les retire, comme une nouvelle
 variable. Le modèle rejoint le projet (nommé « BACI <réponse> » ; les mêmes réglages
 réajustent le même modèle) et ses vues s'ouvrent. De retour dans la vue BACI, son effet BACI,
 le coefficient période × impact avec son intervalle à 95 % et sa valeur p, vient en une phrase

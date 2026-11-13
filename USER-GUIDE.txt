@@ -519,10 +519,12 @@ unit(s). At each time, the gap d_t is the mean of the impact rows minus the mean
 control rows, at the times where both have a value (one row per unit and time gives the mean
 of the units; the times with one side only are listed and left out): with dates, the impact
 and the controls counted on the same day; to compare years, take the year. The event is the
-first time counted as "after" (a number or a date; with dates, a year is its 1 January): for a
-spring density that responds to the previous year's management, the year after the change.
-The times before it are "before"; "after" runs to an optional end, the later times shown in
-grey, out of the test. With at least two times in each period, the gaps after are compared
+first time counted as "after" (a number for a time made of numbers; a date for a time made of
+dates, where a year is its 1 January): for a spring density that responds to the previous
+year's management, the year after the change. The times before it are "before"; "after" runs to
+an optional end, of the time's kind too (with dates, 31/12/2012 for the end of 2012: a year
+alone is refused, as is a date for a time made of numbers), the later times shown in grey, out
+of the test. With at least two times in each period, the gaps after are compared
 with those before: Welch's t test (the default), Student's t (equal variances: a linear model
 of the gap on the period) or Mann–Whitney (on ranks); the effect is the change in the mean
 gap, after minus before, with its 95 % interval,
@@ -536,8 +538,10 @@ mixed model y ~ period × impact + (1 | unit) on the rows of the impact and cont
 a known time, up to the end if there is one: a random intercept per unit and, with "with CAR1
 in time" (ticked by default when every unit has at least three times; impossible when a unit
 has several rows at the same time), a CAR1 autocorrelation along the time within each unit.
-The variables are used as they are when they already exist with these values, and refused
-when another variable has their name; Ctrl+Z removes them, as for a new variable. The model
+A variable of that name, or of that name followed by (2), (3)..., or of its name in the other
+language, that already has these values is used as it is; otherwise the variable takes the
+first of these names that is free (a name held by other values: other units beyond the three
+named, another time, a time corrected since); Ctrl+Z removes them, as for a new variable. The model
 joins the project (named "BACI <response>"; the same settings refit the same model) and its
 views open. Back in the BACI view, its BACI effect, the period × impact coefficient with its
 95 % interval and p value, comes as a sentence under the test's, saying that this model

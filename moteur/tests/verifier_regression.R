@@ -595,6 +595,32 @@ dcar_d <- definition_car1(pdt, definir_modele(pdt, "LMM", x = udt("x", "z"), y =
                           temps_d, list(list(by = "effets")))
 verifier("Ajuster avec CAR1 le long de dates : le même modèle que CAR1 défini sur ces dates",
          identical(dcar_d$correlation$temps, temps_d) && proche(ajuster(pdt, dcar_d)$resultat$AIC, mc_d$resultat$AIC, 1e-10))
+# (Ajuster avec CAR1 d'un modèle mixte BACI : le long de son temps dans ses unités, le modèle BACI
+# avec CAR1, qui en dérive ; le long d'un autre temps, plus de réglages BACI)
+bq <- expand.grid(annee = 2001:2012, secteur = c("S1", "S2", "S3"), stringsAsFactors = FALSE)
+set.seed(5)
+bq$densite <- round(5 + rnorm(nrow(bq)), 3)
+bq$autre_temps <- bq$annee * 2
+bq <- data.frame(nom = paste0("q", seq_len(nrow(bq))), bq)
+pbq <- projet_depuis_tableau(bq, "baci car1")
+mbq <- modele_baci(pbq, numeros(pbq, "densite"), numeros(pbq, "annee"), numeros(pbq, "secteur"), "S1", c("S2", "S3"), 2007)
+c1bq <- definition_car1(mbq$projet, mbq$definition, list(by = "variable", variable = numeros(pbq, "annee")), list(list(by = "effets")))
+c2bq <- definition_car1(mbq$projet, mbq$definition, list(by = "variable", variable = numeros(pbq, "autre_temps")), list(list(by = "effets")))
+verifier("Ajuster avec CAR1 d'un modèle BACI : le long de son temps, ses réglages avec CAR1, marqués dérivés ; le long d'un autre temps, plus de réglages BACI",
+         isTRUE(c1bq$baci_origine$car1) && isTRUE(c1bq$baci_origine$derive) && is.null(c2bq$baci_origine))
+# (un temps de nombres avec une valeur illisible : sa ligne laissée de côté, comme jusqu'à 0.9.5)
+tnd <- tac
+tnd$an <- as.character(tnd$annee)
+tnd$an[7] <- "nd"
+pnd <- projet_depuis_tableau(tnd, "temps nd")
+dnd <- definir_modele(pnd, "LMM", x = numeros(pnd, c("x", "z")), y = numeros(pnd, "y"), echelle = "none",
+                      aleatoires = list(list(by = "variable", variable = numeros(pnd, "site"))),
+                      correlation = list(type = "CAR1", temps = list(by = "variable", variable = numeros(pnd, "an"))))
+mnd <- ajuster(pnd, dnd)
+and <- autocorrelation_residus(pnd, ajuster(pnd, definir_modele(pnd, "LM", x = numeros(pnd, c("x", "z")), y = numeros(pnd, "y"), echelle = "none")),
+                               temps = list(by = "variable", variable = numeros(pnd, "an")), groupe = list(by = "variable", variable = numeros(pnd, "site")))
+verifier("CAR1 et l'autocorrélation des résidus le long d'un temps de nombres où une valeur est illisible (« nd ») : sa ligne laissée de côté, comme jusqu'à 0.9.5",
+         mnd$N == nrow(tnd) - 1 && length(mnd$exclues) == 1 && and$laissees == 1)
 tdt2 <- tdt
 tdt2$date[tdt2$date == tdt2$date[5]] <- "31/02/2005"
 pdt2 <- projet_depuis_tableau(tdt2, "date impossible")
