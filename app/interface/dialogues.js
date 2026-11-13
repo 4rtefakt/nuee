@@ -698,6 +698,8 @@ const AIDE = {
       ['Données', 'Double-clic sur une case de la vue Données pour la modifier. Édition › Nouvelle variable : formule R ; par groupe, moyenne_groupe(x, secteur) et ecart_groupe(x, secteur) ; d’une année à l’autre, precedent(x, annee, secteur) et suivant(x, annee, secteur), la valeur de l’année d’avant ou d’après dans le même secteur (NA si cette année manque ; pas = 2 pour deux ans), et croissance(x, annee, secteur), le taux de croissance log(x / x de l’année d’avant), par exemple contre la densité de l’année d’avant (dépendance à la densité) ; interaction(site, secteur) pour un secteur dans un site. Ces fonctions vont avec des temps réguliers (des années) : avec des dates, le temps exactement un an avant existe rarement, et aucune date proche n’est prise à sa place. La diversité de chaque relevé, sur plusieurs colonnes d’espèces (comptages, densités, recouvrements, ≥ 0), comme vegan : richesse(Ablette, Brochet, Gardon), le nombre d’espèces présentes ; shannon(…), H′ = −Σ p ln p (logarithme népérien) ; simpson(…), 1 − Σ p² ; pielou(…), H′ / ln S ; les colonnes nommées, ou une plage dans l’ordre du tableau (shannon(Ablette:Vandoise)), ou les deux ; une valeur manquante rend l’indice manquant, une valeur négative est refusée. Aussi : classes d’après les valeurs, ou imputation des valeurs manquantes par ACP itérative régularisée.'],
       ['OPLS', 'Des composantes prédictives (une par variable Y, ou une de moins que de classes pour l’OPLS-DA) et des composantes orthogonales. Graphique S (S-plot) dans Graphiques.'],
       ['Spectres', 'Fichier › Importer des spectres : des fichiers JCAMP-DX, SPC ou texte, un spectre par ligne du projet, avec un tableau d’informations (teneurs, classes) joint par le nom des fichiers. Nouveau modèle › Général › Prétraitement des spectres : SNV, MSC, detrend, ligne de base, lissage ou dérivées de Savitzky–Golay, en une à trois étapes, appliqués à chaque observation avant la mise à l’échelle (variables X dans l’ordre du tableau). Graphiques › Profils (spectres) : loadings, coefficients, VIP ou les spectres eux-mêmes en lignes, la longueur d’onde lue dans le nom des variables ; « Choisir des zones » : faire glisser pour marquer des zones, puis un nouveau modèle sans elles ou avec elles seules. Graphiques › iPLS : chaque intervalle du spectre ajusté seul ; en vert, ceux qui prédisent mieux que le spectre entier.'],
+      ['Ajouter des colonnes d’un tableau', 'Édition › Ajouter des colonnes d’un tableau : les colonnes d’un autre tableau (un fichier que lit Fichier › Ouvrir, ou des cellules collées) ajoutées aux observations par une clé : l’habitat et l’altitude de chaque site d’un tableau des sites, la météo de chaque année, ou de chaque site et de chaque année (une clé de deux colonnes). La clé est proposée d’après les noms des colonnes, sans tenir compte des majuscules ; chaque clé ne doit venir qu’une fois dans le tableau (une clé qui revient est refusée, nommée). Les clés se comparent en nombres quand la colonne du projet est une variable quantitative (2019 = 2019,0), sinon en texte tel qu’écrit, sans les espaces autour, les majuscules comptant (S1 n’est pas s1, ni 01 1). Une observation sans ligne qui lui réponde a des valeurs manquantes ; le résultat compte ces observations et les clés du tableau qui ne répondent à aucune, et nomme les premières. Des nombres donnent une variable quantitative, du texte une variable qualitative ; un nom déjà pris devient « nom (2) ». Ctrl+Z retire les colonnes ajoutées ; la console R montre le calcul, fait comme match().'],
+      ['Résumer par groupe', 'Édition › Résumer par groupe : un nouveau projet d’une ligne par groupe, à côté du premier, qui ne change pas : la densité moyenne de chaque secteur et de chaque année d’après plusieurs placettes, avant BACI ou les séries. Les groupes : une ou plusieurs variables ou identifiants (le site, le secteur et l’année) ; chaque ligne est nommée par ses valeurs (« S1 2019 »), et ces colonnes restent des variables ou des identifiants, comme dans le projet. Les statistiques, pour chaque variable quantitative cochée : moyenne, somme, médiane, minimum, maximum, écart-type (n − 1), nombre de valeurs (n), en colonnes « densite (moyenne) »… Les valeurs manquantes sont ignorées ; un groupe sans valeur connue a des statistiques manquantes et n = 0. Les variables qualitatives et les identifiants qui ne changent pas dans un groupe (l’habitat d’un secteur) sont gardés, les autres laissés de côté et nommés ; une observation sans valeur dans une colonne des groupes est laissée de côté et comptée. Le nouveau projet est à enregistrer.'],
       ['Mises à jour', 'La version installée cherche au démarrage une nouvelle version sur GitHub et la signale dans la barre d’état ; sous Windows, un clic la télécharge, la vérifie, l’installe et relance Nuée (Aide › Chercher une nouvelle version au démarrage pour l’arrêter). Aide › Chercher une mise à jour : la même recherche, à tout moment.'],
       ['Historique du fichier', 'Sous un projet .usp : le journal d’audit enregistré dans le fichier (dates, versions, changements de chaque modèle).'],
       ['Signaler un problème', 'Aide › Informations de diagnostic : les versions à coller dans une issue sur github.com/4rtefakt/nuee, en français ou en anglais.'],
@@ -748,6 +750,8 @@ const AIDE = {
       ['Data', 'Double-click a cell of the Data view to edit it. Edit › New variable: an R formula; by group, group_mean(x, sector) and group_deviation(x, sector); from one year to the next, previous(x, year, sector) and following(x, year, sector), the value of the year before or after in the same sector (NA when that year is missing; pas = 2 for two years), and growth_rate(x, year, sector), the growth rate log(x / x of the year before), for example against the density of the year before (density dependence); interaction(site, sector) for a sector within a site. These functions go with regular times (years): with dates, the time exactly one year before rarely exists, and no nearby date is taken instead. The diversity of each survey, over several species columns (counts, densities, covers, ≥ 0), as vegan computes it: richness(Ablette, Brochet, Gardon), the number of species present; shannon(…), H′ = −Σ p ln p (natural log); simpson(…), 1 − Σ p²; pielou(…), H′ / ln S; the columns listed, or a range in the table’s order (shannon(Ablette:Vandoise)), or both; a missing value makes the index missing, a negative value is refused. Also: classes from values, or the imputation of missing values by regularized iterative PCA.'],
       ['OPLS', 'Predictive components (one per Y variable, or one fewer than the classes for OPLS-DA) and orthogonal ones. S-plot in Plots.'],
       ['Spectra', 'File › Import spectra: JCAMP-DX, SPC or text files, one spectrum per row of the project, with a table of information (contents, classes) joined by file name. New model › General › Spectral preprocessing: SNV, MSC, detrend, baseline, Savitzky–Golay smoothing or derivatives, in one to three steps, applied to each observation before scaling (X variables in the order of the table). Plots › Profiles (spectra): loadings, coefficients, VIP or the spectra themselves as lines, the wavelength read from the variable names; “Choose ranges”: drag to mark ranges, then a new model without them or with them only. Plots › iPLS: each interval of the spectrum fitted on its own; in green, those that predict better than the whole spectrum.'],
+      ['Add columns from a table', 'Edit › Add columns from a table: the columns of another table (a file File › Open reads, or pasted cells) added to the observations by a key: the habitat and altitude of each site from a table of sites, the weather of each year, or of each site and year (a key of two columns). The key is proposed from the columns’ names, ignoring capitals; each key must come only once in the table (a repeated key is refused, named). Keys are compared as numbers when the project’s column is a quantitative variable (2019 = 2019.0), otherwise as text, as written, without the spaces at the ends, capitals counting (S1 isn’t s1, nor 01 1). An observation with no matching row gets missing values; the result counts those observations and the table’s keys that match none, and names the first ones. Numbers give a quantitative variable, text a qualitative one; a name already taken becomes “name (2)”. Ctrl+Z removes the added columns; the R console shows the computation, done as match() does it.'],
+      ['Summarize by group', 'Edit › Summarize by group: a new project with one row per group, beside the first one, which doesn’t change: the mean density of each sector and year from several plots, before BACI or Series. The groups: one or more variables or IDs (the site, the sector and the year); each row is named from its values (“S1 2019”), and these columns stay variables or IDs, as in the project. The statistics, for each ticked quantitative variable: mean, sum, median, minimum, maximum, standard deviation (n − 1), number of values (n), in columns “density (mean)”… Missing values are ignored; a group without a known value has missing statistics and n = 0. Qualitative variables and IDs that don’t vary within a group (the habitat of a sector) are kept, the others left out and named; an observation without a value in a group column is left out and counted. The new project has no file yet: save it.'],
       ['Updates', 'The installed version looks for a new version on GitHub at start-up and shows it in the status bar; on Windows, one click downloads it, checks it, installs it and restarts Nuée (Help › Look for a new version at start-up to stop it). Help › Check for updates: the same check, at any time.'],
       ['File history', 'Under a .usp project: the audit trail stored in the file (dates, versions, changes to each model).'],
       ['Report a problem', 'Help › Diagnostic information: the versions to paste into an issue on github.com/4rtefakt/nuee, in English or French.'],
@@ -913,4 +917,159 @@ export function dialogueVariable(app, p, mode = 'formule') {
   rendre();
   const d = dialogue({ titre: `${t('nouvelle_variable')} — ${p.nom}`, contenu: el('div', {}, contenu, erreur),
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('ajouter'), principal: true, action: () => { valider(); return false; } }] });
+}
+
+const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
+const lireColonne = (x) => (String(x).startsWith('id:') ? x : Number(x));  // a variable's number, or "id:k"
+
+// Edit › Add columns from a table: the rows of another table (a file in any format File › Open
+// reads, or cells copied from a spreadsheet) matched to the project's observations by a key of one
+// or more columns (the site; the site and the year), first proposed by R from the columns' names;
+// the ticked columns join the project as variables (moteur/R/variables.R: ajouter_colonnes_table).
+// Once they are added, R's sentences say what matched and what didn't.
+export function dialogueColonnes(app, p) {
+  const comparable = (s) => String(s).trim().toLowerCase().replaceAll('.', ' ');  // as R's nom_comparable
+  // the project's columns a key can use: IDs, qualitative then quantitative variables, observation names
+  const colonnesProjet = [...liste(p.identifiants).map((i) => ({ valeur: `id:${i.rang}`, nom: i.nom, libelle: `${i.nom} (${t('identifiant')})` })),
+    ...p.variables.filter((v) => v.qualitative).map((v) => ({ valeur: v.uid, nom: v.nom, libelle: v.nom })),
+    ...p.variables.filter((v) => !v.qualitative).map((v) => ({ valeur: v.uid, nom: v.nom, libelle: v.nom })),
+    { valeur: 'id:1', nom: 'Observation', libelle: t('noms_observations') }];
+  const st = { tab: null, cles: [], decochees: new Set() };
+  const contenu = el('div', { class: 'dialogue-colonnes' });
+  const erreur = el('p', { class: 'erreur' });
+  const colonnes = () => liste(st.tab && st.tab.colonnes.nom);
+  const memeNom = (o) => colonnes().find((n) => comparable(n) === comparable(o.nom));
+  // the table (q: { chemin, table } or { texte }), its columns and the key R proposes
+  const charger = async (q) => {
+    erreur.textContent = '';
+    try { st.tab = await app.occupe(() => demander('table_a_joindre', { projet: p.id, ...q })); } catch (e) { erreur.textContent = e.message; return; }
+    st.cles = liste(st.tab.cles).map((c) => ({ projet: c.projet, table: c.table }));
+    if (!st.cles.length) st.cles = [{ projet: colonnesProjet[0].valeur, table: memeNom(colonnesProjet[0]) || colonnes()[0] }];
+    st.decochees = new Set();
+    rendre();
+  };
+  const choisirFichier = async () => {
+    const chemin = await app.choisirTableau();
+    if (chemin) charger({ chemin });
+  };
+  const coller = async () => {
+    const texte = await app.lirePressePapiers();
+    if (!texte.trim()) { erreur.textContent = t('presse_papiers_vide'); return; }
+    charger({ texte });
+  };
+  const rendre = () => {
+    const tab = st.tab;
+    const lignes = [el('label', {}, t('joindre_tableau')), el('div', {},
+      el('div', { class: 'ligne' },
+        el('button', { onclick: choisirFichier }, icone('folder-open'), t('choisir_tableau')),
+        el('button', { onclick: coller, title: t('coller_aide') }, icone('clipboard-paste'), t('joindre_coller'))),
+      el('p', { class: 'note' }, tab ? t('joindre_source', { nom: tab.nom, n: tab.n, k: colonnes().length }) : t('joindre_aide')))];
+    if (tab && liste(tab.tables).length > 1) {
+      lignes.push(el('label', {}, t('joindre_feuille')), el('select', { onchange: (e) => charger({ chemin: tab.chemin, table: e.target.value }) },
+        liste(tab.tables).map((x) => el('option', { value: x, selected: x === tab.table }, x))));
+    }
+    if (tab) {
+      st.cles.forEach((c, i) => {
+        lignes.push(el('label', {}, i ? '' : t('joindre_cle')), el('div', { class: 'ligne' },
+          el('select', { title: t('joindre_cle_projet'), onchange: (e) => {
+            c.projet = lireColonne(e.target.value);
+            c.table = memeNom(colonnesProjet.find((o) => String(o.valeur) === String(c.projet))) || c.table;  // the table's column of the same name
+            rendre();
+          } }, colonnesProjet.map((o) => el('option', { value: o.valeur, selected: String(o.valeur) === String(c.projet) }, o.libelle))),
+          '=',
+          el('select', { title: t('joindre_cle_table'), onchange: (e) => { c.table = e.target.value; rendre(); } },
+            colonnes().map((n) => el('option', { value: n, selected: n === c.table }, n))),
+          st.cles.length > 1 ? el('button', { onclick: () => { st.cles.splice(i, 1); rendre(); } }, t('retirer')) : null));
+      });
+      lignes.push(el('label', {}, ''), el('div', {}, el('button', { onclick: () => {
+        // a column not in the key yet, with the table's column of the same name if there is one
+        const o = colonnesProjet.find((x) => !st.cles.some((c) => String(c.projet) === String(x.valeur))) || colonnesProjet[0];
+        st.cles.push({ projet: o.valeur, table: memeNom(o) || colonnes().find((n) => !st.cles.some((c) => c.table === n)) || colonnes()[0] });
+        rendre();
+      } }, icone('plus'), t('joindre_ajouter_cle'))));
+      const dansCle = new Set(st.cles.map((c) => c.table));
+      const nombres = liste(tab.colonnes.nombres);
+      const nouveaux = liste(tab.colonnes.nom_ajoute);
+      lignes.push(el('label', {}, t('joindre_colonnes')), el('div', {},
+        el('div', { class: 'ligne' },
+          el('button', { onclick: () => { st.decochees.clear(); rendre(); } }, t('tout_cocher')),
+          el('button', { onclick: () => { st.decochees = new Set(colonnes()); rendre(); } }, t('aucune_cocher'))),
+        el('div', { class: 'liste-imputation' }, colonnes().map((n, j) => (dansCle.has(n) ? null : el('label', { class: 'champ' },
+          el('input', { type: 'checkbox', checked: !st.decochees.has(n), onchange: (e) => { if (e.target.checked) st.decochees.delete(n); else st.decochees.add(n); } }),
+          n, el('span', { class: 'doux' }, ` · ${nombres[j] ? t('joindre_nombres') : t('joindre_texte')}`
+            + (nouveaux[j] !== n ? ` ${t('joindre_renommee', { nom: nouveaux[j] })}` : ''))))))),
+      el('label', {}, ''), el('p', { class: 'note' }, t('joindre_note')));
+    }
+    contenu.replaceChildren(el('div', { class: 'grille-champs' }, ...lignes));
+  };
+  async function valider() {
+    erreur.textContent = '';
+    if (!st.tab) { erreur.textContent = t('joindre_aide'); return; }
+    const dansCle = new Set(st.cles.map((c) => c.table));
+    const q = { chemin: st.tab.chemin, table: st.tab.table, nom: st.tab.nom, colle: st.tab.colle,
+      cles_projet: st.cles.map((c) => c.projet), cles_table: st.cles.map((c) => c.table),
+      colonnes: colonnes().filter((n) => !dansCle.has(n) && !st.decochees.has(n)) };
+    let res;
+    try { res = await app.joindreColonnes(p.id, q); } catch (e) { erreur.textContent = e.message; return; }
+    d.fermer();
+    dialogue({ titre: `${t('joindre_fait')} — ${p.nom}`, contenu: el('div', {}, liste(res.jointure.phrases).map((x) => el('p', {}, x)), el('p', { class: 'note' }, t('joindre_annuler'))),
+      boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
+  }
+  rendre();
+  const d = dialogue({ titre: `${t('ajouter_colonnes').replace('…', '')} — ${p.nom}`, contenu: el('div', {}, contenu, erreur),
+    boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('ajouter'), principal: true, action: () => { valider(); return false; } }] });
+}
+
+// Edit › Summarize by group: a new project with one row per group (the sector and the year; the
+// site, the sector and the year), the chosen statistics of the ticked quantitative variables, and
+// the qualitative variables and IDs that don't vary within a group (moteur/R/nouveau.R:
+// resumer_par_groupe). The project itself doesn't change.
+const STATISTIQUES = ['moyenne', 'somme', 'mediane', 'minimum', 'maximum', 'ecart_type', 'n'];
+export function dialogueResume(app, p) {
+  const quantitatives = p.variables.filter((v) => !v.qualitative);
+  if (!quantitatives.length) { app.statut(t('resumer_sans_quantitative'), true); return; }
+  // what can make the groups: IDs, qualitative then quantitative variables (the year), observation names
+  const options = [...liste(p.identifiants).map((i) => ({ valeur: `id:${i.rang}`, libelle: `${i.nom} (${t('identifiant')})` })),
+    ...p.variables.filter((v) => v.qualitative).map((v) => ({ valeur: v.uid, libelle: v.nom })),
+    ...quantitatives.map((v) => ({ valeur: v.uid, libelle: v.nom })),
+    { valeur: 'id:1', libelle: t('noms_observations') }];
+  const st = { groupes: [options[0].valeur], decochees: new Set(), stats: new Set(['moyenne']) };
+  const contenu = el('div', { class: 'dialogue-resume' });
+  const erreur = el('p', { class: 'erreur' });
+  const enGroupe = (v) => st.groupes.some((g) => String(g) === String(v.uid));
+  const rendre = () => {
+    const lignes = [];
+    st.groupes.forEach((g, i) => {
+      lignes.push(el('label', {}, i ? '' : t('resumer_par')), el('div', { class: 'ligne' },
+        el('select', { onchange: (e) => { st.groupes[i] = lireColonne(e.target.value); rendre(); } },
+          options.map((o) => el('option', { value: o.valeur, selected: String(o.valeur) === String(g) }, o.libelle))),
+        st.groupes.length > 1 ? el('button', { onclick: () => { st.groupes.splice(i, 1); rendre(); } }, t('retirer')) : null));
+    });
+    lignes.push(el('label', {}, ''), el('div', {}, el('button', { onclick: () => {
+      const o = options.find((x) => !st.groupes.some((g) => String(g) === String(x.valeur)));
+      if (o) { st.groupes.push(o.valeur); rendre(); }
+    } }, icone('plus'), t('resumer_ajouter_groupe'))));
+    lignes.push(el('label', {}, t('resumer_variables')), el('div', {},
+      el('div', { class: 'ligne' },
+        el('button', { onclick: () => { st.decochees.clear(); rendre(); } }, t('tout_cocher')),
+        el('button', { onclick: () => { st.decochees = new Set(quantitatives.map((v) => v.uid)); rendre(); } }, t('aucune_cocher'))),
+      el('div', { class: 'liste-imputation' }, quantitatives.filter((v) => !enGroupe(v)).map((v) => el('label', { class: 'champ' },
+        el('input', { type: 'checkbox', checked: !st.decochees.has(v.uid), onchange: (e) => { if (e.target.checked) st.decochees.delete(v.uid); else st.decochees.add(v.uid); } }),
+        v.nom)))));
+    lignes.push(el('label', {}, t('resumer_statistiques')), el('div', { class: 'statistiques-groupe' }, STATISTIQUES.map((s) => el('label', { class: 'champ' },
+      el('input', { type: 'checkbox', checked: st.stats.has(s), onchange: (e) => { if (e.target.checked) st.stats.add(s); else st.stats.delete(s); } }),
+      t(`stat_${s}`)))));
+    lignes.push(el('label', {}, ''), el('p', { class: 'note' }, t('resumer_note')));
+    contenu.replaceChildren(el('div', { class: 'grille-champs' }, ...lignes));
+  };
+  async function valider() {
+    erreur.textContent = '';
+    const q = { groupes: st.groupes, variables: quantitatives.filter((v) => !enGroupe(v) && !st.decochees.has(v.uid)).map((v) => v.uid),
+      statistiques: STATISTIQUES.filter((s) => st.stats.has(s)) };
+    try { await app.resumer(p.id, q); } catch (e) { erreur.textContent = e.message; return; }
+    d.fermer();
+  }
+  rendre();
+  const d = dialogue({ titre: `${t('resumer_groupes').replace('…', '')} — ${p.nom}`, contenu: el('div', {}, contenu, erreur),
+    boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('resumer'), principal: true, action: () => { valider(); return false; } }] });
 }

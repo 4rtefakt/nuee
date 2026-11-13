@@ -68,6 +68,153 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
   p
 }
 
+# Les statistiques de Résumer par groupe : leur nom dans les colonnes du résumé (« densite
+# (moyenne) », dans la langue de l'interface), et leur calcul sur les valeurs connues d'un groupe
+# (jamais vides : un groupe sans valeur connue n'a que des valeurs manquantes, sauf n, 0).
+# L'écart-type est celui de sd() (n − 1) : il manque pour une seule valeur.
+STATISTIQUES_GROUPE <- list(
+  moyenne = list(fr = "moyenne", en = "mean", f = mean),
+  somme = list(fr = "somme", en = "sum", f = sum),
+  mediane = list(fr = "médiane", en = "median", f = stats::median),
+  minimum = list(fr = "min", en = "min", f = min),
+  maximum = list(fr = "max", en = "max", f = max),
+  ecart_type = list(fr = "écart-type", en = "sd", f = function(v) if (length(v) > 1) stats::sd(v) else NA_real_),
+  n = list(fr = "n", en = "n", f = length))
+
+# Un nouveau projet d'une ligne par groupe (Édition › Résumer par groupe) : les densités de chaque
+# secteur et de chaque année d'après celles de plusieurs placettes, avant BACI ou les séries.
+# `groupes` : les colonnes qui font les groupes, des numéros de variables ou "id:k" pour un
+# identifiant des observations (variables.R : colonne_ou_identifiant), le secteur et l'année, ou le
+# site, le secteur et l'année ; une observation sans valeur dans l'une d'elles est laissée de côté,
+# et comptée. `variables` : les variables quantitatives à résumer (par défaut toutes, sauf celles des
+# groupes) ; `statistiques` : une ou plusieurs de STATISTIQUES_GROUPE, chacune pour toutes ces
+# variables, en colonnes « densite (moyenne) », « densite (n) »… ; les valeurs manquantes sont
+# ignorées, n compte les valeurs connues. Comme aggregate(d[variables], d[groupes], FUN) sur le
+# tableau des données (formats.R : tableau_projet). Les groupes viennent dans l'ordre de leurs
+# colonnes (les catégories d'une variable qualitative dans leur ordre, des nombres dans le leur, un
+# identifiant fait de nombres dans l'ordre des nombres), chacun une observation nommée par ses
+# valeurs (« S1 2019 ») ; les colonnes des groupes restent ce qu'elles étaient, des variables ou des
+# identifiants. Une variable qualitative ou un identifiant dont les valeurs connues sont les mêmes
+# dans chaque groupe (l'habitat d'un secteur) est gardé, avec cette valeur (manquante pour un
+# groupe qui n'en a aucune) ; les autres sont laissés de côté, et nommés. Le projet s'appelle
+# « <projet> par secteur, annee ». attr(, "resume") : le nombre de groupes, d'observations résumées
+# et laissées de côté, les colonnes gardées et laissées de côté, et la phrase qui le dit.
+resumer_par_groupe <- function(projet, groupes, variables = NULL, statistiques = "moyenne") {
+  obs <- numeros_observations(projet)
+  groupes <- unique(as.character(groupes))
+  if (!length(groupes)) stop(traduire("Choisir au moins une colonne qui fait les groupes", "Choose at least one column to make the groups"), call. = FALSE)
+  statistiques <- unique(as.character(statistiques))
+  if (!length(statistiques)) stop(traduire("Choisir au moins une statistique", "Choose at least one statistic"), call. = FALSE)
+  inconnue <- setdiff(statistiques, names(STATISTIQUES_GROUPE))
+  if (length(inconnue)) stop(traduire("Statistique inconnue : ", "Unknown statistic: "), inconnue[1], call. = FALSE)
+  g <- lapply(groupes, function(x) colonne_ou_identifiant(projet, x, obs))
+  noms_groupes <- vapply(g, `[[`, "", "nom")
+  # « site, secteur et annee »
+  enumerer <- function(et) if (length(noms_groupes) == 1) noms_groupes else paste(paste(utils::head(noms_groupes, -1), collapse = ", "), utils::tail(noms_groupes, 1), sep = et)
+  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  uids <- vapply(vars, function(v) as.numeric(v$uid), 0)
+  dans_groupes <- uids %in% suppressWarnings(as.numeric(groupes[!startsWith(groupes, "id:")]))
+  qualitative <- vapply(vars, function(v) length(v$categories) > 0, TRUE)
+  variables <- if (is.null(variables)) uids[!qualitative & !dans_groupes] else unique(as.numeric(variables))
+  for (u in variables) {
+    v <- variable_du_projet(projet, u)
+    if (length(v$categories)) {
+      stop(sprintf(traduire("« %s » est qualitative : seules les variables quantitatives se résument (une variable qualitative est gardée si elle ne change pas dans un groupe)",
+                            "“%s” is qualitative: only quantitative variables are summarized (a qualitative variable is kept when it doesn't vary within a group)"), v$ids[1]), call. = FALSE)
+    }
+  }
+  variables <- uids[uids %in% variables & !dans_groupes]  # (dans l'ordre du projet)
+  if (!length(variables)) stop(traduire("Choisir au moins une variable quantitative à résumer", "Choose at least one quantitative variable to summarize"), call. = FALSE)
+  connu <- Reduce(`&`, lapply(g, function(x) !is.na(x$valeurs)))
+  if (!any(connu)) {
+    stop(sprintf(traduire("Aucune observation n'a de valeur de %s", "No observation has a value of %s"), enumerer(traduire(" et ", " and "))), call. = FALSE)
+  }
+  lignes <- which(connu)
+  # le rang de chaque valeur dans l'ordre de sa colonne, puis les groupes rangés par ces rangs
+  rangs <- lapply(g, function(x) {
+    v <- x$valeurs[lignes]
+    match(v, if (x$nombres) sort(unique(v)) else if (!is.null(x$categories)) x$categories else ordre_cles(unique(v)))
+  })
+  cle <- cle_composee(rangs)
+  premiers <- which(!duplicated(cle))
+  premiers <- premiers[do.call(order, lapply(rangs, function(r) r[premiers]))]
+  groupe <- match(cle, cle[premiers])
+  G <- length(premiers)
+  par_groupe <- function(v) unname(split(v[lignes], factor(groupe, levels = seq_len(G))))
+  ecrire <- function(x, v) if (x$nombres) sprintf("%.15g", v + 0) else as.character(v)
+  noms_obs <- do.call(paste, lapply(g, function(x) ecrire(x, x$valeurs[lignes][premiers])))
+  # les colonnes du nouveau projet : celles des groupes, les qualitatives et les identifiants qui
+  # ne changent pas dans un groupe, puis les résumés
+  colonnes <- lapply(g, function(x) {
+    v <- x$valeurs[lignes][premiers]
+    list(nom = x$nom, valeurs = v, id = !is.na(x$rang), categories = if (!is.null(x$categories)) x$categories[x$categories %in% v])
+  })
+  # (la valeur de chaque groupe, ou NULL quand elle change dans l'un d'eux)
+  constante <- function(v) {
+    u <- lapply(par_groupe(v), function(z) unique(z[!is.na(z)]))
+    if (any(lengths(u) > 1)) return(NULL)
+    vapply(u, function(z) if (length(z)) as.character(z) else NA_character_, "")
+  }
+  gardees <- character(0)
+  laissees <- character(0)
+  garder <- function(x, id) {
+    val <- constante(x$valeurs)
+    if (is.null(val)) {
+      laissees <<- c(laissees, x$nom)
+      return(NULL)
+    }
+    gardees <<- c(gardees, x$nom)
+    list(list(nom = x$nom, valeurs = val, id = id, categories = if (!id) x$categories[x$categories %in% val]))
+  }
+  for (k in which(qualitative & !dans_groupes)) colonnes <- c(colonnes, garder(colonne_ou_identifiant(projet, uids[k], obs), FALSE))
+  noms_id <- as.character(projet$observation_id_names %||% character(0))
+  for (k in seq_along(noms_id)[-1]) {
+    if (k %in% vapply(g, `[[`, 0L, "rang") || !nzchar(noms_id[k]) || startsWith(noms_id[k], "$")) next
+    x <- colonne_ou_identifiant(projet, sprintf("id:%d", k), obs)
+    if (any(!is.na(x$valeurs))) colonnes <- c(colonnes, garder(x, TRUE))
+  }
+  for (u in variables) {
+    x <- colonne_ou_identifiant(projet, u, obs)
+    connues <- lapply(par_groupe(as.numeric(x$valeurs)), function(z) z[!is.na(z)])
+    for (s in statistiques) {
+      f <- STATISTIQUES_GROUPE[[s]]$f
+      val <- vapply(connues, function(z) if (length(z) || s == "n") as.numeric(f(z)) else NA_real_, 0)
+      colonnes <- c(colonnes, list(list(nom = sprintf("%s (%s)", x$nom, traduire(STATISTIQUES_GROUPE[[s]]$fr, STATISTIQUES_GROUPE[[s]]$en)), valeurs = val, id = FALSE)))
+    }
+  }
+  pris <- "Observation"  # (le nom des observations)
+  for (k in seq_along(colonnes)) {
+    colonnes[[k]]$nom <- nom_libre(colonnes[[k]]$nom, pris)
+    pris <- c(pris, colonnes[[k]]$nom)
+  }
+  ids <- Filter(function(x) x$id, colonnes)
+  vs <- Filter(function(x) !x$id, colonnes)
+  donnees <- matrix(unlist(lapply(vs, function(x) if (!is.null(x$categories)) as.numeric(match(x$valeurs, x$categories)) else as.numeric(x$valeurs))),
+                    nrow = G, dimnames = list(as.character(seq_len(G)), as.character(seq_along(vs))))
+  base <- tools::file_path_sans_ext(as.character(projet$nom %||% projet$source %||% ""))
+  if (!nzchar(base)) base <- traduire("projet", "project")
+  nom <- sprintf(traduire("%s par %s", "%s by %s"), base, paste(noms_groupes, collapse = ", "))
+  p <- list(format = "usp-json/1", source = nom,
+            observation_id_names = c("Observation", vapply(ids, `[[`, "", "nom")), variable_id_names = "Variable",
+            observations = lapply(seq_len(G), function(i) {
+              list(uid = i, ids = c(noms_obs[i], vapply(ids, function(x) if (is.na(x$valeurs[i])) "" else as.character(x$valeurs[i]), "")))
+            }),
+            variables = lapply(seq_along(vs), function(k) list(uid = k, ids = vs[[k]]$nom, categories = vs[[k]]$categories, formula = "")),
+            datasets = list(list(name = nom, observations = seq_len(G), variables = seq_along(vs))),
+            models = list(), prediction_sets = list(), dendrograms = list(), donnees = donnees)
+  p$noms_obs <- stats::setNames(noms_obs, as.character(seq_len(G)))
+  p$noms_var <- stats::setNames(vapply(vs, `[[`, "", "nom"), as.character(seq_along(vs)))
+  class(p) <- "projet_nuee"
+  attr(p, "resume") <- list(
+    groupes = G, observations = length(lignes), sans_groupe = sum(!connu), gardees = gardees, laissees = laissees,
+    phrase = paste0(sprintf(traduire("%d groupe(s), d'après %d observation(s)", "%d group(s), from %d observation(s)"), G, length(lignes)),
+                    if (any(!connu)) sprintf(traduire(" ; %d observation(s) sans valeur de %s laissée(s) de côté", "; %d observation(s) without a value of %s left out"),
+                                             sum(!connu), enumerer(traduire(" ou ", " or "))),
+                    if (length(laissees)) sprintf(traduire(" ; laissées de côté, car elles changent dans un groupe : %s", "; left out, as they vary within a group: %s"), paste(laissees, collapse = ", ")),
+                    "."))
+  p
+}
+
 # Transformations proposées pour une variable, et leur nom quand on relit un modèle.
 TRANSFORMATIONS <- list(
   racine2 = list(type = 7, params = c(NA, 1, 0, 0.5)),

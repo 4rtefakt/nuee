@@ -131,6 +131,8 @@ export function rendreExplorateur(conteneur, app) {
           menu: () => [{ libelle: t('donnees'), icone: 'database', action: () => app.ouvrirVue('donnees', null, null, p.id) },
             { libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) },
             { libelle: t('nouvelle_variable'), icone: 'calculator', action: () => app.nouvelleVariable(p.id) },
+            { libelle: t('ajouter_colonnes'), icone: 'file-spreadsheet', action: () => app.ajouterColonnes(p.id) },
+            { libelle: t('resumer_groupes'), icone: 'sigma', action: () => app.resumerGroupes(p.id) },
             { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
             { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) }] }),
         p.historique ? noeud({ cle: `${p.id}/historique`, niveau: 2, ic: 'history', libelle: [t('historique'), el('span', { class: 'compte' }, p.historique)],

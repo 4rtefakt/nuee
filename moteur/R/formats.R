@@ -37,10 +37,13 @@ tables_fichier <- function(chemin) {
 # Le tableau d'un fichier, en data.frame. `table` : nom de la feuille ou de l'objet (le
 # premier sinon). Dans un fichier texte ou Excel, rien ne dit qu'une colonne est faite de
 # nombres : convertir_colonnes() en décide. `quantitatives` : noms de colonnes à lire en
-# nombres quel que soit le format (fichier à prédire : les variables quantitatives du modèle).
-# attr(, "note") : ce qu'il faut dire de la lecture (valeurs lues comme manquantes, lignes
-# incomplètes), une phrase par colonne concernée, nommée par elle ("" pour tout le fichier).
-lire_tableau <- function(chemin, table = NULL, quantitatives = NULL) {
+# nombres quel que soit le format (fichier à prédire : les variables quantitatives du modèle) ;
+# `textes` : noms de colonnes laissées telles qu'écrites, jamais lues en nombres (les clés d'un
+# tableau dont on ajoute les colonnes au projet : « 01 » y reste « 01 », variables.R :
+# ajouter_colonnes_table). attr(, "note") : ce qu'il faut dire de la lecture (valeurs lues
+# comme manquantes, lignes incomplètes), une phrase par colonne concernée, nommée par elle (""
+# pour tout le fichier).
+lire_tableau <- function(chemin, table = NULL, quantitatives = NULL, textes = NULL) {
   ext <- extension(chemin)
   un_parmi <- function(objets) {
     if (!length(objets)) stop(traduire("Ce fichier ne contient aucun tableau (data.frame ou matrice)", "This file holds no table (data frame or matrix)"))
@@ -62,15 +65,15 @@ lire_tableau <- function(chemin, table = NULL, quantitatives = NULL) {
     arff = lire_arff(chemin),
     jdx = , dx = , jcm = , spc = tableau_spectres(lire_spectres(chemin)),
     stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext))
-  finir_tableau(x, quantitatives, toutes = ext %in% c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls"))
+  finir_tableau(x, quantitatives, toutes = ext %in% c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls"), textes = textes)
 }
 
 # Un tableau lu, en data.frame simple (vers_data_frame), ses colonnes de texte converties
-# (convertir_colonnes) : toutes si `toutes`, sinon celles de `quantitatives`.
-finir_tableau <- function(x, quantitatives = NULL, toutes = TRUE) {
+# (convertir_colonnes) : toutes si `toutes`, sinon celles de `quantitatives` ; jamais `textes`.
+finir_tableau <- function(x, quantitatives = NULL, toutes = TRUE, textes = NULL) {
   note <- attr(x, "note")
   virgule <- attr(x, "virgule") %||% "decimale"
-  x <- convertir_colonnes(vers_data_frame(x), virgule, quantitatives, toutes)
+  x <- convertir_colonnes(vers_data_frame(x), virgule, quantitatives, toutes, textes)
   attr(x, "note") <- c(note, attr(x, "note"))
   x
 }
@@ -320,13 +323,14 @@ nom_comparable <- function(nom) gsub(".", " ", tolower(trimws(nom)), fixed = TRU
 # convertir_colonne() en fait des nombres quand ce sont des mesures. `quantitatives` : noms de
 # colonnes à lire en nombres quoi qu'il arrive, de tout type (fichier à prédire : variables
 # quantitatives du modèle) ; seules celles-là si `toutes` est faux (formats qui disent le type
-# des colonnes). attr(, "note") : une phrase par colonne dont des valeurs sont lues comme
-# manquantes, nommée par la colonne.
-convertir_colonnes <- function(df, virgule = "decimale", quantitatives = NULL, toutes = TRUE) {
+# des colonnes). Les colonnes nommées dans `textes` restent telles quelles. attr(, "note") : une
+# phrase par colonne dont des valeurs sont lues comme manquantes, nommée par la colonne.
+convertir_colonnes <- function(df, virgule = "decimale", quantitatives = NULL, toutes = TRUE, textes = NULL) {
   note <- character(0)
   forcees <- nom_comparable(names(df)) %in% nom_comparable(quantitatives)
   for (k in seq_along(df)) {
     x <- df[[k]]
+    if (names(df)[k] %in% textes) next
     if (!(forcees[k] && (is.character(x) || is.factor(x) || is.logical(x))) && !(toutes && is.character(x))) next
     y <- convertir_colonne(as.character(x), virgule, premiere = k == 1, forcer = forcees[k])
     manquantes <- attr(y, "manquantes")

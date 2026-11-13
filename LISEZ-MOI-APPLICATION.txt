@@ -893,6 +893,69 @@ Exporter vers R (un script ou un rapport R Markdown / Quarto qui refait l'analys
 rpart, MASS ou cluster, livrés avec R). Comparer les modèles donne le Q2 et le RMSEcv d'un
 arbre de régression à côté des autres modèles.
 
+Ajouter des colonnes d'un autre tableau
+---------------------------------------
+Édition › Ajouter des colonnes d'un tableau (ou clic droit sur les données du projet dans
+l'explorateur) : les colonnes d'un autre tableau ajoutées aux observations par une clé, comme on
+le ferait dans un tableur : l'habitat et l'altitude de chaque site d'un tableau des sites, la
+météo de chaque année, ou de chaque site et de chaque année. Le tableau : un fichier dans tout
+format que lit Fichier › Ouvrir (avec sa feuille ou son tableau pour un classeur ou un fichier
+R ; un projet Nuée donne ses données), ou des cellules copiées dans un tableur (Coller des
+cellules).
+La clé : une ou plusieurs colonnes du projet (des variables, des identifiants ou le nom des
+observations), chacune à côté de la colonne du tableau qui lui répond. L'application propose
+des colonnes de même nom (sans tenir compte des majuscules ni des espaces autour, comme Prédire
+un fichier) : celles avec lesquelles chaque clé ne vient qu'une fois dans le tableau et le plus
+d'observations trouvent la leur, parmi les premières colonnes du tableau, le moins possible : le
+site pour un tableau des sites, le site et l'année pour la météo par site et par année ; les
+changer au besoin. Chaque clé ne doit venir qu'une fois dans le tableau : une clé qui revient
+est refusée, en la nommant, plutôt que de prendre l'une de ses lignes au hasard.
+Les clés se comparent en nombres quand la colonne du projet est une variable quantitative :
+2019 et 2019,0 sont la même année (les valeurs du tableau lues en nombres comme les lit
+Fichier › Ouvrir). Sinon, elles se comparent en texte, tel qu'écrit dans le tableau et dans le
+projet, sans les espaces autour, les majuscules comptant : « S1 » n'est pas « s1 », ni « 01 »
+« 1 » (une colonne de clé faite de « 01 », « 02 » n'est pas lue ici en nombres) ; un nombre du
+tableau s'écrit alors comme R l'écrit (2019). Une clé dont une partie manque ne répond à rien.
+Les colonnes à ajouter : toutes celles du tableau sauf la clé, cochées par défaut. Une colonne
+de nombres donne une variable quantitative ; du texte, un facteur R ou une variable étiquetée
+de SPSS ou Stata, une variable qualitative (les catégories d'un facteur dans leur ordre, sinon
+les textes triés), comme à l'ouverture d'un tableau. Un nom déjà pris dans le projet, par une
+variable ou un identifiant, devient « nom (2) », « nom (3) »... : rien n'est écrasé.
+Chaque observation prend les valeurs de la ligne du tableau qui a sa clé, et les observations
+gardent leur ordre : comme k <- match(clé du projet, clé du tableau), puis tableau[k, colonnes]
+(merge() rangerait les lignes autrement). Une observation sans ligne qui lui réponde a des
+valeurs manquantes. Le résultat dit ce qui a été ajouté et compte les observations sans
+correspondance et les clés du tableau qui ne répondent à aucune observation, en nommant les
+cinq premières de chacune ; les lignes du tableau sans clé sont comptées aussi. Si aucune
+observation ne trouve sa clé, rien n'est ajouté, et le message montre des clés de chaque côté.
+Édition › Annuler (Ctrl+Z) retire les colonnes ajoutées ; les modèles déjà ajustés ne changent
+pas. Les « Actions de l'application » de la console R montrent l'appel, et le même calcul écrit
+avec match() sur le tableau des données du projet.
+
+Résumer par groupe
+------------------
+Édition › Résumer par groupe (ou clic droit sur les données du projet) : un nouveau projet d'une
+ligne par groupe, à côté du projet, qui ne change pas : la densité moyenne de chaque secteur et
+de chaque année d'après plusieurs placettes, avant BACI ou les séries. Les groupes : une ou
+plusieurs variables ou identifiants (le secteur et l'année ; le site, le secteur et l'année).
+Chaque groupe devient une observation nommée par ses valeurs (« S1 2019 ») ; les groupes
+viennent dans l'ordre de ces colonnes (les catégories d'une variable qualitative dans leur
+ordre, les nombres dans le leur), et ces colonnes restent des variables ou des identifiants,
+comme dans le projet. Une observation sans valeur dans l'une d'elles est laissée de côté, et
+comptée.
+Les variables quantitatives à résumer (toutes sauf celles des groupes, cochées par défaut) et
+les statistiques, une ou plusieurs, pour chacune d'elles : moyenne (par défaut), somme,
+médiane, minimum, maximum, écart-type (n − 1, comme le calcule sd()), nombre de valeurs (n), en
+colonnes « densite (moyenne) », « densite (n) »... (nommées dans la langue de l'interface). Les
+valeurs manquantes sont ignorées et n compte les valeurs connues ; un groupe sans valeur connue
+a des statistiques manquantes, et n = 0. Comme aggregate(d[variables], d[groupes], FUN) sur le
+tableau des données du projet : les « Actions de l'application » de la console R le montrent
+avec l'appel.
+Une variable qualitative ou un identifiant dont les valeurs connues sont les mêmes dans chaque
+groupe (l'habitat d'un secteur, le site d'un secteur) est gardé, avec cette valeur ; les autres
+sont laissés de côté, et la barre d'état les nomme. Le nouveau projet n'a pas encore de
+fichier : l'enregistrer (Ctrl+S).
+
 Modifier les données, créer des variables
 -----------------------------------------
 Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour

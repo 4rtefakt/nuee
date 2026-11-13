@@ -699,6 +699,77 @@ importer_spectres_demande <- function(q) {
   r
 }
 
+# Le tableau d'un fichier dont on ajoute des colonnes au projet (Édition › Ajouter des colonnes d'un
+# tableau), dans tout format que lit Fichier › Ouvrir : un tableau (formats.R : lire_tableau ;
+# `textes` : les colonnes de la clé, lues telles qu'écrites), ou les données d'un projet (.nuee,
+# .json, .usp ; formats.R : tableau_projet).
+tableau_a_joindre <- function(chemin, table = NULL, textes = NULL) {
+  switch(extension(chemin),
+         nuee = , json = tableau_projet(lire_projet(chemin)),
+         usp = tableau_projet(lire_projet(convertir_usp(chemin))),
+         lire_tableau(chemin, table, textes = textes))
+}
+
+# Ajouter des colonnes d'un tableau, avant d'ajouter : le tableau d'un fichier (q$chemin ; q$table,
+# sa feuille ou son tableau, le premier sinon) ou des cellules collées (q$texte), gardées dans un
+# fichier de la session comme Coller un tableau ; ses tableaux, ses colonnes (des nombres ou non,
+# et le nom qu'elles prendraient dans le projet : variables.R, nom_libre) et les clés proposées
+# (variables.R : proposer_cles).
+table_a_joindre_demande <- function(q) {
+  p <- projet(q$projet)
+  chemin <- as.character(q$chemin %||% "")
+  colle <- !is.null(q$texte)
+  if (colle) {
+    texte <- as.character(q$texte)
+    if (!grepl("[\t;,]", texte) || !grepl("\n.", texte)) stop(traduire("Le presse-papiers ne contient pas de tableau (au moins deux lignes et deux colonnes)", "The clipboard holds no table (at least two rows and two columns)"))
+    chemin <- chemin_temporaire("tableau colle.tsv")
+    writeLines(enc2utf8(texte), chemin, useBytes = TRUE)
+  }
+  ext <- extension(chemin)
+  if (!ext %in% c("nuee", "json", "usp", FORMATS_LECTURE)) stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext)
+  tables <- if (ext %in% FORMATS_LECTURE) tables_fichier(chemin)
+  table <- if (length(tables) > 1) as.character(q$table %||% tables[1])
+  df <- tableau_a_joindre(chemin, table)
+  pris <- c(as.character(p$noms_var), as.character(p$observation_id_names %||% character(0)))
+  noms <- character(0)
+  for (n in names(df)) noms <- c(noms, nom_libre(n, c(pris, noms)))
+  list(chemin = chemin, nom = if (colle) traduire("cellules collées", "pasted cells") else basename(chemin), colle = colle,
+       tables = if (length(tables) > 1) I(tables), table = table, n = nrow(df),
+       colonnes = list(nom = I(names(df)), nombres = I(unname(vapply(df, is.numeric, TRUE))), nom_ajoute = I(noms)),
+       cles = proposer_cles(p, df))
+}
+
+# Les colonnes d'un tableau ajoutées au projet par une clé (variables.R : ajouter_colonnes_table), le
+# tableau relu avec les colonnes de la clé telles qu'écrites ; comme une Nouvelle variable, Ctrl+Z
+# les retire. q$nom : le nom du tableau, pour Annuler.
+ajouter_colonnes_demande <- function(q) {
+  p <- projet(q$projet)
+  cles_table <- as.character(unlist(q$cles_table))
+  tableau <- tableau_a_joindre(q$chemin, q$table, textes = cles_table)
+  n <- ajouter_colonnes_table(p, tableau, as.character(unlist(q$cles_projet)), cles_table, if (!is.null(q$colonnes)) as.character(unlist(q$colonnes)))
+  memoriser(p, sprintf(traduire("colonnes de %s", "columns from %s"), q$nom %||% basename(q$chemin)))
+  info <- attr(n, "jointure")
+  attr(n, "jointure") <- NULL
+  n$modifie <- TRUE
+  etat$projets[[p$id]] <- n
+  reviser(p$id)
+  c(resume_projet(n), list(jointure = info))
+}
+
+# Résumer par groupe : un nouveau projet, une ligne par groupe (nouveau.R : resumer_par_groupe), sans
+# fichier, à enregistrer comme un tableau collé.
+resumer_groupes_demande <- function(q) {
+  p <- resumer_par_groupe(projet(q$projet), as.character(unlist(q$groupes)),
+                          variables = if (!is.null(q$variables)) as.numeric(unlist(q$variables)), statistiques = as.character(unlist(q$statistiques %||% "moyenne")))
+  info <- attr(p, "resume")
+  attr(p, "resume") <- NULL
+  p$id <- nouvel_id("P")
+  p$nom <- p$source
+  p$modifie <- TRUE
+  etat$projets[[p$id]] <- p
+  c(resume_projet(p), list(resume = info))
+}
+
 # ---------------------------------------------------------------- HTTP
 
 # Tout ce qui est ouvert : pour une nouvelle fenêtre de l'application.
@@ -951,6 +1022,11 @@ DEMANDES <- list(
   },
   classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),
     sprintf("variable %s", q$nom)),
+  # Édition › Ajouter des colonnes d'un tableau : le tableau et les clés proposées, puis l'ajout
+  table_a_joindre = table_a_joindre_demande,
+  ajouter_colonnes = ajouter_colonnes_demande,
+  # Édition › Résumer par groupe : un nouveau projet
+  resumer_groupes = resumer_groupes_demande,
   annuler = annuler_demande,
   # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur prétraitement.
   spectres = function(q) {

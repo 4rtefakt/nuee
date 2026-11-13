@@ -297,5 +297,9 @@ body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed
 /* the condition that keeps a model's observations (New model › Observations) */
 .condition-obs { padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px solid var(--grille); }
 .condition-obs .note { margin: 0; }
-/* imputation by PCA (New variable): the variables, ticked */
+/* imputation by PCA (New variable): the variables, ticked; also the columns of Add columns from a table and Summarize by group */
 .liste-imputation { max-height: 14em; overflow: auto; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--bord); border-radius: 4px; padding: 4px 6px; margin-top: 4px; }
+/* Add columns from a table: a key's two columns side by side; Summarize by group: the statistics */
+.dialogue-colonnes .grille-champs, .dialogue-resume .grille-champs { grid-template-columns: max-content minmax(0, 460px); }
+.dialogue-colonnes .ligne select { max-width: 13em; }
+.statistiques-groupe { display: flex; flex-wrap: wrap; gap: 4px 14px; }

@@ -610,3 +610,203 @@ classes_valeurs <- function(projet, nom, variable, bornes = NULL, n = NULL) {
   classe <- cut(x, c(-Inf, bornes, Inf), labels = FALSE, right = TRUE)
   ajouter_colonne(projet, nom, obs, classe, categories = etiquettes)
 }
+
+# ---------------------------------------------------------------- colonnes d'un autre tableau
+
+# Le premier nom libre : `nom`, sinon « nom (2) », « nom (3) »… (`pris` : les noms déjà portés).
+nom_libre <- function(nom, pris) {
+  libre <- nom
+  k <- 1
+  while (libre %in% pris) {
+    k <- k + 1
+    libre <- sprintf("%s (%d)", nom, k)
+  }
+  libre
+}
+
+# Une colonne du projet : une variable (son numéro) ou un identifiant des observations ("id:k",
+# "id:1" étant leur nom). Renvoie son nom, si ce sont des nombres (une variable quantitative), ses
+# valeurs pour les observations `obs` (le nom de la catégorie pour une variable qualitative ; un
+# identifiant sans les espaces autour, NA s'il est vide), ses catégories et, pour un identifiant,
+# son rang k.
+colonne_ou_identifiant <- function(projet, x, obs) {
+  x <- as.character(x)[1]
+  if (startsWith(x, "id:")) {
+    noms <- as.character(projet$observation_id_names %||% character(0))
+    k <- suppressWarnings(as.integer(substring(x, 4)))
+    if (is.na(k) || k < 1 || (k > 1 && k > length(noms))) stop(traduire("Identifiant inconnu : ", "Unknown identifier: "), x, call. = FALSE)
+    v <- trimws(if (k == 1) unname(projet$noms_obs[as.character(obs)]) else identifiants_observations(projet, k, obs))
+    v[!is.na(v) & !nzchar(v)] <- NA
+    # (sans nom dans le fichier, celui des observations est « Observation », comme dans tableau_projet)
+    nom <- if (k > length(noms) || !nzchar(noms[k]) || (k == 1 && startsWith(noms[1], "$"))) "Observation" else noms[k]
+    return(list(nom = nom, rang = k, nombres = FALSE, valeurs = v, categories = NULL))
+  }
+  v <- variable_du_projet(projet, as.numeric(x))
+  cats <- as.character(v$categories %||% character(0))
+  valeurs <- unname(colonne(projet, v$uid, obs))
+  list(nom = as.character(v$ids[1]), rang = NA_integer_, nombres = !length(cats),
+       valeurs = if (length(cats)) cats[valeurs] else valeurs, categories = if (length(cats)) cats)
+}
+
+# Les valeurs d'une colonne de clé telles qu'elles se comparent (ajouter_colonnes_table) : en
+# nombres quand `nombres` (le texte lu comme à l'ouverture d'un tableau : 2019, « 2019 » et
+# « 2019,0 » sont la même année), écrits à 15 chiffres significatifs ; sinon le texte tel qu'écrit,
+# sans les espaces autour, un nombre écrit comme R l'écrit (2019). NA pour une valeur manquante,
+# vide ou « NA ».
+cle_comparee <- function(x, nombres) {
+  if (is.factor(x) || is.logical(x)) x <- as.character(x)
+  ecrire <- function(n) ifelse(is.finite(n), sprintf("%.15g", n + 0), NA_character_)  # (+ 0 : -0 s'écrit 0)
+  if (nombres) return(ecrire(if (is.numeric(x)) as.numeric(x) else lire_nombres(trimws(as.character(x)))))
+  t <- if (is.numeric(x)) ecrire(as.numeric(x)) else trimws(as.character(x))
+  t[!is.na(t) & t %in% c("", "NA")] <- NA
+  t
+}
+
+# La clé de chaque ligne, faite de ses parties (une par colonne de la clé) ; NA quand l'une manque.
+cle_composee <- function(parties) {
+  k <- do.call(paste, c(parties, sep = "\r"))
+  k[Reduce(`|`, lapply(parties, is.na))] <- NA
+  k
+}
+
+# Les paires de clés proposées pour joindre `tableau` au projet (Édition › Ajouter des colonnes d'un
+# tableau) : les colonnes du tableau qui portent le nom d'une colonne du projet (nom_comparable,
+# comme Prédire un fichier : sans tenir compte des majuscules ni des espaces autour), une variable
+# avant un identifiant du même nom ; parmi leurs combinaisons (les six premières colonnes), une
+# dont aucune clé ne revient dans le tableau, celle où le plus d'observations trouvent leur clé,
+# puis celle qui commence le plus tôt dans le tableau (les clés y viennent d'habitude en premier),
+# puis la plus petite : le site seul pour un tableau des sites, le site et l'année pour la météo
+# de chaque site et de chaque année, même si une colonne de mesures du tableau porte le nom d'une
+# variable du projet (ses valeurs, différentes, n'y répondent pas ; ou les mêmes, quand le tableau
+# a déjà été joint, mais plus loin dans le tableau). Une liste de list(projet = numéro de variable
+# ou "id:k", table = nom de colonne) ; vide sans nom commun.
+proposer_cles <- function(projet, tableau) {
+  obs <- numeros_observations(projet)
+  noms_id <- as.character(projet$observation_id_names %||% character(0))
+  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  # (les identifiants qui ont des valeurs, sans ceux des fichiers .usp, $ClassID...)
+  rangs <- Filter(function(k) k == 1 || (nzchar(noms_id[k]) && !startsWith(noms_id[k], "$") &&
+                                           any(!is.na(colonne_ou_identifiant(projet, sprintf("id:%d", k), obs)$valeurs))),
+                  seq_len(max(1, length(noms_id))))
+  colonnes <- c(lapply(vars, function(v) list(projet = as.numeric(v$uid), nom = as.character(v$ids[1]))),
+                lapply(rangs, function(k) list(projet = sprintf("id:%d", k), nom = colonne_ou_identifiant(projet, sprintf("id:%d", k), obs[1])$nom)))
+  paires <- list()
+  for (n in names(tableau)) {
+    c <- Find(function(c) identical(nom_comparable(c$nom), nom_comparable(n)), colonnes)
+    if (is.null(c) || any(vapply(paires, function(p) identical(p$projet, c$projet), TRUE))) next
+    v <- colonne_ou_identifiant(projet, c$projet, obs)
+    paires <- c(paires, list(list(projet = c$projet, table = n, ici = cle_comparee(v$valeurs, v$nombres), la = cle_comparee(tableau[[n]], v$nombres))))
+  }
+  if (length(paires) <= 1) return(lapply(paires, function(p) p[c("projet", "table")]))
+  combinaisons <- unlist(lapply(seq_len(min(length(paires), 6)), function(taille) utils::combn(min(length(paires), 6), taille, simplify = FALSE)), recursive = FALSE)
+  # (pour chacune : aucune clé qui revient dans le tableau, et combien d'observations trouvent la leur)
+  essais <- vapply(combinaisons, function(i) {
+    la <- cle_composee(lapply(paires[i], `[[`, "la"))
+    c(!anyDuplicated(la, incomparables = NA), sum(!is.na(match(cle_composee(lapply(paires[i], `[[`, "ici")), la, incomparables = NA))))
+  }, c(0, 0))
+  meilleure <- order(-essais[1, ], -essais[2, ], vapply(combinaisons, min, 0), lengths(combinaisons))[1]
+  lapply(paires[combinaisons[[meilleure]]], function(p) p[c("projet", "table")])
+}
+
+# Des colonnes d'un autre tableau ajoutées aux observations du projet par une clé (Édition ›
+# Ajouter des colonnes d'un tableau) : l'habitat et l'altitude de chaque site d'un tableau des
+# sites, la météo de chaque année. `tableau` : un data.frame, comme lire_tableau() le lit (ses
+# colonnes de clé, `textes`, telles qu'écrites) ; `cles_projet` : les colonnes du projet qui font
+# la clé (des numéros de variables, ou "id:k" pour un identifiant des observations, "id:1" leur
+# nom), et `cles_table` celles du tableau qui leur répondent, dans le même ordre (le site ; le site
+# et l'année). Les clés se comparent en nombres quand la colonne du projet est une variable
+# quantitative (2019 et 2019,0 sont la même année), sinon en texte, tel qu'écrit, sans les espaces
+# autour, les majuscules comptant (S1 n'est pas s1, ni 01 1) : cle_comparee. Une clé ne doit venir
+# qu'une fois au plus dans le tableau : celle qui revient est refusée, nommée. Comme
+# k <- match(clé du projet, clé du tableau), puis tableau[k, colonnes] : chaque observation prend
+# les valeurs de la ligne du tableau qui a sa clé, et les observations gardent leur ordre (merge()
+# les rangerait autrement) ; sans ligne qui lui réponde, ses valeurs manquent. Si aucune
+# observation ne trouve sa clé, rien n'est ajouté : l'erreur montre des clés de chaque côté.
+# `colonnes` : celles à ajouter (par défaut toutes les autres que la clé) ; des nombres donnent une
+# variable quantitative, le reste (texte, facteur, valeurs logiques) une variable qualitative,
+# comme à l'ouverture d'un tableau (ses catégories : celles d'un facteur, dans leur ordre, ou les
+# textes triés) ; un nom déjà pris dans le projet, par une variable ou un identifiant, devient
+# « nom (2) », « nom (3) »… Les modèles déjà ajustés ne changent pas. Renvoie le projet ;
+# attr(, "jointure") : les colonnes ajoutées et leurs noms, le nombre d'observations qui ont trouvé
+# leur clé, celles qui n'en ont pas et les clés du tableau qui ne répondent à aucune observation
+# (leur nombre ; les premières dans les phrases), les lignes du tableau sans clé, et les phrases
+# qui le disent.
+ajouter_colonnes_table <- function(projet, tableau, cles_projet, cles_table, colonnes = NULL) {
+  tableau <- as.data.frame(tableau, stringsAsFactors = FALSE)
+  cles_projet <- as.character(cles_projet)
+  cles_table <- as.character(cles_table)
+  if (!length(cles_table) || length(cles_projet) != length(cles_table)) {
+    stop(traduire("Chaque colonne de la clé doit avoir sa colonne dans le projet et dans le tableau", "Each key column needs its column in the project and in the table"), call. = FALSE)
+  }
+  absentes <- setdiff(c(cles_table, colonnes), names(tableau))
+  if (length(absentes)) stop(sprintf(traduire("Le tableau n'a pas de colonne « %s »", "The table has no column “%s”"), absentes[1]), call. = FALSE)
+  if (anyDuplicated(cles_table) || anyDuplicated(cles_projet)) {
+    stop(traduire("Une colonne ne vient qu'une fois dans la clé", "A column comes only once in the key"), call. = FALSE)
+  }
+  colonnes <- if (is.null(colonnes)) setdiff(names(tableau), cles_table) else unique(as.character(colonnes))
+  if (any(colonnes %in% cles_table)) stop(traduire("Une colonne de la clé ne s'ajoute pas au projet", "A key column isn't added to the project"), call. = FALSE)
+  if (!length(colonnes)) stop(traduire("Choisir au moins une colonne à ajouter", "Choose at least one column to add"), call. = FALSE)
+  obs <- numeros_observations(projet)
+  cp <- lapply(cles_projet, function(x) colonne_ou_identifiant(projet, x, obs))
+  ici <- cle_composee(lapply(cp, function(v) cle_comparee(v$valeurs, v$nombres)))
+  la <- cle_composee(lapply(seq_along(cp), function(j) cle_comparee(tableau[[cles_table[j]]], cp[[j]]$nombres)))
+  # une clé écrite pour les phrases : « S1 », ou « S1 / 2019 » pour plusieurs colonnes, alors
+  # nommées à côté : « (site / annee) »
+  texte_cle <- function(k) paste(strsplit(k, "\r", fixed = TRUE)[[1]], collapse = " / ")
+  colonnes_cle <- if (length(cles_table) > 1) sprintf(" (%s)", paste(cles_table, collapse = " / ")) else ""
+  # les cinq premiers, et combien d'autres
+  liste <- function(v) paste0(paste(utils::head(v, 5), collapse = ", "), if (length(v) > 5) sprintf(traduire(" et %d autre(s)", " and %d other(s)"), length(v) - 5))
+  doubles <- unique(la[duplicated(la, incomparables = NA)])
+  if (length(doubles)) {
+    stop(sprintf(traduire("La clé « %s »%s revient %d fois dans le tableau%s : chaque clé doit y venir une fois au plus (ajouter à la clé la colonne qui distingue ces lignes, l'année par exemple)",
+                          "The key “%s”%s comes %d times in the table%s: each key must come at most once (add to the key the column that tells these rows apart, the year for instance)"),
+                 texte_cle(doubles[1]), colonnes_cle, sum(la == doubles[1], na.rm = TRUE),
+                 if (length(doubles) > 1) sprintf(traduire(", comme %d autre(s)", ", as do %d other(s)"), length(doubles) - 1) else ""), call. = FALSE)
+  }
+  i <- match(ici, la, incomparables = NA)
+  if (all(is.na(i))) {
+    exemples <- function(k) liste(vapply(ordre_cles(unique(k[!is.na(k)])), texte_cle, ""))
+    stop(sprintf(traduire("Aucune observation ne trouve sa clé%s dans le tableau : rien n'est ajouté. Les clés se comparent telles qu'écrites (S1 n'est pas s1, ni 01 1) ; le projet a %s, le tableau %s.",
+                          "No observation finds its key%s in the table: nothing was added. Keys are compared as written (S1 isn't s1, nor 01 1); the project has %s, the table %s."),
+                 colonnes_cle, exemples(ici), exemples(la)), call. = FALSE)
+  }
+  pris <- c(as.character(projet$noms_var), as.character(projet$observation_id_names %||% character(0)))
+  noms <- character(0)
+  for (col in colonnes) {
+    nom <- nom_libre(col, pris)
+    pris <- c(pris, nom)
+    noms <- c(noms, nom)
+    x <- tableau[[col]][i]
+    if (is.numeric(x)) {
+      projet <- ajouter_colonne(projet, nom, obs, ifelse(is.finite(x), x, NA))
+      next
+    }
+    if (is.factor(x)) {
+      cats <- levels(droplevels(x))
+      x <- as.character(x)
+    } else {
+      x <- trimws(as.character(x))
+      x[x %in% c("", "NA")] <- NA
+      cats <- sort(unique(stats::na.omit(x)))
+    }
+    projet <- ajouter_colonne(projet, nom, obs, match(x, cats), categories = cats)
+  }
+  sans <- which(is.na(i))
+  seules <- setdiff(which(!is.na(la)), i)
+  sans_cle <- sum(is.na(la))
+  renommees <- colonnes != noms
+  phrases <- c(
+    if (length(noms) == 1) sprintf(traduire("1 colonne ajoutée au projet : %s.", "1 column added to the project: %s."), noms)
+    else sprintf(traduire("%d colonnes ajoutées au projet : %s.", "%d columns added to the project: %s."), length(noms), paste(noms, collapse = ", ")),
+    if (any(renommees)) sprintf(traduire("Noms déjà pris dans le projet : %s.", "Names already taken in the project: %s."),
+                                paste(sprintf(traduire("« %s » ajoutée sous le nom « %s »", "“%s” added as “%s”"), colonnes[renommees], noms[renommees]), collapse = ", ")),
+    sprintf(traduire("%d observation(s) sur %d ont trouvé leur clé dans le tableau.", "%d of the %d observations found their key in the table."), sum(!is.na(i)), length(obs)),
+    if (length(sans)) sprintf(traduire("%d observation(s) sans correspondance, aux valeurs manquantes : %s.", "%d observation(s) without a match, their values missing: %s."),
+                              length(sans), liste(unname(projet$noms_obs[as.character(obs[sans])]))),
+    if (length(seules)) sprintf(traduire("%d clé(s) du tableau%s ne répondent à aucune observation : %s.", "%d key(s) of the table%s match no observation: %s."),
+                                length(seules), colonnes_cle, liste(vapply(la[seules], texte_cle, ""))),
+    if (sans_cle) sprintf(traduire("%d ligne(s) du tableau sans clé, laissée(s) de côté.", "%d row(s) of the table without a key, left out."), sans_cle))
+  attr(projet, "jointure") <- list(colonnes = colonnes, noms = noms, n = length(obs), trouvees = sum(!is.na(i)),
+                                   sans_correspondance = length(sans), cles_seules = length(seules), sans_cle = sans_cle, phrases = phrases)
+  projet
+}

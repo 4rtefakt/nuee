@@ -818,6 +818,58 @@ async function principal() {
       const r = await api('coller', { texte: 'nom\tx\ty\r\na\t1,5\t2\r\nb\t3\t4,25\r\nc\t5\t1\r\n', nom: 'Collé' });
       verifier(r.nom === 'Collé' && r.modifie && r.variables.length === 2 && r.observations.nom[2] === 'c', `${r.variables.length} variables`);
     });
+    await etape('ajouter des colonnes d’un tableau par une clé (une, puis deux), annuler ; résumer par groupe', async () => {
+      // deux placettes par site et par année, de 2019 à 2021, sur les sites S1 à S3 ; densité = année − 2018 + placette
+      const lignes = [];
+      for (const s of ['S1', 'S2', 'S3']) for (const an of [2019, 2020, 2021]) for (const pl of [1, 2]) lignes.push([`${s}-${an}-${pl}`, s, an, an - 2018 + pl]);
+      const q = await api('coller', { texte: ['nom\tsite\tannee\tdensite', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Placettes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      // a table of sites in a file (S4 matches no row, S3 has no row): its columns and the key proposed by name
+      const f = path.join(dossier, 'sites.csv');
+      fs.writeFileSync(f, 'Site;altitude;sol\nS2;200;argile\nS1;100;sable\nS4;400;limon\n');
+      const t = await api('table_a_joindre', { projet: q.id, chemin: f });
+      verifier(t.n === 3 && t.colonnes.nom.join() === 'Site,altitude,sol' && t.colonnes.nombres.join() === 'false,true,false'
+        && t.cles.length === 1 && t.cles[0].projet === v.site && t.cles[0].table === 'Site', `tableau lu : ${JSON.stringify(t)}`);
+      const avant = q.revision;
+      const r = await api('ajouter_colonnes', { projet: q.id, chemin: t.chemin, nom: t.nom, cles_projet: [v.site], cles_table: ['Site'], colonnes: ['altitude', 'sol'] });
+      const d = await api('donnees', { projet: q.id });
+      const alt = { S1: 100, S2: 200 };
+      verifier(r.variables.length === 5 && r.revision === avant + 1 && r.annulable === 'colonnes de sites.csv'
+        && d.valeurs[d.variables.indexOf('altitude')].every((x, i) => x === (alt[lignes[i][1]] ?? null))
+        && r.jointure.trouvees === 12 && r.jointure.sans_correspondance === 6 && r.jointure.cles_seules === 1
+        && [].concat(r.jointure.phrases)[2] === '6 observation(s) sans correspondance, aux valeurs manquantes : S3-2019-1, S3-2019-2, S3-2020-1, S3-2020-2, S3-2021-1 et 1 autre(s).',
+      `colonnes ajoutées : ${JSON.stringify(r.jointure)}`);
+      // pasted weather by site and year: two keys, proposed; a name already taken gets " (2)"
+      const c = await api('table_a_joindre', { projet: q.id, texte: 'site\tannee\tpluie\taltitude\r\nS1\t2019\t600\t1\r\nS1\t2020\t700\t2\r\nS2\t2019\t650\t3\r\n' });
+      verifier(c.colle && c.cles.map((x) => `${x.projet}=${x.table}`).join() === `${v.site}=site,${v.annee}=annee` && c.colonnes.nom_ajoute.join() === 'site (2),annee (2),pluie,altitude (2)',
+        `cellules collées : ${JSON.stringify(c)}`);
+      const r2 = await api('ajouter_colonnes', { projet: q.id, chemin: c.chemin, nom: c.nom, colle: true, cles_projet: [v.site, v.annee], cles_table: ['site', 'annee'], colonnes: ['pluie', 'altitude'] });
+      const d2 = await api('donnees', { projet: q.id });
+      const pluie = { 'S1 2019': 600, 'S1 2020': 700, 'S2 2019': 650 };
+      verifier([].concat(r2.jointure.noms).join() === 'pluie,altitude (2)' && d2.valeurs[d2.variables.indexOf('pluie')].every((x, i) => x === (pluie[`${lignes[i][1]} ${lignes[i][2]}`] ?? null)),
+        `deux clés : ${JSON.stringify(r2.jointure)}`);
+      let refus = '';
+      try { await api('ajouter_colonnes', { projet: q.id, chemin: c.chemin, cles_projet: [v.site], cles_table: ['site'], colonnes: ['pluie'] }); } catch (e) { refus = e.message; }
+      verifier(/La clé « S1 » revient 2 fois dans le tableau/.test(refus) && (await api('projet', { projet: q.id })).revision === avant + 2, `une clé qui revient : « ${refus} »`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${q.id} <- ajouter_colonnes_table(${q.id}, tableau, cles_projet = c(${v.site}, ${v.annee}), cles_table = c("site", "annee"), colonnes = c("pluie", "altitude"))`)
+        && j.includes('k <- match(paste(trimws(d$site), d$annee), paste(trimws(tableau$site), tableau$annee))') && j.includes('textes = c("site", "annee"))  # cellules collées'),
+      'journal : ajouter_colonnes_table et match()');
+      // Ctrl+Z, twice: the columns leave the project
+      await api('annuler', { projet: q.id });
+      const u = (await api('annuler', { projet: q.id })).projet;
+      verifier(u.variables.map((x) => x.nom).join() === 'site,annee,densite' && !u.annulable, `annuler : ${u.variables.map((x) => x.nom).join()}`);
+      // summarize by site: the mean and n of each site, a new project beside the first
+      const s = await api('resumer_groupes', { projet: q.id, groupes: [v.site], variables: [v.densite], statistiques: ['moyenne', 'n'] });
+      const ds = await api('donnees', { projet: s.id });
+      const moyenne = (site) => { const x = lignes.filter((l) => l[1] === site).map((l) => l[3]); return x.reduce((a, b) => a + b, 0) / x.length; };
+      verifier(s.id !== q.id && s.nom === 'Placettes par site' && s.modifie && ds.observations.join() === 'S1,S2,S3'
+        && ds.variables.join() === 'site,densite (moyenne),densite (n)' && ds.valeurs[1].every((x, i) => Math.abs(x - moyenne(['S1', 'S2', 'S3'][i])) < 1e-12)
+        && ds.valeurs[2].every((x) => x === 6) && s.resume.groupes === 3, `résumé : ${JSON.stringify(ds)}`);
+      const js = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(js.includes(`${s.id} <- resumer_par_groupe(${q.id}, ${v.site}, variables = ${v.densite}, statistiques = c("moyenne", "n"))`)
+        && js.includes('aggregate(d["densite"], d["site"], function(x) c(moyenne = mean(x, na.rm = TRUE), n = sum(!is.na(x))))'), 'journal : resumer_par_groupe et aggregate()');
+    });
     await etape('importer des spectres (texte et JCAMP-DX), avec un tableau d’informations', async () => {
       const onde = Array.from({ length: 30 }, (_, k) => 1000 + 4 * k);
       const chemins = [];

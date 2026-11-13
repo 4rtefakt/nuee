@@ -828,6 +828,63 @@ For all three: Methods text with its references, Export, PDF or Word report, Exp
 cluster, which come with R). Compare models shows a regression tree's Q2 and RMSEcv beside
 the other models.
 
+Adding columns from another table
+---------------------------------
+Edit › Add columns from a table (or right-click on the project's data in the explorer): the
+columns of another table added to the observations by a key, as one would do in a spreadsheet:
+the habitat and altitude of each site from a table of sites, the weather of each year, or of
+each site and each year. The table: a file in any format File › Open reads (with its sheet or
+table for a workbook or an R file; a Nuée project gives its data), or cells copied from a
+spreadsheet (Paste cells).
+The key: one or more columns of the project (variables, IDs or the observation names), each
+beside the matching column of the table. The application proposes columns with the same names
+(ignoring capitals and the spaces at the ends, as Predict a file does): those with which each
+key comes once in the table and the most observations find theirs, from the table's first
+columns, as few as possible: the site for a table of sites, the site and the year for weather
+by site and year; change them as needed. Each key must come only once in the table: a key that
+comes twice is refused, named, rather than one of its rows taken at random.
+Keys are compared as numbers when the project's column is a quantitative variable: 2019 and
+2019.0 are the same year (the table's values read as numbers, as File › Open reads them).
+Otherwise they are compared as text, as written in the table and in the project, without the
+spaces at the ends, capitals counting: "S1" isn't "s1", nor "01" "1" (a key column of "01",
+"02" isn't read as numbers here); a number of the table is then written as R writes it (2019).
+A key with a missing part matches nothing.
+Columns to add: every column of the table but the key, ticked by default. A column of numbers
+gives a quantitative variable; text, an R factor or a labelled SPSS or Stata variable gives a
+qualitative one (a factor's categories in their order, otherwise the texts sorted), as when a
+table is opened. A name already taken in the project, by a variable or an ID, becomes
+"name (2)", "name (3)"...: nothing is overwritten.
+Each observation takes the values of the table's row that has its key, and the observations
+keep their order: as k <- match(key of the project, key of the table), then table[k, columns]
+(merge() would sort the rows). An observation with no such row gets missing values. The result
+says what was added and counts the observations without a match and the table's keys that
+match no observation, naming the first five of each; rows of the table without a key are
+counted too. If no observation finds its key, nothing is added, and the message shows keys of
+both sides. Edit › Undo (Ctrl+Z) removes the added columns; models already fitted don't
+change. The R console's "Application actions" shows the call, and the same computation written
+with match() on the project's data table.
+
+Summarizing by group
+--------------------
+Edit › Summarize by group (or right-click on the project's data): a new project with one row per
+group, beside the project, which doesn't change: the mean density of each sector and each year
+from several plots, before BACI or Series. The groups: one or more variables or IDs (the
+sector and the year; the site, the sector and the year). Each group becomes an observation
+named from its values ("S1 2019"); the groups come in the order of these columns (a
+qualitative variable's categories in their order, numbers in theirs), and the columns stay
+variables or IDs, as in the project. An observation without a value in one of them is left
+out, and counted.
+The quantitative variables to summarize (all but those of the groups, ticked by default) and
+the statistics, one or several, for each of them: mean (by default), sum, median, minimum,
+maximum, standard deviation (n − 1, as sd() computes it), number of values (n), in columns
+"density (mean)", "density (n)"... (named in the interface's language). Missing values are
+ignored and n counts the known values; a group with no known value has missing statistics, and
+n = 0. As aggregate(d[variables], d[groups], FUN) on the project's data table: the R console's
+"Application actions" shows it with the call.
+A qualitative variable or an ID whose known values are the same within every group (the habitat
+of a sector, the site of a sector) is kept, with that value; the others are left out, and the
+status bar names them. The new project has no file yet: save it (Ctrl+S).
+
 Editing the data, making variables
 ----------------------------------
 In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; empty =
