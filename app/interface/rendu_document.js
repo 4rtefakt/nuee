@@ -630,5 +630,8 @@ export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue
   tete = fixerEntete(tete, 'lang', langue, true);
   if (bibliographie) tete = fixerEntete(tete, 'bibliography', bibliographie);
   if (csl) tete = fixerEntete(tete, 'csl', csl);
+  // (citeproc for every format: Quarto's PDF through Typst would use Typst's own, in another
+  // style, with a heading of its own and the LaTeX of the titles left as it is)
+  if (bibliographie) tete = fixerEntete(tete, 'citeproc', 'true', true);
   return { texte: tete + sortie, erreurs };
 }

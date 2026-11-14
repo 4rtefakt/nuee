@@ -18,6 +18,8 @@ egal('accents, lettres, tirets, accolades', decoderLatex(String.raw`{\'E}cologie
 egal('italique gardé (noms d’espèces)', decoderLatex(String.raw`Survie de \textit{Perdix perdix} et {\it Alectoris rufa}`),
   `Survie de ${DEBUT_ITALIQUE}Perdix perdix${FIN_ITALIQUE} et ${DEBUT_ITALIQUE}Alectoris rufa${FIN_ITALIQUE}`);
 egal('symboles échappés', decoderLatex(String.raw`R\&D, 50\% de \$, a\_b`), 'R&D, 50% de $, a_b');
+egal('l’espace dans l’argument d’une commande (Better BibTeX), biblatex', texteSeul(segments(decoderLatex(String.raw`({{{\emph{Perdix}}}}{\emph{ perdix}}) et \mkbibemph{Alectoris}`))),
+  '(Perdix perdix) et Alectoris');
 egal('en segments, le titre d’un livre en italique, ses noms latins droits', segments(`Biologie de ${DEBUT_ITALIQUE}Perdix${FIN_ITALIQUE}`, true),
   [{ texte: 'Biologie de ', italique: true }, { texte: 'Perdix', italique: false }]);
 
@@ -73,6 +75,15 @@ const c = lireBibliographie(csl, 'refs.json');
 egal('lu par son extension, clés, types, années', c.entrees.map((e) => [e.cle, e.type, e.annee]), [['legendre2012', 'book', '2012'], ['zuur', 'incollection', '2009']]);
 const relu = lireBibtex(versBibtex(c.entrees[0])).entrees[0];
 egal('écrit en BibTeX et relu', [relu.cle, relu.type, relu.titre, relu.auteurs.length, relu.edition, relu.editeur], ['legendre2012', 'book', 'Numerical ecology', 2, '3', 'Elsevier']);
+const riche = lireCslJson(JSON.stringify([{ id: 'bro2019', type: 'article-journal', title: 'Survie de la perdrix (<i>Perdix perdix</i>) en <span class="nocase">France</span>',
+  'container-title': 'Faune sauvage' }])).entrees[0];
+const ita = `Survie de la perdrix (${DEBUT_ITALIQUE}Perdix perdix${FIN_ITALIQUE}) en France`;
+egal('texte riche de CSL-JSON : italique, balises retirées ; écrit en BibTeX (\\textit) et relu', [riche.titre, /\\textit\{Perdix perdix\}/.test(versBibtex(riche)),
+  lireBibtex(versBibtex(riche)).entrees[0].titre], [ita, true, ita]);
+const enFrancais = lireBibtex('@article{a, title = {Les oiseaux en {France}}, language = {french}}\n@article{b, title = {T}, language = {french}, langid = {french}}').entrees;
+const deCsl = lireCslJson(JSON.stringify([{ id: 'c', type: 'book', title: 'T', language: 'fr' }])).entrees[0];
+egal('la langue en langid (que Pandoc lit), une fois', [versBibtex(enFrancais[0]).match(/langid/g), versBibtex(enFrancais[1]).match(/langid/g), /langid = \{fr\}/.test(versBibtex(deCsl)),
+  versBibtex(lireBibtex(versBibtex(enFrancais[0])).entrees[0]) === versBibtex(enFrancais[0])], [['langid'], ['langid'], true, true]);
 
 console.log('Citations');
 egal('groupe : préfixe, suffixe, sans auteur', lireGroupeCitations('voir @wold2001, p. 33; -@eriksson2006'),

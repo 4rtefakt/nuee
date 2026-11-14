@@ -377,3 +377,6 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .ligne-reference code { flex: none; color: var(--texte-doux); font-size: 11.5px; }
 .ligne-reference.citee code { color: var(--ok); }
 .zone-bibtex { width: 100%; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; }
+.ligne-recherche-citation { display: flex; gap: 8px; align-items: center; }
+.ligne-recherche-citation .recherche-citation { flex: 1; min-width: 0; }
+.ligne-recherche-citation .collection-zotero { max-width: 45%; }

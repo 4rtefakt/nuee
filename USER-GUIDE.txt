@@ -381,17 +381,20 @@ style), in the document's language. Where the references come from (the Cite but
     BibTeX's automatic export keeps it up to date: a key not found has the file read again;
   - Zotero on this computer (Zotero 7 or later, with Settings › Advanced › "Allow other applications
     on this computer to communicate with Zotero" ticked): its references are searched as you type @,
-    or in Cite › Insert a citation; with the Better BibTeX plugin, Cite › Pick in Zotero opens Zotero's
-    own picker. Nuée only reads the library;
+    or in Cite › Insert a citation, in the whole library or in one of its collections; their keys are
+    Zotero's own (Better BibTeX's when it is installed). With the Better BibTeX plugin, Cite › Pick in
+    Zotero opens Zotero's own picker, the page given there included. Nuée only reads the library;
   - BibTeX pasted (Cite › Paste BibTeX references).
 The document keeps a copy of the references it cites: sent to someone without the .bib, it still cites
 them (Cite › The document's references lists them, and removes those no longer cited). Compiled for
 Quarto, the citations stay as they are, the references cited in a .bib beside the .qmd, so that Quarto
 writes them in any journal's style (csl: style.csl in the header; the file is copied beside the .qmd).
+A reference's language (Zotero's Language field: fr, de...) goes with it: styles that put English
+titles in title case, as Quarto's default one does, then leave a French title as it is written.
 Each document opens in a tab of its own. Plots in documents and model reports are drawn in the light
 theme, whatever the window's.
-Spelling: misspelled words are underlined; right-click one for suggestions (in every text
-field of the application).
+Spelling, in French and in English (and in the system's language): misspelled words are
+underlined; right-click one for suggestions (in every text field of the application).
 
 R console
 ---------

@@ -179,6 +179,9 @@ contient('Word : citations, liste en style Bibliographie, revue en italique, DOI
   '<w:pStyle w:val="Bibliographie"/>', '<w:i/></w:rPr><w:t xml:space="preserve">Chemom. Intell. Lab.', '<w:hyperlink r:id="rIdLien', '>Références<']);
 const qc = versQmd(docCite, ac, [], { fichierFigure: () => '', langue: 'fr', titre: 'Essai', bibliographie: 'essai.bib', csl: 'ecology.csl', libelles: { references: 'Références' } });
 contient('Quarto : citations laissées, en-tête refait, titre de la liste', qc.texte, ['[voir @wold2001, p. 3; @legendre2012]', 'bibliography: essai.bib', 'csl: ecology.csl', 'lang: fr', '# Références {.unnumbered}']);
+const avecCiteproc = (t) => versQmd(t, analyser(md, t), [], { fichierFigure: () => '', bibliographie: 'essai.bib' }).texte.match(/^citeproc:.*$/gm);
+egal('Quarto : citeproc pour tous les formats (le PDF par Typst aussi), sans changer celui du document', [avecCiteproc('Texte [@wold2001].\n'),
+  avecCiteproc('---\nciteproc: false\n---\nTexte [@wold2001].\n')], [['citeproc: true'], ['citeproc: false']]);
 verifier('Quarto : l’ancienne liste de fichiers remplacée', !/refs\.bib|autre\.bib/.test(qc.texte), qc.texte.slice(0, 200));
 egal('{{bibliographie}} devient la place de Quarto', versQmd('Texte [@wold2001].\n\n{{bibliographie}}\n', analyser(md, 'Texte [@wold2001].\n\n{{bibliographie}}\n'), [], { fichierFigure: () => '' }).texte.split('\n').slice(-3), ['::: {#refs}', ':::', '']);
 egal('en-tête : une clé ajoutée, remplacée, ou une liste', [fixerEntete('---\ntitle: x\n---\n', 'csl', 'a b.csl'), fixerEntete('---\nbibliography:\n  - a.bib\n  - b.bib\ntitle: x\n---\n', 'bibliography', ['c.bib'])],

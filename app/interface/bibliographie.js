@@ -15,8 +15,8 @@ const LETTRES = { aa: 'å', AA: 'Å', ae: 'æ', AE: 'Æ', oe: 'œ', OE: 'Œ', o:
   copyright: '©', textcopyright: '©', textsection: '§', textperiodcentered: '·', textmu: 'µ', textpm: '±', pm: '±', times: '×',
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', lambda: 'λ', mu: 'μ', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ',
   chi: 'χ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Omega: 'Ω', le: '≤', ge: '≥', neq: '≠', approx: '≈', infty: '∞', degree: '°' };
-const ITALIQUES = new Set(['textit', 'emph', 'textsl', 'mathit']);
-const SANS_STYLE = new Set(['textbf', 'textsc', 'textrm', 'textsf', 'texttt', 'textup', 'textmd', 'textnormal', 'mathrm', 'mbox', 'text', 'url', 'NoCaseChange', 'MakeUppercase']);
+const ITALIQUES = new Set(['textit', 'emph', 'textsl', 'mathit', 'mkbibemph', 'mkbibitalic']);
+const SANS_STYLE = new Set(['textbf', 'textsc', 'textrm', 'textsf', 'texttt', 'textup', 'textmd', 'textnormal', 'mathrm', 'mbox', 'text', 'url', 'NoCaseChange', 'MakeUppercase', 'mkbibbold']);
 // Italic in a field's text: between these two characters (segments() makes runs of them).
 export const DEBUT_ITALIQUE = '';
 export const FIN_ITALIQUE = '';
@@ -24,7 +24,8 @@ export const FIN_ITALIQUE = '';
 const COMMANDE = /\\([a-zA-Z]+)\s*/y;
 
 // A BibTeX field's text as plain text (italic marked by DEBUT_ITALIQUE ... FIN_ITALIQUE).
-export function decoderLatex(brut) {
+// `argument`: a command's argument, its spaces kept (\emph{ perdix}).
+export function decoderLatex(brut, argument = false) {
   let s = String(brut ?? '');
   let sortie = '';
   let i = 0;
@@ -66,15 +67,15 @@ export function decoderLatex(brut) {
           sortie += LETTRES[nom];
           if (s[i] === '{' && s[i + 1] === '}') i += 2;  // \o{}
         } else if (ITALIQUES.has(nom)) {
-          sortie += DEBUT_ITALIQUE + decoderLatex(lireArgument()) + FIN_ITALIQUE;
+          sortie += DEBUT_ITALIQUE + decoderLatex(lireArgument(), true) + FIN_ITALIQUE;
         } else if (nom === 'it' || nom === 'em' || nom === 'itshape' || nom === 'sl') {
           sortie += DEBUT_ITALIQUE;
           if (pile.length) pile[pile.length - 1] = true;
         } else if (SANS_STYLE.has(nom)) {
-          sortie += decoderLatex(lireArgument());
+          sortie += decoderLatex(lireArgument(), true);
         } else if (nom === 'href') {
           lireArgument();
-          sortie += decoderLatex(lireArgument());
+          sortie += decoderLatex(lireArgument(), true);
         }
         // (another command: left out, its argument read as text)
         continue;
@@ -97,6 +98,7 @@ export function decoderLatex(brut) {
     i += 1;
   }
   while (pile.length) if (pile.pop()) sortie += FIN_ITALIQUE;
+  if (argument) return sortie;
   return sortie.normalize('NFC').replace(/\s+/g, ' ').replace(//g, '').trim();
 }
 
@@ -319,22 +321,26 @@ export function lireCslJson(texte) {
   let items;
   try { items = JSON.parse(String(texte ?? '').replace(/^﻿/, '')); } catch (e) { return { entrees: [], erreurs: [`JSON : ${e.message}`] }; }
   if (!Array.isArray(items)) items = items && Array.isArray(items.items) ? items.items : [items];
+  // (CSL-JSON's rich text: <i> as italic, the other tags left out, <span class="nocase"> among them)
+  const riche = (v) => String(v ?? '').replace(/<(\/?)(?:i|em)>/gi, (_, fin) => (fin ? FIN_ITALIQUE : DEBUT_ITALIQUE))
+    .replace(/<\/?(?:b|strong|sup|sub|sc|span)(?:\s[^<>]*)?>/gi, '');
   const noms = (l) => [].concat(l || []).map((n) => (n.literal ? { litteral: n.literal }
     : { nom: n.family || '', prenom: n.given || '', particule: [n['dropping-particle'], n['non-dropping-particle']].filter(Boolean).join(' '), suffixe: n.suffix || '' }));
   const entrees = items.filter((x) => x && (x['citation-key'] || x.id)).map((x) => {
     const type = TYPES_CSL[x.type] || 'misc';
     const d = x.issued || {};
     const annee = String((d['date-parts'] && d['date-parts'][0] && d['date-parts'][0][0]) || (/\d{4}/.exec(d.literal || d.raw || '') || [''])[0] || '');
-    const conteneur = x['container-title'] || '';
+    const conteneur = riche(x['container-title']);
     return {
       cle: String(x['citation-key'] || x.id), type, source: 'csl', brut: null, csl: x,
-      auteurs: noms(x.author), editeurs: noms(x.editor), annee, titre: x.title || '',
+      auteurs: noms(x.author), editeurs: noms(x.editor), annee, titre: riche(x.title),
       revue: type === 'article' ? conteneur : '', livre: type === 'article' ? '' : conteneur,
       volume: String(x.volume ?? ''), numero: String(x.issue ?? x.number ?? ''), pages: String(x.page ?? '').replace(/-/g, '–'),
       editeur: x.publisher || '', lieu: x['publisher-place'] || '', edition: String(x.edition ?? ''), institution: x.publisher || '',
       ecole: x.publisher || '', doi: String(x.DOI || '').replace(/^https?:\/\/(dx\.)?doi\.org\//i, ''), url: x.URL || '', note: x.note || '',
-      publication: '', rapport: x.genre || '', serie: x['collection-title'] || '', consulte: '',
+      publication: '', rapport: x.genre || '', serie: riche(x['collection-title']), consulte: '',
       these: type === 'thesis' ? (/master/i.test(x.genre || '') ? 'memoire' : 'these') : '',
+      langue: String(x.language || ''),
     };
   });
   return { entrees, erreurs: [] };
@@ -342,14 +348,18 @@ export function lireCslJson(texte) {
 
 // ------------------------------------------------------------ writing BibTeX
 
-const echapperBibtex = (v) => String(v ?? '').replace(/[&%$#_]/g, (c) => `\\${c}`);
+const echapperBibtex = (v) => String(v ?? '').replace(/[&%$#_]/g, (c) => `\\${c}`)
+  .split(DEBUT_ITALIQUE).join('\\textit{').split(FIN_ITALIQUE).join('}');
 const nomBibtex = (n) => (n.litteral ? `{${n.litteral}}` : [[n.particule, n.nom].filter(Boolean).join(' '), n.suffixe, n.prenom].filter(Boolean).join(', '));
 
 // An entry as BibTeX: its own text when it came from BibTeX (without `sauf`'s fields: a file's
-// path, an abstract), else written from its fields.
+// path, an abstract), else written from its fields. Its language as langid, which Pandoc reads
+// (Zotero writes language, which it doesn't): a French title in an English document is then left
+// as it is, where a style puts English titles in title case.
 export function versBibtex(e, sauf = ['file', 'abstract', 'keywords', 'annote', 'annotation', 'mendeley-tags']) {
   if (e.champsBruts) {
     const champs = Object.entries(e.champsBruts).filter(([k]) => !sauf.includes(k));
+    if (e.champsBruts.language && !e.champsBruts.langid && !e.champsBruts.hyphenation) champs.push(['langid', e.champsBruts.language]);
     return `@${e.type}{${e.cle},\n${champs.map(([k, v]) => `  ${k} = {${v}}`).join(',\n')}\n}`;
   }
   const type = { online: 'misc', software: 'misc', unpublished: 'unpublished', thesis: e.these === 'memoire' ? 'mastersthesis' : 'phdthesis' }[e.type] || e.type;
@@ -359,7 +369,7 @@ export function versBibtex(e, sauf = ['file', 'abstract', 'keywords', 'annote', 
     ['volume', e.volume], ['number', e.numero], ['pages', String(e.pages || '').replace(/–/g, '--')], ['publisher', echapperBibtex(e.editeur)],
     ['address', echapperBibtex(e.lieu)], ['edition', e.edition], ['school', e.type === 'thesis' ? echapperBibtex(e.ecole) : ''],
     ['institution', e.type === 'report' ? echapperBibtex(e.institution) : ''], ['type', echapperBibtex(e.rapport)], ['doi', e.doi], ['url', e.url],
-    ['note', echapperBibtex(e.note)],
+    ['note', echapperBibtex(e.note)], ['langid', echapperBibtex(e.langue)],
   ].filter(([, v]) => v);
   return `@${type}{${e.cle},\n${champs.map(([k, v]) => `  ${k} = {${v}}`).join(',\n')}\n}`;
 }
@@ -498,12 +508,15 @@ function referenceEnSegments(e, langue, annee) {
       partie(e.editeur);
       break;
     }
-    case 'thesis': case 'phdthesis': case 'mastersthesis':
+    case 'thesis': case 'phdthesis': case 'mastersthesis': {
       titre(true);
-      txt(` [${e.rapport || (e.these === 'memoire' ? t.memoire : t.these)}]`);
+      // (Zotero's types in English, "PhD Thesis", "Master's Thesis": in the document's language)
+      const genre = /^ph\.?\s?d\.?\s*thesis$|^doctoral\s+thesis$/i.test(e.rapport) ? t.these : /^master'?s?\s*thesis$/i.test(e.rapport) ? t.memoire : e.rapport;
+      txt(` [${genre || (e.these === 'memoire' ? t.memoire : t.these)}]`);
       phrase();
       partie(e.ecole);
       break;
+    }
     case 'report': case 'techreport':
       titre(true);
       if (e.numero) txt(` (${e.rapport || t.rapport} ${e.numero})`);

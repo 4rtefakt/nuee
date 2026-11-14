@@ -15,7 +15,7 @@ import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
 import { separerCible, valeurReference, offreModele, numeroter } from './references.js';
 import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, lireEntete, listeEntete, fixerEntete, BLOCS } from './rendu_document.js';
-import { lireBibtex, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES } from './bibliographie.js';
+import { lireBibtex, lireCslJson, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES } from './bibliographie.js';
 import { VERSION } from './nouveautes.js';
 
 let md = null;              // markdown-it, once loaded
@@ -640,7 +640,7 @@ function insererTexte(s, texte, citation = false) {
 // Zotero on this computer (zotero.js), seen again every 20 seconds at most: its local API (Zotero 7
 // and later, when "Allow other applications on this computer to communicate with Zotero" is
 // ticked), and Better BibTeX's picker.
-const zotero = { etat: null, date: 0, recherches: new Map() };
+const zotero = { etat: null, date: 0, recherches: new Map(), collection: '' };
 async function etatZotero(forcer = false) {
   if (!bureau || !bureau.zotero) return (zotero.etat = { bureau: false });
   if (!forcer && zotero.etat && Date.now() - zotero.date < 20000) return zotero.etat;
@@ -658,29 +658,65 @@ function messageZotero(z) {
   if (z.ancien) return t('zotero_ancien');
   return t('zotero_absent');
 }
-// Zotero's references that answer a search (title, authors, year), as BibTeX: their keys are those
-// Zotero exports (Better BibTeX's when it is installed). Kept a minute.
-function chercherZotero(q) {
-  const cle = q.trim().toLowerCase();
+// Zotero's references that answer a search (title, authors, year), in the whole library or in one
+// collection (its key: then all of its references when the search is empty), as BibTeX: their keys
+// are those Zotero exports (Better BibTeX's when it is installed). Kept a minute.
+function chercherZotero(q, collection = '') {
+  const cle = `${collection}|${q.trim().toLowerCase()}`;
   const garde = zotero.recherches.get(cle);
   if (garde && Date.now() - garde.date < 60000) return garde.promesse;
-  const promesse = bureau.zotero(`/api/users/0/items/top?q=${encodeURIComponent(q.trim())}&qmode=titleCreatorYear&itemType=-attachment&itemType=-note&format=bibtex&limit=25`, 8000)
+  const base = collection ? `/api/users/0/collections/${collection}/items/top?` : '/api/users/0/items/top?';
+  const recherche = q.trim() ? `q=${encodeURIComponent(q.trim())}&qmode=titleCreatorYear&` : '';
+  const promesse = bureau.zotero(`${base}${recherche}itemType=-attachment&itemType=-note&format=bibtex&limit=${collection ? 300 : 25}`, 8000)
     .then((r) => (r.statut === 200 ? lireBibtex(r.texte).entrees : []), () => []);
   zotero.recherches.set(cle, { date: Date.now(), promesse });
   if (zotero.recherches.size > 100) zotero.recherches.delete(zotero.recherches.keys().next().value);
   return promesse;
 }
-// Better BibTeX's picker, in Zotero: the references chosen there, cited here and kept in the document.
+// The library's collections, with their path ("Thèse › Perdrix") and how many references each holds.
+async function collectionsZotero() {
+  const r = await bureau.zotero('/api/users/0/collections?format=json&limit=1000', 8000);
+  let l = [];
+  try { l = r.statut === 200 ? JSON.parse(r.texte) : []; } catch { l = []; }
+  const par = new Map(l.map((c) => [c.key, c]));
+  const chemin = (c) => {
+    const noms = [];
+    for (let x = c, n = 0; x && n < 12; x = par.get(x.data.parentCollection), n += 1) noms.unshift(x.data.name);
+    return noms.join(' › ');
+  };
+  return l.map((c) => ({ cle: c.key, nom: chemin(c), n: (c.meta && c.meta.numItems) || 0 })).sort((a, b) => a.nom.localeCompare(b.nom));
+}
+// Better BibTeX's picker, in Zotero: the references chosen there, with the page, prefix and suffix
+// given there, cited here and kept in the document. Their entries come from Better BibTeX as
+// CSL-JSON, one demand per library (the user's, a group's): titles as typed in Zotero, where its
+// BibTeX would have them in title case.
 async function choisirDansZotero(app, s) {
   app.statut(t('zotero_attente'));
-  const r = await bureau.zotero('/better-bibtex/cayw?format=translate&translator=bibtex&minimize=true', 15 * 60000);
+  const r = await bureau.zotero('/better-bibtex/cayw?format=json&minimize=true', 15 * 60000);
   if (bureau.focusFenetre) bureau.focusFenetre('moi');
   if (r.statut !== 200) { app.statut(r.erreur === 'delai' ? t('zotero_delai') : messageZotero(await etatZotero(true)), true); return; }
-  const liste = lireBibtex(r.texte).entrees;
+  let choix = [];
+  try { choix = [].concat(JSON.parse(r.texte || '[]')).filter((c) => c && c.citationKey); } catch { choix = []; }
   app.statut('');
-  if (!liste.length) return;
-  ajouterAuDocument(s, liste);
-  insererTexte(s, `[${liste.map((e) => `@${e.cle}`).join('; ')}]`, true);
+  if (!choix.length) return;
+  const parBibliotheque = new Map();
+  for (const c of choix) {
+    const b = Number.isInteger(c.item && c.item.libraryID) ? c.item.libraryID : 1;
+    parBibliotheque.set(b, [...(parBibliotheque.get(b) || []), c.citationKey]);
+  }
+  const lus = await Promise.all([...parBibliotheque].map(([b, cles]) => bureau.zotero(
+    `/better-bibtex/export/item?citationKeys=${encodeURIComponent(cles.join(','))}&translator=${encodeURIComponent('Better CSL JSON')}&libraryID=${b}`, 15000)));
+  const liste = lus.flatMap((x) => (x.statut === 200 ? lireCslJson(x.texte).entrees : []));
+  if (liste.length) ajouterAuDocument(s, liste);
+  const manquent = choix.filter((c) => !liste.some((e) => e.cle === c.citationKey)).length;
+  if (manquent) app.statut(t('zotero_incomplet', { n: manquent }), true);
+  insererTexte(s, `[${choix.map(citationChoisie).join('; ')}]`, true);
+}
+// A reference picked in Better BibTeX's picker as Pandoc writes it: "see -@a, p. 3 and after".
+function citationChoisie(c) {
+  const terme = !c.label || c.label === 'page' ? 'p.' : c.label;
+  return [c.prefix, `${c.suppressAuthor ? '-' : ''}@${c.citationKey}${c.locator ? `, ${terme} ${c.locator}` : ''}`, c.suffix]
+    .filter(Boolean).join(' ');
 }
 
 // What follows @ (after a space or [ ; ( ): the document's references, by key, author, year or
@@ -740,11 +776,14 @@ function menuCiter(app, s) {
   ];
 }
 
-// Insert a citation: the document's references and Zotero's that answer a search, those ticked
-// cited together ([@a; @b]), or in the sentence (@a).
+// Insert a citation: the document's references and Zotero's that answer a search, in the whole
+// library or in one of its collections (with plain Zotero, what Better BibTeX's picker gives); those
+// ticked cited together ([@a; @b]), or in the sentence (@a).
 async function dialogueCiter(app, s) {
   const choisies = new Map();
   const recherche = el('input', { type: 'search', class: 'recherche-citation', placeholder: t('citer_rechercher'), 'aria-label': t('citer_rechercher') });
+  const choixCollection = el('select', { class: 'collection-zotero', title: t('zotero_collection_aide'), 'aria-label': t('zotero_collection_aide') },
+    el('option', { value: '' }, t('zotero_bibliotheque')));
   const liste = el('div', { class: 'liste-citations' });
   const etat = el('p', { class: 'note' });
   const narratif = el('input', { type: 'checkbox' });
@@ -752,23 +791,32 @@ async function dialogueCiter(app, s) {
   const majListe = async () => {
     const g = ++generation;
     const q = recherche.value.trim();
+    const coll = choixCollection.value;
     const entrees = await bibliotheque(app, s);
     const z = await etatZotero();
-    const locales = [...entrees.values()].filter((e) => !q || correspond(e, q)).sort((a, b) => resume(a).localeCompare(resume(b)));
-    const distantes = z.api && q.length >= 2 ? (await chercherZotero(q)).filter((e) => !entrees.has(e.cle)) : [];
+    // (a collection: its references, those already in the document among them; else the
+    // document's first, then Zotero's not in it yet)
+    const locales = coll ? [] : [...entrees.values()].filter((e) => !q || correspond(e, q)).sort((a, b) => resume(a).localeCompare(resume(b)));
+    const distantes = z.api && (coll || q.length >= 2) ? (await chercherZotero(q, coll)).filter((e) => coll || !entrees.has(e.cle)) : [];
     if (g !== generation) return;
     const ligne = (e, source) => el('label', { class: 'ligne-citation' },
       el('input', { type: 'checkbox', checked: choisies.has(e.cle), onchange: (ev) => { if (ev.target.checked) choisies.set(e.cle, { e, source }); else choisies.delete(e.cle); } }),
       el('span', { class: 'resume-citation', title: `@${e.cle}` }, resume(e, s.langue)),
-      el('span', { class: 'source-citation' }, source === 'zotero' ? 'Zotero' : e.origine ? nomFichier(e.origine) : t('citer_dans_document')));
+      el('span', { class: 'source-citation' }, source === 'zotero' ? (entrees.has(e.cle) ? t('citer_deja') : 'Zotero') : e.origine ? nomFichier(e.origine) : t('citer_dans_document')));
     liste.replaceChildren(...locales.slice(0, 80).map((e) => ligne(e, 'document')), ...distantes.map((e) => ligne(e, 'zotero')));
-    if (!liste.childElementCount) liste.append(el('p', { class: 'note' }, q ? t('citer_rien') : t('citer_vide')));
+    if (!liste.childElementCount) liste.append(el('p', { class: 'note' }, q || coll ? t('citer_rien') : t('citer_vide')));
     etat.textContent = messageZotero(z);
   };
   recherche.addEventListener('input', () => { clearTimeout(recherche.attente); recherche.attente = setTimeout(majListe, 250); });
+  choixCollection.addEventListener('change', () => { zotero.collection = choixCollection.value; majListe(); });
   const z = await etatZotero();
+  if (z.api) {
+    // (the collection chosen last time, while it still exists)
+    for (const c of await collectionsZotero()) choixCollection.append(el('option', { value: c.cle, selected: c.cle === zotero.collection }, `${c.nom} (${c.n})`));
+  }
   dialogue({ titre: t('citer_inserer').replace(/…$/, ''), large: true,
-    contenu: el('div', { class: 'dialogue-citer' }, recherche, liste, el('label', { class: 'champ' }, narratif, ` ${t('citer_narratif')}`), etat),
+    contenu: el('div', { class: 'dialogue-citer' }, el('div', { class: 'ligne-recherche-citation' }, recherche, z.api ? choixCollection : null),
+      liste, el('label', { class: 'champ' }, narratif, ` ${t('citer_narratif')}`), etat),
     boutons: [
       ...(z.bbt ? [{ libelle: t('zotero_choisir'), action: () => { choisirDansZotero(app, s); return true; } }] : []),
       { libelle: t('annuler'), action: () => true },
@@ -1222,8 +1270,11 @@ ajouterTextes({
   citer_retirer: 'Retirer les {n} gardées et non citées', citer_actualiser: 'Relire les fichiers de bibliographie', citer_style: 'Style des citations',
   'citer_style_auteur-annee': 'Auteur-année : (Wold et al., 2001)', citer_style_numerique: 'Numéroté : [1]',
   citer_n: '{n} références', citer_n_document: 'Gardées dans le document : {n}', citer_fichier_erreur: 'illisible ou introuvable',
+  zotero_bibliotheque: 'Zotero : toute la bibliothèque', zotero_collection_aide: 'Chercher dans toute la bibliothèque Zotero, ou parcourir une de ses collections',
+  citer_deja: 'déjà dans le document',
   zotero_choisir: 'Choisir dans Zotero (Better BibTeX)…', zotero_attente: 'Choisissez les références dans la fenêtre de Zotero…',
   zotero_delai: 'Zotero n’a rien renvoyé à temps.', zotero_bureau: 'Zotero : dans l’application de bureau',
+  zotero_incomplet: 'Zotero n’a pas envoyé {n} des références choisies : elles sont citées, mais introuvables.',
   zotero_connecte: 'Zotero : connecté (recherche dans la bibliothèque)', zotero_connecte_bbt: 'Zotero : connecté, avec Better BibTeX',
   zotero_ferme: 'Zotero : cochez Paramètres › Avancé › « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero »',
   zotero_ancien: 'Zotero : la recherche demande Zotero 7 ou plus récent', zotero_absent: 'Zotero ne répond pas (est-il ouvert ?)',
@@ -1284,8 +1335,11 @@ ajouterTextes({
   citer_retirer: 'Remove the {n} kept and not cited', citer_actualiser: 'Read the bibliography files again', citer_style: 'Citation style',
   'citer_style_auteur-annee': 'Author–year: (Wold et al., 2001)', citer_style_numerique: 'Numbered: [1]',
   citer_n: '{n} references', citer_n_document: 'Kept in the document: {n}', citer_fichier_erreur: 'unreadable or missing',
+  zotero_bibliotheque: 'Zotero: whole library', zotero_collection_aide: 'Search the whole Zotero library, or browse one of its collections',
+  citer_deja: 'already in the document',
   zotero_choisir: 'Pick in Zotero (Better BibTeX)…', zotero_attente: 'Pick the references in Zotero’s window…',
   zotero_delai: 'Zotero sent nothing back in time.', zotero_bureau: 'Zotero: in the desktop application',
+  zotero_incomplet: 'Zotero didn’t send {n} of the references picked: they are cited, but not found.',
   zotero_connecte: 'Zotero: connected (library search)', zotero_connecte_bbt: 'Zotero: connected, with Better BibTeX',
   zotero_ferme: 'Zotero: tick Settings › Advanced › “Allow other applications on this computer to communicate with Zotero”',
   zotero_ancien: 'Zotero: searching needs Zotero 7 or later', zotero_absent: 'Zotero doesn’t answer (is it open?)',

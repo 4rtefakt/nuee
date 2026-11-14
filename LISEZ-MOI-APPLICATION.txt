@@ -407,18 +407,24 @@ numérotée (Citer › Style des citations), dans la langue du document. D'où v
     le fichier ;
   - Zotero sur cet ordinateur (Zotero 7 ou plus récent, en cochant Paramètres › Avancé › « Autoriser
     les autres applications de cet ordinateur à communiquer avec Zotero ») : ses références se
-    cherchent en tapant @, ou dans Citer › Insérer une citation ; avec l'extension Better BibTeX,
-    Citer › Choisir dans Zotero ouvre le sélecteur de Zotero. Nuée ne fait que lire la bibliothèque ;
+    cherchent en tapant @, ou dans Citer › Insérer une citation, dans toute la bibliothèque ou dans
+    une de ses collections ; leurs clés sont celles de Zotero (celles de Better BibTeX quand il est
+    installé). Avec l'extension Better BibTeX, Citer › Choisir dans Zotero ouvre le sélecteur de
+    Zotero, avec la page qu'on y donne. Nuée ne fait que lire la bibliothèque ;
   - du BibTeX collé (Citer › Coller des références BibTeX).
 Le document garde une copie des références qu'il cite : envoyé à quelqu'un qui n'a pas le .bib, il les
 cite encore (Citer › Références du document les montre, et retire celles qui ne sont plus citées).
 Compilé pour Quarto, le texte garde ses citations telles quelles, les références citées dans un .bib à
 côté du .qmd, pour que Quarto les écrive dans le style d'une revue (csl: style.csl dans l'en-tête ; le
 fichier est copié à côté du .qmd).
+La langue d'une référence (le champ Langue de Zotero : fr, de...) la suit : les styles qui mettent
+les titres anglais en capitales (Title Case), comme celui de Quarto par défaut, laissent alors un
+titre français tel qu'il est écrit.
 Chaque document s'ouvre dans son propre onglet. Les graphiques des documents et des rapports de modèle
 sont dessinés en clair, quel que soit le thème de la fenêtre.
-Orthographe : les mots mal orthographiés sont soulignés ; clic droit pour les corrections
-proposées (dans tous les champs de texte de l'application).
+Orthographe, en français et en anglais (et dans la langue du système) : les mots mal
+orthographiés sont soulignés ; clic droit pour les corrections proposées (dans tous les champs
+de texte de l'application).
 
 Console R
 ---------

@@ -679,6 +679,12 @@ async function demarrer() {
   // the installer of the last one-click update, once it has run
   if (verificationPossible()) fs.rm(path.join(app.getPath('temp'), 'nuee-mise-a-jour'), { recursive: true, force: true }, () => {});
   Menu.setApplicationMenu(null);  // the interface draws its own menu bar
+  // Spelling in French and in English, the languages of documents, besides the system's: alone,
+  // the system's would mark every word of a document in the other one. (Their dictionaries
+  // come the first time from Chromium's servers, as the system's does; macOS uses its own.)
+  const s = session.defaultSession;
+  const langues = [...new Set([...s.getSpellCheckerLanguages(), 'fr', 'en-US'])].filter((l) => s.availableSpellCheckerLanguages.includes(l));
+  if (langues.length) s.setSpellCheckerLanguages(langues);
   ipc();
   // the same port as last time when free: on a computer shared by several people (remote
   // desktop), whoever doesn't get the usual one keeps their own, and their settings with it
