@@ -361,6 +361,43 @@ méthode, validation croisée, R², Q², CV-ANOVA, classement, logiciel et versi
 références. Bouton « Copier le texte ». À relire et compléter (plan d'expérience,
 prélèvements...) avant de le publier.
 
+Documents (articles, rapports)
+------------------------------
+Fichier › Nouveau document (ou clic droit sur un projet dans l'explorateur) : un texte gardé
+dans le projet (un article, un rapport, des notes), écrit en Markdown à gauche, avec son aperçu
+à droite, redessiné pendant qu'on écrit. Il est enregistré avec le projet et dans ses copies de
+secours ; Édition › Annuler ne le touche pas, et Ctrl+Z dans le texte annule dans le texte.
+Départ : un document vide, un article (introduction, méthodes, résultats, discussion) ou un
+rapport d'analyse (pour chaque modèle : résumé, graphiques, méthodes), les modèles cochés déjà
+cités.
+Les résultats du projet se citent entre doubles accolades ; l'aperçu et le fichier compilé
+donnent leur valeur :
+  {{M1.Q2}}  {{M1.R2Y}}  {{M1.R2X:%}} (en pourcentage)  {{M1.Q2:3}} (3 décimales)  {{M1.N}}
+  {{M1.gain}}  {{M1.vip.sucre}}  {{M1.coef.sucre}} (coefficient centré-réduit et son intervalle à 95 %)
+  {{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
+  {{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
+  {{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
+Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne. Graphiques et
+tableaux sont numérotés dans l'ordre (Figure 1, Tableau 1) ; avec une étiquette,
+{{M1.scores #fig-scores | légende}}, {{ref:fig-scores}} écrit « Figure 1 » n'importe où dans le
+texte. Tapez {{ pour voir les modèles du projet, puis ce que celui choisi offre, avec sa valeur
+du moment ; Insérer, dans la barre d'outils, fait de même par des menus, et un modèle ou sa vue
+dans l'explorateur a « Insérer dans le document » (clic droit).
+Une référence introuvable (un modèle qui n'existe pas, une variable qu'il n'a pas) est en rouge,
+avec la raison au survol. Un modèle du projet pas encore calculé l'est quand le document le
+cite, sans ouvrir ses vues. Les nombres suivent la langue du document (0,65 en français, 0.65
+en anglais), comme « Figure », « Tableau » et le texte des méthodes.
+Compiler : un fichier Word (.docx : titres, listes, tableaux, graphiques et légendes dans les
+styles de Word), un PDF, une page HTML (un seul fichier, graphiques compris), ou un fichier
+Quarto (.qmd) avec ses graphiques dans un dossier à côté, les résultats écrits en dur. Quand
+Quarto est installé (quarto.org, ou avec RStudio), « Compiler avec Quarto » en fait un Word, un
+PDF (Typst) ou une page HTML, avec ce que Quarto apporte : bibliographie (bibliography: refs.bib
+dans l'en-tête, [@cle] dans le texte), renvois, modèles de revues. Un en-tête YAML (title,
+author, date) en haut du document est lu ; une ligne {{< pagebreak >}} commence une nouvelle
+page.
+Orthographe : les mots mal orthographiés sont soulignés ; clic droit pour les corrections
+proposées (dans tous les champs de texte de l'application).
+
 Console R
 ---------
 Affichage › Console R (Ctrl+J) : un panneau sous les onglets, avec

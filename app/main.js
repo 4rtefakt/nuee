@@ -75,6 +75,25 @@ function trouverRscript() {
   ];
   return candidats.filter(Boolean).find((c) => fs.existsSync(c)) || 'Rscript';
 }
+
+// Quarto, if the computer has it: on the PATH, where its installer puts it, or the one RStudio
+// brings along; null otherwise (documents.js then compiles by itself).
+function trouverQuarto() {
+  const exe = process.platform === 'win32' ? 'quarto.exe' : 'quarto';
+  const programmes = process.env.ProgramFiles || 'C:\\Program Files';
+  const local = process.env.LOCALAPPDATA || '';
+  const candidats = [
+    process.env.QUARTO_PATH,
+    ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map((d) => path.join(d, exe)),
+    ...(process.platform === 'win32' ? [
+      path.join(local, 'Programs', 'Quarto', 'bin', exe), path.join(programmes, 'Quarto', 'bin', exe),
+      path.join(programmes, 'RStudio', 'resources', 'app', 'bin', 'quarto', 'bin', exe),
+      path.join(local, 'Programs', 'RStudio', 'resources', 'app', 'bin', 'quarto', 'bin', exe),
+    ] : ['/usr/local/bin/quarto', '/opt/quarto/bin/quarto', '/usr/lib/rstudio/resources/app/bin/quarto/bin/quarto',
+      '/Applications/quarto/bin/quarto', '/Applications/RStudio.app/Contents/Resources/app/quarto/bin/quarto']),
+  ];
+  return candidats.filter(Boolean).find((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } }) || null;
+}
 // R from Posit's packages: /opt/R/<version>, the most recent first
 function versionsOptR() {
   try { return fs.readdirSync('/opt/R').sort((a, b) => b.localeCompare(a, undefined, { numeric: true })); } catch { return []; }
@@ -248,6 +267,24 @@ const deLInterface = (url) => !!adresse && String(url || '').startsWith(adresse)
 app.on('web-contents-created', (_, contenu) => {
   contenu.on('will-navigate', (e, url) => { if (!deLInterface(url)) e.preventDefault(); });
   contenu.on('will-attach-webview', (e) => e.preventDefault());
+  // Right-click in text being written (a document, a field): the spelling suggestions, then
+  // cut, copy, paste. (The interface's own menus, on plots and lists, stop the event first.)
+  contenu.on('context-menu', (_, p) => {
+    if (!p.isEditable) return;
+    const fr = langue === 'fr';
+    const items = [];
+    if (p.misspelledWord) {
+      for (const s of (p.dictionarySuggestions || []).slice(0, 6)) items.push({ label: s, click: () => contenu.replaceMisspelling(s) });
+      if (!items.length) items.push({ label: fr ? 'Aucune suggestion' : 'No suggestions', enabled: false });
+      items.push({ label: fr ? 'Ajouter au dictionnaire' : 'Add to dictionary', click: () => contenu.session.addWordToSpellCheckerDictionary(p.misspelledWord) },
+        { type: 'separator' });
+    }
+    const f = p.editFlags || {};
+    items.push({ label: fr ? 'Couper' : 'Cut', role: 'cut', enabled: !!f.canCut }, { label: fr ? 'Copier' : 'Copy', role: 'copy', enabled: !!f.canCopy },
+      { label: fr ? 'Coller' : 'Paste', role: 'paste', enabled: !!f.canPaste }, { type: 'separator' },
+      { label: fr ? 'Tout sélectionner' : 'Select all', role: 'selectAll', enabled: !!f.canSelectAll });
+    Menu.buildFromTemplate(items).popup({ window: BrowserWindow.fromWebContents(contenu) || undefined });
+  });
 });
 
 const cachees = new WeakSet();  // windows that stay hidden (a report printed to PDF)
@@ -387,7 +424,28 @@ function ipc() {
   // Fichier › Quitter: asked once, from a main window, whichever window it came from
   recevoir('quitter', (e) => fermerNuee(BrowserWindow.getAllWindows().find(principale) || parent(e)));
   // Reports: a file written as given (Word), or an HTML page printed to PDF in a hidden window.
-  recevoir('ecrire-fichier', (_, chemin, octets) => fs.promises.writeFile(chemin, Buffer.from(octets)));
+  // (its folder made if needed: a document's figures beside its .qmd)
+  recevoir('ecrire-fichier', async (_, chemin, octets) => {
+    await fs.promises.mkdir(path.dirname(chemin), { recursive: true });
+    await fs.promises.writeFile(chemin, Buffer.from(octets));
+  });
+  // A document compiled by Quarto, when the computer has it (documents.js): its .qmd rendered to
+  // Word, HTML or PDF (through Typst, which Quarto brings: no LaTeX needed). Returns the file
+  // written, or the end of what Quarto said.
+  recevoir('quarto-disponible', () => !!trouverQuarto());
+  recevoir('quarto', (_, chemin, format) => new Promise((ok) => {
+    const quarto = trouverQuarto();
+    if (!quarto) return ok({ erreur: 'quarto_absent' });
+    if (!['docx', 'html', 'typst'].includes(format) || !/\.qmd$/i.test(String(chemin))) return ok({ erreur: 'demande' });
+    const dossier = path.dirname(chemin);
+    const sortie = path.join(dossier, path.basename(chemin).replace(/\.qmd$/i, format === 'typst' ? '.pdf' : `.${format}`));
+    let journal = '';
+    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true });
+    q.stdout.on('data', (d) => { journal += d; });
+    q.stderr.on('data', (d) => { journal += d; });
+    q.on('error', (e) => ok({ erreur: e.message }));
+    q.on('close', (code) => ok(code === 0 && fs.existsSync(sortie) ? { sortie } : { erreur: journal.slice(-3000) || `quarto: ${code}` }));
+  }));
   recevoir('imprimer-pdf', async (_, html, chemin) => {
     const page = path.join(app.getPath('temp'), `rapport-${process.pid}-${Date.now()}.html`);
     await fs.promises.writeFile(page, html, 'utf8');

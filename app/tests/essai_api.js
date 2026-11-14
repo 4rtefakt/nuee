@@ -61,6 +61,10 @@ async function principal() {
     await etape(`syntaxe ${f}`, () => execFileSync(process.execPath, ['--check', copie], { stdio: 'pipe' }));
   }
   fs.rmSync(copies, { recursive: true, force: true });
+  // the documents' references and their rendering (Word, Quarto), without the page
+  for (const f of ['essai_references.mjs', 'essai_documents.mjs']) {
+    await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
+  }
 
   console.log('Vérification du serveur R…');
   const port = await portLibre();
@@ -236,6 +240,29 @@ async function principal() {
       verifier(q.session === true, 'séance enregistrée');
       const m = await api('ajuster', { projet: q.id, numero: pls.numero, A: 2 });
       verifier(m.note === 'essai' && m.reglages.x.length === 6, 'modèle relu');
+    });
+    await etape('documents : écrire, relire, annuler sans y toucher, enregistrer et rouvrir, supprimer', async () => {
+      // (documents.js: Markdown kept in the project and saved with it; Ctrl+Z leaves it alone)
+      let r = await api('document_enregistrer', { projet: p.id, titre: 'Article', langue: 'fr', texte: 'Q² = {{M2.Q2}}' });
+      const id = r.id;
+      verifier(/^D\d+$/.test(id) && r.projet.modifie && r.projet.documents.some((d) => d.id === id && d.titre === 'Article'), `créé : ${JSON.stringify(r.projet.documents)}`);
+      await api('document_enregistrer', { projet: p.id, id, texte: 'Q² = {{M2.Q2}} ; N = {{M2.N}}', langue: 'en' });
+      let d = await api('document', { projet: p.id, id });
+      verifier(d.texte === 'Q² = {{M2.Q2}} ; N = {{M2.N}}' && d.titre === 'Article' && d.langue === 'en', `relu : ${JSON.stringify(d)}`);
+      await api('variable_calculee', { projet: p.id, nom: 'x1x3', formule: 'x1 * x3' });
+      await api('annuler', { projet: p.id });
+      d = await api('document', { projet: p.id, id });
+      verifier(d.texte.endsWith('{{M2.N}}'), 'annuler laisse le document tel qu’il est');
+      const f = path.join(dossier, 'documents.nuee');
+      await api('enregistrer', { projet: p.id, chemin: f });
+      const q = await api('ouvrir', { chemin: f });
+      d = await api('document', { projet: q.id, id });
+      verifier(d.texte.endsWith('{{M2.N}}') && d.langue === 'en' && q.documents.length === 1, 'relu du fichier');
+      r = await api('document_supprimer', { projet: q.id, id });
+      let refus = '';
+      try { await api('document', { projet: q.id, id }); } catch (e) { refus = e.message; }
+      verifier(!r.projet.documents.length && refus, `supprimé (${refus})`);
+      await api('fermer_projet', { projet: q.id });
     });
     await etape('enregistrer sans risque : version, fichier changé par ailleurs, projet reçu', async () => {
       const f = path.join(dossier, 'partage.nuee');

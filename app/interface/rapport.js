@@ -6,9 +6,10 @@ import { el, fmt, dialogue } from './ui.js';
 import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites,
   notesMoyennes, titreMoyenne, titrePaire, libellePaire } from './panneaux.js';
 import { demander } from './api.js';
+import { zip } from './zip.js';
 
-const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
-const HAUTEUR = 580;
+export const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
+export const HAUTEUR = 580;
 
 // The parts a report can hold, in their order. `vue`: a plot drawn by that view;
 // `tableau`: a table built from the model's results.
@@ -56,12 +57,18 @@ const PARTIES_REGRESSION = [
   { cle: 'puissance', vue: 'puissance', si: (m) => ['LM', 'LMM'].includes(m.type), tableau: tableauPuissance },
 ];
 
+// The parts a model's report can hold: its plots (`vue`) and tables (`tableau`). The documents
+// (documents.js) refer to the same: {{M1.scores}}, {{M1.table.resume}}.
+export function partiesModele(m) {
+  const pls = m.type !== 'PCA';
+  return PARTIES_TYPES[m.type] ? PARTIES_TYPES[m.type].filter((x) => !x.si || x.si(m)) : m.regression ? PARTIES_REGRESSION.filter((x) => !x.si || x.si(m))
+    : PARTIES.filter((x) => (!x.pls || pls) && (!x.plsda || /-DA$/.test(m.type)) && (!x.min || m.A >= x.min) && (!x.opls || m.opls));
+}
+
 export function dialogueRapport(app, id) {
   const m = app.modele(id);
   if (!m) return;
-  const pls = m.type !== 'PCA';
-  const parties = PARTIES_TYPES[m.type] ? PARTIES_TYPES[m.type].filter((x) => !x.si || x.si(m)) : m.regression ? PARTIES_REGRESSION.filter((x) => !x.si || x.si(m))
-    : PARTIES.filter((x) => (!x.pls || pls) && (!x.plsda || /-DA$/.test(m.type)) && (!x.min || m.A >= x.min) && (!x.opls || m.opls));
+  const parties = partiesModele(m);
   const choix = new Set(parties.filter((x) => x.defaut).map((x) => x.cle));
   const st = { titre: `${m.nom}${m.titre ? ' — ' + m.titre : ''}`, commentaire: '', format: 'pdf' };
   const contenu = el('div', { class: 'dialogue-rapport' },
@@ -140,8 +147,8 @@ async function contenuRapport(app, m, parties, st) {
 }
 
 // A view drawn off screen with the settings of its open panel, if any (and `variante`'s), then
-// turned into a PNG.
-async function imageVue(app, vue, m, variante = {}) {
+// turned into a PNG (also for a document's figures, documents.js).
+export async function imageVue(app, vue, m, variante = {}) {
   const hote = el('div', { class: 'panneau', style: `position:fixed;left:-30000px;top:0;width:${LARGEUR}px;height:${HAUTEUR + 60}px` });
   document.body.append(hote);
   let graphe = null;
@@ -448,49 +455,4 @@ function docx(blocs) {
   return zip([['[Content_Types].xml', texte(types)], ['_rels/.rels', texte(racine)], ['word/document.xml', texte(document)],
     ['word/styles.xml', texte(styles)], ['word/_rels/document.xml.rels', texte(relations)],
     ...images.map((url, i) => [`word/media/image${i + 1}.png`, png(url)])]);
-}
-
-// A zip archive with its files stored as they are (no compression), enough for a .docx.
-const TABLE_CRC = Array.from({ length: 256 }, (_, n) => {
-  let c = n;
-  for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  return c >>> 0;
-});
-function crc32(octets) {
-  let c = 0xffffffff;
-  for (const o of octets) c = TABLE_CRC[(c ^ o) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-function zip(fichiers) {
-  const morceaux = [];
-  const centre = [];
-  let decalage = 0;
-  const maintenant = new Date();
-  const heure = (maintenant.getHours() << 11) | (maintenant.getMinutes() << 5) | (maintenant.getSeconds() >> 1);
-  const jour = ((maintenant.getFullYear() - 1980) << 9) | ((maintenant.getMonth() + 1) << 5) | maintenant.getDate();
-  for (const [nom, octets] of fichiers) {
-    const n = new TextEncoder().encode(nom);
-    const crc = crc32(octets);
-    const local = new DataView(new ArrayBuffer(30));
-    [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [8, 0, 2], [10, heure, 2], [12, jour, 2], [14, crc, 4],
-      [18, octets.length, 4], [22, octets.length, 4], [26, n.length, 2], [28, 0, 2]]
-      .forEach(([k, v, l]) => (l === 4 ? local.setUint32(k, v, true) : local.setUint16(k, v, true)));
-    const c = new DataView(new ArrayBuffer(46));
-    [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x0800, 2], [10, 0, 2], [12, heure, 2], [14, jour, 2], [16, crc, 4],
-      [20, octets.length, 4], [24, octets.length, 4], [28, n.length, 2], [30, 0, 2], [32, 0, 2], [34, 0, 2], [36, 0, 2], [38, 0, 4], [42, decalage, 4]]
-      .forEach(([k, v, l]) => (l === 4 ? c.setUint32(k, v, true) : c.setUint16(k, v, true)));
-    morceaux.push(new Uint8Array(local.buffer), n, octets);
-    centre.push(new Uint8Array(c.buffer), n);
-    decalage += 30 + n.length + octets.length;
-  }
-  const tailleCentre = centre.reduce((s, x) => s + x.length, 0);
-  const fin = new DataView(new ArrayBuffer(22));
-  [[0, 0x06054b50, 4], [4, 0, 2], [6, 0, 2], [8, fichiers.length, 2], [10, fichiers.length, 2], [12, tailleCentre, 4], [16, decalage, 4], [20, 0, 2]]
-    .forEach(([k, v, l]) => (l === 4 ? fin.setUint32(k, v, true) : fin.setUint16(k, v, true)));
-  const tout = [...morceaux, ...centre, new Uint8Array(fin.buffer)];
-  const sortie = new Uint8Array(tout.reduce((s, x) => s + x.length, 0));
-  let k = 0;
-  for (const x of tout) { sortie.set(x, k); k += x.length; }
-  return sortie;
 }

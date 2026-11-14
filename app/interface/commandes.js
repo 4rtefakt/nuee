@@ -33,6 +33,8 @@ export function creerCommandes(app) {
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: () => avecModele() || !!app.coefficientsActifs(),
       action: () => (app.coefficientsActifs() ? app.exporterCoefficients(app.coefficientsActifs()) : app.exporter(m())) },
     script_r: { icone: 'file-code', actif: avecModele, action: () => app.exporterScript(m()) },
+    // a document of the project: text that refers to its results (documents.js)
+    nouveau_document: { icone: 'file-text', actif: () => !!app.projetActif(), action: () => app.nouveauDocument(app.projetActif()) },
     rapport: { icone: 'file-text', actif: avecModele, action: () => app.rapport(m()) },
     texte_methodes: { icone: 'quote', actif: avecModele, action: () => app.texteMethodes(m()) },
     fermer_projet: { actif: () => !!app.projetActif(), action: () => app.fermerProjet(app.projetActif()) },
@@ -118,7 +120,7 @@ export const ICONES_VUES = {
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
   statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
-  series: 'trending-up',
+  series: 'trending-up', document: 'file-text',
 };
 
 // A menu item for a command, evaluated now (enabled state, check mark).
@@ -139,7 +141,7 @@ export function menus(app, C) {
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
-      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('fermer_projet')]
+      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable'), it('ajouter_colonnes'), it('resumer_groupes')] },

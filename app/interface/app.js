@@ -18,6 +18,7 @@ import { ouvrirPalette } from './palette.js';
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 import './vues_ordination.js';
 import './vues_classement.js';
+import { installerDocuments } from './documents.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -242,8 +243,9 @@ const app = {
 
   // true once saved; false if the user cancelled the choice of a file
   async enregistrer(pid, sous) {
+    if (!etat.projets[pid]) { statut(t('choisir_projet'), true); return false; }
+    if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
     const p = etat.projets[pid];
-    if (!p) { statut(t('choisir_projet'), true); return false; }
     let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
       chemin = await bureau.enregistrerSous(p.nom.replace(/\.[^.]+$/, '') + '.nuee', [{ name: t('format_projet'), extensions: ['nuee'] }]);
@@ -300,8 +302,9 @@ const app = {
   },
 
   async fermerProjet(pid) {
+    if (!etat.projets[pid]) return;
+    if (app.viderDocuments) await app.viderDocuments(pid);  // (what was just typed in its documents makes it modified)
     const p = etat.projets[pid];
-    if (!p) return;
     if (p.modifie && !window.confirm(t('confirmer_fermer_projet', { nom: p.nom }))) return;
     await demander('fermer_projet', { projet: pid });
     oublierProjet(pid);
@@ -316,6 +319,28 @@ const app = {
     await garder(res);
     vuesParDefaut(res.id);
     return res.id;
+  },
+  // A model of the project computed without opening its views (a document that refers to it,
+  // documents.js), as a saved session brings its models back (restaurerSession).
+  async calculerDiscret(pid, numero) {
+    const res = await demander('ajuster', { projet: pid, numero });
+    etat.modeles[res.id] = res;
+    await rafraichirProjet(pid);
+    diffuser('modeles');
+    majEtat();
+    return res.id;
+  },
+  // A project's summary after a change that leaves its data and models as they are (a document
+  // written): the explorer and the status bar, no panel drawn again.
+  majProjet(res) {
+    projetRecu(res);
+    app.rafraichirExplorateur();
+    majEtat();
+  },
+  // The title of an open panel's tab (a document renamed).
+  titrePanneau(cle, titre) {
+    const e = etat.panneaux.get(cle);
+    if (e && e.api) e.api.setTitle(titre);
   },
   nouveauModele(pid) {
     const p = etat.projets[pid || app.projetActif()];
@@ -629,6 +654,7 @@ const app = {
   },
   occupe: (f) => occupe(f),
   statut: (message, erreur) => statut(message, erreur),
+  diffuser: (type, donnees) => diffuser(type, donnees),
   // for the report: a view's settings in its open panel, and a context to draw it off screen
   locVue: (vue, id) => (etat.panneaux.get(`${vue}:${id}`) || {}).loc || null,
   contexteHorsEcran: (loc, surGraphe) => ({ ...contexte({ loc }), rafraichir: () => {}, definirGraphe: surGraphe, menuGraphique: () => {} }),
@@ -638,7 +664,7 @@ const app = {
   // A view of a model opens in the model's page (as a tab beside the last view used there);
   // a project view (data, statistics...) as a tab of the central group.
   ouvrirVue(vue, id, loc, pid, position) {
-    if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid);
+    if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid, vue === 'document' ? loc : null);
     const m = id ? etat.modeles[id] : null;
     const projet = m ? m.projet : pid;
     const cle = `${vue}:${id || projet || ''}`;
@@ -667,9 +693,10 @@ const app = {
     if (page) page.api.setActive(); else vuesParDefaut(id);
   },
 
-  ouvrirFenetreVue(vue, id, pid) {
+  // (loc: the settings the view starts with, a document's: which one it shows)
+  ouvrirFenetreVue(vue, id, pid, loc = null) {
     const m = id ? etat.modeles[id] : null;
-    const q = new URLSearchParams({ vue, modele: id || '', projet: pid || (m && m.projet) || '', de: ID_FENETRE });
+    const q = new URLSearchParams({ vue, modele: id || '', projet: pid || (m && m.projet) || '', de: ID_FENETRE, ...(loc ? { loc: JSON.stringify(loc) } : {}) });
     window.open('./?' + q, '_blank', 'popup,width=1000,height=720');
   },
 
@@ -679,7 +706,7 @@ const app = {
     if (!p) return;
     const e = etat.panneaux.get(p.id);
     if (!e) return;
-    app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet);
+    app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, e.vue === 'document' ? e.loc : null);
     p.api.close();
   },
 
@@ -741,6 +768,7 @@ const app = {
   },
 };
 
+installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app.nouveauDocument...)
 const C = creerCommandes(app);
 
 // ------------------------------------------------------------ state helpers
@@ -1306,7 +1334,11 @@ function composantVue(options) {
       etat.panneaux.set(options.id, entree);
       rendrePanneau(entree);
     },
-    dispose() { if (etat.panneaux.get(options.id) === entree) etat.panneaux.delete(options.id); },
+    dispose() {
+      if (etat.panneaux.get(options.id) === entree) etat.panneaux.delete(options.id);
+      const v = VUES[options.name];
+      if (v && v.fermer) v.fermer(element);  // (a document: what was just typed is kept)
+    },
   };
 }
 
@@ -1594,7 +1626,8 @@ function accueil() {
 }
 
 function rattacher() {
-  diffuser('rattacher', { vers: params.get('de'), vue: VUE_SEULE, modele: params.get('modele'), projet: params.get('projet') });
+  const loc = VUE_SEULE === 'document' ? (etat.panneaux.get('seul') || {}).loc : null;
+  diffuser('rattacher', { vers: params.get('de'), vue: VUE_SEULE, modele: params.get('modele'), projet: params.get('projet'), loc });
   window.close();
 }
 
@@ -1622,8 +1655,10 @@ canal.onmessage = async ({ data: msg }) => {
     app.changerLangue(msg.l, false);
   } else if (msg.type === 'rattacher' && !VUE_SEULE && msg.vers === ID_FENETRE) {
     await synchroniser();
-    app.ouvrirVue(msg.vue, msg.modele || null, null, msg.projet || null);
+    app.ouvrirVue(msg.vue, msg.modele || null, msg.loc || null, msg.projet || null);
     if (bureau) bureau.focusFenetre(null);
+  } else if (msg.type === 'document') {
+    if (app.surDocument) app.surDocument(msg);  // (a document written in another window: documents.js)
   }
 };
 
@@ -1653,7 +1688,9 @@ async function demarrerVue() {
   if (VUES[VUE_SEULE].global) await synchroniser();
   const tete = document.getElementById('tete-seul');
   const element = el('div', { class: 'panneau' });
-  const entree = { id: 'seul', element, vue: VUE_SEULE, params: { modele: id || null, projet: pid || null }, loc: {} };
+  let loc = {};
+  try { loc = JSON.parse(params.get('loc') || '{}') || {}; } catch { loc = {}; }
+  const entree = { id: 'seul', element, vue: VUE_SEULE, params: { modele: id || null, projet: pid || null }, loc };
   tete.replaceChildren(el('span', { class: 'logo' }, icone(ICONES_VUES[VUE_SEULE] || 'sigma')), el('span', { class: 'titre-seul' }),
     el('span', { class: 'espace' }),
     el('button', { class: 'icone-seule', title: t('copier_image'), onclick: () => copierImage() }, icone('copy')),

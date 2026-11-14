@@ -214,7 +214,10 @@ the model's domain, and export the results.
 - *View › Find a command* (Ctrl+K): type part of a command's name instead of looking through the menus;
 - a model report as PDF or Word;
 - the paragraph for a Methods section, written from the model in French or English, with its
-  references (*Model › Text for the Methods section*).
+  references (*Model › Text for the Methods section*);
+- documents kept in the project (*File › New document*): an article or a report in Markdown, beside
+  its live preview, that cites the project's results (`{{M1.Q2}}`, `{{M1.scores | caption}}`, the
+  Methods text) and compiles to Word, PDF, HTML or Quarto.
 
 ## Files
 
@@ -305,4 +308,5 @@ Nuée is free software under the [GNU General Public License v3.0](LICENSE) or l
 
 The installer bundles R (GPL-2 | GPL-3) with its recommended packages and the R packages
 httpuv, jsonlite, openxlsx, haven, readxl and their dependencies, Electron (MIT), Plotly.js (MIT),
-dockview (MIT) and Lucide icons (ISC), each under its own license.
+dockview (MIT), Lucide icons (ISC), and CodeMirror and markdown-it (MIT) for the documents, each under
+its own license.

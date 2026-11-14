@@ -3,14 +3,18 @@
 import { langueActuelle } from './i18n.js';
 
 // silencieux: a request made in the background (the console's log), which doesn't report a
-// stopped engine: only what the user asks for does.
-export async function demander(nom, corps = {}, { silencieux = false } = {}) {
+// stopped engine: only what the user asks for does. garder: a request that must reach the engine
+// even if the window closes meanwhile (a document's last words; the browser keeps those of 64 kB
+// at most).
+export async function demander(nom, corps = {}, { silencieux = false, garder = false } = {}) {
   let r;
   try {
+    const body = JSON.stringify(corps);
     r = await fetch('/api/' + nom, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Langue': langueActuelle() },
-      body: JSON.stringify(corps),
+      body,
+      keepalive: garder && body.length < 60000,
     });
   } catch (e) {  // no answer at all: the R engine has stopped (app.js offers to restart it)
     if (!silencieux) window.dispatchEvent(new CustomEvent('moteur-injoignable'));

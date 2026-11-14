@@ -340,6 +340,40 @@ English (data, transformations, scaling, spectral preprocessing, method, cross-v
 Q², CV-ANOVA, classification, software and R version), with its references. "Copy the text"
 button. Read it over and complete it (experimental design, sampling...) before publishing.
 
+Documents (articles, reports)
+-----------------------------
+File › New document (or right-click a project in the explorer): a text kept in the project (an
+article, a report, notes), written in Markdown on the left, with its preview on the right, drawn
+again as you type. It is saved with the project and in its recovery copies; Edit › Undo leaves
+it alone, and Ctrl+Z in the text undoes the text.
+Start from a blank document, an article (introduction, methods, results, discussion) or an
+analysis report (for each model: summary, plots, methods), the models ticked already cited.
+The project's results are cited between double braces; the preview and the compiled file show
+their values:
+  {{M1.Q2}}  {{M1.R2Y}}  {{M1.R2X:%}} (a percentage)  {{M1.Q2:3}} (3 decimals)  {{M1.N}}
+  {{M1.gain}}  {{M1.vip.sugar}}  {{M1.coef.sugar}} (scaled coefficient and its 95 % interval)
+  {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
+  {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
+  {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
+A plot, a table or the Methods text goes alone on its line. Plots and tables are numbered in
+order (Figure 1, Table 1); with a label, {{M1.scores #fig-scores | caption}}, {{ref:fig-scores}}
+writes "Figure 1" anywhere in the text. Type {{ to list the project's models, then what the one
+chosen offers, with its current value; Insert, in the toolbar, does the same from menus, and a
+model or its view in the explorer has "Insert in the document" (right-click).
+A reference that can't be resolved (a model that doesn't exist, a variable it doesn't have) is
+in red, with the reason when you hover it. A model of the project not computed yet is computed
+when the document cites it, without opening its views. Numbers follow the document's language
+(0,65 in French, 0.65 in English), as do "Figure", "Table" and the Methods text.
+Compile: a Word file (.docx: headings, lists, tables, plots and captions in Word's styles), a
+PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd) with its plots in a
+folder next to it, the results written in for good. When Quarto is installed (quarto.org, or
+with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML from it, with what Quarto
+adds: a bibliography (bibliography: refs.bib in the header, [@key] in the text),
+cross-references, journal templates. A YAML header (title, author, date) at the top of the
+document is read; a line {{< pagebreak >}} starts a new page.
+Spelling: misspelled words are underlined; right-click one for suggestions (in every text
+field of the application).
+
 R console
 ---------
 View › R console (Ctrl+J): a panel below the tabs, with

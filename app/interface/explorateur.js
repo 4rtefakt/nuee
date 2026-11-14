@@ -86,7 +86,9 @@ export function rendreExplorateur(conteneur, app) {
         cle: `${p.id}/m/${m.id}/${v}`, niveau: 4, ic: ICONES_VUES[v], libelle: t(v),
         double: () => app.ouvrirVue(v, m.id), menu: () => [
           { libelle: t(v), icone: ICONES_VUES[v], action: () => app.ouvrirVue(v, m.id) },
-          { libelle: t('detacher'), icone: 'external-link', action: () => app.ouvrirFenetreVue(v, m.id) }],
+          { libelle: t('detacher'), icone: 'external-link', action: () => app.ouvrirFenetreVue(v, m.id) }]
+          // (a plot a document can show: documents.js)
+          .concat(app.figureDocument(m, v) ? [{ libelle: t('inserer_document'), icone: 'quote', action: () => app.insererReference(p.id, `${m.nom}.${v}`, true) }] : []),
       })),
       menu: () => [
         { libelle: t('resume'), icone: 'table-2', action: () => app.ouvrirVue('resume', m.id) },
@@ -107,16 +109,21 @@ export function rendreExplorateur(conteneur, app) {
         { libelle: t('exporter'), icone: 'file-down', action: () => app.exporter(m.id) },
         { libelle: t('script_r'), icone: 'file-code', action: () => app.exporterScript(m.id) },
         { libelle: t('rapport'), icone: 'file-text', action: () => app.rapport(m.id) },
+        { libelle: t('inserer_document'), icone: 'quote', action: () => app.insererReference(p.id, `${m.nom}.`) },
       ], [
         { libelle: t('supprimer_modele'), icone: 'trash-2', action: () => app.supprimerModele(m.id) },
       ]),
     });
     const groupe = (cle, libelle, ic, liste, f) => (liste.length ? noeud({ cle: `${p.id}/${cle}`, niveau: 2, ic, libelle: [libelle, el('span', { class: 'compte' }, liste.length)], enfants: () => liste.map(f) }) : null);
+    // the project's documents (documents.js)
+    const noeudDocument = (d) => noeud({ cle: `${p.id}/doc/${d.id}`, niveau: 3, ic: 'file-text', libelle: d.titre || t('document_sans_titre'),
+      double: () => app.ouvrirDocument(p.id, d.id), menu: () => app.menuDocument(p.id, d.id) });
     return noeud({
       cle: p.id, niveau: 1, ic: 'folder', libelle: [el('b', {}, p.nom), p.modifie ? el('span', { class: 'badge alerte', title: t('modifie') }, '●') : null],
       titre: p.source,
       menu: () => [
         { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
+        { libelle: t('nouveau_document'), icone: 'file-text', action: () => app.nouveauDocument(p.id) },
         { libelle: t('donnees'), icone: 'database', action: () => app.ouvrirVue('donnees', null, null, p.id) },
         { libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) },
         { libelle: t('tests_variables'), icone: 'flask-conical', action: () => app.ouvrirVue('tests', null, null, p.id) },
@@ -153,6 +160,7 @@ export function rendreExplorateur(conteneur, app) {
         groupe('importes', t('modeles_fichier'), 'layout-dashboard', importes, def),
         groupe('propres', t('modeles_projet'), 'layout-dashboard', propres, def),
         groupe('calcules', t('modeles_r'), 'sigma', calcules, modele),
+        groupe('documents', t('documents'), 'file-text', [].concat(p.documents || []), noeudDocument),
         groupe('predictions', t('jeux_prediction'), 'target', p.predictions || [], (s, i) => noeud({
           cle: `${p.id}/ps/${i}`, niveau: 3, ic: 'list', libelle: s.nom || `${t('jeu_prediction')} ${i + 1}`, details: `${s.n_obs} ${t('obs')}` })),
       ],
