@@ -1,7 +1,7 @@
 {
   "name": "nuee",
   "productName": "Nuée",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "description": "ACP, PLS, PLS-DA et OPLS calculées en R",
   "author": "4rtefakt",
   "license": "GPL-3.0-or-later",

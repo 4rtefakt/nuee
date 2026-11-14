@@ -1212,12 +1212,22 @@ PCA: each value is predicted by the scores of its observation computed without t
 its group of variables (also assigned to G groups). RMSEcv, CV-ANOVA, the cross-validated
 classification, the confidence intervals (jack-knife, over the G sub-models), the permutation
 test and autofit follow the validation chosen.
+Gain over the empty model (the first two, PLS and OPLS): the Summary also gives the Q2 of the
+empty model, where each held-out group is predicted by the mean of Y over the other
+observations, and the model's gain over it, (Q2(cum) - Q2 of the empty model) / (1 - Q2 of the
+empty model) = 1 - PRESS / PRESS of the empty model: the share of the empty model's prediction
+error that the model avoids. With groups that differ (sites, departments), the empty model's
+Q2 is below 0, and so is a model's Q2 that predicts a little better than it: the gain says how
+much better. 0: no better than the mean of the other groups. With the full model's centres and
+weights, the empty model predicts the mean of all the observations, held-out group included
+(its Q2 is 0): no gain is given. Also in the Methods text, the model report and Export to R.
 Hierarchical model (a PLS whose X include scores of other models of the project, $M1.t1...):
 its Q2 takes these scores as they are, though they were computed with the held-out group's Y.
 Its Summary also gives an honest Q2(cum): in each round, its base models are refitted without
 the held-out group (the whole site when the groups are by site), then their scores, with the
 model's validation (centres recomputed when it is the full model's); a base model with no
-variation left without that group gives scores of zero.
+variation left without that group gives scores of zero. The honest Q2 has its gain over the
+empty model too.
 
 Validation (PLS and PLS-DA)
 ---------------------------
@@ -1338,6 +1348,9 @@ What differs
 - Automatic fitting: the published rules, applied to Nuée's Q2, may choose another number of
   components; for PCA, the exact limit used in the files isn't published.
 - VIP cut-off (step around 0.8): the application's own method.
+- Confidence intervals of the VIPs of a model with two components or more (the VIPs themselves
+  are the same): those of the program that wrote the file weight the components of each
+  cross-validation round in a way that isn't published; with one component, they are the same.
 - OPLS / OPLS-DA: no stored model to compare with (see above).
 - Suggested transformation: the published rule doesn't say whether both skewness and Min/Max
   are needed; the application requires both.

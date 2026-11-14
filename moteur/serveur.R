@@ -509,6 +509,7 @@ resultat_modele <- function(id) {
        # (la façon de valider, et les termes qui ont pris le poids du modèle complet dans un
        # sous-modèle, avec le nom de son groupe : validation_croisee.R)
        validation = m$validation, gardes_vc = gardes_vc(p, d, m),
+       q2_vide = m$q2_vide, gain = m$gain,  # (le modèle vide et le gain sur lui : validation_croisee.R, fin_validation)
        hierarchique = m$hierarchique,  # (le Q2 honnête d'un modèle hiérarchique : hierarchique.R)
        noms_y = I(m$y$noms %||% character(0)),  # I() : un seul Y reste une liste
        G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "",

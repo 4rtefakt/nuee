@@ -396,9 +396,19 @@ function chiffreHierarchique(m) {
   if (!h || !h.bases || ![].concat(h.bases).length) return null;
   const bases = [].concat(h.bases).join(', ');
   const q = h.q2cum ? [].concat(h.q2cum) : [];
+  const gain = Number.isFinite(h.gain) && Number.isFinite(h.q2_vide) ? h.gain : null;
   return el('span', { title: h.erreur ? t('q2_honnete_erreur', { erreur: h.erreur })
-    : t('q2_honnete_aide', { bases }) + (h.validation && h.validation !== m.validation ? ' ' + t('q2_honnete_validation', { validation: t('validation_' + h.validation) }) : '') },
-    el('small', {}, t('q2_honnete')), ' ', el('b', {}, q.length ? fmt(q[q.length - 1], 3) : '—'));
+    : t('q2_honnete_aide', { bases }) + (h.validation && h.validation !== m.validation ? ' ' + t('q2_honnete_validation', { validation: t('validation_' + h.validation) }) : '')
+      + (gain !== null ? '\n' + t('gain_vide_aide', { vide: fmt(h.q2_vide, 3) }) : '') },
+    el('small', {}, t('q2_honnete')), ' ', el('b', {}, q.length ? fmt(q[q.length - 1], 3) : '—'),
+    gain !== null ? [' ', el('small', {}, t('gain_honnete')), ' ', el('b', {}, fmt(gain, 3))] : null);
+}
+
+// The gain over the empty model (moteur/R/validation_croisee.R, fin_validation), when the centres
+// are recomputed: the empty model predicts each held-out group by the mean of the others.
+function chiffreGain(m) {
+  if (!Number.isFinite(m.gain) || !Number.isFinite(m.q2_vide)) return null;
+  return el('span', { title: t('gain_vide_aide', { vide: fmt(m.q2_vide, 3) }) }, el('small', {}, t('gain_vide')), ' ', el('b', {}, fmt(m.gain, 3)));
 }
 
 function noteHierarchique(m) {
@@ -426,6 +436,7 @@ function rendreResume(conteneur, ctx, p) {
     el('div', { class: 'fiche-chiffres' },
       [['A', m.A], ['N', m.N], ['K', m.K], [t('groupes_vc'), m.vc_par ? `${m.G} (${m.vc_par})` : m.G]].map(([k, v]) => el('span', {}, el('small', {}, k), ' ', el('b', {}, v))),
       m.validation ? el('span', { title: t('validation_note_' + m.validation) }, el('small', {}, t('validation_vc')), ' ', el('b', {}, t('validation_' + m.validation))) : null,
+      chiffreGain(m),
       chiffreHierarchique(m),
       m.reglages && [].concat(m.reglages.spectres || []).length
         ? el('span', {}, el('small', {}, t('spectres')), ' ', el('b', {}, libelleSpectres(m.reglages.spectres))) : null,

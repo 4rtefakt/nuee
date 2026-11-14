@@ -550,6 +550,54 @@ verifier(sprintf("un modèle de base retrouvé deux fois : ses deux composantes 
 dacp <- definir_modele(ph, "PCA", x = c(numeros(ph, sv$noms), numeros(ph, "rare")), A = 1, vc = par_site)
 verifier("une ACP sur des scores n'a pas de Q2 honnête (pas de Y dont ses scores se serviraient)", is.null(ajuster(ph, dacp)$hierarchique))
 
+cat("W* et coefficients : les scores des observations complètes sont X W*, avec ou sans valeurs manquantes (PLS, OPLS)\n")
+pm <- p
+pm$donnees[c(3, 8, 15, 21), as.character(uid("sucre"))] <- NA
+pm$donnees[c(5, 8, 30), as.character(uid("fermete"))] <- NA
+for (type in c("PLS", "OPLS")) {
+  for (manquants in c(FALSE, TRUE)) {
+    pp <- if (manquants) pm else p
+    m <- ajuster(pp, definir_modele(pp, type, x = complets, y = uid("note_gout"), A = 3))
+    cf <- coefficients_pls(m$W, m$P, m$C, ordre_retrait(m))
+    comp <- rowSums(m$MX) == ncol(m$MX)
+    ecart <- max(abs(m$X[comp, , drop = FALSE] %*% cf$Wetoile - m$T[comp, , drop = FALSE]))
+    pareil <- isTRUE(all.equal(unname(m$statistiques$coefficients[["CoeffCS note_gout"]][seq_len(m$K)]), unname(cf$coef_cs[, 1])))
+    if (manquants) {
+      verifier(sprintf("%s, valeurs manquantes : T = X W* pour les %d observations complètes (écart %.1e), et les coefficients du résumé en viennent", type, sum(comp), ecart),
+               ecart < 1e-8 && pareil && sum(!comp) > 0)
+    } else {
+      inverse <- m$W %*% solve(crossprod(m$P, m$W))
+      verifier(sprintf("%s, données complètes : T = X W* (écart %.1e), et W* = W (P'W)^-1 comme avant (écart %.1e)", type, ecart, max(abs(cf$Wetoile - inverse))),
+               ecart < 1e-8 && max(abs(cf$Wetoile - inverse)) < 1e-8 && pareil)
+    }
+  }
+}
+
+cat("Le Q2 du modèle vide et le gain sur lui : chaque groupe caché prédit par la moyenne des autres\n")
+par_verger <- list(by = "variable", variable = uid("verger"))
+vide_a_la_main <- function(pp, d, noms_y) {
+  g <- groupes_definition(pp, d)
+  Y <- sapply(noms_y, function(n) colonne(pp, uid(n), d$observations))
+  w <- 1 / apply(Y, 2, stats::sd)  # (UV : les poids du modèle complet)
+  press0 <- sum(sapply(unique(g), function(k) sum(sweep(sweep(Y[g == k, , drop = FALSE], 2, colMeans(Y[g != k, , drop = FALSE])), 2, w, "*")^2)))
+  1 - press0 / sum(sweep(sweep(Y, 2, colMeans(Y)), 2, w, "*")^2)
+}
+for (cas in list(list("PLS", "note_gout", "centres"), list("PLS", "note_gout", "sans_fuite"), list("OPLS", "note_gout", "centres"),
+                 list("PLS", c("note_gout", "jus"), "centres"))) {
+  dv <- definir_modele(p, cas[[1]], x = complets, y = uid(cas[[2]]), A = 2, vc = par_verger, validation = cas[[3]])
+  m <- ajuster(p, dv)
+  ref <- vide_a_la_main(p, dv, cas[[2]])
+  gain <- (utils::tail(m$q2cum, 1) - ref) / (1 - ref)
+  verifier(sprintf("%s de %s, %s : Q2 du modèle vide %.4f (à la main %.4f), gain %.4f (à la main %.4f)", cas[[1]], paste(cas[[2]], collapse = " et "), cas[[3]], m$q2_vide, ref, m$gain, gain),
+           isTRUE(all.equal(m$q2_vide, ref)) && isTRUE(all.equal(m$gain, gain)) && ref < 0)
+}
+mc <- ajuster(p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, vc = par_verger, validation = "complet"))
+ma <- ajuster(p, definir_modele(p, "PCA", x = complets, A = 2, vc = par_verger))
+verifier("avec les centres et poids du modèle complet, et pour une ACP : ni Q2 du modèle vide ni gain", is.null(mc$q2_vide) && is.null(mc$gain) && is.null(ma$q2_vide) && is.null(ma$gain))
+hh <- ajuster(ph, dh)$hierarchique
+verifier(sprintf("le Q2 honnête d'un hiérarchique a son gain sur le modèle vide (%.4f, Q2 honnête %.4f, modèle vide %.4f)", hh$gain, utils::tail(hh$q2cum, 1), hh$q2_vide),
+         isTRUE(all.equal(hh$gain, (utils::tail(hh$q2cum, 1) - hh$q2_vide) / (1 - hh$q2_vide))))
+
 cat("comparer_references() : validé comme le fichier, le Q2 compte dans le statut\n")
 dref <- ds
 dref$validation <- "sans_fuite"  # (le modèle du projet est validé sans fuite : la comparaison le valide comme le fichier)
