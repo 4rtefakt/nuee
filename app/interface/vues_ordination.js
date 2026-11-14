@@ -129,7 +129,7 @@ function rendreValeursPropres(conteneur, ctx, p, loc) {
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
   conteneur.replaceChildren(el('p', { class: 'note' }, t(rda ? 'ord_valeurs_propres_rda' : 'ord_valeurs_propres_ca', { r: m.rang_contraint ?? 0 })), graphe, bas);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   tracer(ctx, graphe, [
     { type: 'bar', name: t('ord_part_inertie'), x: ax.slice(0, n), y: part.slice(0, n).map((v) => 100 * v),
       marker: { color: contraint.slice(0, n).map((k) => (k || !rda ? PALETTE[0] : GRIS)) }, hovertemplate: '<b>%{x}</b><br>%{y:.2f} %<extra></extra>' },
@@ -229,7 +229,7 @@ function rendreContributionsCA(conteneur, ctx, p, loc) {
   el('p', { class: 'note' }, t('ord_contributions_note')), graphe, bas);
   const ordre = nom.map((_, i) => i).sort((i, j) => ctr[j] - ctr[i]).slice(0, 40);
   const moyenne = 100 / Math.max(1, nom.length);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   tracer(ctx, graphe, [{ type: 'bar', x: ordre.map((i) => nom[i]), y: ordre.map((i) => ctr[i]),
     marker: { color: ordre.map((i) => (ctr[i] > moyenne ? PALETTE[0] : GRIS)) }, hovertemplate: '<b>%{x}</b><br>%{y:.2f} %<extra></extra>' }],
   { title: { text: `${m.nom} · ${t('ord_ctr')} · ${ax}` }, dragmode: false, showlegend: false, xaxis: { tickangle: -40 }, yaxis: { title: { text: t('ord_ctr') } },

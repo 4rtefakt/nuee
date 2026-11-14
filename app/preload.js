@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('bureau', {
   // a document compiled by Quarto, when the computer has it (documents.js)
   quartoDisponible: () => ipcRenderer.invoke('quarto-disponible'),
   quarto: (chemin, format) => ipcRenderer.invoke('quarto', chemin, format),
+  // Zotero on this computer, read only (zotero.js)
+  zotero: (chemin, delai) => ipcRenderer.invoke('zotero', chemin, delai),
   // closing with "Save and close": the window saves its projects, then answers
   surEnregistrerTout: (f) => ipcRenderer.on('enregistrer-tout', async () => {
     let ok = false;

@@ -8,6 +8,7 @@ const http = require('http');
 const net = require('net');
 const path = require('path');
 const { fileURLToPath } = require('url');
+const { demanderZotero } = require('./zotero');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -413,8 +414,10 @@ function ipc() {
   });
   recevoir('fenetres', (e) => BrowserWindow.getAllWindows()
     .map((f) => ({ id: f.id, titre: f.getTitle(), actuelle: f.webContents === e.sender, principale: principale(f) })));
+  // (id: a window's, null: a main window, 'moi': the one asking, back after Zotero's picker)
   recevoir('focus-fenetre', (e, id) => {
-    const f = id === null ? BrowserWindow.getAllWindows().find((x) => !new URL(x.webContents.getURL()).searchParams.get('vue')) : BrowserWindow.fromId(id);
+    const f = id === 'moi' ? BrowserWindow.fromWebContents(e.sender)
+      : id === null ? BrowserWindow.getAllWindows().find((x) => !new URL(x.webContents.getURL()).searchParams.get('vue')) : BrowserWindow.fromId(id);
     if (f) { if (f.isMinimized()) f.restore(); f.focus(); }
   });
   recevoir('zoom', (e, d) => {
@@ -433,6 +436,9 @@ function ipc() {
   // Word, HTML or PDF (through Typst, which Quarto brings: no LaTeX needed). Returns the file
   // written, or the end of what Quarto said.
   recevoir('quarto-disponible', () => !!trouverQuarto());
+  // Zotero on this computer, for a document's citations (zotero.js: its local API and Better
+  // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
+  recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
   recevoir('quarto', (_, chemin, format) => new Promise((ok) => {
     const quarto = trouverQuarto();
     if (!quarto) return ok({ erreur: 'quarto_absent' });

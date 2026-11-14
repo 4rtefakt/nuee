@@ -395,6 +395,28 @@ PDF (Typst) ou une page HTML, avec ce que Quarto apporte : bibliographie (biblio
 dans l'en-tête, [@cle] dans le texte), renvois, modèles de revues. Un en-tête YAML (title,
 author, date) en haut du document est lu ; une ligne {{< pagebreak >}} commence une nouvelle
 page.
+Les citations s'écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 33 ; @eriksson2006],
+@wold2001 dans la phrase (« Wold et al. (2001) »), [-@wold2001] sans l'auteur. Taper @ montre les
+références du document, puis celles de Zotero. La liste des références vient à la fin (sous le dernier
+titre quand c'est « Références »), ou là où le document met {{bibliographie}} ; en auteur-année ou
+numérotée (Citer › Style des citations), dans la langue du document. D'où viennent les références
+(bouton Citer) :
+  - des fichiers BibTeX ou CSL-JSON, exportés de Zotero, Mendeley, JabRef... : Citer › Lier un fichier
+    en nomme un dans l'en-tête (bibliography: refs.bib, relatif au dossier du projet, comme le lit
+    Quarto). L'export automatique de Better BibTeX le tient à jour : une clé introuvable fait relire
+    le fichier ;
+  - Zotero sur cet ordinateur (Zotero 7 ou plus récent, en cochant Paramètres › Avancé › « Autoriser
+    les autres applications de cet ordinateur à communiquer avec Zotero ») : ses références se
+    cherchent en tapant @, ou dans Citer › Insérer une citation ; avec l'extension Better BibTeX,
+    Citer › Choisir dans Zotero ouvre le sélecteur de Zotero. Nuée ne fait que lire la bibliothèque ;
+  - du BibTeX collé (Citer › Coller des références BibTeX).
+Le document garde une copie des références qu'il cite : envoyé à quelqu'un qui n'a pas le .bib, il les
+cite encore (Citer › Références du document les montre, et retire celles qui ne sont plus citées).
+Compilé pour Quarto, le texte garde ses citations telles quelles, les références citées dans un .bib à
+côté du .qmd, pour que Quarto les écrive dans le style d'une revue (csl: style.csl dans l'en-tête ; le
+fichier est copié à côté du .qmd).
+Chaque document s'ouvre dans son propre onglet. Les graphiques des documents et des rapports de modèle
+sont dessinés en clair, quel que soit le thème de la fenêtre.
 Orthographe : les mots mal orthographiés sont soulignés ; clic droit pour les corrections
 proposées (dans tous les champs de texte de l'application).
 

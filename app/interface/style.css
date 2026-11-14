@@ -358,3 +358,22 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .dialogue-document .colonne { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .dialogue-document .modeles-gabarit { display: flex; flex-direction: column; gap: 3px; padding: 4px 2px 0; max-height: 14em; overflow: auto; }
 .aide-document pre { background: var(--fond-barre); padding: 6px 8px; white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; border-radius: 4px; }
+/* Citations in documents: in the text, in the preview, and the dialogs to find them */
+.editeur-document .cm-cite { color: var(--ok); }
+.editeur-document .cm-cite-erreur { color: var(--erreur); text-decoration: underline wavy var(--erreur); text-underline-offset: 3px; }
+.apercu-document .cite { border-bottom: 1px dotted var(--ok); }
+.apercu-document .cite.erreur { color: var(--erreur); border-bottom-color: var(--erreur); }
+.apercu-document .cite.attente { color: var(--texte-doux); border-bottom: 0; }
+.apercu-document .bibliographie p { padding-left: 1.6em; text-indent: -1.6em; margin: 0 0 .45em; font-size: 13px; }
+.apercu-document .bibliographie .numero { color: var(--texte-doux); }
+.dialogue-citer { display: flex; flex-direction: column; gap: 8px; min-width: min(46em, 80vw); }
+.dialogue-citer .recherche-citation { width: 100%; }
+.liste-citations { max-height: 22em; overflow: auto; border: 1px solid var(--bord); border-radius: 4px; padding: 4px; display: flex; flex-direction: column; gap: 1px; }
+.ligne-citation, .ligne-reference { display: flex; align-items: baseline; gap: 8px; padding: 2px 4px; border-radius: 3px; }
+.ligne-citation:hover { background: var(--survol); }
+.ligne-citation input { flex: none; }
+.resume-citation { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-citation { flex: none; color: var(--texte-doux); font-size: 11.5px; }
+.ligne-reference code { flex: none; color: var(--texte-doux); font-size: 11.5px; }
+.ligne-reference.citee code { color: var(--ok); }
+.zone-bibtex { width: 100%; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; }

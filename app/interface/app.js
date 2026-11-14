@@ -655,9 +655,10 @@ const app = {
   occupe: (f) => occupe(f),
   statut: (message, erreur) => statut(message, erreur),
   diffuser: (type, donnees) => diffuser(type, donnees),
-  // for the report: a view's settings in its open panel, and a context to draw it off screen
+  // for the report and the documents: a view's settings in its open panel, and a context to draw it
+  // off screen (in the light theme, whatever the window's)
   locVue: (vue, id) => (etat.panneaux.get(`${vue}:${id}`) || {}).loc || null,
-  contexteHorsEcran: (loc, surGraphe) => ({ ...contexte({ loc }), rafraichir: () => {}, definirGraphe: surGraphe, menuGraphique: () => {} }),
+  contexteHorsEcran: (loc, surGraphe) => ({ ...contexte({ loc }), rafraichir: () => {}, definirGraphe: surGraphe, menuGraphique: () => {}, clair: true }),
   version: async () => ({ ...(await demander('version')), application: VERSION, electron: bureau && bureau.versions.electron }),
 
   // ---- views and windows
@@ -667,7 +668,7 @@ const app = {
     if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid, vue === 'document' ? loc : null);
     const m = id ? etat.modeles[id] : null;
     const projet = m ? m.projet : pid;
-    const cle = `${vue}:${id || projet || ''}`;
+    const cle = `${vue}:${id || projet || ''}${suffixeVue(vue, loc)}`;
     const existant = trouverPanneau(cle);
     if (existant) {
       if (m) ouvrirPage(id).page.api.setActive();
@@ -677,7 +678,7 @@ const app = {
       return;
     }
     if (loc) etat.locInitial[cle] = loc;
-    const titre = VUES[vue].titre(m, etat.projets[projet] || {});
+    const titre = VUES[vue].titre(m, etat.projets[projet] || {}, loc || {});
     if (m) {
       const { page, interne } = ouvrirPage(id);
       interne.addPanel({ id: cle, component: vue, title: titreCourt(titre, m), params: { modele: id, projet },
@@ -708,6 +709,11 @@ const app = {
     if (!e) return;
     app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, e.vue === 'document' ? e.loc : null);
     p.api.close();
+  },
+
+  fermerVue(cle) {
+    const p = trouverPanneau(cle);
+    if (p) p.api.close();
   },
 
   fermerPanneau() {
@@ -1074,7 +1080,7 @@ function collecterSession(pid) {
   const externes = dock.panels.filter((p) => !EXTERNES.includes(p.id));
   const externeAMoi = (p) => (estPage(p) ? code.has(p.id.slice(5)) : !!etat.panneaux.get(p.id) && aMoi(etat.panneaux.get(p.id)));
   if (externes.length && externes.every(externeAMoi)) {  // the layout too, when it only shows this project
-    const ids = new Map(panneaux.map((e) => [e.id, `${e.vue}:${codeVue(e) || '@P'}`]));
+    const ids = new Map(panneaux.map((e) => [e.id, `${e.vue}:${codeVue(e) || '@P'}${suffixeVue(e.vue, e.loc)}`]));
     for (const p of externes) if (estPage(p)) ids.set(p.id, `page:${code.get(p.id.slice(5))}`);
     const internes = {};
     for (const [mid, d] of pages) if (code.has(mid)) internes[code.get(mid)] = remplacerIds(d.toJSON(), (s) => ids.get(s));
@@ -1104,16 +1110,16 @@ async function restaurerSession(pid, donnee = null) {
   for (const cle of ['selection', 'variables', 'choixVIP', 'groupesHCA']) {
     for (const [code, v] of Object.entries(s[cle] || {})) if (ids[code]) etat[cle][ids[code]] = v;
   }
-  const idPanneau = (code, vue) => `${vue}:${code === '@P' || !code ? pid : ids[code]}`;
+  const idPanneau = (code, vue, loc) => `${vue}:${code === '@P' || !code ? pid : ids[code]}${suffixeVue(vue, loc)}`;
   const vues = (s.vues || []).filter((v) => !v.modele || ids[v.modele]);
-  for (const v of vues) etat.locInitial[idPanneau(v.modele, v.vue)] = v.loc;
+  for (const v of vues) etat.locInitial[idPanneau(v.modele, v.vue, v.loc)] = v.loc;
   let fait = false;
   const libre = !dock.panels.some((p) => !EXTERNES.includes(p.id));
   if (s.disposition && s.disposition.externe && libre && vues.length === s.vues.length) {
     const nouvel = (x) => {
-      const r = /^([a-z_0-9]+):(@P|@\d+)$/.exec(x);
+      const r = /^([a-z_0-9]+):(@P|@\d+)(~[\w-]+)?$/.exec(x);
       if (!r) return undefined;
-      return r[1] === 'page' ? `page:${ids[r[2]]}` : idPanneau(r[2], r[1]);
+      return r[1] === 'page' ? `page:${ids[r[2]]}` : idPanneau(r[2], r[1]) + (r[3] || '');
     };
     const externe = remplacerIds(s.disposition.externe, nouvel);
     for (const p of Object.values(externe.panels || {})) p.params = { modele: estPage(p) ? p.id.slice(5) : null, projet: pid };
@@ -1133,7 +1139,7 @@ async function restaurerSession(pid, donnee = null) {
     for (const code of new Set(vues.map((v) => v.modele).filter(Boolean))) vuesParDefaut(ids[code]);
     for (const v of vues) app.ouvrirVue(v.vue, v.modele ? ids[v.modele] : null, v.loc, pid);
   }
-  for (const v of vues) delete etat.locInitial[idPanneau(v.modele, v.vue)];
+  for (const v of vues) delete etat.locInitial[idPanneau(v.modele, v.vue, v.loc)];
   for (const k of Object.keys(dispositionsAttente)) delete dispositionsAttente[k];
   app.rafraichirExplorateur();
   rafraichirModele(null);
@@ -1269,6 +1275,13 @@ const tousDocks = () => (dock ? [dock, ...pages.values()] : []);
 const estPage = (p) => !!p && typeof p.id === 'string' && p.id.startsWith('page:');
 const titrePage = (m) => `${m.nom} · ${m.type}`;
 const titreCourt = (titre, m) => (m && titre.startsWith(`${m.nom} · `) ? titre.slice(m.nom.length + 3) : titre);
+
+// A view shown once per thing of its own (a document) adds it to its panel's id: document:P1~D2.
+function suffixeVue(vue, loc) {
+  const v = VUES[vue];
+  const s = v && v.suffixe && loc ? v.suffixe(loc) : '';
+  return s ? `~${s}` : '';
+}
 
 function trouverPanneau(id) {
   for (const d of tousDocks()) {
@@ -1448,7 +1461,7 @@ function rendrePanneau(entree) {
   Promise.resolve(rendu).catch((e) => {
     entree.element.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${e.message}`));
   });
-  const titre = v.titre(m, etat.projets[entree.params.projet] || {});
+  const titre = v.titre(m, etat.projets[entree.params.projet] || {}, entree.loc);
   if (entree.api) entree.api.setTitle(m ? titreCourt(titre, m) : titre);  // in its model's page, the model's name goes without saying
   if (VUE_SEULE) document.title = titre;
 }

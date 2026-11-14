@@ -3,7 +3,8 @@
 // Quarto's {{< >}}), those alone on their line, the preview, the .docx's parts and the .qmd's text.
 //   node tests/essai_documents.mjs
 import markdownit from 'markdown-it';
-import { pluginReferences, analyser, versHTML, versDocx, versQmd, lireEntete, referencesDansTexte } from '../interface/rendu_document.js';
+import { pluginReferences, analyser, versHTML, versDocx, versQmd, lireEntete, referencesDansTexte, fixerEntete, listeEntete } from '../interface/rendu_document.js';
+import { lireBibtex, formaterCitations } from '../interface/bibliographie.js';
 
 let echecs = 0;
 const verifier = (nom, ok, detail = '') => {
@@ -127,6 +128,61 @@ contient('la langue ajoutée à l’en-tête', q.texte, ['---\ntitle: "Essai"\na
 // one reference markdown-it doesn't read (in a link's address) doesn't shift the others
 const lien = '[lien]({{M1.Q2}}) puis {{M1.N}}.';
 egal('une référence dans l’adresse d’un lien ne décale pas les autres', referencesDansTexte(lien, analyser(md, lien)).map((r) => r.brut), ['{{M1.N}}']);
+
+console.log('Citations');
+const bib = new Map(lireBibtex(String.raw`
+@article{wold2001, author = {Wold, Svante and Sj{\"o}str{\"o}m, Michael and Eriksson, Lennart}, title = {PLS-regression}, journal = {Chemom. Intell. Lab.}, year = 2001, volume = 58, pages = {109--130}, doi = {10.1016/S0169-7439(01)00155-1}}
+@book{legendre2012, author = {Legendre, P. and Legendre, L.}, title = {Numerical ecology}, publisher = {Elsevier}, year = 2012}
+`).entrees.map((e) => [e.cle, e]));
+const docCite = `---
+title: Essai
+bibliography: [refs.bib, autre.bib]
+csl: ecology.csl
+---
+
+# Méthodes
+
+La PLS [voir @wold2001, p. 3; @legendre2012] et @legendre2012 [chap. 9], pas a@b.fr ni \\@wold2001, ni [un lien](https://x.org) ni [@wold2001](https://y.org), ni @inconnue.
+
+- @wold2001
+`;
+const ac = analyser(md, docCite);
+egal('les citations lues (pas l’adresse, l’échappée, le lien)', ac.citations.map((t) => [t.meta.narratif, t.meta.cites.map((c) => c.cle).join('+'), t.meta.cites[0].suffixe]),
+  [[false, 'wold2001+legendre2012', ', p. 3'], [true, 'legendre2012', 'chap. 9'], [true, 'inconnue', ''], [true, 'wold2001', '']]);
+egal('en-tête : une liste en ligne', listeEntete(ac.entete.bibliography), ['refs.bib', 'autre.bib']);
+const ct = formaterCitations(ac.citations.map((t) => t.meta), bib, { langue: 'fr' });
+const hc = versHTML(md, ac, [], { ...libelles, references: 'Références' }, ct);
+contient('aperçu : citations, inconnue en rouge, titre et liste ajoutés à la fin', hc, ['>(voir Wold et al., 2001, p. 3; Legendre et Legendre, 2012)</span>',
+  '>Legendre et Legendre (2012, chap. 9)</span>', 'class="cite erreur"', '<li><span class="cite"', '<h1>Références</h1><div class="bibliographie">',
+  '<i>Chemom. Intell. Lab.</i>', '<a href="https://doi.org/10.1016/S0169-7439(01)00155-1">', '<a href="https://y.org">', 'a@b.fr']);
+const avecPlace = analyser(md, '# Résultats\n\nComme @wold2001.\n\n{{bibliographie}}\n\n# Annexe\n\nTexte.\n');
+const hp = versHTML(md, avecPlace, [], libelles, formaterCitations(avecPlace.citations.map((t) => t.meta), bib, { langue: 'en', style: 'numerique' }));
+verifier('la liste où {{bibliographie}} la met, numérotée', /Comme <span class="cite"[^>]*>Wold et al\. \[1\]<\/span>[\s\S]*<div class="bibliographie"><p class="reference" id="ref-wold2001"><span class="numero">\[1\]<\/span>[\s\S]*<h1>Annexe/.test(hp)
+  && !/<p><div/.test(hp), hp.slice(0, 600));
+const sousTitre = analyser(md, '# Intro\n\n[@wold2001]\n\n# Références\n');
+verifier('sous un dernier titre « Références », pas de titre en plus', !/<h1>Références<\/h1><div/.test(versHTML(md, sousTitre, [], { ...libelles, references: 'Références' },
+  formaterCitations(sousTitre.citations.map((t) => t.meta), bib, {}))));
+const dc = new TextDecoder().decode(Object.entries((() => {
+  const o = versDocx(ac, [], { langue: 'fr', libelles: { ...libelles, references: 'Références' }, citations: ct });
+  const f = {};
+  for (let k = 0; k + 30 <= o.length;) {
+    const v = new DataView(o.buffer, o.byteOffset + k);
+    if (v.getUint32(0, true) !== 0x04034b50) break;
+    const taille = v.getUint32(18, true);
+    const n = v.getUint16(26, true);
+    f[new TextDecoder().decode(o.subarray(k + 30, k + 30 + n))] = o.subarray(k + 30 + n, k + 30 + n + taille);
+    k += 30 + n + taille;
+  }
+  return f;
+})()).find(([n]) => n === 'word/document.xml')[1]);
+contient('Word : citations, liste en style Bibliographie, revue en italique, DOI en lien', dc, ['(voir Wold et al., 2001, p. 3; Legendre et Legendre, 2012)',
+  '<w:pStyle w:val="Bibliographie"/>', '<w:i/></w:rPr><w:t xml:space="preserve">Chemom. Intell. Lab.', '<w:hyperlink r:id="rIdLien', '>Références<']);
+const qc = versQmd(docCite, ac, [], { fichierFigure: () => '', langue: 'fr', titre: 'Essai', bibliographie: 'essai.bib', csl: 'ecology.csl', libelles: { references: 'Références' } });
+contient('Quarto : citations laissées, en-tête refait, titre de la liste', qc.texte, ['[voir @wold2001, p. 3; @legendre2012]', 'bibliography: essai.bib', 'csl: ecology.csl', 'lang: fr', '# Références {.unnumbered}']);
+verifier('Quarto : l’ancienne liste de fichiers remplacée', !/refs\.bib|autre\.bib/.test(qc.texte), qc.texte.slice(0, 200));
+egal('{{bibliographie}} devient la place de Quarto', versQmd('Texte [@wold2001].\n\n{{bibliographie}}\n', analyser(md, 'Texte [@wold2001].\n\n{{bibliographie}}\n'), [], { fichierFigure: () => '' }).texte.split('\n').slice(-3), ['::: {#refs}', ':::', '']);
+egal('en-tête : une clé ajoutée, remplacée, ou une liste', [fixerEntete('---\ntitle: x\n---\n', 'csl', 'a b.csl'), fixerEntete('---\nbibliography:\n  - a.bib\n  - b.bib\ntitle: x\n---\n', 'bibliography', ['c.bib'])],
+  ['---\ntitle: x\ncsl: "a b.csl"\n---\n', '---\nbibliography:\n  - c.bib\ntitle: x\n---\n']);
 
 console.log(echecs ? `${echecs} vérification(s) en échec` : 'Toutes les vérifications sont passées.');
 process.exit(echecs ? 1 : 0);

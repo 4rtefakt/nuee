@@ -231,7 +231,8 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   ses références (*Modèle › Texte pour la section Méthodes*) ;
 - des documents gardés dans le projet (*Fichier › Nouveau document*) : un article ou un rapport en
   Markdown, à côté de son aperçu en direct, qui cite les résultats du projet (`{{M1.Q2}}`,
-  `{{M1.scores | légende}}`, le texte des méthodes) et se compile en Word, PDF, HTML ou Quarto.
+  `{{M1.scores | légende}}`, le texte des méthodes) et la bibliographie (`[@wold2001]`, depuis des
+  fichiers BibTeX ou CSL-JSON ou depuis Zotero), et se compile en Word, PDF, HTML ou Quarto.
 
 ## Fichiers
 

@@ -5,20 +5,25 @@
 // it and in its recovery copies; undo leaves them alone.
 // The editor (CodeMirror) and the Markdown reader (markdown-it) come in one file, loaded when a
 // document is first opened (copier-vendor.js: vendor/editeur.min.js).
+// Citations ([@wold2001], bibliographie.js): from the BibTeX or CSL-JSON files the document's header
+// names (bibliography:), from Zotero on this computer (zotero.js), or kept in the document itself
+// (its `bib`: the references added from Zotero or pasted, and a copy of those cited from files).
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
 import { separerCible, valeurReference, offreModele, numeroter } from './references.js';
-import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, lireEntete, BLOCS } from './rendu_document.js';
+import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, lireEntete, listeEntete, fixerEntete, BLOCS } from './rendu_document.js';
+import { lireBibtex, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES } from './bibliographie.js';
 import { VERSION } from './nouveautes.js';
 
 let md = null;              // markdown-it, once loaded
 let chargement = null;
 const ouverts = new Set();  // the documents open (their editor), to save what is being typed
-const affiches = new Map(); // project id -> the document its panel shows
 let dernier = null;         // the document last written in (Insert in the document, from the explorer)
+// A document's panel (one per document: app.js, suffixeVue).
+const cleDocument = (pid, id) => `document:${pid}~${id}`;
 
 function chargerEditeur() {
   if (window.CM && window.markdownit && md) return Promise.resolve();
@@ -45,7 +50,7 @@ const MOTS = {
     discussion: 'Discussion', references: 'References', resume: 'Summary' },
 };
 const mots = (langue) => MOTS[langue] || MOTS.fr;
-const libelles = (langue) => ({ figure: mots(langue).figure, tableau: mots(langue).tableau, seul: t('document_seul') });
+const libelles = (langue) => ({ figure: mots(langue).figure, tableau: mots(langue).tableau, seul: t('document_seul'), references: mots(langue).references });
 
 // The Markdown in the editor, in the theme's colours (light or dark).
 let styleTexte = null;
@@ -73,8 +78,13 @@ const AUTRES_ANALYSES = ['RDA', 'CA', 'LDA', 'TREE', 'KMEANS'];
 export function installerDocuments(app) {
   VUES.document = {
     rendre: (conteneur, ctx, params, loc) => rendreDocument(app, conteneur, params, loc),
-    titre: (_, p) => { const s = affiches.get(p.id); return s ? s.titre || t('document_sans_titre') : `${p.nom || ''} · ${t('document')}`; },
+    titre: (_, p, loc = {}) => {
+      const s = [...ouverts].find((x) => x.pid === p.id && x.id === loc.doc);
+      const d = [].concat(p.documents || []).find((x) => x.id === loc.doc);
+      return (s ? s.titre : d && d.titre) || t('document_sans_titre');
+    },
     projet: true,
+    suffixe: (loc) => loc.doc || '',
     // the panel closed: what was just typed is kept (the request leaves before the editor goes)
     fermer: (conteneur) => {
       const s = conteneur.etatDocument;
@@ -109,14 +119,13 @@ async function rendreDocument(app, conteneur, params, loc) {
     s.fermer();
     conteneur.etatDocument = s = null;
   }
-  const id = loc.doc && existe(loc.doc) ? loc.doc : s ? s.id : (docs[0] && docs[0].id);
-  if (!id) {
-    affiches.delete(pid);
-    conteneur.replaceChildren(el('div', { class: 'vide-document' }, el('p', { class: 'note' }, t('document_aucun')),
+  if (!loc.doc && docs[0]) loc.doc = docs[0].id;  // (a panel without its document: the project's first)
+  const id = loc.doc;
+  if (!id || !existe(id)) {
+    conteneur.replaceChildren(el('div', { class: 'vide-document' }, el('p', { class: 'note' }, t(id ? 'document_supprime' : 'document_aucun')),
       el('button', { class: 'principal', onclick: () => dialogueNouveau(app, pid) }, icone('file-text'), ` ${t('nouveau_document')}`)));
     return;
   }
-  loc.doc = id;
   if (s && s.id === id) {
     if (s.langueUI !== langueActuelle()) s.construireBarre();
     s.rafraichir();
@@ -133,7 +142,7 @@ async function rendreDocument(app, conteneur, params, loc) {
     const d = await demander('document', { projet: pid, id });
     if (conteneur.jetonDocument !== jeton) return;
     conteneur.etatDocument = creerEditeur(app, conteneur, pid, d, loc);
-    app.titrePanneau(`document:${pid}`, d.titre || t('document_sans_titre'));
+    app.titrePanneau(cleDocument(pid, id), d.titre || t('document_sans_titre'));
   } finally {
     if (conteneur.jetonDocument === jeton) conteneur.chargementDocument = null;
   }
@@ -147,8 +156,10 @@ function creerEditeur(app, conteneur, pid, d, loc) {
     erreurs: new Set(), versionErreurs: 0, quarto: null,
     // what the references gave (plots, tables, Methods texts, models computed for the document)
     images: new Map(), tableaux: new Map(), methodes: new Map(), calculs: new Map(), urls: new Map(),
+    // its citations: the references kept in it (BibTeX), their style, the files read, the keys not found
+    bib: d.bib || '', style: STYLES.includes(d.style) ? d.style : STYLES[0], bibEnvoye: d.bib || '', styleEnvoye: d.style || STYLES[0],
+    biblio: { signature: null, fichiers: [], version: 0, lecture: null, cache: null, date: 0 }, citesInconnues: new Set(),
   };
-  affiches.set(pid, s);
   ouverts.add(s);
   if (bureau && bureau.quartoDisponible) bureau.quartoDisponible().then((q) => { s.quarto = q; }).catch(() => { s.quarto = false; });
 
@@ -160,13 +171,18 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   s.construireBarre = () => {
     s.langueUI = langueActuelle();
     s.champTitre = el('input', { class: 'titre-document-champ', value: s.titre, placeholder: t('document_sans_titre'), 'aria-label': t('document_titre'),
-      oninput: (e) => { s.titre = e.target.value; s.programmer(true); app.titrePanneau(`document:${pid}`, s.titre || t('document_sans_titre')); } });
+      oninput: (e) => { s.titre = e.target.value; s.programmer(true); app.titrePanneau(cleDocument(pid, s.id), s.titre || t('document_sans_titre')); } });
     s.choixLangue = el('select', { title: t('document_langue_aide'), 'aria-label': t('document_langue_aide'),
       onchange: (e) => { s.langue = e.target.value; s.vue.contentDOM.setAttribute('lang', s.langue); s.programmer(true); } },
     [['fr', 'Français'], ['en', 'English']].map(([v, n]) => el('option', { value: v, selected: v === s.langue }, n)));
     const bouton = (ic, libelle, aide, action) => el('button', { title: aide, onclick: action }, icone(ic), libelle ? ` ${libelle}` : '');
     const barre = el('div', { class: 'outils barre-document' }, s.champTitre, s.choixLangue,
       bouton('quote', t('document_inserer'), t('document_inserer_aide'), (e) => ouvrirMenuSous(e.currentTarget, menuInserer(app, s))),
+      bouton('book-open', t('document_citer'), t('document_citer_aide'), async (e) => {
+        const b = e.currentTarget;
+        await etatZotero();
+        ouvrirMenuSous(b, menuCiter(app, s));
+      }),
       bouton('file-output', t('document_compiler'), t('document_compiler_aide'), (e) => ouvrirMenuSous(e.currentTarget, menuCompiler(app, s))),
       bouton('columns-2', '', t('document_apercu_aide'), () => { loc.sansApercu = corps.classList.toggle('sans-apercu'); }),
       bouton('circle-help', '', t('document_aide'), () => dialogueAideDocument()),
@@ -181,7 +197,8 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   s.construireBarre();
   conteneur.replaceChildren(cadre);
 
-  // the references in the text: marked, in red when they can't be resolved (not Quarto's {{< >}})
+  // the references in the text, and the citations: marked, in red when they can't be resolved
+  // (not Quarto's {{< >}}, nor an address a@b.fr)
   const marques = CM.ViewPlugin.fromClass(class {
     constructor(v) { this.version = s.versionErreurs; this.decorations = this.construire(v); }
     update(u) {
@@ -195,6 +212,11 @@ function creerEditeur(app, conteneur, pid, d, loc) {
       for (const { from, to } of v.visibleRanges) {
         for (const m of v.state.doc.sliceString(from, to).matchAll(/\{\{(?![<%])[^{}]*?\}\}/g)) {
           r.push(CM.Decoration.mark({ class: s.erreurs.has(m[0]) ? 'cm-ref cm-ref-erreur' : 'cm-ref' }).range(from + m.index, from + m.index + m[0].length));
+        }
+        for (const m of v.state.doc.sliceString(from, to).matchAll(CITATION_TEXTE)) {
+          const debut = from + m.index + m[1].length;
+          const cle = m[2].replace(/^-?@\{?|\}$/g, '');
+          r.push(CM.Decoration.mark({ class: s.citesInconnues.has(cle) ? 'cm-cite cm-cite-erreur' : 'cm-cite' }).range(debut, debut + m[2].length));
         }
       }
       return CM.Decoration.set(r, true);
@@ -210,7 +232,8 @@ function creerEditeur(app, conteneur, pid, d, loc) {
       extensions: [
         CM.history(), CM.drawSelection(), CM.highlightActiveLine(), CM.indentOnInput(), CM.EditorView.lineWrapping,
         CM.markdown({ base: CM.markdownLanguage }), CM.syntaxHighlighting(styleMarkdown()),
-        CM.closeBrackets(), CM.autocompletion({ override: [completion(app, s)], icons: false, activateOnTyping: true }),
+        CM.closeBrackets(),
+        CM.autocompletion({ override: [completion(app, s), citationsDocument(app, s), citationsZotero(app, s)], icons: false, activateOnTyping: true }),
         CM.search({ top: true }), CM.highlightSelectionMatches(),
         CM.keymap.of([...CM.closeBracketsKeymap, ...CM.defaultKeymap, ...CM.searchKeymap, ...CM.historyKeymap, ...CM.completionKeymap, CM.indentWithTab]),
         CM.placeholder(t('document_placeholder')),
@@ -248,21 +271,30 @@ function creerEditeur(app, conteneur, pid, d, loc) {
     clearTimeout(s.attenteApercu);
     s.attenteApercu = setTimeout(() => s.rafraichir(), 350);
   };
-  s.programmer = (vite) => {
+  // (a change kept: saved soon; `vite`: the title, the language)
+  s.garder = (vite) => {
     s.modifie = true;
     s.etatEnregistrement.textContent = t('document_modifie');
     clearTimeout(s.attente);
     s.attente = setTimeout(() => s.enregistrer(), vite ? 100 : 800);
+  };
+  s.programmer = (vite) => {
+    s.garder(vite);
     s.programmerApercu();
   };
-  // the text kept in the project (it is saved with it). `garder`: the window is closing.
+  // the text kept in the project (it is saved with it), its references and their style when they
+  // changed. `garder`: the window is closing.
   s.enregistrer = async (garder = false) => {
     clearTimeout(s.attente);
     if (!s.modifie || s.ferme) return;
     s.modifie = false;
+    const q = { projet: pid, id: s.id, titre: s.titre, langue: s.langue, texte: s.vue.state.doc.toString() };
+    if (s.bib !== s.bibEnvoye) q.bib = s.bib;
+    if (s.style !== s.styleEnvoye) q.style = s.style;
     try {
-      const r = await demander('document_enregistrer', { projet: pid, id: s.id, titre: s.titre, langue: s.langue, texte: s.vue.state.doc.toString() },
-        { silencieux: true, garder });
+      const r = await demander('document_enregistrer', q, { silencieux: true, garder });
+      if (q.bib !== undefined) s.bibEnvoye = q.bib;
+      if (q.style !== undefined) s.styleEnvoye = q.style;
       if (r.id !== s.id) { s.id = r.id; loc.doc = r.id; }  // (deleted meanwhile, in another window: it comes back)
       const avant = app.projet(pid) || {};
       // (the explorer is drawn again only when what it shows changes: a title, the project now modified)
@@ -286,8 +318,10 @@ function creerEditeur(app, conteneur, pid, d, loc) {
     }
     s.titre = x.titre || '';
     s.champTitre.value = s.titre;
-    app.titrePanneau(`document:${pid}`, s.titre || t('document_sans_titre'));
+    app.titrePanneau(cleDocument(pid, s.id), s.titre || t('document_sans_titre'));
     if (x.langue && x.langue !== s.langue) { s.langue = x.langue; s.choixLangue.value = x.langue; }
+    if ((x.bib || '') !== s.bib) { s.bib = x.bib || ''; s.bibEnvoye = s.bib; s.biblio.cache = null; }
+    if (x.style && x.style !== s.style) { s.style = x.style; s.styleEnvoye = x.style; }
     s.rafraichir();
   };
   s.rafraichir = () => mettreAJour(app, s);
@@ -297,7 +331,6 @@ function creerEditeur(app, conteneur, pid, d, loc) {
     clearTimeout(s.attenteApercu);
     ouverts.delete(s);
     if (dernier === s) dernier = null;
-    if (affiches.get(pid) === s) affiches.delete(pid);
     for (const u of s.urls.values()) URL.revokeObjectURL(u);
     s.vue.destroy();
   };
@@ -411,29 +444,32 @@ async function mettreAJour(app, s) {
   const generation = ++s.generation;
   const texte = s.vue.state.doc.toString();
   const analyse = analyser(md, texte);
-  let resolus = await resoudre(app, s, analyse, false);
+  const [premiers, citations] = await Promise.all([resoudre(app, s, analyse, false), citer(app, s, analyse).catch(() => null)]);
+  let resolus = premiers;
   if (generation !== s.generation || s.ferme) return;
-  dessinerApercu(s, analyse, resolus, texte);
+  dessinerApercu(s, analyse, resolus, texte, citations);
   if (resolus.some((r) => !r)) {
     resolus = await resoudre(app, s, analyse, true);
     if (generation !== s.generation || s.ferme) return;
-    dessinerApercu(s, analyse, resolus, texte);
+    dessinerApercu(s, analyse, resolus, texte, citations);
   }
 }
 
-function dessinerApercu(s, analyse, resolus, texte) {
+function dessinerApercu(s, analyse, resolus, texte, citations) {
   const haut = s.apercu.scrollTop;
   // (the plots as blob: addresses, not their whole PNG in the page at every keystroke)
   const pourApercu = resolus.map((r) => (r && r.genre === 'figure' ? { ...r, image: urlApercu(s, r.image) } : r));
-  s.apercu.innerHTML = versHTML(md, analyse, pourApercu, libelles(s.langue));
+  s.apercu.innerHTML = versHTML(md, analyse, pourApercu, libelles(s.langue), citations);
   s.apercu.scrollTop = haut;
   s.erreurs = new Set(analyse.refs.filter((_, i) => resolus[i] && resolus[i].erreur).map((tok) => tok.meta.brut));
+  s.citesInconnues = new Set(citations ? citations.inconnues : []);
   s.versionErreurs += 1;
   s.vue.dispatch({});
   const n = analyse.refs.length;
-  const erreurs = resolus.filter((r) => r && r.erreur).length;
+  const erreurs = resolus.filter((r) => r && r.erreur).length + s.citesInconnues.size;
+  const nc = analyse.citations.length;
   const motsTexte = texte.replace(/^---[\s\S]*?\n(---|\.\.\.)/, '').replace(/\{\{[^{}]*\}\}/g, ' x ').replace(/[#*_`>|[\]()~-]/g, ' ').split(/\s+/).filter(Boolean).length;
-  s.etatTexte.replaceChildren(t('document_mots', { n: motsTexte }), n ? ` · ${t('document_refs', { n })}` : '',
+  s.etatTexte.replaceChildren(t('document_mots', { n: motsTexte }), n ? ` · ${t('document_refs', { n })}` : '', nc ? ` · ${t('document_citations', { n: nc })}` : '',
     erreurs ? el('span', { class: 'erreur' }, ` · ${t('document_refs_erreurs', { n: erreurs })}`) : '');
 }
 
@@ -505,6 +541,309 @@ function completion(app, s) {
   };
 }
 
+// ------------------------------------------------------------ citations
+
+// A citation in the text, for the editor's marks: what comes before it (start of line, space, [ ; ( )
+// and the key (-@wold2001, @wold2001, @{a key}).
+const CITATION_TEXTE = /(^|[\s[;(])(-?@(?:\{[^{}\n]+\}|[\p{L}\p{N}_](?:[\p{L}\p{N}_]|[:.#$%&+?<>~/-](?=[\p{L}\p{N}_]))*))/gu;
+const nomFichier = (chemin) => String(chemin).split(/[\\/]/).pop();
+
+// The references the document can cite: those kept in it (s.bib), then those of the files its
+// header names (bibliography: a file or a list, as Quarto reads them), which win (they may have
+// changed since). The files are read again when the header changes, or when `forcer`.
+async function bibliotheque(app, s, { forcer = false } = {}) {
+  const chemins = listeEntete(lireEntete(s.vue.state.doc.toString()).entete.bibliography);
+  const signature = JSON.stringify(chemins);
+  const b = s.biblio;
+  if (forcer || b.signature !== signature) {
+    b.signature = signature;
+    b.lecture = Promise.all(chemins.map(async (chemin) => {
+      try {
+        const f = await demander('bibliographie_fichier', { projet: s.pid, chemin }, { silencieux: true });
+        const r = lireBibliographie(f.texte, f.chemin);
+        return { chemin, entrees: r.entrees, erreurs: r.erreurs };
+      } catch (e) {
+        return { chemin, entrees: [], erreurs: [], erreur: e.message };
+      }
+    })).then((lus) => {
+      if (b.signature !== signature) return;
+      b.fichiers = lus;
+      b.date = Date.now();
+      b.version += 1;
+    });
+  }
+  await b.lecture;
+  if (b.cache && b.cache.bib === s.bib && b.cache.version === b.version) return b.cache.entrees;
+  const entrees = new Map(lireBibtex(s.bib).entrees.map((e) => [e.cle, { ...e, origine: null }]));
+  for (const f of b.fichiers) for (const e of f.entrees) entrees.set(e.cle, { ...e, origine: f.chemin });
+  b.cache = { bib: s.bib, version: b.version, entrees };
+  return entrees;
+}
+
+// The document's citations written in its style (formaterCitations), with the entries they came
+// from; null when it cites nothing. A key not found has the files read again (a reference just
+// added to Zotero, which Better BibTeX exports to the .bib), at most every 5 seconds.
+async function citer(app, s, analyse) {
+  if (!analyse.citations.length) return null;
+  const groupes = analyse.citations.map((tok) => tok.meta);
+  let entrees = await bibliotheque(app, s);
+  let c = formaterCitations(groupes, entrees, { style: s.style, langue: s.langue });
+  if (c.inconnues.length && s.biblio.fichiers.length && Date.now() - s.biblio.date > 5000) {
+    entrees = await bibliotheque(app, s, { forcer: true });
+    c = formaterCitations(groupes, entrees, { style: s.style, langue: s.langue });
+  }
+  garderCitees(s, c, entrees);
+  return { ...c, entrees };
+}
+
+// The references cited from files, kept in the document too, as BibTeX (a project sent to someone
+// who hasn't the .bib still cites them): added, or brought up to date when their file changed.
+function garderCitees(s, citations, entrees) {
+  const stock = new Map(lireBibtex(s.bib).entrees.map((e) => [e.cle, e]));
+  let change = false;
+  for (const { cle } of citations.liste) {
+    const e = entrees.get(cle);
+    if (!e || !e.origine) continue;
+    const texte = versBibtex(e);
+    if (!stock.has(cle) || versBibtex(stock.get(cle)) !== texte) {
+      stock.set(cle, lireBibtex(texte).entrees[0]);
+      change = true;
+    }
+  }
+  if (!change) return;
+  s.bib = [...stock.values()].map((e) => versBibtex(e)).join('\n\n');
+  s.garder();
+}
+
+// References added to the document (from Zotero, or pasted): kept in its BibTeX, a key already
+// there replaced.
+function ajouterAuDocument(s, liste) {
+  const stock = new Map(lireBibtex(s.bib).entrees.map((e) => [e.cle, e]));
+  for (const e of liste) stock.set(e.cle, lireBibtex(versBibtex(e)).entrees[0]);
+  s.bib = [...stock.values()].map((e) => versBibtex(e)).join('\n\n');
+  s.garder();
+}
+
+// Text typed at the cursor (never in the YAML header). `citation`: a space before it when it
+// would touch the word or the citation before ([@a][@b] reads as a link, not two citations).
+function insererTexte(s, texte, citation = false) {
+  const v = s.vue;
+  let { from, to } = v.state.selection.main;
+  const entete = lireEntete(v.state.doc.toString()).brut.length;
+  if (from < entete) from = to = entete;
+  const avant = from > 0 ? v.state.doc.sliceString(from - 1, from) : '';
+  const t = citation && avant && !/[\s([]/.test(avant) ? ` ${texte}` : texte;
+  v.dispatch({ changes: { from, to, insert: t }, selection: { anchor: from + t.length } });
+  v.focus();
+}
+
+// Zotero on this computer (zotero.js), seen again every 20 seconds at most: its local API (Zotero 7
+// and later, when "Allow other applications on this computer to communicate with Zotero" is
+// ticked), and Better BibTeX's picker.
+const zotero = { etat: null, date: 0, recherches: new Map() };
+async function etatZotero(forcer = false) {
+  if (!bureau || !bureau.zotero) return (zotero.etat = { bureau: false });
+  if (!forcer && zotero.etat && Date.now() - zotero.date < 20000) return zotero.etat;
+  const [api, bbt] = await Promise.all([bureau.zotero('/api/users/0/items/top?limit=1&format=keys', 3000), bureau.zotero('/better-bibtex/cayw?probe=1', 3000)])
+    .catch(() => [{ erreur: 'absent' }, {}]);
+  zotero.etat = { bureau: true, api: api.statut === 200, bbt: bbt.statut === 200 && /ready/i.test(bbt.texte || ''),
+    absent: api.erreur === 'absent', ferme: api.statut === 403, ancien: api.statut === 404 };
+  zotero.date = Date.now();
+  return zotero.etat;
+}
+function messageZotero(z) {
+  if (!z || !z.bureau) return t('zotero_bureau');
+  if (z.api) return z.bbt ? t('zotero_connecte_bbt') : t('zotero_connecte');
+  if (z.ferme) return t('zotero_ferme');
+  if (z.ancien) return t('zotero_ancien');
+  return t('zotero_absent');
+}
+// Zotero's references that answer a search (title, authors, year), as BibTeX: their keys are those
+// Zotero exports (Better BibTeX's when it is installed). Kept a minute.
+function chercherZotero(q) {
+  const cle = q.trim().toLowerCase();
+  const garde = zotero.recherches.get(cle);
+  if (garde && Date.now() - garde.date < 60000) return garde.promesse;
+  const promesse = bureau.zotero(`/api/users/0/items/top?q=${encodeURIComponent(q.trim())}&qmode=titleCreatorYear&itemType=-attachment&itemType=-note&format=bibtex&limit=25`, 8000)
+    .then((r) => (r.statut === 200 ? lireBibtex(r.texte).entrees : []), () => []);
+  zotero.recherches.set(cle, { date: Date.now(), promesse });
+  if (zotero.recherches.size > 100) zotero.recherches.delete(zotero.recherches.keys().next().value);
+  return promesse;
+}
+// Better BibTeX's picker, in Zotero: the references chosen there, cited here and kept in the document.
+async function choisirDansZotero(app, s) {
+  app.statut(t('zotero_attente'));
+  const r = await bureau.zotero('/better-bibtex/cayw?format=translate&translator=bibtex&minimize=true', 15 * 60000);
+  if (bureau.focusFenetre) bureau.focusFenetre('moi');
+  if (r.statut !== 200) { app.statut(r.erreur === 'delai' ? t('zotero_delai') : messageZotero(await etatZotero(true)), true); return; }
+  const liste = lireBibtex(r.texte).entrees;
+  app.statut('');
+  if (!liste.length) return;
+  ajouterAuDocument(s, liste);
+  insererTexte(s, `[${liste.map((e) => `@${e.cle}`).join('; ')}]`, true);
+}
+
+// What follows @ (after a space or [ ; ( ): the document's references, by key, author, year or
+// title; then Zotero's (citationsZotero, after a pause in the typing).
+const avantArobase = (contexte) => {
+  const avant = contexte.matchBefore(/(?:^|[\s[;(])-?@[^\s[\];,(){}]*/u);
+  if (!avant) return null;
+  const at = avant.text.lastIndexOf('@');
+  return { debut: avant.from + at + 1, q: avant.text.slice(at + 1) };
+};
+function citationsDocument(app, s) {
+  return async (contexte) => {
+    const a = avantArobase(contexte);
+    if (!a) return null;
+    const entrees = await bibliotheque(app, s);
+    if (contexte.aborted) return null;
+    const q = a.q.toLowerCase();
+    const options = [...entrees.values()].filter((e) => !q || e.cle.toLowerCase().startsWith(q) || correspond(e, a.q))
+      .slice(0, 80).map((e) => ({ label: e.cle, detail: resume(e, s.langue), type: 'text' }));
+    return options.length ? { from: a.debut, options, filter: false } : null;
+  };
+}
+function citationsZotero(app, s) {
+  return async (contexte) => {
+    const a = avantArobase(contexte);
+    if (!a || a.q.length < 3 || !bureau || !bureau.zotero) return null;
+    await new Promise((r) => setTimeout(r, 300));
+    if (contexte.aborted || !(await etatZotero()).api) return null;
+    const entrees = await bibliotheque(app, s);
+    const trouvees = (await chercherZotero(a.q)).filter((e) => !entrees.has(e.cle));
+    if (contexte.aborted || !trouvees.length) return null;
+    return { from: a.debut, filter: false, options: trouvees.map((e) => ({ label: e.cle, detail: `${resume(e, s.langue)} · Zotero`, type: 'class',
+      apply: (vue, _c, from, to) => {
+        ajouterAuDocument(s, [e]);
+        vue.dispatch({ changes: { from, to, insert: e.cle }, selection: { anchor: from + e.cle.length } });
+      } })) };
+  };
+}
+
+function menuCiter(app, s) {
+  const z = zotero.etat;
+  const fichiers = s.biblio.fichiers.map((f) => ({ libelle: `${nomFichier(f.chemin)} : ${f.erreur ? t('citer_fichier_erreur') : t('citer_n', { n: f.entrees.length })}`,
+    icone: f.erreur ? 'x-circle' : 'file-text', actif: false, action: () => {} }));
+  return [
+    { libelle: t('citer_inserer'), icone: 'book-open', action: () => dialogueCiter(app, s) },
+    { libelle: t('zotero_choisir'), icone: 'search', actif: !!(z && z.bbt), action: () => choisirDansZotero(app, s) },
+    '-',
+    { libelle: t('citer_lier'), icone: 'file-plus', action: () => lierFichier(app, s) },
+    { libelle: t('citer_coller'), icone: 'clipboard-paste', action: () => dialogueColler(app, s) },
+    { libelle: t('citer_references'), icone: 'list', action: () => dialogueReferences(app, s) },
+    { libelle: t('citer_actualiser'), icone: 'refresh-cw', action: async () => { zotero.recherches.clear(); await bibliotheque(app, s, { forcer: true }); s.rafraichir(); } },
+    '-',
+    { libelle: t('citer_style'), sous: STYLES.map((st) => ({ libelle: t(`citer_style_${st}`), coche: s.style === st, action: () => { s.style = st; s.programmer(true); } })) },
+    '-',
+    ...fichiers,
+    { libelle: messageZotero(z), icone: z && z.api ? 'check' : 'info', actif: false, action: () => {} },
+  ];
+}
+
+// Insert a citation: the document's references and Zotero's that answer a search, those ticked
+// cited together ([@a; @b]), or in the sentence (@a).
+async function dialogueCiter(app, s) {
+  const choisies = new Map();
+  const recherche = el('input', { type: 'search', class: 'recherche-citation', placeholder: t('citer_rechercher'), 'aria-label': t('citer_rechercher') });
+  const liste = el('div', { class: 'liste-citations' });
+  const etat = el('p', { class: 'note' });
+  const narratif = el('input', { type: 'checkbox' });
+  let generation = 0;
+  const majListe = async () => {
+    const g = ++generation;
+    const q = recherche.value.trim();
+    const entrees = await bibliotheque(app, s);
+    const z = await etatZotero();
+    const locales = [...entrees.values()].filter((e) => !q || correspond(e, q)).sort((a, b) => resume(a).localeCompare(resume(b)));
+    const distantes = z.api && q.length >= 2 ? (await chercherZotero(q)).filter((e) => !entrees.has(e.cle)) : [];
+    if (g !== generation) return;
+    const ligne = (e, source) => el('label', { class: 'ligne-citation' },
+      el('input', { type: 'checkbox', checked: choisies.has(e.cle), onchange: (ev) => { if (ev.target.checked) choisies.set(e.cle, { e, source }); else choisies.delete(e.cle); } }),
+      el('span', { class: 'resume-citation', title: `@${e.cle}` }, resume(e, s.langue)),
+      el('span', { class: 'source-citation' }, source === 'zotero' ? 'Zotero' : e.origine ? nomFichier(e.origine) : t('citer_dans_document')));
+    liste.replaceChildren(...locales.slice(0, 80).map((e) => ligne(e, 'document')), ...distantes.map((e) => ligne(e, 'zotero')));
+    if (!liste.childElementCount) liste.append(el('p', { class: 'note' }, q ? t('citer_rien') : t('citer_vide')));
+    etat.textContent = messageZotero(z);
+  };
+  recherche.addEventListener('input', () => { clearTimeout(recherche.attente); recherche.attente = setTimeout(majListe, 250); });
+  const z = await etatZotero();
+  dialogue({ titre: t('citer_inserer').replace(/…$/, ''), large: true,
+    contenu: el('div', { class: 'dialogue-citer' }, recherche, liste, el('label', { class: 'champ' }, narratif, ` ${t('citer_narratif')}`), etat),
+    boutons: [
+      ...(z.bbt ? [{ libelle: t('zotero_choisir'), action: () => { choisirDansZotero(app, s); return true; } }] : []),
+      { libelle: t('annuler'), action: () => true },
+      { libelle: t('citer_bouton'), principal: true, action: () => {
+        if (!choisies.size) return false;
+        const choix = [...choisies.values()];
+        const zot = choix.filter((x) => x.source === 'zotero').map((x) => x.e);
+        if (zot.length) ajouterAuDocument(s, zot);
+        const cles = choix.map((x) => `@${x.e.cle}`);
+        insererTexte(s, narratif.checked ? cles.join(', ') : `[${cles.join('; ')}]`, true);
+        return true;
+      } }] });
+  majListe();
+}
+
+// A bibliography file named in the header (bibliography:), relative to the project's folder when it
+// is in it (Quarto reads it beside the document), its references then cited like the others.
+async function lierFichier(app, s) {
+  const chemin = bureau ? await bureau.choisirFichier([{ name: 'BibTeX, CSL-JSON', extensions: ['bib', 'bibtex', 'json'] }]) : window.prompt(t('citer_chemin'));
+  if (!chemin) return;
+  const unix = (x) => String(x).replace(/\\/g, '/');
+  const p = app.projet(s.pid) || {};
+  const dossier = p.chemin ? unix(p.chemin).replace(/\/[^/]*$/, '') : null;
+  const valeur = dossier && unix(chemin).toLowerCase().startsWith(`${dossier.toLowerCase()}/`) ? unix(chemin).slice(dossier.length + 1) : unix(chemin);
+  const texte = s.vue.state.doc.toString();
+  const { entete, brut } = lireEntete(texte);
+  const actuels = listeEntete(entete.bibliography);
+  if (!actuels.includes(valeur)) {
+    const nouveau = fixerEntete(brut || '', 'bibliography', actuels.length ? [...actuels, valeur] : valeur);
+    s.vue.dispatch({ changes: { from: 0, to: brut.length, insert: nouveau } });
+  }
+  await bibliotheque(app, s, { forcer: true });
+  const f = s.biblio.fichiers.find((x) => x.chemin === valeur);
+  app.statut(f && f.erreur ? `${nomFichier(valeur)} : ${f.erreur}` : t('citer_lie', { fichier: nomFichier(valeur), n: f ? f.entrees.length : 0 }), !!(f && f.erreur));
+  s.rafraichir();
+}
+
+// References pasted as BibTeX (or CSL-JSON), kept in the document.
+function dialogueColler(app, s) {
+  const zone = el('textarea', { class: 'zone-bibtex', rows: 14, spellcheck: 'false', placeholder: '@article{wold2001,\n  author = {Wold, Svante and …},\n  …\n}' });
+  dialogue({ titre: t('citer_coller').replace(/…$/, ''), large: true, contenu: el('div', { class: 'dialogue-citer' }, el('p', { class: 'note' }, t('citer_coller_note')), zone),
+    boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('citer_ajouter'), principal: true, action: () => {
+      const r = lireBibliographie(zone.value);
+      if (!r.entrees.length) { app.statut(t('citer_coller_rien'), true); return false; }
+      ajouterAuDocument(s, r.entrees);
+      app.statut(t('citer_coller_fait', { n: r.entrees.length }) + (r.erreurs.length ? ` ${t('citer_coller_erreurs', { n: r.erreurs.length })}` : ''), r.erreurs.length > 0);
+      s.rafraichir();
+      return true;
+    } }] });
+}
+
+// The references the document can cite, where each comes from and whether it cites it; those kept
+// in it and no longer cited can be removed.
+async function dialogueReferences(app, s) {
+  const entrees = await bibliotheque(app, s);
+  const citees = new Set(analyser(md, s.vue.state.doc.toString()).citations.flatMap((tok) => tok.meta.cites.map((c) => c.cle)));
+  const lignes = [...entrees.values()].sort((a, b) => resume(a).localeCompare(resume(b))).map((e) => el('div', { class: `ligne-reference${citees.has(e.cle) ? ' citee' : ''}` },
+    el('code', {}, `@${e.cle}`), el('span', { class: 'resume-citation' }, resume(e, s.langue)),
+    el('span', { class: 'source-citation' }, e.origine ? nomFichier(e.origine) : t('citer_dans_document'))));
+  const sources = [...s.biblio.fichiers.map((f) => `${f.chemin} : ${f.erreur || t('citer_n', { n: f.entrees.length })}${f.erreurs.length ? ` (${t('citer_coller_erreurs', { n: f.erreurs.length })})` : ''}`),
+    t('citer_n_document', { n: lireBibtex(s.bib).entrees.length })];
+  const inutiles = lireBibtex(s.bib).entrees.filter((e) => !citees.has(e.cle));
+  dialogue({ titre: t('citer_references').replace(/…$/, ''), large: true,
+    contenu: el('div', { class: 'dialogue-citer' }, sources.map((x) => el('p', { class: 'note' }, x)),
+      el('div', { class: 'liste-citations' }, lignes.length ? lignes : el('p', { class: 'note' }, t('citer_vide'))), el('p', { class: 'note' }, t('citer_references_note'))),
+    boutons: [
+      ...(inutiles.length ? [{ libelle: t('citer_retirer', { n: inutiles.length }), action: () => {
+        const garder = lireBibtex(s.bib).entrees.filter((e) => citees.has(e.cle));
+        s.bib = garder.map((e) => versBibtex(e)).join('\n\n');
+        s.programmer(true);
+        return true;
+      } }] : []),
+      { libelle: t('fermer'), principal: true, action: () => true }] });
+}
+
 // ------------------------------------------------------------ insert
 
 // A reference typed at the cursor; a block (plot, table, Methods text) on a line of its own.
@@ -537,7 +876,7 @@ async function insererDepuisExplorateur(app, pid, cible, bloc) {
     app.ouvrirDocument(pid, docs[0].id);
     for (let i = 0; i < 50 && !s; i += 1) {
       await new Promise((r) => setTimeout(r, 100));
-      s = [...ouverts].find((x) => x.pid === pid);
+      s = [...ouverts].find((x) => x.pid === pid && x.id === docs[0].id);
     }
     if (!s) return;
   } else app.ouvrirDocument(pid, s.id);
@@ -607,9 +946,9 @@ async function compiler(app, s, format, quarto = null) {
   const r = await app.occupe(async () => {
     const texte = s.vue.state.doc.toString();
     const analyse = analyser(md, texte);
-    return { texte, analyse, resolus: await resoudre(app, s, analyse, true) };
+    return { texte, analyse, resolus: await resoudre(app, s, analyse, true), citations: await citer(app, s, analyse) };
   });
-  const erreurs = r.resolus.filter((x) => x.erreur).length;
+  const erreurs = r.resolus.filter((x) => x.erreur).length + (r.citations ? r.citations.inconnues.length : 0);
   if (erreurs && !window.confirm(t('document_compiler_erreurs', { n: erreurs }))) return;
   // (Quarto runs the code chunks of a .qmd: a project received may hold some)
   if (quarto && CODE_QUARTO.test(r.texte) && !window.confirm(t('document_quarto_code'))) return;
@@ -622,10 +961,10 @@ async function compiler(app, s, format, quarto = null) {
   let ouvrir = chemin;
   await app.occupe(async () => {
     if (format === 'docx') {
-      const o = versDocx(r.analyse, r.resolus, { langue: s.langue, libelles: lib });
+      const o = versDocx(r.analyse, r.resolus, { langue: s.langue, libelles: lib, citations: r.citations });
       if (bureau) await bureau.ecrireFichier(chemin, o); else telecharger(o, `${base}.docx`);
     } else if (format === 'pdf' || format === 'html') {
-      const html = pageHTML(versHTML(md, r.analyse, r.resolus, lib), s.titre || base, s.langue);
+      const html = pageHTML(versHTML(md, r.analyse, r.resolus, lib, r.citations), s.titre || base, s.langue);
       if (format === 'pdf') { if (bureau) await bureau.imprimerPDF(html, chemin); else imprimer(html); }
       else if (bureau) await bureau.ecrireFichier(chemin, octets(html)); else telecharger(octets(html), `${base}.html`);
     } else {
@@ -633,10 +972,25 @@ async function compiler(app, s, format, quarto = null) {
       const fichier = chemin ? chemin.split(/[\\/]/).pop() : `${base}.qmd`;
       const nom = fichier.replace(/\.qmd$/i, '');
       const dossier = `${nom}_figures`;
-      const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre: s.titre || base });
+      // the references cited, in <name>.bib beside it; the header's CSL style copied there too
+      const cites = r.citations ? r.citations.liste.map((x) => r.citations.entrees.get(x.cle)).filter(Boolean) : [];
+      const bib = cites.length ? `${nom}.bib` : null;
+      const cslEntete = String(lireEntete(r.texte).entete.csl || '');
+      let csl = null;
+      let texteCsl = null;
+      if (cslEntete && !/^https?:/i.test(cslEntete)) {
+        try {
+          texteCsl = (await demander('bibliographie_fichier', { projet: s.pid, chemin: cslEntete })).texte;
+          csl = cslEntete.split(/[\\/]/).pop();
+        } catch (e) { app.statut(`${t('document_csl_absent')} ${e.message}`, true); }
+      }
+      const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre: s.titre || base,
+        bibliographie: bib, csl, libelles: lib });
       if (!bureau) { telecharger(octets(q.texte), fichier); return; }
       const racine = chemin.slice(0, chemin.length - fichier.length);
       const sep = chemin.includes('\\') ? '\\' : '/';
+      if (bib) await bureau.ecrireFichier(`${racine}${bib}`, octets(`${cites.map((e) => versBibtex(e)).join('\n\n')}\n`));
+      if (texteCsl !== null) await bureau.ecrireFichier(`${racine}${csl}`, octets(texteCsl));
       for (const x of r.resolus.filter((y) => y.genre === 'figure' && y.numero)) {
         const b = atob(x.image.split(',')[1]);
         await bureau.ecrireFichier(`${racine}${dossier}${sep}figure-${x.numero}.png`, Uint8Array.from(b, (c) => c.charCodeAt(0)));
@@ -778,7 +1132,7 @@ function renommer(app, pid, id) {
         s.titre = titre;
         s.champTitre.value = titre;
         s.programmer(true);
-        app.titrePanneau(`document:${pid}`, titre || t('document_sans_titre'));
+        app.titrePanneau(cleDocument(pid, id), titre || t('document_sans_titre'));
       } else {
         demander('document_enregistrer', { projet: pid, id, titre }).then((r) => { app.majProjet(r.projet); app.diffuser('modeles'); });
       }
@@ -790,26 +1144,32 @@ async function dupliquer(app, pid, id) {
   const s = ouvert(pid, id);
   if (s) await s.enregistrer();
   const d = await demander('document', { projet: pid, id });
-  await creer(app, pid, { titre: `${d.titre || t('document_sans_titre')} (${t('document_copie')})`, langue: d.langue, texte: d.texte });
+  await creer(app, pid, { titre: `${d.titre || t('document_sans_titre')} (${t('document_copie')})`, langue: d.langue, texte: d.texte, bib: d.bib || '', style: d.style || STYLES[0] });
 }
 
 async function supprimer(app, pid, id) {
   const d = [].concat(app.projet(pid).documents || []).find((x) => x.id === id);
   if (!d || !window.confirm(t('confirmer_supprimer_document', { titre: d.titre || t('document_sans_titre') }))) return;
   const s = ouvert(pid, id);
-  if (s) { s.modifie = false; s.fermer(); s.conteneur.etatDocument = null; }
+  if (s) s.modifie = false;  // (what it holds is going: nothing to keep when its panel closes)
+  app.fermerVue(cleDocument(pid, id));
   const r = await demander('document_supprimer', { projet: pid, id });
   app.majProjet(r.projet);
   app.diffuser('modeles');
-  if (s) {
-    s.loc.doc = null;
-    rendreDocument(app, s.conteneur, { projet: pid }, s.loc);
-  }
 }
 
+// (the help's text: paragraphs, and examples between backticks, on one line or several)
 function dialogueAideDocument() {
-  const lignes = t('document_aide_texte').split('\n');
-  dialogue({ titre: t('document_aide'), large: true, contenu: el('div', { class: 'aide-document' }, lignes.map((x) => (x.startsWith('`') ? el('pre', {}, x.replace(/`/g, '')) : el('p', {}, x)))),
+  const morceaux = [];
+  let code = null;
+  for (const x of t('document_aide_texte').split('\n')) {
+    if (code) {
+      code.push(x);
+      if (x.endsWith('`')) { morceaux.push(el('pre', {}, code.join('\n').replace(/`/g, ''))); code = null; }
+    } else if (x.startsWith('`') && (x.length < 2 || !x.endsWith('`'))) code = [x];
+    else morceaux.push(x.startsWith('`') ? el('pre', {}, x.replace(/`/g, '')) : el('p', {}, x));
+  }
+  dialogue({ titre: t('document_aide'), large: true, contenu: el('div', { class: 'aide-document' }, morceaux),
     boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
 }
 
@@ -823,7 +1183,7 @@ ajouterTextes({
   document_gabarit_rapport: 'Rapport d’analyse (pour chaque modèle : résumé, graphiques, méthodes)',
   document_modeles_gabarit: 'Modèles à y citer :',
   document_nouveau_note: 'Le document est gardé dans le projet et s’enregistre avec lui. Les modèles cochés y sont déjà cités ; les autres se citent en tapant {{.',
-  document_aucun: 'Ce projet n’a pas encore de document.', document_aucun_modele: 'Aucun modèle ajusté dans ce projet',
+  document_aucun: 'Ce projet n’a pas encore de document.', document_supprime: 'Ce document a été supprimé.', document_aucun_modele: 'Aucun modèle ajusté dans ce projet',
   document_chargement: 'Ouverture du document…', document_editeur_absent: 'L’éditeur de documents n’a pas pu être chargé (vendor/editeur.min.js).',
   document_placeholder: 'Écrivez en Markdown. Tapez {{ pour citer un résultat du projet : {{M1.Q2}}, {{M1.scores | légende}}…',
   document_inserer: 'Insérer', document_inserer_aide: 'Insérer une valeur, un graphique, un tableau ou le texte des méthodes d’un modèle du projet',
@@ -847,13 +1207,36 @@ ajouterTextes({
   ref_graphique_absent: '{chemin} : ce graphique n’a pas pu être dessiné', ref_tableau_inconnu: '{chemin} : ce modèle n’a pas ce tableau',
   ref_variante_inconnue: '{chemin} : ce graphique n’existe pas pour ce modèle',
   ref_etiquette_inconnue: 'aucune figure ni aucun tableau n’a l’étiquette #{etiquette}',
+  document_citer: 'Citer', document_citer_aide: 'Citer une référence : de la bibliographie du document (fichiers BibTeX ou CSL-JSON) ou de Zotero',
+  document_citations: '{n} citations', document_csl_absent: 'Style CSL introuvable :',
+  citer_inserer: 'Insérer une citation…', citer_rechercher: 'Rechercher (auteur, année, titre)', citer_bouton: 'Citer',
+  citer_narratif: 'Dans la phrase : Wold et al. (2001) plutôt que (Wold et al., 2001)',
+  citer_rien: 'Aucune référence ne correspond.',
+  citer_vide: 'Aucune référence encore : liez un fichier BibTeX ou CSL-JSON (Citer › Lier un fichier), collez-en, ou cherchez dans Zotero.',
+  citer_dans_document: 'gardée dans le document', citer_lier: 'Lier un fichier BibTeX ou CSL-JSON…', citer_chemin: 'Chemin du fichier BibTeX ou CSL-JSON :',
+  citer_lie: '{fichier} : {n} références', citer_coller: 'Coller des références BibTeX…',
+  citer_coller_note: 'Les références collées (BibTeX ou CSL-JSON, comme les exporte un gestionnaire de références) sont gardées dans le document.',
+  citer_ajouter: 'Ajouter', citer_coller_rien: 'Aucune référence lue dans ce texte.', citer_coller_fait: '{n} référence(s) ajoutée(s) au document.',
+  citer_coller_erreurs: '{n} illisible(s).', citer_references: 'Références du document…',
+  citer_references_note: 'Le document garde une copie des références qu’il cite (et de celles venues de Zotero ou collées) : il les cite encore sans leur fichier, sur un autre ordinateur.',
+  citer_retirer: 'Retirer les {n} gardées et non citées', citer_actualiser: 'Relire les fichiers de bibliographie', citer_style: 'Style des citations',
+  'citer_style_auteur-annee': 'Auteur-année : (Wold et al., 2001)', citer_style_numerique: 'Numéroté : [1]',
+  citer_n: '{n} références', citer_n_document: 'Gardées dans le document : {n}', citer_fichier_erreur: 'illisible ou introuvable',
+  zotero_choisir: 'Choisir dans Zotero (Better BibTeX)…', zotero_attente: 'Choisissez les références dans la fenêtre de Zotero…',
+  zotero_delai: 'Zotero n’a rien renvoyé à temps.', zotero_bureau: 'Zotero : dans l’application de bureau',
+  zotero_connecte: 'Zotero : connecté (recherche dans la bibliothèque)', zotero_connecte_bbt: 'Zotero : connecté, avec Better BibTeX',
+  zotero_ferme: 'Zotero : cochez Paramètres › Avancé › « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero »',
+  zotero_ancien: 'Zotero : la recherche demande Zotero 7 ou plus récent', zotero_absent: 'Zotero ne répond pas (est-il ouvert ?)',
   document_aide_texte: 'Un document s’écrit en Markdown : # Titre, ## Sous-titre, *italique*, **gras**, listes (- ou 1.), tableaux (| a | b |), liens [texte](https://…).\n'
     + 'Les résultats du projet s’y citent entre doubles accolades ; ils sont remplacés par leur valeur dans l’aperçu et à la compilation, et suivent les modèles quand ils changent :\n'
     + '`{{M1.Q2}}  {{M1.R2Y:%}}  {{M1.Q2:3}}  {{M1.N}}  {{M1.gain}}  {{M1.vip.sucre}}  {{M1.coef.sucre}}  {{M5.coef.annee}}  {{M1.cvanova.p}}`\n'
     + 'Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne, avec une étiquette (#…) et une légende (après |) ; ils sont numérotés dans l’ordre, et {{ref:étiquette}} donne leur numéro :\n'
     + '`{{M1.scores #fig-scores | Scores des observations}}   {{M1.table.resume | R² et Q²}}   {{M1.methodes}}   voir {{ref:fig-scores}}`\n'
     + 'Tapez {{ pour voir les modèles et ce que chacun offre, avec sa valeur. Les graphiques sont dessinés comme dans leur fenêtre quand elle est ouverte. La langue du document règle l’écriture des nombres et le texte des méthodes.\n'
-    + 'Compiler : Word, PDF ou HTML directement ; ou un fichier Quarto (.qmd) avec ses figures, et, si Quarto est installé, compilé par lui (bibliographie, renvois, modèles de revues). {{< pagebreak >}} seul sur sa ligne commence une nouvelle page.',
+    + 'Les citations s’écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 3 ; @eriksson2006], @wold2001 dans la phrase, [-@wold2001] sans l’auteur ; tapez @ pour les références du document et de Zotero. La liste des références vient à la fin, ou là où le document met {{bibliographie}} :\n'
+    + '`---\ntitle: Mon article\nbibliography: references.bib\n---\nLa PLS [@wold2001] et la validation croisée (@eriksson2006, p. 92).`\n'
+    + 'Citer › Lier un fichier : un fichier BibTeX ou CSL-JSON (exporté de Zotero, Mendeley, JabRef… ; Better BibTeX le tient à jour), nommé dans l’en-tête. Zotero ouvert sur cet ordinateur : ses références se cherchent depuis Nuée (Zotero 7, en cochant « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero »).\n'
+    + 'Compiler : Word, PDF ou HTML directement ; ou un fichier Quarto (.qmd) avec ses figures et ses références (.bib), et, si Quarto est installé, compilé par lui (style CSL d’une revue : csl: dans l’en-tête, renvois, modèles de revues). {{< pagebreak >}} seul sur sa ligne commence une nouvelle page.',
 }, {
   document: 'Document', documents: 'Documents', nouveau_document: 'New document…', creer_document: 'Create the document',
   document_sans_titre: 'Untitled', document_titre: 'Title', document_langue: 'Language', document_copie: 'copy', ok: 'OK',
@@ -862,7 +1245,7 @@ ajouterTextes({
   document_gabarit_rapport: 'Analysis report (for each model: summary, plots, methods)',
   document_modeles_gabarit: 'Models to cite in it:',
   document_nouveau_note: 'The document is kept in the project and saved with it. The models ticked are cited in it already; the others are cited by typing {{.',
-  document_aucun: 'This project has no document yet.', document_aucun_modele: 'No fitted model in this project',
+  document_aucun: 'This project has no document yet.', document_supprime: 'This document was deleted.', document_aucun_modele: 'No fitted model in this project',
   document_chargement: 'Opening the document…', document_editeur_absent: 'The document editor couldn’t be loaded (vendor/editeur.min.js).',
   document_placeholder: 'Write in Markdown. Type {{ to cite a result of the project: {{M1.Q2}}, {{M1.scores | caption}}…',
   document_inserer: 'Insert', document_inserer_aide: 'Insert a value, a plot, a table or the Methods text of a model of the project',
@@ -886,11 +1269,34 @@ ajouterTextes({
   ref_graphique_absent: '{chemin}: this plot couldn’t be drawn', ref_tableau_inconnu: '{chemin}: this model has no such table',
   ref_variante_inconnue: '{chemin}: this plot doesn’t exist for this model',
   ref_etiquette_inconnue: 'no figure or table has the label #{etiquette}',
+  document_citer: 'Cite', document_citer_aide: 'Cite a reference: from the document’s bibliography (BibTeX or CSL-JSON files) or from Zotero',
+  document_citations: '{n} citations', document_csl_absent: 'CSL style not found:',
+  citer_inserer: 'Insert a citation…', citer_rechercher: 'Search (author, year, title)', citer_bouton: 'Cite',
+  citer_narratif: 'In the sentence: Wold et al. (2001) rather than (Wold et al., 2001)',
+  citer_rien: 'No reference matches.',
+  citer_vide: 'No reference yet: link a BibTeX or CSL-JSON file (Cite › Link a file), paste some, or search Zotero.',
+  citer_dans_document: 'kept in the document', citer_lier: 'Link a BibTeX or CSL-JSON file…', citer_chemin: 'Path of the BibTeX or CSL-JSON file:',
+  citer_lie: '{fichier}: {n} references', citer_coller: 'Paste BibTeX references…',
+  citer_coller_note: 'Pasted references (BibTeX or CSL-JSON, as a reference manager exports them) are kept in the document.',
+  citer_ajouter: 'Add', citer_coller_rien: 'No reference read in this text.', citer_coller_fait: '{n} reference(s) added to the document.',
+  citer_coller_erreurs: '{n} unreadable.', citer_references: 'The document’s references…',
+  citer_references_note: 'The document keeps a copy of the references it cites (and of those from Zotero or pasted): it still cites them without their file, on another computer.',
+  citer_retirer: 'Remove the {n} kept and not cited', citer_actualiser: 'Read the bibliography files again', citer_style: 'Citation style',
+  'citer_style_auteur-annee': 'Author–year: (Wold et al., 2001)', citer_style_numerique: 'Numbered: [1]',
+  citer_n: '{n} references', citer_n_document: 'Kept in the document: {n}', citer_fichier_erreur: 'unreadable or missing',
+  zotero_choisir: 'Pick in Zotero (Better BibTeX)…', zotero_attente: 'Pick the references in Zotero’s window…',
+  zotero_delai: 'Zotero sent nothing back in time.', zotero_bureau: 'Zotero: in the desktop application',
+  zotero_connecte: 'Zotero: connected (library search)', zotero_connecte_bbt: 'Zotero: connected, with Better BibTeX',
+  zotero_ferme: 'Zotero: tick Settings › Advanced › “Allow other applications on this computer to communicate with Zotero”',
+  zotero_ancien: 'Zotero: searching needs Zotero 7 or later', zotero_absent: 'Zotero doesn’t answer (is it open?)',
   document_aide_texte: 'A document is written in Markdown: # Title, ## Subtitle, *italic*, **bold**, lists (- or 1.), tables (| a | b |), links [text](https://…).\n'
     + 'The project’s results are cited between double braces; they are replaced by their value in the preview and when compiling, and follow the models when they change:\n'
     + '`{{M1.Q2}}  {{M1.R2Y:%}}  {{M1.Q2:3}}  {{M1.N}}  {{M1.gain}}  {{M1.vip.sugar}}  {{M1.coef.sugar}}  {{M5.coef.year}}  {{M1.cvanova.p}}`\n'
     + 'A plot, a table or the Methods text goes alone on its line, with a label (#…) and a caption (after |); they are numbered in order, and {{ref:label}} gives their number:\n'
     + '`{{M1.scores #fig-scores | Scores of the observations}}   {{M1.table.resume | R² and Q²}}   {{M1.methodes}}   see {{ref:fig-scores}}`\n'
     + 'Type {{ to see the models and what each offers, with its value. Plots are drawn as in their window when it is open. The document’s language sets how numbers are written and the Methods text.\n'
-    + 'Compile: Word, PDF or HTML directly; or a Quarto file (.qmd) with its figures, compiled by Quarto when it is installed (bibliography, cross-references, journal templates). {{< pagebreak >}} alone on its line starts a new page.',
+    + 'Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 3; @eriksson2006], @wold2001 in the sentence, [-@wold2001] without the author; type @ for the references of the document and of Zotero. The list of references comes at the end, or where the document puts {{bibliographie}}:\n'
+    + '`---\ntitle: My paper\nbibliography: references.bib\n---\nPLS [@wold2001] and cross-validation (@eriksson2006, p. 92).`\n'
+    + 'Cite › Link a file: a BibTeX or CSL-JSON file (exported from Zotero, Mendeley, JabRef…; Better BibTeX keeps it up to date), named in the header. With Zotero open on this computer, its references are searched from Nuée (Zotero 7, ticking “Allow other applications on this computer to communicate with Zotero”).\n'
+    + 'Compile: Word, PDF or HTML directly; or a Quarto file (.qmd) with its figures and references (.bib), compiled by Quarto when it is installed (a journal’s CSL style: csl: in the header, cross-references, journal templates). {{< pagebreak >}} alone on its line starts a new page.',
 });

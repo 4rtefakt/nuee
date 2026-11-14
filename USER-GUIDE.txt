@@ -371,6 +371,25 @@ with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML from it, wi
 adds: a bibliography (bibliography: refs.bib in the header, [@key] in the text),
 cross-references, journal templates. A YAML header (title, author, date) at the top of the
 document is read; a line {{< pagebreak >}} starts a new page.
+Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 33; @eriksson2006], @wold2001 in
+the sentence ("Wold et al. (2001)"), [-@wold2001] without the author. Typing @ lists the document's
+references, then Zotero's. The list of references comes at the end (under the last heading when it is
+"References"), or where the document puts {{bibliographie}}; author–year or numbered (Cite › Citation
+style), in the document's language. Where the references come from (the Cite button):
+  - BibTeX or CSL-JSON files, exported by Zotero, Mendeley, JabRef...: Cite › Link a file names one in
+    the header (bibliography: refs.bib, relative to the project's folder, as Quarto reads it). Better
+    BibTeX's automatic export keeps it up to date: a key not found has the file read again;
+  - Zotero on this computer (Zotero 7 or later, with Settings › Advanced › "Allow other applications
+    on this computer to communicate with Zotero" ticked): its references are searched as you type @,
+    or in Cite › Insert a citation; with the Better BibTeX plugin, Cite › Pick in Zotero opens Zotero's
+    own picker. Nuée only reads the library;
+  - BibTeX pasted (Cite › Paste BibTeX references).
+The document keeps a copy of the references it cites: sent to someone without the .bib, it still cites
+them (Cite › The document's references lists them, and removes those no longer cited). Compiled for
+Quarto, the citations stay as they are, the references cited in a .bib beside the .qmd, so that Quarto
+writes them in any journal's style (csl: style.csl in the header; the file is copied beside the .qmd).
+Each document opens in a tab of its own. Plots in documents and model reports are drawn in the light
+theme, whatever the window's.
 Spelling: misspelled words are underlined; right-click one for suggestions (in every text
 field of the application).
 

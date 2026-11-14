@@ -41,7 +41,11 @@ function case_(libelle, valeur, changer) {
 export const outils = (...enfants) => el('div', { class: 'outils' }, enfants);
 const espace = () => el('span', { class: 'espace' });
 
-export function couleursTheme() {
+// The plot colours of the window's theme; a plot drawn off screen for a report or a document
+// (ctx.clair: app.contexteHorsEcran) takes the light theme's, whatever the window's.
+const COULEURS_CLAIRES = { texte: '#1f2328', doux: '#5f6773', grille: '#eceef1', fond: '#ffffff', ligne: '#9bb5d6' };
+export function couleursTheme(ctx) {
+  if (ctx && ctx.clair) return { ...COULEURS_CLAIRES };
   const cs = getComputedStyle(document.documentElement);
   const v = (n, d) => cs.getPropertyValue(n).trim() || d;
   return { texte: v('--texte', '#222'), doux: v('--texte-doux', '#666'), grille: v('--grille', '#e5e5e5'), fond: v('--fond-panneau', '#fff'),
@@ -49,7 +53,7 @@ export function couleursTheme() {
 }
 
 export function tracer(ctx, div, traces, layout = {}) {
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const F = FORMAT;
   const police = `${F.police}, system-ui, sans-serif`;
   const base = {
@@ -715,7 +719,7 @@ async function rendreIPLS(conteneur, ctx, p, loc) {
       el('button', { onclick: () => nouveau(false) }, t('modele_sans_intervalles')),
       el('button', { onclick: () => { loc.choisis = []; ctx.rafraichir(); } }, t('effacer_zones'))] : null),
   el('p', { class: 'note' }, t('ipls_aide')), graphe);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const nomIntervalle = (i) => `${[].concat(iv[i].termes)[0]} – ${[].concat(iv[i].termes).slice(-1)[0]}`;
   const choisies = new Set(ctx.variablesChoisies(m.id));
   tracer(ctx, graphe, [
@@ -831,7 +835,7 @@ function rendreScores3D(conteneur, ctx, p, loc) {
     traces = [trace(o.uid.map((_, i) => i), m.nom, PALETTE[0])];
     if (g && g.continu) Object.assign(traces[0].marker, { color: g.continu.map((v, i) => (sel.has(o.uid[i]) ? null : v)), colorscale: 'Viridis', showscale: true });
   }
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const axe = (k) => ({ title: { text: nomComp(m, 't', loc[k]) }, gridcolor: c.grille, zerolinecolor: c.doux, backgroundcolor: c.fond, color: c.texte });
   tracer(ctx, graphe, traces, { title: { text: `${m.nom} · ${t('scores_3d')}` }, margin: { l: 0, r: 0, t: 34, b: 0 },
     scene: { xaxis: axe('a'), yaxis: axe('b'), zaxis: axe('c') } });
@@ -853,7 +857,7 @@ function rendreLigneObs(conteneur, ctx, p, loc, vue) {
     vue === 't2' ? el('span', { class: 'infos' }, `T²Crit 95 % = ${fmt(m.limites['T2Crit(95%)'], 3)} · 99 % = ${fmt(m.limites['T2Crit(99%)'], 3)}`)
       : el('span', { class: 'infos' }, `DCrit (0,05) = ${fmt(m.limites['DCrit(5%)'], 3)}`)), graphe);
   const x = o.uid.map((_, i) => i + 1);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const points = pointsObservations(ctx, m, loc, x, o[cle], { type: 'scatter', survol: '%{y:.3f}' });
   const traces = [{ type: 'scatter', mode: 'lines', x, y: o[cle], line: { color: c.ligne, width: 1 }, hoverinfo: 'skip', showlegend: false }, ...points];
   const lim = vue === 't2' ? [['T2Crit(95%)', '#e09f3e'], ['T2Crit(99%)', '#d1495b']] : [['DCrit(5%)', '#d1495b']];
@@ -1344,7 +1348,7 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
     if (!avec.length) { graphe.replaceChildren(el('p', { class: 'infos' }, t('aucune_manquante'))); return; }
     tracer(ctx, graphe, [{ type: 'heatmap', x: avec.map((j) => d.variables[j]), y: d.observations,
       z: d.observations.map((_, i) => avec.map((j) => (d.valeurs[j][i] === null ? 1 : 0))),
-      colorscale: [[0, couleursTheme().fond], [1, '#d1495b']], showscale: false, xgap: 1,
+      colorscale: [[0, couleursTheme(ctx).fond], [1, '#d1495b']], showscale: false, xgap: 1,
       hovertemplate: '%{y} · %{x}<extra></extra>' }],
     { title: { text: `${t('carte_manquantes')} (${avec.length} ${t('vars')})` }, dragmode: 'zoom',
       yaxis: { autorange: 'reversed', showticklabels: d.observations.length <= 60 }, xaxis: { tickangle: -45, tickfont: { size: 9 } } });
@@ -1366,7 +1370,7 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
   const traces = [{ type: 'histogram', x, name: t('tr_aucune'), marker: { color: PALETTE[0] }, nbinsx: 30 }];
   const lay = { title: titre, dragmode: 'zoom', bargap: 0.04, showlegend: false };
   if (loc.apercu) {
-    const c = couleursTheme();
+    const c = couleursTheme(ctx);
     traces.push({ type: 'histogram', x: transformer(x, loc.apercu), name: libelleTransfo(loc.apercu), marker: { color: PALETTE[2] }, nbinsx: 30, xaxis: 'x2', yaxis: 'y2' });
     Object.assign(lay, { grid: { rows: 1, columns: 2, pattern: 'independent' },
       xaxis: { title: { text: s.nom[k] } }, xaxis2: { title: { text: libelleTransfo(loc.apercu) }, gridcolor: c.grille, automargin: true },
@@ -1505,7 +1509,7 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   const suffixe = nomsP.map((_, k) => (k === (R - 1) * C ? '' : String(++numero)));
   const gx = C > 1 ? 0.04 : 0;
   const gy = R > 1 ? Math.min(0.12, 0.35 / R) : 0;
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const sel = new Set(ctx.selection(p.projet));
   const axe = { gridcolor: c.grille, zerolinecolor: c.doux, linecolor: c.grille, showgrid: FORMAT.grille, automargin: true };
   const lay = { title: { text: [r.variable.nom, r.temps.nom, parLignes ? r.lignes.nom : '', parPanneaux ? r.panneaux.nom : ''].filter(Boolean).join(' · ') },
@@ -1649,7 +1653,7 @@ async function rendreCoomans(conteneur, ctx, p, loc) {
     choix(t('axe_x'), classes.map((c) => [c, c]), loc.x, (v) => { loc.x = v; ctx.rafraichir(); }),
     choix(t('axe_y'), classes.filter((c) => c !== loc.x).map((c) => [c, c]), loc.y, (v) => { loc.y = v; ctx.rafraichir(); }),
     el('span', { class: 'infos' }, t('coomans_note'))), graphe, el('div', { class: 'defile', style: 'max-height:30%' }, tableParts), bas);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const groupes = [...new Set(vraie.map((v) => v ?? '?'))];
   const traces = groupes.map((g, k) => {
     const idx = vraie.map((v, i) => i).filter((i) => (vraie[i] ?? '?') === g);
@@ -1767,7 +1771,7 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
     el('p', { class: 'note' }, t(!deux ? 'tests_note_toutes' : apparie ? 'tests_note_apparie' : 'tests_note_deux',
       { test: nomTest, correction: nomCorrection, a: loc.a, b: loc.b, n: nRetenues, total: n, cle: nomCle })),
     graphe, bas);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   if (deux) {
     const y = pv.map((x) => (x === null ? null : -Math.log10(Math.max(x, 1e-300))));
     const couleur = noms.map((_, i) => (!retenue(i) ? c.doux : effet[i] > 0 ? '#d1495b' : PALETTE[0]));
@@ -1997,7 +2001,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     // (two measurements of the same rows: the two categories are their names)
     const mesure = r.ligne ? '' : r.x.qualitative ? r.y.nom : r.x.nom;
     const facteur = r.ligne ? '' : r.x.qualitative ? r.x.nom : r.y.nom;
-    const c = couleursTheme();
+    const c = couleursTheme(ctx);
     const traces = [[r.a, va], [r.b, vb]].map(([g, v]) => ({ type: 'box', name: g, x: v.map(() => g), y: v, boxpoints: false, boxmean: true,
       fillcolor: 'rgba(0,0,0,0)', line: { width: 1, color: c.doux }, showlegend: false, hoverinfo: 'skip' }));
     for (const [garde, couleur, signe] of [[(d) => d > 0, '#d1495b', '>'], [(d) => d < 0, PALETTE[0], '<'], [(d) => d === 0, c.doux, '=']]) {
@@ -2309,7 +2313,7 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
   graphe, ...(fait ? [details] : []), bas].filter(Boolean));
 
   // the gaps joined in time order, each period in its colour, the event line and each period's mean
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const couleurs = { avant: PALETTE[0], apres: '#d1495b', hors: c.doux, '': PALETTE[0] };
   const traces = [{ type: 'scatter', mode: 'lines', x: xs.map(enX), y: ecarts, line: { color: c.ligne, width: 1 }, hoverinfo: 'skip', showlegend: false }];
   for (const g of fait ? ['avant', 'apres', 'hors'] : ['']) {
@@ -2595,7 +2599,7 @@ export function resumeSeuils(s) {
 // where the slope's band excludes 0 shaded (rising, falling). A category's curve (s.categorie) is
 // named in the title, and its observed values along the axis are those of the category.
 function tracerSeuils(ctx, graphe, m, e, s, lien) {
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const bandeGrise = (xs, bas, haut, axe) => ({ type: 'scatter', mode: 'lines', x: xs.concat([...xs].reverse()), y: bas.concat([...haut].reverse()), yaxis: axe,
     fill: 'toself', fillcolor: 'rgba(128, 128, 128, 0.22)', line: { width: 0 }, hoverinfo: 'skip', name: t('seuils_bande') });
   const x = [].concat(s.x);
@@ -2664,7 +2668,7 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   if (s) { tracerSeuils(ctx, graphe, m, e, s, lien); return; }
   if (niveaux) { tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien); return; }
   const x = [].concat(e.x);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const valeurs = [].concat(e.valeurs);
   const bas = [].concat(e.bas);
   const basMin = Math.min(...bas);
@@ -2685,7 +2689,7 @@ async function rendreEffets(conteneur, ctx, p, loc) {
 // of the term with its 95 % interval.
 const translucide = (couleur, a) => `rgba(${[1, 3, 5].map((i) => parseInt(couleur.slice(i, i + 2), 16)).join(', ')}, ${a})`;
 function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien) {
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const valeurs = [].concat(e.valeurs);
   const basMin = Math.min(...niveaux.flatMap((n) => [].concat(n.bas)));
   tracer(ctx, graphe, niveaux.flatMap((n, k) => {
@@ -2735,7 +2739,7 @@ function rendreResidus(conteneur, ctx, p, loc) {
       quantiles ? 'quantiles' : 'standard', (v) => { loc.residus = v; ctx.rafraichir(); })) : null,
     parGroupe ? null : controleCouleur(ctx, m, loc), parGroupe ? null : controleEtiquettes(ctx, m, loc),
     el('span', { class: 'infos' }, t(quantiles ? 'residus_note_quantiles' : niveaux.length ? 'residus_note_mixte' : 'residus_note'))), graphe);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const lignes = (valeurs) => valeurs.map((v) => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v, y1: v,
     line: { color: v ? '#d1495b' : c.doux, width: 1, dash: 'dot' } }));
   if (parGroupe) {
@@ -2840,7 +2844,7 @@ async function rendreACF(conteneur, ctx, p, loc) {
   const decalages = [].concat(r.decalage);
   const bande = [].concat(r.bande);
   const series = [].concat(r.series);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const graphe = el('div', { class: 'graphe' });
   // "Fit with CAR1": only where the engine allows it (moteur/R/regression.R: definition_car1): CAR1
   // within the groups of the random effects (or a finer level within them) of an LMM, or of a GLM
@@ -2890,7 +2894,7 @@ async function rendreApports(conteneur, ctx, p, loc) {
   if (!groupes.length) { graphe.replaceChildren(el('p', { class: 'infos' }, t('apports_vide'))); return; }
   const delta = col('delta_aic');
   const ordre = groupes.map((_, i) => i).sort((i, j) => (delta[j] ?? -Infinity) - (delta[i] ?? -Infinity));
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   tracer(ctx, graphe, [{ type: 'bar', x: ordre.map((i) => groupes[i]), y: ordre.map((i) => delta[i]),
     marker: { color: ordre.map((i) => (delta[i] > 2 ? '#3b9a5b' : delta[i] < 0 ? '#d1495b' : c.doux)) },
     hovertemplate: '<b>%{x}</b><br>ΔAIC = %{y:.2f}<extra></extra>' }],
@@ -3089,7 +3093,7 @@ async function rendrePuissance(conteneur, ctx, p, loc) {
   const col = (k) => [].concat(tab[k]);
   const [ta, tu, tp] = [col('annees'), col('unites'), col('puissance')];
   const unites = [].concat(g.unites).filter((u) => tu.includes(u));
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   tracer(ctx, graphe, unites.map((u, k) => {
     const i = ta.map((_, j) => j).filter((j) => tu[j] === u);
     const propre = u === pl.unites;
@@ -3211,7 +3215,7 @@ async function rendreMoyennes(conteneur, ctx, p, loc) {
   // the plot: each mean (or slope) with its 95 % interval; within each level of `dans`, one colour per level
   const niveaux = [].concat(r.facteur.niveaux);
   const groupes = r.dans ? [].concat(r.dans.niveaux) : [null];
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const decalage = (k) => (groupes.length > 1 ? (k - (groupes.length - 1) / 2) * Math.min(0.12, 0.6 / groupes.length) : 0);
   const est = cm('estimation');
   const bas = cm('bas');

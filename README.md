@@ -217,7 +217,8 @@ the model's domain, and export the results.
   references (*Model › Text for the Methods section*);
 - documents kept in the project (*File › New document*): an article or a report in Markdown, beside
   its live preview, that cites the project's results (`{{M1.Q2}}`, `{{M1.scores | caption}}`, the
-  Methods text) and compiles to Word, PDF, HTML or Quarto.
+  Methods text) and the literature (`[@wold2001]`, from BibTeX or CSL-JSON files or from Zotero),
+  and compiles to Word, PDF, HTML or Quarto.
 
 ## Files
 

@@ -65,7 +65,7 @@ function rendreArbre(conteneur, ctx, p) {
   const m = ctx.modele(p.modele);
   const a = m.arbre;
   const d = dispositionArbre(a);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const graphe = el('div', { class: 'graphe' });
   const q = m.qualite;
   conteneur.replaceChildren(outils(el('span', { class: 'infos' }, [
@@ -130,7 +130,7 @@ function rendreElagage(conteneur, ctx, p, loc) {
   const bas = el('div', { class: 'bas' });
   conteneur.replaceChildren(el('p', { class: 'note' }, t(e.regle === 'min' ? 'arb_elagage_note_min' : 'arb_elagage_note',
     { seuil: fmt(e.seuil, 3), minimum: fmt(e.minimum, 3), feuilles: e.feuilles })), graphe, bas);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   tracer(ctx, graphe, [
     { type: 'scatter', mode: 'lines+markers', name: t('arb_erreur_vc'), x: feuilles, y: liste(tab.xerror),
       error_y: { type: 'data', array: liste(tab.xstd), visible: true, color: PALETTE[0], thickness: 1 }, line: { color: PALETTE[0] }, marker: { size: 6 },
@@ -274,7 +274,7 @@ function rendreScoresLDA(conteneur, ctx, p, loc) {
     axes.length > 1 ? choix(t('axe_y'), options, loc.b, (v) => { loc.b = +v; ctx.rafraichir(); }) : null,
     axes.length > 1 ? controleCouleur(ctx, m, loc) : null, axes.length > 1 ? controleEtiquettes(ctx, m, loc) : null,
     el('span', { class: 'infos' }, `${t('bien_classes_vc')} ${pct(m.classification.vc.global)}`)), graphe);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   if (axes.length === 1) {  // two classes: one discriminant function, its scores by class
     const classes = liste(m.classes);
     const cl = liste(o.classe);
@@ -392,7 +392,7 @@ function rendrePlanKmeans(conteneur, ctx, p, loc) {
   const traces = pointsObservations(ctx, m, loc, xs, ys);
   if (loc.couleur === 'classe') traces.forEach((tr) => { tr.name = nomGroupe(tr.name); });
   const ce = m.acp.centres;
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   traces.push({ type: 'scatter', mode: 'markers+text', name: t('km_centres_mot'), x: liste(ce.CP1), y: deux ? liste(ce.CP2) : liste(ce.CP1).map(() => 0),
     text: liste(ce.groupe).map(String), textposition: 'top center', textfont: { size: 12, color: c.texte },
     marker: { symbol: 'x-thin', size: 16, line: { width: 3, color: c.texte } }, hovertemplate: `${t('groupe')} %{text}<extra></extra>` });
@@ -440,7 +440,7 @@ async function rendreChoixK(conteneur, ctx, p, loc) {
   const graphe = el('div', { class: 'graphe' });
   const bas = el('div', { class: 'bas' });
   conteneur.replaceChildren(el('p', { class: 'note' }, t('km_choix_note')), graphe, bas);
-  const c = couleursTheme();
+  const c = couleursTheme(ctx);
   const ici = k.indexOf(m.k);
   tracer(ctx, graphe, [
     { type: 'scatter', mode: 'lines+markers', name: t('km_intra'), x: k, y: liste(ch.intra), line: { color: PALETTE[0] }, hovertemplate: 'k = %{x}<br>%{y:.4g}<extra></extra>' },

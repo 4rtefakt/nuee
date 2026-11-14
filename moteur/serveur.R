@@ -848,8 +848,9 @@ DEMANDES <- list(
     if (is.null(d)) stop(traduire("Document introuvable", "Document not found"))
     d
   },
-  # Crée (sans q$id) ou change un document : ses champs donnés (titre, langue, texte) ; le projet
-  # n'est marqué modifié que si l'un d'eux change.
+  # Crée (sans q$id) ou change un document : ses champs donnés (titre, langue, texte, bib : les
+  # références BibTeX gardées dans le document, style : celui de ses citations) ; le projet n'est
+  # marqué modifié que si l'un d'eux change.
   document_enregistrer = function(q) {
     p <- projet(q$projet)
     docs <- p$documents %||% list()
@@ -862,7 +863,7 @@ DEMANDES <- list(
       k <- length(docs)
       p$modifie <- TRUE
     }
-    for (champ in c("titre", "langue", "texte")) {
+    for (champ in c("titre", "langue", "texte", "bib", "style")) {
       v <- q[[champ]]
       if (!is.null(v) && !identical(docs[[k]][[champ]], as.character(v)[1])) {
         docs[[k]][[champ]] <- as.character(v)[1]
@@ -880,6 +881,28 @@ DEMANDES <- list(
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
     list(projet = resume_projet(p))
+  },
+  # Un fichier de bibliographie d'un document (BibTeX, CSL-JSON) ou un style CSL : son texte. Un
+  # chemin relatif l'est au dossier du fichier du projet (comme Quarto le lit à côté du document).
+  bibliographie_fichier = function(q) {
+    p <- projet(q$projet)
+    chemin <- as.character(q$chemin %||% "")[1]
+    if (!grepl("\\.(bib|bibtex|json|csl)$", chemin, ignore.case = TRUE)) {
+      stop(traduire("Pas un fichier de bibliographie (.bib, .json) ni un style (.csl) : ", "Not a bibliography file (.bib, .json) or a style (.csl): "), chemin)
+    }
+    if (!grepl("^([A-Za-z]:)?[/\\\\]", chemin)) {
+      dossier <- if (length(p$chemin) && nzchar(p$chemin)) dirname(p$chemin) else NULL
+      if (is.null(dossier)) stop(traduire("Chemin relatif, et le projet n'a pas encore de fichier : ", "A relative path, and the project has no file yet: "), chemin)
+      chemin <- file.path(dossier, chemin)
+    }
+    if (!file.exists(chemin)) stop(traduire("Fichier introuvable : ", "File not found: "), chemin)
+    taille <- file.info(chemin)$size
+    if (taille > 50e6) stop(traduire("Fichier trop gros (plus de 50 Mo) : ", "File too big (over 50 MB): "), chemin)
+    texte <- if (taille) readChar(chemin, taille, useBytes = TRUE) else ""
+    Encoding(texte) <- "UTF-8"
+    if (!validUTF8(texte)) texte <- iconv(texte, "latin1", "UTF-8")  # (un vieux .bib en Latin-1)
+    list(chemin = normalizePath(chemin, winslash = "/"), texte = sub("^﻿", "", texte),
+         date = format(file.info(chemin)$mtime, "%Y-%m-%dT%H:%M:%S"))
   },
   # Copie de secours d'un projet pas encore enregistré, sans toucher à son état ; `lu` : l'état
   # de son fichier quand il l'a lu ou enregistré, que l'interface garde avec la copie
