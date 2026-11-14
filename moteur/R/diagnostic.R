@@ -20,7 +20,7 @@ contributions <- function(m, observations, type = c("DModX", "score", "T2"), com
     v <- moyenne(m$residus_x)
     if (ponderee) v <- v * pouvoir_modelisation(m)
   } else {
-    poids <- if (identical(m$type, "PLS")) coefficients_pls(m$W, m$P, m$C)$Wetoile else m$P
+    poids <- if (identical(m$type, "PLS")) coefficients_pls(m$W, m$P, m$C, ordre_retrait(m))$Wetoile else m$P
     poids <- if (type == "score") abs(poids[, composante]) else sqrt(rowSums(poids^2))
     v <- moyenne(m$X) * poids / sqrt(sum(poids^2))
   }

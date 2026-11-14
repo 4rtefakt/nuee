@@ -210,8 +210,14 @@ debut_validation <- function(projet, d, X, Y, bx, by, A, G, poids, vx, projets =
     }
     r
   })
+  # le PRESS du modèle vide (PLS, OPLS) : chaque groupe caché prédit par le centre de Y de son
+  # sous-modèle, la moyenne des autres observations (fin_validation : q2_vide)
+  press0 <- if (pls) Reduce(`+`, lapply(tours, function(r) {
+    centre <- vers_modele_complet(matrix(0, sum(r$hors), ncol(Z$E)), r$sous, by)
+    colSums(((Z$E[r$hors, , drop = FALSE] - centre) * Z$M[r$hors, , drop = FALSE])^2)
+  }))
   list(mode = mode, pls = pls, tours = tours, Z = Z, complet = if (pls) by else bx, ss = colSums(Z$E^2), G = G,
-       groupes = groupes, groupes_termes = groupes_termes, press = NULL, predictions = list())
+       groupes = groupes, groupes_termes = groupes_termes, press = NULL, press0 = press0, predictions = list())
 }
 
 # Centres et poids du modèle complet, pour une ACP ou une PLS. À chaque composante a, chaque
@@ -388,6 +394,12 @@ vers_modele_complet <- function(Z, sous, complet) {
 # chaque Q2 compté pour -0,1 au plus bas (ce que donnent les fichiers .usp) ; sinon
 # Q2(cum) = 1 - PRESS(A) / SS. `gardes` : les termes qui ont pris le poids du modèle complet dans
 # un sous-modèle (debut_validation), avec la part de leur écart-type qu'ils y gardaient.
+# Quand les centres sont recalculés (PLS, OPLS), le Q2 du modèle vide (q2_vide : chaque groupe
+# caché prédit par la moyenne de Y des autres observations, négatif dès que les groupes diffèrent)
+# et le gain du modèle sur lui, (Q2(cum) - q2_vide) / (1 - q2_vide) = 1 - PRESS(A) / PRESS du
+# modèle vide : la part de l'erreur de prédiction du modèle vide que le modèle évite. Avec les
+# centres et poids du modèle complet, le modèle vide prédit la moyenne de toutes les observations,
+# groupe caché compris (son Q2 vaut 0) : ni l'un ni l'autre.
 fin_validation <- function(vc, A) {
   press <- vc$press[seq_len(A), , drop = FALSE]
   ss_vc <- ss_validation(vc, A)
@@ -396,13 +408,15 @@ fin_validation <- function(vc, A) {
   complet <- identical(vc$mode, "complet")
   q2cum <- if (complet) 1 - cumprod(1 - pmax(q2, -0.1)) else 1 - rowSums(press) / sum(vc$ss)
   q2v_cum <- if (complet) 1 - apply(1 - pmax(q2v, -0.1), 2, prod) else ifelse(vc$ss > 0, 1 - press[A, ] / vc$ss, NA_real_)
+  q2_vide <- if (!complet && length(vc$press0)) 1 - sum(vc$press0) / sum(vc$ss)
+  gain <- if (length(q2_vide) && q2_vide < 1) (q2cum[A] - q2_vide) / (1 - q2_vide)
   niveaux <- sort(unique(vc$groupes))
   gardes <- do.call(rbind, lapply(seq_along(vc$tours), function(i) {
     g <- vc$tours[[i]]$gardes
     if (length(g)) data.frame(groupe = niveaux[i], terme = names(g), part = unname(g), stringsAsFactors = FALSE)
   }))
   colonnes <- function(M) if (!is.null(M)) M[, seq_len(A), drop = FALSE]
-  list(press = press, ss_vc = ss_vc, q2 = q2, q2cum = q2cum, q2v_cum = q2v_cum, validation = vc$mode, gardes = gardes,
+  list(press = press, ss_vc = ss_vc, q2 = q2, q2cum = q2cum, q2v_cum = q2v_cum, q2_vide = q2_vide, gain = gain, validation = vc$mode, gardes = gardes,
        vc = list(groupes = vc$groupes, predictions = if (vc$pls) vc$predictions[seq_len(A)],
                  tours = lapply(vc$tours, function(r) list(W = colonnes(r$W), P = colonnes(r$P), C = colonnes(r$C)))))
 }

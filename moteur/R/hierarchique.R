@@ -121,7 +121,8 @@ projet_sans_groupe <- function(projet, d, hors, bases, seuil = SEUIL_ECART_VC) {
 # modèle complet, dont les sous-modèles n'ont pas de données à eux : alors avec les centres
 # recalculés (la validation par défaut). Seulement pour une PLS : une ACP n'a pas de Y dont ses
 # scores se serviraient deux fois. NULL pour un modèle sans score d'un autre modèle du projet ; sinon
-# list(q2, q2cum, validation, bases : les modèles refaits, absents : les variables de scores prises
+# list(q2, q2cum, q2_vide, gain : celui du Q2 honnête sur le modèle vide (fin_validation),
+# validation, bases : les modèles refaits, absents : les variables de scores prises
 # telles quelles, leur modèle n'étant pas dans le projet), ou list(erreur) si un modèle de base
 # ne peut pas être refait.
 q2_hierarchique <- function(projet, d, m) {
@@ -140,5 +141,6 @@ q2_hierarchique <- function(projet, d, m) {
     calculer_modele(projet, dh, A = m$A, G = m$G, projets_vc = projets)
   }, error = function(e) conditionMessage(e))
   if (is.character(r)) return(list(erreur = r, bases = I(names(mb$bases)), absents = I(mb$absents)))
-  list(q2 = r$q2, q2cum = r$q2cum, validation = mode_validation(dh), bases = I(names(mb$bases)), absents = I(mb$absents))
+  list(q2 = r$q2, q2cum = r$q2cum, q2_vide = r$q2_vide, gain = r$gain, validation = mode_validation(dh),
+       bases = I(names(mb$bases)), absents = I(mb$absents))
 }

@@ -169,7 +169,11 @@ function tableauComposantes(m) {
     .concat([['Q2', 'Q2'], ['Q2cum', 'Q2(cum)'], ['valeur_propre', t('valeur_propre')]]);
   const infos = [`${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K} · ${t('groupes_vc')} ${m.G}${m.vc_par ? ` (${m.vc_par})` : ''}`
     + (m.validation ? ` · ${t('validation_vc')} : ${t('validation_' + m.validation)}` : '')];
-  if (m.hierarchique && m.hierarchique.q2cum) infos.push(`${t('q2_honnete')} : ${fmt([].concat(m.hierarchique.q2cum).pop(), 3)}`);
+  if (Number.isFinite(m.gain) && Number.isFinite(m.q2_vide)) infos.push(`${t('gain_vide')} : ${fmt(m.gain, 3)} (${t('q2_vide')} ${fmt(m.q2_vide, 3)})`);
+  if (m.hierarchique && m.hierarchique.q2cum) {
+    const h = m.hierarchique;
+    infos.push(`${t('q2_honnete')} : ${fmt([].concat(h.q2cum).pop(), 3)}` + (Number.isFinite(h.gain) ? ` (${t('gain_honnete')} ${fmt(h.gain, 3)})` : ''));
+  }
   if (pls && m.noms_y.length) infos.push(`Y : ${[].concat(m.noms_y).join(', ')}`);
   if (pls && m.RMSEE) infos.push(Object.keys(m.RMSEE).map((y) => `${y} : RMSEE ${fmt(m.RMSEE[y], 4)}, RMSEcv ${fmt(m.RMSEcv[y], 4)}`).join(' · '));
   if (m.classification) infos.push(`${t('bien_classes_vc')} : ${fmt(100 * m.classification.vc.global, 1)} %`);
