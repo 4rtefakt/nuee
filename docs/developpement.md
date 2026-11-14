@@ -177,7 +177,8 @@ On Windows it then produces two things.
 - `application/`: Electron (French and English only), a portable R with the packages the engine
   needs plus R's recommended ones (copied from the local installation, without manuals, Tcl/Tk
   or other message languages), the engine, the example project, and the converter compiled with
-  PyInstaller.
+  PyInstaller (`outils/export_project.exe`, compiled again whenever `convertisseur/*.py` changes:
+  their hash is kept in `outils/export_project.sources`).
 - `Lancer Nuee.cmd`: the launcher.
 - `LISEZ-MOI.txt` and `USER-GUIDE.txt`: the user guide, in French and in English (both are also
   in `application/resources/`, where *Help › User guide › Full guide* opens the one in the

@@ -3,7 +3,8 @@
 // one folder that runs without installing anything (Nuee/, for the NAS), then the installer
 // installateur/Nuee-Setup-<version>.exe made from that folder.
 //   node construire.js <output folder> [R folder]
-// The converter is compiled with PyInstaller if outils/export_project.exe is missing.
+// The converter is compiled with PyInstaller when outils/export_project.exe is missing or was
+// compiled from other sources than convertisseur/*.py (outils/export_project.sources: their hash).
 // Linux: Electron + the R engine + the converter as a Python script, in Nuee/ (./nuee starts
 // it), then installateur/ with a .deb, an AppImage and a .tar.gz made from that folder. R is
 // not brought along: an R build is tied to the libraries of its distribution, so the system's
@@ -14,6 +15,7 @@
 const { packager } = require('@electron/packager');
 const builder = require('electron-builder');
 const { execFileSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -100,8 +102,17 @@ async function construire() {
     return;
   }
 
+  // (compiled again when its sources change: an old converter would read the files otherwise
+  // than the engine computes, as the coefficients with missing values did between 0.9.8 and 0.9.9)
   const exe = path.join(depot, 'outils', 'export_project.exe');
-  if (!fs.existsSync(exe)) {
+  const empreinte = path.join(depot, 'outils', 'export_project.sources');
+  const h = crypto.createHash('sha256');
+  for (const f of fs.readdirSync(path.join(depot, 'convertisseur')).filter((x) => /\.py$/.test(x)).sort()) {
+    h.update(f).update(fs.readFileSync(path.join(depot, 'convertisseur', f)));
+  }
+  const sources = h.digest('hex');
+  const aJour = fs.existsSync(exe) && fs.existsSync(empreinte) && fs.readFileSync(empreinte, 'utf8').trim() === sources;
+  if (!aJour) {
     console.log('convertisseur .usp (PyInstaller)…');
     const tmp = path.join(sortie, 'pyinstaller');
     execFileSync('python', ['-m', 'PyInstaller', '--onefile', '--noconfirm', '--clean', '--name', 'export_project',
@@ -109,6 +120,7 @@ async function construire() {
       '--exclude-module', 'openpyxl', '--exclude-module', 'matplotlib', '--exclude-module', 'numpy',
       '--exclude-module', 'tkinter', path.join(depot, 'convertisseur', 'export_project.py')], { stdio: 'inherit', cwd: depot });
     fs.rmSync(tmp, { recursive: true, force: true });
+    fs.writeFileSync(empreinte, `${sources}\n`);
   }
   fs.mkdirSync(path.join(ressources, 'outils'), { recursive: true });
   fs.copyFileSync(exe, path.join(ressources, 'outils', 'export_project.exe'));
