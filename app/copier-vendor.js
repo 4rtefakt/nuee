@@ -9,13 +9,55 @@ for (const f of ['plotly.js-dist-min/plotly.min.js', 'dockview-core/dist/dockvie
   fs.copyFileSync(path.join(__dirname, 'node_modules', f), path.join(dest, path.basename(f)));
 }
 
+// The document editor (interface/documents.js): CodeMirror 6 and markdown-it (MIT licences), in
+// one file loaded when a document is first opened, as window.CM and window.markdownit. The
+// licence of each package it holds is written at its end.
+const editeur = require('esbuild').buildSync({
+  stdin: {
+    contents: `
+      import { EditorState, Compartment } from '@codemirror/state';
+      import { EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator, WidgetType } from '@codemirror/view';
+      import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+      import { syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput } from '@codemirror/language';
+      import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+      import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, startCompletion } from '@codemirror/autocomplete';
+      import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
+      import { tags } from '@lezer/highlight';
+      import markdownit from 'markdown-it';
+      window.CM = { EditorState, Compartment, EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator,
+        WidgetType, defaultKeymap, history, historyKeymap, indentWithTab, syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput,
+        markdown, markdownLanguage, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, startCompletion, search, searchKeymap,
+        highlightSelectionMatches, openSearchPanel, tags };
+      window.markdownit = markdownit;`,
+    resolveDir: __dirname,
+    loader: 'js',
+  },
+  bundle: true,
+  minify: true,
+  format: 'iife',
+  target: 'es2020',
+  legalComments: 'eof',
+  metafile: true,
+  outfile: path.join(dest, 'editeur.min.js'),
+});
+const paquets = new Set(Object.keys(editeur.metafile.inputs)
+  .map((f) => (/node_modules[\\/]((?:@[^\\/]+[\\/])?[^\\/]+)/.exec(f) || [])[1]).filter(Boolean).map((n) => n.replace(/\\/g, '/')));
+const licences = [...paquets].sort().map((n) => {
+  const dossier = path.join(__dirname, 'node_modules', n);
+  const info = JSON.parse(fs.readFileSync(path.join(dossier, 'package.json'), 'utf8'));
+  const f = fs.readdirSync(dossier).find((x) => /^licen[cs]e/i.test(x));
+  return `${n} ${info.version} (${info.license})${f ? `\n\n${fs.readFileSync(path.join(dossier, f), 'utf8').trim()}` : ''}`;
+});
+fs.appendFileSync(path.join(dest, 'editeur.min.js'),
+  `\n/*! Packages in this file, and their licences:\n\n${licences.join('\n\n----\n\n').replace(/\*\//g, '* /')}\n*/\n`);
+
 const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkles circle-plus circle-minus
   table-2 chart-scatter chart-bar chart-column chart-line network target columns-2 external-link x sun moon
   languages circle-help info database folder box list eye-off filter copy image-down trash-2 refresh-cw
   maximize-2 panel-left app-window chevron-right chevron-down sigma scan-search sliders-horizontal
   layout-dashboard ruler arrow-up-down scissors file-spreadsheet undo-2 check shuffle grid-3x3 scale git-merge
   rotate-ccw x-circle file-code tag file-input chart-column-big axis-3d file-text palette pencil history calculator crosshair square-terminal apple clipboard-paste file-output chart-spline download
-  quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search trending-up`.split(/\s+/);
+  quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search trending-up book-open`.split(/\s+/);
 const icones = {};
 for (const n of ICONES) {
   const svg = fs.readFileSync(path.join(__dirname, 'node_modules', 'lucide-static', 'icons', n + '.svg'), 'utf8');

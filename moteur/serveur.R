@@ -123,6 +123,7 @@ annuler_demande <- function(q) {
   etat$annulations[[q$projet]] <- pile[-1]
   ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
   ancien$fichier_lu <- actuel$fichier_lu
+  ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
   ancien$modifie <- TRUE
   etat$projets[[q$projet]] <- ancien
   reviser(q$projet)
@@ -243,6 +244,7 @@ resume_projet <- function(p) {
        jeux = lapply(p$datasets, function(d) list(nom = d$name %||% "", n_obs = length(d$observations),
                                                   n_var = length(d$variables))),
        modeles = lapply(p$models, resume_modele), session = !is.null(p$session),
+       documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
        historique = sum(vapply(p$audit %||% list(), function(s) length(s$events), 0)),
        predictions = lapply(p$prediction_sets, function(s) list(nom = s$name %||% "", n_obs = length(s$observations))))
 }
@@ -509,6 +511,7 @@ resultat_modele <- function(id) {
        # (la façon de valider, et les termes qui ont pris le poids du modèle complet dans un
        # sous-modèle, avec le nom de son groupe : validation_croisee.R)
        validation = m$validation, gardes_vc = gardes_vc(p, d, m),
+       q2_vide = m$q2_vide, gain = m$gain,  # (le modèle vide et le gain sur lui : validation_croisee.R, fin_validation)
        hierarchique = m$hierarchique,  # (le Q2 honnête d'un modèle hiérarchique : hierarchique.R)
        noms_y = I(m$y$noms %||% character(0)),  # I() : un seul Y reste une liste
        G = m$G, vc_par = m$vc_par %||% "", reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "",
@@ -836,6 +839,70 @@ DEMANDES <- list(
     }
     etat$projets[[p$id]] <- p
     list(note = note, projet = resume_projet(p))
+  },
+  # Les documents d'un projet (interface/documents.js) : du texte Markdown qui renvoie à ses
+  # résultats, gardé dans le projet (p$documents : id, titre, langue, texte), donc enregistré avec
+  # lui et dans ses copies de secours. L'annulation ne les touche pas (annuler_demande).
+  document = function(q) {
+    d <- Find(function(d) identical(d$id, q$id), projet(q$projet)$documents %||% list())
+    if (is.null(d)) stop(traduire("Document introuvable", "Document not found"))
+    d
+  },
+  # Crée (sans q$id) ou change un document : ses champs donnés (titre, langue, texte, bib : les
+  # références BibTeX gardées dans le document, style : celui de ses citations) ; le projet n'est
+  # marqué modifié que si l'un d'eux change.
+  document_enregistrer = function(q) {
+    p <- projet(q$projet)
+    docs <- p$documents %||% list()
+    id <- as.character(q$id %||% "")[1]
+    k <- which(vapply(docs, function(d) identical(d$id, id), TRUE))
+    if (!nzchar(id) || !length(k)) {
+      numeros <- suppressWarnings(as.numeric(sub("^D", "", vapply(docs, function(d) as.character(d$id), ""))))
+      id <- paste0("D", max(c(0, numeros), na.rm = TRUE) + 1)
+      docs[[length(docs) + 1]] <- list(id = id, titre = "", langue = "fr", texte = "", cree = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
+      k <- length(docs)
+      p$modifie <- TRUE
+    }
+    for (champ in c("titre", "langue", "texte", "bib", "style")) {
+      v <- q[[champ]]
+      if (!is.null(v) && !identical(docs[[k]][[champ]], as.character(v)[1])) {
+        docs[[k]][[champ]] <- as.character(v)[1]
+        docs[[k]]$change <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
+        p$modifie <- TRUE
+      }
+    }
+    p$documents <- docs
+    etat$projets[[p$id]] <- p
+    list(id = id, projet = resume_projet(p))
+  },
+  document_supprimer = function(q) {
+    p <- projet(q$projet)
+    p$documents <- Filter(function(d) !identical(d$id, q$id), p$documents %||% list())
+    p$modifie <- TRUE
+    etat$projets[[p$id]] <- p
+    list(projet = resume_projet(p))
+  },
+  # Un fichier de bibliographie d'un document (BibTeX, CSL-JSON) ou un style CSL : son texte. Un
+  # chemin relatif l'est au dossier du fichier du projet (comme Quarto le lit à côté du document).
+  bibliographie_fichier = function(q) {
+    p <- projet(q$projet)
+    chemin <- as.character(q$chemin %||% "")[1]
+    if (!grepl("\\.(bib|bibtex|json|csl)$", chemin, ignore.case = TRUE)) {
+      stop(traduire("Pas un fichier de bibliographie (.bib, .json) ni un style (.csl) : ", "Not a bibliography file (.bib, .json) or a style (.csl): "), chemin)
+    }
+    if (!grepl("^([A-Za-z]:)?[/\\\\]", chemin)) {
+      dossier <- if (length(p$chemin) && nzchar(p$chemin)) dirname(p$chemin) else NULL
+      if (is.null(dossier)) stop(traduire("Chemin relatif, et le projet n'a pas encore de fichier : ", "A relative path, and the project has no file yet: "), chemin)
+      chemin <- file.path(dossier, chemin)
+    }
+    if (!file.exists(chemin)) stop(traduire("Fichier introuvable : ", "File not found: "), chemin)
+    taille <- file.info(chemin)$size
+    if (taille > 50e6) stop(traduire("Fichier trop gros (plus de 50 Mo) : ", "File too big (over 50 MB): "), chemin)
+    texte <- if (taille) readChar(chemin, taille, useBytes = TRUE) else ""
+    Encoding(texte) <- "UTF-8"
+    if (!validUTF8(texte)) texte <- iconv(texte, "latin1", "UTF-8")  # (un vieux .bib en Latin-1)
+    list(chemin = normalizePath(chemin, winslash = "/"), texte = sub("^﻿", "", texte),
+         date = format(file.info(chemin)$mtime, "%Y-%m-%dT%H:%M:%S"))
   },
   # Copie de secours d'un projet pas encore enregistré, sans toucher à son état ; `lu` : l'état
   # de son fichier quand il l'a lu ou enregistré, que l'interface garde avec la copie

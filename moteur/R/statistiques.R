@@ -62,7 +62,7 @@ statistiques <- function(m, niveau = 0.95) {
   vars$echelle <- m$x$type
 
   if (pls) {
-    cf <- coefficients_pls(m$W, m$P, m$C)
+    cf <- coefficients_pls(m$W, m$P, m$C, ordre_retrait(m))
     d <- m$ssy[seq_len(A)] - m$ssy[seq_len(A) + 1]
     vars$VIP <- sqrt(K * rowSums(sweep(m$W^2, 2, d, "*")) / sum(d))
     vars$VIP_IC <- intervalles_vip(m, d, niveau)
@@ -164,10 +164,27 @@ intervalles_vip <- function(m, d, niveau) {
   apply(matrix(vip_g, nrow = m$K), 1, jackknife, niveau = niveau)
 }
 
-# W* = W (P'W)^-1 et coefficients centrés-réduits W* C' (une colonne par Y).
-coefficients_pls <- function(W, P, C) {
-  We <- W %*% solve(crossprod(P, W))
+# W* et coefficients centrés-réduits W* C' (une colonne par Y). W* est tel que les scores des
+# observations complètes sont T = X W*, les composantes étant retirées de X dans l'ordre `ordre`
+# (ordre_retrait) : w*_a = w_a - la somme, sur les composantes b retirées avant a, de w*_b (p_b'w_a).
+# Sans valeur manquante, c'est W (P'W)^-1 ; avec elles, p_a'w_a n'est plus 1 et l'inverse ne
+# redonne plus ces scores. C'est le W* des fichiers .usp.
+coefficients_pls <- function(W, P, C, ordre = seq_len(ncol(W))) {
+  We <- W
+  for (j in seq_along(ordre)[-1]) {
+    a <- ordre[j]
+    b <- ordre[seq_len(j - 1)]
+    We[, a] <- W[, a] - We[, b, drop = FALSE] %*% crossprod(P[, b, drop = FALSE], W[, a])
+  }
   list(Wetoile = We, coef_cs = We %*% t(C))
+}
+
+# L'ordre dans lequel les composantes du modèle `m` sont retirées de X : une à une pour une PLS ;
+# pour une OPLS, les orthogonales (après les Ap prédictives) d'abord (prediction.R : predire).
+ordre_retrait <- function(m) {
+  if (!isTRUE(m$opls)) return(seq_len(m$A))
+  Ap <- m$Ap %||% 1
+  c(seq_len(m$A)[-seq_len(Ap)], seq_len(Ap))
 }
 
 # Pouvoir de modélisation de chaque variable X : 1 - SV_k / SV0_k, SV étant l'écart-type
@@ -225,7 +242,7 @@ intervalles_pls <- function(m, niveau) {
     W <- matrix(tour(m, g, "w"), ncol = A)
     P <- matrix(tour(m, g, "p"), ncol = A)
     C <- matrix(tour(m, g, "c"), ncol = A)
-    cf <- tryCatch(coefficients_pls(W, P, C), error = function(e) NULL)
+    cf <- tryCatch(coefficients_pls(W, P, C, ordre_retrait(m)), error = function(e) NULL)
     list(W = W, P = P, C = C, We = cf$Wetoile, B = cf$coef_cs)
   })
   ok <- all(vapply(ronds, function(r) !is.null(r$B), TRUE))

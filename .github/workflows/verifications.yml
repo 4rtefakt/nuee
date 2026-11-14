@@ -43,6 +43,11 @@ jobs:
         with:
           node-version: 22
 
+      # (the documents' tests read Markdown with markdown-it; Electron itself isn't needed)
+      - name: Paquets de l'interface
+        working-directory: app
+        run: npm ci --ignore-scripts
+
       - name: Requêtes au serveur R
         working-directory: app
         run: node tests/essai_api.js Rscript
@@ -172,6 +177,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+
+      - name: Paquets de l'interface
+        working-directory: app
+        run: npm ci --ignore-scripts
 
       - name: Requêtes au serveur R
         working-directory: app

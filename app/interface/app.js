@@ -18,6 +18,7 @@ import { ouvrirPalette } from './palette.js';
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 import './vues_ordination.js';
 import './vues_classement.js';
+import { installerDocuments } from './documents.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -242,8 +243,9 @@ const app = {
 
   // true once saved; false if the user cancelled the choice of a file
   async enregistrer(pid, sous) {
+    if (!etat.projets[pid]) { statut(t('choisir_projet'), true); return false; }
+    if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
     const p = etat.projets[pid];
-    if (!p) { statut(t('choisir_projet'), true); return false; }
     let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
       chemin = await bureau.enregistrerSous(p.nom.replace(/\.[^.]+$/, '') + '.nuee', [{ name: t('format_projet'), extensions: ['nuee'] }]);
@@ -300,8 +302,9 @@ const app = {
   },
 
   async fermerProjet(pid) {
+    if (!etat.projets[pid]) return;
+    if (app.viderDocuments) await app.viderDocuments(pid);  // (what was just typed in its documents makes it modified)
     const p = etat.projets[pid];
-    if (!p) return;
     if (p.modifie && !window.confirm(t('confirmer_fermer_projet', { nom: p.nom }))) return;
     await demander('fermer_projet', { projet: pid });
     oublierProjet(pid);
@@ -316,6 +319,28 @@ const app = {
     await garder(res);
     vuesParDefaut(res.id);
     return res.id;
+  },
+  // A model of the project computed without opening its views (a document that refers to it,
+  // documents.js), as a saved session brings its models back (restaurerSession).
+  async calculerDiscret(pid, numero) {
+    const res = await demander('ajuster', { projet: pid, numero });
+    etat.modeles[res.id] = res;
+    await rafraichirProjet(pid);
+    diffuser('modeles');
+    majEtat();
+    return res.id;
+  },
+  // A project's summary after a change that leaves its data and models as they are (a document
+  // written): the explorer and the status bar, no panel drawn again.
+  majProjet(res) {
+    projetRecu(res);
+    app.rafraichirExplorateur();
+    majEtat();
+  },
+  // The title of an open panel's tab (a document renamed).
+  titrePanneau(cle, titre) {
+    const e = etat.panneaux.get(cle);
+    if (e && e.api) e.api.setTitle(titre);
   },
   nouveauModele(pid) {
     const p = etat.projets[pid || app.projetActif()];
@@ -629,19 +654,21 @@ const app = {
   },
   occupe: (f) => occupe(f),
   statut: (message, erreur) => statut(message, erreur),
-  // for the report: a view's settings in its open panel, and a context to draw it off screen
+  diffuser: (type, donnees) => diffuser(type, donnees),
+  // for the report and the documents: a view's settings in its open panel, and a context to draw it
+  // off screen (in the light theme, whatever the window's)
   locVue: (vue, id) => (etat.panneaux.get(`${vue}:${id}`) || {}).loc || null,
-  contexteHorsEcran: (loc, surGraphe) => ({ ...contexte({ loc }), rafraichir: () => {}, definirGraphe: surGraphe, menuGraphique: () => {} }),
+  contexteHorsEcran: (loc, surGraphe) => ({ ...contexte({ loc }), rafraichir: () => {}, definirGraphe: surGraphe, menuGraphique: () => {}, clair: true }),
   version: async () => ({ ...(await demander('version')), application: VERSION, electron: bureau && bureau.versions.electron }),
 
   // ---- views and windows
   // A view of a model opens in the model's page (as a tab beside the last view used there);
   // a project view (data, statistics...) as a tab of the central group.
   ouvrirVue(vue, id, loc, pid, position) {
-    if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid);
+    if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid, vue === 'document' ? loc : null);
     const m = id ? etat.modeles[id] : null;
     const projet = m ? m.projet : pid;
-    const cle = `${vue}:${id || projet || ''}`;
+    const cle = `${vue}:${id || projet || ''}${suffixeVue(vue, loc)}`;
     const existant = trouverPanneau(cle);
     if (existant) {
       if (m) ouvrirPage(id).page.api.setActive();
@@ -651,7 +678,7 @@ const app = {
       return;
     }
     if (loc) etat.locInitial[cle] = loc;
-    const titre = VUES[vue].titre(m, etat.projets[projet] || {});
+    const titre = VUES[vue].titre(m, etat.projets[projet] || {}, loc || {});
     if (m) {
       const { page, interne } = ouvrirPage(id);
       interne.addPanel({ id: cle, component: vue, title: titreCourt(titre, m), params: { modele: id, projet },
@@ -667,9 +694,10 @@ const app = {
     if (page) page.api.setActive(); else vuesParDefaut(id);
   },
 
-  ouvrirFenetreVue(vue, id, pid) {
+  // (loc: the settings the view starts with, a document's: which one it shows)
+  ouvrirFenetreVue(vue, id, pid, loc = null) {
     const m = id ? etat.modeles[id] : null;
-    const q = new URLSearchParams({ vue, modele: id || '', projet: pid || (m && m.projet) || '', de: ID_FENETRE });
+    const q = new URLSearchParams({ vue, modele: id || '', projet: pid || (m && m.projet) || '', de: ID_FENETRE, ...(loc ? { loc: JSON.stringify(loc) } : {}) });
     window.open('./?' + q, '_blank', 'popup,width=1000,height=720');
   },
 
@@ -679,8 +707,13 @@ const app = {
     if (!p) return;
     const e = etat.panneaux.get(p.id);
     if (!e) return;
-    app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet);
+    app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, e.vue === 'document' ? e.loc : null);
     p.api.close();
+  },
+
+  fermerVue(cle) {
+    const p = trouverPanneau(cle);
+    if (p) p.api.close();
   },
 
   fermerPanneau() {
@@ -741,6 +774,7 @@ const app = {
   },
 };
 
+installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app.nouveauDocument...)
 const C = creerCommandes(app);
 
 // ------------------------------------------------------------ state helpers
@@ -1046,7 +1080,7 @@ function collecterSession(pid) {
   const externes = dock.panels.filter((p) => !EXTERNES.includes(p.id));
   const externeAMoi = (p) => (estPage(p) ? code.has(p.id.slice(5)) : !!etat.panneaux.get(p.id) && aMoi(etat.panneaux.get(p.id)));
   if (externes.length && externes.every(externeAMoi)) {  // the layout too, when it only shows this project
-    const ids = new Map(panneaux.map((e) => [e.id, `${e.vue}:${codeVue(e) || '@P'}`]));
+    const ids = new Map(panneaux.map((e) => [e.id, `${e.vue}:${codeVue(e) || '@P'}${suffixeVue(e.vue, e.loc)}`]));
     for (const p of externes) if (estPage(p)) ids.set(p.id, `page:${code.get(p.id.slice(5))}`);
     const internes = {};
     for (const [mid, d] of pages) if (code.has(mid)) internes[code.get(mid)] = remplacerIds(d.toJSON(), (s) => ids.get(s));
@@ -1076,16 +1110,16 @@ async function restaurerSession(pid, donnee = null) {
   for (const cle of ['selection', 'variables', 'choixVIP', 'groupesHCA']) {
     for (const [code, v] of Object.entries(s[cle] || {})) if (ids[code]) etat[cle][ids[code]] = v;
   }
-  const idPanneau = (code, vue) => `${vue}:${code === '@P' || !code ? pid : ids[code]}`;
+  const idPanneau = (code, vue, loc) => `${vue}:${code === '@P' || !code ? pid : ids[code]}${suffixeVue(vue, loc)}`;
   const vues = (s.vues || []).filter((v) => !v.modele || ids[v.modele]);
-  for (const v of vues) etat.locInitial[idPanneau(v.modele, v.vue)] = v.loc;
+  for (const v of vues) etat.locInitial[idPanneau(v.modele, v.vue, v.loc)] = v.loc;
   let fait = false;
   const libre = !dock.panels.some((p) => !EXTERNES.includes(p.id));
   if (s.disposition && s.disposition.externe && libre && vues.length === s.vues.length) {
     const nouvel = (x) => {
-      const r = /^([a-z_0-9]+):(@P|@\d+)$/.exec(x);
+      const r = /^([a-z_0-9]+):(@P|@\d+)(~[\w-]+)?$/.exec(x);
       if (!r) return undefined;
-      return r[1] === 'page' ? `page:${ids[r[2]]}` : idPanneau(r[2], r[1]);
+      return r[1] === 'page' ? `page:${ids[r[2]]}` : idPanneau(r[2], r[1]) + (r[3] || '');
     };
     const externe = remplacerIds(s.disposition.externe, nouvel);
     for (const p of Object.values(externe.panels || {})) p.params = { modele: estPage(p) ? p.id.slice(5) : null, projet: pid };
@@ -1105,7 +1139,7 @@ async function restaurerSession(pid, donnee = null) {
     for (const code of new Set(vues.map((v) => v.modele).filter(Boolean))) vuesParDefaut(ids[code]);
     for (const v of vues) app.ouvrirVue(v.vue, v.modele ? ids[v.modele] : null, v.loc, pid);
   }
-  for (const v of vues) delete etat.locInitial[idPanneau(v.modele, v.vue)];
+  for (const v of vues) delete etat.locInitial[idPanneau(v.modele, v.vue, v.loc)];
   for (const k of Object.keys(dispositionsAttente)) delete dispositionsAttente[k];
   app.rafraichirExplorateur();
   rafraichirModele(null);
@@ -1242,6 +1276,13 @@ const estPage = (p) => !!p && typeof p.id === 'string' && p.id.startsWith('page:
 const titrePage = (m) => `${m.nom} · ${m.type}`;
 const titreCourt = (titre, m) => (m && titre.startsWith(`${m.nom} · `) ? titre.slice(m.nom.length + 3) : titre);
 
+// A view shown once per thing of its own (a document) adds it to its panel's id: document:P1~D2.
+function suffixeVue(vue, loc) {
+  const v = VUES[vue];
+  const s = v && v.suffixe && loc ? v.suffixe(loc) : '';
+  return s ? `~${s}` : '';
+}
+
 function trouverPanneau(id) {
   for (const d of tousDocks()) {
     const p = d.getPanel(id);
@@ -1306,7 +1347,11 @@ function composantVue(options) {
       etat.panneaux.set(options.id, entree);
       rendrePanneau(entree);
     },
-    dispose() { if (etat.panneaux.get(options.id) === entree) etat.panneaux.delete(options.id); },
+    dispose() {
+      if (etat.panneaux.get(options.id) === entree) etat.panneaux.delete(options.id);
+      const v = VUES[options.name];
+      if (v && v.fermer) v.fermer(element);  // (a document: what was just typed is kept)
+    },
   };
 }
 
@@ -1416,7 +1461,7 @@ function rendrePanneau(entree) {
   Promise.resolve(rendu).catch((e) => {
     entree.element.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${e.message}`));
   });
-  const titre = v.titre(m, etat.projets[entree.params.projet] || {});
+  const titre = v.titre(m, etat.projets[entree.params.projet] || {}, entree.loc);
   if (entree.api) entree.api.setTitle(m ? titreCourt(titre, m) : titre);  // in its model's page, the model's name goes without saying
   if (VUE_SEULE) document.title = titre;
 }
@@ -1594,7 +1639,8 @@ function accueil() {
 }
 
 function rattacher() {
-  diffuser('rattacher', { vers: params.get('de'), vue: VUE_SEULE, modele: params.get('modele'), projet: params.get('projet') });
+  const loc = VUE_SEULE === 'document' ? (etat.panneaux.get('seul') || {}).loc : null;
+  diffuser('rattacher', { vers: params.get('de'), vue: VUE_SEULE, modele: params.get('modele'), projet: params.get('projet'), loc });
   window.close();
 }
 
@@ -1622,8 +1668,10 @@ canal.onmessage = async ({ data: msg }) => {
     app.changerLangue(msg.l, false);
   } else if (msg.type === 'rattacher' && !VUE_SEULE && msg.vers === ID_FENETRE) {
     await synchroniser();
-    app.ouvrirVue(msg.vue, msg.modele || null, null, msg.projet || null);
+    app.ouvrirVue(msg.vue, msg.modele || null, msg.loc || null, msg.projet || null);
     if (bureau) bureau.focusFenetre(null);
+  } else if (msg.type === 'document') {
+    if (app.surDocument) app.surDocument(msg);  // (a document written in another window: documents.js)
   }
 };
 
@@ -1653,7 +1701,9 @@ async function demarrerVue() {
   if (VUES[VUE_SEULE].global) await synchroniser();
   const tete = document.getElementById('tete-seul');
   const element = el('div', { class: 'panneau' });
-  const entree = { id: 'seul', element, vue: VUE_SEULE, params: { modele: id || null, projet: pid || null }, loc: {} };
+  let loc = {};
+  try { loc = JSON.parse(params.get('loc') || '{}') || {}; } catch { loc = {}; }
+  const entree = { id: 'seul', element, vue: VUE_SEULE, params: { modele: id || null, projet: pid || null }, loc };
   tete.replaceChildren(el('span', { class: 'logo' }, icone(ICONES_VUES[VUE_SEULE] || 'sigma')), el('span', { class: 'titre-seul' }),
     el('span', { class: 'espace' }),
     el('button', { class: 'icone-seule', title: t('copier_image'), onclick: () => copierImage() }, icone('copy')),

@@ -340,6 +340,62 @@ English (data, transformations, scaling, spectral preprocessing, method, cross-v
 Q², CV-ANOVA, classification, software and R version), with its references. "Copy the text"
 button. Read it over and complete it (experimental design, sampling...) before publishing.
 
+Documents (articles, reports)
+-----------------------------
+File › New document (or right-click a project in the explorer): a text kept in the project (an
+article, a report, notes), written in Markdown on the left, with its preview on the right, drawn
+again as you type. It is saved with the project and in its recovery copies; Edit › Undo leaves
+it alone, and Ctrl+Z in the text undoes the text.
+Start from a blank document, an article (introduction, methods, results, discussion) or an
+analysis report (for each model: summary, plots, methods), the models ticked already cited.
+The project's results are cited between double braces; the preview and the compiled file show
+their values:
+  {{M1.Q2}}  {{M1.R2Y}}  {{M1.R2X:%}} (a percentage)  {{M1.Q2:3}} (3 decimals)  {{M1.N}}
+  {{M1.gain}}  {{M1.vip.sugar}}  {{M1.coef.sugar}} (scaled coefficient and its 95 % interval)
+  {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
+  {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
+  {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
+A plot, a table or the Methods text goes alone on its line. Plots and tables are numbered in
+order (Figure 1, Table 1); with a label, {{M1.scores #fig-scores | caption}}, {{ref:fig-scores}}
+writes "Figure 1" anywhere in the text. Type {{ to list the project's models, then what the one
+chosen offers, with its current value; Insert, in the toolbar, does the same from menus, and a
+model or its view in the explorer has "Insert in the document" (right-click).
+A reference that can't be resolved (a model that doesn't exist, a variable it doesn't have) is
+in red, with the reason when you hover it. A model of the project not computed yet is computed
+when the document cites it, without opening its views. Numbers follow the document's language
+(0,65 in French, 0.65 in English), as do "Figure", "Table" and the Methods text.
+Compile: a Word file (.docx: headings, lists, tables, plots and captions in Word's styles), a
+PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd) with its plots in a
+folder next to it, the results written in for good. When Quarto is installed (quarto.org, or
+with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML from it, with what Quarto
+adds: a bibliography (bibliography: refs.bib in the header, [@key] in the text),
+cross-references, journal templates. A YAML header (title, author, date) at the top of the
+document is read; a line {{< pagebreak >}} starts a new page.
+Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 33; @eriksson2006], @wold2001 in
+the sentence ("Wold et al. (2001)"), [-@wold2001] without the author. Typing @ lists the document's
+references, then Zotero's. The list of references comes at the end (under the last heading when it is
+"References"), or where the document puts {{bibliographie}}; author–year or numbered (Cite › Citation
+style), in the document's language. Where the references come from (the Cite button):
+  - BibTeX or CSL-JSON files, exported by Zotero, Mendeley, JabRef...: Cite › Link a file names one in
+    the header (bibliography: refs.bib, relative to the project's folder, as Quarto reads it). Better
+    BibTeX's automatic export keeps it up to date: a key not found has the file read again;
+  - Zotero on this computer (Zotero 7 or later, with Settings › Advanced › "Allow other applications
+    on this computer to communicate with Zotero" ticked): its references are searched as you type @,
+    or in Cite › Insert a citation, in the whole library or in one of its collections; their keys are
+    Zotero's own (Better BibTeX's when it is installed). With the Better BibTeX plugin, Cite › Pick in
+    Zotero opens Zotero's own picker, the page given there included. Nuée only reads the library;
+  - BibTeX pasted (Cite › Paste BibTeX references).
+The document keeps a copy of the references it cites: sent to someone without the .bib, it still cites
+them (Cite › The document's references lists them, and removes those no longer cited). Compiled for
+Quarto, the citations stay as they are, the references cited in a .bib beside the .qmd, so that Quarto
+writes them in any journal's style (csl: style.csl in the header; the file is copied beside the .qmd).
+A reference's language (Zotero's Language field: fr, de...) goes with it: styles that put English
+titles in title case, as Quarto's default one does, then leave a French title as it is written.
+Each document opens in a tab of its own. Plots in documents and model reports are drawn in the light
+theme, whatever the window's.
+Spelling, in French and in English (and in the system's language): misspelled words are
+underlined; right-click one for suggestions (in every text field of the application).
+
 R console
 ---------
 View › R console (Ctrl+J): a panel below the tabs, with
@@ -1212,12 +1268,22 @@ PCA: each value is predicted by the scores of its observation computed without t
 its group of variables (also assigned to G groups). RMSEcv, CV-ANOVA, the cross-validated
 classification, the confidence intervals (jack-knife, over the G sub-models), the permutation
 test and autofit follow the validation chosen.
+Gain over the empty model (the first two, PLS and OPLS): the Summary also gives the Q2 of the
+empty model, where each held-out group is predicted by the mean of Y over the other
+observations, and the model's gain over it, (Q2(cum) - Q2 of the empty model) / (1 - Q2 of the
+empty model) = 1 - PRESS / PRESS of the empty model: the share of the empty model's prediction
+error that the model avoids. With groups that differ (sites, departments), the empty model's
+Q2 is below 0, and so is a model's Q2 that predicts a little better than it: the gain says how
+much better. 0: no better than the mean of the other groups. With the full model's centres and
+weights, the empty model predicts the mean of all the observations, held-out group included
+(its Q2 is 0): no gain is given. Also in the Methods text, the model report and Export to R.
 Hierarchical model (a PLS whose X include scores of other models of the project, $M1.t1...):
 its Q2 takes these scores as they are, though they were computed with the held-out group's Y.
 Its Summary also gives an honest Q2(cum): in each round, its base models are refitted without
 the held-out group (the whole site when the groups are by site), then their scores, with the
 model's validation (centres recomputed when it is the full model's); a base model with no
-variation left without that group gives scores of zero.
+variation left without that group gives scores of zero. The honest Q2 has its gain over the
+empty model too.
 
 Validation (PLS and PLS-DA)
 ---------------------------
@@ -1338,6 +1404,9 @@ What differs
 - Automatic fitting: the published rules, applied to Nuée's Q2, may choose another number of
   components; for PCA, the exact limit used in the files isn't published.
 - VIP cut-off (step around 0.8): the application's own method.
+- Confidence intervals of the VIPs of a model with two components or more (the VIPs themselves
+  are the same): those of the program that wrote the file weight the components of each
+  cross-validation round in a way that isn't published; with one component, they are the same.
 - OPLS / OPLS-DA: no stored model to compare with (see above).
 - Suggested transformation: the published rule doesn't say whether both skewness and Min/Max
   are needed; the application requires both.

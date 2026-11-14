@@ -61,6 +61,10 @@ async function principal() {
     await etape(`syntaxe ${f}`, () => execFileSync(process.execPath, ['--check', copie], { stdio: 'pipe' }));
   }
   fs.rmSync(copies, { recursive: true, force: true });
+  // the documents' references and their rendering (Word, Quarto), without the page
+  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js']) {
+    await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
+  }
 
   console.log('Vérification du serveur R…');
   const port = await portLibre();
@@ -236,6 +240,37 @@ async function principal() {
       verifier(q.session === true, 'séance enregistrée');
       const m = await api('ajuster', { projet: q.id, numero: pls.numero, A: 2 });
       verifier(m.note === 'essai' && m.reglages.x.length === 6, 'modèle relu');
+    });
+    await etape('documents : écrire, relire, annuler sans y toucher, enregistrer et rouvrir, supprimer', async () => {
+      // (documents.js: Markdown kept in the project and saved with it; Ctrl+Z leaves it alone)
+      let r = await api('document_enregistrer', { projet: p.id, titre: 'Article', langue: 'fr', texte: 'Q² = {{M2.Q2}}' });
+      const id = r.id;
+      verifier(/^D\d+$/.test(id) && r.projet.modifie && r.projet.documents.some((d) => d.id === id && d.titre === 'Article'), `créé : ${JSON.stringify(r.projet.documents)}`);
+      const bib = '@article{wold2001, author = {Wold, S.}, title = {PLS}, year = 2001}';
+      await api('document_enregistrer', { projet: p.id, id, texte: 'Q² = {{M2.Q2}} ; N = {{M2.N}}', langue: 'en', bib, style: 'numerique' });
+      let d = await api('document', { projet: p.id, id });
+      verifier(d.texte === 'Q² = {{M2.Q2}} ; N = {{M2.N}}' && d.titre === 'Article' && d.langue === 'en' && d.bib === bib && d.style === 'numerique', `relu : ${JSON.stringify(d)}`);
+      await api('variable_calculee', { projet: p.id, nom: 'x1x3', formule: 'x1 * x3' });
+      await api('annuler', { projet: p.id });
+      d = await api('document', { projet: p.id, id });
+      verifier(d.texte.endsWith('{{M2.N}}'), 'annuler laisse le document tel qu’il est');
+      const f = path.join(dossier, 'documents.nuee');
+      await api('enregistrer', { projet: p.id, chemin: f });
+      const q = await api('ouvrir', { chemin: f });
+      d = await api('document', { projet: q.id, id });
+      verifier(d.texte.endsWith('{{M2.N}}') && d.langue === 'en' && d.bib === bib && q.documents.length === 1, 'relu du fichier');
+      // a bibliography file beside the project, named relative to it (as Quarto reads it), or not
+      fs.writeFileSync(path.join(dossier, 'refs.bib'), '﻿@book{eriksson2006, author = {Eriksson, L.}, title = {Multi- and megavariate}, year = 2006}\n');
+      const b1 = await api('bibliographie_fichier', { projet: q.id, chemin: 'refs.bib' });
+      const b2 = await api('bibliographie_fichier', { projet: q.id, chemin: path.join(dossier, 'refs.bib') });
+      verifier(b1.texte.startsWith('@book{eriksson2006') && b2.texte === b1.texte && /\/refs\.bib$/.test(b1.chemin), `bibliographie : ${JSON.stringify(b1).slice(0, 120)}`);
+      const refusB = await Promise.all([path.join(dossier, 'documents.nuee'), 'absent.bib'].map((c) => api('bibliographie_fichier', { projet: q.id, chemin: c }).then(() => '', (e) => e.message)));
+      verifier(refusB.every(Boolean), `refusés : ${JSON.stringify(refusB)}`);
+      r = await api('document_supprimer', { projet: q.id, id });
+      let refus = '';
+      try { await api('document', { projet: q.id, id }); } catch (e) { refus = e.message; }
+      verifier(!r.projet.documents.length && refus, `supprimé (${refus})`);
+      await api('fermer_projet', { projet: q.id });
     });
     await etape('enregistrer sans risque : version, fichier changé par ailleurs, projet reçu', async () => {
       const f = path.join(dossier, 'partage.nuee');

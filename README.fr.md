@@ -228,7 +228,11 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   de chercher dans les menus ;
 - un rapport du modèle en PDF ou Word ;
 - le paragraphe d'une section Méthodes, écrit d'après le modèle en français ou en anglais, avec
-  ses références (*Modèle › Texte pour la section Méthodes*).
+  ses références (*Modèle › Texte pour la section Méthodes*) ;
+- des documents gardés dans le projet (*Fichier › Nouveau document*) : un article ou un rapport en
+  Markdown, à côté de son aperçu en direct, qui cite les résultats du projet (`{{M1.Q2}}`,
+  `{{M1.scores | légende}}`, le texte des méthodes) et la bibliographie (`[@wold2001]`, depuis des
+  fichiers BibTeX ou CSL-JSON ou depuis Zotero), et se compile en Word, PDF, HTML ou Quarto.
 
 ## Fichiers
 
@@ -306,7 +310,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 0.9.8) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.9) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)
@@ -326,4 +330,5 @@ ultérieure.
 
 L'installateur inclut R (GPL-2 | GPL-3) avec ses paquets recommandés et les paquets R httpuv,
 jsonlite, openxlsx, haven, readxl et leurs dépendances, Electron (MIT), Plotly.js (MIT),
-dockview (MIT) et les icônes Lucide (ISC), chacun sous sa propre licence.
+dockview (MIT), les icônes Lucide (ISC), et CodeMirror et markdown-it (MIT) pour les documents,
+chacun sous sa propre licence.

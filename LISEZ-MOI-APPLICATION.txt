@@ -361,6 +361,71 @@ méthode, validation croisée, R², Q², CV-ANOVA, classement, logiciel et versi
 références. Bouton « Copier le texte ». À relire et compléter (plan d'expérience,
 prélèvements...) avant de le publier.
 
+Documents (articles, rapports)
+------------------------------
+Fichier › Nouveau document (ou clic droit sur un projet dans l'explorateur) : un texte gardé
+dans le projet (un article, un rapport, des notes), écrit en Markdown à gauche, avec son aperçu
+à droite, redessiné pendant qu'on écrit. Il est enregistré avec le projet et dans ses copies de
+secours ; Édition › Annuler ne le touche pas, et Ctrl+Z dans le texte annule dans le texte.
+Départ : un document vide, un article (introduction, méthodes, résultats, discussion) ou un
+rapport d'analyse (pour chaque modèle : résumé, graphiques, méthodes), les modèles cochés déjà
+cités.
+Les résultats du projet se citent entre doubles accolades ; l'aperçu et le fichier compilé
+donnent leur valeur :
+  {{M1.Q2}}  {{M1.R2Y}}  {{M1.R2X:%}} (en pourcentage)  {{M1.Q2:3}} (3 décimales)  {{M1.N}}
+  {{M1.gain}}  {{M1.vip.sucre}}  {{M1.coef.sucre}} (coefficient centré-réduit et son intervalle à 95 %)
+  {{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
+  {{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
+  {{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
+Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne. Graphiques et
+tableaux sont numérotés dans l'ordre (Figure 1, Tableau 1) ; avec une étiquette,
+{{M1.scores #fig-scores | légende}}, {{ref:fig-scores}} écrit « Figure 1 » n'importe où dans le
+texte. Tapez {{ pour voir les modèles du projet, puis ce que celui choisi offre, avec sa valeur
+du moment ; Insérer, dans la barre d'outils, fait de même par des menus, et un modèle ou sa vue
+dans l'explorateur a « Insérer dans le document » (clic droit).
+Une référence introuvable (un modèle qui n'existe pas, une variable qu'il n'a pas) est en rouge,
+avec la raison au survol. Un modèle du projet pas encore calculé l'est quand le document le
+cite, sans ouvrir ses vues. Les nombres suivent la langue du document (0,65 en français, 0.65
+en anglais), comme « Figure », « Tableau » et le texte des méthodes.
+Compiler : un fichier Word (.docx : titres, listes, tableaux, graphiques et légendes dans les
+styles de Word), un PDF, une page HTML (un seul fichier, graphiques compris), ou un fichier
+Quarto (.qmd) avec ses graphiques dans un dossier à côté, les résultats écrits en dur. Quand
+Quarto est installé (quarto.org, ou avec RStudio), « Compiler avec Quarto » en fait un Word, un
+PDF (Typst) ou une page HTML, avec ce que Quarto apporte : bibliographie (bibliography: refs.bib
+dans l'en-tête, [@cle] dans le texte), renvois, modèles de revues. Un en-tête YAML (title,
+author, date) en haut du document est lu ; une ligne {{< pagebreak >}} commence une nouvelle
+page.
+Les citations s'écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 33 ; @eriksson2006],
+@wold2001 dans la phrase (« Wold et al. (2001) »), [-@wold2001] sans l'auteur. Taper @ montre les
+références du document, puis celles de Zotero. La liste des références vient à la fin (sous le dernier
+titre quand c'est « Références »), ou là où le document met {{bibliographie}} ; en auteur-année ou
+numérotée (Citer › Style des citations), dans la langue du document. D'où viennent les références
+(bouton Citer) :
+  - des fichiers BibTeX ou CSL-JSON, exportés de Zotero, Mendeley, JabRef... : Citer › Lier un fichier
+    en nomme un dans l'en-tête (bibliography: refs.bib, relatif au dossier du projet, comme le lit
+    Quarto). L'export automatique de Better BibTeX le tient à jour : une clé introuvable fait relire
+    le fichier ;
+  - Zotero sur cet ordinateur (Zotero 7 ou plus récent, en cochant Paramètres › Avancé › « Autoriser
+    les autres applications de cet ordinateur à communiquer avec Zotero ») : ses références se
+    cherchent en tapant @, ou dans Citer › Insérer une citation, dans toute la bibliothèque ou dans
+    une de ses collections ; leurs clés sont celles de Zotero (celles de Better BibTeX quand il est
+    installé). Avec l'extension Better BibTeX, Citer › Choisir dans Zotero ouvre le sélecteur de
+    Zotero, avec la page qu'on y donne. Nuée ne fait que lire la bibliothèque ;
+  - du BibTeX collé (Citer › Coller des références BibTeX).
+Le document garde une copie des références qu'il cite : envoyé à quelqu'un qui n'a pas le .bib, il les
+cite encore (Citer › Références du document les montre, et retire celles qui ne sont plus citées).
+Compilé pour Quarto, le texte garde ses citations telles quelles, les références citées dans un .bib à
+côté du .qmd, pour que Quarto les écrive dans le style d'une revue (csl: style.csl dans l'en-tête ; le
+fichier est copié à côté du .qmd).
+La langue d'une référence (le champ Langue de Zotero : fr, de...) la suit : les styles qui mettent
+les titres anglais en capitales (Title Case), comme celui de Quarto par défaut, laissent alors un
+titre français tel qu'il est écrit.
+Chaque document s'ouvre dans son propre onglet. Les graphiques des documents et des rapports de modèle
+sont dessinés en clair, quel que soit le thème de la fenêtre.
+Orthographe, en français et en anglais (et dans la langue du système) : les mots mal
+orthographiés sont soulignés ; clic droit pour les corrections proposées (dans tous les champs
+de texte de l'application).
+
 Console R
 ---------
 Affichage › Console R (Ctrl+J) : un panneau sous les onglets, avec
@@ -1308,12 +1373,22 @@ sans les variables de son groupe de variables (réparties elles aussi en G group
 la CV-ANOVA, le classement en validation croisée, les intervalles de confiance (jack-knife,
 sur les G sous-modèles), le test de permutation et l'ajustement automatique suivent la
 validation choisie.
+Gain sur le modèle vide (les deux premières, PLS et OPLS) : le Résumé donne aussi le Q2 du
+modèle vide, où chaque groupe caché est prédit par la moyenne de Y des autres observations, et
+le gain du modèle sur lui, (Q2(cum) - Q2 du modèle vide) / (1 - Q2 du modèle vide) = 1 - PRESS
+/ PRESS du modèle vide : la part de l'erreur de prédiction du modèle vide que le modèle évite.
+Avec des groupes qui diffèrent (sites, départements), le Q2 du modèle vide est sous 0, et celui
+d'un modèle qui prédit un peu mieux que lui aussi : le gain dit de combien il fait mieux. 0 :
+pas mieux que la moyenne des autres groupes. Avec les centres et poids du modèle complet, le
+modèle vide prédit la moyenne de toutes les observations, groupe caché compris (son Q2 vaut
+0) : pas de gain. Aussi dans le texte des Méthodes, le rapport du modèle et l'export vers R.
 Modèle hiérarchique (une PLS dont des X sont les scores d'autres modèles du projet,
 $M1.t1...) : son Q2 prend ces scores tels quels, alors qu'ils ont été calculés avec le Y du
 groupe caché. Son Résumé donne aussi un Q2(cum) honnête : à chaque tour, ses modèles de base
 sont refaits sans le groupe caché (le site entier quand les groupes sont par site), puis leurs
 scores, avec la validation du modèle (centres recalculés quand elle est celle du modèle
 complet) ; un modèle de base qui n'a plus de variation sans ce groupe donne des scores nuls.
+Le Q2 honnête a lui aussi son gain sur le modèle vide.
 
 Validation (PLS et PLS-DA)
 --------------------------
@@ -1441,6 +1516,10 @@ Ce qui diffère
   autre nombre de composantes ; pour les ACP, la limite exacte utilisée dans les fichiers
   n'est pas publiée.
 - Seuil VIP (marche autour de 0,8) : méthode propre à l'application.
+- Intervalles de confiance des VIP d'un modèle à deux composantes ou plus (les VIP elles-mêmes
+  sont les mêmes) : ceux du logiciel qui a écrit le fichier pondèrent les composantes de chaque
+  tour de la validation croisée d'une façon qui n'est pas publiée ; à une composante, ce sont
+  les mêmes.
 - OPLS / OPLS-DA : pas de modèle enregistré pour comparer (voir plus haut).
 - Transformation proposée : la règle publiée ne dit pas s'il faut l'asymétrie et Min/Max à
   la fois ; l'application les exige tous les deux.

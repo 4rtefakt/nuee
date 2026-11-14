@@ -204,12 +204,20 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
         else sprintf("The model explains %s of the variance of X (cumulative R²X)%s; its cross-validated predictive ability is Q² = %s.",
                      pourcent(dernier$R2Xcum), if (!is.null(dernier$R2Ycum)) sprintf(" and %s of that of Y (cumulative R²Y)", pourcent(dernier$R2Ycum)) else "",
                      nombre(dernier$Q2cum))
+  # (le modèle vide, quand les centres sont recalculés : validation_croisee.R, fin_validation)
+  if (length(m$q2_vide) && length(m$gain)) {
+    p4 <- c(p4, if (fr) sprintf("Le modèle vide, qui prédit chaque groupe caché par la moyenne de Y des autres observations, a Q² = %s ; le gain du modèle sur lui, (Q² − Q² vide) / (1 − Q² vide), est de %s.",
+                                nombre(m$q2_vide), nombre(m$gain))
+                else sprintf("The empty model, which predicts each held-out group by the mean of Y over the other observations, has Q² = %s; the model's gain over it, (Q² − Q² empty) / (1 − Q² empty), is %s.",
+                             nombre(m$q2_vide), nombre(m$gain)))
+  }
   h <- m$hierarchique
   if (!is.null(h$q2cum)) {
-    p4 <- c(p4, if (fr) sprintf("Ses modèles de base (%s) refaits sans le groupe caché à chaque tour, pour que leurs scores ne se servent pas du Y de ce groupe, Q² = %s.",
-                                paste(h$bases, collapse = ", "), nombre(utils::tail(h$q2cum, 1)))
-                else sprintf("With its base models (%s) refitted without the held-out group in each round, so that their scores don't use that group's Y, Q² = %s.",
-                             paste(h$bases, collapse = ", "), nombre(utils::tail(h$q2cum, 1))))
+    gain_h <- if (length(h$gain)) sprintf(if (fr) " (gain sur le modèle vide : %s)" else " (gain over the empty model: %s)", nombre(h$gain)) else ""
+    p4 <- c(p4, if (fr) sprintf("Ses modèles de base (%s) refaits sans le groupe caché à chaque tour, pour que leurs scores ne se servent pas du Y de ce groupe, Q² = %s%s.",
+                                paste(h$bases, collapse = ", "), nombre(utils::tail(h$q2cum, 1)), gain_h)
+                else sprintf("With its base models (%s) refitted without the held-out group in each round, so that their scores don't use that group's Y, Q² = %s%s.",
+                             paste(h$bases, collapse = ", "), nombre(utils::tail(h$q2cum, 1)), gain_h))
   }
   if (pls && length(s$cv_anova) && (length(s$cv_anova) == 1 || (plsda && length(s$cv_anova) == 2))) {
     p <- s$cv_anova[[1]]$p[2]

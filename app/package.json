@@ -1,7 +1,7 @@
 {
   "name": "nuee",
   "productName": "Nuée",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "description": "ACP, PLS, PLS-DA et OPLS calculées en R",
   "author": "4rtefakt",
   "license": "GPL-3.0-or-later",
@@ -14,10 +14,19 @@
     "vendor": "node copier-vendor.js"
   },
   "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "@electron/packager": "^20.3.0",
     "electron": "^45.2.1",
     "electron-builder": "^26.18.0",
-    "lucide-static": "^1.66.0"
+    "esbuild": "^0.28.2",
+    "lucide-static": "^1.66.0",
+    "markdown-it": "^15.0.3"
   },
   "dependencies": {
     "dockview-core": "^8.8.3",

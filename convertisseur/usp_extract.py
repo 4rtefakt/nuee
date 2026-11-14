@@ -518,22 +518,6 @@ def parse_workset(buf):
     return mats
 
 
-def _inverse(M):
-    """Gauss-Jordan inverse of a small square matrix (lists)."""
-    n = len(M)
-    a = [list(map(float, row)) + [float(i == j) for j in range(n)] for i, row in enumerate(M)]
-    for c in range(n):
-        piv = max(range(c, n), key=lambda i: abs(a[i][c]))
-        a[c], a[piv] = a[piv], a[c]
-        d = a[c][c]
-        a[c] = [v / d for v in a[c]]
-        for i in range(n):
-            if i != c and a[i][c]:
-                f = a[i][c]
-                a[i] = [v - f * w for v, w in zip(a[i], a[c])]
-    return [row[n:] for row in a]
-
-
 def term_name(t, var_by):
     uids, lags, cats = t
     parts = []
@@ -604,10 +588,16 @@ def f_quantile(p, d1, d2):
 
 
 def _coefs(W, P, C):
-    """W* = W(P'W)^-1 (K x A) and CoeffCS = W*C' (K x M) from A x K weights/loadings, A x M C."""
+    """W* (K x A) and CoeffCS = W*C' (K x M) from A x K weights/loadings, A x M C. W* gives the
+    scores of complete observations, T = X W*: w*_a = w_a - sum over b < a of w*_b (p_b'w_a).
+    Without missing values that is W(P'W)^-1 (P'W is then triangular with a unit diagonal); with
+    them p_a'w_a is no longer 1, and the program that wrote the file uses this recursion."""
     A, K, M = len(W), len(W[0]), len(C[0])
-    inv = _inverse([[sum(P[a][k] * W[b][k] for k in range(K)) for b in range(A)] for a in range(A)])
-    Ws = [[sum(W[a][k] * inv[a][b] for a in range(A)) for b in range(A)] for k in range(K)]
+    Ws = [[0.0] * A for _ in range(K)]
+    for a in range(A):
+        pw = [sum(P[b][k] * W[a][k] for k in range(K)) for b in range(a)]
+        for k in range(K):
+            Ws[k][a] = W[a][k] - sum(Ws[k][b] * pw[b] for b in range(a))
     return Ws, [[sum(Ws[k][b] * C[b][j] for b in range(A)) for j in range(M)] for k in range(K)]
 
 
@@ -745,7 +735,7 @@ def model_report(m, scaling, ws, var_by, transforms=None, qual=None):
             for g in range(len(Wg)):
                 try:
                     per.append(_coefs(Wg[g], Pg[g], Cg[g]))
-                except (TypeError, ZeroDivisionError):
+                except TypeError:
                     per = None
                     break
             for k in range(K):

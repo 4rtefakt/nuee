@@ -214,7 +214,11 @@ the model's domain, and export the results.
 - *View › Find a command* (Ctrl+K): type part of a command's name instead of looking through the menus;
 - a model report as PDF or Word;
 - the paragraph for a Methods section, written from the model in French or English, with its
-  references (*Model › Text for the Methods section*).
+  references (*Model › Text for the Methods section*);
+- documents kept in the project (*File › New document*): an article or a report in Markdown, beside
+  its live preview, that cites the project's results (`{{M1.Q2}}`, `{{M1.scores | caption}}`, the
+  Methods text) and the literature (`[@wold2001]`, from BibTeX or CSL-JSON files or from Zotero),
+  and compiles to Word, PDF, HTML or Quarto.
 
 ## Files
 
@@ -288,7 +292,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.8) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 0.9.9) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).
@@ -305,4 +309,5 @@ Nuée is free software under the [GNU General Public License v3.0](LICENSE) or l
 
 The installer bundles R (GPL-2 | GPL-3) with its recommended packages and the R packages
 httpuv, jsonlite, openxlsx, haven, readxl and their dependencies, Electron (MIT), Plotly.js (MIT),
-dockview (MIT) and Lucide icons (ISC), each under its own license.
+dockview (MIT), Lucide icons (ISC), and CodeMirror and markdown-it (MIT) for the documents, each under
+its own license.
