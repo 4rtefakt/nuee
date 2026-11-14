@@ -1308,12 +1308,22 @@ sans les variables de son groupe de variables (réparties elles aussi en G group
 la CV-ANOVA, le classement en validation croisée, les intervalles de confiance (jack-knife,
 sur les G sous-modèles), le test de permutation et l'ajustement automatique suivent la
 validation choisie.
+Gain sur le modèle vide (les deux premières, PLS et OPLS) : le Résumé donne aussi le Q2 du
+modèle vide, où chaque groupe caché est prédit par la moyenne de Y des autres observations, et
+le gain du modèle sur lui, (Q2(cum) - Q2 du modèle vide) / (1 - Q2 du modèle vide) = 1 - PRESS
+/ PRESS du modèle vide : la part de l'erreur de prédiction du modèle vide que le modèle évite.
+Avec des groupes qui diffèrent (sites, départements), le Q2 du modèle vide est sous 0, et celui
+d'un modèle qui prédit un peu mieux que lui aussi : le gain dit de combien il fait mieux. 0 :
+pas mieux que la moyenne des autres groupes. Avec les centres et poids du modèle complet, le
+modèle vide prédit la moyenne de toutes les observations, groupe caché compris (son Q2 vaut
+0) : pas de gain. Aussi dans le texte des Méthodes, le rapport du modèle et l'export vers R.
 Modèle hiérarchique (une PLS dont des X sont les scores d'autres modèles du projet,
 $M1.t1...) : son Q2 prend ces scores tels quels, alors qu'ils ont été calculés avec le Y du
 groupe caché. Son Résumé donne aussi un Q2(cum) honnête : à chaque tour, ses modèles de base
 sont refaits sans le groupe caché (le site entier quand les groupes sont par site), puis leurs
 scores, avec la validation du modèle (centres recalculés quand elle est celle du modèle
 complet) ; un modèle de base qui n'a plus de variation sans ce groupe donne des scores nuls.
+Le Q2 honnête a lui aussi son gain sur le modèle vide.
 
 Validation (PLS et PLS-DA)
 --------------------------
@@ -1441,6 +1451,10 @@ Ce qui diffère
   autre nombre de composantes ; pour les ACP, la limite exacte utilisée dans les fichiers
   n'est pas publiée.
 - Seuil VIP (marche autour de 0,8) : méthode propre à l'application.
+- Intervalles de confiance des VIP d'un modèle à deux composantes ou plus (les VIP elles-mêmes
+  sont les mêmes) : ceux du logiciel qui a écrit le fichier pondèrent les composantes de chaque
+  tour de la validation croisée d'une façon qui n'est pas publiée ; à une composante, ce sont
+  les mêmes.
 - OPLS / OPLS-DA : pas de modèle enregistré pour comparer (voir plus haut).
 - Transformation proposée : la règle publiée ne dit pas s'il faut l'asymétrie et Min/Max à
   la fois ; l'application les exige tous les deux.
