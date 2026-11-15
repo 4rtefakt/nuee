@@ -16,6 +16,7 @@
   <img alt="Interface in French and English" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-1b4a9c"></a>
   <a href="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml"><img alt="Checks" src="https://github.com/4rtefakt/nuee/actions/workflows/verifications.yml/badge.svg"></a>
+  <a href="https://doi.org/10.5281/zenodo.24263014"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.24263014.svg"></a>
 </p>
 
 ![The example project in Nuée: a PCA with its summary, scores coloured by variety, and loadings](docs/captures/acp.png)
@@ -359,7 +360,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> Boutin, C. (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
+> Boutin, C. (2026). Nuée (version 1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).
