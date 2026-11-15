@@ -180,14 +180,16 @@ Model › Which analysis? (also a button of the start page, next to New model, a
 questions in plain words, then the analysis that answers them, already set up.
   - Your question: compare groups or periods; the effect of variables on one response; many
     species at once (how the composition changes, one model per species, the species that
-    characterize each group); a trend over time or a monitoring index; where (maps, spatial
-    autocorrelation); explore or summarise a table; predict or classify; diversity and species
-    richness; before-after with controls (BACI).
+    characterize each group); a trend over time or a monitoring index; a density or an
+    abundance (distance sampling); where (maps, spatial autocorrelation); explore or summarise a
+    table; predict or classify; diversity and species richness; before-after with controls
+    (BACI).
   - The response: the variable measured, and its kind: a measurement, a count (with many zeros
     or not), a presence-absence (0 or 1), a proportion between 0 and 1, a class (a qualitative
-    variable), or a table of species (one column per species).
+    variable), a table of species (one column per species), or the distances to the animals
+    detected (one row per detection).
   - The design: the same sites or plots measured several times (the site), years or dates (the
-    time), a BACI design (the unit), spatial coordinates.
+    time), a BACI design (the unit), spatial coordinates, lines or points (distance sampling).
   - The variables: the explanatory variables (X), or the groups.
 Nuée proposes the answers from the project's variables (as Variable statistics reads them): a
 response of whole numbers from 0 is a count, of 0 and 1 a presence-absence, between 0 and 1 a
@@ -196,14 +198,18 @@ Poisson distribution of the same mean would give (the sentence under the respons
 the site is a qualitative variable named like one (site, station, plot, transect...) whose
 categories repeat; the time a variable named like a year or a date, or whole numbers between
 1900 and 2100; the species the columns of numbers zero or more that have zeros (four at least);
-the coordinates the project's, or those its variables' names propose. Every answer can be
-changed.
+the coordinates the project's, or those its variables' names propose; the distances a variable
+named like them, and the other columns of distance sampling by the names New model proposes
+them from (Distance's Sample.Label, Effort, Region.Label, Area, size, or transect, longueur,
+région, aire, taille); points rather than lines when the transect's column is named like a point
+or a station. Every answer can be changed.
 On the right: the recommended analysis, why, its main conditions and notes for the answers given
 (the random effect by site, the residual autocorrelation of successive years, the adjusted means
 after comparing groups, a proportion that reaches 0 or 1...), what will be filled in, what is
 left to complete, and a button. It opens New model already filled in (type, distribution, roles,
 transformation, curves, random effect, cross-validation groups, and the analysis's own settings,
-such as an RDA's Hellinger transformation or TRIM's site and time), or the right view
+such as an RDA's Hellinger transformation, TRIM's site and time, or the transect, effort,
+stratum, area and group size of distance sampling), or the right view
 (Statistical tests in the right mode, Series with its trends, Map, Spatial autocorrelation,
 Rarefaction, Variable statistics), or New variable with a diversity index. One model per species
 opens New model for the first species, then One model per response with the others ticked. The
@@ -229,6 +235,10 @@ The main choices:
     and its trends;
   - predict: PLS or PLS-DA with many X (20 or more, or half as many as the observations), the
     random forest otherwise, boosted trees for counts and presences;
+  - a density or an abundance: distance sampling, the distances as Y, lines or points, its
+    columns pre-filled from their names; the units (m, km and km² until changed) are left to
+    check, and a missing transect or effort to complete; without the strata's areas (or with
+    areas of 0), the density only;
   - where: the map, then Moran's I and a GAM's spatial smooth; the Mantel test for species;
   - explore: PCA, NMDS for species; diversity: rarefaction.
 Advice, not a rule: the conditions are checked after the fit (Summary › Model conditions).

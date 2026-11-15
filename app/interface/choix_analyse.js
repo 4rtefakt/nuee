@@ -19,19 +19,23 @@ const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R
 
 // ------------------------------------------------------------ the questions and their fields
 
-export const QUESTIONS = ['groupes', 'effet', 'especes', 'tendance', 'espace', 'explorer', 'predire', 'diversite', 'baci'];
+export const QUESTIONS = ['groupes', 'effet', 'especes', 'tendance', 'densite', 'espace', 'explorer', 'predire', 'diversite', 'baci'];
 // what the species are for, under "Many species at once"
 export const BUTS = ['composition', 'par_espece', 'indicatrices'];
-// the kinds of response (a measurement, a count, 0/1, a proportion, a qualitative variable, species columns)
-export const REPONSES = ['mesure', 'comptage', 'presence', 'proportion', 'classe', 'especes'];
+// the kinds of response (a measurement, a count, 0/1, a proportion, a qualitative variable, species
+// columns, the distances of the animals detected from a line or a point)
+export const REPONSES = ['mesure', 'comptage', 'presence', 'proportion', 'classe', 'especes', 'distances'];
 
 // What each question asks (a sub-goal of the species: 'especes/<but>'):
-//   reponses: the kinds of response offered ('especes' alone: the species columns are the response);
+//   reponses: the kinds of response offered ('especes' alone: the species columns are the response;
+//     a single other kind: the response's variable, of that kind);
 //   facultative: the response may stay unchosen; plusieurs: several variables rather than one (explore);
 //   champs: 'x' (the explanatory variables), 'groupe' (a qualitative variable: the groups), and the
 //     design: 'repetes' (the same sites measured several times: the site), 'annees' (the time),
-//     'baci' (the unit), 'coordonnees'; a name ending in '!' is required, without a box to tick.
+//     'baci' (the unit), 'coordonnees', 'transects' (lines or points); a name ending in '!' is
+//     required, without a box to tick.
 export const FORMULAIRE = {
+  densite: { reponses: ['distances'], champs: ['transects!'] },
   groupes: { reponses: ['mesure', 'comptage', 'presence', 'proportion', 'classe', 'especes'], champs: ['groupe', 'repetes', 'baci'] },
   effet: { reponses: ['mesure', 'comptage', 'presence', 'proportion', 'classe', 'especes'], champs: ['x', 'repetes', 'annees', 'baci', 'coordonnees'] },
   'especes/composition': { reponses: ['especes'], champs: ['x', 'repetes', 'coordonnees'] },
@@ -151,6 +155,37 @@ function trouverGroupe(p, exclus) {
 const baciProbable = (p) => liste(p.variables).some((v) => v.qualitative
   && (/baci|impact/i.test(v.nom) || liste(v.categories).some((c) => MOTIF_BACI.test(String(c).trim()))));
 
+// Distance sampling's flat file, one row per detection (Distance's Sample.Label, Effort,
+// Region.Label, Area, size): its columns by the names New model's own fields guess from
+// (vues_distance.js: MOTIFS and deviner, the same patterns).
+const MOTIFS_DISTANCE = {
+  distance: /^(distance|dist|perp)/i, echantillon: /^(sample|transect|ligne|line|point|station|parcours|route|itin)/i,
+  effort: /^(effort|longueur|length|passages?|visites?|visits?)/i, strate: /^(region|r[ée]gion|strat|zone|secteur)/i,
+  aire: /^(area|aire|surface|superficie)/i, taille: /^(size|taille|cluster|groupe|group)/i,
+};
+const MOTIF_POINTS = /point|station|[ée]coute|poste/i;
+// a column by its name: an ID or any variable ('id:<rank>', 'v:<number>'), or a quantitative
+// variable only (its number); null: none
+function colonneParNom(p, motif, quantitative = false) {
+  if (!quantitative) {
+    const id = liste(p.identifiants).find((i) => motif.test(i.nom));
+    if (id) return `id:${id.rang}`;
+  }
+  const v = liste(p.variables).find((x) => motif.test(x.nom) && (!quantitative || !x.qualitative));
+  return v ? (quantitative ? v.uid : colonneVariable(v.uid)) : null;
+}
+// The transect (the line or the point), the stratum, the effort, the area and the group size the
+// names show.
+export function colonnesDistance(p) {
+  return {
+    echantillon: colonneParNom(p, MOTIFS_DISTANCE.echantillon), strate: colonneParNom(p, MOTIFS_DISTANCE.strate),
+    effort: colonneParNom(p, MOTIFS_DISTANCE.effort, true), aire: colonneParNom(p, MOTIFS_DISTANCE.aire, true),
+    taille: colonneParNom(p, /^(size|taille)$/i, true) ?? colonneParNom(p, MOTIFS_DISTANCE.taille, true),
+  };
+}
+// the distances: a quantitative variable named like them, or null
+export const distanceProposee = (p) => colonneParNom(p, MOTIFS_DISTANCE.distance, true);
+
 // A species column: numbers 0 or more with at least one zero (an absence), not a time nor a coordinate.
 function especeProbable(v, f, autres) {
   return !v.qualitative && !autres.has(v.uid) && !MOTIF_TEMPS.test(v.nom) && !!f && f.min !== null && f.min >= 0 && f.zeros !== null && f.zeros > 0
@@ -190,6 +225,8 @@ export function proposer(p, F, coordonnees = null) {
     especes: especes.length >= 4 ? especes : [], x: [], variables: [],
     groupe: trouverGroupe(p, new Set([uidDe(site), uidDe(unite)])), site, temps, unite,
     repetes: !!site, annees: !!temps, baci: baciProbable(p), coordonnees: !!proposees,
+    // (distance sampling: points when the transect's column is named like them, lines otherwise)
+    transect: MOTIF_POINTS.test(nomColonne(colonnesDistance(p).echantillon, p)) ? 'point' : 'ligne',
   };
   R.x = xProposees(R, F, p, coords);
   // (explore: the quantitative variables proposed as X, the time and the coordinates aside)
@@ -197,12 +234,14 @@ export function proposer(p, F, coordonnees = null) {
   return R;
 }
 
-// The response chosen: its kind and many zeros, from its facts.
+// The response chosen: its kind (the only one its question offers, or the one its values say) and
+// many zeros, from its facts.
 export function choisirReponse(R, F, uid) {
   const f = uid === null || uid === undefined ? null : F.get(uid);
   R.y = f ? uid : null;
   if (f) {
-    R.reponse = genre(f);
+    const seule = formulaire(R.question, R.but);
+    R.reponse = seule && seule.reponses.length === 1 ? seule.reponses[0] : genre(f);
     R.zeros = R.reponse === 'comptage' && beaucoupDeZeros(f);
   }
   R.x = liste(R.x).filter((u) => u !== R.y);
@@ -250,6 +289,10 @@ export function contexte(R, F, p) {
     beaucoupDeX: xs.length >= 20 || (n > 0 && xs.length >= n / 2),
     deuxClasses: !!classe && classe.qualitative && classe.ncat === 2,
     especesEntieres: especes.length ? especes.every((e) => e.entiers === true) : null,
+    // distance sampling: no area for the strata (or areas all 0), the density only; points without a
+    // column of visits, one visit each
+    distanceSansAire: R.question === 'densite' && (() => { const a = colonnesDistance(p).aire; return a === null || (!!F.get(a) && F.get(a).max === 0); })(),
+    pointsSansEffort: R.question === 'densite' && R.transect === 'point' && colonnesDistance(p).effort === null,
   };
 }
 
@@ -328,9 +371,9 @@ export const REGLES = [
   // Diversity and species richness
   { question: 'diversite', choix: 'rarefaction', autres: ['indices'] },
 
-  // (Distance sampling, being written as a New model type: its rule goes here, for instance
-  // { question: 'densite', reponse: 'distances', choix: 'distance', autres: ['glm_poisson'] },
-  // with the question or kind of response added to QUESTIONS / REPONSES and FORMULAIRE.)
+  // A density or an abundance from the distances of the animals detected (distance sampling); the
+  // distances' histogram first, for their shape and the truncation
+  { question: 'densite', choix: 'distance', autres: ['statistiques'] },
 ];
 
 const vaut = (attendu, valeur) => (Array.isArray(attendu) ? attendu.includes(valeur) : attendu === valeur);
@@ -392,9 +435,7 @@ export const CATALOGUE = {
   mantel: { ouvre: 'modele', type: 'MANTEL' },
   indval: { ouvre: 'modele', type: 'INDVAL' },
   trim: { ouvre: 'modele', type: 'TRIM' },
-  // (Distance sampling, being written: its entry goes here, e.g.
-  //  distance: { ouvre: 'modele', type: 'DISTANCE' }, with its case in construire() for its roles
-  //  and options, and qa_nom_distance, qa_pourquoi_distance, qa_conditions_distance below.)
+  distance: { ouvre: 'modele', type: 'DISTANCE' },
   // the project's views (app.ouvrirVue)
   tests_deux: { ouvre: 'vue', vue: 'tests' },
   tests_apparies: { ouvre: 'vue', vue: 'tests', si: { unParSite: true } },
@@ -426,6 +467,8 @@ export const NOTES = [
   { si: { coordonnees: true, question: 'effet' }, pour: REGRESSIONS, cle: 'qa_note_espace_residus' },
   { si: { especesEntieres: false }, pour: ['rarefaction'], cle: 'qa_note_especes_non_entieres' },
   { si: { unParSiteTemps: false }, pour: ['trim'], cle: 'qa_note_trim_resumer' },
+  { si: { distanceSansAire: true }, pour: ['distance'], cle: 'qa_note_distance_sans_aire' },
+  { si: { pointsSansEffort: true }, pour: ['distance'], cle: 'qa_note_distance_un_passage' },
 ];
 export const notesPour = (id, c) => NOTES.filter((n) => n.pour.includes(id) && Object.entries(n.si).every(([k, v]) => vaut(v, valeurContexte(c, k)))).map((n) => n.cle);
 
@@ -628,6 +671,27 @@ export function construire(id, R, F, p, c = contexte(R, F, p), options = {}) {
         ajouter('qa_rempli_temps', [nomColonne(R.temps, p)].filter(Boolean));
         break;
       }
+      case 'distance': {
+        // the distances as Y, lines or points, and the columns of the flat file their names show
+        // (vues_distance.js). With the transect given, New model guesses none of them itself: the
+        // others go with it, found or not; without it, its fields guess them all, as here.
+        if (y === null) manque.push('distances'); else if (qualY) manque.push('y_quantitative'); else r.y = [y];
+        const points = R.transect === 'point';
+        const k = colonnesDistance(p);
+        r.options = { transect: points ? 'point' : 'ligne' };
+        if (k.echantillon) Object.assign(r.options, { echantillon: specDialogue(k.echantillon, p), effort: k.effort, strate: specDialogue(k.strate, p), aire: k.aire, taille: k.taille });
+        else manque.push('echantillon');
+        if (!points && k.effort === null) manque.push('effort');
+        manque.push(points ? 'unites_points' : 'unites_lignes');  // (what no column says: m, km and km² until changed)
+        ajouter('qa_rempli_y', noms(r.y || []));
+        rempli.push({ cle: 'qa_rempli_plan', texte: points ? 'qa_transects_point' : 'qa_transects_ligne' });
+        ajouter('qa_rempli_transect', [nomColonne(k.echantillon, p)]);
+        ajouter('qa_rempli_effort', k.effort !== null ? noms([k.effort]) : []);
+        ajouter('qa_rempli_strate', [nomColonne(k.strate, p)]);
+        ajouter('qa_rempli_aire', k.aire !== null ? noms([k.aire]) : []);
+        ajouter('qa_rempli_taille', k.taille !== null ? noms([k.taille]) : []);
+        break;
+      }
       default:
         break;
     }
@@ -737,6 +801,7 @@ export const TEXTES_CHOIX = {
     qa_q_effet: 'L’effet de variables sur une réponse', qa_ex_effet: 'la densité selon la profondeur et l’habitat',
     qa_q_especes: 'Beaucoup d’espèces à la fois', qa_ex_especes: 'la composition des communautés, un modèle par espèce, les espèces indicatrices',
     qa_q_tendance: 'Une tendance dans le temps, un indice de suivi', qa_ex_tendance: 'des comptages année après année',
+    qa_q_densite: 'Une densité ou un effectif (échantillonnage par distance)', qa_ex_densite: 'des animaux vus depuis des lignes ou des points, à une distance notée',
     qa_q_espace: 'Où : cartes, autocorrélation spatiale', qa_ex_espace: 'où les valeurs sont fortes, si des points proches se ressemblent',
     qa_q_explorer: 'Explorer ou résumer un tableau', qa_ex_explorer: 'quelles variables vont ensemble, quelles observations se ressemblent',
     qa_q_predire: 'Prédire ou classer', qa_ex_predire: 'une valeur ou une classe pour de nouvelles observations',
@@ -750,6 +815,7 @@ export const TEXTES_CHOIX = {
     qa_r_proportion: 'Une proportion entre 0 et 1', qa_rex_proportion: 'recouvrement, survie',
     qa_r_classe: 'Une classe', qa_rex_classe: 'un habitat, un état, une espèce',
     qa_r_especes: 'Un tableau d’espèces', qa_rex_especes: 'une colonne par espèce',
+    qa_r_distances: 'Des distances aux animaux détectés', qa_rex_distances: 'une ligne par détection',
     qa_zeros: 'avec beaucoup de zéros', qa_zeros_aide: 'Plus de zéros qu’une loi de Poisson de même moyenne n’en donne',
     qa_reponse_variable: 'Réponse', qa_variables_explorer: 'Variables du tableau', qa_choisir: '— choisir —',
     qa_reponse_facultative: '— aucune —',
@@ -761,6 +827,7 @@ export const TEXTES_CHOIX = {
     qa_d_repetes: 'Les mêmes sites ou placettes mesurés plusieurs fois', qa_d_repetes_aide: 'Un effet aléatoire par site, la validation croisée par site',
     qa_d_annees: 'Des années, ou des dates', qa_d_baci: 'Un dispositif BACI : des unités d’impact et des témoins, avant et après',
     qa_d_coordonnees: 'Des coordonnées spatiales',
+    qa_d_transects: 'Des lignes ou des points', qa_transects_ligne: 'Des lignes (transects linéaires)', qa_transects_point: 'Des points (points d’écoute)',
     qa_site: 'Site', qa_temps: 'Temps', qa_unite: 'Unité', qa_groupe: 'Groupes', qa_x: 'Variables explicatives (X)', qa_especes: 'Espèces',
     qa_coordonnees_projet: 'celles du projet : {x}, {y}', qa_coordonnees_proposees: 'proposées : {x}, {y}, à choisir dans Graphiques › Carte',
     qa_coordonnees_aucune: 'aucune : à choisir dans Graphiques › Carte',
@@ -774,11 +841,15 @@ export const TEXTES_CHOIX = {
     qa_manque_y: 'la réponse', qa_manque_y_quantitative: 'une réponse quantitative', qa_manque_x: 'les variables explicatives (X)', qa_manque_groupe: 'les groupes',
     qa_manque_classe: 'la classe (une réponse qualitative)', qa_manque_especes: 'les espèces (deux au moins)', qa_manque_site: 'le site', qa_manque_temps: 'le temps',
     qa_manque_unite: 'l’unité', qa_manque_variables: 'les variables (deux au moins)', qa_manque_coordonnees: 'les coordonnées du projet (Graphiques › Carte)',
+    qa_manque_distances: 'les distances (en Y)', qa_manque_echantillon: 'le transect ou le point de chaque ligne', qa_manque_effort: 'l’effort de chaque transect (sa longueur)',
+    qa_manque_unites_lignes: 'les unités des distances, des longueurs et des aires (m, km et km² sinon)', qa_manque_unites_points: 'les unités des distances et des aires (m et km² sinon)',
     qa_rempli_y: 'Y', qa_rempli_classe: 'Classe', qa_rempli_x: 'X', qa_rempli_x_ajustees: 'X ajustées sur le plan', qa_rempli_especes: 'Espèces',
     qa_rempli_aleatoire: 'Effet aléatoire', qa_rempli_vc: 'Groupes de validation croisée', qa_rempli_loi: 'Loi', qa_rempli_courbes: 'Courbes',
     qa_rempli_transformation: 'Transformation', qa_rempli_spatial: 'Lissage spatial', qa_rempli_site: 'Site', qa_rempli_temps: 'Temps',
     qa_rempli_groupes: 'Groupes', qa_rempli_apparier: 'Apparié par', qa_rempli_unite: 'Unité', qa_rempli_lignes: 'Lignes', qa_rempli_tendances: 'Tendances',
     qa_rempli_couleur: 'Couleur', qa_rempli_formule: 'Formule', qa_rempli_distance_x: 'Distance des X', qa_rempli_composantes: 'Composantes',
+    qa_rempli_plan: 'Plan', qa_rempli_transect: 'Transect ou point', qa_rempli_effort: 'Effort', qa_rempli_strate: 'Strate', qa_rempli_aire: 'Aire',
+    qa_rempli_taille: 'Taille des groupes',
     qa_auto: 'automatiques', qa_oui: 'oui', qa_hellinger: 'Hellinger', qa_distance_geographique: 'géographique',
 
     qa_nom_normal: 'Régression linéaire', qa_nom_lm_log: 'Régression linéaire sur le logarithme de la réponse',
@@ -797,6 +868,7 @@ export const TEXTES_CHOIX = {
     qa_nom_correlations: 'Matrice des corrélations', qa_nom_baci: 'Avant/après avec témoins (BACI)', qa_nom_series: 'Séries et tendances (Mann–Kendall, pente de Sen)',
     qa_nom_carte: 'Carte', qa_nom_autocorrelation: 'Autocorrélation spatiale (I de Moran)', qa_nom_rarefaction: 'Raréfaction et accumulation des espèces',
     qa_nom_statistiques: 'Statistiques des variables', qa_nom_indices: 'Indices de diversité (nouvelle variable)',
+    qa_nom_distance: 'Échantillonnage par distance (densité, effectif)',
 
     qa_pourquoi_normal: 'Une mesure continue dont les écarts au modèle sont à peu près normaux : la régression linéaire donne l’effet de chaque variable, dans ses unités.',
     qa_conditions_normal: 'Des résidus à peu près normaux, de dispersion constante : le Résumé les vérifie (Conditions du modèle).',
@@ -884,6 +956,8 @@ export const TEXTES_CHOIX = {
     qa_conditions_statistiques: 'Aucune.',
     qa_pourquoi_indices: 'Un indice par relevé (richesse, Shannon, Simpson, Pielou), en nouvelle variable, à comparer ensuite entre groupes ou à modéliser.',
     qa_conditions_indices: 'Des colonnes d’espèces, des nombres positifs ou nuls ; la richesse dépend de l’effort : voir la raréfaction.',
+    qa_pourquoi_distance: 'On ne voit pas tous les animaux, et moins ceux qui sont loin : la fonction de détection, ajustée aux distances, donne la probabilité de détection, puis la densité et l’effectif de chaque strate (Buckland et al. 2001), comme le paquet Distance.',
+    qa_conditions_distance: 'Une ligne par détection, sa distance en Y, et chaque transect sans détection gardé, sa distance vide ; tous les animaux sur la ligne ou le point vus ; une soixantaine de détections au moins.',
 
     qa_note_site: 'Les observations d’un même site se ressemblent : l’effet aléatoire par site en tient compte, et la validation croisée prédit chaque site sans lui.',
     qa_note_vc_site: 'La validation croisée par site juge le modèle sur des sites qu’il n’a jamais vus.',
@@ -896,6 +970,8 @@ export const TEXTES_CHOIX = {
     qa_note_espace_residus: 'Avec des coordonnées : après l’ajustement, Graphiques › Autocorrélation spatiale de ses résidus.',
     qa_note_especes_non_entieres: 'Les espèces ne sont pas toutes des comptages entiers : la raréfaction ne s’applique pas, l’accumulation oui.',
     qa_note_trim_resumer: 'Le tableau a plusieurs lignes par site et par année (des placettes, des passages) : TRIM n’en prend qu’une ; additionnez-les d’abord (Édition › Résumer par groupe, la somme par site et année).',
+    qa_note_distance_sans_aire: 'Sans aire des strates (pas de colonne, ou des aires nulles), la densité seule, sans effectif.',
+    qa_note_distance_un_passage: 'Sans colonne de passages, chaque point compte une visite.',
   },
   en: {
     quelle_analyse: 'Which analysis?…',
@@ -904,6 +980,7 @@ export const TEXTES_CHOIX = {
     qa_q_effet: 'The effect of variables on one response', qa_ex_effet: 'density against depth and habitat',
     qa_q_especes: 'Many species at once', qa_ex_especes: 'community composition, one model per species, indicator species',
     qa_q_tendance: 'A trend over time, a monitoring index', qa_ex_tendance: 'counts year after year',
+    qa_q_densite: 'A density or an abundance (distance sampling)', qa_ex_densite: 'animals seen from lines or points, at a recorded distance',
     qa_q_espace: 'Where: maps, spatial autocorrelation', qa_ex_espace: 'where values are high, whether nearby points resemble each other',
     qa_q_explorer: 'Explore or summarise a table', qa_ex_explorer: 'which variables go together, which observations resemble each other',
     qa_q_predire: 'Predict or classify', qa_ex_predire: 'a value or a class for new observations',
@@ -917,6 +994,7 @@ export const TEXTES_CHOIX = {
     qa_r_proportion: 'A proportion between 0 and 1', qa_rex_proportion: 'cover, survival',
     qa_r_classe: 'A class', qa_rex_classe: 'a habitat, a state, a species',
     qa_r_especes: 'A table of species', qa_rex_especes: 'one column per species',
+    qa_r_distances: 'Distances to detected animals', qa_rex_distances: 'one row per detection',
     qa_zeros: 'with many zeros', qa_zeros_aide: 'More zeros than a Poisson distribution of the same mean gives',
     qa_reponse_variable: 'Response', qa_variables_explorer: 'Variables of the table', qa_choisir: '— choose —',
     qa_reponse_facultative: '— none —',
@@ -928,6 +1006,7 @@ export const TEXTES_CHOIX = {
     qa_d_repetes: 'The same sites or plots measured several times', qa_d_repetes_aide: 'A random effect by site, cross-validation by site',
     qa_d_annees: 'Years, or dates', qa_d_baci: 'A BACI design: impact and control units, before and after',
     qa_d_coordonnees: 'Spatial coordinates',
+    qa_d_transects: 'Lines or points', qa_transects_ligne: 'Lines (line transects)', qa_transects_point: 'Points (point transects)',
     qa_site: 'Site', qa_temps: 'Time', qa_unite: 'Unit', qa_groupe: 'Groups', qa_x: 'Explanatory variables (X)', qa_especes: 'Species',
     qa_coordonnees_projet: 'the project’s: {x}, {y}', qa_coordonnees_proposees: 'proposed: {x}, {y}, to choose in Plots › Map',
     qa_coordonnees_aucune: 'none: to choose in Plots › Map',
@@ -941,11 +1020,15 @@ export const TEXTES_CHOIX = {
     qa_manque_y: 'the response', qa_manque_y_quantitative: 'a quantitative response', qa_manque_x: 'the explanatory variables (X)', qa_manque_groupe: 'the groups',
     qa_manque_classe: 'the class (a qualitative response)', qa_manque_especes: 'the species (two at least)', qa_manque_site: 'the site', qa_manque_temps: 'the time',
     qa_manque_unite: 'the unit', qa_manque_variables: 'the variables (two at least)', qa_manque_coordonnees: 'the project’s coordinates (Plots › Map)',
+    qa_manque_distances: 'the distances (as Y)', qa_manque_echantillon: 'the transect or point of each row', qa_manque_effort: 'each transect’s effort (its length)',
+    qa_manque_unites_lignes: 'the units of the distances, lengths and areas (m, km and km² otherwise)', qa_manque_unites_points: 'the units of the distances and areas (m and km² otherwise)',
     qa_rempli_y: 'Y', qa_rempli_classe: 'Class', qa_rempli_x: 'X', qa_rempli_x_ajustees: 'X fitted onto the plane', qa_rempli_especes: 'Species',
     qa_rempli_aleatoire: 'Random effect', qa_rempli_vc: 'Cross-validation groups', qa_rempli_loi: 'Distribution', qa_rempli_courbes: 'Curves',
     qa_rempli_transformation: 'Transformation', qa_rempli_spatial: 'Spatial smooth', qa_rempli_site: 'Site', qa_rempli_temps: 'Time',
     qa_rempli_groupes: 'Groups', qa_rempli_apparier: 'Paired by', qa_rempli_unite: 'Unit', qa_rempli_lignes: 'Lines', qa_rempli_tendances: 'Trends',
     qa_rempli_couleur: 'Colour', qa_rempli_formule: 'Formula', qa_rempli_distance_x: 'Distance of the X', qa_rempli_composantes: 'Components',
+    qa_rempli_plan: 'Design', qa_rempli_transect: 'Transect or point', qa_rempli_effort: 'Effort', qa_rempli_strate: 'Stratum', qa_rempli_aire: 'Area',
+    qa_rempli_taille: 'Group size',
     qa_auto: 'automatic', qa_oui: 'yes', qa_hellinger: 'Hellinger', qa_distance_geographique: 'geographic',
 
     qa_nom_normal: 'Linear regression', qa_nom_lm_log: 'Linear regression on the log of the response',
@@ -964,6 +1047,7 @@ export const TEXTES_CHOIX = {
     qa_nom_correlations: 'Correlation matrix', qa_nom_baci: 'Before/after with controls (BACI)', qa_nom_series: 'Series and trends (Mann–Kendall, Sen’s slope)',
     qa_nom_carte: 'Map', qa_nom_autocorrelation: 'Spatial autocorrelation (Moran’s I)', qa_nom_rarefaction: 'Rarefaction and species accumulation',
     qa_nom_statistiques: 'Variable statistics', qa_nom_indices: 'Diversity indices (new variable)',
+    qa_nom_distance: 'Distance sampling (density, abundance)',
 
     qa_pourquoi_normal: 'A continuous measurement whose departures from the model are roughly normal: linear regression gives each variable’s effect, in its units.',
     qa_conditions_normal: 'Residuals roughly normal with a constant spread: the Summary checks them (Model conditions).',
@@ -1051,6 +1135,8 @@ export const TEXTES_CHOIX = {
     qa_conditions_statistiques: 'None.',
     qa_pourquoi_indices: 'One index per survey (richness, Shannon, Simpson, Pielou), as a new variable, to compare between groups or model afterwards.',
     qa_conditions_indices: 'Species columns, numbers zero or more; richness depends on the effort: see rarefaction.',
+    qa_pourquoi_distance: 'Not every animal is seen, and fewer far away: the detection function, fitted to the distances, gives the probability of detection, then the density and abundance of each stratum (Buckland et al. 2001), as the Distance package.',
+    qa_conditions_distance: 'One row per detection, its distance as Y, and each transect without detection kept, its distance empty; every animal on the line or point seen; about sixty detections at least.',
 
     qa_note_site: 'Observations of the same site resemble each other: the random effect by site accounts for it, and cross-validation predicts each site without it.',
     qa_note_vc_site: 'Cross-validation by site judges the model on sites it has never seen.',
@@ -1063,5 +1149,7 @@ export const TEXTES_CHOIX = {
     qa_note_espace_residus: 'With coordinates: after the fit, Plots › Spatial autocorrelation of its residuals.',
     qa_note_especes_non_entieres: 'The species aren’t all whole counts: rarefaction doesn’t apply, accumulation does.',
     qa_note_trim_resumer: 'The table has several rows per site and year (plots, visits): TRIM takes one; add them up first (Edit › Summarize by group, the sum by site and year).',
+    qa_note_distance_sans_aire: 'Without the strata’s areas (no column, or areas of 0), the density only, without abundance.',
+    qa_note_distance_un_passage: 'Without a column of visits, each point counts one visit.',
   },
 };

@@ -258,12 +258,84 @@ console.log('Des spectres et des coordonnées');
   egal('l’autocorrélation de la hauteur', construire('autocorrelation', Rg, Fg, geo.p).loc, { source: 'v3' });
 }
 
-console.log('Toutes les questions sur les trois tableaux');
+// Distance sampling's flat files, one row per detection (Distance's column names, or French ones)
+const lignes = projet(120, [
+  ['Region.Label', ['Nord', 'Sud']], ['Area', null, { min: 450, max: 630, moyenne: 540, ecart: 90, entiers: true, zeros: 0 }],
+  ['Sample.Label', Array.from({ length: 12 }, (_, i) => `L${i + 1}`)], ['Effort', null, { min: 1.2, max: 3.5, moyenne: 2.4, ecart: 0.6, entiers: false, zeros: 0 }],
+  ['distance', null, { min: 0, max: 148, moyenne: 41, ecart: 30, entiers: false, zeros: 1, manquantes: 3 }], ['size', null, { min: 1, max: 6, moyenne: 1.8, ecart: 1, entiers: true, zeros: 0 }],
+]);
+const lignesSimples = projet(80, [['transect', ['T1', 'T2', 'T3', 'T4', 'T5', 'T6']], ['longueur', null, { min: 2, max: 4, moyenne: 3, ecart: 0.5, entiers: false, zeros: 0 }],
+  ['distance', null, { min: 0, max: 60, moyenne: 18, ecart: 12, entiers: true, zeros: 4 }]]);
+const points = projet(90, [['point', Array.from({ length: 30 }, (_, i) => `P${i + 1}`)], ['distance', null, { min: 0, max: 45, moyenne: 15, ecart: 9, entiers: false, zeros: 2 }]]);
+const pointsStrates = projet(144, [['Region.Label', ['Est', 'Ouest']], ['Area', null, { min: 0, max: 0, moyenne: 0, ecart: 0, entiers: true, zeros: 100 }],
+  ['Sample.Label', null, { min: 1, max: 30, moyenne: 15, ecart: 8, entiers: true, zeros: 0 }], ['Effort', null, { min: 1, max: 2, moyenne: 1.2, ecart: 0.4, entiers: true, zeros: 0 }],
+  ['distance', null, { min: 0.5, max: 34, moyenne: 12, ecart: 7, entiers: false, zeros: 0 }]]);
+console.log('L’échantillonnage par distance');
+{
+  const sansNote = ['qa_note_distance_sans_aire', 'qa_note_distance_un_passage'];
+  const notesDistance = (p, R, F) => notesPour('distance', contexte(R, F, p)).filter((k) => sansNote.includes(k));
+  {
+    const { p, stats } = lignes;
+    const F = faitsVariables(p, stats);
+    const R = repondre(p, F, { question: 'densite', y: 'distance' });
+    const r = conseil(p, F, R);
+    egal('une densité, des distances → l’échantillonnage par distance, les distances d’abord à regarder', [R.reponse, R.transect, r.choix, r.autres], ['distances', 'ligne', 'distance', ['statistiques']]);
+    const b = construire('distance', R, F, p);
+    egal('des lignes en strates : les colonnes de Distance (Sample.Label, Effort, Region.Label, Area, size)', b.reglages,
+      { type: 'DISTANCE', y: [uid(p, 'distance')], options: { transect: 'ligne', echantillon: { by: 'variable', variable: uid(p, 'Sample.Label') }, effort: uid(p, 'Effort'),
+        strate: { by: 'variable', variable: uid(p, 'Region.Label') }, aire: uid(p, 'Area'), taille: uid(p, 'size') } });
+    egal('à compléter : les unités seules ; aucune note', [b.manque, notesDistance(p, R, F)], [['unites_lignes'], []]);
+    egal('les distances ne sont pas proposées comme espèces, ni l’aire', proposer(p, F).especes, []);
+  }
+  {
+    const { p, stats } = lignesSimples;
+    const F = faitsVariables(p, stats);
+    const R = repondre(p, F, { question: 'densite', y: 'distance' });
+    const b = construire('distance', R, F, p);
+    egal('des lignes sans strate, des noms français (transect, longueur) ; des distances entières restent des distances', [R.reponse, b.reglages.options],
+      ['distances', { transect: 'ligne', echantillon: { by: 'variable', variable: uid(p, 'transect') }, effort: uid(p, 'longueur'), strate: null, aire: null, taille: null }]);
+    egal('sans aire : la densité seule', notesDistance(p, R, F), ['qa_note_distance_sans_aire']);
+  }
+  {
+    const { p, stats } = points;
+    const F = faitsVariables(p, stats);
+    const R = repondre(p, F, { question: 'densite', y: 'distance' });
+    const b = construire('distance', R, F, p);
+    egal('des points (la colonne « point ») sans passages : une visite chacun, pas d’effort à compléter', [R.transect, b.reglages.options.transect, b.reglages.options.effort, b.manque, notesDistance(p, R, F)],
+      ['point', 'point', null, ['unites_points'], ['qa_note_distance_sans_aire', 'qa_note_distance_un_passage']]);
+  }
+  {
+    const { p, stats } = pointsStrates;
+    const F = faitsVariables(p, stats);
+    const R = repondre(p, F, { question: 'densite', y: 'distance', transect: 'point' });
+    const b = construire('distance', R, F, p);
+    egal('des points en strates, leurs aires à 0 (PTExercise) : des numéros de points, la densité seule', [b.reglages.options, notesDistance(p, R, F)],
+      [{ transect: 'point', echantillon: { by: 'variable', variable: uid(p, 'Sample.Label') }, effort: uid(p, 'Effort'), strate: { by: 'variable', variable: uid(p, 'Region.Label') },
+        aire: uid(p, 'Area'), taille: null }, ['qa_note_distance_sans_aire']]);
+    const lignesAuLieu = construire('distance', { ...R, transect: 'ligne' }, F, p);
+    egal('les mêmes en lignes : l’effort est leur longueur', [lignesAuLieu.reglages.options.transect, lignesAuLieu.manque], ['ligne', ['unites_lignes']]);
+  }
+  {
+    // a transect given as an observation ID, and a table without any transect column
+    const { p, stats } = projet(40, [['Effort', null, { min: 1, max: 2, moyenne: 1.5, ecart: 0.3, entiers: false, zeros: 0 }],
+      ['distance', null, { min: 0, max: 30, moyenne: 9, ecart: 6, entiers: false, zeros: 0 }]], { identifiants: [{ rang: 2, nom: 'Sample.Label' }] });
+    const F = faitsVariables(p, stats);
+    const R = repondre(p, F, { question: 'densite', y: 'distance' });
+    egal('le transect, un identifiant des observations', construire('distance', R, F, p).reglages.options.echantillon, { by: 'id', id: 'Sample.Label' });
+    const sans = { ...p, identifiants: [] };
+    const b = construire('distance', repondre(sans, F, { question: 'densite', y: 'distance' }), F, sans);
+    egal('sans colonne de transect : à compléter, et New model devine lui-même les autres', [b.manque, Object.keys(b.reglages.options)], [['echantillon', 'unites_lignes'], ['transect']]);
+    const vide = construire('distance', repondre(sans, F, { question: 'densite' }), F, sans);
+    egal('sans distances choisies : à compléter', vide.manque[0], 'distances');
+  }
+}
+
+console.log('Toutes les questions sur cinq tableaux');
 {
   const erreurs = [];
   const clesManquantes = new Set();
   let n = 0;
-  for (const { p, stats } of [comptages, especes, mesures]) {
+  for (const { p, stats } of [comptages, especes, mesures, lignes, points]) {
     const F = faitsVariables(p, stats);
     for (const question of QUESTIONS) for (const but of question === 'especes' ? BUTS : [null]) {
       for (const reponse of formulaire(question, but).reponses) {

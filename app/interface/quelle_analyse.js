@@ -10,7 +10,7 @@ import { el, icone, dialogue } from './ui.js';
 import { demander } from './api.js';
 import { dialogueModele, dialogueVariable, ANALYSES } from './dialogues.js';
 import { QUESTIONS, BUTS, formulaire, TEXTES_CHOIX, faitsVariables, genre, beaucoupDeZeros, zerosPoisson, proposer, choisirReponse,
-  contexte, recommander, construire, notesPour, uidDe, nomColonne } from './choix_analyse.js';
+  contexte, recommander, construire, notesPour, uidDe, nomColonne, distanceProposee } from './choix_analyse.js';
 
 ajouterTextes(TEXTES_CHOIX.fr, TEXTES_CHOIX.en);
 
@@ -144,6 +144,8 @@ export async function dialogueQuelleAnalyse(app, projet) {
     const sections = [titre('qa_titre_question'),
       el('div', { class: 'qa-choix' }, QUESTIONS.map((q) => radio('qa-question', q, R.question, t(`qa_q_${q}`), exemple(q), (v) => {
         R.question = v;
+        // (distance sampling: the column named like the distances, as its New model fields propose it)
+        if (v === 'densite' && R.y === null) choisirReponse(R, F, distanceProposee(p()));
         ajusterReponse();
         if (R.reponse === 'especes') sansEspeces();
         maj(true);
@@ -155,17 +157,19 @@ export async function dialogueQuelleAnalyse(app, projet) {
     if (f) {
       // the response
       const reponse = [titre('qa_titre_reponse')];
-      const seulesEspeces = f.reponses.length === 1 && f.reponses[0] === 'especes';
+      // (a question with a single kind of response: no kinds to choose; the species, or the response named after its kind)
+      const uneSeule = f.reponses.length === 1;
+      const seulesEspeces = uneSeule && f.reponses[0] === 'especes';
       if (!seulesEspeces && !(f.plusieurs || R.reponse === 'especes')) {
         // (the variables of the kinds the question offers; the kind then follows the variable chosen)
-        const numeriques = f.reponses.some((k) => ['mesure', 'comptage', 'presence', 'proportion'].includes(k));
+        const numeriques = f.reponses.some((k) => ['mesure', 'comptage', 'presence', 'proportion', 'distances'].includes(k));
         const options = [...(numeriques ? quantitatives() : []), ...(f.reponses.includes('classe') ? qualitatives() : [])]
           .map((v) => [v.uid, v.qualitative ? `${v.nom} (${liste(v.categories).length})` : v.nom]);
-        reponse.push(el('div', { class: 'ligne' }, el('label', {}, t('qa_reponse_variable')),
+        reponse.push(el('div', { class: 'ligne' }, el('label', {}, uneSeule ? t(`qa_r_${f.reponses[0]}`) : t('qa_reponse_variable')),
           select('qa-y', options, R.y, (v) => { choisirReponse(R, F, v === '' ? null : Number(v)); ajusterReponse(); maj(true); },
             f.facultative ? t('qa_reponse_facultative') : t('qa_choisir'))));
       }
-      if (!seulesEspeces) {
+      if (!uneSeule) {
         reponse.push(el('div', { class: 'qa-choix qa-genres' }, f.reponses.map((k) => {
           const r = radio('qa-reponse', k, R.reponse, t(`qa_r_${k}`), t(`qa_rex_${k}`), (v) => {
             R.reponse = v;
@@ -212,6 +216,10 @@ export async function dialogueQuelleAnalyse(app, projet) {
       champ('coordonnees', t('qa_d_coordonnees'), () => el('div', { class: 'ligne' }, el('span', { class: 'doux' }, coords.projet
         ? t('qa_coordonnees_projet', { x: coords.projet.nom_x, y: coords.projet.nom_y })
         : coords.proposees ? t('qa_coordonnees_proposees', { x: nom(Number(coords.proposees.x)), y: nom(Number(coords.proposees.y)) }) : t('qa_coordonnees_aucune'))));
+      // (distance sampling: line transects or point transects, which no column tells)
+      champ('transects', t('qa_d_transects'), () => el('div', { class: 'ligne' }, el('select', { 'data-cle': 'qa-transects',
+        onchange: (e) => { R.transect = e.target.value; maj(false); } },
+      ['ligne', 'point'].map((k) => el('option', { value: k, selected: k === (R.transect || 'ligne') }, t(`qa_transects_${k}`))))));
       if (plan.length) sections.push(titre('qa_titre_plan'), ...plan);
 
       // the variables: the groups, the X
