@@ -258,8 +258,8 @@ colonnes_ddl <- function(m, quals) {
 # ceux d'une autre), l'ordonnée à l'origine comptant pour le nombre de groupes du premier effet
 # aléatoire moins un ; mgcv : les degrés de liberté résiduels quand l'échelle est estimée (loi
 # normale, gamma, Tweedie), l'infini (z, asymptotique) pour une loi à l'échelle connue (Poisson,
-# binomiale, binomiale négative), comme le résumé de mgcv et les coefficients de Nuée, et comme
-# emmeans pour un glm().
+# binomiale, binomiale négative, Poisson à excès de zéros, bêta), comme le résumé de mgcv et les
+# coefficients de Nuée, et comme emmeans pour un glm().
 ddl_lignes <- function(m, L_brut, colonnes = NULL) {
   a <- m$ajustement
   if (inherits(a, "lme")) {
@@ -271,7 +271,7 @@ ddl_lignes <- function(m, L_brut, colonnes = NULL) {
   }
   # (mgcv : un gam est aussi un lm, il passe d'abord)
   if (inherits(a, c("gam", "gamm"))) {
-    if (m$famille %in% c("poisson", "binomiale", "binomiale_negative")) return(rep(Inf, nrow(L_brut)))
+    if (m$famille %in% c("poisson", "binomiale", "binomiale_negative", "poisson_zi", "beta")) return(rep(Inf, nrow(L_brut)))
     return(rep(if (inherits(a, "gamm")) a$gam$df.residual else a$df.residual, nrow(L_brut)))
   }
   rep(stats::df.residual(a), nrow(L_brut))
@@ -281,8 +281,24 @@ ddl_lignes <- function(m, L_brut, colonnes = NULL) {
 # "confinement" (nlme), "asymptotique" (z).
 methode_ddl <- function(m) {
   if (inherits(m$ajustement, "lme")) "confinement"
-  else if (inherits(m$ajustement, c("gam", "gamm")) && m$famille %in% c("poisson", "binomiale", "binomiale_negative")) "asymptotique"
+  else if (inherits(m$ajustement, c("gam", "gamm")) && m$famille %in% c("poisson", "binomiale", "binomiale_negative", "poisson_zi", "beta")) "asymptotique"
   else "residuels"
+}
+
+# La valeur attendue d'un comptage du Poisson à excès de zéros, h(η) = p m, au prédicteur linéaire
+# η = log(λ) (λ le paramètre de la loi de Poisson ; θ = (θ1, θ2) : log(−log(1 − p)) = θ1 + θ2 η ;
+# m = λ / (1 − e^(−λ)), la moyenne de la loi tronquée en zéro), ou sa dérivée h'(η) = p' m + p m',
+# p' = θ2 e^(θ1 + θ2 η) (1 − p), m' = (λ + 1) m − m² : comme les calcule predict() de ziP dans mgcv
+# (m vaut 1, sa limite, quand λ est presque nul). h croît avec η (θ2 > 0) : un intervalle sur
+# l'échelle du lien se ramène par h.
+esperance_zip <- function(eta, theta, derivee = FALSE) {
+  lambda <- exp(eta)
+  e <- exp(theta[1] + theta[2] * eta)
+  p <- -expm1(-e)
+  petit <- eta < log(.Machine$double.eps) / 2
+  m <- ifelse(petit, 1, lambda / -expm1(-lambda))
+  if (!derivee) return(p * m)
+  theta[2] * e * exp(-e) * m + p * ifelse(petit, 0, (lambda + 1) * m - m^2)
 }
 
 # Les moyennes ajustées du modèle `m` (de définition `d`, du projet `projet`) : `q`, les réglages
@@ -362,6 +378,14 @@ moyennes_ajustees <- function(projet, m, d, q = list()) {
   reponse <- is.null(pente) && lien %in% c("log", "logit") && r$echelle == "reponse"
   inverse <- if (identical(lien, "logit")) stats::plogis else exp
   derivee <- if (identical(lien, "logit")) stats::dlogis else exp
+  # (le Poisson à excès de zéros : la valeur attendue d'un comptage, h(η) = p μ / (1 − e^(−μ)), θ1 et
+  # θ2 tenus pour connus ; esperance_zip)
+  zip <- reponse && identical(m$famille, "poisson_zi")
+  if (zip) {
+    theta <- m$resultat$parametre_loi$valeur
+    inverse <- function(x) esperance_zip(x, theta)
+    derivee <- function(x) esperance_zip(x, theta, derivee = TRUE)
+  }
   qt95 <- stats::qt(0.975, ifelse(is.na(dfc), Inf, dfc))
   moy <- data.frame(niveau = fa$niveaux[cellules$a], groupe = if (is.null(fb)) NA_character_ else fb$niveaux[cellules$b],
                     estimation = est, erreur_type = se, ddl = dfc, bas = est - qt95 * se, haut = est + qt95 * se, stringsAsFactors = FALSE)
@@ -398,6 +422,14 @@ moyennes_ajustees <- function(projet, m, d, q = list()) {
       }
       d1 <- sum(Ld * b)
       s1 <- sqrt(max(0, sum((Ld %*% V) * Ld)))
+      if (zip) {
+        # (le Poisson à excès de zéros : le logarithme du rapport des valeurs attendues, log h(ηi) −
+        # log h(ηj), et son erreur-type par la méthode delta, de gradient h'/h(ηi) Li − h'/h(ηj) Lj ;
+        # comme regrid(transform = "log") d'emmeans. Avec le lien log, h = exp et c'est Ld b, Ld)
+        Lz <- derivee(est[i]) / inverse(est[i]) * Lc[i, , drop = FALSE] - derivee(est[j]) / inverse(est[j]) * Lc[j, , drop = FALSE]
+        d1 <- log(inverse(est[i])) - log(inverse(est[j]))
+        s1 <- sqrt(max(0, sum((Lz %*% V) * Lz)))
+      }
       paires[[length(paires) + 1]] <- data.frame(groupe = if (is.null(fb)) NA_character_ else fb$niveaux[gb],
                                                  niveau_1 = fa$niveaux[cellules$a[i]], niveau_2 = fa$niveaux[cellules$a[j]],
                                                  difference = d1, erreur_type_lien = s1, ddl = ddl_lignes(m, Lbc[i, , drop = FALSE] - Lbc[j, , drop = FALSE], cddl),
@@ -534,8 +566,10 @@ phrase_paire <- function(r, i) {
 # Le modèle et l'échelle des moyennes ajustées `r`, en mots : « modèle linéaire mixte », « modèle
 # linéaire généralisé, loi de Poisson ; échelle de la réponse »...
 texte_modele_moyennes <- function(r, fr) {
-  lois <- if (fr) c(gaussienne = "normale", poisson = "de Poisson", binomiale_negative = "binomiale négative", binomiale = "binomiale", gamma = "gamma", tweedie = "de Tweedie")
-          else c(gaussienne = "normal", poisson = "Poisson", binomiale_negative = "negative binomial", binomiale = "binomial", gamma = "gamma", tweedie = "Tweedie")
+  lois <- if (fr) c(gaussienne = "normale", poisson = "de Poisson", binomiale_negative = "binomiale négative", binomiale = "binomiale", gamma = "gamma", tweedie = "de Tweedie",
+                    poisson_zi = "de Poisson à excès de zéros", beta = "bêta")
+          else c(gaussienne = "normal", poisson = "Poisson", binomiale_negative = "negative binomial", binomiale = "binomial", gamma = "gamma", tweedie = "Tweedie",
+                 poisson_zi = "zero-inflated Poisson", beta = "beta")
   type <- switch(r$type, LM = if (fr) "régression linéaire" else "linear regression", LMM = if (fr) "modèle linéaire mixte" else "linear mixed model",
                  GLM = sprintf(if (fr) "modèle linéaire généralisé, loi %s" else "generalized linear model, %s distribution", lois[[r$famille]]),
                  sprintf(if (fr) "modèle additif généralisé, loi %s" else "generalized additive model, %s distribution", lois[[r$famille]]))
@@ -578,7 +612,8 @@ phrase_methodes_moyennes <- function(m, d, fr, liste, guillemets) {
   moyennees <- as.character(unlist(g$moyennees))
   grille <- c(if (length(valeurs)) liste(valeurs),
               if (length(moyennees)) sprintf(if (fr) "la moyenne à poids égaux sur les catégories de %s" else "the equally weighted average over the categories of %s", liste(guillemets(moyennees))),
-              if (!is.null(g$decalage)) sprintf(if (fr) "un effort de 1 (%s en décalage : des densités)" else "an effort of 1 (%s as an offset: densities)", guillemets(g$decalage)))
+              if (!is.null(g$decalage)) sprintf(if (fr) "un effort de 1 (%s en décalage%s)" else "an effort of 1 (%s as an offset%s)", guillemets(g$decalage),
+                                                if (identical(m$famille, "poisson_zi")) "" else if (fr) " : des densités" else ": densities"))
   phrase1 <- sprintf(if (fr) "%s : %s du modèle sur une grille de référence formée des catégories de ses variables qualitatives%s%s, leurs erreurs-types tirées de la matrice de covariance des coefficients%s."
                      else "%s: %s of the model on a reference grid made of the categories of its qualitative variables%s%s, their standard errors from the covariance matrix of the coefficients%s.",
                      quoi, if (pentes) (if (fr) "la dérivée, par une différence finie d'un millième de l'étendue de la variable, des prédictions" else "the derivative, by a finite difference of a thousandth of the variable's range, of the predictions")
@@ -593,10 +628,16 @@ phrase_methodes_moyennes <- function(m, d, fr, liste, guillemets) {
                                                           guillemets(dl$groupe), as.integer(dl$groupes) - 1L) },
     asymptotique = if (fr) "Les intervalles à 95 % et les tests suivent la loi normale (z, asymptotiques), l'échelle de la loi étant connue." else "The 95% intervals and tests use the normal distribution (z, asymptotic), the distribution's scale being known.",
     if (fr) "Les intervalles à 95 % et les tests suivent la loi t, avec les degrés de liberté résiduels du modèle." else "The 95% intervals and tests use the t distribution, with the model's residual degrees of freedom.")
-  echelle <- if (identical(r$echelle, "reponse")) {
+  echelle <- if (identical(r$echelle, "reponse") && identical(r$famille, "poisson_zi")) {
+    # (le Poisson à excès de zéros : la valeur attendue d'un comptage, moyennes_ajustees)
+    if (fr) "Avec le Poisson à excès de zéros, les moyennes ont été ramenées sur l'échelle de la réponse, la valeur attendue d'un comptage p μ / (1 − e^(−μ)) au prédicteur linéaire log(μ) de chaque catégorie, θ₁ et θ₂ tenus pour connus : leurs intervalles transformés depuis l'échelle du lien (cette valeur croît avec log(μ)), leurs erreurs-types par la méthode delta ; les paires sont des rapports de ces valeurs attendues, leurs tests et leurs intervalles calculés sur le logarithme du rapport par la méthode delta."
+    else "With the zero-inflated Poisson, the means were back-transformed to the response scale, the expected value of a count p μ / (1 − e^(−μ)) at each category's linear predictor log(μ), θ₁ and θ₂ taken as known: their intervals transformed from the link scale (that value increases with log(μ)), their standard errors by the delta method; the pairs are ratios of these expected values, their tests and intervals computed on the log of the ratio by the delta method."
+  } else if (identical(r$echelle, "reponse")) {
     sprintf(if (fr) "Avec le lien %s, %s ont été ramenées sur l'échelle de la réponse (%s), leurs intervalles transformés depuis l'échelle du lien, et les paires sont des %s, testés sur l'échelle du lien."
             else "With the %s link, %s were back-transformed to the response scale (%s), their intervals transformed from the link scale, and the pairs are %s, tested on the link scale.",
-            r$lien, if (fr) "les moyennes" else "the means", if (identical(r$lien, "log")) "exp" else (if (fr) "logit inverse : des probabilités" else "inverse logit: probabilities"),
+            r$lien, if (fr) "les moyennes" else "the means",
+            if (identical(r$lien, "log")) "exp" else if (identical(r$famille, "beta")) (if (fr) "logit inverse : des proportions moyennes" else "inverse logit: mean proportions")
+            else (if (fr) "logit inverse : des probabilités" else "inverse logit: probabilities"),
             if (identical(r$lien, "log")) (if (fr) "rapports de moyennes" else "ratios of means") else (if (fr) "rapports des cotes" else "odds ratios"))
   } else if (identical(r$echelle, "lien")) {
     sprintf(if (fr) "Elles sont données sur l'échelle du lien %s." else "They are given on the %s link scale.", r$lien)

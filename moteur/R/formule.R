@@ -432,8 +432,8 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   if (length(aleatoires) && type == "LM") type <- "LMM"
   if (!length(aleatoires) && type == "LMM") type <- "LM"
   if (!is.null(decalage) && !(type %in% GENERALISES && as.character(famille %||% "")[1] %in% FAMILLES_LOG)) {
-    err("L'effort (offset) va avec un GLM ou un GAM de loi Poisson, binomiale négative, gamma ou Tweedie : choisissez d'abord le type et la loi de Y.",
-        "The effort (offset) goes with a GLM or GAM with a Poisson, negative binomial, gamma or Tweedie distribution: choose the type and the distribution of Y first.")
+    err("L'effort (offset) va avec un GLM ou un GAM de loi Poisson, binomiale négative, gamma, Tweedie ou Poisson à excès de zéros : choisissez d'abord le type et la loi de Y.",
+        "The effort (offset) goes with a GLM or GAM with a Poisson, negative binomial, gamma, Tweedie or zero-inflated Poisson distribution: choose the type and the distribution of Y first.")
   }
   transformations <- stats::setNames(list(), character(0))
   for (s in c(principaux, seuls, list(reponse))) if (!is.null(s$tr)) transformations[[as.character(uid(s$k))]] <- s$tr

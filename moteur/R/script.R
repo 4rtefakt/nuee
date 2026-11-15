@@ -311,6 +311,12 @@ besoins_script <- function(plans, seance) {
        # (des pentes aléatoires de nlme, dans un lme ou la partie nlme d'un mgcv::gamm : leur tableau des variances)
        pentes_nlme = any(vapply(reg, function(pl) (!pl$generalise || isTRUE(pl$gamm)) && length(unlist(lapply(pl$niveaux, `[[`, "pentes"))) > 0, TRUE)),
        residus_quantiles = any(vapply(reg, function(pl) isTRUE(pl$quantiles), TRUE)),
+       # (le Poisson à excès de zéros : sa fonction de répartition, pour ses résidus quantiles, et la
+       # valeur attendue d'un comptage, pour ses moyennes ajustées sur l'échelle de la réponse)
+       repartition_zip = any(vapply(reg, function(pl) isTRUE(pl$quantiles) && identical(pl$famille, "poisson_zi"), TRUE)),
+       esperance_zip = any(vapply(reg, function(pl) identical(pl$famille, "poisson_zi") && identical(pl$moyennes$echelle, "reponse"), TRUE)),
+       # (ziP ou betar sans effet aléatoire : leur ajustement en ML sans terme pénalisé, profil_loi)
+       profil_loi = any(vapply(reg, function(pl) isTRUE(pl$famille %in% c("poisson_zi", "beta")) && !length(pl$niveaux), TRUE)),
        dates = any(vapply(reg, function(pl) isTRUE(pl$temps$dates), TRUE)),
        selection_aic = any(vapply(reg, function(pl) !is.null(pl$selection), TRUE)),
        # (les fonctions de Nouvelle variable qu'appelle la condition d'un modèle : condition.R)
@@ -1282,7 +1288,8 @@ plan_moyennes <- function(d, m, termes_r) {
 type_regression <- function(pl, langue) {
   tx <- function(fr, en) if (identical(langue, "en")) en else fr
   lois <- c(gaussienne = tx("normale", "normal"), poisson = tx("de Poisson", "Poisson"), binomiale_negative = tx("binomiale négative", "negative binomial"),
-            binomiale = tx("binomiale", "binomial"), gamma = "gamma", tweedie = tx("de Tweedie", "Tweedie"))
+            binomiale = tx("binomiale", "binomial"), gamma = "gamma", tweedie = tx("de Tweedie", "Tweedie"),
+            poisson_zi = tx("de Poisson à excès de zéros", "zero-inflated Poisson"), beta = tx("bêta", "beta"))
   mixte <- if (length(pl$niveaux)) tx(" mixte", " mixed") else ""
   if (isTRUE(pl$gamm)) return(sprintf(tx("modèle %s%s, loi normale, avec une autocorrélation CAR1 (mgcv::gamm)", "%s%s model, normal distribution, with a CAR1 autocorrelation (mgcv::gamm)"),
                                       tx(if (identical(pl$modele, "GAM")) "additif généralisé" else "linéaire généralisé", if (identical(pl$modele, "GAM")) "generalized additive" else "generalized linear"), mixte))
@@ -1339,8 +1346,10 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   mixte <- L > 0
   courbes <- length(pl$lisses) > 0
   car1 <- !is.null(pl$temps)
-  loi <- pl$famille %in% c("binomiale_negative", "tweedie")
+  loi <- pl$famille %in% c("binomiale_negative", "tweedie", "poisson_zi", "beta")
   poisson <- identical(pl$famille, "poisson")
+  zip <- identical(pl$famille, "poisson_zi")  # (fitted() de ziP donne log(μ) : les valeurs ajustées par predict())
+  profil <- pl$famille %in% c("poisson_zi", "beta") && !mixte  # (sans terme pénalisé, en ML : profil_loi, regression.R)
   quantiles <- isTRUE(pl$quantiles)
   guillemets <- function(x) tx(sprintf("« %s »", texte_sur(x)), sprintf("“%s”", texte_sur(x)))
   liste <- function(x) liste_textes(x, tx("et", "and"))
@@ -1531,10 +1540,14 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       sprintf("utiles <- termes_utiles(cadre, %s)", candidats))
   } else if (mgcv) {
     familles <- c(gaussienne = "gaussian()", poisson = "poisson()", binomiale = "binomial()", binomiale_negative = "nb()",
-                  gamma = "Gamma(link = \"log\")", tweedie = "tw()")
+                  gamma = "Gamma(link = \"log\")", tweedie = "tw()", poisson_zi = "ziP()", beta = "betar(link = \"logit\")")
     noms_lois <- c(gaussienne = tx("normale, lien identité", "normal, identity link"), poisson = tx("de Poisson, lien log", "Poisson, log link"),
                    binomiale = tx("binomiale, lien logit", "binomial, logit link"), binomiale_negative = tx("binomiale négative, lien log (son θ estimé)", "negative binomial, log link (its θ estimated)"),
-                   gamma = tx("gamma, lien log", "gamma, log link"), tweedie = tx("de Tweedie, lien log (sa puissance p estimée)", "Tweedie, log link (its power p estimated)"))
+                   gamma = tx("gamma, lien log", "gamma, log link"), tweedie = tx("de Tweedie, lien log (sa puissance p estimée)", "Tweedie, log link (its power p estimated)"),
+                   poisson_zi = tx("de Poisson à excès de zéros (un comptage nul avec la probabilité 1 − p, sinon une loi de Poisson de paramètre μ tronquée en zéro) : le prédicteur linéaire est log(μ), que mgcv dit « identity », et log(−log(1 − p)) = θ1 + θ2 log(μ), θ1 et θ2 estimés ; fitted() en donne log(μ), predict(type = \"response\") la valeur attendue p μ / (1 − exp(−μ))",
+                                   "zero-inflated Poisson (a count is zero with probability 1 − p, otherwise a Poisson distribution of parameter μ truncated at zero): the linear predictor is log(μ), which mgcv calls \"identity\", and log(−log(1 − p)) = θ1 + θ2 log(μ), θ1 and θ2 estimated; fitted() gives log(μ), predict(type = \"response\") the expected value p μ / (1 − exp(−μ))"),
+                   beta = tx("bêta, lien logit (de moyenne μ et de variance μ (1 − μ) / (1 + φ), sa précision φ estimée ; la réponse strictement entre 0 et 1)",
+                             "beta, logit link (of mean μ and variance μ (1 − μ) / (1 + φ), its precision φ estimated; the response strictly between 0 and 1)"))
     penalise <- courbes || mixte
     droite <- paste(c(if (courbes) "setdiff(utiles, lis)" else "utiles",
                       if (courbes) courbe_s,
@@ -1577,7 +1590,14 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      "  kk <- kk[kk >= 3]"),
       formule(sprintf("c(%s)", droite)),
       if (!mixte && penalise) "  if (is.null(methode)) methode <- if (length(lis)) \"REML\" else \"ML\"",
-      "  tryCatch(gam(f, data = tab, family = famille(), method = methode), error = function(e) NULL)",
+      # (ziP ou betar sans terme pénalisé, en ML : profil_loi quand mgcv s'arrête, comme regression.R)
+      if (profil) c(
+        "  m <- tryCatch(gam(f, data = tab, family = famille(), method = methode), error = function(e) NULL)",
+        sprintf("  if (is.null(m) && methode == \"ML\"%s) m <- profil_loi(f, tab, %s, %d)", if (courbes) " && !length(lis)" else "",
+                if (identical(pl$famille, "beta")) "function(th) betar(theta = exp(th), link = \"logit\")" else "function(th) ziP(theta = th)",
+                if (identical(pl$famille, "beta")) 1L else 2L),
+        "  m")
+      else "  tryCatch(gam(f, data = tab, family = famille(), method = methode), error = function(e) NULL)",
       "}",
       "m <- ajuster_modele(cadre)",
       sprintf("utiles <- termes_utiles(cadre, %s)", candidats),
@@ -1732,8 +1752,11 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                  }),
     commentaire(tx("La part de la variation expliquée : R² ajusté et part de la déviance.", "The share of the variation explained: adjusted R² and share of the deviance.")),
     "r2 <- c(r2_ajuste = sm$r.sq, deviance_expliquee = sm$dev.expl)",
-    if (loi) sprintf("parametre_loi <- c(%s = m$family$getTheta(TRUE))  # %s", if (identical(pl$famille, "tweedie")) "p" else "theta",
-                     if (identical(pl$famille, "tweedie")) tx("la puissance de la loi de Tweedie", "the power of the Tweedie distribution") else tx("le θ de la binomiale négative", "the θ of the negative binomial")),
+    if (zip) sprintf("parametre_loi <- setNames(m$family$getTheta(TRUE), c(\"theta1\", \"theta2\"))  # %s",
+                     tx("θ1 et θ2 de log(−log(1 − p)) = θ1 + θ2 log(μ), comme le résumé de mgcv les donne", "θ1 and θ2 of log(−log(1 − p)) = θ1 + θ2 log(μ), as mgcv's summary gives them"))
+    else if (loi) sprintf("parametre_loi <- c(%s = m$family$getTheta(TRUE))  # %s", switch(pl$famille, tweedie = "p", beta = "phi", "theta"),
+                          switch(pl$famille, tweedie = tx("la puissance de la loi de Tweedie", "the power of the Tweedie distribution"),
+                                 beta = tx("la précision φ de la loi bêta", "the precision φ of the beta distribution"), tx("le θ de la binomiale négative", "the θ of the negative binomial"))),
     if (poisson) sprintf("dispersion <- sum(residuals(m, type = \"pearson\")^2) / m$df.residual  # %s",
                          tx("khi² de Pearson / ddl : au-delà de 1,5, des comptages surdispersés", "Pearson's chi-square / df: above 1.5, overdispersed counts"))
   ) else if (mixte) c(
@@ -1769,6 +1792,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    sprintf("Each observation: the response observed, fitted%s, and its standardized residual%s.", if (mixte && (!mgcv || gamm)) " (with the random effects; fitted_fixed: the fixed effects only)" else "",
                            if (!mixte && !mgcv) " (and Cook's distance)" else ""))),
     if (gamm) "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m$lme),"
+    else if (zip) "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = as.vector(predict(m, type = \"response\")),"
     else "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m),",
     if (gamm) sprintf("                           residu = residus_normalises_car1(residuals(m$lme, type = \"pearson\"), %s, %s, phi), ajuste_fixe = fitted(m$gam), row.names = NULL)",
                       temps_car1, groupes_car1_code)
@@ -1782,9 +1806,13 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     arguments <- c(poisson = "function(q, ...) ppois(q, fitted(m), ...)",
                    binomiale_negative = "function(q, ...) pnbinom(q, size = m$family$getTheta(TRUE), mu = fitted(m), ...)",
                    binomiale = "function(q, ...) pbinom(q, 1, fitted(m), ...)",
-                   gamma = "function(q, ...) pgamma(q, shape = 1 / m$sig2, rate = 1 / (m$sig2 * fitted(m)), ...), discrete = FALSE")[[pl$famille]]
+                   gamma = "function(q, ...) pgamma(q, shape = 1 / m$sig2, rate = 1 / (m$sig2 * fitted(m)), ...), discrete = FALSE",
+                   poisson_zi = "repartition_zip(m$linear.predictors, m$family$getTheta(TRUE))",
+                   beta = "function(q, ...) pbeta(q, fitted(m) * m$family$getTheta(TRUE), (1 - fitted(m)) * m$family$getTheta(TRUE), ...), discrete = FALSE")[[pl$famille]]
     lois <- c(poisson = "Poisson", binomiale_negative = tx("binomiale négative, de son θ estimé", "negative binomial with its estimated θ"),
-              binomiale = tx("binomiale, une épreuve : 0 ou 1", "binomial, one trial: 0 or 1"), gamma = tx("gamma de forme 1 / l'échelle estimée", "gamma of shape 1 / the estimated scale"))
+              binomiale = tx("binomiale, une épreuve : 0 ou 1", "binomial, one trial: 0 or 1"), gamma = tx("gamma de forme 1 / l'échelle estimée", "gamma of shape 1 / the estimated scale"),
+              poisson_zi = tx("de Poisson à excès de zéros, de ses θ1 et θ2 estimés : repartition_zip ci-dessus", "zero-inflated Poisson with its estimated θ1 and θ2: zip_distribution_function above"),
+              beta = tx("bêta de formes μ φ et (1 − μ) φ, de sa précision φ estimée", "beta of shapes μ φ and (1 − μ) φ, with its estimated precision φ"))
     statistiques <- c(statistiques,
       commentaire(tx(sprintf("Et ses résidus quantiles randomisés (residus_quantiles ci-dessus), de la loi du modèle (%s) à sa valeur ajustée : normaux quand le modèle est juste.", lois[[pl$famille]]),
                      sprintf("And its randomized quantile residuals (quantile_residuals above), from the model's distribution (%s) at its fitted value: normal when the model is right.", lois[[pl$famille]]))),
@@ -2126,8 +2154,10 @@ code_moyennes_regression <- function(pl, tx, guillemets, liste) {
                      "nlme's degrees of freedom as emmeans takes them on R's fit, in its default coding (the first observed category of each qualitative variable as reference; in this model's, the last, a mean would take another's): each column of that coding, and the coefficient of its term whose degrees of freedom it takes.")),
       code_valeurs(sprintf("%s = %s", vapply(names(mo$colonnes_ddl), code_texte, ""), vapply(unname(mo$colonnes_ddl), code_texte, "")), "colonnes_ddl <- c(", ")", ouvrir = "")),
     sprintf("moyennes_ajustees <- moyennes_grille(lg, cellules, groupes_grille, b = %s, V = vcov(%s), N = base_nulle(cbind(1, as.matrix(cadre[termes_param]))),", coefficients, modele),
-    sprintf("                                     ddl = %s, ajustement = %s, lien = %s, echelle_reponse = %s)", ddl, code_texte(g$ajustement), code_texte(mo$lien),
-            if (identical(mo$echelle, "reponse")) "TRUE" else "FALSE"))
+    sprintf("                                     ddl = %s, ajustement = %s, lien = %s, echelle_reponse = %s%s)", ddl, code_texte(g$ajustement), code_texte(mo$lien),
+            if (identical(mo$echelle, "reponse")) "TRUE" else "FALSE",
+            # (le Poisson à excès de zéros sur l'échelle de la réponse : la valeur attendue d'un comptage, esperance_zip)
+            if (identical(mo$echelle, "reponse") && identical(pl$famille, "poisson_zi")) ", theta_zip = parametre_loi" else ""))
 }
 
 # Écart entre les résultats du script d'une régression (dans `e`) et ceux de `m` : NULL s'il n'y en
@@ -2222,6 +2252,9 @@ code_fonctions <- function(b, plans, langue) {
     if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx), if (isTRUE(b$par_courbes)) c("", modele_courbes_par_categorie(tx))),
     if (isTRUE(b$aleatoires_mgcv)) modele_predire_fixes(tx),
     if (isTRUE(b$residus_quantiles)) modele_residus_quantiles(tx),
+    if (isTRUE(b$repartition_zip)) modele_repartition_zip(tx),
+    if (isTRUE(b$profil_loi)) modele_profil_loi(tx),
+    if (isTRUE(b$esperance_zip)) modele_esperance_zip(tx),
     if (b$plsda) modele_la_plus_grande(tx),
     if (b$pls || b$opls) modele_permutations(tx, seul, na),
     if ("snv" %in% b$spectres) modele_snv(tx),
@@ -2945,9 +2978,9 @@ modele_moyennes_ajustees <- function(tx, confinement) c(
   "  pa$haut_lien <- pa$difference + critique * pa$erreur_type_lien",
   "  pa",
   "}",
-  commentaire(tx("Les moyennes ajustées : `lignes`, les lignes de la grille (L, celles du modèle ; Lp, celles des termes paramétriques candidats, pour l'estimabilité ; Lb, pour les degrés de liberté de nlme) ; la moyenne de chaque cellule (`cellules` : sa catégorie a, et b de « dans chaque niveau de » ; `groupes` : ses lignes de la grille) est celle de ses lignes, à poids égaux, son estimation L b, son erreur-type racine(L V L'), son intervalle à 95 % ; avec le lien log ou logit et `echelle_reponse`, ramenée sur l'échelle de la réponse. Puis toutes les paires de catégories dans chaque b, la différence (ou le rapport sur l'échelle de la réponse), ajustées (ajuster_paires). Ce qui n'est pas estimable est laissé de côté, et nommé.",
-                 "The adjusted means: `rows`, the rows of the grid (L, the model's; Lp, those of the candidate parametric terms, for estimability; Lb, for nlme's degrees of freedom); the mean of each cell (`cells`: its category a, and b of \"within each level of\"; `groups`: its rows of the grid) is that of its rows, with equal weights, its estimate L b, its standard error sqrt(L V L'), its 95% interval; with the log or logit link and `response_scale`, back-transformed to the response scale. Then every pair of categories within each b, the difference (or the ratio on the response scale), adjusted (adjust_pairs). What isn't estimable is left out, and named.")),
-  "moyennes_grille <- function(lignes, cellules, groupes, b, V, N, ddl, ajustement, lien = \"identity\", echelle_reponse = FALSE) {",
+  commentaire(tx("Les moyennes ajustées : `lignes`, les lignes de la grille (L, celles du modèle ; Lp, celles des termes paramétriques candidats, pour l'estimabilité ; Lb, pour les degrés de liberté de nlme) ; la moyenne de chaque cellule (`cellules` : sa catégorie a, et b de « dans chaque niveau de » ; `groupes` : ses lignes de la grille) est celle de ses lignes, à poids égaux, son estimation L b, son erreur-type racine(L V L'), son intervalle à 95 % ; avec le lien log ou logit et `echelle_reponse`, ramenée sur l'échelle de la réponse (le Poisson à excès de zéros, `theta_zip` : la valeur attendue d'un comptage, esperance_zip()). Puis toutes les paires de catégories dans chaque b, la différence (ou le rapport sur l'échelle de la réponse ; le Poisson à excès de zéros : le rapport des valeurs attendues, testé sur son logarithme, d'erreur-type par la méthode delta), ajustées (ajuster_paires). Ce qui n'est pas estimable est laissé de côté, et nommé.",
+                 "The adjusted means: `rows`, the rows of the grid (L, the model's; Lp, those of the candidate parametric terms, for estimability; Lb, for nlme's degrees of freedom); the mean of each cell (`cells`: its category a, and b of \"within each level of\"; `groups`: its rows of the grid) is that of its rows, with equal weights, its estimate L b, its standard error sqrt(L V L'), its 95% interval; with the log or logit link and `response_scale`, back-transformed to the response scale (the zero-inflated Poisson, `theta_zip`: the expected value of a count, zip_expected_value()). Then every pair of categories within each b, the difference (or the ratio on the response scale; the zero-inflated Poisson: the ratio of the expected values, tested on its log, with a standard error by the delta method), adjusted (adjust_pairs). What isn't estimable is left out, and named.")),
+  "moyennes_grille <- function(lignes, cellules, groupes, b, V, N, ddl, ajustement, lien = \"identity\", echelle_reponse = FALSE, theta_zip = NULL) {",
   "  Lc <- moyennes_lignes(lignes$L[, names(b), drop = FALSE], groupes)",
   "  Lpc <- moyennes_lignes(lignes$Lp, groupes)",
   "  Lbc <- moyennes_lignes(if (is.null(lignes$Lb)) lignes$L else lignes$Lb, groupes)",
@@ -2958,6 +2991,11 @@ modele_moyennes_ajustees <- function(tx, confinement) c(
   "  qt95 <- qt(0.975, ifelse(is.na(dfc), Inf, dfc))",
   "  inverse <- if (lien == \"logit\") plogis else exp",
   "  derivee <- if (lien == \"logit\") dlogis else exp",
+  "  zip <- echelle_reponse && !is.null(theta_zip)",
+  "  if (zip) {",
+  "    inverse <- function(x) esperance_zip(x, theta_zip)",
+  "    derivee <- function(x) esperance_zip(x, theta_zip, derivee = TRUE)",
+  "  }",
   "  groupe <- if (is.null(cellules$b)) rep(NA_character_, nrow(cellules)) else cellules$b",
   "  moy <- data.frame(niveau = cellules$a, groupe = groupe, estimation = est, erreur_type = se, ddl = dfc, bas = est - qt95 * se, haut = est + qt95 * se)",
   "  if (echelle_reponse) {",
@@ -2982,7 +3020,12 @@ modele_moyennes_ajustees <- function(tx, confinement) c(
   "        next",
   "      }",
   "      Ld <- Lc[i, , drop = FALSE] - Lc[j, , drop = FALSE]",
-  "      paires[[length(paires) + 1]] <- data.frame(groupe = g, niveau_1 = cellules$a[i], niveau_2 = cellules$a[j], difference = sum(Ld * b),",
+  "      difference <- sum(Ld * b)",
+  "      if (zip) {",
+  "        Ld <- derivee(est[i]) / inverse(est[i]) * Lc[i, , drop = FALSE] - derivee(est[j]) / inverse(est[j]) * Lc[j, , drop = FALSE]",
+  "        difference <- log(inverse(est[i])) - log(inverse(est[j]))",
+  "      }",
+  "      paires[[length(paires) + 1]] <- data.frame(groupe = g, niveau_1 = cellules$a[i], niveau_2 = cellules$a[j], difference = difference,",
   "                                                 erreur_type_lien = sqrt(max(0, sum((Ld %*% V) * Ld))), ddl = ddl(Lbc[i, , drop = FALSE] - Lbc[j, , drop = FALSE]))",
   "    }",
   "  }",
@@ -3174,6 +3217,58 @@ modele_residus_quantiles <- function(tx) c(
   "  ifelse(u <= 0.5, qnorm(u), qnorm(S0 - v * (S0 - S1), lower.tail = FALSE))",
   "}")
 
+# La fonction de répartition du Poisson à excès de zéros (regression_diagnostics.R : repartition_zip),
+# écrite pour le script.
+modele_repartition_zip <- function(tx) c(
+  commentaire(tx("La fonction de répartition du Poisson à excès de zéros de mgcv (ziP) à chaque observation, pour residus_quantiles() : `g`, son prédicteur linéaire log(λ), et `theta`, θ1 et θ2 de log(−log(1 − p)) = θ1 + θ2 log(λ). Un zéro a la probabilité 1 − p ; un comptage y > 0, p λ^y / ((exp(λ) − 1) y!), la loi de Poisson tronquée en zéro : F(0) = 1 − p et, pour q ≥ 1, 1 − F(q) = p P(X > q) / P(X > 0), X de Poisson de paramètre λ ; P(X ≤ q | X > 0) se calcule directement quand P(X ≤ q) est petite, pour garder ses chiffres. Quand P(X > 0) vaut 0 en double précision, la loi tronquée est toute en 1.",
+                 "The distribution function of mgcv's zero-inflated Poisson (ziP) at each observation, for quantile_residuals(): `g`, its linear predictor log(λ), and `theta`, θ1 and θ2 of log(−log(1 − p)) = θ1 + θ2 log(λ). A zero has probability 1 − p; a count y > 0, p λ^y / ((exp(λ) − 1) y!), the Poisson distribution truncated at zero: F(0) = 1 − p and, for q ≥ 1, 1 − F(q) = p P(X > q) / P(X > 0), X Poisson of parameter λ; P(X ≤ q | X > 0) is computed directly when P(X ≤ q) is small, to keep its digits. When P(X > 0) is 0 in double precision, the truncated distribution is all at 1.")),
+  "repartition_zip <- function(g, theta) {",
+  "  lambda <- exp(g)",
+  "  e <- exp(theta[1] + theta[2] * g)",
+  "  zero <- exp(-e)",
+  "  p <- -expm1(-e)",
+  "  positif <- -expm1(-lambda)",
+  "  function(q, lower.tail = TRUE) {",
+  "    sup <- ifelse(positif > 0, ppois(q, lambda, lower.tail = FALSE) / positif, 0)",
+  "    if (!lower.tail) return(ifelse(q < 0, 1, ifelse(q < 1, p, p * sup)))",
+  "    inf <- ifelse(positif > 0 & ppois(q, lambda) < 0.5, (ppois(q, lambda) - dpois(0, lambda)) / positif, 1 - sup)",
+  "    ifelse(q < 0, 0, ifelse(q < 1, zero, zero + p * inf))",
+  "  }",
+  "}")
+
+# Le maximum de vraisemblance d'un ziP ou d'un betar sans terme pénalisé quand mgcv s'arrête
+# (regression.R : profil_loi), écrit pour le script.
+modele_profil_loi <- function(tx) c(
+  commentaire(tx("Sans terme pénalisé, l'ajustement en ML de mgcv avec ziP() ou betar() s'arrête parfois sur une erreur de LAPACK dans son code C, alors que le même modèle s'ajuste quand les paramètres de la loi sont fixés. Son maximum de vraisemblance s'obtient alors ainsi : les paramètres `th` de la loi (log φ pour betar, par optimize ; θ1 et le θ2 interne de ziP, par optim depuis 0 et 0, la loi de Poisson) qui maximisent la vraisemblance des ajustements où ils sont fixés (`famille_fixe(th)`), puis l'ajustement à ces paramètres, où ils comptent comme estimés (n.theta : la vraisemblance de mgcv leur donne leurs degrés de liberté).",
+                 "Without a penalized term, mgcv's ML fit with ziP() or betar() sometimes stops on a LAPACK error in its C code, while the same model fits when the distribution's parameters are fixed. Its maximum likelihood is then obtained this way: the distribution's parameters `th` (log φ for betar, by optimize; θ1 and ziP's internal θ2, by optim from 0 and 0, the Poisson distribution) that maximize the likelihood of the fits where they are fixed (`fixed_distribution(th)`), then the fit at these parameters, where they count as estimated (n.theta: mgcv's likelihood then gives them their degrees of freedom).")),
+  "profil_loi <- function(f, tab, famille_fixe, parametres) {",
+  "  ajuster <- function(th) tryCatch(gam(f, data = tab, family = famille_fixe(th)), error = function(e) NULL)",
+  "  moins_ll <- function(th) {",
+  "    a <- ajuster(th)",
+  "    if (is.null(a)) Inf else -as.numeric(logLik(a))",
+  "  }",
+  "  th <- if (parametres == 1) optimize(moins_ll, c(-7, 14), tol = 1e-10)$minimum",
+  "        else optim(rep(0, parametres), moins_ll, control = list(reltol = 1e-12, maxit = 2000))$par",
+  "  a <- ajuster(th)",
+  "  if (!is.null(a)) a$family$n.theta <- length(th)",
+  "  a",
+  "}")
+
+# La valeur attendue d'un comptage du Poisson à excès de zéros (moyennes.R : esperance_zip), écrite pour
+# les moyennes ajustées du script.
+modele_esperance_zip <- function(tx) c(
+  commentaire(tx("La valeur attendue d'un comptage du Poisson à excès de zéros, h(η) = p m, au prédicteur linéaire η = log(λ) (`theta` : θ1 et θ2 de log(−log(1 − p)) = θ1 + θ2 η ; m = λ / (1 − exp(−λ)), la moyenne de la loi de Poisson tronquée en zéro), ou sa dérivée p' m + p m' (`derivee`), comme les calcule predict() de ziP dans mgcv (m vaut 1, sa limite, quand λ est presque nul) ; h croît avec η.",
+                 "The expected value of a count of the zero-inflated Poisson, h(η) = p m, at the linear predictor η = log(λ) (`theta`: θ1 and θ2 of log(−log(1 − p)) = θ1 + θ2 η; m = λ / (1 − exp(−λ)), the mean of the Poisson distribution truncated at zero), or its derivative p' m + p m' (`derivative`), as predict() of ziP computes them in mgcv (m is 1, its limit, when λ is almost zero); h increases with η.")),
+  "esperance_zip <- function(eta, theta, derivee = FALSE) {",
+  "  lambda <- exp(eta)",
+  "  e <- exp(theta[1] + theta[2] * eta)",
+  "  p <- -expm1(-e)",
+  "  petit <- eta < log(.Machine$double.eps) / 2",
+  "  m <- ifelse(petit, 1, lambda / -expm1(-lambda))",
+  "  if (!derivee) return(p * m)",
+  "  theta[2] * e * exp(-e) * m + p * ifelse(petit, 0, (lambda + 1) * m - m^2)",
+  "}")
+
 # Le test de permutation : dans un script d'un modèle, il réajuste ce modèle ; dans un script de
 # séance, `ajuster(Yp)` donne l'ajustement et la validation croisée de chaque modèle.
 modele_permutations <- function(tx, pl, na) {
@@ -3353,6 +3448,8 @@ NOMS_SCRIPT_EN <- c(
   sens_pente = "slope_direction", sens_effet = "effect_direction", x_debut = "x_start", x_fin = "x_end", be = "effect_band", bp = "slope_band", ecart_types = "std_devs", parametre_loi = "distribution_parameter",
   observe = "observed", ajuste = "fitted", residu = "residual", ajuste_fixe = "fitted_fixed", predit = "predicted",
   residus_quantiles = "quantile_residuals", residu_quantile = "quantile_residual", repartition = "distribution_function",
+  repartition_zip = "zip_distribution_function", positif = "positive", esperance_zip = "zip_expected_value", petit = "small",
+  profil_loi = "distribution_profile", famille_fixe = "fixed_distribution", moins_ll = "minus_loglik",
   courbe = "curve", abscisse = "abscissa", effet = "effect", droite = "rhs",
   selection_aic = "aic_selection", groupes_aic = "aic_groups", requis_aic = "aic_required", criteres_aic = "aic_criteria", choisis = "chosen",
   permise = "allowed", combinaisons = "combinations", combinaison = "combination", valeurs_aic = "aic_values", etapes_aic = "aic_steps",

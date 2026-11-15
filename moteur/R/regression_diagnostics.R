@@ -3,7 +3,7 @@
 # CAR1 est-elle nécessaire ? suffit-elle ?), et les tests du rapport de vraisemblance entre des
 # modèles emboîtés (Prédiction › Comparer les modèles), comme anova(m1, m2). Et des résidus que
 # l'ajustement calcule : les résidus normalisés d'une autocorrélation CAR1, les résidus quantiles
-# randomisés d'un modèle de comptages, de présence-absence ou de valeurs positives.
+# randomisés d'un modèle de comptages, de présence-absence, de valeurs positives ou de proportions.
 
 # ------------------------------------------------------------ autocorrélation des résidus
 
@@ -72,7 +72,8 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
   niveaux <- sprintf("g%d", seq_along(m$niveaux))  # (sprintf : aucun nom sans effet aléatoire)
   mgcv_seul <- inherits(a, "gam")  # (mgcv::gamm a sa propre classe)
   type <- if (mgcv_seul) match.arg(as.character(type)[1], c("pearson", "deviance")) else "pearson"
-  e <- as.vector(if (inherits(a, "gamm")) stats::residuals(a$lme, type = "pearson") else stats::residuals(a, type = type))
+  e <- as.vector(if (inherits(a, "gamm")) stats::residuals(a$lme, type = "pearson")
+                 else if (mgcv_seul && type == "pearson") residus_pearson_mgcv(a, m$famille) else stats::residuals(a, type = type))
   car1 <- isTRUE(m$car1)
   if (car1) {
     t <- d$temps
@@ -122,28 +123,31 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
 # ------------------------------------------------------------ résidus quantiles
 
 # Les résidus quantiles randomisés (Dunn et Smyth, 1996) d'un modèle de mgcv `a` à loi de Poisson,
-# binomiale négative (son θ estimé), binomiale (une réponse 0 ou 1 : une épreuve) ou gamma (de forme
-# 1 / son échelle estimée) : r = Φ⁻¹(u), F la loi du modèle à la moyenne ajustée de chaque
-# observation (ses effets aléatoires et son effort compris) ; u = F(y) pour la loi gamma, et pour
-# une loi discrète, u tiré uniformément entre F(y − 1) et F(y). Ils suivent la loi normale quand le
-# modèle est juste, ce que ne font pas les résidus de Pearson ou de déviance d'un comptage, même
-# d'un modèle juste. Au-delà de 0,5, r se calcule par 1 − u, dans la queue de droite de F : un
-# comptage loin au-dessus de sa moyenne garde son résidu au lieu de Φ⁻¹(1) = Inf. Les tirages se
-# font avec une graine fixe et le générateur de R par défaut, comme seuils_courbe : les mêmes
-# résidus à chaque calcul, le hasard de la session et son générateur rendus. NULL pour une autre
-# loi : la normale (ses résidus standardisés le sont déjà), Tweedie (les paquets livrés avec R
-# n'ont pas sa fonction de répartition).
+# binomiale négative (son θ estimé), binomiale (une réponse 0 ou 1 : une épreuve), gamma (de forme
+# 1 / son échelle estimée), de Poisson à excès de zéros (repartition_zip, ses θ1 et θ2 estimés) ou
+# bêta (de formes μ φ et (1 − μ) φ, φ estimé, la paramétrisation de betar) : r = Φ⁻¹(u), F la loi
+# du modèle à la moyenne ajustée de chaque observation (ses effets aléatoires et son effort compris) ;
+# u = F(y) pour une loi continue (gamma, bêta), et pour une loi discrète, u tiré uniformément entre
+# F(y − 1) et F(y). Ils suivent la loi normale quand le modèle est juste, ce que ne font pas les
+# résidus de Pearson ou de déviance d'un comptage, même d'un modèle juste. Au-delà de 0,5, r se
+# calcule par 1 − u, dans la queue de droite de F : un comptage loin au-dessus de sa moyenne garde
+# son résidu au lieu de Φ⁻¹(1) = Inf. Les tirages se font avec une graine fixe et le générateur de R
+# par défaut, comme seuils_courbe : les mêmes résidus à chaque calcul, le hasard de la session et
+# son générateur rendus. NULL pour une autre loi : la normale (ses résidus standardisés le sont
+# déjà), Tweedie (les paquets livrés avec R n'ont pas sa fonction de répartition).
 residus_quantiles <- function(a, famille, graine = 1) {
   y <- as.vector(a$y)
-  mu <- as.vector(stats::fitted(a))
-  theta <- if (identical(famille, "binomiale_negative")) a$family$getTheta(TRUE)
+  mu <- as.vector(stats::fitted(a))  # (Poisson à excès de zéros : le prédicteur linéaire, log(μ))
+  theta <- if (famille %in% c("binomiale_negative", "poisson_zi", "beta")) as.vector(a$family$getTheta(TRUE))
   repartition <- switch(famille,  # (F ; 1 − F avec lower.tail = FALSE)
     poisson = function(q, ...) stats::ppois(q, mu, ...),
     binomiale_negative = function(q, ...) stats::pnbinom(q, size = theta, mu = mu, ...),
     binomiale = function(q, ...) stats::pbinom(q, 1, mu, ...),
     gamma = function(q, ...) stats::pgamma(q, shape = 1 / a$sig2, rate = 1 / (a$sig2 * mu), ...),
+    poisson_zi = repartition_zip(mu, theta),
+    beta = function(q, ...) stats::pbeta(q, mu * theta, (1 - mu) * theta, ...),
     return(NULL))
-  discrete <- !identical(famille, "gamma")
+  discrete <- !famille %in% c("gamma", "beta")
   y0 <- if (discrete) y - 1 else y
   F0 <- repartition(y0)                      # F(y − 1)
   F1 <- repartition(y)                       # F(y)
@@ -164,6 +168,46 @@ residus_quantiles <- function(a, famille, graine = 1) {
   }
   u <- F0 + v * (F1 - F0)
   ifelse(u <= 0.5, stats::qnorm(u), stats::qnorm(S0 - v * (S0 - S1), lower.tail = FALSE))
+}
+
+# La fonction de répartition du Poisson à excès de zéros comme mgcv le définit (ziP : Wood, Pya et
+# Säfken, 2016), à chaque observation : `g` son prédicteur linéaire log(λ), λ le paramètre de la loi
+# de Poisson, et `theta` (θ1, θ2) de log(−log(1 − p)) = θ1 + θ2 log(λ). Un zéro a la probabilité
+# 1 − p ; un comptage y > 0, p λ^y / ((e^λ − 1) y!), la loi de Poisson tronquée en zéro. D'où F(q) = 0
+# pour q < 0, F(0) = 1 − p, et pour q ≥ 1, 1 − F(q) = p P(X > q | X > 0) et F(q) = 1 − p + p P(X ≤ q |
+# X > 0), X de Poisson de paramètre λ, P(X > q | X > 0) = P(X > q) / P(X > 0) ; P(X ≤ q | X > 0) se
+# calcule directement, (P(X ≤ q) − P(X = 0)) / P(X > 0), quand P(X ≤ q) est petite, sinon comme 1 −
+# P(X > q | X > 0), pour garder ses chiffres. Quand λ est si petit que P(X > 0) vaut 0 en double
+# précision, la loi tronquée est toute en 1, sa limite. `lower.tail = FALSE` : 1 − F, calculé
+# directement, comme ppois.
+repartition_zip <- function(g, theta) {
+  lambda <- exp(g)
+  e <- exp(theta[1] + theta[2] * g)
+  zero <- exp(-e)       # 1 − p
+  p <- -expm1(-e)
+  positif <- -expm1(-lambda)  # P(X > 0)
+  function(q, lower.tail = TRUE) {
+    sup <- ifelse(positif > 0, stats::ppois(q, lambda, lower.tail = FALSE) / positif, 0)
+    if (!lower.tail) return(ifelse(q < 0, 1, ifelse(q < 1, p, p * sup)))
+    inf <- ifelse(positif > 0 & stats::ppois(q, lambda) < 0.5, (stats::ppois(q, lambda) - stats::dpois(0, lambda)) / positif, 1 - sup)
+    ifelse(q < 0, 0, ifelse(q < 1, zero, zero + p * inf))
+  }
+}
+
+# Les résidus de Pearson d'un modèle de mgcv, (y − valeur attendue) / √variance : ceux de mgcv, et pour
+# le Poisson à excès de zéros, dont mgcv ne les donne pas, ceux de sa loi (repartition_zip) : de
+# moyenne p m, m = λ / (1 − e^(−λ)) celle de la loi tronquée, et de variance p (λ + λ²) / (1 −
+# e^(−λ)) − (p m)², sa valeur attendue prise au carré ôtée de E(y²).
+residus_pearson_mgcv <- function(a, famille) {
+  if (!identical(famille, "poisson_zi")) return(as.vector(stats::residuals(a, type = "pearson")))
+  g <- as.vector(a$linear.predictors)
+  theta <- as.vector(a$family$getTheta(TRUE))
+  lambda <- exp(g)
+  p <- -expm1(-exp(theta[1] + theta[2] * g))
+  positif <- -expm1(-lambda)
+  moyenne <- p * ifelse(positif > 0, lambda / positif, 1)
+  carres <- p * ifelse(positif > 0, (lambda + lambda^2) / positif, 1)
+  (as.vector(a$y) - moyenne) / sqrt(pmax(carres - moyenne^2, .Machine$double.eps))
 }
 
 # ------------------------------------------------- tests du rapport de vraisemblance

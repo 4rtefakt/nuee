@@ -1,8 +1,8 @@
 # Les coefficients de plusieurs régressions côte à côte (Prédiction › Comparer les modèles ›
 # Coefficients côte à côte), comme les articles et les rapports les présentent : une ligne par
 # terme, une colonne par modèle, chaque case l'estimation avec son intervalle à 95 % ou son
-# erreur-type ; dessous, n, AIC, AICc, R², l'écart-type de chaque effet aléatoire, φ de CAR1 et
-# l'edf de chaque courbe. Le tableau est fait des résultats que chaque modèle a déjà (son tableau
+# erreur-type ; dessous, n, AIC, AICc, R², les paramètres de la loi, l'écart-type de chaque effet
+# aléatoire, φ de CAR1 et l'edf de chaque courbe. Le tableau est fait des résultats que chaque modèle a déjà (son tableau
 # des coefficients, ses variances, ses courbes), sans rien supposer des noms de ses termes : un
 # terme est une ligne de son tableau des coefficients, et deux modèles partagent une ligne quand
 # ils ont un terme du même nom.
@@ -43,7 +43,9 @@ etoiles_p <- function(p) ifelse(is.na(p), "", ifelse(p <= 0.001, "***", ifelse(p
 # termes du premier modèle, puis les termes des suivants qui n'y sont pas) ; une case vide quand le
 # modèle n'a pas le terme. Puis les lignes de l'ajustement : n, AIC et AICc (de l'ajustement en
 # ML), le R² (une régression linéaire), le R² marginal et conditionnel (un modèle mixte, ou un
-# modèle de mgcv::gamm), la part de la déviance expliquée (un GLM ou un GAM), l'écart-type σ de
+# modèle de mgcv::gamm), la part de la déviance expliquée (un GLM ou un GAM), les paramètres de sa
+# loi (θ de la binomiale négative, p de Tweedie, θ₁ et θ₂ du Poisson à excès de zéros, φ de la loi
+# bêta), l'écart-type σ de
 # chaque ligne de leurs tableaux des variances (chaque effet aléatoire, et la résiduelle d'un modèle
 # de nlme), φ de CAR1 et l'edf de chaque courbe. Renvoie les cases en texte (`cellules`, dans la
 # langue des messages), les p (`p`, NA sans terme), les lignes de l'ajustement
@@ -88,6 +90,18 @@ coefficients_cote_a_cote <- function(modeles, erreur = "ic") {
     v <- m$resultat$r2$deviance_expliquee
     if (is.null(m$resultat$r2$marginal) && !is.null(v)) paste0(nombre_tableau(100 * v, 1), if (fr) " %" else "%") else ""
   }))
+  # (les paramètres de la loi estimés avec le modèle, regression.R : parametre_famille ; une ligne par
+  # paramètre et par loi, « θ (binomiale négative) », « θ₁ (Poisson à excès de zéros) », « φ (bêta) »)
+  lois <- c(binomiale_negative = traduire("binomiale négative", "negative binomial"), tweedie = "Tweedie",
+            poisson_zi = traduire("Poisson à excès de zéros", "zero-inflated Poisson"), beta = traduire("bêta", "beta"))
+  symboles <- c(theta = "θ", p = "p", theta1 = "θ₁", theta2 = "θ₂", phi = "φ")
+  parametres_loi <- function(m) {
+    pl <- m$resultat$parametre_loi
+    if (!is.null(pl)) stats::setNames(pl$valeur, sprintf("%s (%s)", symboles[as.character(pl$nom)], lois[[m$famille]]))
+  }
+  for (k in unique(unlist(lapply(modeles, function(m) names(parametres_loi(m)))))) {
+    ajouter(k, chaque(function(m) { v <- parametres_loi(m); if (k %in% names(v)) trois_chiffres(v[[k]]) else "" }))
+  }
   # (l'écart-type de chaque ligne des tableaux des variances, dans l'ordre où elles viennent ; une
   # pente aléatoire, à son niveau, avec son terme : « σ site (annee) », puis sa corrélation avec
   # l'ordonnée à l'origine de son niveau ; la résiduelle, sans terme, sur la ligne de celle des autres)

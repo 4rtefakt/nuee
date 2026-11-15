@@ -211,8 +211,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   // each type's default scaling: a regression keeps the units, another analysis says its own
   const echelleType = () => (regression() ? 'none' : analyse() ? analyse().echelle || 'UV' : 'UV');
   const generalise = () => ['GLM', 'GAM'].includes(st.type);
-  const FAMILLES = ['gaussienne', 'poisson', 'binomiale_negative', 'binomiale', 'gamma', 'tweedie'];
-  const FAMILLES_LOG = ['poisson', 'binomiale_negative', 'gamma', 'tweedie'];  // (an offset needs a log link)
+  const FAMILLES = ['gaussienne', 'poisson', 'binomiale_negative', 'binomiale', 'gamma', 'tweedie', 'poisson_zi', 'beta'];
+  const FAMILLES_LOG = ['poisson', 'binomiale_negative', 'gamma', 'tweedie', 'poisson_zi'];  // (an offset needs a log link)
   const loi = () => [el('label', {}, t('loi')), el('select', { onchange: (e) => { st.famille = e.target.value; rendre(); } },
     FAMILLES.map((k) => el('option', { value: k, selected: k === st.famille }, t('famille_' + k))))]
     .concat(FAMILLES_LOG.includes(st.famille) ? [el('label', {}, t('decalage')), el('select', { title: t('decalage_aide'),

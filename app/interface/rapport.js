@@ -4,7 +4,7 @@
 import { t, langueActuelle } from './i18n.js';
 import { el, fmt, dialogue } from './ui.js';
 import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites,
-  notesMoyennes, titreMoyenne, titrePaire, libellePaire } from './panneaux.js';
+  notesMoyennes, titreMoyenne, titrePaire, libellePaire, parametresLoi } from './panneaux.js';
 import { demander } from './api.js';
 import { zip } from './zip.js';
 
@@ -196,7 +196,7 @@ function tableauRegression(m) {
   const infos = [`${t('type_' + m.type.toLowerCase())} · N = ${m.N} · ${t('nb_termes')} ${m.K} · ${t('groupes_vc')} ${m.G}${m.vc_par ? ` (${m.vc_par})` : ''}`];
   if (['GLM', 'GAM'].includes(m.type) && m.famille) {
     infos.push([`${t('loi')} : ${t('famille_' + m.famille)}`, `${t('lien')} : ${m.lien}`,
-      m.parametre_loi ? `${m.parametre_loi.nom === 'theta' ? 'θ' : 'p'} = ${fmt(m.parametre_loi.valeur, 3)}` : '',
+      ...parametresLoi(m).map(([s, v]) => `${s} = ${fmt(v, 3)}`),
       m.decalage ? `${t('decalage')} : log(${m.decalage})` : ''].filter(Boolean).join(' · '));
   }
   const stats = (q.marginal !== undefined ? [[t('r2_marginal'), q.marginal], [t('r2_conditionnel'), q.conditionnel]]

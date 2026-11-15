@@ -2408,6 +2408,11 @@ async function rendreHistorique(conteneur, ctx, p, loc) {
 
 // A regression's summary: its fit (R², AIC from the ML fit), its cross-validation, its random
 // effects and its autocorrelation, the terms left out.
+// The distribution's parameters estimated with the model (regression.R: parametre_famille), as
+// [symbol, value]: θ of the negative binomial, Tweedie's p, θ1 and θ2 of the zero-inflated Poisson,
+// the beta's precision φ.
+const SYMBOLES_LOI = { theta: 'θ', p: 'p', theta1: 'θ₁', theta2: 'θ₂', phi: 'φ' };
+export const parametresLoi = (m) => (m.parametre_loi ? [].concat(m.parametre_loi.nom).map((n, i) => [SYMBOLES_LOI[n] || n, [].concat(m.parametre_loi.valeur)[i]]) : []);
 function rendreResumeRegression(conteneur, ctx, m) {
   const q = m.qualite;
   const y = m.noms_y[0];
@@ -2418,7 +2423,7 @@ function rendreResumeRegression(conteneur, ctx, m) {
     el('div', { class: 'fiche-chiffres' }, chiffre('N', m.N, 0), chiffre(t('nb_termes'), m.K, 0),
       chiffre(t('groupes_vc'), m.vc_par ? `${m.G} (${m.vc_par})` : `${m.G}`), m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
     m.famille && ['GLM', 'GAM'].includes(m.type) ? el('div', { class: 'fiche-chiffres' }, chiffre(t('loi'), t('famille_' + m.famille)), chiffre(t('lien'), m.lien),
-      m.parametre_loi ? chiffre(m.parametre_loi.nom === 'theta' ? 'θ' : 'p', m.parametre_loi.valeur) : null,
+      ...parametresLoi(m).map(([s, v]) => chiffre(s, v)),
       m.decalage ? chiffre(t('decalage'), `log(${m.decalage})`) : null) : null,
     el('div', { class: 'fiche-chiffres' },
       mixte ? [chiffre(t('r2_marginal'), q.marginal), chiffre(t('r2_conditionnel'), q.conditionnel)]
@@ -2517,7 +2522,7 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
   const table = el('div', { class: 'bas' });
   const multiplicatif = ['log', 'logit'].includes(m.lien);
   conteneur.replaceChildren(el('p', { class: 'note' }, [t('coefficients_regression_note', { y: m.noms_y[0] }),
-    m.lien && m.lien !== 'identity' ? t(multiplicatif ? `coefficients_lien_${m.lien}` : 'coefficients_lien', { lien: m.lien }) : '',
+    m.lien && m.lien !== 'identity' ? t(m.famille === 'poisson_zi' ? 'coefficients_lien_zip' : multiplicatif ? `coefficients_lien_${m.lien}` : 'coefficients_lien', { lien: m.lien }) : '',
     ...notesTermesRetires(m)].filter(Boolean).join(' ')), graphe, table);
   const idx = termes.map((_, i) => i).filter((i) => termes[i] !== '(Intercept)');
   tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => est[i]),
@@ -3135,14 +3140,16 @@ export function notesMoyennes(r) {
     { variable: n, valeur: Number([].concat(cov.moyenne)[i].toPrecision(6)) })) : [];
   const moyennees = [].concat(r.grille.moyennees || []);
   const grille = [...valeurs, moyennees.length ? t('moyennes_grille_moyennees', { variables: liste(moyennees) }) : '',
-    r.grille.decalage ? t('moyennes_grille_effort', { effort: r.grille.decalage }) : ''].filter(Boolean);
+    r.grille.decalage ? t(r.famille === 'poisson_zi' ? 'moyennes_grille_effort_zip' : 'moyennes_grille_effort', { effort: r.grille.decalage }) : ''].filter(Boolean);
   const pentes = r.mode === 'pentes';
   const quoi = pentes ? t('moyennes_note_pentes', { x: r.pente.nom, unite: r.pente.forme || r.pente.nom, facteur: r.facteur.nom })
     : t('moyennes_note', { facteur: r.facteur.nom });
   const d = r.ddl;
   const ddl = d.methode === 'confinement' ? t('moyennes_ddl_confinement', { groupe: d.groupe, n: d.groupes - 1 })
     : d.methode === 'asymptotique' ? t('moyennes_ddl_asymptotique') : t('moyennes_ddl_residuels');
-  const echelle = r.echelle === 'reponse' ? t(r.lien === 'logit' ? 'moyennes_echelle_logit' : 'moyennes_echelle_log')
+  // (the zero-inflated Poisson: expected counts; the beta: mean proportions)
+  const echelle = r.echelle === 'reponse' ? t(r.famille === 'poisson_zi' ? 'moyennes_echelle_zip' : r.famille === 'beta' ? 'moyennes_echelle_beta'
+    : r.lien === 'logit' ? 'moyennes_echelle_logit' : 'moyennes_echelle_log')
     : r.echelle === 'lien' ? t(pentes ? 'moyennes_pentes_lien' : 'moyennes_echelle_lien_note', { lien: r.lien })
       : r.forme_y && !pentes ? t(r.log_y ? 'moyennes_y_log' : 'moyennes_y_transformee', { y: r.forme_y }) : '';
   const croisee = [].concat(r.croisee || []);
@@ -3155,7 +3162,8 @@ export function notesMoyennes(r) {
     nonPaires.length ? t('moyennes_paires_non_estimables', { liste: liste(nonPaires) }) : ''].filter(Boolean).join(' ');
 }
 // the header of the estimate column of the means table, and of the pairs table
-export const titreMoyenne = (r) => (r.mode === 'pentes' ? t('pente') : r.echelle === 'reponse' && r.lien === 'logit' ? t('moyennes_probabilite') : t('moyennes_moyenne'));
+export const titreMoyenne = (r) => (r.mode === 'pentes' ? t('pente') : r.echelle === 'reponse' && r.famille === 'beta' ? t('moyennes_proportion')
+  : r.echelle === 'reponse' && r.lien === 'logit' ? t('moyennes_probabilite') : t('moyennes_moyenne'));
 export const titrePaire = (r) => (r.echelle === 'reponse' ? t(r.lien === 'logit' ? 'rapport_cotes' : 'moyennes_rapport') : t('moyennes_difference'));
 // a pair's label: "S1 − S2", or "S1 / S2" for a ratio
 export const libellePaire = (r, i) => `${[].concat(r.paires.niveau_1)[i]} ${r.echelle === 'reponse' ? '/' : '−'} ${[].concat(r.paires.niveau_2)[i]}`;
