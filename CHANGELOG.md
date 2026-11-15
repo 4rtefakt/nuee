@@ -28,6 +28,7 @@ What changed in each version: the same list as *Help › What's new* in the appl
 - Import from KoboToolbox and ODK (File › Import from KoboToolbox or ODK…, or by opening an export): a forms export (a KoboToolbox workbook or CSV, an ODK Central zip) is recognised. Metadata columns are dropped (as chosen) and group prefixes removed; a single choice becomes a qualitative variable and a multiple choice 0/1 columns, a GPS point longitudes and latitudes that become the project’s coordinates, dates become times; a repeat group opens with its parents’ columns. The XLSForm, if given, brings the labels in the chosen language and the choices’ order. “Open as is” keeps the raw table.
 - Problem report (Help › Diagnostic information): a .zip file to attach to a message, with that information and the session’s journal, and the project if ticked. Nothing is sent. A saved project also records the versions of the R packages that computed its models.
 - Fixed: a GLM or GAM with a single random effect and no curve lost that effect’s variance: the Summary left it empty, with a standard deviation of 0, and Export to R did the same.
+- Fixed: Predict › Predict a file failed for a model whose spectral preprocessing has a Savitzky–Golay step (“the window exceeds the spectrum”): each wavelength of the file made a zone of its own.
 
 ## 0.9.9 — 2026-11-14
 
