@@ -10,9 +10,10 @@
 </div>
 
 Nuée (version {{version}}) is a desktop application to analyse field and laboratory data. Open a
-table from Excel, R, SPSS, Stata, SAS, jamovi or QGIS, pick your variables, and get the model with
-its plots, diagnostics and validation. The results go back to any of those programs, with the
-paragraph for your Methods section, or as an R script that redoes the calculation without Nuée.
+table from Excel, R, SPSS, Stata, SAS, jamovi or QGIS, or field surveys from KoboToolbox or ODK,
+pick your variables, and get the model with its plots, diagnostics and validation. The results go
+back to Excel, R, SPSS, Stata, SAS, jamovi or QGIS, with the paragraph for your Methods section, or
+as an R script that redoes the calculation without Nuée.
 
 ![Nuée's window: a PLS on spectra, its summary, its scores and its loadings drawn against the wavelength](@/images/en/accueil-fenetre.png "A PLS on near-infrared spectra (tutorial 2): the explorer on the left, the model's summary, its scores and its loadings.")
 

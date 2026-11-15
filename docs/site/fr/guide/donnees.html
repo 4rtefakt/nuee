@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Les données · Nuée</title>
-<meta name="description" content="Modifier les données, créer des variables, nettoyer, joindre un autre tableau, résumer par groupe, les dates.">
+<meta name="description" content="Les données de terrain de KoboToolbox ou d’ODK, modifier les données, créer des variables, nettoyer, joindre un autre tableau, résumer par groupe, les dates.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/site.css">
@@ -57,6 +57,7 @@
 <nav class="sommaire" aria-label="Sur cette page">
 <p>Sur cette page</p>
 <ul>
+<li><a href="#donnees-de-terrain-de-kobotoolbox-ou-d-odk">Données de terrain de KoboToolbox ou d'ODK</a></li>
 <li><a href="#modifier-les-donnees-creer-des-variables">Modifier les données, créer des variables</a></li>
 <li><a href="#nettoyer-les-donnees-chercher-et-remplacer-categories-unites">Nettoyer les données : chercher et remplacer, catégories, unités</a></li>
 <li><a href="#ajouter-des-colonnes-d-un-autre-tableau">Ajouter des colonnes d'un autre tableau</a></li>
@@ -66,6 +67,19 @@
 </ul>
 </nav>
 <div class="texte-guide">
+<section id="donnees-de-terrain-de-kobotoolbox-ou-d-odk">
+<h2>Données de terrain de KoboToolbox ou d'ODK</h2>
+<p>Les formulaires remplis sur téléphone (KoboCollect, ODK Collect, Enketo) sont exportés par leur serveur : KoboToolbox en classeur Excel (une feuille pour les envois, une par groupe répété) ou en fichier CSV (points-virgules), ODK Central en archive .zip (un CSV par table) ou en son seul CSV des envois. Fichier › Ouvrir les reconnaît à leurs colonnes (_id, _uuid, _submission_time, _index... ; SubmissionDate, KEY, meta-instanceID...), comme un fichier déposé sur la fenêtre ; Fichier › Importer depuis KoboToolbox ou ODK... demande l'import, et refuse tout autre fichier. Un dialogue dit en phrases ce que l'import fera avant de le faire, et le redit à chaque réglage changé :</p>
+<ul>
+<li><strong>la table à analyser :</strong> les envois, ou un groupe répété (une ligne par espèce observée, par plante mesurée), avec les colonnes de ses tables parentes jointes à chaque ligne, toutes cochées au départ (l'habitat et les coordonnées du site ; une répétition dans une répétition remonte les deux niveaux) ;</li>
+<li>les métadonnées retirées, listées (identifiants internes, appareil, version du formulaire, colonnes qui relient les tables...) ; on peut garder la date et l'heure d'envoi, son auteur, son identifiant, le début, la fin et le jour du relevé, et le statut de validation ;</li>
+<li>les préfixes des groupes retirés des noms (group_site/altitude, group_site-altitude : altitude) ; deux questions au même nom dans deux groupes gardent leur groupe (group_site_remarques, group_fin_remarques) ;</li>
+<li>un choix unique (select_one) devient une variable qualitative, un choix multiple (select_multiple) une colonne 0/1 par choix nommée question_code (meteo_pluie) : 1 choisi, 0 non, vide quand la question est restée sans réponse ; les colonnes 0/1 de l'export servent quand il les a, jamais en double ;</li>
+<li>un point GPS (geopoint), en texte (« lat lon alt préc ») ou en colonnes, devient gps_longitude, gps_latitude, gps_altitude et gps_precision ; le premier point de la table (ou de sa table parente, joint) devient les coordonnées du projet, en WGS 84 (voir <a href="cartes.html#cartes-et-donnees-spatiales">Cartes et données spatiales</a>) ;</li>
+<li>les dates et heures perdent leurs fractions de seconde et leur fuseau horaire (2024-05-03T08:12:45.123+02:00 devient 2024-05-03 08:12:45, l'heure du téléphone), pour que Nuée les lise comme des dates (voir <a href="#le-temps-en-dates">Le temps en dates</a>).</li>
+</ul>
+<p>Le formulaire XLSForm (le classeur aux feuilles survey et choices, téléchargé depuis KoboToolbox ou ODK Central), s'il est donné, dit le type de chaque question, les libellés des choix dans la langue choisie (label::Français (fr), label::English (en) ou label ; par défaut celle de l'interface) et leur ordre, qui devient celui des catégories ; les colonnes prennent alors les noms des questions, quels que soient les en-têtes de l'export (noms ou libellés). Sans le formulaire, les réponses restent telles que l'export les écrit (des codes, ou des libellés pour un export en libellés), les catégories dans l'ordre alphabétique, et un choix multiple sans ses colonnes 0/1 reste du texte. « Ouvrir tel quel » ouvre la table choisie sans rien y changer (la feuille, ou le CSV de l'archive). L'import est un projet comme un tableau ouvert, à enregistrer (Ctrl+S) ; le texte des Méthodes dit que les données ont été recueillies avec KoboToolbox ou ODK (et le titre du formulaire).</p>
+</section>
 <section id="modifier-les-donnees-creer-des-variables">
 <h2>Modifier les données, créer des variables</h2>
 <p>Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour annuler ; vide = valeur manquante ; pour une variable qualitative, le nom de la catégorie).</p>

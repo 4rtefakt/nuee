@@ -11,9 +11,10 @@
 
 Nuée (version {{version}}) est une application de bureau pour analyser des données de terrain et de
 laboratoire. Ouvrez un tableau venant d'Excel, de R, de SPSS, de Stata, de SAS, de jamovi ou de
-QGIS, choisissez vos variables, et obtenez le modèle avec ses graphiques, ses diagnostics et sa
-validation. Les résultats repartent vers chacun de ces logiciels, avec le paragraphe de votre
-section Méthodes, ou en script R qui refait le calcul sans Nuée.
+QGIS, ou les relevés de terrain de KoboToolbox ou d'ODK, choisissez vos variables, et obtenez le
+modèle avec ses graphiques, ses diagnostics et sa validation. Les résultats repartent vers Excel,
+R, SPSS, Stata, SAS, jamovi ou QGIS, avec le paragraphe de votre section Méthodes, ou en script R
+qui refait le calcul sans Nuée.
 
 ![La fenêtre de Nuée : une PLS sur des spectres, son résumé, ses scores et ses loadings tracés en fonction de la longueur d'onde](@/images/fr/accueil-fenetre.png "Une PLS sur des spectres proche infrarouge (tutoriel 2) : l'explorateur à gauche, le résumé du modèle, ses scores et ses loadings.")
 
