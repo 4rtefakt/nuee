@@ -2016,6 +2016,15 @@ async function principal() {
       const classes = await api('ajuster', { ...def, nom: 'Distance 4', options: { ...options, intervalles: [0, 15, 30, 50, 75, 100] } });
       verifier([].concat(classes.intervalles).join() === '0,15,30,50,75,100' && classes.adequation.cvm === null && classes.adequation.qq === null
         && classes.histogramme.compte.length === 5 && classes.troncature.w === 100, `distances par intervalles : ${classes.chiffres}`);
+      // des covariables de la fonction de détection (les variables Z : options.z) : la strate, qualitative, et la taille des groupes
+      const cov = await api('ajuster', { ...def, nom: 'Distance 5', options: { ...options, taille: v.taille, z: [v.strate, v.taille] } });
+      const niveaux = [].concat(cov.courbes_niveaux);
+      verifier(cov.formule === 'strate + taille' && cov.p_moyenne === true && cov.modele_detection === 'hn ~ strate + taille' && [].concat(cov.candidats.covariables).join('|') === '|strate + taille'
+        && [].concat(cov.termes_covariables).join() === 'strate(marais),taille' && [].concat(cov.covariables.reference)[0] === 'bocage' && niveaux.length === 1
+        && [].concat(niveaux[0].niveaux).join() === 'bocage,marais' && niveaux[0].g.length === 2 && niveaux[0].g[0].length === 101 && [].concat(cov.observations.p).filter((x) => x !== null).length === cov.n
+        && [].concat(cov.reglages.options.z).length === 2, `covariables : ${cov.chiffres}`);
+      const sc = await api('script_r', { modele: cov.id, chemin: path.join(dossier, 'distance_covariables.R'), version: 'essai', langue: 'en' });
+      verifier(fs.existsSync(sc.script) && !sc.ecart && /covariate_matrix\(covariates\)/.test(fs.readFileSync(sc.script, 'utf8')), `script à covariables : ${sc.ecart || 'sans écart'}`);
       const re = await api('reajuster', { modele: dm.id, exclues: [1] });
       verifier(re.type === 'DISTANCE' && re.N === k - 1, `réajusté : N = ${re.N}`);
       const mt = await api('methodes', { modele: dm.id, langue: 'en' });

@@ -957,7 +957,7 @@ export const TEXTES_CHOIX = {
     qa_pourquoi_indices: 'Un indice par relevé (richesse, Shannon, Simpson, Pielou), en nouvelle variable, à comparer ensuite entre groupes ou à modéliser.',
     qa_conditions_indices: 'Des colonnes d’espèces, des nombres positifs ou nuls ; la richesse dépend de l’effort : voir la raréfaction.',
     qa_pourquoi_distance: 'On ne voit pas tous les animaux, et moins ceux qui sont loin : la fonction de détection, ajustée aux distances, donne la probabilité de détection, puis la densité et l’effectif de chaque strate (Buckland et al. 2001), comme le paquet Distance.',
-    qa_conditions_distance: 'Une ligne par détection, sa distance en Y, et chaque transect sans détection gardé, sa distance vide ; tous les animaux sur la ligne ou le point vus ; une soixantaine de détections au moins.',
+    qa_conditions_distance: 'Une ligne par détection, sa distance en Y, et chaque transect sans détection gardé, sa distance vide ; tous les animaux sur la ligne ou le point vus ; une soixantaine de détections au moins. Ce qui change la détection (l’observateur, le vent, la taille des groupes) peut en être une covariable (Nouveau modèle › Covariables).',
 
     qa_note_site: 'Les observations d’un même site se ressemblent : l’effet aléatoire par site en tient compte, et la validation croisée prédit chaque site sans lui.',
     qa_note_vc_site: 'La validation croisée par site juge le modèle sur des sites qu’il n’a jamais vus.',
@@ -1136,7 +1136,7 @@ export const TEXTES_CHOIX = {
     qa_pourquoi_indices: 'One index per survey (richness, Shannon, Simpson, Pielou), as a new variable, to compare between groups or model afterwards.',
     qa_conditions_indices: 'Species columns, numbers zero or more; richness depends on the effort: see rarefaction.',
     qa_pourquoi_distance: 'Not every animal is seen, and fewer far away: the detection function, fitted to the distances, gives the probability of detection, then the density and abundance of each stratum (Buckland et al. 2001), as the Distance package.',
-    qa_conditions_distance: 'One row per detection, its distance as Y, and each transect without detection kept, its distance empty; every animal on the line or point seen; about sixty detections at least.',
+    qa_conditions_distance: 'One row per detection, its distance as Y, and each transect without detection kept, its distance empty; every animal on the line or point seen; about sixty detections at least. What changes detection (the observer, the wind, the group size) can be a covariate of it (New model › Covariates).',
 
     qa_note_site: 'Observations of the same site resemble each other: the random effect by site accounts for it, and cross-validation predicts each site without it.',
     qa_note_vc_site: 'Cross-validation by site judges the model on sites it has never seen.',

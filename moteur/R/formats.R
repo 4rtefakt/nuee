@@ -996,7 +996,7 @@ tableau_projet <- function(projet) {
 # son nom : c'est celui de l'utilisateur. Le reste (AIC, R2, VIP, p…) est le même dans les deux.
 NOMS_TABLES_EN <- c(
   resume = "summary", composantes = "components", variables_y = "y_variables", qualite = "quality",
-  effets_aleatoires = "random_effects", courbes = "curves", regles = "rules", elagage = "pruning",
+  effets_aleatoires = "random_effects", courbes = "curves", regles = "rules", elagage = "pruning", covariables = "covariates",
   classement = "classification", classement_vc = "classification_cv", classement_oob = "classification_oob",
   stabilite = "stability", dependance = "partial_dependence", erreur_oob = "oob_error", cote_a_cote = "side_by_side",
   coefficients_std = "standardised_coefficients", variables_ajustees = "fitted_variables",
