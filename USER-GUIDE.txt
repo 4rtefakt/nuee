@@ -311,8 +311,10 @@ Export to R (script, R Markdown, Quarto)
 ----------------------------------------
 File › Export to R: a file that refits the model without Nuée, with R alone, to send to a
 colleague or attach to a paper. The calculation is written for that model alone, in plain R
-with no package (a regression: lm, or nlme and mgcv, which come with R), commented in the
-export's language, in four parts:
+with no package (a regression: lm, or nlme and mgcv, which come with R; TRIM and boosted trees,
+with rpart: the functions of Nuée's engine, copied into the script; a random forest, the one
+exception: the ranger package, which Nuée installs with itself), commented in the export's
+language, in four parts:
   1. the functions: the NIPALS algorithm, the cross-validation, and only what this model
      uses (missing values, spectral preprocessing, OPLS...);
   2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
@@ -832,8 +834,10 @@ the spatial structure the terms don't explain: check with Plots › Spatial auto
 model's residuals, and compare the models by AIC. Observations without coordinates are left out
 of the model. Its edf and test are in the Summary's curves table, and its value at each
 observation is a column of the model's results that the map can show. The R formula writes it
-s(x, y), s(x, y, k = 40) or s(lat, lon, bs = "sos"). Export to R doesn't redo it yet: such a
-model is refused there.
+s(x, y), s(x, y, k = 40) or s(lat, lon, bs = "sos"). Export to R redoes it: the script puts the
+coordinates in the columns sx and sy of the model's table and the term in the formula (with its
+k, thin plate or on the sphere), its row in the curves table and a map of its value at each
+observation.
 Model conditions (a regression's Summary): pointers in words, each ✓ or ⚠ with what to do: the
 residuals' distribution (Shapiro–Wilk, on the quantile residuals for counts, presence-absence and
 positive values), a spread of the residuals that changes with the fitted values, influential
@@ -1371,8 +1375,9 @@ totals (observed, imputed, model); Slopes, parameters and tests (the Wald tests 
 changes in slope, the deviations from the linear trend and the covariates; model 3 as a line and
 its deviations; the stepwise steps); Counts by site (a site's counts and the model's, or every
 count against its expected value). The results are those of the rtrim package. Methods text
-with its references, Export and report as for the other models; neither prediction nor Export
-to R.
+with its references, Export and report as for the other models, and Export to R: a script or
+report that redoes the model with R alone, TRIM's functions of Nuée's engine copied into it (the
+same indices, totals, slopes and tests as Nuée). No prediction.
 
 Random forests and boosted trees
 --------------------------------
@@ -1415,7 +1420,13 @@ curve) for a 0/1 response. Test set and Predict.
 
 For both: Methods text with its references, Export, PDF or Word report. Compare models shows
 the Q2 and RMSEcv of a regression forest, or of boosted trees of a measurement, beside the other
-models. No export to R yet.
+models. Export to R: boosted trees with R and rpart alone (the boosting of Nuée's engine copied
+into the script: with the same seed, the same draws and the same trees, which are gbm's); a
+random forest with R and the ranger package, the one exception to "no package": Nuée depends on
+it and installs it with itself (elsewhere, install.packages("ranger")), and the script loads it
+with the same seed, one thread and the same settings, so its forest is Nuée's, tree for tree,
+with the same version of ranger. The test set and the partial dependence, when it was computed,
+are in it too.
 
 Adding columns from another table
 ---------------------------------
