@@ -1030,8 +1030,8 @@ texte_methodes_trim <- function(projet, d, m, langue = "fr", version = "") {
   cite("bogaart", "r", "nuee")
   annee_r <- R.version$year
   annee_nuee <- format(Sys.Date(), "%Y")
-  logiciel <- sprintf(tx("Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s), d'après la méthode publiée de TRIM (Pannekoek et al., 2018) ; ils donnent les résultats du paquet rtrim (Bogaart et al., 2016).",
-                         "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s), from TRIM's published method (Pannekoek et al., 2018); they give the results of the rtrim package (Bogaart et al., 2016)."),
+  logiciel <- sprintf(tx("Les calculs ont été faits avec Nuée%s (Boutin, %s) et R %s (R Core Team, %s), d'après la méthode publiée de TRIM (Pannekoek et al., 2018) ; ils donnent les résultats du paquet rtrim (Bogaart et al., 2016).",
+                         "Computations were done with Nuée%s (Boutin, %s) and R %s (R Core Team, %s), from TRIM's published method (Pannekoek et al., 2018); they give the results of the rtrim package (Bogaart et al., 2016)."),
                       if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r)
   references <- vapply(cites, function(c) switch(c,
     r = sprintf(REFERENCES$r, annee_r),

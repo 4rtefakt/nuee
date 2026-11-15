@@ -1667,8 +1667,8 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
   cites <- union(cites, c("r", "nuee"))
   annee_r <- R.version$year
   annee_nuee <- format(Sys.Date(), "%Y")
-  logiciel <- sprintf(tx("Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s), d'après la méthode publiée (Buckland et al., 2001) et les fonctions ds() et dht2() du paquet Distance (Miller et al., 2019).",
-                         "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s), from the published method (Buckland et al., 2001) and the ds() and dht2() functions of the Distance package (Miller et al., 2019)."),
+  logiciel <- sprintf(tx("Les calculs ont été faits avec Nuée%s (Boutin, %s) et R %s (R Core Team, %s), d'après la méthode publiée (Buckland et al., 2001) et les fonctions ds() et dht2() du paquet Distance (Miller et al., 2019).",
+                         "Computations were done with Nuée%s (Boutin, %s) and R %s (R Core Team, %s), from the published method (Buckland et al., 2001) and the ds() and dht2() functions of the Distance package (Miller et al., 2019)."),
                       if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r)
   references <- vapply(cites, function(c) switch(c,
     r = sprintf(REFERENCES$r, annee_r),

@@ -1160,8 +1160,8 @@ texte_methodes_ordination <- function(projet, d, m, langue = "fr", version = "")
   annee_r <- R.version$year
   annee_nuee <- format(Sys.Date(), "%Y")
   cite("oksanen", "r", "nuee")
-  logiciel <- sprintf(tx("Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s), comme le paquet vegan les fait (Oksanen et al., 2025).",
-                         "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s), as the vegan package does them (Oksanen et al., 2025)."),
+  logiciel <- sprintf(tx("Les calculs ont été faits avec Nuée%s (Boutin, %s) et R %s (R Core Team, %s), comme le paquet vegan les fait (Oksanen et al., 2025).",
+                         "Computations were done with Nuée%s (Boutin, %s) and R %s (R Core Team, %s), as the vegan package does them (Oksanen et al., 2025)."),
                       if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r)
   references <- vapply(cites, function(c) switch(c,
     r = sprintf(REFERENCES$r, annee_r),

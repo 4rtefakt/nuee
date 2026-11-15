@@ -1,7 +1,8 @@
-<!-- description: Installer Nuée sous Windows, Debian, Ubuntu et les autres distributions Linux. -->
+<!-- description: Installer Nuée sous Windows, macOS, Debian, Ubuntu et les autres distributions Linux. -->
 # Installation
 
-Nuée {{version}} fonctionne sous Windows 10 et 11 (64 bits) et sous Linux. Les fichiers sont sur la
+Nuée {{version}} fonctionne sous Windows 10 et 11 (64 bits), sous macOS 14 ou plus récent (Apple
+silicon) et 13 ou plus récent (Intel), et sous Linux. Les fichiers sont sur la
 [page de la version {{version}}]({{telechargement:publication}}) de GitHub ; les versions
 précédentes sur la page des [publications]({{telechargement:toutes}}).
 
@@ -34,6 +35,23 @@ Deploy (commandes, règle de détection), une stratégie qui coupe la recherche 
 tous, ce que Nuée écrit où et ce qu'il envoie sur le réseau : voir
 [le guide de déploiement](https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md) (en
 anglais).
+
+## macOS
+
+1. Téléchargez [{{fichier:macarm64}}]({{telechargement:macarm64}}) pour un Mac Apple silicon
+   (macOS 14 ou plus récent), ou [{{fichier:macx64}}]({{telechargement:macx64}}) pour un Mac
+   Intel (macOS 13 ou plus récent).
+2. Ouvrez-le et faites glisser Nuée dans *Applications*.
+3. L'application n'est pas signée avec un identifiant de développeur Apple : la première fois,
+   macOS dit qu'il n'a pas pu la vérifier. Cliquez sur *OK*, puis sur *Ouvrir quand même* dans
+   *Réglages Système › Confidentialité et sécurité*, et confirmez. Nuée s'ouvre ensuite comme
+   toute autre application.
+
+R est inclus, comme sous Windows : il n'y a rien d'autre à installer, et un R déjà présent sur le
+Mac n'est ni utilisé ni modifié. Les réglages sont dans `~/Library/Application Support/Nuee`. Au
+démarrage, Nuée demande à GitHub s'il existe une nouvelle version ; un clic dans la barre d'état
+ouvre sa page, dont le `.dmg` remplace l'application. Chaque changement de Nuée est vérifié sur
+des Mac Apple silicon et Intel, depuis le `.dmg`, sur un Mac sans R.
 
 ## Linux
 

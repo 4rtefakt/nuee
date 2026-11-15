@@ -131,8 +131,8 @@ references_classement <- function(cites, paquet, fr, version) {
   desc <- if (!is.null(paquet)) utils::packageDescription(paquet)
   annee_paquet <- if (identical(paquet, "MASS")) "2002" else if (identical(paquet, "ranger")) "2017" else if (!is.null(paquet)) substr(desc$Date %||% desc$Packaged %||% annee_r, 1, 4)
   auteurs <- if (!is.null(paquet)) switch(paquet, rpart = "Therneau & Atkinson", MASS = "Venables & Ripley", cluster = "Maechler et al.", ranger = "Wright & Ziegler")
-  phrase <- sprintf(if (fr) "Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s)%s."
-                    else "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s)%s.",
+  phrase <- sprintf(if (fr) "Les calculs ont été faits avec Nuée%s (Boutin, %s) et R %s (R Core Team, %s)%s."
+                    else "Computations were done with Nuée%s (Boutin, %s) and R %s (R Core Team, %s)%s.",
                     if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r,
                     if (is.null(paquet)) "" else sprintf(if (fr) ", paquet %s %s (%s, %s)" else ", package %s %s (%s, %s)", paquet, desc$Version, auteurs, annee_paquet))
   cites <- union(cites, c("r", "nuee"))

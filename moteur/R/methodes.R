@@ -15,7 +15,7 @@ REFERENCES <- list(
   msc = "Geladi, P., MacDougall, D., & Martens, H. (1985). Linearization and scatter-correction for near-infrared reflectance spectra of meat. Applied Spectroscopy, 39(3), 491–500. https://doi.org/10.1366/0003702854248656",
   sg = "Savitzky, A., & Golay, M. J. E. (1964). Smoothing and differentiation of data by simplified least squares procedures. Analytical Chemistry, 36(8), 1627–1639. https://doi.org/10.1021/ac60214a047",
   r = "R Core Team (%s). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/",
-  nuee = "4rtefakt (%s). Nuée%s [Computer software]. https://github.com/4rtefakt/nuee")
+  nuee = "Boutin, C. (%s). Nuée%s [Computer software]. https://github.com/4rtefakt/nuee")
 
 # (pour tous les types : d'où viennent les variables lues dans des rasters, à la fin du premier
 # paragraphe, celui des données ; raster.R ; et, au début, l'outil de terrain qui a recueilli les
@@ -266,9 +266,9 @@ texte_methodes_type <- function(projet, d, m, langue, version) {
   version_r <- paste(R.version$major, R.version$minor, sep = ".")
   annee_nuee <- format(Sys.Date(), "%Y")
   cites <- union(cites, c("r", "nuee"))
-  p5 <- if (fr) sprintf("Les calculs ont été faits avec Nuée%s (4rtefakt, %s), dont le moteur est écrit en R (R %s ; R Core Team, %s).",
+  p5 <- if (fr) sprintf("Les calculs ont été faits avec Nuée%s (Boutin, %s), dont le moteur est écrit en R (R %s ; R Core Team, %s).",
                         if (nzchar(version)) paste0(" ", version) else "", annee_nuee, version_r, annee_r)
-        else sprintf("Computations were done with Nuée%s (4rtefakt, %s), whose engine is written in R (R %s; R Core Team, %s).",
+        else sprintf("Computations were done with Nuée%s (Boutin, %s), whose engine is written in R (R %s; R Core Team, %s).",
                      if (nzchar(version)) paste0(" ", version) else "", annee_nuee, version_r, annee_r)
 
   references <- vapply(cites, function(k) switch(k, r = sprintf(REFERENCES$r, annee_r),

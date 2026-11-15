@@ -1,10 +1,11 @@
-<!-- description: Nuée, a desktop application for ecologists' analyses: PCA, PLS, community ecology, mixed models, monitoring and maps, computed in R, on Windows and Linux. -->
+<!-- description: Nuée, a desktop application for ecologists' analyses: PCA, PLS, community ecology, mixed models, monitoring and maps, computed in R, on Windows, macOS and Linux. -->
 # Nuée
 
-<p class="chapeau">PCA, PLS, community ecology, linear, generalized and mixed models, population monitoring and maps, on Windows and Linux, computed in R.</p>
+<p class="chapeau">PCA, PLS, community ecology, linear, generalized and mixed models, population monitoring and maps, on Windows, macOS and Linux, computed in R.</p>
 
 <div class="boutons">
 <a class="bouton" href="{{telechargement:windows}}">Download for Windows</a>
+<a class="bouton second" href="page:installation#macos">macOS</a>
 <a class="bouton second" href="page:installation#linux">Linux</a>
 <a class="bouton second" href="page:tutoriels">Tutorials</a>
 </div>
@@ -58,6 +59,7 @@ IGN's servers when you choose a background map.
 Nuée {{version}}:
 
 - **Windows 10 and 11**: [{{fichier:windows}}]({{telechargement:windows}}), R included;
+- **macOS**: [{{fichier:macarm64}}]({{telechargement:macarm64}}) for Apple silicon (macOS 14 or later), [{{fichier:macx64}}]({{telechargement:macx64}}) for Intel (macOS 13 or later), R included;
 - **Debian, Ubuntu and their derivatives**: [{{fichier:deb}}]({{telechargement:deb}});
 - **other Linux distributions**: [{{fichier:appimage}}]({{telechargement:appimage}}) or [{{fichier:targz}}]({{telechargement:targz}}).
 

@@ -382,14 +382,14 @@ function rendreMarkdown(texte, langue, chemin) {
   const remplace = texte
     .replace(/\{\{version\}\}/g, VERSION)
     .replace(/\{\{telechargement:(\w+)\}\}/g, (_, quoi) => {
-      const fichiers = { windows: `Nuee-Setup-${VERSION}.exe`, deb: `Nuee-${VERSION}-amd64.deb`, appimage: `Nuee-${VERSION}-x86_64.AppImage`, targz: `Nuee-${VERSION}-x64.tar.gz` };
+      const fichiers = { windows: `Nuee-Setup-${VERSION}.exe`, macarm64: `Nuee-${VERSION}-arm64.dmg`, macx64: `Nuee-${VERSION}-x64.dmg`, deb: `Nuee-${VERSION}-amd64.deb`, appimage: `Nuee-${VERSION}-x86_64.AppImage`, targz: `Nuee-${VERSION}-x64.tar.gz` };
       if (quoi === 'publication') return `${DEPOT}/releases/tag/v${VERSION}`;
       if (quoi === 'toutes') return `${DEPOT}/releases`;
       if (!fichiers[quoi]) throw new Error(`unknown download: ${quoi}`);
       return `${PUBLICATION}/${fichiers[quoi]}`;
     })
     .replace(/\{\{fichier:(\w+)\}\}/g, (_, quoi) => {
-      const fichiers = { windows: `Nuee-Setup-${VERSION}.exe`, deb: `Nuee-${VERSION}-amd64.deb`, appimage: `Nuee-${VERSION}-x86_64.AppImage`, targz: `Nuee-${VERSION}-x64.tar.gz` };
+      const fichiers = { windows: `Nuee-Setup-${VERSION}.exe`, macarm64: `Nuee-${VERSION}-arm64.dmg`, macx64: `Nuee-${VERSION}-x64.dmg`, deb: `Nuee-${VERSION}-amd64.deb`, appimage: `Nuee-${VERSION}-x86_64.AppImage`, targz: `Nuee-${VERSION}-x64.tar.gz` };
       return fichiers[quoi];
     });
   let h = md.render(remplace);

@@ -1,10 +1,11 @@
-<!-- description: Nuée, une application de bureau pour les analyses des écologues : ACP, PLS, écologie des communautés, modèles mixtes, suivis et cartes, calculés en R, sous Windows et Linux. -->
+<!-- description: Nuée, une application de bureau pour les analyses des écologues : ACP, PLS, écologie des communautés, modèles mixtes, suivis et cartes, calculés en R, sous Windows, macOS et Linux. -->
 # Nuée
 
-<p class="chapeau">ACP, PLS, écologie des communautés, modèles linéaires, généralisés et mixtes, suivis de populations et cartes, sous Windows et Linux, calculés en R.</p>
+<p class="chapeau">ACP, PLS, écologie des communautés, modèles linéaires, généralisés et mixtes, suivis de populations et cartes, sous Windows, macOS et Linux, calculés en R.</p>
 
 <div class="boutons">
 <a class="bouton" href="{{telechargement:windows}}">Télécharger pour Windows</a>
+<a class="bouton second" href="page:installation#macos">macOS</a>
 <a class="bouton second" href="page:installation#linux">Linux</a>
 <a class="bouton second" href="page:tutoriels">Tutoriels</a>
 </div>
@@ -60,6 +61,7 @@ zone affichée aux serveurs d'OpenStreetMap ou de l'IGN quand vous choisissez un
 Nuée {{version}} :
 
 - **Windows 10 et 11** : [{{fichier:windows}}]({{telechargement:windows}}), R inclus ;
+- **macOS** : [{{fichier:macarm64}}]({{telechargement:macarm64}}) pour Apple silicon (macOS 14 ou plus récent), [{{fichier:macx64}}]({{telechargement:macx64}}) pour Intel (macOS 13 ou plus récent), R inclus ;
 - **Debian, Ubuntu et dérivées** : [{{fichier:deb}}]({{telechargement:deb}}) ;
 - **autres distributions Linux** : [{{fichier:appimage}}]({{telechargement:appimage}}) ou [{{fichier:targz}}]({{telechargement:targz}}).
 

@@ -2262,7 +2262,7 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   mgcv <- if (generalise) utils::packageDescription("mgcv")
   annee_mgcv <- if (generalise) substr(mgcv$Date %||% annee_r, 1, 4)
   cites <- union(cites, c("r", "nuee", if (mixte || gamm) "nlme", if (generalise) "mgcv"))
-  p5 <- sprintf(if (fr) "Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s)%s." else "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s)%s.",
+  p5 <- sprintf(if (fr) "Les calculs ont été faits avec Nuée%s (Boutin, %s) et R %s (R Core Team, %s)%s." else "Computations were done with Nuée%s (Boutin, %s) and R %s (R Core Team, %s)%s.",
                 if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r,
                 if (gamm) sprintf(if (fr) ", paquets mgcv %s (Wood, %s) et nlme %s (Pinheiro et al., %s)" else ", packages mgcv %s (Wood, %s) and nlme %s (Pinheiro et al., %s)",
                                   mgcv$Version, annee_mgcv, nlme$Version, annee_nlme)

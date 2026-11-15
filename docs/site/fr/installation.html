@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Installation · Nuée</title>
-<meta name="description" content="Installer Nuée sous Windows, Debian, Ubuntu et les autres distributions Linux.">
+<meta name="description" content="Installer Nuée sous Windows, macOS, Debian, Ubuntu et les autres distributions Linux.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="../assets/nuee.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../assets/site.css">
@@ -32,9 +32,10 @@
 </header>
 <div class="corps">
 <main id="contenu">
-<!-- description: Installer Nuée sous Windows, Debian, Ubuntu et les autres distributions Linux. -->
+<!-- description: Installer Nuée sous Windows, macOS, Debian, Ubuntu et les autres distributions Linux. -->
 <h1>Installation</h1>
-<p>Nuée 1.0.0 fonctionne sous Windows 10 et 11 (64 bits) et sous Linux. Les fichiers sont sur la
+<p>Nuée 1.0.0 fonctionne sous Windows 10 et 11 (64 bits), sous macOS 14 ou plus récent (Apple
+silicon) et 13 ou plus récent (Intel), et sous Linux. Les fichiers sont sur la
 <a href="https://github.com/4rtefakt/nuee/releases/tag/v1.0.0">page de la version 1.0.0</a> de GitHub ; les versions
 précédentes sur la page des <a href="https://github.com/4rtefakt/nuee/releases">publications</a>.</p>
 <h2 id="windows">Windows</h2>
@@ -62,6 +63,22 @@ Deploy (commandes, règle de détection), une stratégie qui coupe la recherche 
 tous, ce que Nuée écrit où et ce qu'il envoie sur le réseau : voir
 <a href="https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md">le guide de déploiement</a> (en
 anglais).</p>
+<h2 id="macos">macOS</h2>
+<ol>
+<li>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-arm64.dmg">Nuee-1.0.0-arm64.dmg</a> pour un Mac Apple silicon
+(macOS 14 ou plus récent), ou <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.dmg">Nuee-1.0.0-x64.dmg</a> pour un Mac
+Intel (macOS 13 ou plus récent).</li>
+<li>Ouvrez-le et faites glisser Nuée dans <em>Applications</em>.</li>
+<li>L'application n'est pas signée avec un identifiant de développeur Apple : la première fois,
+macOS dit qu'il n'a pas pu la vérifier. Cliquez sur <em>OK</em>, puis sur <em>Ouvrir quand même</em> dans
+<em>Réglages Système › Confidentialité et sécurité</em>, et confirmez. Nuée s'ouvre ensuite comme
+toute autre application.</li>
+</ol>
+<p>R est inclus, comme sous Windows : il n'y a rien d'autre à installer, et un R déjà présent sur le
+Mac n'est ni utilisé ni modifié. Les réglages sont dans <code>~/Library/Application Support/Nuee</code>. Au
+démarrage, Nuée demande à GitHub s'il existe une nouvelle version ; un clic dans la barre d'état
+ouvre sa page, dont le <code>.dmg</code> remplace l'application. Chaque changement de Nuée est vérifié sur
+des Mac Apple silicon et Intel, depuis le <code>.dmg</code>, sur un Mac sans R.</p>
 <h2 id="linux">Linux</h2>
 <p>Sous Linux, Nuée utilise le R installé sur l'ordinateur (une version de R dépend des
 bibliothèques de sa distribution : elle ne peut pas être emportée comme sous Windows).</p>

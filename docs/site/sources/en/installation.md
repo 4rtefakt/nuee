@@ -1,7 +1,8 @@
-<!-- description: Installing Nuée on Windows, Debian, Ubuntu and other Linux distributions. -->
+<!-- description: Installing Nuée on Windows, macOS, Debian, Ubuntu and other Linux distributions. -->
 # Install
 
-Nuée {{version}} runs on Windows 10 and 11 (64-bit) and on Linux. The files are on GitHub's
+Nuée {{version}} runs on Windows 10 and 11 (64-bit), on macOS 14 or later (Apple silicon) and 13
+or later (Intel), and on Linux. The files are on GitHub's
 [page of version {{version}}]({{telechargement:publication}}); earlier versions on the
 [Releases]({{telechargement:toutes}}) page.
 
@@ -32,6 +33,22 @@ For IT departments: silent installation for one user or the whole computer, the 
 Intune, Configuration Manager, Group Policy and PDQ Deploy (commands, detection rule), a policy
 that turns the update check off for everyone, what Nuée writes where and what it sends over the
 network: see [the deployment guide](https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md).
+
+## macOS
+
+1. Download [{{fichier:macarm64}}]({{telechargement:macarm64}}) for a Mac with Apple silicon
+   (macOS 14 or later), or [{{fichier:macx64}}]({{telechargement:macx64}}) for an Intel Mac
+   (macOS 13 or later).
+2. Open it and drag Nuée into *Applications*.
+3. The application isn't signed with an Apple Developer ID, so the first time macOS says it
+   couldn't check it: click *Done*, then *Open Anyway* in *System Settings › Privacy & Security*,
+   and confirm. Nuée then opens as any other application.
+
+R is included, as on Windows: there is nothing else to install, and an R already on the Mac is
+neither used nor changed. Settings are kept in `~/Library/Application Support/Nuee`. At start-up,
+Nuée asks GitHub whether a newer version exists; a click in the status bar opens its page, whose
+`.dmg` replaces the application. Every change to Nuée is checked on Apple silicon and Intel Macs,
+from the `.dmg`, on a Mac without R.
 
 ## Linux
 

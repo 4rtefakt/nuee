@@ -261,8 +261,8 @@ texte_methodes_indval <- function(projet, d, m, langue = "fr", version = "") {
             as.integer(o$permutations), groupes, as.integer(o$graine), sum(!is.na(m$p)),
             if (identical(o$correction, "holm")) tx("de Holm", "Holm") else tx("de Benjamini et Hochberg", "Benjamini and Hochberg"), r[["brutes"]], r[["corrigees"]])
   } else tx("Aucun test par permutation n'a été demandé.", "No permutation test was asked for.")
-  p4 <- sprintf(tx("Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s), comme le paquet indicspecies les fait (fonction multipatt ; De Cáceres et Legendre, 2009).",
-                   "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s), as the indicspecies package does them (function multipatt; De Cáceres and Legendre, 2009)."),
+  p4 <- sprintf(tx("Les calculs ont été faits avec Nuée%s (Boutin, %s) et R %s (R Core Team, %s), comme le paquet indicspecies les fait (fonction multipatt ; De Cáceres et Legendre, 2009).",
+                   "Computations were done with Nuée%s (Boutin, %s) and R %s (R Core Team, %s), as the indicspecies package does them (function multipatt; De Cáceres and Legendre, 2009)."),
                 if (nzchar(version)) paste0(" ", version) else "", format(Sys.Date(), "%Y"), paste(R.version$major, R.version$minor, sep = "."), R.version$year)
   references <- c(vapply(unique(cites), function(k) REFERENCES_INDICATRICES[[k]], ""),
                   sprintf(REFERENCES$r, R.version$year), sprintf(REFERENCES$nuee, format(Sys.Date(), "%Y"), if (nzchar(version)) sprintf(" (version %s)", version) else ""))

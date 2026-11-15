@@ -1344,8 +1344,8 @@ texte_methodes_communaute <- function(projet, d, m, langue = "fr", version = "")
   annee_r <- R.version$year
   annee_nuee <- format(Sys.Date(), "%Y")
   cite("oksanen", "r", "nuee")
-  logiciel <- sprintf(tx("Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s), comme le paquet vegan les fait (Oksanen et al., 2025)%s.",
-                         "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s), as the vegan package does them (Oksanen et al., 2025)%s."),
+  logiciel <- sprintf(tx("Les calculs ont été faits avec Nuée%s (Boutin, %s) et R %s (R Core Team, %s), comme le paquet vegan les fait (Oksanen et al., 2025)%s.",
+                         "Computations were done with Nuée%s (Boutin, %s) and R %s (R Core Team, %s), as the vegan package does them (Oksanen et al., 2025)%s."),
                       if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r,
                       if (m$type == "NMDS") sprintf(tx(", avec le paquet MASS %s (Venables et Ripley, 2002)", ", with the MASS package %s (Venables & Ripley, 2002)"), utils::packageDescription("MASS")$Version) else "")
   references <- vapply(cites, function(c) switch(c,
