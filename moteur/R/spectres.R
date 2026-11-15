@@ -197,7 +197,7 @@ savitzky_golay <- function(X, fenetre = 11, degre = 2, derivee = 0) {
 spectres_modele <- function(projet, definition) {
   quant <- which(vapply(definition$x, function(t) length(t$variables) == 1 && categorie(t) == 0, TRUE))
   obs <- definition$observations
-  bruts <- vapply(definition$x[quant], function(t) transformer(valeurs_simples(projet, t, obs), t$transform), numeric(length(obs)))
+  bruts <- valeurs_bloc(projet, definition$x[quant], obs)  # (pretraitement.R : chaque valeur lue et transformée)
   bruts <- matrix(bruts, length(obs), length(quant), dimnames = list(as.character(obs), vapply(definition$x[quant], function(t) as.character(t$name), "")))
   pretraites <- if (length(definition$spectres)) pretraiter_spectres(bruts, definition$spectres, positions = positions_termes(projet, definition$x[quant]))$X else bruts
   list(bruts = bruts, pretraites = pretraites, variables = vapply(definition$x[quant], function(t) as.numeric(t$variables[1]), 0))

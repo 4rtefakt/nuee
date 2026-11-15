@@ -210,7 +210,33 @@ banc_sans_ajustement <- function(m) {
 # ---------------------------------------------------------------- les cas
 
 banc_cas <- list()
-banc_ajouter <- function(nom, preparer, executer) banc_cas[[length(banc_cas) + 1]] <<- list(nom = nom, preparer = preparer, executer = executer)
+# (comparer : function(avant, apres), ce que les sorties de deux versions ont de différent, pour un
+# cas dont la réponse a changé de forme ; sinon banc_ecart sur chacune)
+banc_ajouter <- function(nom, preparer, executer, comparer = NULL) {
+  banc_cas[[length(banc_cas) + 1]] <<- list(nom = nom, preparer = preparer, executer = executer, comparer = comparer)
+}
+
+# Les vues d'un modèle d'une version à l'autre : le modèle et le biplot à l'identique ; les spectres
+# prétraités, arrondis à 6 chiffres significatifs depuis la 1.0, égaux à ceux d'avant arrondis de
+# même, et leurs noms, variables et observations identiques ; les colonnes de données envoyées,
+# identiques à celles d'avant, les autres restées vides.
+banc_comparer_vues <- function(avant, apres) {
+  champs <- c("modele", "noms", "variables", "uid")
+  sa <- avant$spectres$r
+  sp <- apres$spectres$r
+  spectres <- if (identical(sa, sp)) "identique"
+    else if (identical(sa[champs], sp[champs]) && identical(signif(sa$pretraites, 6), sp$pretraites) && (is.null(sp$bruts) || identical(signif(sa$bruts, 6), sp$bruts)))
+      "arrondis à 6 chiffres (voulu), sinon identiques"
+    else "DIFFÉRENT"
+  da <- avant$donnees$r
+  dp <- apres$donnees$r
+  envoyees <- which(!vapply(dp$valeurs, is.null, TRUE))
+  donnees <- if (identical(da, dp)) "identique"
+    else if (identical(da[setdiff(names(da), "valeurs")], dp[setdiff(names(dp), "valeurs")]) && identical(da$valeurs[envoyees], dp$valeurs[envoyees]))
+      sprintf("les %d colonnes envoyées identiques (voulu : les autres vides)", length(envoyees))
+    else "DIFFÉRENT"
+  c(modele = banc_ecart(avant$modele, apres$modele), spectres = spectres, biplot = banc_ecart(avant$biplot, apres$biplot), donnees = donnees)
+}
 
 # (chaque local() garde sa taille : les fonctions des cas, appelées après les boucles, la lisent là)
 for (taille in names(TAILLES_SPECTRES)) local({
@@ -258,13 +284,19 @@ for (taille in names(TAILLES_SPECTRES)) local({
                      c1$temps_json + c2$temps_json + c3$temps_json, cv_anova = system.time(cv_anova(m, m$vc$predictions[[m$A]]))[["elapsed"]]),
          octets = p$octets, sorties = list(statistiques = s, prediction = p$r, json_prediction = p$json, contributions = list(c1$r, c2$r, c3$r)))
   })
+  # Les demandes des vues, telles que l'interface les envoie : les spectres prétraités, que la vue
+  # Profils dessine (quoi), et les valeurs des 200 premières colonnes, que la vue Données montre
+  # (colonnes). Un moteur d'avant la 1.0 ignore l'une et l'autre, et rend ce que l'interface d'alors
+  # demandait : les spectres bruts aussi, toutes les colonnes. D'une version à l'autre, ce qui est
+  # envoyé se compare donc à ce que l'autre envoyait de même (banc_comparer_vues).
   banc_ajouter(paste0(base, "_vues"), avec_pls, function(ctx) {
-    vues <- list(modele = list(modele = ctx$modele), spectres = list(modele = ctx$modele), biplot = list(modele = ctx$modele), donnees = list(projet = ctx$projet))
+    vues <- list(modele = list(modele = ctx$modele), spectres = list(modele = ctx$modele, quoi = "pretraites"), biplot = list(modele = ctx$modele),
+                 donnees = list(projet = ctx$projet, colonnes = seq_len(min(200, K + 2))))
     o <- lapply(names(vues), function(v) banc_demande(v, vues[[v]]))
     names(o) <- names(vues)
     list(temps = unlist(lapply(o, function(x) x$calcul + x$temps_json)), octets = sum(vapply(o, `[[`, 0, "octets")),
          tailles_json = vapply(o, `[[`, 0, "octets"), sorties = lapply(o, `[`, c("r", "json")))
-  })
+  }, comparer = banc_comparer_vues)
 })
 
 for (taille in names(TAILLES_RELEVES)) local({
@@ -307,11 +339,11 @@ for (taille in c("petit", "moyen")) local({
   K <- TAILLES_SPECTRES[[taille]][2]
   banc_ajouter(sprintf("projet_%s_10_modeles", taille), function() {
     p <- banc_projet(banc_spectres(N, K), sprintf("spectres_%s.csv", taille))
-    snv <- list(list(type = "snv"))
-    sg <- list(list(type = "snv"), list(type = "sg", derivee = 1, fenetre = 15, degre = 2))
-    msc <- list(list(type = "msc"), list(type = "sg", derivee = 2, fenetre = 21, degre = 3))
-    defs <- list(list("PCA", 3, list()), list("PCA", 4, sg), list("PLS", 3, list()), list("PLS", 4, snv), list("PLS", 4, sg),
-                 list("PLS", 5, msc), list("PLS-DA", 3, sg), list("PLS-DA", 4, snv), list("OPLS", 3, sg), list("OPLS", 2, list(list(type = "detrend", degre = 2))))
+    etapes_snv <- list(list(type = "snv"))
+    etapes_sg <- list(list(type = "snv"), list(type = "sg", derivee = 1, fenetre = 15, degre = 2))
+    etapes_msc <- list(list(type = "msc"), list(type = "sg", derivee = 2, fenetre = 21, degre = 3))
+    defs <- list(list("PCA", 3, list()), list("PCA", 4, etapes_sg), list("PLS", 3, list()), list("PLS", 4, etapes_snv), list("PLS", 4, etapes_sg),
+                 list("PLS", 5, etapes_msc), list("PLS-DA", 3, etapes_sg), list("PLS-DA", 4, etapes_snv), list("OPLS", 3, etapes_sg), list("OPLS", 2, list(list(type = "detrend", degre = 2))))
     modeles <- lapply(seq_along(defs), function(i) {
       r <- banc_demande("ajuster", banc_q_spectres(p, defs[[i]][[1]], K, A = defs[[i]][[2]], etapes = defs[[i]][[3]], nom = paste0("M", i)))$r
       list(numero = r$numero, A = r$A)
@@ -405,7 +437,7 @@ for (cas in choisis) {
     f <- file.path(banc_comparer, paste0(cas$nom, ".rds"))
     statut <- if (!file.exists(f)) "(rien à comparer)" else {
       avant <- readRDS(f)
-      ecarts <- vapply(names(sorties), function(k) banc_ecart(avant[[k]], sorties[[k]]), "")
+      ecarts <- if (!is.null(cas$comparer)) cas$comparer(avant, sorties) else vapply(names(sorties), function(k) banc_ecart(avant[[k]], sorties[[k]]), "")
       if (all(ecarts == "identique")) "identique" else paste(sprintf("%s : %s", names(ecarts), ecarts)[ecarts != "identique"], collapse = " | ")
     }
   }

@@ -12,6 +12,27 @@ export const PALETTE = [...PALETTES.defaut];
 const SELECTION = '#e4572e';
 // names written by each point only up to this many variables (spectra have hundreds; a box shows them)
 const ETIQUETTES_MAX = 100;
+// Beyond this many points a plot is drawn by WebGL (scattergl): in SVG, one element per point makes
+// tens of thousands of observations take seconds to draw and to hover. (The figure composer turns
+// them back into SVG for a vector export: composition.js.)
+const POINTS_SVG_MAX = 5000;
+const typePoints = (n) => (n > POINTS_SVG_MAX ? 'scattergl' : 'scatter');
+// A table draws its rows by slices of about this many cells (tableau).
+const CELLULES_TRANCHE = 20000;
+
+// The smallest and largest of the numbers of `valeurs` (nulls left out), [Infinity, -Infinity]
+// without any: Math.min(...valeurs) passes each value as an argument, which overflows the call
+// stack with about a hundred thousand of them.
+export function etendue(valeurs) {
+  let bas = Infinity;
+  let haut = -Infinity;
+  for (const v of valeurs) {
+    if (v === null || v === undefined) continue;
+    if (v < bas) bas = v;
+    if (v > haut) haut = v;
+  }
+  return [bas, haut];
+}
 
 // Plot formatting chosen in Graphiques › Mise en forme, for every plot, kept from one session
 // to the next. A plot's own title and axis titles are in its panel's settings (loc).
@@ -341,7 +362,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     oncontextmenu: menuColonne ? (e) => { e.preventDefault(); e.stopPropagation(); menuColonne(c, e); } : null },
   c.titre, loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? ' ▲' : ' ▼') : '',
   c.sousTitre ? el('span', { class: 'sous-titre' }, c.sousTitre) : null)));
-  const corps = el('tbody', {}, idx.slice(0, max).map((i) => el('tr', {
+  const ligne = (i) => el('tr', {
     class: (uid && sel.has(uid(i))) || (choisie && choisie(i)) ? 'choisie' : '',
     onclick: uid ? () => {
       const s = new Set(ctx.selection(idModele));
@@ -349,7 +370,21 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
       if (s.has(u)) s.delete(u); else s.add(u);
       ctx.choisir(idModele, [...s]);
     } : cliquer ? () => cliquer(i) : null,
-    oncontextmenu: menuLigne ? (e) => { e.preventDefault(); e.stopPropagation(); menuLigne(i, e); } : null }, colonnes.map((c) => cellule(i, c)))));
+    oncontextmenu: menuLigne ? (e) => { e.preventDefault(); e.stopPropagation(); menuLigne(i, e); } : null }, colonnes.map((c) => cellule(i, c)));
+  // The rows a slice at a time, the next one added as the scroll nears the bottom: 2000 rows of a
+  // 200-column table (the Data view of spectra) are 400,000 cells, seconds to lay out at each redraw.
+  const montrees = idx.slice(0, max);
+  const tranche = Math.max(50, Math.ceil(CELLULES_TRANCHE / colonnes.length));
+  let dessinees = Math.min(tranche, montrees.length);
+  const corps = el('tbody', {}, montrees.slice(0, dessinees).map(ligne));
+  const defile = el('div', { class: 'defile' }, el('table', { class: 'tableau' }, el('thead', {}, tete), corps));
+  const suite = () => {
+    while (dessinees < montrees.length && defile.clientHeight && defile.scrollTop + defile.clientHeight > defile.scrollHeight - 600) {
+      corps.append(...montrees.slice(dessinees, dessinees + tranche).map(ligne));
+      dessinees += tranche;
+    }
+  };
+  defile.addEventListener('scroll', suite, { passive: true });
   const copier = () => {
     const txt = [colonnes.map((c) => c.titre).join('\t')]
       .concat(idx.map((i) => colonnes.map((c) => { const v = valeur(i, c.cle); return v === null || v === undefined ? '' : v; }).join('\t'))).join('\n');
@@ -364,7 +399,8 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
   conteneur.replaceChildren(
     outils(...avant, filtre, el('span', { class: 'infos' }, `${idx.length} ${t('lignes')}${idx.length > max ? ` (${max})` : ''}`), espace(),
       el('button', { class: 'icone-seule', title: t('copier_tableau'), onclick: copier }, icone('copy'))),
-    el('div', { class: 'defile' }, el('table', { class: 'tableau' }, el('thead', {}, tete), corps)));
+    defile);
+  requestAnimationFrame(suite);  // (a tall panel shows more than the first slice)
   if (loc.focus) { filtre.focus(); filtre.setSelectionRange(filtre.value.length, filtre.value.length); }
   filtre.addEventListener('focus', () => { loc.focus = true; });
   filtre.addEventListener('blur', () => { loc.focus = false; });
@@ -596,10 +632,12 @@ async function rendreProfils(conteneur, ctx, p, loc) {
   const quoi = [['p', 'Loadings p']].concat(pls ? [['w', 'Loadings w*'], ['coeff', t('coefficients')], ['vip', 'VIP']] : [])
     .concat([['spectres', t('profil_spectres')]]);
   if (!quoi.some(([k]) => k === loc.quoi)) loc.quoi = 'p';
-  if (loc.quoi === 'spectres' && (!loc.res || loc.cle !== m.id)) {
+  // only the spectra drawn, raw or preprocessed (thousands of spectra: tens of MB each way)
+  const quels = loc.bruts ? 'bruts' : 'pretraites';
+  if (loc.quoi === 'spectres' && (!loc.res || loc.cle !== `${m.id}:${quels}`)) {
     conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
-    loc.res = await ctx.demander('spectres', { modele: m.id });
-    loc.cle = m.id;
+    loc.res = await ctx.demander('spectres', { modele: m.id, quoi: quels });
+    loc.cle = `${m.id}:${quels}`;
   }
   const graphe = el('div', { class: 'graphe' });
   const avecEtapes = m.reglages && [].concat(m.reglages.spectres || []).length > 0;
@@ -608,7 +646,7 @@ async function rendreProfils(conteneur, ctx, p, loc) {
   const affichees = abscisses(loc.quoi === 'spectres' ? loc.res.noms : v.terme);
   // the spectrum's X variables outside the ranges (garder = false) or inside them; the model's other X stay
   const modeleZones = async (garder) => {
-    const r = loc.res && loc.cle === m.id ? loc.res : await ctx.demander('spectres', { modele: m.id });
+    const r = loc.res && String(loc.cle).startsWith(`${m.id}:`) ? loc.res : await ctx.demander('spectres', { modele: m.id, quoi: 'noms' });
     const ax = abscisses(r.noms);
     const spectre = [].concat(r.variables);
     const retenues = spectre.filter((_, i) => dansZones(ax[i]) === garder);
@@ -888,8 +926,9 @@ function rendreLigneObs(conteneur, ctx, p, loc, vue) {
       : el('span', { class: 'infos' }, `DCrit (0,05) = ${fmt(m.limites['DCrit(5%)'], 3)}`)), graphe);
   const x = o.uid.map((_, i) => i + 1);
   const c = couleursTheme(ctx);
-  const points = pointsObservations(ctx, m, loc, x, o[cle], { type: 'scatter', survol: '%{y:.3f}' });
-  const traces = [{ type: 'scatter', mode: 'lines', x, y: o[cle], line: { color: c.ligne, width: 1 }, hoverinfo: 'skip', showlegend: false }, ...points];
+  const type = typePoints(x.length);
+  const points = pointsObservations(ctx, m, loc, x, o[cle], { type, survol: '%{y:.3f}' });
+  const traces = [{ type, mode: 'lines', x, y: o[cle], line: { color: c.ligne, width: 1 }, hoverinfo: 'skip', showlegend: false }, ...points];
   const lim = vue === 't2' ? [['T2Crit(95%)', '#e09f3e'], ['T2Crit(99%)', '#d1495b']] : [['DCrit(5%)', '#d1495b']];
   const presentes = lim.filter(([k]) => m.limites[k] !== undefined);
   tracer(ctx, graphe, traces, {
@@ -1007,8 +1046,7 @@ function rendreObsPred(conteneur, ctx, p, loc) {
     points.push({ type: 'scatter', mode: 'markers', name: t('jeu_test'), x: xt, y: yt, text: [].concat(to.nom),
       marker: { symbol: 'diamond-open', size: 9, color: '#d1495b', line: { width: 1.5 } }, hovertemplate: `<b>%{text}</b> (${t('test')})<br>%{x:.3f} → %{y:.3f}<extra></extra>` });
   }
-  const lo = Math.min(...vals);
-  const hi = Math.max(...vals);
+  const [lo, hi] = etendue(vals);
   const unite = uniteAxe(ctx, m.projet, y, transformeeDans(ctx, m, y));
   tracer(ctx, graphe, points,
   { showlegend: points.length > 1, title: { text: `${m.nom} · ${y} : ${t('observe')} / ${t('ajuste')}` },
@@ -1137,7 +1175,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
       { type: 'scattergl', mode: 'markers', name: t('predictions'), x: ii.map(abscisse), y: ii.map((i) => o[yp][i]), text: ii.map((i) => o.nom[i]),
         marker: { color: couleur, size: 7, opacity: 0.9 }, hovertemplate: survol }],
     { title: { text: `${m.nom} · ${t('predictions')}${fichier ? ' · ' + r.fichier : ''}` }, dragmode: 'zoom', margin: { t: 30, b: 36 },
-      shapes: vals.length ? [{ type: 'line', x0: Math.min(...vals), y0: Math.min(...vals), x1: Math.max(...vals), y1: Math.max(...vals), line: { color: '#888', dash: 'dot', width: 1 } }] : [],
+      shapes: vals.length ? [{ type: 'line', x0: etendue(vals)[0], y0: etendue(vals)[0], x1: etendue(vals)[1], y1: etendue(vals)[1], line: { color: '#888', dash: 'dot', width: 1 } }] : [],
       xaxis: { title: { text: avecObs ? yo : 'observation' } }, yaxis: { title: { text: yp } } });
     return;
   }
@@ -1148,10 +1186,11 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
     const dcrit = m.limites['DCrit(5%)'];
     const y = ii.map((i) => o[cle][i]);
     const dans = o.nom.map((_, i) => i).filter((i) => o.dans_modele[i]);
+    const type = typePoints(o.nom.length);
     tracer(ctx, haut, [
-      { type: 'scatter', mode: 'markers', name: t('dans_modele'), x: dans.map((i) => i + 1), y: dans.map((i) => o[cle][i]), text: dans.map((i) => o.nom[i]),
+      { type, mode: 'markers', name: t('dans_modele'), x: dans.map((i) => i + 1), y: dans.map((i) => o[cle][i]), text: dans.map((i) => o.nom[i]),
         marker: { color: '#b8c2cf', size: 5 }, hovertemplate: '<b>%{text}</b><br>%{y:.3f}<extra>%{fullData.name}</extra>' },
-      { type: 'scatter', mode: 'markers', name: t('predictions'), x: ii.map((i) => i + 1), y, text: ii.map((i) => o.nom[i]),
+      { type, mode: 'markers', name: t('predictions'), x: ii.map((i) => i + 1), y, text: ii.map((i) => o.nom[i]),
         marker: { color: y.map((v) => (v !== null && v > dcrit ? '#d1495b' : PALETTE[0])), size: 6 },
         hovertemplate: '<b>%{text}</b><br>%{y:.3f}<extra>%{fullData.name}</extra>' }],
     { title: { text: `${m.nom} · DModXPS${recent ? ` · ${t('ponderee')}` : ''}${fichier ? ' · ' + r.fichier : ''}` }, dragmode: 'zoom', margin: { t: 30, b: 36 },
@@ -1246,18 +1285,28 @@ function rendreListeVars(conteneur, ctx, p, loc) {
 }
 
 async function rendreDonnees(conteneur, ctx, p, loc) {
-  if (!loc.d) {
+  // A wide table (spectra: a column per wavelength) shows its first columns, or those whose name
+  // holds the text typed: thousands of columns would freeze the window. Only the values of the
+  // columns shown come from R, the others when the filter shows them (the names of all of them come
+  // with the project): those of 2000 spectra of 2000 wavelengths took seconds to send.
+  const proj = ctx.projet(p.projet);
+  const noms = proj ? proj.variables.map((v) => v.nom) : (loc.d ? loc.d.variables : []);
+  const large = noms.length > COLONNES_MAX;
+  const filtrees = (large && loc.filtreColonnes ? noms.map((_, i) => i).filter((i) => String(noms[i]).toLowerCase().includes(loc.filtreColonnes.toLowerCase()))
+    : noms.map((_, i) => i));
+  const vues = large ? filtrees.slice(0, COLONNES_MAX) : filtrees;
+  const absentes = loc.d ? vues.filter((i) => loc.d.valeurs[i] === null || loc.d.valeurs[i] === undefined) : vues;
+  if (!loc.d || (large && proj && absentes.length)) {
     conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
-    loc.d = await ctx.demander('donnees', { projet: p.projet });
+    const r = await ctx.demander('donnees', large && proj ? { projet: p.projet, colonnes: absentes.map((i) => proj.variables[i].uid) } : { projet: p.projet });
+    if (loc.d && loc.d.variables.length === r.variables.length) r.valeurs.forEach((x, i) => { if (x !== null) loc.d.valeurs[i] = x; });
+    else loc.d = r;
   }
   const d = loc.d;
-  // A wide table (spectra: a column per wavelength) shows its first columns, or those whose name
-  // holds the text typed: thousands of columns would freeze the window.
   let k = d.variables.map((_, i) => i);
   // (the data workbench, atelier.js: Find and replace, Categories, Units and descriptions; also from
   // a column's header, by a right-click; under each name, its unit and, unless untoggled, its
   // number of empty cells and of distinct values)
-  const proj = ctx.projet(p.projet);
   const variables = new Map((proj ? proj.variables : []).map((v) => [v.uid, v]));
   const resume = loc.resume !== false;
   const avant = [el('button', { onclick: () => ctx.nouvelleVariable(p.projet) }, icone('calculator'), t('nouvelle_variable')),
@@ -2183,9 +2232,8 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   if (r.type === 'correlation') {
     const x = [].concat(r.valeurs.x);
     const y = [].concat(r.valeurs.y);
-    const xmin = Math.min(...x);
-    const xmax = Math.max(...x);
-    const traces = [{ type: 'scatter', mode: 'markers', x, y, text: [].concat(r.valeurs.nom), marker: { color: PALETTE[0], size: 6 },
+    const [xmin, xmax] = etendue(x);
+    const traces = [{ type: typePoints(x.length), mode: 'markers', x, y, text: [].concat(r.valeurs.nom), marker: { color: PALETTE[0], size: 6 },
       hovertemplate: `%{text}<br>${r.x.nom} = %{x}<br>${r.y.nom} = %{y}<extra></extra>` }];
     if (r.pente !== null) {
       traces.push({ type: 'scatter', mode: 'lines', x: [xmin, xmax], y: [r.ordonnee + r.pente * xmin, r.ordonnee + r.pente * xmax],

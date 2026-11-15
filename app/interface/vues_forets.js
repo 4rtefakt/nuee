@@ -5,7 +5,7 @@
 import { t, ajouterTextes } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
-  notesModele, ficheTest, ficheCondition, avecUnite, uniteAxe, transformeeDans } from './panneaux.js';
+  notesModele, ficheTest, ficheCondition, avecUnite, uniteAxe, transformeeDans, etendue } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
 import { ICONES_VUES } from './commandes.js';
@@ -170,8 +170,7 @@ function rendreObsPred(conteneur, ctx, p, loc) {
     points.push({ type: 'scatter', mode: 'markers', name: t('jeu_test'), x: xt, y: yt, text: liste(to.nom),
       marker: { symbol: 'diamond-open', size: 9, color: '#d1495b', line: { width: 1.5 } }, hovertemplate: `<b>%{text}</b> (${t('test')})<br>%{x:.3f} → %{y:.3f}<extra></extra>` });
   }
-  const lo = Math.min(...vals);
-  const hi = Math.max(...vals);
+  const [lo, hi] = etendue(vals);
   tracer(ctx, graphe, points, { showlegend: points.length > 1, title: { text: `${m.nom} · ${y} : ${t('observe')} / ${t(`ens_mode_${loc.mode}`)}` },
     shapes: [{ type: 'line', x0: lo, y0: lo, x1: hi, y1: hi, line: { color: '#888', dash: 'dot', width: 1 } }],
     xaxis: { title: { text: `${y} ${t('observe')}${uniteAxe(ctx, m.projet, y, transformeeDans(ctx, m, y))}` } },
