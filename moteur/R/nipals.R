@@ -22,8 +22,9 @@ SEUIL_VARIATION <- 1e-12
 # (en double, terme à terme, que sum() ne suit pas : il cumule en précision étendue) : elle est
 # calculée une fois, dans ce même ordre (somme_blas), plutôt que par un produit de plus avec M.
 projeter <- function(E, M, v, plein = FALSE) {
-  vv <- sum(v^2)
-  present <- if (plein) somme_blas(v^2) else as.vector(M %*% (v^2))
+  v2 <- v^2
+  vv <- sum(v2)
+  present <- if (plein) somme_blas(v2) else as.vector(M %*% v2)
   correction <- pmin(vv / pmax(present, 1e-300), PLAFOND_CORRECTION)
   as.vector(E %*% v) / vv * correction
 }
@@ -32,8 +33,9 @@ projeter <- function(E, M, v, plein = FALSE) {
 # projeter(t(E), t(M), u), sans transposer E ni M (crossprod fait les mêmes produits, dans le même
 # ordre).
 projeter_colonnes <- function(E, M, u, plein = FALSE) {
-  uu <- sum(u^2)
-  present <- if (plein) somme_blas(u^2) else as.vector(crossprod(M, u^2))
+  u2 <- u^2
+  uu <- sum(u2)
+  present <- if (plein) somme_blas(u2) else as.vector(crossprod(M, u2))
   correction <- pmin(uu / pmax(present, 1e-300), PLAFOND_CORRECTION)
   as.vector(crossprod(E, u)) / uu * correction
 }
