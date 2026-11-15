@@ -41,9 +41,9 @@ const etiquette = (texte) => el('span', { class: 'doux', style: 'white-space:now
 const avecUnite = (v, u) => (u ? `${v} ${u}` : v);
 const etiquetteStrate = (s) => (s === null || s === undefined ? t('distance_total') : s === '' ? t('distance_region') : s);
 const lignesDensite = (dn) => lignesDe(dn, ['strate', 'aire', 'couverte', 'effort', 'k', 'n', 'rencontre', 'se_rencontre', 'cv_rencontre', 'D', 'se_D', 'cv', 'bas_D', 'haut_D', 'ddl',
-  'N', 'se_N', 'bas_N', 'haut_N', 'taille_moyenne', 'part_rencontre', 'part_detection', 'part_groupes', 'ddl_dht2']).map((l) => ({
+  'N', 'se_N', 'bas_N', 'haut_N', 'taille_moyenne', 'part_rencontre', 'part_detection', 'part_groupes', 'ddl_dht2', 'se_D_dht2']).map((l) => ({
   strate: l[0], aire: l[1], couverte: l[2], effort: l[3], k: l[4], n: l[5], er: l[6], se_er: l[7], cv_er: l[8], D: l[9], se_D: l[10], cv: l[11], bas_D: l[12],
-  haut_D: l[13], ddl: l[14], N: l[15], se_N: l[16], bas_N: l[17], haut_N: l[18], taille: l[19], p_er: l[20], p_det: l[21], p_gr: l[22], ddl_dht2: l[23] }));
+  haut_D: l[13], ddl: l[14], N: l[15], se_N: l[16], bas_N: l[17], haut_N: l[18], taille: l[19], p_er: l[20], p_det: l[21], p_gr: l[22], ddl_dht2: l[23], se_D_dht2: l[24] }));
 const effectifLibelle = (m) => t(point(m) ? 'distance_edr' : 'distance_esw');
 const libelleCle = (c) => t('distance_cle_' + c);
 const libelleSerie = (s) => t('distance_serie_' + (s || 'aucune'));
@@ -66,13 +66,19 @@ function notesDistance(m) {
   if (m.unites && m.unites.donne) n.push(t('distance_facteur_donne', { f: sig(m.unites.facteur, 6) }));
   return n;
 }
-// Without stratum areas, the total's degrees of freedom are Satterthwaite's with the strata's weights,
-// and dht2, which leaves the weights out, gives fewer (moteur/R/distance.R: densite_echantillonnage,
-// ddl_dht2 when they differ): both numbers said wherever the total shows
+// Without stratum areas, the total's group size variance and degrees of freedom take the strata's
+// weights, and dht2, which leaves them out, gives a larger standard error (with groups) and fewer
+// degrees of freedom (moteur/R/distance.R: densite_echantillonnage, se_D_dht2 and ddl_dht2 when
+// they differ): both said wherever the total shows
 const noteDdlTotal = (m, dn) => {
   const l = lignesDensite(dn);
   const tot = l[l.length - 1];
-  return m.densite_seule && l.length > 1 && fini(tot.ddl_dht2) ? t('distance_ddl_total', { ddl: fmt(tot.ddl, 1), dht2: fmt(tot.ddl_dht2, 1) }) : null;
+  if (!m.densite_seule || l.length < 2) return null;
+  if (fini(tot.se_D_dht2)) {
+    return t('distance_se_total', { se: `${sig(tot.se_D, 3)}${parAire(m)}`, se_dht2: `${sig(tot.se_D_dht2, 3)}${parAire(m)}`, ddl: fmt(tot.ddl, 1),
+      dht2: fmt(fini(tot.ddl_dht2) ? tot.ddl_dht2 : tot.ddl, 1) });
+  }
+  return fini(tot.ddl_dht2) ? t('distance_ddl_total', { ddl: fmt(tot.ddl, 1), dht2: fmt(tot.ddl_dht2, 1) }) : null;
 };
 const phraseSelection = (m) => {
   const s = t('distance_selection_' + (m.selection || 'aic'), { serie: libelleSerie(m.serie_demandee) });
@@ -549,6 +555,7 @@ ajouterTextes({
   distance_un_transect: 'Une strate d’un seul transect n’a pas de variance du taux de rencontre (comme dht2).',
   distance_densite_seule: 'Sans aire de strate : la densité seulement (le total est la moyenne des strates pondérée par leurs aires couvertes, comme dht2).',
   distance_ddl_total: 'Sans aire de strate, le total a {ddl} degrés de liberté, ceux de la formule de Satterthwaite avec les poids des strates (leurs aires couvertes). dht2 laisse ces poids hors de son dénominateur et n’en donne que {dht2}, d’où un intervalle du total plus large chez lui. Les intervalles des strates n’en dépendent pas.',
+  distance_se_total: 'Sans aire de strate, le total pondère les strates par leurs aires couvertes : les variances du taux de rencontre et de la taille des groupes de chaque strate y entrent avec le carré de son poids (erreur-type {se}), et ses {ddl} degrés de liberté sont ceux de la formule de Satterthwaite avec ces poids. dht2 laisse les poids hors de la variance de la taille des groupes et du dénominateur des degrés de liberté : il donne une erreur-type de {se_dht2} et {dht2} degrés de liberté, d’où un intervalle du total plus large chez lui. Les intervalles des strates n’en dépendent pas.',
   distance_facteur_donne: 'Les distances converties par le facteur {f} : les densités sont par unité d’aire de ce facteur.',
   distance_detection: 'Fonction de détection', distance_g: 'Fonction de détection g', distance_pdf: 'Densité des distances f', distance_histogramme: 'Histogramme des distances',
   distance_points_obs: 'distances observées', distance_points_obs_aide: 'Chaque détection sur la courbe, à sa distance ; un clic la choisit.',
@@ -642,6 +649,7 @@ ajouterTextes({
   distance_un_transect: 'A stratum with a single transect has no encounter rate variance (as dht2).',
   distance_densite_seule: 'Without stratum areas: the density only (the total is the strata’s mean weighted by their covered areas, as dht2).',
   distance_ddl_total: 'Without stratum areas, the total has {ddl} degrees of freedom, those of Satterthwaite’s formula with the strata’s weights (their covered areas). dht2 leaves these weights out of its denominator and gives only {dht2}, hence a wider total interval there. The strata’s intervals don’t depend on it.',
+  distance_se_total: 'Without stratum areas, the total weights the strata by their covered areas: each stratum’s encounter rate and group size variances enter it with the square of its weight (standard error {se}), and its {ddl} degrees of freedom are those of Satterthwaite’s formula with these weights. dht2 leaves the weights out of the group size variance and of the degrees of freedom’s denominator: it gives a standard error of {se_dht2} and {dht2} degrees of freedom, hence a wider total interval there. The strata’s intervals don’t depend on it.',
   distance_facteur_donne: 'The distances converted by the factor {f}: the densities are per unit of area of that factor.',
   distance_detection: 'Detection function', distance_g: 'Detection function g', distance_pdf: 'Density of distances f', distance_histogramme: 'Histogram of distances',
   distance_points_obs: 'observed distances', distance_points_obs_aide: 'Each detection on the curve, at its distance; a click selects it.',

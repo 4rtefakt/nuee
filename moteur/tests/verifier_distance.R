@@ -8,9 +8,9 @@
 # dans l'objet de mrds, pour comparer les calculs eux-mêmes sans dépendre de la précision de son
 # optimiseur — sa log-vraisemblance, son hessien (flt.var), p et son erreur-type (summary), les tests
 # d'adéquation (ddf.gof) et la densité et l'effectif de dht2 (par strate et au total : N, erreur-type,
-# CV, intervalle, ddl, taux de rencontre et sa variance, aire couverte ; sans aire de strate, les ddl
-# du total avec les poids des strates, recalculés d'après les sorties de dht2, et les siens, que Nuée
-# garde en ddl_dht2), sur les données de Distance
+# CV, intervalle, ddl, taux de rencontre et sa variance, aire couverte ; sans aire de strate, la
+# variance de la taille des groupes et les ddl du total avec les poids des strates, recalculés
+# d'après les sorties de dht2, et les siens, que Nuée garde en se_D_dht2 et ddl_dht2), sur les données de Distance
 # (LTExercise, PTExercise, ducknest, minke, wren_5min, Savannah_sparrow_1980, ClusterExercise,
 # capercaillie) et des données simulées (lignes et points, strates, transects vides, troncature en
 # pourcentage et à gauche, groupes, clés hn, hr et unif, séries cos, herm et poly, monotonie stricte,
@@ -313,6 +313,31 @@ verifier(sprintf("sans aire de strate, à la main : le total pondéré par les a
            proche(d0$ddl_rencontre[3], ddl_er0, 1e-12) && proche(d0$ddl[3], ddl0, 1e-12) && proche(d0$ddl_dht2[3], ddl0_dht2, 1e-12) && ddl0 > ddl0_dht2 &&
            proche(d0$bas_D[3], D0 / C0, 1e-12) && proche(d0$haut_D[3], D0 * C0, 1e-12) && proche(d0$ddl[1:2], dn$ddl[1:2], 1e-12) &&
            all(is.na(d0$ddl_dht2[1:2])) && all(is.na(dn$ddl_dht2)))
+# avec des groupes, sans aire de strate, à la main : la variance de la taille des groupes de chaque
+# strate, (D cv_groupes)², entre au total avec wi² comme celle du taux de rencontre ; dht2 les
+# additionne sans les poids : son erreur-type en se_D_dht2, ses degrés de liberté en ddl_dht2 ; avec
+# des aires, se_D_dht2 n'a rien
+sg <- simuler(3, groupes = TRUE, D = c(Nord = 15, Sud = 25))
+pg0 <- projet_distance(sg)
+dgd0 <- definition_distance(pg0, w = 100, taille = "size", aire = NULL, serie = "aucune")
+mg0 <- ajuster(pg0, dgd0)
+dg0 <- mg0$densite
+wg <- dg0$couverte[1:2] / sum(dg0$couverte[1:2])
+Dg <- sum(wg * dg0$D[1:2])
+v_erg <- (dg0$D[1:2] * dg0$cv_rencontre[1:2])^2
+v_gg <- (dg0$D[1:2] * dg0$cv_groupes[1:2])^2
+v_detg <- Dg^2 * mg0$var_p / mg0$p^2
+satterthwaite_g <- function(er_ddl, g) ((sum(wg^2 * v_erg) + v_detg + g) / Dg^2)^2 /
+  ((sum(wg^2 * v_erg) / Dg^2)^2 / er_ddl + (v_detg / Dg^2)^2 / (dg0$n[3] - 1) + (g / Dg^2)^2 / (dg0$n[3] - 1))
+se_g <- sqrt(sum(wg^2 * v_erg) + v_detg + sum(wg^2 * v_gg))
+se_g_dht2 <- sqrt(sum(wg^2 * v_erg) + v_detg + sum(v_gg))
+verifier(sprintf("avec des groupes, sans aire de strate, à la main : l'erreur-type du total, %.3f, la variance de la taille des groupes de chaque strate avec wi² (%.3f sans les poids, celle de dht2, en se_D_dht2), ses degrés de liberté ; avec des aires, se_D_dht2 vide",
+                 se_g, se_g_dht2),
+         proche(dg0$D[3], Dg, 1e-12) && proche(dg0$se_D[3], se_g, 1e-12) && proche(dg0$se_D_dht2[3], se_g_dht2, 1e-12) && se_g < se_g_dht2 &&
+           proche(dg0$cv_groupes[3], sqrt(sum(wg^2 * v_gg)) / Dg, 1e-12) &&
+           proche(dg0$ddl[3], satterthwaite_g(sum(wg^2 * v_erg)^2 / sum((wg^2 * v_erg)^2 / (dg0$k[1:2] - 1)), sum(wg^2 * v_gg)), 1e-12) &&
+           proche(dg0$ddl_dht2[3], satterthwaite_g(sum(wg^2 * v_erg)^2 / sum(v_erg^2 / (dg0$k[1:2] - 1)), sum(v_gg)), 1e-12) &&
+           all(is.na(dg0$se_D_dht2[1:2])) && all(is.na(distance_de(pg0, w = 100, taille = "size", serie = "aucune")$densite$se_D_dht2)))
 
 # l'adéquation à la main
 F <- sort(repartition_detection(m$detection$fd, m$detection$theta, t$x))
@@ -434,33 +459,42 @@ if (avec_distance) {
   # et des groupes, n_ddf, n_par, D et son CV ; avec eux, les ddl du taux de rencontre (`er_df`) et
   # l'intervalle log-normal. `sans_poids` : la même formule sans les poids, qui doit redonner ceux de
   # dht2 (les ddl_dht2 de Nuée).
+  # Les variances de la taille des groupes des strates (group_var_Nhat) entrent aussi au total de Nuée
+  # avec wi², là où dht2 les additionne : son erreur-type et son CV d'après ces sorties, l'erreur-type
+  # de dht2 en se_D_dht2 (`se_dht2`, NA si elles sont les mêmes, sans groupes).
   attendu_dht2 <- function(d2, pond) {
-    a <- list(df = d2$df, LCI = d2$LCI, UCI = d2$UCI)
+    a <- list(df = d2$df, LCI = d2$LCI, UCI = d2$UCI, se = d2$Abundance_se, cv = d2$Abundance_CV)
     if (!pond) return(a)
     k <- which(d2$Region.Label == "Total")
     st <- d2[-k, ]
     tot <- d2[k, ]
     w <- st$Covered_area / sum(st$Covered_area)
     er <- sum(w^2 * st$ER_var_Nhat)
+    g <- sum(w^2 * st$group_var_Nhat, na.rm = TRUE)
     A2 <- tot$Abundance^2
-    satterthwaite <- function(er_df) sum(c(er, tot$df_var, tot$group_var_Nhat) / A2, na.rm = TRUE)^2 /
-      sum(c((er / A2)^2 / er_df, (tot$df_var / A2)^2 / (tot$n_ddf - tot$n_par), (tot$group_var_Nhat / A2)^2 / (tot$n_ddf - 1)), na.rm = TRUE)
+    satterthwaite <- function(er_df, g) sum(c(er, tot$df_var, g) / A2, na.rm = TRUE)^2 /
+      sum(c((er / A2)^2 / er_df, (tot$df_var / A2)^2 / (tot$n_ddf - tot$n_par), (g / A2)^2 / (tot$n_ddf - 1)), na.rm = TRUE)
     a$er_df <- er^2 / sum((w^2 * st$ER_var_Nhat)^2 / st$ER_df)
-    a$df[k] <- satterthwaite(a$er_df)
-    a$sans_poids <- satterthwaite(er^2 / sum(st$ER_var_Nhat^2 / st$ER_df))
-    C <- exp(stats::qt(0.975, a$df[k]) * sqrt(log(1 + tot$Abundance_CV^2)))
+    a$df[k] <- satterthwaite(a$er_df, g)
+    a$sans_poids <- satterthwaite(er^2 / sum(st$ER_var_Nhat^2 / st$ER_df), tot$group_var_Nhat)
+    a$se[k] <- sqrt(sum(c(er, tot$df_var, g), na.rm = TRUE))
+    a$cv[k] <- a$se[k] / tot$Abundance
+    a$se_dht2 <- if (isTRUE(all.equal(g, sum(tot$group_var_Nhat, na.rm = TRUE)))) NA_real_ else tot$Abundance_se
+    C <- exp(stats::qt(0.975, a$df[k]) * sqrt(log(1 + a$cv[k]^2)))
     a$LCI[k] <- tot$Abundance / C
     a$UCI[k] <- tot$Abundance * C
     a$k <- k
     a
   }
   # (le total d'une densité sans aire de strate : ses ddl pondérés, ceux du taux de rencontre aussi ; les
-  # ddl de dht2 en ddl_dht2, et la formule sans les poids qui les redonne ; ailleurs, ddl_dht2 vide)
+  # ddl de dht2 en ddl_dht2, et la formule sans les poids qui les redonne ; avec des groupes, l'erreur-type
+  # de dht2 en se_D_dht2, plus grande ; ailleurs, ddl_dht2 et se_D_dht2 vides)
   ddl_dht2_comme <- function(dn, d2, j, a, tol) {
-    if (is.null(a$k)) return(all(is.na(dn$ddl_dht2)))
+    if (is.null(a$k)) return(all(is.na(dn$ddl_dht2)) && all(is.na(dn$se_D_dht2)))
     i <- j[a$k]
     proche(dn$ddl_rencontre[i], a$er_df, tol) && proche(dn$ddl_dht2[i], d2$df[a$k], tol) && proche(a$sans_poids, d2$df[a$k], 1e-9) &&
-      all(is.na(dn$ddl_dht2[-i])) && dn$ddl[i] > dn$ddl_dht2[i]
+      all(is.na(dn$ddl_dht2[-i])) && dn$ddl[i] > dn$ddl_dht2[i] && all(is.na(dn$se_D_dht2[-i])) &&
+      (if (is.na(a$se_dht2)) is.na(dn$se_D_dht2[i]) else proche(dn$se_D_dht2[i], a$se_dht2, tol) && dn$se_D[i] < dn$se_D_dht2[i])
   }
   # Une comparaison : `df` le tableau à plat, `args` ceux de ds(), `nuee` ceux de definition_distance ;
   # `cu` le facteur des unités de dht2 ; `spline` : le hasard sans ajustement sur des lignes, que mrds
@@ -516,8 +550,8 @@ if (avec_distance) {
     # (des lignes tronquées à gauche : l'aire couverte de Nuée est 2 (w − L) L, celle de dht2 2 w L)
     f_g <- if (gauche_lignes) (mN$donnees$w - mN$donnees$L) / mN$donnees$w else 1
     tol_d <- if (spline) 1e-3 else 1e-9
-    res$densite <- !anyNA(j) && proche(if (seule) dn$D[j] else dn$N[j] * f_g, d2$Abundance, tol_d) && proche(dn$cv[j], d2$Abundance_CV, tol_v) &&
-      proche(if (seule) dn$se_D[j] else dn$se_N[j] * f_g, d2$Abundance_se, tol_v) && proche(dn$ddl[j], a$df, tol_v) &&
+    res$densite <- !anyNA(j) && proche(if (seule) dn$D[j] else dn$N[j] * f_g, d2$Abundance, tol_d) && proche(dn$cv[j], a$cv, tol_v) &&
+      proche(if (seule) dn$se_D[j] else dn$se_N[j] * f_g, a$se, tol_v) && proche(dn$ddl[j], a$df, tol_v) &&
       proche(if (seule) dn$bas_D[j] else dn$bas_N[j] * f_g, a$LCI, tol_v) && proche(if (seule) dn$haut_D[j] else dn$haut_N[j] * f_g, a$UCI, tol_v) &&
       proche(dn$rencontre[j], d2$ER, 1e-12) && identical(as.numeric(dn$k[j]), as.numeric(d2$k)) && identical(as.numeric(dn$n[j]), as.numeric(d2$n)) && proche(dn$effort[j], d2$Effort, 1e-12) &&
       proche(dn$couverte[j] / f_g, d2$Covered_area, 1e-12) &&
@@ -530,7 +564,8 @@ if (avec_distance) {
     verifier(sprintf("%s : %s (Distance : %s), écart des paramètres %.1e%s%s%s — %s", nom, lab, libelle_mrds(mD$ddf), ec_par, if (spline) " [hasard sans ajustement : spline de mrds]" else "",
                      if (autre) sprintf(" [un autre optimum local : logL de Nuée %+.4f]", d_ll) else "", if (kappa > 100) sprintf(" [κ = %.0f]", kappa) else "",
                      if (all(ok)) paste0("le modèle, l'optimum, logL, hessien, p, adéquation, densité",
-                                         if (!is.null(a$k)) sprintf(" ; au total, %.1f ddl pondérés (dht2 : %.2f, en ddl_dht2)", a$df[a$k], d2$df[a$k]) else "")
+                                         if (!is.null(a$k)) sprintf(" ; au total, %.1f ddl pondérés (dht2 : %.2f, en ddl_dht2)", a$df[a$k], d2$df[a$k]) else "",
+                                         if (isTRUE(is.finite(a$se_dht2))) sprintf(", une erreur-type de %.4g pondérée (dht2 : %.4g, en se_D_dht2)", a$se[a$k], a$se_dht2) else "")
                      else paste(names(ok)[!ok], collapse = ", ")), all(ok))
     invisible(list(mN = mN, mD = mD, dI = dI))
   }
@@ -600,6 +635,9 @@ if (avec_distance) {
   s4 <- simuler(4)
   s4$Area <- 0
   comparer("simulées, lignes, aires nulles : la densité seule, le total pondéré par les aires couvertes", s4, list(truncation = 100), list(w = 100), cu_lkm)
+  s5 <- simuler(5, groupes = TRUE, D = c(Nord = 15, Sud = 25))
+  s5$Area <- 0
+  comparer("simulées, lignes, groupes, aires nulles : la variance de la taille des groupes du total pondérée elle aussi", s5, list(truncation = 100), list(w = 100, taille = "size"), cu_lkm)
   # la monotonie qui agit (la bosse) : l'optimiseur de mrds (SLSQP, ftol 1e-6) s'arrête près de l'optimum de Nuée
   df_b <- data.frame(Region.Label = "A", Area = 100, Sample.Label = rep(1:10, length.out = 250), Effort = 2, object = 1:250, distance = bosse)
   for (cfg in list(list("hn", "cos", "weak", "faible"), list("unif", "cos", "strict", "stricte"), list("unif", "poly", "strict", "stricte"))) {
@@ -694,8 +732,8 @@ if (avec_distance) {
     seule <- mN$donnees$densite_seule
     a <- attendu_dht2(d2, seule && nrow(dn) > 1)
     f_g <- if (gauche_lignes) (mN$donnees$w - mN$donnees$L) / mN$donnees$w else 1
-    res$densite <- !anyNA(j) && proche((if (seule) dn$D[j] else dn$N[j]) * f_g, d2$Abundance, tol_f) && proche(dn$cv[j], d2$Abundance_CV, tol_v) &&
-      proche((if (seule) dn$se_D[j] else dn$se_N[j]) * f_g, d2$Abundance_se, tol_v) && proche(dn$ddl[j], a$df, tol_v) &&
+    res$densite <- !anyNA(j) && proche((if (seule) dn$D[j] else dn$N[j]) * f_g, d2$Abundance, tol_f) && proche(dn$cv[j], a$cv, tol_v) &&
+      proche((if (seule) dn$se_D[j] else dn$se_N[j]) * f_g, a$se, tol_v) && proche(dn$ddl[j], a$df, tol_v) &&
       proche((if (seule) dn$bas_D[j] else dn$bas_N[j]) * f_g, a$LCI, tol_v) && proche((if (seule) dn$haut_D[j] else dn$haut_N[j]) * f_g, a$UCI, tol_v) &&
       proche(dn$rencontre[j], d2$ER, 1e-12) && identical(as.numeric(dn$k[j]), as.numeric(d2$k)) && identical(as.numeric(dn$n[j]), as.numeric(d2$n)) &&
       proche(dn$effort[j], d2$Effort, 1e-12) && proche(dn$couverte[j] / f_g, d2$Covered_area, 1e-12) &&
@@ -708,7 +746,8 @@ if (avec_distance) {
                      if (spline) " [hasard sans ajustement : spline de mrds]" else "", if (autre) sprintf(" [un autre optimum : logL de Nuée %+.4f]", d_ll) else "",
                      if (kappa > 100) sprintf(" [κ = %.0f]", kappa) else "",
                      if (all(ok)) paste0("l'optimum, logL, hessien, pi, p̄, Σ 1/pi, adéquation, courbes moyennes, densité",
-                                         if (!is.null(a$k)) sprintf(" ; au total, %.1f ddl pondérés (dht2 : %.2f, en ddl_dht2)", a$df[a$k], d2$df[a$k]) else "")
+                                         if (!is.null(a$k)) sprintf(" ; au total, %.1f ddl pondérés (dht2 : %.2f, en ddl_dht2)", a$df[a$k], d2$df[a$k]) else "",
+                                         if (isTRUE(is.finite(a$se_dht2))) sprintf(", une erreur-type de %.4g pondérée (dht2 : %.4g, en se_D_dht2)", a$se[a$k], a$se_dht2) else "")
                      else paste(names(ok)[!ok], collapse = ", ")), all(ok))
     invisible(list(mN = mN, mD = mD, dI = dI, d_ll = d_ll))
   }
@@ -921,6 +960,13 @@ for (langue in c("fr", "en")) {
              !grepl(marque, ta, fixed = TRUE) && all(m_un$densite$k[1:2] == 1) && all(is.na(m_un$densite$ddl_dht2)) &&
              grepl(sprintf(if (fr) "%s est la moyenne des strates pondérée par leurs aires couvertes." else "%s is the strata's mean weighted by their covered areas.", marque), tu, fixed = TRUE) &&
              !grepl("Satterthwaite's formula with|formule de Satterthwaite avec", tu))
+  # (avec des groupes : la variance de leur taille avec les poids, l'erreur-type et les ddl de dht2)
+  tg <- texte_methodes(pg0, dgd0, mg0, langue, "essai")$paragraphes[3]
+  verifier(sprintf("avec des groupes, sans aire de strate (%s) : le texte des méthodes dit la variance de la taille des groupes avec les poids des strates, et l'erreur-type et les degrés de liberté de dht2", langue),
+           grepl(if (fr) "les variances du taux de rencontre et de la taille des groupes de chaque strate y entrent avec le carré de son poids" else "each stratum's encounter rate and group size variances enter it with the square of its weight", tg, fixed = TRUE) &&
+             grepl(sprintf(if (fr) "ses %s degrés de liberté sont ceux de la formule de Satterthwaite avec ces poids" else "its %s degrees of freedom are those of Satterthwaite's formula with these weights", nombre_texte(dg0$ddl[3], 1, fr)), tg, fixed = TRUE) &&
+             grepl(sprintf(if (fr) "il donne une erreur-type de %s et %s degrés de liberté" else "it gives a standard error of %s and %s degrees of freedom",
+                           trimws(formatC(signif(dg0$se_D_dht2[3], 3), format = "fg", digits = 3, decimal.mark = if (fr) "," else ".")), nombre_texte(dg0$ddl_dht2[3], 1, fr)), tg, fixed = TRUE))
 }
 # un modèle à covariables : ce que l'interface reçoit, ses textes, ses tableaux
 etat$projets$P2 <- c(psc, list(id = "P2"))
