@@ -80,7 +80,9 @@ export function tracer(ctx, div, traces, layout = {}) {
   const base = {
     margin: { l: 60, r: 18, t: 34, b: 48 }, paper_bgcolor: c.fond, plot_bgcolor: c.fond,
     font: { family: police, size: F.taille, color: c.texte },
-    title: { font: { size: F.taille + 1 }, x: 0.01, xanchor: 'left' },
+    // (from the plot area's left edge: in a short pane, the vertical axis's title runs above the plot
+    // area, at the panel's edge, and would cross a title starting there)
+    title: { font: { size: F.taille + 1 }, xref: 'paper', x: 0, xanchor: 'left' },
     xaxis: { gridcolor: c.grille, zerolinecolor: c.doux, automargin: true, linecolor: c.grille, showgrid: F.grille },
     yaxis: { gridcolor: c.grille, zerolinecolor: c.doux, automargin: true, linecolor: c.grille, showgrid: F.grille },
     hovermode: 'closest', dragmode: 'select', showlegend: traces.length > 1 && F.legende,
