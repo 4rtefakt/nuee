@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitoring: series, TRIM, distance sampling · Nuée</title>
+<meta name="description" content="Series and trends, indices and trends of counts (TRIM), density and abundance by distance sampling.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="monitoring.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/suivis.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/suivis.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html" aria-current="page">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Monitoring: series, TRIM, distance sampling</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#series">Series</a></li>
+<li><a href="#trim-indices-and-trends-of-counts">TRIM: indices and trends of counts</a></li>
+<li><a href="#distance-sampling-density-and-abundance">Distance sampling: density and abundance</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="series">
+<h2>Series</h2>
+<p><strong>Plots › Series (or in the explorer, under the project):</strong> a variable over time, like figures of series by sector, one page per site. Choose the variable, the time (a variable or an ID made of numbers, like the year, or of dates: see <a href="data.html#dates-as-time">Dates as time</a>), the lines (a qualitative variable or an ID: the sector) and, optionally, the panels (the site): one small plot per panel, in a grid with shared axes. Within a line, times that follow each other at its own step (its smallest gap) are joined, so a sector counted every other year stays one line; a missing time breaks the line, so a year without a count shows. Dates, rarely evenly spaced, go on a date axis, and a line joins all its points. Colours go by line within each panel and the legend is grouped by panel (a click on an entry hides its line): it stays readable with 30 sectors. Optionally: the mean of each panel's lines, time by time (a thick line), a log scale (values ≤ 0 aren't shown on it) and events, times typed as "2015; 2019" (with dates, also 2019-05-14 or 14/05/2019), drawn as dashed lines in every panel. Hovering gives the observation's name, the time and the value; a click or a box selects observations, also in the project's models when the selection is shared with them. Observations without a time, a value, a line or a panel are left out and counted; a line with the same time twice (sectors chosen without their site) is flagged and shown as points. Right-click: copy or save the image.</p>
+<p><strong>Trends (the toolbar's box):</strong> under the plot, a table gives for each line of each panel, marked with its colour, n (its times with a value), its first and last time; Sen's slope (Sen, 1968: the median of the slopes between all pairs of its times, per time unit, per year with dates) and its 95 % interval (Gilbert, 1987: the ranked slopes, taken around the median from the variance of S; no bounds when there are too few times); Kendall's τ (tau-b), the Mann–Kendall S and its two-sided p by the normal approximation (variance corrected for ties, continuity correction, as trend::mk.test and Kendall::MannKendall do); and the p corrected over the lines (Benjamini–Hochberg, or Holm as a choice). A line with fewer than 4 times, the same time twice or the same value at every time isn't tested, and the table says why; Ctrl+C copies it. The test takes the times as independent: positive autocorrelation (years that resemble each other) makes p too small. For a trend that accounts for it: Plots › Residual autocorrelation, then a mixed model with a CAR1 autocorrelation, the year as an X.</p>
+<p>In the table's toolbar, two options change the test. Allow for autocorrelation: Hamed and Rao's (1998) modified Mann–Kendall test, computed as modifiedmk::mmkh computes it: the line detrended by its Sen slope (over its actual times), the ranks of what remains, their autocorrelation at each lag (counted from one time to the next: the time after a missing year is one lag away), those beyond ±1.96/√n kept (the others count 0), and Var(S) multiplied by n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k); p and the slope's interval come from that variance, and the n/n* column gives the factor (1: no autocorrelation kept; a factor that isn't positive, from a strong negative autocorrelation, leaves the line untested). It needs a long series: an autocorrelation is poorly estimated from few times (Box and Jenkins, 1976, ask for about 50), and with 15 times only one beyond ±0.51 counts; even with 60 to 90 times the corrected test still rejects a true absence of trend too often when the autocorrelation is strong (Blain, 2013). It corrects each line on its own: it is no substitute for a mixed model with a CAR1 autocorrelation, which estimates the trend shared by the sites and their sectors, with the autocorrelation within each.</p>
+<p><strong>Seasons:</strong> the seasonal Kendall test (Hirsch, Slack and Smith, 1982), for samples taken several times a year, the season given by the month of a time made of dates, or by a qualitative variable or an ID (season, month). The year of a value is the whole part of its time (the calendar year of a date); several values in a season of the same year count as one, their median (as some implementations do; EnvStats would keep them all, as ties in time), and a note says how many. In each season seen in at least 2 years: the Mann–Kendall S between its years and its variance with ties; S and Var(S) are summed over the seasons, taken as independent, and p comes from the normal approximation with the continuity correction, as trend::smk.test and EnvStats::kendallSeasonalTrendTest compute them. The seasonal Sen slope is the median of the slopes between years within each season (per year, or per time unit), its 95 % interval taken from Var(S) as Gilbert (1987) does (the ranks rounded, as for the Sen slope above; EnvStats interpolates between them); τ is EnvStats': the seasons' τ averaged, weighted by their years.</p>
+<p>A season seen in a single year doesn't count; a line with fewer than 4 values in the seasons that count, or with the same value every year in each season, isn't tested; observations without a season are left out of the test, and counted. The seasonal test takes the seasons as independent: autocorrelation from one month to the next makes p too small, and Allow for autocorrelation doesn't apply to it (Hirsch and Slack, 1984, give a correction, not done here). The Test column gives each line's test; the correction over the lines stays the same.</p>
+</section>
+<section id="trim-indices-and-trends-of-counts">
+<h2>TRIM: indices and trends of counts</h2>
+<p><strong>New model › type "TRIM (indices and trends of counts)":</strong> the yearly indices and the trend of counts of animals surveyed on sites year after year, as Statistics Netherlands' TRIM 3 software and the rtrim package compute them (the standard of European bird monitoring), with missing counts: the model imputes them. The data: the long table, one row per site and year; Y: the counts (whole numbers, positive or zero; an empty cell is a missing count); X: optional qualitative covariates (a site's habitat, or a value per site and year) that make the time effects vary. General tab:</p>
+<ul>
+<li>the site (an ID or a variable) and the time (the year: a variable or an ID made of evenly spaced numbers; a year without any row is added, all its counts imputed), proposed from the columns' names;</li>
+<li><strong>the model:</strong> 3, an effect of each year (ln μ = site + year); 2, a linear trend on the log scale whose slope changes at the changepoints given (years; empty: a single slope), at every year, or chosen stepwise as rtrim does (a point leaves when the Wald test of its change in slope exceeds p = 0.2, comes back when its score test falls below p = 0.15); 1, no time effect;</li>
+<li>overdispersion (σ²) and serial correlation (ρ, between two successive years of a site), ticked by default as the TRIM manual recommends: the parameters are then estimated by generalized estimating equations that allow for them; without them, by Poisson maximum likelihood;</li>
+<li>weights (a variable: over- or under-represented sites), and the base time of the indices (the first by default).</li>
+</ul>
+<p>Two rows for the same site and year are refused, the site, the year and the observations named; a site without any positive count is left out, and counted; a cell without a row takes the weight and the covariate category of its site's previous year.</p>
+<p><strong>Views:</strong> Summary (the model, σ² and ρ, the overall slope of the imputed totals: multiplicative, per time step, with its standard error, its 95% interval and its class by TRIM, strong increase, moderate increase, stable, uncertain, moderate decline or steep decline, from the interval compared with 1 and with 0.95 / 1.05; the Pearson chi-square, the likelihood ratio and the AIC); Indices (the imputed indices, from the observed counts and the model's for the missing ones, and the model's, with their 95% band, the base time, and optionally the overall slope's line); Time totals (observed, imputed, model); Slopes, parameters and tests (the Wald tests of the slope, the changes in slope, the deviations from the linear trend and the covariates; model 3 as a line and its deviations; the stepwise steps); Counts by site (a site's counts and the model's, or every count against its expected value). The results are those of the rtrim package. Methods text with its references, Export and report as for the other models, and Export to R: a script or report that redoes the model with R alone, TRIM's functions of Nuée's engine copied into it (the same indices, totals, slopes and tests as Nuée). No prediction.</p>
+</section>
+<section id="distance-sampling-density-and-abundance">
+<h2>Distance sampling: density and abundance</h2>
+<p><strong>New model › type "Distance sampling (density, abundance)":</strong> the density and abundance of a population from the distances of the animals detected from lines (line transects) or from points (point transects, point counts), as the ds() and dht2() functions of the Distance package compute them (Buckland et al. 2001; Miller et al. 2019). The data: the flat table, one row per detection, as Distance reads it:</p>
+<ul>
+<li><strong>the distance (Y):</strong> the perpendicular distance from the line, or the distance from the point;</li>
+<li>the transect (the line or the point: an ID or a variable) and its effort, the same on all its rows: the length of the line, or for points the number of visits (no column: one visit per point);</li>
+<li><strong>optional:</strong> the stratum (the region: an ID or a variable) and its area, the same on all its rows (without an area, or areas all 0, the density only); the size of each detected group;</li>
+<li>a transect without any detection stays a row, its distance empty, so that its effort counts; rows without a transect and a distance are left out.</li>
+</ul>
+<p>For example, with Distance's column names (the dialog proposes them from the names):</p>
+<pre>Region.Label  Area  Sample.Label  Effort  distance  size
+North         630   N-01          2.4     35        2
+North         630   N-01          2.4     120       1
+North         630   N-02          1.8               (no detection)</pre>
+<p><strong>General tab:</strong></p>
+<ul>
+<li>line or point transects;</li>
+<li><strong>the truncation:</strong> the largest distance (ds's default), a distance, or a percentage of the largest distances (5 to 10% is usual); a left truncation if needed. Detections beyond it leave the model, their transect stays;</li>
+<li>intervals, for distances recorded in classes (as ds(cutpoints = )): their bounds, e.g. "0 10 25 50 100"; each distance of the table (the true one, or its class's midpoint) counts in its interval, the first bound is the left truncation and the last w; the likelihood is then that of the counts of the classes, and the goodness of fit the chi-square on them;</li>
+<li>the key of the detection function g(x): half-normal exp(−x²/2σ²), hazard-rate 1 − exp(−(x/σ)^−b) (b ≥ 1, as mrds) or uniform;</li>
+<li><strong>the adjustment terms:</strong> cosine (the default), Hermite polynomials or simple polynomials, their number chosen by AIC as ds() does (the key alone, then one more term at a time while the AIC falls, five at most; orders 2, 3, 4… for cosines, 4, 6, 8… for Hermite and polynomials, 1, 2, 3… and 2, 4, 6… with the uniform key) or fixed; the distances in the terms divided by the truncation w (ds's default) or by σ;</li>
+<li><strong>monotonicity:</strong> mrds's constraint on a function with adjustment terms, checked at 10 distances from 0 to w: strict (the default: g decreases), weak (g stays below g(0)), or none; g stays positive there;</li>
+<li>the units of the distances, of the effort (lines) and of the areas, or a conversion factor (Distance's convert_units): the density is per unit of area, and the results say it.</li>
+</ul>
+<p>The detection function is fitted by maximum likelihood on the exact distances; its parameters' variance comes from the outer product of the distances' scores, as mrds; p, the average probability of detection within the truncation, and its standard error by the delta method; the effective strip half-width ESW = p w (lines) or the effective detection radius EDR = w √p (points). The density of each stratum is D = n / (a p), a the covered area (2 w L, or 2 (w − L) L with a left truncation, for lines; π w² K for points); its variance combines the encounter rate's between transects (the R2 estimator for lines, P2 for points, Fewster et al. 2009), that of p, and that of the mean group size; its 95% interval is log-normal with Satterthwaite degrees of freedom, as dht2. The total over the strata adds their abundances (with areas) or weights their densities by their covered areas (without). Refused, and named: a negative distance, a missing or zero effort, two efforts for one transect, two areas for one stratum, an area of zero beside others, a distance without a transect.</p>
+<p><strong>Views:</strong> Summary (the model retained and the AIC of each model fitted on the way, p and ESW or EDR with their standard errors, the parameters, the goodness of fit, the overall density and abundance with their intervals; what was left out); Detection function (the histogram of the distances, each bar its count over the count it would have if every animal were detected, as mrds's plot.ds, under the fitted g; each detection on the curve, a click selects its row; for points, the density of the distances f(r) = 2r g(r) / (w² p) too; below, the chi-square's classes); QQ plot (the fitted distribution of each distance against the empirical one, with the Cramér–von Mises test; not for distances in intervals); Density and abundance (by stratum and overall: area, covered area, effort, transects, detections, encounter rate and its CV, D, its standard error, CV, 95% interval and df, N and its interval, the share of the variance due to the encounter rate, to detection and to group size; with groups, the density of groups too). Methods text with its references, Export and report as for the other models, and Export to R: a script or report that redoes the analysis with R alone, without Distance or mrds, the distance sampling functions of Nuée's engine copied into it (the same candidates and AICs, parameters and their covariance, p, ESW or EDR, goodness-of-fit tests, density and abundance as Nuée; the detection function over the histogram and the QQ plot in base R). No prediction. Covariates in the detection function (MCDS) are not supported yet.</p>
+<p>The results are those of Distance 2.0 (moteur/tests/verifier_distance.R compares them), with three known differences: Nuée integrates the hazard-rate key exactly where mrds approximates its integral by a smoothing spline (lines, the key without adjustment terms: parameters and p differ by about 1e-4); with a left truncation of line transects the covered area is 2 (w − L) L, where dht2 keeps 2 w L; mrds's optimizer under the monotonicity constraint stops within 1e-6 of the likelihood, so its estimates can differ from Nuée's in the fourth digit, or, on rare data, settle on another local optimum.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="communities.html">← Community ecology</a><a rel="next" href="maps.html">Maps and spatial data →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

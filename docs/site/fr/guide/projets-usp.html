@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projets .usp · Nuée</title>
+<meta name="description" content="L’historique du fichier, ce qui est identique aux valeurs enregistrées et ce qui diffère.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="projets-usp.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/usp-projects.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/usp-projects.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="projets-usp.html" aria-current="page">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Projets .usp</h1>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#historique-du-fichier">Historique du fichier</a></li>
+<li><a href="#ce-qui-est-identique-aux-valeurs-enregistrees">Ce qui est identique aux valeurs enregistrées</a></li>
+<li><a href="#ce-qui-differe">Ce qui diffère</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="historique-du-fichier">
+<h2>Historique du fichier</h2>
+<p>Pour un projet venant d'un fichier .usp, l'explorateur montre « Historique du fichier » : le journal enregistré dans le fichier (création, changements de jeu de travail, nombre de composantes, modèles supprimés...), avec la date, la version du logiciel et l'utilisateur.</p>
+<p><strong>Clic droit sur un modèle importé › Historique du modèle :</strong> seulement ce qui le concerne.</p>
+</section>
+<section id="ce-qui-est-identique-aux-valeurs-enregistrees">
+<h2>Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 133 projets .usp)</h2>
+<p>Mise à l'échelle, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.</p>
+</section>
+<section id="ce-qui-differe">
+<h2>Ce qui diffère</h2>
+<ul>
+<li>Q2 (et ce qui vient de la validation croisée : Q2 par variable, RMSEcv, CV-ANOVA, classement en validation croisée, intervalles de confiance) : par défaut, Nuée prédit chaque groupe par un modèle ajusté sans lui, ses centres recalculés (voir « <a href="modeles.html#validation-croisee">Validation croisée</a> ») ; les valeurs enregistrées viennent d'une validation faite avec le centrage et la mise à l'échelle de toutes les observations. Écart au Q2(cum) enregistré, en médiane, sur le corpus d'essai : 0,003 pour les PLS de plus de 200 observations, 0,01 de 50 à 200, 0,10 de 20 à 50, 0,22 en dessous, le Q2 de Nuée étant presque toujours plus bas ; 0,04 pour les ACP. Avec des groupes par identifiant (un site, un secteur), l'écart est plus grand : le modèle ajusté sans un site ne connaît pas non plus le niveau moyen de ce site. Validé avec « Centres et poids du modèle complet », le Q2 enregistré revient exactement, groupes par identifiant compris : 773 PLS sur 809 du corpus d'essai (220 sur 220 sans données manquantes), 441 sur 443 de quatre projets réels (moteur/tests/verifier_references.R), où les deux autres ont un tour sans aucune variation, dont la valeur enregistrée vient d'erreurs d'arrondi. Pour une ACP, il s'en écarte de 0,02 en médiane : le détail de la validation des fichiers n'est pas publié.</li>
+<li><strong>Signe des composantes de nouveaux modèles :</strong> arbitraire (les modèles importés sont orientés comme dans le fichier).</li>
+<li><strong>Dendrogrammes :</strong> méthode de Ward exacte ; les fusions du haut de l'arbre peuvent différer de celles de l'arbre enregistré.</li>
+<li><strong>Ajustement automatique :</strong> les règles publiées, appliquées au Q2 de Nuée, peuvent choisir un autre nombre de composantes ; pour les ACP, la limite exacte utilisée dans les fichiers n'est pas publiée.</li>
+<li><strong>Seuil VIP (marche autour de 0,8) :</strong> méthode propre à l'application.</li>
+<li>Intervalles de confiance des VIP d'un modèle à deux composantes ou plus (les VIP elles-mêmes sont les mêmes) : ceux du logiciel qui a écrit le fichier pondèrent les composantes de chaque tour de la validation croisée d'une façon qui n'est pas publiée ; à une composante, ce sont les mêmes.</li>
+<li><strong>OPLS / OPLS-DA :</strong> pas de modèle enregistré pour comparer (voir plus haut).</li>
+<li><strong>Transformation proposée :</strong> la règle publiée ne dit pas s'il faut l'asymétrie et Min/Max à la fois ; l'application les exige tous les deux.</li>
+</ul>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="resultats.html">← Résultats, documents et R</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuée</title>
+<meta name="description" content="Nuée, une application de bureau pour les analyses des écologues : ACP, PLS, écologie des communautés, modèles mixtes, suivis et cartes, calculés en R, sous Windows et Linux.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<link rel="alternate" hreflang="fr" href="index.html">
+<link rel="alternate" hreflang="en" href="../en/index.html">
+<script src="../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="index.html"><img src="../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="index.html" aria-current="page">Accueil</a>
+      <a href="installation.html">Installation</a>
+      <a href="guide/index.html">Guide</a>
+      <a href="tutoriels/index.html">Tutoriels</a>
+      <a href="nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../en/index.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Nuée, une application de bureau pour les analyses des écologues : ACP, PLS, écologie des communautés, modèles mixtes, suivis et cartes, calculés en R, sous Windows et Linux. -->
+<h1>Nuée</h1>
+<p class="chapeau">ACP, PLS, écologie des communautés, modèles linéaires, généralisés et mixtes, suivis de populations et cartes, sous Windows et Linux, calculés en R.</p>
+<div class="boutons">
+<a class="bouton" href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Télécharger pour Windows</a>
+<a class="bouton second" href="installation.html#linux">Linux</a>
+<a class="bouton second" href="tutoriels/index.html">Tutoriels</a>
+</div>
+<p>Nuée (version 1.0.0) est une application de bureau pour analyser des données de terrain et de
+laboratoire. Ouvrez un tableau venant d'Excel, de R, de SPSS, de Stata, de SAS, de jamovi ou de
+QGIS, ou les relevés de terrain de KoboToolbox ou d'ODK, choisissez vos variables, et obtenez le
+modèle avec ses graphiques, ses diagnostics et sa validation. Les résultats repartent vers Excel,
+R, SPSS, Stata, SAS, jamovi ou QGIS, avec le paragraphe de votre section Méthodes, ou en script R
+qui refait le calcul sans Nuée.</p>
+<figure><a href="../images/fr/accueil-fenetre.png"><img src="../images/fr/accueil-fenetre.png" alt="La fenêtre de Nuée : une PLS sur des spectres, son résumé, ses scores et ses loadings tracés en fonction de la longueur d'onde" width="1280" height="900" loading="lazy"></a><figcaption>Une PLS sur des spectres proche infrarouge (tutoriel 2) : l'explorateur à gauche, le résumé du modèle, ses scores et ses loadings.</figcaption></figure>
+<h2 id="pour-qui">Pour qui</h2>
+<p>Pour les écologues de terrain, les gestionnaires d'espaces naturels et les chercheurs en
+environnement, statisticiens ou non. Nuée vous aide à choisir :</p>
+<ul>
+<li><strong>Quelle analyse ?</strong> (menu Modèle) pose votre question en mots simples : comparer des groupes,
+l'effet de variables, beaucoup d'espèces, une tendance, une densité, un avant/après avec
+témoins… Il propose la réponse et le dispositif d'après vos colonnes, conseille une analyse et
+ouvre la fenêtre du modèle déjà remplie.</li>
+<li>Le résumé de chaque régression dit <strong>ses conditions en mots</strong> : la normalité des résidus, une
+dispersion qui change, des observations influentes, une surdispersion, des termes colinéaires,
+avec ce qu'il faut faire.</li>
+<li><strong>Le texte des méthodes</strong> et <strong>le texte des résultats</strong> sont écrits d'après le modèle, en
+français ou en anglais, avec leurs références.</li>
+</ul>
+<h2 id="ce-que-fait-nuee">Ce que fait Nuée</h2>
+<ul class="cartes">
+<li><h3>Multivarié</h3><p>ACP, PLS, PLS-DA, OPLS, spectres proche infrarouge (SNV, MSC, dérivées), VIP, validation croisée, tests de permutation.</p><p><a href="guide/acp-pls.html">Le guide</a></p></li>
+<li><h3>Régressions</h3><p>Modèles linéaires, mixtes (nlme), GLM et GAM (mgcv) pour comptages, présences, proportions, avec autocorrélation dans le temps, moyennes ajustées et sélection par AIC.</p><p><a href="guide/regressions.html">Le guide</a></p></li>
+<li><h3>Communautés</h3><p>RDA, CA, CCA, PCoA, NMDS, PERMANOVA, test de Mantel, espèces indicatrices, raréfaction.</p><p><a href="guide/communautes.html">Le guide</a></p></li>
+<li><h3>Suivis</h3><p>Tendances de séries, avant/après avec témoins (BACI), indices de comptages (TRIM), densités par échantillonnage par distances.</p><p><a href="guide/suivis.html">Le guide</a></p></li>
+<li><h3>Cartes</h3><p>Coordonnées et systèmes (Lambert-93, UTM…), GeoPackage pour QGIS, valeurs de rasters, autocorrélation spatiale.</p><p><a href="guide/cartes.html">Le guide</a></p></li>
+<li><h3>Publication</h3><p>Figures composées à la taille d'une revue, rapports PDF et Word, documents avec citations, export vers R, R Markdown et Quarto.</p><p><a href="guide/resultats.html">Le guide</a></p></li>
+</ul>
+<h2 id="tout-en-r-sur-votre-ordinateur">Tout en R, sur votre ordinateur</h2>
+<p>Chaque calcul est écrit en R, commenté, dans le dossier de l'application : on peut lire ce qui a
+été calculé, et le modifier. La console R (Affichage › Console R) montre l'appel derrière chaque
+action. Les résultats sont ceux des paquets de référence (vegan, nlme, mgcv, emmeans, rtrim,
+Distance…), vérifiés à chaque changement.</p>
+<p>Vos données restent sur votre ordinateur : Nuée n'envoie rien, sauf une question à GitHub au
+démarrage pour savoir s'il existe une nouvelle version (elle se coupe dans le menu Aide), et la
+zone affichée aux serveurs d'OpenStreetMap ou de l'IGN quand vous choisissez un fond de carte.</p>
+<h2 id="telecharger">Télécharger</h2>
+<p>Nuée 1.0.0 :</p>
+<ul>
+<li><strong>Windows 10 et 11</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Nuee-Setup-1.0.0.exe</a>, R inclus ;</li>
+<li><strong>Debian, Ubuntu et dérivées</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-amd64.deb">Nuee-1.0.0-amd64.deb</a> ;</li>
+<li><strong>autres distributions Linux</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x86_64.AppImage">Nuee-1.0.0-x86_64.AppImage</a> ou <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.tar.gz">Nuee-1.0.0-x64.tar.gz</a>.</li>
+</ul>
+<p>Comment installer : voir <a href="installation.html">Installation</a>. Toutes les versions et leurs notes :
+la page des <a href="https://github.com/4rtefakt/nuee/releases">publications sur GitHub</a> ; ce qui a changé :
+<a href="nouveautes.html">Quoi de neuf</a>.</p>
+<h2 id="pour-commencer">Pour commencer</h2>
+<ul>
+<li><a href="tutoriels/index.html">Les tutoriels</a> suivent trois études du début à la fin : un avant/après avec
+témoins (BACI), une PLS sur des spectres, et le suivi d'une population d'oiseaux.</li>
+<li>Dans l'application, Aide › Projet d'exemple ouvre 120 pommes inventées avec quatre modèles
+prêts.</li>
+<li><a href="guide/index.html">Le guide d'utilisation</a> décrit chaque fenêtre et chaque calcul.</li>
+</ul>
+<p>Nuée est un logiciel libre (<a href="https://github.com/4rtefakt/nuee/blob/main/LICENSE">GPL-3.0</a>).
+L'interface est en français et en anglais (Affichage › Langue). Un problème, une question :
+<a href="https://github.com/4rtefakt/nuee/issues">ouvrez un ticket sur GitHub</a>, en français ou en anglais ;
+Aide › Informations de diagnostic donne les versions à y coller.</p>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

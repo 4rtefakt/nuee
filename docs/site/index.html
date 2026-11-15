@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuée</title>
+<link rel="icon" href="assets/nuee.svg" type="image/svg+xml">
+<link rel="alternate" hreflang="fr" href="fr/index.html">
+<link rel="alternate" hreflang="en" href="en/index.html">
+<script>
+  (function () {
+    var l = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'fr']).map(function (x) { return String(x).slice(0, 2).toLowerCase(); });
+    var fr = l.indexOf('fr'), en = l.indexOf('en');
+    location.replace(fr === -1 && en !== -1 ? 'en/index.html' : 'fr/index.html');
+  })();
+</script>
+<noscript><meta http-equiv="refresh" content="0; url=fr/index.html"></noscript>
+<style>body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem; }</style>
+</head>
+<body>
+<p><a href="fr/index.html" hreflang="fr">Nuée en français</a> · <a href="en/index.html" hreflang="en" lang="en">Nuée in English</a></p>
+</body>
+</html>

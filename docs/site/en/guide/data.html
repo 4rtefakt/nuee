@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The data · Nuée</title>
+<meta name="description" content="Field data from KoboToolbox or ODK, editing the data, making variables, cleaning, joining another table, summarizing by group, dates.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="data.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/donnees.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/donnees.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html" aria-current="page">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>The data</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#field-data-from-kobotoolbox-or-odk">Field data from KoboToolbox or ODK</a></li>
+<li><a href="#editing-the-data-making-variables">Editing the data, making variables</a></li>
+<li><a href="#cleaning-the-data-find-and-replace-categories-units">Cleaning the data: find and replace, categories, units</a></li>
+<li><a href="#adding-columns-from-another-table">Adding columns from another table</a></li>
+<li><a href="#summarizing-by-group">Summarizing by group</a></li>
+<li><a href="#variable-statistics">Variable statistics</a></li>
+<li><a href="#dates-as-time">Dates as time</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="field-data-from-kobotoolbox-or-odk">
+<h2>Field data from KoboToolbox or ODK</h2>
+<p>Forms filled in on phones (KoboCollect, ODK Collect, Enketo) are exported by their server: KoboToolbox as an Excel workbook (a sheet for the submissions, one per repeat group) or a CSV file (semicolons), ODK Central as a .zip archive (one CSV per table) or its submissions CSV alone. File › Open recognises them by their columns (_id, _uuid, _submission_time, _index...; SubmissionDate, KEY, meta-instanceID...), as does dropping one on the window; File › Import from KoboToolbox or ODK... asks for the import, and refuses any other file. A dialog says in sentences what the import will do before doing it, and says it again at each setting changed:</p>
+<ul>
+<li><strong>the table to analyse:</strong> the submissions, or a repeat group (one row per species observed, per plant measured), with the columns of its parent tables joined to each row, all ticked by default (the site's habitat and coordinates; a repeat within a repeat goes up both levels);</li>
+<li>the metadata dropped, listed (internal IDs, device, form version, the columns that link the tables...); the submission date and time, the submitter, the submission ID, the start, end and day of the survey and the validation status can be kept;</li>
+<li>group prefixes removed from names (group_site/altitude, group_site-altitude: altitude); two questions with the same name in different groups keep their group (group_site_notes, group_end_notes);</li>
+<li>a single choice (select_one) becomes a qualitative variable, a multiple choice (select_multiple) one 0/1 column per choice named question_code (weather_rain): 1 chosen, 0 not, empty when the question wasn't answered; the export's own 0/1 columns are used when it has them, never twice;</li>
+<li>a GPS point (geopoint), as text ("lat lon alt acc") or in columns, becomes gps_longitude, gps_latitude, gps_altitude and gps_precision; the table's first point (or its parent's, joined) becomes the project's coordinates, in WGS 84 (see <a href="maps.html#maps-and-spatial-data">Maps and spatial data</a>);</li>
+<li>dates and times lose their fractions of a second and their time zone (2024-05-03T08:12:45.123+02:00 becomes 2024-05-03 08:12:45, the phone's clock), so that Nuée reads them as dates (see <a href="#dates-as-time">Dates as time</a>).</li>
+</ul>
+<p>The XLSForm form (the workbook with the survey and choices sheets, downloaded from KoboToolbox or ODK Central), if given, tells each question's type, the choices' labels in the language chosen (label::English (en), label::Français (fr) or label; by default the interface's) and their order, which becomes the order of the categories; the columns then take the questions' names, whatever the export's headers (names or labels). Without the form, answers stay as the export writes them (codes, or labels for an export in labels), categories in alphabetical order, and a multiple choice without its 0/1 columns stays text. "Open as is" opens the chosen table unchanged (the sheet, or the CSV of the archive). The import is a project like any table opened, to save (Ctrl+S); the Methods text says the data were collected with KoboToolbox or ODK (and the form's title).</p>
+</section>
+<section id="editing-the-data-making-variables">
+<h2>Editing the data, making variables</h2>
+<p>In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; empty = missing value; for a qualitative variable, the category's name). Models already fitted don't change: refit them.</p>
+<p><strong>Edit › New variable:</strong> from an R formula on the other variables and the observation IDs, for example log10(polyphenols), sucre / acidite, ifelse(poids &gt;= 170, "gros", "petit") (a text result gives a qualitative variable); by group, group_mean(x, sector), the mean of x in each observation's group (missing values ignored; an observation without a group gets none), and group_deviation(x, sector), the deviation from it (moyenne_groupe and ecart_groupe in French): a sector mean as a covariate, or a response centred by sector. Or classes from the values of a variable, at given limits (10 ; 20 gives "≤ 10", "]10 ; 20]", "&gt; 20") or in classes of equal size. Or Imputation (PCA): the chosen quantitative variables' missing values filled from each other by regularized iterative PCA, as missMDA::imputePCA does, with the number of components chosen by generalized cross-validation of the standardized variables, from 0 to 5, as missMDA::estim_ncpPCA does on them (0: each variable's mean), unless you give it; observed values unchanged, an observation missing more than half of them left missing, imputed values kept within each variable's observed range unless unticked; as new variables "x (imputed)" or in the variables themselves (Ctrl+Z undoes it). Remember to save the project. In a New variable formula, from one year to the next: previous(x, year, sector), the value of x the year before in the same sector, and following(x, year, sector), that of the year after (pas = 2: two years before or after). The year sought must exist: a missing year gives a missing value, never that of an older year, as does an observation without a sector or a year. The time is made of numbers (an ID made of numbers, like the year, will do); dates too, but these functions go with regular times (see <a href="#dates-as-time">Dates as time</a>); the group, a qualitative variable, an ID or interaction(site, sector) for a sector within a site; the same sector twice in one year is refused, naming it. growth_rate(x, year, sector) gives the growth rate log(x / x of the year before), missing unless both values are positive: for density dependence, the growth rate against previous(density, year, sector). In French: precedent, suivant and croissance.</p>
+<p>In a New variable formula, the diversity of each survey, over several species columns of its row (counts, densities, covers: numbers ≥ 0), as vegan::specnumber and vegan::diversity compute it: richness(...), S, the number of columns &gt; 0; shannon(...), H′ = −Σ p ln p (natural log, p each species' share of the row's total); simpson(...), 1 − Σ p² (the Gini–Simpson index, vegan's "simpson"); pielou(...), Pielou's evenness J = H′ / ln S, missing when S ≤ 1. The columns are listed (shannon(Ablette, Brochet, Gardon)), or a range in the table's column order, from one column to another, both included (shannon(Ablette:Vandoise), as dplyr reads it), or both; a column named twice counts once, and any other expression counts as a column of its values. A survey of zeros has S = 0, H′ = 0 and a Simpson of 0 (vegan gives 1: one minus an empty sum), and no J; a missing value in any of the columns makes the index missing for that survey (a missing value isn't read as an absence); a negative value is refused, naming its variable. In French: richesse.</p>
+</section>
+<section id="cleaning-the-data-find-and-replace-categories-units">
+<h2>Cleaning the data: find and replace, categories, units</h2>
+<p>What one used to do in Excel before opening the table, in Nuée, each change undone by a single Ctrl+Z (Edit › Undo) like the other changes of the data; models already fitted keep their results until you fit them again. In the Edit menu, in the Data view's toolbar, and in the right-click on a column's header in the Data view (a header shows the variable's unit, its number of empty cells and of distinct values, "Column summary"; its tooltip, the description) or on a variable of Plots › Variable statistics.</p>
+<p><strong>Edit › Find and replace (Ctrl+H):</strong> in one variable, several or all, the cells that hold a text or a number, or the empty cells ("empty cells": replace empty by 0), get what you type, or become empty when you type nothing (replace -9999 by nothing). A qualitative variable is compared as text: the whole cell, or part of the text (a "," in "3,5"), capitals counting or not; a quantitative variable as numbers ("3,5" finds 3.5), on the whole cell, and it takes only a number or nothing (its cells stay otherwise, and the dialog says so). Before you replace, the dialog says how many cells will change in each variable, the first changes ("foret" → "forêt" (3)) and what each variable becomes: a text variable whose values all become numbers (",", "&lt;0.5" replaced by 0.25, "abs" by 0) becomes quantitative, unless you untick it. A category replaced by another one that exists merges into it; one emptied of its cells leaves. Note that a column of measurements is read as numbers when you open the table: a few "&lt;0.5" or "nd" in it are read as missing values then (File › Open says so), and are no longer there to replace; a column with more text stays text, where you can.</p>
+<p>Edit › Categories (or right-click on a qualitative variable's header): a qualitative variable's categories with their number of observations, to rename (a name another category has merges them), merge (the ticked ones, into the most frequent), move up and down, and choose the reference. Their order is that of the plots and tables (colours, bars, adjusted means). In a regression the last category observed is the reference category: each other category's coefficient is its difference from it, and "Reference" moves a category last. The project's model definitions follow the categories (refitted, a regression takes the new reference); a fitted model whose categories were renamed or merged can't be refitted from its own page (fewer observations, a component more) nor predict: fit it again (Model › Modify model, or double-click its definition in the explorer). A new order only doesn't stop it.</p>
+<p>Edit › Units and descriptions (or right-click on a header › Unit and description): each variable's unit (ind./ha, m, °C) and description. The unit goes into the axis titles ("density (ind./ha)": Effects, Observed / predicted, Variable statistics, Series, the Map's legend, adjusted means, statistical tests, a forest's partial dependence; not on an axis that shows it transformed), the Data view's headers, the Methods text ("the response is "density" (ind./ha)") and the Results text (a coefficient "per m" when the variable is in its own units). Both are saved in the project, kept by File › Export data where the format has room (a "Variables" sheet of an Excel workbook and a "Variables" table of a GeoPackage, which Nuée reads back when it opens them; the description of a jamovi column; the label and units attributes of an R column, as Hmisc reads them; not in CSV or text), and written as comments before the data in Export to R.</p>
+<p>In the Data view, a click on a cell, then Ctrl+V, pastes a block of cells copied from a spreadsheet from that cell on, in the rows and columns as the view shows them (sorted, filtered): each cell as when you edit it by hand (empty: missing; a new category is added; a text in a quantitative variable is refused, naming the observation, and nothing changes); cells beyond the table are left out. One Ctrl+Z undoes the whole block.</p>
+</section>
+<section id="adding-columns-from-another-table">
+<h2>Adding columns from another table</h2>
+<p>Edit › Add columns from a table (or right-click on the project's data in the explorer): the columns of another table added to the observations by a key, as one would do in a spreadsheet: the habitat and altitude of each site from a table of sites, the weather of each year, or of each site and each year. The table: a file in any format File › Open reads (with its sheet or table for a workbook or an R file; a Nuée project gives its data), or cells copied from a spreadsheet (Paste cells).</p>
+<p><strong>The key:</strong> one or more columns of the project (variables, IDs or the observation names), each beside the matching column of the table. The application proposes columns with the same names (ignoring capitals and the spaces at the ends, as Predict a file does): those with which each key comes once in the table and the most observations find theirs, from the table's first columns, as few as possible: the site for a table of sites, the site and the year for weather by site and year; change them as needed. Each key must come only once in the table: a key that comes twice is refused, named, rather than one of its rows taken at random.</p>
+<p>Keys are compared as numbers when the project's column is a quantitative variable: 2019 and 2019.0 are the same year (the table's values read as numbers, as File › Open reads them). Otherwise they are compared as text, as written in the table and in the project, without the spaces at the ends, capitals counting: "S1" isn't "s1", nor "01" "1" (a key column of "01", "02" isn't read as numbers here); a number of the table is then written as R writes it (2019).</p>
+<p>A key with a missing part matches nothing.</p>
+<p><strong>Columns to add:</strong> every column of the table but the key, ticked by default. A column of numbers gives a quantitative variable; text, an R factor or a labelled SPSS or Stata variable gives a qualitative one (a factor's categories in their order, otherwise the texts sorted), as when a table is opened. A name already taken in the project, by a variable or an ID, becomes "name (2)", "name (3)"...: nothing is overwritten.</p>
+<p>Each observation takes the values of the table's row that has its key, and the observations keep their order: as k &lt;- match(key of the project, key of the table), then table[k, columns] (merge() would sort the rows). An observation with no such row gets missing values. The result says what was added and counts the observations without a match and the table's keys that match no observation, naming the first five of each; rows of the table without a key are counted too. If no observation finds its key, nothing is added, and the message shows keys of both sides. Edit › Undo (Ctrl+Z) removes the added columns; models already fitted don't change. The R console's "Application actions" shows the call, and the same computation written with match() on the project's data table.</p>
+</section>
+<section id="summarizing-by-group">
+<h2>Summarizing by group</h2>
+<p>Edit › Summarize by group (or right-click on the project's data): a new project with one row per group, beside the project, which doesn't change: the mean density of each sector and each year from several plots, before BACI or Series. The groups: one or more variables or IDs (the sector and the year; the site, the sector and the year). Each group becomes an observation named from its values ("S1 2019"); the groups come in the order of these columns (a qualitative variable's categories in their order, numbers in theirs), and the columns stay variables or IDs, as in the project. An observation without a value in one of them is left out, and counted.</p>
+<p>The quantitative variables to summarize (all but those of the groups, ticked by default) and the statistics, one or several, for each of them: mean (by default), sum, median, minimum, maximum, standard deviation (n − 1, as sd() computes it), number of values (n), in columns "density (mean)", "density (n)"... (named in the interface's language). Missing values are ignored and n counts the known values; a group with no known value has missing statistics, and n = 0. As aggregate(d[variables], d[groups], FUN) on the project's data table: the R console's "Application actions" shows it with the call.</p>
+<p>A qualitative variable or an ID whose known values are the same within every group (the habitat of a sector, the site of a sector) is kept, with that value; the others are left out, and the status bar names them. The new project has no file yet: save it (Ctrl+S).</p>
+</section>
+<section id="variable-statistics">
+<h2>Variable statistics</h2>
+<p>Plots › Variable statistics (or in the explorer, under the project): for each variable N, missing values, min, max, Min/Max, mean, median, standard deviation, standard deviation / mean, skewness, skewness test and kurtosis. In red: Min/Max &lt; 0.1 and a skewness test beyond 2; the "Suggested" column gives the log10 advised (with the constant C2 if there are zeros).</p>
+<p>A click on a row shows the variable's histogram, next to that of the transformed variable.</p>
+<p>The other view is the map of missing values (observations × variables).</p>
+</section>
+<section id="dates-as-time">
+<h2>Dates as time</h2>
+<p>Wherever a time is asked for (Series, BACI, Residual autocorrelation, a mixed model's CAR1 autocorrelation, previous() and following() in New variable), it can be numbers (the year; 2019.5) or dates: 2019-05-14 (ISO, with the time of day if needed: 2019-05-14 10:30) or 14/05/2019, also 14-05-2019 and 14.05.2019, with a four-digit year. The day always comes first, as in France: 05/04/2019 is 5 April, never 4 May. A date becomes a decimal year: the year + (the day of the year − 1 + the fraction of the day) / the number of days in the year (366 in leap years); 1 January 2019 is 2019, 14 May 2019 is 2019.364. Years and dates thus read alike: a Sen slope or the CAR1 φ is per year. A time is made of numbers or of dates, not both: a value of the other kind, or a date that doesn't exist (31/02/2019), is refused, naming it. A number stays a number: an Excel day number (43599) can't be told from a year. previous() and following() keep their rule, the time exactly one step before: they go with regular times (years); with dates that time rarely exists, and no nearby date is taken instead. The export to R reads the dates the same way.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="getting-started.html">← Getting started</a><a rel="next" href="models.html">Choosing and building a model →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

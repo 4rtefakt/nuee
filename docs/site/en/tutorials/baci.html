@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Before-after with controls (BACI) · Nuée</title>
+<meta name="description" content="Nuée tutorial: assessing the effect of a restoration with a before-after control-impact design (BACI), from the table to the Methods text.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="baci.html">
+<link rel="alternate" hreflang="fr" href="../../fr/tutoriels/baci.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="../guide/index.html">Guide</a>
+      <a href="index.html" aria-current="page">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/tutoriels/baci.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Nuée tutorial: assessing the effect of a restoration with a before-after control-impact design (BACI), from the table to the Methods text. -->
+<h1>Before-after with controls (BACI)</h1>
+<p class="chapeau">Did removing a weir raise the density of young trout? A before-after control-impact design, from the table to the Methods text and the R script.</p>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#the-question-and-the-data">The question and the data</a></li>
+<li><a href="#1-which-analysis">1. Which analysis?</a></li>
+<li><a href="#2-the-gap-between-impact-and-controls">2. The gap between impact and controls</a></li>
+<li><a href="#3-the-baci-mixed-model">3. The BACI mixed model</a></li>
+<li><a href="#4-reading-the-interaction">4. Reading the interaction</a></li>
+<li><a href="#5-adjusted-means">5. Adjusted means</a></li>
+<li><a href="#6-the-methods-and-results-texts">6. The Methods and Results texts</a></li>
+<li><a href="#7-export-to-r">7. Export to R</a></li>
+<li><a href="#going-further">Going further</a></li>
+</ul>
+</nav>
+<div class="encadre">
+<p><strong>The data are simulated.</strong> No fish was counted: the table was made by the script
+<a href="../../donnees/baci.R">baci.R</a>, with a fixed seed, for this tutorial. It holds a known effect: +6
+juveniles per 100 m² at the restored stations from 2016 on.</p>
+</div>
+<h2 id="the-question-and-the-data">The question and the data</h2>
+<p>A mill weir was removed in the winter of 2015-2016. Every summer from 2010 to 2023, the year's
+juvenile trout are counted by electrofishing on six stations: three upstream of the former weir
+(A1, A2, A3: the impact) and three on a neighbouring tributary without a weir (T1, T2, T3: the
+controls). The controls follow the changes from one year to the next (floods, dry summers) that
+the restoration doesn't explain: the gap between impact and controls, before and after, measures
+its effect.</p>
+<p>Download <a href="../../donnees/baci_trout.csv">baci_trout.csv</a> (84 rows, one per station and year):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>obs</td>
+<td>the row's name: the station and the year (A1-2010)</td>
+</tr>
+<tr>
+<td>station</td>
+<td>A1, A2, A3 (upstream of the weir), T1, T2, T3 (control tributary)</td>
+</tr>
+<tr>
+<td>group</td>
+<td>impact or control</td>
+</tr>
+<tr>
+<td>year</td>
+<td>2010 to 2023</td>
+</tr>
+<tr>
+<td>density</td>
+<td>juveniles per 100 m²; empty when the station wasn't fished (T2 in 2013, A3 in 2019)</td>
+</tr>
+</tbody>
+</table>
+<p>Open it with <em>File › Open</em> (Ctrl+O): the project has 84 observations and 4 variables (the first
+column names the observations).</p>
+<h2 id="1-which-analysis">1. Which analysis?</h2>
+<p><em>Model › Which analysis?</em>: tick <strong>Before-after with controls (BACI)</strong>, then choose the response,
+<code>density</code>. Nuée proposes the time (<code>year</code>) and the unit (<code>station</code>) from their names, and
+recommends the before-after analysis with controls.</p>
+<figure><a href="../../images/en/baci-choix.png"><img src="../../images/en/baci-choix.png" alt="Which analysis? with the BACI question, the response density, the time and unit proposed, and the recommended analysis on the right" width="900" height="680" loading="lazy"></a><figcaption>Which analysis?: the question, the response and the design on the left; the recommended analysis, its conditions and what is already filled in on the right.</figcaption></figure>
+<p>Click <strong>Open Statistical tests</strong>: the tests view opens in its <em>Before/after (BACI)</em> mode, the
+response, the time and the unit already chosen.</p>
+<h2 id="2-the-gap-between-impact-and-controls">2. The gap between impact and controls</h2>
+<p>Tick A1, A2 and A3 on the <em>Impact</em> line, then <strong>all the others</strong> on the <em>Controls</em> line. Type the
+year of the first &quot;after&quot; in <em>Event</em>: <code>2016</code>.</p>
+<figure><a href="../../images/en/baci-ecarts.png"><img src="../../images/en/baci-ecarts.png" alt="The BACI view: the stations ticked, the event 2016, the test's sentence and the plot of the impact − control gaps by year" width="1000" height="865" loading="lazy"></a><figcaption>The BACI view: each point is the gap between the mean of the impact stations and that of the controls in a year; the dotted lines, each period's mean.</figcaption></figure>
+<p>Each year, the gap d_t is the mean of the impact stations minus that of the controls. Before the
+removal, the mean gap is 3.24 juveniles per 100 m²; after, 10.34. Welch's test compares the gaps
+after with those before: the change is 7.09 [95% CI 4.94, 9.25], p &lt; 0.001.</p>
+<p>This test takes the years as independent. But successive gaps often resemble each other (a good
+year follows a good one): the note under the sentence says so, and then p is too small. The mixed
+model accounts for it.</p>
+<h2 id="3-the-baci-mixed-model">3. The BACI mixed model</h2>
+<p><em>With CAR1 in time</em> is ticked (each station has at least three years). Click <strong>Fit the mixed
+model</strong>. Nuée adds to the project two variables worth 0 or 1:</p>
+<ul>
+<li>&quot;BACI period (2016)&quot;: 1 from 2016 on, 0 before;</li>
+<li>&quot;BACI impact (A1, A2, A3 vs T1, T2, T3)&quot;: 1 for the impact stations, 0 for the controls;</li>
+</ul>
+<p>then fits the linear mixed model <code>density ~ period × impact + (1 | station)</code>, with a random
+intercept per station and a CAR1 autocorrelation along the years within each station. The model
+is named &quot;BACI density&quot;; its views open. Back in the BACI view, its effect comes as a sentence
+under the test's (see the picture above): 6.91 [95% CI 3.46, 10.36], t(74) = 3.99, p &lt; 0.001,
+with φ = 0.50.</p>
+<figure><a href="../../images/en/baci-resume.png"><img src="../../images/en/baci-resume.png" alt="The BACI model's Summary: N, marginal and conditional R², Q², AIC, the variances of the random effects and the model conditions" width="520" height="645" loading="lazy"></a><figcaption>The model's Summary: its quality, its random effects and its conditions, in words.</figcaption></figure>
+<p>The <strong>Summary</strong> reads from top to bottom:</p>
+<ul>
+<li>82 observations (2 without a density left out);</li>
+<li>marginal R² 0.54 (the share of variance of the fixed effects), conditional R² 0.74 (with the
+differences between stations);</li>
+<li>Q² 0.28: cross-validation predicts each station by a model fitted without it, by its fixed
+effects only, as a station never seen. A new station's own level is unknown: this modest Q²
+says nothing about the BACI effect;</li>
+<li>the station carries 45% of the variance, the rest is residual; φ = 0.50: the correlation from
+one year to the next within a station.</li>
+</ul>
+<p>The <strong>model conditions</strong> are said in words, each ✓ or ⚠ with what to do. Here all three are fine:
+the residuals don't depart clearly from the normal distribution (Shapiro–Wilk p = 0.67), their
+spread doesn't change with the fitted values, and the terms aren't collinear. These are pointers:
+the residual plots (<em>Plots › Residuals</em>) remain the reference.</p>
+<h2 id="4-reading-the-interaction">4. Reading the interaction</h2>
+<p><em>Plots › Coefficients</em>:</p>
+<figure><a href="../../images/en/baci-coefficients.png"><img src="../../images/en/baci-coefficients.png" alt="The coefficients of the BACI model: the period, the impact and their cross term, with their 95% intervals; the cross term in red" width="900" height="485" loading="lazy"></a><figcaption>The coefficients: only the period × impact cross term is significant (in red).</figcaption></figure>
+<p>The two variables being worth 0 or 1, each coefficient has a precise meaning:</p>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Estimate [95% CI]</th>
+<th>What it measures</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BACI period (2016)</td>
+<td>−0.15 [−2.59, 2.29]</td>
+<td>the change in the <strong>controls</strong> after 2016</td>
+</tr>
+<tr>
+<td>BACI impact</td>
+<td>3.28 [−4.00, 10.56]</td>
+<td>the impact − control gap <strong>before</strong> 2016</td>
+</tr>
+<tr>
+<td>period × impact</td>
+<td>6.91 [3.46, 10.36]</td>
+<td><strong>the BACI effect</strong>: how much more the impact stations changed than the controls</td>
+</tr>
+</tbody>
+</table>
+<p>The restoration's effect is the cross term, not the period's or the impact's coefficient taken
+alone. The upstream stations already had 3.3 more juveniles than the controls before the works (a
+gap that isn't significant, estimated with 4 degrees of freedom: it compares stations); comparing
+impact and controls after the works only would have counted that gap as an effect. The cross term
+compares each station with itself (74 degrees of freedom). The data were simulated with an effect
+of +6: the model estimates it at 6.9.</p>
+<h2 id="5-adjusted-means">5. Adjusted means</h2>
+<p>Adjusted means need qualitative variables. Make the period with <em>Edit › New variable</em>: name
+<code>period</code>, formula <code>ifelse(year &gt;= 2016, &quot;after&quot;, &quot;before&quot;)</code> (a text result gives a qualitative
+variable).</p>
+<figure><a href="../../images/en/baci-nouvelle-variable.png"><img src="../../images/en/baci-nouvelle-variable.png" alt="The New variable window, with the name period and its formula" width="560" height="526" loading="lazy"></a><figcaption>New variable: an R formula on the other variables.</figcaption></figure>
+<p>Then <em>Model › New model</em>: type <strong>Linear mixed model</strong>, and in <em>R formula</em>
+<code>density ~ period * group + (1 | station)</code>, then <strong>Apply</strong>: the response, the two variables, their
+cross term and the station's random effect are set. Tick <em>in time (CAR1)</em> and choose <code>year</code>. Name
+it &quot;BACI factors&quot; and fit it: it is the same model, written with categories.</p>
+<figure><a href="../../images/en/baci-modele-facteurs.png"><img src="../../images/en/baci-modele-facteurs.png" alt="New model: linear mixed model, random effect station, CAR1 along year, the R formula applied" width="900" height="680" loading="lazy"></a><figcaption>The same model, with the period and the group as qualitative variables.</figcaption></figure>
+<p><em>Plots › Adjusted means</em>: categories of <code>period</code>, <strong>within each level of</strong> <code>group</code>.</p>
+<figure><a href="../../images/en/baci-moyennes.png"><img src="../../images/en/baci-moyennes.png" alt="The adjusted means of density by period within each group, and the after − before pairs" width="1100" height="563" loading="lazy"></a><figcaption>The adjusted means: after against before, in the impact group and in the control group.</figcaption></figure>
+<p>In the impact group, the density goes from 15.7 to 22.4 juveniles per 100 m²: +6.76
+[95% CI 4.32, 9.20]. In the controls, from 12.4 to 12.3: −0.15 [−2.59, 2.29]. The difference
+between these two changes, 6.76 − (−0.15) = 6.91, is the BACI effect of the coefficient. A click on
+a pair of the table gives its sentence, to copy into a report.</p>
+<h2 id="6-the-methods-and-results-texts">6. The Methods and Results texts</h2>
+<p>Choose the &quot;BACI density&quot; model in the explorer, then <em>Model › Text for the Methods section</em>: a
+paragraph written from the model, in English or French, with its references, then the Results
+text.</p>
+<figure><a href="../../images/en/baci-methodes.png"><img src="../../images/en/baci-methodes.png" alt="The Methods text of the BACI model, with the choice Français or English" width="560" height="692" loading="lazy"></a><figcaption>The Methods text: to read over and complete before publishing.</figcaption></figure>
+<p>It says, among other things:</p>
+<blockquote>
+<p>This is the BACI model (before-after control-impact; Stewart-Oaten et al., 1986): “BACI period
+(2016)” is 1 from year = 2016 on and 0 before, “BACI impact (A1, A2, A3 vs T1, T2, T3)” is 1 for
+the impact units A1, A2 and A3 and 0 for the controls T1, T2 and T3, and the coefficient of their
+cross term, the BACI effect, is the change in the gap between the impact and the controls after
+the event; only the observations of these units enter it.</p>
+</blockquote>
+<p>and for the results:</p>
+<blockquote>
+<p>Coefficients (on the scale of the link): “BACI period (2016)”: β = -0.153 (95% CI [-2.59, 2.29],
+p = 0.9) ; “BACI impact (A1, A2, A3 vs T1, T2, T3)”: β = 3.28 (95% CI [-4.00, 10.6], p = 0.28) ;
+“BACI period (2016)*BACI impact (A1, A2, A3 vs T1, T2, T3)”: β = 6.91 (95% CI [3.46, 10.4],
+p &lt; 0.001).</p>
+</blockquote>
+<p>Complete it with what the model doesn't know: the fishing protocol, the area fished, the dates.
+<strong>Copy the text</strong> puts it on the clipboard.</p>
+<h2 id="7-export-to-r">7. Export to R</h2>
+<p><em>File › Export to R</em> writes a script that refits the model without Nuée, with R and its nlme
+package (which comes with R): the data, the calculation written for this model (the fit by
+<code>nlme::lme()</code> with <code>nlme::corCAR1(form = ~ year | station)</code>, the cross-validation by station, the
+statistics), then the tables and plots, all commented (about 250 lines here). As R Markdown or
+Quarto, it becomes a report with the Methods text.</p>
+<figure><a href="../../images/en/baci-export-r.png"><img src="../../images/en/baci-export-r.png" alt="The Export to R window: this model or all those of the session, the format, the data in the script or in a CSV, and the files to write beside it" width="560" height="562" loading="lazy"></a><figcaption>Export to R: a script for a colleague, or to attach to a paper.</figcaption></figure>
+<p>Before writing, Nuée refits the model with the script and checks that it gives the same results.
+In the desktop application the button reads <em>Choose where…</em>; the screenshot comes from the browser
+version, where it downloads the files.</p>
+<h2 id="going-further">Going further</h2>
+<ul>
+<li><em>Plots › Residual autocorrelation</em> shows the autocorrelation left from one year to the next; the
+models with and without CAR1 compare by AIC (<em>Predict › Compare models</em>).</li>
+<li>The guide: <a href="../guide/tests.html">statistical tests and the BACI mode</a>,
+<a href="../guide/regressions.html">mixed models, their conditions and adjusted means</a>,
+<a href="../guide/results.html">Export to R</a>.</li>
+</ul>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

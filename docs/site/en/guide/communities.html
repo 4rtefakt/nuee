@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Community ecology · Nuée</title>
+<meta name="description" content="RDA, CA, CCA, indicator species, rarefaction, PCoA, NMDS, PERMANOVA, Mantel test.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="communities.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/communautes.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/communautes.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html" aria-current="page">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Community ecology</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#redundancy-analysis-and-correspondence-analysis">Redundancy analysis and correspondence analysis</a></li>
+<li><a href="#canonical-correspondence-analysis">Canonical correspondence analysis</a></li>
+<li><a href="#indicator-species">Indicator species</a></li>
+<li><a href="#rarefaction-and-species-accumulation">Rarefaction and species accumulation</a></li>
+<li><a href="#pcoa-nmds-permanova-and-mantel-test">PCoA, NMDS, PERMANOVA and Mantel test</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="redundancy-analysis-and-correspondence-analysis">
+<h2>Redundancy analysis and correspondence analysis</h2>
+<p><strong>New model › type "RDA (redundancy analysis)":</strong> how much of a table of responses Y (species abundances, measurements) the explanatory variables X explain, and how. Y: quantitative variables; X: the explanatory variables (a qualitative one through its categories, cross terms included); Z (covariate, in the Role list of the Variables tab): variables whose effect is removed first (partial RDA: the site, a known gradient...). General tab: the transformation of the responses (Hellinger or chord for abundances, Legendre and Gallagher 2001; log(x + 1); or none); the responses centred (covariance RDA, for responses in the same units) or standardized (correlation RDA); the number of permutations of the tests (999; 0: no test), the groups they stay within (an observation ID or a qualitative variable: a site followed over several years is permuted only with itself) and their seed (the same seed gives the same permutations, hence the same p values). An observation with a missing value, or with no abundance under Hellinger or chord, is left out.</p>
+<p><strong>Views:</strong> Summary (the total inertia, the covariates' share, the X's share and what is left; R2 and adjusted R2; the pseudo-F and its permutation p); Ordination, the triplot (the observations by their wa scores, weighted sums of the responses, or lc scores, linear combinations of the X; the responses; an arrow per quantitative X, lengthened to fill the plot by the factor shown in the legend, and a triangle at the centroid of each category; scaling 1 keeps the distances between observations, scaling 2 the correlations between responses); Eigenvalues (constrained axes in blue, unconstrained ones in grey); Permutation tests (each constrained axis after the previous ones, each term after all the others; Forward selection keeps a term that raises the adjusted R2 without going beyond that of all the terms and whose test gives p ≤ 0.05, Blanchet et al. 2008; Variation partitioning splits the adjusted R2 between two or three blocks of X, from the Block column of the Variables tab); the lists of observations and variables. The results are those of the vegan package (rda, anova.cca, RsquareAdj, ordiR2step, varpart): the same eigenvalues, scores and pseudo-F, and for the same permutations the same p values.</p>
+<p><strong>Type "Correspondence analysis (CA)":</strong> a table of counts or abundances (the X variables, one observation per row, positive or zero values); observations and variables without any value are left out. Views: Summary (the total inertia: the table's chi-square divided by its grand total); Ordination (rows and columns in scaling 1, 2 or 3: chi-square distances between observations, between variables, or symmetric); Eigenvalues; Contributions and cos² (each row's and column's share of an axis's inertia, in blue above the mean, and the quality of its representation); the lists.</p>
+<p>Both export their tables (File › Export), write their Methods text with its references and make a report. File › Export to R writes a script, or an R Markdown or Quarto report, that redoes them with R alone, their tests with the same permutations. They don't predict new observations.</p>
+</section>
+<section id="canonical-correspondence-analysis">
+<h2>Canonical correspondence analysis (CCA)</h2>
+<p>New model › type "CCA (canonical correspondence analysis)" (ter Braak 1986): the RDA's counterpart for species counts or abundances whose responses along the gradients are unimodal rather than linear. Y: the species (counts or abundances, positive or zero), the columns of the table; X: the explanatory variables; Z: covariates removed first (partial CCA). The table is turned into its departures from independence, as in a correspondence analysis, and the X are weighted by the observations' masses (their shares of the grand total). General tab: the number of permutations (999; 0: no test), the groups they stay within and their seed; in each permutation the masses go with the observations. Observations with a missing value or without any abundance, and species absent from all the others, are left out.</p>
+<p><strong>Views, as the RDA's:</strong> Summary (inertia; R2 and the adjusted R2, estimated with the test's permutations, Peres-Neto et al. 2006, none without permutations; pseudo-F and p); Ordination, the triplot in scaling 1 (chi-square distances between observations), 2 (between species) or 3 (symmetric); Eigenvalues; Permutation tests (each constrained axis after the previous ones, the terms one after another in the order of the model, each term after all the others; forward selection, with adjusted R2 from the same permutations). Variation partitioning is an RDA's.</p>
+<p>The results are those of vegan (cca, anova.cca by axis, by terms and by margin, RsquareAdj, ordiR2step), and for the same permutations the same p values. Methods text, export, report and Export to R as for the RDA.</p>
+</section>
+<section id="indicator-species">
+<h2>Indicator species</h2>
+<p><strong>New model › type "Indicator species (IndVal)":</strong> which species characterize each group of observations (habitats, site types...). Y: the species, abundances or presences; Class: the qualitative variable of the groups. For each species and each group, A (specificity: the share of its abundance in the group) and B (fidelity: the share of the group's observations where it is), and the indicator value √(A·B): IndVal.g by default, which compares the groups' mean abundances so that groups of different sizes count alike (De Cáceres and Legendre 2009), or IndVal, which compares their totals (Dufrêne and Legendre 1997). Combinations of groups (De Cáceres et al. 2010): by default every combination, up to all the groups (a species tied to all of them isn't tested), or single groups, or up to an order. Each species goes to the group or combination of its largest value, tested by permuting the observations' groups (999 times; within strata, an ID or a qualitative variable; a seed); its p corrected over the species (Benjamini–Hochberg or Holm) stands beside the raw p. "Presences only" uses 0/1 values.</p>
+<p><strong>Views:</strong> Indicator species (the sortable table, p ≤ 0.05 in red, "corrected p ≤ 0.05 only"; a click highlights the species in the plot), Indicator values (each species' value for its group, coloured by the group and pale when not significant; or one species' A and B in each group), Summary (the number of species retained at 0.05, raw and corrected, and per group). The statistics are those of indicspecies::multipatt, and for the same permutations the same p values. Methods text, export and report as for the other models; Export to R redoes the analysis with R alone, the engine's own functions and the same permutations.</p>
+</section>
+<section id="rarefaction-and-species-accumulation">
+<h2>Rarefaction and species accumulation</h2>
+<p><strong>Plots › Rarefaction (or in the explorer, under the project):</strong> how many species the observations hold, compared on an equal footing. The species: columns of counts, a range from one column to another in the table's order (as the diversity indices of New variable read them) or ticked in the list. Rarefaction (by observation): each observation's expected richness in m individuals drawn without replacement (Hurlbert 1971) with its standard deviation (Heck et al. 1975), the curve from 1 to all its individuals, and its richness at a common size (by default the smallest observation's: the dashed line); in the table, Chao1 (bias-corrected) and ACE estimate each observation's richness. These need integer counts of individuals: with covers or densities the view says so and gives the accumulation alone. Accumulation (over the observations): the richness expected in k observations drawn among all (exact method, Ugland et al. 2003), ±2 standard deviations, and the estimators of the total richness from the presences: Chao2, the first- and second-order jackknifes and the bootstrap. By group (a qualitative variable or an ID): a curve and estimators per group. A click or a box selects observations, as in Series. The values are those of vegan (rarefy, rarecurve, specaccum, estimateR, specpool), except ACE's standard deviation, from the delta method with ACE's own gradient (vegan uses another).</p>
+</section>
+<section id="pcoa-nmds-permanova-and-mantel-test">
+<h2>PCoA, NMDS, PERMANOVA and Mantel test</h2>
+<p>Four analyses built on a distance between observations, computed on the table Y (Role Y: the species, or any quantitative variables); an observation with a missing Y value is left out and counted. General tab: the distance, as the vegan package defines it (Bray-Curtis, Jaccard 2B/(1 + B), Gower, Euclidean, Manhattan, Canberra, Kulczynski, Hellinger, chord), optionally on presence-absence (Bray-Curtis then becomes the Sørensen index); a transformation before it (square or fourth root, log(x + 1), presence-absence, relative abundances, Wisconsin double standardization, square root then Wisconsin as metaMDS does); the number of permutations of the tests (999; 0: none), the groups they stay within and their seed. A distance that has no meaning for negative values (Bray-Curtis, Jaccard, Kulczynski, Canberra, Hellinger) refuses them, and one that isn't defined for an observation without any value (only zeros) names it.</p>
+<p><strong>Type "PCoA (principal coordinates analysis)":</strong> the axes that best show, on a few dimensions, the distances between observations (Gower 1966). A distance that isn't Euclidean (Bray-Curtis, usually) has negative eigenvalues: they are kept and reported, and the Lingoes or Cailliez correction (General tab) adds the constant that removes them. X variables (optional): fitted onto the first two axes as vegan::envfit, an arrow per quantitative variable (its direction and R2), a centroid per category of a qualitative one (and its R2), each tested by permutations; observations without an X value are left out of this fit only. Views: Summary; Ordination (the observations, coloured and labelled like the other plots, the species at the weighted average of their observations, the arrows, grey when p &gt; 0.05, and the centroids, on equal scales); Eigenvalues (the share of the total inertia, the sum of all the eigenvalues; negative ones in red); Fitted variables; the lists of observations and variables.</p>
+<p><strong>Type "NMDS (non-metric multidimensional scaling)":</strong> a configuration in k dimensions (2 by default, 1 to 4) whose distances keep the order of the dissimilarities (Kruskal 1964), by MASS::isoMDS as vegan::metaMDS does it: from the PCoA, then from 20 random starts (fixed seed); the lowest stress is kept, and the Summary says whether another start found it again (Procrustes): when none did, raise the starts. A zero dissimilarity between two observations is replaced by half the smallest non-zero one. The configuration is centred, rotated to its principal axes and scaled to the largest dissimilarity. Views: Summary (the stress: below 0.1 good, beyond 0.2 to be read with care); Ordination, as for the PCoA; Shepard diagram (each pair's dissimilarity and ordination distance, the monotone regression, the stress of each start); Fitted variables; the lists (each observation's share of the stress).</p>
+<p><strong>Type "PERMANOVA (permutational analysis of variance)":</strong> the effect of the X terms (qualitative or quantitative, cross terms included) on the distance (Anderson 2001), as vegan::adonis2: each term after those before it, in their order (sequential), each after all the others (marginal: a term inside a cross term isn't tested alone) or the whole model; degrees of freedom, sum of squares, R2, pseudo-F and its permutation p. With it, the multivariate dispersion (Anderson 2006, as vegan::betadisper) of the categories of each qualitative X variable and of the class variable (Role Class, one more grouping): each observation's distance to the centroid (or the spatial median) of its group in the PCoA space, compared by an ANOVA, its residuals permuted, and Tukey's pairs. A dispersion that differs between groups makes the PERMANOVA harder to read: its differences may come from the spread of the groups as much as from their position. Views: Summary; PERMANOVA table; Multivariate dispersion (box plots or the PCoA plane, with its tests); the list of observations (each one's distance to its centre).</p>
+<p><strong>Type "Mantel test":</strong> the correlation (Pearson, or Spearman on ranks) between the distance of Y and the Euclidean distance of the X variables, scaled as the Variables tab says (UV by default), and its one-sided permutation p (vegan::mantel); with covariates Z (Role Z), the partial Mantel test (vegan::mantel.partial); and the Mantel correlogram (vegan::mantel.correlog): the X distance cut into classes of equal width (Sturges' rule, or the number given), the Mantel r of each class (positive: close observations more alike), the classes beyond half tested only if every observation has a pair in them, the p values corrected progressively by Holm's method. Views: Summary; Mantel test (each pair of observations); Mantel correlogram; the list. "X distance: Geographic" compares the distance of Y with the distance between the observations in kilometres, from the project's coordinates (see <a href="maps.html#maps-and-spatial-data">Maps and spatial data</a>), no X needed: whether nearby samples are more alike (distance decay), and with the correlogram, up to what distance.</p>
+<p>The four export their tables (File › Export), write their Methods text with its references and make a report; they don't predict new observations. The results are those of vegan (vegdist, wcmdscale, envfit, metaMDS with isoMDS, adonis2, betadisper, mantel, mantel.correlog): the same values, and for the same permutations the same p values. File › Export to R writes a script, or an R Markdown or Quarto report, that redoes them with R alone (and MASS, which comes with R, for the NMDS): its functions are those of Nuée's engine, copied as the engine writes them; then the model's data (the coordinates for a geographic Mantel test), its transformation, distance and options, the same permutations and the same starts, so the same p values and the same NMDS.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="tests.html">← Statistical tests</a><a rel="next" href="monitoring.html">Monitoring: series, TRIM, distance sampling →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

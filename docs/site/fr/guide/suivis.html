@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivis : séries, TRIM, distances · Nuée</title>
+<meta name="description" content="Séries et tendances, indices et tendances de comptages (TRIM), densité et effectif par échantillonnage par distances.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="suivis.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/monitoring.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/monitoring.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html" aria-current="page">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Suivis : séries, TRIM, distances</h1>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#series">Séries</a></li>
+<li><a href="#trim-indices-et-tendances-de-comptages">TRIM : indices et tendances de comptages</a></li>
+<li><a href="#echantillonnage-par-distances-densite-et-effectif">Échantillonnage par distances : densité et effectif</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="series">
+<h2>Séries</h2>
+<p><strong>Graphiques › Séries (ou dans l'explorateur, sous le projet) :</strong> une variable au fil du temps, comme des figures de séries par secteur, une page par site. Choisir la variable, le temps (une variable ou un identifiant fait de nombres, comme l'année, ou de dates : voir <a href="donnees.html#le-temps-en-dates">Le temps en dates</a>), les lignes (une variable qualitative ou un identifiant : le secteur) et, au choix, les panneaux (le site) : un petit graphique par panneau, en grille, aux axes communs. Dans une ligne, les temps qui se suivent à son propre pas (son plus petit écart) sont reliés, et un secteur compté une année sur deux reste une ligne ; un temps manquant coupe la ligne, et l'année sans comptage se voit. Des dates, rarement régulières, vont sur un axe de dates, et une ligne relie tous ses points. Les couleurs vont par ligne dans chaque panneau, la légende est rangée par panneau (un clic sur une entrée cache sa ligne) : elle reste lisible avec 30 secteurs. Au choix : la moyenne des lignes de chaque panneau, temps par temps (trait épais), une échelle log (les valeurs ≤ 0 n'y sont pas montrées) et des événements, des temps tapés « 2015 ; 2019 » (avec des dates, aussi 2019-05-14 ou 14/05/2019), en tirets dans chaque panneau. Le survol donne le nom de l'observation, le temps et la valeur ; un clic ou un cadre sélectionne des observations, qui le sont aussi dans les modèles du projet quand la sélection leur est commune. Les observations sans temps, sans valeur, sans ligne ou sans panneau sont laissées de côté et comptées ; une ligne qui a deux fois le même temps (des secteurs choisis sans leur site) est signalée et montrée en points. Clic droit : copier ou enregistrer l'image. Tendances (la case de la barre) : sous le graphique, un tableau donne pour chaque ligne de chaque panneau, marquée de sa couleur, n (ses temps qui ont une valeur), son premier et son dernier temps ; la pente de Sen (Sen, 1968 : la médiane des pentes entre toutes ses paires de temps, par unité de temps, par an avec des dates) et son intervalle à 95 % (Gilbert, 1987 : les pentes rangées, prises autour de la médiane d'après la variance de S ; sans bornes quand il y a trop peu de temps) ; le τ de Kendall (tau-b), le S de Mann–Kendall et sa valeur p bilatérale par la loi normale (variance corrigée pour les ex aequo, correction de continuité, comme trend::mk.test et Kendall::MannKendall) ; et la valeur p corrigée sur les lignes (Benjamini–Hochberg, ou Holm au choix). Une ligne de moins de 4 temps, qui a un même temps deux fois ou la même valeur à chaque temps n'est pas testée, et le tableau dit pourquoi ; Ctrl+C le copie. Le test tient les temps pour indépendants : une autocorrélation positive (des années qui se ressemblent) rend p trop petite. Pour une tendance qui en tient compte : Graphiques › Autocorrélation des résidus, puis un modèle mixte avec une autocorrélation CAR1, l'année en X. Dans la barre du tableau, deux options changent le test. Tenir compte de l'autocorrélation : le test de Mann–Kendall modifié de Hamed et Rao (1998), calculé comme le calcule modifiedmk::mmkh : la ligne privée de sa tendance (sa pente de Sen, sur ses vrais temps), les rangs de ce qui reste, leur autocorrélation à chaque décalage (compté d'un temps au suivant : le temps qui suit une année manquante est à un décalage), celles au-delà de ±1,96/√n gardées (les autres comptent 0), et Var(S) multipliée par n/n* = 1 + 2/(n(n − 1)(n − 2)) Σ (n − k)(n − k − 1)(n − k − 2) ρ(k) ; p et l'intervalle de la pente viennent de cette variance, et la colonne n/n* donne le facteur (1 : aucune autocorrélation gardée ; un facteur qui n'est pas positif, d'une forte autocorrélation négative, laisse la ligne sans test). Il faut une longue série : une autocorrélation s'estime mal sur peu de temps (Box et Jenkins, 1976, en demandent une cinquantaine), et avec 15 temps seule une autocorrélation au-delà de ±0,51 compte ; même sur 60 à 90 temps, le test corrigé rejette encore trop souvent une absence de tendance quand l'autocorrélation est forte (Blain, 2013). Il corrige chaque ligne seule : il ne remplace pas un modèle mixte avec une autocorrélation CAR1, qui estime la tendance commune aux sites et à leurs secteurs, avec l'autocorrélation dans chacun.</p>
+<p><strong>Saisons :</strong> le test de Kendall saisonnier (Hirsch, Slack et Smith, 1982), pour des relevés faits plusieurs fois par an, la saison donnée par le mois d'un temps fait de dates, ou par une variable qualitative ou un identifiant (la saison, le mois). L'année d'une valeur est la partie entière de son temps (l'année civile d'une date) ; plusieurs valeurs d'une saison la même année n'en font qu'une, leur médiane (comme le font certaines mises en œuvre ; EnvStats les garderait toutes, en ex aequo de temps), et une note dit combien. Dans chaque saison vue au moins 2 années : le S de Mann–Kendall entre ses années et sa variance avec les ex aequo ; S et Var(S) sont additionnés sur les saisons, tenues pour indépendantes, et p vient de la loi normale avec la correction de continuité, comme les calculent trend::smk.test et EnvStats::kendallSeasonalTrendTest. La pente de Sen saisonnière est la médiane des pentes entre années au sein de chaque saison (par an, ou par unité de temps), son intervalle à 95 % tiré de Var(S) comme le fait Gilbert (1987) (les rangs arrondis, comme pour la pente de Sen plus haut ; EnvStats interpole entre eux) ; τ est celui d'EnvStats : les τ des saisons en moyenne, pondérée par leurs années. Une saison vue une seule année ne compte pas ; une ligne de moins de 4 valeurs dans les saisons qui comptent, ou de la même valeur chaque année dans chaque saison, n'est pas testée ; les observations sans saison sont laissées de côté par le test, et comptées. Le test saisonnier tient les saisons pour indépendantes : une autocorrélation d'un mois au suivant rend p trop petite, et Tenir compte de l'autocorrélation ne s'y applique pas (Hirsch et Slack, 1984, donnent une correction, qui n'est pas faite ici). La colonne Test donne le test de chaque ligne ; la correction sur les lignes reste la même.</p>
+</section>
+<section id="trim-indices-et-tendances-de-comptages">
+<h2>TRIM : indices et tendances de comptages</h2>
+<p>Nouveau modèle › type « TRIM (indices et tendances de comptages) » : les indices annuels et la tendance de comptages d'animaux suivis sur des sites année après année, comme le logiciel TRIM 3 de Statistics Netherlands et le paquet rtrim (le standard des suivis d'oiseaux européens), avec des comptages manquants : le modèle les impute. Les données : le tableau long, une ligne par site et par année ; Y : les comptages (des entiers positifs ou nuls ; une case vide est un comptage manquant) ; X : des covariables qualitatives, facultatives (l'habitat d'un site, ou une valeur par site et par année), qui font varier les effets du temps. Onglet Général :</p>
+<ul>
+<li>le site (un identifiant ou une variable) et le temps (l'année : une variable ou un identifiant fait de nombres régulièrement espacés ; une année sans aucune ligne est ajoutée, tous ses comptages imputés), proposés d'après les noms des colonnes ;</li>
+<li><strong>le modèle :</strong> 3, un effet de chaque année (ln μ = site + année) ; 2, une tendance linéaire sur l'échelle log, dont la pente change aux points de changement donnés (des années ; vide : une seule pente), à chaque année, ou choisis pas à pas comme rtrim (un point sort quand le test de Wald de son changement de pente dépasse p = 0,2, revient quand son test du score passe sous p = 0,15) ; 1, sans effet du temps ;</li>
+<li>la surdispersion (σ²) et la corrélation sérielle (ρ, entre deux années successives d'un même site), cochées par défaut comme le recommande le manuel de TRIM : les paramètres sont alors estimés par des équations d'estimation généralisées qui en tiennent compte ; sans elles, par le maximum de vraisemblance de Poisson ;</li>
+<li>des poids (une variable : des sites sur- ou sous-représentés), et le temps de base des indices (le premier par défaut).</li>
+</ul>
+<p>Deux lignes pour le même site et la même année sont refusées, le site, l'année et les observations nommés ; un site sans aucun comptage positif est laissé de côté, et compté ; une case sans ligne prend le poids et la catégorie de covariable de l'année d'avant de son site.</p>
+<p><strong>Vues :</strong> Résumé (le modèle, σ² et ρ, la pente globale des totaux imputés : multiplicative, par pas de temps, avec son erreur-type, son intervalle à 95 % et sa classe selon TRIM, forte augmentation, augmentation modérée, stable, incertaine, déclin modéré ou fort déclin, d'après l'intervalle comparé à 1 et à 0,95 / 1,05 ; le khi² de Pearson, le rapport de vraisemblance et l'AIC) ; Indices (les indices imputés, d'après les comptages observés et ceux du modèle pour les manquants, et ceux du modèle, avec leur bande à 95 %, le temps de base, et au choix la droite de la pente globale) ; Totaux de chaque temps (observés, imputés, du modèle) ; Pentes, paramètres et tests (les tests de Wald de la pente, des changements de pente, des écarts à la tendance linéaire et des covariables ; la droite et ses écarts pour le modèle 3 ; les étapes du pas à pas) ; Comptages par site (les comptages d'un site et ceux du modèle, ou tous les comptages contre leur valeur attendue). Les résultats sont ceux du paquet rtrim. Texte des méthodes avec ses références, Exporter et rapport comme pour les autres modèles, et Exporter vers R : un script ou un rapport qui refait le modèle avec R seul, les fonctions de TRIM du moteur de Nuée recopiées dedans (les mêmes indices, totaux, pentes et tests que Nuée). Pas de prédiction.</p>
+</section>
+<section id="echantillonnage-par-distances-densite-et-effectif">
+<h2>Échantillonnage par distances : densité et effectif</h2>
+<p>Nouveau modèle › type « Échantillonnage par distances (densité, effectif) » : la densité et l'effectif d'une population d'après les distances des animaux détectés depuis des lignes (transects linéaires) ou des points (points d'écoute), comme les fonctions ds() et dht2() du paquet Distance les calculent (Buckland et al. 2001 ; Miller et al. 2019). Les données : le tableau à plat, une ligne par détection, comme Distance le lit :</p>
+<ul>
+<li><strong>la distance (Y) :</strong> la distance perpendiculaire à la ligne, ou la distance au point ;</li>
+<li>le transect (la ligne ou le point : un identifiant ou une variable) et son effort, le même sur toutes ses lignes : la longueur de la ligne, ou pour des points le nombre de passages (sans colonne : un passage par point) ;</li>
+<li><strong>facultatifs :</strong> la strate (la région : un identifiant ou une variable) et son aire, la même sur toutes ses lignes (sans aire, ou des aires toutes nulles, la densité seulement) ; la taille de chaque groupe détecté ;</li>
+<li>un transect sans aucune détection reste une ligne, sa distance vide, pour que son effort compte ; une ligne sans transect ni distance est laissée de côté.</li>
+</ul>
+<p>Par exemple, avec les noms de colonnes de Distance (la fenêtre les propose d'après les noms) :</p>
+<pre>Region.Label  Area  Sample.Label  Effort  distance  size
+Nord          630   N-01          2.4     35        2
+Nord          630   N-01          2.4     120       1
+Nord          630   N-02          1.8               (aucune détection)</pre>
+<p><strong>Onglet Général :</strong></p>
+<ul>
+<li>des transects linéaires ou des points ;</li>
+<li><strong>la troncature :</strong> la plus grande distance (le défaut de ds), une distance, ou un pourcentage des plus grandes distances (5 à 10 % est l'usage) ; une troncature à gauche au besoin. Les détections au-delà sortent du modèle, leur transect reste ;</li>
+<li>des intervalles, pour des distances relevées par classes (comme ds(cutpoints = )) : leurs bornes, par exemple « 0 10 25 50 100 » ; chaque distance du tableau (la vraie, ou le milieu de sa classe) compte dans son intervalle, la première borne est la troncature à gauche et la dernière w ; la vraisemblance est alors celle des comptes des classes, et l'adéquation le khi² sur elles ;</li>
+<li>la clé de la fonction de détection g(x) : demi-normale exp(−x²/2σ²), hasard (hazard-rate) 1 − exp(−(x/σ)^−b) (b ≥ 1, comme mrds) ou uniforme ;</li>
+<li><strong>les termes d'ajustement :</strong> cosinus (le défaut), polynômes d'Hermite ou polynômes simples, leur nombre choisi par l'AIC comme ds() le fait (la clé seule, puis un terme de plus tant que l'AIC baisse, cinq au plus ; ordres 2, 3, 4… des cosinus, 4, 6, 8… d'Hermite et des polynômes, 1, 2, 3… et 2, 4, 6… avec la clé uniforme) ou fixé ; les distances des termes divisées par la troncature w (le défaut de ds) ou par σ ;</li>
+<li><strong>la monotonie :</strong> la contrainte de mrds sur une fonction à termes d'ajustement, en 10 distances de 0 à w : stricte (le défaut : g décroît), faible (g reste sous g(0)) ou aucune ; g y reste positive ;</li>
+<li>les unités des distances, de l'effort (des lignes) et des aires, ou un facteur de conversion (convert_units de Distance) : la densité est par unité d'aire, et les résultats le disent.</li>
+</ul>
+<p>La fonction de détection est ajustée par le maximum de vraisemblance des distances exactes ; la variance de ses paramètres vient de la somme des produits des scores des distances, comme mrds ; p, la probabilité moyenne de détection dans la troncature, et son erreur-type par la méthode delta ; la demi-largeur effective de bande ESW = p w (lignes) ou le rayon effectif de détection EDR = w √p (points). La densité de chaque strate est D = n / (a p), a l'aire couverte (2 w L, ou 2 (w − L) L avec une troncature à gauche, pour des lignes ; π w² K pour des points) ; sa variance réunit celle du taux de rencontre entre les transects (l'estimateur R2 pour des lignes, P2 pour des points, Fewster et al. 2009), celle de p et celle de la taille moyenne des groupes ; son intervalle à 95 % est log-normal avec les degrés de liberté de Satterthwaite, comme dht2. Le total sur les strates additionne leurs effectifs (avec des aires) ou pondère leurs densités par leurs aires couvertes (sans). Refusés, et nommés : une distance négative, un effort manquant ou nul, deux efforts pour un transect, deux aires pour une strate, une aire nulle parmi d'autres, une distance sans transect.</p>
+<p><strong>Vues :</strong> Résumé (le modèle retenu et l'AIC de chaque modèle ajusté en chemin, p et ESW ou EDR avec leurs erreurs-types, les paramètres, l'adéquation, la densité et l'effectif d'ensemble avec leurs intervalles ; ce qui a été laissé de côté) ; Fonction de détection (l'histogramme des distances, chaque barre son compte sur celui qu'elle aurait si tous les animaux étaient détectés, comme plot.ds de mrds, sous la fonction g ajustée ; chaque détection sur la courbe, un clic choisit sa ligne ; pour des points, la densité des distances f(r) = 2r g(r) / (w² p) aussi ; dessous, les classes du khi²) ; Diagramme quantile-quantile (la répartition ajustée de chaque distance contre la répartition empirique, avec le test de Cramér–von Mises ; pas pour des distances par intervalles) ; Densité et effectif (par strate et au total : aire, aire couverte, effort, transects, détections, taux de rencontre et son CV, D, son erreur-type, son CV, son intervalle à 95 % et ses ddl, N et son intervalle, la part de la variance due au taux de rencontre, à la détection et à la taille des groupes ; avec des groupes, la densité des groupes aussi). Texte des méthodes avec ses références, Exporter et rapport comme pour les autres modèles, et Exporter vers R : un script ou un rapport qui refait l'analyse avec R seul, sans Distance ni mrds, les fonctions de l'échantillonnage par distances du moteur de Nuée recopiées dedans (les mêmes modèles candidats et AIC, paramètres et leur covariance, p, ESW ou EDR, tests d'adéquation, densité et effectif que Nuée ; la fonction de détection sur l'histogramme et le diagramme quantile-quantile en R de base). Pas de prédiction. Les covariables de la fonction de détection (MCDS) ne sont pas encore prises.</p>
+<p>Les résultats sont ceux de Distance 2.0 (moteur/tests/verifier_distance.R les compare), à trois différences connues près : Nuée intègre la clé hasard exactement là où mrds approche son intégrale par un spline de lissage (des lignes, la clé sans terme d'ajustement : les paramètres et p diffèrent d'environ 1e-4) ; avec une troncature à gauche de transects linéaires, l'aire couverte est 2 (w − L) L, là où dht2 garde 2 w L ; l'optimiseur de mrds sous la contrainte de monotonie s'arrête à 1e-6 près de la vraisemblance, si bien que ses estimations peuvent différer de celles de Nuée au quatrième chiffre, ou, sur de rares données, s'arrêter à un autre optimum local.</p>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="communautes.html">← Écologie des communautés</a><a rel="next" href="cartes.html">Cartes et données spatiales →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

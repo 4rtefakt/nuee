@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installation · Nuée</title>
+<meta name="description" content="Installer Nuée sous Windows, Debian, Ubuntu et les autres distributions Linux.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<link rel="alternate" hreflang="fr" href="installation.html">
+<link rel="alternate" hreflang="en" href="../en/installation.html">
+<script src="../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="index.html"><img src="../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="index.html">Accueil</a>
+      <a href="installation.html" aria-current="page">Installation</a>
+      <a href="guide/index.html">Guide</a>
+      <a href="tutoriels/index.html">Tutoriels</a>
+      <a href="nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../en/installation.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Installer Nuée sous Windows, Debian, Ubuntu et les autres distributions Linux. -->
+<h1>Installation</h1>
+<p>Nuée 1.0.0 fonctionne sous Windows 10 et 11 (64 bits) et sous Linux. Les fichiers sont sur la
+<a href="https://github.com/4rtefakt/nuee/releases/tag/v1.0.0">page de la version 1.0.0</a> de GitHub ; les versions
+précédentes sur la page des <a href="https://github.com/4rtefakt/nuee/releases">publications</a>.</p>
+<h2 id="windows">Windows</h2>
+<ol>
+<li>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Nuee-Setup-1.0.0.exe</a>.</li>
+<li>Lancez-le et choisissez de l'installer pour vous seul (sans droits d'administrateur) ou pour
+tous les utilisateurs de l'ordinateur.</li>
+<li>Windows peut dire qu'il a protégé votre ordinateur, car l'installateur n'est pas signé :
+cliquez sur <em>Informations complémentaires</em>, puis <em>Exécuter quand même</em>.</li>
+</ol>
+<p>R est inclus : il n'y a rien d'autre à installer, et un R déjà présent sur l'ordinateur n'est ni
+utilisé ni modifié. Nuée apparaît dans le menu Démarrer ; un double-clic sur un projet <code>.nuee</code>
+l'ouvre dans Nuée. On le désinstalle depuis <em>Paramètres › Applications</em> ; vos projets restent là
+où vous les avez enregistrés, et vos réglages sont gardés.</p>
+<h3>Mises à jour</h3>
+<p>Au démarrage, Nuée demande à GitHub s'il existe une nouvelle version (rien d'autre n'est envoyé).
+S'il y en a une, la barre d'état le dit ; un clic télécharge son installateur, vérifie son
+empreinte SHA-256 auprès de GitHub, propose d'enregistrer vos projets, l'installe et redémarre
+Nuée. <em>Aide › Chercher une nouvelle version au démarrage</em> coupe cette recherche ; <em>Aide › Chercher
+une mise à jour</em> la fait à tout moment.</p>
+<h3>Dans un organisme</h3>
+<p>Pour les services informatiques : installation silencieuse pour un utilisateur ou pour tout
+l'ordinateur, une stratégie qui coupe la recherche de mises à jour pour tous, la version à poser
+sur un partage réseau (lancée par <code>Lancer Nuee.cmd</code>, qui la copie sur chaque ordinateur), ce que
+Nuée écrit où et ce qu'il envoie sur le réseau : voir
+<a href="https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md">le guide de déploiement</a> (en
+anglais).</p>
+<h2 id="linux">Linux</h2>
+<p>Sous Linux, Nuée utilise le R installé sur l'ordinateur (une version de R dépend des
+bibliothèques de sa distribution : elle ne peut pas être emportée comme sous Windows).</p>
+<h3>Debian, Ubuntu et dérivées</h3>
+<p>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-amd64.deb">Nuee-1.0.0-amd64.deb</a>, puis, dans un terminal, dans le dossier
+du fichier :</p>
+<pre><code>sudo apt install ./Nuee-1.0.0-amd64.deb
+</code></pre>
+<p>apt installe aussi R et les paquets R dont Nuée a besoin. Nuée apparaît dans le menu des
+applications. Chaque changement de Nuée est vérifié avec ce paquet installé sous Ubuntu 22.04 et
+24.04 et Debian 12, avec leur propre R.</p>
+<h3>Autres distributions</h3>
+<p>Installez d'abord R depuis votre distribution, puis les paquets dont Nuée a besoin, dans R :</p>
+<pre><code>install.packages(c(&quot;httpuv&quot;, &quot;jsonlite&quot;, &quot;openxlsx&quot;, &quot;haven&quot;,
+  &quot;readxl&quot;, &quot;foreign&quot;, &quot;nlme&quot;, &quot;mgcv&quot;, &quot;MASS&quot;, &quot;rpart&quot;, &quot;cluster&quot;,
+  &quot;RSQLite&quot;, &quot;ranger&quot;))
+</code></pre>
+<p>Puis l'un des deux :</p>
+<ul>
+<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x86_64.AppImage">Nuee-1.0.0-x86_64.AppImage</a> : rendez-le exécutable
+(<code>chmod +x Nuee-1.0.0-x86_64.AppImage</code>), puis lancez-le. Il demande FUSE 2 (le paquet <code>libfuse2</code> dans
+la plupart des distributions). Sous Ubuntu 24.04 et après, préférez le <code>.deb</code> : il installe le
+profil AppArmor dont le bac à sable de Chromium a besoin, et une AppImage doit y être lancée avec
+<code>--no-sandbox</code>.</li>
+<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.tar.gz">Nuee-1.0.0-x64.tar.gz</a> : décompressez-le, puis lancez <code>./nuee</code>.</li>
+</ul>
+<h3>Bon à savoir</h3>
+<ul>
+<li>Nuée cherche <code>Rscript</code> dans le <code>PATH</code>, puis dans <code>/usr/local/bin</code>, <code>/usr/bin</code> et
+<code>/opt/R/&lt;version&gt;/bin</code> ; lancez-le avec <code>RSCRIPT=/chemin/vers/Rscript</code> pour un autre R.</li>
+<li>Avec un R plus ancien que 4.4 (celui d'Ubuntu 22.04 ou 24.04, ou de Debian 12), les fichiers R
+(<code>.rds</code>, <code>.RData</code>) ne s'ouvrent pas, car en lire un pourrait exécuter du code
+(CVE-2024-27322) : enregistrez le tableau en CSV ou en Excel.</li>
+<li>Les projets <code>.usp</code> demandent <code>python3</code>.</li>
+<li>Les réglages sont dans <code>~/.config/Nuee</code>. Au démarrage, Nuée demande à GitHub s'il existe une
+nouvelle version ; un clic dans la barre d'état ouvre sa page.</li>
+</ul>
+<h2 id="ensuite">Ensuite</h2>
+<p>Ouvrez un tableau (<em>Fichier › Ouvrir</em>, Ctrl+O), ou essayez <em>Aide › Projet d'exemple</em>, puis suivez
+<a href="tutoriels/index.html">un tutoriel</a> ou <a href="guide/demarrer.html">le guide</a>.</p>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>
