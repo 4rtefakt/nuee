@@ -1775,9 +1775,9 @@ Onglet Général :
     khi² sur elles ;
   - la clé de la fonction de détection g(x) : demi-normale exp(−x²/2σ²), hasard (hazard-rate)
     1 − exp(−(x/σ)^−b) (b ≥ 1, comme mrds) ou uniforme ;
-  - des covariables (l'échantillonnage par distances à covariables multiples, comme
-    ds(formula = ~ x1 + x2) ; Marques et Buckland 2003, Marques et al. 2007) : les variables au rôle
-    Z de l'onglet Variables, ou ajoutées depuis la liste Covariables de l'onglet Général (c'est la
+  - des covariables (l'échantillonnage par distances à covariables multiples, comme ds(formula =
+    ~ x1 + x2) ; Marques et Buckland 2003, Marques et al. 2007) : les variables au rôle Z de
+    l'onglet Variables, ou ajoutées depuis la liste Covariables de l'onglet Général (c'est la
     même chose). L'échelle σ de la clé demi-normale ou hasard en dépend, ln σ = β0 + β1 x1 + … :
     une covariable quantitative telle quelle, une qualitative par une indicatrice de chacune de
     ses catégories sauf la première présente parmi les détections, sa référence (les contrastes
@@ -1826,8 +1826,8 @@ l'échelle σ part à l'infini (ses distances ne décroissent pas jusqu'à w : r
 catégories, ou choisissez-en d'autres).
 
 Vues : Résumé (le modèle retenu et l'AIC de chaque modèle ajusté en chemin, p et ESW ou EDR avec
-leurs erreurs-types, les paramètres, l'adéquation, la densité et l'effectif d'ensemble avec
-leurs intervalles ; ce qui a été laissé de côté ; avec des covariables, les covariables et leurs
+leurs erreurs-types, les paramètres, l'adéquation, la densité et l'effectif d'ensemble avec leurs
+intervalles ; ce qui a été laissé de côté ; avec des covariables, les covariables et leurs
 catégories de référence, et les coefficients sur ln σ avec exp(β), le facteur sur σ d'une
 catégorie par rapport à sa référence ou d'une unité d'une covariable quantitative) ; Fonction de
 détection (l'histogramme des distances, chaque barre son compte sur celui qu'elle aurait si tous
@@ -1839,8 +1839,8 @@ plot.ds, chaque détection à son propre g, et « par » une covariable qualitat
 catégorie, la moyenne sur ses détections comme plot.ds(subset = )) ; Diagramme quantile-quantile
 (la répartition ajustée de chaque distance contre la répartition empirique, avec le test de
 Cramér–von Mises ; pas pour des distances par intervalles) ; Densité et effectif (par strate et
-au total : aire, aire couverte, effort, transects, détections, taux de rencontre et son CV, D, son
-erreur-type, son CV, son intervalle à 95 % et ses ddl, N et son intervalle, la part de la
+au total : aire, aire couverte, effort, transects, détections, taux de rencontre et son CV, D,
+son erreur-type, son CV, son intervalle à 95 % et ses ddl, N et son intervalle, la part de la
 variance due au taux de rencontre, à la détection et à la taille des groupes ; avec des groupes,
 la densité des groupes aussi). La liste des observations donne le g de chaque détection et, avec
 des covariables, sa probabilité de détection pi. Textes des méthodes et des résultats avec leurs
@@ -1858,19 +1858,19 @@ Distance), à ces différences connues près : Nuée intègre la clé hasard exa
 approche son intégrale par un spline de lissage (des lignes, la clé sans terme d'ajustement, avec
 ou sans covariables : les paramètres et p diffèrent d'environ 1e-4) ; avec une troncature à
 gauche de transects linéaires, l'aire couverte est 2 (w − L) L, là où dht2 garde 2 w L ;
-l'optimiseur de mrds sous la contrainte de monotonie s'arrête à 1e-6 près de la vraisemblance,
-si bien que ses estimations peuvent différer de celles de Nuée au quatrième chiffre, ou, sur de
+l'optimiseur de mrds sous la contrainte de monotonie s'arrête à 1e-6 près de la vraisemblance, si
+bien que ses estimations peuvent différer de celles de Nuée au quatrième chiffre, ou, sur de
 rares données, s'arrêter à un autre optimum local. Avec des covariables : ds peut s'arrêter avant
-le maximum sur des covariables mal conditionnées (sur unimak, hn ~ MSTDO + Hour, sur un plateau où
-σ vaut e^9 ou plus, des milliers de fois w, 21,9 de log-vraisemblance sous le maximum que trouve
-Nuée ; parti des estimations de Nuée, ds y reste) ; une combinaison de covariables dont σ part à
-l'infini est refusée, là où ds rend le point où son optimiseur s'est arrêté ; quand la taille des
-groupes est une covariable, dht2 recalcule la probabilité de chaque détection avec une taille de
-1 pour la variance de sa densité des groupes, là où Nuée garde celle de la détection (les
-densités des individus concordent) ; pour des points, la densité des distances tracée est la
-moyenne des f(r | z) des détections, celle qu'estime l'histogramme, là où plot.ds les pondère
-par 1/pi. Et dht2 ne garde un transect sans détection dans la troncature que si son Sample.Label
-n'a de détection dans aucune strate (amakihi répète ses étiquettes d'une strate à l'autre) : Nuée
+le maximum sur des covariables mal conditionnées (sur unimak, hn ~ MSTDO + Hour, sur un plateau
+où σ vaut e^9 ou plus, des milliers de fois w, 21,9 de log-vraisemblance sous le maximum que
+trouve Nuée ; parti des estimations de Nuée, ds y reste) ; une combinaison de covariables dont σ
+part à l'infini est refusée, là où ds rend le point où son optimiseur s'est arrêté ; quand la
+taille des groupes est une covariable, dht2 recalcule la probabilité de chaque détection avec une
+taille de 1 pour la variance de sa densité des groupes, là où Nuée garde celle de la détection
+(les densités des individus concordent) ; pour des points, la densité des distances tracée est la
+moyenne des f(r | z) des détections, celle qu'estime l'histogramme, là où plot.ds les pondère par
+1/pi. Et dht2 ne garde un transect sans détection dans la troncature que si son Sample.Label n'a
+de détection dans aucune strate (amakihi répète ses étiquettes d'une strate à l'autre) : Nuée
 garde l'effort de chaque transect.
 
 Forêts aléatoires et arbres boostés
