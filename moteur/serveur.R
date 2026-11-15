@@ -792,6 +792,30 @@ ajouter_colonnes_demande <- function(q) {
   c(resume_projet(n), list(jointure = info))
 }
 
+# Les fichiers d'Ajouter des valeurs de rasters, comme l'interface les envoie (un tableau d'objets,
+# que jsonlite lit en data.frame) : une liste de list(chemin, methode, rayon, noms).
+fichiers_raster_demande <- function(x) {
+  if (is.data.frame(x)) return(lapply(seq_len(nrow(x)), function(i) lapply(as.list(x[i, , drop = FALSE]), function(v) if (is.list(v)) v[[1]] else v)))
+  if (!is.null(x$chemin)) return(list(x))
+  x
+}
+
+# Les valeurs de rasters ajoutées au projet (raster.R : ajouter_valeurs_rasters), une variable par
+# bande ; comme une Nouvelle variable, Ctrl+Z les retire.
+ajouter_raster_demande <- function(q) {
+  p <- projet(q$projet)
+  fichiers <- fichiers_raster_demande(q$fichiers)
+  n <- ajouter_valeurs_rasters(p, fichiers)
+  noms <- unique(basename(vapply(fichiers, function(f) as.character(f$chemin)[1], "")))
+  memoriser(p, sprintf(traduire("valeurs de %s", "values from %s"), paste0(paste(utils::head(noms, 2), collapse = ", "), if (length(noms) > 2) "…" else "")))
+  info <- attr(n, "raster")
+  attr(n, "raster") <- NULL
+  n$modifie <- TRUE
+  etat$projets[[p$id]] <- n
+  reviser(p$id)
+  c(resume_projet(n), list(raster = info))
+}
+
 # Résumer par groupe : un nouveau projet, une ligne par groupe (nouveau.R : resumer_par_groupe), sans
 # fichier, à enregistrer comme un tableau collé.
 resumer_groupes_demande <- function(q) {
@@ -1222,6 +1246,9 @@ DEMANDES <- list(
   # Édition › Ajouter des colonnes d'un tableau : le tableau et les clés proposées, puis l'ajout
   table_a_joindre = table_a_joindre_demande,
   ajouter_colonnes = ajouter_colonnes_demande,
+  # Édition › Ajouter des valeurs de rasters (raster.R) : ce que sont les fichiers, puis l'ajout
+  raster_infos = function(q) list(fichiers = I(infos_rasters(projet(q$projet), as.character(unlist(q$chemins))))),
+  ajouter_raster = ajouter_raster_demande,
   # Édition › Résumer par groupe : un nouveau projet
   resumer_groupes = resumer_groupes_demande,
   annuler = annuler_demande,
