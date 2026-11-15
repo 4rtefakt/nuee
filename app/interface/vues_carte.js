@@ -8,7 +8,7 @@
 // variable or of a regression's residuals, its correlogram and the semivariogram.
 // Imported by app.js.
 import { t, ajouterTextes, libelleResultat } from './i18n.js';
-import { el, fmt } from './ui.js';
+import { el, fmt, decimal, entreNombres } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP, uniteAxe, etendue } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
 
@@ -166,8 +166,9 @@ async function rendreCarte(conteneur, ctx, p, loc) {
   }
   const type = loc.fond ? 'scattermap' : 'scattergl';
   const pos = (idx) => (loc.fond ? { lon: idx.map((k) => px[k]), lat: idx.map((k) => py[k]) } : { x: idx.map((k) => px[k]), y: idx.map((k) => py[k]) });
-  const coordTexte = (k) => (loc.fond ? `${fmt(px[k], 5)}, ${fmt(py[k], 5)}` : `${co.nom_x} = ${+Number(X[avec[k]]).toPrecision(8)}, ${co.nom_y} = ${+Number(Y[avec[k]]).toPrecision(8)}`);
-  const valeurTexte = (k) => (couleurs && couleurs[k] !== null && couleurs[k] !== undefined ? `<br>${nomCouleur} = ${typeof couleurs[k] === 'number' ? +couleurs[k].toPrecision(4) : couleurs[k]}` : '');
+  const coordTexte = (k) => (loc.fond ? `${fmt(px[k], 5)}${entreNombres()}${fmt(py[k], 5)}`
+    : `${co.nom_x} = ${decimal(+Number(X[avec[k]]).toPrecision(8))}${entreNombres()}${co.nom_y} = ${decimal(+Number(Y[avec[k]]).toPrecision(8))}`);
+  const valeurTexte = (k) => (couleurs && couleurs[k] !== null && couleurs[k] !== undefined ? `<br>${nomCouleur} = ${typeof couleurs[k] === 'number' ? decimal(+couleurs[k].toPrecision(4)) : couleurs[k]}` : '');
   const trace = (idx, nom, couleur, extra = {}) => ({
     type, mode: loc.etiquettes && !loc.fond ? 'markers+text' : 'markers', name: nom, ...pos(idx),
     customdata: idx.map((k) => uids[k]), hovertext: idx.map((k) => `<b>${N[avec[k]]}</b><br>${coordTexte(k)}${valeurTexte(k)}`),

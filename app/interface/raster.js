@@ -6,7 +6,7 @@
 // Files of the same product side by side (the tiles of a DEM) can make one variable per band.
 // The values join the project as ordinary variables, undone by Ctrl+Z. Imported by app.js.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
-import { el, icone, dialogue } from './ui.js';
+import { el, icone, dialogue, decimal } from './ui.js';
 import { demander, bureau } from './api.js';
 
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
@@ -21,21 +21,23 @@ function taille(octets) {
   let k = 0;
   let v = octets;
   while (v >= 1000 && k < unites.length - 1) { v /= 1000; k += 1; }
-  const texte = (k ? v.toFixed(v < 10 ? 1 : 0) : String(v)).replace('.', fr ? ',' : '.');
+  const texte = decimal(k ? v.toFixed(v < 10 ? 1 : 0) : String(v));
   return `${texte} ${unites[k]}`;
 }
 
-// what the engine's description of a file says, in one line
+// what the engine's description of a file says, in one line (its cells counted with the
+// thousands of the interface's language, not the system's: "1,250" reads 1.25 in French)
 function resume(info) {
+  const entier = (n) => n.toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : undefined);
   const compression = info.compression === 'aucune' ? t('raster_sans_compression')
     : info.compression ? `${info.compression}${info.predicteur > 1 ? ` (${t('raster_predicteur', { n: info.predicteur })})` : ''}` : '';
   const systeme = info.systeme.suppose ? t('raster_systeme_projet', { nom: info.systeme.nom })
     : info.systeme.code !== null && info.systeme.code !== undefined ? `${info.systeme.nom} (EPSG:${info.systeme.code})` : info.systeme.nom;
   return [info.format === 'ASCII' ? t('raster_format_asc') : info.format, compression, info.organisation,
-    t('raster_cellules', { l: info.largeur.toLocaleString(), h: info.hauteur.toLocaleString(), r: info.resolution }),
+    t('raster_cellules', { l: entier(info.largeur), h: entier(info.hauteur), r: info.resolution }),
     t(info.bandes > 1 ? 'raster_bandes' : 'raster_bande', { n: info.bandes, type: t(`raster_type_${info.type}`) }),
     info.bandes_separees ? t('raster_bandes_separees') : '', systeme,
-    info.nodata !== null && info.nodata !== undefined ? t('raster_nodata', { v: info.nodata }) : ''].filter(Boolean).join(' · ');
+    info.nodata !== null && info.nodata !== undefined ? t('raster_nodata', { v: decimal(info.nodata) }) : ''].filter(Boolean).join(' · ');
 }
 
 // the free name as the engine gives it (variables.R: nom_libre): "name", else "name (2)"...

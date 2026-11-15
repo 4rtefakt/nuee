@@ -1,8 +1,25 @@
-// Small DOM helpers shared by the interface: elements, icons, context menus, dialogs.
+// Small DOM helpers shared by the interface: numbers, elements, icons, context menus, dialogs.
 import ICONES from './vendor/icones.js';
-import { t } from './i18n.js';
+import { t, langueActuelle } from './i18n.js';
 
-export const fmt = (v, d = 3) => (v === null || v === undefined || Number.isNaN(v) ? '' : Number(v).toFixed(d));
+export { fmt, decimal, entreNombres } from './nombres.js';
+
+// A comma typed or pasted in a number field of the French interface. Chromium's number fields
+// read the decimal mark of the browser's language (the system's, in the desktop app), not the
+// interface's: on a system in English they drop the comma, and "0,5" reads 5. There the comma
+// goes in as the point they read ("0.5" reads 0.5 in any language). (The value a view gives
+// such a field is written with a point, never by fmt: Chromium shows it in its own language.)
+const DECIMALE_NAVIGATEUR = (() => {
+  try { return new Intl.NumberFormat(navigator.language).formatToParts(0.5).find((p) => p.type === 'decimal').value; } catch { return '.'; }
+})();
+document.addEventListener('beforeinput', (e) => {
+  const champ = e.target;
+  if (DECIMALE_NAVIGATEUR === ',' || langueActuelle() !== 'fr' || !(champ instanceof HTMLInputElement) || champ.type !== 'number') return;
+  const texte = e.inputType === 'insertText' ? e.data : e.inputType === 'insertFromPaste' && e.dataTransfer ? e.dataTransfer.getData('text/plain') : null;
+  if (!texte || !texte.includes(',')) return;
+  e.preventDefault();
+  document.execCommand('insertText', false, texte.replace(/,/g, '.'));
+}, true);
 
 export function el(tag, attrs = {}, ...enfants) {
   const e = document.createElement(tag);

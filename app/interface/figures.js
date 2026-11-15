@@ -12,7 +12,7 @@
 // TIFF are that SVG drawn on a canvas, written by images.js. A map on tiles becomes a plane plot
 // whose points are vectors over a picture of its tiles, fetched again at the export's resolution.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
-import { el, icone, dialogue } from './ui.js';
+import { el, icone, dialogue, decimal } from './ui.js';
 import { demander } from './api.js';
 import { VUES, FORMAT } from './panneaux.js';
 import { PX_PAR_PT, LARGEURS, STYLES_LETTRES, COINS, GRILLE_MAX, completer, grilleProposee, disposer, enPixels, lettre, placeLettre, adapterFigure,
@@ -715,7 +715,7 @@ function creerComposeur(app, conteneur, pid, f) {
     if (s.url) URL.revokeObjectURL(s.url);
     s.url = url;
     image.style.width = `${(c.largeur * 96) / 25.4}px`;
-    resume.textContent = t('figure_resume', { largeur: c.largeur, hauteur: c.hauteur, n: s.spec.panneaux.length, police: s.spec.police });
+    resume.textContent = t('figure_resume', { largeur: decimal(c.largeur), hauteur: decimal(c.hauteur), n: s.spec.panneaux.length, police: decimal(s.spec.police) });
     erreurs.replaceChildren(...c.erreurs.map((e) => el('p', { class: 'erreur' }, `${e.lettre} : ${e.message}`)), ...c.notes.map((n) => el('p', { class: 'note' }, n)));
     if (s.majFormat) s.majFormat();
   };

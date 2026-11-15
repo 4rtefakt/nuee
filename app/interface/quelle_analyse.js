@@ -6,7 +6,7 @@
 // cross-validation groups), the right view of the project, or New variable with its formula. The
 // decision logic is choix_analyse.js's, a table of rules apart; this module only draws and opens.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
-import { el, icone, dialogue } from './ui.js';
+import { el, icone, dialogue, decimal } from './ui.js';
 import { demander } from './api.js';
 import { dialogueModele, dialogueVariable, ANALYSES } from './dialogues.js';
 import { QUESTIONS, BUTS, formulaire, TEXTES_CHOIX, faitsVariables, genre, beaucoupDeZeros, zerosPoisson, proposer, choisirReponse,
@@ -32,8 +32,8 @@ function retrouver(R, p) {
 
 // A number as the language writes it (3 significant digits at most), a share in %.
 const nombre = (v) => {
-  const s = String(Number.isInteger(v) ? v : +Number(v).toPrecision(3));
-  return langueActuelle() === 'fr' ? s.replace('.', ',').replace('-', '−') : s;
+  const s = decimal(Number.isInteger(v) ? v : +Number(v).toPrecision(3));
+  return langueActuelle() === 'fr' ? s.replace('-', '−') : s;
 };
 const pourcent = (v) => (v > 0 && v < 1 ? '< 1' : String(Math.round(v)));
 

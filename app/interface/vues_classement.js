@@ -5,7 +5,7 @@
 // components, silhouettes, the choice of k, centres), their summaries, report parts and strings.
 // Imported by app.js.
 import { t, ajouterTextes } from './i18n.js';
-import { el, fmt } from './ui.js';
+import { el, fmt, decimal, entreNombres } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, ficheTest, ficheCondition } from './panneaux.js';
@@ -212,7 +212,7 @@ async function rendreStabilite(conteneur, ctx, p, loc) {
   conteneur.replaceChildren(el('p', { class: 'note' }, t('arb_stabilite_note', { n })
     + (loc.res.echecs ? ` ${t('arb_stabilite_echecs', { n: loc.res.echecs })}` : '')), graphe, bas);
   tracer(ctx, graphe, [{ type: 'bar', x: vars, y: liste(s.frequence), marker: { color: PALETTE[0] },
-    text: liste(s.seuil_median).map((v) => (v === null ? '' : `${t('arb_seuil_median')} ${+v.toPrecision(4)}`)), textposition: 'outside', cliponaxis: false,
+    text: liste(s.seuil_median).map((v) => (v === null ? '' : `${t('arb_seuil_median')} ${decimal(+v.toPrecision(4))}`)), textposition: 'outside', cliponaxis: false,
     hovertemplate: '<b>%{x}</b><br>%{y:.1f} %<br>%{text}<extra></extra>' }],
   { title: { text: `${m.nom} · ${t('stabilite_arbre')}` }, dragmode: false, yaxis: { title: { text: t('arb_frequence') }, range: [0, 115] } });
   loc.table ??= {};
@@ -292,7 +292,7 @@ function rendreScoresLDA(conteneur, ctx, p, loc) {
   const ce = m.centroides;
   traces.push({ type: 'scatter', mode: 'markers+text', name: t('lda_centroides'), x: liste(ce[axes[a]]), y: liste(ce[axes[b]]), text: liste(ce.classe),
     textposition: 'top center', textfont: { size: 11, color: c.texte }, marker: { symbol: 'x-thin', size: 14, line: { width: 2.5, color: c.texte } },
-    hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+    hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
   tracer(ctx, graphe, traces, { title: { text: `${m.nom} · ${t('lda_scores')}` },
     xaxis: { title: { text: libelleLD(m, a) }, zeroline: true }, yaxis: { title: { text: libelleLD(m, b) }, zeroline: true } });
   brancherSelection(graphe, ctx, m.id);
@@ -593,7 +593,7 @@ const blocsImportance = (m) => [{ entetes: [t('variable_arbre'), t('bloc'), '%']
 const blocsElagage = (m) => [{ texte: t(m.elagage.regle === 'min' ? 'arb_elagage_note_min' : 'arb_elagage_note', { seuil: fmt(m.elagage.seuil, 3), minimum: fmt(m.elagage.minimum, 3), feuilles: m.elagage.feuilles }) }];
 const blocsStabilite = (m) => demandeRapport('arbre_stabilite', m, (r) => [{ texte: t('arb_stabilite_note', { n: m.reglages_arbre.tirages }) },
   { entetes: [t('arb_premiere'), t('arb_tirages'), t('arb_frequence'), t('arb_seuil_median')],
-    lignes: lignesDe(r.stabilite, ['variable', 'tirages', 'frequence', 'seuil_median']).map((l) => [l[0], String(l[1]), fmt(l[2], 1), l[3] === null ? '' : String(+l[3].toPrecision(4))]) }]);
+    lignes: lignesDe(r.stabilite, ['variable', 'tirages', 'frequence', 'seuil_median']).map((l) => [l[0], String(l[1]), fmt(l[2], 1), l[3] === null ? '' : decimal(+l[3].toPrecision(4))]) }]);
 PARTIES_TYPES.TREE = [
   { cle: 'resume', defaut: true, tableau: blocsResumeArbre },
   { cle: 'arbre', vue: 'arbre', defaut: true },

@@ -5,7 +5,7 @@
 // diagram, the fitted variables, the PERMANOVA table, the dispersion, the Mantel tests and the
 // correlogram), their summaries, report parts and strings. Imported by app.js.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
-import { el, fmt } from './ui.js';
+import { el, fmt, entreNombres } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, valeurP, ficheCondition } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
@@ -96,7 +96,7 @@ function rendreOrdinationDist(conteneur, ctx, p, loc) {
     const ye = y(col(m.especes, b));
     traces.push({ type: 'scatter', mode: nomsE.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: t('com_especes'), x: xe, y: ye, text: nomsE,
       meta: 'variables', customdata: nomsE, textposition: 'top center', textfont: { size: 10, color: PALETTE[1] },
-      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xe.filter(Number.isFinite)); etendue[1].push(...ye.filter(Number.isFinite));
   }
   const nomsC = liste(aj && aj.centroides && aj.centroides.terme);
@@ -105,7 +105,7 @@ function rendreOrdinationDist(conteneur, ctx, p, loc) {
     const yc = y(col(aj.centroides, b));
     traces.push({ type: 'scatter', mode: 'markers+text', name: t('ord_centroides'), x: xc, y: yc, text: nomsC, meta: 'variables', customdata: nomsC,
       textposition: 'bottom center', textfont: { size: 10, color: PALETTE[0] }, marker: { symbol: 'triangle-up', size: 10, color: PALETTE[0] },
-      hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+      hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xc); etendue[1].push(...yc);
   }
   const annotations = [];
@@ -283,7 +283,7 @@ function rendreDispersion(conteneur, ctx, p, loc) {
       const idx = g.map((_, i) => i).filter((i) => g[i] === k);
       return { type: 'scatter', mode: 'markers', name: k, x: idx.map((i) => cx[i]), y: idx.map((i) => cy[i]), customdata: idx.map((i) => uids[i]),
         hovertext: idx.map((i) => noms.get(uids[i])), marker: { color: idx.map((i) => (sel.has(uids[i]) ? '#e4572e' : PALETTE[j % PALETTE.length])), size: 7 },
-        hovertemplate: '<b>%{hovertext}</b><br>%{x:.3f}, %{y:.3f}<extra>%{fullData.name}</extra>' };
+        hovertemplate: `<b>%{hovertext}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra>%{fullData.name}</extra>` };
     });
     traces.push({ type: 'scatter', mode: 'markers+text', name: centre, x: liste(d.centres.PCoA1), y: d.centres.PCoA2 ? liste(d.centres.PCoA2) : groupes.map(() => 0),
       text: liste(d.centres.groupe), textposition: 'top center', marker: { symbol: 'x-thin', size: 14, line: { width: 2.5, color: c.texte } },

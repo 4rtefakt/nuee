@@ -1,7 +1,7 @@
 // Views. Each draws one model result (or the project data) into a panel and is re-run when
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
 import { t, lire, ecrire, langueActuelle, libelleResultat } from './i18n.js';
-import { el, fmt, icone, menuContextuel } from './ui.js';
+import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
 
 export const PALETTES = {
   defaut: ['#2f6fb5', '#d1495b', '#3b9a5b', '#e09f3e', '#7b5ea7', '#2a9d8f', '#8c564b', '#c2549d', '#6b6b6b', '#a3a322'],
@@ -89,6 +89,9 @@ export function tracer(ctx, div, traces, layout = {}) {
     // under the axis title, whatever the plot's height
     legend: { orientation: 'h', yref: 'container', y: 0, yanchor: 'bottom', x: 0.5, xanchor: 'center', font: { size: F.taille - 1 } },
     hoverlabel: { font: { family: police } },
+    // (in French, the numbers of the axes and of the hover formats with a decimal comma, as the
+    // interface's own (nombres.js), and a space between thousands)
+    ...(langueActuelle() === 'fr' ? { separators: ', ' } : {}),
   };
   const perso = ctx.formatPanneau ? ctx.formatPanneau() : {};  // this plot's own titles
   const titre = (defaut, texte) => (texte ? { ...(defaut || {}), text: texte } : defaut);
@@ -276,13 +279,13 @@ function textesEtiquettes(ctx, m, loc) {
   if (!e) return null;
   if (e === 'nom') return m.observations.nom;
   const v = valeursSource(ctx, m, loc, e);
-  return v && v.map((x) => (x === null ? '' : typeof x === 'number' ? String(+x.toPrecision(4)) : x));
+  return v && v.map((x) => (x === null ? '' : typeof x === 'number' ? decimal(+x.toPrecision(4)) : x));
 }
 
 // Observation markers, one value of xs and ys per observation of the model: one trace per
 // colour group (or a colour scale for a numeric variable), selected observations in red,
 // optional labels.
-export function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', survol = '%{x:.3f}, %{y:.3f}' } = {}) {
+export function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', survol = `%{x:.3f}${entreNombres()}%{y:.3f}` } = {}) {
   const o = m.observations;
   const sel = new Set(ctx.selection(m.id));
   const g = groupesCouleur(m, loc, ctx);
@@ -310,11 +313,17 @@ export function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', su
 // Escape: cancel). A column's header can carry a line under its name (sousTitre: the unit and the
 // values of a variable in the Data view), a tooltip (info), and a right-click menu (menuColonne(c,
 // event)); a row too (menuLigne(i, event): a variable of Variable statistics).
+// A value as text, a number at full precision with the interface's decimal mark (French "0,25":
+// a French spreadsheet reads it, and so do the engine and the Data view's paste): what the copy
+// gives, what a cell's field starts with, what the search box finds.
+const texteValeur = (v) => (v === null || v === undefined ? '' : typeof v === 'number' ? decimal(v) : String(v));
 export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier, menuColonne, menuLigne, aideCellule }) {
   loc.filtre ??= '';
   const f = loc.filtre.toLowerCase();
   let idx = Array.from({ length: n }, (_, i) => i);
-  if (f) idx = idx.filter((i) => colonnes.some((c) => String(valeur(i, c.cle) ?? '').toLowerCase().includes(f)));
+  // (a number found as typed, "0.25" or "0,25")
+  const trouve = (v) => String(v ?? '').toLowerCase().includes(f) || (typeof v === 'number' && texteValeur(v).includes(f));
+  if (f) idx = idx.filter((i) => colonnes.some((c) => trouve(valeur(i, c.cle))));
   if (loc.tri) {
     const { cle, sens } = loc.tri;
     idx.sort((a, b) => {
@@ -337,7 +346,8 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
       td.title = aideCellule || t('double_clic_modifier');
       td.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        const saisie = el('input', { value: v ?? '', class: 'edition-cellule' });
+        const initial = texteValeur(v);
+        const saisie = el('input', { value: initial, class: 'edition-cellule' });
         td.replaceChildren(saisie);
         saisie.focus();
         saisie.select();
@@ -345,7 +355,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
         const garder = async () => {
           if (fini) return;
           fini = true;
-          if (saisie.value !== String(v ?? '')) await modifier(i, c.cle, saisie.value).catch(() => {});
+          if (saisie.value !== initial) await modifier(i, c.cle, saisie.value).catch(() => {});
           ctx.rafraichir();
         };
         saisie.addEventListener('keydown', (k) => {
@@ -389,7 +399,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
   defile.addEventListener('scroll', suite, { passive: true });
   const copier = () => {
     const txt = [colonnes.map((c) => c.titre).join('\t')]
-      .concat(idx.map((i) => colonnes.map((c) => { const v = valeur(i, c.cle); return v === null || v === undefined ? '' : v; }).join('\t'))).join('\n');
+      .concat(idx.map((i) => colonnes.map((c) => texteValeur(valeur(i, c.cle))).join('\t'))).join('\n');
     navigator.clipboard.writeText(txt).then(() => ctx.statut(t('table_copiee')));
   };
   conteneur._copierTableau = copier;  // Ctrl+C (app.js)
@@ -515,7 +525,7 @@ function rendreResume(conteneur, ctx, p) {
       pls && m.RMSEE ? Object.entries(m.RMSEE).map(([y, v]) => el('span', {}, el('small', {}, `RMSEE ${y}`), ' ', el('b', {}, fmt(v, 4)))) : null,
       pls && m.RMSEcv ? Object.entries(m.RMSEcv).map(([y, v]) => el('span', {}, el('small', {}, `RMSEcv ${y}`), ' ', el('b', {}, fmt(v, 4)))) : null,
       pls && m.cv_anova ? Object.entries(m.cv_anova).map(([y, a]) => el('span', { title: 'CV-ANOVA' }, el('small', {}, `CV-ANOVA p ${y}`), ' ',
-        el('b', {}, a.p[1] === null ? '—' : a.p[1] < 0.001 ? Number(a.p[1]).toExponential(1) : fmt(a.p[1], 3)))) : null,
+        el('b', {}, a.p[1] === null ? '—' : a.p[1] < 0.001 ? decimal(Number(a.p[1]).toExponential(1)) : fmt(a.p[1], 3)))) : null,
       m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null),
     ficheTest(m), ficheCondition(m), noteGardes(m), noteHierarchique(m));
   const table = el('table', { class: 'tableau compact' },
@@ -587,12 +597,12 @@ function rendreLoadings(conteneur, ctx, p, loc) {
   } else {
     traces.push({ type: 'scatter', mode: etiq ? 'markers+text' : 'markers', name: 'X', x: v[cle + loc.a], y: v[cle + loc.b], text: v.terme,
       meta: 'variables', customdata: v.terme, textposition: 'top center', textfont: { size: 10 }, marker: marqueurs(v.terme, choisies, PALETTE[0]),
-      hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+      hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     if (pls && m.variables_y) {
       const y = m.variables_y;
       traces.push({ type: 'scatter', mode: etiq ? 'markers+text' : 'markers', name: 'Y', x: y['c' + loc.a], y: y['c' + loc.b], text: y.terme,
         meta: 'variables', customdata: y.terme, textposition: 'top center', textfont: { size: 10 }, marker: { ...marqueurs(y.terme, choisies, PALETTE[1], 9), symbol: 'diamond' },
-        hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+        hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     }
   }
   const nom = pls ? (un ? 'w*' : 'w*c') : 'p';
@@ -840,7 +850,7 @@ async function rendreBiplot(conteneur, ctx, p, loc) {
   const choisies = new Set(ctx.variablesChoisies(m.id));
   const variables = (vals, noms, nom, couleur, symbole) => ({ type: 'scatter', mode: nomsVar ? 'markers+text' : 'markers', name: nom,
     x: vals[a], y: vals[b], text: [].concat(noms), meta: 'variables', customdata: [].concat(noms), textposition: 'top center', textfont: { size: 10, color: couleur },
-    marker: { ...marqueurs([].concat(noms), choisies, couleur, 8), symbol: symbole }, hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+    marker: { ...marqueurs([].concat(noms), choisies, couleur, 8), symbol: symbole }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
   traces.push(variables(r.p, r.noms_x, 'X', '#2a9d8f', 'triangle-up'));
   if (r.c) traces.push(variables(r.c, r.noms_y, 'Y', '#d1495b', 'diamond'));
   const cercle = (rayon) => ({ type: 'circle', x0: -rayon, x1: rayon, y0: -rayon, y1: rayon, line: { color: '#888', width: 1, dash: rayon < 1 ? 'dot' : 'solid' } });
@@ -961,7 +971,8 @@ function rendreVIP(conteneur, ctx, p, loc) {
   const graphe = el('div', { class: 'graphe' });
   const origine = auto ? (sv.chute ? `${t('chute')} ${fmt(sv.chute, 2)}${sv.marche ? '' : ', ' + t('marche_faible')}` : t('auto_court')) : t('seuil_choisi');
   conteneur.replaceChildren(outils(
-    el('label', { class: 'champ' }, el('span', {}, t('seuil_vip')), el('input', { type: 'number', step: 0.05, min: 0, value: fmt(seuil, 2), style: 'width:5.5em',
+    // (a number field's value: with a point, Chromium shows it in its language)
+    el('label', { class: 'champ' }, el('span', {}, t('seuil_vip')), el('input', { type: 'number', step: 0.05, min: 0, value: Number(seuil).toFixed(2), style: 'width:5.5em',
       onchange: (e) => { const x = parseFloat(String(e.target.value).replace(',', '.')); if (Number.isFinite(x)) { loc.seuil = x; ctx.rafraichir(); } } })),
     el('button', { title: t('seuil_auto'), disabled: auto && !nForces, onclick: () => { loc.seuil = null; loc.forces = {}; ctx.rafraichir(); } }, icone('rotate-ccw'), t('auto_court')),
     el('span', { class: 'infos' }, `(${origine}) · ${retenues.length} / ${v.terme.length} ${t('vip_retenues')}${nForces ? ` · ${nForces} ${t('choisies_main')}` : ''}`),
@@ -1442,7 +1453,7 @@ export function libelleTransfo(tr) {
   if (['racine2', 'racine4', 'log10', 'autre'].includes(tr)) return t('tr_' + tr);
   const s = lireTransfo(tr);
   if (!s) return tr;
-  const nb = (v) => String(+Number(v).toPrecision(6)).replace('.', langueActuelle() === 'fr' ? ',' : '.');
+  const nb = (v) => decimal(+Number(v).toPrecision(6));
   let a = s.c1 === 1 ? 'x' : s.c1 === -1 ? '−x' : `${nb(s.c1)}·x`;
   if (s.c2 > 0) a += ` + ${nb(s.c2)}`;
   if (s.c2 < 0) a += ` − ${nb(-s.c2)}`;
@@ -1660,7 +1671,8 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   // dates: the x values as dates on a date axis (and in the hover), the events typed as dates or years
   const dates = !!r.dates;
   const X = dates ? T.map(dateDecimale) : T;
-  const tps = (x) => (dates ? dateDecimale(x) : x);
+  const XT = dates ? X : T.map(texteTemps);  // (the times as the hover writes them)
+  const tps = (x) => (dates ? dateDecimale(x) : x === null || x === undefined ? x : texteTemps(x));
   const evenements = saisis.map((x) => (dates ? dateSaisie(x) : Number(x.replace(',', '.')))).filter((x) => (dates ? x !== null : Number.isFinite(x)));
   const parLignes = !!r.lignes;
   const parPanneaux = !!r.panneaux;
@@ -1694,6 +1706,7 @@ async function rendreSeries(conteneur, ctx, p, loc) {
   const MP = liste(r.moyennes.panneau);
   const MT = liste(r.moyennes.temps);
   const MX = dates ? MT.map(dateDecimale) : MT;
+  const MXT = dates ? MX : MT.map(texteTemps);
   const MV = liste(r.moyennes.valeur);
   const MN = liste(r.moyennes.n);
   const couleurs = new Map();  // (each line's colour, by panel and line, for the table of trends)
@@ -1721,7 +1734,7 @@ async function rendreSeries(conteneur, ctx, p, loc) {
       couleurs.set(`${nomP}\r${nomL}`, couleur);
       traces.push({ type: 'scatter', mode: doublee ? 'markers' : 'lines+markers', xaxis: 'x' + s, yaxis: 'y' + s, name: parLignes ? nomL : r.variable.nom,
         legendgroup: `p${k}`, showlegend: parLignes, ...(parPanneaux && parLignes && j === 0 ? { legendgrouptitle: { text: nomP } } : {}),
-        x: de(X, suite), y: de(Y, suite), customdata: de(U, suite), hovertext: de(N, suite), text: de(X, suite),
+        x: de(X, suite), y: de(Y, suite), customdata: de(U, suite), hovertext: de(N, suite), text: de(XT, suite),
         hovertemplate: `<b>%{hovertext}</b><br>${r.temps.nom} = %{text}<br>${r.variable.nom} = %{y:.4~g}<extra>${extra}</extra>`,
         line: { color: couleur, width: 1.5, dash: TIRETS[Math.floor(j / PALETTE.length) % TIRETS.length] },
         marker: marqueurs(de(U, suite), sel, couleur, 6) });
@@ -1730,7 +1743,7 @@ async function rendreSeries(conteneur, ctx, p, loc) {
       const idx = MT.map((_, i) => i).filter((i) => (!parPanneaux || MP[i] === nomP) && montre(MV[i]));
       const suite = dates ? idx : avecTrous(idx, MT);
       moyennes.push({ type: 'scatter', mode: 'lines', xaxis: 'x' + s, yaxis: 'y' + s, name: t('series_moyenne'), legendgroup: 'moyenne', showlegend: k === 0,
-        x: de(MX, suite), y: de(MV, suite), text: de(MN, suite), customdata: de(MX, suite), line: { color: c.texte, width: 3.5 },
+        x: de(MX, suite), y: de(MV, suite), text: de(MN, suite), customdata: de(MXT, suite), line: { color: c.texte, width: 3.5 },
         hovertemplate: `${t('series_moyenne')} · ${r.temps.nom} = %{customdata}<br>${r.variable.nom} = %{y:.4~g} (n = %{text})<extra>${parPanneaux ? nomP : ''}</extra>` });
     }
   });
@@ -1760,7 +1773,7 @@ async function rendreSeries(conteneur, ctx, p, loc) {
       bas.replaceChildren(outils(...avant), el('p', { class: 'erreur' }, `${t('erreur')} : ${r.tendances_erreur}`));
     } else {
       const col = (k) => liste(r.tendances[k]);
-      const sig = (v) => String(+Number(v).toPrecision(4));
+      const sig = (v) => decimal(+Number(v).toPrecision(4));
       const somme = (k) => col(k).reduce((s, x) => s + (x || 0), 0);
       tableau(bas, ctx, (loc.tableTendances ??= {}), {
         n: col('n').length, nom: t('series_tendances'), avant,
@@ -1855,7 +1868,7 @@ async function rendreCoomans(conteneur, ctx, p, loc) {
 // Statistical tests, computed in R, in four modes: between the classes of a qualitative
 // variable, variable by variable; two variables, with the test their types call for; the
 // correlation matrix of the quantitative variables; before/after with a control (BACI).
-export const valeurP = (v) => (v === null || v === undefined ? '' : v === 0 ? '< 1e-16' : v < 1e-4 ? v.toExponential(1) : v.toFixed(4));  // (0 : sous la précision de R)
+export const valeurP = (v) => (v === null || v === undefined ? '' : v === 0 ? '< 1e-16' : decimal(v < 1e-4 ? v.toExponential(1) : v.toFixed(4)));  // (0 : sous la précision de R)
 async function rendreTests(conteneur, ctx, p, loc) {
   loc.mode ??= 'classes';
   const modes = choix('', [['classes', t('tests_mode_classes')], ['deux', t('tests_mode_deux')], ['correlations', t('tests_mode_correlations')],
@@ -2118,21 +2131,20 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     el('tbody', {}, cles.map((k, i) => el('tr', { class: k === L.test ? 'choisie' : '', onclick: r.posthoc || r.toutes ? () => { L.test = k; ctx.rafraichir(); } : null },
       el('td', {}, noms[k]),
       el('td', { class: 'num' }, fmt(col('statistique')[i], 3)),
-      el('td', { class: 'num' }, [ddlTexte(col('ddl1')[i]), ddlTexte(col('ddl2')[i])].filter(Boolean).join(', ')),
+      el('td', { class: 'num' }, [ddlTexte(col('ddl1')[i]), ddlTexte(col('ddl2')[i])].filter(Boolean).join(entreNombres())),
       el('td', { class: 'num' }, valeurP(col('p')[i])),
       el('td', { class: 'num' }, col('effet')[i] === null ? '' : `${effets[col('nom_effet')[i]] || ''} = ${fmt(col('effet')[i], 3)}`),
       el('td', {}, k === r.conseille ? el('b', {}, t('conseille')) : '')))));
   // why this test: its conditions, checked in R
   const groupes = r.groupes ? [].concat(r.groupes.groupe) : [];
-  const decimal = (s) => (langueActuelle() === 'fr' ? s.replace('.', ',') : s);  // (in a sentence)
   let raison;
   if (r.type === 'apparie') {
     // (normality not tested: constant differences, more than 5,000 pairs, Shapiro–Wilk impossible)
     const cleRaison = { normalite: 'raison_normalite_apparie', constantes: 'raison_constantes_apparie', nombre: 'raison_nombre_apparie',
       non_testee: 'raison_non_testee_apparie' }[r.raison] || 'raison_ok_apparie';
-    raison = t(cleRaison, { p: r.shapiro_p === null ? '—' : decimal(valeurP(r.shapiro_p)) });
-  } else if (r.raison === 'attendus') raison = t('raison_attendus', { part: `${fmt(100 * r.part_attendus_faibles, 0)} %`, min: decimal(fmt(r.attendu_min, 2)) });
-  else if (r.raison === 'variances') raison = t('raison_variances', { p: decimal(valeurP(r.variances.p)) });
+    raison = t(cleRaison, { p: r.shapiro_p === null ? '—' : valeurP(r.shapiro_p) });
+  } else if (r.raison === 'attendus') raison = t('raison_attendus', { part: `${fmt(100 * r.part_attendus_faibles, 0)} %`, min: fmt(r.attendu_min, 2) });
+  else if (r.raison === 'variances') raison = t('raison_variances', { p: valeurP(r.variances.p) });
   else if (r.raison === 'normalite' && r.type === 'groupes') {
     const d = normaliteDouteuse([].concat(r.groupes.shapiro_p), [].concat(r.groupes.n));
     raison = t('raison_normalite_groupes', { groupes: liste(groupes.filter((_, i) => d[i])) });
@@ -2141,7 +2153,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     raison = t('raison_normalite_cor', { variables: [r.x.nom, r.y.nom].filter((_, i) => d[i]).join(', ') });
   } else {
     raison = r.type === 'contingence' ? t('raison_ok_contingence') : r.type === 'correlation' ? t('raison_ok_correlation')
-      : groupes.length === 2 ? t('raison_ok_deux_groupes') : t('raison_ok_groupes', { p: decimal(valeurP(r.variances.p)) });
+      : groupes.length === 2 ? t('raison_ok_deux_groupes') : t('raison_ok_groupes', { p: valeurP(r.variances.p) });
   }
   const ecartes = [].concat(r.ecartes ?? []);
   // paired: how many pairs, the rows left without a partner (with their keys), and without a value
@@ -2353,7 +2365,7 @@ async function rendreCorrelations(conteneur, ctx, p, loc, modes) {
 // the gaps alone. A time made of dates (decimal years from R, which says so) is shown as dates;
 // the event and the end are typed as a number or a date, and R reads them like the time.
 const NOMS_PERIODES = () => ({ avant: t('baci_avant'), apres: t('baci_apres'), hors: t('baci_hors') });
-const texteTemps = (x) => (x === null || x === undefined ? '' : Number.isInteger(x) ? String(x) : String(+x.toPrecision(6)));
+const texteTemps = (x) => (x === null || x === undefined ? '' : Number.isInteger(x) ? String(x) : decimal(+x.toPrecision(6)));
 async function rendreBaci(conteneur, ctx, p, loc, modes) {
   const B = (loc.baci ??= {});
   const cache = ((loc.cache ??= {}).baci ??= {});  // (the results: loc.cache isn't saved with the session)
@@ -2755,7 +2767,7 @@ export function notesPentes(m) {
       const avec = col('avec')[i];
       notes.push(col('type')[i] === 'correlation'
         ? t('singulier_correlation', { groupe, terme, r: fmt(col('valeur')[i], 3), avec: avec === '(Intercept)' ? t('ordonnee_origine') : t('pente_de', { terme: avec }) })
-        : t('singulier_ecart_type', { terme, groupe, et: Number(col('valeur')[i]).toPrecision(2) }));
+        : t('singulier_ecart_type', { terme, groupe, et: decimal(Number(col('valeur')[i]).toPrecision(2)) }));
       loin.set(terme, col('loin')[i] ? i : (loin.get(terme) ?? -1));
     });
     // (what to do, once per slope: centre it when it is far from 0, otherwise compare without it)
@@ -3203,8 +3215,8 @@ export function notesPuissance(r) {
     : t('puissance_plan_lm', { n: pl.unites, annees: pl.annees, N: pl.N });
   const variances = t('puissance_variances', { s2: fmt(v.sigma2, 4), phi: v.phi !== null && v.phi !== undefined ? t('puissance_phi', { phi: fmt(v.phi, 3) }) : '',
     aleatoires: niveaux.length ? t('puissance_aleatoires', { liste: [].concat(v.niveaux).map((x, j) => `${niveaux[j]} ${fmt(x, 4)}`).join(', ') }) : '' });
-  const pente = t('puissance_pente', { pente: Number(r.pente.toPrecision(3)), y: r.y_modele,
-    modele: r.pente_modele === null || r.pente_modele === undefined ? '—' : Number(r.pente_modele.toPrecision(3)) });
+  const pente = t('puissance_pente', { pente: decimal(Number(r.pente.toPrecision(3))), y: r.y_modele,
+    modele: r.pente_modele === null || r.pente_modele === undefined ? '—' : decimal(Number(r.pente_modele.toPrecision(3))) });
   return [t('puissance_note'), plan, variances, pente, r.approchee ? t('puissance_approchee', { y: r.reponse }) : '',
     [].concat(r.croises || []).length ? t('puissance_croises', { termes: [].concat(r.croises).join(', ') }) : ''].filter(Boolean).join(' ');
 }
@@ -3239,7 +3251,7 @@ async function rendrePuissance(conteneur, ctx, p, loc) {
       r.pourcent_possible ? el('select', { onchange: (e) => { loc.reglages = { ...g, unite: e.target.value, tendance: undefined }; ctx.rafraichir(); } },
         [['pourcent', t('puissance_pourcent')], ['pente', t('puissance_par_an', { y: r.reponse })]].map(([k, n]) => el('option', { value: k, selected: k === g.unite }, n)))
         : el('span', {}, t('puissance_par_an', { y: r.reponse }))),
-    choix('α', ALPHAS_PUISSANCE.map((a) => [a, String(a)]), g.alpha, (v) => changer('alpha', Number(v))));
+    choix('α', ALPHAS_PUISSANCE.map((a) => [a, decimal(a)]), g.alpha, (v) => changer('alpha', Number(v))));
   const barre2 = outils(el('label', { class: 'champ' }, el('span', {}, t('puissance_annees_de')), nombreSaisi(annees[0], '4.5em', (v) => changer('annees', [v, annees[1]])),
     el('span', {}, t('puissance_annees_a')), nombreSaisi(annees[1], '4.5em', (v) => changer('annees', [annees[0], v]))),
   el('label', { class: 'champ', title: t('puissance_unites_aide') }, el('span', {}, niveaux.length ? t('puissance_unites', { niveau: niveaux[0] }) : t('puissance_obs_an')),
@@ -3319,10 +3331,10 @@ export function notesMoyennes(r) {
   const liste = (x) => [].concat(x || []).join(', ');
   const cov = r.grille.covariables;
   const valeurs = cov ? [].concat(cov.nom).map((n, i) => t([].concat(cov.courbe)[i] ? 'moyennes_grille_courbe' : 'moyennes_grille_valeur',
-    { variable: n, valeur: Number([].concat(cov.moyenne)[i].toPrecision(6)) })) : [];
+    { variable: n, valeur: decimal(Number([].concat(cov.moyenne)[i].toPrecision(6))) })) : [];
   const moyennees = [].concat(r.grille.moyennees || []);
   const grille = [...valeurs, moyennees.length ? t('moyennes_grille_moyennees', { variables: liste(moyennees) }) : '',
-    r.grille.spatial ? t('moyennes_grille_spatial', { nom: r.grille.spatial.nom, x: Number(r.grille.spatial.x.toPrecision(6)), y: Number(r.grille.spatial.y.toPrecision(6)) }) : '',
+    r.grille.spatial ? t('moyennes_grille_spatial', { nom: r.grille.spatial.nom, x: decimal(Number(r.grille.spatial.x.toPrecision(6))), y: decimal(Number(r.grille.spatial.y.toPrecision(6))) }) : '',
     r.grille.decalage ? t(r.famille === 'poisson_zi' ? 'moyennes_grille_effort_zip' : 'moyennes_grille_effort', { effort: r.grille.decalage }) : ''].filter(Boolean);
   const pentes = r.mode === 'pentes';
   const quoi = pentes ? t('moyennes_note_pentes', { x: r.pente.nom, unite: r.pente.forme || r.pente.nom, facteur: r.facteur.nom })
@@ -3443,7 +3455,7 @@ async function rendreMoyennes(conteneur, ctx, p, loc) {
     colonnes: colonnesPaires, valeur: valeurPaire, cliquer: (i) => { loc.paire = i; ctx.rafraichir(); }, choisie: (i) => i === loc.paire });
   // Ctrl+C (app.js): both tables, as shown, one after the other
   const texte = (colonnes, n, valeur) => [colonnes.map((x) => x.titre).join('\t'),
-    ...Array.from({ length: n }, (_, i) => colonnes.map((x) => { const v = valeur(i, x.cle); return v === null || v === undefined ? '' : v; }).join('\t'))].join('\n');
+    ...Array.from({ length: n }, (_, i) => colonnes.map((x) => texteValeur(valeur(i, x.cle))).join('\t'))].join('\n');
   conteneur._copierTableau = () => navigator.clipboard.writeText([texte(colonnesMoy, est.length, valeurMoy), '', texte(colonnesPaires, nPaires, valeurPaire)].join('\n'))
     .then(() => ctx.statut(t('table_copiee')));
 }
@@ -3653,7 +3665,7 @@ async function rendrePermutations(conteneur, ctx, p, loc) {
 // CV-ANOVA (Eriksson, Trygg and Wold 2008), one table per Y, computed in R.
 function rendreCVANOVA(conteneur, ctx, p) {
   const m = ctx.modele(p.modele);
-  const pf = (x) => (x === null || x === undefined ? '' : x < 0.001 ? Number(x).toExponential(2) : fmt(x, 4));
+  const pf = (x) => (x === null || x === undefined ? '' : x < 0.001 ? decimal(Number(x).toExponential(2)) : fmt(x, 4));
   conteneur.replaceChildren(el('div', { class: 'defile resume' },
     Object.entries(m.cv_anova || {}).map(([y, a]) => el('section', {},
       el('h4', { class: 'titre-section' }, `CV-ANOVA · ${y}`),

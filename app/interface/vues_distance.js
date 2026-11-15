@@ -6,7 +6,7 @@
 // qualitative covariate, and for points the pdf of the distances; the QQ plot; the density and
 // abundance by stratum), its report parts and its strings. Imported by app.js.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
-import { el, fmt } from './ui.js';
+import { el, fmt, decimal } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, notesModele, valeurP, ficheCondition } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
@@ -17,8 +17,8 @@ const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R
 const estDistance = (m) => !!m && !!m.analyse && m.type === 'DISTANCE';
 const fini = (v) => v !== null && v !== undefined && Number.isFinite(v);
 // a value with k significant digits, a large one as a whole number
-const sig = (v, k = 4) => (!fini(v) ? '—' : Math.abs(v) >= 1e15 ? Number(v).toPrecision(k)
-  : Math.abs(v) >= 10 ** k ? String(Math.round(v)) : String(+Number(v).toPrecision(k)));
+const sig = (v, k = 4) => (!fini(v) ? '—' : decimal(Math.abs(v) >= 1e15 ? Number(v).toPrecision(k)
+  : Math.abs(v) >= 10 ** k ? String(Math.round(v)) : String(+Number(v).toPrecision(k))));
 const pct = (v) => (!fini(v) ? '—' : `${fmt(100 * v, 1)}${langueActuelle() === 'fr' ? ' %' : '%'}`);
 const pValeur = (v) => (!fini(v) ? '—' : valeurP(v));
 const chiffre = (k, v) => el('span', {}, el('small', {}, k), ' ', el('b', {}, v ?? '—'));
@@ -108,7 +108,7 @@ const parIntervalles = (m) => liste(m.intervalles).length > 0;
 const texteTroncature = (m) => {
   const tr = m.troncature || {};
   if (parIntervalles(m)) return t('distance_n_intervalles', { k: liste(m.intervalles).length - 1, de: sig(tr.L), a: avecUnite(sig(tr.w), uDist(m)) });
-  return `${avecUnite(sig(tr.w), uDist(m))}${fini(tr.pourcentage) ? ` (${tr.pourcentage} %)` : ''}${tr.L > 0 ? ` · ${t('distance_gauche')} ${sig(tr.L)}` : ''}`;
+  return `${avecUnite(sig(tr.w), uDist(m))}${fini(tr.pourcentage) ? ` (${decimal(tr.pourcentage)} %)` : ''}${tr.L > 0 ? ` · ${t('distance_gauche')} ${sig(tr.L)}` : ''}`;
 };
 const phraseDetection = (m) => t(m.p_moyenne ? 'distance_phrase_p_moyenne' : 'distance_phrase_p', { p: fmt(m.p, 3), se: fmt(m.se_p, 3), cv: pct(m.cv_p), quoi: effectifLibelle(m),
   e: avecUnite(sig(m.effectif.valeur), uDist(m)), se_e: avecUnite(sig(m.effectif.se, 3), uDist(m)) });

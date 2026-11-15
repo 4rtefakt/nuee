@@ -2,7 +2,7 @@
 // they look in their panels (colours, labels, titles), as a PDF (printed by the desktop app,
 // or by the browser) or a Word document (.docx, written here).
 import { t, langueActuelle } from './i18n.js';
-import { el, fmt, dialogue } from './ui.js';
+import { el, fmt, decimal, dialogue } from './ui.js';
 import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites,
   notesMoyennes, titreMoyenne, titrePaire, libellePaire, parametresLoi } from './panneaux.js';
 import { demander } from './api.js';
@@ -167,7 +167,7 @@ export async function imageVue(app, vue, m, variante = {}) {
 }
 
 const nombre = (v, d = 4) => (v === null || v === undefined ? '' : typeof v === 'number' ? fmt(v, d) : String(v));
-const valeurP = (x) => (x === null || x === undefined ? '' : x === 0 ? '< 1e-16' : x < 0.001 ? Number(x).toExponential(2) : fmt(x, 4));
+const valeurP = (x) => (x === null || x === undefined ? '' : x === 0 ? '< 1e-16' : x < 0.001 ? decimal(Number(x).toExponential(2)) : fmt(x, 4));
 
 function tableauComposantes(m) {
   const c = m.composantes;

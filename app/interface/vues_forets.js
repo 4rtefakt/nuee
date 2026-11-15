@@ -3,7 +3,7 @@
 // computed on request, observed against predicted or the classification, the error against the
 // number of trees), their report parts and strings. Imported by app.js.
 import { t, ajouterTextes } from './i18n.js';
-import { el, fmt } from './ui.js';
+import { el, fmt, decimal } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, ficheTest, ficheCondition, avecUnite, uniteAxe, transformeeDans, etendue } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
@@ -257,7 +257,7 @@ function noteReglages(m) {
       importance: t(r.importance === 'echelle' ? 'for_importance_echelle' : 'for_importance_brute') });
   }
   const r = m.reglages_boost;
-  return t('bst_reglages', { loi: t(`famille_${r.loi}`), max: r.arbres, profondeur: r.profondeur, min: r.min_noeud, taux: r.taux, fraction: fmt(100 * r.fraction, 1) });
+  return t('bst_reglages', { loi: t(`famille_${r.loi}`), max: r.arbres, profondeur: r.profondeur, min: r.min_noeud, taux: decimal(r.taux), fraction: fmt(100 * r.fraction, 1) });
 }
 
 function rendreResume(conteneur, ctx, m) {

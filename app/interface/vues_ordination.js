@@ -4,7 +4,7 @@
 // strings. A CCA is shown as the RDA is (a triplot, its tests), with the CA's three scalings.
 // Imported by app.js.
 import { t, ajouterTextes } from './i18n.js';
-import { el, fmt } from './ui.js';
+import { el, fmt, entreNombres } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, valeurP, ficheCondition } from './panneaux.js';
@@ -85,7 +85,7 @@ function rendreOrdination(conteneur, ctx, p, loc) {
     const yr = y(col(o.reponses, b));
     traces.push({ type: 'scatter', mode: nomsR.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: nomReponses,
       x: xr, y: yr, text: nomsR, meta: 'variables', customdata: nomsR, textposition: 'top center', textfont: { size: 10, color: PALETTE[1] },
-      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xr); etendue[1].push(...yr);
   }
   const nomsC = liste(o.noms_centroides);
@@ -94,7 +94,7 @@ function rendreOrdination(conteneur, ctx, p, loc) {
     const yc = y(col(o.centroides, b));
     traces.push({ type: 'scatter', mode: 'markers+text', name: t('ord_centroides'), x: xc, y: yc, text: nomsC, meta: 'variables', customdata: nomsC,
       textposition: 'bottom center', textfont: { size: 10, color: PALETTE[0] }, marker: { symbol: 'triangle-up', size: 10, color: PALETTE[0] },
-      hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+      hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xc); etendue[1].push(...yc);
   }
   const annotations = [];
@@ -111,7 +111,7 @@ function rendreOrdination(conteneur, ctx, p, loc) {
       showarrow: true, arrowhead: 2, arrowsize: 1.2, arrowwidth: 1.6, arrowcolor: PALETTE[0] }));
     traces.push({ type: 'scatter', mode: 'text', name: t('ord_fleches', { k: fmt(mul, 2) }), x: bx.map((v) => 1.1 * mul * v), y: by.map((v) => 1.1 * mul * v),
       text: nomsB, meta: 'variables', customdata: nomsB.map((_, i) => [fmt(bx[i], 3), fmt(by[i], 3)]), textfont: { size: 11, color: PALETTE[0] },
-      hovertemplate: '<b>%{text}</b><br>%{customdata[0]}, %{customdata[1]}<extra></extra>' });
+      hovertemplate: `<b>%{text}</b><br>%{customdata[0]}${entreNombres()}%{customdata[1]}<extra></extra>` });
   }
   // (the same scale on both axes, as an ordination is read: the plot area narrows rather than the
   // axes stretching)

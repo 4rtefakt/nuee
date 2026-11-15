@@ -3,7 +3,7 @@
 // band, the time totals, the parameters and tests, each site's counts against the model's), its
 // report parts and its strings. Imported by app.js.
 import { t, ajouterTextes } from './i18n.js';
-import { el, fmt } from './ui.js';
+import { el, fmt, decimal } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, notesModele, valeurP, ficheCondition, etendue } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
@@ -16,7 +16,9 @@ const Z95 = 1.959964;
 const chiffre = (k, v, d = 3) => el('span', {}, el('small', {}, k), ' ', el('b', {}, typeof v === 'number' ? fmt(v, d) : v ?? '—'));
 const pValeur = (v) => (v === null || v === undefined ? '—' : valeurP(v));
 const nombre = (v, d = 3) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : fmt(v, d));
-const temps = (v) => (v === null || v === undefined ? '' : String(+Number(v).toPrecision(12)));
+// a time, and as the change points' field holds it (its commas separate times)
+const tempsSaisi = (v) => (v === null || v === undefined ? '' : String(+Number(v).toPrecision(12)));
+const temps = (v) => decimal(tempsSaisi(v));
 const caseACocher = (libelle, valeur, changer, titre) => el('label', { class: 'champ', title: titre || '' },
   el('input', { type: 'checkbox', checked: valeur, onchange: (e) => changer(e.target.checked) }), libelle);
 // the rows of a data.frame sent by R (columns), as arrays of values
@@ -294,7 +296,7 @@ function champsTrim(st, rendre, p) {
   if (o.changements_texte === undefined) {
     const cp = o.changements;
     o.tous = cp === 'tous' || (Array.isArray(cp) && cp[0] === 'tous');
-    o.changements_texte = o.tous ? '' : liste(cp).map(temps).join(' ');
+    o.changements_texte = o.tous ? '' : liste(cp).map(tempsSaisi).join(' ');
   }
   const ids = [].concat(p.identifiants || []).map((i) => i.nom);
   const options = (valeur, filtre, aucun) => [el('option', { value: '', selected: !valeur }, aucun || '—')]
