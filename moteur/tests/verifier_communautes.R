@@ -498,5 +498,32 @@ verifier(sprintf("une condition (onglet Observations) : la PCoA de ses %d relev�
          identical(mcond$observations, numeros_observations(p)[lc]) && proche(mcond$noyau$valeurs, pcoa_noyau(distance_communaute(abondances[lc, ], "bray"))$valeurs) &&
            grepl(sprintf("of the %d observations where habitat != \"marais\"", length(lc)), texte_methodes(p, dcond, mcond, "en")$paragraphes[1], fixed = TRUE))
 
+cat("Test de Mantel sur la distance géographique (spatial.R)\n")
+set.seed(21)
+ng <- 30
+lon_g <- 4.45 + stats::runif(ng, 0, 0.3)
+lat_g <- 43.4 + stats::runif(ng, 0, 0.2)
+plan_g <- depuis_lonlat(lon_g, lat_g, 2154)
+grad <- (lon_g - 4.45) / 0.3
+ab_g <- sapply(1:6, function(j) stats::rpois(ng, exp(1 + sin(j) * 2 * grad)))
+colnames(ab_g) <- sprintf("e%d", 1:6)
+dg <- data.frame(nom = sprintf("g%02d", 1:ng), X = plan_g$x, Y = plan_g$y, lon = lon_g, lat = lat_g, ab_g, stringsAsFactors = FALSE)
+pg <- projet_depuis_tableau(dg, "decroissance")
+ug <- function(...) numeros(pg, c(...))
+pg <- regler_coordonnees(pg, ug("X"), ug("Y"), 2154)
+dmg <- definir_modele(pg, "MANTEL", x = numeric(0), y = ug(sprintf("e%d", 1:6)), observations = numeros_observations(pg),
+                      options = list(distance = "bray", distance_x = "geographique", permutations = 199))
+mg <- ajuster(pg, dmg)
+yb <- distance_communaute(ab_g, "bray")
+dgeo <- as.matrix(stats::dist(cbind(plan_g$x, plan_g$y))) / 1000
+verifier("Mantel géographique : r = cor(Bray–Curtis, distances en km) sur les paires", proche(mg$test$r, stats::cor(yb[lower.tri(yb)], dgeo[lower.tri(dgeo)])))
+verifier("… dans le texte des méthodes", grepl("distance géographique en kilomètres (en ligne droite)", paste(texte_methodes(pg, dmg, mg, "fr")$paragraphes, collapse = " "), fixed = TRUE))
+pl <- regler_coordonnees(pg, ug("lon"), ug("lat"), 4326)
+ml <- ajuster(pl, dmg)
+hv <- distances_points(lon_g, lat_g, 4326) / 1000
+verifier("… en longitudes et latitudes : le long des grands cercles", proche(ml$test$r, stats::cor(yb[lower.tri(yb)], hv[lower.tri(hv)])))
+verifier("sans coordonnées ni X : refusé", nzchar(refus(ajuster(projet_depuis_tableau(dg, "sans"), definir_modele(projet_depuis_tableau(dg, "sans"), "MANTEL", x = numeric(0),
+           y = ug(sprintf("e%d", 1:6)), observations = numeros_observations(pg), options = list(distance_x = "geographique"))))))
+
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

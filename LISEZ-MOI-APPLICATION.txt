@@ -1359,7 +1359,10 @@ largeur (règle de Sturges, ou le nombre donné), le r de Mantel de chaque class
 observations proches plus semblables), les classes au-delà de la moitié testées seulement si
 chaque observation y a une paire, les valeurs p corrigées progressivement par la méthode de
 Holm. Vues : Résumé ; Test de Mantel (chaque paire d'observations) ; Corrélogramme de Mantel ; la
-liste.
+liste. « Distance X : Géographique » compare la distance de Y à la distance entre les
+observations en kilomètres, d'après les coordonnées du projet (voir Cartes et données
+spatiales), sans variable X : des relevés proches se ressemblent-ils plus (la décroissance avec
+la distance), et avec le corrélogramme, jusqu'à quelle distance.
 
 Les quatre exportent leurs tableaux (Fichier › Exporter), écrivent leur texte des méthodes avec
 ses références et font un rapport ; elles ne prédisent pas de nouvelles observations et n'ont

@@ -59,6 +59,7 @@ options_communaute <- function(d) {
        dispersion = parmi(texte("dispersion", "centroide"), c("centroide", "mediane"), "Centre inconnu : %s", "Unknown centre: %s"),
        methode = parmi(texte("methode", "pearson"), c("pearson", "spearman"), "Corrélation inconnue : %s", "Unknown correlation: %s"),
        classes = option_nombre(d, "classes", 0, 0, 50, TRUE),
+       distance_x = parmi(texte("distance_x", "variables"), c("variables", "geographique"), "Distance X inconnue : %s", "Unknown X distance: %s"),
        z = as.numeric(unlist(o$z %||% numeric(0))), z_transformations = o$z_transformations %||% list(), z_echelles = o$z_echelles %||% list())
 }
 
@@ -759,12 +760,29 @@ distance_euclidienne_termes <- function(projet, termes, observations) {
 }
 
 # La distance des variables X d'un test de Mantel, pour les observations `observations` : la
-# distance euclidienne sur les termes X mis à l'échelle comme le dit l'onglet Variables. Rend
-# list(D, connues, termes, echelles, texte) : `connues`, les observations dont les valeurs sont
-# connues ; `D`, la matrice de leurs distances (nommée par leurs numéros) ; `texte`, ce qu'en dit le
-# texte des méthodes, en français et en anglais. (La séance qui coordonne ajoutera ici les
-# distances géographiques des coordonnées du projet.)
+# distance euclidienne sur les termes X mis à l'échelle comme le dit l'onglet Variables, ou
+# (options$distance_x = "geographique") la distance géographique entre les coordonnées du projet,
+# en kilomètres (spatial.R : le long des grands cercles pour des longitudes et latitudes, en ligne
+# droite pour des coordonnées planes), pour la décroissance de la ressemblance avec la distance.
+# Rend list(D, connues, termes, echelles, texte) : `connues`, les observations dont les valeurs
+# sont connues ; `D`, la matrice de leurs distances (nommée par leurs numéros) ; `texte`, ce qu'en
+# dit le texte des méthodes, en français et en anglais.
 distances_mantel_x <- function(projet, d, observations) {
+  if (identical(options_communaute(d)$distance_x, "geographique")) {
+    pts <- points_projet(projet, observations)
+    connues <- is.finite(pts$x) & is.finite(pts$y)
+    if (sum(connues) < 3) stop(traduire("Moins de 3 observations ont des coordonnées : pas de distance géographique.", "Fewer than 3 observations have coordinates: no geographic distance."), call. = FALSE)
+    D <- distances_points(pts$x[connues], pts$y[connues], pts$systeme) / 1000
+    dimnames(D) <- list(as.character(observations[connues]), as.character(observations[connues]))
+    s <- systeme_coordonnees(pts$systeme)
+    co <- pts$coordonnees
+    lonlat <- s$type == "lonlat"
+    return(list(D = D, connues = connues, termes = c(co$nom_x, co$nom_y), echelles = character(0),
+                texte = list(fr = sprintf("la distance géographique en kilomètres (%s) entre les coordonnées « %s » et « %s » (%s)",
+                                          if (lonlat) "le long des grands cercles" else "en ligne droite", co$nom_x, co$nom_y, s$nom),
+                             en = sprintf("the geographic distance in kilometres (%s) between the coordinates “%s” and “%s” (%s)",
+                                          if (lonlat) "along great circles" else "in straight lines", co$nom_x, co$nom_y, s$nom))))
+  }
   r <- distance_euclidienne_termes(projet, d$x, observations)
   termes <- function(fr) paste0(liste_mots(utils::head(r$termes, 12), fr), if (length(r$termes) > 12) "…" else "")
   r$texte <- list(fr = sprintf("la distance euclidienne sur %s (%s), %s", if (length(r$termes) == 1) "un terme" else sprintf("%d termes", length(r$termes)), termes(TRUE), echelles_texte(r$echelles, TRUE)),
@@ -897,7 +915,10 @@ correlogramme_noyau <- function(Dy, Dx, methode, P, classes = 0) {
 ajuster_mantel <- function(projet, d) {
   o <- options_communaute(d)
   quoi <- traduire("un test de Mantel", "a Mantel test")
-  if (!length(d$x)) stop(traduire("Un test de Mantel demande des variables X : leur distance est comparée à celle du tableau Y.", "A Mantel test needs X variables: their distance is compared with that of the table Y."), call. = FALSE)
+  if (!length(d$x) && !identical(o$distance_x, "geographique")) {
+    stop(traduire("Un test de Mantel demande des variables X (leur distance est comparée à celle du tableau Y), ou la distance géographique des coordonnées du projet.",
+                  "A Mantel test needs X variables (their distance is compared with that of the table Y), or the geographic distance of the project's coordinates."), call. = FALSE)
+  }
   obs <- as.numeric(d$observations)
   dx <- distances_mantel_x(projet, d, obs)
   tz <- termes_z_mantel(projet, o)
@@ -911,7 +932,8 @@ ajuster_mantel <- function(projet, d) {
     if (!is.null(dz)) dz <- distance_euclidienne_termes(projet, tz, garde)
   }
   Dx <- dx$D[as.character(garde), as.character(garde), drop = FALSE]
-  if (all(Dx == 0)) stop(traduire("Les variables X ne varient pas : toutes leurs distances sont nulles.", "The X variables don't vary: all their distances are zero."), call. = FALSE)
+  if (all(Dx == 0)) stop(if (identical(o$distance_x, "geographique")) traduire("Toutes les observations sont au même endroit : leurs distances sont nulles.", "All the observations are at the same place: their distances are zero.")
+                         else traduire("Les variables X ne varient pas : toutes leurs distances sont nulles.", "The X variables don't vary: all their distances are zero."), call. = FALSE)
   Dz <- if (!is.null(dz)) dz$D[as.character(garde), as.character(garde), drop = FALSE]
   strates <- if (!is.null(strates)) strates[dc$connu]
   verifier_strates(strates)

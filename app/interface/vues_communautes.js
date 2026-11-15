@@ -434,7 +434,11 @@ function champsCommunaute(type) {
         el('label', { class: 'champ' }, t('com_departs_champ'), nombre('departs', 20, { min: 0, max: 200, step: 1 })))] : null,
       type === 'PERMANOVA' ? [el('label', {}, t('com_tests')), select('par', ['termes', 'marges', 'modele'], 'termes', (k) => t('com_par_' + k)),
         el('label', {}, t('com_centre_dispersion')), select('dispersion', ['centroide', 'mediane'], 'centroide', (k) => t('com_' + k))] : null,
-      type === 'MANTEL' ? [el('label', {}, t('com_correlation')), select('methode', ['pearson', 'spearman'], 'pearson', (k) => t('com_mantel_' + k)),
+      type === 'MANTEL' ? [el('label', { title: t('com_distance_x_aide') }, t('com_distance_x')),
+        el('select', { disabled: !p.coordonnees && o.distance_x !== 'geographique', onchange: (e) => { o.distance_x = e.target.value; rendre(); } },
+          [['variables', t('com_distance_x_variables')], ['geographique', p.coordonnees ? t('com_distance_x_geo', { x: p.coordonnees.nom_x, y: p.coordonnees.nom_y }) : t('com_distance_x_sans')]]
+            .map(([k, n]) => el('option', { value: k, selected: k === (o.distance_x || 'variables') }, n))),
+        el('label', {}, t('com_correlation')), select('methode', ['pearson', 'spearman'], 'pearson', (k) => t('com_mantel_' + k)),
         el('label', {}, t('com_classes')), el('div', { class: 'ligne' }, nombre('classes', 0, { min: 0, max: 50, step: 1 }), el('span', { class: 'doux' }, t('com_classes_aide')))] : null,
       el('label', {}, t('nb_permutations')), el('div', { class: 'ligne' }, nombre('permutations', 999, { min: 0, max: 99999, step: 1 }),
         el('label', { class: 'champ' }, t('ord_graine'), nombre('graine', 1, { step: 1 }))),
@@ -455,7 +459,7 @@ function validerCommunaute(type) {
     if (!cles('y').length) return t('com_y_requis');
     const q = qualitativesDe(p, cles('y'));
     if (q.length) return t('ord_quantitatives', { noms: q.map((u) => nomVariable(p, u)).join(', ') });
-    if (['PERMANOVA', 'MANTEL'].includes(type) && !cles('x').length) return t('com_x_requis_' + type.toLowerCase());
+    if (['PERMANOVA', 'MANTEL'].includes(type) && !cles('x').length && !(type === 'MANTEL' && st.options.distance_x === 'geographique')) return t('com_x_requis_' + type.toLowerCase());
     if (['PCOA', 'NMDS'].includes(type) && st.croises.length) return t('com_croises');
     const o = st.options;
     if (!entier(o.permutations, 0, 99999)) return t('ord_permutations_invalides');
@@ -475,7 +479,7 @@ function optionsCommunaute(type) {
     if (type === 'PERMANOVA') Object.assign(out, { par: o.par || 'termes', dispersion: o.dispersion || 'centroide' });
     if (type === 'MANTEL') {
       const z = cles('z');
-      Object.assign(out, { methode: o.methode || 'pearson', classes: v('classes', 0), z,
+      Object.assign(out, { methode: o.methode || 'pearson', classes: v('classes', 0), z, distance_x: o.distance_x === 'geographique' ? 'geographique' : 'variables',
         z_transformations: Object.fromEntries(z.filter((u) => st.transfos[u] && st.transfos[u] !== 'autre').map((u) => [u, st.transfos[u]])),
         z_echelles: Object.fromEntries(z.map((u) => [u, st.echelles[u] || st.echelle || 'UV'])) });
     }
@@ -489,7 +493,8 @@ for (const type of TYPES) {
     roles: { PCOA: ['x', 'y'], NMDS: ['x', 'y'], PERMANOVA: ['x', 'y', 'classe'], MANTEL: ['x', 'y', 'z'] }[type],
     echelle: type === 'MANTEL' ? 'UV' : 'none',
     vc: false,
-    xFacultatif: ['PCOA', 'NMDS'].includes(type),  // (X fitted onto the ordination, if any)
+    // (X fitted onto the ordination, if any; a Mantel test on the geographic distance needs none)
+    xFacultatif: ['PCOA', 'NMDS'].includes(type) || (type === 'MANTEL' ? (st) => st.options.distance_x === 'geographique' : false),
     champs: champsCommunaute(type),
     valider: validerCommunaute(type),
     options: optionsCommunaute(type),
@@ -593,6 +598,9 @@ VUES_TYPES.PERMANOVA = (m) => ['resume', 'permanova'].concat(liste(m.dispersions
 VUES_TYPES.MANTEL = (m) => ['resume', 'mantel'].concat(m.correlogramme ? ['correlogramme'] : [], ['liste_obs']);
 
 ajouterTextes({
+  com_distance_x: 'Distance X', com_distance_x_variables: 'Des variables X (euclidienne)', com_distance_x_geo: 'Géographique ({x}, {y})',
+  com_distance_x_sans: 'Géographique : choisissez d’abord les coordonnées (Graphiques › Carte)',
+  com_distance_x_aide: 'Ce à quoi la distance du tableau Y est comparée : celle des variables X, ou la distance géographique entre les observations (en km), pour voir si des relevés proches se ressemblent plus.',
   type_pcoa: 'PCoA (analyse en coordonnées principales)', type_nmds: 'NMDS (positionnement multidimensionnel non métrique)',
   type_permanova: 'PERMANOVA (analyse de variance par permutation)', type_mantel: 'Test de Mantel',
   ordination_dist: 'Ordination', valeurs_propres_pcoa: 'Valeurs propres', shepard: 'Diagramme de Shepard', ajustement_env: 'Variables ajustées',
@@ -661,6 +669,9 @@ ajouterTextes({
   com_resume_permanova: 'Termes : {par}. Une différence de position des groupes (PERMANOVA) se lit avec leur dispersion (Dispersion multivariée).',
   com_resume_mantel: 'r mesure à quel point des observations éloignées en X le sont aussi en Y ; le corrélogramme dit à quelles distances X.',
 }, {
+  com_distance_x: 'X distance', com_distance_x_variables: 'Of the X variables (Euclidean)', com_distance_x_geo: 'Geographic ({x}, {y})',
+  com_distance_x_sans: 'Geographic: choose the coordinates first (Plots › Map)',
+  com_distance_x_aide: 'What the distance of the table Y is compared with: that of the X variables, or the geographic distance between the observations (in km), to see whether nearby samples are more alike.',
   type_pcoa: 'PCoA (principal coordinates analysis)', type_nmds: 'NMDS (non-metric multidimensional scaling)',
   type_permanova: 'PERMANOVA (permutational analysis of variance)', type_mantel: 'Mantel test',
   ordination_dist: 'Ordination', valeurs_propres_pcoa: 'Eigenvalues', shepard: 'Shepard diagram', ajustement_env: 'Fitted variables',

@@ -1251,7 +1251,10 @@ its one-sided permutation p (vegan::mantel); with covariates Z (Role Z), the par
 into classes of equal width (Sturges' rule, or the number given), the Mantel r of each class
 (positive: close observations more alike), the classes beyond half tested only if every
 observation has a pair in them, the p values corrected progressively by Holm's method. Views:
-Summary; Mantel test (each pair of observations); Mantel correlogram; the list.
+Summary; Mantel test (each pair of observations); Mantel correlogram; the list. "X distance:
+Geographic" compares the distance of Y with the distance between the observations in kilometres,
+from the project's coordinates (see Maps and spatial data), no X needed: whether nearby samples
+are more alike (distance decay), and with the correlogram, up to what distance.
 
 The four export their tables (File › Export), write their Methods text with its references and
 make a report; they don't predict new observations and have no Export to R yet. The results are
