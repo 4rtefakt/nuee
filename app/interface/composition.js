@@ -2,8 +2,9 @@
 // app/tests/essai_figures.mjs checks these): its size in millimetres turned into the pixels the
 // plots are laid out in (96 per inch, CSS's and Plotly's), the panels placed in the grid in their
 // order (one can take two columns or two rows), their letters, a view's plot adapted to its cell
-// (the text in points, the line width, a white background, no WebGL where vectors are wanted)
-// and the figure's SVG put together from the plots' own, the letters over them.
+// (the text in points, the line width, a white background, no WebGL where vectors are wanted), a
+// map on tiles made a plane plot and its tiles chosen for the export's resolution, and the
+// figure's SVG put together from the plots' own, the letters over them.
 
 export const PX_PAR_MM = 96 / 25.4;
 export const PX_PAR_PT = 96 / 72;
@@ -251,6 +252,110 @@ export function adapterFigure(data, layout, o) {
     }
   }
   return { data: D, layout: L };
+}
+
+// ------------------------------------------------------------ maps on tiles
+
+// A map on tiles (Plots › Map with a background, vues_carte.js) goes into a figure as a plane
+// plot in Web Mercator: its points as vectors, over the tiles drawn by figures.js into a picture
+// at the export's resolution, from a zoom level high enough for it. Caps on what is asked of the
+// tile servers: tiles from at most ZOOM_EN_PLUS levels above the screen's, none deeper than
+// ZOOM_SERVEUR, and no more than TUILES_MAX for one map.
+export const TUILES_MAX = 200;
+export const ZOOM_EN_PLUS = 2;
+export const ZOOM_SERVEUR = 19;
+const MONDE = 2 * Math.PI;  // the world's width in Web Mercator (radians)
+const LAT_MAX = 85.0511287798;
+export const mercatorX = (lon) => (lon * Math.PI) / 180;
+export const mercatorY = (lat) => Math.log(Math.tan(Math.PI / 4 + (Math.max(-LAT_MAX, Math.min(LAT_MAX, lat)) * Math.PI) / 360));
+
+// A map subplot's background: its tiles' address ({z}, {x}, {y}), their size in pixels, the
+// attribution to show, whether they are photographs (a JPEG picture); null when it isn't tiles.
+// 'open-street-map' is Plotly's own style, its tiles those of tile.openstreetmap.org.
+export function fondDeCarte(style) {
+  if (style === 'open-street-map') return { tuiles: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', taille: 256, attribution: '© OpenStreetMap contributors', photo: false };
+  const s = style && typeof style === 'object' && Object.values(style.sources || {}).find((x) => x && x.type === 'raster' && Array.isArray(x.tiles) && x.tiles.length);
+  return s ? { tuiles: s.tiles[0], taille: s.tileSize || 256, attribution: String(s.attribution || '').replace(/<[^>]*>/g, ''), photo: /jpe?g/i.test(s.tiles[0]) } : null;
+}
+
+// A view's map on tiles (its subplot `map`) as a plane plot: its traces at their Web Mercator x
+// and y (WebGL ones: adapterFigure makes them SVG, as any plot's), the axes hidden and spanning
+// the area the view showed, from its centre, its zoom (512 px per world at zoom 0) and its plot
+// area `source` (px); the attribution in the bottom right corner, a little smaller than the
+// plot's text. `vue`: that area, { cx, cy, dx, dy } (centre and half-widths). null when the plot
+// has no map on tiles. The plot given is not changed.
+export function carteEnPlan(data, layout, source) {
+  const m = layout && layout.map;
+  const fond = m && fondDeCarte(m.style);
+  if (!fond || !m.center || typeof m.zoom !== 'number' || !source || !(source.largeur > 0 && source.hauteur > 0)) return null;
+  const parRadian = (512 * 2 ** m.zoom) / MONDE;
+  const vue = { cx: mercatorX(m.center.lon), cy: mercatorY(m.center.lat), dx: source.largeur / 2 / parRadian, dy: source.hauteur / 2 / parRadian };
+  const L = structuredClone(layout);
+  delete L.map;
+  const axe = { visible: false, showgrid: false, zeroline: false, fixedrange: true };
+  L.xaxis = { ...axe, range: [vue.cx - vue.dx, vue.cx + vue.dx] };
+  L.yaxis = { ...axe, range: [vue.cy - vue.dy, vue.cy + vue.dy] };
+  L.annotations = [...(L.annotations || []), { text: fond.attribution, xref: 'paper', yref: 'paper', x: 1, y: 0, xanchor: 'right', yanchor: 'bottom',
+    showarrow: false, bgcolor: 'rgba(255,255,255,0.75)', borderpad: 1, font: { size: 0.8 * ((L.font && L.font.size) || 12) } }];
+  const D = structuredClone(data || []).map((tr) => {
+    if (tr.type !== 'scattermap') return tr;
+    const { lon, lat, subplot, below, ...reste } = tr;
+    return { ...reste, type: 'scattergl', x: Array.from(lon || [], (v) => (typeof v === 'number' ? mercatorX(v) : null)),
+      y: Array.from(lat || [], (v) => (typeof v === 'number' ? mercatorY(v) : null)),
+      // (MapLibre's circles have no outline; Plotly gives markers of several sizes a white one)
+      ...(reste.marker ? { marker: { ...reste.marker, line: { width: 0 } } } : {}) };
+  });
+  return { data: D, layout: L, fond, vue };
+}
+
+// A plane map's axes for a plot area of largeur × hauteur px: the view's area whole, centred, at
+// equal scales (the other direction shows more).
+export function cadrer(vue, largeur, hauteur) {
+  const k = Math.min(largeur / (2 * vue.dx), hauteur / (2 * vue.dy));
+  return { x: [vue.cx - largeur / 2 / k, vue.cx + largeur / 2 / k], y: [vue.cy - hauteur / 2 / k, vue.cy + hauteur / 2 / k] };
+}
+
+// The tiles of a map spanning x and y (Web Mercator) over a plot area `largeur` px wide, for a
+// picture of `densite` pixels per px (an export at 300 dpi: 300 / 96): the level whose tiles have
+// at least as many pixels as the picture, within the caps (the screen's level: the one whose
+// tiles have at least a pixel per px). Its columns (beyond the world's edge, a column is x modulo
+// 2^zoom) and rows, their number, the pixels per px they give, and what held the level down:
+// 'zoom', 'serveur', 'nombre' or null.
+export function tuilesPour({ x, y, largeur, densite, taille = 256 }) {
+  const z1 = Math.log2(((largeur / (x[1] - x[0])) * MONDE) / taille);  // (a tile pixel per px)
+  const voulu = Math.ceil(z1 + Math.log2(densite) - 1e-9);
+  const plafond = Math.min(Math.ceil(z1 - 1e-9) + ZOOM_EN_PLUS, ZOOM_SERVEUR);
+  let zoom = Math.max(0, Math.min(voulu, plafond));
+  let limite = zoom < voulu ? (plafond === ZOOM_SERVEUR ? 'serveur' : 'zoom') : null;
+  const cases = (z) => {
+    const n = 2 ** z;
+    const ligne = (v, arrondi) => Math.min(n - 1, Math.max(0, arrondi(((Math.PI - v) / MONDE) * n)));
+    const colonnes = [Math.floor(((x[0] + Math.PI) / MONDE) * n), Math.ceil(((x[1] + Math.PI) / MONDE) * n) - 1];
+    const lignes = [ligne(y[1], Math.floor), ligne(y[0], (v) => Math.ceil(v) - 1)];
+    return { zoom: z, colonnes, lignes, nombre: (colonnes[1] - colonnes[0] + 1) * (lignes[1] - lignes[0] + 1) };
+  };
+  let t = cases(zoom);
+  while (t.nombre > TUILES_MAX && zoom > 0) {
+    zoom -= 1;
+    t = cases(zoom);
+    limite = 'nombre';
+  }
+  return { ...t, densite: 2 ** (zoom - z1), limite };
+}
+
+// A tile's address: its level, column (modulo the world's) and row in the background's template.
+export function adresseTuile(fond, zoom, colonne, ligne) {
+  const n = 2 ** zoom;
+  return fond.tuiles.replace('{z}', zoom).replace('{x}', ((colonne % n) + n) % n).replace('{y}', ligne);
+}
+
+// Where a tile of level `zoom` goes in a picture of largeur × hauteur pixels spanning x and y
+// (Web Mercator): its edges rounded, so that tiles side by side meet exactly.
+export function placeTuile(zoom, colonne, ligne, { x, y, largeur, hauteur }) {
+  const n = 2 ** zoom;
+  const px = (c) => Math.round(((((c / n) * MONDE) - Math.PI - x[0]) / (x[1] - x[0])) * largeur);
+  const py = (l) => Math.round(((y[1] - (Math.PI - (l / n) * MONDE)) / (y[1] - y[0])) * hauteur);
+  return { x: px(colonne), y: py(ligne), largeur: px(colonne + 1) - px(colonne), hauteur: py(ligne + 1) - py(ligne) };
 }
 
 // ------------------------------------------------------------ the SVG

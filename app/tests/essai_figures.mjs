@@ -1,6 +1,7 @@
 // Checks interface/composition.js and interface/images.js (the figures for publication, figures.js),
 // without the application: the panels placed in the grid, the letters, a plot adapted to print
-// size, the figure's SVG put together; then PNG and TIFF files written, read back by readers
+// size, a map on tiles made a plane plot and its tiles chosen for a resolution within the caps,
+// the figure's SVG put together; then PNG and TIFF files written, read back by readers
 // written here from the formats' specifications (zlib for PNG's Deflate), their pixels, sizes
 // and resolutions compared with what was asked.
 //   node tests/essai_figures.mjs [folder where the files written are kept]
@@ -9,7 +10,8 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { PX_PAR_MM, PX_PAR_PT, completer, grilleProposee, disposer, enPixels, lettre, placeLettre, adapterFigure, isolerIds, composerSVG, pagePDF,
-  pixelsImage, MAX_POINTS_SVG } from '../interface/composition.js';
+  pixelsImage, MAX_POINTS_SVG, fondDeCarte, mercatorX, mercatorY, carteEnPlan, cadrer, tuilesPour, adresseTuile, placeTuile, TUILES_MAX, ZOOM_EN_PLUS,
+  ZOOM_SERVEUR } from '../interface/composition.js';
 import { crc32, ecrirePNG, ecrireTIFF, lzw, pixelsParMetre } from '../interface/images.js';
 
 let echecs = 0;
@@ -101,8 +103,86 @@ const carte = adapterFigure([{ type: 'scattermap', lon: [1], lat: [2] }], { map:
   { largeur: 400, hauteur: 300, police: 12, base: 12, ligne: 2, titres: true, source: { largeur: 800, hauteur: 600 } });
 verifier('carte sur fond : la même étendue à la taille de la cellule (zoom − 1 pour une cellule moitié moins grande)', proche(carte.layout.map.zoom, 9), String(carte.layout.map.zoom));
 
+console.log('Une carte sur fond de tuiles');
+const IGN = { version: 8, sources: { fond: { type: 'raster', tileSize: 256, attribution: '© IGN – Orthophotographies',
+  tiles: ['https://data.geopf.fr/wmts?SERVICE=WMTS&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg'] } },
+layers: [{ id: 'fond', type: 'raster', source: 'fond' }] };
+const osm = fondDeCarte('open-street-map');
+const ign = fondDeCarte(IGN);
+verifier('fonds : OpenStreetMap (le style de Plotly), une source raster (IGN), pas de tuiles sinon', osm.tuiles === 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+  && osm.attribution === '© OpenStreetMap contributors' && !osm.photo && ign.attribution === '© IGN – Orthophotographies' && ign.photo && ign.taille === 256
+  && fondDeCarte('white-bg') === null && fondDeCarte(undefined) === null, JSON.stringify([osm, ign]));
+verifier('Web Mercator : 180° de longitude → π, 85,05° de latitude → π, l’équateur → 0', proche(mercatorX(180), Math.PI) && proche(mercatorY(85.0511287798), Math.PI, 1e-9)
+  && proche(mercatorY(0), 0) && proche(mercatorY(-89), -Math.PI, 1e-9));
+const vueCarte = { data: [
+  { type: 'scattermap', mode: 'markers', lon: [4.6, 4.65, null], lat: [43.66, 43.69, 43.7], marker: { size: [12, 12, 12], color: '#ffffff', opacity: 0.9 }, hoverinfo: 'skip' },
+  { type: 'scattermap', mode: 'markers', lon: [4.6, 4.65, null], lat: [43.66, 43.69, 43.7], marker: { size: [8, 8, 8], color: [1, 2, 3], showscale: true, colorbar: { thickness: 12 } } }],
+layout: { font: { size: 12 }, margin: { l: 8, r: 8, t: 34, b: 8 }, map: { style: 'open-street-map', center: { lon: 0, lat: 0 }, zoom: 0 }, legend: { x: 1, xanchor: 'right' } } };
+const avantPlan = JSON.stringify(vueCarte);
+const plan = carteEnPlan(vueCarte.data, vueCarte.layout, { largeur: 512, hauteur: 512 });
+verifier('le graphique donné n’est pas changé', JSON.stringify(vueCarte) === avantPlan);
+verifier('à zoom 0, 512 px : le monde entier, de −π à π', plan.layout.xaxis.range.every((v, i) => proche(v, [-Math.PI, Math.PI][i]))
+  && plan.layout.yaxis.range.every((v, i) => proche(v, [-Math.PI, Math.PI][i])) && proche(plan.vue.dx, Math.PI) && plan.vue.cx === 0,
+JSON.stringify([plan.layout.xaxis, plan.layout.yaxis]));
+const zoome = carteEnPlan(vueCarte.data, { ...vueCarte.layout, map: { style: IGN, center: { lon: 90, lat: 0 }, zoom: 1 } }, { largeur: 512, hauteur: 256 });
+verifier('à zoom 1, 512 × 256 px autour de 90° est : la moitié du monde en largeur, un quart en hauteur', proche(zoome.layout.xaxis.range[0], 0)
+  && proche(zoome.layout.xaxis.range[1], Math.PI) && proche(zoome.layout.yaxis.range[0], -Math.PI / 4) && proche(zoome.layout.yaxis.range[1], Math.PI / 4)
+  && zoome.fond.photo, JSON.stringify([zoome.layout.xaxis.range, zoome.layout.yaxis.range]));
+verifier('points : WebGL aux x et y de Web Mercator, sans contour (les cercles de MapLibre n’en ont pas), une position manquante reste manquante',
+  plan.data.every((tr) => tr.type === 'scattergl' && !('lon' in tr) && !('lat' in tr) && tr.marker.line.width === 0)
+  && proche(plan.data[1].x[1], mercatorX(4.65)) && proche(plan.data[1].y[0], mercatorY(43.66)) && plan.data[1].x[2] === null
+  && plan.data[1].marker.colorbar.thickness === 12 && plan.data[0].hoverinfo === 'skip', JSON.stringify(plan.data[1]));
+verifier('axes cachés, plus de sous-graphique carte ; l’attribution en bas à droite, un peu plus petite que le texte', !('map' in plan.layout)
+  && plan.layout.xaxis.visible === false && plan.layout.yaxis.visible === false && plan.layout.annotations.length === 1
+  && plan.layout.annotations[0].text === '© OpenStreetMap contributors' && plan.layout.annotations[0].x === 1 && plan.layout.annotations[0].y === 0
+  && plan.layout.annotations[0].xanchor === 'right' && proche(plan.layout.annotations[0].font.size, 9.6), JSON.stringify(plan.layout.annotations));
+verifier('sans fond de tuiles : pas de plan', carteEnPlan(vueCarte.data, { map: { style: 'white-bg', center: { lon: 0, lat: 0 }, zoom: 3 } }, { largeur: 100, hauteur: 100 }) === null
+  && carteEnPlan(data, layout, { largeur: 100, hauteur: 100 }) === null);
+const imprime = adapterFigure(plan.data, plan.layout, { largeur: 300, hauteur: 220, police, base: 12, ligne: PX_PAR_PT, titres: false });
+verifier('adaptée à sa cellule : points SVG à la taille de la figure, attribution en proportion', imprime.data.every((tr) => tr.type === 'scatter')
+  && proche(imprime.data[1].marker.size[0], 8 * k) && imprime.data[1].marker.line.width === 0 && proche(imprime.layout.annotations[0].font.size, 0.8 * police),
+JSON.stringify([imprime.data[1].marker, imprime.layout.annotations[0].font]));
+const cadre = cadrer({ cx: 1, cy: 2, dx: 0.5, dy: 0.25 }, 400, 400);
+verifier('cadrer : l’étendue de la vue entière et centrée, échelles égales (ici plus haute que demandé)', proche(cadre.x[0], 0.5) && proche(cadre.x[1], 1.5)
+  && proche(cadre.y[0], 1.5) && proche(cadre.y[1], 2.5), JSON.stringify(cadre));
+const monde = { x: [-Math.PI, Math.PI], y: [-Math.PI, Math.PI] };
+const tz = (densite, largeur = 256, etendue = monde) => tuilesPour({ ...etendue, largeur, densite });
+egal('le monde sur 256 px : à l’écran une tuile ; à 2 pixels par px, le niveau 1 et ses 4 tuiles',
+  [tz(1), tz(2)].map((r) => [r.zoom, r.nombre, r.densite, r.limite]), [[0, 1, 1, null], [1, 4, 2, null]]);
+egal('300 points par pouce (3,125 pixels par px) : le premier niveau qui en donne au moins autant (4, sur 4 tuiles par côté)',
+  [tz(300 / 96)].map((r) => [r.zoom, r.colonnes, r.lignes, r.densite, r.limite]), [[2, [0, 3], [0, 3], 4, null]]);
+egal(`au plus ${ZOOM_EN_PLUS} niveaux au-dessus de l’écran : 600 points par pouce donnent 4 pixels par px, dits limités`,
+  [tz(600 / 96)].map((r) => [r.zoom, r.densite, r.limite]), [[2, 4, 'zoom']]);
+const grand = tz(1, 4096);
+verifier(`au plus ${TUILES_MAX} tuiles : un niveau de moins (64 au lieu de 256)`, grand.zoom === 3 && grand.nombre === 64 && grand.densite === 0.5
+  && grand.limite === 'nombre' && TUILES_MAX < 256, JSON.stringify(grand));
+const petit = { x: [0, (2 * Math.PI) / 2 ** 18.5 * (300 / 256)], y: [0, (2 * Math.PI) / 2 ** 18.5 * (300 / 256)] };
+const tresPres = tz(300 / 96, 300, petit);
+verifier(`pas au-delà du niveau ${ZOOM_SERVEUR}`, tresPres.zoom === ZOOM_SERVEUR && tresPres.limite === 'serveur' && tresPres.densite < 300 / 96, JSON.stringify(tresPres));
+// a map of Arles in a cell: its tiles cover the plot area, no column or row more
+const arles = { x: [mercatorX(4.6), mercatorX(4.66)], y: [mercatorY(43.66), mercatorY(43.692)] };
+const ta = tuilesPour({ ...arles, largeur: 239, densite: 300 / 96 });
+const bord = (c, z) => (c / 2 ** z) * 2 * Math.PI - Math.PI;
+const bordY = (l, z) => Math.PI - (l / 2 ** z) * 2 * Math.PI;
+verifier('Arles sur 239 px à 300 points par pouce : les tuiles couvrent la zone, sans colonne ni ligne de trop', ta.densite >= 300 / 96 && ta.densite < 2 * 300 / 96
+  && bord(ta.colonnes[0], ta.zoom) <= arles.x[0] && bord(ta.colonnes[0] + 1, ta.zoom) > arles.x[0] && bord(ta.colonnes[1] + 1, ta.zoom) >= arles.x[1]
+  && bord(ta.colonnes[1], ta.zoom) < arles.x[1] && bordY(ta.lignes[0], ta.zoom) >= arles.y[1] && bordY(ta.lignes[0] + 1, ta.zoom) < arles.y[1]
+  && bordY(ta.lignes[1] + 1, ta.zoom) <= arles.y[0] && bordY(ta.lignes[1], ta.zoom) > arles.y[0], JSON.stringify(ta));
+const image300 = { ...arles, largeur: Math.round(239 * 300 / 96), hauteur: 600 };
+const places = [];
+for (let c = ta.colonnes[0]; c <= ta.colonnes[1]; c += 1) for (let l = ta.lignes[0]; l <= ta.lignes[1]; l += 1) places.push([c, l, placeTuile(ta.zoom, c, l, image300)]);
+const voisine = (c, l) => (places.find((p) => p[0] === c && p[1] === l) || [])[2];
+verifier('tuiles placées : bord à bord, l’image entière couverte', places.every(([c, l, p]) => (!voisine(c + 1, l) || p.x + p.largeur === voisine(c + 1, l).x)
+  && (!voisine(c, l + 1) || p.y + p.hauteur === voisine(c, l + 1).y))
+  && Math.min(...places.map(([, , p]) => p.x)) <= 0 && Math.max(...places.map(([, , p]) => p.x + p.largeur)) >= image300.largeur
+  && Math.min(...places.map(([, , p]) => p.y)) <= 0 && Math.max(...places.map(([, , p]) => p.y + p.hauteur)) >= image300.hauteur);
+egal('tuile placée : le monde au niveau 1 sur 512 × 512 pixels', [placeTuile(1, 0, 0, { ...monde, largeur: 512, hauteur: 512 }), placeTuile(1, 1, 1, { ...monde, largeur: 512, hauteur: 512 })],
+  [{ x: 0, y: 0, largeur: 256, hauteur: 256 }, { x: 256, y: 256, largeur: 256, hauteur: 256 }]);
+egal('adresse d’une tuile : niveau, colonne (modulo le monde), ligne', [adresseTuile(osm, 3, -1, 2), adresseTuile(ign, 15, 16801, 11953).replace(/^.*TILEMATRIX/, 'TILEMATRIX')],
+  ['https://tile.openstreetmap.org/3/7/2.png', 'TILEMATRIX=15&TILEROW=11953&TILECOL=16801&FORMAT=image/jpeg']);
+
 console.log('Le SVG de la figure');
-const svgA = '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="300" height="220" viewBox="0 0 300 220" class="main-svg">'
+const svgA ='<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="300" height="220" viewBox="0 0 300 220" class="main-svg">'
   + '<defs><clipPath id="clip1xy"><rect width="10" height="10"/></clipPath><linearGradient id="g1"/></defs>'
   + '<g clip-path="url(#clip1xy)"><path style="fill: url(\'#g1\'); stroke: url(&quot;#g1&quot;)" d="M0,0L1,1"/></g><use xlink:href="#clip1xy"/><g clip-path="url(#ailleurs)"/></svg>';
 const iso = isolerIds(svgA, 'f1-');

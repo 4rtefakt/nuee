@@ -9,13 +9,14 @@
 // views not opened, when it has none) and keeps its view's settings. Each plot is drawn off
 // screen by its view, as for a report (rapport.js), in the light theme and without the
 // selection, then adapted to its cell (composition.js), its SVG nested in the figure's; PNG and
-// TIFF are that SVG drawn on a canvas, written by images.js.
+// TIFF are that SVG drawn on a canvas, written by images.js. A map on tiles becomes a plane plot
+// whose points are vectors over a picture of its tiles, fetched again at the export's resolution.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander } from './api.js';
 import { VUES, FORMAT } from './panneaux.js';
 import { PX_PAR_PT, LARGEURS, STYLES_LETTRES, COINS, GRILLE_MAX, completer, grilleProposee, disposer, enPixels, lettre, placeLettre, adapterFigure,
-  composerSVG, pagePDF, pixelsImage } from './composition.js';
+  composerSVG, pagePDF, pixelsImage, carteEnPlan, cadrer, tuilesPour, adresseTuile, placeTuile } from './composition.js';
 import { ecrirePNG, ecrireTIFF } from './images.js';
 
 let appli = null;
@@ -226,14 +227,91 @@ async function baseDuPanneau(app, pid, pn, caches) {
   return r;
 }
 
+// ------------------------------------------------------------ a map's tiles
+
+// The pixels per px of a map's background: a PNG's or a TIFF's, 300 dpi in a PDF or an SVG (a
+// picture under their vectors), the screen's in the preview.
+const densiteFond = (pour, dpi) => (pour === 'png' || pour === 'tiff' ? dpi / 96 : pour === 'apercu' ? Math.min(2, Math.max(1, window.devicePixelRatio || 1)) : 300 / 96);
+
+// The plot area (px) of a plot drawn at its size: what its margins and colour bar leave.
+async function zoneDuGraphique(fig) {
+  const div = el('div', { style: `position:fixed;left:-30000px;top:0;width:${fig.layout.width}px;height:${fig.layout.height}px` });
+  document.body.append(div);
+  try {
+    await window.Plotly.newPlot(div, structuredClone(fig.data), structuredClone(fig.layout), { staticPlot: true });
+    return { largeur: div._fullLayout._size.w, hauteur: div._fullLayout._size.h };
+  } finally {
+    window.Plotly.purge(div);
+    div.remove();
+  }
+}
+
+// A map's tiles (composition.js: tuilesPour), fetched four at a time and drawn into a picture of
+// cadre.largeur × cadre.hauteur pixels spanning cadre.x and cadre.y; a tile not fetched within a
+// minute stays white. The picture as a data: URL (JPEG for photographs), and the tiles missing.
+async function imageDesTuiles(fond, tuiles, cadre) {
+  const toile = document.createElement('canvas');
+  toile.width = cadre.largeur;
+  toile.height = cadre.hauteur;
+  const g = toile.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, toile.width, toile.height);
+  g.imageSmoothingQuality = 'high';
+  const file = [];
+  for (let c = tuiles.colonnes[0]; c <= tuiles.colonnes[1]; c += 1) for (let l = tuiles.lignes[0]; l <= tuiles.lignes[1]; l += 1) file.push([c, l]);
+  const arret = new AbortController();
+  const minute = setTimeout(() => arret.abort(), 60000);
+  let manquantes = 0;
+  const suivantes = async () => {
+    for (let k = file.shift(); k; k = file.shift()) {
+      try {
+        const r = await fetch(adresseTuile(fond, tuiles.zoom, ...k), { signal: arret.signal });
+        if (!r.ok) throw new Error(String(r.status));
+        const image = await createImageBitmap(await r.blob());
+        const p = placeTuile(tuiles.zoom, ...k, cadre);
+        g.drawImage(image, p.x, p.y, p.largeur, p.hauteur);
+        image.close();
+      } catch {
+        manquantes += 1;
+      }
+    }
+  };
+  try { await Promise.all([suivantes(), suivantes(), suivantes(), suivantes()]); } finally { clearTimeout(minute); }
+  const blob = await new Promise((ok) => { toile.toBlob(ok, fond.photo ? 'image/jpeg' : 'image/png', 0.92); });
+  const url = await new Promise((ok, ko) => { const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = ko; f.readAsDataURL(blob); });
+  return { url, manquantes };
+}
+
+// A plane map (composition.js: carteEnPlan) adapted to its cell, put on its tiles: its plot area
+// measured, its axes made to show the view's area there, its tiles drawn at `densite` pixels per
+// px into a picture under its points. What `notes` should say: a background less sharp than
+// asked (`voulu`, dpi; not in the preview), tiles missing.
+async function surSesTuiles(fig, plan, densite, nom, voulu) {
+  const zone = await zoneDuGraphique(fig);
+  const { x, y } = cadrer(plan.vue, zone.largeur, zone.hauteur);
+  fig.layout.xaxis.range = x;
+  fig.layout.yaxis.range = y;
+  const tuiles = tuilesPour({ x, y, largeur: zone.largeur, densite, taille: plan.fond.taille });
+  const im = await imageDesTuiles(plan.fond, tuiles, { x, y, largeur: Math.round(zone.largeur * densite), hauteur: Math.round(zone.hauteur * densite) });
+  if (im.manquantes === tuiles.nombre) throw new Error(t('figure_fond_absent'));
+  fig.layout.images = [...(fig.layout.images || []), { source: im.url, xref: 'paper', yref: 'paper', x: 0, y: 1, sizex: 1, sizey: 1,
+    xanchor: 'left', yanchor: 'top', sizing: 'stretch', layer: 'below' }];
+  const notes = [];
+  if (voulu && tuiles.densite < densite * 0.999) {
+    notes.push(t(tuiles.limite === 'serveur' ? 'figure_fond_serveur' : 'figure_fond_limite', { lettre: nom, dpi: Math.round(96 * tuiles.densite), voulu, zoom: tuiles.zoom }));
+  }
+  if (im.manquantes) notes.push(t('figure_fond_manquantes', { lettre: nom, n: im.manquantes, total: tuiles.nombre }));
+  return notes;
+}
+
 // ------------------------------------------------------------ the figure drawn
 
 const avecDelai = (promesse, ms) => Promise.race([promesse,
   new Promise((_, ko) => { setTimeout(() => ko(new Error(t('figure_delai', { s: Math.round(ms / 1000) }))), ms); })]);
 
 // Every panel drawn at its cell's size (composition.js), its letter, the panels that couldn't be
-// drawn and why. `pour`: 'apercu', 'pdf', 'svg', 'png' or 'tiff' (a picture's WebGL parts at its
-// resolution).
+// drawn and why, what else to say (`notes`: a map's background). `pour`: 'apercu', 'pdf', 'svg',
+// 'png' or 'tiff' (a picture's WebGL parts and maps' backgrounds at its resolution).
 async function composer(app, pid, spec, caches, pour = 'svg', dpi = 300) {
   const d = disposer({ largeur: spec.largeur, hauteur: spec.hauteur, lignes: spec.lignes, colonnes: spec.colonnes, panneaux: spec.panneaux });
   const L = spec.lettres;
@@ -242,6 +320,7 @@ async function composer(app, pid, spec, caches, pour = 'svg', dpi = 300) {
   const panneaux = [];
   const lettres = [];
   const erreurs = [];
+  const notes = [];
   const image = pour === 'png' || pour === 'tiff';
   for (let i = 0; i < spec.panneaux.length; i += 1) {
     const pn = spec.panneaux[i];
@@ -257,11 +336,15 @@ async function composer(app, pid, spec, caches, pour = 'svg', dpi = 300) {
       erreurs.push({ lettre: nomLettre, message: base.erreur });
       panneaux.push({ ...r, svg: null, vide: `${nomLettre} · ${base.erreur}` });
     } else {
-      const fig = adapterFigure(base.data, base.layout, { largeur: r.largeur, hauteur: r.hauteur, police: spec.police * PX_PAR_PT, base: base.taille,
-        ligne: spec.ligne * PX_PAR_PT, titres: spec.titres, legende: spec.legendes, lettre: pl, zoom: pn.zoom, source: base.source });
+      // (a map on tiles: a plane plot over them; its view's area, not a zoom of its axes)
+      const plan = carteEnPlan(base.data, base.layout, base.source);
+      const fig = adapterFigure(plan ? plan.data : base.data, plan ? plan.layout : base.layout, { largeur: r.largeur, hauteur: r.hauteur,
+        police: spec.police * PX_PAR_PT, base: base.taille, ligne: spec.ligne * PX_PAR_PT, titres: spec.titres, legende: spec.legendes, lettre: pl,
+        zoom: plan ? null : pn.zoom, source: base.source });
       try {
-        // (a map on tiles waits for them, and for frames the browser doesn't draw in a hidden
-        // window: a panel that takes too long is left out, rather than the figure never coming)
+        if (plan) notes.push(...(await surSesTuiles(fig, plan, densiteFond(pour, dpi), nomLettre, pour === 'apercu' ? 0 : image ? dpi : 300)));
+        // (a plot drawn with WebGL waits for frames the browser doesn't draw in a hidden window:
+        // a panel that takes too long is left out, rather than the figure never coming)
         const svg = await avecDelai(window.Plotly.toImage({ data: fig.data, layout: fig.layout, config: { plotGlPixelRatio: image ? Math.min(8, Math.ceil(dpi / 96)) : 4 } },
           { format: 'svg', width: r.largeur, height: r.hauteur, imageDataOnly: true }), 45000);
         panneaux.push({ ...r, svg });
@@ -272,7 +355,7 @@ async function composer(app, pid, spec, caches, pour = 'svg', dpi = 300) {
     }
     if (pl) lettres.push({ texte, x: pl.x, y: pl.y, ancre: pl.ancre, taille: tailleLettre, gras: L.gras, police });
   }
-  return { largeur: spec.largeur, hauteur: d.hauteur, panneaux, lettres, erreurs };
+  return { largeur: spec.largeur, hauteur: d.hauteur, panneaux, lettres, erreurs, notes };
 }
 
 // The SVG drawn on a white canvas of `pixels`, its RGBA pixels.
@@ -306,14 +389,14 @@ async function fichierDe(c, format, { dpi = 300, compression = 'lzw', titre = ''
 }
 
 // A figure of the project as a file, without its panel (the explorer's Export, the checks):
-// { octets | html, largeur, hauteur, erreurs }.
+// { octets | html, largeur, hauteur, erreurs, notes }.
 export async function fichierFigure(pid, id, format = null, options = {}) {
   const f = await demander('figure', { projet: pid, id });
   const spec = completer(lireContenu(f.contenu));
   const fmt = format || spec.format;
   const c = await composer(appli, pid, spec, { bases: new Map(), calculs: new Map() }, fmt, options.dpi || spec.dpi);
   return { ...(await fichierDe(c, fmt, { dpi: options.dpi || spec.dpi, compression: options.compression || spec.compression, titre: f.titre })),
-    largeur: c.largeur, hauteur: c.hauteur, erreurs: c.erreurs };
+    largeur: c.largeur, hauteur: c.hauteur, erreurs: c.erreurs, notes: c.notes };
 }
 
 const nomFichier = (titre) => (titre || t('figure_nom')).replace(/[^\p{L}\p{N} _.()-]+/gu, '_').trim() || 'figure';
@@ -342,10 +425,12 @@ async function exporter(app, pid, spec, titre, caches) {
       else telecharger(r.octets, nom, r.type);
     });
   } catch { return; }
+  // (a map's background less sharp than asked, tiles missing: said after the file is written)
+  const notes = c.notes.map((n) => ` · ${n}`).join('');
   if (chemin) {
-    app.statut(`${t('figure_ecrite')} ${chemin}`);
+    app.statut(`${t('figure_ecrite')} ${chemin}${notes}`);
     app.bureau.ouvrirChemin(chemin);
-  }
+  } else if (notes) app.statut(notes.slice(3));
 }
 
 function telecharger(octets, nom, type) {
@@ -631,7 +716,7 @@ function creerComposeur(app, conteneur, pid, f) {
     s.url = url;
     image.style.width = `${(c.largeur * 96) / 25.4}px`;
     resume.textContent = t('figure_resume', { largeur: c.largeur, hauteur: c.hauteur, n: s.spec.panneaux.length, police: s.spec.police });
-    erreurs.replaceChildren(...c.erreurs.map((e) => el('p', { class: 'erreur' }, `${e.lettre} : ${e.message}`)));
+    erreurs.replaceChildren(...c.erreurs.map((e) => el('p', { class: 'erreur' }, `${e.lettre} : ${e.message}`)), ...c.notes.map((n) => el('p', { class: 'note' }, n)));
     if (s.majFormat) s.majFormat();
   };
   s.apercu = () => {
@@ -835,6 +920,10 @@ ajouterTextes({
   figure_modele_absent: 'le modèle {nom} n’est plus dans le projet', figure_modele_non_ajuste: '{nom} n’a pas été ajusté dans le fichier d’origine',
   figure_vue_inconnue: 'vue inconnue', figure_pas_de_graphique: 'pas de graphique à dessiner', figure_image_impossible: 'L’image de la figure n’a pas pu être dessinée.',
   figure_delai: 'pas dessiné en {s} s (un fond de carte qui ne se charge pas ?)',
+  figure_fond_absent: 'les tuiles de son fond de carte n’ont pas pu être téléchargées (hors ligne ?)',
+  figure_fond_limite: 'Carte {lettre} : fond à environ {dpi} points par pouce et non {voulu}, pour demander moins de tuiles à son serveur',
+  figure_fond_serveur: 'Carte {lettre} : fond à environ {dpi} points par pouce et non {voulu} : les tuiles ne sont pas demandées au-delà du niveau de zoom {zoom}',
+  figure_fond_manquantes: 'Carte {lettre} : {n} des {total} tuiles du fond n’ont pas pu être téléchargées',
   figure_ouvrir: 'Ouvrir', figure_renommer: 'Renommer…', figure_dupliquer: 'Dupliquer', figure_supprimer: 'Supprimer la figure…', figure_copie: 'copie',
   figure_confirmer_supprimer: 'Supprimer la figure « {titre} » ? (Elle disparaît du projet à son prochain enregistrement.)',
   figure_ajoutee: 'Graphique ajouté à « {figure} ».',
@@ -869,6 +958,10 @@ ajouterTextes({
   figure_modele_absent: 'model {nom} is no longer in the project', figure_modele_non_ajuste: '{nom} wasn’t fitted in the original file',
   figure_vue_inconnue: 'unknown view', figure_pas_de_graphique: 'no plot to draw', figure_image_impossible: 'The figure’s picture couldn’t be drawn.',
   figure_delai: 'not drawn within {s} s (a map background that doesn’t load?)',
+  figure_fond_absent: 'its map background’s tiles couldn’t be fetched (offline?)',
+  figure_fond_limite: 'Map {lettre}: background at about {dpi} dpi rather than {voulu}, to ask its server for fewer tiles',
+  figure_fond_serveur: 'Map {lettre}: background at about {dpi} dpi rather than {voulu}: tiles are not asked for beyond zoom level {zoom}',
+  figure_fond_manquantes: 'Map {lettre}: {n} of the background’s {total} tiles couldn’t be fetched',
   figure_ouvrir: 'Open', figure_renommer: 'Rename…', figure_dupliquer: 'Duplicate', figure_supprimer: 'Delete the figure…', figure_copie: 'copy',
   figure_confirmer_supprimer: 'Delete the figure “{titre}”? (It leaves the project when the project is next saved.)',
   figure_ajoutee: 'Plot added to “{figure}”.',

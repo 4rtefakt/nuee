@@ -657,6 +657,14 @@ où une revue l'imprime, pour un article.
     vérifications des revues ; le TIFF compressé en LZW, sans perte, ou pas compressé. Dans le
     navigateur, le PDF passe par sa fenêtre d'impression (choisir « Enregistrer au format PDF »,
     sans marges).
+  - Cartes sur fond (OpenStreetMap, IGN) : dans le fichier, les points, la légende et l'échelle
+    de couleurs sont des vecteurs sur une image des tuiles de la carte à la résolution de
+    l'export (300 points par pouce dans un PDF ou un SVG), téléchargées de nouveau pour lui à un
+    niveau de zoom plus proche que celui de l'aperçu : plus de détails, des noms de lieux plus
+    petits. Chaque carte demande au plus 200 tuiles à son serveur, d'au plus deux niveaux de zoom
+    au-dessus de celui de l'écran et d'aucun au-delà du niveau 19 ; la barre d'état dit quand le
+    fond en est moins net que demandé. L'attribution (© OpenStreetMap contributors, © IGN) reste
+    dans un coin de la carte.
 Chaque graphique est dessiné comme dans sa vue au moment où il a été ajouté (axes, couleurs,
 étiquettes, titres de Mise en forme, zoom), dans le thème clair, sans la sélection, sur fond
 blanc ; le bouton d'actualisation d'un panneau reprend les réglages de sa vue ouverte. La figure
