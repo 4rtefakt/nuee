@@ -240,7 +240,10 @@ async function construireMac(dossier) {
       appId: 'io.github.4rtefakt.nuee', productName: 'Nuée', copyright: '4rtefakt',
       directories: { output: path.join(sortie, 'installateur') },
       mac: { icon: path.join(__dirname, 'icone', 'nuee.icns'), identity: null },
-      dmg: { title: 'Nuée', artifactName: 'Nuee-${version}-${arch}.${ext}' },
+      // (the window's colour, not electron-builder's background image: dmgbuild names an image
+      // by an alias that writes its file numbers on 32 bits, and on a disk with larger ones, as on
+      // GitHub's Intel Macs, it couldn't make the image)
+      dmg: { title: 'Nuée', backgroundColor: '#eef0f3', artifactName: 'Nuee-${version}-${arch}.${ext}' },
     },
   });
   console.log('Image disque :', fichiers.filter((f) => f.endsWith('.dmg')).join(', '));
