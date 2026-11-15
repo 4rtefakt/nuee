@@ -11,7 +11,7 @@
 texte_resultats <- function(projet, d, m, langue = c("fr", "en"), chiffres = "") {
   langue <- match.arg(langue)
   fr <- langue == "fr"
-  if (est_regression(d)) return(list(paragraphes = resultats_regression(m, fr)))
+  if (est_regression(d)) return(list(paragraphes = resultats_regression(m, fr, projet, d)))
   if (est_autre_analyse(d)) {
     f <- fonction_analyse("texte_resultats_", d$type)
     if (!is.null(f)) return(f(projet, d, m, langue))
@@ -32,9 +32,18 @@ p_resultat <- function(p, fr) {
 }
 guillemets_resultat <- function(x, fr) if (fr) sprintf("« %s »", x) else sprintf("“%s”", x)
 
-resultats_regression <- function(m, fr) {
+# (`projet` et `d` : les unités des variables, atelier.R ; le coefficient d'une variable quantitative
+# dans ses unités, ni transformée ni mise à l'échelle autrement que centrée, est « par m »)
+resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
   r <- m$resultat
   nb <- function(x, k = 3) nombre_resultat(x, fr, k)
+  par_unite <- function(terme) {
+    t <- if (!is.null(projet) && !is.null(d)) Find(function(t) identical(as.character(t$name), terme), d$x)
+    if (is.null(t) || length(t$variables) != 1 || categorie(t) != 0 || !is.null(nom_transformation(t$transform))) return("")
+    if (!as.character(t$scaling$type %||% "UV")[1] %in% c("none", "Ctr")) return("")
+    u <- unite_variable(projet, t$variables[1])
+    if (nzchar(u)) sprintf(if (fr) " par %s" else " per %s", u) else ""
+  }
   r2 <- r$r2 %||% list()
   qualite <- if (!is.null(r2$marginal)) {
     sprintf(if (fr) "R² marginal = %s (effets fixes), R² conditionnel = %s (avec les effets aléatoires)" else "marginal R² = %s (fixed effects), conditional R² = %s (with the random effects)",
@@ -44,16 +53,17 @@ resultats_regression <- function(m, fr) {
   } else sprintf(if (fr) "R² = %s (ajusté : %s)" else "R² = %s (adjusted: %s)", nb(r2$r2, 2), nb(r2$r2_ajuste, 2))
   p1 <- sprintf(if (fr) "Le modèle de %s porte sur %d observations : %s ; en validation croisée, Q² = %s (RMSEcv = %s). AIC = %s."
                 else "The model of %s uses %d observations: %s; in cross-validation, Q² = %s (RMSEcv = %s). AIC = %s.",
-                guillemets_resultat(m$y$noms, fr), m$N, qualite, nb(m$vc$Q2, 2), nb(m$vc$RMSEcv), nb(r$AIC, 4))
+                paste0(guillemets_resultat(m$y$noms, fr), if (!is.null(projet)) unite_texte(projet, m$y$uid[1]) else ""), m$N, qualite, nb(m$vc$Q2, 2), nb(m$vc$RMSEcv), nb(r$AIC, 4))
   co <- r$coefficients
   co <- co[co$terme != "(Intercept)", , drop = FALSE]
   lien <- m$lien %||% "identity"
   phrases <- vapply(seq_len(nrow(co)), function(i) {
     x <- co[i, ]
-    base <- sprintf(if (fr) "%s : β = %s (IC 95 %% [%s ; %s], %s)" else "%s: β = %s (95%% CI [%s, %s], %s)",
-                    guillemets_resultat(x$terme, fr), nb(x$estimation), nb(x$bas), nb(x$haut), p_resultat(x$p, fr))
-    echelle <- if (lien == "log") sprintf(if (fr) ", soit un facteur %s [%s ; %s]" else ", i.e. a factor of %s [%s, %s]", nb(exp(x$estimation)), nb(exp(x$bas)), nb(exp(x$haut)))
-               else if (lien == "logit") sprintf(if (fr) ", soit un rapport de cotes de %s [%s ; %s]" else ", i.e. an odds ratio of %s [%s, %s]", nb(exp(x$estimation)), nb(exp(x$bas)), nb(exp(x$haut)))
+    u <- par_unite(x$terme)
+    base <- sprintf(if (fr) "%s : β = %s%s (IC 95 %% [%s ; %s], %s)" else "%s: β = %s%s (95%% CI [%s, %s], %s)",
+                    guillemets_resultat(x$terme, fr), nb(x$estimation), u, nb(x$bas), nb(x$haut), p_resultat(x$p, fr))
+    echelle <- if (lien == "log") sprintf(if (fr) ", soit un facteur %s [%s ; %s]%s" else ", i.e. a factor of %s [%s, %s]%s", nb(exp(x$estimation)), nb(exp(x$bas)), nb(exp(x$haut)), u)
+               else if (lien == "logit") sprintf(if (fr) ", soit un rapport de cotes de %s [%s ; %s]%s" else ", i.e. an odds ratio of %s [%s, %s]%s", nb(exp(x$estimation)), nb(exp(x$bas)), nb(exp(x$haut)), u)
                else ""
     paste0(base, echelle)
   }, "")

@@ -1164,6 +1164,85 @@ async function principal() {
       verifier(js.includes(`${s.id} <- resumer_par_groupe(${q.id}, ${v.site}, variables = ${v.densite}, statistiques = c("moyenne", "n"))`)
         && js.includes('aggregate(d["densite"], d["site"], function(x) c(moyenne = mean(x, na.rm = TRUE), n = sum(!is.na(x))))'), 'journal : resumer_par_groupe et aggregate()');
     });
+    await etape('atelier des données : chercher et remplacer, catégories, unités et descriptions, chacun annulé par Ctrl+Z', async () => {
+      // relevés de terrain : -9999 pour « pas de relevé », un habitat mal orthographié, une teneur « abs »
+      const lignes = ['nom\thabitat\taltitude\tdensite\tteneur'];
+      const habitats = ['forêt', 'prairie', 'foret', 'lande', 'prairie', 'forêt', 'lande', 'prairie', 'forêt', 'prairie', 'lande', 'forêt'];
+      habitats.forEach((h, i) => lignes.push([`R${i + 1}`, h, 100 + 50 * i, i === 4 ? -9999 : (h.startsWith('for') ? 10 : h === 'prairie' ? 6 : 3) + 0.01 * (100 + 50 * i) + (i % 3) * 0.3,
+        i % 4 === 1 ? 'abs' : `${i},5`].join('\t')));
+      let q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Relevés' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const valeurs = async (nom) => { const d = await api('donnees', { projet: q.id }); return d.valeurs[d.variables.indexOf(nom)]; };
+      // the preview changes nothing; the replacement, one undo step
+      const a = await api('remplacer', { projet: q.id, apercu: true, variables: [v.densite], chercher: '-9999', remplacer: '' });
+      verifier(a.remplacement.cellules === 1 && (await valeurs('densite'))[4] === -9999 && !(await api('projet', { projet: q.id })).annulable,
+        `aperçu : ${JSON.stringify(a.remplacement)}`);
+      q = await api('remplacer', { projet: q.id, variables: [v.densite], chercher: '-9999', remplacer: '' });
+      verifier(q.remplacement.cellules === 1 && (await valeurs('densite'))[4] === null && q.annulable === 'remplacement de -9999', `remplacé : ${q.annulable}`);
+      // a text column becomes numbers: "abs" by 0, its commas read
+      q = await api('remplacer', { projet: q.id, chercher: 'abs', remplacer: '0' });
+      const teneur = q.variables.find((x) => x.nom === 'teneur');
+      verifier(!teneur.qualitative && (await valeurs('teneur'))[1] === 0 && (await valeurs('teneur'))[2] === 2.5 && [].concat(q.remplacement.phrases).some((x) => /devient quantitative/.test(x)),
+        `teneur : ${JSON.stringify(teneur)}`);
+      let refus = '';
+      try { await api('remplacer', { projet: q.id, chercher: 'introuvable', remplacer: 'x' }); } catch (e) { refus = e.message; }
+      verifier(refus === 'remplacer : Aucune cellule à remplacer.', `rien à remplacer : « ${refus} »`);
+      // a regression before the categories change: the last category observed is its reference
+      const m = await api('ajuster', { projet: q.id, type: 'LM', x: [v.habitat, v.altitude], y: [v.densite], echelle: 'none', nom: 'LMhab' });
+      const termes = (r) => [].concat(r.coefficients_regression.terme);
+      verifier(!termes(m).includes('habitat(prairie)') && termes(m).includes('habitat(foret)'), `référence avant : ${termes(m).join()}`);
+      // the categories: foret merged into forêt, the order changed, lande the reference (last)
+      q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['forêt', 'forêt', 'lande', 'prairie'], ordre: ['prairie', 'forêt', 'lande'] });
+      const hab = q.variables.find((x) => x.nom === 'habitat');
+      verifier([].concat(hab.categories).join() === 'prairie,forêt,lande' && q.categories.reference === 'lande' && q.annulable === 'catégories de habitat'
+        && (await valeurs('habitat'))[2] === 'forêt', `catégories : ${JSON.stringify(q.categories)}`);
+      // the model fitted before keeps its results, but can't be refitted nor predict until fitted again (a name changed)
+      verifier(termes(await api('modele', { modele: m.id })).join() === termes(m).join(), 'le modèle garde ses résultats');
+      refus = '';
+      try { await api('reajuster', { modele: m.id, exclues: [1] }); } catch (e) { refus = e.message; }
+      verifier(/ont changé depuis l'ajustement de LMhab/.test(refus), `réajuster un modèle aux catégories changées : « ${refus} »`);
+      // its definition in the project followed: fitted again, lande is the reference
+      const def = q.modeles.find((x) => x.nom === 'LMhab');
+      const m2 = await api('ajuster', { projet: q.id, numero: def.numero });
+      verifier(!termes(m2).includes('habitat(lande)') && termes(m2).includes('habitat(prairie)') && termes(m2).includes('habitat(forêt)'), `référence après : ${termes(m2).join()}`);
+      // a new order only: the model of the session is mapped to it, and refits
+      q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['prairie', 'forêt', 'lande'], ordre: ['forêt', 'prairie', 'lande'] });
+      const m3 = await api('reajuster', { modele: m2.id, exclues: [2] });
+      verifier(m3.N === m2.N - 1 && termes(m3).includes('habitat(forêt)'), `réajusté après un nouvel ordre : N = ${m3.N}`);
+      // units and descriptions, kept in the summary, in the Methods text, saved and read again
+      q = await api('decrire_variables', { projet: q.id, descriptions: [{ variable: v.densite, unite: 'ind./ha', description: 'Densité des adultes' }, { variable: v.altitude, unite: 'm' }] });
+      const dens = q.variables.find((x) => x.nom === 'densite');
+      verifier(dens.unite === 'ind./ha' && dens.description === 'Densité des adultes' && q.variables.find((x) => x.nom === 'altitude').unite === 'm'
+        && q.annulable === 'unités et descriptions', `unités : ${JSON.stringify(dens)}`);
+      const meth = await api('methodes', { modele: m3.id, langue: 'en' });
+      verifier(meth.paragraphes[0].includes('the response is “densite” (ind./ha)'), meth.paragraphes[0]);
+      const res = await api('resultats_texte', { modele: m3.id, langue: 'fr' });
+      verifier(res.paragraphes.some((x) => /« altitude » : β = [-0-9,]+ par m/.test(x)), [].concat(res.paragraphes).join(' '));
+      const f = path.join(dossier, 'releves.nuee');
+      await api('enregistrer', { projet: q.id, chemin: f });
+      const relu = await api('ouvrir', { chemin: f });
+      verifier(relu.variables.find((x) => x.nom === 'densite').unite === 'ind./ha', 'unités relues du .nuee');
+      // the export: a workbook with a "Variables" sheet, opened again with its units
+      const x = path.join(dossier, 'releves.xlsx');
+      await api('exporter_donnees', { projet: q.id, chemin: x });
+      const rx = await api('ouvrir', { chemin: x });
+      verifier(!rx.choisir && rx.variables.find((y) => y.nom === 'densite').unite === 'ind./ha' && rx.variables.find((y) => y.nom === 'altitude').unite === 'm',
+        `classeur relu : ${JSON.stringify(rx.choisir || rx.variables)}`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${q.id} <- remplacer_valeurs(${q.id}, variables = ${v.densite}, chercher = "-9999", remplacer = "")`)
+        && j.includes(`${q.id} <- changer_categories(${q.id}, ${v.habitat}, c("forêt", "forêt", "lande", "prairie"), ordre = c("prairie", "forêt", "lande"))`)
+        && j.includes(`${q.id} <- decrire_variables(${q.id}, list(list(variable = ${v.densite}, unite = "ind./ha", description = "Densité des adultes"), list(variable = ${v.altitude}, unite = "m")))`),
+      'journal : remplacer_valeurs, changer_categories, decrire_variables');
+      // Ctrl+Z: the units, the order, the merge, the replacements leave, one by one
+      let u = (await api('annuler', { projet: q.id })).projet;
+      verifier(!u.variables.find((x) => x.nom === 'densite').unite, 'annuler les unités');
+      await api('annuler', { projet: q.id });
+      u = (await api('annuler', { projet: q.id })).projet;
+      verifier([].concat(u.variables.find((x) => x.nom === 'habitat').categories).join() === 'foret,forêt,lande,prairie', 'annuler les catégories');
+      await api('annuler', { projet: q.id });
+      u = (await api('annuler', { projet: q.id })).projet;
+      verifier((await valeurs('densite'))[4] === -9999 && u.variables.find((x) => x.nom === 'teneur').qualitative, 'annuler les remplacements');
+    });
     await etape('importer des spectres (texte et JCAMP-DX), avec un tableau d’informations', async () => {
       const onde = Array.from({ length: 30 }, (_, k) => 1000 + 4 * k);
       const chemins = [];

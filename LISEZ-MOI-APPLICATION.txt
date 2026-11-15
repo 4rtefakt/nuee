@@ -323,7 +323,11 @@ Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) et Weka (.arff) 
 derniers, un fichier par tableau (« M1.sav », « M1 - variables.sav »...). Les variables
 qualitatives restent qualitatives (facteurs R, étiquettes de valeurs SPSS et Stata, nominales
 jamovi). Pour SPSS, Stata, SAS et dBase, les noms de variables sont rendus valides (lettres
-sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable.
+sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable. Les
+unités et descriptions des variables (Édition › Unités et descriptions) vont dans une feuille
+« Variables » d'un classeur Excel, relue quand Nuée l'ouvre, une table « Variables » d'un
+GeoPackage, les descriptions d'un fichier jamovi et les attributs d'un tableau R (voir
+Nettoyer les données).
 SAS : format de transport version 5, que SAS lit avec libname xport (noms de 8 caractères,
 étiquettes de 40, textes de 200 au plus). dBase : textes en Windows-1252 ; dans LibreOffice,
 choisir le jeu de caractères « Europe occidentale (Windows-1252) » à l'ouverture. Les
@@ -1600,6 +1604,53 @@ avec la courbe ROC) pour une réponse 0/1. Jeu de test et Prédire.
 Pour les deux : texte des méthodes avec ses références, Exporter, rapport PDF ou Word. Comparer
 les modèles donne le Q2 et le RMSEcv d'une forêt de régression, ou d'arbres boostés d'une
 mesure, à côté des autres modèles. Pas encore d'export vers R.
+
+Nettoyer les données : chercher et remplacer, catégories, unités
+--------------------------------------------------------------
+Ce qu'on faisait dans Excel avant d'ouvrir le tableau, dans Nuée, chaque changement annulé par
+un seul Ctrl+Z (Édition › Annuler) comme les autres changements des données ; les modèles déjà
+ajustés gardent leurs résultats jusqu'à ce que vous les ajustiez à nouveau. Dans le menu
+Édition, dans la barre de la vue Données, et par un clic droit sur l'en-tête d'une colonne de la
+vue Données (un en-tête montre l'unité de la variable, son nombre de cases vides et de valeurs
+distinctes, « Résumé des colonnes » ; sa bulle, la description).
+Édition › Chercher et remplacer (Ctrl+H) : dans une variable, plusieurs ou toutes, les cases qui
+valent un texte ou un nombre, ou les cases vides (« les cellules vides » : remplacer vide par
+0), prennent ce que vous tapez, ou deviennent vides si vous ne tapez rien (remplacer -9999 par
+rien). Une variable qualitative se compare en texte : la case entière, ou une partie du texte
+(la « , » de « 3,5 »), les majuscules comptant ou non ; une variable quantitative en nombres
+(« 3,5 » trouve 3,5), sur la case entière, et ne prend qu'un nombre ou rien (sinon ses cases
+restent, et le dialogue le dit). Avant de remplacer, le dialogue dit combien de cases changeront
+dans chaque variable, les premiers changements (« foret » → « forêt » (3)) et ce que devient
+chaque variable : une variable de texte dont toutes les valeurs deviennent des nombres (« , »,
+« <0,5 » remplacé par 0,25, « abs » par 0) devient quantitative, sauf si vous décochez la case.
+Une catégorie remplacée par une autre qui existe s'y fond ; une catégorie vidée de ses cases
+disparaît. Une colonne de mesures est lue en nombres à l'ouverture du tableau : quelques
+« <0,5 » ou « nd » y sont alors lus comme des valeurs manquantes (Fichier › Ouvrir le dit), et
+ne sont plus là pour être remplacés ; une colonne avec plus de texte reste du texte, où on peut.
+Édition › Catégories (ou clic droit sur l'en-tête d'une variable qualitative) : les catégories
+d'une variable qualitative avec leur nombre d'observations, à renommer (le nom d'une autre
+catégorie les fusionne), fusionner (celles cochées, dans la plus nombreuse), monter et
+descendre, et la référence à choisir. Leur ordre est celui des graphiques et des tableaux
+(couleurs, barres, moyennes ajustées). Dans une régression, la dernière catégorie observée est
+la catégorie de référence : le coefficient de chacune des autres est son écart à elle, et
+« Référence » met une catégorie en dernier. Les définitions des modèles du projet suivent les
+catégories (ajustée à nouveau, une régression prend la nouvelle référence) ; un modèle ajusté
+dont des catégories ont été renommées ou fusionnées ne se réajuste plus depuis sa page (moins
+d'observations, une composante de plus) et ne prédit plus : ajustez-le à nouveau (Modèle ›
+Modifier le modèle, ou double-clic sur sa définition dans l'explorateur). Un nouvel ordre seul
+ne l'en empêche pas.
+Édition › Unités et descriptions (ou clic droit sur un en-tête › Unité et description) :
+l'unité (ind./ha, m, °C) et la description de chaque variable. L'unité vient dans les titres des
+axes (« densité (ind./ha) » : Effets, Observé / prédit, Statistiques des variables, Séries, la
+légende de la Carte, moyennes ajustées, tests statistiques, dépendance partielle d'une forêt ;
+pas sur un axe qui la montre transformée), les en-têtes de la vue Données, le texte des Méthodes
+(« la réponse est « densité » (ind./ha) ») et celui des résultats (un coefficient « par m »
+quand la variable est dans ses unités). Les deux sont enregistrées dans le projet, gardées par
+Fichier › Exporter les données là où le format a leur place (une feuille « Variables » d'un
+classeur Excel et une table « Variables » d'un GeoPackage, que Nuée relit en les ouvrant ; la
+description d'une colonne de jamovi ; les attributs label et units d'une colonne de R, comme
+Hmisc les lit ; pas en CSV ni en texte), et écrites en commentaire avant les données dans
+l'export vers R.
 
 Ajouter des colonnes d'un autre tableau
 ---------------------------------------

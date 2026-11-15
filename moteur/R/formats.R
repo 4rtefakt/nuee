@@ -28,14 +28,20 @@ extension <- function(chemin) tolower(tools::file_ext(chemin))
 # ---------------------------------------------------------------- lecture
 
 # Les tableaux entre lesquels choisir dans un fichier qui peut en avoir plusieurs (feuilles
-# d'un classeur Excel, objets d'un .RData, liste de tableaux dans un .rds) ; NULL sinon.
+# d'un classeur Excel, objets d'un .RData, liste de tableaux dans un .rds) ; NULL sinon. La
+# feuille « Variables » qu'écrit l'export des données (les unités et descriptions des variables :
+# atelier.R, tableau_variables_fichier) n'en est pas un : elle est relue avec les données.
 tables_fichier <- function(chemin) {
-  switch(extension(chemin),
+  tables <- switch(extension(chemin),
          xlsx = , xlsm = , xls = readxl::excel_sheets(chemin),
          rdata = , rda = names(objets_r(chemin)),
          rds = { x <- lire_rds(chemin); if (est_tableau(x)) NULL else names(tableaux_r(x)) },
          gpkg = couches_geopackage(chemin),
          NULL)
+  if (length(tables) > 1 && extension(chemin) %in% c("xlsx", "xlsm", "xls", "gpkg") && !is.null(tableau_variables_fichier(chemin))) {
+    tables <- tables[tolower(tables) != "variables"]
+  }
+  tables
 }
 
 # Le tableau d'un fichier, en data.frame. `table` : nom de la feuille ou de l'objet (le
@@ -730,6 +736,7 @@ ecrire_omv <- function(df, chemin) {
   taille <- 0L
   champs <- list()
   xdata <- list()
+  descriptions <- attr(df, "descriptions")  # (la description et l'unité de chaque colonne : ecrire_tableau)
   for (k in seq_along(df)) {
     x <- df[[k]]
     nom <- names(df)[k]
@@ -737,7 +744,8 @@ ecrire_omv <- function(df, chemin) {
     if (is.character(x) && anyDuplicated(x[!is.na(x)])) x <- factor(x, levels = sort(unique(x[!is.na(x)])))
     champ <- list(name = nom, id = k, columnType = "Data", dataType = "Decimal", measureType = "Continuous",
                   formula = "", formulaMessage = "", parentId = 0, width = 100, type = "number",
-                  importName = "", description = "", transform = 0, edits = list(), missingValues = list())
+                  importName = "", description = if (nom %in% names(descriptions)) enc2utf8(unname(descriptions[[nom]])) else "",
+                  transform = 0, edits = list(), missingValues = list())
     if (is.factor(x)) {
       niv <- levels(x)
       champ[c("dataType", "measureType", "type")] <- list("Text", if (is.ordered(x)) "Ordinal" else "Nominal", "integer")
@@ -814,9 +822,34 @@ noms_pour_format <- function(noms, max) {
   n
 }
 
-# Écrit un data.frame dans le format de l'extension du chemin.
-ecrire_tableau <- function(df, chemin, objet = "donnees") {
+# Écrit un data.frame dans le format de l'extension du chemin. `variables` : l'unité et la
+# description des colonnes qui en ont (atelier.R : descriptions_variables), gardées là où le format
+# a leur place : une feuille « Variables » à côté des données (Excel, relue à l'ouverture :
+# nouveau.R, importer_tableau), la description d'une colonne de jamovi, les attributs « label » et
+# « units » d'une colonne de R (ceux de Hmisc::label et Hmisc::units) ; pas en CSV ni en texte.
+ecrire_tableau <- function(df, chemin, objet = "donnees", variables = NULL) {
   ext <- extension(chemin)
+  if (!is.null(variables) && nrow(variables)) {
+    k <- match(names(df), variables[[1]])
+    if (ext %in% c("rds", "rdata", "rda")) {
+      for (j in which(!is.na(k))) {
+        if (nzchar(variables[[3]][k[j]])) attr(df[[j]], "label") <- variables[[3]][k[j]]
+        if (nzchar(variables[[2]][k[j]])) attr(df[[j]], "units") <- variables[[2]][k[j]]
+      }
+    }
+    if (ext == "omv") attr(df, "descriptions") <- stats::setNames(ifelse(nzchar(variables[[2]]) & nzchar(variables[[3]]), sprintf("%s (%s)", variables[[3]], variables[[2]]),
+                                                                         ifelse(nzchar(variables[[3]]), variables[[3]], sprintf("(%s)", variables[[2]]))), variables[[1]])
+    if (ext == "xlsx") {
+      wb <- openxlsx::createWorkbook()
+      feuille <- substr(gsub("[\\[\\]:*?/\\\\]", "_", objet, perl = TRUE), 1, 31)
+      if (!nzchar(feuille) || tolower(feuille) == "variables") feuille <- "donnees"
+      for (f in c(feuille, "Variables")) openxlsx::addWorksheet(wb, f)
+      openxlsx::writeData(wb, feuille, df)
+      openxlsx::writeData(wb, "Variables", variables)
+      openxlsx::saveWorkbook(wb, chemin, overwrite = TRUE)
+      return(invisible(chemin))
+    }
+  }
   renomme <- function(df, max, octets_etiquette = Inf) {
     noms <- noms_pour_format(names(df), max)
     for (k in seq_along(df)) if (!identical(noms[k], names(df)[k])) {

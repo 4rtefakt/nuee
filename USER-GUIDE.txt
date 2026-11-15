@@ -301,7 +301,10 @@ Excel (one sheet per table), CSV, tab-separated text, R (.rds: a list of tables;
 the last ones, one file per table ("M1.sav", "M1 - variables.sav"...). Qualitative variables
 stay qualitative (R factors, SPSS and Stata value labels, jamovi nominal variables). For SPSS,
 Stata, SAS and dBase, variable names are made valid (unaccented letters, digits, "_"); the
-original name becomes the variable label.
+original name becomes the variable label. The variables' units and descriptions (Edit › Units
+and descriptions) go into a "Variables" sheet of an Excel workbook, read back when Nuée opens
+it, a "Variables" table of a GeoPackage, the descriptions of a jamovi file and the attributes
+of an R table (see Cleaning the data).
 SAS: transport format version 5, which SAS reads with libname xport (names of 8 characters,
 labels of 40, text of 200 at most). dBase: text in Windows-1252; in LibreOffice, choose the
 "Western Europe (Windows-1252)" character set when opening. The files written were opened in
@@ -1475,6 +1478,48 @@ curve) for a 0/1 response. Test set and Predict.
 For both: Methods text with its references, Export, PDF or Word report. Compare models shows
 the Q2 and RMSEcv of a regression forest, or of boosted trees of a measurement, beside the other
 models. No export to R yet.
+
+Cleaning the data: find and replace, categories, units
+------------------------------------------------------
+What one used to do in Excel before opening the table, in Nuée, each change undone by a single
+Ctrl+Z (Edit › Undo) like the other changes of the data; models already fitted keep their
+results until you fit them again. In the Edit menu, in the Data view's toolbar, and in the
+right-click on a column's header in the Data view (a header shows the variable's unit, its
+number of empty cells and of distinct values, "Column summary"; its tooltip, the description).
+Edit › Find and replace (Ctrl+H): in one variable, several or all, the cells that hold a text
+or a number, or the empty cells ("empty cells": replace empty by 0), get what you type, or
+become empty when you type nothing (replace -9999 by nothing). A qualitative variable is
+compared as text: the whole cell, or part of the text (a "," in "3,5"), capitals counting or
+not; a quantitative variable as numbers ("3,5" finds 3.5), on the whole cell, and it takes only
+a number or nothing (its cells stay otherwise, and the dialog says so). Before you replace,
+the dialog says how many cells will change in each variable, the first changes ("foret" →
+"forêt" (3)) and what each variable becomes: a text variable whose values all become numbers
+(",", "<0.5" replaced by 0.25, "abs" by 0) becomes quantitative, unless you untick it. A
+category replaced by another one that exists merges into it; one emptied of its cells leaves.
+Note that a column of measurements is read as numbers when you open the table: a few "<0.5"
+or "nd" in it are read as missing values then (File › Open says so), and are no longer there
+to replace; a column with more text stays text, where you can.
+Edit › Categories (or right-click on a qualitative variable's header): a qualitative variable's
+categories with their number of observations, to rename (a name another category has merges
+them), merge (the ticked ones, into the most frequent), move up and down, and choose the
+reference. Their order is that of the plots and tables (colours, bars, adjusted means). In a
+regression the last category observed is the reference category: each other category's
+coefficient is its difference from it, and "Reference" moves a category last. The project's
+model definitions follow the categories (refitted, a regression takes the new reference); a
+fitted model whose categories were renamed or merged can't be refitted from its own page (fewer
+observations, a component more) nor predict: fit it again (Model › Modify model, or double-click
+its definition in the explorer). A new order only doesn't stop it.
+Edit › Units and descriptions (or right-click on a header › Unit and description): each
+variable's unit (ind./ha, m, °C) and description. The unit goes into the axis titles
+("density (ind./ha)": Effects, Observed / predicted, Statistics of variables, Series, the Map's
+legend, adjusted means, statistical tests, a forest's partial dependence; not on an axis that
+shows it transformed), the Data view's headers, the Methods text ("the response is "density"
+(ind./ha)") and the Results text (a coefficient "per m" when the variable is in its own units).
+Both are saved in the project, kept by File › Export data where the format has room (a
+"Variables" sheet of an Excel workbook and a "Variables" table of a GeoPackage, which Nuée
+reads back when it opens them; the description of a jamovi column; the label and units
+attributes of an R column, as Hmisc reads them; not in CSV or text), and written as comments
+before the data in Export to R.
 
 Adding columns from another table
 ---------------------------------

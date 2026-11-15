@@ -60,8 +60,10 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
                              liste(sprintf("%s (n = %d)", sub("^.*\\(([^()]*)\\)$", "\\1", classes), effectifs))))
   } else if (pls) {
     ny <- m$y$noms
-    p1 <- c(p1, if (fr) sprintf("%s : %s.", if (length(ny) > 1) sprintf("Les %d variables Y", length(ny)) else "La variable Y", liste(guillemets(ny)))
-                else sprintf("%s: %s.", if (length(ny) > 1) sprintf("The %d Y variables", length(ny)) else "The Y variable", liste(guillemets(ny))))
+    # (chacune avec son unité, quand elle en a une : atelier.R)
+    noms_y <- paste0(guillemets(ny), vapply(ny, function(n) unite_texte(projet, n), ""))
+    p1 <- c(p1, if (fr) sprintf("%s : %s.", if (length(ny) > 1) sprintf("Les %d variables Y", length(ny)) else "La variable Y", liste(noms_y))
+                else sprintf("%s: %s.", if (length(ny) > 1) sprintf("The %d Y variables", length(ny)) else "The Y variable", liste(noms_y)))
   }
 
   # --- prétraitement

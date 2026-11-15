@@ -28,6 +28,7 @@ import './vues_trim.js';
 import './vues_forets.js';
 import { installerDocuments } from './documents.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
+import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -751,6 +752,17 @@ const app = {
     const res = await occupe(() => demander('modifier_valeur', { projet: pid, observation, variable, valeur }));
     projetChange(res);
     if (app.modelesDe(pid).length) statut(t('donnees_modifiees'));
+  },
+  // The data workbench (atelier.js, moteur/R/atelier.R): Edit › Find and replace, Categories, Units
+  // and descriptions, also from the Data view's toolbar and a column's header (`uid`: that variable)
+  remplacerDonnees: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueRemplacer(app, p, uid); },
+  categoriesVariable: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueCategories(app, p, uid); },
+  variablesProjet: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariables(app, p, uid); },
+  // one of its changes (the request `nom`), undone by a single Ctrl+Z; the views of the data are drawn again
+  async changerDonnees(nom, pid, q) {
+    const res = await occupe(() => demander(nom, { projet: pid, ...q }));
+    projetChange(res);
+    return res;
   },
   occupe: (f) => occupe(f),
   statut: (message, erreur) => statut(message, erreur),
@@ -1543,6 +1555,10 @@ function contexte(entree) {
     exporterPrediction: app.exporterPrediction,
     nouvelleVariable: app.nouvelleVariable,
     modifierValeur: app.modifierValeur,
+    remplacerDonnees: app.remplacerDonnees,
+    categoriesVariable: app.categoriesVariable,
+    variablesProjet: app.variablesProjet,
+    changerDonnees: app.changerDonnees,
     modeleActif: () => app.modeleActif(),
     projetActif: () => app.projetActif(),
     occupe: (f) => occupe(f),

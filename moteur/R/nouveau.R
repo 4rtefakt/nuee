@@ -13,8 +13,12 @@
 # Un GeoPackage donne aussi les coordonnées du projet (spatial.R) : ses deux colonnes de
 # coordonnées et leur système.
 importer_tableau <- function(chemin, table = NULL, secondaires = TRUE, quantitatives = NULL) {
+  # (un classeur ou un GeoPackage écrit par l'export des données : sa feuille « Variables » rend les
+  # unités et descriptions des variables, et n'est pas le tableau à ouvrir : atelier.R)
+  variables <- if (extension(chemin) %in% c("xlsx", "xlsm", "xls", "gpkg")) tableau_variables_fichier(chemin)
+  if (is.null(table) && !is.null(variables)) table <- tables_fichier(chemin)[1]
   df <- lire_tableau(chemin, table, quantitatives)
-  p <- projet_depuis_tableau(df, basename(chemin), secondaires)
+  p <- appliquer_descriptions(projet_depuis_tableau(df, basename(chemin), secondaires), variables)
   p$note <- unname(attr(df, "note"))
   co <- attr(df, "coordonnees")
   if (!is.null(co)) p$coordonnees <- tryCatch(list(x = numeros(p, co$x), y = numeros(p, co$y), systeme = co$systeme), error = function(e) NULL)

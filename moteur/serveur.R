@@ -228,10 +228,12 @@ variables_avec_donnees <- function(p) {
 # nombres, qui peut servir de temps comme une variable quantitative : temps_en_nombres)
 resume_projet <- function(p) {
   manquantes <- colSums(is.na(p$donnees))
+  # (l'unité et la description de chaque variable : atelier.R, decrire_variables)
   vars <- lapply(variables_avec_donnees(p), function(v) list(
     uid = v$uid, nom = as.character(v$ids[1]), qualitative = length(v$categories) > 0,
     categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[as.character(v$uid)]),
-    temps = length(v$categories) > 0 && is.null(attr(temps_en_nombres(as.character(v$categories)), "refus"))))
+    temps = length(v$categories) > 0 && is.null(attr(temps_en_nombres(as.character(v$categories)), "refus")),
+    unite = as.character(v$unite %||% ""), description = as.character(v$description %||% "")))
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
@@ -265,7 +267,20 @@ donnees_projet <- function(p) {
 # ---------------------------------------------------------------- modèles
 
 projet <- function(id) etat$projets[[id]] %||% stop(traduire("Projet inconnu : ", "Unknown project: "), id)
-modele <- function(id) etat$modeles[[id]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id)
+# Un modèle de la séance, sa définition rapportée aux catégories du projet d'aujourd'hui (atelier.R :
+# aligner_categories ; elles ont pu changer depuis qu'il a été ajusté). `a_jour` : pour le réajuster,
+# prédire ou refaire un calcul sur les données, refusé quand une catégorie qu'il a vue a changé de
+# nom ou disparu ; ses résultats, eux, se montrent toujours.
+modele <- function(id, a_jour = FALSE) {
+  e <- etat$modeles[[id]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id)
+  p <- etat$projets[[e$projet]]
+  if (length(e$categories) && !is.null(p)) {
+    d <- aligner_categories(p, e$definition, e$categories)
+    if (is.null(attr(d, "perimee"))) e$definition <- d
+    else if (a_jour) stop(attr(d, "perimee"), call. = FALSE)
+  }
+  e
+}
 
 # Définition d'un modèle décrit par l'interface (type, variables, observations exclues...).
 definition_interface <- function(p, q) {
@@ -348,7 +363,7 @@ groupements_demande <- function(s, tous = FALSE) {
 # régression, aussi avec une autocorrélation CAR1 (q$car1 : son temps et ses groupes, comme pour
 # l'autocorrélation des résidus).
 reajuster_demande <- function(q) {
-  e <- modele(q$modele)
+  e <- modele(q$modele, TRUE)
   p <- projet(e$projet)
   d <- e$definition
   if (sans_composantes(d)) {  # (une régression, une autre analyse : sans composantes ni VIP, seulement des observations en moins)
@@ -407,7 +422,8 @@ ajuster_et_garder <- function(p, d, m = NULL) {
     if (!identical(ancien, d)) p$modifie <- TRUE  # recalculer un modèle enregistré ne change pas le projet
     etat$projets[[p$id]] <- p
   }
-  etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m)
+  # (les catégories de ses variables qualitatives, telles qu'il les a vues : modele(), atelier.R)
+  etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m, categories = categories_definition(p, d))
   resultat_modele(id)
 }
 
@@ -522,7 +538,7 @@ resultat_modele <- function(id) {
 }
 
 predire_demande <- function(q) {
-  e <- modele(q$modele)
+  e <- modele(q$modele, TRUE)
   p <- projet(e$projet)
   obs <- if (!is.null(q$jeu)) p$prediction_sets[[q$jeu]]$observations
          else vapply(p$observations, function(o) as.numeric(o$uid), 0)
@@ -549,7 +565,7 @@ hca_demande <- function(q) {
 # ($M1.t1...) absents du fichier sont calculés par le modèle de base du même nom ajusté dans
 # la session (le plus récent), qui prédit lui-même le fichier.
 predire_fichier_demande <- function(q) {
-  e <- modele(q$modele)
+  e <- modele(q$modele, TRUE)
   p <- projet(e$projet)
   base <- function(nom_modele) {
     ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, p$id) &&
@@ -602,6 +618,19 @@ changer_projet <- function(q, f, etiquette) {
   resume_projet(p)
 }
 
+# Comme changer_projet, avec ce que le changement dit de lui-même (attr(, attribut) du projet
+# changé : atelier.R), rendu à côté du résumé du projet.
+changer_projet_dit <- function(q, f, etiquette, attribut) {
+  info <- NULL
+  r <- changer_projet(q, function(p) {
+    n <- f(p)
+    info <<- attr(n, attribut)
+    attr(n, attribut) <- NULL
+    n
+  }, etiquette)
+  c(r, stats::setNames(list(info), attribut))
+}
+
 classe_demande <- function(q) {
   avant <- projet(q$projet)
   p <- ajouter_classe(avant, q$variable, q$etiquette, as.numeric(q$observations))
@@ -623,7 +652,7 @@ script_demande <- function(q) {
   # (le script de la séance laisse de côté les autres analyses : elles s'exportent seules)
   if (length(ids) > 1) ids <- Filter(function(id) !est_autre_analyse(modele(id)$definition), ids)
   if (!length(ids)) stop(traduire("Ces analyses s'exportent une à une.", "These analyses are exported one by one."))
-  e <- modele(ids[1])
+  e <- modele(ids[1], TRUE)
   seance <- length(ids) > 1
   nom <- gsub("[^[:alnum:]_ -]", "_", if (seance) as.character(projet(e$projet)$source %||% "seance") else e$definition$name %||% "modele")
   format <- if (!seance && isTRUE(q$format %in% c("Rmd", "qmd"))) q$format else "R"
@@ -633,7 +662,7 @@ script_demande <- function(q) {
                   rdata = isTRUE(q$rdata), rproj = isTRUE(q$rproj), version = as.character(q$version %||% ""),
                   langue = if (identical(q$langue, "en")) "en" else "fr")
   if (!seance) return(do.call(ecrire_script, c(list(projet(e$projet), e$definition, chemin, file.path(racine, "moteur"), m = e$modele), options)))
-  es <- lapply(ids, modele)
+  es <- lapply(ids, modele, a_jour = TRUE)
   if (!all(vapply(es, function(x) identical(x$projet, e$projet), FALSE)))
     stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
   do.call(ecrire_script_seance, c(list(projet(e$projet), lapply(es, `[[`, "definition"), lapply(es, `[[`, "modele"), chemin,
@@ -691,15 +720,19 @@ regressions_demande <- function(ids) {
 }
 
 # Les données d'un projet, dans le format de l'extension du chemin ; un GeoPackage : une couche
-# de points de ses coordonnées (geopackage.R).
+# de points de ses coordonnées (geopackage.R). Les unités et descriptions des variables (atelier.R)
+# vont où le format a leur place : une table « Variables » d'un GeoPackage, une feuille d'un
+# classeur Excel (formats.R : ecrire_tableau).
 exporter_donnees_demande <- function(q) {
   p <- projet(q$projet)
   chemin <- q$chemin %||% chemin_temporaire(paste0(nom_fichier(p$nom), ".", q$format %||% "xlsx"))
+  variables <- descriptions_variables(p)
   if (extension(chemin) == "gpkg") {
     pts <- points_projet(p)
-    ecrire_geopackage(tableau_projet(p), chemin, pts$x, pts$y, pts$systeme, couche = nom_fichier(p$nom))
+    ecrire_geopackage(tableau_projet(p), chemin, pts$x, pts$y, pts$systeme, couche = nom_fichier(p$nom),
+                      tables = if (!is.null(variables)) list(Variables = variables) else list())
   } else {
-    ecrire_tableau(tableau_projet(p), chemin, objet = make.names(nom_fichier(p$nom)))
+    ecrire_tableau(tableau_projet(p), chemin, objet = make.names(nom_fichier(p$nom)), variables = variables)
   }
   list(chemin = chemin, chemins = I(chemin))
 }
@@ -962,7 +995,7 @@ DEMANDES <- list(
   predire = predire_demande,
   hca = hca_demande,
   permutations = function(q) {
-    e <- modele(q$modele)
+    e <- modele(q$modele, TRUE)
     if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
     r <- permutations(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
     c(list(modele = q$modele), r)
@@ -1029,7 +1062,7 @@ DEMANDES <- list(
   # q$reponses, leurs résultats réunis (q$correction : BH, holm ou bonferroni) ; avec q$garder,
   # chaque modèle rejoint aussi le projet, et ses résultats sont rendus (resultats).
   par_reponse = function(q) {
-    e <- modele(q$modele)
+    e <- modele(q$modele, TRUE)
     r <- modeles_par_reponse(projet(e$projet), e$definition, as.numeric(unlist(q$reponses)), q$correction %||% "BH")
     garde <- if (isTRUE(q$garder)) lapply(Filter(function(x) is.null(x$erreur), r$modeles), function(x) ajuster_et_garder(projet(e$projet), x$definition, x$modele))
     list(modele = q$modele, tableau = r$tableau, resume = r$resume, effets = r$effets, correction = r$correction,
@@ -1192,7 +1225,7 @@ DEMANDES <- list(
   # de variables), q$ajustement, q$echelle ; sans réglage, ceux de la dernière fois (ses phrases dans la
   # langue de la demande), ou ceux par défaut
   moyennes = function(q) {
-    e <- modele(q$modele)
+    e <- modele(q$modele, TRUE)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     reglages <- q[setdiff(names(q), "modele")]
     r <- moyennes_ajustees(projet(e$projet), e$modele, e$definition, if (length(reglages)) reglages else e$modele$moyennes$reglages %||% list())
@@ -1224,6 +1257,27 @@ DEMANDES <- list(
   ajouter_colonnes = ajouter_colonnes_demande,
   # Édition › Résumer par groupe : un nouveau projet
   resumer_groupes = resumer_groupes_demande,
+  # L'atelier des données (atelier.R), chaque changement annulé par un seul Ctrl+Z. Chercher et
+  # remplacer : avec q$apercu, ce qui changerait (le nombre de cellules, ce que devient chaque
+  # variable), sans rien changer ; sinon le remplacement, refusé quand aucune cellule ne change.
+  remplacer = function(q) {
+    f <- function(p) {
+      n <- remplacer_valeurs(p, q$variables, q$chercher, q$remplacer, vides = isTRUE(q$vides), partie = isTRUE(q$partie),
+                             casse = isTRUE(q$casse), nombres = !isFALSE(q$nombres))
+      if (!isTRUE(q$apercu) && !attr(n, "remplacement")$cellules) stop(traduire("Aucune cellule à remplacer.", "No cell to replace."), call. = FALSE)
+      n
+    }
+    if (isTRUE(q$apercu)) return(list(remplacement = attr(f(projet(q$projet)), "remplacement")))
+    quoi <- if (isTRUE(q$vides)) traduire("cellules vides", "empty cells") else as.character(q$chercher %||% "")[1]
+    changer_projet_dit(q, f, sprintf(traduire("remplacement de %s", "replacement of %s"), quoi), "remplacement")
+  },
+  # Les catégories d'une variable qualitative : renommées, fusionnées, rangées (q$noms, q$ordre)
+  categories = function(q) {
+    nom <- as.character(variable_du_projet(projet(q$projet), q$variable)$ids[1])
+    changer_projet_dit(q, function(p) changer_categories(p, q$variable, q$noms, q$ordre), sprintf(traduire("catégories de %s", "categories of %s"), nom), "categories")
+  },
+  # L'unité et la description des variables (q$descriptions : variable, unite, description)
+  decrire_variables = function(q) changer_projet(q, function(p) decrire_variables(p, q$descriptions), traduire("unités et descriptions", "units and descriptions")),
   annuler = annuler_demande,
   # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur prétraitement.
   spectres = function(q) {
@@ -1241,7 +1295,7 @@ DEMANDES <- list(
   },
   # iPLS (ipls.R) : q$n intervalles, 1 à q$A composantes (le A du modèle par défaut)
   ipls = function(q) {
-    e <- modele(q$modele)
+    e <- modele(q$modele, TRUE)
     c(list(modele = q$modele), pls_par_intervalles(projet(e$projet), e$definition, n = q$n %||% 20, A = q$A %||% e$modele$A))
   },
   verifier = function(q) {

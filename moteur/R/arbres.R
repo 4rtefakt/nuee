@@ -619,7 +619,8 @@ texte_methodes_tree <- function(projet, d, m, langue = "fr", version = "") {
   laissees <- if (length(m$exclues)) sprintf(if (fr) " (%d autres laissées de côté : leur réponse ou toutes leurs valeurs X manquent)"
                                              else " (%d others left out: their response or all their X values are missing)", length(m$exclues)) else ""
   reponse <- if (m$classement) sprintf(if (fr) "la classe %s (%d classes)" else "the class %s (%d classes)", g(m$y$nom), length(m$classes))
-             else if (!is.null(m$y$transform)) formule_transformation(m$y$transform, g(m$y$nom), fr) else g(m$y$nom)
+             else if (!is.null(m$y$transform)) formule_transformation(m$y$transform, paste0(g(m$y$nom), unite_texte(projet, m$y$nom)), fr)
+             else paste0(g(m$y$nom), unite_texte(projet, m$y$nom))  # (avec son unité : atelier.R)
   p1 <- sprintf(if (fr) "L'arbre porte sur %s%s ; sa réponse est %s." else "The tree uses %s%s; its response is %s.",
                 observations_texte(m$N, d, fr), laissees, reponse)
   explicatives <- if (length(noms) <= 12) sprintf(if (fr) "%d variables explicatives (%s)" else "%d explanatory variables (%s)", length(noms), liste_mots(noms, fr))

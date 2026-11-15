@@ -3744,12 +3744,26 @@ fichiers_script <- function(chemin_script, donnees, rdata, renv, rproj, langue =
     rproj = if (rproj) file.path(dossier, paste0(base, ".Rproj")))
 }
 
-# Les données dans le script, ou le CSV écrit à côté et le code qui le lit.
+# Les données dans le script, ou le CSV écrit à côté et le code qui le lit ; avant elles, en
+# commentaire, l'unité et la description des variables qui en ont (atelier.R).
 donnees_script <- function(tab, fichiers, langue) {
   nom <- nom_script("donnees", langue)
-  if (!"donnees" %in% names(fichiers)) return(code_donnees(tab$donnees, nom))
-  ecrire_csv_script(tab$donnees, fichiers[["donnees"]])
-  code_lire_csv(tab$donnees, basename(fichiers[["donnees"]]), langue, nom)
+  c(commentaire_variables(tab$descriptions, langue),
+    if (!"donnees" %in% names(fichiers)) code_donnees(tab$donnees, nom)
+    else {
+      ecrire_csv_script(tab$donnees, fichiers[["donnees"]])
+      code_lire_csv(tab$donnees, basename(fichiers[["donnees"]]), langue, nom)
+    })
+}
+
+# L'unité et la description de chaque variable qui en a (tableau_script : `descriptions`), une
+# ligne de commentaire chacune (commentaire : sans coupure de ligne venue des données).
+commentaire_variables <- function(descriptions, langue) {
+  if (!length(descriptions)) return(character(0))
+  tx <- function(fr, en) if (identical(langue, "en")) en else fr
+  c(commentaire(tx("Unités et descriptions des variables :", "Units and descriptions of the variables:")),
+    unlist(lapply(descriptions, function(x) commentaire(paste0("- ", x$nom, if (nzchar(x$unite)) sprintf(" (%s)", x$unite),
+                                                              if (nzchar(x$description)) paste0(tx(" : ", ": "), x$description))))))
 }
 
 # Écrit le script et les fichiers d'à côté ; `objets` : ce que le .RData garde de `e` (ses
@@ -3793,7 +3807,9 @@ tableau_script <- function(projet, ids = character(0)) {
     x
   }))
   names(colonnes) <- noms
+  decrites <- Filter(function(k) nzchar(vars[[k]]$unite %||% "") || nzchar(vars[[k]]$description %||% ""), seq_along(vars))
   list(donnees = as.data.frame(colonnes, check.names = FALSE, stringsAsFactors = FALSE),
+       descriptions = lapply(decrites, function(k) list(nom = noms[1 + k], unite = as.character(vars[[k]]$unite %||% ""), description = as.character(vars[[k]]$description %||% ""))),
        noms = stats::setNames(noms[1 + seq_along(vars)], vapply(vars, function(v) as.character(v$uid), "")),
        ids = stats::setNames(noms[1 + length(vars) + seq_along(ids)], ids),
        rangs = stats::setNames(seq_along(obs), obs))
