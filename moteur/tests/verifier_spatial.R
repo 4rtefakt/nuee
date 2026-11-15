@@ -57,7 +57,9 @@ for (code in codes) {
     verifier(sprintf("EPSG:%d : comme PROJ, vers le système (au millimètre)", code), proche(cbind(p$x, p$y), ref, 1e-3))
     retour <- sf::sf_project(sprintf("EPSG:%d", code), "EPSG:4326", ref)
     g <- vers_lonlat(ref[, 1], ref[, 2], code)
-    verifier(sprintf("EPSG:%d : comme PROJ, vers la longitude et la latitude", code), proche(cbind(g$lon, g$lat), retour, if (code == 27572) 2e-8 else 1e-9))
+    # (1e-8 degré, environ 1 mm : le PROJ d'Ubuntu 24.04 calcule la latitude inverse de LAEA par une
+    # série, à quelques 1e-9 degré de l'itération faite ici)
+    verifier(sprintf("EPSG:%d : comme PROJ, vers la longitude et la latitude", code), proche(cbind(g$lon, g$lat), retour, if (code == 27572) 2e-8 else 1e-8))
   }
 }
 verifier("du Lambert-93 au Lambert II étendu", {
