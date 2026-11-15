@@ -454,7 +454,9 @@ their own checksums. The files are also cached between runs.
    writes `CHANGELOG.md` from it (`node app/changelog.js` does it alone).
 3. `node app/construire.js <folder>`, then the installer's checks.
 4. A GitHub release `v<version>` with `Nuee-Setup-<version>.exe`: installed copies offer it as a
-   one-click update. With the repository switched on at zenodo.org, each release also gets a DOI.
+   one-click update. With the repository switched on at zenodo.org, each release also gets a DOI:
+   Zenodo archives the tag's source with the title, authors, abstract, keywords and licence of
+   `CITATION.cff`, and stops at an invalid one (check it with `cffconvert --validate`, from pip).
    Publishing the release starts the checks on GitHub: the Linux jobs build the `.deb`, the
    AppImage and the `.tar.gz` from the tag and check them, then `linux-version-publiee` adds
    them to the release; the macOS jobs build and check the two `.dmg`, then
