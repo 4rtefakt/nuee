@@ -108,7 +108,8 @@ d'état ouvre sa page.
 
 Le guide complet est fourni avec l'application (*Aide › Guide d'utilisation › Guide complet*),
 en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en anglais
-([USER-GUIDE.txt](USER-GUIDE.txt)).
+([USER-GUIDE.txt](USER-GUIDE.txt)). Il est aussi sur le
+[site de documentation](https://4rtefakt.github.io/nuee/fr/), avec trois tutoriels.
 
 ## Ce qu'elle fait
 

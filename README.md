@@ -105,7 +105,8 @@ page.
 
 The full user guide comes with the application (*Help › User guide › Full guide*), in
 English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
-([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)).
+([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)). It is also on the
+[documentation website](https://4rtefakt.github.io/nuee/en/), with three tutorials.
 
 ## What it does
 
