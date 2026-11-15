@@ -60,7 +60,7 @@ async function rendreRarefaction(conteneur, ctx, p, loc) {
     choix('', [['rarefaction', t('rar_mode_rarefaction')], ['accumulation', t('rar_mode_accumulation')]], loc.mode, (v) => { loc.mode = v; ctx.rafraichir(); }),
     choix(t('rar_groupes'), [['', t('aucun')], ...groupes.map((g) => [g.valeur, g.libelle])], loc.groupe || '', (v) => { loc.groupe = v; ctx.rafraichir(); }),
     loc.mode === 'rarefaction' ? el('label', { class: 'champ', title: t('rar_taille_aide') }, el('span', {}, t('rar_taille')),
-      el('input', { type: 'number', min: 1, step: 1, value: loc.taille ?? '', placeholder: t('rar_taille_min'), style: 'width:6em',
+      el('input', { type: 'number', min: 1, step: 1, value: loc.taille ?? '', placeholder: t('rar_taille_min'), style: 'width:9.5em',
         onchange: (e) => { loc.taille = e.target.value === '' ? null : Number(e.target.value); ctx.rafraichir(); } })) : null);
   if (liste(loc.especes).length < 2) {
     conteneur.replaceChildren(barre, cases, el('p', { class: 'infos' }, t('rar_choisir')));
@@ -134,7 +134,7 @@ async function rendreRarefaction(conteneur, ctx, p, loc) {
       hovertemplate: `<b>${nomDe.get(uid)}</b><br>${t('rar_individus')} %{x}<br>${t('rar_richesse')} %{y:.2f} ± %{text:.2f}<extra>${niveaux.length ? g : ''}</extra>` };
   });
   const shapes = r.entiers && r.taille ? [{ type: 'line', xref: 'x', yref: 'paper', x0: r.taille, x1: r.taille, y0: 0, y1: 1, line: { dash: 'dash', color: c.doux, width: 1 } }] : [];
-  conteneur.replaceChildren(barre, cases, el('p', { class: 'note' }, `${notes}${r.entiers ? ` ${t('rar_rarefaction_note', { m: r.taille, pas: r.pas })}` : ''}${r.petites ? ` ${t('rar_petites', { n: r.petites, m: r.taille })}` : ''}`),
+  conteneur.replaceChildren(barre, cases, el('p', { class: 'note' }, `${notes}${r.entiers ? ` ${t('rar_rarefaction_note', { m: r.taille, points: r.pas === 1 ? t('rar_point_chacun') : t('rar_point_tous', { pas: r.pas }) })}` : ''}${r.petites ? ` ${t('rar_petites', { n: r.petites, m: r.taille })}` : ''}`),
     graphe, bas);
   if (r.entiers) {
     tracer(ctx, graphe, traces, { title: { text: `${proj.nom || ''} · ${t('rar_mode_rarefaction')}` }, shapes, dragmode: 'select',
@@ -160,11 +160,11 @@ ajouterTextes({
   rar_plage_aide: 'Les colonnes d’espèces (des effectifs), de l’une à l’autre dans l’ordre du tableau, les deux comprises ; ou cochées une à une dans la liste.',
   rar_choisir: 'Choisir au moins deux colonnes d’espèces (des effectifs : une ligne par observation), par une plage ou dans la liste.',
   rar_mode_rarefaction: 'Raréfaction (par observation)', rar_mode_accumulation: 'Accumulation (sur les observations)', rar_groupes: 'Par groupe',
-  rar_taille: 'Taille commune', rar_taille_min: 'la plus petite', rar_taille_aide: 'La richesse de chaque observation raréfiée à ce nombre d’individus (par défaut, celui de la plus petite observation).',
+  rar_taille: 'Taille commune', rar_point_chacun: 'un point par individu', rar_point_tous: 'un point tous les {pas} individus', rar_taille_min: 'la plus petite', rar_taille_aide: 'La richesse de chaque observation raréfiée à ce nombre d’individus (par défaut, celui de la plus petite observation).',
   rar_note: '{n} observations, {s} espèces.', rar_manquantes: '{n} laissées de côté : une espèce y manque.', rar_sans_groupe: '{n} sans groupe, laissées de côté.',
   rar_vides: '{n} sans aucun individu (sans courbe de raréfaction ; elles comptent dans l’accumulation).',
   rar_non_entiers: 'Ces données ne sont pas des effectifs entiers : la raréfaction, Chao1 et ACE demandent des comptages d’individus. L’accumulation et les estimateurs fondés sur les présences (Chao2, jackknife, bootstrap) restent possibles.',
-  rar_rarefaction_note: 'La richesse attendue dans m individus tirés sans remise (Hurlbert 1971), ±σ (Heck et al. 1975), comme vegan::rarefy ; en pointillés, la taille commune ({m}) ; un point tous les {pas} individus. Chao1 (corrigé du biais) et ACE estiment la richesse de chaque observation (vegan::estimateR).',
+  rar_rarefaction_note: 'La richesse attendue dans m individus tirés sans remise (Hurlbert 1971), ±σ (Heck et al. 1975), comme vegan::rarefy ; en pointillés, la taille commune ({m}) ; {points}. Chao1 (corrigé du biais) et ACE estiment la richesse de chaque observation (vegan::estimateR).',
   rar_petites: '{n} observations ont moins de {m} individus : sans richesse raréfiée.',
   rar_accumulation_note: 'La richesse attendue dans k observations tirées parmi toutes (méthode exacte, Ugland et al. 2003, comme vegan::specaccum), ±2 écarts-types. Sous le graphique, les estimateurs de la richesse totale d’après les présences (vegan::specpool).',
   rar_toutes: 'toutes', rar_nombre_obs: 'Nombre d’observations', rar_richesse: 'Richesse', rar_individus: 'Individus', rar_s_obs: 'S observée',
@@ -175,11 +175,11 @@ ajouterTextes({
   rar_plage_aide: 'The species columns (counts), from one to another in the table’s order, both included; or ticked one by one in the list.',
   rar_choisir: 'Choose at least two species columns (counts: one row per observation), by a range or in the list.',
   rar_mode_rarefaction: 'Rarefaction (by observation)', rar_mode_accumulation: 'Accumulation (over the observations)', rar_groupes: 'By group',
-  rar_taille: 'Common size', rar_taille_min: 'the smallest', rar_taille_aide: 'Each observation’s richness rarefied to this number of individuals (by default, that of the smallest observation).',
+  rar_taille: 'Common size', rar_point_chacun: 'a point for each individual', rar_point_tous: 'a point every {pas} individuals', rar_taille_min: 'the smallest', rar_taille_aide: 'Each observation’s richness rarefied to this number of individuals (by default, that of the smallest observation).',
   rar_note: '{n} observations, {s} species.', rar_manquantes: '{n} left out: a species is missing.', rar_sans_groupe: '{n} without a group, left out.',
   rar_vides: '{n} without any individual (no rarefaction curve; they count in the accumulation).',
   rar_non_entiers: 'These data aren’t integer counts: rarefaction, Chao1 and ACE need counts of individuals. The accumulation and the incidence-based estimators (Chao2, jackknife, bootstrap) remain possible.',
-  rar_rarefaction_note: 'The richness expected in m individuals drawn without replacement (Hurlbert 1971), ±σ (Heck et al. 1975), as vegan::rarefy; dashed, the common size ({m}); a point every {pas} individuals. Chao1 (bias-corrected) and ACE estimate each observation’s richness (vegan::estimateR).',
+  rar_rarefaction_note: 'The richness expected in m individuals drawn without replacement (Hurlbert 1971), ±σ (Heck et al. 1975), as vegan::rarefy; dashed, the common size ({m}); {points}. Chao1 (bias-corrected) and ACE estimate each observation’s richness (vegan::estimateR).',
   rar_petites: '{n} observations have fewer than {m} individuals: no rarefied richness.',
   rar_accumulation_note: 'The richness expected in k observations drawn among all (exact method, Ugland et al. 2003, as vegan::specaccum), ±2 standard deviations. Under the plot, the estimators of the total richness from the presences (vegan::specpool).',
   rar_toutes: 'all', rar_nombre_obs: 'Number of observations', rar_richesse: 'Richness', rar_individus: 'Individuals', rar_s_obs: 'Observed S',

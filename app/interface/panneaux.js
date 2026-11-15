@@ -1,6 +1,6 @@
 // Views. Each draws one model result (or the project data) into a panel and is re-run when
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
-import { t, lire, ecrire, langueActuelle } from './i18n.js';
+import { t, lire, ecrire, langueActuelle, libelleResultat } from './i18n.js';
 import { el, fmt, icone, menuContextuel } from './ui.js';
 
 export const PALETTES = {
@@ -397,7 +397,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
   const filtre = el('input', { type: 'search', placeholder: t('recherche'), value: loc.filtre, class: 'filtre',
     oninput: (e) => { loc.filtre = e.target.value; clearTimeout(loc.minuterie); loc.minuterie = setTimeout(() => ctx.rafraichir(), 200); } });
   conteneur.replaceChildren(
-    outils(...avant, filtre, el('span', { class: 'infos' }, `${idx.length} ${t('lignes')}${idx.length > max ? ` (${max})` : ''}`), espace(),
+    outils(...avant, filtre, el('span', { class: 'infos' }, `${idx.length} ${t(idx.length === 1 ? 'ligne' : 'lignes')}${idx.length > max ? ` (${max})` : ''}`), espace(),
       el('button', { class: 'icone-seule', title: t('copier_tableau'), onclick: copier }, icone('copy'))),
     defile);
   requestAnimationFrame(suite);  // (a tall panel shows more than the first slice)
@@ -1151,7 +1151,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   tableau(bas, ctx, loc.table, {
     avant: [jeu], n: o.nom.length, nom: 'Table',
     colonnes: [{ cle: 'nom', titre: 'observation' }, { cle: 'dans_modele', titre: t('dans_modele') }, { cle: 'hors_domaine', titre: t('hors_domaine_court') }]
-      .concat(inconnues ? [{ cle: 'categorie_inconnue', titre: t('categorie_inconnue_court') }] : [], cols.map((k) => ({ cle: k, titre: k }))),
+      .concat(inconnues ? [{ cle: 'categorie_inconnue', titre: t('categorie_inconnue_court') }] : [], cols.map((k) => ({ cle: k, titre: libelleResultat(k) }))),
     valeur: (i, k) => (k === 'dans_modele' ? (o.dans_modele[i] ? '✓' : '') : k === 'hors_domaine' ? (o.hors_domaine && o.hors_domaine[i] ? '⚠' : '')
       : k === 'categorie_inconnue' ? (o.categorie_inconnue[i] ? '⊘' : '') : o[k][i]),
   });
@@ -1254,7 +1254,7 @@ function rendreListeObs(conteneur, ctx, p, loc) {
   const cles = Object.keys(o).filter((k) => !['uid', 'nom'].includes(k));
   tableau(conteneur, ctx, loc, {
     n: o.uid.length, idModele: m.id, uid: (i) => o.uid[i], nom: 'Table',
-    colonnes: [{ cle: 'nom', titre: 'observation' }].concat(cles.map((k) => ({ cle: k, titre: k.replace('_pondere', ' (pond.)').replace('_absolu', ' (abs.)') }))),
+    colonnes: [{ cle: 'nom', titre: 'observation' }].concat(cles.map((k) => ({ cle: k, titre: libelleResultat(k) }))),
     valeur: (i, k) => o[k][i],
   });
 }
@@ -1323,7 +1323,7 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     const valeurs = [vides ? t('atelier_vides_n', { n: vides }) : '', t('atelier_distinctes', { n: distinctes })].filter(Boolean).join(' · ');
     return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i],
       sousTitre: [v.unite, resume ? valeurs : ''].filter(Boolean).join(' · ') || null,
-      info: [v.description, `${d.variables[i]}${v.unite ? ` (${v.unite})` : ''} · ${v.qualitative ? t('atelier_qualitative', { n: [].concat(v.categories || []).length }) : t('atelier_quantitative')} · ${valeurs}`,
+      info: [v.description, `${d.variables[i]}${v.unite ? ` (${v.unite})` : ''} · ${v.qualitative ? t([].concat(v.categories || []).length === 1 ? 'atelier_qualitative_une' : 'atelier_qualitative', { n: [].concat(v.categories || []).length }) : t('atelier_quantitative')} · ${valeurs}`,
         t('atelier_entete_aide')].filter(Boolean).join('\n') };
   };
   const menuColonne = (c, e) => {

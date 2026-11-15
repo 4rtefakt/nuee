@@ -988,6 +988,32 @@ tableau_projet <- function(projet) {
   as.data.frame(colonnes, check.names = FALSE, stringsAsFactors = FALSE)
 }
 
+# Les noms des tableaux de résultats exportés (feuilles Excel, fichiers, couches GeoPackage) dans
+# la langue de l'interface : le moteur les nomme en français ; en anglais, ceux-ci sont traduits,
+# les autres (les mêmes dans les deux langues) restent. Les noms des colonnes restent ceux du
+# moteur : ils côtoient ceux des variables, qu'on ne traduit pas.
+NOMS_TABLES_EN <- c(
+  resume = "summary", composantes = "components", variables_y = "y_variables", qualite = "quality",
+  effets_aleatoires = "random_effects", courbes = "curves", regles = "rules", elagage = "pruning",
+  classement = "classification", classement_vc = "classification_cv", classement_oob = "classification_oob",
+  stabilite = "stability", dependance = "partial_dependence", erreur_oob = "oob_error", cote_a_cote = "side_by_side",
+  coefficients_std = "standardised_coefficients", variables_ajustees = "fitted_variables",
+  facteurs_ajustes = "fitted_factors", centroides = "centroids", valeurs_propres = "eigenvalues", especes = "species",
+  departs = "starts", dispersion_groupes = "dispersion_groups", dispersion_paires = "dispersion_pairs",
+  correlogramme = "correlogram", part = "share", moyennes = "means", adequation = "goodness_of_fit",
+  ajustement = "goodness_of_fit", densite = "density", densite_groupes = "density_by_group", parametres = "parameters",
+  groupes = "groups", centres_echelle = "centres_scaled", choix_k = "choice_of_k", tests_axes = "axis_tests",
+  tests_termes = "term_tests", tests_sequentiels = "sequential_tests", partition_ensembles = "partition_fractions",
+  totaux = "totals", pentes = "slopes", droite = "linear_trend", ecarts = "deviations", pas_a_pas = "stepwise",
+  strates = "strata")
+noms_tables_langue <- function(tables, langue = getOption("nuee.langue")) {
+  if (!identical(langue, "en") || !length(tables)) return(tables)
+  n <- names(tables)
+  en <- unname(NOMS_TABLES_EN[n])
+  names(tables) <- make.unique(ifelse(is.na(en), n, en), sep = "_")
+  tables
+}
+
 # Les résultats d'un modèle ajusté en tableaux : observations (scores, T2, DModX, valeurs
 # ajustées), variables (loadings, VIP...), composantes, coefficients et variables Y.
 tables_resultats <- function(projet, m) {

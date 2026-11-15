@@ -27,8 +27,8 @@ for your Methods section, or export a script or an R Markdown / Quarto report th
 model in plain R, without Nuée. Every calculation is written in R, with comments, so you can
 check exactly what was computed, and change it.
 
-The interface is in English and French (*View › Language*); the screenshots show it in
-French.
+The interface is in English, by default, and French (*View › Language*); the screenshots show it
+in French.
 
 ## Install
 

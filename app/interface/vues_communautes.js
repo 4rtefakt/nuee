@@ -13,6 +13,9 @@ import { VUES_TYPES } from './explorateur.js';
 import { ICONES_VUES } from './commandes.js';
 import { PARTIES_TYPES } from './rapport.js';
 
+// a label that also goes inside a sentence, with a capital where it starts a line (a heading, an option)
+const initiale = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
 const TYPES = ['PCOA', 'NMDS', 'PERMANOVA', 'MANTEL'];
 const estCommunaute = (m) => !!m && !!m.analyse && TYPES.includes(m.type);
@@ -233,7 +236,7 @@ function rendrePermanova(conteneur, ctx, p) {
   const graphe = el('div', { class: 'graphe petit' });
   const inegales = liste(m.dispersions).filter((d) => significatif(d.p_permutation)).map((d) => d.variable);
   conteneur.replaceChildren(el('div', { class: 'defile resume' },
-    el('div', { class: 'fiche' }, el('div', { class: 'fiche-titre' }, el('b', {}, t('com_par_' + m.par))),
+    el('div', { class: 'fiche' }, el('div', { class: 'fiche-titre' }, el('b', {}, initiale(t('com_par_' + m.par)))),
       el('div', { class: 'fiche-chiffres' }, chiffre('R2', mo.R2), chiffre(t('ord_pseudo_f'), mo.F, 3), chiffre('p', pValeur(mo.p)),
         chiffre(t('nb_permutations'), (m.distance || {}).permutations ?? 0, 0), m.strates ? chiffre(t('ord_dans'), m.strates) : null)),
     tableCompacte([t('terme'), t('ddl'), t('com_ss'), 'R²', t('ord_pseudo_f'), 'p'],
@@ -328,7 +331,7 @@ function rendreMantel(conteneur, ctx, p) {
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, el('p', { class: 'note' }, notes.join(' ')), graphe));
   tracer(ctx, graphe, [{ type: 'scattergl', mode: 'markers', name: t('com_paires'), x: liste(pa.x), y: liste(pa.y),
     marker: { size: 4, color: PALETTE[0], opacity: 0.4 }, hovertemplate: 'X %{x:.3f} · Y %{y:.3f}<extra></extra>' }],
-  { title: { text: `${m.nom} · Mantel · r = ${fmt(s.r, 3)}` }, dragmode: 'zoom', xaxis: { title: { text: t('com_distance_x') } }, yaxis: { title: { text: t('com_distance_y', { d: nomDistance(m.distance || {}) }) } } });
+  { title: { text: `${m.nom} · Mantel · r = ${fmt(s.r, 3)}` }, dragmode: 'zoom', xaxis: { title: { text: t(m.distance_x === 'geographique' ? 'com_distance_x_km' : 'com_distance_x_axe') } }, yaxis: { title: { text: t('com_distance_y', { d: nomDistance(m.distance || {}) }) } } });
 }
 
 function rendreCorrelogramme(conteneur, ctx, p, loc) {
@@ -349,12 +352,12 @@ function rendreCorrelogramme(conteneur, ctx, p, loc) {
       customdata: idx.map((i) => [liste(tb.paires)[i], pValeur(pc[i])]), line: { color: c.doux, width: 1.2 },
       marker: { size: 10, symbol: idx.map((i) => (significatif(pc[i]) ? 'square' : 'square-open')), color: PALETTE[0], line: { width: 1.5, color: PALETTE[0] } },
       hovertemplate: '%{x:.3f}<br>r %{y:.3f} · %{customdata[0]} ' + t('com_paires_mot') + '<br>p ' + t('com_corrige_mot') + ' %{customdata[1]}<extra></extra>' }],
-  { title: { text: `${m.nom} · ${t('correlogramme')}` }, dragmode: false, showlegend: false, xaxis: { title: { text: t('com_classe_distance_x') } },
+  { title: { text: `${m.nom} · ${t('correlogramme')}` }, dragmode: false, showlegend: false, xaxis: { title: { text: t(m.distance_x === 'geographique' ? 'com_classe_distance_km' : 'com_classe_distance_x') } },
     yaxis: { title: { text: t('com_r_mantel') }, zeroline: true } });
   loc.table ??= {};
   tableau(bas, ctx, loc.table, {
     n: centres.length, nom: 'Correlogram',
-    colonnes: [{ cle: 'classe', titre: t('com_classe'), decimales: 0 }, { cle: 'centre', titre: t('com_centre_classe'), num: true, decimales: 4 },
+    colonnes: [{ cle: 'classe', titre: t('com_classe'), decimales: 0 }, { cle: 'centre', titre: t(m.distance_x === 'geographique' ? 'com_centre_classe_km' : 'com_centre_classe'), num: true, decimales: 4 },
       { cle: 'paires', titre: t('com_paires'), num: true, decimales: 0 }, { cle: 'r', titre: 'r', num: true, decimales: 4 },
       { cle: 'p', titre: 'p', num: true, format: (v) => pValeur(v) }, { cle: 'p_corrige', titre: t('com_p_holm'), num: true, format: (v) => pValeur(v), alerte: (i) => significatif(pc[i]) },
       { cle: 'teste', titre: t('com_teste') }],
@@ -432,7 +435,7 @@ function champsCommunaute(type) {
       ['PCOA', 'PERMANOVA'].includes(type) ? [el('label', {}, t('com_correction')), select('correction', ['aucune', 'lingoes', 'cailliez'], 'aucune', (k) => t('com_corr_' + k))] : null,
       type === 'NMDS' ? [el('label', {}, t('com_dimensions')), el('div', { class: 'ligne' }, nombre('k', 2, { min: 1, max: 4, step: 1 }),
         el('label', { class: 'champ' }, t('com_departs_champ'), nombre('departs', 20, { min: 0, max: 200, step: 1 })))] : null,
-      type === 'PERMANOVA' ? [el('label', {}, t('com_tests')), select('par', ['termes', 'marges', 'modele'], 'termes', (k) => t('com_par_' + k)),
+      type === 'PERMANOVA' ? [el('label', {}, t('com_tests')), select('par', ['termes', 'marges', 'modele'], 'termes', (k) => initiale(t('com_par_' + k))),
         el('label', {}, t('com_centre_dispersion')), select('dispersion', ['centroide', 'mediane'], 'centroide', (k) => t('com_' + k))] : null,
       type === 'MANTEL' ? [el('label', { title: t('com_distance_x_aide') }, t('com_distance_x')),
         el('select', { disabled: !p.coordonnees && o.distance_x !== 'geographique', onchange: (e) => { o.distance_x = e.target.value; rendre(); } },
@@ -532,7 +535,7 @@ const blocsAjustement = (m) => {
   if (aj.facteurs) b.push({ entetes: [t('variables'), 'R²', 'p'], lignes: lignesDe(aj.facteurs, ['variable', 'r2', 'p']).map((l) => [l[0], fmt(l[1], 4), pValeur(l[2])]) });
   return b;
 };
-const blocsPermanova = (m) => [{ texte: `${t('com_par_' + m.par)} · ${textePermutations(m)}` },
+const blocsPermanova = (m) => [{ texte: `${initiale(t('com_par_' + m.par))} · ${textePermutations(m)}` },
   { entetes: [t('terme'), t('ddl'), t('com_ss'), 'R²', t('ord_pseudo_f'), 'p'],
     lignes: lignesDe(m.table, ['terme', 'ddl', 'ss', 'R2', 'F', 'p']).map((l) => [l[0], fmt(l[1], 0), fmt(l[2], 5), fmt(l[3], 4), l[4] === null ? '' : fmt(l[4], 3), l[5] === null ? '' : pValeur(l[5])]) }]
   .concat(liste(m.dispersions).filter((d) => significatif(d.p_permutation)).length
@@ -546,7 +549,7 @@ const blocsMantel = (m) => [{ texte: t('com_mantel_note', { termes: liste(m.term
   .concat(m.test.r_partiel !== undefined && m.test.r_partiel !== null
     ? [{ texte: `${t('com_r_partiel')} (${liste(m.termes_z).join(', ')})${deuxPoints()}r = ${fmt(m.test.r_partiel, 4)}, p = ${pValeur(m.test.p_partiel)}` }] : []);
 const blocsCorrelogramme = (m) => (!m.correlogramme ? [{ texte: t('com_sans_correlogramme') }] : [{ texte: t('com_correlogramme_note', { n: m.correlogramme.classes }) },
-  { entetes: [t('com_classe'), t('com_centre_classe'), t('com_paires'), 'r', 'p', t('com_p_holm')],
+  { entetes: [t('com_classe'), t(m.distance_x === 'geographique' ? 'com_centre_classe_km' : 'com_centre_classe'), t('com_paires'), 'r', 'p', t('com_p_holm')],
     lignes: lignesDe(m.correlogramme.table, ['classe', 'centre', 'paires', 'r', 'p', 'p_corrige']).map((l) => [String(l[0]), fmt(l[1], 4), String(l[2]),
       l[3] === null ? '' : fmt(l[3], 4), l[4] === null ? '' : pValeur(l[4]), l[5] === null ? '' : pValeur(l[5])]) }]);
 PARTIES_TYPES.PCOA = [
@@ -658,10 +661,10 @@ ajouterTextes({
   com_dispersion_resume: 'Dispersion de « {v} » : F = {f}, p = {p} (permutations).',
   com_r_partiel: 'r partiel', com_z: 'Covariables Z',
   com_mantel_note: 'La distance X : euclidienne sur {termes} ({echelles}). Chaque point : une paire d’observations. Le test permute les observations de la distance Y (vegan::mantel) ; unilatéral.',
-  com_paires_extrait: 'Le graphique montre {n} des {total} paires, tirées au hasard.', com_distance_x: 'Distance X (euclidienne)', com_distance_y: 'Distance Y ({d})',
+  com_paires_extrait: 'Le graphique montre {n} des {total} paires, tirées au hasard.', com_distance_x_axe: 'Distance X (euclidienne)', com_distance_x_km: 'Distance géographique (km)', com_distance_y: 'Distance Y ({d})',
   com_correlogramme_note: 'La distance X découpée en {n} classes d’égale largeur ; dans chacune, la corrélation de Mantel entre les paires de la classe et la distance Y, de signe changé (positive : des observations proches plus semblables). Carré plein : p ≤ 0,05 après la correction progressive de Holm ; au-delà de la moitié, une classe n’est testée que si chaque observation y a une paire (vegan::mantel.correlog).',
   com_sturges: '(règle de Sturges)', com_sans_correlogramme: 'Pas de corrélogramme : les distances X ne varient pas.', com_r_mantel: 'r de Mantel',
-  com_classe_distance_x: 'Distance X (centre de la classe)', com_classe: 'Classe', com_centre_classe: 'Centre', com_p_holm: 'p (Holm)', com_corrige_mot: 'corrigée', com_teste: 'Testée',
+  com_classe_distance_x: 'Distance X (centre de la classe)', com_classe_distance_km: 'Distance géographique en km (centre de la classe)', com_classe: 'Classe', com_centre_classe: 'Centre', com_centre_classe_km: 'Centre (km)', com_p_holm: 'p (Holm)', com_corrige_mot: 'corrigée', com_teste: 'Testée',
   com_correlogramme_resume: 'Corrélogramme : {n} classes significatives sur {classes}.',
   com_variables_y: 'Variables Y', com_inertie_totale: 'Inertie totale', com_permutations_texte: 'Tests par permutation : {perm}.',
   com_resume_pcoa: 'La PCoA représente au mieux, sur peu d’axes, les distances entre observations ; les espèces sont à la moyenne pondérée de leurs observations.',
@@ -729,10 +732,10 @@ ajouterTextes({
   com_dispersion_resume: 'Dispersion of “{v}”: F = {f}, p = {p} (permutations).',
   com_r_partiel: 'partial r', com_z: 'Covariates Z',
   com_mantel_note: 'The X distance: Euclidean on {termes} ({echelles}). Each point: a pair of observations. The test permutes the observations of the Y distance (vegan::mantel); one-sided.',
-  com_paires_extrait: 'The plot shows {n} of the {total} pairs, drawn at random.', com_distance_x: 'X distance (Euclidean)', com_distance_y: 'Y distance ({d})',
+  com_paires_extrait: 'The plot shows {n} of the {total} pairs, drawn at random.', com_distance_x_axe: 'X distance (Euclidean)', com_distance_x_km: 'Geographic distance (km)', com_distance_y: 'Y distance ({d})',
   com_correlogramme_note: 'The X distance cut into {n} classes of equal width; in each, the Mantel correlation between the pairs of the class and the Y distance, its sign changed (positive: close observations more alike). Filled square: p ≤ 0.05 after Holm’s progressive correction; beyond half, a class is tested only if every observation has a pair in it (vegan::mantel.correlog).',
   com_sturges: '(Sturges’ rule)', com_sans_correlogramme: 'No correlogram: the X distances don’t vary.', com_r_mantel: 'Mantel r',
-  com_classe_distance_x: 'X distance (centre of the class)', com_classe: 'Class', com_centre_classe: 'Centre', com_p_holm: 'p (Holm)', com_corrige_mot: 'corrected', com_teste: 'Tested',
+  com_classe_distance_x: 'X distance (centre of the class)', com_classe_distance_km: 'Geographic distance in km (centre of the class)', com_classe: 'Class', com_centre_classe: 'Centre', com_centre_classe_km: 'Centre (km)', com_p_holm: 'p (Holm)', com_corrige_mot: 'corrected', com_teste: 'Tested',
   com_correlogramme_resume: 'Correlogram: {n} significant classes out of {classes}.',
   com_variables_y: 'Y variables', com_inertie_totale: 'Total inertia', com_permutations_texte: 'Permutation tests: {perm}.',
   com_resume_pcoa: 'The PCoA shows as well as it can, on few axes, the distances between observations; the species sit at the weighted average of their observations.',

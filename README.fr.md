@@ -28,8 +28,8 @@ exportez un script ou un rapport R Markdown / Quarto qui refait le modèle avec 
 Nuée. Chaque calcul est écrit en R, commenté, pour vérifier exactement ce qui a été calculé, et
 le modifier.
 
-L'interface est en français et en anglais (*Affichage › Langue*) ; les captures la montrent en
-français.
+L'interface est en anglais, par défaut, et en français (*Affichage › Langue*) ; les captures la
+montrent en français.
 
 ## Installer
 

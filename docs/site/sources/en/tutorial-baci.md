@@ -154,8 +154,8 @@ It says, among other things:
 
 and for the results:
 
-> Coefficients (on the scale of the link): “BACI period (2016)”: β = -0.153 (95% CI [-2.59, 2.29],
-> p = 0.9) ; “BACI impact (A1, A2, A3 vs T1, T2, T3)”: β = 3.28 (95% CI [-4.00, 10.6], p = 0.28) ;
+> Coefficients (on the link scale): “BACI period (2016)”: β = -0.153 (95% CI [-2.59, 2.29],
+> p = 0.9); “BACI impact (A1, A2, A3 vs T1, T2, T3)”: β = 3.28 (95% CI [-4.00, 10.6], p = 0.28);
 > “BACI period (2016)*BACI impact (A1, A2, A3 vs T1, T2, T3)”: β = 6.91 (95% CI [3.46, 10.4],
 > p < 0.001).
 

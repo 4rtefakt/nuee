@@ -1083,6 +1083,7 @@ resultat_mantel <- function(id) resultat_communaute(id, function(p, m, d) {
        vues_defaut = I(c("mantel", if (!is.null(m$correlogramme)) "correlogramme" else "liste_obs")),
        observations = data.frame(uid = m$observations, nom = m$noms, stringsAsFactors = FALSE),
        test = t, methode = m$options$methode, termes_x = I(m$X$termes), echelles_x = I(m$X$echelles), termes_z = I(m$Z$termes),
+       distance_x = m$options$distance_x %||% "variables",  # (« geographique » : en kilomètres)
        correlogramme = if (!is.null(m$correlogramme)) c(m$correlogramme[c("table", "classes", "sturges")], list(bornes = I(m$correlogramme$bornes))),
        paires = list(y = m$paires$y[garde], x = m$paires$x[garde], total = np))
 })

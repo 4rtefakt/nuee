@@ -11,7 +11,7 @@ const entre = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
 
 // The variables to choose among: each with its kind (and its number of categories)
 function ligneVariable(v) {
-  return [v.nom, el('span', { class: 'doux' }, ` · ${v.qualitative ? t('atelier_qualitative', { n: liste(v.categories).length }) : t('atelier_quantitative')}`)];
+  return [v.nom, el('span', { class: 'doux' }, ` · ${v.qualitative ? t(liste(v.categories).length === 1 ? 'atelier_qualitative_une' : 'atelier_qualitative', { n: liste(v.categories).length }) : t('atelier_quantitative')}`)];
 }
 
 // ------------------------------------------------------------ find and replace
@@ -242,7 +242,7 @@ export function dialogueVariables(app, p, uid = null) {
 
 ajouterTextes({
   atelier_remplacer: 'Chercher et remplacer…', atelier_categories: 'Catégories…', atelier_variables: 'Unités et descriptions…',
-  atelier_quantitative: 'quantitative', atelier_qualitative: 'qualitative, {n} catégories',
+  atelier_quantitative: 'quantitative', atelier_qualitative: 'qualitative, {n} catégories', atelier_qualitative_une: 'qualitative, 1 catégorie',
   atelier_chercher: 'Chercher', atelier_vides: 'les cellules vides', atelier_remplacer_par: 'Remplacer par',
   atelier_remplacer_vide: 'rien : la cellule devient vide', atelier_dans: 'Dans', atelier_toutes: 'toutes les variables',
   atelier_ces_variables: 'ces variables :', atelier_comparer: 'Trouver', atelier_cellule_entiere: 'la cellule entière',
@@ -275,7 +275,7 @@ ajouterTextes({
   atelier_aide_cellule: 'Double-clic : modifier. Clic, puis Ctrl+V : coller à partir d’ici des cellules copiées dans un tableur.',
 }, {
   atelier_remplacer: 'Find and replace…', atelier_categories: 'Categories…', atelier_variables: 'Units and descriptions…',
-  atelier_quantitative: 'quantitative', atelier_qualitative: 'qualitative, {n} categories',
+  atelier_quantitative: 'quantitative', atelier_qualitative: 'qualitative, {n} categories', atelier_qualitative_une: 'qualitative, 1 category',
   atelier_chercher: 'Find', atelier_vides: 'empty cells', atelier_remplacer_par: 'Replace with',
   atelier_remplacer_vide: 'nothing: the cell becomes empty', atelier_dans: 'In', atelier_toutes: 'all variables',
   atelier_ces_variables: 'these variables:', atelier_comparer: 'Match', atelier_cellule_entiere: 'the whole cell',

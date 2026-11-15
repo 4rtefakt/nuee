@@ -41,7 +41,7 @@ const pourcent = (v) => (v > 0 && v < 1 ? '< 1' : String(Math.round(v)));
 function faitsTexte(f) {
   if (!f) return '';
   const morceaux = [];
-  if (f.qualitative) morceaux.push(t('qa_faits_categories', { n: f.ncat }));
+  if (f.qualitative) morceaux.push(t(f.ncat === 1 ? 'qa_faits_categorie_une' : 'qa_faits_categories', { n: f.ncat }));
   else if (f.min === null) return t('qa_faits_inconnus');
   else {
     morceaux.push(t('qa_faits_bornes', { min: nombre(f.min), max: nombre(f.max) }), t(f.entiers ? 'qa_faits_entiers' : 'qa_faits_decimales'));

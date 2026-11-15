@@ -75,7 +75,7 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 
 /* ---------------------------------------------------------------- menus */
 .menu { position: fixed; z-index: 1000; min-width: 230px; padding: 4px; background: var(--fond-panneau); border: 1px solid var(--bord);
-  border-radius: 6px; box-shadow: var(--ombre); }
+  border-radius: 6px; box-shadow: var(--ombre); max-height: calc(100vh - 8px); overflow-y: auto; overflow-x: hidden; }
 .menu .item { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 4px; cursor: default; white-space: nowrap; }
 .menu .item:hover:not(.desactive) { background: var(--accent-doux); }
 .menu .item.desactive { color: var(--texte-doux); opacity: .55; }

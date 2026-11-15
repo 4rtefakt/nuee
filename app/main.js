@@ -41,7 +41,7 @@ let arretVoulu = false;  // R stopped on purpose (restart), not a crash
 // R in its environment and to the windows in a cookie no other site can send.
 const jeton = crypto.randomBytes(32).toString('hex');
 const cookieR = () => `nuee_${port}`;
-let langue = 'fr';  // the interface's, for the dialogs shown from here
+let langue = 'en';  // the interface's (English until it says), for the dialogs shown from here
 // Recovery copies of the projects not saved yet, written regularly by the interface; they
 // are deleted when the application closes normally.
 const dossierSecours = () => path.join(app.getPath('userData'), 'secours');

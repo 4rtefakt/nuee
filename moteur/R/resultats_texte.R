@@ -71,8 +71,9 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
   }, "")
   sig <- co$terme[!is.na(co$p) & co$p <= 0.05]
   p2 <- if (nrow(co)) {
-    c(paste0(if (fr) "Coefficients (sur l'échelle du lien" else "Coefficients (on the scale of the link", if (lien == "identity") "" else sprintf(" %s", lien),
-             if (fr) ") : " else "): ", paste(phrases, collapse = " ; "), "."),
+    c(paste0(if (fr) paste0("Coefficients (sur l'échelle du lien", if (lien == "identity") "" else paste0(" ", lien), ") : ")
+             else paste0("Coefficients (on the ", if (lien == "identity") "" else paste0(lien, " "), "link scale): "),
+             paste(phrases, collapse = if (fr) " ; " else "; "), "."),
       if (length(sig)) sprintf(if (fr) "Au seuil de 5 %%, %s %s un effet significatif%s." else "At the 5%% level, %s %s a significant effect%s.",
                                liste_mots(vapply(sig, guillemets_resultat, "", fr = fr), fr),
                                if (fr) (if (length(sig) > 1) "ont" else "a") else (if (length(sig) > 1) "have" else "has"),

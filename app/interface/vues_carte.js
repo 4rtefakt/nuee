@@ -7,7 +7,7 @@
 // selection shared with the project's models. The autocorrelation view gives Moran's I of a
 // variable or of a regression's residuals, its correlogram and the semivariogram.
 // Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, libelleResultat } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP, uniteAxe, etendue } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
@@ -95,7 +95,7 @@ function sources(ctx, pid, quantitativesSeules = false) {
   const modeles = ctx.tousModeles().filter((m) => m.projet === pid && m.observations);
   const cols = modeles.flatMap((m) => Object.keys(m.observations).filter((c) => !['uid', 'nom'].includes(c)
     && liste(m.observations[c]).some((x) => (quantitativesSeules ? typeof x === 'number' : x !== null)))
-    .map((c) => [`m${m.id}|${c}`, `${m.nom} · ${c}`]));
+    .map((c) => [`m${m.id}|${c}`, `${m.nom} · ${libelleResultat(c)}`]));
   return [...vars, ...cols];
 }
 

@@ -209,7 +209,7 @@ const TEXTES = {
     seuil_vip: 'Seuil VIP', chute: 'marche', marche_faible: 'pas de marche nette', vip_retenues: 'variables au-dessus',
     vip_note: 'Seuil à la plus grande marche des VIP triés autour de 0,8 (règle empirique de Wold). Pointillés : VIP = 1 (seuil habituel). Méthode de l’application.',
     filtrer_variables: 'Variables dont le nom contient…', colonnes_montrees: '{n} variables montrées sur {total}',
-    recherche: 'Filtrer…', lignes: 'lignes', obs: 'obs.', vars: 'var.', rmsee: 'RMSEE', rmsecv: 'RMSEcv',
+    recherche: 'Filtrer…', lignes: 'lignes', ligne: 'ligne', obs: 'obs.', vars: 'var.', rmsee: 'RMSEE', rmsecv: 'RMSEcv',
     // model dialog
     general: 'Général', variables: 'Variables', observations: 'Observations',
     type: 'Type', role: 'Rôle', role_x: 'X', role_y: 'Y', role_classe: 'Classe', role_aucun: '—',
@@ -889,7 +889,7 @@ const TEXTES = {
     seuil_vip: 'VIP cut-off', chute: 'step', marche_faible: 'no clear step', vip_retenues: 'variables above',
     vip_note: 'Cut-off at the largest step in the sorted VIPs around 0.8 (Wold’s rule of thumb). Dotted: VIP = 1 (usual cut-off). The app’s own method.',
     filtrer_variables: 'Variables whose name holds…', colonnes_montrees: '{n} of {total} variables shown',
-    recherche: 'Filter…', lignes: 'rows', obs: 'obs.', vars: 'vars', rmsee: 'RMSEE', rmsecv: 'RMSEcv',
+    recherche: 'Filter…', lignes: 'rows', ligne: 'row', obs: 'obs.', vars: 'vars', rmsee: 'RMSEE', rmsecv: 'RMSEcv',
     general: 'General', variables: 'Variables', observations: 'Observations',
     type: 'Type', role: 'Role', role_x: 'X', role_y: 'Y', role_classe: 'Class', role_aucun: '—',
     echelle: 'Scaling', echelle_defaut: 'Default scaling', echelle_UV: 'Unit variance (UV)', echelle_Par: 'Pareto', echelle_Ctr: 'Centring only', echelle_none: 'None',
@@ -1377,13 +1377,45 @@ export function ecrire(k, v) {
   try { localStorage.setItem(k, v); } catch { /* private window */ }
 }
 
-let langue = lire('langue') || 'fr';
+// English unless the person chose French (View › Language). Until 1.0 the default was French, and
+// the choice was kept only when changed: a profile that has shown an earlier version's What's new
+// (version_vue) and has no choice ran in French, and keeps it. Written once, so that a new
+// profile's What's new doesn't turn it French at its next start.
+let langue = lire('langue');
+if (langue !== 'fr' && langue !== 'en') {
+  langue = lire('version_vue') ? 'fr' : 'en';
+  ecrire('langue', langue);
+}
 
 export function t(cle, valeurs) {
-  let s = (TEXTES[langue] && TEXTES[langue][cle]) || TEXTES.fr[cle] || cle;
+  // (a string missing in the interface's language: the English one, else the French one)
+  let s = (TEXTES[langue] && TEXTES[langue][cle]) || TEXTES.en[cle] || TEXTES.fr[cle] || cle;
   // (every occurrence of a placeholder: a message may name its term twice)
   if (valeurs) for (const [k, v] of Object.entries(valeurs)) s = s.split(`{${k}}`).join(v);
   return s;
+}
+
+// A column of a model's results (its observations, its predictions) under its name in the
+// interface's language. The engine names them in French, and the names are keys too (residu,
+// groupe_vc…): only what is shown is translated. After a variable's name, the suffix is
+// translated and the name kept ("flamingo observé": "flamingo observed").
+const RESULTATS = {
+  fr: { residu: 'résidu', quantile_normal: 'quantile normal', cook: 'distance de Cook', groupe_vc: 'groupe VC',
+    classe_predite: 'classe prédite', classe_predite_vc: 'classe prédite (VC)', DModX_pondere: 'DModX (pond.)', DModX_absolu: 'DModX (abs.)' },
+  en: { residu: 'residual', quantile_normal: 'normal quantile', levier: 'leverage', cook: 'Cook’s distance', groupe_vc: 'CV group',
+    classe: 'class', classe_predite: 'predicted class', classe_predite_vc: 'predicted class (CV)', 'classe ajustée': 'fitted class',
+    'classe prédite (VC)': 'predicted class (CV)', 'classe prédite (OOB)': 'predicted class (OOB)', voisin: 'neighbouring cluster',
+    feuille: 'leaf', DModX_pondere: 'DModX (weighted)', DModX_absolu: 'DModX (absolute)' },
+};
+const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'],
+  ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
+export function libelleResultat(cle) {
+  const dico = RESULTATS[langue] || RESULTATS.fr;
+  if (cle in dico) return dico[cle];
+  if (langue !== 'en') return cle;
+  if (cle.startsWith('probabilité ')) return `probability ${cle.slice('probabilité '.length)}`;
+  for (const [fr, en] of SUFFIXES_RESULTATS) if (cle.endsWith(` ${fr}`)) return `${cle.slice(0, -fr.length)}${en}`;
+  return cle;
 }
 
 export function langueActuelle() { return langue; }
