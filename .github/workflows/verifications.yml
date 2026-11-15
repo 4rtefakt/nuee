@@ -28,12 +28,12 @@ jobs:
           Add-Content $env:GITHUB_PATH 'C:\R\bin'
 
       - name: Paquets R
-        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra'), repos = 'https://cloud.r-project.org')"
+        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra', 'Distance'), repos = 'https://cloud.r-project.org')"
 
       - name: Vérifications du moteur
         shell: bash
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats trim communautes familles forets boosting raster; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats trim communautes familles forets boosting raster distance; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -70,7 +70,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats trim communautes familles forets boosting raster; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats trim communautes familles forets boosting raster distance; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -168,7 +168,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats trim communautes familles forets boosting raster; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats trim communautes familles forets boosting raster distance; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"

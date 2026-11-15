@@ -1664,6 +1664,64 @@ async function principal() {
       try { await api('hca', { modele: tr.id }); } catch (err) { refusHCA = err.message; }
       verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
     });
+    await etape('échantillonnage par distances : densité et effectif de transects linéaires (moteur/R/distance.R)', async () => {
+      // 2 strates, 14 lignes : des oiseaux détectés selon une demi-normale (σ = 30 m), une ligne par détection, les lignes sans détection gardées
+      let g = 11;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tstrate\taire\ttransect\tlongueur\tdistance\ttaille'];
+      let k = 0;
+      for (const [strate, aire, n] of [['bocage', 12, 8], ['marais', 7, 6]]) {
+        for (let j = 1; j <= n; j += 1) {
+          const longueur = (1 + 2 * alea()).toFixed(2);
+          let vus = 0;
+          for (let a = 0; a < 40 * longueur; a += 1) {
+            const x = 100 * alea();
+            if (alea() < Math.exp(-(x * x) / (2 * 30 * 30))) {
+              k += 1;
+              vus += 1;
+              lignes.push([`d${k}`, strate, aire, `${strate}-${j}`, longueur, x.toFixed(1), 1 + Math.floor(3 * alea())].join('\t'));
+            }
+          }
+          if (!vus) { k += 1; lignes.push([`d${k}`, strate, aire, `${strate}-${j}`, longueur, '', ''].join('\t')); }
+        }
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Transects' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const options = { transect: 'ligne', echantillon: { by: 'variable', variable: v.transect }, effort: v.longueur, strate: { by: 'variable', variable: v.strate }, aire: v.aire,
+        troncature: { type: 'pourcentage', valeur: 5 }, cle: 'hn', serie: 'cos', ajustements: 'aic', monotonie: 'stricte', unites: { distance: 'm', effort: 'km', aire: 'km2' } };
+      const def = { projet: q.id, type: 'DISTANCE', x: [], y: [v.distance], echelle: 'none', nom: 'Distance', options };
+      const verif = await api('verifier', def);
+      verifier(![].concat(verif.variables.uid || []).length && ![].concat(verif.observations.uid || []).length, `vérification avant l’ajustement : ${JSON.stringify(verif.variables)}`);
+      const dm = await api('ajuster', def);
+      const dn = dm.densite;
+      verifier(dm.analyse === true && dm.prediction === false && dm.type === 'DISTANCE' && dm.A === 0 && dm.N === k && dm.n > 50
+        && [].concat(dm.vues_defaut).join() === 'distance_detection,distance_densite' && / · D [0-9.,]+ \/km² \(CV /.test(dm.chiffres)
+        && [].concat(dn.strate).length === 3 && [].concat(dn.strate)[2] === null && [].concat(dn.D).every((x) => x > 0) && [].concat(dn.N).every((x) => x > 0)
+        && [].concat(dm.candidats.modele)[0] === 'hn' && dm.courbe.x.length === 101 && dm.adequation.qq.uid.length === dm.n && typeof dm.adequation.cvm.p === 'number'
+        && dm.troncature.pourcentage === 5 && dm.au_dela > 0 && dm.effectif.quoi === 'ESW' && dm.reglages.options.cle === 'hn', `distance : ${dm.chiffres}, n = ${dm.n}`);
+      const groupes = await api('ajuster', { ...def, nom: 'Distance 2', options: { ...options, taille: v.taille, cle: 'hr', serie: 'cos', ajustements: 1, troncature: { type: 'distance', valeur: 90 } } });
+      verifier(groupes.groupes === true && groupes.modele_detection === 'hr + cos(2)' && [].concat(groupes.densite_groupes.D).length === 3 && groupes.troncature.w === 90,
+        `groupes, hasard et un terme : ${groupes.chiffres}`);
+      const points = await api('ajuster', { ...def, nom: 'Distance 3', options: { ...options, transect: 'point', effort: null, strate: null, aire: null, unites: { distance: 'm', effort: 'm', aire: 'ha' } } });
+      verifier(points.transect === 'point' && points.effectif.quoi === 'EDR' && points.densite_seule === true && [].concat(points.densite.D).length === 1 && / \/ha /.test(points.chiffres),
+        `points, la densité seule : ${points.chiffres}`);
+      const classes = await api('ajuster', { ...def, nom: 'Distance 4', options: { ...options, intervalles: [0, 15, 30, 50, 75, 100] } });
+      verifier([].concat(classes.intervalles).join() === '0,15,30,50,75,100' && classes.adequation.cvm === null && classes.adequation.qq === null
+        && classes.histogramme.compte.length === 5 && classes.troncature.w === 100, `distances par intervalles : ${classes.chiffres}`);
+      const re = await api('reajuster', { modele: dm.id, exclues: [1] });
+      verifier(re.type === 'DISTANCE' && re.N === k - 1, `réajusté : N = ${re.N}`);
+      const mt = await api('methodes', { modele: dm.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /distance sampling/.test(x)) && mt.paragraphes.some((x) => /Satterthwaite/.test(x)) && mt.references.some((x) => /^Buckland/.test(x))
+        && mt.references.some((x) => /^Fewster/.test(x)), 'texte des méthodes');
+      const e = await api('exporter', { modele: dm.id, chemin: path.join(dossier, 'distance.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      let refus = '';
+      try { await api('ajuster', { ...def, options: { ...options, effort: null } }); } catch (err) { refus = err.message; }
+      verifier(/longueur de la ligne/.test(refus), `des lignes sans effort refusées : « ${refus} »`);
+      let refusScript = '';
+      try { await api('script_r', { modele: dm.id, chemin: path.join(dossier, 'distance.R'), version: 'essai' }); } catch (err) { refusScript = err.message; }
+      verifier(/Pas encore/.test(refusScript), `export vers R : « ${refusScript} »`);
+    });
     await etape('forêts aléatoires et arbres boostés (moteur/R/forets.R, boosting.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe, une présence
       let g = 7;

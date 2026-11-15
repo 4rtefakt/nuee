@@ -2,7 +2,8 @@
 # (regression.R) et les autres analyses, chacune dans son fichier : analyse de redondance (RDA)
 # et analyse des correspondances (CA), analyse discriminante linéaire (LDA), arbre de décision
 # (TREE), k-moyennes (KMEANS), indices et tendances de comptages (TRIM, trim.R), forêt aléatoire
-# (FOREST, forets.R), arbres boostés (BOOST, boosting.R). Leur type est celui de definir_modele() ;
+# (FOREST, forets.R), arbres boostés (BOOST, boosting.R), échantillonnage par distances (DISTANCE,
+# distance.R). Leur type est celui de definir_modele() ;
 # leurs réglages propres sont dans d$options.
 #
 # Chaque analyse suit la même convention de noms, pour que le moteur et le serveur la trouvent
@@ -31,7 +32,7 @@
 # demandes qui supposent des composantes et leurs scores (serveur.R : SANS_REGRESSION) lui sont
 # refusées, comme aux régressions ; le script de toute une séance la laisse de côté (elle
 # s'exporte seule).
-AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS", "CCA", "INDVAL", "TRIM", "PCOA", "NMDS", "PERMANOVA", "MANTEL", "FOREST", "BOOST")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R ; TRIM : trim.R ; PCoA, NMDS, PERMANOVA, Mantel : communautes.R ; forêts : forets.R ; arbres boostés : boosting.R)
+AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS", "CCA", "INDVAL", "TRIM", "PCOA", "NMDS", "PERMANOVA", "MANTEL", "FOREST", "BOOST", "DISTANCE")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R ; TRIM : trim.R ; PCoA, NMDS, PERMANOVA, Mantel : communautes.R ; forêts : forets.R ; arbres boostés : boosting.R ; échantillonnage par distances : distance.R)
 
 est_autre_analyse <- function(d) isTRUE(as.character(d$type %||% "") %in% AUTRES_ANALYSES)
 

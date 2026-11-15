@@ -27,6 +27,7 @@ import './vues_carte.js';
 import './vues_par_reponse.js';
 import './vues_trim.js';
 import './vues_forets.js';
+import './vues_distance.js';
 import { installerDocuments } from './documents.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 

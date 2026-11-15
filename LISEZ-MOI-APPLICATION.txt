@@ -1612,6 +1612,88 @@ ses références, Exporter et rapport comme pour les autres modèles, et Exporte
 ou un rapport qui refait le modèle avec R seul, les fonctions de TRIM du moteur de Nuée recopiées
 dedans (les mêmes indices, totaux, pentes et tests que Nuée). Pas de prédiction.
 
+Échantillonnage par distances : densité et effectif
+---------------------------------------------------
+Nouveau modèle › type « Échantillonnage par distances (densité, effectif) » : la densité et
+l'effectif d'une population d'après les distances des animaux détectés depuis des lignes
+(transects linéaires) ou des points (points d'écoute), comme les fonctions ds() et dht2() du
+paquet Distance les calculent (Buckland et al. 2001 ; Miller et al. 2019). Les données : le
+tableau à plat, une ligne par détection, comme Distance le lit :
+  - la distance (Y) : la distance perpendiculaire à la ligne, ou la distance au point ;
+  - le transect (la ligne ou le point : un identifiant ou une variable) et son effort, le même
+    sur toutes ses lignes : la longueur de la ligne, ou pour des points le nombre de passages
+    (sans colonne : un passage par point) ;
+  - facultatifs : la strate (la région : un identifiant ou une variable) et son aire, la même
+    sur toutes ses lignes (sans aire, ou des aires toutes nulles, la densité seulement) ; la
+    taille de chaque groupe détecté ;
+  - un transect sans aucune détection reste une ligne, sa distance vide, pour que son effort
+    compte ; une ligne sans transect ni distance est laissée de côté.
+Par exemple, avec les noms de colonnes de Distance (la fenêtre les propose d'après les noms) :
+    Region.Label  Area  Sample.Label  Effort  distance  size
+    Nord          630   N-01          2.4     35        2
+    Nord          630   N-01          2.4     120       1
+    Nord          630   N-02          1.8               (aucune détection)
+Onglet Général :
+  - des transects linéaires ou des points ;
+  - la troncature : la plus grande distance (le défaut de ds), une distance, ou un pourcentage
+    des plus grandes distances (5 à 10 % est l'usage) ; une troncature à gauche au besoin. Les
+    détections au-delà sortent du modèle, leur transect reste ;
+  - des intervalles, pour des distances relevées par classes (comme ds(cutpoints = )) : leurs
+    bornes, par exemple « 0 10 25 50 100 » ; chaque distance du tableau (la vraie, ou le milieu
+    de sa classe) compte dans son intervalle, la première borne est la troncature à gauche et la
+    dernière w ; la vraisemblance est alors celle des comptes des classes, et l'adéquation le
+    khi² sur elles ;
+  - la clé de la fonction de détection g(x) : demi-normale exp(−x²/2σ²), hasard (hazard-rate)
+    1 − exp(−(x/σ)^−b) (b ≥ 1, comme mrds) ou uniforme ;
+  - les termes d'ajustement : cosinus (le défaut), polynômes d'Hermite ou polynômes simples, leur
+    nombre choisi par l'AIC comme ds() le fait (la clé seule, puis un terme de plus tant que
+    l'AIC baisse, cinq au plus ; ordres 2, 3, 4… des cosinus, 4, 6, 8… d'Hermite et des
+    polynômes, 1, 2, 3… et 2, 4, 6… avec la clé uniforme) ou fixé ; les distances des termes
+    divisées par la troncature w (le défaut de ds) ou par σ ;
+  - la monotonie : la contrainte de mrds sur une fonction à termes d'ajustement, en 10 distances
+    de 0 à w : stricte (le défaut : g décroît), faible (g reste sous g(0)) ou aucune ; g y reste
+    positive ;
+  - les unités des distances, de l'effort (des lignes) et des aires, ou un facteur de conversion
+    (convert_units de Distance) : la densité est par unité d'aire, et les résultats le disent.
+La fonction de détection est ajustée par le maximum de vraisemblance des distances exactes ; la
+variance de ses paramètres vient de la somme des produits des scores des distances, comme mrds ;
+p, la probabilité moyenne de détection dans la troncature, et son erreur-type par la méthode
+delta ; la demi-largeur effective de bande ESW = p w (lignes) ou le rayon effectif de détection
+EDR = w √p (points). La densité de chaque strate est D = n / (a p), a l'aire couverte (2 w L, ou
+2 (w − L) L avec une troncature à gauche, pour des lignes ; π w² K pour des points) ; sa variance
+réunit celle du taux de rencontre entre les transects (l'estimateur R2 pour des lignes, P2 pour
+des points, Fewster et al. 2009), celle de p et celle de la taille moyenne des groupes ; son
+intervalle à 95 % est log-normal avec les degrés de liberté de Satterthwaite, comme dht2. Le
+total sur les strates additionne leurs effectifs (avec des aires) ou pondère leurs densités par
+leurs aires couvertes (sans). Refusés, et nommés : une distance négative, un effort manquant ou
+nul, deux efforts pour un transect, deux aires pour une strate, une aire nulle parmi d'autres,
+une distance sans transect.
+
+Vues : Résumé (le modèle retenu et l'AIC de chaque modèle ajusté en chemin, p et ESW ou EDR avec
+leurs erreurs-types, les paramètres, l'adéquation, la densité et l'effectif d'ensemble avec
+leurs intervalles ; ce qui a été laissé de côté) ; Fonction de détection (l'histogramme des
+distances, chaque barre son compte sur celui qu'elle aurait si tous les animaux étaient
+détectés, comme plot.ds de mrds, sous la fonction g ajustée ; chaque détection sur la courbe, un
+clic choisit sa ligne ; pour des points, la densité des distances f(r) = 2r g(r) / (w² p)
+aussi ; dessous, les classes du khi²) ; Diagramme quantile-quantile (la répartition ajustée de
+chaque distance contre la répartition empirique, avec le test de Cramér–von Mises ; pas pour des
+distances par intervalles) ; Densité et
+effectif (par strate et au total : aire, aire couverte, effort, transects, détections, taux de
+rencontre et son CV, D, son erreur-type, son CV, son intervalle à 95 % et ses ddl, N et son
+intervalle, la part de la variance due au taux de rencontre, à la détection et à la taille des
+groupes ; avec des groupes, la densité des groupes aussi). Texte des méthodes avec ses
+références, Exporter et rapport comme pour les autres modèles ; pas de prédiction, et pas encore
+d'export vers R. Les covariables de la fonction de détection (MCDS) ne sont pas encore prises.
+
+Les résultats sont ceux de Distance 2.0 (moteur/tests/verifier_distance.R les compare), à trois
+différences connues près : Nuée intègre la clé hasard exactement là où mrds approche son
+intégrale par un spline de lissage (des lignes, la clé sans terme d'ajustement : les paramètres
+et p diffèrent d'environ 1e-4) ; avec une troncature à gauche de transects linéaires, l'aire
+couverte est 2 (w − L) L, là où dht2 garde 2 w L ; l'optimiseur de mrds sous la contrainte de
+monotonie s'arrête à 1e-6 près de la vraisemblance, si bien que ses estimations peuvent différer
+de celles de Nuée au quatrième chiffre, ou, sur de rares données, s'arrêter à un autre optimum
+local.
+
 Forêts aléatoires et arbres boostés
 -----------------------------------
 Nouveau modèle › type « Forêt aléatoire » (le paquet ranger, Wright et Ziegler 2017) : une
