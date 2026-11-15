@@ -111,7 +111,7 @@ function rendreResumeDistance(conteneur, ctx, m) {
       el('p', { class: 'note' }, [m.cle === 'hr' ? t('distance_parametre_b') : null, m.cle !== 'unif' ? t('distance_parametre_sigma') : null,
         liste(m.ordres).length ? t('distance_parametre_a') : null, t('distance_parametres_note')].filter(Boolean).join(' '))] : null,
     el('h4', {}, t('distance_adequation')), tableCompacte(['', t('distance_statistique'), t('ddl'), 'p'], lignesAdequation(m)),
-    el('p', { class: 'note' }, t('distance_adequation_note')),
+    el('p', { class: 'note' }, t(parIntervalles(m) ? 'distance_adequation_note_intervalles' : 'distance_adequation_note')),
     notesDistance(m).map((x) => el('p', { class: 'note' }, x))));
   notes.retrouver();
 }
@@ -449,6 +449,7 @@ ajouterTextes({
   distance_parametre_sigma: 'ln_sigma : le logarithme de l’échelle σ de la clé.', distance_parametre_a: 'Puis chaque terme d’ajustement (série_ordre).',
   distance_parametres_note: 'Erreurs-types d’après la somme des produits des scores des distances, comme mrds.',
   distance_adequation: 'Adéquation', distance_statistique: 'Statistique', distance_cvm: 'Cramér–von Mises (W)', distance_khi2: 'khi² ({k} classes)',
+  distance_adequation_note_intervalles: 'Un p faible : la fonction de détection ne décrit pas bien les distances. Le khi² compare les comptes de chaque intervalle à ceux qu’attend le modèle (des distances par intervalles : ni Cramér–von Mises ni diagramme quantile-quantile, comme ddf.gof).',
   distance_adequation_note: 'Un p faible : la fonction de détection ne décrit pas bien les distances. Cramér–von Mises compare la répartition ajustée des distances à leur répartition observée (le diagramme quantile-quantile) ; le khi², les comptes des classes égales de l’histogramme à ceux qu’attend le modèle.',
   distance_phrase_p: 'Probabilité moyenne de détection dans la troncature : p = {p} (erreur-type {se}, CV {cv}) ; {quoi} = {e} (erreur-type {se_e}).',
   distance_phrase_D: 'D = {D}{u} (CV {cv} ; IC à 95 % {bas} – {haut} ; {ddl} ddl).', distance_phrase_N: 'Effectif N = {N} (IC à 95 % {bas} – {haut}).',
@@ -521,6 +522,7 @@ ajouterTextes({
   distance_parametre_sigma: 'ln_sigma: the logarithm of the key’s scale σ.', distance_parametre_a: 'Then each adjustment term (series_order).',
   distance_parametres_note: 'Standard errors from the outer product of the distances’ scores, as mrds.',
   distance_adequation: 'Goodness of fit', distance_statistique: 'Statistic', distance_cvm: 'Cramér–von Mises (W)', distance_khi2: 'chi-square ({k} classes)',
+  distance_adequation_note_intervalles: 'A small p: the detection function doesn’t describe the distances well. The chi-square compares the counts of each interval with those the model expects (distances in intervals: neither Cramér–von Mises nor QQ plot, as ddf.gof).',
   distance_adequation_note: 'A small p: the detection function doesn’t describe the distances well. Cramér–von Mises compares the fitted distribution of the distances with their observed one (the QQ plot); the chi-square, the counts of the histogram’s equal classes with those the model expects.',
   distance_phrase_p: 'Average probability of detection within the truncation: p = {p} (standard error {se}, CV {cv}); {quoi} = {e} (standard error {se_e}).',
   distance_phrase_D: 'D = {D}{u} (CV {cv}; 95% CI {bas} – {haut}; {ddl} df).', distance_phrase_N: 'Abundance N = {N} (95% CI {bas} – {haut}).',
