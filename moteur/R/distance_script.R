@@ -50,7 +50,7 @@ NOMS_DISTANCE_EN <- c(
   khi2 = "chi_square", ajustee = "fitted_cdf", empirique_bas = "empirical_below", empirique = "empirical", de = "from",
   ligne = "stratum_row", lignes = "rows", couverte = "covered", aire = "area", individus = "individuals",
   rencontre = "encounter_rate", se_rencontre = "se_encounter_rate", cv_rencontre = "cv_encounter_rate", ddl_rencontre = "df_encounter_rate",
-  er_ddl = "er_df", tailles = "sizes", g_moy = "g_mean", taille_moyenne = "mean_size", se_taille = "se_size", var_groupes_N = "var_groups_N",
+  er_ddl = "er_df", er_ddl_dht2 = "er_df_dht2", ddl_dht2 = "df_dht2", tailles = "sizes", g_moy = "g_mean", taille_moyenne = "mean_size", se_taille = "se_size", var_groupes_N = "var_groups_N",
   cv_groupes = "cv_groups", poids = "weights", de_chaque = "of_each", strate = "stratum", strates = "strata", densite_seule = "density_only",
   groupes = "groups", taille_x = "size_x", strate_x = "stratum_x", bas_D = "lower_D", haut_D = "upper_D", bas_N = "lower_N", haut_N = "upper_N",
   part_rencontre = "share_encounter_rate", part_detection = "share_detection", part_groupes = "share_groups", unites = "units",
@@ -103,7 +103,7 @@ ENTETES_DISTANCE_EN <- c(
   DISTANCE_UNITES_LONGUEUR = "Distance's lengths and areas (units_table), in metres and square metres.",
   facteur_echantillonnage = "The factor that puts the truncation w in the unit of the areas, as Distance's convert_units: lines, (distance × effort) / area, 2 w L is then an area; points, distance / √area, π w² is one.",
   variance_rencontre = "mrds's encounter rate variance (varn): R2 (lines) and P2 (points) of Fewster et al. (2009); `l` the transects' efforts, `n` their detections; 0 with a single transect (dht2).",
-  densite_echantillonnage = "The density and abundance by stratum and overall, as dht2 (geographical stratification, without multiplier): `t` the data, `p`, `var_p` the probability of detection and its variance, `q` the parameters of the detection function, `cu` the units factor. A detection function with covariates (`ht`: the probability of detection of each detection, its gradient by the parameters and their covariance V): the Horvitz–Thompson covered abundance Σ si / pi (si the group size, 1 without groups), and the variance of the detection by the delta method, ∇N' V ∇N, ∇N = −(A / a) Σ si ∇pi / pi² (for the total, the sum of the strata's gradients weighted as their abundances).",
+  densite_echantillonnage = "The density and abundance by stratum and overall, as dht2 (geographical stratification, without multiplier): `t` the data, `p`, `var_p` the probability of detection and its variance, `q` the parameters of the detection function, `cu` the units factor. A detection function with covariates (`ht`: the probability of detection of each detection, its gradient by the parameters and their covariance V): the Horvitz–Thompson covered abundance Σ si / pi (si the group size, 1 without groups), and the variance of the detection by the delta method, ∇N' V ∇N, ∇N = −(A / a) Σ si ∇pi / pi² (for the total, the sum of the strata's gradients weighted as their abundances). Without stratum areas, the total weights the strata's densities by their covered areas, and its degrees of freedom are Satterthwaite's with these weights, where dht2 leaves them out of the denominator (df_dht2: the ones it gives, when they differ).",
   tests_adequation = "The goodness-of-fit tests from the classes (`edges`) and their expected counts, and the fitted distribution `F` of each distance (NULL for distances in intervals): the chi-square (df = classes − 1 − parameters), Cramér–von Mises and the QQ plot (detection_goodness_of_fit).",
   matrice_covariables = "The matrix of the covariates of the scale, as model.matrix(~ x1 + x2) of ds(formula = ~ x1 + x2) (mrds: setcov): the intercept, then each covariate in its order, a quantitative one as it is, a qualitative one (a factor) by a 0/1 indicator of each of its categories present but the first, its reference category (R's treatment contrasts; mrds leaves out the categories absent from the detections, process.data). `columns`: the covariates of the detections, a named list. Its columns are named as R names them (“OBsTJS”); attr(, \"termes\"): the covariate, the category (NA for a quantitative one) and the Nuée name (“OBs(TJS)”) of each; attr(, \"references\"): the reference category of each qualitative covariate.",
   avec_covariables = "The detection function `fd` whose scale depends on the covariates `Z` (covariate_matrix, one row per detection): σ = exp(Z β) for each detection, ln σ linear as in ds(formula = ) (Marques and Buckland, 2003). It keeps the distinct combinations of the covariates (the detection function depends on the covariates through them only) and that of each detection, the formula (“OBs + MAS”, for its label) and the names of its coefficients.",
@@ -131,6 +131,10 @@ COMMENTAIRES_DISTANCE_EN <- c(
   "# (une taille de données trop petite pour tant de paramètres : la recherche s'arrête là, comme mrds)" = "# (a data size too small for so many parameters: the search stops there, as mrds)",
   "# (une strate sans détection : N = 0, erreur-type 0, ni CV ni ddl, comme dht2)" = "# (a stratum without detection: N = 0, standard error 0, neither CV nor df, as dht2)",
   "# (une grandeur de chaque strate : f de sa ligne)" = "# (a quantity of each stratum: f of its row)",
+  "# (les degrés de liberté de Satterthwaite de cette somme pondérée, (Σ wi² vi)² / Σ (wi² vi)² / ddli," = "# (the Satterthwaite degrees of freedom of this weighted sum, (Σ wi² vi)² / Σ (wi² vi)² / dfi,",
+  "# vi la variance du taux de rencontre de la strate i ; dht2 laisse les poids hors du dénominateur," = "# vi the encounter rate variance of stratum i; dht2 leaves the weights out of the denominator,",
+  "# (Σ wi² vi)² / Σ vi² / ddli, ce qui en donne bien moins sans aire de strate : ceux de son total," = "# (Σ wi² vi)² / Σ vi² / dfi, which gives far fewer without stratum areas: those of its total,",
+  "# ddl_dht2, quand ils diffèrent ; avec des aires, wi = 1 et les deux sont les mêmes)" = "# df_dht2, when they differ; with areas, wi = 1 and the two are the same)",
   "# (les détections de chaque combinaison)" = "# (the detections of each combination)")
 
 # Les définitions de distance.R dont le script de `m` a besoin (et ce qu'elles appellent :
@@ -411,14 +415,16 @@ code_calcul_distance <- function(projet, d, m, tab, langue) {
                              couverte, if (aire) ", N = A D, A l'aire de la strate" else "",
                              if (point) "P2" else "R2", if (covariables) "la fonction de détection (∇N' V ∇N, ∇N le gradient de N par ses paramètres)" else "p",
                              if (groupes) " et celle de la taille moyenne des groupes (D compte les individus)" else "",
-                             if (!plusieurs) "" else if (aire) " Le total : la somme des effectifs des strates, sur la somme de leurs aires." else " Le total : les densités des strates pondérées par leurs aires couvertes."),
+                             if (!plusieurs) "" else if (aire) " Le total : la somme des effectifs des strates, sur la somme de leurs aires."
+                             else " Le total : les densités des strates pondérées par leurs aires couvertes, ses degrés de liberté par la formule de Satterthwaite avec ces poids (dht2 les laisse hors du dénominateur et en donne moins : ddl_dht2)."),
                      sprintf("The density%s by stratum%s, as dht2 of the Distance package: D = %s, a the covered area (%s)%s; its variance combines that of the encounter rate n / L between transects (the %s estimator of Fewster et al., 2009), that of %s (delta method)%s; Satterthwaite degrees of freedom and the log-normal 95%% interval.%s",
                              if (aire) " and abundance" else "", if (plusieurs) " and overall" else "",
                              if (!covariables) "n / (a p)" else if (groupes) "Σ si / pi / a, the sum over its detections (Horvitz–Thompson)" else "Σ 1 / pi / a, the sum over its detections (Horvitz–Thompson)",
                              couverte, if (aire) ", N = A D, A the stratum's area" else "",
                              if (point) "P2" else "R2", if (covariables) "the detection function (∇N' V ∇N, ∇N the gradient of N by its parameters)" else "p",
                              if (groupes) " and that of the mean group size (D counts individuals)" else "",
-                             if (!plusieurs) "" else if (aire) " The total: the sum of the strata's abundances, over the sum of their areas." else " The total: the strata's densities weighted by their covered areas.")),
+                             if (!plusieurs) "" else if (aire) " The total: the sum of the strata's abundances, over the sum of their areas."
+                             else " The total: the strata's densities weighted by their covered areas, its degrees of freedom by Satterthwaite's formula with these weights (dht2 leaves them out of the denominator and gives fewer: df_dht2).")),
                   mots_facteur,
                   if (is.null(r$facteur)) tx(sprintf("Le transect garde son nom du moteur : « %s » (%s).", r$transect, if (point) "des points" else "des lignes"),
                                              sprintf("The transect keeps its name in the engine: \"%s\" (%s).", r$transect, if (point) "points" else "lines")))),

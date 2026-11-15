@@ -1657,12 +1657,14 @@ rate's between transects (the R2 estimator for lines, P2 for points, Fewster et 
 of p, and that of the mean group size; its 95% interval is log-normal with Satterthwaite degrees
 of freedom, as dht2. The total over the strata adds their abundances (with areas) or weights
 their densities by their covered areas (without). Without areas, the total's degrees of freedom
-are dht2's: its Satterthwaite formula leaves the strata's weights out of its denominator, which
-gives fewer degrees of freedom, and a wider total interval, than with them (0.6 on Distance's
-amakihi data, 7 strata). The strata's intervals don't depend on it. Nuée keeps it to give
-Distance's numbers, and the Summary, the Density and abundance view and the Methods text say so.
-Refused, and named: a negative distance, a missing or zero effort, two efforts for one transect,
-two areas for one stratum, an area of zero beside others, a distance without a transect.
+are those of Satterthwaite's formula with the strata's weights (their covered areas). dht2
+leaves the weights out of its denominator, which gives fewer degrees of freedom, and a wider
+total interval, sometimes absurdly so: on Distance's amakihi data (7 strata, hn ~ OBs + MAS),
+0.6 instead of 871, and an interval of 0.09 to 434 birds per hectare instead of 5.85 to 6.89.
+The strata's intervals don't depend on it. The Summary, the Density and abundance view and the
+Methods text give both numbers. Refused, and named: a negative distance, a missing or zero
+effort, two efforts for one transect, two areas for one stratum, an area of zero beside others,
+a distance without a transect.
 With covariates, the likelihood is that of each detection's distance given its covariates
 (mrds's flpt.lnl, or the counts of the classes); the coefficients are fitted on the quantitative
 covariates centred and scaled, then returned in their units. The same settings without
@@ -1707,16 +1709,17 @@ covariates on Distance's amakihi, ETP_Dolphin, ClusterExercise, unimak and golft
 these known differences: Nuée integrates the hazard-rate key exactly where mrds approximates its
 integral by a smoothing spline (lines, the key without adjustment terms, with or without
 covariates: parameters and p differ by about 1e-4); with a left truncation of line transects the
-covered area is 2 (w − L) L, where dht2 keeps 2 w L; mrds's optimizer under the monotonicity
-constraint stops within 1e-6 of the likelihood, so its estimates can differ from Nuée's in the
-fourth digit, or, on rare data, settle on another local optimum. With covariates: ds can stop
-short of the maximum on poorly conditioned covariates (on unimak, hn ~ MSTDO + Hour, on a
-plateau where σ is e^9 or more, thousands of times w, 21.9 log-likelihood units below the
-maximum Nuée finds; started from Nuée's estimates, ds stays there); a combination of covariates
-whose σ runs off to infinity is refused, where ds returns the point where its optimizer stopped;
-when the group size is a covariate, dht2 recomputes each detection's probability with a size of
-1 for the variance of its density of groups, where Nuée keeps the detection's own (the densities
-of individuals agree);
+covered area is 2 (w − L) L, where dht2 keeps 2 w L; without stratum areas, the total's degrees
+of freedom are Satterthwaite's with the strata's weights, where dht2 leaves them out of its
+denominator and gives fewer; mrds's optimizer under the monotonicity constraint stops within
+1e-6 of the likelihood, so its estimates can differ from Nuée's in the fourth digit, or, on rare
+data, settle on another local optimum. With covariates: ds can stop short of the maximum on
+poorly conditioned covariates (on unimak, hn ~ MSTDO + Hour, on a plateau where σ is e^9 or
+more, thousands of times w, 21.9 log-likelihood units below the maximum Nuée finds; started from
+Nuée's estimates, ds stays there); a combination of covariates whose σ runs off to infinity is
+refused, where ds returns the point where its optimizer stopped; when the group size is a
+covariate, dht2 recomputes each detection's probability with a size of 1 for the variance of its
+density of groups, where Nuée keeps the detection's own (the densities of individuals agree);
 for points, the density of the distances drawn is the mean of the detections' f(r | z), the
 density the histogram estimates, where plot.ds weights them by 1/pi. And dht2 keeps a transect
 without detection within the truncation only if its Sample.Label has no detection in any stratum
