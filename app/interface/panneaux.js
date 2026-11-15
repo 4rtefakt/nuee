@@ -3149,6 +3149,7 @@ export function notesMoyennes(r) {
     { variable: n, valeur: Number([].concat(cov.moyenne)[i].toPrecision(6)) })) : [];
   const moyennees = [].concat(r.grille.moyennees || []);
   const grille = [...valeurs, moyennees.length ? t('moyennes_grille_moyennees', { variables: liste(moyennees) }) : '',
+    r.grille.spatial ? t('moyennes_grille_spatial', { nom: r.grille.spatial.nom, x: Number(r.grille.spatial.x.toPrecision(6)), y: Number(r.grille.spatial.y.toPrecision(6)) }) : '',
     r.grille.decalage ? t(r.famille === 'poisson_zi' ? 'moyennes_grille_effort_zip' : 'moyennes_grille_effort', { effort: r.grille.decalage }) : ''].filter(Boolean);
   const pentes = r.mode === 'pentes';
   const quoi = pentes ? t('moyennes_note_pentes', { x: r.pente.nom, unite: r.pente.forme || r.pente.nom, facteur: r.facteur.nom })

@@ -255,6 +255,24 @@ d3 <- dg(lisse_spatial = list(variables = us("X", "Y"), k = 20), famille = "pois
 m3 <- ajuster(ps, d3)
 ref3 <- mgcv::gam(compte ~ x + s(X, Y, k = 20), data = df2[ok2, ], family = poisson(), method = "REML")
 verifier("Poisson, k = 20 : comme mgcv::gam", proche(c(m3$resultat$coefficients$estimation[2], m3$resultat$courbes$edf), c(stats::coef(ref3)["x"], summary(ref3)$s.table[1, 1]), 1e-6))
+# les moyennes ajustées d'un modèle à lissage spatial : chaque catégorie au point moyen des coordonnées
+# (et x à sa moyenne), comme emmeans le fait d'une covariable
+dfm <- transform(df2[ok2, ], habitat = c("dune", "marais", "pinede")[seq_len(sum(ok2)) %% 3 + 1])
+pm <- projet_depuis_tableau(dfm, "lissage_moyennes")
+um <- function(...) numeros(pm, c(...))
+dm <- definir_modele(pm, "GAM", x = um("x", "habitat"), y = um("y"), observations = numeros_observations(pm), echelle = c(defaut = "none"),
+                     famille = "gaussienne", lisse_spatial = list(variables = um("X", "Y")))
+mm <- ajuster(pm, dm)
+rm <- moyennes_ajustees(pm, mm, dm)
+refm <- mgcv::gam(y ~ x + habitat + s(X, Y, k = 30), data = dfm, method = "REML")
+gm <- stats::predict(refm, data.frame(x = mean(dfm$x), habitat = c("dune", "marais", "pinede"), X = mean(dfm$X), Y = mean(dfm$Y)), se.fit = TRUE)
+verifier("moyennes ajustées avec un lissage spatial : celles de mgcv au point moyen des coordonnées, avec leurs erreurs-types",
+         proche(rm$moyennes$estimation, as.vector(gm$fit), 1e-6) && proche(rm$moyennes$erreur_type, as.vector(gm$se.fit), 1e-6) &&
+           proche(c(rm$grille$spatial$x, rm$grille$spatial$y), c(mean(dfm$X), mean(dfm$Y)), 1e-10))
+mm$moyennes <- rm
+verifier("… dites dans le texte des méthodes, en français et en anglais",
+         grepl("au point moyen des coordonnées", paste(texte_methodes(pm, dm, mm, "fr")$paragraphes, collapse = " "), fixed = TRUE) &&
+           grepl("at the mean point of the coordinates", paste(texte_methodes(pm, dm, mm, "en")$paragraphes, collapse = " "), fixed = TRUE))
 pc <- regler_coordonnees(ps, us("X"), us("Y"), 2154)
 sans <- autocorrelation_spatiale(pc, ajuster(ps, dg()), permutations = 0)
 avec <- autocorrelation_spatiale(pc, m1, permutations = 0)

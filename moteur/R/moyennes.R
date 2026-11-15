@@ -177,6 +177,12 @@ lignes_modele <- function(m, X) {
     nd <- as.data.frame(X)
     for (g in intersect(c("g1", "g12", "g123"), names(m$donnees))) nd[[g]] <- factor(rep(levels(m$donnees[[g]])[1], nrow(nd)), levels = levels(m$donnees[[g]]))
     if ("decalage" %in% names(m$donnees)) nd$decalage <- 0
+    # (le lissage spatial au point moyen des coordonnées du modèle, comme emmeans le fait d'une
+    # covariable : sa valeur y décale toutes les moyennes, sans changer leurs différences)
+    if (!is.null(m$spatial)) {
+      nd$sx <- mean(m$donnees$sx)
+      nd$sy <- mean(m$donnees$sy)
+    }
     # (le facteur d'une courbe par catégorie, lu dans les colonnes 0/1 de ses catégories, aux niveaux du
     # modèle, comme predire_regression)
     for (f in names(m$facteurs_courbes)) {
@@ -456,7 +462,8 @@ moyennes_ajustees <- function(projet, m, d, q = list()) {
               grille = list(lignes = nrow(G), covariables = if (length(cov)) data.frame(terme = names(cov), nom = vapply(cov, `[[`, "", "nom"), moyenne = vapply(cov, `[[`, 0, "moyenne"),
                                                                                        valeur = vapply(cov, `[[`, 0, "valeur"), transformee = vapply(cov, function(x) !is.null(x$transformation), TRUE),
                                                                                        courbe = vapply(cov, `[[`, TRUE, "courbe"), row.names = NULL, stringsAsFactors = FALSE),
-                            moyennees = I(unname(vapply(quals[setdiff(names(quals), c(r$facteur, r$dans))], `[[`, "", "nom"))), decalage = m$decalage),
+                            moyennees = I(unname(vapply(quals[setdiff(names(quals), c(r$facteur, r$dans))], `[[`, "", "nom"))), decalage = m$decalage,
+                            spatial = if (!is.null(m$spatial)) list(nom = m$spatial$nom, x = mean(m$donnees$sx), y = mean(m$donnees$sy))),
               croisee = I(unname(c(vapply(quals[intersect(croisees_avec(m, fa$uid), names(quals))], `[[`, "", "nom"),
                                    vapply(pentes_avec(m, fa$uid), `[[`, "", "nom")))),
               ddl = list(methode = methode_ddl(m), groupe = if (inherits(m$ajustement, "lme")) m$niveaux[1], groupes = if (inherits(m$ajustement, "lme")) nlevels(m$ajustement$groups[[1]])),
@@ -612,6 +619,8 @@ phrase_methodes_moyennes <- function(m, d, fr, liste, guillemets) {
   moyennees <- as.character(unlist(g$moyennees))
   grille <- c(if (length(valeurs)) liste(valeurs),
               if (length(moyennees)) sprintf(if (fr) "la moyenne à poids égaux sur les catégories de %s" else "the equally weighted average over the categories of %s", liste(guillemets(moyennees))),
+              if (!is.null(g$spatial)) sprintf(if (fr) "le lissage spatial %s au point moyen des coordonnées (%s ; %s)" else "the spatial smooth %s at the mean point of the coordinates (%s; %s)",
+                                               g$spatial$nom, valeur(g$spatial$x), valeur(g$spatial$y)),
               if (!is.null(g$decalage)) sprintf(if (fr) "un effort de 1 (%s en décalage%s)" else "an effort of 1 (%s as an offset%s)", guillemets(g$decalage),
                                                 if (identical(m$famille, "poisson_zi")) "" else if (fr) " : des densités" else ": densities"))
   phrase1 <- sprintf(if (fr) "%s : %s du modèle sur une grille de référence formée des catégories de ses variables qualitatives%s%s, leurs erreurs-types tirées de la matrice de covariance des coefficients%s."
