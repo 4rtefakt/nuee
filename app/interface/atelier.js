@@ -31,9 +31,7 @@ export function dialogueRemplacer(app, p, uid = null) {
     vides: st.vides, partie: st.partie, casse: st.casse, nombres: st.nombres });
   let minuterie = null;
   let numero = 0;
-  let pret = false;  // (the last preview found cells to change)
   const montrer = (r, message) => {
-    pret = !!(r && r.cellules > 0);
     apercu.replaceChildren(...(r ? liste(r.phrases).map((x, i) => el('p', { class: i ? '' : 'resume-remplacer' }, x)) : [el('p', { class: message ? 'erreur' : 'doux' }, message || t('atelier_apercu_vide'))]));
   };
   const previsualiser = () => {
@@ -72,9 +70,16 @@ export function dialogueRemplacer(app, p, uid = null) {
       el('label', {}, ''), el('p', { class: 'note' }, t('atelier_note_remplacer'))));
     if (!st.vides && document.activeElement === document.body) cherche.focus();
   };
+  // (the preview of these very fields first, even typed a moment ago: nothing is replaced unseen)
   async function valider() {
     erreur.textContent = '';
-    if (!pret) { erreur.textContent = apercu.textContent || t('atelier_apercu_vide'); return; }
+    clearTimeout(minuterie);
+    numero += 1;
+    if (!st.toutes && !st.choisies.size) { erreur.textContent = t('atelier_aucune_variable'); return; }
+    let r;
+    try { r = (await demander('remplacer', { projet: p.id, apercu: true, ...requete() })).remplacement; } catch (e) { montrer(null, e.message); erreur.textContent = e.message; return; }
+    montrer(r, '');
+    if (!r.cellules) { erreur.textContent = liste(r.phrases).join(' '); return; }
     let res;
     try { res = await app.changerDonnees('remplacer', p.id, requete()); } catch (e) { erreur.textContent = e.message; return; }
     d.fermer();
@@ -89,7 +94,7 @@ export function dialogueRemplacer(app, p, uid = null) {
 // ------------------------------------------------------------ categories
 
 // A qualitative variable's categories: renamed (a name another category has merges them), merged
-// (the ticked ones into the first), moved up or down, one set as the reference (moved last: in a
+// (the ticked ones into the most frequent), moved up or down, one set as the reference (moved last: in a
 // regression, the last category observed is the one the others are compared with, moteur/R/
 // regression.R: candidats_regression). Each category with its number of observations. Applied as
 // one change: R gets the new name of each category in its old order, and the new order.
