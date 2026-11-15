@@ -24,7 +24,7 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
 - Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite")).
+  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).
 Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
 RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
 
@@ -1490,6 +1490,51 @@ pas) ; Comptages par site (les comptages d'un site et ceux du modèle, ou tous l
 contre leur valeur attendue). Les résultats sont ceux du paquet rtrim. Texte des méthodes avec
 ses références, Exporter et rapport comme pour les autres modèles ; ni prédiction ni export vers
 R.
+
+Forêts aléatoires et arbres boostés
+-----------------------------------
+Nouveau modèle › type « Forêt aléatoire » (le paquet ranger, Wright et Ziegler 2017) : une
+variable Y quantitative (forêt de régression) ou une variable de classe (forêt de classement),
+et des X par leurs valeurs brutes. Chaque arbre est grandi sur un tirage bootstrap des
+observations (avec remise), chaque coupure choisie parmi mtry variables tirées au hasard ; la
+forêt prédit la moyenne de ses arbres, ou la classe que le plus d'arbres votent (Breiman 2001).
+Onglet Général : 500 arbres, mtry et la taille des nœuds de ranger par défaut (la racine du
+nombre de X arrondie en dessous ; des nœuds de 5 observations en régression, 1 en classement),
+la part tirée, l'importance par permutation non mise à l'échelle ou divisée par son
+erreur-type. Graine 1 et un seul fil de calcul : la même forêt à chaque fois. ranger ne prend
+pas de valeurs manquantes : une observation où une valeur X manque est laissée de côté (le
+résumé les compte). L'erreur hors sac : chaque observation prédite par les arbres dont le
+tirage ne la contient pas (MSE et R², ou la part mal classée) ; la validation croisée : chaque
+groupe de validation croisée (le site) prédit par une forêt refaite sans lui (Q2 et RMSEcv, ou
+la part bien classée). Vues : Importance des variables (par permutation, la hausse de l'erreur
+hors sac quand les valeurs de la variable sont permutées ; ou par l'impureté), Dépendance
+partielle (calculée à la demande, Friedman 2001 : la prédiction moyenne de la forêt quand une
+variable prend chaque valeur d'une grille, les autres X inchangés ; toutes les variables côte à
+côte, ou une seule, les valeurs observées sous la courbe ; en classement, la part des votes
+d'une classe), Erreur selon le nombre d'arbres, Observé / prédit (hors sac, en validation
+croisée ou ajusté) ou Classement (avec les courbes ROC des votes). Jeu de test et Prédire.
+
+Type « Arbres boostés (BRT) » : le gradient boosting d'arbres de régression (Friedman 2001,
+2002), comme le calcule le paquet gbm et comme Elith, Leathwick et Hastie (2008) le présentent
+aux écologues, écrit en R sur rpart. Une Y quantitative : une mesure (loi normale), une
+présence-absence 0/1 (binomiale) ou des comptages (Poisson), choisie comme celle d'un GLM. Les
+arbres sont ajoutés un à un, chacun ajusté à ce que le modèle manque encore (le gradient de la
+déviance) sur un tirage sans remise d'une part des observations, ses feuilles réestimées pour
+la déviance, puis ajouté avec un petit poids (le taux d'apprentissage). Onglet Général : au plus
+2000 arbres, un taux d'apprentissage de 0,01, 3 coupures par arbre (la profondeur
+d'interaction : 1 donne un modèle additif), au moins 10 observations par feuille, des tirages de
+50 %. Le nombre d'arbres est celui où la déviance de validation croisée est la plus petite
+(chaque groupe de validation croisée prédit après chaque arbre par le boosting refait sans lui) :
+plus il y a de groupes et d'arbres, plus l'ajustement est long. Les observations où une valeur X
+manque sont laissées de côté. Vues : Influence relative (les réductions d'erreur des coupures de
+chaque variable, en %), Dépendance partielle (à l'échelle du lien, logit ou log, ou à celle de la
+réponse), Erreur selon le nombre d'arbres (la déviance de l'ajustement et celle de la validation
+croisée, le nombre d'arbres retenu), Observé / prédit, et Classement (à une probabilité de 0,5,
+avec la courbe ROC) pour une réponse 0/1. Jeu de test et Prédire.
+
+Pour les deux : texte des méthodes avec ses références, Exporter, rapport PDF ou Word. Comparer
+les modèles donne le Q2 et le RMSEcv d'une forêt de régression, ou d'arbres boostés d'une
+mesure, à côté des autres modèles. Pas encore d'export vers R.
 
 Ajouter des colonnes d'un autre tableau
 ---------------------------------------

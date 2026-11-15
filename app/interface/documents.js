@@ -73,7 +73,7 @@ function styleMarkdown() {
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 // A project's models in the order of their numbers (fitting one moves it to the end of its list).
 const parNumero = (modeles) => [...modeles].sort((a, b) => (Number(a.numero) || 1e9) - (Number(b.numero) || 1e9));
-const AUTRES_ANALYSES = ['RDA', 'CA', 'LDA', 'TREE', 'KMEANS', 'CCA', 'INDVAL', 'TRIM', 'PCOA', 'NMDS', 'PERMANOVA', 'MANTEL'];
+const AUTRES_ANALYSES = ['RDA', 'CA', 'LDA', 'TREE', 'KMEANS', 'CCA', 'INDVAL', 'TRIM', 'PCOA', 'NMDS', 'PERMANOVA', 'MANTEL', 'FOREST', 'BOOST'];
 
 export function installerDocuments(app) {
   VUES.document = {
