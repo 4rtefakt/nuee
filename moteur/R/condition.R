@@ -217,19 +217,25 @@ ids_condition <- function(projet, d) {
 #   `texte` part de l'expression validée (lire_condition), redéparsée sur une seule ligne : pas de
 # commentaire (qui mettrait en commentaire la parenthèse fermante du with()), pas de tabulation (qui
 # décalerait les colonnes de getParseData), les chaînes et les noms échappés. Ses symboles sont
-# ensuite renommés en les noms des colonnes du tableau du script.
+# ensuite renommés en les noms des colonnes du tableau du script ; ses nombres, redéparsés en
+# hexadécimal (exacts), sont écrits comme ceux des données (script.R : texte_exact), que R relit à
+# l'identique partout (à 17 chiffres, il en relirait certains au dernier bit près sur Apple silicon).
 plan_condition <- function(projet, d, tab) {
   if (!avec_condition(d)) return(NULL)
   e <- lire_condition(projet, d$condition)
-  texte <- paste(deparse(e, width.cutoff = 500L, control = c("keepInteger", "digits17"), backtick = TRUE), collapse = " ")
+  texte <- paste(deparse(e, width.cutoff = 500L, control = c("keepInteger", "hexNumeric"), backtick = TRUE), collapse = " ")
   n <- noms_condition(projet)
   traduits <- c(names(NOMS_SCRIPT_EN), names(NOMS_CLASSEMENT_EN), names(NOMS_ORDINATION_EN), names(NOMS_COMMUNAUTES_EN),
                 names(NOMS_TRIM_EN), names(NOMS_FORET_EN), names(NOMS_BOOST_EN), names(NOMS_DISTANCE_EN))
   pd <- utils::getParseData(parse(text = texte, keep.source = TRUE, encoding = "UTF-8"))
-  pd <- pd[pd$terminal & pd$token == "SYMBOL", , drop = FALSE]
+  pd <- pd[pd$terminal & (pd$token == "SYMBOL" | (pd$token == "NUM_CONST" & grepl("^0x[0-9a-f.]+p[-+][0-9]+$", pd$text))), , drop = FALSE]
   pd <- pd[order(-pd$col1), , drop = FALSE]  # (une seule ligne : de droite à gauche)
   qualitatives <- FALSE
   for (i in seq_len(nrow(pd))) {
+    if (pd$token[i] == "NUM_CONST") {
+      texte <- paste0(substr(texte, 1, pd$col1[i] - 1), texte_exact(as.numeric(pd$text[i])), substr(texte, pd$col2[i] + 1, nchar(texte)))
+      next
+    }
     nom <- as.character(str2lang(pd$text[i]))
     colonne <- if (nom %in% names(n$variables)) {
       v <- variable_du_projet(projet, n$variables[[nom]])

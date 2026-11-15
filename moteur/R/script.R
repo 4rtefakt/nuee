@@ -660,7 +660,10 @@ code_echelle <- function(ts, M, sfx, sur, tx, na, mode = "complet") {
   moyennes <- any(types %in% c("UV", "Par", "Ctr"))
   rendu <- ecart_rendu(ts, mode)
   ecart <- if (rendu || any(autres %in% c("UV", "Par"))) sprintf("ecart_%s", sfx)
-  et <- sprintf("apply(%s, 2, sd, na.rm = TRUE)", sur)
+  # (l'écart-type des valeurs présentes, calculé comme pretraitement.R : echelle ; sd(x, na.rm =
+  # TRUE) passe par un autre calcul de R, qui peut différer au dernier bit sans long double de
+  # 80 bits, Apple silicon, et changer les itérations de NIPALS d'un sous-modèle)
+  et <- sprintf("apply(%s, 2, function(x) sd(x[!is.na(x)]))", sur)
   calcul <- if (!rendu) et else if (identical(mode, "centres")) sprintf("if (is.null(complet)) %s else complet$%s", et, ecart)
             else sprintf("ecart_vc(%s, complet$%s)", et, ecart)
   un <- function(v) if (length(autres)) sprintf("setNames(rep(%s, ncol(%s)), colnames(%s))", v, M, M) else sprintf("rep(%s, ncol(%s))", v, M)
@@ -4073,16 +4076,67 @@ ecrire_renv <- function(paquets, chemin) {
 
 # ---------------------------------------------------------------- écrire des valeurs en R
 
-# Nombres écrits sans perte : 15 chiffres significatifs, 16 ou 17 quand il le faut.
+# Nombres écrits sans perte, que R relit à l'identique sur toute machine : 15 chiffres
+# significatifs, 16 quand il le faut (decimal_relu), sinon en hexadécimal (0x1.91eb851eb851fp+1
+# pour 3,14 : R le lit exactement partout). 17 chiffres ne suffiraient pas : R lit un nombre
+# décimal en entier, divisé ensuite par une puissance de 10 (R_strtod), avec un long double ; sur
+# une machine qui n'en a pas de 80 bits (Apple silicon), un entier de 17 chiffres dépasse 2^53 et
+# le nombre relu peut s'écarter d'un bit de celui du projet. (Sous 2^-1022, R ne relit pas
+# l'hexadécimal : 17 chiffres.)
 texte_exact <- function(x) {
   s <- sprintf("%.15g", x)
-  for (k in 16:17) {
-    faux <- which(!is.na(x) & suppressWarnings(as.numeric(s)) != x)
-    if (!length(faux)) break
-    s[faux] <- sprintf(paste0("%.", k, "g"), x[faux])
-  }
+  faux <- which(is.finite(x) & !decimal_relu(s, x))
+  s[faux] <- sprintf("%.16g", x[faux])
+  faux <- faux[!decimal_relu(s[faux], x[faux])]
+  s[faux] <- sprintf("%a", x[faux])
+  faux <- faux[suppressWarnings(as.numeric(s[faux])) != x[faux]]
+  s[faux] <- sprintf("%.17g", x[faux])
   s[is.na(x)] <- "NA"
   s
+}
+
+# L'écriture décimale `s` de x (sprintf "%g") est-elle relue x par R sur toute machine ? Ses
+# chiffres font un entier M, le nombre vaut M × 10^e. Si M < 2^53 et |e| ≤ 22, M et 10^e sont
+# exacts en double, et R calcule M × 10^e (ou M / 10^-e) :
+#   - sans long double de 80 bits, en double : un seul arrondi, qui doit donner x (calculé ici
+#     de même) ;
+#   - avec, à 64 bits puis à 53 : deux arrondis, qui donnent aussi x si la valeur exacte n'est pas
+#     tout près (à 2^-11 de l'écart de x à son voisin) du milieu entre x et son voisin. L'écart de
+#     la valeur exacte à x est calculé exactement (le produit sans erreur de Dekker, 1971).
+# Et R le relit x ici.
+decimal_relu <- function(s, x) {
+  if (!length(s)) return(logical(0))
+  mantisse <- sub("[eE].*$", "", sub("^-", "", s))
+  exposant <- suppressWarnings(as.integer(ifelse(grepl("[eE]", s), sub("^.*[eE]", "", s), "0")))
+  virgule <- regexpr(".", mantisse, fixed = TRUE)
+  e <- exposant - ifelse(virgule > 0, nchar(mantisse) - virgule, 0L)
+  M <- suppressWarnings(as.numeric(gsub(".", "", mantisse, fixed = TRUE)))  # (exact sous 2^53)
+  ok <- !is.na(M) & !is.na(e) & M < 2^53 & abs(e) <= 22 & suppressWarnings(as.numeric(s)) == x
+  ok[is.na(ok)] <- FALSE
+  i <- which(ok & M > 0)
+  if (!length(i)) return(ok)
+  M <- M[i]
+  e <- e[i]
+  a <- abs(x[i])
+  P <- cumprod(c(1, rep(10, 22)))[abs(e) + 1]  # 10^0 à 10^22, exacts
+  positif <- e >= 0
+  # (a × b = a * b + erreur, exactement : chaque facteur coupé en deux moitiés de 26 bits)
+  erreur_produit <- function(a, b) {
+    moities <- function(v) { c <- 134217729 * v; h <- c - (c - v); list(h = h, l = v - h) }
+    u <- moities(a)
+    v <- moities(b)
+    ((u$h * v$h - a * b) + u$h * v$l + u$l * v$h) + u$l * v$l
+  }
+  # un seul arrondi ; puis la valeur exacte du texte moins x : M × 10^e - x, ou
+  # (M - x × 10^-e) / 10^-e (M - x * 10^-e est exact, les deux étant si proches)
+  un_arrondi <- ifelse(positif, M * P, M / P) == a
+  ecart <- ifelse(positif, erreur_produit(M, P), ((M - a * P) - erreur_produit(a, P)) / P)
+  # l'écart de x à son voisin du côté de la valeur exacte (la moitié sous une puissance de 2)
+  b <- floor(log2(a))
+  b <- b - (2^b > a) + (2^(b + 1) <= a)
+  voisin <- 2^(b - 52) / ifelse(ecart < 0 & a == 2^b, 2, 1)
+  ok[i] <- un_arrondi & abs(ecart) < voisin / 2 * (1 - 2^-10)
+  ok
 }
 
 code_texte <- function(x) if (is.na(x)) "NA_character_" else encodeString(enc2utf8(x), quote = "\"")

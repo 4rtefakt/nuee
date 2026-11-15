@@ -30,7 +30,7 @@ NOMS_COMMUNAUTES_EN <- c(
   scores_especes = "species_scores", mul = "expand", correlations_colonnes = "column_correlations",
   ajustement_environnement = "environmental_fit", vecteurs = "vectors", depasse = "exceeds", facteurs_fit = "factor_fit",
   intra = "within_ss", lignes = "rows", niveaux = "group_levels", centroides_facteurs = "factor_centroids",
-  procrustes_symetrique = "symmetric_procrustes", residus = "resid", avec_graine = "with_seed", graine = "seed",
+  procrustes_symetrique = "symmetric_procrustes", residus = "resid", carres = "squares", avec_graine = "with_seed", graine = "seed",
   nmds_noyau = "nmds_core", dis = "dissimilarities", nuls = "zeros", depart = "start", departs = "starts", meilleur = "best",
   retrouvee = "found_again", ecarts = "deviations", tri = "sorted", ordre = "max_order", dissimilarite = "dissimilarity", ajustee = "fitted",
   stress_departs = "stress_starts", remplacement = "replacement", especes = "species", connues = "known", facteurs = "factors",
