@@ -328,6 +328,7 @@ ANALYSES.TRIM = {
   roles: ['x', 'y'],
   echelle: 'none',
   vc: false,
+  xFacultatif: true,  // (its covariates are optional: without them, the usual model)
   champs: champsTrim,
   valider: (st, cles, p) => {
     const o = st.options;
