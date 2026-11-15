@@ -2,7 +2,7 @@
 // ?vue=<view>&modele=<id> shows a single view instead (a panel moved to its own window).
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire } from './i18n.js';
-import { demander, televerser, bureau } from './api.js';
+import { demander, televerser, deposer, telechargerFichier, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, fermerMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
@@ -176,7 +176,7 @@ const app = {
     const choisir = async (spectres) => {
       if (bureau) return spectres ? bureau.choisirFichiers(filtresSpectres()) : [await bureau.choisirFichier(filtresOuverture(true))].filter(Boolean);
       const fichiers = await choisirFichiersNavigateur(spectres ? acceptSpectres() : acceptOuverture(true), spectres);
-      return Promise.all(fichiers.map(async (f) => (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin));
+      return Promise.all(fichiers.map((f) => deposer(f)));
     };
     const nom = (c) => c.split(/[\\/]/).pop();
     const contenu = el('div', { class: 'import-spectres' });
@@ -525,7 +525,7 @@ const app = {
       chemin = await bureau.choisirFichier(filtresOuverture(true));
     } else {
       const f = await choisirFichierNavigateur(acceptOuverture(true));
-      if (f) chemin = (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
+      if (f) chemin = await deposer(f);
     }
     if (!chemin) return null;
     return occupe(() => demander('predire_fichier', { modele: id, chemin }));
@@ -634,7 +634,7 @@ const app = {
     if (bureau) return bureau.choisirFichier(filtresOuverture());
     const f = await choisirFichierNavigateur(acceptOuverture());
     if (!f) return null;
-    return (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
+    return deposer(f);
   },
   async lirePressePapiers() {
     try { return (bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText()) || ''; } catch { return ''; }
@@ -827,7 +827,7 @@ function choisirFichiersNavigateur(accept, plusieurs) {
 }
 
 function telecharger(chemin) {
-  window.location.href = '/api/fichier?chemin=' + encodeURIComponent(chemin);
+  telechargerFichier(chemin);
 }
 
 // A file with several tables (Excel sheets, objects of an .RData file): the one to open.
@@ -1771,7 +1771,7 @@ async function demarrerPrincipal() {
 async function deposerFichiers(fichiers) {
   const ext = (f) => f.name.split('.').pop().toLowerCase();
   const chemin = async (f) => (bureau && bureau.cheminFichier ? bureau.cheminFichier(f)
-    : (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin);
+    : await deposer(f));
   if (fichiers.every((f) => ['jdx', 'dx', 'jcm', 'spc'].includes(ext(f)))) {
     const chemins = await Promise.all(fichiers.map(chemin));
     const res = await occupe(() => demander('importer_spectres', { chemins, nom: chemins.length === 1 ? fichiers[0].name : t('spectres_importes', { n: chemins.length }) }));

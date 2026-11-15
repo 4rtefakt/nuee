@@ -949,10 +949,9 @@ DEMANDES <- list(
   predire = predire_demande,
   hca = hca_demande,
   permutations = function(q) {
-    e <- modele(q$modele)
-    if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
-    r <- permutations(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
-    c(list(modele = q$modele), r)
+    w <- TRAVAUX$permutations
+    t <- w$taches(q)
+    w$reponse(q, t, permutations_morceau(t, seq_len(t$n)))
   },
   valeurs = valeurs_demande,
   exporter = exporter_demande,
@@ -1227,6 +1226,77 @@ repondre <- function(statut, contenu) {
                                                      na = "null", null = "null", digits = NA, force = TRUE))))
 }
 
+# Une demande qui échoue : son message (un fichier changé depuis sa lecture : 409, avec sa date).
+reponse_erreur <- function(nom, e) {
+  tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
+  if (inherits(e, "conflit_fichier")) return(repondre(409L, list(erreur = conditionMessage(e), conflit = TRUE, date = e$date)))
+  repondre(400L, list(erreur = conditionMessage(e)))
+}
+
+# Une demande de l'interface, `corps` son JSON (brut) : la réponse (statut, en-têtes, corps JSON).
+# Le serveur HTTP ci-dessous et le moteur dans le navigateur (webR : app/interface/moteur_webr.js)
+# passent tous deux par là.
+traiter_demande <- function(nom, corps = raw(0), langue = "fr") {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")  # langue des messages (langue.R)
+  tryCatch({
+    f <- DEMANDES[[nom]]
+    if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
+    q <- lire_demande(nom, corps)
+    r <- f(q)
+    tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
+    repondre(200L, r)
+  }, error = function(e) reponse_erreur(nom, e))
+}
+lire_demande <- function(nom, corps) {
+  q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
+  if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
+    stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
+                  "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
+  }
+  q
+}
+
+# Les demandes qui peuvent se partager entre plusieurs R (le navigateur : moteur/R/travaux.R) :
+# leurs tâches (dont n, leur nombre), la fonction qui en fait un morceau, leur réponse. Une
+# demande faite en un seul R (DEMANDES) passe par les mêmes fonctions.
+TRAVAUX <- list(
+  permutations = list(
+    taches = function(q) {
+      e <- modele(q$modele)
+      if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
+      permutations_taches(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
+    },
+    morceau = "permutations_morceau",
+    reponse = function(q, t, lignes) c(list(modele = q$modele), permutations_fin(t, lignes))
+  )
+)
+# (le R de l'interface) les tâches d'une demande, dans un fichier pour les autres R : { fichier, n }
+travail_preparer <- function(nom, corps = raw(0), langue = "fr") {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")
+  tryCatch({
+    w <- TRAVAUX[[nom]]
+    t <- w$taches(lire_demande(nom, corps))
+    fichier <- tempfile("travail", fileext = ".rds")
+    saveRDS(list(morceau = w$morceau, taches = t), fichier, compress = FALSE)
+    repondre(200L, list(fichier = fichier, n = t$n))
+  }, error = function(e) reponse_erreur(nom, e))
+}
+# (le R de l'interface) les morceaux faits (`sorties`, dans l'ordre), la réponse de la demande
+travail_finir <- function(nom, corps, langue, fichier, sorties) {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")
+  tryCatch({
+    q <- lire_demande(nom, corps)
+    r <- TRAVAUX[[nom]]$reponse(q, readRDS(fichier)$taches, do.call(rbind, lapply(sorties, readRDS)))
+    tryCatch(journaliser(nom, q, r), error = function(e) NULL)
+    repondre(200L, r)
+  }, error = function(e) reponse_erreur(nom, e))
+}
+
+# Dans le navigateur (NUEE_NAVIGATEUR=1, webR) : pas de serveur HTTP, l'interface appelle
+# traiter_demande() elle-même.
+if (identical(Sys.getenv("NUEE_NAVIGATEUR"), "1")) {
+  cat("PRET navigateur\n")
+} else {
 appli <- list(
   call = function(req) {
     chemin <- req$PATH_INFO
@@ -1241,6 +1311,7 @@ appli <- list(
     }
     nom <- sub("^/api/", "", chemin)
     corps <- req$rook.input$read()
+    if (!nom %in% c("fichier", "televerser", "deposer")) return(traiter_demande(nom, corps, req$HTTP_X_LANGUE))
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
         f <- normalizePath(utils::URLdecode(sub(".*chemin=([^&]*).*", "\\1", req$QUERY_STRING)), winslash = "/")
@@ -1261,21 +1332,7 @@ appli <- list(
         tryCatch(journaliser("ouvrir", list(chemin = dest), r), error = function(e) NULL)
         return(repondre(200L, r))
       }
-      f <- DEMANDES[[nom]]
-      if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
-      q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
-      if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
-        stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
-                      "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
-      }
-      r <- f(q)
-      tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
-      repondre(200L, r)
-    }, error = function(e) {
-      tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
-      if (inherits(e, "conflit_fichier")) return(repondre(409L, list(erreur = conditionMessage(e), conflit = TRUE, date = e$date)))
-      repondre(400L, list(erreur = conditionMessage(e)))
-    })
+    }, error = function(e) reponse_erreur(nom, e))
   },
   # (l'interface relue à chaque chargement : no-cache, et 304 quand rien n'a changé. Sans
   # Cache-Control, Chromium la tenait pour fraîche un dixième de son âge, et une nouvelle version
@@ -1289,3 +1346,4 @@ cat("PRET", port, "\n")
 if (!jeton_donne) cat(sprintf("Interface : http://127.0.0.1:%d/api/connexion?jeton=%s\n", port, JETON))
 flush(stdout())
 repeat httpuv::service(100)
+}
