@@ -35,8 +35,10 @@ importer_texte <- function(texte, nom = "tableau", secondaires = TRUE) {
 }
 
 # `toutes_modalites` : garder aussi les modalités d'un facteur sans observation (script R
-# autonome : les catégories restent celles du projet d'origine).
-projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE) {
+# autonome : les catégories restent celles du projet d'origine). `qualitatives` : des noms de
+# colonnes qui restent des variables même quand leurs valeurs diffèrent toutes (une question à
+# choix unique d'un formulaire : kobo.R).
+projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE, qualitatives = NULL) {
   if (!ncol(df) || !nrow(df)) stop(traduire("Le tableau est vide", "The table is empty"))
   premiere_id <- is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
     (is.factor(df[[1]]) || grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE)))
@@ -44,7 +46,8 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
   if (premiere_id) df <- df[-1]
   # Une colonne de texte dont toutes les valeurs diffèrent (un code par observation) n'est
   # pas une variable : on la garde en identifiant secondaire, pour les étiquettes.
-  secondaire <- vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE)
+  secondaire <- vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE) &
+    !names(df) %in% qualitatives
   ids_secondaires <- lapply(df[secondaire], as.character)
   df <- df[!secondaire]
   vars <- list()
@@ -643,7 +646,7 @@ enregistrer_projet <- function(projet, chemin, version = "") {
     p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
-  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- NULL  # état de la session
+  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- p$import_collecte <- NULL  # état de la session
   p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
                  paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
   ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA))

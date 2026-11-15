@@ -41,6 +41,8 @@ Fichier › Ouvrir (Ctrl+O) :
       jamovi .omv                     dBase .dbf, Weka .arff
       spectres JCAMP-DX .jdx, .dx, .jcm et SPC .spc (voir Spectres)
       GeoPackage .gpkg (une couche de QGIS : voir Cartes et données spatiales)
+    Un export de KoboToolbox ou d'ODK Central (.xlsx, .csv, ou le .zip d'ODK) est reconnu à ses
+    colonnes et s'ouvre par son import (voir Données de terrain de KoboToolbox ou d'ODK).
     La première colonne sert de nom d'observation si c'est du texte ou si elle s'appelle
     « ID », « Obs », « Nom »... (pour un fichier R, les noms des lignes) ; les autres colonnes
     de texte dont toutes les valeurs diffèrent (un code par observation) deviennent des
@@ -66,6 +68,8 @@ Fichier › Ouvrir (Ctrl+O) :
 Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google
 Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
 projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).
+Fichier › Importer depuis KoboToolbox ou ODK... : les relevés sur téléphone exportés par
+KoboToolbox ou ODK Central (voir Données de terrain de KoboToolbox ou d'ODK).
 Fichier › Importer des spectres : des fichiers de spectres réunis en un projet (voir Spectres).
 Déposer des fichiers sur la fenêtre (glisser-déposer depuis l'Explorateur) les ouvre de même :
 des spectres JCAMP-DX ou SPC ensemble font un seul projet, comme Importer des spectres ; les
@@ -77,6 +81,49 @@ bio ou conventionnelle, une douzaine de mesures et une note de dégustation) ave
 modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA de la
 culture. Le tableau d'origine, vergers.csv, est à côté (resources\exemple) pour essayer
 l'ouverture d'un tableau.
+
+Données de terrain de KoboToolbox ou d'ODK
+------------------------------------------
+Les formulaires remplis sur téléphone (KoboCollect, ODK Collect, Enketo) sont exportés par leur
+serveur : KoboToolbox en classeur Excel (une feuille pour les envois, une par groupe répété) ou
+en fichier CSV (points-virgules), ODK Central en archive .zip (un CSV par table) ou en son seul
+CSV des envois. Fichier › Ouvrir les reconnaît à leurs colonnes (_id, _uuid, _submission_time,
+_index... ; SubmissionDate, KEY, meta-instanceID...), comme un fichier déposé sur la fenêtre ;
+Fichier › Importer depuis KoboToolbox ou ODK... demande l'import, et refuse tout autre fichier.
+Un dialogue dit en phrases ce que l'import fera avant de le faire, et le redit à chaque réglage
+changé :
+  - la table à analyser : les envois, ou un groupe répété (une ligne par espèce observée, par
+    plante mesurée), avec les colonnes de ses tables parentes jointes à chaque ligne, toutes
+    cochées au départ (l'habitat et les coordonnées du site ; une répétition dans une
+    répétition remonte les deux niveaux) ;
+  - les métadonnées retirées, listées (identifiants internes, appareil, version du formulaire,
+    colonnes qui relient les tables...) ; on peut garder la date et l'heure d'envoi, son auteur,
+    son identifiant, le début, la fin et le jour du relevé, et le statut de validation ;
+  - les préfixes des groupes retirés des noms (group_site/altitude, group_site-altitude :
+    altitude) ; deux questions au même nom dans deux groupes gardent leur groupe
+    (group_site_remarques, group_fin_remarques) ;
+  - un choix unique (select_one) devient une variable qualitative, un choix multiple
+    (select_multiple) une colonne 0/1 par choix nommée question_code (meteo_pluie) : 1 choisi,
+    0 non, vide quand la question est restée sans réponse ; les colonnes 0/1 de l'export
+    servent quand il les a, jamais en double ;
+  - un point GPS (geopoint), en texte (« lat lon alt préc ») ou en colonnes, devient
+    gps_longitude, gps_latitude, gps_altitude et gps_precision ; le premier point de la table
+    (ou de sa table parente, joint) devient les coordonnées du projet, en WGS 84 (voir Cartes
+    et données spatiales) ;
+  - les dates et heures perdent leurs fractions de seconde et leur fuseau horaire
+    (2024-05-03T08:12:45.123+02:00 devient 2024-05-03 08:12:45, l'heure du téléphone), pour
+    que Nuée les lise comme des dates (voir Le temps en dates).
+Le formulaire XLSForm (le classeur aux feuilles survey et choices, téléchargé depuis KoboToolbox
+ou ODK Central), s'il est donné, dit le type de chaque question, les libellés des choix dans la
+langue choisie (label::Français (fr), label::English (en) ou label ; par défaut celle de
+l'interface) et leur ordre, qui devient celui des catégories ; les colonnes prennent alors les
+noms des questions, quels que soient les en-têtes de l'export (noms ou libellés). Sans le
+formulaire, les réponses restent telles que l'export les écrit (des codes, ou des libellés pour
+un export en libellés), les catégories dans l'ordre alphabétique, et un choix multiple sans ses
+colonnes 0/1 reste du texte. « Ouvrir tel quel » ouvre la table choisie sans rien y changer (la
+feuille, ou le CSV de l'archive). L'import est un projet comme un tableau ouvert, à enregistrer
+(Ctrl+S) ; le texte des Méthodes dit que les données ont été recueillies avec KoboToolbox ou ODK
+(et le titre du formulaire).
 
 Enregistrer et retrouver son travail
 ------------------------------------

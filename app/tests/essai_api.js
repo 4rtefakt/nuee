@@ -1360,6 +1360,74 @@ async function principal() {
       const q = await api('ouvrir', { chemin: f, table: 'b' });
       verifier(q.observations.uid.length === 4 && q.table === 'b' && q.nom === 'deux (b).xlsx', q.nom);
     });
+    await etape('KoboToolbox et ODK Central : l’export reconnu à l’ouverture, son aperçu, une répétition importée avec des colonnes de l’envoi, tel quel, refait au redémarrage (moteur/R/kobo.R)', async () => {
+      const r = (x) => JSON.stringify(x.replace(/\\/g, '/'));
+      const xlsx = path.join(dossier, 'releve kobo.xlsx');
+      const form = path.join(dossier, 'formulaire.xlsx');
+      // a Kobo workbook (groups in the headers, a geopoint, a select_multiple with its 0/1 columns, a repeat sheet) and its XLSForm in two languages
+      await api('console', { code: [
+        'envois <- data.frame(start = c("2024-05-03T07:58:00.000+02:00", "2024-05-04T08:05:00.000+02:00", "2024-05-05T09:00:00.000+02:00"),',
+        '  "group_site/site" = c("S1", "S2", "S3"), "group_site/habitat" = c("foret", "prairie", "foret"), "group_site/gps" = c("43.61 3.87 50 5", "43.65 3.9 60 4", NA),',
+        '  "_group_site/gps_latitude" = c(43.61, 43.65, NA), "_group_site/gps_longitude" = c(3.87, 3.9, NA), meteo = c("soleil vent", "pluie", NA),',
+        '  "meteo/soleil" = c(1, 0, NA), "meteo/pluie" = c(0, 1, NA), "meteo/vent" = c(1, 0, NA), "_id" = 1:3, "_uuid" = c("u1", "u2", "u3"),',
+        '  "_submission_time" = c("2024-05-03T06:45:12", "2024-05-03T06:45:12", "2024-05-05T08:00:00"), "__version__" = "v1", "_index" = 1:3, check.names = FALSE)',
+        'obs <- data.frame("observation/espece" = c("turmer", "parmaj", "turmer", "erirub"), "observation/effectif" = c(2, 1, 3, 1), "_index" = 1:4,',
+        '  "_parent_table_name" = "Relevé", "_parent_index" = c(1, 1, 2, 3), check.names = FALSE)',
+        `openxlsx::write.xlsx(list("Relevé" = envois, observation = obs), ${r(xlsx)})`,
+        'survey <- data.frame(type = c("start", "begin_group", "text", "select_one habitat", "geopoint", "end_group", "select_multiple meteo", "begin_repeat", "select_one espece", "integer", "end_repeat"),',
+        '  name = c("start", "group_site", "site", "habitat", "gps", NA, "meteo", "observation", "espece", "effectif", NA),',
+        '  "label::Français (fr)" = c(NA, "Site", "Site", "Habitat", "Position", NA, "Météo", "Observation", "Espèce", "Effectif", NA),',
+        '  "label::English (en)" = c(NA, "Site", "Site", "Habitat", "Location", NA, "Weather", "Observation", "Species", "Count", NA), check.names = FALSE)',
+        'choices <- data.frame(list_name = c("habitat", "habitat", "meteo", "meteo", "meteo", "espece", "espece", "espece"),',
+        '  name = c("prairie", "foret", "soleil", "pluie", "vent", "turmer", "parmaj", "erirub"),',
+        '  "label::Français (fr)" = c("Prairie", "Forêt", "Soleil", "Pluie", "Vent", "Merle noir", "Mésange charbonnière", "Rougegorge familier"),',
+        '  "label::English (en)" = c("Grassland", "Forest", "Sun", "Rain", "Wind", "Common blackbird", "Great tit", "European robin"), check.names = FALSE)',
+        `openxlsx::write.xlsx(list(survey = survey, choices = choices, settings = data.frame(form_title = "Relevé des oiseaux")), ${r(form)})`].join('\n') });
+      // opened: the export is recognised, the preview of its import comes back instead of a project
+      const o = await api('ouvrir', { chemin: xlsx });
+      verifier(o.kobo && !o.id && o.kobo.outil === 'kobo' && o.kobo.tables.map((x) => x.nom).join() === 'Relevé,observation' && o.kobo.table === 'Relevé'
+        && o.kobo.phrases.includes('Métadonnées retirées (6) : start, _id, _uuid, _submission_time, __version__, _index.'), `aperçu à l’ouverture : ${JSON.stringify(o).slice(0, 400)}`);
+      const a = await api('kobo_apercu', { chemin: xlsx, table: 'observation', garder: ['envoi'], formulaire: form });
+      verifier(a.lignes === 4 && a.parents.length === 1 && a.parents[0].table === 'Relevé' && a.parents[0].colonnes.includes('submission_time')
+        && a.formulaire.langue === 'Français (fr)' && a.coordonnees && a.metadonnees.find((m) => m.role === 'envoi').garde, `aperçu de la répétition : ${JSON.stringify(a).slice(0, 600)}`);
+      const p = await api('kobo_importer', { chemin: xlsx, nom: 'releve kobo.xlsx', table: 'observation', garder: ['envoi'],
+        parents: { Relevé: ['habitat', 'gps_longitude', 'gps_latitude', 'submission_time'] }, formulaire: form });
+      const noms = p.variables.map((v) => v.nom);
+      verifier(p.id && p.nom === 'releve kobo (observation).xlsx' && p.table === 'observation' && noms.join() === 'espece,effectif,habitat,gps_longitude,gps_latitude,submission_time'
+        && p.coordonnees && p.coordonnees.nom_x === 'gps_longitude' && p.coordonnees.systeme === 4326 && p.collecte.phrases.length > 3
+        && p.variables.find((v) => v.nom === 'espece').categories.join() === 'Merle noir,Mésange charbonnière,Rougegorge familier'
+        && p.variables.find((v) => v.nom === 'habitat').categories.join() === 'Prairie,Forêt', `import : ${JSON.stringify(p).slice(0, 600)}`);
+      const d = await api('donnees', { projet: p.id });
+      verifier(d.valeurs[d.variables.indexOf('gps_latitude')].join() === '43.61,43.61,43.65,' && d.valeurs[d.variables.indexOf('effectif')].join() === '2,1,3,1',
+        `valeurs jointes : ${JSON.stringify(d.valeurs)}`);
+      // as it is (the sheets to choose from), and the import redone from its settings (the engine restarted)
+      const brut = await api('ouvrir', { chemin: xlsx, brut: true });
+      verifier(Array.isArray(brut.choisir) && brut.choisir.join() === 'Relevé,observation', `tel quel : ${JSON.stringify(brut).slice(0, 200)}`);
+      const relance = await api('ouvrir', { chemin: xlsx, table: p.table, kobo: p.kobo });
+      verifier(relance.id !== p.id && relance.variables.map((v) => v.nom).join() === noms.join() && relance.nom === p.nom, `refait : ${JSON.stringify(relance.kobo)}`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${p.id} <- importer_collecte(`) && j.includes('table = "observation", garder = "envoi"'), 'journal : importer_collecte');
+      const en = await api('kobo_apercu', { chemin: xlsx }, 'en');
+      verifier(en.phrases[0] === 'KoboToolbox export (Excel workbook, 2 tables): the submissions table “Relevé”, 3 row(s).', `en anglais : ${en.phrases[0]}`);
+      let refus = '';
+      try { await api('ouvrir', { chemin: tableau(), collecte: true }); } catch (e) { refus = e.message; }
+      verifier(/essai\.csv n'est pas un export de KoboToolbox ni d'ODK Central/.test(refus), `un tableau ordinaire importé : « ${refus} »`);
+      // an ODK Central zip (one CSV per table, PARENT_KEY), sent by the browser as File › Open does
+      const odk = path.join(dossier, 'odk');
+      fs.mkdirSync(odk);
+      fs.writeFileSync(path.join(odk, 'releve.csv'), ['SubmissionDate,group_site-site,group_site-gps-Latitude,group_site-gps-Longitude,meteo,meta-instanceID,KEY,SubmitterName,ReviewState',
+        '2024-05-03T06:45:12.000Z,S1,43.61,3.87,soleil vent,uuid:a,uuid:a,Anne,approved', '2024-05-04T07:00:00.000Z,S2,43.65,3.9,pluie,uuid:b,uuid:b,Paul,'].join('\n'));
+      fs.writeFileSync(path.join(odk, 'releve-observation.csv'), ['espece,effectif,PARENT_KEY,KEY', 'turmer,2,uuid:a,uuid:a/observation[1]',
+        'parmaj,1,uuid:a,uuid:a/observation[2]', 'erirub,1,uuid:b,uuid:b/observation[1]'].join('\n'));
+      const zipf = path.join(dossier, 'releve.zip');
+      await api('console', { code: `zip::zip(${r(zipf)}, files = c("releve.csv", "releve-observation.csv"), root = ${r(odk)})` });
+      const envoi = await fetch(`http://127.0.0.1:${port}/api/televerser?nom=releve.zip`, { method: 'POST', body: fs.readFileSync(zipf), headers: { Cookie: cookie } });
+      const z = await envoi.json();
+      verifier(envoi.ok && z.kobo && z.kobo.outil === 'odk' && z.kobo.tables.map((x) => x.nom).join() === 'releve,observation', `archive envoyée : ${JSON.stringify(z).slice(0, 300)}`);
+      const pz = await api('kobo_importer', { chemin: z.chemin, nom: z.nom, table: 'observation', formulaire: form });
+      verifier(pz.variables.map((v) => v.nom).join() === 'espece,effectif,site,gps_longitude,gps_latitude,meteo_soleil,meteo_pluie,meteo_vent'
+        && pz.coordonnees && pz.coordonnees.nom_y === 'gps_latitude' && pz.nom === 'releve (observation).zip', `répétition d’ODK : ${pz.variables.map((v) => v.nom).join()}`);
+    });
     await etape('RDA (Hellinger, partielle, permutée par site) et analyse des correspondances', async () => {
       // 30 relevés de 6 espèces le long de deux gradients (température, sable), 5 sites
       let g = 11;
