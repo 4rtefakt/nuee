@@ -577,14 +577,31 @@ if (!requireNamespace("terra", quietly = TRUE)) {
   options_gdal <- list(c("COMPRESS=NONE"), c("COMPRESS=LZW"), c("COMPRESS=DEFLATE", "TILED=YES", "BLOCKXSIZE=32", "BLOCKYSIZE=32"), c("COMPRESS=PACKBITS"),
                        c("COMPRESS=LZW", "PREDICTOR=2"), c("COMPRESS=DEFLATE", "PREDICTOR=2", "ENDIANNESS=BIG"))
   types <- c("INT1U", "INT1S", "INT2U", "INT2S", "INT4U", "INT4S", "FLT4S", "FLT8S")
+  # (un fichier que GDAL ne relit pas comme il l'a écrit ne sert pas de référence : GDAL 3.8.4, celui
+  # d'Ubuntu 24.04, écrit mal le prédicteur 3 en gros-boutiste, et terra en relit les mêmes valeurs
+  # fausses que Nuée ; il est nommé et laissé de côté)
+  relu_comme_ecrit <- function(r, fichier, type) {
+    ecrit <- as.vector(terra::values(r, mat = TRUE))
+    if (type == "FLT4S") ecrit <- readBin(writeBin(ecrit, raw(), size = 4), "double", n = length(ecrit), size = 4)
+    relu <- as.vector(terra::values(terra::rast(fichier), mat = TRUE))
+    identical(is.na(relu), is.na(ecrit)) && isTRUE(all(abs(relu - ecrit) <= 1e-6 * pmax(1, abs(ecrit)), na.rm = TRUE))
+  }
   pires <- c()
+  faux <- character(0)
   for (type in types) for (o in c(options_gdal, if (grepl("FLT", type)) list(c("COMPRESS=LZW", "PREDICTOR=3"), c("COMPRESS=DEFLATE", "PREDICTOR=3", "TILED=YES", "ENDIANNESS=BIG")))) {
     fichier <- f(sprintf("gdal_%s_%s.tif", type, gsub("[^A-Za-z0-9]", "", paste(o, collapse = "_"))))
-    terra::writeRaster(fabriquer(type), fichier, datatype = type, gdal = o, NAflag = manquante[[type]], overwrite = TRUE)
+    r <- fabriquer(type)
+    terra::writeRaster(r, fichier, datatype = type, gdal = o, NAflag = manquante[[type]], overwrite = TRUE)
+    if (!relu_comme_ecrit(r, fichier, type)) {
+      faux <- c(faux, basename(fichier))
+      next
+    }
     pires[basename(fichier)] <- ecart_gdal(fichier)
   }
+  if (length(faux)) cat(sprintf("    (ce GDAL ne relit pas %d fichier(s) comme il les a écrits, laissés de côté : %s)\n", length(faux), paste(faux, collapse = ", ")))
+  if (any(pires != 0)) cat("    (fichiers différents :", paste(sprintf("%s %.3g", names(pires)[pires != 0], pires[pires != 0]), collapse = " ; "), ")\n")
   verifier(sprintf("écrits par GDAL : %d fichiers (8 types × compressions, prédicteurs, tuiles, ordre des octets), toutes les cellules et les valeurs manquantes comme terra (le pire écart : %.3g)",
-                   length(pires), max(pires)), all(pires == 0))
+                   length(pires), max(pires)), all(pires == 0) && length(pires) >= 48)
   autres <- list(list("FLT4S", c("COMPRESS=LZW", "PREDICTOR=3", "TILED=YES"), 3), list("FLT4S", c("COMPRESS=LZW", "PREDICTOR=3", "INTERLEAVE=BAND"), 3),
                  list("INT2S", c("COMPRESS=LZW", "PREDICTOR=2", "INTERLEAVE=PIXEL"), 3), list("INT2S", c("COMPRESS=DEFLATE", "PREDICTOR=2", "INTERLEAVE=BAND", "TILED=YES"), 2),
                  list("FLT4S", c("COMPRESS=DEFLATE", "BIGTIFF=YES"), 1), list("FLT8S", c("COMPRESS=LZW", "BIGTIFF=YES", "TILED=YES", "PREDICTOR=3"), 1),
@@ -626,12 +643,19 @@ if (!requireNamespace("terra", quietly = TRUE)) {
   verifier("un système que Nuée ne convertit pas, écrit par GDAL : refusé avec son code", grepl("27561", ouvrir_raster(f("gdal_27561.tif"))$systeme$erreur))
   # les GeoTIFF écrits ici, lus par GDAL : les mêmes valeurs et la même transformation
   ici <- c(sprintf("ici_%d.tif", seq_along(cas)), "point.tif", "meta.tif")
+  # (terra avant 1.9 ne garde pas les entiers non signés de 32 bits au-delà de 2^31 : un tel fichier
+  # est laissé de côté ; Nuée l'a déjà relu exactement plus haut)
   lus <- vapply(ici, function(x) {
     gi <- ouvrir_raster(f(x))
+    if (identical(gi$type, "uint32") && !terra_19) {
+      cat(sprintf("    (%s : des entiers non signés de 32 bits, que terra %s ne garde pas au-delà de 2^31, laissé de côté)\n", x, utils::packageVersion("terra")))
+      return(TRUE)
+    }
     ri <- terra::rast(f(x))
     e <- terra::ext(ri)
     isTRUE(all.equal(unname(gi$gt), unname(c(e$xmin, terra::xres(ri), 0, e$ymax, 0, -terra::yres(ri))), tolerance = 1e-12)) && ecart_gdal(f(x)) < 1e-9
   }, TRUE)
+  if (!all(lus)) cat("    (lus autrement par GDAL :", paste(names(lus)[!lus], collapse = ", "), ")\n")
   verifier(sprintf("les %d GeoTIFF écrits ici, lus par GDAL : les mêmes valeurs et la même transformation (PixelIsPoint compris)", length(ici)), all(lus))
   # (terra ne lit pas les valeurs d'un raster tourné : la transformation que donne gdalinfo)
   info <- suppressWarnings(terra::describe(f("tourne.tif")))
