@@ -1155,6 +1155,9 @@ densite_echantillonnage <- function(t, p, var_p, q, cu, ht = NULL) {
     poids <- if (t$densite_seule) couverte / sum(couverte) else rep(1, length(lignes))
     N <- sum(poids * de_chaque(function(l) l$N))
     var_er_N <- sum(poids^2 * de_chaque(function(l) l$var_er_N))
+    # (comme dht2, sans les poids au dénominateur : sans aire de strate, moins de degrés de liberté que
+    # Satterthwaite n'en donne avec eux, et un intervalle du total plus large ; le texte des méthodes,
+    # le Résumé et la vue Densité et effectif le disent)
     er_ddl <- var_er_N^2 / sum(de_chaque(function(l) l$var_er_N^2 / l$ddl_rencontre))
     gN <- if (!is.null(ht)) Reduce(`+`, Map(function(l, a) a * l$gradient, lignes, poids))
     var_det_N <- if (is.null(ht)) N^2 * var_p / p^2 else drop(crossprod(gN, ht$V %*% gN))
@@ -1576,6 +1579,12 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
     tg <- m$densite_groupes[nrow(m$densite_groupes), ]
     p3 <- paste(p3, sprintf(tx("Ces valeurs comptent les individus ; les groupes : D = %s%s (CV %s), de taille moyenne %s.", "These values count individuals; groups: D = %s%s (CV %s), of mean size %s."),
                             sig(tg$D, 4), aire, pourcent_texte(tg$cv, fr), nombre(tot$D / tg$D, 2)))
+  }
+  # (sans aire de strate : les degrés de liberté du total, ceux de dht2, densite_echantillonnage)
+  if (t$densite_seule && nrow(dens) > 1) {
+    p3 <- paste(p3, sprintf(tx("Sans aire de strate, la densité totale est la moyenne des strates pondérée par leurs aires couvertes, et ses %s degrés de liberté sont ceux de dht2, qui laisse ces poids hors du dénominateur de la formule de Satterthwaite : moins que la formule n'en donne avec eux, d'où un intervalle plus large.",
+                               "Without stratum areas, the overall density is the strata's mean weighted by their covered areas, and its %s degrees of freedom are dht2's, which leaves these weights out of the denominator of Satterthwaite's formula: fewer than the formula gives with them, hence a wider interval."),
+                            nombre(tot$ddl, 1)))
   }
   if (any(dens$k[!is.na(dens$strate)] == 1)) p3 <- paste(p3, tx("Une strate d'un seul transect n'a pas de variance du taux de rencontre.", "A stratum with a single transect has no encounter rate variance."))
   if (!nzchar(u$aire)) p3 <- paste(p3, sprintf(tx("Les distances ont été converties par le facteur %s.", "The distances were converted by the factor %s."), format(u$facteur, digits = 6)))

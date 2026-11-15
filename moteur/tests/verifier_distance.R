@@ -819,6 +819,20 @@ for (langue in c("fr", "en")) {
              grepl(if (fr) "rayon effectif" else "effective detection radius", tp$paragraphes[2]) && grepl("P2", tp$paragraphes[3]) && grepl("10", tp$paragraphes[1]) &&
              any(grepl("^Buckland", tm$references)) && any(grepl("^Miller", tm$references)) && any(grepl("^Fewster", tm$references)) && any(grepl("R Core Team", tm$references)))
 }
+# sans aire de strate : les degrés de liberté du total sont ceux de dht2 (densite_echantillonnage), et le
+# texte des méthodes le dit, avec leur nombre ; avec des aires, il n'en dit rien
+dsa <- definition_distance(ps, aire = NULL)
+msa <- ajuster(ps, dsa)
+tot_sa <- msa$densite[nrow(msa$densite), ]
+for (langue in c("fr", "en")) {
+  fr <- langue == "fr"
+  ts <- texte_methodes(ps, dsa, msa, langue, "essai")$paragraphes[3]
+  ta <- texte_methodes(ps, dg, etat$modeles$M1$modele, langue, "essai")$paragraphes[3]
+  marque <- if (fr) "Sans aire de strate, la densité totale" else "Without stratum areas, the overall density"
+  verifier(sprintf("sans aire de strate (%s) : le texte des méthodes dit que les %s degrés de liberté du total sont ceux de dht2 ; avec des aires, rien", langue, nombre_texte(tot_sa$ddl, 1, fr)),
+           nrow(msa$densite) == 3 && is.na(tot_sa$N) && grepl(marque, ts, fixed = TRUE) && grepl("dht2", ts, fixed = TRUE) &&
+             grepl(sprintf(if (fr) "ses %s degrés de liberté" else "its %s degrees of freedom", nombre_texte(tot_sa$ddl, 1, fr)), ts, fixed = TRUE) && !grepl(marque, ta, fixed = TRUE))
+}
 # un modèle à covariables : ce que l'interface reçoit, ses textes, ses tableaux
 etat$projets$P2 <- c(psc, list(id = "P2"))
 class(etat$projets$P2) <- class(psc)

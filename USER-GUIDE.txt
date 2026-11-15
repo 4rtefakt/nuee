@@ -1654,11 +1654,15 @@ effective strip half-width ESW = p w (lines) or the effective detection radius E
 (points). The density of each stratum is D = n / (a p), a the covered area (2 w L, or 2 (w − L)
 L with a left truncation, for lines; π w² K for points); its variance combines the encounter
 rate's between transects (the R2 estimator for lines, P2 for points, Fewster et al. 2009), that
-of p, and that of the mean group size; its 95% interval is log-normal with Satterthwaite
-degrees of freedom, as dht2. The total over the strata adds their abundances (with areas) or
-weights their densities by their covered areas (without). Refused, and named: a negative
-distance, a missing or zero effort, two efforts for one transect, two areas for one stratum, an
-area of zero beside others, a distance without a transect.
+of p, and that of the mean group size; its 95% interval is log-normal with Satterthwaite degrees
+of freedom, as dht2. The total over the strata adds their abundances (with areas) or weights
+their densities by their covered areas (without). Without areas, the total's degrees of freedom
+are dht2's: its Satterthwaite formula leaves the strata's weights out of its denominator, which
+gives fewer degrees of freedom, and a wider total interval, than with them (0.6 on Distance's
+amakihi data, 7 strata). The strata's intervals don't depend on it. Nuée keeps it to give
+Distance's numbers, and the Summary, the Density and abundance view and the Methods text say so.
+Refused, and named: a negative distance, a missing or zero effort, two efforts for one transect,
+two areas for one stratum, an area of zero beside others, a distance without a transect.
 With covariates, the likelihood is that of each detection's distance given its covariates
 (mrds's flpt.lnl, or the counts of the classes); the coefficients are fitted on the quantitative
 covariates centred and scaled, then returned in their units. The same settings without

@@ -1806,9 +1806,14 @@ réunit celle du taux de rencontre entre les transects (l'estimateur R2 pour des
 des points, Fewster et al. 2009), celle de p et celle de la taille moyenne des groupes ; son
 intervalle à 95 % est log-normal avec les degrés de liberté de Satterthwaite, comme dht2. Le
 total sur les strates additionne leurs effectifs (avec des aires) ou pondère leurs densités par
-leurs aires couvertes (sans). Refusés, et nommés : une distance négative, un effort manquant ou
-nul, deux efforts pour un transect, deux aires pour une strate, une aire nulle parmi d'autres,
-une distance sans transect.
+leurs aires couvertes (sans). Sans aire, les degrés de liberté du total sont ceux de dht2 : sa
+formule de Satterthwaite laisse les poids des strates hors de son dénominateur, ce qui donne
+moins de degrés de liberté, et un intervalle du total plus large, qu'avec eux (0,6 sur les
+données amakihi de Distance, 7 strates). Les intervalles des strates n'en dépendent pas. Nuée le
+garde pour donner les nombres de Distance, et le Résumé, la vue Densité et effectif et le texte
+des méthodes le disent. Refusés, et nommés : une distance négative, un effort manquant ou nul,
+deux efforts pour un transect, deux aires pour une strate, une aire nulle parmi d'autres, une
+distance sans transect.
 Avec des covariables, la vraisemblance est celle de la distance de chaque détection sachant ses
 covariables (flpt.lnl de mrds, ou les comptes des classes) ; les coefficients sont ajustés sur
 les covariables quantitatives centrées et réduites, puis rendus dans leurs unités. Les mêmes

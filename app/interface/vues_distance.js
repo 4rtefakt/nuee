@@ -17,7 +17,8 @@ const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R
 const estDistance = (m) => !!m && !!m.analyse && m.type === 'DISTANCE';
 const fini = (v) => v !== null && v !== undefined && Number.isFinite(v);
 // a value with k significant digits, a large one as a whole number
-const sig = (v, k = 4) => (!fini(v) ? '—' : Math.abs(v) >= 10 ** k ? String(Math.round(v)) : String(+Number(v).toPrecision(k)));
+const sig = (v, k = 4) => (!fini(v) ? '—' : Math.abs(v) >= 1e15 ? Number(v).toPrecision(k)
+  : Math.abs(v) >= 10 ** k ? String(Math.round(v)) : String(+Number(v).toPrecision(k)));
 const pct = (v) => (!fini(v) ? '—' : `${fmt(100 * v, 1)}${langueActuelle() === 'fr' ? ' %' : '%'}`);
 const pValeur = (v) => (!fini(v) ? '—' : valeurP(v));
 const chiffre = (k, v) => el('span', {}, el('small', {}, k), ' ', el('b', {}, v ?? '—'));
@@ -60,9 +61,17 @@ function notesDistance(m) {
   if (m.monotone === false) n.push(t('distance_non_monotone'));
   if (lignesDensite(m.densite).some((l) => l.strate !== null && l.k === 1)) n.push(t('distance_un_transect'));
   if (m.densite_seule) n.push(t('distance_densite_seule'));
+  const ddl = noteDdlTotal(m, m.densite);
+  if (ddl) n.push(ddl);
   if (m.unites && m.unites.donne) n.push(t('distance_facteur_donne', { f: sig(m.unites.facteur, 6) }));
   return n;
 }
+// Without stratum areas, the total's degrees of freedom are dht2's (moteur/R/distance.R:
+// densite_echantillonnage): said with their number wherever the total shows
+const noteDdlTotal = (m, dn) => {
+  const l = lignesDensite(dn);
+  return m.densite_seule && l.length > 1 ? t('distance_ddl_total', { ddl: fmt(l[l.length - 1].ddl, 1) }) : null;
+};
 const phraseSelection = (m) => {
   const s = t('distance_selection_' + (m.selection || 'aic'), { serie: libelleSerie(m.serie_demandee) });
   return avecCovariables(m) && liste(m.candidats.modele).length > 1 ? `${s} ${t('distance_comparaison_note')}` : s;
@@ -238,16 +247,23 @@ function rendreDensite(conteneur, ctx, p, loc) {
   const graphe = el('div', { class: 'graphe' });
   const bas = el('div', { class: 'bas' });
   conteneur.replaceChildren(outils(m.groupes ? choix('', [['individus', t('distance_individus')], ['groupes', t('distance_groupes')]], loc.quoi, (v) => { loc.quoi = v; ctx.rafraichir(); }) : null),
-    el('p', { class: 'note' }, t(m.densite_seule ? 'distance_densite_note_seule' : 'distance_densite_note', { u: parAireCourt(m) })), graphe, bas);
+    el('p', { class: 'note' }, t(m.densite_seule ? 'distance_densite_note_seule' : 'distance_densite_note', { u: parAireCourt(m) })),
+    noteDdlTotal(m, groupes ? m.densite_groupes : m.densite) ? el('p', { class: 'note' }, noteDdlTotal(m, groupes ? m.densite_groupes : m.densite)) : null, graphe, bas);
   const noms = lignes.map((l) => etiquetteStrate(l.strate));
   const couleurs = lignes.map((l) => (l.strate === null ? PALETTE[1] : PALETTE[0]));
+  // (an interval of the total far wider than the strata's, with dht2's few degrees of freedom: the axis
+  // stays on the strata's, and the total's bar, drawn up to twice the axis, runs off the top; the hover
+  // gives its bounds)
+  const hauts = lignes.filter((l) => l.strate !== null && fini(l.haut_D)).map((l) => l.haut_D);
+  const tot = lignes.find((l) => l.strate === null);
+  const plafond = hauts.length && tot && fini(tot.haut_D) && tot.haut_D > 3 * Math.max(...hauts) ? 1.15 * Math.max(...hauts, tot.D) : null;
   tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', x: noms, y: lignes.map((l) => l.D), marker: { size: 10, color: couleurs },
-    error_y: { type: 'data', symmetric: false, array: lignes.map((l) => l.haut_D - l.D), arrayminus: lignes.map((l) => l.D - l.bas_D), color: c0(ctx), thickness: 1.5, width: 6 },
+    error_y: { type: 'data', symmetric: false, array: lignes.map((l) => (plafond ? Math.min(l.haut_D, 2 * plafond) : l.haut_D) - l.D), arrayminus: lignes.map((l) => l.D - l.bas_D), color: c0(ctx), thickness: 1.5, width: 6 },
     customdata: lignes.map((l) => [sig(l.bas_D), sig(l.haut_D), pct(l.cv)]),
     hovertemplate: `<b>%{x}</b><br>D %{y:.4g}${parAire(m)}<br>${t('ic_95')} %{customdata[0]} – %{customdata[1]}<br>CV %{customdata[2]}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t(groupes ? 'distance_densite_groupes' : 'distance_densite')}` }, showlegend: false, dragmode: 'zoom',
     xaxis: { type: 'category', title: { text: m.noms && m.noms.strate ? m.noms.strate : '' } },
-    yaxis: { title: { text: `D${parAire(m) ? ` (${parAire(m).trim()})` : ''}` }, rangemode: 'tozero' } });
+    yaxis: { title: { text: `D${parAire(m) ? ` (${parAire(m).trim()})` : ''}` }, rangemode: 'tozero', ...(plafond ? { range: [0, plafond] } : {}) } });
   loc.table ??= {};
   const colonnes = [{ cle: 'strate', titre: m.noms && m.noms.strate ? m.noms.strate : t('distance_strate') },
     m.densite_seule ? null : { cle: 'aire', titre: avecUnite(t('distance_aire'), uAire(m) ? `(${uAire(m)})` : ''), num: true, format: (v) => sig(v, 6) },
@@ -432,7 +448,8 @@ const blocsDetection = (m) => {
 };
 const blocsDensite = (m) => [{ entetes: [t('distance_strate'), 'k', 'n', t('distance_rencontre'), `D${parAire(m)}`, 'CV', t('ic_95'), t('ddl')].concat(m.densite_seule ? [] : ['N', `N ${t('ic_95')}`]),
   lignes: lignesDensite(m.densite).map((l) => [etiquetteStrate(l.strate), String(l.k), String(l.n), sig(l.er), sig(l.D), pct(l.cv), `${sig(l.bas_D)} – ${sig(l.haut_D)}`, fmt(l.ddl, 1)]
-    .concat(m.densite_seule ? [] : [sig(l.N), `${sig(l.bas_N)} – ${sig(l.haut_N)}`])) }, { texte: t(m.densite_seule ? 'distance_densite_note_seule' : 'distance_densite_note', { u: parAireCourt(m) }) }];
+    .concat(m.densite_seule ? [] : [sig(l.N), `${sig(l.bas_N)} – ${sig(l.haut_N)}`])) }, { texte: t(m.densite_seule ? 'distance_densite_note_seule' : 'distance_densite_note', { u: parAireCourt(m) }) }]
+  .concat(noteDdlTotal(m, m.densite) ? [{ texte: noteDdlTotal(m, m.densite) }] : []);
 PARTIES_TYPES.DISTANCE = [
   { cle: 'resume', defaut: true, tableau: blocsResume },
   { cle: 'distance_detection', vue: 'distance_detection', defaut: true, tableau: blocsDetection },
@@ -529,6 +546,7 @@ ajouterTextes({
   distance_contraint: 'La contrainte de monotonie agit : sans elle, la fonction de détection monterait ou deviendrait négative en l’un des 10 points.',
   distance_un_transect: 'Une strate d’un seul transect n’a pas de variance du taux de rencontre (comme dht2).',
   distance_densite_seule: 'Sans aire de strate : la densité seulement (le total est la moyenne des strates pondérée par leurs aires couvertes, comme dht2).',
+  distance_ddl_total: 'Le total a {ddl} degrés de liberté, ceux de dht2 sans aire de strate : sa formule de Satterthwaite laisse les poids des strates (leurs aires couvertes) hors de son dénominateur, ce qui donne moins de degrés de liberté, et un intervalle du total plus large, qu’avec eux. Les intervalles des strates n’en dépendent pas. Nuée garde ce calcul pour donner les mêmes nombres que Distance.',
   distance_facteur_donne: 'Les distances converties par le facteur {f} : les densités sont par unité d’aire de ce facteur.',
   distance_detection: 'Fonction de détection', distance_g: 'Fonction de détection g', distance_pdf: 'Densité des distances f', distance_histogramme: 'Histogramme des distances',
   distance_points_obs: 'distances observées', distance_points_obs_aide: 'Chaque détection sur la courbe, à sa distance ; un clic la choisit.',
@@ -621,6 +639,7 @@ ajouterTextes({
   distance_contraint: 'The monotonicity constraint is active: without it, the detection function would rise or turn negative at one of the 10 points.',
   distance_un_transect: 'A stratum with a single transect has no encounter rate variance (as dht2).',
   distance_densite_seule: 'Without stratum areas: the density only (the total is the strata’s mean weighted by their covered areas, as dht2).',
+  distance_ddl_total: 'The total has {ddl} degrees of freedom, dht2’s without stratum areas: its Satterthwaite formula leaves the strata’s weights (their covered areas) out of its denominator, which gives fewer degrees of freedom, and a wider total interval, than with them. The strata’s intervals don’t depend on it. Nuée keeps this computation to give the same numbers as Distance.',
   distance_facteur_donne: 'The distances converted by the factor {f}: the densities are per unit of area of that factor.',
   distance_detection: 'Detection function', distance_g: 'Detection function g', distance_pdf: 'Density of distances f', distance_histogramme: 'Histogram of distances',
   distance_points_obs: 'observed distances', distance_points_obs_aide: 'Each detection on the curve, at its distance; a click selects it.',
