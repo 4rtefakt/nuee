@@ -311,8 +311,8 @@ Export to R (script, R Markdown, Quarto)
 ----------------------------------------
 File › Export to R: a file that refits the model without Nuée, with R alone, to send to a
 colleague or attach to a paper. The calculation is written for that model alone, in plain R
-with no package (a regression: lm, or nlme and mgcv, which come with R), commented in the
-export's language, in four parts:
+with no package (a regression: lm, or nlme and mgcv, which come with R; an NMDS: MASS, which
+comes with R too), commented in the export's language, in four parts:
   1. the functions: the NIPALS algorithm, the cross-validation, and only what this model
      uses (missing values, spectral preprocessing, OPLS...);
   2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
@@ -1212,6 +1212,8 @@ click highlights the species in the plot), Indicator values (each species' value
 coloured by the group and pale when not significant; or one species' A and B in each group),
 Summary (the number of species retained at 0.05, raw and corrected, and per group). The
 statistics are those of indicspecies::multipatt, and for the same permutations the same p values.
+Methods text, export and report as for the other models; Export to R redoes the analysis with R
+alone, the engine's own functions and the same permutations.
 
 Rarefaction and species accumulation
 ------------------------------------
@@ -1292,9 +1294,13 @@ from the project's coordinates (see Maps and spatial data), no X needed: whether
 are more alike (distance decay), and with the correlogram, up to what distance.
 
 The four export their tables (File › Export), write their Methods text with its references and
-make a report; they don't predict new observations and have no Export to R yet. The results are
-those of vegan (vegdist, wcmdscale, envfit, metaMDS with isoMDS, adonis2, betadisper, mantel,
-mantel.correlog): the same values, and for the same permutations the same p values.
+make a report; they don't predict new observations. The results are those of vegan (vegdist,
+wcmdscale, envfit, metaMDS with isoMDS, adonis2, betadisper, mantel, mantel.correlog): the same
+values, and for the same permutations the same p values. File › Export to R writes a script, or
+an R Markdown or Quarto report, that redoes them with R alone (and MASS, which comes with R, for
+the NMDS): its functions are those of Nuée's engine, copied as the engine writes them; then the
+model's data (the coordinates for a geographic Mantel test), its transformation, distance and
+options, the same permutations and the same starts, so the same p values and the same NMDS.
 
 Decision trees, linear discriminant analysis and k-means
 --------------------------------------------------------

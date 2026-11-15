@@ -1320,6 +1320,8 @@ async function principal() {
       verifier(mt.paragraphes.some((x) => /IndVal\.g/.test(x)) && mt.references.some((x) => /Dufrêne, M\./.test(x)), 'texte des méthodes');
       const e = await api('exporter', { modele: iv.id, chemin: path.join(dossier, 'indval.xlsx') });
       verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      const sc = await api('script_r', { modele: iv.id, chemin: path.join(dossier, 'indval.R'), version: 'essai', langue: 'en' });
+      verifier(fs.existsSync(sc.script) && !sc.ecart && /indval_test <- function/.test(fs.readFileSync(sc.script, 'utf8')), `script indval.R : ${sc.ecart || 'sans écart'}`);
       let refus = '';
       try { await api('ajuster', { projet: q.id, type: 'INDVAL', x: [v.sp1], y: [v.sp2], classe: v.milieu, echelle: 'none' }); } catch (err) { refus = err.message; }
       verifier(/variable X/.test(refus), `des X refusés : « ${refus} »`);
@@ -1396,6 +1398,10 @@ async function principal() {
       for (const [m, f] of [[pcoa, 'pcoa.xlsx'], [nmds, 'nmds.xlsx'], [perma, 'permanova.xlsx'], [mantel, 'mantel.xlsx']]) {
         const e = await api('exporter', { modele: m.id, chemin: path.join(dossier, f) });
         verifier(fs.existsSync(e.chemin), `exporter ${f}`);
+      }
+      for (const [m, f, langue] of [[pcoa, 'pcoa.R', 'fr'], [nmds, 'nmds.Rmd', 'en'], [perma, 'permanova.R', 'en'], [mantel, 'mantel.qmd', 'fr']]) {
+        const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, f), version: 'essai', langue });
+        verifier(fs.existsSync(s.script) && !s.ecart, `script ${f} : ${s.ecart || 'sans écart'}`);
       }
       const mt = await api('methodes', { modele: perma.id, langue: 'en' });
       verifier(mt.paragraphes.some((x) => /permutational multivariate analysis of variance \(PERMANOVA/.test(x)) && mt.paragraphes.some((x) => /adonis2/.test(x))
