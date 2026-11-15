@@ -200,7 +200,7 @@ saut <- Fg(grille$y) - Fg(grille$y - 1)
 verifier(sprintf("repartition_zip : F(y) − F(y − 1) = la probabilité de mgcv (à %.0e près ; à 1e-9 près relatif au-delà de 1e-6), F + (1 − F) = 1, de λ = 10⁻¹² à 40",
                  max(abs(saut - masse))),
          max(abs(saut - masse)) < 1e-14 && proche(saut[masse > 1e-6], masse[masse > 1e-6], 1e-9) &&
-           proche(Fg(grille$y) + Fg(grille$y, lower.tail = FALSE), rep(1, nrow(grille)), 1e-12) && all(Fg(-1) == 0) && proche(Fg(0), exp(-eg), 1e-12))
+           proche(Fg(grille$y) + Fg(grille$y, lower.tail = FALSE), rep(1, nrow(grille)), 1e-12) && all(Fg(rep(-1, nrow(grille))) == 0) && proche(Fg(rep(0, nrow(grille))), exp(-eg), 1e-12))
 F0 <- repartition_zip(c(-800, -800), c(805, 1))
 verifier("λ nul en double précision (p presque 1) : la loi tronquée est toute en 1 (sa limite), sans NaN",
          identical(F0(c(0, 1)), c(exp(-exp(5)), 1)) && identical(F0(c(0, 1), lower.tail = FALSE), c(-expm1(-exp(5)), 0)))

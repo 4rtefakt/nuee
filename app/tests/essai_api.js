@@ -975,6 +975,48 @@ async function principal() {
       verifier(/n'est croisée avec « secteur » dans aucun terme/.test(refusDans) && /pas de variable qualitative/.test(refusSans),
         `refus : « ${refusDans} » ; « ${refusSans} »`);
     });
+    await etape('Poisson à excès de zéros (ziP) et loi bêta (betar) : loi, lien, paramètres, résidus quantiles, moyennes, côte à côte, méthodes, refus', async () => {
+      // 90 surveys of three habitats with an effort: counts with extra zeros, proportions between 0 and 1
+      let g = 41;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = [];
+      for (let i = 1; i <= 90; i += 1) {
+        const habitat = ['bois', 'haie', 'prairie'][i % 3];
+        const x = alea();
+        const effort = 1 + 2 * alea();
+        const mu = effort * Math.exp(0.3 + 0.8 * x + (habitat === 'bois' ? 0.5 : 0));
+        const compte = alea() < 0.35 ? 0 : Math.max(1, Math.round(mu + (alea() - 0.5) * 2 * Math.sqrt(mu)));
+        const m = 1 / (1 + Math.exp(-(-0.3 + 1.2 * x + (habitat === 'haie' ? -0.4 : 0))));
+        const prop = Math.min(0.97, Math.max(0.03, m + (alea() - 0.5) * 0.3));
+        lignes.push([`r${i}`, habitat, x.toFixed(3), effort.toFixed(2), compte, prop.toFixed(4)].join('\t'));
+      }
+      const q = await api('coller', { texte: ['nom\thabitat\tx\teffort\tcompte\tprop', ...lignes].join('\r\n'), nom: 'Familles' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const zip = await api('ajuster', { projet: q.id, type: 'GLM', x: [v.x, v.habitat], y: [v.compte], echelle: 'none', nom: 'ZIP', famille: 'poisson_zi', decalage: v.effort });
+      const beta = await api('ajuster', { projet: q.id, type: 'GAM', x: [v.x, v.habitat], y: [v.prop], echelle: 'none', nom: 'BETA', famille: 'beta', lisses: [v.x] });
+      const pl = zip.parametre_loi;
+      verifier(zip.famille === 'poisson_zi' && zip.lien === 'log' && [].concat(pl.nom).join() === 'theta1,theta2' && [].concat(pl.valeur).length === 2
+        && zip.qualite.r2_ajuste === undefined && zip.qualite.deviance_expliquee > 0 && [].concat(zip.residus_quantiles.residu).length === zip.N
+        && beta.famille === 'beta' && beta.lien === 'logit' && beta.parametre_loi.nom === 'phi' && beta.parametre_loi.valeur > 0
+        && [].concat(beta.residus_quantiles.residu).length === beta.N && [].concat(beta.courbes.terme).join() === 'x',
+      `ziP et bêta : ${JSON.stringify({ zip: [zip.famille, zip.lien, pl], beta: [beta.famille, beta.lien, beta.parametre_loi] })}`);
+      // (moteur/R/moyennes.R) expected counts and their ratios; mean proportions and odds ratios
+      const mz = await api('moyennes', { modele: zip.id });
+      const mb = await api('moyennes', { modele: beta.id });
+      verifier(mz.echelle === 'reponse' && mz.famille === 'poisson_zi' && [].concat(mz.moyennes.estimation).every((x) => x > 0) && mz.ddl.methode === 'asymptotique'
+        && /loi de Poisson à excès de zéros ; échelle de la réponse\) : bois \/ haie = /.test(mz.phrases[0])
+        && mb.echelle === 'reponse' && [].concat(mb.moyennes.estimation).every((x) => x > 0 && x < 1) && /rapport des cotes bois \/ haie/.test(mb.phrases[0]),
+      `moyennes ajustées : ${mz.phrases[0]} / ${mb.phrases[0]}`);
+      const c = await api('coefficients_modeles', { modeles: [zip.id, beta.id], erreur: 'ic' });
+      const st = [].concat(c.statistiques);
+      verifier(st.includes('θ₁ (Poisson à excès de zéros)') && st.includes('θ₂ (Poisson à excès de zéros)') && st.includes('φ (bêta)'), `côte à côte : ${st.join(' | ')}`);
+      const tm = await api('methodes', { modele: zip.id, langue: 'en', version: 'essai' });
+      verifier([].concat(tm.paragraphes).some((x) => /zero-inflated Poisson distribution, log link/.test(x)) && [].concat(tm.references).some((x) => /^Wood, S\. N\., Pya, N\./.test(x)),
+        `texte des méthodes du ziP, en anglais : ${[].concat(tm.paragraphes)[1]}`);
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'GLM', x: [v.x], y: [v.compte], echelle: 'none', famille: 'beta' }); } catch (err) { refus = err.message; }
+      verifier(/strictement comprises entre 0 et 1/.test(refus), `bêta sur des comptages : ${refus}`);
+    });
     await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
       // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the
       // impact) rises from 2006; S3 has no row in 2002; S4 is neither impact nor control
