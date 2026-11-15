@@ -190,7 +190,11 @@ async function principal() {
       verifier(Array.isArray(b.c[0]) && b.t.length === 2, 'biplot');
     });
     await etape('statistiques des variables, vérification des données', async () => {
-      verifier((await api('statistiques_variables', { projet: p.id })).nom.length === 9, 'statistiques');
+      const s = await api('statistiques_variables', { projet: p.id });
+      verifier(s.nom.length === 9, 'statistiques');
+      // (whole numbers and the share of zeros, for Which analysis?: none here, nothing for a qualitative variable)
+      verifier(s.entiers.every((e, i) => (s.qualitative[i] ? e === null : e === false)) && s.zeros.every((z, i) => (s.qualitative[i] ? z === null : z === 0)),
+        `statistiques : entiers ${JSON.stringify(s.entiers)}, zéros ${JSON.stringify(s.zeros)}`);
       await api('verifier', { projet: p.id, type: 'PCA', x });
     });
     await etape('nouvelle variable, modification, annuler', async () => {
