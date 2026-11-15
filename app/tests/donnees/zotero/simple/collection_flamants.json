@@ -1,0 +1,56 @@
+[
+    {
+        "key": "Y728SES5",
+        "version": 7,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/items/Y728SES5",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "creatorSummary": "⁨Béchet⁩ and ⁨Germain⁩",
+            "parsedDate": "2019",
+            "numChildren": 0
+        },
+        "bibtex": "\n@article{bechet_population_2019,\n\ttitle = {Population dynamics of greater flamingos in {Mediterranean} wetlands},\n\tvolume = {50},\n\tdoi = {10.1111/jav.01234},\n\tlanguage = {en},\n\tnumber = {4},\n\tjournal = {Journal of Avian Biology},\n\tauthor = {Béchet, Arnaud and Germain, Christophe},\n\tyear = {2019},\n\tpages = {e01234},\n}\n"
+    },
+    {
+        "key": "JF4RMWXY",
+        "version": 8,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/items/JF4RMWXY",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "creatorSummary": "⁨Johnson⁩ and ⁨Cézilly⁩",
+            "parsedDate": "2007",
+            "numChildren": 0
+        },
+        "bibtex": "\n@book{johnson_greater_2007,\n\taddress = {London},\n\ttitle = {The greater flamingo},\n\tlanguage = {en},\n\tpublisher = {T \\& AD Poyser},\n\tauthor = {Johnson, Alan R. and Cézilly, Frank},\n\tyear = {2007},\n}\n"
+    }
+]

@@ -1,0 +1,29 @@
+[
+    {
+        "key": "85K4D63R",
+        "version": 8,
+        "library": {
+            "type": "user",
+            "id": 0,
+            "name": "My Library",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/users/0",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/users/0/items/85K4D63R",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "creatorSummary": "⁨Béchet⁩ and ⁨Johnson⁩",
+            "parsedDate": "2019",
+            "numChildren": 0
+        },
+        "bibtex": "\n@article{bechet_population_2019,\n\ttitle = {Population dynamics of the greater flamingo in the {Camargue}},\n\tvolume = {161},\n\tlanguage = {en},\n\tnumber = {3},\n\tjournal = {Ibis},\n\tauthor = {Béchet, Arnaud and Johnson, Alan R.},\n\tyear = {2019},\n\tpages = {512--524},\n}\n"
+    }
+]
