@@ -35,6 +35,7 @@ export const NOUVEAUTES = [
       'Corrigé : en anglais, les colonnes des résultats d’un modèle (liste des observations, prédictions, couleurs et tailles de la carte) gardaient leurs noms français (observé, ajusté, résidu…), et les tableaux de résultats exportés aussi, leurs noms comme ceux de leurs colonnes (feuilles Excel, fichiers, couches GeoPackage).',
       'Corrigé : les moyennes ajustées et la puissance pour détecter une tendance, gardées avec leur modèle, ne l’étaient que jusqu’à la fermeture du projet. Elles sont maintenant enregistrées avec lui et reviennent à son ouverture, simulation de la puissance comprise : dans leurs vues, le texte des Méthodes, le rapport et l’export vers R.',
       'Corrigé : chaque mise à jour retirait Nuée de la barre des tâches quand elle y était épinglée, et refaisait ses raccourcis du menu Démarrer et du bureau. Les mises à jour les gardent maintenant, celle qui mène à cette version comprise.',
+      'Corrigé : dans un petit panneau, le titre d’un graphique chevauchait celui de son axe vertical, plus long que la zone du graphique : les titres partent maintenant du bord gauche de cette zone.',
     ],
     en: [
       'Maps and spatial data: a project has coordinates, two of its variables and their system (WGS 84 longitudes and latitudes, Lambert-93, CC zones, Lambert II étendu, UTM, LAEA Europe…), proposed from their names and saved with it. Plots › Map places the observations at equal scales, coloured and sized by a variable or by a column of a model’s results (scores, residuals, clusters), the selection shared with the models. A background map if you choose one, OpenStreetMap, IGN’s map or its aerial photographs, only on request: without one, nothing leaves the computer. The conversions are written in Nuée and give PROJ’s, the library QGIS uses, to the micrometre.',
@@ -69,6 +70,7 @@ export const NOUVEAUTES = [
       'Fixed: in English, the columns of a model’s results (the observation list, the predictions, the map’s colours and sizes) kept their French names (observé, ajusté, résidu…), and so did the tables of exported results, their names and their columns’ (Excel sheets, files, GeoPackage layers).',
       'Fixed: adjusted means and the power to detect a trend, kept with their model, were only kept until the project was closed. They are now saved with it and come back when it is opened, the power’s simulation included: in their views, the Methods text, the report and Export to R.',
       'Fixed: each update removed Nuée from the taskbar when it was pinned there, and remade its Start menu and desktop shortcuts. Updates now keep them, the one to this version included.',
+      'Fixed: in a small pane, a plot’s title ran into its vertical axis title, longer than the plot area: titles now start at that area’s left edge.',
     ] },
   { version: '0.9.9', date: '2026-11-14',
     fr: [
