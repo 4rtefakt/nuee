@@ -60,6 +60,7 @@ function editeurTransfo(initial, choisir, apres) {
 //   echelle: the default scaling chosen with it; vc: false when cross-validation doesn't apply;
 //   spectres: true when spectral preprocessing applies; test: true when it predicts a test set
 //     (moteur/R/analyses.R: tester_<type>), which the Observations tab offers only then;
+//   xFacultatif: true when it can do without X variables (an ordination whose X are fitted onto it);
 //   champs(st, rendre, p): its own fields in the General tab (label, element pairs), their values
 //     kept in st.options; valider(st, cles, p): '' or what's missing; options(st, cles, p): the
 //     options sent (p: the project summary, its variables and IDs).
@@ -603,7 +604,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const x = cles('x');
     const y = cles('y');
     const classe = cles('classe')[0];
-    if (!x.length && !regression()) { erreur.textContent = t('x_requis'); return false; }  // (a regression without X: the null model)
+    // (a regression without X: the null model; another analysis whose X are optional: xFacultatif)
+    if (!x.length && !regression() && !(analyse() && analyse().xFacultatif)) { erreur.textContent = t('x_requis'); return false; }
     if (regression() && y.length !== 1) { erreur.textContent = t('regression_y_requis'); return false; }
     if (st.type === 'LMM' && !st.aleatoires.length) { erreur.textContent = t('lmm_aleatoire_requis'); return false; }
     if (avecCar1() && st.correlation && !st.correlation.temps) { erreur.textContent = t('car1_temps_requis'); return false; }

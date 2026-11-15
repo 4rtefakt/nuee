@@ -1222,6 +1222,61 @@ async function principal() {
       try { await api('ajuster', { projet: q.id, type: 'CA', x: [v.temp, v.site], echelle: 'none' }); } catch (err) { refusCA = err.message; }
       verifier(/quantitatives/.test(refusCA), `CA d'une variable qualitative refusée : « ${refusCA} »`);
     });
+    await etape('PCoA, NMDS, PERMANOVA et test de Mantel (moteur/R/communautes.R)', async () => {
+      // 30 relevés de 6 espèces le long d'un gradient de température, trois habitats, 5 sites
+      let g = 13;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\thabitat\ttemp\tsp1\tsp2\tsp3\tsp4\tsp5\tsp6'];
+      for (let i = 1; i <= 30; i += 1) {
+        const temp = 8 + 10 * alea();
+        const h = ['lande', 'prairie', 'bois'][i % 3];
+        const sp = [temp, 20 - temp, h === 'bois' ? 8 : 2, h === 'lande' ? 6 : 1, temp / 2, 4].map((v) => Math.round(v * (0.5 + alea())));
+        lignes.push([`r${i}`, `S${1 + (i % 5)}`, h, temp.toFixed(2), ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Communautés' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5', 'sp6'].map((n) => v[n]);
+      const pcoa = await api('ajuster', { projet: q.id, type: 'PCOA', x: [v.temp, v.habitat], y: especes, echelle: 'none', nom: 'PCoA',
+        options: { distance: 'bray', transformation: 'racine2', permutations: 99, graine: 2 } });
+      verifier(pcoa.analyse === true && pcoa.prediction === false && pcoa.A === 0 && pcoa.N === 30 && /PCoA1/.test(pcoa.chiffres) && pcoa.observations.PCoA1.length === 30
+        && [].concat(pcoa.vues_defaut).join() === 'ordination_dist,valeurs_propres_pcoa' && [].concat(pcoa.ajustement.vecteurs.terme).join() === 'temp'
+        && [].concat(pcoa.ajustement.centroides.terme).length === 3 && [].concat(pcoa.especes.terme).length === 6 && pcoa.reglages.options.transformation === 'racine2',
+      `PCoA : ${pcoa.chiffres}, N = ${pcoa.N}`);
+      const seule = await api('ajuster', { projet: q.id, type: 'PCOA', x: [], y: especes, echelle: 'none', nom: 'PCoA seule', options: { correction: 'lingoes' } });
+      verifier(!seule.ajustement && seule.distance.correction === 'lingoes' && ![].concat(seule.valeurs_propres.negative).some(Boolean), 'PCoA sans X, corrigée par Lingoes');
+      const nmds = await api('ajuster', { projet: q.id, type: 'NMDS', x: [v.temp], y: especes, echelle: 'none', nom: 'NMDS', options: { distance: 'bray', k: 2, departs: 5, permutations: 99 } });
+      verifier(nmds.type === 'NMDS' && nmds.stress > 0 && nmds.stress < 0.3 && [].concat(nmds.stress_departs.stress).length === 6 && nmds.shepard.dissimilarite.length === 435
+        && nmds.observations.NMDS2.length === 30 && [].concat(nmds.vues_defaut).join() === 'ordination_dist,shepard', `NMDS : ${nmds.chiffres}`);
+      const perma = await api('ajuster', { projet: q.id, type: 'PERMANOVA', x: [v.temp, v.habitat], y: especes, classe: v.site, echelle: 'none', nom: 'PERMANOVA',
+        options: { distance: 'bray', par: 'marges', permutations: 99, graine: 3 } });
+      verifier(perma.type === 'PERMANOVA' && [].concat(perma.table.terme).join() === 'temp,habitat,Résidus,Total' && perma.dispersions.length === 2
+        && perma.dispersions.map((d) => d.variable).join() === 'habitat,site' && typeof perma.modele.p === 'number'
+        && [].concat(perma.vues_defaut).join() === 'permanova,dispersion' && perma.reglages.classe === v.site, `PERMANOVA : ${perma.chiffres}`);
+      const mantel = await api('ajuster', { projet: q.id, type: 'MANTEL', x: [v.temp], y: especes, echelle: 'UV', nom: 'Mantel',
+        options: { distance: 'bray', methode: 'spearman', permutations: 99, graine: 4, z: [v.habitat], strates: { by: 'variable', variable: v.site } } });
+      verifier(mantel.type === 'MANTEL' && mantel.test.r > 0 && typeof mantel.test.r_partiel === 'number' && [].concat(mantel.correlogramme.table.classe).length >= 3
+        && mantel.paires.y.length === 435 && mantel.reglages.options.methode === 'spearman' && [].concat(mantel.reglages.options.z).join() === String(v.habitat)
+        && mantel.strates === 'site', `Mantel : ${mantel.chiffres}`);
+      const re = await api('reajuster', { modele: perma.id, exclues: [1, 2] });
+      verifier(re.type === 'PERMANOVA' && re.N === 28 && re.A === 0, `PERMANOVA réajustée : N = ${re.N}`);
+      for (const [m, f] of [[pcoa, 'pcoa.xlsx'], [nmds, 'nmds.xlsx'], [perma, 'permanova.xlsx'], [mantel, 'mantel.xlsx']]) {
+        const e = await api('exporter', { modele: m.id, chemin: path.join(dossier, f) });
+        verifier(fs.existsSync(e.chemin), `exporter ${f}`);
+      }
+      const mt = await api('methodes', { modele: perma.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /permutational multivariate analysis of variance \(PERMANOVA/.test(x)) && mt.paragraphes.some((x) => /adonis2/.test(x))
+        && mt.paragraphes.some((x) => /betadisper/.test(x))
+        && mt.references.some((x) => /Anderson, M\. J\. \(2001\)/.test(x)), 'texte des méthodes de la PERMANOVA');
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'PERMANOVA', x: [], y: especes, echelle: 'none' }); } catch (err) { refus = err.message; }
+      verifier(/variables X/.test(refus), `PERMANOVA sans X refusée : « ${refus} »`);
+      let refusEn = '';
+      try { await api('ajuster', { projet: q.id, type: 'PCOA', x: [], y: [v.temp, v.habitat], echelle: 'none' }, 'en'); } catch (err) { refusEn = err.message; }
+      verifier(/quantitative variables only/.test(refusEn), `Y qualitative refusée en anglais : « ${refusEn} »`);
+      let refusHCA = '';
+      try { await api('hca', { modele: nmds.id }); } catch (err) { refusHCA = err.message; }
+      verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
+    });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
       let g = 5;

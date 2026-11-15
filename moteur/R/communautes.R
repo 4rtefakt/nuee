@@ -645,6 +645,7 @@ dispersion_noyau <- function(D, groupe, type = "centroide", P = NULL) {
   garde <- abs(e$values) > max(TOL, TOL * e$values[1])
   lambda <- e$values[garde]
   V <- e$vectors[, garde, drop = FALSE] %*% diag(sqrt(abs(lambda)), length(lambda))
+  colnames(V) <- sprintf("PCoA%d", seq_along(lambda))
   pos <- lambda > 0
   centres <- if (type == "centroide") {
     do.call(rbind, lapply(levels(groupe), function(g) colMeans(V[groupe == g, , drop = FALSE])))
@@ -656,7 +657,7 @@ dispersion_noyau <- function(D, groupe, type = "centroide", P = NULL) {
       x
     }))
   }
-  rownames(centres) <- levels(groupe)
+  dimnames(centres) <- list(levels(groupe), colnames(V))
   ecart <- V - centres[as.integer(groupe), , drop = FALSE]
   d2p <- rowSums(ecart[, pos, drop = FALSE]^2)
   d2n <- if (any(!pos)) rowSums(ecart[, !pos, drop = FALSE]^2) else 0
