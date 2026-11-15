@@ -40,6 +40,8 @@ File › Open (Ctrl+O):
       Stata .dta                      dBase .dbf, Weka .arff
       jamovi .omv                     spectra: JCAMP-DX .jdx, .dx, .jcm and SPC .spc (see Spectra)
       GeoPackage .gpkg (a layer of QGIS: see Maps and spatial data)
+    An export of KoboToolbox or ODK Central (.xlsx, .csv, or ODK's .zip) is recognised by its
+    columns and opens through its import (see Field data from KoboToolbox or ODK).
     The first column names the observations if it holds text, or if it is called "ID", "Obs",
     "Name"... (for an R file, the row names). Other text columns whose values all differ (one
     code per observation) become secondary identifiers: they serve as labels but don't enter
@@ -62,6 +64,8 @@ File › Open (Ctrl+O):
 File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).
+File › Import from KoboToolbox or ODK...: the phone surveys exported by KoboToolbox or ODK
+Central (see Field data from KoboToolbox or ODK).
 File › Import spectra: files of spectra made into one project (see Spectra).
 Dropping files on the window (drag and drop from Explorer) opens them the same way: JCAMP-DX or
 SPC spectra together make one project, as Import spectra; other files each open as with File ›
@@ -72,6 +76,45 @@ To try it: Help › Example project opens 120 made-up apples (four varieties, or
 conventional growing, a dozen measurements and a tasting score) with four ready models: a
 PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The
 original table, vergers.csv, is next to it (resources\exemple), to try opening a table.
+
+Field data from KoboToolbox or ODK
+----------------------------------
+Forms filled in on phones (KoboCollect, ODK Collect, Enketo) are exported by their server:
+KoboToolbox as an Excel workbook (a sheet for the submissions, one per repeat group) or a CSV
+file (semicolons), ODK Central as a .zip archive (one CSV per table) or its submissions CSV
+alone. File › Open recognises them by their columns (_id, _uuid, _submission_time, _index...;
+SubmissionDate, KEY, meta-instanceID...), as does dropping one on the window; File › Import
+from KoboToolbox or ODK... asks for the import, and refuses any other file. A dialog says in
+sentences what the import will do before doing it, and says it again at each setting changed:
+  - the table to analyse: the submissions, or a repeat group (one row per species observed, per
+    plant measured), with the columns of its parent tables joined to each row, all ticked by
+    default (the site's habitat and coordinates; a repeat within a repeat goes up both levels);
+  - the metadata dropped, listed (internal IDs, device, form version, the columns that link the
+    tables...); the submission date and time, the submitter, the submission ID, the start, end
+    and day of the survey and the validation status can be kept;
+  - group prefixes removed from names (group_site/altitude, group_site-altitude: altitude); two
+    questions with the same name in different groups keep their group (group_site_notes,
+    group_end_notes);
+  - a single choice (select_one) becomes a qualitative variable, a multiple choice
+    (select_multiple) one 0/1 column per choice named question_code (weather_rain): 1 chosen,
+    0 not, empty when the question wasn't answered; the export's own 0/1 columns are used when
+    it has them, never twice;
+  - a GPS point (geopoint), as text ("lat lon alt acc") or in columns, becomes gps_longitude,
+    gps_latitude, gps_altitude and gps_precision; the table's first point (or its parent's,
+    joined) becomes the project's coordinates, in WGS 84 (see Maps and spatial data);
+  - dates and times lose their fractions of a second and their time zone
+    (2024-05-03T08:12:45.123+02:00 becomes 2024-05-03 08:12:45, the phone's clock), so that
+    Nuée reads them as dates (see Dates as time).
+The XLSForm form (the workbook with the survey and choices sheets, downloaded from KoboToolbox
+or ODK Central), if given, tells each question's type, the choices' labels in the language
+chosen (label::English (en), label::Français (fr) or label; by default the interface's) and
+their order, which becomes the order of the categories; the columns then take the questions'
+names, whatever the export's headers (names or labels). Without the form, answers stay as the
+export writes them (codes, or labels for an export in labels), categories in alphabetical order,
+and a multiple choice without its 0/1 columns stays text. "Open as is" opens the chosen table
+unchanged (the sheet, or the CSV of the archive). The import is a project like any table opened,
+to save (Ctrl+S); the Methods text says the data were collected with KoboToolbox or ODK (and
+the form's title).
 
 Saving and getting your work back
 ---------------------------------
