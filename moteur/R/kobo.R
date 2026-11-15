@@ -3,18 +3,22 @@
 #
 # Une équipe de terrain saisit ses relevés sur un téléphone (KoboCollect, ODK Collect, Enketo) ;
 # le serveur les exporte :
-#   - KoboToolbox : un classeur Excel, une feuille pour les envois et une par groupe répété
-#     (reliée à sa table parente par _parent_table_name et _parent_index, l'_index de la ligne
-#     parente), ou un CSV séparé par des points-virgules ; les en-têtes sont les noms des
-#     questions (« valeurs XML »), précédés de leurs groupes si l'export le demande
-#     (group_site/altitude), ou leurs libellés ;
+#   - KoboToolbox : un classeur Excel, une feuille pour les envois (au nom du formulaire, coupé à
+#     28 caractères suivis de « ... ») et une par groupe répété (reliée à sa table parente par
+#     _parent_table_name et _parent_index, l'_index de la ligne parente), ou le CSV des seuls
+#     envois, séparé par des points-virgules ; les en-têtes sont les noms des questions
+#     (« valeurs XML »), précédés de leurs groupes si l'export le demande (group_site/altitude,
+#     ou avec le séparateur choisi pour l'export : group_site.altitude), ou leurs libellés ;
+#     les dates et les nombres en cellules Excel, ou en texte si l'export le demande ;
 #   - ODK Central : une archive .zip d'un CSV par table (les envois, puis chaque groupe répété,
 #     relié par PARENT_KEY à la clé KEY de sa ligne parente), ou le seul CSV des envois ; les
-#     groupes séparés par des tirets (group_site-altitude), toujours les noms.
+#     groupes séparés par des tirets (group_site-altitude), ou absents (deux questions de même
+#     nom donnent alors deux colonnes de même nom), toujours les noms.
 # Ces tables ont des colonnes de métadonnées (identifiants, date d'envoi, appareil, version du
 # formulaire…), des réponses à choix multiples écrites en codes séparés par des espaces
-# (« soleil vent ») et, si l'export le demande, une colonne 0/1 par choix (meteo/soleil), des points
-# GPS en texte (« latitude longitude altitude précision ») ou en colonnes (_gps_latitude… ;
+# (« soleil vent ») et, si l'export le demande, une colonne 0/1 par choix (meteo/soleil ; chez ODK,
+# seulement pour les choix pris au moins une fois, et des 0 pour une question sans réponse), des
+# points GPS en texte (« latitude longitude altitude précision ») ou en colonnes (_gps_latitude… ;
 # gps-Latitude… pour ODK), des dates et heures ISO avec leur fuseau (2024-05-03T08:12:45.123+02:00).
 # L'import en fait une table d'analyse (importer_collecte, son aperçu : apercu_collecte) :
 #   - les métadonnées retirées, sauf celles qu'on garde : la date d'envoi, son auteur, son
@@ -33,7 +37,8 @@
 # de chaque question, les libellés des choix dans la langue choisie (label::Français (fr),
 # label::English (en), ou label) et leur ordre, qui devient celui des catégories ; les colonnes
 # prennent alors les noms des questions, et une colonne 0/1 s'appelle « question_code »
-# (meteo_soleil). Sans lui, les réponses restent telles que l'export les écrit (des codes, ou des
+# (meteo_soleil), une pour chaque choix du formulaire, même quand l'export écrit ses réponses en
+# libellés. Sans lui, les réponses restent telles que l'export les écrit (des codes, ou des
 # libellés), les colonnes gardent les noms de l'export (sans leurs groupes), et une réponse à choix
 # multiples sans ses colonnes 0/1 reste du texte.
 
@@ -181,14 +186,18 @@ kobo_refus_export <- function(chemin) {
 
 # ---------------------------------------------------------------- lire un export
 
-# Une table d'un export : ses données telles qu'écrites (formats.R : vers_data_frame), la
-# virgule des nombres, la clé de chaque ligne (_index, KEY) et celle de sa ligne parente
-# (_parent_index, PARENT_KEY), le nom de la table parente (_parent_table_name).
+# Une table d'un export : ses données telles qu'écrites (formats.R : vers_data_frame, qui rend
+# les noms uniques), ses en-têtes tels qu'écrits (`entetes` : deux colonnes peuvent avoir le
+# même, dans un export d'ODK sans les chemins des groupes), la virgule des nombres, la clé de
+# chaque ligne (_index, KEY) et celle de sa ligne parente (_parent_index, PARENT_KEY), le nom de
+# la table parente (_parent_table_name).
 kobo_table <- function(nom, df, virgule) {
+  bruts <- trimws(names(df) %||% character(0))
   df <- vers_data_frame(df)
+  entetes <- if (length(bruts) == ncol(df)) ifelse(is.na(bruts) | !nzchar(bruts), names(df), bruts) else names(df)
   cle <- function(n) if (n %in% names(df)) kobo_texte(df[[n]])
   parente <- if ("_parent_table_name" %in% names(df)) stats::na.omit(kobo_texte(df[["_parent_table_name"]]))
-  list(nom = nom, donnees = df, virgule = virgule, cle = cle("_index") %||% cle("KEY"),
+  list(nom = nom, donnees = df, entetes = entetes, virgule = virgule, cle = cle("_index") %||% cle("KEY"),
        cle_parent = cle("_parent_index") %||% cle("PARENT_KEY"), nom_parent = if (length(parente)) parente[1], parent = NULL)
 }
 
@@ -451,41 +460,79 @@ kobo_codes_langue <- function(liste, langue) {
   ifelse(is.na(v), liste$noms, v)
 }
 
+# Les réponses d'une question à choix multiples écrites en libellés séparés par des espaces (un
+# export en libellés de KoboToolbox, sans les colonnes 0/1 : « Nuages Pluie Vent ») lues en codes,
+# dans la première langue du formulaire dont les libellés les découpent toutes (un libellé peut
+# avoir des espaces : « Prairie humide ») : une liste de vecteurs de codes, un par ligne
+# (character(0) sans réponse) ; NULL si aucune langue ne le fait.
+kobo_libelles_reponses <- function(reponses, liste) {
+  L <- liste$libelles
+  r <- unique(reponses[!is.na(reponses)])
+  for (col in seq_len(ncol(L))) {
+    libs <- L[, col]
+    garder <- !is.na(libs) & !duplicated(libs)
+    if (!any(garder)) next
+    ordre <- order(-nchar(libs[garder]))
+    libs <- libs[garder][ordre]
+    codes <- liste$noms[garder][ordre]
+    decouper <- function(t) {
+      if (!nzchar(t)) return(character(0))
+      for (j in seq_along(libs)) {
+        n <- nchar(libs[j])
+        if (!startsWith(t, libs[j]) || (nchar(t) > n && substr(t, n + 1, n + 1) != " ")) next
+        reste <- decouper(trimws(substring(t, n + 2)))
+        if (!is.null(reste)) return(c(codes[j], reste))
+      }
+      NULL
+    }
+    lus <- lapply(r, decouper)
+    if (!any(vapply(lus, is.null, TRUE))) {
+      d <- stats::setNames(lus, r)
+      return(lapply(reponses, function(x) if (is.na(x)) character(0) else d[[x]]))
+    }
+  }
+  NULL
+}
+
 # Les noms par lesquels un export désigne les questions du formulaire (calculés une fois par
 # formulaire : lire_formulaire) : une ligne par nom possible, avec la question, ce qu'est la
 # colonne (la question, un choix d'une question à choix multiples, une partie d'un point GPS), son
 # détail (le code du choix, la partie du point), sa longueur (le nombre de groupes et de questions
-# qu'il nomme), s'il nomme tous les groupes (`complet`) et sa priorité (0 : fait des noms ; 1 : des
-# libellés). Une question : son nom, précédé de ses groupes (tous, les plus proches ou aucun),
-# séparés par « / », « - », « . » ou « : » ; ou son libellé dans une langue, précédé de même de
-# ceux de ses groupes séparés par « / » (un export en libellés de KoboToolbox). Ses colonnes 0/1 :
-# ce nom, le séparateur ou « / », puis le code du choix ; ce libellé, « / », puis le libellé du
-# choix dans la même langue. Les colonnes d'un point : _<nom>_latitude (KoboToolbox, aussi
-# <groupes>/_<nom>_latitude), <nom>-Latitude (ODK). Les lignes sont rangées pour qu'un nom donné à
-# plusieurs questions désigne d'abord celle qu'il nomme en entier.
+# qu'il nomme), s'il nomme tous les groupes (`complet`), si son séparateur est rare (`rare`) et sa
+# priorité (0 : fait des noms ; 1 : des libellés). Une question : son nom, précédé de ses groupes
+# (tous, les plus proches ou aucun), séparés par l'un des SEPARATEURS_COLLECTE ; ou son libellé
+# dans une langue, précédé de même de ceux de ses groupes (un export en libellés de KoboToolbox).
+# Ses colonnes 0/1 : ce nom, le séparateur ou « / », puis le code du choix ; ce libellé, le
+# séparateur ou « / », puis le libellé du choix dans la même langue. Les colonnes d'un point :
+# _<nom>_latitude (KoboToolbox, aussi <groupes>/_<nom>_latitude), <nom>-Latitude (ODK). Les lignes
+# sont rangées pour qu'un nom donné à plusieurs questions désigne d'abord celle qu'il nomme en
+# entier, et par un séparateur courant (la question site_nom_site plutôt que nom_site du groupe
+# site, séparés par « _ »).
 kobo_cles_formulaire <- function(form) {
   parties_kobo <- c("latitude", "longitude", "altitude", "precision")
   parties_odk <- c("Latitude", "Longitude", "Altitude", "Accuracy")
-  champs <- list(cle = list(), question = list(), genre = list(), detail = list(), longueur = list(), complet = list(), priorite = list())
+  champs <- list(cle = list(), question = list(), genre = list(), detail = list(), longueur = list(), complet = list(), rare = list(), priorite = list())
+  rare <- FALSE
   ajouter <- function(cle, i, genre, detail, longueur, complet, priorite) {
     n <- length(cle)
     k <- length(champs$cle) + 1
     valeurs <- list(cle = cle, question = rep(i, n), genre = rep(genre, n), detail = rep_len(detail, n), longueur = rep_len(longueur, n),
-                    complet = rep_len(complet, n), priorite = rep_len(priorite, n))
+                    complet = rep_len(complet, n), rare = rep(rare, n), priorite = rep_len(priorite, n))
     for (ch in names(champs)) champs[[ch]][[k]] <<- valeurs[[ch]]
   }
   for (i in seq_along(form$questions)) {
     q <- form$questions[[i]]
     liste <- if (!is.na(q$liste)) form$choix[[q$liste]]
     multiple <- q$type == "select_multiple" && !is.null(liste) && length(liste$noms)
-    chemins <- c(list(list(seg = c(q$groupes, q$nom), seps = c("/", "-", ".", ":"), priorite = 0L, codes = if (multiple) liste$noms)),
+    chemins <- c(list(list(seg = c(q$groupes, q$nom), priorite = 0L, codes = if (multiple) liste$noms)),
                  lapply(form$langues, function(L) list(
                    seg = c(vapply(seq_along(q$groupes), function(g) kobo_libelle(q$libelles_groupes[[g]], L, q$groupes[g]), ""), kobo_libelle(q$libelles, L, q$nom)),
-                   seps = "/", priorite = 1L, codes = if (multiple) kobo_codes_langue(liste, L))))
+                   priorite = 1L, codes = if (multiple) kobo_codes_langue(liste, L))))
     for (ch in chemins) {
       k <- seq_along(ch$seg)
       complet <- k == length(ch$seg)
-      for (s in ch$seps) {
+      for (s in SEPARATEURS_COLLECTE) {
+        rare <- s %in% SEPARATEURS_RARES
         base <- vapply(k, function(j) paste(utils::tail(ch$seg, j), collapse = s), "")
         ajouter(base, i, "question", NA_character_, k, complet, ch$priorite)
         if (multiple) for (s2 in unique(c(s, "/"))) {
@@ -505,21 +552,38 @@ kobo_cles_formulaire <- function(form) {
     }
   }
   cles <- as.data.frame(lapply(champs, function(x) unlist(x, use.names = FALSE)), stringsAsFactors = FALSE)
-  cles <- cles[order(!cles$complet, -cles$longueur, cles$priorite, match(cles$genre, c("question", "choix", "point"))), , drop = FALSE]
+  cles <- cles[order(!cles$complet, cles$rare, -cles$longueur, cles$priorite, match(cles$genre, c("question", "choix", "point"))), , drop = FALSE]
   cles <- cles[!duplicated(cles[c("cle", "question")]), , drop = FALSE]
   rownames(cles) <- NULL
   cles
 }
 
+# Les séparateurs des groupes dans les en-têtes : « / » (KoboToolbox, qui en laisse choisir un
+# autre pour l'export : il sépare aussi le nom d'une question à choix multiples de ses choix),
+# « - » (ODK), puis ceux qu'on choisit le plus dans KoboToolbox ; les rares ne passent pas avant
+# un nom qui les contient (kobo_cles_formulaire).
+SEPARATEURS_COLLECTE <- c("/", "-", ".", ":", "_", "|", " ")
+SEPARATEURS_RARES <- c("_", "|", " ")
+
 # La question du formulaire de chaque colonne d'une table : data.frame(question (indice, NA),
-# genre, detail). `section` : la répétition de la table (NA : la table des envois), dont les
-# questions passent avant celles des autres tables au même nom.
+# genre, detail). `noms` : les en-têtes tels qu'écrits. `section` : la répétition de la table (NA :
+# la table des envois), dont les questions passent avant celles des autres tables au même nom. Un
+# en-tête écrit plusieurs fois (ODK sans les chemins des groupes : deux questions de même nom dans
+# deux groupes) désigne à sa k-ième place la k-ième question qui a ce nom, dans l'ordre du
+# formulaire, celles de la section d'abord.
 kobo_correspondances <- function(noms, form, cles, section) {
   repetitions <- vapply(form$questions, function(q) q$repetition, "")[cles$question]
   dans <- if (is.na(section)) is.na(repetitions) else !is.na(repetitions) & repetitions == section
   r <- cles[dans, , drop = FALSE][match(noms, cles$cle[dans]), c("question", "genre", "detail"), drop = FALSE]
   autres <- which(is.na(r$question))
   if (length(autres)) r[autres, ] <- cles[match(noms[autres], cles$cle), c("question", "genre", "detail"), drop = FALSE]
+  for (n in unique(noms[duplicated(noms)])) {
+    k <- which(noms == n)
+    j <- which(cles$cle == n)
+    j <- j[order(!dans[j], cles$question[j])]
+    j <- j[!duplicated(cles$question[j])]
+    if (length(j) >= length(k)) r[k, ] <- cles[j[seq_along(k)], c("question", "genre", "detail"), drop = FALSE]
+  }
   rownames(r) <- NULL
   r
 }
@@ -557,7 +621,8 @@ role_metadonnee <- function(nom, outil, type = NA) {
   } else {
     if (nom == "SubmissionDate") return("envoi")
     if (nom %in% c("SubmitterName", "SubmitterID")) return("auteur")
-    if (nom %in% c("meta-instanceID", "meta-instanceName")) return("identifiant")
+    # (sans les chemins des groupes, meta-instanceID s'écrit instanceID)
+    if (nom %in% c("meta-instanceID", "meta-instanceName", "instanceID", "instanceName")) return("identifiant")
     if (nom == "ReviewState") return("validation")
     if (nom %in% c("KEY", "PARENT_KEY")) return("lien")
     if (nom %in% COLONNES_ODK || startsWith(nom, "meta-")) return("autre")
@@ -573,11 +638,25 @@ role_metadonnee <- function(nom, outil, type = NA) {
 # Un nom XML (celui d'une question ou d'un groupe d'un formulaire), pas un libellé.
 kobo_nom_xml <- function(x) grepl("^[\\p{L}_][\\p{L}\\p{N}_.-]*$", x, perl = TRUE)
 
-# Les groupes et le nom d'une colonne sans formulaire : coupé au séparateur des groupes (« / »
-# pour KoboToolbox, « - » pour ODK). Les en-têtes d'un export en noms (`noms_xml` : ceux d'ODK
-# toujours) se coupent à chaque séparateur ; ceux d'un export en libellés, seulement quand ce qui
-# précède est fait de noms de groupes dont le premier est celui d'autres colonnes (« Vent (km/h) »
-# reste entier).
+# Le séparateur des groupes d'un export de KoboToolbox (« / » par défaut, ou celui choisi pour
+# l'export : « . », « - »…), d'après ses en-têtes hors métadonnées : parmi « / », « . », « - » et
+# « : », celui qui suit le plus souvent un premier segment commun à plusieurs colonnes
+# (site.habitat, site.altitude, meteo.soleil) ; « / » quand aucun ne le fait pour deux colonnes.
+kobo_separateur <- function(noms) {
+  candidats <- c("/", ".", "-", ":")
+  score <- vapply(candidats, function(s) {
+    avec <- noms[grepl(s, noms, fixed = TRUE) & !startsWith(noms, s)]
+    premiers <- vapply(strsplit(avec, s, fixed = TRUE), function(x) x[1], "")
+    sum(premiers %in% premiers[duplicated(premiers)])
+  }, 0)
+  if (max(score) < 2) "/" else candidats[which.max(score)]
+}
+
+# Les groupes et le nom d'une colonne sans formulaire : coupé au séparateur des groupes (« - »
+# pour ODK, celui de l'export pour KoboToolbox : kobo_separateur). Les en-têtes d'un export en
+# noms (`noms_xml` : ceux d'ODK toujours) se coupent à chaque séparateur ; ceux d'un export en
+# libellés, seulement quand ce qui précède est fait de noms de groupes dont le premier est celui
+# d'autres colonnes (« Vent (km/h) » reste entier).
 kobo_segments <- function(nom, tous, sep, noms_xml) {
   s <- strsplit(nom, sep, fixed = TRUE)[[1]]
   if (length(s) < 2 || !all(nzchar(s))) return(nom)
@@ -662,15 +741,13 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
   noms <- names(df)
   K <- length(noms)
   outil <- export$outil
-  sep <- if (outil == "odk") "-" else "/"
-  m <- if (!is.null(form)) kobo_correspondances(noms, form, cles, kobo_section(form, export, nom))
+  # (le séparateur dans les noms des métadonnées : « / » chez KoboToolbox quel que soit celui des groupes)
+  sep_meta <- if (outil == "odk") "-" else "/"
+  m <- if (!is.null(form)) kobo_correspondances(tab$entetes %||% noms, form, cles, kobo_section(form, export, nom))
   question <- function(k) if (!is.null(m) && !is.na(m$question[k]) && m$genre[k] == "question") form$questions[[m$question[k]]]
   pris <- rep(FALSE, K)
   elements <- list()
   ajouter <- function(e) elements[[length(elements) + 1]] <<- e
-  # (un export en noms, pas en libellés : chaque partie de chaque en-tête est un nom XML)
-  noms_xml <- outil == "odk" || all(vapply(strsplit(noms, "/", fixed = TRUE), function(s) all(kobo_nom_xml(s)), TRUE))
-  segments_sans <- function(n) kobo_segments(n, noms, sep, noms_xml)
   segments_q <- function(q) c(q$groupes, q$nom)
   resume <- list(retirees = character(0), gardees = character(0), roles = list(), renommees = list(), qualitatives = list(),
                  multiples = list(), points = list(), dates = character(0), hors_formulaire = character(0), texte_multiples = character(0),
@@ -688,7 +765,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
       next
     }
     resume$gardees <- c(resume$gardees, noms[k])
-    seg <- if (!is.null(q)) segments_q(q) else strsplit(noms[k], sep, fixed = TRUE)[[1]]
+    seg <- if (!is.null(q)) segments_q(q) else strsplit(noms[k], sep_meta, fixed = TRUE)[[1]]
     seg[length(seg)] <- sub("^_+", "", seg[length(seg)])
     v <- kobo_dates(df[[k]])
     if (!role %in% c("envoi", "releve") || !isTRUE(attr(v, "valide"))) v <- kobo_texte(df[[k]])
@@ -696,8 +773,20 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     ajouter(list(position = k, sources = noms[k], genre = "metadonnee", colonnes = list(list(segments = seg, valeurs = v, texte = TRUE))))
   }
 
+  # le séparateur des groupes : « - » pour ODK (qui sépare une question à choix multiples de ses
+  # choix par « / ») ; celui de l'export pour KoboToolbox, qui sépare aussi les choix
+  # (kobo_separateur) ; un export en noms, pas en libellés : chaque partie de chaque en-tête est un
+  # nom XML (ceux d'ODK toujours)
+  sep <- if (outil == "odk") "-" else kobo_separateur(noms[!pris])
+  sep_choix <- if (outil == "odk") "/" else sep
+  noms_xml <- outil == "odk" || all(vapply(strsplit(noms[!pris], sep, fixed = TRUE), function(s) all(kobo_nom_xml(s)), TRUE))
+  segments_sans <- function(n) kobo_segments(n, noms, sep, noms_xml)
+  es <- gsub("([][{}()+*^$|\\\\.?/-])", "\\\\\\1", sep)  # (le séparateur dans une expression régulière)
+
   # --- points GPS : les colonnes d'une question geopoint du formulaire, ou d'après leurs noms
-  # (_gps_latitude… de KoboToolbox, gps-Latitude… d'ODK), ou une colonne de points en texte
+  # (_gps_latitude… de KoboToolbox, groupes/_gps_latitude quand les groupes sont dans les
+  # en-têtes, la colonne du point en texte n'ayant alors que le nom gps ; gps-Latitude… d'ODK), ou
+  # une colonne de points en texte
   points <- list()
   if (!is.null(m)) {
     for (k in which(!pris & !is.na(m$question))) {
@@ -711,7 +800,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     }
   }
   motifs <- list(c("^_(.+)_(latitude|longitude|altitude|precision)$", "\\1", "\\2"),
-                 c("^(.+/)_([^/]+)_(latitude|longitude|altitude|precision)$", "\\1\\2", "\\3"),
+                 c(sprintf("^(.+%s)_([^%s]+)_(latitude|longitude|altitude|precision)$", es, es), "\\1\\2", "\\3"),
                  c("^(.+)-(Latitude|Longitude|Altitude|Accuracy)$", "\\1", "\\2"))
   parties <- c(latitude = "latitude", longitude = "longitude", altitude = "altitude", precision = "precision", accuracy = "precision")
   candidats <- list()
@@ -727,7 +816,8 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
   for (base in names(candidats)) {
     cols <- candidats[[base]]
     if (is.na(kobo_element(cols, "latitude")) || is.na(kobo_element(cols, "longitude"))) next
-    if (base %in% noms[!pris]) cols["texte"] <- base
+    texte <- if (base %in% noms[!pris] || outil != "kobo") base else utils::tail(strsplit(base, sep, fixed = TRUE)[[1]], 1)
+    if (texte %in% noms[!pris] && (texte == base || isTRUE(attr(kobo_points_texte(unique(df[[texte]])), "valide")))) cols["texte"] <- texte
     points[[paste0("n:", base)]] <- list(segments = segments_sans(base), colonnes = cols)
     pris[noms %in% cols] <- TRUE
     if (!is.null(form)) resume$hors_formulaire <- c(resume$hors_formulaire, base)
@@ -785,12 +875,13 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     zero_un[j]
   }
   prefixes <- character(0)
-  for (k in which(!pris & grepl("/", noms, fixed = TRUE))) {
-    x <- sub("/[^/]*$", "", noms[k])
+  sc <- if (sep_choix == "/") "/" else es
+  for (k in which(!pris & grepl(sep_choix, noms, fixed = TRUE))) {
+    x <- sub(sprintf("%s[^%s]*$", sc, sc), "", noms[k], perl = TRUE)
     if (pris[k] || !nzchar(x) || x %in% prefixes) next
     prefixes <- c(prefixes, x)
-    suite <- substring(noms, nchar(x) + 2)
-    freres <- which(!pris & startsWith(noms, paste0(x, "/")) & nzchar(suite) & !grepl("/", suite, fixed = TRUE))
+    suite <- substring(noms, nchar(x) + nchar(sep_choix) + 1)
+    freres <- which(!pris & startsWith(noms, paste0(x, sep_choix)) & nzchar(suite) & !grepl(sep_choix, suite, fixed = TRUE))
     texte <- if (x %in% noms[!pris]) x else NA_character_
     if (is.na(texte) && length(freres) < 2) next
     if (!all(vapply(freres, colonne_zero_un, TRUE))) next
@@ -807,21 +898,39 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     reponses <- if (!is.na(x$texte)) kobo_texte(df[[x$texte]]) else rep(NA_character_, nrow(df))
     liste <- if (!is.null(q) && !is.na(q$liste)) form$choix[[q$liste]]
     if (length(x$choix)) {
-      # les colonnes 0/1 de l'export, dans l'ordre des choix du formulaire ; une case vide d'une ligne
-      # qui a répondu compte 0, une ligne sans réponse reste vide
+      # les colonnes 0/1 de l'export, dans l'ordre des choix du formulaire, et une pour chacun de ses
+      # choix qu'elles n'ont pas (ODK n'en écrit que pour les choix pris au moins une fois) ; une
+      # case vide d'une ligne qui a répondu compte 0 ; une ligne sans réponse (la colonne des
+      # réponses vide, quand l'export l'a, sinon toutes ses cases) reste vide, même quand l'export
+      # y écrit des 0 (ODK)
       V <- lapply(x$choix, function(n) as.vector(kobo_zero_un(df[[n]])))
-      ordre <- if (!is.null(liste)) order(match(x$codes, liste$noms)) else seq_along(x$choix)
-      repondu <- !is.na(reponses) | Reduce(`|`, lapply(V, function(v) !is.na(v)), FALSE)
-      colonnes <- lapply(ordre, function(j) { v <- V[[j]]; v[repondu & is.na(v)] <- 0; colonne_choix(x$codes[j], v) })
+      codes <- x$codes
+      if (!is.null(liste)) {
+        manquants <- setdiff(liste$noms, codes)
+        V <- c(V, rep(list(rep(NA_real_, nrow(df))), length(manquants)))
+        codes <- c(codes, manquants)
+      }
+      ordre <- if (!is.null(liste)) order(match(codes, liste$noms)) else seq_along(codes)
+      repondu <- if (!is.na(x$texte)) !is.na(reponses) else Reduce(`|`, lapply(V, function(v) !is.na(v)), FALSE)
+      colonnes <- lapply(ordre, function(j) { v <- V[[j]]; v[repondu & is.na(v)] <- 0; v[!repondu] <- NA; colonne_choix(codes[j], v) })
       origine <- "export"
     } else {
       # les réponses écrites en codes séparés par des espaces : une colonne par choix du formulaire,
-      # dans son ordre, puis les codes qu'il n'a pas
+      # dans son ordre, puis les codes qu'il n'a pas ; écrites en libellés d'une langue du
+      # formulaire (un export en libellés de KoboToolbox), lues en codes (kobo_libelles_reponses)
       jetons <- strsplit(ifelse(is.na(reponses), "", reponses), "\\s+")
       vus <- unique(unlist(jetons))
       vus <- vus[nzchar(vus)]
+      if (!is.null(liste) && length(vus) && !any(vus %in% liste$noms)) {
+        lus <- kobo_libelles_reponses(reponses, liste)
+        if (!is.null(lus)) {
+          jetons <- lus
+          vus <- unique(unlist(jetons))
+        }
+      }
       if (is.null(liste) || (length(vus) && !any(vus %in% liste$noms))) {
-        # (des libellés, ou des codes qui ne sont pas ceux du formulaire : la réponse reste du texte)
+        # (des libellés qui ne sont pas ceux du formulaire, ou des codes qu'il n'a pas : la réponse
+        # reste du texte)
         resume$texte_multiples <- c(resume$texte_multiples, x$texte)
         ajouter(list(position = match(x$texte, noms), sources = x$texte, genre = "question",
                      colonnes = list(list(segments = s, valeurs = reponses, texte = TRUE))))

@@ -92,13 +92,15 @@ sentences what the import will do before doing it, and says it again at each set
   - the metadata dropped, listed (internal IDs, device, form version, the columns that link the
     tables...); the submission date and time, the submitter, the submission ID, the start, end
     and day of the survey and the validation status can be kept;
-  - group prefixes removed from names (group_site/altitude, group_site-altitude: altitude); two
-    questions with the same name in different groups keep their group (group_site_notes,
-    group_end_notes);
+  - group prefixes removed from names (group_site/altitude, group_site-altitude, or with the
+    separator chosen for a KoboToolbox export, group_site.altitude: altitude); two questions
+    with the same name in different groups keep their group (group_site_notes,
+    group_end_notes), with the form even when an ODK export leaves out the groups;
   - a single choice (select_one) becomes a qualitative variable, a multiple choice
     (select_multiple) one 0/1 column per choice named question_code (weather_rain): 1 chosen,
-    0 not, empty when the question wasn't answered; the export's own 0/1 columns are used when
-    it has them, never twice;
+    0 not, empty when the question wasn't answered (even where ODK writes 0); the export's own
+    0/1 columns are used when it has them, never twice, and with the form a choice they lack
+    (ODK writes columns only for the choices picked at least once) gets its column too;
   - a GPS point (geopoint), as text ("lat lon alt acc") or in columns, becomes gps_longitude,
     gps_latitude, gps_altitude and gps_precision; the table's first point (or its parent's,
     joined) becomes the project's coordinates, in WGS 84 (see Maps and spatial data);
@@ -109,12 +111,13 @@ The XLSForm form (the workbook with the survey and choices sheets, downloaded fr
 or ODK Central), if given, tells each question's type, the choices' labels in the language
 chosen (label::English (en), label::Français (fr) or label; by default the interface's) and
 their order, which becomes the order of the categories; the columns then take the questions'
-names, whatever the export's headers (names or labels). Without the form, answers stay as the
-export writes them (codes, or labels for an export in labels), categories in alphabetical order,
-and a multiple choice without its 0/1 columns stays text. "Open as is" opens the chosen table
-unchanged (the sheet, or the CSV of the archive). The import is a project like any table opened,
-to save (Ctrl+S); the Methods text says the data were collected with KoboToolbox or ODK (and
-the form's title).
+names, whatever the export's headers (names or labels), and a multiple choice exported as one
+column of labels gets its 0/1 columns from them. Without the form, answers stay as the export
+writes them (codes, or labels for an export in labels), categories in alphabetical order, and a
+multiple choice without its 0/1 columns stays text. "Open as is" opens the chosen table unchanged
+(the sheet, or the CSV of the archive). The import is a project like any table opened, to save
+(Ctrl+S); the Methods text says the data were collected with KoboToolbox or ODK (and the form's
+title).
 
 Saving and getting your work back
 ---------------------------------

@@ -342,8 +342,17 @@ verifier("avec le formulaire : les noms des questions, les libellés français d
          identical(categories(pkf, "habitat"), c("Forest", "Grassland", "Wetland", "Heathland")) && identical(valeurs(pkf, "habitat"), unname(lib_en[S$habitat])))
 verifier("les colonnes 0/1 aux libellés de l'export : nommées par le code du choix", identical(vkf[grepl("^meteo", vkf)], paste0("meteo_", meteo)) &&
          identical(valeurs(pkf, "meteo_nuages"), zero_un(S$meteo, "nuages")))
-verifier("un choix multiple en libellés sans colonnes 0/1 reste du texte, et le résumé le dit",
-         "menaces" %in% vkf && any(startsWith(attr(pkf, "collecte")$phrases, "Choix multiples gardés en texte")))
+verifier("un choix multiple en libellés sans colonnes 0/1 : une colonne par choix d'après les libellés du formulaire, dans son ordre",
+         identical(vkf[grepl("^menaces", vkf)], paste0("menaces_", menaces)) && !"menaces" %in% vkf &&
+         all(vapply(menaces, function(c) identical(valeurs(pkf, paste0("menaces_", c)), zero_un(S$menaces, c)), TRUE)) &&
+         any(grepl("Choix multiples « menaces » en 3 colonnes 0/1 (d'après les réponses", attr(pkf, "collecte")$phrases, fixed = TRUE)))
+autre <- f("libelles_inconnus.csv")
+utils::write.table(df(start = debuts[1:2], Menaces = c("Pâturage Incendie", "Déchets"), `_id` = 1:2, `_uuid` = S$uuid[1:2], `_index` = 1:2), autre,
+                   sep = ";", row.names = FALSE, na = "", fileEncoding = "UTF-8")
+pin <- importer_collecte(autre, formulaire = form)
+verifier("… et reste du texte quand un libellé n'est pas du formulaire, ce que le résumé dit",
+         identical(identifiant(pin, "menaces"), c("Pâturage Incendie", "Déchets")) && !any(startsWith(variables(pin), "menaces_")) &&
+         any(startsWith(attr(pin, "collecte")$phrases, "Choix multiples gardés en texte")))
 
 cat("L'archive d'ODK Central\n")
 xo <- lire_collecte(odk_zip)
@@ -454,6 +463,15 @@ verifier("des noms courts et uniques", identical(kobo_noms_courts(list(c("a", "x
                                                  c("a_x_q", "b_x_q", "habitat", "g_habitat", "z")))
 pt <- kobo_points_texte(c("43.6 3.8 52 4.8", NA, "91 3 0 0"))
 verifier("des points GPS en texte : une latitude hors des bornes n'en est pas un", identical(pt[1, ], c(43.6, 3.8, 52, 4.8)) && !isTRUE(attr(pt, "valide")))
+lx <- list(noms = c("pre", "preh", "hum"), libelles = matrix(c("Prairie", "Prairie humide", "Humide", "Meadow", "Wet meadow", "Wet"), 3,
+                                                             dimnames = list(NULL, c("Français (fr)", "English (en)"))))
+verifier("des choix multiples en libellés : découpés aux libellés, un libellé à espaces compris, dans une langue ; sinon rien",
+         identical(kobo_libelles_reponses(c("Prairie humide Humide", NA, "Prairie"), lx), list(c("preh", "hum"), character(0), "pre")) &&
+         identical(kobo_libelles_reponses(c("Wet meadow", "Meadow Wet"), lx), list("preh", c("pre", "hum"))) &&
+         is.null(kobo_libelles_reponses(c("Prairie sèche"), lx)))
+verifier("le séparateur des groupes d'un export de KoboToolbox d'après ses en-têtes ; « / » sans groupes",
+         kobo_separateur(c("site.nom", "site.habitat", "meteo.soleil", "vent")) == "." && kobo_separateur(c("Site-Nom du site", "Site-Habitat")) == "-" &&
+         kobo_separateur(c("nom", "habitat", "temp-air")) == "/" && kobo_separateur(c("site/nom", "site/habitat", "a.b", "a.c")) == "/")
 
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
