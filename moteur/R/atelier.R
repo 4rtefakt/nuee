@@ -10,7 +10,8 @@
 #   - l'unité et la description de chaque variable (decrire_variables), gardées dans le projet
 #     (p$variables[[i]]$unite et $description, enregistrées avec lui ; un projet qui ne les a pas
 #     s'ouvre comme avant) : titres des axes, vue Données, textes des Méthodes et des résultats,
-#     export des données (formats.R : ecrire_tableau ; geopackage.R) et script R (script.R).
+#     export des données (formats.R : ecrire_tableau ; geopackage.R) et script R (script.R) ;
+#   - un bloc de cellules copié dans un tableur, collé dans la vue Données (coller_cellules).
 # Chaque changement est un seul retour en arrière (Ctrl+Z ; serveur.R : changer_projet). Les
 # modèles déjà ajustés gardent leurs résultats jusqu'à ce qu'on les ajuste à nouveau, comme après
 # toute modification des données. Les définitions des modèles du projet suivent leurs catégories
