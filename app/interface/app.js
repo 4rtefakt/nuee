@@ -30,6 +30,7 @@ import './vues_forets.js';
 import './vues_distance.js';
 import { installerDocuments } from './documents.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
+import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -761,6 +762,17 @@ const app = {
     const res = await occupe(() => demander('modifier_valeur', { projet: pid, observation, variable, valeur }));
     projetChange(res);
     if (app.modelesDe(pid).length) statut(t('donnees_modifiees'));
+  },
+  // The data workbench (atelier.js, moteur/R/atelier.R): Edit › Find and replace, Categories, Units
+  // and descriptions, also from the Data view's toolbar and a column's header (`uid`: that variable)
+  remplacerDonnees: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueRemplacer(app, p, uid); },
+  categoriesVariable: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueCategories(app, p, uid); },
+  variablesProjet: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariables(app, p, uid); },
+  // one of its changes (the request `nom`), undone by a single Ctrl+Z; the views of the data are drawn again
+  async changerDonnees(nom, pid, q) {
+    const res = await occupe(() => demander(nom, { projet: pid, ...q }));
+    projetChange(res);
+    return res;
   },
   occupe: (f) => occupe(f),
   statut: (message, erreur) => statut(message, erreur),
@@ -1554,6 +1566,11 @@ function contexte(entree) {
     nouvelleVariable: app.nouvelleVariable,
     valeursRaster: app.valeursRaster,
     modifierValeur: app.modifierValeur,
+    remplacerDonnees: app.remplacerDonnees,
+    categoriesVariable: app.categoriesVariable,
+    variablesProjet: app.variablesProjet,
+    changerDonnees: app.changerDonnees,
+    lirePressePapiers: app.lirePressePapiers,
     modeleActif: () => app.modeleActif(),
     projetActif: () => app.projetActif(),
     occupe: (f) => occupe(f),
@@ -1795,6 +1812,9 @@ document.addEventListener('keydown', (e) => {
   if (document.querySelector('.fond-dialogue')) return;
   const combo = combinaison(e);
   const saisie = e.target.closest && e.target.closest('input, textarea, select');
+  // (in the Data view, Ctrl+V pastes a block of cells from the cell chosen: panneaux.js, collerCellules)
+  const cellules = combo === 'Ctrl+V' && !saisie && e.target.closest && e.target.closest('[data-coller-cellules]');
+  if (cellules && cellules._collerCellules) { e.preventDefault(); cellules._collerCellules(); return; }
   const edition = ['Ctrl+Z', 'Ctrl+Y', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X'];
   if (saisie && !/^F\d+$/.test(combo) && (!combo.startsWith('Ctrl') || edition.includes(combo))) return;
   const c = Object.values(C).find((x) => x.raccourci === combo);

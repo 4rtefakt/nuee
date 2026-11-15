@@ -126,6 +126,25 @@ journaliser <- function(nom, q, r) {
                 vecteur_r(unname(p$noms_var[as.character(variables)])), vecteur_r(noms_groupes), paste(sprintf("%s = %s", stats, en_r[stats]), collapse = ", ")))
     },
     modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
+    # (l'atelier des données : atelier.R ; l'aperçu de Chercher et remplacer ne change rien)
+    remplacer = if (!isTRUE(q$apercu)) sprintf("%s <- remplacer_valeurs(%s, %s)", q$projet, q$projet, paste(c(
+      if (length(q$variables)) paste("variables =", vecteur_r(as.numeric(unlist(q$variables)))),
+      if (isTRUE(q$vides)) "vides = TRUE" else paste("chercher =", code_r(as.character(q$chercher %||% ""))),
+      paste("remplacer =", code_r(as.character(q$remplacer %||% ""))), if (isTRUE(q$partie)) "partie = TRUE", if (isTRUE(q$casse)) "casse = TRUE",
+      if (isFALSE(q$nombres)) "nombres = FALSE"), collapse = ", ")),
+    coller_cellules = sprintf("%s <- coller_cellules(%s, %s, %s, %s)", q$projet, q$projet, vecteur_r(as.numeric(unlist(q$observations))),
+                              vecteur_r(as.numeric(unlist(q$variables))), code_r(as.matrix(q$valeurs))),
+    categories = sprintf("%s <- changer_categories(%s, %s, %s%s)", q$projet, q$projet, q$variable, vecteur_r(as.character(unlist(q$noms))),
+                         if (length(q$ordre)) paste(", ordre =", vecteur_r(as.character(unlist(q$ordre)))) else ""),
+    decrire_variables = {
+      d <- q$descriptions
+      if (is.data.frame(d)) d <- lapply(seq_len(nrow(d)), function(i) as.list(d[i, , drop = FALSE]))
+      champs <- function(x) {
+        k <- Filter(function(k) length(x[[k]]) && !is.na(x[[k]][1]), intersect(c("unite", "description"), names(x)))
+        paste(c(paste("variable =", as.numeric(x$variable)), vapply(k, function(k) sprintf("%s = %s", k, code_r(as.character(x[[k]][1]))), "")), collapse = ", ")
+      }
+      sprintf("%s <- decrire_variables(%s, list(%s))", q$projet, q$projet, paste(vapply(d, function(x) sprintf("list(%s)", champs(x)), ""), collapse = ", "))
+    },
     # (chaque fichier : son chemin, la méthode, le rayon en mètres, le nom de chaque bande ; puis ce que l'ajout a donné)
     ajouter_raster = {
       un <- function(f) sprintf("list(chemin = %s, methode = %s%s, noms = %s)", code_r(as.character(f$chemin)[1]), code_r(as.character(f$methode %||% "")[1]),

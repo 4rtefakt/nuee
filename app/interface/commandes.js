@@ -58,6 +58,11 @@ export function creerCommandes(app) {
     // (raster.js: a raster's values at each observation, from the project's coordinates)
     raster_valeurs: { icone: 'layers', actif: () => !!app.projetActif(), action: () => app.valeursRaster(app.projetActif()) },
     resumer_groupes: { icone: 'sigma', actif: () => !!app.projetActif(), action: () => app.resumerGroupes(app.projetActif()) },
+    // the data workbench (atelier.js)
+    atelier_remplacer: { icone: 'search', raccourci: 'Ctrl+H', actif: () => !!app.projetActif(), action: () => app.remplacerDonnees(app.projetActif()) },
+    atelier_categories: { icone: 'tag', actif: () => { const p = app.projet(app.projetActif()); return !!p && p.variables.some((v) => v.qualitative); },
+      action: () => app.categoriesVariable(app.projetActif()) },
+    atelier_variables: { icone: 'ruler', actif: () => !!app.projetActif(), action: () => app.variablesProjet(app.projetActif()) },
 
     nouveau_modele: { icone: 'file-plus', raccourci: 'Ctrl+N', actif: () => !!app.projetActif(), action: () => app.nouveauModele(app.projetActif()) },
     // (a few questions, then New model already filled in: quelle_analyse.js, choix_analyse.js)
@@ -154,7 +159,8 @@ export function menus(app, C) {
       '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
-      it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes')] },
+      it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
+      it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes')] },
     { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',

@@ -5,7 +5,7 @@
 import { t, ajouterTextes } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
-  notesModele, ficheTest, ficheCondition } from './panneaux.js';
+  notesModele, ficheTest, ficheCondition, avecUnite, uniteAxe, transformeeDans } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
 import { ICONES_VUES } from './commandes.js';
@@ -105,7 +105,7 @@ async function rendreDependance(conteneur, ctx, p, loc) {
   const c = couleursTheme(ctx);
   const valeurs = (d) => (foret(m) && m.classement ? liste(d.probabilites[loc.classe]) : lien && loc.echelle === 'reponse' ? liste(d.reponse) : liste(d.y));
   const nomY = foret(m) && m.classement ? `P(${loc.classe})` : lien ? t(loc.echelle === 'reponse' ? (m.loi === 'binomiale' ? 'ens_echelle_proba' : 'ens_echelle_moyenne')
-    : (m.loi === 'binomiale' ? 'ens_echelle_logit' : 'ens_echelle_log')) : m.noms_y[0];
+    : (m.loi === 'binomiale' ? 'ens_echelle_logit' : 'ens_echelle_log')) : avecUnite(ctx, m.projet, m.noms_y[0], transformeeDans(ctx, m, m.noms_y[0]));
   const traces = [];
   const layout = { title: { text: `${m.nom} · ${t('ens_dependance')}` }, dragmode: 'zoom', showlegend: false,
     margin: { l: 60, r: 18, t: 40, b: 40 } };
@@ -130,7 +130,7 @@ async function rendreDependance(conteneur, ctx, p, loc) {
         marker: { symbol: 'line-ns-open', size: 8, color: c.doux, line: { width: 1, color: c.doux } } });
     }
     const ax = { gridcolor: c.grille, zerolinecolor: c.doux, linecolor: c.grille, automargin: true, ...(k > 1 ? { nticks: 5, tickfont: { size: 9 } } : {}) };
-    layout[`xaxis${s}`] = { ...ax, title: { text: d.variable, font: { size: k > 1 ? 11 : undefined }, standoff: 4 }, type: d.qualitative ? 'category' : '-' };
+    layout[`xaxis${s}`] = { ...ax, title: { text: avecUnite(ctx, m.projet, d.variable), font: { size: k > 1 ? 11 : undefined }, standoff: 4 }, type: d.qualitative ? 'category' : '-' };
     layout[`yaxis${s}`] = { ...ax, title: { text: i % colonnes === 0 ? nomY : '', font: { size: k > 1 ? 10 : undefined } }, range: [bas - 2 * marge, haut + marge] };
   });
   if (!k) { graphe.replaceChildren(el('p', { class: 'infos' }, t('ens_sans_dependance'))); return; }
@@ -174,7 +174,8 @@ function rendreObsPred(conteneur, ctx, p, loc) {
   const hi = Math.max(...vals);
   tracer(ctx, graphe, points, { showlegend: points.length > 1, title: { text: `${m.nom} · ${y} : ${t('observe')} / ${t(`ens_mode_${loc.mode}`)}` },
     shapes: [{ type: 'line', x0: lo, y0: lo, x1: hi, y1: hi, line: { color: '#888', dash: 'dot', width: 1 } }],
-    xaxis: { title: { text: `${y} ${t('observe')}` } }, yaxis: { title: { text: `${y} · ${t(`ens_mode_${loc.mode}`)}` } } });
+    xaxis: { title: { text: `${y} ${t('observe')}${uniteAxe(ctx, m.projet, y, transformeeDans(ctx, m, y))}` } },
+    yaxis: { title: { text: `${y} · ${t(`ens_mode_${loc.mode}`)}${uniteAxe(ctx, m.projet, y, transformeeDans(ctx, m, y))}` } } });
   brancherSelection(graphe, ctx, m.id);
 }
 

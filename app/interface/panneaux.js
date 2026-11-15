@@ -1,7 +1,7 @@
 // Views. Each draws one model result (or the project data) into a panel and is re-run when
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
 import { t, lire, ecrire, langueActuelle } from './i18n.js';
-import { el, fmt, icone } from './ui.js';
+import { el, fmt, icone, menuContextuel } from './ui.js';
 
 export const PALETTES = {
   defaut: ['#2f6fb5', '#d1495b', '#3b9a5b', '#e09f3e', '#7b5ea7', '#2a9d8f', '#8c564b', '#c2549d', '#6b6b6b', '#a3a322'],
@@ -106,6 +106,22 @@ export function tracer(ctx, div, traces, layout = {}) {
   ctx.definirGraphe(div);
 }
 
+// A variable's unit for an axis or legend title (Edit › Units and descriptions: atelier.js): " (ind./ha)"
+// after its name, or '' when it has none, isn't a variable of the project `pid`, or is shown
+// transformed (`transformee`: a log10 axis isn't in ind./ha). avecUnite: the name and its unit.
+export function uniteAxe(ctx, pid, nom, transformee = false) {
+  const p = ctx.projet(pid);
+  const v = p && !transformee ? p.variables.find((x) => x.nom === nom) : null;
+  return v && v.unite ? ` (${v.unite})` : '';
+}
+export const avecUnite = (ctx, pid, nom, transformee = false) => `${nom}${uniteAxe(ctx, pid, nom, transformee)}`;
+// whether a model takes the variable `nom` transformed (its settings' transformation: New model)
+export function transformeeDans(ctx, m, nom) {
+  const p = ctx.projet(m.projet);
+  const v = p && p.variables.find((x) => x.nom === nom);
+  return !!(v && m.reglages && m.reglages.transformations && m.reglages.transformations[v.uid]);
+}
+
 // Box / lasso selection and clicks on points whose customdata is the observation uid.
 export function brancherSelection(div, ctx, idModele) {
   if (div._branche) return;
@@ -184,7 +200,13 @@ function groupesCouleur(m, loc, ctx) {
     if (!g.has(k)) g.set(k, []);
     g.get(k).push(i);
   });
-  return { groupes: [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true })) };
+  // (a qualitative variable's groups in the order of its categories: Edit › Categories, atelier.js;
+  // the others by name)
+  const proj = loc.couleur && loc.couleur.startsWith('v') ? ctx.projet(m.projet) : null;
+  const v = proj && proj.variables.find((x) => `v${x.uid}` === loc.couleur);
+  const ordre = v && v.qualitative ? [].concat(v.categories || []).map(String) : null;
+  const rang = (k) => { const i = ordre ? ordre.indexOf(k) : -1; return i < 0 ? Infinity : i; };
+  return { groupes: [...g.entries()].sort((a, b) => (ordre ? rang(a[0]) - rang(b[0]) : 0) || a[0].localeCompare(b[0], undefined, { numeric: true })) };
 }
 
 // Values of a project variable ('v<uid>') or secondary ID ('i<rank>') for the model's
@@ -262,8 +284,10 @@ export function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', su
 // current one; a column's alerte(i) shows that cell in red, its couleur(i) marks the cell with
 // a colour (a line's own in a plot). Cells of `modifiable` columns
 // are edited by double-click, then modifier(i, cle, texte) (Enter or leaving the cell: keep;
-// Escape: cancel).
-export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier }) {
+// Escape: cancel). A column's header can carry a line under its name (sousTitre: the unit and the
+// values of a variable in the Data view), a tooltip (info), and a right-click menu (menuColonne(c,
+// event)); a row too (menuLigne(i, event): a variable of Variable statistics).
+export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier, menuColonne, menuLigne, aideCellule }) {
   loc.filtre ??= '';
   const f = loc.filtre.toLowerCase();
   let idx = Array.from({ length: n }, (_, i) => i);
@@ -287,7 +311,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     const couleur = c.couleur && c.couleur(i);
     if (couleur) td.style.boxShadow = `inset 4px 0 0 ${couleur}`;
     if (modifier && c.modifiable) {
-      td.title = t('double_clic_modifier');
+      td.title = aideCellule || t('double_clic_modifier');
       td.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         const saisie = el('input', { value: v ?? '', class: 'edition-cellule' });
@@ -312,9 +336,11 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     return td;
   };
   const tete = el('tr', {}, colonnes.map((c) => el('th', {
-    class: (c.num ? 'num' : '') + (loc.tri && loc.tri.cle === c.cle ? ' trie' : ''),
-    onclick: () => { loc.tri = { cle: c.cle, sens: loc.tri && loc.tri.cle === c.cle ? -loc.tri.sens : 1 }; ctx.rafraichir(); } },
-  c.titre, loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? ' ▲' : ' ▼') : '')));
+    class: (c.num ? 'num' : '') + (loc.tri && loc.tri.cle === c.cle ? ' trie' : ''), title: c.info || null,
+    onclick: () => { loc.tri = { cle: c.cle, sens: loc.tri && loc.tri.cle === c.cle ? -loc.tri.sens : 1 }; ctx.rafraichir(); },
+    oncontextmenu: menuColonne ? (e) => { e.preventDefault(); e.stopPropagation(); menuColonne(c, e); } : null },
+  c.titre, loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? ' ▲' : ' ▼') : '',
+  c.sousTitre ? el('span', { class: 'sous-titre' }, c.sousTitre) : null)));
   const corps = el('tbody', {}, idx.slice(0, max).map((i) => el('tr', {
     class: (uid && sel.has(uid(i))) || (choisie && choisie(i)) ? 'choisie' : '',
     onclick: uid ? () => {
@@ -322,13 +348,17 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
       const u = uid(i);
       if (s.has(u)) s.delete(u); else s.add(u);
       ctx.choisir(idModele, [...s]);
-    } : cliquer ? () => cliquer(i) : null }, colonnes.map((c) => cellule(i, c)))));
+    } : cliquer ? () => cliquer(i) : null,
+    oncontextmenu: menuLigne ? (e) => { e.preventDefault(); e.stopPropagation(); menuLigne(i, e); } : null }, colonnes.map((c) => cellule(i, c)))));
   const copier = () => {
     const txt = [colonnes.map((c) => c.titre).join('\t')]
       .concat(idx.map((i) => colonnes.map((c) => { const v = valeur(i, c.cle); return v === null || v === undefined ? '' : v; }).join('\t'))).join('\n');
     navigator.clipboard.writeText(txt).then(() => ctx.statut(t('table_copiee')));
   };
   conteneur._copierTableau = copier;  // Ctrl+C (app.js)
+  // (the rows and columns shown, in their order: the Data view pastes a block of cells from one of them)
+  conteneur._lignes = idx.slice(0, max);
+  conteneur._colonnes = colonnes.map((c) => c.cle);
   const filtre = el('input', { type: 'search', placeholder: t('recherche'), value: loc.filtre, class: 'filtre',
     oninput: (e) => { loc.filtre = e.target.value; clearTimeout(loc.minuterie); loc.minuterie = setTimeout(() => ctx.rafraichir(), 200); } });
   conteneur.replaceChildren(
@@ -979,10 +1009,11 @@ function rendreObsPred(conteneur, ctx, p, loc) {
   }
   const lo = Math.min(...vals);
   const hi = Math.max(...vals);
+  const unite = uniteAxe(ctx, m.projet, y, transformeeDans(ctx, m, y));
   tracer(ctx, graphe, points,
   { showlegend: points.length > 1, title: { text: `${m.nom} · ${y} : ${t('observe')} / ${t('ajuste')}` },
     shapes: [{ type: 'line', x0: lo, y0: lo, x1: hi, y1: hi, line: { color: '#888', dash: 'dot', width: 1 } }],
-    xaxis: { title: { text: `${y} ${t('observe')}` } }, yaxis: { title: { text: `${y} ${t('ajuste')}` } } });
+    xaxis: { title: { text: `${y} ${t('observe')}${unite}` } }, yaxis: { title: { text: `${y} ${t('ajuste')}${unite}` } } });
   brancherSelection(graphe, ctx, m.id);
 }
 
@@ -1223,7 +1254,38 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
   // A wide table (spectra: a column per wavelength) shows its first columns, or those whose name
   // holds the text typed: thousands of columns would freeze the window.
   let k = d.variables.map((_, i) => i);
-  const avant = [el('button', { onclick: () => ctx.nouvelleVariable(p.projet) }, icone('calculator'), t('nouvelle_variable'))];
+  // (the data workbench, atelier.js: Find and replace, Categories, Units and descriptions; also from
+  // a column's header, by a right-click; under each name, its unit and, unless untoggled, its
+  // number of empty cells and of distinct values)
+  const proj = ctx.projet(p.projet);
+  const variables = new Map((proj ? proj.variables : []).map((v) => [v.uid, v]));
+  const resume = loc.resume !== false;
+  const avant = [el('button', { onclick: () => ctx.nouvelleVariable(p.projet) }, icone('calculator'), t('nouvelle_variable')),
+    el('button', { onclick: () => ctx.remplacerDonnees(p.projet) }, icone('search'), t('atelier_remplacer')),
+    el('button', { onclick: () => ctx.categoriesVariable(p.projet), disabled: ![...variables.values()].some((v) => v.qualitative) }, icone('tag'), t('atelier_categories')),
+    el('button', { onclick: () => ctx.variablesProjet(p.projet) }, icone('ruler'), t('atelier_variables')),
+    el('label', { class: 'champ', title: t('atelier_resume_aide') },
+      el('input', { type: 'checkbox', checked: resume, onchange: (e) => { loc.resume = e.target.checked; ctx.rafraichir(); } }), t('atelier_resume'))];
+  const colonne = (i) => {
+    const v = variables.get(d.uid_variables[i]) || {};
+    const x = d.valeurs[i];
+    const vides = x.reduce((s, y) => s + (y === null ? 1 : 0), 0);
+    const distinctes = new Set(x.filter((y) => y !== null)).size;
+    const valeurs = [vides ? t('atelier_vides_n', { n: vides }) : '', t('atelier_distinctes', { n: distinctes })].filter(Boolean).join(' · ');
+    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i],
+      sousTitre: [v.unite, resume ? valeurs : ''].filter(Boolean).join(' · ') || null,
+      info: [v.description, `${d.variables[i]}${v.unite ? ` (${v.unite})` : ''} · ${v.qualitative ? t('atelier_qualitative', { n: [].concat(v.categories || []).length }) : t('atelier_quantitative')} · ${valeurs}`,
+        t('atelier_entete_aide')].filter(Boolean).join('\n') };
+  };
+  const menuColonne = (c, e) => {
+    if (c.uid === undefined) return;
+    const v = variables.get(c.uid) || {};
+    const nom = (langueActuelle() === 'fr' ? `« ${c.titre} »` : `“${c.titre}”`);
+    menuContextuel(e.clientX, e.clientY, [
+      { libelle: t('atelier_unite_de', { nom }), icone: 'ruler', action: () => ctx.variablesProjet(p.projet, c.uid) },
+      { libelle: t('atelier_categories_de', { nom }), icone: 'tag', actif: !!v.qualitative, action: () => ctx.categoriesVariable(p.projet, c.uid) },
+      { libelle: t('atelier_remplacer_dans', { nom }), icone: 'search', action: () => ctx.remplacerDonnees(p.projet, c.uid) }]);
+  };
   let filtreColonnes = null;
   if (k.length > COLONNES_MAX) {
     const f = (loc.filtreColonnes || '').toLowerCase();
@@ -1235,12 +1297,60 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     k = k.slice(0, COLONNES_MAX);
   }
   tableau(conteneur, ctx, loc, {
-    n: d.observations.length, nom: 'Table', avant,
-    colonnes: [{ cle: -1, titre: '' }].concat(k.map((i) => ({ cle: i, titre: d.variables[i], modifiable: true }))),
+    n: d.observations.length, nom: 'Table', avant, menuColonne, aideCellule: t('atelier_aide_cellule'),
+    colonnes: [{ cle: -1, titre: '' }].concat(k.map(colonne)),
     valeur: (i, j) => (j === -1 ? d.observations[i] : d.valeurs[j][i]),
     modifier: (i, j, texte) => ctx.modifierValeur(p.projet, d.uid_observations[i], d.uid_variables[j], texte),
   });
   if (filtreColonnes && loc.focusColonnes) { filtreColonnes.focus(); filtreColonnes.setSelectionRange(filtreColonnes.value.length, filtreColonnes.value.length); }
+  collerCellules(conteneur, ctx, p, loc, d);
+}
+
+// A block of cells copied from a spreadsheet, pasted into the Data view from the cell chosen by a
+// click (Ctrl+V: app.js hands it here), in the rows and columns as they are shown (sorted, filtered):
+// R makes it one change (moteur/R/atelier.R: coller_cellules), each cell as edited by hand; rows or
+// columns beyond the table are left out, and said.
+function collerCellules(conteneur, ctx, p, loc, d) {
+  conteneur.tabIndex = -1;
+  conteneur.dataset.collerCellules = '';
+  const marquer = () => {
+    conteneur.querySelectorAll('td.ancre').forEach((x) => x.classList.remove('ancre'));
+    if (!loc.ancre) return;
+    const r = conteneur._lignes.indexOf(loc.ancre.i);
+    const c = conteneur._colonnes.indexOf(loc.ancre.cle);
+    const tr = r >= 0 && c > 0 ? conteneur.querySelector('tbody').rows[r] : null;
+    if (tr && tr.cells[c]) tr.cells[c].classList.add('ancre');
+  };
+  marquer();
+  if (conteneur._collage) return;
+  conteneur._collage = true;
+  conteneur.addEventListener('click', (e) => {
+    const td = e.target.closest('tbody td');
+    if (!td || !td.closest('.tableau') || e.target.closest('input')) return;
+    const cle = conteneur._colonnes[td.cellIndex];
+    if (cle === -1 || cle === undefined) return;
+    loc.ancre = { i: conteneur._lignes[td.parentElement.sectionRowIndex], cle };
+    marquer();
+    conteneur.focus({ preventScroll: true });
+  });
+  conteneur._collerCellules = async () => {
+    const ld = loc.d;
+    if (!loc.ancre || !ld) { ctx.statut(t('atelier_coller_aide')); return; }
+    const texte = (await ctx.lirePressePapiers()).replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+    if (!texte) return;
+    const lignes = texte.split('\n').map((l) => l.split('\t'));
+    const r0 = conteneur._lignes.indexOf(loc.ancre.i);
+    const c0 = conteneur._colonnes.indexOf(loc.ancre.cle);
+    if (r0 < 0 || c0 < 1) return;
+    const rangs = conteneur._lignes.slice(r0, r0 + lignes.length);
+    const cles = conteneur._colonnes.slice(c0, c0 + Math.max(...lignes.map((l) => l.length)));
+    const hors = lignes.length - rangs.length + Math.max(...lignes.map((l) => l.length)) - cles.length;
+    try {
+      const res = await ctx.changerDonnees('coller_cellules', p.projet, { observations: rangs.map((i) => ld.uid_observations[i]),
+        variables: cles.map((j) => ld.uid_variables[j]), valeurs: rangs.map((_, a) => cles.map((_, b) => (lignes[a][b] === undefined ? null : lignes[a][b]))) });
+      ctx.statut(t('atelier_colle', { n: res.collage.cellules }) + (hors > 0 ? ` ${t('atelier_coller_hors')}` : ''));
+    } catch (e) { ctx.statut(`${t('erreur')} : ${e.message}`, true); }
+  };
 }
 const COLONNES_MAX = 200;
 
@@ -1336,9 +1446,17 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
       col('et_moyenne', t('et_moyenne'), 3), col('asymetrie', t('asymetrie'), 3, (i) => s.rouge_asymetrie[i]),
       col('test_asymetrie', t('test_asymetrie'), 2, (i) => s.rouge_asymetrie[i]), col('aplatissement', t('aplatissement'), 3),
       { cle: 'suggestion', titre: t('suggestion') }],
-    valeur: (i, c) => (c === 'nom' ? s.nom[i] + (s.qualitative[i] ? ` (${s.categories[i]} ${t('categories')})` : '')
+    valeur: (i, c) => (c === 'nom' ? avecUnite(ctx, p.projet, s.nom[i]) + (s.qualitative[i] ? ` (${s.categories[i]} ${t('categories')})` : '')
       : c === 'suggestion' ? libelleTransfo(s.suggestion[i]) : s[c][i]),
     cliquer: (i) => { loc.k = i; loc.mode = 'histogramme'; ctx.rafraichir(); },
+    // (a variable's unit and description, its categories, find and replace in it: atelier.js)
+    menuLigne: (i, e) => {
+      const nom = (langueActuelle() === 'fr' ? `« ${s.nom[i]} »` : `“${s.nom[i]}”`);
+      menuContextuel(e.clientX, e.clientY, [
+        { libelle: t('atelier_unite_de', { nom }), icone: 'ruler', action: () => ctx.variablesProjet(p.projet, s.uid[i]) },
+        { libelle: t('atelier_categories_de', { nom }), icone: 'tag', actif: !!s.qualitative[i], action: () => ctx.categoriesVariable(p.projet, s.uid[i]) },
+        { libelle: t('atelier_remplacer_dans', { nom }), icone: 'search', action: () => ctx.remplacerDonnees(p.projet, s.uid[i]) }]);
+    },
     choisie: (i) => loc.mode === 'histogramme' && i === k,
   });
   if (loc.mode === 'manquantes') {
@@ -1362,18 +1480,21 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
   const x = loc.valeurs;
   const titre = { text: `${s.nom[k]}${s.suggestion[k] ? ` · ${t('suggestion')} : ${libelleTransfo(s.suggestion[k])}` : ''}` };
   if (s.qualitative[k]) {
-    const n = new Map();
-    x.forEach((v) => { if (v !== null) n.set(v, (n.get(v) || 0) + 1); });
-    tracer(ctx, graphe, [{ type: 'bar', x: [...n.keys()], y: [...n.values()], marker: { color: PALETTE[0] } }], { title: titre, dragmode: false });
+    // (in the order of its categories: Edit › Categories, atelier.js)
+    const v = proj && proj.variables.find((w) => w.uid === s.uid[k]);
+    const n = new Map(v ? [].concat(v.categories || []).map((c) => [String(c), 0]) : []);
+    x.forEach((y) => { if (y !== null) n.set(y, (n.get(y) || 0) + 1); });
+    for (const [c, nb] of [...n]) if (!nb) n.delete(c);
+    tracer(ctx, graphe, [{ type: 'bar', x: [...n.keys()], y: [...n.values()], marker: { color: PALETTE[0] } }], { title: titre, dragmode: false, xaxis: { type: 'category' } });
     return;
   }
   const traces = [{ type: 'histogram', x, name: t('tr_aucune'), marker: { color: PALETTE[0] }, nbinsx: 30 }];
-  const lay = { title: titre, dragmode: 'zoom', bargap: 0.04, showlegend: false };
+  const lay = { title: titre, dragmode: 'zoom', bargap: 0.04, showlegend: false, xaxis: { title: { text: avecUnite(ctx, p.projet, s.nom[k]) } } };
   if (loc.apercu) {
     const c = couleursTheme(ctx);
     traces.push({ type: 'histogram', x: transformer(x, loc.apercu), name: libelleTransfo(loc.apercu), marker: { color: PALETTE[2] }, nbinsx: 30, xaxis: 'x2', yaxis: 'y2' });
     Object.assign(lay, { grid: { rows: 1, columns: 2, pattern: 'independent' },
-      xaxis: { title: { text: s.nom[k] } }, xaxis2: { title: { text: libelleTransfo(loc.apercu) }, gridcolor: c.grille, automargin: true },
+      xaxis: { title: { text: avecUnite(ctx, p.projet, s.nom[k]) } }, xaxis2: { title: { text: libelleTransfo(loc.apercu) }, gridcolor: c.grille, automargin: true },
       yaxis2: { gridcolor: c.grille, automargin: true } });
   }
   tracer(ctx, graphe, traces, lay);
@@ -1531,9 +1652,9 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     const dy = [1 - (rang + 1) / R + (rang < R - 1 ? gy / 2 : 0), 1 - rang / R - (rang ? gy / 2 : 0)];
     // (the times under the lowest panel of each column, the values left of the first column)
     lay['xaxis' + s] = { ...axe, domain: dx, anchor: 'y' + s, showticklabels: k + C >= nP, ...(dates ? { type: 'date' } : {}),
-      ...(s ? { matches: 'x' } : { title: { text: r.temps.nom } }) };
+      ...(s ? { matches: 'x' } : { title: { text: avecUnite(ctx, p.projet, r.temps.nom) } }) };
     lay['yaxis' + s] = { ...axe, domain: dy, anchor: 'x' + s, showticklabels: col === 0, ...(loc.log ? { type: 'log' } : {}),
-      ...(s ? { matches: 'y' } : { title: { text: r.variable.nom } }) };
+      ...(s ? { matches: 'y' } : { title: { text: avecUnite(ctx, p.projet, r.variable.nom) } }) };
     if (parPanneaux) lay.annotations.push({ text: nomP, xref: 'paper', yref: 'paper', x: dx[0], y: dy[1], xanchor: 'left', yanchor: 'bottom', showarrow: false, font: { size: FORMAT.taille } });
     for (const e of evenements) lay.shapes.push({ type: 'line', xref: 'x' + s, yref: `y${s} domain`, x0: e, x1: e, y0: 0, y1: 1, line: { dash: 'dash', color: c.doux, width: 1 } });
     const extra = parLignes ? '%{fullData.name}' : parPanneaux ? nomP : '';
@@ -2071,7 +2192,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
         line: { color: '#d1495b', width: 1.5 }, hoverinfo: 'skip' });
     }
     tracer(ctx, graphe, traces, { title: { text: `${r.y.nom} · ${r.x.nom}` }, showlegend: false, dragmode: 'zoom',
-      xaxis: { title: { text: r.x.nom } }, yaxis: { title: { text: r.y.nom } } });
+      xaxis: { title: { text: avecUnite(ctx, p.projet, r.x.nom) } }, yaxis: { title: { text: avecUnite(ctx, p.projet, r.y.nom) } } });
     details.replaceChildren(tableTests);
     return;
   }
@@ -2095,7 +2216,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     const idx = grp.map((_, i) => i).filter((i) => grp[i] === gr);
     return { type: 'box', name: gr, y: idx.map((i) => val[i]), text: idx.map((i) => nm[i]), boxpoints: idx.length <= 500 ? 'all' : 'outliers',
       jitter: 0.4, pointpos: 0, boxmean: true, marker: { color: PALETTE[k % PALETTE.length], size: 4 }, line: { width: 1 } };
-  }), { title: { text: `${mesure} · ${facteur}` }, showlegend: false, dragmode: 'zoom', xaxis: { title: { text: facteur } }, yaxis: { title: { text: mesure } } });
+  }), { title: { text: `${mesure} · ${facteur}` }, showlegend: false, dragmode: 'zoom', xaxis: { title: { text: facteur } }, yaxis: { title: { text: avecUnite(ctx, p.projet, mesure) } } });
   if (!ph) return;
   const pc = (k) => [].concat(ph[k]);
   const dunn = L.test === 'kruskal';
@@ -2631,8 +2752,8 @@ function tracerSeuils(ctx, graphe, m, e, s, lien) {
     { type: 'scatter', mode: 'lines', x: xp, y: [].concat(s.pente), yaxis: 'y2', line: { color: c.texte, width: 1.5 }, name: t('pente'),
       hovertemplate: `${e.terme} = %{x:.3f}<br>${t('pente')} = %{y:.4g}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('seuils')} · ${e.terme}${s.categorie ? ` · ${s.par} ${s.categorie}` : ''}` }, showlegend: false, dragmode: 'zoom',
-    xaxis: { title: { text: e.terme }, anchor: 'y2' },
-    yaxis: { domain: [0.4, 1], title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
+    xaxis: { title: { text: avecUnite(ctx, m.projet, e.terme, transformeeDans(ctx, m, e.terme)) }, anchor: 'y2' },
+    yaxis: { domain: [0.4, 1], title: { text: lien === 'identity' ? `${t('effet_sur', { y: m.noms_y[0] })}${uniteAxe(ctx, m.projet, m.noms_y[0], !!m.transformation_y)}` : t('effet_lien', { lien }) } },
     yaxis2: { domain: [0, 0.3], title: { text: t('pente') } },
     shapes: zones.map((z) => ({ type: 'rect', xref: 'x', yref: 'paper', x0: z.de, x1: z.a, y0: 0, y1: 1, fillcolor: PENTE[z.sens], opacity: 0.14, line: { width: 0 }, layer: 'below' }))
       .concat([{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } },
@@ -2693,7 +2814,7 @@ async function rendreEffets(conteneur, ctx, p, loc) {
       hovertemplate: `${e.terme} = %{x:.3f}<br>${t('effet')} = %{y:.3f}<extra></extra>` },
     { type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux }, hoverinfo: 'skip', name: t('observations') }],
   { title: { text: `${m.nom} · ${t('effets')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
-    xaxis: { title: { text: e.terme } }, yaxis: { title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
+    xaxis: { title: { text: avecUnite(ctx, m.projet, e.terme, transformeeDans(ctx, m, e.terme)) } }, yaxis: { title: { text: lien === 'identity' ? `${t('effet_sur', { y: m.noms_y[0] })}${uniteAxe(ctx, m.projet, m.noms_y[0], !!m.transformation_y)}` : t('effet_lien', { lien }) } },
     shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
 }
 
@@ -2717,7 +2838,7 @@ function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien) {
   }).concat([{ type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux },
     hoverinfo: 'skip', name: t('observations'), showlegend: false }]),
   { title: { text: `${m.nom} · ${t('effets')} · ${e.terme} × ${e.par}` }, showlegend: true, dragmode: 'zoom',
-    xaxis: { title: { text: e.terme } }, yaxis: { title: { text: lien === 'identity' ? t('effet_sur', { y: m.noms_y[0] }) : t('effet_lien', { lien }) } },
+    xaxis: { title: { text: avecUnite(ctx, m.projet, e.terme, transformeeDans(ctx, m, e.terme)) } }, yaxis: { title: { text: lien === 'identity' ? `${t('effet_sur', { y: m.noms_y[0] })}${uniteAxe(ctx, m.projet, m.noms_y[0], !!m.transformation_y)}` : t('effet_lien', { lien }) } },
     shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
   if (e.courbe) return;
   conteneur.append(el('div', { class: 'bas' }, el('table', { class: 'tableau compact' },
@@ -3248,7 +3369,8 @@ async function rendreMoyennes(conteneur, ctx, p, loc) {
       hovertemplate: `%{customdata[0]}${gr === null ? '' : ` · ${gr}`}<br>%{y:.4g} [%{customdata[1]} ; %{customdata[2]}]<extra></extra>` };
   }), { title: { text: `${m.nom} · ${pentes ? t('moyennes_titre_pentes', { x: r.pente.nom }) : t('moyennes')}` }, dragmode: 'zoom', showlegend: groupes.length > 1,
     xaxis: { title: { text: r.facteur.nom }, tickmode: 'array', tickvals: niveaux.map((_, i) => i), ticktext: niveaux, range: [-0.5, niveaux.length - 0.5], zeroline: false },
-    yaxis: { title: { text: pentes ? t('moyennes_axe_pente', { x: r.pente.nom }) : t('moyennes_axe', { y: r.reponse }) } },
+    // (the response's unit: on its own scale, or that of a log link's means, not on a link's or a transformation's)
+    yaxis: { title: { text: pentes ? t('moyennes_axe_pente', { x: r.pente.nom }) : `${t('moyennes_axe', { y: r.reponse })}${r.echelle === 'lien' || r.lien === 'logit' ? '' : uniteAxe(ctx, m.projet, r.reponse, !!m.transformation_y)}` } },
     shapes: pentes || r.echelle !== 'reponse' ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] : [] });
 
   // the tables: the means (or slopes), then the pairs, a click on a pair giving its sentence

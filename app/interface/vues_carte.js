@@ -9,7 +9,7 @@
 // Imported by app.js.
 import { t, ajouterTextes } from './i18n.js';
 import { el, fmt } from './ui.js';
-import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP } from './panneaux.js';
+import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP, uniteAxe } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
 
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
@@ -184,7 +184,7 @@ async function rendreCarte(conteneur, ctx, p, loc) {
     const connus = tous.filter((k) => couleurs[k] !== null);
     const inconnus = tous.filter((k) => couleurs[k] === null);
     traces.push(trace(connus, nomCouleur, connus.map((k) => couleurs[k]), { colorscale: 'Viridis', showscale: true,
-      colorbar: { title: { text: nomCouleur, side: 'right' }, thickness: 12 } }));
+      colorbar: { title: { text: `${nomCouleur}${uniteAxe(ctx, pid, nomCouleur)}`, side: 'right' }, thickness: 12 } }));
     if (inconnus.length) traces.push(trace(inconnus, t('carte_manquante'), GRIS));
   } else {
     const groupes = new Map();

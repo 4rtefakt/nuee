@@ -2069,7 +2069,9 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
 
   # --- données
   ty <- d$y[[1]]
-  reponse <- if (is.null(ty$transform)) guillemets(m$y$noms) else formule_transformation(ty$transform, guillemets(m$y$noms), fr)
+  # (la réponse avec son unité, quand elle en a une : atelier.R)
+  nom_reponse <- paste0(guillemets(m$y$noms), unite_texte(projet, ty$variables[1]))
+  reponse <- if (is.null(ty$transform)) nom_reponse else formule_transformation(ty$transform, nom_reponse, fr)
   p1 <- if (fr) sprintf("Le modèle porte sur %s%s ; la réponse est %s.", observations_texte(m$N, d, fr),
                         if (length(m$exclues)) sprintf(" (%d autres laissées de côté faute de valeurs)", length(m$exclues)) else "", reponse)
         else sprintf("The model uses %s%s; the response is %s.", observations_texte(m$N, d, fr),

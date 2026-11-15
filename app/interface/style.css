@@ -432,3 +432,20 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .verifications .verification.ok .signe { color: #3b9a5b; }
 .verifications .verification.attention .signe { color: #d1495b; }
 .verifications .verification.info .signe { color: var(--texte-doux, #666); }
+
+/* The data workbench (atelier.js): the Data view's headers (a variable's unit, its empty cells and
+   distinct values), Find and replace, Categories, Units and descriptions */
+.tableau th .sous-titre { display: block; font-weight: 400; font-size: 11px; color: var(--texte-doux); }
+.dialogue-remplacer .grille-champs, .dialogue-categories .grille-champs { grid-template-columns: max-content minmax(0, 480px); }
+.apercu-remplacer { min-height: 5.6em; border: 1px solid var(--bord); border-radius: 4px; padding: 4px 8px; background: var(--fond-barre); }
+.apercu-remplacer p { margin: 2px 0; }
+.apercu-remplacer .resume-remplacer { font-weight: 600; }
+.liste-categories { max-height: 20em; overflow: auto; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--bord); border-radius: 4px; padding: 4px 6px; margin-bottom: 6px; }
+.ligne-categorie { gap: 6px; }
+.ligne-categorie .nom-categorie { width: 12em; }
+.ligne-categorie .effectif { min-width: 4.5em; font-size: 11.5px; }
+.ligne-categorie.reference .nom-categorie { border-color: var(--accent); }
+.defile-unites { max-height: calc(88vh - 220px); overflow: auto; }
+.dialogue-unites .unite-variable { width: 8em; }
+.dialogue-unites .description-variable { width: 30em; }
+.tableau td.ancre { outline: 2px solid var(--accent); outline-offset: -2px; }

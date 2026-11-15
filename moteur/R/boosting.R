@@ -466,7 +466,8 @@ texte_methodes_boost <- function(projet, d, m, langue = "fr", version = "") {
   noms <- vapply(m$variables, `[[`, "", "nom")
   laissees <- if (length(m$exclues)) sprintf(if (fr) " (%d autres laissées de côté : leur réponse ou une valeur X manque)"
                                              else " (%d others left out: their response or an X value is missing)", length(m$exclues)) else ""
-  reponse <- if (!is.null(m$y$transform)) formule_transformation(m$y$transform, g(m$y$nom), fr) else g(m$y$nom)
+  nom_reponse <- paste0(g(m$y$nom), unite_texte(projet, m$y$nom))  # (avec son unité : atelier.R)
+  reponse <- if (!is.null(m$y$transform)) formule_transformation(m$y$transform, nom_reponse, fr) else nom_reponse
   p1 <- sprintf(if (fr) "Les arbres boostés portent sur %s%s ; leur réponse est %s." else "The boosted trees use %s%s; their response is %s.",
                 observations_texte(m$N, d, fr), laissees, reponse)
   explicatives <- if (length(noms) <= 12) sprintf(if (fr) "%d variables explicatives (%s)" else "%d explanatory variables (%s)", length(noms), liste_mots(noms, fr))
