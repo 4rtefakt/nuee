@@ -20,6 +20,7 @@ import { zip } from './zip.js';
 import './vues_ordination.js';
 import './vues_indicatrices.js';
 import './vues_rarefaction.js';
+import './vues_communautes.js';
 import './vues_classement.js';
 import './vues_carte.js';
 import './vues_par_reponse.js';

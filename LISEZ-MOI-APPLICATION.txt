@@ -1295,6 +1295,77 @@ Par groupe (une variable qualitative ou un identifiant) : une courbe et des esti
 groupe. Un clic ou un cadre sélectionne des observations, comme dans Séries. Les valeurs sont
 celles de vegan (rarefy, rarecurve, specaccum, estimateR, specpool), sauf l'écart-type d'ACE,
 calculé par la méthode delta avec le gradient d'ACE lui-même (vegan en prend un autre).
+PCoA, NMDS, PERMANOVA et test de Mantel
+---------------------------------------
+Quatre analyses fondées sur une distance entre observations, calculée sur le tableau Y (rôle Y :
+les espèces, ou toutes variables quantitatives) ; une observation où une valeur Y manque est
+laissée de côté, et comptée. Onglet Général : la distance, comme le paquet vegan la définit
+(Bray-Curtis, Jaccard 2B/(1 + B), Gower, euclidienne, Manhattan, Canberra, Kulczynski,
+Hellinger, corde), au choix sur les présences-absences (Bray-Curtis devient alors l'indice de
+Sørensen) ; une transformation avant elle (racine carrée ou quatrième, log(x + 1),
+présences-absences, abondances relatives, double standardisation de Wisconsin, racine carrée
+puis Wisconsin comme le fait metaMDS) ; le nombre de permutations des tests (999 ; 0 : aucune),
+les groupes à l'intérieur desquels elles restent et leur graine. Une distance qui n'a pas de
+sens pour des valeurs négatives (Bray-Curtis, Jaccard, Kulczynski, Canberra, Hellinger) les
+refuse, et une distance qui n'est pas définie pour une observation sans aucune valeur (que des
+zéros) la nomme.
+
+Type « PCoA (analyse en coordonnées principales) » : les axes qui montrent au mieux, sur peu de
+dimensions, les distances entre observations (Gower 1966). Une distance qui n'est pas
+euclidienne (Bray-Curtis, le plus souvent) a des valeurs propres négatives : elles sont gardées
+et signalées, et la correction de Lingoes ou de Cailliez (onglet Général) ajoute la constante
+qui les supprime. Variables X (facultatives) : ajustées sur les deux premiers axes comme
+vegan::envfit, une flèche par variable quantitative (sa direction et son R2), un centroïde par
+catégorie d'une qualitative (et son R2), chacune testée par permutations ; les observations
+sans valeur X ne sont laissées de côté que de cet ajustement. Vues : Résumé ; Ordination (les
+observations, colorées et étiquetées comme dans les autres graphiques, les espèces à la
+moyenne pondérée de leurs observations, les flèches, en gris quand p > 0,05, et les
+centroïdes, à la même échelle sur les deux axes) ; Valeurs propres (la part de l'inertie
+totale, la somme de toutes les valeurs propres ; les négatives en rouge) ; Variables ajustées ;
+les listes des observations et des variables.
+
+Type « NMDS (positionnement multidimensionnel non métrique) » : une configuration en k
+dimensions (2 par défaut, de 1 à 4) dont les distances respectent l'ordre des dissimilarités
+(Kruskal 1964), par MASS::isoMDS comme le fait vegan::metaMDS : depuis la PCoA, puis depuis 20
+départs au hasard (graine fixe) ; le plus faible stress est gardé, et le Résumé dit si un autre
+départ l'a retrouvé (Procrustes) : si aucun ne l'a fait, augmentez les départs. Une
+dissimilarité nulle entre deux observations est remplacée par la moitié de la plus petite non
+nulle. La configuration est centrée, tournée sur ses axes principaux et mise à l'échelle de la
+plus grande dissimilarité. Vues : Résumé (le stress : sous 0,1 bon, au-delà de 0,2 à lire avec
+prudence) ; Ordination, comme pour la PCoA ; Diagramme de Shepard (la dissimilarité et la
+distance dans l'ordination de chaque paire, la régression monotone, le stress de chaque
+départ) ; Variables ajustées ; les listes (la part du stress de chaque observation).
+
+Type « PERMANOVA (analyse de variance par permutation) » : l'effet des termes X (qualitatifs ou
+quantitatifs, termes croisés compris) sur la distance (Anderson 2001), comme vegan::adonis2 :
+chaque terme après ceux qui le précèdent, dans leur ordre (séquentiels), chacun après tous les
+autres (marginaux : un terme contenu dans un terme croisé n'est pas testé seul) ou le modèle
+entier ; degrés de liberté, somme des carrés, R2, pseudo-F et sa valeur p par permutation. Avec
+elle, la dispersion multivariée (Anderson 2006, comme vegan::betadisper) des catégories de
+chaque variable X qualitative et de la variable de classe (rôle Classe, un groupement de plus) :
+la distance de chaque observation au centroïde (ou à la médiane spatiale) de son groupe dans
+l'espace de la PCoA, comparée par une ANOVA, ses résidus permutés, et les paires de Tukey. Une
+dispersion qui diffère d'un groupe à l'autre rend la PERMANOVA plus difficile à lire : ses
+différences peuvent venir de l'étalement des groupes autant que de leur position. Vues :
+Résumé ; Table de la PERMANOVA ; Dispersion multivariée (en boîtes ou sur le plan de la PCoA,
+avec ses tests) ; la liste des observations (la distance de chacune à son centre).
+
+Type « Test de Mantel » : la corrélation (de Pearson, ou de Spearman sur les rangs) entre la
+distance de Y et la distance euclidienne des variables X, mises à l'échelle comme le dit
+l'onglet Variables (UV par défaut), et sa valeur p unilatérale par permutation (vegan::mantel) ;
+avec des covariables Z (rôle Z), le test de Mantel partiel (vegan::mantel.partial) ; et le
+corrélogramme de Mantel (vegan::mantel.correlog) : la distance X découpée en classes d'égale
+largeur (règle de Sturges, ou le nombre donné), le r de Mantel de chaque classe (positif : des
+observations proches plus semblables), les classes au-delà de la moitié testées seulement si
+chaque observation y a une paire, les valeurs p corrigées progressivement par la méthode de
+Holm. Vues : Résumé ; Test de Mantel (chaque paire d'observations) ; Corrélogramme de Mantel ; la
+liste.
+
+Les quatre exportent leurs tableaux (Fichier › Exporter), écrivent leur texte des méthodes avec
+ses références et font un rapport ; elles ne prédisent pas de nouvelles observations et n'ont
+pas encore d'export vers R. Les résultats sont ceux de vegan (vegdist, wcmdscale, envfit,
+metaMDS avec isoMDS, adonis2, betadisper, mantel, mantel.correlog) : les mêmes valeurs, et pour
+les mêmes permutations, les mêmes valeurs p.
 
 Arbres de décision, analyse discriminante linéaire et k-moyennes
 ----------------------------------------------------------------

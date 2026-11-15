@@ -30,7 +30,7 @@
 # demandes qui supposent des composantes et leurs scores (serveur.R : SANS_REGRESSION) lui sont
 # refusées, comme aux régressions ; le script de toute une séance la laisse de côté (elle
 # s'exporte seule).
-AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS", "CCA", "INDVAL", "TRIM")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R ; TRIM : trim.R)
+AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS", "CCA", "INDVAL", "TRIM", "PCOA", "NMDS", "PERMANOVA", "MANTEL")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R ; TRIM : trim.R ; PCoA, NMDS, PERMANOVA, Mantel : communautes.R)
 
 est_autre_analyse <- function(d) isTRUE(as.character(d$type %||% "") %in% AUTRES_ANALYSES)
 
