@@ -157,13 +157,14 @@ async function construire() {
       directories: { output: path.join(sortie, 'installateur') },
       win: { icon: path.join(__dirname, 'icone', 'nuee.ico') },
       // .nuee projects open in Nuée when double-clicked, with its icon
-      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Projet Nuée', icon: path.join(__dirname, 'icone', 'nuee.ico') }],
+      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Nuée project', icon: path.join(__dirname, 'icone', 'nuee.ico') }],
       nsis: {
         oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true,
         createDesktopShortcut: true, createStartMenuShortcut: true, shortcutName: 'Nuée', uninstallDisplayName: 'Nuée',
         installerIcon: path.join(__dirname, 'icone', 'nuee.ico'), uninstallerIcon: path.join(__dirname, 'icone', 'nuee.ico'),
         installerSidebar: path.join(__dirname, 'icone', 'installateur.bmp'), uninstallerSidebar: path.join(__dirname, 'icone', 'installateur.bmp'),
-        installerLanguages: ['fr_FR', 'en_US'], language: '1036', artifactName: 'Nuee-Setup-${version}.exe',
+        // (Windows's language when it is one of them, English otherwise: the first one)
+        installerLanguages: ['en_US', 'fr_FR'], language: '1033', artifactName: 'Nuee-Setup-${version}.exe',
       },
     },
   });
