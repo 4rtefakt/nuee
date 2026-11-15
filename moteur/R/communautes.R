@@ -16,8 +16,6 @@
 # Permutations : celles de ordination.R (permutations_lignes : reproductibles par leur graine,
 # libres ou à l'intérieur de groupes, comme how(blocks = ) du paquet permute).
 
-TYPES_COMMUNAUTES <- c("PCOA", "NMDS", "PERMANOVA", "MANTEL")
-
 # ---------------------------------------------------------------- les réglages
 
 # Les distances (vegan : vegdist), les transformations du tableau avant la distance, les
