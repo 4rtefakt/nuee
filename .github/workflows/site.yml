@@ -1,0 +1,31 @@
+# The documentation site (docs/site) on GitHub Pages: https://4rtefakt.github.io/nuee/
+# The pages are committed already built (node docs/site/construire.js): this only publishes the
+# folder. From main; from nuee-1.0 too until 1.0 is merged (its github-pages environment allows
+# that branch).
+name: Site
+on:
+  push:
+    branches: [main, nuee-1.0]
+    paths: ['docs/site/**', '.github/workflows/site.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+      - id: deploiement
+        uses: actions/deploy-pages@v4

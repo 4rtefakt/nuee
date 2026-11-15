@@ -2,7 +2,9 @@
 
 A static site, in French and in English: the home page, the installation, the user guide in
 pages, three tutorials and What's new. Plain HTML and CSS, system fonts, a light and a dark theme,
-nothing loaded from another site. **Nothing is published yet.**
+nothing loaded from another site. Published on GitHub Pages, https://4rtefakt.github.io/nuee/, by
+`.github/workflows/site.yml` at each push that changes it (from `main`; from `nuee-1.0` too until 1.0
+is merged).
 
 | | |
 |---|---|
@@ -74,42 +76,10 @@ The data are simulated, with fixed seeds: `Rscript docs/site/donnees/baci.R` (an
 The site is this folder as it is: any web server that serves files will do. `sources/` and the
 scripts are harmless if they go along.
 
-**On GitHub Pages**, with a workflow, `.github/workflows/site.yml`, then *Settings › Pages ›
-Source: GitHub Actions*:
-
-```yaml
-name: Site
-on:
-  push:
-    branches: [main]
-    paths: ['docs/site/**']
-  workflow_dispatch:
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-concurrency:
-  group: pages
-  cancel-in-progress: true
-jobs:
-  publier:
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploiement.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/site
-      - id: deploiement
-        uses: actions/deploy-pages@v4
-```
-
-The site is then at `https://4rtefakt.github.io/nuee/` (or a domain of your own, in the same
-settings). Without a workflow, Pages can also publish a branch: `git subtree push --prefix docs/site
-origin gh-pages`, then *Source: Deploy from a branch*, `gh-pages`, `/ (root)`; `.nojekyll` keeps
+**On GitHub Pages**, as it is: `.github/workflows/site.yml` publishes the folder at each push to
+`main` that changes it (*Settings › Pages › Source: GitHub Actions*), at
+`https://4rtefakt.github.io/nuee/`. The `github-pages` environment allows `main`, and `nuee-1.0`
+until 1.0 is merged: remove that branch from its deployment branches then. `.nojekyll` keeps
 GitHub from processing the pages.
 
 **On a server of your own**, copy the folder, for instance
