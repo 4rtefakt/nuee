@@ -31,6 +31,11 @@ command the entry in *Settings › Apps* also gives (`QuietUninstallString`). Un
 the users' projects and settings. The installer and the uninstaller exit with 0 when they
 succeed; no restart is needed.
 
+Add `--updated` when Nuée may already be installed (`Nuee-Setup-1.0.0.exe /S /allusers --updated`):
+the installer then keeps the shortcuts of the version it replaces, and with them Nuée pinned to
+the users' taskbars. Without it, it removes them, which unpins Nuée, and makes new shortcuts. On
+a computer without Nuée, `--updated` changes nothing. Nuée's own updates pass it.
+
 ### From a network share
 
 The build also makes a `Nuee` folder that runs without installation: put it on a share and have
@@ -68,12 +73,12 @@ detection rule):
 
 | | |
 |---|---|
-| Install command | `Nuee-Setup-1.0.0.exe /S /allusers` |
+| Install command | `Nuee-Setup-1.0.0.exe /S /allusers --updated` |
 | Uninstall command | `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S` |
 | Exit codes | 0 when it worked; no restart needed |
 | Detection | Registry, 64-bit view: key `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`, value `DisplayVersion`, a version greater than or equal to `1.0.0` |
 | Requirements | Windows 10 or 11, 64-bit (x64); about 550 MB of disk |
-| Updating | Run the new version's installer with the same command: it replaces the installed copy in place |
+| Updating | Run the new version's installer with the same command: it replaces the installed copy in place, and keeps its shortcuts and taskbar pins (`--updated`) |
 
 The key's name is Nuée's own and the same for every version (it comes from the application's
 ID, `io.github.4rtefakt.nuee`). An installation per user is the same with `/currentuser`, the
@@ -89,7 +94,7 @@ As a *Windows app (Win32)*:
    put `Nuee-Setup-1.0.0.exe` alone in a folder, then
    `IntuneWinAppUtil.exe -c <that folder> -s Nuee-Setup-1.0.0.exe -o <output folder>`, and upload
    the `.intunewin` file it writes.
-2. **Program:** install command `Nuee-Setup-1.0.0.exe /S /allusers`; uninstall command
+2. **Program:** install command `Nuee-Setup-1.0.0.exe /S /allusers --updated`; uninstall command
    `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S`; install behavior *System*; device
    restart behavior *No specific action*; return codes as they are.
 3. **Requirements:** operating system architecture *x64*; minimum operating system, the oldest
@@ -113,7 +118,7 @@ As a *Windows app (Win32)*:
 
 An application with a *Script Installer* deployment type:
 
-- **Programs:** installation program `Nuee-Setup-1.0.0.exe /S /allusers`; uninstall program
+- **Programs:** installation program `Nuee-Setup-1.0.0.exe /S /allusers --updated`; uninstall program
   `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S`.
 - **Detection method:** setting type *Registry*, hive `HKEY_LOCAL_MACHINE`, key
   `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`,
@@ -136,7 +141,7 @@ version numbers to deploy another:
 ```bat
 @echo off
 reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503" /v DisplayVersion /reg:64 2>nul | findstr /e /c:" 1.0.0" >nul
-if errorlevel 1 "\\server\share\Nuee-Setup-1.0.0.exe" /S /allusers
+if errorlevel 1 "\\server\share\Nuee-Setup-1.0.0.exe" /S /allusers --updated
 ```
 
 To turn the update check off: *Computer Configuration › Preferences › Windows Settings ›
@@ -145,7 +150,7 @@ Registry*, a new registry item with action *Update*, hive `HKEY_LOCAL_MACHINE`, 
 
 ### PDQ Deploy and other tools
 
-- **PDQ Deploy:** an *Install* step with `Nuee-Setup-1.0.0.exe`, parameters `/S /allusers`,
+- **PDQ Deploy:** an *Install* step with `Nuee-Setup-1.0.0.exe`, parameters `/S /allusers --updated`,
   success code `0`, run as *Local System* or as a deploy user who is an administrator.
 - **Other tools** (ManageEngine, Ivanti, NinjaOne, Chocolatey for Business, a private WinGet
   source…): the installer is an NSIS one (*nullsoft* for WinGet); the commands, exit codes and

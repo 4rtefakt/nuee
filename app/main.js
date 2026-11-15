@@ -620,7 +620,11 @@ async function telechargerInstallateur(a, progression) {
 
 // Once Nuée has closed, the installer runs silently, in the same mode (for all users when it
 // was installed so, which Windows asks to allow: installation.js; for this user otherwise) and folder;
-// then Nuée starts again, with the same profile. cmd.exe waits two seconds (Nuée has closed) by
+// then Nuée starts again, with the same profile. --updated tells the installer it is an update:
+// it then keeps the Start menu and desktop shortcuts and the application's taskbar identity, so a
+// pin on the taskbar survives. Without it, an installer that lets one choose the folder
+// (allowToChangeInstallationDirectory) has the old version's uninstaller delete the shortcuts and
+// makes new ones, and Windows drops the pin with them. cmd.exe waits two seconds (Nuée has closed) by
 // running this executable as Node, a program without a console (ping, a console program run by
 // a cmd.exe that has none, opened a black window), then for the installer; the paths reach it
 // through environment variables. A go-between starts it and ends at once (this executable run
@@ -631,7 +635,7 @@ function installerPuisRelancer(fichier) {
   const pourTous = require('./installation').pourTousLesUtilisateurs(dossier);
   const relance = process.argv.slice(1).filter((x) => /^--(user-data-dir|remote-debugging-port)=/.test(x)).map((x) => `"${x}"`).join(' ');
   const commande = `start "" /wait "%NUEE_EXE%" -e "setTimeout(Boolean, 2000)" & set "ELECTRON_RUN_AS_NODE="`
-    + ` & start "" /wait "%NUEE_INSTALLATEUR%" /S ${pourTous ? '/allusers' : '/currentuser'}`
+    + ` & start "" /wait "%NUEE_INSTALLATEUR%" /S --updated ${pourTous ? '/allusers' : '/currentuser'}`
     + (/^[^&|<>^%"]+$/.test(dossier) ? ' /D=%NUEE_DOSSIER%' : '') + ` & start "" "%NUEE_EXE%"${relance ? ' %NUEE_RELANCE%' : ''}`;
   // (cmd.exe keeps ELECTRON_RUN_AS_NODE for the wait, then drops it: the installer, then Nuée)
   const relais = `require('child_process').spawn('cmd.exe', ['/d', '/s', '/c', '"' + process.env.NUEE_COMMANDE + '"'], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();`;
