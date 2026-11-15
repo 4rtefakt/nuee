@@ -447,7 +447,9 @@ ajuster_pcoa <- function(projet, d) {
 
 # La rotation symétrique de Procrustes de Y sur X (vegan : procrustes(symmetric = TRUE)) : les deux
 # centrés, ramenés à une somme des carrés de 1 ; l'erreur quadratique moyenne et le résidu de chaque
-# observation.
+# observation. (L'erreur vient des résidus eux-mêmes : vegan la tire de 1 + c² - 2c Σd, qui vaut
+# 1 - c² et ne garde, pour deux configurations presque identiques, que la racine de la précision des
+# nombres, 1e-8 environ.)
 procrustes_symetrique <- function(X, Y) {
   X <- scale(X, scale = FALSE)
   Y <- scale(Y, scale = FALSE)
@@ -456,8 +458,8 @@ procrustes_symetrique <- function(X, Y) {
   s <- svd(crossprod(X, Y))
   A <- s$v %*% t(s$u)
   c <- sum(s$d) / sum(Y^2)
-  ss <- sum(X^2) + c^2 * sum(Y^2) - 2 * c * sum(s$d)
-  list(rmse = sqrt(max(ss, 0) / nrow(X)), residus = sqrt(rowSums((X - c * Y %*% A)^2)))
+  carres <- rowSums((X - c * Y %*% A)^2)
+  list(rmse = sqrt(sum(carres) / nrow(X)), residus = sqrt(carres))
 }
 
 # Un NMDS en k dimensions (MASS::isoMDS : la descente du stress de Kruskal 1964), comme vegan::metaMDS

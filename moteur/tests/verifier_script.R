@@ -11,7 +11,8 @@
 # (Rscript --vanilla, sans le moteur) depuis un autre dossier, et ses résultats sont comparés à
 # ceux du moteur : scores, R2 et Q2, T2, DModX et leurs limites, VIP, coefficients, CV-ANOVA,
 # classification, jeu de test, test de permutation. Puis : le script d'une PLS simple est court
-# et n'a pas de fonction inutile ; la séance en un script ; l'export en anglais ; les régressions
+# et n'a pas de fonction inutile ; ses nombres, relus à l'identique par R sur toute machine (Apple
+# silicon et x86) ; la séance en un script ; l'export en anglais ; les régressions
 # (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort, binomial et gamma,
 # GAMM binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
 # paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, résidus quantiles,
@@ -278,6 +279,30 @@ noms_onde <- sprintf("%.0f", onde)
 names(df)[-(1:2)] <- sprintf("v%d", seq_along(onde))  # des noms sans abscisse : leur place dans le tableau
 s2 <- projet_depuis_tableau(df, "spectres")
 essayer("spectres_sans_abscisse", s2, definir_modele(s2, "PCA", x = numeros(s2, names(df)[-(1:2)]), A = 2, spectres = list(list(type = "detrend", degre = 2))))
+
+cat("Nombres écrits sans perte, relus à l'identique par R sur toute machine\n")
+# (script.R : texte_exact. R lit un décimal de plus de 15 ou 16 chiffres au dernier bit près sans
+# long double de 80 bits, sur Apple silicon, et en arrondit certains deux fois avec, sur x86 : ces
+# nombres sont écrits en hexadécimal, que R lit exactement partout ; les autres restent en décimal)
+set.seed(4)
+valeurs <- c(12.3, 0.1, 1532, -0.45, 1e-05, 1/3, 2.5e10, 0, rnorm(3000), runif(3000) * 1000, readBin(writeBin(rnorm(3000), raw(), size = 4), "double", 3000, size = 4),
+             exp(rnorm(3000, 0, 25)), 2^53 + 2, 1e23, .Machine$double.xmax, .Machine$double.xmin)
+textes <- texte_exact(valeurs)
+verifier("relus à l'identique : par as.numeric, dans du code R, dans un CSV",
+         identical(as.numeric(textes), valeurs) && identical(eval(parse(text = paste0("c(", paste(textes, collapse = ", "), ")"))), valeurs) &&
+           identical(utils::read.csv(text = c("v", textes), colClasses = "numeric")$v, valeurs))
+verifier(sprintf("les nombres courts en décimal (%s), 0.1 + 0.2 en hexadécimal (%s)", paste(textes[1:8], collapse = " "), texte_exact(0.1 + 0.2)),
+         identical(textes[1:8], c("12.3", "0.1", "1532", "-0.45", "1e-05", "0.3333333333333333", "25000000000", "0")) &&
+           identical(texte_exact(0.1 + 0.2), "0x1.3333333333334p-2"))
+# 1.1567762343911 est l'écriture décimale exacte de ce nombre (le C la lit ainsi), mais R, avec un
+# long double de 80 bits, l'arrondit à 64 bits puis à 53 et la relit à son voisin
+v <- 0x1.28227cbf7ff33p+0
+verifier("un décimal que R relirait à son voisin sur x86 (deux arrondis) : en hexadécimal",
+         identical(sprintf("%.15g", v), "1.1567762343911") && identical(jsonlite::fromJSON("[1.1567762343911]"), v) &&
+           !decimal_relu("1.1567762343911", v) && identical(texte_exact(v), "0x1.28227cbf7ff33p+0"))
+# (deparse à 17 chiffres écrirait 9.1699999999999999, que R relit à côté de 9.17 sur Apple silicon)
+pc <- plan_condition(p, definir_modele(p, "PLS", x = complets, y = uid("note_gout"), A = 2, condition = "sucre >= 9.17 | acidite < 0.3 | poids > 1e3"), tableau_script(p))
+verifier(sprintf("une condition écrit ses nombres comme ses données : %s", pc$texte), identical(pc$texte, "sucre >= 9.17 | acidite < 0.3 | `poids` > 1000"))
 
 cat("Texte des données hors des chaînes R\n")
 d <- p$models[[2]]
