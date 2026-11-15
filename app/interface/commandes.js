@@ -66,6 +66,7 @@ export function creerCommandes(app) {
       action: () => app.reajuster(m(), { garder: choixVIP() }) },
     supprimer_modele: { icone: 'trash-2', actif: avecModele, action: () => app.supprimerModele(m()) },
     scores_variables: { icone: 'git-merge', actif: avecLV, action: () => app.scoresEnVariables(m()) },
+    par_reponse: { icone: 'layers', actif: avecRegression, action: () => app.unModeleParReponse(m()) },
 
     resume: vue('resume'), scores: vue('scores', avecLV), loadings: vue('loadings', avecLV), profils: vue('profils', avecLV), dmodx: vue('dmodx', avecLV), t2: vue('t2', avecLV),
     vip: vue('vip', avecPLS), coefficients: vue('coefficients', () => avecPLS() || avecRegression()), obspred: vue('obspred', () => avecPLS() || avecRegression()),
@@ -150,7 +151,7 @@ export function menus(app, C) {
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable'), it('ajouter_colonnes'), it('resumer_groupes')] },
     { cle: 'm_modele', items: () => [it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
-      it('reajuster_vip'), '-', it('scores_variables'), it('texte_methodes'), '-', it('supprimer_modele')] },
+      it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
       it('vip'), it('coefficients'), it('obspred'), it('effets'), it('moyennes'), it('residus'), it('acf'), it('apports'), it('selection_aic'), it('puissance'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
       it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series'), it('carte'), it('autocorrelation_spatiale')] },

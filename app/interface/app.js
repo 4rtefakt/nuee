@@ -20,6 +20,7 @@ import { zip } from './zip.js';
 import './vues_ordination.js';
 import './vues_classement.js';
 import './vues_carte.js';
+import './vues_par_reponse.js';
 import { installerDocuments } from './documents.js';
 
 const params = new URLSearchParams(location.search);
@@ -46,6 +47,9 @@ let recents = [];
 let fenetres = [];
 
 const diffuser = (type, donnees = {}) => canal.postMessage({ type, ...donnees });
+
+// (a model's results kept: garder(), below; the object's methods call it through this)
+const garder_ = (res) => garder(res);
 
 // ------------------------------------------------------------ application object
 
@@ -511,6 +515,47 @@ const app = {
         { libelle: t('rapport_probleme'), action: () => { app.rapportProbleme(texte); return true; } },
         { libelle: t('copier_texte'), action: () => { navigator.clipboard.writeText(texte).then(() => statut(t('texte_copie'))); return true; } },
         { libelle: t('fermer'), principal: true, action: () => true }] });
+  },
+  // One model per response (Model › One model per response, moteur/R/par_reponse.R): the
+  // regression `id` fitted to each response ticked, the p-values corrected over the responses;
+  // optionally each model kept in the project. The results go to the view (vues_par_reponse.js).
+  unModeleParReponse(id) {
+    const m = etat.modeles[id];
+    if (!m || !m.regression) return;
+    const p = etat.projets[m.projet];
+    const x = new Set([].concat((m.reglages && m.reglages.x) || []).map(Number));
+    const y = Number([].concat((m.reglages && m.reglages.y) || [])[0]);
+    const vars = p.variables.filter((v) => !v.qualitative && !x.has(v.uid));
+    const coches = new Set([y]);
+    let correction = 'BH';
+    const garder = el('input', { type: 'checkbox' });
+    const filtre = el('input', { placeholder: t('filtrer_variables'), style: 'width:14em' });
+    const liste = el('div', { class: 'liste-cases', style: 'max-height:18em;overflow:auto;columns:2' });
+    const dessiner = () => {
+      const f = filtre.value.trim().toLowerCase();
+      liste.replaceChildren(...vars.filter((v) => !f || v.nom.toLowerCase().includes(f)).map((v) => el('label', { class: 'champ', style: 'display:block' },
+        el('input', { type: 'checkbox', checked: coches.has(v.uid), onchange: (e) => { if (e.target.checked) coches.add(v.uid); else coches.delete(v.uid); } }), v.nom)));
+    };
+    filtre.addEventListener('input', dessiner);
+    dessiner();
+    const tous = (oui) => { const f = filtre.value.trim().toLowerCase(); for (const v of vars) if (!f || v.nom.toLowerCase().includes(f)) { if (oui) coches.add(v.uid); else coches.delete(v.uid); } dessiner(); };
+    dialogue({ titre: t('par_reponse_titre', { nom: m.nom }), large: true, contenu: el('div', {},
+      el('p', { class: 'note' }, t('par_reponse_aide')),
+      el('div', { class: 'outils' }, filtre, el('button', { onclick: () => tous(true) }, t('tout_cocher')), el('button', { onclick: () => tous(false) }, t('aucune_cocher')),
+        el('label', { class: 'champ' }, el('span', {}, t('correction')), el('select', { onchange: (e) => { correction = e.target.value; } },
+          [['BH', t('correction_bh')], ['holm', 'Holm'], ['bonferroni', 'Bonferroni']].map(([v, n]) => el('option', { value: v }, n))))),
+      liste, el('label', { class: 'champ' }, garder, t('par_reponse_garder'))),
+    boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('ajuster'), principal: true, action: () => {
+      if (!coches.size) return false;
+      (async () => {
+        const q = { modele: id, reponses: [...coches], correction, garder: garder.checked };
+        const r = await occupe(() => demander('par_reponse', q));
+        if (r.projet) projetChange(r.projet);
+        for (const res of [].concat(r.resultats || [])) await garder_(res);
+        app.ouvrirVue('par_reponse', id, { reponses: q.reponses, correction, cache: { cle: JSON.stringify([q.reponses, correction]), res: r } });
+      })().catch((e) => statut(e.message, true));
+      return true;
+    } }] });
   },
   // A problem report: a .zip to send with a message, written where the user chooses (nothing is
   // sent): the diagnostic text, the session's journal (each action's call to the engine, the

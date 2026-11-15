@@ -560,6 +560,19 @@ p trop petite, et Tenir compte de l'autocorrélation ne s'y applique pas (Hirsch
 donnent une correction, qui n'est pas faite ici). La colonne Test donne le test de chaque
 ligne ; la correction sur les lignes reste la même.
 
+Un modèle par réponse
+---------------------
+Modèle › Un modèle par réponse (pour une régression : LM, LMM, GLM ou GAM) : le même modèle,
+ses termes, ses effets aléatoires, sa loi, ses courbes, ses observations et la transformation de
+sa réponse, ajusté à chaque réponse cochée, une espèce après l'autre (un filtre et Toutes /
+Aucune aident à les choisir). Pour chaque terme, les valeurs p sont corrigées sur les réponses :
+Benjamini–Hochberg (FDR) par défaut, ou Holm, ou Bonferroni. La vue montre, pour le terme
+choisi : le coefficient de chaque réponse avec son intervalle à 95 % en forêt, en rouge là où la
+p corrigée est au plus 0,05 (une courbe : son edf) ; l'effet du terme en petits graphiques, un
+par réponse (36 au plus) ; et un tableau avec le N, l'AIC, le R² et le Q² de chaque modèle. Une
+réponse qui ne s'ajuste pas est nommée avec la raison, et les autres restent. « Garder aussi
+chaque modèle dans le projet » les y ajoute tous, chacun avec ses vues.
+
 Cartes et données spatiales
 ---------------------------
 Graphiques › Carte (ou dans l'explorateur, sous le projet) : les observations sur une carte. La

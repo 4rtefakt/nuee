@@ -138,6 +138,8 @@ journaliser <- function(nom, q, r) {
     coordonnees = if (isTRUE(q$regler)) sprintf("%s <- regler_coordonnees(%s, %s, %s, %s)", q$projet, q$projet,
                                                  if (length(q$x)) q$x else "NULL", if (length(q$y)) q$y else "NULL", code_r(q$systeme %||% "plan")),
     carte = sprintf("points_projet(%s)", q$projet),
+    par_reponse = sprintf("modeles_par_reponse(%s, definition(%s), %s, %s)", pm(q$modele), code_r(q$modele), vecteur_r(as.numeric(unlist(q$reponses))),
+                          code_r(q$correction %||% "BH")),
     autocorrelation_spatiale = sprintf("autocorrelation_spatiale(%s)", paste(c(
       if (length(q$modele)) c(pm(q$modele), q$modele) else c(q$projet, "NULL"),
       if (length(q$variable)) paste("variable =", q$variable) else paste("residus =", code_r(q$residus %||% "standardises")),

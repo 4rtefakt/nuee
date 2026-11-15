@@ -302,8 +302,8 @@ async function rendreAutocorrelationSpatiale(conteneur, ctx, p, loc) {
       r.lieux ? t('autocorrelation_lieux', { n: r.n, obs: r.observations }) : r.nulles ? t('autocorrelation_nulles', { n: r.nulles }) : '',
       t('autocorrelation_note_p')].filter(Boolean).join(' ')));
   const graphes = el('div', { class: 'graphes-cote', style: { display: 'flex', gap: '8px', flex: '1 1 auto', minHeight: '240px' } });
-  const g1 = el('div', { class: 'graphe', style: { flex: '1 1 50%' } });
-  const g2 = el('div', { class: 'graphe', style: { flex: '1 1 50%' } });
+  const g1 = el('div', { class: 'graphe', style: { flex: '1 1 50%', minWidth: '0' } });
+  const g2 = el('div', { class: 'graphe', style: { flex: '1 1 50%', minWidth: '0' } });
   graphes.append(g1, g2);
   const bas = el('div', { class: 'bas', style: { flex: '0 1 auto', maxHeight: '35%' } });
   conteneur.replaceChildren(barre, resume, graphes, bas);

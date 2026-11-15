@@ -522,6 +522,19 @@ independent: autocorrelation from one month to the next makes p too small, and A
 autocorrelation doesn't apply to it (Hirsch and Slack, 1984, give a correction, not done here).
 The Test column gives each line's test; the correction over the lines stays the same.
 
+One model per response
+----------------------
+Model › One model per response (for a regression: LM, LMM, GLM or GAM): the same model, its
+terms, random effects, distribution, curves, observations and the transformation of its
+response, fitted to each response ticked, one species after another (a filter and All / None
+help pick them). For each term, the p-values are corrected over the responses: Benjamini–
+Hochberg (FDR) by default, or Holm, or Bonferroni. The view shows, for the term chosen: each
+response's coefficient with its 95 % interval as a forest plot, in red where the corrected p is
+at most 0.05 (a curve: its edf); the term's effect in small multiples, one small plot per
+response (36 at most); and a table with each model's N, AIC, R² and Q². A response that can't be
+fitted is named with the reason, and the others are kept. "Also keep each model in the project"
+adds them all, each with its own views.
+
 Maps and spatial data
 ---------------------
 Plots › Map (or in the explorer, under the project): the observations on a map. The first time,

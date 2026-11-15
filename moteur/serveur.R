@@ -1009,6 +1009,17 @@ DEMANDES <- list(
   # avec q$saisons ("mois", une variable qualitative ou "id:k"), le test de Kendall saisonnier. Des
   # options refusées (des saisons par mois sans dates...) n'empêchent pas le graphique :
   # tendances_erreur le dit, et l'interface garde le tableau et ses options pour les changer.
+  # Un modèle par réponse (par_reponse.R) : le modèle q$modele ajusté à chaque réponse
+  # q$reponses, leurs résultats réunis (q$correction : BH, holm ou bonferroni) ; avec q$garder,
+  # chaque modèle rejoint aussi le projet, et ses résultats sont rendus (resultats).
+  par_reponse = function(q) {
+    e <- modele(q$modele)
+    r <- modeles_par_reponse(projet(e$projet), e$definition, as.numeric(unlist(q$reponses)), q$correction %||% "BH")
+    garde <- if (isTRUE(q$garder)) lapply(Filter(function(x) is.null(x$erreur), r$modeles), function(x) ajuster_et_garder(projet(e$projet), x$definition, x$modele))
+    list(modele = q$modele, tableau = r$tableau, resume = r$resume, effets = r$effets, correction = r$correction,
+         resultats = if (length(garde)) I(garde), projet = if (length(garde)) resume_projet(projet(e$projet)),
+         methodes = phrase_methodes_par_reponse(sum(r$resume$erreur == ""), r$correction, !identical(getOption("nuee.langue"), "en")))
+  },
   # Les coordonnées du projet (spatial.R) : celles qui sont réglées, une proposition d'après le
   # nom des variables, les systèmes de la liste ; avec q$regler, les règle (q$x, q$y, q$systeme ;
   # sans q$x, les retire), annulable par Ctrl+Z.

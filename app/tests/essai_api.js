@@ -1323,6 +1323,9 @@ async function principal() {
       verifier(o.coordonnees && o.coordonnees.systeme === 2154 && o.observations.uid.length === 40, 'GeoPackage écrit, rouvert avec ses coordonnées');
       const choix = await api('ouvrir', { chemin: resultats });
       verifier(choix.choisir && [].concat(choix.choisir).includes('G1'), `GeoPackage de résultats : ${[].concat(choix.choisir || []).join(', ')}`);
+      const pr = await api('par_reponse', { modele: sansLissage.id, reponses: [v.v, v.Y_L93], correction: 'holm' });
+      verifier([].concat(pr.resume.reponse).length === 2 && [].concat(pr.tableau.terme).includes('x') && pr.correction === 'holm' && /Holm/.test(pr.methodes),
+        `un modèle par réponse : ${[].concat(pr.resume.reponse).join(', ')}`);
       const t = await api('projet_texte', { projet: q.id, version: 'essai' });
       verifier(/"coordonnees"/.test(t.texte) && /"paquets"/.test(t.texte), 'projet en texte, pour un rapport de problème');
     });
