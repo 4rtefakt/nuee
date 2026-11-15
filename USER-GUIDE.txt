@@ -392,8 +392,9 @@ which Nuée installs with itself), commented in the export's language, in four p
   2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
      written without loss and categories in their order;
   3. the model: its X and Y terms (transformations, categories, cross terms), their
-     scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients,
-     CV-ANOVA, classification for a PLS-DA, test set;
+     scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients
+     (a PLS's with their 95% jackknife interval), RMSEE and RMSEcv, CV-ANOVA, classification
+     for a PLS-DA, test set;
   4. the results: the tables, the permutation test (commented out) and the plots (scores,
      loadings, VIP, observed / fitted, T2 and DModX).
 Format: R script (.R); or an R Markdown (.Rmd) or Quarto (.qmd) report, which adds the
@@ -444,12 +445,30 @@ in red, with the reason when you hover it. A model of the project not computed y
 when the document cites it, without opening its views. Numbers follow the document's language
 (0,65 in French, 0.65 in English), as do "Figure", "Table" and the Methods text.
 Compile: a Word file (.docx: headings, lists, tables, plots and captions in Word's styles), a
-PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd) with its plots in a
-folder next to it, the results written in for good. When Quarto is installed (quarto.org, or
-with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML from it, with what Quarto
-adds: a bibliography (bibliography: refs.bib in the header, [@key] in the text),
-cross-references, journal templates. A YAML header (title, author, date) at the top of the
-document is read; a line {{< pagebreak >}} starts a new page.
+PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd). When Quarto is
+installed (quarto.org, or with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML
+from it, with what Quarto adds: a bibliography (bibliography: refs.bib in the header, [@key] in
+the text), cross-references, journal templates. A YAML header (title, author, date) at the top
+of the document is read; a line {{< pagebreak >}} starts a new page.
+For Quarto, Compile's dialog asks for the results:
+  - written in: the values, plots (in a folder next to the .qmd) and tables as Nuée shows them;
+  - reproducible: R recomputes them from the raw data when Quarto renders the document. Next to
+    the .qmd, the folder "<name>_R" holds each cited model's Export to R (File › Export to R: the
+    script, its data as CSV) and nuee.R. The .qmd's first chunk runs those scripts again, each in
+    an environment of its own; each cited value becomes an inline R expression,
+    `r nuee_nombre(M1$components$Q2cum[2])`, that reads the recomputed value and writes it as
+    Nuée does (0.65, 71%, p < 0.001); a plot becomes an R chunk that draws it with the script's
+    code (in base R), a table a knitr::kable chunk of the script's objects. Correcting a value in
+    the CSV, then rendering again, recomputes all that R writes. What the scripts don't have stays
+    written in, and the .qmd's first chunk says so in a comment: a plot they don't draw (its
+    image), the coefficient of an OPLS, or of a PLS validated with the full model's centres and
+    weights (its script hasn't its interval), the Methods and Results texts (written by Nuée,
+    not recomputed), a model whose type has no export to R yet (the dialog says so first).
+    Before writing the .qmd, Nuée runs the scripts again and checks that each expression gives
+    back the value it shows; any one that differs stays written in. R is needed, with its
+    knitr and rmarkdown packages: Nuée has Quarto render with its own R when it has them
+    (otherwise Quarto takes the computer's R, or QUARTO_R's). In the browser, the .qmd and what
+    goes beside it come in a .zip.
 Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 33; @eriksson2006], @wold2001 in
 the sentence ("Wold et al. (2001)"), [-@wold2001] without the author. Typing @ lists the document's
 references, then Zotero's. The list of references comes at the end (under the last heading when it is

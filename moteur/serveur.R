@@ -1020,6 +1020,37 @@ DEMANDES <- list(
     list(chemin = normalizePath(chemin, winslash = "/"), texte = sub("^﻿", "", texte),
          date = format(file.info(chemin)$mtime, "%Y-%m-%dT%H:%M:%S"))
   },
+  # Les modèles qu'un document cite (q$noms) dont le type ne s'exporte pas encore vers R, et
+  # pourquoi : le dialogue de Compiler › Quarto le dit avant le document reproductible.
+  export_r_possible = function(q) {
+    p <- projet(q$projet)
+    noms <- as.character(unlist(q$noms))
+    sans <- Filter(Negate(is.null), lapply(Filter(function(d) isTRUE(as.character(d$name) %in% noms), p$models), function(d) {
+      r <- raison_sans_export(d)
+      if (!is.null(r)) list(nom = as.character(d$name), type = as.character(d$type), raison = r)
+    }))
+    list(sans_export = sans)
+  },
+  # Un document compilé pour Quarto, reproductible (document_reproductible.R) : l'export vers R de
+  # chacun des modèles q$modeles (ceux de la séance que le document cite) écrit dans q$dossier
+  # (celui du .qmd ; sans lui, un dossier de la session, que le navigateur télécharge), dans
+  # « q$nom_R », et ce que le .qmd en écrit pour chacune des références q$references (du JSON,
+  # en texte : une liste d'objets, ou null), dans la langue du document q$langue.
+  document_reproductible = function(q) {
+    p <- projet(q$projet)
+    ids <- as.character(unlist(q$modeles))
+    es <- lapply(ids, function(id) {
+      e <- modele(id)
+      if (!identical(e$projet, p$id)) stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
+      # (une catégorie qu'il a vue a changé de nom ou disparu : son script ne le refait plus, il reste en dur)
+      perime <- tryCatch({ modele(id, TRUE); NULL }, error = function(err) conditionMessage(err))
+      list(definition = e$definition, modele = e$modele, erreur = perime)
+    })
+    dossier <- if (length(q$dossier) && nzchar(as.character(q$dossier)[1])) as.character(q$dossier)[1] else dirname(chemin_temporaire("document"))
+    references <- jsonlite::fromJSON(as.character(q$references %||% "[]"), simplifyVector = FALSE)
+    ecrire_document_reproductible(p, stats::setNames(es, ids), references, dossier, as.character(q$nom %||% "document")[1],
+                                  if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""))
+  },
   # Copie de secours d'un projet pas encore enregistré, sans toucher à son état ; `lu` : l'état
   # de son fichier quand il l'a lu ou enregistré, que l'interface garde avec la copie
   sauvegarde_secours = function(q) {

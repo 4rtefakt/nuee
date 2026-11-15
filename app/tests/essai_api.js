@@ -1553,6 +1553,85 @@ async function principal() {
       try { await api('hca', { modele: nmds.id }); } catch (err) { refusHCA = err.message; }
       verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
     });
+    await etape('document Quarto reproductible : l’export vers R des modèles cités à côté, chaque valeur en R, rendu par Quarto quand il est là', async () => {
+      // a PLS, a GLM and a PERMANOVA of 40 made-up relevés, cited by a document resolved as the
+      // interface resolves it (references.js, rendu_document.js), then written as a reproducible .qmd
+      let g = 21;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\thabitat\ttemp\tph\tsp1\tsp2\tsp3\tsp4\toiseaux\tbiomasse'];
+      for (let i = 1; i <= 40; i += 1) {
+        const temp = 8 + 10 * alea();
+        const h = ['bois', 'lande', 'prairie'][i % 3];
+        const sp = [temp, 20 - temp, h === 'bois' ? 8 : 2, 4].map((x) => Math.round(x * (0.5 + alea())));
+        lignes.push([`r${i}`, h, temp.toFixed(2), (6 + alea()).toFixed(2), ...sp, Math.round((temp / 3) * (0.5 + alea())), (2 + 0.3 * temp + alea()).toFixed(3)].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Reproductible' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const modeles = {
+        M1: await api('ajuster', { projet: q.id, type: 'PLS', x: [v.temp, v.ph, v.sp1, v.sp2], y: [v.biomasse], A: 2, nom: 'M1' }),
+        M2: await api('ajuster', { projet: q.id, type: 'GLM', x: [v.temp, v.habitat], y: [v.oiseaux], echelle: 'none', nom: 'M2', famille: 'poisson' }),
+        M3: await api('ajuster', { projet: q.id, type: 'PERMANOVA', x: [v.habitat, v.temp], y: [v.sp1, v.sp2, v.sp3, v.sp4], echelle: 'none', nom: 'M3',
+          options: { distance: 'bray', permutations: 99, graine: 3 } }),
+      };
+      verifier(![].concat((await api('export_r_possible', { projet: q.id, noms: Object.keys(modeles) })).sans_export).length, 'les trois s’exportent vers R');
+      const interfaceUrl = (f) => require('url').pathToFileURL(path.join(interfaceDir, f)).href;
+      const { formeReference, texteForme, separerCible } = await import(interfaceUrl('references.js'));
+      const { analyser, pluginReferences, versQmd, referencesReproductibles } = await import(interfaceUrl('rendu_document.js'));
+      const md = require('markdown-it')({ html: false, linkify: true }).use(pluginReferences);
+      const terme = [].concat(modeles.M2.coefficients_regression.terme)[1];
+      const valeurs = ['M1.Q2', 'M1.R2Y:%', 'M1.N', 'M1.vip.temp', 'M1.coef.temp', 'M1.RMSEcv', 'M1.cvanova.p', 'M1.gain', 'M2.AIC', `M2.coef.${terme}`, `M2.p.${terme}`,
+        'M2.deviance_expliquee', 'M2.Q2', 'M3.N', 'M3.K'];
+      const texte = `---\ntitle: "Essai"\n---\n\n${valeurs.map((c, i) => `- v${i + 1}: {{${c}}}`).join('\n')}\n\n{{M1.scores #fig-scores | Scores}}\n\n`
+        + '{{M2.table.coefficients #tbl-coef | Coefficients}}\n\n{{M3.permanova #fig-permanova | PERMANOVA}}\n\n{{M1.biplot | Biplot}}\n\n{{M1.methodes}}\n';
+      const analyse = analyser(md, texte);
+      const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      let figures = 0;
+      const resolus = analyse.refs.map((tok) => {
+        const ref = tok.meta.ref;
+        const c = separerCible(ref.cible, Object.keys(modeles));
+        const m = modeles[c.modele];
+        const base = { modele: m.id, chemin: c.chemin, legende: ref.legende, etiquette: ref.etiquette };
+        if (['scores', 'permanova', 'biplot'].includes(c.chemin[0])) {
+          figures += 1;
+          return { ...base, genre: 'figure', image: PNG, largeur: 900, hauteur: 580, numero: figures, nom: c.chemin[0], vue: c.chemin[0], variante: {} };
+        }
+        if (c.chemin[0] === 'table') return { ...base, genre: 'tableau', blocs: [{ entetes: ['x'], lignes: [['1']] }], numero: 1, nom: 'Coefficients', cle: c.chemin[1] };
+        if (c.chemin[0] === 'methodes') return { ...base, genre: 'texte', paragraphes: ['Les méthodes.'] };
+        const f = formeReference(m, c.chemin, ref);
+        return { ...base, genre: 'valeur', texte: texteForme(f, 'fr'), forme: f };
+      });
+      verifier(resolus.every((x) => !x.erreur), 'références résolues');
+      const ici = path.join(dossier, 'reproductible');
+      fs.mkdirSync(ici);
+      const rep = await api('document_reproductible', { projet: q.id, langue: 'fr', version: 'essai', nom: 'Essai', dossier: ici, ...referencesReproductibles(resolus) });
+      const refs = [].concat(rep.references);
+      const enDur = refs.map((x, i) => (x && x.raison ? `${analyse.refs[i].meta.ref.cible} (${x.raison})` : null)).filter(Boolean);
+      verifier(refs.slice(0, valeurs.length).every((x) => x && x.code) && enDur.length === 2 && /biplot/.test(enDur[0]) && /methodes/.test(enDur[1]),
+        `${valeurs.length} valeurs en R ; en dur : ${enDur.join(', ')}`);
+      verifier(['nuee.R', 'M1.R', 'M1 - donnees.csv', 'M2.R', 'M3.R'].every((f) => fs.existsSync(path.join(ici, 'Essai_R', f))) && [].concat(rep.relatifs).length === 7,
+        `à côté : ${[].concat(rep.relatifs).join(', ')}`);
+      const qmd = versQmd(texte, analyse, resolus, { fichierFigure: (x) => `Essai_figures/figure-${x.numero}.png`, langue: 'fr', titre: 'Essai', reproductible: rep });
+      verifier(/^```\{r\}\n#\| label: nuee-modeles/m.test(qmd.texte) && qmd.texte.includes('- v1: `r nuee_nombre(M1$composantes$Q2cum[2])`')
+        && qmd.texte.includes('#| label: fig-scores') && qmd.texte.includes('#| label: tbl-coef') && qmd.images.length === 1, 'le .qmd : son premier bloc, ses valeurs en R, ses blocs');
+      fs.writeFileSync(path.join(ici, 'Essai.qmd'), qmd.texte);
+      fs.mkdirSync(path.join(ici, 'Essai_figures'));
+      fs.writeFileSync(path.join(ici, 'Essai_figures', 'figure-3.png'), Buffer.from(PNG.split(',')[1], 'base64'));
+      // rendered by Quarto when the computer has it (with knitr and rmarkdown for R): the numbers of the page are Nuée's
+      const quarto = [process.env.QUARTO_PATH, ...(process.env.PATH || '').split(path.delimiter).map((d) => path.join(d, process.platform === 'win32' ? 'quarto.exe' : 'quarto')),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Quarto', 'bin', 'quarto.exe'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Quarto', 'bin', 'quarto.exe'),
+        '/usr/local/bin/quarto', '/opt/quarto/bin/quarto'].filter(Boolean).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+      if (!quarto || !rep.R.knitr || !rep.R.rmarkdown) {
+        console.log(`          (${quarto ? 'knitr ou rmarkdown absent' : 'Quarto absent'} : le .qmd n’est pas rendu)`);
+        return;
+      }
+      execFileSync(quarto, ['render', 'Essai.qmd', '--to', 'html'], { cwd: ici, env: { ...process.env, QUARTO_R: rep.R.bin }, stdio: 'pipe' });
+      const page = fs.readFileSync(path.join(ici, 'Essai.html'), 'utf8');
+      const rendus = Object.fromEntries([...page.matchAll(/<li>v(\d+): ([^<]*)<\/li>/g)].map((x) => [x[1], x[2].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')]));
+      const differents = resolus.slice(0, valeurs.length).map((x, i) => (rendus[i + 1] === x.texte ? null : `${valeurs[i]} : ${rendus[i + 1]} au lieu de ${x.texte}`)).filter(Boolean);
+      verifier(!differents.length && /id="fig-scores"/.test(page) && /id="tbl-coef"/.test(page) && /id="fig-permanova"/.test(page),
+        `rendu par Quarto : ${differents.join(', ') || 'les nombres de Nuée'}`);
+      console.log(`          (rendu par Quarto : ${valeurs.length} nombres, ${resolus.slice(0, 3).map((x) => x.texte).join(' ; ')}…)`);
+    });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
       let g = 5;
@@ -1854,6 +1933,10 @@ async function principal() {
         const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, f), version: 'essai', langue });
         verifier(fs.existsSync(s.script) && !s.ecart && motif.test(fs.readFileSync(s.script, 'utf8')), `script ${f} : ${s.ecart || 'sans écart'}`);
       }
+      // (the compile dialog of a reproducible Quarto document lists the models without an export to R:
+      // distance sampling exports, so none here)
+      const sansExport = [].concat((await api('export_r_possible', { projet: q.id, noms: ['Distance'] })).sans_export);
+      verifier(sansExport.length === 0, `sans export vers R : ${JSON.stringify(sansExport)}`);
     });
     await etape('forêts aléatoires et arbres boostés (moteur/R/forets.R, boosting.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe, une présence

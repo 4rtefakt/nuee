@@ -423,7 +423,8 @@ en quatre parties :
      les nombres écrits sans perte et les catégories dans leur ordre ;
   3. le modèle : ses termes X et Y (transformations, catégories, termes croisés), leur
      mise à l'échelle, l'ajustement, puis R2 et Q2, T2 et DModX avec leurs limites, VIP,
-     coefficients, CV-ANOVA, classement pour une PLS-DA, jeu de test ;
+     coefficients (ceux d'une PLS avec leur intervalle à 95 % par jack-knife), RMSEE et RMSEcv,
+     CV-ANOVA, classement pour une PLS-DA, jeu de test ;
   4. les résultats : les tableaux, le test de permutation (en commentaire) et les
      graphiques (scores, loadings, VIP, observé / ajusté, T2 et DModX).
 Format : script R (.R) ; ou rapport R Markdown (.Rmd) ou Quarto (.qmd), qui y ajoute le texte
@@ -479,12 +480,31 @@ cite, sans ouvrir ses vues. Les nombres suivent la langue du document (0,65 en f
 en anglais), comme « Figure », « Tableau » et le texte des méthodes.
 Compiler : un fichier Word (.docx : titres, listes, tableaux, graphiques et légendes dans les
 styles de Word), un PDF, une page HTML (un seul fichier, graphiques compris), ou un fichier
-Quarto (.qmd) avec ses graphiques dans un dossier à côté, les résultats écrits en dur. Quand
-Quarto est installé (quarto.org, ou avec RStudio), « Compiler avec Quarto » en fait un Word, un
-PDF (Typst) ou une page HTML, avec ce que Quarto apporte : bibliographie (bibliography: refs.bib
-dans l'en-tête, [@cle] dans le texte), renvois, modèles de revues. Un en-tête YAML (title,
-author, date) en haut du document est lu ; une ligne {{< pagebreak >}} commence une nouvelle
-page.
+Quarto (.qmd). Quand Quarto est installé (quarto.org, ou avec RStudio), « Compiler avec Quarto »
+en fait un Word, un PDF (Typst) ou une page HTML, avec ce que Quarto apporte : bibliographie
+(bibliography: refs.bib dans l'en-tête, [@cle] dans le texte), renvois, modèles de revues. Un
+en-tête YAML (title, author, date) en haut du document est lu ; une ligne {{< pagebreak >}}
+commence une nouvelle page.
+Pour Quarto, le dialogue de Compiler demande les résultats :
+  - écrits en dur : les valeurs, les graphiques (dans un dossier à côté) et les tableaux tels
+    que Nuée les montre ;
+  - reproductibles : R les recalcule à partir des données brutes quand Quarto compile le
+    document. À côté du .qmd, le dossier « <nom>_R » contient l'export vers R de chaque modèle cité
+    (Fichier › Exporter vers R : le script, ses données en CSV) et nuee.R. Le premier bloc du .qmd
+    relance ces scripts, chacun dans son propre environnement ; chaque valeur citée devient une
+    expression R en ligne, `r nuee_nombre(M1$composantes$Q2cum[2])`, qui lit la valeur recalculée
+    et l'écrit comme Nuée (0,65, 71 %, p < 0,001) ; un graphique devient un bloc R qui le dessine
+    avec le code du script (en R de base), un tableau un bloc knitr::kable des objets du script.
+    Corriger une valeur du CSV, puis recompiler, recalcule tout ce que R écrit. Ce que les scripts n'ont
+    pas reste écrit en dur, et le premier bloc du .qmd le dit en commentaire : un graphique qu'ils
+    ne dessinent pas (son image), le coefficient d'une OPLS, ou d'une PLS validée avec les centres
+    et les poids du modèle complet (son script n'a pas son intervalle), le texte des méthodes et
+    celui des résultats (écrits par Nuée, pas recalculés), un modèle dont le type n'a pas encore
+    d'export vers R (le dialogue le dit avant). Avant d'écrire le .qmd, Nuée relance les scripts et
+    vérifie que chaque expression redonne la valeur qu'il montre ; une seule qui diffère reste
+    écrite en dur. Il faut R avec ses paquets knitr et rmarkdown : Nuée fait compiler Quarto avec
+    son propre R quand il les a (sinon Quarto prend le R de l'ordinateur, ou celui de QUARTO_R).
+    Dans le navigateur, le .qmd et ce qui va à côté arrivent dans un .zip.
 Les citations s'écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 33 ; @eriksson2006],
 @wold2001 dans la phrase (« Wold et al. (2001) »), [-@wold2001] sans l'auteur. Taper @ montre les
 références du document, puis celles de Zotero. La liste des références vient à la fin (sous le dernier

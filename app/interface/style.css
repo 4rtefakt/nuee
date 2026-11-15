@@ -403,6 +403,15 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .dialogue-document .colonne { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .dialogue-document .modeles-gabarit { display: flex; flex-direction: column; gap: 3px; padding: 4px 2px 0; max-height: 14em; overflow: auto; }
 .aide-document pre { background: var(--fond-barre); padding: 6px 8px; white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; border-radius: 4px; }
+/* Compile › Quarto: its results written in, or reproducible */
+.dialogue-quarto { display: flex; flex-direction: column; gap: 6px; max-width: 36em; }
+.dialogue-quarto p { margin: 0 0 2px; }
+.dialogue-quarto .choix-quarto { display: flex; align-items: flex-start; gap: 8px; color: var(--texte); }
+.dialogue-quarto .choix-quarto input { margin-top: 3px; flex: none; }
+.dialogue-quarto .choix-quarto > span { display: flex; flex-direction: column; }
+.dialogue-quarto .titre-choix { font-weight: 600; }
+.dialogue-quarto .choix-quarto .note { margin: 1px 0 0; }
+.dialogue-quarto .avertissement { color: var(--attention); }
 /* Citations in documents: in the text, in the preview, and the dialogs to find them */
 .editeur-document .cm-cite { color: var(--ok); }
 .editeur-document .cm-cite-erreur { color: var(--erreur); text-decoration: underline wavy var(--erreur); text-underline-offset: 3px; }

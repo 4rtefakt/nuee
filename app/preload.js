@@ -17,9 +17,10 @@ contextBridge.exposeInMainWorld('bureau', {
   // (format: { largeur, hauteur } in mm, a figure's page; otherwise A4)
   imprimerPDF: (html, chemin, format) => ipcRenderer.invoke('imprimer-pdf', html, chemin, format),
   ouvrirChemin: (chemin) => ipcRenderer.invoke('ouvrir-chemin', chemin),
-  // a document compiled by Quarto, when the computer has it (documents.js)
+  // a document compiled by Quarto, when the computer has it (documents.js); options.R: the R that
+  // runs a reproducible .qmd's chunks
   quartoDisponible: () => ipcRenderer.invoke('quarto-disponible'),
-  quarto: (chemin, format) => ipcRenderer.invoke('quarto', chemin, format),
+  quarto: (chemin, format, options) => ipcRenderer.invoke('quarto', chemin, format, options || {}),
   // Zotero on this computer, read only (zotero.js)
   zotero: (chemin, delai) => ipcRenderer.invoke('zotero', chemin, delai),
   // closing with "Save and close": the window saves its projects, then answers
