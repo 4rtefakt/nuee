@@ -199,7 +199,7 @@ async function construireLinux(dossier) {
         artifactName: 'Nuee-${version}-${arch}.${ext}',
       },
       // .nuee projects open in Nuée (MIME type in the menu entry and the .deb)
-      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Projet Nuée', mimeType: 'application/x-nuee' }],
+      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Nuée project', mimeType: 'application/x-nuee' }],
       // electron-builder's own list (it is replaced, not added to) with libgbm1 and libasound2,
       // which Electron needs too (a minimal Ubuntu 22.04 lacks libgbm1), then R and the engine's
       // packages (foreign, for dBase and Weka files, nlme and mgcv, for mixed, generalized and
