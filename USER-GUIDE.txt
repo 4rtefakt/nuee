@@ -1098,6 +1098,45 @@ For all three: Methods text with its references, Export, PDF or Word report, Exp
 cluster, which come with R). Compare models shows a regression tree's Q2 and RMSEcv beside
 the other models.
 
+TRIM: indices and trends of counts
+----------------------------------
+New model › type "TRIM (indices and trends of counts)": the yearly indices and the trend of
+counts of animals surveyed on sites year after year, as Statistics Netherlands' TRIM 3 software
+and the rtrim package compute them (the standard of European bird monitoring), with missing
+counts: the model imputes them. The data: the long table, one row per site and year; Y: the
+counts (whole numbers, positive or zero; an empty cell is a missing count); X: optional
+qualitative covariates (a site's habitat, or a value per site and year) that make the time
+effects vary. General tab:
+  - the site (an ID or a variable) and the time (the year: a variable or an ID made of evenly
+    spaced numbers; a year without any row is added, all its counts imputed), proposed from the
+    columns' names;
+  - the model: 3, an effect of each year (ln μ = site + year); 2, a linear trend on the log scale
+    whose slope changes at the changepoints given (years; empty: a single slope), at every year,
+    or chosen stepwise as rtrim does (a point leaves when the Wald test of its change in slope
+    exceeds p = 0.2, comes back when its score test falls below p = 0.15); 1, no time effect;
+  - overdispersion (σ²) and serial correlation (ρ, between two successive years of a site),
+    ticked by default as the TRIM manual recommends: the parameters are then estimated by
+    generalized estimating equations that allow for them; without them, by Poisson maximum
+    likelihood;
+  - weights (a variable: over- or under-represented sites), and the base time of the indices
+    (the first by default).
+Two rows for the same site and year are refused, the site, the year and the observations named;
+a site without any positive count is left out, and counted; a cell without a row takes the
+weight and the covariate category of its site's previous year.
+
+Views: Summary (the model, σ² and ρ, the overall slope of the imputed totals: multiplicative, per
+time step, with its standard error, its 95% interval and its class by TRIM, strong increase,
+moderate increase, stable, uncertain, moderate decline or steep decline, from the interval
+compared with 1 and with 0.95 / 1.05; the Pearson chi-square, the likelihood ratio and the AIC);
+Indices (the imputed indices, from the observed counts and the model's for the missing ones, and
+the model's, with their 95% band, the base time, and optionally the overall slope's line); Time
+totals (observed, imputed, model); Slopes, parameters and tests (the Wald tests of the slope, the
+changes in slope, the deviations from the linear trend and the covariates; model 3 as a line and
+its deviations; the stepwise steps); Counts by site (a site's counts and the model's, or every
+count against its expected value). The results are those of the rtrim package. Methods text
+with its references, Export and report as for the other models; neither prediction nor Export
+to R.
+
 Adding columns from another table
 ---------------------------------
 Edit › Add columns from a table (or right-click on the project's data in the explorer): the

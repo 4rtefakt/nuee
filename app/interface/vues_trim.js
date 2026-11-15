@@ -210,7 +210,7 @@ function rendreParametresTrim(conteneur, ctx, p) {
         lignesDe(ec.ecarts, ['temps', 'additif', 'se_additif', 'multiplicatif', 'se_multiplicatif']).map((l) => [temps(l[0]), ...l.slice(1).map((v) => fmt(v, 4))]))] : null,
     el('h4', {}, t('trim_tests')), tests.length ? tableCompacte([t('terme'), 'W', t('ddl'), 'p'], tests, alerteP(tests, 3)) : el('p', { class: 'note' }, t('trim_sans_tests')),
     el('p', { class: 'note' }, t('trim_tests_note')),
-    etapes.length ? [el('h4', {}, t('trim_pas_a_pas')), el('p', { class: 'note' }, t('trim_pas_a_pas_note', { depart: liste(m.pas_a_pas.depart).map(temps).join(', '), gardes: liste(m.pas_a_pas.gardes).map(temps).join(', ') || '—' })),
+    etapes.length ? [el('h4', {}, t('trim_pas_a_pas_titre')), el('p', { class: 'note' }, t('trim_pas_a_pas_note', { depart: liste(m.pas_a_pas.depart).map(temps).join(', '), gardes: liste(m.pas_a_pas.gardes).map(temps).join(', ') || '—' })),
       tableCompacte(['', t('trim_action'), t('trim_temps'), t('trim_test'), 'p'], etapes.map((l) => [String(l[0]), t('trim_action_' + l[1]), temps(l[2]), l[3] === 'wald' ? 'Wald' : t('trim_score'), pValeur(l[4])]))] : null));
 }
 
@@ -259,7 +259,7 @@ function rendreSitesTrim(conteneur, ctx, p, loc) {
         hovertemplate: '<b>%{text}</b><br>%{y:.0f} / %{x:.2f}<extra></extra>' },
       { type: 'scatter', mode: 'lines', x: lim, y: lim, line: { color: c.doux, width: 1, dash: 'dot' }, hoverinfo: 'skip', showlegend: false }],
     { title: { text: `${m.nom} · ${t('trim_observes_attendus')}` }, showlegend: false,
-      xaxis: { type: 'log', title: { text: `${t('trim_attendus')} + 0,5` } }, yaxis: { type: 'log', title: { text: `${t('trim_observes')} + 0,5` } } });
+      xaxis: { type: 'log', title: { text: `${t('trim_attendus')} + ${t('trim_demi')}` } }, yaxis: { type: 'log', title: { text: `${t('trim_observes')} + ${t('trim_demi')}` } } });
     brancherSelection(graphe, ctx, m.id);
   }
   loc.table ??= {};
@@ -405,7 +405,7 @@ ajouterTextes({
   trim_site: 'Site', trim_temps: 'Temps (année)', trim_modele: 'Modèle', trim_changements: 'Points de changement', trim_covariables: 'Covariables', trim_poids: 'Poids',
   trim_modele_1: '1 (sans effet du temps)', trim_modele_2: '2 (tendance linéaire)', trim_modele_3: '3 (un effet par temps)',
   trim_modele_long_1: 'Modèle 1 : sans effet du temps', trim_modele_long_2: 'Modèle 2 : tendance linéaire (points de changement)', trim_modele_long_3: 'Modèle 3 : un effet par temps',
-  trim_changements_exemple: '1990 2000 (le premier temps par défaut)', trim_changements_aide: 'Les temps où la pente change, séparés par des espaces ; le premier temps seul : une seule pente sur toute la période. Avant le premier point, aucune pente.',
+  trim_changements_exemple: 'ex. 1990 2000', trim_pas_a_pas_titre: 'Sélection pas à pas des points de changement', trim_changements_aide: 'Les temps où la pente change, séparés par des espaces ; le premier temps seul : une seule pente sur toute la période. Avant le premier point, aucune pente.',
   trim_tous_temps: 'à chaque temps', trim_pas_a_pas: 'pas à pas', trim_pas_a_pas_aide: 'Les points de changement choisis pas à pas, comme rtrim : un point sort quand le test de Wald de son changement de pente dépasse p = 0,2, revient quand son test du score passe sous p = 0,15.',
   trim_estimation: 'Estimation', trim_surdispersion: 'surdispersion (σ²)', trim_correlation: 'corrélation sérielle (ρ)',
   trim_surdispersion_aide: 'var(f) = σ² μ : des comptages plus dispersés qu’une loi de Poisson (des oiseaux en groupes). Recommandé par le manuel de TRIM.',
@@ -420,7 +420,7 @@ ajouterTextes({
   trim_n_sites: 'Sites', trim_comptages: 'Comptages observés', trim_methode: 'Estimation', trim_ml: 'max. de vraisemblance',
   trim_pente_globale: 'Pente globale (totaux imputés)', trim_pente_imputee: 'Totaux imputés', trim_pente_modele: 'Totaux du modèle',
   trim_phrase_pente: 'Les totaux imputés changent de ×{m} par pas de temps ({pct} %), erreur-type {se}, intervalle à 95 % {bas} – {haut} : {classe}.',
-  trim_phrase_pente_modele: 'Ceux du modèle : ×{m} ({pct} %), intervalle à 95 % {bas} – {haut} ({classe}).',
+  trim_phrase_pente_modele: 'Ceux du modèle : ×{m} ({pct} %), intervalle à 95 % {bas} – {haut} : {classe}.', trim_demi: '0,5',
   trim_pente_inconnue: 'Pas de pente globale (moins de trois temps, ou un total nul).',
   trim_classe: 'Classe', trim_classe_forte_hausse: 'forte augmentation', trim_classe_hausse_moderee: 'augmentation modérée', trim_classe_stable: 'stable',
   trim_classe_incertaine: 'incertaine', trim_classe_declin_modere: 'déclin modéré', trim_classe_fort_declin: 'fort déclin', trim_classe_inconnue: 'inconnue',
@@ -456,7 +456,7 @@ ajouterTextes({
   trim_site: 'Site', trim_temps: 'Time (year)', trim_modele: 'Model', trim_changements: 'Changepoints', trim_covariables: 'Covariates', trim_poids: 'Weights',
   trim_modele_1: '1 (no time effect)', trim_modele_2: '2 (linear trend)', trim_modele_3: '3 (an effect per time)',
   trim_modele_long_1: 'Model 1: no time effect', trim_modele_long_2: 'Model 2: linear trend (changepoints)', trim_modele_long_3: 'Model 3: an effect per time',
-  trim_changements_exemple: '1990 2000 (the first time by default)', trim_changements_aide: 'The times where the slope changes, separated by spaces; the first time alone: a single slope over the whole period. Before the first point, no slope.',
+  trim_changements_exemple: 'e.g. 1990 2000', trim_pas_a_pas_titre: 'Stepwise selection of the changepoints', trim_changements_aide: 'The times where the slope changes, separated by spaces; the first time alone: a single slope over the whole period. Before the first point, no slope.',
   trim_tous_temps: 'at every time', trim_pas_a_pas: 'stepwise', trim_pas_a_pas_aide: 'The changepoints chosen stepwise, as rtrim does: a point leaves when the Wald test of its change in slope exceeds p = 0.2, comes back when its score test falls below p = 0.15.',
   trim_estimation: 'Estimation', trim_surdispersion: 'overdispersion (σ²)', trim_correlation: 'serial correlation (ρ)',
   trim_surdispersion_aide: 'var(f) = σ² μ: counts more dispersed than a Poisson distribution (birds in flocks). Recommended by the TRIM manual.',
@@ -471,7 +471,7 @@ ajouterTextes({
   trim_n_sites: 'Sites', trim_comptages: 'Observed counts', trim_methode: 'Estimation', trim_ml: 'max. likelihood',
   trim_pente_globale: 'Overall slope (imputed totals)', trim_pente_imputee: 'Imputed totals', trim_pente_modele: 'Model totals',
   trim_phrase_pente: 'The imputed totals change by ×{m} per time step ({pct}%), standard error {se}, 95% interval {bas} – {haut}: {classe}.',
-  trim_phrase_pente_modele: 'The model’s: ×{m} ({pct}%), 95% interval {bas} – {haut} ({classe}).',
+  trim_phrase_pente_modele: 'The model’s: ×{m} ({pct}%), 95% interval {bas} – {haut}: {classe}.', trim_demi: '0.5',
   trim_pente_inconnue: 'No overall slope (fewer than three times, or a total of zero).',
   trim_classe: 'Class', trim_classe_forte_hausse: 'strong increase', trim_classe_hausse_moderee: 'moderate increase', trim_classe_stable: 'stable',
   trim_classe_incertaine: 'uncertain', trim_classe_declin_modere: 'moderate decline', trim_classe_fort_declin: 'steep decline', trim_classe_inconnue: 'unknown',
