@@ -248,7 +248,9 @@ the model's domain, and export the results.
 - a model's observations chosen by a condition (`site == "S1" & year >= 2010`), applied again at
   each fit;
 - several windows, and views that pop out onto a second screen;
-- plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG;
+- plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG, and figures
+  composed of several plots (A, B, C panels at a journal's width) exported as vector PDF, SVG, or
+  PNG and TIFF at 300 or 600 dpi;
 - Ctrl+C on any result table copies it, ready to paste into Excel;
 - *View › Find a command* (Ctrl+K): type part of a command's name instead of looking through the menus;
 - a model report as PDF or Word;

@@ -265,7 +265,8 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   refaite à chaque ajustement ;
 - plusieurs fenêtres, et des vues qui se détachent sur un second écran ;
 - des graphiques mis en forme pour une publication (polices, palettes, taille) et exportés en
-  PNG ou SVG ;
+  PNG ou SVG, et des figures faites de plusieurs graphiques (des panneaux A, B, C à la largeur
+  d'une revue) exportées en PDF vectoriel, en SVG, ou en PNG et TIFF à 300 ou 600 ppp ;
 - Ctrl+C sur un tableau de résultats le copie, prêt à coller dans Excel ;
 - *Affichage › Rechercher une commande* (Ctrl+K) : tapez une partie du nom d'une commande au lieu
   de chercher dans les menus ;
