@@ -144,8 +144,9 @@ Sampling dates can be the time.
 **Linear, generalized and mixed models:** linear regression and linear mixed models (nlme),
 with nested random effects (site, then sector within the site), random slopes (each site its
 own trend) and a continuous-time autocorrelation (CAR1); generalized linear and additive models
-(mgcv) for counts (Poisson, negative binomial), presence-absence, positive values and densities
-with zeros (Tweedie), with random effects, an effort as an offset, and smooth curves for effects
+(mgcv) for counts (Poisson, negative binomial, zero-inflated Poisson), presence-absence,
+proportions between 0 and 1 (beta), positive values and densities with zeros (Tweedie), with
+random effects, an effort as an offset, and smooth curves for effects
 that rise then fall or have a threshold, one per category if wanted (with CAR1 too, through
 mgcv::gamm, for a normal response); qualitative variables in cross terms (the year's slope by
 sector); coefficients with their intervals, adjusted means and pairs of levels as emmeans gives

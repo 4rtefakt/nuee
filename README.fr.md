@@ -150,8 +150,9 @@ Sen. Des dates de relevé peuvent faire le temps.
 **Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
 (nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site), des pentes
 aléatoires (chaque site sa tendance) et une autocorrélation en temps continu (CAR1) ; modèles
-linéaires généralisés et additifs (mgcv) pour des comptages (Poisson, binomiale négative), la
-présence-absence, des valeurs positives et des densités avec des zéros (Tweedie), avec des
+linéaires généralisés et additifs (mgcv) pour des comptages (Poisson, binomiale négative,
+Poisson à zéros en excès), la présence-absence, des proportions entre 0 et 1 (bêta), des
+valeurs positives et des densités avec des zéros (Tweedie), avec des
 effets aléatoires, un effort en décalage et des courbes lissées pour un effet qui monte puis
 descend ou un seuil, une par catégorie au besoin (avec aussi le CAR1, par mgcv::gamm, pour une
 réponse normale) ; des variables qualitatives dans les termes croisés (la pente de l'année par

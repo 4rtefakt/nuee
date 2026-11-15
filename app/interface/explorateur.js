@@ -22,7 +22,9 @@ export const vuesDe = (m) => ((typeof VUES_TYPES[m.type] === 'function' ? VUES_T
 // R2 and Q2 of a fitted model, for its line in the explorer
 const chiffresModele = (m) => (m.chiffres ? m.chiffres : m.regression
   ? `${m.qualite.marginal !== undefined ? `R2m ${fmt(m.qualite.marginal, 2)} · R2c ${fmt(m.qualite.conditionnel, 2)}`
-    : `R2 ${fmt(m.qualite.r2 ?? m.qualite.r2_ajuste, 2)}`} · Q2 ${fmt(m.qualite.Q2, 2)} · AIC ${fmt(m.qualite.AIC, 1)}`
+    // (a zero-inflated Poisson has no R2, only the deviance explained: D2)
+    : (m.qualite.r2 ?? m.qualite.r2_ajuste) == null && m.qualite.deviance_expliquee != null
+      ? `D2 ${fmt(m.qualite.deviance_expliquee, 2)}` : `R2 ${fmt(m.qualite.r2 ?? m.qualite.r2_ajuste, 2)}`} · Q2 ${fmt(m.qualite.Q2, 2)} · AIC ${fmt(m.qualite.AIC, 1)}`
   : `R2X ${fmt(m.composantes.R2Xcum[m.A - 1], 2)}${m.composantes.R2Ycum ? ' · R2Y ' + fmt(m.composantes.R2Ycum[m.A - 1], 2) : ''} · Q2 ${fmt(m.composantes.Q2cum[m.A - 1], 2)}`);
 
 export function rendreExplorateur(conteneur, app) {
