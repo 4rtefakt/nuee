@@ -164,14 +164,17 @@ async function brancher(cible) {
     const doubleClic = (texte) => p.evaluer(`(() => { const x = [...document.querySelectorAll('.arbre *')].find((e) => e.children.length === 0 && e.textContent.trim() === ${JSON.stringify(texte)});
       if (!x) throw new Error('not in the tree: ${texte}'); x.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); })()`);
 
-    res.exemple = await commande('exemple');
+    // (each command by its name in the interface's language: English on a new profile)
+    const libelle = (cle) => p.evaluer(`import('/i18n.js').then((m) => m.t(${JSON.stringify(cle)}))`);
+    res.langue = await p.evaluer("import('/i18n.js').then((m) => m.langueActuelle())");
+    res.exemple = await commande(await libelle('projet_exemple'));
     await p.attendre("document.querySelectorAll('.js-plotly-plot').length >= 2", 60000);
     for (const m of ['M2', 'M3', 'M4']) { await doubleClic(m); await pause(3000); }
     await doubleClic('M2');
     await pause(2000);
     res.vues = [];
-    for (const vue of ['VIP', 'Coefficients', 'Observé', 'DModX']) {
-      res.vues.push(await commande(vue));
+    for (const vue of ['vip', 'coefficients', 'obspred', 'dmodx']) {
+      res.vues.push(await commande(await libelle(vue)));
       await pause(2000);
     }
     verifier('vues', res.vues.every(Boolean) && (await graphiques()) >= 2, `${res.vues.join(', ')}: ${await graphiques()} plots`);
