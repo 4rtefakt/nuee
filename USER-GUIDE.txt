@@ -174,6 +174,65 @@ Before fitting, the application checks the data: variables or observations with 
 50 % missing values, constant variables. If there are any, it lists them and offers "Exclude
 them and fit" or "Fit anyway".
 
+Which analysis? (Model › Which analysis?)
+-----------------------------------------
+Model › Which analysis? (also a button of the start page, next to New model, and Ctrl+K): a few
+questions in plain words, then the analysis that answers them, already set up.
+  - Your question: compare groups or periods; the effect of variables on one response; many
+    species at once (how the composition changes, one model per species, the species that
+    characterize each group); a trend over time or a monitoring index; where (maps, spatial
+    autocorrelation); explore or summarise a table; predict or classify; diversity and species
+    richness; before-after with controls (BACI).
+  - The response: the variable measured, and its kind: a measurement, a count (with many zeros
+    or not), a presence-absence (0 or 1), a proportion between 0 and 1, a class (a qualitative
+    variable), or a table of species (one column per species).
+  - The design: the same sites or plots measured several times (the site), years or dates (the
+    time), a BACI design (the unit), spatial coordinates.
+  - The variables: the explanatory variables (X), or the groups.
+Nuée proposes the answers from the project's variables (as Variable statistics reads them): a
+response of whole numbers from 0 is a count, of 0 and 1 a presence-absence, between 0 and 1 a
+proportion; "many zeros" when at least a quarter of the values are 0, and 15 points more than a
+Poisson distribution of the same mean would give (the sentence under the response gives both);
+the site is a qualitative variable named like one (site, station, plot, transect...) whose
+categories repeat; the time a variable named like a year or a date, or whole numbers between
+1900 and 2100; the species the columns of numbers zero or more that have zeros (four at least);
+the coordinates the project's, or those its variables' names propose. Every answer can be
+changed.
+On the right: the recommended analysis, why, its main conditions and notes for the answers given
+(the random effect by site, the residual autocorrelation of successive years, the adjusted means
+after comparing groups, a proportion that reaches 0 or 1...), what will be filled in, what is
+left to complete, and a button. It opens New model already filled in (type, distribution, roles,
+transformation, curves, random effect, cross-validation groups, and the analysis's own settings,
+such as an RDA's Hellinger transformation or TRIM's site and time), or the right view
+(Statistical tests in the right mode, Series with its trends, Map, Spatial autocorrelation,
+Rarefaction, Variable statistics), or New variable with a diversity index. One model per species
+opens New model for the first species, then One model per response with the others ticked. The
+alternatives below open the same way. The answers are kept until Nuée closes: cancel New model
+and come back to try another.
+The main choices:
+  - a count: the negative binomial when it varies more than a Poisson distribution allows (a
+    variance beyond 1.5 times the mean) or has many zeros (many zeros don't always mean zero
+    inflation, Warton 2005: compare with the zero-inflated Poisson by AIC), otherwise Poisson; a
+    presence-absence: logistic regression; a proportion: beta regression; a positive, skewed
+    measurement: gamma (or its log); a measurement with zeros: Tweedie; otherwise the linear
+    model; with the same sites measured several times, a random effect by site and
+    cross-validation by site;
+  - groups compared: the test between two variables (the one their types call for), paired by
+    site when each site comes once in each group (no more observations than sites × groups),
+    otherwise the mixed model and its adjusted means; for counts, presences and proportions,
+    their GLM;
+  - many species: RDA after the Hellinger transformation with quantitative X, PERMANOVA with
+    groups, NMDS without X; indicator species; one model per species;
+  - a trend: TRIM for counts by site and year (one row per site and year: no more observations
+    than sites × years; otherwise a GLM, and TRIM after Edit › Summarize by group); a
+    measurement on several sites: the mixed model with the year as X; a single series: Series
+    and its trends;
+  - predict: PLS or PLS-DA with many X (20 or more, or half as many as the observations), the
+    random forest otherwise, boosted trees for counts and presences;
+  - where: the map, then Moran's I and a GAM's spatial smooth; the Mantel test for species;
+  - explore: PCA, NMDS for species; diversity: rarefaction.
+Advice, not a rule: the conditions are checked after the fit (Summary › Model conditions).
+
 Plots: colours and labels
 -------------------------
 Scores, DModX, T², observed / predicted: the "Colour" list colours the points by class

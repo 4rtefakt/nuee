@@ -27,6 +27,7 @@ import './vues_par_reponse.js';
 import './vues_trim.js';
 import './vues_forets.js';
 import { installerDocuments } from './documents.js';
+import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -358,6 +359,12 @@ const app = {
     if (!p) return statut(t('choisir_projet'), true);
     dialogueModele(app, p);
   },
+  // Model › Which analysis?: a few questions, then New model already filled in, or the right view
+  quelleAnalyse(pid) {
+    const p = etat.projets[pid || app.projetActif()];
+    if (!p) return statut(t('choisir_projet'), true);
+    dialogueQuelleAnalyse(app, p);
+  },
   modifierModele(id) {
     const m = etat.modeles[id];
     if (m) dialogueModele(app, etat.projets[m.projet], m.reglages, t('modifier_modele'));
@@ -367,6 +374,7 @@ const app = {
     const m = etat.modeles[id];
     if (m) dialogueModele(app, etat.projets[m.projet], reglages);
   },
+  // (the new model's id, for what follows it: Which analysis?'s one model per response)
   async ajusterDefinition(q) {
     if (q.type === 'CLASSES') {  // one PCA per class, then their Coomans plot
       const r = await occupe(() => demander('modeles_classe', q));
@@ -374,11 +382,12 @@ const app = {
       for (const res of liste) await garder(res);
       vuesParDefaut(liste[0].id);
       app.ouvrirVue('coomans', liste[0].id);
-      return;
+      return liste[0].id;
     }
     const res = await occupe(() => demander('ajuster', q));
     await garder(res);
     vuesParDefaut(res.id);
+    return res.id;
   },
   async reajuster(id, q) {
     const res = await occupe(() => demander('reajuster', { modele: id, ...q }));
@@ -524,14 +533,15 @@ const app = {
   // One model per response (Model › One model per response, moteur/R/par_reponse.R): the
   // regression `id` fitted to each response ticked, the p-values corrected over the responses;
   // optionally each model kept in the project. The results go to the view (vues_par_reponse.js).
-  unModeleParReponse(id) {
+  // reponses: other responses ticked from the start (Which analysis?: the species chosen there).
+  unModeleParReponse(id, reponses = []) {
     const m = etat.modeles[id];
     if (!m || !m.regression) return;
     const p = etat.projets[m.projet];
     const x = new Set([].concat((m.reglages && m.reglages.x) || []).map(Number));
     const y = Number([].concat((m.reglages && m.reglages.y) || [])[0]);
     const vars = p.variables.filter((v) => !v.qualitative && !x.has(v.uid));
-    const coches = new Set([y]);
+    const coches = new Set([y, ...[].concat(reponses).map(Number).filter((u) => vars.some((v) => v.uid === u))]);
     let correction = 'BH';
     const garder = el('input', { type: 'checkbox' });
     const filtre = el('input', { placeholder: t('filtrer_variables'), style: 'width:14em' });
@@ -1715,6 +1725,7 @@ function rendreAccueil(conteneur) {
       el('button', { onclick: () => app.importerSpectres() }, icone('audio-waveform'), t('importer_spectres')),
       el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
       el('button', { onclick: () => app.nouveauModele(), disabled: !app.projetActif() }, icone('file-plus'), t('nouveau_modele')),
+      el('button', { onclick: () => app.quelleAnalyse(), disabled: !app.projetActif() }, icone('signpost'), t('quelle_analyse')),
       el('button', { onclick: () => app.aide('guide') }, icone('circle-help'), t('guide'))),
     recents.length ? el('div', { class: 'accueil-recents' }, el('h3', {}, t('recents')),
       recents.map((r) => el('a', { href: '#', title: r, onclick: (e) => { e.preventDefault(); app.ouvrirChemin(r); } }, icone('folder'), r.split(/[\\/]/).pop(),

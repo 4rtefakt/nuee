@@ -303,6 +303,42 @@ body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed
 /* Add columns from a table: a key's two columns side by side; Summarize by group: the statistics */
 .dialogue-colonnes .grille-champs, .dialogue-resume .grille-champs { grid-template-columns: max-content minmax(0, 460px); }
 .dialogue-colonnes .ligne select { max-width: 13em; }
+/* Model › Which analysis? (quelle_analyse.js): the questions on the left, the advice on the right */
+.quelle-analyse { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; flex: 1; min-height: 0; }
+.quelle-analyse > div { overflow: auto; min-height: 0; padding-right: 4px; }
+.quelle-analyse h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--texte-doux); margin: 12px 0 5px; }
+.quelle-analyse h3:first-child { margin-top: 2px; }
+.qa-choix { display: flex; flex-direction: column; gap: 1px; }
+.qa-choix label { display: flex; align-items: baseline; gap: 6px; padding: 2px 5px; border-radius: 4px; cursor: pointer; }
+.qa-choix label:hover { background: var(--survol); }
+.qa-choix label.actif { background: var(--accent-doux); }
+.qa-choix .doux { font-size: 11.5px; }
+.qa-but { margin: 4px 0 0 18px; }
+.qa-genres { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px 8px; margin-top: 4px; }
+.qa-genre { display: flex; flex-direction: column; }
+.qa-genre .qa-zeros { margin-left: 24px; font-size: 12px; }
+.quelle-analyse .ligne { margin: 3px 0; }
+.quelle-analyse .ligne > label { color: var(--texte-doux); }
+.quelle-analyse select { max-width: 18em; }
+.qa-plan { margin: 3px 0; }
+.qa-plan > .ligne { margin-left: 24px; }
+.qa-liste .ligne { flex-wrap: wrap; gap: 6px; }
+.qa-filtre { width: 10em; }
+.qa-cases { max-height: 9.5em; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; align-content: start;
+  border: 1px solid var(--grille); border-radius: 4px; padding: 3px 6px; }
+.qa-cases label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qa-carte { border: 1px solid var(--bord); border-radius: 6px; padding: 8px 10px; background: var(--fond-barre); }
+.qa-carte h4 { margin: 0 0 4px; font-size: 14px; }
+.qa-carte p, .qa-detail p { margin: 4px 0; }
+.qa-rempli { font-size: 12px; color: var(--texte-doux); }
+.quelle-analyse p.attention { color: var(--attention); }
+.qa-ouvrir { display: flex; justify-content: flex-end; margin-top: 6px; }
+.qa-autres details { border-bottom: 1px solid var(--grille); padding: 3px 0; }
+.qa-autres summary { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.qa-autres summary button { padding: 1px 8px; }
+.qa-detail { padding: 2px 0 4px 16px; }
+.qa-attente { margin-top: 30px; }
+@media (max-width: 760px) { .quelle-analyse { grid-template-columns: minmax(0, 1fr); } }
 .statistiques-groupe { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 /* Documents (documents.js): the text and its live preview side by side */
 .document { display: flex; flex-direction: column; height: 100%; min-height: 0; }

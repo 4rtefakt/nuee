@@ -61,8 +61,8 @@ async function principal() {
     await etape(`syntaxe ${f}`, () => execFileSync(process.execPath, ['--check', copie], { stdio: 'pipe' }));
   }
   fs.rmSync(copies, { recursive: true, force: true });
-  // the documents' references and their rendering (Word, Quarto), without the page
-  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js']) {
+  // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules
+  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs']) {
     await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
   }
 
