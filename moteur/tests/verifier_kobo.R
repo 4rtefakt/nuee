@@ -432,6 +432,18 @@ verifier("en anglais", startsWith(erreur(lire_collecte(ordinaire)), "ordinaire.c
          startsWith(apercu_collecte(odk_zip, table = "observation")$phrases[1], "ODK Central export (.zip archive, 3 tables): the repeat group “observation”, 12 row(s), from 5 submission(s)."))
 options(nuee.langue = "fr")
 
+cat("Un choix multiple que le formulaire n'a pas, avant un qu'il a\n")
+melange <- f("melange.csv")
+utils::write.table(df(start = debuts[1:3], `extra` = c("a b", "b", NA), `extra/a` = c(1, 0, NA), `extra/b` = c(1, 1, NA), meteo = S$meteo[1:3],
+                      `_id` = 1:3, `_uuid` = S$uuid[1:3], `_index` = 1:3), melange, sep = ";", row.names = FALSE, na = "", fileEncoding = "UTF-8")
+pm <- importer_collecte(melange, formulaire = form)
+am <- attr(pm, "collecte")$phrases
+verifier("chacun ses colonnes 0/1 : celles de l'export pour l'un, d'après les réponses pour l'autre, chaque phrase les siennes",
+         identical(variables(pm), c("extra_a", "extra_b", paste0("meteo_", meteo))) &&
+         any(startsWith(am, "Choix multiples « extra » en 2 colonnes 0/1 (celles de l'export ; 1 : choisi, vide : sans réponse) : extra_a, extra_b.")) &&
+         any(startsWith(am, "Choix multiples « meteo » en 4 colonnes 0/1 (d'après les réponses ; 1 : choisi, vide : sans réponse) : meteo_soleil, meteo_nuages")) &&
+         any(startsWith(am, "Colonnes absentes du formulaire, lues sans lui (1) : extra.")))
+
 cat("Les morceaux\n")
 dt <- kobo_dates(c("2024-05-03T08:12:45.123+02:00", "2024-05-03T08:12:00Z", "2024-05-03", NA, "2024-05-03 08:12"))
 verifier("les dates et heures : fraction et fuseau retirés, secondes pour toute la colonne, une date seule telle quelle",

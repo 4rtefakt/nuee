@@ -730,6 +730,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     if (base %in% noms[!pris]) cols["texte"] <- base
     points[[paste0("n:", base)]] <- list(segments = segments_sans(base), colonnes = cols)
     pris[noms %in% cols] <- TRUE
+    if (!is.null(form)) resume$hors_formulaire <- c(resume$hors_formulaire, base)
   }
   # (une colonne de texte que le formulaire ne dit pas être une autre question ; ses valeurs
   # distinctes le disent)
@@ -737,6 +738,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     if (!is.character(df[[k]]) || (!is.null(m) && !is.na(m$question[k])) || !isTRUE(attr(kobo_points_texte(unique(df[[k]])), "valide"))) next
     points[[paste0("t:", noms[k])]] <- list(segments = segments_sans(noms[k]), colonnes = c(texte = noms[k]))
     pris[k] <- TRUE
+    if (!is.null(form)) resume$hors_formulaire <- c(resume$hors_formulaire, noms[k])
   }
   for (p in points) {
     cols <- p$colonnes
@@ -795,6 +797,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     multiples[[paste0("n:", x)]] <- list(segments = segments_sans(x), question = NULL, texte = texte, choix = noms[freres], codes = suite[freres])
     pris[freres] <- TRUE
     if (!is.na(texte)) pris[match(texte, noms)] <- TRUE
+    if (!is.null(form)) resume$hors_formulaire <- c(resume$hors_formulaire, x)
   }
   for (x in multiples) {
     s <- x$segments
@@ -834,8 +837,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
       })
       origine <- "reponses"
     }
-    resume$multiples[[length(resume$multiples) + 1]] <- list(nom = s[length(s)], origine = origine)
-    ajouter(list(position = min(match(sources, noms)), sources = sources, genre = "multiple", nom = s[length(s)], colonnes = colonnes))
+    ajouter(list(position = min(match(sources, noms)), sources = sources, genre = "multiple", nom = s[length(s)], origine = origine, colonnes = colonnes))
   }
 
   # --- les autres colonnes : une question (choix unique, date, nombre, texte), ou une colonne
@@ -869,7 +871,6 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
       inconnus <- sort(unique(v[is.na(j) & !is.na(v)]))
       col$valeurs <- factor(ifelse(is.na(j), v, libelles[j]), levels = unique(c(libelles, inconnus)))
       genre <- "choix_unique"
-      resume$qualitatives[[length(resume$qualitatives) + 1]] <- list(categories = levels(droplevels(col$valeurs)))
     } else if (type %in% c("date", "datetime", "time", "start", "end", "today") || (is.na(type) && is.character(x) && isTRUE(attr(kobo_dates(unique(x)), "valide")))) {
       v <- kobo_dates(x)
       col$texte <- TRUE
@@ -897,13 +898,12 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     colonnes[[i]]$nom <- nom_libre(courts[i], pris_noms)
     pris_noms <- c(pris_noms, colonnes[[i]]$nom)
   }
-  # ce que le résumé dit de chaque élément, avec les noms donnés
+  # ce que le résumé dit de chaque élément, dans l'ordre de l'export, avec les noms donnés
   j <- 0
   coordonnees <- NULL
-  n_multiples <- 0
-  n_qualitatives <- 0
   for (e in elements) {
-    faits <- vapply(colonnes[j + seq_along(e$colonnes)], function(c) c$nom, "")
+    cols <- colonnes[j + seq_along(e$colonnes)]
+    faits <- vapply(cols, function(c) c$nom, "")
     j <- j + length(e$colonnes)
     if (e$genre %in% c("question", "metadonnee", "choix_unique", "date") && !identical(faits, e$sources)) {
       resume$renommees[[length(resume$renommees) + 1]] <- c(de = e$sources, vers = faits)
@@ -912,15 +912,10 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
       resume$points[[length(resume$points) + 1]] <- list(nom = e$nom, colonnes = faits, hors = e$hors)
       if (is.null(coordonnees)) coordonnees <- list(x = faits[1], y = faits[2])
     }
-    if (e$genre == "multiple") {
-      n_multiples <- n_multiples + 1
-      resume$multiples[[n_multiples]]$colonnes <- faits
-    }
-    if (e$genre == "choix_unique") {
-      n_qualitatives <- n_qualitatives + 1
-      resume$qualitatives[[n_qualitatives]]$nom <- faits
-    }
+    if (e$genre == "multiple") resume$multiples[[length(resume$multiples) + 1]] <- list(nom = e$nom, origine = e$origine, colonnes = faits)
+    if (e$genre == "choix_unique") resume$qualitatives[[length(resume$qualitatives) + 1]] <- list(nom = faits, categories = levels(droplevels(cols[[1]]$valeurs)))
   }
+  resume$hors_formulaire <- resume$hors_formulaire[order(match(resume$hors_formulaire, noms))]
   list(colonnes = stats::setNames(colonnes, vapply(colonnes, function(c) c$nom, "")), coordonnees = coordonnees, resume = resume, lignes = nrow(df))
 }
 
@@ -994,12 +989,12 @@ kobo_import <- function(chemin, table = NULL, garder = character(0), parents = N
       }
       faits <- character(0)
       for (cn in choisies) {
-        c <- pa$colonnes[[cn]]
-        c$valeurs <- c$valeurs[pos]
-        c$nom <- nom_libre(cn, pris)
-        pris <- c(pris, c$nom)
-        faits <- c(faits, c$nom)
-        joints[[c$nom]] <- c
+        jointe <- pa$colonnes[[cn]]
+        jointe$valeurs <- jointe$valeurs[pos]
+        jointe$nom <- nom_libre(cn, pris)
+        pris <- c(pris, jointe$nom)
+        faits <- c(faits, jointe$nom)
+        joints[[jointe$nom]] <- jointe
       }
       if (is.null(coordonnees) && !is.null(pa$coordonnees) && all(unlist(pa$coordonnees) %in% choisies)) {
         coordonnees <- list(x = faits[match(pa$coordonnees$x, choisies)], y = faits[match(pa$coordonnees$y, choisies)], table = a)
