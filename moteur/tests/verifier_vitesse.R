@@ -12,7 +12,9 @@
 #     ou sans valeurs manquantes, spectres prétraités ou MSC, chacune des trois façons de valider ;
 #   - le test de permutation, le côté X calculé une fois : les mêmes R2 et Q2 qu'en refaisant tout ;
 #   - valeurs_bloc et definir_modele : les mêmes valeurs et les mêmes termes qu'en cherchant chaque
-#     terme seul.
+#     terme seul ;
+#   - enregistrer_projet : octet pour octet le fichier qu'écrit jsonlite, chaque observation et
+#     chaque terme un à un.
 #   Rscript moteur/tests/verifier_vitesse.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -22,7 +24,14 @@ verifier <- function(nom, ok) {
   if (!isTRUE(ok)) echecs <<- echecs + 1
 }
 blas <- tolower(paste(extSoftVersion()[["BLAS"]], La_library()))
-reference <- !grepl("openblas|mkl|blis|atlas|accelerate|veclib|flexiblas", blas)
+# (le nom ne dit pas tout : sous Linux, libblas.so.3 peut être OpenBLAS ; un BLAS optimisé, ou des
+# multiplications-additions fusionnées, ne somment pas crossprod et %*% dans le même ordre)
+meme_ordre <- local({
+  P <- matrix(sin(seq_len(400 * 50)), 400)
+  w <- cos(seq_len(400))
+  identical(crossprod(P, w), t(P) %*% w)
+})
+reference <- meme_ordre && !grepl("openblas|mkl|blis|atlas|accelerate|veclib|flexiblas", blas)
 pareil <- function(a, b) if (reference) identical(a, b) else isTRUE(all.equal(a, b, tolerance = 1e-12))
 cat(if (reference) "BLAS de référence : identical()\n" else sprintf("BLAS optimisé (%s) : à 1e-12 près\n", blas))
 
