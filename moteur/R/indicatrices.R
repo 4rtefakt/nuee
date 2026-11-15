@@ -229,8 +229,10 @@ texte_methodes_indval <- function(projet, d, m, langue = "fr", version = "") {
   k <- length(m$niveaux)
   r <- retenues_indval(m)
   court <- function(x, n = 12) paste0(liste_mots(utils::head(x, n), fr), if (length(x) > n) "…" else "")
-  exclues <- if (length(m$exclues)) sprintf(tx(" (%d autres laissées de côté : sans groupe, ou une valeur y manque)", " (%d others left out: no group, or a value is missing)"), length(m$exclues)) else ""
-  absentes <- if (length(m$absentes)) sprintf(tx(" ; %s, absente de ces observations, en a été retirée", "; %s, absent from these observations, was left out"), liste_mots(m$absentes, fr)) else ""
+  exclues <- if (length(m$exclues) == 1) tx(" (une autre laissée de côté : sans groupe, ou une valeur y manque)", " (one other left out: no group, or a value is missing)")
+             else if (length(m$exclues)) sprintf(tx(" (%d autres laissées de côté : sans groupe, ou une valeur y manque)", " (%d others left out: no group, or a value is missing)"), length(m$exclues)) else ""
+  absentes <- if (length(m$absentes) == 1) sprintf(tx(" ; %s, absente de ces observations, en a été retirée", "; %s, absent from these observations, was left out"), m$absentes)
+              else if (length(m$absentes)) sprintf(tx(" ; %s, absentes de ces observations, en ont été retirées", "; %s, absent from these observations, were left out"), liste_mots(m$absentes, fr)) else ""
   donnees <- if (o$presence) tx("leurs présences (0/1)", "their presences (0/1)") else tx("leurs abondances", "their abundances")
   p1 <- sprintf(tx("Les espèces indicatrices des %d groupes de %s (%s, de %s observations) ont été cherchées parmi %d espèces (%s), d'après %s, sur %s%s%s.",
                    "Indicator species of the %d groups of %s (%s, of %s observations) were sought among %d species (%s), from %s, on %s%s%s."),

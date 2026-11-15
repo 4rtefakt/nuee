@@ -160,6 +160,9 @@ for (langue in c("fr", "en")) {
              any(grepl(if (langue == "fr") "à l'intérieur de chaque site" else "within each site", t3$paragraphes)) &&
              any(grepl("Dufrêne, M., & Legendre, P. (1997)", t1$references, fixed = TRUE)) && any(grepl("Holm, S.", t2$references, fixed = TRUE)) &&
              !any(grepl("SIMCA", c(t1$paragraphes, t2$paragraphes))))
+  verifier(sprintf("texte des méthodes (%s) : au singulier, le relevé laissé de côté et l'espèce absente", langue),
+           any(grepl(if (langue == "fr") "(une autre laissée de côté :" else "(one other left out:", t1$paragraphes, fixed = TRUE)) &&
+             any(grepl(if (langue == "fr") "sp11, absente de ces observations, en a été retirée" else "sp11, absent from these observations, was left out", t1$paragraphes, fixed = TRUE)))
 }
 tb <- tables_resultats(p, m2)
 verifier("tableaux exportés : les espèces, le résumé, les groupes, IndVal, A et B de chaque combinaison", all(vapply(tb, is.data.frame, TRUE)) &&
