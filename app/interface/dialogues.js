@@ -726,7 +726,7 @@ function nomLibre(p) {
 // ------------------------------------------------------------ help
 
 // where the engine sits in the installed application
-const MOTEUR = /Win/.test(navigator.platform) ? 'resources\\moteur\\R' : 'resources/moteur/R';
+const MOTEUR = /Win/.test(navigator.platform) ? 'resources\\moteur\\R' : /Mac/.test(navigator.platform) ? 'Nuée.app/Contents/Resources/moteur/R' : 'resources/moteur/R';
 const AIDE = {
   fr: {
     guide: [
