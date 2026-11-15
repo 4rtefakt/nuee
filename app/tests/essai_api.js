@@ -980,6 +980,20 @@ async function principal() {
         && [].concat(tm.references).some((x) => /^Johnson/.test(x)), 'gardée avec le modèle ; dans le texte des méthodes');
       const sc = await api('script_r', { modele: lmm.id, version: 'essai', langue: 'fr', chemin: path.join(dossier, 'P2.R') });
       verifier(!sc.ecart && fs.readFileSync(sc.script, 'utf8').includes('simuler_puissance('), 'exporter vers R : le script refait la puissance et sa simulation');
+      // kept in the project file (serveur.R: garder_avec_definition): saved, opened again and refitted,
+      // the settings and the simulation come back, in the Methods text before the view asks for them,
+      // and asking again with the same settings leaves the project unchanged
+      const fp = path.join(dossier, 'puissance.nuee');
+      await api('enregistrer', { projet: q.id, chemin: fp });
+      const q2 = await api('ouvrir', { chemin: fp });
+      const lmm2 = await api('ajuster', { projet: q2.id, numero: q2.modeles.find((x) => x.nom === 'P2').numero });
+      const tm2 = await api('methodes', { modele: lmm2.id, langue: 'en', version: 'essai' });
+      const garde2 = await api('puissance_tendance', { modele: lmm2.id, ...pr.reglages });
+      const proche = (a, b) => [].concat(a).length === [].concat(b).length && [].concat(a).every((x, i) => Math.abs(x - [].concat(b)[i]) < 1e-12);
+      const modifie2 = (await api('projets_modifies', {})).noms.includes(q2.nom);
+      verifier(JSON.stringify(tm2.paragraphes) === JSON.stringify(tm.paragraphes) && garde2.reglages.tendance === -0.03 && [].concat(garde2.reglages.unites).join() === '4,6,10'
+        && garde2.simulation && proche(garde2.simulation.p, s.p) && !modifie2,
+      `enregistrée avec le projet, rouverte : ${JSON.stringify({ reglages: garde2.reglages, simulation: !!garde2.simulation, modifie: modifie2 })}`);
       const glm = await api('ajuster', { projet: q.id, type: 'GLM', x: [v.annee], y: [v.y], echelle: 'none', nom: 'P3', famille: 'gamma' });
       let refus = '';
       try { await api('puissance_tendance', { modele: glm.id }); } catch (err) { refus = err.message; }
@@ -1028,6 +1042,16 @@ async function principal() {
       try { await api('moyennes', { modele: lm0.id }); } catch (err) { refusSans = err.message; }
       verifier(/n'est croisée avec « secteur » dans aucun terme/.test(refusDans) && /pas de variable qualitative/.test(refusSans),
         `refus : « ${refusDans} » ; « ${refusSans} »`);
+      // kept in the project file: the slopes by sector come back once it is opened again and the model refitted
+      const fm = path.join(dossier, 'moyennes.nuee');
+      await api('enregistrer', { projet: q.id, chemin: fm });
+      const q2 = await api('ouvrir', { chemin: fm });
+      const ma = await api('ajuster', { projet: q2.id, numero: q2.modeles.find((x) => x.nom === 'MA1').numero });
+      const tm2 = await api('methodes', { modele: ma.id, langue: 'en', version: 'essai' });
+      const garde2 = await api('moyennes', { modele: ma.id }, 'en');
+      verifier(JSON.stringify(tm2.paragraphes) === JSON.stringify(tm.paragraphes) && garde2.mode === 'pentes' && garde2.reglages.ajustement === 'holm'
+        && col(garde2.moyennes, 'estimation').every((x, i) => Math.abs(x - est[i]) < 1e-12) && !(await api('projets_modifies', {})).noms.includes(q2.nom),
+      `enregistrées avec le projet, rouvertes : ${JSON.stringify(garde2.reglages)}`);
     });
     await etape('Poisson à excès de zéros (ziP) et loi bêta (betar) : loi, lien, paramètres, résidus quantiles, moyennes, côte à côte, méthodes, refus', async () => {
       // 90 surveys of three habitats with an effort: counts with extra zeros, proportions between 0 and 1

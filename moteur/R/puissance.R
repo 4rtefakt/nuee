@@ -338,8 +338,11 @@ puissance_tendance <- function(m, d, q = list(), avant = NULL) {
   sim_obs <- sim_annees * sim_unites * pd$series_par_unite * pd$repetitions
   cle <- list(terme = r$terme, pente = pente$pente, alpha = r$alpha, annees = sim_annees, unites = sim_unites, n = sim_n,
               sigma2 = lu$sigma2, phi = lu$phi, plan = c(pd$emboites, pd$dans, pd$repetitions))
-  par_ajustement <- if (!is.null(avant$estimation) && identical(avant$estimation$plan, c(sim_annees, sim_unites, pd$series_par_unite, pd$repetitions))) avant$estimation$par_ajustement
-  simulation <- if (!is.null(avant$simulation) && identical(avant$simulation$cle, cle)) avant$simulation
+  # (la simulation aussi relue d'un projet enregistré, serveur.R : garder_avec_definition ; ses
+  # nombres à 15 chiffres, ses entiers en nombres, d'où la comparaison à 1e-10 près)
+  meme <- function(a, b) !is.null(a) && isTRUE(all.equal(lapply(as.list(a), unlist), lapply(as.list(b), unlist), tolerance = 1e-10, check.attributes = FALSE))
+  par_ajustement <- if (!is.null(avant$estimation) && meme(avant$estimation$plan, c(sim_annees, sim_unites, pd$series_par_unite, pd$repetitions))) avant$estimation$par_ajustement
+  simulation <- if (!is.null(avant$simulation) && meme(avant$simulation$cle, cle)) avant$simulation
   if (sim_obs <= lim$observations && is.null(par_ajustement)) par_ajustement <- duree_ajustement(lu, pd, pente$pente, sim_annees, sim_unites)
   if (isTRUE(as.logical(q$simuler)) && is.null(simulation)) {
     if (sim_obs > lim$observations) stop(sprintf(traduire("Ce plan a %d observations par jeu : %d au plus pour la simulation.", "This design has %d observations per data set: %d at most for the simulation."), sim_obs, lim$observations), call. = FALSE)

@@ -32,6 +32,7 @@ export const NOUVEAUTES = [
       'Corrigé : un GLM ou un GAM avec un seul effet aléatoire et sans courbe perdait la variance de cet effet : le Résumé la laissait vide, avec un écart-type de 0, et l’export vers R faisait de même.',
       'Corrigé : Prédiction › Prédire un fichier échouait pour un modèle dont le prétraitement des spectres a une étape de Savitzky–Golay (« la fenêtre dépasse le spectre ») : chaque longueur d’onde du fichier y formait une zone à elle seule.',
       'Corrigé : en anglais, les colonnes des résultats d’un modèle (liste des observations, prédictions, couleurs et tailles de la carte) gardaient leurs noms français (observé, ajusté, résidu…), et les tableaux de résultats exportés aussi, leurs noms comme ceux de leurs colonnes (feuilles Excel, fichiers, couches GeoPackage).',
+      'Corrigé : les moyennes ajustées et la puissance pour détecter une tendance, gardées avec leur modèle, ne l’étaient que jusqu’à la fermeture du projet. Elles sont maintenant enregistrées avec lui et reviennent à son ouverture, simulation de la puissance comprise : dans leurs vues, le texte des Méthodes, le rapport et l’export vers R.',
     ],
     en: [
       'Maps and spatial data: a project has coordinates, two of its variables and their system (WGS 84 longitudes and latitudes, Lambert-93, CC zones, Lambert II étendu, UTM, LAEA Europe…), proposed from their names and saved with it. Plots › Map places the observations at equal scales, coloured and sized by a variable or by a column of a model’s results (scores, residuals, clusters), the selection shared with the models. A background map if you choose one, OpenStreetMap, IGN’s map or its aerial photographs, only on request: without one, nothing leaves the computer. The conversions are written in Nuée and give PROJ’s, the library QGIS uses, to the micrometre.',
@@ -63,6 +64,7 @@ export const NOUVEAUTES = [
       'Fixed: a GLM or GAM with a single random effect and no curve lost that effect’s variance: the Summary left it empty, with a standard deviation of 0, and Export to R did the same.',
       'Fixed: Predict › Predict a file failed for a model whose spectral preprocessing has a Savitzky–Golay step (“the window exceeds the spectrum”): each wavelength of the file made a zone of its own.',
       'Fixed: in English, the columns of a model’s results (the observation list, the predictions, the map’s colours and sizes) kept their French names (observé, ajusté, résidu…), and so did the tables of exported results, their names and their columns’ (Excel sheets, files, GeoPackage layers).',
+      'Fixed: adjusted means and the power to detect a trend, kept with their model, were only kept until the project was closed. They are now saved with it and come back when it is opened, the power’s simulation included: in their views, the Methods text, the report and Export to R.',
     ] },
   { version: '0.9.9', date: '2026-11-14',
     fr: [

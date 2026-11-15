@@ -456,6 +456,12 @@ ajuster_et_garder <- function(p, d, m = NULL) {
     calcule <- auto$modele
   }
   if (is.null(m)) m <- ajuster(p, d, calcule = calcule)
+  # (les moyennes ajustées et la puissance gardées avec un modèle enregistré, refaites avec leurs
+  # réglages ; oubliées quand elles ne s'appliquent plus à lui, une variable retirée)
+  for (cle in intersect(c("moyennes", "puissance_tendance"), names(d))) {
+    m[[cle]] <- if (est_regression(d)) tryCatch(refaire_garde(p, d, m, cle), error = function(err) NULL)
+    if (is.null(m[[cle]])) d[[cle]] <- NULL
+  }
   id <- nouvel_id("M")
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
     d$number <- d$number %||% (max(c(0, vapply(p$models, function(x) as.numeric(x$number %||% 0), 0))) + 1)
@@ -468,6 +474,35 @@ ajuster_et_garder <- function(p, d, m = NULL) {
   # (les catégories de ses variables qualitatives, telles qu'il les a vues : modele(), atelier.R)
   etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m, categories = categories_definition(p, d))
   resultat_modele(id)
+}
+
+# Un calcul gardé avec le modèle `m` (de définition `d`, du projet `p`), refait avec les réglages
+# que sa définition a gardés (garder_avec_definition) : ses moyennes ajustées, sa puissance (dont la
+# simulation reste, quand elle porte sur les mêmes réglages).
+refaire_garde <- function(p, d, m, cle) {
+  g <- d[[cle]]
+  if (identical(cle, "moyennes")) moyennes_ajustees(p, m, d, g) else puissance_tendance(m, d, g$reglages, g)
+}
+
+# Les réglages d'un calcul gardé avec le modèle `id` (ses moyennes ajustées, sa puissance), écrits
+# aussi dans sa définition du projet : enregistrés avec lui, et refaits quand il est ajusté à nouveau,
+# à l'ouverture du projet (ajuster_et_garder). `modifie` : le projet est à enregistrer (des réglages
+# choisis ; pas ceux par défaut d'un premier calcul, que l'enregistrement suivant prendra). Gardés
+# tels qu'un fichier les rendra (nombres à 15 chiffres, entiers...) : refaits à l'ouverture, ou
+# redemandés par une vue de la séance, ils ne changent pas le projet.
+garder_avec_definition <- function(id, cle, valeur, modifie = TRUE) {
+  valeur <- jsonlite::fromJSON(as.character(jsonlite::toJSON(valeur, auto_unbox = TRUE, null = "null", na = "null", digits = NA)),
+                               simplifyVector = TRUE, simplifyDataFrame = FALSE, simplifyMatrix = TRUE)  # (comme lire_projet, projet.R)
+  etat$modeles[[id]]$definition[[cle]] <- valeur
+  e <- etat$modeles[[id]]
+  p <- projet(e$projet)
+  for (i in seq_along(p$models)) {
+    if (identical(p$models[[i]]$name, e$definition$name) && !identical(p$models[[i]][[cle]], valeur)) {
+      p$models[[i]][[cle]] <- valeur
+      if (modifie) p$modifie <- TRUE
+    }
+  }
+  etat$projets[[p$id]] <- p
 }
 
 # Avant/après (BACI) › Ajuster le modèle mixte (comparaisons.R : modele_baci) : ses deux variables
@@ -1366,6 +1401,8 @@ DEMANDES <- list(
     r <- if (!length(setdiff(names(q), "modele")) && !is.null(avant)) utils::modifyList(avant, list(phrase = phrase_puissance(avant)))
          else puissance_tendance(e$modele, e$definition, q, avant)
     etat$modeles[[q$modele]]$modele$puissance_tendance <- r
+    choisis <- length(setdiff(names(q), "modele")) > 0
+    if (choisis || is.null(e$definition$puissance_tendance)) garder_avec_definition(q$modele, "puissance_tendance", r[c("reglages", "simulation")], choisis)
     c(list(modele = q$modele), r)
   },
   # les moyennes ajustées d'une régression (moyennes.R), gardées avec le modèle (le texte des
@@ -1378,6 +1415,7 @@ DEMANDES <- list(
     reglages <- q[setdiff(names(q), "modele")]
     r <- moyennes_ajustees(projet(e$projet), e$modele, e$definition, if (length(reglages)) reglages else e$modele$moyennes$reglages %||% list())
     etat$modeles[[q$modele]]$modele$moyennes <- r
+    if (length(reglages) || is.null(e$definition$moyennes)) garder_avec_definition(q$modele, "moyennes", r$reglages, length(reglages) > 0)
     c(list(modele = q$modele), r)
   },
   correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),
