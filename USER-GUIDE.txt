@@ -781,6 +781,16 @@ effects are estimated by REML, and the AIC comes from an ML fit; a GLM without t
 by maximum likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns
 when the counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of
 freedom): its p values are then too small, and the negative binomial suits the counts better.
+Spatial smooth (General tab, for a GAM of a project with coordinates, see Maps and spatial
+data): a surface of the observations' coordinates, s(x, y), a thin plate regression spline on
+plane coordinates (Wood 2003) or a spline on the sphere for longitudes and latitudes (s(lat,
+lon, bs = "sos")), of basis dimension k (empty: 30 at most, fewer with few places). It takes up
+the spatial structure the terms don't explain: check with Plots › Spatial autocorrelation of the
+model's residuals, and compare the models by AIC. Observations without coordinates are left out
+of the model. Its edf and test are in the Summary's curves table, and its value at each
+observation is a column of the model's results that the map can show. The R formula writes it
+s(x, y), s(x, y, k = 40) or s(lat, lon, bs = "sos"). Export to R doesn't redo it yet: such a
+model is refused there.
 R formula (General tab): the model written as in R, for instance
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,

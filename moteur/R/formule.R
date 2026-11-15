@@ -64,6 +64,14 @@ formule_reglages <- function(projet, r) {
       paste(vapply(names(n), function(u) if (n[[u]] == 1) terme(u) else sprintf("I(%s^%d)", terme(u), n[[u]]), ""), collapse = ":")
     }, ""),
     if (length(r$decalage) && type %in% GENERALISES) sprintf("offset(log(%s))", nom_formule(nom_variable(as.numeric(r$decalage)[1]))),
+    # (le lissage spatial : s(x, y), ou s(latitude, longitude, bs = "sos") ; regression.R, terme_spatial)
+    if (identical(type, "GAM") && length(r$lisse_spatial$variables) == 2) {
+      vs <- as.numeric(unlist(r$lisse_spatial$variables))
+      sos <- identical(as.character(r$lisse_spatial$base)[1], "sos")
+      k <- suppressWarnings(as.integer(unlist(r$lisse_spatial$k)))
+      sprintf("s(%s)", paste(c(vapply(if (sos) rev(vs) else vs, function(u) nom_formule(nom_variable(u)), ""), if (sos) "bs = \"sos\"",
+                               if (length(k) && !is.na(k[1])) sprintf("k = %d", k[1])), collapse = ", "))
+    },
     {
       # (comme lme4 : (1 | site/secteur) ; avec des pentes aléatoires, (1 + annee | site/secteur) quand
       # chaque niveau a les mêmes, sinon un terme par niveau, (1 + annee | site) + (1 | site:secteur))
@@ -232,6 +240,7 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   decalage <- NULL
   k_courbes <- list()   # par variable (son indice) : la dimension demandée de sa courbe
   par_courbes <- list() # par variable (son indice) : la variable qualitative d'une courbe par catégorie (son indice)
+  spatial <- NULL       # le lissage spatial s(x, y) : ses deux variables (leurs indices), sa base et sa dimension
   ajouter <- function(s) {
     cle <- as.character(s$k)
     if (!is.null(principaux[[cle]]) && !identical(principaux[[cle]]$tr, s$tr)) {
@@ -276,6 +285,26 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
     if (ft == "s") {  # s(x), s(x, k = 5) : sa dimension de base ; s(x, by = f) : une courbe par catégorie de f
       arguments <- as.list(t)[-1]
       noms_args <- names(arguments) %||% rep("", length(arguments))
+      # s(x, y), s(x, y, k = 40) : le lissage spatial de deux coordonnées ; s(lat, lon, bs = "sos") :
+      # une spline sur la sphère (la latitude d'abord, comme mgcv)
+      if (length(arguments) >= 2 && !nzchar(noms_args[2])) {
+        if (!is.null(spatial)) err("Un seul lissage spatial s(x, y) par modèle.", "A single spatial smooth s(x, y) per model.")
+        if (nzchar(noms_args[1]) || !all(noms_args[-(1:2)] %in% c("k", "bs")) || anyDuplicated(noms_args[-(1:2)]) || !is.name(arguments[[1]]) || !is.name(arguments[[2]])) {
+          err("Un lissage spatial s'écrit s(x, y), s(x, y, k = 40), ou s(latitude, longitude, bs = \"sos\") sur la sphère.",
+              "A spatial smooth reads s(x, y), s(x, y, k = 40), or s(latitude, longitude, bs = \"sos\") on the sphere.")
+        }
+        a <- variable(arguments[[1]])
+        b <- variable(arguments[[2]])
+        if (qualitative(a) || qualitative(b)) err("Un lissage spatial se fait sur deux coordonnées quantitatives.", "A spatial smooth is made on two quantitative coordinates.")
+        base <- if ("bs" %in% noms_args) as.character(arguments[["bs"]]) else "tp"
+        if (!base %in% c("tp", "sos")) err("Un lissage spatial a la base \"tp\" (plaques minces) ou \"sos\" (sur la sphère).", "A spatial smooth has the basis \"tp\" (thin plate) or \"sos\" (on the sphere).")
+        k_s <- if ("k" %in% noms_args) nombre(arguments[["k"]])
+        if ("k" %in% noms_args && (is.null(k_s) || k_s < 5 || k_s > 300 || k_s != round(k_s))) {
+          err("La dimension d'un lissage spatial s'écrit k = un nombre entier de 5 à 300.", "A spatial smooth's dimension reads k = a whole number from 5 to 300.")
+        }
+        spatial <- list(ks = if (base == "sos") c(b, a) else c(a, b), base = base, k = k_s)
+        next
+      }
       if (!length(arguments) || nzchar(noms_args[1]) || !all(noms_args[-1] %in% c("k", "by")) || anyDuplicated(noms_args[-1])) {
         err("Une courbe s'écrit s(x), s(x, k = 5) pour fixer sa dimension, ou s(x, by = f) pour une courbe par catégorie de la variable qualitative f.",
             "A curve reads s(x), s(x, k = 5) to set its dimension, or s(x, by = f) for a curve per category of the qualitative variable f.")
@@ -399,7 +428,7 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
   uid <- function(k) vapply(k, function(i) as.numeric(projet$variables[[i]]$uid), 0)
   type <- as.character(type %||% "LM")[1]
   if (!type %in% REGRESSIONS) type <- "LM"
-  if (length(courbes) && type != "GAM") type <- "GAM"
+  if ((length(courbes) || !is.null(spatial)) && type != "GAM") type <- "GAM"
   if (length(aleatoires) && type == "LM") type <- "LMM"
   if (!length(aleatoires) && type == "LMM") type <- "LM"
   if (!is.null(decalage) && !(type %in% GENERALISES && as.character(famille %||% "")[1] %in% FAMILLES_LOG)) {
@@ -414,5 +443,6 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
        k_courbes = stats::setNames(k_courbes, vapply(as.integer(names(k_courbes)), uid, 0)),
        par_courbes = stats::setNames(lapply(par_courbes, uid), vapply(as.integer(names(par_courbes)), uid, 0)),
        aleatoires = I(lapply(aleatoires, function(a) { if (length(a$pentes)) a$pentes <- I(uid(a$pentes)); a })),
-       decalage = if (!is.null(decalage)) uid(decalage))
+       decalage = if (!is.null(decalage)) uid(decalage),
+       lisse_spatial = if (!is.null(spatial)) c(list(variables = I(uid(spatial$ks)), base = spatial$base), if (!is.null(spatial$k)) list(k = as.integer(spatial$k))))
 }

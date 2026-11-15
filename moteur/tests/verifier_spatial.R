@@ -215,6 +215,62 @@ verifier("par lieu : 12 placettes de 5 années, la moyenne de chacune", ad$n == 
 ae <- autocorrelation_spatiale(pd, variable = numeros(pd, "v"), permutations = 0)
 verifier("sans regrouper : les paires au même endroit comptées", ae$nulles == 12 * 10)
 
+# ---------------------------------------------------------------- lissage spatial d'un GAM
+
+cat("Lissage spatial s(x, y) d'un modèle additif
+")
+set.seed(11)
+n2 <- 150
+lon2 <- 4.45 + stats::runif(n2, 0, 0.35)
+lat2 <- 43.42 + stats::runif(n2, 0, 0.22)
+p93 <- depuis_lonlat(lon2, lat2, 2154)
+x2 <- stats::rnorm(n2)
+compte <- stats::rpois(n2, exp(0.5 + 0.3 * x2 + sin((lon2 - 4.45) * 12)))
+y2 <- 2 + 0.8 * x2 + sin((lon2 - 4.45) * 12) + cos((lat2 - 43.42) * 20) + stats::rnorm(n2, 0, 0.3)
+df2 <- data.frame(nom = sprintf("o%03d", 1:n2), X = p93$x, Y = p93$y, lon = lon2, lat = lat2, x = x2, y = y2, compte = compte, stringsAsFactors = FALSE)
+df2$X[3] <- NA
+ps <- projet_depuis_tableau(df2, "lissage")
+us <- function(...) numeros(ps, c(...))
+dg <- function(..., famille = "gaussienne", y = "y") definir_modele(ps, "GAM", x = us("x"), y = us(y), observations = numeros_observations(ps),
+                                                                     echelle = c(defaut = "none"), famille = famille, ...)
+d1 <- dg(lisse_spatial = list(variables = us("X", "Y")))
+m1 <- ajuster(ps, d1)
+ok2 <- !is.na(df2$X)
+ref <- mgcv::gam(y ~ x + s(X, Y, k = 30), data = df2[ok2, ], method = "REML")
+ref_ml <- mgcv::gam(y ~ x + s(X, Y, k = 30), data = df2[ok2, ], method = "ML")
+verifier("plaques minces : le coefficient, l'edf, F et p de mgcv::gam(y ~ x + s(X, Y))",
+         proche(c(m1$resultat$coefficients$estimation[2], m1$resultat$courbes$edf, m1$resultat$courbes$statistique),
+                c(stats::coef(ref)["x"], summary(ref)$s.table[1, c(1, 3)]), 1e-6))
+verifier("… son AIC (ML), une observation sans coordonnée laissée de côté", proche(m1$resultat$AIC, stats::AIC(ref_ml), 1e-6) && m1$N == 149)
+verifier("… les prédictions de nouvelles observations", proche(predire(ps, m1, d1, numeros_observations(ps)[1:5])[[1]], stats::predict(ref, df2[1:5, ]), 1e-8))
+verifier("… la validation croisée faite avec lui (Q2)", is.finite(m1$vc$Q2) && m1$vc$Q2 > 0.8)
+d2 <- dg(lisse_spatial = list(variables = us("lon", "lat"), base = "sos", k = 40))
+m2 <- ajuster(ps, d2)
+ref2 <- mgcv::gam(y ~ x + s(lat, lon, bs = "sos", k = 40), data = df2, method = "REML")
+verifier("sur la sphère : comme mgcv::gam(y ~ x + s(lat, lon, bs = \"sos\", k = 40))",
+         proche(c(m2$resultat$coefficients$estimation[2], m2$resultat$courbes$edf), c(stats::coef(ref2)["x"], summary(ref2)$s.table[1, 1]), 1e-6))
+d3 <- dg(lisse_spatial = list(variables = us("X", "Y"), k = 20), famille = "poisson", y = "compte")
+m3 <- ajuster(ps, d3)
+ref3 <- mgcv::gam(compte ~ x + s(X, Y, k = 20), data = df2[ok2, ], family = poisson(), method = "REML")
+verifier("Poisson, k = 20 : comme mgcv::gam", proche(c(m3$resultat$coefficients$estimation[2], m3$resultat$courbes$edf), c(stats::coef(ref3)["x"], summary(ref3)$s.table[1, 1]), 1e-6))
+pc <- regler_coordonnees(ps, us("X"), us("Y"), 2154)
+sans <- autocorrelation_spatiale(pc, ajuster(ps, dg()), permutations = 0)
+avec <- autocorrelation_spatiale(pc, m1, permutations = 0)
+verifier("les résidus gardent moins d'autocorrélation avec lui", sans$moran$I > 0.5 && avec$moran$I < 0.1)
+verifier("dans le texte des méthodes, en français et en anglais",
+         grepl("lissage spatial des coordonnées (« X » et « Y »), une spline de régression en plaques minces isotrope (Wood, 2003) de dimension de base 30", paste(texte_methodes(ps, d1, m1, "fr")$paragraphes, collapse = " "), fixed = TRUE) &&
+           grepl("spline on the sphere (Wahba, 1981; Wood, 2017) of basis dimension 40", paste(texte_methodes(ps, d2, m2, "en")$paragraphes, collapse = " "), fixed = TRUE))
+r1 <- reglages_modele(ps, d1)
+verifier("dans la formule : écrite, puis relue", identical(formule_reglages(ps, r1), "y ~ x + s(X, Y)") &&
+           identical(as.numeric(lire_formule(ps, "y ~ x + s(lat, lon, bs = \"sos\", k = 40)")$lisse_spatial$variables), us("lon", "lat")) &&
+           identical(formule_reglages(ps, reglages_modele(ps, d2)), "y ~ x + s(lat, lon, bs = \"sos\", k = 40)"))
+verifier("refus : hors d'un GAM, une variable qualitative, des degrés hors bornes pour la sphère, k hors bornes, l'export vers R",
+         nzchar(refus(definir_modele(ps, "GLM", x = us("x"), y = us("y"), observations = numeros_observations(ps), famille = "gaussienne", lisse_spatial = list(variables = us("X", "Y"))))) &&
+           nzchar(refus(dg(lisse_spatial = list(variables = us("X", "Y"), base = "sos")))) &&
+           nzchar(refus(dg(lisse_spatial = list(variables = us("X", "Y"), k = 2)))) &&
+           grepl("lissage spatial", refus(ecrire_script(ps, d1, tempfile(fileext = ".R"), "moteur", m = m1))))
+verifier("la sélection par AIC le garde dans chaque modèle", nrow(selection_aic(m1, d1)$modeles) == 2)
+
 # ---------------------------------------------------------------- GeoPackage
 
 if (!avec_rsqlite) {

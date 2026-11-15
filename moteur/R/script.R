@@ -29,6 +29,7 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
   tab <- tableau_script(projet, ids_script(list(d), projet))
   nom_projet <- as.character(projet$source %||% "projet")
   m <- m %||% ajuster(projet, d)
+  refuser_lissage_spatial(list(m))
   pl <- plan_modele(projet, d, m, tab)
   b <- besoins_script(list(pl), seance = FALSE)
   fonctions <- code_fonctions(b, list(pl), langue)
@@ -87,6 +88,7 @@ ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, do
   langue <- if (identical(langue, "en")) "en" else "fr"
   tab <- tableau_script(projet, ids_script(definitions, projet))
   nom_projet <- as.character(projet$source %||% "projet")
+  refuser_lissage_spatial(modeles)
   plans <- lapply(seq_along(definitions), function(k) plan_modele(projet, definitions[[k]], modeles[[k]], tab))
   b <- besoins_script(plans, seance = TRUE)
   fonctions <- code_fonctions(b, plans, langue)
@@ -3916,4 +3918,15 @@ code_definition <- function(projet, d, p = "p") {
                        if (nzchar(r$condition)) " condition = condition,"), collapse = "")),
       sprintf("                    A = %s, G = %s, nom = %s, titre = %s)", q(r$A), q(r$G), q(r$nom), q(r$titre)))
   }
+}
+
+# Un modèle additif avec un lissage spatial des coordonnées (regression.R : terme_spatial) ne
+# s'exporte pas encore : son script ne refait pas ce terme. Refusé avant d'écrire quoi que ce soit.
+refuser_lissage_spatial <- function(modeles) {
+  for (m in modeles) if (!is.null(m$spatial)) {
+    stop(sprintf(traduire("L'export vers R ne refait pas encore le lissage spatial %s du modèle %s : ce modèle ne s'exporte pas.",
+                          "Export to R doesn't redo the spatial smooth %s of model %s yet: this model can't be exported."),
+                 m$spatial$nom, m$nom %||% ""), call. = FALSE)
+  }
+  invisible()
 }

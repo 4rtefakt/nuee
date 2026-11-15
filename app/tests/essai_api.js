@@ -1283,6 +1283,49 @@ async function principal() {
       try { await api('hca', { modele: km.id }); } catch (err) { refusHCA = err.message; }
       verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
     });
+    await etape('données spatiales : coordonnées, carte, autocorrélation, lissage spatial, GeoPackage (moteur/R/spatial.R, geopackage.R)', async () => {
+      // 40 placettes en Lambert-93 autour de la Tour du Valat, une valeur qui varie dans l'espace
+      let g = 5;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['placette\tX_L93\tY_L93\tx\tv'];
+      for (let i = 1; i <= 40; i += 1) {
+        const X = 820000 + 25000 * alea();
+        const Y = 6260000 + 25000 * alea();
+        const x = alea();
+        lignes.push([`p${i}`, X.toFixed(1), Y.toFixed(1), x.toFixed(3), (Math.sin(X / 4000) + Math.cos(Y / 5000) + x + 0.2 * alea()).toFixed(4)].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Placettes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const c0 = await api('coordonnees', { projet: q.id });
+      verifier(c0.coordonnees === null && c0.proposition.x === v.X_L93 && c0.proposition.y === v.Y_L93 && c0.proposition.systeme === 2154,
+        `coordonnées proposées : ${JSON.stringify(c0.proposition)}`);
+      const c1 = await api('coordonnees', { projet: q.id, regler: true, x: v.X_L93, y: v.Y_L93, systeme: '2154' });
+      verifier(c1.coordonnees.systeme === 2154 && c1.projet.coordonnees.nom_x === 'X_L93' && c1.projet.annulable, 'coordonnées réglées, annulables');
+      const carte = await api('carte', { projet: q.id });
+      verifier(carte.uid.length === 40 && carte.lon.every((l) => l > 4.4 && l < 4.9) && carte.lat.every((l) => l > 43.3 && l < 43.8), 'carte : longitudes et latitudes');
+      const a = await api('autocorrelation_spatiale', { projet: q.id, variable: v.v, permutations: 99 });
+      verifier(a.n === 40 && a.moran.I > 0 && a.moran.p_permutations <= 0.05 && a.correlogramme.I.length === 10 && a.variogramme.gamma.length > 3,
+        `I de Moran de v : ${a.moran.I}`);
+      const sansLissage = await api('ajuster', { projet: q.id, type: 'GAM', x: [v.x], y: [v.v], echelle: 'none', famille: 'gaussienne', nom: 'G0' });
+      const gam = await api('ajuster', { projet: q.id, type: 'GAM', x: [v.x], y: [v.v], echelle: 'none', famille: 'gaussienne', nom: 'G1',
+        lisse_spatial: { variables: [v.X_L93, v.Y_L93] } });
+      verifier([].concat(gam.courbes.terme).includes('s(X_L93, Y_L93)') && gam.reglages.lisse_spatial && gam.qualite.AIC < sansLissage.qualite.AIC
+        && gam.observations['s(X_L93, Y_L93)'].length === 40, `lissage spatial : AIC ${gam.qualite.AIC} contre ${sansLissage.qualite.AIC}`);
+      const r = await api('autocorrelation_spatiale', { modele: gam.id, permutations: 0 });
+      verifier(r.moran.I < a.moran.I, `les résidus du lissage spatial : I = ${r.moran.I}`);
+      const f = await api('formule', { projet: q.id, type: 'GAM', x: [v.x], y: [v.v], lisse_spatial: { variables: [v.X_L93, v.Y_L93], k: 20 } });
+      verifier(f.formule === 'v ~ x + s(X_L93, Y_L93, k = 20)', `formule : ${f.formule}`);
+      const gpkg = path.join(dossier, 'placettes.gpkg');
+      await api('exporter_donnees', { projet: q.id, chemin: gpkg });
+      const resultats = path.join(dossier, 'resultats.gpkg');
+      await api('exporter', { modele: gam.id, chemin: resultats });
+      const o = await api('ouvrir', { chemin: gpkg });
+      verifier(o.coordonnees && o.coordonnees.systeme === 2154 && o.observations.uid.length === 40, 'GeoPackage écrit, rouvert avec ses coordonnées');
+      const choix = await api('ouvrir', { chemin: resultats });
+      verifier(choix.choisir && [].concat(choix.choisir).includes('G1'), `GeoPackage de résultats : ${[].concat(choix.choisir || []).join(', ')}`);
+      const t = await api('projet_texte', { projet: q.id, version: 'essai' });
+      verifier(/"coordonnees"/.test(t.texte) && /"paquets"/.test(t.texte), 'projet en texte, pour un rapport de problème');
+    });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;
       const r = await api('supprimer_modele', { modele: da.id, definition: true });

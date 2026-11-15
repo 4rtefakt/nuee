@@ -357,7 +357,9 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   k_courbes : la dimension de base d'une courbe, par numéro de variable (sinon 10 au plus) ;
 #   par_courbes : une courbe par catégorie d'une variable qualitative X, par numéro de la variable
 #   en courbe, par exemple list(`7` = 4) pour s(annee, by = secteur) (regression.R :
-#   verifier_par_courbes). Les blocs n'y
+#   verifier_par_courbes) ; lisse_spatial : un lissage des coordonnées s(x, y) d'un GAM,
+#   list(variables = c(x, y), k = 30, base = "tp" ou "sos") (regression.R : definition_spatial).
+#   Les blocs n'y
 #   pondèrent rien : ils font les groupes de la table des apports. Sans groupes de validation
 #   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu). Un
 #   facteur d'un terme croisé qui n'est pas dans x y entre sans effet principal (R : y ~ secteur +
@@ -368,7 +370,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
                            famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
-                           condition = NULL, par_courbes = NULL, validation = NULL) {
+                           condition = NULL, par_courbes = NULL, validation = NULL, lisse_spatial = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
@@ -452,6 +454,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
       if (length(decalage)) d$decalage <- as.numeric(decalage)[1]
       if (length(k_courbes)) d$k_courbes <- lapply(as.list(unlist(k_courbes)), as.integer)
       if (length(par_courbes)) d$par_courbes <- lapply(as.list(unlist(par_courbes)), as.numeric)
+      if (length(lisse_spatial$variables)) {
+        d$lisse_spatial <- list(variables = as.numeric(unlist(lisse_spatial$variables)), base = as.character(lisse_spatial$base %||% "tp")[1])
+        if (length(lisse_spatial$k)) d$lisse_spatial$k <- as.integer(unlist(lisse_spatial$k))[1]
+      }
     }
     if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]][setdiff(names(aleatoires[[1]]), "pentes")]  # (ses groupes, sans ses pentes)
     verifier_regression(projet, d)
@@ -553,7 +559,7 @@ reglages_modele <- function(projet, d) {
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        validation = if (!est_regression(d) && !est_autre_analyse(d)) mode_validation(d),
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
-       k_courbes = d$k_courbes, par_courbes = d$par_courbes,
+       k_courbes = d$k_courbes, par_courbes = d$par_courbes, lisse_spatial = d$lisse_spatial,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))), croises_reglages = croises_reglages,
        options = d$options,
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
@@ -621,7 +627,11 @@ autoajuster <- function(projet, definition, A_max = NULL) {
 }
 
 # Enregistre un projet (données et définitions de modèles) au format lu par lire_projet(), avec
-# ce qui l'a écrit : le format (FORMAT_PROJET, projet.R), la version de Nuée (`version`) et de R.
+# ce qui l'a écrit : le format (FORMAT_PROJET, projet.R), la version de Nuée (`version`), de R et
+# des paquets R qui calculent les modèles (PAQUETS_CALCUL), pour savoir plus tard avec quoi un
+# résultat a été obtenu.
+PAQUETS_CALCUL <- c("stats", "mgcv", "nlme", "MASS", "rpart", "cluster")
+version_paquet <- function(x) tryCatch(as.character(utils::packageVersion(x)), error = function(e) NA_character_)
 enregistrer_projet <- function(projet, chemin, version = "") {
   p <- unclass(projet)
   for (i in seq_along(p$datasets)) {
@@ -630,7 +640,8 @@ enregistrer_projet <- function(projet, chemin, version = "") {
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
   p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- NULL  # état de la session
-  p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."))
+  p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
+                 paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
   ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA))
 }
 

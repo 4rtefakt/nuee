@@ -845,6 +845,17 @@ est ajusté par maximum de vraisemblance, comme le font glm() et MASS::glm.nb().
 modèle de Poisson prévient quand les comptages sont surdispersés (le khi² de Pearson au-delà
 de 1,5 fois ses degrés de liberté) : ses valeurs p sont alors trop petites, et la binomiale
 négative convient mieux à ces comptages.
+Lissage spatial (onglet Général, pour un GAM d'un projet qui a des coordonnées, voir Cartes et
+données spatiales) : une surface des coordonnées des observations, s(x, y), une spline de
+régression en plaques minces sur des coordonnées planes (Wood 2003) ou une spline sur la sphère
+pour des longitudes et latitudes (s(lat, lon, bs = "sos")), de dimension de base k (vide : 30 au
+plus, moins avec peu de lieux). Elle prend la structure spatiale que les termes n'expliquent
+pas : vérifiez-le avec Graphiques › Autocorrélation spatiale des résidus du modèle, et comparez
+les modèles par l'AIC. Les observations sans coordonnées restent hors du modèle. Son edf et son
+test sont dans le tableau des courbes du Résumé, et sa valeur en chaque observation est une
+colonne des résultats du modèle que la carte peut montrer. La formule R l'écrit s(x, y),
+s(x, y, k = 40) ou s(lat, lon, bs = "sos"). L'export vers R ne la refait pas encore : un tel
+modèle y est refusé.
 Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/secteur).
 Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations

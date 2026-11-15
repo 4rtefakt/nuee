@@ -13,6 +13,7 @@ import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
 import { ECRITURE, filtresOuverture, acceptOuverture, filtresSpectres, acceptSpectres } from './formats.js';
 import { ouvrirPalette } from './palette.js';
+import { zip } from './zip.js';
 // Analyses kept in modules of their own (vues_*.js): imported here, each adds its views to VUES
 // (panneaux.js), their icons (commandes.js: ICONES_VUES), its views per model type
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
@@ -507,8 +508,43 @@ const app = {
       `Interface: ${langueActuelle()}`].filter(Boolean).join('\n');
     dialogue({ titre: t('diagnostic'), contenu: el('div', {}, el('p', { class: 'note' }, t('diagnostic_aide')), el('pre', { class: 'diagnostic' }, texte)),
       boutons: [{ libelle: t('signaler_probleme'), action: () => { window.open('https://github.com/4rtefakt/nuee/issues/new/choose'); return false; } },
+        { libelle: t('rapport_probleme'), action: () => { app.rapportProbleme(texte); return true; } },
         { libelle: t('copier_texte'), action: () => { navigator.clipboard.writeText(texte).then(() => statut(t('texte_copie'))); return true; } },
         { libelle: t('fermer'), principal: true, action: () => true }] });
+  },
+  // A problem report: a .zip to send with a message, written where the user chooses (nothing is
+  // sent): the diagnostic text, the session's journal (each action's call to the engine, the
+  // engine's errors and the R console's commands, without its images) and, if ticked, the active
+  // project as Save would write it (R: projet_texte), with its data.
+  async rapportProbleme(diagnostic) {
+    const pid = app.projetActif();
+    const avecProjet = el('input', { type: 'checkbox' });
+    const octets = (texte) => new TextEncoder().encode(texte);
+    const ecrire = async () => {
+      const j = await demander('journal', { depuis: 0 });
+      const journal = [].concat(j.entrees || []).filter((e) => e.type !== 'image').map((e) => `[${e.heure}] ${e.type}\n${e.texte}`).join('\n\n');
+      const fichiers = [['diagnostic.txt', octets(diagnostic)], ['journal.txt', octets(journal)]];
+      if (pid && avecProjet.checked) {
+        const r = await demander('projet_texte', { projet: pid, version: VERSION });
+        fichiers.push([`${r.nom}.nuee`, octets(r.texte)]);
+      }
+      const contenu = zip(fichiers);
+      const nom = `nuee-rapport-${new Date().toISOString().slice(0, 10)}.zip`;
+      if (bureau) {
+        const chemin = await bureau.enregistrerSous(nom, [{ name: 'zip', extensions: ['zip'] }]);
+        if (!chemin) return;
+        await bureau.ecrireFichier(chemin, contenu);
+        statut(t('rapport_probleme_ecrit', { chemin }));
+      } else {
+        const a = el('a', { href: URL.createObjectURL(new Blob([contenu], { type: 'application/zip' })), download: nom });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      }
+    };
+    dialogue({ titre: t('rapport_probleme'), contenu: el('div', {}, el('p', {}, t('rapport_probleme_texte')),
+      pid ? el('label', { class: 'champ' }, avecProjet, t('rapport_probleme_projet', { nom: etat.projets[pid].nom })) : null),
+    boutons: [{ libelle: t('annuler'), action: () => true },
+      { libelle: bureau ? t('choisir_emplacement') : t('telecharger'), principal: true, action: () => { occupe(ecrire).catch((e) => statut(e.message, true)); return true; } }] });
   },
   // looking for a new version at start-up (installed copy only; null otherwise)
   majAuto: () => (etat.majAuto === undefined ? null : etat.majAuto),

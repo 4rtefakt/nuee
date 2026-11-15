@@ -284,6 +284,7 @@ definition_interface <- function(p, q) {
                       lisses = if (length(q$lisses)) as.numeric(unlist(q$lisses)), decalage = if (length(q$decalage)) as.numeric(q$decalage),
                       croises_reglages = if (length(q$croises_reglages)) q$croises_reglages, k_courbes = if (length(q$k_courbes)) q$k_courbes,
                       options = q$options, condition = q$condition, par_courbes = if (length(q$par_courbes)) q$par_courbes,
+                      lisse_spatial = if (length(q$lisse_spatial)) q$lisse_spatial,
                       validation = q$validation)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
@@ -1221,6 +1222,15 @@ DEMANDES <- list(
   # La session (modèles calculés, vues ouvertes, sélections) est décrite par l'interface, en
   # texte JSON qu'elle seule relit ; elle est enregistrée avec le projet.
   session = function(q) list(session = projet(q$projet)$session %||% NULL),
+  # Le projet tel qu'Enregistrer l'écrirait (un .nuee), en texte : joint à un rapport de problème
+  # quand l'utilisateur le demande (app.js : rapportProbleme).
+  projet_texte = function(q) {
+    p <- projet(q$projet)
+    f <- file.path(tempdir(), paste0(nouvel_id("rapport"), ".nuee"))
+    on.exit(unlink(f))
+    enregistrer_projet(p, f, as.character(q$version %||% ""))
+    list(nom = nom_fichier(p$nom), texte = paste(readLines(f, encoding = "UTF-8", warn = FALSE), collapse = "\n"))
+  },
   enregistrer = function(q) {
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
