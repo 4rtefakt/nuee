@@ -460,7 +460,8 @@ ecart_lda <- function(m, e, langue) {
 
 # ---------------------------------------------------------------- les k-moyennes
 
-code_fonctions_kmeans <- function(m, tx) {
+# (la mise à l'échelle d'un terme : aussi dans le script d'un test de Mantel, communautes_script.R)
+code_echelle_terme <- function(tx) {
   c(commentaire(tx("La mise à l'échelle d'un terme (pretraitement.R de Nuée) : UV, centré et divisé par son écart-type ; Par (Pareto), par sa racine ; Ctr, centré ; none, tel quel ; puis multiplié par sa pondération (bloc, modificateur).",
                    "The scaling of a term (Nuée's pretraitement.R): UV, centred and divided by its standard deviation; Par (Pareto), by its square root; Ctr, centred; none, as is; then multiplied by its weighting (block, modifier).")),
     "echelle_terme <- function(x, type, ponderation = 1) {",
@@ -468,7 +469,11 @@ code_fonctions_kmeans <- function(m, tx) {
     "  centre <- if (type == \"none\") 0 else mean(x)",
     "  poids <- switch(type, UV = if (et > 0) 1 / et else 0, Par = if (et > 0) 1 / sqrt(et) else 0, Ctr = 1, none = 1)",
     "  (x - centre) * poids * ponderation",
-    "}",
+    "}")
+}
+
+code_fonctions_kmeans <- function(m, tx) {
+  c(code_echelle_terme(tx),
     "",
     commentaire(tx(sprintf("Les k-moyennes (algorithme de Hartigan et Wong), le meilleur de %d départs au hasard (graine 1), les groupes numérotés du plus grand au plus petit.", DEPARTS_KMEANS),
                    sprintf("The k-means (Hartigan and Wong algorithm), the best of %d random starts (seed 1), the clusters numbered from the largest to the smallest.", DEPARTS_KMEANS))),
