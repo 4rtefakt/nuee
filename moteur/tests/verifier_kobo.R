@@ -15,6 +15,13 @@
 # réponses), points en longitude et latitude et coordonnées du projet, dates lues comme le temps,
 # groupes répétés avec les colonnes jointes de leurs tables parentes ; le projet enregistré puis
 # relu, le texte des Méthodes, l'appel du journal, l'anglais, et les refus.
+# Puis des exports réels, téléchargés de KoboToolbox 2.026.37g et d'ODK Central v2026.3.1
+# (tests/donnees/collecte, README.txt) : un même formulaire, les mêmes 20 envois, un export par
+# réglage (valeurs XML ou libellés en français et en anglais, groupes dans les en-têtes ou non,
+# séparés par « / », « . », « - » ou « _ », choix multiples en une colonne, en colonnes 0/1 ou les
+# deux, dates en cellules Excel ou en texte, classeur et CSV ; archive d'ODK avec et sans chemins
+# des groupes et choix séparés, son CSV des envois seul), chaque import comparé, valeur par valeur,
+# à ce qui a été envoyé, avec et sans le formulaire.
 #   Rscript moteur/tests/verifier_kobo.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -342,8 +349,17 @@ verifier("avec le formulaire : les noms des questions, les libellés français d
          identical(categories(pkf, "habitat"), c("Forest", "Grassland", "Wetland", "Heathland")) && identical(valeurs(pkf, "habitat"), unname(lib_en[S$habitat])))
 verifier("les colonnes 0/1 aux libellés de l'export : nommées par le code du choix", identical(vkf[grepl("^meteo", vkf)], paste0("meteo_", meteo)) &&
          identical(valeurs(pkf, "meteo_nuages"), zero_un(S$meteo, "nuages")))
-verifier("un choix multiple en libellés sans colonnes 0/1 reste du texte, et le résumé le dit",
-         "menaces" %in% vkf && any(startsWith(attr(pkf, "collecte")$phrases, "Choix multiples gardés en texte")))
+verifier("un choix multiple en libellés sans colonnes 0/1 : une colonne par choix d'après les libellés du formulaire, dans son ordre",
+         identical(vkf[grepl("^menaces", vkf)], paste0("menaces_", menaces)) && !"menaces" %in% vkf &&
+         all(vapply(menaces, function(c) identical(valeurs(pkf, paste0("menaces_", c)), zero_un(S$menaces, c)), TRUE)) &&
+         any(grepl("Choix multiples « menaces » en 3 colonnes 0/1 (d'après les réponses", attr(pkf, "collecte")$phrases, fixed = TRUE)))
+autre <- f("libelles_inconnus.csv")
+utils::write.table(df(start = debuts[1:2], Menaces = c("Pâturage Incendie", "Déchets"), `_id` = 1:2, `_uuid` = S$uuid[1:2], `_index` = 1:2), autre,
+                   sep = ";", row.names = FALSE, na = "", fileEncoding = "UTF-8")
+pin <- importer_collecte(autre, formulaire = form)
+verifier("… et reste du texte quand un libellé n'est pas du formulaire, ce que le résumé dit",
+         identical(identifiant(pin, "menaces"), c("Pâturage Incendie", "Déchets")) && !any(startsWith(variables(pin), "menaces_")) &&
+         any(startsWith(attr(pin, "collecte")$phrases, "Choix multiples gardés en texte")))
 
 cat("L'archive d'ODK Central\n")
 xo <- lire_collecte(odk_zip)
@@ -454,6 +470,273 @@ verifier("des noms courts et uniques", identical(kobo_noms_courts(list(c("a", "x
                                                  c("a_x_q", "b_x_q", "habitat", "g_habitat", "z")))
 pt <- kobo_points_texte(c("43.6 3.8 52 4.8", NA, "91 3 0 0"))
 verifier("des points GPS en texte : une latitude hors des bornes n'en est pas un", identical(pt[1, ], c(43.6, 3.8, 52, 4.8)) && !isTRUE(attr(pt, "valide")))
+lx <- list(noms = c("pre", "preh", "hum"), libelles = matrix(c("Prairie", "Prairie humide", "Humide", "Meadow", "Wet meadow", "Wet"), 3,
+                                                             dimnames = list(NULL, c("Français (fr)", "English (en)"))))
+verifier("des choix multiples en libellés : découpés aux libellés, un libellé à espaces compris, dans une langue ; sinon rien",
+         identical(kobo_libelles_reponses(c("Prairie humide Humide", NA, "Prairie"), lx), list(c("preh", "hum"), character(0), "pre")) &&
+         identical(kobo_libelles_reponses(c("Wet meadow", "Meadow Wet"), lx), list("preh", c("pre", "hum"))) &&
+         is.null(kobo_libelles_reponses(c("Prairie sèche"), lx)))
+verifier("le séparateur des groupes d'un export de KoboToolbox d'après ses en-têtes ; « / » sans groupes",
+         kobo_separateur(c("site.nom", "site.habitat", "meteo.soleil", "vent")) == "." && kobo_separateur(c("Site-Nom du site", "Site-Habitat")) == "-" &&
+         kobo_separateur(c("nom", "habitat", "temp-air")) == "/" && kobo_separateur(c("site/nom", "site/habitat", "a.b", "a.c")) == "/")
+
+# ---------------------------------------------------------------- les exports réels
+
+# Des exports téléchargés de KoboToolbox 2.026.37g et d'ODK Central v2026.3.1, installés pour ces
+# essais (tests/donnees/collecte/README.txt) : un même formulaire, les mêmes 20 envois envoyés aux
+# deux serveurs comme un téléphone les envoie (envois.csv, observations.csv, individus.csv), un
+# export par réglage de leurs exports. Chaque import comparé, valeur par valeur, à ce qui a été
+# envoyé : les colonnes et leurs noms, les catégories et leur ordre, les colonnes 0/1, le point
+# GPS et les coordonnées du projet, les dates, les groupes répétés et les colonnes jointes de leurs
+# tables parentes, les métadonnées retirées ou gardées.
+reel <- function(...) file.path("moteur", "tests", "donnees", "collecte", ...)
+lire_verite <- function(n) utils::read.csv(reel(n), colClasses = "character", na.strings = "", fileEncoding = "UTF-8", check.names = FALSE)
+Ev <- lire_verite("envois.csv")
+Ob <- lire_verite("observations.csv")
+In <- lire_verite("individus.csv")
+choix_reels <- as.data.frame(readxl::read_excel(reel("formulaire_odk.xlsx"), sheet = "choices"))
+FR <- "label::Français (fr)"
+EN <- "label::English (en)"
+form_kobo <- reel("formulaire_kobo.xlsx")
+form_odk <- reel("formulaire_odk.xlsx")
+kobo <- function(n) reel("kobo", n)
+odk <- function(n) reel("odk", n)
+nombre <- function(x) suppressWarnings(as.numeric(x))
+# (le libellé de codes dans une colonne du formulaire, ou les codes eux-mêmes : L = NULL)
+libelle_reel <- function(liste, codes, L) {
+  if (is.null(L)) return(codes)
+  ch <- choix_reels[choix_reels$list_name == liste, ]
+  ch[[L]][match(codes, ch$name)]
+}
+categories_reelles <- function(liste, L) choix_reels[[L]][choix_reels$list_name == liste]
+codes_meteo <- choix_reels$name[choix_reels$list_name == "meteo"]
+minute <- function(x) sub("^([0-9-]+)T([0-9]{2}:[0-9]{2}).*$", "\\1 \\2", x)
+
+# Ce que l'import des envois doit donner : une liste de colonnes, par nom (`noms` : ceux qui
+# diffèrent des noms des questions ; `meteo = "texte"` : le choix multiple gardé en codes).
+attendu_envois <- function(L, noms = list(), meteo = "colonnes") {
+  n <- function(k) noms[[k]] %||% k
+  d <- list()
+  d[[n("nom_site")]] <- Ev$nom_site
+  d[[n("habitat")]] <- libelle_reel("habitat", Ev$habitat, L)
+  d[[n("gps_longitude")]] <- nombre(Ev$longitude)
+  d[[n("gps_latitude")]] <- nombre(Ev$latitude)
+  d[[n("gps_altitude")]] <- nombre(Ev$altitude_gps)
+  d[[n("gps_precision")]] <- nombre(Ev$precision)
+  d[[n("altitude")]] <- nombre(Ev$altitude)
+  d[[n("remarques")]] <- Ev$remarques_site
+  d[[n("date_releve")]] <- Ev$date_releve
+  d[[n("debut_comptage")]] <- minute(Ev$debut_comptage)
+  d[[n("vent")]] <- nombre(Ev$vent)
+  if (meteo == "texte") d[[n("meteo")]] <- Ev$meteo else for (code in codes_meteo) d[[n(paste0("meteo_", code))]] <- zero_un(Ev$meteo, code)
+  d[[n("remarques_fin")]] <- Ev$remarques_fin
+  d
+}
+# (une ligne par observation, avec des colonnes de son envoi ; une par individu, avec des
+# colonnes de son observation et de son envoi)
+attendu_observations <- function(L) {
+  k <- as.integer(Ob$envoi)
+  list(espece = libelle_reel("espece", Ob$espece, L), effectif = nombre(Ob$effectif), comportement = libelle_reel("comportement", Ob$comportement, L),
+       nom_site = Ev$nom_site[k], date_releve = Ev$date_releve[k], habitat = libelle_reel("habitat", Ev$habitat, L)[k], gps_latitude = nombre(Ev$latitude)[k],
+       meteo_pluie = zero_un(Ev$meteo, "pluie")[k])
+}
+attendu_individus <- function(L) {
+  k <- as.integer(In$envoi)
+  j <- match(paste(In$envoi, In$observation), paste(Ob$envoi, Ob$observation))
+  list(sexe = libelle_reel("sexe", In$sexe, L), age = libelle_reel("age", In$age, L), espece = libelle_reel("espece", Ob$espece, L)[j],
+       effectif = nombre(Ob$effectif)[j], nom_site = Ev$nom_site[k], date_releve = Ev$date_releve[k], gps_longitude = nombre(Ev$longitude)[k])
+}
+
+# Les écarts d'un import à ce qui est attendu : "" s'il n'y en a pas. Les lignes appariées par
+# `cle` (dans l'ordre de l'export : chez ODK, les envois les plus récents d'abord) ; `categories` :
+# celles attendues de variables qualitatives, dans leur ordre ; `coordonnees` : les colonnes des
+# coordonnées du projet (WGS 84) ; `en_plus` : les colonnes que l'import peut avoir en plus (NULL :
+# toutes).
+ecarts <- function(p, attendu, cle = c("nom_site", "date_releve"), categories = list(), coordonnees = c("gps_longitude", "gps_latitude"), en_plus = character(0)) {
+  tous <- c(variables(p), p$observation_id_names)
+  r <- character(0)
+  if (length(a <- setdiff(names(attendu), tous))) r <- c(r, paste("absentes :", paste(a, collapse = ", ")))
+  if (!is.null(en_plus) && length(a <- setdiff(variables(p), c(names(attendu), en_plus)))) r <- c(r, paste("en plus :", paste(a, collapse = ", ")))
+  if (length(p$observations) != length(attendu[[1]])) r <- c(r, sprintf("%d lignes au lieu de %d", length(p$observations), length(attendu[[1]])))
+  if (length(r)) return(paste(r, collapse = " ; "))
+  rang <- function(x) stats::ave(seq_along(x), x, FUN = seq_along)
+  cle_p <- do.call(paste, c(lapply(cle, function(k) lire(p, k)), sep = "|"))
+  cle_a <- do.call(paste, c(unname(attendu[cle]), sep = "|"))
+  ordre <- match(paste(cle_a, rang(cle_a)), paste(cle_p, rang(cle_p)))
+  if (anyNA(ordre)) return(paste("lignes sans correspondance :", cle_a[is.na(ordre)][1]))
+  for (k in names(attendu)) {
+    x <- lire(p, k)[ordre]
+    a <- attendu[[k]]
+    if (is.numeric(a)) x <- nombre(x)
+    pareil <- identical(is.na(x), is.na(a)) && if (is.numeric(a)) isTRUE(all.equal(x[!is.na(x)], a[!is.na(a)])) else identical(as.character(x[!is.na(x)]), as.character(a[!is.na(a)]))
+    if (!pareil) {
+      i <- which(is.na(x) != is.na(a) | (!is.na(x) & !is.na(a) & as.character(x) != as.character(a)))[1]
+      r <- c(r, sprintf("%s, ligne %d : %s au lieu de %s", k, i, deparse(x[i]), deparse(a[i])))
+    }
+  }
+  for (k in names(categories)) if (!identical(categories(p, k), categories[[k]])) r <- c(r, sprintf("catégories de %s : %s", k, paste(categories(p, k), collapse = ", ")))
+  co <- coordonnees_projet(p)
+  if (!is.null(coordonnees) && !(identical(c(co$nom_x, co$nom_y), coordonnees) && identical(as.numeric(co$systeme), 4326))) r <- c(r, "coordonnées du projet")
+  paste(r, collapse = " ; ")
+}
+verifier_reel <- function(nom, ecart) {
+  verifier(nom, identical(ecart, ""))
+  if (!identical(ecart, "")) cat("          ", ecart, "\n")
+}
+habitats <- function(L) list(habitat = categories_reelles("habitat", L))
+odk_noms <- list(remarques = "site_remarques", remarques_fin = "fin_remarques")
+exports_kobo <- c("xml_groupes.xlsx", "xml_groupes_texte.xlsx", "xml_sans_groupes_choix_un.xlsx", "xml_groupes_point_choix_01.xlsx", "xml_groupes_souligne.xlsx",
+                  "fr_groupes.xlsx", "fr_groupes_point_choix_01.xlsx", "en_groupes_tiret_choix_un.xlsx", "xml_groupes.csv", "fr_sans_groupes.csv", "en_groupes_point_choix_01.csv")
+exports_odk <- c("groupes.zip", "sans_groupes.zip", "groupes_choix_separes.zip", "sans_groupes_choix_separes.zip", "nuee_essai_oiseaux.csv")
+
+cat("Les exports réels : reconnus\n")
+verifier("chaque export reconnu, de KoboToolbox ou d'ODK Central, par ses seuls en-têtes ; pas les formulaires",
+         all(vapply(exports_kobo, function(x) identical(detecter_collecte(kobo(x))$outil, "kobo"), TRUE)) &&
+         all(vapply(exports_odk, function(x) identical(detecter_collecte(odk(x))$outil, "odk"), TRUE)) &&
+         is.null(detecter_collecte(form_kobo)) && is.null(detecter_collecte(reel("formulaire_telecharge_kobo.xlsx"))))
+xk <- lire_collecte(kobo("xml_groupes.xlsx"))
+principale <- "Suivi des oiseaux nicheurs d..."
+verifier("le classeur de KoboToolbox : la feuille des envois au nom du formulaire coupé, ses groupes répétés et leurs parents (_parent_table_name : le nom entier)",
+         identical(names(xk$tables), c(principale, "observation", "individu")) && identical(xk$tables$observation$parent, principale) &&
+         identical(xk$tables$individu$parent, "observation") && identical(unname(vapply(xk$tables, function(t) nrow(t$donnees), 0L)), c(20L, 37L, 28L)))
+xo <- lire_collecte(odk("groupes.zip"))
+verifier("l'archive d'ODK Central : le CSV des envois, puis observation et individu (le nom seul de la répétition dans la répétition), reliés par KEY",
+         identical(names(xo$tables), c("nuee_essai_oiseaux", "observation", "individu")) && identical(xo$tables$individu$parent, "observation") &&
+         identical(unname(vapply(xo$tables, function(t) nrow(t$donnees), 0L)), c(20L, 37L, 28L)))
+
+cat("Les exports réels de KoboToolbox, avec le formulaire\n")
+for (x in exports_kobo) {
+  p <- importer_collecte(kobo(x), formulaire = form_kobo)
+  verifier_reel(sprintf("%s : chaque valeur des envois, les catégories et les libellés français du formulaire, les colonnes 0/1, le point et les coordonnées", x),
+                ecarts(p, attendu_envois(FR), categories = habitats(FR)))
+}
+for (x in c("fr_groupes.xlsx", "en_groupes_tiret_choix_un.xlsx", "en_groupes_point_choix_01.csv")) {
+  p <- importer_collecte(kobo(x), formulaire = form_kobo, langue = "English (en)")
+  verifier_reel(sprintf("%s, les libellés en anglais", x), ecarts(p, attendu_envois(EN), categories = habitats(EN)))
+}
+p <- importer_collecte(kobo("en_groupes_tiret_choix_un.xlsx"), formulaire = form_kobo)
+verifier("un choix multiple exporté en une colonne de libellés : ses colonnes 0/1 d'après eux, dans l'ordre du formulaire",
+         identical(variables(p)[startsWith(variables(p), "meteo")], paste0("meteo_", codes_meteo)) &&
+         any(grepl("Choix multiples « meteo » en 5 colonnes 0/1 (d'après les réponses", attr(p, "collecte")$phrases, fixed = TRUE)))
+p <- importer_collecte(kobo("xml_groupes.xlsx"), formulaire = reel("formulaire_telecharge_kobo.xlsx"))
+verifier_reel("le formulaire tel que KoboToolbox le rend (Download XLS : datetime, sans form_title)", ecarts(p, attendu_envois(FR), categories = habitats(FR)))
+for (x in c("xml_groupes.xlsx", "xml_groupes_souligne.xlsx", "fr_groupes_point_choix_01.xlsx", "en_groupes_tiret_choix_un.xlsx")) {
+  L <- if (startsWith(x, "en")) EN else FR
+  langue <- if (startsWith(x, "en")) "English (en)"
+  p <- importer_collecte(kobo(x), table = "observation", formulaire = form_kobo, langue = langue)
+  verifier_reel(sprintf("%s, les observations : leurs valeurs (le compte corrigé), les colonnes de leur envoi jointes, les coordonnées de l'envoi", x),
+                ecarts(p, attendu_observations(L), c("nom_site", "date_releve", "espece"), list(espece = categories_reelles("espece", L)), en_plus = NULL))
+  p <- importer_collecte(kobo(x), table = "individu", formulaire = form_kobo, langue = langue)
+  verifier_reel(sprintf("%s, les individus : les colonnes de l'observation et de l'envoi, jointes par deux liens", x),
+                ecarts(p, attendu_individus(L), c("nom_site", "date_releve", "espece"), list(sexe = categories_reelles("sexe", L)), en_plus = NULL))
+}
+
+cat("Les exports réels de KoboToolbox, sans le formulaire\n")
+for (x in c("xml_groupes.xlsx", "xml_groupes_point_choix_01.xlsx", "xml_groupes.csv")) {
+  p <- importer_collecte(kobo(x))
+  verifier_reel(sprintf("%s : les codes, les noms sans les groupes (séparés par « / » ou « . »), les colonnes 0/1 de l'export, un seul point", x),
+                ecarts(p, attendu_envois(NULL), categories = list(habitat = sort(unique(stats::na.omit(Ev$habitat)))), en_plus = "merci"))
+}
+p <- importer_collecte(kobo("xml_sans_groupes_choix_un.xlsx"))
+verifier_reel("xml_sans_groupes_choix_un.xlsx : le choix multiple sans colonnes 0/1 reste du texte", ecarts(p, attendu_envois(NULL, meteo = "texte"), en_plus = "merci"))
+lab <- list(nom_site = "Nom du site", habitat = "Habitat", gps_longitude = "Position_longitude", gps_latitude = "Position_latitude", gps_altitude = "Position_altitude",
+            gps_precision = "Position_precision", altitude = "Altitude (m)", remarques = "Remarques sur le site", date_releve = "Date du relevé",
+            debut_comptage = "Début du comptage", vent = "Vent (km/h)", remarques_fin = "Remarques générales")
+for (code in codes_meteo) lab[[paste0("meteo_", code)]] <- paste0("Météo_", libelle_reel("meteo", code, FR))
+p <- importer_collecte(kobo("fr_sans_groupes.csv"))
+verifier_reel("fr_sans_groupes.csv : les libellés en noms et en valeurs, le point et les colonnes 0/1 nommés d'après eux",
+              ecarts(p, attendu_envois(FR, lab), c("Nom du site", "Date du relevé"), coordonnees = c("Position_longitude", "Position_latitude"), en_plus = "Merci !"))
+lab$remarques_fin <- "Fin du relevé/Remarques générales"
+p <- importer_collecte(kobo("fr_groupes.xlsx"))
+verifier_reel("fr_groupes.xlsx : les libellés des groupes retirés, sauf celui d'un groupe d'une seule colonne fait de mots",
+              ecarts(p, attendu_envois(FR, lab), c("Nom du site", "Date du relevé"), coordonnees = c("Position_longitude", "Position_latitude"), en_plus = "Merci !"))
+
+cat("Les exports réels d'ODK Central\n")
+for (x in exports_odk) {
+  p <- importer_collecte(odk(x), formulaire = form_odk)
+  verifier_reel(sprintf("%s : chaque valeur des envois, les deux « remarques » nommées d'après leurs groupes, les catégories, les colonnes 0/1, le point", x),
+                ecarts(p, attendu_envois(FR, odk_noms), categories = habitats(FR)))
+}
+p <- importer_collecte(odk("groupes_choix_separes.zip"), formulaire = form_odk)
+verifier("les colonnes 0/1 d'ODK (choix pris seulement, dans l'ordre alphabétique) dans l'ordre du formulaire ; vides pour l'envoi sans météo, où ODK écrit des 0",
+         identical(variables(p)[startsWith(variables(p), "meteo")], paste0("meteo_", codes_meteo)) && is.na(valeurs(p, "meteo_soleil")[lire(p, "nom_site") == Ev$nom_site[10] &
+                                                                                                                                        lire(p, "date_releve") == Ev$date_releve[10]]) &&
+         any(grepl("Choix multiples « meteo » en 5 colonnes 0/1 (celles de l'export", attr(p, "collecte")$phrases, fixed = TRUE)))
+neige <- lapply(stats::setNames(c("survey", "choices", "settings"), c("survey", "choices", "settings")), function(s) as.data.frame(readxl::read_excel(form_odk, sheet = s)))
+neige$choices <- rbind(neige$choices, stats::setNames(data.frame("meteo", "neige", "Neige", "Snow"), names(neige$choices)))
+openxlsx::write.xlsx(neige, f("formulaire_neige.xlsx"))
+p <- importer_collecte(odk("groupes_choix_separes.zip"), formulaire = f("formulaire_neige.xlsx"))
+verifier("un choix du formulaire qu'aucun envoi n'a pris : sa colonne 0/1 quand même (ODK n'en écrit pas), 0, vide sans réponse",
+         identical(variables(p)[startsWith(variables(p), "meteo")], paste0("meteo_", c(codes_meteo, "neige"))) &&
+         identical(sort(unique(valeurs(p, "meteo_neige")), na.last = TRUE), c(0, NA)) && sum(is.na(valeurs(p, "meteo_neige"))) == 1)
+p <- importer_collecte(odk("groupes.zip"), formulaire = form_odk, langue = "English (en)")
+verifier_reel("groupes.zip, les libellés en anglais", ecarts(p, attendu_envois(EN, odk_noms), categories = habitats(EN)))
+for (x in c("groupes.zip", "sans_groupes.zip", "sans_groupes_choix_separes.zip")) {
+  p <- importer_collecte(odk(x), table = "observation", formulaire = form_odk)
+  verifier_reel(sprintf("%s, les observations, les colonnes de leur envoi jointes par PARENT_KEY (le compte corrigé : l'envoi modifié garde sa clé)", x),
+                ecarts(p, attendu_observations(FR), c("nom_site", "date_releve", "espece"), list(espece = categories_reelles("espece", FR)), en_plus = NULL))
+  p <- importer_collecte(odk(x), table = "individu", formulaire = form_odk)
+  verifier_reel(sprintf("%s, les individus, par les clés de l'observation puis de l'envoi", x),
+                ecarts(p, attendu_individus(FR), c("nom_site", "date_releve", "espece"), list(age = categories_reelles("age", FR)), en_plus = NULL))
+}
+p <- importer_collecte(odk("groupes.zip"))
+verifier_reel("groupes.zip sans le formulaire : les codes, les groupes retirés, le choix multiple en texte", ecarts(p, attendu_envois(NULL, odk_noms, meteo = "texte"), en_plus = "merci"))
+p <- importer_collecte(odk("groupes_choix_separes.zip"))
+verifier_reel("groupes_choix_separes.zip sans le formulaire : les colonnes 0/1 de l'export, vides pour l'envoi sans météo",
+              ecarts(p, attendu_envois(NULL, odk_noms), en_plus = "merci"))
+p <- importer_collecte(odk("sans_groupes_choix_separes.zip"))
+verifier_reel("sans_groupes_choix_separes.zip sans le formulaire : les deux « remarques » distinguées, instanceID retiré",
+              ecarts(p, attendu_envois(NULL, list(remarques_fin = "remarques_1")), en_plus = "merci"))
+ap <- apercu_collecte(odk("sans_groupes_choix_separes.zip"))
+verifier("… instanceID (meta-instanceID sans les chemins des groupes) parmi les métadonnées retirées, l'identifiant qu'on peut garder",
+         !"instanceID" %in% c(variables(p), p$observation_id_names) && "instanceID" %in% ap$retirees &&
+         identical(as.character(ap$metadonnees[[which(vapply(ap$metadonnees, `[[`, "", "role") == "identifiant")]]$colonnes), "instanceID"))
+
+cat("Les exports réels : les métadonnées gardées\n")
+tous_roles <- c("envoi", "auteur", "identifiant", "releve", "validation")
+seconde <- function(x) format(as.POSIXct(substr(x, 1, 19), format = "%Y-%m-%dT%H:%M:%S", tz = "UTC"), "%Y-%m-%d %H:%M:%S")
+instant <- function(x) as.numeric(as.POSIXct(x, tz = "UTC", tryFormats = c("%Y-%m-%d %H:%M:%OS", "%Y-%m-%dT%H:%M:%OS")))
+uid_kobo <- c(Approved = "validation_status_approved", "On Hold" = "validation_status_on_hold", "Not Approved" = "validation_status_not_approved")
+p <- importer_collecte(kobo("xml_groupes.xlsx"), garder = tous_roles, formulaire = form_kobo)
+o <- match(paste(Ev$nom_site, Ev$date_releve), paste(lire(p, "nom_site"), lire(p, "date_releve")))
+verifier("KoboToolbox : l'identifiant (le nouveau pour l'envoi modifié), l'auteur, le statut de validation (son code dans un export en valeurs XML), la date d'envoi",
+         identical(lire(p, "uuid")[o], sub("^uuid:", "", Ev$instanceID)) && all(lire(p, "submitted_by") == "equipe_terrain") &&
+         identical(lire(p, "validation_status")[o], unname(uid_kobo[Ev$validation_kobo])) && all(grepl("^2026-11-15 [0-9:]{8}$", lire(p, "submission_time"))))
+verifier("… le début, la fin et le jour du relevé : les cellules Excel à la seconde près (06:30:20.514 arrondi), sans fuseau",
+         all(abs(instant(lire(p, "start")[o]) - instant(substr(Ev$start, 1, 23))) <= 0.5) && all(abs(instant(lire(p, "end")[o]) - instant(substr(Ev$end, 1, 23))) <= 0.5) &&
+         identical(lire(p, "today")[o], Ev$today))
+p <- importer_collecte(kobo("fr_groupes.xlsx"), garder = "validation", formulaire = form_kobo)
+verifier("… le statut de validation en libellé dans un export en libellés",
+         identical(lire(p, "validation_status")[match(paste(Ev$nom_site, Ev$date_releve), paste(lire(p, "nom_site"), lire(p, "date_releve")))], Ev$validation_kobo))
+p <- importer_collecte(kobo("xml_groupes.csv"), garder = "releve", formulaire = form_kobo)
+verifier("… et le texte d'un CSV : le début et la fin sans fraction de seconde ni fuseau",
+         identical(lire(p, "start")[match(paste(Ev$nom_site, Ev$date_releve), paste(lire(p, "nom_site"), lire(p, "date_releve")))], seconde(Ev$start)))
+p <- importer_collecte(kobo("xml_groupes.xlsx"), table = "individu", garder = c("identifiant", "auteur"), formulaire = form_kobo)
+verifier("… jointes aux lignes d'un groupe répété depuis la table des envois, pas les copies _submission_ de sa feuille",
+         identical(sort(unique(lire(p, "uuid"))), sort(sub("^uuid:", "", Ev$instanceID[unique(as.integer(In$envoi))]))) &&
+         !any(grepl("submission_", c(variables(p), p$observation_id_names))))
+p <- importer_collecte(odk("groupes.zip"), garder = tous_roles, formulaire = form_odk)
+o <- match(paste(Ev$nom_site, Ev$date_releve), paste(lire(p, "nom_site"), lire(p, "date_releve")))
+verifier("ODK Central : l'identifiant (meta-instanceID : le nouveau pour l'envoi modifié), l'auteur, l'état de revue, la date d'envoi, le début du relevé",
+         identical(lire(p, "instanceID")[o], Ev$instanceID) && all(lire(p, "SubmitterName") == "Équipe terrain") && length(unique(lire(p, "SubmitterID"))) == 1 &&
+         identical(lire(p, "ReviewState")[o], Ev$revue_odk) && all(grepl("^2026-11-15 [0-9:]{8}$", lire(p, "SubmissionDate"))) &&
+         identical(lire(p, "start")[o], seconde(Ev$start)) && identical(lire(p, "today")[o], Ev$today))
+p <- importer_collecte(odk("sans_groupes.zip"), garder = "identifiant", formulaire = form_odk)
+verifier("… instanceID sans les chemins des groupes, gardé comme l'identifiant",
+         identical(lire(p, "instanceID")[match(paste(Ev$nom_site, Ev$date_releve), paste(lire(p, "nom_site"), lire(p, "date_releve")))], Ev$instanceID))
+
+cat("Les exports réels : l'aperçu de l'import (le dialogue)\n")
+ap <- apercu_collecte(kobo("fr_groupes.xlsx"), table = "individu", formulaire = form_kobo)
+verifier("KoboToolbox : les trois tables, leurs lignes, leurs parents et leurs niveaux ; les métadonnées qu'on peut garder, avec leurs colonnes",
+         identical(vapply(ap$tables, `[[`, "", "nom"), c(principale, "observation", "individu")) && identical(vapply(ap$tables, `[[`, 0L, "lignes"), c(20L, 37L, 28L)) &&
+         identical(vapply(ap$tables, `[[`, 0L, "niveau"), 0:2) && identical(vapply(ap$metadonnees, `[[`, "", "role"), tous_roles) &&
+         identical(lapply(ap$metadonnees, function(m) as.character(m$colonnes)), list("_submission_time", "_submitted_by", "_uuid", c("start", "end", "today"), "_validation_status")) &&
+         identical(vapply(ap$parents, `[[`, "", "table"), c("observation", principale)) && identical(as.character(ap$formulaire$langues), c("Français (fr)", "English (en)")))
+ap <- apercu_collecte(odk("groupes.zip"), table = "observation", formulaire = form_odk, langue = "English (en)")
+verifier("ODK Central : les tables, les métadonnées (SubmitterID et SubmitterName pour l'auteur), la langue choisie",
+         identical(vapply(ap$tables, `[[`, "", "nom"), c("nuee_essai_oiseaux", "observation", "individu")) &&
+         identical(lapply(ap$metadonnees, function(m) as.character(m$colonnes)), list("SubmissionDate", c("SubmitterID", "SubmitterName"), "meta-instanceID", c("start", "end", "today"), "ReviewState")) &&
+         identical(ap$formulaire$langue, "English (en)") && startsWith(ap$phrases[1], "Export ODK Central (archive .zip, 3 tables) : le groupe répété « observation », 37 ligne(s), de 19 envoi(s)."))
 
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
