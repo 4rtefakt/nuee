@@ -104,6 +104,7 @@ verifier("ce que l'interface reçoit se met en JSON", inherits(jsonlite::toJSON(
 
 if (avec_vegan) {
   cat("Comparaison avec vegan\n")
+  grDevices::pdf(NULL)  # (rarecurve lit par("col") même quand il ne dessine pas : pas de Rplots.pdf)
   Xp <- X[pleines, ]
   rownames(Xp) <- sprintf("r%02d", which(garde)[pleines])  # (rarecurve(tidy = TRUE) nomme les relevés)
   rv <- vegan::rarefy(Xp, sample = r$taille, se = TRUE)
