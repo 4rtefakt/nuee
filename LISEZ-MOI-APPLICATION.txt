@@ -396,8 +396,8 @@ Exporter vers R (script, R Markdown, Quarto)
 --------------------------------------------
 Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
 envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul,
-en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R), commenté dans la
-langue de l'export, en quatre parties :
+en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R ; un NMDS : MASS, livré
+avec R lui aussi), commenté dans la langue de l'export, en quatre parties :
   1. les fonctions : l'algorithme NIPALS, la validation croisée, et seulement ce que ce
      modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;
   2. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
@@ -1378,7 +1378,9 @@ Les vues : Espèces indicatrices (le tableau, qui se trie ; p ≤ 0,05 en rouge 
 (la valeur de chaque espèce pour son groupe, de la couleur du groupe, pâle quand elle n'est pas
 significative ; ou A et B d'une espèce dans chaque groupe), Résumé (le nombre d'espèces retenues
 à 0,05, p brutes et corrigées, et par groupe). Les statistiques sont celles de
-indicspecies::multipatt et, pour les mêmes permutations, les mêmes valeurs p.
+indicspecies::multipatt et, pour les mêmes permutations, les mêmes valeurs p. Texte des
+méthodes, export et rapport comme pour les autres modèles ; Exporter vers R refait l'analyse
+avec R seul, les fonctions du moteur lui-même et les mêmes permutations.
 
 Raréfaction et accumulation des espèces
 ---------------------------------------
@@ -1468,10 +1470,14 @@ spatiales), sans variable X : des relevés proches se ressemblent-ils plus (la d
 la distance), et avec le corrélogramme, jusqu'à quelle distance.
 
 Les quatre exportent leurs tableaux (Fichier › Exporter), écrivent leur texte des méthodes avec
-ses références et font un rapport ; elles ne prédisent pas de nouvelles observations et n'ont
-pas encore d'export vers R. Les résultats sont ceux de vegan (vegdist, wcmdscale, envfit,
-metaMDS avec isoMDS, adonis2, betadisper, mantel, mantel.correlog) : les mêmes valeurs, et pour
-les mêmes permutations, les mêmes valeurs p.
+ses références et font un rapport ; elles ne prédisent pas de nouvelles observations. Les
+résultats sont ceux de vegan (vegdist, wcmdscale, envfit, metaMDS avec isoMDS, adonis2,
+betadisper, mantel, mantel.correlog) : les mêmes valeurs, et pour les mêmes permutations, les
+mêmes valeurs p. Fichier › Exporter vers R écrit un script, ou un rapport R Markdown ou Quarto,
+qui les refait avec R seul (et MASS, livré avec R, pour le NMDS) : ses fonctions sont celles du
+moteur de Nuée, recopiées telles qu'il les écrit ; puis les données du modèle (les coordonnées
+pour un test de Mantel géographique), sa transformation, sa distance et ses réglages, les mêmes
+permutations et les mêmes départs, donc les mêmes valeurs p et le même NMDS.
 
 Arbres de décision, analyse discriminante linéaire et k-moyennes
 ----------------------------------------------------------------

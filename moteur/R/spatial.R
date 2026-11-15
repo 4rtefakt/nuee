@@ -363,9 +363,12 @@ RAYON_TERRE <- 6371008.8  # (le rayon moyen de l'ellipsoïde WGS 84, en mètres)
 # Les distances (en mètres) entre des points : le long d'un grand cercle (formule de haversine)
 # pour des longitudes et latitudes, en ligne droite pour des coordonnées planes. Une matrice ;
 # `y2`, `x2` : un second jeu de points (les colonnes), sinon les mêmes.
-distances_points <- function(x, y, systeme, x2 = x, y2 = y) {
-  s <- systeme_coordonnees(systeme)
-  if (s$type == "lonlat") {
+distances_points <- function(x, y, systeme, x2 = x, y2 = y) distances_entre_points(x, y, systeme_coordonnees(systeme)$type == "lonlat", x2, y2)
+
+# (le calcul, pour des longitudes et latitudes en degrés, `lonlat`, ou des coordonnées planes ; le
+# script d'un test de Mantel géographique l'écrit : communautes_script.R)
+distances_entre_points <- function(x, y, lonlat, x2 = x, y2 = y) {
+  if (lonlat) {
     p1 <- rad(y)
     p2 <- rad(y2)
     dp <- outer(p1, p2, "-")

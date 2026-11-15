@@ -18,6 +18,8 @@
 # de permutations où elle est au moins aussi grande + 1) / (permutations + 1). Une espèce dont la
 # combinaison est celle de tous les groupes (présente partout) n'est pas testée (indicspecies : NA).
 # Les p corrigées sur les espèces (Benjamini–Hochberg ou Holm) sont données à côté des p brutes.
+# L'export vers R est dans communautes_script.R : son script reprend les fonctions de ce fichier
+# telles qu'elles y sont écrites.
 
 # ---------------------------------------------------------------- les calculs
 
@@ -56,6 +58,18 @@ statistiques_indval <- function(X, g, C, egalises = TRUE) {
 meilleures_indval <- function(IV) {
   j <- max.col(t(IV), ties.method = "first")
   list(rang = j, valeur = IV[cbind(j, seq_len(ncol(IV)))])
+}
+
+# Le test par permutation de la plus grande valeur de chaque espèce (`valeur`) : pour chaque
+# permutation (une ligne de P) des groupes des observations, la plus grande valeur de l'espèce
+# recalculée ; p = (nombre de permutations où elle est au moins aussi grande + 1) / (permutations + 1).
+test_indval <- function(X, g, C, egalises, valeur, P) {
+  plus <- numeric(ncol(X))
+  for (b in seq_len(nrow(P))) {
+    vb <- meilleures_indval(statistiques_indval(X, g[P[b, ]], C, egalises)$IndVal)$valeur
+    plus <- plus + (vb >= valeur - EPS_PERMUTATIONS)
+  }
+  (plus + 1) / (nrow(P) + 1)
 }
 
 # Les réglages (d$options) : l'indice ("IndVal.g" ou "IndVal"), l'ordre le plus grand des
@@ -129,12 +143,7 @@ ajuster_indval <- function(projet, d) {
   m$p <- rep(NA_real_, ncol(X))
   if (o$permutations > 0) {
     P <- permutations_lignes(m$N, o$permutations, strates, o$graine)
-    plus <- numeric(ncol(X))
-    for (b in seq_len(nrow(P))) {
-      vb <- meilleures_indval(statistiques_indval(X, g[P[b, ]], C, egalises)$IndVal)$valeur
-      plus <- plus + (vb >= m$valeur - EPS_PERMUTATIONS)
-    }
-    m$p <- (plus + 1) / (nrow(P) + 1)
+    m$p <- test_indval(X, g, C, egalises, m$valeur, P)
     m$p[tous[m$meilleure]] <- NA
   }
   m$p_ajuste <- rep(NA_real_, ncol(X))

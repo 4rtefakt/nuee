@@ -179,5 +179,80 @@ d0 <- definir_modele(p, "INDVAL", x = NULL, y = u(especes), classe = u("milieu")
 m0 <- ajuster(p, d0)
 verifier("sans permutation : aucune p, le texte le dit", all(is.na(m0$p)) && any(grepl("Aucun test", texte_methodes(p, d0, m0, "fr")$paragraphes)))
 
+cat("Export vers R : scripts et rapport, lancés dans une session neuve\n")
+dossier <- tempfile("indicatrices")
+dir.create(dossier)
+rscript <- file.path(R.home("bin"), "Rscript")
+# lance un script dans une session neuve (sans le moteur, ses graphiques sans fichier), depuis un
+# autre dossier, et garde les objets nommés
+lanceur <- file.path(dossier, "lancer.R")
+writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
+             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+lancer <- function(script, objets) {
+  sortie <- tempfile("sortie", dossier, ".rds")
+  ici <- setwd(dossier)
+  on.exit(setwd(ici))
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(lanceur), shQuote(script), shQuote(sortie), shQuote(paste(objets, collapse = ","))),
+                                       stdout = TRUE, stderr = TRUE))
+  if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
+}
+d5 <- definir_modele(p, "INDVAL", x = NULL, y = u(especes), classe = u("milieu"), echelle = "none", condition = 'site != "S6"',
+                     options = list(permutations = 99, graine = 5, ordre = 2, strates = list(by = "variable", variable = u("site"))))
+cas <- list(list(id = "indval_g", langue = "fr", quoi = "IndVal.g, groupes seuls", d = d1), list(id = "indval_combinaisons", langue = "en", quoi = "IndVal, toutes les combinaisons, Holm", d = d2),
+            list(id = "indval_presences", langue = "fr", quoi = "présences, ordre 2, permutations par site", d = d3), list(id = "indval_sans_test", langue = "en", quoi = "sans permutation", d = d0),
+            list(id = "indval_condition", langue = "en", quoi = "une condition, ordre 2, par site", d = d5))
+for (k in cas) {
+  m <- ajuster(p, k$d)
+  r <- tryCatch(ecrire_script(p, k$d, file.path(dossier, paste0(k$id, ".R")), "moteur", m = m, version = "essai", langue = k$langue), error = function(e) e)
+  if (inherits(r, "error")) {
+    verifier(sprintf("%s (%s) : écrit", k$id, k$quoi), FALSE)
+    cat("    erreur :", conditionMessage(r), "\n")
+    next
+  }
+  n <- function(x) nom_communautes(x, k$langue)
+  s <- lancer(r$script, n(c("statistiques", "meilleures", "p", "p_ajuste", "especes")))
+  st <- s[[n("statistiques")]]
+  texte <- readLines(r$script, encoding = "UTF-8")
+  code <- sub("#.*$", "", texte)
+  memes <- length(s) > 0 && proche(st$A, m$A) && proche(st$B, m$B) && proche(st$IndVal, m$IndVal) &&
+    identical(as.integer(s[[n("meilleures")]][[n("rang")]]), as.integer(m$meilleure)) && proche(s[[n("meilleures")]][[n("valeur")]], m$valeur) &&
+    isTRUE(all.equal(s[[n("p")]], m$p)) && isTRUE(all.equal(s[[n("p_ajuste")]], m$p_ajuste)) &&
+    identical(s[[n("especes")]][[n("groupe")]], table_indval(m)$groupe)
+  verifier(sprintf("%s (%s, %s) : sans écart vu par le moteur ; lancé seul, mêmes A, B, valeurs, groupes et p ; R seul, sans indicspecies", k$id, k$quoi, k$langue),
+           is.null(r$ecart) && memes && !any(grepl("library(", code, fixed = TRUE)) && !any(grepl("indicspecies::", code, fixed = TRUE)) &&
+             (k$langue == "fr" || (!any(grepl("statistiques_indval|meilleures_indval|combinaisons_groupes", texte)) && !any(grepl("^ *#(fr|en)( |$)", texte)))))
+  if (!is.null(r$ecart) || !isTRUE(memes)) cat("    écart :", r$ecart, "/", utils::tail(attr(s, "messages"), 3), "\n")
+}
+texte <- readLines(file.path(dossier, "indval_g.R"), encoding = "UTF-8")
+verifier("le script reprend les fonctions du moteur telles qu'il les écrit (statistiques_indval, test_indval)",
+         all(code_definition_moteur("statistiques_indval", "fr") %in% texte) && all(code_definition_moteur("test_indval", "fr") %in% texte))
+# le rapport : méthodes, code, résultats, références ; compilé avec knitr s'il est installé
+dir.create(ici <- file.path(dossier, "rapport"))
+r <- ecrire_script(p, d3, file.path(ici, "rapport.Rmd"), "moteur", m = m3, version = "essai", langue = "en", donnees = "csv", rdata = TRUE)
+texte <- readLines(r$script, encoding = "UTF-8")
+if (!is.null(r$ecart)) cat("    écart :", r$ecart, "\n")
+debuts <- grep("^```\\{r", texte)
+verifier("rapport R Markdown (en) : méthodes, code, tableau des espèces, références ; données en CSV et .RData à côté",
+         is.null(r$ecart) && any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^```\\{r especes-table", texte)) && any(grepl("^## Methods", texte)) &&
+           any(grepl("^- .*De Cáceres", texte)) && length(r$chemins) == 3 && all(file.exists(r$chemins)))
+if (requireNamespace("knitr", quietly = TRUE)) {
+  compiler <- file.path(dossier, "compiler.R")
+  writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
+               "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(r$script)), stdout = TRUE, stderr = TRUE))
+  md <- file.path(ici, "rapport.md")
+  verifier("rapport R Markdown : se compile avec knitr, avec son tableau et son graphique",
+           file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) && length(list.files(file.path(ici, "figure"), "\\.png$")) >= 1)
+} else {  # sans knitr : le code de ses blocs R tourne dans une session neuve (sans les tableaux de knitr::kable)
+  fins <- vapply(debuts, function(j) j + match("```", texte[-seq_len(j)]), 0)
+  code <- unlist(lapply(seq_along(debuts), function(j) texte[seq(debuts[j] + 1, length.out = fins[j] - debuts[j] - 1)]))
+  writeLines(enc2utf8(c("pdf(NULL)", code[!grepl("knitr::", code)])), file.path(ici, "blocs.R"), useBytes = TRUE)
+  avant <- setwd(ici)
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(file.path(ici, "blocs.R"))), stdout = TRUE, stderr = TRUE))
+  setwd(avant)
+  verifier("rapport R Markdown : le code de ses blocs R tourne (knitr n'est pas installé : pas compilé)", is.null(attr(messages, "status")))
+}
+unlink(dossier, recursive = TRUE)
+
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

@@ -525,5 +525,158 @@ verifier("… en longitudes et latitudes : le long des grands cercles", proche(m
 verifier("sans coordonnées ni X : refusé", nzchar(refus(ajuster(projet_depuis_tableau(dg, "sans"), definir_modele(projet_depuis_tableau(dg, "sans"), "MANTEL", x = numeric(0),
            y = ug(sprintf("e%d", 1:6)), observations = numeros_observations(pg), options = list(distance_x = "geographique"))))))
 
+# ---------------------------------------------------------------- l'export vers R
+
+cat("Export vers R : scripts et rapports, lancés dans une session neuve\n")
+dossier <- tempfile("communautes")
+dir.create(dossier)
+rscript <- file.path(R.home("bin"), "Rscript")
+# lance un script dans une session neuve (sans le moteur, ses graphiques sans fichier), depuis un
+# autre dossier, et garde les objets nommés
+lanceur <- file.path(dossier, "lancer.R")
+writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
+             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+lancer <- function(script, objets) {
+  sortie <- tempfile("sortie", dossier, ".rds")
+  ici <- setwd(dossier)
+  on.exit(setwd(ici))
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(lanceur), shQuote(script), shQuote(sortie), shQuote(paste(objets, collapse = ","))),
+                                       stdout = TRUE, stderr = TRUE))
+  if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
+}
+# (les résultats du script, par leurs noms dans sa langue : nom_communautes)
+memes_resultats <- function(s, m, langue) {
+  n <- function(x) nom_communautes(x, langue)
+  champ <- function(x, ...) { for (k in c(...)) x <- if (is.list(x)) x[[n(k)]]; x }
+  pareil <- function(a, b) isTRUE(all.equal(unname(a), unname(b), check.attributes = FALSE))
+  a <- m$ajustement
+  ra <- s[[n("ajustement")]]
+  ajustement <- is.null(a) || (proche(a$vecteurs$r2, champ(ra, "vecteurs", "r2"), 1e-10) && pareil(a$vecteurs$p, champ(ra, "vecteurs", "p")) &&
+                                 proche(a$vecteurs$direction, champ(ra, "vecteurs", "direction"), 1e-10) &&
+                                 pareil(vapply(a$facteurs, `[[`, 0, "p"), vapply(champ(ra, "facteurs"), function(f) f[[n("p")]], 0)) &&
+                                 proche(a$centroides, s[[n("centroides")]], 1e-10))
+  switch(m$type,
+    PCOA = proche(m$noyau$valeurs, champ(s[[n("pcoa")]], "valeurs"), 1e-10) && proche(m$noyau$points, champ(s[[n("pcoa")]], "points"), 1e-10) &&
+      (is.null(m$especes) || proche(m$especes, s[[n("especes")]], 1e-10)) && ajustement,
+    NMDS = proche(m$noyau$points, champ(s[[n("nmds")]], "points"), 1e-10) && proche(m$noyau$stress_departs, champ(s[[n("nmds")]], "stress_departs"), 1e-10) &&
+      identical(c(m$noyau$meilleur, m$noyau$retrouvee), c(champ(s[[n("nmds")]], "meilleur"), champ(s[[n("nmds")]], "retrouvee"))) &&
+      proche(m$especes, s[[n("especes")]], 1e-10) && ajustement,
+    PERMANOVA = {
+      tb <- champ(s[[n("permanova")]], "table")
+      proche(m$noyau$table$ss, tb[[n("ss")]], 1e-10) && proche(m$noyau$table$F, tb$F, 1e-10) && pareil(m$noyau$table$p, tb$p) &&
+        all(vapply(names(m$dispersions), function(g) proche(m$dispersions[[g]]$distances, s[[n("dispersions")]][[g]][[n("distances")]], 1e-10) &&
+                     pareil(m$dispersions[[g]]$p_permutation, s[[n("dispersions")]][[g]][[n("p_permutation")]]), TRUE))
+    },
+    MANTEL = {
+      t <- m$test
+      proche(c(t$r, t$r_partiel), c(s[[n("mantel")]]$r, champ(s[[n("mantel")]], "r_partiel")), 1e-10) && pareil(c(t$p, t$p_partiel), c(s[[n("mantel")]]$p, champ(s[[n("mantel")]], "p_partiel"))) &&
+        proche(m$correlogramme$table$r, champ(s[[n("correlogramme")]], "table")$r, 1e-10) && pareil(m$correlogramme$table$p_corrige, champ(s[[n("correlogramme")]], "table")[[n("p_corrige")]])
+    })
+}
+objets_script <- function(type, langue) nom_communautes(switch(type, PCOA = c("pcoa", "especes", "ajustement", "centroides"), NMDS = c("nmds", "especes", "ajustement", "centroides"),
+                                                                PERMANOVA = c("permanova", "dispersions"), MANTEL = c("mantel", "correlogramme")), langue)
+# (le même projet avec un identifiant des observations : la parcelle, 8 de 5 relevés)
+pid <- p
+pid$observation_id_names <- c(pid$observation_id_names, "parcelle")
+pid$observations <- lapply(seq_along(pid$observations), function(k) { o <- pid$observations[[k]]; o$ids <- c(o$ids, sprintf("P%d", (k - 1) %/% 5 + 1)); o })
+cas <- list(
+  list(id = "pcoa", langue = "fr", quoi = "PCoA de Bray-Curtis, X ajustés (envfit), Lingoes", projet = p,
+       d = definir_modele(p, "PCOA", x = u("temp", "ph", "habitat"), y = u(especes), echelle = "none", options = list(distance = "bray", permutations = B, graine = 3, correction = "lingoes"))),
+  list(id = "pcoa_hellinger", langue = "en", quoi = "PCoA de Hellinger sur les racines, permutations par site", projet = p,
+       d = definir_modele(p, "PCOA", x = u("temp", "habitat"), y = u(especes), echelle = "none",
+                          options = list(distance = "hellinger", transformation = "racine2", permutations = B, graine = 8, strates = list(by = "variable", variable = u("site"))))),
+  list(id = "pcoa_gower", langue = "fr", quoi = "PCoA de Gower sans X, Cailliez", projet = p,
+       d = definir_modele(p, "PCOA", x = NULL, y = u(especes), echelle = "none", options = list(distance = "gower", correction = "cailliez"))),
+  list(id = "nmds", langue = "fr", quoi = "NMDS, 20 départs, X ajustés", projet = p, d = dn),
+  list(id = "nmds_jaccard", langue = "en", quoi = "NMDS en 3 dimensions, Jaccard binaire après Wisconsin", projet = p,
+       d = definir_modele(p, "NMDS", x = NULL, y = u(especes), echelle = "none", options = list(distance = "jaccard", binaire = TRUE, transformation = "wisconsin", k = 3, departs = 10, graine = 2))),
+  list(id = "permanova", langue = "fr", quoi = "PERMANOVA séquentielle, un terme croisé, dispersion de l'habitat", projet = p, d = dt),
+  list(id = "permanova_marges", langue = "en", quoi = "PERMANOVA marginale, Lingoes, par site, dispersion à la médiane avec la variable de classe", projet = p,
+       d = definir_modele(p, "PERMANOVA", x = u("temp", "altitude", "habitat"), classe = u("site"), y = u(especes), echelle = "none", croises = list(u("temp", "habitat")),
+                          options = list(distance = "bray", permutations = B, graine = 6, par = "marges", correction = "lingoes", dispersion = "mediane",
+                                         strates = list(by = "variable", variable = u("site"))))),
+  list(id = "permanova_modele", langue = "fr", quoi = "PERMANOVA du modèle entier, Cailliez, Kulczynski sur log(x + 1)", projet = p,
+       d = definir_modele(p, "PERMANOVA", x = u("temp", "habitat"), y = u(especes), echelle = "none",
+                          options = list(distance = "kulczynski", transformation = "log1p", permutations = 99, graine = 2, par = "modele", correction = "cailliez"))),
+  list(id = "mantel", langue = "fr", quoi = "Mantel de Pearson, X centrés-réduits", projet = p, d = dmt),
+  list(id = "mantel_partiel", langue = "en", quoi = "Mantel de Spearman partiel (pH)", projet = p, d = dsp),
+  list(id = "mantel_echelles", langue = "en", quoi = "Mantel : Pareto, centrage, un bloc, une catégorie, un terme croisé, 5 classes, par site", projet = p,
+       d = definir_modele(p, "MANTEL", x = u("temp", "altitude", "habitat"), y = u(especes), croises = list(u("temp", "altitude")),
+                          echelle = stats::setNames(c("UV", "Par", "Ctr"), c("defaut", u("temp"), u("altitude"))),
+                          blocs = stats::setNames(list("B1", "B1"), u("temp", "altitude")), modificateurs = stats::setNames(list(2), u("habitat")),
+                          options = list(distance = "canberra", permutations = B, graine = 4, classes = 5, strates = list(by = "variable", variable = u("site"))))),
+  list(id = "permanova_parcelle", langue = "fr", quoi = "PERMANOVA de Manhattan permutée dans les parcelles (un identifiant)", projet = pid,
+       d = definir_modele(pid, "PERMANOVA", x = u("temp", "habitat"), y = u(especes), echelle = "none",
+                          options = list(distance = "manhattan", permutations = 99, graine = 3, strates = list(by = "id", id = "parcelle")))),
+  list(id = "mantel_sans_permutation", langue = "en", quoi = "Mantel sans permutation, données en CSV", projet = p, donnees = "csv",
+       d = definir_modele(p, "MANTEL", x = u("temp"), y = u(especes), echelle = "UV", options = list(distance = "chord", permutations = 0))),
+  list(id = "mantel_plan", langue = "fr", quoi = "Mantel géographique, Lambert-93 (en ligne droite)", projet = pg, d = dmg),
+  list(id = "mantel_lonlat", langue = "en", quoi = "Mantel géographique, longitudes et latitudes (grands cercles)", projet = pl, d = dmg),
+  list(id = "pcoa_condition", langue = "en", quoi = "PCoA choisie par une condition", projet = p, d = dcond))
+for (k in cas) {
+  m <- ajuster(k$projet, k$d)
+  r <- tryCatch(ecrire_script(k$projet, k$d, file.path(dossier, paste0(k$id, ".R")), "moteur", m = m, version = "essai", langue = k$langue, donnees = k$donnees %||% "script"),
+                error = function(e) e)
+  if (inherits(r, "error")) {
+    verifier(sprintf("%s (%s) : écrit", k$id, k$quoi), FALSE)
+    cat("    erreur :", conditionMessage(r), "\n")
+    next
+  }
+  s <- lancer(r$script, objets_script(m$type, k$langue))
+  texte <- readLines(r$script, encoding = "UTF-8")
+  code <- sub("#.*$", "", texte)
+  memes <- length(s) > 0 && isTRUE(memes_resultats(s, m, k$langue))
+  verifier(sprintf("%s (%s, %s) : sans écart vu par le moteur ; lancé seul, mêmes résultats et mêmes p ; R seul (MASS pour un NMDS), sans vegan", k$id, k$quoi, k$langue),
+           is.null(r$ecart) && memes && !any(grepl("library(", code, fixed = TRUE)) && !any(grepl("vegan::", code, fixed = TRUE)) &&
+             (k$langue == "fr" || (!any(grepl("distance_tableau|pcoa_noyau|nmds_noyau|permanova_noyau|mantel_noyau|ajustement_environnement", texte)) &&
+                                     !any(grepl("^ *#(fr|en)( |$)", texte)))))
+  if (!is.null(r$ecart) || !isTRUE(memes)) cat("    écart :", r$ecart, "/", utils::tail(attr(s, "messages"), 3), "\n")
+}
+texte <- readLines(file.path(dossier, "mantel_lonlat.R"), encoding = "UTF-8")
+verifier("Mantel géographique : les coordonnées dans les données du script, la distance en km le long des grands cercles (ou en ligne droite)",
+         any(texte == "coordinates <- cbind(d[[\"lon\"]], d[[\"lat\"]])") && any(grepl("lonlat = TRUE) / 1000", texte, fixed = TRUE)) &&
+           any(grepl("lonlat = FALSE) / 1000", readLines(file.path(dossier, "mantel_plan.R"), encoding = "UTF-8"), fixed = TRUE)))
+texte <- readLines(file.path(dossier, "pcoa_condition.R"), encoding = "UTF-8")
+verifier("PCoA à condition : son script choisit ses lignes par la condition, écrite en R", any(texte == "condition <- with(data_as_text, habitat != \"marais\")") &&
+           any(texte == "rows <- ticked[condition[ticked] %in% TRUE]"))
+texte <- readLines(file.path(dossier, "pcoa.R"), encoding = "UTF-8")
+verifier("le script reprend les fonctions du moteur telles qu'il les écrit (sans leurs commentaires), ses messages dans sa langue",
+         all(code_definition_moteur("pcoa_noyau", "fr") %in% texte) && any(grepl("stop(\"Distance de Gower : aucune variable du tableau Y ne varie.\", call. = FALSE)", texte, fixed = TRUE)) &&
+           any(grepl("stop(\"Gower distance: no variable of the table Y varies.\", call. = FALSE)", readLines(file.path(dossier, "pcoa_hellinger.R"), encoding = "UTF-8"), fixed = TRUE)))
+# les rapports : méthodes, code, résultats, références ; compilés avec knitr s'il est installé
+compiler <- file.path(dossier, "compiler.R")
+writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
+             "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
+rapports <- list(list(ext = "Rmd", langue = "fr", d = cas[[7]]$d, references = "Anderson, M. J. \\(2006\\)"), list(ext = "qmd", langue = "en", d = dn, references = "Kruskal"),
+                 list(ext = "Rmd", langue = "en", d = dsp, references = "Smouse"))
+for (i in seq_along(rapports)) {
+  k <- rapports[[i]]
+  dir.create(ici <- file.path(dossier, sprintf("rapport%d", i)))
+  r <- ecrire_script(p, k$d, file.path(ici, paste0("rapport.", k$ext)), "moteur", m = ajuster(p, k$d), version = "essai", langue = k$langue, donnees = "csv", rdata = TRUE)
+  texte <- readLines(r$script, encoding = "UTF-8")
+  if (!is.null(r$ecart)) cat("    écart :", r$ecart, "\n")
+  debuts <- grep("^```\\{r", texte)
+  etiquettes <- sub("^```\\{r ?([^,}]*).*$", "\\1", texte[debuts])
+  verifier(sprintf("rapport %s (%s, %s) : méthodes, code, résultats, références ; données en CSV et .RData à côté", k$ext, k$d$type, k$langue),
+           is.null(r$ecart) && any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^## (Méthodes|Methods)", texte)) && any(grepl(paste0("^- .*", k$references), texte)) &&
+             !anyDuplicated(etiquettes[nzchar(etiquettes)]) && length(r$chemins) == 3 && all(file.exists(r$chemins)))
+  if (requireNamespace("knitr", quietly = TRUE)) {
+    messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(r$script)), stdout = TRUE, stderr = TRUE))
+    md <- file.path(ici, "rapport.md")
+    verifier(sprintf("rapport %s : se compile avec knitr, avec ses tableaux et ses graphiques", k$ext),
+             file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) && length(list.files(file.path(ici, "figure"), "\\.png$")) >= 2)
+  } else {  # sans knitr : le code de ses blocs R tourne dans une session neuve (sans les tableaux de knitr::kable)
+    fins <- vapply(debuts, function(j) j + match("```", texte[-seq_len(j)]), 0)
+    blocs <- file.path(ici, "blocs.R")
+    code <- unlist(lapply(seq_along(debuts), function(j) texte[seq(debuts[j] + 1, length.out = fins[j] - debuts[j] - 1)]))
+    writeLines(enc2utf8(c("pdf(NULL)", code[!grepl("knitr::", code)])), blocs, useBytes = TRUE)
+    avant <- setwd(ici)
+    messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(blocs)), stdout = TRUE, stderr = TRUE))
+    setwd(avant)
+    verifier(sprintf("rapport %s : le code de ses blocs R tourne (knitr n'est pas installé : pas compilé)", k$ext), is.null(attr(messages, "status")))
+  }
+}
+unlink(dossier, recursive = TRUE)
+
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
