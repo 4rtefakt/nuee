@@ -452,14 +452,23 @@ function ipc() {
     q.on('error', (e) => ok({ erreur: e.message }));
     q.on('close', (code) => ok(code === 0 && fs.existsSync(sortie) ? { sortie } : { erreur: journal.slice(-3000) || `quarto: ${code}` }));
   }));
-  recevoir('imprimer-pdf', async (_, html, chemin) => {
+  // (format: a figure's page, { largeur, hauteur } in mm (figures.js), printed at that size
+  // without margins, its first page only; otherwise A4. Its size is taken from the page's own
+  // @page rule: Chromium puts a page on a grid of 1/300 inch, and from pageSize in inches it came
+  // out up to 0.3 mm too large, from @page within 0.1 mm)
+  recevoir('imprimer-pdf', async (_, html, chemin, format) => {
     const page = path.join(app.getPath('temp'), `rapport-${process.pid}-${Date.now()}.html`);
     await fs.promises.writeFile(page, html, 'utf8');
     const f = new BrowserWindow({ show: false, webPreferences: { offscreen: false, javascript: false } });
     cachees.add(f);
+    const mm = (x) => Number(x) >= 10 && Number(x) <= 1000;
+    const options = format && mm(format.largeur) && mm(format.hauteur)
+      ? { pageSize: { width: format.largeur / 25.4, height: format.hauteur / 25.4 }, preferCSSPageSize: true, printBackground: true,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 }, pageRanges: '1' }
+      : { pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } };
     try {
       await f.loadFile(page);
-      const pdf = await f.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } });
+      const pdf = await f.webContents.printToPDF(options);
       await fs.promises.writeFile(chemin, pdf);
     } finally {
       f.destroy();

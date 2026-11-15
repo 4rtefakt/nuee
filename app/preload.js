@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld('bureau', {
   zoom: (d) => ipcRenderer.invoke('zoom', d),
   quitter: () => ipcRenderer.invoke('quitter'),
   ecrireFichier: (chemin, octets) => ipcRenderer.invoke('ecrire-fichier', chemin, octets),
-  imprimerPDF: (html, chemin) => ipcRenderer.invoke('imprimer-pdf', html, chemin),
+  // (format: { largeur, hauteur } in mm, a figure's page; otherwise A4)
+  imprimerPDF: (html, chemin, format) => ipcRenderer.invoke('imprimer-pdf', html, chemin, format),
   ouvrirChemin: (chemin) => ipcRenderer.invoke('ouvrir-chemin', chemin),
   // a document compiled by Quarto, when the computer has it (documents.js)
   quartoDisponible: () => ipcRenderer.invoke('quarto-disponible'),

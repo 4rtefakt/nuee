@@ -61,8 +61,9 @@ async function principal() {
     await etape(`syntaxe ${f}`, () => execFileSync(process.execPath, ['--check', copie], { stdio: 'pipe' }));
   }
   fs.rmSync(copies, { recursive: true, force: true });
-  // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules
-  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs']) {
+  // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules;
+  // the figures' layout and their PNG and TIFF files
+  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs']) {
     await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
   }
 
@@ -275,6 +276,50 @@ async function principal() {
       try { await api('document', { projet: q.id, id }); } catch (e) { refus = e.message; }
       verifier(!r.projet.documents.length && refus, `supprimé (${refus})`);
       await api('fermer_projet', { projet: q.id });
+    });
+    await etape('figures : créer, relire, annuler sans y toucher, enregistrer et rouvrir, renommer, supprimer ; un projet d’avant les figures', async () => {
+      // (figures.js: the project's plots composed for a journal, their settings as JSON text the
+      // interface alone reads, kept in the project; Ctrl+Z leaves them alone)
+      const contenu = JSON.stringify({ version: 1, largeur: 174, hauteur: 0, lignes: 1, colonnes: 2, police: 8, ligne: 1,
+        panneaux: [{ vue: 'scores', numero: pls.numero, nom: 'PLS', loc: { a: 1, b: 2, couleur: 'm@2|t1' }, zoom: { x: [-2, 2], y: null } }, { vue: 'carte', numero: null, loc: {} }] });
+      let r = await api('figure_enregistrer', { projet: p.id, titre: 'Figure 1', contenu });
+      const id = r.id;
+      verifier(/^F\d+$/.test(id) && r.projet.modifie && r.projet.figures.some((f) => f.id === id && f.titre === 'Figure 1'), `créée : ${JSON.stringify(r.projet.figures)}`);
+      // (one panel: an array of one, which must stay one; accents)
+      const un = JSON.stringify({ panneaux: [{ vue: 'effets', numero: 3, loc: { terme: 'année' } }], lettres: { style: '(a)', gras: false } });
+      const id2 = (await api('figure_enregistrer', { projet: p.id, titre: 'Fig. 2 — données', contenu: un })).id;
+      let f = await api('figure', { projet: p.id, id });
+      verifier(f.contenu === contenu && f.titre === 'Figure 1' && id2 !== id, `relue : ${JSON.stringify(f).slice(0, 200)}`);
+      await api('variable_calculee', { projet: p.id, nom: 'x2x3', formule: 'x2 * x3' });
+      const a = (await api('annuler', { projet: p.id })).projet;
+      verifier(a.figures.length === 2 && (await api('figure', { projet: p.id, id })).contenu === contenu, 'annuler laisse les figures telles quelles');
+      const fichier = path.join(dossier, 'figures.nuee');
+      await api('enregistrer', { projet: p.id, chemin: fichier });
+      const lu = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+      verifier(Array.isArray(lu.figures) && lu.figures.length === 2 && lu.figures.every((x) => typeof x.contenu === 'string'), `dans le fichier : ${JSON.stringify(lu.figures).slice(0, 200)}`);
+      const q = await api('ouvrir', { chemin: fichier });
+      f = await api('figure', { projet: q.id, id });
+      const f2 = await api('figure', { projet: q.id, id: id2 });
+      verifier(q.figures.length === 2 && f.contenu === contenu && f2.contenu === un && f2.titre === 'Fig. 2 — données'
+        && JSON.parse(f2.contenu).panneaux.length === 1, `relues du fichier : ${JSON.stringify(q.figures)}`);
+      // renamed: the title only, its content as it was; then deleted
+      r = await api('figure_enregistrer', { projet: q.id, id, titre: 'Figure 1 bis' });
+      f = await api('figure', { projet: q.id, id });
+      verifier(f.titre === 'Figure 1 bis' && f.contenu === contenu && r.projet.figures.find((x) => x.id === id).titre === 'Figure 1 bis', 'renommée');
+      r = await api('figure_supprimer', { projet: q.id, id });
+      let refus = '';
+      try { await api('figure', { projet: q.id, id }); } catch (e) { refus = e.message; }
+      verifier(r.projet.figures.length === 1 && refus, `supprimée (${refus})`);
+      await api('fermer_projet', { projet: q.id });
+      // a project saved before figures existed opens, without any
+      delete lu.figures;
+      const ancien = path.join(dossier, 'sans-figures.nuee');
+      fs.writeFileSync(ancien, JSON.stringify(lu));
+      const v = await api('ouvrir', { chemin: ancien });
+      verifier(Array.isArray(v.figures) && v.figures.length === 0, `projet sans figures : ${JSON.stringify(v.figures)}`);
+      const n = await api('figure_enregistrer', { projet: v.id, titre: 'Nouvelle' });
+      verifier(n.id === 'F1' && (await api('figure', { projet: v.id, id: 'F1' })).contenu === '{}', `première figure : ${n.id}`);
+      await api('fermer_projet', { projet: v.id });
     });
     await etape('enregistrer sans risque : version, fichier changé par ailleurs, projet reçu', async () => {
       const f = path.join(dossier, 'partage.nuee');

@@ -426,6 +426,36 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .ligne-recherche-citation .recherche-citation { flex: 1; min-width: 0; }
 .ligne-recherche-citation .collection-zotero { max-width: 45%; }
 
+/* Figures (figures.js): the settings beside the figure's preview, one above the other when narrow */
+.cadre-figure { height: 100%; min-height: 0; container-type: inline-size; }
+.figure-compo { display: grid; grid-template-columns: minmax(280px, 370px) minmax(0, 1fr); height: 100%; min-height: 0; }
+.reglages-figure { overflow: auto; padding: 2px 12px 24px 2px; border-right: 1px solid var(--grille); display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.reglages-figure h3 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); margin: 10px 0 2px; }
+.reglages-figure .titre-figure { font-weight: 600; flex: 1; min-width: 0; }
+.reglages-figure .grille-champs { grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; padding: 2px; }
+.reglages-figure .ligne { flex-wrap: wrap; gap: 6px; }
+.reglages-figure input[type=number] { width: 4.8em; }
+.reglages-figure .choix-figure { gap: 4px 12px; }
+.reglages-figure .choix-figure .champ { color: var(--texte); }
+.ajout-figure { width: 100%; }
+.panneaux-figure { display: flex; flex-direction: column; gap: 1px; }
+.ligne-panneau { display: flex; align-items: center; gap: 4px; padding: 2px 3px; border-radius: 4px; }
+.ligne-panneau:hover { background: var(--survol); }
+.ligne-panneau .lettre-panneau { flex: none; min-width: 2.1em; text-align: center; background: var(--accent-doux); color: var(--accent); border-radius: 3px; padding: 0 3px; }
+.ligne-panneau .nom-panneau { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ligne-panneau.hors-grille .nom-panneau { color: var(--erreur); }
+.ligne-panneau select { max-width: 7.5em; }
+.apercu-figure { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; background: var(--fond); }
+.feuille-figure { background: #ffffff; box-shadow: var(--ombre); line-height: 0; max-width: 100%; transition: opacity .15s; }
+.feuille-figure.attente { opacity: .55; }
+.feuille-figure img { display: block; max-width: 100%; height: auto; }
+.resume-figure { margin: 2px 0 0; }
+.erreurs-figure p { margin: 2px 0; font-size: 12px; }
+@container (max-width: 660px) {
+  .figure-compo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 55%) minmax(0, 1fr); }
+  .reglages-figure { border-right: 0; border-bottom: 1px solid var(--grille); }
+}
+
 /* the model's conditions in its summary (panneaux.js: rendreResumeRegression) */
 .verifications .verification { margin: 0.25em 0; }
 .verifications .verification .signe { display: inline-block; width: 1.2em; font-weight: 600; }
