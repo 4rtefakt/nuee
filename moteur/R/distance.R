@@ -1115,9 +1115,11 @@ variance_rencontre <- function(l, n, type) {
 # et leur covariance V) : l'effectif couvert de Horvitz–Thompson Σ si / pi (si la taille du groupe, 1
 # sans groupes), et la variance de la détection par la méthode delta, ∇N' V ∇N, ∇N = −(A / a) Σ si
 # ∇pi / pi² (pour le total, la somme des gradients des strates pondérés comme leurs effectifs). Sans
-# aire de strate, le total pondère les densités des strates par leurs aires couvertes, et ses degrés
-# de liberté sont ceux de Satterthwaite avec ces poids, là où dht2 les laisse hors du dénominateur
-# (ddl_dht2 : ceux qu'il donne, quand ils diffèrent).
+# aire de strate, le total pondère les densités des strates par leurs aires couvertes wi : les
+# variances du taux de rencontre et de la taille des groupes de chaque strate y entrent avec wi², et
+# ses degrés de liberté sont ceux de Satterthwaite avec ces poids. dht2 laisse les poids hors de la
+# variance de la taille des groupes et du dénominateur des degrés de liberté (se_D_dht2 et ddl_dht2 :
+# ce qu'il donne, quand ils diffèrent).
 densite_echantillonnage <- function(t, p, var_p, q, cu, ht = NULL) {
   type <- if (t$point) "P2" else "R2"
   nddf <- t$n
@@ -1160,7 +1162,7 @@ densite_echantillonnage <- function(t, p, var_p, q, cu, ht = NULL) {
     if (is.finite(ddl) && ddl < 1) ddl <- 1
     list(strate = s, aire = if (t$densite_seule) NA_real_ else A, couverte = couverte, effort = effort, k = k, n = n, individus = sum(tr$individus),
          rencontre = er, se_rencontre = sqrt(er_var), cv_rencontre = er_cv, ddl_rencontre = er_ddl, N = N, se = se, cv = cv, ddl = ddl, ddl_dht2 = NA_real_,
-         var_er_N = var_er_N, var_det_N = var_det_N, var_groupes_N = N^2 * g_cv^2, taille_moyenne = g_moy, se_taille = sqrt(g_var), Nc = Nc, cv_detection = det_cv,
+         se_dht2 = NA_real_, var_er_N = var_er_N, var_det_N = var_det_N, var_groupes_N = N^2 * g_cv^2, taille_moyenne = g_moy, se_taille = sqrt(g_var), Nc = Nc, cv_detection = det_cv,
          cv_groupes = g_cv, gradient = gN)
   }
   lignes <- lapply(t$strates$strate, ligne)
@@ -1178,21 +1180,26 @@ densite_echantillonnage <- function(t, p, var_p, q, cu, ht = NULL) {
     er_ddl_dht2 <- var_er_N^2 / sum(de_chaque(function(l) l$var_er_N^2 / l$ddl_rencontre))
     gN <- if (!is.null(ht)) Reduce(`+`, Map(function(l, a) a * l$gradient, lignes, poids))
     var_det_N <- if (is.null(ht)) N^2 * var_p / p^2 else drop(crossprod(gN, ht$V %*% gN))
-    var_g_N <- sum(de_chaque(function(l) l$var_groupes_N))
+    # (la variance de la taille des groupes : celle de chaque strate avec le carré de son poids ; dht2
+    # les additionne sans les poids, var_g_dht2, d'où son erreur-type, se_dht2, quand elle diffère)
+    var_g_N <- sum(poids^2 * de_chaque(function(l) l$var_groupes_N))
+    var_g_dht2 <- sum(de_chaque(function(l) l$var_groupes_N))
     tvar <- var_er_N + var_det_N + var_g_N
     cv <- if (N > 0) sqrt(tvar) / N else 0
-    satterthwaite <- function(er_ddl) (var_er_N / N^2 + var_det_N / N^2 + var_g_N / N^2)^2 /
-      sum(c((var_er_N / N^2)^2 / er_ddl, (var_det_N / N^2)^2 / (nddf - q), (var_g_N / N^2)^2 / (nddf - 1)), na.rm = TRUE)
-    ddl <- satterthwaite(er_ddl)
-    ddl_dht2 <- if (t$densite_seule) satterthwaite(er_ddl_dht2) else NA_real_
+    satterthwaite <- function(er_ddl, var_g) (var_er_N / N^2 + var_det_N / N^2 + var_g / N^2)^2 /
+      sum(c((var_er_N / N^2)^2 / er_ddl, (var_det_N / N^2)^2 / (nddf - q), (var_g / N^2)^2 / (nddf - 1)), na.rm = TRUE)
+    ddl <- satterthwaite(er_ddl, var_g_N)
+    ddl_dht2 <- if (t$densite_seule) satterthwaite(er_ddl_dht2, var_g_dht2) else NA_real_
     if (isTRUE(all.equal(ddl_dht2, ddl))) ddl_dht2 <- NA_real_
+    se_dht2 <- if (t$densite_seule) sqrt(var_er_N + var_det_N + var_g_dht2) else NA_real_
+    if (isTRUE(all.equal(se_dht2, sqrt(tvar)))) se_dht2 <- NA_real_
     effort <- sum(de_chaque(function(l) l$effort))
     n <- sum(de_chaque(function(l) l$n))
     individus <- sum(de_chaque(function(l) l$individus))
     er_var <- variance_rencontre(t$transects$effort, t$transects$n, type)
     lignes[[length(lignes) + 1]] <- list(strate = NA_character_, aire = if (t$densite_seule) NA_real_ else sum(de_chaque(function(l) l$aire)), couverte = sum(couverte),
       effort = effort, k = sum(de_chaque(function(l) l$k)), n = n, individus = individus, rencontre = n / effort, se_rencontre = sqrt(er_var),
-      cv_rencontre = if (n == 0) 0 else sqrt(er_var) / (n / effort), ddl_rencontre = er_ddl, N = N, se = sqrt(tvar), cv = cv, ddl = ddl, ddl_dht2 = ddl_dht2, var_er_N = var_er_N,
+      cv_rencontre = if (n == 0) 0 else sqrt(er_var) / (n / effort), ddl_rencontre = er_ddl, N = N, se = sqrt(tvar), cv = cv, ddl = ddl, ddl_dht2 = ddl_dht2, se_dht2 = se_dht2, var_er_N = var_er_N,
       var_det_N = var_det_N, var_groupes_N = var_g_N, taille_moyenne = individus / max(1, n), se_taille = NA_real_, Nc = sum(poids * de_chaque(function(l) l$Nc)),
       cv_detection = if (N > 0) sqrt(var_det_N) / N else 0, cv_groupes = if (N > 0) sqrt(var_g_N) / N else 0)
   }
@@ -1203,7 +1210,7 @@ densite_echantillonnage <- function(t, p, var_p, q, cu, ht = NULL) {
                rencontre = l$rencontre, se_rencontre = l$se_rencontre, cv_rencontre = l$cv_rencontre, ddl_rencontre = l$ddl_rencontre,
                D = l$N / A, se_D = l$se / A, cv = l$cv, bas_D = b[1] / A, haut_D = b[2] / A,
                N = if (t$densite_seule) NA_real_ else l$N, se_N = if (t$densite_seule) NA_real_ else l$se,
-               bas_N = if (t$densite_seule) NA_real_ else b[1], haut_N = if (t$densite_seule) NA_real_ else b[2], ddl = l$ddl, ddl_dht2 = l$ddl_dht2,
+               bas_N = if (t$densite_seule) NA_real_ else b[1], haut_N = if (t$densite_seule) NA_real_ else b[2], ddl = l$ddl, ddl_dht2 = l$ddl_dht2, se_D_dht2 = l$se_dht2 / A,
                cv_detection = l$cv_detection, cv_groupes = l$cv_groupes, taille_moyenne = l$taille_moyenne, se_taille = l$se_taille,
                part_rencontre = if (isTRUE(l$cv > 0)) 100 * (l$var_er_N / l$N^2) / l$cv^2 else NA_real_,
                part_detection = if (isTRUE(l$cv > 0)) 100 * (l$var_det_N / l$N^2) / l$cv^2 else NA_real_,
@@ -1600,13 +1607,20 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
     p3 <- paste(p3, sprintf(tx("Ces valeurs comptent les individus ; les groupes : D = %s%s (CV %s), de taille moyenne %s.", "These values count individuals; groups: D = %s%s (CV %s), of mean size %s."),
                             sig(tg$D, 4), aire, pourcent_texte(tg$cv, fr), nombre(tot$D / tg$D, 2)))
   }
-  # (sans aire de strate : les degrés de liberté du total, de Satterthwaite avec les poids des strates,
-  # et ceux de dht2 quand ils diffèrent, densite_echantillonnage)
+  # (sans aire de strate : la variance de la taille des groupes et les degrés de liberté du total avec
+  # les poids des strates, et ce que donne dht2 quand cela diffère, densite_echantillonnage)
   if (t$densite_seule && nrow(dens) > 1) {
-    p3 <- paste(p3, if (is.finite(tot$ddl_dht2)) sprintf(tx("Sans aire de strate, la densité totale est la moyenne des strates pondérée par leurs aires couvertes, et ses %s degrés de liberté sont ceux de la formule de Satterthwaite avec ces poids ; dht2 les laisse hors du dénominateur et n'en donne que %s, d'où un intervalle plus large.",
-                                                            "Without stratum areas, the overall density is the strata's mean weighted by their covered areas, and its %s degrees of freedom are those of Satterthwaite's formula with these weights; dht2 leaves them out of the denominator and gives only %s, hence a wider interval."),
-                                                         nombre(tot$ddl, 1), nombre(tot$ddl_dht2, 1))
-                    else tx("Sans aire de strate, la densité totale est la moyenne des strates pondérée par leurs aires couvertes.", "Without stratum areas, the overall density is the strata's mean weighted by their covered areas."))
+    moyenne <- tx("Sans aire de strate, la densité totale est la moyenne des strates pondérée par leurs aires couvertes",
+                  "Without stratum areas, the overall density is the strata's mean weighted by their covered areas")
+    p3 <- paste(p3, if (is.finite(tot$se_D_dht2)) {
+      sprintf(tx("%s : les variances du taux de rencontre et de la taille des groupes de chaque strate y entrent avec le carré de son poids, et ses %s degrés de liberté sont ceux de la formule de Satterthwaite avec ces poids. dht2 laisse les poids hors de la variance de la taille des groupes et du dénominateur des degrés de liberté : il donne une erreur-type de %s et %s degrés de liberté, d'où un intervalle plus large.",
+                 "%s: each stratum's encounter rate and group size variances enter it with the square of its weight, and its %s degrees of freedom are those of Satterthwaite's formula with these weights. dht2 leaves the weights out of the group size variance and of the degrees of freedom's denominator: it gives a standard error of %s and %s degrees of freedom, hence a wider interval."),
+              moyenne, nombre(tot$ddl, 1), sig(tot$se_D_dht2, 3), nombre(if (is.finite(tot$ddl_dht2)) tot$ddl_dht2 else tot$ddl, 1))
+    } else if (is.finite(tot$ddl_dht2)) {
+      sprintf(tx("%s, et ses %s degrés de liberté sont ceux de la formule de Satterthwaite avec ces poids ; dht2 les laisse hors du dénominateur et n'en donne que %s, d'où un intervalle plus large.",
+                 "%s, and its %s degrees of freedom are those of Satterthwaite's formula with these weights; dht2 leaves them out of the denominator and gives only %s, hence a wider interval."),
+              moyenne, nombre(tot$ddl, 1), nombre(tot$ddl_dht2, 1))
+    } else paste0(moyenne, "."))
   }
   if (any(dens$k[!is.na(dens$strate)] == 1)) p3 <- paste(p3, tx("Une strate d'un seul transect n'a pas de variance du taux de rencontre.", "A stratum with a single transect has no encounter rate variance."))
   if (!nzchar(u$aire)) p3 <- paste(p3, sprintf(tx("Les distances ont été converties par le facteur %s.", "The distances were converted by the factor %s."), format(u$facteur, digits = 6)))

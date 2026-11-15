@@ -1814,15 +1814,17 @@ réunit celle du taux de rencontre entre les transects (l'estimateur R2 pour des
 des points, Fewster et al. 2009), celle de p et celle de la taille moyenne des groupes ; son
 intervalle à 95 % est log-normal avec les degrés de liberté de Satterthwaite, comme dht2. Le
 total sur les strates additionne leurs effectifs (avec des aires) ou pondère leurs densités par
-leurs aires couvertes (sans). Sans aire, les degrés de liberté du total sont ceux de la formule
-de Satterthwaite avec les poids des strates (leurs aires couvertes). dht2 laisse ces poids hors
-de son dénominateur, ce qui donne moins de degrés de liberté, et un intervalle du total plus
-large, parfois absurdement : sur les données amakihi de Distance (7 strates, hn ~ OBs + MAS), 0,6
-au lieu de 871, et un intervalle de 0,09 à 434 oiseaux par hectare au lieu de 5,85 à 6,89. Les
-intervalles des strates n'en dépendent pas. Le Résumé, la vue Densité et effectif et le texte des
-méthodes donnent les deux nombres. Refusés, et nommés : une distance négative, un effort manquant
-ou nul, deux efforts pour un transect, deux aires pour une strate, une aire nulle parmi d'autres,
-une distance sans transect.
+leurs aires couvertes (sans). Sans aire, les variances du taux de rencontre et de la taille des
+groupes de chaque strate entrent dans celle du total avec le carré de son poids, et les degrés de
+liberté du total sont ceux de la formule de Satterthwaite avec ces poids. dht2 laisse les poids
+hors de la variance de la taille des groupes, ce qui donne une erreur-type plus grande avec des
+groupes, et hors du dénominateur de ses degrés de liberté, ce qui en donne moins, et un
+intervalle du total plus large, parfois absurdement : sur les données amakihi de Distance (7
+strates, hn ~ OBs + MAS), 0,6 au lieu de 871, et un intervalle de 0,09 à 434 oiseaux par hectare
+au lieu de 5,85 à 6,89. Les intervalles des strates n'en dépendent pas. Le Résumé, la vue Densité
+et effectif et le texte des méthodes donnent aussi ceux de dht2. Refusés, et nommés : une
+distance négative, un effort manquant ou nul, deux efforts pour un transect, deux aires pour une
+strate, une aire nulle parmi d'autres, une distance sans transect.
 Avec des covariables, la vraisemblance est celle de la distance de chaque détection sachant ses
 covariables (flpt.lnl de mrds, ou les comptes des classes) ; les coefficients sont ajustés sur
 les covariables quantitatives centrées et réduites, puis rendus dans leurs unités. Les mêmes
@@ -1872,9 +1874,10 @@ Distance), à ces différences connues près : Nuée intègre la clé hasard exa
 approche son intégrale par un spline de lissage (des lignes, la clé sans terme d'ajustement, avec
 ou sans covariables : les paramètres et p diffèrent d'environ 1e-4) ; avec une troncature à
 gauche de transects linéaires, l'aire couverte est 2 (w − L) L, là où dht2 garde 2 w L ; sans
-aire de strate, les degrés de liberté du total sont ceux de Satterthwaite avec les poids des
-strates, là où dht2 les laisse hors de son dénominateur et en donne moins ; l'optimiseur de mrds
-sous la contrainte de monotonie s'arrête à 1e-6 près de la vraisemblance, si bien que ses
+aire de strate, les poids des strates entrent dans la variance de la taille des groupes du total
+(au carré) et dans ses degrés de liberté de Satterthwaite, là où dht2 les laisse hors des deux :
+une erreur-type plus grande avec des groupes, et moins de degrés de liberté ; l'optimiseur de
+mrds sous la contrainte de monotonie s'arrête à 1e-6 près de la vraisemblance, si bien que ses
 estimations peuvent différer de celles de Nuée au quatrième chiffre, ou, sur de rares données,
 s'arrêter à un autre optimum local. Avec des covariables : ds peut s'arrêter avant le maximum sur
 des covariables mal conditionnées (sur unimak, hn ~ MSTDO + Hour, sur un plateau où σ vaut e^9 ou
@@ -1883,11 +1886,11 @@ des estimations de Nuée, ds y reste) ; une combinaison de covariables dont σ p
 refusée, là où ds rend le point où son optimiseur s'est arrêté ; quand la taille des groupes est
 une covariable, dht2 recalcule la probabilité de chaque détection avec une taille de 1 pour la
 variance de sa densité des groupes, là où Nuée garde celle de la détection (les densités des
-individus concordent) ; pour des points, la densité des distances tracée est la
-moyenne des f(r | z) des détections, celle qu'estime l'histogramme, là où plot.ds les pondère par
-1/pi. Et dht2 ne garde un transect sans détection dans la troncature que si son Sample.Label n'a
-de détection dans aucune strate (amakihi répète ses étiquettes d'une strate à l'autre) : Nuée
-garde l'effort de chaque transect.
+individus concordent) ; pour des points, la densité des distances tracée est la moyenne des
+f(r | z) des détections, celle qu'estime l'histogramme, là où plot.ds les pondère par 1/pi. Et
+dht2 ne garde un transect sans détection dans la troncature que si son Sample.Label n'a de
+détection dans aucune strate (amakihi répète ses étiquettes d'une strate à l'autre) : Nuée garde
+l'effort de chaque transect.
 
 Forêts aléatoires et arbres boostés
 -----------------------------------
