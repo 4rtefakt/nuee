@@ -18,6 +18,7 @@ import { ouvrirPalette } from './palette.js';
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 import './vues_ordination.js';
 import './vues_indicatrices.js';
+import './vues_rarefaction.js';
 import './vues_classement.js';
 import { installerDocuments } from './documents.js';
 
@@ -1152,7 +1153,7 @@ async function restaurerSession(pid, donnee = null) {
 // the R console): computed again once the data change.
 function oublierCalculs(pid) {
   for (const e of etat.panneaux.values()) {
-    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'historique'].includes(e.vue)) {
+    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'rarefaction', 'historique'].includes(e.vue)) {
       for (const k of ['d', 'res', 'cle', 'cleValeurs', 'cache']) delete e.loc[k];
     }
   }

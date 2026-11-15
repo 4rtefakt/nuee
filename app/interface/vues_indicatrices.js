@@ -227,7 +227,7 @@ VUES.resume = { ...VUES.resume, rendre: (c, ctx, p, loc) => {
 } };
 VUES.indicatrices = { rendre: rendreIndicatrices, titre: (m) => `${m.nom} · ${t('indicatrices')}` };
 VUES.indval_graphe = { rendre: rendreGrapheIndval, titre: (m) => `${m.nom} · ${t('indval_graphe')}` };
-Object.assign(ICONES_VUES, { indicatrices: 'list-checks', indval_graphe: 'chart-bar' });
+Object.assign(ICONES_VUES, { indicatrices: 'list', indval_graphe: 'chart-bar' });  // (icons of the bundled set: copier-vendor.js)
 VUES_TYPES.INDVAL = ['resume', 'indicatrices', 'indval_graphe', 'liste_obs'];
 
 ajouterTextes({

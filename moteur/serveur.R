@@ -1006,6 +1006,9 @@ DEMANDES <- list(
       s
     }, error = function(e) c(r, list(tendances_erreur = conditionMessage(e))))
   },
+  # la raréfaction et l'accumulation des espèces q$especes (numéros de variables), par groupe de
+  # q$groupe (une variable qualitative ou "id:k") s'il y en a un (rarefaction.R)
+  rarefaction = function(q) rarefaction_projet(projet(q$projet), q$especes, q$groupe, q$taille, q$pas),
   # avec q$appariement (une variable ou "id:k") : les tests appariés de deux classes, t apparié par défaut
   tests_variables = function(q) tests_variables(projet(q$projet), as.numeric(q$classe), if (length(q$groupes)) as.character(unlist(q$groupes)),
                                                q$test %||% (if (length(q$appariement)) "t_apparie" else "welch"), q$correction %||% "BH",

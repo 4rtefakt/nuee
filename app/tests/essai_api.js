@@ -1282,6 +1282,38 @@ async function principal() {
       try { await api('ajuster', { projet: q.id, type: 'INDVAL', x: [v.sp1], y: [v.sp2], classe: v.milieu, echelle: 'none' }); } catch (err) { refus = err.message; }
       verifier(/variable X/.test(refus), `des X refusés : « ${refus} »`);
     });
+    await etape('raréfaction et accumulation des espèces, par groupe ; des effectifs non entiers (moteur/R/rarefaction.R)', async () => {
+      // 20 relevés de 6 espèces (des effectifs) dans deux milieux ; une valeur manquante
+      let g = 23;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tmilieu\tsp1\tsp2\tsp3\tsp4\tsp5\tsp6'];
+      for (let i = 0; i < 20; i += 1) {
+        const sp = [8, 5, 3, 2, 1, 1].map((x) => String(Math.round(x * 2 * alea()) + (x === 8 ? 1 : 0)));
+        if (i === 4) sp[2] = '';
+        lignes.push([`r${i + 1}`, i < 10 ? 'haie' : 'champ', ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Effectifs' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5', 'sp6'].map((n) => v[n]);
+      const r = await api('rarefaction', { projet: q.id, especes, groupe: v.milieu });
+      const col = (df, k) => [].concat(df[k]);
+      const N = col(r.observations, 'N');
+      verifier(r.n === 19 && r.manquantes === 1 && r.entiers === true && col(r, 'niveaux').length === 2 && col(r.estimateurs, 'groupe').length === 2
+        && r.taille === Math.min(...N) && col(r.observations, 'Sm').every((x) => typeof x === 'number') && col(r.courbes, 'uid').length > 19,
+      `raréfaction : ${JSON.stringify({ n: r.n, manquantes: r.manquantes, taille: r.taille, entiers: r.entiers })}`);
+      // the last point of each accumulation curve: the species seen in its group
+      const acc = col(r.accumulation, 'richesse');
+      const fins = col(r.accumulation, 'sites').map((s, i) => [s, i]).filter(([s], i, a) => i === a.length - 1 || a[i + 1][0] === 1).map(([, i]) => acc[i]);
+      verifier(fins.length === 2 && fins.every((x, k) => Math.abs(x - col(r.estimateurs, 'S')[k]) < 1e-9), `accumulation : ${JSON.stringify(fins)}`);
+      const q2 = await api('coller', { texte: ['nom\ta\tb', 'x\t1,5\t2', 'y\t0\t3', 'z\t2\t1'].join('\r\n'), nom: 'Couverts' });
+      const v2 = Object.fromEntries(q2.variables.map((x) => [x.nom, x.uid]));
+      const r2 = await api('rarefaction', { projet: q2.id, especes: [v2.a, v2.b] });
+      verifier(r2.entiers === false && !r2.courbes && col(r2.observations, 'Sm').every((x) => x === null) && col(r2.estimateurs, 'jack1').length === 1,
+        `non entiers : ${JSON.stringify(r2.observations)}`);
+      let refus = '';
+      try { await api('rarefaction', { projet: q.id, especes: [v.sp1] }); } catch (err) { refus = err.message; }
+      verifier(/deux espèces/.test(refus), `une seule espèce refusée : « ${refus} »`);
+    });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
       let g = 5;

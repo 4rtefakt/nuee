@@ -327,13 +327,15 @@ if (avec_vegan) {
              proche(sn$sites, sv$sites) && proche(sn$lc, sv$constraints) && proche(sn$reponses, sv$species) &&
                proche(sn$biplot[c("temp", "ph"), ], sv$biplot[c("temp", "ph"), ]) && proche(sn$centroides, sv$centroids[paste0("habitat", levels(env$habitat)), ]))
   }
-  avc <- vegan::anova.cca(cv, permutations = pv(Pc))
-  verifier("test global : F et p = anova.cca avec les mêmes permutations", proche(mcca$test$F, avc$F[1]) && identical(mcca$test$p, avc[["Pr(>F)"]][1]))
-  verifier("R² et R² ajusté = RsquareAdj (les mêmes permutations)", {
-    ra <- vegan::RsquareAdj(cv, permutations = pv(Pc))
-    proche(mcca$r2, ra$r.squared) && proche(mcca$r2_ajuste, ra$adj.r.squared)
-  })
+  # (les tests et le R² ajusté d'une CCA sont comparés à vegan 2.7 seulement : leurs permutations,
+  # où les masses suivent les lignes, sont celles de vegan 2.5 et après, et vegan 2.6 n'a pas été essayé)
   if (vegan_27) {
+    avc <- vegan::anova.cca(cv, permutations = pv(Pc))
+    verifier("test global : F et p = anova.cca avec les mêmes permutations", proche(mcca$test$F, avc$F[1]) && identical(mcca$test$p, avc[["Pr(>F)"]][1]))
+    verifier("R² et R² ajusté = RsquareAdj (les mêmes permutations)", {
+      ra <- vegan::RsquareAdj(cv, permutations = pv(Pc))
+      proche(mcca$r2, ra$r.squared) && proche(mcca$r2_ajuste, ra$adj.r.squared)
+    })
     ta <- tests_axes_rda(mcca, Pc)
     va <- vegan::anova.cca(cv, by = "axis", permutations = pv(Pc))
     verifier("tests par axe = anova.cca(by = \"axis\")", proche(ta$F, va$F) && isTRUE(all.equal(ta$p, va[["Pr(>F)"]])) && proche(ta$ddl, va$Df) && proche(ta$inertie, va$ChiSquare))
@@ -356,9 +358,11 @@ if (avec_vegan) {
     proche(sn$sites, sv$sites) && proche(sn$lc, sv$constraints) && proche(sn$reponses, sv$species) && proche(sn$biplot["temp", ], sv$biplot["temp", ]) &&
       proche(sn$centroides, sv$centroids[paste0("habitat", levels(env$habitat)), ])
   }, TRUE)))
-  avz <- vegan::anova.cca(czv, permutations = pv(Pcz))
-  verifier("CCA partielle permutée par site : F et p = anova.cca", proche(mccz$test$F, avz$F[1]) && identical(mccz$test$p, avz[["Pr(>F)"]][1]))
-  verifier("CCA partielle : R² ajusté = RsquareAdj (les mêmes permutations)", proche(mccz$r2_ajuste, vegan::RsquareAdj(czv, permutations = pv(Pcz))$adj.r.squared))
+  if (vegan_27) {
+    avz <- vegan::anova.cca(czv, permutations = pv(Pcz))
+    verifier("CCA partielle permutée par site : F et p = anova.cca", proche(mccz$test$F, avz$F[1]) && identical(mccz$test$p, avz[["Pr(>F)"]][1]))
+    verifier("CCA partielle : R² ajusté = RsquareAdj (les mêmes permutations)", proche(mccz$r2_ajuste, vegan::RsquareAdj(czv, permutations = pv(Pcz))$adj.r.squared))
+  }
   if (vegan_27) verifier("CCA partielle : tests par axe, séquentiels et marginaux = anova.cca", {
     a <- tests_axes_rda(mccz, Pcz); va <- vegan::anova.cca(czv, by = "axis", permutations = pv(Pcz))
     s <- tests_sequentiels(mccz, Pcz); vs <- vegan::anova.cca(czv, by = "terms", permutations = pv(Pcz))
@@ -379,7 +383,7 @@ if (avec_vegan) {
     sv <- vegan::scores(cvc, choices = 1:5, display = c("sites", "species", "bp"), scaling = 2)
     sn <- scores_cca(mvc, 2)
     proche(mvc$noyau$contraint$eig, cvc$CCA$eig) && proche(sn$sites[, 1:5], sv$sites) && proche(sn$reponses[, 1:5], sv$species) && proche(sn$biplot[, 1:5], sv$biplot) &&
-      identical(mvc$test$p, vegan::anova.cca(cvc, permutations = pv(Pv))[["Pr(>F)"]][1])
+      (!vegan_27 || identical(mvc$test$p, vegan::anova.cca(cvc, permutations = pv(Pv))[["Pr(>F)"]][1]))
   })
   if (vegan_27) {
     sel_c <- selection_rda(mvc, Pv)
