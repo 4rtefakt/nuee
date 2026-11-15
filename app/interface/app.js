@@ -18,6 +18,7 @@ import { ouvrirPalette } from './palette.js';
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 import './vues_ordination.js';
 import './vues_classement.js';
+import './vues_trim.js';
 import { installerDocuments } from './documents.js';
 
 const params = new URLSearchParams(location.search);
