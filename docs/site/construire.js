@@ -267,10 +267,15 @@ function paragraphes(lignes, largeur) {
   return res;
 }
 
-// a paragraph's text: escaped, its references to other sections linked, its lead-in in bold
+// a paragraph's text: escaped, its web addresses and references to other sections linked, its
+// lead-in in bold
 function texteGuide(texte, ctx, avecEntree = true) {
   let h = echapper(texte);
   const liens = [];
+  h = h.replace(/https?:\/\/[^\s<>"]*[^\s<>".,;:!?)»]/g, (u) => {
+    liens.push(`<a href="${attribut(u.replace(/&amp;/g, '&'))}">${u}</a>`);
+    return `\u0000${liens.length - 1}\u0000`;
+  });
   for (const [alias, url] of ctx.renvois) {
     const motif = new RegExp(`(\\b(?:see|See|voir|Voir) +)(["«“] ?)?(${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![\\p{L}\\d])`, 'gu');
     h = h.replace(motif, (_, avant, guillemet = '', titre) => {

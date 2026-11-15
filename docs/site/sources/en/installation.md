@@ -28,10 +28,10 @@ time.
 
 ### In an organisation
 
-For IT departments: silent installation for one user or the whole computer, a policy that turns
-the update check off for everyone, the version to put on a network share (started by
-`Lancer Nuee.cmd`, which copies it to each computer), what Nuée writes where and what it sends
-over the network: see [the deployment guide](https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md).
+For IT departments: silent installation for one user or the whole computer, the settings for
+Intune, Configuration Manager, Group Policy and PDQ Deploy (commands, detection rule), a policy
+that turns the update check off for everyone, what Nuée writes where and what it sends over the
+network: see [the deployment guide](https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md).
 
 ## Linux
 

@@ -4,19 +4,15 @@ NUÉE — PCA, PLS, community ecology, models and maps, computed in R
 
 Getting started
 ---------------
-Two ways to install Nuée, without administrator rights; R is included in both.
-- From the network share: double-click "Lancer Nuee.cmd". Windows can't start the
-  application straight from a network share, so this launcher copies it to the computer (into
-  %LOCALAPPDATA%\Nuee) and starts it there. The first copy takes one or two minutes; after
-  that only the files changed on the share are copied again, and the application starts right
-  away. On the first start, "Nuée" shortcuts are made on the desktop and in the Start menu:
-  they start the application the same way (always up to date with the share).
-- With the installer: double-click "Nuee-Setup-<version>.exe" and follow the steps (for you
-  alone, or for every user of the computer).
-Either way, Nuée appears in Settings › Apps › Installed apps, where it can be uninstalled;
-projects and settings are kept.
+To install Nuée, double-click "Nuee-Setup-<version>.exe" and follow the steps: for you alone
+(no administrator rights needed) or for every user of the computer. R is included. Nuée
+appears in Settings › Apps › Installed apps, where it can be uninstalled; projects and
+settings are kept.
 If Windows shows "Windows protected your PC" (unknown publisher), click "More info", then
 "Run anyway".
+For IT departments installing Nuée on many computers (silent installation, Intune,
+Configuration Manager, Group Policy, turning the update check off): the deployment guide,
+https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md
 
 On Linux, Nuée uses the computer's R.
 - Debian, Ubuntu and their derivatives: sudo apt install ./Nuee-<version>-amd64.deb also
@@ -159,8 +155,7 @@ installer is downloaded and checked (its SHA-256 checksum must be the one GitHub
 Nuée closes (offering to save the projects you changed), installs it and starts again. For an
 installation for all users, Windows asks for permission. Help › Check for updates does the
 same at any time, even with the start-up check off; Help › Look for a new version at
-start-up turns the check off. The copy started from the network share doesn't look: it is
-updated with the share.
+start-up turns the check off.
 
 The explorer (on the left)
 --------------------------
@@ -556,10 +551,8 @@ View › R console (Ctrl+J): a panel below the tabs, with
     while typing.
 Changing a project in the console (p$donnees[...] <- ...) changes it in the application.
 Correcting the engine: dossier_moteur() gives the folder of the application's R files; after
-a correction, recharger_moteur() reads them again, then refit the model. For the copy started
-from the network share, this folder is the copy made on the computer: at the next start, the
-share's copy replaces it; to keep a correction, make it in the same file on the share
-(application\resources\moteur\R).
+a correction, recharger_moteur() reads them again, then refit the model. Updating Nuée
+replaces these files.
 A long command blocks the application until the computation ends.
 Checking the engine: verifier_moteur() refits the imported models of the open projects and
 compares them with the values stored in their files (R2X, R2Y, Q2), validated like the files;

@@ -69,13 +69,9 @@
 <div class="texte-guide">
 <section id="getting-started">
 <h2>Getting started</h2>
-<p>Two ways to install Nuée, without administrator rights; R is included in both.</p>
-<ul>
-<li><strong>From the network share:</strong> double-click "Lancer Nuee.cmd". Windows can't start the application straight from a network share, so this launcher copies it to the computer (into %LOCALAPPDATA%\Nuee) and starts it there. The first copy takes one or two minutes; after that only the files changed on the share are copied again, and the application starts right away. On the first start, "Nuée" shortcuts are made on the desktop and in the Start menu: they start the application the same way (always up to date with the share).</li>
-<li><strong>With the installer:</strong> double-click "Nuee-Setup-&lt;version&gt;.exe" and follow the steps (for you alone, or for every user of the computer).</li>
-</ul>
-<p>Either way, Nuée appears in Settings › Apps › Installed apps, where it can be uninstalled; projects and settings are kept.</p>
+<p>To install Nuée, double-click "Nuee-Setup-&lt;version&gt;.exe" and follow the steps: for you alone (no administrator rights needed) or for every user of the computer. R is included. Nuée appears in Settings › Apps › Installed apps, where it can be uninstalled; projects and settings are kept.</p>
 <p>If Windows shows "Windows protected your PC" (unknown publisher), click "More info", then "Run anyway".</p>
+<p>For IT departments installing Nuée on many computers (silent installation, Intune, Configuration Manager, Group Policy, turning the update check off): the deployment guide, <a href="https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md">https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md</a></p>
 <p>On Linux, Nuée uses the computer's R.</p>
 <ul>
 <li><strong>Debian, Ubuntu and their derivatives:</strong> sudo apt install ./Nuee-&lt;version&gt;-amd64.deb also installs R and the R packages needed. Nuée appears in the applications menu.</li>
@@ -120,7 +116,7 @@ GeoPackage .gpkg (a layer of QGIS: see Maps and spatial data)</pre>
 <section id="if-the-r-engine-stops">
 <h2>If the R engine stops</h2>
 <p>The application says so and offers to restart it; you can also do it yourself (Help › Restart the R engine) if a computation doesn't finish. Projects reopen with their models and views, from their recovery copy if they had changes, otherwise from the file they save to; changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when the engine no longer answers keeps the recovery copies, offered at the next start. After a minute of computing, the status bar says so.</p>
-<p><strong>Help › What's new:</strong> the changes in each version (shown once after an update). The installed copy (Nuee-Setup, or the Linux packages) looks for a new version at start-up (a single request to GitHub, nothing else is sent) and mentions it in the status bar; on Linux, a click opens the version's page. On Windows, one click offers to update: the installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then Nuée closes (offering to save the projects you changed), installs it and starts again. For an installation for all users, Windows asks for permission. Help › Check for updates does the same at any time, even with the start-up check off; Help › Look for a new version at start-up turns the check off. The copy started from the network share doesn't look: it is updated with the share.</p>
+<p><strong>Help › What's new:</strong> the changes in each version (shown once after an update). The installed copy (Nuee-Setup, or the Linux packages) looks for a new version at start-up (a single request to GitHub, nothing else is sent) and mentions it in the status bar; on Linux, a click opens the version's page. On Windows, one click offers to update: the installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then Nuée closes (offering to save the projects you changed), installs it and starts again. For an installation for all users, Windows asks for permission. Help › Check for updates does the same at any time, even with the start-up check off; Help › Look for a new version at start-up turns the check off.</p>
 </section>
 <section id="the-explorer">
 <h2>The explorer (on the left)</h2>

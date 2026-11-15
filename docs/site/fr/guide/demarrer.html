@@ -69,13 +69,10 @@
 <div class="texte-guide">
 <section id="demarrer">
 <h2>Démarrer</h2>
-<p>Deux façons d'installer Nuée, sans droits d'administrateur ; R est inclus dans les deux.</p>
-<ul>
-<li><strong>Depuis le NAS :</strong> double-cliquez sur « Lancer Nuee.cmd ». Windows ne sait pas lancer l'application directement depuis le NAS ; ce lanceur la copie sur l'ordinateur (dans %LOCALAPPDATA%\Nuee) puis la démarre. La première fois la copie prend une à deux minutes ; ensuite seuls les fichiers modifiés sur le NAS sont recopiés, et l'application démarre tout de suite. Au premier lancement, des raccourcis « Nuée » sont créés sur le Bureau et dans le menu Démarrer : ils lancent l'application de la même façon (toujours à jour avec le NAS).</li>
-<li><strong>Avec l'installateur :</strong> double-cliquez sur « Nuee-Setup-&lt;version&gt;.exe » et suivez les étapes (pour vous seul, ou pour tous les utilisateurs de l'ordinateur).</li>
-</ul>
-<p>Dans les deux cas, Nuée apparaît dans Paramètres › Applications › Applications installées, d'où on peut la désinstaller ; les projets et les réglages sont gardés.</p>
+<p>Pour installer Nuée, double-cliquez sur « Nuee-Setup-&lt;version&gt;.exe » et suivez les étapes : pour vous seul (sans droits d'administrateur) ou pour tous les utilisateurs de l'ordinateur.</p>
+<p>R est inclus. Nuée apparaît dans Paramètres › Applications › Applications installées, d'où on peut la désinstaller ; les projets et les réglages sont gardés.</p>
 <p>Si Windows affiche « Windows a protégé votre ordinateur » (éditeur inconnu), cliquez sur « Informations complémentaires » puis « Exécuter quand même ».</p>
+<p>Pour les services informatiques qui installent Nuée sur de nombreux ordinateurs (installation silencieuse, Intune, Configuration Manager, stratégies de groupe, recherche de mises à jour coupée) : le guide de déploiement, en anglais, <a href="https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md">https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md</a></p>
 <p>Sous Linux, Nuée utilise le R de l'ordinateur.</p>
 <ul>
 <li><strong>Debian, Ubuntu et dérivées :</strong> sudo apt install ./Nuee-&lt;version&gt;-amd64.deb installe aussi R et les paquets R nécessaires. Nuée apparaît dans le menu des applications.</li>
@@ -118,7 +115,7 @@ GeoPackage .gpkg (une couche de QGIS : voir Cartes et données spatiales)</pre>
 <section id="si-le-moteur-r-s-arrete">
 <h2>Si le moteur R s'arrête</h2>
 <p>L'application le signale et propose de le redémarrer ; on peut aussi le faire soi-même (Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs modèles et leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon depuis le fichier où ils s'enregistrent ; les changements faits depuis la dernière copie de secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde les copies de secours, proposées au lancement suivant. Au-delà d'une minute de calcul, la barre d'état le rappelle.</p>
-<p><strong>Aide › Quoi de neuf :</strong> les nouveautés de chaque version (affichées une fois après une mise à jour). La version installée (Nuee-Setup, ou les paquets Linux) cherche au démarrage s'il existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est envoyé) et la signale dans la barre d'état ; sous Linux, un clic ouvre la page de la version. Sous Windows, un clic propose de mettre à jour : le programme d'installation est téléchargé et vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour fait de même à tout moment, même sans la recherche au démarrage ; Aide › Chercher une nouvelle version au démarrage arrête la recherche. La copie lancée depuis le NAS ne cherche pas : elle se met à jour avec le NAS.</p>
+<p><strong>Aide › Quoi de neuf :</strong> les nouveautés de chaque version (affichées une fois après une mise à jour). La version installée (Nuee-Setup, ou les paquets Linux) cherche au démarrage s'il existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est envoyé) et la signale dans la barre d'état ; sous Linux, un clic ouvre la page de la version. Sous Windows, un clic propose de mettre à jour : le programme d'installation est téléchargé et vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour fait de même à tout moment, même sans la recherche au démarrage ; Aide › Chercher une nouvelle version au démarrage arrête la recherche.</p>
 </section>
 <section id="l-explorateur">
 <h2>L'explorateur (à gauche)</h2>

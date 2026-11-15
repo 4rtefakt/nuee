@@ -51,8 +51,9 @@ vérifie son empreinte SHA-256 auprès de GitHub, propose d'enregistrer vos proj
 et redémarre Nuée. *Aide › Chercher une nouvelle version au démarrage* arrête la recherche.
 
 **Pour les services informatiques :** installation silencieuse pour un utilisateur ou pour tout
-l'ordinateur, une stratégie qui coupe la recherche de mises à jour pour tous, ce que Nuée écrit
-où et envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
+l'ordinateur, les réglages pour Intune, Configuration Manager, les stratégies de groupe et PDQ
+Deploy, une stratégie qui coupe la recherche de mises à jour pour tous, ce que Nuée écrit où et
+envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
 
 ### Linux
 

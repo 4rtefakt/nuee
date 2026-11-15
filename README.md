@@ -48,8 +48,9 @@ one, a click in the status bar downloads its installer, checks it against the SH
 GitHub gives, offers to save your projects, installs it and starts Nuée again. *Help › Look for
 a new version at start-up* turns the check off.
 
-**For IT departments:** silent installation for one user or the whole computer, a policy that
-turns the update check off for everyone, what Nuée writes where and sends over the network:
+**For IT departments:** silent installation for one user or the whole computer, the settings
+for Intune, Configuration Manager, Group Policy and PDQ Deploy, a policy that turns the update
+check off for everyone, what Nuée writes where and sends over the network:
 [docs/deploiement.md](docs/deploiement.md).
 
 ### Linux

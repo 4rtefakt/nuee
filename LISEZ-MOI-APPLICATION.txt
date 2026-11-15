@@ -4,19 +4,16 @@ NUÉE — ACP, PLS, écologie des communautés, modèles et cartes, calculés en
 
 Démarrer
 --------
-Deux façons d'installer Nuée, sans droits d'administrateur ; R est inclus dans les deux.
-- Depuis le NAS : double-cliquez sur « Lancer Nuee.cmd ». Windows ne sait pas lancer
-  l'application directement depuis le NAS ; ce lanceur la copie sur l'ordinateur (dans
-  %LOCALAPPDATA%\Nuee) puis la démarre. La première fois la copie prend une à deux minutes ;
-  ensuite seuls les fichiers modifiés sur le NAS sont recopiés, et l'application démarre tout
-  de suite. Au premier lancement, des raccourcis « Nuée » sont créés sur le Bureau et dans le
-  menu Démarrer : ils lancent l'application de la même façon (toujours à jour avec le NAS).
-- Avec l'installateur : double-cliquez sur « Nuee-Setup-<version>.exe » et suivez les
-  étapes (pour vous seul, ou pour tous les utilisateurs de l'ordinateur).
-Dans les deux cas, Nuée apparaît dans Paramètres › Applications › Applications installées,
-d'où on peut la désinstaller ; les projets et les réglages sont gardés.
+Pour installer Nuée, double-cliquez sur « Nuee-Setup-<version>.exe » et suivez les étapes :
+pour vous seul (sans droits d'administrateur) ou pour tous les utilisateurs de l'ordinateur.
+R est inclus. Nuée apparaît dans Paramètres › Applications › Applications installées, d'où on
+peut la désinstaller ; les projets et les réglages sont gardés.
 Si Windows affiche « Windows a protégé votre ordinateur » (éditeur inconnu), cliquez sur
 « Informations complémentaires » puis « Exécuter quand même ».
+Pour les services informatiques qui installent Nuée sur de nombreux ordinateurs (installation
+silencieuse, Intune, Configuration Manager, stratégies de groupe, recherche de mises à jour
+coupée) : le guide de déploiement, en anglais,
+https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md
 
 Sous Linux, Nuée utilise le R de l'ordinateur.
 - Debian, Ubuntu et dérivées : sudo apt install ./Nuee-<version>-amd64.deb installe aussi R
@@ -174,8 +171,7 @@ vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée 
 proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation
 pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour
 fait de même à tout moment, même sans la recherche au démarrage ; Aide › Chercher une nouvelle
-version au démarrage arrête la recherche. La copie lancée depuis le NAS ne cherche pas : elle
-se met à jour avec le NAS.
+version au démarrage arrête la recherche.
 
 L'explorateur (à gauche)
 ------------------------
@@ -602,9 +598,8 @@ Affichage › Console R (Ctrl+J) : un panneau sous les onglets, avec
     fonctionnent aussi pendant qu'on tape.
 Modifier un projet dans la console (p$donnees[...] <- ...) le modifie dans l'application.
 Corriger le moteur : dossier_moteur() donne le dossier des fichiers R de l'application ; après
-une correction, recharger_moteur() les relit, puis réajuster le modèle. Ce dossier est la
-copie faite sur l'ordinateur : au lancement suivant, la copie du NAS la remplace. Pour garder
-une correction, la reporter dans le même fichier sur le NAS (application\resources\moteur\R).
+une correction, recharger_moteur() les relit, puis réajuster le modèle. Une mise à jour de
+Nuée remplace ces fichiers.
 Une commande longue bloque l'application jusqu'à la fin du calcul.
 Vérifier le moteur : verifier_moteur() recalcule les modèles importés des projets ouverts,
 validés comme leurs fichiers, et les compare aux valeurs enregistrées dans leurs fichiers (R2X,

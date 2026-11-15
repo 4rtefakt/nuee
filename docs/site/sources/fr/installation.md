@@ -29,9 +29,9 @@ une mise à jour* la fait à tout moment.
 ### Dans un organisme
 
 Pour les services informatiques : installation silencieuse pour un utilisateur ou pour tout
-l'ordinateur, une stratégie qui coupe la recherche de mises à jour pour tous, la version à poser
-sur un partage réseau (lancée par `Lancer Nuee.cmd`, qui la copie sur chaque ordinateur), ce que
-Nuée écrit où et ce qu'il envoie sur le réseau : voir
+l'ordinateur, les réglages pour Intune, Configuration Manager, les stratégies de groupe et PDQ
+Deploy (commandes, règle de détection), une stratégie qui coupe la recherche de mises à jour pour
+tous, ce que Nuée écrit où et ce qu'il envoie sur le réseau : voir
 [le guide de déploiement](https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md) (en
 anglais).
 
