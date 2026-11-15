@@ -1283,6 +1283,61 @@ async function principal() {
       try { await api('hca', { modele: km.id }); } catch (err) { refusHCA = err.message; }
       verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
     });
+    await etape('forêts aléatoires et arbres boostés (moteur/R/forets.R, boosting.R)', async () => {
+      // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe, une présence
+      let g = 7;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\tgel\thaie\tpluie\tsol\tdensite\tniveau\tpresence'];
+      for (let i = 0; i < 72; i += 1) {
+        const gel = Math.round(30 * alea());
+        const haie = alea();
+        const densite = 2 + (gel > 12 ? -1.2 : 0) + (haie > 0.5 ? 0.6 : 0) + (alea() - 0.5);
+        lignes.push([`r${i + 1}`, `S${1 + Math.floor(i / 6)}`, i % 11 === 0 ? '' : gel, haie.toFixed(3), (200 * alea()).toFixed(1), ['argile', 'limon'][i % 2],
+          densite.toFixed(3), densite > 1.5 ? 'haute' : 'basse', densite > 1.8 ? 1 : 0].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Sites (forêts)' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const xs = [v.gel, v.haie, v.pluie, v.sol];
+      const vc = { by: 'variable', variable: v.site };
+      const foret = await api('ajuster', { projet: q.id, type: 'FOREST', x: xs, y: [v.densite], vc, echelle: 'none', nom: 'Forêt', options: { arbres: 200 } });
+      verifier(foret.analyse === true && foret.prediction === true && foret.type === 'FOREST' && foret.A === 0 && foret.N === 65 && foret.G === 12
+        && /^R2 OOB .* arbres$/.test(foret.chiffres) && [].concat(foret.vues_defaut).join() === 'ens_importance,ens_obspred'
+        && foret.observations['densite prédit (OOB)'].length === 65 && [].concat(foret.importance.variable).length === 4 && foret.courbe.arbres.length === 200
+        && foret.exclues_manquantes === 7 && foret.reglages.options.arbres === 200 && typeof foret.comparaison.Q2 === 'number', `forêt : ${foret.chiffres}, N = ${foret.N}`);
+      const dp = await api('dependance_partielle', { modele: foret.id, variables: ['gel'] });
+      const d0 = [].concat(dp.dependance)[0];
+      verifier(d0.variable === 'gel' && d0.x.length === 25 && d0.y.length === 25 && d0.tapis.length > 1, `dépendance partielle : ${d0.x.length} points`);
+      const fc = await api('ajuster', { projet: q.id, type: 'FOREST', x: xs, classe: v.niveau, vc, echelle: 'none', nom: 'Forêt classes', options: { arbres: 200 } });
+      verifier(fc.classement === true && [].concat(fc.vues_defaut).join() === 'ens_importance,ens_classement' && fc.classification.oob.table.length === 2
+        && fc.observations['probabilité haute'].length === 65 && fc.reglages.classe === v.niveau, `forêt de classement : ${fc.chiffres}`);
+      const bo = await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, y: [v.densite], vc, echelle: 'none', nom: 'Boosting',
+        options: { loi: 'gaussienne', arbres: 120, taux: 0.1, profondeur: 2, min_noeud: 5 } });
+      verifier(bo.type === 'BOOST' && bo.N === 65 && bo.meilleur >= 1 && bo.meilleur <= 120 && bo.courbe.validation.length === 120
+        && Math.abs([].concat(bo.influence.pourcentage).reduce((a, b) => a + b, 0) - 100) < 1e-6 && [].concat(bo.vues_defaut).join() === 'ens_importance,ens_erreur'
+        && /arbres$/.test(bo.chiffres) && bo.reglages.options.profondeur === 2, `arbres boostés : ${bo.chiffres}`);
+      const bb = await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, y: [v.presence], vc, echelle: 'none', nom: 'Boosting présence',
+        options: { loi: 'binomiale', arbres: 80, taux: 0.1, profondeur: 1, min_noeud: 5 } });
+      verifier(bb.loi === 'binomiale' && typeof bb.qualite.auc_vc === 'number' && bb.classification.vc.table.length === 2 && /^AUC/.test(bb.chiffres), `présence : ${bb.chiffres}`);
+      const db = await api('dependance_partielle', { modele: bb.id });
+      verifier([].concat(db.dependance).length === 4 && [].concat(db.dependance).every((d) => d.reponse.every((p) => p > 0 && p < 1)), 'dépendance partielle : 4 variables, des probabilités');
+      const pr = await api('predire', { modele: foret.id });
+      verifier(pr.observations['densite prédit'].length === 72 && pr.observations['densite prédit'].filter((x) => x === null).length === 7, 'prédire avec la forêt');
+      const pb = await api('predire', { modele: bb.id });
+      verifier(pb.observations['presence prédit'].length === 72, 'prédire avec les arbres boostés');
+      const re = await api('reajuster', { modele: foret.id, exclues: [2, 3] });
+      verifier(re.type === 'FOREST' && re.N === 63 && re.A === 0, `forêt réajustée : N = ${re.N}`);
+      const e = await api('exporter', { modele: bo.id, chemin: path.join(dossier, 'boosting.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats des arbres boostés');
+      const mf = await api('methodes', { modele: foret.id, langue: 'en' });
+      verifier(mf.paragraphes.some((x) => /ranger/.test(x) && /out-of-bag|bootstrap|replacement/.test(x)) && mf.references.some((x) => /^Breiman, L\. \(2001\)/.test(x)),
+        `texte des méthodes de la forêt : ${mf.paragraphes.join(' ').slice(0, 200)}`);
+      const mb = await api('methodes', { modele: bo.id, langue: 'fr' });
+      verifier(mb.paragraphes.some((x) => /gbm/.test(x)) && mb.references.some((x) => /^Elith/.test(x)) && mb.references.some((x) => /^Friedman, J\. H\. \(2002\)/.test(x)),
+        'texte des méthodes des arbres boostés');
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, classe: v.niveau, vc, echelle: 'none' }); } catch (err) { refus = err.message; }
+      verifier(/pas une classe/.test(refus), `arbres boostés d'une classe refusés : « ${refus} »`);
+    });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;
       const r = await api('supprimer_modele', { modele: da.id, definition: true });

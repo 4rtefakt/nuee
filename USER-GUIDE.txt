@@ -24,7 +24,7 @@ On Linux, Nuée uses the computer's R.
 - Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
   Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
   install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme",
-  "mgcv", "MASS", "rpart", "cluster")).
+  "mgcv", "MASS", "rpart", "cluster", "ranger")).
 .usp projects need python3. For another R than the PATH's: start Nuée with
 RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
 
@@ -1097,6 +1097,49 @@ For all three: Methods text with its references, Export, PDF or Word report, Exp
 (a script or an R Markdown / Quarto report that redoes the analysis with rpart, MASS or
 cluster, which come with R). Compare models shows a regression tree's Q2 and RMSEcv beside
 the other models.
+
+Random forests and boosted trees
+--------------------------------
+New model › type "Random forest" (the ranger package, Wright and Ziegler 2017): a quantitative
+Y variable (regression forest) or a class variable (classification forest), and X variables by
+their raw values. Each tree is grown on a bootstrap draw of the observations (with
+replacement), each split chosen among mtry randomly drawn variables; the forest predicts the
+mean of its trees, or the class most of them vote for (Breiman 2001). General tab: 500 trees,
+ranger's mtry and node size by default (the square root of the number of X rounded down; nodes
+of 5 observations for a regression, 1 for a classification), the share drawn, the permutation
+importance unscaled or divided by its standard error. Seed 1 and a single thread: the same
+forest every time. ranger takes no missing values: an observation with a missing X value is
+left out (the summary counts them). The out-of-bag error: each observation predicted by the
+trees whose draw doesn't hold it (MSE and R², or the share misclassified); the
+cross-validation: each cross-validation group (the site) predicted by a forest rebuilt without
+it (Q2 and RMSEcv, or the share correctly classified). Views: Variable importance (by
+permutation, how much the out-of-bag error rises when the variable's values are permuted; or by
+impurity), Partial dependence (computed on request, Friedman 2001: the forest's mean prediction
+when a variable takes each value of a grid, the other X unchanged; all the variables side by
+side, or one, the observed values under the curve; for a classification, the share of a class's
+votes), Error against the number of trees, Observed / predicted (out of bag, cross-validated or
+fitted) or Classification (with ROC curves from the votes). Test set and Predict.
+
+Type "Boosted trees (BRT)": gradient boosting of regression trees (Friedman 2001, 2002), as the
+gbm package computes it and as Elith, Leathwick and Hastie (2008) describe it for ecologists,
+written in R on rpart. A quantitative Y: a measurement (normal distribution), a presence-absence
+0/1 (binomial) or counts (Poisson), chosen as a GLM's. The trees are added one by one, each
+fitted to what the model still misses (the gradient of the deviance) on a draw without
+replacement of a share of the observations, its leaves re-estimated for the deviance, and added
+with a small weight (the learning rate). General tab: at most 2000 trees, a learning rate of
+0.01, 3 splits per tree (the interaction depth: 1 gives an additive model), at least 10
+observations per leaf, draws of 50%. The number of trees is the one where the cross-validated
+deviance is smallest (each cross-validation group predicted after each tree by the boosting
+redone without it): the more groups and trees, the longer the fit. Observations with a missing
+X value are left out. Views: Relative influence (the error reductions of each variable's splits,
+in %), Partial dependence (on the link scale, logit or log, or on the response's), Error against
+the number of trees (the deviance of the fit and the cross-validated one, the number of trees
+retained), Observed / predicted, and Classification (at a probability of 0.5, with the ROC
+curve) for a 0/1 response. Test set and Predict.
+
+For both: Methods text with its references, Export, PDF or Word report. Compare models shows
+the Q2 and RMSEcv of a regression forest, or of boosted trees of a measurement, beside the other
+models. No export to R yet.
 
 Adding columns from another table
 ---------------------------------
