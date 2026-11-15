@@ -205,10 +205,13 @@ variable ou des résidus d'un modèle, son corrélogramme et le semi-variogramme
 gstat les donnent, et un lissage spatial s(x, y) dans les modèles additifs pour ce que les
 termes laissent dans l'espace.
 
-**Arbres, analyse discriminante, groupes :** arbres de décision (rpart) pour une réponse
-quantitative ou une classe, sur les valeurs brutes des variables pour que les seuils se lisent
-dans leurs unités, élagués par une validation croisée par site et validés en prédisant chaque
-site par un arbre refait sans lui, avec la stabilité de la première coupure ; analyse
+**Arbres et forêts, analyse discriminante, groupes :** arbres de décision (rpart) pour une
+réponse quantitative ou une classe, sur les valeurs brutes des variables pour que les seuils se
+lisent dans leurs unités, élagués par une validation croisée par site et validés en prédisant
+chaque site par un arbre refait sans lui, avec la stabilité de la première coupure ; forêts
+aléatoires (ranger) et arbres de régression boostés (l'algorithme de gbm, pour une mesure, une
+présence-absence ou des comptages), avec leur erreur hors sac ou en validation croisée,
+l'importance et la dépendance partielle des variables, comme ranger et gbm les donnent ; analyse
 discriminante linéaire (MASS::lda), classement en validation croisée et probabilités a
 posteriori ; k-moyennes avec silhouettes et choix de k.
 

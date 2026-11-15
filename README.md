@@ -193,10 +193,13 @@ model's results export to one. Moran's I of a variable or of a model's residuals
 correlogram and the semivariogram, as spdep and gstat give them, and a spatial smooth s(x, y)
 in additive models for what the terms leave in space.
 
-**Trees, discriminant analysis, clustering:** decision trees (rpart) for a quantitative
-response or a class, on the raw variables so that thresholds read in their units, pruned by a
-cross-validation by site and validated by predicting each site with a tree rebuilt without it,
-with the stability of the first split; linear discriminant analysis (MASS::lda) with a
+**Trees and forests, discriminant analysis, clustering:** decision trees (rpart) for a
+quantitative response or a class, on the raw variables so that thresholds read in their units,
+pruned by a cross-validation by site and validated by predicting each site with a tree rebuilt
+without it, with the stability of the first split; random forests (ranger) and boosted
+regression trees (gbm's algorithm, for a measurement, a presence-absence or counts), with their
+out-of-bag or cross-validated error, the variables' importance and partial dependence, as ranger
+and gbm give them; linear discriminant analysis (MASS::lda) with a
 cross-validated classification and posterior probabilities; k-means with silhouettes and the
 choice of k.
 
