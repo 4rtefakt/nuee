@@ -385,7 +385,8 @@ distances_entre_points <- function(x, y, lonlat, x2 = x, y2 = y) {
 #   "voisins"  les k plus proches voisins de chacune (1, rendus symétriques : i voisin de j ou j de i) ;
 #   "bande"    1 jusqu'à la distance `portee` (par défaut, la plus petite qui donne un voisin à
 #              chaque observation : la plus grande des distances au plus proche voisin) ;
-#   "inverse"  1 / d, jusqu'à `portee` si elle est donnée.
+#   "inverse"  1 / d, jusqu'à `portee` si elle est donnée (deux observations au même endroit,
+#              d = 0, refusées : la moyenne par lieu, ou un autre voisinage).
 # `standardiser` : chaque ligne ramenée à une somme de 1 (le style « W » de spdep ; sinon « B »,
 # les poids tels quels). Une observation sans voisin garde une ligne de zéros.
 poids_spatiaux <- function(D, methode = "voisins", k = 4, portee = NULL, standardiser = TRUE) {
@@ -398,8 +399,12 @@ poids_spatiaux <- function(D, methode = "voisins", k = 4, portee = NULL, standar
     for (i in seq_len(n)) W[i, order(D[i, ])[seq_len(k)]] <- 1
     W <- pmax(W, t(W))
   } else {
-    if (is.null(portee) || !is.finite(portee) || portee <= 0) portee <- if (methode == "bande") max(apply(D, 1, min)) else Inf
-    dans <- D <= portee * (1 + 1e-12)
+    if (!length(portee) || !is.finite(portee[1]) || portee[1] <= 0) portee <- if (methode == "bande") max(apply(D, 1, min)) else Inf
+    dans <- D <= portee[1] * (1 + 1e-12)
+    if (methode == "inverse" && any(D[dans] == 0)) {
+      stop(traduire("Des observations sont au même endroit : l'inverse de leur distance nulle n'existe pas. Cochez « Moyenne par lieu », ou choisissez un autre voisinage.",
+                    "Some observations are at the same place: the inverse of their zero distance doesn't exist. Tick “Mean by place”, or choose another neighbourhood."), call. = FALSE)
+    }
     W[dans] <- if (methode == "bande") 1 else 1 / D[dans]
   }
   diag(W) <- 0
@@ -449,11 +454,14 @@ moran_residus_lm <- function(e, X, W) {
   S0 <- sum(W)
   q <- qr(X)
   p <- q$rank
-  M <- diag(n) - qr.Q(q)[, seq_len(p), drop = FALSE] %*% t(qr.Q(q)[, seq_len(p), drop = FALSE])
-  MW <- M %*% W
+  # (M = I − QQ' sans former M : MW = W − Q(Q'W), WM = W − (WQ)Q', tr(MWMWᵀ) = Σ MW ∘ WM ;
+  # n² p opérations au lieu de n³)
+  Q <- qr.Q(q)[, seq_len(p), drop = FALSE]
+  MW <- W - Q %*% crossprod(Q, W)
+  WM <- W - (W %*% Q) %*% t(Q)
   I <- (n / S0) * sum(e * (W %*% e)) / sum(e^2)
   E <- (n / S0) * sum(diag(MW)) / (n - p)
-  V <- (n / S0)^2 * (sum(MW * t(M %*% t(W))) + sum(MW * t(MW)) + sum(diag(MW))^2) / ((n - p) * (n - p + 2)) - E^2
+  V <- (n / S0)^2 * (sum(MW * WM) + sum(MW * t(MW)) + sum(diag(MW))^2) / ((n - p) * (n - p + 2)) - E^2
   zv <- (I - E) / sqrt(V)
   list(I = I, esperance = E, variance = V, z = zv, p = stats::pnorm(zv, lower.tail = FALSE), n = n, rang = p)
 }

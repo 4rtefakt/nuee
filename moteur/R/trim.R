@@ -598,7 +598,7 @@ pente_globale <- function(tt, V) {
 #   modèle 2 sinon : à chaque point, le changement de pente (βl − βl−1, β0 = 0), de la référence et de
 #   chaque catégorie des covariables ensemble ;
 #   modèle 3 sans covariable : les écarts à la droite (γ* de la décomposition de rtrim § 4.2, J − 2
-#   degrés de liberté) ;
+#   degrés de liberté ; aucun pour deux temps) ;
 #   chaque covariable : tous ses paramètres.
 tests_trim <- function(t, fit, devs = NULL) {
   des <- fit$des
@@ -627,8 +627,8 @@ tests_trim <- function(t, fit, devs = NULL) {
       }
     }
   }
-  if (!is.null(devs)) {
-    J <- length(t$temps)
+  J <- length(t$temps)
+  if (!is.null(devs) && J > 2) {
     k <- 3:J
     ajouter("deviations", "", wald(devs$gstar[k], devs$V[k + 1, k + 1, drop = FALSE]))
   }

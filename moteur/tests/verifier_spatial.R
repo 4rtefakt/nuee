@@ -216,6 +216,14 @@ verifier("par lieu : 12 placettes de 5 années, la moyenne de chacune", ad$n == 
            isTRUE(all.equal(ad$valeurs[2], mean(df$v[6:10]))))
 ae <- autocorrelation_spatiale(pd, variable = numeros(pd, "v"), permutations = 0)
 verifier("sans regrouper : les paires au même endroit comptées", ae$nulles == 12 * 10)
+# (le voisinage que la carte envoie pour une bande ou l'inverse de la distance sans portée donnée)
+verifier("bande ou inverse de la distance sans portée : la portée par défaut",
+         isTRUE(all.equal(autocorrelation_spatiale(p, variable = numeros(p, "v"), voisinage = list(methode = "bande"), permutations = 0)$moran$I,
+                          moran(df$v[-5], poids_spatiaux(distances_points(df$X_L93[-5], df$Y_L93[-5], 2154), "bande"), 0)$I)) &&
+           is.finite(autocorrelation_spatiale(p, variable = numeros(p, "v"), voisinage = list(methode = "inverse"), permutations = 0)$moran$I))
+verifier("l'inverse de la distance avec des observations au même endroit : refusé, la moyenne par lieu proposée ; par lieu, calculé",
+         grepl("Moyenne par lieu", refus(autocorrelation_spatiale(pd, variable = numeros(pd, "v"), voisinage = list(methode = "inverse"), permutations = 0))) &&
+           is.finite(autocorrelation_spatiale(pd, variable = numeros(pd, "v"), voisinage = list(methode = "inverse"), permutations = 0, par_lieu = TRUE)$moran$I))
 
 # ---------------------------------------------------------------- lissage spatial d'un GAM
 

@@ -517,6 +517,15 @@ verifier("refus : un cercle sans rayon, des méthodes différentes sous un nom, 
            grepl("même méthode", refus(ajouter_valeurs_rasters(p, list(list(chemin = f("mnt_est.tif"), methode = "cellule", noms = "a"), list(chemin = f("mnt_ouest.tif"), methode = "bilineaire", noms = "a"))))) &&
            grepl("donnez un nom", refus(ajouter_valeurs_rasters(p, list(list(chemin = f("mnt_est.tif"), noms = " "))))))
 verifier("refus en anglais", grepl("give the circle's radius", en_anglais(ajouter_valeurs_rasters(p, list(list(chemin = f("mnt_est.tif"), methode = "moyenne"))))))
+# (un raster de 2 100 × 2 100 cellules de 1 m : des cercles de 1 500 m autour d'un point, ou de 900 m
+# autour de seize, en couvrent trop, refusés avant toute lecture ; de 30 m, lus)
+ecrire_tiff(f("fin.tif"), matrix(1, 2100, 2100), "uint8")
+gf <- ouvrir_raster(f("fin.tif"))
+c30 <- valeurs_points(gf, 1050, -1050, "moyenne", 30)$valeurs[[1]]
+verifier("des cercles qui couvrent trop de cellules (plus de 4 millions autour d'un point, de 50 millions en tout) : refusés ; de 30 m, lus",
+         grepl("trop de ses cellules", refus(valeurs_points(gf, 1050, -1050, "moyenne", 1500))) &&
+           grepl("trop de ses cellules", refus(valeurs_points(gf, rep(1050, 16), rep(-1050, 16), "moyenne", 900))) &&
+           grepl("too many of its cells", en_anglais(valeurs_points(gf, 1050, -1050, "moyenne", 1500))) && all(c30 == 1) && abs(nrow(c30) - pi * 30^2) < 60)
 # un projet en coordonnées planes sans système : seulement un raster sans système
 pp <- regler_coordonnees(p, numeros(p, "X"), numeros(p, "Y"), "plan")
 verifier("coordonnées planes sans système : un raster sans système est pris dans le leur, un autre refusé",
@@ -621,6 +630,13 @@ if (!requireNamespace("terra", quietly = TRUE)) {
       next
     }
     verifier(sprintf("écrit par GDAL avec %s, %d bande(s) : comme terra", paste(x[[2]], collapse = " "), x[[3]]), ecart_gdal(fichier) == 0)
+  }
+  # (un fichier creux de réels, NaN pour valeur manquante : six tuiles de 16 × 16 cellules absentes)
+  rn <- fabriquer("FLT4S")
+  rn[1:40, 1:50] <- NA
+  if (ecrire(rn, f("gdal_creux_nan.tif"), datatype = "FLT4S", gdal = c("TILED=YES", "BLOCKXSIZE=16", "BLOCKYSIZE=16", "SPARSE_OK=TRUE"), NAflag = NaN)) {
+    verifier("un fichier creux de réels, NaN pour valeur manquante : ses tuiles absentes sans valeur (pas 0), comme terra",
+             is.nan(ouvrir_raster(f("gdal_creux_nan.tif"))$nodata) && ecart_gdal(f("gdal_creux_nan.tif")) == 0)
   }
   # un COG (tuiles et aperçus), l'échelle et le décalage, le nom des bandes, une palette, JPEG
   r <- fabriquer("FLT4S", etendue = c(800000, 800000 + 1300 * 25, 6250000, 6250000 + 1100 * 25), lignes = 1100, colonnes = 1300)
