@@ -745,7 +745,7 @@ exporter_demande <- function(q) {
   e <- modele(q$modele)
   nom <- nom_fichier(e$definition$name %||% "modele")
   if (is.null(q$chemin)) q$chemin <- chemin_temporaire(paste0(nom, ".", q$format %||% "xlsx"))
-  tables <- noms_tables_langue(tables_resultats(projet(e$projet), e$modele))
+  tables <- noms_tables_langue(tables_resultats(projet(e$projet), e$modele), projet(e$projet))
   if (extension(q$chemin) == "gpkg") {  # (les observations en points, les autres tableaux à côté : geopackage.R)
     ecrire_geopackage_resultats(projet(e$projet), e$modele, tables, q$chemin, nom)
     return(list(chemin = q$chemin, chemins = I(q$chemin)))

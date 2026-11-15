@@ -988,10 +988,12 @@ tableau_projet <- function(projet) {
   as.data.frame(colonnes, check.names = FALSE, stringsAsFactors = FALSE)
 }
 
-# Les noms des tableaux de résultats exportés (feuilles Excel, fichiers, couches GeoPackage) dans
-# la langue de l'interface : le moteur les nomme en français ; en anglais, ceux-ci sont traduits,
-# les autres (les mêmes dans les deux langues) restent. Les noms des colonnes restent ceux du
-# moteur : ils côtoient ceux des variables, qu'on ne traduit pas.
+# Les noms des tableaux de résultats exportés (feuilles Excel, fichiers, couches GeoPackage) et de
+# leurs colonnes dans la langue de l'interface. Le moteur les nomme en français ; en anglais, ceux
+# qu'il a faits sont traduits : les tableaux (NOMS_TABLES_EN, et « <tableau>_echelle_k »), les
+# colonnes (NOMS_COLONNES_EN, et les suffixes ajoutés au nom d'une variable : « densite observé »,
+# « Coeff x IC »). Une colonne au nom d'une variable du projet, ou d'une de ses catégories, garde
+# son nom : c'est celui de l'utilisateur. Le reste (AIC, R2, VIP, p…) est le même dans les deux.
 NOMS_TABLES_EN <- c(
   resume = "summary", composantes = "components", variables_y = "y_variables", qualite = "quality",
   effets_aleatoires = "random_effects", courbes = "curves", regles = "rules", elagage = "pruning",
@@ -1005,12 +1007,75 @@ NOMS_TABLES_EN <- c(
   groupes = "groups", centres_echelle = "centres_scaled", choix_k = "choice_of_k", tests_axes = "axis_tests",
   tests_termes = "term_tests", tests_sequentiels = "sequential_tests", partition_ensembles = "partition_fractions",
   totaux = "totals", pentes = "slopes", droite = "linear_trend", ecarts = "deviations", pas_a_pas = "stepwise",
-  strates = "strata")
-noms_tables_langue <- function(tables, langue = getOption("nuee.langue")) {
+  strates = "strata", candidats = "candidates", inertie = "inertia", modele = "model",
+  contributions_colonnes = "column_contributions", contributions_lignes = "row_contributions",
+  cos2_colonnes = "column_cos2", cos2_lignes = "row_cos2", colonnes = "columns", lignes = "rows",
+  fleches = "arrows", reponses = "responses")
+NOMS_COLONNES_EN <- c(
+  DModX_absolu = "DModX_absolute", DModX_pondere = "DModX_weighted", R2_ajuste = "R2_adjusted", r2_ajuste = "r2_adjusted",
+  Categorie = "Category", abondance = "abundance", additif = "additive", aire = "area", ajuste = "fitted", ajustee = "fitted",
+  analyse = "analysis", axe = "axis", espece = "species", parametre = "parameter", partie = "part", terme = "term",
+  apprentissage = "training", arbres = "trees", arbres_max = "max_trees", attendu = "expected", au_dela = "beyond",
+  bas = "lower", bas_D = "lower_D", bas_N = "lower_N", bien_classees = "correctly_classified",
+  bien_classees_vc = "correctly_classified_cv", bloc = "block", cases = "cells", categorie = "category",
+  changements = "changepoints", choisi = "chosen", classe = "class", `classe ajustée` = "fitted class",
+  `classe prédite (VC)` = "predicted class (CV)", `classe prédite (OOB)` = "predicted class (OOB)",
+  classe_predite = "predicted_class", classe_predite_vc = "predicted_class_cv", cle = "key", composante = "component",
+  comptages_observes = "observed_counts", compte = "count", concurvite = "concurvity", concurvite_pire = "concurvity_worst",
+  conditionnel = "conditional", constante = "constant", contraint = "constrained", converge = "converged", coupures = "breaks",
+  couverte = "covered", covariable = "covariate", covariables = "covariates", cumul = "cumulative",
+  cv_groupes = "cv_groups", cv_rencontre = "cv_encounter", dans_troncature = "within_truncation", ddl = "df",
+  ddl_modele = "df_model", ddl_rencontre = "df_encounter", ddl_residus = "df_residual", de = "from", depart = "start",
+  departs = "starts", dernier_temps = "last_time", deviance_expliquee = "deviance_explained", deviance_nulle = "null_deviance",
+  deviance_vc = "deviance_cv", dissimilarite = "dissimilarity", dissimilarites_nulles = "zero_dissimilarities",
+  echelle = "scaling", erreur = "error", erreur_relative = "relative_error", erreur_type = "std_error", especes = "species",
+  estimation = "estimate", facteur_unites = "unit_factor", feuille = "leaf", feuilles = "leaves", graine = "seed",
+  groupe = "group", groupe_vc = "cv_group", groupes = "groups", groupes_vc = "cv_groups", haut = "upper",
+  haut_D = "upper_D", haut_N = "upper_N", impurete = "impurity", impute = "imputed", indice = "index",
+  individus = "individuals", inertie = "inertia", inertie_inter = "inertia_between", inertie_intra = "inertia_within",
+  inertie_totale = "total_inertia", intra = "within", levier = "leverage", loi = "distribution", masse = "mass",
+  mediane = "median", meilleur_depart = "best_start", methode = "method", min_noeud = "min_node_size", modele = "model",
+  monotonie = "monotonicity", moyenne = "mean", multiplicatif = "multiplicative", niveau = "level", noeud = "node",
+  observations_laissees = "observations_left_out", observe = "observed", observes = "observed", ordre = "order",
+  ordres = "orders", p_ajuste = "p_adjusted", p_corrige = "p_corrected", paire = "pair", paires = "pairs",
+  parametres = "parameters", part = "share", part_detection = "share_detection", part_groupes = "share_groups",
+  part_rencontre = "share_encounter", pas = "step", poids = "weight", positifs = "positive", pourcentage = "percentage",
+  premier_temps = "first_time", premiere_coupure = "first_break", presences_absences = "presence_absence",
+  profondeur = "depth", quantile_normal = "normal_quantile", quoi = "what", ref_ddl = "ref_df", regle = "rule",
+  rencontre = "encounter", residu = "residual", retenues_p = "retained_p", retenues_p_ajuste = "retained_p_adjusted",
+  retrouvee = "found_again", se_additif = "se_additive", se_impute = "se_imputed", se_modele = "se_model",
+  se_multiplicatif = "se_multiplicative", se_rencontre = "se_encounter", se_taille = "se_size", serie = "series",
+  sites_sans_comptage_positif = "sites_without_positive_count", statistique = "statistic", strate = "stratum",
+  strates = "strata", taille_moyenne = "mean_size", taux = "rate", temps = "time", temps_de_base = "base_time",
+  termes = "terms", teste = "tested", total_ajuste = "total_fitted", troncature = "truncation",
+  troncature_gauche = "left_truncation", unite_aire = "area_unit", unite_distance = "distance_unit",
+  unite_effort = "effort_unit", valeur = "value", valeur_propre = "eigenvalue", variables_Y = "Y_variables",
+  voisin = "neighbouring_cluster")
+SUFFIXES_COLONNES_EN <- c(" ajusté (effets fixes)" = " fitted (fixed effects)", " prédit (VC)" = " predicted (CV)",
+  " prédit (OOB)" = " predicted (OOB)", " observé" = " observed", " ajusté" = " fitted", " prédit" = " predicted",
+  " résidu" = " residual", " IC" = " CI", "_IC" = "_CI", "_vc" = "_cv")
+nom_table_en <- function(n) {
+  if (!is.na(NOMS_TABLES_EN[n])) return(unname(NOMS_TABLES_EN[n]))
+  m <- regmatches(n, regexec("^(.+)_echelle_([0-9]+)$", n))[[1]]
+  if (length(m) == 3) return(paste0(nom_table_en(m[2]), "_scaling_", m[3]))
+  n
+}
+nom_colonne_en <- function(n, gardes) {
+  if (n %in% gardes) return(n)
+  if (!is.na(NOMS_COLONNES_EN[n])) return(unname(NOMS_COLONNES_EN[n]))
+  if (startsWith(n, "probabilité ")) return(paste("probability", substring(n, nchar("probabilité ") + 1)))
+  if (grepl("^CP[0-9]+$", n)) return(sub("^CP", "PC", n))  # (une composante principale)
+  for (s in names(SUFFIXES_COLONNES_EN)) if (endsWith(n, s) && nchar(n) > nchar(s)) return(paste0(substr(n, 1, nchar(n) - nchar(s)), SUFFIXES_COLONNES_EN[[s]]))
+  n
+}
+noms_tables_langue <- function(tables, projet = NULL, langue = getOption("nuee.langue")) {
   if (!identical(langue, "en") || !length(tables)) return(tables)
-  n <- names(tables)
-  en <- unname(NOMS_TABLES_EN[n])
-  names(tables) <- make.unique(ifelse(is.na(en), n, en), sep = "_")
+  gardes <- unlist(lapply(projet$variables, function(v) c(as.character(v$ids[1]), v$nom, as.character(unlist(v$categories)))))
+  tables <- lapply(tables, function(t) {
+    if (is.data.frame(t) && ncol(t)) names(t) <- make.unique(vapply(names(t), nom_colonne_en, "", gardes = gardes), sep = "_")
+    t
+  })
+  names(tables) <- make.unique(vapply(names(tables), nom_table_en, ""), sep = "_")
   tables
 }
 
