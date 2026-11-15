@@ -71,7 +71,7 @@ The last files opened are in File › Open recent.
 To try it: Help › Example project opens 120 made-up apples (four varieties, organic or
 conventional growing, a dozen measurements and a tasting score) with four ready models: a
 PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The
-original table, vergers.csv, is next to it (resources\exemple), to try opening a table.
+original table, orchards.csv, is next to it (resources\exemple), to try opening a table.
 
 Field data from KoboToolbox or ODK
 ----------------------------------
@@ -1825,7 +1825,7 @@ In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; 
 missing value; for a qualitative variable, the category's name). Models already fitted don't
 change: refit them.
 Edit › New variable: from an R formula on the other variables and the observation IDs, for
-example log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (a text
+example log10(polyphenols), sugar / acidity, ifelse(weight >= 170, "large", "small") (a text
 result gives a qualitative variable); by group, group_mean(x, sector), the mean of x in each
 observation's group (missing values ignored; an observation without a group gets none), and
 group_deviation(x, sector), the deviation from it (moyenne_groupe and ecart_groupe in

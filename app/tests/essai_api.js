@@ -473,6 +473,11 @@ async function principal() {
       verifier(e.modeles.length === 4 && e.observations.uid.length === 120 && !e.chemin_enregistrement, `${e.modeles.length} modèles`);
       const m = await api('ajuster', { projet: e.id, numero: e.modeles[0].numero, A: e.modeles[0].A });
       verifier(m.type === 'PCA' && m.N === 120, m.type);
+      // in English, the same apples in English (orchards.json); in French, vergers.json
+      const en = await api('exemple', {}, 'en');
+      const noms = (p) => p.variables.map((x) => x.nom);
+      verifier(en.modeles.length === 4 && en.observations.uid.length === 120 && noms(en).includes('sugar') && noms(en).includes('variety')
+        && !noms(en).includes('sucre') && noms(e).includes('sucre'), `exemple en anglais : ${noms(en).join(', ')}`);
     });
     await etape('tests par variable, texte des méthodes, modèles de classe, OPLS-DA à 4 classes', async () => {
       const e = await api('exemple');

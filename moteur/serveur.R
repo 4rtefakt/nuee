@@ -1121,10 +1121,11 @@ DEMANDES <- list(
   # formulaire XLSForm et sa langue), puis l'import, un nouveau projet.
   kobo_apercu = function(q) apercu_collecte(q$chemin, q$table, q$garder, q$parents, q$formulaire, q$langue),
   kobo_importer = function(q) ouvrir_collecte(q$chemin, q$nom %||% basename(q$chemin), q),
-  # Le projet d'exemple (données inventées, exemple/vergers.json) : ouvert comme un projet
-  # nouveau, que Enregistrer range où l'on veut.
+  # Le projet d'exemple (données inventées) dans la langue de l'interface : exemple/orchards.json
+  # en anglais, exemple/vergers.json en français (les mêmes pommes : exemple/creer_exemple.js) ;
+  # ouvert comme un projet nouveau, que Enregistrer range où l'on veut.
   exemple = function(q) {
-    r <- ouvrir_fichier(file.path(racine, "exemple", "vergers.json"))
+    r <- ouvrir_fichier(file.path(racine, "exemple", traduire("vergers.json", "orchards.json")))
     p <- projet(r$id)
     p$chemin <- NULL
     etat$projets[[p$id]] <- p

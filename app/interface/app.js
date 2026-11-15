@@ -241,7 +241,7 @@ const app = {
     await apresOuverture(res);
     if (!res.modeles.length) return;
     const id = await app.calculer(res.id, res.modeles[0].numero);
-    const variete = res.variables.find((v) => v.nom === 'variete');
+    const variete = res.variables.find((v) => v.nom === 'variety' || v.nom === 'variete');  // (orchards.json, vergers.json)
     if (variete) app.ouvrirVue('scores', id, { couleur: 'v' + variete.uid });
   },
 

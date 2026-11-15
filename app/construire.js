@@ -96,7 +96,7 @@ async function construire() {
   console.log('moteur…');
   copier(path.join(depot, 'moteur'), path.join(ressources, 'moteur'));
   // the example project (made-up data) and its table
-  copier(path.join(depot, 'exemple'), path.join(ressources, 'exemple'), (rel) => /^vergers\.(json|csv)$/.test(rel));
+  copier(path.join(depot, 'exemple'), path.join(ressources, 'exemple'), (rel) => /^(orchards|vergers)\.(json|csv)$/.test(rel));
   // the full user guide, opened from Aide › Guide d'utilisation
   for (const f of ['LISEZ-MOI-APPLICATION.txt', 'USER-GUIDE.txt']) fs.copyFileSync(path.join(depot, f), path.join(ressources, f));
 

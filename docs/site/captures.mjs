@@ -689,7 +689,7 @@ async function readmeClasses() {
     await p.attendre("!!__n.select('aucun')");
     await p.evaluer("__n.choisir(__n.select('aucun'), 'x')");
     await pause(300);
-    await p.evaluer(`__n.choisir(${ligneVariable('variete')}.querySelector('select'), 'classe')`);
+    await p.evaluer(`__n.choisir(${ligneVariable('variety')}.querySelector('select'), 'classe')`);
     await pause(400);
     await p.cliquer(`__n.texte('.fond-dialogue button', __n.t('ajuster'))`);
     await p.attendre("__n.tous('.js-plotly-plot').some((g) => g.textContent.includes('Coomans'))", 180000);
