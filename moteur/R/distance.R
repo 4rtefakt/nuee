@@ -30,8 +30,8 @@
 # al., 2009), celle de p par la méthode delta, et celle de la taille moyenne des groupes ; leur
 # somme, les degrés de liberté de Satterthwaite et l'intervalle log-normal (Buckland et al., 2001) ;
 # le total sur les strates, de même. C'est une analyse de analyses.R (ajuster_distance,
-# resultat_distance, texte_methodes_distance, tables_distance) ; elle ne prédit pas de nouvelles
-# observations.
+# resultat_distance, texte_methodes_distance, tables_distance ; son export vers R : distance_script.R) ;
+# elle ne prédit pas de nouvelles observations.
 
 DISTANCE_CLES <- c("hn", "hr", "unif")
 DISTANCE_SERIES <- c("cos", "herm", "poly")

@@ -1,5 +1,6 @@
-# L'export vers R d'un calcul fait par des fonctions du moteur (TRIM, les arbres boostés, les forêts
-# aléatoires : trim_script.R, boosting_script.R, forets_script.R ; analyses.R : ecrire_script_<type>).
+# L'export vers R d'un calcul fait par des fonctions du moteur (TRIM, l'échantillonnage par distances,
+# les arbres boostés, les forêts aléatoires : trim_script.R, distance_script.R, boosting_script.R,
+# forets_script.R ; analyses.R : ecrire_script_<type>).
 # Ces fonctions sont écrites dans le script telles que le moteur les a, relues dans leur fichier
 # (moteur/R, le dossier que charger.R note), pour que le script refasse le calcul de Nuée lui-même
 # et non une seconde écriture. Pour R seul, chacune est réécrite ainsi :

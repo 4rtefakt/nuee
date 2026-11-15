@@ -13,7 +13,8 @@
 # capercaillie) et des données simulées (lignes et points, strates, transects vides, troncature en
 # pourcentage et à gauche, groupes, clés hn, hr et unif, séries cos, herm et poly, monotonie stricte,
 # faible ou aucune, ajustements à l'échelle de σ). Puis les refus, une condition sur les observations,
-# ce que l'interface reçoit, le texte des méthodes, les tableaux exportés.
+# ce que l'interface reçoit, le texte des méthodes, les tableaux exportés ; et l'export vers R : des
+# scripts lancés seuls dans une session R neuve et comparés au modèle, des rapports compilés avec knitr.
 #   Rscript moteur/tests/verifier_distance.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -574,7 +575,130 @@ dir.create(dossier)
 chm <- ecrire_tables(tr, file.path(dossier, "distance.xlsx"), objet = "distance")
 verifier("écrits en Excel", length(chm) == 1 && file.exists(chm))
 unlink(dossier, recursive = TRUE)
-verifier("l'export vers R : pas encore, et dit", grepl("Pas encore", refus(ecrire_script_analyse(ps, dg, tempfile(), etat$modeles$M1$modele, NULL, FALSE, FALSE, FALSE, "", "fr"))))
+
+# ---------------------------------------------------------------- l'export vers R
+
+# Chaque script est écrit (ecrire_script : il est d'abord exécuté dans le moteur et comparé, `ecart`),
+# puis lancé dans une session R neuve (Rscript --vanilla, sans le moteur) ; ses objets en reviennent
+# et ecart_distance les compare au modèle du moteur, à 1e-8 près : les modèles candidats (paramètres,
+# logL, AIC, convergence, contrainte, ΔAIC, le retenu), les paramètres, leurs erreurs-types, leur
+# covariance et la matrice d'information, la log-vraisemblance et l'AIC, p et sa variance, ESW ou EDR
+# et l'effectif couvert, Cramér–von Mises, le khi² et ses classes, le diagramme quantile-quantile, la
+# troncature, les distances, les transects, la densité et l'effectif par strate et au total, la densité
+# des groupes, la courbe, g des détections et l'histogramme ; les libellés des modèles, des strates et
+# des transects et la raison du choix, identiques.
+cat("Export vers R : des scripts lancés seuls, en français et en anglais, et des rapports R Markdown et Quarto\n")
+dossier <- tempfile("distance_script")
+dir.create(dossier)
+rscript <- file.path(R.home("bin"), "Rscript")
+lanceur <- file.path(dossier, "lancer.R")
+writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
+             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+lancer <- function(script) {
+  objets <- nom_traduit(c("releve", "choix", "det", "candidats", "pr", "var_p", "se_p", "detection", "adequation", "densite", "densite_groupes", "courbe", "g_x",
+                          "histogramme"), attr(script, "langue"), NOMS_DISTANCE_EN)
+  sortie <- tempfile("sortie", dossier, ".rds")
+  ici <- setwd(dossier)
+  on.exit(setwd(ici))
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(lanceur), shQuote(script), shQuote(sortie), shQuote(paste(objets, collapse = ","))),
+                                       stdout = TRUE, stderr = TRUE))
+  if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
+}
+# Le code d'un script hors de ses données (ses lignes « # 2. » à « # 3. » retirées).
+hors_donnees <- function(texte) texte[-(grep("^# 2\\. ", texte):(grep("^# 3\\. ", texte) - 1))]
+# Les paquets qu'un script appelle par `paquet::`.
+paquets_appeles <- function(texte) unique(regmatches(texte, regexpr("[A-Za-z.]+(?=::)", texte, perl = TRUE)))
+# Les noms du code (variables, fonctions, arguments, éléments de listes) ; ceux de distance.R et du calcul
+# qui changent en anglais, et des mots français dans les commentaires (après la ligne du titre).
+noms_code <- function(texte) {
+  pd <- utils::getParseData(parse(text = texte, keep.source = TRUE, encoding = "UTF-8"))
+  unique(pd$text[pd$terminal & pd$token %in% c("SYMBOL", "SYMBOL_FUNCTION_CALL", "SYMBOL_SUB", "SYMBOL_FORMALS")])
+}
+francais_distance <- names(NOMS_DISTANCE_EN)[names(NOMS_DISTANCE_EN) != NOMS_DISTANCE_EN]
+commentaires_francais <- function(texte) {
+  com <- sub("^[^#]*#", "", grep("#", hors_donnees(texte)[-1], value = TRUE))
+  grep("\\b(les|des|une|chaque|données|valeurs|modèle|détections?|sans|avec|pour|dans|leurs?|sont)\\b", com, value = TRUE, perl = TRUE)
+}
+essayer_script <- function(nom, p, d, langue, ext = "R", ...) {
+  m <- ajuster(p, d)
+  r <- ecrire_script(p, d, file.path(dossier, paste0(nom, ".", ext)), "moteur", m = m, version = "essai", langue = langue, ...)
+  if (ext != "R") return(invisible(list(r = r, m = m)))
+  s <- lancer(structure(r$script, langue = langue))
+  texte <- readLines(r$script, encoding = "UTF-8")
+  code <- sub("#.*$", "", hors_donnees(texte))
+  difference <- if (length(s)) ecart_distance(m, list2env(s), langue) else paste(utils::tail(attr(s, "messages"), 3), collapse = " / ")
+  restes <- if (langue == "en") c(intersect(noms_code(hors_donnees(texte)), francais_distance), commentaires_francais(texte)) else character(0)
+  collisions <- if (langue == "fr") collisions_traduction(hors_donnees(texte), c(NOMS_DISTANCE_EN, NOMS_SCRIPT_EN)) else list()
+  verifier(sprintf("%s (%s) : sans écart vu par le moteur ; lancé seul, les mêmes résultats ; R seul (ni library() ni autre paquet), sans traduire()%s",
+                   nom, langue, if (langue == "en") ", ses noms et ses commentaires en anglais" else ", aucun nom confondu en anglais"),
+           is.null(r$ecart) && is.null(difference) && !any(grepl("library\\(|require\\(|traduire\\(", code)) &&
+             all(paquets_appeles(code) %in% c("stats", "utils")) && !length(restes) && !length(collisions))
+  if (!is.null(r$ecart) || !is.null(difference) || length(restes) || length(collisions)) cat("    écart :", r$ecart, "/", difference, "/", restes, "/", names(collisions), "\n")
+  invisible(list(r = r, m = m, s = s))
+}
+p1 <- projet_distance(simuler(1))
+p2 <- projet_distance(simuler(2, point = TRUE, cle = "hr", sigma = 35, D = c(Nord = 80, Sud = 140)))
+p3 <- projet_distance(simuler(3, groupes = TRUE, D = c(Nord = 15, Sud = 25)))
+x <- essayer_script("lignes_strates", p1, definition_distance(p1, w = 100), "fr")
+verifier(sprintf("le script refait le choix de ds() (%s, %s) et la densité des deux strates et du total", paste(x$m$candidats$modele, collapse = ", "), x$m$selection),
+         identical(x$s$candidats$modele, x$m$candidats$modele) && nrow(x$s$densite) == 3 && identical(x$s$choix$raison, x$m$selection))
+essayer_script("lignes_strates_en", p1, definition_distance(p1, w = 100), "en")
+essayer_script("lignes_hasard_8_pourcent_en", p1, definition_distance(p1, pct = 8, cle = "hr"), "en")
+essayer_script("lignes_gauche_unif_poly", p1, definition_distance(p1, w = 100, gauche = 5, cle = "unif", serie = "poly"), "fr")
+x <- essayer_script("lignes_hermite_fixe_sigma", p1, definition_distance(p1, w = 100, serie = "herm", aj = 1, echelle = "echelle"), "fr")
+verifier("un modèle fixé (hn + herm(4), à l'échelle de σ) : un seul candidat, le même", nrow(x$s$candidats) == 1 && identical(x$s$candidats$modele, "hn + herm(4)"))
+essayer_script("lignes_cosinus_fixe_faible_en", p1, definition_distance(p1, w = 100, aj = 2, mono = "faible"), "en")
+essayer_script("lignes_intervalles_gauche_en", p1, definition_distance(p1, intervalles = c(5, 20, 40, 60, 80, 100)), "en")
+essayer_script("points_strates", p2, definition_distance(p2, transect = "point", w = 100), "fr")
+x <- essayer_script("points_intervalles_hasard", p2, definition_distance(p2, transect = "point", cle = "hr", intervalles = c(0, 10, 20, 35, 50, 70, 100)), "fr")
+verifier("des points par intervalles : EDR, le khi² seul, ni Cramér–von Mises ni diagramme quantile-quantile", identical(x$s$detection$statistique[2], "EDR") &&
+           is.null(x$s$adequation$cvm) && is.null(x$s$adequation$qq) && nrow(x$s$adequation$khi2$classes) == 6)
+essayer_script("points_sans_effort_densite_seule_en", pp, definition_distance(pp, transect = "point", w = 100, effort = NULL, strate = NULL, aire = NULL,
+                                                                             unites = list(distance = "m", effort = "m", aire = "ha")), "en")
+x <- essayer_script("lignes_groupes", p3, definition_distance(p3, w = 100, taille = "size"), "fr")
+verifier("des groupes : la densité des individus et celle des groupes", !is.null(x$s$densite_groupes) && all(x$s$densite$D > x$s$densite_groupes$D))
+essayer_script("lignes_groupes_en", p3, definition_distance(p3, w = 100, taille = "size"), "en")
+x <- essayer_script("condition_en", ps, definition_distance(ps, w = 100, condition = "Region.Label == \"Nord\""), "en")
+verifier("une condition (Region.Label == \"Nord\") : les lignes du modèle, une seule strate", nrow(x$s$densities) == 1 && identical(x$s$densities$stratum, "Nord"))
+essayer_script("transect_identifiant", pid, definition_distance(pid, w = 100, echantillon = "id:ligne"), "fr")
+pn <- projet_distance(transform(sim, Sample.Label = 10 * match(Sample.Label, unique(Sample.Label))))
+essayer_script("transect_nombre_en", pn, definition_distance(pn, w = 100), "en")
+x <- essayer_script("uniforme_seule_facteur", ps, definition_distance(ps, cle = "unif", serie = "aucune", facteur = 0.001), "fr")
+verifier("la clé uniforme seule (sans paramètre), la troncature à la plus grande distance, un facteur des unités donné", x$m$detection$q == 0 && x$s$pr$p == 1 &&
+           !any(grepl("facteur_echantillonnage", readLines(x$r$script, encoding = "UTF-8"))))
+x <- essayer_script("strate_vide", projet_distance(vide), definition_distance(projet_distance(vide), w = 100), "fr")
+verifier("une strate sans détection : D = 0, ni CV ni ddl, dans le script aussi", x$s$densite$D[3] == 0 && is.na(x$s$densite$cv[3]) && is.na(x$s$densite$ddl[3]))
+s4 <- simuler(4)
+s4$Area <- 0
+p4 <- projet_distance(s4)
+essayer_script("aires_nulles_en", p4, definition_distance(p4, w = 100), "en")
+# un rapport R Markdown : ses parties, ses blocs, et il se compile avec knitr quand il est installé ; un Quarto en anglais
+x <- essayer_script("rapport_distance", p3, definition_distance(p3, w = 100, taille = "size"), "fr", ext = "Rmd", donnees = "csv", rdata = TRUE)
+texte <- readLines(x$r$script, encoding = "UTF-8")
+q <- essayer_script("rapport_distance_en", p2, definition_distance(p2, transect = "point", pct = 10, cle = "hr"), "en", ext = "qmd")
+texte_q <- readLines(q$r$script, encoding = "UTF-8")
+verifier("rapport R Markdown : méthodes, code, résultats, références ; données en CSV et .RData à côté ; un Quarto en anglais",
+         is.null(x$r$ecart) && texte[1] == "---" && any(grepl("^## Méthodes", texte)) && any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^```\\{r densite-table\\}", texte)) &&
+           any(grepl("^```\\{r groupes-table\\}", texte)) && any(grepl("^- Buckland", texte)) && any(grepl("^- Fewster", texte)) && length(x$r$chemins) == 3 && all(file.exists(x$r$chemins)) &&
+           !anyDuplicated(sub("^```\\{r ([^,} ]+).*$", "\\1", grep("^```\\{r [^,} ]", texte, value = TRUE))) &&
+           is.null(q$r$ecart) && any(grepl("^## Methods", texte_q)) && any(grepl("^format:", texte_q)) && any(grepl("^```\\{r densite-distances", texte_q)))
+if (requireNamespace("knitr", quietly = TRUE)) {
+  compiler <- file.path(dossier, "compiler.R")
+  writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
+               "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
+  # (le nombre de graphiques d'un rapport compilé, chacun dans son fichier ; -1 : pas de .md, ou une erreur)
+  compiler_rapport <- function(rapport) {
+    suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(rapport)), stdout = TRUE, stderr = TRUE))
+    md <- sub("[.][Rq]md$", ".md", rapport)
+    if (!file.exists(md)) return(-1)
+    texte_md <- readLines(md, encoding = "UTF-8")
+    figures <- sub("^!\\[[^]]*\\]\\(([^)]+)\\).*$", "\\1", grep("^!\\[", texte_md, value = TRUE))
+    if (any(grepl("^## Error|Error in", texte_md)) || !all(file.exists(file.path(dossier, figures)))) -1 else length(figures)
+  }
+  verifier("les rapports se compilent avec knitr, avec leurs graphiques : la fonction de détection et le diagramme quantile-quantile, et la densité des distances dans le Quarto en anglais (des points)",
+           compiler_rapport(x$r$script) == 2 && compiler_rapport(q$r$script) == 3)
+} else cat("  (knitr absent : les rapports ne sont pas compilés)\n")
+unlink(dossier, recursive = TRUE)
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
