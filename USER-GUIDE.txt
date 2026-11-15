@@ -1616,6 +1616,16 @@ General tab:
     then that of the counts of the classes, and the goodness of fit the chi-square on them;
   - the key of the detection function g(x): half-normal exp(−x²/2σ²), hazard-rate
     1 − exp(−(x/σ)^−b) (b ≥ 1, as mrds) or uniform;
+  - covariates (multiple-covariate distance sampling, as ds(formula = ~ x1 + x2); Marques and
+    Buckland 2003, Marques et al. 2007): the variables whose Role is Z in the Variables tab, or
+    added from the Covariates list of the General tab (the same thing). The scale σ of the
+    half-normal or hazard-rate key depends on them, ln σ = β0 + β1 x1 + …: a quantitative
+    covariate as it is, a qualitative one through an indicator of each of its categories but the
+    first present among the detections, its reference (R's treatment contrasts); the group size
+    can be one. Each detection then has its own detection function and its own probability of
+    detection pi. As ds: no adjustment terms unless a number is given, no monotonicity
+    constraint, no uniform key; the covariates are taken as they are (no transformation), known
+    for every detection within the truncation;
   - the adjustment terms: cosine (the default), Hermite polynomials or simple polynomials, their
     number chosen by AIC as ds() does (the key alone, then one more term at a time while the AIC
     falls, five at most; orders 2, 3, 4… for cosines, 4, 6, 8… for Hermite and polynomials, 1,
@@ -1638,32 +1648,64 @@ degrees of freedom, as dht2. The total over the strata adds their abundances (wi
 weights their densities by their covered areas (without). Refused, and named: a negative
 distance, a missing or zero effort, two efforts for one transect, two areas for one stratum, an
 area of zero beside others, a distance without a transect.
+With covariates, the likelihood is that of each detection's distance given its covariates
+(mrds's flpt.lnl, or the counts of the classes); the coefficients are fitted on the quantitative
+covariates centred and scaled, then returned in their units. The same settings without
+covariates are fitted too, first in the list of models, to compare the AICs (as Distance's
+summarize_ds_models). p̄ = n / Σ 1/pi is the average probability of detection, with its
+standard error as mrds's summary.ds, and ESW = p̄ (w − L) or EDR = w √p̄; the density of each
+stratum is dht2's Horvitz–Thompson-like estimator D = Σ si / pi / a (si the group size, 1
+without groups), its detection variance by the delta method on all the parameters; the
+goodness of fit compares each distance with the detection function of its covariates
+(Cramér–von Mises on their fitted distributions, the chi-square's expected counts summed over the
+detections). Refused, and named: a covariate missing for a detection, a qualitative covariate
+with a single category among the detections, a quantitative one with a single value,
+covariates that follow from one another, and a combination of covariates whose scale σ runs
+off to infinity (its distances don't fall off up to w: group the categories, or choose others).
 
 Views: Summary (the model retained and the AIC of each model fitted on the way, p and ESW or
 EDR with their standard errors, the parameters, the goodness of fit, the overall density and
-abundance with their intervals; what was left out); Detection function (the histogram of the
-distances, each bar its count over the count it would have if every animal were detected, as
-mrds's plot.ds, under the fitted g; each detection on the curve, a click selects its row; for
-points, the density of the distances f(r) = 2r g(r) / (w² p) too; below, the chi-square's
-classes); QQ plot (the fitted distribution of each distance against the empirical one, with
-the Cramér–von Mises test; not for distances in intervals); Density and abundance (by stratum and overall: area, covered area,
-effort, transects, detections, encounter rate and its CV, D, its standard error, CV, 95%
-interval and df, N and its interval, the share of the variance due to the encounter rate, to
-detection and to group size; with groups, the density of groups too). Methods text with its
-references, Export and report as for the other models, and Export to R: a script or report that
-redoes the analysis with R alone, without Distance or mrds, the distance sampling functions of
-Nuée's engine copied into it (the same candidates and AICs, parameters and their covariance, p,
-ESW or EDR, goodness-of-fit tests, density and abundance as Nuée; the detection function over
-the histogram and the QQ plot in base R). No prediction. Covariates in the detection function
-(MCDS) are not supported yet.
+abundance with their intervals; what was left out; with covariates, the covariates and their
+reference categories, and the coefficients on ln σ with exp(β), the factor on σ of a category
+against its reference or of one unit of a quantitative covariate); Detection function (the
+histogram of the distances, each bar its count over the count it would have if every animal were
+detected, as mrds's plot.ds, under the fitted g; each detection on the curve, a click selects its
+row; for points, the density of the distances f(r) = 2r g(r) / (w² p) too; below, the
+chi-square's classes; with covariates, the average detection function, each detection's g given
+its covariates weighted by 1/pi as plot.ds, each detection at its own g, and "by" a qualitative
+covariate one curve per category, the average over its detections as plot.ds(subset = )); QQ plot
+(the fitted distribution of each distance against the empirical one, with the Cramér–von Mises
+test; not for distances in intervals); Density and abundance (by stratum and overall: area,
+covered area, effort, transects, detections, encounter rate and its CV, D, its standard error,
+CV, 95% interval and df, N and its interval, the share of the variance due to the encounter rate,
+to detection and to group size; with groups, the density of groups too). The observation list
+gives each detection's g and, with covariates, its probability of detection pi. Methods and
+Results texts with their references, Export and report as for the other models, and Export to
+R: a script or report that redoes the analysis with R alone, without Distance or mrds, the
+distance sampling functions of Nuée's engine copied into it (the same candidates and AICs,
+parameters and their covariance, p or p̄ and each detection's pi, ESW or EDR, goodness-of-fit
+tests, density and abundance as Nuée; the detection function over the histogram, one curve per
+category of each qualitative covariate, and the QQ plot in base R). No prediction.
 
-The results are those of Distance 2.0 (moteur/tests/verifier_distance.R compares them), with
-three known differences: Nuée integrates the hazard-rate key exactly where mrds approximates
-its integral by a smoothing spline (lines, the key without adjustment terms: parameters and p
-differ by about 1e-4); with a left truncation of line transects the covered area is
-2 (w − L) L, where dht2 keeps 2 w L; mrds's optimizer under the monotonicity constraint stops
-within 1e-6 of the likelihood, so its estimates can differ from Nuée's in the fourth digit, or,
-on rare data, settle on another local optimum.
+The results are those of Distance 2.0 (moteur/tests/verifier_distance.R compares them, with
+covariates on Distance's amakihi, ETP_Dolphin, ClusterExercise, unimak and golftees data), with
+these known differences: Nuée integrates the hazard-rate key exactly where mrds approximates
+its integral by a smoothing spline (lines, the key without adjustment terms, with or without
+covariates: parameters and p differ by about 1e-4); with a left truncation of line transects the
+covered area is 2 (w − L) L, where dht2 keeps 2 w L; mrds's optimizer under the monotonicity
+constraint stops within 1e-6 of the likelihood, so its estimates can differ from Nuée's in the
+fourth digit, or, on rare data, settle on another local optimum. With covariates: ds can stop
+short of the maximum on poorly conditioned covariates (on unimak, hn ~ MSTDO + Hour, on a plateau
+where σ is e^9 or more, thousands of times w, 21.9 log-likelihood units below the maximum Nuée
+finds; started from Nuée's estimates, ds stays there); a combination of covariates whose σ runs
+off to infinity is refused, where ds returns the point where its optimizer stopped; when the
+group size is a covariate, dht2 recomputes each detection's probability with a size of 1 for the
+variance of its density of groups, where Nuée keeps the detection's own (the densities of
+individuals agree);
+for points, the density of the distances drawn is the mean of the detections' f(r | z), the
+density the histogram estimates, where plot.ds weights them by 1/pi. And dht2 keeps a transect
+without detection within the truncation only if its Sample.Label has no detection in any stratum
+(amakihi repeats its labels across strata): Nuée keeps every transect's effort.
 
 Random forests and boosted trees
 --------------------------------

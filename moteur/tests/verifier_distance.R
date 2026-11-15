@@ -12,9 +12,16 @@
 # (LTExercise, PTExercise, ducknest, minke, wren_5min, Savannah_sparrow_1980, ClusterExercise,
 # capercaillie) et des données simulées (lignes et points, strates, transects vides, troncature en
 # pourcentage et à gauche, groupes, clés hn, hr et unif, séries cos, herm et poly, monotonie stricte,
-# faible ou aucune, ajustements à l'échelle de σ). Puis les refus, une condition sur les observations,
-# ce que l'interface reçoit, le texte des méthodes, les tableaux exportés ; et l'export vers R : des
-# scripts lancés seuls dans une session R neuve et comparés au modèle, des rapports compilés avec knitr.
+# faible ou aucune, ajustements à l'échelle de σ). Les covariables de la fonction de détection
+# (ds(formula = )) : la matrice de model.matrix, la vraisemblance et ses scores, les probabilités de
+# chaque détection, puis contre Distance (amakihi, ETP_Dolphin, ClusterExercise, unimak, golftees :
+# des points et des lignes, des covariables qualitatives et quantitatives, la taille des groupes,
+# des termes d'ajustement, des intervalles, une troncature à gauche) les mêmes calculs aux paramètres
+# de Nuée, plus p̄ (summary.ds), la probabilité de chaque détection (predict.ds), la fonction de
+# détection moyenne et celle de chaque catégorie (plot.ds) et la densité de Horvitz–Thompson de dht2.
+# Puis les refus, une condition sur les observations, ce que l'interface reçoit, le texte des
+# méthodes, les tableaux exportés ; et l'export vers R : des scripts lancés seuls dans une session R
+# neuve et comparés au modèle, des rapports compilés avec knitr.
 #   Rscript moteur/tests/verifier_distance.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -46,13 +53,14 @@ cat(if (avec_distance) sprintf("(Distance %s et mrds %s installés : comparaison
 projet_distance <- function(df, nom = "distances") projet_depuis_tableau(cbind(nom = sprintf("r%04d", seq_len(nrow(df))), df, stringsAsFactors = FALSE), nom)
 definition_distance <- function(p, transect = "ligne", w = NULL, pct = NULL, gauche = 0, cle = "hn", serie = "cos", aj = "aic", mono = "stricte",
                                 echelle = "largeur", strate = "Region.Label", aire = "Area", effort = "Effort", taille = NULL, echantillon = "Sample.Label",
-                                unites = list(distance = "m", effort = "km", aire = "km2"), facteur = NULL, observations = NULL, condition = NULL, intervalles = NULL) {
+                                unites = list(distance = "m", effort = "km", aire = "km2"), facteur = NULL, observations = NULL, condition = NULL, intervalles = NULL, z = NULL) {
   u <- function(x) numeros(p, x)
   spec <- function(x) if (startsWith(x, "id:")) list(by = "id", id = substring(x, 4)) else list(by = "variable", variable = u(x))
   o <- list(transect = transect, echantillon = spec(echantillon), strate = if (!is.null(strate)) spec(strate), effort = if (!is.null(effort)) u(effort),
             aire = if (!is.null(aire)) u(aire), taille = if (!is.null(taille)) u(taille),
             troncature = if (!is.null(w)) list(type = "distance", valeur = w) else if (!is.null(pct)) list(type = "pourcentage", valeur = pct) else list(type = "aucune"),
-            gauche = gauche, cle = cle, serie = serie, ajustements = aj, monotonie = mono, echelle_ajustements = echelle, unites = unites, facteur = facteur, intervalles = intervalles)
+            gauche = gauche, cle = cle, serie = serie, ajustements = aj, monotonie = mono, echelle_ajustements = echelle, unites = unites, facteur = facteur, intervalles = intervalles,
+            z = if (!is.null(z)) u(z))
   definir_modele(p, "DISTANCE", x = NULL, y = u("distance"), echelle = "none", options = o, observations = observations, condition = condition)
 }
 distance_de <- function(p, ...) ajuster(p, definition_distance(p, ...))
@@ -86,6 +94,39 @@ simuler <- function(graine = 1, point = FALSE, strates = c(Nord = 60, Sud = 35),
     taille <- if (groupes) 1 + stats::rpois(length(x), 1.4) else rep(1, length(x))
     lignes[[length(lignes) + 1]] <- data.frame(Region.Label = s, Area = strates[[s]], Sample.Label = lab, Effort = effort, object = obj + seq_along(x), distance = x, size = taille)
     obj <- obj + length(x)
+  }
+  df <- do.call(rbind, lignes)
+  rownames(df) <- NULL
+  df
+}
+
+# Les mêmes, l'échelle σ de chaque animal dépendant de covariables : l'observateur (A, B ou C, σ × 1,4
+# pour B, × 0,8 pour C), le vent (de 0 à 4, σ × exp(−0,15 vent)), et avec des groupes leur taille
+# (σ × exp(0,1 (taille − 2))).
+simuler_covariables <- function(graine = 1, point = FALSE, strates = c(Nord = 60, Sud = 35), k = c(12, 10), D = c(Nord = 40, Sud = 70), cle = "hn",
+                                sigma = 30, b = 2.5, wmax = 120, groupes = FALSE) {
+  set.seed(graine)
+  lignes <- list()
+  obj <- 0
+  for (s in names(strates)) for (j in seq_len(k[[match(s, names(strates))]])) {
+    effort <- if (point) sample(1:3, 1) else round(stats::runif(1, 0.5, 3), 2)
+    surface <- if (point) pi * (wmax / 1000)^2 * effort else 2 * wmax / 1000 * effort
+    N <- stats::rpois(1, D[[s]] * surface)
+    x <- if (point) wmax * sqrt(stats::runif(N)) else stats::runif(N, 0, wmax)
+    obs <- sample(c("A", "B", "C"), N, TRUE, prob = c(0.5, 0.3, 0.2))
+    vent <- round(stats::runif(N, 0, 4), 1)
+    taille <- if (groupes) 1 + stats::rpois(N, 1.4) else rep(1, N)
+    sig <- sigma * exp(log(1.4) * (obs == "B") + log(0.8) * (obs == "C") - 0.15 * vent + if (groupes) 0.1 * (taille - 2) else 0)
+    vu <- stats::runif(N) < (if (cle == "hn") exp(-(x / sig)^2 / 2) else 1 - exp(-(x / sig)^(-b)))
+    lab <- sprintf("%s-%02d", s, j)
+    if (!any(vu)) {
+      lignes[[length(lignes) + 1]] <- data.frame(Region.Label = s, Area = strates[[s]], Sample.Label = lab, Effort = effort, object = NA, distance = NA, size = NA,
+                                                observateur = NA, vent = NA)
+      next
+    }
+    lignes[[length(lignes) + 1]] <- data.frame(Region.Label = s, Area = strates[[s]], Sample.Label = lab, Effort = effort, object = obj + seq_len(sum(vu)),
+                                              distance = round(x[vu], 1), size = taille[vu], observateur = obs[vu], vent = vent[vu])
+    obj <- obj + sum(vu)
   }
   df <- do.call(rbind, lignes)
   rownames(df) <- NULL
@@ -283,6 +324,61 @@ verifier("les unités : m, km, km² donnent 0,001 (lignes) ; m et ha, 0,01 (poin
            proche(facteur_echantillonnage(list(transect = "point", unites = list(distance = "m", effort = "m", aire = "ha"))), 0.01, 1e-15) &&
            identical(facteur_echantillonnage(list(facteur = 0.25)), 0.25))
 
+# ---------------------------------------------------------------- covariables : calculs directs
+
+cat("Covariables : la matrice de model.matrix, la vraisemblance et ses scores, les probabilités, p̄, l'ajustement\n")
+sc <- simuler_covariables(6, groupes = TRUE)
+dans_sc <- !is.na(sc$distance) & sc$distance <= 100
+colonnes_sc <- list(observateur = factor(sc$observateur[dans_sc], levels = c("A", "B", "C")), vent = sc$vent[dans_sc], size = sc$size[dans_sc])
+Zc <- matrice_covariables(colonnes_sc)
+mm <- stats::model.matrix(~ observateur + vent + size, data.frame(colonnes_sc))
+Zb <- matrice_covariables(list(o = factor(c("b", "c", "b", "c"), levels = c("a", "b", "c"))))
+verifier("la matrice des covariables : celle de model.matrix(~ observateur + vent + size) (la constante, une indicatrice par catégorie sauf la première, A, les quantitatives telles quelles), ses colonnes nommées comme R ; une catégorie sans détection laissée de côté (la référence : la première présente, comme factor() dans mrds)",
+         identical(colnames(Zc), colnames(mm)) && proche(Zc, mm, 1e-15) && identical(attr(Zc, "references"), list(observateur = "A")) &&
+           identical(attr(Zc, "termes")$terme, c("ln_sigma", "observateur(B)", "observateur(C)", "vent", "size")) &&
+           identical(colnames(Zb), c("(Intercept)", "oc")) && identical(attr(Zb, "references")$o, "b"))
+xc <- sc$distance[dans_sc]
+e_nul <- 0
+e_gr <- 0
+e_dp <- 0
+for (cfg in list(list("hn", FALSE, NULL), list("hr", FALSE, NULL), list("hn", TRUE, NULL), list("hr", TRUE, c(0, 15, 35, 60, 100)), list("hn", FALSE, c(0, 20, 40, 70, 100)))) {
+  base <- c(fd_de(cfg[[1]], w = 100, point = cfg[[2]]), list(coupures = cfg[[3]]))
+  fdz <- avec_covariables(base, Zc)
+  th0 <- c(if (cfg[[1]] == "hr") log(2.5), log(35))
+  thz <- c(th0, 0, 0, 0, 0)
+  # (des coefficients nuls : la fonction de détection sans covariables)
+  e_nul <- max(e_nul, ecart(vraisemblance_covariables(fdz, thz, xc)$ll, vraisemblance_detection(base, th0, xc)$ll))
+  thz <- c(th0, 0.3, -0.2, -0.12, 0.08)
+  S <- vraisemblance_covariables(fdz, thz, xc, TRUE)$scores
+  num <- vapply(seq_along(thz), function(j) { h <- 1e-6; (vraisemblance_covariables(fdz, replace(thz, j, thz[j] + h), xc)$ll - vraisemblance_covariables(fdz, replace(thz, j, thz[j] - h), xc)$ll) / (2 * h) }, 0)
+  e_gr <- max(e_gr, max(abs(colSums(S) - num)) / max(abs(num)))
+  pr <- probabilites_covariables(fdz, thz)
+  dnum <- vapply(seq_along(thz), function(j) { h <- 1e-6; (probabilites_covariables(fdz, replace(thz, j, thz[j] + h))$p - probabilites_covariables(fdz, replace(thz, j, thz[j] - h))$p) / (2 * h) }, numeric(length(xc)))
+  e_dp <- max(e_dp, max(abs(pr$dp - dnum)) / max(abs(dnum)))
+}
+verifier(sprintf("la vraisemblance à covariables : leurs coefficients nuls, celle sans covariables (écart %.1e) ; son gradient (lignes, points, hn, hr, distances par intervalles) contre des différences finies (écart %.1e) ; celui de la probabilité de chaque détection aussi (écart %.1e)",
+                 e_nul, e_gr, e_dp), e_nul < 1e-13 && e_gr < 1e-6 && e_dp < 1e-6)
+# p̄ et sa variance (calc.se.Np de mrds) : des probabilités toutes égales donnent la méthode delta sur p
+fdz <- avec_covariables(fd_de("hn", w = 100), Zc)
+prz <- probabilites_covariables(fdz, c(log(35), 0, 0, 0, 0))
+Vz <- crossprod(matrix(stats::rnorm(25), 5)) / 50
+gp <- colMeans(prz$dp)
+mz <- moyenne_detection(prz, Vz)
+verifier("p̄ = n / Σ 1/pi et sa variance comme summary.ds : des pi tous égaux, p et la variance de la méthode delta sur p",
+         proche(mz$p, prz$p[1], 1e-14) && proche(mz$var_p, drop(t(gp) %*% Vz %*% gp), 1e-9) && proche(mz$N, sum(1 / prz$p), 1e-14))
+# l'ajustement sur les coefficients réduits trouve le maximum de l'ajustement direct
+fdz <- avec_covariables(fd_de("hr", w = 100), Zc)
+reduit <- choisir_covariables(fdz, xc, NULL)$choisi
+direct <- ajuster_detection(fdz, xc, monotonie = "aucune", vraisemblance = vraisemblance_covariables)
+verifier(sprintf("l'ajustement à covariables, sur les coefficients centrés et réduits : le maximum de l'ajustement direct (écart des paramètres %.1e)", max(abs(reduit$theta - direct$theta))),
+         isTRUE(reduit$converge) && isTRUE(direct$converge) && max(abs(reduit$theta - direct$theta)) < 1e-5 && abs(reduit$ll - direct$ll) < 1e-9 * abs(direct$ll))
+psc <- projet_distance(sc)
+msc <- distance_de(psc, w = 100, taille = "size", z = c("observateur", "vent"))
+verifier("un modèle à covariables : le même sans covariables d'abord dans les candidats (pour comparer les AIC), puis celui à covariables, retenu, qui l'emporte ici ; sans terme d'ajustement (comme ds) ; la probabilité de chaque détection",
+         identical(msc$candidats$covariables, c("", "observateur + vent")) && identical(msc$candidats$choisi, c(FALSE, TRUE)) && msc$candidats$AIC[2] < msc$candidats$AIC[1] &&
+           identical(msc$selection, "covariables") && !length(msc$detection$fd$ordres) && length(msc$p_detections) == msc$donnees$n &&
+           identical(msc$parametres$parametre, c("ln_sigma", "observateur(B)", "observateur(C)", "vent")) && proche(msc$p, msc$donnees$n / sum(1 / msc$p_detections), 1e-14))
+
 # ---------------------------------------------------------------- contre Distance
 
 if (avec_distance) {
@@ -465,6 +561,152 @@ if (avec_distance) {
   verifier(sprintf("hasard seul sur des lignes : l'écart des log-vraisemblances aux paramètres de mrds est n ln(∫ de mrds / ∫ exacte) (%.2e), et l'optimum exact de Nuée la dépasse",
                    dD$lnl - vraisemblance_detection(fd, dD$par, x)$ll),
            proche(dD$lnl - vraisemblance_detection(fd, dD$par, x)$ll, -length(x) * log(I_mrds / I_exact), 1e-6) && r$mN$detection$ll > vraisemblance_detection(fd, dD$par, x)$ll)
+
+  # ---------------------------------------------------------------- avec des covariables
+  cat("Contre Distance (ds(formula = ), dht2) et mrds, avec des covariables : l'optimum, puis les calculs aux paramètres de Nuée\n")
+  # Une comparaison d'un modèle à covariables, comme comparer : l'optimum (le même, ou un autre admis
+  # s'il ne cède rien à celui de mrds), puis aux paramètres de Nuée la log-vraisemblance, le hessien, la
+  # probabilité de chaque détection (predict.ds, rangée par objet), p̄ et son erreur-type (summary.ds),
+  # l'effectif couvert Σ 1/pi et le sien, l'adéquation (ddf.gof : la répartition de chaque distance
+  # sachant ses covariables, les comptes attendus sommés sur les détections), la fonction de détection
+  # moyenne et celle de chaque catégorie (plot.ds : les g(x | zi) de detfct pondérés par 1/pi), et la
+  # densité de Horvitz–Thompson de dht2. Les erreurs-types comparées à 3e-6 κ près (3e-5 au moins), κ
+  # le conditionnement de l'information des coefficients réduits (reduction_covariables : sans
+  # l'unité des covariables) ; `spline` : le hasard sans ajustement sur des lignes (gstdint).
+  comparer_covariables <- function(nom, df, args, nuee, cu, strates = TRUE, gauche_lignes = FALSE) {
+    mD <- do.call(ds_de, c(list(df), args))
+    p <- projet_distance(df)
+    mN <- do.call(distance_de, c(list(p), nuee))
+    det <- mN$detection
+    spline <- det$fd$cle == "hr" && !length(det$fd$ordres) && !det$fd$point && det$fd$L == 0
+    tol_f <- if (spline) 1e-3 else 1e-9
+    res <- list()
+    dD <- mD$ddf
+    res$modele <- identical(libelle_detection(sans_covariables(det$fd)), libelle_mrds(dD))
+    ec_par <- max(abs(det$theta - dD$par) / pmax(1, abs(dD$par)))
+    d_ll <- det$ll - dD$lnl
+    meme <- ec_par < 5e-3 && (abs(d_ll) < 1e-6 * abs(dD$lnl) || spline)
+    autre <- !meme && !spline && d_ll > -0.005
+    res$optimum <- meme || autre || (spline && abs(d_ll) < 0.1)
+    R <- reduction_covariables(det$fd)
+    ev <- eigen(crossprod(R, det$H %*% R), symmetric = TRUE, only.values = TRUE)$values
+    kappa <- max(ev) / min(ev)
+    tol_v <- if (spline) 1e-2 else max(3e-5, 3e-6 * kappa)
+    dI <- injecter(dD, det$theta)
+    sI <- summary(dI)
+    res$logL <- proche(det$ll, dI$lnl, tol_f)
+    res$hessien <- proche(det$H, dI$hessian, tol_v)
+    obj <- df$object[mN$donnees$uid]
+    # (la probabilité de chaque détection : mrds intègre exactement la demi-normale seule, les autres avec
+    # integrate() à 1e-7 ; leur moyenne p̄ s'en ressent moins)
+    tol_pi <- if (spline) 1e-3 else if (det$fd$cle == "hn" && !length(det$fd$ordres)) 1e-9 else 1e-7
+    res$p_detections <- proche(mN$p_detections[order(obj)], dI$fitted[order(as.numeric(names(dI$fitted)))], tol_pi)
+    res$p <- proche(mN$p, sI$average.p, tol_f) && proche(mN$se_p, sI$average.p.se, tol_v)
+    my <- moyenne_detection(probabilites_covariables(det$fd, det$theta), det$V)
+    res$couvert <- proche(my$N, sI$Nhat, tol_f) && proche(my$se_N, sI$Nhat.se, tol_v)
+    g <- suppressMessages(mrds::ddf.gof(dI, qq = FALSE))
+    res$adequation <- (if (is.null(mN$adequation$cvm)) is.null(g$dsgof)
+                       else proche(mN$adequation$cvm$W, g$dsgof$CvM$W, if (spline) 1e-2 else 1e-5) && proche(mN$adequation$cvm$p, g$dsgof$CvM$p, if (spline) 1e-2 else 1e-6)) &&
+      proche(mN$adequation$khi2$chi2, g$chisquare$chi1$chisq, if (spline) 1e-2 else 1e-6) &&
+      proche(mN$adequation$khi2$classes$attendu, g$chisquare$chi1$expected, if (spline) 1e-2 else 1e-6) &&
+      identical(as.numeric(mN$adequation$khi2$classes$observe), as.numeric(g$chisquare$chi1$observed))
+    ddfobj <- dI$ds$aux$ddfobj
+    moyenne_mrds <- function(dans) vapply(mN$courbe$x, function(x0) {
+      gx <- mrds:::detfct(rep(x0, sum(dans)), ddfobj, select = dans, width = mN$donnees$w)
+      sum(gx / dI$fitted[dans]) / sum(1 / dI$fitted[dans])
+    }, 0)
+    res$courbes <- proche(mN$courbe$g, moyenne_mrds(rep(TRUE, nrow(ddfobj$xmat))), tol_f) &&
+      all(vapply(mN$courbes_niveaux, function(cn) proche(cn$g, unlist(lapply(cn$niveaux, function(l) moyenne_mrds(ddfobj$xmat[[cn$covariable]] == l))), tol_f), TRUE))
+    d2 <- as.data.frame(Distance::dht2(dI, flatfile = df, strat_formula = if (strates) ~Region.Label else ~1, convert_units = cu))
+    dens <- attr(Distance::dht2(dI, flatfile = df, strat_formula = if (strates) ~Region.Label else ~1, convert_units = cu), "density")
+    dn <- mN$densite
+    lab_d <- if (strates) as.character(d2$Region.Label) else "Total"
+    lab_n <- ifelse(is.na(dn$strate), "Total", dn$strate)
+    if (nrow(dn) == 1) lab_n <- lab_d[1]
+    j <- match(lab_d, lab_n)
+    seule <- mN$donnees$densite_seule
+    f_g <- if (gauche_lignes) (mN$donnees$w - mN$donnees$L) / mN$donnees$w else 1
+    res$densite <- !anyNA(j) && proche((if (seule) dn$D[j] else dn$N[j]) * f_g, d2$Abundance, tol_f) && proche(dn$cv[j], d2$Abundance_CV, tol_v) &&
+      proche((if (seule) dn$se_D[j] else dn$se_N[j]) * f_g, d2$Abundance_se, tol_v) && proche(dn$ddl[j], d2$df, tol_v) &&
+      proche((if (seule) dn$bas_D[j] else dn$bas_N[j]) * f_g, d2$LCI, tol_v) && proche((if (seule) dn$haut_D[j] else dn$haut_N[j]) * f_g, d2$UCI, tol_v) &&
+      proche(dn$rencontre[j], d2$ER, 1e-12) && identical(as.numeric(dn$k[j]), as.numeric(d2$k)) && identical(as.numeric(dn$n[j]), as.numeric(d2$n)) &&
+      proche(dn$effort[j], d2$Effort, 1e-12) && proche(dn$couverte[j] / f_g, d2$Covered_area, 1e-12) &&
+      (if (!seule) proche(dn$D[j] * f_g, dens$Density, tol_f) && proche(dn$se_D[j] * f_g, dens$Density_se, tol_v) else TRUE)
+    tot_groupes <- isTRUE(mN$donnees$groupes) && nrow(dn) > 1
+    res$rencontre <- proche(dn$se_rencontre[j]^2, d2$ER_var, 1e-9) || (tot_groupes && proche(dn$se_rencontre[j][-length(j)]^2, d2$ER_var[-length(j)], 1e-9))
+    ok <- unlist(res)
+    verifier(sprintf("%s : %s (Distance : %s ~ …), écart des paramètres %.1e%s%s%s — %s", nom, libelle_detection(det$fd), libelle_mrds(dD), ec_par,
+                     if (spline) " [hasard sans ajustement : spline de mrds]" else "", if (autre) sprintf(" [un autre optimum : logL de Nuée %+.4f]", d_ll) else "",
+                     if (kappa > 100) sprintf(" [κ = %.0f]", kappa) else "",
+                     if (all(ok)) "l'optimum, logL, hessien, pi, p̄, Σ 1/pi, adéquation, courbes moyennes, densité" else paste(names(ok)[!ok], collapse = ", ")), all(ok))
+    invisible(list(mN = mN, mD = mD, dI = dI, d_ll = d_ll))
+  }
+  am <- dat("amakihi")
+  # (des transects uniques : leurs étiquettes se répètent d'une strate à l'autre, et dht2 ne garde un
+  # transect dont toutes les détections sont au-delà de la troncature que si son Sample.Label n'a de
+  # détection dans aucune strate)
+  am$Sample.Label <- paste(am$Region.Label, am$Sample.Label, sep = "-")
+  u_am <- list(distance = "m", effort = "m", aire = "ha")
+  comparer_covariables("amakihi (points, 7 strates, densité seule) hr ~ OBs + MAS", am, list(transect = "point", key = "hr", formula = ~OBs + MAS, truncation = 82.5),
+                       list(transect = "point", w = 82.5, cle = "hr", z = c("OBs", "MAS"), unites = u_am), cu_pha)
+  comparer_covariables("amakihi hn ~ OBs + MAS", am, list(transect = "point", key = "hn", formula = ~OBs + MAS, truncation = 82.5),
+                       list(transect = "point", w = 82.5, z = c("OBs", "MAS"), unites = u_am), cu_pha)
+  comparer_covariables("amakihi hn + cos(2) ~ OBs (un terme fixé, sans contrainte de monotonie)", am, list(transect = "point", key = "hn", formula = ~OBs, truncation = 82.5, nadj = 1),
+                       list(transect = "point", w = 82.5, aj = 1, z = "OBs", unites = u_am), cu_pha)
+  cp_am <- c(0, 10, 20, 30, 40, 50, 60, 70, 82.5)
+  comparer_covariables("amakihi par intervalles (8 classes), hn ~ OBs", am, list(transect = "point", key = "hn", formula = ~OBs, cutpoints = cp_am),
+                       list(transect = "point", z = "OBs", intervalles = cp_am, unites = u_am), cu_pha)
+  comparer_covariables("amakihi tronqués à gauche (5 m), hn + herm(4) à l'échelle de σ ~ OBs", am,
+                       list(transect = "point", key = "hn", formula = ~OBs, truncation = list(left = 5, right = 82.5), adjustment = "herm", nadj = 1, scale = "scale"),
+                       list(transect = "point", w = 82.5, gauche = 5, serie = "herm", aj = 1, echelle = "echelle", z = "OBs", unites = u_am), cu_pha)
+  etp <- dat("ETP_Dolphin")
+  # (les facteurs de Distance, factor(Cue.type) : des catégories dans l'ordre des nombres)
+  etp$Cue <- factor(etp$Cue.type, levels = sort(unique(etp$Cue.type)))
+  etp$Beauf <- factor(etp$Beauf.class, levels = sort(unique(etp$Beauf.class)))
+  u_etp <- list(distance = "nmi", effort = "nmi", aire = "nmi2")
+  comparer_covariables("ETP_Dolphin (lignes, un transect, groupes) hn ~ Cue + LnCluster", etp, list(key = "hn", formula = ~Cue + LnCluster, truncation = 5),
+                       list(w = 5, z = c("Cue", "LnCluster"), taille = "size", strate = NULL, unites = u_etp), 1, strates = FALSE)
+  comparer_covariables("ETP_Dolphin hr ~ Beauf", etp, list(key = "hr", formula = ~Beauf, truncation = 5),
+                       list(w = 5, cle = "hr", z = "Beauf", taille = "size", strate = NULL, unites = u_etp), 1, strates = FALSE)
+  comparer_covariables("ETP_Dolphin hr + cos(2) ~ Cue", etp, list(key = "hr", formula = ~Cue, truncation = 5, nadj = 1),
+                       list(w = 5, cle = "hr", aj = 1, z = "Cue", taille = "size", strate = NULL, unites = u_etp), 1, strates = FALSE)
+  cp_etp <- c(0, 0.5, 1, 1.5, 2, 3, 4, 5)
+  comparer_covariables("ETP_Dolphin par intervalles (7 classes), hn + cos(2) ~ Beauf", etp, list(key = "hn", formula = ~Beauf, cutpoints = cp_etp, nadj = 1),
+                       list(aj = 1, z = "Beauf", taille = "size", intervalles = cp_etp, strate = NULL, unites = u_etp), 1, strates = FALSE)
+  comparer_covariables("ETP_Dolphin tronqués à gauche (0,1 nmi), hn ~ Beauf : la densité de dht2 × w / (w − L)", etp, list(key = "hn", formula = ~Beauf, truncation = list(left = 0.1, right = 5)),
+                       list(w = 5, gauche = 0.1, z = "Beauf", taille = "size", strate = NULL, unites = u_etp), 1, strates = FALSE, gauche_lignes = TRUE)
+  r <- comparer_covariables("ClusterExercise (deux strates et leurs aires) hn ~ size : la taille des groupes en covariable", cluster, list(truncation = 1.5, formula = ~size),
+                            list(w = 1.5, taille = "size", z = "size", unites = list(distance = "km", effort = "km", aire = "km2")), 1)
+  # la densité des groupes : dht2 (varNhat) recalcule la probabilité de chaque détection avec des tailles
+  # de 1 pour la méthode delta de son attribut « grouped » ; Nuée garde celle de chaque détection
+  # sachant la taille de son groupe
+  gD <- attr(Distance::dht2(r$dI, flatfile = cluster, strat_formula = ~Region.Label, convert_units = 1), "grouped")
+  gN <- r$mN$densite_groupes
+  fdc <- r$mN$detection$fd
+  Z1 <- fdc$Z
+  Z1[, "size"] <- 1
+  pr1 <- probabilites_covariables(avec_covariables(sans_covariables(fdc), Z1), r$mN$detection$theta)
+  t_cl <- r$mN$donnees
+  var_un <- vapply(t_cl$strates$strate, function(s) {
+    i <- t_cl$strate_x == s
+    a <- gN$couverte[match(s, gN$strate)]
+    gr <- -(t_cl$strates$aire[t_cl$strates$strate == s] / a) * colSums(pr1$dp[i, , drop = FALSE] / pr1$p[i]^2)
+    drop(crossprod(gr, r$mN$detection$V %*% gr))
+  }, 0)
+  verifier("ClusterExercise ~ size, la densité des groupes : l'effectif de dht2 (attribut grouped) ; sa variance de détection, celle de dht2 quand la probabilité de chaque détection est recalculée avec une taille de 1, comme dht2 le fait",
+           proche(gN$N, gD$Abundance, 1e-9) && proche(var_un, gD$df_var[match(t_cl$strates$strate, as.character(gD$Region.Label))], 1e-6))
+  un <- dat("unimak")
+  r <- comparer_covariables("unimak (lignes, une strate) hn ~ MSTDO + Hour", un, list(key = "hn", formula = ~MSTDO + Hour),
+                            list(cle = "hn", z = c("MSTDO", "Hour"), strate = NULL, unites = list(distance = "km", effort = "km", aire = "km2")), 1, strates = FALSE)
+  mD2 <- ds_de(un, key = "hn", formula = ~MSTDO + Hour, initial_values = list(scale = r$mN$detection$theta))
+  verifier(sprintf("unimak : ds s'arrête sur un plateau (σ vers e^%.0f, une demi-normale plate : son gradient s'y annule), %.1f de log-vraisemblance sous le maximum de Nuée ; parti des paramètres de Nuée, ds y reste",
+                   max(drop(r$mD$ddf$ds$aux$ddfobj$scale$dm %*% r$mD$ddf$par)), r$d_ll),
+           r$d_ll > 20 && proche(mD2$ddf$lnl, r$mN$detection$ll, 1e-9))
+  gt <- dat("golftees")
+  gt <- gt[gt$observer == 1 & gt$detected == 1, ]  # (le premier observateur seul : ds sur des données d'observateurs doubles)
+  gt$sexe <- factor(ifelse(gt$sex == 1, "male", "femelle"), levels = c("femelle", "male"))
+  comparer_covariables("golftees (un transect, une aire, groupes) hn ~ sexe + exposure (une qualitative, une quantitative 0/1)", gt, list(key = "hn", formula = ~sexe + exposure, truncation = 4),
+                       list(w = 4, z = c("sexe", "exposure"), taille = "size", unites = list(distance = "m", effort = "m", aire = "m2")), 1)
 }
 
 # ---------------------------------------------------------------- refus
@@ -505,6 +747,17 @@ verifier("les refus en anglais", grepl("^The distances .* are positive or zero: 
 options(nuee.langue = "fr")
 verifier("un jeu de test refusé (l'échantillonnage par distances ne prédit pas)",
          grepl("jeu de test", refus(definir_modele(ps, "DISTANCE", x = NULL, y = numeros(ps, "distance"), echelle = "none", test = 1:5, options = definition_distance(ps)$options))))
+# des covariables refusées
+k_sc <- which(!is.na(sc$distance) & sc$distance <= 100)
+sc_plat <- sc
+sc_plat$distance[k_sc][sc$observateur[k_sc] == "C"] <- round(100 * sqrt(stats::runif(sum(sc$observateur[k_sc] == "C"))), 1)  # (des distances plus nombreuses au loin pour C)
+verifier("des covariables refusées : une valeur manquante pour une détection (nommée), une seule catégorie parmi les détections, une valeur constante, deux covariables liées, la clé uniforme (comme ds) ; une catégorie dont l'échelle σ part à l'infini, nommée",
+         grepl(sprintf("r%04d n'a pas de valeur de la covariable vent", k_sc[2]), refus_de(transform(sc, vent = replace(vent, k_sc[2], NA)), w = 100, z = "vent")) &&
+           grepl("n'a qu'une catégorie", refus_de(transform(sc, observateur = ifelse(is.na(observateur), NA, "A")), w = 100, z = "observateur")) &&
+           grepl("la même valeur pour toutes", refus_de(transform(sc, vent = ifelse(is.na(vent), NA, 2)), w = 100, z = "vent")) &&
+           grepl("liées entre elles", refus_de(transform(sc, vent2 = 2 * vent), w = 100, z = c("vent", "vent2"))) &&
+           grepl("La clé uniforme ne prend pas de covariables", refus_de(sc, w = 100, cle = "unif", z = "vent")) &&
+           grepl("l'échelle σ de observateur = C part à l'infini", refus_de(sc_plat, w = 100, serie = "aucune", z = "observateur")))
 
 # ---------------------------------------------------------------- observations, interface, textes
 
@@ -566,6 +819,34 @@ for (langue in c("fr", "en")) {
              grepl(if (fr) "rayon effectif" else "effective detection radius", tp$paragraphes[2]) && grepl("P2", tp$paragraphes[3]) && grepl("10", tp$paragraphes[1]) &&
              any(grepl("^Buckland", tm$references)) && any(grepl("^Miller", tm$references)) && any(grepl("^Fewster", tm$references)) && any(grepl("R Core Team", tm$references)))
 }
+# un modèle à covariables : ce que l'interface reçoit, ses textes, ses tableaux
+etat$projets$P2 <- c(psc, list(id = "P2"))
+class(etat$projets$P2) <- class(psc)
+dz <- definition_distance(psc, w = 100, taille = "size", z = c("observateur", "vent"))
+etat$modeles$M3 <- list(projet = "P2", definition = dz, modele = msc)
+rz <- resultat_distance("M3")
+cn <- rz$courbes_niveaux[[1]]
+verifier("un modèle à covariables, ce que l'interface reçoit : ses covariables et la référence, la probabilité de chaque détection (liste des observations), la fonction de détection moyenne et celle de chaque catégorie de l'observateur, les coefficients, en JSON",
+         identical(rz$formule, "observateur + vent") && isTRUE(rz$p_moyenne) && identical(rz$covariables$reference, c("A", NA)) && identical(rz$covariables$qualitative, c(TRUE, FALSE)) &&
+           "p" %in% names(rz$observations) && sum(!is.na(rz$observations$p)) == rz$n && identical(as.character(cn$niveaux), c("A", "B", "C")) &&
+           length(cn$g) == 3 && all(lengths(cn$g) == 101) && sum(cn$n) == rz$n && identical(as.character(rz$termes_covariables), c("observateur(B)", "observateur(C)", "vent")) &&
+           grepl("^hn ~ observateur \\+ vent · D ", rz$chiffres) && inherits(json(rz), "json"))
+for (langue in c("fr", "en")) {
+  fr <- langue == "fr"
+  tz <- texte_methodes(psc, dz, msc, langue, "essai")
+  rt <- texte_resultats(psc, dz, msc, langue)$paragraphes
+  pa <- msc$parametres
+  verifier(sprintf("un modèle à covariables, ses textes (%s) : ds(formula = ~…), ln σ et ses termes, la référence, l'AIC sans covariables, p̄, Horvitz–Thompson, Marques ; les résultats, chaque coefficient et son facteur sur σ", langue),
+           grepl("ds(formula = ~observateur + vent)", tz$paragraphes[2], fixed = TRUE) && grepl("ln σ = β0 + β1 observateur(B) + β2 observateur(C) + β3 vent", tz$paragraphes[2], fixed = TRUE) &&
+             grepl(if (fr) "observateur : A" else "observateur: A", tz$paragraphes[2], fixed = TRUE) && grepl(if (fr) "Sans covariables" else "Without covariates", tz$paragraphes[2]) &&
+             grepl("p̄", tz$paragraphes[2], fixed = TRUE) && grepl("Horvitz–Thompson", tz$paragraphes[3]) && any(grepl("^Marques, F", tz$references)) && any(grepl("^Marques, T", tz$references)) &&
+             grepl(sprintf("observateur(B) β = %s", nombre_resultat(pa$estimation[2], fr)), rt[1], fixed = TRUE) &&
+             grepl(sprintf("σ × %s", nombre_resultat(exp(pa$estimation[2]), fr)), rt[1], fixed = TRUE) && grepl(nombre_resultat(msc$densite$D[3], fr, 4), rt[3], fixed = TRUE))
+}
+tz <- tables_resultats(psc, msc)
+verifier("un modèle à covariables, ses tableaux : les covariables et leur référence, la formule au résumé, les coefficients, la probabilité de chaque détection",
+         identical(tz$covariables$covariable, c("observateur", "vent")) && identical(tz$resume$covariables, "observateur + vent") &&
+           identical(tz$parametres$parametre, c("ln_sigma", "observateur(B)", "observateur(C)", "vent")) && "p" %in% names(tz$observations))
 tr <- tables_resultats(ps, etat$modeles$M1$modele)
 verifier("tableaux exportés : des data.frame (résumé, candidats, paramètres, détection, adéquation, classes, densité, densité des groupes, transects, observations)",
          all(vapply(tr, is.data.frame, TRUE)) && all(c("resume", "candidats", "parametres", "detection", "adequation", "classes", "densite", "densite_groupes", "transects", "observations") %in% names(tr)) &&
@@ -585,8 +866,9 @@ unlink(dossier, recursive = TRUE)
 # covariance et la matrice d'information, la log-vraisemblance et l'AIC, p et sa variance, ESW ou EDR
 # et l'effectif couvert, Cramér–von Mises, le khi² et ses classes, le diagramme quantile-quantile, la
 # troncature, les distances, les transects, la densité et l'effectif par strate et au total, la densité
-# des groupes, la courbe, g des détections et l'histogramme ; les libellés des modèles, des strates et
-# des transects et la raison du choix, identiques.
+# des groupes, la courbe, g des détections et l'histogramme ; avec des covariables, p̄, la probabilité de
+# chaque détection et les courbes de chaque catégorie ; les libellés des modèles (et leurs covariables),
+# des strates, des transects, des catégories et des paramètres, et la raison du choix, identiques.
 cat("Export vers R : des scripts lancés seuls, en français et en anglais, et des rapports R Markdown et Quarto\n")
 dossier <- tempfile("distance_script")
 dir.create(dossier)
@@ -595,8 +877,8 @@ lanceur <- file.path(dossier, "lancer.R")
 writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
              ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
 lancer <- function(script) {
-  objets <- nom_traduit(c("releve", "choix", "det", "candidats", "pr", "var_p", "se_p", "detection", "adequation", "densite", "densite_groupes", "courbe", "g_x",
-                          "histogramme"), attr(script, "langue"), NOMS_DISTANCE_EN)
+  objets <- nom_traduit(c("releve", "choix", "det", "candidats", "parametres", "pr", "var_p", "se_p", "detection", "adequation", "densite", "densite_groupes", "courbe", "g_x",
+                          "histogramme", "courbes", "p_moyenne", "choix_sans"), attr(script, "langue"), NOMS_DISTANCE_EN)
   sortie <- tempfile("sortie", dossier, ".rds")
   ici <- setwd(dossier)
   on.exit(setwd(ici))
@@ -672,11 +954,28 @@ s4 <- simuler(4)
 s4$Area <- 0
 p4 <- projet_distance(s4)
 essayer_script("aires_nulles_en", p4, definition_distance(p4, w = 100), "en")
+# des covariables : la matrice, la fonction de détection à covariables et le modèle sans covariables
+# comparé, la probabilité de chaque détection, p̄, la densité de Horvitz–Thompson, les courbes par catégorie
+x <- essayer_script("lignes_covariables_groupes", psc, definition_distance(psc, w = 100, taille = "size", z = c("observateur", "vent")), "fr")
+verifier("le script d'un modèle à covariables : les mêmes candidats (sans covariables, puis à covariables), p̄, la probabilité de chaque détection, la fonction de détection moyenne de chaque observateur",
+         identical(x$s$candidats$covariables, c("", "observateur + vent")) && proche(x$s$p_moyenne$p, x$m$p, 1e-12) && proche(x$s$pr$p, x$m$p_detections, 1e-12) &&
+           length(x$s$courbes$niveaux) == 1 && identical(x$s$courbes$niveaux[[1]]$niveaux, c("A", "B", "C")))
+essayer_script("lignes_covariables_groupes_en", psc, definition_distance(psc, w = 100, taille = "size", z = c("observateur", "vent")), "en")
+pzc <- projet_distance(simuler_covariables(7, point = TRUE, cle = "hr", sigma = 35, D = c(Nord = 90, Sud = 150)))
+essayer_script("points_hasard_observateur_en", pzc, definition_distance(pzc, transect = "point", w = 100, cle = "hr", z = "observateur"), "en")
+# (une covariable au nom que le script en anglais traduirait s'il était un nom du code : « taille »)
+sct <- sc
+names(sct)[names(sct) == "size"] <- "taille"
+pzt <- projet_distance(sct)
+x <- essayer_script("lignes_taille_cosinus_intervalles_en", pzt, definition_distance(pzt, intervalles = c(0, 15, 30, 50, 75, 100), aj = 1, taille = "taille", z = "taille"), "en")
+verifier("le script en anglais garde le nom d'une covariable du projet, même un nom du code (taille)", identical(x$s$candidates$covariates[2], "taille") &&
+           identical(x$s$parameters$parameter, c("ln_sigma", "taille", "cos_2")))
 # un rapport R Markdown : ses parties, ses blocs, et il se compile avec knitr quand il est installé ; un Quarto en anglais
 x <- essayer_script("rapport_distance", p3, definition_distance(p3, w = 100, taille = "size"), "fr", ext = "Rmd", donnees = "csv", rdata = TRUE)
 texte <- readLines(x$r$script, encoding = "UTF-8")
 q <- essayer_script("rapport_distance_en", p2, definition_distance(p2, transect = "point", pct = 10, cle = "hr"), "en", ext = "qmd")
 texte_q <- readLines(q$r$script, encoding = "UTF-8")
+rz <- essayer_script("rapport_covariables", psc, definition_distance(psc, w = 100, taille = "size", z = c("observateur", "vent")), "fr", ext = "Rmd")
 verifier("rapport R Markdown : méthodes, code, résultats, références ; données en CSV et .RData à côté ; un Quarto en anglais",
          is.null(x$r$ecart) && texte[1] == "---" && any(grepl("^## Méthodes", texte)) && any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^```\\{r densite-table\\}", texte)) &&
            any(grepl("^```\\{r groupes-table\\}", texte)) && any(grepl("^- Buckland", texte)) && any(grepl("^- Fewster", texte)) && length(x$r$chemins) == 3 && all(file.exists(x$r$chemins)) &&
@@ -695,8 +994,8 @@ if (requireNamespace("knitr", quietly = TRUE)) {
     figures <- sub("^!\\[[^]]*\\]\\(([^)]+)\\).*$", "\\1", grep("^!\\[", texte_md, value = TRUE))
     if (any(grepl("^## Error|Error in", texte_md)) || !all(file.exists(file.path(dossier, figures)))) -1 else length(figures)
   }
-  verifier("les rapports se compilent avec knitr, avec leurs graphiques : la fonction de détection et le diagramme quantile-quantile, et la densité des distances dans le Quarto en anglais (des points)",
-           compiler_rapport(x$r$script) == 2 && compiler_rapport(q$r$script) == 3)
+  verifier("les rapports se compilent avec knitr, avec leurs graphiques : la fonction de détection et le diagramme quantile-quantile, et la densité des distances dans le Quarto en anglais (des points) ; avec des covariables, la fonction de détection moyenne, celle de chaque observateur et le diagramme quantile-quantile",
+           compiler_rapport(x$r$script) == 2 && compiler_rapport(q$r$script) == 3 && is.null(rz$r$ecart) && compiler_rapport(rz$r$script) == 3)
 } else cat("  (knitr absent : les rapports ne sont pas compilés)\n")
 unlink(dossier, recursive = TRUE)
 

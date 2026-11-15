@@ -1397,6 +1397,7 @@ resultat_distance <- function(id) {
        intervalles = if (!is.null(t$coupures)) I(t$coupures),
        courbe = m$courbe, histogramme = histogramme_echantillonnage(t, m$p), distances = I(t$x), uid_distances = I(t$uid), g_distances = I(m$g_x),
        covariables = covariables_echantillonnage(m), formule = det$fd$formule %||% "", p_moyenne = !is.null(m$p_detections), monotone = m$monotone,
+       termes_covariables = I(if (!is.null(det$fd$noms_echelle)) det$fd$noms_echelle[-1] else character(0)),
        # (pour chaque covariable qualitative, la fonction de détection moyenne de chacune de ses catégories)
        courbes_niveaux = lapply(m$courbes_niveaux, function(cn) list(covariable = cn$covariable, niveaux = I(cn$niveaux), n = I(cn$n),
                                                                     g = lapply(seq_along(cn$niveaux), function(j) I(cn$g[, j])),

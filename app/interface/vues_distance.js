@@ -1,8 +1,10 @@
 // Distance sampling, density and abundance from line and point transects (moteur/R/distance.R): its
-// settings in the model dialog, its views (the summary with the model chosen, the AIC of the
-// candidates, p, ESW or EDR and the goodness of fit; the detection function over the histogram of
-// distances, and for points the pdf of the distances; the QQ plot; the density and abundance by
-// stratum), its report parts and its strings. Imported by app.js.
+// settings in the model dialog (the covariates of the detection function: the Z variables), its
+// views (the summary with the model chosen, the AIC of the candidates, the coefficients of the
+// covariates, p or the average p̄, ESW or EDR and the goodness of fit; the detection function over
+// the histogram of distances, the average one with covariates and one curve per category of a
+// qualitative covariate, and for points the pdf of the distances; the QQ plot; the density and
+// abundance by stratum), its report parts and its strings. Imported by app.js.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, notesModele, valeurP, ficheCondition } from './panneaux.js';
@@ -44,6 +46,9 @@ const lignesDensite = (dn) => lignesDe(dn, ['strate', 'aire', 'couverte', 'effor
 const effectifLibelle = (m) => t(point(m) ? 'distance_edr' : 'distance_esw');
 const libelleCle = (c) => t('distance_cle_' + c);
 const libelleSerie = (s) => t('distance_serie_' + (s || 'aucune'));
+// a model whose scale depends on covariates (ds(formula = )): its p is the average p̄
+const avecCovariables = (m) => !!m.formule;
+const pLibelle = (m) => (m.p_moyenne ? 'p̄' : 'p');
 // the model's notes: rows left out, constraints met, a stratum of one transect
 function notesDistance(m) {
   const n = [];
@@ -51,12 +56,17 @@ function notesDistance(m) {
   if (m.au_dela) n.push(t('distance_au_dela', { n: m.au_dela, w: avecUnite(sig(tr.w), uDist(m)) }));
   if (m.en_deca) n.push(t('distance_en_deca', { n: m.en_deca, L: avecUnite(sig(tr.L), uDist(m)) }));
   if (m.contraint) n.push(t('distance_contraint'));
+  if (avecCovariables(m) && liste(m.ordres).length) n.push(t('distance_covariables_monotonie'));
+  if (m.monotone === false) n.push(t('distance_non_monotone'));
   if (lignesDensite(m.densite).some((l) => l.strate !== null && l.k === 1)) n.push(t('distance_un_transect'));
   if (m.densite_seule) n.push(t('distance_densite_seule'));
   if (m.unites && m.unites.donne) n.push(t('distance_facteur_donne', { f: sig(m.unites.facteur, 6) }));
   return n;
 }
-const phraseSelection = (m) => t('distance_selection_' + (m.selection || 'aic'), { serie: libelleSerie(m.serie_demandee) });
+const phraseSelection = (m) => {
+  const s = t('distance_selection_' + (m.selection || 'aic'), { serie: libelleSerie(m.serie_demandee) });
+  return avecCovariables(m) && liste(m.candidats.modele).length > 1 ? `${s} ${t('distance_comparaison_note')}` : s;
+};
 
 // ------------------------------------------------------------ summary
 
@@ -64,7 +74,19 @@ const lignesCandidats = (m) => lignesDe(m.candidats, ['modele', 'parametres', 'l
   .map((l) => [l[0], String(l[1]), fini(l[2]) ? fmt(l[2], 3) : '—', fini(l[3]) ? fmt(l[3], 3) : '—', fini(l[4]) ? fmt(l[4], 3) : '—',
     l[6] ? '✓' : l[5] ? '' : t('distance_non_converge')]);
 const entetesCandidats = () => [t('distance_modele'), t('distance_n_parametres'), 'logL', 'AIC', 'ΔAIC', t('distance_retenu')];
-const lignesParametres = (m) => (m.parametres ? lignesDe(m.parametres, ['parametre', 'estimation', 'se']).map((l) => [l[0], fmt(l[1], 4), fmt(l[2], 4)]) : []);
+// (with covariates: each covariate coefficient's factor on σ, exp(β))
+const lignesParametres = (m) => {
+  if (!m.parametres) return [];
+  const termes = new Set(liste(m.termes_covariables));
+  return lignesDe(m.parametres, ['parametre', 'estimation', 'se']).map((l) => [l[0], fmt(l[1], 4), fmt(l[2], 4)]
+    .concat(avecCovariables(m) ? [termes.has(l[0]) ? fmt(Math.exp(l[1]), 4) : ''] : []));
+};
+const entetesParametres = (m) => ['', t('estimation'), t('erreur_type')].concat(avecCovariables(m) ? [t('distance_facteur_sigma')] : []);
+const notesParametres = (m) => [m.cle === 'hr' ? t('distance_parametre_b') : null, m.cle !== 'unif' ? t(avecCovariables(m) ? 'distance_parametre_sigma_covariables' : 'distance_parametre_sigma') : null,
+  liste(m.ordres).length ? t('distance_parametre_a') : null, t('distance_parametres_note')].filter(Boolean).join(' ');
+const lignesCovariables = (m) => lignesDe(m.covariables, ['covariable', 'qualitative', 'reference', 'categories'])
+  .map((l) => [l[0], t(l[1] ? 'distance_qualitative' : 'distance_quantitative'), l[1] ? l[2] : '—', l[1] ? l[3] : '—']);
+const entetesCovariables = () => [t('distance_covariable'), t('distance_type_covariable'), t('distance_reference'), t('distance_categories')];
 const lignesAdequation = (m) => {
   const a = m.adequation;
   return [a.cvm ? [t('distance_cvm'), fmt(a.cvm.W, 4), '', pValeur(a.cvm.p)] : null,
@@ -77,7 +99,7 @@ const texteTroncature = (m) => {
   if (parIntervalles(m)) return t('distance_n_intervalles', { k: liste(m.intervalles).length - 1, de: sig(tr.L), a: avecUnite(sig(tr.w), uDist(m)) });
   return `${avecUnite(sig(tr.w), uDist(m))}${fini(tr.pourcentage) ? ` (${tr.pourcentage} %)` : ''}${tr.L > 0 ? ` · ${t('distance_gauche')} ${sig(tr.L)}` : ''}`;
 };
-const phraseDetection = (m) => t('distance_phrase_p', { p: fmt(m.p, 3), se: fmt(m.se_p, 3), cv: pct(m.cv_p), quoi: effectifLibelle(m),
+const phraseDetection = (m) => t(m.p_moyenne ? 'distance_phrase_p_moyenne' : 'distance_phrase_p', { p: fmt(m.p, 3), se: fmt(m.se_p, 3), cv: pct(m.cv_p), quoi: effectifLibelle(m),
   e: avecUnite(sig(m.effectif.valeur), uDist(m)), se_e: avecUnite(sig(m.effectif.se, 3), uDist(m)) });
 function phraseTotal(m) {
   const dn = lignesDensite(m.densite);
@@ -97,7 +119,7 @@ function rendreResumeDistance(conteneur, ctx, m) {
     el('div', { class: 'fiche-chiffres' }, chiffre(t('distance_plan'), t(point(m) ? 'distance_points' : 'distance_lignes')), chiffre(t('distance_detections'), String(m.n)),
       chiffre(t('distance_transects'), String(liste(m.transects.transect).length)), m.avec_strates ? chiffre(t('distance_strates'), String(strates)) : null,
       chiffre(t(parIntervalles(m) ? 'distance_intervalles' : 'distance_troncature'), texteTroncature(m))),
-    el('div', { class: 'fiche-chiffres' }, chiffre(t('distance_modele'), m.modele_detection), chiffre('p', `${fmt(m.p, 3)} ± ${fmt(m.se_p, 3)}`),
+    el('div', { class: 'fiche-chiffres' }, chiffre(t('distance_modele'), m.modele_detection), chiffre(pLibelle(m), `${fmt(m.p, 3)} ± ${fmt(m.se_p, 3)}`),
       chiffre(effectifLibelle(m), avecUnite(`${sig(m.effectif.valeur)} ± ${sig(m.effectif.se, 3)}`, uDist(m))), chiffre('AIC', fmt(m.AIC, 2)),
       liste(m.ordres).length ? chiffre(t('distance_monotonie'), t('distance_monotonie_' + m.monotonie)) : null),
     ficheCondition(m));
@@ -107,9 +129,10 @@ function rendreResumeDistance(conteneur, ctx, m) {
     notes.champ,
     el('h4', {}, t('distance_candidats')), tableCompacte(entetesCandidats(), lignesCandidats(m), (i) => !!liste(m.candidats.choisi)[i]),
     el('p', { class: 'note' }, phraseSelection(m)),
-    lignesParametres(m).length ? [el('h4', {}, t('distance_parametres')), tableCompacte(['', t('estimation'), t('erreur_type')], lignesParametres(m)),
-      el('p', { class: 'note' }, [m.cle === 'hr' ? t('distance_parametre_b') : null, m.cle !== 'unif' ? t('distance_parametre_sigma') : null,
-        liste(m.ordres).length ? t('distance_parametre_a') : null, t('distance_parametres_note')].filter(Boolean).join(' '))] : null,
+    avecCovariables(m) ? [el('h4', {}, t('distance_covariables')), tableCompacte(entetesCovariables(), lignesCovariables(m)),
+      el('p', { class: 'note' }, t('distance_covariables_resume_note', { formule: m.formule }))] : null,
+    lignesParametres(m).length ? [el('h4', {}, t(avecCovariables(m) ? 'distance_coefficients' : 'distance_parametres')), tableCompacte(entetesParametres(m), lignesParametres(m)),
+      el('p', { class: 'note' }, notesParametres(m))] : null,
     el('h4', {}, t('distance_adequation')), tableCompacte(['', t('distance_statistique'), t('ddl'), 'p'], lignesAdequation(m)),
     el('p', { class: 'note' }, t(parIntervalles(m) ? 'distance_adequation_note_intervalles' : 'distance_adequation_note')),
     notesDistance(m).map((x) => el('p', { class: 'note' }, x))));
@@ -125,25 +148,41 @@ function rendreDetection(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   loc.courbe ??= 'g';
   loc.points ??= true;
+  loc.par ??= '';  // (with qualitative covariates: '' the average curve alone, or a covariate's index for one curve per category)
   const pdf = point(m) && loc.courbe === 'f';
   const points = loc.points && !pdf && !parIntervalles(m);  // (distances in intervals: no exact distance to show)
+  const niveaux = liste(m.courbes_niveaux);
+  const cn = loc.par !== '' ? niveaux[Number(loc.par)] : null;
   const graphe = el('div', { class: 'graphe' });
   const bas = el('div', { class: 'bas' });
+  const note = avecCovariables(m) ? (pdf ? 'distance_pdf_note_covariables' : 'distance_g_note_covariables') : pdf ? 'distance_pdf_note' : point(m) ? 'distance_g_note_points' : 'distance_g_note';
   conteneur.replaceChildren(outils(
     point(m) ? choix('', [['g', t('distance_g')], ['f', t('distance_pdf')]], loc.courbe, (v) => { loc.courbe = v; ctx.rafraichir(); }) : null,
+    niveaux.length ? choix('', [['', t('distance_courbe_moyenne')]].concat(niveaux.map((x, k) => [String(k), t('distance_par_covariable', { nom: x.covariable })])), loc.par,
+      (v) => { loc.par = v; ctx.rafraichir(); }) : null,
     pdf || parIntervalles(m) ? null : caseACocher(t('distance_points_obs'), loc.points, (v) => { loc.points = v; ctx.rafraichir(); }, t('distance_points_obs_aide'))),
-  el('p', { class: 'note' }, t(pdf ? 'distance_pdf_note' : point(m) ? 'distance_g_note_points' : 'distance_g_note')), graphe, bas);
+  el('p', { class: 'note' }, t(note)), graphe, bas);
   const h = m.histogramme;
   const de = liste(h.de);
   const a = liste(h.a);
   const barres = liste(pdf ? h.f : h.g);
   const c = m.courbe;
   const courbe = liste(pdf ? c.f : c.g);
+  const nomCourbe = avecCovariables(m) ? t(pdf ? 'distance_pdf_moyenne' : 'distance_g_moyenne') : pdf ? t('distance_pdf') : t('distance_g');
   const traces = [{ type: 'bar', name: t('distance_histogramme'), x: de.map((v, i) => (v + a[i]) / 2), y: barres, width: de.map((v, i) => a[i] - v),
     customdata: liste(h.compte), marker: { color: translucide(PALETTE[0], 0.3), line: { color: PALETTE[0], width: 1 } },
     hovertemplate: `%{x:.3g}<br>%{y:.3f} (n = %{customdata})<extra>${t('distance_histogramme')}</extra>` },
-  { type: 'scatter', mode: 'lines', name: pdf ? t('distance_pdf') : t('distance_g'), x: liste(c.x), y: courbe, line: { color: PALETTE[1], width: 2.5 },
+  { type: 'scatter', mode: 'lines', name: nomCourbe, x: liste(c.x), y: courbe, line: { color: PALETTE[1], width: cn ? 3.5 : 2.5 },
     hovertemplate: `%{x:.3g}<br>%{y:.4f}<extra>${m.modele_detection}</extra>` }];
+  // (one curve per category: the average over its detections, as plot.ds(subset = ))
+  if (cn) {
+    liste(cn.niveaux).forEach((niveau, j) => {
+      const nom = `${cn.covariable} = ${niveau} (n = ${liste(cn.n)[j]})`;
+      traces.push({ type: 'scatter', mode: 'lines', name: nom, x: liste(c.x), y: liste(liste(pdf ? cn.f : cn.g)[j]), line: { color: PALETTE[(j + 2) % PALETTE.length], width: 2 },
+        hovertemplate: `%{x:.3g}<br>%{y:.4f}<extra>${nom}</extra>` });
+    });
+  }
+  const yNiveaux = cn ? liste(pdf ? cn.f : cn.g).flatMap((v) => liste(v)) : [];
   if (points) {
     const sel = new Set(ctx.selection(m.id));
     const uids = liste(m.uid_distances);
@@ -151,7 +190,7 @@ function rendreDetection(conteneur, ctx, p, loc) {
       marker: { size: 6, color: uids.map((u) => (sel.has(u) ? '#e4572e' : PALETTE[1])), opacity: 0.6 },
       hovertemplate: `%{x}<br>g = %{y:.3f}<extra>${t('distance_observees')}</extra>` });
   }
-  const ymax = Math.max(1.05, ...barres.map((v) => v * 1.05), ...courbe.map((v) => v * 1.05));
+  const ymax = Math.max(1.05, ...barres.map((v) => v * 1.05), ...courbe.map((v) => v * 1.05), ...yNiveaux.map((v) => v * 1.05));
   tracer(ctx, graphe, traces, { title: { text: `${m.nom} · ${m.modele_detection}` }, barmode: 'overlay', bargap: 0, dragmode: 'zoom',
     xaxis: { title: { text: avecUnite(m.noms ? m.noms.y : t('distance_distance'), uDist(m) ? `(${uDist(m)})` : '') }, range: [Math.min(0, de[0] || 0), m.troncature.w] },
     yaxis: { title: { text: pdf ? t('distance_densite_proba') : t('distance_proba') }, range: [0, pdf ? undefined : ymax], rangemode: 'tozero' } });
@@ -290,6 +329,9 @@ function champsDistance(st, rendre, p) {
   const tr = o.troncature;
   const aj = premier(o.ajustements) ?? 'aic';
   if (o.intervalles_texte === undefined) o.intervalles_texte = liste(o.intervalles).map((x) => sig(x, 12)).join(' ');
+  // the covariates of the detection function: the Z variables (the Variables tab shows the same role)
+  const covariables = p.variables.filter((v) => st.roles[v.uid] === 'z');
+  const libres = p.variables.filter((v) => !st.roles[v.uid]);
   return [
     el('label', {}, t('distance_plan')), choisir(['ligne', 'point'], o.transect, (v) => { o.transect = v; rendre(); }, (k) => t(k === 'point' ? 'distance_points' : 'distance_lignes')),
     el('label', {}, t('distance_echantillon')), el('select', { title: t('distance_echantillon_aide'), onchange: (e) => { o.echantillon = specLue(e.target.value); } }, options(specCode(o.echantillon), () => true)),
@@ -307,6 +349,12 @@ function champsDistance(st, rendre, p) {
     el('label', {}, t('distance_intervalles')), el('input', { value: o.intervalles_texte, placeholder: t('distance_intervalles_exemple'), style: 'width:18em',
       title: t('distance_intervalles_aide'), oninput: (e) => { o.intervalles_texte = e.target.value; } }),
     el('label', {}, t('distance_cle')), choisir(['hn', 'hr', 'unif'], premier(o.cle) || 'hn', (v) => { o.cle = v; rendre(); }, libelleCle, t('distance_cle_aide')),
+    el('label', {}, t('distance_covariables')), el('div', { class: 'ligne', title: t('distance_covariables_aide') },
+      covariables.map((v) => el('button', { title: t('distance_retirer_covariable', { nom: v.nom }), onclick: () => { st.roles[v.uid] = ''; rendre(); } }, `${v.nom} ×`)),
+      el('select', { onchange: (e) => { if (e.target.value) { st.roles[Number(e.target.value)] = 'z'; rendre(); } } },
+        [el('option', { value: '', selected: true }, covariables.length ? t('distance_ajouter_covariable') : t('distance_sans_covariables'))]
+          .concat(libres.map((v) => el('option', { value: v.uid }, v.nom))))),
+    covariables.length ? [el('label', {}, ''), el('p', { class: 'note' }, t('distance_covariables_note'))] : null,
     el('label', {}, t('distance_ajustements')), el('div', { class: 'ligne' },
       choisir(['cos', 'herm', 'poly', 'aucune'], premier(o.serie) || 'cos', (v) => { o.serie = v; rendre(); }, libelleSerie, t('distance_serie_aide')),
       (premier(o.serie) || 'cos') === 'aucune' ? null : [
@@ -326,7 +374,7 @@ function champsDistance(st, rendre, p) {
 ANALYSES.DISTANCE = {
   libelle: () => t('type_distance'),
   note: () => t('distance_note'),
-  roles: ['y'],
+  roles: ['y', 'z'],
   echelle: 'none',
   vc: false,
   champs: champsDistance,
@@ -336,6 +384,10 @@ ANALYSES.DISTANCE = {
     const variable = (u) => p.variables.find((v) => v.uid === u) || {};
     if (y.length !== 1) return t('distance_y_requis');
     if (variable(y[0]).qualitative) return t('distance_y_quantitative', { nom: variable(y[0]).nom });
+    const z = cles('z');
+    if (z.length && (premier(o.cle) || 'hn') === 'unif') return t('distance_covariables_uniforme');
+    const transformee = z.find((u) => st.transfos[u] && !variable(u).qualitative);
+    if (transformee !== undefined) return t('distance_covariable_transformee', { nom: variable(transformee).nom });
     if (!o.echantillon) return t('distance_echantillon_requis');
     if (o.strate && specCode(o.strate) === specCode(o.echantillon)) return t('distance_echantillon_strate');
     if (o.transect !== 'point' && !o.effort) return t('distance_effort_requis');
@@ -350,11 +402,12 @@ ANALYSES.DISTANCE = {
     if (b.length && (b.length < 3 || b.some((x, i) => !Number.isFinite(x) || x < 0 || (i && x <= b[i - 1])))) return t('distance_intervalles_invalides');
     return '';
   },
-  options: (st) => {
+  options: (st, cles) => {
     const o = st.options;
     const tr = o.troncature || { type: 'aucune' };
     const f = premier(o.facteur);
     return { transect: o.transect || 'ligne', echantillon: o.echantillon, strate: o.strate || null, effort: o.effort || null, aire: o.aire || null, taille: o.taille || null,
+      z: cles('z'),
       troncature: tr.type === 'aucune' ? { type: 'aucune' } : { type: tr.type, valeur: tr.valeur }, gauche: Number.isFinite(premier(o.gauche)) ? premier(o.gauche) : 0,
       cle: premier(o.cle) || 'hn', serie: premier(o.serie) || 'cos', ajustements: premier(o.ajustements) ?? 'aic', echelle_ajustements: premier(o.echelle_ajustements) || 'largeur',
       monotonie: premier(o.monotonie) || 'stricte', unites: o.unites, facteur: Number.isFinite(f) && f > 0 ? f : null,
@@ -368,6 +421,8 @@ const blocsResume = (m) => [
   { texte: `${t('distance_badge')} · ${t(point(m) ? 'distance_points' : 'distance_lignes')} · ${t('distance_detections')} ${m.n} · ${t('distance_troncature')} ${avecUnite(sig(m.troncature.w), uDist(m))} · ${m.modele_detection} · AIC ${fmt(m.AIC, 2)}` },
   { texte: phraseDetection(m) }, { texte: phraseTotal(m) },
   { entetes: entetesCandidats(), lignes: lignesCandidats(m) }, { texte: phraseSelection(m) },
+  ...(avecCovariables(m) ? [{ entetes: entetesCovariables(), lignes: lignesCovariables(m) }, { entetes: entetesParametres(m), lignes: lignesParametres(m) },
+    { texte: notesParametres(m) }] : []),
   { entetes: ['', t('distance_statistique'), t('ddl'), 'p'], lignes: lignesAdequation(m) },
   ...notesDistance(m).map((x) => ({ texte: x }))];
 const blocsDetection = (m) => {
@@ -403,7 +458,13 @@ VUES_TYPES.DISTANCE = (m) => ['resume', 'distance_detection'].concat(parInterval
 
 ajouterTextes({
   type_distance: 'Échantillonnage par distances (densité, effectif)',
-  distance_note: 'Des distances d’animaux détectés depuis des lignes (transects linéaires) ou des points (points d’écoute), comme le paquet Distance (ds et dht2). Une ligne par détection : sa distance (Y), son transect, l’effort de ce transect ; un transect sans détection reste une ligne, sa distance vide. Facultatifs : la strate, son aire, la taille du groupe.',
+  distance_note: 'Des distances d’animaux détectés depuis des lignes (transects linéaires) ou des points (points d’écoute), comme le paquet Distance (ds et dht2). Une ligne par détection : sa distance (Y), son transect, l’effort de ce transect ; un transect sans détection reste une ligne, sa distance vide. Facultatifs : la strate, son aire, la taille du groupe, des covariables de la détection (variables Z).',
+  distance_covariables: 'Covariables', distance_ajouter_covariable: 'ajouter une covariable…', distance_sans_covariables: '— (aucune : en ajouter une…)',
+  distance_retirer_covariable: 'Retirer {nom} des covariables',
+  distance_covariables_aide: 'Les covariables de la fonction de détection, comme ds(formula = ~ …) : son échelle σ en dépend, ln σ = β0 + β1 x1 + … (Marques et Buckland, 2003). Une variable quantitative entre telle quelle, une qualitative par ses catégories, la première la référence ; la taille des groupes peut en être une. Ce sont les variables au rôle Z de l’onglet Variables.',
+  distance_covariables_note: 'Avec des covariables, comme ds : la clé demi-normale ou hasard, sans terme d’ajustement sauf un nombre donné, sans contrainte de monotonie ; chaque détection a sa probabilité de détection, et la densité est celle de Horvitz–Thompson de dht2. La même fonction sans covariables est ajustée aussi, pour comparer les AIC.',
+  distance_covariables_uniforme: 'La clé uniforme ne prend pas de covariables (comme ds) : choisissez la clé demi-normale ou hasard.',
+  distance_covariable_transformee: 'Les covariables sont prises telles qu’elles sont : retirez la transformation de {nom} (ou faites-en une nouvelle variable).',
   distance_badge: 'Distance', distance_plan: 'Transects', distance_lignes: 'linéaires (lignes)', distance_points: 'points d’écoute (points)',
   distance_echantillon: 'Transect', distance_echantillon_aide: 'Le transect (la ligne ou le point) de chaque ligne du tableau : un identifiant ou une variable.',
   distance_effort_lignes: 'Effort (longueur)', distance_effort_points: 'Effort (passages)', distance_un_passage: '— (un passage par point)',
@@ -445,13 +506,23 @@ ajouterTextes({
   distance_selection_convergence: 'Comme ds() : la clé seule, puis un terme {serie} de plus tant que l’AIC baisse ; un modèle qui ne converge pas a arrêté la recherche.',
   distance_selection_parametres: 'Comme ds() : la clé seule, puis un terme {serie} de plus tant que l’AIC baisse ; la recherche s’arrête quand les distances distinctes ne suffisent plus.',
   distance_selection_cle: 'La clé seule, sans terme d’ajustement.', distance_selection_fixe: 'Le nombre de termes d’ajustement donné.', distance_selection_echec: 'La clé seule ne converge pas.',
+  distance_selection_covariables: 'Avec des covariables, comme ds() : la clé et ses covariables, sans terme d’ajustement (un nombre de termes donné en ajoute) ni contrainte de monotonie.',
+  distance_comparaison_note: 'La première ligne : les mêmes réglages sans covariables, pour comparer les AIC (comme summarize_ds_models de Distance).',
   distance_parametres: 'Paramètres de la fonction de détection', distance_parametre_b: 'ln_b : le logarithme de la forme b du hasard.',
   distance_parametre_sigma: 'ln_sigma : le logarithme de l’échelle σ de la clé.', distance_parametre_a: 'Puis chaque terme d’ajustement (série_ordre).',
   distance_parametres_note: 'Erreurs-types d’après la somme des produits des scores des distances, comme mrds.',
+  distance_coefficients: 'Coefficients de la fonction de détection', distance_facteur_sigma: 'σ × exp(β)',
+  distance_parametre_sigma_covariables: 'ln_sigma : la constante de ln σ (aux catégories de référence, les covariables quantitatives à 0) ; puis le coefficient de chaque covariable sur ln σ : σ est multiplié par exp(β) pour une catégorie par rapport à sa référence, pour une covariable quantitative par unité.',
+  distance_covariable: 'Covariable', distance_type_covariable: 'Type', distance_reference: 'Référence', distance_categories: 'Catégories (des détections)',
+  distance_qualitative: 'qualitative', distance_quantitative: 'quantitative',
+  distance_covariables_resume_note: 'L’échelle σ de la fonction de détection dépend de ces covariables, comme ds(formula = ~{formule}) : une qualitative entre par une indicatrice de chacune de ses catégories sauf la référence, une quantitative telle quelle.',
+  distance_covariables_monotonie: 'Avec des covariables, les termes d’ajustement ne sont pas contraints à la monotonie : ds ne le permet pas.',
+  distance_non_monotone: 'Pour certaines combinaisons de covariables, la fonction de détection n’est pas monotone (elle croît, dépasse 1 ou devient négative en l’un des 10 points de 0 à w), comme le signale check.mono de mrds : essayez moins de termes d’ajustement.',
   distance_adequation: 'Adéquation', distance_statistique: 'Statistique', distance_cvm: 'Cramér–von Mises (W)', distance_khi2: 'khi² ({k} classes)',
   distance_adequation_note_intervalles: 'Un p faible : la fonction de détection ne décrit pas bien les distances. Le khi² compare les comptes de chaque intervalle à ceux qu’attend le modèle (des distances par intervalles : ni Cramér–von Mises ni diagramme quantile-quantile, comme ddf.gof).',
   distance_adequation_note: 'Un p faible : la fonction de détection ne décrit pas bien les distances. Cramér–von Mises compare la répartition ajustée des distances à leur répartition observée (le diagramme quantile-quantile) ; le khi², les comptes des classes égales de l’histogramme à ceux qu’attend le modèle.',
   distance_phrase_p: 'Probabilité moyenne de détection dans la troncature : p = {p} (erreur-type {se}, CV {cv}) ; {quoi} = {e} (erreur-type {se_e}).',
+  distance_phrase_p_moyenne: 'Probabilité moyenne de détection dans la troncature, p̄ = n / Σ 1/p (p celle de chaque détection, sachant ses covariables, comme summary.ds) : {p} (erreur-type {se}, CV {cv}) ; {quoi} = {e} (erreur-type {se_e}).',
   distance_phrase_D: 'D = {D}{u} (CV {cv} ; IC à 95 % {bas} – {haut} ; {ddl} ddl).', distance_phrase_N: 'Effectif N = {N} (IC à 95 % {bas} – {haut}).',
   distance_phrase_groupes: 'Ces valeurs comptent les individus ; les groupes : D = {D}{u} (CV {cv}), de taille moyenne {s}.',
   distance_au_dela: '{n} détection(s) au-delà de la troncature ({w}), laissée(s) de côté (leur transect reste).', distance_en_deca: '{n} détection(s) en deçà de la troncature à gauche ({L}), laissée(s) de côté.',
@@ -464,6 +535,9 @@ ajouterTextes({
   distance_g_note: 'Chaque barre : le compte de la classe sur celui qu’elle aurait si tous les animaux étaient détectés (comme plot.ds de mrds) ; la courbe, la fonction de détection ajustée, 1 en 0.',
   distance_g_note_points: 'Chaque barre : le compte de la classe (un anneau) sur celui qu’elle aurait si tous les animaux étaient détectés (comme plot.ds de mrds) ; la courbe, la fonction de détection ajustée, 1 en 0.',
   distance_pdf_note: 'Des points : la densité des distances f(r) = 2r g(r) / (w² p), qui monte d’abord avec la surface des anneaux, sur l’histogramme des distances (en densité).',
+  distance_g_note_covariables: 'Chaque barre : le compte de la classe sur celui qu’elle aurait si tous les animaux étaient détectés (comme plot.ds de mrds) ; la courbe, la fonction de détection moyenne (celle de chaque détection, sachant ses covariables, pondérée par 1/p) ; les points, g à la distance de chaque détection, sachant ses covariables. Par une covariable qualitative : la même moyenne sur les détections de chacune de ses catégories.',
+  distance_pdf_note_covariables: 'Des points : la densité des distances observées, la moyenne des f(r | z) = 2r g(r | z) / (w² p) des détections, sur l’histogramme des distances (en densité) ; par une covariable qualitative, la même moyenne sur les détections de chacune de ses catégories.',
+  distance_g_moyenne: 'Fonction de détection moyenne', distance_pdf_moyenne: 'Densité des distances (moyenne)', distance_courbe_moyenne: 'la courbe moyenne', distance_par_covariable: 'par {nom}',
   distance_proba: 'Probabilité de détection', distance_densite_proba: 'Densité de probabilité', distance_distance: 'Distance', distance_observees: 'Détections',
   distance_de: 'De', distance_a: 'À', distance_observe: 'Observées', distance_attendu: 'Attendues', distance_contribution: '(O − A)² / A',
   distance_qq: 'Diagramme quantile-quantile', distance_qq_note: 'La répartition ajustée de chaque distance contre sa répartition empirique (comme qqplot.ddf de mrds) : des points sur la diagonale, une fonction de détection qui décrit bien les distances. Cramér–von Mises : W = {W}, p = {p}.',
@@ -476,7 +550,13 @@ ajouterTextes({
   distance_part_rencontre: '% var. rencontre', distance_part_detection: '% var. détection', distance_part_groupes: '% var. groupes',
 }, {
   type_distance: 'Distance sampling (density, abundance)',
-  distance_note: 'Distances of animals detected from lines (line transects) or points (point transects), as the Distance package does (ds and dht2). One row per detection: its distance (Y), its transect, that transect’s effort; a transect without detections stays a row, its distance empty. Optional: the stratum, its area, the group size.',
+  distance_note: 'Distances of animals detected from lines (line transects) or points (point transects), as the Distance package does (ds and dht2). One row per detection: its distance (Y), its transect, that transect’s effort; a transect without detections stays a row, its distance empty. Optional: the stratum, its area, the group size, covariates of detection (Z variables).',
+  distance_covariables: 'Covariates', distance_ajouter_covariable: 'add a covariate…', distance_sans_covariables: '— (none: add one…)',
+  distance_retirer_covariable: 'Remove {nom} from the covariates',
+  distance_covariables_aide: 'The covariates of the detection function, as ds(formula = ~ …): its scale σ depends on them, ln σ = β0 + β1 x1 + … (Marques and Buckland, 2003). A quantitative variable enters as it is, a qualitative one through its categories, the first the reference; the group size can be one. They are the variables with the Z role in the Variables tab.',
+  distance_covariables_note: 'With covariates, as ds: the half-normal or hazard-rate key, without adjustment terms unless a number is given, without monotonicity constraint; each detection has its probability of detection, and the density is dht2’s Horvitz–Thompson one. The same function without covariates is fitted too, to compare the AICs.',
+  distance_covariables_uniforme: 'The uniform key takes no covariates (as ds): choose the half-normal or hazard-rate key.',
+  distance_covariable_transformee: 'The covariates are taken as they are: remove the transformation of {nom} (or make it a new variable).',
   distance_badge: 'Distance', distance_plan: 'Transects', distance_lignes: 'line transects', distance_points: 'point transects',
   distance_echantillon: 'Transect', distance_echantillon_aide: 'The transect (the line or the point) of each row of the table: an ID or a variable.',
   distance_effort_lignes: 'Effort (length)', distance_effort_points: 'Effort (visits)', distance_un_passage: '— (one visit per point)',
@@ -518,13 +598,23 @@ ajouterTextes({
   distance_selection_convergence: 'As ds(): the key alone, then one more {serie} term while the AIC falls; a model that doesn’t converge stopped the search.',
   distance_selection_parametres: 'As ds(): the key alone, then one more {serie} term while the AIC falls; the search stops when the distinct distances no longer suffice.',
   distance_selection_cle: 'The key alone, without adjustment terms.', distance_selection_fixe: 'The number of adjustment terms given.', distance_selection_echec: 'The key alone doesn’t converge.',
+  distance_selection_covariables: 'With covariates, as ds(): the key and its covariates, without adjustment terms (a number of terms given adds them) or monotonicity constraint.',
+  distance_comparaison_note: 'The first row: the same settings without covariates, to compare the AICs (as Distance’s summarize_ds_models).',
   distance_parametres: 'Parameters of the detection function', distance_parametre_b: 'ln_b: the logarithm of the hazard-rate’s shape b.',
   distance_parametre_sigma: 'ln_sigma: the logarithm of the key’s scale σ.', distance_parametre_a: 'Then each adjustment term (series_order).',
   distance_parametres_note: 'Standard errors from the outer product of the distances’ scores, as mrds.',
+  distance_coefficients: 'Coefficients of the detection function', distance_facteur_sigma: 'σ × exp(β)',
+  distance_parametre_sigma_covariables: 'ln_sigma: the intercept of ln σ (at the reference categories, the quantitative covariates at 0); then the coefficient of each covariate on ln σ: σ is multiplied by exp(β) for a category relative to its reference, for a quantitative covariate per unit.',
+  distance_covariable: 'Covariate', distance_type_covariable: 'Type', distance_reference: 'Reference', distance_categories: 'Categories (of the detections)',
+  distance_qualitative: 'qualitative', distance_quantitative: 'quantitative',
+  distance_covariables_resume_note: 'The scale σ of the detection function depends on these covariates, as ds(formula = ~{formule}): a qualitative one enters through an indicator of each of its categories but the reference, a quantitative one as it is.',
+  distance_covariables_monotonie: 'With covariates, the adjustment terms aren’t constrained to monotonicity: ds doesn’t allow it.',
+  distance_non_monotone: 'For some combinations of covariates, the detection function isn’t monotonic (it rises, exceeds 1 or turns negative at one of the 10 points from 0 to w), as mrds’s check.mono warns: try fewer adjustment terms.',
   distance_adequation: 'Goodness of fit', distance_statistique: 'Statistic', distance_cvm: 'Cramér–von Mises (W)', distance_khi2: 'chi-square ({k} classes)',
   distance_adequation_note_intervalles: 'A small p: the detection function doesn’t describe the distances well. The chi-square compares the counts of each interval with those the model expects (distances in intervals: neither Cramér–von Mises nor QQ plot, as ddf.gof).',
   distance_adequation_note: 'A small p: the detection function doesn’t describe the distances well. Cramér–von Mises compares the fitted distribution of the distances with their observed one (the QQ plot); the chi-square, the counts of the histogram’s equal classes with those the model expects.',
   distance_phrase_p: 'Average probability of detection within the truncation: p = {p} (standard error {se}, CV {cv}); {quoi} = {e} (standard error {se_e}).',
+  distance_phrase_p_moyenne: 'Average probability of detection within the truncation, p̄ = n / Σ 1/p (p that of each detection, given its covariates, as summary.ds): {p} (standard error {se}, CV {cv}); {quoi} = {e} (standard error {se_e}).',
   distance_phrase_D: 'D = {D}{u} (CV {cv}; 95% CI {bas} – {haut}; {ddl} df).', distance_phrase_N: 'Abundance N = {N} (95% CI {bas} – {haut}).',
   distance_phrase_groupes: 'These values count individuals; groups: D = {D}{u} (CV {cv}), of mean size {s}.',
   distance_au_dela: '{n} detection(s) beyond the truncation ({w}), left out (their transect stays).', distance_en_deca: '{n} detection(s) below the left truncation ({L}), left out.',
@@ -537,6 +627,9 @@ ajouterTextes({
   distance_g_note: 'Each bar: the count of the class over the count it would have if every animal were detected (as mrds’s plot.ds); the curve, the fitted detection function, 1 at 0.',
   distance_g_note_points: 'Each bar: the count of the class (a ring) over the count it would have if every animal were detected (as mrds’s plot.ds); the curve, the fitted detection function, 1 at 0.',
   distance_pdf_note: 'Points: the density of the distances f(r) = 2r g(r) / (w² p), which first rises with the area of the rings, over the histogram of the distances (as a density).',
+  distance_g_note_covariables: 'Each bar: the count of the class over the count it would have if every animal were detected (as mrds’s plot.ds); the curve, the average detection function (that of each detection, given its covariates, weighted by 1/p); the points, g at the distance of each detection, given its covariates. By a qualitative covariate: the same average over the detections of each of its categories.',
+  distance_pdf_note_covariables: 'Points: the density of the observed distances, the mean of the f(r | z) = 2r g(r | z) / (w² p) of the detections, over the histogram of the distances (as a density); by a qualitative covariate, the same mean over the detections of each of its categories.',
+  distance_g_moyenne: 'Average detection function', distance_pdf_moyenne: 'Density of distances (average)', distance_courbe_moyenne: 'the average curve', distance_par_covariable: 'by {nom}',
   distance_proba: 'Detection probability', distance_densite_proba: 'Probability density', distance_distance: 'Distance', distance_observees: 'Detections',
   distance_de: 'From', distance_a: 'To', distance_observe: 'Observed', distance_attendu: 'Expected', distance_contribution: '(O − E)² / E',
   distance_qq: 'QQ plot', distance_qq_note: 'The fitted distribution of each distance against its empirical distribution (as mrds’s qqplot.ddf): points on the diagonal, a detection function that describes the distances well. Cramér–von Mises: W = {W}, p = {p}.',

@@ -261,7 +261,8 @@ code_calcul_distance <- function(projet, d, m, tab, langue) {
                              formule, liste_textes(mots_covariables, "et")),
                      sprintf("The covariates of the scale of the detection function, as ds(formula = ~%s), for the detections within the truncation: %s. Their matrix, as model.matrix: the intercept, then each covariate, a quantitative one as it is, a qualitative one by an indicator of each of its categories present but the first, its reference.",
                              formule, liste_textes(mots_covariables, "and")))),
-      code_valeurs(sprintf("%s = %s[dans]", vapply(cv$noms, function(n) deparse(as.name(n), backtick = TRUE), ""), vapply(r$covariables, col, "")), "covariables <- list(", ")", ouvrir = ""),
+      # (leurs noms en chaînes : ceux des variables du projet, qu'un script en anglais ne traduit pas)
+      code_valeurs(sprintf("%s = %s[dans]", vapply(cv$noms, code_texte, ""), vapply(r$covariables, col, "")), "covariables <- list(", ")", ouvrir = ""),
       "Z <- matrice_covariables(covariables)"),
     "",
     commentaire(c(if (avec_strates) tx(sprintf("Les strates, dans l'ordre %s, et les transects de chacune, dans l'ordre %s : l'effort de chaque transect, ses détections et %s dans la troncature ; %s.",
@@ -509,7 +510,7 @@ code_graphiques_distance <- function(m, langue) {
             xlab, code_texte(tx("Probabilité de détection", "Probability of detection"))),
     sprintf("     main = paste(libelle_detection(det$fd), %s, niveaux_k$covariable))", code_texte(tx("— par", "— by"))),
     sprintf("rect(histogramme$de, 0, histogramme$%s, histogramme$g, col = \"#2f6fb522\", border = \"#2f6fb5\")", a),
-    "teintes <- grDevices::hcl.colors(length(niveaux_k$niveaux), \"Dark 3\")",
+    "teintes <- hcl.colors(length(niveaux_k$niveaux), \"Dark 3\")",
     "matlines(courbe$x, niveaux_k$g, lty = 1, lwd = 2, col = teintes)",
     "legend(\"topright\", sprintf(\"%s (n = %d)\", niveaux_k$niveaux, niveaux_k$n), lty = 1, lwd = 2, col = teintes, bty = \"n\")")))
   lapply(Filter(Negate(is.null), c(list(

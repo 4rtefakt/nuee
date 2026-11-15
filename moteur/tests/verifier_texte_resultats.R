@@ -2,7 +2,8 @@
 # des modèles (glm(), nlme::lme(), mgcv::gam(), la PLS de l'exemple), sur l'échelle de la réponse
 # pour un lien log (un facteur) ou logit (un rapport de cotes), les termes significatifs nommés,
 # les courbes et les effets aléatoires, en français et en anglais ; une autre analyse sans texte à
-# elle donne ses chiffres. Puis les conditions d'une régression dites en mots
+# elle donne ses chiffres ; l'échantillonnage par distances a le sien (sa fonction de détection, avec
+# des covariables leurs coefficients, p, la densité). Puis les conditions d'une régression dites en mots
 # (moteur/R/verifications_modele.R) : chacune vue où les données la mettent en défaut, et pas
 # ailleurs.
 #   Rscript moteur/tests/verifier_texte_resultats.R
@@ -57,6 +58,33 @@ dk <- definir_modele(p, "KMEANS", x = u("x", "y"), observations = obs, options =
 tk <- texte_resultats(p, dk, ajuster(p, dk), "fr", chiffres = "k = 2 · R2 0.50")$paragraphes
 verifier("une autre analyse sans texte à elle : ses chiffres, avec une virgule décimale en français", identical(tk, sprintf("Résultats de %s (KMEANS) : k = 2 · R2 0,50.", dk$name)) &&
            identical(texte_resultats(p, dk, ajuster(p, dk), "en", chiffres = "k = 2 · R2 0.50")$paragraphes, sprintf("Results of %s (KMEANS): k = 2 · R2 0.50.", dk$name)))
+
+# un échantillonnage par distances, son texte à lui : la fonction de détection et son AIC, avec des
+# covariables chaque coefficient et son facteur sur σ, p et ESW, la densité au total et par strate
+set.seed(5)
+dd <- do.call(rbind, lapply(1:16, function(j) {
+  x <- stats::runif(stats::rpois(1, 40), 0, 100)
+  obs <- sample(c("A", "B"), length(x), TRUE)
+  vu <- stats::runif(length(x)) < exp(-(x / (30 * ifelse(obs == "B", 1.5, 1)))^2 / 2)
+  data.frame(strate = if (j <= 8) "Nord" else "Sud", aire = if (j <= 8) 50 else 30, ligne = sprintf("L%02d", j), effort = 2, distance = round(x[vu], 1), observateur = obs[vu])
+}))
+pd <- projet_depuis_tableau(cbind(nom = sprintf("d%04d", seq_len(nrow(dd))), dd, stringsAsFactors = FALSE), "distances")
+ud <- function(...) numeros(pd, c(...))
+od <- list(transect = "ligne", echantillon = list(by = "variable", variable = ud("ligne")), strate = list(by = "variable", variable = ud("strate")), effort = ud("effort"),
+           aire = ud("aire"), troncature = list(type = "distance", valeur = 100), cle = "hn", serie = "cos", ajustements = "aic", monotonie = "stricte",
+           unites = list(distance = "m", effort = "km", aire = "km2"))
+dd1 <- definir_modele(pd, "DISTANCE", x = NULL, y = ud("distance"), echelle = "none", options = od)
+md1 <- ajuster(pd, dd1)
+td1 <- texte_resultats(pd, dd1, md1, "fr")$paragraphes
+dd2 <- definir_modele(pd, "DISTANCE", x = NULL, y = ud("distance"), echelle = "none", options = c(od, list(z = ud("observateur"))))
+md2 <- ajuster(pd, dd2)
+td2 <- texte_resultats(pd, dd2, md2, "en")$paragraphes
+verifier("échantillonnage par distances : sa fonction de détection et son AIC, p et ESW, la densité au total et celle de chaque strate",
+         contient(td1, libelle_detection(md1$detection$fd)) && contient(td1, sprintf("p = %s", nb(md1$p))) && contient(td1, sprintf("ESW = %s m", nb(md1$effectif$valeur))) &&
+           contient(td1, sprintf("D = %s par km²", nb(md1$densite$D[3], TRUE, 4))) && contient(td1, sprintf("Nord D = %s", nb(md1$densite$D[1], TRUE, 4))))
+verifier("échantillonnage par distances à covariables, en anglais : le coefficient de l'observateur B et son facteur sur σ, p̄, l'écart d'AIC au modèle sans covariables",
+         contient(td2, sprintf("observateur(B) β = %s", nb(md2$parametres$estimation[2], FALSE))) && contient(td2, sprintf("σ × %s", nb(exp(md2$parametres$estimation[2]), FALSE))) &&
+           contient(td2, sprintf("p̄ = %s", nb(md2$p, FALSE))) && contient(td2, "Without covariates (hn") && contient(td2, "Reference categories: observateur: A."))
 
 cat("Conditions du modèle\n")
 set.seed(4)
