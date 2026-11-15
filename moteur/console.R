@@ -228,21 +228,26 @@ lier_objets <- function() {
 # Outils de la console, présentés par aide_console().
 local({
   assign("definition", function(id) (etat$modeles[[id]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id))$definition, console)
-  assign("projets", function() data.frame(objet = names(etat$projets),
-    nom = vapply(etat$projets, function(p) p$nom %||% "", ""), row.names = NULL), console)
-  assign("modeles", function() data.frame(objet = names(etat$modeles),
-    nom = vapply(etat$modeles, function(e) e$definition$name %||% "", ""),
-    type = vapply(etat$modeles, function(e) paste0(if (isTRUE(e$modele$opls)) "O" else "", if (e$modele$plsda) "PLS-DA" else e$modele$type), ""),
-    A = vapply(etat$modeles, function(e) as.numeric(e$modele$A), 0), projet = vapply(etat$modeles, function(e) e$projet, ""),
-    row.names = NULL), console)
-  assign("dossier_moteur", function() normalizePath(file.path(racine, "moteur", "R"), winslash = "/"), console)
-  assign("recharger_moteur", function() {
+  # (each under its English name and its French one; the console is in the interface's language)
+  en_deux <- function(en, fr, f) { assign(en, f, console); assign(fr, f, console) }
+  # (a table's columns in the interface's language)
+  colonnes <- function(df, fr, en) stats::setNames(df, if (identical(getOption("nuee.langue"), "en")) en else fr)
+  en_deux("projects", "projets", function() colonnes(data.frame(names(etat$projets),
+    vapply(etat$projets, function(p) p$nom %||% "", ""), row.names = NULL), c("objet", "nom"), c("object", "name")))
+  en_deux("models", "modeles", function() colonnes(data.frame(names(etat$modeles),
+    vapply(etat$modeles, function(e) e$definition$name %||% "", ""),
+    vapply(etat$modeles, function(e) paste0(if (isTRUE(e$modele$opls)) "O" else "", if (e$modele$plsda) "PLS-DA" else e$modele$type), ""),
+    vapply(etat$modeles, function(e) as.numeric(e$modele$A), 0), vapply(etat$modeles, function(e) e$projet, ""),
+    row.names = NULL), c("objet", "nom", "type", "A", "projet"), c("object", "name", "type", "A", "project")))
+  en_deux("engine_folder", "dossier_moteur", function() normalizePath(file.path(racine, "moteur", "R"), winslash = "/"))
+  en_deux("reload_engine", "recharger_moteur", function() {
     for (f in sort(list.files(file.path(racine, "moteur", "R"), "\\.R$", full.names = TRUE))) sys.source(f, envir = globalenv(), keep.source = FALSE)
-    message("Moteur rechargé depuis ", normalizePath(file.path(racine, "moteur", "R"), winslash = "/"), " : réajuster les modèles pour l'utiliser.")
-  }, console)
+    message(traduire("Moteur rechargé depuis ", "Engine reloaded from "), normalizePath(file.path(racine, "moteur", "R"), winslash = "/"),
+            traduire(" : réajuster les modèles pour l'utiliser.", ": refit the models to use it."))
+  })
   # Recalcule les modèles enregistrés des projets ouverts (ou des fichiers .usp / .json d'un
   # dossier) et les compare aux valeurs du fichier (voir comparer_references, moteur/R/verification.R).
-  assign("verifier_moteur", function(dossier = NULL) {
+  en_deux("check_engine", "verifier_moteur", function(dossier = NULL) {
     projets <- if (is.null(dossier)) etat$projets else {
       fichiers <- list.files(dossier, "\\.(usp|json)$", full.names = TRUE, ignore.case = TRUE)
       stats::setNames(lapply(fichiers, function(f) tryCatch(
@@ -253,15 +258,18 @@ local({
       p <- projets[[k]]
       if (is.null(p)) return(NULL)
       r <- comparer_references(p)
-      if (nrow(r)) cbind(projet = p$nom %||% k, r)
+      if (nrow(r)) cbind(stats::setNames(data.frame(p$nom %||% k), traduire("projet", "project")), r)
     }))
-    if (is.null(tab)) { message("Aucun modèle enregistré à comparer."); return(invisible(NULL)) }
-    n <- table(factor(sub(" :.*", "", tab$statut), c("identique", "proche", "différent", "erreur")))
-    message(sprintf("%d modèle(s) : %d identique(s), %d proche(s), %d différent(s), %d en erreur (Q2 non compté : la validation croisée de Nuée n'est pas celle du fichier).",
-                    nrow(tab), n[["identique"]], n[["proche"]], n[["différent"]], n[["erreur"]]))
+    if (is.null(tab)) { message(traduire("Aucun modèle enregistré à comparer.", "No saved model to compare.")); return(invisible(NULL)) }
+    en <- identical(getOption("nuee.langue"), "en")
+    statuts <- if (en) c("identical", "close", "different", "error") else c("identique", "proche", "différent", "erreur")
+    n <- table(factor(sub(" ?:.*", "", tab[[if (en) "status" else "statut"]]), statuts))
+    message(sprintf(traduire("%d modèle(s) : %d identique(s), %d proche(s), %d différent(s), %d en erreur (Q2 non compté : la validation croisée de Nuée n'est pas celle du fichier).",
+                             "%d model(s): %d identical, %d close, %d different, %d failed (Q2 not counted: Nuée's cross-validation isn't the file's)."),
+                    nrow(tab), n[[1]], n[[2]], n[[3]], n[[4]]))
     tab
-  }, console)
-  quitter <- function(...) message("Pour fermer l'application : Fichier › Quitter.")
+  })
+  quitter <- function(...) message(traduire("Pour fermer l'application : Fichier › Quitter.", "To close the application: File › Quit."))
   assign("q", quitter, console)
   assign("quit", quitter, console)
 })

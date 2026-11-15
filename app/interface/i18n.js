@@ -747,7 +747,7 @@ const TEXTES = {
     avertissement: 'Warning',
     console_sans_modele: 'no model shown',
     console_invite: 'R command (Enter: run · Shift+Enter: new line · Tab: complete · ↑ ↓: previous commands)',
-    console_aide: 'R console: everything runs in the application’s own R session. m = the model shown, p = its project; P1, M7… = the open projects and models, by the names the log gives them. projets(), modeles(), definition("M7"). After correcting an engine file (dossier_moteur()), recharger_moteur() then refit the model.',
+    console_aide: 'R console: everything runs in the application’s own R session. m = the model shown, p = its project; P1, M7… = the open projects and models, by the names the log gives them. projects(), models(), definition("M7"). After correcting an engine file (engine_folder()), reload_engine() then refit the model.',
     predictive: 'Predictive',
     orthogonale: 'Orthogonal',
     splot: 'S-plot (OPLS)',

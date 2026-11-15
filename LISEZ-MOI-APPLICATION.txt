@@ -2288,3 +2288,5 @@ Dans R : source("resources/moteur/charger.R"), puis par exemple
   d <- definir_modele(p, "PLS", x = 3:20, y = 2)
   m <- ajuster(p, d)
   m$statistiques$composantes
+load.R charge le même moteur en anglais (ses messages, statuts et noms de colonnes), avec des
+noms anglais : import_table(), define_model(), fit_model().

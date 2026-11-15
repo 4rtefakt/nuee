@@ -36,5 +36,14 @@ comparer_references <- function(projet) {
     lignes[[length(lignes) + 1]] <- data.frame(modele = d$name, type = type, A = d$A, R2X = signif(r2x, 2),
                                                R2Y = signif(r2y, 2), Q2 = signif(q2, 2), statut = statut)
   }
-  if (length(lignes)) do.call(rbind, lignes) else data.frame()
+  tab <- if (length(lignes)) do.call(rbind, lignes) else data.frame()
+  # (en anglais, comme load.R et l'interface anglaise le demandent : ses colonnes et ses statuts en
+  # anglais ; en français, comme avant la 1.0, pour les scripts qui les lisent)
+  if (nrow(tab) && identical(getOption("nuee.langue"), "en")) {
+    names(tab)[names(tab) == "modele"] <- "model"
+    names(tab)[names(tab) == "statut"] <- "status"
+    en <- c(identique = "identical", proche = "close", "différent" = "different")
+    tab$status <- ifelse(tab$status %in% names(en), unname(en[tab$status]), sub("^erreur :", "error:", tab$status))
+  }
+  tab
 }

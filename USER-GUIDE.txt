@@ -546,22 +546,23 @@ View › R console (Ctrl+J): a panel below the tabs, with
   - a prompt to type R, run in the application's R session. m is the model shown, p its
     project; P1, M4... the open projects and models, by their names in the log. For example:
     m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (the plot shows in
-    the console), modeles(), projets(), definition("M4").
+    the console), models(), projects(), definition("M4").
     Enter runs the command, Shift+Enter starts a new line, ↑ and ↓ recall commands.
     Tab completes the name begun: objects, m$... and p$... (the names they hold), the
     arguments of the function whose parenthesis is open; when several fit, a list opens
     (arrows, then Tab or Enter). The application's shortcuts (Ctrl+S, Ctrl+K...) also work
     while typing.
 Changing a project in the console (p$donnees[...] <- ...) changes it in the application.
-Correcting the engine: dossier_moteur() gives the folder of the application's R files; after
-a correction, recharger_moteur() reads them again, then refit the model. Updating Nuée
+Correcting the engine: engine_folder() gives the folder of the application's R files; after
+a correction, reload_engine() reads them again, then refit the model. Updating Nuée
 replaces these files.
 A long command blocks the application until the computation ends.
-Checking the engine: verifier_moteur() refits the imported models of the open projects and
+Checking the engine: check_engine() refits the imported models of the open projects and
 compares them with the values stored in their files (R2X, R2Y, Q2), validated like the files;
-verifier_moteur("folder") does the same for the .usp and .json files of a folder. To do after a
+check_engine("folder") does the same for the .usp and .json files of a folder. To do after a
 correction of the engine. Q2 counts in the verdict, except a PCA's, only close (see "What
-differs").
+differs"). The French names of these helpers (modeles(), projets(), dossier_moteur(),
+recharger_moteur(), verifier_moteur()) work too.
 
 Model report
 ------------
@@ -2100,8 +2101,11 @@ Every computation is in resources\moteur\R (R, commented in French):
   condition.R            a model's observations chosen by a condition
   langue.R               language of the messages (traduire("français", "English"))
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fitting)
-In R: source("resources/moteur/charger.R"), then for example
-  p <- importer_tableau("my_data.csv")
-  d <- definir_modele(p, "PLS", x = 3:20, y = 2)
-  m <- ajuster(p, d)
+In R: source("resources/moteur/load.R"), then for example
+  p <- import_table("my_data.csv")
+  d <- define_model(p, "PLS", x = 3:20, y = 2)
+  m <- fit_model(p, d)
   m$statistiques$composantes
+load.R loads the engine in English (its messages, statuses and column names). charger.R loads
+it in French, as before 1.0, so that scripts written for it get the same words; the French
+names importer_tableau(), definir_modele() and ajuster() work with either.

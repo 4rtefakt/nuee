@@ -128,13 +128,13 @@ PCA, PLS or OPLS, the variance explained, Q², CV-ANOVA and the most important v
 <p><strong>View › R console (Ctrl+J):</strong> a panel below the tabs, with</p>
 <ul>
 <li><strong>the log:</strong> for each action of the application, the call it made to the engine, written in R (P1 &lt;- lire_projet(...), d &lt;- modele_du_projet(P1, 5), M4 &lt;- ajuster(P1, d)...), to copy into a script (Copy button), and for each fitted model what R prints of it (components, Y, limits, variables, observations; print(M4) does the same); the "Application actions" box hides or shows them;</li>
-<li><p>a prompt to type R, run in the application's R session. m is the model shown, p its project; P1, M4... the open projects and models, by their names in the log. For example: m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (the plot shows in the console), modeles(), projets(), definition("M4").</p>
+<li><p>a prompt to type R, run in the application's R session. m is the model shown, p its project; P1, M4... the open projects and models, by their names in the log. For example: m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (the plot shows in the console), models(), projects(), definition("M4").</p>
 <p>Enter runs the command, Shift+Enter starts a new line, ↑ and ↓ recall commands.</p>
 <p><strong>Tab completes the name begun:</strong> objects, m$... and p$... (the names they hold), the arguments of the function whose parenthesis is open; when several fit, a list opens (arrows, then Tab or Enter). The application's shortcuts (Ctrl+S, Ctrl+K...) also work while typing.</p></li>
 </ul>
-<p>Changing a project in the console (p$donnees[...] &lt;- ...) changes it in the application. Correcting the engine: dossier_moteur() gives the folder of the application's R files; after a correction, recharger_moteur() reads them again, then refit the model. Updating Nuée replaces these files.</p>
+<p>Changing a project in the console (p$donnees[...] &lt;- ...) changes it in the application. Correcting the engine: engine_folder() gives the folder of the application's R files; after a correction, reload_engine() reads them again, then refit the model. Updating Nuée replaces these files.</p>
 <p>A long command blocks the application until the computation ends.</p>
-<p><strong>Checking the engine:</strong> verifier_moteur() refits the imported models of the open projects and compares them with the values stored in their files (R2X, R2Y, Q2), validated like the files; verifier_moteur("folder") does the same for the .usp and .json files of a folder. To do after a correction of the engine. Q2 counts in the verdict, except a PCA's, only close (see "<a href="usp-projects.html#what-differs">What differs</a>").</p>
+<p><strong>Checking the engine:</strong> check_engine() refits the imported models of the open projects and compares them with the values stored in their files (R2X, R2Y, Q2), validated like the files; check_engine("folder") does the same for the .usp and .json files of a folder. To do after a correction of the engine. Q2 counts in the verdict, except a PCA's, only close (see "<a href="usp-projects.html#what-differs">What differs</a>"). The French names of these helpers (modeles(), projets(), dossier_moteur(), recharger_moteur(), verifier_moteur()) work too.</p>
 </section>
 <section id="the-code">
 <h2>The code</h2>
@@ -162,10 +162,11 @@ jeu_test.R             test set: prediction, RMSEP, external Q2, Kennard–Stone
 condition.R            a model's observations chosen by a condition
 langue.R               language of the messages (traduire("français", "English"))
 modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fitting)</pre>
-<p><strong>In R:</strong> source("resources/moteur/charger.R"), then for example</p>
+<p><strong>In R:</strong> source("resources/moteur/load.R"), then for example</p>
 <div class="retrait">
-<p>p &lt;- importer_tableau("my_data.csv") d &lt;- definir_modele(p, "PLS", x = 3:20, y = 2) m &lt;- ajuster(p, d) m$statistiques$composantes</p>
+<p>p &lt;- import_table("my_data.csv") d &lt;- define_model(p, "PLS", x = 3:20, y = 2) m &lt;- fit_model(p, d) m$statistiques$composantes</p>
 </div>
+<p>load.R loads the engine in English (its messages, statuses and column names). charger.R loads it in French, as before 1.0, so that scripts written for it get the same words; the French names importer_tableau(), definir_modele() and ajuster() work with either.</p>
 </section>
 </div>
 <p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
