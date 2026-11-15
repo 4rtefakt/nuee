@@ -524,7 +524,7 @@ autocorrelation_spatiale <- function(projet, m = NULL, variable = NULL, residus 
     r <- m$resultat
     quantiles <- identical(residus, "quantiles")
     if (quantiles && is.null(r$residus_quantiles)) {
-      stop(traduire("Ce modèle n'a pas de résidus quantiles (seulement les comptages, présences-absences et valeurs positives).", "This model has no quantile residuals (only counts, presence-absence and positive values)."), call. = FALSE)
+      stop(traduire("Ce modèle n'a pas de résidus quantiles (seulement les comptages, présences-absences, valeurs positives et proportions).", "This model has no quantile residuals (only counts, presence-absence, positive values and proportions)."), call. = FALSE)
     }
     valeurs <- if (quantiles) r$residus_quantiles else r$residus
     nom <- if (quantiles) traduire("résidus quantiles", "quantile residuals") else traduire("résidus", "residuals")

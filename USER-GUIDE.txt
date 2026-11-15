@@ -767,9 +767,12 @@ Not covered: in nlme, a slope uncorrelated with the intercept ((0 + year | site)
 qualitative variable, a cross term or a curve.
 Type "Generalized linear model (GLM)" or "Additive model (GAM)" (mgcv), for a Y that isn't
 normal. Distribution of Y: Poisson for counts; negative binomial for counts that vary more than
-a Poisson allows (its θ estimated); binomial for presence-absence (0 or 1); gamma for positive
-values; Tweedie for densities with zeros (its power p estimated); or normal. The link is log
-(counts, gamma, Tweedie), logit (binomial) or identity (normal). Effort (offset): a variable
+a Poisson allows (its θ estimated); zero-inflated Poisson for counts with more zeros than a
+Poisson gives (its θ₁ and θ₂ estimated); binomial for presence-absence (0 or 1); gamma for
+positive values; Tweedie for densities with zeros (its power p estimated); beta for proportions
+strictly between 0 and 1 (its precision φ estimated); or normal. The link is log (counts, gamma,
+Tweedie; for the zero-inflated Poisson, that of its Poisson parameter μ), logit (binomial, beta)
+or identity (normal). Effort (offset): a variable
 such as an area, a duration or a number of visits, whose log enters the model with a
 coefficient of 1, which then describes a density (an effort of 0 or less is refused). Random
 effects as above make a GLMM or a GAMM. With the normal distribution and at least one random
@@ -798,6 +801,29 @@ effects are estimated by REML, and the AIC comes from an ML fit; a GLM without t
 by maximum likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns
 when the counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of
 freedom): its p values are then too small, and the negative binomial suits the counts better.
+Zero-inflated Poisson and beta (mgcv's ziP and betar families; Wood, Pya & Säfken 2016). In the
+zero-inflated Poisson, a hurdle model, a count is zero with probability 1 − p and otherwise
+follows a Poisson distribution of parameter μ truncated at zero; the linear predictor is log(μ)
+(mgcv calls this link "identity"; exp(coefficient) multiplies μ, and so does the effort), and p
+is tied to it by log(−log(1 − p)) = θ₁ + θ₂ log(μ), θ₁ and θ₂ estimated with the model; θ₁ = 0
+and θ₂ = 1 give back the Poisson distribution, so its AIC compares with those of the Poisson and
+negative binomial models of the same counts. Its fitted values, predictions, cross-validation and
+test set are expected counts, p μ / (1 − e^(−μ)); it has no adjusted R², only the deviance
+explained. It needs counts with at least one zero. Many zeros don't make zero inflation (too many
+zeros given the model's mean may): compare the models by AIC and look at the quantile residuals;
+when X variables explain the zeros themselves, the model may be poorly identified. The beta
+distribution is for proportions strictly between 0 and 1 (a cover, a share of time), of mean μ
+with the logit link and variance μ (1 − μ) / (1 + φ), its precision φ estimated (Ferrari &
+Cribari-Neto 2004); its AIC compares with that of a normal model of the same proportions. A
+response at 0 or 1 is refused, with the number of such values: mgcv would move them just inside
+(its eps), which isn't harmless for the fit; bring them inside yourself, saying so (Edit › New
+variable, for example (y * (n - 1) + 0.5) / n for n observations; Smithson & Verkuilen 2006),
+or take the binomial for presence-absence. Both take random effects, curves and the spatial
+smooth (no CAR1 autocorrelation); only the zero-inflated Poisson takes an effort. θ₁, θ₂ and φ
+show in the Summary, the report and the coefficients side by side. Without a curve or random
+effect, mgcv's ML fit of these two families sometimes stops on a LAPACK error: Nuée then finds
+the distribution's parameters that maximize the likelihood itself (each fit at fixed parameters
+by mgcv), and its exported script does the same.
 Spatial smooth (General tab, for a GAM of a project with coordinates, see Maps and spatial
 data): a surface of the observations' coordinates, s(x, y), a thin plate regression spline on
 plane coordinates (Wood 2003) or a spline on the sphere for longitudes and latitudes (s(lat,
@@ -858,12 +884,14 @@ that contain it and the curves per category it makes (the With column names them
 2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
 Y, X, a random effect, the time or the effort are left out (the summary counts them).
-Residuals of a GLM or GAM with the Poisson, negative binomial, binomial or gamma distribution:
-beside the standardized deviance residuals (the default), the randomized quantile residuals of
-Dunn and Smyth (1996), r = Φ⁻¹(u), F the model's distribution at each observation's fitted
-value (its random effects and effort included; the negative binomial with its fitted θ, the
-binomial with one trial, the gamma with the shape 1 / its estimated scale): u = F(y) for the
-gamma, and for counts or 0/1 u drawn uniformly between F(y − 1) and F(y), with a fixed seed, so
+Residuals of a GLM or GAM with the Poisson, negative binomial, binomial, gamma, zero-inflated
+Poisson or beta distribution: beside the standardized deviance residuals (the default), the
+randomized quantile residuals of Dunn and Smyth (1996), r = Φ⁻¹(u), F the model's distribution at
+each observation's fitted value (its random effects and effort included; the negative binomial
+with its fitted θ, the binomial with one trial, the gamma with the shape 1 / its estimated scale,
+the zero-inflated Poisson as mgcv defines it with its θ₁ and θ₂, the beta of shapes μ φ and
+(1 − μ) φ): u = F(y) for the gamma and the beta, and for counts or 0/1 u drawn uniformly between
+F(y − 1) and F(y), with a fixed seed, so
 that the plot doesn't change from one look to the next (the session's random numbers are left
 as they were). The Pearson or deviance residuals of counts are far from normal even when the
 model is right; these residuals are normal when it is. Not offered for Tweedie (no distribution
@@ -974,12 +1002,18 @@ the number of groups of the first random effect minus one: typically, the mean o
 the number of sites minus one, a pair of sectors within sites the inner df; for a habitat that
 varies only between sites, the mean of the first habitat has the number of sites minus one, the
 others and the pairs the habitat's df, the sites minus one minus its coefficients); z
-(asymptotic) for a Poisson, binomial or negative binomial distribution, as emmeans for glm()
-and as the model's Coefficients (on an mgcv::gam object, emmeans uses the residual df whatever
-the distribution). With a log or logit link, the means are on the response scale (exp; inverse
-logit: probabilities), their intervals transformed from the link scale, and the pairs are
-ratios of means or odds ratios, tested on the link scale, as emmeans' type = "response"; the
-link scale on demand. A transformed Y (log10, ln…) stays on its scale, as the view says:
+(asymptotic) for a Poisson, binomial, negative binomial, zero-inflated Poisson or beta
+distribution, as emmeans for glm() and as the model's Coefficients (on an mgcv::gam object,
+emmeans uses the residual df whatever the distribution). With a log or logit link, the means are
+on the response scale (exp; inverse logit: probabilities, or mean proportions for the beta
+distribution), their intervals transformed from the link scale, and the pairs are ratios of
+means or odds ratios, tested on the link scale, as emmeans' type = "response"; the link scale on
+demand. With the zero-inflated Poisson, the means are expected counts, p μ / (1 − e^(−μ)) at
+each category's linear predictor log(μ) (θ₁ and θ₂ taken as known; their standard errors by the
+delta method, their intervals transformed, that value increasing with log(μ)), and the pairs
+ratios of expected counts, tested on their log by the delta method, as emmeans'
+regrid(transform = "log"); on the link scale, log(μ). A transformed Y (log10, ln…) stays on
+its scale, as the view says:
 back-transformed, a mean of logarithms is a median (a geometric mean), not a mean. A
 combination of categories that no observation has is not estimable (emmeans: nonEst): its mean
 and its pairs are left out, and named. A click on a pair in the table gives its sentence ready
@@ -997,8 +1031,9 @@ so). ⚠ marks a value outside the range of the model's observations: an extrapo
 Prediction › Compare models: Q2 and RMSEcv for every model; AIC, ΔAIC and Akaike weights (the
 probability that each model is the best of its set) between the regressions of the same
 response on the same observations only (an "AIC set", lettered A, B...), and only those whose
-likelihoods compare: Poisson and negative binomial models of the same counts, but not a normal
-model of them; Tweedie models with each other; GLMMs and GAMMs (mgcv's conditional likelihood)
+likelihoods compare: Poisson, negative binomial and zero-inflated Poisson models of the same
+counts, but not a normal model of them; normal, gamma or beta models of the same values;
+Tweedie models with each other; GLMMs and GAMMs (mgcv's conditional likelihood)
 with each other.
 Under the AIC table, Nested models: the likelihood-ratio test between each pair of nested
 regressions of the same AIC set, as anova(m1, m2) on ML fits. The smaller model's fixed terms

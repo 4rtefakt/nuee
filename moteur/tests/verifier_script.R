@@ -681,6 +681,41 @@ verifier("GAMM en anglais : mgcv attaché, une courbe, les secteurs emboîtés d
 r <- essayer_regression("gam_tweedie_test", pr, definir_modele(pr, "GAM", x = ur("x1", "x2"), y = ur("densite"), famille = "tweedie", lisses = ur("x2"), echelle = "none",
                                                                test = numeros_observations(pr)[seq(5, n, by = 10)]))
 verifier("Tweedie : pas de résidus quantiles (les paquets livrés avec R n'ont pas sa fonction de répartition)", !any(grepl("residus_quantiles|residu_quantile", lignes_script(r))))
+# le Poisson à excès de zéros (ziP) et la loi bêta (betar) : des comptages à excès de zéros et des
+# proportions, tirés à part (le hasard des autres vérifications rendu tel quel), sur lesquels mgcv
+# s'arrête en ML pour la loi bêta sans terme pénalisé (regression.R : profil_loi, que le script refait)
+etat_hasard <- .Random.seed
+set.seed(17)
+nz <- 240
+tz <- data.frame(nom = sprintf("F%03d", 1:nz), site = rep(sprintf("S%d", 1:8), each = 30), x1 = round(runif(nz), 4), x2 = round(rnorm(nz), 4),
+                 effort = round(runif(nz, 1, 3), 2), habitat = rep(c("bois", "haie", "prairie"), length.out = nz), stringsAsFactors = FALSE)
+effet_z <- rnorm(8, 0, 0.3)[as.integer(factor(tz$site))]
+gz <- -0.2 + 0.9 * sin(3 * tz$x1) + 0.4 * tz$x2 + effet_z + log(tz$effort) + c(bois = 0.3, haie = -0.2, prairie = 0)[tz$habitat]
+presents <- runif(nz) < 1 - exp(-exp(-0.8 + 1.2 * gz))
+tz$compte <- 0
+tz$compte[presents] <- qpois(runif(sum(presents), dpois(0, exp(gz[presents])), 1), exp(gz[presents]))
+mu_z <- plogis(-0.3 + 0.8 * sin(3 * tz$x1) - 0.4 * tz$x2 + effet_z + c(bois = 0.4, haie = -0.2, prairie = 0)[tz$habitat])
+tz$prop <- round(rbeta(nz, mu_z * 7, (1 - mu_z) * 7), 6)
+assign(".Random.seed", etat_hasard, envir = globalenv())
+pzf <- projet_depuis_tableau(tz, "familles")
+uz <- function(...) numeros(pzf, c(...))
+r <- essayer_regression("glm_poisson_zi_effort_moyennes", pzf, definir_modele(pzf, "GLM", x = uz("x1", "x2", "habitat"), y = uz("compte"), famille = "poisson_zi",
+                        decalage = uz("effort"), echelle = "none"), moyennes = list(facteur = uz("habitat")))
+verifier("ziP : ziP() de mgcv, ses valeurs ajustées par predict(), ses θ, ses résidus quantiles (repartition_zip) et ses moyennes ajustées en comptages attendus (esperance_zip)",
+         any(grepl("famille <- function() ziP()", lignes_script(r), fixed = TRUE)) && any(grepl("ajuste = as.vector(predict(m, type = \"response\"))", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("parametre_loi <- setNames(m$family$getTheta(TRUE), c(\"theta1\", \"theta2\"))", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("residus_quantiles(cadre[[1]], repartition_zip(m$linear.predictors, m$family$getTheta(TRUE)))", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("^esperance_zip <- function", lignes_script(r))) && any(grepl("theta_zip = parametre_loi", lignes_script(r), fixed = TRUE)))
+r <- essayer_regression("glm_beta_profil", pzf, definir_modele(pzf, "GLM", x = uz("x1", "x2", "habitat"), y = uz("prop"), famille = "beta", echelle = "none"))
+verifier("bêta sans terme pénalisé : betar(), et le profil de φ quand mgcv s'arrête en ML (profil_loi) ; ses résidus quantiles de pbeta, sans tirage",
+         any(grepl("famille <- function() betar(link = \"logit\")", lignes_script(r), fixed = TRUE)) && any(grepl("^profil_loi <- function", lignes_script(r))) &&
+           any(grepl("m <- profil_loi(f, tab, function(th) betar(theta = exp(th), link = \"logit\"), 1)", lignes_script(r), fixed = TRUE)) &&
+           any(grepl("pbeta(q, fitted(m) * m$family$getTheta(TRUE)", lignes_script(r), fixed = TRUE)))
+r <- essayer_regression("gamm_beta_test_en", pzf, definir_modele(pzf, "GAM", x = uz("x1", "x2", "habitat"), y = uz("prop"), famille = "beta", lisses = uz("x1"),
+                        aleatoires = list(list(by = "variable", variable = uz("site"))), echelle = "none", test = numeros_observations(pzf)[seq(7, nz, by = 15)]), langue = "en")
+verifier("GAMM bêta en anglais, avec un jeu de test : betar(), φ, ni nom ni commentaire en français, sans profil (des termes pénalisés)",
+         any(grepl("distribution <- function() betar(link = \"logit\")", lignes_script(r), fixed = TRUE)) && any(grepl("c(phi = m$family$getTheta(TRUE))", lignes_script(r), fixed = TRUE)) &&
+           en_anglais(lignes_script(r)) && !any(grepl("distribution_profile", lignes_script(r), fixed = TRUE)))
 # la sélection par l'AIC faite dans Nuée : le script la refait (toutes les combinaisons, ou l'élimination descendante)
 r <- essayer_regression("lm_selection_aic", p, definir_modele(p, "LM", x = uid(c("variete", "sucre", "fermete", "polyphenols")), y = uid("note_gout"),
                         echelle = "none", croises = list(uid(c("sucre", "fermete")))), selection = TRUE)

@@ -442,8 +442,8 @@ verifier_regression <- function(projet, d) {
     verifier_par_courbes(projet, d)
     verifier_lisse_spatial(projet, d)
     if (!is.null(d$decalage)) {
-      if (!famille %in% FAMILLES_LOG) err("Un décalage (l'effort) va avec une loi au lien log : Poisson, binomiale négative, gamma ou Tweedie.",
-                                          "An offset (the effort) goes with a log-link distribution: Poisson, negative binomial, gamma or Tweedie.")
+      if (!famille %in% FAMILLES_LOG) err("Un décalage (l'effort) va avec une loi au lien log : Poisson, binomiale négative, gamma, Tweedie ou Poisson à excès de zéros.",
+                                          "An offset (the effort) goes with a log-link distribution: Poisson, negative binomial, gamma, Tweedie or zero-inflated Poisson.")
       if (length(variable_du_projet(projet, d$decalage)$categories)) err("Le décalage est une variable quantitative.", "The offset is a quantitative variable.")
     }
   } else if (length(d$lisses) || length(d$par_courbes) || !is.null(d$decalage) || !is.null(d$famille) || length(d$lisse_spatial)) {
@@ -1318,17 +1318,26 @@ definition_car1 <- function(projet, d, temps, groupe) {
 
 # Les lois de la réponse (mgcv) : leur lien est le lien canonique, log pour la loi gamma. Une
 # loi discrète (comptages, présence-absence) ne se compare pas par l'AIC à une loi continue.
-FAMILLES <- c("gaussienne", "poisson", "binomiale_negative", "binomiale", "gamma", "tweedie")
-FAMILLES_LOG <- c("poisson", "binomiale_negative", "gamma", "tweedie")
-mesure_famille <- function(famille) if (famille %in% c("poisson", "binomiale_negative", "binomiale")) "discrete" else if (identical(famille, "tweedie")) "tweedie" else "continue"
+# Deux familles étendues de mgcv (Wood, Pya et Säfken, 2016), leurs paramètres estimés avec le
+# modèle : le Poisson à excès de zéros, ziP() (un comptage nul avec la probabilité 1 − p, sinon une
+# loi de Poisson tronquée en zéro ; log(−log(1 − p)) = θ1 + θ2 log(μ), μ le paramètre de la loi de
+# Poisson), et la loi bêta, betar() (une proportion entre 0 et 1, de moyenne μ, lien logit, et de
+# précision φ). Le Poisson à excès de zéros redonne la loi de Poisson quand θ1 = 0 et θ2 = 1 : sa
+# vraisemblance se compare à la sienne et à celle de la binomiale négative.
+FAMILLES <- c("gaussienne", "poisson", "binomiale_negative", "binomiale", "gamma", "tweedie", "poisson_zi", "beta")
+FAMILLES_LOG <- c("poisson", "binomiale_negative", "gamma", "tweedie", "poisson_zi")
+mesure_famille <- function(famille) if (famille %in% c("poisson", "binomiale_negative", "binomiale", "poisson_zi")) "discrete" else if (identical(famille, "tweedie")) "tweedie" else "continue"
 
-# Une famille de mgcv qui marche sans que mgcv soit attaché : celles de mgcv (tw, nb) appellent
-# des fonctions de mgcv depuis un environnement dont le parent est l'environnement global ; on
-# les y met.
-famille_mgcv <- function(nom) {
+# Une famille de mgcv qui marche sans que mgcv soit attaché : celles de mgcv (tw, nb, ziP, betar)
+# appellent des fonctions de mgcv depuis un environnement dont le parent est l'environnement
+# global ; on les y met. La loi bêta : les proportions de la réponse sont strictement entre 0 et 1
+# (verifier_reponse), et l'eps de betar(), qui déplacerait un 0 ou un 1 juste à l'intérieur, ne sert pas.
+# `theta` : les paramètres de ziP (θ1 et θ2 interne) ou le φ de betar, fixés (profil_loi).
+famille_mgcv <- function(nom, theta = NULL) {
   f <- switch(as.character(nom)[1],
     gaussienne = stats::gaussian(), poisson = stats::poisson(), binomiale = stats::binomial(),
     binomiale_negative = mgcv::nb(), gamma = stats::Gamma(link = "log"), tweedie = mgcv::tw(),
+    poisson_zi = mgcv::ziP(theta = theta), beta = mgcv::betar(theta = theta, link = "logit"),
     stop(sprintf(traduire("Loi inconnue : %s", "Unknown distribution: %s"), nom), call. = FALSE))
   ns <- asNamespace("mgcv")
   for (g in Filter(is.function, f)) {
@@ -1341,21 +1350,34 @@ famille_mgcv <- function(nom) {
   f
 }
 
-# Une réponse que la loi accepte : des comptages (Poisson, binomiale négative), 0 ou 1
-# (binomiale), strictement positive (gamma), positive ou nulle (Tweedie).
+# Une réponse que la loi accepte : des comptages (Poisson, binomiale négative, Poisson à excès de
+# zéros, qui demande aussi des zéros), 0 ou 1 (binomiale), strictement positive (gamma), positive ou
+# nulle (Tweedie), strictement entre 0 et 1 (bêta : mgcv ramènerait un 0 ou un 1 à eps du bord, ce
+# que sa documentation dit n'être pas sans effet ; c'est à la personne de les ramener, en le disant).
 verifier_reponse <- function(y, famille) {
   ok <- switch(famille,
-    poisson = , binomiale_negative = all(y >= 0 & abs(y - round(y)) < 1e-8),
+    poisson = , binomiale_negative = , poisson_zi = all(y >= 0 & abs(y - round(y)) < 1e-8),
     binomiale = all(y %in% c(0, 1)),
     gamma = all(y > 0),
     tweedie = all(y >= 0),
+    beta = all(y > 0 & y < 1),
     TRUE)
   if (!ok) stop(switch(famille,
     poisson = , binomiale_negative = traduire("Une loi de Poisson ou binomiale négative demande des comptages (des entiers positifs ou nuls).",
                                               "A Poisson or negative binomial distribution needs counts (whole numbers, zero or more)."),
+    poisson_zi = traduire("Une loi de Poisson à excès de zéros demande des comptages (des entiers positifs ou nuls).",
+                          "A zero-inflated Poisson distribution needs counts (whole numbers, zero or more)."),
     binomiale = traduire("Une loi binomiale demande une réponse 0 ou 1 (absence ou présence).", "A binomial distribution needs a 0 or 1 response (absence or presence)."),
     gamma = traduire("Une loi gamma demande une réponse strictement positive.", "A gamma distribution needs a strictly positive response."),
+    beta = sprintf(traduire("Une loi bêta demande des proportions strictement comprises entre 0 et 1 : %d valeur(s) de la réponse sont à 0, à 1 ou au-delà. Pour une présence-absence, prenez la loi binomiale ; des proportions qui touchent 0 ou 1 se ramènent d'abord dans l'intervalle, en le disant (Édition › Nouvelle variable, par exemple (y * (n - 1) + 0.5) / n pour n observations ; Smithson et Verkuilen, 2006).",
+                            "A beta distribution needs proportions strictly between 0 and 1: %d value(s) of the response are at 0, at 1 or beyond. For presence-absence, take the binomial distribution; proportions that reach 0 or 1 are first brought inside the interval, saying so (Edit › New variable, for example (y * (n - 1) + 0.5) / n for n observations; Smithson & Verkuilen, 2006)."),
+                   sum(!(y > 0 & y < 1))),
     traduire("Une loi de Tweedie demande une réponse positive ou nulle.", "A Tweedie distribution needs a response of zero or more.")), call. = FALSE)
+  # (un modèle à excès de zéros sur des comptages sans zéro : rien à modéliser, et θ1 partirait à l'infini)
+  if (identical(famille, "poisson_zi") && !any(y == 0)) {
+    stop(traduire("Aucun comptage de la réponse n'est nul : un modèle à excès de zéros n'a pas de zéros à modéliser ; prenez la loi de Poisson ou binomiale négative.",
+                  "No count of the response is zero: a zero-inflated model has no zeros to model; take the Poisson or negative binomial distribution."), call. = FALSE)
+  }
 }
 
 # La formule d'un modèle de mgcv, écrite avec les seuls noms internes : termes paramétriques,
@@ -1374,8 +1396,31 @@ formule_mgcv <- function(parametriques, lisses, k, niveaux, decalage, pentes = N
 }
 
 ajuster_mgcv <- function(donnees, parametriques, lisses, k, niveaux, famille, decalage, methode = "REML", pentes = NULL, par = NULL, spatial = NULL) {
-  tryCatch(mgcv::gam(formule_mgcv(parametriques, lisses, k, niveaux, decalage, pentes, par, spatial), data = donnees, family = famille_mgcv(famille), method = methode),
-           error = function(e) NULL)
+  f <- formule_mgcv(parametriques, lisses, k, niveaux, decalage, pentes, par, spatial)
+  a <- tryCatch(mgcv::gam(f, data = donnees, family = famille_mgcv(famille), method = methode), error = function(e) NULL)
+  if (is.null(a) && identical(methode, "ML") && famille %in% c("poisson_zi", "beta") && !length(lisses) && !niveaux && is.null(spatial)) a <- profil_loi(f, donnees, famille)
+  a
+}
+
+# mgcv 1.9 : l'ajustement en ML d'un modèle sans terme pénalisé de ziP ou de betar s'arrête parfois sur
+# une erreur de LAPACK dans son code C (« DGESDD … error code -10 », dans gdi2, sans pénalité et avec
+# des poids de Newton négatifs), alors que le même modèle s'ajuste quand les paramètres de la loi
+# sont fixés. Son maximum de vraisemblance s'obtient alors comme mgcv le cherche, mais en dehors de
+# lui : les paramètres de la loi qui maximisent la vraisemblance des ajustements où ils sont fixés
+# (optimize sur log φ pour betar ; optim de Nelder et Mead pour θ1 et le θ2 interne de ziP, depuis 0
+# et 0, la loi de Poisson), puis l'ajustement à ces paramètres, où ils comptent comme estimés
+# (n.theta : la vraisemblance de mgcv leur donne alors leurs degrés de liberté). NULL s'il échoue.
+profil_loi <- function(f, donnees, famille) {
+  ajuster <- function(th) tryCatch(mgcv::gam(f, data = donnees, family = famille_mgcv(famille, if (famille == "beta") exp(th) else th)), error = function(e) NULL)
+  moins_ll <- function(th) {
+    a <- ajuster(th)
+    if (is.null(a)) Inf else -as.numeric(stats::logLik(a))
+  }
+  th <- if (famille == "beta") stats::optimize(moins_ll, c(-7, 14), tol = 1e-10)$minimum
+        else stats::optim(c(0, 0), moins_ll, control = list(reltol = 1e-12, maxit = 2000))$par
+  a <- ajuster(th)
+  if (!is.null(a)) a$family$n.theta <- length(th)
+  a
 }
 
 # Le lissage spatial d'un modèle additif (d$lisse_spatial) : une surface des coordonnées des
@@ -1463,10 +1508,24 @@ predire_mgcv <- function(a, nd, appris, niveaux, par = NULL) {
   as.vector(stats::predict(a, nd, type = "response", exclude = aleatoires))
 }
 
+# Les paramètres de la loi estimés avec le modèle, leurs noms et leurs valeurs : θ de la binomiale
+# négative, la puissance p de Tweedie, θ1 et θ2 du Poisson à excès de zéros (log(−log(1 − p)) =
+# θ1 + θ2 log(μ) ; θ2 = b + exp(θ2 interne), b = 0, comme les donne le résumé de mgcv), la précision
+# φ de la loi bêta (sa variance μ (1 − μ) / (1 + φ)).
 parametre_famille <- function(a, famille) {
   if (famille == "binomiale_negative") return(list(nom = "theta", valeur = a$family$getTheta(TRUE)))
   if (famille == "tweedie") return(list(nom = "p", valeur = a$family$getTheta(TRUE)))
+  if (famille == "poisson_zi") return(list(nom = c("theta1", "theta2"), valeur = as.vector(a$family$getTheta(TRUE))))
+  if (famille == "beta") return(list(nom = "phi", valeur = a$family$getTheta(TRUE)))
   NULL
+}
+
+# Les valeurs ajustées d'un modèle de mgcv sur l'échelle de la réponse, ses effets aléatoires et son
+# effort compris. Le Poisson à excès de zéros : fitted() de mgcv y donne le prédicteur linéaire,
+# log(μ) ; la valeur attendue d'un comptage est p μ / (1 − e^(−μ)), ce que donne predict(type =
+# "response").
+ajustees_mgcv <- function(a, famille) {
+  if (identical(famille, "poisson_zi")) as.vector(stats::predict(a, type = "response")) else as.vector(stats::fitted(a))
 }
 
 # Le modèle ajusté sur toutes ses observations, comme resultat_lineaire : REML pour les
@@ -1538,14 +1597,18 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
   n <- nrow(donnees)
   list(N = n, coefficients = co, courbes = courbes, termes_retires = retires, logLik = as.numeric(ll), parametres = attr(ll, "df"),
        AIC = stats::AIC(compare), AICc = aic_corrige(compare, n), BIC = stats::BIC(compare),
-       r2 = list(r2_ajuste = s$r.sq, deviance_expliquee = s$dev.expl), variances = variances, singularites = singularites,
-       famille = famille, lien = estime$family$link, parametre_loi = parametre_famille(estime, famille), echelle = estime$sig2,
+       # (le Poisson à excès de zéros n'a pas de R² ajusté dans mgcv : la part de la déviance seule)
+       r2 = Filter(Negate(is.null), list(r2_ajuste = s$r.sq, deviance_expliquee = s$dev.expl)), variances = variances, singularites = singularites,
+       # (mgcv nomme « identity » le lien de ziP, dont le prédicteur linéaire est directement log(μ) :
+       # c'est le lien log du paramètre μ de la loi de Poisson)
+       famille = famille, lien = if (identical(famille, "poisson_zi")) "log" else estime$family$link, parametre_loi = parametre_famille(estime, famille), echelle = estime$sig2,
        # (Poisson : la dispersion, khi² de Pearson sur ses degrés de liberté ; au-delà de 1,5, des
        # comptages surdispersés, que la binomiale négative modélise. Une réponse 0 ou 1 ne la montre pas.)
        dispersion = if (famille == "poisson") sum(stats::residuals(estime, type = "pearson")^2) / estime$df.residual,
-       ajuste = as.vector(stats::fitted(estime)),
+       ajuste = ajustees_mgcv(estime, famille),
        residus = as.vector(stats::residuals(estime, type = "deviance")) / sqrt(estime$sig2 * pmax(1 - estime$hat, 1e-8)),
-       # (comptages, présence-absence, valeurs positives : les résidus quantiles, regression_diagnostics.R ; NULL sinon)
+       # (comptages, présence-absence, valeurs positives, proportions : les résidus quantiles,
+       # regression_diagnostics.R ; NULL sinon)
        residus_quantiles = residus_quantiles(estime, famille),
        utiles = utiles, k = k, spatial = spatial, ajustement = estime, ajustement_ml = compare)
 }
@@ -1982,6 +2045,8 @@ REFERENCES_REGRESSION <- list(
   wood2011 = "Wood, S. N. (2011). Fast stable restricted maximum likelihood and marginal likelihood estimation of semiparametric generalized linear models. Journal of the Royal Statistical Society: Series B, 73(1), 3–36. https://doi.org/10.1111/j.1467-9868.2010.00749.x",
   wood2003 = "Wood, S. N. (2003). Thin plate regression splines. Journal of the Royal Statistical Society: Series B, 65(1), 95–114. https://doi.org/10.1111/1467-9868.00374",
   wahba1981 = "Wahba, G. (1981). Spline interpolation and smoothing on the sphere. SIAM Journal on Scientific and Statistical Computing, 2(1), 5–16. https://doi.org/10.1137/0902002",
+  wood2016 = "Wood, S. N., Pya, N., & Säfken, B. (2016). Smoothing parameter and model selection for general smooth models. Journal of the American Statistical Association, 111(516), 1548–1563. https://doi.org/10.1080/01621459.2016.1180986",
+  ferrari = "Ferrari, S. L. P., & Cribari-Neto, F. (2004). Beta regression for modelling rates and proportions. Journal of Applied Statistics, 31(7), 799–815. https://doi.org/10.1080/0266476042000214501",
   stewart_oaten = "Stewart-Oaten, A., Murdoch, W. W., & Parker, K. R. (1986). Environmental impact assessment: \"Pseudoreplication\" in time? Ecology, 67(4), 929–940. https://doi.org/10.2307/1939815",
   diggle = "Diggle, P. J., Heagerty, P., Liang, K.-Y., & Zeger, S. L. (2002). Analysis of longitudinal data (2nd ed.). Oxford University Press.",
   johnson2015 = "Johnson, P. C. D., Barry, S. J. E., Ferguson, H. M., & Müller, P. (2015). Power analysis for generalized linear mixed models in ecology and evolution. Methods in Ecology and Evolution, 6(2), 133–142. https://doi.org/10.1111/2041-210X.12306",
@@ -2018,8 +2083,10 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     if (fr) "Les variables explicatives sont dans leurs unités." else "The explanatory variables are in their own units."
   } else if (fr) "Les variables explicatives ont été centrées et mises à l'échelle avant l'ajustement." else "The explanatory variables were centred and scaled before fitting."
   p2 <- if (generalise) {
-    lois <- if (fr) c(gaussienne = "normale", poisson = "de Poisson", binomiale_negative = "binomiale négative", binomiale = "binomiale", gamma = "gamma", tweedie = "de Tweedie")
-            else c(gaussienne = "normal", poisson = "Poisson", binomiale_negative = "negative binomial", binomiale = "binomial", gamma = "gamma", tweedie = "Tweedie")
+    lois <- if (fr) c(gaussienne = "normale", poisson = "de Poisson", binomiale_negative = "binomiale négative", binomiale = "binomiale", gamma = "gamma", tweedie = "de Tweedie",
+                      poisson_zi = "de Poisson à excès de zéros", beta = "bêta")
+            else c(gaussienne = "normal", poisson = "Poisson", binomiale_negative = "negative binomial", binomiale = "binomial", gamma = "gamma", tweedie = "Tweedie",
+                   poisson_zi = "zero-inflated Poisson", beta = "beta")
     lis <- m$noms_termes[match(m$lisses, m$termes)]
     courbes <- if (!length(lis)) "" else if (!length(m$par)) {
       sprintf(if (fr) ", dont %s par des courbes (splines de régression en plaques minces)" else ", %s of them through curves (thin plate regression splines)", liste(lis))
@@ -2050,10 +2117,18 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
                                      else ", a spatial smooth of the coordinates (%s and %s), an isotropic thin plate regression spline (Wood, 2003) of basis dimension %d",
                                      guillemets(sp$noms[1]), guillemets(sp$noms[2]), as.integer(sp$k)))
     penalise <- length(lis) || length(m$niveaux) || !is.null(sp)
+    # (les deux familles étendues de mgcv : ce que sont leur loi et leurs paramètres)
+    loi_etendue <- switch(m$famille,
+      poisson_zi = cite("wood2016", if (fr) "Un comptage est nul avec la probabilité 1 − p et suit sinon une loi de Poisson de paramètre μ tronquée en zéro (le modèle à excès de zéros de mgcv, un modèle à obstacle ; Wood et al., 2016) : le prédicteur linéaire donne log(μ), p lui est lié par log(−log(1 − p)) = θ₁ + θ₂ log(μ), θ₁ et θ₂ estimés avec le modèle, et la valeur attendue d'un comptage, celle des valeurs ajustées et des prédictions, est p μ / (1 − e^(−μ))."
+                                    else "A count is zero with probability 1 − p and otherwise follows a Poisson distribution of parameter μ truncated at zero (mgcv's zero-inflated model, a hurdle model; Wood et al., 2016): the linear predictor gives log(μ), p is tied to it by log(−log(1 − p)) = θ₁ + θ₂ log(μ), θ₁ and θ₂ estimated with the model, and a count's expected value, that of the fitted values and predictions, is p μ / (1 − e^(−μ))."),
+      beta = cite(c("ferrari", "wood2016"), if (fr) "La réponse, une proportion strictement comprise entre 0 et 1, suit une loi bêta de moyenne μ et de variance μ (1 − μ) / (1 + φ) (Ferrari et Cribari-Neto, 2004), sa précision φ estimée avec le modèle (Wood et al., 2016)."
+                                             else "The response, a proportion strictly between 0 and 1, follows a beta distribution of mean μ and variance μ (1 − μ) / (1 + φ) (Ferrari & Cribari-Neto, 2004), its precision φ estimated with the model (Wood et al., 2016)."),
+      NULL)
     c(cite("wood2017", if (fr) sprintf("Nous avons ajusté un modèle %s (loi %s, lien %s ; Wood, 2017) avec %s%s%s%s. %s",
                                        if (identical(m$type, "GAM")) "additif généralisé" else "linéaire généralisé", lois[[m$famille]], m$lien, termes, paste0(courbes, spatial), aleatoire, effort, unites)
                        else sprintf("We fitted a %s model (%s distribution, %s link; Wood, 2017) with %s%s%s%s. %s",
                                     if (identical(m$type, "GAM")) "generalized additive" else "generalized linear", lois[[m$famille]], m$lien, termes, paste0(courbes, spatial), aleatoire, effort, unites)),
+      loi_etendue,
       if (gamm) cite("pinheiro", if (fr) "Le modèle a été ajusté par mgcv::gamm comme un modèle linéaire mixte de nlme (Pinheiro et Bates, 2000), dont les courbes sont des effets aléatoires : coefficients, courbes, variances et autocorrélation par maximum de vraisemblance restreint (REML), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance."
                      else "The model was fitted with mgcv::gamm as a linear mixed model of nlme (Pinheiro & Bates, 2000), whose curves are random effects: coefficients, curves, variances and autocorrelation by restricted maximum likelihood (REML), and models compared by the AIC of maximum-likelihood fits.")
       else if (penalise) cite("wood2011", if (fr) "Les courbes et les effets aléatoires ont été estimés par maximum de vraisemblance restreint (REML ; Wood, 2011), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance."
@@ -2124,9 +2199,12 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   vc <- if (sans_q2) (if (fr) "la validation croisée n'a pas donné de Q²" else "cross-validation gave no Q²")
         else sprintf(if (fr) "en validation croisée, Q² = %s et RMSEcv = %s" else "in cross-validation, Q² = %s and RMSEcv = %s", nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
   loi <- r$parametre_loi
+  # (les paramètres de la loi : θ, p, θ₁ et θ₂, φ ; le Poisson à excès de zéros n'a pas de R² ajusté)
+  symboles <- c(theta = "θ", p = "p", theta1 = "θ₁", theta2 = "θ₂", phi = "φ")
   p4 <- if (generalise && is.null(r$r2$marginal)) {
-    sprintf(if (fr) "Le modèle explique %s de la déviance (R² ajusté = %s)%s ; %s ; %s." else "The model explains %s of the deviance (adjusted R² = %s)%s; %s; %s.",
-            pourcent(r$r2$deviance_expliquee), nombre(r$r2$r2_ajuste), if (!is.null(loi)) sprintf(", %s = %s", if (loi$nom == "theta") "θ" else "p", nombre(loi$valeur)) else "",
+    sprintf(if (fr) "Le modèle explique %s de la déviance%s%s ; %s ; %s." else "The model explains %s of the deviance%s%s; %s; %s.",
+            pourcent(r$r2$deviance_expliquee), if (is.null(r$r2$r2_ajuste)) "" else sprintf(if (fr) " (R² ajusté = %s)" else " (adjusted R² = %s)", nombre(r$r2$r2_ajuste)),
+            if (!is.null(loi)) paste0(", ", liste(sprintf("%s = %s", symboles[as.character(loi$nom)], nombre(loi$valeur)))) else "",
             aic, vc)
   } else if (!is.null(r$r2$marginal)) {
     # (avec des pentes aléatoires, la variance des effets aléatoires de Johnson, 2014 : variances_niveaux)

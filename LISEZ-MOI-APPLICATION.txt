@@ -829,9 +829,12 @@ variable qualitative, d'un terme croisé ou d'une courbe.
 Type « Modèle linéaire généralisé (GLM) » ou « Modèle additif (GAM) » (mgcv), pour une
 variable Y qui ne suit pas une loi normale. Loi de Y : Poisson pour des comptages ; binomiale
 négative pour des comptages qui varient plus qu'une loi de Poisson ne le permet (son θ
-estimé) ; binomiale pour la présence-absence (0 ou 1) ; gamma pour des valeurs positives ;
-Tweedie pour des densités avec des zéros (sa puissance p estimée) ; ou normale. Le lien est
-log (comptages, gamma, Tweedie), logit (binomiale) ou l'identité (normale). Effort
+estimé) ; Poisson à excès de zéros pour des comptages qui ont plus de zéros qu'une loi de
+Poisson n'en donne (ses θ₁ et θ₂ estimés) ; binomiale pour la présence-absence (0 ou 1) ;
+gamma pour des valeurs positives ; Tweedie pour des densités avec des zéros (sa puissance p
+estimée) ; bêta pour des proportions strictement comprises entre 0 et 1 (sa précision φ
+estimée) ; ou normale. Le lien est log (comptages, gamma, Tweedie ; pour le Poisson à excès de
+zéros, celui de son paramètre de Poisson μ), logit (binomiale, bêta) ou l'identité (normale). Effort
 (décalage) : une variable comme une surface, une durée ou un nombre de passages, dont le log
 entre dans le modèle avec un coefficient 1 : il décrit alors une densité (un effort nul ou
 négatif est refusé). Des effets aléatoires comme ci-dessus en font un GLMM ou un GAMM. Avec la
@@ -863,6 +866,32 @@ est ajusté par maximum de vraisemblance, comme le font glm() et MASS::glm.nb().
 modèle de Poisson prévient quand les comptages sont surdispersés (le khi² de Pearson au-delà
 de 1,5 fois ses degrés de liberté) : ses valeurs p sont alors trop petites, et la binomiale
 négative convient mieux à ces comptages.
+Poisson à excès de zéros et loi bêta (les familles ziP et betar de mgcv ; Wood, Pya et Säfken,
+2016). Dans le Poisson à excès de zéros, un modèle à obstacle, un comptage est nul avec la
+probabilité 1 − p et suit sinon une loi de Poisson de paramètre μ tronquée en zéro ; le
+prédicteur linéaire est log(μ) (mgcv nomme ce lien « identity » ; exp(coefficient) multiplie μ,
+l'effort aussi), et p lui est lié par log(−log(1 − p)) = θ₁ + θ₂ log(μ), θ₁ et θ₂ estimés avec
+le modèle ; θ₁ = 0 et θ₂ = 1 redonnent la loi de Poisson, et son AIC se compare à ceux des
+modèles de Poisson et binomiaux négatifs des mêmes comptages. Ses valeurs ajustées, ses
+prédictions, sa validation croisée et son jeu de test sont des comptages attendus,
+p μ / (1 − e^(−μ)) ; il n'a pas de R² ajusté, seulement la part de déviance expliquée. Il
+demande des comptages, dont au moins un zéro. Beaucoup de zéros ne font pas un excès de zéros
+(trop de zéros pour la moyenne du modèle, si) : comparez les modèles par l'AIC et regardez les
+résidus quantiles ; quand des X expliquent les zéros eux-mêmes, le modèle peut mal s'identifier.
+La loi bêta est faite pour des proportions strictement comprises entre 0 et 1 (une couverture,
+une part de temps), de moyenne μ par le lien logit et de variance μ (1 − μ) / (1 + φ), sa
+précision φ estimée (Ferrari et Cribari-Neto, 2004) ; son AIC se compare à celui d'un modèle de
+loi normale des mêmes proportions. Une réponse à 0 ou à 1 est refusée, avec le nombre de ces
+valeurs : mgcv les déplacerait juste à l'intérieur (son eps), ce qui n'est pas sans effet sur
+l'ajustement ; ramenez-les vous-même dans l'intervalle, en le disant (Édition › Nouvelle
+variable, par exemple (y * (n - 1) + 0.5) / n pour n observations ; Smithson et Verkuilen,
+2006), ou prenez la binomiale pour une présence-absence. Les deux prennent des effets
+aléatoires, des courbes et le lissage spatial (pas d'autocorrélation CAR1) ; seul le Poisson à
+excès de zéros prend un effort. θ₁, θ₂ et φ se lisent dans le Résumé, le rapport et les
+coefficients côte à côte. Sans courbe ni effet aléatoire, l'ajustement en ML de mgcv avec ces
+deux familles s'arrête parfois sur une erreur de LAPACK : Nuée cherche alors lui-même les
+paramètres de la loi qui maximisent la vraisemblance (chaque ajustement à paramètres fixés par
+mgcv), et son script exporté fait de même.
 Lissage spatial (onglet Général, pour un GAM d'un projet qui a des coordonnées, voir Cartes et
 données spatiales) : une surface des coordonnées des observations, s(x, y), une spline de
 régression en plaques minces sur des coordonnées planes (Wood 2003) ou une spline sur la sphère
@@ -927,11 +956,13 @@ qu'il fait (la colonne Avec les nomme) ;
 un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
-Résidus d'un GLM ou d'un GAM à loi de Poisson, binomiale négative, binomiale ou gamma : à côté
-des résidus de déviance standardisés (ceux par défaut), les résidus quantiles randomisés de Dunn
-et Smyth (1996), r = Φ⁻¹(u), F la loi du modèle à la valeur ajustée de chaque observation (ses
-effets aléatoires et son effort compris ; la binomiale négative de son θ estimé, la binomiale
-d'une épreuve, la gamma de forme 1 / son échelle estimée) : u = F(y) pour la loi gamma, et pour
+Résidus d'un GLM ou d'un GAM à loi de Poisson, binomiale négative, binomiale, gamma, de Poisson à
+excès de zéros ou bêta : à côté des résidus de déviance standardisés (ceux par défaut), les
+résidus quantiles randomisés de Dunn et Smyth (1996), r = Φ⁻¹(u), F la loi du modèle à la valeur
+ajustée de chaque observation (ses effets aléatoires et son effort compris ; la binomiale
+négative de son θ estimé, la binomiale d'une épreuve, la gamma de forme 1 / son échelle estimée,
+le Poisson à excès de zéros tel que mgcv le définit, de ses θ₁ et θ₂, la bêta de formes μ φ et
+(1 − μ) φ) : u = F(y) pour les lois gamma et bêta, et pour
 des comptages ou des 0/1, u tiré uniformément entre F(y − 1) et F(y), avec une graine fixe, pour
 que le graphique ne change pas d'un regard à l'autre (le hasard de la séance reste tel qu'il
 était). Les résidus de Pearson ou de déviance de comptages sont loin de la loi normale même
@@ -1056,12 +1087,18 @@ en général, la moyenne d'un secteur a le nombre de sites moins un, une paire d
 les sites les degrés de liberté intérieurs ; pour un habitat qui ne change que d'un site à
 l'autre, la moyenne du premier habitat a le nombre de sites moins un, les autres et les paires
 ceux de l'habitat, les sites moins un moins ses coefficients) ; z (asymptotique) pour une loi
-de Poisson, binomiale ou binomiale négative, comme emmeans pour glm() et comme les Coefficients
-du modèle (sur un objet mgcv::gam, emmeans prend les degrés de liberté résiduels quelle que
-soit la loi). Avec un lien log ou logit, les moyennes sont sur l'échelle de la réponse (exp ;
-logit inverse : des probabilités), leurs intervalles transformés depuis l'échelle du lien, et
-les paires sont des rapports de moyennes ou des rapports des cotes, testés sur l'échelle du
-lien, comme type = "response" dans emmeans ; l'échelle du lien au choix. Une variable Y
+de Poisson, binomiale, binomiale négative, de Poisson à excès de zéros ou bêta, comme emmeans
+pour glm() et comme les Coefficients du modèle (sur un objet mgcv::gam, emmeans prend les
+degrés de liberté résiduels quelle que soit la loi). Avec un lien log ou logit, les moyennes
+sont sur l'échelle de la réponse (exp ; logit inverse : des probabilités, ou des proportions
+moyennes pour la loi bêta), leurs intervalles transformés depuis l'échelle du lien, et les
+paires sont des rapports de moyennes ou des rapports des cotes, testés sur l'échelle du lien,
+comme type = "response" dans emmeans ; l'échelle du lien au choix. Avec le Poisson à excès de
+zéros, les moyennes sont des comptages attendus, p μ / (1 − e^(−μ)) au prédicteur linéaire
+log(μ) de chaque catégorie (θ₁ et θ₂ tenus pour connus ; leurs erreurs-types par la méthode
+delta, leurs intervalles transformés, cette valeur croissant avec log(μ)), et les paires des
+rapports de comptages attendus, testés sur leur logarithme par la méthode delta, comme
+regrid(transform = "log") d'emmeans ; sur l'échelle du lien, log(μ). Une variable Y
 transformée (log10, ln…) reste sur son échelle, et la vue le dit : ramenée sur l'échelle de la
 variable, une moyenne de logarithmes est une médiane (une moyenne géométrique), non une
 moyenne. Une combinaison de catégories qu'aucune observation n'a n'est pas estimable (emmeans :
@@ -1082,8 +1119,9 @@ une extrapolation.
 Prédiction › Comparer les modèles : Q2 et RMSEcv pour tous les modèles ; AIC, ΔAIC et poids
 d'Akaike (la probabilité que chaque modèle soit le meilleur de son ensemble) entre les seules
 régressions de la même réponse sur les mêmes observations (un « ensemble AIC », lettré A,
-B...), et seulement celles dont les vraisemblances se comparent : des modèles de Poisson et
-binomiaux négatifs des mêmes comptages, mais pas un modèle normal de ces comptages ; des
+B...), et seulement celles dont les vraisemblances se comparent : des modèles de Poisson,
+binomiaux négatifs et à excès de zéros des mêmes comptages, mais pas un modèle normal de ces
+comptages ; des modèles de loi normale, gamma ou bêta des mêmes valeurs ; des
 modèles de Tweedie entre eux ; des GLMM et des GAMM (la vraisemblance conditionnelle de mgcv)
 entre eux.
 Sous le tableau des AIC, Modèles emboîtés : le test du rapport de vraisemblance entre chaque
