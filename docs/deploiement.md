@@ -1,8 +1,8 @@
 # Deploying Nuée in an organisation
 
 For IT departments installing Nuée on several Windows computers: how to install it silently,
-turn off its update check, what it writes where, and what it sends over the network. Linux
-computers: see [Linux](#linux) at the end.
+turn off its update check, what it writes where, and what it sends over the network. Macs and
+Linux computers: see [macOS](#macos) and [Linux](#linux) at the end.
 
 ## What gets installed
 
@@ -119,6 +119,29 @@ can't be navigated to another site.
 The installer isn't code-signed yet, so SmartScreen warns the first time it runs. Where AppLocker
 or WDAC applies, allow the installer and the installed folder by hash or by path.
 
+## macOS
+
+- **Installing:** copy `Nuée.app` from the `.dmg` into `/Applications`, by hand or with a
+  deployment tool: `Nuee-<version>-arm64.dmg` for Apple silicon (macOS 14 or later),
+  `Nuee-<version>-x64.dmg` for Intel (macOS 13 or later). Deleting `Nuée.app` uninstalls it.
+- **R:** brought along in `Nuée.app`, as on Windows (CRAN's R 4.6.2 with the packages Nuée
+  needs); an R already on the Mac is neither used nor changed. The user's `.Rprofile` is
+  ignored, and the packages that come with Nuée are found before those of the user's own
+  library.
+- **Gatekeeper:** the application is signed ad hoc, not with an Apple Developer ID, and isn't
+  notarized. A copy downloaded with a browser is quarantined, and macOS asks once to allow it
+  (*System Settings › Privacy & Security › Open Anyway*). A copy put in place by a deployment
+  tool, or downloaded with `curl`, isn't quarantined and starts without asking;
+  `sudo xattr -dr com.apple.quarantine /Applications/Nuée.app` lifts the quarantine of one
+  that is.
+- **Updates:** the same check as on Windows, but a click only opens the release's page; the new
+  `Nuée.app` replaces the old one. Users can turn the check off in *Help*; there is no
+  system-wide policy on macOS.
+- **What Nuée writes where:** settings and recovery copies in
+  `~/Library/Application Support/Nuee`, R's temporary files in the user's own temporary folder
+  (`$TMPDIR/nuee-r-<user id>-<process>`). Nothing is written inside `Nuée.app`. The network
+  and file rules above are the same.
+
 ## Linux
 
 - **Installing:** `sudo apt install ./Nuee-<version>-amd64.deb` on Debian, Ubuntu and their
@@ -127,7 +150,8 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
   association and, on Ubuntu 24.04 and later, an AppArmor profile for Chromium's sandbox.
   `sudo apt remove nuee` uninstalls it. GitHub's checks install and use this package on
   Ubuntu 22.04 and 24.04 and Debian 12.
-- **R:** the computer's R and its packages (only the Windows build brings its own R). As in R
+- **R:** the computer's R and its packages (only the Windows and macOS builds bring their own
+  R). As in R
   itself, packages in a user's own library come before the system's; the user's `.Rprofile`
   is ignored.
 - **Updates:** the same check as on Windows, but a click only opens the release's page; the

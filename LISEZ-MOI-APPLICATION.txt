@@ -18,6 +18,13 @@ d'où on peut la désinstaller ; les projets et les réglages sont gardés.
 Si Windows affiche « Windows a protégé votre ordinateur » (éditeur inconnu), cliquez sur
 « Informations complémentaires » puis « Exécuter quand même ».
 
+Sous macOS, R est inclus aussi : ouvrez Nuee-<version>-arm64.dmg (Apple silicon, macOS 14 ou
+plus récent) ou Nuee-<version>-x64.dmg (Intel, macOS 13 ou plus récent) et faites glisser Nuée
+dans Applications. La première fois, macOS dit qu'il n'a pas pu vérifier l'application (elle
+n'est pas signée par Apple) : cliquez sur « OK », puis sur « Ouvrir quand même » dans Réglages
+Système › Confidentialité et sécurité, et confirmez. Les réglages sont dans
+~/Library/Application Support/Nuee.
+
 Sous Linux, Nuée utilise le R de l'ordinateur.
 - Debian, Ubuntu et dérivées : sudo apt install ./Nuee-<version>-amd64.deb installe aussi R
   et les paquets R nécessaires. Nuée apparaît dans le menu des applications.
@@ -118,9 +125,10 @@ secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne rép
 les copies de secours, proposées au lancement suivant. Au-delà d'une minute de calcul, la
 barre d'état le rappelle.
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
-jour). La version installée (Nuee-Setup, ou les paquets Linux) cherche au démarrage s'il
-existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est envoyé) et la
-signale dans la barre d'état ; sous Linux, un clic ouvre la page de la version. Sous Windows,
+jour). La version installée (Nuee-Setup, l'application macOS ou les paquets Linux) cherche au
+démarrage s'il existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est
+envoyé) et la signale dans la barre d'état ; sous macOS et Linux, un clic ouvre la page de la
+version. Sous Windows,
 un clic propose de mettre à jour : le programme d'installation est téléchargé et
 vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en
 proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation

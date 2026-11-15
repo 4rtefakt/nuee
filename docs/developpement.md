@@ -58,6 +58,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
 | `app/installation.js` | Windows: whether Nuée is installed for all users or for this user only (its uninstall entry under HKLM or HKCU; without one, Program Files decides), for the updater |
 | `app/tests/essai_installation.js` | That decision with stand-in registries, then `reg.exe` itself |
+| `app/r-macos.js` | macOS: CRAN's R, brought along in `Nuée.app`, made to run from there (see [On macOS](#on-macos)) |
+| `app/tests/essai_r_macos.js` | The names of the libraries R loads once moved, and the folder `bin/R` finds for itself |
 | `app/interface/vues_classement.js` | The views of a tree, an LDA and a k-means (tree, pruning, rules, importance, stability, scores, coefficients, probabilities, clusters, silhouettes, choice of k), their New model fields and report parts |
 | `app/interface/vues_ordination.js` | The views of an RDA and a CA (ordination, eigenvalues, permutation tests, contributions), their New model fields and report parts |
 | `app/interface/documents.js` | Documents (File › New document): the panel, a CodeMirror editor beside its live preview, the `{{` completion, Insert and Compile, templates. Kept in the project (`p$documents`, `serveur.R`: `document`, `document_enregistrer`, `document_supprimer`); undo leaves them out (`annuler_demande`). A model cited and not computed is fitted with `app.calculerDiscret` (no views opened); plots come from `rapport.js`'s `imageVue`, tables from its parts (`partiesModele`) |
@@ -68,7 +70,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/copier-vendor.js` | Copies the libraries the interface loads into `interface/vendor/`, and bundles the document editor (CodeMirror 6 and markdown-it) with esbuild into `vendor/editeur.min.js` (the licence of each package it holds at its end), loaded when a document is first opened |
 | `app/tests/essai_references.mjs`, `app/tests/essai_documents.mjs`, `app/tests/essai_bibliographie.mjs`, `app/tests/essai_zotero.js` | The references, their values, completion and numbering; a document turned into its preview, a Word file (its parts, well-formed XML) and a Quarto file; citations and references; Zotero against a stand-in for its server. Run by `essai_api.js` |
 | `app/tests/essai_api.js` | Check run before each build |
-| `app/tests/essai_appli.js` | The built program used end to end over the Chrome DevTools Protocol: the engine starts, the example project, a PLS model's views, an image of a plot, each fit in the R console, a `.nuee` given to a second start opens in the running window, then quitting stops R and removes its temporary folder (`node tests/essai_appli.js <program> [screenshot.png] [options]`; on Linux the program starts with no `LANG` and a short `PATH`, as from the desktop menu) |
+| `app/tests/essai_appli.js` | The built program used end to end over the Chrome DevTools Protocol: the engine starts, the example project, a PLS model's views, an image of a plot, each fit in the R console, a `.nuee` given to a second start opens in the running window, then quitting stops R and removes its temporary folder (`node tests/essai_appli.js <program> [screenshot.png] [options]`; on Linux the program starts with no `LANG` and a short `PATH`, as from the desktop menu, and so on macOS, as from the Finder, where the engine must run on the R in `Nuée.app` and a `.nuee` given to the Finder opens in the window) |
 | `app/icone/` | The logo, drawn by `dessiner_icone.py` |
 | `exemple/` | The example project (made-up data) and `creer_exemple.js`, which makes it |
 | `convertisseur/` | `.usp` to JSON converter; `usp_extract.py` is also used standalone to extract tables and model results |
@@ -163,8 +165,9 @@ Rscript moteur/tests/verifier_references.R exported results.csv 16
 cd app && node construire.js <output folder>
 ```
 
-It builds for the system it runs on: the Windows program on Windows, the Linux one on Linux
-(see [On Linux](#on-linux)). It needs Node 22.12 or later (`@electron/packager` requires it, and
+It builds for the system it runs on: the Windows program on Windows, the macOS one on a Mac (see
+[On macOS](#on-macos)), the Linux one on Linux (see [On Linux](#on-linux)). It needs Node 22.12
+or later (`@electron/packager` requires it, and
 the syntax check below relies on Node telling ES modules apart by itself).
 
 The build first runs `app/tests/essai_api.js`. It syntax-checks the interface files, then starts
@@ -232,8 +235,64 @@ end to end: install the build, offer a "0.9.9" whose installer is that same buil
 from a local server, first with a wrong SHA-256 (refused, nothing installed), then the right
 one (downloaded, installed, restarted with the same profile), and uninstall it.
 
-Settings live in `%APPDATA%\Nuee` (`~/.config/Nuee` on Linux); `--user-data-dir=<folder>` uses
-another one (a clean profile for tests or screenshots).
+Settings live in `%APPDATA%\Nuee` (`~/Library/Application Support/Nuee` on macOS,
+`~/.config/Nuee` on Linux); `--user-data-dir=<folder>` uses another one (a clean profile for
+tests or screenshots).
+
+### On macOS
+
+R is brought along, as on Windows: CRAN's R 4.6.2, from its `.pkg` (`sonoma-arm64` for Apple
+silicon, `big-sur-x86_64` for Intel), with the engine's packages installed in R's own library,
+which the build copies like the Windows one:
+
+```bash
+sudo installer -pkg R-4.6.2-arm64.pkg -target /
+sudo Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl'), lib = .Library, repos = 'https://cloud.r-project.org')"
+PYTHON=<a python3 with PyInstaller> node app/construire.js <output folder> [R folder]
+```
+
+The R folder is `/Library/Frameworks/R.framework/Resources` unless given. Without administrator
+rights, R can be expanded from its `.pkg` instead (`pkgutil --expand-full R-4.6.2-arm64.pkg R`),
+made to run from there with `node app/r-macos.js R/R-fw.pkg/Payload/R.framework/Versions/4.6/Resources`
+(after removing its `library/tcltk`, which loads CRAN's separate Tcl/Tk), and given to the build;
+run `r-macos.js` again after installing the packages with that R (`RHOME=<R folder>
+<R folder>/bin/Rscript -e "install.packages(…)"`).
+
+CRAN builds R to sit in `/Library/Frameworks/R.framework`: its programs and libraries, and the
+packages built for it, name the libraries they load by their path there, and `bin/R` names its
+own folder there. `app/r-macos.js` makes the copy in `Nuée.app/Contents/Resources/R` run from
+wherever the application is: each such name becomes `@loader_path/…` (`install_name_tool`), and
+each file changed is signed again ad hoc, since an Apple silicon Mac runs nothing whose signature
+no longer matches; `bin/R` finds its folder from its own path. The libraries keep their own names
+(`/Library/…/libR.dylib`), so that a package the researcher installs from the R console, built
+for CRAN's R, gets the `libR` already loaded. A library loaded from anywhere else than R, the
+system or XQuartz (`/opt/X11`, which only the X11 and cairo devices load, as with CRAN's R) stops
+the build: it would be missing on another Mac. `Rscript` itself still names
+`/Library/Frameworks` for R's folder: `main.js` starts it with `RHOME` set to the application's
+R (and `R_LIBS`, as on Windows). `app/tests/essai_r_macos.js` checks the names and the `bin/R`
+change.
+
+The build produces:
+
+- **`Nuee/`**: `Nuée.app` (Electron in French and English, R without its manuals, tests, debug
+  symbols or Tcl/Tk, the engine, the example project, the converter compiled with PyInstaller as
+  on Windows, `outils/export_project`) and the user guide. The whole application is then signed
+  ad hoc (`codesign --deep`) and checked: there is no Apple Developer ID, so it isn't notarized,
+  and macOS asks once to allow a copy downloaded with a browser (*System Settings › Privacy &
+  Security › Open Anyway*). Signing it with a Developer ID for notarization would need the
+  hardened runtime, and an entitlement letting R load packages not signed by the same team
+  (`com.apple.security.cs.disable-library-validation`), for those installed from the console.
+  `Info.plist` declares `.nuee` projects and, on Apple silicon, macOS 14 at least (CRAN's
+  packages for R 4.6 need it; Electron 45 needs 13).
+- **`installateur/Nuee-<version>-<arch>.dmg`**: `Nuée.app` beside a link to Applications
+  (electron-builder; `SANS_INSTALLATEUR=1` skips it).
+
+`main.js` keeps a menu bar on macOS (*Nuée*, *Edit*, *Window*, in the interface's language):
+without its Edit menu, ⌘C, ⌘V, ⌘X, ⌘A and ⌘Z would do nothing in text fields; the interface
+takes those keys elsewhere, and the menu only gets the keys the page didn't use. *Quit* asks
+about unsaved projects as *File › Quit* does. A `.nuee` double-clicked in the Finder comes as an
+`open-file` event, not on the command line. The temporary folders are each user's own
+(`$TMPDIR`).
 
 ### On Linux
 
@@ -291,10 +350,21 @@ except `verifier_references.R`, whose exported projects aren't in the repository
   screenshots (`capture-*`);
 - in Debian 12 (R 4.2) and Ubuntu 22.04 (R 4.1) containers: that `.deb` installed with apt,
   which brings R and its packages, then a check that the program finds every library it
-  loads, the engine's checks, `essai_api.js` and `essai_appli.js` with that R.
+  loads, the engine's checks, `essai_api.js` and `essai_appli.js` with that R;
+- on macOS, Apple silicon (`macos-15`) and Intel (`macos-15-intel`), with CRAN's R 4.6.2 from
+  its `.pkg`, the R the build brings along. These jobs then build `Nuée.app` and its `.dmg`,
+  move `/Library/Frameworks/R.framework` away, and run `essai_appli.js` on the application, as
+  from the Finder (no `LANG`, a short `PATH`), then on the `.dmg` mounted: the engine must run
+  on the R in `Nuée.app` (checked), and a `.nuee` given to the Finder (`open`) opens in the
+  window. The images are kept with the run (artifacts `nuee-macos-arm64` and
+  `nuee-macos-x86_64`). On Apple silicon, `verifier_script.R` runs apart and doesn't stop the
+  job: some exported scripts give the engine's results to rounding only there (mixed models
+  and GAMs within 1e-6 but not 1e-10, two k-means clusters of the same size numbered the other
+  way round, the thresholds of GAM curves drawn otherwise by `MASS::mvrnorm`), while every check
+  passes on Intel. Nuée's own check before writing a script passes on both.
 
 Electron's and electron-builder's downloaders fetch GitHub release files anonymously, which
-GitHub throttles at times (HTTP 504 for hours on 2026-11-09). The Linux job has them fetched
+GitHub throttles at times (HTTP 504 for hours on 2026-11-09). The Linux and macOS jobs have them fetched
 through GitHub's API with its token instead (`.github/miroir-github.js`, through
 `ELECTRON_MIRROR` and `ELECTRON_BUILDER_BINARIES_MIRROR`); both still check the files against
 their own checksums. The files are also cached between runs.
@@ -309,7 +379,8 @@ their own checksums. The files are also cached between runs.
    one-click update. With the repository switched on at zenodo.org, each release also gets a DOI.
    Publishing the release starts the checks on GitHub: the Linux jobs build the `.deb`, the
    AppImage and the `.tar.gz` from the tag and check them, then `linux-version-publiee` adds
-   them to the release.
+   them to the release; the macOS jobs build and check the two `.dmg`, then
+   `macos-version-publiee` adds them.
 
 ## How it matches the stored results
 
