@@ -44,6 +44,7 @@ const trois = disposer({ largeur: 174, hauteur: 60, lignes: 1, colonnes: 3, pann
 verifier('en pixels, les cellules voisines se touchent et finissent au bord', trois[0].x === 0 && trois[0].x + trois[0].largeur === trois[1].x
   && trois[1].x + trois[1].largeur === trois[2].x && trois[2].x + trois[2].largeur === Math.round(174 * PX_PAR_MM), JSON.stringify(trois));
 egal('grilles proposées', [1, 2, 3, 4, 5, 7, 11].map((n) => { const g = grilleProposee(n); return `${g.lignes}×${g.colonnes}`; }), ['1×1', '1×2', '1×3', '2×2', '2×3', '3×3', '3×4']);
+egal('… dans une colonne de 85 mm : pas plus de deux cases côte à côte', [1, 2, 3, 4, 5].map((n) => { const g = grilleProposee(n, 85); return `${g.lignes}×${g.colonnes}`; }), ['1×1', '1×2', '2×2', '2×2', '3×2']);
 egal('lettres', [lettre(0), lettre(2, 'a'), lettre(1, '(A)'), lettre(3, '(a)'), lettre(26), lettre(4, '')], ['A', 'c', '(B)', '(d)', 'AA', '']);
 const c = completer({ largeur: 1000, hauteur: -3, lignes: 9, police: 'x', lettres: { coin: 'zz', style: 'a' }, dpi: 450, panneaux: [{ vue: 'scores', colonnes: 3 }, null, { x: 1 }] });
 egal('réglages relus dans leurs bornes', [c.largeur, c.hauteur, c.lignes, c.police, c.lettres.coin, c.lettres.style, c.dpi, c.panneaux.length, c.panneaux[0].colonnes],

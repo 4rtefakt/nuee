@@ -433,7 +433,7 @@ function creerComposeur(app, conteneur, pid, f) {
       const d = disposer({ largeur: sp.largeur, hauteur: sp.hauteur, lignes: sp.lignes, colonnes: sp.colonnes, panneaux: sp.panneaux });
       if (d.cellules.every(Boolean)) return;
       const cases = sp.panneaux.reduce((k, p) => k + p.lignes * p.colonnes, 0);
-      const g = grilleProposee(cases);
+      const g = grilleProposee(cases, sp.largeur);
       if (g.lignes * g.colonnes > sp.lignes * sp.colonnes && g.colonnes >= sp.colonnes && g.lignes >= sp.lignes) { sp.lignes = g.lignes; sp.colonnes = g.colonnes; }
       else if (sp.colonnes < 3 && sp.colonnes <= sp.lignes && sp.colonnes < GRILLE_MAX) sp.colonnes += 1;
       else if (sp.lignes < GRILLE_MAX) sp.lignes += 1;
@@ -714,8 +714,8 @@ async function nouvelleFigure(app, pid, entrees = []) {
   while (titres.has(`${t('figure_nom')} ${n}`)) n += 1;
   const spec = completer({});
   spec.panneaux = entrees.filter((e) => e.graphe).map((e) => panneauDeVue(app, e));
-  if (spec.panneaux.length) Object.assign(spec, grilleProposee(spec.panneaux.length));
   spec.largeur = spec.panneaux.length === 1 ? 85 : 174;
+  if (spec.panneaux.length) Object.assign(spec, grilleProposee(spec.panneaux.length, spec.largeur));
   const r = await demander('figure_enregistrer', { projet: pid, titre: `${t('figure_nom')} ${n}`, contenu: JSON.stringify(spec) });
   app.majProjet(r.projet);
   app.diffuser('modeles');  // (the other windows' explorers)
@@ -733,7 +733,7 @@ async function ajouterA(app, pid, id, entree) {
     const spec = lireContenu(f.contenu);
     spec.panneaux.push(panneauDeVue(app, entree));
     for (let k = 0; k < 2 * GRILLE_MAX && !disposer(spec).cellules.every(Boolean); k += 1) {
-      const g = grilleProposee(spec.panneaux.reduce((x, p) => x + p.lignes * p.colonnes, 0));
+      const g = grilleProposee(spec.panneaux.reduce((x, p) => x + p.lignes * p.colonnes, 0), spec.largeur);
       spec.lignes = Math.max(spec.lignes, g.lignes);
       spec.colonnes = Math.max(spec.colonnes, g.colonnes);
       if (!disposer(spec).cellules.every(Boolean)) spec.lignes = Math.min(GRILLE_MAX, spec.lignes + 1);

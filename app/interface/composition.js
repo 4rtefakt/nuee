@@ -55,13 +55,15 @@ export function completer(spec = {}) {
   };
 }
 
-// The grid proposed for n panels: side by side up to three, then in rows of two or three.
-export function grilleProposee(n) {
-  if (n <= 3) return { lignes: 1, colonnes: Math.max(1, n) };
-  if (n === 4) return { lignes: 2, colonnes: 2 };
-  if (n <= 6) return { lignes: 2, colonnes: 3 };
-  if (n <= 9) return { lignes: 3, colonnes: 3 };
-  return { lignes: Math.min(GRILLE_MAX, Math.ceil(n / 4)), colonnes: 4 };
+// The grid proposed for n panels in a figure `largeur` mm wide: side by side up to three, then in
+// rows of two or three, with no more columns than cells of 40 mm (three plots side by side in an
+// 85 mm column would be unreadable, and Plotly no longer fits their axes there).
+export function grilleProposee(n, largeur = DEFAUTS.largeur) {
+  let g = n <= 3 ? { lignes: 1, colonnes: Math.max(1, n) } : n === 4 ? { lignes: 2, colonnes: 2 }
+    : n <= 6 ? { lignes: 2, colonnes: 3 } : n <= 9 ? { lignes: 3, colonnes: 3 } : { lignes: Math.ceil(n / 4), colonnes: 4 };
+  const colonnesMax = Math.max(1, Math.floor(largeur / 40));
+  if (g.colonnes > colonnesMax) g = { lignes: Math.ceil(n / colonnesMax), colonnes: colonnesMax };
+  return { lignes: Math.min(GRILLE_MAX, g.lignes), colonnes: g.colonnes };
 }
 
 // The panels placed in the grid in their order: each at the first place where it fits, row by
