@@ -57,6 +57,26 @@ jobs:
         working-directory: app
         run: node tests/essai_installation.js
 
+  # The update from 0.9.9 keeps Nuée's shortcuts and taskbar pin (app/installateur.nsh): 0.9.9 as
+  # published, installed, then this version's installer around a stand-in application, run as
+  # 0.9.9's updater runs it and as this version's does (app/tests/essai_mise_a_jour.js).
+  mise-a-jour:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Paquets de l'interface
+        working-directory: app
+        run: npm ci --ignore-scripts
+
+      - name: Mise à jour depuis la 0.9.9, raccourcis et épingle gardés
+        working-directory: app
+        run: node tests/essai_mise_a_jour.js
+
   linux:
     runs-on: ubuntu-24.04
     steps:

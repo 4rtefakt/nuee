@@ -12,6 +12,7 @@
 //   node construire.js <output folder>        (RSCRIPT=<Rscript> for another R than the PATH's)
 // tests/essai_api.js runs first (interface syntax, main requests of the R server): a failure
 // stops the build (SANS_ESSAI=1 skips it). SANS_INSTALLATEUR=1 skips the installer.
+//   node construire.js --installateur <packaged application> <output folder>: the installer alone.
 const { packager } = require('@electron/packager');
 const builder = require('electron-builder');
 const { execFileSync } = require('child_process');
@@ -144,17 +145,24 @@ async function construire() {
   fs.copyFileSync(path.join(depot, 'USER-GUIDE.txt'), path.join(final, 'USER-GUIDE.txt'));
   console.log('Prêt :', final);
 
-  // The installer for everyone else: for this user (no administrator rights needed) or for
-  // all users, Start menu and desktop shortcuts, listed in Settings › Apps with its uninstaller.
   if (process.env.SANS_INSTALLATEUR) return;
+  await construireInstallateur(path.join(final, 'application'), path.join(sortie, 'installateur'));
+}
+
+// The installer for everyone else, from the packaged application `application` into `dossier`: for
+// this user (no administrator rights needed) or for all users, Start menu and desktop shortcuts,
+// listed in Settings › Apps with its uninstaller. installateur.nsh: an installation over Nuée's
+// folder keeps its shortcuts and taskbar pin. (Alone: node construire.js --installateur
+// <application> <output folder>, as tests/essai_mise_a_jour.js does with a stand-in application.)
+async function construireInstallateur(application, dossier) {
   console.log('installateur…');
   const fichiers = await builder.build({
     targets: builder.Platform.WINDOWS.createTarget('nsis', builder.Arch.x64),
-    prepackaged: path.join(final, 'application'),
+    prepackaged: application,
     projectDir: __dirname,
     config: {
       appId: 'io.github.4rtefakt.nuee', productName: 'Nuée', executableName: 'Nuee', copyright: '4rtefakt', compression: 'maximum',
-      directories: { output: path.join(sortie, 'installateur') },
+      directories: { output: dossier },
       win: { icon: path.join(__dirname, 'icone', 'nuee.ico') },
       // .nuee projects open in Nuée when double-clicked, with its icon
       fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Nuée project', icon: path.join(__dirname, 'icone', 'nuee.ico') }],
@@ -165,6 +173,7 @@ async function construire() {
         installerSidebar: path.join(__dirname, 'icone', 'installateur.bmp'), uninstallerSidebar: path.join(__dirname, 'icone', 'installateur.bmp'),
         // (Windows's language when it is one of them, English otherwise: the first one)
         installerLanguages: ['en_US', 'fr_FR'], language: '1033', artifactName: 'Nuee-Setup-${version}.exe',
+        include: path.join(__dirname, 'installateur.nsh'),
       },
     },
   });
@@ -220,4 +229,5 @@ async function construireLinux(dossier) {
   console.log('Paquets :', fichiers.filter((f) => /\.(deb|AppImage|tar\.gz)$/.test(f)).join(', '));
 }
 
-construire().catch((e) => { console.error(e); process.exit(1); });
+(process.argv[2] === '--installateur' ? construireInstallateur(path.resolve(process.argv[3]), path.resolve(process.argv[4])) : construire())
+  .catch((e) => { console.error(e); process.exit(1); });
