@@ -17,12 +17,34 @@ ITERATIONS_MAX <- 2000
 SEUIL_VARIATION <- 1e-12
 
 # Projection de chaque ligne de E sur le vecteur v, en ignorant les cases manquantes.
-projeter <- function(E, M, v) {
+# `plein` : le masque M n'a aucune case manquante (masque_plein). La somme des v^2 des cases
+# présentes est alors la même pour chaque ligne, et M %*% v^2 la calcule dans l'ordre de BLAS
+# (en double, terme à terme, que sum() ne suit pas : il cumule en précision étendue) : elle est
+# calculée une fois, dans ce même ordre (somme_blas), plutôt que par un produit de plus avec M.
+projeter <- function(E, M, v, plein = FALSE) {
   vv <- sum(v^2)
-  present <- as.vector(M %*% (v^2))
+  present <- if (plein) somme_blas(v^2) else as.vector(M %*% (v^2))
   correction <- pmin(vv / pmax(present, 1e-300), PLAFOND_CORRECTION)
   as.vector(E %*% v) / vv * correction
 }
+
+# La projection de chaque colonne de E sur le vecteur u (une valeur par ligne de E) : ce que donne
+# projeter(t(E), t(M), u), sans transposer E ni M (crossprod fait les mêmes produits, dans le même
+# ordre).
+projeter_colonnes <- function(E, M, u, plein = FALSE) {
+  uu <- sum(u^2)
+  present <- if (plein) somme_blas(u^2) else as.vector(crossprod(M, u^2))
+  correction <- pmin(uu / pmax(present, 1e-300), PLAFOND_CORRECTION)
+  as.vector(crossprod(E, u)) / uu * correction
+}
+
+# La somme des éléments de x dans l'ordre d'un produit de matrices de BLAS (en double, du premier
+# au dernier) : celle de chaque ligne de M %*% x quand M n'a que des 1.
+somme_blas <- function(x) as.vector(crossprod(x, rep(1, length(x))))
+
+# Le masque M (1 là où la donnée existe, 0 sinon) n'a-t-il aucune case manquante ? Alors
+# multiplier par M ne change rien, et les projections se passent de lui (projeter).
+masque_plein <- function(M) !length(M) || min(M) == 1
 
 norme <- function(v) sqrt(sum(v^2))
 
@@ -36,53 +58,82 @@ sans_variation <- function() {
 }
 
 # Les résidus E ont-ils encore de la variation : une somme des carrés au-dessus de SEUIL_VARIATION
-# fois celle de départ (`depart` : celle de la matrice avant la 1re composante) ?
-verifier_variation <- function(E, depart) if (!isTRUE(sum(E^2) > SEUIL_VARIATION * depart)) sans_variation()
+# fois celle de départ (`depart` : celle de la matrice avant la 1re composante) ? Rend cette somme.
+verifier_variation <- function(E, depart) {
+  s <- sum(E^2)
+  if (!isTRUE(s > SEUIL_VARIATION * depart)) sans_variation()
+  invisible(s)
+}
+
+# Avant chaque produit de matrices, R vérifie qu'elles n'ont ni NaN ni infini (que BLAS ne propage
+# pas toujours) : un passage sur toute la matrice, qui coûte à peu près autant que le produit d'une
+# matrice par un vecteur. Les résidus d'une composante, dont la somme des carrés est finie
+# (`finies`, verifier_variation), n'en ont pas, ni les vecteurs qui en viennent : le temps de ses
+# itérations, R appelle BLAS sans vérifier, ce qui fait exactement le même calcul. Seulement quand R
+# est à son réglage par défaut (matprod "default", qui appelle alors BLAS) ; rend le réglage à
+# remettre ensuite (options(...)).
+produits_sans_verification <- function(finies) {
+  if (isTRUE(all(finies)) && identical(getOption("matprod"), "default")) options(matprod = "blas") else list()
+}
 
 # Une composante d'ACP : scores t et loadings p (de norme 1). `depart` : la somme des carrés de X
 # avant la 1re composante (par défaut celle de E : seuls des résidus tous nuls sont refusés).
 composante_acp <- function(E, ME, depart = sum(E^2)) {
-  verifier_variation(E, depart)
+  ancien <- produits_sans_verification(is.finite(verifier_variation(E, depart)))
+  on.exit(options(ancien), add = TRUE)
+  # (E transposée une fois : une ACP fait souvent des centaines d'itérations, et le produit d'une
+  # matrice transposée par un vecteur est un peu plus rapide que crossprod ; sans case manquante,
+  # le masque ne sert pas : projeter)
+  plein <- masque_plein(ME)
   Et <- t(E)
-  MEt <- t(ME)
+  MEt <- if (!plein) t(ME)
   tt <- E[, which.max(colSums(E^2))]
   for (i in seq_len(ITERATIONS_MAX)) {
-    p <- projeter(Et, MEt, tt)
+    p <- projeter(Et, MEt, tt, plein)
     p <- p / norme(p)
-    nouveau <- projeter(E, ME, p)
+    nouveau <- projeter(E, ME, p, plein)
     fini <- norme(nouveau - tt) <= TOLERANCE * norme(nouveau)
     tt <- nouveau
     if (fini) break
   }
-  list(t = tt, p = projeter(Et, MEt, tt), iterations = i)
+  list(t = tt, p = projeter(Et, MEt, tt, plein), iterations = i)
 }
 
 # Une composante de PLS : poids w (norme 1), scores t, poids de Y c, scores de Y u, loadings p.
 # `depart` : les sommes des carrés de X et de Y avant la 1re composante.
 composante_pls <- function(E, ME, F, MF, depart = c(sum(E^2), sum(F^2))) {
-  verifier_variation(E, depart[1])
-  verifier_variation(F, depart[2])
-  Et <- t(E)
-  MEt <- t(ME)
-  Ft <- t(F)
-  MFt <- t(MF)
+  sommes <- c(verifier_variation(E, depart[1]), verifier_variation(F, depart[2]))
+  ancien <- produits_sans_verification(is.finite(sommes))
+  on.exit(options(ancien), add = TRUE)
+  # (quelques itérations seulement : projeter_colonnes plutôt que de transposer E, M, F et MF)
+  plein_x <- masque_plein(ME)
+  plein_y <- masque_plein(MF)
   u <- F[, which.max(colSums(F^2))]
   for (i in seq_len(ITERATIONS_MAX)) {
-    w <- projeter(Et, MEt, u)
+    w <- projeter_colonnes(E, ME, u, plein_x)
     if (!isTRUE(norme(w) > 0)) sans_variation()  # X sans aucun lien avec ce qui reste de Y : 0 / 0
     w <- w / norme(w)
-    tt <- projeter(E, ME, w)
-    cc <- projeter(Ft, MFt, tt)
-    nouveau <- projeter(F, MF, cc)
+    tt <- projeter(E, ME, w, plein_x)
+    cc <- projeter_colonnes(F, MF, tt, plein_y)
+    nouveau <- projeter(F, MF, cc, plein_y)
     fini <- norme(nouveau - u) <= TOLERANCE * norme(nouveau)
     u <- nouveau
     if (fini) break
   }
-  list(t = tt, p = projeter(Et, MEt, tt), w = w, c = cc, u = u, iterations = i)
+  list(t = tt, p = projeter_colonnes(E, ME, tt, plein_x), w = w, c = cc, u = u, iterations = i)
 }
 
-# Préparation d'une matrice : valeurs manquantes à 0 et masque des valeurs présentes.
+# Les résidus E (masque M) moins la composante de scores t et de loadings p : (E - t p') * M,
+# sans la multiplication quand M n'a que des 1 (`plein`, masque_plein ; elle ne change alors rien).
+retirer_composante <- function(E, M, t, p, plein = masque_plein(M)) {
+  # (en une expression : R écrit chaque résultat dans la mémoire du précédent, qu'il n'a pas nommé)
+  if (plein) E - outer(t, p) else (E - outer(t, p)) * M
+}
+
+# Préparation d'une matrice : valeurs manquantes à 0 et masque des valeurs présentes. Sans valeur
+# manquante, la matrice telle quelle et un masque de 1 (les mêmes, sans les copies de is.na).
 preparer <- function(X) {
+  if (!anyNA(X)) return(list(E = X, M = array(1, dim(X), dimnames(X))))
   M <- 1 * !is.na(X)
   X[is.na(X)] <- 0
   list(E = X, M = M)

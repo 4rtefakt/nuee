@@ -152,51 +152,98 @@ nom_groupes_vc <- function(projet, d) {
          "")
 }
 
+# Comment valider la définition `d` : la façon (mode_validation : `mode`, et `complet` pour les
+# centres et poids du modèle complet), le groupe de chaque observation (groupes_definition), G (celui
+# de la définition pour des groupes à tour de rôle, même avec moins d'observations que de groupes,
+# sinon le nombre de groupes formés ; les termes d'une ACP en font autant) et le seuil des écarts-types
+# des sous-modèles (construire_bloc : infini quand seuls les centres sont recalculés).
+plan_validation <- function(projet, d, G) {
+  mode <- mode_validation(d)
+  groupes <- groupes_definition(projet, d, G)
+  if (!identical(groupes, groupes_validation(length(d$observations), G))) G <- max(groupes)
+  list(mode = mode, complet = identical(mode, "complet"), groupes = groupes, G = G,
+       seuil = if (identical(mode, "centres")) Inf else SEUIL_ECART_VC)
+}
+
+# Le côté X de chaque sous-modèle de la validation croisée de `d` (plan : plan_validation), dans
+# l'ordre des groupes : ses lignes hors du groupe caché (`hors`), son bloc X (sx : construit sur les
+# autres observations, ou celui du modèle complet `bx` avec ses centres et poids), sa matrice et celle
+# des lignes du groupe caché, préparées (Xs, Xh), la somme des carrés de Xs (`depart`) et son masque
+# sans case manquante (`plein`). Rien n'y dépend de Y : le test de permutation (validation.R) le
+# calcule une fois pour tous ses modèles (cote_x_modele, modele.R).
+tours_x_validation <- function(projet, d, X, bx, vx, poids, plan, projets = NULL) {
+  obs <- d$observations
+  par_ligne <- spectres_par_ligne(d$spectres)
+  # (les colonnes de sx ne servent qu'aux termes croisés de Y : garder_simples)
+  y_croises <- identical(d$type, "PLS") && any(vapply(d$y, function(t) length(t$variables) > 1, TRUE))
+  lapply(sort(unique(plan$groupes)), function(g) {
+    hors <- plan$groupes == g
+    if (plan$complet) {
+      sx <- bx
+      Xs <- list(E = X$E[!hors, , drop = FALSE], M = X$M[!hors, , drop = FALSE])
+      Xh <- list(E = X$E[hors, , drop = FALSE], M = X$M[hors, , drop = FALSE])
+    } else {
+      p <- if (is.null(projets)) projet else projets[[g]]
+      v <- if (is.null(projets)) vx else valeurs_bloc(p, d$x, obs)
+      if (!is.null(projets) && par_ligne) v <- pretraiter_bloc(p, d$x, v, d$spectres)$bruts
+      sx <- construire_bloc(p, d$x, obs[!hors], poids, spectres = d$spectres, bruts = v[!hors, , drop = FALSE],
+                            complet = list(ecart = bx$ecart, seuil = plan$seuil), pretraites = par_ligne, garder_simples = y_croises)
+      hx <- construire_bloc(p, d$x, obs[hors], imposees = sx, spectres = d$spectres, bruts = v[hors, , drop = FALSE], pretraites = par_ligne,
+                            garder_simples = FALSE)
+      Xs <- preparer(sx$X)
+      Xh <- preparer(hx$X)
+    }
+    list(hors = hors, sx = sx, Xs = Xs, Xh = Xh, depart = sum(Xs$E^2), plein = masque_plein(Xs$M))
+  })
+}
+
 # Les sous-modèles de la validation croisée de la définition `d`, prêts à être ajustés : pour
 # chaque groupe, leurs blocs X (et Y) préparés (preparer), construits sur les observations des
 # autres groupes, et les lignes X du groupe, construites avec les centres et poids du sous-modèle.
 #   X, Y : les blocs préparés du modèle complet, où les erreurs de prédiction sont mesurées ;
 #   bx, by : ses centres et poids ; vx : les valeurs des termes X de ses observations
-#   (valeurs_bloc), lues une fois pour tous les sous-modèles ; A : le nombre de composantes au
+#   (valeurs_bloc), lues une fois pour tous les sous-modèles, et déjà prétraitées quand chaque
+#   spectre l'est seul (spectres.R : spectres_par_ligne ; calculer_modele) : chaque sous-modèle et
+#   chaque groupe en prennent leurs lignes ; A : le nombre de composantes au
 #   plus ; G : le nombre de groupes quand les observations y sont réparties à tour de rôle
 #   (groupes_definition) ; projets (iPLS) : le projet de chaque groupe, quand ses valeurs en
-#   dépendent.
-debut_validation <- function(projet, d, X, Y, bx, by, A, G, poids, vx, projets = NULL) {
+#   dépendent ; tours_x : le côté X de chaque sous-modèle, déjà calculé (tours_x_validation : le
+#   test de permutation, dont seul Y change).
+debut_validation <- function(projet, d, X, Y, bx, by, A, G, poids, vx, projets = NULL, tours_x = NULL) {
   obs <- d$observations
   pls <- !is.null(Y)
-  mode <- mode_validation(d)
-  groupes <- groupes_definition(projet, d, G)
-  # G : celui de la définition pour des groupes à tour de rôle (même avec moins d'observations que
-  # de groupes), sinon le nombre de groupes formés ; les termes (ACP) en font autant
-  if (!identical(groupes, groupes_validation(length(obs), G))) G <- max(groupes)
+  plan <- plan_validation(projet, d, G)
+  mode <- plan$mode
+  groupes <- plan$groupes
+  G <- plan$G
   groupes_termes <- groupes_validation(ncol(X$E), G)
   Z <- if (pls) Y else X  # les variables prédites
   # centres et poids du modèle complet : une ACP ou une PLS avance composante par composante sur
   # les résidus du modèle complet (validation_par_composante) ; une OPLS (opls.R) a des sous-modèles faits sur les lignes des
   # matrices du modèle complet, déjà centrées et mises à l'échelle
-  complet <- identical(mode, "complet")
+  complet <- plan$complet
   if (complet && !isTRUE(d$opls)) return(debut_par_composante(X, Y, bx, by, A, G, groupes, groupes_termes))
-  seuil <- if (identical(mode, "centres")) Inf else SEUIL_ECART_VC
-  tours <- lapply(sort(unique(groupes)), function(g) {
-    hors <- groupes == g
+  seuil <- plan$seuil
+  if (is.null(tours_x)) tours_x <- tours_x_validation(projet, d, X, bx, vx, poids, plan, projets)
+  niveaux <- sort(unique(groupes))
+  tours <- lapply(seq_along(niveaux), function(i) {
+    tx <- tours_x[[i]]
+    hors <- tx$hors
+    sx <- tx$sx
+    Xs <- tx$Xs
+    Xh <- tx$Xh
     if (complet) {
-      sx <- bx
       sy <- by
-      Xs <- list(E = X$E[!hors, , drop = FALSE], M = X$M[!hors, , drop = FALSE])
       Ys <- list(E = Y$E[!hors, , drop = FALSE], M = Y$M[!hors, , drop = FALSE])
-      Xh <- list(E = X$E[hors, , drop = FALSE], M = X$M[hors, , drop = FALSE])
     } else {
-      p <- if (is.null(projets)) projet else projets[[g]]
-      v <- if (is.null(projets)) vx else valeurs_bloc(p, d$x, obs)
-      sx <- construire_bloc(p, d$x, obs[!hors], poids, spectres = d$spectres, bruts = v[!hors, , drop = FALSE],
-                            complet = list(ecart = bx$ecart, seuil = seuil))
-      hx <- construire_bloc(p, d$x, obs[hors], imposees = sx, spectres = d$spectres, bruts = v[hors, , drop = FALSE])
-      sy <- if (pls) construire_bloc(p, d$y, obs[!hors], poids, facteurs = sx$simples, complet = list(ecart = by$ecart, seuil = seuil))
-      Xs <- preparer(sx$X)
+      p <- if (is.null(projets)) projet else projets[[niveaux[i]]]
+      sy <- if (pls) construire_bloc(p, d$y, obs[!hors], poids, facteurs = sx$simples, complet = list(ecart = by$ecart, seuil = seuil),
+                                     garder_simples = FALSE)
       Ys <- if (pls) preparer(sy$X)
-      Xh <- preparer(hx$X)
     }
-    r <- list(hors = hors, X = Xs, Y = Ys, E = Xs$E, F = Ys$E, depart = c(sum(Xs$E^2), if (pls) sum(Ys$E^2)),
+    # (plein, plein_y : les masques du sous-modèle sans case manquante, nipals.R : masque_plein)
+    r <- list(hors = hors, X = Xs, Y = Ys, E = Xs$E, F = Ys$E, depart = c(tx$depart, if (pls) sum(Ys$E^2)),
+              plein = tx$plein, plein_y = pls && masque_plein(Ys$M),
               sous = if (pls) sy else sx, arrete = FALSE, prediction = matrix(0, sum(hors), ncol(Z$E)),
               gardes = c(sx$gardes, if (pls) sy$gardes),
               P = matrix(NA_real_, ncol(X$E), A), W = if (pls) matrix(NA_real_, ncol(X$E), A), C = if (pls) matrix(NA_real_, ncol(Y$E), A))
@@ -260,20 +307,21 @@ composante_validation <- function(vc, a, E = NULL, F = NULL, comp = NULL) {
                                     sans_variation = function(e) NULL)
     r$arrete <- is.null(comp)
     if (!r$arrete) {
-      r$E <- (r$E - outer(comp$t, comp$p)) * r$X$M
+      r$E <- retirer_composante(r$E, r$X$M, comp$t, comp$p, r$plein)
       r$P[, a] <- comp$p
       if (vc$pls) {
-        r$F <- (r$F - outer(comp$t, comp$c)) * r$Y$M
+        r$F <- retirer_composante(r$F, r$Y$M, comp$t, comp$c, r$plein_y)
         r$W[, a] <- comp$w
         r$C[, a] <- comp$c
-        th <- projeter(r$Eh, r$Mh, comp$w)
-        r$Eh <- (r$Eh - outer(th, comp$p)) * r$Mh
+        plein_h <- masque_plein(r$Mh)
+        th <- projeter(r$Eh, r$Mh, comp$w, plein_h)
+        r$Eh <- retirer_composante(r$Eh, r$Mh, th, comp$p, plein_h)
         r$prediction <- r$prediction + outer(th, comp$c)
       } else {
         for (h in seq_along(r$Eh)) {
           cases <- vc$groupes_termes == h
           th <- projeter(r$Eh[[h]], r$Mh[[h]], comp$p)
-          r$Eh[[h]] <- (r$Eh[[h]] - outer(th, comp$p)) * r$Mh[[h]]
+          r$Eh[[h]] <- retirer_composante(r$Eh[[h]], r$Mh[[h]], th, comp$p)
           r$prediction[, cases] <- r$prediction[, cases] + outer(th, comp$p[cases])
         }
       }
@@ -327,10 +375,10 @@ validation_par_composante <- function(vc, a, E, F, comp) {
       k <- if (!s$arrete) tryCatch(composante_pls(s$E, s$ME, s$F, s$MF, s$depart), sans_variation = sans)
       s$arrete <- is.null(k)
       if (!s$arrete) {
-        s$E <- (s$E - outer(k$t, k$p)) * s$ME
-        s$F <- (s$F - outer(k$t, k$c)) * s$MF
+        s$E <- retirer_composante(s$E, s$ME, k$t, k$p)
+        s$F <- retirer_composante(s$F, s$MF, k$t, k$c)
         th <- projeter(s$Eh, s$Mh, k$w)
-        s$Eh <- (s$Eh - outer(th, k$p)) * s$Mh
+        s$Eh <- retirer_composante(s$Eh, s$Mh, th, k$p)
         s$prediction <- s$prediction + outer(th, k$c)
       }
       prediction[h, ] <- s$prediction

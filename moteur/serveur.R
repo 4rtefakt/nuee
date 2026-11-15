@@ -411,10 +411,17 @@ reajuster_demande <- function(q) {
 
 # (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande). Une définition
 # à condition est gardée avec les observations qu'elle donne sur les données du moment (condition.R).
+# L'ajustement automatique d'une ACP ou d'une PLS a déjà calculé le modèle de ses composantes
+# (nouveau.R : autoajuster_modele) : ajuster le reprend, sans refaire sa validation croisée.
 ajuster_et_garder <- function(p, d, m = NULL) {
   d <- resoudre_observations(p, d)
-  if (!d$A && !sans_composantes(d)) d$A <- max(1, autoajuster(p, d))  # (ni une régression ni une autre analyse n'a de composantes)
-  if (is.null(m)) m <- ajuster(p, d)
+  calcule <- NULL
+  if (!d$A && !sans_composantes(d)) {  # (ni une régression ni une autre analyse n'a de composantes)
+    auto <- autoajuster_modele(p, d, garder = is.null(m))
+    d$A <- max(1, auto$A)
+    calcule <- auto$modele
+  }
+  if (is.null(m)) m <- ajuster(p, d, calcule = calcule)
   id <- nouvel_id("M")
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
     d$number <- d$number %||% (max(c(0, vapply(p$models, function(x) as.numeric(x$number %||% 0), 0))) + 1)

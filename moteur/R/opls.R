@@ -25,8 +25,8 @@ composantes_predictives <- function(E, ME, F, MF, Ap, depart) {
     if (is.null(comp)) break
     comps[[a]] <- comp
     if (a < Ap) {
-      E <- (E - outer(comp$t, comp$p)) * ME
-      F <- (F - outer(comp$t, comp$c)) * MF
+      E <- retirer_composante(E, ME, comp$t, comp$p)
+      F <- retirer_composante(F, MF, comp$t, comp$c)
     }
   }
   comps
@@ -39,7 +39,7 @@ composantes_predictives <- function(E, ME, F, MF, Ap, depart) {
 # variation n'y ajoute rien (dans un sous-modèle de la validation croisée : une classe dont toutes
 # les observations sont dans le groupe retiré).
 base_poids_y <- function(E, ME, F) {
-  W <- vapply(seq_len(ncol(F)), function(m) if (sum(F[, m]^2) > 0) projeter(t(E), t(ME), F[, m]) else numeric(ncol(E)), numeric(ncol(E)))
+  W <- vapply(seq_len(ncol(F)), function(m) if (sum(F[, m]^2) > 0) projeter_colonnes(E, ME, F[, m]) else numeric(ncol(E)), numeric(ncol(E)))
   s <- svd(W)
   reste <- rev(cumsum(rev(s$d^2))) / sum(s$d^2)  # reste[k] : part des composantes k et suivantes
   s$u[, seq_len(max(1, sum(reste >= 1e-10, na.rm = TRUE))), drop = FALSE]
@@ -60,6 +60,7 @@ base_poids_y <- function(E, ME, F) {
 opls_noyau <- function(E, ME, F, MF, Ao, Ap = 1, depart = c(sum(E^2), sum(F^2)), jusqua = FALSE) {
   To <- Po <- Wo <- NULL
   impossible <- function(a) if (!jusqua) stop(trop_de_composantes(a), call. = FALSE)
+  plein <- masque_plein(ME)  # (sans case manquante, les projections se passent du masque : nipals.R)
   base <- if (Ap > 1) base_poids_y(E, ME, F)
   comps <- composantes_predictives(E, ME, F, MF, Ap, depart)
   if (length(comps) < Ap) impossible(length(comps) + 1)
@@ -69,9 +70,9 @@ opls_noyau <- function(E, ME, F, MF, Ao, Ap = 1, depart = c(sum(E^2), sum(F^2)),
     wo <- if (Ap > 1) drop(p - base %*% crossprod(base, p)) else p - sum(comps[[1]]$w * p) * comps[[1]]$w
     if (!isTRUE(sum(wo^2) > SEUIL_VARIATION * sum(p^2))) { impossible(Ap + k); break }
     wo <- wo / norme(wo)
-    to <- projeter(E, ME, wo)
-    po <- projeter(t(E), t(ME), to)
-    filtre <- (E - outer(to, po)) * ME
+    to <- projeter(E, ME, wo, plein)
+    po <- projeter_colonnes(E, ME, to, plein)
+    filtre <- retirer_composante(E, ME, to, po, plein)
     comps <- composantes_predictives(filtre, ME, F, MF, Ap, depart)
     if (length(comps) < Ap) { impossible(Ap + k); break }
     E <- filtre
@@ -86,16 +87,17 @@ opls_noyau <- function(E, ME, F, MF, Ao, Ap = 1, depart = c(sum(E^2), sum(F^2)),
 # Y prédit (centré-réduit) pour les lignes E (masque ME) par un noyau, avec ses k premières
 # composantes orthogonales et ses a premières composantes prédictives.
 opls_predire <- function(noyau, E, ME, k = ncol(noyau$Wo) %||% 0, a = length(noyau$pred)) {
+  plein <- masque_plein(ME)
   for (j in seq_len(k)) {
-    to <- projeter(E, ME, noyau$Wo[, j])
-    E <- (E - outer(to, noyau$Po[, j])) * ME
+    to <- projeter(E, ME, noyau$Wo[, j], plein)
+    E <- retirer_composante(E, ME, to, noyau$Po[, j], plein)
   }
   comps <- noyau$predictives[[k + 1]]
   Y <- 0
   for (b in seq_len(a)) {
-    tt <- projeter(E, ME, comps[[b]]$w)
+    tt <- projeter(E, ME, comps[[b]]$w, plein)
     Y <- Y + outer(tt, comps[[b]]$c)
-    if (b < a) E <- (E - outer(tt, comps[[b]]$p)) * ME
+    if (b < a) E <- retirer_composante(E, ME, tt, comps[[b]]$p, plein)
   }
   Y
 }
@@ -128,9 +130,11 @@ ajuster_opls <- function(X, Y, Ao, Ap = 1, vc = NULL, jusqua = FALSE) {
   t0 <- ifelse(is.na(T), 0, T)
   residus_x <- n$E
   residus_y <- Y$E
+  plein_x <- masque_plein(X$M)
+  plein_y <- masque_plein(Y$M)
   for (a in seq_len(Ap)) {
-    residus_x <- (residus_x - outer(t0[, a], P[, a])) * X$M
-    residus_y <- (residus_y - outer(t0[, a], C[, a])) * Y$M
+    residus_x <- retirer_composante(residus_x, X$M, t0[, a], P[, a], plein_x)
+    residus_y <- retirer_composante(residus_y, Y$M, t0[, a], C[, a], plein_y)
   }
   # part de X expliquée par chaque composante, dans l'ordre affiché (prédictives, orthogonales) :
   # les scores étant orthogonaux entre eux, les parts s'additionnent ; Y n'est expliqué que par
@@ -140,9 +144,9 @@ ajuster_opls <- function(X, Y, Ao, Ap = 1, vc = NULL, jusqua = FALSE) {
   ssxv <- matrix(colSums(E^2), K, 1)
   ssyv <- matrix(colSums(F^2), M, 1)
   for (a in seq_len(A)) {
-    E <- if (a == A) residus_x else (E - outer(t0[, a], P[, a])) * X$M
+    E <- if (a == A) residus_x else retirer_composante(E, X$M, t0[, a], P[, a], plein_x)
     ssxv <- cbind(ssxv, colSums(E^2))
-    if (a <= Ap) F <- (F - outer(t0[, a], C[, a])) * Y$M
+    if (a <= Ap) F <- retirer_composante(F, Y$M, t0[, a], C[, a], plein_y)
     ssyv <- cbind(ssyv, colSums(F[avec_x, , drop = FALSE]^2))
   }
 

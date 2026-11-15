@@ -55,7 +55,8 @@ etapes_spectres <- function(x) {
 # la place de chaque colonne dans le tableau du projet (des colonnes voisines y sont voisines).
 pretraiter_spectres <- function(X, etapes, reference = NULL, positions = seq_len(ncol(X))) {
   refs <- list()
-  x <- abscisses_spectre(colnames(X), positions)
+  # (les abscisses ne servent qu'au detrend et à la ligne de base : lues seulement pour eux)
+  x <- if (any(vapply(etapes, function(e) isTRUE(e$type %in% c("detrend", "ligne_base")), TRUE))) abscisses_spectre(colnames(X), positions)
   for (i in seq_along(etapes)) {
     e <- etapes[[i]]
     X <- switch(e$type,
@@ -80,6 +81,14 @@ pretraiter_spectres <- function(X, etapes, reference = NULL, positions = seq_len
       ligne_base = ligne_base(X, x))
   }
   list(X = X, reference = refs)
+}
+
+# Des étapes qui traitent chaque spectre seul, sans rien prendre des autres observations (toutes
+# sauf le MSC, dont le spectre moyen vient d'elles) : les spectres prétraités d'une partie des
+# observations sont alors exactement ces lignes des spectres prétraités de toutes (la validation
+# croisée prétraite une fois : modele.R, calculer_modele).
+spectres_par_ligne <- function(etapes) {
+  length(etapes) > 0 && !any(vapply(etapes, function(e) isTRUE(as.character(e$type)[1] == "msc"), TRUE))
 }
 
 # L'abscisse de chaque variable : le nombre de son nom quand toutes en ont un, différent ;
