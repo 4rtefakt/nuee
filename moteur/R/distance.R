@@ -30,8 +30,8 @@
 # al., 2009), celle de p par la méthode delta, et celle de la taille moyenne des groupes ; leur
 # somme, les degrés de liberté de Satterthwaite et l'intervalle log-normal (Buckland et al., 2001) ;
 # le total sur les strates, de même. C'est une analyse de analyses.R (ajuster_distance,
-# resultat_distance, texte_methodes_distance, tables_distance) ; elle ne prédit pas de nouvelles
-# observations.
+# resultat_distance, texte_methodes_distance, tables_distance ; son export vers R : distance_script.R) ;
+# elle ne prédit pas de nouvelles observations.
 
 DISTANCE_CLES <- c("hn", "hr", "unif")
 DISTANCE_SERIES <- c("cos", "herm", "poly")
@@ -59,6 +59,8 @@ indices_detection <- function(fd) {
   list(forme = forme, echelle = echelle, ajustements = ajust, q = k + length(fd$ordres))
 }
 
+# Les noms des paramètres, dans l'ordre de θ : ln_b, ln_sigma, puis la série et l'ordre de chaque terme
+# d'ajustement (cos_2…).
 noms_parametres_detection <- function(fd) {
   c(if (fd$cle == "hr") "ln_b", if (fd$cle != "unif") "ln_sigma", if (length(fd$ordres)) paste0(fd$serie, "_", fd$ordres))
 }
@@ -466,6 +468,27 @@ choisir_detection <- function(base, x, serie, n_fixe = NULL, n_max = DISTANCE_AJ
   list(choisi = meilleur, candidats = candidats, raison = raison)
 }
 
+# Les modèles ajustés en chemin par choisir_detection, en un tableau : leur libellé, leur clé, leur
+# série et ses ordres, leur nombre de paramètres, leur log-vraisemblance et leur AIC, s'ils convergent,
+# si la contrainte de monotonie a agi ; l'écart de chaque AIC au plus petit de ceux qui convergent, et
+# le modèle retenu.
+candidats_detection <- function(ch) {
+  candidats <- do.call(rbind, lapply(ch$candidats, function(c) data.frame(modele = libelle_detection(c$fd), cle = c$fd$cle, serie = if (is.null(c$fd$serie)) "" else c$fd$serie,
+    ordres = paste(c$fd$ordres, collapse = " "), parametres = c$q, logL = c$ll, AIC = c$AIC, converge = isTRUE(c$converge), contraint = isTRUE(c$contraint), stringsAsFactors = FALSE)))
+  candidats$delta_AIC <- candidats$AIC - min(candidats$AIC[candidats$converge], Inf)
+  candidats$choisi <- candidats$modele == libelle_detection(ch$choisi$fd)
+  candidats
+}
+
+# La fonction de détection ajustée `det` sur 101 distances de L à w (les données `t`), et la densité
+# des distances, g / ((w − L) p) pour des lignes, f(r) = 2r g(r) / (w² p) pour des points.
+courbe_detection <- function(det, t, p) {
+  xg <- seq(t$L, t$w, length.out = 101)
+  eg <- detection_distance(det$fd, det$theta, xg)
+  g <- eg$gt / (1 + eg$s0)
+  data.frame(x = xg, g = g, f = if (t$point) 2 * xg * g / (t$w^2 * p) else g / ((t$w - t$L) * p))
+}
+
 # ---------------------------------------------------------------- l'adéquation
 
 # La fonction de répartition des distances ajustée en chaque x : ∫ de L à x sur ∫ de L à w.
@@ -782,24 +805,26 @@ densite_echantillonnage <- function(t, p, var_p, q, cu) {
   }
   lignes <- lapply(t$strates$strate, ligne)
   if (length(lignes) > 1) {
-    poids <- if (t$densite_seule) vapply(lignes, `[[`, 0, "couverte") / sum(vapply(lignes, `[[`, 0, "couverte")) else rep(1, length(lignes))
-    somme <- function(cle) sum(vapply(lignes, `[[`, 0, cle))
-    N <- sum(poids * vapply(lignes, `[[`, 0, "N"))
-    var_er_N <- sum(poids^2 * vapply(lignes, `[[`, 0, "var_er_N"))
-    er_ddl <- var_er_N^2 / sum(vapply(lignes, function(l) l$var_er_N^2 / l$ddl_rencontre, 0))
+    de_chaque <- function(f) vapply(lignes, f, 0)  # (une grandeur de chaque strate : f de sa ligne)
+    couverte <- de_chaque(function(l) l$couverte)
+    poids <- if (t$densite_seule) couverte / sum(couverte) else rep(1, length(lignes))
+    N <- sum(poids * de_chaque(function(l) l$N))
+    var_er_N <- sum(poids^2 * de_chaque(function(l) l$var_er_N))
+    er_ddl <- var_er_N^2 / sum(de_chaque(function(l) l$var_er_N^2 / l$ddl_rencontre))
     var_det_N <- N^2 * var_p / p^2
-    var_g_N <- somme("var_groupes_N")
+    var_g_N <- sum(de_chaque(function(l) l$var_groupes_N))
     tvar <- var_er_N + var_det_N + var_g_N
     cv <- if (N > 0) sqrt(tvar) / N else 0
     ddl <- (var_er_N / N^2 + var_det_N / N^2 + var_g_N / N^2)^2 /
       sum(c((var_er_N / N^2)^2 / er_ddl, (var_det_N / N^2)^2 / (nddf - q), (var_g_N / N^2)^2 / (nddf - 1)), na.rm = TRUE)
-    effort <- somme("effort")
-    n <- somme("n")
+    effort <- sum(de_chaque(function(l) l$effort))
+    n <- sum(de_chaque(function(l) l$n))
+    individus <- sum(de_chaque(function(l) l$individus))
     er_var <- variance_rencontre(t$transects$effort, t$transects$n, type)
-    lignes[[length(lignes) + 1]] <- list(strate = NA_character_, aire = if (t$densite_seule) NA_real_ else somme("aire"), couverte = somme("couverte"),
-      effort = effort, k = somme("k"), n = n, individus = somme("individus"), rencontre = n / effort, se_rencontre = sqrt(er_var),
+    lignes[[length(lignes) + 1]] <- list(strate = NA_character_, aire = if (t$densite_seule) NA_real_ else sum(de_chaque(function(l) l$aire)), couverte = sum(couverte),
+      effort = effort, k = sum(de_chaque(function(l) l$k)), n = n, individus = individus, rencontre = n / effort, se_rencontre = sqrt(er_var),
       cv_rencontre = if (n == 0) 0 else sqrt(er_var) / (n / effort), ddl_rencontre = er_ddl, N = N, se = sqrt(tvar), cv = cv, ddl = ddl, var_er_N = var_er_N,
-      var_det_N = var_det_N, var_groupes_N = var_g_N, taille_moyenne = somme("individus") / max(1, n), se_taille = NA_real_, Nc = sum(poids * vapply(lignes, `[[`, 0, "Nc")),
+      var_det_N = var_det_N, var_groupes_N = var_g_N, taille_moyenne = individus / max(1, n), se_taille = NA_real_, Nc = sum(poids * de_chaque(function(l) l$Nc)),
       cv_detection = if (N > 0) sqrt(var_det_N) / N else 0, cv_groupes = if (N > 0) sqrt(var_g_N) / N else 0)
   }
   out <- do.call(rbind, lapply(lignes, function(l) {
@@ -858,17 +883,10 @@ ajuster_distance <- function(projet, d) {
   # EDR = w √p, son CV la moitié de celui de p)
   effectif <- if (t$point) list(quoi = "EDR", valeur = t$w * sqrt(pr$p), se = t$w * sqrt(pr$p) * se_p / pr$p / 2)
               else list(quoi = "ESW", valeur = pr$p * largeur, se = se_p * largeur)
-  candidats <- do.call(rbind, lapply(ch$candidats, function(c) data.frame(modele = libelle_detection(c$fd), cle = c$fd$cle, serie = c$fd$serie %||% "",
-    ordres = paste(c$fd$ordres, collapse = " "), parametres = c$q, logL = c$ll, AIC = c$AIC, converge = isTRUE(c$converge), contraint = isTRUE(c$contraint), stringsAsFactors = FALSE)))
-  candidats$delta_AIC <- candidats$AIC - min(candidats$AIC[candidats$converge], Inf)
-  candidats$choisi <- candidats$modele == libelle_detection(det$fd)
+  candidats <- candidats_detection(ch)
   ix <- indices_detection(det$fd)
   parametres <- if (det$q) data.frame(parametre = noms_parametres_detection(det$fd), estimation = det$theta, se = det$se, stringsAsFactors = FALSE)
-  # la fonction de détection sur une grille, et la densité des distances (points : f(r) = 2r g(r) / (w² p))
-  xg <- seq(t$L, t$w, length.out = 101)
-  eg <- detection_distance(det$fd, det$theta, xg)
-  g <- eg$gt / (1 + eg$s0)
-  courbe <- data.frame(x = xg, g = g, f = if (t$point) 2 * xg * g / (t$w^2 * pr$p) else g / (largeur * pr$p))
+  courbe <- courbe_detection(det, t, pr$p)
   ex <- detection_distance(det$fd, det$theta, t$x)
   m <- list(type = "DISTANCE", N = length(t$observations), observations = t$observations, reglages_echantillonnage = r, donnees = t,
             detection = det, candidats = candidats, selection = ch$raison, parametres = parametres,
@@ -916,12 +934,12 @@ observations_echantillonnage <- function(m) {
 
 # L'histogramme des distances sous la fonction de détection (comme plot.ds de mrds) : √n classes
 # égales ; chaque barre, le compte sur celui qu'aurait g = 1 (lignes : Δ n / (p (w − L)) ; points :
-# Δ(r²) n / (p w²)) ; et la densité des distances (le compte sur n Δ), pour la courbe f.
-histogramme_echantillonnage <- function(m) {
-  t <- m$donnees
+# Δ(r²) n / (p w²)) ; et la densité des distances (le compte sur n Δ), pour la courbe f. `t` : les
+# données, `p` : la probabilité de détection.
+histogramme_echantillonnage <- function(t, p) {
   bords <- bords_classes(list(coupures = t$coupures, L = t$L, w = t$w), t$n)
   comptes <- as.vector(table(cut(t$x, bords, include.lowest = TRUE)))
-  Nc <- t$n / m$p
+  Nc <- t$n / p
   g1 <- if (t$point) diff(bords^2) * Nc / t$w^2 else diff(bords) * Nc / (t$w - t$L)
   data.frame(de = bords[-length(bords)], a = bords[-1], compte = comptes, g = comptes / g1, f = comptes / (t$n * diff(bords)))
 }
@@ -950,7 +968,7 @@ resultat_distance <- function(id) {
        p = m$p, se_p = m$se_p, cv_p = m$se_p / m$p, effectif = m$effectif, Nc = m$Nc,
        troncature = list(w = t$w, L = t$L, type = r$troncature$type, pourcentage = t$pourcentage), au_dela = t$au_dela, en_deca = t$en_deca, vides = t$vides,
        intervalles = if (!is.null(t$coupures)) I(t$coupures),
-       courbe = m$courbe, histogramme = histogramme_echantillonnage(m), distances = I(t$x), uid_distances = I(t$uid), g_distances = I(m$g_x),
+       courbe = m$courbe, histogramme = histogramme_echantillonnage(t, m$p), distances = I(t$x), uid_distances = I(t$uid), g_distances = I(m$g_x),
        adequation = list(cvm = m$adequation$cvm, khi2 = m$adequation$khi2, qq = m$adequation$qq),
        densite = m$densite, densite_groupes = m$densite_groupes, densite_seule = t$densite_seule, groupes = t$groupes,
        transects = t$transects, unites = u, noms = t$noms, strates = I(t$strates$strate), avec_strates = !is.null(r$strate),

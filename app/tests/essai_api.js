@@ -1805,9 +1805,10 @@ async function principal() {
       let refus = '';
       try { await api('ajuster', { ...def, options: { ...options, effort: null } }); } catch (err) { refus = err.message; }
       verifier(/longueur de la ligne/.test(refus), `des lignes sans effort refusées : « ${refus} »`);
-      let refusScript = '';
-      try { await api('script_r', { modele: dm.id, chemin: path.join(dossier, 'distance.R'), version: 'essai' }); } catch (err) { refusScript = err.message; }
-      verifier(/Pas encore/.test(refusScript), `export vers R : « ${refusScript} »`);
+      for (const [m, f, langue, motif] of [[dm, 'distance.R', 'en', /choose_detection <- function/], [groupes, 'distance_groupes.R', 'fr', /densite_groupes <- densite_echantillonnage\(/]]) {
+        const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, f), version: 'essai', langue });
+        verifier(fs.existsSync(s.script) && !s.ecart && motif.test(fs.readFileSync(s.script, 'utf8')), `script ${f} : ${s.ecart || 'sans écart'}`);
+      }
     });
     await etape('forêts aléatoires et arbres boostés (moteur/R/forets.R, boosting.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe, une présence

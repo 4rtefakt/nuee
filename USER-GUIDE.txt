@@ -384,9 +384,9 @@ Export to R (script, R Markdown, Quarto)
 File › Export to R: a file that refits the model without Nuée, with R alone, to send to a
 colleague or attach to a paper. The calculation is written for that model alone, in plain R
 with no package (a regression: lm, or nlme and mgcv, which come with R; an NMDS: MASS, which
-comes with R too; TRIM and boosted trees, with rpart: the functions of Nuée's engine, copied
-into the script; a random forest, the one exception: the ranger package, which Nuée installs
-with itself), commented in the export's language, in four parts:
+comes with R too; TRIM and distance sampling, and boosted trees with rpart: the functions of
+Nuée's engine, copied into the script; a random forest, the one exception: the ranger package,
+which Nuée installs with itself), commented in the export's language, in four parts:
   1. the functions: the NIPALS algorithm, the cross-validation, and only what this model
      uses (missing values, spectral preprocessing, OPLS...);
   2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
@@ -1562,8 +1562,12 @@ the Cramér–von Mises test; not for distances in intervals); Density and abund
 effort, transects, detections, encounter rate and its CV, D, its standard error, CV, 95%
 interval and df, N and its interval, the share of the variance due to the encounter rate, to
 detection and to group size; with groups, the density of groups too). Methods text with its
-references, Export and report as for the other models; no prediction, and no Export to R yet.
-Covariates in the detection function (MCDS) are not supported yet.
+references, Export and report as for the other models, and Export to R: a script or report that
+redoes the analysis with R alone, without Distance or mrds, the distance sampling functions of
+Nuée's engine copied into it (the same candidates and AICs, parameters and their covariance, p,
+ESW or EDR, goodness-of-fit tests, density and abundance as Nuée; the detection function over
+the histogram and the QQ plot in base R). No prediction. Covariates in the detection function
+(MCDS) are not supported yet.
 
 The results are those of Distance 2.0 (moteur/tests/verifier_distance.R compares them), with
 three known differences: Nuée integrates the hazard-rate key exactly where mrds approximates

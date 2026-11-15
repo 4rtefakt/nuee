@@ -413,9 +413,10 @@ Exporter vers R (script, R Markdown, Quarto)
 Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
 envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul,
 en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R ; un NMDS : MASS, livré
-avec R lui aussi ; TRIM et des arbres boostés, avec rpart : les fonctions du moteur de Nuée,
-recopiées dans le script ; une forêt aléatoire, la seule exception : le paquet ranger, que
-Nuée installe avec lui), commenté dans la langue de l'export, en quatre parties :
+avec R lui aussi ; TRIM et l'échantillonnage par distances, et des arbres boostés avec rpart :
+les fonctions du moteur de Nuée, recopiées dans le script ; une forêt aléatoire, la seule
+exception : le paquet ranger, que Nuée installe avec lui), commenté dans la langue de l'export,
+en quatre parties :
   1. les fonctions : l'algorithme NIPALS, la validation croisée, et seulement ce que ce
      modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;
   2. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
@@ -1698,8 +1699,13 @@ effectif (par strate et au total : aire, aire couverte, effort, transects, déte
 rencontre et son CV, D, son erreur-type, son CV, son intervalle à 95 % et ses ddl, N et son
 intervalle, la part de la variance due au taux de rencontre, à la détection et à la taille des
 groupes ; avec des groupes, la densité des groupes aussi). Texte des méthodes avec ses
-références, Exporter et rapport comme pour les autres modèles ; pas de prédiction, et pas encore
-d'export vers R. Les covariables de la fonction de détection (MCDS) ne sont pas encore prises.
+références, Exporter et rapport comme pour les autres modèles, et Exporter vers R : un script
+ou un rapport qui refait l'analyse avec R seul, sans Distance ni mrds, les fonctions de
+l'échantillonnage par distances du moteur de Nuée recopiées dedans (les mêmes modèles candidats
+et AIC, paramètres et leur covariance, p, ESW ou EDR, tests d'adéquation, densité et effectif
+que Nuée ; la fonction de détection sur l'histogramme et le diagramme quantile-quantile en R de
+base). Pas de prédiction. Les covariables de la fonction de détection (MCDS) ne sont pas encore
+prises.
 
 Les résultats sont ceux de Distance 2.0 (moteur/tests/verifier_distance.R les compare), à trois
 différences connues près : Nuée intègre la clé hasard exactement là où mrds approche son
