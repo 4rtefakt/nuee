@@ -36,13 +36,18 @@ const inutile = (rel) => /^(doc|tests|Tcl)([\\/]|$)|^unins/i.test(rel)
 
 // R packages to bring: base R, the recommended packages (for the R console; foreign reads dBase
 // and Weka files) and what the engine loads with its dependencies (haven: SPSS, Stata, SAS;
-// readxl: .xls; ranger: random forests). Others installed in the local R (testthat...) stay out,
-// and so do those only needed to compile a package (LinkingTo: cpp11, progress).
+// readxl: .xls; RSQLite: GeoPackage; ranger: random forests). Others installed in the local R
+// (testthat...) stay out, and so do those only needed to compile a package (LinkingTo: cpp11,
+// progress). One of the engine's packages missing from R's own library stops the build: the
+// program would be shipped without it.
 function paquetsR() {
+  const moteur = 'c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "RSQLite", "ranger")';
   const code = 'ip <- installed.packages(lib.loc = .Library); '
+    + `manque <- setdiff(${moteur}, rownames(ip)); `
+    + 'if (length(manque)) stop("not in R\'s own library (install.packages(..., lib = .Library)): ", paste(manque, collapse = ", "), call. = FALSE); '
     + 'std <- rownames(ip)[ip[, "Priority"] %in% c("base", "recommended")]; '
-    + 'dep <- unlist(tools::package_dependencies(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "RSQLite", "ranger"), db = ip, recursive = TRUE, which = c("Depends", "Imports"))); '
-    + 'writeLines(union(std, c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "RSQLite", "ranger", "translations", dep)))';
+    + `dep <- unlist(tools::package_dependencies(${moteur}, db = ip, recursive = TRUE, which = c("Depends", "Imports"))); `
+    + `writeLines(union(std, c(${moteur}, "translations", dep)))`;
   return new Set(execFileSync(rscript, ['-e', code], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean));
 }
 
