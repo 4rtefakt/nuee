@@ -520,8 +520,8 @@ dependance_forest <- function(m, j, grille) {
   list(probabilites = stats::setNames(as.data.frame(matrix(V, length(grille)), stringsAsFactors = FALSE), m$classes))
 }
 
-# La dépendance partielle à la demande, gardée avec le modèle : les variables demandées (leurs
-# noms ; toutes sans nom), dans l'ordre des X.
+# La dépendance partielle à la demande, gardée avec le modèle (et, ses variables, avec le projet) :
+# les variables demandées (leurs noms ; toutes sans nom), dans l'ordre des X.
 demande_analyse_dependance_partielle <- function(q) {
   e <- modele(q$modele)
   if (!isTRUE(e$modele$type %in% c("FOREST", "BOOST"))) {
@@ -537,6 +537,8 @@ demande_analyse_dependance_partielle <- function(q) {
   for (v in setdiff(voulues, names(deja))) deja[[v]] <- dependance_variable(m, match(v, noms))
   deja <- deja[intersect(noms, names(deja))]
   etat$modeles[[q$modele]]$modele$dependance <- deja
+  # (ses variables dans la définition : enregistrées avec le projet, refaites à son ouverture ; serveur.R)
+  garder_avec_definition(q$modele, "dependance", names(deja))
   list(modele = q$modele, dependance = unname(deja[intersect(noms, voulues)]))
 }
 

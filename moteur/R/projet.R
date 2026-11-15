@@ -112,3 +112,25 @@ historique_projet <- function(projet) {
   })
   do.call(rbind, lignes) %||% data.frame()
 }
+
+# Les réglages d'un calcul gardé avec le modèle `id` (ses moyennes ajustées, sa puissance, sa
+# dépendance partielle), écrits aussi dans sa définition du projet : enregistrés avec lui, et refaits
+# quand il est ajusté à nouveau, à l'ouverture du projet (serveur.R : ajuster_et_garder). `modifie` :
+# le projet est à enregistrer (des réglages choisis ; pas ceux par défaut d'un premier calcul, que
+# l'enregistrement suivant prendra). Gardés tels qu'un fichier les rendra (nombres à 15 chiffres,
+# entiers...) : refaits à l'ouverture, ou redemandés par une vue de la séance, ils ne changent pas
+# le projet.
+garder_avec_definition <- function(id, cle, valeur, modifie = TRUE) {
+  valeur <- jsonlite::fromJSON(as.character(jsonlite::toJSON(valeur, auto_unbox = TRUE, null = "null", na = "null", digits = NA)),
+                               simplifyVector = TRUE, simplifyDataFrame = FALSE, simplifyMatrix = TRUE)  # (comme lire_projet, projet.R)
+  etat$modeles[[id]]$definition[[cle]] <- valeur
+  e <- etat$modeles[[id]]
+  p <- projet(e$projet)
+  for (i in seq_along(p$models)) {
+    if (identical(p$models[[i]]$name, e$definition$name) && !identical(p$models[[i]][[cle]], valeur)) {
+      p$models[[i]][[cle]] <- valeur
+      if (modifie) p$modifie <- TRUE
+    }
+  }
+  etat$projets[[p$id]] <- p
+}

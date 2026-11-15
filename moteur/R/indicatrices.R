@@ -254,10 +254,12 @@ texte_methodes_indval <- function(projet, d, m, langue = "fr", version = "") {
   p3 <- if (o$permutations > 0) {
     cites <- c(cites, if (identical(o$correction, "holm")) "holm" else "bh")
     groupes <- if (!is.null(o$strates)) sprintf(tx(" à l'intérieur de chaque %s", " within each %s"), nom_groupement(projet, o$strates)) else ""
-    sprintf(tx("Cette plus grande valeur a été testée par %d permutations des groupes des observations%s (graine %d) ; les valeurs p ont été corrigées sur les %d espèces testées par la méthode %s. %d espèces ont une valeur p au plus de 0,05, %d après correction.",
-               "This largest value was tested with %d permutations of the observations' groups%s (seed %d); the p-values were corrected over the %d species tested by %s's method. %d species have a p-value of at most 0.05, %d after correction."),
+    retenues <- if (r[["brutes"]] <= 1) tx("%d espèce a une valeur p au plus de 0,05, %d après correction.", if (r[["brutes"]] == 1) "%d species has a p-value of at most 0.05, %d after correction." else "%d species have a p-value of at most 0.05, %d after correction.")
+                else tx("%d espèces ont une valeur p au plus de 0,05, %d après correction.", "%d species have a p-value of at most 0.05, %d after correction.")
+    sprintf(paste(tx("Cette plus grande valeur a été testée par %d permutations des groupes des observations%s (graine %d) ; les valeurs p ont été corrigées sur les %d espèces testées par la méthode %s.",
+                     "This largest value was tested with %d permutations of the observations' groups%s (seed %d); the p-values were corrected over the %d species tested by %s's method."), retenues),
             as.integer(o$permutations), groupes, as.integer(o$graine), sum(!is.na(m$p)),
-            if (identical(o$correction, "holm")) "Holm" else tx("de Benjamini et Hochberg", "Benjamini and Hochberg"), r[["brutes"]], r[["corrigees"]])
+            if (identical(o$correction, "holm")) tx("de Holm", "Holm") else tx("de Benjamini et Hochberg", "Benjamini and Hochberg"), r[["brutes"]], r[["corrigees"]])
   } else tx("Aucun test par permutation n'a été demandé.", "No permutation test was asked for.")
   p4 <- sprintf(tx("Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s), comme le paquet indicspecies les fait (fonction multipatt ; De Cáceres et Legendre, 2009).",
                    "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s), as the indicspecies package does them (function multipatt; De Cáceres and Legendre, 2009)."),

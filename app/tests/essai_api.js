@@ -2095,6 +2095,18 @@ async function principal() {
       const mb = await api('methodes', { modele: bo.id, langue: 'fr' });
       verifier(mb.paragraphes.some((x) => /gbm/.test(x)) && mb.references.some((x) => /^Elith/.test(x)) && mb.references.some((x) => /^Friedman, J\. H\. \(2002\)/.test(x)),
         'texte des méthodes des arbres boostés');
+      // the partial dependence asked for is kept in the project file (serveur.R: garder_avec_definition):
+      // opened again and refitted, the forest and the boosted trees have it, in their Methods text too
+      const fd = path.join(dossier, 'forets.nuee');
+      await api('enregistrer', { projet: q.id, chemin: fd });
+      const q2 = await api('ouvrir', { chemin: fd });
+      const numero = (nom) => q2.modeles.find((x) => x.nom === nom).numero;
+      const foret2 = await api('ajuster', { projet: q2.id, numero: numero('Forêt') });
+      const bb2 = await api('ajuster', { projet: q2.id, numero: numero('Boosting présence') });
+      const mf2 = await api('methodes', { modele: foret2.id, langue: 'en' });
+      verifier([].concat(foret2.dependance).map((x) => x.variable).join() === 'gel' && JSON.stringify([].concat(foret2.dependance)[0].y) === JSON.stringify(d0.y)
+        && [].concat(bb2.dependance).length === 4 && mf2.paragraphes.some((x) => /partial dependence/.test(x)),
+      `dépendance partielle enregistrée avec le projet, rouverte : ${[].concat(foret2.dependance || []).map((x) => x.variable).join()} ; ${[].concat(bb2.dependance || []).length} pour les arbres boostés`);
       let refus = '';
       try { await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, classe: v.niveau, vc, echelle: 'none' }); } catch (err) { refus = err.message; }
       verifier(/pas une classe/.test(refus), `arbres boostés d'une classe refusés : « ${refus} »`);
