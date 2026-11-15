@@ -495,6 +495,15 @@ verifier("tableaux exportés : des data.frame (résumé, indices, totaux, pentes
            nrow(tr$observations) == etat$modeles$M1$modele$N && names(tr$observations)[1] == "Observation")
 t3 <- tables_resultats(ps, mml)
 verifier("modèle 3 sans covariable : la droite et ses écarts exportés ; le pas à pas : ses étapes", all(c("droite", "ecarts") %in% names(t3)) && "pas_a_pas" %in% names(tables_resultats(ppa, mpa)))
+# (deux temps : le modèle 3 sans le test des écarts à la droite, qui n'a aucun degré de liberté)
+p2 <- projet_trim(sim[sim$annee %in% c(2000, 2001), ], "deux temps")
+d2 <- definition_trim(p2, 3)
+m2 <- tryCatch(ajuster(p2, d2), error = function(e) NULL)
+etat$projets$P2 <- structure(c(p2, list(id = "P2")), class = class(p2))
+etat$modeles$M2 <- list(projet = "P2", definition = d2, modele = m2)
+verifier("deux temps, le modèle 3 : ajusté, sans test des écarts à la droite (aucun degré de liberté) ; ce que l'interface reçoit, ses textes, ses tableaux",
+         !is.null(m2) && !"deviations" %in% m2$tests$test && nchar(json(resultat_trim("M2"))) > 0 && length(texte_methodes(p2, d2, m2, "fr", "essai")$paragraphes) > 0 &&
+           length(texte_resultats(p2, d2, m2, "en")) > 0 && all(vapply(tables_resultats(p2, m2), is.data.frame, TRUE)))
 dossier <- tempfile("trim")
 dir.create(dossier)
 ch <- ecrire_tables(tr, file.path(dossier, "trim.xlsx"), objet = "trim")

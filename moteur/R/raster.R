@@ -858,7 +858,7 @@ valeurs_cellules <- function(g, i, j) {
         if (tf$offsets[numero] == 0 || tf$comptes[numero] == 0) {
           # (un bloc absent, celui d'un fichier « creux » de GDAL : sa valeur manquante, ou 0)
           de <- 0
-          v <- rep(if (is.na(g$nodata)) 0 else g$nodata, lignes_bloc * par_ligne)
+          v <- rep(if (is.na(g$nodata) && !is.nan(g$nodata)) 0 else g$nodata, lignes_bloc * par_ligne)
         } else if (tf$compression == 1) {
           # sans compression : de la première à la dernière ligne utile du bloc
           de <- min(li[dans])
@@ -1008,7 +1008,7 @@ valeurs_points <- function(g, x, y, methode = "cellule", rayon = NA) {
   propre[dedans, ] <- valeurs_cellules(g, i[dedans], j[dedans])
   taille <- c(sqrt(g$gt[2]^2 + g$gt[5]^2), sqrt(g$gt[3]^2 + g$gt[6]^2))
   cercles <- vector("list", n)
-  demandes <- list()
+  carres <- list()
   for (p in which(is.finite(x) & is.finite(y))) {
     # (le rayon en cellules : en degrés pour des longitudes et latitudes, par les rayons de courbure)
     portee <- if (geo) {
@@ -1018,15 +1018,26 @@ valeurs_points <- function(g, x, y, methode = "cellule", rayon = NA) {
       c(deg(rayon / (el$a / sqrt(w) * max(cos(rad(y[p])), 1e-6))), deg(rayon / (el$a * (1 - e2) / w^1.5)))
     } else c(rayon, rayon)
     nc <- ceiling(max(portee) / min(taille)) + 1
-    jj <- seq(max(0, floor(u[p]) - nc), min(W - 1, floor(u[p]) + nc))
-    ii <- seq(max(0, floor(v[p]) - nc), min(H - 1, floor(v[p]) + nc))
-    if (!length(jj) || !length(ii) || jj[1] > jj[length(jj)] || ii[1] > ii[length(ii)]) next
-    grille <- expand.grid(j = jj, i = ii)
+    carre <- c(max(0, floor(u[p]) - nc), max(0, floor(v[p]) - nc), min(W - 1, floor(u[p]) + nc), min(H - 1, floor(v[p]) + nc))
+    if (carre[1] <= carre[3] && carre[2] <= carre[4]) carres[[as.character(p)]] <- carre
+  }
+  # (les cellules des carrés autour des cercles : plus de quatre millions pour un point, ou de
+  # cinquante millions pour tous, trop pour la mémoire)
+  cellules <- vapply(carres, function(b) (b[3] - b[1] + 1) * (b[4] - b[2] + 1), 0)
+  if (length(cellules) && (max(cellules) > 4e6 || sum(cellules) > 5e7)) {
+    stop(sprintf(traduire("%s : ces cercles couvrent trop de ses cellules pour être lus ici. Donnez un rayon plus petit, ou un raster aux cellules plus grandes.",
+                          "%s: these circles cover too many of its cells to be read here. Give a smaller radius, or a raster with larger cells."), g$nom), call. = FALSE)
+  }
+  demandes <- list()
+  for (cle in names(carres)) {
+    p <- as.integer(cle)
+    b <- carres[[cle]]
+    grille <- expand.grid(j = b[1]:b[3], i = b[2]:b[4])
     ce <- centre_cellule(g, grille$i, grille$j)
     d <- distances_raster(geo, x[p], y[p], ce$x, ce$y)
     garde <- d <= rayon
     if (!any(garde) && dedans[p]) garde <- grille$i == i[p] & grille$j == j[p]
-    if (any(garde)) demandes[[as.character(p)]] <- grille$i[garde] * W + grille$j[garde]
+    if (any(garde)) demandes[[cle]] <- grille$i[garde] * W + grille$j[garde]
   }
   if (length(demandes)) {
     toutes <- unique(unlist(demandes))

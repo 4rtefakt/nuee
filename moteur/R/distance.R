@@ -480,22 +480,29 @@ reduction_covariables <- function(fd) {
 }
 
 # Minimise `f` (gradient `gr`) depuis `theta` entre les bornes, puis quelques pas de Newton sur les
-# paramètres libres (le hessien par différences du gradient) pour un optimum précis.
+# paramètres libres (le hessien par différences du gradient) pour un optimum précis. Il converge si
+# l'optimum est atteint : un gradient nul sur les paramètres libres, ou la baisse que promet le pas
+# de Newton, g'H⁻¹g / 2, sous 5e−7 (H défini positif).
 minimiser_detection <- function(f, gr, theta, bas, haut) {
   o <- tryCatch(stats::nlminb(theta, f, gr, lower = bas, upper = haut, control = list(eval.max = 3000, iter.max = 2000, rel.tol = 1e-15, x.tol = 1e-13)),
                 error = function(e) NULL)
   if (is.null(o) || !all(is.finite(o$par)) || !is.finite(o$objective)) return(list(par = theta, value = f(theta), convergence = 1))
   th <- o$par
   v <- o$objective
+  atteint <- FALSE
   for (k in 1:30) {
     g <- gr(th)
     libre <- !(th <= bas + 1e-12 & g > 0) & !(th >= haut - 1e-12 & g < 0)
-    if (!any(libre) || max(abs(g[libre])) < 1e-9) break
+    if (!any(libre) || max(abs(g[libre])) < 1e-9) {
+      atteint <- TRUE
+      break
+    }
     h <- 1e-5 * pmax(1, abs(th))
     H <- vapply(seq_along(th), function(j) { e <- replace(numeric(length(th)), j, h[j]); (gr(th + e) - gr(th - e)) / (2 * h[j]) }, numeric(length(th)))
     H <- (H + t(H)) / 2
     pas <- tryCatch(solve(H[libre, libre, drop = FALSE], g[libre]), error = function(e) NULL)
     if (is.null(pas) || !all(is.finite(pas))) break
+    atteint <- sum(g[libre] * pas) >= 0 && sum(g[libre] * pas) < 1e-6
     essai <- th
     essai[libre] <- pmin(haut[libre], pmax(bas[libre], th[libre] - pas))
     ve <- f(essai)
@@ -503,17 +510,19 @@ minimiser_detection <- function(f, gr, theta, bas, haut) {
     th <- essai
     v <- ve
   }
-  list(par = th, value = v, convergence = 0, message = o$message)
+  list(par = th, value = v, convergence = if (atteint) 0 else 1, message = o$message)
 }
 
 # Le maximum de vraisemblance sous les contraintes `cons` (c ≥ 0) par un lagrangien augmenté
 # (Powell–Hestenes–Rockafellar) : chaque sous-problème minimisé comme ci-dessus, les multiplicateurs
-# λ ← max(0, λ − ρ c), ρ décuplé tant que la violation ne baisse pas assez.
+# λ ← max(0, λ − ρ c), ρ décuplé tant que la violation ne baisse pas assez. Il converge si le dernier
+# sous-problème converge, les contraintes tenues et les multiplicateurs complémentaires (λ c = 0).
 sous_contraintes_detection <- function(f, gr, cons, theta, bas, haut) {
   nc <- length(cons(theta)$c)
   lambda <- numeric(nc)
   rho <- 10
   violation <- Inf
+  fini <- FALSE
   for (it in 1:60) {
     L <- function(th) {
       cc <- cons(th)$c
@@ -529,11 +538,14 @@ sous_contraintes_detection <- function(f, gr, cons, theta, bas, haut) {
     cc <- cons(theta)$c
     v <- max(0, -cc)
     lambda <- pmax(0, lambda - rho * cc)
-    if (v < 1e-11 && max(abs(pmin(lambda, pmax(cc, 0)))) < 1e-9) break
+    if (v < 1e-11 && max(abs(pmin(lambda, pmax(cc, 0)))) < 1e-9) {
+      fini <- o$convergence == 0
+      break
+    }
     if (v > 0.25 * violation) rho <- min(rho * 10, 1e12)
     violation <- v
   }
-  list(par = theta, value = f(theta), convergence = if (max(0, -cons(theta)$c) < 1e-8) 0 else 1, multiplicateurs = lambda)
+  list(par = theta, value = f(theta), convergence = if (fini && max(0, -cons(theta)$c) < 1e-8) 0 else 1, multiplicateurs = lambda)
 }
 
 # Une fonction de détection ajustée aux distances `x` : la clé, la série et ses ordres, depuis

@@ -807,6 +807,11 @@ verifier("un modèle qui ne converge pas (une demi-normale devenue plate : des d
 egales <- mal(function(x) { x$distance[!is.na(x$distance)] <- 10; x })
 verifier("des distances toutes égales : la fonction de détection ne converge pas (une information nulle), refusée avec la raison",
          grepl("ne disent rien", refus_de(egales, w = 100)))
+# (la convergence jugée au point que l'optimiseur rend, pas à sa valeur finie : (θ − 1)², un gradient
+# nul ; |θ − 0,3|, nlminb s'arrête à 3e−15 de l'angle, où le gradient vaut encore ±1)
+verifier("l'optimiseur converge là où le gradient s'annule, pas ailleurs (près d'un angle, où il ne s'annule pas)",
+         minimiser_detection(function(t) sum((t - 1)^2), function(t) 2 * (t - 1), 0, -10, 10)$convergence == 0 &&
+           minimiser_detection(function(t) sum(abs(t - 0.3)), function(t) sign(t - 0.3), 0, -10, 10)$convergence == 1)
 vide <- rbind(sim, data.frame(Region.Label = "Vide", Area = 20, Sample.Label = c("V-1", "V-2"), Effort = c(1, 2), object = NA, distance = NA, size = NA))
 mv <- distance_de(projet_distance(vide), w = 100)
 verifier("une strate sans aucune détection : D = 0, erreur-type 0, ni CV ni ddl (comme dht2) ; le total des trois strates",
