@@ -162,7 +162,12 @@ detection_distance <- function(fd, theta, x, derivees = FALSE) {
 poids_detection <- function(fd, x) if (fd$point) 2 * x / fd$w^2 else rep(1 / (fd$w - fd$L), length(x))
 
 # Les intégrales de poids_detection × g̃ de chaque `a` à chaque `b` (`a` seul : le même début), et leurs
-# dérivées par θ, une valeur sous 1e-16 comptant pour 0 comme dans mrds (gstdint).
+# dérivées par θ, une valeur sous 1e-16 comptant pour 0 comme dans mrds (gstdint). Une clé seule, sans
+# terme d'ajustement : la demi-normale intégrée exactement, comme gstdint (lignes : σ √(2π) (Φ(b/σ) −
+# Φ(a/σ)) / (w − L) ; points : 2 σ² (exp(−a²/2σ²) − exp(−b²/2σ²)) / w²), et la dérivée par ln σ tirée
+# de l'intégrale, g ne dépendant que de x/σ (∂g/∂ln σ = −x ∂g/∂x, intégrée par parties : I − (b g(b) −
+# a g(a)) / (w − L) pour des lignes, 2 I − 2 (b² g(b) − a² g(a)) / w² pour des points) ; restent
+# numériques l'intégrale du hasard et sa dérivée par ln b.
 integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
   valeur <- function(x) {
     v <- poids_detection(fd, x) * detection_distance(fd, theta, x)$gt
@@ -170,7 +175,15 @@ integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
     v
   }
   a <- rep_len(a, length(b))
-  I <- vapply(seq_along(b), function(i) integrer_detection(valeur, a[i], b[i]), 0)
+  ix <- indices_detection(fd)
+  cle_seule <- !length(fd$ordres) && fd$cle != "unif"
+  if (cle_seule && fd$cle == "hn") {
+    s <- exp(theta[ix$echelle])
+    ua <- a^2 / (2 * s^2)
+    ub <- b^2 / (2 * s^2)
+    I <- if (fd$point) 2 * s^2 * ifelse(ua > 0.5, exp(-ua) - exp(-ub), expm1(-ua) - expm1(-ub)) / fd$w^2
+         else s * sqrt(2 * pi) * (stats::pnorm(a / s, lower.tail = FALSE) - stats::pnorm(b / s, lower.tail = FALSE)) / (fd$w - fd$L)
+  } else I <- vapply(seq_along(b), function(i) integrer_detection(valeur, a[i], b[i]), 0)
   e0 <- detection_distance(fd, theta, 0, derivees)
   if (!derivees) return(list(I = I, s0 = e0$s0))
   derivee <- function(j) function(x) {
@@ -179,8 +192,15 @@ integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
     v <- pd * e$gt
     pd * e$dgt[, j] * (!is.na(v) & v >= 1e-16)
   }
-  dI <- vapply(seq_len(indices_detection(fd)$q), function(j) vapply(seq_along(b), function(i) integrer_detection(derivee(j), a[i], b[i]), 0), numeric(length(b)))
-  list(I = I, dI = matrix(dI, length(b)), s0 = e0$s0, ds0 = e0$ds0)
+  dI <- matrix(0, length(b), ix$q)
+  for (j in if (cle_seule) setdiff(seq_len(ix$q), ix$echelle) else seq_len(ix$q)) {
+    dI[, j] <- vapply(seq_along(b), function(i) integrer_detection(derivee(j), a[i], b[i]), 0)
+  }
+  if (cle_seule) {
+    k <- function(x) cle_detection(fd, theta, x)$k
+    dI[, ix$echelle] <- if (fd$point) 2 * I - 2 * (b^2 * k(b) - a^2 * k(a)) / fd$w^2 else I - (b * k(b) - a * k(a)) / (fd$w - fd$L)
+  }
+  list(I = I, dI = dI, s0 = e0$s0, ds0 = e0$ds0)
 }
 
 # Des distances relevées par intervalles (fd$coupures, comme ds(cutpoints = ) : le premier la
@@ -262,18 +282,18 @@ matrice_covariables <- function(colonnes) {
   Z <- matrix(1, length(colonnes[[1]]), 1)
   termes <- data.frame(colonne = "(Intercept)", covariable = NA_character_, niveau = NA_character_, terme = "ln_sigma", stringsAsFactors = FALSE)
   references <- list()
-  for (nom in names(colonnes)) {
-    v <- colonnes[[nom]]
+  for (covariable in names(colonnes)) {
+    v <- colonnes[[covariable]]
     if (is.factor(v)) {
-      niveaux <- levels(droplevels(v))
-      references[[nom]] <- niveaux[1]
-      for (niveau in niveaux[-1]) {
-        Z <- cbind(Z, as.numeric(v == niveau))
-        termes <- rbind(termes, data.frame(colonne = paste0(nom, niveau), covariable = nom, niveau = niveau, terme = sprintf("%s(%s)", nom, niveau), stringsAsFactors = FALSE))
+      lv <- levels(droplevels(v))
+      references[[covariable]] <- lv[1]
+      for (l in lv[-1]) {
+        Z <- cbind(Z, as.numeric(v == l))
+        termes <- rbind(termes, data.frame(colonne = paste0(covariable, l), covariable = covariable, niveau = l, terme = sprintf("%s(%s)", covariable, l), stringsAsFactors = FALSE))
       }
     } else {
       Z <- cbind(Z, as.numeric(v))
-      termes <- rbind(termes, data.frame(colonne = nom, covariable = nom, niveau = NA_character_, terme = nom, stringsAsFactors = FALSE))
+      termes <- rbind(termes, data.frame(colonne = covariable, covariable = covariable, niveau = NA_character_, terme = covariable, stringsAsFactors = FALSE))
     }
   }
   colnames(Z) <- termes$colonne
@@ -426,15 +446,37 @@ depart_detection <- function(fd, x) {
 # n'arrêtent qu'un ajustement qui part à l'infini (σ plus de 1000 fois la troncature w ou 160 000
 # fois plus petit, b au-delà de 1000, un terme d'ajustement au-delà de 1000) : un modèle dégénéré
 # (une demi-normale devenue plate, la clé uniforme sous un autre nom), qui ne converge pas. Avec des
-# covariables, les coefficients de ln σ ont les bornes larges des termes d'ajustement, et ce sont les σ
-# des combinaisons de covariables qui sont tenus dans celles de σ (ajuster_detection).
+# covariables, ce sont les bornes des coefficients réduits (reduction_covariables) : la constante,
+# ln σ aux catégories de référence et aux moyennes des covariables quantitatives, dans celles de ln σ ;
+# chaque autre coefficient, un écart de ln σ entre deux catégories ou pour un écart-type d'une
+# covariable, à moins de 19 (l'étendue des bornes de ln σ) ; et le σ de chaque combinaison de
+# covariables est tenu dans les bornes de σ (ajuster_detection).
 bornes_detection <- function(fd) {
   ix <- indices_detection(fd)
   bas <- rep(-1e3, ix$q)
   haut <- rep(1e3, ix$q)
   if (!is.null(ix$forme)) { bas[ix$forme] <- 0; haut[ix$forme] <- 7 }
-  if (!is.null(ix$echelle) && is.null(fd$Z)) { bas[ix$echelle] <- log(fd$w) - 12; haut[ix$echelle] <- log(fd$w) + 7 }
+  if (!is.null(ix$echelle)) { bas[ix$echelle] <- log(fd$w) - 12; haut[ix$echelle] <- log(fd$w) + 7 }
+  if (length(ix$echelle) > 1) { bas[ix$echelle[-1]] <- -19; haut[ix$echelle[-1]] <- 19 }
   list(bas = bas, haut = haut, libre_en_bas = if (!is.null(ix$forme)) ix$forme else integer(0))
+}
+
+# La réduction des coefficients d'une fonction de détection à covariables pour l'ajustement, θ = R θ̃ :
+# chaque covariable quantitative centrée et réduite sur les détections (une indicatrice 0/1 telle
+# quelle), ln σ = Z β = Z̃ β̃ ; l'ajustement, mieux conditionné (une constante qui ne dépend plus
+# de la pente d'une covariable loin de 0), trouve le même maximum, rendu en θ.
+reduction_covariables <- function(fd) {
+  ix <- indices_detection(fd)
+  R <- diag(ix$q)
+  e <- ix$echelle
+  for (j in seq_len(ncol(fd$Z))[-1]) {
+    z <- fd$Z[, j]
+    if (all(z %in% c(0, 1))) next
+    s <- stats::sd(z)
+    R[e[j], e[j]] <- 1 / s
+    R[e[1], e[j]] <- -mean(z) / s
+  }
+  R
 }
 
 # Minimise `f` (gradient `gr`) depuis `theta` entre les bornes, puis quelques pas de Newton sur les
@@ -500,9 +542,11 @@ sous_contraintes_detection <- function(f, gr, cons, theta, bas, haut) {
 # log-vraisemblance, l'AIC, la matrice de la somme des produits des scores (`H`, mrds : flt.var) et la
 # covariance des paramètres (son inverse, mrds : solvecov). `vraisemblance` : vraisemblance_detection,
 # ou vraisemblance_covariables pour une fonction de détection à covariables (jamais contrainte, comme
-# dans ds) ; le σ de chacune de ses combinaisons de covariables tenu dans les bornes de σ
-# (bornes_detection).
-ajuster_detection <- function(fd, x, depart = NULL, monotonie = "stricte", vraisemblance = vraisemblance_detection) {
+# dans ds), ajustée sur ses coefficients réduits (`reduction`, R de reduction_covariables : θ = R θ̃,
+# les bornes et le conditionnement de l'information sont ceux de θ̃, la covariance R H̃⁻¹ R') ; le σ
+# de chacune de ses combinaisons de covariables tenu dans les bornes de σ (`hors_bornes` : celles qui en
+# sortent).
+ajuster_detection <- function(fd, x, depart = NULL, monotonie = "stricte", vraisemblance = vraisemblance_detection, reduction = NULL) {
   ix <- indices_detection(fd)
   q <- ix$q
   base <- list(fd = fd, n = length(x), q = q, monotonie = if (length(fd$ordres)) monotonie else "aucune")
@@ -515,17 +559,21 @@ ajuster_detection <- function(fd, x, depart = NULL, monotonie = "stricte", vrais
   b <- bornes_detection(fd)
   bas <- b$bas
   haut <- b$haut
+  R <- reduction
+  vers_theta <- function(th) if (is.null(R)) th else drop(R %*% th)
+  if (!is.null(R)) theta <- drop(solve(R, theta))
   theta <- pmin(haut, pmax(theta, bas))
   f <- function(th) {
-    v <- vraisemblance(fd, th, x)$ll
+    v <- vraisemblance(fd, vers_theta(th), x)$ll
     if (is.finite(v)) -v else 1e300
   }
   gr <- function(th) {
-    v <- vraisemblance(fd, th, x, TRUE)
+    v <- vraisemblance(fd, vers_theta(th), x, TRUE)
     if (!is.finite(v$ll)) return(rep(0, q))
-    -colSums(v$scores)
+    g <- -colSums(v$scores)
+    if (is.null(R)) g else drop(crossprod(R, g))
   }
-  if (!is.finite(f(theta)) || f(theta) >= 1e300) return(c(base, list(theta = theta, ll = -Inf, AIC = Inf, converge = FALSE, contraint = FALSE)))
+  if (!is.finite(f(theta)) || f(theta) >= 1e300) return(c(base, list(theta = vers_theta(theta), ll = -Inf, AIC = Inf, converge = FALSE, contraint = FALSE)))
   o <- minimiser_detection(f, gr, theta, bas, haut)
   contraint <- FALSE
   if (length(fd$ordres) && monotonie != "aucune") {
@@ -535,20 +583,23 @@ ajuster_detection <- function(fd, x, depart = NULL, monotonie = "stricte", vrais
       contraint <- TRUE
     }
   }
-  v <- vraisemblance(fd, o$par, x, TRUE)
+  par <- vers_theta(o$par)
+  v <- vraisemblance(fd, par, x, TRUE)
   H <- crossprod(v$scores)
-  V <- inverse_information(H)
+  Hr <- if (is.null(R)) H else crossprod(R, H %*% R)
+  V <- if (is.null(R)) inverse_information(H) else R %*% inverse_information(Hr) %*% t(R)
   a_la_borne <- o$par >= haut - 1e-6 | (o$par <= bas + 1e-6 & !seq_len(q) %in% b$libre_en_bas)
+  hors_bornes <- integer(0)
   if (!is.null(fd$Z)) {
-    ln_sigma <- drop(fd$combinaisons$Z %*% o$par[ix$echelle])
-    a_la_borne <- c(a_la_borne, ln_sigma >= log(fd$w) + 7 - 1e-6 | ln_sigma <= log(fd$w) - 12 + 1e-6)
+    ln_sigma <- drop(fd$combinaisons$Z %*% par[ix$echelle])
+    hors_bornes <- which(ln_sigma >= log(fd$w) + 7 - 1e-6 | ln_sigma <= log(fd$w) - 12 + 1e-6)
   }
   # (une matrice d'information presque singulière, que solvecov comble par 1e10 : des distances qui ne
   # disent rien d'un paramètre, toutes égales par exemple ; un ajustement sans variance, qui ne converge pas)
-  singuliere <- anyNA(V) || min(eigen(H, symmetric = TRUE, only.values = TRUE)$values) < 1e-10
-  c(base, list(theta = o$par, ll = v$ll, AIC = -2 * v$ll + 2 * q, H = H, V = V, se = sqrt(pmax(0, diag(V))),
-               converge = o$convergence == 0 && is.finite(v$ll) && !any(a_la_borne) && !singuliere, a_la_borne = any(a_la_borne), singuliere = singuliere,
-               contraint = contraint))
+  singuliere <- anyNA(V) || min(eigen(Hr, symmetric = TRUE, only.values = TRUE)$values) < 1e-10
+  c(base, list(theta = par, ll = v$ll, AIC = -2 * v$ll + 2 * q, H = H, V = V, se = sqrt(pmax(0, diag(V))),
+               converge = o$convergence == 0 && is.finite(v$ll) && !any(a_la_borne) && !length(hors_bornes) && !singuliere,
+               a_la_borne = any(a_la_borne) || length(hors_bornes) > 0, singuliere = singuliere, contraint = contraint, hors_bornes = hors_bornes))
 }
 
 # L'inverse d'une matrice d'information comme mrds (solvecov) : par ses vecteurs propres, une valeur
@@ -639,14 +690,15 @@ candidats_detection <- function(ch) {
 # Le choix de ds() avec des covariables : sans nombre de termes d'ajustement donné, la clé et ses
 # covariables seules (ds : « Model contains covariate term(s): no adjustment terms will be included »,
 # raison « covariables ») ; avec `n_fixe`, ce nombre de termes ; jamais de contrainte de monotonie
-# (ds : « Monotonicity cannot be enforced with covariates »). Le départ de mrds (depart_detection).
+# (ds : « Monotonicity cannot be enforced with covariates »). Le départ de mrds (depart_detection), et
+# l'ajustement sur les coefficients réduits (reduction_covariables).
 choisir_covariables <- function(base, x, serie, n_fixe = NULL) {
   aucune <- is.null(serie) || identical(serie, "aucune")
   ordres <- if (!aucune && length(n_fixe)) ordres_ajustement(n_fixe, base$cle, serie) else integer(0)
   fd <- base
   fd$serie <- if (length(ordres)) serie
   fd$ordres <- ordres
-  m <- ajuster_detection(fd, x, monotonie = "aucune", vraisemblance = vraisemblance_covariables)
+  m <- ajuster_detection(fd, x, monotonie = "aucune", vraisemblance = vraisemblance_covariables, reduction = reduction_covariables(fd))
   list(choisi = m, candidats = list(m), raison = if (length(ordres)) "fixe" else if (aucune || length(n_fixe)) "cle" else "covariables")
 }
 
@@ -695,21 +747,21 @@ courbes_covariables <- function(det, t, pr) {
   }, numeric(length(xg))), length(xg))
   pc <- pr$p_combinaisons
   F <- sweep(G, 2, pc, "/") * (if (t$point) 2 * xg / t$w^2 else 1 / (t$w - t$L))
-  moyennes <- function(dans) {
+  moyennes_ponderees <- function(dans) {
     nk <- tabulate(co$k[dans], nrow(co$Z))  # (les détections de chaque combinaison)
     list(g = drop(G %*% (nk / pc)) / sum(nk / pc), f = drop(F %*% nk) / sum(nk))
   }
-  tout <- moyennes(rep(TRUE, length(co$k)))
-  niveaux <- list()
-  for (nom in names(t$covariables$valeurs)) {
-    v <- t$covariables$valeurs[[nom]]
+  toutes <- moyennes_ponderees(rep(TRUE, length(co$k)))
+  par_niveau <- list()
+  for (covariable in names(t$covariables$valeurs)) {
+    v <- t$covariables$valeurs[[covariable]]
     if (!is.factor(v)) next
-    cats <- levels(droplevels(v))
-    m <- lapply(cats, function(cat) moyennes(v == cat))
-    niveaux[[length(niveaux) + 1]] <- list(covariable = nom, niveaux = cats, g = vapply(m, function(z) z$g, numeric(length(xg))),
-                                           f = vapply(m, function(z) z$f, numeric(length(xg))), n = vapply(cats, function(cat) sum(v == cat), 0, USE.NAMES = FALSE))
+    lv <- levels(droplevels(v))
+    mc <- lapply(lv, function(l) moyennes_ponderees(v == l))
+    par_niveau[[length(par_niveau) + 1]] <- list(covariable = covariable, niveaux = lv, g = vapply(mc, function(z) z$g, numeric(length(xg))),
+                                                 f = vapply(mc, function(z) z$f, numeric(length(xg))), n = vapply(lv, function(l) sum(v == l), 0, USE.NAMES = FALSE))
   }
-  list(courbe = data.frame(x = xg, g = tout$g, f = tout$f), niveaux = niveaux)
+  list(courbe = data.frame(x = xg, g = toutes$g, f = toutes$f), niveaux = par_niveau)
 }
 
 # ---------------------------------------------------------------- l'adéquation
@@ -1181,10 +1233,23 @@ ajuster_distance <- function(projet, d) {
     if (!isTRUE(ch0$choisi$converge)) ch0 <- NULL
   } else ch <- choisir_detection(base, t$x, serie, n_fixe = n_fixe, monotonie = r$monotonie)
   det <- ch$choisi
+  # (la combinaison de covariables `z`, en mots : « OBs = TJS, MAS = 50 »)
+  combinaison <- function(z) {
+    tm <- t$covariables$termes
+    paste(vapply(t$covariables$noms, function(nom) {
+      j <- which(tm$covariable == nom)
+      if (is.na(tm$niveau[j[1]])) return(sprintf("%s = %s", nom, format(z[j[1]], digits = 6)))
+      un <- j[z[j] == 1]
+      sprintf("%s = %s", nom, if (length(un)) tm$niveau[un[1]] else t$covariables$references[[nom]])
+    }, ""), collapse = ", ")
+  }
   if (!det$converge) {
-    stop(sprintf(traduire("La fonction de détection %s ne converge pas%s : essayez une autre clé, moins de termes d'ajustement ou une autre troncature.",
-                          "The detection function %s doesn't converge%s: try another key, fewer adjustment terms or another truncation."),
-                 libelle_detection(det$fd), if (isTRUE(det$a_la_borne)) traduire(" (un paramètre part à l'infini)", " (a parameter runs off to infinity)") else if (isTRUE(det$singuliere)) traduire(" (les distances ne disent rien d'un de ses paramètres)", " (the distances say nothing about one of its parameters)") else ""), call. = FALSE)
+    pourquoi <- if (length(det$hors_bornes)) sprintf(traduire(" (l'échelle σ de %s part à l'infini)", " (the scale σ of %s runs off to infinity)"), combinaison(det$fd$combinaisons$Z[det$hors_bornes[1], ]))
+                else if (isTRUE(det$a_la_borne)) traduire(" (un paramètre part à l'infini)", " (a parameter runs off to infinity)")
+                else if (isTRUE(det$singuliere)) traduire(" (les distances ne disent rien d'un de ses paramètres)", " (the distances say nothing about one of its parameters)") else ""
+    stop(sprintf(traduire("La fonction de détection %s ne converge pas%s : essayez une autre clé, moins de termes d'ajustement ou une autre troncature%s.",
+                          "The detection function %s doesn't converge%s: try another key, fewer adjustment terms or another truncation%s."),
+                 libelle_detection(det$fd), pourquoi, if (covariables) traduire(", ou d'autres covariables (des catégories regroupées)", ", or other covariates (categories grouped)") else ""), call. = FALSE)
   }
   cu <- facteur_echantillonnage(r)
   # (des groupes : la densité des groupes aussi, comme dht2 la donne en attribut « grouped »)
@@ -1265,15 +1330,33 @@ unites_echantillonnage <- function(m) {
 }
 
 # Les lignes du modèle : leur transect, leur strate, leur distance, si elle est dans la troncature,
-# la probabilité de détection à cette distance g(x), la taille du groupe.
+# la probabilité de détection à cette distance g(x), la taille du groupe ; avec des covariables, g(x)
+# sachant les covariables de la détection, et sa probabilité de détection dans la troncature pi.
 observations_echantillonnage <- function(m) {
   l <- m$donnees$lignes
+  k <- match(l$uid[l$dans], m$donnees$uid)
   g <- rep(NA_real_, nrow(l))
-  g[l$dans] <- m$g_x[match(l$uid[l$dans], m$donnees$uid)]
+  g[l$dans] <- m$g_x[k]
   out <- data.frame(uid = l$uid, nom = l$nom, transect = l$transect, strate = l$strate, distance = l$distance, dans_troncature = l$dans, g = g, stringsAsFactors = FALSE)
+  if (!is.null(m$p_detections)) {
+    out$p <- NA_real_
+    out$p[l$dans] <- m$p_detections[k]
+  }
   if (m$donnees$groupes) out$taille <- l$taille
   if (!nzchar(paste(unique(l$strate), collapse = ""))) out$strate <- NULL
   out
+}
+
+# Les covariables d'un modèle, pour l'interface et les tableaux : chacune, son type, et pour une
+# qualitative sa catégorie de référence et ses catégories (celles des détections) ; NULL sans
+# covariables.
+covariables_echantillonnage <- function(m) {
+  cv <- m$donnees$covariables
+  if (is.null(cv)) return(NULL)
+  data.frame(covariable = cv$noms, qualitative = cv$qualitatives,
+             reference = vapply(cv$noms, function(n) cv$references[[n]] %||% NA_character_, "", USE.NAMES = FALSE),
+             categories = vapply(cv$noms, function(n) { v <- cv$valeurs[[n]]; if (is.factor(v)) paste(levels(droplevels(v)), collapse = ", ") else NA_character_ }, "", USE.NAMES = FALSE),
+             stringsAsFactors = FALSE)
 }
 
 # L'histogramme des distances sous la fonction de détection (comme plot.ds de mrds) : √n classes
@@ -1313,6 +1396,11 @@ resultat_distance <- function(id) {
        troncature = list(w = t$w, L = t$L, type = r$troncature$type, pourcentage = t$pourcentage), au_dela = t$au_dela, en_deca = t$en_deca, vides = t$vides,
        intervalles = if (!is.null(t$coupures)) I(t$coupures),
        courbe = m$courbe, histogramme = histogramme_echantillonnage(t, m$p), distances = I(t$x), uid_distances = I(t$uid), g_distances = I(m$g_x),
+       covariables = covariables_echantillonnage(m), formule = det$fd$formule %||% "", p_moyenne = !is.null(m$p_detections), monotone = m$monotone,
+       # (pour chaque covariable qualitative, la fonction de détection moyenne de chacune de ses catégories)
+       courbes_niveaux = lapply(m$courbes_niveaux, function(cn) list(covariable = cn$covariable, niveaux = I(cn$niveaux), n = I(cn$n),
+                                                                    g = lapply(seq_along(cn$niveaux), function(j) I(cn$g[, j])),
+                                                                    f = lapply(seq_along(cn$niveaux), function(j) I(cn$f[, j])))),
        adequation = list(cvm = m$adequation$cvm, khi2 = m$adequation$khi2, qq = m$adequation$qq),
        densite = m$densite, densite_groupes = m$densite_groupes, densite_seule = t$densite_seule, groupes = t$groupes,
        transects = t$transects, unites = u, noms = t$noms, strates = I(t$strates$strate), avec_strates = !is.null(r$strate),
@@ -1323,9 +1411,9 @@ resultat_distance <- function(id) {
 # ---------------------------------------------------------------- Exporter
 
 # Les tableaux de l'échantillonnage par distances (formats.R : tables_resultats) : le résumé, les
-# modèles candidats et leur AIC, les paramètres, la détection (p, ESW ou EDR), l'adéquation et ses
-# classes, la densité et l'effectif par strate et au total (des groupes aussi), les transects, les
-# observations.
+# modèles candidats et leur AIC, les covariables (leur catégorie de référence), les paramètres, la
+# détection (p, ESW ou EDR ; avec des covariables, p̄), l'adéquation et ses classes, la densité et
+# l'effectif par strate et au total (des groupes aussi), les transects, les observations.
 tables_distance <- function(projet, m) {
   t <- m$donnees
   det <- m$detection
@@ -1340,6 +1428,10 @@ tables_distance <- function(projet, m) {
                         logL = det$ll, AIC = det$AIC, parametres = det$q, unite_distance = u$distance, unite_effort = u$effort, unite_aire = u$aire,
                         facteur_unites = m$facteur, stringsAsFactors = FALSE),
     candidats = m$candidats)
+  if (!is.null(det$fd$formule)) {
+    out$resume$covariables <- det$fd$formule
+    out$covariables <- covariables_echantillonnage(m)
+  }
   if (!is.null(m$parametres)) out$parametres <- m$parametres
   out$detection <- data.frame(statistique = c("p", m$effectif$quoi, "N_couvert"), estimation = c(m$p, m$effectif$valeur, m$Nc),
                               se = c(m$se_p, m$effectif$se, NA), cv = c(m$se_p / m$p, m$effectif$se / m$effectif$valeur, NA))
@@ -1358,7 +1450,9 @@ tables_distance <- function(projet, m) {
 REFERENCES_DISTANCE <- list(
   buckland2001 = "Buckland, S. T., Anderson, D. R., Burnham, K. P., Laake, J. L., Borchers, D. L., & Thomas, L. (2001). Introduction to distance sampling: Estimating abundance of biological populations. Oxford University Press.",
   miller2019 = "Miller, D. L., Rexstad, E., Thomas, L., Marshall, L., & Laake, J. L. (2019). Distance sampling in R. Journal of Statistical Software, 89(1), 1–28. https://doi.org/10.18637/jss.v089.i01",
-  fewster2009 = "Fewster, R. M., Buckland, S. T., Burnham, K. P., Borchers, D. L., Jupp, P. E., Laake, J. L., & Thomas, L. (2009). Estimating the encounter rate variance in distance sampling. Biometrics, 65(1), 225–236. https://doi.org/10.1111/j.1541-0420.2008.01018.x")
+  fewster2009 = "Fewster, R. M., Buckland, S. T., Burnham, K. P., Borchers, D. L., Jupp, P. E., Laake, J. L., & Thomas, L. (2009). Estimating the encounter rate variance in distance sampling. Biometrics, 65(1), 225–236. https://doi.org/10.1111/j.1541-0420.2008.01018.x",
+  marques2003 = "Marques, F. F. C., & Buckland, S. T. (2003). Incorporating covariates into standard line transect analyses. Biometrics, 59(4), 924–935. https://doi.org/10.1111/j.0006-341X.2003.00107.x",
+  marques2007 = "Marques, T. A., Thomas, L., Fancy, S. G., & Buckland, S. T. (2007). Improving estimates of bird density using multiple-covariate distance sampling. The Auk, 124(4), 1229–1243. https://doi.org/10.1642/0004-8038(2007)124[1229:IEOBDU]2.0.CO;2")
 
 # Le nom d'une fonction de détection en mots : « une clé demi-normale avec des termes en cosinus d'ordres 2 et 3 ».
 mots_detection <- function(fd, fr) {
@@ -1409,7 +1503,31 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
                                             ", under the strict monotonicity constraint of mrds (g decreasing and positive at 10 distances from 0 to w)"),
                  faible = tx(", sous la contrainte de monotonie faible de mrds (g sous g(0) et positive en 10 distances de 0 à w)",
                              ", under the weak monotonicity constraint of mrds (g below g(0) and positive at 10 distances from 0 to w)"), "")
-  p2 <- if (identical(r$ajustements, "aic") && r$serie != "aucune") {
+  covariables <- !is.null(det$fd$formule)
+  p2 <- if (covariables) {
+    # (l'échelle selon les covariables, ds(formula = ) : ln σ = β0 + β1 OBs(TJS) + …, les catégories de référence)
+    cites <- c(cites, "marques2003", "marques2007")
+    cv <- t$covariables
+    equation <- paste0("ln σ = β0", paste(sprintf(" + β%d %s", seq_len(nrow(cv$termes) - 1), cv$termes$terme[-1]), collapse = ""))
+    refs <- cv$noms[cv$qualitatives]
+    mots_refs <- if (length(refs)) sprintf(tx(", une covariable qualitative entrant par une indicatrice de chacune de ses catégories sauf la première, sa référence (%s)",
+                                              ", a qualitative covariate entering through an indicator of each of its categories but the first, its reference (%s)"),
+                                           liste_mots(vapply(refs, function(n) sprintf(tx("%s : %s", "%s: %s"), n, cv$references[[n]]), "", USE.NAMES = FALSE), fr)) else ""
+    ajust <- if (length(det$fd$ordres)) tx(" ; sans contrainte de monotonie, que ds ne met pas avec des covariables", "; without monotonicity constraint, which ds doesn't set with covariates")
+             else if (identical(m$selection, "covariables")) tx(" ; avec des covariables, ds n'ajoute pas de terme d'ajustement", "; with covariates, ds adds no adjustment term") else ""
+    x <- sprintf(tx("La fonction de détection est %s, son échelle σ dépendant de covariables (échantillonnage par distances à covariables multiples ; Marques et Buckland, 2003 ; Marques et al., 2007), comme le fait ds(formula = ~%s) du paquet Distance (Miller et al., 2019) : %s%s%s (AIC = %s).",
+                    "The detection function is %s, its scale σ depending on covariates (multiple-covariate distance sampling; Marques and Buckland, 2003; Marques et al., 2007), as ds(formula = ~%s) of the Distance package does (Miller et al., 2019): %s%s%s (AIC = %s)."),
+                 mots_detection(sans_covariables(det$fd), fr), det$fd$formule, equation, mots_refs, ajust, nombre(det$AIC, 2))
+    sans <- m$candidats[!nzchar(m$candidats$covariables), , drop = FALSE]
+    if (nrow(sans)) {
+      ecart_aic <- sans$AIC[1] - det$AIC
+      x <- paste(x, sprintf(tx("Sans covariables, les mêmes réglages donnent %s, d'un AIC %s de %s.", "Without covariates, the same settings give %s, with an AIC %s by %s."), sans$modele[1],
+                            if (ecart_aic >= 0) tx("plus haut", "higher") else tx("plus bas", "lower"), nombre(abs(ecart_aic), 2)))
+    }
+    if (isFALSE(m$monotone)) x <- paste(x, tx("Pour certaines combinaisons de covariables, la fonction de détection n'est pas monotone (ce que signale check.mono de mrds).",
+                                              "For some combinations of covariates, the detection function isn't monotonic (as mrds's check.mono warns)."))
+    x
+  } else if (identical(r$ajustements, "aic") && r$serie != "aucune") {
     cands <- m$candidats
     liste <- paste(sprintf("%s (AIC = %s)", cands$modele, nombre(cands$AIC, 2)), collapse = tx(", ", ", "))
     sprintf(tx("La fonction de détection a été choisie comme le fait la fonction ds() du paquet Distance (Miller et al., 2019) : la clé %s seule, puis des termes d'ajustement %s (les distances divisées %s) ajoutés un à un tant que l'AIC baissait (cinq au plus)%s. Modèles ajustés : %s ; retenu : %s (AIC = %s).",
@@ -1421,22 +1539,33 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
                  mots_detection(det$fd, fr), if (length(det$fd$ordres)) mono else "", nombre(det$AIC, 2))
   eff <- if (point) sprintf(tx("un rayon effectif de détection de %s (erreur-type %s)", "an effective detection radius of %s (standard error %s)"), dist(m$effectif$valeur), dist(m$effectif$se))
          else sprintf(tx("une demi-largeur effective de bande de %s (erreur-type %s)", "an effective strip half-width of %s (standard error %s)"), dist(m$effectif$valeur), dist(m$effectif$se))
-  p2 <- paste(p2, sprintf(tx("La probabilité moyenne de détection dans la troncature est p = %s (erreur-type %s, CV %s), soit %s.",
-                             "The average probability of detection within the truncation is p = %s (standard error %s, CV %s), that is %s."),
-                          nombre(m$p, 3), nombre(m$se_p, 3), pourcent_texte(m$se_p / m$p, fr), eff))
+  p2 <- paste(p2, if (covariables) sprintf(tx("La probabilité moyenne de détection dans la troncature, p̄ = n / Σ 1/pi (pi celle de chaque détection, sachant ses covariables, comme summary.ds de mrds), est de %s (erreur-type %s, CV %s), soit %s.",
+                                              "The average probability of detection within the truncation, p̄ = n / Σ 1/pi (pi that of each detection, given its covariates, as mrds's summary.ds), is %s (standard error %s, CV %s), that is %s."),
+                                           nombre(m$p, 3), nombre(m$se_p, 3), pourcent_texte(m$se_p / m$p, fr), eff)
+                  else sprintf(tx("La probabilité moyenne de détection dans la troncature est p = %s (erreur-type %s, CV %s), soit %s.",
+                                  "The average probability of detection within the truncation is p = %s (standard error %s, CV %s), that is %s."),
+                               nombre(m$p, 3), nombre(m$se_p, 3), pourcent_texte(m$se_p / m$p, fr), eff))
   a <- m$adequation
   khi2 <- sprintf(tx("khi² = %s sur %d classes (%s)", "chi-square = %s on %d classes (%s)"), nombre(a$khi2$chi2, 2), nrow(a$khi2$classes),
                   if (is.na(a$khi2$ddl)) tx("sans degré de liberté", "no degree of freedom") else sprintf(tx("%d ddl, %s", "%d df, %s"), as.integer(a$khi2$ddl), valeur_p(a$khi2$p)))
-  p2 <- paste(p2, if (is.null(a$cvm)) sprintf(tx("Adéquation : %s.", "Goodness of fit: %s."), khi2)
-                  else sprintf(tx("Adéquation : Cramér–von Mises W = %s (%s) ; %s.", "Goodness of fit: Cramér–von Mises W = %s (%s); %s."), nombre(a$cvm$W, 3), valeur_p(a$cvm$p), khi2))
+  adeq <- if (covariables) tx("Adéquation, chaque distance rapportée à la fonction de détection de ses covariables (les comptes attendus des classes sommés sur les détections)",
+                              "Goodness of fit, each distance against the detection function of its covariates (the classes' expected counts summed over the detections)")
+          else tx("Adéquation", "Goodness of fit")
+  p2 <- paste(p2, if (is.null(a$cvm)) sprintf(tx("%s : %s.", "%s: %s."), adeq, khi2)
+                  else sprintf(tx("%s : Cramér–von Mises W = %s (%s) ; %s.", "%s: Cramér–von Mises W = %s (%s); %s."), adeq, nombre(a$cvm$W, 3), valeur_p(a$cvm$p), khi2))
   # la densité
   dens <- m$densite
   tot <- dens[nrow(dens), ]
   aire <- if (nzchar(u$aire)) paste0(" ", tx("par", "per"), " ", u$aire) else tx(" par unité d'aire", " per unit of area")
   couverte <- if (point) tx("π w² K, K les passages", "π w² K, K the visits") else if (t$L > 0) tx("2 (w − L) L, L l'effort", "2 (w − L) L, L the effort") else tx("2 w L, L l'effort", "2 w L, L the effort")
-  p3 <- sprintf(tx("La densité de chaque strate est D = n / (a p), a l'aire couverte (%s), comme le fait dht2 ; sa variance réunit celle du taux de rencontre entre les transects (estimateur %s de Fewster et al., 2009), celle de p (méthode delta, d'après la somme des produits des scores des distances)%s ; l'intervalle de confiance à 95 %% est log-normal, avec les degrés de liberté de Satterthwaite (Buckland et al., 2001).",
-                   "The density of each stratum is D = n / (a p), a the covered area (%s), as dht2 computes it; its variance combines that of the encounter rate between transects (estimator %s of Fewster et al., 2009), that of p (delta method, from the outer product of the distances' scores)%s; the 95%% confidence interval is log-normal, with Satterthwaite degrees of freedom (Buckland et al., 2001)."),
-                couverte, if (point) "P2" else "R2", if (t$groupes) tx(" et celle de la taille moyenne des groupes", " and that of the mean group size") else "")
+  p3 <- if (covariables) {
+    sprintf(tx("La densité de chaque strate est celle de type Horvitz–Thompson de dht2, D = Σ %s / a, la somme sur ses détections, a l'aire couverte (%s) ; sa variance réunit celle du taux de rencontre entre les transects (estimateur %s de Fewster et al., 2009), celle de la fonction de détection (méthode delta sur ses paramètres, d'après la somme des produits des scores des distances)%s ; l'intervalle de confiance à 95 %% est log-normal, avec les degrés de liberté de Satterthwaite (Buckland et al., 2001).",
+               "The density of each stratum is dht2's Horvitz–Thompson-like estimator, D = Σ %s / a, the sum over its detections, a the covered area (%s); its variance combines that of the encounter rate between transects (estimator %s of Fewster et al., 2009), that of the detection function (delta method on its parameters, from the outer product of the distances' scores)%s; the 95%% confidence interval is log-normal, with Satterthwaite degrees of freedom (Buckland et al., 2001)."),
+            if (t$groupes) tx("si / pi (si la taille du groupe)", "si / pi (si the group size)") else "1 / pi", couverte, if (point) "P2" else "R2",
+            if (t$groupes) tx(" et celle de la taille moyenne des groupes", " and that of the mean group size") else "")
+  } else sprintf(tx("La densité de chaque strate est D = n / (a p), a l'aire couverte (%s), comme le fait dht2 ; sa variance réunit celle du taux de rencontre entre les transects (estimateur %s de Fewster et al., 2009), celle de p (méthode delta, d'après la somme des produits des scores des distances)%s ; l'intervalle de confiance à 95 %% est log-normal, avec les degrés de liberté de Satterthwaite (Buckland et al., 2001).",
+                    "The density of each stratum is D = n / (a p), a the covered area (%s), as dht2 computes it; its variance combines that of the encounter rate between transects (estimator %s of Fewster et al., 2009), that of p (delta method, from the outer product of the distances' scores)%s; the 95%% confidence interval is log-normal, with Satterthwaite degrees of freedom (Buckland et al., 2001)."),
+                 couverte, if (point) "P2" else "R2", if (t$groupes) tx(" et celle de la taille moyenne des groupes", " and that of the mean group size") else "")
   quoi <- if (nrow(dens) > 1) tx("Au total", "Overall") else tx("La densité", "The density")
   p3 <- paste(p3, sprintf(tx("%s : D = %s%s (erreur-type %s, CV %s ; IC à 95 %% %s–%s ; %s ddl)%s.", "%s: D = %s%s (standard error %s, CV %s; 95%% CI %s–%s; %s df)%s."),
                           quoi, sig(tot$D, 4), aire, sig(tot$se_D, 3), pourcent_texte(tot$cv, fr), sig(tot$bas_D, 4), sig(tot$haut_D, 4), nombre(tot$ddl, 1),
@@ -1460,4 +1589,58 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
     nuee = sprintf(REFERENCES$nuee, annee_nuee, if (nzchar(version)) sprintf(" (version %s)", version) else ""),
     REFERENCES_DISTANCE[[c]]), "")
   list(paragraphes = c(p1, p2, p3, logiciel), references = unname(sort(references)))
+}
+
+# ---------------------------------------------------------------- texte des résultats
+
+# Le texte des résultats d'un échantillonnage par distances (resultats_texte.R : texte_resultats) : la
+# fonction de détection retenue et son AIC (avec des covariables, l'écart à celle sans covariables, et
+# le coefficient de chaque covariable sur ln σ, avec son facteur exp(β) sur σ), la probabilité moyenne
+# de détection et ESW ou EDR, l'adéquation, puis la densité et l'effectif au total et par strate.
+texte_resultats_distance <- function(projet, d, m, langue = "fr") {
+  fr <- langue == "fr"
+  tx <- function(a, b) if (fr) a else b
+  nb <- function(x, k = 3) vapply(x, nombre_resultat, "", fr, k, USE.NAMES = FALSE)
+  t <- m$donnees
+  det <- m$detection
+  u <- unites_echantillonnage(m)
+  par_aire <- if (nzchar(u$aire)) sprintf(tx(" par %s", " per %s"), u$aire) else tx(" par unité d'aire", " per unit of area")
+  p1 <- sprintf(tx("Le modèle de %s porte sur %d détections jusqu'à %s %s, depuis %d %s : la fonction de détection %s (AIC = %s).",
+                   "The model of %s uses %d detections up to %s %s, from %d %s: the detection function %s (AIC = %s)."),
+                guillemets_resultat(t$noms$y, fr), t$n, nb(t$w, 4), u$distance, nrow(t$transects),
+                if (t$point) tx("points", "points") else tx("lignes", "lines"), libelle_detection(det$fd), nb(det$AIC, 6))
+  if (!is.null(det$fd$formule)) {
+    sans <- m$candidats[!nzchar(m$candidats$covariables), , drop = FALSE]
+    if (nrow(sans)) {
+      ecart_aic <- sans$AIC[1] - det$AIC
+      p1 <- paste(p1, sprintf(tx("Sans covariables (%s), l'AIC serait %s de %s.", "Without covariates (%s), the AIC would be %s by %s."), sans$modele[1],
+                              if (ecart_aic >= 0) tx("plus haut", "higher") else tx("plus bas", "lower"), nb(abs(ecart_aic), 3)))
+    }
+    pa <- m$parametres[m$parametres$parametre %in% det$fd$noms_echelle[-1], , drop = FALSE]
+    quantitative <- pa$parametre %in% t$covariables$termes$terme[is.na(t$covariables$termes$niveau)]
+    p1 <- paste(p1, sprintf(tx("Coefficients des covariables sur ln σ : %s.", "Coefficients of the covariates on ln σ: %s."),
+                            paste(sprintf(tx("%s β = %s (erreur-type %s ; σ × %s%s)", "%s β = %s (standard error %s; σ × %s%s)"), pa$parametre, nb(pa$estimation), nb(pa$se),
+                                          nb(exp(pa$estimation)), ifelse(quantitative, tx(" par unité", " per unit"), "")), collapse = tx(", ", ", "))))
+    refs <- t$covariables$noms[t$covariables$qualitatives]
+    if (length(refs)) p1 <- paste(p1, sprintf(tx("Catégories de référence : %s.", "Reference categories: %s."),
+                                              paste(vapply(refs, function(n) sprintf(tx("%s : %s", "%s: %s"), n, t$covariables$references[[n]]), "", USE.NAMES = FALSE), collapse = tx(", ", ", "))))
+  }
+  a <- m$adequation
+  p2 <- sprintf(tx("Probabilité moyenne de détection %s = %s (CV %s), %s = %s %s. Adéquation : %skhi² %s.",
+                   "Average probability of detection %s = %s (CV %s), %s = %s %s. Goodness of fit: %schi-square %s."),
+                if (!is.null(m$p_detections)) "p̄" else "p", nb(m$p), pourcent_texte(m$se_p / m$p, fr), m$effectif$quoi, nb(m$effectif$valeur), u$distance,
+                if (!is.null(a$cvm)) sprintf(tx("Cramér–von Mises %s, ", "Cramér–von Mises %s, "), p_resultat(a$cvm$p, fr)) else "", p_resultat(a$khi2$p, fr))
+  dens <- m$densite
+  tot <- dens[nrow(dens), ]
+  p3 <- sprintf(tx("%s : D = %s%s (IC à 95 %% %s – %s ; CV %s)%s.", "%s: D = %s%s (95%% CI %s – %s; CV %s)%s."),
+                if (nrow(dens) > 1) tx("Densité totale", "Overall density") else tx("Densité", "Density"), nb(tot$D, 4), par_aire, nb(tot$bas_D, 4), nb(tot$haut_D, 4),
+                pourcent_texte(tot$cv, fr),
+                if (!t$densite_seule) sprintf(tx(", soit un effectif N = %s (IC à 95 %% %s – %s)", ", that is an abundance N = %s (95%% CI %s – %s)"), nb(tot$N, 4), nb(tot$bas_N, 4), nb(tot$haut_N, 4)) else "")
+  if (nrow(dens) > 1) {
+    st <- dens[!is.na(dens$strate), , drop = FALSE]
+    p3 <- paste(p3, sprintf(tx("Par strate : %s.", "By stratum: %s."),
+                            paste(sprintf("%s D = %s (CV %s)", st$strate, nb(st$D, 4), vapply(st$cv, function(v) if (is.finite(v)) pourcent_texte(v, fr) else "—", "")),
+                                  collapse = tx(" ; ", "; "))))
+  }
+  list(paragraphes = c(p1, p2, p3))
 }
