@@ -55,7 +55,8 @@ verifier("PLS : R²X, Q² cumulé, CV-ANOVA, la variable de plus grand VIP en t�
            grepl(sprintf("VIP > 1) : %s (", haut), paste(tp, collapse = " "), fixed = TRUE))
 dk <- definir_modele(p, "KMEANS", x = u("x", "y"), observations = obs, options = list(k = 2))
 tk <- texte_resultats(p, dk, ajuster(p, dk), "fr", chiffres = "k = 2 · R2 0.50")$paragraphes
-verifier("une autre analyse sans texte à elle : ses chiffres", identical(tk, sprintf("Résultats de %s (KMEANS) : k = 2 · R2 0.50.", dk$name)))
+verifier("une autre analyse sans texte à elle : ses chiffres, avec une virgule décimale en français", identical(tk, sprintf("Résultats de %s (KMEANS) : k = 2 · R2 0,50.", dk$name)) &&
+           identical(texte_resultats(p, dk, ajuster(p, dk), "en", chiffres = "k = 2 · R2 0.50")$paragraphes, sprintf("Results of %s (KMEANS): k = 2 · R2 0.50.", dk$name)))
 
 cat("Conditions du modèle\n")
 set.seed(4)

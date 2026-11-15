@@ -15,6 +15,8 @@ texte_resultats <- function(projet, d, m, langue = c("fr", "en"), chiffres = "")
   if (est_autre_analyse(d)) {
     f <- fonction_analyse("texte_resultats_", d$type)
     if (!is.null(f)) return(f(projet, d, m, langue))
+    # (les chiffres du résumé, écrits avec un point décimal partout : une virgule en français)
+    if (fr) chiffres <- gsub("([0-9])\\.([0-9])", "\\1,\\2", chiffres)
     return(list(paragraphes = sprintf(if (fr) "Résultats de %s (%s) : %s." else "Results of %s (%s): %s.", d$name %||% "", d$type, chiffres)))
   }
   list(paragraphes = resultats_composantes(projet, d, m, fr))
