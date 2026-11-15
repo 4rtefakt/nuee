@@ -439,14 +439,17 @@ function ipc() {
   // Zotero on this computer, for a document's citations (zotero.js: its local API and Better
   // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
   recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
-  recevoir('quarto', (_, chemin, format) => new Promise((ok) => {
+  // (options.R: the bin folder of an R that has knitr and rmarkdown, for the R chunks of a
+  // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own)
+  recevoir('quarto', (_, chemin, format, options = {}) => new Promise((ok) => {
     const quarto = trouverQuarto();
     if (!quarto) return ok({ erreur: 'quarto_absent' });
     if (!['docx', 'html', 'typst'].includes(format) || !/\.qmd$/i.test(String(chemin))) return ok({ erreur: 'demande' });
     const dossier = path.dirname(chemin);
     const sortie = path.join(dossier, path.basename(chemin).replace(/\.qmd$/i, format === 'typst' ? '.pdf' : `.${format}`));
+    const R = options && typeof options.R === 'string' && !process.env.QUARTO_R && fs.existsSync(options.R) ? options.R : null;
     let journal = '';
-    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true });
+    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true, env: R ? { ...process.env, QUARTO_R: R } : process.env });
     q.stdout.on('data', (d) => { journal += d; });
     q.stderr.on('data', (d) => { journal += d; });
     q.on('error', (e) => ok({ erreur: e.message }));

@@ -8,13 +8,14 @@
 // Citations ([@wold2001], bibliographie.js): from the BibTeX or CSL-JSON files the document's header
 // names (bibliography:), from Zotero on this computer (zotero.js), or kept in the document itself
 // (its `bib`: the references added from Zotero or pasted, and a copy of those cited from files).
-import { t, ajouterTextes, langueActuelle } from './i18n.js';
+import { t, ajouterTextes, langueActuelle, lire, ecrire } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
-import { separerCible, valeurReference, offreModele, numeroter } from './references.js';
-import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, lireEntete, listeEntete, fixerEntete, BLOCS } from './rendu_document.js';
+import { separerCible, formeReference, texteForme, offreModele, numeroter } from './references.js';
+import { zip } from './zip.js';
+import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, referencesReproductibles, lireEntete, listeEntete, fixerEntete, BLOCS } from './rendu_document.js';
 import { lireBibtex, lireCslJson, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES } from './bibliographie.js';
 import { VERSION } from './nouveautes.js';
 
@@ -363,7 +364,9 @@ const garder = (carte, cle, valeur, max = 80) => {
 
 // One reference resolved (rendu_document.js says what it gives) once its model is known. Plots,
 // tables and the Methods text take time: unless `attendre`, those not yet at hand give null (the
-// preview shows the text first, then them).
+// preview shows the text first, then them). What a reproducible Quarto file needs to write it in R
+// comes too: a value's `forme` (references.js: formeReference), a plot's `vue` and `variante`, a
+// table's `cle`.
 async function resoudreUne(app, s, m, chemin, ref, attendre) {
   const parties = partiesModele(m);
   const partie = (cle, quoi) => parties.find((x) => x.cle === cle && x[quoi]);
@@ -386,7 +389,7 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     const cle = `${m.id}|${x.cle}`;
     if (!s.tableaux.has(cle) && !attendre) return null;
     const blocs = s.tableaux.get(cle) || garder(s.tableaux, cle, await x.tableau(m));
-    return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: t(x.cle) };
+    return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: t(x.cle), cle: x.cle };
   }
   const x = partie(chemin[0], 'vue');
   if (x && (chemin.length === 1 || x.variantes)) {
@@ -404,10 +407,10 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     if (!s.images.has(cle) && !attendre) return null;
     const image = s.images.get(cle) || garder(s.images, cle, await imageVue(app, x.vue, m, variante), 40);
     if (!image) return erreur('ref_graphique_absent');
-    return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: t(x.cle) };
+    return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: t(x.cle), vue: x.vue, variante };
   }
-  const v = valeurReference(m, chemin, ref, s.langue);
-  return v.erreur ? erreur(`ref_${v.erreur}`) : { genre: 'valeur', texte: v.texte };
+  const f = formeReference(m, chemin, ref);
+  return f.erreur ? erreur(`ref_${f.erreur}`) : { genre: 'valeur', texte: texteForme(f, s.langue), forme: f };
 }
 
 // Every reference of the document resolved, in order (null: not yet, unless `attendre`); then the
@@ -424,7 +427,7 @@ async function resoudre(app, s, analyse, attendre) {
     try {
       const m = await modelePour(app, s, c.modele, attendre);
       const r = m ? await resoudreUne(app, s, m, c.chemin, ref, attendre) : null;
-      resolus.push(!r || r.erreur ? r : { ...r, legende: ref.legende, etiquette: ref.etiquette });
+      resolus.push(!r || r.erreur ? r : { ...r, legende: ref.legende, etiquette: ref.etiquette, modele: m.id, chemin: c.chemin });
     } catch (e) {
       resolus.push({ erreur: e.message });
     }
@@ -982,11 +985,40 @@ function menuCompiler(app, s) {
     { libelle: 'PDF…', icone: 'file-down', action: () => compiler(app, s, 'pdf') },
     { libelle: 'HTML…', icone: 'file-code', action: () => compiler(app, s, 'html') },
     '-',
-    { libelle: t('document_qmd'), icone: 'file-output', action: () => compiler(app, s, 'qmd') },
+    { libelle: t('document_qmd'), icone: 'file-output', action: () => dialogueQuarto(app, s, null) },
     quarto ? { libelle: t('document_quarto'), icone: 'file-output',
-      sous: [['docx', 'Word (.docx)'], ['typst', 'PDF (Typst)'], ['html', 'HTML']].map(([f, n]) => ({ libelle: n, action: () => compiler(app, s, 'qmd', f) })) }
+      sous: Object.entries(SORTIES_QUARTO).map(([f, n]) => ({ libelle: n, action: () => dialogueQuarto(app, s, f) })) }
       : { libelle: t('document_quarto_absent'), icone: 'file-output', actif: false, action: () => {} },
   ];
+}
+const SORTIES_QUARTO = { docx: 'Word (.docx)', typst: 'PDF (Typst)', html: 'HTML' };
+
+// The Quarto file's results: written in, or reproducible (R recomputes them from the raw data with
+// each cited model's Export to R script, written beside the .qmd). The models cited whose type has
+// no export to R yet are said here: their values stay written in. The choice is kept.
+async function dialogueQuarto(app, s, quarto) {
+  const p = app.projet(s.pid);
+  const noms = p.modeles.map((d) => d.nom).concat(app.modelesDe(s.pid).map((m) => m.nom));
+  const cites = [...new Set(analyser(md, s.vue.state.doc.toString()).refs.map((tok) => separerCible(tok.meta.ref.cible, noms)).filter(Boolean).map((c) => c.modele))];
+  const sans = cites.length ? [].concat((await demander('export_r_possible', { projet: s.pid, noms: cites }).catch(() => ({}))).sans_export || []) : [];
+  let reproductible = s.reproductible ?? lire('document_reproductible') === 'oui';
+  const choix = (valeur, titre, aide) => el('label', { class: 'champ choix-quarto' },
+    el('input', { type: 'radio', name: 'resultats-quarto', checked: reproductible === valeur, onchange: () => { reproductible = valeur; } }),
+    el('span', {}, el('span', { class: 'titre-choix' }, titre), el('span', { class: 'note' }, aide)));
+  dialogue({ titre: quarto ? `${t('document_quarto')} · ${SORTIES_QUARTO[quarto]}` : t('reproductible_titre'),
+    contenu: el('div', { class: 'dialogue-quarto' },
+      el('p', {}, t('reproductible_question')),
+      choix(false, t('reproductible_non'), t('reproductible_non_aide')),
+      choix(true, t('reproductible_oui'), t('reproductible_oui_aide')),
+      sans.length ? el('p', { class: 'note avertissement' }, t('reproductible_sans_export', {
+        modeles: sans.map((x) => `${x.nom} (${String(x.raison).replace(/\.$/, '').replace(/^\p{Lu}(?!\p{Lu})/u, (c) => c.toLowerCase())})`).join(' ; ') })) : null),
+    boutons: [{ libelle: t('annuler'), action: () => true },
+      { libelle: bureau ? t('choisir_emplacement') : t('telecharger'), principal: true, action: () => {
+        s.reproductible = reproductible;
+        ecrire('document_reproductible', reproductible ? 'oui' : 'non');
+        compiler(app, s, 'qmd', quarto, reproductible);
+        return true;
+      } }] });
 }
 
 // A code chunk Quarto would run (```{r}, ```{python}..., or inline `r ...`).
@@ -995,8 +1027,10 @@ const FILTRES = { docx: { name: 'Word', extensions: ['docx'] }, pdf: { name: 'PD
 const octets = (texte) => new TextEncoder().encode(texte);
 
 // The document written in `format` (docx, pdf, html, or qmd with its figures beside it), its
-// references resolved now; then compiled by Quarto when `quarto` names its output.
-async function compiler(app, s, format, quarto = null) {
+// references resolved now; then compiled by Quarto when `quarto` names its output. `reproductible`
+// (qmd): R recomputes its results when Quarto renders it, with the cited models' Export to R
+// scripts written beside it (in <name>_R); in the browser, all of it in a .zip.
+async function compiler(app, s, format, quarto = null, reproductible = false) {
   await s.enregistrer();
   const base = (s.titre || t('document_sans_titre')).replace(/[^\p{L}\p{N} _.()-]+/gu, '_').trim() || 'document';
   const r = await app.occupe(async () => {
@@ -1015,6 +1049,7 @@ async function compiler(app, s, format, quarto = null) {
   }
   const lib = libelles(s.langue);
   let ouvrir = chemin;
+  let rep = null;
   await app.occupe(async () => {
     if (format === 'docx') {
       const o = versDocx(r.analyse, r.resolus, { langue: s.langue, libelles: lib, citations: r.citations });
@@ -1040,30 +1075,60 @@ async function compiler(app, s, format, quarto = null) {
           csl = cslEntete.split(/[\\/]/).pop();
         } catch (e) { app.statut(`${t('document_csl_absent')} ${e.message}`, true); }
       }
-      const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre: s.titre || base,
-        bibliographie: bib, csl, libelles: lib });
-      if (!bureau) { telecharger(octets(q.texte), fichier); return; }
-      const racine = chemin.slice(0, chemin.length - fichier.length);
-      const sep = chemin.includes('\\') ? '\\' : '/';
-      if (bib) await bureau.ecrireFichier(`${racine}${bib}`, octets(`${cites.map((e) => versBibtex(e)).join('\n\n')}\n`));
-      if (texteCsl !== null) await bureau.ecrireFichier(`${racine}${csl}`, octets(texteCsl));
-      for (const x of r.resolus.filter((y) => y.genre === 'figure' && y.numero)) {
-        const b = atob(x.image.split(',')[1]);
-        await bureau.ecrireFichier(`${racine}${dossier}${sep}figure-${x.numero}.png`, Uint8Array.from(b, (c) => c.charCodeAt(0)));
+      const racine = chemin ? chemin.slice(0, chemin.length - fichier.length) : '';
+      // reproducible: the engine writes each cited model's Export to R script and its data beside
+      // the .qmd (in the browser, in a folder of its session), and says what the .qmd writes instead
+      // of each reference
+      if (reproductible) {
+        app.statut(t('reproductible_en_cours'));
+        rep = await demander('document_reproductible', { projet: s.pid, langue: s.langue, version: VERSION, nom, dossier: bureau ? racine : null,
+          ...referencesReproductibles(r.resolus) });
       }
+      const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre: s.titre || base,
+        bibliographie: bib, csl, libelles: lib, reproductible: rep });
+      const texteBib = bib ? `${cites.map((e) => versBibtex(e)).join('\n\n')}\n` : null;
+      const png = (x) => { const b = atob(x.image.split(',')[1]); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+      const figures = q.images.filter((x) => x.numero);
+      if (!bureau) {
+        if (!rep) { telecharger(octets(q.texte), fichier); return; }
+        // (one .zip: the .qmd, its references, the figures R doesn't draw, the scripts and their data)
+        const lus = await Promise.all([].concat(rep.fichiers).map(async (f) => new Uint8Array(await (await fetch(`/api/fichier?chemin=${encodeURIComponent(f)}`)).arrayBuffer())));
+        telecharger(zip([[fichier, octets(q.texte)], ...(texteBib ? [[bib, octets(texteBib)]] : []), ...(texteCsl !== null ? [[csl, octets(texteCsl)]] : []),
+          ...figures.map((x) => [`${dossier}/figure-${x.numero}.png`, png(x)]), ...[].concat(rep.relatifs).map((f, i) => [f, lus[i]])]), `${nom}.zip`);
+        const note = noteReproductible(rep);
+        if (note) app.statut(note, true);
+        return;
+      }
+      const sep = chemin.includes('\\') ? '\\' : '/';
+      if (texteBib) await bureau.ecrireFichier(`${racine}${bib}`, octets(texteBib));
+      if (texteCsl !== null) await bureau.ecrireFichier(`${racine}${csl}`, octets(texteCsl));
+      for (const x of figures) await bureau.ecrireFichier(`${racine}${dossier}${sep}figure-${x.numero}.png`, png(x));
       await bureau.ecrireFichier(chemin, octets(q.texte));
       if (quarto) {
         app.statut(t('document_quarto_en_cours'));
-        const sortie = await bureau.quarto(chemin, quarto);
+        // (Quarto runs the R of a reproducible .qmd with the engine's R when it has knitr and rmarkdown, unless QUARTO_R says another)
+        const R = rep && rep.R && rep.R.knitr && rep.R.rmarkdown ? rep.R.bin : null;
+        const sortie = await bureau.quarto(chemin, quarto, R ? { R } : {});
         if (sortie.erreur) throw new Error(sortie.erreur === 'quarto_absent' ? t('document_quarto_absent') : `Quarto : ${sortie.erreur}`);
         ouvrir = sortie.sortie;
       }
     }
   });
   if (ouvrir && bureau) {
-    app.statut(`${t('document_ecrit')} ${ouvrir}`);
+    const note = rep ? noteReproductible(rep) : '';
+    app.statut(`${t('document_ecrit')} ${ouvrir}${note ? ` · ${note}` : ''}`, !!note);
     bureau.ouvrirChemin(ouvrir);
   }
+}
+
+// After a reproducible .qmd: how many of its references stay written in, and the models its
+// scripts don't redo (its first chunk says why); '' when R recomputes them all.
+function noteReproductible(rep) {
+  const refs = [].concat(rep.references || []).filter(Boolean);
+  const enDur = refs.filter((x) => x.raison).length;
+  const sans = [].concat(rep.modeles || []).filter((x) => x.erreur).map((x) => x.nom);
+  if (!enDur && !sans.length) return '';
+  return t('reproductible_en_dur', { n: enDur, total: refs.length }) + (sans.length ? ` ${t('reproductible_modeles_en_dur', { modeles: sans.join(', ') })}` : '');
 }
 
 function telecharger(o, nom) {
@@ -1251,7 +1316,15 @@ ajouterTextes({
   document_renvoi: 'le numéro d’une figure ou d’un tableau étiqueté (#…)',
   document_inserer_renvoi: 'Renvoi à une figure ou un tableau ({{ref:…}})', document_non_calcule: 'pas encore calculé : il le sera',
   document_seul: 'Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne.',
-  document_qmd: 'Quarto (.qmd), résultats écrits en dur…', document_quarto: 'Compiler avec Quarto', document_quarto_absent: 'Compiler avec Quarto (Quarto n’est pas installé)',
+  document_qmd: 'Quarto (.qmd)…', document_quarto: 'Compiler avec Quarto', document_quarto_absent: 'Compiler avec Quarto (Quarto n’est pas installé)',
+  reproductible_titre: 'Quarto (.qmd)', reproductible_question: 'Les résultats du document :',
+  reproductible_non: 'Écrits en dur', reproductible_non_aide: 'Les valeurs, les graphiques et les tableaux tels que Nuée les montre.',
+  reproductible_oui: 'Reproductibles',
+  reproductible_oui_aide: 'R les recalcule à partir des données brutes quand Quarto compile le document, avec l’export vers R de chaque modèle cité, écrit à côté du .qmd (il faut R et ses paquets knitr et rmarkdown).',
+  reproductible_sans_export: 'Sans export vers R, leurs valeurs resteront écrites en dur : {modeles}.',
+  reproductible_en_cours: 'Export vers R des modèles cités…',
+  reproductible_en_dur: '{n} des {total} références restent écrites en dur (le premier bloc du .qmd dit pourquoi).',
+  reproductible_modeles_en_dur: 'Pas refaits par R : {modeles}.',
   document_quarto_en_cours: 'Quarto compile le document…', document_ecrit: 'Document écrit :',
   document_compiler_erreurs: '{n} référence(s) introuvable(s) : elles resteront telles quelles, en rouge. Compiler quand même ?',
   document_quarto_code: 'Ce document contient du code (R, Python…) que Quarto va exécuter sur cet ordinateur. Ne le compilez que si vous savez ce que fait ce code. Compiler avec Quarto ?',
@@ -1296,7 +1369,8 @@ ajouterTextes({
     + 'Les citations s’écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 3 ; @eriksson2006], @wold2001 dans la phrase, [-@wold2001] sans l’auteur ; tapez @ pour les références du document et de Zotero. La liste des références vient à la fin, ou là où le document met {{bibliographie}} :\n'
     + '`---\ntitle: Mon article\nbibliography: references.bib\n---\nLa PLS [@wold2001] et la validation croisée (@eriksson2006, p. 92).`\n'
     + 'Citer › Lier un fichier : un fichier BibTeX ou CSL-JSON (exporté de Zotero, Mendeley, JabRef… ; Better BibTeX le tient à jour), nommé dans l’en-tête. Zotero ouvert sur cet ordinateur : ses références se cherchent depuis Nuée (Zotero 7, en cochant « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero »).\n'
-    + 'Compiler : Word, PDF ou HTML directement ; ou un fichier Quarto (.qmd) avec ses figures et ses références (.bib), et, si Quarto est installé, compilé par lui (style CSL d’une revue : csl: dans l’en-tête, renvois, modèles de revues). {{< pagebreak >}} seul sur sa ligne commence une nouvelle page.',
+    + 'Compiler : Word, PDF ou HTML directement ; ou un fichier Quarto (.qmd) avec ses figures et ses références (.bib), et, si Quarto est installé, compilé par lui (style CSL d’une revue : csl: dans l’en-tête, renvois, modèles de revues). {{< pagebreak >}} seul sur sa ligne commence une nouvelle page.\n'
+    + 'Quarto reproductible : à côté du .qmd, l’export vers R de chaque modèle cité et ses données ; Quarto les relance, et chaque valeur devient `r …` qui lit la valeur recalculée, chaque graphique et chaque tableau un bloc R. Ce que les scripts n’ont pas (un graphique qu’ils ne dessinent pas, le texte des méthodes et des résultats) reste écrit en dur, et le premier bloc du .qmd le dit.',
 }, {
   document: 'Document', documents: 'Documents', nouveau_document: 'New document…', creer_document: 'Create the document',
   document_sans_titre: 'Untitled', document_titre: 'Title', document_langue: 'Language', document_copie: 'copy', ok: 'OK',
@@ -1316,7 +1390,15 @@ ajouterTextes({
   document_renvoi: 'the number of a labelled figure or table (#…)',
   document_inserer_renvoi: 'Cross-reference to a figure or table ({{ref:…}})', document_non_calcule: 'not computed yet: it will be',
   document_seul: 'A plot, a table or the Methods text goes alone on its line.',
-  document_qmd: 'Quarto (.qmd), results written in…', document_quarto: 'Compile with Quarto', document_quarto_absent: 'Compile with Quarto (Quarto isn’t installed)',
+  document_qmd: 'Quarto (.qmd)…', document_quarto: 'Compile with Quarto', document_quarto_absent: 'Compile with Quarto (Quarto isn’t installed)',
+  reproductible_titre: 'Quarto (.qmd)', reproductible_question: 'The document’s results:',
+  reproductible_non: 'Written in', reproductible_non_aide: 'The values, plots and tables as Nuée shows them.',
+  reproductible_oui: 'Reproducible',
+  reproductible_oui_aide: 'R recomputes them from the raw data when Quarto renders the document, with each cited model’s Export to R script, written beside the .qmd (R and its packages knitr and rmarkdown are needed).',
+  reproductible_sans_export: 'Without an export to R, their values will stay written in: {modeles}.',
+  reproductible_en_cours: 'Exporting the cited models to R…',
+  reproductible_en_dur: '{n} of the {total} references stay written in (the .qmd’s first chunk says why).',
+  reproductible_modeles_en_dur: 'Not redone by R: {modeles}.',
   document_quarto_en_cours: 'Quarto is compiling the document…', document_ecrit: 'Document written:',
   document_compiler_erreurs: '{n} unresolved reference(s): they will stay as they are, in red. Compile anyway?',
   document_quarto_code: 'This document holds code (R, Python…) that Quarto will run on this computer. Only compile it if you know what that code does. Compile with Quarto?',
@@ -1361,5 +1443,6 @@ ajouterTextes({
     + 'Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 3; @eriksson2006], @wold2001 in the sentence, [-@wold2001] without the author; type @ for the references of the document and of Zotero. The list of references comes at the end, or where the document puts {{bibliographie}}:\n'
     + '`---\ntitle: My paper\nbibliography: references.bib\n---\nPLS [@wold2001] and cross-validation (@eriksson2006, p. 92).`\n'
     + 'Cite › Link a file: a BibTeX or CSL-JSON file (exported from Zotero, Mendeley, JabRef…; Better BibTeX keeps it up to date), named in the header. With Zotero open on this computer, its references are searched from Nuée (Zotero 7, ticking “Allow other applications on this computer to communicate with Zotero”).\n'
-    + 'Compile: Word, PDF or HTML directly; or a Quarto file (.qmd) with its figures and references (.bib), compiled by Quarto when it is installed (a journal’s CSL style: csl: in the header, cross-references, journal templates). {{< pagebreak >}} alone on its line starts a new page.',
+    + 'Compile: Word, PDF or HTML directly; or a Quarto file (.qmd) with its figures and references (.bib), compiled by Quarto when it is installed (a journal’s CSL style: csl: in the header, cross-references, journal templates). {{< pagebreak >}} alone on its line starts a new page.\n'
+    + 'Reproducible Quarto: beside the .qmd, each cited model’s Export to R script and its data; Quarto runs them again, and each value becomes `r …` reading the recomputed value, each plot and table an R chunk. What the scripts don’t have (a plot they don’t draw, the Methods and Results texts) stays written in, and the .qmd’s first chunk says so.',
 });

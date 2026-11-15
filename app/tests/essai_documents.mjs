@@ -3,7 +3,7 @@
 // Quarto's {{< >}}), those alone on their line, the preview, the .docx's parts and the .qmd's text.
 //   node tests/essai_documents.mjs
 import markdownit from 'markdown-it';
-import { pluginReferences, analyser, versHTML, versDocx, versQmd, lireEntete, referencesDansTexte, fixerEntete, listeEntete } from '../interface/rendu_document.js';
+import { pluginReferences, analyser, versHTML, versDocx, versQmd, lireEntete, referencesDansTexte, fixerEntete, listeEntete, referencesReproductibles } from '../interface/rendu_document.js';
 import { lireBibtex, formaterCitations } from '../interface/bibliographie.js';
 
 let echecs = 0;
@@ -128,6 +128,45 @@ contient('la langue ajoutée à l’en-tête', q.texte, ['---\ntitle: "Essai"\na
 // one reference markdown-it doesn't read (in a link's address) doesn't shift the others
 const lien = '[lien]({{M1.Q2}}) puis {{M1.N}}.';
 egal('une référence dans l’adresse d’un lien ne décale pas les autres', referencesDansTexte(lien, analyser(md, lien)).map((r) => r.brut), ['{{M1.N}}']);
+
+console.log('Quarto reproductible (.qmd)');
+// (what documents.js resolves, with each reference's model and path; what the engine answers:
+// moteur/R/document_reproductible.R)
+const texteR = '---\ntitle: "Essai"\n---\n\nQ² = {{M1.Q2}}, N = {{M1.N}}, AIC {{M2.AIC}}.\n\n{{M1.scores #fig-scores | Scores}}\n\n{{M1.biplot | Biplot}}\n\n'
+  + '{{M1.table.resume #tbl-res | Résumé}}\n\n{{M1.methodes}}\n\n- dans une liste : {{M1.scores | Encore}}\n\n| a |\n|---|\n| {{M1.Q2}} |\n';
+const aR = analyser(md, texteR);
+const resR = [
+  { genre: 'valeur', texte: '0,65', modele: 'm1', chemin: ['Q2'], forme: { forme: 'nombre', x: 0.6512, decimales: 2, significatifs: null } },
+  { genre: 'valeur', texte: '40', modele: 'm1', chemin: ['N'], forme: { forme: 'nombre', x: 40, decimales: 0 } },
+  { genre: 'valeur', texte: '171,0', modele: 'm2', chemin: ['AIC'], forme: { forme: 'nombre', x: 171.01, decimales: 1 } },
+  { genre: 'figure', image: PNG, largeur: 900, hauteur: 580, numero: 1, legende: 'Scores', etiquette: 'fig-scores', nom: 'Scores', modele: 'm1', chemin: ['scores'], vue: 'scores', variante: {} },
+  { genre: 'figure', image: PNG, largeur: 900, hauteur: 580, numero: 2, legende: 'Biplot', etiquette: '', nom: 'Biplot', modele: 'm1', chemin: ['biplot'], vue: 'biplot', variante: {} },
+  { genre: 'tableau', blocs: [{ entetes: ['A', 'Q2'], lignes: [['1', '0,40']] }], numero: 1, legende: 'Résumé', etiquette: 'tbl-res', nom: 'Résumé', modele: 'm1', chemin: ['table', 'resume'], cle: 'resume' },
+  { genre: 'texte', paragraphes: ['Une PLS a été ajustée.'], modele: 'm1', chemin: ['methodes'] },
+  { genre: 'figure', image: PNG, largeur: 900, hauteur: 580, numero: 3, legende: 'Encore', etiquette: '', nom: 'Scores', modele: 'm1', chemin: ['scores'], vue: 'scores', variante: {} },
+  { genre: 'valeur', texte: '0,65', modele: 'm1', chemin: ['Q2'], forme: { forme: 'nombre', x: 0.6512, decimales: 2 } },
+];
+const envoi = referencesReproductibles(resR);
+const refsEnvoyees = JSON.parse(envoi.references);
+egal('ce que le moteur reçoit : les modèles cités, et chaque référence sans ses nombres', [envoi.modeles, refsEnvoyees[0], refsEnvoyees[3].vue, refsEnvoyees[5].cle, refsEnvoyees[6].genre],
+  [['m1', 'm2'], { modele: 'm1', chemin: ['Q2'], genre: 'valeur', forme: { forme: 'nombre', decimales: 2, significatifs: null }, texte: '0,65' }, 'scores', 'resume', 'texte']);
+const scores = ['nuee_dans(M1, {', '  plot(m$T[, 1], m$T[, 2])', '})'];
+const rep = {
+  installation: ['```{r}', '#| label: nuee-modeles', '#| include: false', 'source("Essai_R/nuee.R", encoding = "UTF-8")', 'M1 <- nuee_refaire("Essai_R/M1.R")', '```'],
+  references: [{ code: 'nuee_nombre(M1$composantes$Q2cum[2])' }, { code: 'nuee_nombre(M1$N, 0)' }, { raison: 'pas d’export vers R' },
+    { lignes: scores, largeur: 6, hauteur: 5 }, { raison: 'le script ne dessine pas ce graphique' }, { lignes: ['nuee_dans(M1, knitr::kable(composantes, digits = 3))'] },
+    { raison: 'le texte des méthodes -- tel quel' }, { lignes: scores, largeur: 6, hauteur: 5 }, { code: 'nuee_nombre(M1$composantes$Q2cum[2])' }],
+};
+const qr = versQmd(texteR, aR, resR, { fichierFigure: (r) => `Essai_figures/figure-${r.numero}.png`, langue: 'fr', titre: 'Essai', reproductible: rep });
+contient('le bloc du début après l’en-tête, les valeurs en R en ligne, le reste en dur', qr.texte, ['lang: fr\n---\n\n```{r}\n#| label: nuee-modeles\n#| include: false\nsource("Essai_R/nuee.R"',
+  'Q² = `r nuee_nombre(M1$composantes$Q2cum[2])`, N = `r nuee_nombre(M1$N, 0)`, AIC 171,0.', '| `r nuee_nombre(M1$composantes$Q2cum[2])` |']);
+contient('un graphique : un bloc R étiqueté, sa légende, sa taille', qr.texte, ['```{r}\n#| label: fig-scores\n#| fig-cap: "Scores"\n#| fig-width: 6\n#| fig-height: 5\n#| echo: false\nnuee_dans(M1, {\n  plot(m$T[, 1], m$T[, 2])\n})\n```']);
+contient('un tableau : knitr::kable dans un bloc étiqueté', qr.texte, ['```{r}\n#| label: tbl-res\n#| tbl-cap: "Résumé"\n#| echo: false\nnuee_dans(M1, knitr::kable(composantes, digits = 3))\n```']);
+contient('ce qui reste en dur : l’image, le texte, chacun après un commentaire', qr.texte, ['<!-- Nuée : le script ne dessine pas ce graphique -->\n\n![Biplot](<Essai_figures/figure-2.png>){#fig-nuee-2}',
+  '<!-- Nuée : le texte des méthodes — tel quel -->\n\nUne PLS a été ajustée.']);
+contient('un bloc dans une liste : l’image, pas de bloc R', qr.texte, ['- dans une liste : ![Encore](<Essai_figures/figure-3.png>){#fig-nuee-3}']);
+egal('les figures écrites en images', qr.images.map((x) => x.numero), [2, 3]);
+egal('sans « reproductible », le .qmd d’avant', versQmd(texteR, aR, resR, { fichierFigure: (r) => `f/${r.numero}.png`, langue: 'fr' }).texte.includes('```{r}'), false);
 
 console.log('Citations');
 const bib = new Map(lireBibtex(String.raw`
