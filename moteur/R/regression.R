@@ -1579,7 +1579,9 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
   variances <- singularites <- NULL
   if (niveaux) {
     vc <- tryCatch(mgcv::gam.vcomp(estime), error = function(e) NULL)
-    et <- if (is.matrix(vc)) vc[, 1] else if (is.list(vc) && is.matrix(vc$vc)) vc$vc[, 1] else NULL  # (les écarts-types, nommés)
+    M <- if (is.matrix(vc)) vc else if (is.list(vc) && is.matrix(vc$vc)) vc$vc
+    # (les écarts-types, nommés : M[, 1] seul perd le nom d'une ligne unique, un effet aléatoire sans courbe)
+    et <- if (!is.null(M)) stats::setNames(M[, 1], rownames(M))
     if (!is.null(et)) {
       # (une matrice diagonale par niveau, son ordonnée à l'origine s(g1) puis ses pentes s(g1,t3) :
       # mgcv les tient pour indépendantes)

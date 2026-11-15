@@ -2448,7 +2448,7 @@ function rendreResumeRegression(conteneur, ctx, m) {
       correlations ? el('th', { class: 'num', title: t('correlation_ordonnee_aide') }, t('correlation_ordonnee')) : null,
       parts ? el('th', { class: 'num' }, t('part')) : null)),
     el('tbody', {}, [].concat(v.composante).map((c, i) => el('tr', {}, el('td', {}, c), avecPentes ? el('td', {}, [].concat(v.terme)[i]) : null,
-      el('td', { class: 'num' }, fmt(variances[i], 4)), el('td', { class: 'num' }, fmt(Math.sqrt(variances[i]), 4)),
+      el('td', { class: 'num' }, fmt(variances[i], 4)), el('td', { class: 'num' }, fmt(variances[i] == null ? null : Math.sqrt(variances[i]), 4)),
       correlations ? el('td', { class: 'num', title: t('correlation_ordonnee_aide') }, fmt([].concat(v.correlation)[i], 3)) : null,
       parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`) : null)))) : null;
   const cb = m.courbes;

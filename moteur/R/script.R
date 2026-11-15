@@ -1739,7 +1739,9 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     code_courbes("m"),
     if (mixte) c(commentaire(tx("La variance de chaque effet aléatoire (gam.vcomp : ses écarts-types).", "The variance of each random effect (gam.vcomp: their standard deviations).")),
                  "vcomp <- tryCatch(gam.vcomp(m), error = function(e) NULL)",
-                 "ecart_types <- if (is.matrix(vcomp)) vcomp[, 1] else if (is.list(vcomp) && is.matrix(vcomp$vc)) vcomp$vc[, 1]",
+                 "sd_vc <- if (is.matrix(vcomp)) vcomp else if (is.list(vcomp) && is.matrix(vcomp$vc)) vcomp$vc",
+                 commentaire(tx("(setNames : sd_vc[, 1] seul perdrait le nom d'une ligne unique)", "(setNames: sd_vc[, 1] alone would lose the name of a single row)")),
+                 "ecart_types <- if (!is.null(sd_vc)) setNames(sd_vc[, 1], rownames(sd_vc))",
                  if (!avec_pentes) sprintf("variances <- if (!is.null(ecart_types)) data.frame(composante = %s, variance = unname(ecart_types[sprintf(\"s(%%s)\", aleatoires)])^2)",
                                            code_textes(affiches))
                  else {
