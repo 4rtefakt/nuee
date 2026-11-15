@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Résultats, documents et R · Nuée</title>
+<meta name="description" content="Texte des méthodes, rapport, documents avec citations, exports vers d’autres logiciels, export vers R, console R.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="resultats.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/results.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/results.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="resultats.html" aria-current="page">Résultats, documents et R</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Résultats, documents et R</h1>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#texte-des-methodes">Texte des méthodes</a></li>
+<li><a href="#rapport-du-modele">Rapport du modèle</a></li>
+<li><a href="#documents">Documents</a></li>
+<li><a href="#exporter-vers-d-autres-logiciels">Exporter vers d'autres logiciels</a></li>
+<li><a href="#exporter-vers-r">Exporter vers R</a></li>
+<li><a href="#console-r">Console R</a></li>
+<li><a href="#le-code">Le code</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="texte-des-methodes">
+<h2>Texte des méthodes</h2>
+<p><strong>Modèle › Texte pour la section Méthodes :</strong> un paragraphe écrit d'après le modèle, en français ou en anglais (données, transformations, mise à l'échelle, prétraitement des spectres, méthode, validation croisée, R², Q², CV-ANOVA, classement, logiciel et version de R), avec ses références. Bouton « Copier le texte ». À relire et compléter (plan d'expérience, prélèvements...) avant de le publier.</p>
+</section>
+<section id="rapport-du-modele">
+<h2>Rapport du modèle</h2>
+<p><strong>Fichier › Rapport du modèle (ou clic droit sur le modèle) :</strong> un document PDF ou Word (.docx) avec un titre, un commentaire et les parties cochées (résumé, scores, loadings, DModX, VIP, coefficients, CV-ANOVA, classification, liste des variables...). Les graphiques y sont mis en forme comme dans leurs panneaux ouverts. Le document s'ouvre une fois écrit.</p>
+</section>
+<section id="documents">
+<h2>Documents (articles, rapports)</h2>
+<p>Fichier › Nouveau document (ou clic droit sur un projet dans l'explorateur) : un texte gardé dans le projet (un article, un rapport, des notes), écrit en Markdown à gauche, avec son aperçu à droite, redessiné pendant qu'on écrit. Il est enregistré avec le projet et dans ses copies de secours ; Édition › Annuler ne le touche pas, et Ctrl+Z dans le texte annule dans le texte. Départ : un document vide, un article (introduction, méthodes, résultats, discussion) ou un rapport d'analyse (pour chaque modèle : résumé, graphiques, méthodes), les modèles cochés déjà cités.</p>
+<p>Les résultats du projet se citent entre doubles accolades ; l'aperçu et le fichier compilé donnent leur valeur :</p>
+<pre>{{M1.Q2}}  {{M1.R2Y}}  {{M1.R2X:%}} (en pourcentage)  {{M1.Q2:3}} (3 décimales)  {{M1.N}}
+{{M1.gain}}  {{M1.vip.sucre}}  {{M1.coef.sucre}} (coefficient centré-réduit et son intervalle à 95 %)
+{{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
+{{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
+{{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
+{{M1.resultats}} (texte des résultats : l'ajustement, chaque coefficient avec son intervalle et p,
+en facteur ou en rapport de cotes pour un lien log ou logit, les termes significatifs, les
+courbes, les effets aléatoires ; pour une ACP, une PLS ou une OPLS, la variance expliquée, Q²,
+la CV-ANOVA et les variables les plus importantes)</pre>
+<p>Un graphique, un tableau, le texte des méthodes ou celui des résultats se met seul sur sa ligne. Modèle › Texte pour la section Méthodes montre aussi le texte des résultats, sous les méthodes. Graphiques et tableaux sont numérotés dans l'ordre (Figure 1, Tableau 1) ; avec une étiquette, {{M1.scores #fig-scores | légende}}, {{ref:fig-scores}} écrit « Figure 1 » n'importe où dans le texte. Tapez {{ pour voir les modèles du projet, puis ce que celui choisi offre, avec sa valeur du moment ; Insérer, dans la barre d'outils, fait de même par des menus, et un modèle ou sa vue dans l'explorateur a « Insérer dans le document » (clic droit).</p>
+<p>Une référence introuvable (un modèle qui n'existe pas, une variable qu'il n'a pas) est en rouge, avec la raison au survol. Un modèle du projet pas encore calculé l'est quand le document le cite, sans ouvrir ses vues. Les nombres suivent la langue du document (0,65 en français, 0.65 en anglais), comme « Figure », « Tableau » et le texte des méthodes.</p>
+<p><strong>Compiler :</strong> un fichier Word (.docx : titres, listes, tableaux, graphiques et légendes dans les styles de Word), un PDF, une page HTML (un seul fichier, graphiques compris), ou un fichier Quarto (.qmd) avec ses graphiques dans un dossier à côté, les résultats écrits en dur. Quand Quarto est installé (quarto.org, ou avec RStudio), « Compiler avec Quarto » en fait un Word, un PDF (Typst) ou une page HTML, avec ce que Quarto apporte : bibliographie (bibliography: refs.bib dans l'en-tête, [@cle] dans le texte), renvois, modèles de revues. Un en-tête YAML (title, author, date) en haut du document est lu ; une ligne {{&lt; pagebreak &gt;}} commence une nouvelle page.</p>
+<p><strong>Les citations s'écrivent comme dans Quarto :</strong> [@wold2001], [voir @wold2001, p. 33 ; @eriksson2006], @wold2001 dans la phrase (« Wold et al. (2001) »), [-@wold2001] sans l'auteur. Taper @ montre les références du document, puis celles de Zotero. La liste des références vient à la fin (sous le dernier titre quand c'est « Références »), ou là où le document met {{bibliographie}} ; en auteur-année ou numérotée (Citer › Style des citations), dans la langue du document. D'où viennent les références (bouton Citer) :</p>
+<ul>
+<li>des fichiers BibTeX ou CSL-JSON, exportés de Zotero, Mendeley, JabRef... : Citer › Lier un fichier en nomme un dans l'en-tête (bibliography: refs.bib, relatif au dossier du projet, comme le lit Quarto). L'export automatique de Better BibTeX le tient à jour : une clé introuvable fait relire le fichier ;</li>
+<li>Zotero sur cet ordinateur (Zotero 7 ou plus récent, en cochant Paramètres › Avancé › « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero ») : ses références se cherchent en tapant @, ou dans Citer › Insérer une citation, dans toute la bibliothèque ou dans une de ses collections ; leurs clés sont celles de Zotero (celles de Better BibTeX quand il est installé). Avec l'extension Better BibTeX, Citer › Choisir dans Zotero ouvre le sélecteur de Zotero, avec la page qu'on y donne. Nuée ne fait que lire la bibliothèque ;</li>
+<li>du BibTeX collé (Citer › Coller des références BibTeX).</li>
+</ul>
+<p>Le document garde une copie des références qu'il cite : envoyé à quelqu'un qui n'a pas le .bib, il les cite encore (Citer › Références du document les montre, et retire celles qui ne sont plus citées). Compilé pour Quarto, le texte garde ses citations telles quelles, les références citées dans un .bib à côté du .qmd, pour que Quarto les écrive dans le style d'une revue (csl: style.csl dans l'en-tête ; le fichier est copié à côté du .qmd).</p>
+<p>La langue d'une référence (le champ Langue de Zotero : fr, de...) la suit : les styles qui mettent les titres anglais en capitales (Title Case), comme celui de Quarto par défaut, laissent alors un titre français tel qu'il est écrit.</p>
+<p>Chaque document s'ouvre dans son propre onglet. Les graphiques des documents et des rapports de modèle sont dessinés en clair, quel que soit le thème de la fenêtre.</p>
+<p>Orthographe, en français et en anglais (et dans la langue du système) : les mots mal orthographiés sont soulignés ; clic droit pour les corrections proposées (dans tous les champs de texte de l'application).</p>
+</section>
+<section id="exporter-vers-d-autres-logiciels">
+<h2>Exporter vers d'autres logiciels</h2>
+<p><strong>Fichier › Exporter les données :</strong> le tableau du projet (noms des observations, identifiants, variables). Fichier › Exporter les résultats du modèle (Ctrl+E) : les tableaux du modèle (observations : scores, T², DModX, valeurs ajustées ; variables : loadings, VIP, intervalles ; composantes ; coefficients ; variables Y). Formats : Excel (une feuille par tableau), CSV, texte séparé par des tabulations, R (.rds : une liste de tableaux ; .RData), SPSS (.sav), Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) et Weka (.arff) ; dans ces derniers, un fichier par tableau (« M1.sav », « M1 - variables.sav »...). Les variables qualitatives restent qualitatives (facteurs R, étiquettes de valeurs SPSS et Stata, nominales jamovi). Pour SPSS, Stata, SAS et dBase, les noms de variables sont rendus valides (lettres sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable. Les unités et descriptions des variables (Édition › Unités et descriptions) vont dans une feuille « Variables » d'un classeur Excel, relue quand Nuée l'ouvre, une table « Variables » d'un GeoPackage, les descriptions d'un fichier jamovi et les attributs d'un tableau R (voir <a href="donnees.html#nettoyer-les-donnees-chercher-et-remplacer-categories-unites">Nettoyer les données</a>).</p>
+<p><strong>SAS :</strong> format de transport version 5, que SAS lit avec libname xport (noms de 8 caractères, étiquettes de 40, textes de 200 au plus). dBase : textes en Windows-1252 ; dans LibreOffice, choisir le jeu de caractères « Europe occidentale (Windows-1252) » à l'ouverture. Les fichiers écrits ont été ouverts dans jamovi, PSPP (pour SPSS), Weka, LibreOffice et pandas.</p>
+</section>
+<section id="exporter-vers-r">
+<h2>Exporter vers R (script, R Markdown, Quarto)</h2>
+<p><strong>Fichier › Exporter vers R :</strong> un fichier qui refait le modèle sans Nuée, avec R seul, à envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul, en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R ; un NMDS : MASS, livré avec R lui aussi ; TRIM et l'échantillonnage par distances, et des arbres boostés avec rpart : les fonctions du moteur de Nuée, recopiées dans le script ; une forêt aléatoire, la seule exception : le paquet ranger, que Nuée installe avec lui), commenté dans la langue de l'export, en quatre parties :</p>
+<ol>
+<li><strong>les fonctions :</strong> l'algorithme NIPALS, la validation croisée, et seulement ce que ce modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;</li>
+<li>les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »), les nombres écrits sans perte et les catégories dans leur ordre ;</li>
+<li><strong>le modèle :</strong> ses termes X et Y (transformations, catégories, termes croisés), leur mise à l'échelle, l'ajustement, puis R2 et Q2, T2 et DModX avec leurs limites, VIP, coefficients, CV-ANOVA, classement pour une PLS-DA, jeu de test ;</li>
+<li><strong>les résultats :</strong> les tableaux, le test de permutation (en commentaire) et les graphiques (scores, loadings, VIP, observé / ajusté, T2 et DModX).</li>
+</ol>
+<p><strong>Format :</strong> script R (.R) ; ou rapport R Markdown (.Rmd) ou Quarto (.qmd), qui y ajoute le texte des méthodes, des tableaux et des graphiques (scores, loadings, VIP, observé / prédit, T2, DModX) et les références ; il se compile dans RStudio (bouton Knit) ou avec quarto render, et demande le paquet knitr. Fichiers en plus, au choix : renv.lock (versions de R et des paquets, pour renv::restore()), les données et le modèle ajusté en .RData (load() les rend sans recalculer), un projet RStudio (.Rproj, à mettre dans un dossier à part).</p>
+<p><strong>Modèles :</strong> celui-ci, ou tous les modèles de la séance (le dernier ajustement de chacun) dans un seul script .R : les fonctions et les données une fois, puis un bloc par modèle sous son nom (M1, M2...).</p>
+<p>Avant d'écrire, l'application recalcule les modèles du script et vérifie qu'ils donnent les mêmes résultats ; sinon elle le signale.</p>
+</section>
+<section id="console-r">
+<h2>Console R</h2>
+<p><strong>Affichage › Console R (Ctrl+J) :</strong> un panneau sous les onglets, avec</p>
+<ul>
+<li><strong>le journal :</strong> pour chaque action de l'application, l'appel au moteur qu'elle a fait, écrit en R (P1 &lt;- lire_projet(...), d &lt;- modele_du_projet(P1, 5), M4 &lt;- ajuster(P1, d)...), à recopier dans un script (bouton Copier), et pour chaque modèle ajusté ce que R en affiche (composantes, Y, limites, variables, observations ; print(M4) fait de même) ; la case « Actions de l'application » les masque ou les montre ;</li>
+<li><p>une invite où taper du R, exécuté dans la session R de l'application. m est le modèle affiché, p son projet ; P1, M4... les projets et modèles ouverts, sous les noms du journal. Par exemple : m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (le graphique s'affiche dans la console), modeles(), projets(), definition("M4").</p>
+<p>Entrée lance la commande, Maj+Entrée passe à la ligne, ↑ et ↓ rappellent les commandes.</p>
+<p><strong>Tab complète le nom commencé :</strong> objets, m$... et p$... (les noms qu'ils contiennent), arguments de la fonction dont la parenthèse est ouverte ; s'il y en a plusieurs, une liste s'ouvre (flèches, puis Tab ou Entrée). Les raccourcis de l'application (Ctrl+S, Ctrl+K...) fonctionnent aussi pendant qu'on tape.</p></li>
+</ul>
+<p>Modifier un projet dans la console (p$donnees[...] &lt;- ...) le modifie dans l'application. Corriger le moteur : dossier_moteur() donne le dossier des fichiers R de l'application ; après une correction, recharger_moteur() les relit, puis réajuster le modèle. Ce dossier est la copie faite sur l'ordinateur : au lancement suivant, la copie du NAS la remplace. Pour garder une correction, la reporter dans le même fichier sur le NAS (application\resources\moteur\R).</p>
+<p>Une commande longue bloque l'application jusqu'à la fin du calcul.</p>
+<p><strong>Vérifier le moteur :</strong> verifier_moteur() recalcule les modèles importés des projets ouverts, validés comme leurs fichiers, et les compare aux valeurs enregistrées dans leurs fichiers (R2X, R2Y, Q2) ; verifier_moteur("dossier") fait de même pour les fichiers .usp et .json d'un dossier. À faire après une correction du moteur. Le Q2 entre dans le verdict, sauf celui d'une ACP, seulement proche (voir « <a href="projets-usp.html#ce-qui-differe">Ce qui diffère</a> »).</p>
+</section>
+<section id="le-code">
+<h2>Le code</h2>
+<p>Tous les calculs sont dans resources\moteur\R (R, commenté en français) :</p>
+<pre>pretraitement.R        transformations, centrage, mise à l'échelle
+nipals.R               ACP et PLS (algorithme NIPALS, données manquantes)
+validation_croisee.R   validation croisée (trois façons), Q2
+hierarchique.R         modèles hiérarchiques : Q2 honnête (modèles de base refaits)
+regression.R           modèles de régression (lm, nlme, mgcv), AIC, apport des blocs
+statistiques.R         T2, DModX, VIP, coefficients, intervalles, limites
+validation.R           permutations, CV-ANOVA, classement PLS-DA et courbes ROC
+opls.R                 OPLS et OPLS-DA
+diagnostic.R           contributions, vérification des données, statistiques des variables
+variables.R            scores en variables, classes, valeurs modifiées, variables calculées
+projet.R               lecture des projets, historique du fichier
+verification.R         comparaison avec les résultats enregistrés dans les fichiers .usp
+script.R               export d'un modèle en script ou rapport R autonome
+methodes.R             texte des méthodes et références
+comparaisons.R         tests statistiques
+modeles_classe.R       modèles de classe (une ACP par classe), graphique de Coomans
+formats.R              lecture et écriture des tableaux (Excel, texte, R, SPSS, Stata, SAS, jamovi...)
+spectres.R             prétraitement des spectres (SNV, MSC, detrend, ligne de base, Savitzky–Golay)
+fichiers_spectres.R    lecture des spectres (JCAMP-DX, SPC, texte), informations jointes
+jeu_test.R             jeu de test : prédiction, RMSEP, Q2 externe, Kennard–Stone
+condition.R            les observations d'un modèle choisies par une condition
+langue.R               langue des messages (traduire("français", "English"))
+modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustement)</pre>
+<p><strong>Dans R :</strong> source("resources/moteur/charger.R"), puis par exemple</p>
+<div class="retrait">
+<p>p &lt;- importer_tableau("mes_donnees.csv") d &lt;- definir_modele(p, "PLS", x = 3:20, y = 2) m &lt;- ajuster(p, d) m$statistiques$composantes</p>
+</div>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="arbres.html">← Arbres, forêts, discriminante, k-moyennes</a><a rel="next" href="projets-usp.html">Projets .usp →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

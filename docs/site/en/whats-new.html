@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What’s new · Nuée</title>
+<meta name="description" content="What changed in each version of Nuée.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<link rel="alternate" hreflang="en" href="whats-new.html">
+<link rel="alternate" hreflang="fr" href="../fr/nouveautes.html">
+<script src="../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="index.html"><img src="../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="index.html">Home</a>
+      <a href="installation.html">Install</a>
+      <a href="guide/index.html">Guide</a>
+      <a href="tutorials/index.html">Tutorials</a>
+      <a href="whats-new.html" aria-current="page">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../fr/nouveautes.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<h1>What’s new</h1>
+<p>What changed in each version: the same list as Help › What’s new in the application (<a href="https://github.com/4rtefakt/nuee/blob/main/CHANGELOG.md">CHANGELOG.md</a>). Every version can be downloaded from the <a href="https://github.com/4rtefakt/nuee/releases">Releases</a> page.</p>
+<nav class="sommaire versions" aria-label="Versions"><p>Versions</p><ul><li><a href="#v1-0-0">1.0.0</a></li><li><a href="#v0-9-9">0.9.9</a></li><li><a href="#v0-9-8">0.9.8</a></li><li><a href="#v0-9-7">0.9.7</a></li><li><a href="#v0-9-6">0.9.6</a></li><li><a href="#v0-9-5">0.9.5</a></li><li><a href="#v0-9-3">0.9.3</a></li><li><a href="#v0-9-2">0.9.2</a></li><li><a href="#v0-9-1">0.9.1</a></li><li><a href="#v0-9-0">0.9.0</a></li><li><a href="#v0-8-0">0.8.0</a></li><li><a href="#v0-7-0">0.7.0</a></li><li><a href="#v0-6-0">0.6.0</a></li><li><a href="#v0-5-0">0.5.0</a></li><li><a href="#v0-4-0">0.4.0</a></li><li><a href="#v0-3-0">0.3.0</a></li></ul></nav>
+<div class="nouveautes">
+<section id="v1-0-0">
+<h2>Version 1.0.0 <span class="date">15 November 2026</span></h2>
+<ul>
+<li>Maps and spatial data: a project has coordinates, two of its variables and their system (WGS 84 longitudes and latitudes, Lambert-93, CC zones, Lambert II étendu, UTM, LAEA Europe…), proposed from their names and saved with it. Plots › Map places the observations at equal scales, coloured and sized by a variable or by a column of a model’s results (scores, residuals, clusters), the selection shared with the models. A background map if you choose one, OpenStreetMap, IGN’s map or its aerial photographs, only on request: without one, nothing leaves the computer. The conversions are written in Nuée and give PROJ’s, the library QGIS uses, to the micrometre.</li>
+<li>GeoPackage, QGIS’s format: File › Open reads one of its layers (points, or the centres of lines and polygons) with the project’s coordinates; the data and a model’s results export as a point layer that QGIS opens with its coordinate system.</li>
+<li>Raster values at each site (Edit › Add raster values…, or from the map): a DEM’s elevation, land cover or a climate, read from a GeoTIFF (LZW, Deflate, PackBits, LZMA or ZSTD compressed, tiled or in strips, BigTIFF included) or an ESRI ASCII grid at each observation’s position converted to the raster’s system: the cell, a bilinear interpolation, or the mean or majority class within a radius in metres. One variable per band, undoable, whose origin the Methods text gives; only the blocks of the file that hold observations are read. The same values as terra::extract.</li>
+<li>Spatial autocorrelation (Plots › Spatial autocorrelation): Moran’s I of a variable or of a regression’s residuals, by randomisation and by permutations, the linear model’s residual test that accounts for the fit, a neighbourhood of the k nearest neighbours, a distance or the inverse distance; the correlogram and the semivariogram. The same numbers as spdep and gstat. “Mean by place” groups a plot surveyed several years.</li>
+<li>Spatial smooth in a GAM: a surface of the coordinates, a thin plate s(x, y) or a spline on the sphere for longitudes and latitudes, takes up the spatial structure the terms don’t explain (New model › General, or in the R formula). It goes through cross-validation, the AIC selection, predictions and the Methods text, and the map shows its value at each observation. It gives mgcv’s results. Export to R redoes it too.</li>
+<li>Distance-based community analyses (New model): PCoA (Lingoes and Cailliez corrections), NMDS (several starts, the Shepard diagram), PERMANOVA (sequential or marginal terms, permutations within groups) with the multivariate dispersion of each grouping (betadisper and its pairs), and the Mantel test (partial, Pearson or Spearman, and its correlogram). Nine distances (Bray–Curtis, Jaccard, Gower, Hellinger, chord…), on abundances or presences, and transformations (root, Wisconsin…); the explanatory variables fitted onto the ordination as arrows and centroids. The same numbers as vegan, and the same p values for the same permutations; Export to R redoes them with R alone, with the same permutations.</li>
+<li>Canonical correspondence analysis (CCA, and partial CCA): the triplot in scalings 1 to 3, tests by axis, by term and by margin, the adjusted R² and forward selection, the Methods text and Export to R, as vegan::cca.</li>
+<li>Indicator species (IndVal and IndVal.g, Dufrêne and Legendre 1997; De Cáceres and Legendre 2009): for each species, the group or combination of groups it indicates, its A and B components, the permutation test and the p value corrected over the species, as indicspecies::multipatt; Export to R redoes it with R alone.</li>
+<li>Rarefaction and accumulation (Plots › Rarefaction): each sample’s rarefaction curve and its rarefied richness at a common size, the species accumulation curve over the samples (exact), by group if chosen, and the richness estimators (Chao1, ACE; Chao2, first- and second-order jackknife, bootstrap), as vegan.</li>
+<li>TRIM, the trends and indices of monitoring counts (New model › TRIM), written from Statistics Netherlands’ method: time-effects models, linear trends with changepoints (chosen or stepwise) or no time effect, overdispersion and serial correlation estimated by GEE, missing counts imputed, covariates and weights. Indices on a base year and yearly totals with their standard errors, the overall slope and its class (strong increase, moderate increase, stable, uncertain, moderate decline, steep decline), Wald tests. The same numbers as rtrim, and Export to R redoes it with R alone.</li>
+<li>Distance sampling (New model › Distance sampling): animal density and abundance from line transects or point counts, as the Distance package computes them (ds() and dht2()). Half-normal, hazard-rate or uniform detection functions, with cosine, Hermite or polynomial adjustment terms chosen by AIC under monotonicity constraints; right truncation (a distance or a percentage) and left truncation; exact or binned distances; groups; strata with their areas. The encounter rate’s variance (R2, P2) and the detection’s (delta method), log-normal intervals with Satterthwaite degrees of freedom; goodness of fit (Cramér–von Mises, chi-square), the QQ plot and the detection function over the histogram of distances. The same numbers as Distance, and Export to R redoes it with R alone.</li>
+<li>One model per response (Model › One model per response): the same regression fitted to each species ticked, each term’s p values corrected over the species (Benjamini–Hochberg, Holm or Bonferroni); the chosen term as a forest plot of coefficients, its effect in small multiples side by side, each model’s quality.</li>
+<li>Two more distributions for GLMs and GAMs: the zero-inflated Poisson (mgcv::ziP), for counts with more zeros than a Poisson gives, and the beta (mgcv::betar), for proportions between 0 and 1 (a cover, a share of time). With random effects, curves, the spatial smooth, cross-validation, the AIC selection, adjusted means (expected counts and their ratios; proportions and odds ratios), quantile residuals and Export to R. The same results as mgcv.</li>
+<li>Random forests and boosted trees (New model): a random forest (ranger), for a measurement or a class, with its out-of-bag error, the cross-validation by groups, permutation or impurity importance, each variable’s partial dependence, the error against the number of trees and each class’s votes with their ROC curves; boosted regression trees (BRT), as gbm computes them and as Elith et al. (2008) present them for ecologists, for a measurement, a presence-absence or counts, the number of trees chosen by cross-validation, with each variable’s relative influence. Test set and predictions for both; the same numbers as ranger and gbm. Export to R redoes them: boosted trees with R alone (and rpart), the forest with ranger, which Nuée installs with itself.</li>
+<li>Results text: {{M1.resultats}} in a document, and under the Methods text, says in sentences what the model shows, with its numbers: the fit, each coefficient with its interval and p value (a factor or an odds ratio for a log or logit link), the significant terms, curves and random effects; for a PCA, PLS or OPLS, the variance explained, Q², CV-ANOVA and the most important variables.</li>
+<li>Compose a figure (Plots › Compose a figure…, or right-click a plot › Add to a figure): plots side by side for a journal, as A, B, C panels in a grid (a panel can take two cells), one, one and a half or two columns wide (85 to 190 mm), text in points and line widths for print. Exported as vector PDF (in the desktop app, at the figure’s exact size), SVG, and PNG or TIFF at 300 or 600 dpi, their resolution written in the file. Figures are kept in the project and follow refitted models.</li>
+<li>The model’s conditions, in a regression’s Summary: in words, with what to do, the residuals’ distribution, a spread that changes with the fitted values, influential observations, overdispersion and excess zeros in counts, collinear terms, confounded curves and the residuals’ spatial autocorrelation.</li>
+<li>Which analysis? (Model › Which analysis?, or the start page’s button): your question in plain words (compare groups, the effect of variables on a response, many species, a trend, where, explore, predict, diversity, a BACI design), the response and the design, proposed from the project’s variables (whole numbers, zeros, proportions, sites, years); then the recommended analysis, why and its conditions, the alternatives, and a button that opens New model already filled in (the type, the distribution, the roles, the random effect, the cross-validation groups) or the right view.</li>
+<li>Data workbench: Find and replace (Edit, Ctrl+H, and in the Data view) in one, several or all variables — the whole cell or part of it, case-sensitive or not, empty cells —, with a preview of what will change; a text variable whose values all become numbers turns quantitative. A qualitative variable’s categories renamed, merged, reordered, and the regressions’ reference category chosen. A unit and a description for each variable, in the column headers, axis titles, the Methods and Results texts, Export to R and exported files (a “Variables” sheet in Excel, a table in a GeoPackage). In the Data view, each column’s empty cells and distinct values, and a block of cells pasted from a spreadsheet. Ctrl+Z undoes each change.</li>
+<li>Problem report (Help › Diagnostic information): a .zip file to attach to a message, with that information and the session’s journal, and the project if ticked. Nothing is sent. A saved project also records the versions of the R packages that computed its models.</li>
+<li>Fixed: a GLM or GAM with a single random effect and no curve lost that effect’s variance: the Summary left it empty, with a standard deviation of 0, and Export to R did the same.</li>
+</ul>
+</section>
+<section id="v0-9-9">
+<h2>Version 0.9.9 <span class="date">14 November 2026</span></h2>
+<ul>
+<li>Documents: a project keeps documents (an article, a report, notes), written in Markdown beside their preview, drawn again as you type (File › New document). The project’s results are cited in them between double braces and take their values: {{M1.Q2}}, {{M1.R2Y:%}}, {{M1.vip.sugar}}, {{M5.coef.year}} (estimate, interval and p), a plot as it is in its window with its caption ({{M1.scores | Scores of the sites}}), a table of the model report ({{M1.table.resume}}) or the Methods text ({{M1.methodes}}). Type {{ to see the models, then what each offers with its value; the Insert button and the explorer (right-click) do the same. Numbers are written in the document’s language (0.65 or 0,65), plots and tables are numbered, and {{ref:label}} gives their number; a reference that can’t be resolved is in red, with the reason, and a model not computed yet is computed when the document cites it. Start from a blank document, an article (introduction, methods, results, discussion) or an analysis report, the models ticked already cited. Compile: Word, PDF, HTML, or a Quarto file (.qmd) with its plots, which Quarto compiles when it is installed (bibliography, cross-references, journal templates). The document is saved with the project, and Undo leaves it alone. The spell checker, in French and English, offers its corrections on right-click, in documents and in every field.</li>
+<li>Citations in documents, as in Quarto: [@wold2001], [see @wold2001, p. 33; @eriksson2006], @wold2001 in the sentence, [-@wold2001] without the author; the list of references comes at the end, or where the document puts {{bibliographie}}, author–year or numbered, in the document’s language. References come from BibTeX or CSL-JSON files (exported from Zotero, Mendeley, JabRef…; Cite › Link a file names them in the header, and Better BibTeX’s automatic export keeps them up to date), from Zotero open on the computer (Zotero 7: typing @, or Cite › Insert a citation, in the whole library or a collection; with Better BibTeX, its own picker, page included), or from pasted BibTeX. The document keeps a copy of what it cites: sent without the .bib, it still cites it. Compiled for Quarto, it keeps its citations, the references in a .bib beside it, for a journal’s CSL style (the PDF too), each with its language. Each document opens in a tab of its own, and plots in documents and model reports are drawn light, even in the dark theme.</li>
+<li>Gain over the empty model: when the centres are recomputed without the held-out group (the default validation, and “Centres and weights recomputed”), the Summary of a PLS or OPLS gives the Q² of the empty model, where each held-out group is predicted by the mean of Y over the other observations, and the model’s gain over it, (Q² − Q² empty) / (1 − Q² empty): the share of the empty model’s prediction error that the model avoids. With groups that differ (sites, departments), the empty model’s Q² is below 0, and a negative Q² can hide a model that does better than it: the gain says so. A hierarchical model’s honest Q² has its own. In the Methods text, the model report and Export to R.</li>
+<li>Fixed: with missing values in X, the coefficients of a PLS or OPLS (scaled and in the units of the data, with the constant), the w* weights and their confidence intervals were wrong, by a few percent as a rule: W* was computed as W (P′W)⁻¹, which no longer gives back the scores of complete observations when values are missing. It now is, component after component, as in .usp files: on a real project of 35 models with missing values, the coefficients and their intervals are those of the software that wrote the file (difference &lt; 10⁻⁶), against differences up to 0.044 before. The “file” values the explorer shows for these coefficients had the same error: converting the project again fixes them. R², Q², VIP, scores and predictions don’t change, and nothing changes without missing values.</li>
+</ul>
+</section>
+<section id="v0-9-8">
+<h2>Version 0.9.8 <span class="date">13 November 2026</span></h2>
+<ul>
+<li>A choice of cross-validation (New model › Cross-validation), for a PCA, PLS or OPLS, and a new default, for every model: “Centres recomputed, full model’s weights”. Each group is predicted by a model fitted without it, its centres recomputed without the group: the model knows nothing of the Y of the group it predicts. Its weights stay the full model’s: the standard deviations of X don’t depend on Y, and nothing is rescaled on fewer observations, so no prediction blows up (Q² down to −8 × 10¹¹ on a real project, when a variable varied at one site only, validated apart). Every model’s Q² therefore changes a little from 0.9.7. “Centres and weights recomputed without the held-out group” is 0.9.7’s validation, stricter. “Full model’s centres and weights” validates each component on what the previous ones leave: it is the validation of .usp files, whose Q² it gives back (on four real projects, those of 441 models out of 443, with their Q² per variable and their coefficients’ confidence intervals); more optimistic, it isn’t the default. RMSEcv, CV-ANOVA, the cross-validated classification, the confidence intervals, the permutation test and autofit follow the validation chosen, as does Export to R.</li>
+<li>A guard in “Centres and weights recomputed without the held-out group”: a variable that hardly varies without the held-out group (less than 10 % of its standard deviation) keeps the full model’s weight in that round, instead of a weight, 1 / standard deviation, multiplied as much. The Summary says which variable, without which group, and the share of its standard deviation it kept.</li>
+<li>Honest Q² of hierarchical models: a model whose X include scores of other models of the project ($M1.t1…) has an “Honest Q2(cum)” in its Summary: in each cross-validation round, its base models are refitted without the held-out group, so their scores don’t use that group’s Y. Its Q² takes these scores as they are. The Methods text gives it too.</li>
+<li>The Methods text says how the model was validated, and the model report gives it at the top. R console: verifier_moteur() validates the models like their files and counts Q² in its status.</li>
+<li>Fixed: for a model with a single component, the Summary didn’t mark its values “=” or “≠” against the .usp file’s, and the explorer didn’t give its R2X and Q2.</li>
+</ul>
+</section>
+<section id="v0-9-7">
+<h2>Version 0.9.7 <span class="date">13 November 2026</span></h2>
+<ul>
+<li>Qualitative variables in cross terms: a regression (linear, mixed, GLM, GAM) takes cross terms with a qualitative variable, in the Cross terms tab or as a * b in the R formula. year × sector lets the year’s slope change from one sector to another, habitat × treatment a treatment’s effect from one habitat to another. The coefficients are those of lm, nlme and mgcv with the same reference category; without the year’s main effect (sector + year:sector), each coefficient is a sector’s slope. The Effects view draws one line (or curve) per category, with the table of slopes; the AIC selection, the contributions and the nested models take a cross term in or out whole, with its main effects.</li>
+<li>Adjusted means and pairs of levels: for a regression with a qualitative variable, Plots › Adjusted means gives each category’s mean adjusted for the model’s other terms, with its 95 % interval (from a mixed model too, its random effects and autocorrelation accounted for), and every pair of categories, corrected by Tukey (or Holm), as the emmeans package computes them. With a cross term: the pairs within each level of the other variable (the sector in each period), or the year’s slopes per category and their pairs. With a log or logit link, on the response’s scale (ratios, odds ratios). A sentence ready for a report; in the Methods text, the model report and Export to R.</li>
+<li>A curve per category in a GAM: s(year, by = sector) gives a curve of the year for each sector (the sector also among the X), each with its edf, test, effect and thresholds (the category chosen in the Effects view), in mgcv::gam and mgcv::gamm (with CAR1), the R formula and Export to R. A curve crossed with a qualitative variable has thresholds per category too.</li>
+<li>Random slopes: in a mixed model, each site can have its own slope of the year around the fixed slope: (1 + year | site) in the R formula, or “Random slopes by site” under the random effect. The Summary gives the slope’s variance and its correlation with the intercept, Johnson’s (2014) R², and flags a singular fit, such as that of an uncentred year (the Ctr scaling centres it). With CAR1, in mgcv’s GLMMs (where the slope is independent of the intercept) and in Export to R.</li>
+<li>A model’s observations chosen by a condition: New model › Observations › “Keep only the observations where…”, written like a New variable formula (year &gt;= 2010 &amp; site != &quot;S2&quot;, !is.na(density)), for every type of model. The number of observations kept shows as you type; the condition is saved with the model and evaluated again at each fit, on the current data; the Summary, the Methods text and Export to R give it. It is read without being run: a project received from someone can’t run anything through it.</li>
+<li>Add columns from a table: Edit › Add columns from a table… joins to the project the columns of another file (or of pasted cells) by a key of one or more columns: the sites’ details (habitat, altitude), the weather by year. A key repeated in the table is refused; the observations without a match are counted and named; Ctrl+Z removes the columns.</li>
+<li>Summarize by group: Edit › Summarize by group… makes a new project with one row per group (the sector and the year, for instance), with the mean, sum, median, minimum, maximum, standard deviation or number of values of the variables chosen; the qualitative variables constant within each group (a sector’s habitat) are kept.</li>
+<li>Coefficients side by side: Prediction › Compare models › “Coefficients side by side” puts several regressions in columns, one row per term (the estimate with its 95 % interval or its standard error, red when p ≤ 0.05), then n, AIC, AICc, R², each random effect’s standard deviation (a random slope with its correlation), φ and the curves’ edf. Ctrl+C copies it as a table for Word or Excel, with stars for p; File › Export model results exports it.</li>
+<li>Trends: two options in Plots › Series › Trends. “Allow for autocorrelation” gives Hamed and Rao’s (1998) modified Mann–Kendall test, its variance corrected for the autocorrelation of the ranks; “Seasons” the seasonal Kendall test (Hirsch, Slack and Smith, 1982), for samples taken several times a year, by month (dates) or by a variable, with the seasonal Sen slope.</li>
+<li>Diversity indices: New variable formulas have richness(), shannon(), simpson() and pielou(), over species columns listed or given as a range (shannon(Ablette:Vandoise)), computed as vegan computes them.</li>
+<li>Trend power: under a linear or mixed model with the year among its X, Plots › Trend power says how many years it takes to detect a trend (per year, or in % per year for a log Y) with this many sites counted every year: the power curves, from the model’s variances (CAR1 included), a sentence for a report, and a simulation that checks it at the design chosen (Diggle et al., 2002; Johnson et al., 2015).</li>
+<li>Block contributions (AIC): a main effect now leaves with the cross terms that contain it (column “With”); the ΔAIC of a model with cross terms change from 0.9.6.</li>
+<li>Fixed: a category a regression didn’t see in its fit (absent from its observations, or from the training groups in cross-validation: sectors proper to a site, validated by site) was predicted as the reference category, without a word. It gets no prediction now: those rows are counted and explained, and Q2 comes from the others (it can change from 0.9.6); when none is left, the Summary says the model can’t be cross-validated by those groups with that factor as an X.</li>
+<li>Fixed: in Export to R, a name from the project (a variable, a model, a file…) that held a line break could break out of a comment of the script and run when the script was run: these names are now written on a single line. This matters for a project received from someone.</li>
+<li>Fixed: a change the engine refused (a New variable formula that doesn’t compute, an impossible imputation) left an empty step for Ctrl+Z.</li>
+</ul>
+</section>
+<section id="v0-9-6">
+<h2>Version 0.9.6 <span class="date">13 November 2026</span></h2>
+<ul>
+<li>BACI mixed model in one click: in the Before/after (BACI) mode of Statistical tests, “Fit the mixed model” creates the 0/1 period and impact variables and fits y ~ period × impact + (1 | unit), optionally with a CAR1 autocorrelation in time. The BACI effect (the period × impact coefficient, its 95 % interval and p-value) comes as a sentence under the t-test’s, accounting for the units and the autocorrelation. The model joins the project, with its Methods text (Stewart-Oaten et al., 1986).</li>
+<li>Trends in Series: in Plots › Series, “Trends” gives for each line the Mann–Kendall test (Kendall’s τ, S and its p-value, the variance corrected for ties) and Sen’s slope per year with its 95 % interval, the p-values corrected over the lines (Benjamini–Hochberg or Holm); a note recalls that autocorrelated years make p too small.</li>
+<li>Friedman’s test: when a measurement is paired by a key between three or more levels (sectors, by the year), Friedman’s test on the keys where every level has a value comes before the table of pairs, with Kendall’s W; “within each” site, one test per site, Holm-corrected.</li>
+<li>“Fit with CAR1”: in Plots › Residual autocorrelation, a button fits the same model with a CAR1 autocorrelation in the time and groups chosen (its random effects, or a finer level within them), like “Fit this model”. The two then compare by AIC in Prediction › Compare models; a GLM or GAM, then refitted by mgcv::gamm, has its own AIC set, as the note says.</li>
+<li>Quantile residuals (Dunn &amp; Smyth, 1996): for a Poisson, negative binomial, binomial or gamma GLM or GAM, the Residuals view offers randomized quantile residuals, normal when the model is right, where residuals of counts aren’t even then; drawn with a fixed seed, they are also in the model report and in Export to R.</li>
+<li>Dates as time: wherever a time is asked for (Series, previous and following, BACI, residual autocorrelation, CAR1 of mixed models and their Export to R), sampling dates (2019-05-14 or 14/05/2019, day first, with the time of day if needed) are read as decimal years; Series and BACI show them as dates. A column of repeated dates, a qualitative variable, can now be the time.</li>
+<li>Fixed: after a one-click update, Nuée could show the previous version’s interface for a while, kept by its window’s cache: the new version showed the old number, said it was the latest and didn’t show what was new. The first start of a new version now empties that cache, and the interface is read again at each load.</li>
+<li>The one-click update no longer opens a black window while it waits for Nuée to close (from the next one: the update that installs 0.9.6 comes from the version before).</li>
+</ul>
+</section>
+<section id="v0-9-5">
+<h2>Version 0.9.5 <span class="date">12 November 2026</span></h2>
+<ul>
+<li>AIC selection: under each regression (and in Plots), Nuée compares by AICc every combination of the model’s groups of terms (its blocks, otherwise its variables), from the null model to the full one, each fitted by ML on the same observations, with the model’s random effects, autocorrelation, effort and curves; a cross term enters only with its main effects. Beyond 8 groups, a backward elimination. The view suggests the best model and, when it differs, the most parsimonious within ΔAICc ≤ 2; it shows each group’s importance and the best models with their Akaike weights.</li>
+<li>“Fit this model”, on the suggestion or on any row, makes it a new model: the same settings with only those groups’ variables, on the same observations, fitted like the others. The Methods text then describes the selection, the model report can include it and Export to R redoes it.</li>
+<li>Paired tests: in Plots › Statistical tests, Two variables mode, a measurement and a qualitative variable (or an ID) can be paired by a third one (“Pair by”: the year). Two levels A and B, two sectors of a site for instance, are compared on the years both have, the data staying in long format (one row per sector and year): paired t-test (mean difference B − A, its 95 % interval, Cohen’s d_z) and Wilcoxon’s signed-rank test (exact below 50 pairs with no zero or tied difference; otherwise, zero differences dropped, by the normal approximation with continuity correction, the same calculation on every R version), recommended when the normality of the differences is doubtful. The number of pairs and the rows left without a partner are given, the result as a sentence ready for a report, and the plot joins each pair.</li>
+<li>A two-variable test’s sentence follows the interface language: switching language rewrites it.</li>
+<li>Paired tests of two measurements of the same row (before and after, say): in Plots › Statistical tests, Two variables mode, two quantitative variables can be paired by “the observation (same row)”. The differences Variable 2 − Variable 1, on the observations where both are known, go through the paired t-test and Wilcoxon’s signed-rank test, as for two levels paired by a key.</li>
+<li>Every pair of levels: when a measurement is paired by a key between the levels of a variable that has three or more (sectors, by the year), the table below can list each pair of levels, on its own shared years, with the difference, its 95 % interval and the chosen test’s Holm-corrected p-values; a click on a pair compares it. When all the levels share the same years, these are the values of pairwise.t.test() and pairwise.wilcox.test() with paired = TRUE. With “Pairs of levels within each” (a qualitative variable or an ID: the site), the table keeps only the pairs of levels of the same group, the sectors of each site compared two by two; Holm’s correction covers the pairs tested, all sites together, and the raw p-value reads one site at a time. A sector whose rows are in several sites is refused.</li>
+<li>The Mann–Whitney sentence names both groups with their medians, so the sign of the rank-biserial correlation reads.</li>
+<li>Mann–Whitney’s test (between classes, two variables, BACI) does the same calculation on every R version: exact below 50 values on each side with no ties; otherwise by the normal approximation with continuity correction, as R did before 4.6. With ties, its p-value therefore changes slightly from 0.9.3 on Windows, where R 4.6 computed it exactly.</li>
+<li>Before/after with a control (BACI): a fourth mode of Plots › Statistical tests. A response, a time (the year) and a unit (the sector), whose impact and control units are ticked, then the event, the first “after” time, with an optional end. At each time, the gap d_t between the mean of the impact and that of the controls; the gaps after compared with those before by Welch’s t, Student’s t or Mann–Whitney, with the change in the mean gap and its 95 % interval, as a sentence ready for a report. The plot shows the gaps over time, the event and each period’s mean.</li>
+<li>Two classes paired, variable by variable: in the Between classes mode, “Pair by” a key (the year, for two sectors followed over the same years) compares each variable on the keys both classes have, by the paired t-test or Wilcoxon’s signed-rank test, with the number of pairs, log2 of the ratio of the means or Cohen’s d_z, the volcano plot and the Benjamini–Hochberg or Bonferroni corrections. A key found twice in a class is refused.</li>
+<li>Values from another year: in a New variable formula, previous(x, year, sector) gives the value of x the year before in the same sector and following(x, year, sector) that of the year after (pas = 2: two years); growth_rate(x, year, sector) gives the growth rate log(x / x of the year before), missing unless both values are positive (precedent, suivant and croissance in French). A missing year gives a missing value, never that of an older year; the group can be interaction(site, sector), and the same sector twice in one year is refused, naming it. This lines up year n with year n − 1, or shows density dependence: the growth rate against the previous year’s density.</li>
+<li>Series: Plots › Series (or in the explorer, under the project) shows a variable over time, one line per sector and, optionally, one small plot per site, in a grid with shared axes. A missing year breaks the line; optionally, the mean of each panel’s lines, a log scale and events (“2015; 2019”) as dashed lines in every panel. Colours go by line within each panel and the legend by panel, readable with 30 sectors; hovering gives the observation, the time and the value, a click or a box selects observations (in the project’s models too, when the selection is shared), and the image is copied or saved like the others.</li>
+<li>Residual autocorrelation: for a regression, Plots › Residual autocorrelation shows the autocorrelation of its residuals in time within each group, the groups pooled as nlme::ACF does, with the band ±1.96/√n of each lag. A model with CAR1 shows its residuals without the autocorrelation and its normalized residuals, which show none left when CAR1 is enough; for another model, the time and the groups are chosen (by default those of its random effects), and beyond the band at lag 1 the note suggests a CAR1 autocorrelation. Pearson or deviance residuals for a GLM or a GAM; the model report can include the plot.</li>
+<li>Nested models: under the AIC table of Prediction › Compare models, the likelihood-ratio test between each pair of regressions of the same AIC set whose smaller model has its fixed terms among the bigger one’s, with the same distribution, random effects and autocorrelation: Δdf, χ² and p from the ML fits, as nlme’s anova(m1, m2). Random effects and autocorrelation are compared by AIC; with curves, the test is marked approximate.</li>
+<li>Fixed: the views that keep results computed from a project’s data (data, variable statistics, statistical tests) compute them again when its data change, in other windows too. Until now, an open test kept its result after an edit or a new variable.</li>
+<li>Fixed: the normalized residuals of a model with a CAR1 autocorrelation (Residuals view, exports, Export to R) were wrong when the table’s rows were not sorted by group, then by time, in year order for instance: nlme gets them right only in that order. They are now computed in each group’s time order; the fit itself (coefficients, φ, AIC) was not affected.</li>
+</ul>
+</section>
+<section id="v0-9-3">
+<h2>Version 0.9.3 <span class="date">12 November 2026</span></h2>
+<ul>
+<li>Redundancy analysis (RDA): New model › type “RDA”. Responses Y (species abundances, measurements) explained by variables X, optionally with covariates Z whose effect is removed first (partial RDA); responses transformed by Hellinger, chord or log(x + 1), centred or standardized; a triplot in scaling 1 or 2 (arrows of the X, centroids of the categories) and the adjusted R²; permutation tests of the model, of each axis and of each term, within a site if needed, with a fixed seed; forward selection (Blanchet’s double criterion) and variation partitioning between blocks of variables. The results are those of the vegan package.</li>
+<li>Correspondence analysis (CA) of a table of counts or abundances: rows and columns in scaling 1, 2 or 3, eigenvalues, contributions and cos².</li>
+<li>RDA and CA have their Methods text with its references, their export tables and their PDF or Word report; File › Export to R writes a script or an R Markdown / Quarto report that redoes them with R alone.</li>
+<li>Decision trees (rpart): New model › type “Decision tree”, a regression or classification tree on the raw X (readable thresholds, missing values handled by surrogate variables), pruned by the 1-SE rule with an internal cross-validation by the groups (a site) and validated by predicting each group with a tree rebuilt without it (Q2, RMSEcv); the tree drawn, pruning, leaf rules, variable importance, first-split stability over 200 bootstrap draws of the groups.</li>
+<li>Linear discriminant analysis (LDA, MASS::lda): discriminant scores, structure correlations and coefficients, classification cross-validated by groups, posterior probabilities; prior probabilities proportional or equal.</li>
+<li>k-means: k clusters on the scaled variables (25 starts, seed 1), shown on the first two components, silhouettes, choice of k from 2 to 10, centres in the variables’ units; “Clusters → variable” makes them a qualitative variable of the project.</li>
+<li>These three analyses have their Methods text, tables, PDF or Word report and Export to R (rpart, MASS, cluster); the tree and the LDA predict a test set and new observations, and k-means assigns a new observation to the nearest cluster.</li>
+<li>Autocorrelation in time in additive and generalized models: with the normal distribution and random effects, a GAM or GLM takes the CAR1 autocorrelation and is fitted by mgcv::gamm, as gamm(y ~ s(x, k = 5) + z, random = list(site = ~1), correlation = corCAR1(form = ~ year | site/sector)). Coefficients, curves, variances and φ by REML, AIC by ML, marginal and conditional R²; Export to R refits it.</li>
+<li>The autocorrelation can run within a finer level than the last random effect (“within each”: the sector within its site, only the site having a random effect), in a mixed model too.</li>
+<li>A curve’s basis dimension (k): in the box beside its tick, Curve column, or s(x, k = 5) in the R formula.</li>
+<li>A curve’s thresholds: in an additive model’s Effects view, the Thresholds box shows the curve’s effect and slope with 95 % simultaneous intervals (2000 draws of the coefficients, as in Simpson 2018), shades and lists the ranges where the slope clearly rises or falls, and gives the edf (below 1.5, nearly a straight line). The model report includes them, and Export to R computes them with the same draws.</li>
+<li>Concurvity: an additive model’s Summary gives for each curve the share the other terms reproduce (mgcv::concurvity), in red above 0.8: the curve is then confounded with them.</li>
+<li>Variables by group: in a New variable formula, group_mean(x, sector) gives the mean of x in each observation’s group and group_deviation(x, sector) the deviation from it (moyenne_groupe and ecart_groupe in French): a sector’s mean as a covariate, or a response centred by sector. Observation IDs (site, sector…) can be used there too.</li>
+<li>Edit › New variable › Imputation (PCA): the missing values of the chosen quantitative variables, filled from each other by regularized iterative PCA, as missMDA::imputePCA does, with the number of components chosen by generalized cross-validation of the standardized variables (missMDA::estim_ncpPCA) unless you give it; observed values don’t change, and an observation missing more than half of these variables stays missing. As new variables “x (imputed)”, or in the variables themselves (Ctrl+Z undoes it).</li>
+<li>Cross terms: each has its own scaling, block and modifier, in the Cross terms tab. Edit model keeps them; until now it lost those of the cross terms (of a model imported from a .usp file, for instance), and refitting changed their weighting.</li>
+<li>One-click update: an installation for all users placed outside Program Files was updated as a second copy, for the current user only; Nuée now reads its installation mode from Windows.</li>
+<li>Linux: the .deb also installs the R packages MASS, rpart and cluster; with the AppImage or the .tar.gz archive, add them to the packages you install in R.</li>
+</ul>
+</section>
+<section id="v0-9-2">
+<h2>Version 0.9.2 <span class="date">12 November 2026</span></h2>
+<ul>
+<li>Regression models, next to PLS: New model › type “Linear regression” or “Linear mixed model” (nlme), built from the Variables tab like the other models. A mixed model takes nested random effects (the site, then the sector within the site: an observation ID or a qualitative variable) and, optionally, an autocorrelation in time (CAR1, continuous time). Coefficients and variances by REML, AIC by ML; marginal and conditional R²; cross-validation defaults to the first random effect, each site predicted as a site never seen.</li>
+<li>Generalized linear and additive models (mgcv): the distribution of Y (Poisson or negative binomial for counts, binomial for presence-absence, gamma for positive values, Tweedie for densities with zeros, or normal), an effort as an offset, random effects (GLMM, GAMM), and in an additive model curves for the variables ticked in the Curve column of the Variables tab: an effect that rises then falls, or a threshold. A Poisson model warns when its counts are overdispersed.</li>
+<li>A regression’s results: Summary (R², deviance explained, Q², AIC, variances, curves), Coefficients (95 % intervals; the multiplicative effect or odds ratio with a log or logit link), Effects (each variable’s effect with its 95 % band, an additive model’s curves), Residuals, and Block contributions: the AIC change when each block of variables is removed, with a likelihood-ratio test.</li>
+<li>Prediction › Compare models: AIC, ΔAIC and Akaike weights (the probability that each model is the best of its set) between the regressions of the same response on the same observations whose likelihoods compare, next to the cross-validated Q² of every model, PLS included.</li>
+<li>R formula (New model › General): the model written as in R, for instance y ~ a * b + log10(c) + s(d) + offset(log(effort)) + (1 | site/sector); edited and applied (Ctrl+Enter), it sets the tabs. R reads it without ever running it, and it isn’t kept: a project someone sends can’t carry code.</li>
+<li>Regressions predict (observations, a prediction set or a file, its effort included; an extrapolation is flagged), export (File › Export), make a PDF or Word report (File › Model report), and File › Export to R writes a script or an R Markdown / Quarto report that refits them with lm, nlme or mgcv.</li>
+<li>Plots › Statistical tests (formerly Tests by variable), with two new modes. Two variables: the test their types call for, its conditions checked (chi-square or Fisher’s exact test; Welch’s t, ANOVA or Kruskal–Wallis with pairwise comparisons; Pearson’s or Spearman’s correlation), and its result as a sentence ready for a report, with its effect size; an observation ID (site, year…) can make the groups.</li>
+<li>Correlation matrix: Pearson or Spearman for every pair of quantitative variables, p-values corrected for the number of pairs; a click on a pair tests it in Two variables.</li>
+<li>Linux: the .deb also installs the R packages nlme and mgcv; with the AppImage or the .tar.gz archive, add them to the packages you install in R.</li>
+</ul>
+</section>
+<section id="v0-9-1">
+<h2>Version 0.9.1 <span class="date">11 November 2026</span></h2>
+<ul>
+<li>One-click update: when the status bar mentions a new version, a click downloads its installer, checks it (SHA-256 checksum given by GitHub), offers to save your projects, installs it and starts Nuée again.</li>
+<li>Test set: in New model › Observations, observations left out of the model and of the cross-validation (by hand, at random or by Kennard–Stone, by class for a PLS-DA), then predicted: RMSEP, bias, SEP, external Q2, or the classification of a PLS-DA. Observed / predicted shows them; the Methods text and Export to R include them.</li>
+<li>Projects are saved as .nuee: double-clicking one in Windows Explorer opens it in Nuée. .json projects still open.</li>
+<li>Dropping files on the window opens them; JCAMP-DX or SPC spectra dropped together make one project.</li>
+<li>The R engine’s messages (errors, notes) are in English when the interface is, and so are exported scripts in English.</li>
+<li>The full user guide in English (USER-GUIDE.txt); Help › User guide › Full guide opens the one in the interface’s language.</li>
+<li>The Methods text cites Nuée and its version; GitHub’s “Cite this repository” button cites it too.</li>
+<li>Nuée also runs on Linux: a .deb package (Debian, Ubuntu and derivatives), an AppImage or a .tar.gz archive, with the computer’s R.</li>
+<li>Highlighted variables: clicking a variable (VIP, coefficients, loadings, biplot, S-plot, profiles, variable list) highlights it in all the model’s plots. On the VIP plot, keeping or dropping a variable is now Ctrl+click.</li>
+<li>Plots › iPLS: each interval of the spectrum fitted on its own, to see which ranges predict best; then a new model with them, or without them.</li>
+<li>File › Export to R: the whole session in one script, the data once, then each model under its name.</li>
+<li>Ctrl+C copies the view’s table, ready to paste into Excel; View › Find a command (Ctrl+K) finds a command by typing its name.</li>
+<li>Help › Check for updates, and Help › Diagnostic information: the versions to paste into a report on GitHub (with forms for problems and ideas).</li>
+<li>A plot keeps its zoom when a selection redraws it.</li>
+<li>A model asking for more components than its data allow says so plainly (“Component 3 is not possible…”) instead of an internal R error; automatic fitting then stops at the last possible one.</li>
+<li>Models from .usp files keep their cross-validation groups: one group per value of an observation ID (site, sector, year…) when the file groups them so, or the file’s own groups, instead of 7 groups in turn. Their Q² now answers the question the model was built for (predicting a new site, a new sector…). New model can make such groups too: Cross-validation groups › one group per value of an ID or of a variable; the Methods text and Export to R say so.</li>
+<li>Block scaling and modifiers: models from .usp files that weight blocks of variables (1/√K, K the block’s number of terms) or multiply a variable’s weight by a modifier are refitted as stored; until now their R²X, R²Y, scores and everything after were wrong. New model has a Block and a Modifier column in the Variables tab; the Methods text and Export to R include them.</li>
+<li>New model › Variables, Transform › custom…: log10, ln or −log10 of (C1·x + C2), exp(C1·x + C2), C1·x + C2, a logit between two bounds, or the power (C1·x + C2)^C3, with the formula shown as it will be applied; the Methods text and Export to R include them. A power stored in a .usp file other than the square or fourth root is no longer dropped by Edit model.</li>
+<li>New model › Cross terms: terms of three variables (A × B × C) and cubes (A × A × A), as .usp files have them; Edit model shows them in full.</li>
+<li>Cross-validation: each group is now predicted by a model fitted without it, its centring and scaling included (and MSC’s mean spectrum). Until now these models kept the scaling computed with all the observations, which inflated Q² when there are few of them: on random data, an OPLS-DA of 6 observations had a Q² of 0.98 (0.71 with 8) and a 5-component PLS 1.00; in median, they now stay below 0. Every model’s Q² changes a little, a lot with few observations, and so do RMSEcv, CV-ANOVA, the cross-validated classification and the number of components chosen automatically; the Q² of a model imported from a .usp file no longer equals the one stored in it.</li>
+<li>Security: the R engine now answers only Nuée’s own windows (a token drawn at each start). Until now, a web page open in a browser, or another user of the same computer, could make it run code. The windows no longer go to another site, and a file received from someone (a project, an R file, an export to R) can no longer run code or choose where Nuée saves. R files (.rds, .RData) open only with R 4.4 or newer, as on Windows: with an older R (Ubuntu, Debian), reading one could run code (CVE-2024-27322), and Nuée refuses it.</li>
+<li>Saving never leaves a project half-written (network cut, full disk); if the file was changed elsewhere since it was opened (a colleague, another window), Nuée asks before overwriting it. The file records which versions of Nuée and R wrote it.</li>
+<li>Recovery copies are kept until they are recovered or set aside, and never deleted when the R engine stops answering. Restarting the R engine reopens each project from the file it saves to, or from its recovery copy, pasted tables and imported spectra included. Opening a file that is already open shows the project instead of making a second copy.</li>
+<li>Field data: a text cell (&lt;0.5, &lt;LOD, nd, #N/A…) in a column of measurements is read as missing, and Nuée says so, instead of turning the column into a qualitative variable or dropping it; the same in a file to predict, which gave wrong predictions until now. Excel dates stay dates, column names keep their spaces, and a malformed CSV line is reported instead of shifting the columns.</li>
+<li>R console: each fitted model shows there with its code and what R prints of it; Tab completes names (objects, m$…, arguments); the cursor stays in the prompt, and shortcuts (Ctrl+S, Ctrl+K…) work there. The application’s actions didn’t appear once the console was open: fixed.</li>
+<li>New model stays open while the model is fitted: an error shows in it, with every setting kept.</li>
+<li>Export to R: the script now holds only the exported model’s calculation, written for it alone (scaling, NIPALS, cross-validation, statistics, plots), in plain R with no package: a PLS goes from over 1,000 lines of code to about 170. It still gives Nuée’s results, checked before writing; an English export also translates the names in the code.</li>
+<li>Spectra: a malformed JCAMP-DX, SPC or text file is refused at once, with its name, instead of freezing Nuée or exhausting its memory; a file with many labels reads much faster.</li>
+<li>Data: a very wide table (spectra) shows its first 200 columns, or those whose name holds the text typed; the loadings and the S-plot write variable names only up to 100 variables.</li>
+<li>For IT departments: silent installation, a Group Policy that turns the update check off, what Nuée writes where and sends over the network (docs/deploiement.md). An installed copy ignores the user’s .Rprofile and loads its own packages first; R’s temporary files are deleted when Nuée closes.</li>
+</ul>
+</section>
+<section id="v0-9-0">
+<h2>Version 0.9.0 <span class="date">1 November 2026</span></h2>
+<ul>
+<li>File › Import spectra: JCAMP-DX, SPC (Galactic, Thermo) or text files, one spectrum or several per file, made into one project; a table of information (contents, classes) can be joined to them by file name. A JCAMP-DX or SPC file also opens with File › Open.</li>
+<li>Spectral preprocessing: detrend and baseline (convex hull) added, up to three steps.</li>
+<li>Plots › Profiles (spectra) › Choose ranges: drag across the spectra to mark wavelength ranges, then a new model without them or with them only. Savitzky–Golay treats each range on its own.</li>
+<li>OPLS with several Y and OPLS-DA with more than two classes: the orthogonal components are no longer related to Y at all, as Trygg and Wold (2002) intend. These models change a little when refitted.</li>
+<li>R Markdown and Quarto reports checked through to HTML; they now declare their language.</li>
+</ul>
+</section>
+<section id="v0-8-0">
+<h2>Version 0.8.0 <span class="date">1 November 2026</span></h2>
+<ul>
+<li>File › Export to R: a script, or an R Markdown or Quarto report, that refits the model without Nuée, in plain R (the engine’s code is copied into it). Data in the script or in a CSV next to it; optionally also renv.lock, results as .RData, an RStudio project.</li>
+<li>Model › Text for the Methods section: a paragraph written from the model, in French or English, with its references.</li>
+<li>Plots › Tests by variable: each variable compared between two classes (Welch’s or Student’s t, Mann–Whitney) or across all of them (ANOVA, Kruskal–Wallis), with the Benjamini–Hochberg correction and a volcano plot.</li>
+<li>New model › Class models: one PCA per class, and the Coomans plot to tell which class an observation belongs to (or none).</li>
+<li>OPLS with several Y and OPLS-DA with more than two classes (several predictive components).</li>
+<li>Exported files checked in jamovi, PSPP (SPSS), Weka, LibreOffice and pandas: jamovi now opens the .omv files; SAS transport in version 5, which SAS reads; dBase in Windows-1252, missing values left blank.</li>
+</ul>
+</section>
+<section id="v0-7-0">
+<h2>Version 0.7.0 <span class="date">1 November 2026</span></h2>
+<ul>
+<li>File › Open also reads R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase and Weka files, and old Excel workbooks (.xls). For a workbook with several sheets, the application asks which one to open.</li>
+<li>File › Paste a table (Ctrl+V): cells copied from a spreadsheet become a project.</li>
+<li>Export a project’s data and a model’s results to Excel, CSV, R, SPSS, Stata, SAS, jamovi, dBase or Weka.</li>
+<li>Spectra: SNV, MSC and Savitzky–Golay preprocessing (smoothing, derivatives) in New model, and the Profiles (spectra) view.</li>
+<li>Tab-separated text files, Windows-1252 files and Excel’s “Unicode text” now open correctly.</li>
+<li>The installed version mentions a new version at start-up (Help to turn it off).</li>
+</ul>
+</section>
+<section id="v0-6-0">
+<h2>Version 0.6.0 <span class="date">1 November 2026</span></h2>
+<ul>
+<li>Help › Example project: made-up data (120 apples) with four models ready to explore, to try Nuée.</li>
+<li>New icon, easier to read at small sizes; the logo on the welcome screen and in About.</li>
+<li>A lighter application (65 MB and a thousand files less): it copies and installs faster.</li>
+<li>Nuée is now free software (GPL-3.0 licence): github.com/4rtefakt/nuee.</li>
+</ul>
+</section>
+<section id="v0-5-0">
+<h2>Version 0.5.0 <span class="date">1 November 2026</span></h2>
+<ul>
+<li>The application is now called Nuée. Settings, preferences and recent projects carry over from the previous version.</li>
+<li>Nuée shows in the Start menu and in Settings › Installed apps, where it can be uninstalled.</li>
+<li>A new icon; the desktop shortcut is called “Nuée”.</li>
+<li>Help › Results and known differences: what the engine reproduces exactly from .usp files, and the known differences.</li>
+</ul>
+</section>
+<section id="v0-4-0">
+<h2>Version 0.4.0 <span class="date">1 November 2026</span></h2>
+<ul>
+<li>Closing with unsaved changes now offers “Save and close”.</li>
+<li>Automatic recovery copies of unsaved projects: after an unexpected stop, the application offers to recover them.</li>
+<li>If the R engine stops, the application says so and offers to restart it (also in Help › Restart the R engine).</li>
+<li>Edit › Undo (Ctrl+Z): reverse a data change, a new variable, a class…</li>
+<li>Removing a model asks for confirmation; a model made in the application can also leave the project.</li>
+<li>Notes: each model has a notes box in its summary, saved with the project and included in the report.</li>
+<li>R console: verifier_moteur() refits the imported models and compares them with the stored values.</li>
+<li>Settings (theme, language, plot format, console commands) are kept from one launch to the next.</li>
+</ul>
+</section>
+<section id="v0-3-0">
+<h2>Version 0.3.0 <span class="date">31 October 2026</span></h2>
+<ul>
+<li>One page per model: a central tab for each model, with its summary, scores and loadings.</li>
+<li>R console (View › R console, Ctrl+J): the R code of each action, and an R prompt.</li>
+<li>Saved projects keep the session: models, panels, plot settings, selections.</li>
+<li>Variable statistics, proposed transformations, histograms, missing-value map.</li>
+<li>OPLS and OPLS-DA; biplot, 3D scores, S-plot; DModXPS for predictions.</li>
+<li>Model report as PDF or Word; plot formatting for publication.</li>
+<li>Edit data, new variables (R formula, classes); history of each .usp project.</li>
+<li>Predict a file, hierarchical models, R script export, contributions, data checks before fitting.</li>
+</ul>
+</section>
+</div>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

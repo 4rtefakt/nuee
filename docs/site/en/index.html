@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuée</title>
+<meta name="description" content="Nuée, a desktop application for ecologists' analyses: PCA, PLS, community ecology, mixed models, monitoring and maps, computed in R, on Windows and Linux.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<link rel="alternate" hreflang="en" href="index.html">
+<link rel="alternate" hreflang="fr" href="../fr/index.html">
+<script src="../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="index.html"><img src="../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="index.html" aria-current="page">Home</a>
+      <a href="installation.html">Install</a>
+      <a href="guide/index.html">Guide</a>
+      <a href="tutorials/index.html">Tutorials</a>
+      <a href="whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../fr/index.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Nuée, a desktop application for ecologists' analyses: PCA, PLS, community ecology, mixed models, monitoring and maps, computed in R, on Windows and Linux. -->
+<h1>Nuée</h1>
+<p class="chapeau">PCA, PLS, community ecology, linear, generalized and mixed models, population monitoring and maps, on Windows and Linux, computed in R.</p>
+<div class="boutons">
+<a class="bouton" href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Download for Windows</a>
+<a class="bouton second" href="installation.html#linux">Linux</a>
+<a class="bouton second" href="tutorials/index.html">Tutorials</a>
+</div>
+<p>Nuée (version 1.0.0) is a desktop application to analyse field and laboratory data. Open a
+table from Excel, R, SPSS, Stata, SAS, jamovi or QGIS, pick your variables, and get the model with
+its plots, diagnostics and validation. The results go back to any of those programs, with the
+paragraph for your Methods section, or as an R script that redoes the calculation without Nuée.</p>
+<figure><a href="../images/en/accueil-fenetre.png"><img src="../images/en/accueil-fenetre.png" alt="Nuée's window: a PLS on spectra, its summary, its scores and its loadings drawn against the wavelength" width="1280" height="900" loading="lazy"></a><figcaption>A PLS on near-infrared spectra (tutorial 2): the explorer on the left, the model's summary, its scores and its loadings.</figcaption></figure>
+<h2 id="who-it-is-for">Who it is for</h2>
+<p>Field ecologists, managers of natural areas and environmental scientists, statisticians or not.
+Nuée helps you choose:</p>
+<ul>
+<li><strong>Which analysis?</strong> (Model menu) asks your question in plain words: compare groups, the effect
+of variables, many species, a trend, a density, a before-after with controls… It proposes the
+response and the design from your columns, recommends an analysis and opens the model's window
+already filled in.</li>
+<li>Each regression's Summary gives <strong>its conditions in words</strong>: the residuals' normality, a spread
+that changes, influential observations, overdispersion, collinear terms, with what to do.</li>
+<li><strong>The Methods text</strong> and <strong>the Results text</strong> are written from the model, in English or French,
+with their references.</li>
+</ul>
+<h2 id="what-nuee-does">What Nuée does</h2>
+<ul class="cartes">
+<li><h3>Multivariate</h3><p>PCA, PLS, PLS-DA, OPLS, near-infrared spectra (SNV, MSC, derivatives), VIP, cross-validation, permutation tests.</p><p><a href="guide/pca-pls.html">The guide</a></p></li>
+<li><h3>Regressions</h3><p>Linear and mixed models (nlme), GLMs and GAMs (mgcv) for counts, presences and proportions, with autocorrelation in time, adjusted means and AIC selection.</p><p><a href="guide/regressions.html">The guide</a></p></li>
+<li><h3>Communities</h3><p>RDA, CA, CCA, PCoA, NMDS, PERMANOVA, Mantel test, indicator species, rarefaction.</p><p><a href="guide/communities.html">The guide</a></p></li>
+<li><h3>Monitoring</h3><p>Trends in series, before-after with controls (BACI), count indices (TRIM), densities by distance sampling.</p><p><a href="guide/monitoring.html">The guide</a></p></li>
+<li><h3>Maps</h3><p>Coordinates and their systems (Lambert-93, UTM…), GeoPackage for QGIS, raster values, spatial autocorrelation.</p><p><a href="guide/maps.html">The guide</a></p></li>
+<li><h3>Publishing</h3><p>Figures composed at a journal's size, PDF and Word reports, documents with citations, Export to R, R Markdown and Quarto.</p><p><a href="guide/results.html">The guide</a></p></li>
+</ul>
+<h2 id="all-in-r-on-your-computer">All in R, on your computer</h2>
+<p>Every calculation is written in R, with comments, in the application's folder: you can read what
+was computed, and change it. The R console (View › R console) shows the call behind each action.
+The results are those of the reference packages (vegan, nlme, mgcv, emmeans, rtrim, Distance…),
+checked at every change.</p>
+<p>Your data stay on your computer: Nuée sends nothing, except a question to GitHub at start-up about
+a newer version (it can be turned off in the Help menu), and the area shown to OpenStreetMap's or
+IGN's servers when you choose a background map.</p>
+<h2 id="download">Download</h2>
+<p>Nuée 1.0.0:</p>
+<ul>
+<li><strong>Windows 10 and 11</strong>: <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Nuee-Setup-1.0.0.exe</a>, R included;</li>
+<li><strong>Debian, Ubuntu and their derivatives</strong>: <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-amd64.deb">Nuee-1.0.0-amd64.deb</a>;</li>
+<li><strong>other Linux distributions</strong>: <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x86_64.AppImage">Nuee-1.0.0-x86_64.AppImage</a> or <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.tar.gz">Nuee-1.0.0-x64.tar.gz</a>.</li>
+</ul>
+<p>How to install: see <a href="installation.html">Install</a>. Every version and its notes: the
+<a href="https://github.com/4rtefakt/nuee/releases">Releases page on GitHub</a>; what changed: <a href="whats-new.html">What’s new</a>.</p>
+<h2 id="getting-started">Getting started</h2>
+<ul>
+<li><a href="tutorials/index.html">The tutorials</a> follow three studies from start to finish: a before-after with
+controls (BACI), a PLS on spectra, and the monitoring of a bird population.</li>
+<li>In the application, Help › Example project opens 120 made-up apples with four ready models.</li>
+<li><a href="guide/index.html">The user guide</a> describes every window and every calculation.</li>
+</ul>
+<p>Nuée is free software (<a href="https://github.com/4rtefakt/nuee/blob/main/LICENSE">GPL-3.0</a>). The
+interface is in English and French (View › Language). A problem, a question:
+<a href="https://github.com/4rtefakt/nuee/issues">open an issue on GitHub</a>, in English or French; Help ›
+Diagnostic information gives the versions to paste into it.</p>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

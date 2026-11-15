@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Démarrer · Nuée</title>
+<meta name="description" content="Installer, ouvrir un tableau, enregistrer et retrouver son travail, l’explorateur, les menus, les fenêtres.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="demarrer.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/getting-started.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/getting-started.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html" aria-current="page">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Démarrer</h1>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#demarrer">Démarrer</a></li>
+<li><a href="#ouvrir">Ouvrir</a></li>
+<li><a href="#enregistrer-et-retrouver-son-travail">Enregistrer et retrouver son travail</a></li>
+<li><a href="#si-le-moteur-r-s-arrete">Si le moteur R s'arrête</a></li>
+<li><a href="#l-explorateur">L'explorateur</a></li>
+<li><a href="#menus-et-barre-d-outils">Menus et barre d'outils</a></li>
+<li><a href="#fenetres">Fenêtres</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="demarrer">
+<h2>Démarrer</h2>
+<p>Deux façons d'installer Nuée, sans droits d'administrateur ; R est inclus dans les deux.</p>
+<ul>
+<li><strong>Depuis le NAS :</strong> double-cliquez sur « Lancer Nuee.cmd ». Windows ne sait pas lancer l'application directement depuis le NAS ; ce lanceur la copie sur l'ordinateur (dans %LOCALAPPDATA%\Nuee) puis la démarre. La première fois la copie prend une à deux minutes ; ensuite seuls les fichiers modifiés sur le NAS sont recopiés, et l'application démarre tout de suite. Au premier lancement, des raccourcis « Nuée » sont créés sur le Bureau et dans le menu Démarrer : ils lancent l'application de la même façon (toujours à jour avec le NAS).</li>
+<li><strong>Avec l'installateur :</strong> double-cliquez sur « Nuee-Setup-&lt;version&gt;.exe » et suivez les étapes (pour vous seul, ou pour tous les utilisateurs de l'ordinateur).</li>
+</ul>
+<p>Dans les deux cas, Nuée apparaît dans Paramètres › Applications › Applications installées, d'où on peut la désinstaller ; les projets et les réglages sont gardés.</p>
+<p>Si Windows affiche « Windows a protégé votre ordinateur » (éditeur inconnu), cliquez sur « Informations complémentaires » puis « Exécuter quand même ».</p>
+<p>Sous Linux, Nuée utilise le R de l'ordinateur.</p>
+<ul>
+<li><strong>Debian, Ubuntu et dérivées :</strong> sudo apt install ./Nuee-&lt;version&gt;-amd64.deb installe aussi R et les paquets R nécessaires. Nuée apparaît dans le menu des applications.</li>
+<li><strong>Autres distributions :</strong> Nuee-&lt;version&gt;-x86_64.AppImage (le rendre exécutable, puis le lancer) ou Nuee-&lt;version&gt;-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).</li>
+</ul>
+<p>Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.</p>
+</section>
+<section id="ouvrir">
+<h2>Ouvrir</h2>
+<p><strong>Fichier › Ouvrir (Ctrl+O) :</strong></p>
+<ul>
+<li><strong>un projet .usp :</strong> données, modèles et résultats enregistrés dans le fichier ;</li>
+<li>un projet enregistré par l'application (.nuee ; .json pour les versions avant 0.9.1) ;</li>
+<li><p><strong>un tableau, une ligne par observation :</strong></p>
+<pre>Excel .xlsx, .xlsm, .xls        texte .csv, .txt, .tsv (séparateur, virgule décimale et
+R .rds, .RData                    encodage reconnus, y compris le « texte Unicode »
+SPSS .sav, .zsav, .por            d'Excel)
+Stata .dta                      SAS .sas7bdat, .xpt
+jamovi .omv                     dBase .dbf, Weka .arff
+spectres JCAMP-DX .jdx, .dx, .jcm et SPC .spc (voir Spectres)
+GeoPackage .gpkg (une couche de QGIS : voir Cartes et données spatiales)</pre>
+<p>La première colonne sert de nom d'observation si c'est du texte ou si elle s'appelle « ID », « Obs », « Nom »... (pour un fichier R, les noms des lignes) ; les autres colonnes de texte dont toutes les valeurs diffèrent (un code par observation) deviennent des identifiants secondaires : elles servent d'étiquettes mais n'entrent pas dans les modèles ; les autres colonnes de texte, les facteurs R et les variables étiquetées de SPSS ou Stata sont des variables qualitatives (dans l'ordre de leurs modalités). Pour un classeur à plusieurs feuilles ou un fichier R à plusieurs tableaux, l'application demande lequel ouvrir. Une colonne de mesures qui a quelques cellules de texte (&lt;0,5, &lt;LOD, nd, n.d., #N/A...) reste une variable quantitative : ces cellules sont lues comme manquantes, et la barre d'état dit combien, dans quelles variables (dont celles sous la limite de détection). Les dates et heures d'Excel restent des dates (2024-05-03), en texte, comme celles d'un fichier texte (telles qu'écrites : 14/05/2019) ou de R : une colonne de dates est une variable qualitative quand des dates reviennent (des secteurs comptés le même jour), un identifiant secondaire quand toutes diffèrent, le nom des observations si c'est la première colonne (la mettre alors plus loin pour en faire un temps) ; variable ou identifiant, elle peut être le temps (voir <a href="donnees.html#le-temps-en-dates">Le temps en dates</a>). Un nombre d'Excel sans format de date (43599) reste un nombre. Un fichier texte dont une ligne a plus de valeurs que l'en-tête est refusé, avec le numéro de la ligne, plutôt que de décaler les colonnes. Un fichier R doit contenir des tableaux ; tout autre objet est refusé. Les fichiers R ne s'ouvrent qu'avec R 4.4 ou plus récent (celui de Windows) : avec un R plus ancien, comme celui d'Ubuntu 22.04 ou 24.04 ou de Debian 12, un .rds ou un .RData pourrait exécuter du code dès sa lecture (CVE-2024-27322) ; Nuée le refuse donc : enregistrez le tableau en CSV ou en Excel.</p></li>
+</ul>
+<p><strong>Fichier › Coller un tableau (Ctrl+V) :</strong> des cellules copiées dans Excel, LibreOffice, Google Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).</p>
+<p><strong>Fichier › Importer des spectres :</strong> des fichiers de spectres réunis en un projet (voir <a href="acp-pls.html#spectres">Spectres</a>). Déposer des fichiers sur la fenêtre (glisser-déposer depuis l'Explorateur) les ouvre de même : des spectres JCAMP-DX ou SPC ensemble font un seul projet, comme Importer des spectres ; les autres fichiers s'ouvrent chacun comme avec Fichier › Ouvrir. Un double-clic sur un projet .nuee dans l'Explorateur Windows l'ouvre dans Nuée (dans la fenêtre déjà ouverte s'il y en a une). Les derniers fichiers ouverts sont dans Fichier › Ouvrir un fichier récent.</p>
+<p><strong>Pour essayer :</strong> Aide › Projet d'exemple ouvre 120 pommes inventées (quatre variétés, culture bio ou conventionnelle, une douzaine de mesures et une note de dégustation) avec quatre modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA de la culture. Le tableau d'origine, vergers.csv, est à côté (resources\exemple) pour essayer l'ouverture d'un tableau.</p>
+</section>
+<section id="enregistrer-et-retrouver-son-travail">
+<h2>Enregistrer et retrouver son travail</h2>
+<p>Fichier › Enregistrer (Ctrl+S) écrit le projet (.nuee) avec ses données, ses modèles et la séance en cours : modèles calculés, panneaux ouverts et leur disposition, réglages des graphiques (axes, couleurs, étiquettes, titres), sélections, choix des VIP, groupes du dendrogramme. En rouvrant le projet, les modèles sont recalculés et tout revient en place.</p>
+<p>Le projet est écrit dans un fichier à côté, qui prend ensuite la place de l'ancien : une coupure du réseau ou un disque plein pendant l'enregistrement laisse l'ancien intact. Si un autre programme garde le fichier ouvert (synchronisation, antivirus), Nuée réessaie pendant cinq secondes, puis le laisse tel quel et le dit : enregistrer de nouveau, ou Enregistrer sous.... Si le fichier a été modifié ailleurs depuis qu'on l'a ouvert ou enregistré (un collègue, sur un dossier partagé ; une autre fenêtre), Nuée le dit et propose Enregistrer sous..., Écraser ou Annuler, aussi pour un projet repris après un arrêt inattendu. Le fichier dit aussi quelle version de Nuée et de R l'a écrit ; un projet enregistré par une version plus récente de Nuée est signalé à l'ouverture.</p>
+<p>Rouvrir un fichier déjà ouvert (fichier récent, double-clic dans l'Explorateur) montre le projet ouvert au lieu d'en ouvrir une seconde copie.</p>
+<p>En fermant l'application avec des changements non enregistrés, elle propose « Enregistrer et fermer ». Toutes les deux minutes, elle garde aussi une copie de secours des projets non enregistrés : si elle s'arrête sans avoir été fermée (panne, coupure), elle propose au lancement suivant de les récupérer. Fermer cette question sans répondre garde les copies pour la fois suivante ; seul « Ignorer » les efface.</p>
+<p>Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet (valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...), jusqu'à 20 en arrière.</p>
+<p><strong>Notes :</strong> le résumé de chaque modèle a une zone de notes, enregistrée avec le projet et reprise dans le rapport ; un crayon le signale dans l'explorateur.</p>
+<p>Retirer un modèle (Modèle › Supprimer le modèle) demande confirmation. Sa définition reste dans le projet ; pour un modèle fait dans l'application, une case permet de la supprimer aussi (annulable).</p>
+</section>
+<section id="si-le-moteur-r-s-arrete">
+<h2>Si le moteur R s'arrête</h2>
+<p>L'application le signale et propose de le redémarrer ; on peut aussi le faire soi-même (Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs modèles et leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon depuis le fichier où ils s'enregistrent ; les changements faits depuis la dernière copie de secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde les copies de secours, proposées au lancement suivant. Au-delà d'une minute de calcul, la barre d'état le rappelle.</p>
+<p><strong>Aide › Quoi de neuf :</strong> les nouveautés de chaque version (affichées une fois après une mise à jour). La version installée (Nuee-Setup, ou les paquets Linux) cherche au démarrage s'il existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est envoyé) et la signale dans la barre d'état ; sous Linux, un clic ouvre la page de la version. Sous Windows, un clic propose de mettre à jour : le programme d'installation est téléchargé et vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour fait de même à tout moment, même sans la recherche au démarrage ; Aide › Chercher une nouvelle version au démarrage arrête la recherche. La copie lancée depuis le NAS ne cherche pas : elle se met à jour avec le NAS.</p>
+</section>
+<section id="l-explorateur">
+<h2>L'explorateur (à gauche)</h2>
+<p>Projets, données, modèles importés d'un fichier .usp, modèles calculés et leurs vues.</p>
+<p><strong>Double-clic :</strong> ouvrir. Clic droit : toutes les actions (calculer, modifier, ajouter ou retirer une composante, exporter, supprimer...). Double-cliquer un modèle importé le recalcule en R ; le Résumé marque chaque valeur : « = » identique à la valeur enregistrée dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente. Le Q2 diffère en général : un modèle importé est validé comme les autres (voir « <a href="modeles.html#validation-croisee">Validation croisée</a> ») ; « Centres et poids du modèle complet » redonne celui du fichier.</p>
+</section>
+<section id="menus-et-barre-d-outils">
+<h2>Menus et barre d'outils</h2>
+<p>Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. Raccourcis :</p>
+<pre>Ctrl+O ouvrir            Ctrl+S enregistrer         Ctrl+E exporter les résultats
+Ctrl+V coller un tableau
+Ctrl+N nouveau modèle    Ctrl+M modifier le modèle  Ctrl+= / Ctrl+- composantes
+Échap  effacer la sélection    Ctrl+Suppr exclure la sélection et réajuster
+Ctrl+Maj+N nouvelle fenêtre    Ctrl+Maj+D détacher le panneau   Ctrl+W fermer le panneau
+Ctrl+B explorateur       F1 guide</pre>
+<p><strong>Affichage :</strong> thème sombre, français / anglais, taille du texte.</p>
+</section>
+<section id="fenetres">
+<h2>Fenêtres</h2>
+<p>Au centre, un onglet par modèle (« M1 · PLS »), et un onglet pour chaque vue du projet (Données, Statistiques des variables, Historique). L'onglet d'un modèle est sa page : son résumé à gauche, ses scores et ses loadings à droite ; ses autres vues (VIP, DModX...) s'y ajoutent en onglets. Choisir un modèle dans l'explorateur affiche sa page ; fermer la dernière vue d'une page ferme la page.</p>
+<p>Dans une page comme au centre, les vues se déplacent par leur onglet (glisser-déposer), se divisent et s'empilent ; glisser l'onglet d'un modèle à côté d'un autre permet de comparer deux modèles. Clic droit sur un onglet, ou l'icône en haut à droite d'un groupe : détacher dans sa propre fenêtre (par exemple sur un second écran), agrandir, fermer.</p>
+<p>Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète. Une sélection d'observations (cadre ou lasso dans un graphique, clic sur un point ou une ligne de liste) apparaît dans toutes les vues et toutes les fenêtres du même modèle.</p>
+<p><strong>Graphiques :</strong> molette pour zoomer ; clic droit pour copier l'image ou l'enregistrer (PNG, SVG), voir les contributions de la sélection ou en faire une classe.</p>
+<p>Ctrl+C dans une vue qui montre un tableau (résumé, listes, statistiques...) copie le tableau en texte séparé par des tabulations, à coller dans Excel (une liste : toutes ses lignes, en pleine précision) ; avec du texte sélectionné, Ctrl+C copie le texte comme d'habitude.</p>
+<p><strong>Affichage › Rechercher une commande (Ctrl+K) :</strong> taper une partie du nom d'une commande ou de son menu (« vip », « exporter r »), puis Entrée.</p>
+<p><strong>Aide › Informations de diagnostic :</strong> les versions de Nuée, du système, de R et de ses paquets, à coller dans un signalement de problème (github.com/4rtefakt/nuee/issues ; ni chemins ni données).</p>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><span></span><a rel="next" href="donnees.html">Les données →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

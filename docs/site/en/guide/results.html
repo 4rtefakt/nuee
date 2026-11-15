@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Results, documents and R · Nuée</title>
+<meta name="description" content="Methods text, report, documents with citations, exports to other software, Export to R, R console.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="results.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/resultats.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/resultats.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html" aria-current="page">Results, documents and R</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Results, documents and R</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#methods-text">Methods text</a></li>
+<li><a href="#model-report">Model report</a></li>
+<li><a href="#documents">Documents</a></li>
+<li><a href="#exporting-to-other-software">Exporting to other software</a></li>
+<li><a href="#export-to-r">Export to R</a></li>
+<li><a href="#r-console">R console</a></li>
+<li><a href="#the-code">The code</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="methods-text">
+<h2>Methods text</h2>
+<p><strong>Model › Text for the Methods section:</strong> a paragraph written from the model, in French or English (data, transformations, scaling, spectral preprocessing, method, cross-validation, R², Q², CV-ANOVA, classification, software and R version), with its references. "Copy the text" button. Read it over and complete it (experimental design, sampling...) before publishing.</p>
+</section>
+<section id="model-report">
+<h2>Model report</h2>
+<p><strong>File › Model report (or right-click on the model):</strong> a PDF or Word (.docx) document with a title, a comment and the parts ticked (summary, scores, loadings, DModX, VIP, coefficients, CV-ANOVA, classification, list of variables...). Plots are formatted as in their open panels. The document opens once written.</p>
+</section>
+<section id="documents">
+<h2>Documents (articles, reports)</h2>
+<p>File › New document (or right-click a project in the explorer): a text kept in the project (an article, a report, notes), written in Markdown on the left, with its preview on the right, drawn again as you type. It is saved with the project and in its recovery copies; Edit › Undo leaves it alone, and Ctrl+Z in the text undoes the text.</p>
+<p>Start from a blank document, an article (introduction, methods, results, discussion) or an analysis report (for each model: summary, plots, methods), the models ticked already cited.</p>
+<p>The project's results are cited between double braces; the preview and the compiled file show their values:</p>
+<pre>{{M1.Q2}}  {{M1.R2Y}}  {{M1.R2X:%}} (a percentage)  {{M1.Q2:3}} (3 decimals)  {{M1.N}}
+{{M1.gain}}  {{M1.vip.sugar}}  {{M1.coef.sugar}} (scaled coefficient and its 95 % interval)
+{{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
+{{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
+{{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
+{{M1.resultats}} (Results text: the fit, each coefficient with its interval and p, as a factor
+or an odds ratio for a log or logit link, the significant terms, curves, random effects; for a
+PCA, PLS or OPLS, the variance explained, Q², CV-ANOVA and the most important variables)</pre>
+<p>A plot, a table, the Methods text or the Results text goes alone on its line. Model › Text for the Methods section shows the Results text under the Methods. Plots and tables are numbered in order (Figure 1, Table 1); with a label, {{M1.scores #fig-scores | caption}}, {{ref:fig-scores}} writes "Figure 1" anywhere in the text. Type {{ to list the project's models, then what the one chosen offers, with its current value; Insert, in the toolbar, does the same from menus, and a model or its view in the explorer has "Insert in the document" (right-click).</p>
+<p>A reference that can't be resolved (a model that doesn't exist, a variable it doesn't have) is in red, with the reason when you hover it. A model of the project not computed yet is computed when the document cites it, without opening its views. Numbers follow the document's language (0,65 in French, 0.65 in English), as do "Figure", "Table" and the Methods text.</p>
+<p><strong>Compile:</strong> a Word file (.docx: headings, lists, tables, plots and captions in Word's styles), a PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd) with its plots in a folder next to it, the results written in for good. When Quarto is installed (quarto.org, or with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML from it, with what Quarto adds: a bibliography (bibliography: refs.bib in the header, [@key] in the text), cross-references, journal templates. A YAML header (title, author, date) at the top of the document is read; a line {{&lt; pagebreak &gt;}} starts a new page.</p>
+<p><strong>Citations are written as in Quarto:</strong> [@wold2001], [see @wold2001, p. 33; @eriksson2006], @wold2001 in the sentence ("Wold et al. (2001)"), [-@wold2001] without the author. Typing @ lists the document's references, then Zotero's. The list of references comes at the end (under the last heading when it is "References"), or where the document puts {{bibliographie}}; author–year or numbered (Cite › Citation style), in the document's language. Where the references come from (the Cite button):</p>
+<ul>
+<li>BibTeX or CSL-JSON files, exported by Zotero, Mendeley, JabRef...: Cite › Link a file names one in the header (bibliography: refs.bib, relative to the project's folder, as Quarto reads it). Better BibTeX's automatic export keeps it up to date: a key not found has the file read again;</li>
+<li>Zotero on this computer (Zotero 7 or later, with Settings › Advanced › "Allow other applications on this computer to communicate with Zotero" ticked): its references are searched as you type @, or in Cite › Insert a citation, in the whole library or in one of its collections; their keys are Zotero's own (Better BibTeX's when it is installed). With the Better BibTeX plugin, Cite › Pick in Zotero opens Zotero's own picker, the page given there included. Nuée only reads the library;</li>
+<li>BibTeX pasted (Cite › Paste BibTeX references).</li>
+</ul>
+<p>The document keeps a copy of the references it cites: sent to someone without the .bib, it still cites them (Cite › The document's references lists them, and removes those no longer cited). Compiled for Quarto, the citations stay as they are, the references cited in a .bib beside the .qmd, so that Quarto writes them in any journal's style (csl: style.csl in the header; the file is copied beside the .qmd). A reference's language (Zotero's Language field: fr, de...) goes with it: styles that put English titles in title case, as Quarto's default one does, then leave a French title as it is written. Each document opens in a tab of its own. Plots in documents and model reports are drawn in the light theme, whatever the window's.</p>
+<p>Spelling, in French and in English (and in the system's language): misspelled words are underlined; right-click one for suggestions (in every text field of the application).</p>
+</section>
+<section id="exporting-to-other-software">
+<h2>Exporting to other software</h2>
+<p><strong>File › Export data:</strong> the project's table (observation names, identifiers, variables). File › Export model results (Ctrl+E): the model's tables (observations: scores, T², DModX, fitted values; variables: loadings, VIP, intervals; components; coefficients; Y variables). Formats: Excel (one sheet per table), CSV, tab-separated text, R (.rds: a list of tables; .RData), SPSS (.sav), Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) and Weka (.arff); for the last ones, one file per table ("M1.sav", "M1 - variables.sav"...). Qualitative variables stay qualitative (R factors, SPSS and Stata value labels, jamovi nominal variables). For SPSS, Stata, SAS and dBase, variable names are made valid (unaccented letters, digits, "_"); the original name becomes the variable label. The variables' units and descriptions (Edit › Units and descriptions) go into a "Variables" sheet of an Excel workbook, read back when Nuée opens it, a "Variables" table of a GeoPackage, the descriptions of a jamovi file and the attributes of an R table (see <a href="data.html#cleaning-the-data-find-and-replace-categories-units">Cleaning the data</a>).</p>
+<p><strong>SAS:</strong> transport format version 5, which SAS reads with libname xport (names of 8 characters, labels of 40, text of 200 at most). dBase: text in Windows-1252; in LibreOffice, choose the "Western Europe (Windows-1252)" character set when opening. The files written were opened in jamovi, PSPP (for SPSS), Weka, LibreOffice and pandas.</p>
+</section>
+<section id="export-to-r">
+<h2>Export to R (script, R Markdown, Quarto)</h2>
+<p><strong>File › Export to R:</strong> a file that refits the model without Nuée, with R alone, to send to a colleague or attach to a paper. The calculation is written for that model alone, in plain R with no package (a regression: lm, or nlme and mgcv, which come with R; an NMDS: MASS, which comes with R too; TRIM and distance sampling, and boosted trees with rpart: the functions of Nuée's engine, copied into the script; a random forest, the one exception: the ranger package, which Nuée installs with itself), commented in the export's language, in four parts:</p>
+<ol>
+<li><strong>the functions:</strong> the NIPALS algorithm, the cross-validation, and only what this model uses (missing values, spectral preprocessing, OPLS...);</li>
+<li>the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers written without loss and categories in their order;</li>
+<li><strong>the model:</strong> its X and Y terms (transformations, categories, cross terms), their scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients, CV-ANOVA, classification for a PLS-DA, test set;</li>
+<li><strong>the results:</strong> the tables, the permutation test (commented out) and the plots (scores, loadings, VIP, observed / fitted, T2 and DModX).</li>
+</ol>
+<p><strong>Format:</strong> R script (.R); or an R Markdown (.Rmd) or Quarto (.qmd) report, which adds the Methods text, tables and plots (scores, loadings, VIP, observed / predicted, T2, DModX) and the references; it compiles in RStudio (Knit button) or with quarto render, and needs the knitr package. Extra files, as you choose: renv.lock (versions of R and packages, for renv::restore()), the data and fitted model as .RData (load() gives them back without refitting), an RStudio project (.Rproj, best in a folder of its own).</p>
+<p><strong>Models:</strong> this one, or all the models of the session (the latest fit of each) in one .R script: the functions and the data once, then a block per model under its name (M1, M2...).</p>
+<p>Before writing, the application refits the script's models and checks they give the same results; otherwise it says so.</p>
+</section>
+<section id="r-console">
+<h2>R console</h2>
+<p><strong>View › R console (Ctrl+J):</strong> a panel below the tabs, with</p>
+<ul>
+<li><strong>the log:</strong> for each action of the application, the call it made to the engine, written in R (P1 &lt;- lire_projet(...), d &lt;- modele_du_projet(P1, 5), M4 &lt;- ajuster(P1, d)...), to copy into a script (Copy button), and for each fitted model what R prints of it (components, Y, limits, variables, observations; print(M4) does the same); the "Application actions" box hides or shows them;</li>
+<li><p>a prompt to type R, run in the application's R session. m is the model shown, p its project; P1, M4... the open projects and models, by their names in the log. For example: m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (the plot shows in the console), modeles(), projets(), definition("M4").</p>
+<p>Enter runs the command, Shift+Enter starts a new line, ↑ and ↓ recall commands.</p>
+<p><strong>Tab completes the name begun:</strong> objects, m$... and p$... (the names they hold), the arguments of the function whose parenthesis is open; when several fit, a list opens (arrows, then Tab or Enter). The application's shortcuts (Ctrl+S, Ctrl+K...) also work while typing.</p></li>
+</ul>
+<p>Changing a project in the console (p$donnees[...] &lt;- ...) changes it in the application. Correcting the engine: dossier_moteur() gives the folder of the application's R files; after a correction, recharger_moteur() reads them again, then refit the model. For the copy started from the network share, this folder is the copy made on the computer: at the next start, the share's copy replaces it; to keep a correction, make it in the same file on the share (application\resources\moteur\R).</p>
+<p>A long command blocks the application until the computation ends.</p>
+<p><strong>Checking the engine:</strong> verifier_moteur() refits the imported models of the open projects and compares them with the values stored in their files (R2X, R2Y, Q2), validated like the files; verifier_moteur("folder") does the same for the .usp and .json files of a folder. To do after a correction of the engine. Q2 counts in the verdict, except a PCA's, only close (see "<a href="usp-projects.html#what-differs">What differs</a>").</p>
+</section>
+<section id="the-code">
+<h2>The code</h2>
+<p>Every computation is in resources\moteur\R (R, commented in French):</p>
+<pre>pretraitement.R        transformations, centring, scaling
+nipals.R               PCA and PLS (NIPALS algorithm, missing data)
+validation_croisee.R   cross-validation (three ways), Q2
+hierarchique.R         hierarchical models: honest Q2 (base models refitted)
+regression.R           regression models (lm, nlme, mgcv), AIC, block contributions
+statistiques.R         T2, DModX, VIP, coefficients, intervals, limits
+validation.R           permutations, CV-ANOVA, PLS-DA classification and ROC curves
+opls.R                 OPLS and OPLS-DA
+diagnostic.R           contributions, data checks, variable statistics
+variables.R            scores as variables, classes, edited values, computed variables
+projet.R               reading projects, file history
+verification.R         comparison with the results stored in .usp files
+script.R               export of a model as a standalone R script or report
+methodes.R             Methods text and references
+comparaisons.R         statistical tests
+modeles_classe.R       class models (one PCA per class), Coomans plot
+formats.R              reading and writing tables (Excel, text, R, SPSS, Stata, SAS, jamovi...)
+spectres.R             spectral preprocessing (SNV, MSC, detrend, baseline, Savitzky–Golay)
+fichiers_spectres.R    reading spectra (JCAMP-DX, SPC, text), joined information
+jeu_test.R             test set: prediction, RMSEP, external Q2, Kennard–Stone
+condition.R            a model's observations chosen by a condition
+langue.R               language of the messages (traduire("français", "English"))
+modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fitting)</pre>
+<p><strong>In R:</strong> source("resources/moteur/charger.R"), then for example</p>
+<div class="retrait">
+<p>p &lt;- importer_tableau("my_data.csv") d &lt;- definir_modele(p, "PLS", x = 3:20, y = 2) m &lt;- ajuster(p, d) m$statistiques$composantes</p>
+</div>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="trees.html">← Trees, forests, discriminant analysis, k-means</a><a rel="next" href="usp-projects.html">.usp projects →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

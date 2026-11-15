@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Les données · Nuée</title>
+<meta name="description" content="Modifier les données, créer des variables, nettoyer, joindre un autre tableau, résumer par groupe, les dates.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="donnees.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/data.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/data.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html" aria-current="page">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Les données</h1>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#modifier-les-donnees-creer-des-variables">Modifier les données, créer des variables</a></li>
+<li><a href="#nettoyer-les-donnees-chercher-et-remplacer-categories-unites">Nettoyer les données : chercher et remplacer, catégories, unités</a></li>
+<li><a href="#ajouter-des-colonnes-d-un-autre-tableau">Ajouter des colonnes d'un autre tableau</a></li>
+<li><a href="#resumer-par-groupe">Résumer par groupe</a></li>
+<li><a href="#statistiques-des-variables">Statistiques des variables</a></li>
+<li><a href="#le-temps-en-dates">Le temps en dates</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="modifier-les-donnees-creer-des-variables">
+<h2>Modifier les données, créer des variables</h2>
+<p>Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour annuler ; vide = valeur manquante ; pour une variable qualitative, le nom de la catégorie).</p>
+<p>Les modèles déjà ajustés ne changent pas : les réajuster.</p>
+<p><strong>Édition › Nouvelle variable :</strong> par une formule R sur les autres variables et les identifiants des observations, par exemple log10(polyphenols), sucre / acidite, ifelse(poids &gt;= 170, "gros", "petit") (un résultat en texte donne une variable qualitative) ; par groupe, moyenne_groupe(x, secteur), la moyenne de x dans le groupe de chaque observation (valeurs manquantes ignorées ; une observation sans groupe n'en a pas), et ecart_groupe(x, secteur), l'écart à cette moyenne : la moyenne d'un secteur comme covariable, ou une réponse centrée par secteur. Ou des classes d'après les valeurs d'une variable, à des bornes données (10 ; 20 donne « ≤ 10 », « ]10 ; 20] », « &gt; 20 ») ou en classes d'effectifs égaux. Ou Imputation (ACP) : les valeurs manquantes des variables quantitatives choisies remplies les unes par les autres par ACP itérative régularisée, comme le fait missMDA::imputePCA, avec le nombre de composantes choisi par validation croisée généralisée des variables réduites, de 0 à 5, comme le fait missMDA::estim_ncpPCA sur elles (0 : la moyenne de chaque variable), sauf si vous le donnez ; les valeurs observées inchangées, une observation à qui manquent plus de la moitié d'entre elles laissée manquante, les valeurs imputées gardées dans l'étendue observée de chaque variable sauf si on décoche ; en nouvelles variables « x (imputée) » ou dans les variables elles-mêmes (Ctrl+Z annule). Penser à enregistrer le projet.</p>
+<p>Dans une formule de Nouvelle variable, d'une année à l'autre : precedent(x, annee, secteur), la valeur de x l'année d'avant dans le même secteur, et suivant(x, annee, secteur), celle de l'année d'après (pas = 2 : deux ans avant ou après). L'année cherchée doit exister : une année manquante donne une valeur manquante, jamais celle d'une année plus ancienne, comme une observation sans secteur ou sans année. Le temps est fait de nombres (un identifiant fait de nombres, comme l'année, convient) ; des dates aussi, mais ces fonctions vont avec des temps réguliers (voir <a href="#le-temps-en-dates">Le temps en dates</a>) ; le groupe, une variable qualitative, un identifiant ou interaction(site, secteur) pour un secteur dans un site ; un même secteur deux fois la même année est refusé, en le nommant. croissance(x, annee, secteur) donne le taux de croissance log(x / x de l'année d'avant), manquant sauf si les deux valeurs sont positives : pour la dépendance à la densité, la croissance contre precedent(densite, annee, secteur). En anglais : previous, following et growth_rate.</p>
+<p>Dans une formule de Nouvelle variable, la diversité de chaque relevé, sur plusieurs colonnes d'espèces de sa ligne (comptages, densités, recouvrements : des nombres ≥ 0), comme la calculent vegan::specnumber et vegan::diversity : richesse(...), S, le nombre de colonnes &gt; 0 ; shannon(...), H′ = −Σ p ln p (logarithme népérien, p la part de chaque espèce dans le total de la ligne) ; simpson(...), 1 − Σ p² (l'indice de Gini–Simpson, le « simpson » de vegan) ; pielou(...), l'équitabilité de Pielou J = H′ / ln S, manquante quand S ≤ 1. Les colonnes sont nommées (shannon(Ablette, Brochet, Gardon)), ou une plage dans l'ordre des colonnes du tableau, de l'une à l'autre, les deux comprises (shannon(Ablette:Vandoise), comme dplyr la lit), ou les deux ; une colonne nommée deux fois compte une fois, et toute autre expression compte comme une colonne de ses valeurs. Un relevé de zéros a S = 0, H′ = 0 et un Simpson de 0 (vegan donne 1 : 1 moins une somme vide), et pas de J ; une valeur manquante dans l'une des colonnes rend l'indice manquant pour ce relevé (une valeur manquante n'est pas lue comme une absence) ; une valeur négative est refusée, en nommant sa variable. En anglais : richness.</p>
+</section>
+<section id="nettoyer-les-donnees-chercher-et-remplacer-categories-unites">
+<h2>Nettoyer les données : chercher et remplacer, catégories, unités</h2>
+<p>Ce qu'on faisait dans Excel avant d'ouvrir le tableau, dans Nuée, chaque changement annulé par un seul Ctrl+Z (Édition › Annuler) comme les autres changements des données ; les modèles déjà ajustés gardent leurs résultats jusqu'à ce que vous les ajustiez à nouveau. Dans le menu Édition, dans la barre de la vue Données, et par un clic droit sur l'en-tête d'une colonne de la vue Données (un en-tête montre l'unité de la variable, son nombre de cases vides et de valeurs distinctes, « Résumé des colonnes » ; sa bulle, la description) ou sur une variable de Graphiques › Statistiques des variables.</p>
+<p><strong>Édition › Chercher et remplacer (Ctrl+H) :</strong> dans une variable, plusieurs ou toutes, les cases qui valent un texte ou un nombre, ou les cases vides (« les cellules vides » : remplacer vide par 0), prennent ce que vous tapez, ou deviennent vides si vous ne tapez rien (remplacer -9999 par rien). Une variable qualitative se compare en texte : la case entière, ou une partie du texte (la « , » de « 3,5 »), les majuscules comptant ou non ; une variable quantitative en nombres (« 3,5 » trouve 3,5), sur la case entière, et ne prend qu'un nombre ou rien (sinon ses cases restent, et le dialogue le dit). Avant de remplacer, le dialogue dit combien de cases changeront dans chaque variable, les premiers changements (« foret » → « forêt » (3)) et ce que devient chaque variable : une variable de texte dont toutes les valeurs deviennent des nombres (« , », « &lt;0,5 » remplacé par 0,25, « abs » par 0) devient quantitative, sauf si vous décochez la case. Une catégorie remplacée par une autre qui existe s'y fond ; une catégorie vidée de ses cases disparaît. Une colonne de mesures est lue en nombres à l'ouverture du tableau : quelques « &lt;0,5 » ou « nd » y sont alors lus comme des valeurs manquantes (Fichier › Ouvrir le dit), et ne sont plus là pour être remplacés ; une colonne avec plus de texte reste du texte, où on peut. Édition › Catégories (ou clic droit sur l'en-tête d'une variable qualitative) : les catégories d'une variable qualitative avec leur nombre d'observations, à renommer (le nom d'une autre catégorie les fusionne), fusionner (celles cochées, dans la plus nombreuse), monter et descendre, et la référence à choisir. Leur ordre est celui des graphiques et des tableaux (couleurs, barres, moyennes ajustées). Dans une régression, la dernière catégorie observée est la catégorie de référence : le coefficient de chacune des autres est son écart à elle, et « Référence » met une catégorie en dernier. Les définitions des modèles du projet suivent les catégories (ajustée à nouveau, une régression prend la nouvelle référence) ; un modèle ajusté dont des catégories ont été renommées ou fusionnées ne se réajuste plus depuis sa page (moins d'observations, une composante de plus) et ne prédit plus : ajustez-le à nouveau (Modèle › Modifier le modèle, ou double-clic sur sa définition dans l'explorateur). Un nouvel ordre seul ne l'en empêche pas.</p>
+<p>Édition › Unités et descriptions (ou clic droit sur un en-tête › Unité et description) : l'unité (ind./ha, m, °C) et la description de chaque variable. L'unité vient dans les titres des axes (« densité (ind./ha) » : Effets, Observé / prédit, Statistiques des variables, Séries, la légende de la Carte, moyennes ajustées, tests statistiques, dépendance partielle d'une forêt ; pas sur un axe qui la montre transformée), les en-têtes de la vue Données, le texte des Méthodes (« la réponse est « densité » (ind./ha) ») et celui des résultats (un coefficient « par m » quand la variable est dans ses unités). Les deux sont enregistrées dans le projet, gardées par Fichier › Exporter les données là où le format a leur place (une feuille « Variables » d'un classeur Excel et une table « Variables » d'un GeoPackage, que Nuée relit en les ouvrant ; la description d'une colonne de jamovi ; les attributs label et units d'une colonne de R, comme Hmisc les lit ; pas en CSV ni en texte), et écrites en commentaire avant les données dans l'export vers R.</p>
+<p>Dans la vue Données, un clic sur une case, puis Ctrl+V, colle à partir de cette case un bloc de cellules copiées dans un tableur, dans les lignes et les colonnes telles que la vue les montre (triées, filtrées) : chaque case comme quand on la modifie à la main (vide : manquante ; une nouvelle catégorie s'ajoute ; un texte dans une variable quantitative est refusé, en nommant l'observation, et rien ne change) ; les cases au-delà du tableau sont laissées. Un seul Ctrl+Z annule tout le bloc.</p>
+</section>
+<section id="ajouter-des-colonnes-d-un-autre-tableau">
+<h2>Ajouter des colonnes d'un autre tableau</h2>
+<p>Édition › Ajouter des colonnes d'un tableau (ou clic droit sur les données du projet dans l'explorateur) : les colonnes d'un autre tableau ajoutées aux observations par une clé, comme on le ferait dans un tableur : l'habitat et l'altitude de chaque site d'un tableau des sites, la météo de chaque année, ou de chaque site et de chaque année. Le tableau : un fichier dans tout format que lit Fichier › Ouvrir (avec sa feuille ou son tableau pour un classeur ou un fichier R ; un projet Nuée donne ses données), ou des cellules copiées dans un tableur (Coller des cellules).</p>
+<p><strong>La clé :</strong> une ou plusieurs colonnes du projet (des variables, des identifiants ou le nom des observations), chacune à côté de la colonne du tableau qui lui répond. L'application propose des colonnes de même nom (sans tenir compte des majuscules ni des espaces autour, comme Prédire un fichier) : celles avec lesquelles chaque clé ne vient qu'une fois dans le tableau et le plus d'observations trouvent la leur, parmi les premières colonnes du tableau, le moins possible : le site pour un tableau des sites, le site et l'année pour la météo par site et par année ; les changer au besoin. Chaque clé ne doit venir qu'une fois dans le tableau : une clé qui revient est refusée, en la nommant, plutôt que de prendre l'une de ses lignes au hasard.</p>
+<p>Les clés se comparent en nombres quand la colonne du projet est une variable quantitative : 2019 et 2019,0 sont la même année (les valeurs du tableau lues en nombres comme les lit Fichier › Ouvrir). Sinon, elles se comparent en texte, tel qu'écrit dans le tableau et dans le projet, sans les espaces autour, les majuscules comptant : « S1 » n'est pas « s1 », ni « 01 » « 1 » (une colonne de clé faite de « 01 », « 02 » n'est pas lue ici en nombres) ; un nombre du tableau s'écrit alors comme R l'écrit (2019). Une clé dont une partie manque ne répond à rien. Les colonnes à ajouter : toutes celles du tableau sauf la clé, cochées par défaut. Une colonne de nombres donne une variable quantitative ; du texte, un facteur R ou une variable étiquetée de SPSS ou Stata, une variable qualitative (les catégories d'un facteur dans leur ordre, sinon les textes triés), comme à l'ouverture d'un tableau. Un nom déjà pris dans le projet, par une variable ou un identifiant, devient « nom (2) », « nom (3) »... : rien n'est écrasé.</p>
+<p>Chaque observation prend les valeurs de la ligne du tableau qui a sa clé, et les observations gardent leur ordre : comme k &lt;- match(clé du projet, clé du tableau), puis tableau[k, colonnes] (merge() rangerait les lignes autrement). Une observation sans ligne qui lui réponde a des valeurs manquantes. Le résultat dit ce qui a été ajouté et compte les observations sans correspondance et les clés du tableau qui ne répondent à aucune observation, en nommant les cinq premières de chacune ; les lignes du tableau sans clé sont comptées aussi. Si aucune observation ne trouve sa clé, rien n'est ajouté, et le message montre des clés de chaque côté. Édition › Annuler (Ctrl+Z) retire les colonnes ajoutées ; les modèles déjà ajustés ne changent pas. Les « Actions de l'application » de la console R montrent l'appel, et le même calcul écrit avec match() sur le tableau des données du projet.</p>
+</section>
+<section id="resumer-par-groupe">
+<h2>Résumer par groupe</h2>
+<p>Édition › Résumer par groupe (ou clic droit sur les données du projet) : un nouveau projet d'une ligne par groupe, à côté du projet, qui ne change pas : la densité moyenne de chaque secteur et de chaque année d'après plusieurs placettes, avant BACI ou les séries. Les groupes : une ou plusieurs variables ou identifiants (le secteur et l'année ; le site, le secteur et l'année). Chaque groupe devient une observation nommée par ses valeurs (« S1 2019 ») ; les groupes viennent dans l'ordre de ces colonnes (les catégories d'une variable qualitative dans leur ordre, les nombres dans le leur), et ces colonnes restent des variables ou des identifiants, comme dans le projet. Une observation sans valeur dans l'une d'elles est laissée de côté, et comptée.</p>
+<p>Les variables quantitatives à résumer (toutes sauf celles des groupes, cochées par défaut) et les statistiques, une ou plusieurs, pour chacune d'elles : moyenne (par défaut), somme, médiane, minimum, maximum, écart-type (n − 1, comme le calcule sd()), nombre de valeurs (n), en colonnes « densite (moyenne) », « densite (n) »... (nommées dans la langue de l'interface). Les valeurs manquantes sont ignorées et n compte les valeurs connues ; un groupe sans valeur connue a des statistiques manquantes, et n = 0. Comme aggregate(d[variables], d[groupes], FUN) sur le tableau des données du projet : les « Actions de l'application » de la console R le montrent avec l'appel.</p>
+<p>Une variable qualitative ou un identifiant dont les valeurs connues sont les mêmes dans chaque groupe (l'habitat d'un secteur, le site d'un secteur) est gardé, avec cette valeur ; les autres sont laissés de côté, et la barre d'état les nomme. Le nouveau projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).</p>
+</section>
+<section id="statistiques-des-variables">
+<h2>Statistiques des variables</h2>
+<p>Graphiques › Statistiques des variables (ou dans l'explorateur, sous le projet) : pour chaque variable N, valeurs manquantes, min, max, Min/Max, moyenne, médiane, écart-type, écart-type/moyenne, asymétrie, test d'asymétrie et aplatissement. En rouge : Min/Max &lt; 0,1 et test d'asymétrie au-delà de 2 ; la colonne « Proposée » donne le log10 conseillé (avec la constante C2 s'il y a des 0). Un clic sur une ligne montre l'histogramme de la variable, à côté de celui de la variable transformée. L'autre vue est la carte des valeurs manquantes (observations × variables).</p>
+</section>
+<section id="le-temps-en-dates">
+<h2>Le temps en dates</h2>
+<p>Partout où un temps est demandé (Séries, BACI, Autocorrélation des résidus, l'autocorrélation CAR1 d'un modèle mixte, precedent() et suivant() de Nouvelle variable), il peut être fait de nombres (l'année ; 2019,5) ou de dates : 2019-05-14 (ISO, au besoin avec l'heure : 2019-05-14 10:30) ou 14/05/2019, aussi 14-05-2019 et 14.05.2019, l'année en quatre chiffres.</p>
+<p>Le jour vient toujours d'abord, comme en France : 05/04/2019 est le 5 avril, jamais le 4 mai.</p>
+<p><strong>Une date devient une année décimale :</strong> l'année + (le jour de l'année − 1 + la fraction du jour) / le nombre de jours de l'année (366 les années bissextiles) ; le 1er janvier 2019 est 2019, le 14 mai 2019 est 2019,364. Années et dates se lisent ainsi de la même façon : une pente de Sen ou le φ de CAR1 sont par an. Un temps est fait de nombres ou de dates, pas des deux : une valeur de l'autre genre, ou une date qui n'existe pas (31/02/2019), est refusée en la nommant.</p>
+<p><strong>Un nombre reste un nombre :</strong> un numéro de jour d'Excel (43599) ne se distingue pas d'une année. precedent() et suivant() gardent leur règle, le temps exactement un pas avant : elles vont avec des temps réguliers (des années) ; avec des dates, ce temps-là existe rarement, et aucune date proche n'est prise à sa place. L'export vers R lit les dates de la même façon.</p>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="demarrer.html">← Démarrer</a><a rel="next" href="modeles.html">Choisir et construire un modèle →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arbres, forêts, discriminante, k-moyennes · Nuée</title>
+<meta name="description" content="Arbres de décision, analyse discriminante linéaire, k-moyennes, forêts aléatoires, arbres boostés.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="arbres.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/trees.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/trees.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html" aria-current="page">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Arbres, forêts, discriminante, k-moyennes</h1>
+<div class="texte-guide">
+<section id="arbres-de-decision-analyse-discriminante-lineaire-et-k-moyen">
+<h2>Arbres de décision, analyse discriminante linéaire et k-moyennes</h2>
+<p><strong>Nouveau modèle › type « Arbre de décision » (rpart) :</strong> une variable Y quantitative (arbre de régression) ou une variable de classe (arbre de classement), et des X par leurs valeurs brutes, pour que les seuils se lisent dans leurs unités ; les valeurs manquantes des X sont prises en charge par des variables de substitution. Onglet Général : au moins 20 observations par feuille, mais au plus le sixième des observations, pour que l'arbre puisse se couper (un nœud n'est coupé que s'il en compte trois fois plus), au plus 5 niveaux, cp = 0,001, 5 substitutions, élagage par la règle 1-ET (le plus petit arbre à une erreur-type de l'erreur minimale) ou à l'erreur minimale. L'élagage vient d'une validation croisée interne par les groupes de validation croisée (pour des sites suivis plusieurs années, choisir le site), et le Q2 d'une validation croisée externe : chaque groupe est prédit par un arbre refait entièrement sans lui. Vues : Arbre (un clic sur un nœud choisit ses observations), Élagage, Règles des feuilles, Importance des variables, Stabilité de la première coupure (200 tirages bootstrap des groupes : la part des tirages où chaque variable fait la première coupure, et son seuil médian), Observé / prédit et Résidus, ou Classement pour un arbre de classement. Jeu de test et Prédire : une nouvelle observation suit l'arbre, substitutions comprises.</p>
+<p>Type « Analyse discriminante linéaire (LDA) » (MASS::lda) : une variable de classe et des X par leurs valeurs brutes ; probabilités a priori proportionnelles aux effectifs ou égales.</p>
+<p>Chaque observation va dans la classe de plus grande probabilité a posteriori ; en validation croisée, chaque groupe est classé par le modèle ajusté sans lui. Vues : Scores discriminants, Coefficients discriminants (corrélations de structure, coefficients dans les unités des variables ou pour des variables d'écart-type 1), Classement, Probabilités a posteriori. Jeu de test et Prédire.</p>
+<p><strong>Type « k-moyennes » :</strong> des X mis à l'échelle comme le dit l'onglet Variables (UV par défaut), k groupes (algorithme de Hartigan et Wong, 25 départs, graine 1), numérotés du plus grand au plus petit ; une observation où une valeur manque est laissée de côté.</p>
+<p><strong>Vues :</strong> Groupes (sur les deux premières composantes principales), Silhouettes, Choix de k (de 2 à 10 : somme des carrés intra-groupes et silhouette moyenne), Centres des groupes. « Groupes → variable » ajoute les groupes au projet comme une variable qualitative (Édition › Annuler la retire) ; Prédire range une nouvelle observation dans le groupe du centre le plus proche.</p>
+<p><strong>Pour les trois :</strong> texte des méthodes avec ses références, Exporter, rapport PDF ou Word, Exporter vers R (un script ou un rapport R Markdown / Quarto qui refait l'analyse avec rpart, MASS ou cluster, livrés avec R). Comparer les modèles donne le Q2 et le RMSEcv d'un arbre de régression à côté des autres modèles.</p>
+</section>
+<section id="forets-aleatoires-et-arbres-boostes">
+<h2>Forêts aléatoires et arbres boostés</h2>
+<p>Nouveau modèle › type « Forêt aléatoire » (le paquet ranger, Wright et Ziegler 2017) : une variable Y quantitative (forêt de régression) ou une variable de classe (forêt de classement), et des X par leurs valeurs brutes. Chaque arbre est grandi sur un tirage bootstrap des observations (avec remise), chaque coupure choisie parmi mtry variables tirées au hasard ; la forêt prédit la moyenne de ses arbres, ou la classe que le plus d'arbres votent (Breiman 2001). Onglet Général : 500 arbres, mtry et la taille des nœuds de ranger par défaut (la racine du nombre de X arrondie en dessous ; des nœuds de 5 observations en régression, 1 en classement), la part tirée, l'importance par permutation non mise à l'échelle ou divisée par son erreur-type. Graine 1 et un seul fil de calcul : la même forêt à chaque fois. ranger ne prend pas de valeurs manquantes : une observation où une valeur X manque est laissée de côté (le résumé les compte). L'erreur hors sac : chaque observation prédite par les arbres dont le tirage ne la contient pas (MSE et R², ou la part mal classée) ; la validation croisée : chaque groupe de validation croisée (le site) prédit par une forêt refaite sans lui (Q2 et RMSEcv, ou la part bien classée). Vues : Importance des variables (par permutation, la hausse de l'erreur hors sac quand les valeurs de la variable sont permutées ; ou par l'impureté), Dépendance partielle (calculée à la demande, Friedman 2001 : la prédiction moyenne de la forêt quand une variable prend chaque valeur d'une grille, les autres X inchangés ; toutes les variables côte à côte, ou une seule, les valeurs observées sous la courbe ; en classement, la part des votes d'une classe), Erreur selon le nombre d'arbres, Observé / prédit (hors sac, en validation croisée ou ajusté) ou Classement (avec les courbes ROC des votes). Jeu de test et Prédire.</p>
+<p><strong>Type « Arbres boostés (BRT) » :</strong> le gradient boosting d'arbres de régression (Friedman 2001, 2002), comme le calcule le paquet gbm et comme Elith, Leathwick et Hastie (2008) le présentent aux écologues, écrit en R sur rpart. Une Y quantitative : une mesure (loi normale), une présence-absence 0/1 (binomiale) ou des comptages (Poisson), choisie comme celle d'un GLM. Les arbres sont ajoutés un à un, chacun ajusté à ce que le modèle manque encore (le gradient de la déviance) sur un tirage sans remise d'une part des observations, ses feuilles réestimées pour la déviance, puis ajouté avec un petit poids (le taux d'apprentissage). Onglet Général : au plus 2000 arbres, un taux d'apprentissage de 0,01, 3 coupures par arbre (la profondeur d'interaction : 1 donne un modèle additif), au moins 10 observations par feuille, des tirages de 50 %. Le nombre d'arbres est celui où la déviance de validation croisée est la plus petite (chaque groupe de validation croisée prédit après chaque arbre par le boosting refait sans lui) : plus il y a de groupes et d'arbres, plus l'ajustement est long. Les observations où une valeur X manque sont laissées de côté. Vues : Influence relative (les réductions d'erreur des coupures de chaque variable, en %), Dépendance partielle (à l'échelle du lien, logit ou log, ou à celle de la réponse), Erreur selon le nombre d'arbres (la déviance de l'ajustement et celle de la validation croisée, le nombre d'arbres retenu), Observé / prédit, et Classement (à une probabilité de 0,5, avec la courbe ROC) pour une réponse 0/1. Jeu de test et Prédire.</p>
+<p><strong>Pour les deux :</strong> texte des méthodes avec ses références, Exporter, rapport PDF ou Word. Comparer les modèles donne le Q2 et le RMSEcv d'une forêt de régression, ou d'arbres boostés d'une mesure, à côté des autres modèles. Exporter vers R : des arbres boostés avec R et rpart seuls (le boosting du moteur de Nuée recopié dans le script : avec la même graine, les mêmes tirages et les mêmes arbres, ceux de gbm) ; une forêt aléatoire avec R et le paquet ranger, la seule exception à « sans paquet » : Nuée en dépend et l'installe avec lui (ailleurs, install.packages("ranger")), et le script le charge avec la même graine, un seul fil et les mêmes réglages, si bien que sa forêt est celle de Nuée, arbre pour arbre, avec la même version de ranger. Le jeu de test et la dépendance partielle, si elle a été calculée, y sont aussi.</p>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="cartes.html">← Cartes et données spatiales</a><a rel="next" href="resultats.html">Résultats, documents et R →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ACP, PLS, OPLS et spectres · Nuée</title>
+<meta name="description" content="OPLS, VIP, validation des PLS, modèles de classe, spectres et leur prétraitement.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="acp-pls.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/pca-pls.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/pca-pls.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html" aria-current="page">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>ACP, PLS, OPLS et spectres</h1>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#opls-et-opls-da">OPLS et OPLS-DA</a></li>
+<li><a href="#vip">VIP</a></li>
+<li><a href="#validation">Validation</a></li>
+<li><a href="#modeles-de-classe-et-graphique-de-coomans">Modèles de classe et graphique de Coomans</a></li>
+<li><a href="#spectres">Spectres</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="opls-et-opls-da">
+<h2>OPLS et OPLS-DA</h2>
+<p>Des composantes prédictives, qui portent ce qui dans X est lié à Y, et des composantes orthogonales, qui décrivent le reste de la variation de X : scores et loadings se lisent plus facilement (t[1] contre to[1], S-plot). Une composante prédictive par variable Y, ou une de moins que de classes pour l'OPLS-DA (t[1], t[2]... puis to[1], to[2]...) ; avec une seule, les valeurs prédites sont celles d'une PLS au même nombre de composantes. Avec plusieurs Y (ou plus de deux classes), chaque poids orthogonal est rendu orthogonal aux poids X'y de toutes les colonnes de Y, si bien que les composantes orthogonales n'ont aucun lien avec Y (depuis 0.9.0 ; la version 0.8.0 laissait un léger lien : les modèles OPLS à plusieurs composantes prédictives qu'elle a faits changent un peu quand on les réajuste). Q2 par validation croisée, comme pour les autres modèles (voir plus bas). Aucun des projets .usp disponibles n'avait de modèle OPLS : ce calcul suit l'article de Trygg et Wold (2002), sans comparaison possible avec des valeurs enregistrées ; il est vérifié contre une seconde écriture de l'algorithme de l'article.</p>
+</section>
+<section id="vip">
+<h2>VIP</h2>
+<p>Le seuil est placé automatiquement à la plus grande marche des VIP triés autour de 0,8. On peut taper un autre seuil ou faire glisser la ligne rouge, et faire Ctrl+clic sur une barre pour garder ou écarter une variable (un simple clic la met en évidence sur les autres graphiques du modèle). « Réajuster avec les variables VIP » refait le modèle avec les variables retenues.</p>
+</section>
+<section id="validation">
+<h2>Validation (PLS et PLS-DA)</h2>
+<p><strong>Test de permutation :</strong> les valeurs du Y (d'une PLS-DA : les classes) sont mélangées entre les observations 20 fois (ou plus) et tout le modèle est réajusté, validation croisée comprise ; les ordonnées à l'origine de R2 et Q2 mesurent le surajustement (modèle valide si Q2 &lt; 0,05 et R2 &lt; 0,3 à 0,4, règle usuelle).</p>
+<p><strong>CV-ANOVA :</strong> p du modèle (résidus de validation croisée contre la moyenne) ; aussi dans le Résumé. Classification (PLS-DA) : table des observations bien et mal classées, avec les valeurs ajustées ou en validation croisée, et courbes ROC avec leur aire (AUC).</p>
+</section>
+<section id="modeles-de-classe-et-graphique-de-coomans">
+<h2>Modèles de classe et graphique de Coomans</h2>
+<p><strong>Nouveau modèle › type « Modèles de classe » :</strong> une ACP par catégorie de la variable de classe, sur les seules observations de cette catégorie (« M5.Gala », « M5.Golden »...), chacune avec ses centres, ses échelles et son nombre de composantes. Une observation appartient à une classe quand sa distance au modèle de la classe (DModX) ne dépasse pas la limite DCrit à 5 % : à une classe, à plusieurs, ou à aucune (une observation d'un autre type que toutes les classes connues). Graphiques › Graphique de Coomans : les distances de chaque observation à deux des modèles, avec leurs limites en rouge ; la table donne, pour chaque classe, la part de ses observations que chaque modèle accepte (attendu : vers 95 % pour sa propre classe, 0 % pour les autres), puis les distances et les classes de chaque observation.</p>
+</section>
+<section id="spectres">
+<h2>Spectres</h2>
+<p><strong>Fichier › Importer des spectres :</strong> choisir un ou plusieurs fichiers (Ctrl+A dans un dossier pour les prendre tous) ; ils deviennent un projet, une ligne par spectre, une colonne par longueur d'onde (nommée par sa valeur : « 1450 », « 3999.69 »). Fichiers lus :</p>
+<dl>
+<dt>JCAMP-DX (.jdx, .dx, .jcm)</dt><dd>toutes les écritures (nombres simples ou compressés : AFFN, PAC, SQZ, DIF, DUP), plusieurs spectres par fichier ; pas les tables de pics ni les NTUPLES (RMN complexe, spectrométrie de masse) ;</dd>
+<dt>SPC (.spc)</dt><dd>Galactic (GRAMS, Thermo), nouveau et ancien format, un ou plusieurs spectres ;</dd>
+<dt>texte (.csv, .txt...)</dt><dd>une colonne d'abscisses, puis une colonne par spectre, avec ou sans ligne d'en-tête ; les lignes que l'appareil écrit avant les nombres sont ignorées.</dd>
+</dl>
+<p>Un spectre est nommé d'après son fichier (et le titre du bloc ou son numéro quand un fichier en a plusieurs). Si les spectres n'ont pas tous les mêmes abscisses, ils sont interpolés (linéairement) sur celles du premier, dans la partie commune à tous ; la barre d'état le dit.</p>
+<p>Des unités différentes (nm et cm-1, absorbance et transmittance) sont refusées.</p>
+<p><strong>Informations (facultatif) :</strong> un tableau (Excel, CSV...) dont la première colonne donne le nom de chaque fichier, avec ou sans son extension, et les autres colonnes des informations à joindre aux spectres (teneurs, classes, lots) ; elles prennent place avant les spectres. La barre d'état dit combien de spectres n'ont pas trouvé leur ligne. Un seul fichier JCAMP-DX ou SPC s'ouvre aussi avec Fichier › Ouvrir, et un fichier de nouveaux spectres sur la même grille se prédit avec Prédiction › Prédire un fichier.</p>
+<p><strong>Nouveau modèle › Général › Prétraitement des spectres :</strong> chaque observation est un spectre (ses variables X quantitatives, dans l'ordre du tableau), corrigé avant la mise à l'échelle par une à trois étapes, dans l'ordre :</p>
+<dl>
+<dt>SNV</dt><dd>chaque spectre centré sur sa moyenne et divisé par son écart-type ;</dd>
+<dt>MSC</dt><dd>chaque spectre ajusté sur le spectre moyen des observations du modèle (x = a + b r), puis remplacé par (x - a) / b ; une prédiction reprend ce spectre moyen ;</dd>
+<dt>Detrend</dt><dd>un polynôme de degré 2 en fonction de la longueur d'onde, ajusté sur le spectre, en est retiré (Barnes et al., 1989 ; souvent après SNV) ;</dd>
+<dt>Ligne de base</dt><dd>l'enveloppe convexe inférieure du spectre (les segments qui joignent ses points les plus bas, d'un bout à l'autre) en est retirée ; le spectre corrigé est positif ou nul ;</dd>
+<dt>Savitzky–Golay </dt><dd>lissage, dérivée première ou seconde, dans une fenêtre de n variables (impair) avec un polynôme de degré d. Chaque zone de variables voisines dans le tableau est traitée à part : une fenêtre ne passe pas par-dessus une zone retirée.</dd>
+</dl>
+<p>La longueur d'onde (pour Detrend et la ligne de base) est le nombre lu dans le nom des variables quand chacune en a un, différent ; sinon leur place dans le tableau.</p>
+<p>Pour des spectres, on centre souvent sans réduire (échelle « Centrage seul »). Seul le MSC dépend des autres observations (le spectre moyen) : en validation croisée, chaque groupe est corrigé avec le spectre moyen des autres observations. Graphiques › Profils (spectres) : loadings, coefficients, VIP, ou les spectres eux-mêmes (avant ou après prétraitement) en lignes ; l'axe horizontal est le nombre lu dans le nom des variables (« 1450 nm ») quand chacune en a un ; les lignes s'interrompent là où des variables sont hors du modèle. Un clic sur un spectre sélectionne son observation.</p>
+<p><strong>Zones de longueurs d'onde :</strong> cocher « Choisir des zones », puis faire glisser sur le graphique (une ou plusieurs zones, en orange) ; « Nouveau modèle sans ces zones » (par exemple les bandes de l'eau) ou « Nouveau modèle avec ces zones seules » ouvre Nouveau modèle avec les réglages du modèle et ces variables X, à vérifier avant d'ajuster. Les autres variables X du modèle (qualitatives) restent.</p>
+<p>Graphiques › iPLS (intervalles du spectre), pour un modèle avec Y : le spectre (les variables X quantitatives du modèle, dans leur ordre) est prétraité une fois, en entier, comme pour le modèle (avec un MSC, aussi pour chaque groupe de la validation croisée, avec le spectre moyen des autres observations), puis coupé en n intervalles de même largeur ; chacun est une PLS sur sa zone (avec la mise à l'échelle du modèle et ses autres variables X), avec 1 à A composantes. Une barre par intervalle donne son plus petit RMSEcv (dans les unités de Y, comme dans le résumé), avec ce nombre de composantes écrit dessus ; en vert, les intervalles qui prédisent mieux que le spectre entier (tirets rouges) ; la ligne grise est le spectre moyen après prétraitement.</p>
+<p>Cliquer des barres pour choisir des intervalles, puis « Nouveau modèle avec ces intervalles » ou « sans ces intervalles ». Un tel modèle prétraite ses propres variables : avec SNV, MSC, detrend ou ligne de base, son RMSEcv peut différer de celui de la barre. Méthode : Nørgaard et al. (2000), Applied Spectroscopy 54, 413–419.</p>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="graphiques.html">← Graphiques et figures</a><a rel="next" href="regressions.html">Modèles linéaires, généralisés et mixtes →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>
