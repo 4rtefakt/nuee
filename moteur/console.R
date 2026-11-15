@@ -132,6 +132,8 @@ journaliser <- function(nom, q, r) {
       if (isTRUE(q$vides)) "vides = TRUE" else paste("chercher =", code_r(as.character(q$chercher %||% ""))),
       paste("remplacer =", code_r(as.character(q$remplacer %||% ""))), if (isTRUE(q$partie)) "partie = TRUE", if (isTRUE(q$casse)) "casse = TRUE",
       if (isFALSE(q$nombres)) "nombres = FALSE"), collapse = ", ")),
+    coller_cellules = sprintf("%s <- coller_cellules(%s, %s, %s, %s)", q$projet, q$projet, vecteur_r(as.numeric(unlist(q$observations))),
+                              vecteur_r(as.numeric(unlist(q$variables))), code_r(as.matrix(q$valeurs))),
     categories = sprintf("%s <- changer_categories(%s, %s, %s%s)", q$projet, q$projet, q$variable, vecteur_r(as.character(unlist(q$noms))),
                          if (length(q$ordre)) paste(", ordre =", vecteur_r(as.character(unlist(q$ordre)))) else ""),
     decrire_variables = {

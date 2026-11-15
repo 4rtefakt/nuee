@@ -9,6 +9,7 @@
 #     modèles du projet qui suivent (même ajustement qu'un modèle défini après), une fusion qui
 #     dédouble les termes ; un modèle de la séance rapporté aux nouvelles catégories, ou à ajuster
 #     à nouveau après un nouveau nom ; les refus ;
+#   - un bloc de cellules collé (des nombres, une case vidée, une catégorie ajoutée, un refus) ;
 #   - les unités et descriptions : gardées, enregistrées dans un .nuee et relues, un projet sans
 #     elles qui s'ouvre ; dans l'export (feuille « Variables » d'un classeur, table d'un GeoPackage,
 #     description de jamovi, attributs de R ; rien en CSV) et relues à l'ouverture d'un classeur ou
@@ -115,6 +116,18 @@ verifier("sur demande, elle reste qualitative", length(categories_de(q4, "teneur
 pv <- projet_depuis_tableau(data.frame(nom = c("a", "b", "c", "d"), v = c("1,5", "2,5", "x", "x"), stringsAsFactors = FALSE), "v")
 v1 <- remplacer_valeurs(pv, NULL, "x", "3")
 verifier("« 1,5 » et « 3 » : quantitative, 1.5 2.5 3 3", identical(valeurs(v1, "v"), c(1.5, 2.5, 3, 3)))
+
+cat("Un bloc de cellules collé\n")
+o3 <- numeros_observations(p)[2:4]
+vb <- numeros(p, c("altitude", "habitat"))
+cb <- coller_cellules(p, o3, vb, matrix(c("250", "3,5", "", "forêt", "marais", NA), 3, 2))
+verifier("collé : des nombres (« 3,5 » compris), une case vidée, une catégorie ajoutée, une case laissée (NA)",
+         identical(valeurs(cb, "altitude")[2:4], c(250, 3.5, NA)) && identical(valeurs(cb, "habitat")[2:3], c("forêt", "marais")) &&
+           identical(valeurs(cb, "habitat")[4], valeurs(p, "habitat")[4]) && "marais" %in% categories_de(cb, "habitat") &&
+           attr(cb, "collage")$cellules == 5 - (valeurs(p, "habitat")[2] == "forêt"))
+verifier("une liste de lignes (le JSON) comme une matrice", identical(valeurs(coller_cellules(p, o3[1:2], vb[1], list(list("1"), list("2"))), "altitude")[2:3], c(1, 2)))
+verifier("un texte dans une variable quantitative : refusé, l'observation nommée", grepl("(observation R03)", erreur(coller_cellules(p, o3, vb[1], matrix(c("1", "abc", "2")))), fixed = TRUE))
+verifier("un bloc qui ne va pas avec ses lignes et ses colonnes : refusé", nzchar(erreur(coller_cellules(p, o3, vb, matrix("1", 2, 2)))))
 
 cat("Les catégories\n")
 # l'habitat corrigé (forêt, lande, prairie), une réponse qui en dépend, un modèle défini avant

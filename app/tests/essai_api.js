@@ -1242,6 +1242,14 @@ async function principal() {
       await api('annuler', { projet: q.id });
       u = (await api('annuler', { projet: q.id })).projet;
       verifier((await valeurs('densite'))[4] === -9999 && u.variables.find((x) => x.nom === 'teneur').qualitative, 'annuler les remplacements');
+      // a block of cells pasted from a spreadsheet (two rows, two columns; null: a cell left), then undone
+      const d0 = await api('donnees', { projet: q.id });
+      const c = await api('coller_cellules', { projet: q.id, observations: d0.uid_observations.slice(0, 2), variables: [v.altitude, v.habitat],
+        valeurs: [['1,5', 'marais'], ['', null]] });
+      verifier(c.collage.cellules === 3 && (await valeurs('altitude'))[0] === 1.5 && (await valeurs('altitude'))[1] === null
+        && (await valeurs('habitat'))[0] === 'marais' && (await valeurs('habitat'))[1] === habitats[1] && c.annulable === 'cellules collées', `collé : ${JSON.stringify(c.collage)}`);
+      await api('annuler', { projet: q.id });
+      verifier((await valeurs('altitude'))[0] === 100 && (await valeurs('habitat'))[0] === habitats[0], 'annuler le collage');
     });
     await etape('importer des spectres (texte et JCAMP-DX), avec un tableau d’informations', async () => {
       const onde = Array.from({ length: 30 }, (_, k) => 1000 + 4 * k);

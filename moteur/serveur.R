@@ -1276,6 +1276,10 @@ DEMANDES <- list(
     nom <- as.character(variable_du_projet(projet(q$projet), q$variable)$ids[1])
     changer_projet_dit(q, function(p) changer_categories(p, q$variable, q$noms, q$ordre), sprintf(traduire("catégories de %s", "categories of %s"), nom), "categories")
   },
+  # Un bloc de cellules collé dans la vue Données, à partir de la case choisie (q$observations,
+  # q$variables : ses lignes et ses colonnes ; q$valeurs : ses textes, null pour une case laissée)
+  coller_cellules = function(q) changer_projet_dit(q, function(p) coller_cellules(p, q$observations, q$variables, q$valeurs),
+                                                   traduire("cellules collées", "pasted cells"), "collage"),
   # L'unité et la description des variables (q$descriptions : variable, unite, description)
   decrire_variables = function(q) changer_projet(q, function(p) decrire_variables(p, q$descriptions), traduire("unités et descriptions", "units and descriptions")),
   annuler = annuler_demande,

@@ -1520,6 +1520,11 @@ Both are saved in the project, kept by File › Export data where the format has
 reads back when it opens them; the description of a jamovi column; the label and units
 attributes of an R column, as Hmisc reads them; not in CSV or text), and written as comments
 before the data in Export to R.
+In the Data view, a click on a cell, then Ctrl+V, pastes a block of cells copied from a
+spreadsheet from that cell on, in the rows and columns as the view shows them (sorted,
+filtered): each cell as when you edit it by hand (empty: missing; a new category is added; a
+text in a quantitative variable is refused, naming the observation, and nothing changes); cells
+beyond the table are left out. One Ctrl+Z undoes the whole block.
 
 Adding columns from another table
 ---------------------------------

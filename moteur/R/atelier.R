@@ -83,10 +83,12 @@ remplacer_valeurs <- function(projet, variables = NULL, chercher = "", remplacer
   n_cherche <- if (!vides) lire_nombres(cherche) else NA_real_
   n_par <- if (nzchar(par)) lire_nombres(par) else NA_real_
   infos <- list()
+  # (la place de chaque variable dans le projet, par son numéro : un tableau de spectres en a des milliers)
+  place <- stats::setNames(seq_along(projet$variables), vapply(projet$variables, function(w) as.character(w$uid), ""))
   for (v in vars) {
     k <- as.character(v$uid)
     nom <- as.character(v$ids[1])
-    i <- which(vapply(projet$variables, function(w) identical(as.character(w$uid), k), TRUE))[1]
+    i <- place[[k]]
     x <- projet$donnees[, k]
     cats <- as.character(v$categories %||% character(0))
     info <- list(variable = as.numeric(v$uid), nom = nom, cellules = 0L, ignorees = 0L, devient = "",
@@ -173,6 +175,45 @@ remplacer_valeurs <- function(projet, variables = NULL, chercher = "", remplacer
                                                   "%s is quantitative: its %d cell(s) stay as they are (replace by a number, or by nothing)."),
                                          guillemets_texte(x$nom, fr), x$ignorees), ""))
   attr(projet, "remplacement") <- list(cellules = total, variables = infos, phrases = phrases)
+  projet
+}
+
+# Un bloc de cellules copié dans un tableur et collé dans la vue Données, à partir de la case
+# choisie : `valeurs`, une matrice de textes (NA : une case laissée telle quelle), ses lignes les
+# observations `observations` et ses colonnes les variables `variables`, dans l'ordre de la vue.
+# Chaque case comme on la modifie à la main (variables.R : modifier_valeur) : vide, elle devient
+# manquante ; dans une variable qualitative, le nom d'une catégorie (une nouvelle s'ajoute) ; dans
+# une variable quantitative, un nombre (« 3,5 » compris), un texte étant refusé, nommé, sans que
+# rien ne change. attr(, "collage") : le nombre de cases changées.
+coller_cellules <- function(projet, observations, variables, valeurs) {
+  if (is.list(valeurs) && !is.data.frame(valeurs)) {
+    valeurs <- do.call(rbind, lapply(valeurs, function(l) vapply(l, function(x) if (is.null(x) || !length(x)) NA_character_ else as.character(x)[1], "")))
+  }
+  valeurs <- as.matrix(valeurs)
+  observations <- as.numeric(unlist(observations))
+  variables <- as.numeric(unlist(variables))
+  if (nrow(valeurs) != length(observations) || ncol(valeurs) != length(variables)) {
+    stop(traduire("Le bloc collé doit avoir une ligne par observation et une colonne par variable.", "The pasted block must have one row per observation and one column per variable."), call. = FALSE)
+  }
+  n <- 0L
+  for (j in seq_along(variables)) {
+    k <- as.character(variables[j])
+    for (i in seq_along(observations)) {
+      x <- valeurs[i, j]
+      if (is.na(x)) next
+      v <- variable_du_projet(projet, variables[j])
+      avant <- projet$donnees[as.character(observations[i]), k]
+      avant <- if (length(v$categories)) as.character(v$categories)[avant] else avant
+      projet <- tryCatch(modifier_valeur(projet, observations[i], variables[j], x), error = function(e) {
+        stop(sprintf(traduire("%s (observation %s)", "%s (observation %s)"), conditionMessage(e), projet$noms_obs[[as.character(observations[i])]]), call. = FALSE)
+      })
+      w <- variable_du_projet(projet, variables[j])
+      apres <- projet$donnees[as.character(observations[i]), k]
+      apres <- if (length(w$categories)) as.character(w$categories)[apres] else apres
+      if (!identical(avant, apres)) n <- n + 1L
+    }
+  }
+  attr(projet, "collage") <- list(cellules = n)
   projet
 }
 

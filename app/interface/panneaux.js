@@ -287,7 +287,7 @@ export function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', su
 // Escape: cancel). A column's header can carry a line under its name (sousTitre: the unit and the
 // values of a variable in the Data view), a tooltip (info), and a right-click menu (menuColonne(c,
 // event)).
-export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier, menuColonne }) {
+export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier, menuColonne, aideCellule }) {
   loc.filtre ??= '';
   const f = loc.filtre.toLowerCase();
   let idx = Array.from({ length: n }, (_, i) => i);
@@ -311,7 +311,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     const couleur = c.couleur && c.couleur(i);
     if (couleur) td.style.boxShadow = `inset 4px 0 0 ${couleur}`;
     if (modifier && c.modifiable) {
-      td.title = t('double_clic_modifier');
+      td.title = aideCellule || t('double_clic_modifier');
       td.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         const saisie = el('input', { value: v ?? '', class: 'edition-cellule' });
@@ -355,6 +355,9 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     navigator.clipboard.writeText(txt).then(() => ctx.statut(t('table_copiee')));
   };
   conteneur._copierTableau = copier;  // Ctrl+C (app.js)
+  // (the rows and columns shown, in their order: the Data view pastes a block of cells from one of them)
+  conteneur._lignes = idx.slice(0, max);
+  conteneur._colonnes = colonnes.map((c) => c.cle);
   const filtre = el('input', { type: 'search', placeholder: t('recherche'), value: loc.filtre, class: 'filtre',
     oninput: (e) => { loc.filtre = e.target.value; clearTimeout(loc.minuterie); loc.minuterie = setTimeout(() => ctx.rafraichir(), 200); } });
   conteneur.replaceChildren(
@@ -1293,12 +1296,60 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     k = k.slice(0, COLONNES_MAX);
   }
   tableau(conteneur, ctx, loc, {
-    n: d.observations.length, nom: 'Table', avant, menuColonne,
+    n: d.observations.length, nom: 'Table', avant, menuColonne, aideCellule: t('atelier_aide_cellule'),
     colonnes: [{ cle: -1, titre: '' }].concat(k.map(colonne)),
     valeur: (i, j) => (j === -1 ? d.observations[i] : d.valeurs[j][i]),
     modifier: (i, j, texte) => ctx.modifierValeur(p.projet, d.uid_observations[i], d.uid_variables[j], texte),
   });
   if (filtreColonnes && loc.focusColonnes) { filtreColonnes.focus(); filtreColonnes.setSelectionRange(filtreColonnes.value.length, filtreColonnes.value.length); }
+  collerCellules(conteneur, ctx, p, loc, d);
+}
+
+// A block of cells copied from a spreadsheet, pasted into the Data view from the cell chosen by a
+// click (Ctrl+V: app.js hands it here), in the rows and columns as they are shown (sorted, filtered):
+// R makes it one change (moteur/R/atelier.R: coller_cellules), each cell as edited by hand; rows or
+// columns beyond the table are left out, and said.
+function collerCellules(conteneur, ctx, p, loc, d) {
+  conteneur.tabIndex = -1;
+  conteneur.dataset.collerCellules = '';
+  const marquer = () => {
+    conteneur.querySelectorAll('td.ancre').forEach((x) => x.classList.remove('ancre'));
+    if (!loc.ancre) return;
+    const r = conteneur._lignes.indexOf(loc.ancre.i);
+    const c = conteneur._colonnes.indexOf(loc.ancre.cle);
+    const tr = r >= 0 && c > 0 ? conteneur.querySelector('tbody').rows[r] : null;
+    if (tr && tr.cells[c]) tr.cells[c].classList.add('ancre');
+  };
+  marquer();
+  if (conteneur._collage) return;
+  conteneur._collage = true;
+  conteneur.addEventListener('click', (e) => {
+    const td = e.target.closest('tbody td');
+    if (!td || !td.closest('.tableau') || e.target.closest('input')) return;
+    const cle = conteneur._colonnes[td.cellIndex];
+    if (cle === -1 || cle === undefined) return;
+    loc.ancre = { i: conteneur._lignes[td.parentElement.sectionRowIndex], cle };
+    marquer();
+    conteneur.focus({ preventScroll: true });
+  });
+  conteneur._collerCellules = async () => {
+    const ld = loc.d;
+    if (!loc.ancre || !ld) { ctx.statut(t('atelier_coller_aide')); return; }
+    const texte = (await ctx.lirePressePapiers()).replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+    if (!texte) return;
+    const lignes = texte.split('\n').map((l) => l.split('\t'));
+    const r0 = conteneur._lignes.indexOf(loc.ancre.i);
+    const c0 = conteneur._colonnes.indexOf(loc.ancre.cle);
+    if (r0 < 0 || c0 < 1) return;
+    const rangs = conteneur._lignes.slice(r0, r0 + lignes.length);
+    const cles = conteneur._colonnes.slice(c0, c0 + Math.max(...lignes.map((l) => l.length)));
+    const hors = lignes.length - rangs.length + Math.max(...lignes.map((l) => l.length)) - cles.length;
+    try {
+      const res = await ctx.changerDonnees('coller_cellules', p.projet, { observations: rangs.map((i) => ld.uid_observations[i]),
+        variables: cles.map((j) => ld.uid_variables[j]), valeurs: rangs.map((_, a) => cles.map((_, b) => (lignes[a][b] === undefined ? null : lignes[a][b]))) });
+      ctx.statut(t('atelier_colle', { n: res.collage.cellules }) + (hors > 0 ? ` ${t('atelier_coller_hors')}` : ''));
+    } catch (e) { ctx.statut(`${t('erreur')} : ${e.message}`, true); }
+  };
 }
 const COLONNES_MAX = 200;
 
@@ -1434,7 +1485,7 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
     const c = couleursTheme(ctx);
     traces.push({ type: 'histogram', x: transformer(x, loc.apercu), name: libelleTransfo(loc.apercu), marker: { color: PALETTE[2] }, nbinsx: 30, xaxis: 'x2', yaxis: 'y2' });
     Object.assign(lay, { grid: { rows: 1, columns: 2, pattern: 'independent' },
-      xaxis: { title: { text: s.nom[k] } }, xaxis2: { title: { text: libelleTransfo(loc.apercu) }, gridcolor: c.grille, automargin: true },
+      xaxis: { title: { text: avecUnite(ctx, p.projet, s.nom[k]) } }, xaxis2: { title: { text: libelleTransfo(loc.apercu) }, gridcolor: c.grille, automargin: true },
       yaxis2: { gridcolor: c.grille, automargin: true } });
   }
   tracer(ctx, graphe, traces, lay);

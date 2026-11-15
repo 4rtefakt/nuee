@@ -265,8 +265,9 @@ ajouterTextes({
   atelier_vides_n: '{n} vides', atelier_distinctes: '{n} distinctes', atelier_resume: 'Résumé des colonnes',
   atelier_resume_aide: 'Sous chaque nom de colonne : le nombre de cellules vides et de valeurs distinctes.',
   atelier_remplacer_dans: 'Chercher et remplacer dans {nom}…', atelier_categories_de: 'Catégories de {nom}…', atelier_unite_de: 'Unité et description de {nom}…',
-  atelier_coller_cellules: 'Coller les cellules', atelier_coller_aide: 'Ctrl+V dans une case choisie (un clic) colle un bloc de cellules copiées dans un tableur, à partir de cette case.',
-  atelier_colle: '{n} cellule(s) collée(s). Ctrl+Z annule.',
+  atelier_coller_aide: 'Choisissez d’un clic la case d’où coller, puis Ctrl+V : un bloc de cellules copiées dans un tableur s’y colle.',
+  atelier_colle: '{n} cellule(s) collée(s). Ctrl+Z annule.', atelier_coller_hors: 'Les cases au-delà du tableau sont laissées.',
+  atelier_aide_cellule: 'Double-clic : modifier. Clic, puis Ctrl+V : coller à partir d’ici des cellules copiées dans un tableur.',
 }, {
   atelier_remplacer: 'Find and replace…', atelier_categories: 'Categories…', atelier_variables: 'Units and descriptions…',
   atelier_quantitative: 'quantitative', atelier_qualitative: 'qualitative, {n} categories',
@@ -297,6 +298,7 @@ ajouterTextes({
   atelier_vides_n: '{n} empty', atelier_distinctes: '{n} distinct', atelier_resume: 'Column summary',
   atelier_resume_aide: 'Under each column’s name: the number of empty cells and of distinct values.',
   atelier_remplacer_dans: 'Find and replace in {nom}…', atelier_categories_de: 'Categories of {nom}…', atelier_unite_de: 'Unit and description of {nom}…',
-  atelier_coller_cellules: 'Paste cells', atelier_coller_aide: 'Ctrl+V in a chosen cell (one click) pastes a block of cells copied from a spreadsheet, from that cell on.',
-  atelier_colle: '{n} cell(s) pasted. Ctrl+Z undoes it.',
+  atelier_coller_aide: 'Click the cell to paste from, then Ctrl+V: a block of cells copied from a spreadsheet goes there.',
+  atelier_colle: '{n} cell(s) pasted. Ctrl+Z undoes it.', atelier_coller_hors: 'Cells beyond the table were left out.',
+  atelier_aide_cellule: 'Double-click: edit. Click, then Ctrl+V: paste cells copied from a spreadsheet from here on.',
 });

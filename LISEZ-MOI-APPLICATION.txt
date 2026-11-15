@@ -1651,6 +1651,12 @@ classeur Excel et une table « Variables » d'un GeoPackage, que Nuée relit en 
 description d'une colonne de jamovi ; les attributs label et units d'une colonne de R, comme
 Hmisc les lit ; pas en CSV ni en texte), et écrites en commentaire avant les données dans
 l'export vers R.
+Dans la vue Données, un clic sur une case, puis Ctrl+V, colle à partir de cette case un bloc de
+cellules copiées dans un tableur, dans les lignes et les colonnes telles que la vue les montre
+(triées, filtrées) : chaque case comme quand on la modifie à la main (vide : manquante ; une
+nouvelle catégorie s'ajoute ; un texte dans une variable quantitative est refusé, en nommant
+l'observation, et rien ne change) ; les cases au-delà du tableau sont laissées. Un seul Ctrl+Z
+annule tout le bloc.
 
 Ajouter des colonnes d'un autre tableau
 ---------------------------------------
