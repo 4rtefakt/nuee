@@ -166,7 +166,7 @@ export const en = {
   dl_linux_note: 'Other distributions: the <a href="/download/appimage">AppImage</a> or the <a href="/download/tar">tar.gz</a>, with your distribution’s R.',
   dl_installer: 'How to install', dl_it: 'For IT departments: silent installation, Intune, Group Policy', dl_versions: 'Every version and its notes',
   dl_nouveautes: 'What’s new', dl_tutoriels: 'Three tutorials to start with',
-  dl_citer: 'To cite Nuée, let <i>Model › Text for the Methods section</i> do it for you, or: 4rtefakt (2026). <i>Nuée</i> [Computer software]. https://github.com/4rtefakt/nuee',
+  dl_citer: 'To cite Nuée, let <i>Model › Text for the Methods section</i> do it for you, or: Boutin, C. (2026). <i>Nuée</i> [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014',
   dl_essayer: 'Then try <i>Help › Example project</i>: the 120 apples of this page, with four models ready.',
 
   // ---- the footer
@@ -329,7 +329,7 @@ export const fr = {
   dl_linux_note: 'Autres distributions : l’<a href="/download/appimage">AppImage</a> ou le <a href="/download/tar">tar.gz</a>, avec le R de votre distribution.',
   dl_installer: 'Comment installer', dl_it: 'Pour les services informatiques : installation silencieuse, Intune, stratégies de groupe', dl_versions: 'Toutes les versions et leurs notes',
   dl_nouveautes: 'Quoi de neuf', dl_tutoriels: 'Trois tutoriels pour commencer',
-  dl_citer: 'Pour citer Nuée, laissez <i>Modèle › Texte pour la section Méthodes</i> le faire, ou : 4rtefakt (2026). <i>Nuée</i> [Logiciel]. https://github.com/4rtefakt/nuee',
+  dl_citer: 'Pour citer Nuée, laissez <i>Modèle › Texte pour la section Méthodes</i> le faire, ou : Boutin, C. (2026). <i>Nuée</i> [Logiciel]. Zenodo. https://doi.org/10.5281/zenodo.24263014',
   dl_essayer: 'Puis essayez <i>Aide › Projet d’exemple</i> : les 120 pommes de cette page, avec quatre modèles prêts.',
 
   pied_licence: 'Nuée est un logiciel libre, sous la <a href="https://github.com/4rtefakt/nuee/blob/main/LICENSE">licence publique générale GNU v3.0</a> ou ultérieure.',
