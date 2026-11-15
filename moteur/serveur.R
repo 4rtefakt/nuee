@@ -142,8 +142,8 @@ ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = 
   if (!brut && is.null(table) && (collecte || (ext %in% EXTENSIONS_COLLECTE && (ext == "zip" || !is.null(detecter_collecte(chemin)))))) {
     return(list(kobo = apercu_collecte(chemin), chemin = chemin, nom = nom))
   }
-  if (!ext %in% c("nuee", "json", "usp", FORMATS_LECTURE)) stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext)
-  if (!ext %in% FORMATS_LECTURE) table <- NULL
+  if (!ext %in% c("nuee", "json", "usp", "zip", FORMATS_LECTURE)) stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext)
+  if (!ext %in% c("zip", FORMATS_LECTURE)) table <- NULL
   if (ext %in% FORMATS_LECTURE && is.null(table)) {
     tables <- tables_fichier(chemin)
     if (length(tables) > 1) return(list(choisir = I(tables), chemin = chemin, nom = nom))
@@ -151,6 +151,7 @@ ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = 
   p <- switch(ext,
               nuee = , json = lire_projet(chemin),
               usp = lire_projet(convertir_usp(chemin)),
+              zip = projet_brut_collecte(chemin, table),  # (un CSV d'une archive d'ODK, tel qu'écrit : kobo.R)
               importer_tableau(chemin, table))
   p$id <- nouvel_id("P")
   p$nom <- if (is.null(table)) nom else sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), table, tools::file_ext(nom))

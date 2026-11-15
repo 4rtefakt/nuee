@@ -31,6 +31,7 @@ appel_ouverture <- function(chemin, table = NULL) {
   ext <- tolower(tools::file_ext(chemin))
   if (ext == "usp") return(sprintf("lire_projet(convertir_usp(%s))  # .usp converti par export_project", code_r(chemin)))
   if (ext %in% c("nuee", "json")) return(sprintf("lire_projet(%s)", code_r(chemin)))
+  if (ext == "zip") return(sprintf("projet_brut_collecte(%s%s)", code_r(chemin), if (!is.null(table)) sprintf(", table = %s", code_r(table)) else ""))
   if (!is.null(table)) return(sprintf("importer_tableau(%s, table = %s)", code_r(chemin), code_r(table)))
   sprintf("importer_tableau(%s)", code_r(chemin))
 }

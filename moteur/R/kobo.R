@@ -291,7 +291,8 @@ kobo_nettoyer <- function(x) {
 # date, geopoint…), sa liste de choix, `autre` (or_other), ses groupes et répétitions du plus
 # large au plus fin (`groupes`, avec leurs libellés), la répétition qui la contient
 # (`repetition`, NA pour la table des envois), ses libellés par langue. Les choix d'une liste :
-# leurs noms (les codes), dans l'ordre du formulaire, et leurs libellés par langue.
+# leurs noms (les codes), dans l'ordre du formulaire, et leurs libellés par langue. `cles` : les
+# noms par lesquels un export désigne ses questions (kobo_cles_formulaire).
 lire_formulaire <- function(chemin) {
   if (!file.exists(chemin)) stop(traduire("Fichier introuvable : ", "File not found: "), chemin, call. = FALSE)
   pas_formulaire <- function() {
@@ -385,8 +386,10 @@ lire_formulaire <- function(chemin) {
       v <- v[!is.na(v) & nzchar(v)]
       if (length(v)) v[1]
     }
-    list(fichier = basename(chemin), titre = reglage("form_title"), id = reglage("form_id"), version = reglage("version"),
-         defaut = reglage("default_language"), langues = unique(c(colnames(Ls), colnames(Lc))), questions = questions, choix = choix)
+    form <- list(fichier = basename(chemin), titre = reglage("form_title"), id = reglage("form_id"), version = reglage("version"),
+                 defaut = reglage("default_language"), langues = unique(c(colnames(Ls), colnames(Lc))), questions = questions, choix = choix)
+    form$cles <- kobo_cles_formulaire(form)
+    form
   })
 }
 
@@ -439,57 +442,69 @@ kobo_libelle <- function(libelles, langue, nom) {
   if (is.na(v)) nom else v
 }
 
-# Les noms par lesquels un export désigne les questions du formulaire : une ligne par nom possible,
-# avec la question, ce qu'est la colonne (la question, un choix d'une question à choix multiples,
-# une partie d'un point GPS), son détail (le code du choix, la partie du point), sa longueur (le
-# nombre de groupes et de questions qu'il nomme), s'il nomme tous les groupes (`complet`) et sa
-# priorité (0 : fait des noms ; 1 : des libellés). Une question : son nom, précédé de ses groupes
-# (tous, les plus proches ou aucun), séparés par « / », « - », « . » ou « : » ; ou de même son
-# libellé dans chaque langue (un export en libellés). Ses colonnes 0/1 : ce nom, le séparateur ou
-# « / », puis le code ou le libellé du choix. Les colonnes d'un point : _<nom>_latitude
-# (KoboToolbox, aussi <groupes>/_<nom>_latitude), <nom>-Latitude (ODK). Les lignes sont rangées
-# pour qu'un nom donné à plusieurs questions désigne d'abord celle qu'il nomme en entier.
+# Les codes des choix tels qu'un export en libellés d'une langue les écrit : leur libellé dans
+# cette langue, sinon celui de la colonne label, sinon leur nom.
+kobo_codes_langue <- function(liste, langue) {
+  L <- liste$libelles
+  v <- rep(NA_character_, length(liste$noms))
+  for (col in intersect(c(langue, ""), colnames(L))) v[is.na(v)] <- L[is.na(v), match(col, colnames(L))]
+  ifelse(is.na(v), liste$noms, v)
+}
+
+# Les noms par lesquels un export désigne les questions du formulaire (calculés une fois par
+# formulaire : lire_formulaire) : une ligne par nom possible, avec la question, ce qu'est la
+# colonne (la question, un choix d'une question à choix multiples, une partie d'un point GPS), son
+# détail (le code du choix, la partie du point), sa longueur (le nombre de groupes et de questions
+# qu'il nomme), s'il nomme tous les groupes (`complet`) et sa priorité (0 : fait des noms ; 1 : des
+# libellés). Une question : son nom, précédé de ses groupes (tous, les plus proches ou aucun),
+# séparés par « / », « - », « . » ou « : » ; ou son libellé dans une langue, précédé de même de
+# ceux de ses groupes séparés par « / » (un export en libellés de KoboToolbox). Ses colonnes 0/1 :
+# ce nom, le séparateur ou « / », puis le code du choix ; ce libellé, « / », puis le libellé du
+# choix dans la même langue. Les colonnes d'un point : _<nom>_latitude (KoboToolbox, aussi
+# <groupes>/_<nom>_latitude), <nom>-Latitude (ODK). Les lignes sont rangées pour qu'un nom donné à
+# plusieurs questions désigne d'abord celle qu'il nomme en entier.
 kobo_cles_formulaire <- function(form) {
-  seps <- c("/", "-", ".", ":")
   parties_kobo <- c("latitude", "longitude", "altitude", "precision")
   parties_odk <- c("Latitude", "Longitude", "Altitude", "Accuracy")
-  morceaux <- list()
+  champs <- list(cle = list(), question = list(), genre = list(), detail = list(), longueur = list(), complet = list(), priorite = list())
+  ajouter <- function(cle, i, genre, detail, longueur, complet, priorite) {
+    n <- length(cle)
+    k <- length(champs$cle) + 1
+    valeurs <- list(cle = cle, question = rep(i, n), genre = rep(genre, n), detail = rep_len(detail, n), longueur = rep_len(longueur, n),
+                    complet = rep_len(complet, n), priorite = rep_len(priorite, n))
+    for (ch in names(champs)) champs[[ch]][[k]] <<- valeurs[[ch]]
+  }
   for (i in seq_along(form$questions)) {
     q <- form$questions[[i]]
-    chemins <- list(list(seg = c(q$groupes, q$nom), priorite = 0L))
-    for (L in form$langues) {
-      lab <- c(vapply(seq_along(q$groupes), function(g) kobo_libelle(q$libelles_groupes[[g]], L, q$groupes[g]), ""), kobo_libelle(q$libelles, L, q$nom))
-      chemins[[length(chemins) + 1]] <- list(seg = lab, priorite = 1L)
-    }
-    b <- do.call(rbind, lapply(chemins, function(ch) do.call(rbind, lapply(seps, function(s) {
-      k <- seq_along(ch$seg)
-      data.frame(base = vapply(k, function(j) paste(utils::tail(ch$seg, j), collapse = s), ""), sep = s, longueur = k,
-                 complet = k == length(ch$seg), priorite = ch$priorite, dernier = ch$seg[length(ch$seg)],
-                 avant = vapply(k, function(j) paste(utils::head(utils::tail(ch$seg, j), -1), collapse = s), ""), stringsAsFactors = FALSE)
-    }))))
-    b <- b[!duplicated(b[c("base", "sep", "priorite")]), , drop = FALSE]
-    ligne <- function(cle, genre, detail, r) data.frame(cle = cle, question = i, genre = genre, detail = detail, longueur = b$longueur[r],
-                                                       complet = b$complet[r], priorite = b$priorite[r], stringsAsFactors = FALSE)
-    morceaux[[length(morceaux) + 1]] <- ligne(b$base, "question", NA_character_, seq_len(nrow(b)))
     liste <- if (!is.na(q$liste)) form$choix[[q$liste]]
-    if (q$type == "select_multiple" && !is.null(liste) && length(liste$noms)) {
-      codes <- c(list(liste$noms), lapply(seq_len(ncol(liste$libelles)), function(j) liste$libelles[, j]))
-      for (r in seq_len(nrow(b))) for (s2 in unique(c(b$sep[r], "/"))) for (cs in codes) {
-        ok <- !is.na(cs)
-        if (any(ok)) morceaux[[length(morceaux) + 1]] <- ligne(paste0(b$base[r], s2, cs[ok]), "choix", liste$noms[ok], r)
-      }
-    }
-    if (q$type %in% c("geopoint", "start-geopoint")) {
-      r <- seq_len(nrow(b))
-      g <- r[b$longueur > 1]
-      for (j in seq_along(parties_kobo)) {
-        morceaux[[length(morceaux) + 1]] <- ligne(paste0("_", b$base, "_", parties_kobo[j]), "point", parties_kobo[j], r)
-        if (length(g)) morceaux[[length(morceaux) + 1]] <- ligne(paste0(b$avant[g], b$sep[g], "_", b$dernier[g], "_", parties_kobo[j]), "point", parties_kobo[j], g)
-        morceaux[[length(morceaux) + 1]] <- ligne(paste0(b$base, "-", parties_odk[j]), "point", parties_kobo[j], r)
+    multiple <- q$type == "select_multiple" && !is.null(liste) && length(liste$noms)
+    chemins <- c(list(list(seg = c(q$groupes, q$nom), seps = c("/", "-", ".", ":"), priorite = 0L, codes = if (multiple) liste$noms)),
+                 lapply(form$langues, function(L) list(
+                   seg = c(vapply(seq_along(q$groupes), function(g) kobo_libelle(q$libelles_groupes[[g]], L, q$groupes[g]), ""), kobo_libelle(q$libelles, L, q$nom)),
+                   seps = "/", priorite = 1L, codes = if (multiple) kobo_codes_langue(liste, L))))
+    for (ch in chemins) {
+      k <- seq_along(ch$seg)
+      complet <- k == length(ch$seg)
+      for (s in ch$seps) {
+        base <- vapply(k, function(j) paste(utils::tail(ch$seg, j), collapse = s), "")
+        ajouter(base, i, "question", NA_character_, k, complet, ch$priorite)
+        if (multiple) for (s2 in unique(c(s, "/"))) {
+          ajouter(c(outer(base, ch$codes, function(b, c) paste0(b, s2, c))), i, "choix", rep(liste$noms, each = length(base)),
+                  rep(k + 1L, length(ch$codes)), rep(complet, length(ch$codes)), ch$priorite)
+        }
+        if (q$type %in% c("geopoint", "start-geopoint")) {
+          avant <- vapply(k, function(j) paste(utils::head(utils::tail(ch$seg, j), -1), collapse = s), "")
+          dernier <- ch$seg[length(ch$seg)]
+          for (j in seq_along(parties_kobo)) {
+            ajouter(paste0("_", base, "_", parties_kobo[j]), i, "point", parties_kobo[j], k, complet, ch$priorite)
+            if (any(k > 1)) ajouter(paste0(avant[k > 1], s, "_", dernier, "_", parties_kobo[j]), i, "point", parties_kobo[j], k[k > 1], complet[k > 1], ch$priorite)
+            ajouter(paste0(base, "-", parties_odk[j]), i, "point", parties_kobo[j], k, complet, ch$priorite)
+          }
+        }
       }
     }
   }
-  cles <- do.call(rbind, morceaux)
+  cles <- as.data.frame(lapply(champs, function(x) unlist(x, use.names = FALSE)), stringsAsFactors = FALSE)
   cles <- cles[order(!cles$complet, -cles$longueur, cles$priorite, match(cles$genre, c("question", "choix", "point"))), , drop = FALSE]
   cles <- cles[!duplicated(cles[c("cle", "question")]), , drop = FALSE]
   rownames(cles) <- NULL
@@ -716,8 +731,10 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
     points[[paste0("n:", base)]] <- list(segments = segments_sans(base), colonnes = cols)
     pris[noms %in% cols] <- TRUE
   }
+  # (une colonne de texte que le formulaire ne dit pas être une autre question ; ses valeurs
+  # distinctes le disent)
   for (k in which(!pris)) {
-    if (!is.character(df[[k]]) || !isTRUE(attr(kobo_points_texte(df[[k]]), "valide"))) next
+    if (!is.character(df[[k]]) || (!is.null(m) && !is.na(m$question[k])) || !isTRUE(attr(kobo_points_texte(unique(df[[k]])), "valide"))) next
     points[[paste0("t:", noms[k])]] <- list(segments = segments_sans(noms[k]), colonnes = c(texte = noms[k]))
     pris[k] <- TRUE
   }
@@ -759,15 +776,22 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
       pris[k] <- TRUE
     }
   }
+  # (chaque préfixe une fois ; les cases 0/1 d'une colonne d'après ses valeurs distinctes, vues une fois)
+  zero_un <- rep(NA, K)
+  colonne_zero_un <- function(j) {
+    if (is.na(zero_un[j])) zero_un[j] <<- isTRUE(attr(kobo_zero_un(unique(df[[j]])), "valide"))
+    zero_un[j]
+  }
+  prefixes <- character(0)
   for (k in which(!pris & grepl("/", noms, fixed = TRUE))) {
-    if (pris[k]) next
     x <- sub("/[^/]*$", "", noms[k])
-    if (!nzchar(x)) next
+    if (pris[k] || !nzchar(x) || x %in% prefixes) next
+    prefixes <- c(prefixes, x)
     suite <- substring(noms, nchar(x) + 2)
     freres <- which(!pris & startsWith(noms, paste0(x, "/")) & nzchar(suite) & !grepl("/", suite, fixed = TRUE))
-    if (!all(vapply(freres, function(j) isTRUE(attr(kobo_zero_un(df[[j]]), "valide")), TRUE))) next
     texte <- if (x %in% noms[!pris]) x else NA_character_
     if (is.na(texte) && length(freres) < 2) next
+    if (!all(vapply(freres, colonne_zero_un, TRUE))) next
     multiples[[paste0("n:", x)]] <- list(segments = segments_sans(x), question = NULL, texte = texte, choix = noms[freres], codes = suite[freres])
     pris[freres] <- TRUE
     if (!is.na(texte)) pris[match(texte, noms)] <- TRUE
@@ -801,7 +825,13 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
         next
       }
       codes <- c(liste$noms, sort(setdiff(vus, liste$noms)))
-      colonnes <- lapply(codes, function(code) colonne_choix(code, ifelse(is.na(reponses), NA_real_, vapply(jetons, function(j) as.numeric(code %in% j), 0))))
+      ligne <- rep.int(seq_along(jetons), lengths(jetons))
+      jeton <- unlist(jetons, use.names = FALSE)
+      colonnes <- lapply(codes, function(code) {
+        v <- ifelse(is.na(reponses), NA_real_, 0)
+        v[unique(ligne[jeton == code])] <- 1
+        colonne_choix(code, v)
+      })
       origine <- "reponses"
     }
     resume$multiples[[length(resume$multiples) + 1]] <- list(nom = s[length(s)], origine = origine)
@@ -840,7 +870,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
       col$valeurs <- factor(ifelse(is.na(j), v, libelles[j]), levels = unique(c(libelles, inconnus)))
       genre <- "choix_unique"
       resume$qualitatives[[length(resume$qualitatives) + 1]] <- list(categories = levels(droplevels(col$valeurs)))
-    } else if (type %in% c("date", "datetime", "time", "start", "end", "today") || (is.na(type) && is.character(x) && isTRUE(attr(kobo_dates(x), "valide")))) {
+    } else if (type %in% c("date", "datetime", "time", "start", "end", "today") || (is.na(type) && is.character(x) && isTRUE(attr(kobo_dates(unique(x)), "valide")))) {
       v <- kobo_dates(x)
       col$texte <- TRUE
       if (isTRUE(attr(v, "valide")) || all(is.na(kobo_texte(x)))) {
@@ -923,7 +953,7 @@ kobo_import <- function(chemin, table = NULL, garder = character(0), parents = N
   r <- kobo_reglages(export, table, garder, parents)
   form <- if (length(formulaire) && !is.na(formulaire[1]) && nzchar(formulaire[1])) lire_formulaire(as.character(formulaire[1]))
   langue <- kobo_langue(form, langue)
-  cles <- if (!is.null(form)) kobo_cles_formulaire(form)
+  cles <- form$cles
   faites <- list()
   preparer <- function(nom) {
     if (is.null(faites[[nom]])) faites[[nom]] <<- kobo_preparer(export, nom, form, langue, r$garder, cles)
@@ -980,9 +1010,9 @@ kobo_import <- function(chemin, table = NULL, garder = character(0), parents = N
     envois <- length(unique(stats::na.omit(pos)))
   }
   toutes <- c(colonnes, joints)
+  # (le data.frame fait directement de ses colonnes : as.data.frame est lent pour des centaines)
   valeurs <- c(list(as.character(seq_len(n))), lapply(toutes, function(c) c$valeurs))
-  df <- as.data.frame(stats::setNames(valeurs, sprintf("V%d", seq_along(valeurs))), stringsAsFactors = FALSE)
-  names(df) <- c("Observation", names(toutes))
+  df <- structure(stats::setNames(valeurs, c("Observation", names(toutes))), class = "data.frame", row.names = .set_row_names(n))
   drapeau <- function(cle) names(toutes)[vapply(toutes, function(c) isTRUE(c[[cle]]), TRUE)]
   resume <- prep$resume
   resume$table <- r$table
@@ -1013,7 +1043,8 @@ kobo_phrases <- function(imp) {
                      r$lignes, if (!principale && !is.na(r$envois)) sprintf(traduire(", de %d envoi(s)", ", from %d submission(s)"), r$envois) else "")
   for (j in r$joints) {
     phrases <- c(phrases, if (length(j$colonnes)) {
-      sprintf(traduire("Jointes à chaque ligne, de la table %s : %s.", "Joined to each row, from the table %s: %s."), kobo_guillemets(j$table), kobo_liste(j$colonnes))
+      sprintf(traduire("Jointes à chaque ligne, de la table %s (telles que son import les fait) : %s.", "Joined to each row, from the table %s (as its import makes them): %s."),
+              kobo_guillemets(j$table), kobo_liste(j$colonnes))
     } else sprintf(traduire("Aucune colonne de la table %s jointe.", "No column of the table %s joined."), kobo_guillemets(j$table)))
   }
   if (isTRUE(r$sans_parent > 0)) {
@@ -1122,6 +1153,20 @@ importer_collecte <- function(chemin, table = NULL, garder = character(0), paren
   p$import_collecte <- list(table = r$table, garder = I(imp$reglages$garder), parents = imp$reglages$parents,
                             formulaire = if (!is.null(imp$form)) as.character(formulaire)[1], langue = imp$langue)
   attr(p, "collecte") <- list(phrases = kobo_phrases(imp), coordonnees = !is.null(p$coordonnees), lignes = r$lignes, colonnes = r$colonnes)
+  p
+}
+
+# Une table d'une archive d'ODK Central telle qu'elle est écrite (Ouvrir tel quel ; un classeur ou
+# un CSV s'ouvrent comme tout tableau) : en projet comme un tableau ouvert (formats.R :
+# finir_tableau), sans rien de l'import. `table` : la table des envois par défaut.
+projet_brut_collecte <- function(chemin, table = NULL) {
+  export <- lire_collecte(chemin)
+  tab <- export$tables[[kobo_reglages(export, table, NULL, NULL)$table]]
+  df <- tab$donnees
+  attr(df, "virgule") <- tab$virgule
+  df <- finir_tableau(df)
+  p <- projet_depuis_tableau(df, basename(chemin))
+  p$note <- unname(attr(df, "note"))
   p
 }
 

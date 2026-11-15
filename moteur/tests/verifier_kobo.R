@@ -303,7 +303,7 @@ verifier("les coordonnées : le point GPS de l'envoi, joint", identical(coordonn
 ao <- attr(po, "collecte")
 verifier("le résumé : la répétition, ses envois, les colonnes jointes, les coordonnées de la table des envois",
          startsWith(ao$phrases[1], "Export KoboToolbox (classeur Excel, 3 tables) : le groupe répété « observation », 12 ligne(s), de 5 envoi(s).") &&
-         any(startsWith(ao$phrases, sprintf("Jointes à chaque ligne, de la table « %s » : site, habitat, altitude", feuille))) &&
+         any(startsWith(ao$phrases, sprintf("Jointes à chaque ligne, de la table « %s » (telles que son import les fait) : site, habitat, altitude", feuille))) &&
          any(grepl(sprintf("de la table « %s »", feuille), ao$phrases[startsWith(ao$phrases, "Coordonnées du projet")], fixed = TRUE)))
 pc <- importer_collecte(kobo_xlsx, table = "observation", formulaire = form, parents = stats::setNames(list("habitat"), feuille))
 verifier("les colonnes jointes choisies : l'habitat seul, sans coordonnées", identical(variables(pc), c("espece", "effectif", "comportement", "habitat")) &&
@@ -375,6 +375,11 @@ verifier("la répétition : une ligne par observation, les colonnes de l'envoi j
 qi <- importer_collecte(odk_zip, table = "individu", formulaire = form, parents = list(observation = c("espece", "effectif"), inventaire_oiseaux = "altitude"))
 verifier("la répétition dans la répétition, par les clés KEY de l'observation", identical(variables(qi), c("sexe", "espece", "effectif", "altitude")) &&
          identical(valeurs(qi, "altitude"), S$altitude[O$parent[I$parent]]) && identical(valeurs(qi, "effectif"), O$effectif[I$parent]))
+pb <- projet_brut_collecte(odk_zip, "observation")
+verifier("tel quel : un CSV de l'archive comme un tableau ouvert, ses colonnes telles qu'écrites (la première nomme les lignes)",
+         identical(unname(pb$noms_obs), O$espece) && identical(variables(pb), c("effectif", "comportement", "PARENT_KEY")) &&
+         identical(pb$observation_id_names, c("Observation", "KEY")) &&
+         identical(projet_brut_collecte(odk_zip)[c("variables", "observations", "donnees")], importer_tableau(odk_csv)[c("variables", "observations", "donnees")]))
 qc <- importer_collecte(odk_csv, formulaire = form)
 verifier("le CSV des envois seul : une table, comme dans l'archive", length(lire_collecte(odk_csv)$tables) == 1 &&
          identical(variables(qc), variables(qf)) && identical(valeurs(qc, "meteo_pluie"), valeurs(qf, "meteo_pluie")))
