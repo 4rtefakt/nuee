@@ -101,6 +101,13 @@ verifier(sprintf("le prétraitement améliore la prédiction (Q2 %.3f contre %.3
          m$statistiques$composantes$Q2cum[m$A] > brut$statistiques$composantes$Q2cum[brut$A])
 pr <- predire(p, m, d, d$observations)
 verifier("prédire les observations du modèle rend leurs scores (référence MSC gardée)", proche(as.matrix(pr[paste0("t", seq_len(m$A))]), m$T, 1e-8))
+# les mêmes spectres dans un fichier (Prédiction › Prédire un fichier) : Savitzky–Golay zone par zone
+# selon la place des variables dans le tableau du projet, comme à l'ajustement
+fp <- tempfile(fileext = ".csv")
+utils::write.csv(df[, -2], fp, row.names = FALSE)
+pf <- predire_fichier(p, m, d, fp)$observations
+verifier("prédire un fichier de spectres rend leurs scores (Savitzky–Golay, MSC)", proche(as.matrix(pf[paste0("t", seq_len(m$A))]), m$T, 1e-8))
+unlink(fp)
 e <- new.env()
 assign("p", p, envir = e)
 eval(parse(text = code_definition(p, d, "p")), envir = e)

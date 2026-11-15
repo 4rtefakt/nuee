@@ -95,7 +95,9 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
     }
     donnees[, as.character(u)] <- x
   }
-  provisoire <- list(donnees = donnees)
+  # (les variables du projet : la place de chacune dans son tableau, d'où les zones de spectre que
+  # Savitzky–Golay traite à part, comme à l'ajustement)
+  provisoire <- list(donnees = donnees, variables = projet$variables)
   out <- if (regression) predire_observations_regression(provisoire, m, definition, obs, effort_absent) else predire(provisoire, m, definition, obs)
   # (une régression : une catégorie que le projet n'a pas, sans prédiction, est aussi une catégorie que
   # le modèle n'a pas vue)

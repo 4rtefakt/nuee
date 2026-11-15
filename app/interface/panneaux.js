@@ -1108,7 +1108,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   const vueGraphe = o.DModX ? choix('', [['scores', t('scores')], ['dmodx', 'DModXPS']], loc.graphe, (v) => { loc.graphe = v; ctx.rafraichir(); }) : null;
   conteneur.replaceChildren(el('div', { class: 'outils' }, vueGraphe, infos, el('span', { class: 'espace' }),
     el('button', { onclick: () => ctx.exporterPrediction(m.id) }, icone('file-down'), t('exporter_court'))),
-  m.regression ? el('p', { class: 'note' }, t('prediction_regression_note')) : null, haut, bas);
+  m.regression ? el('p', { class: 'note' }, t('prediction_regression_note')) : '', haut, bas);
   loc.table ??= {};
   tableau(bas, ctx, loc.table, {
     avant: [jeu], n: o.nom.length, nom: 'Table',
