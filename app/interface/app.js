@@ -18,6 +18,8 @@ import { zip } from './zip.js';
 // (panneaux.js), their icons (commandes.js: ICONES_VUES), its views per model type
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 import './vues_ordination.js';
+import './vues_indicatrices.js';
+import './vues_rarefaction.js';
 import './vues_classement.js';
 import './vues_carte.js';
 import './vues_par_reponse.js';
@@ -1235,7 +1237,7 @@ async function restaurerSession(pid, donnee = null) {
 // the R console): computed again once the data change.
 function oublierCalculs(pid) {
   for (const e of etat.panneaux.values()) {
-    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'historique', 'carte', 'autocorrelation_spatiale'].includes(e.vue)) {
+    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'historique', 'carte', 'autocorrelation_spatiale', 'rarefaction'].includes(e.vue)) {
       for (const k of ['d', 'res', 'cle', 'cleValeurs', 'cache']) delete e.loc[k];
     }
   }

@@ -12,6 +12,12 @@
 # contraints (PC1...).
 # CA (§ 9.4) : le tableau des effectifs ou abondances, ses écarts à l'indépendance pondérés
 # (p_ij - p_i. p_.j) / racine(p_i. p_.j), décomposés en valeurs singulières.
+# CCA (analyse canonique des correspondances, ter Braak 1986 ; § 11.2) : ce même tableau des
+# écarts à l'indépendance, analysé comme une RDA pondérée (vegan : cca, ordConstrained) : les X
+# (et les Z d'une CCA partielle) centrés par leurs moyennes pondérées par les masses des lignes
+# (p_i.), multipliés par leurs racines ; les scores ramenés ensuite aux masses des lignes et des
+# colonnes. Aux permutations, les masses suivent les lignes permutées : les X sont repondérés
+# à chaque permutation (vegan 2.5 et après).
 # Ce sont des analyses de analyses.R : ajuster_rda, resultat_rda, texte_methodes_rda... ; leur
 # export vers R est dans ordination_script.R.
 
@@ -91,13 +97,25 @@ reponses_centrees <- function(Y, reduire = FALSE) {
 
 # ---------------------------------------------------------------- RDA
 
+# Des colonnes centrées par leurs moyennes pondérées par `w` (les masses des lignes d'une CCA),
+# puis multipliées par la racine de `w` (vegan : ordConstrain).
+centrer_pondere <- function(M, w) {
+  M <- as.matrix(M)
+  sweep(sweep(M, 2, colSums(M * w) / sum(w)), 1, sqrt(w), "*")
+}
+
 # Le cœur d'une RDA (vegan : ordConstrained, ordPartial, ordConstrain, ordResid) : Y prêt
 # (reponses_centrees), X et Z dans leurs unités (centrés ici). Les inerties totale,
 # conditionnelle, contrainte et résiduelle ; les axes contraints (valeurs propres ; scores des
 # observations u, combinaisons linéaires des X, et wa, sommes pondérées des réponses ; scores des
 # réponses v ; flèches des X, leurs corrélations aux axes) et résiduels ; pour les tests, E (les
 # réponses sans Z) et les décompositions QR de Z et de [Z, X].
-rda_noyau <- function(Y, X, Z = NULL) {
+# Une CCA : Y, le tableau des écarts à l'indépendance (ca_noyau) ; `poids` et `poids_colonnes`,
+# les masses de ses lignes et de ses colonnes. X et Z sont centrés et pondérés par centrer_pondere ;
+# les flèches sont les corrélations pondérées des X aux axes ; u, wa (divisés par la racine des
+# masses des lignes) et v (par celle des masses des colonnes) sont ramenés aux masses, comme vegan
+# les rend. Les X dans leurs unités (Xbrut) restent, pour les repondérer à chaque permutation.
+rda_noyau <- function(Y, X, Z = NULL, poids = NULL, poids_colonnes = NULL) {
   ZERO <- sqrt(.Machine$double.eps)
   n <- nrow(Y)
   totale <- sum(Y^2)
@@ -105,9 +123,11 @@ rda_noyau <- function(Y, X, Z = NULL) {
   QZ <- NULL
   conditionnelle <- 0
   rang_qz <- 0
+  centrer <- function(M) if (is.null(poids)) scale(M, center = TRUE, scale = FALSE) else centrer_pondere(M, poids)
+  ramener <- function(M, w) if (is.null(w)) M else M / sqrt(w)
   zcol <- if (!is.null(Z)) ncol(Z) else 0
   if (zcol) {
-    QZ <- qr(scale(Z, center = TRUE, scale = FALSE))
+    QZ <- qr(centrer(Z))
     rang_qz <- QZ$rank
     if (QZ$rank > 0) {
       conditionnelle <- sum(qr.fitted(QZ, Y)^2)
@@ -116,12 +136,13 @@ rda_noyau <- function(Y, X, Z = NULL) {
     }
     if (conditionnelle == 0) QZ <- NULL
   }
-  XZ <- scale(cbind(if (zcol) Z, X), center = TRUE, scale = FALSE)
+  XZ <- centrer(cbind(if (zcol) Z, X))
   Q <- qr(XZ)
   rang_x <- if (ncol(XZ)) sum(Q$pivot[seq_len(Q$rank)] > zcol) else 0
   alias <- if (ncol(XZ)) colnames(XZ)[Q$pivot[seq_along(Q$pivot) > Q$rank]] else character(0)
   contraint <- NULL
   Eres <- E
+  prefixe <- if (is.null(poids)) "RDA" else "CCA"
   if (rang_x > 0) {
     garde <- seq_along(Q$pivot) <= Q$rank & Q$pivot > zcol
     s <- svd(qr.fitted(Q, E))
@@ -129,12 +150,15 @@ rda_noyau <- function(Y, X, Z = NULL) {
     nuls <- abs(lambda) < max(ZERO, ZERO * lambda[1])
     if (any(!nuls)) {
       lambda <- lambda[!nuls]
-      noms <- sprintf("RDA%d", seq_along(lambda))
+      noms <- sprintf("%s%d", prefixe, seq_along(lambda))
       u <- s$u[, !nuls, drop = FALSE]
       v <- s$v[, !nuls, drop = FALSE]
       wa <- E %*% v %*% diag(1 / sqrt(lambda), length(lambda))
       xx <- XZ[, Q$pivot[garde], drop = FALSE]
       bp <- (1 / sqrt(colSums(xx^2))) * crossprod(xx, u)
+      u <- ramener(u, poids)
+      wa <- ramener(wa, poids)
+      v <- ramener(v, poids_colonnes)
       dimnames(u) <- dimnames(wa) <- list(rownames(Y), noms)
       dimnames(v) <- list(colnames(Y), noms)
       dimnames(bp) <- list(colnames(xx), noms)
@@ -147,19 +171,20 @@ rda_noyau <- function(Y, X, Z = NULL) {
   lambda <- s$d^2
   nuls <- if (length(lambda)) abs(lambda) < max(ZERO, ZERO * lambda[1]) else logical(0)
   lambda <- lambda[!nuls]
-  noms <- sprintf("PC%d", seq_along(lambda))  # (sprintf : aucun nom sans axe)
-  u <- s$u[, !nuls, drop = FALSE]
-  v <- s$v[, !nuls, drop = FALSE]
+  noms <- sprintf(if (is.null(poids)) "PC%d" else "CA%d", seq_along(lambda))  # (sprintf : aucun nom sans axe)
+  u <- ramener(s$u[, !nuls, drop = FALSE], poids)
+  v <- ramener(s$v[, !nuls, drop = FALSE], poids_colonnes)
   dimnames(u) <- list(rownames(Y), noms)
   dimnames(v) <- list(colnames(Y), noms)
   residuel <- list(eig = stats::setNames(lambda, noms), u = u, v = v, rang = length(lambda), inertie = sum(lambda))
   list(n = n, totale = totale, conditionnelle = conditionnelle, contraint = contraint, residuel = residuel,
        E = E, Q = Q, QZ = QZ, rang_z = if (is.null(QZ)) 0 else QZ$rank, rang_qz = rang_qz, alias = alias,
-       Xc = XZ[, zcol + seq_len(ncol(XZ) - zcol), drop = FALSE], Zc = if (!is.null(QZ)) XZ[, seq_len(zcol), drop = FALSE])
+       Xc = XZ[, zcol + seq_len(ncol(XZ) - zcol), drop = FALSE], Zc = if (!is.null(QZ)) XZ[, seq_len(zcol), drop = FALSE],
+       poids = poids, Xbrut = if (!is.null(poids)) X)
 }
 
-# Une RDA du même modèle avec une partie de ses colonnes X (`colonnes` : logique ou rangs).
-sous_rda <- function(m, colonnes) rda_noyau(m$donnees$Ybar, m$donnees$X[, colonnes, drop = FALSE], m$donnees$Z)
+# Une RDA (ou une CCA) du même modèle avec une partie de ses colonnes X (`colonnes` : logique ou rangs).
+sous_rda <- function(m, colonnes) rda_noyau(m$donnees$Ybar, m$donnees$X[, colonnes, drop = FALSE], m$donnees$Z, m$donnees$poids, m$donnees$poids_colonnes)
 
 # R² ajusté d'Ezekiel (vegan : RsquareAdj) : sans objet quand le modèle a autant de paramètres
 # que d'observations moins une.
@@ -181,6 +206,26 @@ r2_rda <- function(k) {
   }
   list(R2 = R2, ajuste = ajuste)
 }
+
+# R² et R² ajusté d'une CCA (vegan : RsquareAdj.cca ; Peres-Neto et al. 2006) : la formule
+# d'Ezekiel ne vaut pas pour une CCA, le R² attendu sous l'hypothèse nulle est estimé par les
+# permutations P (celles des tests) : R² ajusté = 1 - (1 - R²) / (1 - moyenne des R² permutés).
+# Partielle : celui de [Z, X] moins celui de Z, chacun ajusté de même ; comme vegan, les R²
+# permutés viennent alors des réponses permutées projetées sur les colonnes pondérées du modèle
+# lui-même (sans repondérer). Sans permutation, pas de R² ajusté.
+r2_cca <- function(k, P, Ybar) {
+  contrainte <- if (is.null(k$contraint)) 0 else k$contraint$inertie
+  R2 <- contrainte / k$totale
+  if (is.null(k$contraint) || !nrow(P) || k$n - k$Q$rank - 1 < 1) return(list(R2 = R2, ajuste = NA_real_))
+  if (k$rang_z == 0) return(list(R2 = R2, ajuste = 1 - (1 - R2) / (1 - mean(stats_permutees(k, P)$num / k$totale))))
+  nul <- function(Q) mean(apply(P, 1, function(ip) sum(qr.fitted(Q, Ybar[ip, , drop = FALSE])^2))) / k$totale
+  ajuster <- function(r2, Q) 1 - (1 - r2) / (1 - nul(Q))
+  R2p <- k$conditionnelle / k$totale
+  list(R2 = R2, ajuste = ajuster(R2 + R2p, k$Q) - ajuster(R2p, k$QZ))
+}
+
+# Le R² ajusté d'un noyau du modèle m : d'Ezekiel pour une RDA, par les permutations P pour une CCA.
+r2_ajuste_noyau <- function(m, k, P) if (identical(m$type, "CCA")) r2_cca(k, P, m$donnees$Ybar)$ajuste else r2_rda(k)$ajuste
 
 # ---------------------------------------------------------------- tests par permutation
 
@@ -219,17 +264,21 @@ permutations_lignes <- function(n, B, strates = NULL, graine = 1) {
 # covariables (E) permutées, l'inertie qu'en expliquent les X (ou la première valeur propre de
 # cette partie, `premier`) et leur inertie résiduelle (vegan : permutest.cca, modèle « réduit »).
 # Dans une RDA partielle, les covariables sont permutées avec les réponses, et les X, rendus
-# orthogonaux aux covariables permutées, expliquent ce qu'ils peuvent (vegan : getF.c).
+# orthogonaux aux covariables permutées, expliquent ce qu'ils peuvent (vegan : getF.c). Dans une
+# CCA, les masses des lignes sont permutées avec elles, et les X repondérés par ces masses
+# permutées (centrer_pondere) à chaque permutation.
 base_orthonormee <- function(Q) qr.Q(Q)[, seq_len(Q$rank), drop = FALSE]
 stats_permutees <- function(k, P, premier = FALSE) {
   B <- nrow(P)
   num <- den <- numeric(B)
   partielle <- !is.null(k$QZ)
-  Q1 <- if (!partielle) base_orthonormee(k$Q)
+  ponderee <- !is.null(k$poids)
+  Q1 <- if (!partielle && !ponderee) base_orthonormee(k$Q)
   for (b in seq_len(B)) {
     ip <- P[b, ]
     Ep <- k$E[ip, , drop = FALSE]
-    Qb <- if (partielle) base_orthonormee(qr(qr.resid(qr(k$Zc[ip, , drop = FALSE]), k$Xc))) else Q1
+    Xb <- if (ponderee) centrer_pondere(k$Xbrut, k$poids[ip]) else k$Xc
+    Qb <- if (partielle) base_orthonormee(qr(qr.resid(qr(k$Zc[ip, , drop = FALSE]), Xb))) else if (ponderee) base_orthonormee(qr(Xb)) else Q1
     M <- crossprod(Qb, Ep)
     ss <- sum(M^2)
     num[b] <- if (!premier) ss else if (length(M)) svd(M, 0, 0)$d[1]^2 else 0
@@ -287,8 +336,10 @@ tests_axes_rda <- function(m, P = permutations_rda(m)) {
   ddl_residus <- k$n - length(eig) - k$rang_z - 1
   Fs <- unname(eig) / k$residuel$inertie * ddl_residus  # (vegan : celui des axes qui ne seront pas testés)
   ps <- rep(NA_real_, length(eig))
+  # (une CCA : comme vegan, les scores u ramenés aux masses, et les mêmes masses)
   for (i in seq_along(eig)) {
-    ki <- if (i == 1) k else rda_noyau(qr.resid(qr(cc$u[, seq_len(i - 1), drop = FALSE]), m$donnees$Ybar), cc$u[, -seq_len(i - 1), drop = FALSE], m$donnees$Z)
+    ki <- if (i == 1) k else rda_noyau(qr.resid(qr(cc$u[, seq_len(i - 1), drop = FALSE]), m$donnees$Ybar), cc$u[, -seq_len(i - 1), drop = FALSE], m$donnees$Z,
+                                       m$donnees$poids, m$donnees$poids_colonnes)
     tst <- test_rda(ki, P, premier = i < length(eig))
     if (is.null(tst)) break
     Fs[i] <- tst$F
@@ -324,13 +375,42 @@ tests_termes_rda <- function(m, P = permutations_rda(m)) {
         data.frame(terme = traduire("Résidus", "Residual"), ddl = k$n - k$Q$rank - 1, inertie = k$residuel$inertie, F = NA, p = NA, stringsAsFactors = FALSE))
 }
 
+# Les termes testés l'un après l'autre, dans l'ordre du modèle (vegan : anova.cca(by = "terms")) :
+# ce que chacun explique de plus que les précédents, sur l'inertie résiduelle de tout le modèle ;
+# les mêmes permutations, chaque modèle emboîté repondéré à chaque permutation dans une CCA. Un
+# terme qui n'ajoute aucune colonne (redondant avec les précédents) n'a pas de ligne.
+tests_sequentiels <- function(m, P = permutations_rda(m)) {
+  k <- m$noyau
+  groupes <- unique(m$X$groupes)
+  r <- k$n - k$Q$rank - 1
+  sg <- stats_permutees(k, P)
+  avant <- list(inertie = 0, num = rep(0, nrow(P)), rang = 0)
+  lignes <- list()
+  for (i in seq_along(groupes)) {
+    ki <- if (i == length(groupes)) k else sous_rda(m, m$X$groupes %in% groupes[seq_len(i)])
+    vide <- is.null(ki$contraint)
+    ici <- list(inertie = if (vide) 0 else ki$contraint$inertie, num = if (vide) rep(0, nrow(P)) else if (i == length(groupes)) sg$num else stats_permutees(ki, P)$num,
+                rang = if (vide) 0 else ki$contraint$qrang)
+    ddl <- ici$rang - avant$rang
+    if (ddl > 0) {
+      F0 <- ((ici$inertie - avant$inertie) / ddl) / (k$residuel$inertie / r)
+      p <- valeur_p_permutations(((ici$num - avant$num) / ddl) / (sg$den / r), F0)
+      lignes[[length(lignes) + 1]] <- data.frame(terme = groupes[i], ddl = ddl, inertie = ici$inertie - avant$inertie, F = F0, p = p, stringsAsFactors = FALSE)
+    }
+    avant <- ici
+  }
+  rbind(do.call(rbind, lignes),
+        data.frame(terme = traduire("Résidus", "Residual"), ddl = r, inertie = k$residuel$inertie, F = NA, p = NA, stringsAsFactors = FALSE))
+}
+
 # ---------------------------------------------------------------- sélection et partition
 
 # La sélection pas à pas des termes X (vegan : ordiR2step ; Blanchet et al. 2008) : à chaque pas,
 # parmi les termes qui peuvent entrer (un terme croisé après ses facteurs), celui qui donne le
 # plus grand R² ajusté entre s'il l'augmente sans dépasser celui de tous les termes, et si son
 # test (le modèle avec lui contre le modèle sans lui, les covariables gardées) a une valeur p
-# d'au plus `seuil`. Les pas, et pourquoi la sélection s'arrête.
+# d'au plus `seuil`. Les pas, et pourquoi la sélection s'arrête. Une CCA : chaque R² ajusté par
+# les mêmes permutations (r2_cca), comme vegan::ordiR2step avec R2permutations.
 selection_rda <- function(m, P = permutations_rda(m), seuil = 0.05) {
   tous <- m$r2_ajuste
   if (is.na(tous)) {
@@ -339,7 +419,7 @@ selection_rda <- function(m, P = permutations_rda(m), seuil = 0.05) {
   }
   groupes <- unique(m$X$groupes)
   noyau_de <- function(gs) sous_rda(m, m$X$groupes %in% gs)
-  r2_de <- function(k) { v <- r2_rda(k)$ajuste; if (!length(v) || is.na(v)) 0 else v }
+  r2_de <- function(k) { v <- r2_ajuste_noyau(m, k, P); if (!length(v) || is.na(v)) 0 else v }
   dedans <- character(0)
   courant <- noyau_de(dedans)
   precedent <- 0
@@ -444,17 +524,49 @@ scores_rda <- function(m, echelle = 2) {
 }
 
 # Les centroïdes des catégories des variables X qualitatives sur les axes contraints : la
-# moyenne de leurs scores u (vegan : getCentroids).
+# moyenne de leurs scores u (vegan : getCentroids) ; dans une CCA, pondérée par les masses des lignes.
 centroides_rda <- function(m) {
   cc <- m$noyau$contraint
+  w <- m$donnees$poids
   if (is.null(cc) || !length(m$facteurs)) return(NULL)
+  moyenne <- function(i) if (is.null(w)) colMeans(cc$u[i, , drop = FALSE]) else colSums(cc$u[i, , drop = FALSE] * w[i]) / sum(w[i])
   do.call(rbind, lapply(names(m$facteurs), function(nom) {
     f <- m$facteurs[[nom]]
-    M <- do.call(rbind, lapply(levels(f), function(niveau) colMeans(cc$u[f == niveau, , drop = FALSE])))
+    M <- do.call(rbind, lapply(levels(f), function(niveau) moyenne(f == niveau)))
     rownames(M) <- paste0(nom, "(", levels(f), ")")
     M
   }))
 }
+
+# Les scores d'une CCA dans une échelle (vegan : scores.cca) : 1, observations × racine(λ)
+# (distances du khi² entre observations), espèces telles quelles ; 2, l'inverse (distances du khi²
+# entre espèces) ; 3, les unes et les autres × racine(racine(λ)) (symétrique). Les scores lc, les
+# flèches des X et les centroïdes vont comme les observations ; axes contraints puis résiduels.
+scores_cca <- function(m, echelle = 2) {
+  k <- m$noyau
+  cc <- k$contraint
+  rc <- k$residuel
+  eig <- c(cc$eig, rc$eig)
+  slam <- sqrt(eig)
+  un <- rep(1, length(eig))
+  s_obs <- switch(as.character(echelle), "1" = slam, "2" = un, "3" = sqrt(slam))
+  s_esp <- switch(as.character(echelle), "1" = un, "2" = slam, "3" = sqrt(slam))
+  etendre <- function(M) {
+    out <- matrix(0, nrow(M), length(eig), dimnames = list(rownames(M), names(eig)))
+    out[, seq_len(ncol(M))] <- M
+    out
+  }
+  echelonner <- function(M, s) sweep(M, 2, s, "*")
+  out <- list(valeurs_propres = eig, rang_contraint = cc$rang,
+              sites = echelonner(cbind(cc$wa, rc$u), s_obs), lc = echelonner(cbind(cc$u, rc$u), s_obs),
+              reponses = echelonner(cbind(cc$v, rc$v), s_esp), biplot = echelonner(etendre(cc$biplot), s_obs))
+  cn <- centroides_rda(m)
+  if (!is.null(cn)) out$centroides <- echelonner(etendre(cn), s_obs)
+  out
+}
+
+# Les scores d'une RDA ou d'une CCA.
+scores_contraints <- function(m, echelle = 2) if (identical(m$type, "CCA")) scores_cca(m, echelle) else scores_rda(m, echelle)
 
 # Les scores d'une CA dans une échelle (vegan : scores.cca) : 1, observations × racine(λ)
 # (distances du khi² entre observations), variables telles quelles ; 2, l'inverse ; 3, les unes
@@ -483,6 +595,19 @@ options_ordination <- function(d) {
        permutations = min(B, 99999L), graine = if (is.na(graine)) 1L else graine,
        strates = if (length(o$strates$by)) specs_groupement(o$strates)[[1]],
        z = as.numeric(unlist(o$z %||% numeric(0))), z_transformations = o$z_transformations %||% list())
+}
+
+# Les variables X qualitatives d'une RDA ou d'une CCA, pour les centroïdes de leurs catégories :
+# leurs catégories sur les observations `garde`.
+facteurs_ordination <- function(projet, termes, garde) {
+  facteurs <- list()
+  for (t in termes) {
+    if (length(t$variables) != 1 || categorie(t) == 0) next
+    v <- variable_du_projet(projet, t$variables[1])
+    nom <- as.character(v$ids[1])
+    if (is.null(facteurs[[nom]])) facteurs[[nom]] <- droplevels(factor(as.character(v$categories)[colonne(projet, t$variables[1], garde)], levels = as.character(v$categories)))
+  }
+  facteurs
 }
 
 # Une RDA (definir_modele, type "RDA") : réponses Y (rôle Y), variables explicatives X (rôle X),
@@ -518,14 +643,7 @@ ajuster_rda <- function(projet, d) {
                                 "The X variables explain nothing of the responses (constant, or all redundant with the covariates Z).")
   if (k$n - k$Q$rank - 1 < 1) err("Trop de variables X et Z pour le nombre d'observations : il ne reste aucun degré de liberté.",
                                   "Too many X and Z variables for the number of observations: no degree of freedom is left.")
-  # les variables X qualitatives, pour les centroïdes de leurs catégories
-  facteurs <- list()
-  for (t in d$x) {
-    if (length(t$variables) != 1 || categorie(t) == 0) next
-    v <- variable_du_projet(projet, t$variables[1])
-    nom <- as.character(v$ids[1])
-    if (is.null(facteurs[[nom]])) facteurs[[nom]] <- droplevels(factor(as.character(v$categories)[colonne(projet, t$variables[1], garde)], levels = as.character(v$categories)))
-  }
+  facteurs <- facteurs_ordination(projet, d$x, garde)
   m <- list(type = "RDA", observations = garde, exclues = setdiff(obs, garde), N = n,
             Y = list(noms = colnames(Y), uids = vapply(d$y, function(t) as.numeric(t$variables[1]), 0)),
             X = list(noms = colnames(X), groupes = xs$groupes, blocs = xs$blocs, indicatrices = xs$indicatrices),
@@ -605,11 +723,76 @@ ajuster_ca <- function(projet, d) {
   m
 }
 
+# Une CCA (definir_modele, type "CCA") : le tableau des espèces (rôle Y : des effectifs ou des
+# abondances positifs ou nuls), les variables explicatives X (rôle X), les covariables Z
+# (d$options$z : CCA partielle). Les observations où une de ces valeurs manque, ou sans aucune
+# abondance, sont laissées de côté ; les espèces sans aucune abondance dans celles qui restent
+# aussi (vegan : cca). Le tableau devient ses écarts à l'indépendance pondérés (comme pour une CA),
+# analysés par rda_noyau avec les masses de ses lignes et de ses colonnes.
+ajuster_cca <- function(projet, d) {
+  o <- options_ordination(d)
+  err <- function(fr, en) stop(traduire(fr, en), call. = FALSE)
+  if (length(d$y) < 2) err("Une CCA demande au moins deux espèces en Y (les colonnes du tableau).", "A CCA needs at least two species as Y (the columns of the table).")
+  if (!length(d$x)) err("Une CCA demande des variables explicatives X (sans elles, c'est une analyse des correspondances).",
+                        "A CCA needs explanatory variables X (without them, it is a correspondence analysis).")
+  if (length(d$spectres)) err("Une CCA ne prend pas de prétraitement de spectres.", "A CCA takes no spectral preprocessing.")
+  obs <- as.numeric(d$observations)
+  N <- reponses_ordination(projet, d$y, obs, traduire("Les espèces Y d'une CCA", "The species Y of a CCA"))
+  if (any(N < 0, na.rm = TRUE)) err("Une CCA demande des valeurs positives ou nulles en Y (des effectifs, des abondances).",
+                                    "A CCA needs positive or zero values as Y (counts, abundances).")
+  xs <- colonnes_ordination(projet, d$x, obs)
+  zs <- colonnes_ordination(projet, termes_variables(projet, o$z, o$z_transformations), obs)
+  strates <- if (!is.null(o$strates)) valeurs_groupement(projet, o$strates, obs)
+  connu <- stats::complete.cases(N) & stats::complete.cases(xs$X) & stats::complete.cases(zs$X) & (if (is.null(strates)) TRUE else !is.na(strates))
+  connu[connu] <- rowSums(N[connu, , drop = FALSE]) > 0
+  garde <- obs[connu]
+  n <- length(garde)
+  N <- N[connu, , drop = FALSE]
+  uids <- vapply(d$y, function(t) as.numeric(t$variables[1]), 0)
+  avec <- colSums(N) > 0
+  vides <- colnames(N)[!avec]
+  N <- N[, avec, drop = FALSE]
+  if (n < 3 || ncol(N) < 2) err("Trop peu d'observations ou d'espèces non vides pour cette CCA.", "Too few non-empty observations or species for this CCA.")
+  X <- xs$X[connu, , drop = FALSE]
+  Z <- if (ncol(zs$X)) zs$X[connu, , drop = FALSE]
+  if (!is.null(strates)) {
+    strates <- strates[connu]
+    if (all(table(strates) < 2)) err("Les groupes des permutations doivent avoir chacun plusieurs observations.", "The permutation groups must each hold several observations.")
+  }
+  # (vegan : initCA) les écarts à l'indépendance pondérés, les masses des lignes et des colonnes
+  Pt <- N / sum(N)
+  rw <- rowSums(Pt)
+  cw <- colSums(Pt)
+  Ybar <- (Pt - outer(rw, cw)) / sqrt(outer(rw, cw))
+  k <- rda_noyau(Ybar, X, Z, rw, cw)
+  if (is.null(k$contraint)) err("Les variables X n'expliquent rien du tableau (constantes, ou toutes redondantes avec les covariables Z).",
+                                "The X variables explain nothing of the table (constant, or all redundant with the covariates Z).")
+  if (k$n - k$Q$rank - 1 < 1) err("Trop de variables X et Z pour le nombre d'observations : il ne reste aucun degré de liberté.",
+                                  "Too many X and Z variables for the number of observations: no degree of freedom is left.")
+  m <- list(type = "CCA", observations = garde, exclues = setdiff(obs, garde), N = n, total = sum(N), especes_vides = vides,
+            Y = list(noms = colnames(N), uids = uids[avec]),
+            X = list(noms = colnames(X), groupes = xs$groupes, blocs = xs$blocs, indicatrices = xs$indicatrices),
+            Z = list(noms = colnames(zs$X) %||% character(0), uids = o$z), options = o, noyau = k, facteurs = facteurs_ordination(projet, d$x, garde),
+            donnees = list(Ybar = Ybar, X = X, Z = Z, strates = strates, poids = rw, poids_colonnes = cw))
+  m$r2 <- k$contraint$inertie / k$totale
+  m$r2_ajuste <- NA_real_
+  q <- k$contraint$qrang
+  r <- k$n - k$Q$rank - 1
+  m$test <- list(F = (k$contraint$inertie / q) / (k$residuel$inertie / r), p = NA_real_, df = c(q, r), permutations = o$permutations)
+  if (o$permutations > 0) {
+    P <- permutations_rda(m)
+    m$test$p <- test_rda(k, P)$p
+    m$r2_ajuste <- r2_cca(k, P, Ybar)$ajuste
+  }
+  class(m) <- "modele_ordination"
+  m
+}
+
 print.modele_ordination <- function(x, ...) {
   k <- x$noyau
-  if (identical(x$type, "RDA")) {
-    cat(sprintf("RDA, %d observations : inertie totale %.4g, conditionnelle %.4g, contrainte %.4g, résiduelle %.4g\n",
-                x$N, k$totale, k$conditionnelle, k$contraint$inertie, k$residuel$inertie))
+  if (x$type %in% c("RDA", "CCA")) {
+    cat(sprintf("%s, %d observations : inertie totale %.4g, conditionnelle %.4g, contrainte %.4g, résiduelle %.4g\n",
+                x$type, x$N, k$totale, k$conditionnelle, k$contraint$inertie, k$residuel$inertie))
     cat(sprintf("R² %.4f, R² ajusté %.4f ; F = %.4g, p = %s (%d permutations)\n", x$r2, x$r2_ajuste, x$test$F, format(x$test$p, digits = 3), as.integer(x$test$permutations)))
     print(round(utils::head(c(k$contraint$eig, k$residuel$eig), 8), 6))
   } else {
@@ -640,14 +823,16 @@ table_valeurs_propres <- function(eig, totale, rang_contraint = 0) {
 # Les flèches d'une RDA à montrer : celles des X quantitatifs (une catégorie a son centroïde).
 fleches_rda <- function(m, s) s$biplot[!rownames(s$biplot) %in% m$X$noms[m$X$indicatrices], , drop = FALSE]
 
-# Ce que l'interface reçoit d'une RDA (serveur.R : resultat_modele ; analyses.R).
+# Ce que l'interface reçoit d'une RDA (serveur.R : resultat_modele ; analyses.R), ou d'une CCA
+# (ses échelles 1 à 3, son R² ajusté par permutation, manquant sans permutation).
 resultat_rda <- function(id) {
   e <- modele(id)
   p <- projet(e$projet)
   m <- e$modele
   d <- e$definition
   k <- m$noyau
-  echelles <- lapply(1:2, function(i) scores_rda(m, i))
+  cca <- identical(m$type, "CCA")
+  echelles <- lapply(if (cca) 1:3 else 1:2, function(i) scores_contraints(m, i))
   ordination <- function(s) {
     f <- fleches_rda(m, s)
     list(sites = colonnes_axes(s$sites), lc = colonnes_axes(s$lc), reponses = colonnes_axes(s$reponses), noms_reponses = I(rownames(s$reponses)),
@@ -658,9 +843,10 @@ resultat_rda <- function(id) {
   f2 <- fleches_rda(m, s2)
   noms_obs <- unname(p$noms_obs[as.character(m$observations)])
   vp <- table_valeurs_propres(s2$valeurs_propres, k$totale, k$contraint$rang)
-  list(id = id, projet = p$id, nom = d$name, titre = d$title %||% "", type = "RDA", analyse = TRUE, prediction = FALSE, regression = FALSE,
+  chiffre_r2 <- if (is.na(m$r2_ajuste)) sprintf("R2 %s", formatC(m$r2, format = "f", digits = 2)) else sprintf("R2aj %s", formatC(m$r2_ajuste, format = "f", digits = 2))
+  list(id = id, projet = p$id, nom = d$name, titre = d$title %||% "", type = m$type, analyse = TRUE, prediction = FALSE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = ncol(m$donnees$X), noms_y = I(m$Y$noms),
-       chiffres = sprintf("R2aj %s · p %s", formatC(m$r2_ajuste, format = "f", digits = 2), if (is.na(m$test$p)) "—" else format(signif(m$test$p, 2))),
+       chiffres = sprintf("%s · p %s", chiffre_r2, if (is.na(m$test$p)) "—" else format(signif(m$test$p, 2))),
        vues_defaut = I(c("ordination", "valeurs_propres")),
        observations = cbind(data.frame(uid = m$observations, nom = noms_obs, stringsAsFactors = FALSE), colonnes_axes(s2$sites)),
        variables = cbind(data.frame(terme = rownames(f2), stringsAsFactors = FALSE), colonnes_axes(f2)),
@@ -669,7 +855,8 @@ resultat_rda <- function(id) {
        inertie = list(totale = k$totale, conditionnelle = k$conditionnelle, contrainte = k$contraint$inertie, residuelle = k$residuel$inertie),
        # (les termes redondants laissés de côté, sans la catégorie que chaque variable qualitative perd toujours)
        r2 = m$r2, r2_ajuste = m$r2_ajuste, test = m$test, alias = I(setdiff(k$alias, m$X$noms[m$X$indicatrices])), valeurs_propres = vp,
-       ordination = list(`1` = ordination(echelles[[1]]), `2` = ordination(s2)),
+       ordination = stats::setNames(lapply(echelles, ordination), as.character(seq_along(echelles))),
+       total = m$total, especes_vides = I(m$especes_vides %||% character(0)),
        options = m$options[c("transformation", "reduire", "permutations", "graine")],
        strates = if (!is.null(m$options$strates)) nom_groupement(p, m$options$strates), covariables = I(m$Z$noms),
        termes = I(unique(m$X$groupes)), blocs = I(unique(m$X$blocs[!is.na(m$X$blocs)])), sans_bloc = anyNA(m$X$blocs),
@@ -714,11 +901,13 @@ resultat_ca <- function(id) {
        demande = d$demande %||% list(type = d$type, numero = d$number))
 }
 
-# Une RDA ajustée de la session (une demande de l'interface), et l'enregistrement de ce qu'on y
-# calcule à la demande (tests, sélection, partition : gardés avec le modèle, pour les exports).
+resultat_cca <- function(id) resultat_rda(id)
+
+# Une RDA (ou une CCA) ajustée de la session (une demande de l'interface), et l'enregistrement de
+# ce qu'on y calcule à la demande (tests, sélection, partition : gardés avec le modèle, pour les exports).
 rda_de <- function(id) {
   e <- modele(id)
-  if (!identical(e$definition$type, "RDA")) stop(traduire("Seulement pour une RDA.", "Only for an RDA."), call. = FALSE)
+  if (!isTRUE(e$definition$type %in% c("RDA", "CCA"))) stop(traduire("Seulement pour une RDA ou une CCA.", "Only for an RDA or a CCA."), call. = FALSE)
   e$modele
 }
 garder_rda <- function(id, m) etat$modeles[[id]]$modele <- m
@@ -728,16 +917,17 @@ permutations_requises <- function(m) {
 }
 
 # Les tests d'une RDA par axe et par terme, calculés à la demande (chacun réajuste ses modèles à
-# chaque permutation).
+# chaque permutation) ; d'une CCA, aussi les termes l'un après l'autre (sequentiels).
 demande_analyse_rda_tests <- function(q) {
   m <- rda_de(q$modele)
   if (is.null(m$tests)) {
     permutations_requises(m)
     P <- permutations_rda(m)
     m$tests <- list(axes = tests_axes_rda(m, P), termes = tests_termes_rda(m, P))
+    if (identical(m$type, "CCA")) m$tests$sequentiels <- tests_sequentiels(m, P)
     garder_rda(q$modele, m)
   }
-  list(modele = q$modele, axes = m$tests$axes, termes = m$tests$termes, permutations = m$options$permutations)
+  list(modele = q$modele, axes = m$tests$axes, termes = m$tests$termes, sequentiels = m$tests$sequentiels, permutations = m$options$permutations)
 }
 
 demande_analyse_rda_selection <- function(q) {
@@ -754,6 +944,7 @@ demande_analyse_rda_selection <- function(q) {
 
 demande_analyse_rda_partition <- function(q) {
   m <- rda_de(q$modele)
+  if (identical(m$type, "CCA")) stop(traduire("La partition de la variance se fait pour une RDA, pas pour une CCA.", "Variation partitioning is done for an RDA, not for a CCA."), call. = FALSE)
   if (is.null(m$partition)) {
     m$partition <- partition_rda(m)
     garder_rda(q$modele, m)
@@ -776,8 +967,8 @@ avec_noms <- function(M, noms, colonne = "Observation") {
 tables_rda <- function(projet, m) {
   k <- m$noyau
   noms <- unname(projet$noms_obs[as.character(m$observations)])
-  s1 <- scores_rda(m, 1)
-  s2 <- scores_rda(m, 2)
+  s1 <- scores_contraints(m, 1)
+  s2 <- scores_contraints(m, 2)
   avec_lc <- function(s) cbind(avec_noms(s$sites, noms), stats::setNames(as.data.frame(s$lc, row.names = NULL), paste0("lc_", colnames(s$lc))))
   inerties <- c(k$totale, k$conditionnelle, k$contraint$inertie, k$residuel$inertie)
   t <- list(
@@ -795,9 +986,17 @@ tables_rda <- function(projet, m) {
     t$centroides_echelle_2 <- avec_noms(s2$centroides, rownames(s2$centroides), "Categorie")
     t$centroides_echelle_1 <- avec_noms(s1$centroides, rownames(s1$centroides), "Categorie")
   }
+  if (identical(m$type, "CCA")) {  # (une CCA : aussi son échelle 3, symétrique)
+    s3 <- scores_cca(m, 3)
+    t$observations_echelle_3 <- avec_lc(s3)
+    t$reponses_echelle_3 <- avec_noms(s3$reponses, rownames(s3$reponses), "Variable")
+    t$fleches_echelle_3 <- avec_noms(fleches_rda(m, s3), rownames(fleches_rda(m, s3)), "Variable")
+    if (!is.null(s3$centroides)) t$centroides_echelle_3 <- avec_noms(s3$centroides, rownames(s3$centroides), "Categorie")
+  }
   if (!is.null(m$tests)) {
     t$tests_axes <- m$tests$axes
     t$tests_termes <- m$tests$termes
+    if (!is.null(m$tests$sequentiels)) t$tests_sequentiels <- m$tests$sequentiels
   }
   if (!is.null(m$selection$etapes)) t$selection <- m$selection$etapes
   if (!is.null(m$partition)) {
@@ -806,6 +1005,8 @@ tables_rda <- function(projet, m) {
   }
   t
 }
+
+tables_cca <- function(projet, m) tables_rda(projet, m)
 
 tables_ca <- function(projet, m) {
   k <- m$noyau
@@ -829,6 +1030,7 @@ REFERENCES_ORDINATION <- list(
   gallagher = "Legendre, P., & Gallagher, E. D. (2001). Ecologically meaningful transformations for ordination of species data. Oecologia, 129(2), 271–280. https://doi.org/10.1007/s004420100716",
   borcard = "Borcard, D., Gillet, F., & Legendre, P. (2018). Numerical ecology with R (2nd ed.). Springer. https://doi.org/10.1007/978-3-319-71404-2",
   terbraak = "ter Braak, C. J. F. (1994). Canonical community ordination. Part I: Basic theory and linear methods. Écoscience, 1(2), 127–140.",
+  terbraak1986 = "ter Braak, C. J. F. (1986). Canonical correspondence analysis: A new eigenvector technique for multivariate direct gradient analysis. Ecology, 67(5), 1167–1179. https://doi.org/10.2307/1938672",
   peresneto = "Peres-Neto, P. R., Legendre, P., Dray, S., & Borcard, D. (2006). Variation partitioning of species data matrices: Estimation and comparison of fractions. Ecology, 87(10), 2614–2625. https://doi.org/10.1890/0012-9658(2006)87[2614:VPOSDM]2.0.CO;2",
   legendre2011 = "Legendre, P., Oksanen, J., & ter Braak, C. J. F. (2011). Testing the significance of canonical axes in redundancy analysis. Methods in Ecology and Evolution, 2(3), 269–277. https://doi.org/10.1111/j.2041-210X.2010.00078.x",
   blanchet = "Blanchet, F. G., Legendre, P., & Borcard, D. (2008). Forward selection of explanatory variables. Ecology, 89(9), 2623–2632. https://doi.org/10.1890/07-0986.1",
@@ -837,6 +1039,7 @@ REFERENCES_ORDINATION <- list(
 
 texte_methodes_rda <- function(projet, d, m, langue = "fr", version = "") texte_methodes_ordination(projet, d, m, langue, version)
 texte_methodes_ca <- function(projet, d, m, langue = "fr", version = "") texte_methodes_ordination(projet, d, m, langue, version)
+texte_methodes_cca <- function(projet, d, m, langue = "fr", version = "") texte_methodes_ordination(projet, d, m, langue, version)
 
 texte_methodes_ordination <- function(projet, d, m, langue = "fr", version = "") {
   fr <- langue == "fr"
@@ -898,6 +1101,48 @@ texte_methodes_ordination <- function(projet, d, m, langue = "fr", version = "")
               liste(ens), paste(sprintf("%s %s %s", f$fraction[-nrow(f)], f$sens[-nrow(f)], nombre(f$r2_ajuste[-nrow(f)], 3)), collapse = ", "), nombre(f$r2_ajuste[nrow(f)], 3))
     } else ""
     paragraphes <- c(p1, paste(p2, p3), p4, p5)
+  } else if (identical(m$type, "CCA")) {
+    o <- m$options
+    cite("terbraak1986", "terbraak")
+    exclues <- if (length(m$exclues)) sprintf(tx(" (%d autres laissées de côté : une valeur y manque, ou aucune abondance)", " (%d others left out: a value is missing, or no abundance at all)"), length(m$exclues)) else ""
+    vides <- if (length(m$especes_vides)) sprintf(tx(" ; %s, sans aucune abondance sur ces observations, en a été retiré", "; %s, without any abundance on these observations, was left out"), liste(m$especes_vides)) else ""
+    p1 <- sprintf(tx("Une analyse canonique des correspondances (CCA ; ter Braak, 1986 ; Legendre et Legendre, 2012) a mis en relation le tableau de %d espèces (%s) avec %d variables explicatives (%s), sur %s%s%s. Comme dans une analyse des correspondances, le tableau a été ramené à ses écarts à l'indépendance pondérés ; les variables explicatives ont été centrées et pondérées par les masses des observations (leurs parts de l'effectif total).",
+                     "A canonical correspondence analysis (CCA; ter Braak, 1986; Legendre and Legendre, 2012) related the table of %d species (%s) to %d explanatory variables (%s), on %s%s%s. As in a correspondence analysis, the table was turned into its weighted departures from independence; the explanatory variables were centred and weighted by the masses of the observations (their shares of the grand total)."),
+                  length(m$Y$noms), court(m$Y$noms), length(unique(m$X$groupes)), court(unique(m$X$groupes)), observations_texte(m$N, d, fr), exclues, vides)
+    partielle <- if (length(m$Z$noms)) sprintf(tx("L'effet des covariables (%s) a d'abord été retiré (CCA partielle) : elles expliquent %s de l'inertie totale. ",
+                                                  "The effect of the covariates (%s) was removed first (partial CCA): they explain %s of the total inertia. "),
+                                               liste(m$Z$noms), pourcent(k$conditionnelle / k$totale)) else ""
+    axes <- if (length(k$contraint$eig) > 1) {
+      sprintf(tx("les deux premiers axes contraints portent %s de cette inertie expliquée", "the first two constrained axes carry %s of this explained inertia"),
+              pourcent(sum(utils::head(k$contraint$eig, 2)) / k$contraint$inertie))
+    } else tx("un seul axe contraint la porte", "a single constrained axis carries it")
+    r2 <- if (!is.na(m$r2_ajuste)) {
+      cite("peresneto")
+      sprintf(tx("R² = %s ; R² ajusté = %s, estimé par les permutations du test, la formule d'Ezekiel ne valant pas pour une CCA (Peres-Neto et al., 2006)",
+                 "R² = %s; adjusted R² = %s, estimated with the test's permutations, Ezekiel's formula not holding for a CCA (Peres-Neto et al., 2006)"),
+              nombre(m$r2, 3), nombre(m$r2_ajuste, 3))
+    } else sprintf("R² = %s", nombre(m$r2, 3))
+    p2 <- sprintf(tx("%sLes variables explicatives expliquent %s de l'inertie totale (le khi² du tableau divisé par son effectif total, %s ; %s) ; %s. Les scores sont donnés dans l'échelle 1 (distances du khi² entre observations), 2 (entre espèces) ou 3 (symétrique ; ter Braak, 1994).",
+                     "%sThe explanatory variables explain %s of the total inertia (the chi-square of the table divided by its grand total, %s; %s); %s. Scores are given in scaling 1 (chi-square distances between observations), 2 (between species) or 3 (symmetric; ter Braak, 1994)."),
+                  partielle, pourcent(m$r2), nombre(k$totale, 4), r2, axes)
+    p3 <- if (m$test$permutations > 0) {
+      groupes <- if (!is.null(o$strates)) sprintf(tx(" à l'intérieur de chaque %s", " within each %s"), nom_groupement(projet, o$strates)) else ""
+      plus <- if (!is.null(m$tests)) {
+        cite("legendre2011")
+        tx(" ; les axes contraints l'un après l'autre (Legendre et al., 2011), les termes l'un après l'autre dans l'ordre du modèle et chaque terme après tous les autres l'ont été de même",
+           "; the constrained axes one after another (Legendre et al., 2011), the terms one after another in the order of the model and each term after all the others were tested likewise")
+      } else ""
+      sprintf(tx("Le modèle a été testé par %d permutations des observations%s, leurs masses permutées avec elles (pseudo-F = %s, %s)%s.",
+                 "The model was tested with %d permutations of the observations%s, their masses permuted with them (pseudo-F = %s, %s)%s."),
+              as.integer(m$test$permutations), groupes, nombre(m$test$F, 2), valeur_p(m$test$p), plus)
+    } else ""
+    p4 <- if (!is.null(m$selection)) {
+      cite("blanchet")
+      sprintf(tx("Une sélection pas à pas des variables explicatives (double critère de Blanchet et al., 2008 : R² ajusté, par les mêmes permutations, et test par permutation au seuil de %s) a retenu %s.",
+                 "A forward selection of the explanatory variables (double stopping criterion of Blanchet et al., 2008: adjusted R², with the same permutations, and permutation test at %s) kept %s."),
+              nombre(m$selection$seuil, 2), if (length(m$selection$retenus)) liste(m$selection$retenus) else tx("aucune variable", "no variable"))
+    } else ""
+    paragraphes <- c(p1, paste(p2, p3), p4)
   } else {
     cite("greenacre")
     p1 <- sprintf(tx("Une analyse des correspondances (Legendre et Legendre, 2012 ; Greenacre, 2017) a porté sur le tableau %s%s et %d variables (%s)%s.",

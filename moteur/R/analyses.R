@@ -28,6 +28,7 @@
 # refusées, comme aux régressions ; le script de toute une séance la laisse de côté (elle
 # s'exporte seule).
 AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS")
+AUTRES_ANALYSES <- c(AUTRES_ANALYSES, "CCA", "INDVAL")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R)
 
 est_autre_analyse <- function(d) isTRUE(as.character(d$type %||% "") %in% AUTRES_ANALYSES)
 
