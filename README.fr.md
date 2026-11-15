@@ -93,6 +93,10 @@ d'état ouvre sa page.
   pour les formats), ou *Fichier › Coller un tableau* (Ctrl+V) prend des cellules copiées
   dans n'importe quel tableur, ou déposez des fichiers sur la fenêtre. Les colonnes de texte et
   les facteurs deviennent des variables qualitatives, pour colorer ou comme classes.
+- **Quelle analyse choisir ?** *Modèle › Quelle analyse ?* pose votre question en mots simples
+  (comparer des groupes, l'effet de variables, beaucoup d'espèces, une tendance, où…), propose
+  la réponse et le dispositif d'après vos données, conseille une analyse avec ses conditions et
+  ouvre Nouveau modèle déjà rempli.
 - **Faire un modèle :** *Modèle › Nouveau modèle* (Ctrl+N) : le type, le rôle de chaque variable
   (X, Y ou écartée), l'échelle et la transformation, les observations retenues. Le nombre de
   composantes est choisi par validation croisée, sauf si vous le fixez.

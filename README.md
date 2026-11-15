@@ -91,6 +91,10 @@ page.
   *File › Paste a table* (Ctrl+V) takes cells copied from any spreadsheet, or drop files on
   the window. Text columns and factors become qualitative variables you can colour by, or use
   as classes.
+- **Not sure which analysis?** *Model › Which analysis?* asks your question in plain words
+  (compare groups, the effect of variables, many species, a trend, where…), proposes the
+  response and the design from your data, recommends an analysis with its conditions and opens
+  New model already filled in.
 - **Make a model:** *Model › New model* (Ctrl+N): type, the role of each variable (X, Y
   or left out), scaling and transformation, observations to include. The number of components
   is chosen by cross-validation unless you set it.
