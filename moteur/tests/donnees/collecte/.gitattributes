@@ -1,0 +1,2 @@
+# Real exports, kept byte for byte (KoboToolbox's CSV ends its lines with CRLF, ODK Central's with LF)
+* -text

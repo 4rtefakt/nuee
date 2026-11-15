@@ -61,8 +61,9 @@ async function principal() {
     await etape(`syntaxe ${f}`, () => execFileSync(process.execPath, ['--check', copie], { stdio: 'pipe' }));
   }
   fs.rmSync(copies, { recursive: true, force: true });
-  // the documents' references and their rendering (Word, Quarto), without the page
-  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js']) {
+  // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules;
+  // the figures' layout and their PNG and TIFF files; the interface's numbers in each language
+  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_nombres.mjs']) {
     await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
   }
 
@@ -190,7 +191,11 @@ async function principal() {
       verifier(Array.isArray(b.c[0]) && b.t.length === 2, 'biplot');
     });
     await etape('statistiques des variables, vérification des données', async () => {
-      verifier((await api('statistiques_variables', { projet: p.id })).nom.length === 9, 'statistiques');
+      const s = await api('statistiques_variables', { projet: p.id });
+      verifier(s.nom.length === 9, 'statistiques');
+      // (whole numbers and the share of zeros, for Which analysis?: none here, nothing for a qualitative variable)
+      verifier(s.entiers.every((e, i) => (s.qualitative[i] ? e === null : e === false)) && s.zeros.every((z, i) => (s.qualitative[i] ? z === null : z === 0)),
+        `statistiques : entiers ${JSON.stringify(s.entiers)}, zéros ${JSON.stringify(s.zeros)}`);
       await api('verifier', { projet: p.id, type: 'PCA', x });
     });
     await etape('nouvelle variable, modification, annuler', async () => {
@@ -272,11 +277,55 @@ async function principal() {
       verifier(!r.projet.documents.length && refus, `supprimé (${refus})`);
       await api('fermer_projet', { projet: q.id });
     });
+    await etape('figures : créer, relire, annuler sans y toucher, enregistrer et rouvrir, renommer, supprimer ; un projet d’avant les figures', async () => {
+      // (figures.js: the project's plots composed for a journal, their settings as JSON text the
+      // interface alone reads, kept in the project; Ctrl+Z leaves them alone)
+      const contenu = JSON.stringify({ version: 1, largeur: 174, hauteur: 0, lignes: 1, colonnes: 2, police: 8, ligne: 1,
+        panneaux: [{ vue: 'scores', numero: pls.numero, nom: 'PLS', loc: { a: 1, b: 2, couleur: 'm@2|t1' }, zoom: { x: [-2, 2], y: null } }, { vue: 'carte', numero: null, loc: {} }] });
+      let r = await api('figure_enregistrer', { projet: p.id, titre: 'Figure 1', contenu });
+      const id = r.id;
+      verifier(/^F\d+$/.test(id) && r.projet.modifie && r.projet.figures.some((f) => f.id === id && f.titre === 'Figure 1'), `créée : ${JSON.stringify(r.projet.figures)}`);
+      // (one panel: an array of one, which must stay one; accents)
+      const un = JSON.stringify({ panneaux: [{ vue: 'effets', numero: 3, loc: { terme: 'année' } }], lettres: { style: '(a)', gras: false } });
+      const id2 = (await api('figure_enregistrer', { projet: p.id, titre: 'Fig. 2 — données', contenu: un })).id;
+      let f = await api('figure', { projet: p.id, id });
+      verifier(f.contenu === contenu && f.titre === 'Figure 1' && id2 !== id, `relue : ${JSON.stringify(f).slice(0, 200)}`);
+      await api('variable_calculee', { projet: p.id, nom: 'x2x3', formule: 'x2 * x3' });
+      const a = (await api('annuler', { projet: p.id })).projet;
+      verifier(a.figures.length === 2 && (await api('figure', { projet: p.id, id })).contenu === contenu, 'annuler laisse les figures telles quelles');
+      const fichier = path.join(dossier, 'figures.nuee');
+      await api('enregistrer', { projet: p.id, chemin: fichier });
+      const lu = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+      verifier(Array.isArray(lu.figures) && lu.figures.length === 2 && lu.figures.every((x) => typeof x.contenu === 'string'), `dans le fichier : ${JSON.stringify(lu.figures).slice(0, 200)}`);
+      const q = await api('ouvrir', { chemin: fichier });
+      f = await api('figure', { projet: q.id, id });
+      const f2 = await api('figure', { projet: q.id, id: id2 });
+      verifier(q.figures.length === 2 && f.contenu === contenu && f2.contenu === un && f2.titre === 'Fig. 2 — données'
+        && JSON.parse(f2.contenu).panneaux.length === 1, `relues du fichier : ${JSON.stringify(q.figures)}`);
+      // renamed: the title only, its content as it was; then deleted
+      r = await api('figure_enregistrer', { projet: q.id, id, titre: 'Figure 1 bis' });
+      f = await api('figure', { projet: q.id, id });
+      verifier(f.titre === 'Figure 1 bis' && f.contenu === contenu && r.projet.figures.find((x) => x.id === id).titre === 'Figure 1 bis', 'renommée');
+      r = await api('figure_supprimer', { projet: q.id, id });
+      let refus = '';
+      try { await api('figure', { projet: q.id, id }); } catch (e) { refus = e.message; }
+      verifier(r.projet.figures.length === 1 && refus, `supprimée (${refus})`);
+      await api('fermer_projet', { projet: q.id });
+      // a project saved before figures existed opens, without any
+      delete lu.figures;
+      const ancien = path.join(dossier, 'sans-figures.nuee');
+      fs.writeFileSync(ancien, JSON.stringify(lu));
+      const v = await api('ouvrir', { chemin: ancien });
+      verifier(Array.isArray(v.figures) && v.figures.length === 0, `projet sans figures : ${JSON.stringify(v.figures)}`);
+      const n = await api('figure_enregistrer', { projet: v.id, titre: 'Nouvelle' });
+      verifier(n.id === 'F1' && (await api('figure', { projet: v.id, id: 'F1' })).contenu === '{}', `première figure : ${n.id}`);
+      await api('fermer_projet', { projet: v.id });
+    });
     await etape('enregistrer sans risque : version, fichier changé par ailleurs, projet reçu', async () => {
       const f = path.join(dossier, 'partage.nuee');
       await api('enregistrer', { projet: p.id, chemin: f, version: '9.9.9' });
       const lu = JSON.parse(fs.readFileSync(f, 'utf8'));
-      verifier(lu.nuee && lu.nuee.format === 1 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
+      verifier(lu.nuee && lu.nuee.format === 2 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
       verifier(!fs.readdirSync(dossier).some((x) => x.endsWith('.tmp')), 'fichier temporaire resté');
       // a colleague saves the same file meanwhile: asked before overwriting, then overwritten if wanted
       fs.writeFileSync(f, JSON.stringify({ ...lu, source: 'collègue' }));
@@ -424,6 +473,11 @@ async function principal() {
       verifier(e.modeles.length === 4 && e.observations.uid.length === 120 && !e.chemin_enregistrement, `${e.modeles.length} modèles`);
       const m = await api('ajuster', { projet: e.id, numero: e.modeles[0].numero, A: e.modeles[0].A });
       verifier(m.type === 'PCA' && m.N === 120, m.type);
+      // in English, the same apples in English (orchards.json); in French, vergers.json
+      const en = await api('exemple', {}, 'en');
+      const noms = (p) => p.variables.map((x) => x.nom);
+      verifier(en.modeles.length === 4 && en.observations.uid.length === 120 && noms(en).includes('sugar') && noms(en).includes('variety')
+        && !noms(en).includes('sucre') && noms(e).includes('sucre'), `exemple en anglais : ${noms(en).join(', ')}`);
     });
     await etape('tests par variable, texte des méthodes, modèles de classe, OPLS-DA à 4 classes', async () => {
       const e = await api('exemple');
@@ -926,6 +980,20 @@ async function principal() {
         && [].concat(tm.references).some((x) => /^Johnson/.test(x)), 'gardée avec le modèle ; dans le texte des méthodes');
       const sc = await api('script_r', { modele: lmm.id, version: 'essai', langue: 'fr', chemin: path.join(dossier, 'P2.R') });
       verifier(!sc.ecart && fs.readFileSync(sc.script, 'utf8').includes('simuler_puissance('), 'exporter vers R : le script refait la puissance et sa simulation');
+      // kept in the project file (serveur.R: garder_avec_definition): saved, opened again and refitted,
+      // the settings and the simulation come back, in the Methods text before the view asks for them,
+      // and asking again with the same settings leaves the project unchanged
+      const fp = path.join(dossier, 'puissance.nuee');
+      await api('enregistrer', { projet: q.id, chemin: fp });
+      const q2 = await api('ouvrir', { chemin: fp });
+      const lmm2 = await api('ajuster', { projet: q2.id, numero: q2.modeles.find((x) => x.nom === 'P2').numero });
+      const tm2 = await api('methodes', { modele: lmm2.id, langue: 'en', version: 'essai' });
+      const garde2 = await api('puissance_tendance', { modele: lmm2.id, ...pr.reglages });
+      const proche = (a, b) => [].concat(a).length === [].concat(b).length && [].concat(a).every((x, i) => Math.abs(x - [].concat(b)[i]) < 1e-12);
+      const modifie2 = (await api('projets_modifies', {})).noms.includes(q2.nom);
+      verifier(JSON.stringify(tm2.paragraphes) === JSON.stringify(tm.paragraphes) && garde2.reglages.tendance === -0.03 && [].concat(garde2.reglages.unites).join() === '4,6,10'
+        && garde2.simulation && proche(garde2.simulation.p, s.p) && !modifie2,
+      `enregistrée avec le projet, rouverte : ${JSON.stringify({ reglages: garde2.reglages, simulation: !!garde2.simulation, modifie: modifie2 })}`);
       const glm = await api('ajuster', { projet: q.id, type: 'GLM', x: [v.annee], y: [v.y], echelle: 'none', nom: 'P3', famille: 'gamma' });
       let refus = '';
       try { await api('puissance_tendance', { modele: glm.id }); } catch (err) { refus = err.message; }
@@ -974,6 +1042,58 @@ async function principal() {
       try { await api('moyennes', { modele: lm0.id }); } catch (err) { refusSans = err.message; }
       verifier(/n'est croisée avec « secteur » dans aucun terme/.test(refusDans) && /pas de variable qualitative/.test(refusSans),
         `refus : « ${refusDans} » ; « ${refusSans} »`);
+      // kept in the project file: the slopes by sector come back once it is opened again and the model refitted
+      const fm = path.join(dossier, 'moyennes.nuee');
+      await api('enregistrer', { projet: q.id, chemin: fm });
+      const q2 = await api('ouvrir', { chemin: fm });
+      const ma = await api('ajuster', { projet: q2.id, numero: q2.modeles.find((x) => x.nom === 'MA1').numero });
+      const tm2 = await api('methodes', { modele: ma.id, langue: 'en', version: 'essai' });
+      const garde2 = await api('moyennes', { modele: ma.id }, 'en');
+      verifier(JSON.stringify(tm2.paragraphes) === JSON.stringify(tm.paragraphes) && garde2.mode === 'pentes' && garde2.reglages.ajustement === 'holm'
+        && col(garde2.moyennes, 'estimation').every((x, i) => Math.abs(x - est[i]) < 1e-12) && !(await api('projets_modifies', {})).noms.includes(q2.nom),
+      `enregistrées avec le projet, rouvertes : ${JSON.stringify(garde2.reglages)}`);
+    });
+    await etape('Poisson à excès de zéros (ziP) et loi bêta (betar) : loi, lien, paramètres, résidus quantiles, moyennes, côte à côte, méthodes, refus', async () => {
+      // 90 surveys of three habitats with an effort: counts with extra zeros, proportions between 0 and 1
+      let g = 41;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = [];
+      for (let i = 1; i <= 90; i += 1) {
+        const habitat = ['bois', 'haie', 'prairie'][i % 3];
+        const x = alea();
+        const effort = 1 + 2 * alea();
+        const mu = effort * Math.exp(0.3 + 0.8 * x + (habitat === 'bois' ? 0.5 : 0));
+        const compte = alea() < 0.35 ? 0 : Math.max(1, Math.round(mu + (alea() - 0.5) * 2 * Math.sqrt(mu)));
+        const m = 1 / (1 + Math.exp(-(-0.3 + 1.2 * x + (habitat === 'haie' ? -0.4 : 0))));
+        const prop = Math.min(0.97, Math.max(0.03, m + (alea() - 0.5) * 0.3));
+        lignes.push([`r${i}`, habitat, x.toFixed(3), effort.toFixed(2), compte, prop.toFixed(4)].join('\t'));
+      }
+      const q = await api('coller', { texte: ['nom\thabitat\tx\teffort\tcompte\tprop', ...lignes].join('\r\n'), nom: 'Familles' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const zip = await api('ajuster', { projet: q.id, type: 'GLM', x: [v.x, v.habitat], y: [v.compte], echelle: 'none', nom: 'ZIP', famille: 'poisson_zi', decalage: v.effort });
+      const beta = await api('ajuster', { projet: q.id, type: 'GAM', x: [v.x, v.habitat], y: [v.prop], echelle: 'none', nom: 'BETA', famille: 'beta', lisses: [v.x] });
+      const pl = zip.parametre_loi;
+      verifier(zip.famille === 'poisson_zi' && zip.lien === 'log' && [].concat(pl.nom).join() === 'theta1,theta2' && [].concat(pl.valeur).length === 2
+        && zip.qualite.r2_ajuste === undefined && zip.qualite.deviance_expliquee > 0 && [].concat(zip.residus_quantiles.residu).length === zip.N
+        && beta.famille === 'beta' && beta.lien === 'logit' && beta.parametre_loi.nom === 'phi' && beta.parametre_loi.valeur > 0
+        && [].concat(beta.residus_quantiles.residu).length === beta.N && [].concat(beta.courbes.terme).join() === 'x',
+      `ziP et bêta : ${JSON.stringify({ zip: [zip.famille, zip.lien, pl], beta: [beta.famille, beta.lien, beta.parametre_loi] })}`);
+      // (moteur/R/moyennes.R) expected counts and their ratios; mean proportions and odds ratios
+      const mz = await api('moyennes', { modele: zip.id });
+      const mb = await api('moyennes', { modele: beta.id });
+      verifier(mz.echelle === 'reponse' && mz.famille === 'poisson_zi' && [].concat(mz.moyennes.estimation).every((x) => x > 0) && mz.ddl.methode === 'asymptotique'
+        && /loi de Poisson à excès de zéros ; échelle de la réponse\) : bois \/ haie = /.test(mz.phrases[0])
+        && mb.echelle === 'reponse' && [].concat(mb.moyennes.estimation).every((x) => x > 0 && x < 1) && /rapport des cotes bois \/ haie/.test(mb.phrases[0]),
+      `moyennes ajustées : ${mz.phrases[0]} / ${mb.phrases[0]}`);
+      const c = await api('coefficients_modeles', { modeles: [zip.id, beta.id], erreur: 'ic' });
+      const st = [].concat(c.statistiques);
+      verifier(st.includes('θ₁ (Poisson à excès de zéros)') && st.includes('θ₂ (Poisson à excès de zéros)') && st.includes('φ (bêta)'), `côte à côte : ${st.join(' | ')}`);
+      const tm = await api('methodes', { modele: zip.id, langue: 'en', version: 'essai' });
+      verifier([].concat(tm.paragraphes).some((x) => /zero-inflated Poisson distribution, log link/.test(x)) && [].concat(tm.references).some((x) => /^Wood, S\. N\., Pya, N\./.test(x)),
+        `texte des méthodes du ziP, en anglais : ${[].concat(tm.paragraphes)[1]}`);
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'GLM', x: [v.x], y: [v.compte], echelle: 'none', famille: 'beta' }); } catch (err) { refus = err.message; }
+      verifier(/strictement comprises entre 0 et 1/.test(refus), `bêta sur des comptages : ${refus}`);
     });
     await etape('BACI : l’écart impact − témoins après contre avant ; deux classes appariées, variable par variable', async () => {
       // 4 sectors followed from 2001 to 2010, one row per sector and year, in no order; S1 (the
@@ -1118,6 +1238,101 @@ async function principal() {
       verifier(js.includes(`${s.id} <- resumer_par_groupe(${q.id}, ${v.site}, variables = ${v.densite}, statistiques = c("moyenne", "n"))`)
         && js.includes('aggregate(d["densite"], d["site"], function(x) c(moyenne = mean(x, na.rm = TRUE), n = sum(!is.na(x))))'), 'journal : resumer_par_groupe et aggregate()');
     });
+    await etape('atelier des données : chercher et remplacer, catégories, unités et descriptions, chacun annulé par Ctrl+Z', async () => {
+      // relevés de terrain : -9999 pour « pas de relevé », un habitat mal orthographié, une teneur « abs »
+      const lignes = ['nom\thabitat\taltitude\tdensite\tteneur'];
+      const habitats = ['forêt', 'prairie', 'foret', 'lande', 'prairie', 'forêt', 'lande', 'prairie', 'forêt', 'prairie', 'lande', 'forêt'];
+      habitats.forEach((h, i) => lignes.push([`R${i + 1}`, h, 100 + 50 * i, i === 4 ? -9999 : (h.startsWith('for') ? 10 : h === 'prairie' ? 6 : 3) + 0.01 * (100 + 50 * i) + (i % 3) * 0.3,
+        i % 4 === 1 ? 'abs' : `${i},5`].join('\t')));
+      let q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Relevés' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const valeurs = async (nom) => { const d = await api('donnees', { projet: q.id }); return d.valeurs[d.variables.indexOf(nom)]; };
+      // the preview changes nothing; the replacement, one undo step
+      const a = await api('remplacer', { projet: q.id, apercu: true, variables: [v.densite], chercher: '-9999', remplacer: '' });
+      verifier(a.remplacement.cellules === 1 && (await valeurs('densite'))[4] === -9999 && !(await api('projet', { projet: q.id })).annulable,
+        `aperçu : ${JSON.stringify(a.remplacement)}`);
+      q = await api('remplacer', { projet: q.id, variables: [v.densite], chercher: '-9999', remplacer: '' });
+      verifier(q.remplacement.cellules === 1 && (await valeurs('densite'))[4] === null && q.annulable === 'remplacement de -9999', `remplacé : ${q.annulable}`);
+      // a text column becomes numbers: "abs" by 0, its commas read
+      q = await api('remplacer', { projet: q.id, chercher: 'abs', remplacer: '0' });
+      const teneur = q.variables.find((x) => x.nom === 'teneur');
+      verifier(!teneur.qualitative && (await valeurs('teneur'))[1] === 0 && (await valeurs('teneur'))[2] === 2.5 && [].concat(q.remplacement.phrases).some((x) => /devient quantitative/.test(x)),
+        `teneur : ${JSON.stringify(teneur)}`);
+      let refus = '';
+      try { await api('remplacer', { projet: q.id, chercher: 'introuvable', remplacer: 'x' }); } catch (e) { refus = e.message; }
+      verifier(refus === 'remplacer : Aucune cellule à remplacer.', `rien à remplacer : « ${refus} »`);
+      // a regression before the categories change: the last category observed is its reference
+      const m = await api('ajuster', { projet: q.id, type: 'LM', x: [v.habitat, v.altitude], y: [v.densite], echelle: 'none', nom: 'LMhab' });
+      const termes = (r) => [].concat(r.coefficients_regression.terme);
+      verifier(!termes(m).includes('habitat(prairie)') && termes(m).includes('habitat(foret)'), `référence avant : ${termes(m).join()}`);
+      // the categories: foret merged into forêt, the order changed, lande the reference (last)
+      q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['forêt', 'forêt', 'lande', 'prairie'], ordre: ['prairie', 'forêt', 'lande'] });
+      const hab = q.variables.find((x) => x.nom === 'habitat');
+      verifier([].concat(hab.categories).join() === 'prairie,forêt,lande' && q.categories.reference === 'lande' && q.annulable === 'catégories de habitat'
+        && (await valeurs('habitat'))[2] === 'forêt', `catégories : ${JSON.stringify(q.categories)}`);
+      // the model fitted before keeps its results, but can't be refitted nor predict until fitted again (a name changed)
+      verifier(termes(await api('modele', { modele: m.id })).join() === termes(m).join(), 'le modèle garde ses résultats');
+      refus = '';
+      try { await api('reajuster', { modele: m.id, exclues: [1] }); } catch (e) { refus = e.message; }
+      verifier(/ont changé depuis l'ajustement de LMhab/.test(refus), `réajuster un modèle aux catégories changées : « ${refus} »`);
+      // its definition in the project followed: fitted again, lande is the reference
+      const def = q.modeles.find((x) => x.nom === 'LMhab');
+      const m2 = await api('ajuster', { projet: q.id, numero: def.numero });
+      verifier(!termes(m2).includes('habitat(lande)') && termes(m2).includes('habitat(prairie)') && termes(m2).includes('habitat(forêt)'), `référence après : ${termes(m2).join()}`);
+      // a new order only: the model of the session is mapped to it, and refits
+      q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['prairie', 'forêt', 'lande'], ordre: ['forêt', 'prairie', 'lande'] });
+      const m3 = await api('reajuster', { modele: m2.id, exclues: [2] });
+      verifier(m3.N === m2.N - 1 && termes(m3).includes('habitat(forêt)'), `réajusté après un nouvel ordre : N = ${m3.N}`);
+      // a model whose condition names categories (not a term of it): a renamed category, then Ctrl+Z,
+      // and it is refitted from its own definition each time (serveur.R: suivre_conditions_seance)
+      const mc = await api('ajuster', { projet: q.id, type: 'LM', x: [v.altitude], y: [v.densite], echelle: 'none', nom: 'LMcond', condition: 'habitat %in% c("prairie", "lande")' });
+      q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['forêt', 'pré', 'lande'], ordre: ['forêt', 'pré', 'lande'] });
+      const mc2 = await api('reajuster', { modele: mc.id, exclues: [] });
+      await api('annuler', { projet: q.id });
+      const mc3 = await api('reajuster', { modele: mc.id, exclues: [] });
+      verifier(mc.N === 6 && mc2.N === 6 && mc3.N === 6, `une condition sur des catégories renommées puis rendues : N = ${mc.N}, ${mc2.N}, ${mc3.N}`);
+      // units and descriptions, kept in the summary, in the Methods text, saved and read again
+      q = await api('decrire_variables', { projet: q.id, descriptions: [{ variable: v.densite, unite: 'ind./ha', description: 'Densité des adultes' }, { variable: v.altitude, unite: 'm' }] });
+      const dens = q.variables.find((x) => x.nom === 'densite');
+      verifier(dens.unite === 'ind./ha' && dens.description === 'Densité des adultes' && q.variables.find((x) => x.nom === 'altitude').unite === 'm'
+        && q.annulable === 'unités et descriptions', `unités : ${JSON.stringify(dens)}`);
+      const meth = await api('methodes', { modele: m3.id, langue: 'en' });
+      verifier(meth.paragraphes[0].includes('the response is “densite” (ind./ha)'), meth.paragraphes[0]);
+      const res = await api('resultats_texte', { modele: m3.id, langue: 'fr' });
+      verifier(res.paragraphes.some((x) => /« altitude » : β = [-0-9,]+ par m/.test(x)), [].concat(res.paragraphes).join(' '));
+      const f = path.join(dossier, 'releves.nuee');
+      await api('enregistrer', { projet: q.id, chemin: f });
+      const relu = await api('ouvrir', { chemin: f });
+      verifier(relu.variables.find((x) => x.nom === 'densite').unite === 'ind./ha', 'unités relues du .nuee');
+      // the export: a workbook with a "Variables" sheet, opened again with its units
+      const x = path.join(dossier, 'releves.xlsx');
+      await api('exporter_donnees', { projet: q.id, chemin: x });
+      const rx = await api('ouvrir', { chemin: x });
+      verifier(!rx.choisir && rx.variables.find((y) => y.nom === 'densite').unite === 'ind./ha' && rx.variables.find((y) => y.nom === 'altitude').unite === 'm',
+        `classeur relu : ${JSON.stringify(rx.choisir || rx.variables)}`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${q.id} <- remplacer_valeurs(${q.id}, variables = ${v.densite}, chercher = "-9999", remplacer = "")`)
+        && j.includes(`${q.id} <- changer_categories(${q.id}, ${v.habitat}, c("forêt", "forêt", "lande", "prairie"), ordre = c("prairie", "forêt", "lande"))`)
+        && j.includes(`${q.id} <- decrire_variables(${q.id}, list(list(variable = ${v.densite}, unite = "ind./ha", description = "Densité des adultes"), list(variable = ${v.altitude}, unite = "m")))`),
+      'journal : remplacer_valeurs, changer_categories, decrire_variables');
+      // Ctrl+Z: the units, the order, the merge, the replacements leave, one by one
+      let u = (await api('annuler', { projet: q.id })).projet;
+      verifier(!u.variables.find((x) => x.nom === 'densite').unite, 'annuler les unités');
+      await api('annuler', { projet: q.id });
+      u = (await api('annuler', { projet: q.id })).projet;
+      verifier([].concat(u.variables.find((x) => x.nom === 'habitat').categories).join() === 'foret,forêt,lande,prairie', 'annuler les catégories');
+      await api('annuler', { projet: q.id });
+      u = (await api('annuler', { projet: q.id })).projet;
+      verifier((await valeurs('densite'))[4] === -9999 && u.variables.find((x) => x.nom === 'teneur').qualitative, 'annuler les remplacements');
+      // a block of cells pasted from a spreadsheet (two rows, two columns; null: a cell left), then undone
+      const d0 = await api('donnees', { projet: q.id });
+      const c = await api('coller_cellules', { projet: q.id, observations: d0.uid_observations.slice(0, 2), variables: [v.altitude, v.habitat],
+        valeurs: [['1,5', 'marais'], ['', null]] });
+      verifier(c.collage.cellules === 3 && (await valeurs('altitude'))[0] === 1.5 && (await valeurs('altitude'))[1] === null
+        && (await valeurs('habitat'))[0] === 'marais' && (await valeurs('habitat'))[1] === habitats[1] && c.annulable === 'cellules collées', `collé : ${JSON.stringify(c.collage)}`);
+      await api('annuler', { projet: q.id });
+      verifier((await valeurs('altitude'))[0] === 100 && (await valeurs('habitat'))[0] === habitats[0], 'annuler le collage');
+    });
     await etape('importer des spectres (texte et JCAMP-DX), avec un tableau d’informations', async () => {
       const onde = Array.from({ length: 30 }, (_, k) => 1000 + 4 * k);
       const chemins = [];
@@ -1182,6 +1397,74 @@ async function principal() {
       const q = await api('ouvrir', { chemin: f, table: 'b' });
       verifier(q.observations.uid.length === 4 && q.table === 'b' && q.nom === 'deux (b).xlsx', q.nom);
     });
+    await etape('KoboToolbox et ODK Central : l’export reconnu à l’ouverture, son aperçu, une répétition importée avec des colonnes de l’envoi, tel quel, refait au redémarrage (moteur/R/kobo.R)', async () => {
+      const r = (x) => JSON.stringify(x.replace(/\\/g, '/'));
+      const xlsx = path.join(dossier, 'releve kobo.xlsx');
+      const form = path.join(dossier, 'formulaire.xlsx');
+      // a Kobo workbook (groups in the headers, a geopoint, a select_multiple with its 0/1 columns, a repeat sheet) and its XLSForm in two languages
+      await api('console', { code: [
+        'envois <- data.frame(start = c("2024-05-03T07:58:00.000+02:00", "2024-05-04T08:05:00.000+02:00", "2024-05-05T09:00:00.000+02:00"),',
+        '  "group_site/site" = c("S1", "S2", "S3"), "group_site/habitat" = c("foret", "prairie", "foret"), "group_site/gps" = c("43.61 3.87 50 5", "43.65 3.9 60 4", NA),',
+        '  "_group_site/gps_latitude" = c(43.61, 43.65, NA), "_group_site/gps_longitude" = c(3.87, 3.9, NA), meteo = c("soleil vent", "pluie", NA),',
+        '  "meteo/soleil" = c(1, 0, NA), "meteo/pluie" = c(0, 1, NA), "meteo/vent" = c(1, 0, NA), "_id" = 1:3, "_uuid" = c("u1", "u2", "u3"),',
+        '  "_submission_time" = c("2024-05-03T06:45:12", "2024-05-03T06:45:12", "2024-05-05T08:00:00"), "__version__" = "v1", "_index" = 1:3, check.names = FALSE)',
+        'obs <- data.frame("observation/espece" = c("turmer", "parmaj", "turmer", "erirub"), "observation/effectif" = c(2, 1, 3, 1), "_index" = 1:4,',
+        '  "_parent_table_name" = "Relevé", "_parent_index" = c(1, 1, 2, 3), check.names = FALSE)',
+        `openxlsx::write.xlsx(list("Relevé" = envois, observation = obs), ${r(xlsx)})`,
+        'survey <- data.frame(type = c("start", "begin_group", "text", "select_one habitat", "geopoint", "end_group", "select_multiple meteo", "begin_repeat", "select_one espece", "integer", "end_repeat"),',
+        '  name = c("start", "group_site", "site", "habitat", "gps", NA, "meteo", "observation", "espece", "effectif", NA),',
+        '  "label::Français (fr)" = c(NA, "Site", "Site", "Habitat", "Position", NA, "Météo", "Observation", "Espèce", "Effectif", NA),',
+        '  "label::English (en)" = c(NA, "Site", "Site", "Habitat", "Location", NA, "Weather", "Observation", "Species", "Count", NA), check.names = FALSE)',
+        'choices <- data.frame(list_name = c("habitat", "habitat", "meteo", "meteo", "meteo", "espece", "espece", "espece"),',
+        '  name = c("prairie", "foret", "soleil", "pluie", "vent", "turmer", "parmaj", "erirub"),',
+        '  "label::Français (fr)" = c("Prairie", "Forêt", "Soleil", "Pluie", "Vent", "Merle noir", "Mésange charbonnière", "Rougegorge familier"),',
+        '  "label::English (en)" = c("Grassland", "Forest", "Sun", "Rain", "Wind", "Common blackbird", "Great tit", "European robin"), check.names = FALSE)',
+        `openxlsx::write.xlsx(list(survey = survey, choices = choices, settings = data.frame(form_title = "Relevé des oiseaux")), ${r(form)})`].join('\n') });
+      // opened: the export is recognised, the preview of its import comes back instead of a project
+      const o = await api('ouvrir', { chemin: xlsx });
+      verifier(o.kobo && !o.id && o.kobo.outil === 'kobo' && o.kobo.tables.map((x) => x.nom).join() === 'Relevé,observation' && o.kobo.table === 'Relevé'
+        && o.kobo.phrases.includes('Métadonnées retirées (6) : start, _id, _uuid, _submission_time, __version__, _index.'), `aperçu à l’ouverture : ${JSON.stringify(o).slice(0, 400)}`);
+      const a = await api('kobo_apercu', { chemin: xlsx, table: 'observation', garder: ['envoi'], formulaire: form });
+      verifier(a.lignes === 4 && a.parents.length === 1 && a.parents[0].table === 'Relevé' && a.parents[0].colonnes.includes('submission_time')
+        && a.formulaire.langue === 'Français (fr)' && a.coordonnees && a.metadonnees.find((m) => m.role === 'envoi').garde, `aperçu de la répétition : ${JSON.stringify(a).slice(0, 600)}`);
+      const p = await api('kobo_importer', { chemin: xlsx, nom: 'releve kobo.xlsx', table: 'observation', garder: ['envoi'],
+        parents: { Relevé: ['habitat', 'gps_longitude', 'gps_latitude', 'submission_time'] }, formulaire: form });
+      const noms = p.variables.map((v) => v.nom);
+      verifier(p.id && p.nom === 'releve kobo (observation).xlsx' && p.table === 'observation' && noms.join() === 'espece,effectif,habitat,gps_longitude,gps_latitude,submission_time'
+        && p.coordonnees && p.coordonnees.nom_x === 'gps_longitude' && p.coordonnees.systeme === 4326 && p.collecte.phrases.length > 3
+        && p.variables.find((v) => v.nom === 'espece').categories.join() === 'Merle noir,Mésange charbonnière,Rougegorge familier'
+        && p.variables.find((v) => v.nom === 'habitat').categories.join() === 'Prairie,Forêt', `import : ${JSON.stringify(p).slice(0, 600)}`);
+      const d = await api('donnees', { projet: p.id });
+      verifier(d.valeurs[d.variables.indexOf('gps_latitude')].join() === '43.61,43.61,43.65,' && d.valeurs[d.variables.indexOf('effectif')].join() === '2,1,3,1',
+        `valeurs jointes : ${JSON.stringify(d.valeurs)}`);
+      // as it is (the sheets to choose from), and the import redone from its settings (the engine restarted)
+      const brut = await api('ouvrir', { chemin: xlsx, brut: true });
+      verifier(Array.isArray(brut.choisir) && brut.choisir.join() === 'Relevé,observation', `tel quel : ${JSON.stringify(brut).slice(0, 200)}`);
+      const relance = await api('ouvrir', { chemin: xlsx, table: p.table, kobo: p.kobo });
+      verifier(relance.id !== p.id && relance.variables.map((v) => v.nom).join() === noms.join() && relance.nom === p.nom, `refait : ${JSON.stringify(relance.kobo)}`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${p.id} <- importer_collecte(`) && j.includes('table = "observation", garder = "envoi"'), 'journal : importer_collecte');
+      const en = await api('kobo_apercu', { chemin: xlsx }, 'en');
+      verifier(en.phrases[0] === 'KoboToolbox export (Excel workbook, 2 tables): the submissions table “Relevé”, 3 row(s).', `en anglais : ${en.phrases[0]}`);
+      let refus = '';
+      try { await api('ouvrir', { chemin: tableau(), collecte: true }); } catch (e) { refus = e.message; }
+      verifier(/essai\.csv n'est pas un export de KoboToolbox ni d'ODK Central/.test(refus), `un tableau ordinaire importé : « ${refus} »`);
+      // an ODK Central zip (one CSV per table, PARENT_KEY), sent by the browser as File › Open does
+      const odk = path.join(dossier, 'odk');
+      fs.mkdirSync(odk);
+      fs.writeFileSync(path.join(odk, 'releve.csv'), ['SubmissionDate,group_site-site,group_site-gps-Latitude,group_site-gps-Longitude,meteo,meta-instanceID,KEY,SubmitterName,ReviewState',
+        '2024-05-03T06:45:12.000Z,S1,43.61,3.87,soleil vent,uuid:a,uuid:a,Anne,approved', '2024-05-04T07:00:00.000Z,S2,43.65,3.9,pluie,uuid:b,uuid:b,Paul,'].join('\n'));
+      fs.writeFileSync(path.join(odk, 'releve-observation.csv'), ['espece,effectif,PARENT_KEY,KEY', 'turmer,2,uuid:a,uuid:a/observation[1]',
+        'parmaj,1,uuid:a,uuid:a/observation[2]', 'erirub,1,uuid:b,uuid:b/observation[1]'].join('\n'));
+      const zipf = path.join(dossier, 'releve.zip');
+      await api('console', { code: `zip::zip(${r(zipf)}, files = c("releve.csv", "releve-observation.csv"), root = ${r(odk)})` });
+      const envoi = await fetch(`http://127.0.0.1:${port}/api/televerser?nom=releve.zip`, { method: 'POST', body: fs.readFileSync(zipf), headers: { Cookie: cookie } });
+      const z = await envoi.json();
+      verifier(envoi.ok && z.kobo && z.kobo.outil === 'odk' && z.kobo.tables.map((x) => x.nom).join() === 'releve,observation', `archive envoyée : ${JSON.stringify(z).slice(0, 300)}`);
+      const pz = await api('kobo_importer', { chemin: z.chemin, nom: z.nom, table: 'observation', formulaire: form });
+      verifier(pz.variables.map((v) => v.nom).join() === 'espece,effectif,site,gps_longitude,gps_latitude,meteo_soleil,meteo_pluie,meteo_vent'
+        && pz.coordonnees && pz.coordonnees.nom_y === 'gps_latitude' && pz.nom === 'releve (observation).zip', `répétition d’ODK : ${pz.variables.map((v) => v.nom).join()}`);
+    });
     await etape('RDA (Hellinger, partielle, permutée par site) et analyse des correspondances', async () => {
       // 30 relevés de 6 espèces le long de deux gradients (température, sable), 5 sites
       let g = 11;
@@ -1221,6 +1504,238 @@ async function principal() {
       let refusCA = '';
       try { await api('ajuster', { projet: q.id, type: 'CA', x: [v.temp, v.site], echelle: 'none' }); } catch (err) { refusCA = err.message; }
       verifier(/quantitatives/.test(refusCA), `CA d'une variable qualitative refusée : « ${refusCA} »`);
+    });
+    await etape('CCA (partielle, permutée par site) : échelles 1 à 3, tests par axe, séquentiels et par terme, script, méthodes', async () => {
+      // 30 relevés de 6 espèces le long de la température et du sable, 5 sites
+      let g = 13;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\ttemp\tsable\tsp1\tsp2\tsp3\tsp4\tsp5\tsp6'];
+      for (let i = 1; i <= 30; i += 1) {
+        const temp = 8 + 10 * alea();
+        const sable = 100 * alea();
+        const sp = [temp, 20 - temp, sable / 10, 10 - sable / 10, (temp * sable) / 100, 3].map((x) => Math.round(x * (0.5 + alea())) + (x > 0 ? 1 : 0));
+        lignes.push([`r${i}`, `S${1 + (i % 5)}`, temp.toFixed(2), sable.toFixed(1), ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Relevés CCA' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5', 'sp6'].map((n) => v[n]);
+      const cca = await api('ajuster', { projet: q.id, type: 'CCA', x: [v.temp], y: especes, echelle: 'none', nom: 'CCA',
+        options: { permutations: 99, graine: 2, z: [v.sable], strates: { by: 'variable', variable: v.site } } });
+      verifier(cca.type === 'CCA' && cca.analyse === true && cca.prediction === false && cca.N === 30 && Object.keys(cca.ordination).join() === '1,2,3'
+        && cca.ordination['2'].sites.CCA1.length === 30 && /^R2aj /.test(cca.chiffres) && cca.strates === 'site' && [].concat(cca.covariables).join() === 'sable',
+      `CCA : ${cca.chiffres}, N = ${cca.N}`);
+      const tests = await api('rda_tests', { modele: cca.id });
+      verifier([].concat(tests.axes.axe).length === 2 && [].concat(tests.sequentiels.terme).join() === 'temp,Résidus' && [].concat(tests.termes.terme).length === 2
+        && typeof [].concat(tests.sequentiels.p)[0] === 'number', `tests : ${JSON.stringify(tests.sequentiels)}`);
+      const s = await api('script_r', { modele: cca.id, chemin: path.join(dossier, 'cca.R'), version: 'essai' });
+      verifier(fs.existsSync(s.script) && !s.ecart && !/vegan::/.test(fs.readFileSync(s.script, 'utf8').replace(/#.*$/gm, '')), `script R : ${s.ecart || 'R seul'}`);
+      const mt = await api('methodes', { modele: cca.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /canonical correspondence analysis/.test(x)) && mt.references.some((x) => /ter Braak, C\. J\. F\. \(1986\)/.test(x)), 'texte des méthodes');
+      const e = await api('exporter', { modele: cca.id, chemin: path.join(dossier, 'cca.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      let refus = '';
+      try { await api('rda_partition', { modele: cca.id }); } catch (err) { refus = err.message; }
+      verifier(/pas pour une CCA/.test(refus), `partition refusée : « ${refus} »`);
+    });
+    await etape('espèces indicatrices (IndVal.g, combinaisons de groupes, permutations par site, p corrigées)', async () => {
+      // 30 relevés en trois milieux (5 sites) : sp1 du bois, sp2 de la lande, sp3 du pré, sp4 du bois et de la lande, sp5 partout
+      let g = 17;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const milieux = ['bois', 'lande', 'pré'];
+      const lignes = ['nom\tmilieu\tsite\tsp1\tsp2\tsp3\tsp4\tsp5'];
+      for (let i = 0; i < 30; i += 1) {
+        const k = i % 3;
+        const sp = [k === 0 ? 5 : 0, k === 1 ? 4 : 0, k === 2 ? 3 : 0, k < 2 ? 2 : 0, 2].map((x) => Math.round(x * (0.5 + alea())));
+        lignes.push([`r${i + 1}`, milieux[k], `S${1 + (i % 5)}`, ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Milieux' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5'].map((n) => v[n]);
+      const iv = await api('ajuster', { projet: q.id, type: 'INDVAL', x: [], y: especes, classe: v.milieu, echelle: 'none', nom: 'IndVal',
+        options: { permutations: 199, graine: 4, strates: { by: 'variable', variable: v.site } } });
+      const groupe = Object.fromEntries([].concat(iv.especes.espece).map((e, i) => [e, [].concat(iv.especes.groupe)[i]]));
+      verifier(iv.type === 'INDVAL' && iv.analyse === true && iv.N === 30 && [].concat(iv.combinaisons).length === 7 && iv.strates === 'site'
+        && [].concat(iv.vues_defaut).join() === 'indicatrices,indval_graphe' && groupe.sp1 === 'bois' && groupe.sp4 === 'bois+lande'
+        && typeof [].concat(iv.especes.p_ajuste)[0] === 'number' && iv.retenues.corrigees >= 3 && iv.reglages.classe === v.milieu, `IndVal : ${iv.chiffres}, ${JSON.stringify(groupe)}`);
+      const mt = await api('methodes', { modele: iv.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /IndVal\.g/.test(x)) && mt.references.some((x) => /Dufrêne, M\./.test(x)), 'texte des méthodes');
+      const e = await api('exporter', { modele: iv.id, chemin: path.join(dossier, 'indval.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      const sc = await api('script_r', { modele: iv.id, chemin: path.join(dossier, 'indval.R'), version: 'essai', langue: 'en' });
+      verifier(fs.existsSync(sc.script) && !sc.ecart && /indval_test <- function/.test(fs.readFileSync(sc.script, 'utf8')), `script indval.R : ${sc.ecart || 'sans écart'}`);
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'INDVAL', x: [v.sp1], y: [v.sp2], classe: v.milieu, echelle: 'none' }); } catch (err) { refus = err.message; }
+      verifier(/variable X/.test(refus), `des X refusés : « ${refus} »`);
+    });
+    await etape('raréfaction et accumulation des espèces, par groupe ; des effectifs non entiers (moteur/R/rarefaction.R)', async () => {
+      // 20 relevés de 6 espèces (des effectifs) dans deux milieux ; une valeur manquante
+      let g = 23;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tmilieu\tsp1\tsp2\tsp3\tsp4\tsp5\tsp6'];
+      for (let i = 0; i < 20; i += 1) {
+        const sp = [8, 5, 3, 2, 1, 1].map((x) => String(Math.round(x * 2 * alea()) + (x === 8 ? 1 : 0)));
+        if (i === 4) sp[2] = '';
+        lignes.push([`r${i + 1}`, i < 10 ? 'haie' : 'champ', ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Effectifs' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5', 'sp6'].map((n) => v[n]);
+      const r = await api('rarefaction', { projet: q.id, especes, groupe: v.milieu });
+      const col = (df, k) => [].concat(df[k]);
+      const N = col(r.observations, 'N');
+      verifier(r.n === 19 && r.manquantes === 1 && r.entiers === true && col(r, 'niveaux').length === 2 && col(r.estimateurs, 'groupe').length === 2
+        && r.taille === Math.min(...N) && col(r.observations, 'Sm').every((x) => typeof x === 'number') && col(r.courbes, 'uid').length > 19,
+      `raréfaction : ${JSON.stringify({ n: r.n, manquantes: r.manquantes, taille: r.taille, entiers: r.entiers })}`);
+      // the last point of each accumulation curve: the species seen in its group
+      const acc = col(r.accumulation, 'richesse');
+      const fins = col(r.accumulation, 'sites').map((s, i) => [s, i]).filter(([s], i, a) => i === a.length - 1 || a[i + 1][0] === 1).map(([, i]) => acc[i]);
+      verifier(fins.length === 2 && fins.every((x, k) => Math.abs(x - col(r.estimateurs, 'S')[k]) < 1e-9), `accumulation : ${JSON.stringify(fins)}`);
+      const q2 = await api('coller', { texte: ['nom\ta\tb', 'x\t1,5\t2', 'y\t0\t3', 'z\t2\t1'].join('\r\n'), nom: 'Couverts' });
+      const v2 = Object.fromEntries(q2.variables.map((x) => [x.nom, x.uid]));
+      const r2 = await api('rarefaction', { projet: q2.id, especes: [v2.a, v2.b] });
+      verifier(r2.entiers === false && !r2.courbes && col(r2.observations, 'Sm').every((x) => x === null) && col(r2.estimateurs, 'jack1').length === 1,
+        `non entiers : ${JSON.stringify(r2.observations)}`);
+      let refus = '';
+      try { await api('rarefaction', { projet: q.id, especes: [v.sp1] }); } catch (err) { refus = err.message; }
+      verifier(/deux espèces/.test(refus), `une seule espèce refusée : « ${refus} »`);
+    });
+    await etape('PCoA, NMDS, PERMANOVA et test de Mantel (moteur/R/communautes.R)', async () => {
+      // 30 relevés de 6 espèces le long d'un gradient de température, trois habitats, 5 sites
+      let g = 13;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\thabitat\ttemp\tsp1\tsp2\tsp3\tsp4\tsp5\tsp6'];
+      for (let i = 1; i <= 30; i += 1) {
+        const temp = 8 + 10 * alea();
+        const h = ['lande', 'prairie', 'bois'][i % 3];
+        const sp = [temp, 20 - temp, h === 'bois' ? 8 : 2, h === 'lande' ? 6 : 1, temp / 2, 4].map((v) => Math.round(v * (0.5 + alea())));
+        lignes.push([`r${i}`, `S${1 + (i % 5)}`, h, temp.toFixed(2), ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Communautés' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5', 'sp6'].map((n) => v[n]);
+      const pcoa = await api('ajuster', { projet: q.id, type: 'PCOA', x: [v.temp, v.habitat], y: especes, echelle: 'none', nom: 'PCoA',
+        options: { distance: 'bray', transformation: 'racine2', permutations: 99, graine: 2 } });
+      verifier(pcoa.analyse === true && pcoa.prediction === false && pcoa.A === 0 && pcoa.N === 30 && /PCoA1/.test(pcoa.chiffres) && pcoa.observations.PCoA1.length === 30
+        && [].concat(pcoa.vues_defaut).join() === 'ordination_dist,valeurs_propres_pcoa' && [].concat(pcoa.ajustement.vecteurs.terme).join() === 'temp'
+        && [].concat(pcoa.ajustement.centroides.terme).length === 3 && [].concat(pcoa.especes.terme).length === 6 && pcoa.reglages.options.transformation === 'racine2',
+      `PCoA : ${pcoa.chiffres}, N = ${pcoa.N}`);
+      const seule = await api('ajuster', { projet: q.id, type: 'PCOA', x: [], y: especes, echelle: 'none', nom: 'PCoA seule', options: { correction: 'lingoes' } });
+      verifier(!seule.ajustement && seule.distance.correction === 'lingoes' && ![].concat(seule.valeurs_propres.negative).some(Boolean), 'PCoA sans X, corrigée par Lingoes');
+      const nmds = await api('ajuster', { projet: q.id, type: 'NMDS', x: [v.temp], y: especes, echelle: 'none', nom: 'NMDS', options: { distance: 'bray', k: 2, departs: 5, permutations: 99 } });
+      verifier(nmds.type === 'NMDS' && nmds.stress > 0 && nmds.stress < 0.3 && [].concat(nmds.stress_departs.stress).length === 6 && nmds.shepard.dissimilarite.length === 435
+        && nmds.observations.NMDS2.length === 30 && [].concat(nmds.vues_defaut).join() === 'ordination_dist,shepard', `NMDS : ${nmds.chiffres}`);
+      const perma = await api('ajuster', { projet: q.id, type: 'PERMANOVA', x: [v.temp, v.habitat], y: especes, classe: v.site, echelle: 'none', nom: 'PERMANOVA',
+        options: { distance: 'bray', par: 'marges', permutations: 99, graine: 3 } });
+      verifier(perma.type === 'PERMANOVA' && [].concat(perma.table.terme).join() === 'temp,habitat,Résidus,Total' && perma.dispersions.length === 2
+        && perma.dispersions.map((d) => d.variable).join() === 'habitat,site' && typeof perma.modele.p === 'number'
+        && [].concat(perma.vues_defaut).join() === 'permanova,dispersion' && perma.reglages.classe === v.site, `PERMANOVA : ${perma.chiffres}`);
+      const mantel = await api('ajuster', { projet: q.id, type: 'MANTEL', x: [v.temp], y: especes, echelle: 'UV', nom: 'Mantel',
+        options: { distance: 'bray', methode: 'spearman', permutations: 99, graine: 4, z: [v.habitat], strates: { by: 'variable', variable: v.site } } });
+      verifier(mantel.type === 'MANTEL' && mantel.test.r > 0 && typeof mantel.test.r_partiel === 'number' && [].concat(mantel.correlogramme.table.classe).length >= 3
+        && mantel.paires.y.length === 435 && mantel.reglages.options.methode === 'spearman' && [].concat(mantel.reglages.options.z).join() === String(v.habitat)
+        && mantel.strates === 'site', `Mantel : ${mantel.chiffres}`);
+      const re = await api('reajuster', { modele: perma.id, exclues: [1, 2] });
+      verifier(re.type === 'PERMANOVA' && re.N === 28 && re.A === 0, `PERMANOVA réajustée : N = ${re.N}`);
+      for (const [m, f] of [[pcoa, 'pcoa.xlsx'], [nmds, 'nmds.xlsx'], [perma, 'permanova.xlsx'], [mantel, 'mantel.xlsx']]) {
+        const e = await api('exporter', { modele: m.id, chemin: path.join(dossier, f) });
+        verifier(fs.existsSync(e.chemin), `exporter ${f}`);
+      }
+      for (const [m, f, langue] of [[pcoa, 'pcoa.R', 'fr'], [nmds, 'nmds.Rmd', 'en'], [perma, 'permanova.R', 'en'], [mantel, 'mantel.qmd', 'fr']]) {
+        const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, f), version: 'essai', langue });
+        verifier(fs.existsSync(s.script) && !s.ecart, `script ${f} : ${s.ecart || 'sans écart'}`);
+      }
+      const mt = await api('methodes', { modele: perma.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /permutational multivariate analysis of variance \(PERMANOVA/.test(x)) && mt.paragraphes.some((x) => /adonis2/.test(x))
+        && mt.paragraphes.some((x) => /betadisper/.test(x))
+        && mt.references.some((x) => /Anderson, M\. J\. \(2001\)/.test(x)), 'texte des méthodes de la PERMANOVA');
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'PERMANOVA', x: [], y: especes, echelle: 'none' }); } catch (err) { refus = err.message; }
+      verifier(/variables X/.test(refus), `PERMANOVA sans X refusée : « ${refus} »`);
+      let refusEn = '';
+      try { await api('ajuster', { projet: q.id, type: 'PCOA', x: [], y: [v.temp, v.habitat], echelle: 'none' }, 'en'); } catch (err) { refusEn = err.message; }
+      verifier(/quantitative variables only/.test(refusEn), `Y qualitative refusée en anglais : « ${refusEn} »`);
+      let refusHCA = '';
+      try { await api('hca', { modele: nmds.id }); } catch (err) { refusHCA = err.message; }
+      verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
+    });
+    await etape('document Quarto reproductible : l’export vers R des modèles cités à côté, chaque valeur en R, rendu par Quarto quand il est là', async () => {
+      // a PLS, a GLM and a PERMANOVA of 40 made-up relevés, cited by a document resolved as the
+      // interface resolves it (references.js, rendu_document.js), then written as a reproducible .qmd
+      let g = 21;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\thabitat\ttemp\tph\tsp1\tsp2\tsp3\tsp4\toiseaux\tbiomasse'];
+      for (let i = 1; i <= 40; i += 1) {
+        const temp = 8 + 10 * alea();
+        const h = ['bois', 'lande', 'prairie'][i % 3];
+        const sp = [temp, 20 - temp, h === 'bois' ? 8 : 2, 4].map((x) => Math.round(x * (0.5 + alea())));
+        lignes.push([`r${i}`, h, temp.toFixed(2), (6 + alea()).toFixed(2), ...sp, Math.round((temp / 3) * (0.5 + alea())), (2 + 0.3 * temp + alea()).toFixed(3)].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Reproductible' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const modeles = {
+        M1: await api('ajuster', { projet: q.id, type: 'PLS', x: [v.temp, v.ph, v.sp1, v.sp2], y: [v.biomasse], A: 2, nom: 'M1' }),
+        M2: await api('ajuster', { projet: q.id, type: 'GLM', x: [v.temp, v.habitat], y: [v.oiseaux], echelle: 'none', nom: 'M2', famille: 'poisson' }),
+        M3: await api('ajuster', { projet: q.id, type: 'PERMANOVA', x: [v.habitat, v.temp], y: [v.sp1, v.sp2, v.sp3, v.sp4], echelle: 'none', nom: 'M3',
+          options: { distance: 'bray', permutations: 99, graine: 3 } }),
+      };
+      verifier(![].concat((await api('export_r_possible', { projet: q.id, noms: Object.keys(modeles) })).sans_export).length, 'les trois s’exportent vers R');
+      const interfaceUrl = (f) => require('url').pathToFileURL(path.join(interfaceDir, f)).href;
+      const { formeReference, texteForme, separerCible } = await import(interfaceUrl('references.js'));
+      const { analyser, pluginReferences, versQmd, referencesReproductibles } = await import(interfaceUrl('rendu_document.js'));
+      const md = require('markdown-it')({ html: false, linkify: true }).use(pluginReferences);
+      const terme = [].concat(modeles.M2.coefficients_regression.terme)[1];
+      const valeurs = ['M1.Q2', 'M1.R2Y:%', 'M1.N', 'M1.vip.temp', 'M1.coef.temp', 'M1.RMSEcv', 'M1.cvanova.p', 'M1.gain', 'M2.AIC', `M2.coef.${terme}`, `M2.p.${terme}`,
+        'M2.deviance_expliquee', 'M2.Q2', 'M3.N', 'M3.K'];
+      const texte = `---\ntitle: "Essai"\n---\n\n${valeurs.map((c, i) => `- v${i + 1}: {{${c}}}`).join('\n')}\n\n{{M1.scores #fig-scores | Scores}}\n\n`
+        + '{{M2.table.coefficients #tbl-coef | Coefficients}}\n\n{{M3.permanova #fig-permanova | PERMANOVA}}\n\n{{M1.biplot | Biplot}}\n\n{{M1.methodes}}\n';
+      const analyse = analyser(md, texte);
+      const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      let figures = 0;
+      const resolus = analyse.refs.map((tok) => {
+        const ref = tok.meta.ref;
+        const c = separerCible(ref.cible, Object.keys(modeles));
+        const m = modeles[c.modele];
+        const base = { modele: m.id, chemin: c.chemin, legende: ref.legende, etiquette: ref.etiquette };
+        if (['scores', 'permanova', 'biplot'].includes(c.chemin[0])) {
+          figures += 1;
+          return { ...base, genre: 'figure', image: PNG, largeur: 900, hauteur: 580, numero: figures, nom: c.chemin[0], vue: c.chemin[0], variante: {} };
+        }
+        if (c.chemin[0] === 'table') return { ...base, genre: 'tableau', blocs: [{ entetes: ['x'], lignes: [['1']] }], numero: 1, nom: 'Coefficients', cle: c.chemin[1] };
+        if (c.chemin[0] === 'methodes') return { ...base, genre: 'texte', paragraphes: ['Les méthodes.'] };
+        const f = formeReference(m, c.chemin, ref);
+        return { ...base, genre: 'valeur', texte: texteForme(f, 'fr'), forme: f };
+      });
+      verifier(resolus.every((x) => !x.erreur), 'références résolues');
+      const ici = path.join(dossier, 'reproductible');
+      fs.mkdirSync(ici);
+      const rep = await api('document_reproductible', { projet: q.id, langue: 'fr', version: 'essai', nom: 'Essai', dossier: ici, ...referencesReproductibles(resolus) });
+      const refs = [].concat(rep.references);
+      const enDur = refs.map((x, i) => (x && x.raison ? `${analyse.refs[i].meta.ref.cible} (${x.raison})` : null)).filter(Boolean);
+      verifier(refs.slice(0, valeurs.length).every((x) => x && x.code) && enDur.length === 2 && /biplot/.test(enDur[0]) && /methodes/.test(enDur[1]),
+        `${valeurs.length} valeurs en R ; en dur : ${enDur.join(', ')}`);
+      verifier(['nuee.R', 'M1.R', 'M1 - donnees.csv', 'M2.R', 'M3.R'].every((f) => fs.existsSync(path.join(ici, 'Essai_R', f))) && [].concat(rep.relatifs).length === 7,
+        `à côté : ${[].concat(rep.relatifs).join(', ')}`);
+      const qmd = versQmd(texte, analyse, resolus, { fichierFigure: (x) => `Essai_figures/figure-${x.numero}.png`, langue: 'fr', titre: 'Essai', reproductible: rep });
+      verifier(/^```\{r\}\n#\| label: nuee-modeles/m.test(qmd.texte) && qmd.texte.includes('- v1: `r nuee_nombre(M1$composantes$Q2cum[2])`')
+        && qmd.texte.includes('#| label: fig-scores') && qmd.texte.includes('#| label: tbl-coef') && qmd.images.length === 1, 'le .qmd : son premier bloc, ses valeurs en R, ses blocs');
+      fs.writeFileSync(path.join(ici, 'Essai.qmd'), qmd.texte);
+      fs.mkdirSync(path.join(ici, 'Essai_figures'));
+      fs.writeFileSync(path.join(ici, 'Essai_figures', 'figure-3.png'), Buffer.from(PNG.split(',')[1], 'base64'));
+      // rendered by Quarto when the computer has it (with knitr and rmarkdown for R): the numbers of the page are Nuée's
+      const quarto = [process.env.QUARTO_PATH, ...(process.env.PATH || '').split(path.delimiter).map((d) => path.join(d, process.platform === 'win32' ? 'quarto.exe' : 'quarto')),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Quarto', 'bin', 'quarto.exe'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Quarto', 'bin', 'quarto.exe'),
+        '/usr/local/bin/quarto', '/opt/quarto/bin/quarto'].filter(Boolean).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+      if (!quarto || !rep.R.knitr || !rep.R.rmarkdown) {
+        console.log(`          (${quarto ? 'knitr ou rmarkdown absent' : 'Quarto absent'} : le .qmd n’est pas rendu)`);
+        return;
+      }
+      execFileSync(quarto, ['render', 'Essai.qmd', '--to', 'html'], { cwd: ici, env: { ...process.env, QUARTO_R: rep.R.bin }, stdio: 'pipe' });
+      const page = fs.readFileSync(path.join(ici, 'Essai.html'), 'utf8');
+      const rendus = Object.fromEntries([...page.matchAll(/<li>v(\d+): ([^<]*)<\/li>/g)].map((x) => [x[1], x[2].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')]));
+      const differents = resolus.slice(0, valeurs.length).map((x, i) => (rendus[i + 1] === x.texte ? null : `${valeurs[i]} : ${rendus[i + 1]} au lieu de ${x.texte}`)).filter(Boolean);
+      verifier(!differents.length && /id="fig-scores"/.test(page) && /id="tbl-coef"/.test(page) && /id="fig-permanova"/.test(page),
+        `rendu par Quarto : ${differents.join(', ') || 'les nombres de Nuée'}`);
+      console.log(`          (rendu par Quarto : ${valeurs.length} nombres, ${resolus.slice(0, 3).map((x) => x.texte).join(' ; ')}…)`);
     });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
@@ -1282,6 +1797,327 @@ async function principal() {
       let refusHCA = '';
       try { await api('hca', { modele: km.id }); } catch (err) { refusHCA = err.message; }
       verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
+    });
+    await etape('données spatiales : coordonnées, carte, autocorrélation, lissage spatial, GeoPackage (moteur/R/spatial.R, geopackage.R)', async () => {
+      // 40 placettes en Lambert-93 autour de la Tour du Valat, une valeur qui varie dans l'espace
+      let g = 5;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['placette\tX_L93\tY_L93\tx\tv'];
+      for (let i = 1; i <= 40; i += 1) {
+        const X = 820000 + 25000 * alea();
+        const Y = 6260000 + 25000 * alea();
+        const x = alea();
+        lignes.push([`p${i}`, X.toFixed(1), Y.toFixed(1), x.toFixed(3), (Math.sin(X / 4000) + Math.cos(Y / 5000) + x + 0.2 * alea()).toFixed(4)].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Placettes' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const c0 = await api('coordonnees', { projet: q.id });
+      verifier(c0.coordonnees === null && c0.proposition.x === v.X_L93 && c0.proposition.y === v.Y_L93 && c0.proposition.systeme === 2154,
+        `coordonnées proposées : ${JSON.stringify(c0.proposition)}`);
+      const c1 = await api('coordonnees', { projet: q.id, regler: true, x: v.X_L93, y: v.Y_L93, systeme: '2154' });
+      verifier(c1.coordonnees.systeme === 2154 && c1.projet.coordonnees.nom_x === 'X_L93' && c1.projet.annulable, 'coordonnées réglées, annulables');
+      const carte = await api('carte', { projet: q.id });
+      verifier(carte.uid.length === 40 && carte.lon.every((l) => l > 4.4 && l < 4.9) && carte.lat.every((l) => l > 43.3 && l < 43.8), 'carte : longitudes et latitudes');
+      const a = await api('autocorrelation_spatiale', { projet: q.id, variable: v.v, permutations: 99 });
+      verifier(a.n === 40 && a.moran.I > 0 && a.moran.p_permutations <= 0.05 && a.correlogramme.I.length === 10 && a.variogramme.gamma.length > 3,
+        `I de Moran de v : ${a.moran.I}`);
+      const sansLissage = await api('ajuster', { projet: q.id, type: 'GAM', x: [v.x], y: [v.v], echelle: 'none', famille: 'gaussienne', nom: 'G0' });
+      const gam = await api('ajuster', { projet: q.id, type: 'GAM', x: [v.x], y: [v.v], echelle: 'none', famille: 'gaussienne', nom: 'G1',
+        lisse_spatial: { variables: [v.X_L93, v.Y_L93] } });
+      verifier([].concat(gam.courbes.terme).includes('s(X_L93, Y_L93)') && gam.reglages.lisse_spatial && gam.qualite.AIC < sansLissage.qualite.AIC
+        && gam.observations['s(X_L93, Y_L93)'].length === 40, `lissage spatial : AIC ${gam.qualite.AIC} contre ${sansLissage.qualite.AIC}`);
+      const r = await api('autocorrelation_spatiale', { modele: gam.id, permutations: 0 });
+      verifier(r.moran.I < a.moran.I, `les résidus du lissage spatial : I = ${r.moran.I}`);
+      const f = await api('formule', { projet: q.id, type: 'GAM', x: [v.x], y: [v.v], lisse_spatial: { variables: [v.X_L93, v.Y_L93], k: 20 } });
+      verifier(f.formule === 'v ~ x + s(X_L93, Y_L93, k = 20)', `formule : ${f.formule}`);
+      const gpkg = path.join(dossier, 'placettes.gpkg');
+      await api('exporter_donnees', { projet: q.id, chemin: gpkg });
+      const resultats = path.join(dossier, 'resultats.gpkg');
+      await api('exporter', { modele: gam.id, chemin: resultats });
+      const o = await api('ouvrir', { chemin: gpkg });
+      verifier(o.coordonnees && o.coordonnees.systeme === 2154 && o.observations.uid.length === 40, 'GeoPackage écrit, rouvert avec ses coordonnées');
+      const choix = await api('ouvrir', { chemin: resultats });
+      verifier(choix.choisir && [].concat(choix.choisir).includes('G1'), `GeoPackage de résultats : ${[].concat(choix.choisir || []).join(', ')}`);
+      const pr = await api('par_reponse', { modele: sansLissage.id, reponses: [v.v, v.Y_L93], correction: 'holm' });
+      verifier([].concat(pr.resume.reponse).length === 2 && [].concat(pr.tableau.terme).includes('x') && pr.correction === 'holm' && /Holm/.test(pr.methodes),
+        `un modèle par réponse : ${[].concat(pr.resume.reponse).join(', ')}`);
+      const rt = await api('resultats_texte', { modele: gam.id, langue: 'en' });
+      verifier([].concat(rt.paragraphes).some((x) => /The model of “v” uses 40 observations/.test(x)) && [].concat(rt.paragraphes).some((x) => /s\(X_L93, Y_L93\), edf =/.test(x)),
+        `texte des résultats : ${[].concat(rt.paragraphes).join(' ').slice(0, 160)}`);
+      const t = await api('projet_texte', { projet: q.id, version: 'essai' });
+      verifier(/"coordonnees"/.test(t.texte) && /"paquets"/.test(t.texte), 'projet en texte, pour un rapport de problème');
+    });
+    await etape('valeurs de rasters aux observations : GeoTIFF écrit octet par octet, grille ASCII, refus, annuler, enregistrer (moteur/R/raster.R)', async () => {
+      // un GeoTIFF petit-boutiste, réels de 32 bits en une bande de lignes, en Lambert-93 : 50 × 40 cellules de 500 m depuis
+      // (815000, 6290000), de valeur 10 + i + j / 2 (ligne i, colonne j), une cellule sans valeur (-9999)
+      const geotiff = (chemin, { epsg = 2154, compression = 1 } = {}) => {
+        const W = 50; const H = 40;
+        const image = Buffer.alloc(W * H * 4);
+        for (let i = 0; i < H; i += 1) for (let j = 0; j < W; j += 1) image.writeFloatLE(i === 5 && j === 6 ? -9999 : 10 + i + j / 2, (i * W + j) * 4);
+        const court = (...v) => { const b = Buffer.alloc(2 * v.length); v.forEach((x, k) => b.writeUInt16LE(x, 2 * k)); return b; };
+        const long = (...v) => { const b = Buffer.alloc(4 * v.length); v.forEach((x, k) => b.writeUInt32LE(x, 4 * k)); return b; };
+        const reel = (...v) => { const b = Buffer.alloc(8 * v.length); v.forEach((x, k) => b.writeDoubleLE(x, 8 * k)); return b; };
+        const entrees = [[256, 4, 1, long(W)], [257, 4, 1, long(H)], [258, 3, 1, court(32)], [259, 3, 1, court(compression)], [262, 3, 1, court(1)],
+          [273, 4, 1, long(8)], [277, 3, 1, court(1)], [278, 4, 1, long(H)], [279, 4, 1, long(image.length)], [284, 3, 1, court(1)], [339, 3, 1, court(3)],
+          [33550, 12, 3, reel(500, 500, 0)], [33922, 12, 6, reel(0, 0, 0, 815000, 6290000, 0)],
+          [34735, 3, 16, court(1, 1, 0, 3, 1024, 0, 1, 1, 1025, 0, 1, 1, 3072, 0, 1, epsg)], [42113, 2, 6, Buffer.from('-9999\0', 'latin1')]];
+        // (les valeurs qui ne tiennent pas dans leur entrée, après l'image ; puis le répertoire)
+        let position = 8 + image.length;
+        const hors = [];
+        for (const e of entrees) if (e[3].length > 4) { e.push(position); hors.push(e[3]); position += e[3].length; }
+        const repertoire = Buffer.alloc(2 + 12 * entrees.length + 4);
+        repertoire.writeUInt16LE(entrees.length, 0);
+        entrees.forEach(([etiquette, type, n, valeur, ou], k) => {
+          const o = 2 + 12 * k;
+          repertoire.writeUInt16LE(etiquette, o); repertoire.writeUInt16LE(type, o + 2); repertoire.writeUInt32LE(n, o + 4);
+          if (ou !== undefined) repertoire.writeUInt32LE(ou, o + 8); else valeur.copy(repertoire, o + 8);
+        });
+        const tete = Buffer.from([0x49, 0x49, 42, 0, 0, 0, 0, 0]);
+        tete.writeUInt32LE(position, 4);
+        fs.writeFileSync(chemin, Buffer.concat([tete, image, ...hors, repertoire]));
+      };
+      const tif = path.join(dossier, 'mnt.tif');
+      geotiff(tif);
+      const jpeg = path.join(dossier, 'photo.tif');
+      geotiff(jpeg, { compression: 7 });
+      const nord = path.join(dossier, 'nord.tif');
+      geotiff(nord, { epsg: 27561 });
+      // une grille ASCII d'ESRI de 10 × 8 cellules de 2 km, ses classes, et son .prj (Lambert-93, sans code)
+      const asc = path.join(dossier, 'occupation.asc');
+      const lignesAsc = ['ncols 10', 'nrows 8', 'xllcorner 815000', 'yllcorner 6270000', 'cellsize 2500', 'NODATA_value -1'];
+      for (let i = 0; i < 8; i += 1) lignesAsc.push(Array.from({ length: 10 }, (_, j) => (i + j) % 4).join(' '));
+      fs.writeFileSync(asc, lignesAsc.join('\n'));
+      fs.writeFileSync(path.join(dossier, 'occupation.prj'), 'PROJCS["RGF_1993_Lambert_93",GEOGCS["GCS_RGF_1993",DATUM["D_RGF_1993",SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Conformal_Conic"],PARAMETER["False_Easting",700000.0],PARAMETER["False_Northing",6600000.0],PARAMETER["Central_Meridian",3.0],PARAMETER["Standard_Parallel_1",49.0],PARAMETER["Standard_Parallel_2",44.0],PARAMETER["Latitude_Of_Origin",46.5],UNIT["Meter",1.0]]');
+      // des placettes : au centre de la cellule (3, 4), au coin de quatre cellules, sur la cellule sans valeur, hors du raster, sans coordonnées
+      const x0 = 815000; const y0 = 6290000;
+      const placettes = [['centre', x0 + 4.5 * 500, y0 - 3.5 * 500], ['coin', x0 + 10 * 500, y0 - 10 * 500], ['sans_valeur', x0 + 6.5 * 500, y0 - 5.5 * 500],
+        ['dehors', x0 - 1000, y0 - 1000], ['sans_coordonnees', '', y0 - 2000], ['loin', x0 + 20.25 * 500, y0 - 30.75 * 500]];
+      const q = await api('coller', { texte: ['placette\tX\tY\tz', ...placettes.map((l, k) => [...l, k].join('\t'))].join('\r\n'), nom: 'Placettes (raster)' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      let sans = '';
+      try { await api('raster_infos', { projet: q.id, chemins: [tif] }); } catch (e) { sans = e.message; }
+      verifier(/n'a pas de coordonnées/.test(sans), `sans coordonnées : « ${sans} »`);
+      await api('coordonnees', { projet: q.id, regler: true, x: v.X, y: v.Y, systeme: '2154' });
+      const infos = [].concat((await api('raster_infos', { projet: q.id, chemins: [tif, asc, jpeg, nord] })).fichiers);
+      const [i1, i2, i3, i4] = infos;
+      verifier(i1.systeme.code === 2154 && i1.largeur === 50 && i1.hauteur === 40 && i1.type === 'float32' && i1.resolution === '500 m' && i1.methode === 'bilineaire'
+        && i1.nodata === -9999 && i1.dedans === 4 && i1.observations === 5 && [].concat(i1.noms).join() === 'mnt' && i1.taille === fs.statSync(tif).size,
+      `le GeoTIFF : ${JSON.stringify(i1)}`);
+      verifier(i2.format === 'ASCII' && i2.systeme.code === 2154 && i2.methode === 'cellule' && i2.resolution === '2500 m', `la grille ASCII : ${JSON.stringify(i2)}`);
+      verifier(/la compression JPEG ne se lit pas ici/.test(i3.erreur) && /EPSG:27561/.test(i4.erreur), `refus : « ${i3.erreur} » ; « ${i4.erreur} »`);
+      const en = [].concat((await api('raster_infos', { projet: q.id, chemins: [jpeg] }, 'en')).fichiers)[0];
+      verifier(/JPEG compression isn't read here/.test(en.erreur), `en anglais : « ${en.erreur} »`);
+      const r = await api('ajouter_raster', { projet: q.id, fichiers: [
+        { chemin: tif, methode: 'cellule', noms: ['altitude'] }, { chemin: tif, methode: 'bilineaire', noms: ['altitude_bil'] },
+        { chemin: tif, methode: 'moyenne', rayon: 600, noms: ['altitude_600m'] }, { chemin: asc, methode: 'majorite', rayon: 3000, noms: ['occupation'] }] });
+      const d = await api('donnees', { projet: q.id });
+      const col = (nom) => d.valeurs[d.variables.indexOf(nom)];
+      const f = (i, j) => 10 + i + j / 2;
+      // (le coin de quatre cellules : la cellule en bas à droite, l'interpolation à mi-chemin ; dans 600 m du centre, la cellule et ses quatre voisines)
+      verifier(JSON.stringify(col('altitude')) === JSON.stringify([f(3, 4), f(10, 10), null, null, null, f(30, 20)])
+        && Math.abs(col('altitude_bil')[1] - f(9.5, 9.5)) < 1e-9 && col('altitude_bil')[0] === f(3, 4) && col('altitude_bil')[3] === null
+        && Math.abs(col('altitude_600m')[0] - f(3, 4)) < 1e-9 && r.annulable === 'valeurs de mnt.tif, occupation.asc',
+      `valeurs : ${JSON.stringify({ cellule: col('altitude'), bilineaire: col('altitude_bil'), cercle: col('altitude_600m') })}`);
+      verifier([].concat(r.raster.phrases)[0] === '« altitude » : 3 observation(s) sur 6 ont une valeur, manquante pour 1 hors du raster, 1 sur une cellule sans valeur, 1 sans coordonnées.'
+        && col('occupation').filter((x) => x !== null).length === 5, `phrases : ${[].concat(r.raster.phrases).join(' | ')}`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${q.id} <- ajouter_valeurs_rasters(${q.id}, list(list(chemin = `) && j.includes('methode = "moyenne", rayon = 600'), 'journal : ajouter_valeurs_rasters');
+      // le texte des Méthodes d'un modèle qui utilise ces variables dit d'où elles viennent
+      const lm = await api('ajuster', { projet: q.id, type: 'LM', x: [r.variables.find((x) => x.nom === 'altitude_bil').uid], y: [v.z], echelle: 'none', nom: 'R1' });
+      const mt = await api('methodes', { modele: lm.id, langue: 'fr' });
+      const me = await api('methodes', { modele: lm.id, langue: 'en' });
+      verifier(mt.paragraphes[0].includes('Lues dans des rasters à la position de chaque observation : « altitude_bil » de mnt.tif (GeoTIFF, cellules de 500 m, RGF93 v1 / Lambert-93 ; par interpolation bilinéaire')
+        && me.paragraphes[0].includes('“altitude_bil” from mnt.tif (GeoTIFF, 500 m cells, RGF93 v1 / Lambert-93; by bilinear interpolation'), `méthodes : ${mt.paragraphes[0]}`);
+      // enregistré et rouvert : des variables comme les autres ; puis Ctrl+Z les retire
+      const fichier = path.join(dossier, 'placettes_raster.nuee');
+      await api('enregistrer', { projet: q.id, chemin: fichier });
+      const o = await api('ouvrir', { chemin: fichier });
+      verifier(['altitude', 'altitude_bil', 'altitude_600m', 'occupation'].every((n) => o.variables.some((x) => x.nom === n)), 'enregistré et rouvert');
+      const u = (await api('annuler', { projet: q.id })).projet;
+      verifier(u.variables.map((x) => x.nom).join() === 'X,Y,z' && u.annulable === 'coordonnées', `annuler : ${u.variables.map((x) => x.nom).join()}`);
+      let refus = '';
+      try { await api('ajouter_raster', { projet: q.id, fichiers: [{ chemin: nord, noms: ['x'] }] }); } catch (e) { refus = e.message; }
+      verifier(/nord.tif : le système de coordonnées du fichier, EPSG:27561/.test(refus) && !(await api('projet', { projet: q.id })).variables.some((x) => x.nom === 'x'),
+        `un système inconnu refusé, rien d'ajouté : « ${refus} »`);
+    });
+    await etape('TRIM : indices et tendances de comptages d’un tableau site × année (moteur/R/trim.R)', async () => {
+      // 8 sites comptés de 2015 à 2021, des comptages manquants (vides) et des lignes absentes, un habitat par site
+      let g = 3;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\tannee\tcompte\thabitat'];
+      for (let s = 1; s <= 8; s += 1) {
+        const niveau = 5 + 20 * alea();
+        for (let a = 2015; a <= 2021; a += 1) {
+          if (s === 3 && a === 2018) continue;  // (une ligne absente : un comptage manquant)
+          const attendu = niveau * Math.exp(-0.06 * (a - 2015)) * (0.7 + 0.6 * alea());
+          lignes.push([`c${s}-${a}`, `S${s}`, a, alea() < 0.2 ? '' : Math.round(attendu), s <= 4 ? 'bocage' : 'marais'].join('\t'));
+        }
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Comptages' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const options = { site: { by: 'variable', variable: v.site }, temps: { by: 'variable', variable: v.annee }, modele: 3, surdispersion: true, correlation: true };
+      const def = { projet: q.id, type: 'TRIM', x: [v.habitat], y: [v.compte], echelle: 'none', nom: 'TRIM', options };
+      const verif = await api('verifier', def);
+      verifier(![].concat(verif.variables.uid || []).length, `vérification avant l’ajustement : ${JSON.stringify(verif.variables)}`);
+      const tr = await api('ajuster', def);
+      verifier(tr.analyse === true && tr.prediction === false && tr.type === 'TRIM' && tr.A === 0 && tr.N === 55 && tr.I === 8 && tr.J === 7
+        && [].concat(tr.vues_defaut).join() === 'trim_indices,trim_totaux' && [].concat(tr.indices.impute).length === 7 && [].concat(tr.pentes.quoi).join() === 'imputee,modele'
+        && /^pente /.test(tr.chiffres) && tr.comptes.length === 8 && tr.comptes[0].length === 7 && tr.observations.compte.length === 55 && typeof tr.sigma2 === 'number'
+        && [].concat(tr.tests.test).includes('covariable') && tr.reglages.options.modele === 3, `TRIM : ${tr.chiffres}, N = ${tr.N}`);
+      const m2 = await api('ajuster', { ...def, x: [], nom: 'TRIM 2', options: { ...options, modele: 2, changements: [2015, 2018], correlation: false } });
+      verifier(m2.modele_trim === 2 && [].concat(m2.changements).join() === '2015,2018' && [].concat(m2.tests.test).join() === 'changement,changement' && m2.rho === null,
+        `TRIM modèle 2 : ${m2.chiffres}`);
+      const re = await api('reajuster', { modele: tr.id, exclues: [1] });
+      verifier(re.type === 'TRIM' && re.N === 54, `réajusté : N = ${re.N}`);
+      const mt = await api('methodes', { modele: tr.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /TRIM model 3/.test(x)) && mt.paragraphes.some((x) => /overall slope/.test(x)) && mt.references.some((x) => /TRIM 3 manual/.test(x)), 'texte des méthodes');
+      const e = await api('exporter', { modele: tr.id, chemin: path.join(dossier, 'trim.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      let refus = '';
+      try { await api('ajuster', { ...def, x: [], options: { ...options, site: { by: 'variable', variable: v.habitat } } }); } catch (err) { refus = err.message; }
+      verifier(/Deux lignes pour le même site et le même temps/.test(refus), `deux lignes pour un site et un temps refusées : « ${refus} »`);
+      let refusHCA = '';
+      try { await api('hca', { modele: tr.id }); } catch (err) { refusHCA = err.message; }
+      verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
+    });
+    await etape('échantillonnage par distances : densité et effectif de transects linéaires (moteur/R/distance.R)', async () => {
+      // 2 strates, 14 lignes : des oiseaux détectés selon une demi-normale (σ = 30 m), une ligne par détection, les lignes sans détection gardées
+      let g = 11;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tstrate\taire\ttransect\tlongueur\tdistance\ttaille'];
+      let k = 0;
+      for (const [strate, aire, n] of [['bocage', 12, 8], ['marais', 7, 6]]) {
+        for (let j = 1; j <= n; j += 1) {
+          const longueur = (1 + 2 * alea()).toFixed(2);
+          let vus = 0;
+          for (let a = 0; a < 40 * longueur; a += 1) {
+            const x = 100 * alea();
+            if (alea() < Math.exp(-(x * x) / (2 * 30 * 30))) {
+              k += 1;
+              vus += 1;
+              lignes.push([`d${k}`, strate, aire, `${strate}-${j}`, longueur, x.toFixed(1), 1 + Math.floor(3 * alea())].join('\t'));
+            }
+          }
+          if (!vus) { k += 1; lignes.push([`d${k}`, strate, aire, `${strate}-${j}`, longueur, '', ''].join('\t')); }
+        }
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Transects' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const options = { transect: 'ligne', echantillon: { by: 'variable', variable: v.transect }, effort: v.longueur, strate: { by: 'variable', variable: v.strate }, aire: v.aire,
+        troncature: { type: 'pourcentage', valeur: 5 }, cle: 'hn', serie: 'cos', ajustements: 'aic', monotonie: 'stricte', unites: { distance: 'm', effort: 'km', aire: 'km2' } };
+      const def = { projet: q.id, type: 'DISTANCE', x: [], y: [v.distance], echelle: 'none', nom: 'Distance', options };
+      const verif = await api('verifier', def);
+      verifier(![].concat(verif.variables.uid || []).length && ![].concat(verif.observations.uid || []).length, `vérification avant l’ajustement : ${JSON.stringify(verif.variables)}`);
+      const dm = await api('ajuster', def);
+      const dn = dm.densite;
+      verifier(dm.analyse === true && dm.prediction === false && dm.type === 'DISTANCE' && dm.A === 0 && dm.N === k && dm.n > 50
+        && [].concat(dm.vues_defaut).join() === 'distance_detection,distance_densite' && / · D [0-9.,]+ \/km² \(CV /.test(dm.chiffres)
+        && [].concat(dn.strate).length === 3 && [].concat(dn.strate)[2] === null && [].concat(dn.D).every((x) => x > 0) && [].concat(dn.N).every((x) => x > 0)
+        && [].concat(dm.candidats.modele)[0] === 'hn' && dm.courbe.x.length === 101 && dm.adequation.qq.uid.length === dm.n && typeof dm.adequation.cvm.p === 'number'
+        && dm.troncature.pourcentage === 5 && dm.au_dela > 0 && dm.effectif.quoi === 'ESW' && dm.reglages.options.cle === 'hn', `distance : ${dm.chiffres}, n = ${dm.n}`);
+      const groupes = await api('ajuster', { ...def, nom: 'Distance 2', options: { ...options, taille: v.taille, cle: 'hr', serie: 'cos', ajustements: 1, troncature: { type: 'distance', valeur: 90 } } });
+      verifier(groupes.groupes === true && groupes.modele_detection === 'hr + cos(2)' && [].concat(groupes.densite_groupes.D).length === 3 && groupes.troncature.w === 90,
+        `groupes, hasard et un terme : ${groupes.chiffres}`);
+      const points = await api('ajuster', { ...def, nom: 'Distance 3', options: { ...options, transect: 'point', effort: null, strate: null, aire: null, unites: { distance: 'm', effort: 'm', aire: 'ha' } } });
+      verifier(points.transect === 'point' && points.effectif.quoi === 'EDR' && points.densite_seule === true && [].concat(points.densite.D).length === 1 && / \/ha /.test(points.chiffres),
+        `points, la densité seule : ${points.chiffres}`);
+      const classes = await api('ajuster', { ...def, nom: 'Distance 4', options: { ...options, intervalles: [0, 15, 30, 50, 75, 100] } });
+      verifier([].concat(classes.intervalles).join() === '0,15,30,50,75,100' && classes.adequation.cvm === null && classes.adequation.qq === null
+        && classes.histogramme.compte.length === 5 && classes.troncature.w === 100, `distances par intervalles : ${classes.chiffres}`);
+      // des covariables de la fonction de détection (les variables Z : options.z) : la strate, qualitative, et la taille des groupes
+      const cov = await api('ajuster', { ...def, nom: 'Distance 5', options: { ...options, taille: v.taille, z: [v.strate, v.taille] } });
+      const niveaux = [].concat(cov.courbes_niveaux);
+      verifier(cov.formule === 'strate + taille' && cov.p_moyenne === true && cov.modele_detection === 'hn ~ strate + taille' && [].concat(cov.candidats.covariables).join('|') === '|strate + taille'
+        && [].concat(cov.termes_covariables).join() === 'strate(marais),taille' && [].concat(cov.covariables.reference)[0] === 'bocage' && niveaux.length === 1
+        && [].concat(niveaux[0].niveaux).join() === 'bocage,marais' && niveaux[0].g.length === 2 && niveaux[0].g[0].length === 101 && [].concat(cov.observations.p).filter((x) => x !== null).length === cov.n
+        && [].concat(cov.reglages.options.z).length === 2, `covariables : ${cov.chiffres}`);
+      const sc = await api('script_r', { modele: cov.id, chemin: path.join(dossier, 'distance_covariables.R'), version: 'essai', langue: 'en' });
+      verifier(fs.existsSync(sc.script) && !sc.ecart && /covariate_matrix\(covariates\)/.test(fs.readFileSync(sc.script, 'utf8')), `script à covariables : ${sc.ecart || 'sans écart'}`);
+      const re = await api('reajuster', { modele: dm.id, exclues: [1] });
+      verifier(re.type === 'DISTANCE' && re.N === k - 1, `réajusté : N = ${re.N}`);
+      const mt = await api('methodes', { modele: dm.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /distance sampling/.test(x)) && mt.paragraphes.some((x) => /Satterthwaite/.test(x)) && mt.references.some((x) => /^Buckland/.test(x))
+        && mt.references.some((x) => /^Fewster/.test(x)), 'texte des méthodes');
+      const e = await api('exporter', { modele: dm.id, chemin: path.join(dossier, 'distance.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      let refus = '';
+      try { await api('ajuster', { ...def, options: { ...options, effort: null } }); } catch (err) { refus = err.message; }
+      verifier(/longueur de la ligne/.test(refus), `des lignes sans effort refusées : « ${refus} »`);
+      for (const [m, f, langue, motif] of [[dm, 'distance.R', 'en', /choose_detection <- function/], [groupes, 'distance_groupes.R', 'fr', /densite_groupes <- densite_echantillonnage\(/]]) {
+        const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, f), version: 'essai', langue });
+        verifier(fs.existsSync(s.script) && !s.ecart && motif.test(fs.readFileSync(s.script, 'utf8')), `script ${f} : ${s.ecart || 'sans écart'}`);
+      }
+      // (the compile dialog of a reproducible Quarto document lists the models without an export to R:
+      // distance sampling exports, so none here)
+      const sansExport = [].concat((await api('export_r_possible', { projet: q.id, noms: ['Distance'] })).sans_export);
+      verifier(sansExport.length === 0, `sans export vers R : ${JSON.stringify(sansExport)}`);
+    });
+    await etape('forêts aléatoires et arbres boostés (moteur/R/forets.R, boosting.R)', async () => {
+      // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe, une présence
+      let g = 7;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\tgel\thaie\tpluie\tsol\tdensite\tniveau\tpresence'];
+      for (let i = 0; i < 72; i += 1) {
+        const gel = Math.round(30 * alea());
+        const haie = alea();
+        const densite = 2 + (gel > 12 ? -1.2 : 0) + (haie > 0.5 ? 0.6 : 0) + (alea() - 0.5);
+        lignes.push([`r${i + 1}`, `S${1 + Math.floor(i / 6)}`, i % 11 === 0 ? '' : gel, haie.toFixed(3), (200 * alea()).toFixed(1), ['argile', 'limon'][i % 2],
+          densite.toFixed(3), densite > 1.5 ? 'haute' : 'basse', densite > 1.8 ? 1 : 0].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Sites (forêts)' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const xs = [v.gel, v.haie, v.pluie, v.sol];
+      const vc = { by: 'variable', variable: v.site };
+      const foret = await api('ajuster', { projet: q.id, type: 'FOREST', x: xs, y: [v.densite], vc, echelle: 'none', nom: 'Forêt', options: { arbres: 200 } });
+      verifier(foret.analyse === true && foret.prediction === true && foret.type === 'FOREST' && foret.A === 0 && foret.N === 65 && foret.G === 12
+        && /^R2 OOB .* arbres$/.test(foret.chiffres) && [].concat(foret.vues_defaut).join() === 'ens_importance,ens_obspred'
+        && foret.observations['densite prédit (OOB)'].length === 65 && [].concat(foret.importance.variable).length === 4 && foret.courbe.arbres.length === 200
+        && foret.exclues_manquantes === 7 && foret.reglages.options.arbres === 200 && typeof foret.comparaison.Q2 === 'number', `forêt : ${foret.chiffres}, N = ${foret.N}`);
+      const dp = await api('dependance_partielle', { modele: foret.id, variables: ['gel'] });
+      const d0 = [].concat(dp.dependance)[0];
+      verifier(d0.variable === 'gel' && d0.x.length === 25 && d0.y.length === 25 && d0.tapis.length > 1, `dépendance partielle : ${d0.x.length} points`);
+      const fc = await api('ajuster', { projet: q.id, type: 'FOREST', x: xs, classe: v.niveau, vc, echelle: 'none', nom: 'Forêt classes', options: { arbres: 200 } });
+      verifier(fc.classement === true && [].concat(fc.vues_defaut).join() === 'ens_importance,ens_classement' && fc.classification.oob.table.length === 2
+        && fc.observations['probabilité haute'].length === 65 && fc.reglages.classe === v.niveau, `forêt de classement : ${fc.chiffres}`);
+      const bo = await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, y: [v.densite], vc, echelle: 'none', nom: 'Boosting',
+        options: { loi: 'gaussienne', arbres_max: 120, taux: 0.1, profondeur: 2, min_feuille: 5 } });
+      verifier(bo.type === 'BOOST' && bo.N === 65 && bo.meilleur >= 1 && bo.meilleur <= 120 && bo.courbe.validation.length === 120
+        && Math.abs([].concat(bo.influence.pourcentage).reduce((a, b) => a + b, 0) - 100) < 1e-6 && [].concat(bo.vues_defaut).join() === 'ens_importance,ens_erreur'
+        && /arbres$/.test(bo.chiffres) && bo.reglages.options.profondeur === 2, `arbres boostés : ${bo.chiffres}`);
+      const bb = await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, y: [v.presence], vc, echelle: 'none', nom: 'Boosting présence',
+        options: { loi: 'binomiale', arbres_max: 80, taux: 0.1, profondeur: 1, min_feuille: 5 } });
+      verifier(bb.loi === 'binomiale' && typeof bb.qualite.auc_vc === 'number' && bb.classification.vc.table.length === 2 && /^AUC/.test(bb.chiffres), `présence : ${bb.chiffres}`);
+      const db = await api('dependance_partielle', { modele: bb.id });
+      verifier([].concat(db.dependance).length === 4 && [].concat(db.dependance).every((d) => d.reponse.every((p) => p > 0 && p < 1)), 'dépendance partielle : 4 variables, des probabilités');
+      const pr = await api('predire', { modele: foret.id });
+      verifier(pr.observations['densite prédit'].length === 72 && pr.observations['densite prédit'].filter((x) => x === null).length === 7, 'prédire avec la forêt');
+      const pb = await api('predire', { modele: bb.id });
+      verifier(pb.observations['presence prédit'].length === 72, 'prédire avec les arbres boostés');
+      const re = await api('reajuster', { modele: foret.id, exclues: [2, 3] });
+      verifier(re.type === 'FOREST' && re.N === 63 && re.A === 0, `forêt réajustée : N = ${re.N}`);
+      const e = await api('exporter', { modele: bo.id, chemin: path.join(dossier, 'boosting.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats des arbres boostés');
+      const mf = await api('methodes', { modele: foret.id, langue: 'en' });
+      verifier(mf.paragraphes.some((x) => /ranger/.test(x) && /out-of-bag|bootstrap|replacement/.test(x)) && mf.references.some((x) => /^Breiman, L\. \(2001\)/.test(x)),
+        `texte des méthodes de la forêt : ${mf.paragraphes.join(' ').slice(0, 200)}`);
+      const mb = await api('methodes', { modele: bo.id, langue: 'fr' });
+      verifier(mb.paragraphes.some((x) => /gbm/.test(x)) && mb.references.some((x) => /^Elith/.test(x)) && mb.references.some((x) => /^Friedman, J\. H\. \(2002\)/.test(x)),
+        'texte des méthodes des arbres boostés');
+      // the partial dependence asked for is kept in the project file (serveur.R: garder_avec_definition):
+      // opened again and refitted, the forest and the boosted trees have it, in their Methods text too
+      const fd = path.join(dossier, 'forets.nuee');
+      await api('enregistrer', { projet: q.id, chemin: fd });
+      const q2 = await api('ouvrir', { chemin: fd });
+      const numero = (nom) => q2.modeles.find((x) => x.nom === nom).numero;
+      const foret2 = await api('ajuster', { projet: q2.id, numero: numero('Forêt') });
+      const bb2 = await api('ajuster', { projet: q2.id, numero: numero('Boosting présence') });
+      const mf2 = await api('methodes', { modele: foret2.id, langue: 'en' });
+      verifier([].concat(foret2.dependance).map((x) => x.variable).join() === 'gel' && JSON.stringify([].concat(foret2.dependance)[0].y) === JSON.stringify(d0.y)
+        && [].concat(bb2.dependance).length === 4 && mf2.paragraphes.some((x) => /partial dependence/.test(x)),
+      `dépendance partielle enregistrée avec le projet, rouverte : ${[].concat(foret2.dependance || []).map((x) => x.variable).join()} ; ${[].concat(bb2.dependance || []).length} pour les arbres boostés`);
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, classe: v.niveau, vc, echelle: 'none' }); } catch (err) { refus = err.message; }
+      verifier(/pas une classe/.test(refus), `arbres boostés d'une classe refusés : « ${refus} »`);
     });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;

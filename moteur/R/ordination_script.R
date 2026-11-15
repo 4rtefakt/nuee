@@ -36,7 +36,11 @@ NOMS_ORDINATION_EN <- c(
   permutations = "permutations", test = "test", tests_axes = "axis_test_table", tests_termes = "term_test_table",
   selection = "selection", partition = "partitioning", somme = "row_sums", longueur = "row_lengths", contributions = "contributions",
   multiplicateur = "multiplier", limites = "limits", couleurs = "colours", axes_graphe = "plot_axes", etiquette_axe = "axis_label",
-  fleches_x = "x_arrows", ctr = "ctr", masse = "mass")
+  fleches_x = "x_arrows", ctr = "ctr", masse = "mass",
+  centrer_pondere = "weighted_centring", poids = "weights", poids_colonnes = "column_weights", ramener = "unweight", Xbrut = "X_raw",
+  ponderee = "weighted", tableau_khi2 = "chi_square_table", tk = "chi_table", r2_cca = "cca_r2", nul = "null_r2", ajuster_r2 = "adjust_r2",
+  scores_cca = "cca_scores", tests_sequentiels_rda = "sequential_term_tests", tests_sequentiels = "sequential_test_table", avant = "before",
+  ici = "here", vide = "empty", centrer = "centre_columns")
 
 # Les commentaires de la langue du script (« #fr » ou « #en » en tête de ligne), et les noms du
 # code en anglais pour un script en anglais.
@@ -85,7 +89,16 @@ reponses_centrees <- function(Y, reduire = FALSE) {
 #en the fitted values gives the constrained axes (eigenvalues; scores u of the observations, linear
 #en combinations of the X, and wa, weighted sums of the responses; scores v of the responses; arrows
 #en of the X, their correlations with the axes); that of the residuals, the unconstrained axes.
-analyse_redondance <- function(Y, X, Z = NULL) {
+#fr Une CCA, comme vegan::cca : Y, le tableau des écarts à l'indépendance (tableau_khi2) ; `poids` et
+#fr `poids_colonnes`, les masses de ses lignes et de ses colonnes. X et Z sont alors centrés par leurs
+#fr moyennes pondérées par les masses des lignes et multipliés par leurs racines ; u, wa et v sont
+#fr ensuite ramenés aux masses (divisés par leurs racines).
+#en A CCA, as vegan::cca: Y, the table of departures from independence (chi_square_table); `weights`
+#en and `column_weights`, the masses of its rows and columns. X and Z are then centred by their means
+#en weighted by the row masses and multiplied by their square roots; u, wa and v are then brought back
+#en to the masses (divided by their square roots).
+centrer_pondere <- function(M, w) sweep(sweep(as.matrix(M), 2, colSums(as.matrix(M) * w) / sum(w)), 1, sqrt(w), "*")
+analyse_redondance <- function(Y, X, Z = NULL, poids = NULL, poids_colonnes = NULL) {
   ZERO <- sqrt(.Machine$double.eps)
   n <- nrow(Y)
   totale <- sum(Y^2)
@@ -93,9 +106,11 @@ analyse_redondance <- function(Y, X, Z = NULL) {
   QZ <- NULL
   conditionnelle <- 0
   rang_qz <- 0
+  centrer <- function(M) if (is.null(poids)) scale(M, center = TRUE, scale = FALSE) else centrer_pondere(M, poids)
+  ramener <- function(M, w) if (is.null(w)) M else M / sqrt(w)
   zcol <- if (is.null(Z)) 0 else ncol(Z)
   if (zcol) {
-    QZ <- qr(scale(Z, center = TRUE, scale = FALSE))
+    QZ <- qr(centrer(Z))
     rang_qz <- QZ$rank
     if (QZ$rank > 0) {
       conditionnelle <- sum(qr.fitted(QZ, Y)^2)
@@ -104,7 +119,7 @@ analyse_redondance <- function(Y, X, Z = NULL) {
     }
     if (conditionnelle == 0) QZ <- NULL
   }
-  XZ <- scale(cbind(if (zcol) Z, X), center = TRUE, scale = FALSE)
+  XZ <- centrer(cbind(if (zcol) Z, X))
   Q <- qr(XZ)
   rang_x <- if (ncol(XZ)) sum(Q$pivot[seq_len(Q$rank)] > zcol) else 0
   contraint <- NULL
@@ -116,12 +131,15 @@ analyse_redondance <- function(Y, X, Z = NULL) {
     nuls <- abs(lambda) < max(ZERO, ZERO * lambda[1])
     if (any(!nuls)) {
       lambda <- lambda[!nuls]
-      noms <- sprintf("RDA%d", seq_along(lambda))
+      noms <- sprintf(if (is.null(poids)) "RDA%d" else "CCA%d", seq_along(lambda))
       u <- s$u[, !nuls, drop = FALSE]
       v <- s$v[, !nuls, drop = FALSE]
       wa <- E %*% v %*% diag(1 / sqrt(lambda), length(lambda))
       xx <- XZ[, Q$pivot[garde], drop = FALSE]
       fleches <- (1 / sqrt(colSums(xx^2))) * crossprod(xx, u)
+      u <- ramener(u, poids)
+      wa <- ramener(wa, poids)
+      v <- ramener(v, poids_colonnes)
       dimnames(u) <- dimnames(wa) <- list(rownames(Y), noms)
       dimnames(v) <- list(colnames(Y), noms)
       dimnames(fleches) <- list(colnames(xx), noms)
@@ -134,15 +152,16 @@ analyse_redondance <- function(Y, X, Z = NULL) {
   lambda <- s$d^2
   nuls <- if (length(lambda)) abs(lambda) < max(ZERO, ZERO * lambda[1]) else logical(0)
   lambda <- lambda[!nuls]
-  noms <- sprintf("PC%d", seq_along(lambda))
-  u <- s$u[, !nuls, drop = FALSE]
-  v <- s$v[, !nuls, drop = FALSE]
+  noms <- sprintf(if (is.null(poids)) "PC%d" else "CA%d", seq_along(lambda))
+  u <- ramener(s$u[, !nuls, drop = FALSE], poids)
+  v <- ramener(s$v[, !nuls, drop = FALSE], poids_colonnes)
   dimnames(u) <- list(rownames(Y), noms)
   dimnames(v) <- list(colnames(Y), noms)
   list(n = n, totale = totale, conditionnelle = conditionnelle, contraint = contraint,
        residuel = list(valeurs_propres = setNames(lambda, noms), u = u, v = v, rang = length(lambda), inertie = sum(lambda)),
        E = E, Q = Q, QZ = QZ, rang_z = if (is.null(QZ)) 0 else QZ$rank, rang_qz = rang_qz,
-       Xc = XZ[, zcol + seq_len(ncol(XZ) - zcol), drop = FALSE], Zc = if (!is.null(QZ)) XZ[, seq_len(zcol), drop = FALSE])
+       Xc = XZ[, zcol + seq_len(ncol(XZ) - zcol), drop = FALSE], Zc = if (!is.null(QZ)) XZ[, seq_len(zcol), drop = FALSE],
+       poids = poids, poids_colonnes = poids_colonnes, Xbrut = X)
 }
 
 #fr R² et R² ajusté (Ezekiel ; vegan::RsquareAdj) ; d'une RDA partielle, celui des X au-delà des Z
@@ -190,10 +209,11 @@ scores_rda <- function(m, echelle = 2, facteurs = list()) {
 }
 )---"
 
-CODE_TEST <- r"---(
+# (les permutations : aussi dans les scripts des analyses de communautés, communautes_script.R)
+CODE_PERMUTER <- r"---(
 #fr Les permutations des observations : libres, ou à l'intérieur des groupes de `strates` (pris dans
 #fr l'ordre où ils apparaissent) ; reproductibles par leur graine.
-#en The permutations of the observations: free, or within the groups of `strates` (taken in the order
+#en The permutations of the observations: free, or within the groups of `strata` (taken in the order
 #en they appear); reproducible from their seed.
 permuter <- function(n, B, strates = NULL, graine = 1) {
   set.seed(graine, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
@@ -210,22 +230,28 @@ permuter <- function(n, B, strates = NULL, graine = 1) {
   }
   P
 }
+)---"
 
+CODE_TEST <- r"---(
 #fr Pour chaque permutation : les réponses sans les covariables permutées (et, dans une RDA partielle,
 #fr les covariables avec elles : les X sont rendus orthogonaux aux covariables permutées), ce qu'en
 #fr expliquent les X (ou la première valeur propre, `premier`) et le reste (vegan::permutest).
 #en For each permutation: the responses without the covariates, permuted (and, in a partial RDA, the
 #en covariates with them: the X are made orthogonal to the permuted covariates), what the X explain of
 #en them (or the first eigenvalue, `premier`) and the rest (vegan::permutest).
+#fr Une CCA : les masses des lignes suivent les lignes permutées, et les X sont repondérés par elles.
+#en A CCA: the row masses follow the permuted rows, and the X are weighted again by them.
 base_orthonormee <- function(Q) qr.Q(Q)[, seq_len(Q$rank), drop = FALSE]
 stats_permutees <- function(m, P, premier = FALSE) {
   num <- den <- numeric(nrow(P))
   partielle <- !is.null(m$QZ)
-  Q1 <- if (!partielle) base_orthonormee(m$Q)
+  ponderee <- !is.null(m$poids)
+  Q1 <- if (!partielle && !ponderee) base_orthonormee(m$Q)
   for (b in seq_len(nrow(P))) {
     ip <- P[b, ]
     Ep <- m$E[ip, , drop = FALSE]
-    Qb <- if (partielle) base_orthonormee(qr(qr.resid(qr(m$Zc[ip, , drop = FALSE]), m$Xc))) else Q1
+    Xb <- if (ponderee) centrer_pondere(m$Xbrut, m$poids[ip]) else m$Xc
+    Qb <- if (partielle) base_orthonormee(qr(qr.resid(qr(m$Zc[ip, , drop = FALSE]), Xb))) else if (ponderee) base_orthonormee(qr(Xb)) else Q1
     M <- crossprod(Qb, Ep)
     ss <- sum(M^2)
     num[b] <- if (!premier) ss else if (length(M)) svd(M, 0, 0)$d[1]^2 else 0
@@ -288,7 +314,7 @@ tests_axes_rda <- function(m, Ybar, Z, P, residu) {
   Fs <- unname(lambda) / m$residuel$inertie * ddl
   ps <- rep(NA_real_, length(lambda))
   for (i in seq_along(lambda)) {
-    mi <- if (i == 1) m else analyse_redondance(qr.resid(qr(u[, seq_len(i - 1), drop = FALSE]), Ybar), u[, -seq_len(i - 1), drop = FALSE], Z)
+    mi <- if (i == 1) m else analyse_redondance(qr.resid(qr(u[, seq_len(i - 1), drop = FALSE]), Ybar), u[, -seq_len(i - 1), drop = FALSE], Z, m$poids, m$poids_colonnes)
     tst <- test_rda(mi, P, premier = i < length(lambda))
     Fs[i] <- tst[["F"]]
     ps[i] <- if (i > 1) max(tst[["p"]], ps[i - 1]) else tst[["p"]]
@@ -303,11 +329,95 @@ tests_axes_rda <- function(m, Ybar, Z, P, residu) {
 tests_termes_rda <- function(m, Ybar, X, Z, groupes, P, residu) {
   testes <- Filter(function(g) !any(vapply(unique(groupes), function(h) contenu_dans(g, h), TRUE)), unique(groupes))
   sg <- stats_permutees(m, P)
-  res <- t(vapply(testes, function(g) test_emboites(analyse_redondance(Ybar, X[, groupes != g, drop = FALSE], Z), m, P, sg), numeric(4)))
+  res <- t(vapply(testes, function(g) test_emboites(analyse_redondance(Ybar, X[, groupes != g, drop = FALSE], Z, m$poids, m$poids_colonnes), m, P, sg), numeric(4)))
   #fr (les colonnes de res : degrés de liberté, inertie, F, p)
   #en (the columns of res: degrees of freedom, inertia, F, p)
   data.frame(terme = c(testes, residu), ddl = c(res[, 1], m$n - m$Q$rank - 1), inertie = c(res[, 2], m$residuel$inertie),
              F = c(res[, 3], NA), p = c(res[, 4], NA))
+}
+)---"
+
+CODE_SEQUENTIELS <- r"---(
+#fr Les termes l'un après l'autre, dans l'ordre du modèle (vegan::anova(by = "terms")) : ce que chacun
+#fr explique de plus que les précédents, sur l'inertie résiduelle de tout le modèle, mêmes permutations.
+#en The terms one after another, in the order of the model (vegan::anova(by = "terms")): what each
+#en explains beyond the previous ones, over the residual inertia of the whole model, same permutations.
+tests_sequentiels_rda <- function(m, Ybar, X, Z, groupes, P, residu) {
+  r <- m$n - m$Q$rank - 1
+  sg <- stats_permutees(m, P)
+  avant <- list(inertie = 0, num = rep(0, nrow(P)), rang = 0)
+  lignes <- NULL
+  for (g in unique(groupes)) {
+    mg <- analyse_redondance(Ybar, X[, groupes %in% unique(groupes)[seq_len(match(g, unique(groupes)))], drop = FALSE], Z, m$poids, m$poids_colonnes)
+    vide <- is.null(mg$contraint)
+    ici <- list(inertie = if (vide) 0 else mg$contraint$inertie, num = if (vide) rep(0, nrow(P)) else stats_permutees(mg, P)$num,
+                rang = if (vide) 0 else mg$contraint$rang_x)
+    ddl <- ici$rang - avant$rang
+    if (ddl > 0) {
+      F0 <- ((ici$inertie - avant$inertie) / ddl) / (m$residuel$inertie / r)
+      lignes <- rbind(lignes, data.frame(terme = g, ddl = ddl, inertie = ici$inertie - avant$inertie, F = F0,
+                                         p = valeur_p(((ici$num - avant$num) / ddl) / (sg$den / r), F0)))
+    }
+    avant <- ici
+  }
+  rbind(lignes, data.frame(terme = residu, ddl = r, inertie = m$residuel$inertie, F = NA, p = NA))
+}
+)---"
+
+CODE_CCA <- r"---(
+#fr Le tableau d'une CCA, comme pour une analyse des correspondances (vegan::cca) : ses écarts à
+#fr l'indépendance pondérés, et les masses de ses lignes et de ses colonnes.
+#en The table of a CCA, as for a correspondence analysis (vegan::cca): its weighted departures from
+#en independence, and the masses of its rows and columns.
+tableau_khi2 <- function(N) {
+  P <- N / sum(N)
+  poids <- rowSums(P)
+  poids_colonnes <- colSums(P)
+  list(Ybar = (P - outer(poids, poids_colonnes)) / sqrt(outer(poids, poids_colonnes)), poids = poids, poids_colonnes = poids_colonnes)
+}
+
+#fr R² et R² ajusté d'une CCA (vegan::RsquareAdj ; Peres-Neto et al. 2006) : le R² attendu sous
+#fr l'hypothèse nulle estimé par les permutations P ; partielle : celui de [Z, X] moins celui de Z.
+#en R² and adjusted R² of a CCA (vegan::RsquareAdj; Peres-Neto et al. 2006): the R² expected under the
+#en null hypothesis estimated by the permutations P; partial: that of [Z, X] minus that of Z.
+r2_cca <- function(m, P, Ybar) {
+  R2 <- m$contraint$inertie / m$totale
+  if (m$rang_z == 0) return(list(R2 = R2, ajuste = 1 - (1 - R2) / (1 - mean(stats_permutees(m, P)$num / m$totale))))
+  nul <- function(Q) mean(apply(P, 1, function(ip) sum(qr.fitted(Q, Ybar[ip, , drop = FALSE])^2))) / m$totale
+  ajuster_r2 <- function(r2, Q) 1 - (1 - r2) / (1 - nul(Q))
+  R2p <- m$conditionnelle / m$totale
+  list(R2 = R2, ajuste = ajuster_r2(R2 + R2p, m$Q) - ajuster_r2(R2p, m$QZ))
+}
+
+#fr Les scores dans une échelle (vegan::scores) : 1, observations × racine(λ) (distances du khi²
+#fr entre observations) ; 2, espèces × racine(λ) ; 3, les unes et les autres × racine(racine(λ)). Les
+#fr flèches des X et les centroïdes des catégories des `facteurs` (la moyenne de leurs scores u
+#fr pondérée par les masses) vont comme les observations, nuls sur les axes non contraints.
+#en The scores in a scaling (vegan::scores): 1, observations × sqrt(λ) (chi-square distances between
+#en observations); 2, species × sqrt(λ); 3, both × sqrt(sqrt(λ)). The arrows of the X and the centroids
+#en of the categories of `facteurs` (the mean of their scores u weighted by the masses) go with the
+#en observations, zero on the unconstrained axes.
+scores_cca <- function(m, echelle = 2, facteurs = list()) {
+  cc <- m$contraint
+  rc <- m$residuel
+  lambda <- c(cc$valeurs_propres, rc$valeurs_propres)
+  slam <- sqrt(lambda)
+  obs <- switch(echelle, slam, rep(1, length(lambda)), sqrt(slam))
+  s_rep <- switch(echelle, rep(1, length(lambda)), slam, sqrt(slam))
+  etendre <- function(M) {
+    sortie <- matrix(0, nrow(M), length(lambda), dimnames = list(rownames(M), names(lambda)))
+    sortie[, seq_len(ncol(M))] <- M
+    sortie
+  }
+  centroides <- if (length(facteurs)) do.call(rbind, lapply(names(facteurs), function(nom) {
+    f <- facteurs[[nom]]
+    M <- do.call(rbind, lapply(levels(f), function(k) colSums(cc$u[f == k, , drop = FALSE] * m$poids[f == k]) / sum(m$poids[f == k])))
+    rownames(M) <- paste0(nom, "(", levels(f), ")")
+    M
+  }))
+  list(sites = sweep(cbind(cc$wa, rc$u), 2, obs, "*"), lc = sweep(cbind(cc$u, rc$u), 2, obs, "*"),
+       reponses = sweep(cbind(cc$v, rc$v), 2, s_rep, "*"), fleches = sweep(etendre(cc$fleches), 2, obs, "*"),
+       centroides = if (!is.null(centroides)) sweep(etendre(centroides), 2, obs, "*"))
 }
 )---"
 
@@ -318,9 +428,14 @@ CODE_SELECTION <- r"---(
 #en Forward selection (vegan::ordiR2step; Blanchet et al. 2008): the term with the largest adjusted R²
 #en enters if it increases it without going beyond that of all the terms, and if its test (model with
 #en it against model without it) has p <= `seuil`.
-selection_rda <- function(Ybar, X, Z, groupes, P, tous, seuil = 0.05) {
-  noyau_de <- function(gs) analyse_redondance(Ybar, X[, groupes %in% gs, drop = FALSE], Z)
-  r2_de <- function(m) { v <- r2_rda(m)$ajuste; if (is.na(v)) 0 else v }
+#fr Une CCA (`poids`, `poids_colonnes`) : chaque R² ajusté par les mêmes permutations (r2_cca).
+#en A CCA (`weights`, `column_weights`): each adjusted R² with the same permutations (cca_r2).
+selection_rda <- function(Ybar, X, Z, groupes, P, tous, seuil = 0.05, poids = NULL, poids_colonnes = NULL) {
+  noyau_de <- function(gs) analyse_redondance(Ybar, X[, groupes %in% gs, drop = FALSE], Z, poids, poids_colonnes)
+  r2_de <- function(m) {
+    v <- if (is.null(poids)) r2_rda(m)$ajuste else if (is.null(m$contraint)) NA else r2_cca(m, P, Ybar)$ajuste
+    if (is.na(v)) 0 else v
+  }
   dedans <- character(0)
   courant <- noyau_de(dedans)
   precedent <- 0
@@ -428,9 +543,11 @@ contributions_ca <- function(m) {
 
 # Le code des fonctions dont le script a besoin.
 code_fonctions_ordination <- function(m) {
-  morceaux <- if (identical(m$type, "CA")) CODE_CA else c(CODE_RDA, if (m$options$permutations > 0) CODE_TEST,
+  cca <- identical(m$type, "CCA")
+  morceaux <- if (identical(m$type, "CA")) CODE_CA else c(CODE_RDA, if (cca) CODE_CCA, if (m$options$permutations > 0) c(CODE_PERMUTER, CODE_TEST),
                                                            if (!is.null(m$tests) || !is.null(m$selection)) CODE_EMBOITES,
-                                                           if (!is.null(m$tests)) CODE_TESTS, if (!is.null(m$selection)) CODE_SELECTION,
+                                                           if (!is.null(m$tests)) CODE_TESTS, if (cca && !is.null(m$tests)) CODE_SEQUENTIELS,
+                                                           if (!is.null(m$selection)) CODE_SELECTION,
                                                            if (!is.null(m$partition)) CODE_PARTITION)
   lignes <- unlist(lapply(morceaux, function(x) sub("^\n", "", x)))
   unlist(lapply(lignes, function(l) c(strsplit(l, "\n", fixed = TRUE)[[1]], "")))
@@ -476,7 +593,8 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
   }
   n_exclues <- length(m$exclues)
   noms_exclues <- if (n_exclues && n_exclues <= 8) sprintf(" (%s)", liste_textes(texte_sur(unname(projet$noms_obs[as.character(m$exclues)])), tx("et", "and"))) else ""
-  profil <- ca || m$options$transformation %in% c("hellinger", "corde")
+  cca <- identical(m$type, "CCA")
+  profil <- ca || cca || m$options$transformation %in% c("hellinger", "corde")
   exclusion <- if (n_exclues) commentaire(tx(sprintf("Ici, %d observation%s%s : une valeur y manque%s.", n_exclues, if (n_exclues > 1) "s" else "", noms_exclues,
                                                      if (profil) ", ou elle n'a aucune abondance" else ""),
                                                  sprintf("Here, %d observation%s%s: a value is missing%s.", n_exclues, if (n_exclues > 1) "s" else "", noms_exclues,
@@ -524,28 +642,40 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
   }
   arg_f <- if (length(facteurs)) ", facteurs" else ""
   B <- o$permutations
+  z_arg <- if (avec_z) "Z" else "NULL"
+  poids_arg <- if (cca) ", tk$poids, tk$poids_colonnes" else ""
+  # (une CCA : son R² ajusté vient des permutations, après elles)
+  code_r2 <- if (cca) {
+    if (B > 0) "r2 <- r2_cca(m, permutations, Ybar)"
+    else c(commentaire(tx("(sans permutation, pas de R² ajusté)", "(without permutations, no adjusted R²)")), "r2 <- list(R2 = m$contraint$inertie / m$totale, ajuste = NA_real_)")
+  }
   c(lignes_obs, "",
-    code_bloc_ordination(projet, d$y, obs, tab, "Y", langue), "",
+    code_bloc_ordination(projet, d$y, obs, tab, "Y", langue, if (cca) tx("Le tableau des espèces : une colonne par espèce Y (des effectifs ou des abondances).", "The table of the species: a column per species Y (counts or abundances).")), "",
     code_bloc_ordination(projet, d$x, obs, tab, "X", langue), "",
-    if (avec_z) c(code_bloc_ordination(projet, z, obs, tab, "Z", langue, tx("Les covariables Z : leur effet est retiré d'abord (RDA partielle).", "The covariates Z: their effect is removed first (partial RDA).")), ""),
+    if (avec_z) c(code_bloc_ordination(projet, z, obs, tab, "Z", langue, if (cca) tx("Les covariables Z : leur effet est retiré d'abord (CCA partielle).", "The covariates Z: their effect is removed first (partial CCA).")
+                                       else tx("Les covariables Z : leur effet est retiré d'abord (RDA partielle).", "The covariates Z: their effect is removed first (partial RDA).")), ""),
     if (avec_s) c(strates, ""),
     transformation,
-    commentaire(tx("Les observations où une valeur manque sont laissées de côté.", "The observations where a value is missing are left out.")),
+    if (cca) commentaire(tx("Les observations où une valeur manque, ou sans aucune abondance, sont laissées de côté ; les espèces sans aucune abondance aussi.",
+                            "The observations where a value is missing, or without any abundance, are left out; the species without any abundance too."))
+    else commentaire(tx("Les observations où une valeur manque sont laissées de côté.", "The observations where a value is missing are left out.")),
     exclusion,
-    sprintf("complet <- complete.cases(Y, X%s%s)", if (avec_z) ", Z" else "", if (avec_s) ", strates" else ""),
+    sprintf("complet <- complete.cases(Y, X%s%s)%s", if (avec_z) ", Z" else "", if (avec_s) ", strates" else "", if (cca) " & rowSums(Y) > 0" else ""),
     code_facteurs,
     "Y <- Y[complet, , drop = FALSE]",
+    if (cca) "Y <- Y[, colSums(Y) > 0, drop = FALSE]",
     "X <- X[complet, , drop = FALSE]",
     if (avec_z) "Z <- Z[complet, , drop = FALSE]",
     if (avec_s) "strates <- strates[complet]",
     "n <- nrow(Y)",
-    sprintf("Ybar <- reponses_centrees(Y, reduire = %s)", if (o$reduire) "TRUE" else "FALSE"),
+    if (cca) c("tk <- tableau_khi2(Y)", "Ybar <- tk$Ybar") else sprintf("Ybar <- reponses_centrees(Y, reduire = %s)", if (o$reduire) "TRUE" else "FALSE"),
     "",
-    commentaire(tx("La RDA, son R² et ses scores dans les échelles 1 et 2.", "The RDA, its R² and its scores in scalings 1 and 2.")),
-    sprintf("m <- analyse_redondance(Ybar, X%s)", if (avec_z) ", Z" else ""),
-    "r2 <- r2_rda(m)",
-    sprintf("echelle_1 <- scores_rda(m, 1%s)", arg_f),
-    sprintf("echelle_2 <- scores_rda(m, 2%s)", arg_f),
+    if (cca) commentaire(tx("La CCA et ses scores dans les échelles 1 à 3.", "The CCA and its scores in scalings 1 to 3."))
+    else commentaire(tx("La RDA, son R² et ses scores dans les échelles 1 et 2.", "The RDA, its R² and its scores in scalings 1 and 2.")),
+    sprintf("m <- analyse_redondance(Ybar, X%s%s)", if (avec_z) ", Z" else if (cca) ", NULL" else "", poids_arg),
+    if (!cca) "r2 <- r2_rda(m)",
+    if (cca) c(sprintf("echelle_%d <- scores_cca(m, %d%s)", 1:3, 1:3, arg_f))
+    else c(sprintf("echelle_1 <- scores_rda(m, 1%s)", arg_f), sprintf("echelle_2 <- scores_rda(m, 2%s)", arg_f)),
     if (any(m$X$indicatrices)) c(commentaire(tx("(une catégorie d'une variable qualitative a son centroïde, pas de flèche)", "(a category of a qualitative variable has its centroid, no arrow)")),
                                  code_valeurs(vapply(m$X$noms[m$X$indicatrices], code_texte, "", USE.NAMES = FALSE), "indicatrices <- ")),
     sprintf("fleches_x <- echelle_2$fleches[%s, , drop = FALSE]", if (any(m$X$indicatrices)) "!rownames(echelle_2$fleches) %in% indicatrices" else ""),
@@ -556,17 +686,22 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
     "valeurs_propres <- data.frame(axe = names(valeurs_propres), valeur_propre = unname(valeurs_propres), part = unname(valeurs_propres) / m$totale,",
     "                              cumul = cumsum(unname(valeurs_propres)) / m$totale, contraint = seq_along(valeurs_propres) <= m$contraint$rang)",
     if (B > 0) c("",
-                 commentaire(tx(sprintf("Le test par %d permutations des observations (graine %d : les mêmes que Nuée).", B, o$graine),
-                                sprintf("The test with %d permutations of the observations (seed %d: the same as Nuée's).", B, o$graine))),
+                 commentaire(if (cca) tx(sprintf("Le test par %d permutations des observations, leurs masses avec elles (graine %d : les mêmes que Nuée).", B, o$graine),
+                                         sprintf("The test with %d permutations of the observations, their masses with them (seed %d: the same as Nuée's).", B, o$graine))
+                             else tx(sprintf("Le test par %d permutations des observations (graine %d : les mêmes que Nuée).", B, o$graine),
+                                     sprintf("The test with %d permutations of the observations (seed %d: the same as Nuée's).", B, o$graine))),
                  sprintf("permutations <- permuter(n, %d%s, graine = %d)", B, if (avec_s) ", strates" else "", o$graine),
                  "test <- test_rda(m, permutations)"),
+    if (cca) c(commentaire(tx("Le R² et le R² ajusté (par les permutations du test).", "The R² and adjusted R² (with the test's permutations).")), code_r2),
     if (!is.null(m$tests) || !is.null(m$selection)) c("", commentaire(tx("Le terme de chaque colonne de X (une variable, toutes ses catégories ensemble).", "The term of each column of X (a variable, all its categories together).")),
                                                      code_valeurs(vapply(m$X$groupes, code_texte, "", USE.NAMES = FALSE), "groupes <- ")),
     if (!is.null(m$tests)) c(commentaire(tx("Les tests par axe et par terme (quelques secondes).", "The tests by axis and by term (a few seconds).")),
-                             sprintf("tests_axes <- tests_axes_rda(m, Ybar, %s, permutations, %s)", if (avec_z) "Z" else "NULL", code_texte(tx("Résidus", "Residual"))),
-                             sprintf("tests_termes <- tests_termes_rda(m, Ybar, X, %s, groupes, permutations, %s)", if (avec_z) "Z" else "NULL", code_texte(tx("Résidus", "Residual")))),
+                             sprintf("tests_axes <- tests_axes_rda(m, Ybar, %s, permutations, %s)", z_arg, code_texte(tx("Résidus", "Residual"))),
+                             if (cca) sprintf("tests_sequentiels <- tests_sequentiels_rda(m, Ybar, X, %s, groupes, permutations, %s)", z_arg, code_texte(tx("Résidus", "Residual"))),
+                             sprintf("tests_termes <- tests_termes_rda(m, Ybar, X, %s, groupes, permutations, %s)", z_arg, code_texte(tx("Résidus", "Residual")))),
     if (!is.null(m$selection)) c(commentaire(tx("La sélection pas à pas (quelques secondes).", "The forward selection (a few seconds).")),
-                                 sprintf("selection <- selection_rda(Ybar, X, %s, groupes, permutations, tous = r2$ajuste, seuil = %s)", if (avec_z) "Z" else "NULL", texte_exact(m$selection$seuil))),
+                                 sprintf("selection <- selection_rda(Ybar, X, %s, groupes, permutations, tous = r2$ajuste, seuil = %s%s)", z_arg, texte_exact(m$selection$seuil),
+                                         if (cca) ", poids = tk$poids, poids_colonnes = tk$poids_colonnes" else "")),
     if (!is.null(m$partition)) c("", commentaire(tx("Le bloc de chaque colonne de X, pour la partition de la variance.", "The block of each column of X, for variation partitioning.")),
                                  code_valeurs(vapply(ifelse(is.na(m$X$blocs), tx("(sans bloc)", "(no block)"), m$X$blocs), code_texte, "", USE.NAMES = FALSE), "blocs <- "),
                                  "partition <- partition_rda(Ybar, X, blocs)"))
@@ -595,7 +730,9 @@ code_sortie_ordination <- function(m, langue) {
     ligne("print(echelle_2$reponses)", "scores des réponses (échelle 2)", "scores of the responses (scaling 2)"),
     ligne("print(fleches_x)", "flèches des X quantitatifs (échelle 2)", "arrows of the quantitative X (scaling 2)"),
     if (length(m$facteurs)) ligne("print(echelle_2$centroides)", "centroïdes des catégories (échelle 2)", "centroids of the categories (scaling 2)"),
-    if (!is.null(m$tests)) c(ligne("print(tests_axes)", "tests par axe", "tests by axis"), ligne("print(tests_termes)", "tests par terme", "tests by term")),
+    if (!is.null(m$tests)) c(ligne("print(tests_axes)", "tests par axe", "tests by axis"),
+                             if (!is.null(m$tests$sequentiels)) ligne("print(tests_sequentiels)", "termes l'un après l'autre", "terms one after another"),
+                             ligne("print(tests_termes)", "tests par terme", "tests by term")),
     if (!is.null(m$selection)) ligne("print(selection$etapes)", "sélection pas à pas", "forward selection"),
     if (!is.null(m$partition)) ligne("print(partition$fractions)", "partition de la variance (R² ajustés)", "variation partitioning (adjusted R²)"))
 }
@@ -622,7 +759,7 @@ code_graphiques_ordination <- function(m, langue) {
   list(
     list(nom = "ordination", largeur = 7, hauteur = 6, code = t(c(part,
       "plot(rbind(echelle_2$sites[, 1:2], echelle_2$reponses[, 1:2]), type = \"n\", asp = 1, xlab = etiquette_axe(1), ylab = etiquette_axe(2),",
-      sprintf("     main = %s)", code_texte(tx("RDA (échelle 2)", "RDA (scaling 2)"))),
+      sprintf("     main = %s)", code_texte(sprintf(tx("%s (échelle 2)", "%s (scaling 2)"), m$type))),
       "abline(h = 0, v = 0, col = \"grey\")",
       "points(echelle_2$sites[, 1:2], pch = 19, col = \"grey40\")",
       "text(echelle_2$reponses[, 1:2], labels = rownames(echelle_2$reponses), col = \"#d1495b\", cex = 0.8)",
@@ -660,7 +797,7 @@ ecart_ordination <- function(m, e, langue) {
          contributions = list(100 * m$contributions$colonnes$contribution, champ(ctr, "colonnes", "contribution")))
   } else {
     k <- m$noyau
-    s2 <- scores_rda(m, 2)
+    s2 <- scores_contraints(m, 2)
     sc <- r("echelle_2")
     rm <- r("m")
     r2 <- r("r2")
@@ -669,8 +806,10 @@ ecart_ordination <- function(m, e, langue) {
          R2 = list(c(m$r2, m$r2_ajuste), c(r2$R2, champ(r2, "ajuste"))),
          sites = list(s2$sites, au_signe(s2$sites, champ(sc, "sites"))), reponses = list(s2$reponses, au_signe(s2$reponses, champ(sc, "reponses"))),
          fleches = list(fleches_rda(m, s2), au_signe(fleches_rda(m, s2), r("fleches_x"))),
+         centroides = if (!is.null(s2$centroides)) list(s2$centroides, au_signe(s2$centroides, champ(sc, "centroides"))),
          test = if (m$options$permutations > 0) list(c(m$test$F, m$test$p), unname(test[c("F", "p")])),
          "tests par axe" = if (!is.null(m$tests)) list(as.matrix(m$tests$axes[c("F", "p")]), as.matrix(r("tests_axes")[c("F", "p")])),
+         "tests séquentiels" = if (!is.null(m$tests$sequentiels)) list(as.matrix(m$tests$sequentiels[c("F", "p")]), as.matrix(r("tests_sequentiels")[c("F", "p")])),
          "tests par terme" = if (!is.null(m$tests)) list(as.matrix(m$tests$termes[c("F", "p")]), as.matrix(r("tests_termes")[c("F", "p")])),
          selection = if (!is.null(m$selection$etapes)) list(as.matrix(m$selection$etapes[c("r2_ajuste", "F", "p")]),
                                                             as.matrix(champ(r("selection"), "etapes")[c(nom_ordination("r2_ajuste", langue), "F", "p")])),
@@ -687,6 +826,9 @@ ecrire_script_rda <- function(projet, d, chemin_script, m, donnees, renv, rdata,
   ecrire_script_ordination(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue)
 }
 ecrire_script_ca <- function(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue) {
+  ecrire_script_ordination(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue)
+}
+ecrire_script_cca <- function(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue) {
   ecrire_script_ordination(projet, d, chemin_script, m, donnees, renv, rdata, rproj, version, langue)
 }
 
@@ -709,7 +851,9 @@ ecrire_script_ordination <- function(projet, d, chemin_script, m, donnees = "scr
   graphiques <- code_graphiques_ordination(m, langue)
   nom <- texte_sur(as.character(d$name %||% ""))
   titre <- texte_sur(as.character(d$title %||% ""))
-  type <- if (ca) tx("analyse des correspondances", "correspondence analysis") else tx("analyse de redondance (RDA)", "redundancy analysis (RDA)")
+  type <- if (ca) tx("analyse des correspondances", "correspondence analysis")
+          else if (identical(m$type, "CCA")) tx("analyse canonique des correspondances (CCA)", "canonical correspondence analysis (CCA)")
+          else tx("analyse de redondance (RDA)", "redundancy analysis (RDA)")
   entete <- c(sprintf(tx("# Modèle %s%s : %s, %d observations", "# Model %s%s: %s, %d observations"), nom, if (nzchar(titre)) sprintf(" (%s)", titre) else "", type, m$N),
               sprintf(tx("# Script R écrit par Nuée %s le %s, à partir du projet « %s ».", "# R script written by Nuée %s on %s, from the project “%s”."), version, format(Sys.Date()),
                       texte_sur(as.character(projet$source %||% "projet"))),
@@ -732,9 +876,10 @@ ecrire_script_ordination <- function(projet, d, chemin_script, m, donnees = "scr
     lignes_rapport_ordination(format, d, m, langue, texte_methodes(projet, d, m, langue, version), fonctions, code_donnees, calcul, graphiques)
   }
   objets <- vapply(c("m", "r2", "echelle_1", "echelle_2", "echelle_3", "inertie", "valeurs_propres", "test", "permutations", "contributions",
-                     "tests_axes", "tests_termes", "selection", "partition", "Y", "X", "Z", "Ybar"), nom_ordination, "", langue = langue)
+                     "tests_axes", "tests_termes", "tests_sequentiels", "selection", "partition", "Y", "X", "Z", "Ybar"), nom_ordination, "", langue = langue)
   ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), objets), if (format != "R") c("knitr", "rmarkdown"))
-  list(script = chemin_script, chemins = unname(fichiers), ecart = ecart)
+  # (ses graphiques, pour un document reproductible : document_reproductible.R)
+  structure(list(script = chemin_script, chemins = unname(fichiers), ecart = ecart), graphiques = graphiques)
 }
 
 # Le rapport R Markdown ou Quarto : les méthodes, les données, le code (replié dans le rapport
@@ -757,7 +902,8 @@ lignes_rapport_ordination <- function(format, d, m, langue, methodes, fonctions,
       bloc("r2-table", kable("t(unlist(r2))", 3)),
       if (m$options$permutations > 0) bloc("test-table", kable("t(test)", 3)),
       bloc("valeurs-propres-table", kable("valeurs_propres", 4)),
-      if (!is.null(m$tests)) c(bloc("tests-axes", kable("tests_axes", 3)), bloc("tests-termes", kable("tests_termes", 3))),
+      if (!is.null(m$tests)) c(bloc("tests-axes", kable("tests_axes", 3)), if (!is.null(m$tests$sequentiels)) bloc("tests-sequentiels", kable("tests_sequentiels", 3)),
+                               bloc("tests-termes", kable("tests_termes", 3))),
       if (!is.null(m$selection)) bloc("selection-table", kable("selection$etapes", 3)),
       if (!is.null(m$partition)) bloc("partition-table", kable("partition$fractions", 3)))
   }

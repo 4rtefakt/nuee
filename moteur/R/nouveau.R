@@ -10,10 +10,18 @@
 # des variables qualitatives (une catégorie par valeur distincte), sauf les colonnes de texte
 # dont toutes les valeurs diffèrent, gardées en identifiants secondaires si `secondaires` (pas
 # pour un fichier à prédire : quelques lignes peuvent avoir chacune une catégorie différente).
+# Un GeoPackage donne aussi les coordonnées du projet (spatial.R) : ses deux colonnes de
+# coordonnées et leur système.
 importer_tableau <- function(chemin, table = NULL, secondaires = TRUE, quantitatives = NULL) {
+  # (un classeur ou un GeoPackage écrit par l'export des données : sa feuille « Variables » rend les
+  # unités et descriptions des variables, et n'est pas le tableau à ouvrir : atelier.R)
+  variables <- if (extension(chemin) %in% c("xlsx", "xlsm", "xls", "gpkg")) tableau_variables_fichier(chemin)
+  if (is.null(table) && !is.null(variables)) table <- tables_fichier(chemin)[1]
   df <- lire_tableau(chemin, table, quantitatives)
-  p <- projet_depuis_tableau(df, basename(chemin), secondaires)
+  p <- appliquer_descriptions(projet_depuis_tableau(df, basename(chemin), secondaires), variables)
   p$note <- unname(attr(df, "note"))
+  co <- attr(df, "coordonnees")
+  if (!is.null(co)) p$coordonnees <- tryCatch(list(x = numeros(p, co$x), y = numeros(p, co$y), systeme = co$systeme), error = function(e) NULL)
   p
 }
 
@@ -27,8 +35,10 @@ importer_texte <- function(texte, nom = "tableau", secondaires = TRUE) {
 }
 
 # `toutes_modalites` : garder aussi les modalités d'un facteur sans observation (script R
-# autonome : les catégories restent celles du projet d'origine).
-projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE) {
+# autonome : les catégories restent celles du projet d'origine). `qualitatives` : des noms de
+# colonnes qui restent des variables même quand leurs valeurs diffèrent toutes (une question à
+# choix unique d'un formulaire : kobo.R).
+projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE, qualitatives = NULL) {
   if (!ncol(df) || !nrow(df)) stop(traduire("Le tableau est vide", "The table is empty"))
   premiere_id <- is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
     (is.factor(df[[1]]) || grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE)))
@@ -36,7 +46,8 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
   if (premiere_id) df <- df[-1]
   # Une colonne de texte dont toutes les valeurs diffèrent (un code par observation) n'est
   # pas une variable : on la garde en identifiant secondaire, pour les étiquettes.
-  secondaire <- vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE)
+  secondaire <- vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE) &
+    !names(df) %in% qualitatives
   ids_secondaires <- lapply(df[secondaire], as.character)
   df <- df[!secondaire]
   vars <- list()
@@ -297,8 +308,8 @@ variable_du_projet <- function(projet, uid) {
 # (indicatrice 0/1) pour une variable qualitative. `bloc` : son bloc pour la pondération par
 # blocs, `modificateur` : le facteur de son poids (pretraitement.R : facteurs_ponderation) ; les
 # catégories d'une variable qualitative les partagent (chacune compte dans le bloc).
-termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, bloc = NULL, modificateur = NULL) {
-  v <- variable_du_projet(projet, uid)
+termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, bloc = NULL, modificateur = NULL,
+                            v = variable_du_projet(projet, uid)) {
   nom <- as.character(v$ids[1])
   ech <- c(list(type = echelle), if (length(bloc) && !is.na(bloc[1]) && nzchar(as.character(bloc[1]))) list(block = as.character(bloc[1])),
            if (length(modificateur) && !is.na(modificateur[1]) && as.numeric(modificateur[1]) != 1) list(modifier = as.numeric(modificateur[1])))
@@ -353,7 +364,9 @@ termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, 
 #   k_courbes : la dimension de base d'une courbe, par numéro de variable (sinon 10 au plus) ;
 #   par_courbes : une courbe par catégorie d'une variable qualitative X, par numéro de la variable
 #   en courbe, par exemple list(`7` = 4) pour s(annee, by = secteur) (regression.R :
-#   verifier_par_courbes). Les blocs n'y
+#   verifier_par_courbes) ; lisse_spatial : un lissage des coordonnées s(x, y) d'un GAM,
+#   list(variables = c(x, y), k = 30, base = "tp" ou "sos") (regression.R : definition_spatial).
+#   Les blocs n'y
 #   pondèrent rien : ils font les groupes de la table des apports. Sans groupes de validation
 #   croisée, un modèle mixte est validé par son premier effet aléatoire (un site jamais vu). Un
 #   facteur d'un terme croisé qui n'est pas dans x y entre sans effet principal (R : y ~ secteur +
@@ -364,14 +377,22 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            transformations = NULL, croises = NULL, spectres = NULL, test = NULL,
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
                            famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
-                           condition = NULL, par_courbes = NULL, validation = NULL) {
+                           condition = NULL, par_courbes = NULL, validation = NULL, lisse_spatial = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
     if ("defaut" %in% names(echelle)) echelle[["defaut"]] else "UV"
   }
   par_variable <- function(valeurs, uid) if (as.character(uid) %in% names(valeurs)) valeurs[[as.character(uid)]]
-  termes <- function(u) termes_variable(projet, u, ech(u), trans(u), par_variable(blocs, u), par_variable(modificateurs, u))
+  # (chaque variable cherchée par son numéro dans un index fait une fois : variable_du_projet parcourt
+  # toutes les variables à chaque appel, des millions de fois pour des milliers de longueurs d'onde ;
+  # elle reste pour dire qu'un numéro n'existe pas)
+  uids_projet <- vapply(projet$variables, function(v) as.numeric(v$uid), 0)
+  variable <- function(u) {
+    i <- match(as.numeric(u), uids_projet)
+    if (is.na(i)) variable_du_projet(projet, u) else projet$variables[[i]]
+  }
+  termes <- function(u) termes_variable(projet, u, ech(u), trans(u), par_variable(blocs, u), par_variable(modificateurs, u), v = variable(u))
   trans <- function(uid) {
     n <- if (as.character(uid) %in% names(transformations)) transformations[[as.character(uid)]]
     if (is.null(n) || !nzchar(n)) return(NULL)
@@ -448,6 +469,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
       if (length(decalage)) d$decalage <- as.numeric(decalage)[1]
       if (length(k_courbes)) d$k_courbes <- lapply(as.list(unlist(k_courbes)), as.integer)
       if (length(par_courbes)) d$par_courbes <- lapply(as.list(unlist(par_courbes)), as.numeric)
+      if (length(lisse_spatial$variables)) {
+        d$lisse_spatial <- list(variables = as.numeric(unlist(lisse_spatial$variables)), base = as.character(lisse_spatial$base %||% "tp")[1])
+        if (length(lisse_spatial$k)) d$lisse_spatial$k <- as.integer(unlist(lisse_spatial$k))[1]
+      }
     }
     if (!length(vc$by) && length(aleatoires)) vc <- aleatoires[[1]][setdiff(names(aleatoires[[1]]), "pentes")]  # (ses groupes, sans ses pentes)
     verifier_regression(projet, d)
@@ -549,7 +574,7 @@ reglages_modele <- function(projet, d) {
        transformations = transformations, A = d$A, G = d$cv_groups %||% 7, vc = d$groupes_vc,
        validation = if (!est_regression(d) && !est_autre_analyse(d)) mode_validation(d),
        aleatoires = d$aleatoires, correlation = d$correlation, famille = d$famille, lisses = I(as.numeric(d$lisses %||% numeric(0))), decalage = d$decalage,
-       k_courbes = d$k_courbes, par_courbes = d$par_courbes,
+       k_courbes = d$k_courbes, par_courbes = d$par_courbes, lisse_spatial = d$lisse_spatial,
        croises = unique(lapply(Filter(function(t) length(t$variables) > 1, d$x), function(t) as.numeric(t$variables))), croises_reglages = croises_reglages,
        options = d$options,
        spectres = d$spectres %||% list(), test = I(as.numeric(d$test %||% numeric(0))), nom = d$name %||% "", titre = d$title %||% "")
@@ -569,7 +594,12 @@ reglages_modele <- function(projet, d) {
 # Les composantes sont calculées une à une et le calcul s'arrête à la première qui n'est pas
 # significative. Q2 et Q2V sont ceux de la validation croisée du modèle (validation_croisee.R) :
 # chaque composante est jugée sur PRESS / PRESS de la précédente, pour tous ses Y ou chacun.
-autoajuster <- function(projet, definition, A_max = NULL) {
+autoajuster <- function(projet, definition, A_max = NULL) autoajuster_modele(projet, definition, A_max, garder = FALSE)$A
+
+# Le nombre de composantes d'autoajuster (A), et le modèle déjà calculé pour max(1, A) composantes,
+# tel que calculer_modele le rendrait (`modele`, pour ajuster : les composantes de l'ajustement
+# automatique sont celles du modèle, modele_tronque ; NULL sans `garder`).
+autoajuster_modele <- function(projet, definition, A_max = NULL, garder = TRUE) {
   N <- length(definition$observations)
   K <- length(definition$x)
   pls <- identical(definition$type, "PLS")
@@ -579,12 +609,12 @@ autoajuster <- function(projet, definition, A_max = NULL) {
     Ap <- definition$Ap %||% 1
     Ao_max <- max(0, min(8, K - Ap, N - Ap - 2))
     # (`arret` : moins de composantes orthogonales si les données n'en permettent pas autant)
-    m <- calculer_modele(projet, definition, A = Ao_max + Ap, arret = function(res, a) FALSE)
+    m <- calculer_modele(projet, definition, A = Ao_max + Ap, arret = function(res, a) FALSE, etat = garder)
     Ao_max <- m$A - Ap
     limite <- if (N > 100) 0 else 0.05
     Ao <- 0
     while (Ao < Ao_max && m$q2[Ap + Ao + 1] > limite) Ao <- Ao + 1
-    return(Ao + Ap)
+    return(list(A = Ao + Ap, modele = if (garder) modele_tronque(m, Ao + Ap)))
   }
   A_max <- A_max %||% max(1, min(floor(min(N, K) / 2), 15))
   if (pls) A_max <- max(1, min(A_max, K, N - 2))
@@ -611,13 +641,18 @@ autoajuster <- function(projet, definition, A_max = NULL) {
     premiere_non_significative <<- a
     TRUE
   }
-  m <- calculer_modele(projet, definition, A = A_max, arret = arret)
+  m <- calculer_modele(projet, definition, A = A_max, arret = arret, etat = garder)
   # (m$A : moins que A_max quand il n'y avait plus de variation à décrire)
-  if (is.na(premiere_non_significative)) m$A else premiere_non_significative - 1
+  A <- if (is.na(premiere_non_significative)) m$A else premiere_non_significative - 1
+  list(A = A, modele = if (garder) modele_tronque(m, max(1, A)))
 }
 
 # Enregistre un projet (données et définitions de modèles) au format lu par lire_projet(), avec
-# ce qui l'a écrit : le format (FORMAT_PROJET, projet.R), la version de Nuée (`version`) et de R.
+# ce qui l'a écrit : le format (FORMAT_PROJET, projet.R), la version de Nuée (`version`), de R et
+# des paquets R qui calculent les modèles (PAQUETS_CALCUL), pour savoir plus tard avec quoi un
+# résultat a été obtenu.
+PAQUETS_CALCUL <- c("stats", "mgcv", "nlme", "MASS", "rpart", "cluster")
+version_paquet <- function(x) tryCatch(as.character(utils::packageVersion(x)), error = function(e) NA_character_)
 enregistrer_projet <- function(projet, chemin, version = "") {
   p <- unclass(projet)
   for (i in seq_along(p$datasets)) {
@@ -625,9 +660,51 @@ enregistrer_projet <- function(projet, chemin, version = "") {
     p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
-  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- NULL  # état de la session
-  p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."))
-  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA))
+  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- p$import_collecte <- NULL  # état de la session
+  p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
+                 paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
+  # (des milliers de petites listes, que jsonlite écrit une à une : les observations, écrites d'un coup
+  # comme les lignes d'un tableau, et les termes d'un modèle, écrits une fois pour tous les modèles
+  # qui ont les mêmes ; le même texte, que write_json reprend tel quel, json_verbatim)
+  p$observations <- json_observations(p$observations)
+  p$models <- json_termes_modeles(p$models)
+  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE))
+}
+
+# Les observations d'un projet (list(uid, ids) chacune) en JSON, tel que jsonlite les écrirait une à
+# une, quand elles ont toutes la même forme (un numéro, autant d'identifiants, du texte sans valeur
+# manquante) : les lignes d'un tableau, que jsonlite écrit d'un coup (100 000 observations : 12 s une à
+# une, moins d'une seconde ainsi). Sinon les observations telles quelles.
+json_observations <- function(obs) {
+  if (!length(obs) || !is.null(names(obs))) return(obs)
+  simple <- function(o) identical(names(o), c("uid", "ids")) && is.numeric(o$uid) && length(o$uid) == 1 && !is.na(o$uid) &&
+    is.null(attributes(o$uid)) && is.character(o$ids) && length(o$ids) >= 1 && !anyNA(o$ids) && is.null(attributes(o$ids))
+  if (!all(vapply(obs, simple, NA))) return(obs)
+  ids <- lapply(obs, `[[`, "ids")
+  L <- unique(lengths(ids))
+  if (length(L) != 1) return(obs)
+  uid <- lapply(obs, `[[`, "uid")
+  lignes <- data.frame(uid = if (all(vapply(uid, is.integer, NA))) unlist(uid) else as.double(unlist(uid)))
+  lignes$ids <- if (L == 1) unlist(ids) else I(ids)
+  jsonlite::toJSON(lignes, dataframe = "rows", auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+}
+
+# Les modèles d'un projet, les termes X et Y de chacun (des milliers pour des spectres) en JSON tel que
+# jsonlite les écrirait : une fois pour tous les modèles qui ont les mêmes termes (identical).
+json_termes_modeles <- function(modeles) {
+  faits <- list()
+  en_json <- function(termes) {
+    if (length(termes) < 20) return(termes)
+    for (f in faits) if (identical(f$termes, termes)) return(f$json)
+    j <- jsonlite::toJSON(termes, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+    faits[[length(faits) + 1]] <<- list(termes = termes, json = j)
+    j
+  }
+  lapply(modeles, function(d) {
+    if (!is.list(d)) return(d)
+    for (k in intersect(c("x", "y"), names(d))) if (is.list(d[[k]]) && is.null(names(d[[k]]))) d[[k]] <- en_json(d[[k]])
+    d
+  })
 }
 
 # Écrit un fichier (ecrire(fichier temporaire)) sans jamais en laisser un à moitié écrit : dans

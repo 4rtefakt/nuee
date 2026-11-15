@@ -24,13 +24,14 @@ journal_depuis <- function(n) Filter(function(e) e$n > n, etat$journal)
 
 # ---------------------------------------------------------------- le journal des actions
 
-code_r <- function(x) deparse(x, width.cutoff = 500L)
+code_r <- function(x) paste(deparse(x, width.cutoff = 500L), collapse = "")  # (deparse coupe un long code en morceaux)
 vecteur_r <- function(x) if (length(x) == 1) code_r(x) else paste0("c(", paste(vapply(x, code_r, ""), collapse = ", "), ")")
 
 appel_ouverture <- function(chemin, table = NULL) {
   ext <- tolower(tools::file_ext(chemin))
   if (ext == "usp") return(sprintf("lire_projet(convertir_usp(%s))  # .usp converti par export_project", code_r(chemin)))
   if (ext %in% c("nuee", "json")) return(sprintf("lire_projet(%s)", code_r(chemin)))
+  if (ext == "zip") return(sprintf("projet_brut_collecte(%s%s)", code_r(chemin), if (!is.null(table)) sprintf(", table = %s", code_r(table)) else ""))
   if (!is.null(table)) return(sprintf("importer_tableau(%s, table = %s)", code_r(chemin), code_r(table)))
   sprintf("importer_tableau(%s)", code_r(chemin))
 }
@@ -63,7 +64,9 @@ journaliser <- function(nom, q, r) {
     c(commentaire, code_definition(projet(e$projet), e$definition, e$projet), sprintf("%s <- ajuster(%s, d)", id, e$projet))
   }
   lignes <- switch(nom,
-    ouvrir = if (!is.null(r$id)) sprintf("%s <- %s", r$id, appel_ouverture(q$chemin, q$table)),
+    # (un export de KoboToolbox ou d'ODK importé, ou ouvert tel quel : kobo.R)
+    ouvrir = if (!is.null(r$id)) sprintf("%s <- %s", r$id, if (!is.null(q$kobo)) appel_collecte(q$chemin, q$kobo) else appel_ouverture(q$chemin, q$table)),
+    kobo_importer = sprintf("%s <- %s", r$id, appel_collecte(q$chemin, q)),
     coller = c("# tableau collé, gardé dans un fichier de la session", sprintf("%s <- importer_tableau(%s)", r$id, code_r(r$fichier_colle))),
     importer_spectres = sprintf("%s <- importer_spectres(%s%s, nom = %s)", r$id, vecteur_r(as.character(unlist(q$chemins))),
                                 if (length(q$infos) && nzchar(q$infos)) sprintf(", infos = %s", code_r(q$infos)) else "", code_r(r$nom)),
@@ -126,6 +129,33 @@ journaliser <- function(nom, q, r) {
                 vecteur_r(unname(p$noms_var[as.character(variables)])), vecteur_r(noms_groupes), paste(sprintf("%s = %s", stats, en_r[stats]), collapse = ", ")))
     },
     modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
+    # (l'atelier des données : atelier.R ; l'aperçu de Chercher et remplacer ne change rien)
+    remplacer = if (!isTRUE(q$apercu)) sprintf("%s <- remplacer_valeurs(%s, %s)", q$projet, q$projet, paste(c(
+      if (length(q$variables)) paste("variables =", vecteur_r(as.numeric(unlist(q$variables)))),
+      if (isTRUE(q$vides)) "vides = TRUE" else paste("chercher =", code_r(as.character(q$chercher %||% ""))),
+      paste("remplacer =", code_r(as.character(q$remplacer %||% ""))), if (isTRUE(q$partie)) "partie = TRUE", if (isTRUE(q$casse)) "casse = TRUE",
+      if (isFALSE(q$nombres)) "nombres = FALSE"), collapse = ", ")),
+    coller_cellules = sprintf("%s <- coller_cellules(%s, %s, %s, %s)", q$projet, q$projet, vecteur_r(as.numeric(unlist(q$observations))),
+                              vecteur_r(as.numeric(unlist(q$variables))), code_r(as.matrix(q$valeurs))),
+    categories = sprintf("%s <- changer_categories(%s, %s, %s%s)", q$projet, q$projet, q$variable, vecteur_r(as.character(unlist(q$noms))),
+                         if (length(q$ordre)) paste(", ordre =", vecteur_r(as.character(unlist(q$ordre)))) else ""),
+    decrire_variables = {
+      d <- q$descriptions
+      if (is.data.frame(d)) d <- lapply(seq_len(nrow(d)), function(i) as.list(d[i, , drop = FALSE]))
+      champs <- function(x) {
+        k <- Filter(function(k) length(x[[k]]) && !is.na(x[[k]][1]), intersect(c("unite", "description"), names(x)))
+        paste(c(paste("variable =", as.numeric(x$variable)), vapply(k, function(k) sprintf("%s = %s", k, code_r(as.character(x[[k]][1]))), "")), collapse = ", ")
+      }
+      sprintf("%s <- decrire_variables(%s, list(%s))", q$projet, q$projet, paste(vapply(d, function(x) sprintf("list(%s)", champs(x)), ""), collapse = ", "))
+    },
+    # (chaque fichier : son chemin, la méthode, le rayon en mètres, le nom de chaque bande ; puis ce que l'ajout a donné)
+    ajouter_raster = {
+      un <- function(f) sprintf("list(chemin = %s, methode = %s%s, noms = %s)", code_r(as.character(f$chemin)[1]), code_r(as.character(f$methode %||% "")[1]),
+                                if (length(f$rayon) && !is.na(f$rayon[1])) sprintf(", rayon = %s", code_r(as.numeric(f$rayon)[1])) else "",
+                                vecteur_r(as.character(unlist(f$noms))))
+      c(sprintf("%s <- ajouter_valeurs_rasters(%s, list(%s))", q$projet, q$projet, paste(vapply(fichiers_raster_demande(q$fichiers), un, ""), collapse = ",\n  ")),
+        sprintf("# %s", unlist(r$raster$phrases)))
+    },
     statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
     series = {
       # (avec les tendances, leur appel sur les points, et les saisons du test saisonnier)
@@ -135,6 +165,15 @@ journaliser <- function(nom, q, r) {
       if (isTRUE(q$tendances)) sprintf("tendances_series(%s$points, %s%s)", appel, code_r(q$correction %||% "BH"),
                                        if (isTRUE(q$autocorrelation)) ", autocorrelation = TRUE" else "") else appel
     },
+    coordonnees = if (isTRUE(q$regler)) sprintf("%s <- regler_coordonnees(%s, %s, %s, %s)", q$projet, q$projet,
+                                                 if (length(q$x)) q$x else "NULL", if (length(q$y)) q$y else "NULL", code_r(q$systeme %||% "plan")),
+    carte = sprintf("points_projet(%s)", q$projet),
+    par_reponse = sprintf("modeles_par_reponse(%s, definition(%s), %s, %s)", pm(q$modele), code_r(q$modele), vecteur_r(as.numeric(unlist(q$reponses))),
+                          code_r(q$correction %||% "BH")),
+    autocorrelation_spatiale = sprintf("autocorrelation_spatiale(%s)", paste(c(
+      if (length(q$modele)) c(pm(q$modele), q$modele) else c(q$projet, "NULL"),
+      if (length(q$variable)) paste("variable =", q$variable) else paste("residus =", code_r(q$residus %||% "standardises")),
+      if (length(q$voisinage)) paste("voisinage =", code_r(q$voisinage)), if (isTRUE(q$par_lieu)) "par_lieu = TRUE"), collapse = ", ")),
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
     script_r = if (length(q$modeles) > 1) {
@@ -189,21 +228,26 @@ lier_objets <- function() {
 # Outils de la console, présentés par aide_console().
 local({
   assign("definition", function(id) (etat$modeles[[id]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id))$definition, console)
-  assign("projets", function() data.frame(objet = names(etat$projets),
-    nom = vapply(etat$projets, function(p) p$nom %||% "", ""), row.names = NULL), console)
-  assign("modeles", function() data.frame(objet = names(etat$modeles),
-    nom = vapply(etat$modeles, function(e) e$definition$name %||% "", ""),
-    type = vapply(etat$modeles, function(e) paste0(if (isTRUE(e$modele$opls)) "O" else "", if (e$modele$plsda) "PLS-DA" else e$modele$type), ""),
-    A = vapply(etat$modeles, function(e) as.numeric(e$modele$A), 0), projet = vapply(etat$modeles, function(e) e$projet, ""),
-    row.names = NULL), console)
-  assign("dossier_moteur", function() normalizePath(file.path(racine, "moteur", "R"), winslash = "/"), console)
-  assign("recharger_moteur", function() {
+  # (each under its English name and its French one; the console is in the interface's language)
+  en_deux <- function(en, fr, f) { assign(en, f, console); assign(fr, f, console) }
+  # (a table's columns in the interface's language)
+  colonnes <- function(df, fr, en) stats::setNames(df, if (identical(getOption("nuee.langue"), "en")) en else fr)
+  en_deux("projects", "projets", function() colonnes(data.frame(names(etat$projets) %||% character(0),
+    vapply(etat$projets, function(p) p$nom %||% "", ""), row.names = NULL), c("objet", "nom"), c("object", "name")))
+  en_deux("models", "modeles", function() colonnes(data.frame(names(etat$modeles) %||% character(0),
+    vapply(etat$modeles, function(e) e$definition$name %||% "", ""),
+    vapply(etat$modeles, function(e) paste0(if (isTRUE(e$modele$opls)) "O" else "", if (isTRUE(e$modele$plsda)) "PLS-DA" else e$modele$type), ""),
+    vapply(etat$modeles, function(e) as.numeric(e$modele$A %||% 0)[1], 0), vapply(etat$modeles, function(e) e$projet, ""),
+    row.names = NULL), c("objet", "nom", "type", "A", "projet"), c("object", "name", "type", "A", "project")))
+  en_deux("engine_folder", "dossier_moteur", function() normalizePath(file.path(racine, "moteur", "R"), winslash = "/"))
+  en_deux("reload_engine", "recharger_moteur", function() {
     for (f in sort(list.files(file.path(racine, "moteur", "R"), "\\.R$", full.names = TRUE))) sys.source(f, envir = globalenv(), keep.source = FALSE)
-    message("Moteur rechargé depuis ", normalizePath(file.path(racine, "moteur", "R"), winslash = "/"), " : réajuster les modèles pour l'utiliser.")
-  }, console)
+    message(traduire("Moteur rechargé depuis ", "Engine reloaded from "), normalizePath(file.path(racine, "moteur", "R"), winslash = "/"),
+            traduire(" : réajuster les modèles pour l'utiliser.", ": refit the models to use it."))
+  })
   # Recalcule les modèles enregistrés des projets ouverts (ou des fichiers .usp / .json d'un
   # dossier) et les compare aux valeurs du fichier (voir comparer_references, moteur/R/verification.R).
-  assign("verifier_moteur", function(dossier = NULL) {
+  en_deux("check_engine", "verifier_moteur", function(dossier = NULL) {
     projets <- if (is.null(dossier)) etat$projets else {
       fichiers <- list.files(dossier, "\\.(usp|json)$", full.names = TRUE, ignore.case = TRUE)
       stats::setNames(lapply(fichiers, function(f) tryCatch(
@@ -214,15 +258,18 @@ local({
       p <- projets[[k]]
       if (is.null(p)) return(NULL)
       r <- comparer_references(p)
-      if (nrow(r)) cbind(projet = p$nom %||% k, r)
+      if (nrow(r)) cbind(stats::setNames(data.frame(p$nom %||% k), traduire("projet", "project")), r)
     }))
-    if (is.null(tab)) { message("Aucun modèle enregistré à comparer."); return(invisible(NULL)) }
-    n <- table(factor(sub(" :.*", "", tab$statut), c("identique", "proche", "différent", "erreur")))
-    message(sprintf("%d modèle(s) : %d identique(s), %d proche(s), %d différent(s), %d en erreur (Q2 non compté : la validation croisée de Nuée n'est pas celle du fichier).",
-                    nrow(tab), n[["identique"]], n[["proche"]], n[["différent"]], n[["erreur"]]))
+    if (is.null(tab)) { message(traduire("Aucun modèle enregistré à comparer.", "No saved model to compare.")); return(invisible(NULL)) }
+    en <- identical(getOption("nuee.langue"), "en")
+    statuts <- if (en) c("identical", "close", "different", "error") else c("identique", "proche", "différent", "erreur")
+    n <- table(factor(sub(" ?:.*", "", tab[[if (en) "status" else "statut"]]), statuts))
+    message(sprintf(traduire("%d modèle(s) : %d identique(s), %d proche(s), %d différent(s), %d en erreur (Q2 non compté : la validation croisée de Nuée n'est pas celle du fichier).",
+                             "%d model(s): %d identical, %d close, %d different, %d failed (Q2 not counted: Nuée's cross-validation isn't the file's)."),
+                    nrow(tab), n[[1]], n[[2]], n[[3]], n[[4]]))
     tab
-  }, console)
-  quitter <- function(...) message("Pour fermer l'application : Fichier › Quitter.")
+  })
+  quitter <- function(...) message(traduire("Pour fermer l'application : Fichier › Quitter.", "To close the application: File › Quit."))
   assign("q", quitter, console)
   assign("quit", quitter, console)
 })

@@ -15,10 +15,23 @@ REFERENCES <- list(
   msc = "Geladi, P., MacDougall, D., & Martens, H. (1985). Linearization and scatter-correction for near-infrared reflectance spectra of meat. Applied Spectroscopy, 39(3), 491–500. https://doi.org/10.1366/0003702854248656",
   sg = "Savitzky, A., & Golay, M. J. E. (1964). Smoothing and differentiation of data by simplified least squares procedures. Analytical Chemistry, 36(8), 1627–1639. https://doi.org/10.1021/ac60214a047",
   r = "R Core Team (%s). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/",
-  nuee = "4rtefakt (%s). Nuée%s [Computer software]. https://github.com/4rtefakt/nuee")
+  nuee = "Boutin, C. (%s). Nuée%s [Computer software]. https://github.com/4rtefakt/nuee")
 
+# (pour tous les types : d'où viennent les variables lues dans des rasters, à la fin du premier
+# paragraphe, celui des données ; raster.R ; et, au début, l'outil de terrain qui a recueilli les
+# données d'un projet importé de KoboToolbox ou d'ODK : kobo.R)
 texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   langue <- match.arg(langue)
+  r <- texte_methodes_type(projet, d, m, langue, version)
+  uids <- suppressWarnings(as.numeric(c(unlist(lapply(c(d$x, d$y), function(t) t$variables)), unlist(d$classe))))
+  phrase <- phrase_methodes_raster(projet, unique(uids[!is.na(uids)]), langue == "fr")
+  if (!is.null(phrase)) r$paragraphes <- if (length(r$paragraphes)) c(paste(r$paragraphes[1], phrase), r$paragraphes[-1]) else phrase
+  collecte <- phrase_methodes_collecte(projet, langue == "fr")
+  if (!is.null(collecte)) r$paragraphes <- if (length(r$paragraphes)) c(paste(collecte, r$paragraphes[1]), r$paragraphes[-1]) else collecte
+  r
+}
+
+texte_methodes_type <- function(projet, d, m, langue, version) {
   if (est_regression(d)) return(texte_methodes_regression(projet, d, m, langue, version))  # regression.R
   if (est_autre_analyse(d)) return(fonction_analyse("texte_methodes_", d$type)(projet, d, m, langue, version))  # analyses.R
   fr <- langue == "fr"
@@ -60,8 +73,10 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
                              liste(sprintf("%s (n = %d)", sub("^.*\\(([^()]*)\\)$", "\\1", classes), effectifs))))
   } else if (pls) {
     ny <- m$y$noms
-    p1 <- c(p1, if (fr) sprintf("%s : %s.", if (length(ny) > 1) sprintf("Les %d variables Y", length(ny)) else "La variable Y", liste(guillemets(ny)))
-                else sprintf("%s: %s.", if (length(ny) > 1) sprintf("The %d Y variables", length(ny)) else "The Y variable", liste(guillemets(ny))))
+    # (chacune avec son unité, quand elle en a une : atelier.R)
+    noms_y <- paste0(guillemets(ny), vapply(ny, function(n) unite_texte(projet, n), ""))
+    p1 <- c(p1, if (fr) sprintf("%s : %s.", if (length(ny) > 1) sprintf("Les %d variables Y", length(ny)) else "La variable Y", liste(noms_y))
+                else sprintf("%s: %s.", if (length(ny) > 1) sprintf("The %d Y variables", length(ny)) else "The Y variable", liste(noms_y)))
   }
 
   # --- prétraitement
@@ -251,9 +266,9 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   version_r <- paste(R.version$major, R.version$minor, sep = ".")
   annee_nuee <- format(Sys.Date(), "%Y")
   cites <- union(cites, c("r", "nuee"))
-  p5 <- if (fr) sprintf("Les calculs ont été faits avec Nuée%s (4rtefakt, %s), dont le moteur est écrit en R (R %s ; R Core Team, %s).",
+  p5 <- if (fr) sprintf("Les calculs ont été faits avec Nuée%s (Boutin, %s), dont le moteur est écrit en R (R %s ; R Core Team, %s).",
                         if (nzchar(version)) paste0(" ", version) else "", annee_nuee, version_r, annee_r)
-        else sprintf("Computations were done with Nuée%s (4rtefakt, %s), whose engine is written in R (R %s; R Core Team, %s).",
+        else sprintf("Computations were done with Nuée%s (Boutin, %s), whose engine is written in R (R %s; R Core Team, %s).",
                      if (nzchar(version)) paste0(" ", version) else "", annee_nuee, version_r, annee_r)
 
   references <- vapply(cites, function(k) switch(k, r = sprintf(REFERENCES$r, annee_r),

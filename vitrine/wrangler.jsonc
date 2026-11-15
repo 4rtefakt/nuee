@@ -1,0 +1,25 @@
+// nuee.io: the pages of dist/ (built by construire.mjs) as static assets, and a small Worker
+// (src/worker.js) for what no file answers: the downloads of the latest release, its version, 404.
+//   npx wrangler dev       the site at http://localhost:8787, rebuilt when src/ changes
+//   npx wrangler deploy    builds, then publishes to nuee.io
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nuee-vitrine",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-11-01",
+  "build": {
+    "command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON construire.mjs",
+    "watch_dir": "src"
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "routes": [
+    { "pattern": "nuee.io", "custom_domain": true },
+    { "pattern": "www.nuee.io", "custom_domain": true }
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

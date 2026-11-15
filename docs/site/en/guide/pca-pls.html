@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCA, PLS, OPLS and spectra · Nuée</title>
+<meta name="description" content="OPLS, VIP, validating a PLS, class models, spectra and their preprocessing.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="pca-pls.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/acp-pls.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/acp-pls.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html" aria-current="page">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>PCA, PLS, OPLS and spectra</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#opls-and-opls-da">OPLS and OPLS-DA</a></li>
+<li><a href="#vip">VIP</a></li>
+<li><a href="#validation">Validation</a></li>
+<li><a href="#class-models-and-the-coomans-plot">Class models and the Coomans plot</a></li>
+<li><a href="#spectra">Spectra</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="opls-and-opls-da">
+<h2>OPLS and OPLS-DA</h2>
+<p>Predictive components, which carry what in X is related to Y, and orthogonal components, which describe the rest of X's variation: scores and loadings are easier to read (t[1] against to[1], S-plot). One predictive component per Y variable, or one fewer than the classes for OPLS-DA (t[1], t[2]... then to[1], to[2]...); with just one, the predicted values are those of a PLS with the same number of components. With several Y (or more than two classes), each orthogonal weight is made orthogonal to the weights X'y of every column of Y, so the orthogonal components are not related to Y at all (since 0.9.0; version 0.8.0 left a slight link: the OPLS models with several predictive components it made change a little when refitted). Q2 by cross-validation, as for the other models (see below). None of the .usp projects available had an OPLS model: this computation follows Trygg and Wold's paper (2002), with no stored values to compare with; it is checked against a second writing of the paper's algorithm.</p>
+</section>
+<section id="vip">
+<h2>VIP</h2>
+<p>The cut-off is placed automatically at the largest step in the sorted VIPs around 0.8. You can type another cut-off or drag the red line, and Ctrl+click a bar to keep or drop a variable (a plain click highlights it on the model's other plots).</p>
+<p>"Refit with VIP variables" makes the model again with the variables kept.</p>
+</section>
+<section id="validation">
+<h2>Validation (PLS and PLS-DA)</h2>
+<p><strong>Permutation test:</strong> the values of Y (for a PLS-DA, the classes) are shuffled among the observations 20 times (or more) and the whole model refitted, cross-validation included; the intercepts of R2 and Q2 measure overfitting (a valid model if Q2 &lt; 0.05 and R2 &lt; 0.3 to 0.4, the usual rule).</p>
+<p><strong>CV-ANOVA:</strong> the model's p (cross-validation residuals against the mean); also in the Summary. Classification (PLS-DA): table of the observations correctly and wrongly classified, with the fitted or cross-validated values, and ROC curves with their area (AUC).</p>
+</section>
+<section id="class-models-and-the-coomans-plot">
+<h2>Class models and the Coomans plot</h2>
+<p><strong>New model › type "Class models":</strong> one PCA per category of the class variable, on the observations of that category only ("M5.Gala", "M5.Golden"...), each with its own centres, scaling and number of components. An observation belongs to a class when its distance to the class's model (DModX) doesn't exceed the 5 % DCrit limit: to one class, to several, or to none (an observation of another kind than all the known classes). Plots › Coomans plot: each observation's distances to two of the models, with their limits in red; the table gives, for each class, the share of its observations each model accepts (expected: about 95 % for its own class, 0 % for the others), then each observation's distances and classes.</p>
+</section>
+<section id="spectra">
+<h2>Spectra</h2>
+<p><strong>File › Import spectra:</strong> choose one or more files (Ctrl+A in a folder takes them all); they become one project, one row per spectrum, one column per wavelength (named by its value: "1450", "3999.69"). Files read:</p>
+<dl>
+<dt>JCAMP-DX (.jdx, .dx, .jcm)</dt><dd>every form (plain or compressed numbers: AFFN, PAC, SQZ, DIF, DUP), several spectra per file; not peak tables, nor NTUPLES (complex NMR, mass spectrometry);</dd>
+<dt>SPC (.spc)</dt><dd>Galactic (GRAMS, Thermo), new and old format, one or more spectra;</dd>
+<dt>text (.csv, .txt...)</dt><dd>a column of x values, then one column per spectrum, with or without a header row; the lines an instrument writes before the numbers are skipped.</dd>
+</dl>
+<p>A spectrum is named after its file (and the block's title or its number when a file holds several). If the spectra don't all have the same x values, they are interpolated (linearly) onto those of the first one, in the range they all share; the status bar says so. Different units (nm and cm-1, absorbance and transmittance) are refused.</p>
+<p><strong>Information (optional):</strong> a table (Excel, CSV...) whose first column gives the name of each file, with or without its extension, and the other columns information to join to the spectra (contents, classes, batches); they come before the spectra. The status bar says how many spectra didn't find their row. A single JCAMP-DX or SPC file also opens with File › Open, and a file of new spectra on the same grid is predicted with Predict › Predict a file.</p>
+<p><strong>New model › General › Spectral preprocessing:</strong> each observation is a spectrum (its quantitative X variables, in the order of the table), corrected before scaling by one to three steps, in order:</p>
+<dl>
+<dt>SNV</dt><dd>each spectrum centred on its mean and divided by its standard deviation;</dd>
+<dt>MSC</dt><dd>each spectrum fitted to the mean spectrum of the model's observations (x = a + b r), then replaced by (x - a) / b; a prediction uses that mean spectrum;</dd>
+<dt>Detrend</dt><dd>a degree-2 polynomial of the wavelength, fitted to the spectrum, is removed from it (Barnes et al., 1989; often after SNV);</dd>
+<dt>Baseline</dt><dd>the spectrum's lower convex hull (the segments joining its lowest points, from one end to the other) is removed from it; the corrected spectrum is zero or positive;</dd>
+<dt>Savitzky–Golay</dt><dd>smoothing, first or second derivative, in a window of n variables (odd) with a polynomial of degree d. Each range of neighbouring variables in the table is treated on its own: a window never reaches across a range left out.</dd>
+</dl>
+<p>The wavelength (for Detrend and Baseline) is the number read in the variables' names when each has one, all different; otherwise their place in the table.</p>
+<p>For spectra, one often centres without scaling ("Centring only" scaling). Only MSC depends on the other observations (the mean spectrum): in cross-validation, each group is corrected with the mean spectrum of the other observations. Plots › Profiles (spectra): loadings, coefficients, VIP, or the spectra themselves (before or after preprocessing) as lines; the horizontal axis is the number read in the variables' names ("1450 nm") when each has one; the lines break where variables are out of the model. A click on a spectrum selects its observation.</p>
+<p><strong>Wavelength ranges:</strong> tick "Choose ranges", then drag across the plot (one or more ranges, in orange); "New model without these ranges" (the water bands, for example) or "New model with these ranges only" opens New model with the model's settings and those X variables, to check before fitting. The model's other X variables (qualitative) stay.</p>
+<p><strong>Plots › iPLS (spectrum intervals), for a model with Y:</strong> the spectrum (the model's quantitative X variables, in their order) is preprocessed once, whole, as for the model (with MSC, also for each cross-validation group, with the mean spectrum of the other observations), then cut into n intervals of the same width; each one is a PLS on its range (with the model's scaling and its other X variables), with 1 to A components. A bar per interval gives its smallest RMSEcv (in the units of Y, as in the summary), with that number of components written on it; in green, the intervals that predict better than the whole spectrum (red dashes); the grey line is the mean spectrum after preprocessing. Click bars to choose intervals, then "New model with these intervals" or "without these intervals". Such a model preprocesses its own variables: with SNV, MSC, detrend or baseline, its RMSEcv can differ from the bar's. Method: Nørgaard et al. (2000), Applied Spectroscopy 54, 413–419.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="plots.html">← Plots and figures</a><a rel="next" href="regressions.html">Linear, generalized and mixed models →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

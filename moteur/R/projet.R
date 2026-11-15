@@ -9,16 +9,20 @@
 #     et mise à l'échelle de chaque terme) et les résultats enregistrés dans le fichier.
 #
 # Un projet enregistré par l'application dit aussi ce qui l'a écrit (j$nuee : format, version de
-# Nuée, version de R). FORMAT_PROJET augmente quand une version de Nuée écrit des projets que
-# les précédentes ne liraient pas en entier : elles le voient au format du fichier.
-FORMAT_PROJET <- 1L
+# Nuée, de R et des paquets qui calculent les modèles). FORMAT_PROJET augmente quand une version
+# de Nuée écrit des projets que les précédentes ne liraient pas en entier : elles le voient au
+# format du fichier. 1 : jusqu'à 0.9.9 ; 2 : la 1.0 (les coordonnées du projet, le lissage
+# spatial d'un GAM, de nouveaux types d'analyses, qu'une version plus ancienne ne refait pas ;
+# les figures composées, p$figures, qu'elle garde sans les montrer). Toute version 1.x ouvre
+# les projets de la 1.0.
+FORMAT_PROJET <- 2L
 
 lire_projet <- function(chemin) {
   j <- jsonlite::fromJSON(chemin, simplifyVector = TRUE, simplifyDataFrame = FALSE,
                           simplifyMatrix = TRUE)
   # L'état de la séance (où Enregistrer écrit, changements...) ne vient jamais du fichier : un
   # projet reçu ne peut pas faire écrire Enregistrer ailleurs que là où on l'a ouvert.
-  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "fichier_lu", "note")] <- NULL
+  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "brut", "fichier_lu", "note", "import_collecte")] <- NULL
   obs <- unique(unlist(lapply(j$datasets, function(d) d$observations)))
   vars <- unique(unlist(lapply(j$datasets, function(d) d$variables)))
   donnees <- matrix(NA_real_, length(obs), length(vars),
@@ -107,4 +111,26 @@ historique_projet <- function(projet) {
                stringsAsFactors = FALSE)
   })
   do.call(rbind, lignes) %||% data.frame()
+}
+
+# Les réglages d'un calcul gardé avec le modèle `id` (ses moyennes ajustées, sa puissance, sa
+# dépendance partielle), écrits aussi dans sa définition du projet : enregistrés avec lui, et refaits
+# quand il est ajusté à nouveau, à l'ouverture du projet (serveur.R : ajuster_et_garder). `modifie` :
+# le projet est à enregistrer (des réglages choisis ; pas ceux par défaut d'un premier calcul, que
+# l'enregistrement suivant prendra). Gardés tels qu'un fichier les rendra (nombres à 15 chiffres,
+# entiers...) : refaits à l'ouverture, ou redemandés par une vue de la séance, ils ne changent pas
+# le projet.
+garder_avec_definition <- function(id, cle, valeur, modifie = TRUE) {
+  valeur <- jsonlite::fromJSON(as.character(jsonlite::toJSON(valeur, auto_unbox = TRUE, null = "null", na = "null", digits = NA)),
+                               simplifyVector = TRUE, simplifyDataFrame = FALSE, simplifyMatrix = TRUE)  # (comme lire_projet, projet.R)
+  etat$modeles[[id]]$definition[[cle]] <- valeur
+  e <- etat$modeles[[id]]
+  p <- projet(e$projet)
+  for (i in seq_along(p$models)) {
+    if (identical(p$models[[i]]$name, e$definition$name) && !identical(p$models[[i]][[cle]], valeur)) {
+      p$models[[i]][[cle]] <- valeur
+      if (modifie) p$modifie <- TRUE
+    }
+  }
+  etat$projets[[p$id]] <- p
 }

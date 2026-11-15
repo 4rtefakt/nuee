@@ -2,6 +2,7 @@
 # rounded blue square. Writes, next to this script:
 #   nuee.png          512 px
 #   nuee.ico          16 to 256 px; up to 32 px a simpler drawing (fewer, larger points)
+#   nuee.icns         macOS, 16 to 1024 px; the square at the size of the other icons of the Dock
 #   installateur.bmp  the side image of the installer's welcome and finish pages (164 x 314)
 # and ../interface/nuee.svg, the logo of the interface and the README.
 #   python dessiner_icone.py
@@ -74,6 +75,10 @@ detail.resize((512, 512), Image.LANCZOS).save(sortie / 'nuee.png')
 tailles = [16, 24, 32, 48, 64, 128, 256]
 images = [(simple if t <= 32 else detail).resize((t, t), Image.LANCZOS) for t in tailles]
 images[-1].save(sortie / 'nuee.ico', sizes=[(t, t) for t in tailles], append_images=images[:-1])
+# (Apple's grid: a square of 824 px in 1024; here the square is drawn 944 px wide, from 40 to 984)
+mac = Image.new('RGBA', (T, T), (0, 0, 0, 0))
+mac.alpha_composite(detail.resize((894, 894), Image.LANCZOS), (65, 65))
+mac.save(sortie / 'nuee.icns')
 
 # the same logo as SVG
 hexa = lambda c: '#%02x%02x%02x' % c

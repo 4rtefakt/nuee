@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choosing and building a model · Nuée</title>
+<meta name="description" content="Which analysis?, New model, the observations, cross-validation, the test set, predicting.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="models.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/modeles.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/modeles.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html" aria-current="page">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Choosing and building a model</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#which-analysis">Which analysis?</a></li>
+<li><a href="#new-model">New model</a></li>
+<li><a href="#observations-chosen-by-a-condition">Observations chosen by a condition</a></li>
+<li><a href="#cross-validation">Cross-validation</a></li>
+<li><a href="#test-set">Test set</a></li>
+<li><a href="#predicting">Predicting</a></li>
+<li><a href="#hierarchical-models">Hierarchical models</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="which-analysis">
+<h2>Which analysis? (Model › Which analysis?)</h2>
+<p>Model › Which analysis? (also a button of the start page, next to New model, and Ctrl+K): a few questions in plain words, then the analysis that answers them, already set up.</p>
+<ul>
+<li><strong>Your question:</strong> compare groups or periods; the effect of variables on one response; many species at once (how the composition changes, one model per species, the species that characterize each group); a trend over time or a monitoring index; a density or an abundance (distance sampling); where (maps, spatial autocorrelation); explore or summarise a table; predict or classify; diversity and species richness; before-after with controls (BACI).</li>
+<li><strong>The response:</strong> the variable measured, and its kind: a measurement, a count (with many zeros or not), a presence-absence (0 or 1), a proportion between 0 and 1, a class (a qualitative variable), a table of species (one column per species), or the distances to the animals detected (one row per detection).</li>
+<li><strong>The design:</strong> the same sites or plots measured several times (the site), years or dates (the time), a BACI design (the unit), spatial coordinates, lines or points (distance sampling).</li>
+<li><strong>The variables:</strong> the explanatory variables (X), or the groups.</li>
+</ul>
+<p>Nuée proposes the answers from the project's variables (as Variable statistics reads them): a response of whole numbers from 0 is a count, of 0 and 1 a presence-absence, between 0 and 1 a proportion; "many zeros" when at least a quarter of the values are 0, and 15 points more than a Poisson distribution of the same mean would give (the sentence under the response gives both); the site is a qualitative variable named like one (site, station, plot, transect...) whose categories repeat; the time a variable named like a year or a date, or whole numbers between 1900 and 2100; the species the columns of numbers zero or more that have zeros (four at least); the coordinates the project's, or those its variables' names propose; the distances a variable named like them, and the other columns of distance sampling by the names New model proposes them from (Distance's Sample.Label, Effort, Region.Label, Area, size, or transect, longueur, région, aire, taille); points rather than lines when the transect's column is named like a point or a station. Every answer can be changed.</p>
+<p><strong>On the right:</strong> the recommended analysis, why, its main conditions and notes for the answers given (the random effect by site, the residual autocorrelation of successive years, the adjusted means after comparing groups, a proportion that reaches 0 or 1...), what will be filled in, what is left to complete, and a button. It opens New model already filled in (type, distribution, roles, transformation, curves, random effect, cross-validation groups, and the analysis's own settings, such as an RDA's Hellinger transformation, TRIM's site and time, or the transect, effort, stratum, area and group size of distance sampling), or the right view (Statistical tests in the right mode, Series with its trends, Map, Spatial autocorrelation, Rarefaction, Variable statistics), or New variable with a diversity index. One model per species opens New model for the first species, then One model per response with the others ticked. The alternatives below open the same way. The answers are kept until Nuée closes: cancel New model and come back to try another.</p>
+<p><strong>The main choices:</strong></p>
+<ul>
+<li><strong>a count:</strong> the negative binomial when it varies more than a Poisson distribution allows (a variance beyond 1.5 times the mean) or has many zeros (many zeros don't always mean zero inflation, Warton 2005: compare with the zero-inflated Poisson by AIC), otherwise Poisson; a presence-absence: logistic regression; a proportion: beta regression; a positive, skewed measurement: gamma (or its log); a measurement with zeros: Tweedie; otherwise the linear model; with the same sites measured several times, a random effect by site and cross-validation by site;</li>
+<li><strong>groups compared:</strong> the test between two variables (the one their types call for), paired by site when each site comes once in each group (no more observations than sites × groups), otherwise the mixed model and its adjusted means; for counts, presences and proportions, their GLM;</li>
+<li><strong>many species:</strong> RDA after the Hellinger transformation with quantitative X, PERMANOVA with groups, NMDS without X; indicator species; one model per species;</li>
+<li><strong>a trend:</strong> TRIM for counts by site and year (one row per site and year: no more observations than sites × years; otherwise a GLM, and TRIM after Edit › Summarize by group); a measurement on several sites: the mixed model with the year as X; a single series: Series and its trends;</li>
+<li><strong>predict:</strong> PLS or PLS-DA with many X (20 or more, or half as many as the observations), the random forest otherwise, boosted trees for counts and presences;</li>
+<li><strong>a density or an abundance:</strong> distance sampling, the distances as Y, lines or points, its columns pre-filled from their names; the units (m, km and km² until changed) are left to check, and a missing transect or effort to complete; without the strata's areas (or with areas of 0), the density only;</li>
+<li><strong>where:</strong> the map, then Moran's I and a GAM's spatial smooth; the Mantel test for species;</li>
+<li><strong>explore:</strong> PCA, NMDS for species; diversity: rarefaction.</li>
+</ul>
+<p><strong>Advice, not a rule:</strong> the conditions are checked after the fit (Summary › Model conditions).</p>
+</section>
+<section id="new-model">
+<h2>New model (Model › New model)</h2>
+<p><strong>General tab:</strong> type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models, linear regression, linear mixed model, generalized linear model, additive model: see <a href="regressions.html#linear-generalized-and-mixed-models">Linear, generalized and mixed models</a>; RDA and CA: see <a href="communities.html#redundancy-analysis-and-correspondence-analysis">Redundancy analysis and correspondence analysis</a>; decision tree, LDA and k-means: see <a href="trees.html#decision-trees-linear-discriminant-analysis-and-k-means">Decision trees, linear discriminant analysis and k-means</a>), name, number of components (automatic by default, by cross-validation), cross-validation groups (in turn, G groups; or one group per value of an observation ID or of a variable, see <a href="#cross-validation">Cross-validation</a>), default scaling.</p>
+<p><strong>Variables tab:</strong> role (X, Y, class), scaling, block, modifier and transformation of each variable: square root, fourth root, log10, or custom... (log10, ln or -log10 of C1*x + C2, exp(C1*x + C2), C1*x + C2, the logit ln((x - C1) / (C2 - x)) between two bounds, or the power (C1*x + C2)^C3; a value outside the domain becomes missing); the filter sets every variable shown at once (a block: type it in "Block..." above the list, then Enter). Block scaling: the terms of a block have their weight divided by the square root of their number, so that a block of 20 variables doesn't weigh 20 times more than a variable alone; a qualitative variable counts by its categories. Modifier: multiplies the variable's weight after its scaling. The "Proposed transformations" button applies the suggested log10 to the variables shown (see <a href="data.html#variable-statistics">Variable statistics</a>).</p>
+<p><strong>Cross terms tab:</strong> products of two or three X variables (A × B, A × B × C), squares (A × A) and cubes (A × A × A); a qualitative variable enters through each of its categories, once at most. Each cross term has its own scaling, block and modifier, as in the Variables tab. In a regression, a factor can also be a variable without a role (listed under "Not X: no main effect"): it then enters only through the cross term (see Cross terms with a qualitative variable).</p>
+<p><strong>Observations tab:</strong> tick / untick the model's observations, and the test set (see <a href="#test-set">Test set</a>);</p>
+<p>"Keep only the observations where..." chooses them by a condition (see <a href="#observations-chosen-by-a-condition">Observations chosen by a condition</a>).</p>
+<p>"Edit model" (Ctrl+M) opens this window set like an existing model (imported models included) and makes a new model.</p>
+<p>Before fitting, the application checks the data: variables or observations with more than 50 % missing values, constant variables. If there are any, it lists them and offers "Exclude them and fit" or "Fit anyway".</p>
+</section>
+<section id="observations-chosen-by-a-condition">
+<h2>Observations chosen by a condition</h2>
+<p>New model › Observations › "Keep only the observations where...": a condition written in R like a New variable formula, on the variables and the observation IDs by their names (a name with spaces between `backticks`), for example site == "S1" &amp; year &gt;= 2010, !is.na(density), habitat %in% c("marsh", "meadow") or year != 2015. Under the field, how many of the ticked observations meet it ("312 of 480 observations"), or why it doesn't read: an unknown name, a function that isn't allowed, a result that isn't TRUE or FALSE (or 1 and 0) for each observation. It is evaluated on all the project's observations, as a New variable formula is: density &gt; median(density, na.rm = TRUE) compares with the median of every observation, not of the ticked ones. The model takes the ticked observations where it is TRUE; a missing result (density &gt; 5 for an observation without a density) counts as FALSE.</p>
+<p>The condition is saved with the model and evaluated again on the project's current data each time the model is fitted or refitted: reopening the project, automatic fitting, a component added or removed, Exclude the selection and refit, Refit with the VIP variables, the AIC selection's Fit this model, Fit with CAR1. After a change to the data, a refit can take other observations. The ticks don't change: clearing the condition brings back the observations it set aside. The test set keeps its own ticks: the condition doesn't apply to it. The observations the condition sets aside are out of the model, as unticked ones, so Predict observations predicts them. A model imported from a .usp file keeps its file's observations; Edit model on it makes a new model, which can take a condition. Two models with different observations are never compared by their AIC.</p>
+<p>The Methods text says "the 312 observations where site == "S1" &amp; year &gt;= 2010", the model's summary and report give the condition, and Export to R writes it in R with the script's own names for the variables: the ticked rows, the condition evaluated on every row of the table with with(), then the ticked rows where it is TRUE, exactly Nuée's rows (a New variable function it calls is written in the script).</p>
+<p><strong>Allowed in a condition:</strong> comparisons, &amp;, |, !, xor(), %in%, :, arithmetic (+ - * / ^ %% %/%), c(), is.na(), ifelse(), abs(), sqrt(), exp(), log(), log10(), log2(), log1p(), round(), floor(), ceiling(), trunc(), signif(), as.numeric(), as.character(), nchar(), substr(), substring(), startsWith(), endsWith(), tolower(), toupper(), trimws(), paste(), paste0(), mean(), median(), min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), and the New variable functions group_mean(), group_deviation(), previous(), following() and growth_rate() (and their French names). Nothing else: a condition is kept in the project file and run again at each fit, so a project received from someone can't run other code through it (a New variable formula, typed and computed once, is not kept and has no such limit). To keep that run quick and bounded, ":" goes only between two whole numbers (year %in% 2005:2010) and over a range of at most 100000 values, and interaction() drops the empty combinations: a short condition can't build a huge vector that would tie up a fit. For a diversity index (shannon()...), make it a New variable first, then use that variable in the condition.</p>
+</section>
+<section id="cross-validation">
+<h2>Cross-validation</h2>
+<p>The model's observations are assigned in turn to G groups (7 by default: the 1st, 8th, 15th... in group 1), or one group per value of an observation ID or of a variable (New model › Cross-validation groups): with "site", all the years of a site are in the same group, and each site is predicted by a model that has never seen it; observations without a value make a group of their own. Models from .usp files keep their groups: by an ID when the file groups the observations with the same value, or else the file's groups as they are (shown "groups from the file").</p>
+<p>Three ways to validate a PCA, PLS or OPLS (New model › Cross-validation):</p>
+<ul>
+<li>Centres recomputed, full model's weights (the default, for every model, imported ones included): each group is predicted by a model fitted without it, like new observations; its centres (and MSC's mean spectrum, the cross terms) are computed again on the other observations, with the same number of components. The model knows nothing of the Y of the group it predicts. Its weights stay the full model's: the standard deviations of X don't depend on Y (a single Y: its weight doesn't change the predictions), and nothing is rescaled on fewer observations, so no prediction blows up.</li>
+<li><p>Centres and weights recomputed without the held-out group (the validation of 0.9.0 to 0.9.7): likewise, but the weights are computed again on the other observations too.</p>
+<p><strong>Stricter:</strong> a term that varies little without the held-out group gets a large weight there, and the group's predictions stray. A guard: a term whose standard deviation on the other observations falls under 10 % of the full model's (a variable that varies at one site only, validated by site) keeps the full model's weight; otherwise its weight, 1 / standard deviation, would be multiplied as much, and the held-out group's predictions would blow up (Q2 of -8e11 on a real project). The Summary says which ones, without which group.</p></li>
+<li><strong>Full model's centres and weights:</strong> the full model's centring and scaling; each component is validated on what the full model's previous components leave, one component fitted without each group. A component's Q2: 1 - PRESS / SS of the residuals before it; Q2(cum): 1 - the product of the components' (1 - Q2), each counted as -0.1 at worst. It is the validation of .usp files: it gives back their Q2, their Q2 per variable and their coefficients' confidence intervals. The Y predicted in cross-validation (RMSEcv, CV-ANOVA, classification) comes from sub-models fitted without each group on the full model's matrices. More optimistic, especially with few observations or groups by site: Y's centre and the previous components already know the held-out group (on pure noise, 6 observations and 20 variables, it gave Q2 = 0.98 for an OPLS-DA; the other two, less than 0). An OPLS has its sub-models fitted on the full model's matrices.</li>
+</ul>
+<p><strong>The first two:</strong> PRESS, the sum of squared prediction errors; Q2(cum) = 1 - PRESS / SS (SS: the variation of Y, or of X for a PCA); a component's Q2, 1 - PRESS / PRESS of the previous one. PCA: each value is predicted by the scores of its observation computed without the variables of its group of variables (also assigned to G groups). RMSEcv, CV-ANOVA, the cross-validated classification, the confidence intervals (jack-knife, over the G sub-models), the permutation test and autofit follow the validation chosen.</p>
+<p>Gain over the empty model (the first two, PLS and OPLS): the Summary also gives the Q2 of the empty model, where each held-out group is predicted by the mean of Y over the other observations, and the model's gain over it, (Q2(cum) - Q2 of the empty model) / (1 - Q2 of the empty model) = 1 - PRESS / PRESS of the empty model: the share of the empty model's prediction error that the model avoids. With groups that differ (sites, departments), the empty model's Q2 is below 0, and so is a model's Q2 that predicts a little better than it: the gain says how much better. 0: no better than the mean of the other groups. With the full model's centres and weights, the empty model predicts the mean of all the observations, held-out group included (its Q2 is 0): no gain is given. Also in the Methods text, the model report and Export to R. Hierarchical model (a PLS whose X include scores of other models of the project, $M1.t1...): its Q2 takes these scores as they are, though they were computed with the held-out group's Y. Its Summary also gives an honest Q2(cum): in each round, its base models are refitted without the held-out group (the whole site when the groups are by site), then their scores, with the model's validation (centres recomputed when it is the full model's); a base model with no variation left without that group gives scores of zero. The honest Q2 has its gain over the empty model too.</p>
+</section>
+<section id="test-set">
+<h2>Test set</h2>
+<p><strong>New model › Observations › Test set:</strong> observations left out of the model and of the cross-validation, then predicted by it, to judge its predictions on data it hasn't seen.</p>
+<p><strong>"Test" column:</strong> by hand; "Selection to test set": the active model's selection; "Choose": a share of the observations (25 % by default), at random or by Kennard–Stone (which keeps for the model the observations furthest apart, so that it covers the whole range of the data, and leaves the others for the test); by class for a PLS-DA, so that each class is in both. After fitting, the Summary gives, for each Y:</p>
+<dl>
+<dt>RMSEP</dt><dd>root mean square of the prediction errors (predicted - observed);</dd>
+<dt>bias</dt><dd>mean of these errors; SEP their standard deviation;</dd>
+<dt>Q2ext</dt><dd>1 - sum (observed - predicted)² / sum (observed - the model's mean)²;</dd>
+</dl>
+<p>for a PLS-DA, the share of the test set correctly classified; for all, the number of test observations outside the model's domain. Observed / predicted shows them as red diamonds. The test set is saved with the model, and kept by Export to R and by the Methods text.</p>
+</section>
+<section id="predicting">
+<h2>Predicting</h2>
+<p><strong>Predict › Predict observations:</strong> the project's observations left out of the model, or a prediction set stored in the .usp file.</p>
+<p><strong>Predict › Predict a file:</strong> a table (in one of the formats above) whose columns carry the names of the model's variables (ignoring capitals and spaces at the start and end; categories by their name). The result gives the scores, DModX, T² and predicted Y; observations outside the model's domain (DModX &gt; DCrit or T² &gt; T²Crit 95 %) are flagged; it exports to every export format. X variables missing from the file are listed and treated as missing.</p>
+<p>The plot above the table shows the scores, or DModXPS: each predicted observation's distance to the model, compared with DCrit (the model's observations in grey).</p>
+</section>
+<section id="hierarchical-models">
+<h2>Hierarchical models</h2>
+<p><strong>Model › Scores as variables:</strong> a model's scores become variables of the project ($M1.t1(title), $M1.t2(title)...), which can be the X of a higher-level model. After changing the base model, do this step again, then refit the models that use them (the application names them). To predict a file with a hierarchical model, the base models are predicted first, automatically.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="data.html">← The data</a><a rel="next" href="plots.html">Plots and figures →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

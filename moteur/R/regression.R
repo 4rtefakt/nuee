@@ -275,8 +275,8 @@ ajuster_termes_ml <- function(m, termes) {
   niveaux <- length(m$niveaux)
   if (!inherits(m$ajustement, c("gam", "gamm"))) return(ajuster_lineaire(m$donnees, termes, niveaux, m$car1, "ML", m$pentes))
   lis <- intersect(m$lisses, termes)
-  if (gamm) return(ajuster_gamm(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, "ML", m$pentes, m$par)$lme)
-  ajuster_mgcv(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, m$famille, !is.null(m$decalage), "ML", m$pentes, m$par)
+  if (gamm) return(ajuster_gamm(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, "ML", m$pentes, m$par, m$spatial)$lme)
+  ajuster_mgcv(m$donnees, setdiff(termes, lis), lis, m$k, niveaux, m$famille, !is.null(m$decalage), "ML", m$pentes, m$par, m$spatial)
 }
 
 # L'apport de chaque groupe de termes (un bloc, ou un terme seul) : le modèle `m` réajusté en ML
@@ -440,12 +440,13 @@ verifier_regression <- function(projet, d) {
       }
     }
     verifier_par_courbes(projet, d)
+    verifier_lisse_spatial(projet, d)
     if (!is.null(d$decalage)) {
-      if (!famille %in% FAMILLES_LOG) err("Un décalage (l'effort) va avec une loi au lien log : Poisson, binomiale négative, gamma ou Tweedie.",
-                                          "An offset (the effort) goes with a log-link distribution: Poisson, negative binomial, gamma or Tweedie.")
+      if (!famille %in% FAMILLES_LOG) err("Un décalage (l'effort) va avec une loi au lien log : Poisson, binomiale négative, gamma, Tweedie ou Poisson à excès de zéros.",
+                                          "An offset (the effort) goes with a log-link distribution: Poisson, negative binomial, gamma, Tweedie or zero-inflated Poisson.")
       if (length(variable_du_projet(projet, d$decalage)$categories)) err("Le décalage est une variable quantitative.", "The offset is a quantitative variable.")
     }
-  } else if (length(d$lisses) || length(d$par_courbes) || !is.null(d$decalage) || !is.null(d$famille)) {
+  } else if (length(d$lisses) || length(d$par_courbes) || !is.null(d$decalage) || !is.null(d$famille) || length(d$lisse_spatial)) {
     err("Lois, courbes et décalage demandent un modèle généralisé (GLM) ou additif (GAM).", "Distributions, curves and offsets need a generalized (GLM) or additive (GAM) model.")
   }
   if (length(aleatoires) > 3) err("Trois effets aléatoires emboîtés au plus.", "Three nested random effects at most.")
@@ -575,6 +576,12 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
     if (any(effort <= 0, na.rm = TRUE)) stop(traduire("Le décalage (l'effort) doit être strictement positif.", "The offset (the effort) must be strictly positive."), call. = FALSE)
     decalage <- log(effort)
   }
+  # (le lissage spatial : les coordonnées de chaque observation, ses deux variables, d$lisse_spatial)
+  spatial <- NULL
+  if (identical(d$type, "GAM") && length(d$lisse_spatial$variables) == 2) {
+    vs <- as.numeric(unlist(d$lisse_spatial$variables))
+    spatial <- list(sx = colonne(projet, vs[1], obs), sy = colonne(projet, vs[2], obs))
+  }
   noms_t <- if (K) paste0("t", seq_len(K)) else character(0)
   composition <- stats::setNames(composition_termes(projet, termes), noms_t)
   # (une courbe par catégorie, s(x, by = f) : le facteur de sa variable qualitative, une colonne)
@@ -603,6 +610,7 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   if (!is.null(temps)) connu <- connu & !is.na(temps)
   if (!is.null(dans)) connu <- connu & !is.na(dans)
   if (!is.null(decalage)) connu <- connu & !is.na(decalage)
+  if (!is.null(spatial)) connu <- connu & !is.na(spatial$sx) & !is.na(spatial$sy)
   garde <- obs[connu]
   if (!length(garde)) stop(traduire("Aucune observation n'a toutes ses valeurs pour ce modèle.", "No observation has all its values for this model."), call. = FALSE)
   bloc <- if (K) construire_bloc(projet, termes, garde, imposees = imposees)
@@ -615,13 +623,18 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
   if (!is.null(temps)) cadre$temps <- temps[connu]
   if (!is.null(dans)) cadre$gc <- factor(dans[connu])  # (le groupe de l'autocorrélation, plus fin que les effets aléatoires)
   if (!is.null(decalage)) cadre$decalage <- decalage[connu]
+  if (!is.null(spatial)) {
+    cadre$sx <- spatial$sx[connu]
+    cadre$sy <- spatial$sy[connu]
+  }
   complet <- stats::complete.cases(cadre)  # (un terme croisé que sa transformation rend manquant)
   if (!all(simples_complets)) complet <- complet & stats::complete.cases(construire_bloc(projet, complets, garde)$X)  # (de même dans le modèle complet)
   cadre <- cadre[complet, , drop = FALSE]
   for (f in names(facteurs)) cadre[[f]] <- facteur_courbe(cadre, facteurs[[f]]$colonnes)
   list(cadre = cadre, observations = garde[complet], exclues = setdiff(obs, garde[complet]),
        termes = noms_t, noms = if (K) bloc$noms else character(0), bloc = bloc,
-       candidats = candidats_regression(termes, noms_t), composition = composition, facteurs = facteurs)
+       candidats = candidats_regression(termes, noms_t), composition = composition, facteurs = facteurs,
+       spatial = if (!is.null(spatial)) definition_spatial(projet, d))
 }
 
 # Les facteurs des courbes par catégorie de la définition `d` (d$par_courbes ; mgcv : s(x, by = f)) :
@@ -829,12 +842,14 @@ ajuster_regression <- function(projet, d) {
       f <- d$par_courbes[[as.character(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
       if (length(f)) stats::setNames(paste0("f", as.numeric(unlist(f))[1]), t)
     }))
+    # (le lissage spatial des coordonnées : cadre_regression en a fait les colonnes sx et sy)
+    spatial <- if (!is.null(cadre$spatial)) cadre$spatial
     if (gamm) {
-      r <- resultat_gamm(cadre$cadre, candidats, noms_candidats, lisses, niveaux, k_demandes, pentes, par, cadre$facteurs)
-      vc <- validation_gamm(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, pentes, par)
+      r <- resultat_gamm(cadre$cadre, candidats, noms_candidats, lisses, niveaux, k_demandes, pentes, par, cadre$facteurs, spatial)
+      vc <- validation_gamm(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, pentes, par, r$spatial)
     } else {
-      r <- resultat_mgcv(cadre$cadre, candidats, noms_candidats, lisses, niveaux, famille, !is.null(d$decalage), k_demandes, pentes, par, cadre$facteurs)
-      vc <- validation_mgcv(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, famille, !is.null(d$decalage), pentes, par)
+      r <- resultat_mgcv(cadre$cadre, candidats, noms_candidats, lisses, niveaux, famille, !is.null(d$decalage), k_demandes, pentes, par, cadre$facteurs, spatial)
+      vc <- validation_mgcv(cadre$cadre, r$utiles, lisses, r$k, groupes, niveaux, famille, !is.null(d$decalage), pentes, par, r$spatial)
     }
   } else {
     r <- resultat_lineaire(cadre$cadre, candidats, noms_candidats, niveaux, car1, pentes)
@@ -866,7 +881,7 @@ ajuster_regression <- function(projet, d) {
             y = list(uid = as.numeric(y$variables), noms = as.character(y$name), transformation = nom_transformation(y$transform) %||% ""),
             noms_termes = cadre$noms, termes = cadre$termes, utiles = r$utiles, quantitatifs = quantitatifs,
             candidats = candidats, composition = cadre$composition,
-            lisses = intersect(lisses, r$utiles), k = r$k, famille = famille, lien = r$lien %||% "identity",
+            lisses = intersect(lisses, r$utiles), k = r$k, spatial = r$spatial, famille = famille, lien = r$lien %||% "identity",
             # (les courbes par catégorie : le facteur de chacune, et ce qu'est chaque facteur)
             par = par[intersect(names(par), r$utiles)], facteurs_courbes = cadre$facteurs,
             decalage = if (!is.null(d$decalage)) nom_groupement(projet, list(by = "variable", variable = d$decalage)),
@@ -874,7 +889,7 @@ ajuster_regression <- function(projet, d) {
             niveaux = vapply(d$aleatoires %||% list(), function(s) nom_groupement(projet, s), ""), pentes = pentes,
             temps = if (car1) nom_groupement(projet, d$correlation$temps), car1 = car1, gamm = gamm,
             dans = if (car1 && !is.null(d$correlation$dans)) nom_groupement(projet, d$correlation$dans),
-            resultat = r[setdiff(names(r), c("ajustement", "ajustement_ml", "utiles", "k"))],
+            resultat = r[setdiff(names(r), c("ajustement", "ajustement_ml", "utiles", "k", "spatial"))],
             ajustement = r$ajustement, ajustement_ml = r$ajustement_ml, donnees = cadre$cadre, bloc = cadre$bloc,
             G = length(unique(groupes)), vc_par = nom_groupes_vc(projet, d),
             vc = list(Q2 = vc$Q2, RMSEcv = vc$RMSEcv, prediction = vc$prediction, groupe = groupes, echecs = vc$echecs,
@@ -951,7 +966,11 @@ predire_observations_regression <- function(projet, m, d, observations, effort_a
     effort <- if (effort_absent) rep(1, n) else colonne(projet, d$decalage, observations)
     nd$decalage <- ifelse(!is.na(effort) & effort > 0, log(abs(effort)), NA_real_)
   }
-  utilisees <- intersect(c(m$utiles, "decalage"), names(nd))
+  if (!is.null(m$spatial)) {  # (le lissage spatial : les coordonnées de chaque observation)
+    nd$sx <- colonne(projet, m$spatial$variables[1], observations)
+    nd$sy <- colonne(projet, m$spatial$variables[2], observations)
+  }
+  utilisees <- intersect(c(m$utiles, "decalage", "sx", "sy"), names(nd))
   connu <- if (length(utilisees)) stats::complete.cases(nd[utilisees]) else rep(TRUE, n)  # (sans X : le modèle nul)
   predit <- rep(NA_real_, n)
   inconnue <- rep(FALSE, n)
@@ -997,6 +1016,13 @@ observations_regression <- function(projet, m) {
   obs[[paste(y, "prédit (VC)")]] <- m$vc$prediction
   obs$residu <- r$residus
   obs$quantile_normal <- quantiles_henry(r$residus)
+  # (le lissage spatial : sa valeur en chaque observation, sur l'échelle du lien, que la carte peut montrer)
+  if (!is.null(m$spatial)) {
+    a <- if (inherits(m$ajustement, "gamm")) m$ajustement$gam else m$ajustement
+    termes <- tryCatch(stats::predict(a, type = "terms"), error = function(e) NULL)
+    e <- etiquette_spatial(m$spatial)
+    if (!is.null(termes) && e %in% colnames(termes)) obs[[m$spatial$nom]] <- as.vector(termes[, e])
+  }
   if (!is.null(r$levier)) {
     obs$levier <- r$levier
     obs$cook <- r$cook
@@ -1292,17 +1318,26 @@ definition_car1 <- function(projet, d, temps, groupe) {
 
 # Les lois de la réponse (mgcv) : leur lien est le lien canonique, log pour la loi gamma. Une
 # loi discrète (comptages, présence-absence) ne se compare pas par l'AIC à une loi continue.
-FAMILLES <- c("gaussienne", "poisson", "binomiale_negative", "binomiale", "gamma", "tweedie")
-FAMILLES_LOG <- c("poisson", "binomiale_negative", "gamma", "tweedie")
-mesure_famille <- function(famille) if (famille %in% c("poisson", "binomiale_negative", "binomiale")) "discrete" else if (identical(famille, "tweedie")) "tweedie" else "continue"
+# Deux familles étendues de mgcv (Wood, Pya et Säfken, 2016), leurs paramètres estimés avec le
+# modèle : le Poisson à excès de zéros, ziP() (un comptage nul avec la probabilité 1 − p, sinon une
+# loi de Poisson tronquée en zéro ; log(−log(1 − p)) = θ1 + θ2 log(μ), μ le paramètre de la loi de
+# Poisson), et la loi bêta, betar() (une proportion entre 0 et 1, de moyenne μ, lien logit, et de
+# précision φ). Le Poisson à excès de zéros redonne la loi de Poisson quand θ1 = 0 et θ2 = 1 : sa
+# vraisemblance se compare à la sienne et à celle de la binomiale négative.
+FAMILLES <- c("gaussienne", "poisson", "binomiale_negative", "binomiale", "gamma", "tweedie", "poisson_zi", "beta")
+FAMILLES_LOG <- c("poisson", "binomiale_negative", "gamma", "tweedie", "poisson_zi")
+mesure_famille <- function(famille) if (famille %in% c("poisson", "binomiale_negative", "binomiale", "poisson_zi")) "discrete" else if (identical(famille, "tweedie")) "tweedie" else "continue"
 
-# Une famille de mgcv qui marche sans que mgcv soit attaché : celles de mgcv (tw, nb) appellent
-# des fonctions de mgcv depuis un environnement dont le parent est l'environnement global ; on
-# les y met.
-famille_mgcv <- function(nom) {
+# Une famille de mgcv qui marche sans que mgcv soit attaché : celles de mgcv (tw, nb, ziP, betar)
+# appellent des fonctions de mgcv depuis un environnement dont le parent est l'environnement
+# global ; on les y met. La loi bêta : les proportions de la réponse sont strictement entre 0 et 1
+# (verifier_reponse), et l'eps de betar(), qui déplacerait un 0 ou un 1 juste à l'intérieur, ne sert pas.
+# `theta` : les paramètres de ziP (θ1 et θ2 interne) ou le φ de betar, fixés (profil_loi).
+famille_mgcv <- function(nom, theta = NULL) {
   f <- switch(as.character(nom)[1],
     gaussienne = stats::gaussian(), poisson = stats::poisson(), binomiale = stats::binomial(),
     binomiale_negative = mgcv::nb(), gamma = stats::Gamma(link = "log"), tweedie = mgcv::tw(),
+    poisson_zi = mgcv::ziP(theta = theta), beta = mgcv::betar(theta = theta, link = "logit"),
     stop(sprintf(traduire("Loi inconnue : %s", "Unknown distribution: %s"), nom), call. = FALSE))
   ns <- asNamespace("mgcv")
   for (g in Filter(is.function, f)) {
@@ -1315,21 +1350,34 @@ famille_mgcv <- function(nom) {
   f
 }
 
-# Une réponse que la loi accepte : des comptages (Poisson, binomiale négative), 0 ou 1
-# (binomiale), strictement positive (gamma), positive ou nulle (Tweedie).
+# Une réponse que la loi accepte : des comptages (Poisson, binomiale négative, Poisson à excès de
+# zéros, qui demande aussi des zéros), 0 ou 1 (binomiale), strictement positive (gamma), positive ou
+# nulle (Tweedie), strictement entre 0 et 1 (bêta : mgcv ramènerait un 0 ou un 1 à eps du bord, ce
+# que sa documentation dit n'être pas sans effet ; c'est à la personne de les ramener, en le disant).
 verifier_reponse <- function(y, famille) {
   ok <- switch(famille,
-    poisson = , binomiale_negative = all(y >= 0 & abs(y - round(y)) < 1e-8),
+    poisson = , binomiale_negative = , poisson_zi = all(y >= 0 & abs(y - round(y)) < 1e-8),
     binomiale = all(y %in% c(0, 1)),
     gamma = all(y > 0),
     tweedie = all(y >= 0),
+    beta = all(y > 0 & y < 1),
     TRUE)
   if (!ok) stop(switch(famille,
     poisson = , binomiale_negative = traduire("Une loi de Poisson ou binomiale négative demande des comptages (des entiers positifs ou nuls).",
                                               "A Poisson or negative binomial distribution needs counts (whole numbers, zero or more)."),
+    poisson_zi = traduire("Une loi de Poisson à excès de zéros demande des comptages (des entiers positifs ou nuls).",
+                          "A zero-inflated Poisson distribution needs counts (whole numbers, zero or more)."),
     binomiale = traduire("Une loi binomiale demande une réponse 0 ou 1 (absence ou présence).", "A binomial distribution needs a 0 or 1 response (absence or presence)."),
     gamma = traduire("Une loi gamma demande une réponse strictement positive.", "A gamma distribution needs a strictly positive response."),
+    beta = sprintf(traduire("Une loi bêta demande des proportions strictement comprises entre 0 et 1 : %d valeur(s) de la réponse sont à 0, à 1 ou au-delà. Pour une présence-absence, prenez la loi binomiale ; des proportions qui touchent 0 ou 1 se ramènent d'abord dans l'intervalle, en le disant (Édition › Nouvelle variable, par exemple (y * (n - 1) + 0.5) / n pour n observations ; Smithson et Verkuilen, 2006).",
+                            "A beta distribution needs proportions strictly between 0 and 1: %d value(s) of the response are at 0, at 1 or beyond. For presence-absence, take the binomial distribution; proportions that reach 0 or 1 are first brought inside the interval, saying so (Edit › New variable, for example (y * (n - 1) + 0.5) / n for n observations; Smithson & Verkuilen, 2006)."),
+                   sum(!(y > 0 & y < 1))),
     traduire("Une loi de Tweedie demande une réponse positive ou nulle.", "A Tweedie distribution needs a response of zero or more.")), call. = FALSE)
+  # (un modèle à excès de zéros sur des comptages sans zéro : rien à modéliser, et θ1 partirait à l'infini)
+  if (identical(famille, "poisson_zi") && !any(y == 0)) {
+    stop(traduire("Aucun comptage de la réponse n'est nul : un modèle à excès de zéros n'a pas de zéros à modéliser ; prenez la loi de Poisson ou binomiale négative.",
+                  "No count of the response is zero: a zero-inflated model has no zeros to model; take the Poisson or negative binomial distribution."), call. = FALSE)
+  }
 }
 
 # La formule d'un modèle de mgcv, écrite avec les seuls noms internes : termes paramétriques,
@@ -1338,18 +1386,76 @@ verifier_reponse <- function(y, famille) {
 # 1...) et leurs pentes aléatoires s(g1, t3, bs = "re") (`pentes` : les termes de chaque niveau ; une
 # pente indépendante de l'ordonnée à l'origine, mgcv ne les corrèle pas), décalage. Son environnement
 # donne s() de mgcv, qui relit ces termes : ils ne viennent que d'ici.
-formule_mgcv <- function(parametriques, lisses, k, niveaux, decalage, pentes = NULL, par = NULL) {
+formule_mgcv <- function(parametriques, lisses, k, niveaux, decalage, pentes = NULL, par = NULL, spatial = NULL) {
   groupes <- c("g1", "g12", "g123")[seq_len(niveaux)]
   aleatoires <- c(sprintf("s(%s, bs = \"re\")", groupes), unlist(lapply(seq_len(niveaux), function(l) sprintf("s(%s, %s, bs = \"re\")", groupes[l], pentes[[l]]))))
   courbes <- vapply(lisses, function(t) if (t %in% names(par)) sprintf("s(%s, by = %s, k = %d)", t, par[[t]], as.integer(k[[t]]))
                                         else sprintf("s(%s, k = %d)", t, as.integer(k[[t]])), "", USE.NAMES = FALSE)
-  termes <- c(parametriques, courbes, aleatoires, if (decalage) "offset(decalage)")
+  termes <- c(parametriques, courbes, if (!is.null(spatial)) terme_spatial(spatial), aleatoires, if (decalage) "offset(decalage)")
   stats::as.formula(paste("y ~", if (length(termes)) paste(termes, collapse = " + ") else "1"), env = new.env(parent = asNamespace("mgcv")))
 }
 
-ajuster_mgcv <- function(donnees, parametriques, lisses, k, niveaux, famille, decalage, methode = "REML", pentes = NULL, par = NULL) {
-  tryCatch(mgcv::gam(formule_mgcv(parametriques, lisses, k, niveaux, decalage, pentes, par), data = donnees, family = famille_mgcv(famille), method = methode),
-           error = function(e) NULL)
+ajuster_mgcv <- function(donnees, parametriques, lisses, k, niveaux, famille, decalage, methode = "REML", pentes = NULL, par = NULL, spatial = NULL) {
+  f <- formule_mgcv(parametriques, lisses, k, niveaux, decalage, pentes, par, spatial)
+  a <- tryCatch(mgcv::gam(f, data = donnees, family = famille_mgcv(famille), method = methode), error = function(e) NULL)
+  if (is.null(a) && identical(methode, "ML") && famille %in% c("poisson_zi", "beta") && !length(lisses) && !niveaux && is.null(spatial)) a <- profil_loi(f, donnees, famille)
+  a
+}
+
+# mgcv 1.9 : l'ajustement en ML d'un modèle sans terme pénalisé de ziP ou de betar s'arrête parfois sur
+# une erreur de LAPACK dans son code C (« DGESDD … error code -10 », dans gdi2, sans pénalité et avec
+# des poids de Newton négatifs), alors que le même modèle s'ajuste quand les paramètres de la loi
+# sont fixés. Son maximum de vraisemblance s'obtient alors comme mgcv le cherche, mais en dehors de
+# lui : les paramètres de la loi qui maximisent la vraisemblance des ajustements où ils sont fixés
+# (optimize sur log φ pour betar ; optim de Nelder et Mead pour θ1 et le θ2 interne de ziP, depuis 0
+# et 0, la loi de Poisson), puis l'ajustement à ces paramètres, où ils comptent comme estimés
+# (n.theta : la vraisemblance de mgcv leur donne alors leurs degrés de liberté). NULL s'il échoue.
+profil_loi <- function(f, donnees, famille) {
+  ajuster <- function(th) tryCatch(mgcv::gam(f, data = donnees, family = famille_mgcv(famille, if (famille == "beta") exp(th) else th)), error = function(e) NULL)
+  moins_ll <- function(th) {
+    a <- ajuster(th)
+    if (is.null(a)) Inf else -as.numeric(stats::logLik(a))
+  }
+  # (optim s'arrête sur une erreur quand le départ ne s'ajuste pas : ses appelants attendent NULL)
+  th <- tryCatch(if (famille == "beta") stats::optimize(moins_ll, c(-7, 14), tol = 1e-10)$minimum
+                 else stats::optim(c(0, 0), moins_ll, control = list(reltol = 1e-12, maxit = 2000))$par,
+                 error = function(e) NULL)
+  if (is.null(th)) return(NULL)
+  a <- ajuster(th)
+  if (!is.null(a)) a$family$n.theta <- length(th)
+  a
+}
+
+# Le lissage spatial d'un modèle additif (d$lisse_spatial) : une surface des coordonnées des
+# observations (les colonnes sx et sy du tableau du modèle, cadre_regression), une spline de
+# régression en plaques minces isotrope s(sx, sy) pour des coordonnées planes (Wood, 2003), ou une
+# spline sur la sphère s(sy, sx, bs = "sos") pour des latitudes et longitudes en degrés (Wahba,
+# 1981 ; Wood, 2017), de dimension de base k. Elle absorbe la structure spatiale que les termes
+# n'expliquent pas, et ses résidus en gardent moins (spatial.R : autocorrelation_spatiale).
+terme_spatial <- function(spatial) {
+  if (identical(spatial$base, "sos")) sprintf("s(sy, sx, bs = \"sos\", k = %d)", as.integer(spatial$k))
+  else sprintf("s(sx, sy, k = %d)", as.integer(spatial$k))
+}
+etiquette_spatial <- function(spatial) if (identical(spatial$base, "sos")) "s(sy,sx)" else "s(sx,sy)"
+
+# La dimension du lissage spatial sur `donnees` : celle demandée (30 par défaut, comme mgcv pour
+# deux variables), au plus le nombre de lieux différents moins 1 ; NA en dessous de 5 (une surface
+# en plaques minces a déjà 3 fonctions non pénalisées : 1, x et y).
+dimension_spatiale <- function(donnees, k = NA) {
+  lieux <- nrow(unique(donnees[c("sx", "sy")]))
+  k <- min(if (length(k) && !is.na(k[1])) as.integer(k[1]) else 30L, lieux - 1L)
+  if (k < 5) NA_integer_ else k
+}
+
+# La ligne du lissage spatial dans le tableau des courbes (son edf, son test et sa concurvité).
+ligne_spatiale <- function(a, spatial, courbes) {
+  st <- summary(a)$s.table
+  e <- etiquette_spatial(spatial)
+  ligne <- data.frame(terme = spatial$nom, edf = st[e, 1], ref_ddl = st[e, 2], statistique = st[e, 3], p = st[e, 4], stringsAsFactors = FALSE)
+  ligne <- concurvite_courbes(a, e, ligne)
+  if (is.null(courbes)) return(ligne)
+  for (n in setdiff(names(courbes), names(ligne))) ligne[[n]] <- NA
+  rbind(courbes, ligne[names(courbes)])
 }
 
 # L'étiquette de mgcv de la courbe du terme `t` : s(t3), ou pour une courbe par catégorie (`par` :
@@ -1405,10 +1511,24 @@ predire_mgcv <- function(a, nd, appris, niveaux, par = NULL) {
   as.vector(stats::predict(a, nd, type = "response", exclude = aleatoires))
 }
 
+# Les paramètres de la loi estimés avec le modèle, leurs noms et leurs valeurs : θ de la binomiale
+# négative, la puissance p de Tweedie, θ1 et θ2 du Poisson à excès de zéros (log(−log(1 − p)) =
+# θ1 + θ2 log(μ) ; θ2 = b + exp(θ2 interne), b = 0, comme les donne le résumé de mgcv), la précision
+# φ de la loi bêta (sa variance μ (1 − μ) / (1 + φ)).
 parametre_famille <- function(a, famille) {
   if (famille == "binomiale_negative") return(list(nom = "theta", valeur = a$family$getTheta(TRUE)))
   if (famille == "tweedie") return(list(nom = "p", valeur = a$family$getTheta(TRUE)))
+  if (famille == "poisson_zi") return(list(nom = c("theta1", "theta2"), valeur = as.vector(a$family$getTheta(TRUE))))
+  if (famille == "beta") return(list(nom = "phi", valeur = a$family$getTheta(TRUE)))
   NULL
+}
+
+# Les valeurs ajustées d'un modèle de mgcv sur l'échelle de la réponse, ses effets aléatoires et son
+# effort compris. Le Poisson à excès de zéros : fitted() de mgcv y donne le prédicteur linéaire,
+# log(μ) ; la valeur attendue d'un comptage est p μ / (1 − e^(−μ)), ce que donne predict(type =
+# "response").
+ajustees_mgcv <- function(a, famille) {
+  if (identical(famille, "poisson_zi")) as.vector(stats::predict(a, type = "response")) else as.vector(stats::fitted(a))
 }
 
 # Le modèle ajusté sur toutes ses observations, comme resultat_lineaire : REML pour les
@@ -1428,7 +1548,8 @@ concurvite_courbes <- function(a, lignes, courbes) {
 }
 
 # `par` : la colonne du facteur de chaque courbe par catégorie ; `facteurs` : facteurs_courbes.
-resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decalage, k_demandes = NULL, pentes = NULL, par = NULL, facteurs = NULL) {
+resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decalage, k_demandes = NULL, pentes = NULL, par = NULL, facteurs = NULL,
+                          spatial = NULL) {
   utiles <- termes_utiles(donnees, termes)
   verifier_pentes_utiles(pentes, utiles, termes, noms)
   retires <- noms[match(setdiff(termes, utiles), termes)]
@@ -1439,11 +1560,12 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
                  paste(noms[match(lis[k < 3], termes)], collapse = ", ")), call. = FALSE)
   }
   parametriques <- setdiff(utiles, lis)
+  spatial <- avec_dimension_spatiale(donnees, spatial)
   # (sans courbe ni effet aléatoire, un modèle linéaire généralisé ordinaire : en ML, comme glm()
   # et MASS::glm.nb(), le θ de la binomiale négative compris)
-  penalise <- length(lis) > 0 || niveaux > 0
-  estime <- ajuster_mgcv(donnees, parametriques, lis, k, niveaux, famille, decalage, if (penalise) "REML" else "ML", pentes, par)
-  compare <- if (penalise) ajuster_mgcv(donnees, parametriques, lis, k, niveaux, famille, decalage, "ML", pentes, par) else estime
+  penalise <- length(lis) > 0 || niveaux > 0 || !is.null(spatial)
+  estime <- ajuster_mgcv(donnees, parametriques, lis, k, niveaux, famille, decalage, if (penalise) "REML" else "ML", pentes, par, spatial)
+  compare <- if (penalise) ajuster_mgcv(donnees, parametriques, lis, k, niveaux, famille, decalage, "ML", pentes, par, spatial) else estime
   if (is.null(estime) || is.null(compare)) {
     stop(traduire("Le modèle n'a pas pu être ajusté : essayez moins de termes, de courbes ou d'effets aléatoires, ou une autre loi.",
                   "The model could not be fitted: try fewer terms, curves or random effects, or another distribution."), call. = FALSE)
@@ -1456,10 +1578,13 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
                    ddl = if (echelle) estime$df.residual else NA_real_, t = pt[, 3], p = pt[, 4],
                    bas = pt[, 1] - q * pt[, 2], haut = pt[, 1] + q * pt[, 2], row.names = NULL, stringsAsFactors = FALSE)
   courbes <- if (length(lis)) tableau_courbes(estime, lis, termes, noms, donnees, par, facteurs)
+  if (!is.null(spatial)) courbes <- ligne_spatiale(estime, spatial, courbes)
   variances <- singularites <- NULL
   if (niveaux) {
     vc <- tryCatch(mgcv::gam.vcomp(estime), error = function(e) NULL)
-    et <- if (is.matrix(vc)) vc[, 1] else if (is.list(vc) && is.matrix(vc$vc)) vc$vc[, 1] else NULL  # (les écarts-types, nommés)
+    M <- if (is.matrix(vc)) vc else if (is.list(vc) && is.matrix(vc$vc)) vc$vc
+    # (les écarts-types, nommés : M[, 1] seul perd le nom d'une ligne unique, un effet aléatoire sans courbe)
+    et <- if (!is.null(M)) stats::setNames(M[, 1], rownames(M))
     if (!is.null(et)) {
       # (une matrice diagonale par niveau, son ordonnée à l'origine s(g1) puis ses pentes s(g1,t3) :
       # mgcv les tient pour indépendantes)
@@ -1477,22 +1602,36 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
   n <- nrow(donnees)
   list(N = n, coefficients = co, courbes = courbes, termes_retires = retires, logLik = as.numeric(ll), parametres = attr(ll, "df"),
        AIC = stats::AIC(compare), AICc = aic_corrige(compare, n), BIC = stats::BIC(compare),
-       r2 = list(r2_ajuste = s$r.sq, deviance_expliquee = s$dev.expl), variances = variances, singularites = singularites,
-       famille = famille, lien = estime$family$link, parametre_loi = parametre_famille(estime, famille), echelle = estime$sig2,
+       # (le Poisson à excès de zéros n'a pas de R² ajusté dans mgcv : la part de la déviance seule)
+       r2 = Filter(Negate(is.null), list(r2_ajuste = s$r.sq, deviance_expliquee = s$dev.expl)), variances = variances, singularites = singularites,
+       # (mgcv nomme « identity » le lien de ziP, dont le prédicteur linéaire est directement log(μ) :
+       # c'est le lien log du paramètre μ de la loi de Poisson)
+       famille = famille, lien = if (identical(famille, "poisson_zi")) "log" else estime$family$link, parametre_loi = parametre_famille(estime, famille), echelle = estime$sig2,
        # (Poisson : la dispersion, khi² de Pearson sur ses degrés de liberté ; au-delà de 1,5, des
        # comptages surdispersés, que la binomiale négative modélise. Une réponse 0 ou 1 ne la montre pas.)
        dispersion = if (famille == "poisson") sum(stats::residuals(estime, type = "pearson")^2) / estime$df.residual,
-       ajuste = as.vector(stats::fitted(estime)),
+       ajuste = ajustees_mgcv(estime, famille),
        residus = as.vector(stats::residuals(estime, type = "deviance")) / sqrt(estime$sig2 * pmax(1 - estime$hat, 1e-8)),
-       # (comptages, présence-absence, valeurs positives : les résidus quantiles, regression_diagnostics.R ; NULL sinon)
+       # (comptages, présence-absence, valeurs positives, proportions : les résidus quantiles,
+       # regression_diagnostics.R ; NULL sinon)
        residus_quantiles = residus_quantiles(estime, famille),
-       utiles = utiles, k = k, ajustement = estime, ajustement_ml = compare)
+       utiles = utiles, k = k, spatial = spatial, ajustement = estime, ajustement_ml = compare)
+}
+
+# Le lissage spatial avec sa dimension sur ces données (dimension_spatiale), ou une erreur quand
+# il y a trop peu de lieux différents ; NULL sans lissage spatial.
+avec_dimension_spatiale <- function(donnees, spatial) {
+  if (is.null(spatial)) return(NULL)
+  k <- dimension_spatiale(donnees, spatial$k_demande)
+  if (is.na(k)) stop(traduire("Trop peu de lieux différents (6 au moins) pour un lissage spatial.", "Too few different places (6 or more) for a spatial smooth."), call. = FALSE)
+  spatial$k <- k
+  spatial
 }
 
 # Validation croisée d'un modèle de mgcv : chaque groupe prédit (échelle de la réponse) par le
 # modèle ajusté sans lui ; une courbe dont la variable a trop peu de valeurs sur ces
 # observations y devient un terme linéaire. `par` : les courbes par catégorie (formule_mgcv).
-validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille, decalage, pentes = NULL, par = NULL) {
+validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille, decalage, pentes = NULL, par = NULL, spatial = NULL) {
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
@@ -1502,7 +1641,8 @@ validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille
     lis <- intersect(lisses, u)
     kk <- vapply(lis, function(t) dimension_courbe(appris[[t]], k[[t]]), 0L)  # (la dimension du modèle, moins si ces lignes ont peu de valeurs)
     lis <- lis[kk >= 3]
-    m <- ajuster_mgcv(appris, setdiff(u, lis), lis, kk, niveaux, famille, decalage, if (length(lis) || niveaux) "REML" else "ML", pentes, par)
+    sp <- spatial_appris(appris, spatial)
+    m <- ajuster_mgcv(appris, setdiff(u, lis), lis, kk, niveaux, famille, decalage, if (length(lis) || niveaux || !is.null(sp)) "REML" else "ML", pentes, par, sp)
     if (is.null(m)) { echecs <- echecs + 1; next }
     prediction[ici] <- tryCatch(predire_mgcv(m, donnees[ici, , drop = FALSE], appris, niveaux, par[intersect(names(par), lis)]), error = function(e) NA_real_)
   }
@@ -1522,8 +1662,8 @@ validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille
 # corrélation (correlation_car1) vont à nlme::lme ; la formule est celle de mgcv sans effet
 # aléatoire (formule_mgcv), son environnement donne s(). NULL quand l'ajustement échoue, après un
 # second essai par optim.
-ajuster_gamm <- function(donnees, parametriques, lisses, k, niveaux, methode = "REML", pentes = NULL, par = NULL) {
-  f <- formule_mgcv(parametriques, lisses, k, 0, FALSE, NULL, par)
+ajuster_gamm <- function(donnees, parametriques, lisses, k, niveaux, methode = "REML", pentes = NULL, par = NULL, spatial = NULL) {
+  f <- formule_mgcv(parametriques, lisses, k, 0, FALSE, NULL, par, spatial)
   aleatoire <- aleatoire_nlme(niveaux, pentes, liste = TRUE)
   correlation <- correlation_car1(donnees, niveaux)
   essai <- function(...) tryCatch(mgcv::gamm(f, random = aleatoire, correlation = correlation, data = donnees, method = methode, ...), error = function(e) NULL)
@@ -1536,7 +1676,7 @@ ajuster_gamm <- function(donnees, parametriques, lisses, k, niveaux, methode = "
 # 2013 ; avec des pentes aléatoires, Johnson 2014), la partie fixe comprenant les courbes. Valeurs
 # ajustées : avec les effets aléatoires ($lme) et par les seuls effets fixes ($gam) ; résidus
 # normalisés (l'autocorrélation retirée).
-resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = NULL, pentes = NULL, par = NULL, facteurs = NULL) {
+resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = NULL, pentes = NULL, par = NULL, facteurs = NULL, spatial = NULL) {
   verifier_temps_uniques(donnees, niveaux)
   utiles <- termes_utiles(donnees, termes)
   verifier_pentes_utiles(pentes, utiles, termes, noms)
@@ -1548,8 +1688,9 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
                  paste(noms[match(lis[k < 3], termes)], collapse = ", ")), call. = FALSE)
   }
   parametriques <- setdiff(utiles, lis)
-  estime <- ajuster_gamm(donnees, parametriques, lis, k, niveaux, "REML", pentes, par)
-  compare <- ajuster_gamm(donnees, parametriques, lis, k, niveaux, "ML", pentes, par)
+  spatial <- avec_dimension_spatiale(donnees, spatial)
+  estime <- ajuster_gamm(donnees, parametriques, lis, k, niveaux, "REML", pentes, par, spatial)
+  compare <- ajuster_gamm(donnees, parametriques, lis, k, niveaux, "ML", pentes, par, spatial)
   if (is.null(estime) || is.null(compare)) {
     stop(traduire("Le modèle n'a pas pu être ajusté (mgcv::gamm n'a pas convergé) : essayez moins de termes, de courbes ou d'effets aléatoires, ou sans l'autocorrélation.",
                   "The model could not be fitted (mgcv::gamm did not converge): try fewer terms, curves or random effects, or no autocorrelation."), call. = FALSE)
@@ -1563,6 +1704,7 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
                    ddl = g$df.residual, t = pt[, 3], p = pt[, 4], bas = pt[, 1] - q * pt[, 2], haut = pt[, 1] + q * pt[, 2],
                    row.names = NULL, stringsAsFactors = FALSE)
   courbes <- if (length(lis)) tableau_courbes(g, lis, termes, noms, donnees, par, facteurs)
+  if (!is.null(spatial)) courbes <- ligne_spatiale(g, spatial, courbes)
   # la variance de chaque effet aléatoire (nlme : σ² fois sa matrice relative), puis la résiduelle
   S <- matrices_nlme(l, niveaux)
   variances <- tableau_variances(S, l$sigma^2, pentes)
@@ -1582,13 +1724,13 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
        ajuste = as.vector(stats::fitted(l)), ajuste_fixe = as.vector(stats::fitted(g)),
        # (dans l'ordre du temps de chaque groupe : regression_diagnostics.R, residus_normalises_car1)
        residus = residus_normalises_car1(as.vector(stats::residuals(l, type = "pearson")), donnees$temps, groupe_car1(donnees, niveaux), phi),
-       utiles = utiles, k = k, ajustement = estime, ajustement_ml = compare)
+       utiles = utiles, k = k, spatial = spatial, ajustement = estime, ajustement_ml = compare)
 }
 
 # Validation croisée d'un modèle de mgcv::gamm : chaque groupe prédit par le modèle ajusté sans
 # lui (REML), par ses effets fixes et ses courbes ($gam : un groupe jamais vu) ; le facteur d'une
 # courbe par catégorie (`par`) aux niveaux du modèle (niveaux_appris).
-validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux, pentes = NULL, par = NULL) {
+validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux, pentes = NULL, par = NULL, spatial = NULL) {
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
@@ -1598,7 +1740,7 @@ validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux, pentes 
     lis <- intersect(lisses, u)
     kk <- vapply(lis, function(t) dimension_courbe(appris[[t]], k[[t]]), 0L)
     lis <- lis[kk >= 3]
-    m <- ajuster_gamm(appris, setdiff(u, lis), lis, kk, niveaux, "REML", pentes, par)
+    m <- ajuster_gamm(appris, setdiff(u, lis), lis, kk, niveaux, "REML", pentes, par, spatial_appris(appris, spatial))
     if (is.null(m)) { echecs <- echecs + 1; next }
     nd <- donnees[ici, , drop = FALSE]
     for (f in unique(par[intersect(names(par), lis)])) nd[[f]] <- niveaux_appris(nd[[f]], levels(appris[[f]]))
@@ -1906,6 +2048,10 @@ REFERENCES_REGRESSION <- list(
   zuur = "Zuur, A. F., Ieno, E. N., Walker, N. J., Saveliev, A. A., & Smith, G. M. (2009). Mixed effects models and extensions in ecology with R. Springer. https://doi.org/10.1007/978-0-387-87458-6",
   wood2017 = "Wood, S. N. (2017). Generalized additive models: An introduction with R (2nd ed.). Chapman and Hall/CRC. https://doi.org/10.1201/9781315370279",
   wood2011 = "Wood, S. N. (2011). Fast stable restricted maximum likelihood and marginal likelihood estimation of semiparametric generalized linear models. Journal of the Royal Statistical Society: Series B, 73(1), 3–36. https://doi.org/10.1111/j.1467-9868.2010.00749.x",
+  wood2003 = "Wood, S. N. (2003). Thin plate regression splines. Journal of the Royal Statistical Society: Series B, 65(1), 95–114. https://doi.org/10.1111/1467-9868.00374",
+  wahba1981 = "Wahba, G. (1981). Spline interpolation and smoothing on the sphere. SIAM Journal on Scientific and Statistical Computing, 2(1), 5–16. https://doi.org/10.1137/0902002",
+  wood2016 = "Wood, S. N., Pya, N., & Säfken, B. (2016). Smoothing parameter and model selection for general smooth models. Journal of the American Statistical Association, 111(516), 1548–1563. https://doi.org/10.1080/01621459.2016.1180986",
+  ferrari = "Ferrari, S. L. P., & Cribari-Neto, F. (2004). Beta regression for modelling rates and proportions. Journal of Applied Statistics, 31(7), 799–815. https://doi.org/10.1080/0266476042000214501",
   stewart_oaten = "Stewart-Oaten, A., Murdoch, W. W., & Parker, K. R. (1986). Environmental impact assessment: \"Pseudoreplication\" in time? Ecology, 67(4), 929–940. https://doi.org/10.2307/1939815",
   diggle = "Diggle, P. J., Heagerty, P., Liang, K.-Y., & Zeger, S. L. (2002). Analysis of longitudinal data (2nd ed.). Oxford University Press.",
   johnson2015 = "Johnson, P. C. D., Barry, S. J. E., Ferguson, H. M., & Müller, P. (2015). Power analysis for generalized linear mixed models in ecology and evolution. Methods in Ecology and Evolution, 6(2), 133–142. https://doi.org/10.1111/2041-210X.12306",
@@ -1926,7 +2072,9 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
 
   # --- données
   ty <- d$y[[1]]
-  reponse <- if (is.null(ty$transform)) guillemets(m$y$noms) else formule_transformation(ty$transform, guillemets(m$y$noms), fr)
+  # (la réponse avec son unité, quand elle en a une : atelier.R)
+  nom_reponse <- paste0(guillemets(m$y$noms), unite_texte(projet, ty$variables[1]))
+  reponse <- if (is.null(ty$transform)) nom_reponse else formule_transformation(ty$transform, nom_reponse, fr)
   p1 <- if (fr) sprintf("Le modèle porte sur %s%s ; la réponse est %s.", observations_texte(m$N, d, fr),
                         if (length(m$exclues)) sprintf(" (%d autres laissées de côté faute de valeurs)", length(m$exclues)) else "", reponse)
         else sprintf("The model uses %s%s; the response is %s.", observations_texte(m$N, d, fr),
@@ -1942,8 +2090,10 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     if (fr) "Les variables explicatives sont dans leurs unités." else "The explanatory variables are in their own units."
   } else if (fr) "Les variables explicatives ont été centrées et mises à l'échelle avant l'ajustement." else "The explanatory variables were centred and scaled before fitting."
   p2 <- if (generalise) {
-    lois <- if (fr) c(gaussienne = "normale", poisson = "de Poisson", binomiale_negative = "binomiale négative", binomiale = "binomiale", gamma = "gamma", tweedie = "de Tweedie")
-            else c(gaussienne = "normal", poisson = "Poisson", binomiale_negative = "negative binomial", binomiale = "binomial", gamma = "gamma", tweedie = "Tweedie")
+    lois <- if (fr) c(gaussienne = "normale", poisson = "de Poisson", binomiale_negative = "binomiale négative", binomiale = "binomiale", gamma = "gamma", tweedie = "de Tweedie",
+                      poisson_zi = "de Poisson à excès de zéros", beta = "bêta")
+            else c(gaussienne = "normal", poisson = "Poisson", binomiale_negative = "negative binomial", binomiale = "binomial", gamma = "gamma", tweedie = "Tweedie",
+                   poisson_zi = "zero-inflated Poisson", beta = "beta")
     lis <- m$noms_termes[match(m$lisses, m$termes)]
     courbes <- if (!length(lis)) "" else if (!length(m$par)) {
       sprintf(if (fr) ", dont %s par des courbes (splines de régression en plaques minces)" else ", %s of them through curves (thin plate regression splines)", liste(lis))
@@ -1964,11 +2114,28 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
     } else if (length(m$niveaux)) sprintf(if (fr) ", une ordonnée à l'origine aléatoire par %s (des termes pénalisés)%s" else ", a random intercept for %s (penalized terms)%s",
                                           liste(vapply(m$niveaux, guillemets, "")), phrase_pentes(m, fr, liste, guillemets, independantes = TRUE)) else ""
     effort <- if (!is.null(m$decalage)) sprintf(if (fr) ", et log(%s) en décalage (l'effort)" else ", and log(%s) as an offset (the effort)", guillemets(m$decalage)) else ""
-    penalise <- length(lis) || length(m$niveaux)
+    # (le lissage spatial des coordonnées : regression.R, terme_spatial)
+    sp <- m$spatial
+    spatial <- if (is.null(sp)) "" else if (identical(sp$base, "sos")) {
+      cite("wahba1981", sprintf(if (fr) ", un lissage spatial des longitudes et latitudes (%s et %s), une spline sur la sphère (Wahba, 1981 ; Wood, 2017) de dimension de base %d"
+                                 else ", a spatial smooth of the longitudes and latitudes (%s and %s), a spline on the sphere (Wahba, 1981; Wood, 2017) of basis dimension %d",
+                                 guillemets(sp$noms[1]), guillemets(sp$noms[2]), as.integer(sp$k)))
+    } else cite("wood2003", sprintf(if (fr) ", un lissage spatial des coordonnées (%s et %s), une spline de régression en plaques minces isotrope (Wood, 2003) de dimension de base %d"
+                                     else ", a spatial smooth of the coordinates (%s and %s), an isotropic thin plate regression spline (Wood, 2003) of basis dimension %d",
+                                     guillemets(sp$noms[1]), guillemets(sp$noms[2]), as.integer(sp$k)))
+    penalise <- length(lis) || length(m$niveaux) || !is.null(sp)
+    # (les deux familles étendues de mgcv : ce que sont leur loi et leurs paramètres)
+    loi_etendue <- switch(m$famille,
+      poisson_zi = cite("wood2016", if (fr) "Un comptage est nul avec la probabilité 1 − p et suit sinon une loi de Poisson de paramètre μ tronquée en zéro (le modèle à excès de zéros de mgcv, un modèle à obstacle ; Wood et al., 2016) : le prédicteur linéaire donne log(μ), p lui est lié par log(−log(1 − p)) = θ₁ + θ₂ log(μ), θ₁ et θ₂ estimés avec le modèle, et la valeur attendue d'un comptage, celle des valeurs ajustées et des prédictions, est p μ / (1 − e^(−μ))."
+                                    else "A count is zero with probability 1 − p and otherwise follows a Poisson distribution of parameter μ truncated at zero (mgcv's zero-inflated model, a hurdle model; Wood et al., 2016): the linear predictor gives log(μ), p is tied to it by log(−log(1 − p)) = θ₁ + θ₂ log(μ), θ₁ and θ₂ estimated with the model, and a count's expected value, that of the fitted values and predictions, is p μ / (1 − e^(−μ))."),
+      beta = cite(c("ferrari", "wood2016"), if (fr) "La réponse, une proportion strictement comprise entre 0 et 1, suit une loi bêta de moyenne μ et de variance μ (1 − μ) / (1 + φ) (Ferrari et Cribari-Neto, 2004), sa précision φ estimée avec le modèle (Wood et al., 2016)."
+                                             else "The response, a proportion strictly between 0 and 1, follows a beta distribution of mean μ and variance μ (1 − μ) / (1 + φ) (Ferrari & Cribari-Neto, 2004), its precision φ estimated with the model (Wood et al., 2016)."),
+      NULL)
     c(cite("wood2017", if (fr) sprintf("Nous avons ajusté un modèle %s (loi %s, lien %s ; Wood, 2017) avec %s%s%s%s. %s",
-                                       if (identical(m$type, "GAM")) "additif généralisé" else "linéaire généralisé", lois[[m$famille]], m$lien, termes, courbes, aleatoire, effort, unites)
+                                       if (identical(m$type, "GAM")) "additif généralisé" else "linéaire généralisé", lois[[m$famille]], m$lien, termes, paste0(courbes, spatial), aleatoire, effort, unites)
                        else sprintf("We fitted a %s model (%s distribution, %s link; Wood, 2017) with %s%s%s%s. %s",
-                                    if (identical(m$type, "GAM")) "generalized additive" else "generalized linear", lois[[m$famille]], m$lien, termes, courbes, aleatoire, effort, unites)),
+                                    if (identical(m$type, "GAM")) "generalized additive" else "generalized linear", lois[[m$famille]], m$lien, termes, paste0(courbes, spatial), aleatoire, effort, unites)),
+      loi_etendue,
       if (gamm) cite("pinheiro", if (fr) "Le modèle a été ajusté par mgcv::gamm comme un modèle linéaire mixte de nlme (Pinheiro et Bates, 2000), dont les courbes sont des effets aléatoires : coefficients, courbes, variances et autocorrélation par maximum de vraisemblance restreint (REML), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance."
                      else "The model was fitted with mgcv::gamm as a linear mixed model of nlme (Pinheiro & Bates, 2000), whose curves are random effects: coefficients, curves, variances and autocorrelation by restricted maximum likelihood (REML), and models compared by the AIC of maximum-likelihood fits.")
       else if (penalise) cite("wood2011", if (fr) "Les courbes et les effets aléatoires ont été estimés par maximum de vraisemblance restreint (REML ; Wood, 2011), et les modèles comparés par l'AIC d'ajustements en maximum de vraisemblance."
@@ -2039,9 +2206,12 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   vc <- if (sans_q2) (if (fr) "la validation croisée n'a pas donné de Q²" else "cross-validation gave no Q²")
         else sprintf(if (fr) "en validation croisée, Q² = %s et RMSEcv = %s" else "in cross-validation, Q² = %s and RMSEcv = %s", nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
   loi <- r$parametre_loi
+  # (les paramètres de la loi : θ, p, θ₁ et θ₂, φ ; le Poisson à excès de zéros n'a pas de R² ajusté)
+  symboles <- c(theta = "θ", p = "p", theta1 = "θ₁", theta2 = "θ₂", phi = "φ")
   p4 <- if (generalise && is.null(r$r2$marginal)) {
-    sprintf(if (fr) "Le modèle explique %s de la déviance (R² ajusté = %s)%s ; %s ; %s." else "The model explains %s of the deviance (adjusted R² = %s)%s; %s; %s.",
-            pourcent(r$r2$deviance_expliquee), nombre(r$r2$r2_ajuste), if (!is.null(loi)) sprintf(", %s = %s", if (loi$nom == "theta") "θ" else "p", nombre(loi$valeur)) else "",
+    sprintf(if (fr) "Le modèle explique %s de la déviance%s%s ; %s ; %s." else "The model explains %s of the deviance%s%s; %s; %s.",
+            pourcent(r$r2$deviance_expliquee), if (is.null(r$r2$r2_ajuste)) "" else sprintf(if (fr) " (R² ajusté = %s)" else " (adjusted R² = %s)", nombre(r$r2$r2_ajuste)),
+            if (!is.null(loi)) paste0(", ", liste(sprintf("%s = %s", symboles[as.character(loi$nom)], nombre(loi$valeur)))) else "",
             aic, vc)
   } else if (!is.null(r$r2$marginal)) {
     # (avec des pentes aléatoires, la variance des effets aléatoires de Johnson, 2014 : variances_niveaux)
@@ -2092,7 +2262,7 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   mgcv <- if (generalise) utils::packageDescription("mgcv")
   annee_mgcv <- if (generalise) substr(mgcv$Date %||% annee_r, 1, 4)
   cites <- union(cites, c("r", "nuee", if (mixte || gamm) "nlme", if (generalise) "mgcv"))
-  p5 <- sprintf(if (fr) "Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s)%s." else "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s)%s.",
+  p5 <- sprintf(if (fr) "Les calculs ont été faits avec Nuée%s (Boutin, %s) et R %s (R Core Team, %s)%s." else "Computations were done with Nuée%s (Boutin, %s) and R %s (R Core Team, %s)%s.",
                 if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r,
                 if (gamm) sprintf(if (fr) ", paquets mgcv %s (Wood, %s) et nlme %s (Pinheiro et al., %s)" else ", packages mgcv %s (Wood, %s) and nlme %s (Pinheiro et al., %s)",
                                   mgcv$Version, annee_mgcv, nlme$Version, annee_nlme)
@@ -2339,4 +2509,55 @@ print.modele_regression <- function(x, ...) {
   cat(sprintf("AIC %.1f, AICc %.1f, BIC %.1f, logLik %.2f (%s %s)\n", r$AIC, r$AICc, r$BIC, r$logLik, format(round(r$parametres, 1)), traduire("paramètres", "parameters")))
   cat(paste(names(r$r2), signif(unlist(r$r2), 3), sep = " = ", collapse = ", "), sprintf("; Q2 = %.3f, RMSEcv = %.4g\n", x$vc$Q2, x$vc$RMSEcv))
   invisible(x)
+}
+
+# ------------------------------------------- lissage spatial (s(x, y), d$lisse_spatial)
+
+# Le lissage spatial d'une définition, tel que l'ajustement le prend : sa base (« tp », des
+# plaques minces, ou « sos », une spline sur la sphère pour des longitudes et latitudes), la
+# dimension demandée (NA : 30 au plus) et son nom, s(x, y) avec les noms des deux variables.
+definition_spatial <- function(projet, d) {
+  ls <- d$lisse_spatial
+  vs <- as.numeric(unlist(ls$variables))
+  noms <- vapply(vs, function(u) as.character(variable_du_projet(projet, u)$ids[1]), "")
+  base <- if (identical(as.character(ls$base %||% "tp")[1], "sos")) "sos" else "tp"
+  list(variables = vs, base = base, k_demande = if (length(ls$k)) as.integer(unlist(ls$k))[1] else NA_integer_,
+       nom = if (base == "sos") sprintf("s(%s, %s, bs = \"sos\")", noms[2], noms[1]) else sprintf("s(%s, %s)", noms[1], noms[2]),
+       noms = noms)
+}
+
+# Le lissage spatial pour les lignes d'apprentissage d'un groupe de la validation croisée : la
+# dimension du modèle, moins s'il y a là moins de lieux ; NULL (sans lui) en dessous de 5.
+spatial_appris <- function(appris, spatial) {
+  if (is.null(spatial)) return(NULL)
+  k <- dimension_spatiale(appris, spatial$k)
+  if (is.na(k)) return(NULL)
+  spatial$k <- k
+  spatial
+}
+
+# Un lissage spatial qu'on peut ajuster : un modèle additif (GAM), deux variables quantitatives
+# différentes du projet, une base connue, une dimension de 5 à 300 ; une spline sur la sphère
+# demande des longitudes (la première) et des latitudes (la seconde) en degrés.
+verifier_lisse_spatial <- function(projet, d) {
+  ls <- d$lisse_spatial
+  if (!length(ls)) return(invisible())
+  err <- function(fr, en) stop(traduire(fr, en), call. = FALSE)
+  if (!identical(d$type, "GAM")) err("Le lissage spatial demande un modèle additif (GAM).", "The spatial smooth needs an additive model (GAM).")
+  vs <- suppressWarnings(as.numeric(unlist(ls$variables)))
+  if (length(vs) != 2 || anyNA(vs) || vs[1] == vs[2]) err("Le lissage spatial se fait sur deux variables différentes (x et y).", "The spatial smooth is made on two different variables (x and y).")
+  for (u in vs) if (length(variable_du_projet(projet, u)$categories)) err("Le lissage spatial se fait sur des coordonnées : deux variables quantitatives.", "The spatial smooth is made on coordinates: two quantitative variables.")
+  if (!as.character(ls$base %||% "tp")[1] %in% c("tp", "sos")) err("Base du lissage spatial inconnue (tp ou sos).", "Unknown basis for the spatial smooth (tp or sos).")
+  if (length(ls$k)) {
+    k <- suppressWarnings(as.numeric(unlist(ls$k)))[1]
+    if (is.na(k) || k < 5 || k > 300 || k != round(k)) err("La dimension du lissage spatial (k) est un nombre entier de 5 à 300.", "The spatial smooth's dimension (k) is a whole number from 5 to 300.")
+  }
+  if (identical(as.character(ls$base)[1], "sos")) {
+    x <- projet$donnees[, as.character(vs[1])]
+    y <- projet$donnees[, as.character(vs[2])]
+    if (any(abs(x) > 180, na.rm = TRUE) || any(abs(y) > 90, na.rm = TRUE)) {
+      err("Une spline sur la sphère demande des longitudes et des latitudes en degrés.", "A spline on the sphere needs longitudes and latitudes in degrees.")
+    }
+  }
+  invisible()
 }

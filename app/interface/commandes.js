@@ -26,6 +26,8 @@ export function creerCommandes(app) {
     ouvrir: { icone: 'folder-open', raccourci: 'Ctrl+O', action: () => app.ouvrir() },
     coller: { icone: 'clipboard-paste', raccourci: 'Ctrl+V', action: () => app.coller() },
     importer_spectres: { icone: 'audio-waveform', action: () => app.importerSpectres() },
+    // (kobo.js: an export of KoboToolbox or ODK Central, the import's dialog)
+    kobo_importer: { icone: 'smartphone', action: () => app.importerKobo() },
     enregistrer: { icone: 'save', raccourci: 'Ctrl+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), false) },
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
     exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
@@ -55,9 +57,18 @@ export function creerCommandes(app) {
     selection_liee: { coche: () => app.selectionLiee(), action: () => app.basculerSelectionLiee() },
     nouvelle_variable: { icone: 'calculator', actif: () => !!app.projetActif(), action: () => app.nouvelleVariable(app.projetActif()) },
     ajouter_colonnes: { icone: 'file-spreadsheet', actif: () => !!app.projetActif(), action: () => app.ajouterColonnes(app.projetActif()) },
+    // (raster.js: a raster's values at each observation, from the project's coordinates)
+    raster_valeurs: { icone: 'layers', actif: () => !!app.projetActif(), action: () => app.valeursRaster(app.projetActif()) },
     resumer_groupes: { icone: 'sigma', actif: () => !!app.projetActif(), action: () => app.resumerGroupes(app.projetActif()) },
+    // the data workbench (atelier.js)
+    atelier_remplacer: { icone: 'search', raccourci: 'Ctrl+H', actif: () => !!app.projetActif(), action: () => app.remplacerDonnees(app.projetActif()) },
+    atelier_categories: { icone: 'tag', actif: () => { const p = app.projet(app.projetActif()); return !!p && p.variables.some((v) => v.qualitative); },
+      action: () => app.categoriesVariable(app.projetActif()) },
+    atelier_variables: { icone: 'ruler', actif: () => !!app.projetActif(), action: () => app.variablesProjet(app.projetActif()) },
 
     nouveau_modele: { icone: 'file-plus', raccourci: 'Ctrl+N', actif: () => !!app.projetActif(), action: () => app.nouveauModele(app.projetActif()) },
+    // (a few questions, then New model already filled in: quelle_analyse.js, choix_analyse.js)
+    quelle_analyse: { icone: 'signpost', actif: () => !!app.projetActif(), action: () => app.quelleAnalyse(app.projetActif()) },
     modifier_modele: { icone: 'square-pen', raccourci: 'Ctrl+M', actif: avecModele, action: () => app.modifierModele(m()) },
     autoajuster: { icone: 'wand-sparkles', actif: avecLV, action: () => app.reajuster(m(), { A: 0, auto: true }) },
     plus_comp: { icone: 'circle-plus', raccourci: 'Ctrl+=', actif: avecLV, action: () => app.reajuster(m(), { A: app.modele(m()).A + 1 }) },
@@ -66,6 +77,7 @@ export function creerCommandes(app) {
       action: () => app.reajuster(m(), { garder: choixVIP() }) },
     supprimer_modele: { icone: 'trash-2', actif: avecModele, action: () => app.supprimerModele(m()) },
     scores_variables: { icone: 'git-merge', actif: avecLV, action: () => app.scoresEnVariables(m()) },
+    par_reponse: { icone: 'layers', actif: avecRegression, action: () => app.unModeleParReponse(m()) },
 
     resume: vue('resume'), scores: vue('scores', avecLV), loadings: vue('loadings', avecLV), profils: vue('profils', avecLV), dmodx: vue('dmodx', avecLV), t2: vue('t2', avecLV),
     vip: vue('vip', avecPLS), coefficients: vue('coefficients', () => avecPLS() || avecRegression()), obspred: vue('obspred', () => avecPLS() || avecRegression()),
@@ -83,6 +95,13 @@ export function creerCommandes(app) {
     statistiques: { icone: 'chart-column-big', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('statistiques', null, null, app.projetActif()) },
     tests: { icone: 'flask-conical', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('tests', null, null, app.projetActif()) },
     series: { icone: ICONES_VUES.series, actif: () => !!app.projetActif(), action: () => app.ouvrirVue('series', null, null, app.projetActif()) },
+    // (vues_carte.js: the project's map; the spatial autocorrelation, of a regression's residuals from its model)
+    carte: { icone: 'map', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('carte', null, null, app.projetActif()) },
+    autocorrelation_spatiale: { icone: 'radar', actif: () => !!app.projetActif(),
+      action: () => (avecRegression() ? app.ouvrirVue('autocorrelation_spatiale', m()) : app.ouvrirVue('autocorrelation_spatiale', null, null, app.projetActif())) },
+    rarefaction: { icone: 'chart-spline', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('rarefaction', null, null, app.projetActif()) },
+    // (figures.js: plots of the project side by side, at a journal's size; starts with the plot in front)
+    figure_composer: { icone: 'layout-grid', actif: () => !!app.projetActif(), action: () => app.composerFigure(app.projetActif()) },
     predire: { icone: 'target', actif: () => avecPrediction(), action: () => app.ouvrirVue('predictions', m()) },
     comparaison: { icone: 'columns-2', action: () => app.ouvrirVue('comparaison') },
 
@@ -120,7 +139,7 @@ export const ICONES_VUES = {
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
   statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
-  series: 'trending-up', document: 'file-text',
+  series: 'trending-up', document: 'file-text', figure: 'layout-grid',
 };
 
 // A menu item for a command, evaluated now (enabled state, check mark).
@@ -138,18 +157,20 @@ export function menus(app, C) {
     return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} « ${p.annulable} »` : t('annuler_action') };
   };
   return [
-    { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('importer_spectres'),
+    { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
       '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
-      it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable'), it('ajouter_colonnes'), it('resumer_groupes')] },
-    { cle: 'm_modele', items: () => [it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
-      it('reajuster_vip'), '-', it('scores_variables'), it('texte_methodes'), '-', it('supprimer_modele')] },
+      it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
+      it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes')] },
+    { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
+      it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
       it('vip'), it('coefficients'), it('obspred'), it('effets'), it('moyennes'), it('residus'), it('acf'), it('apports'), it('selection_aic'), it('puissance'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
-      it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series')] },
+      it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series'), it('carte'), it('autocorrelation_spatiale'), it('rarefaction'),
+      '-', it('figure_composer')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
     { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },

@@ -8,17 +8,31 @@ import { el, icone, menuContextuel, ouvrirMenuSous, fermerMenus, dialogue } from
 import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
+import { dialogueRaster } from './raster.js';
 import { dialogueRapport } from './rapport.js';
 import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
 import { ECRITURE, filtresOuverture, acceptOuverture, filtresSpectres, acceptSpectres } from './formats.js';
 import { ouvrirPalette } from './palette.js';
+import { zip } from './zip.js';
 // Analyses kept in modules of their own (vues_*.js): imported here, each adds its views to VUES
 // (panneaux.js), their icons (commandes.js: ICONES_VUES), its views per model type
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 import './vues_ordination.js';
+import './vues_indicatrices.js';
+import './vues_rarefaction.js';
+import './vues_communautes.js';
 import './vues_classement.js';
+import './vues_carte.js';
+import './vues_par_reponse.js';
+import './vues_trim.js';
+import './vues_forets.js';
+import './vues_distance.js';
 import { installerDocuments } from './documents.js';
+import { installerFigures } from './figures.js';
+import { dialogueQuelleAnalyse } from './quelle_analyse.js';
+import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
+import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -44,6 +58,9 @@ let recents = [];
 let fenetres = [];
 
 const diffuser = (type, donnees = {}) => canal.postMessage({ type, ...donnees });
+
+// (a model's results kept: garder(), below; the object's methods call it through this)
+const garder_ = (res) => garder(res);
 
 // ------------------------------------------------------------ application object
 
@@ -208,21 +225,32 @@ const app = {
       } }] });
   },
 
+  // File › Import from KoboToolbox or ODK: an export (Excel, CSV, ODK Central's .zip), then the
+  // import's dialog (kobo.js); in the browser the file is sent to the engine first
+  async importerKobo() {
+    const chemin = bureau ? await bureau.choisirFichier(filtresKobo()) : await deposerKobo();
+    if (!chemin) return;
+    if (bureau) { await app.ouvrirChemin(chemin, { collecte: true }); return; }
+    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin, collecte: true })));
+    if (res) await apresOuverture(res);
+  },
+
   // the example project (made-up data), with its first model open, scores coloured by variety
   async ouvrirExemple() {
     const res = await occupe(() => demander('exemple'));
     await apresOuverture(res);
     if (!res.modeles.length) return;
     const id = await app.calculer(res.id, res.modeles[0].numero);
-    const variete = res.variables.find((v) => v.nom === 'variete');
+    const variete = res.variables.find((v) => v.nom === 'variety' || v.nom === 'variete');  // (orchards.json, vergers.json)
     if (variete) app.ouvrirVue('scores', id, { couleur: 'v' + variete.uid });
   },
 
-  async ouvrirChemin(chemin) {
+  // collecte: File › Import from KoboToolbox or ODK (kobo.js), the import asked for (another file is refused)
+  async ouvrirChemin(chemin, { collecte = false } = {}) {
     // already open (a recent file, a file dropped or double-clicked again): shown, not opened
     // twice, which would make two copies that both save to the same file
     const cle = (c) => (c ? (/^Win/.test(navigator.platform) ? c.replace(/\\/g, '/').toLowerCase() : c) : null);
-    const ouvert = Object.values(etat.projets).find((p) => cle(p.chemin_enregistrement) === cle(chemin) || (!p.table && cle(p.chemin) === cle(chemin)));
+    const ouvert = !collecte && Object.values(etat.projets).find((p) => cle(p.chemin_enregistrement) === cle(chemin) || (!p.table && cle(p.chemin) === cle(chemin)));
     if (ouvert) {
       etat.noeud = ouvert.id;
       app.rafraichirExplorateur();
@@ -230,7 +258,7 @@ const app = {
       statut(t('deja_ouvert', { nom: ouvert.nom }));
       return;
     }
-    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin })));
+    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin, collecte: collecte || undefined })));
     if (!res) return;
     await apresOuverture(res);
     if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
@@ -245,6 +273,7 @@ const app = {
   async enregistrer(pid, sous) {
     if (!etat.projets[pid]) { statut(t('choisir_projet'), true); return false; }
     if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
+    if (app.viderFigures) await app.viderFigures(pid);  // (and a figure's last change)
     const p = etat.projets[pid];
     let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
@@ -285,7 +314,7 @@ const app = {
   async exporter(id) {
     const m = etat.modeles[id];
     if (!m) return;
-    const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), m.nom, true);
+    const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), m.nom, true, !!(etat.projets[m.projet] || {}).coordonnees);
     if (choix) apresExport(await occupe(() => demander('exporter', { modele: id, ...choix })));
   },
   // the coefficients side by side shown in Compare models (coefficientsActifs): the table as
@@ -297,13 +326,14 @@ const app = {
   async exporterDonnees(pid) {
     const p = etat.projets[pid];
     if (!p) { statut(t('choisir_projet'), true); return; }
-    const choix = await choisirExport(t('exporter_donnees_titre', { nom: p.nom }), p.nom.replace(/\.[^.]+$/, ''), false);
+    const choix = await choisirExport(t('exporter_donnees_titre', { nom: p.nom }), p.nom.replace(/\.[^.]+$/, ''), false, !!p.coordonnees);
     if (choix) apresExport(await occupe(() => demander('exporter_donnees', { projet: pid, ...choix })));
   },
 
   async fermerProjet(pid) {
     if (!etat.projets[pid]) return;
     if (app.viderDocuments) await app.viderDocuments(pid);  // (what was just typed in its documents makes it modified)
+    if (app.viderFigures) await app.viderFigures(pid);
     const p = etat.projets[pid];
     if (p.modifie && !window.confirm(t('confirmer_fermer_projet', { nom: p.nom }))) return;
     await demander('fermer_projet', { projet: pid });
@@ -347,6 +377,12 @@ const app = {
     if (!p) return statut(t('choisir_projet'), true);
     dialogueModele(app, p);
   },
+  // Model › Which analysis?: a few questions, then New model already filled in, or the right view
+  quelleAnalyse(pid) {
+    const p = etat.projets[pid || app.projetActif()];
+    if (!p) return statut(t('choisir_projet'), true);
+    dialogueQuelleAnalyse(app, p);
+  },
   modifierModele(id) {
     const m = etat.modeles[id];
     if (m) dialogueModele(app, etat.projets[m.projet], m.reglages, t('modifier_modele'));
@@ -356,6 +392,7 @@ const app = {
     const m = etat.modeles[id];
     if (m) dialogueModele(app, etat.projets[m.projet], reglages);
   },
+  // (the new model's id, for what follows it: Which analysis?'s one model per response)
   async ajusterDefinition(q) {
     if (q.type === 'CLASSES') {  // one PCA per class, then their Coomans plot
       const r = await occupe(() => demander('modeles_classe', q));
@@ -363,11 +400,12 @@ const app = {
       for (const res of liste) await garder(res);
       vuesParDefaut(liste[0].id);
       app.ouvrirVue('coomans', liste[0].id);
-      return;
+      return liste[0].id;
     }
     const res = await occupe(() => demander('ajuster', q));
     await garder(res);
     vuesParDefaut(res.id);
+    return res.id;
   },
   async reajuster(id, q) {
     const res = await occupe(() => demander('reajuster', { modele: id, ...q }));
@@ -433,7 +471,9 @@ const app = {
       const source = p.chemin_enregistrement || p.chemin;
       const session = dock ? collecterSession(p.id) : null;
       if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null } });
-      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined } });
+      // (an import from KoboToolbox or ODK is redone with its settings: kobo.js)
+      // (opened as is, it is opened as is again: an export would otherwise come back as an import to make)
+      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
       else perdus.push(p.nom);
     }
     statut(t('moteur_redemarrage'));
@@ -506,8 +546,85 @@ const app = {
       `Interface: ${langueActuelle()}`].filter(Boolean).join('\n');
     dialogue({ titre: t('diagnostic'), contenu: el('div', {}, el('p', { class: 'note' }, t('diagnostic_aide')), el('pre', { class: 'diagnostic' }, texte)),
       boutons: [{ libelle: t('signaler_probleme'), action: () => { window.open('https://github.com/4rtefakt/nuee/issues/new/choose'); return false; } },
+        { libelle: t('rapport_probleme'), action: () => { app.rapportProbleme(texte); return true; } },
         { libelle: t('copier_texte'), action: () => { navigator.clipboard.writeText(texte).then(() => statut(t('texte_copie'))); return true; } },
         { libelle: t('fermer'), principal: true, action: () => true }] });
+  },
+  // One model per response (Model › One model per response, moteur/R/par_reponse.R): the
+  // regression `id` fitted to each response ticked, the p-values corrected over the responses;
+  // optionally each model kept in the project. The results go to the view (vues_par_reponse.js).
+  // reponses: other responses ticked from the start (Which analysis?: the species chosen there).
+  unModeleParReponse(id, reponses = []) {
+    const m = etat.modeles[id];
+    if (!m || !m.regression) return;
+    const p = etat.projets[m.projet];
+    const x = new Set([].concat((m.reglages && m.reglages.x) || []).map(Number));
+    const y = Number([].concat((m.reglages && m.reglages.y) || [])[0]);
+    const vars = p.variables.filter((v) => !v.qualitative && !x.has(v.uid));
+    const coches = new Set([y, ...[].concat(reponses).map(Number).filter((u) => vars.some((v) => v.uid === u))]);
+    let correction = 'BH';
+    const garder = el('input', { type: 'checkbox' });
+    const filtre = el('input', { placeholder: t('filtrer_variables'), style: 'width:14em' });
+    const liste = el('div', { class: 'liste-cases', style: 'max-height:18em;overflow:auto;columns:2' });
+    const dessiner = () => {
+      const f = filtre.value.trim().toLowerCase();
+      liste.replaceChildren(...vars.filter((v) => !f || v.nom.toLowerCase().includes(f)).map((v) => el('label', { class: 'champ', style: 'display:block' },
+        el('input', { type: 'checkbox', checked: coches.has(v.uid), onchange: (e) => { if (e.target.checked) coches.add(v.uid); else coches.delete(v.uid); } }), v.nom)));
+    };
+    filtre.addEventListener('input', dessiner);
+    dessiner();
+    const tous = (oui) => { const f = filtre.value.trim().toLowerCase(); for (const v of vars) if (!f || v.nom.toLowerCase().includes(f)) { if (oui) coches.add(v.uid); else coches.delete(v.uid); } dessiner(); };
+    dialogue({ titre: t('par_reponse_titre', { nom: m.nom }), large: true, contenu: el('div', {},
+      el('p', { class: 'note' }, t('par_reponse_aide')),
+      el('div', { class: 'outils' }, filtre, el('button', { onclick: () => tous(true) }, t('tout_cocher')), el('button', { onclick: () => tous(false) }, t('aucune_cocher')),
+        el('label', { class: 'champ' }, el('span', {}, t('correction')), el('select', { onchange: (e) => { correction = e.target.value; } },
+          [['BH', t('correction_bh')], ['holm', 'Holm'], ['bonferroni', 'Bonferroni']].map(([v, n]) => el('option', { value: v }, n))))),
+      liste, el('label', { class: 'champ' }, garder, t('par_reponse_garder'))),
+    boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('ajuster'), principal: true, action: () => {
+      if (!coches.size) return false;
+      (async () => {
+        const q = { modele: id, reponses: [...coches], correction, garder: garder.checked };
+        const r = await occupe(() => demander('par_reponse', q));
+        if (r.projet) projetChange(r.projet);
+        for (const res of [].concat(r.resultats || [])) await garder_(res);
+        app.ouvrirVue('par_reponse', id, { reponses: q.reponses, correction, cache: { cle: JSON.stringify([q.reponses, correction]), res: r } });
+      })().catch((e) => statut(e.message, true));
+      return true;
+    } }] });
+  },
+  // A problem report: a .zip to send with a message, written where the user chooses (nothing is
+  // sent): the diagnostic text, the session's journal (each action's call to the engine, the
+  // engine's errors and the R console's commands, without its images) and, if ticked, the active
+  // project as Save would write it (R: projet_texte), with its data.
+  async rapportProbleme(diagnostic) {
+    const pid = app.projetActif();
+    const avecProjet = el('input', { type: 'checkbox' });
+    const octets = (texte) => new TextEncoder().encode(texte);
+    const ecrire = async () => {
+      const j = await demander('journal', { depuis: 0 });
+      const journal = [].concat(j.entrees || []).filter((e) => e.type !== 'image').map((e) => `[${e.heure}] ${e.type}\n${e.texte}`).join('\n\n');
+      const fichiers = [['diagnostic.txt', octets(diagnostic)], ['journal.txt', octets(journal)]];
+      if (pid && avecProjet.checked) {
+        const r = await demander('projet_texte', { projet: pid, version: VERSION });
+        fichiers.push([`${r.nom}.nuee`, octets(r.texte)]);
+      }
+      const contenu = zip(fichiers);
+      const nom = `nuee-rapport-${new Date().toISOString().slice(0, 10)}.zip`;
+      if (bureau) {
+        const chemin = await bureau.enregistrerSous(nom, [{ name: 'zip', extensions: ['zip'] }]);
+        if (!chemin) return;
+        await bureau.ecrireFichier(chemin, contenu);
+        statut(t('rapport_probleme_ecrit', { chemin }));
+      } else {
+        const a = el('a', { href: URL.createObjectURL(new Blob([contenu], { type: 'application/zip' })), download: nom });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      }
+    };
+    dialogue({ titre: t('rapport_probleme'), contenu: el('div', {}, el('p', {}, t('rapport_probleme_texte')),
+      pid ? el('label', { class: 'champ' }, avecProjet, t('rapport_probleme_projet', { nom: etat.projets[pid].nom })) : null),
+    boutons: [{ libelle: t('annuler'), action: () => true },
+      { libelle: bureau ? t('choisir_emplacement') : t('telecharger'), principal: true, action: () => { occupe(ecrire).catch((e) => statut(e.message, true)); return true; } }] });
   },
   // looking for a new version at start-up (installed copy only; null otherwise)
   majAuto: () => (etat.majAuto === undefined ? null : etat.majAuto),
@@ -570,17 +687,20 @@ const app = {
     let langue = langueActuelle();
     const corps = el('div', { class: 'texte-methodes' });
     const montrer = async () => {
-      const r = await occupe(() => demander('methodes', { modele: id, langue, version: VERSION }));
+      const [r, res] = await occupe(() => Promise.all([demander('methodes', { modele: id, langue, version: VERSION }),
+        demander('resultats_texte', { modele: id, langue }).catch(() => ({ paragraphes: [] }))]));
       corps.replaceChildren(...[].concat(r.paragraphes).map((x) => el('p', {}, x)), el('h4', {}, t('references')),
-        el('ol', {}, [].concat(r.references).map((x) => el('li', {}, x))));
+        el('ol', {}, [].concat(r.references).map((x) => el('li', {}, x))),
+        ...([].concat(res.paragraphes || []).filter(Boolean).length ? [el('h4', {}, t('resultats_titre')), ...[].concat(res.paragraphes).filter(Boolean).map((x) => el('p', { class: 'resultat' }, x))] : []));
     };
     const langues = el('div', { class: 'boutons-langue' }, [['fr', 'Français'], ['en', 'English']].map(([l, n]) => el('label', { class: 'champ' },
       el('input', { type: 'radio', name: 'langue-methodes', checked: l === langue, onchange: () => { langue = l; montrer(); } }), el('span', {}, n))));
     await montrer();
     dialogue({ titre: t('texte_methodes_titre', { nom: m.nom }), contenu: el('div', {}, el('p', { class: 'note' }, t('texte_methodes_note')), langues, corps),
       boutons: [{ libelle: t('copier_texte'), action: () => {
-        const texte = [...corps.querySelectorAll('p')].map((x) => x.textContent).join('\n\n') + '\n\n'
-          + [...corps.querySelectorAll('li')].map((x) => x.textContent).join('\n');
+        const texte = [...corps.querySelectorAll('p:not(.resultat)')].map((x) => x.textContent).join('\n\n') + '\n\n'
+          + [...corps.querySelectorAll('li')].map((x) => x.textContent).join('\n')
+          + [...corps.querySelectorAll('p.resultat')].map((x) => `\n\n${x.textContent}`).join('');
         navigator.clipboard.writeText(texte).then(() => statut(t('texte_copie')));
         return false;
       } }, { libelle: t('fermer'), principal: true, action: () => true }] });
@@ -639,6 +759,14 @@ const app = {
   async lirePressePapiers() {
     try { return (bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText()) || ''; } catch { return ''; }
   },
+  // Edit › Add raster values (raster.js): the dialog, then the values added by R, one variable per band (Ctrl+Z removes them)
+  valeursRaster: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueRaster(app, p); },
+  async ajouterRaster(pid, q) {
+    const res = await occupe(() => demander('ajouter_raster', { projet: pid, ...q }));
+    projetChange(res);
+    statut([].concat(res.raster.phrases)[0]);
+    return res;
+  },
   // Edit › Summarize by group: a new project beside this one, one row per group; its data open
   resumerGroupes: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueResume(app, p); },
   async resumer(pid, q) {
@@ -652,6 +780,17 @@ const app = {
     projetChange(res);
     if (app.modelesDe(pid).length) statut(t('donnees_modifiees'));
   },
+  // The data workbench (atelier.js, moteur/R/atelier.R): Edit › Find and replace, Categories, Units
+  // and descriptions, also from the Data view's toolbar and a column's header (`uid`: that variable)
+  remplacerDonnees: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueRemplacer(app, p, uid); },
+  categoriesVariable: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueCategories(app, p, uid); },
+  variablesProjet: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariables(app, p, uid); },
+  // one of its changes (the request `nom`), undone by a single Ctrl+Z; the views of the data are drawn again
+  async changerDonnees(nom, pid, q) {
+    const res = await occupe(() => demander(nom, { projet: pid, ...q }));
+    projetChange(res);
+    return res;
+  },
   occupe: (f) => occupe(f),
   statut: (message, erreur) => statut(message, erreur),
   diffuser: (type, donnees) => diffuser(type, donnees),
@@ -659,13 +798,18 @@ const app = {
   // off screen (in the light theme, whatever the window's)
   locVue: (vue, id) => (etat.panneaux.get(`${vue}:${id}`) || {}).loc || null,
   contexteHorsEcran: (loc, surGraphe) => ({ ...contexte({ loc }), rafraichir: () => {}, definirGraphe: surGraphe, menuGraphique: () => {}, clair: true }),
+  // for a figure (figures.js): the views open in this window that show a plot (in a tab behind
+  // another too: dockview takes it out of the page meanwhile), and a view's settings as a
+  // session keeps them
+  vuesGraphiques: () => [...etat.panneaux.values()].filter((e) => e.graphe && e.graphe.data && VUES[e.vue] && !EXTERNES.includes(e.vue)),
+  locEnregistrable: (loc) => locEnregistrable(loc),
   version: async () => ({ ...(await demander('version')), application: VERSION, electron: bureau && bureau.versions.electron }),
 
   // ---- views and windows
   // A view of a model opens in the model's page (as a tab beside the last view used there);
   // a project view (data, statistics...) as a tab of the central group.
   ouvrirVue(vue, id, loc, pid, position) {
-    if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid, vue === 'document' ? loc : null);
+    if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid, suffixeVue(vue, loc) ? loc : null);
     const m = id ? etat.modeles[id] : null;
     const projet = m ? m.projet : pid;
     const cle = `${vue}:${id || projet || ''}${suffixeVue(vue, loc)}`;
@@ -707,7 +851,7 @@ const app = {
     if (!p) return;
     const e = etat.panneaux.get(p.id);
     if (!e) return;
-    app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, e.vue === 'document' ? e.loc : null);
+    app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, suffixeVue(e.vue, e.loc) ? e.loc : null);
     p.api.close();
   },
 
@@ -775,6 +919,7 @@ const app = {
 };
 
 installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app.nouveauDocument...)
+installerFigures(app);  // (the figures for publication: their view, app.composerFigure, app.ouvrirFigure...)
 const C = creerCommandes(app);
 
 // ------------------------------------------------------------ state helpers
@@ -831,8 +976,10 @@ function telecharger(chemin) {
 }
 
 // A file with several tables (Excel sheets, objects of an .RData file): the one to open.
-// Resolves to the opened project, or null when the choice is cancelled.
+// Resolves to the opened project, or null when the choice is cancelled. An export of
+// KoboToolbox or ODK Central comes with the preview of its import: the import's dialog.
 function choisirTable(res) {
+  if (res && res.kobo) return dialogueKobo(app, res);
   if (!res || !res.choisir) return Promise.resolve(res);
   const tables = [].concat(res.choisir);
   return new Promise((resolve) => {
@@ -851,13 +998,15 @@ function choisirTable(res) {
 
 // The export dialog: a format, then (desktop) where to write it. Resolves to { chemin } or
 // (browser) { format }, or null when cancelled. The last format chosen is offered again.
-function choisirExport(titre, nom, plusieursTables) {
+// coordonnees: the project has coordinates (moteur/R/spatial.R), so GeoPackage is offered.
+function choisirExport(titre, nom, plusieursTables, coordonnees = false) {
   return new Promise((resolve) => {
+    const formats = ECRITURE.filter((f) => coordonnees || !f.coordonnees);
     let choix = lire('format_export');
-    if (!ECRITURE.some((f) => f.ext === choix)) choix = 'xlsx';
+    if (!formats.some((f) => f.ext === choix)) choix = 'xlsx';
     const note = el('p', { class: 'note' });
-    const maj = () => { note.textContent = plusieursTables && ECRITURE.find((f) => f.ext === choix).plusieurs ? t('export_plusieurs_fichiers') : ''; };
-    const liste = el('div', { class: 'formats-export' }, ECRITURE.map((f) => el('label', { class: 'champ' },
+    const maj = () => { note.textContent = plusieursTables && formats.find((f) => f.ext === choix).plusieurs ? t('export_plusieurs_fichiers') : ''; };
+    const liste = el('div', { class: 'formats-export' }, formats.map((f) => el('label', { class: 'champ' },
       el('input', { type: 'radio', name: 'format-export', value: f.ext, checked: f.ext === choix, onchange: () => { choix = f.ext; maj(); } }),
       el('span', {}, t(f.cle)), el('span', { class: 'doux' }, '.' + f.ext))));
     maj();
@@ -1147,11 +1296,11 @@ async function restaurerSession(pid, donnee = null) {
 }
 
 // The views that keep a copy of a project's data, or results computed from it (data table,
-// variable statistics, statistical tests, series; the history too, for a project replaced from
+// variable statistics, statistical tests, series, the map and the spatial autocorrelation; the history too, for a project replaced from
 // the R console): computed again once the data change.
 function oublierCalculs(pid) {
   for (const e of etat.panneaux.values()) {
-    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'historique'].includes(e.vue)) {
+    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'historique', 'carte', 'autocorrelation_spatiale', 'rarefaction'].includes(e.vue)) {
       for (const k of ['d', 'res', 'cle', 'cleValeurs', 'cache']) delete e.loc[k];
     }
   }
@@ -1440,7 +1589,13 @@ function contexte(entree) {
     predireFichier: app.predireFichier,
     exporterPrediction: app.exporterPrediction,
     nouvelleVariable: app.nouvelleVariable,
+    valeursRaster: app.valeursRaster,
     modifierValeur: app.modifierValeur,
+    remplacerDonnees: app.remplacerDonnees,
+    categoriesVariable: app.categoriesVariable,
+    variablesProjet: app.variablesProjet,
+    changerDonnees: app.changerDonnees,
+    lirePressePapiers: app.lirePressePapiers,
     modeleActif: () => app.modeleActif(),
     projetActif: () => app.projetActif(),
     occupe: (f) => occupe(f),
@@ -1494,6 +1649,8 @@ function menuGraphique(e, div, entree) {
     { libelle: t('copier_image'), icone: 'copy', action: () => copierImage(div) },
     { libelle: t('image_png'), icone: 'image-down', action: () => enregistrerImage(div, 'png') },
     { libelle: t('image_svg'), action: () => enregistrerImage(div, 'svg') },
+    // (figures.js: this plot beside others, for a journal)
+    { libelle: t('figure_ajouter'), icone: 'layout-grid', sous: app.sousMenuFigure(entree) },
     '-',
     { libelle: t('effacer_selection'), actif: sel.length + vars.length > 0, action: () => app.effacerSelection(id) },
     { libelle: t('exclure_reajuster'), icone: 'eye-off', actif: modele && sel.length > 0, action: () => app.reajuster(id, { exclues: sel }) },
@@ -1623,6 +1780,7 @@ function rendreAccueil(conteneur) {
       el('button', { onclick: () => app.importerSpectres() }, icone('audio-waveform'), t('importer_spectres')),
       el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
       el('button', { onclick: () => app.nouveauModele(), disabled: !app.projetActif() }, icone('file-plus'), t('nouveau_modele')),
+      el('button', { onclick: () => app.quelleAnalyse(), disabled: !app.projetActif() }, icone('signpost'), t('quelle_analyse')),
       el('button', { onclick: () => app.aide('guide') }, icone('circle-help'), t('guide'))),
     recents.length ? el('div', { class: 'accueil-recents' }, el('h3', {}, t('recents')),
       recents.map((r) => el('a', { href: '#', title: r, onclick: (e) => { e.preventDefault(); app.ouvrirChemin(r); } }, icone('folder'), r.split(/[\\/]/).pop(),
@@ -1639,7 +1797,8 @@ function accueil() {
 }
 
 function rattacher() {
-  const loc = VUE_SEULE === 'document' ? (etat.panneaux.get('seul') || {}).loc : null;
+  const seul = etat.panneaux.get('seul') || {};
+  const loc = suffixeVue(VUE_SEULE, seul.loc) ? seul.loc : null;  // (a document's or a figure's: which one)
   diffuser('rattacher', { vers: params.get('de'), vue: VUE_SEULE, modele: params.get('modele'), projet: params.get('projet'), loc });
   window.close();
 }
@@ -1681,6 +1840,9 @@ document.addEventListener('keydown', (e) => {
   if (document.querySelector('.fond-dialogue')) return;
   const combo = combinaison(e);
   const saisie = e.target.closest && e.target.closest('input, textarea, select');
+  // (in the Data view, Ctrl+V pastes a block of cells from the cell chosen: panneaux.js, collerCellules)
+  const cellules = combo === 'Ctrl+V' && !saisie && e.target.closest && e.target.closest('[data-coller-cellules]');
+  if (cellules && cellules._collerCellules) { e.preventDefault(); cellules._collerCellules(); return; }
   const edition = ['Ctrl+Z', 'Ctrl+Y', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X'];
   if (saisie && !/^F\d+$/.test(combo) && (!combo.startsWith('Ctrl') || edition.includes(combo))) return;
   const c = Object.values(C).find((x) => x.raccourci === combo);

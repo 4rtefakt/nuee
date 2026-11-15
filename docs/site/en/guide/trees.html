@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trees, forests, discriminant analysis, k-means · Nuée</title>
+<meta name="description" content="Decision trees, linear discriminant analysis, k-means, random forests, boosted trees.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="trees.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/arbres.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/arbres.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html" aria-current="page">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Trees, forests, discriminant analysis, k-means</h1>
+<div class="texte-guide">
+<section id="decision-trees-linear-discriminant-analysis-and-k-means">
+<h2>Decision trees, linear discriminant analysis and k-means</h2>
+<p><strong>New model › type "Decision tree" (rpart):</strong> a quantitative Y variable (regression tree) or a class variable (classification tree), and X variables by their raw values, so that the thresholds read in their units; missing X values are handled by surrogate variables.</p>
+<p><strong>General tab:</strong> at least 20 observations per leaf, but at most a sixth of the observations, so that the tree can split (a node is split only if it holds three times as many), at most 5 levels, cp = 0.001, 5 surrogates, pruning by the 1-SE rule (the smallest tree within one standard error of the minimum error) or at the minimum error. The pruning comes from an internal cross-validation by the cross-validation groups (for sites followed over several years, choose the site), and Q2 from an external cross-validation: each group is predicted by a tree entirely rebuilt without it. Views: Tree (a click on a node selects its observations), Pruning, Leaf rules, Variable importance, First-split stability (200 bootstrap draws of the groups: the share of the draws where each variable makes the first split, and its median threshold), Observed / predicted and Residuals, or Classification for a classification tree. Test set and Predict: a new observation follows the tree, surrogates included.</p>
+<p>Type "Linear discriminant analysis (LDA)" (MASS::lda): a class variable and X variables by their raw values; prior probabilities proportional to the class sizes or equal. Each observation goes to the class of largest posterior probability; cross-validated, each group is classified by the model fitted without it. Views: Discriminant scores, Discriminant coefficients (structure correlations, coefficients in the variables' units or for variables of standard deviation 1), Classification, Posterior probabilities. Test set and Predict.</p>
+<p><strong>Type "k-means":</strong> X variables scaled as the Variables tab says (UV by default), k clusters (Hartigan and Wong algorithm, 25 starts, seed 1), numbered from the largest to the smallest; an observation with a missing value is left out. Views: Clusters (on the first two principal components), Silhouettes, Choice of k (2 to 10: within-cluster sum of squares and mean silhouette), Cluster centres. "Clusters → variable" adds the clusters to the project as a qualitative variable (Edit › Undo removes it); Predict assigns a new observation to the cluster of the nearest centre.</p>
+<p><strong>For all three:</strong> Methods text with its references, Export, PDF or Word report, Export to R (a script or an R Markdown / Quarto report that redoes the analysis with rpart, MASS or cluster, which come with R). Compare models shows a regression tree's Q2 and RMSEcv beside the other models.</p>
+</section>
+<section id="random-forests-and-boosted-trees">
+<h2>Random forests and boosted trees</h2>
+<p>New model › type "Random forest" (the ranger package, Wright and Ziegler 2017): a quantitative Y variable (regression forest) or a class variable (classification forest), and X variables by their raw values. Each tree is grown on a bootstrap draw of the observations (with replacement), each split chosen among mtry randomly drawn variables; the forest predicts the mean of its trees, or the class most of them vote for (Breiman 2001). General tab: 500 trees, ranger's mtry and node size by default (the square root of the number of X rounded down; nodes of 5 observations for a regression, 1 for a classification), the share drawn, the permutation importance unscaled or divided by its standard error. Seed 1 and a single thread: the same forest every time. ranger takes no missing values: an observation with a missing X value is left out (the summary counts them). The out-of-bag error: each observation predicted by the trees whose draw doesn't hold it (MSE and R², or the share misclassified); the cross-validation: each cross-validation group (the site) predicted by a forest rebuilt without it (Q2 and RMSEcv, or the share correctly classified). Views: Variable importance (by permutation, how much the out-of-bag error rises when the variable's values are permuted; or by impurity), Partial dependence (computed on request, Friedman 2001: the forest's mean prediction when a variable takes each value of a grid, the other X unchanged; all the variables side by side, or one, the observed values under the curve; for a classification, the share of a class's votes), Error against the number of trees, Observed / predicted (out of bag, cross-validated or fitted) or Classification (with ROC curves from the votes). Test set and Predict.</p>
+<p><strong>Type "Boosted trees (BRT)":</strong> gradient boosting of regression trees (Friedman 2001, 2002), as the gbm package computes it and as Elith, Leathwick and Hastie (2008) describe it for ecologists, written in R on rpart. A quantitative Y: a measurement (normal distribution), a presence-absence 0/1 (binomial) or counts (Poisson), chosen as a GLM's. The trees are added one by one, each fitted to what the model still misses (the gradient of the deviance) on a draw without replacement of a share of the observations, its leaves re-estimated for the deviance, and added with a small weight (the learning rate). General tab: at most 2000 trees, a learning rate of 0.01, 3 splits per tree (the interaction depth: 1 gives an additive model), at least 10 observations per leaf, draws of 50%. The number of trees is the one where the cross-validated deviance is smallest (each cross-validation group predicted after each tree by the boosting redone without it): the more groups and trees, the longer the fit. Observations with a missing X value are left out. Views: Relative influence (the error reductions of each variable's splits, in %), Partial dependence (on the link scale, logit or log, or on the response's), Error against the number of trees (the deviance of the fit and the cross-validated one, the number of trees retained), Observed / predicted, and Classification (at a probability of 0.5, with the ROC curve) for a 0/1 response. Test set and Predict.</p>
+<p><strong>For both:</strong> Methods text with its references, Export, PDF or Word report. Compare models shows the Q2 and RMSEcv of a regression forest, or of boosted trees of a measurement, beside the other models. Export to R: boosted trees with R and rpart alone (the boosting of Nuée's engine copied into the script: with the same seed, the same draws and the same trees, which are gbm's); a random forest with R and the ranger package, the one exception to "no package": Nuée depends on it and installs it with itself (elsewhere, install.packages("ranger")), and the script loads it with the same seed, one thread and the same settings, so its forest is Nuée's, tree for tree, with the same version of ranger. The test set and the partial dependence, when it was computed, are in it too.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="maps.html">← Maps and spatial data</a><a rel="next" href="results.html">Results, documents and R →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

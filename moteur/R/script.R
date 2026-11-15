@@ -48,7 +48,8 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
     lignes_rapport(format, pl, langue, texte_methodes(projet, d, m, langue, version), fonctions, code_donnees, x)
   }
   ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), x$objets), c(if (format != "R") c("knitr", "rmarkdown"), paquets_script(b)))
-  list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart)
+  # (ses graphiques, pour un document reproductible : document_reproductible.R)
+  structure(list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart), graphiques = x$graphiques)
 }
 
 # Les paquets des régressions (livrés avec R) : nlme (un modèle mixte, l'autocorrélation d'un
@@ -219,6 +220,8 @@ plan_modele <- function(projet, d, m, tab) {
        dcrit_simple = N - 1 - A >= 1 && dfm >= K && (min(K, 100) - A) / (N / (N - 1 - A)) >= 1,
        cv_anova = pls && all(n_y - 1 - 2 * A > 0),
        dmodx_affiche = if (!is.null(s$observations$DModX_pondere) && (is.null(d$version_origine) || isTRUE(d$version_origine >= 13))) "DModX_pondere" else "DModX",
+       # (un modèle d'un fichier .usp : la version de son logiciel, dont il suit le NIPALS, nipals.R)
+       version_fichier = if (!is.null(d$version_origine)) as.numeric(d$version_origine),
        test = if (length(test)) list(manquantes = anyNA(bt), vides = any(presentes_test == 0), ki_court = any(presentes_test <= A),
                                      erreurs_manquantes = any(presentes_test == 0) || anyNA(yt)))
 }
@@ -292,6 +295,8 @@ besoins_script <- function(plans, seance) {
   # « complet » : validation_modele_complet_*), ou par des sous-modèles (validation_croisee_*) ;
   # l'écart-type gardé d'un terme sans le groupe caché (ecart_vc) pour celle « sans fuite »
   modele_complet <- vapply(plans, function(pl) identical(pl$validation, "complet"), TRUE)
+  fichiers <- vapply(plans, function(pl) !is.null(pl$version_fichier), TRUE)
+  fichiers_10 <- vapply(plans, function(pl) isTRUE(pl$version_fichier == 10) && isTRUE(pl$manquantes), TRUE)
   list(acp = any(types == "acp"), pls = any(types == "pls"), opls = any(types == "opls"),
        vc_acp = any(types == "acp" & !modele_complet), vc_pls = any(types == "pls" & !modele_complet), vc_opls = any(types == "opls" & !modele_complet),
        complet_acp = any(types == "acp" & modele_complet), complet_pls = any(types == "pls" & modele_complet), complet_opls = any(types == "opls" & modele_complet),
@@ -299,16 +304,29 @@ besoins_script <- function(plans, seance) {
        opls_general = any(vapply(plans, function(pl) pl$type == "opls" && pl$Ap > 1, TRUE)),
        manquantes = any(vapply(plans, `[[`, TRUE, "manquantes")), y_manquantes = any(vapply(plans, `[[`, TRUE, "y_manquantes")),
        vides = any(vapply(plans, `[[`, TRUE, "vides")),
+       # des ACP et des PLS de fichiers .usp (nipals.R : leur NIPALS) ; de la version 10 avec des
+       # valeurs manquantes (un terme sans valeur y prend les w et p du terme d'avant) ; des PLS avec
+       # des observations sans aucune valeur X (parfaitement ajustées après la 1re composante)
+       fichier_acp = any(types == "acp" & fichiers), fichier_pls = any(types == "pls" & fichiers),
+       vides_acp = any(types == "acp" & fichiers_10), vides_pls = any(types == "pls" & fichiers_10),
+       fichier_sans_x = any(types == "pls" & fichiers & vapply(plans, function(pl) isTRUE(pl$vides), TRUE)),
        plsda = any(vapply(plans, `[[`, TRUE, "plsda")), spectres = etapes, seance = seance,
        # les régressions : leurs fonctions, et les termes mis à l'échelle (toujours pour les autres modèles)
        regression = length(reg) > 0, lmm = any(vapply(reg, function(pl) !pl$generalise && length(pl$niveaux) > 0, TRUE)),
        mgcv = any(vapply(reg, `[[`, TRUE, "generalise")), courbes = any(vapply(reg, function(pl) length(pl$lisses) > 0, TRUE)),
        par_courbes = any(vapply(reg, function(pl) length(pl$par) > 0, TRUE)),  # (des courbes par catégorie, s(x, by = f))
+       spatial = any(vapply(reg, function(pl) !is.null(pl$spatial), TRUE)),  # (un lissage spatial, s(x, y) : sa dimension)
        aleatoires_mgcv = any(vapply(reg, function(pl) pl$generalise && !isTRUE(pl$gamm) && length(pl$niveaux) > 0, TRUE)),
        gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)), car1 = any(vapply(reg, function(pl) !is.null(pl$temps), TRUE)),
        # (des pentes aléatoires de nlme, dans un lme ou la partie nlme d'un mgcv::gamm : leur tableau des variances)
        pentes_nlme = any(vapply(reg, function(pl) (!pl$generalise || isTRUE(pl$gamm)) && length(unlist(lapply(pl$niveaux, `[[`, "pentes"))) > 0, TRUE)),
        residus_quantiles = any(vapply(reg, function(pl) isTRUE(pl$quantiles), TRUE)),
+       # (le Poisson à excès de zéros : sa fonction de répartition, pour ses résidus quantiles, et la
+       # valeur attendue d'un comptage, pour ses moyennes ajustées sur l'échelle de la réponse)
+       repartition_zip = any(vapply(reg, function(pl) isTRUE(pl$quantiles) && identical(pl$famille, "poisson_zi"), TRUE)),
+       esperance_zip = any(vapply(reg, function(pl) identical(pl$famille, "poisson_zi") && identical(pl$moyennes$echelle, "reponse"), TRUE)),
+       # (ziP ou betar sans effet aléatoire : leur ajustement en ML sans terme pénalisé, profil_loi)
+       profil_loi = any(vapply(reg, function(pl) isTRUE(pl$famille %in% c("poisson_zi", "beta")) && !length(pl$niveaux), TRUE)),
        dates = any(vapply(reg, function(pl) isTRUE(pl$temps$dates), TRUE)),
        selection_aic = any(vapply(reg, function(pl) !is.null(pl$selection), TRUE)),
        # (les fonctions de Nouvelle variable qu'appelle la condition d'un modèle : condition.R)
@@ -348,7 +366,8 @@ code_modele <- function(pl, b, langue, seance = NULL, signes = NULL) {
                   code_ajustement(pl, b, tx))
   objets <- c("m", "vc", "s", "pretraiter", "X", if (pls) "Y", if (!is.null(pl$groupes_vc)) "groupes_vc", "composantes",
               if (pls && !identical(pl$validation, "complet")) c("q2_vide", "gain"), "observations", "variables", "limites",
-              if (pls) "coefficients", if (pl$cv_anova) "cv_anova", if (pl$plsda) "classification",
+              if (pls) c("coefficients", "RMSEE", "RMSEcv"), if (pl$type == "pls" && !identical(pl$validation, "complet")) "ic_coefficients",
+              if (pl$cv_anova) "cv_anova", if (pl$plsda) "classification",
               if (test) "predictions_test", if (test && pl$type != "acp" && !pl$plsda) "test",
               if (test && pl$plsda) "classification_test")
   list(ajustement = traduire_code(ajustement, langue),
@@ -641,7 +660,10 @@ code_echelle <- function(ts, M, sfx, sur, tx, na, mode = "complet") {
   moyennes <- any(types %in% c("UV", "Par", "Ctr"))
   rendu <- ecart_rendu(ts, mode)
   ecart <- if (rendu || any(autres %in% c("UV", "Par"))) sprintf("ecart_%s", sfx)
-  et <- sprintf("apply(%s, 2, sd, na.rm = TRUE)", sur)
+  # (l'écart-type des valeurs présentes, calculé comme pretraitement.R : echelle ; sd(x, na.rm =
+  # TRUE) passe par un autre calcul de R, qui peut différer au dernier bit sans long double de
+  # 80 bits, Apple silicon, et changer les itérations de NIPALS d'un sous-modèle)
+  et <- sprintf("apply(%s, 2, function(x) sd(x[!is.na(x)]))", sur)
   calcul <- if (!rendu) et else if (identical(mode, "centres")) sprintf("if (is.null(complet)) %s else complet$%s", et, ecart)
             else sprintf("ecart_vc(%s, complet$%s)", et, ecart)
   un <- function(v) if (length(autres)) sprintf("setNames(rep(%s, ncol(%s)), colnames(%s))", v, M, M) else sprintf("rep(%s, ncol(%s))", v, M)
@@ -741,6 +763,10 @@ code_separer_test <- function(pl, tx) {
     if (pls) c("y_test <- y_observe[-modele, , drop = FALSE]", "y_observe <- y_observe[modele, , drop = FALSE]", "Y <- Y[modele, , drop = FALSE]"))
 }
 
+# L'argument qui fait suivre à un modèle d'un fichier .usp le NIPALS de son logiciel (nipals.R) :
+# « , version_fichier = 10 », rien pour un modèle de Nuée (ni pour une OPLS, qui suit celui de Nuée).
+arg_fichier <- function(pl) if (!is.null(pl$version_fichier) && pl$type != "opls") sprintf(", version_fichier = %d", as.integer(pl$version_fichier)) else ""
+
 # L'ajustement et la validation croisée (fonctions du début du script).
 code_ajustement <- function(pl, b, tx) {
   A <- pl$A
@@ -748,9 +774,10 @@ code_ajustement <- function(pl, b, tx) {
   general <- pl$type == "opls" && b$opls_general
   groupes <- arguments_groupes(pl)
   modele_complet <- identical(pl$validation, "complet")
+  f <- arg_fichier(pl)
   appel <- switch(pl$type,
-    acp = c("m <- acp(s$X, A)", if (modele_complet) sprintf("vc <- validation_modele_complet_acp(s, m, %s)", groupes) else sprintf("vc <- validation_croisee_acp(X, A, pretraiter, %s)", groupes)),
-    pls = c("m <- pls(s$X, s$Y, A)", if (modele_complet) sprintf("vc <- validation_modele_complet_pls(s, m, %s)", groupes) else sprintf("vc <- validation_croisee_pls(X, Y, A, pretraiter, %s)", groupes)),
+    acp = c(sprintf("m <- acp(s$X, A%s)", f), if (modele_complet) sprintf("vc <- validation_modele_complet_acp(s, m, %s%s)", groupes, f) else sprintf("vc <- validation_croisee_acp(X, A, pretraiter, %s%s)", groupes, f)),
+    pls = c(sprintf("m <- pls(s$X, s$Y, A%s)", f), if (modele_complet) sprintf("vc <- validation_modele_complet_pls(s, m, %s%s)", groupes, f) else sprintf("vc <- validation_croisee_pls(X, Y, A, pretraiter, %s%s)", groupes, f)),
     opls = if (general) c(sprintf("Ap <- %d  # %s", pl$Ap, tx("composantes prédictives", "predictive components")),
                           "m <- opls(s$X, s$Y, Ap, A - Ap)",
                           if (modele_complet) sprintf("vc <- validation_modele_complet_opls(s, Ap, A - Ap, %s)", groupes) else sprintf("vc <- validation_croisee_opls(X, Y, Ap, A - Ap, pretraiter, %s)", groupes))
@@ -910,8 +937,26 @@ code_statistiques <- function(pl, tx) {
              "B <- m$W %*% solve(crossprod(m$P, m$W)) %*% t(m$C)"),
       "coefficients <- B * s$poids_x / rep(s$poids_y, each = K)",
       "coefficients <- rbind(coefficients, Constante = s$centre_y - colSums(coefficients * s$centre_x))",
-      if (!pl$plsda) c(tx("# Y ajusté par le modèle, dans les unités des données", "# Y fitted by the model, in the units of the data"),
-                       "y_ajuste <- sweep(sweep(m$T %*% t(m$C), 2, s$poids_y, \"/\"), 2, s$centre_y, \"+\")")),
+      if (!pl$plsda) tx("# Y ajusté par le modèle, dans les unités des données", "# Y fitted by the model, in the units of the data")
+      else tx("# les indicatrices des classes ajustées par le modèle", "# the indicators of the classes fitted by the model"),
+      "y_ajuste <- sweep(sweep(m$T %*% t(m$C), 2, s$poids_y, \"/\"), 2, s$centre_y, \"+\")",
+      commentaire(tx("RMSEE : l'erreur des valeurs ajustées de chaque Y, sur N - A - 1 degrés de liberté ; RMSEcv : celle de ses prédictions en validation croisée ; dans les unités des données.",
+                     "RMSEE: the error of each Y's fitted values, on N - A - 1 degrees of freedom; RMSEcv: that of its cross-validation predictions; in the units of the data.")),
+      "RMSEE <- sqrt(colSums((y_observe - y_ajuste)^2, na.rm = TRUE) / (colSums(!is.na(y_observe - y_ajuste)) - A - 1))",
+      "RMSEcv <- sqrt(colMeans(sweep(s$Y - vc$y_vc, 2, s$poids_y, \"/\")^2, na.rm = TRUE))",
+      if (pl$type == "pls" && !modele_complet) c(
+        commentaire(tx("L'intervalle à 95 % de chaque coefficient B (termes centrés et mis à l'échelle), par jack-knife sur les sous-modèles de la validation croisée : les coefficients de chacun (W* C', W* comme plus haut), ses composantes orientées comme celles du modèle complet, puis la demi-largeur t(0,975 ; G - 1) × racine((G - 1) / G × somme des carrés des écarts à leur moyenne) ; manquante quand un sous-modèle n'a pas toutes les composantes.",
+                       "The 95% interval of each coefficient B (centred and scaled terms), by jackknife over the sub-models of the cross-validation: the coefficients of each (W* C', W* as above), its components oriented as those of the full model, then the half-width t(0.975; G - 1) × sqrt((G - 1) / G × sum of the squared deviations from their mean); missing when a sub-model hasn't all the components.")),
+        "coefficients_tours <- do.call(cbind, lapply(vc$tours, function(r) {",
+        "  if (ncol(r$W) < A) return(rep(NA_real_, K * ncol(s$Y)))",
+        "  signes <- ifelse(colSums(r$W * m$W) < 0, -1, 1)",
+        "  W <- sweep(r$W, 2, signes, \"*\")",
+        "  P <- sweep(r$P, 2, signes, \"*\")",
+        "  for (a in seq_len(A)[-1]) W[, a] <- W[, a] - W[, 1:(a - 1), drop = FALSE] %*% crossprod(P[, 1:(a - 1), drop = FALSE], W[, a])",
+        "  as.vector(W %*% t(sweep(r$C, 2, signes, \"*\")))",
+        "}))",
+        "ic_coefficients <- matrix(apply(coefficients_tours, 1, function(v) qt(0.975, length(v) - 1) * sqrt((length(v) - 1) / length(v) * sum((v - mean(v))^2))),",
+        "                          K, ncol(s$Y), dimnames = list(colnames(s$X), colnames(s$Y)))")),
     if (pl$cv_anova) c("",
       commentaire(tx("CV-ANOVA (Eriksson et al., 2008), pour chaque Y : ses résidus de validation croisée comparés à sa variation autour de sa moyenne (Y centré et mis à l'échelle) ; la régression compte 2 degrés de liberté par composante.",
                      "CV-ANOVA (Eriksson et al., 2008), for each Y: its cross-validation residuals compared with its variation around its mean (Y centred and scaled); the regression counts 2 degrees of freedom per component.")),
@@ -1006,6 +1051,7 @@ code_sortie <- function(pl, tx, seul, langue) {
           if (pls && !pl$plsda) "scores, T2, DModX, observed and fitted Y" else if (pl$plsda) "scores, T2, DModX, observed and predicted class" else "scores, T2, DModX"),
     ligne("print(variables)", if (pls) "loadings p, poids w, VIP" else "loadings p", if (pls) "loadings p, weights w, VIP" else "loadings p"),
     if (pls) ligne("print(coefficients)", "coefficients, dans les unités des données", "coefficients, in the units of the data"),
+    if (pls) ligne("print(rbind(RMSEE = RMSEE, RMSEcv = RMSEcv))", "RMSEE et RMSEcv de chaque Y", "RMSEE and RMSEcv of each Y"),
     ligne("print(limites)", "T2Crit (95 %, 99 %), DCrit (5 %)", "T2Crit (95%, 99%), DCrit (5%)"),
     if (pl$cv_anova) ligne("print(cv_anova)", "CV-ANOVA", "CV-ANOVA"),
     if (pl$plsda) ligne("print(classification)", "table de classification (validation croisée)", "classification table (cross-validation)"),
@@ -1022,14 +1068,15 @@ appel_permutations <- function(pl, tx, liste = NULL) {
     return(paste0(formatC(paste("#", appel), width = -max(27, nchar(appel) + 4)), "# ", tx("test de permutation (quelques secondes)", "permutation test (a few seconds)")))
   }
   langue <- tx
-  ajuster <- switch(pl$type, pls = sprintf("pls(s$X, s$Y, %d)", pl$A),
+  f <- arg_fichier(pl)
+  ajuster <- switch(pl$type, pls = sprintf("pls(s$X, s$Y, %d%s)", pl$A, f),
                     opls = if (pl$Ap > 1) sprintf("opls(s$X, s$Y, %d, %d)", pl$Ap, pl$A - pl$Ap) else sprintf("opls(s$X, s$Y, %d)", pl$A - 1))
   g <- arguments_groupes(pl, liste)
   modele_complet <- identical(pl$validation, "complet")
   vc <- if (modele_complet) {  # (avec les centres et les poids du modèle complet de Yp : ses termes prétraités s et, pour une PLS, ses composantes m)
-    switch(pl$type, pls = sprintf("validation_modele_complet_pls(s, m, %s)", g),
+    switch(pl$type, pls = sprintf("validation_modele_complet_pls(s, m, %s%s)", g, f),
            opls = if (pl$Ap > 1) sprintf("validation_modele_complet_opls(s, %d, %d, %s)", pl$Ap, pl$A - pl$Ap, g) else sprintf("validation_modele_complet_opls(s, %d, %s)", pl$A - 1, g))
-  } else switch(pl$type, pls = sprintf("validation_croisee_pls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A, liste, g),
+  } else switch(pl$type, pls = sprintf("validation_croisee_pls(%s$X, Yp, %d, %s$pretraiter, %s%s)", liste, pl$A, liste, g, f),
                 opls = if (pl$Ap > 1) sprintf("validation_croisee_opls(%s$X, Yp, %d, %d, %s$pretraiter, %s)", liste, pl$Ap, pl$A - pl$Ap, liste, g)
                        else sprintf("validation_croisee_opls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A - 1, liste, g))
   avec_m <- modele_complet && pl$type == "pls"
@@ -1131,6 +1178,10 @@ plan_regression <- function(projet, d, m, tab) {
   # emboîtés, un facteur chacun : le secteur dans son site), temps, groupe de l'autocorrélation, effort
   emboites <- if (generalise && !gamm && L >= 2) vapply(2:L, function(l) paste(m$niveaux[seq_len(l)], collapse = "_"), "") else character(0)
   nr <- noms_r(c(m$y$noms, m$noms_termes, m$niveaux, emboites, m$temps, m$dans, m$decalage))
+  # (le lissage spatial d'un GAM : ses coordonnées sont les colonnes sx et sy du tableau du modèle,
+  # comme dans le moteur, regression.R : terme_spatial ; aucune autre colonne ne prend ces noms)
+  sp <- m$spatial
+  if (!is.null(sp)) nr <- make.unique(c("sx", "sy", nr), sep = "_")[-(1:2)]
   avant <- 1 + K + L + length(emboites)
   termes_r <- nr[1 + seq_len(K)]
   # les termes en courbe (GAM), dans l'ordre des termes, utiles ou non (le script choisit les utiles)
@@ -1200,7 +1251,13 @@ plan_regression <- function(projet, d, m, tab) {
        dans = if (!is.null(dans)) list(nom = nr[avant + 2], affiche = m$dans, code = lecture(dans)),
        effort = if (!is.null(d$decalage)) list(nom = nr[length(nr)], affiche = m$decalage,
                                                code = sprintf("d[[%s]]", code_texte(tab$noms[[as.character(d$decalage)]]))),
-       lisses = lisses, n_courbes = NROW(m$resultat$courbes), k_demandes = k_demandes,
+       # (les courbes des termes ; le tableau des courbes a aussi la ligne du lissage spatial)
+       lisses = lisses, n_courbes = NROW(m$resultat$courbes) - !is.null(sp), k_demandes = k_demandes,
+       # (le lissage spatial : le code de ses deux colonnes, sa base, la dimension demandée, son nom
+       # dans Nuée et son étiquette dans mgcv, le terme de la formule à sa dimension)
+       spatial = if (!is.null(sp)) list(code = vapply(sp$variables, function(u) sprintf("d[[%s]]", code_texte(tab$noms[[as.character(u)]])), ""),
+                                        noms = sp$noms, base = sp$base, k = sp$k_demande, nom = sp$nom, etiquette = etiquette_spatial(sp),
+                                        terme = if (identical(sp$base, "sos")) "s(sy, sx, bs = \"sos\", k = %d)" else "s(sx, sy, k = %d)"),
        par = par, facteurs = lapply(seq_along(facteurs), function(j) list(nom = noms_f[j], affiche = facteurs[[j]]$nom,
                                                                           colonnes = stats::setNames(termes_r[match(facteurs[[j]]$colonnes, m$termes)], names(facteurs[[j]]$colonnes)))),
        sans_courbe = sans_courbe,
@@ -1280,7 +1337,8 @@ plan_moyennes <- function(d, m, termes_r) {
 type_regression <- function(pl, langue) {
   tx <- function(fr, en) if (identical(langue, "en")) en else fr
   lois <- c(gaussienne = tx("normale", "normal"), poisson = tx("de Poisson", "Poisson"), binomiale_negative = tx("binomiale négative", "negative binomial"),
-            binomiale = tx("binomiale", "binomial"), gamma = "gamma", tweedie = tx("de Tweedie", "Tweedie"))
+            binomiale = tx("binomiale", "binomial"), gamma = "gamma", tweedie = tx("de Tweedie", "Tweedie"),
+            poisson_zi = tx("de Poisson à excès de zéros", "zero-inflated Poisson"), beta = tx("bêta", "beta"))
   mixte <- if (length(pl$niveaux)) tx(" mixte", " mixed") else ""
   if (isTRUE(pl$gamm)) return(sprintf(tx("modèle %s%s, loi normale, avec une autocorrélation CAR1 (mgcv::gamm)", "%s%s model, normal distribution, with a CAR1 autocorrelation (mgcv::gamm)"),
                                       tx(if (identical(pl$modele, "GAM")) "additif généralisé" else "linéaire généralisé", if (identical(pl$modele, "GAM")) "generalized additive" else "generalized linear"), mixte))
@@ -1301,6 +1359,7 @@ entete_regression <- function(pl, nom_projet, version, fichiers, langue) {
                            "It redoes this model with %s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:"),
                         texte_paquets(paquet, langue))),
     paste0(tx("#   1. Fonctions : termes utiles, AIC corrigé, validation croisée", "#   1. Functions: useful terms, corrected AIC, cross-validation"),
+           if (!is.null(pl$spatial)) tx(", lissage spatial", ", spatial smooth"),
            if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection"), if (!is.null(pl$puissance)) tx(", puissance pour une tendance", ", trend power"),
            if (!is.null(pl$moyennes)) tx(", moyennes ajustées", ", adjusted means")),
     tx("#   2. Données", "#   2. Data"),
@@ -1337,9 +1396,14 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   mixte <- L > 0
   courbes <- length(pl$lisses) > 0
   car1 <- !is.null(pl$temps)
-  loi <- pl$famille %in% c("binomiale_negative", "tweedie")
+  loi <- pl$famille %in% c("binomiale_negative", "tweedie", "poisson_zi", "beta")
   poisson <- identical(pl$famille, "poisson")
+  zip <- identical(pl$famille, "poisson_zi")  # (fitted() de ziP donne log(μ) : les valeurs ajustées par predict())
+  profil <- pl$famille %in% c("poisson_zi", "beta") && !mixte  # (sans terme pénalisé, en ML : profil_loi, regression.R)
   quantiles <- isTRUE(pl$quantiles)
+  # (le lissage spatial d'un GAM, s(x, y) : plan_regression)
+  sp <- pl$spatial
+  spatial <- !is.null(sp)
   guillemets <- function(x) tx(sprintf("« %s »", texte_sur(x)), sprintf("“%s”", texte_sur(x)))
   liste <- function(x) liste_textes(x, tx("et", "and"))
   affiches <- vapply(pl$niveaux, `[[`, "", "affiche")
@@ -1377,8 +1441,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   quoi <- c(tx("la réponse", "the response"), if (K) tx("les termes X", "the X terms"),
             if (mixte) tx("les groupes des effets aléatoires", "the groups of the random effects"), if (car1) tx("le temps", "the time"),
             if (!is.null(pl$dans)) tx("le groupe de l'autocorrélation", "the group of the autocorrelation"),
-            if (!is.null(pl$effort)) tx("l'effort", "the effort"))
-  lectures <- c(vapply(pl$niveaux, `[[`, "", "code"), pl$temps$code, pl$dans$code, pl$effort$code)
+            if (!is.null(pl$effort)) tx("l'effort", "the effort"), if (spatial) tx("les coordonnées", "the coordinates"))
+  lectures <- c(vapply(pl$niveaux, `[[`, "", "code"), pl$temps$code, pl$dans$code, pl$effort$code, sp$code)
   # le groupe de l'autocorrélation : le dernier effet aléatoire, ou un niveau plus fin
   groupes_car1 <- paste(c(r_niveaux, pl$dans$nom), collapse = " / ")
   # (pour les résidus normalisés d'un modèle avec CAR1 : le temps et ce groupe, colonnes du cadre)
@@ -1417,6 +1481,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     if (car1) sprintf("  tab[[%s]] <- %s[ici]", code_texte(pl$temps$nom), pl$temps$code),
     if (!is.null(pl$dans)) sprintf("  tab[[%s]] <- factor(%s[ici])", code_texte(pl$dans$nom), pl$dans$code),
     if (!is.null(pl$effort)) sprintf("  tab[[%s]] <- %s[ici]", code_texte(pl$effort$nom), pl$effort$code),
+    if (spatial) c(sprintf("  tab$sx <- %s[ici]", sp$code[1]), sprintf("  tab$sy <- %s[ici]", sp$code[2])),
     "  tab")
   filtre <- function(cadre, noms) if (pl$croises_tr) c(
     sprintf("retenues <- complete.cases(%s)  # %s", cadre, tx("un terme croisé hors du domaine de sa transformation : manquant", "a cross term outside the domain of its transformation: missing")),
@@ -1458,15 +1523,17 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     sprintf(if (test) "apprentissage <- intersect(which(%s), modele)" else "apprentissage <- which(%s)", if (pl$sans_courbe) "connu & avec_courbe" else "connu"),
     if (K) c("", code_echelle_bloc(pl$x, "X", "x", plx, tx, "X")),
     "",
-    commentaire(tx(sprintf("Le tableau du modèle pour les lignes `ici` de d : la réponse, %s%s%s%s. Ses colonnes ont des noms R (`reponse`, `termes`%s).",
+    commentaire(tx(sprintf("Le tableau du modèle pour les lignes `ici` de d : la réponse, %s%s%s%s%s. Ses colonnes ont des noms R (`reponse`, `termes`%s).",
                            if (K) "les termes X" else "sans terme X",
                            if (mixte) sprintf(", les groupes de chaque effet aléatoire en facteurs%s", if (length(pl$emboites)) " (mgcv : un facteur par niveau emboîté, chacun dans le précédent)" else "") else "",
                            if (car1) ", le temps" else "", if (!is.null(pl$effort)) ", l'effort" else "",
+                           if (spatial) sprintf(", les coordonnées du lissage spatial (sx : %s, sy : %s)", guillemets(sp$noms[1]), guillemets(sp$noms[2])) else "",
                            if (!meme_noms) " ; `noms_termes` : les noms des termes dans Nuée" else ""),
-                   sprintf("The table of the model for the rows `here` of d: the response, %s%s%s%s. Its columns have R names (`response`, `model_terms`%s).",
+                   sprintf("The table of the model for the rows `here` of d: the response, %s%s%s%s%s. Its columns have R names (`response`, `model_terms`%s).",
                            if (K) "the X terms" else "no X term",
                            if (mixte) sprintf(", the groups of each random effect as factors%s", if (length(pl$emboites)) " (mgcv: one factor per nested level, each within the previous one)" else "") else "",
                            if (car1) ", the time" else "", if (!is.null(pl$effort)) ", the effort" else "",
+                           if (spatial) sprintf(", the coordinates of the spatial smooth (sx: %s, sy: %s)", guillemets(sp$noms[1]), guillemets(sp$noms[2])) else "",
                            if (!meme_noms) "; `term_labels`: the names of the terms in Nuée" else ""))),
     sprintf("reponse <- %s", code_texte(pl$reponse)),
     if (K) code_valeurs(vapply(pl$termes, code_texte, ""), "termes <- ") else "termes <- character(0)",
@@ -1492,8 +1559,21 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   # --- l'ajustement
   formule <- function(droite) c(sprintf("  droite <- %s", droite),
                                 "  f <- reformulate(if (length(droite)) droite else \"1\", response = reponse)")
+  # (le lissage spatial : sa dimension sur les lignes du modèle, puis sur celles de chaque ajustement,
+  # et son terme dans la formule, après les courbes ; regression.R : dimension_spatiale, spatial_appris)
+  terme_s <- if (spatial) sprintf("if (!is.na(ks)) sprintf(%s, ks)", code_texte(sp$terme))
+  ks_ajustement <- if (spatial) sprintf("  ks <- dimension_spatiale(tab, k_spatial)  # %s", tx("(moins de lieux sur ces lignes : une dimension plus petite ; en dessous de 5, sans lissage spatial)",
+                                                                                                 "(fewer places on these rows: a smaller dimension; below 5, no spatial smooth)"))
+  code_spatial <- if (spatial) c(
+    commentaire(tx(sprintf("Le lissage spatial %s : %s des coordonnées sx et sy, de dimension de base %s, au plus le nombre de lieux différents moins 1 (dimension_spatiale ci-dessus) ; un terme pénalisé, comme une courbe.",
+                           guillemets(sp$nom), if (identical(sp$base, "sos")) "une spline sur la sphère (Wahba 1981 ; sy la latitude, sx la longitude, en degrés)" else "une spline de régression en plaques minces isotrope (Wood 2003)",
+                           if (is.na(sp$k)) "30 (celle de mgcv pour deux variables)" else sp$k),
+                   sprintf("The spatial smooth %s: %s of the coordinates sx and sy, of basis dimension %s, at most the number of different places minus 1 (basis_dimension_spatial above); a penalized term, like a curve.",
+                           guillemets(sp$nom), if (identical(sp$base, "sos")) "a spline on the sphere (Wahba 1981; sy the latitude, sx the longitude, in degrees)" else "an isotropic thin plate regression spline (Wood 2003)",
+                           if (is.na(sp$k)) "30 (mgcv's for two variables)" else sp$k))),
+    sprintf("k_spatial <- dimension_spatiale(cadre, %s)", if (is.na(sp$k)) "NA" else as.integer(sp$k)))
   ajustement <- if (gamm) {
-    droite_gamm <- paste(c(if (courbes) "setdiff(utiles, lis)" else "utiles", if (courbes) courbe_s), collapse = ", ")
+    droite_gamm <- paste(c(if (courbes) "setdiff(utiles, lis)" else "utiles", if (courbes) courbe_s, terme_s), collapse = ", ")
     c(commentaire(tx("La loi de la réponse : normale, lien identité (avec une autocorrélation, mgcv::gamm ne prend qu'elle : une autre loi passerait par une quasi-vraisemblance, sans AIC).",
                      "The distribution of the response: normal, identity link (with an autocorrelation, mgcv::gamm takes only that one: another would go through a quasi-likelihood, with no AIC).")),
       if (courbes) c(commentaire(tx("Les termes en courbe (des splines de régression en plaques minces) et la dimension de base de chacune.",
@@ -1502,6 +1582,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      if (length(pl$k_demandes)) sprintf("k_demandes <- c(%s)", paste(sprintf("%s = %dL", vapply(names(pl$k_demandes), code_texte, ""), pl$k_demandes), collapse = ", ")),
                      sprintf("k <- vapply(lisses, function(t) dimension_courbe(cadre[[t]]%s), 0L)", if (length(pl$k_demandes)) ", k_demandes[t]" else ""),
                      code_par),
+      code_spatial,
       commentaire(tx(sprintf("Les effets aléatoires (de nlme) : une ordonnée à l'origine aléatoire %s%s ; une autocorrélation des résidus en temps continu (CAR1) le long de %s, dans chaque %s.",
                              emboitement, texte_pentes, guillemets(pl$temps$affiche), guillemets(dans_affiche)),
                      sprintf("The random effects (of nlme): a random intercept %s%s; a continuous-time autocorrelation of the residuals (CAR1) along %s, within each %s.",
@@ -1518,6 +1599,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      "  kk <- vapply(lis, function(t) dimension_courbe(tab[[t]], k[[t]]), 0L)",
                      "  lis <- lis[kk >= 3]",
                      "  kk <- kk[kk >= 3]"),
+      ks_ajustement,
       formule(sprintf("c(%s)", droite_gamm)),
       "  tenter <- function(...) tryCatch(gamm(f, random = aleatoire, correlation = correlation, data = tab, method = methode, ...), error = function(e) NULL)",
       "  m <- tenter()",
@@ -1529,13 +1611,18 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       sprintf("utiles <- termes_utiles(cadre, %s)", candidats))
   } else if (mgcv) {
     familles <- c(gaussienne = "gaussian()", poisson = "poisson()", binomiale = "binomial()", binomiale_negative = "nb()",
-                  gamma = "Gamma(link = \"log\")", tweedie = "tw()")
+                  gamma = "Gamma(link = \"log\")", tweedie = "tw()", poisson_zi = "ziP()", beta = "betar(link = \"logit\")")
     noms_lois <- c(gaussienne = tx("normale, lien identité", "normal, identity link"), poisson = tx("de Poisson, lien log", "Poisson, log link"),
                    binomiale = tx("binomiale, lien logit", "binomial, logit link"), binomiale_negative = tx("binomiale négative, lien log (son θ estimé)", "negative binomial, log link (its θ estimated)"),
-                   gamma = tx("gamma, lien log", "gamma, log link"), tweedie = tx("de Tweedie, lien log (sa puissance p estimée)", "Tweedie, log link (its power p estimated)"))
-    penalise <- courbes || mixte
+                   gamma = tx("gamma, lien log", "gamma, log link"), tweedie = tx("de Tweedie, lien log (sa puissance p estimée)", "Tweedie, log link (its power p estimated)"),
+                   poisson_zi = tx("de Poisson à excès de zéros (un comptage nul avec la probabilité 1 − p, sinon une loi de Poisson de paramètre μ tronquée en zéro) : le prédicteur linéaire est log(μ), que mgcv dit « identity », et log(−log(1 − p)) = θ1 + θ2 log(μ), θ1 et θ2 estimés ; fitted() en donne log(μ), predict(type = \"response\") la valeur attendue p μ / (1 − exp(−μ))",
+                                   "zero-inflated Poisson (a count is zero with probability 1 − p, otherwise a Poisson distribution of parameter μ truncated at zero): the linear predictor is log(μ), which mgcv calls \"identity\", and log(−log(1 − p)) = θ1 + θ2 log(μ), θ1 and θ2 estimated; fitted() gives log(μ), predict(type = \"response\") the expected value p μ / (1 − exp(−μ))"),
+                   beta = tx("bêta, lien logit (de moyenne μ et de variance μ (1 − μ) / (1 + φ), sa précision φ estimée ; la réponse strictement entre 0 et 1)",
+                             "beta, logit link (of mean μ and variance μ (1 − μ) / (1 + φ), its precision φ estimated; the response strictly between 0 and 1)"))
+    penalise <- courbes || mixte || spatial
     droite <- paste(c(if (courbes) "setdiff(utiles, lis)" else "utiles",
                       if (courbes) courbe_s,
+                      terme_s,
                       if (mixte) "sprintf(\"s(%s, bs = \\\"re\\\")\", aleatoires)",
                       if (avec_pentes) "sprintf(\"s(%s, %s, bs = \\\"re\\\")\", names(pentes_aleatoires), pentes_aleatoires)",
                       if (!is.null(pl$effort)) code_texte(sprintf("offset(log(%s))", pl$effort$nom))), collapse = ", ")
@@ -1550,6 +1637,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      if (length(pl$k_demandes)) sprintf("k_demandes <- c(%s)", paste(sprintf("%s = %dL", vapply(names(pl$k_demandes), code_texte, ""), pl$k_demandes), collapse = ", ")),
                      sprintf("k <- vapply(lisses, function(t) dimension_courbe(cadre[[t]]%s), 0L)", if (length(pl$k_demandes)) ", k_demandes[t]" else ""),
                      code_par),
+      code_spatial,
       if (mixte) c(commentaire(tx(sprintf("Les effets aléatoires (des termes pénalisés) : une ordonnée à l'origine aléatoire %s%s%s.", emboitement,
                                           if (length(pl$emboites)) " (mgcv : un facteur par niveau emboîté)" else "", texte_pentes),
                                   sprintf("The random effects (penalized terms): a random intercept %s%s%s.", emboitement,
@@ -1557,30 +1645,42 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    code_valeurs(vapply(re_mgcv, code_texte, ""), "aleatoires <- "),
                    if (avec_pentes) sprintf("pentes_aleatoires <- setNames(%s, %s)  # %s", code_textes(pentes_mgcv), code_textes(names(pentes_mgcv)),
                                             tx("le terme de chaque pente aléatoire, nommé par le facteur de son niveau", "each random slope's term, named by its level's factor"))),
-      commentaire(tx(sprintf("Ajustement : un modèle %s (mgcv::gam) avec les termes utiles sur ces lignes (termes_utiles())%s%s ; %s.",
+      commentaire(tx(sprintf("Ajustement : un modèle %s (mgcv::gam) avec les termes utiles sur ces lignes (termes_utiles())%s%s%s ; %s.",
                              if (identical(pl$modele, "GAM")) "additif généralisé" else "linéaire généralisé",
                              if (courbes) ", une courbe pour chaque terme de `lisses` (sa dimension réduite si ces lignes ont trop peu de valeurs ; en dessous de 3, il reste une droite)" else "",
+                             if (spatial) ", le lissage spatial" else "",
                              if (!is.null(pl$effort)) sprintf(", et log(%s) en décalage (l'effort)", guillemets(pl$effort$affiche)) else "",
-                             if (penalise) "REML pour les courbes et les effets aléatoires (methode = \"ML\" : l'ajustement dont viennent la vraisemblance et l'AIC)" else "en maximum de vraisemblance (sans terme pénalisé)"),
-                     sprintf("Fit: a %s model (mgcv::gam) with the useful terms on these rows (useful_terms())%s%s; %s.",
+                             if (penalise) sprintf("REML pour %s (methode = \"ML\" : l'ajustement dont viennent la vraisemblance et l'AIC)", liste(c(if (courbes) "les courbes", if (spatial) "le lissage spatial", if (mixte) "les effets aléatoires")))
+                             else "en maximum de vraisemblance (sans terme pénalisé)"),
+                     sprintf("Fit: a %s model (mgcv::gam) with the useful terms on these rows (useful_terms())%s%s%s; %s.",
                              if (identical(pl$modele, "GAM")) "generalized additive" else "generalized linear",
                              if (courbes) ", a curve for each term of `smooth_terms` (its dimension reduced if these rows have too few values; below 3, it stays a straight line)" else "",
+                             if (spatial) ", the spatial smooth" else "",
                              if (!is.null(pl$effort)) sprintf(", and log(%s) as an offset (the effort)", guillemets(pl$effort$affiche)) else "",
-                             if (penalise) "REML for the curves and the random effects (method = \"ML\": the fit that gives the likelihood and the AIC)" else "by maximum likelihood (no penalized term)"))),
+                             if (penalise) sprintf("REML for %s (method = \"ML\": the fit that gives the likelihood and the AIC)", liste(c(if (courbes) "the curves", if (spatial) "the spatial smooth", if (mixte) "the random effects")))
+                             else "by maximum likelihood (no penalized term)"))),
       sprintf("ajuster_modele <- function(tab, candidats = %s, methode = %s) {", candidats, if (mixte) "\"REML\"" else if (penalise) "NULL" else "\"ML\""),
       "  utiles <- termes_utiles(tab, candidats)",
       if (courbes) c("  lis <- intersect(lisses, utiles)",
                      "  kk <- vapply(lis, function(t) dimension_courbe(tab[[t]], k[[t]]), 0L)",
                      "  lis <- lis[kk >= 3]",
                      "  kk <- kk[kk >= 3]"),
+      ks_ajustement,
       formule(sprintf("c(%s)", droite)),
-      if (!mixte && penalise) "  if (is.null(methode)) methode <- if (length(lis)) \"REML\" else \"ML\"",
-      "  tryCatch(gam(f, data = tab, family = famille(), method = methode), error = function(e) NULL)",
+      if (!mixte && penalise) sprintf("  if (is.null(methode)) methode <- if (%s) \"REML\" else \"ML\"", paste(c(if (courbes) "length(lis)", if (spatial) "!is.na(ks)"), collapse = " || ")),
+      # (ziP ou betar sans terme pénalisé, en ML : profil_loi quand mgcv s'arrête, comme regression.R)
+      if (profil) c(
+        "  m <- tryCatch(gam(f, data = tab, family = famille(), method = methode), error = function(e) NULL)",
+        sprintf("  if (is.null(m) && methode == \"ML\"%s) m <- profil_loi(f, tab, %s, %d)", paste0(if (courbes) " && !length(lis)" else "", if (spatial) " && is.na(ks)" else ""),
+                if (identical(pl$famille, "beta")) "function(th) betar(theta = exp(th), link = \"logit\")" else "function(th) ziP(theta = th)",
+                if (identical(pl$famille, "beta")) 1L else 2L),
+        "  m")
+      else "  tryCatch(gam(f, data = tab, family = famille(), method = methode), error = function(e) NULL)",
       "}",
       "m <- ajuster_modele(cadre)",
       sprintf("utiles <- termes_utiles(cadre, %s)", candidats),
       if (!penalise) tx("m_ml <- m  # (sans terme pénalisé : un seul ajustement, en ML)", "m_ml <- m  # (no penalized term: a single fit, by ML)")
-      else if (mixte) "m_ml <- ajuster_modele(cadre, methode = \"ML\")"
+      else if (mixte || spatial) "m_ml <- ajuster_modele(cadre, methode = \"ML\")"
       else "m_ml <- if (length(intersect(lisses, utiles))) ajuster_modele(cadre, methode = \"ML\") else m")
   } else if (mixte) {
     niveaux_txt <- paste(r_niveaux, collapse = " / ")
@@ -1658,8 +1758,19 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    if (length(s$produits)) sprintf("produits = setNames(poids_x[%s], %s)", code_nombres(match(s$produits, pl$termes)), code_textes(s$produits)))
     sprintf("%s = seuils_courbe(%s)", code_texte(s$nom), paste(arguments, collapse = ", "))
   }
+  # (le lissage spatial : sa ligne dans le tableau des courbes, après celles des courbes ; regression.R : ligne_spatiale)
+  code_ligne_spatiale <- function(g) {
+    e <- code_texte(sp$etiquette)
+    c(commentaire(tx(sprintf("Le lissage spatial : ses degrés de liberté effectifs, son test et sa concurvité, sa ligne dans le tableau des courbes (son étiquette dans mgcv : %s).", sp$etiquette),
+                     sprintf("The spatial smooth: its effective degrees of freedom, its test and its concurvity, its row in the curves table (its label in mgcv: %s).", sp$etiquette))),
+      if (!courbes) sprintf("cc <- concurvity(%s, full = TRUE)", g),
+      sprintf("ligne_spatiale <- data.frame(terme = %s, edf = sm$s.table[%s, 1], ref_ddl = sm$s.table[%s, 2], statistique = sm$s.table[%s, 3],", code_texte(sp$nom), e, e, e),
+      sprintf("                             p = sm$s.table[%s, 4], concurvite = unname(cc[\"estimate\", %s]), concurvite_pire = unname(cc[\"worst\", %s]), row.names = NULL)", e, e, e),
+      if (courbes && par_cat) c("ligne_spatiale$par <- NA_character_", "ligne_spatiale$niveau <- NA_character_"),
+      if (courbes) "courbes <- rbind(courbes, ligne_spatiale)" else "courbes <- ligne_spatiale")
+  }
   code_courbes <- function(g) {
-    if (!courbes) return(NULL)
+    if (!courbes) return(if (spatial) code_ligne_spatiale(g))
     etiquettes <- if (par_cat) "etiquettes$etiquette" else "sprintf(\"s(%s)\", lis)"
     lignes_seuils <- vapply(pl$seuils, code_seuil, "", g = g)
     c(commentaire(tx(sprintf("Les courbes : leurs degrés de liberté effectifs (edf ; 1 est une droite) et leur test%s.", if (par_cat) ", une ligne par catégorie d'une courbe par catégorie (etiquettes_courbes() ci-dessus)" else ""),
@@ -1684,7 +1795,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
         commentaire(tx("Les seuils de chaque courbe, et de chaque catégorie quand une courbe en a une par catégorie, sur ses lignes (seuils_courbe ci-dessus) ; puis la liste de leurs plages nettes.",
                        "The thresholds of each curve, and of each category when a curve has one per category, on its rows (curve_thresholds above); then the list of their clear ranges.")),
         if (length(lignes_seuils) == 1) sprintf("seuils <- list(%s)", lignes_seuils) else c("seuils <- list(", paste0("  ", lignes_seuils, c(rep(",", length(lignes_seuils) - 1), "")), ")")),
-      "plages_seuils <- do.call(rbind, lapply(names(seuils), function(n) data.frame(terme = rep(n, nrow(seuils[[n]]$plages)), seuils[[n]]$plages, row.names = NULL)))")
+      "plages_seuils <- do.call(rbind, lapply(names(seuils), function(n) data.frame(terme = rep(n, nrow(seuils[[n]]$plages)), seuils[[n]]$plages, row.names = NULL)))",
+      if (spatial) code_ligne_spatiale(g))
   }
   statistiques <- if (gamm) c(
     commentaire(ic),
@@ -1717,7 +1829,9 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     code_courbes("m"),
     if (mixte) c(commentaire(tx("La variance de chaque effet aléatoire (gam.vcomp : ses écarts-types).", "The variance of each random effect (gam.vcomp: their standard deviations).")),
                  "vcomp <- tryCatch(gam.vcomp(m), error = function(e) NULL)",
-                 "ecart_types <- if (is.matrix(vcomp)) vcomp[, 1] else if (is.list(vcomp) && is.matrix(vcomp$vc)) vcomp$vc[, 1]",
+                 "sd_vc <- if (is.matrix(vcomp)) vcomp else if (is.list(vcomp) && is.matrix(vcomp$vc)) vcomp$vc",
+                 commentaire(tx("(setNames : sd_vc[, 1] seul perdrait le nom d'une ligne unique)", "(setNames: sd_vc[, 1] alone would lose the name of a single row)")),
+                 "ecart_types <- if (!is.null(sd_vc)) setNames(sd_vc[, 1], rownames(sd_vc))",
                  if (!avec_pentes) sprintf("variances <- if (!is.null(ecart_types)) data.frame(composante = %s, variance = unname(ecart_types[sprintf(\"s(%%s)\", aleatoires)])^2)",
                                            code_textes(affiches))
                  else {
@@ -1730,8 +1844,11 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                  }),
     commentaire(tx("La part de la variation expliquée : R² ajusté et part de la déviance.", "The share of the variation explained: adjusted R² and share of the deviance.")),
     "r2 <- c(r2_ajuste = sm$r.sq, deviance_expliquee = sm$dev.expl)",
-    if (loi) sprintf("parametre_loi <- c(%s = m$family$getTheta(TRUE))  # %s", if (identical(pl$famille, "tweedie")) "p" else "theta",
-                     if (identical(pl$famille, "tweedie")) tx("la puissance de la loi de Tweedie", "the power of the Tweedie distribution") else tx("le θ de la binomiale négative", "the θ of the negative binomial")),
+    if (zip) sprintf("parametre_loi <- setNames(m$family$getTheta(TRUE), c(\"theta1\", \"theta2\"))  # %s",
+                     tx("θ1 et θ2 de log(−log(1 − p)) = θ1 + θ2 log(μ), comme le résumé de mgcv les donne", "θ1 and θ2 of log(−log(1 − p)) = θ1 + θ2 log(μ), as mgcv's summary gives them"))
+    else if (loi) sprintf("parametre_loi <- c(%s = m$family$getTheta(TRUE))  # %s", switch(pl$famille, tweedie = "p", beta = "phi", "theta"),
+                          switch(pl$famille, tweedie = tx("la puissance de la loi de Tweedie", "the power of the Tweedie distribution"),
+                                 beta = tx("la précision φ de la loi bêta", "the precision φ of the beta distribution"), tx("le θ de la binomiale négative", "the θ of the negative binomial"))),
     if (poisson) sprintf("dispersion <- sum(residuals(m, type = \"pearson\")^2) / m$df.residual  # %s",
                          tx("khi² de Pearson / ddl : au-delà de 1,5, des comptages surdispersés", "Pearson's chi-square / df: above 1.5, overdispersed counts"))
   ) else if (mixte) c(
@@ -1767,6 +1884,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    sprintf("Each observation: the response observed, fitted%s, and its standardized residual%s.", if (mixte && (!mgcv || gamm)) " (with the random effects; fitted_fixed: the fixed effects only)" else "",
                            if (!mixte && !mgcv) " (and Cook's distance)" else ""))),
     if (gamm) "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m$lme),"
+    else if (zip) "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = as.vector(predict(m, type = \"response\")),"
     else "observations <- data.frame(observation = noms_obs, observe = cadre[[1]], ajuste = fitted(m),",
     if (gamm) sprintf("                           residu = residus_normalises_car1(residuals(m$lme, type = \"pearson\"), %s, %s, phi), ajuste_fixe = fitted(m$gam), row.names = NULL)",
                       temps_car1, groupes_car1_code)
@@ -1780,13 +1898,23 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     arguments <- c(poisson = "function(q, ...) ppois(q, fitted(m), ...)",
                    binomiale_negative = "function(q, ...) pnbinom(q, size = m$family$getTheta(TRUE), mu = fitted(m), ...)",
                    binomiale = "function(q, ...) pbinom(q, 1, fitted(m), ...)",
-                   gamma = "function(q, ...) pgamma(q, shape = 1 / m$sig2, rate = 1 / (m$sig2 * fitted(m)), ...), discrete = FALSE")[[pl$famille]]
+                   gamma = "function(q, ...) pgamma(q, shape = 1 / m$sig2, rate = 1 / (m$sig2 * fitted(m)), ...), discrete = FALSE",
+                   poisson_zi = "repartition_zip(m$linear.predictors, m$family$getTheta(TRUE))",
+                   beta = "function(q, ...) pbeta(q, fitted(m) * m$family$getTheta(TRUE), (1 - fitted(m)) * m$family$getTheta(TRUE), ...), discrete = FALSE")[[pl$famille]]
     lois <- c(poisson = "Poisson", binomiale_negative = tx("binomiale négative, de son θ estimé", "negative binomial with its estimated θ"),
-              binomiale = tx("binomiale, une épreuve : 0 ou 1", "binomial, one trial: 0 or 1"), gamma = tx("gamma de forme 1 / l'échelle estimée", "gamma of shape 1 / the estimated scale"))
+              binomiale = tx("binomiale, une épreuve : 0 ou 1", "binomial, one trial: 0 or 1"), gamma = tx("gamma de forme 1 / l'échelle estimée", "gamma of shape 1 / the estimated scale"),
+              poisson_zi = tx("de Poisson à excès de zéros, de ses θ1 et θ2 estimés : repartition_zip ci-dessus", "zero-inflated Poisson with its estimated θ1 and θ2: zip_distribution_function above"),
+              beta = tx("bêta de formes μ φ et (1 − μ) φ, de sa précision φ estimée", "beta of shapes μ φ and (1 − μ) φ, with its estimated precision φ"))
     statistiques <- c(statistiques,
       commentaire(tx(sprintf("Et ses résidus quantiles randomisés (residus_quantiles ci-dessus), de la loi du modèle (%s) à sa valeur ajustée : normaux quand le modèle est juste.", lois[[pl$famille]]),
                      sprintf("And its randomized quantile residuals (quantile_residuals above), from the model's distribution (%s) at its fitted value: normal when the model is right.", lois[[pl$famille]]))),
       sprintf("observations$residu_quantile <- residus_quantiles(cadre[[1]], %s)", arguments))
+  }
+  if (spatial) {
+    statistiques <- c(statistiques,
+      commentaire(tx("Et la valeur du lissage spatial en chaque observation, sur l'échelle du lien (celle que la carte de Nuée montre).",
+                     "And the value of the spatial smooth at each observation, on the link scale (the one Nuée's map shows).")),
+      sprintf("observations$lissage_spatial <- as.vector(predict(%s, type = \"terms\")[, %s])", if (gamm) "m$gam" else "m", code_texte(sp$etiquette)))
   }
 
   # --- la sélection par l'AIC (regression.R : selection_aic), quand elle a été faite dans Nuée
@@ -1901,7 +2029,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     if (car1) ligne("print(phi)", "l'autocorrélation CAR1", "the CAR1 autocorrelation"),
     if (loi) ligne("print(parametre_loi)", "le paramètre de la loi", "the parameter of the distribution"),
     if (poisson) ligne("print(dispersion)", "au-delà de 1,5 : préférer la binomiale négative", "above 1.5: prefer the negative binomial"),
-    if (courbes) ligne("print(courbes)", "edf, test et concurvité de chaque courbe", "edf, test and concurvity of each curve"),
+    if (courbes || spatial) ligne("print(courbes)", if (courbes) "edf, test et concurvité de chaque courbe" else "edf, test et concurvité du lissage spatial",
+                                  if (courbes) "edf, test and concurvity of each curve" else "edf, test and concurvity of the spatial smooth"),
     if (courbes) ligne("print(plages_seuils)", "les plages nettes de la pente et de l'effet des courbes", "the clear ranges of the curves' slope and effect"),
     ligne("print(c(Q2 = vc$Q2, RMSEcv = vc$RMSEcv))", "validation croisée", "cross-validation"),
     if (!is.null(sel)) ligne("print(head(selection$modeles, 20))", "sélection par l'AIC : les 20 meilleurs modèles", "AIC selection: the 20 best models"),
@@ -1992,6 +2121,14 @@ code_regression <- function(pl, b, langue, seance = NULL) {
               code_texte(tx("hausse", "rise"))),
       "}",
       "par(op)")),
+    # (le lissage spatial : sa valeur en chaque observation, à ses coordonnées)
+    if (spatial) list(nom = "lissage-spatial", largeur = 6.5, hauteur = 6, code = c(
+      "teintes <- hcl.colors(9, \"Blue-Red\")",
+      "tranche <- cut(observations$lissage_spatial, 9)",
+      sprintf("plot(cadre$sx, cadre$sy, pch = 19, col = teintes[tranche], asp = %s, xlab = %s, ylab = %s, main = %s)",
+              if (identical(sp$base, "sos")) "1 / cos(mean(cadre$sy) * pi / 180)" else "1", code_texte(sp$noms[1]), code_texte(sp$noms[2]),
+              code_texte(sprintf(tx("Lissage spatial %s (échelle du lien)", "Spatial smooth %s (link scale)"), sp$nom))),
+      "legend(\"topright\", levels(tranche), pch = 19, col = teintes, cex = 0.7, bty = \"n\")")),
     if (!is.null(pu)) list(nom = "puissance", largeur = 6, hauteur = 4.5, code = c(
       sprintf("plot(NULL, xlim = range(puissance$annees), ylim = c(0, 1), xlab = %s, ylab = %s, main = %s)", code_texte(tx("Années de suivi", "Years of monitoring")),
               code_texte(tx("Puissance", "Power")), code_texte(tx("Puissance pour une tendance", "Trend power"))),
@@ -2010,7 +2147,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "arrows(x, mo$bas, x, mo$haut, angle = 90, code = 3, length = 0.04)",
       "axis(1, at = x, labels = if (all(is.na(mo$groupe))) mo$niveau else paste(mo$niveau, mo$groupe, sep = \" · \"))")))
   objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations",
-              if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes) c("courbes", "seuils", "plages_seuils"),
+              if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes || spatial) "courbes", if (courbes) c("seuils", "plages_seuils"),
               if (!is.null(sel)) "selection", if (!is.null(pu)) c("puissance", "annees_80"), if (!is.null(pu$resultat$simulation)) "simulation_puissance",
               if (!is.null(mo)) "moyennes_ajustees", if (test) c("test", "predictions_test"))
   list(calcul = traduire_code(c(donnees, "", ajustement, "", validation, "", statistiques, if (!is.null(sel)) c("", selection), if (!is.null(pu)) c("", code_puissance),
@@ -2124,8 +2261,10 @@ code_moyennes_regression <- function(pl, tx, guillemets, liste) {
                      "nlme's degrees of freedom as emmeans takes them on R's fit, in its default coding (the first observed category of each qualitative variable as reference; in this model's, the last, a mean would take another's): each column of that coding, and the coefficient of its term whose degrees of freedom it takes.")),
       code_valeurs(sprintf("%s = %s", vapply(names(mo$colonnes_ddl), code_texte, ""), vapply(unname(mo$colonnes_ddl), code_texte, "")), "colonnes_ddl <- c(", ")", ouvrir = "")),
     sprintf("moyennes_ajustees <- moyennes_grille(lg, cellules, groupes_grille, b = %s, V = vcov(%s), N = base_nulle(cbind(1, as.matrix(cadre[termes_param]))),", coefficients, modele),
-    sprintf("                                     ddl = %s, ajustement = %s, lien = %s, echelle_reponse = %s)", ddl, code_texte(g$ajustement), code_texte(mo$lien),
-            if (identical(mo$echelle, "reponse")) "TRUE" else "FALSE"))
+    sprintf("                                     ddl = %s, ajustement = %s, lien = %s, echelle_reponse = %s%s)", ddl, code_texte(g$ajustement), code_texte(mo$lien),
+            if (identical(mo$echelle, "reponse")) "TRUE" else "FALSE",
+            # (le Poisson à excès de zéros sur l'échelle de la réponse : la valeur attendue d'un comptage, esperance_zip)
+            if (identical(mo$echelle, "reponse") && identical(pl$famille, "poisson_zi")) ", theta_zip = parametre_loi" else ""))
 }
 
 # Écart entre les résultats du script d'une régression (dans `e`) et ceux de `m` : NULL s'il n'y en
@@ -2198,11 +2337,13 @@ code_fonctions <- function(b, plans, langue) {
                                          "Generalized and additive models: mgcv (it comes with R), attached so that its distributions (nb(), tw()) find its functions.")),
                           "library(mgcv)"),
     if (na || isTRUE(b$vc_acp)) modele_projeter(tx),  # (la validation croisée d'une ACP ignore des termes comme des valeurs manquantes)
-    if (b$acp) c(modele_composante_acp(tx, na), "", modele_acp(tx, na, b$vides), if (b$vc_acp) c("", modele_vc_acp(tx, na)),
-                 if (b$complet_acp) c("", modele_complet_acp(tx, na, b$vides))),
-    if (b$pls || b$opls) modele_composante_pls(tx, na),
-    if (b$pls) c(modele_pls(tx, na, b$vides), if (b$vc_pls) c("", modele_vc_pls(tx, na, b$y_manquantes)),
-                 if (b$complet_pls) c("", modele_complet_pls(tx, na, b$vides))),
+    if (b$vides_acp || b$vides_pls) modele_reporter_vides(tx),
+    if (b$acp) c(modele_composante_acp(tx, na, b$fichier_acp, b$vides_acp), "", modele_acp(tx, na, b$vides, b$fichier_acp),
+                 if (b$vc_acp) c("", modele_vc_acp(tx, na, b$fichier_acp)),
+                 if (b$complet_acp) c("", modele_complet_acp(tx, na, b$vides, b$fichier_acp))),
+    if (b$pls || b$opls) modele_composante_pls(tx, na, b$fichier_pls, b$vides_pls),
+    if (b$pls) c(modele_pls(tx, na, b$vides, b$fichier_pls, b$fichier_sans_x), if (b$vc_pls) c("", modele_vc_pls(tx, na, b$y_manquantes, b$fichier_pls)),
+                 if (b$complet_pls) c("", modele_complet_pls(tx, na, b$vides, b$fichier_pls, b$fichier_sans_x))),
     if (b$opls) c(if (general) c(modele_composantes_pls(tx, na), "", modele_base_poids_y(tx, na), ""),
                   modele_opls_noyau(tx, na, general), "", modele_opls(tx, na, b$vides, general), "",
                   modele_opls_predire(tx, na, general), if (b$vc_opls) c("", modele_vc_opls(tx, na, general)),
@@ -2218,8 +2359,13 @@ code_fonctions <- function(b, plans, langue) {
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
     if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx), if (isTRUE(b$par_courbes)) c("", modele_courbes_par_categorie(tx))),
+    # (la dimension du lissage spatial : la fonction du moteur, regression.R, recopiée : script_moteur.R)
+    if (isTRUE(b$spatial)) utils::head(code_moteur("dimension_spatiale", langue, ENTETES_SPATIAL_EN), -1),
     if (isTRUE(b$aleatoires_mgcv)) modele_predire_fixes(tx),
     if (isTRUE(b$residus_quantiles)) modele_residus_quantiles(tx),
+    if (isTRUE(b$repartition_zip)) modele_repartition_zip(tx),
+    if (isTRUE(b$profil_loi)) modele_profil_loi(tx),
+    if (isTRUE(b$esperance_zip)) modele_esperance_zip(tx),
     if (b$plsda) modele_la_plus_grande(tx),
     if (b$pls || b$opls) modele_permutations(tx, seul, na),
     if ("snv" %in% b$spectres) modele_snv(tx),
@@ -2239,55 +2385,101 @@ modele_projeter <- function(tx) c(
   "  drop(E %*% v) / sum(v^2) * correction",
   "}")
 
-modele_composante_acp <- function(tx, na) c(
+# (`fichier` : des modèles de fichiers .usp, qui suivent le NIPALS de leur logiciel, nipals.R ;
+# `vides` : de la version 10, avec des valeurs manquantes : reporter_vides)
+modele_composante_acp <- function(tx, na, fichier = FALSE, vides = FALSE) c(
   commentaire(c(tx("Une composante d'ACP par NIPALS, à partir des résidus E : les scores t et les loadings p (de norme 1), recalculés l'un par l'autre jusqu'à ce que t ne change plus (écart relatif 1e-10, 2000 tours au plus).",
                    "One PCA component by NIPALS, from the residuals E: the scores t and the loadings p (of norm 1), computed from each other until t no longer changes (relative change 1e-10, 2000 rounds at most)."),
-                if (na) tx("Les valeurs manquantes sont ignorées (M).", "Missing values are ignored (M)."))),
-  if (na) "composante_acp <- function(E, M) {" else "composante_acp <- function(E) {",
+                if (na) tx("Les valeurs manquantes sont ignorées (M).", "Missing values are ignored (M)."),
+                if (fichier) texte_nipals_fichier(tx, FALSE, vides))),
+  if (fichier) { if (na) "composante_acp <- function(E, M, version_fichier = NULL) {" else "composante_acp <- function(E, version_fichier = NULL) {" }
+  else if (na) "composante_acp <- function(E, M) {" else "composante_acp <- function(E) {",
   if (na) c("  Et <- t(E)", "  Mt <- t(M)"),
-  "  tt <- E[, which.max(colSums(E^2))]",
-  "  for (i in 1:2000) {",
+  if (fichier) c("  fichier <- !is.null(version_fichier)", "  ss <- colSums(E^2)",
+                 "  tt <- E[, if (fichier) which(ss >= max(ss) * (1 - 1e-9))[1] else which.max(ss)]",
+                 if (vides) "  vides <- isTRUE(version_fichier == 10) & rowSums(Mt) == 0")
+  else "  tt <- E[, which.max(colSums(E^2))]",
+  if (fichier) "  for (i in 1:(if (fichier) 200 else 2000)) {" else "  for (i in 1:2000) {",
   if (na) "    p <- projeter(Et, Mt, tt)" else "    p <- drop(crossprod(E, tt)) / sum(tt^2)",
+  if (vides) "    if (any(vides)) p <- reporter_vides(p, vides)",
   "    p <- p / sqrt(sum(p^2))",
   if (na) "    t_suivant <- projeter(E, M, p)" else "    t_suivant <- drop(E %*% p) / sum(p^2)",
-  "    fini <- sqrt(sum((t_suivant - tt)^2)) <= 1e-10 * sqrt(sum(t_suivant^2))",
+  if (fichier) "    fini <- sqrt(sum((t_suivant - tt)^2)) <= (if (fichier) 1e-5 else 1e-10) * sqrt(sum(t_suivant^2))"
+  else "    fini <- sqrt(sum((t_suivant - tt)^2)) <= 1e-10 * sqrt(sum(t_suivant^2))",
   "    tt <- t_suivant",
   "    if (fini) break",
   "  }",
-  if (na) "  list(t = tt, p = projeter(Et, Mt, tt))" else "  list(t = tt, p = drop(crossprod(E, tt)) / sum(tt^2))",
+  if (fichier) { if (na) "  list(t = tt, p = if (fichier) p else projeter(Et, Mt, tt))" else "  list(t = tt, p = if (fichier) p else drop(crossprod(E, tt)) / sum(tt^2))" }
+  else if (na) "  list(t = tt, p = projeter(Et, Mt, tt))" else "  list(t = tt, p = drop(crossprod(E, tt)) / sum(tt^2))",
   "}")
 
-modele_composante_pls <- function(tx, na) c(
+modele_composante_pls <- function(tx, na, fichier = FALSE, vides = FALSE) c(
   commentaire(c(tx("Une composante PLS par NIPALS, à partir des résidus E de X et F de Y : les poids w des termes X (de norme 1), les scores t, les poids c des termes Y et les loadings p, recalculés jusqu'à ce que les scores u de Y ne changent plus (écart relatif 1e-10, 2000 tours au plus).",
                    "One PLS component by NIPALS, from the residuals E of X and F of Y: the weights w of the X terms (of norm 1), the scores t, the weights c of the Y terms and the loadings p, computed until the Y scores u no longer change (relative change 1e-10, 2000 rounds at most)."),
-                if (na) tx("Les valeurs manquantes sont ignorées (ME, MF).", "Missing values are ignored (ME, MF)."))),
-  if (na) "composante_pls <- function(E, ME, F, MF) {" else "composante_pls <- function(E, F) {",
+                if (na) tx("Les valeurs manquantes sont ignorées (ME, MF).", "Missing values are ignored (ME, MF)."),
+                if (fichier) texte_nipals_fichier(tx, TRUE, vides))),
+  if (fichier) { if (na) "composante_pls <- function(E, ME, F, MF, version_fichier = NULL, w0 = NULL) {" else "composante_pls <- function(E, F, version_fichier = NULL, w0 = NULL) {" }
+  else if (na) "composante_pls <- function(E, ME, F, MF) {" else "composante_pls <- function(E, F) {",
   if (na) c("  Et <- t(E)", "  MEt <- t(ME)", "  Ft <- t(F)", "  MFt <- t(MF)"),
-  "  u <- F[, which.max(colSums(F^2))]",
-  "  for (i in 1:2000) {",
+  if (fichier) c("  fichier <- !is.null(version_fichier)",
+                 tx("  if (!is.null(w0)) {  # (t, c et le premier u viennent du poids de départ w0)", "  if (!is.null(w0)) {  # (t, c and the first u come from the starting weight w0)"),
+                 if (na) "    tt <- projeter(E, ME, w0)" else "    tt <- drop(E %*% w0) / sum(w0^2)",
+                 if (na) "    cc <- projeter(Ft, MFt, tt)" else "    cc <- drop(crossprod(F, tt)) / sum(tt^2)",
+                 if (na) "    u <- projeter(F, MF, cc)" else "    u <- drop(F %*% cc) / sum(cc^2)",
+                 "  } else {",
+                 "    ss <- colSums(F^2)",
+                 "    u <- F[, if (fichier) which(ss >= max(ss) * (1 - 1e-9))[1] else which.max(ss)]",
+                 "  }",
+                 if (vides) "  vides <- isTRUE(version_fichier == 10) & rowSums(MEt) == 0")
+  else "  u <- F[, which.max(colSums(F^2))]",
+  if (fichier) "  for (i in 1:(if (fichier) 200 else 2000)) {" else "  for (i in 1:2000) {",
   if (na) "    w <- projeter(Et, MEt, u)" else "    w <- drop(crossprod(E, u)) / sum(u^2)",
+  if (vides) "    if (any(vides)) w <- reporter_vides(w, vides)",
   "    w <- w / sqrt(sum(w^2))",
   if (na) "    tt <- projeter(E, ME, w)" else "    tt <- drop(E %*% w) / sum(w^2)",
   if (na) "    cc <- projeter(Ft, MFt, tt)" else "    cc <- drop(crossprod(F, tt)) / sum(tt^2)",
   if (na) "    u_suivant <- projeter(F, MF, cc)" else "    u_suivant <- drop(F %*% cc) / sum(cc^2)",
-  "    fini <- sqrt(sum((u_suivant - u)^2)) <= 1e-10 * sqrt(sum(u_suivant^2))",
+  if (fichier) "    fini <- sqrt(sum((u_suivant - u)^2)) <= (if (fichier) 1e-5 else 1e-10) * sqrt(sum(u_suivant^2))"
+  else "    fini <- sqrt(sum((u_suivant - u)^2)) <= 1e-10 * sqrt(sum(u_suivant^2))",
   "    u <- u_suivant",
   "    if (fini) break",
   "  }",
-  if (na) "  list(w = w, t = tt, c = cc, p = projeter(Et, MEt, tt))" else "  list(w = w, t = tt, c = cc, p = drop(crossprod(E, tt)) / sum(tt^2))",
+  if (vides) c("  p <- projeter(Et, MEt, tt)", "  list(w = w, t = tt, c = cc, p = if (any(vides)) reporter_vides(p, vides) else p)")
+  else if (na) "  list(w = w, t = tt, c = cc, p = projeter(Et, MEt, tt))" else "  list(w = w, t = tt, c = cc, p = drop(crossprod(E, tt)) / sum(tt^2))",
   "}")
 
-# L'ajustement d'une ACP : les composantes une à une, chacune retirée de X.
-modele_acp <- function(tx, na, vides) c(
-  commentaire(tx("L'ACP à A composantes (X centré et mis à l'échelle) : chaque composante est retirée de X avant la suivante ; moins de A quand X n'a plus de variation (un reste sous 1e-12 de sa somme des carrés). ssx : la somme des carrés de chaque terme, avant la 1re composante puis après chacune.",
-                 "The PCA with A components (X centred and scaled): each component is removed from X before the next; fewer than A when X has no variation left (a remainder under 1e-12 of its sum of squares). ssx: the sum of squares of each term, before the 1st component then after each.")),
-  "acp <- function(X, A) {",
+# Ce que le NIPALS d'un modèle d'un fichier .usp fait autrement (nipals.R), pour le commentaire
+# d'une composante d'ACP ou de PLS (`pls`) ; `vides` : avec reporter_vides.
+texte_nipals_fichier <- function(tx, pls, vides) {
+  c(if (pls) tx("Un modèle d'un fichier .usp suit le NIPALS du logiciel de ce fichier (version_fichier : sa version, 10, 11 ou 13) : u part de la première colonne de F de plus grande somme des carrés (avec w0, du poids w0 : la validation croisée de chaque composante part du poids du modèle complet), et le calcul s'arrête à un écart relatif de 1e-5, ou après 200 tours.",
+                "A model from a .usp file follows the NIPALS of that file's software (file_version: its version, 10, 11 or 13): u starts from the first column of F with the largest sum of squares (with w0, from the weight w0: the cross-validation of each component starts from the full model's weight), and the computation stops at a relative change of 1e-5, or after 200 rounds.")
+    else tx("Un modèle d'un fichier .usp suit le NIPALS du logiciel de ce fichier (version_fichier : sa version, 10, 11 ou 13) : t part de la première colonne de E de plus grande somme des carrés, le calcul s'arrête à un écart relatif de 1e-5, ou après 200 tours, et le loading rendu est celui du dernier tour.",
+            "A model from a .usp file follows the NIPALS of that file's software (file_version: its version, 10, 11 or 13): t starts from the first column of E with the largest sum of squares, the computation stops at a relative change of 1e-5, or after 200 rounds, and the loading returned is the last round's."),
+    if (vides) tx(sprintf("Sa version 10 donne à un terme X sans aucune valeur %s du terme d'avant (reporter_vides).", if (pls) "le poids et le loading" else "le loading"),
+                  sprintf("Its version 10 gives an X term without any value the %s of the term before it (carry_previous).", if (pls) "weight and loading" else "loading")))
+}
+
+modele_reporter_vides <- function(tx) c(
+  commentaire(tx("La version 10 du logiciel des fichiers .usp donne à chaque terme X sans aucune valeur (`vides`, TRUE pour lui) la valeur du terme d'avant dans un poids ou un loading `v` (un terme vide en tête garde 0) : ses W, P, VIP et coefficients en viennent.",
+                 "Version 10 of the software of .usp files gives each X term without any value (`empty_terms`, TRUE for it) the value of the term before it in a weight or loading `v` (an empty first term keeps 0): its W, P, VIP and coefficients come from it.")),
+  "reporter_vides <- function(v, vides) {",
+  "  for (k in which(vides)) if (k > 1) v[k] <- v[k - 1]",
+  "  v",
+  "}")
+
+# L'ajustement d'une ACP : les composantes une à une, chacune retirée de X (`fichier` : des modèles
+# de fichiers .usp, version_fichier passée à composante_acp).
+modele_acp <- function(tx, na, vides, fichier = FALSE) c(
+  commentaire(c(tx("L'ACP à A composantes (X centré et mis à l'échelle) : chaque composante est retirée de X avant la suivante ; moins de A quand X n'a plus de variation (un reste sous 1e-12 de sa somme des carrés). ssx : la somme des carrés de chaque terme, avant la 1re composante puis après chacune.",
+                   "The PCA with A components (X centred and scaled): each component is removed from X before the next; fewer than A when X has no variation left (a remainder under 1e-12 of its sum of squares). ssx: the sum of squares of each term, before the 1st component then after each."),
+                if (fichier) tx("version_fichier : celle d'un modèle d'un fichier .usp (composante_acp).", "file_version: that of a model from a .usp file (pca_component)."))),
+  if (fichier) "acp <- function(X, A, version_fichier = NULL) {" else "acp <- function(X, A) {",
   if (na) c("  M <- 1 * !is.na(X)", "  E <- replace(X, is.na(X), 0)") else "  E <- X",
   "  m <- list(ssx = colSums(E^2))",
   "  depart <- sum(E^2)",
   "  for (a in 1:A) {",
   tx("    if (sum(E^2) <= 1e-12 * depart) break  # plus de variation à décrire", "    if (sum(E^2) <= 1e-12 * depart) break  # no variation left to describe"),
-  if (na) "    k <- composante_acp(E, M)" else "    k <- composante_acp(E)",
+  sprintf("    k <- composante_acp(E%s%s)", if (na) ", M" else "", if (fichier) ", version_fichier" else ""),
   if (na) "    E <- (E - outer(k$t, k$p)) * M" else "    E <- E - outer(k$t, k$p)",
   "    m$T <- cbind(m$T, k$t)",
   "    m$P <- cbind(m$P, k$p)",
@@ -2298,18 +2490,18 @@ modele_acp <- function(tx, na, vides) c(
   "  m",
   "}")
 
-# La validation croisée d'une ACP.
-modele_vc_acp <- function(tx, na) c(
+# La validation croisée d'une ACP (`fichier` : version_fichier passée aux sous-modèles).
+modele_vc_acp <- function(tx, na, fichier = FALSE) c(
   commentaire(tx("La validation croisée de l'ACP : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation ; les termes en G groupes à tour de rôle. Chaque groupe d'observations est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes et le modèle complet (`complet`), puis une ACP à A composantes. Pour chaque groupe de termes, les valeurs de ces termes sont prédites par les scores de chaque observation calculés sans eux (comme des valeurs manquantes), composante après composante ; puis ramenées dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante) et dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction, avec 1, 2... A composantes ; SS : celle de la composante précédente (celle de X pour la 1re).",
                  "The cross-validation of the PCA: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group; the terms to G groups in turn. Each group of observations is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows and the full model (`full`), then a PCA with A components. For each group of terms, the values of these terms are predicted by the scores of each observation computed without them (as missing values), component after component; then brought back to the units of the data (a term constant in the sub-model: its constant value) and to those of the full model. PRESS: the sum of squared prediction errors, with 1, 2... A components; SS: that of the previous component (that of X for the 1st).")),
-  "validation_croisee_acp <- function(X, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
+  sprintf("validation_croisee_acp <- function(X, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %%%% G + 1%s) {", if (fichier) ", version_fichier = NULL" else ""),
   "  complet <- pretraiter(X, seq_len(nrow(X)))",
   "  groupe_terme <- (seq_len(ncol(complet$X)) - 1) %% G + 1",
   "  vc <- list(press = matrix(0, A, ncol(complet$X)))",
   "  for (g in unique(groupe)) {",
   "    hors <- groupe == g",
   "    s <- pretraiter(X, !hors, complet)",
-  "    mg <- acp(s$X[!hors, , drop = FALSE], A)",
+  sprintf("    mg <- acp(s$X[!hors, , drop = FALSE], A%s)", if (fichier) ", version_fichier" else ""),
   "    for (h in unique(groupe_terme)) {",
   "      cases <- groupe_terme == h",
   "      M <- 1 * !is.na(s$X[hors, , drop = FALSE])",
@@ -2333,11 +2525,14 @@ modele_vc_acp <- function(tx, na) c(
   "  vc",
   "}")
 
-# L'ajustement d'une PLS.
-modele_pls <- function(tx, na, vides) c(
-  commentaire(tx("La PLS à A composantes (X et Y centrés et mis à l'échelle) : chaque composante est retirée de X et de Y avant la suivante ; moins de A quand X ou Y n'a plus de variation (un reste sous 1e-12 de sa somme des carrés). ssx, ssy : la somme des carrés de chaque terme, avant la 1re composante puis après chacune.",
-                 "The PLS with A components (X and Y centred and scaled): each component is removed from X and Y before the next; fewer than A when X or Y has no variation left (a remainder under 1e-12 of its sum of squares). ssx, ssy: the sum of squares of each term, before the 1st component then after each.")),
-  "pls <- function(X, Y, A) {",
+# L'ajustement d'une PLS (`fichier` : des modèles de fichiers .usp, version_fichier passée à
+# composante_pls ; `sans_x` : l'un d'eux a des observations sans aucune valeur X).
+modele_pls <- function(tx, na, vides, fichier = FALSE, sans_x = FALSE) c(
+  commentaire(c(tx("La PLS à A composantes (X et Y centrés et mis à l'échelle) : chaque composante est retirée de X et de Y avant la suivante ; moins de A quand X ou Y n'a plus de variation (un reste sous 1e-12 de sa somme des carrés). ssx, ssy : la somme des carrés de chaque terme, avant la 1re composante puis après chacune.",
+                   "The PLS with A components (X and Y centred and scaled): each component is removed from X and Y before the next; fewer than A when X or Y has no variation left (a remainder under 1e-12 of its sum of squares). ssx, ssy: the sum of squares of each term, before the 1st component then after each."),
+                if (fichier) tx(sprintf("version_fichier : celle d'un modèle d'un fichier .usp (composante_pls)%s.", if (sans_x) " ; son logiciel compte les observations sans aucune valeur X comme parfaitement ajustées dès la 1re composante (leurs résidus de Y valent 0), et fait les suivantes sans elles" else ""),
+                                sprintf("file_version: that of a model from a .usp file (pls_component)%s.", if (sans_x) "; its software counts the observations without any X value as perfectly fitted from the 1st component on (their Y residuals are 0), and makes the next ones without them" else "")))),
+  if (fichier) "pls <- function(X, Y, A, version_fichier = NULL) {" else "pls <- function(X, Y, A) {",
   if (na) c("  MX <- 1 * !is.na(X)", "  MY <- 1 * !is.na(Y)", "  E <- replace(X, is.na(X), 0)", "  F <- replace(Y, is.na(Y), 0)") else c("  E <- X", "  F <- Y"),
   if (vides) tx("  avec_x <- rowSums(MX) > 0  # les observations qui ont une valeur X au moins", "  avec_x <- rowSums(MX) > 0  # the observations that have one X value at least"),
   "  m <- list(ssx = colSums(E^2), ssy = colSums(F^2))",
@@ -2345,8 +2540,9 @@ modele_pls <- function(tx, na, vides) c(
   "  for (a in 1:A) {",
   tx("    if (sum(E^2) <= 1e-12 * depart[1] || sum(F^2) <= 1e-12 * depart[2]) break  # plus de variation à décrire",
      "    if (sum(E^2) <= 1e-12 * depart[1] || sum(F^2) <= 1e-12 * depart[2]) break  # no variation left to describe"),
-  if (na) "    k <- composante_pls(E, MX, F, MY)" else "    k <- composante_pls(E, F)",
+  sprintf("    k <- composante_pls(E, %sF%s%s)", if (na) "MX, " else "", if (na) ", MY" else "", if (fichier) ", version_fichier" else ""),
   if (na) c("    E <- (E - outer(k$t, k$p)) * MX", "    F <- (F - outer(k$t, k$c)) * MY") else c("    E <- E - outer(k$t, k$p)", "    F <- F - outer(k$t, k$c)"),
+  if (sans_x) "    if (!is.null(version_fichier)) F[!avec_x, ] <- 0",
   "    m$T <- cbind(m$T, k$t)",
   "    m$W <- cbind(m$W, k$w)",
   "    m$P <- cbind(m$P, k$p)",
@@ -2359,20 +2555,24 @@ modele_pls <- function(tx, na, vides) c(
   "  m",
   "}")
 
-# La validation croisée d'une PLS.
-modele_vc_pls <- function(tx, na, y_na) c(
+# La validation croisée d'une PLS (`fichier` : version_fichier passée aux sous-modèles).
+modele_vc_pls <- function(tx, na, y_na, fichier = FALSE) c(
   commentaire(tx("La validation croisée de la PLS : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes et le modèle complet (`complet`), puis une PLS à A composantes ; les lignes du groupe, prétraitées de même, sont projetées sur ses composantes une à une. Le Y prédit avec 1, 2... A composantes est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction ; SS : celle de la composante précédente (celle de Y pour la 1re) ; y_vc : Y prédit en validation croisée avec A composantes ; Q2V : le Q2 cumulé de chaque Y, 1 - PRESS / SS.",
                  "The cross-validation of the PLS: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows and the full model (`full`), then a PLS with A components; the rows of the group, preprocessed likewise, are projected on its components one by one. The Y predicted with 1, 2... A components is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS: the sum of squared prediction errors; SS: that of the previous component (that of Y for the 1st); y_vc: Y predicted in cross-validation with A components; Q2V: the cumulative Q2 of each Y, 1 - PRESS / SS.")),
-  "validation_croisee_pls <- function(X, Y, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
+  sprintf("validation_croisee_pls <- function(X, Y, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %%%% G + 1%s) {", if (fichier) ", version_fichier = NULL" else ""),
   "  complet <- pretraiter(X, Y, seq_len(nrow(X)))",
-  "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y, press0 = 0)",
+  "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y, press0 = 0, tours = list())",
+  tx("  completer <- function(M, n) cbind(M, matrix(NA_real_, n, A - NCOL(M)))  # (NA : une composante qu'un sous-modèle n'a pas)",
+     "  completer <- function(M, n) cbind(M, matrix(NA_real_, n, A - NCOL(M)))  # (NA: a component a sub-model hasn't)"),
   "  for (g in unique(groupe)) {",
   "    hors <- groupe == g",
   "    s <- pretraiter(X, Y, !hors, complet)",
   tx("    y_vide <- mettre_a_echelle(matrix(s$centre_y, sum(hors), length(s$centre_y), byrow = TRUE), complet$centre_y, complet$poids_y)  # le modèle vide : la moyenne de Y des autres lignes",
      "    y_vide <- mettre_a_echelle(matrix(s$centre_y, sum(hors), length(s$centre_y), byrow = TRUE), complet$centre_y, complet$poids_y)  # the empty model: the mean of Y over the other rows"),
   sprintf("    vc$press0 <- vc$press0 + colSums((complet$Y[hors, , drop = FALSE] - y_vide)^2%s)", if (y_na) ", na.rm = TRUE" else ""),
-  "    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], A)",
+  sprintf("    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], A%s)", if (fichier) ", version_fichier" else ""),
+  tx("    # le sous-modèle, pour l'intervalle des coefficients (jack-knife)", "    # the sub-model, for the interval of the coefficients (jackknife)"),
+  "    vc$tours[[length(vc$tours) + 1]] <- list(W = completer(mg$W, ncol(s$X)), P = completer(mg$P, ncol(s$X)), C = completer(mg$C, ncol(s$Y)))",
   if (na) c("    M <- 1 * !is.na(s$X[hors, , drop = FALSE])", "    E <- replace(s$X[hors, , drop = FALSE], M == 0, 0)") else "    E <- s$X[hors, , drop = FALSE]",
   "    prediction <- matrix(0, sum(hors), ncol(complet$Y))",
   "    for (a in 1:A) {",
@@ -2394,12 +2594,13 @@ modele_vc_pls <- function(tx, na, y_na) c(
   "}")
 
 # La validation croisée d'une ACP avec les centres et les poids du modèle complet (mode « complet » ;
-# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`.
-modele_complet_acp <- function(tx, na, vides) {
+# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`
+# (`fichier` : version_fichier passée à composante_acp).
+modele_complet_acp <- function(tx, na, vides, fichier = FALSE) {
   t0 <- if (vides) "T0" else "m$T"
   c(commentaire(tx("La validation croisée de l'ACP avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes (`s` : les termes prétraités du modèle complet, `m` : ses composantes). Les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation ; les termes en G groupes à tour de rôle. Pour chaque composante, sur les résidus E du modèle complet avant elle, chaque case est prédite par t × p : le loading p ajusté sans le groupe de son observation, et le score t sans le groupe de son terme (Krzanowski, 1987), chacun orienté comme la composante du modèle complet (0 pour un groupe dont les autres lignes, ou les autres termes, n'ont plus de variation). PRESS : la somme des carrés des erreurs de prédiction ; SS : la somme des carrés de E. Ce Q2 s'écarte de 0,01 en médiane de ceux enregistrés dans les fichiers .usp : le logiciel qui les écrit ne publie pas tout le détail de sa validation.",
                    "The cross-validation of the PCA with the full model's centres and weights, each component validated on what the previous ones leave (`s`: the full model's preprocessed terms, `m`: its components). The observations are assigned in turn to G groups, or after `group`, each observation's group; the terms to G groups in turn. For each component, on the full model's residuals E before it, each cell is predicted by t × p: the loading p fitted without its observation's group, and the score t without its term's group (Krzanowski, 1987), each oriented like the full model's component (0 for a group whose other rows, or other terms, have no variation left). PRESS: the sum of squared prediction errors; SS: the sum of squares of E. This Q2 is 0.01 away, in median, from those stored in .usp files: the software that writes them does not publish every detail of its validation.")),
-    "validation_modele_complet_acp <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %% G + 1) {",
+    sprintf("validation_modele_complet_acp <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %%%% G + 1%s) {", if (fichier) ", version_fichier = NULL" else ""),
     if (na) c("  M <- 1 * !is.na(s$X)", "  E <- replace(s$X, M == 0, 0)") else "  E <- s$X",
     if (vides) "  T0 <- replace(m$T, is.na(m$T), 0)",
     "  depart <- sum(E^2)",
@@ -2414,14 +2615,14 @@ modele_complet_acp <- function(tx, na, vides) {
     "    for (g in unique(groupe)) {",
     "      hors <- groupe == g",
     "      if (sum(E[!hors, ]^2) > 1e-12 * depart) {",
-    sprintf("        k <- composante_acp(E[!hors, , drop = FALSE]%s)", if (na) ", M[!hors, , drop = FALSE]" else ""),
+    sprintf("        k <- composante_acp(E[!hors, , drop = FALSE]%s%s)", if (na) ", M[!hors, , drop = FALSE]" else "", if (fichier) ", version_fichier" else ""),
     "        P[, hors] <- k$p * sens(k$p, m$P[, a])",
     "      }",
     "    }",
     "    for (h in unique(groupe_terme)) {",
     "      cases <- groupe_terme == h",
     "      if (!all(cases) && sum(E[, !cases]^2) > 1e-12 * depart) {",
-    sprintf("        k <- composante_acp(E[, !cases, drop = FALSE]%s)", if (na) ", M[, !cases, drop = FALSE]" else ""),
+    sprintf("        k <- composante_acp(E[, !cases, drop = FALSE]%s%s)", if (na) ", M[, !cases, drop = FALSE]" else "", if (fichier) ", version_fichier" else ""),
     sprintf("        Tc[, cases] <- k$t * sens(k$t, %s[, a])", t0),
     "      }",
     "    }",
@@ -2434,14 +2635,20 @@ modele_complet_acp <- function(tx, na, vides) {
 }
 
 # La validation croisée d'une PLS avec les centres et les poids du modèle complet (mode « complet » ;
-# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`.
-modele_complet_pls <- function(tx, na, vides) {
+# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`
+# (`fichier` : version_fichier passée aux composantes, qui partent alors du poids du modèle complet ;
+# `sans_x` : un modèle d'un fichier .usp a des observations sans aucune valeur X).
+modele_complet_pls <- function(tx, na, vides, fichier = FALSE, sans_x = FALSE) {
   t0 <- if (vides) "T0" else "m$T"
+  arguments <- if (na) "E[!hors, , drop = FALSE], MX[!hors, , drop = FALSE], F[!hors, , drop = FALSE], MY[!hors, , drop = FALSE]" else "E[!hors, , drop = FALSE], F[!hors, , drop = FALSE]"
   c(commentaire(tx("La validation croisée de la PLS avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes ; elle redonne les Q2 enregistrés dans les fichiers .usp (`s` : les termes prétraités du modèle complet, `m` : ses composantes). Les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Pour chaque composante, sur les résidus E et F du modèle complet avant elle, une composante PLS est ajustée sans chaque groupe, et le F du groupe en est prédit (0 quand les autres lignes n'ont plus de variation). PRESS : la somme des carrés des erreurs de prédiction de F ; SS : la somme des carrés de F ; y_vc : le Y du groupe prédit par une PLS à A composantes ajustée sur les autres lignes de `s` (RMSEcv, CV-ANOVA, classement) ; Q2V : le Q2 cumulé de chaque Y, 1 - le produit des (1 - Q2) des composantes, chaque Q2 compté pour -0,1 au plus bas (comme dans les fichiers .usp).",
                    "The cross-validation of the PLS with the full model's centres and weights, each component validated on what the previous ones leave; it gives back the Q2 stored in .usp files (`s`: the full model's preprocessed terms, `m`: its components). The observations are assigned in turn to G groups, or after `group`, each observation's group. For each component, on the full model's residuals E and F before it, a PLS component is fitted without each group, and the group's F is predicted from it (0 when the other rows have no variation left). PRESS: the sum of squared prediction errors of F; SS: the sum of squares of F; y_vc: the group's Y predicted by a PLS with A components fitted on the other rows of `s` (RMSEcv, CV-ANOVA, classification); Q2V: the cumulative Q2 of each Y, 1 - the product of the components' (1 - Q2), each Q2 counted as -0.1 at worst (as in .usp files).")),
-    "validation_modele_complet_pls <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %% G + 1) {",
+    sprintf("validation_modele_complet_pls <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %%%% G + 1%s) {", if (fichier) ", version_fichier = NULL" else ""),
     if (na) c("  MX <- 1 * !is.na(s$X)", "  MY <- 1 * !is.na(s$Y)", "  E <- replace(s$X, MX == 0, 0)", "  F <- replace(s$Y, MY == 0, 0)") else c("  E <- s$X", "  F <- s$Y"),
     if (vides) "  T0 <- replace(m$T, is.na(m$T), 0)",
+    if (sans_x) c(tx("  MP <- MY  # les cases dont l'erreur de prédiction compte dans le PRESS", "  MP <- MY  # the cells whose prediction error counts in the PRESS"),
+                  tx("  if (isTRUE(version_fichier < 13)) MP[rowSums(MX) == 0, ] <- 0  # (versions 10 et 11 : une observation sans aucune valeur X est parfaitement prédite)",
+                     "  if (isTRUE(version_fichier < 13)) MP[rowSums(MX) == 0, ] <- 0  # (versions 10 and 11: an observation without any X value is perfectly predicted)")),
     "  depart <- c(sum(E^2), sum(F^2))",
     "  vc <- list()",
     "  for (a in 1:ncol(m$T)) {",
@@ -2449,21 +2656,23 @@ modele_complet_pls <- function(tx, na, vides) {
     "    for (g in unique(groupe)) {",
     "      hors <- groupe == g",
     "      if (sum(E[!hors, ]^2) > 1e-12 * depart[1] && sum(F[!hors, ]^2) > 1e-12 * depart[2]) {",
-    if (na) "        k <- composante_pls(E[!hors, , drop = FALSE], MX[!hors, , drop = FALSE], F[!hors, , drop = FALSE], MY[!hors, , drop = FALSE])"
-    else "        k <- composante_pls(E[!hors, , drop = FALSE], F[!hors, , drop = FALSE])",
+    if (fichier) sprintf("        k <- composante_pls(%s, version_fichier, if (!is.null(version_fichier)) m$W[, a])", arguments)
+    else sprintf("        k <- composante_pls(%s)", arguments),
     if (na) "        tt <- projeter(E[hors, , drop = FALSE], MX[hors, , drop = FALSE], k$w)" else "        tt <- drop(E[hors, , drop = FALSE] %*% k$w) / sum(k$w^2)",
     "        erreur[hors, ] <- F[hors, , drop = FALSE] - outer(tt, k$c)",
     "      }",
     "    }",
-    sprintf("    vc$press <- rbind(vc$press, colSums(%s^2))", if (na) "(erreur * MY)" else "erreur"),
+    sprintf("    vc$press <- rbind(vc$press, colSums(%s^2))", if (sans_x) "(erreur * MP)" else if (na) "(erreur * MY)" else "erreur"),
     "    vc$ss <- rbind(vc$ss, colSums(F^2))",
     if (na) c(sprintf("    E <- (E - outer(%s[, a], m$P[, a])) * MX", t0), sprintf("    F <- (F - outer(%s[, a], m$C[, a])) * MY", t0))
     else c(sprintf("    E <- E - outer(%s[, a], m$P[, a])", t0), sprintf("    F <- F - outer(%s[, a], m$C[, a])", t0)),
+    if (sans_x) tx("    if (!is.null(version_fichier)) F[rowSums(MX) == 0, ] <- 0  # (parfaitement ajustées : pls)",
+                   "    if (!is.null(version_fichier)) F[rowSums(MX) == 0, ] <- 0  # (perfectly fitted: pls)"),
     "  }",
     "  vc$y_vc <- 0 * s$Y",
     "  for (g in unique(groupe)) {",
     "    hors <- groupe == g",
-    "    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], ncol(m$T))",
+    sprintf("    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], ncol(m$T)%s)", if (fichier) ", version_fichier" else ""),
     if (na) c("    Mh <- 1 * !is.na(s$X[hors, , drop = FALSE])", "    Eh <- replace(s$X[hors, , drop = FALSE], Mh == 0, 0)") else "    Eh <- s$X[hors, , drop = FALSE]",
     "    y <- matrix(0, sum(hors), ncol(s$Y))",
     "    for (a in seq_len(NCOL(mg$W))) {",
@@ -2943,9 +3152,9 @@ modele_moyennes_ajustees <- function(tx, confinement) c(
   "  pa$haut_lien <- pa$difference + critique * pa$erreur_type_lien",
   "  pa",
   "}",
-  commentaire(tx("Les moyennes ajustées : `lignes`, les lignes de la grille (L, celles du modèle ; Lp, celles des termes paramétriques candidats, pour l'estimabilité ; Lb, pour les degrés de liberté de nlme) ; la moyenne de chaque cellule (`cellules` : sa catégorie a, et b de « dans chaque niveau de » ; `groupes` : ses lignes de la grille) est celle de ses lignes, à poids égaux, son estimation L b, son erreur-type racine(L V L'), son intervalle à 95 % ; avec le lien log ou logit et `echelle_reponse`, ramenée sur l'échelle de la réponse. Puis toutes les paires de catégories dans chaque b, la différence (ou le rapport sur l'échelle de la réponse), ajustées (ajuster_paires). Ce qui n'est pas estimable est laissé de côté, et nommé.",
-                 "The adjusted means: `rows`, the rows of the grid (L, the model's; Lp, those of the candidate parametric terms, for estimability; Lb, for nlme's degrees of freedom); the mean of each cell (`cells`: its category a, and b of \"within each level of\"; `groups`: its rows of the grid) is that of its rows, with equal weights, its estimate L b, its standard error sqrt(L V L'), its 95% interval; with the log or logit link and `response_scale`, back-transformed to the response scale. Then every pair of categories within each b, the difference (or the ratio on the response scale), adjusted (adjust_pairs). What isn't estimable is left out, and named.")),
-  "moyennes_grille <- function(lignes, cellules, groupes, b, V, N, ddl, ajustement, lien = \"identity\", echelle_reponse = FALSE) {",
+  commentaire(tx("Les moyennes ajustées : `lignes`, les lignes de la grille (L, celles du modèle ; Lp, celles des termes paramétriques candidats, pour l'estimabilité ; Lb, pour les degrés de liberté de nlme) ; la moyenne de chaque cellule (`cellules` : sa catégorie a, et b de « dans chaque niveau de » ; `groupes` : ses lignes de la grille) est celle de ses lignes, à poids égaux, son estimation L b, son erreur-type racine(L V L'), son intervalle à 95 % ; avec le lien log ou logit et `echelle_reponse`, ramenée sur l'échelle de la réponse (le Poisson à excès de zéros, `theta_zip` : la valeur attendue d'un comptage, esperance_zip()). Puis toutes les paires de catégories dans chaque b, la différence (ou le rapport sur l'échelle de la réponse ; le Poisson à excès de zéros : le rapport des valeurs attendues, testé sur son logarithme, d'erreur-type par la méthode delta), ajustées (ajuster_paires). Ce qui n'est pas estimable est laissé de côté, et nommé.",
+                 "The adjusted means: `rows`, the rows of the grid (L, the model's; Lp, those of the candidate parametric terms, for estimability; Lb, for nlme's degrees of freedom); the mean of each cell (`cells`: its category a, and b of \"within each level of\"; `groups`: its rows of the grid) is that of its rows, with equal weights, its estimate L b, its standard error sqrt(L V L'), its 95% interval; with the log or logit link and `response_scale`, back-transformed to the response scale (the zero-inflated Poisson, `theta_zip`: the expected value of a count, zip_expected_value()). Then every pair of categories within each b, the difference (or the ratio on the response scale; the zero-inflated Poisson: the ratio of the expected values, tested on its log, with a standard error by the delta method), adjusted (adjust_pairs). What isn't estimable is left out, and named.")),
+  "moyennes_grille <- function(lignes, cellules, groupes, b, V, N, ddl, ajustement, lien = \"identity\", echelle_reponse = FALSE, theta_zip = NULL) {",
   "  Lc <- moyennes_lignes(lignes$L[, names(b), drop = FALSE], groupes)",
   "  Lpc <- moyennes_lignes(lignes$Lp, groupes)",
   "  Lbc <- moyennes_lignes(if (is.null(lignes$Lb)) lignes$L else lignes$Lb, groupes)",
@@ -2956,6 +3165,11 @@ modele_moyennes_ajustees <- function(tx, confinement) c(
   "  qt95 <- qt(0.975, ifelse(is.na(dfc), Inf, dfc))",
   "  inverse <- if (lien == \"logit\") plogis else exp",
   "  derivee <- if (lien == \"logit\") dlogis else exp",
+  "  zip <- echelle_reponse && !is.null(theta_zip)",
+  "  if (zip) {",
+  "    inverse <- function(x) esperance_zip(x, theta_zip)",
+  "    derivee <- function(x) esperance_zip(x, theta_zip, derivee = TRUE)",
+  "  }",
   "  groupe <- if (is.null(cellules$b)) rep(NA_character_, nrow(cellules)) else cellules$b",
   "  moy <- data.frame(niveau = cellules$a, groupe = groupe, estimation = est, erreur_type = se, ddl = dfc, bas = est - qt95 * se, haut = est + qt95 * se)",
   "  if (echelle_reponse) {",
@@ -2980,7 +3194,12 @@ modele_moyennes_ajustees <- function(tx, confinement) c(
   "        next",
   "      }",
   "      Ld <- Lc[i, , drop = FALSE] - Lc[j, , drop = FALSE]",
-  "      paires[[length(paires) + 1]] <- data.frame(groupe = g, niveau_1 = cellules$a[i], niveau_2 = cellules$a[j], difference = sum(Ld * b),",
+  "      difference <- sum(Ld * b)",
+  "      if (zip) {",
+  "        Ld <- derivee(est[i]) / inverse(est[i]) * Lc[i, , drop = FALSE] - derivee(est[j]) / inverse(est[j]) * Lc[j, , drop = FALSE]",
+  "        difference <- log(inverse(est[i])) - log(inverse(est[j]))",
+  "      }",
+  "      paires[[length(paires) + 1]] <- data.frame(groupe = g, niveau_1 = cellules$a[i], niveau_2 = cellules$a[j], difference = difference,",
   "                                                 erreur_type_lien = sqrt(max(0, sum((Ld %*% V) * Ld))), ddl = ddl(Lbc[i, , drop = FALSE] - Lbc[j, , drop = FALSE]))",
   "    }",
   "  }",
@@ -3172,14 +3391,67 @@ modele_residus_quantiles <- function(tx) c(
   "  ifelse(u <= 0.5, qnorm(u), qnorm(S0 - v * (S0 - S1), lower.tail = FALSE))",
   "}")
 
+# La fonction de répartition du Poisson à excès de zéros (regression_diagnostics.R : repartition_zip),
+# écrite pour le script.
+modele_repartition_zip <- function(tx) c(
+  commentaire(tx("La fonction de répartition du Poisson à excès de zéros de mgcv (ziP) à chaque observation, pour residus_quantiles() : `g`, son prédicteur linéaire log(λ), et `theta`, θ1 et θ2 de log(−log(1 − p)) = θ1 + θ2 log(λ). Un zéro a la probabilité 1 − p ; un comptage y > 0, p λ^y / ((exp(λ) − 1) y!), la loi de Poisson tronquée en zéro : F(0) = 1 − p et, pour q ≥ 1, 1 − F(q) = p P(X > q) / P(X > 0), X de Poisson de paramètre λ ; P(X ≤ q | X > 0) se calcule directement quand P(X ≤ q) est petite, pour garder ses chiffres. Quand P(X > 0) vaut 0 en double précision, la loi tronquée est toute en 1.",
+                 "The distribution function of mgcv's zero-inflated Poisson (ziP) at each observation, for quantile_residuals(): `g`, its linear predictor log(λ), and `theta`, θ1 and θ2 of log(−log(1 − p)) = θ1 + θ2 log(λ). A zero has probability 1 − p; a count y > 0, p λ^y / ((exp(λ) − 1) y!), the Poisson distribution truncated at zero: F(0) = 1 − p and, for q ≥ 1, 1 − F(q) = p P(X > q) / P(X > 0), X Poisson of parameter λ; P(X ≤ q | X > 0) is computed directly when P(X ≤ q) is small, to keep its digits. When P(X > 0) is 0 in double precision, the truncated distribution is all at 1.")),
+  "repartition_zip <- function(g, theta) {",
+  "  lambda <- exp(g)",
+  "  e <- exp(theta[1] + theta[2] * g)",
+  "  zero <- exp(-e)",
+  "  p <- -expm1(-e)",
+  "  positif <- -expm1(-lambda)",
+  "  function(q, lower.tail = TRUE) {",
+  "    sup <- ifelse(positif > 0, ppois(q, lambda, lower.tail = FALSE) / positif, 0)",
+  "    if (!lower.tail) return(ifelse(q < 0, 1, ifelse(q < 1, p, p * sup)))",
+  "    inf <- ifelse(positif > 0 & ppois(q, lambda) < 0.5, (ppois(q, lambda) - dpois(0, lambda)) / positif, 1 - sup)",
+  "    ifelse(q < 0, 0, ifelse(q < 1, zero, zero + p * inf))",
+  "  }",
+  "}")
+
+# Le maximum de vraisemblance d'un ziP ou d'un betar sans terme pénalisé quand mgcv s'arrête
+# (regression.R : profil_loi), écrit pour le script.
+modele_profil_loi <- function(tx) c(
+  commentaire(tx("Sans terme pénalisé, l'ajustement en ML de mgcv avec ziP() ou betar() s'arrête parfois sur une erreur de LAPACK dans son code C, alors que le même modèle s'ajuste quand les paramètres de la loi sont fixés. Son maximum de vraisemblance s'obtient alors ainsi : les paramètres `th` de la loi (log φ pour betar, par optimize ; θ1 et le θ2 interne de ziP, par optim depuis 0 et 0, la loi de Poisson) qui maximisent la vraisemblance des ajustements où ils sont fixés (`famille_fixe(th)`), puis l'ajustement à ces paramètres, où ils comptent comme estimés (n.theta : la vraisemblance de mgcv leur donne leurs degrés de liberté).",
+                 "Without a penalized term, mgcv's ML fit with ziP() or betar() sometimes stops on a LAPACK error in its C code, while the same model fits when the distribution's parameters are fixed. Its maximum likelihood is then obtained this way: the distribution's parameters `th` (log φ for betar, by optimize; θ1 and ziP's internal θ2, by optim from 0 and 0, the Poisson distribution) that maximize the likelihood of the fits where they are fixed (`fixed_distribution(th)`), then the fit at these parameters, where they count as estimated (n.theta: mgcv's likelihood then gives them their degrees of freedom).")),
+  "profil_loi <- function(f, tab, famille_fixe, parametres) {",
+  "  ajuster <- function(th) tryCatch(gam(f, data = tab, family = famille_fixe(th)), error = function(e) NULL)",
+  "  moins_ll <- function(th) {",
+  "    a <- ajuster(th)",
+  "    if (is.null(a)) Inf else -as.numeric(logLik(a))",
+  "  }",
+  "  th <- if (parametres == 1) optimize(moins_ll, c(-7, 14), tol = 1e-10)$minimum",
+  "        else optim(rep(0, parametres), moins_ll, control = list(reltol = 1e-12, maxit = 2000))$par",
+  "  a <- ajuster(th)",
+  "  if (!is.null(a)) a$family$n.theta <- length(th)",
+  "  a",
+  "}")
+
+# La valeur attendue d'un comptage du Poisson à excès de zéros (moyennes.R : esperance_zip), écrite pour
+# les moyennes ajustées du script.
+modele_esperance_zip <- function(tx) c(
+  commentaire(tx("La valeur attendue d'un comptage du Poisson à excès de zéros, h(η) = p m, au prédicteur linéaire η = log(λ) (`theta` : θ1 et θ2 de log(−log(1 − p)) = θ1 + θ2 η ; m = λ / (1 − exp(−λ)), la moyenne de la loi de Poisson tronquée en zéro), ou sa dérivée p' m + p m' (`derivee`), comme les calcule predict() de ziP dans mgcv (m vaut 1, sa limite, quand λ est presque nul) ; h croît avec η.",
+                 "The expected value of a count of the zero-inflated Poisson, h(η) = p m, at the linear predictor η = log(λ) (`theta`: θ1 and θ2 of log(−log(1 − p)) = θ1 + θ2 η; m = λ / (1 − exp(−λ)), the mean of the Poisson distribution truncated at zero), or its derivative p' m + p m' (`derivative`), as predict() of ziP computes them in mgcv (m is 1, its limit, when λ is almost zero); h increases with η.")),
+  "esperance_zip <- function(eta, theta, derivee = FALSE) {",
+  "  lambda <- exp(eta)",
+  "  e <- exp(theta[1] + theta[2] * eta)",
+  "  p <- -expm1(-e)",
+  "  petit <- eta < log(.Machine$double.eps) / 2",
+  "  m <- ifelse(petit, 1, lambda / -expm1(-lambda))",
+  "  if (!derivee) return(p * m)",
+  "  theta[2] * e * exp(-e) * m + p * ifelse(petit, 0, (lambda + 1) * m - m^2)",
+  "}")
+
 # Le test de permutation : dans un script d'un modèle, il réajuste ce modèle ; dans un script de
 # séance, `ajuster(Yp)` donne l'ajustement et la validation croisée de chaque modèle.
 modele_permutations <- function(tx, pl, na) {
   G <- if (!is.null(pl) && (pl$G != 7 || !is.null(pl$groupes_vc))) paste0(", ", arguments_groupes(pl)) else ""
+  f <- if (!is.null(pl)) arg_fichier(pl) else ""
   modele_complet <- !is.null(pl) && identical(pl$validation, "complet")
   mesure <- if (is.null(pl)) c("    r <- ajuster(Yp)", "    A <- ncol(r[[1]]$T)", "    m <- r[[1]]", "    vc <- r[[2]]")
   else c("    s <- pretraiter(X, Yp, seq_len(nrow(X)))", switch(pl$type,
-    pls = c("    m <- pls(s$X, s$Y, A)", if (modele_complet) sprintf("    vc <- validation_modele_complet_pls(s, m%s)", G) else sprintf("    vc <- validation_croisee_pls(X, Yp, A, pretraiter%s)", G)),
+    pls = c(sprintf("    m <- pls(s$X, s$Y, A%s)", f), if (modele_complet) sprintf("    vc <- validation_modele_complet_pls(s, m%s%s)", G, f) else sprintf("    vc <- validation_croisee_pls(X, Yp, A, pretraiter%s%s)", G, f)),
     opls = if (pl$Ap > 1) c("    m <- opls(s$X, s$Y, Ap, Ao)", if (modele_complet) sprintf("    vc <- validation_modele_complet_opls(s, Ap, Ao%s)", G) else sprintf("    vc <- validation_croisee_opls(X, Yp, Ap, Ao, pretraiter%s)", G), "    A <- Ap + Ao")
            else c("    m <- opls(s$X, s$Y, Ao)", if (modele_complet) sprintf("    vc <- validation_modele_complet_opls(s, Ao%s)", G) else sprintf("    vc <- validation_croisee_opls(X, Yp, Ao, pretraiter%s)", G), "    A <- 1 + Ao")))
   arguments <- if (is.null(pl)) "ajuster, Y" else switch(pl$type, pls = "X, Y, A", opls = if (pl$Ap > 1) "X, Y, Ap, Ao" else "X, Y, Ao")
@@ -3331,6 +3603,8 @@ NOMS_SCRIPT_EN <- c(
   erreur = "error", biais = "bias", predictions_test = "test_predictions", classification_test = "classification_test",
   couleur = "colour", ordre = "ranking", pretraiter = "preprocess", apprentissage = "training", cases = "cells",
   groupes_vc = "cv_groups", retrait = "removal_order", Wetoile = "Wstar", y_vide = "y_empty", q2_vide = "q2_empty",
+  tours = "rounds", completer = "pad_columns", coefficients_tours = "coefficients_rounds", ic_coefficients = "coefficients_ci",
+  version_fichier = "file_version", fichier = "from_file", reporter_vides = "carry_previous", vides = "empty_terms",
   # les régressions
   termes_utiles = "useful_terms", termes = "model_terms", garde = "kept_columns", aic_corrige = "aic_corrected",
   validation_croisee = "cross_validation", cadre = "model_data", predire = "predict_group", echecs = "failures", ici = "here",
@@ -3351,6 +3625,8 @@ NOMS_SCRIPT_EN <- c(
   sens_pente = "slope_direction", sens_effet = "effect_direction", x_debut = "x_start", x_fin = "x_end", be = "effect_band", bp = "slope_band", ecart_types = "std_devs", parametre_loi = "distribution_parameter",
   observe = "observed", ajuste = "fitted", residu = "residual", ajuste_fixe = "fitted_fixed", predit = "predicted",
   residus_quantiles = "quantile_residuals", residu_quantile = "quantile_residual", repartition = "distribution_function",
+  repartition_zip = "zip_distribution_function", positif = "positive", esperance_zip = "zip_expected_value", petit = "small",
+  profil_loi = "distribution_profile", famille_fixe = "fixed_distribution", moins_ll = "minus_loglik",
   courbe = "curve", abscisse = "abscissa", effet = "effect", droite = "rhs",
   selection_aic = "aic_selection", groupes_aic = "aic_groups", requis_aic = "aic_required", criteres_aic = "aic_criteria", choisis = "chosen",
   permise = "allowed", combinaisons = "combinations", combinaison = "combination", valeurs_aic = "aic_values", etapes_aic = "aic_steps",
@@ -3363,6 +3639,9 @@ NOMS_SCRIPT_EN <- c(
   facteurs = "factors", facteur = "factor_column",
   variances_niveaux = "level_variances", variances_pentes = "slope_variances", noms_niveaux = "level_labels", nom_residuelle = "residual_label",
   pentes_aleatoires = "random_slopes", termes_gardes = "kept_terms", exclus = "excluded",
+  # (le lissage spatial d'un GAM)
+  dimension_spatiale = "basis_dimension_spatial", lieux = "places", ligne_spatiale = "spatial_row", lissage_spatial = "spatial_smooth",
+  teintes = "hues", tranche = "value_class",
   # (la puissance pour une tendance ; ni temps, ni repetition, ni y, ni g1 : aussi des noms de colonnes en texte)
   variance_pente = "slope_variance", puissance_normale = "normal_power", plan_donnees_puissance = "power_data_design", simuler_puissance = "simulate_power",
   temps_puissance = "power_time", plan_puissance = "power_design", variances_puissance = "power_variances", phi_puissance = "power_phi",
@@ -3431,6 +3710,10 @@ ecart_script <- function(pl, m, e, langue) {
     limites = list(unlist(s$limites), r("limites")),
     VIP = if (pls) list(s$variables$VIP, r("VIP")),
     coefficients = if (pls) list(as.matrix(s$coefficients[paste("Coeff", ny)]), r("coefficients")),
+    "RMSEE, RMSEcv" = if (pls) list(unname(c(s$RMSEE, s$RMSEcv)), unname(c(r("RMSEE"), r("RMSEcv")))),
+    "intervalles des coefficients" = if (pl$type == "pls" && !identical(pl$validation, "complet")) {
+      list(as.matrix(s$coefficients[seq_len(m$K), paste("CoeffCS", ny, "IC")]), r("ic_coefficients"))
+    },
     "CV-ANOVA" = if (pl$cv_anova) list(do.call(rbind, lapply(s$cv_anova, `[`, colonnes_cv)), do.call(rbind, lapply(r("cv_anova"), `[`, colonnes_cv))),
     classification = if (pl$plsda) list(s$classification$vc$table, r("classification")),
     test = if (!is.null(m$test$statistiques) && !pl$plsda) list(m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")], r("test")[-1]),
@@ -3600,7 +3883,7 @@ lignes_rapport <- function(format, pl, langue, methodes, fonctions, code_donnees
       bloc("qualite", kable("t(c(r2, Q2 = vc$Q2, RMSEcv = vc$RMSEcv))", 3)),
       if (length(pl$niveaux)) bloc("variances", kable("variances", 4)),
       # (« courbes » est le bloc de leurs graphiques : knitr refuse deux blocs du même nom)
-      if (length(pl$lisses)) bloc("courbes-edf", kable("courbes", 3)),
+      if (length(pl$lisses) || !is.null(pl$spatial)) bloc("courbes-edf", kable("courbes", 3)),
       if (length(pl$lisses)) bloc("plages-seuils", kable("plages_seuils", 3)),
       if (!is.null(pl$selection)) bloc("selection-aic", kable("head(selection$modeles, 20)", 3)),
       if (!is.null(pl$selection)) bloc("importance-aic", kable("selection$importance", 3)),
@@ -3643,12 +3926,26 @@ fichiers_script <- function(chemin_script, donnees, rdata, renv, rproj, langue =
     rproj = if (rproj) file.path(dossier, paste0(base, ".Rproj")))
 }
 
-# Les données dans le script, ou le CSV écrit à côté et le code qui le lit.
+# Les données dans le script, ou le CSV écrit à côté et le code qui le lit ; avant elles, en
+# commentaire, l'unité et la description des variables qui en ont (atelier.R).
 donnees_script <- function(tab, fichiers, langue) {
   nom <- nom_script("donnees", langue)
-  if (!"donnees" %in% names(fichiers)) return(code_donnees(tab$donnees, nom))
-  ecrire_csv_script(tab$donnees, fichiers[["donnees"]])
-  code_lire_csv(tab$donnees, basename(fichiers[["donnees"]]), langue, nom)
+  c(commentaire_variables(tab$descriptions, langue),
+    if (!"donnees" %in% names(fichiers)) code_donnees(tab$donnees, nom)
+    else {
+      ecrire_csv_script(tab$donnees, fichiers[["donnees"]])
+      code_lire_csv(tab$donnees, basename(fichiers[["donnees"]]), langue, nom)
+    })
+}
+
+# L'unité et la description de chaque variable qui en a (tableau_script : `descriptions`), une
+# ligne de commentaire chacune (commentaire : sans coupure de ligne venue des données).
+commentaire_variables <- function(descriptions, langue) {
+  if (!length(descriptions)) return(character(0))
+  tx <- function(fr, en) if (identical(langue, "en")) en else fr
+  c(commentaire(tx("Unités et descriptions des variables :", "Units and descriptions of the variables:")),
+    unlist(lapply(descriptions, function(x) commentaire(paste0("- ", x$nom, if (nzchar(x$unite)) sprintf(" (%s)", x$unite),
+                                                              if (nzchar(x$description)) paste0(tx(" : ", ": "), x$description))))))
 }
 
 # Écrit le script et les fichiers d'à côté ; `objets` : ce que le .RData garde de `e` (ses
@@ -3692,7 +3989,9 @@ tableau_script <- function(projet, ids = character(0)) {
     x
   }))
   names(colonnes) <- noms
+  decrites <- Filter(function(k) nzchar(vars[[k]]$unite %||% "") || nzchar(vars[[k]]$description %||% ""), seq_along(vars))
   list(donnees = as.data.frame(colonnes, check.names = FALSE, stringsAsFactors = FALSE),
+       descriptions = lapply(decrites, function(k) list(nom = noms[1 + k], unite = as.character(vars[[k]]$unite %||% ""), description = as.character(vars[[k]]$description %||% ""))),
        noms = stats::setNames(noms[1 + seq_along(vars)], vapply(vars, function(v) as.character(v$uid), "")),
        ids = stats::setNames(noms[1 + length(vars) + seq_along(ids)], ids),
        rangs = stats::setNames(seq_along(obs), obs))
@@ -3777,16 +4076,67 @@ ecrire_renv <- function(paquets, chemin) {
 
 # ---------------------------------------------------------------- écrire des valeurs en R
 
-# Nombres écrits sans perte : 15 chiffres significatifs, 16 ou 17 quand il le faut.
+# Nombres écrits sans perte, que R relit à l'identique sur toute machine : 15 chiffres
+# significatifs, 16 quand il le faut (decimal_relu), sinon en hexadécimal (0x1.91eb851eb851fp+1
+# pour 3,14 : R le lit exactement partout). 17 chiffres ne suffiraient pas : R lit un nombre
+# décimal en entier, divisé ensuite par une puissance de 10 (R_strtod), avec un long double ; sur
+# une machine qui n'en a pas de 80 bits (Apple silicon), un entier de 17 chiffres dépasse 2^53 et
+# le nombre relu peut s'écarter d'un bit de celui du projet. (Sous 2^-1022, R ne relit pas
+# l'hexadécimal : 17 chiffres.)
 texte_exact <- function(x) {
   s <- sprintf("%.15g", x)
-  for (k in 16:17) {
-    faux <- which(!is.na(x) & suppressWarnings(as.numeric(s)) != x)
-    if (!length(faux)) break
-    s[faux] <- sprintf(paste0("%.", k, "g"), x[faux])
-  }
+  faux <- which(is.finite(x) & !decimal_relu(s, x))
+  s[faux] <- sprintf("%.16g", x[faux])
+  faux <- faux[!decimal_relu(s[faux], x[faux])]
+  s[faux] <- sprintf("%a", x[faux])
+  faux <- faux[suppressWarnings(as.numeric(s[faux])) != x[faux]]
+  s[faux] <- sprintf("%.17g", x[faux])
   s[is.na(x)] <- "NA"
   s
+}
+
+# L'écriture décimale `s` de x (sprintf "%g") est-elle relue x par R sur toute machine ? Ses
+# chiffres font un entier M, le nombre vaut M × 10^e. Si M < 2^53 et |e| ≤ 22, M et 10^e sont
+# exacts en double, et R calcule M × 10^e (ou M / 10^-e) :
+#   - sans long double de 80 bits, en double : un seul arrondi, qui doit donner x (calculé ici
+#     de même) ;
+#   - avec, à 64 bits puis à 53 : deux arrondis, qui donnent aussi x si la valeur exacte n'est pas
+#     tout près (à 2^-11 de l'écart de x à son voisin) du milieu entre x et son voisin. L'écart de
+#     la valeur exacte à x est calculé exactement (le produit sans erreur de Dekker, 1971).
+# Et R le relit x ici.
+decimal_relu <- function(s, x) {
+  if (!length(s)) return(logical(0))
+  mantisse <- sub("[eE].*$", "", sub("^-", "", s))
+  exposant <- suppressWarnings(as.integer(ifelse(grepl("[eE]", s), sub("^.*[eE]", "", s), "0")))
+  virgule <- regexpr(".", mantisse, fixed = TRUE)
+  e <- exposant - ifelse(virgule > 0, nchar(mantisse) - virgule, 0L)
+  M <- suppressWarnings(as.numeric(gsub(".", "", mantisse, fixed = TRUE)))  # (exact sous 2^53)
+  ok <- !is.na(M) & !is.na(e) & M < 2^53 & abs(e) <= 22 & suppressWarnings(as.numeric(s)) == x
+  ok[is.na(ok)] <- FALSE
+  i <- which(ok & M > 0)
+  if (!length(i)) return(ok)
+  M <- M[i]
+  e <- e[i]
+  a <- abs(x[i])
+  P <- cumprod(c(1, rep(10, 22)))[abs(e) + 1]  # 10^0 à 10^22, exacts
+  positif <- e >= 0
+  # (a × b = a * b + erreur, exactement : chaque facteur coupé en deux moitiés de 26 bits)
+  erreur_produit <- function(a, b) {
+    moities <- function(v) { c <- 134217729 * v; h <- c - (c - v); list(h = h, l = v - h) }
+    u <- moities(a)
+    v <- moities(b)
+    ((u$h * v$h - a * b) + u$h * v$l + u$l * v$h) + u$l * v$l
+  }
+  # un seul arrondi ; puis la valeur exacte du texte moins x : M × 10^e - x, ou
+  # (M - x × 10^-e) / 10^-e (M - x * 10^-e est exact, les deux étant si proches)
+  un_arrondi <- ifelse(positif, M * P, M / P) == a
+  ecart <- ifelse(positif, erreur_produit(M, P), ((M - a * P) - erreur_produit(a, P)) / P)
+  # l'écart de x à son voisin du côté de la valeur exacte (la moitié sous une puissance de 2)
+  b <- floor(log2(a))
+  b <- b - (2^b > a) + (2^(b + 1) <= a)
+  voisin <- 2^(b - 52) / ifelse(ecart < 0 & a == 2^b, 2, 1)
+  ok[i] <- un_arrondi & abs(ecart) < voisin / 2 * (1 - 2^-10)
+  ok
 }
 
 code_texte <- function(x) if (is.na(x)) "NA_character_" else encodeString(enc2utf8(x), quote = "\"")
@@ -3917,3 +4267,8 @@ code_definition <- function(projet, d, p = "p") {
       sprintf("                    A = %s, G = %s, nom = %s, titre = %s)", q(r$A), q(r$G), q(r$nom), q(r$titre)))
   }
 }
+
+# Le commentaire anglais de la dimension du lissage spatial (regression.R : dimension_spatiale), que le
+# script d'un modèle additif à lissage spatial reprend du moteur (en français : celui du moteur).
+ENTETES_SPATIAL_EN <- c(
+  dimension_spatiale = "The dimension of the spatial smooth on `data` (its columns sx and sy): the one requested (30 by default, as mgcv for two variables), at most the number of different places minus 1; NA below 5 (a thin plate surface already has 3 unpenalized functions: 1, x and y).")

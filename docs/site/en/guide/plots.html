@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plots and figures · Nuée</title>
+<meta name="description" content="Colours and labels, formatting, contributions, figures for publication.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="plots.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/graphiques.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/graphiques.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html" aria-current="page">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Plots and figures</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#plots-colours-and-labels">Plots: colours and labels</a></li>
+<li><a href="#other-plots">Other plots</a></li>
+<li><a href="#formatting-plots">Formatting plots</a></li>
+<li><a href="#contributions">Contributions</a></li>
+<li><a href="#figures-for-publication">Figures for publication</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="plots-colours-and-labels">
+<h2>Plots: colours and labels</h2>
+<p><strong>Scores, DModX, T², observed / predicted:</strong> the "Colour" list colours the points by class (PLS-DA), by dendrogram group, or by any variable of the project (a gradient for a numeric variable). The "Labels" list writes next to each point its name, a secondary identifier or the value of a variable.</p>
+<p>Right-click on a plot after a selection: "Make a class from the selection…" puts these observations in a class of a qualitative variable (new or existing), to colour by or to use as the classes of a PLS-DA.</p>
+<p>Edit › Same selection in all the project's models (ticked by default): observations chosen in one model are chosen in the project's other models too.</p>
+<p><strong>Highlighted variables:</strong> a click on a variable (a bar of the VIP, the coefficients or the loadings, a point of the loadings, the biplot or the S-plot, a line of a profile, a row of the variable list) highlights it in red on all the model's plots; a box picks several in the scatter plots of variables. Esc clears the selection and the highlighted variables.</p>
+</section>
+<section id="other-plots">
+<h2>Other plots</h2>
+<p><strong>Biplot:</strong> scores and loadings in one plot, scaled as correlations (t(corr) and p(corr), or pc(corr) with the Y of a PLS), all inside the circle of radius 1. 3D scores: three components, turned with the mouse; a click picks a point.</p>
+<p><strong>S-plot (OPLS):</strong> p[1] against p(corr)[1]; the variables at both ends are those that carry the link with Y (or that separate the two classes).</p>
+</section>
+<section id="formatting-plots">
+<h2>Formatting plots (for a paper, a report)</h2>
+<p><strong>Right-click on a plot › Format plot, or Edit › Format plot:</strong> this plot's title and axis titles; for every plot: font, text size, point size, colours (including a palette readable by colour-blind people, and greys), grid, legend; and "Export image" at the size wanted (in pixels, resolution ×1 to ×6) as PNG, SVG or JPEG. These settings are kept from one session to the next.</p>
+</section>
+<section id="contributions">
+<h2>Contributions</h2>
+<p><strong>Plots › Contributions, or right-click on a selection:</strong> for an observation (or the mean of several), each variable's share in its distance from the model's average observation. To choose: contribution to DModX (why the observation is poorly modelled), to the score of a component, or to T² (why it is far from the centre); weighted or not by the modelling power.</p>
+</section>
+<section id="figures-for-publication">
+<h2>Figures for publication</h2>
+<p>Plots › Compose a figure… (or right-click a plot › Add to a figure, or right-click the project in the explorer): plots side by side in one figure, at the size a journal prints it, for a paper.</p>
+<ul>
+<li><strong>Panels:</strong> the plots open in the window, of any model or of the project (scores, loadings, effects, the map, series...): "Add an open plot..." lists them, the plot in front is the first. Each gets its letter in the order of the list (the arrows change it): A, B, C, or a, b, c, (A), (a), bold or not, in the corner chosen. A panel takes one cell of the grid, or two columns, or two rows; the grid (rows × columns: 1 × 2, 2 × 2, 1 × 3...) grows when a panel added doesn't fit, and a panel that has no room is shown in red.</li>
+<li><strong>Size:</strong> the journal's width in millimetres: one column (85 or 90 mm), one and a half (114 or 140 mm), two columns (174 or 190 mm), or another; the height given, or from the panels (the shape of the plots on screen).</li>
+<li><strong>Text and lines:</strong> the text size in points once printed (tick labels, axis titles, legends: 6 to 8 pt for most journals; the labels by the points and the notes in proportion), the width of the curves' lines in points (axes and grid half of it), the plots' titles (hidden by default: the letter and the caption are enough) and legends.</li>
+<li><strong>Export:</strong> PDF (vector, fonts embedded, the page exactly the figure's size), SVG (vector, sized in millimetres), or PNG and TIFF at 300 or 600 dpi (dots per inch), that resolution written in the file (PNG's pHYs, TIFF's resolution tags) for journals' checks; the TIFF compressed by LZW, losslessly, or not compressed. In a browser, the PDF goes through its print window (choose "Save as PDF", no margins).</li>
+<li><strong>Maps on a background (OpenStreetMap, IGN):</strong> in the file, the points, legend and colour scale are vectors over a picture of the map's tiles at the export's resolution (300 dpi in a PDF or SVG), fetched again for it from a closer zoom level than the preview's: more detail, smaller place names. Each map asks its tile server for at most 200 tiles, from at most two zoom levels above the screen's and none beyond level 19; the status bar says when that leaves the background less sharp than asked. The attribution (© OpenStreetMap contributors, © IGN) stays in a corner of the map.</li>
+</ul>
+<p>Each plot is drawn as in its view when it was added (axes, colours, labels, the titles of Format plot, zoom), in the light theme, without the selection, on white; the refresh button of a panel takes its open view's settings again. The figure is kept in the project and saved with it (in the explorer, under Figures: open, export, rename, duplicate, delete); it always uses the latest fit of each model (a model not computed is computed when the figure is drawn): after refitting, export it again. Edit › Undo leaves figures alone.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="models.html">← Choosing and building a model</a><a rel="next" href="pca-pls.html">PCA, PLS, OPLS and spectra →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

@@ -1,0 +1,34 @@
+[
+    {
+        "key": "BH76MP7T",
+        "version": 3,
+        "library": {
+            "type": "group",
+            "id": 6011002,
+            "name": "Réseau Perdrix",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011002",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011002/collections/BH76MP7T",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 0,
+            "numItems": 1
+        },
+        "data": {
+            "key": "BH76MP7T",
+            "version": 3,
+            "name": "Suivis",
+            "parentCollection": false,
+            "relations": {}
+        }
+    }
+]

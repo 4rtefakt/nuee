@@ -11,12 +11,15 @@
 #   .omv                      jamovi           (lu ici : lire_omv)
 #   .dbf                      dBase            (lu par foreign : lire_dbf ; écrit ici)
 #   .arff                     Weka             (lu ici : lire_arff ; écrit par foreign)
+#   .gpkg                     GeoPackage       (geopackage.R : une couche au choix, ses géométries
+#                                              en deux colonnes de coordonnées ; écrit par
+#                                              ecrire_geopackage, avec les coordonnées du projet)
 #   .jdx .dx .jcm .spc        spectres JCAMP-DX et Galactic (fichiers_spectres.R ; lecture seule)
 # Écriture : ecrire_tableau() écrit un data.frame dans l'un de ces formats (sauf .xls, .por,
 # .sas7bdat, que les logiciels lisent mal quand un autre programme les écrit).
 
 FORMATS_LECTURE <- c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls", "rds", "rdata", "rda",
-                     "sav", "zsav", "por", "dta", "sas7bdat", "xpt", "omv", "dbf", "arff",
+                     "sav", "zsav", "por", "dta", "sas7bdat", "xpt", "omv", "dbf", "arff", "gpkg",
                      "jdx", "dx", "jcm", "spc")
 FORMATS_ECRITURE <- c("xlsx", "csv", "tsv", "txt", "rds", "rdata", "sav", "dta", "xpt", "omv", "dbf", "arff")
 
@@ -25,13 +28,20 @@ extension <- function(chemin) tolower(tools::file_ext(chemin))
 # ---------------------------------------------------------------- lecture
 
 # Les tableaux entre lesquels choisir dans un fichier qui peut en avoir plusieurs (feuilles
-# d'un classeur Excel, objets d'un .RData, liste de tableaux dans un .rds) ; NULL sinon.
+# d'un classeur Excel, objets d'un .RData, liste de tableaux dans un .rds) ; NULL sinon. La
+# feuille « Variables » qu'écrit l'export des données (les unités et descriptions des variables :
+# atelier.R, tableau_variables_fichier) n'en est pas un : elle est relue avec les données.
 tables_fichier <- function(chemin) {
-  switch(extension(chemin),
+  tables <- switch(extension(chemin),
          xlsx = , xlsm = , xls = readxl::excel_sheets(chemin),
          rdata = , rda = names(objets_r(chemin)),
          rds = { x <- lire_rds(chemin); if (est_tableau(x)) NULL else names(tableaux_r(x)) },
+         gpkg = couches_geopackage(chemin),
          NULL)
+  if (length(tables) > 1 && extension(chemin) %in% c("xlsx", "xlsm", "xls", "gpkg") && !is.null(tableau_variables_fichier(chemin))) {
+    tables <- tables[tolower(tables) != "variables"]
+  }
+  tables
 }
 
 # Le tableau d'un fichier, en data.frame. `table` : nom de la feuille ou de l'objet (le
@@ -63,9 +73,13 @@ lire_tableau <- function(chemin, table = NULL, quantitatives = NULL, textes = NU
     omv = lire_omv(chemin),
     dbf = lire_dbf(chemin),
     arff = lire_arff(chemin),
+    gpkg = lire_geopackage(chemin, table),
     jdx = , dx = , jcm = , spc = tableau_spectres(lire_spectres(chemin)),
     stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext))
-  finir_tableau(x, quantitatives, toutes = ext %in% c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls"), textes = textes)
+  coordonnees <- attr(x, "coordonnees")  # (un GeoPackage : les colonnes de ses coordonnées et leur système)
+  x <- finir_tableau(x, quantitatives, toutes = ext %in% c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls"), textes = textes)
+  attr(x, "coordonnees") <- coordonnees
+  x
 }
 
 # Un tableau lu, en data.frame simple (vers_data_frame), ses colonnes de texte converties
@@ -209,7 +223,7 @@ lire_texte_delimite <- function(texte) {
   sauts <- nchar(lignes) - nchar(gsub(saut, "", lignes, fixed = TRUE))
   numero <- cumsum(c(1, 1 + sauts))[seq_along(lignes)][pleines]  # dans le fichier, pour les messages
   champs <- champs_lignes(lignes[pleines], sep)
-  v <- trimws(gsub(saut, "\n", champs$valeurs, fixed = TRUE))
+  v <- sans_blancs_autour(gsub(saut, "\n", champs$valeurs, fixed = TRUE))
   n <- champs$n
   k <- n[1]
   noms <- v[seq_len(k)]
@@ -314,6 +328,17 @@ nom_separateur <- function(sep) {
 
 # ---------------------------------------------------------------- nombres
 
+# trimws(x) pour du texte (x : un vecteur de caractères) qui n'a presque jamais de blancs autour, les
+# champs d'un grand fichier : seules les valeurs qui commencent ou finissent par un blanc de trimws
+# (espace, tabulation, retour à la ligne) passent par ses expressions régulières, les autres restent
+# telles quelles, comme trimws les rendrait (des millions de champs : des secondes de moins).
+sans_blancs_autour <- function(x) {
+  blancs <- c(" ", "\t", "\r", "\n")
+  k <- which(Reduce(`|`, lapply(blancs, function(b) startsWith(x, b) | endsWith(x, b))))
+  if (length(k)) x[k] <- trimws(x[k])
+  x
+}
+
 # Un nom de colonne comparable d'un fichier à l'autre : sans majuscules ni espaces autour, un
 # « . » valant une espace (les versions précédentes de Nuée lisaient « NO3 (mg/L) » d'un
 # classeur Excel en « NO3.(mg/L) » ; les projets qui gardent ces noms retrouvent leurs colonnes).
@@ -353,14 +378,14 @@ convertir_colonnes <- function(df, virgule = "decimale", quantitatives = NULL, t
 # nombres que si ses autres valeurs disent toutes qu'une mesure manque (des noms comme
 # « 12bis » la gardent en texte). `forcer` : en nombres quoi qu'il arrive.
 convertir_colonne <- function(x, virgule = "decimale", premiere = FALSE, forcer = FALSE) {
-  v <- trimws(x)
+  v <- sans_blancs_autour(x)
   v[v %in% c("", "NA")] <- NA
   connues <- !is.na(v)
   if (!any(connues)) return(rep(NA_real_, length(v)))
   n <- lire_nombres(v, virgule)
   autres <- connues & is.na(n)
   if (!any(autres)) return(n)
-  texte <- sum(autres & !valeur_manquante(v))
+  texte <- sum(!valeur_manquante(v[autres]))
   if (!forcer && (sum(connues & !autres) < 2 || texte > if (premiere) 0 else 0.2 * sum(connues))) return(v)
   n[autres] <- NA
   structure(n, manquantes = v[autres])
@@ -518,10 +543,21 @@ lire_excel <- function(chemin, table = NULL) {
 # avec 15 chiffres significatifs). Une date devient du texte, comme dans un fichier texte
 # (texte_dates), et non le nombre de jours qu'Excel garde.
 cellules_excel <- function(cellules) {
-  type <- vapply(cellules, function(e) {
-    if (inherits(e, "POSIXct")) "date" else if (is.numeric(e)) "nombre" else if (is.character(e)) "texte"
-    else if (is.logical(e) && !is.na(e)) "logique" else "vide"
-  }, "")
+  # (le type de chaque cellule par des fonctions primitives, celles qui restent après chaque test :
+  # une fonction R pour chacune de centaines de milliers de cellules prenait des secondes ; un objet,
+  # une date, par type_cellule_excel)
+  type <- rep("vide", length(cellules))
+  nombre <- vapply(cellules, is.numeric, NA)
+  type[nombre] <- "nombre"
+  reste <- which(!nombre)
+  objet <- reste[vapply(cellules[reste], is.object, NA)]
+  type[objet] <- vapply(cellules[objet], type_cellule_excel, "")
+  reste <- setdiff(reste, objet)
+  texte <- reste[vapply(cellules[reste], is.character, NA)]
+  type[texte] <- "texte"
+  reste <- setdiff(reste, texte)
+  logique <- reste[vapply(cellules[reste], is.logical, NA)]
+  type[logique[!is.na(unlist(cellules[logique]))]] <- "logique"
   x <- rep(NA_real_, length(cellules))
   x[type == "nombre"] <- unlist(cellules[type == "nombre"])
   if (all(type %in% c("nombre", "vide"))) return(x)
@@ -530,6 +566,12 @@ cellules_excel <- function(cellules) {
   x[type == "logique"] <- as.character(unlist(cellules[type == "logique"]))
   if (any(type == "date")) x[type == "date"] <- texte_dates(vapply(cellules[type == "date"], as.numeric, 0))
   x
+}
+
+# Le type d'une cellule Excel : une date, un nombre, du texte, une valeur logique, ou vide.
+type_cellule_excel <- function(e) {
+  if (inherits(e, "POSIXct")) "date" else if (is.numeric(e)) "nombre" else if (is.character(e)) "texte"
+  else if (is.logical(e) && !is.na(e)) "logique" else "vide"
 }
 
 # Des dates et heures d'Excel (secondes depuis 1970, arrondies à la seconde) en texte :
@@ -722,6 +764,7 @@ ecrire_omv <- function(df, chemin) {
   taille <- 0L
   champs <- list()
   xdata <- list()
+  descriptions <- attr(df, "descriptions")  # (la description et l'unité de chaque colonne : ecrire_tableau)
   for (k in seq_along(df)) {
     x <- df[[k]]
     nom <- names(df)[k]
@@ -729,7 +772,8 @@ ecrire_omv <- function(df, chemin) {
     if (is.character(x) && anyDuplicated(x[!is.na(x)])) x <- factor(x, levels = sort(unique(x[!is.na(x)])))
     champ <- list(name = nom, id = k, columnType = "Data", dataType = "Decimal", measureType = "Continuous",
                   formula = "", formulaMessage = "", parentId = 0, width = 100, type = "number",
-                  importName = "", description = "", transform = 0, edits = list(), missingValues = list())
+                  importName = "", description = if (nom %in% names(descriptions)) enc2utf8(unname(descriptions[[nom]])) else "",
+                  transform = 0, edits = list(), missingValues = list())
     if (is.factor(x)) {
       niv <- levels(x)
       champ[c("dataType", "measureType", "type")] <- list("Text", if (is.ordered(x)) "Ordinal" else "Nominal", "integer")
@@ -806,9 +850,34 @@ noms_pour_format <- function(noms, max) {
   n
 }
 
-# Écrit un data.frame dans le format de l'extension du chemin.
-ecrire_tableau <- function(df, chemin, objet = "donnees") {
+# Écrit un data.frame dans le format de l'extension du chemin. `variables` : l'unité et la
+# description des colonnes qui en ont (atelier.R : descriptions_variables), gardées là où le format
+# a leur place : une feuille « Variables » à côté des données (Excel, relue à l'ouverture :
+# nouveau.R, importer_tableau), la description d'une colonne de jamovi, les attributs « label » et
+# « units » d'une colonne de R (ceux de Hmisc::label et Hmisc::units) ; pas en CSV ni en texte.
+ecrire_tableau <- function(df, chemin, objet = "donnees", variables = NULL) {
   ext <- extension(chemin)
+  if (!is.null(variables) && nrow(variables)) {
+    k <- match(names(df), variables[[1]])
+    if (ext %in% c("rds", "rdata", "rda")) {
+      for (j in which(!is.na(k))) {
+        if (nzchar(variables[[3]][k[j]])) attr(df[[j]], "label") <- variables[[3]][k[j]]
+        if (nzchar(variables[[2]][k[j]])) attr(df[[j]], "units") <- variables[[2]][k[j]]
+      }
+    }
+    if (ext == "omv") attr(df, "descriptions") <- stats::setNames(ifelse(nzchar(variables[[2]]) & nzchar(variables[[3]]), sprintf("%s (%s)", variables[[3]], variables[[2]]),
+                                                                         ifelse(nzchar(variables[[3]]), variables[[3]], sprintf("(%s)", variables[[2]]))), variables[[1]])
+    if (ext == "xlsx") {
+      wb <- openxlsx::createWorkbook()
+      feuille <- substr(gsub("[\\[\\]:*?/\\\\]", "_", objet, perl = TRUE), 1, 31)
+      if (!nzchar(feuille) || tolower(feuille) == "variables") feuille <- "donnees"
+      for (f in c(feuille, "Variables")) openxlsx::addWorksheet(wb, f)
+      openxlsx::writeData(wb, feuille, df)
+      openxlsx::writeData(wb, "Variables", variables)
+      openxlsx::saveWorkbook(wb, chemin, overwrite = TRUE)
+      return(invisible(chemin))
+    }
+  }
   renomme <- function(df, max, octets_etiquette = Inf) {
     noms <- noms_pour_format(names(df), max)
     for (k in seq_along(df)) if (!identical(noms[k], names(df)[k])) {
@@ -917,6 +986,97 @@ tableau_projet <- function(projet) {
   }
   names(colonnes) <- make.unique(noms, sep = "_")
   as.data.frame(colonnes, check.names = FALSE, stringsAsFactors = FALSE)
+}
+
+# Les noms des tableaux de résultats exportés (feuilles Excel, fichiers, couches GeoPackage) et de
+# leurs colonnes dans la langue de l'interface. Le moteur les nomme en français ; en anglais, ceux
+# qu'il a faits sont traduits : les tableaux (NOMS_TABLES_EN, et « <tableau>_echelle_k »), les
+# colonnes (NOMS_COLONNES_EN, et les suffixes ajoutés au nom d'une variable : « densite observé »,
+# « Coeff x IC »). Une colonne au nom d'une variable du projet, ou d'une de ses catégories, garde
+# son nom : c'est celui de l'utilisateur. Le reste (AIC, R2, VIP, p…) est le même dans les deux.
+NOMS_TABLES_EN <- c(
+  resume = "summary", composantes = "components", variables_y = "y_variables", qualite = "quality",
+  effets_aleatoires = "random_effects", courbes = "curves", regles = "rules", elagage = "pruning", covariables = "covariates",
+  classement = "classification", classement_vc = "classification_cv", classement_oob = "classification_oob",
+  stabilite = "stability", dependance = "partial_dependence", erreur_oob = "oob_error", cote_a_cote = "side_by_side",
+  coefficients_std = "standardised_coefficients", variables_ajustees = "fitted_variables",
+  facteurs_ajustes = "fitted_factors", centroides = "centroids", valeurs_propres = "eigenvalues", especes = "species",
+  departs = "starts", dispersion_groupes = "dispersion_groups", dispersion_paires = "dispersion_pairs",
+  correlogramme = "correlogram", part = "share", moyennes = "means", adequation = "goodness_of_fit",
+  ajustement = "goodness_of_fit", densite = "density", densite_groupes = "density_by_group", parametres = "parameters",
+  groupes = "groups", centres_echelle = "centres_scaled", choix_k = "choice_of_k", tests_axes = "axis_tests",
+  tests_termes = "term_tests", tests_sequentiels = "sequential_tests", partition_ensembles = "partition_fractions",
+  totaux = "totals", pentes = "slopes", droite = "linear_trend", ecarts = "deviations", pas_a_pas = "stepwise",
+  strates = "strata", candidats = "candidates", inertie = "inertia", modele = "model",
+  contributions_colonnes = "column_contributions", contributions_lignes = "row_contributions",
+  cos2_colonnes = "column_cos2", cos2_lignes = "row_cos2", colonnes = "columns", lignes = "rows",
+  fleches = "arrows", reponses = "responses")
+NOMS_COLONNES_EN <- c(
+  DModX_absolu = "DModX_absolute", DModX_pondere = "DModX_weighted", R2_ajuste = "R2_adjusted", r2_ajuste = "r2_adjusted",
+  Categorie = "Category", abondance = "abundance", additif = "additive", aire = "area", ajuste = "fitted", ajustee = "fitted",
+  analyse = "analysis", axe = "axis", espece = "species", parametre = "parameter", partie = "part", terme = "term",
+  apprentissage = "training", arbres = "trees", arbres_max = "max_trees", attendu = "expected", au_dela = "beyond",
+  bas = "lower", bas_D = "lower_D", bas_N = "lower_N", bien_classees = "correctly_classified",
+  bien_classees_vc = "correctly_classified_cv", bloc = "block", cases = "cells", categorie = "category",
+  changements = "changepoints", choisi = "chosen", classe = "class", `classe ajustée` = "fitted class",
+  `classe prédite (VC)` = "predicted class (CV)", `classe prédite (OOB)` = "predicted class (OOB)",
+  classe_predite = "predicted_class", classe_predite_vc = "predicted_class_cv", cle = "key", composante = "component",
+  comptages_observes = "observed_counts", compte = "count", concurvite = "concurvity", concurvite_pire = "concurvity_worst",
+  conditionnel = "conditional", constante = "constant", contraint = "constrained", converge = "converged", coupures = "breaks",
+  couverte = "covered", covariable = "covariate", covariables = "covariates", cumul = "cumulative",
+  cv_groupes = "cv_groups", cv_rencontre = "cv_encounter", dans_troncature = "within_truncation", ddl = "df", ddl_dht2 = "df_dht2",
+  ddl_modele = "df_model", ddl_rencontre = "df_encounter", ddl_residus = "df_residual", de = "from", depart = "start",
+  departs = "starts", dernier_temps = "last_time", deviance_expliquee = "deviance_explained", deviance_nulle = "null_deviance",
+  deviance_vc = "deviance_cv", dissimilarite = "dissimilarity", dissimilarites_nulles = "zero_dissimilarities",
+  echelle = "scaling", erreur = "error", erreur_relative = "relative_error", erreur_type = "std_error", especes = "species",
+  estimation = "estimate", facteur_unites = "unit_factor", feuille = "leaf", feuilles = "leaves", graine = "seed",
+  groupe = "group", groupe_vc = "cv_group", groupes = "groups", groupes_vc = "cv_groups", haut = "upper",
+  haut_D = "upper_D", haut_N = "upper_N", impurete = "impurity", impute = "imputed", indice = "index",
+  individus = "individuals", inertie = "inertia", inertie_inter = "inertia_between", inertie_intra = "inertia_within",
+  inertie_totale = "total_inertia", intra = "within", levier = "leverage", loi = "distribution", masse = "mass",
+  mediane = "median", meilleur_depart = "best_start", methode = "method", min_noeud = "min_node_size", modele = "model",
+  monotonie = "monotonicity", moyenne = "mean", multiplicatif = "multiplicative", niveau = "level", noeud = "node",
+  observations_laissees = "observations_left_out", observe = "observed", observes = "observed", ordre = "order",
+  ordres = "orders", p_ajuste = "p_adjusted", p_corrige = "p_corrected", paire = "pair", paires = "pairs",
+  parametres = "parameters", part = "share", part_detection = "share_detection", part_groupes = "share_groups",
+  part_rencontre = "share_encounter", pas = "step", poids = "weight", positifs = "positive", pourcentage = "percentage",
+  premier_temps = "first_time", premiere_coupure = "first_break", presences_absences = "presence_absence",
+  profondeur = "depth", quantile_normal = "normal_quantile", quoi = "what", ref_ddl = "ref_df", regle = "rule",
+  rencontre = "encounter", residu = "residual", retenues_p = "retained_p", retenues_p_ajuste = "retained_p_adjusted",
+  retrouvee = "found_again", se_additif = "se_additive", se_impute = "se_imputed", se_modele = "se_model",
+  se_multiplicatif = "se_multiplicative", se_rencontre = "se_encounter", se_taille = "se_size", serie = "series",
+  sites_sans_comptage_positif = "sites_without_positive_count", statistique = "statistic", strate = "stratum",
+  strates = "strata", taille_moyenne = "mean_size", taux = "rate", temps = "time", temps_de_base = "base_time",
+  termes = "terms", teste = "tested", total_ajuste = "total_fitted", troncature = "truncation",
+  troncature_gauche = "left_truncation", unite_aire = "area_unit", unite_distance = "distance_unit",
+  unite_effort = "effort_unit", valeur = "value", valeur_propre = "eigenvalue", variables_Y = "Y_variables",
+  voisin = "neighbouring_cluster")
+SUFFIXES_COLONNES_EN <- c(" ajusté (effets fixes)" = " fitted (fixed effects)", " prédit (VC)" = " predicted (CV)",
+  " prédit (OOB)" = " predicted (OOB)", " observé" = " observed", " ajusté" = " fitted", " prédit" = " predicted",
+  " résidu" = " residual", " IC" = " CI", "_IC" = "_CI", "_vc" = "_cv")
+nom_table_en <- function(n) {
+  if (!is.na(NOMS_TABLES_EN[n])) return(unname(NOMS_TABLES_EN[n]))
+  m <- regmatches(n, regexec("^(.+)_echelle_([0-9]+)$", n))[[1]]
+  if (length(m) == 3) return(paste0(nom_table_en(m[2]), "_scaling_", m[3]))
+  n
+}
+nom_colonne_en <- function(n, gardes) {
+  if (n %in% gardes) return(n)
+  if (!is.na(NOMS_COLONNES_EN[n])) return(unname(NOMS_COLONNES_EN[n]))
+  if (startsWith(n, "probabilité ")) return(paste("probability", substring(n, nchar("probabilité ") + 1)))
+  if (grepl("^CP[0-9]+$", n)) return(sub("^CP", "PC", n))  # (une composante principale)
+  for (s in names(SUFFIXES_COLONNES_EN)) if (endsWith(n, s) && nchar(n) > nchar(s)) return(paste0(substr(n, 1, nchar(n) - nchar(s)), SUFFIXES_COLONNES_EN[[s]]))
+  n
+}
+noms_tables_langue <- function(tables, projet = NULL, langue = getOption("nuee.langue")) {
+  if (!identical(langue, "en") || !length(tables)) return(tables)
+  gardes <- unlist(lapply(projet$variables, function(v) c(as.character(v$ids[1]), v$nom, as.character(unlist(v$categories)))))
+  tables <- lapply(tables, function(t) {
+    if (is.data.frame(t) && ncol(t)) names(t) <- make.unique(vapply(names(t), nom_colonne_en, "", gardes = gardes), sep = "_")
+    t
+  })
+  names(tables) <- make.unique(vapply(names(tables), nom_table_en, ""), sep = "_")
+  tables
 }
 
 # Les résultats d'un modèle ajusté en tableaux : observations (scores, T2, DModX, valeurs

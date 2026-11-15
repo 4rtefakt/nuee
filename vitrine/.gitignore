@@ -1,0 +1,4 @@
+# built pages, Wrangler's cache, its package
+dist/
+.wrangler/
+node_modules/

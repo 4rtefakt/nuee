@@ -1,0 +1,48 @@
+[
+    {
+        "id": 6011001,
+        "version": 7,
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001",
+                "type": "application/json"
+            },
+            "alternate": {
+                "href": "https://www.zotero.org/groups/6011001",
+                "type": "text/html"
+            }
+        },
+        "meta": {
+            "numItems": 304
+        },
+        "data": {
+            "id": 6011001,
+            "version": 7,
+            "name": "Équipe Camargue",
+            "description": ""
+        }
+    },
+    {
+        "id": 6011002,
+        "version": 7,
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011002",
+                "type": "application/json"
+            },
+            "alternate": {
+                "href": "https://www.zotero.org/groups/6011002",
+                "type": "text/html"
+            }
+        },
+        "meta": {
+            "numItems": 2
+        },
+        "data": {
+            "id": 6011002,
+            "version": 7,
+            "name": "Réseau Perdrix",
+            "description": ""
+        }
+    }
+]

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.usp projects · Nuée</title>
+<meta name="description" content="The file history, what matches the stored values and what differs.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="usp-projects.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/projets-usp.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/projets-usp.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="usp-projects.html" aria-current="page">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>.usp projects</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#file-history">File history</a></li>
+<li><a href="#what-matches-the-stored-values">What matches the stored values</a></li>
+<li><a href="#what-differs">What differs</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="file-history">
+<h2>File history</h2>
+<p>For a project from a .usp file, the explorer shows "File history": the log stored in the file (creation, working-set changes, number of components, deleted models...), with the date, the software version and the user. Right-click on an imported model › Model history: only what concerns it.</p>
+</section>
+<section id="what-matches-the-stored-values">
+<h2>What matches the stored values (checked on 944 models from 133 .usp projects)</h2>
+<p>Scaling, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted) and DCrit, VIP, coefficients, RMSEE.</p>
+<p>The models of a file are fitted as the software that wrote it fits them: with missing values, NIPALS sometimes converges very slowly, doesn't converge or has several solutions, and it stops there as that software does (a relative change of 1e-5, 200 iterations at most), starts from the same column and validates each component starting from the full model. So 805 PLS models out of 809 of the test corpus, and the 403 PLS models of the 2003 projects, give back their fit and their Q2; the models Nuée fits itself keep its precision (1e-10).</p>
+</section>
+<section id="what-differs">
+<h2>What differs</h2>
+<ul>
+<li>Q2 (and what comes from the cross-validation: Q2 per variable, RMSEcv, CV-ANOVA, the cross-validated classification, confidence intervals): by default, Nuée predicts each group by a model fitted without it, its centres recomputed (see "<a href="models.html#cross-validation">Cross-validation</a>"); the stored values come from a validation done with the centring and scaling of all the observations. Median difference from the stored Q2(cum), over the test corpus: 0.003 for PLS models with over 200 observations, 0.01 from 50 to 200, 0.10 from 20 to 50, 0.22 below, Nuée's Q2 being nearly always lower; 0.04 for PCA. With groups by an ID (a site, a sector), the difference is larger: the model fitted without a site doesn't know that site's mean level either. Validated with "Full model's centres and weights", the stored Q2 comes back exactly, groups by ID included: 805 PLS models out of 809 of the test corpus (220 out of 220 without missing data; the other four are those of a project whose fit differs, below), 441 out of 443 of four real projects (moteur/tests/verifier_references.R), where the other two have a round without any variation, whose stored value comes from rounding errors. For a PCA, it is off by 0.02 in median: the details of the files' validation aren't published.</li>
+<li><strong>A version 11 project:</strong> its four PLS models, whose single Y has missing values. Their software counts the observations without y in the X weights, as if their Y residuals were ±0.99, which no rule found explains; R2 and Q2 are up to 0.04 off.</li>
+<li>Sign of the components of new models: arbitrary (imported models are oriented as in the file).</li>
+<li><strong>Dendrograms:</strong> exact Ward method; the merges at the top of the tree may differ from those of the stored tree.</li>
+<li><strong>Automatic fitting:</strong> the published rules, applied to Nuée's Q2, may choose another number of components; for PCA, the exact limit used in the files isn't published.</li>
+<li><strong>VIP cut-off (step around 0.8):</strong> the application's own method.</li>
+<li>Confidence intervals of the VIPs of a model with two components or more (the VIPs themselves are the same): those of the program that wrote the file weight the components of each cross-validation round in a way that isn't published; with one component, they are the same.</li>
+<li><strong>OPLS / OPLS-DA:</strong> no stored model to compare with (see above).</li>
+<li><strong>Suggested transformation:</strong> the published rule doesn't say whether both skewness and Min/Max are needed; the application requires both.</li>
+</ul>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="results.html">← Results, documents and R</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

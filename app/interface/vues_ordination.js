@@ -1,8 +1,10 @@
-// Redundancy analysis (RDA) and correspondence analysis (CA) (moteur/R/ordination.R): their
-// settings in the model dialog, their views (the ordination plot, eigenvalues, permutation tests,
-// contributions, summary), their report parts and their strings. Imported by app.js.
+// Redundancy analysis (RDA), canonical correspondence analysis (CCA) and correspondence analysis
+// (CA) (moteur/R/ordination.R): their settings in the model dialog, their views (the ordination
+// plot, eigenvalues, permutation tests, contributions, summary), their report parts and their
+// strings. A CCA is shown as the RDA is (a triplot, its tests), with the CA's three scalings.
+// Imported by app.js.
 import { t, ajouterTextes } from './i18n.js';
-import { el, fmt } from './ui.js';
+import { el, fmt, entreNombres } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, valeurP, ficheCondition } from './panneaux.js';
@@ -14,7 +16,8 @@ import { PARTIES_TYPES } from './rapport.js';
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
 const ETIQUETTES_MAX = 100;  // labels written by each point up to this many
 const GRIS = '#9aa7b8';
-const estOrdination = (m) => !!m && !!m.analyse && ['RDA', 'CA'].includes(m.type);
+const estOrdination = (m) => !!m && !!m.analyse && ['RDA', 'CA', 'CCA'].includes(m.type);
+const contrainte = (m) => m.type === 'RDA' || m.type === 'CCA';  // (constrained axes, X arrows, tests)
 const axes = (m) => liste(m.axes);
 const libelleAxe = (m, k) => `${axes(m)[k]} (${fmt(100 * liste(m.valeurs_propres.part)[k], 1)} %)`;
 const caseACocher = (libelle, valeur, changer) => el('label', { class: 'champ' },
@@ -37,7 +40,8 @@ const lignesDe = (df, cles) => { const n = liste((df || {})[cles[0]]).length; re
 // them; the arrows are lengthened to fill the plot (vegan: ordiArrowMul), by the factor shown.
 function rendreOrdination(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
-  const rda = m.type === 'RDA';
+  const rda = contrainte(m);  // (an RDA or a CCA: the triplot)
+  const cca = m.type === 'CCA';
   const noms = axes(m);
   if (!m.ordination[String(loc.echelle)]) loc.echelle = 2;
   loc.a ??= 1;
@@ -50,7 +54,9 @@ function rendreOrdination(conteneur, ctx, p, loc) {
   const b = Math.min(loc.b, noms.length) - 1;
   const col = (df, k) => liste((df || {})[noms[k]]);
   const options = noms.map((n, i) => [i + 1, libelleAxe(m, i)]);
-  const echelles = rda ? [[1, t('ord_echelle_1')], [2, t('ord_echelle_2')]] : [[1, t('ord_ca_echelle_1')], [2, t('ord_ca_echelle_2')], [3, t('ord_ca_echelle_3')]];
+  const echelles = cca ? [[1, t('ord_ca_echelle_1')], [2, t('ord_cca_echelle_2')], [3, t('ord_ca_echelle_3')]]
+    : rda ? [[1, t('ord_echelle_1')], [2, t('ord_echelle_2')]] : [[1, t('ord_ca_echelle_1')], [2, t('ord_ca_echelle_2')], [3, t('ord_ca_echelle_3')]];
+  const nomReponses = cca ? t('ord_especes') : rda ? t('ord_reponses') : t('variables');
   const graphe = el('div', { class: 'graphe' });
   conteneur.replaceChildren(outils(
     choix(t('ord_echelle'), echelles, loc.echelle, (v) => { loc.echelle = +v; ctx.rafraichir(); }),
@@ -58,7 +64,7 @@ function rendreOrdination(conteneur, ctx, p, loc) {
     noms.length > 1 ? choix(t('axe_y'), options, loc.b, (v) => { loc.b = +v; ctx.rafraichir(); }) : null,
     rda ? choix(t('observations'), [['wa', t('ord_wa')], ['lc', t('ord_lc')], ['', t('aucune')]], loc.sites, (v) => { loc.sites = v; ctx.rafraichir(); })
       : caseACocher(t('observations'), !!loc.sites, (v) => { loc.sites = v ? 'oui' : ''; ctx.rafraichir(); }),
-    caseACocher(rda ? t('ord_reponses') : t('variables'), loc.reponses, (v) => { loc.reponses = v; ctx.rafraichir(); }),
+    caseACocher(nomReponses, loc.reponses, (v) => { loc.reponses = v; ctx.rafraichir(); }),
     rda ? caseACocher(t('ord_x'), loc.x, (v) => { loc.x = v; ctx.rafraichir(); }) : null,
     loc.sites ? controleCouleur(ctx, m, loc) : null,
     loc.sites ? controleEtiquettes(ctx, m, loc) : null), graphe);
@@ -77,9 +83,9 @@ function rendreOrdination(conteneur, ctx, p, loc) {
   if (loc.reponses && nomsR.length) {
     const xr = col(o.reponses, a);
     const yr = y(col(o.reponses, b));
-    traces.push({ type: 'scatter', mode: nomsR.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: rda ? t('ord_reponses') : t('variables'),
+    traces.push({ type: 'scatter', mode: nomsR.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: nomReponses,
       x: xr, y: yr, text: nomsR, meta: 'variables', customdata: nomsR, textposition: 'top center', textfont: { size: 10, color: PALETTE[1] },
-      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xr); etendue[1].push(...yr);
   }
   const nomsC = liste(o.noms_centroides);
@@ -88,7 +94,7 @@ function rendreOrdination(conteneur, ctx, p, loc) {
     const yc = y(col(o.centroides, b));
     traces.push({ type: 'scatter', mode: 'markers+text', name: t('ord_centroides'), x: xc, y: yc, text: nomsC, meta: 'variables', customdata: nomsC,
       textposition: 'bottom center', textfont: { size: 10, color: PALETTE[0] }, marker: { symbol: 'triangle-up', size: 10, color: PALETTE[0] },
-      hovertemplate: '<b>%{text}</b><br>%{x:.3f}, %{y:.3f}<extra></extra>' });
+      hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xc); etendue[1].push(...yc);
   }
   const annotations = [];
@@ -105,11 +111,11 @@ function rendreOrdination(conteneur, ctx, p, loc) {
       showarrow: true, arrowhead: 2, arrowsize: 1.2, arrowwidth: 1.6, arrowcolor: PALETTE[0] }));
     traces.push({ type: 'scatter', mode: 'text', name: t('ord_fleches', { k: fmt(mul, 2) }), x: bx.map((v) => 1.1 * mul * v), y: by.map((v) => 1.1 * mul * v),
       text: nomsB, meta: 'variables', customdata: nomsB.map((_, i) => [fmt(bx[i], 3), fmt(by[i], 3)]), textfont: { size: 11, color: PALETTE[0] },
-      hovertemplate: '<b>%{text}</b><br>%{customdata[0]}, %{customdata[1]}<extra></extra>' });
+      hovertemplate: `<b>%{text}</b><br>%{customdata[0]}${entreNombres()}%{customdata[1]}<extra></extra>` });
   }
   // (the same scale on both axes, as an ordination is read: the plot area narrows rather than the
   // axes stretching)
-  tracer(ctx, graphe, traces, { title: { text: `${m.nom} · ${rda ? 'RDA' : 'CA'} · ${t('ord_echelle')} ${loc.echelle}` }, annotations,
+  tracer(ctx, graphe, traces, { title: { text: `${m.nom} · ${m.type} · ${t('ord_echelle')} ${loc.echelle}` }, annotations,
     xaxis: { title: { text: libelleAxe(m, a) }, zeroline: true, constrain: 'domain' },
     yaxis: { title: { text: un ? '' : libelleAxe(m, b) }, zeroline: true, scaleanchor: 'x', scaleratio: 1, constrain: 'domain' } });
   if (loc.sites) brancherSelection(graphe, ctx, m.id);
@@ -125,10 +131,11 @@ function rendreValeursPropres(conteneur, ctx, p, loc) {
   const cumul = liste(vp.cumul);
   const contraint = liste(vp.contraint);
   const n = Math.min(ax.length, 30);
-  const rda = m.type === 'RDA';
+  const rda = contrainte(m);
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });
-  conteneur.replaceChildren(el('p', { class: 'note' }, t(rda ? 'ord_valeurs_propres_rda' : 'ord_valeurs_propres_ca', { r: m.rang_contraint ?? 0 })), graphe, bas);
+  conteneur.replaceChildren(el('p', { class: 'note' }, t(m.type === 'CCA' ? 'ord_valeurs_propres_cca' : rda ? 'ord_valeurs_propres_rda' : 'ord_valeurs_propres_ca',
+    { r: m.rang_contraint ?? 0 })), graphe, bas);
   const c = couleursTheme(ctx);
   tracer(ctx, graphe, [
     { type: 'bar', name: t('ord_part_inertie'), x: ax.slice(0, n), y: part.slice(0, n).map((v) => 100 * v),
@@ -191,7 +198,8 @@ async function rendreTestsRDA(conteneur, ctx, p, loc) {
   const fractions = q && !q.erreur ? lignesDe(q.fractions, ['fraction', 'sens', 'r2_ajuste']) : [];
   const graphe = q && !q.erreur ? el('div', { class: 'graphe petit' }) : null;
   const ensembles = liste(m.blocs).length + (m.sans_bloc ? 1 : 0);  // (the blocks of the X, and the terms without one)
-  const partition = liste(m.covariables).length ? el('p', { class: 'note' }, t('ord_partition_z'))
+  const partition = m.type === 'CCA' ? el('p', { class: 'note' }, t('ord_partition_cca'))
+    : liste(m.covariables).length ? el('p', { class: 'note' }, t('ord_partition_z'))
     : ensembles < 2 || ensembles > 3 ? el('p', { class: 'note' }, t('ord_partition_blocs'))
       : !q ? bouton('partition', 'rda_partition', t('ord_lancer_partition')) : q.erreur ? el('p', { class: 'note' }, q.erreur) : [
     el('p', { class: 'note' }, t('ord_partition_note')),
@@ -199,6 +207,8 @@ async function rendreTestsRDA(conteneur, ctx, p, loc) {
     tableCompacte([t('ord_fraction'), '', t('r2_ajuste')], fractions.map((l) => [l[0], l[1], fmt(l[2], 4)])), graphe];
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche,
     el('h4', {}, t('ord_tests_axes')), tableTests(r.axes, 'axe'),
+    // (a CCA: the terms one after another too, as anova.cca(by = "terms"))
+    ...(r.sequentiels ? [el('h4', {}, t('ord_tests_sequentiels')), tableTests(r.sequentiels, 'terme')] : []),
     el('h4', {}, t('ord_tests_termes')), tableTests(r.termes, 'terme'),
     el('p', { class: 'note' }, t('ord_tests_note')),
     el('h4', {}, t('selection_rda')), selection,
@@ -255,21 +265,23 @@ function rendreResumeOrdination(conteneur, ctx, m) {
   let fiche;
   let table;
   const textes = [];
-  if (m.type === 'RDA') {
+  if (contrainte(m)) {
     const o = m.options || {};
+    const cca = m.type === 'CCA';
     fiche = el('div', { class: 'fiche' }, titre,
-      el('div', { class: 'fiche-chiffres' }, chiffre('N', m.N, 0), chiffre(t('ord_reponses'), liste(m.noms_y).length, 0), chiffre(t('nb_termes'), liste(m.termes).length, 0),
+      el('div', { class: 'fiche-chiffres' }, chiffre('N', m.N, 0), chiffre(cca ? t('ord_especes') : t('ord_reponses'), liste(m.noms_y).length, 0), chiffre(t('nb_termes'), liste(m.termes).length, 0),
         liste(m.covariables).length ? chiffre(t('ord_covariables'), liste(m.covariables).join(', ')) : null,
         m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
-      el('div', { class: 'fiche-chiffres' }, chiffre('R2', m.r2), chiffre(t('r2_ajuste'), m.r2_ajuste), chiffre(t('ord_pseudo_f'), m.test.F, 2),
+      el('div', { class: 'fiche-chiffres' }, chiffre('R2', m.r2), chiffre(t('r2_ajuste'), m.r2_ajuste ?? '—'), chiffre(t('ord_pseudo_f'), m.test.F, 2),
         chiffre('p', m.test.permutations ? pValeur(m.test.p) : '—'), chiffre(t('nb_permutations'), m.test.permutations || 0, 0)));
     table = tableCompacte([t('ord_inertie'), '', '%'], [[t('ord_inertie_totale'), fmt(i.totale, 5), '100 %']]
       .concat(i.conditionnelle > 0 ? [[t('ord_inertie_conditionnelle'), fmt(i.conditionnelle, 5), pct(i.conditionnelle)]] : [],
         [[t('ord_inertie_contrainte'), fmt(i.contrainte, 5), pct(i.contrainte)], [t('ord_inertie_residuelle'), fmt(i.residuelle, 5), pct(i.residuelle)]]));
-    textes.push(t('ord_reglages_rda', { tr: t('ord_tr_' + (o.transformation || 'aucune')), centrage: t(o.reduire ? 'ord_reduites' : 'ord_centrees') })
+    textes.push((cca ? t('ord_reglages_cca') : t('ord_reglages_rda', { tr: t('ord_tr_' + (o.transformation || 'aucune')), centrage: t(o.reduire ? 'ord_reduites' : 'ord_centrees') }))
       + (m.strates ? ` ${t('ord_permutations_dans', { g: m.strates })}` : ''));
     if (liste(m.alias).length) textes.push(t('ord_alias', { noms: liste(m.alias).join(', ') }));
-    textes.push(t('ord_resume_rda'));
+    if (cca && liste(m.especes_vides).length) textes.push(t('ord_variables_vides', { noms: liste(m.especes_vides).join(', ') }));
+    textes.push(t(cca ? 'ord_resume_cca' : 'ord_resume_rda'));
   } else {
     const vp = liste(m.valeurs_propres.part);
     fiche = el('div', { class: 'fiche' }, titre,
@@ -288,6 +300,9 @@ function rendreResumeOrdination(conteneur, ctx, m) {
 // ------------------------------------------------------------ the model dialog
 
 const optionsDe = (st) => st.options;
+// (a CCA: the same fields without the responses' transformation and standardization, its table
+// being chi-square standardized)
+const champsCCA = (st, rendre, p) => champsRDA(st, rendre, p).slice(4);
 function champsRDA(st, rendre, p) {
   const o = optionsDe(st);
   // (a model being edited: its covariates' transformations, kept in its options)
@@ -342,6 +357,26 @@ ANALYSES.RDA = {
       z_transformations: Object.fromEntries(z.filter((u) => st.transfos[u] && st.transfos[u] !== 'autre').map((u) => [u, st.transfos[u]])) };
   },
 };
+ANALYSES.CCA = {
+  libelle: () => t('type_cca'),
+  note: () => t('ord_cca_note'),
+  roles: ['x', 'y', 'z'],
+  echelle: 'none',
+  vc: false,
+  champs: champsCCA,
+  valider: (st, cles, p) => {
+    if (cles('y').length < 2) return t('ord_cca_y_requis');
+    const q = qualitativesDe(p, cles('y'));
+    if (q.length) return t('ord_quantitatives', { noms: q.map((u) => nomVariable(p, u)).join(', ') });
+    const B = optionsDe(st).permutations;
+    if (B !== undefined && B !== null && !(Number.isInteger(B) && B >= 0 && B <= 99999)) return t('ord_permutations_invalides');
+    return '';
+  },
+  options: (st, cles) => {
+    const { transformation, reduire, ...o } = ANALYSES.RDA.options(st, cles);
+    return o;
+  },
+};
 ANALYSES.CA = {
   libelle: () => t('type_ca'),
   note: () => t('ord_ca_note'),
@@ -366,14 +401,16 @@ const blocsResume = (m) => {
         .map((l) => [l[0], fmt(l[1], 5), fmt(100 * l[2], 2)]) }];
   }
   const pct = (v) => fmt(100 * v / i.totale, 1);
-  return [{ texte: `${t('type_rda')} · N = ${m.N} · ${t('ord_reponses')} ${liste(m.noms_y).length} · ${t('nb_termes')} ${liste(m.termes).length}`
+  const cca = m.type === 'CCA';
+  return [{ texte: `${t(cca ? 'type_cca' : 'type_rda')} · N = ${m.N} · ${cca ? t('ord_especes') : t('ord_reponses')} ${liste(m.noms_y).length} · ${t('nb_termes')} ${liste(m.termes).length}`
     + (liste(m.covariables).length ? ` · ${t('ord_covariables')} : ${liste(m.covariables).join(', ')}` : '') },
   { entetes: ['R2', t('r2_ajuste'), t('ord_pseudo_f'), 'p', t('nb_permutations')],
-    lignes: [[fmt(m.r2, 4), fmt(m.r2_ajuste, 4), fmt(m.test.F, 3), m.test.permutations ? pValeur(m.test.p) : '—', String(m.test.permutations || 0)]] },
+    lignes: [[fmt(m.r2, 4), m.r2_ajuste === null || m.r2_ajuste === undefined ? '—' : fmt(m.r2_ajuste, 4), fmt(m.test.F, 3), m.test.permutations ? pValeur(m.test.p) : '—',
+      String(m.test.permutations || 0)]] },
   { entetes: [t('ord_inertie'), '', '%'], lignes: [[t('ord_inertie_totale'), fmt(i.totale, 5), '100']]
     .concat(i.conditionnelle > 0 ? [[t('ord_inertie_conditionnelle'), fmt(i.conditionnelle, 5), pct(i.conditionnelle)]] : [],
       [[t('ord_inertie_contrainte'), fmt(i.contrainte, 5), pct(i.contrainte)], [t('ord_inertie_residuelle'), fmt(i.residuelle, 5), pct(i.residuelle)]]) },
-  { texte: t('ord_reglages_rda', { tr: t('ord_tr_' + ((m.options || {}).transformation || 'aucune')), centrage: t((m.options || {}).reduire ? 'ord_reduites' : 'ord_centrees') })
+  { texte: (cca ? t('ord_reglages_cca') : t('ord_reglages_rda', { tr: t('ord_tr_' + ((m.options || {}).transformation || 'aucune')), centrage: t((m.options || {}).reduire ? 'ord_reduites' : 'ord_centrees') }))
     + (m.strates ? ` ${t('ord_permutations_dans', { g: m.strates })}` : '') }];
 };
 const blocsValeursPropres = (m) => [{ entetes: [t('ord_axe'), t('valeur_propre'), t('ord_part_inertie'), `${t('ord_cumul')} (%)`],
@@ -384,6 +421,7 @@ const lignesTests = (df, premiere) => lignesDe(df, [premiere, 'ddl', 'inertie', 
 const blocsTests = (m) => (!m.test.permutations ? [{ texte: t('ord_sans_permutations') }] : demandeRapport('rda_tests', m, (r) => [
   { texte: `${t('ord_test_global')} : ${t('ord_pseudo_f')} = ${fmt(m.test.F, 3)}, p = ${pValeur(m.test.p)} (${m.test.permutations} ${t('ord_permutations_mot')}${m.strates ? `, ${t('ord_permutations_dans', { g: m.strates })}` : ''})` },
   { texte: t('ord_tests_axes') }, { entetes: [t('ord_axe'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.axes, 'axe') },
+  ...(r.sequentiels ? [{ texte: t('ord_tests_sequentiels') }, { entetes: [t('terme'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.sequentiels, 'terme') }] : []),
   { texte: t('ord_tests_termes') }, { entetes: [t('terme'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.termes, 'terme') }]));
 const blocsSelection = (m) => (!m.test.permutations ? [{ texte: t('ord_sans_permutations') }] : demandeRapport('rda_selection', m, (s) => [
   { texte: t('ord_selection_note', { r2: fmt(s.r2_ajuste_tous, 3), seuil: fmt(s.seuil, 2) }) },
@@ -396,7 +434,7 @@ const blocsPartition = (m) => demandeRapport('rda_partition', m, (q) => [{ texte
 const blocsVariables = (m) => {
   const n = axes(m).slice(0, 3);
   const bloc = (df, titre) => (df ? [{ texte: titre }, { entetes: [t('variables'), ...n], lignes: lignesDe(df, ['terme', ...n]).map((l) => [l[0], ...l.slice(1).map((v) => fmt(v, 4))]) }] : []);
-  return m.type === 'RDA' ? [...bloc(m.variables_y, `${t('ord_reponses')} (${t('ord_echelle')} 2)`), ...bloc(m.variables, `${t('ord_x')} (${t('ord_echelle')} 2)`)]
+  return contrainte(m) ? [...bloc(m.variables_y, `${m.type === 'CCA' ? t('ord_especes') : t('ord_reponses')} (${t('ord_echelle')} 2)`), ...bloc(m.variables, `${t('ord_x')} (${t('ord_echelle')} 2)`)]
     : bloc(m.variables, `${t('variables')} (${t('ord_echelle')} 2)`);
 };
 const blocsContributions = (m) => {
@@ -412,6 +450,14 @@ PARTIES_TYPES.RDA = [
   { cle: 'tests_rda', defaut: true, tableau: blocsTests },
   { cle: 'selection_rda', tableau: blocsSelection },
   { cle: 'partition_rda', tableau: blocsPartition },
+  { cle: 'liste_vars', tableau: blocsVariables },
+];
+PARTIES_TYPES.CCA = [
+  { cle: 'resume', defaut: true, tableau: blocsResume },
+  { cle: 'ordination', vue: 'ordination', defaut: true },
+  { cle: 'valeurs_propres', vue: 'valeurs_propres', defaut: true, tableau: blocsValeursPropres },
+  { cle: 'tests_rda', defaut: true, tableau: blocsTests },
+  { cle: 'selection_rda', tableau: blocsSelection },
   { cle: 'liste_vars', tableau: blocsVariables },
 ];
 PARTIES_TYPES.CA = [
@@ -436,6 +482,7 @@ VUES.contributions_ca = { rendre: rendreContributionsCA, titre: (m) => `${m.nom}
 Object.assign(ICONES_VUES, { ordination: 'chart-scatter', valeurs_propres: 'chart-column', tests_rda: 'shuffle', contributions_ca: 'sliders-horizontal' });
 VUES_TYPES.RDA = ['resume', 'ordination', 'valeurs_propres', 'tests_rda', 'liste_obs', 'liste_vars'];
 VUES_TYPES.CA = ['resume', 'ordination', 'valeurs_propres', 'contributions_ca', 'liste_obs', 'liste_vars'];
+VUES_TYPES.CCA = ['resume', 'ordination', 'valeurs_propres', 'tests_rda', 'liste_obs', 'liste_vars'];
 
 ajouterTextes({
   type_rda: 'RDA (analyse de redondance)', type_ca: 'Analyse des correspondances (CA)',
@@ -478,6 +525,15 @@ ajouterTextes({
   ord_reglages_rda: 'Réponses : transformation {tr}, {centrage}.', ord_alias: 'Termes redondants avec d’autres, laissés de côté : {noms}.',
   ord_resume_rda: 'L’inertie est la variance totale des réponses (transformées) ; le R² ajusté corrige le R² du nombre de termes. Le test compare le pseudo-F du modèle à celui des permutations.',
   ord_resume_ca: 'L’inertie totale est le khi² du tableau divisé par son effectif total. Des observations proches ont des profils semblables, de même pour les variables.',
+  type_cca: 'CCA (analyse canonique des correspondances)',
+  ord_cca_note: 'Y : les espèces, des effectifs ou des abondances (positifs ou nuls), les colonnes du tableau ; X : les variables explicatives ; Z : des covariables dont l’effet est retiré d’abord (CCA partielle). Le tableau est ramené à ses écarts à l’indépendance (comme dans une analyse des correspondances) et les X pondérés par les masses des observations (ter Braak 1986). Les observations sans aucune abondance et les espèces absentes sont laissées de côté.',
+  ord_cca_y_requis: 'Une CCA demande au moins deux espèces en Y (les colonnes du tableau).', ord_especes: 'Espèces Y',
+  ord_cca_echelle_2: '2 · espèces (distances du khi² entre espèces)',
+  ord_valeurs_propres_cca: 'Les {r} axes contraints (en bleu) décrivent ce que les X expliquent du tableau ; les axes non contraints (en gris), ce qui reste. L’inertie est le khi² du tableau divisé par son effectif.',
+  ord_tests_sequentiels: 'Par terme, l’un après l’autre (dans l’ordre du modèle)',
+  ord_partition_cca: 'La partition de la variance se fait pour une RDA (sur des réponses transformées, par exemple Hellinger), pas pour une CCA.',
+  ord_reglages_cca: 'Tableau : écarts à l’indépendance (khi²), les X pondérés par les masses des observations ; aux permutations, les masses suivent les observations.',
+  ord_resume_cca: 'L’inertie totale est le khi² du tableau divisé par son effectif total. Le R² ajusté d’une CCA est estimé par les permutations du test (Peres-Neto et al. 2006) : sans permutation, il n’y en a pas. Le test compare le pseudo-F du modèle à celui des permutations.',
 }, {
   type_rda: 'RDA (redundancy analysis)', type_ca: 'Correspondence analysis (CA)',
   ordination: 'Ordination', valeurs_propres: 'Eigenvalues', tests_rda: 'Permutation tests', contributions_ca: 'Contributions and cos²',
@@ -519,4 +575,13 @@ ajouterTextes({
   ord_reglages_rda: 'Responses: transformation {tr}, {centrage}.', ord_alias: 'Terms redundant with others, left out: {noms}.',
   ord_resume_rda: 'The inertia is the total variance of the (transformed) responses; the adjusted R² corrects the R² for the number of terms. The test compares the model’s pseudo-F with that of the permutations.',
   ord_resume_ca: 'The total inertia is the chi-square of the table divided by its grand total. Close observations have similar profiles, and likewise for variables.',
+  type_cca: 'CCA (canonical correspondence analysis)',
+  ord_cca_note: 'Y: the species, counts or abundances (positive or zero), the columns of the table; X: the explanatory variables; Z: covariates whose effect is removed first (partial CCA). The table is turned into its departures from independence (as in a correspondence analysis) and the X weighted by the masses of the observations (ter Braak 1986). Observations without any abundance and absent species are left out.',
+  ord_cca_y_requis: 'A CCA needs at least two species as Y (the columns of the table).', ord_especes: 'Species Y',
+  ord_cca_echelle_2: '2 · species (chi-square distances between species)',
+  ord_valeurs_propres_cca: 'The {r} constrained axes (in blue) describe what the X explain of the table; the unconstrained axes (in grey), what is left. The inertia is the chi-square of the table divided by its grand total.',
+  ord_tests_sequentiels: 'By term, one after another (in the order of the model)',
+  ord_partition_cca: 'Variation partitioning is done for an RDA (on transformed responses, Hellinger for example), not for a CCA.',
+  ord_reglages_cca: 'Table: departures from independence (chi-square), the X weighted by the masses of the observations; in the permutations, the masses follow the observations.',
+  ord_resume_cca: 'The total inertia is the chi-square of the table divided by its grand total. A CCA’s adjusted R² is estimated with the test’s permutations (Peres-Neto et al. 2006): without permutations, there is none. The test compares the model’s pseudo-F with that of the permutations.',
 });

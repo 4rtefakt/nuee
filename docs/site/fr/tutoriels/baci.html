@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avant/après avec témoins (BACI) · Nuée</title>
+<meta name="description" content="Tutoriel Nuée : évaluer l'effet d'un aménagement par un dispositif avant/après avec témoins (BACI), du tableau au texte des méthodes.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="baci.html">
+<link rel="alternate" hreflang="en" href="../../en/tutorials/baci.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="../guide/index.html">Guide</a>
+      <a href="index.html" aria-current="page">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/tutorials/baci.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Tutoriel Nuée : évaluer l'effet d'un aménagement par un dispositif avant/après avec témoins (BACI), du tableau au texte des méthodes. -->
+<h1>Avant/après avec témoins (BACI)</h1>
+<p class="chapeau">L'arasement d'un seuil a-t-il augmenté la densité de jeunes truites ? Un dispositif avant/après avec témoins, du tableau au texte des méthodes et au script R.</p>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#la-question-et-les-donnees">La question et les données</a></li>
+<li><a href="#1-quelle-analyse">1. Quelle analyse ?</a></li>
+<li><a href="#2-l-ecart-entre-impact-et-temoins">2. L'écart entre impact et témoins</a></li>
+<li><a href="#3-le-modele-mixte-baci">3. Le modèle mixte BACI</a></li>
+<li><a href="#4-lire-l-interaction">4. Lire l'interaction</a></li>
+<li><a href="#5-les-moyennes-ajustees">5. Les moyennes ajustées</a></li>
+<li><a href="#6-les-textes-des-methodes-et-des-resultats">6. Les textes des méthodes et des résultats</a></li>
+<li><a href="#7-exporter-vers-r">7. Exporter vers R</a></li>
+<li><a href="#pour-aller-plus-loin">Pour aller plus loin</a></li>
+</ul>
+</nav>
+<div class="encadre">
+<p><strong>Les données sont simulées.</strong> Aucun poisson n'a été compté : le tableau a été fabriqué par le
+script <a href="../../donnees/baci.R">baci.R</a>, avec une graine fixe, pour ce tutoriel. Il contient un effet
+connu : +6 juvéniles pour 100 m² sur les stations aménagées à partir de 2016.</p>
+</div>
+<h2 id="la-question-et-les-donnees">La question et les données</h2>
+<p>Le seuil d'un moulin a été arasé pendant l'hiver 2015-2016. Chaque été, de 2010 à 2023, les
+juvéniles de truite de l'année sont comptés par pêche électrique sur six stations : trois en
+amont de l'ancien seuil (A1, A2, A3 : l'impact) et trois sur un affluent voisin sans seuil
+(T1, T2, T3 : les témoins). Les témoins suivent les variations d'une année à l'autre (crues,
+étés secs) que l'aménagement n'explique pas : c'est l'écart entre impact et témoins, avant et
+après, qui mesure son effet.</p>
+<p>Téléchargez <a href="../../donnees/baci_truite.csv">baci_truite.csv</a> (84 lignes, une par station et par
+année) :</p>
+<table>
+<thead>
+<tr>
+<th>Colonne</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>obs</td>
+<td>le nom de la ligne : la station et l'année (A1-2010)</td>
+</tr>
+<tr>
+<td>station</td>
+<td>A1, A2, A3 (en amont du seuil), T1, T2, T3 (affluent témoin)</td>
+</tr>
+<tr>
+<td>groupe</td>
+<td>impact ou témoin</td>
+</tr>
+<tr>
+<td>annee</td>
+<td>2010 à 2023</td>
+</tr>
+<tr>
+<td>densite</td>
+<td>juvéniles pour 100 m² ; vide quand la station n'a pas été pêchée (T2 en 2013, A3 en 2019)</td>
+</tr>
+</tbody>
+</table>
+<p>Ouvrez-le avec <em>Fichier › Ouvrir</em> (Ctrl+O) : le projet compte 84 observations et 4 variables
+(la première colonne nomme les observations).</p>
+<h2 id="1-quelle-analyse">1. Quelle analyse ?</h2>
+<p><em>Modèle › Quelle analyse ?</em> : cochez <strong>Avant/après avec des témoins (BACI)</strong>, puis choisissez la
+réponse, <code>densite</code>. Nuée propose le temps (<code>annee</code>) et l'unité (<code>station</code>) d'après leurs noms, et
+conseille l'analyse avant/après avec témoins.</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-choix.png"><img src="../../images/fr/baci-choix.png" alt="Quelle analyse ? avec la question BACI, la réponse densite, le temps et l'unité proposés, et l'analyse conseillée à droite" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-choix.png"><img src="../../images/fr/sombre/baci-choix.png" alt="Quelle analyse ? avec la question BACI, la réponse densite, le temps et l'unité proposés, et l'analyse conseillée à droite" width="900" height="680" loading="lazy"></a><figcaption>Quelle analyse ? : la question, la réponse et le dispositif à gauche ; l'analyse conseillée, ses conditions et ce qui est déjà rempli à droite.</figcaption></figure>
+<p>Cliquez sur <strong>Ouvrir Tests statistiques</strong> : la vue des tests s'ouvre dans son mode
+<em>Avant/après (BACI)</em>, la réponse, le temps et l'unité déjà choisis.</p>
+<h2 id="2-l-ecart-entre-impact-et-temoins">2. L'écart entre impact et témoins</h2>
+<p>Cochez A1, A2 et A3 sur la ligne <em>Impact</em>, puis <strong>tous les autres</strong> sur la ligne <em>Témoins</em>.
+Tapez l'année du premier « après » dans <em>Événement</em> : <code>2016</code>.</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-ecarts.png"><img src="../../images/fr/baci-ecarts.png" alt="La vue BACI : les stations cochées, l'événement 2016, la phrase du test et le graphique des écarts impact − témoins par année" width="1000" height="865" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-ecarts.png"><img src="../../images/fr/sombre/baci-ecarts.png" alt="La vue BACI : les stations cochées, l'événement 2016, la phrase du test et le graphique des écarts impact − témoins par année" width="1000" height="865" loading="lazy"></a><figcaption>La vue BACI : chaque point est l'écart entre la moyenne des stations d'impact et celle des témoins une année ; les pointillés, la moyenne de chaque période.</figcaption></figure>
+<p>Chaque année, l'écart d_t est la moyenne des stations d'impact moins celle des témoins. Avant
+l'arasement, l'écart moyen est de 3,24 juvéniles pour 100 m² ; après, de 10,34. Le test de Welch
+compare les écarts après à ceux d'avant : le changement est de 7,09 [IC 95 % 4,94 ; 9,25],
+p &lt; 0,001.</p>
+<p>Ce test tient les années pour indépendantes. Or des écarts successifs se ressemblent souvent
+(une bonne année en suit une bonne) : la note sous la phrase le rappelle, et dans ce cas le p est
+trop petit. Le modèle mixte en tient compte.</p>
+<h2 id="3-le-modele-mixte-baci">3. Le modèle mixte BACI</h2>
+<p><em>Avec CAR1 dans le temps</em> est coché (chaque station a au moins trois années). Cliquez sur
+<strong>Ajuster le modèle mixte</strong>. Nuée ajoute au projet deux variables valant 0 ou 1 :</p>
+<ul>
+<li>« période BACI (2016) » : 1 à partir de 2016, 0 avant ;</li>
+<li>« impact BACI (A1, A2, A3 contre T1, T2, T3) » : 1 pour les stations d'impact, 0 pour les
+témoins ;</li>
+</ul>
+<p>puis ajuste le modèle linéaire mixte <code>densite ~ période × impact + (1 | station)</code>, avec une
+ordonnée à l'origine aléatoire par station et une autocorrélation CAR1 le long des années dans
+chaque station. Le modèle s'appelle « BACI densite » ; ses vues s'ouvrent. Revenu dans la vue
+BACI, son effet vient en phrase sous celle du test (voir l'image ci-dessus) : 6,91
+[IC 95 % 3,46 ; 10,36], t(74) = 3,99, p &lt; 0,001, avec φ = 0,50.</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-resume.png"><img src="../../images/fr/baci-resume.png" alt="Le résumé du modèle BACI : N, R² marginal et conditionnel, Q², AIC, les variances des effets aléatoires et les conditions du modèle" width="520" height="645" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-resume.png"><img src="../../images/fr/sombre/baci-resume.png" alt="Le résumé du modèle BACI : N, R² marginal et conditionnel, Q², AIC, les variances des effets aléatoires et les conditions du modèle" width="520" height="645" loading="lazy"></a><figcaption>Le résumé du modèle : sa qualité, ses effets aléatoires et ses conditions, en mots.</figcaption></figure>
+<p>Le <strong>résumé</strong> se lit de haut en bas :</p>
+<ul>
+<li>82 observations (2 sans densité laissées de côté) ;</li>
+<li>R² marginal 0,54 (la part de variance des effets fixes), R² conditionnel 0,74 (avec les
+différences entre stations) ;</li>
+<li>Q² 0,28 : la validation croisée prédit chaque station par un modèle ajusté sans elle, par ses
+seuls effets fixes, comme une station jamais vue. Le niveau propre d'une station nouvelle est
+inconnu : ce Q² modeste ne dit rien de l'effet BACI ;</li>
+<li>la station porte 45 % de la variance, le reste est résiduel ; φ = 0,50 : la corrélation d'une
+année à la suivante dans une station.</li>
+</ul>
+<p>Les <strong>conditions du modèle</strong> sont dites en mots, chacune ✓ ou ⚠ avec ce qu'il faut faire. Ici
+les trois sont bonnes : les résidus ne s'écartent pas nettement de la loi normale
+(Shapiro–Wilk p = 0,67), leur dispersion ne change pas avec les valeurs ajustées, et les termes
+ne sont pas colinéaires. Ce sont des repères : les graphiques des résidus (<em>Graphiques ›
+Résidus</em>) restent la référence.</p>
+<h2 id="4-lire-l-interaction">4. Lire l'interaction</h2>
+<p><em>Graphiques › Coefficients</em> :</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-coefficients.png"><img src="../../images/fr/baci-coefficients.png" alt="Les coefficients du modèle BACI : la période, l'impact et leur terme croisé, avec leurs intervalles à 95 % ; le terme croisé en rouge" width="900" height="485" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-coefficients.png"><img src="../../images/fr/sombre/baci-coefficients.png" alt="Les coefficients du modèle BACI : la période, l'impact et leur terme croisé, avec leurs intervalles à 95 % ; le terme croisé en rouge" width="900" height="485" loading="lazy"></a><figcaption>Les coefficients : seul le terme croisé période × impact est significatif (en rouge).</figcaption></figure>
+<p>Les deux variables valant 0 ou 1, chaque coefficient a un sens précis :</p>
+<table>
+<thead>
+<tr>
+<th>Terme</th>
+<th>Estimation [IC 95 %]</th>
+<th>Ce qu'il mesure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>période BACI (2016)</td>
+<td>−0,15 [−2,59 ; 2,29]</td>
+<td>le changement chez les <strong>témoins</strong> après 2016</td>
+</tr>
+<tr>
+<td>impact BACI</td>
+<td>3,28 [−4,00 ; 10,56]</td>
+<td>l'écart impact − témoins <strong>avant</strong> 2016</td>
+</tr>
+<tr>
+<td>période × impact</td>
+<td>6,91 [3,46 ; 10,36]</td>
+<td><strong>l'effet BACI</strong> : combien les stations d'impact ont changé de plus que les témoins</td>
+</tr>
+</tbody>
+</table>
+<p>L'effet de l'aménagement est le terme croisé, pas le coefficient de la période ni celui de
+l'impact pris seuls. Les stations d'amont avaient déjà 3,3 juvéniles de plus que les témoins
+avant les travaux (un écart non significatif, estimé avec 4 degrés de liberté : il compare des
+stations) ; comparer l'impact aux témoins après seulement aurait compté cet écart comme un effet.
+Le terme croisé, lui, compare chaque station à elle-même (74 degrés de liberté). Les données
+ont été simulées avec un effet de +6 : le modèle l'estime à 6,9.</p>
+<h2 id="5-les-moyennes-ajustees">5. Les moyennes ajustées</h2>
+<p>Les moyennes ajustées demandent des variables qualitatives. Créez la période avec <em>Édition ›
+Nouvelle variable</em> : nom <code>periode</code>, formule <code>ifelse(annee &gt;= 2016, &quot;après&quot;, &quot;avant&quot;)</code> (un
+résultat en texte donne une variable qualitative).</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-nouvelle-variable.png"><img src="../../images/fr/baci-nouvelle-variable.png" alt="La fenêtre Nouvelle variable, avec le nom periode et sa formule" width="560" height="526" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-nouvelle-variable.png"><img src="../../images/fr/sombre/baci-nouvelle-variable.png" alt="La fenêtre Nouvelle variable, avec le nom periode et sa formule" width="560" height="526" loading="lazy"></a><figcaption>Nouvelle variable : une formule R sur les autres variables.</figcaption></figure>
+<p>Puis <em>Modèle › Nouveau modèle</em> : type <strong>Modèle linéaire mixte</strong>, et dans <em>Formule R</em>
+<code>densite ~ periode * groupe + (1 | station)</code>, puis <strong>Appliquer</strong> : la réponse, les deux variables,
+leur terme croisé et l'effet aléatoire de la station sont réglés. Cochez <em>dans le temps (CAR1)</em>
+et choisissez <code>annee</code>. Nommez-le « BACI facteurs » et ajustez : c'est le même modèle, écrit avec
+des catégories.</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-modele-facteurs.png"><img src="../../images/fr/baci-modele-facteurs.png" alt="Nouveau modèle : modèle linéaire mixte, effet aléatoire station, CAR1 le long de annee, la formule R appliquée" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-modele-facteurs.png"><img src="../../images/fr/sombre/baci-modele-facteurs.png" alt="Nouveau modèle : modèle linéaire mixte, effet aléatoire station, CAR1 le long de annee, la formule R appliquée" width="900" height="680" loading="lazy"></a><figcaption>Le même modèle, avec la période et le groupe comme variables qualitatives.</figcaption></figure>
+<p><em>Graphiques › Moyennes ajustées</em> : catégories de <code>periode</code>, <strong>dans chaque niveau de</strong> <code>groupe</code>.</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-moyennes.png"><img src="../../images/fr/baci-moyennes.png" alt="Les moyennes ajustées de la densité par période dans chaque groupe, et les paires après − avant" width="1100" height="563" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-moyennes.png"><img src="../../images/fr/sombre/baci-moyennes.png" alt="Les moyennes ajustées de la densité par période dans chaque groupe, et les paires après − avant" width="1100" height="563" loading="lazy"></a><figcaption>Les moyennes ajustées : après contre avant, dans le groupe impact et dans le groupe témoin.</figcaption></figure>
+<p>Dans le groupe impact, la densité passe de 15,7 à 22,4 juvéniles pour 100 m² : +6,76
+[IC 95 % 4,32 ; 9,20]. Chez les témoins, de 12,4 à 12,3 : −0,15 [−2,59 ; 2,29]. La différence
+entre ces deux changements, 6,76 − (−0,15) = 6,91, est l'effet BACI du coefficient. Un clic sur
+une paire du tableau donne sa phrase, à copier pour un rapport.</p>
+<h2 id="6-les-textes-des-methodes-et-des-resultats">6. Les textes des méthodes et des résultats</h2>
+<p>Choisissez le modèle « BACI densite » dans l'explorateur, puis <em>Modèle › Texte pour la section
+Méthodes</em> : un paragraphe écrit d'après le modèle, en français ou en anglais, avec ses
+références, puis le texte des résultats.</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-methodes.png"><img src="../../images/fr/baci-methodes.png" alt="Le texte des méthodes du modèle BACI, avec le choix Français ou English" width="560" height="692" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-methodes.png"><img src="../../images/fr/sombre/baci-methodes.png" alt="Le texte des méthodes du modèle BACI, avec le choix Français ou English" width="560" height="692" loading="lazy"></a><figcaption>Le texte des méthodes : à relire et à compléter avant de le publier.</figcaption></figure>
+<p>Il dit, entre autres :</p>
+<blockquote>
+<p>C'est le modèle BACI (avant/après avec témoin ; Stewart-Oaten et al., 1986) : « période BACI
+(2016) » vaut 1 à partir de annee = 2016 et 0 avant, « impact BACI (A1, A2, A3 contre T1, T2,
+T3) » vaut 1 pour les unités d'impact A1, A2 et A3 et 0 pour les témoins T1, T2 et T3, et le
+coefficient de leur terme croisé, l'effet BACI, est le changement de l'écart entre l'impact et
+les témoins après l'événement ; seules les observations de ces unités y entrent.</p>
+</blockquote>
+<p>et pour les résultats :</p>
+<blockquote>
+<p>Coefficients (sur l'échelle du lien) : « période BACI (2016) » : β = -0,153 (IC 95 % [-2,59 ;
+2,29], p = 0,9) ; « impact BACI (A1, A2, A3 contre T1, T2, T3) » : β = 3,28 (IC 95 % [-4,00 ;
+10,6], p = 0,28) ; « période BACI (2016)*impact BACI (A1, A2, A3 contre T1, T2, T3) » :
+β = 6,91 (IC 95 % [3,46 ; 10,4], p &lt; 0,001).</p>
+</blockquote>
+<p>Complétez-le avec ce que le modèle ne sait pas : le protocole de pêche, la surface pêchée, les
+dates. <strong>Copier le texte</strong> le met dans le presse-papiers.</p>
+<h2 id="7-exporter-vers-r">7. Exporter vers R</h2>
+<p><em>Fichier › Exporter vers R</em> écrit un script qui refait le modèle sans Nuée, avec R et son paquet
+nlme (livré avec R) : les données, le calcul écrit pour ce modèle (l'ajustement par
+<code>nlme::lme()</code> avec <code>nlme::corCAR1(form = ~ annee | station)</code>, la validation croisée par
+station, les statistiques), puis les tableaux et les graphiques, le tout commenté (environ 250
+lignes ici). Au format R Markdown ou Quarto, il devient un rapport avec le texte des méthodes.</p>
+<figure><a class="clair-seul" href="../../images/fr/baci-export-r.png"><img src="../../images/fr/baci-export-r.png" alt="La fenêtre Exporter vers R : ce modèle ou tous ceux de la séance, le format, les données dans le script ou dans un CSV, et les fichiers à écrire à côté" width="560" height="598" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/baci-export-r.png"><img src="../../images/fr/sombre/baci-export-r.png" alt="La fenêtre Exporter vers R : ce modèle ou tous ceux de la séance, le format, les données dans le script ou dans un CSV, et les fichiers à écrire à côté" width="560" height="598" loading="lazy"></a><figcaption>Exporter vers R : un script pour un collègue, ou à joindre à un article.</figcaption></figure>
+<p>Avant d'écrire, Nuée refait le modèle avec le script et vérifie qu'il donne les mêmes résultats.
+Dans l'application de bureau, le bouton s'appelle <em>Choisir l'emplacement…</em> ; la capture vient
+de la version navigateur, où il télécharge les fichiers.</p>
+<h2 id="pour-aller-plus-loin">Pour aller plus loin</h2>
+<ul>
+<li><em>Graphiques › Autocorrélation des résidus</em> montre l'autocorrélation qui reste d'une année à
+l'autre ; la comparaison des modèles avec et sans CAR1 se fait par l'AIC (<em>Prédiction ›
+Comparer les modèles</em>).</li>
+<li>Le guide : <a href="../guide/tests.html">les tests statistiques et le mode BACI</a>,
+<a href="../guide/regressions.html">les modèles mixtes, leurs conditions et les moyennes ajustées</a>,
+<a href="../guide/resultats.html">l'export vers R</a>.</li>
+</ul>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

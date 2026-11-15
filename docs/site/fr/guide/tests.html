@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tests statistiques · Nuée</title>
+<meta name="description" content="Entre classes, entre deux variables, tests appariés, matrice des corrélations, avant/après (BACI).">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="tests.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/tests.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/tests.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html" aria-current="page">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Tests statistiques</h1>
+<div class="texte-guide">
+<section id="tests-statistiques">
+<p>Graphiques › Tests statistiques (ou dans l'explorateur, sous le projet), en quatre modes, au choix en haut à gauche.</p>
+<p><strong>Entre classes, variable par variable :</strong> chaque variable quantitative comparée entre les classes d'une variable qualitative.</p>
+<div class="retrait">
+<p>Deux classes (A, la référence, et B) : test t de Welch (par défaut, variances inégales), t de Student ou Mann–Whitney (sur les rangs). Effet : log2 du rapport des moyennes B / A (quand les deux moyennes sont positives) ou d de Cohen. Graphique volcan : l'effet contre -log10(p).</p>
+<p>Deux classes appariées par une clé (« Apparier par » : une variable ou un identifiant des observations, l'année pour deux secteurs suivis les mêmes années) : pour chaque variable, les lignes de A et de B qui ont la même clé, et une valeur, font les paires, et les différences B − A passent par le test t apparié (par défaut) ou par le test des rangs signés de Wilcoxon. Le tableau donne le nombre de paires de chaque variable et les moyennes de A et de B sur ces paires ; l'effet est le log2 du rapport de ces moyennes (quand les deux sont positives) ou le d_z de Cohen (la différence moyenne sur l'écart-type des différences). Une variable de moins de trois paires n'est pas testée. Une clé ne revient qu'une fois par classe : une clé en double dans A ou dans B est refusée, comme dans « Deux variables ».</p>
+<p><strong>Toutes les classes :</strong> ANOVA à un facteur ou Kruskal–Wallis ; les variables rangées par p.</p>
+</div>
+<p>Les valeurs p sont corrigées pour les comparaisons multiples : Benjamini–Hochberg (taux de fausses découvertes, par défaut), Bonferroni, ou aucune. En couleur : les variables dont le p corrigé passe le seuil (et, pour deux classes, l'effet aussi).</p>
+<p><strong>Deux variables :</strong> le test qui convient à leurs types, ses conditions vérifiées, sur les observations où les deux sont connues. Un identifiant des observations (site, secteur, année...) peut faire les groupes, comme une variable qualitative.</p>
+<div class="retrait">
+<p><strong>Deux variables qualitatives :</strong> le tableau de contingence et le khi² d'indépendance de Pearson, avec le V de Cramér. En rouge et en bleu, les cases plus ou moins fréquentes que si les deux variables étaient indépendantes (résidu ajusté au-delà de ±1,96). Quand les effectifs attendus sont trop petits pour le khi² (un sous 1, ou plus de 20 % sous 5 : règle de Cochran), le test exact de Fisher est conseillé ; pour un tableau 2 × 2, il est toujours donné, avec le rapport des cotes. Au-delà de 2 × 2 et de 200 observations, sa valeur p est simulée (100 000 tableaux).</p>
+<p><strong>Une mesure et une variable qualitative :</strong> la mesure comparée entre les groupes, en boîtes à moustaches. Deux groupes : test t de Welch et Mann–Whitney (exact sous 50 valeurs de chaque côté sans ex aequo ; sinon par la loi normale avec la correction de continuité : le même calcul sous toutes les versions de R). Plus : ANOVA à un facteur, ANOVA de Welch et Kruskal–Wallis, chacun avec ses comparaisons deux à deux (Tukey, Games–Howell, Dunn avec la correction de Holm ; jusqu'à 50 groupes) : un clic sur un test les montre. Le test sur les rangs est conseillé quand la normalité est douteuse dans un groupe (Shapiro–Wilk p &lt; 0,05, ou moins de trois observations), l'ANOVA de Welch quand les variances diffèrent (Brown–Forsythe p &lt; 0,05).</p>
+<p>Une mesure et une variable qualitative, appariées par une troisième variable ou un identifiant (« Apparier par » : l'année, pour deux secteurs d'un site suivis les mêmes années) : les données restent en long, une ligne par secteur et par année. Deux niveaux A et B sont comparés sur les clés qu'ils ont tous deux : les différences B − A par le test t apparié (différence moyenne, son intervalle à 95 %, d_z de Cohen) et par le test des rangs signés de Wilcoxon, le test sur les rangs conseillé quand la normalité des différences est douteuse (Shapiro–Wilk p &lt; 0,05 ; pas testée au-delà de 5 000 paires, ni avec des différences constantes, qui ne laissent que Wilcoxon). La p de Wilcoxon est exacte sous 50 paires quand aucune différence n'est nulle ni ex aequo ; sinon, les différences nulles retirées, elle vient de la loi normale avec la correction de continuité, la même sous toutes les versions de R. Il faut au moins trois paires, et une clé ne revient qu'une fois par niveau. Les lignes restées sans partenaire, et celles sans valeur, sont comptées et listées ; le graphique relie chaque paire. Avec trois niveaux ou plus, le tableau du bas peut aussi lister toutes les paires de niveaux, chacune sur ses propres clés communes, avec la correction de Holm sur les paires testées, pour le test choisi au-dessus (un clic sur un test) : quand tous les niveaux ont les mêmes clés, celles de pairwise.t.test() et pairwise.wilcox.test() avec paired = TRUE. Une paire non testée (moins de trois clés communes, une clé deux fois dans un niveau, la même valeur dans chaque paire) dit pourquoi, et un clic sur une paire la compare ; quand A et B ne se comparent pas, le tableau reste, sous leur raison. « Paires de niveaux dans chaque » (une variable qualitative ou un identifiant : le site) garde les paires de niveaux d'un même groupe, les secteurs de chaque site comparés deux à deux. La correction de Holm porte sur les paires testées, tous les groupes ensemble ; la valeur p brute se lit site par site. Un niveau est du groupe que portent ses lignes : un niveau aux lignes de plusieurs groupes est refusé, et ceux sans groupe sont listés. Au-dessus des paires vient le test d'ensemble, pour les deux tests appariés : le test de Friedman sur les clés où chaque niveau a une valeur (les blocs complets ; les clés laissées de côté faute d'un niveau sont comptées), son χ², ses degrés de liberté et sa valeur p, avec le W de Kendall = χ² / (n (k − 1)) pour taille de l'effet (0 : aucun accord d'une clé à l'autre, 1 : le même classement des niveaux à chaque clé), en une phrase. Dans chaque groupe, un test de Friedman par groupe, sur ses propres niveaux et ses clés complètes, sa valeur p corrigée par Holm sur les groupes testés ; un groupe de moins de trois niveaux ou de moins de deux clés complètes n'a pas de test, et la raison est dite.</p>
+<p><strong>Deux mesures :</strong> les corrélations de Pearson et de Spearman ; Spearman est conseillée quand la normalité de l'une des deux est douteuse. Appariées par « l'observation (même ligne) », deux mesures des mêmes lignes (avant et après, par exemple) sont comparées à la place : les différences Variable 2 − Variable 1, sur les observations où les deux sont connues, par les deux mêmes tests appariés.</p>
+</div>
+<p>Le résultat du test conseillé est donné en une phrase, prête pour un rapport (le bouton à côté la copie), avec la taille de l'effet : V de Cramér, rapport des cotes, d ou d_z de Cohen, corrélation rang-bisériale, η², ε², r ou ρ. Celle de Mann–Whitney nomme les deux groupes avec leurs médianes.</p>
+<p><strong>Matrice des corrélations :</strong> les corrélations de Pearson ou de Spearman de toutes les variables quantitatives (300 au plus), chaque paire sur les observations où les deux sont connues, valeurs p corrigées pour le nombre de paires. Un clic sur une paire, dans la table ou le graphique, la teste dans « Deux variables ».</p>
+<p><strong>Avant/après (BACI) :</strong> un changement de gestion sur certaines unités (l'impact) comparé à des unités restées comme elles étaient (les témoins), comme dans un plan avant/après avec témoin. Choisir une réponse quantitative, un temps (une variable ou un identifiant des observations : l'année, ou des dates) et une unité (une variable qualitative ou un identifiant : le secteur), puis cocher la ou les unités d'impact et la ou les unités témoins. À chaque temps, l'écart d_t est la moyenne des lignes de l'impact moins celle des lignes des témoins, aux temps où les deux ont une valeur (une ligne par unité et par temps donne la moyenne des unités ; les temps d'un seul côté sont listés et laissés de côté) : avec des dates, l'impact et les témoins comptés le même jour ; pour comparer des années, prendre l'année. L'événement est le premier temps compté « après » (un nombre pour un temps fait de nombres ; une date pour un temps fait de dates, où une année est son 1er janvier) : pour une densité de printemps qui répond à la gestion de l'année d'avant, l'année qui suit le changement. Les temps qui le précèdent sont « avant » ; « après » court jusqu'à une fin facultative, elle aussi du genre du temps (avec des dates, 31/12/2012 pour la fin de 2012 : une année seule est refusée, comme une date pour un temps fait de nombres), les temps suivants en gris, hors du test. Avec au moins deux temps dans chaque période, les écarts d'après sont comparés à ceux d'avant : test t de Welch (par défaut), t de Student (variances égales : un modèle linéaire de l'écart sur la période) ou Mann–Whitney (sur les rangs) ; l'effet est le changement de l'écart moyen, après moins avant, avec son intervalle à 95 %, et le résultat vient en une phrase prête pour un rapport. Le graphique montre les écarts dans le temps, l'événement et la moyenne de chaque période ; tant qu'aucun événement n'est entré, les écarts seuls. Les temps sont tenus pour indépendants : des écarts successifs qui se ressemblent (autocorrélation) rendent la valeur p trop petite. « Ajuster le modèle mixte » en tient compte : il ajoute au projet deux variables valant 0 ou 1, « période BACI (2007) » (1 à partir de l'événement, 0 avant) et « impact BACI (S1 contre S2, S3) » (1 pour les unités d'impact, 0 pour les témoins, manquante pour les autres unités), puis le modèle linéaire mixte y ~ période × impact + (1 | unité) sur les lignes des unités d'impact et témoins dont le temps est connu, jusqu'à la fin s'il y en a une : une ordonnée à l'origine aléatoire par unité et, avec « avec CAR1 dans le temps » (cochée d'office quand chaque unité a au moins trois temps ; impossible quand une unité a plusieurs lignes au même temps), une autocorrélation CAR1 le long du temps dans chaque unité.</p>
+<p>Une variable de ce nom, ou de ce nom suivi de (2), (3)…, ou de son nom dans l'autre langue, qui a déjà ces valeurs sert telle quelle ; sinon la variable prend le premier de ces noms qui est libre (un nom tenu par d'autres valeurs : d'autres unités au-delà des trois nommées, un autre temps, un temps corrigé depuis) ; Ctrl+Z les retire, comme une nouvelle variable. Le modèle rejoint le projet (nommé « BACI &lt;réponse&gt; » ; les mêmes réglages réajustent le même modèle) et ses vues s'ouvrent. De retour dans la vue BACI, son effet BACI, le coefficient période × impact avec son intervalle à 95 % et sa valeur p, vient en une phrase sous celle du test, qui dit que ce modèle tient compte des unités et, avec CAR1, de l'autocorrélation. Son texte des Méthodes dit que c'est le modèle BACI et ce que valent ses deux variables.</p>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="regressions.html">← Modèles linéaires, généralisés et mixtes</a><a rel="next" href="communautes.html">Écologie des communautés →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

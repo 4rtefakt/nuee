@@ -18,7 +18,8 @@ const fichierReglages = () => path.join(app.getPath('userData'), 'reglages.json'
 const TITRE = 'Nuée';
 
 // Settings, interface preferences and recovery copies in %APPDATA%\Nuee (~/.config/Nuee on
-// Linux), or the folder given with --user-data-dir. Up to version 0.4 the application was
+// Linux, ~/Library/Application Support/Nuee on macOS), or the folder given with
+// --user-data-dir. Up to version 0.4 the application was
 // called "Analyse multivariée": its settings are taken over once.
 const profilDonne = app.commandLine.hasSwitch('user-data-dir');
 if (!profilDonne) app.setPath('userData', path.join(app.getPath('appData'), 'Nuee'));
@@ -41,7 +42,7 @@ let arretVoulu = false;  // R stopped on purpose (restart), not a crash
 // R in its environment and to the windows in a cookie no other site can send.
 const jeton = crypto.randomBytes(32).toString('hex');
 const cookieR = () => `nuee_${port}`;
-let langue = 'fr';  // the interface's, for the dialogs shown from here
+let langue = 'en';  // the interface's (English until it says), for the dialogs shown from here
 // Recovery copies of the projects not saved yet, written regularly by the interface; they
 // are deleted when the application closes normally.
 const dossierSecours = () => path.join(app.getPath('userData'), 'secours');
@@ -58,9 +59,10 @@ function ecrireReglages() {
 }
 
 // Windows: bin\x64\Rscript.exe is R itself; bin\Rscript.exe only starts it, and stopping that
-// one would leave R running. Linux: R is not brought along, the system's R is used (the .deb
-// depends on it); found on the PATH, or where R's installers put it when a launch from the
-// desktop menu gives a short PATH.
+// one would leave R running. macOS: CRAN's R, brought along in Nuée.app (r-macos.js). Linux: R
+// is not brought along, the system's R is used (the .deb depends on it); found on the PATH, or
+// where R's installers put it when a launch from the desktop menu gives a short PATH.
+const rscriptMac = path.join(racine, 'R', 'bin', 'Rscript');
 function trouverRscript() {
   const candidats = process.platform === 'win32' ? [
     process.env.RSCRIPT,
@@ -70,6 +72,7 @@ function trouverRscript() {
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R', 'R-4.6.2', 'bin', 'Rscript.exe'),
   ] : [
     process.env.RSCRIPT,
+    ...(process.platform === 'darwin' ? [rscriptMac] : []),
     ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map((d) => path.join(d, 'Rscript')),
     '/usr/local/bin/Rscript', '/usr/bin/Rscript',
     ...versionsOptR().map((v) => path.join('/opt/R', v, 'bin', 'Rscript')),
@@ -155,15 +158,19 @@ function demarrerR(port) {
   return new Promise((resolve, reject) => {
     dossierTemporaireR();
     const env = { ...process.env, NUEE_JETON: jeton, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR };
-    const conv = path.join(racine, 'outils', 'export_project.exe');
+    const conv = path.join(racine, 'outils', process.platform === 'win32' ? 'export_project.exe' : 'export_project');
     if (fs.existsSync(conv)) env.CONVERTISSEUR_USP = conv;
     // An installed copy runs the same engine whoever uses it: the researcher's own R setup stays
     // out (their .Rprofile could attach packages that hide the engine's functions), and the
     // packages that come with Nuée are found before those of their own R library, which stays
     // available to the R console (library(vegan)…).
     const optionsR = app.isPackaged ? ['--no-init-file'] : [];
-    if (app.isPackaged && process.platform === 'win32') env.R_LIBS = path.join(racine, 'R', 'library');
-    serveur = spawn(trouverRscript(), [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
+    if (app.isPackaged && process.platform !== 'linux') env.R_LIBS = path.join(racine, 'R', 'library');
+    // (the Rscript of Nuée.app starts the R of RHOME, or else the one CRAN's installer puts in
+    // /Library/Frameworks, if the Mac has it)
+    const rscript = trouverRscript();
+    if (rscript === rscriptMac) env.RHOME = path.join(racine, 'R');
+    serveur = spawn(rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
     serveur.stdout.on('data', (d) => { journal += d; if (journal.includes('PRET')) resolve(); });
     serveur.stderr.on('data', (d) => { journal += d; });
     serveur.on('exit', (code) => {
@@ -175,7 +182,7 @@ function demarrerR(port) {
   });
 }
 
-// R and anything it started (on Linux, Rscript becomes R itself: stopping it is enough)
+// R and anything it started (on Linux and macOS, Rscript becomes R itself: stopping it is enough)
 function arreterR() {
   if (!serveur || serveur.exitCode !== null) return;
   if (process.platform !== 'win32') { serveur.kill(); return; }
@@ -371,9 +378,55 @@ function fenetrePrincipale() {
   };
   fenetre.on('resize', garder);
   fenetre.on('move', garder);
-  const fichier = fichierDonne(process.argv);
+  const fichier = fichierDonne(process.argv) || fichierMac;
+  fichierMac = null;
   fenetre.loadURL(fichier ? `${adresse}?ouvrir=${encodeURIComponent(fichier)}` : adresse);
   return fenetre;
+}
+
+// The main window brought forward, with a file to open in it (null: none)
+function montrerFenetre(fichier) {
+  const f = BrowserWindow.getAllWindows().find(principale) || BrowserWindow.getAllWindows()[0];
+  if (!f) return;
+  if (f.isMinimized()) f.restore();
+  f.focus();
+  if (fichier) f.webContents.send('ouvrir-fichier', fichier);
+}
+
+// macOS gives the file to open (a .nuee double-clicked in the Finder, dropped on the Dock icon)
+// by an event, not on the command line, at start-up too: then kept for the main window.
+let fichierMac = null;
+app.on('open-file', (e, chemin) => {
+  e.preventDefault();
+  if (BrowserWindow.getAllWindows().length) montrerFenetre(chemin);
+  else fichierMac = chemin;
+});
+
+// macOS: the menu bar at the top of the screen, besides the one the interface draws. Without
+// its Edit menu, ⌘C, ⌘V, ⌘X, ⌘A and ⌘Z do nothing in text fields (the interface leaves them to
+// the system there, and takes them elsewhere: the menu only gets the keys the page didn't use).
+// Quit asks about unsaved projects, as File › Quit does. In the interface's language.
+function menuMac(l) {
+  const fr = l === 'fr';
+  const quitter = () => { const f = BrowserWindow.getAllWindows().find(principale); if (f) fermerNuee(f); else app.quit(); };
+  return Menu.buildFromTemplate([
+    { label: TITRE, submenu: [
+      { role: 'about', label: fr ? `À propos de ${TITRE}` : `About ${TITRE}` }, { type: 'separator' },
+      { role: 'services', label: 'Services' }, { type: 'separator' },
+      { role: 'hide', label: fr ? `Masquer ${TITRE}` : `Hide ${TITRE}` }, { role: 'hideOthers', label: fr ? 'Masquer les autres' : 'Hide Others' },
+      { role: 'unhide', label: fr ? 'Tout afficher' : 'Show All' }, { type: 'separator' },
+      { label: fr ? `Quitter ${TITRE}` : `Quit ${TITRE}`, accelerator: 'Cmd+Q', click: quitter },
+    ] },
+    { label: fr ? 'Édition' : 'Edit', submenu: [
+      { role: 'undo', label: fr ? 'Annuler' : 'Undo' }, { role: 'redo', label: fr ? 'Rétablir' : 'Redo' }, { type: 'separator' },
+      { role: 'cut', label: fr ? 'Couper' : 'Cut' }, { role: 'copy', label: fr ? 'Copier' : 'Copy' }, { role: 'paste', label: fr ? 'Coller' : 'Paste' },
+      { role: 'selectAll', label: fr ? 'Tout sélectionner' : 'Select All' },
+    ] },
+    { label: fr ? 'Fenêtre' : 'Window', role: 'window', submenu: [
+      { role: 'minimize', label: fr ? 'Placer dans le Dock' : 'Minimize' }, { role: 'zoom', label: 'Zoom' }, { type: 'separator' },
+      { role: 'front', label: fr ? 'Tout ramener au premier plan' : 'Bring All to Front' },
+    ] },
+  ]);
 }
 
 // The file the system asks Nuée to open (a .nuee project double-clicked, "Open with"): the
@@ -439,27 +492,41 @@ function ipc() {
   // Zotero on this computer, for a document's citations (zotero.js: its local API and Better
   // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
   recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
-  recevoir('quarto', (_, chemin, format) => new Promise((ok) => {
+  // (options.R: the bin folder of an R that has knitr and rmarkdown, for the R chunks of a
+  // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own; on macOS
+  // with its R folder as RHOME, without which the Rscript of Nuée.app starts another R: demarrerR)
+  recevoir('quarto', (_, chemin, format, options = {}) => new Promise((ok) => {
     const quarto = trouverQuarto();
     if (!quarto) return ok({ erreur: 'quarto_absent' });
     if (!['docx', 'html', 'typst'].includes(format) || !/\.qmd$/i.test(String(chemin))) return ok({ erreur: 'demande' });
     const dossier = path.dirname(chemin);
     const sortie = path.join(dossier, path.basename(chemin).replace(/\.qmd$/i, format === 'typst' ? '.pdf' : `.${format}`));
+    const R = options && typeof options.R === 'string' && !process.env.QUARTO_R && fs.existsSync(options.R) ? options.R : null;
     let journal = '';
-    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true });
+    const env = R ? { ...process.env, QUARTO_R: R, ...(process.platform === 'darwin' ? { RHOME: path.dirname(R) } : {}) } : process.env;
+    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true, env });
     q.stdout.on('data', (d) => { journal += d; });
     q.stderr.on('data', (d) => { journal += d; });
     q.on('error', (e) => ok({ erreur: e.message }));
     q.on('close', (code) => ok(code === 0 && fs.existsSync(sortie) ? { sortie } : { erreur: journal.slice(-3000) || `quarto: ${code}` }));
   }));
-  recevoir('imprimer-pdf', async (_, html, chemin) => {
+  // (format: a figure's page, { largeur, hauteur } in mm (figures.js), printed at that size
+  // without margins, its first page only; otherwise A4. Its size is taken from the page's own
+  // @page rule: Chromium puts a page on a grid of 1/300 inch, and from pageSize in inches it came
+  // out up to 0.3 mm too large, from @page within 0.1 mm)
+  recevoir('imprimer-pdf', async (_, html, chemin, format) => {
     const page = path.join(app.getPath('temp'), `rapport-${process.pid}-${Date.now()}.html`);
     await fs.promises.writeFile(page, html, 'utf8');
     const f = new BrowserWindow({ show: false, webPreferences: { offscreen: false, javascript: false } });
     cachees.add(f);
+    const mm = (x) => Number(x) >= 10 && Number(x) <= 1000;
+    const options = format && mm(format.largeur) && mm(format.hauteur)
+      ? { pageSize: { width: format.largeur / 25.4, height: format.hauteur / 25.4 }, preferCSSPageSize: true, printBackground: true,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 }, pageRanges: '1' }
+      : { pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } };
     try {
       await f.loadFile(page);
-      const pdf = await f.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } });
+      const pdf = await f.webContents.printToPDF(options);
       await fs.promises.writeFile(chemin, pdf);
     } finally {
       f.destroy();
@@ -492,7 +559,10 @@ function ipc() {
     if (oui !== undefined) { reglages.majAuto = !!oui; ecrireReglages(); }
     return reglages.majAuto !== false;
   });
-  recevoir('langue', (_, l) => { langue = l === 'en' ? 'en' : 'fr'; });
+  recevoir('langue', (_, l) => {
+    langue = l === 'en' ? 'en' : 'fr';
+    if (process.platform === 'darwin') Menu.setApplicationMenu(menuMac(langue));
+  });
   // the full user guide, in the interface's language (text files next to the engine)
   recevoir('ouvrir-guide', () => shell.openPath(path.join(racine, langue === 'en' ? 'USER-GUIDE.txt' : 'LISEZ-MOI-APPLICATION.txt')));
   // One-click update: the new installer is downloaded (progress sent to the window) and
@@ -608,7 +678,11 @@ async function telechargerInstallateur(a, progression) {
 
 // Once Nuée has closed, the installer runs silently, in the same mode (for all users when it
 // was installed so, which Windows asks to allow: installation.js; for this user otherwise) and folder;
-// then Nuée starts again, with the same profile. cmd.exe waits two seconds (Nuée has closed) by
+// then Nuée starts again, with the same profile. --updated tells the installer it is an update:
+// it then keeps the Start menu and desktop shortcuts and the application's taskbar identity, so a
+// pin on the taskbar survives. Without it, an installer that lets one choose the folder
+// (allowToChangeInstallationDirectory) has the old version's uninstaller delete the shortcuts and
+// makes new ones, and Windows drops the pin with them. cmd.exe waits two seconds (Nuée has closed) by
 // running this executable as Node, a program without a console (ping, a console program run by
 // a cmd.exe that has none, opened a black window), then for the installer; the paths reach it
 // through environment variables. A go-between starts it and ends at once (this executable run
@@ -619,7 +693,7 @@ function installerPuisRelancer(fichier) {
   const pourTous = require('./installation').pourTousLesUtilisateurs(dossier);
   const relance = process.argv.slice(1).filter((x) => /^--(user-data-dir|remote-debugging-port)=/.test(x)).map((x) => `"${x}"`).join(' ');
   const commande = `start "" /wait "%NUEE_EXE%" -e "setTimeout(Boolean, 2000)" & set "ELECTRON_RUN_AS_NODE="`
-    + ` & start "" /wait "%NUEE_INSTALLATEUR%" /S ${pourTous ? '/allusers' : '/currentuser'}`
+    + ` & start "" /wait "%NUEE_INSTALLATEUR%" /S --updated ${pourTous ? '/allusers' : '/currentuser'}`
     + (/^[^&|<>^%"]+$/.test(dossier) ? ' /D=%NUEE_DOSSIER%' : '') + ` & start "" "%NUEE_EXE%"${relance ? ' %NUEE_RELANCE%' : ''}`;
   // (cmd.exe keeps ELECTRON_RUN_AS_NODE for the wait, then drops it: the installer, then Nuée)
   const relais = `require('child_process').spawn('cmd.exe', ['/d', '/s', '/c', '"' + process.env.NUEE_COMMANDE + '"'], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();`;
@@ -678,7 +752,9 @@ async function demarrer() {
   nettoyerTemporairesR();
   // the installer of the last one-click update, once it has run
   if (verificationPossible()) fs.rm(path.join(app.getPath('temp'), 'nuee-mise-a-jour'), { recursive: true, force: true }, () => {});
-  Menu.setApplicationMenu(null);  // the interface draws its own menu bar
+  // the interface draws its own menu bar (macOS keeps one of its own: menuMac, in the system's
+  // language until the interface gives its own)
+  Menu.setApplicationMenu(process.platform === 'darwin' ? menuMac(app.getLocale().startsWith('fr') ? 'fr' : 'en') : null);
   // Spelling in French and in English, the languages of documents, besides the system's: alone,
   // the system's would mark every word of a document in the other one. (Their dictionaries
   // come the first time from Chromium's servers, as the system's does; macOS uses its own.)
@@ -705,14 +781,7 @@ async function demarrer() {
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
-app.on('second-instance', (_, argv) => {  // Nuée started again: its file opens in the main window
-  const f = BrowserWindow.getAllWindows().find((x) => !new URL(x.webContents.getURL()).searchParams.get('vue')) || BrowserWindow.getAllWindows()[0];
-  if (!f) return;
-  if (f.isMinimized()) f.restore();
-  f.focus();
-  const fichier = fichierDonne(argv);
-  if (fichier) f.webContents.send('ouvrir-fichier', fichier);
-});
+app.on('second-instance', (_, argv) => montrerFenetre(fichierDonne(argv)));  // Nuée started again: its file opens in the main window
 app.whenReady().then(demarrer);
 app.on('window-all-closed', () => app.quit());
 app.on('quit', () => {

@@ -5,12 +5,13 @@
 <p align="center"><b>English</b> · <a href="README.fr.md">Français</a></p>
 
 <p align="center">
-  <b>PCA, PLS, PLS-DA and OPLS on Windows and Linux, computed in plain R.</b><br>
+  <b>PCA, PLS, community ecology, mixed models and maps on Windows, macOS and Linux, computed in plain R.</b><br>
   Interactive plots, models side by side, and every calculation open to read.
 </p>
 
 <p align="center">
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1b4a9c">
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20silicon%20%7C%20Intel-1b4a9c">
   <img alt="Linux" src="https://img.shields.io/badge/Linux-deb%20%7C%20AppImage-1b4a9c">
   <img alt="Interface in French and English" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-1b4a9c"></a>
@@ -27,8 +28,8 @@ for your Methods section, or export a script or an R Markdown / Quarto report th
 model in plain R, without Nuée. Every calculation is written in R, with comments, so you can
 check exactly what was computed, and change it.
 
-The interface is in English and French (*View › Language*); the screenshots show it in
-French.
+The interface is in English, by default, and French (*View › Language*); the screenshots show it
+in English.
 
 ## Install
 
@@ -48,9 +49,26 @@ one, a click in the status bar downloads its installer, checks it against the SH
 GitHub gives, offers to save your projects, installs it and starts Nuée again. *Help › Look for
 a new version at start-up* turns the check off.
 
-**For IT departments:** silent installation for one user or the whole computer, a policy that
-turns the update check off for everyone, what Nuée writes where and sends over the network:
+**For IT departments:** silent installation for one user or the whole computer, the settings
+for Intune, Configuration Manager, Group Policy and PDQ Deploy, a policy that turns the update
+check off for everyone, what Nuée writes where and sends over the network:
 [docs/deploiement.md](docs/deploiement.md).
+
+### macOS
+
+1. Download `Nuee-<version>-arm64.dmg` (Apple silicon, macOS 14 or later) or
+   `Nuee-<version>-x64.dmg` (Intel, macOS 13 or later) from the
+   [Releases](https://github.com/4rtefakt/nuee/releases) page.
+2. Open it and drag Nuée into *Applications*.
+3. The application isn't signed with an Apple Developer ID, so the first time macOS says it
+   couldn't check it: click *Done*, then *Open Anyway* in *System Settings › Privacy &
+   Security*, and confirm. Nuée then opens as any other application.
+
+R is included, as on Windows: there is nothing else to install, and an R already on the Mac is
+neither used nor changed. Settings are kept in `~/Library/Application Support/Nuee`. At
+start-up it asks GitHub whether a newer version exists; a click in the status bar opens its
+page, whose `.dmg` replaces the application. Every change is checked on GitHub on Apple silicon
+and Intel Macs, from the `.dmg`, on a Mac without R.
 
 ### Linux
 
@@ -65,7 +83,7 @@ libraries, so it can't be carried along as on Windows).
   it needs FUSE 2, the `libfuse2` package on most distributions) or
   `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
   distribution first, then the packages, in R:
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger"))`.
   On Ubuntu 24.04 and later, prefer the `.deb`: it installs the AppArmor profile Chromium's
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 
@@ -91,6 +109,10 @@ page.
   *File › Paste a table* (Ctrl+V) takes cells copied from any spreadsheet, or drop files on
   the window. Text columns and factors become qualitative variables you can colour by, or use
   as classes.
+- **Not sure which analysis?** *Model › Which analysis?* asks your question in plain words
+  (compare groups, the effect of variables, many species, a trend, where…), proposes the
+  response and the design from your data, recommends an analysis with its conditions and opens
+  New model already filled in.
 - **Make a model:** *Model › New model* (Ctrl+N): type, the role of each variable (X, Y
   or left out), scaling and transformation, observations to include. The number of components
   is chosen by cross-validation unless you set it.
@@ -101,7 +123,8 @@ page.
 
 The full user guide comes with the application (*Help › User guide › Full guide*), in
 English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
-([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)).
+([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)). It is also on the
+[documentation website](https://4rtefakt.github.io/nuee/en/), with three tutorials.
 
 ## What it does
 
@@ -144,8 +167,9 @@ Sampling dates can be the time.
 **Linear, generalized and mixed models:** linear regression and linear mixed models (nlme),
 with nested random effects (site, then sector within the site), random slopes (each site its
 own trend) and a continuous-time autocorrelation (CAR1); generalized linear and additive models
-(mgcv) for counts (Poisson, negative binomial), presence-absence, positive values and densities
-with zeros (Tweedie), with random effects, an effort as an offset, and smooth curves for effects
+(mgcv) for counts (Poisson, negative binomial, zero-inflated Poisson), presence-absence,
+proportions between 0 and 1 (beta), positive values and densities with zeros (Tweedie), with
+random effects, an effort as an offset, and smooth curves for effects
 that rise then fall or have a threshold, one per category if wanted (with CAR1 too, through
 mgcv::gamm, for a normal response); qualitative variables in cross terms (the year's slope by
 sector); coefficients with their intervals, adjusted means and pairs of levels as emmeans gives
@@ -156,7 +180,9 @@ in one click), the AIC change when each block of variables is removed, an AIC se
 fits every combination of the blocks and suggests a model to fit in one click, and an AIC
 comparison (ΔAIC, Akaike weights, likelihood-ratio tests of nested models) of the regressions
 of the same response, next to the cross-validated Q2 of every model, with their coefficients
-side by side; the power to detect a trend, for a monitoring design. New variables can take the
+side by side; the power to detect a trend, for a monitoring design; the model's conditions
+checked and said in words (residuals, spread, influential points, overdispersion, excess zeros,
+collinearity, spatial autocorrelation). New variables can take the
 previous year's value in a sector, or the growth rate. An R formula box sets the model (R reads
 it and never runs it), and regressions predict new observations and files, extrapolations
 flagged.
@@ -165,13 +191,43 @@ flagged.
 abundances (Hellinger, chord or log(x + 1) transformed) by explanatory variables, partial RDA
 with covariates, triplots in scaling 1 or 2, adjusted R2, permutation tests of the model, of
 each axis and of each term (within sites if needed), forward selection and variation
-partitioning; correspondence analysis (CA) of count tables, with contributions and cos². The
-results are those of the vegan package.
+partitioning; correspondence analysis (CA) of count tables, with contributions and cos²;
+canonical correspondence analysis (CCA, partial too). Analyses built on a distance between
+samples (Bray–Curtis, Jaccard, Gower, Hellinger and five others, on abundances or presences):
+PCoA, NMDS with its Shepard diagram, PERMANOVA with the multivariate dispersion of each group,
+and the Mantel test (partial, with its correlogram, or against the geographic distance between
+samples), the explanatory variables fitted onto the ordination. Indicator species (IndVal.g),
+rarefaction and species accumulation curves with richness estimators (Chao1, ACE, jackknife).
+The results are those of the vegan and indicspecies packages, with the same p values for the
+same permutations.
 
-**Trees, discriminant analysis, clustering:** decision trees (rpart) for a quantitative
-response or a class, on the raw variables so that thresholds read in their units, pruned by a
-cross-validation by site and validated by predicting each site with a tree rebuilt without it,
-with the stability of the first split; linear discriminant analysis (MASS::lda) with a
+**Monitoring:** distance sampling, density and abundance from line transects or point counts as
+the Distance package computes them (half-normal, hazard-rate or uniform detection functions with
+adjustment terms chosen by AIC, truncation, binned distances, groups, strata, the encounter
+rate's variance and Satterthwaite intervals). TRIM, the standard of European bird monitoring,
+written from Statistics Netherlands' method: yearly indices and totals with their standard
+errors from counts with gaps, overdispersion and serial correlation, changepoints chosen or
+stepwise, covariates and weights, and the overall slope with its class (moderate increase,
+stable, steep decline...), as rtrim gives them. One model per response fits the same regression to each species and corrects each
+term's p values over them (FDR), with a forest plot and small multiples.
+
+**Maps and spatial data:** a project's coordinates (WGS 84 longitudes and latitudes, Lambert-93,
+UTM...) place the observations on a map, coloured and sized by a variable or a model's results,
+on OpenStreetMap or IGN backgrounds when you choose one (nothing leaves the computer
+otherwise). GeoPackage files, QGIS's format, open with their coordinates, and the data and a
+model's results export to one. A raster's values (a DEM's elevation, land cover, a climate,
+from GeoTIFF files or ESRI ASCII grids) are added at each site, as terra::extract gives them.
+Moran's I of a variable or of a model's residuals, its correlogram and the semivariogram, as
+spdep and gstat give them, and a spatial smooth s(x, y) in additive models for what the terms
+leave in space.
+
+**Trees and forests, discriminant analysis, clustering:** decision trees (rpart) for a
+quantitative response or a class, on the raw variables so that thresholds read in their units,
+pruned by a cross-validation by site and validated by predicting each site with a tree rebuilt
+without it, with the stability of the first split; random forests (ranger) and boosted
+regression trees (gbm's algorithm, for a measurement, a presence-absence or counts), with their
+out-of-bag or cross-validated error, the variables' importance and partial dependence, as ranger
+and gbm give them; linear discriminant analysis (MASS::lda) with a
 cross-validated classification and posterior probabilities; k-means with silhouettes and the
 choice of k.
 
@@ -205,11 +261,17 @@ the model's domain, and export the results.
 - a recovery copy every two minutes, offered back after a crash, and undo for data changes;
 - notes on each model;
 - data editing and new variables from R formulas or value ranges; columns added from another
-  table by a key, and tables summarized by group;
+  table by a key, and tables summarized by group; find and replace (Ctrl+H), a qualitative
+  variable's categories renamed, merged or reordered, and a unit and a description for each
+  variable, carried into axis titles, the Methods and Results texts and the exports; exports of
+  KoboToolbox and ODK Central forms opened cleanly (metadata dropped, choices as categories, GPS
+  points as the project's coordinates, repeat groups with their parents' columns);
 - a model's observations chosen by a condition (`site == "S1" & year >= 2010`), applied again at
   each fit;
 - several windows, and views that pop out onto a second screen;
-- plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG;
+- plots formatted for publication (fonts, palettes, size) and exported as PNG or SVG, and figures
+  composed of several plots (A, B, C panels at a journal's width) exported as vector PDF, SVG, or
+  PNG and TIFF at 300 or 600 dpi;
 - Ctrl+C on any result table copies it, ready to paste into Excel;
 - *View › Find a command* (Ctrl+K): type part of a command's name instead of looking through the menus;
 - a model report as PDF or Word;
@@ -217,8 +279,12 @@ the model's domain, and export the results.
   references (*Model › Text for the Methods section*);
 - documents kept in the project (*File › New document*): an article or a report in Markdown, beside
   its live preview, that cites the project's results (`{{M1.Q2}}`, `{{M1.scores | caption}}`, the
-  Methods text) and the literature (`[@wold2001]`, from BibTeX or CSL-JSON files or from Zotero),
-  and compiles to Word, PDF, HTML or Quarto.
+  Methods text, the Results text `{{M1.resultats}}` that puts the model's findings in sentences) and
+  the literature (`[@wold2001]`, from BibTeX or CSL-JSON files or from Zotero), and compiles to
+  Word, PDF, HTML or Quarto, the Quarto document reproducible if you like: each cited value, plot
+  and table recomputed from the raw data by the models' Export to R scripts;
+- a problem report (*Help › Diagnostic information*): a `.zip` with the versions and the session's
+  journal, and the project if you tick it, to attach to a message; nothing is sent.
 
 ## Files
 
@@ -254,7 +320,8 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
   on screen.
 - **Export to R** (*File › Export to R*): any model becomes a script, or an R Markdown
   or Quarto report, that refits it without Nuée, in plain R with no package (a regression: `lm`,
-  or `nlme` and `mgcv`, which come with R). It holds the
+  or `nlme` and `mgcv`, which come with R; a random forest, the one exception: `ranger`, which
+  Nuée installs with itself). It holds the
   data (or reads them from a CSV next to it) and the calculation written for that model alone,
   with comments: its scaling, the NIPALS algorithm, the cross-validation, then the statistics,
   tables and plots (a PLS is about 170 lines of code). The report adds the Methods text,
@@ -292,7 +359,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.9) [Computer software]. https://github.com/4rtefakt/nuee
+> Boutin, C. (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).
@@ -307,7 +374,7 @@ checks run on GitHub for every push and pull request.
 
 Nuée is free software under the [GNU General Public License v3.0](LICENSE) or later.
 
-The installer bundles R (GPL-2 | GPL-3) with its recommended packages and the R packages
+The Windows installer and the macOS application bundle R (GPL-2 | GPL-3) with its recommended packages and the R packages
 httpuv, jsonlite, openxlsx, haven, readxl and their dependencies, Electron (MIT), Plotly.js (MIT),
 dockview (MIT), Lucide icons (ISC), and CodeMirror and markdown-it (MIT) for the documents, each under
 its own license.

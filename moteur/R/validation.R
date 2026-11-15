@@ -19,13 +19,19 @@ permutations <- function(projet, m, definition, y = 1, n = 20, graine = 1) {
   variables <- unique(vapply(if (m$plsda) d$y else d$y[y], function(t) as.character(t$variables[1]), ""))
   valeurs <- projet$donnees[lignes_y, variables, drop = FALSE]
   present <- m$MY[, y] == 1
+  # X ne change pas d'une permutation à l'autre : le côté X du modèle (ses blocs, ceux de chaque
+  # sous-modèle de la validation croisée) est calculé une fois pour toutes (modele.R : cote_x_modele),
+  # sauf quand une variable permutée est aussi en X, ou fait les groupes de la validation croisée
+  en_x <- unique(as.character(unlist(lapply(d$x, function(t) t$variables))))
+  groupes_par <- if (identical(as.character(d$groupes_vc$by %||% "")[1], "variable")) as.character(d$groupes_vc$variable)
+  cote_x <- if (!any(variables %in% c(en_x, groupes_par))) cote_x_modele(projet, d, m$G)
   set.seed(graine)
   lignes <- list(c(correlation = 1, mesure(m)))
   for (i in seq_len(n)) {
     ordre <- sample(length(lignes_y))
     pp <- projet
     pp$donnees[lignes_y, variables] <- valeurs[ordre, , drop = FALSE]
-    r <- calculer_modele(pp, d, A, m$G)
+    r <- calculer_modele(pp, d, A, m$G, cote_x = cote_x)
     deux <- present & r$MY[, y] == 1
     corr <- suppressWarnings(stats::cor(m$Y[deux, y], r$Y[deux, y]))
     lignes[[i + 1]] <- c(correlation = abs(corr), mesure(r))

@@ -1,7 +1,7 @@
 // Interface strings, French and English.
 const TEXTES = {
   fr: {
-    titre: 'Nuée', sous_titre: 'ACP, PLS, PLS-DA et OPLS, calculées en R',
+    titre: 'Nuée', sous_titre: 'ACP, PLS, écologie des communautés, modèles et cartes, calculés en R',
     projet_exemple: 'Projet d’exemple', projet_exemple_aide: 'Des données inventées (120 pommes) pour essayer l’application', licence: 'Licence',
     // menus
     m_fichier: 'Fichier', m_edition: 'Édition', m_modele: 'Modèle', m_graphiques: 'Graphiques',
@@ -209,7 +209,7 @@ const TEXTES = {
     seuil_vip: 'Seuil VIP', chute: 'marche', marche_faible: 'pas de marche nette', vip_retenues: 'variables au-dessus',
     vip_note: 'Seuil à la plus grande marche des VIP triés autour de 0,8 (règle empirique de Wold). Pointillés : VIP = 1 (seuil habituel). Méthode de l’application.',
     filtrer_variables: 'Variables dont le nom contient…', colonnes_montrees: '{n} variables montrées sur {total}',
-    recherche: 'Filtrer…', lignes: 'lignes', obs: 'obs.', vars: 'var.', rmsee: 'RMSEE', rmsecv: 'RMSEcv',
+    recherche: 'Filtrer…', lignes: 'lignes', ligne: 'ligne', obs: 'obs.', vars: 'var.', rmsee: 'RMSEE', rmsecv: 'RMSEcv',
     // model dialog
     general: 'Général', variables: 'Variables', observations: 'Observations',
     type: 'Type', role: 'Rôle', role_x: 'X', role_y: 'Y', role_classe: 'Classe', role_aucun: '—',
@@ -355,7 +355,7 @@ const TEXTES = {
     format_projet: 'Projet Nuée', format_usp: 'Projet .usp', format_excel: 'Excel', format_texte: 'Texte (CSV, tabulations)',
     format_csv: 'CSV (virgules)', format_tsv: 'Texte séparé par des tabulations', format_r: 'R', format_rds: 'R, un objet',
     format_rdata: 'R, espace de travail', format_spss: 'SPSS', format_stata: 'Stata', format_sas: 'SAS', format_xpt: 'SAS (transport)',
-    format_jamovi: 'jamovi', format_dbase: 'dBase', format_arff: 'Weka (ARFF)', format_spectres: 'Spectres JCAMP-DX, SPC',
+    format_jamovi: 'jamovi', format_dbase: 'dBase', format_arff: 'Weka (ARFF)', format_geopackage: 'GeoPackage (QGIS)', format_spectres: 'Spectres JCAMP-DX, SPC',
     tous_spectres: 'Spectres (JCAMP-DX, SPC, texte)', importer_spectres: 'Importer des spectres…', importer_spectres_titre: 'Importer des spectres',
     importer_spectres_texte: 'Un ou plusieurs fichiers de spectres, réunis en un projet : une ligne par spectre, une colonne par longueur d’onde. JCAMP-DX (.jdx, .dx), SPC (Galactic, Thermo), ou texte : une colonne d’abscisses puis une colonne par spectre.',
     fichiers_spectres: 'Fichiers', choisir_fichiers: 'Choisir les fichiers…', aucun_fichier: 'Aucun fichier choisi', n_fichiers: '{n} fichier(s) : {noms}',
@@ -468,9 +468,13 @@ const TEXTES = {
     decalage_aide: 'Une variable d’effort (surface, durée, nombre de passages) : log(effort) entre dans le modèle avec un coefficient 1, qui modélise alors une densité.',
     famille_gaussienne: 'normale', famille_poisson: 'Poisson (comptages)', famille_binomiale_negative: 'binomiale négative (comptages dispersés)',
     famille_binomiale: 'binomiale (présence-absence, 0/1)', famille_gamma: 'gamma (valeurs positives)', famille_tweedie: 'Tweedie (densités, avec des zéros)',
+    famille_poisson_zi: 'Poisson à excès de zéros (comptages, ZIP)', famille_beta: 'bêta (proportions entre 0 et 1)',
     glm_note: 'Un modèle linéaire généralisé (mgcv) : la loi de Y (comptages, présence-absence, valeurs positives, densités avec des zéros) et son lien ; au choix des effets aléatoires (un GLMM) et un effort en décalage. Une seule variable Y ; la colonne Bloc regroupe des variables pour la table des apports (AIC).',
     gam_note: 'Un modèle additif (mgcv) : comme un GLM, et les variables X cochées dans la colonne Courbe de l’onglet Variables y entrent par une courbe (une spline, que les données lissent), pour un effet qui monte puis descend, ou un seuil. Les courbes se voient dans Graphiques › Effets.',
     courbe: 'Courbe', courbe_aide: 'Un effet en courbe (spline lissée par REML) plutôt qu’en droite',
+    lissage_spatial: 'Lissage spatial', lissage_spatial_sans: 'choisissez d’abord les coordonnées du projet (Graphiques › Carte)',
+    lissage_spatial_aide: 'Une surface des coordonnées des observations, s(x, y) dans mgcv : une spline en plaques minces sur des coordonnées planes, une spline sur la sphère pour des longitudes et latitudes. Elle rend compte de la structure spatiale que les termes n’expliquent pas (voir Graphiques › Autocorrélation spatiale de ses résidus).',
+    lissage_spatial_k: 'La dimension de base du lissage spatial (k) : vide, 30 au plus.',
     courbe_unique: 'une courbe', courbe_par: 'une par {nom}',
     courbe_par_aide: 'Une courbe par catégorie d’une variable qualitative X, comme s(x, by = f) dans mgcv : chaque catégorie a sa courbe, de dimension k, centrée sur ses observations ; la variable reste en X, son effet principal donnant l’écart entre les catégories.',
     courbe_par_hors_x: 'Cette variable n’est plus en X : une courbe par catégorie demande son effet principal. Remettez-la en X, ou choisissez une courbe.',
@@ -498,6 +502,10 @@ const TEXTES = {
     moyennes_ddl_confinement: 'Degrés de liberté de la règle de confinement de nlme, comme emmeans les prend : le plus petit de ceux des coefficients qu’une moyenne ou une paire fait intervenir dans le codage par défaut de R (la première catégorie en référence), l’ordonnée à l’origine comptant pour le nombre de {groupe} moins un ({n}).',
     moyennes_echelle_log: 'Avec le lien log, les moyennes et leurs intervalles sont ramenés sur l’échelle de la réponse (exp) ; les paires sont des rapports de moyennes, testés sur l’échelle du lien.',
     moyennes_echelle_logit: 'Avec le lien logit, les moyennes sont des probabilités (logit inverse), leurs intervalles ramenés depuis l’échelle du lien ; les paires sont des rapports des cotes, testés sur l’échelle du lien.',
+    moyennes_echelle_beta: 'Avec le lien logit, les moyennes sont des proportions moyennes (logit inverse), leurs intervalles ramenés depuis l’échelle du lien ; les paires sont des rapports des cotes, testés sur l’échelle du lien.',
+    moyennes_echelle_zip: 'Poisson à excès de zéros : les moyennes sont des comptages attendus, p μ / (1 − e^(−μ)) au prédicteur linéaire log(μ) de chaque catégorie (θ₁ et θ₂ tenus pour connus), leurs intervalles ramenés depuis l’échelle du lien ; les paires sont des rapports de ces comptages attendus, testés sur leur logarithme par la méthode delta.',
+    moyennes_grille_effort_zip: 'un effort de 1 ({effort})',
+    moyennes_grille_spatial: 'le lissage spatial {nom} au point moyen des coordonnées ({x} ; {y})',
     moyennes_echelle_lien_note: 'Sur l’échelle du lien {lien} : les paires sont des différences.', moyennes_pentes_lien: 'Les pentes sont sur l’échelle du lien {lien}.',
     moyennes_y_log: 'Sur l’échelle de {y} : ramenée sur l’échelle de la variable, une moyenne de logarithmes serait une médiane (une moyenne géométrique), non une moyenne.',
     moyennes_y_transformee: 'Sur l’échelle de {y}, la réponse du modèle.',
@@ -509,13 +517,14 @@ const TEXTES = {
     moyennes_non_estimables_pentes: 'Sans observation, ces pentes ne sont pas estimables et sont laissées de côté : {liste}.',
     moyennes_paires_non_estimables: 'Paires laissées de côté (non estimables) : {liste}.',
     moyennes_choisir_paire: '(un clic sur une paire du tableau donne sa phrase)', moyennes_aucune_paire: 'Pas de paire à comparer.',
-    moyennes_moyenne: 'Moyenne ajustée', moyennes_probabilite: 'Probabilité', moyennes_paire: 'Paire', moyennes_paires: 'Paires de catégories',
+    moyennes_moyenne: 'Moyenne ajustée', moyennes_probabilite: 'Probabilité', moyennes_proportion: 'Proportion moyenne', moyennes_paire: 'Paire', moyennes_paires: 'Paires de catégories',
     moyennes_difference: 'Différence', moyennes_rapport: 'Rapport', moyennes_titre_pentes: 'Pentes de {x}', moyennes_axe: 'Moyenne ajustée de {y}', moyennes_axe_pente: 'Pente de {x}',
     generalise_note: 'Courbes et effets aléatoires estimés en REML, AIC en ML (mgcv). Q2 et RMSEcv sur l’échelle de Y : chaque groupe prédit par les effets fixes du modèle ajusté sans lui.',
     generalise_note_mv: 'Ajusté par maximum de vraisemblance (mgcv). Q2 et RMSEcv sur l’échelle de Y : chaque groupe de la validation croisée prédit par le modèle ajusté sans lui.',
     coefficients_lien: 'Sur l’échelle du lien {lien}.',
     coefficients_lien_log: 'Sur l’échelle du lien log : exp(estimation) est l’effet multiplicatif d’une unité de plus.',
     coefficients_lien_logit: 'Sur l’échelle du lien logit : exp(estimation) est le rapport des cotes d’une unité de plus.',
+    coefficients_lien_zip: 'Sur l’échelle du lien log du paramètre μ de la loi de Poisson : exp(estimation) multiplie μ pour une unité de plus ; le comptage attendu, p μ / (1 − e^(−μ)), dépend aussi de la probabilité p d’un comptage non nul, liée à μ par θ₁ et θ₂.',
     effet_multiplicatif: 'Effet multiplicatif', rapport_cotes: 'Rapport des cotes',
     surdispersion: 'Surdispersion : le khi² de Pearson vaut {d} fois ses degrés de liberté (au-delà de 1,5, les comptages varient plus que la loi ne le dit) ; les valeurs p sont trop petites. Essayez la loi binomiale négative.',
     lm_note: 'Une seule variable Y, quantitative. Les variables X peuvent être qualitatives (une catégorie sert de référence) ; sans variable X, le modèle nul, utile pour comparer les AIC. L’échelle par défaut garde les unités des variables. La colonne Bloc regroupe des variables pour la table des apports (AIC).',
@@ -641,7 +650,8 @@ const TEXTES = {
     cote_a_cote_aucun: 'Cochez au moins une régression.',
     cote_a_cote_note: 'Les coefficients des régressions cochées, une colonne par modèle : l’estimation avec son intervalle à 95 % (ou son erreur-type) du tableau de la vue Coefficients, en rouge quand p ≤ 0,05 ; vide quand le modèle n’a pas le terme. Dessous : n, AIC et AICc (ajustement en ML), R², l’écart-type σ de chaque effet aléatoire, φ de CAR1, l’edf de chaque courbe. Ctrl+C copie le tableau pour Excel ou Word, avec des étoiles pour p ; Fichier › Exporter les résultats du modèle (Ctrl+E) l’écrit.',
     exporter_coefficients_titre: 'Exporter les coefficients côte à côte',
-    texte_methodes: 'Texte pour la section Méthodes…', texte_methodes_titre: 'Méthodes — {nom}', references: 'Références',
+    texte_methodes: 'Texte pour la section Méthodes…', texte_methodes_titre: 'Méthodes — {nom}', references: 'Références', resultats_titre: 'Résultats',
+    verifications_titre: 'Conditions du modèle', verifications_note: 'Des repères, pas des tests à suivre à la lettre : avec beaucoup d’observations un test voit des écarts sans conséquence, avec peu il n’en voit aucun. Les graphiques des résidus restent la référence.',
     texte_methodes_note: 'Écrit d’après le modèle : à relire et à compléter (plan d’expérience, prélèvements…) avant de le publier.',
     copier_texte: 'Copier le texte', texte_copie: 'Texte copié dans le presse-papiers.',
     script_ecart: 'Le modèle refait par le script n’est pas exactement celui de Nuée ({ecart}). Le script est écrit ; merci de signaler ce cas.',
@@ -661,6 +671,9 @@ const TEXTES = {
     chercher_maj: 'Chercher une mise à jour', maj_recherche: 'Recherche d’une nouvelle version…',
     maj_injoignable: 'Impossible de joindre GitHub : {d}', maj_a_jour: 'Nuée {v} est la dernière version.',
     diagnostic: 'Informations de diagnostic', signaler_probleme: 'Signaler un problème',
+    rapport_probleme: 'Rapport de problème…', rapport_probleme_ecrit: 'Rapport de problème écrit : {chemin}',
+    rapport_probleme_texte: 'Un fichier .zip à joindre à votre message : ces informations de diagnostic et le journal de la séance (l’appel au moteur de chaque action, ses erreurs, les commandes de la console R). Rien n’est envoyé : vous choisissez où l’enregistrer et à qui le donner.',
+    rapport_probleme_projet: 'Joindre le projet « {nom} » (ses données et ses modèles), pour reproduire le problème',
     diagnostic_aide: 'Les versions de Nuée, du système, de R et de ses paquets, à coller dans un signalement sur GitHub. Ni chemins ni données.',
     copier_tableau: 'Copier le tableau', chercher_commande: 'Rechercher une commande…',
     palette_aide: 'Nom d’une commande ou d’un menu (Entrée pour la lancer)', palette_rien: 'Aucune commande ne correspond.',
@@ -671,7 +684,7 @@ const TEXTES = {
     ipls_aide: 'Le spectre est prétraité une fois, en entier, puis coupé ; chaque intervalle est une PLS sur sa zone : la barre donne son plus petit RMSEcv, le chiffre le nombre de composantes. En vert, les intervalles qui prédisent mieux que le spectre entier (tirets rouges). Cliquez des barres pour les choisir. Un nouveau modèle avec eux prétraite ses propres variables : avec SNV, MSC, detrend ou ligne de base, son RMSEcv peut différer de la barre.',
   },
   en: {
-    titre: 'Nuée', sous_titre: 'PCA, PLS, PLS-DA and OPLS, computed in R',
+    titre: 'Nuée', sous_titre: 'PCA, PLS, community ecology, models and maps, computed in R',
     projet_exemple: 'Example project', projet_exemple_aide: 'Made-up data (120 apples) to try the application', licence: 'License',
     m_fichier: 'File', m_edition: 'Edit', m_modele: 'Model', m_graphiques: 'Plots',
     m_prediction: 'Predict', m_fenetre: 'Window', m_affichage: 'View', m_aide: 'Help',
@@ -734,7 +747,7 @@ const TEXTES = {
     avertissement: 'Warning',
     console_sans_modele: 'no model shown',
     console_invite: 'R command (Enter: run · Shift+Enter: new line · Tab: complete · ↑ ↓: previous commands)',
-    console_aide: 'R console: everything runs in the application’s own R session. m = the model shown, p = its project; P1, M7… = the open projects and models, by the names the log gives them. projets(), modeles(), definition("M7"). After correcting an engine file (dossier_moteur()), recharger_moteur() then refit the model.',
+    console_aide: 'R console: everything runs in the application’s own R session. m = the model shown, p = its project; P1, M7… = the open projects and models, by the names the log gives them. projects(), models(), definition("M7"). After correcting an engine file (engine_folder()), reload_engine() then refit the model.',
     predictive: 'Predictive',
     orthogonale: 'Orthogonal',
     splot: 'S-plot (OPLS)',
@@ -876,7 +889,7 @@ const TEXTES = {
     seuil_vip: 'VIP cut-off', chute: 'step', marche_faible: 'no clear step', vip_retenues: 'variables above',
     vip_note: 'Cut-off at the largest step in the sorted VIPs around 0.8 (Wold’s rule of thumb). Dotted: VIP = 1 (usual cut-off). The app’s own method.',
     filtrer_variables: 'Variables whose name holds…', colonnes_montrees: '{n} of {total} variables shown',
-    recherche: 'Filter…', lignes: 'rows', obs: 'obs.', vars: 'vars', rmsee: 'RMSEE', rmsecv: 'RMSEcv',
+    recherche: 'Filter…', lignes: 'rows', ligne: 'row', obs: 'obs.', vars: 'vars', rmsee: 'RMSEE', rmsecv: 'RMSEcv',
     general: 'General', variables: 'Variables', observations: 'Observations',
     type: 'Type', role: 'Role', role_x: 'X', role_y: 'Y', role_classe: 'Class', role_aucun: '—',
     echelle: 'Scaling', echelle_defaut: 'Default scaling', echelle_UV: 'Unit variance (UV)', echelle_Par: 'Pareto', echelle_Ctr: 'Centring only', echelle_none: 'None',
@@ -1020,7 +1033,7 @@ const TEXTES = {
     format_projet: 'Nuée project', format_usp: '.usp project', format_excel: 'Excel', format_texte: 'Text (CSV, tab-separated)',
     format_csv: 'CSV (comma-separated)', format_tsv: 'Tab-separated text', format_r: 'R', format_rds: 'R, one object',
     format_rdata: 'R workspace', format_spss: 'SPSS', format_stata: 'Stata', format_sas: 'SAS', format_xpt: 'SAS transport',
-    format_jamovi: 'jamovi', format_dbase: 'dBase', format_arff: 'Weka (ARFF)', format_spectres: 'JCAMP-DX, SPC spectra',
+    format_jamovi: 'jamovi', format_dbase: 'dBase', format_arff: 'Weka (ARFF)', format_geopackage: 'GeoPackage (QGIS)', format_spectres: 'JCAMP-DX, SPC spectra',
     tous_spectres: 'Spectra (JCAMP-DX, SPC, text)', importer_spectres: 'Import spectra…', importer_spectres_titre: 'Import spectra',
     importer_spectres_texte: 'One or more files of spectra, made into one project: one row per spectrum, one column per wavelength. JCAMP-DX (.jdx, .dx), SPC (Galactic, Thermo), or text: a column of x values, then one column per spectrum.',
     fichiers_spectres: 'Files', choisir_fichiers: 'Choose files…', aucun_fichier: 'No file chosen', n_fichiers: '{n} file(s): {noms}',
@@ -1133,9 +1146,13 @@ const TEXTES = {
     decalage_aide: 'An effort variable (area, duration, number of visits): log(effort) enters the model with a coefficient of 1, which then models a density.',
     famille_gaussienne: 'normal', famille_poisson: 'Poisson (counts)', famille_binomiale_negative: 'negative binomial (overdispersed counts)',
     famille_binomiale: 'binomial (presence-absence, 0/1)', famille_gamma: 'gamma (positive values)', famille_tweedie: 'Tweedie (densities, with zeros)',
+    famille_poisson_zi: 'zero-inflated Poisson (counts, ZIP)', famille_beta: 'beta (proportions between 0 and 1)',
     glm_note: 'A generalized linear model (mgcv): the distribution of Y (counts, presence-absence, positive values, densities with zeros) and its link; optionally random effects (a GLMM) and an effort as an offset. A single Y variable; the Block column groups variables for the contributions table (AIC).',
     gam_note: 'An additive model (mgcv): like a GLM, and the X variables ticked in the Curve column of the Variables tab enter through a curve (a spline, smoothed by the data), for an effect that rises then falls, or a threshold. The curves show in Plots › Effects.',
     courbe: 'Curve', courbe_aide: 'A curved effect (a spline smoothed by REML) rather than a straight line',
+    lissage_spatial: 'Spatial smooth', lissage_spatial_sans: 'choose the project’s coordinates first (Plots › Map)',
+    lissage_spatial_aide: 'A surface of the observations’ coordinates, s(x, y) in mgcv: a thin plate spline on plane coordinates, a spline on the sphere for longitudes and latitudes. It accounts for the spatial structure the terms don’t explain (see Plots › Spatial autocorrelation of its residuals).',
+    lissage_spatial_k: 'The spatial smooth’s basis dimension (k): empty, 30 at most.',
     courbe_unique: 'one curve', courbe_par: 'one per {nom}',
     courbe_par_aide: 'A curve per category of a qualitative X variable, as s(x, by = f) does in mgcv: each category has its curve, of dimension k, centred on its observations; the variable stays in X, its main effect giving the difference between the categories.',
     courbe_par_hors_x: 'This variable is no longer in X: a curve per category needs its main effect. Put it back in X, or choose one curve.',
@@ -1163,6 +1180,10 @@ const TEXTES = {
     moyennes_ddl_confinement: 'Degrees of freedom of nlme’s containment rule, as emmeans takes them: the smallest of those of the coefficients a mean or a pair involves in R’s default coding (the first category as reference), the intercept counting for the number of {groupe} minus one ({n}).',
     moyennes_echelle_log: 'With the log link, the means and their intervals are back-transformed to the response scale (exp); the pairs are ratios of means, tested on the link scale.',
     moyennes_echelle_logit: 'With the logit link, the means are probabilities (inverse logit), their intervals back-transformed from the link scale; the pairs are odds ratios, tested on the link scale.',
+    moyennes_echelle_beta: 'With the logit link, the means are mean proportions (inverse logit), their intervals back-transformed from the link scale; the pairs are odds ratios, tested on the link scale.',
+    moyennes_echelle_zip: 'Zero-inflated Poisson: the means are expected counts, p μ / (1 − e^(−μ)) at each category’s linear predictor log(μ) (θ₁ and θ₂ taken as known), their intervals back-transformed from the link scale; the pairs are ratios of these expected counts, tested on their log by the delta method.',
+    moyennes_grille_effort_zip: 'an effort of 1 ({effort})',
+    moyennes_grille_spatial: 'the spatial smooth {nom} at the mean point of the coordinates ({x}; {y})',
     moyennes_echelle_lien_note: 'On the {lien} link scale: the pairs are differences.', moyennes_pentes_lien: 'The slopes are on the {lien} link scale.',
     moyennes_y_log: 'On the scale of {y}: back-transformed to the variable’s scale, a mean of logarithms would be a median (a geometric mean), not a mean.',
     moyennes_y_transformee: 'On the scale of {y}, the model’s response.',
@@ -1174,13 +1195,14 @@ const TEXTES = {
     moyennes_non_estimables_pentes: 'Without observations, these slopes aren’t estimable and are left out: {liste}.',
     moyennes_paires_non_estimables: 'Pairs left out (not estimable): {liste}.',
     moyennes_choisir_paire: '(a click on a pair in the table gives its sentence)', moyennes_aucune_paire: 'No pair to compare.',
-    moyennes_moyenne: 'Adjusted mean', moyennes_probabilite: 'Probability', moyennes_paire: 'Pair', moyennes_paires: 'Pairs of categories',
+    moyennes_moyenne: 'Adjusted mean', moyennes_probabilite: 'Probability', moyennes_proportion: 'Mean proportion', moyennes_paire: 'Pair', moyennes_paires: 'Pairs of categories',
     moyennes_difference: 'Difference', moyennes_rapport: 'Ratio', moyennes_titre_pentes: 'Slopes of {x}', moyennes_axe: 'Adjusted mean of {y}', moyennes_axe_pente: 'Slope of {x}',
     generalise_note: 'Curves and random effects estimated by REML, AIC by ML (mgcv). Q2 and RMSEcv on the scale of Y: each group predicted by the fixed effects of the model fitted without it.',
     generalise_note_mv: 'Fitted by maximum likelihood (mgcv). Q2 and RMSEcv on the scale of Y: each cross-validation group predicted by the model fitted without it.',
     coefficients_lien: 'On the {lien} link scale.',
     coefficients_lien_log: 'On the log link scale: exp(estimate) is the multiplicative effect of one more unit.',
     coefficients_lien_logit: 'On the logit link scale: exp(estimate) is the odds ratio of one more unit.',
+    coefficients_lien_zip: 'On the log link scale of the Poisson parameter μ: exp(estimate) multiplies μ for one more unit; the expected count, p μ / (1 − e^(−μ)), also depends on the probability p of a non-zero count, tied to μ by θ₁ and θ₂.',
     effet_multiplicatif: 'Multiplicative effect', rapport_cotes: 'Odds ratio',
     surdispersion: 'Overdispersion: Pearson’s chi-square is {d} times its degrees of freedom (above 1.5, the counts vary more than the distribution says); the p-values are too small. Try the negative binomial distribution.',
     lm_note: 'A single Y variable, a quantitative one. X variables can be qualitative (one category is the reference); without X, the null model, useful to compare AICs. The default scaling keeps the variables’ units. The Block column groups variables for the contributions table (AIC).',
@@ -1306,7 +1328,8 @@ const TEXTES = {
     cote_a_cote_aucun: 'Tick at least one regression.',
     cote_a_cote_note: 'The coefficients of the regressions ticked, a column per model: the estimate with its 95 % interval (or its standard error) from the table of the Coefficients view, in red when p ≤ 0.05; empty when the model lacks the term. Below: n, AIC and AICc (ML fit), R², the standard deviation σ of each random effect, CAR1’s φ, each curve’s edf. Ctrl+C copies the table for Excel or Word, with stars for p; File › Export model results (Ctrl+E) writes it.',
     exporter_coefficients_titre: 'Export the coefficients side by side',
-    texte_methodes: 'Text for the Methods section…', texte_methodes_titre: 'Methods — {nom}', references: 'References',
+    texte_methodes: 'Text for the Methods section…', texte_methodes_titre: 'Methods — {nom}', references: 'References', resultats_titre: 'Results',
+    verifications_titre: 'The model’s conditions', verifications_note: 'Pointers, not tests to follow to the letter: with many observations a test sees harmless departures, with few it sees none. The residual plots remain the reference.',
     texte_methodes_note: 'Written from the model: read it and complete it (design, sampling…) before publishing.',
     copier_texte: 'Copy the text', texte_copie: 'Text copied to the clipboard.',
     script_ecart: 'The model the script refits is not exactly Nuée’s ({ecart}). The script is written; please report this case.',
@@ -1326,6 +1349,9 @@ const TEXTES = {
     chercher_maj: 'Check for updates', maj_recherche: 'Looking for a new version…',
     maj_injoignable: 'Could not reach GitHub: {d}', maj_a_jour: 'Nuée {v} is the latest version.',
     diagnostic: 'Diagnostic information', signaler_probleme: 'Report a problem',
+    rapport_probleme: 'Problem report…', rapport_probleme_ecrit: 'Problem report written: {chemin}',
+    rapport_probleme_texte: 'A .zip file to attach to your message: this diagnostic information and the session’s journal (each action’s call to the engine, its errors, the R console’s commands). Nothing is sent: you choose where to save it and whom to give it to.',
+    rapport_probleme_projet: 'Attach the project “{nom}” (its data and models), to reproduce the problem',
     diagnostic_aide: 'The versions of Nuée, the system, R and its packages, to paste into a report on GitHub. No paths, no data.',
     copier_tableau: 'Copy table', chercher_commande: 'Find a command…',
     palette_aide: 'Name of a command or a menu (Enter runs it)', palette_rien: 'No command matches.',
@@ -1351,13 +1377,45 @@ export function ecrire(k, v) {
   try { localStorage.setItem(k, v); } catch { /* private window */ }
 }
 
-let langue = lire('langue') || 'fr';
+// English unless the person chose French (View › Language). Until 1.0 the default was French, and
+// the choice was kept only when changed: a profile that has shown an earlier version's What's new
+// (version_vue) and has no choice ran in French, and keeps it. Written once, so that a new
+// profile's What's new doesn't turn it French at its next start.
+let langue = lire('langue');
+if (langue !== 'fr' && langue !== 'en') {
+  langue = lire('version_vue') ? 'fr' : 'en';
+  ecrire('langue', langue);
+}
 
 export function t(cle, valeurs) {
-  let s = (TEXTES[langue] && TEXTES[langue][cle]) || TEXTES.fr[cle] || cle;
+  // (a string missing in the interface's language: the English one, else the French one)
+  let s = (TEXTES[langue] && TEXTES[langue][cle]) || TEXTES.en[cle] || TEXTES.fr[cle] || cle;
   // (every occurrence of a placeholder: a message may name its term twice)
   if (valeurs) for (const [k, v] of Object.entries(valeurs)) s = s.split(`{${k}}`).join(v);
   return s;
+}
+
+// A column of a model's results (its observations, its predictions) under its name in the
+// interface's language. The engine names them in French, and the names are keys too (residu,
+// groupe_vc…): only what is shown is translated. After a variable's name, the suffix is
+// translated and the name kept ("flamingo observé": "flamingo observed").
+const RESULTATS = {
+  fr: { residu: 'résidu', quantile_normal: 'quantile normal', cook: 'distance de Cook', groupe_vc: 'groupe VC',
+    classe_predite: 'classe prédite', classe_predite_vc: 'classe prédite (VC)', DModX_pondere: 'DModX (pond.)', DModX_absolu: 'DModX (abs.)' },
+  en: { residu: 'residual', quantile_normal: 'normal quantile', levier: 'leverage', cook: 'Cook’s distance', groupe_vc: 'CV group',
+    classe: 'class', classe_predite: 'predicted class', classe_predite_vc: 'predicted class (CV)', 'classe ajustée': 'fitted class',
+    'classe prédite (VC)': 'predicted class (CV)', 'classe prédite (OOB)': 'predicted class (OOB)', voisin: 'neighbouring cluster',
+    feuille: 'leaf', DModX_pondere: 'DModX (weighted)', DModX_absolu: 'DModX (absolute)' },
+};
+const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'],
+  ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
+export function libelleResultat(cle) {
+  const dico = RESULTATS[langue] || RESULTATS.fr;
+  if (cle in dico) return dico[cle];
+  if (langue !== 'en') return cle;
+  if (cle.startsWith('probabilité ')) return `probability ${cle.slice('probabilité '.length)}`;
+  for (const [fr, en] of SUFFIXES_RESULTATS) if (cle.endsWith(` ${fr}`)) return `${cle.slice(0, -fr.length)}${en}`;
+  return cle;
 }
 
 export function langueActuelle() { return langue; }

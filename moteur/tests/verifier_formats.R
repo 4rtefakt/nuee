@@ -385,6 +385,19 @@ verifier("en anglais : fichier R refusé, limites de dBase", startsWith(tryCatch
          startsWith(tryCatch(ecrire_tableau(cbind(large, V2047 = 1), file.path(dossier, "trop.dbf")), error = conditionMessage), "Too many columns for a dBase file: 2047"))
 options(nuee.langue = NULL)
 
+# Les tableaux de résultats exportés en anglais : leurs noms et ceux des colonnes que le moteur a
+# faites traduits, ceux des variables et des catégories du projet gardés ; en français, rien ne change.
+tabs <- list(resume = data.frame(methode = "x", graine = 1), coefficients = data.frame(terme = "a", estimation = 1, erreur_type = 0.1, bas = 0, haut = 2),
+             observations = data.frame(Observation = "o1", `densite observé` = 1, residu = 0.5, groupe_vc = 1, classe = "A", check.names = FALSE),
+             observations_echelle_2 = data.frame(x = 1))
+proj_noms <- list(variables = list(list(ids = list("densite"), categories = NULL), list(ids = list("classe"), categories = list("A", "B"))))
+en <- noms_tables_langue(tabs, proj_noms, "en")
+verifier("export en anglais : les noms des tableaux", identical(names(en), c("summary", "coefficients", "observations", "observations_scaling_2")))
+verifier("export en anglais : les colonnes du moteur traduites, celles des variables gardées",
+         identical(names(en$summary), c("method", "seed")) && identical(names(en$coefficients), c("term", "estimate", "std_error", "lower", "upper")) &&
+         identical(names(en$observations), c("Observation", "densite observed", "residual", "cv_group", "classe")))
+verifier("export en français : rien ne change", identical(noms_tables_langue(tabs, proj_noms, "fr"), tabs))
+
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
