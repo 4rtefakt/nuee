@@ -515,8 +515,15 @@ minimiser_detection <- function(f, gr, theta, bas, haut) {
 
 # Le maximum de vraisemblance sous les contraintes `cons` (c ≥ 0) par un lagrangien augmenté
 # (Powell–Hestenes–Rockafellar) : chaque sous-problème minimisé comme ci-dessus, les multiplicateurs
-# λ ← max(0, λ − ρ c), ρ décuplé tant que la violation ne baisse pas assez. Il converge si le dernier
-# sous-problème converge, les contraintes tenues et les multiplicateurs complémentaires (λ c = 0).
+# λ ← max(0, λ − ρ c), ρ décuplé tant que la violation ne baisse pas assez. Puis le point atteint
+# précisé par la méthode de Newton sur les conditions de Karush–Kuhn–Tucker : ses contraintes actives
+# (c < 1e−7) tenues comme des égalités, ∇f = Jᵀλ sur ses paramètres libres (le hessien du lagrangien
+# par différences de son gradient, λ de départ par les moindres carrés). Quand ρ a dû monter très
+# haut, le dernier sous-problème est si mal conditionné que sa convergence se joue au dernier bit,
+# d'un processeur à l'autre (Apple silicon) ; ce système-là converge en quelques pas à la précision
+# de la machine. Il converge si ∇f = Jᵀλ (à 1e−9 près, relativement), les contraintes tenues et les
+# multiplicateurs des actives positifs ; sinon, si le dernier sous-problème converge, les contraintes
+# tenues et les multiplicateurs complémentaires (λ c = 0).
 sous_contraintes_detection <- function(f, gr, cons, theta, bas, haut) {
   nc <- length(cons(theta)$c)
   lambda <- numeric(nc)
@@ -545,7 +552,40 @@ sous_contraintes_detection <- function(f, gr, cons, theta, bas, haut) {
     if (v > 0.25 * violation) rho <- min(rho * 10, 1e12)
     violation <- v
   }
-  list(par = theta, value = f(theta), convergence = if (fini && max(0, -cons(theta)$c) < 1e-8) 0 else 1, multiplicateurs = lambda)
+  certifie <- FALSE
+  actives <- which(cons(theta)$c < 1e-7)
+  libre <- theta > bas + 1e-12 & theta < haut - 1e-12
+  if (length(actives) && length(actives) < sum(libre)) {
+    th <- theta
+    k <- cons(th)
+    g <- gr(th)
+    mu <- tryCatch(qr.solve(t(k$J[actives, libre, drop = FALSE]), g[libre]), error = function(e) NULL)
+    for (it in 1:20) {
+      if (is.null(mu) || !all(is.finite(c(th, mu))) || any(th < bas | th > haut)) break
+      Ja <- k$J[actives, libre, drop = FALSE]
+      residu <- max(abs(g[libre] - drop(crossprod(Ja, mu)))) / max(1, abs(g))
+      if (residu < 1e-9 && max(abs(k$c[actives])) < 1e-12) {
+        certifie <- min(k$c) > -1e-10 && all(mu > 0)
+        break
+      }
+      gL <- function(x) gr(x) - drop(crossprod(cons(x)$J[actives, , drop = FALSE], mu))
+      h <- 1e-5 * pmax(1, abs(th))
+      W <- vapply(which(libre), function(j) { e <- replace(numeric(length(th)), j, h[j]); (gL(th + e) - gL(th - e))[libre] / (2 * h[j]) }, numeric(sum(libre)))
+      W <- (W + t(W)) / 2
+      pas <- tryCatch(solve(rbind(cbind(W, -t(Ja)), cbind(Ja, matrix(0, length(actives), length(actives)))),
+                            -c(g[libre] - drop(crossprod(Ja, mu)), k$c[actives])), error = function(e) NULL)
+      if (is.null(pas) || !all(is.finite(pas))) break
+      th[libre] <- th[libre] + pas[seq_len(sum(libre))]
+      mu <- mu + pas[-seq_len(sum(libre))]
+      k <- cons(th)
+      g <- gr(th)
+    }
+    if (certifie) {
+      theta <- th
+      lambda <- replace(numeric(nc), actives, mu)
+    }
+  }
+  list(par = theta, value = f(theta), convergence = if (certifie || (fini && max(0, -cons(theta)$c) < 1e-8)) 0 else 1, multiplicateurs = lambda)
 }
 
 # Une fonction de détection ajustée aux distances `x` : la clé, la série et ses ordres, depuis

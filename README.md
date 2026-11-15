@@ -5,12 +5,13 @@
 <p align="center"><b>English</b> · <a href="README.fr.md">Français</a></p>
 
 <p align="center">
-  <b>PCA, PLS, community ecology, mixed models and maps on Windows and Linux, computed in plain R.</b><br>
+  <b>PCA, PLS, community ecology, mixed models and maps on Windows, macOS and Linux, computed in plain R.</b><br>
   Interactive plots, models side by side, and every calculation open to read.
 </p>
 
 <p align="center">
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1b4a9c">
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20silicon%20%7C%20Intel-1b4a9c">
   <img alt="Linux" src="https://img.shields.io/badge/Linux-deb%20%7C%20AppImage-1b4a9c">
   <img alt="Interface in French and English" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-1b4a9c"></a>
@@ -52,6 +53,22 @@ a new version at start-up* turns the check off.
 for Intune, Configuration Manager, Group Policy and PDQ Deploy, a policy that turns the update
 check off for everyone, what Nuée writes where and sends over the network:
 [docs/deploiement.md](docs/deploiement.md).
+
+### macOS
+
+1. Download `Nuee-<version>-arm64.dmg` (Apple silicon, macOS 14 or later) or
+   `Nuee-<version>-x64.dmg` (Intel, macOS 13 or later) from the
+   [Releases](https://github.com/4rtefakt/nuee/releases) page.
+2. Open it and drag Nuée into *Applications*.
+3. The application isn't signed with an Apple Developer ID, so the first time macOS says it
+   couldn't check it: click *Done*, then *Open Anyway* in *System Settings › Privacy &
+   Security*, and confirm. Nuée then opens as any other application.
+
+R is included, as on Windows: there is nothing else to install, and an R already on the Mac is
+neither used nor changed. Settings are kept in `~/Library/Application Support/Nuee`. At
+start-up it asks GitHub whether a newer version exists; a click in the status bar opens its
+page, whose `.dmg` replaces the application. Every change is checked on GitHub on Apple silicon
+and Intel Macs, from the `.dmg`, on a Mac without R.
 
 ### Linux
 
@@ -357,7 +374,7 @@ checks run on GitHub for every push and pull request.
 
 Nuée is free software under the [GNU General Public License v3.0](LICENSE) or later.
 
-The installer bundles R (GPL-2 | GPL-3) with its recommended packages and the R packages
+The Windows installer and the macOS application bundle R (GPL-2 | GPL-3) with its recommended packages and the R packages
 httpuv, jsonlite, openxlsx, haven, readxl and their dependencies, Electron (MIT), Plotly.js (MIT),
 dockview (MIT), Lucide icons (ISC), and CodeMirror and markdown-it (MIT) for the documents, each under
 its own license.

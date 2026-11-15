@@ -6,6 +6,8 @@
 //   node tests/essai_appli.js <program> [screenshot.png] [program options...]
 // On Linux the program starts as from the desktop menu: no LANG and a short PATH (/usr/bin:/bin),
 // which once left the engine unable to read its own files. On a server, run it under xvfb-run.
+// macOS, as from the Finder (no LANG either): <program> is Nuée.app/Contents/MacOS/Nuée, and the
+// engine must run on the R in Nuée.app; a .nuee given to the Finder (open) opens in the window.
 // Needs Node 22 or later (fetch, WebSocket). Exits with 1 when a check fails.
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -23,7 +25,9 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-essai-'));
 const profil = path.join(dossier, 'profil');
 
-const garder = ['HOME', 'DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'APPIMAGE_EXTRACT_AND_RUN'];
+const mac = process.platform === 'darwin';
+// (TMPDIR: macOS gives each user their own)
+const garder = ['HOME', 'DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'APPIMAGE_EXTRACT_AND_RUN', 'TMPDIR'];
 const env = windows ? process.env
   : { ...Object.fromEntries(garder.filter((k) => process.env[k]).map((k) => [k, process.env[k]])), PATH: '/usr/bin:/bin' };
 
@@ -49,7 +53,7 @@ function tuer(proc) {
 // A process still running: on Linux, a zombie has stopped (in a container, the first process
 // may not reap the R that Nuée left when it quit)
 function enVie(pid) {
-  if (!windows) {
+  if (process.platform === 'linux') {
     try { const s = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); return s[s.lastIndexOf(')') + 2] !== 'Z'; } catch { return false; }
   }
   try { process.kill(pid, 0); return true; } catch { return false; }
@@ -146,6 +150,12 @@ async function brancher(cible) {
     const temporaire = sorties(await p.api('console', { code: 'cat(dirname(tempdir()))' }));  // the folder of this run
     res.localeR = sorties(await p.api('console', { code: 'cat(Sys.getlocale("LC_CTYPE"))' }));
     verifier('accentsLus', sorties(await p.api('console', { code: 'cat(nchar("Modèle"))' })) === '6');
+    if (mac) {  // (not one CRAN's installer put in /Library/Frameworks)
+      // (the é of Nuée.app may be one character or two, e and its accent: compared as one)
+      const rHome = sorties(await p.api('console', { code: 'cat(normalizePath(R.home()), normalizePath(.libPaths()[1]), sep = "\\n")' })).normalize('NFC').split('\n');
+      const r = fs.realpathSync(path.join(path.dirname(programme), '..', 'Resources', 'R')).normalize('NFC');
+      verifier('RDeNueeApp', rHome[0] === r && rHome[1] === path.join(r, 'library'), rHome);
+    }
 
     // the command palette (Ctrl+K), as a person would use it
     const commande = async (texte) => {
@@ -199,6 +209,16 @@ async function brancher(cible) {
     const ouvert = await p.attendre(`document.querySelector('.arbre').textContent.includes(${JSON.stringify(nom)})`, 20000).catch(() => false);
     verifier('fichierOuvertParUnSecondLancement', !!ouvert && second.exitCode !== null);
     tuer(second);
+    // macOS: a .nuee double-clicked in the Finder comes as an event (open-file), not as an argument
+    if (mac) {
+      const nomFinder = 'essai-finder';
+      const c = await p.api('coller', { texte: 'nom\ta\tb\no1\t1\t2\no2\t3\t5\no3\t4\t4\n', nom: nomFinder });
+      const f = path.join(dossier, `${nomFinder}.nuee`);
+      await p.api('enregistrer', { projet: c.id, chemin: f });
+      await p.api('fermer_projet', { projet: c.id });
+      execFileSync('open', ['-a', path.resolve(programme, '..', '..', '..'), f]);
+      verifier('fichierOuvertParLeFinder', !!(await p.attendre(`document.querySelector('.arbre').textContent.includes(${JSON.stringify(nomFinder)})`, 20000).catch(() => false)));
+    }
 
     verifier('sansViolationCSP', (await p.evaluer('window.__violations')).length === 0, await p.evaluer('window.__violations'));
     verifier('sansRefusDuMoteur', (await p.evaluer('window.__refus')).length === 0, await p.evaluer('window.__refus'));

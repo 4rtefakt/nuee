@@ -5,12 +5,13 @@
 <p align="center"><a href="README.md">English</a> · <b>Français</b></p>
 
 <p align="center">
-  <b>ACP, PLS, écologie des communautés, modèles mixtes et cartes sous Windows et Linux, calculés en R.</b><br>
+  <b>ACP, PLS, écologie des communautés, modèles mixtes et cartes sous Windows, macOS et Linux, calculés en R.</b><br>
   Des graphiques interactifs, des modèles côte à côte, et chaque calcul lisible.
 </p>
 
 <p align="center">
   <img alt="Windows 10 et 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1b4a9c">
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20silicon%20%7C%20Intel-1b4a9c">
   <img alt="Linux" src="https://img.shields.io/badge/Linux-deb%20%7C%20AppImage-1b4a9c">
   <img alt="Interface en français et en anglais" src="https://img.shields.io/badge/interface-FR%20%7C%20EN-2f7dcd">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/licence-GPL--3.0-1b4a9c"></a>
@@ -54,6 +55,23 @@ et redémarre Nuée. *Aide › Chercher une nouvelle version au démarrage* arr�
 l'ordinateur, les réglages pour Intune, Configuration Manager, les stratégies de groupe et PDQ
 Deploy, une stratégie qui coupe la recherche de mises à jour pour tous, ce que Nuée écrit où et
 envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
+
+### macOS
+
+1. Téléchargez `Nuee-<version>-arm64.dmg` (Apple silicon, macOS 14 ou plus récent) ou
+   `Nuee-<version>-x64.dmg` (Intel, macOS 13 ou plus récent) depuis la page
+   [Releases](https://github.com/4rtefakt/nuee/releases).
+2. Ouvrez-le et faites glisser Nuée dans *Applications*.
+3. L'application n'est pas signée avec un identifiant de développeur Apple : la première fois,
+   macOS dit qu'il n'a pas pu la vérifier. Cliquez sur *OK*, puis sur *Ouvrir quand même* dans
+   *Réglages Système › Confidentialité et sécurité*, et confirmez. Nuée s'ouvre ensuite comme
+   toute autre application.
+
+R est inclus, comme sous Windows : il n'y a rien d'autre à installer, et un R déjà présent sur
+le Mac n'est ni utilisé ni modifié. Les réglages sont dans `~/Library/Application Support/Nuee`.
+Au démarrage, Nuée demande à GitHub s'il existe une nouvelle version ; un clic dans la barre
+d'état ouvre sa page, dont le `.dmg` remplace l'application. Chaque changement est vérifié sur
+GitHub sur des Mac Apple silicon et Intel, depuis le `.dmg`, sur un Mac sans R.
 
 ### Linux
 
@@ -382,7 +400,7 @@ et chaque pull request.
 Nuée est un logiciel libre sous la [Licence publique générale GNU v3.0](LICENSE) ou
 ultérieure.
 
-L'installateur inclut R (GPL-2 | GPL-3) avec ses paquets recommandés et les paquets R httpuv,
+L'installateur Windows et l'application macOS incluent R (GPL-2 | GPL-3) avec ses paquets recommandés et les paquets R httpuv,
 jsonlite, openxlsx, haven, readxl et leurs dépendances, Electron (MIT), Plotly.js (MIT),
 dockview (MIT), les icônes Lucide (ISC), et CodeMirror et markdown-it (MIT) pour les documents,
 chacun sous sa propre licence.

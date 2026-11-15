@@ -254,6 +254,19 @@ aics <- vapply(ch$candidats, `[[`, 0, "AIC")
 verifier(sprintf("le choix de ds() : la clé seule puis un terme de plus tant que l'AIC baisse (%s)", paste(round(aics, 2), collapse = ", ")),
          identical(ch$raison, "aic") && all(diff(aics[-length(aics)]) < 0) && aics[length(aics)] > aics[length(aics) - 1] &&
            identical(ch$choisi$fd$ordres, seq_len(length(aics) - 2)) && isTRUE(ch$candidats[[1]]$monotonie == "aucune"))
+# Chaque candidat contraint : un point de Karush–Kuhn–Tucker à la précision de la machine, ∇f = Jᵀλ
+# sur ses contraintes actives (λ par les moindres carrés, tous positifs). Pour unif + cos(1, 2, 3, 4),
+# le lagrangien augmenté montait ρ jusqu'à 1e10 : son dernier sous-problème, mal conditionné, convergeait
+# ou non selon le dernier bit (sur Apple silicon, non : un résidu de 1e−4, et le choix s'arrêtait là).
+kkt <- vapply(Filter(function(m) isTRUE(m$contraint), ch$candidats), function(m) {
+  k <- contraintes_monotonie(m$fd, m$theta, TRUE)
+  a <- which(k$c < 1e-7)
+  g <- -colSums(vraisemblance_detection(m$fd, m$theta, bosse, TRUE)$scores)
+  l <- qr.solve(t(k$J[a, , drop = FALSE]), g)
+  if (isTRUE(m$converge) && min(k$c) > -1e-10 && all(l > 0)) max(abs(g - drop(crossprod(k$J[a, , drop = FALSE], l)))) / max(1, abs(g)) else Inf
+}, 0)
+verifier(sprintf("monotonie stricte : chaque candidat contraint converge, ∇f = Jᵀλ à la précision de la machine (résidus relatifs %s)", paste(signif(kkt, 2), collapse = ", ")),
+         length(kkt) >= 2 && all(kkt < 1e-9))
 
 # la densité écrite à la main, sur des lignes simulées en deux strates
 sim <- simuler(5)

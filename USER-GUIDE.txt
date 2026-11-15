@@ -14,6 +14,12 @@ For IT departments installing Nuée on many computers (silent installation, Intu
 Configuration Manager, Group Policy, turning the update check off): the deployment guide,
 https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md
 
+On macOS, R is included too: open Nuee-<version>-arm64.dmg (Apple silicon, macOS 14 or later)
+or Nuee-<version>-x64.dmg (Intel, macOS 13 or later) and drag Nuée into Applications. The
+first time, macOS says it couldn't check the application (it isn't signed by Apple): click
+"Done", then "Open Anyway" in System Settings › Privacy & Security, and confirm. Settings are
+in ~/Library/Application Support/Nuee.
+
 On Linux, Nuée uses the computer's R.
 - Debian, Ubuntu and their derivatives: sudo apt install ./Nuee-<version>-amd64.deb also
   installs R and the R packages needed. Nuée appears in the applications menu.
@@ -151,9 +157,9 @@ changes made since the last recovery copy (two minutes at most) are lost. Closin
 the engine no longer answers keeps the recovery copies, offered at the next start. After a
 minute of computing, the status bar says so.
 Help › What's new: the changes in each version (shown once after an update). The installed
-copy (Nuee-Setup, or the Linux packages) looks for a new version at start-up (a single request
-to GitHub, nothing else is sent) and mentions it in the status bar; on Linux, a click opens the
-version's page. On Windows, one click offers to update: the
+copy (Nuee-Setup, the macOS application or the Linux packages) looks for a new version at
+start-up (a single request to GitHub, nothing else is sent) and mentions it in the status bar;
+on macOS and Linux, a click opens the version's page. On Windows, one click offers to update: the
 installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then
 Nuée closes (offering to save the projects you changed), installs it and starts again. For an
 installation for all users, Windows asks for permission. Help › Check for updates does the

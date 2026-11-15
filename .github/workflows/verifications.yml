@@ -1,7 +1,8 @@
 # The engine's checks and the requests to the R server, on every push and pull request: on
-# Windows, and on Linux with the distributions' own R. Linux also builds the packages (.deb,
-# AppImage, .tar.gz), installs the .deb with what it depends on, and uses the installed program
-# end to end (app/tests/essai_appli.js). The packages stay with the run, and are added to a
+# Windows, on macOS (Apple silicon and Intel) and on Linux with the distributions' own R. Linux
+# also builds the packages (.deb, AppImage, .tar.gz), installs the .deb with what it depends on,
+# and uses the installed program end to end (app/tests/essai_appli.js); macOS builds Nuée.app
+# and its .dmg, and uses them the same way. The packages stay with the run, and are added to a
 # release when it is published.
 # (verifier_references.R needs exported .usp projects that are not in the repository.)
 name: Vérifications
@@ -216,6 +217,119 @@ jobs:
         with:
           name: capture-${{ matrix.nom }}
           path: ${{ matrix.nom }}*.png
+
+  # macOS, on Apple silicon and on Intel: CRAN's R 4.6.2 from its .pkg, the R Nuée.app brings along
+  # (app/construire.js), with the engine's packages. The engine's checks, the requests to the R
+  # server, then the build (Nuée.app and its .dmg), used end to end once the R of
+  # /Library/Frameworks is moved away: Nuée must run on the R it brings, on a Mac without R.
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, arch: arm64, cran: sonoma-arm64 }
+          - { runner: macos-15-intel, arch: x86_64, cran: big-sur-x86_64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: R
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/R.pkg" "https://cloud.r-project.org/bin/macosx/${{ matrix.cran }}/base/R-4.6.2-${{ matrix.arch }}.pkg"
+          sudo installer -pkg "$RUNNER_TEMP/R.pkg" -target /
+          Rscript -e 'cat(R.version.string, R.version$arch, "\n")'
+
+      # (in R's own library, which the build copies)
+      - name: Paquets R
+        run: sudo Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra', 'Distance'), lib = .Library, repos = 'https://cloud.r-project.org')"
+
+      - name: Vérifications du moteur
+        run: |
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
+            echo "::group::verifier_$f"
+            Rscript moteur/tests/verifier_$f.R
+            echo "::endgroup::"
+          done
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # the .usp converter, compiled with PyInstaller as on Windows
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: PyInstaller
+        run: python3 -m pip install pyinstaller
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-macos-${{ matrix.arch }}-${{ hashFiles('app/package-lock.json') }}
+
+      - name: Fichiers des versions GitHub, par l'API
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          nohup node .github/miroir-github.js 8123 > "$RUNNER_TEMP/miroir.log" 2>&1 &
+          echo "ELECTRON_MIRROR=http://127.0.0.1:8123/electron/electron/" >> "$GITHUB_ENV"
+          echo "ELECTRON_BUILDER_BINARIES_MIRROR=http://127.0.0.1:8123/electron-userland/electron-builder-binaries/" >> "$GITHUB_ENV"
+          echo "ELECTRON_BUILDER_BINARIES_ALLOW_HTTP=true" >> "$GITHUB_ENV"
+
+      # (construire.js runs tests/essai_api.js first; tests/essai_r_macos.js checks r-macos.js)
+      - name: Nuée.app et l'image disque
+        working-directory: app
+        run: |
+          npm ci
+          node tests/essai_r_macos.js
+          node construire.js ../dist
+
+      - name: Sans le R de /Library/Frameworks
+        run: sudo mv /Library/Frameworks/R.framework "$RUNNER_TEMP/R.framework"
+
+      - name: Nuée, de bout en bout
+        working-directory: app
+        run: node tests/essai_appli.js '../dist/Nuee/Nuée.app/Contents/MacOS/Nuée' ../dist/macos-${{ matrix.arch }}.png
+
+      # the same, from the .dmg as people get it
+      - name: Image disque, de bout en bout
+        working-directory: app
+        run: |
+          hdiutil attach -nobrowse -mountpoint "$RUNNER_TEMP/dmg" ../dist/installateur/Nuee-*.dmg
+          node tests/essai_appli.js "$RUNNER_TEMP/dmg/Nuée.app/Contents/MacOS/Nuée" ../dist/macos-${{ matrix.arch }}-dmg.png
+          hdiutil detach "$RUNNER_TEMP/dmg"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nuee-macos-${{ matrix.arch }}
+          path: dist/installateur/Nuee-*.dmg
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: capture-macos-${{ matrix.arch }}
+          path: dist/*.png
+
+  # A published release gets the macOS images, once both Macs' checks have passed
+  macos-version-publiee:
+    if: github.event_name == 'release'
+    needs: macos
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: nuee-macos-*
+          merge-multiple: true
+          path: paquets
+
+      - name: Images disque ajoutées à la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload '${{ github.event.release.tag_name }}' paquets/Nuee-*.dmg --clobber --repo '${{ github.repository }}'
 
   # A published release gets the Linux packages, once every Linux check has passed
   linux-version-publiee:
