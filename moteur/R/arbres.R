@@ -18,7 +18,8 @@
 # par les 10 groupes tirés au hasard de ce contrôle.
 #
 # En tête, les outils communs aux analyses de ce fichier, de discrimination.R (LDA) et de
-# kmoyennes.R (k-moyennes) ; leur export vers R est dans classement_script.R.
+# kmoyennes.R (k-moyennes) ; leur export vers R est dans classement_script.R. Les forêts
+# aléatoires (forets.R) et les arbres boostés (boosting.R) s'en servent aussi.
 
 # ---------------------------------------------------------------- outils communs
 
@@ -118,7 +119,8 @@ REFERENCES_CLASSEMENT <- list(
   wright_konig = "Wright, M. N., & König, I. R. (2019). Splitting on categorical predictors in random forests. PeerJ, 7, e6339. https://doi.org/10.7717/peerj.6339",
   friedman2001 = "Friedman, J. H. (2001). Greedy function approximation: A gradient boosting machine. The Annals of Statistics, 29(5), 1189–1232. https://doi.org/10.1214/aos/1013203451",
   friedman2002 = "Friedman, J. H. (2002). Stochastic gradient boosting. Computational Statistics & Data Analysis, 38(4), 367–378. https://doi.org/10.1016/S0167-9473(01)00065-2",
-  elith = "Elith, J., Leathwick, J. R., & Hastie, T. (2008). A working guide to boosted regression trees. Journal of Animal Ecology, 77(4), 802–813. https://doi.org/10.1111/j.1365-2656.2008.01390.x")
+  elith = "Elith, J., Leathwick, J. R., & Hastie, T. (2008). A working guide to boosted regression trees. Journal of Animal Ecology, 77(4), 802–813. https://doi.org/10.1111/j.1365-2656.2008.01390.x",
+  ridgeway = "Ridgeway, G. (2007). Generalized boosted models: A guide to the gbm package. https://CRAN.R-project.org/package=gbm")
 
 # La phrase des logiciels d'un texte des méthodes de ces analyses (R, Nuée et le paquet : rpart,
 # MASS, cluster ; NULL : R seul) et ses références (`cites`, avec celles de R et de Nuée), dans

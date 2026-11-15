@@ -169,7 +169,7 @@ if (avec_gbm) {
     }
     # le modèle du moteur (validation croisée par secteur) contre gbm refait sans chaque secteur
     d <- definir_modele(p, "BOOST", x = xs, y = u(c(gaussienne = "densite", binomiale = "presence", poisson = "comptage")[[loi]]), echelle = "none", vc = vc,
-                        options = list(loi = loi, arbres = 300, profondeur = 3, min_noeud = 10, taux = 0.05, fraction = 0.5))
+                        options = list(loi = loi, arbres_max = 300, profondeur = 3, min_feuille = 10, taux = 0.05, part = 0.5))
     m <- ajuster(p, d)
     chemin <- matrix(NA_real_, N, 300)
     for (s in unique(sect)) {
@@ -194,7 +194,7 @@ if (avec_gbm) {
 
 cat("Le modèle du moteur : validation croisée, prédictions, dépendance partielle\n")
 avant <- .Random.seed
-d <- definir_modele(p, "BOOST", x = xs, y = u("densite"), echelle = "none", vc = vc, options = list(arbres = 200, taux = 0.05), test = 221:240)
+d <- definir_modele(p, "BOOST", x = xs, y = u("densite"), echelle = "none", vc = vc, options = list(arbres_max = 200, taux = 0.05), test = 221:240)
 m <- ajuster(p, d)
 verifier("le hasard de la séance est rendu tel quel (avec_graine)", identical(avant, .Random.seed))
 app <- cc & !(seq_len(n) %in% 221:240)
@@ -227,7 +227,7 @@ pd <- vapply(g1, function(v) { z <- Xa; z$x3 <- v; mean(predire_boost_f(m, z)) }
 pds <- vapply(levels(Xa$x5), function(v) { z <- Xa; z$x5 <- factor(v, levels = levels(Xa$x5)); mean(predire_boost_f(m, z)) }, 0)
 verifier("dépendance partielle à la main : la moyenne de f sur les observations, la haie sur 25 valeurs, le sol par catégorie",
          proche(dep[[1]]$y, pd, 1e-12) && proche(dep[[1]]$x, g1) && proche(dep[[2]]$y, pds, 1e-12) && proche(dep[[2]]$reponse, pds))
-db <- definir_modele(p, "BOOST", x = xs, y = u("presence"), echelle = "none", vc = vc, options = list(loi = "binomiale", arbres = 150, taux = 0.05))
+db <- definir_modele(p, "BOOST", x = xs, y = u("presence"), echelle = "none", vc = vc, options = list(loi = "binomiale", arbres_max = 150, taux = 0.05))
 mb <- ajuster(p, db)
 garder("B2", db, mb)
 depb <- demande_analyse_dependance_partielle(list(modele = "B2", variables = "h_gel"))$dependance[[1]]
@@ -248,7 +248,7 @@ verifier("refus : une classe, une Y qualitative, une réponse binomiale qui n'es
            grepl("quantitative", refus(ajuster(p, definir_modele(p, "BOOST", x = u("haie"), y = u("sol"), echelle = "none", vc = vc)))) &&
            grepl("0 ou 1", refus(ajuster(p, definir_modele(p, "BOOST", x = xs, y = u("densite"), echelle = "none", vc = vc, options = list(loi = "binomiale"))))) &&
            grepl("comptages", refus(ajuster(p, definir_modele(p, "BOOST", x = xs, y = u("densite"), echelle = "none", vc = vc, options = list(loi = "poisson"))))) &&
-           grepl("trop peu", refus(ajuster(p, definir_modele(p, "BOOST", x = xs, y = u("densite"), echelle = "none", vc = vc, options = list(min_noeud = 100))))) &&
+           grepl("trop peu", refus(ajuster(p, definir_modele(p, "BOOST", x = xs, y = u("densite"), echelle = "none", vc = vc, options = list(min_feuille = 100))))) &&
            grepl("croisés", refus(ajuster(p, definir_modele(p, "BOOST", x = u("haie", "pluie"), y = u("densite"), echelle = "none", vc = vc, croises = list(u("haie", "pluie")))))))
 
 cat("Ce que l'interface reçoit, texte des méthodes, tableaux\n")
@@ -265,10 +265,10 @@ verifier("loi normale : observée, ajustée, en validation croisée ; R², Q² e
 for (langue in c("fr", "en")) {
   tt <- texte_methodes(p, d, etat$modeles$B1$modele, langue, "essai")
   tb <- texte_methodes(p, db, mb, langue, "essai")
-  verifier(sprintf("texte des méthodes (%s) : la loi, les arbres (profondeur, tirage, taux), le nombre d'arbres par validation croisée, l'influence ; Friedman, Elith, rpart", langue),
+  verifier(sprintf("texte des méthodes (%s) : la loi, les arbres (profondeur, tirage, taux), le nombre d'arbres par validation croisée, l'influence ; Friedman, Elith, Ridgeway, rpart", langue),
            any(grepl("rpart", tt$paragraphes)) && any(grepl("gbm", tt$paragraphes)) && any(grepl("6 (groupes|groups)", tt$paragraphes)) &&
              any(grepl("Newton", tb$paragraphes)) && any(grepl("AUC|ROC", tb$paragraphes)) && any(grepl("^Friedman, J. H. \\(2001\\)", tt$references)) &&
-             any(grepl("^Friedman, J. H. \\(2002\\)", tt$references)) && any(grepl("^Elith", tt$references)) && any(grepl("^Therneau", tt$references)) &&
+             any(grepl("^Friedman, J. H. \\(2002\\)", tt$references)) && any(grepl("^Elith", tt$references)) && any(grepl("^Ridgeway", tt$references)) && any(grepl("^Therneau", tt$references)) &&
              any(grepl(if (langue == "fr") "jeu de test" else "test set", tt$paragraphes)))
 }
 tb <- tables_resultats(p, etat$modeles$B1$modele)

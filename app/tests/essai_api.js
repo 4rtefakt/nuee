@@ -1311,12 +1311,12 @@ async function principal() {
       verifier(fc.classement === true && [].concat(fc.vues_defaut).join() === 'ens_importance,ens_classement' && fc.classification.oob.table.length === 2
         && fc.observations['probabilité haute'].length === 65 && fc.reglages.classe === v.niveau, `forêt de classement : ${fc.chiffres}`);
       const bo = await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, y: [v.densite], vc, echelle: 'none', nom: 'Boosting',
-        options: { loi: 'gaussienne', arbres: 120, taux: 0.1, profondeur: 2, min_noeud: 5 } });
+        options: { loi: 'gaussienne', arbres_max: 120, taux: 0.1, profondeur: 2, min_feuille: 5 } });
       verifier(bo.type === 'BOOST' && bo.N === 65 && bo.meilleur >= 1 && bo.meilleur <= 120 && bo.courbe.validation.length === 120
         && Math.abs([].concat(bo.influence.pourcentage).reduce((a, b) => a + b, 0) - 100) < 1e-6 && [].concat(bo.vues_defaut).join() === 'ens_importance,ens_erreur'
         && /arbres$/.test(bo.chiffres) && bo.reglages.options.profondeur === 2, `arbres boostés : ${bo.chiffres}`);
       const bb = await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, y: [v.presence], vc, echelle: 'none', nom: 'Boosting présence',
-        options: { loi: 'binomiale', arbres: 80, taux: 0.1, profondeur: 1, min_noeud: 5 } });
+        options: { loi: 'binomiale', arbres_max: 80, taux: 0.1, profondeur: 1, min_feuille: 5 } });
       verifier(bb.loi === 'binomiale' && typeof bb.qualite.auc_vc === 'number' && bb.classification.vc.table.length === 2 && /^AUC/.test(bb.chiffres), `présence : ${bb.chiffres}`);
       const db = await api('dependance_partielle', { modele: bb.id });
       verifier([].concat(db.dependance).length === 4 && [].concat(db.dependance).every((d) => d.reponse.every((p) => p > 0 && p < 1)), 'dépendance partielle : 4 variables, des probabilités');

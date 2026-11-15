@@ -45,11 +45,12 @@ LOIS_BOOST <- c("gaussienne", "binomiale", "poisson")
 # arbres gardés ne retiennent pas les données de l'étape qui les a faits)
 FORMULE_BOOST <- .z ~ .
 
-# Les réglages d'arbres boostés (d$options) ; par défaut, ceux d'Elith et al. (2008) et de gbm.
+# Les réglages d'arbres boostés (d$options, sous des noms que la forêt n'a pas : un modèle refait
+# d'un autre type ne les reprend pas) ; par défaut, ceux d'Elith et al. (2008) et de gbm.
 reglages_boost <- function(d) list(
-  loi = option_choix(d, "loi", LOIS_BOOST), arbres = option_nombre(d, "arbres", 2000, 10, 20000, TRUE),
-  profondeur = option_nombre(d, "profondeur", 3, 1, 10, TRUE), min_noeud = option_nombre(d, "min_noeud", 10, 1, 1e6, TRUE),
-  taux = option_nombre(d, "taux", 0.01, 1e-4, 1), fraction = option_nombre(d, "fraction", 0.5, 0.05, 1))
+  loi = option_choix(d, "loi", LOIS_BOOST), arbres = option_nombre(d, "arbres_max", 2000, 10, 20000, TRUE),
+  profondeur = option_nombre(d, "profondeur", 3, 1, 10, TRUE), min_noeud = option_nombre(d, "min_feuille", 10, 1, 1e6, TRUE),
+  taux = option_nombre(d, "taux", 0.01, 1e-4, 1), fraction = option_nombre(d, "part", 0.5, 0.05, 1))
 
 # La réponse d'arbres boostés : une variable Y quantitative (pas de classe).
 verifier_boost <- function(projet, d) {
@@ -478,8 +479,8 @@ texte_methodes_boost <- function(projet, d, m, langue = "fr", version = "") {
     gaussienne = if (fr) "la moyenne de ses résidus" else "the mean of its residuals",
     binomiale = if (fr) "un pas de Newton–Raphson, Σ(y − p) / Σp(1 − p)" else "one Newton–Raphson step, Σ(y − p) / Σp(1 − p)",
     if (fr) "log(Σy / Σμ), qui rend la déviance minimale" else "log(Σy / Σμ), which minimizes the deviance")
-  p2 <- sprintf(if (fr) "Un modèle d'arbres de régression boostés (gradient boosting, Friedman, 2001 ; boosting stochastique, Friedman, 2002 ; Elith et al., 2008) a été ajusté sur les valeurs brutes de %s avec %s, comme le calcule le paquet gbm. À chaque étape, un arbre de %d coupures (profondeur d'interaction ; chaque coupure faite sur la feuille où elle réduit le plus l'erreur) est ajusté par rpart (Therneau & Atkinson) au gradient de la déviance, sur un tirage sans remise de %s des observations (graine %d), avec au moins %d observations par feuille ; la valeur de chaque feuille est réestimée pour la déviance (%s), puis ajoutée au modèle avec un taux d'apprentissage de %s."
-                else "A boosted regression tree model (gradient boosting, Friedman, 2001; stochastic boosting, Friedman, 2002; Elith et al., 2008) was fitted on the raw values of %s with %s, as the gbm package computes it. At each step, a tree of %d splits (interaction depth; each split made on the leaf where it reduces the error most) is fitted by rpart (Therneau & Atkinson) to the gradient of the deviance, on a draw without replacement of %s of the observations (seed %d), with at least %d observations per leaf; the value of each leaf is re-estimated for the deviance (%s), then added to the model with a learning rate of %s.",
+  p2 <- sprintf(if (fr) "Un modèle d'arbres de régression boostés (gradient boosting, Friedman, 2001 ; boosting stochastique, Friedman, 2002 ; Elith et al., 2008) a été ajusté sur les valeurs brutes de %s avec %s, comme le calcule le paquet gbm (Ridgeway, 2007). À chaque étape, un arbre de %d coupures (profondeur d'interaction ; chaque coupure faite sur la feuille où elle réduit le plus l'erreur) est ajusté par rpart (Therneau & Atkinson) au gradient de la déviance, sur un tirage sans remise de %s des observations (graine %d), avec au moins %d observations par feuille ; la valeur de chaque feuille est réestimée pour la déviance (%s), puis ajoutée au modèle avec un taux d'apprentissage de %s."
+                else "A boosted regression tree model (gradient boosting, Friedman, 2001; stochastic boosting, Friedman, 2002; Elith et al., 2008) was fitted on the raw values of %s with %s, as the gbm package computes it (Ridgeway, 2007). At each step, a tree of %d splits (interaction depth; each split made on the leaf where it reduces the error most) is fitted by rpart (Therneau & Atkinson) to the gradient of the deviance, on a draw without replacement of %s of the observations (seed %d), with at least %d observations per leaf; the value of each leaf is re-estimated for the deviance (%s), then added to the model with a learning rate of %s.",
                 explicatives, loi, r$profondeur, pourcent_texte(r$fraction, fr), GRAINE_BOOST, r$min_noeud, feuilles, format(r$taux, decimal.mark = if (fr) "," else "."))
   if (m$manquantes_x > 0) p2 <- paste(p2, sprintf(if (fr) "Les %d observations où une valeur X manquait ont été laissées de côté." else "The %d observations with a missing X value were left out.", m$manquantes_x))
   qualite <- switch(m$loi,
@@ -507,6 +508,6 @@ texte_methodes_boost <- function(projet, d, m, langue = "fr", version = "") {
                             else "A test set of %d observations, left out of the model and of the cross-validation, was then predicted: RMSEP = %s, bias = %s, external Q² = %s.",
                             m$test$n, nombre_texte(m$test$statistiques$RMSEP, 3, fr), nombre_texte(m$test$statistiques$biais, 3, fr), nombre_texte(m$test$statistiques$Q2ext, 2, fr)))
   }
-  logiciels <- references_classement(c("friedman2001", "friedman2002", "elith", "rpart"), "rpart", fr, version)
+  logiciels <- references_classement(c("friedman2001", "friedman2002", "elith", "ridgeway", "rpart"), "rpart", fr, version)
   list(paragraphes = c(p1, p2, p3, p4, logiciels$phrase), references = logiciels$references)
 }

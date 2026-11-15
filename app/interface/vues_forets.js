@@ -17,7 +17,7 @@ const foret = (m) => m.type === 'FOREST';
 const chiffre = (k, v, d = 3) => el('span', {}, el('small', {}, k), ' ', el('b', {}, typeof v === 'number' ? fmt(v, d) : v ?? '—'));
 const pct = (v, d = 1) => (v === null || v === undefined ? '—' : `${fmt(100 * v, d)} %`);
 const titreFiche = (m) => el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, m.type), m.titre ? el('span', { class: 'doux' }, m.titre) : null);
-const groupesVC = (m) => (m.vc_par ? `${m.G} (${m.vc_par})` : m.G);
+const groupesVC = (m) => (m.vc_par ? `${m.G} (${m.vc_par})` : String(m.G));
 // a classification: a forest of classes, or boosted trees of a 0/1 response (classified at 0.5)
 const classe = (m) => (foret(m) ? !!m.classement : m.loi === 'binomiale');
 
@@ -64,14 +64,18 @@ function rendreImportance(conteneur, ctx, p, loc) {
 
 // The partial dependence of each variable (Friedman 2001), computed by the engine on request and
 // kept with the model: the mean prediction over the model's observations when the variable takes
-// each value of a grid; under it, the observed values (a rug), or each category's count. All the
-// variables side by side, or one; a forest's class, or boosted trees' scale (link or response).
+// each value of a grid; under it, the observed values (a rug), or each category's count. The six
+// most important variables side by side (by default), all of them, or one; a forest's class, or
+// boosted trees' scale (link or response).
+const PREMIERES = 6;
 async function rendreDependance(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const vars = liste(m.variables_x);
+  const imp = foret(m) ? m.importance : m.influence;  // (the engine sends them most important first)
+  const premieres = liste(imp.variable).slice(0, PREMIERES);
   loc.variable ??= '';
-  if (loc.variable && !vars.includes(loc.variable)) loc.variable = '';
-  const voulues = loc.variable ? [loc.variable] : vars;
+  if (loc.variable && loc.variable !== '*' && !vars.includes(loc.variable)) loc.variable = '';
+  const voulues = loc.variable === '*' ? vars : loc.variable ? [loc.variable] : premieres.filter((v) => vars.includes(v));
   loc.cache ??= {};
   if (loc.id !== m.id) { loc.cache = {}; loc.id = m.id; }
   const manquent = voulues.filter((v) => !loc.cache[v]);
@@ -84,25 +88,28 @@ async function rendreDependance(conteneur, ctx, p, loc) {
   loc.classe ??= classes[classes.length - 1] || '';
   loc.echelle ??= 'reponse';
   const lien = !foret(m) && m.loi !== 'gaussienne';
-  const graphe = el('div', { class: 'graphe' });
-  conteneur.replaceChildren(outils(
-    choix(t('variable_arbre'), [['', t('ens_toutes')]].concat(vars.map((v) => [v, v])), loc.variable, (v) => { loc.variable = v; ctx.rafraichir(); }),
-    foret(m) && m.classement ? choix(t('classe'), classes.map((k) => [k, k]), loc.classe, (v) => { loc.classe = v; ctx.rafraichir(); }) : null,
-    lien ? choix('', [['reponse', t(m.loi === 'binomiale' ? 'ens_echelle_proba' : 'ens_echelle_moyenne')], ['lien', t(m.loi === 'binomiale' ? 'ens_echelle_logit' : 'ens_echelle_log')]],
-      loc.echelle, (v) => { loc.echelle = v; ctx.rafraichir(); }) : null),
-  el('p', { class: 'note' }, t(foret(m) ? (m.classement ? 'ens_dependance_note_classe' : 'ens_dependance_note') : 'ens_dependance_note_boost')), graphe);
-  const c = couleursTheme(ctx);
-  const valeurs = (d) => (foret(m) && m.classement ? liste(d.probabilites[loc.classe]) : lien && loc.echelle === 'reponse' ? liste(d.reponse) : liste(d.y));
-  const nomY = foret(m) && m.classement ? `P(${loc.classe})` : lien ? t(loc.echelle === 'reponse' ? (m.loi === 'binomiale' ? 'ens_echelle_proba' : 'ens_echelle_moyenne')
-    : (m.loi === 'binomiale' ? 'ens_echelle_logit' : 'ens_echelle_log')) : m.noms_y[0];
   const ds = voulues.map((v) => loc.cache[v]).filter(Boolean);
   const k = ds.length;
   const colonnes = k <= 1 ? 1 : k <= 4 ? 2 : 3;
   const lignes = Math.ceil(k / colonnes);
+  // several variables: a plot tall enough for each row, in a pane that scrolls
+  const graphe = el('div', { class: 'graphe', style: k > 1 ? `flex: none; height: ${Math.max(260, 200 * lignes + 50)}px` : '' });
+  conteneur.replaceChildren(outils(
+    choix(t('variable_arbre'), [['', t('ens_premieres', { n: Math.min(PREMIERES, vars.length) })], ['*', t('ens_toutes')]].concat(vars.map((v) => [v, v])), loc.variable,
+      (v) => { loc.variable = v; ctx.rafraichir(); }),
+    foret(m) && m.classement ? choix(t('classe'), classes.map((k) => [k, k]), loc.classe, (v) => { loc.classe = v; ctx.rafraichir(); }) : null,
+    lien ? choix('', [['reponse', t(m.loi === 'binomiale' ? 'ens_echelle_proba' : 'ens_echelle_moyenne')], ['lien', t(m.loi === 'binomiale' ? 'ens_echelle_logit' : 'ens_echelle_log')]],
+      loc.echelle, (v) => { loc.echelle = v; ctx.rafraichir(); }) : null),
+  el('p', { class: 'note' }, t(foret(m) ? (m.classement ? 'ens_dependance_note_classe' : 'ens_dependance_note') : 'ens_dependance_note_boost')),
+  k > 1 ? el('div', { class: 'defile' }, graphe) : graphe);
+  const c = couleursTheme(ctx);
+  const valeurs = (d) => (foret(m) && m.classement ? liste(d.probabilites[loc.classe]) : lien && loc.echelle === 'reponse' ? liste(d.reponse) : liste(d.y));
+  const nomY = foret(m) && m.classement ? `P(${loc.classe})` : lien ? t(loc.echelle === 'reponse' ? (m.loi === 'binomiale' ? 'ens_echelle_proba' : 'ens_echelle_moyenne')
+    : (m.loi === 'binomiale' ? 'ens_echelle_logit' : 'ens_echelle_log')) : m.noms_y[0];
   const traces = [];
-  const layout = { title: { text: `${m.nom} · ${t('ens_dependance')}` }, dragmode: 'zoom', showlegend: false, annotations: [],
+  const layout = { title: { text: `${m.nom} · ${t('ens_dependance')}` }, dragmode: 'zoom', showlegend: false,
     margin: { l: 60, r: 18, t: 40, b: 40 } };
-  if (k > 1) layout.grid = { rows: lignes, columns: colonnes, pattern: 'independent', xgap: 0.12, ygap: 0.28 };
+  if (k > 1) layout.grid = { rows: lignes, columns: colonnes, pattern: 'independent', xgap: 0.1, ygap: 0.35 };
   ds.forEach((d, i) => {
     const s = i ? String(i + 1) : '';
     const y = valeurs(d);
@@ -122,9 +129,9 @@ async function rendreDependance(conteneur, ctx, p, loc) {
       traces.push({ type: 'scatter', mode: 'markers', x: tapis, y: tapis.map(() => bas - marge), xaxis: `x${s}`, yaxis: `y${s}`, hoverinfo: 'skip',
         marker: { symbol: 'line-ns-open', size: 8, color: c.doux, line: { width: 1, color: c.doux } } });
     }
-    const ax = { gridcolor: c.grille, zerolinecolor: c.doux, linecolor: c.grille, automargin: true };
-    layout[`xaxis${s}`] = { ...ax, title: { text: d.variable, font: { size: 11 } }, type: d.qualitative ? 'category' : '-' };
-    layout[`yaxis${s}`] = { ...ax, title: { text: i % colonnes === 0 ? nomY : '' }, range: [bas - 2 * marge, haut + marge] };
+    const ax = { gridcolor: c.grille, zerolinecolor: c.doux, linecolor: c.grille, automargin: true, ...(k > 1 ? { nticks: 5, tickfont: { size: 9 } } : {}) };
+    layout[`xaxis${s}`] = { ...ax, title: { text: d.variable, font: { size: k > 1 ? 11 : undefined }, standoff: 4 }, type: d.qualitative ? 'category' : '-' };
+    layout[`yaxis${s}`] = { ...ax, title: { text: i % colonnes === 0 ? nomY : '', font: { size: k > 1 ? 10 : undefined } }, range: [bas - 2 * marge, haut + marge] };
   });
   if (!k) { graphe.replaceChildren(el('p', { class: 'infos' }, t('ens_sans_dependance'))); return; }
   tracer(ctx, graphe, traces, layout);
@@ -135,7 +142,7 @@ async function rendreDependance(conteneur, ctx, p, loc) {
 // The predictions each kind of model has: a forest's out-of-bag ones (each observation predicted
 // by the trees whose draw doesn't hold it), cross-validated (by a model rebuilt without its group)
 // and fitted (every tree); boosted trees' fitted and cross-validated ones.
-const MODES_PREDICTION = { FOREST: ['oob', 'vc', 'ajuste'], BOOST: ['ajuste', 'vc'] };
+const MODES_PREDICTION = { FOREST: ['oob', 'vc', 'ajuste'], BOOST: ['vc', 'ajuste'] };
 const COLONNE = { oob: 'prédit (OOB)', vc: 'prédit (VC)', ajuste: 'ajusté' };
 
 function rendreObsPred(conteneur, ctx, p, loc) {
@@ -150,7 +157,8 @@ function rendreObsPred(conteneur, ctx, p, loc) {
   const infos = foret(m) ? `R2 OOB ${fmt(q.r2_oob, 3)} · Q2 ${fmt(q.Q2, 3)} · RMSEcv ${fmt(q.RMSEcv, 4)}`
     : m.loi === 'gaussienne' ? `R2 ${fmt(q.r2, 3)} · Q2 ${fmt(q.Q2, 3)} · RMSEcv ${fmt(q.RMSEcv, 4)}` : `D2 ${fmt(q.D2, 3)} · D2 ${t('vc_court')} ${fmt(q.D2_vc, 3)}`;
   conteneur.replaceChildren(outils(choix('', modes.map((k) => [k, t(`ens_mode_${k}`)]), loc.mode, (v) => { loc.mode = v; ctx.rafraichir(); }),
-    controleCouleur(ctx, m, loc), controleEtiquettes(ctx, m, loc), el('span', { class: 'infos' }, infos)), el('p', { class: 'note' }, t(`ens_mode_${loc.mode}_note`)), graphe);
+    controleCouleur(ctx, m, loc), controleEtiquettes(ctx, m, loc), el('span', { class: 'infos' }, infos)),
+  el('p', { class: 'note' }, t(`ens_mode_${loc.mode}_note${!foret(m) && loc.mode === 'ajuste' ? '_boost' : ''}`)), graphe);
   const xo = liste(o[`${y} observé`]);
   const yp = liste(o[`${y} ${COLONNE[loc.mode]}`]);
   const vals = xo.concat(yp).filter((v) => v !== null);
@@ -214,10 +222,15 @@ function rendreErreur(conteneur, ctx, p) {
   const c2 = couleursTheme(ctx);
   if (foret(m)) {
     conteneur.replaceChildren(el('p', { class: 'note' }, t(m.classement ? 'ens_erreur_note_classe' : 'ens_erreur_note')), graphe);
-    tracer(ctx, graphe, [{ type: 'scatter', mode: 'lines', name: t('ens_erreur_oob'), x: arbres, y: liste(c.erreur), line: { color: PALETTE[0], width: 1.5 },
+    const e = liste(c.erreur);
+    // (the first trees' error, out of bag over very few trees, would flatten the rest: the axis
+    // starts from the tenth tree; zooming out shows them)
+    const suite = e.length > 50 ? e.slice(9) : e;
+    const [bas, haut] = [Math.min(...suite), Math.max(...suite)];
+    tracer(ctx, graphe, [{ type: 'scatter', mode: 'lines', name: t('ens_erreur_oob'), x: arbres, y: e, line: { color: PALETTE[0], width: 1.5 },
       hovertemplate: `%{x} ${t('ens_arbres_mot')}<br>%{y:.4g}<extra></extra>` }],
     { title: { text: `${m.nom} · ${t('ens_erreur')}` }, dragmode: 'zoom', xaxis: { title: { text: t('ens_nb_arbres') } },
-      yaxis: { title: { text: t(m.classement ? 'ens_part_mal_classees' : 'ens_mse_oob') } } });
+      yaxis: { title: { text: t(m.classement ? 'ens_part_mal_classees' : 'ens_mse_oob') }, range: [bas - 0.05 * (haut - bas || 1), haut + 0.05 * (haut - bas || 1)] } });
     return;
   }
   conteneur.replaceChildren(el('p', { class: 'note' }, t('ens_deviance_note', { n: m.meilleur, max: m.reglages_boost.arbres })
@@ -261,7 +274,7 @@ function rendreResume(conteneur, ctx, m) {
   const notes = notesModele(conteneur, ctx, m);
   const textes = [t(foret(m) ? (m.classement ? 'for_resume_classement' : 'for_resume_regression') : `bst_resume_${m.loi}`, { y: m.noms_y[0] }), noteReglages(m),
     t(foret(m) ? 'for_vc_note' : 'bst_vc_note')];
-  if (m.manquantes_x) textes.push(t('ens_manquantes', { n: m.manquantes_x }));
+  if (m.manquantes_x) textes.push(t(foret(m) ? 'ens_manquantes' : 'ens_manquantes_boost', { n: m.manquantes_x }));
   if (m.echecs_vc) textes.push(t('ens_echecs_vc', { n: m.echecs_vc }));
   if (!foret(m) && m.au_maximum) textes.push(t('ens_au_maximum'));
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, textes.map((x) => el('p', { class: 'note' }, x))));
@@ -319,11 +332,12 @@ ANALYSES.BOOST = {
   champs: (st) => [
     el('label', {}, t('loi')), el('select', { onchange: (e) => { st.options.loi = e.target.value; } },
       LOIS.map((k) => el('option', { value: k, selected: k === (st.options.loi || 'gaussienne') }, t(`famille_${k}`)))),
-    el('label', {}, t('bst_arbres')), el('div', { class: 'ligne' }, nombreOption(st, 'arbres', 2000, { min: 10, max: 20000, step: 100 }),
+    // (option names a forest doesn't use: a model made again as another type doesn't take them)
+    el('label', {}, t('bst_arbres')), el('div', { class: 'ligne' }, nombreOption(st, 'arbres_max', 2000, { min: 10, max: 20000, step: 100 }),
       el('label', { class: 'champ', title: t('bst_taux_aide') }, t('bst_taux'), nombreOption(st, 'taux', 0.01, { min: 0.0001, max: 1, step: 0.005 }))),
     el('label', {}, t('bst_profondeur')), el('div', { class: 'ligne' }, nombreOption(st, 'profondeur', 3, { min: 1, max: 10, step: 1, title: t('bst_profondeur_aide') }),
-      el('label', { class: 'champ' }, t('bst_min_noeud'), nombreOption(st, 'min_noeud', 10, { min: 1, step: 1 })),
-      el('label', { class: 'champ' }, t('for_fraction'), nombreOption(st, 'fraction', 0.5, { min: 0.05, max: 1, step: 0.05 }))),
+      el('label', { class: 'champ' }, t('bst_min_noeud'), nombreOption(st, 'min_feuille', 10, { min: 1, step: 1 })),
+      el('label', { class: 'champ' }, t('for_fraction'), nombreOption(st, 'part', 0.5, { min: 0.05, max: 1, step: 0.05 }))),
     el('label', {}, ''), el('p', { class: 'note' }, t('bst_reglages_note')),
   ],
   valider: (st, cles, p) => {
@@ -333,14 +347,14 @@ ANALYSES.BOOST = {
     if (!quantitative(p, y[0])) return t('bst_y_quantitative');
     if (st.croises.length) return t('ens_croises');
     const o = st.options;
-    if (!entier(o.arbres, 10, 20000) || !entier(o.profondeur, 1, 10) || !entier(o.min_noeud, 1, 1e6) || !nombre(o.taux, 0.0001, 1)
-      || !nombre(o.fraction, 0.05, 1)) return t('bst_reglages_invalides');
+    if (!entier(o.arbres_max, 10, 20000) || !entier(o.profondeur, 1, 10) || !entier(o.min_feuille, 1, 1e6) || !nombre(o.taux, 0.0001, 1)
+      || !nombre(o.part, 0.05, 1)) return t('bst_reglages_invalides');
     return '';
   },
   options: (st) => {
     const o = st.options;
-    return { loi: LOIS.includes(o.loi) ? o.loi : 'gaussienne', arbres: valeur(o, 'arbres', 2000), profondeur: valeur(o, 'profondeur', 3),
-      min_noeud: valeur(o, 'min_noeud', 10), taux: valeur(o, 'taux', 0.01), fraction: valeur(o, 'fraction', 0.5) };
+    return { loi: LOIS.includes(o.loi) ? o.loi : 'gaussienne', arbres_max: valeur(o, 'arbres_max', 2000), profondeur: valeur(o, 'profondeur', 3),
+      min_feuille: valeur(o, 'min_feuille', 10), taux: valeur(o, 'taux', 0.01), part: valeur(o, 'part', 0.5) };
   },
 };
 
@@ -406,6 +420,7 @@ ajouterTextes({
   ens_perm_note_echelle: 'Importance par permutation, divisée par son erreur-type : la hausse de l’erreur hors sac quand les valeurs de la variable sont permutées, en nombre d’erreurs-types.',
   ens_impurete_note: 'Importance par l’impureté : la somme des baisses d’impureté (variance, ou indice de Gini) de ses coupures sur tous les arbres. Elle favorise les variables qui ont beaucoup de valeurs distinctes ; l’importance par permutation ne le fait pas.',
   ens_influence_note: 'Influence relative (Friedman, 2001) : la somme des réductions d’erreur de ses coupures sur les arbres du modèle, ramenée à 100 %.',
+  ens_obspred: 'Observé / prédit', ens_classement: 'Classement', ens_premieres: 'les {n} plus importantes',
   ens_toutes: 'toutes', ens_calcul_dependance: 'Calcul : la dépendance partielle de {n} variable(s)…', ens_sans_dependance: 'Pas de dépendance partielle.',
   ens_dependance_note: 'Dépendance partielle (Friedman, 2001) : la prédiction moyenne de la forêt sur ses observations quand la variable prend chaque valeur de la grille, les autres X inchangés. Sous la courbe, les valeurs observées.',
   ens_dependance_note_classe: 'Dépendance partielle (Friedman, 2001) : la part moyenne des votes de la classe sur les observations quand la variable prend chaque valeur de la grille, les autres X inchangés. Sous la courbe, les valeurs observées.',
@@ -415,6 +430,7 @@ ajouterTextes({
   ens_mode_oob_note: 'Hors sac : chaque observation prédite par les seuls arbres dont le tirage ne la contient pas, une prédiction honnête.',
   ens_mode_vc_note: 'Validation croisée : chaque groupe prédit par le modèle refait sans lui.',
   ens_mode_ajuste_note: 'Ajusté : le modèle sur les observations qui l’ont fait ; une forêt les prédit presque parfaitement, ce n’est pas sa qualité de prédiction.',
+  ens_mode_ajuste_note_boost: 'Ajusté : le modèle (ses arbres jusqu’au nombre retenu) sur les observations qui l’ont fait ; sa qualité de prédiction est celle de la validation croisée.',
   ens_classement_note_oob: 'Hors sac : chaque observation classée par les seuls arbres dont le tirage ne la contient pas (à égalité de votes, ranger tire au sort). Les courbes ROC suivent la part des votes de chaque classe.',
   ens_classement_note_vc: 'Validation croisée : chaque groupe classé par une forêt refaite sans lui. Les courbes ROC suivent la part des votes de chaque classe.',
   ens_classement_note_ajuste: 'Ajusté : la forêt entière sur les observations qui l’ont faite, presque toujours bien classées ; ce n’est pas sa qualité de prédiction.',
@@ -426,7 +442,8 @@ ajouterTextes({
   ens_au_maximum: 'La déviance de validation croisée baissait encore au dernier arbre : augmenter le nombre d’arbres ou le taux d’apprentissage.',
   ens_deviance_apprentissage: 'Déviance (ajustement)', ens_deviance_vc: 'Déviance (VC)', ens_retenu: 'Retenu', ens_deviance_moyenne: 'Déviance moyenne',
   ens_bien_classes_oob: 'Bien classées (OOB)', ens_arbres_titre: 'Arbres', vc_court: 'VC',
-  ens_manquantes: '{n} observations où une valeur X manque sont laissées de côté (ranger ne prend pas de valeurs manquantes ; les arbres boostés les laissent de côté de même).',
+  ens_manquantes: '{n} observations où une valeur X manque sont laissées de côté (ranger ne prend pas de valeurs manquantes).',
+  ens_manquantes_boost: '{n} observations où une valeur X manque sont laissées de côté (comme pour une forêt : les deux portent ainsi sur les mêmes observations).',
   ens_echecs_vc: '{n} groupes de validation croisée sans prédiction (sans eux, une seule valeur de la réponse reste).',
   ens_croises: 'Les arbres font eux-mêmes leurs interactions : retirer les termes croisés.',
   for_note: 'Une variable Y quantitative (forêt de régression) ou une variable de classe (forêt de classement), et les variables X par leurs valeurs brutes (ranger). Chaque arbre est grandi sur un tirage bootstrap des observations, chaque coupure choisie parmi mtry variables tirées au hasard ; erreur hors sac, et validation croisée par les groupes de validation croisée (un site, par exemple). Les observations où une valeur X manque sont laissées de côté.',
@@ -450,7 +467,7 @@ ajouterTextes({
   bst_reponse_requise: 'Des arbres boostés demandent une réponse : une variable Y quantitative.',
   bst_y_quantitative: 'La réponse d’arbres boostés est quantitative : une mesure, une variable 0/1 (loi binomiale) ou des comptages (Poisson).',
   bst_reglages_invalides: 'Réglages du boosting : de 10 à 20000 arbres, de 1 à 10 coupures, une taille de feuille entière positive, un taux entre 0,0001 et 1, une part tirée entre 0,05 et 1.',
-  bst_reglages: 'Loi {loi} ; au plus {max} arbres de {profondeur} coupures, au moins {min} observations par feuille, un taux d’apprentissage de {taux}, des tirages de {fraction} % sans remise.',
+  bst_reglages: 'Loi : {loi} ; au plus {max} arbres de {profondeur} coupures, au moins {min} observations par feuille, un taux d’apprentissage de {taux}, des tirages de {fraction} % sans remise.',
   bst_resume_gaussienne: 'Arbres boostés de {y} (perte quadratique) : le modèle est la somme de ses arbres.',
   bst_resume_binomiale: 'Arbres boostés de {y}, une présence-absence (déviance de Bernoulli) : la somme des arbres est le logit de la probabilité.',
   bst_resume_poisson: 'Arbres boostés de {y}, des comptages (déviance de Poisson) : la somme des arbres est le log de la moyenne.',
@@ -463,6 +480,7 @@ ajouterTextes({
   ens_perm_note_echelle: 'Permutation importance divided by its standard error: the rise of the out-of-bag error when the variable’s values are permuted, in standard errors.',
   ens_impurete_note: 'Impurity importance: the sum of the impurity decreases (variance, or Gini index) of its splits over all the trees. It favours variables with many distinct values; permutation importance doesn’t.',
   ens_influence_note: 'Relative influence (Friedman, 2001): the sum of the error reductions of its splits over the model’s trees, scaled to 100%.',
+  ens_obspred: 'Observed vs predicted', ens_classement: 'Classification', ens_premieres: 'the {n} most important',
   ens_toutes: 'all', ens_calcul_dependance: 'Computing: the partial dependence of {n} variable(s)…', ens_sans_dependance: 'No partial dependence.',
   ens_dependance_note: 'Partial dependence (Friedman, 2001): the forest’s mean prediction over its observations when the variable takes each value of the grid, the other X unchanged. Under the curve, the observed values.',
   ens_dependance_note_classe: 'Partial dependence (Friedman, 2001): the class’s mean share of the votes over the observations when the variable takes each value of the grid, the other X unchanged. Under the curve, the observed values.',
@@ -472,6 +490,7 @@ ajouterTextes({
   ens_mode_oob_note: 'Out of bag: each observation predicted by the trees whose draw doesn’t hold it, an honest prediction.',
   ens_mode_vc_note: 'Cross-validation: each group predicted by the model rebuilt without it.',
   ens_mode_ajuste_note: 'Fitted: the model on the observations it was built on; a forest predicts them almost perfectly, which isn’t its predictive ability.',
+  ens_mode_ajuste_note_boost: 'Fitted: the model (its trees up to the number retained) on the observations it was fitted on; its predictive ability is the cross-validation’s.',
   ens_classement_note_oob: 'Out of bag: each observation classified by the trees whose draw doesn’t hold it (ranger draws lots between tied votes). The ROC curves follow each class’s share of the votes.',
   ens_classement_note_vc: 'Cross-validation: each group classified by a forest rebuilt without it. The ROC curves follow each class’s share of the votes.',
   ens_classement_note_ajuste: 'Fitted: the whole forest on the observations it was built on, nearly always correctly classified; not its predictive ability.',
@@ -483,7 +502,8 @@ ajouterTextes({
   ens_au_maximum: 'The cross-validated deviance was still falling at the last tree: raise the number of trees or the learning rate.',
   ens_deviance_apprentissage: 'Deviance (fit)', ens_deviance_vc: 'Deviance (CV)', ens_retenu: 'Retained', ens_deviance_moyenne: 'Mean deviance',
   ens_bien_classes_oob: 'Correct (OOB)', ens_arbres_titre: 'Trees', vc_court: 'CV',
-  ens_manquantes: '{n} observations with a missing X value are left out (ranger takes no missing values; boosted trees leave them out likewise).',
+  ens_manquantes: '{n} observations with a missing X value are left out (ranger takes no missing values).',
+  ens_manquantes_boost: '{n} observations with a missing X value are left out (as for a forest: both then use the same observations).',
   ens_echecs_vc: '{n} cross-validation groups without a prediction (without them, a single response value remains).',
   ens_croises: 'Trees make their own interactions: remove the cross terms.',
   for_note: 'A quantitative Y variable (regression forest) or a class variable (classification forest), and the X variables by their raw values (ranger). Each tree is grown on a bootstrap draw of the observations, each split chosen among mtry randomly drawn variables; out-of-bag error, and cross-validation by the cross-validation groups (a site, say). Observations with a missing X value are left out.',
@@ -507,7 +527,7 @@ ajouterTextes({
   bst_reponse_requise: 'Boosted trees need a response: a quantitative Y variable.',
   bst_y_quantitative: 'The response of boosted trees is quantitative: a measurement, a 0/1 variable (binomial distribution) or counts (Poisson).',
   bst_reglages_invalides: 'Boosting settings: from 10 to 20000 trees, from 1 to 10 splits, a positive whole leaf size, a rate between 0.0001 and 1, a share drawn between 0.05 and 1.',
-  bst_reglages: '{loi} distribution; at most {max} trees of {profondeur} splits, at least {min} observations per leaf, a learning rate of {taux}, draws of {fraction}% without replacement.',
+  bst_reglages: 'Distribution: {loi}; at most {max} trees of {profondeur} splits, at least {min} observations per leaf, a learning rate of {taux}, draws of {fraction}% without replacement.',
   bst_resume_gaussienne: 'Boosted trees of {y} (squared-error loss): the model is the sum of its trees.',
   bst_resume_binomiale: 'Boosted trees of {y}, a presence-absence (Bernoulli deviance): the sum of the trees is the logit of the probability.',
   bst_resume_poisson: 'Boosted trees of {y}, counts (Poisson deviance): the sum of the trees is the log of the mean.',
