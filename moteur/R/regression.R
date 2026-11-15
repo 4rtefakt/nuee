@@ -1416,8 +1416,11 @@ profil_loi <- function(f, donnees, famille) {
     a <- ajuster(th)
     if (is.null(a)) Inf else -as.numeric(stats::logLik(a))
   }
-  th <- if (famille == "beta") stats::optimize(moins_ll, c(-7, 14), tol = 1e-10)$minimum
-        else stats::optim(c(0, 0), moins_ll, control = list(reltol = 1e-12, maxit = 2000))$par
+  # (optim s'arrête sur une erreur quand le départ ne s'ajuste pas : ses appelants attendent NULL)
+  th <- tryCatch(if (famille == "beta") stats::optimize(moins_ll, c(-7, 14), tol = 1e-10)$minimum
+                 else stats::optim(c(0, 0), moins_ll, control = list(reltol = 1e-12, maxit = 2000))$par,
+                 error = function(e) NULL)
+  if (is.null(th)) return(NULL)
   a <- ajuster(th)
   if (!is.null(a)) a$family$n.theta <- length(th)
   a

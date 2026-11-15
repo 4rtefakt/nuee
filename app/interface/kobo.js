@@ -113,10 +113,14 @@ export function dialogueKobo(app, res) {
       lignes.push(el('label', {}, t('kobo_resume')), el('ul', { class: 'kobo-resume' }, liste(ap.phrases).map((x) => el('li', {}, x))));
       contenu.replaceChildren(el('p', {}, t('kobo_intro', { outil: ap.nom_outil, nom: ap.fichier })), el('div', { class: 'grille-champs' }, ...lignes));
     };
+    // (a second click while it runs does nothing: it would make a second project)
+    let enCours = false;
     const importer = async () => {
+      if (enCours) return;
       erreur.textContent = '';
       let r;
-      try { r = await app.occupe(() => demander('kobo_importer', { ...requete(), nom: res.nom })); } catch (e) { erreur.textContent = e.message; return; }
+      enCours = true;
+      try { r = await app.occupe(() => demander('kobo_importer', { ...requete(), nom: res.nom })); } catch (e) { erreur.textContent = e.message; enCours = false; return; }
       const c = r.collecte || {};
       app.statut(t('kobo_importe', { n: c.lignes, k: c.colonnes }) + (c.coordonnees ? t('kobo_importe_coordonnees') : ''));
       finir(r);

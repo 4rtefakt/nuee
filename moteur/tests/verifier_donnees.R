@@ -160,6 +160,25 @@ verifier("la définition du projet a suivi : le même ajustement qu'un modèle d
          isTRUE(all.equal(m_projet$resultat$ajuste, m_neuf$resultat$ajuste)) && identical(co1$terme, m_neuf$resultat$coefficients$terme))
 verifier("les termes de l'habitat, à leurs places, dans l'ordre des catégories", identical(vapply(r1$models[[1]]$x, `[[`, "", "name"), c("habitat(prairie)", "habitat(lande)", "habitat(forêt)", "altitude")) &&
            identical(vapply(r1$models[[1]]$x, function(t) as.numeric(t$categories[1]), 0), c(1, 2, 3, 0)))
+# la condition d'observations d'un modèle suit les catégories qu'elle nomme (atelier.R : suivre_condition)
+d_c1 <- d_lm
+d_c1$name <- "C1"
+d_c1$condition <- 'habitat %in% c("lande", "prairie") & altitude > 300'
+d_c2 <- d_lm
+d_c2$name <- "C2"
+d_c2$condition <- '"forêt" != habitat'
+d_c3 <- d_lm
+d_c3$name <- "C3"
+d_c3$condition <- "altitude > 300"
+p4c <- p4
+p4c$models <- list(d_c1, d_c2, d_c3)
+rc <- changer_categories(p4c, u4("habitat"), c("Forêt", "milieu ouvert", "milieu ouvert"))
+cond <- vapply(rc$models, function(d) texte_condition(d$condition), "")
+verifier("une condition suit les catégories renommées ou fusionnées qu'elle compare à leur variable ; une condition sur une autre variable ne change pas",
+         identical(cond[1], 'habitat %in% c("milieu ouvert", "milieu ouvert") & altitude > 300') && identical(cond[2], '"Forêt" != habitat') &&
+           identical(cond[3], "altitude > 300") &&
+           length(observations_condition(rc, rc$models[[1]]$condition, obs)) == sum(valeurs(p4, "habitat") %in% c("lande", "prairie") & valeurs(p4, "altitude") > 300) &&
+           length(observations_condition(rc, rc$models[[2]]$condition, obs)) == sum(valeurs(p4, "habitat") != "forêt"))
 r2 <- changer_categories(p4, u4("habitat"), c("forêt", "milieu ouvert", "milieu ouvert"))
 verifier("une fusion : lande et prairie en « milieu ouvert », à la place de la première", identical(categories_de(r2, "habitat"), c("forêt", "milieu ouvert")) &&
            sum(valeurs(r2, "habitat") == "milieu ouvert") == sum(valeurs(p4, "habitat") %in% c("lande", "prairie")) &&

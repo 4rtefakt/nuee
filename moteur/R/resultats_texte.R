@@ -51,7 +51,8 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
     sprintf(if (fr) "R² marginal = %s (effets fixes), R² conditionnel = %s (avec les effets aléatoires)" else "marginal R² = %s (fixed effects), conditional R² = %s (with the random effects)",
             nb(r2$marginal, 2), nb(r2$conditionnel, 2))
   } else if (!is.null(r2$deviance_expliquee)) {
-    sprintf(if (fr) "%s de la déviance expliquée (R² ajusté = %s)" else "%s of the deviance explained (adjusted R² = %s)", pourcent_texte(r2$deviance_expliquee, fr), nb(r2$r2_ajuste, 2))
+    paste0(sprintf(if (fr) "%s de la déviance expliquée" else "%s of the deviance explained", pourcent_texte(r2$deviance_expliquee, fr)),
+           if (!is.null(r2$r2_ajuste)) sprintf(if (fr) " (R² ajusté = %s)" else " (adjusted R² = %s)", nb(r2$r2_ajuste, 2)) else "")
   } else sprintf(if (fr) "R² = %s (ajusté : %s)" else "R² = %s (adjusted: %s)", nb(r2$r2, 2), nb(r2$r2_ajuste, 2))
   p1 <- sprintf(if (fr) "Le modèle de %s porte sur %d observations : %s ; en validation croisée, Q² = %s (RMSEcv = %s). AIC = %s."
                 else "The model of %s uses %d observations: %s; in cross-validation, Q² = %s (RMSEcv = %s). AIC = %s.",

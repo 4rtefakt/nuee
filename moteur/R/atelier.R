@@ -196,23 +196,36 @@ coller_cellules <- function(projet, observations, variables, valeurs) {
   if (nrow(valeurs) != length(observations) || ncol(valeurs) != length(variables)) {
     stop(traduire("Le bloc collé doit avoir une ligne par observation et une colonne par variable.", "The pasted block must have one row per observation and one column per variable."), call. = FALSE)
   }
+  # (une colonne à la fois, ses cases comme modifier_valeur les lit, et une seule écriture dans le
+  # tableau des données : case par case, chacune en copiait tout le tableau)
   n <- 0L
+  lignes <- as.character(observations)
   for (j in seq_along(variables)) {
     k <- as.character(variables[j])
-    for (i in seq_along(observations)) {
-      x <- valeurs[i, j]
-      if (is.na(x)) next
-      v <- variable_du_projet(projet, variables[j])
-      avant <- projet$donnees[as.character(observations[i]), k]
-      avant <- if (length(v$categories)) as.character(v$categories)[avant] else avant
-      projet <- tryCatch(modifier_valeur(projet, observations[i], variables[j], x), error = function(e) {
-        stop(sprintf(traduire("%s (observation %s)", "%s (observation %s)"), conditionMessage(e), projet$noms_obs[[as.character(observations[i])]]), call. = FALSE)
-      })
-      w <- variable_du_projet(projet, variables[j])
-      apres <- projet$donnees[as.character(observations[i]), k]
-      apres <- if (length(w$categories)) as.character(w$categories)[apres] else apres
-      if (!identical(avant, apres)) n <- n + 1L
+    a <- which(!is.na(valeurs[, j]))
+    if (!length(a)) next
+    if (!(k %in% colnames(projet$donnees))) stop(traduire("Variable sans données : ", "Variable without data: "), variables[j])
+    iv <- which(vapply(projet$variables, function(v) identical(as.numeric(v$uid), variables[j]), TRUE))[1]
+    textes <- trimws(as.character(valeurs[a, j]))
+    vides <- !nzchar(textes)
+    cats <- as.character(projet$variables[[iv]]$categories %||% character(0))
+    if (length(cats)) {
+      nouvelles <- setdiff(unique(textes[!vides]), cats)  # (dans leur ordre d'arrivée, comme une à une)
+      if (length(nouvelles)) projet$variables[[iv]]$categories <- cats <- c(cats, nouvelles)
+      x <- ifelse(vides, NA_real_, match(textes, cats))
+    } else {
+      x <- suppressWarnings(as.numeric(sub(",", ".", textes, fixed = TRUE)))  # 3,5 ou 3.5
+      x[vides] <- NA_real_
+      mauvaise <- which(!vides & is.na(x))[1]
+      if (!is.na(mauvaise)) {
+        stop(sprintf(traduire("%s (observation %s)", "%s (observation %s)"),
+                     sprintf(traduire("Valeur non numérique pour %s : %s", "Non-numeric value for %s: %s"), projet$noms_var[[k]], textes[mauvaise]),
+                     projet$noms_obs[[lignes[a[mauvaise]]]]), call. = FALSE)
+      }
     }
+    avant <- projet$donnees[lignes[a], k]
+    n <- n + sum(!((is.na(avant) & is.na(x)) | (!is.na(avant) & !is.na(x) & avant == x)))
+    projet$donnees[lignes[a], k] <- x
   }
   attr(projet, "collage") <- list(cellules = n)
   projet
@@ -354,13 +367,24 @@ suivre_termes <- function(termes, projet, uid, carte, dedoubler = TRUE) {
 # Les définitions des modèles du projet (p$models) après un changement des catégories de la
 # variable `uid` (`carte` : suivre_termes ; `anciennes` : ses catégories d'avant) : leurs termes X
 # et Y (les classes d'une PLS-DA) et ceux du modèle complet d'une sélection par AIC ; le nom de la
-# classe d'un modèle de classe. Une définition changée n'est plus celle d'un fichier .usp : sa
+# classe d'un modèle de classe ; les catégories que nomme leur condition d'observations. Une définition changée n'est plus celle d'un fichier .usp : sa
 # solution enregistrée part, comme quand on la réajuste sans des observations (serveur.R).
 suivre_categories <- function(projet, uid, carte, anciennes) {
   uid <- as.numeric(uid)
-  nouvelles <- as.character(variable_du_projet(projet, uid)$categories %||% character(0))
+  v <- variable_du_projet(projet, uid)
+  nouvelles <- as.character(v$categories %||% character(0))
+  # (l'ancien nom de chaque catégorie → son nouveau, pour les conditions d'observations)
+  renommer <- if (!is.null(carte)) stats::setNames(nouvelles[carte], anciennes)
+  renommer <- renommer[!is.na(renommer) & renommer != names(renommer)]
   projet$models <- lapply(projet$models, function(d) {
     change <- FALSE
+    if (length(renommer) && avec_condition(d)) {
+      condition <- suivre_condition(d$condition, as.character(v$ids[1]), renommer)
+      if (!is.null(condition)) {
+        d$condition <- condition
+        change <- TRUE
+      }
+    }
     for (champ in c("x", "y", "termes_complets")) {
       if (!length(d[[champ]])) next
       r <- suivre_termes(d[[champ]], projet, uid, carte)
@@ -385,6 +409,39 @@ suivre_categories <- function(projet, uid, carte, anciennes) {
     d
   })
   projet
+}
+
+# La condition d'observations d'un modèle (condition.R) après un changement des catégories de la
+# variable `nom` : ses comparaisons de la variable à des catégories (nom == "a", "a" != nom,
+# nom %in% c("a", "b")) suivent leurs nouveaux noms (`renommer` : nouveau nom, nommé par l'ancien).
+# Le texte réécrit (ses espaces peuvent changer), ou NULL quand rien n'y change.
+suivre_condition <- function(texte, nom, renommer) {
+  e <- tryCatch(str2lang(texte_condition(texte)), error = function(err) NULL)
+  if (is.null(e)) return(NULL)
+  change <- FALSE
+  variable <- function(x) is.name(x) && identical(as.character(x), nom)
+  categories <- function(x) {  # (un texte, ou c() de textes)
+    if (is.character(x)) {
+      y <- ifelse(x %in% names(renommer), unname(renommer[x]), x)
+      if (!identical(y, x)) change <<- TRUE
+      return(y)
+    }
+    if (is.call(x) && identical(x[[1]], as.name("c"))) for (i in seq_along(x)[-1]) if (!is.null(x[[i]])) x[[i]] <- categories(x[[i]])
+    x
+  }
+  marcher <- function(x) {
+    if (!is.call(x)) return(x)
+    f <- as.character(x[[1]])[1]
+    if (length(x) == 3 && f %in% c("==", "!=")) {
+      if (variable(x[[2]])) x[[3]] <- categories(x[[3]]) else if (variable(x[[3]])) x[[2]] <- categories(x[[2]])
+    } else if (length(x) == 3 && identical(f, "%in%") && variable(x[[2]])) {
+      x[[3]] <- categories(x[[3]])
+    }
+    for (i in seq_along(x)[-1]) if (!is.null(x[[i]]) && !identical(x[[i]], quote(expr = ))) x[[i]] <- marcher(x[[i]])
+    x
+  }
+  e <- marcher(e)
+  if (change) paste(deparse(e, width.cutoff = 500L), collapse = " ")
 }
 
 # Les catégories des variables qualitatives d'une définition, telles qu'elles sont dans le projet

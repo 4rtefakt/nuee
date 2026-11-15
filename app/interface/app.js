@@ -472,7 +472,8 @@ const app = {
       const session = dock ? collecterSession(p.id) : null;
       if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null } });
       // (an import from KoboToolbox or ODK is redone with its settings: kobo.js)
-      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined } });
+      // (opened as is, it is opened as is again: an export would otherwise come back as an import to make)
+      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
       else perdus.push(p.nom);
     }
     statut(t('moteur_redemarrage'));

@@ -1394,8 +1394,10 @@ function collerCellules(conteneur, ctx, p, loc, d) {
     const c0 = conteneur._colonnes.indexOf(loc.ancre.cle);
     if (r0 < 0 || c0 < 1) return;
     const rangs = conteneur._lignes.slice(r0, r0 + lignes.length);
-    const cles = conteneur._colonnes.slice(c0, c0 + Math.max(...lignes.map((l) => l.length)));
-    const hors = lignes.length - rangs.length + Math.max(...lignes.map((l) => l.length)) - cles.length;
+    // (not Math.max(...): a column of 100,000 lines would overflow the call stack)
+    const largeur = lignes.reduce((m, l) => Math.max(m, l.length), 0);
+    const cles = conteneur._colonnes.slice(c0, c0 + largeur);
+    const hors = lignes.length - rangs.length + largeur - cles.length;
     try {
       const res = await ctx.changerDonnees('coller_cellules', p.projet, { observations: rangs.map((i) => ld.uid_observations[i]),
         variables: cles.map((j) => ld.uid_variables[j]), valeurs: rangs.map((_, a) => cles.map((_, b) => (lignes[a][b] === undefined ? null : lignes[a][b]))) });

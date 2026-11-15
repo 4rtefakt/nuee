@@ -24,7 +24,7 @@ journal_depuis <- function(n) Filter(function(e) e$n > n, etat$journal)
 
 # ---------------------------------------------------------------- le journal des actions
 
-code_r <- function(x) deparse(x, width.cutoff = 500L)
+code_r <- function(x) paste(deparse(x, width.cutoff = 500L), collapse = "")  # (deparse coupe un long code en morceaux)
 vecteur_r <- function(x) if (length(x) == 1) code_r(x) else paste0("c(", paste(vapply(x, code_r, ""), collapse = ", "), ")")
 
 appel_ouverture <- function(chemin, table = NULL) {
@@ -232,12 +232,12 @@ local({
   en_deux <- function(en, fr, f) { assign(en, f, console); assign(fr, f, console) }
   # (a table's columns in the interface's language)
   colonnes <- function(df, fr, en) stats::setNames(df, if (identical(getOption("nuee.langue"), "en")) en else fr)
-  en_deux("projects", "projets", function() colonnes(data.frame(names(etat$projets),
+  en_deux("projects", "projets", function() colonnes(data.frame(names(etat$projets) %||% character(0),
     vapply(etat$projets, function(p) p$nom %||% "", ""), row.names = NULL), c("objet", "nom"), c("object", "name")))
-  en_deux("models", "modeles", function() colonnes(data.frame(names(etat$modeles),
+  en_deux("models", "modeles", function() colonnes(data.frame(names(etat$modeles) %||% character(0),
     vapply(etat$modeles, function(e) e$definition$name %||% "", ""),
-    vapply(etat$modeles, function(e) paste0(if (isTRUE(e$modele$opls)) "O" else "", if (e$modele$plsda) "PLS-DA" else e$modele$type), ""),
-    vapply(etat$modeles, function(e) as.numeric(e$modele$A), 0), vapply(etat$modeles, function(e) e$projet, ""),
+    vapply(etat$modeles, function(e) paste0(if (isTRUE(e$modele$opls)) "O" else "", if (isTRUE(e$modele$plsda)) "PLS-DA" else e$modele$type), ""),
+    vapply(etat$modeles, function(e) as.numeric(e$modele$A %||% 0)[1], 0), vapply(etat$modeles, function(e) e$projet, ""),
     row.names = NULL), c("objet", "nom", "type", "A", "projet"), c("object", "name", "type", "A", "project")))
   en_deux("engine_folder", "dossier_moteur", function() normalizePath(file.path(racine, "moteur", "R"), winslash = "/"))
   en_deux("reload_engine", "recharger_moteur", function() {

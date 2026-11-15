@@ -22,7 +22,7 @@ lire_projet <- function(chemin) {
                           simplifyMatrix = TRUE)
   # L'état de la séance (où Enregistrer écrit, changements...) ne vient jamais du fichier : un
   # projet reçu ne peut pas faire écrire Enregistrer ailleurs que là où on l'a ouvert.
-  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "fichier_lu", "note", "import_collecte")] <- NULL
+  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "brut", "fichier_lu", "note", "import_collecte")] <- NULL
   obs <- unique(unlist(lapply(j$datasets, function(d) d$observations)))
   vars <- unique(unlist(lapply(j$datasets, function(d) d$variables)))
   donnees <- matrix(NA_real_, length(obs), length(vars),

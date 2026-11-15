@@ -126,9 +126,28 @@ annuler_demande <- function(q) {
   ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
   ancien$figures <- actuel$figures  # (les figures non plus)
   ancien$modifie <- TRUE
+  suivre_conditions_seance(actuel, ancien)
   etat$projets[[q$projet]] <- ancien
   reviser(q$projet)
   list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
+}
+
+# Les modèles de la séance du projet `p` dont la condition d'observations était celle de leur
+# définition dans `avant` (le projet d'avant un changement) prennent celle de `p` : renommer ou
+# fusionner des catégories la réécrit (atelier.R : suivre_categories), annuler la rend. Réajuster
+# ces modèles part de leur propre définition (reajuster_demande).
+suivre_conditions_seance <- function(avant, p) {
+  for (id in names(etat$modeles)) {
+    e <- etat$modeles[[id]]
+    if (!identical(e$projet, p$id) || !avec_condition(e$definition)) next
+    da <- Find(function(x) identical(x$name, e$definition$name), avant$models)
+    dp <- Find(function(x) identical(x$name, e$definition$name), p$models)
+    if (is.null(da) || is.null(dp) || !avec_condition(da) || !avec_condition(dp)) next
+    ancienne <- texte_condition(da$condition)
+    if (!identical(ancienne, texte_condition(dp$condition)) && identical(texte_condition(e$definition$condition), ancienne)) {
+      etat$modeles[[id]]$definition$condition <- dp$condition
+    }
+  }
 }
 
 # Un fichier qui a plusieurs tableaux (feuilles Excel, objets R) et dont le tableau n'est pas
@@ -158,6 +177,7 @@ ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = 
   p$nom <- if (is.null(table)) nom else sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), table, tools::file_ext(nom))
   p$chemin <- chemin
   p$table <- table
+  if (brut) p$brut <- TRUE  # (ouvert tel quel : un export de KoboToolbox ou d'ODK se rouvre de même, le moteur relancé)
   if (ext %in% c("nuee", "json")) p$fichier_lu <- etat_fichier(chemin)
   etat$projets[[p$id]] <- p
   r <- resume_projet(p)
@@ -266,7 +286,7 @@ resume_projet <- function(p) {
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
-       table = p$table %||% NULL,
+       table = p$table %||% NULL, brut = isTRUE(p$brut),
        annulable = if (length(pile)) pile[[1]]$etiquette, revision = etat$revisions[[p$id]] %||% 0,
        chemin_enregistrement = p$chemin_enregistrement %||% (if (json) p$chemin),
        observations = list(uid = as.numeric(names(p$noms_obs)), nom = unname(p$noms_obs)),
@@ -676,6 +696,7 @@ scores_demande <- function(q) {
 changer_projet <- function(q, f, etiquette) {
   avant <- projet(q$projet)
   p <- f(avant)
+  suivre_conditions_seance(avant, p)
   memoriser(avant, etiquette)
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
@@ -862,7 +883,9 @@ table_a_joindre_demande <- function(q) {
   ext <- extension(chemin)
   if (!ext %in% c("nuee", "json", "usp", FORMATS_LECTURE)) stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext)
   tables <- if (ext %in% FORMATS_LECTURE) tables_fichier(chemin)
-  table <- if (length(tables) > 1) as.character(q$table %||% tables[1])
+  # (named even when there's one: tables_fichier may have set aside a codebook sheet, Variables,
+  # and the first sheet of the file would be it)
+  table <- if (length(tables)) as.character(q$table %||% tables[1])
   df <- tableau_a_joindre(chemin, table)
   pris <- c(as.character(p$noms_var), as.character(p$observation_id_names %||% character(0)))
   noms <- character(0)

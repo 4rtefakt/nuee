@@ -70,8 +70,16 @@ export function dialogueRemplacer(app, p, uid = null) {
       el('label', {}, ''), el('p', { class: 'note' }, t('atelier_note_remplacer'))));
     if (!st.vides && document.activeElement === document.body) cherche.focus();
   };
-  // (the preview of these very fields first, even typed a moment ago: nothing is replaced unseen)
+  // (the preview of these very fields first, even typed a moment ago: nothing is replaced unseen;
+  // a second click while it runs does nothing: a replacement that contains its search text would
+  // otherwise be made twice)
+  let enCours = false;
   async function valider() {
+    if (enCours) return;
+    enCours = true;
+    try { await remplacer(); } finally { enCours = false; }
+  }
+  async function remplacer() {
     erreur.textContent = '';
     clearTimeout(minuterie);
     numero += 1;

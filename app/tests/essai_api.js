@@ -1283,6 +1283,14 @@ async function principal() {
       q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['prairie', 'forêt', 'lande'], ordre: ['forêt', 'prairie', 'lande'] });
       const m3 = await api('reajuster', { modele: m2.id, exclues: [2] });
       verifier(m3.N === m2.N - 1 && termes(m3).includes('habitat(forêt)'), `réajusté après un nouvel ordre : N = ${m3.N}`);
+      // a model whose condition names categories (not a term of it): a renamed category, then Ctrl+Z,
+      // and it is refitted from its own definition each time (serveur.R: suivre_conditions_seance)
+      const mc = await api('ajuster', { projet: q.id, type: 'LM', x: [v.altitude], y: [v.densite], echelle: 'none', nom: 'LMcond', condition: 'habitat %in% c("prairie", "lande")' });
+      q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['forêt', 'pré', 'lande'], ordre: ['forêt', 'pré', 'lande'] });
+      const mc2 = await api('reajuster', { modele: mc.id, exclues: [] });
+      await api('annuler', { projet: q.id });
+      const mc3 = await api('reajuster', { modele: mc.id, exclues: [] });
+      verifier(mc.N === 6 && mc2.N === 6 && mc3.N === 6, `une condition sur des catégories renommées puis rendues : N = ${mc.N}, ${mc2.N}, ${mc3.N}`);
       // units and descriptions, kept in the summary, in the Methods text, saved and read again
       q = await api('decrire_variables', { projet: q.id, descriptions: [{ variable: v.densite, unite: 'ind./ha', description: 'Densité des adultes' }, { variable: v.altitude, unite: 'm' }] });
       const dens = q.variables.find((x) => x.nom === 'densite');
