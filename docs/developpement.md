@@ -435,14 +435,11 @@ except `verifier_references.R`, whose exported projects aren't in the repository
   from the Finder (no `LANG`, a short `PATH`), then on the `.dmg` mounted: the engine must run
   on the R in `Nuée.app` (checked), and a `.nuee` given to the Finder (`open`) opens in the
   window. The images are kept with the run (artifacts `nuee-macos-arm64` and
-  `nuee-macos-x86_64`). On Apple silicon, `verifier_script.R`, `verifier_spatial.R`,
-  `verifier_communautes.R` and `verifier_forets.R` run apart and don't stop the job: some
-  exported scripts give the engine's results to rounding only there (mixed models and GAMs
-  within 1e-6 but not 1e-10, two k-means clusters of the same size numbered the other way
-  round, the thresholds of GAM curves drawn otherwise by `MASS::mvrnorm`, the smooths of spatial
-  models, random forests grown otherwise), and an exact Procrustes fit leaves an error above
-  1e-10, while every check passes on Intel. Nuée's own check before writing a script passes on
-  both.
+  `nuee-macos-x86_64`). Every engine check runs there as on Windows and Linux. Apple silicon,
+  whose arithmetic differs in the last bit (no 80-bit sums), is where three results that hung on
+  that bit showed: exported scripts now write their numbers so that R reads them back exactly,
+  the Procrustes error comes from the residuals, and a fit of distance sampling under the
+  monotonicity constraint ends with Newton on its KKT conditions.
 
 Electron's and electron-builder's downloaders fetch GitHub release files anonymously, which
 GitHub throttles at times (HTTP 504 for hours on 2026-11-09). The Linux and macOS jobs have them fetched
