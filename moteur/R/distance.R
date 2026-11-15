@@ -42,7 +42,7 @@ DISTANCE_TOLERANCE <- 1e-11      # (la précision relative des intégrales, inte
 # Une intégrale de `f` de a à b par la quadrature adaptative de Gauss–Kronrod de R (integrate) : une
 # fonction lisse l'est en 21 points, un hasard en marche d'escalier (b grand) ou une fonction qui
 # s'annule (des ajustements qui la rendent négative) en plus.
-integrer_distance <- function(f, a, b) {
+integrer_detection <- function(f, a, b) {
   if (!(b > a)) return(0)
   stats::integrate(f, a, b, rel.tol = DISTANCE_TOLERANCE, abs.tol = 0, subdivisions = 2000L, stop.on.error = FALSE)$value
 }
@@ -51,7 +51,7 @@ integrer_distance <- function(f, a, b) {
 
 # Les positions des paramètres dans θ : forme (ln b, hasard), échelle (ln σ, demi-normale et hasard),
 # ajustements (aj).
-indices_distance <- function(fd) {
+indices_detection <- function(fd) {
   k <- 0
   forme <- if (fd$cle == "hr") (k <- k + 1)
   echelle <- if (fd$cle != "unif") (k <- k + 1)
@@ -59,12 +59,12 @@ indices_distance <- function(fd) {
   list(forme = forme, echelle = echelle, ajustements = ajust, q = k + length(fd$ordres))
 }
 
-noms_parametres_distance <- function(fd) {
+noms_parametres_detection <- function(fd) {
   c(if (fd$cle == "hr") "ln_b", if (fd$cle != "unif") "ln_sigma", if (length(fd$ordres)) paste0(fd$serie, "_", fd$ordres))
 }
 
 # Les polynômes d'Hermite (des probabilistes) : He0 = 1, He1 = u, Hek+1 = u Hek − k Hek−1.
-hermite_distance <- function(u, k) {
+hermite_proba <- function(u, k) {
   if (k == 0) return(rep(1, length(u)))
   h0 <- rep(1, length(u))
   h1 <- u
@@ -77,7 +77,7 @@ hermite_distance <- function(u, k) {
 }
 
 # Les termes d'ajustement fj(u) et leurs dérivées en u, une colonne par ordre.
-serie_distance <- function(serie, u, ordres) {
+serie_ajustement <- function(serie, u, ordres) {
   F <- D <- matrix(0, length(u), length(ordres))
   for (j in seq_along(ordres)) {
     k <- ordres[j]
@@ -88,8 +88,8 @@ serie_distance <- function(serie, u, ordres) {
       F[, j] <- u^k
       D[, j] <- k * u^(k - 1)
     } else {
-      F[, j] <- hermite_distance(u, k)
-      D[, j] <- k * hermite_distance(u, k - 1)
+      F[, j] <- hermite_proba(u, k)
+      D[, j] <- k * hermite_proba(u, k - 1)
     }
   }
   list(F = F, D = D)
@@ -97,8 +97,8 @@ serie_distance <- function(serie, u, ordres) {
 
 # La clé k(x) et ses dérivées par ln b et ln σ. Hasard : k = 1 − exp(−z), z = (x/σ)^−b ; dk/dln σ =
 # b z e^−z, dk/dln b = z e^−z ln z (nulles en x = 0, où z est infini).
-cle_distance <- function(fd, theta, x) {
-  ix <- indices_distance(fd)
+cle_detection <- function(fd, theta, x) {
+  ix <- indices_detection(fd)
   if (fd$cle == "unif") return(list(k = rep(1, length(x))))
   sigma <- exp(theta[ix$echelle])
   if (fd$cle == "hn") {
@@ -119,8 +119,8 @@ cle_distance <- function(fd, theta, x) {
 # g̃(x) = k(x) (1 + Σ aj fj(x/h)), sans la division par sa valeur en 0, 1 + s0 (k(0) = 1 pour les
 # trois clés), et, sur demande, leurs dérivées par θ (une colonne par paramètre).
 detection_distance <- function(fd, theta, x, derivees = FALSE) {
-  ix <- indices_distance(fd)
-  kk <- cle_distance(fd, theta, x)
+  ix <- indices_detection(fd)
+  kk <- cle_detection(fd, theta, x)
   m <- length(fd$ordres)
   s <- 0
   s0 <- 0
@@ -129,9 +129,9 @@ detection_distance <- function(fd, theta, x, derivees = FALSE) {
     h <- if (par_echelle) exp(theta[ix$echelle]) else fd$w
     a <- theta[ix$ajustements]
     u <- x / h
-    S <- serie_distance(fd$serie, u, fd$ordres)
+    S <- serie_ajustement(fd$serie, u, fd$ordres)
     s <- drop(S$F %*% a)
-    F0 <- serie_distance(fd$serie, 0, fd$ordres)$F
+    F0 <- serie_ajustement(fd$serie, 0, fd$ordres)$F
     s0 <- sum(F0 * a)
   }
   gt <- kk$k * (1 + s)
@@ -152,39 +152,39 @@ detection_distance <- function(fd, theta, x, derivees = FALSE) {
 
 # La densité des distances observées, à une constante près : 1 / (w − L) (lignes), 2x / w² (points),
 # comme mrds (fx, fr) : la vraisemblance en garde les mêmes termes.
-poids_distance <- function(fd, x) if (fd$point) 2 * x / fd$w^2 else rep(1 / (fd$w - fd$L), length(x))
+poids_detection <- function(fd, x) if (fd$point) 2 * x / fd$w^2 else rep(1 / (fd$w - fd$L), length(x))
 
-# Les intégrales de poids_distance × g̃ de `a` à chaque `b` (et leurs dérivées par θ), une valeur
+# Les intégrales de poids_detection × g̃ de `a` à chaque `b` (et leurs dérivées par θ), une valeur
 # sous 1e-16 comptant pour 0 comme dans mrds (gstdint).
-integrale_distance <- function(fd, theta, a, b, derivees = FALSE) {
+integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
   valeur <- function(x) {
-    v <- poids_distance(fd, x) * detection_distance(fd, theta, x)$gt
+    v <- poids_detection(fd, x) * detection_distance(fd, theta, x)$gt
     v[!(v >= 1e-16)] <- 0
     v
   }
-  I <- vapply(b, function(bb) integrer_distance(valeur, a, bb), 0)
+  I <- vapply(b, function(bb) integrer_detection(valeur, a, bb), 0)
   e0 <- detection_distance(fd, theta, 0, derivees)
   if (!derivees) return(list(I = I, s0 = e0$s0))
   derivee <- function(j) function(x) {
     e <- detection_distance(fd, theta, x, TRUE)
-    pd <- poids_distance(fd, x)
+    pd <- poids_detection(fd, x)
     v <- pd * e$gt
     pd * e$dgt[, j] * (!is.na(v) & v >= 1e-16)
   }
-  dI <- vapply(seq_len(indices_distance(fd)$q), function(j) vapply(b, function(bb) integrer_distance(derivee(j), a, bb), 0), numeric(length(b)))
+  dI <- vapply(seq_len(indices_detection(fd)$q), function(j) vapply(b, function(bb) integrer_detection(derivee(j), a, bb), 0), numeric(length(b)))
   list(I = I, dI = matrix(dI, length(b)), s0 = e0$s0, ds0 = e0$ds0)
 }
 
 # La log-vraisemblance des distances exactes `x` (entre L et w) : Σ ln f(xi), f = poids × g̃ / ∫ poids
 # × g̃ ; une densité sous 1e-15 comptant pour 1e-15 (mrds : flpt.lnl). Avec `scores`, la dérivée de
 # chaque terme par θ (une ligne par observation).
-vraisemblance_distance <- function(fd, theta, x, scores = FALSE) {
+vraisemblance_detection <- function(fd, theta, x, scores = FALSE) {
   e <- detection_distance(fd, theta, x, scores)
-  p1 <- poids_distance(fd, x) * e$gt
+  p1 <- poids_detection(fd, x) * e$gt
   bas <- !(p1 >= 1e-15)
   bas[is.na(bas)] <- TRUE
   p1[bas] <- 1e-15
-  int <- integrale_distance(fd, theta, fd$L, fd$w, scores)
+  int <- integrale_detection(fd, theta, fd$L, fd$w, scores)
   if (!is.finite(int$I) || int$I <= 0) return(list(ll = -Inf))
   ll <- sum(log(p1)) - length(x) * log(int$I)
   if (!scores) return(list(ll = ll))
@@ -195,9 +195,9 @@ vraisemblance_distance <- function(fd, theta, x, scores = FALSE) {
 }
 
 # La probabilité moyenne de détection p = ∫ poids × g sur [L, w] (g rapportée à g(0)) et son gradient.
-probabilite_distance <- function(fd, theta) {
-  if (!indices_distance(fd)$q) return(list(p = 1, dp = numeric(0)))
-  int <- integrale_distance(fd, theta, fd$L, fd$w, TRUE)
+probabilite_detection <- function(fd, theta) {
+  if (!indices_detection(fd)$q) return(list(p = 1, dp = numeric(0)))
+  int <- integrale_detection(fd, theta, fd$L, fd$w, TRUE)
   d0 <- 1 + int$s0
   list(p = int$I / d0, dp = int$dI[1, ] / d0 - int$I * int$ds0 / d0^2)
 }
@@ -205,7 +205,7 @@ probabilite_distance <- function(fd, theta) {
 # Les contraintes de monotonie de mrds (flnl.constr) en DISTANCE_POINTS_MONO points xr = w (i/10)^1,5 :
 # stricte, g(xr[i−1]) − g(xr[i]) ≥ 0 (g(0) = 1 avant le premier) ; faible, 1 − g(xr[i]) ≥ 0 ; et
 # g(xr[i]) ≥ 0. Leurs valeurs `c` et leur jacobien `J`.
-contraintes_distance <- function(fd, theta, strict = TRUE) {
+contraintes_monotonie <- function(fd, theta, strict = TRUE) {
   xr <- (seq_len(DISTANCE_POINTS_MONO))^1.5 * fd$w / DISTANCE_POINTS_MONO^1.5
   e <- detection_distance(fd, theta, xr, TRUE)
   d0 <- 1 + e$s0
@@ -227,8 +227,8 @@ contraintes_distance <- function(fd, theta, strict = TRUE) {
 # pour le hasard, la meilleure vraisemblance d'une grille (sethazard : σ = s/2 + 0,2 j s, s la racine
 # de la moyenne des x², j de 1 à 10 ; b = 1, 3… 29 ; la première case retient b = 2, comme mrds) ;
 # les ajustements à 1e-16.
-depart_distance <- function(fd, x) {
-  ix <- indices_distance(fd)
+depart_detection <- function(fd, x) {
+  ix <- indices_detection(fd)
   theta <- numeric(ix$q)
   if (fd$cle == "hn") theta[ix$echelle] <- mean(log(x + fd$w / 1000))
   if (fd$cle == "hr") {
@@ -239,7 +239,7 @@ depart_distance <- function(fd, x) {
     meilleur <- Inf
     ij <- c(2, 1)
     for (j in 1:10) for (i in seq(1, 30, 2)) {
-      v <- -vraisemblance_distance(cle, c(log(i), log(s / 2 + j * 0.2 * s)), x)$ll
+      v <- -vraisemblance_detection(cle, c(log(i), log(s / 2 + j * 0.2 * s)), x)$ll
       if (!is.finite(v)) next
       if (i == 1 && j == 1) { meilleur <- v; ij <- c(2, 1) }
       else if (v < meilleur) { meilleur <- v; ij <- c(i, j) }
@@ -255,8 +255,8 @@ depart_distance <- function(fd, x) {
 # n'arrêtent qu'un ajustement qui part à l'infini (σ plus de 1000 fois la troncature w ou 160 000
 # fois plus petit, b au-delà de 1000, un terme d'ajustement au-delà de 1000) : un modèle dégénéré
 # (une demi-normale devenue plate, la clé uniforme sous un autre nom), qui ne converge pas.
-bornes_distance <- function(fd) {
-  ix <- indices_distance(fd)
+bornes_detection <- function(fd) {
+  ix <- indices_detection(fd)
   bas <- rep(-1e3, ix$q)
   haut <- rep(1e3, ix$q)
   if (!is.null(ix$forme)) { bas[ix$forme] <- 0; haut[ix$forme] <- 7 }
@@ -266,7 +266,7 @@ bornes_distance <- function(fd) {
 
 # Minimise `f` (gradient `gr`) depuis `theta` entre les bornes, puis quelques pas de Newton sur les
 # paramètres libres (le hessien par différences du gradient) pour un optimum précis.
-minimiser_distance <- function(f, gr, theta, bas, haut) {
+minimiser_detection <- function(f, gr, theta, bas, haut) {
   o <- tryCatch(stats::nlminb(theta, f, gr, lower = bas, upper = haut, control = list(eval.max = 3000, iter.max = 2000, rel.tol = 1e-15, x.tol = 1e-13)),
                 error = function(e) NULL)
   if (is.null(o) || !all(is.finite(o$par)) || !is.finite(o$objective)) return(list(par = theta, value = f(theta), convergence = 1))
@@ -294,7 +294,7 @@ minimiser_distance <- function(f, gr, theta, bas, haut) {
 # Le maximum de vraisemblance sous les contraintes `cons` (c ≥ 0) par un lagrangien augmenté
 # (Powell–Hestenes–Rockafellar) : chaque sous-problème minimisé comme ci-dessus, les multiplicateurs
 # λ ← max(0, λ − ρ c), ρ décuplé tant que la violation ne baisse pas assez.
-sous_contraintes_distance <- function(f, gr, cons, theta, bas, haut) {
+sous_contraintes_detection <- function(f, gr, cons, theta, bas, haut) {
   nc <- length(cons(theta)$c)
   lambda <- numeric(nc)
   rho <- 10
@@ -308,7 +308,7 @@ sous_contraintes_distance <- function(f, gr, cons, theta, bas, haut) {
       k <- cons(th)
       gr(th) - drop(crossprod(k$J, pmax(0, lambda - rho * k$c)))
     }
-    o <- minimiser_distance(L, Lg, theta, bas, haut)
+    o <- minimiser_detection(L, Lg, theta, bas, haut)
     if (!all(is.finite(o$par))) break
     theta <- o$par
     cc <- cons(theta)$c
@@ -327,41 +327,41 @@ sous_contraintes_distance <- function(f, gr, cons, theta, bas, haut) {
 # log-vraisemblance, l'AIC, la matrice de la somme des produits des scores (`H`, mrds : flt.var) et la
 # covariance des paramètres (son inverse, mrds : solvecov).
 ajuster_detection <- function(fd, x, depart = NULL, monotonie = "stricte") {
-  ix <- indices_distance(fd)
+  ix <- indices_detection(fd)
   q <- ix$q
   base <- list(fd = fd, n = length(x), q = q, monotonie = if (length(fd$ordres)) monotonie else "aucune")
   if (!q) {
-    v <- vraisemblance_distance(fd, numeric(0), x)
+    v <- vraisemblance_detection(fd, numeric(0), x)
     return(c(base, list(theta = numeric(0), ll = v$ll, AIC = -2 * v$ll, H = matrix(0, 0, 0), V = matrix(0, 0, 0), se = numeric(0),
                         converge = is.finite(v$ll), contraint = FALSE)))
   }
-  theta <- if (is.null(depart)) depart_distance(fd, x) else depart
-  b <- bornes_distance(fd)
+  theta <- if (is.null(depart)) depart_detection(fd, x) else depart
+  b <- bornes_detection(fd)
   bas <- b$bas
   haut <- b$haut
   theta <- pmin(haut, pmax(theta, bas))
   f <- function(th) {
-    v <- vraisemblance_distance(fd, th, x)$ll
+    v <- vraisemblance_detection(fd, th, x)$ll
     if (is.finite(v)) -v else 1e300
   }
   gr <- function(th) {
-    v <- vraisemblance_distance(fd, th, x, TRUE)
+    v <- vraisemblance_detection(fd, th, x, TRUE)
     if (!is.finite(v$ll)) return(rep(0, q))
     -colSums(v$scores)
   }
   if (!is.finite(f(theta)) || f(theta) >= 1e300) return(c(base, list(theta = theta, ll = -Inf, AIC = Inf, converge = FALSE, contraint = FALSE)))
-  o <- minimiser_distance(f, gr, theta, bas, haut)
+  o <- minimiser_detection(f, gr, theta, bas, haut)
   contraint <- FALSE
   if (length(fd$ordres) && monotonie != "aucune") {
-    cons <- function(th) contraintes_distance(fd, th, monotonie == "stricte")
+    cons <- function(th) contraintes_monotonie(fd, th, monotonie == "stricte")
     if (any(cons(o$par)$c < -1e-10)) {
-      o <- sous_contraintes_distance(f, gr, cons, theta, bas, haut)
+      o <- sous_contraintes_detection(f, gr, cons, theta, bas, haut)
       contraint <- TRUE
     }
   }
-  v <- vraisemblance_distance(fd, o$par, x, TRUE)
+  v <- vraisemblance_detection(fd, o$par, x, TRUE)
   H <- crossprod(v$scores)
-  V <- inverse_covariance(H)
+  V <- inverse_information(H)
   a_la_borne <- o$par >= haut - 1e-6 | (o$par <= bas + 1e-6 & !seq_len(q) %in% b$libre_en_bas)
   c(base, list(theta = o$par, ll = v$ll, AIC = -2 * v$ll + 2 * q, H = H, V = V, se = sqrt(pmax(0, diag(V))),
                converge = o$convergence == 0 && is.finite(v$ll) && !any(a_la_borne) && !anyNA(V), a_la_borne = any(a_la_borne), contraint = contraint))
@@ -369,7 +369,7 @@ ajuster_detection <- function(fd, x, depart = NULL, monotonie = "stricte") {
 
 # L'inverse d'une matrice d'information comme mrds (solvecov) : par ses vecteurs propres, une valeur
 # propre sous 1e−10 remplacée (son inverse vaut 1e10) ; NA si elle n'est pas inversible.
-inverse_covariance <- function(H, cmax = 1e10) {
+inverse_information <- function(H, cmax = 1e10) {
   if (inherits(tryCatch(solve(H), error = function(e) e), "error")) return(matrix(NA_real_, nrow(H), ncol(H)))
   e <- eigen(H, symmetric = TRUE)
   inv <- ifelse(e$values < 1 / cmax, cmax, 1 / e$values)
@@ -378,7 +378,7 @@ inverse_covariance <- function(H, cmax = 1e10) {
 
 # Les ordres des termes d'ajustement de Distance (get_adj_orders) : cosinus 2, 3, 4… (1, 2, 3… avec
 # la clé uniforme) ; Hermite et polynômes 4, 6, 8… (2, 4, 6… avec la clé uniforme).
-ordres_distance <- function(n, cle, serie) {
+ordres_ajustement <- function(n, cle, serie) {
   if (!n) return(integer(0))
   if (serie == "cos") return(as.integer(seq(if (cle == "unif") 1 else 2, by = 1, length.out = n)))
   as.integer(seq(if (cle == "unif") 2 else 4, by = 2, length.out = n))
@@ -406,10 +406,10 @@ choisir_detection <- function(base, x, serie, n_fixe = NULL, n_max = DISTANCE_AJ
     return(list(choisi = m, candidats = list(m), raison = "cle"))
   }
   if (!is.null(n_fixe)) {
-    m <- ajuster_detection(fd_de(ordres_distance(n_fixe, base$cle, serie)), x, monotonie = monotonie)
+    m <- ajuster_detection(fd_de(ordres_ajustement(n_fixe, base$cle, serie)), x, monotonie = monotonie)
     return(list(choisi = m, candidats = list(m), raison = "fixe"))
   }
-  ordres <- ordres_distance(n_max, base$cle, serie)
+  ordres <- ordres_ajustement(n_max, base$cle, serie)
   meilleur <- ajuster_detection(fd_de(integer(0)), x, monotonie = "aucune")
   candidats <- list(meilleur)
   raison <- "max"
@@ -418,7 +418,7 @@ choisir_detection <- function(base, x, serie, n_fixe = NULL, n_max = DISTANCE_AJ
     fd <- fd_de(ordres[seq_len(i)])
     depart <- if (i > 1) c(meilleur$theta, 0)
     # (une taille de données trop petite pour tant de paramètres : la recherche s'arrête là, comme mrds)
-    if (length(unique(x)) < indices_distance(fd)$q) { raison <- "parametres"; break }
+    if (length(unique(x)) < indices_detection(fd)$q) { raison <- "parametres"; break }
     m <- tryCatch(ajuster_detection(fd, x, depart, monotonie), error = function(e) NULL)
     if (is.null(m) || !m$converge) {
       if (!is.null(m)) candidats[[length(candidats) + 1]] <- m
@@ -435,14 +435,14 @@ choisir_detection <- function(base, x, serie, n_fixe = NULL, n_max = DISTANCE_AJ
 # ---------------------------------------------------------------- l'adéquation
 
 # La fonction de répartition des distances ajustée en chaque x : ∫ de L à x sur ∫ de L à w.
-repartition_distance <- function(fd, theta, x) {
+repartition_detection <- function(fd, theta, x) {
   if (!length(x)) return(numeric(0))
-  integrale_distance(fd, theta, fd$L, x)$I / integrale_distance(fd, theta, fd$L, fd$w)$I
+  integrale_detection(fd, theta, fd$L, x)$I / integrale_detection(fd, theta, fd$L, fd$w)$I
 }
 
 # La loi limite du critère de Cramér–von Mises (Anderson et Darling, 1952), ses quatre premiers termes,
 # comme mrds (pcramer).
-pcramer_distance <- function(q, eps = 1e-5) {
+pcramer_detection <- function(q, eps = 1e-5) {
   sum(vapply(0:3, function(k) {
     z <- gamma(k + 0.5) * sqrt(4 * k + 1) / (gamma(k + 1) * pi^1.5 * sqrt(q))
     u <- (4 * k + 1)^2 / (16 * q)
@@ -454,19 +454,19 @@ pcramer_distance <- function(q, eps = 1e-5) {
 # Σ (F(x(i)) − (i − ½)/n)², p asymptotique) et le khi² sur √n classes égales de L à w (gof.ds : les
 # classes fermées à droite, ddl = classes − 1 − paramètres) ; le diagramme quantile-quantile (la
 # répartition ajustée de chaque distance contre la répartition empirique, comme qqplot.ddf).
-adequation_distance <- function(det, x, uid) {
+adequation_detection <- function(det, x, uid) {
   fd <- det$fd
   n <- length(x)
-  F <- repartition_distance(fd, det$theta, x)
+  F <- repartition_detection(fd, det$theta, x)
   o <- order(F)
   Fs <- F[o]
   W <- 1 / (12 * n) + sum((Fs - (seq_len(n) - 0.5) / n)^2)
-  cvm <- list(W = W, p = 1 - pcramer_distance(W))
+  cvm <- list(W = W, p = 1 - pcramer_detection(W))
   nc <- max(1, round(sqrt(n)))
   bords <- fd$L + (fd$w - fd$L) / nc * (0:nc)
   observe <- as.vector(table(cut(x, bords, include.lowest = TRUE)))
-  tot <- integrale_distance(fd, det$theta, fd$L, fd$w)$I
-  attendu <- n * diff(c(0, integrale_distance(fd, det$theta, fd$L, bords[-1])$I)) / tot
+  tot <- integrale_detection(fd, det$theta, fd$L, fd$w)$I
+  attendu <- n * diff(c(0, integrale_detection(fd, det$theta, fd$L, bords[-1])$I)) / tot
   chi2 <- sum((observe - attendu)^2 / attendu, na.rm = TRUE)
   ddl <- nc - 1 - det$q
   khi2 <- list(classes = data.frame(de = bords[-length(bords)], a = bords[-1], observe = observe, attendu = attendu),
@@ -479,16 +479,16 @@ adequation_distance <- function(det, x, uid) {
 # ---------------------------------------------------------------- les unités
 
 # Les longueurs et les aires de Distance (units_table), en mètres et en mètres carrés.
-UNITES_LONGUEUR <- c(m = 1, km = 1000, ft = 0.3048, yd = 0.9144, mi = 1609.344, nmi = 1852)
-UNITES_AIRE <- c(m2 = 1, ha = 1e4, km2 = 1e6, acre = 4046.873, mi2 = 2589988, nmi2 = 3429904)
+DISTANCE_UNITES_LONGUEUR <- c(m = 1, km = 1000, ft = 0.3048, yd = 0.9144, mi = 1609.344, nmi = 1852)
+DISTANCE_UNITES_AIRE <- c(m2 = 1, ha = 1e4, km2 = 1e6, acre = 4046.873, mi2 = 2589988, nmi2 = 3429904)
 
 # Le facteur qui met la troncature w dans l'unité des aires, comme convert_units de Distance : lignes,
 # (distance × effort) / aire, 2 w L est alors une aire ; points, distance / √aire, π w² en est une.
-facteur_distance <- function(r) {
+facteur_echantillonnage <- function(r) {
   if (!is.null(r$facteur)) return(r$facteur)
-  du <- UNITES_LONGUEUR[[r$unites$distance]]
-  au <- UNITES_AIRE[[r$unites$aire]]
-  if (r$transect == "point") du / sqrt(au) else du * UNITES_LONGUEUR[[r$unites$effort]] / au
+  du <- DISTANCE_UNITES_LONGUEUR[[r$unites$distance]]
+  au <- DISTANCE_UNITES_AIRE[[r$unites$aire]]
+  if (r$transect == "point") du / sqrt(au) else du * DISTANCE_UNITES_LONGUEUR[[r$unites$effort]] / au
 }
 
 # ---------------------------------------------------------------- réglages et données
@@ -499,7 +499,7 @@ facteur_distance <- function(r) {
 # distance, comme ds ; une distance ; un pourcentage des plus grandes) et à gauche ; la clé, la série
 # d'ajustement, leur nombre ("aic" : choisi par l'AIC, ou 0 à 5), leur échelle (la troncature w,
 # comme ds par défaut, ou σ), la monotonie ; les unités ou un facteur de conversion donné tel quel.
-reglages_distance <- function(d) {
+reglages_echantillonnage <- function(d) {
   o <- d$options %||% list()
   spec <- function(x) if (length(x$by)) specs_groupement(x)[[1]]
   nombre <- function(x) {
@@ -520,17 +520,17 @@ reglages_distance <- function(d) {
        ajustements = if (identical(aj, "aic") || is.na(aj)) "aic" else as.integer(nombre(aj) %||% 0),
        echelle_ajustements = texte(o$echelle_ajustements, c("largeur", "echelle"), "largeur"),
        monotonie = texte(o$monotonie, c("stricte", "faible", "aucune"), "stricte"),
-       unites = list(distance = texte(u$distance, names(UNITES_LONGUEUR), "m"), effort = texte(u$effort, names(UNITES_LONGUEUR), "km"),
-                     aire = texte(u$aire, names(UNITES_AIRE), "km2")),
+       unites = list(distance = texte(u$distance, names(DISTANCE_UNITES_LONGUEUR), "m"), effort = texte(u$effort, names(DISTANCE_UNITES_LONGUEUR), "km"),
+                     aire = texte(u$aire, names(DISTANCE_UNITES_AIRE), "km2")),
        facteur = nombre(o$facteur))
 }
 
 # Les clés d'un transect ou d'une strate en texte (un nombre tel qu'il s'écrit).
-textes_distance <- function(v) if (is.numeric(v)) ifelse(is.na(v), NA_character_, sprintf("%.15g", v)) else as.character(v)
+textes_echantillonnage <- function(v) if (is.numeric(v)) ifelse(is.na(v), NA_character_, sprintf("%.15g", v)) else as.character(v)
 
 # L'ordre des strates et des transects : celui des catégories d'une variable qualitative, des nombres,
 # sinon des noms (comparaisons.R : ordre_cles).
-ordre_distance <- function(projet, spec, v) {
+ordre_echantillonnage <- function(projet, spec, v) {
   u <- unique(v[!is.na(v)])
   if (identical(spec$by, "variable")) {
     vv <- variable_du_projet(projet, spec$variable)
@@ -540,11 +540,11 @@ ordre_distance <- function(projet, spec, v) {
   ordre_cles(u)
 }
 
-# Les données (`r` : reglages_distance) : les distances de chaque ligne, son transect, sa strate,
+# Les données (`r` : reglages_echantillonnage) : les distances de chaque ligne, son transect, sa strate,
 # l'effort de son transect, l'aire de sa strate, la taille du groupe ; la troncature ; la table des
 # transects (effort, détections et individus dans la troncature) et celle des strates. Les refus
 # nomment la ligne, le transect ou la strate en cause.
-donnees_distance <- function(projet, d, r) {
+donnees_echantillonnage <- function(projet, d, r) {
   err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
   nombre <- function(x) format(x, digits = 15)
   if (length(d$spectres)) err("L'échantillonnage par distances ne prend pas de prétraitement de spectres.", "Distance sampling takes no spectral preprocessing.")
@@ -573,8 +573,8 @@ donnees_distance <- function(projet, d, r) {
   obs <- as.numeric(d$observations)
   noms_obs <- unname(projet$noms_obs[as.character(obs)])
   x <- colonne(projet, uy, obs)
-  tr <- textes_distance(valeurs_groupement(projet, r$echantillon, obs))
-  st <- if (!is.null(r$strate)) textes_distance(valeurs_groupement(projet, r$strate, obs)) else rep("", length(obs))
+  tr <- textes_echantillonnage(valeurs_groupement(projet, r$echantillon, obs))
+  st <- if (!is.null(r$strate)) textes_echantillonnage(valeurs_groupement(projet, r$strate, obs)) else rep("", length(obs))
   # (une ligne sans transect ni distance, une ligne vide du tableau, est laissée de côté)
   vide <- is.na(tr) & is.na(x)
   k <- which(is.na(tr) & !is.na(x))
@@ -648,10 +648,10 @@ donnees_distance <- function(projet, d, r) {
   n <- sum(dans)
   if (n < 2) err("Moins de deux distances entre %s et %s.", "Fewer than two distances between %s and %s.", nombre(L), nombre(w))
   # les strates et leurs transects, dans l'ordre
-  strates <- if (!is.null(r$strate)) ordre_distance(projet, r$strate, st[garde]) else ""
+  strates <- if (!is.null(r$strate)) ordre_echantillonnage(projet, r$strate, st[garde]) else ""
   lignes <- list()
   for (s in strates) {
-    ts <- ordre_distance(projet, r$echantillon, tr[garde & st == s])
+    ts <- ordre_echantillonnage(projet, r$echantillon, tr[garde & st == s])
     for (e in ts) {
       i <- garde & st == s & tr == e
       lignes[[length(lignes) + 1]] <- data.frame(strate = s, transect = e, effort = effort[i][1], n = sum(dans & i),
@@ -685,7 +685,7 @@ variance_rencontre <- function(l, n, type) {
 # La densité et l'effectif par strate et au total, comme dht2 (stratification géographique, sans
 # multiplicateur) : `t` les données, `p`, `var_p` la probabilité de détection et sa variance, `q` les
 # paramètres de la fonction de détection, `cu` le facteur des unités.
-densite_distance <- function(t, p, var_p, q, cu) {
+densite_echantillonnage <- function(t, p, var_p, q, cu) {
   type <- if (t$point) "P2" else "R2"
   nddf <- t$n
   ic <- function(N, cv, ddl) {
@@ -763,10 +763,10 @@ densite_distance <- function(t, p, var_p, q, cu) {
 # ---------------------------------------------------------------- ajuster
 
 # L'échantillonnage par distances (definir_modele, type "DISTANCE") : Y les distances, et les
-# réglages de reglages_distance (d$options).
+# réglages de reglages_echantillonnage (d$options).
 ajuster_distance <- function(projet, d) {
-  r <- reglages_distance(d)
-  t <- donnees_distance(projet, d, r)
+  r <- reglages_echantillonnage(d)
+  t <- donnees_echantillonnage(projet, d, r)
   if (r$cle == "unif" && r$serie == "aucune" && identical(r$ajustements, "aic")) r$ajustements <- 0L
   if (!identical(r$ajustements, "aic") && (r$ajustements < 0 || r$ajustements > DISTANCE_AJUSTEMENTS_MAX)) {
     stop(sprintf(traduire("Le nombre de termes d'ajustement va de 0 à %d.", "The number of adjustment terms goes from 0 to %d."), DISTANCE_AJUSTEMENTS_MAX), call. = FALSE)
@@ -780,16 +780,16 @@ ajuster_distance <- function(projet, d) {
                           "The detection function %s doesn't converge%s: try another key, fewer adjustment terms or another truncation."),
                  libelle_detection(det$fd), if (isTRUE(det$a_la_borne)) traduire(" (un paramètre part à l'infini)", " (a parameter runs off to infinity)") else ""), call. = FALSE)
   }
-  pr <- probabilite_distance(det$fd, det$theta)
+  pr <- probabilite_detection(det$fd, det$theta)
   var_p <- if (det$q) drop(t(pr$dp) %*% det$V %*% pr$dp) else 0
   se_p <- sqrt(max(0, var_p))
-  cu <- facteur_distance(r)
-  dens <- densite_distance(t, pr$p, var_p, det$q, cu)
+  cu <- facteur_echantillonnage(r)
+  dens <- densite_echantillonnage(t, pr$p, var_p, det$q, cu)
   # (des groupes : la densité des groupes aussi, comme dht2 la donne en attribut « grouped »)
   tg <- t
   tg$groupes <- FALSE
   tg$transects$individus <- tg$transects$n
-  dens_groupes <- if (t$groupes) densite_distance(tg, pr$p, var_p, det$q, cu)
+  dens_groupes <- if (t$groupes) densite_echantillonnage(tg, pr$p, var_p, det$q, cu)
   largeur <- t$w - t$L
   # (lignes : la demi-largeur effective de bande ESW = p (w − L) ; points : le rayon effectif de détection
   # EDR = w √p, son CV la moitié de celui de p)
@@ -799,18 +799,18 @@ ajuster_distance <- function(projet, d) {
     ordres = paste(c$fd$ordres, collapse = " "), parametres = c$q, logL = c$ll, AIC = c$AIC, converge = isTRUE(c$converge), contraint = isTRUE(c$contraint), stringsAsFactors = FALSE)))
   candidats$delta_AIC <- candidats$AIC - min(candidats$AIC[candidats$converge], Inf)
   candidats$choisi <- candidats$modele == libelle_detection(det$fd)
-  ix <- indices_distance(det$fd)
-  parametres <- if (det$q) data.frame(parametre = noms_parametres_distance(det$fd), estimation = det$theta, se = det$se, stringsAsFactors = FALSE)
+  ix <- indices_detection(det$fd)
+  parametres <- if (det$q) data.frame(parametre = noms_parametres_detection(det$fd), estimation = det$theta, se = det$se, stringsAsFactors = FALSE)
   # la fonction de détection sur une grille, et la densité des distances (points : f(r) = 2r g(r) / (w² p))
   xg <- seq(t$L, t$w, length.out = 101)
   eg <- detection_distance(det$fd, det$theta, xg)
   g <- eg$gt / (1 + eg$s0)
   courbe <- data.frame(x = xg, g = g, f = if (t$point) 2 * xg * g / (t$w^2 * pr$p) else g / (largeur * pr$p))
   ex <- detection_distance(det$fd, det$theta, t$x)
-  m <- list(type = "DISTANCE", N = length(t$observations), observations = t$observations, reglages_distance = r, donnees = t,
+  m <- list(type = "DISTANCE", N = length(t$observations), observations = t$observations, reglages_echantillonnage = r, donnees = t,
             detection = det, candidats = candidats, selection = ch$raison, parametres = parametres,
             p = pr$p, se_p = se_p, effectif = effectif, Nc = sum(if (t$groupes) t$taille_x else rep(1, t$n)) / pr$p,
-            adequation = adequation_distance(det, t$x, t$uid), courbe = courbe, g_x = ex$gt / (1 + ex$s0), densite = dens, densite_groupes = dens_groupes,
+            adequation = adequation_detection(det, t$x, t$uid), courbe = courbe, g_x = ex$gt / (1 + ex$s0), densite = dens, densite_groupes = dens_groupes,
             facteur = cu, var_p = var_p)
   class(m) <- "modele_distance"
   m
@@ -829,23 +829,23 @@ verifier_distance <- function(projet, d) list(variables = data.frame(), observat
 
 # ---------------------------------------------------------------- l'interface
 
-SYMBOLES_LONGUEUR <- c(m = "m", km = "km", ft = "ft", yd = "yd", mi = "mi", nmi = "nmi")
-SYMBOLES_AIRE <- c(m2 = "m²", ha = "ha", km2 = "km²", acre = "acre", mi2 = "mi²", nmi2 = "nmi²")
+DISTANCE_SYMBOLES_LONGUEUR <- c(m = "m", km = "km", ft = "ft", yd = "yd", mi = "mi", nmi = "nmi")
+DISTANCE_SYMBOLES_AIRE <- c(m2 = "m²", ha = "ha", km2 = "km²", acre = "acre", mi2 = "mi²", nmi2 = "nmi²")
 
 # Les unités du modèle en symboles (un facteur donné tel quel : l'aire sans nom).
-unites_distance <- function(m) {
-  r <- m$reglages_distance
-  list(distance = SYMBOLES_LONGUEUR[[r$unites$distance]], effort = if (r$transect == "ligne") SYMBOLES_LONGUEUR[[r$unites$effort]] else "",
-       aire = if (is.null(r$facteur)) SYMBOLES_AIRE[[r$unites$aire]] else "", facteur = m$facteur, donne = !is.null(r$facteur))
+unites_echantillonnage <- function(m) {
+  r <- m$reglages_echantillonnage
+  list(distance = DISTANCE_SYMBOLES_LONGUEUR[[r$unites$distance]], effort = if (r$transect == "ligne") DISTANCE_SYMBOLES_LONGUEUR[[r$unites$effort]] else "",
+       aire = if (is.null(r$facteur)) DISTANCE_SYMBOLES_AIRE[[r$unites$aire]] else "", facteur = m$facteur, donne = !is.null(r$facteur))
 }
 
 # Les lignes du modèle : leur transect, leur strate, leur distance, si elle est dans la troncature,
 # la probabilité de détection à cette distance g(x), la taille du groupe.
-observations_distance <- function(m) {
+observations_echantillonnage <- function(m) {
   l <- m$donnees$lignes
   g <- rep(NA_real_, nrow(l))
   g[l$dans] <- m$g_x[match(l$uid[l$dans], m$donnees$uid)]
-  out <- data.frame(uid = l$uid, nom = l$nom, transect = l$transect, strate = l$strate, distance = l$distance, dans = l$dans, g = g, stringsAsFactors = FALSE)
+  out <- data.frame(uid = l$uid, nom = l$nom, transect = l$transect, strate = l$strate, distance = l$distance, dans_troncature = l$dans, g = g, stringsAsFactors = FALSE)
   if (m$donnees$groupes) out$taille <- l$taille
   if (!nzchar(paste(unique(l$strate), collapse = ""))) out$strate <- NULL
   out
@@ -854,7 +854,7 @@ observations_distance <- function(m) {
 # L'histogramme des distances sous la fonction de détection (comme plot.ds de mrds) : √n classes
 # égales ; chaque barre, le compte sur celui qu'aurait g = 1 (lignes : Δ n / (p (w − L)) ; points :
 # Δ(r²) n / (p w²)) ; et la densité des distances (le compte sur n Δ), pour la courbe f.
-histogramme_distance <- function(m) {
+histogramme_echantillonnage <- function(m) {
   t <- m$donnees
   nc <- max(1, round(sqrt(t$n)))
   bords <- t$L + (t$w - t$L) / nc * (0:nc)
@@ -870,9 +870,9 @@ resultat_distance <- function(id) {
   m <- e$modele
   d <- e$definition
   t <- m$donnees
-  r <- m$reglages_distance
+  r <- m$reglages_echantillonnage
   det <- m$detection
-  u <- unites_distance(m)
+  u <- unites_echantillonnage(m)
   tot <- m$densite[nrow(m$densite), ]
   fr <- !identical(getOption("nuee.langue"), "en")
   nb <- function(x, k = 4) formatC(signif(x, k), format = "fg", digits = k, decimal.mark = if (fr) "," else ".")
@@ -881,13 +881,13 @@ resultat_distance <- function(id) {
        chiffres = sprintf("%s · D %s%s%s", libelle_detection(det$fd), nb(tot$D), if (nzchar(u$aire)) paste0(" /", u$aire) else "",
                           if (is.finite(tot$cv)) sprintf(" (CV %s)", pourcent_texte(tot$cv, fr)) else ""),
        vues_defaut = I(c("distance_detection", "distance_densite")),
-       observations = observations_distance(m), transect = r$transect, cle = det$fd$cle, serie = det$fd$serie %||% "", ordres = I(det$fd$ordres),
+       observations = observations_echantillonnage(m), transect = r$transect, cle = det$fd$cle, serie = det$fd$serie %||% "", ordres = I(det$fd$ordres),
        serie_demandee = r$serie, ajustements = r$ajustements, monotonie = det$monotonie, monotonie_demandee = r$monotonie, contraint = isTRUE(det$contraint),
        echelle_ajustements = r$echelle_ajustements, selection = m$selection, modele_detection = libelle_detection(det$fd),
        candidats = m$candidats, parametres = m$parametres, logL = det$ll, AIC = det$AIC, q = det$q, n = t$n,
        p = m$p, se_p = m$se_p, cv_p = m$se_p / m$p, effectif = m$effectif, Nc = m$Nc,
        troncature = list(w = t$w, L = t$L, type = r$troncature$type, pourcentage = t$pourcentage), au_dela = t$au_dela, en_deca = t$en_deca, vides = t$vides,
-       courbe = m$courbe, histogramme = histogramme_distance(m), distances = I(t$x), uid_distances = I(t$uid), g_distances = I(m$g_x),
+       courbe = m$courbe, histogramme = histogramme_echantillonnage(m), distances = I(t$x), uid_distances = I(t$uid), g_distances = I(m$g_x),
        adequation = list(cvm = m$adequation$cvm, khi2 = m$adequation$khi2, qq = m$adequation$qq),
        densite = m$densite, densite_groupes = m$densite_groupes, densite_seule = t$densite_seule, groupes = t$groupes,
        transects = t$transects, unites = u, noms = t$noms, strates = I(t$strates$strate), avec_strates = !is.null(r$strate),
@@ -904,13 +904,13 @@ resultat_distance <- function(id) {
 tables_distance <- function(projet, m) {
   t <- m$donnees
   det <- m$detection
-  u <- unites_distance(m)
+  u <- unites_echantillonnage(m)
   a <- m$adequation
-  obs <- observations_distance(m)
+  obs <- observations_echantillonnage(m)
   obs$uid <- NULL
   names(obs)[names(obs) == "nom"] <- "Observation"
   out <- list(
-    resume = data.frame(transect = m$reglages_distance$transect, modele = libelle_detection(det$fd), monotonie = det$monotonie, n = t$n,
+    resume = data.frame(transect = m$reglages_echantillonnage$transect, modele = libelle_detection(det$fd), monotonie = det$monotonie, n = t$n,
                         troncature = t$w, troncature_gauche = t$L, au_dela = t$au_dela, transects = nrow(t$transects), strates = nrow(t$strates),
                         logL = det$ll, AIC = det$AIC, parametres = det$q, unite_distance = u$distance, unite_effort = u$effort, unite_aire = u$aire,
                         facteur_unites = m$facteur, stringsAsFactors = FALSE),
@@ -949,9 +949,9 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
   fr <- langue == "fr"
   tx <- function(a, b) if (fr) a else b
   t <- m$donnees
-  r <- m$reglages_distance
+  r <- m$reglages_echantillonnage
   det <- m$detection
-  u <- unites_distance(m)
+  u <- unites_echantillonnage(m)
   nombre <- function(x, chiffres = 2) nombre_texte(x, chiffres, fr)
   sig <- function(x, k = 3) trimws(formatC(signif(x, k), format = "fg", digits = k, decimal.mark = tx(",", ".")))
   dist <- function(x) paste(sig(x, 4), u$distance)

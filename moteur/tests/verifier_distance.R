@@ -115,19 +115,19 @@ reference_integrale <- function(fd, th, panneaux = 1e5) {
   h <- (fd$w - fd$L) / panneaux
   milieux <- fd$L + h * (seq_len(panneaux) - 0.5)
   x <- as.vector(outer(gl8$x * h / 2, milieux, "+"))
-  v <- poids_distance(fd, x) * detection_distance(fd, th, x)$gt
+  v <- poids_detection(fd, x) * detection_distance(fd, th, x)$gt
   v[!(v >= 1e-16)] <- 0
   sum(v * rep(gl8$w * h / 2, panneaux))
 }
-e_quad <- max(vapply(cas, function(k) ecart(integrale_distance(k[[1]], k[[2]], k[[1]]$L, k[[1]]$w)$I, reference_integrale(k[[1]], k[[2]])), 0))
+e_quad <- max(vapply(cas, function(k) ecart(integrale_detection(k[[1]], k[[2]], k[[1]]$L, k[[1]]$w)$I, reference_integrale(k[[1]], k[[2]])), 0))
 s_hn <- 0.4
 verifier(sprintf("les intégrales (integrate, adaptative) contre Gauss–Legendre sur 100 000 panneaux : 13 fonctions de détection (σ du hasard 500 fois plus petit que w, b = 50, une fonction qui s'annule, points, troncature à gauche ; écart %.1e) ; la demi-normale contre σ √(2π) (Φ(w/σ) − ½)", e_quad),
-         e_quad < 1e-9 && proche(integrale_distance(fd_de("hn"), log(s_hn), 0, 1)$I, s_hn * sqrt(2 * pi) * (stats::pnorm(1 / s_hn) - 0.5), 1e-12))
+         e_quad < 1e-9 && proche(integrale_detection(fd_de("hn"), log(s_hn), 0, 1)$I, s_hn * sqrt(2 * pi) * (stats::pnorm(1 / s_hn) - 0.5), 1e-12))
 
 # les scores contre des différences finies des termes de la vraisemblance
 termes_vraisemblance <- function(fd, th, x) {
-  p1 <- pmax(poids_distance(fd, x) * detection_distance(fd, th, x)$gt, 1e-15)
-  log(p1) - log(integrale_distance(fd, th, fd$L, fd$w)$I)
+  p1 <- pmax(poids_detection(fd, x) * detection_distance(fd, th, x)$gt, 1e-15)
+  log(p1) - log(integrale_detection(fd, th, fd$L, fd$w)$I)
 }
 set.seed(11)
 xs <- round(abs(stats::rnorm(150, 0, 0.35)), 3)
@@ -135,7 +135,7 @@ xs <- xs[xs <= 1]
 e_sc <- max(vapply(cas[c(1, 2, 3, 6, 7, 8, 12)], function(k) {
   fd <- k[[1]]
   th <- k[[2]]
-  S <- vraisemblance_distance(fd, th, xs, TRUE)$scores
+  S <- vraisemblance_detection(fd, th, xs, TRUE)$scores
   J <- vapply(seq_along(th), function(j) {
     h <- 1e-5 * max(1, abs(th[j]))
     (termes_vraisemblance(fd, replace(th, j, th[j] + h), xs) - termes_vraisemblance(fd, replace(th, j, th[j] - h), xs)) / (2 * h)
@@ -167,22 +167,22 @@ verifier("la demi-normale seule : ln σ et la log-vraisemblance de la vraisembla
 
 fd1 <- fd_de("hn", w = 1)
 a1 <- ajuster_detection(fd1, xs)
-pp <- probabilite_distance(fd1, a1$theta)
+pp <- probabilite_detection(fd1, a1$theta)
 s1 <- exp(a1$theta)
 p_direct <- s1 * sqrt(2 * pi) * (stats::pnorm(1 / s1) - 0.5)
-dp_num <- (probabilite_distance(fd1, a1$theta + 1e-6)$p - probabilite_distance(fd1, a1$theta - 1e-6)$p) / 2e-6
+dp_num <- (probabilite_detection(fd1, a1$theta + 1e-6)$p - probabilite_detection(fd1, a1$theta - 1e-6)$p) / 2e-6
 verifier("p de la demi-normale : σ √(2π) (Φ(w/σ) − ½) / w, et sa dérivée par ln σ contre des différences finies", proche(pp$p, p_direct, 1e-12) && proche(pp$dp, dp_num, 1e-7))
 Jt <- vapply(1, function(j) (termes_vraisemblance(fd1, a1$theta + 1e-6, xs) - termes_vraisemblance(fd1, a1$theta - 1e-6, xs)) / 2e-6, numeric(length(xs)))
 verifier("la matrice d'information : la somme des produits des scores de chaque distance (mrds : flt.var), sa covariance l'inverse",
          proche(a1$H, crossprod(Jt), 1e-7) && proche(a1$V, 1 / crossprod(Jt), 1e-7))
 
 u <- seq(-2, 2, 0.25)
-verifier("les polynômes d'Hermite des probabilistes : He2, He4, He6, He8 écrits en entier", proche(hermite_distance(u, 2), u^2 - 1, 1e-14) &&
-           proche(hermite_distance(u, 4), u^4 - 6 * u^2 + 3, 1e-13) && proche(hermite_distance(u, 6), u^6 - 15 * u^4 + 45 * u^2 - 15, 1e-12) &&
-           proche(hermite_distance(u, 8), u^8 - 28 * u^6 + 210 * u^4 - 420 * u^2 + 105, 1e-12))
+verifier("les polynômes d'Hermite des probabilistes : He2, He4, He6, He8 écrits en entier", proche(hermite_proba(u, 2), u^2 - 1, 1e-14) &&
+           proche(hermite_proba(u, 4), u^4 - 6 * u^2 + 3, 1e-13) && proche(hermite_proba(u, 6), u^6 - 15 * u^4 + 45 * u^2 - 15, 1e-12) &&
+           proche(hermite_proba(u, 8), u^8 - 28 * u^6 + 210 * u^4 - 420 * u^2 + 105, 1e-12))
 verifier("les ordres des termes d'ajustement de Distance (cos 2, 3… ; unif + cos 1, 2… ; herm et poly 4, 6… ; unif + poly 2, 4…)",
-         identical(ordres_distance(3, "hn", "cos"), 2:4) && identical(ordres_distance(3, "unif", "cos"), 1:3) && identical(ordres_distance(2, "hr", "herm"), c(4L, 6L)) &&
-           identical(ordres_distance(3, "unif", "poly"), c(2L, 4L, 6L)))
+         identical(ordres_ajustement(3, "hn", "cos"), 2:4) && identical(ordres_ajustement(3, "unif", "cos"), 1:3) && identical(ordres_ajustement(2, "hr", "herm"), c(4L, 6L)) &&
+           identical(ordres_ajustement(3, "unif", "poly"), c(2L, 4L, 6L)))
 
 # des distances qui évitent la ligne (une bosse vers 0,3) : la contrainte de monotonie agit
 set.seed(3)
@@ -197,12 +197,12 @@ bosse <- local({
 fdc <- fd_de("hn", 2:3, "cos")
 libre <- ajuster_detection(fdc, bosse, monotonie = "aucune")
 sous <- ajuster_detection(fdc, bosse, monotonie = "faible")
-k <- contraintes_distance(fdc, sous$theta, FALSE)
+k <- contraintes_monotonie(fdc, sous$theta, FALSE)
 actives <- which(abs(k$c) < 1e-7)
-gr <- -colSums(vraisemblance_distance(fdc, sous$theta, bosse, TRUE)$scores)
+gr <- -colSums(vraisemblance_detection(fdc, sous$theta, bosse, TRUE)$scores)
 lambda <- if (length(actives)) qr.solve(t(k$J[actives, , drop = FALSE]), gr) else numeric(0)
 verifier(sprintf("monotonie faible sur une bosse : sans contrainte g dépasse 1 ; avec, les contraintes tiennent, %d actives, multiplicateurs positifs, ∇f = Jᵀλ (Karush–Kuhn–Tucker)", length(actives)),
-         any(contraintes_distance(fdc, libre$theta, FALSE)$c < -1e-3) && isTRUE(sous$contraint) && min(k$c) > -1e-9 && length(actives) >= 1 &&
+         any(contraintes_monotonie(fdc, libre$theta, FALSE)$c < -1e-3) && isTRUE(sous$contraint) && min(k$c) > -1e-9 && length(actives) >= 1 &&
            all(lambda > 0) && max(abs(gr - drop(crossprod(k$J[actives, , drop = FALSE], lambda)))) < 1e-5 * max(abs(gr), 1) && sous$ll < libre$ll)
 
 ch <- choisir_detection(fd_de("unif"), bosse, "cos", monotonie = "stricte")
@@ -246,7 +246,7 @@ verifier("la densité écrite à la main (deux strates de lignes) : N = A n / (2
            proche(dn$D[1:2], dn$N[1:2] / c(60, 35), 1e-12) && proche(dn$D[3], N / 95, 1e-12))
 
 # l'adéquation à la main
-F <- sort(repartition_distance(m$detection$fd, m$detection$theta, t$x))
+F <- sort(repartition_detection(m$detection$fd, m$detection$theta, t$x))
 W <- 1 / (12 * t$n) + sum((F - (seq_len(t$n) - 0.5) / t$n)^2)
 nc <- round(sqrt(t$n))
 br <- 100 / nc * (0:nc)
@@ -256,12 +256,12 @@ att <- t$n * diff(vapply(br, function(b) stats::integrate(function(x) exp(-(x / 
 a <- m$adequation
 verifier(sprintf("Cramér–von Mises (W = %.4f) et le khi² sur %d classes égales (fermées à droite) écrits à la main ; la loi de W : 1 − F(0,46136) = 0,05, 1 − F(0,74346) = 0,01 (Anderson et Darling, 1952)", W, nc),
          proche(a$cvm$W, W, 1e-10) && identical(as.numeric(a$khi2$classes$observe), as.numeric(obs)) && proche(a$khi2$classes$attendu, att, 1e-9) &&
-           proche(a$khi2$chi2, sum((obs - att)^2 / att), 1e-9) && a$khi2$ddl == nc - 2 && abs(1 - pcramer_distance(0.46136) - 0.05) < 2e-5 &&
-           abs(1 - pcramer_distance(0.74346) - 0.01) < 2e-5)
+           proche(a$khi2$chi2, sum((obs - att)^2 / att), 1e-9) && a$khi2$ddl == nc - 2 && abs(1 - pcramer_detection(0.46136) - 0.05) < 2e-5 &&
+           abs(1 - pcramer_detection(0.74346) - 0.01) < 2e-5)
 verifier("les unités : m, km, km² donnent 0,001 (lignes) ; m et ha, 0,01 (points) ; un facteur donné tel quel",
-         proche(facteur_distance(list(transect = "ligne", unites = list(distance = "m", effort = "km", aire = "km2"))), 0.001, 1e-15) &&
-           proche(facteur_distance(list(transect = "point", unites = list(distance = "m", effort = "m", aire = "ha"))), 0.01, 1e-15) &&
-           identical(facteur_distance(list(facteur = 0.25)), 0.25))
+         proche(facteur_echantillonnage(list(transect = "ligne", unites = list(distance = "m", effort = "km", aire = "km2"))), 0.001, 1e-15) &&
+           proche(facteur_echantillonnage(list(transect = "point", unites = list(distance = "m", effort = "m", aire = "ha"))), 0.01, 1e-15) &&
+           identical(facteur_echantillonnage(list(facteur = 0.25)), 0.25))
 
 # ---------------------------------------------------------------- contre Distance
 
@@ -427,10 +427,10 @@ if (avec_distance) {
   fd <- r$mN$detection$fd
   x <- r$mN$donnees$x
   I_mrds <- mrds:::integratepdf(dD$ds$aux$ddfobj, select = c(TRUE, rep(FALSE, length(x) - 1)), width = 20, int.range = c(0, 20), standardize = FALSE, point = FALSE, left = 0)
-  I_exact <- integrale_distance(fd, dD$par, 0, 20)$I
+  I_exact <- integrale_detection(fd, dD$par, 0, 20)$I
   verifier(sprintf("hasard seul sur des lignes : l'écart des log-vraisemblances aux paramètres de mrds est n ln(∫ de mrds / ∫ exacte) (%.2e), et l'optimum exact de Nuée la dépasse",
-                   dD$lnl - vraisemblance_distance(fd, dD$par, x)$ll),
-           proche(dD$lnl - vraisemblance_distance(fd, dD$par, x)$ll, -length(x) * log(I_mrds / I_exact), 1e-6) && r$mN$detection$ll > vraisemblance_distance(fd, dD$par, x)$ll)
+                   dD$lnl - vraisemblance_detection(fd, dD$par, x)$ll),
+           proche(dD$lnl - vraisemblance_detection(fd, dD$par, x)$ll, -length(x) * log(I_mrds / I_exact), 1e-6) && r$mN$detection$ll > vraisemblance_detection(fd, dD$par, x)$ll)
 }
 
 # ---------------------------------------------------------------- refus
@@ -496,7 +496,7 @@ id <- garder("M1", dg, ajuster(ps, dg))
 r <- resultat_distance(id)
 verifier("ce que l'interface reçoit : une analyse sans prédiction, ses vues, ses lignes, la courbe, l'histogramme, le diagramme quantile-quantile, la densité, en JSON",
          isTRUE(r$analyse) && identical(r$prediction, FALSE) && identical(as.character(r$vues_defaut), c("distance_detection", "distance_densite")) &&
-           grepl("^hn.* · D ", r$chiffres) && nrow(r$observations) == r$N && all(c("uid", "nom", "transect", "strate", "distance", "dans", "g", "taille") %in% names(r$observations)) &&
+           grepl("^hn.* · D ", r$chiffres) && nrow(r$observations) == r$N && all(c("uid", "nom", "transect", "strate", "distance", "dans_troncature", "g", "taille") %in% names(r$observations)) &&
            nrow(r$courbe) == 101 && sum(r$histogramme$compte) == r$n && nrow(r$adequation$qq) == r$n && nrow(r$densite) == 3 && inherits(json(r), "json"))
 verifier("ses réglages pour Modifier le modèle (les options, les distances en Y)", identical(r$reglages$options$cle, "hn") && identical(as.numeric(r$reglages$y), numeros(ps, "distance")) &&
            identical(as.numeric(r$reglages$options$taille), numeros(ps, "size")))

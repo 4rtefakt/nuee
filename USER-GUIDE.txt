@@ -1374,6 +1374,79 @@ count against its expected value). The results are those of the rtrim package. M
 with its references, Export and report as for the other models; neither prediction nor Export
 to R.
 
+Distance sampling: density and abundance
+----------------------------------------
+New model › type "Distance sampling (density, abundance)": the density and abundance of a
+population from the distances of the animals detected from lines (line transects) or from
+points (point transects, point counts), as the ds() and dht2() functions of the Distance package
+compute them (Buckland et al. 2001; Miller et al. 2019). The data: the flat table, one row per
+detection, as Distance reads it:
+  - the distance (Y): the perpendicular distance from the line, or the distance from the point;
+  - the transect (the line or the point: an ID or a variable) and its effort, the same on all
+    its rows: the length of the line, or for points the number of visits (no column: one visit
+    per point);
+  - optional: the stratum (the region: an ID or a variable) and its area, the same on all its
+    rows (without an area, or areas all 0, the density only); the size of each detected group;
+  - a transect without any detection stays a row, its distance empty, so that its effort
+    counts; rows without a transect and a distance are left out.
+For example, with Distance's column names (the dialog proposes them from the names):
+    Region.Label  Area  Sample.Label  Effort  distance  size
+    North         630   N-01          2.4     35        2
+    North         630   N-01          2.4     120       1
+    North         630   N-02          1.8               (no detection)
+General tab:
+  - line or point transects;
+  - the truncation: the largest distance (ds's default), a distance, or a percentage of the
+    largest distances (5 to 10% is usual); a left truncation if needed. Detections beyond it
+    leave the model, their transect stays;
+  - the key of the detection function g(x): half-normal exp(−x²/2σ²), hazard-rate
+    1 − exp(−(x/σ)^−b) (b ≥ 1, as mrds) or uniform;
+  - the adjustment terms: cosine (the default), Hermite polynomials or simple polynomials, their
+    number chosen by AIC as ds() does (the key alone, then one more term at a time while the AIC
+    falls, five at most; orders 2, 3, 4… for cosines, 4, 6, 8… for Hermite and polynomials, 1,
+    2, 3… and 2, 4, 6… with the uniform key) or fixed; the distances in the terms divided by the
+    truncation w (ds's default) or by σ;
+  - monotonicity: mrds's constraint on a function with adjustment terms, checked at 10
+    distances from 0 to w: strict (the default: g decreases), weak (g stays below g(0)), or
+    none; g stays positive there;
+  - the units of the distances, of the effort (lines) and of the areas, or a conversion factor
+    (Distance's convert_units): the density is per unit of area, and the results say it.
+The detection function is fitted by maximum likelihood on the exact distances; its parameters'
+variance comes from the outer product of the distances' scores, as mrds; p, the average
+probability of detection within the truncation, and its standard error by the delta method; the
+effective strip half-width ESW = p w (lines) or the effective detection radius EDR = w √p
+(points). The density of each stratum is D = n / (a p), a the covered area (2 w L, or 2 (w − L)
+L with a left truncation, for lines; π w² K for points); its variance combines the encounter
+rate's between transects (the R2 estimator for lines, P2 for points, Fewster et al. 2009), that
+of p, and that of the mean group size; its 95% interval is log-normal with Satterthwaite
+degrees of freedom, as dht2. The total over the strata adds their abundances (with areas) or
+weights their densities by their covered areas (without). Refused, and named: a negative
+distance, a missing or zero effort, two efforts for one transect, two areas for one stratum, an
+area of zero beside others, a distance without a transect.
+
+Views: Summary (the model retained and the AIC of each model fitted on the way, p and ESW or
+EDR with their standard errors, the parameters, the goodness of fit, the overall density and
+abundance with their intervals; what was left out); Detection function (the histogram of the
+distances, each bar its count over the count it would have if every animal were detected, as
+mrds's plot.ds, under the fitted g; each detection on the curve, a click selects its row; for
+points, the density of the distances f(r) = 2r g(r) / (w² p) too; below, the chi-square's
+classes); QQ plot (the fitted distribution of each distance against the empirical one, with
+the Cramér–von Mises test); Density and abundance (by stratum and overall: area, covered area,
+effort, transects, detections, encounter rate and its CV, D, its standard error, CV, 95%
+interval and df, N and its interval, the share of the variance due to the encounter rate, to
+detection and to group size; with groups, the density of groups too). Methods text with its
+references, Export and report as for the other models; no prediction, and no Export to R yet.
+Covariates in the detection function (MCDS) and distances recorded in intervals are not
+supported yet.
+
+The results are those of Distance 2.0 (moteur/tests/verifier_distance.R compares them), with
+three known differences: Nuée integrates the hazard-rate key exactly where mrds approximates
+its integral by a smoothing spline (lines, the key without adjustment terms: parameters and p
+differ by about 1e-4); with a left truncation of line transects the covered area is
+2 (w − L) L, where dht2 keeps 2 w L; mrds's optimizer under the monotonicity constraint stops
+within 1e-6 of the likelihood, so its estimates can differ from Nuée's in the fourth digit, or,
+on rare data, settle on another local optimum.
+
 Random forests and boosted trees
 --------------------------------
 New model › type "Random forest" (the ranger package, Wright and Ziegler 2017): a quantitative
