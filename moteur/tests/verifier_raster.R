@@ -528,6 +528,10 @@ verifier("coordonnées planes sans système : un raster sans système est pris d
 if (nzchar(Sys.getenv("NUEE_TERRA"))) .libPaths(c(Sys.getenv("NUEE_TERRA"), .libPaths()))
 if (!requireNamespace("terra", quietly = TRUE)) {
   cat("(terra absent : la comparaison avec GDAL et terra::extract n'est pas faite)\n")
+} else if (utils::packageVersion("terra") < "1.7") {
+  # (terra 1.5, celui d'Ubuntu 22.04, n'écrit pas tout ce que la comparaison écrit, une palette
+  # nommée par exemple : elle se fait avec un terra plus récent, sur les autres systèmes de la CI)
+  cat(sprintf("(terra %s, avant 1.7 : la comparaison avec GDAL et terra::extract n'est pas faite)\n", utils::packageVersion("terra")))
 } else {
   cat(sprintf("Contre GDAL %s et terra %s\n", terra::gdal(), utils::packageVersion("terra")))
   # (à côté d'une cellule sans valeur, l'interpolation bilinéaire suit la règle de terra 1.9 : avec un
@@ -647,6 +651,11 @@ if (!requireNamespace("terra", quietly = TRUE)) {
   # est laissé de côté ; Nuée l'a déjà relu exactement plus haut)
   lus <- vapply(ici, function(x) {
     gi <- ouvrir_raster(f(x))
+    # (de même, GDAL avant 3.7 ne connaît pas les octets signés : il les lit comme des octets)
+    if (identical(gi$type, "int8") && utils::compareVersion(terra::gdal(), "3.7") < 0) {
+      cat(sprintf("    (%s : des octets signés, que GDAL %s lit comme des octets, laissé de côté)\n", x, terra::gdal()))
+      return(TRUE)
+    }
     if (identical(gi$type, "uint32") && !terra_19) {
       cat(sprintf("    (%s : des entiers non signés de 32 bits, que terra %s ne garde pas au-delà de 2^31, laissé de côté)\n", x, utils::packageVersion("terra")))
       return(TRUE)
