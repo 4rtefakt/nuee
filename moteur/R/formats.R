@@ -223,7 +223,7 @@ lire_texte_delimite <- function(texte) {
   sauts <- nchar(lignes) - nchar(gsub(saut, "", lignes, fixed = TRUE))
   numero <- cumsum(c(1, 1 + sauts))[seq_along(lignes)][pleines]  # dans le fichier, pour les messages
   champs <- champs_lignes(lignes[pleines], sep)
-  v <- trimws(gsub(saut, "\n", champs$valeurs, fixed = TRUE))
+  v <- sans_blancs_autour(gsub(saut, "\n", champs$valeurs, fixed = TRUE))
   n <- champs$n
   k <- n[1]
   noms <- v[seq_len(k)]
@@ -328,6 +328,17 @@ nom_separateur <- function(sep) {
 
 # ---------------------------------------------------------------- nombres
 
+# trimws(x) pour du texte (x : un vecteur de caractères) qui n'a presque jamais de blancs autour, les
+# champs d'un grand fichier : seules les valeurs qui commencent ou finissent par un blanc de trimws
+# (espace, tabulation, retour à la ligne) passent par ses expressions régulières, les autres restent
+# telles quelles, comme trimws les rendrait (des millions de champs : des secondes de moins).
+sans_blancs_autour <- function(x) {
+  blancs <- c(" ", "\t", "\r", "\n")
+  k <- which(Reduce(`|`, lapply(blancs, function(b) startsWith(x, b) | endsWith(x, b))))
+  if (length(k)) x[k] <- trimws(x[k])
+  x
+}
+
 # Un nom de colonne comparable d'un fichier à l'autre : sans majuscules ni espaces autour, un
 # « . » valant une espace (les versions précédentes de Nuée lisaient « NO3 (mg/L) » d'un
 # classeur Excel en « NO3.(mg/L) » ; les projets qui gardent ces noms retrouvent leurs colonnes).
@@ -367,14 +378,14 @@ convertir_colonnes <- function(df, virgule = "decimale", quantitatives = NULL, t
 # nombres que si ses autres valeurs disent toutes qu'une mesure manque (des noms comme
 # « 12bis » la gardent en texte). `forcer` : en nombres quoi qu'il arrive.
 convertir_colonne <- function(x, virgule = "decimale", premiere = FALSE, forcer = FALSE) {
-  v <- trimws(x)
+  v <- sans_blancs_autour(x)
   v[v %in% c("", "NA")] <- NA
   connues <- !is.na(v)
   if (!any(connues)) return(rep(NA_real_, length(v)))
   n <- lire_nombres(v, virgule)
   autres <- connues & is.na(n)
   if (!any(autres)) return(n)
-  texte <- sum(autres & !valeur_manquante(v))
+  texte <- sum(!valeur_manquante(v[autres]))
   if (!forcer && (sum(connues & !autres) < 2 || texte > if (premiere) 0 else 0.2 * sum(connues))) return(v)
   n[autres] <- NA
   structure(n, manquantes = v[autres])
@@ -532,10 +543,21 @@ lire_excel <- function(chemin, table = NULL) {
 # avec 15 chiffres significatifs). Une date devient du texte, comme dans un fichier texte
 # (texte_dates), et non le nombre de jours qu'Excel garde.
 cellules_excel <- function(cellules) {
-  type <- vapply(cellules, function(e) {
-    if (inherits(e, "POSIXct")) "date" else if (is.numeric(e)) "nombre" else if (is.character(e)) "texte"
-    else if (is.logical(e) && !is.na(e)) "logique" else "vide"
-  }, "")
+  # (le type de chaque cellule par des fonctions primitives, celles qui restent après chaque test :
+  # une fonction R pour chacune de centaines de milliers de cellules prenait des secondes ; un objet,
+  # une date, par type_cellule_excel)
+  type <- rep("vide", length(cellules))
+  nombre <- vapply(cellules, is.numeric, NA)
+  type[nombre] <- "nombre"
+  reste <- which(!nombre)
+  objet <- reste[vapply(cellules[reste], is.object, NA)]
+  type[objet] <- vapply(cellules[objet], type_cellule_excel, "")
+  reste <- setdiff(reste, objet)
+  texte <- reste[vapply(cellules[reste], is.character, NA)]
+  type[texte] <- "texte"
+  reste <- setdiff(reste, texte)
+  logique <- reste[vapply(cellules[reste], is.logical, NA)]
+  type[logique[!is.na(unlist(cellules[logique]))]] <- "logique"
   x <- rep(NA_real_, length(cellules))
   x[type == "nombre"] <- unlist(cellules[type == "nombre"])
   if (all(type %in% c("nombre", "vide"))) return(x)
@@ -544,6 +566,12 @@ cellules_excel <- function(cellules) {
   x[type == "logique"] <- as.character(unlist(cellules[type == "logique"]))
   if (any(type == "date")) x[type == "date"] <- texte_dates(vapply(cellules[type == "date"], as.numeric, 0))
   x
+}
+
+# Le type d'une cellule Excel : une date, un nombre, du texte, une valeur logique, ou vide.
+type_cellule_excel <- function(e) {
+  if (inherits(e, "POSIXct")) "date" else if (is.numeric(e)) "nombre" else if (is.character(e)) "texte"
+  else if (is.logical(e) && !is.na(e)) "logique" else "vide"
 }
 
 # Des dates et heures d'Excel (secondes depuis 1970, arrondies à la seconde) en texte :

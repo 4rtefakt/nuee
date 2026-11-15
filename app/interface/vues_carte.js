@@ -9,7 +9,7 @@
 // Imported by app.js.
 import { t, ajouterTextes } from './i18n.js';
 import { el, fmt } from './ui.js';
-import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP, uniteAxe } from './panneaux.js';
+import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP, uniteAxe, etendue } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
 
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
@@ -161,8 +161,7 @@ async function rendreCarte(conteneur, ctx, p, loc) {
   let taillesPx = avec.map(() => 8);
   if (tailles && tailles.some((v) => typeof v === 'number')) {
     const ok = tailles.filter((v) => typeof v === 'number' && Number.isFinite(v));
-    const min = Math.min(...ok);
-    const max = Math.max(...ok);
+    const [min, max] = etendue(ok);
     taillesPx = tailles.map((v) => (typeof v === 'number' && max > min ? 6 + 16 * Math.sqrt((v - min) / (max - min)) : typeof v === 'number' ? 10 : 4));
   }
   const type = loc.fond ? 'scattermap' : 'scattergl';
@@ -209,11 +208,14 @@ async function rendreCarte(conteneur, ctx, p, loc) {
     // (the plot's area: the panel less the colour bar and the margins)
     const largeur = Math.max(250, (graphe.clientWidth || conteneur.clientWidth || 600) - (numerique ? 110 : 30));
     const hauteur = Math.max(200, (graphe.clientHeight || conteneur.clientHeight - 90 || 400) - 50);
-    const dl = Math.max(1e-4, Math.max(...lons) - Math.min(...lons));
-    const dm = Math.max(1e-6, merc(Math.max(...lats)) - merc(Math.min(...lats)));
+    // (etendue: thousands of points, which Math.min(...) would pass one by one as arguments)
+    const [lon0, lon1] = etendue(lons);
+    const [lat0, lat1] = etendue(lats);
+    const dl = Math.max(1e-4, lon1 - lon0);
+    const dm = Math.max(1e-6, merc(lat1) - merc(lat0));
     const zoom = Math.max(0, Math.min(18, Math.log2(Math.min((largeur * 360) / (512 * dl), (hauteur * 2 * Math.PI) / (512 * dm))) - 0.15));
-    const centre = { lon: (Math.max(...lons) + Math.min(...lons)) / 2,
-      lat: (360 / Math.PI) * Math.atan(Math.exp((merc(Math.max(...lats)) + merc(Math.min(...lats))) / 2)) - 90 };
+    const centre = { lon: (lon1 + lon0) / 2,
+      lat: (360 / Math.PI) * Math.atan(Math.exp((merc(lat1) + merc(lat0)) / 2)) - 90 };
     tracer(ctx, graphe, traces, { title: { text: titre }, margin: { l: 8, r: 8, t: 34, b: 8 }, dragmode: 'pan',
       map: { style: FONDS[loc.fond](), center: loc.vueCarte?.fond === loc.fond ? loc.vueCarte.center : centre,
         zoom: loc.vueCarte?.fond === loc.fond ? loc.vueCarte.zoom : zoom },

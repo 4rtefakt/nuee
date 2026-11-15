@@ -283,9 +283,14 @@ resume_projet <- function(p) {
        predictions = lapply(p$prediction_sets, function(s) list(nom = s$name %||% "", n_obs = length(s$observations))))
 }
 
-donnees_projet <- function(p) {
+# Les données d'un projet pour la vue Données : `colonnes`, les numéros des variables dont elle montre
+# les valeurs (une vue de spectres n'en montre que les premières, ou celles que son filtre garde) ; les
+# autres ont des valeurs nulles (NULL), et leur nom. Sans `colonnes`, toutes.
+donnees_projet <- function(p, colonnes = NULL) {
   vars <- variables_avec_donnees(p)
+  montrees <- if (!is.null(colonnes)) as.numeric(unlist(colonnes))
   valeurs <- lapply(seq_along(vars), function(k) {
+    if (!is.null(montrees) && !as.numeric(vars[[k]]$uid) %in% montrees) return(NULL)
     x <- p$donnees[, as.character(vars[[k]]$uid)]
     cats <- vars[[k]]$categories
     if (length(cats)) cats[x] else x
@@ -440,10 +445,17 @@ reajuster_demande <- function(q) {
 
 # (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande). Une définition
 # à condition est gardée avec les observations qu'elle donne sur les données du moment (condition.R).
+# L'ajustement automatique d'une ACP ou d'une PLS a déjà calculé le modèle de ses composantes
+# (nouveau.R : autoajuster_modele) : ajuster le reprend, sans refaire sa validation croisée.
 ajuster_et_garder <- function(p, d, m = NULL) {
   d <- resoudre_observations(p, d)
-  if (!d$A && !sans_composantes(d)) d$A <- max(1, autoajuster(p, d))  # (ni une régression ni une autre analyse n'a de composantes)
-  if (is.null(m)) m <- ajuster(p, d)
+  calcule <- NULL
+  if (!d$A && !sans_composantes(d)) {  # (ni une régression ni une autre analyse n'a de composantes)
+    auto <- autoajuster_modele(p, d, garder = is.null(m))
+    d$A <- max(1, auto$A)
+    calcule <- auto$modele
+  }
+  if (is.null(m)) m <- ajuster(p, d, calcule = calcule)
   id <- nouvel_id("M")
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
     d$number <- d$number %||% (max(c(0, vapply(p$models, function(x) as.numeric(x$number %||% 0), 0))) + 1)
@@ -1119,7 +1131,7 @@ DEMANDES <- list(
     resume_projet(p)
   },
   projet = function(q) resume_projet(projet(q$projet)),
-  donnees = function(q) donnees_projet(projet(q$projet)),
+  donnees = function(q) donnees_projet(projet(q$projet), q$colonnes),
   ajuster = ajuster_demande,
   reajuster = reajuster_demande,
   modele = function(q) resultat_modele(q$modele),
@@ -1421,12 +1433,18 @@ DEMANDES <- list(
   # L'unité et la description des variables (q$descriptions : variable, unite, description)
   decrire_variables = function(q) changer_projet(q, function(p) decrire_variables(p, q$descriptions), traduire("unités et descriptions", "units and descriptions")),
   annuler = annuler_demande,
-  # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur prétraitement.
+  # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur
+  # prétraitement : q$quoi, ceux que la vue dessine ("bruts" ou "pretraites" ; "noms" pour aucun,
+  # seulement leurs variables ; sans lui, les deux). Arrondis à 6 chiffres significatifs : la vue ne
+  # fait que les dessiner (le survol en montre 4), et 2 000 spectres de 2 000 longueurs d'onde, les
+  # deux à 15 chiffres, faisaient 150 Mo de JSON, et 14 s pour l'écrire.
   spectres = function(q) {
     e <- modele(q$modele)
     s <- spectres_modele(projet(e$projet), e$definition)
+    quoi <- as.character(q$quoi %||% "")[1]
+    dessin <- function(M) signif(unname(M), 6)
     list(modele = q$modele, noms = I(colnames(s$bruts)), variables = I(s$variables), uid = as.numeric(rownames(s$bruts)),
-         bruts = unname(s$bruts), pretraites = unname(s$pretraites))
+         bruts = if (quoi %in% c("", "bruts")) dessin(s$bruts), pretraites = if (quoi %in% c("", "pretraites")) dessin(s$pretraites))
   },
   biplot = function(q) {
     e <- modele(q$modele)

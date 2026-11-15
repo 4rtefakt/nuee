@@ -115,8 +115,14 @@ facteurs_ponderation <- function(termes) {
 # infini : tous). Le bloc rend dans `gardes` la part de son écart-type que garde chacun de ces
 # termes, pour un seuil fini et un terme qui n'est pas constant (constant, il est prédit de même
 # avec le poids du modèle complet ou un poids 0).
+# `pretraites` : les `bruts` sont déjà passés par les `spectres` (pretraiter_bloc, pour des étapes
+# qui traitent chaque spectre seul : spectres_par_ligne), et ne le sont pas une seconde fois.
+# `garder_simples` : rendre dans `simples` la colonne de chaque terme simple, dont les termes croisés
+# d'un autre bloc prennent leurs facteurs (le bloc Y d'une PLS) ; sans termes croisés ici, et quand
+# aucun autre bloc ne s'en sert (la validation croisée), ces colonnes ne sont pas copiées.
 construire_bloc <- function(projet, termes, observations, poids = c("calcules", "enregistres"),
-                            facteurs = NULL, imposees = NULL, spectres = NULL, bruts = NULL, complet = NULL) {
+                            facteurs = NULL, imposees = NULL, spectres = NULL, bruts = NULL, complet = NULL, pretraites = FALSE,
+                            garder_simples = TRUE) {
   poids <- match.arg(poids)
   K <- length(termes)
   X <- matrix(NA_real_, length(observations), K)
@@ -142,11 +148,18 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
       cw <- c(centre = ech$centre %||% 0, poids = ech$weight %||% 1)
       type[k] <<- if (connu) ech$type else "fixe"
     } else {
-      cw <- echelle(x, ech$type)
       ec <- complet$ecart[k]
-      if (!is.null(ec) && ech$type %in% c("UV", "Par") && isTRUE(ec > 0) && cw[["ecart"]] < complet$seuil * ec) {
-        if (cw[["ecart"]] > 0 && is.finite(complet$seuil)) gardes[[noms[k]]] <<- cw[["ecart"]] / ec
+      remplacable <- !is.null(ec) && ech$type %in% c("UV", "Par") && isTRUE(ec > 0)
+      if (remplacable && !is.finite(complet$seuil)) {
+        # (seuil infini, les centres seuls recalculés : le poids du modèle complet, sans calculer
+        # l'écart-type de ces observations, qui ne changerait rien)
         cw <- echelle(x, ech$type, ecart = ec)
+      } else {
+        cw <- echelle(x, ech$type)
+        if (remplacable && cw[["ecart"]] < complet$seuil * ec) {
+          if (cw[["ecart"]] > 0 && is.finite(complet$seuil)) gardes[[noms[k]]] <<- cw[["ecart"]] / ec
+          cw <- echelle(x, ech$type, ecart = ec)
+        }
       }
       cw[["poids"]] <- cw[["poids"]] * ponderation[k]
       facteur[k] <<- ponderation[k]
@@ -163,17 +176,17 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
   if (is.null(bruts)) bruts <- valeurs_bloc(projet, termes, observations)
   reference <- NULL
   if (length(spectres)) {
-    q <- seuls[vapply(termes[seuls], function(t) categorie(t) == 0, TRUE)]
-    spectre <- bruts[, q, drop = FALSE]
-    colnames(spectre) <- noms[q]
-    r <- pretraiter_spectres(spectre, spectres, imposees$reference, positions_termes(projet, termes[q]))
-    bruts[, q] <- r$X
+    # (déjà prétraités : sans MSC, aucun spectre moyen à garder)
+    r <- if (pretraites) list(bruts = bruts, reference = list()) else pretraiter_bloc(projet, termes, bruts, spectres, imposees$reference)
+    bruts <- r$bruts
     reference <- r$reference
   }
   for (k in seuls) X[, k] <- mettre_a_echelle(k, bruts[, k])
   # les termes simples par « variable catégorie », pour les termes croisés (d'un coup : une liste
   # qui grandit terme à terme coûte cher avec des milliers de termes)
-  simples[vapply(termes[seuls], function(t) paste(t$variables[1], categorie(t)), "")] <- lapply(seuls, function(k) X[, k])
+  if (length(croises) || garder_simples) {
+    simples[vapply(termes[seuls], function(t) paste(t$variables[1], categorie(t)), "")] <- lapply(seuls, function(k) X[, k])
+  }
   for (k in croises) {
     t <- termes[[k]]
     x <- rep(1, length(observations))
@@ -191,14 +204,37 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
 }
 
 # Les valeurs des termes simples d'un bloc pour des observations, transformées (une colonne par
-# terme ; celles des termes croisés restent manquantes : construire_bloc les calcule).
+# terme ; celles des termes croisés restent manquantes : construire_bloc les calcule). Les lignes des
+# observations et les colonnes des variables dans les données du projet sont cherchées une fois
+# pour tous les termes (colonne() les cherche à chaque appel : des milliers de fois pour des spectres).
 valeurs_bloc <- function(projet, termes, observations) {
   bruts <- matrix(NA_real_, length(observations), length(termes))
   croises <- which(vapply(termes, function(t) length(t$variables) > 1, TRUE))
-  for (k in setdiff(seq_along(termes), croises)) {
-    bruts[, k] <- transformer(valeurs_simples(projet, termes[[k]], observations), termes[[k]]$transform)
+  simples <- setdiff(seq_along(termes), croises)
+  if (!length(simples)) return(bruts)
+  lignes <- match(as.character(observations), rownames(projet$donnees))
+  colonnes <- match(vapply(termes[simples], function(t) as.character(t$variables[1]), ""), colnames(projet$donnees))
+  for (i in seq_along(simples)) {
+    k <- simples[i]
+    x <- if (is.na(colonnes[i])) rep(NA_real_, length(observations)) else projet$donnees[lignes, colonnes[i]]
+    cat <- categorie(termes[[k]])
+    if (cat != 0) x <- ifelse(is.na(x), NA, as.numeric(x == cat))
+    bruts[, k] <- transformer(x, termes[[k]]$transform)
   }
   bruts
+}
+
+# Les `bruts` d'un bloc (valeurs_bloc) après le prétraitement des spectres, appliqué à ses termes
+# quantitatifs simples (spectres.R : pretraiter_spectres ; `reference` : les spectres moyens des
+# étapes MSC d'un modèle déjà ajusté). list(bruts, reference : ceux des étapes MSC de ces lignes).
+pretraiter_bloc <- function(projet, termes, bruts, spectres, reference = NULL) {
+  seuls <- setdiff(seq_along(termes), which(vapply(termes, function(t) length(t$variables) > 1, TRUE)))
+  q <- seuls[vapply(termes[seuls], function(t) categorie(t) == 0, TRUE)]
+  spectre <- bruts[, q, drop = FALSE]
+  colnames(spectre) <- vapply(termes[q], function(t) as.character(t$name), "")
+  r <- pretraiter_spectres(spectre, spectres, reference, positions_termes(projet, termes[q]))
+  bruts[, q] <- r$X
+  list(bruts = bruts, reference = r$reference)
 }
 
 `%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a

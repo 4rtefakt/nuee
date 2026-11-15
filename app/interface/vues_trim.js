@@ -4,7 +4,7 @@
 // report parts and its strings. Imported by app.js.
 import { t, ajouterTextes } from './i18n.js';
 import { el, fmt } from './ui.js';
-import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, notesModele, valeurP, ficheCondition } from './panneaux.js';
+import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, notesModele, valeurP, ficheCondition, etendue } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
 import { ICONES_VUES } from './commandes.js';
@@ -250,7 +250,7 @@ function rendreSitesTrim(conteneur, ctx, p, loc) {
     const plus = (v) => v + 0.5;  // (log scales: a zero count shows)
     const yo = idx.map((k) => plus(liste(o.compte)[k]));
     const xo = idx.map((k) => plus(liste(o.ajuste)[k]));
-    const lim = [Math.min(...xo, ...yo), Math.max(...xo, ...yo)];
+    const lim = etendue(xo.concat(yo));
     const sel = new Set(ctx.selection(m.id));
     tracer(ctx, graphe, [
       { type: 'scattergl', mode: 'markers', name: t('trim_observes'), x: xo, y: yo, customdata: idx.map((k) => liste(o.uid)[k]),

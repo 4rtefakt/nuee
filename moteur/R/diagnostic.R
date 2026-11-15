@@ -43,14 +43,14 @@ verifier_donnees <- function(projet, definition, limite = 0.5) {
     v <- X[!is.na(X[, k]), k]
     length(v) < 2 || stats::sd(v) == 0
   }, TRUE)
-  # par variable : le pire de ses termes simples (une variable qualitative en a plusieurs)
+  # par variable : le pire de ses termes simples (une variable qualitative en a plusieurs ; un seul
+  # data.frame pour toutes : un par variable, empilés, prenait des secondes pour des spectres)
   simples <- which(vapply(termes, function(t) length(t$variables) == 1, TRUE))
   uid <- vapply(termes[simples], function(t) as.numeric(t$variables), 0)
-  vars <- do.call(rbind, lapply(unique(uid), function(u) {
-    k <- simples[uid == u]
-    data.frame(uid = u, nom = unname(projet$noms_var[as.character(u)]), manquantes = max(manque[k]),
-               constante = all(constant[k]))
-  }))
+  us <- unique(uid)
+  k <- lapply(us, function(u) simples[uid == u])
+  vars <- if (length(us)) data.frame(uid = us, nom = unname(projet$noms_var[as.character(us)]), manquantes = vapply(k, function(i) max(manque[i]), 0),
+                                     constante = vapply(k, function(i) all(constant[i]), TRUE))
   vars <- if (is.null(vars)) data.frame() else vars[vars$manquantes > limite | vars$constante, , drop = FALSE]
   manque_obs <- if (ncol(bx$X)) rowMeans(is.na(bx$X)) else rep(0, length(obs))  # (une régression sans X : le modèle nul)
   garde <- manque_obs > limite

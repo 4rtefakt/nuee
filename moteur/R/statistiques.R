@@ -246,9 +246,13 @@ intervalles_pls <- function(m, niveau) {
     list(W = W, P = P, C = C, We = cf$Wetoile, B = cf$coef_cs)
   })
   ok <- all(vapply(ronds, function(r) !is.null(r$B), TRUE))
+  # (les valeurs de chaque sous-modèle lues une fois, une colonne par sous-modèle, puis le jack-knife de
+  # chaque ligne : les relire élément par élément faisait des dizaines de milliers d'appels pour des
+  # spectres)
   jk <- function(f, nr, nc) {
     if (!ok) return(matrix(NA_real_, nr, nc))
-    matrix(sapply(seq_len(nr * nc), function(i) jackknife(sapply(ronds, function(r) f(r)[i]), niveau)), nr, nc)
+    valeurs <- vapply(ronds, function(r) as.vector(f(r)), numeric(nr * nc))
+    matrix(apply(matrix(valeurs, nr * nc), 1, jackknife, niveau = niveau), nr, nc)
   }
   K <- m$K
   list(p = jk(function(r) r$P, K, A), wetoile = jk(function(r) r$We, K, A),

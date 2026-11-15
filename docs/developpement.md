@@ -95,6 +95,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/tests/verifier_tableaux.R` | Add columns from a table against `match()`: one key and two, text keys (trimmed, capitals counting) and numeric ones (2019 = "2020,0" read as a number), the observation names as key, keys read as written from CSV and Excel ("01" isn't 1), a repeated key refused and named, no match refused, the observations without a match and the table's keys alone counted and named, rows without a key, names already taken ("x (2)", "x (3)", an ID's name), the types of the added columns (numbers, text, a factor's order, logical), the key proposed; Summarize by group against `aggregate()` and `tapply()`: every statistic, missing values, a group without a known value (n = 0), sd of one value, two and three grouping columns, a qualitative variable as group, qualitative variables and IDs kept or left out, rows without a group value, the names in English, the project saved and read back, refusals |
 | `moteur/tests/verifier_kobo.R` | The import of KoboToolbox and ODK Central exports, on exports written in the check as the tools write them, from one survey (six sites, twelve bird observations, four individuals): a Kobo workbook in XML names with groups in the headers, its sheet name cut at 31 characters, a repeat and a repeat within it, a select_multiple with its 0/1 columns and one without, a geopoint as text and in columns, an Excel date, ISO date-times with time zones; a Kobo CSV in French labels (semicolons, BOM; "Vent (km/h)" left whole); an ODK Central zip (groups in dashes, PARENT_KEY, a media CSV left out) and its submissions CSV alone; an XLSForm in French and English, one with only `label`, one that doesn't match. Each transformation against the values written: metadata dropped or kept by role, names without groups and kept unique, categories in the form's order and language (by the interface's language, or asked; labels of the export translated), an unknown code after them, 0/1 columns from the export or the answers and never twice, empty when unanswered, points and the project's coordinates, dates read by `temps_en_nombres`, repeats with the parents' columns joined (by `_parent_index` and by `KEY`, two levels), the raw opening of a zip's CSV; the preview; the project saved and read back, the Methods text, the console's line redoing the same project; refusals, in French and English |
 | `moteur/tests/verifier_donnees.R` | The data workbench: replacements on numbers (-9999 → empty, empty → 0, "3,5" finding 3.5, a text refused in a quantitative variable and counted), on text (the whole cell, capitals counting or not, part of the text, a category merged, emptied, added; all variables), the preview leaving the project as it was, a text variable turned quantitative ("abs" → 0, "<0,5" → 0,25, "nd" → empty, commas read) or kept qualitative on request; a block of cells pasted (numbers with a comma, a cell emptied, a category added, a cell left, a text refused in a quantitative variable naming the observation); the categories renamed, merged, reordered, and the reference of a regression (the last category observed) against `lm()` with `relevel()` before and after a new order, the project's definition refitted giving the model defined after the change, a merge giving `lm()` on the merged factor; a fitted model's definition mapped to a new order (the same fit), undone, stale after a rename, a variable turned quantitative; refusals, in French and English; units and descriptions kept, saved in a .nuee and read back, an older project; the export (an Excel "Variables" sheet read back with one table to open, CSV without them, R attributes, jamovi descriptions, a GeoPackage table read back); the Methods text (the response's unit, transformed, a PLS's Y), the Results text ("per m", not for a UV-scaled X) and the R script (the comments, the script still runs, a line break from a received project staying in a comment) |
+| `moteur/tests/verifier_vitesse.R` | The shortcuts taken for speed against the computation each one avoids (`identical()` with R's reference BLAS, to 1e-12 with an optimised one): the NIPALS products, a mask without missing cells, a component removed; the row-wise preprocessing of some observations equal to those rows of all of them (not MSC); an automatic fit's model cut to A components equal to the model fitted with A (PCA, PLS with one Y and two, PLS-DA, OPLS with one and two predictive components, OPLS-DA with three classes; missing values, spectra, MSC; the three ways to validate); the permutation test against refitting every model; terms looked up by number; a saved project byte for byte against the file jsonlite writes element by element |
+| `moteur/tests/banc_vitesse.R` | The speed benchmark (not a check: see Speed) |
 | `app/` | Electron main process, preload, interface (`app/interface/`), build script |
 | `app/installation.js` | Windows: whether Nuée is installed for all users or for this user only (its uninstall entry under HKLM or HKCU; without one, Program Files decides), for the updater |
 | `app/tests/essai_installation.js` | That decision with stand-in registries, then `reg.exe` itself |
@@ -151,7 +153,7 @@ other host name than `127.0.0.1` or `localhost` (DNS rebinding).
 
 Check the file formats, the spectral preprocessing, the export to R, the cross-validation, the
 statistical tests, the class models, the columns added from a table, the summaries by group, the
-data workbench and the imports from KoboToolbox and ODK
+data workbench, the imports from KoboToolbox and ODK and the shortcuts taken for speed
 (`jmvReadWrite`, `prospectr` and `knitr`, if installed, are only used to
 compare with other implementations and to compile the reports):
 
@@ -180,6 +182,7 @@ Rscript moteur/tests/verifier_observations.R
 Rscript moteur/tests/verifier_tableaux.R
 Rscript moteur/tests/verifier_donnees.R
 Rscript moteur/tests/verifier_kobo.R
+Rscript moteur/tests/verifier_vitesse.R
 Rscript moteur/tests/verifier_spatial.R
 Rscript moteur/tests/verifier_raster.R   # NUEE_TERRA=<a library with terra> to compare with GDAL and terra
 Rscript moteur/tests/verifier_par_reponse.R
@@ -424,3 +427,90 @@ Known differences:
 On a 9-component PCA of 797 × 58 values with 28 % missing, fitting takes about 1.7 s, most of it
 in the cross-validation (7 sub-models, each predicting its left-out observations once per group
 of variables). PLS models of the same size take well under a second.
+
+`moteur/tests/banc_vitesse.R` times the engine through the server's requests, as the interface
+sends them (JSON both ways), on simulated data of three sizes, `petit`, `moyen` and `grand`:
+
+- near-infrared spectra of 100 × 500, 500 × 2,000 and 2,000 × 2,000, opened from CSV; PCA, PLS,
+  PLS-DA and OPLS with the number of components chosen by 7-group cross-validation, after SNV and
+  a first Savitzky–Golay derivative; a PLS's permutation test (100 permutations, not at
+  2,000 × 2,000), its DModX, T², contributions and CV-ANOVA; the JSON of a model's views;
+- field surveys of 2,000, 5,000 and 20,000 rows: a mixed model and a GAM with a random site effect,
+  validated by site;
+- tables of 1,000, 10,000 and 100,000 rows opened from CSV and .xlsx, with their Data view;
+- a spectra project with 10 fitted models (`petit` and `moyen`), saved, opened again and its
+  models refitted, as when the interface restores the session.
+
+It is not a check (GitHub doesn't run it): each case runs 3 times from the same state, and the
+median is printed.
+
+```bash
+Rscript moteur/tests/banc_vitesse.R                                    # all of it: about 30 min (2.5 h before 1.0)
+Rscript moteur/tests/banc_vitesse.R --tailles=petit,moyen --cas=pls    # some sizes, the cases whose name matches
+Rscript moteur/tests/banc_vitesse.R --moteur=<another copy of Nuée> --garder=<folder>
+Rscript moteur/tests/banc_vitesse.R --comparer=<folder>                # this engine's results against those kept
+```
+
+`--comparer` says for each case `identique` (`identical()`), `1e-12` (`all.equal()` to 1e-12) or
+the first difference. The other options are `--repetitions=3`, `--temps=<file.csv>`,
+`--travail=<folder>` (the files the cases write and open, kept from one run to the next) and
+`--profil=<folder>` (`Rprof` on each case's first run). The times move with whatever else the
+computer runs: compare two versions in the same conditions.
+
+Before and after the 1.0 work, on one PC (Windows 11, R 4.6.2 and its reference BLAS, one thread,
+with other checks running beside), median of 3 runs in seconds:
+
+| | `petit` | `moyen` | `grand` |
+|---|---|---|---|
+| Spectra: open the CSV | 0.36 → 0.33 | 3.04 → 2.57 | 8.20 → 4.78 |
+| PCA, automatic | 6.42 → 1.31 | 368 → 36.6 | 1,560 → 146 |
+| PLS, automatic | 1.91 → 0.35 | 13.9 → 2.31 | 30.1 → 3.60 |
+| PLS-DA, automatic | 2.12 → 0.39 | 17.7 → 2.83 | 39.7 → 5.79 |
+| OPLS, automatic | 2.29 → 0.40 | 16.4 → 2.96 | 38.0 → 6.55 |
+| PLS: 100 permutations | 64.6 → 2.98 | 451 → 32.1 | |
+| PLS: DModX, T², VIP, intervals, prediction, contributions | 0.27 → 0.17 | 1.61 → 0.60 | 4.23 → 1.12 |
+| A model's views (their JSON) | 0.27 → 0.15 (2.1 → 1.0 MB) | 3.96 → 1.62 (37 → 13 MB) | 13.4 → 4.72 (146 → 49 MB) |
+| Mixed model | 0.55 → 0.52 | 1.09 → 1.04 | 6.55 → 6.69 |
+| GAM | 4.96 → 5.34 | 13.1 → 14.1 | 180 → 181 |
+| Table: open the CSV, Data view | 0.07 → 0.06 | 0.50 → 0.40 | 6.40 → 5.68 |
+| Table: open the .xlsx, Data view | 0.11 → 0.10 | 0.58 → 0.42 | 6.94 → 5.01 |
+| Project of 10 models: save, open, refit | 9.46 → 4.39 | 72.8 → 26.3 | |
+
+The mixed models and GAMs spend their time in nlme and mgcv, which this work left alone: their
+differences are the computer's load (the two versions one after the other: 5.53 and 5.45 s for
+the `petit` GAM). Every result stayed the same: `--comparer` found each case's outputs identical
+(`identical()`) to those of the version before, except two changes made on purpose in the views:
+the spectra sent to 6 significant digits, and the Data view's values sent only for the columns it
+shows.
+
+In the interface, with the 2,000 × 2,000 spectra: the Data view appears 1.1 s after it is opened
+(the values of the 200 columns it shows, 3.3 MB, in 0.6 s; 20,100 cells, the next rows drawn as
+they are scrolled into view). Before, the engine sent every column (32 MB in 5.1 s) and the view
+drew 402,000 cells, 4.9 s each time it was drawn; it now draws again in 0.25 s. A plot of 50,000
+points by observation (T², DModX) is drawn by WebGL in 0.3 s instead of 1.1 s in SVG.
+
+The shortcuts, each checked against the computation it avoids by `verifier_vitesse.R`:
+
+- NIPALS (`nipals.R`): `crossprod` instead of transposing, a mask without missing cells left out
+  of the products, and R's scan of each product for NaN skipped when the data are finite
+  (`produits_sans_verification`: the same BLAS call);
+- spectra preprocessed once per model: the steps that work one spectrum at a time (all but MSC:
+  `spectres_par_ligne`) give each cross-validation group its rows of the full model's spectra
+  (`pretraiter_bloc`); a permutation test, which permutes only Y, computes the X side of its
+  models and of their cross-validation once (`cote_x_modele`, `tours_x_validation`);
+- the automatic fit keeps the model it computed instead of fitting it again (`modele_tronque`;
+  an OPLS from the kernels it kept, `noyau_reduit`): NIPALS computes the components one after
+  the other;
+- the data's rows and columns looked up once for all of a block's terms (`valeurs_bloc`,
+  `definir_modele`); a project's observations and its models' terms written in one go when it
+  is saved (`json_observations`, `json_termes_modeles`: the same file, byte for byte);
+- the views (`panneaux.js`): only the spectra drawn and the Data view's columns shown are asked
+  of the engine; tables drawn by slices of 20,000 cells; more than 5,000 points drawn by WebGL
+  (`scattergl`).
+
+What stays slow: a GAM on 20,000 rows validated by site (3 minutes in mgcv); the automatic PCA of
+large spectra (146 s at 2,000 × 2,000), where NIPALS often needs hundreds of iterations per
+component, in the model and in each sub-model of its cross-validation; the Profiles view of
+2,000 spectra of 2,000 wavelengths (about 9 s: 44 MB of numbers written as JSON, then 4 million
+points drawn); reading a large CSV with quoted fields (5 s for 100,000 rows); opening a saved
+project (`lire_projet`: 2.7 s for 500 × 2,000 spectra with 10 models).

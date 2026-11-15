@@ -308,8 +308,8 @@ variable_du_projet <- function(projet, uid) {
 # (indicatrice 0/1) pour une variable qualitative. `bloc` : son bloc pour la pondération par
 # blocs, `modificateur` : le facteur de son poids (pretraitement.R : facteurs_ponderation) ; les
 # catégories d'une variable qualitative les partagent (chacune compte dans le bloc).
-termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, bloc = NULL, modificateur = NULL) {
-  v <- variable_du_projet(projet, uid)
+termes_variable <- function(projet, uid, echelle = "UV", transformation = NULL, bloc = NULL, modificateur = NULL,
+                            v = variable_du_projet(projet, uid)) {
   nom <- as.character(v$ids[1])
   ech <- c(list(type = echelle), if (length(bloc) && !is.na(bloc[1]) && nzchar(as.character(bloc[1]))) list(block = as.character(bloc[1])),
            if (length(modificateur) && !is.na(modificateur[1]) && as.numeric(modificateur[1]) != 1) list(modifier = as.numeric(modificateur[1])))
@@ -384,7 +384,15 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     if ("defaut" %in% names(echelle)) echelle[["defaut"]] else "UV"
   }
   par_variable <- function(valeurs, uid) if (as.character(uid) %in% names(valeurs)) valeurs[[as.character(uid)]]
-  termes <- function(u) termes_variable(projet, u, ech(u), trans(u), par_variable(blocs, u), par_variable(modificateurs, u))
+  # (chaque variable cherchée par son numéro dans un index fait une fois : variable_du_projet parcourt
+  # toutes les variables à chaque appel, des millions de fois pour des milliers de longueurs d'onde ;
+  # elle reste pour dire qu'un numéro n'existe pas)
+  uids_projet <- vapply(projet$variables, function(v) as.numeric(v$uid), 0)
+  variable <- function(u) {
+    i <- match(as.numeric(u), uids_projet)
+    if (is.na(i)) variable_du_projet(projet, u) else projet$variables[[i]]
+  }
+  termes <- function(u) termes_variable(projet, u, ech(u), trans(u), par_variable(blocs, u), par_variable(modificateurs, u), v = variable(u))
   trans <- function(uid) {
     n <- if (as.character(uid) %in% names(transformations)) transformations[[as.character(uid)]]
     if (is.null(n) || !nzchar(n)) return(NULL)
@@ -586,7 +594,12 @@ reglages_modele <- function(projet, d) {
 # Les composantes sont calculées une à une et le calcul s'arrête à la première qui n'est pas
 # significative. Q2 et Q2V sont ceux de la validation croisée du modèle (validation_croisee.R) :
 # chaque composante est jugée sur PRESS / PRESS de la précédente, pour tous ses Y ou chacun.
-autoajuster <- function(projet, definition, A_max = NULL) {
+autoajuster <- function(projet, definition, A_max = NULL) autoajuster_modele(projet, definition, A_max, garder = FALSE)$A
+
+# Le nombre de composantes d'autoajuster (A), et le modèle déjà calculé pour max(1, A) composantes,
+# tel que calculer_modele le rendrait (`modele`, pour ajuster : les composantes de l'ajustement
+# automatique sont celles du modèle, modele_tronque ; NULL sans `garder`).
+autoajuster_modele <- function(projet, definition, A_max = NULL, garder = TRUE) {
   N <- length(definition$observations)
   K <- length(definition$x)
   pls <- identical(definition$type, "PLS")
@@ -596,12 +609,12 @@ autoajuster <- function(projet, definition, A_max = NULL) {
     Ap <- definition$Ap %||% 1
     Ao_max <- max(0, min(8, K - Ap, N - Ap - 2))
     # (`arret` : moins de composantes orthogonales si les données n'en permettent pas autant)
-    m <- calculer_modele(projet, definition, A = Ao_max + Ap, arret = function(res, a) FALSE)
+    m <- calculer_modele(projet, definition, A = Ao_max + Ap, arret = function(res, a) FALSE, etat = garder)
     Ao_max <- m$A - Ap
     limite <- if (N > 100) 0 else 0.05
     Ao <- 0
     while (Ao < Ao_max && m$q2[Ap + Ao + 1] > limite) Ao <- Ao + 1
-    return(Ao + Ap)
+    return(list(A = Ao + Ap, modele = if (garder) modele_tronque(m, Ao + Ap)))
   }
   A_max <- A_max %||% max(1, min(floor(min(N, K) / 2), 15))
   if (pls) A_max <- max(1, min(A_max, K, N - 2))
@@ -628,9 +641,10 @@ autoajuster <- function(projet, definition, A_max = NULL) {
     premiere_non_significative <<- a
     TRUE
   }
-  m <- calculer_modele(projet, definition, A = A_max, arret = arret)
+  m <- calculer_modele(projet, definition, A = A_max, arret = arret, etat = garder)
   # (m$A : moins que A_max quand il n'y avait plus de variation à décrire)
-  if (is.na(premiere_non_significative)) m$A else premiere_non_significative - 1
+  A <- if (is.na(premiere_non_significative)) m$A else premiere_non_significative - 1
+  list(A = A, modele = if (garder) modele_tronque(m, max(1, A)))
 }
 
 # Enregistre un projet (données et définitions de modèles) au format lu par lire_projet(), avec
@@ -649,7 +663,48 @@ enregistrer_projet <- function(projet, chemin, version = "") {
   p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- p$import_collecte <- NULL  # état de la session
   p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
                  paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
-  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA))
+  # (des milliers de petites listes, que jsonlite écrit une à une : les observations, écrites d'un coup
+  # comme les lignes d'un tableau, et les termes d'un modèle, écrits une fois pour tous les modèles
+  # qui ont les mêmes ; le même texte, que write_json reprend tel quel, json_verbatim)
+  p$observations <- json_observations(p$observations)
+  p$models <- json_termes_modeles(p$models)
+  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE))
+}
+
+# Les observations d'un projet (list(uid, ids) chacune) en JSON, tel que jsonlite les écrirait une à
+# une, quand elles ont toutes la même forme (un numéro, autant d'identifiants, du texte sans valeur
+# manquante) : les lignes d'un tableau, que jsonlite écrit d'un coup (100 000 observations : 12 s une à
+# une, moins d'une seconde ainsi). Sinon les observations telles quelles.
+json_observations <- function(obs) {
+  if (!length(obs) || !is.null(names(obs))) return(obs)
+  simple <- function(o) identical(names(o), c("uid", "ids")) && is.numeric(o$uid) && length(o$uid) == 1 && !is.na(o$uid) &&
+    is.null(attributes(o$uid)) && is.character(o$ids) && length(o$ids) >= 1 && !anyNA(o$ids) && is.null(attributes(o$ids))
+  if (!all(vapply(obs, simple, NA))) return(obs)
+  ids <- lapply(obs, `[[`, "ids")
+  L <- unique(lengths(ids))
+  if (length(L) != 1) return(obs)
+  uid <- lapply(obs, `[[`, "uid")
+  lignes <- data.frame(uid = if (all(vapply(uid, is.integer, NA))) unlist(uid) else as.double(unlist(uid)))
+  lignes$ids <- if (L == 1) unlist(ids) else I(ids)
+  jsonlite::toJSON(lignes, dataframe = "rows", auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+}
+
+# Les modèles d'un projet, les termes X et Y de chacun (des milliers pour des spectres) en JSON tel que
+# jsonlite les écrirait : une fois pour tous les modèles qui ont les mêmes termes (identical).
+json_termes_modeles <- function(modeles) {
+  faits <- list()
+  en_json <- function(termes) {
+    if (length(termes) < 20) return(termes)
+    for (f in faits) if (identical(f$termes, termes)) return(f$json)
+    j <- jsonlite::toJSON(termes, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+    faits[[length(faits) + 1]] <<- list(termes = termes, json = j)
+    j
+  }
+  lapply(modeles, function(d) {
+    if (!is.list(d)) return(d)
+    for (k in intersect(c("x", "y"), names(d))) if (is.list(d[[k]]) && is.null(names(d[[k]]))) d[[k]] <- en_json(d[[k]])
+    d
+  })
 }
 
 # Écrit un fichier (ecrire(fichier temporaire)) sans jamais en laisser un à moitié écrit : dans
