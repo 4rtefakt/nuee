@@ -2223,6 +2223,12 @@ Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 13
 -------------------------------------------------------------------------------------------
 Mise à l'échelle, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX
 (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.
+Les modèles d'un fichier sont ajustés comme le logiciel qui l'a écrit : avec des valeurs
+manquantes, NIPALS converge parfois très lentement, ne converge pas ou a plusieurs solutions,
+et il s'y arrête comme ce logiciel (un écart relatif de 1e-5, 200 itérations au plus), part de
+la même colonne et valide chaque composante en partant du modèle complet. Ainsi 805 PLS sur 809
+du corpus d'essai, et les 403 PLS des projets de 2003, redonnent leur ajustement et leur Q2 ;
+les modèles que Nuée ajuste lui-même gardent sa précision (1e-10).
 
 Ce qui diffère
 --------------
@@ -2236,12 +2242,15 @@ Ce qui diffère
   identifiant (un site, un secteur), l'écart est plus grand : le modèle ajusté sans un site ne
   connaît pas non plus le niveau moyen de ce site. Validé avec « Centres et poids du modèle
   complet (comme SIMCA) », le Q2 enregistré revient exactement, groupes par identifiant
-  compris : 773 PLS sur 809 du corpus d'essai (220 sur 220 sans données manquantes), 441 sur
-  443 de quatre projets réels (moteur/tests/verifier_references.R), où les deux autres ont un
-  tour sans aucune variation, dont la valeur enregistrée vient d'erreurs d'arrondi. Pour une
-  ACP, il s'en écarte de 0,02 en médiane : le détail de la validation des fichiers n'est pas
-  publié.
+  compris : 805 PLS sur 809 du corpus d'essai (220 sur 220 sans données manquantes ; les quatre
+  autres sont celles d'un projet dont l'ajustement diffère, ci-dessous), 441 sur 443 de quatre
+  projets réels (moteur/tests/verifier_references.R), où les deux autres ont un tour sans aucune
+  variation, dont la valeur enregistrée vient d'erreurs d'arrondi. Pour une ACP, il s'en écarte
+  de 0,02 en médiane : le détail de la validation des fichiers n'est pas publié.
 
+- Un projet de la version 11 : ses quatre PLS, dont le seul Y a des valeurs manquantes. Leur
+  logiciel compte les observations sans y dans les poids des X, comme si leurs résidus de Y
+  valaient ±0,99, ce qu'aucune règle trouvée n'explique ; R2 et Q2 s'en écartent jusqu'à 0,04.
 - Signe des composantes de nouveaux modèles : arbitraire (les modèles importés sont
   orientés comme dans le fichier).
 - Dendrogrammes : méthode de Ward exacte ; les fusions du haut de l'arbre peuvent
