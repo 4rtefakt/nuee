@@ -258,7 +258,9 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
 - des notes sur chaque modèle ;
 - la modification des données et de nouvelles variables par des formules R ou des classes de
   valeurs ; des colonnes ajoutées d'un autre tableau par une clé, et des tableaux résumés par
-  groupe ;
+  groupe ; chercher et remplacer (Ctrl+H), les catégories d'une variable qualitative renommées,
+  fusionnées ou réordonnées, et une unité et une description pour chaque variable, reprises dans
+  les titres des axes, les textes des méthodes et des résultats et les exports ;
 - les observations d'un modèle choisies par une condition (`site == "S1" & annee >= 2010`),
   refaite à chaque ajustement ;
 - plusieurs fenêtres, et des vues qui se détachent sur un second écran ;
