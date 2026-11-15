@@ -639,25 +639,34 @@ function fenetre() {
   boite.addEventListener('pointerleave', () => { cadre.style.transitionDuration = ''; cadre.style.transform = ''; });
 }
 
-// The download buttons for the reader's system, and the version GitHub has (worker.js).
+// The download buttons for the reader's system, the version GitHub has and which of its files
+// (worker.js).
 function telechargements() {
   const systeme = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
   const ua = navigator.userAgent;
-  const os = /android|iphone|ipad/i.test(ua) ? null : /win/i.test(systeme) ? 'windows' : /linux/i.test(systeme) ? 'linux' : null;
+  // (an iPad says it is a Mac: it has several touch points, a Mac none)
+  const os = /android|iphone|ipad/i.test(ua) ? null : /win/i.test(systeme) ? 'windows'
+    : /mac/i.test(systeme) ? (navigator.maxTouchPoints > 1 ? null : 'mac') : /linux/i.test(systeme) ? 'linux' : null;
   const principal = $('[data-telecharger]');
   if (os === 'linux') { principal.href = '/download/deb'; principal.textContent = T.telecharger_linux; }
+  // (a Mac doesn't say which processor it has: the choice is on its card)
+  else if (os === 'mac') { principal.href = '#telecharger'; principal.textContent = T.telecharger_mac; }
   else if (!os) { principal.href = '#telecharger'; principal.textContent = T.telecharger_ici; }
-  const cartes = $$('.dl-carte');
-  if (os) cartes[os === 'windows' ? 0 : 1].classList.add('ici');
+  const carte = os ? $(`.dl-carte[data-systeme="${os}"]`) : null;
+  if (carte) carte.classList.add('ici');
 
-  const nombres = (v) => v.split('.').map(Number);
-  const avant = (a, b) => { const x = nombres(a); const y = nombres(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i]; return false; };
   fetch('/version.json').then((r) => (r.ok ? r.json() : null)).then((x) => {
     if (!x || !/^\d+\.\d+\.\d+$/.test(x.version || '')) return;
     for (const e of $$('[data-version]')) e.textContent = x.version;
     for (const e of $$('[data-version-phrase]')) e.textContent = `Nuée ${x.version}`;
-    // the page may describe a version that isn't out yet: it says which one the download is
-    $(avant(x.version, D.version) ? '#dl-avance' : '#dl-version').hidden = false;
+    $('#dl-version').hidden = false;
+    // a card whose file the release doesn't have says so, in place of its buttons
+    for (const c of $$('.dl-carte')) {
+      const absent = (x.fichiers || {})[c.dataset.fichier] === false;
+      c.classList.toggle('absent', absent);
+      $('.dl-absent', c).hidden = !absent;
+    }
+    if (carte && carte.classList.contains('absent')) principal.href = '#telecharger';
   }).catch(() => {});
 }
 

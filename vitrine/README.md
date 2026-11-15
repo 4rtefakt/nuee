@@ -21,7 +21,7 @@ What it shows is taken from the application, not written beside it:
 | `src/textes.mjs` | the texts, English and French, the same keys in both |
 | `src/assets/` | `site.css`, `site.js` (the swarm, *Which analysis?*, the page's small machines), the fonts, `og.png` |
 | `src/donnees.json` | the figures and the quoted texts, written by `donnees.R`: don't edit it by hand |
-| `src/worker.js` | what no file answers: `/download/<windows, deb, appimage, tar>`, `/version.json`, the 404 pages |
+| `src/worker.js` | what no file answers: `/download/<windows, mac-arm64, mac-x64, deb, appimage, tar>`, `/version.json`, the 404 pages |
 | `construire.mjs` | builds `dist/` (not committed) |
 | `donnees.R` | computes `src/donnees.json` with the engine |
 | `image.mjs` | makes `src/assets/og.png`, the picture of a shared link |
@@ -51,10 +51,11 @@ new computer). Assets are stamped (`?v=…`) and kept a year by browsers; the pa
 checked again.
 
 **After a release, nothing to do:** the buttons and the version shown follow the latest release
-within ten minutes. The page says which version it *describes* (`app/package.json`, at build
-time): while that version isn't released yet, a note under *Download* tells the reader that the
-download is the previous one. Publish again when the application's version or the page's texts
-change.
+within ten minutes. A system whose file the latest release doesn't have (macOS before 1.0.0, or
+a release whose packages are still being added) says so on its card, in place of its buttons,
+and its `/download/…` address goes to the release's page. Publish again when the page's texts
+change; a new kind of file is one more line in `FICHIERS` (`src/worker.js`) and its button in
+the page.
 
 ## After a change to the engine, the example or the tutorials' data
 

@@ -214,11 +214,14 @@ chiffres <- list(
   verifications = length(verifications), lignes_verifications = lignes_de(verifications),
   R = paste(R.version$major, R.version$minor, sep = "."))
 
-jsonlite::write_json(
+json <- jsonlite::toJSON(
   list(formes = list(acp = acp, spectres = spectres, baci = baci, communautes = communautes, distance = distance, carte = carte),
        console = list(commande = commande, sortie = sortie_console),
        texte = texte, chiffres = chiffres),
-  "vitrine/src/donnees.json", auto_unbox = TRUE, digits = NA, pretty = FALSE)
+  auto_unbox = TRUE, digits = NA, pretty = FALSE)
+sortie <- file("vitrine/src/donnees.json", "wb")  # (as bytes: the same file on Windows, in UTF-8, its line ending too)
+writeLines(enc2utf8(as.character(json)), sortie, useBytes = TRUE)
+close(sortie)
 cat("vitrine/src/donnees.json written:", file.size("vitrine/src/donnees.json"), "bytes\n")
 cat(sprintf("PCA: R2X %.3f, %.3f; ellipse %.2f x %.2f\n", comp$R2X[1], comp$R2X[2], rayons[1], rayons[2]))
 cat(sprintf("NMDS stress %.3f; half-normal sigma %.1f m, p %.2f, half-width %.0f m, n %d\n", nmds$stress, sigma, mu(sigma) / w, mu(sigma), length(x)))

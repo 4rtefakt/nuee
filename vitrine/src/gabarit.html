@@ -258,21 +258,30 @@
         <p class="surtitre"><span>§ 8</span>{{dl_surtitre}}</p>
         <h2>{{dl_titre}}</h2>
         <p class="chapeau" id="dl-version" hidden>{{dl_version}}</p>
-        <p class="avance" id="dl-avance" hidden>{{dl_avance}}</p>
       </header>
       <div class="ciel-fin" id="ciel-fin" aria-hidden="true"><div class="figure" data-figure="fin"><div class="zone"></div></div></div>
     </div>
+    <!-- a card per system; data-fichier: its file of the release (worker.js), said missing when it is -->
     <div class="dl-grille">
-      <article class="dl-carte">
+      <article class="dl-carte" data-systeme="windows" data-fichier="windows">
         <h3>{{dl_win_titre}}</h3>
         <p>{{dl_win_p}}</p>
-        <a class="bouton" href="/download/windows">{{telecharger_windows}}</a>
+        <div class="dl-boutons"><a class="bouton" href="/download/windows">{{telecharger_windows}}</a></div>
+        <p class="dl-absent" hidden>{{dl_absent}}</p>
         <p class="dl-note">{{dl_win_note}}</p>
       </article>
-      <article class="dl-carte">
+      <article class="dl-carte" data-systeme="mac" data-fichier="mac-arm64">
+        <h3>{{dl_mac_titre}}</h3>
+        <p>{{dl_mac_p}}</p>
+        <div class="dl-boutons"><a class="bouton" href="/download/mac-arm64">{{dl_mac_arm}}</a><a class="bouton second" href="/download/mac-x64">{{dl_mac_intel}}</a></div>
+        <p class="dl-absent" hidden>{{dl_absent}}</p>
+        <p class="dl-note">{{dl_mac_note}}</p>
+      </article>
+      <article class="dl-carte" data-systeme="linux" data-fichier="deb">
         <h3>{{dl_linux_titre}}</h3>
         <p>{{dl_linux_p}}</p>
-        <a class="bouton" href="/download/deb">{{dl_linux_bouton}}</a>
+        <div class="dl-boutons"><a class="bouton" href="/download/deb">{{dl_linux_bouton}}</a></div>
+        <p class="dl-absent" hidden>{{dl_absent}}</p>
         <p class="dl-note">{{dl_linux_note}}</p>
       </article>
     </div>

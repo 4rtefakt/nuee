@@ -4,8 +4,8 @@
 // It needs Node 22 or later and nothing else. It reads:
 //   - src/gabarit.html, the page, where {{key}} is a text of src/textes.mjs or a block made here;
 //   - src/donnees.json, the figures and the quoted texts, computed by donnees.R;
-//   - the application itself: its version (app/package.json), the rules and texts of Which
-//     analysis? (app/interface/choix_analyse.js) and the way a document writes the values it cites
+//   - the application itself: the rules and texts of Which analysis?
+//     (app/interface/choix_analyse.js) and the way a document writes the values it cites
 //     (app/interface/references.js), so that the page says what the application says;
 //   - the screenshots of the documentation site (docs/site/images).
 
@@ -25,7 +25,6 @@ const importer = (...p) => import(pathToFileURL(path.join(DEPOT, ...p)).href);
 const echapper = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const D = JSON.parse(lire(SRC, 'donnees.json'));
-const VERSION = JSON.parse(lire(DEPOT, 'app', 'package.json')).version;
 const choix = await importer('app', 'interface', 'choix_analyse.js');
 const { nombre, pourcentage } = await importer('app', 'interface', 'references.js');
 
@@ -173,7 +172,7 @@ function textesDe(langue) {
     com_n: n(F.communautes.n), com_sp: n(F.communautes.especes), com_stress: n(F.communautes.stress, 3),
     dist_n: n(F.distance.n), dist_p: pc(F.distance.p), dist_w: n(F.distance.w), carte_n: n(F.carte.n),
     lignes_moteur: n(D.chiffres.lignes_moteur), fichiers_moteur: n(D.chiffres.fichiers_moteur), verifications: n(D.chiffres.verifications),
-    script_n: n(s.n), de: s.de, a: s.a, n: s.n, version_decrite: VERSION,
+    script_n: n(s.n), de: s.de, a: s.a, n: s.n,
   };
   for (const [cle, texte] of Object.entries(t)) {
     if (typeof texte === 'string') t[cle] = texte.replace(/\{(\w+)\}/g, (tout, nom) => (nom in valeurs ? valeurs[nom] : tout));
@@ -187,10 +186,11 @@ function page(langue, v) {
   // what site.js needs: the shapes of the swarm, the rules of Which analysis?, a few texts
   const formes = Object.fromEntries(Object.entries(D.formes).map(([id, f]) => [id, { points: f.points, lignes: f.lignes, part_lignes: f.part_lignes, deco: f.deco, groupes: id === 'acp' ? f.groupes : undefined }]));
   const donnees = {
-    langue, version: VERSION, formes, choix: donneesChoix(langue),
+    langue, formes, choix: donneesChoix(langue),
     t: Object.fromEntries(Object.entries(t).filter(([k]) => k.startsWith('js_')).map(([k, x]) => [k.slice(3), x])
       .concat([['axe_spectres', t.tour2_axe], ['evenement', t.tour3_evenement], ['axe_distance', t.tour5_axe],
-        ['telecharger_windows', t.telecharger_windows], ['telecharger_linux', t.telecharger_linux], ['telecharger_ici', t.telecharger_ici]])),
+        ['telecharger_windows', t.telecharger_windows], ['telecharger_mac', t.telecharger_mac], ['telecharger_linux', t.telecharger_linux],
+        ['telecharger_ici', t.telecharger_ici]])),
   };
   const blocs = {
     bloc_etapes: blocEtapes(t), bloc_console: blocConsole(), bloc_script: blocScript(D.texte[langue].script), bloc_methodes: blocMethodes(t),
@@ -276,4 +276,4 @@ ecrire(path.join(DIST, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
   <url><loc>https://nuee.io/fr/</loc>${alternees}</url>
 </urlset>
 `);
-console.log(`dist/ built: Nuée ${VERSION}, assets ${v}`);
+console.log(`dist/ built, assets ${v}`);

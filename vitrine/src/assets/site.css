@@ -330,13 +330,14 @@ html:not(.js) .tour-figure, html:not(.js) .ciel-fin { display: none; }
 .dl-tete .chapeau { font-size: 1.1em; }
 .ciel-fin { position: relative; justify-self: center; width: min(100%, 20rem); aspect-ratio: 1; }
 .ciel-fin .zone { inset: 4%; }
-.avance { max-width: 41rem; margin: 1.2rem 0 0; padding: .15rem 0 .15rem 1rem; border-left: 3px solid var(--c3); font-size: .98rem; }
-.dl-grille { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.2rem, 2.6vw, 2.2rem); margin-top: clamp(2rem, 5vh, 3.2rem); }
+.dl-grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.1rem, 2vw, 1.8rem); margin-top: clamp(2rem, 5vh, 3.2rem); }
 .dl-carte { display: flex; flex-direction: column; align-items: flex-start; padding: clamp(1.3rem, 3vw, 2.3rem); border: 1px solid var(--encre); border-radius: 6px; background: var(--papier-clair);
   box-shadow: 10px 12px 0 var(--papier-fonce); transition: box-shadow .3s; }
 .dl-carte.ici { box-shadow: 10px 12px 0 var(--ciel); }
-.dl-carte h3 { font-size: 1.6rem; font-weight: 480; }
-.dl-carte .bouton { margin: .5rem 0 1.4rem; }
+.dl-carte h3 { font-size: 1.5rem; font-weight: 480; }
+.dl-boutons { display: flex; flex-wrap: wrap; gap: .9rem .7rem; margin: .5rem 0 1.4rem; }
+.dl-carte.absent .dl-boutons { display: none; }  /* the release doesn't have this file: the card says so instead */
+.dl-absent { margin: .2rem 0 1.3rem; padding: .15rem 0 .15rem .8rem; border-left: 3px solid var(--c3); font: 400 .78rem/1.55 var(--mono); }
 .dl-note { margin: auto 0 0; font: 400 .74rem/1.6 var(--mono); color: var(--encre-douce); }
 .dl-liens { display: flex; flex-wrap: wrap; gap: .5rem 2rem; margin: clamp(2rem, 5vh, 3rem) 0 0; padding: 0; list-style: none; font: 500 .8rem var(--mono); }
 .dl-liens a::after { content: " ›"; }
@@ -356,6 +357,9 @@ html:not(.js) .tour-figure, html:not(.js) .ciel-fin { display: none; }
 .perdu .entree-mot { font-size: 2rem; }
 
 /* ---------------------------------------------------------------- narrower screens */
+@media (max-width: 72rem) {
+  .dl-grille { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 68rem) {
   .menu a:nth-child(-n+3) { display: none; }
 }
@@ -378,7 +382,6 @@ html:not(.js) .tour-figure, html:not(.js) .ciel-fin { display: none; }
   .registre td:nth-child(2) { width: auto; }
   .registre .coche { position: absolute; top: 1rem; right: 0; width: auto; }
   .ciel-fin { order: -1; width: 11rem; justify-self: start; }
-  .dl-grille { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 30rem) {
   .menu { display: none; }
