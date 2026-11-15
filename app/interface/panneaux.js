@@ -2471,8 +2471,17 @@ function rendreResumeRegression(conteneur, ctx, m) {
     m.dispersion > 1.5 ? t('surdispersion', { d: fmt(m.dispersion, 1) }) : '',
     m.K ? indiceSelectionAIC(ctx, m) : ''].filter(Boolean);
   const notes = notesModele(conteneur, ctx, m);
-  conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, courbes, table, textes.map((x) => el('p', { class: 'note' }, x))));
+  // the model's conditions checked in words (R: verifications_modele), asked once the summary shows
+  const verifs = el('div', { class: 'verifications' });
+  conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, courbes, table, verifs, textes.map((x) => el('p', { class: 'note' }, x))));
   notes.retrouver();
+  ctx.demander('verifications_modele', { modele: m.id }).then((r) => {
+    const liste = [].concat(r.verifications || []);
+    if (!liste.length) return;
+    const signe = { ok: '✓', attention: '⚠', info: 'ℹ' };
+    verifs.replaceChildren(el('h4', {}, t('verifications_titre')), ...liste.map((v) => el('p', { class: `verification ${v.statut}` },
+      el('span', { class: 'signe', 'aria-hidden': 'true' }, signe[v.statut] || '•'), ' ', v.texte)), el('p', { class: 'note' }, t('verifications_note')));
+  }).catch(() => {});
 }
 
 // The cross-validation's observations left without a prediction (regression.R: niveaux_inconnus):

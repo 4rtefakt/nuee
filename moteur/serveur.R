@@ -995,6 +995,15 @@ DEMANDES <- list(
   classe_selection = classe_demande,
   script_r = script_demande,
   methodes = methodes_demande,
+  # Les conditions d'une régression vérifiées et dites en mots (verifications_modele.R), dans la
+  # langue de la demande, calculées une fois par langue et gardées avec le modèle.
+  verifications_modele = function(q) {
+    e <- modele(q$modele)
+    if (!inherits(e$modele, "modele_regression")) return(list(verifications = list()))
+    langue <- getOption("nuee.langue") %||% "fr"
+    if (is.null(e$verifications[[langue]])) etat$modeles[[q$modele]]$verifications[[langue]] <- verifications_regression(projet(e$projet), e$modele)
+    list(verifications = etat$modeles[[q$modele]]$verifications[[langue]])
+  },
   # Le texte des résultats d'un modèle (resultats_texte.R), dans la langue demandée.
   resultats_texte = function(q) {
     e <- modele(q$modele)

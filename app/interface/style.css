@@ -380,3 +380,10 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .ligne-recherche-citation { display: flex; gap: 8px; align-items: center; }
 .ligne-recherche-citation .recherche-citation { flex: 1; min-width: 0; }
 .ligne-recherche-citation .collection-zotero { max-width: 45%; }
+
+/* the model's conditions in its summary (panneaux.js: rendreResumeRegression) */
+.verifications .verification { margin: 0.25em 0; }
+.verifications .verification .signe { display: inline-block; width: 1.2em; font-weight: 600; }
+.verifications .verification.ok .signe { color: #3b9a5b; }
+.verifications .verification.attention .signe { color: #d1495b; }
+.verifications .verification.info .signe { color: var(--texte-doux, #666); }

@@ -2,7 +2,9 @@
 # des modèles (glm(), nlme::lme(), mgcv::gam(), la PLS de l'exemple), sur l'échelle de la réponse
 # pour un lien log (un facteur) ou logit (un rapport de cotes), les termes significatifs nommés,
 # les courbes et les effets aléatoires, en français et en anglais ; une autre analyse sans texte à
-# elle donne ses chiffres.
+# elle donne ses chiffres. Puis les conditions d'une régression dites en mots
+# (moteur/R/verifications_modele.R) : chacune vue où les données la mettent en défaut, et pas
+# ailleurs.
 #   Rscript moteur/tests/verifier_texte_resultats.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -55,5 +57,25 @@ dk <- definir_modele(p, "KMEANS", x = u("x", "y"), observations = obs, options =
 tk <- texte_resultats(p, dk, ajuster(p, dk), "fr", chiffres = "k = 2 · R2 0.50")$paragraphes
 verifier("une autre analyse sans texte à elle : ses chiffres", identical(tk, sprintf("Résultats de %s (KMEANS) : k = 2 · R2 0.50.", dk$name)))
 
+cat("Conditions du modèle\n")
+set.seed(4)
+n <- 80
+dv <- data.frame(nom = paste0("o", 1:n), x1 = stats::rnorm(n), stringsAsFactors = FALSE)
+dv$x2 <- dv$x1 + stats::rnorm(n, 0, 0.2)
+dv$x3 <- stats::rnorm(n)
+dv$bon <- 1 + dv$x1 + dv$x3 + stats::rnorm(n)
+dv$y <- exp(1 + dv$x1 + stats::rnorm(n, 0, 0.6))
+dv$n <- ifelse(stats::runif(n) < 0.4, 0, stats::rpois(n, exp(1 + 0.4 * dv$x1)))
+pv <- projet_depuis_tableau(dv, "conditions")
+uv <- function(...) numeros(pv, c(...))
+statuts <- function(d) { v <- verifications_regression(pv, ajuster(pv, d)); stats::setNames(vapply(v, `[[`, "", "statut"), vapply(v, `[[`, "", "cle")) }
+dm <- function(type, x, y, ...) definir_modele(pv, type, x = uv(x), y = uv(y), observations = numeros_observations(pv), echelle = c(defaut = "none"), ...)
+s_bon <- statuts(dm("LM", c("x1", "x3"), "bon"))
+verifier("un modèle juste : loi, variance et colinéarité sans alerte", all(s_bon[c("loi", "variance", "colinearite")] == "ok"))
+s_mauvais <- statuts(dm("LM", c("x1", "x2"), "y"))
+verifier("une réponse log-normale et deux termes colinéaires : loi, variance et colinéarité signalées",
+         all(s_mauvais[c("loi", "variance", "colinearite")] == "attention"))
+s_zero <- statuts(dm("GLM", "x1", "n", famille = "poisson"))
+verifier("des comptages avec trop de zéros : surdispersion et excès de zéros signalés", all(s_zero[c("dispersion", "zeros")] == "attention"))
 cat(if (echecs) sprintf("%d échec(s)\n", echecs) else "Tout est bon.\n")
 if (echecs) quit(status = 1)

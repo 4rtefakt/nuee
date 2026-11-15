@@ -874,6 +874,14 @@ test sont dans le tableau des courbes du Résumé, et sa valeur en chaque observ
 colonne des résultats du modèle que la carte peut montrer. La formule R l'écrit s(x, y),
 s(x, y, k = 40) ou s(lat, lon, bs = "sos"). L'export vers R ne la refait pas encore : un tel
 modèle y est refusé.
+Conditions du modèle (le Résumé d'une régression) : des repères en mots, chacun ✓ ou ⚠ avec ce
+qu'on peut faire : la loi des résidus (Shapiro–Wilk, sur les résidus quantiles pour des comptages,
+des présences-absences et des valeurs positives), une dispersion des résidus qui change avec les
+valeurs ajustées, les observations influentes (distance de Cook au-delà de 4/n, modèle linéaire),
+la surdispersion et un excès de zéros (comptages), des termes quantitatifs colinéaires (VIF > 5),
+des courbes confondues avec les autres termes, et l'autocorrélation spatiale des résidus quand le
+projet a des coordonnées. Avec beaucoup d'observations un test voit des écarts sans conséquence,
+avec peu il n'en voit aucun : les graphiques des résidus restent la référence.
 Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/secteur).
 Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations
