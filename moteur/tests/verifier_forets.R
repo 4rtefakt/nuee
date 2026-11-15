@@ -227,5 +227,87 @@ verifier("tableaux exportés : des data.frame (résumé, observations, importanc
          all(vapply(c(tf, tc), is.data.frame, TRUE)) && all(c("resume", "observations", "importance", "erreur_oob", "dependance") %in% names(tf)) &&
            all(c("classement_oob", "classement_vc") %in% names(tc)) && nrow(tf$dependance) == 25 + 25 + 25 + 25 + 3)
 
+# ---------------------------------------------------------------- l'export vers R
+
+# Chaque script est écrit (ecrire_script : exécuté d'abord dans le moteur et comparé, `ecart`), puis
+# lancé dans une session R neuve (Rscript --vanilla, sans le moteur, ranger trouvé dans les
+# bibliothèques de celle-ci) ; ses objets en reviennent et ecart_foret les compare au modèle du moteur :
+# les prédictions et l'erreur hors sac, les importances, l'erreur selon le nombre d'arbres, la
+# validation croisée, la qualité, les votes et les classements, le jeu de test et la dépendance
+# partielle, à 1e-8 près : la même forêt.
+cat("Export vers R : des scripts lancés seuls (avec ranger), en français et en anglais, et un rapport R Markdown\n")
+dossier <- tempfile("foret_script")
+dir.create(dossier)
+rscript <- file.path(R.home("bin"), "Rscript")
+lanceur <- file.path(dossier, "lancer.R")
+writeLines(c(".a <- commandArgs(TRUE)", sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
+             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+lancer <- function(script, langue) {
+  objets <- nom_traduit(c("rf", "importance", "courbe", "vc", "ajuste", "qualite", "votes_oob", "classement", "test", "dependance"), langue, NOMS_FORET_EN)
+  sortie <- tempfile("sortie", dossier, ".rds")
+  ici <- setwd(dossier)
+  on.exit(setwd(ici))
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(lanceur), shQuote(script), shQuote(sortie), shQuote(paste(objets, collapse = ","))),
+                                       stdout = TRUE, stderr = TRUE))
+  if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
+}
+hors_donnees <- function(texte) texte[-(grep("^# 2\\. ", texte):(grep("^# 3\\. ", texte) - 1))]
+paquets_appeles <- function(texte) unique(regmatches(texte, regexpr("[A-Za-z.]+(?=::)", texte, perl = TRUE)))
+essayer_script <- function(nom, d, langue, dependance = character(0), ext = "R", ...) {
+  m <- ajuster(p, d)
+  if (length(dependance)) {
+    garder(nom, d, m)
+    demande_analyse_dependance_partielle(list(modele = nom, variables = dependance))
+    m <- etat$modeles[[nom]]$modele
+  }
+  r <- ecrire_script(p, d, file.path(dossier, paste0(nom, ".", ext)), "moteur", m = m, version = "essai", langue = langue, ...)
+  if (ext != "R") return(invisible(list(r = r, m = m)))
+  s <- lancer(r$script, langue)
+  texte <- readLines(r$script, encoding = "UTF-8")
+  code <- sub("#.*$", "", hors_donnees(texte))
+  difference <- if (length(s)) ecart_foret(m, list2env(s), langue) else paste(utils::tail(attr(s, "messages"), 3), collapse = " / ")
+  francais <- langue == "fr" || !any(grepl("foret_ranger|predire_ranger|votes_classes|reglages", code))
+  collisions <- if (langue == "fr") collisions_traduction(hors_donnees(texte), c(NOMS_FORET_EN, NOMS_SCRIPT_EN)) else list()
+  verifier(sprintf("%s (%s) : sans écart vu par le moteur ; lancé seul, la même forêt et les mêmes résultats ; R et ranger seuls (ni library() ni autre paquet), sans traduire()%s",
+                   nom, langue, if (langue == "en") ", ses noms en anglais" else ", aucun nom confondu en anglais"),
+           is.null(r$ecart) && is.null(difference) && !any(grepl("library\\(|traduire\\(", code)) &&
+             all(paquets_appeles(code) %in% c("stats", "utils", "ranger")) && francais && !length(collisions) &&
+             any(grepl("install.packages(\"ranger\")", texte, fixed = TRUE)))
+  if (!is.null(r$ecart) || !is.null(difference) || length(collisions)) cat("    écart :", r$ecart, "/", difference, "/", names(collisions), "\n")
+  invisible(list(r = r, m = m, s = s))
+}
+df1 <- definir_modele(p, "FOREST", x = xs, y = u("densite"), echelle = "none", vc = vc, options = list(arbres = 200), test = 221:240)
+x <- essayer_script("foret_regression_test", df1, "fr", dependance = c("h_gel", "sol"))
+hors_test <- !(which(cc) %in% 221:240)
+r200 <- ranger::ranger(x = Xd[hors_test, ], y = yd[hors_test], num.trees = 200, mtry = floor(sqrt(K)), min.node.size = 5, replace = TRUE, respect.unordered.factors = "order",
+                       seed = 1, num.threads = 1, verbose = FALSE)
+verifier("forêt de régression : les prédictions hors sac du script, celles de ranger appelé ici directement",
+         length(x$s) > 0 && proche(x$s$rf$predictions, r200$predictions, 1e-12))
+essayer_script("foret_regression_test_en", df1, "en", dependance = "haie")
+df2 <- definir_modele(p, "FOREST", x = xs, classe = u("classe"), echelle = "none", vc = vc, options = list(arbres = 150, mtry = 3, min_noeud = 2, importance = "echelle"),
+                      test = 221:240)
+essayer_script("foret_classement_test", df2, "fr", dependance = "haie")
+x <- essayer_script("foret_classement_test_en", df2, "en")
+verifier("forêt de classement : les parts des votes hors sac et le tableau de classement en validation croisée du script",
+         length(x$s) > 0 && proche(x$s$oob_votes, x$m$votes_oob, 1e-12) && identical(unname(x$s$classification$vc$table), unname(x$m$classification$vc$table)))
+dfc <- definir_modele(p, "FOREST", x = u("h_gel", "haie", "sol"), y = u("densite"), echelle = "none", vc = vc, options = list(arbres = 100, fraction = 0.632),
+                      condition = "annee >= 2017 & sol != \"argile\"")
+essayer_script("foret_condition", dfc, "fr")
+x <- essayer_script("rapport_foret", df2, "en", dependance = "sol", ext = "Rmd", donnees = "csv", rdata = TRUE)
+texte <- readLines(x$r$script, encoding = "UTF-8")
+verifier("R Markdown report: methods, code, results, references; data in a CSV and .RData next to it",
+         is.null(x$r$ecart) && texte[1] == "---" && any(grepl("^## Methods", texte)) && any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^```\\{r importance-table\\}", texte)) &&
+           any(grepl("^- Breiman", texte)) && length(x$r$chemins) == 3 && all(file.exists(x$r$chemins)) && !anyDuplicated(sub("^```\\{r ([^,} ]+).*$", "\\1", grep("^```\\{r [^,} ]", texte, value = TRUE))))
+if (requireNamespace("knitr", quietly = TRUE)) {
+  compiler <- file.path(dossier, "compiler.R")
+  writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
+               "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(x$r$script)), stdout = TRUE, stderr = TRUE))
+  md <- sub("[.]Rmd$", ".md", x$r$script)
+  verifier("le rapport se compile avec knitr, avec ses graphiques", file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) &&
+             length(list.files(file.path(dossier, "figure"), "\\.png$")) >= 3)
+} else cat("  (knitr absent : le rapport n'est pas compilé)\n")
+unlink(dossier, recursive = TRUE)
+
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
