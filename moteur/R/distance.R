@@ -387,8 +387,12 @@ ajuster_detection <- function(fd, x, depart = NULL, monotonie = "stricte") {
   H <- crossprod(v$scores)
   V <- inverse_information(H)
   a_la_borne <- o$par >= haut - 1e-6 | (o$par <= bas + 1e-6 & !seq_len(q) %in% b$libre_en_bas)
+  # (une matrice d'information presque singulière, que solvecov comble par 1e10 : des distances qui ne
+  # disent rien d'un paramètre, toutes égales par exemple ; un ajustement sans variance, qui ne converge pas)
+  singuliere <- anyNA(V) || min(eigen(H, symmetric = TRUE, only.values = TRUE)$values) < 1e-10
   c(base, list(theta = o$par, ll = v$ll, AIC = -2 * v$ll + 2 * q, H = H, V = V, se = sqrt(pmax(0, diag(V))),
-               converge = o$convergence == 0 && is.finite(v$ll) && !any(a_la_borne) && !anyNA(V), a_la_borne = any(a_la_borne), contraint = contraint))
+               converge = o$convergence == 0 && is.finite(v$ll) && !any(a_la_borne) && !singuliere, a_la_borne = any(a_la_borne), singuliere = singuliere,
+               contraint = contraint))
 }
 
 # L'inverse d'une matrice d'information comme mrds (solvecov) : par ses vecteurs propres, une valeur
@@ -765,12 +769,14 @@ densite_echantillonnage <- function(t, p, var_p, q, cu) {
     g_var <- if (n > 1) stats::var(tailles) / n else 0
     g_moy <- if (n > 0) mean(tailles) else 1
     g_cv <- if (g_var == 0) 0 else sqrt(g_var) / g_moy
-    cv <- sqrt((var_er_N + var_det_N) / N^2 + g_cv^2)
+    # (une strate sans détection : N = 0, erreur-type 0, ni CV ni ddl, comme dht2)
+    se <- sqrt(var_er_N + var_det_N + N^2 * g_cv^2)
+    cv <- if (N > 0) se / N else NA_real_
     ddl <- cv^4 / sum(c(if (k == 1) 0 else er_cv^4 / er_ddl, det_cv^4 / (nddf - q), g_cv^4 / (n - 1)), na.rm = TRUE)
-    if (!is.finite(cv) || cv == 0) ddl <- 1
+    if (is.finite(cv) && cv == 0) ddl <- 1
     if (is.finite(ddl) && ddl < 1) ddl <- 1
     list(strate = s, aire = if (t$densite_seule) NA_real_ else A, couverte = couverte, effort = effort, k = k, n = n, individus = sum(tr$individus),
-         rencontre = er, se_rencontre = sqrt(er_var), cv_rencontre = er_cv, ddl_rencontre = er_ddl, N = N, cv = cv, ddl = ddl,
+         rencontre = er, se_rencontre = sqrt(er_var), cv_rencontre = er_cv, ddl_rencontre = er_ddl, N = N, se = se, cv = cv, ddl = ddl,
          var_er_N = var_er_N, var_det_N = var_det_N, var_groupes_N = N^2 * g_cv^2, taille_moyenne = g_moy, se_taille = sqrt(g_var), Nc = Nc, cv_detection = det_cv,
          cv_groupes = g_cv)
   }
@@ -792,7 +798,7 @@ densite_echantillonnage <- function(t, p, var_p, q, cu) {
     er_var <- variance_rencontre(t$transects$effort, t$transects$n, type)
     lignes[[length(lignes) + 1]] <- list(strate = NA_character_, aire = if (t$densite_seule) NA_real_ else somme("aire"), couverte = somme("couverte"),
       effort = effort, k = somme("k"), n = n, individus = somme("individus"), rencontre = n / effort, se_rencontre = sqrt(er_var),
-      cv_rencontre = if (n == 0) 0 else sqrt(er_var) / (n / effort), ddl_rencontre = er_ddl, N = N, cv = cv, ddl = ddl, var_er_N = var_er_N,
+      cv_rencontre = if (n == 0) 0 else sqrt(er_var) / (n / effort), ddl_rencontre = er_ddl, N = N, se = sqrt(tvar), cv = cv, ddl = ddl, var_er_N = var_er_N,
       var_det_N = var_det_N, var_groupes_N = var_g_N, taille_moyenne = somme("individus") / max(1, n), se_taille = NA_real_, Nc = sum(poids * vapply(lignes, `[[`, 0, "Nc")),
       cv_detection = if (N > 0) sqrt(var_det_N) / N else 0, cv_groupes = if (N > 0) sqrt(var_g_N) / N else 0)
   }
@@ -801,13 +807,13 @@ densite_echantillonnage <- function(t, p, var_p, q, cu) {
     A <- if (t$densite_seule) 1 else l$aire
     data.frame(strate = l$strate, aire = l$aire, couverte = l$couverte, effort = l$effort, k = l$k, n = l$n, individus = l$individus,
                rencontre = l$rencontre, se_rencontre = l$se_rencontre, cv_rencontre = l$cv_rencontre, ddl_rencontre = l$ddl_rencontre,
-               D = l$N / A, se_D = l$cv * l$N / A, cv = l$cv, bas_D = b[1] / A, haut_D = b[2] / A,
-               N = if (t$densite_seule) NA_real_ else l$N, se_N = if (t$densite_seule) NA_real_ else l$cv * l$N,
+               D = l$N / A, se_D = l$se / A, cv = l$cv, bas_D = b[1] / A, haut_D = b[2] / A,
+               N = if (t$densite_seule) NA_real_ else l$N, se_N = if (t$densite_seule) NA_real_ else l$se,
                bas_N = if (t$densite_seule) NA_real_ else b[1], haut_N = if (t$densite_seule) NA_real_ else b[2], ddl = l$ddl,
                cv_detection = l$cv_detection, cv_groupes = l$cv_groupes, taille_moyenne = l$taille_moyenne, se_taille = l$se_taille,
-               part_rencontre = if (l$cv > 0) 100 * (l$var_er_N / l$N^2) / l$cv^2 else NA_real_,
-               part_detection = if (l$cv > 0) 100 * (l$var_det_N / l$N^2) / l$cv^2 else NA_real_,
-               part_groupes = if (l$cv > 0) 100 * (l$var_groupes_N / l$N^2) / l$cv^2 else NA_real_, stringsAsFactors = FALSE)
+               part_rencontre = if (isTRUE(l$cv > 0)) 100 * (l$var_er_N / l$N^2) / l$cv^2 else NA_real_,
+               part_detection = if (isTRUE(l$cv > 0)) 100 * (l$var_det_N / l$N^2) / l$cv^2 else NA_real_,
+               part_groupes = if (isTRUE(l$cv > 0)) 100 * (l$var_groupes_N / l$N^2) / l$cv^2 else NA_real_, stringsAsFactors = FALSE)
   }))
   rownames(out) <- NULL
   out
@@ -835,7 +841,7 @@ ajuster_distance <- function(projet, d) {
   if (!det$converge) {
     stop(sprintf(traduire("La fonction de détection %s ne converge pas%s : essayez une autre clé, moins de termes d'ajustement ou une autre troncature.",
                           "The detection function %s doesn't converge%s: try another key, fewer adjustment terms or another truncation."),
-                 libelle_detection(det$fd), if (isTRUE(det$a_la_borne)) traduire(" (un paramètre part à l'infini)", " (a parameter runs off to infinity)") else ""), call. = FALSE)
+                 libelle_detection(det$fd), if (isTRUE(det$a_la_borne)) traduire(" (un paramètre part à l'infini)", " (a parameter runs off to infinity)") else if (isTRUE(det$singuliere)) traduire(" (les distances ne disent rien d'un de ses paramètres)", " (the distances say nothing about one of its parameters)") else ""), call. = FALSE)
   }
   pr <- probabilite_detection(det$fd, det$theta)
   var_p <- if (det$q) drop(t(pr$dp) %*% det$V %*% pr$dp) else 0

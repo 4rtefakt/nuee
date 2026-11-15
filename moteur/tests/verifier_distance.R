@@ -490,6 +490,14 @@ verifier("des lignes sans effort, sans transect : refusées ; une taille de grou
 set.seed(8)
 verifier("un modèle qui ne converge pas (une demi-normale devenue plate : des distances plus nombreuses au loin) : refusé, avec la raison",
          grepl("ne converge pas.*infini", refus_de(transform(sim, distance = ifelse(is.na(distance), NA, round(20 * sqrt(stats::runif(nrow(sim))), 2))), w = 20, serie = "aucune")))
+egales <- mal(function(x) { x$distance[!is.na(x$distance)] <- 10; x })
+verifier("des distances toutes égales : la fonction de détection ne converge pas (une information nulle), refusée avec la raison",
+         grepl("ne disent rien", refus_de(egales, w = 100)))
+vide <- rbind(sim, data.frame(Region.Label = "Vide", Area = 20, Sample.Label = c("V-1", "V-2"), Effort = c(1, 2), object = NA, distance = NA, size = NA))
+mv <- distance_de(projet_distance(vide), w = 100)
+verifier("une strate sans aucune détection : D = 0, erreur-type 0, ni CV ni ddl (comme dht2) ; le total des trois strates",
+         identical(mv$densite$strate[3], "Vide") && mv$densite$D[3] == 0 && mv$densite$se_D[3] == 0 && is.na(mv$densite$cv[3]) && is.na(mv$densite$ddl[3]) &&
+           proche(mv$densite$N[4], sum(mv$densite$N[1:3]), 1e-12) && mv$densite$k[4] == 20)
 options(nuee.langue = "en")
 verifier("les refus en anglais", grepl("^The distances .* are positive or zero: r0003 is -2", refus_de(mal(function(x) { x$distance[3] <- -2; x }), w = 100)) &&
            grepl("^Transect .* has two efforts", refus_de(mal(function(x) { x$Effort[1] <- x$Effort[1] + 1; x }), w = 100)))
