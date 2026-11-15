@@ -1254,6 +1254,34 @@ async function principal() {
       try { await api('rda_partition', { modele: cca.id }); } catch (err) { refus = err.message; }
       verifier(/pas pour une CCA/.test(refus), `partition refusée : « ${refus} »`);
     });
+    await etape('espèces indicatrices (IndVal.g, combinaisons de groupes, permutations par site, p corrigées)', async () => {
+      // 30 relevés en trois milieux (5 sites) : sp1 du bois, sp2 de la lande, sp3 du pré, sp4 du bois et de la lande, sp5 partout
+      let g = 17;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const milieux = ['bois', 'lande', 'pré'];
+      const lignes = ['nom\tmilieu\tsite\tsp1\tsp2\tsp3\tsp4\tsp5'];
+      for (let i = 0; i < 30; i += 1) {
+        const k = i % 3;
+        const sp = [k === 0 ? 5 : 0, k === 1 ? 4 : 0, k === 2 ? 3 : 0, k < 2 ? 2 : 0, 2].map((x) => Math.round(x * (0.5 + alea())));
+        lignes.push([`r${i + 1}`, milieux[k], `S${1 + (i % 5)}`, ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Milieux' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5'].map((n) => v[n]);
+      const iv = await api('ajuster', { projet: q.id, type: 'INDVAL', x: [], y: especes, classe: v.milieu, echelle: 'none', nom: 'IndVal',
+        options: { permutations: 199, graine: 4, strates: { by: 'variable', variable: v.site } } });
+      const groupe = Object.fromEntries([].concat(iv.especes.espece).map((e, i) => [e, [].concat(iv.especes.groupe)[i]]));
+      verifier(iv.type === 'INDVAL' && iv.analyse === true && iv.N === 30 && [].concat(iv.combinaisons).length === 7 && iv.strates === 'site'
+        && [].concat(iv.vues_defaut).join() === 'indicatrices,indval_graphe' && groupe.sp1 === 'bois' && groupe.sp4 === 'bois+lande'
+        && typeof [].concat(iv.especes.p_ajuste)[0] === 'number' && iv.retenues.corrigees >= 3 && iv.reglages.classe === v.milieu, `IndVal : ${iv.chiffres}, ${JSON.stringify(groupe)}`);
+      const mt = await api('methodes', { modele: iv.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /IndVal\.g/.test(x)) && mt.references.some((x) => /Dufrêne, M\./.test(x)), 'texte des méthodes');
+      const e = await api('exporter', { modele: iv.id, chemin: path.join(dossier, 'indval.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      let refus = '';
+      try { await api('ajuster', { projet: q.id, type: 'INDVAL', x: [v.sp1], y: [v.sp2], classe: v.milieu, echelle: 'none' }); } catch (err) { refus = err.message; }
+      verifier(/variable X/.test(refus), `des X refusés : « ${refus} »`);
+    });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
       let g = 5;

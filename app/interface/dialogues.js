@@ -373,7 +373,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   const avecY = () => ['PLS', 'OPLS', 'LM', 'LMM', 'GLM', 'GAM'].includes(st.type) || (!!analyse() && analyse().roles.includes('y'));
   const avecClasse = () => ['PLS-DA', 'OPLS-DA', 'CLASSES'].includes(st.type) || (!!analyse() && analyse().roles.includes('classe'));
   const avecZ = () => !!analyse() && analyse().roles.includes('z');
-  const roles = (v) => [['', t('role_aucun')], ['x', t('role_x')]].concat(avecY() ? [['y', t('role_y')]] : [])
+  // (an analysis without X, as indicator species: its roles don't offer X, and it needs none)
+  const sansX = () => !!analyse() && !analyse().roles.includes('x');
+  const roles = (v) => [['', t('role_aucun')]].concat(sansX() ? [] : [['x', t('role_x')]]).concat(avecY() ? [['y', t('role_y')]] : [])
     .concat(avecClasse() && v.qualitative ? [['classe', t('role_classe')]] : []).concat(avecZ() ? [['z', t('role_z')]] : []);
 
   const variables = () => {
@@ -603,7 +605,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     const x = cles('x');
     const y = cles('y');
     const classe = cles('classe')[0];
-    if (!x.length && !regression()) { erreur.textContent = t('x_requis'); return false; }  // (a regression without X: the null model)
+    if (!x.length && !regression() && !sansX()) { erreur.textContent = t('x_requis'); return false; }  // (a regression without X: the null model)
     if (regression() && y.length !== 1) { erreur.textContent = t('regression_y_requis'); return false; }
     if (st.type === 'LMM' && !st.aleatoires.length) { erreur.textContent = t('lmm_aleatoire_requis'); return false; }
     if (avecCar1() && st.correlation && !st.correlation.temps) { erreur.textContent = t('car1_temps_requis'); return false; }
