@@ -1330,6 +1330,47 @@ Exporter vers R (un script ou un rapport R Markdown / Quarto qui refait l'analys
 rpart, MASS ou cluster, livrés avec R). Comparer les modèles donne le Q2 et le RMSEcv d'un
 arbre de régression à côté des autres modèles.
 
+TRIM : indices et tendances de comptages
+----------------------------------------
+Nouveau modèle › type « TRIM (indices et tendances de comptages) » : les indices annuels et la
+tendance de comptages d'animaux suivis sur des sites année après année, comme le logiciel TRIM 3
+de Statistics Netherlands et le paquet rtrim (le standard des suivis d'oiseaux européens), avec
+des comptages manquants : le modèle les impute. Les données : le tableau long, une ligne par site
+et par année ; Y : les comptages (des entiers positifs ou nuls ; une case vide est un comptage
+manquant) ; X : des covariables qualitatives, facultatives (l'habitat d'un site, ou une valeur
+par site et par année), qui font varier les effets du temps. Onglet Général :
+  - le site (un identifiant ou une variable) et le temps (l'année : une variable ou un
+    identifiant fait de nombres régulièrement espacés ; une année sans aucune ligne est ajoutée,
+    tous ses comptages imputés), proposés d'après les noms des colonnes ;
+  - le modèle : 3, un effet de chaque année (ln μ = site + année) ; 2, une tendance linéaire sur
+    l'échelle log, dont la pente change aux points de changement donnés (des années ; vide : une
+    seule pente), à chaque année, ou choisis pas à pas comme rtrim (un point sort quand le test de
+    Wald de son changement de pente dépasse p = 0,2, revient quand son test du score passe sous
+    p = 0,15) ; 1, sans effet du temps ;
+  - la surdispersion (σ²) et la corrélation sérielle (ρ, entre deux années successives d'un même
+    site), cochées par défaut comme le recommande le manuel de TRIM : les paramètres sont alors
+    estimés par des équations d'estimation généralisées qui en tiennent compte ; sans elles, par
+    le maximum de vraisemblance de Poisson ;
+  - des poids (une variable : des sites sur- ou sous-représentés), et le temps de base des
+    indices (le premier par défaut).
+Deux lignes pour le même site et la même année sont refusées, le site, l'année et les
+observations nommés ; un site sans aucun comptage positif est laissé de côté, et compté ; une
+case sans ligne prend le poids et la catégorie de covariable de l'année d'avant de son site.
+
+Vues : Résumé (le modèle, σ² et ρ, la pente globale des totaux imputés : multiplicative, par pas
+de temps, avec son erreur-type, son intervalle à 95 % et sa classe selon TRIM, forte
+augmentation, augmentation modérée, stable, incertaine, déclin modéré ou fort déclin, d'après
+l'intervalle comparé à 1 et à 0,95 / 1,05 ; le khi² de Pearson, le rapport de vraisemblance et
+l'AIC) ; Indices (les indices imputés, d'après les comptages observés et ceux du modèle pour les
+manquants, et ceux du modèle, avec leur bande à 95 %, le temps de base, et au choix la droite de
+la pente globale) ; Totaux de chaque temps (observés, imputés, du modèle) ; Pentes, paramètres et
+tests (les tests de Wald de la pente, des changements de pente, des écarts à la tendance
+linéaire et des covariables ; la droite et ses écarts pour le modèle 3 ; les étapes du pas à
+pas) ; Comptages par site (les comptages d'un site et ceux du modèle, ou tous les comptages
+contre leur valeur attendue). Les résultats sont ceux du paquet rtrim. Texte des méthodes avec
+ses références, Exporter et rapport comme pour les autres modèles ; ni prédiction ni export vers
+R.
+
 Ajouter des colonnes d'un autre tableau
 ---------------------------------------
 Édition › Ajouter des colonnes d'un tableau (ou clic droit sur les données du projet dans

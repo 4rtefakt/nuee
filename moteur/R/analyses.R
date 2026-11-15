@@ -1,8 +1,8 @@
 # Les modèles qui ne sont pas faits de composantes NIPALS (ACP, PLS, OPLS) : les régressions
 # (regression.R) et les autres analyses, chacune dans son fichier : analyse de redondance (RDA)
 # et analyse des correspondances (CA), analyse discriminante linéaire (LDA), arbre de décision
-# (TREE), k-moyennes (KMEANS). Leur type est celui de definir_modele() ; leurs réglages propres
-# sont dans d$options.
+# (TREE), k-moyennes (KMEANS), indices et tendances de comptages (TRIM, trim.R). Leur type est
+# celui de definir_modele() ; leurs réglages propres sont dans d$options.
 #
 # Chaque analyse suit la même convention de noms, pour que le moteur et le serveur la trouvent
 # sans liste à tenir, <type> en minuscules (ajuster_rda, resultat_kmeans...) :
@@ -21,14 +21,16 @@
 #                                    ecrire_script : list(script, chemins, ecart) ;
 #   demande_analyse_<nom>(q)         une demande de l'interface qui lui est propre, <nom> (des
 #                                    tests par permutation calculés à la demande...) : serveur.R
-#                                    l'ajoute à ses DEMANDES.
+#                                    l'ajoute à ses DEMANDES ;
+#   verifier_<type>(projet, d)       à la place de la vérification des données avant l'ajustement
+#                                    (diagnostic.R : verifier_donnees), si elle n'a pas de sens pour
+#                                    elle (des comptages manquants que TRIM impute).
 # Leurs fichiers ne commencent pas par « a » : chargés après celui-ci (moteur/charger.R).
 # Ses variables Z (covariables d'une analyse partielle), s'il en a, sont dans d$options$z. Les
 # demandes qui supposent des composantes et leurs scores (serveur.R : SANS_REGRESSION) lui sont
 # refusées, comme aux régressions ; le script de toute une séance la laisse de côté (elle
 # s'exporte seule).
-AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS")
-AUTRES_ANALYSES <- c(AUTRES_ANALYSES, "CCA", "INDVAL")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R)
+AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS", "CCA", "INDVAL", "TRIM")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R ; TRIM : trim.R)
 
 est_autre_analyse <- function(d) isTRUE(as.character(d$type %||% "") %in% AUTRES_ANALYSES)
 

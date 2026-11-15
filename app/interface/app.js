@@ -23,6 +23,7 @@ import './vues_rarefaction.js';
 import './vues_classement.js';
 import './vues_carte.js';
 import './vues_par_reponse.js';
+import './vues_trim.js';
 import { installerDocuments } from './documents.js';
 
 const params = new URLSearchParams(location.search);

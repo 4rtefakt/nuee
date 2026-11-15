@@ -1424,6 +1424,46 @@ async function principal() {
       const t = await api('projet_texte', { projet: q.id, version: 'essai' });
       verifier(/"coordonnees"/.test(t.texte) && /"paquets"/.test(t.texte), 'projet en texte, pour un rapport de problème');
     });
+    await etape('TRIM : indices et tendances de comptages d’un tableau site × année (moteur/R/trim.R)', async () => {
+      // 8 sites comptés de 2015 à 2021, des comptages manquants (vides) et des lignes absentes, un habitat par site
+      let g = 3;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\tannee\tcompte\thabitat'];
+      for (let s = 1; s <= 8; s += 1) {
+        const niveau = 5 + 20 * alea();
+        for (let a = 2015; a <= 2021; a += 1) {
+          if (s === 3 && a === 2018) continue;  // (une ligne absente : un comptage manquant)
+          const attendu = niveau * Math.exp(-0.06 * (a - 2015)) * (0.7 + 0.6 * alea());
+          lignes.push([`c${s}-${a}`, `S${s}`, a, alea() < 0.2 ? '' : Math.round(attendu), s <= 4 ? 'bocage' : 'marais'].join('\t'));
+        }
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Comptages' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const options = { site: { by: 'variable', variable: v.site }, temps: { by: 'variable', variable: v.annee }, modele: 3, surdispersion: true, correlation: true };
+      const def = { projet: q.id, type: 'TRIM', x: [v.habitat], y: [v.compte], echelle: 'none', nom: 'TRIM', options };
+      const verif = await api('verifier', def);
+      verifier(![].concat(verif.variables.uid || []).length, `vérification avant l’ajustement : ${JSON.stringify(verif.variables)}`);
+      const tr = await api('ajuster', def);
+      verifier(tr.analyse === true && tr.prediction === false && tr.type === 'TRIM' && tr.A === 0 && tr.N === 55 && tr.I === 8 && tr.J === 7
+        && [].concat(tr.vues_defaut).join() === 'trim_indices,trim_totaux' && [].concat(tr.indices.impute).length === 7 && [].concat(tr.pentes.quoi).join() === 'imputee,modele'
+        && /^pente /.test(tr.chiffres) && tr.comptes.length === 8 && tr.comptes[0].length === 7 && tr.observations.compte.length === 55 && typeof tr.sigma2 === 'number'
+        && [].concat(tr.tests.test).includes('covariable') && tr.reglages.options.modele === 3, `TRIM : ${tr.chiffres}, N = ${tr.N}`);
+      const m2 = await api('ajuster', { ...def, x: [], nom: 'TRIM 2', options: { ...options, modele: 2, changements: [2015, 2018], correlation: false } });
+      verifier(m2.modele_trim === 2 && [].concat(m2.changements).join() === '2015,2018' && [].concat(m2.tests.test).join() === 'changement,changement' && m2.rho === null,
+        `TRIM modèle 2 : ${m2.chiffres}`);
+      const re = await api('reajuster', { modele: tr.id, exclues: [1] });
+      verifier(re.type === 'TRIM' && re.N === 54, `réajusté : N = ${re.N}`);
+      const mt = await api('methodes', { modele: tr.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /TRIM model 3/.test(x)) && mt.paragraphes.some((x) => /overall slope/.test(x)) && mt.references.some((x) => /TRIM 3 manual/.test(x)), 'texte des méthodes');
+      const e = await api('exporter', { modele: tr.id, chemin: path.join(dossier, 'trim.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      let refus = '';
+      try { await api('ajuster', { ...def, x: [], options: { ...options, site: { by: 'variable', variable: v.habitat } } }); } catch (err) { refus = err.message; }
+      verifier(/Deux lignes pour le même site et le même temps/.test(refus), `deux lignes pour un site et un temps refusées : « ${refus} »`);
+      let refusHCA = '';
+      try { await api('hca', { modele: tr.id }); } catch (err) { refusHCA = err.message; }
+      verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
+    });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;
       const r = await api('supprimer_modele', { modele: da.id, definition: true });
