@@ -63,7 +63,9 @@ journaliser <- function(nom, q, r) {
     c(commentaire, code_definition(projet(e$projet), e$definition, e$projet), sprintf("%s <- ajuster(%s, d)", id, e$projet))
   }
   lignes <- switch(nom,
-    ouvrir = if (!is.null(r$id)) sprintf("%s <- %s", r$id, appel_ouverture(q$chemin, q$table)),
+    # (un export de KoboToolbox ou d'ODK importé, ou ouvert tel quel : kobo.R)
+    ouvrir = if (!is.null(r$id)) sprintf("%s <- %s", r$id, if (!is.null(q$kobo)) appel_collecte(q$chemin, q$kobo) else appel_ouverture(q$chemin, q$table)),
+    kobo_importer = sprintf("%s <- %s", r$id, appel_collecte(q$chemin, q)),
     coller = c("# tableau collé, gardé dans un fichier de la session", sprintf("%s <- importer_tableau(%s)", r$id, code_r(r$fichier_colle))),
     importer_spectres = sprintf("%s <- importer_spectres(%s%s, nom = %s)", r$id, vecteur_r(as.character(unlist(q$chemins))),
                                 if (length(q$infos) && nzchar(q$infos)) sprintf(", infos = %s", code_r(q$infos)) else "", code_r(r$nom)),

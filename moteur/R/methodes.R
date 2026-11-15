@@ -18,13 +18,16 @@ REFERENCES <- list(
   nuee = "4rtefakt (%s). Nuée%s [Computer software]. https://github.com/4rtefakt/nuee")
 
 # (pour tous les types : d'où viennent les variables lues dans des rasters, à la fin du premier
-# paragraphe, celui des données ; raster.R)
+# paragraphe, celui des données ; raster.R ; et, au début, l'outil de terrain qui a recueilli les
+# données d'un projet importé de KoboToolbox ou d'ODK : kobo.R)
 texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   langue <- match.arg(langue)
   r <- texte_methodes_type(projet, d, m, langue, version)
   uids <- suppressWarnings(as.numeric(c(unlist(lapply(c(d$x, d$y), function(t) t$variables)), unlist(d$classe))))
   phrase <- phrase_methodes_raster(projet, unique(uids[!is.na(uids)]), langue == "fr")
   if (!is.null(phrase)) r$paragraphes <- if (length(r$paragraphes)) c(paste(r$paragraphes[1], phrase), r$paragraphes[-1]) else phrase
+  collecte <- phrase_methodes_collecte(projet, langue == "fr")
+  if (!is.null(collecte)) r$paragraphes <- if (length(r$paragraphes)) c(paste(collecte, r$paragraphes[1]), r$paragraphes[-1]) else collecte
   r
 }
 

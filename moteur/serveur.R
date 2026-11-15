@@ -131,9 +131,17 @@ annuler_demande <- function(q) {
 }
 
 # Un fichier qui a plusieurs tableaux (feuilles Excel, objets R) et dont le tableau n'est pas
-# choisi renvoie leur liste (`choisir`) : l'interface demande lequel ouvrir.
-ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL) {
+# choisi renvoie leur liste (`choisir`) : l'interface demande lequel ouvrir. Un export de
+# KoboToolbox ou d'ODK Central (kobo.R ; une archive .zip n'est ouverte que comme tel) renvoie
+# l'aperçu de son import (`kobo`), que l'interface propose, sauf pour l'ouvrir tel quel (`brut`) ;
+# `collecte` : l'import est demandé (Fichier › Importer depuis KoboToolbox ou ODK), un autre
+# fichier est refusé ; `kobo` : les réglages de l'import, qui le font (le moteur relancé).
+ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = FALSE, collecte = FALSE, kobo = NULL) {
   ext <- extension(nom)
+  if (!is.null(kobo)) return(ouvrir_collecte(chemin, nom, kobo))
+  if (!brut && is.null(table) && (collecte || (ext %in% EXTENSIONS_COLLECTE && (ext == "zip" || !is.null(detecter_collecte(chemin)))))) {
+    return(list(kobo = apercu_collecte(chemin), chemin = chemin, nom = nom))
+  }
   if (!ext %in% c("nuee", "json", "usp", FORMATS_LECTURE)) stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext)
   if (!ext %in% FORMATS_LECTURE) table <- NULL
   if (ext %in% FORMATS_LECTURE && is.null(table)) {
@@ -157,6 +165,25 @@ ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL) {
     sprintf(traduire("Ce projet a été enregistré par Nuée %s, plus récente que celle-ci : certaines de ses parties ne sont peut-être pas lues. Mettez Nuée à jour.",
                      "This project was saved by Nuée %s, newer than this one: some of its parts may not be read. Update Nuée."), p$nuee$version %||% "?"))
   if (length(notes)) r$note <- I(as.character(notes))
+  r
+}
+
+# Une table d'un export de KoboToolbox ou d'ODK Central importée en projet (kobo.R :
+# importer_collecte), avec les réglages `o` du dialogue de l'import : nommée comme une feuille d'un
+# classeur quand c'est un groupe répété, « inventaire (observation).xlsx ». Son fichier reste
+# celui de l'export, et sa table celle importée (un autre import du même fichier reste possible).
+ouvrir_collecte <- function(chemin, nom, o) {
+  p <- importer_collecte(chemin, table = o$table, garder = o$garder, parents = o$parents, formulaire = o$formulaire, langue = o$langue)
+  info <- attr(p, "collecte")
+  attr(p, "collecte") <- NULL
+  p$id <- nouvel_id("P")
+  p$nom <- if (isTRUE(p$collecte$repetition)) sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), p$collecte$table, tools::file_ext(nom)) else nom
+  p$chemin <- chemin
+  p$table <- p$collecte$table
+  etat$projets[[p$id]] <- p
+  r <- resume_projet(p)
+  if (length(p$note)) r$note <- I(as.character(p$note))
+  r$collecte <- c(info[setdiff(names(info), "phrases")], list(phrases = I(info$phrases)))
   r
 }
 
@@ -248,6 +275,7 @@ resume_projet <- function(p) {
        modeles = lapply(p$models, resume_modele), session = !is.null(p$session),
        coordonnees = coordonnees_projet(p),
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
+       kobo = p$import_collecte,  # (les réglages d'un import de KoboToolbox ou d'ODK, pour le refaire : kobo.R)
        historique = sum(vapply(p$audit %||% list(), function(s) length(s$events), 0)),
        predictions = lapply(p$prediction_sets, function(s) list(nom = s$name %||% "", n_obs = length(s$observations))))
 }
@@ -988,8 +1016,8 @@ DEMANDES <- list(
   # (q$lu), des changements à enregistrer. Jamais la copie elle-même comme fichier du projet :
   # elle est effacée quand Nuée se ferme.
   ouvrir = function(q) {
-    r <- ouvrir_fichier(q$chemin, table = q$table)
-    if (!(isTRUE(q$secours) || !is.null(q$origine)) || !is.null(r$choisir)) return(r)
+    r <- ouvrir_fichier(q$chemin, table = q$table, brut = isTRUE(q$brut), collecte = isTRUE(q$collecte), kobo = q$kobo)
+    if (!(isTRUE(q$secours) || !is.null(q$origine)) || !is.null(r$choisir) || !is.null(r$kobo)) return(r)
     p <- projet(r$id)
     p$nom <- q$nom %||% basename(q$origine %||% p$nom)
     p$chemin <- q$origine
@@ -998,6 +1026,11 @@ DEMANDES <- list(
     etat$projets[[p$id]] <- p
     resume_projet(p)
   },
+  # Un export de KoboToolbox ou d'ODK Central (kobo.R) : l'aperçu de son import avec les réglages
+  # du dialogue (la table, les métadonnées gardées, les colonnes jointes des tables parentes, le
+  # formulaire XLSForm et sa langue), puis l'import, un nouveau projet.
+  kobo_apercu = function(q) apercu_collecte(q$chemin, q$table, q$garder, q$parents, q$formulaire, q$langue),
+  kobo_importer = function(q) ouvrir_collecte(q$chemin, q$nom %||% basename(q$chemin), q),
   # Le projet d'exemple (données inventées, exemple/vergers.json) : ouvert comme un projet
   # nouveau, que Enregistrer range où l'on veut.
   exemple = function(q) {
