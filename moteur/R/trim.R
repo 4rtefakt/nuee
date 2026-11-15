@@ -344,13 +344,12 @@ nom_parametre_trim <- function(t, des, k) {
 # avec la surdispersion ou la corrélation sérielle, les GEE : à chaque tour, α pour β, σ² et ρ des
 # résidus, un pas de score pour β ; jusqu'à ce que β, σ² et ρ ne bougent plus (TRIM_TOLERANCE).
 estimer_trim <- function(t, des, surdispersion, correlation) {
-  err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
   I <- length(t$sites)
   p <- des$p
   O <- sum(!is.na(t$f))
   if (O <= I + p) {
-    err("Trop peu de comptages (%d) pour les %d paramètres du modèle (%d sites et %d du temps).", "Too few counts (%d) for the model's %d parameters (%d sites and %d for the time).",
-        O, I + p, I, p)
+    stop(sprintf(traduire("Trop peu de comptages (%d) pour les %d paramètres du modèle (%d sites et %d du temps).", "Too few counts (%d) for the model's %d parameters (%d sites and %d for the time)."),
+                 O, I + p, I, p), call. = FALSE)
   }
   beta <- numeric(p)
   sig2 <- 1
@@ -361,8 +360,8 @@ estimer_trim <- function(t, des, surdispersion, correlation) {
   trop <- function(beta) {
     k <- which(!is.finite(beta) | abs(beta) > TRIM_PARAMETRE_MAX)
     if (length(k)) {
-      err("Le modèle ne s'estime pas : le paramètre du temps %s s'en va à l'infini (trop peu de comptages positifs autour de lui ?).",
-          "The model can't be estimated: the time parameter %s goes to infinity (too few positive counts around it?).", nom_parametre_trim(t, des, k[1]))
+      stop(sprintf(traduire("Le modèle ne s'estime pas : le paramètre du temps %s s'en va à l'infini (trop peu de comptages positifs autour de lui ?).",
+                            "The model can't be estimated: the time parameter %s goes to infinity (too few positive counts around it?)."), nom_parametre_trim(t, des, k[1])), call. = FALSE)
     }
   }
   for (iter in seq_len(TRIM_ITERATIONS)) {
@@ -371,8 +370,8 @@ estimer_trim <- function(t, des, surdispersion, correlation) {
     if (gee) {
       ds <- dispersion_trim(t$f, s$mu, I + p, surdispersion, correlation)
       if (correlation && abs(ds$rho) >= 1) {
-        err("La corrélation sérielle estimée (ρ = %s) sort de ]−1 ; 1[ : le modèle ne lui convient pas ; essayez sans elle.",
-            "The estimated serial correlation (ρ = %s) is outside (−1, 1): the model doesn't suit it; try without it.", format(signif(ds$rho, 3)))
+        stop(sprintf(traduire("La corrélation sérielle estimée (ρ = %s) sort de ]−1 ; 1[ : le modèle ne lui convient pas ; essayez sans elle.",
+                              "The estimated serial correlation (ρ = %s) is outside (−1, 1): the model doesn't suit it; try without it."), format(signif(ds$rho, 3))), call. = FALSE)
       }
       changement <- max(abs(ds$sig2 - sig2), abs(ds$rho - rho))
       if (ds$rho != rho || ds$sig2 != sig2) {
@@ -410,8 +409,8 @@ estimer_trim <- function(t, des, surdispersion, correlation) {
     }
   }
   if (!converge) {
-    err("L'ajustement ne converge pas après %d tours : essayez un modèle plus simple, ou sans la corrélation sérielle.",
-        "The fit doesn't converge after %d rounds: try a simpler model, or without the serial correlation.", TRIM_ITERATIONS)
+    stop(sprintf(traduire("L'ajustement ne converge pas après %d tours : essayez un modèle plus simple, ou sans la corrélation sérielle.",
+                          "The fit doesn't converge after %d rounds: try a simpler model, or without the serial correlation."), TRIM_ITERATIONS), call. = FALSE)
   }
   alpha <- alphas_trim(t, des, beta, rho)
   s <- systeme_trim(t, des, alpha, beta, sig2, rho)

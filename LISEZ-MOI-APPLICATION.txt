@@ -397,7 +397,9 @@ Exporter vers R (script, R Markdown, Quarto)
 Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
 envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul,
 en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R ; un NMDS : MASS, livré
-avec R lui aussi), commenté dans la langue de l'export, en quatre parties :
+avec R lui aussi ; TRIM et des arbres boostés, avec rpart : les fonctions du moteur de Nuée,
+recopiées dans le script ; une forêt aléatoire, la seule exception : le paquet ranger, que
+Nuée installe avec lui), commenté dans la langue de l'export, en quatre parties :
   1. les fonctions : l'algorithme NIPALS, la validation croisée, et seulement ce que ce
      modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;
   2. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
@@ -966,8 +968,10 @@ pas : vérifiez-le avec Graphiques › Autocorrélation spatiale des résidus du
 les modèles par l'AIC. Les observations sans coordonnées restent hors du modèle. Son edf et son
 test sont dans le tableau des courbes du Résumé, et sa valeur en chaque observation est une
 colonne des résultats du modèle que la carte peut montrer. La formule R l'écrit s(x, y),
-s(x, y, k = 40) ou s(lat, lon, bs = "sos"). L'export vers R ne la refait pas encore : un tel
-modèle y est refusé.
+s(x, y, k = 40) ou s(lat, lon, bs = "sos"). Exporter vers R la refait : le script met les
+coordonnées dans les colonnes sx et sy du tableau du modèle et le terme dans la formule (avec son
+k, en plaques minces ou sur la sphère), sa ligne dans le tableau des courbes et une carte de sa
+valeur en chaque observation.
 Conditions du modèle (le Résumé d'une régression) : des repères en mots, chacun ✓ ou ⚠ avec ce
 qu'on peut faire : la loi des résidus (Shapiro–Wilk, sur les résidus quantiles pour des comptages,
 des présences-absences et des valeurs positives), une dispersion des résidus qui change avec les
@@ -1559,8 +1563,9 @@ tests (les tests de Wald de la pente, des changements de pente, des écarts à l
 linéaire et des covariables ; la droite et ses écarts pour le modèle 3 ; les étapes du pas à
 pas) ; Comptages par site (les comptages d'un site et ceux du modèle, ou tous les comptages
 contre leur valeur attendue). Les résultats sont ceux du paquet rtrim. Texte des méthodes avec
-ses références, Exporter et rapport comme pour les autres modèles ; ni prédiction ni export vers
-R.
+ses références, Exporter et rapport comme pour les autres modèles, et Exporter vers R : un script
+ou un rapport qui refait le modèle avec R seul, les fonctions de TRIM du moteur de Nuée recopiées
+dedans (les mêmes indices, totaux, pentes et tests que Nuée). Pas de prédiction.
 
 Forêts aléatoires et arbres boostés
 -----------------------------------
@@ -1605,7 +1610,13 @@ avec la courbe ROC) pour une réponse 0/1. Jeu de test et Prédire.
 
 Pour les deux : texte des méthodes avec ses références, Exporter, rapport PDF ou Word. Comparer
 les modèles donne le Q2 et le RMSEcv d'une forêt de régression, ou d'arbres boostés d'une
-mesure, à côté des autres modèles. Pas encore d'export vers R.
+mesure, à côté des autres modèles. Exporter vers R : des arbres boostés avec R et rpart seuls (le
+boosting du moteur de Nuée recopié dans le script : avec la même graine, les mêmes tirages et les
+mêmes arbres, ceux de gbm) ; une forêt aléatoire avec R et le paquet ranger, la seule exception à
+« sans paquet » : Nuée en dépend et l'installe avec lui (ailleurs, install.packages("ranger")), et
+le script le charge avec la même graine, un seul fil et les mêmes réglages, si bien que sa forêt
+est celle de Nuée, arbre pour arbre, avec la même version de ranger. Le jeu de test et la
+dépendance partielle, si elle a été calculée, y sont aussi.
 
 Ajouter des colonnes d'un autre tableau
 ---------------------------------------

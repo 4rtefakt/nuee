@@ -100,60 +100,13 @@ nom_element <- function(nom) {
 
 # ---------------------------------------------------------------- les fonctions du moteur, pour le script
 
-# Le dossier des fichiers du moteur : celui de ce fichier (moteur/charger.R le lit par sys.source,
-# qui garde son chemin dans `file` ; source() le garde dans `ofile`).
-DOSSIER_MOTEUR_R <- local({
-  dossier <- NULL
-  for (i in rev(seq_len(sys.nframe()))) {
-    for (quoi in c("file", "ofile")) {
-      f <- tryCatch(get0(quoi, envir = sys.frame(i), inherits = FALSE), error = function(e) NULL)
-      if (is.null(dossier) && is.character(f) && length(f) == 1 && grepl("communautes_script\\.R$", f)) dossier <- dirname(f)
-    }
-  }
-  normalizePath(if (is.null(dossier)) file.path("moteur", "R") else dossier, winslash = "/", mustWork = FALSE)
-})
-
-# Les fichiers du moteur déjà lus (leurs lignes, les définitions de premier niveau de chacun) et
-# les définitions déjà trouvées.
-SOURCES_MOTEUR <- new.env(parent = emptyenv())
-
-# La définition de `nom` (une fonction ou une constante) dans les fichiers du moteur : ses lignes,
-# telles qu'elles y sont écrites. Sans ces fichiers, celle que R redonne (deparse).
-definition_moteur <- function(nom) {
-  cle <- paste0("definition:", nom)
-  if (!is.null(SOURCES_MOTEUR[[cle]])) return(SOURCES_MOTEUR[[cle]])
-  if (is.null(SOURCES_MOTEUR$fichiers)) {
-    chemins <- sort(list.files(DOSSIER_MOTEUR_R, "\\.R$", full.names = TRUE))
-    SOURCES_MOTEUR$fichiers <- stats::setNames(lapply(chemins, function(f) sub("\r$", "", readLines(f, encoding = "UTF-8", warn = FALSE))), chemins)
-  }
-  motif <- sprintf("^%s <- ", gsub(".", "\\.", nom, fixed = TRUE))
-  trouve <- NULL
-  for (f in names(SOURCES_MOTEUR$fichiers)) {
-    lignes <- SOURCES_MOTEUR$fichiers[[f]]
-    debut <- grep(motif, lignes)
-    if (!length(debut)) next
-    cle_src <- paste0("srcref:", f)
-    if (is.null(SOURCES_MOTEUR[[cle_src]])) SOURCES_MOTEUR[[cle_src]] <- attr(parse(text = lignes, keep.source = TRUE, encoding = "UTF-8"), "srcref")
-    s <- Find(function(s) s[1] == debut[1], SOURCES_MOTEUR[[cle_src]])
-    if (!is.null(s)) {
-      trouve <- lignes[s[1]:s[3]]
-      break
-    }
-  }
-  if (is.null(trouve)) {
-    texte <- deparse(get(nom, envir = globalenv()), width.cutoff = 100L)
-    trouve <- c(paste(nom, "<-", texte[1]), texte[-1])
-  }
-  SOURCES_MOTEUR[[cle]] <- trouve
-  trouve
-}
-
-# Le code d'une définition du moteur pour le script : sans ses commentaires (le script a les siens,
-# dans sa langue), chaque traduire("…", "…") remplacé par le texte de la langue du script. (Les
+# Le code d'une définition du moteur pour le script (telle qu'elle est écrite dans son fichier :
+# definition_moteur, script_moteur.R) : sans ses commentaires (le script a les siens, dans sa
+# langue), chaque traduire("…", "…") remplacé par le texte de la langue du script. (Les
 # colonnes de getParseData y sont des caractères, comme pour substr : la séance est en UTF-8, comme
 # le moteur le demande, serveur.R.)
 code_definition_moteur <- function(nom, langue) {
-  lignes <- definition_moteur(nom)
+  lignes <- definition_moteur(nom)$lignes
   pd <- utils::getParseData(parse(text = lignes, keep.source = TRUE, encoding = "UTF-8"), includeText = TRUE)
   avant <- cumsum(c(0, nchar(lignes) + 1))  # (les caractères avant chaque ligne, les lignes jointes par "\n")
   debut <- function(i) avant[pd$line1[i]] + pd$col1[i]
@@ -255,8 +208,9 @@ DESCRIPTIONS_MOTEUR <- list(
     "La valeur p d'un test par permutation : la part des permutations (et de l'observation elle-même) dont la statistique est au moins aussi grande ; une statistique permutée égale à l'observée aux erreurs d'arrondi près (EPS_PERMUTATIONS) compte.",
     "The p-value of a permutation test: the share of the permutations (and of the observation itself) whose statistic is at least as large; a permuted statistic equal to the observed one up to rounding errors (EPS_PERMUTATIONS) counts."))
 
-# Le code des définitions `noms` du moteur, chacune précédée de son commentaire.
-code_moteur <- function(noms, langue) {
+# Le code des définitions `noms` du moteur, chacune précédée de son commentaire (DESCRIPTIONS_MOTEUR,
+# dans la langue du script ; script_moteur.R : code_moteur garde, lui, ceux du moteur).
+code_moteur_decrit <- function(noms, langue) {
   tx <- function(fr, en) if (identical(langue, "en")) en else fr
   unlist(lapply(seq_along(noms), function(k) {
     d <- DESCRIPTIONS_MOTEUR[[noms[k]]]
@@ -295,18 +249,18 @@ code_fonctions_communaute <- function(m, langue) {
   o <- r$o
   type <- m$type
   if (type == "INDVAL") {
-    return(c(code_moteur(c("combinaisons_groupes", "statistiques_indval", "meilleures_indval", if (r$B > 0) c("test_indval", "EPS_PERMUTATIONS")), langue), "",
+    return(c(code_moteur_decrit(c("combinaisons_groupes", "statistiques_indval", "meilleures_indval", if (r$B > 0) c("test_indval", "EPS_PERMUTATIONS")), langue), "",
              if (r$B > 0) lignes_code(CODE_PERMUTER)))
   }
   correction <- type %in% c("PCOA", "PERMANOVA") && !identical(o$correction, "aucune")
-  distance <- code_moteur(c(if (!identical(o$transformation, "aucune")) "transformer_communaute", "ZERO_DISTANCE", "distance_tableau",
+  distance <- code_moteur_decrit(c(if (!identical(o$transformation, "aucune")) "transformer_communaute", "ZERO_DISTANCE", "distance_tableau",
                             if (type %in% c("PCOA", "PERMANOVA")) "centrage_double", if (correction) "corriger_distance"), langue)
-  analyse <- code_moteur(c(if (type == "PCOA") c("pcoa_noyau", "table_valeurs_pcoa"), if (type == "NMDS") c("procrustes_symetrique", "nmds_noyau"),
+  analyse <- code_moteur_decrit(c(if (type == "PCOA") c("pcoa_noyau", "table_valeurs_pcoa"), if (type == "NMDS") c("procrustes_symetrique", "nmds_noyau"),
                            if (type %in% c("PCOA", "NMDS")) "scores_especes", if (r$ajustement) c("correlations_colonnes", "ajustement_environnement", "centroides_facteurs"),
                            if (type == "PERMANOVA") c("variables_groupe", "contenu_dans", "permanova_noyau", if (length(m$dispersions)) c("mediane_spatiale", "dispersion_noyau")),
                            if (type == "MANTEL") c("paires_triangle", "mantel_noyau", "correlogramme_noyau", if (r$geographique) c("rad", "RAYON_TERRE", "distances_entre_points"))),
                          langue)
-  tests <- if (r$ajustement || type %in% c("PERMANOVA", "MANTEL")) c(if (r$B > 0) lignes_code(CODE_PERMUTER), code_moteur(c("EPS_PERMUTATIONS", "valeur_p_superieure"), langue), "")
+  tests <- if (r$ajustement || type %in% c("PERMANOVA", "MANTEL")) c(if (r$B > 0) lignes_code(CODE_PERMUTER), code_moteur_decrit(c("EPS_PERMUTATIONS", "valeur_p_superieure"), langue), "")
   c(distance, "", analyse, "",
     if (type == "NMDS") lignes_code(CODE_AVEC_GRAINE),
     if (type == "MANTEL" && (!r$geographique || r$z)) c(code_echelle_terme(tx), ""),
