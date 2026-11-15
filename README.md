@@ -289,7 +289,8 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
   on screen.
 - **Export to R** (*File › Export to R*): any model becomes a script, or an R Markdown
   or Quarto report, that refits it without Nuée, in plain R with no package (a regression: `lm`,
-  or `nlme` and `mgcv`, which come with R). It holds the
+  or `nlme` and `mgcv`, which come with R; a random forest, the one exception: `ranger`, which
+  Nuée installs with itself). It holds the
   data (or reads them from a CSV next to it) and the calculation written for that model alone,
   with comments: its scaling, the NIPALS algorithm, the cross-validation, then the statistics,
   tables and plots (a PLS is about 170 lines of code). The report adds the Methods text,

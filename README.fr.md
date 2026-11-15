@@ -308,7 +308,8 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   projet affichés.
 - **Exporter vers R** (*Fichier › Exporter vers R*) : tout modèle devient un script, ou un
   rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet (une régression :
-  `lm`, ou `nlme` et `mgcv`, livrés avec R). Il contient les
+  `lm`, ou `nlme` et `mgcv`, livrés avec R ; une forêt aléatoire, la seule exception : `ranger`,
+  que Nuée installe avec lui). Il contient les
   données (ou les lit dans un CSV à côté) et le calcul écrit pour ce modèle seul, commenté : sa
   mise à l'échelle, l'algorithme NIPALS, la validation croisée, puis les statistiques, tableaux
   et graphiques (une PLS fait environ 170 lignes de code). Le rapport ajoute le texte des
