@@ -1612,7 +1612,8 @@ un seul Ctrl+Z (Édition › Annuler) comme les autres changements des données 
 ajustés gardent leurs résultats jusqu'à ce que vous les ajustiez à nouveau. Dans le menu
 Édition, dans la barre de la vue Données, et par un clic droit sur l'en-tête d'une colonne de la
 vue Données (un en-tête montre l'unité de la variable, son nombre de cases vides et de valeurs
-distinctes, « Résumé des colonnes » ; sa bulle, la description).
+distinctes, « Résumé des colonnes » ; sa bulle, la description) ou sur une variable de
+Graphiques › Statistiques des variables.
 Édition › Chercher et remplacer (Ctrl+H) : dans une variable, plusieurs ou toutes, les cases qui
 valent un texte ou un nombre, ou les cases vides (« les cellules vides » : remplacer vide par
 0), prennent ce que vous tapez, ou deviennent vides si vous ne tapez rien (remplacer -9999 par

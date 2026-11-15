@@ -286,8 +286,8 @@ export function pointsObservations(ctx, m, loc, xs, ys, { type = 'scattergl', su
 // are edited by double-click, then modifier(i, cle, texte) (Enter or leaving the cell: keep;
 // Escape: cancel). A column's header can carry a line under its name (sousTitre: the unit and the
 // values of a variable in the Data view), a tooltip (info), and a right-click menu (menuColonne(c,
-// event)).
-export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier, menuColonne, aideCellule }) {
+// event)); a row too (menuLigne(i, event): a variable of Variable statistics).
+export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModele, nom, avant = [], cliquer, choisie, modifier, menuColonne, menuLigne, aideCellule }) {
   loc.filtre ??= '';
   const f = loc.filtre.toLowerCase();
   let idx = Array.from({ length: n }, (_, i) => i);
@@ -348,7 +348,8 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
       const u = uid(i);
       if (s.has(u)) s.delete(u); else s.add(u);
       ctx.choisir(idModele, [...s]);
-    } : cliquer ? () => cliquer(i) : null }, colonnes.map((c) => cellule(i, c)))));
+    } : cliquer ? () => cliquer(i) : null,
+    oncontextmenu: menuLigne ? (e) => { e.preventDefault(); e.stopPropagation(); menuLigne(i, e); } : null }, colonnes.map((c) => cellule(i, c)))));
   const copier = () => {
     const txt = [colonnes.map((c) => c.titre).join('\t')]
       .concat(idx.map((i) => colonnes.map((c) => { const v = valeur(i, c.cle); return v === null || v === undefined ? '' : v; }).join('\t'))).join('\n');
@@ -1448,6 +1449,14 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
     valeur: (i, c) => (c === 'nom' ? avecUnite(ctx, p.projet, s.nom[i]) + (s.qualitative[i] ? ` (${s.categories[i]} ${t('categories')})` : '')
       : c === 'suggestion' ? libelleTransfo(s.suggestion[i]) : s[c][i]),
     cliquer: (i) => { loc.k = i; loc.mode = 'histogramme'; ctx.rafraichir(); },
+    // (a variable's unit and description, its categories, find and replace in it: atelier.js)
+    menuLigne: (i, e) => {
+      const nom = (langueActuelle() === 'fr' ? `« ${s.nom[i]} »` : `“${s.nom[i]}”`);
+      menuContextuel(e.clientX, e.clientY, [
+        { libelle: t('atelier_unite_de', { nom }), icone: 'ruler', action: () => ctx.variablesProjet(p.projet, s.uid[i]) },
+        { libelle: t('atelier_categories_de', { nom }), icone: 'tag', actif: !!s.qualitative[i], action: () => ctx.categoriesVariable(p.projet, s.uid[i]) },
+        { libelle: t('atelier_remplacer_dans', { nom }), icone: 'search', action: () => ctx.remplacerDonnees(p.projet, s.uid[i]) }]);
+    },
     choisie: (i) => loc.mode === 'histogramme' && i === k,
   });
   if (loc.mode === 'manquantes') {
