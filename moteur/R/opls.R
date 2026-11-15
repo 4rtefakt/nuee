@@ -102,15 +102,36 @@ opls_predire <- function(noyau, E, ME, k = ncol(noyau$Wo) %||% 0, a = length(noy
   Y
 }
 
+# Le noyau `n` d'une OPLS (opls_noyau) réduit à ses Ao premières composantes orthogonales (moins s'il
+# n'en a pas autant) : ce que rend opls_noyau pour Ao, ses étapes étant les premières de celles de n
+# (une composante orthogonale après l'autre, et les prédictives de chacune). E, la matrice filtrée de
+# ces composantes, est refait depuis `E0` (masque `ME0`) par les mêmes calculs ; sans E0, pas de E (la
+# validation croisée ne s'en sert pas).
+noyau_reduit <- function(n, Ao, E0 = NULL, ME0 = NULL) {
+  a <- min(Ao, ncol(n$Wo) %||% 0)
+  colonnes <- function(M) if (a) M[, seq_len(a), drop = FALSE]
+  predictives <- n$predictives[seq_len(a + 1)]
+  E <- NULL
+  if (!is.null(E0)) {
+    plein <- masque_plein(ME0)
+    E <- E0
+    for (k in seq_len(a)) E <- retirer_composante(E, ME0, n$To[, k], n$Po[, k], plein)
+  }
+  list(pred = predictives[[length(predictives)]], predictives = predictives, To = colonnes(n$To), Po = colonnes(n$Po), Wo = colonnes(n$Wo), E = E)
+}
+
 # Ajustement et validation croisée (`vc` : ses sous-modèles, debut_validation), avec le résultat
 # rangé comme celui d'ajuster_matrices. `jusqua` : moins de composantes orthogonales si les
-# données n'en permettent pas Ao (ajustement automatique).
-ajuster_opls <- function(X, Y, Ao, Ap = 1, vc = NULL, jusqua = FALSE) {
+# données n'en permettent pas Ao (ajustement automatique). `etat` : le résultat garde aussi
+# (etat_auto) la validation croisée telle que debut_validation l'a faite et les noyaux du modèle et
+# de ses sous-modèles, de quoi refaire ce modèle pour moins de composantes orthogonales sans les
+# recalculer (`noyaux` : ceux-là ; modele.R, modele_tronque).
+ajuster_opls <- function(X, Y, Ao, Ap = 1, vc = NULL, jusqua = FALSE, etat = FALSE, noyaux = NULL) {
   N <- nrow(X$E)
   K <- ncol(X$E)
   M <- ncol(Y$E)
   avec_x <- rowSums(X$M) > 0
-  n <- opls_noyau(X$E, X$M, Y$E, Y$M, Ao, Ap, jusqua = jusqua)
+  n <- if (is.null(noyaux)) opls_noyau(X$E, X$M, Y$E, Y$M, Ao, Ap, jusqua = jusqua) else noyau_reduit(noyaux$modele, Ao, X$E, X$M)
   if (length(n$pred) < Ap) stop(erreur_composantes(length(n$pred) + 1))
   Ao <- ncol(n$Wo) %||% 0
   A <- Ap + Ao
@@ -150,8 +171,10 @@ ajuster_opls <- function(X, Y, Ao, Ap = 1, vc = NULL, jusqua = FALSE) {
     ssyv <- cbind(ssyv, colSums(F[avec_x, , drop = FALSE]^2))
   }
 
-  c(list(T = T, P = P, W = W, C = C, U = U, ssxv = ssxv, ssyv = ssyv), if (!is.null(vc)) validation_opls(vc, Ao, Ap),
-    list(ssx = colSums(ssxv), ssy = colSums(ssyv), residus_x = residus_x, residus_y = residus_y, avec_x = avec_x))
+  v <- if (!is.null(vc)) validation_opls(vc, Ao, Ap, noyaux$tours, garder = etat)
+  c(list(T = T, P = P, W = W, C = C, U = U, ssxv = ssxv, ssyv = ssyv), v,
+    list(ssx = colSums(ssxv), ssy = colSums(ssyv), residus_x = residus_x, residus_y = residus_y, avec_x = avec_x),
+    if (etat) list(etat_auto = list(vc = vc, noyaux = list(modele = n[setdiff(names(n), "E")], tours = attr(v, "noyaux")))))
 }
 
 # La validation croisée d'une OPLS (validation_croisee.R) : chaque sous-modèle est une OPLS aux
@@ -160,15 +183,19 @@ ajuster_opls <- function(X, Y, Ao, Ap = 1, vc = NULL, jusqua = FALSE) {
 # composantes (les prédictives, puis les orthogonales) est la prédiction avec min(r, Ap)
 # composantes prédictives après max(0, r - Ap) orthogonales : ses PRESS en sont faits, comme pour
 # une PLS. Les paramètres de chaque sous-modèle (rangés comme ceux du modèle) donnent les
-# intervalles de confiance (jack-knife).
-validation_opls <- function(vc, Ao, Ap) {
+# intervalles de confiance (jack-knife). `noyaux` : le noyau de chaque sous-modèle, déjà calculé pour
+# au moins Ao composantes orthogonales (noyau_reduit) ; `garder` : les noyaux en attribut "noyaux"
+# du résultat (sans leur matrice filtrée E).
+validation_opls <- function(vc, Ao, Ap, noyaux = NULL, garder = FALSE) {
   A <- Ap + Ao
   M <- ncol(vc$Z$E)
   vc$press <- matrix(0, A, M)
   vc$predictions <- lapply(seq_len(A), function(r) matrix(NA_real_, nrow(vc$Z$E), M))
+  gardes <- list()
   for (i in seq_along(vc$tours)) {
     r <- vc$tours[[i]]
-    nk <- opls_noyau(r$X$E, r$X$M, r$Y$E, r$Y$M, Ao, Ap, r$depart, jusqua = TRUE)
+    nk <- if (is.null(noyaux)) opls_noyau(r$X$E, r$X$M, r$Y$E, r$Y$M, Ao, Ap, r$depart, jusqua = TRUE) else noyau_reduit(noyaux[[i]], Ao)
+    if (garder) gardes[[i]] <- nk[setdiff(names(nk), "E")]
     ao <- ncol(nk$Wo) %||% 0
     for (l in seq_len(A)) {
       k <- min(max(0, l - Ap), ao)
@@ -193,5 +220,5 @@ validation_opls <- function(vc, Ao, Ap) {
     }
     vc$tours[[i]] <- r
   }
-  fin_validation(vc, A)
+  structure(fin_validation(vc, A), noyaux = if (garder) gardes)
 }

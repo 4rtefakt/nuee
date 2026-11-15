@@ -71,7 +71,7 @@ calculer_modele <- function(projet, definition, A = definition$A, G = definition
   vc <- debut_validation(projet, definition, X, Y, bx, by, A, G, poids, vx, projets_vc, cote_x$tours)  # validation_croisee.R
   # OPLS (opls.R) : A = Ap composantes prédictives + A - Ap composantes orthogonales
   Ap <- if (isTRUE(definition$opls)) definition$Ap %||% 1
-  res <- if (isTRUE(definition$opls)) ajuster_opls(X, Y, max(0, A - Ap), Ap, vc, jusqua = !is.null(arret))
+  res <- if (isTRUE(definition$opls)) ajuster_opls(X, Y, max(0, A - Ap), Ap, vc, jusqua = !is.null(arret), etat = etat)
          else ajuster_matrices(X, Y, A, arret, vc, etat)
 
   modele <- c(list(
@@ -143,10 +143,22 @@ ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL, etat = FALSE) {
 # validation croisée avance avec elles : celles d'un modèle de A composantes sont les A premières, aux
 # mêmes valeurs (fin_validation les relit pour A) ; ses résidus sont ceux d'après sa dernière
 # composante (ceux du modèle, ou ceux d'avant la composante de plus). NULL quand ce n'est pas
-# possible (une ACP ou une PLS seulement, A ou A + 1 composantes calculées).
+# possible (une ACP ou une PLS : A ou A + 1 composantes calculées). Une OPLS calcule toutes ses
+# composantes orthogonales d'un coup : le modèle d'autant ou de moins est refait par ajuster_opls
+# depuis les noyaux qu'il garde (opls.R : noyau_reduit), sans NIPALS.
 modele_tronque <- function(m, A) {
   e <- m$etat_auto
   a <- ncol(m$T)
+  entete <- unclass(m)[seq_len(match("T", names(m)) - 1)]
+  if (isTRUE(m$opls)) {
+    Ap <- m$Ap %||% 1
+    if (is.null(e$vc) || is.null(e$noyaux) || !isTRUE(A >= Ap && A <= a)) return(NULL)
+    res <- ajuster_opls(list(E = m$X, M = m$MX), list(E = m$Y, M = m$MY), A - Ap, Ap, e$vc, noyaux = e$noyaux)
+    entete$A <- ncol(res$T)
+    modele <- c(entete, res)
+    class(modele) <- "modele_nuee"
+    return(modele)
+  }
   if (is.null(e$vc) || !isTRUE(A >= 1 && (A == a || A == a - 1))) return(NULL)
   pls <- identical(m$type, "PLS")
   colonnes <- function(M, n) if (!is.null(M)) M[, seq_len(n), drop = FALSE]
@@ -155,7 +167,6 @@ modele_tronque <- function(m, A) {
   residus <- if (A == a) list(E = m$residus_x, F = m$residus_y) else e$precedent
   res <- c(res, fin_validation(e$vc, A),
            list(ssx = colSums(res$ssxv), ssy = if (pls) colSums(res$ssyv), residus_x = residus$E, residus_y = residus$F, avec_x = m$avec_x))
-  entete <- unclass(m)[seq_len(match("T", names(m)) - 1)]
   entete$A <- ncol(res$T)
   modele <- c(entete, res)
   class(modele) <- "modele_nuee"

@@ -594,9 +594,8 @@ reglages_modele <- function(projet, d) {
 autoajuster <- function(projet, definition, A_max = NULL) autoajuster_modele(projet, definition, A_max, garder = FALSE)$A
 
 # Le nombre de composantes d'autoajuster (A), et le modèle déjà calculé pour max(1, A) composantes,
-# tel que calculer_modele le rendrait (`modele`, pour ajuster : une ACP ou une PLS, dont les
-# composantes de l'ajustement automatique sont celles du modèle, modele_tronque ; NULL pour une
-# OPLS, ou sans `garder`).
+# tel que calculer_modele le rendrait (`modele`, pour ajuster : les composantes de l'ajustement
+# automatique sont celles du modèle, modele_tronque ; NULL sans `garder`).
 autoajuster_modele <- function(projet, definition, A_max = NULL, garder = TRUE) {
   N <- length(definition$observations)
   K <- length(definition$x)
@@ -607,12 +606,12 @@ autoajuster_modele <- function(projet, definition, A_max = NULL, garder = TRUE) 
     Ap <- definition$Ap %||% 1
     Ao_max <- max(0, min(8, K - Ap, N - Ap - 2))
     # (`arret` : moins de composantes orthogonales si les données n'en permettent pas autant)
-    m <- calculer_modele(projet, definition, A = Ao_max + Ap, arret = function(res, a) FALSE)
+    m <- calculer_modele(projet, definition, A = Ao_max + Ap, arret = function(res, a) FALSE, etat = garder)
     Ao_max <- m$A - Ap
     limite <- if (N > 100) 0 else 0.05
     Ao <- 0
     while (Ao < Ao_max && m$q2[Ap + Ao + 1] > limite) Ao <- Ao + 1
-    return(list(A = Ao + Ap, modele = NULL))
+    return(list(A = Ao + Ap, modele = if (garder) modele_tronque(m, Ao + Ap)))
   }
   A_max <- A_max %||% max(1, min(floor(min(N, K) / 2), 15))
   if (pls) A_max <- max(1, min(A_max, K, N - 2))
