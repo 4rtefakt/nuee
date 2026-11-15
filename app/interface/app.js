@@ -654,17 +654,20 @@ const app = {
     let langue = langueActuelle();
     const corps = el('div', { class: 'texte-methodes' });
     const montrer = async () => {
-      const r = await occupe(() => demander('methodes', { modele: id, langue, version: VERSION }));
+      const [r, res] = await occupe(() => Promise.all([demander('methodes', { modele: id, langue, version: VERSION }),
+        demander('resultats_texte', { modele: id, langue }).catch(() => ({ paragraphes: [] }))]));
       corps.replaceChildren(...[].concat(r.paragraphes).map((x) => el('p', {}, x)), el('h4', {}, t('references')),
-        el('ol', {}, [].concat(r.references).map((x) => el('li', {}, x))));
+        el('ol', {}, [].concat(r.references).map((x) => el('li', {}, x))),
+        ...([].concat(res.paragraphes || []).filter(Boolean).length ? [el('h4', {}, t('resultats_titre')), ...[].concat(res.paragraphes).filter(Boolean).map((x) => el('p', { class: 'resultat' }, x))] : []));
     };
     const langues = el('div', { class: 'boutons-langue' }, [['fr', 'Français'], ['en', 'English']].map(([l, n]) => el('label', { class: 'champ' },
       el('input', { type: 'radio', name: 'langue-methodes', checked: l === langue, onchange: () => { langue = l; montrer(); } }), el('span', {}, n))));
     await montrer();
     dialogue({ titre: t('texte_methodes_titre', { nom: m.nom }), contenu: el('div', {}, el('p', { class: 'note' }, t('texte_methodes_note')), langues, corps),
       boutons: [{ libelle: t('copier_texte'), action: () => {
-        const texte = [...corps.querySelectorAll('p')].map((x) => x.textContent).join('\n\n') + '\n\n'
-          + [...corps.querySelectorAll('li')].map((x) => x.textContent).join('\n');
+        const texte = [...corps.querySelectorAll('p:not(.resultat)')].map((x) => x.textContent).join('\n\n') + '\n\n'
+          + [...corps.querySelectorAll('li')].map((x) => x.textContent).join('\n')
+          + [...corps.querySelectorAll('p.resultat')].map((x) => `\n\n${x.textContent}`).join('');
         navigator.clipboard.writeText(texte).then(() => statut(t('texte_copie')));
         return false;
       } }, { libelle: t('fermer'), principal: true, action: () => true }] });

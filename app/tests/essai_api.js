@@ -1418,6 +1418,9 @@ async function principal() {
       const pr = await api('par_reponse', { modele: sansLissage.id, reponses: [v.v, v.Y_L93], correction: 'holm' });
       verifier([].concat(pr.resume.reponse).length === 2 && [].concat(pr.tableau.terme).includes('x') && pr.correction === 'holm' && /Holm/.test(pr.methodes),
         `un modèle par réponse : ${[].concat(pr.resume.reponse).join(', ')}`);
+      const rt = await api('resultats_texte', { modele: gam.id, langue: 'en' });
+      verifier([].concat(rt.paragraphes).some((x) => /The model of “v” uses 40 observations/.test(x)) && [].concat(rt.paragraphes).some((x) => /s\(X_L93, Y_L93\), edf =/.test(x)),
+        `texte des résultats : ${[].concat(rt.paragraphes).join(' ').slice(0, 160)}`);
       const t = await api('projet_texte', { projet: q.id, version: 'essai' });
       verifier(/"coordonnees"/.test(t.texte) && /"paquets"/.test(t.texte), 'projet en texte, pour un rapport de problème');
     });

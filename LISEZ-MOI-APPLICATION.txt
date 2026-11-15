@@ -378,7 +378,12 @@ donnent leur valeur :
   {{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
   {{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
   {{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
-Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne. Graphiques et
+  {{M1.resultats}} (texte des résultats : l'ajustement, chaque coefficient avec son intervalle et p,
+  en facteur ou en rapport de cotes pour un lien log ou logit, les termes significatifs, les
+  courbes, les effets aléatoires ; pour une ACP, une PLS ou une OPLS, la variance expliquée, Q²,
+  la CV-ANOVA et les variables les plus importantes)
+Un graphique, un tableau, le texte des méthodes ou celui des résultats se met seul sur sa ligne.
+Modèle › Texte pour la section Méthodes montre aussi le texte des résultats, sous les méthodes. Graphiques et
 tableaux sont numérotés dans l'ordre (Figure 1, Tableau 1) ; avec une étiquette,
 {{M1.scores #fig-scores | légende}}, {{ref:fig-scores}} écrit « Figure 1 » n'importe où dans le
 texte. Tapez {{ pour voir les modèles du projet, puis ce que celui choisi offre, avec sa valeur

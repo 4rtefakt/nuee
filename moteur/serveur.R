@@ -995,6 +995,13 @@ DEMANDES <- list(
   classe_selection = classe_demande,
   script_r = script_demande,
   methodes = methodes_demande,
+  # Le texte des résultats d'un modèle (resultats_texte.R), dans la langue demandée.
+  resultats_texte = function(q) {
+    e <- modele(q$modele)
+    autre <- est_autre_analyse(e$definition) && is.null(fonction_analyse("texte_resultats_", e$definition$type))
+    texte_resultats(projet(e$projet), e$definition, e$modele, if (identical(q$langue, "en")) "en" else "fr",
+                    chiffres = if (autre) as.character(resultat_modele(q$modele)$chiffres %||% "") else "")
+  },
   modeles_classe = modeles_classe_demande,
   appartenance = appartenance_demande,
   contributions = function(q) {

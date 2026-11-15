@@ -356,7 +356,11 @@ their values:
   {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
   {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
   {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
-A plot, a table or the Methods text goes alone on its line. Plots and tables are numbered in
+  {{M1.resultats}} (Results text: the fit, each coefficient with its interval and p, as a factor
+  or an odds ratio for a log or logit link, the significant terms, curves, random effects; for a
+  PCA, PLS or OPLS, the variance explained, Q², CV-ANOVA and the most important variables)
+A plot, a table, the Methods text or the Results text goes alone on its line. Model › Text for
+the Methods section shows the Results text under the Methods. Plots and tables are numbered in
 order (Figure 1, Table 1); with a label, {{M1.scores #fig-scores | caption}}, {{ref:fig-scores}}
 writes "Figure 1" anywhere in the text. Type {{ to list the project's models, then what the one
 chosen offers, with its current value; Insert, in the toolbar, does the same from menus, and a

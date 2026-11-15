@@ -375,6 +375,12 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     const r = s.methodes.get(cle) || garder(s.methodes, cle, await demander('methodes', { modele: m.id, langue: s.langue, version: VERSION }));
     return { genre: 'texte', paragraphes: [].concat(chemin[1] === 'references' ? r.references : r.paragraphes).filter(Boolean) };
   }
+  if (chemin[0] === 'resultats' && chemin.length === 1) {
+    const cle = `${m.id}|${s.langue}|resultats`;
+    if (!s.methodes.has(cle) && !attendre) return null;
+    const r = s.methodes.get(cle) || garder(s.methodes, cle, await demander('resultats_texte', { modele: m.id, langue: s.langue }));
+    return { genre: 'texte', paragraphes: [].concat(r.paragraphes).filter(Boolean) };
+  }
   if (chemin[0] === 'table') {
     const x = partie(chemin[1], 'tableau');
     if (!x || chemin.length !== 2) return erreur('ref_tableau_inconnu');
@@ -528,10 +534,10 @@ function completion(app, s) {
     if (m) {
       const parties = partiesModele(m);
       offre = offreModele(m, { vues: parties.filter((x) => x.vue).map((x) => x.cle), tableaux: parties.filter((x) => x.tableau).map((x) => x.cle), langue: s.langue })
-        .map((o) => ({ ...o, detail: o.type === 'graphique' || o.type === 'tableau' ? t(o.detail) : o.type === 'texte' ? t('document_methodes') : o.detail }));
+        .map((o) => ({ ...o, detail: o.type === 'graphique' || o.type === 'tableau' ? t(o.detail) : o.type === 'texte' ? t(o.chemin === 'resultats' ? 'document_resultats' : 'document_methodes') : o.detail }));
     } else {
       offre = [...VALEURS_COURANTES.map((c) => ({ chemin: c, type: 'valeur', detail: t('document_non_calcule') })),
-        { chemin: 'methodes', type: 'texte', detail: t('document_methodes') }];
+        { chemin: 'methodes', type: 'texte', detail: t('document_methodes') }, { chemin: 'resultats', type: 'texte', detail: t('document_resultats') }];
     }
     // (in the order given: the model's main values first, then by variable, tables, plots;
     // boost keeps it among the options that match as well)
@@ -956,10 +962,12 @@ function menuInserer(app, s) {
         '-',
         ...parties.filter((x) => x.tableau).map((x) => ({ libelle: `${t('document_tableau')} · ${t(x.cle)}`, icone: 'table-2', action: ref(`table.${x.cle} | ${t(x.cle)}`, true) })),
         '-',
-        { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) }]);
+        { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) },
+        { libelle: t('document_resultats'), icone: 'quote', action: ref('resultats', true) }]);
     } else {
       sous = [...VALEURS_COURANTES.map((c) => ({ libelle: c, action: ref(c) })), '-',
-        { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) }];
+        { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) },
+        { libelle: t('document_resultats'), icone: 'quote', action: ref('resultats', true) }];
     }
     return { libelle: `${d.nom}${d.titre ? ` — ${d.titre}` : ''}`, sous };
   });
@@ -1149,10 +1157,10 @@ function gabarit(app, p, st, choisis) {
   const entete = `---\ntitle: "${(st.titre || t('document_sans_titre')).replace(/"/g, '\\"')}"\n${st.gabarit === 'article' ? 'author: ""\n' : ''}---\n\n`;
   if (st.gabarit === 'article') {
     return entete + [`# ${w.introduction}`, '', `# ${w.methodes}`, ...choisis.map((d) => `{{${d.nom}.methodes}}`),
-      `# ${w.resultats}`, ...choisis.flatMap((d) => [phrase(d), ...figures(d, false)]), `# ${w.discussion}`, '', `# ${w.references}`, ''].join('\n\n');
+      `# ${w.resultats}`, ...choisis.flatMap((d) => [phrase(d), `{{${d.nom}.resultats}}`, ...figures(d, false)]), `# ${w.discussion}`, '', `# ${w.references}`, ''].join('\n\n');
   }
   if (st.gabarit === 'rapport') {
-    return entete + choisis.flatMap((d) => [`# ${d.nom}${d.titre ? ` — ${d.titre}` : ''}`, phrase(d),
+    return entete + choisis.flatMap((d) => [`# ${d.nom}${d.titre ? ` — ${d.titre}` : ''}`, phrase(d), `{{${d.nom}.resultats}}`,
       ...resume(d), ...figures(d, true), `## ${w.methodes}`, `{{${d.nom}.methodes}}`]).join('\n\n') + '\n';
   }
   return entete;
@@ -1240,7 +1248,7 @@ ajouterTextes({
   document_compiler: 'Compiler', document_compiler_aide: 'Écrire le document en Word, PDF, HTML ou Quarto, les références remplacées par leurs résultats',
   document_apercu_aide: 'Montrer ou cacher l’aperçu', document_aide: 'Écrire un document', document_modifie: 'modifié…',
   document_non_enregistre: 'non gardé : le moteur ne répond pas', document_mots: '{n} mots', document_refs: '{n} références',
-  document_refs_erreurs: '{n} introuvable(s)', document_tableau: 'Tableau', document_methodes: 'Texte des méthodes',
+  document_refs_erreurs: '{n} introuvable(s)', document_tableau: 'Tableau', document_methodes: 'Texte des méthodes', document_resultats: 'Texte des résultats',
   document_renvoi: 'le numéro d’une figure ou d’un tableau étiqueté (#…)',
   document_inserer_renvoi: 'Renvoi à une figure ou un tableau ({{ref:…}})', document_non_calcule: 'pas encore calculé : il le sera',
   document_seul: 'Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne.',
@@ -1305,7 +1313,7 @@ ajouterTextes({
   document_compiler: 'Compile', document_compiler_aide: 'Write the document as Word, PDF, HTML or Quarto, its references replaced by their results',
   document_apercu_aide: 'Show or hide the preview', document_aide: 'Writing a document', document_modifie: 'changed…',
   document_non_enregistre: 'not kept: the engine doesn’t answer', document_mots: '{n} words', document_refs: '{n} references',
-  document_refs_erreurs: '{n} unresolved', document_tableau: 'Table', document_methodes: 'Methods text',
+  document_refs_erreurs: '{n} unresolved', document_tableau: 'Table', document_methodes: 'Methods text', document_resultats: 'Results text',
   document_renvoi: 'the number of a labelled figure or table (#…)',
   document_inserer_renvoi: 'Cross-reference to a figure or table ({{ref:…}})', document_non_calcule: 'not computed yet: it will be',
   document_seul: 'A plot, a table or the Methods text goes alone on its line.',

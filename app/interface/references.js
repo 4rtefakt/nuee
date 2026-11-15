@@ -5,7 +5,8 @@
 // A reference is written {{target[:format] [#label] [| caption]}}:
 //   - target: a model of the project by its name (M1, or "M2 (1)": names can hold spaces), a dot,
 //     then what to take from it: a value (Q2, R2Y, N, gain, vip.sucre, coef.annee...), a table
-//     (table.composantes), a plot (scores, loadings, vip...) or the Methods text (methodes);
+//     (table.composantes), a plot (scores, loadings, vip...), the Methods text (methodes) or the
+//     results text (resultats, moteur/R/resultats_texte.R);
 //     or ref:<label>, the number of a figure or table labelled #<label> ("Figure 2");
 //   - format: a number of decimals (:3), or a percentage (:% or :%1);
 //   - #label: a name for a figure or table, for {{ref:label}} elsewhere;
@@ -241,6 +242,7 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
   for (const t of tableaux) offre.push({ chemin: `table.${t}`, type: 'tableau', detail: t });
   for (const v of vues) offre.push({ chemin: v, type: 'graphique', detail: v });
   offre.push({ chemin: 'methodes', type: 'texte', detail: '' });
+  offre.push({ chemin: 'resultats', type: 'texte', detail: 'resultats' });
   return offre;
 }
 
@@ -248,7 +250,7 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
 // `vues`) or 'valeur'.
 export function genreChemin(chemin, vues = []) {
   if (chemin[0] === 'table') return 'tableau';
-  if (chemin[0] === 'methodes' && chemin.length === 1) return 'texte';
+  if ((chemin[0] === 'methodes' || chemin[0] === 'resultats') && chemin.length === 1) return 'texte';
   if (chemin.length === 1 && vues.includes(chemin[0])) return 'graphique';
   return 'valeur';
 }
