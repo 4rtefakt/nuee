@@ -1,0 +1,56 @@
+[
+    {
+        "key": "Y728SES5",
+        "version": 7,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/items/Y728SES5",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "creatorSummary": "⁨Béchet⁩ and ⁨Germain⁩",
+            "parsedDate": "2019",
+            "numChildren": 0
+        },
+        "bibtex": "\n@article{bechet_population_2019,\n\ttitle = {Population dynamics of greater flamingos in {Mediterranean} wetlands},\n\tvolume = {50},\n\tdoi = {10.1111/jav.01234},\n\tlanguage = {en},\n\tnumber = {4},\n\tjournal = {Journal of Avian Biology},\n\tauthor = {Béchet, Arnaud and Germain, Christophe},\n\tyear = {2019},\n\tpages = {e01234},\n}\n"
+    },
+    {
+        "key": "AUFQI3JK",
+        "version": 9,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/items/AUFQI3JK",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "creatorSummary": "Béchet",
+            "parsedDate": "2021",
+            "numChildren": 0
+        },
+        "bibtex": "\n@techreport{bechet_suivi_2021,\n\ttype = {Rapport technique},\n\ttitle = {Suivi des colonies de flamants roses en {Camargue} : bilan 2021},\n\tlanguage = {fr},\n\tnumber = {12},\n\tinstitution = {Station biologique},\n\tauthor = {Béchet, Arnaud},\n\tyear = {2021},\n}\n"
+    }
+]

@@ -2,14 +2,16 @@
 // (main.js: IPC "zotero"). Zotero answers on 127.0.0.1:23119 and refuses what comes from a browser
 // (a "Mozilla/" user agent, an Origin header): Node's own client sends neither.
 //   - its local API (Zotero 7 and later: Settings › Advanced › "Allow other applications on this
-//     computer to communicate with Zotero"), read only: the library's items (/api/users/0/items...),
-//     its collections and theirs (/api/users/0/collections, .../collections/<key>/items/top);
+//     computer to communicate with Zotero"), read only: the group libraries it has
+//     (/api/users/0/groups), and for My Library (users/0) or a group's (groups/<its id>) the items
+//     (/api/<library>/items...), the collections and theirs (/api/<library>/collections,
+//     .../collections/<key>/items/top);
 //   - Better BibTeX's citation picker (/better-bibtex/cayw), when that plugin is installed, and its
 //     export of the references picked (/better-bibtex/export/item).
-// Only these addresses, and only reading: nothing here can change the library.
+// Only these addresses, and only reading: nothing here can change a library.
 const http = require('http');
 
-const PERMIS = /^\/(api\/users\/0\/items(\/top)?\?[^#\s]*|api\/users\/0\/collections(\/[A-Z0-9]{8}\/items\/top)?\?[^#\s]*|better-bibtex\/(cayw|export\/item)\?[^#\s]*|connector\/ping)$/;
+const PERMIS = /^\/(api\/users\/0\/groups\?[^#\s]*|api\/(users\/0|groups\/\d{1,12})\/(items(\/top)?|collections(\/[A-Z0-9]{8}\/items\/top)?)\?[^#\s]*|better-bibtex\/(cayw|export\/item)\?[^#\s]*|connector\/ping)$/;
 
 // GET `chemin` from Zotero: { statut, texte } or { erreur: 'absent' (Zotero isn't running),
 // 'delai', 'demande' (an address not allowed), or the system's message }.
