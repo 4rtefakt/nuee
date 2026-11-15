@@ -204,7 +204,9 @@ petits graphiques côte à côte.
 Lambert-93, UTM…) placent les observations sur une carte, colorées et dimensionnées par une
 variable ou les résultats d'un modèle, sur un fond OpenStreetMap ou IGN quand on en choisit un
 (sinon rien ne quitte l'ordinateur). Les fichiers GeoPackage, le format de QGIS, s'ouvrent avec
-leurs coordonnées, et les données et les résultats d'un modèle s'y exportent. L'I de Moran d'une
+leurs coordonnées, et les données et les résultats d'un modèle s'y exportent. Les valeurs d'un
+raster (l'altitude d'un MNT, l'occupation du sol, un climat, depuis des fichiers GeoTIFF ou des
+grilles ASCII d'ESRI) s'ajoutent à chaque site, comme terra::extract les donne. L'I de Moran d'une
 variable ou des résidus d'un modèle, son corrélogramme et le semi-variogramme, comme spdep et
 gstat les donnent, et un lissage spatial s(x, y) dans les modèles additifs pour ce que les
 termes laissent dans l'espace.

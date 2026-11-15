@@ -193,9 +193,11 @@ term's p values over them (FDR), with a forest plot and small multiples.
 UTM...) place the observations on a map, coloured and sized by a variable or a model's results,
 on OpenStreetMap or IGN backgrounds when you choose one (nothing leaves the computer
 otherwise). GeoPackage files, QGIS's format, open with their coordinates, and the data and a
-model's results export to one. Moran's I of a variable or of a model's residuals, its
-correlogram and the semivariogram, as spdep and gstat give them, and a spatial smooth s(x, y)
-in additive models for what the terms leave in space.
+model's results export to one. A raster's values (a DEM's elevation, land cover, a climate,
+from GeoTIFF files or ESRI ASCII grids) are added at each site, as terra::extract gives them.
+Moran's I of a variable or of a model's residuals, its correlogram and the semivariogram, as
+spdep and gstat give them, and a spatial smooth s(x, y) in additive models for what the terms
+leave in space.
 
 **Trees and forests, discriminant analysis, clustering:** decision trees (rpart) for a
 quantitative response or a class, on the raw variables so that thresholds read in their units,
