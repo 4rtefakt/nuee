@@ -32,6 +32,7 @@ import { installerDocuments } from './documents.js';
 import { installerFigures } from './figures.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
+import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -224,6 +225,16 @@ const app = {
       } }] });
   },
 
+  // File › Import from KoboToolbox or ODK: an export (Excel, CSV, ODK Central's .zip), then the
+  // import's dialog (kobo.js); in the browser the file is sent to the engine first
+  async importerKobo() {
+    const chemin = bureau ? await bureau.choisirFichier(filtresKobo()) : await deposerKobo();
+    if (!chemin) return;
+    if (bureau) { await app.ouvrirChemin(chemin, { collecte: true }); return; }
+    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin, collecte: true })));
+    if (res) await apresOuverture(res);
+  },
+
   // the example project (made-up data), with its first model open, scores coloured by variety
   async ouvrirExemple() {
     const res = await occupe(() => demander('exemple'));
@@ -234,11 +245,12 @@ const app = {
     if (variete) app.ouvrirVue('scores', id, { couleur: 'v' + variete.uid });
   },
 
-  async ouvrirChemin(chemin) {
+  // collecte: File › Import from KoboToolbox or ODK (kobo.js), the import asked for (another file is refused)
+  async ouvrirChemin(chemin, { collecte = false } = {}) {
     // already open (a recent file, a file dropped or double-clicked again): shown, not opened
     // twice, which would make two copies that both save to the same file
     const cle = (c) => (c ? (/^Win/.test(navigator.platform) ? c.replace(/\\/g, '/').toLowerCase() : c) : null);
-    const ouvert = Object.values(etat.projets).find((p) => cle(p.chemin_enregistrement) === cle(chemin) || (!p.table && cle(p.chemin) === cle(chemin)));
+    const ouvert = !collecte && Object.values(etat.projets).find((p) => cle(p.chemin_enregistrement) === cle(chemin) || (!p.table && cle(p.chemin) === cle(chemin)));
     if (ouvert) {
       etat.noeud = ouvert.id;
       app.rafraichirExplorateur();
@@ -246,7 +258,7 @@ const app = {
       statut(t('deja_ouvert', { nom: ouvert.nom }));
       return;
     }
-    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin })));
+    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin, collecte: collecte || undefined })));
     if (!res) return;
     await apresOuverture(res);
     if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
@@ -459,7 +471,8 @@ const app = {
       const source = p.chemin_enregistrement || p.chemin;
       const session = dock ? collecterSession(p.id) : null;
       if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null } });
-      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined } });
+      // (an import from KoboToolbox or ODK is redone with its settings: kobo.js)
+      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined } });
       else perdus.push(p.nom);
     }
     statut(t('moteur_redemarrage'));
@@ -962,8 +975,10 @@ function telecharger(chemin) {
 }
 
 // A file with several tables (Excel sheets, objects of an .RData file): the one to open.
-// Resolves to the opened project, or null when the choice is cancelled.
+// Resolves to the opened project, or null when the choice is cancelled. An export of
+// KoboToolbox or ODK Central comes with the preview of its import: the import's dialog.
 function choisirTable(res) {
+  if (res && res.kobo) return dialogueKobo(app, res);
   if (!res || !res.choisir) return Promise.resolve(res);
   const tables = [].concat(res.choisir);
   return new Promise((resolve) => {

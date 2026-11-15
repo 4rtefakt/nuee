@@ -648,7 +648,8 @@ ecrire_script_classement <- function(projet, d, chemin_script, m, donnees = "scr
   # l'environnement global à sa place)
   for (n in intersect(objets, ls(e))) assign(n, sans_environnement(get(n, envir = e)), envir = e)
   ecrire_fichiers_script(lignes, fichiers, e, objets, c(paquet, if (format != "R") c("knitr", "rmarkdown")))
-  list(script = chemin_script, chemins = unname(fichiers), ecart = ecart)
+  # (ses graphiques, pour un document reproductible : document_reproductible.R)
+  structure(list(script = chemin_script, chemins = unname(fichiers), ecart = ecart), graphiques = graphiques)
 }
 
 # Un objet du script pour le .RData : les termes d'un arbre (et des arbres d'une liste) rattachés

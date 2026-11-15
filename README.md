@@ -244,7 +244,9 @@ the model's domain, and export the results.
 - data editing and new variables from R formulas or value ranges; columns added from another
   table by a key, and tables summarized by group; find and replace (Ctrl+H), a qualitative
   variable's categories renamed, merged or reordered, and a unit and a description for each
-  variable, carried into axis titles, the Methods and Results texts and the exports;
+  variable, carried into axis titles, the Methods and Results texts and the exports; exports of
+  KoboToolbox and ODK Central forms opened cleanly (metadata dropped, choices as categories, GPS
+  points as the project's coordinates, repeat groups with their parents' columns);
 - a model's observations chosen by a condition (`site == "S1" & year >= 2010`), applied again at
   each fit;
 - several windows, and views that pop out onto a second screen;
@@ -260,7 +262,8 @@ the model's domain, and export the results.
   its live preview, that cites the project's results (`{{M1.Q2}}`, `{{M1.scores | caption}}`, the
   Methods text, the Results text `{{M1.resultats}}` that puts the model's findings in sentences) and
   the literature (`[@wold2001]`, from BibTeX or CSL-JSON files or from Zotero), and compiles to
-  Word, PDF, HTML or Quarto;
+  Word, PDF, HTML or Quarto, the Quarto document reproducible if you like: each cited value, plot
+  and table recomputed from the raw data by the models' Export to R scripts;
 - a problem report (*Help › Diagnostic information*): a `.zip` with the versions and the session's
   journal, and the project if you tick it, to attach to a message; nothing is sent.
 

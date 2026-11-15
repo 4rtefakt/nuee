@@ -894,7 +894,8 @@ ecrire_script_communaute <- function(projet, d, chemin_script, m, donnees = "scr
                               "facteurs_ajustes", "X", "termes_x", "Z", "coordonnees", "permutations", "G", "permanova", "dispersions", "Dx", "Dz", "mantel",
                               "correlogramme", "groupe", "C", "statistiques", "meilleures", "p", "p_ajuste", "absentes"), langue)
   ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), objets), c(if (nmds) "MASS", if (format != "R") c("knitr", "rmarkdown")))
-  list(script = chemin_script, chemins = unname(fichiers), ecart = ecart)
+  # (ses graphiques, pour un document reproductible : document_reproductible.R)
+  structure(list(script = chemin_script, chemins = unname(fichiers), ecart = ecart), graphiques = graphiques)
 }
 
 # Le rapport R Markdown ou Quarto : les méthodes, les données, le code (replié dans le rapport

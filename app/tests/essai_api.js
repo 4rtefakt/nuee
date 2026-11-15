@@ -1360,6 +1360,74 @@ async function principal() {
       const q = await api('ouvrir', { chemin: f, table: 'b' });
       verifier(q.observations.uid.length === 4 && q.table === 'b' && q.nom === 'deux (b).xlsx', q.nom);
     });
+    await etape('KoboToolbox et ODK Central : l’export reconnu à l’ouverture, son aperçu, une répétition importée avec des colonnes de l’envoi, tel quel, refait au redémarrage (moteur/R/kobo.R)', async () => {
+      const r = (x) => JSON.stringify(x.replace(/\\/g, '/'));
+      const xlsx = path.join(dossier, 'releve kobo.xlsx');
+      const form = path.join(dossier, 'formulaire.xlsx');
+      // a Kobo workbook (groups in the headers, a geopoint, a select_multiple with its 0/1 columns, a repeat sheet) and its XLSForm in two languages
+      await api('console', { code: [
+        'envois <- data.frame(start = c("2024-05-03T07:58:00.000+02:00", "2024-05-04T08:05:00.000+02:00", "2024-05-05T09:00:00.000+02:00"),',
+        '  "group_site/site" = c("S1", "S2", "S3"), "group_site/habitat" = c("foret", "prairie", "foret"), "group_site/gps" = c("43.61 3.87 50 5", "43.65 3.9 60 4", NA),',
+        '  "_group_site/gps_latitude" = c(43.61, 43.65, NA), "_group_site/gps_longitude" = c(3.87, 3.9, NA), meteo = c("soleil vent", "pluie", NA),',
+        '  "meteo/soleil" = c(1, 0, NA), "meteo/pluie" = c(0, 1, NA), "meteo/vent" = c(1, 0, NA), "_id" = 1:3, "_uuid" = c("u1", "u2", "u3"),',
+        '  "_submission_time" = c("2024-05-03T06:45:12", "2024-05-03T06:45:12", "2024-05-05T08:00:00"), "__version__" = "v1", "_index" = 1:3, check.names = FALSE)',
+        'obs <- data.frame("observation/espece" = c("turmer", "parmaj", "turmer", "erirub"), "observation/effectif" = c(2, 1, 3, 1), "_index" = 1:4,',
+        '  "_parent_table_name" = "Relevé", "_parent_index" = c(1, 1, 2, 3), check.names = FALSE)',
+        `openxlsx::write.xlsx(list("Relevé" = envois, observation = obs), ${r(xlsx)})`,
+        'survey <- data.frame(type = c("start", "begin_group", "text", "select_one habitat", "geopoint", "end_group", "select_multiple meteo", "begin_repeat", "select_one espece", "integer", "end_repeat"),',
+        '  name = c("start", "group_site", "site", "habitat", "gps", NA, "meteo", "observation", "espece", "effectif", NA),',
+        '  "label::Français (fr)" = c(NA, "Site", "Site", "Habitat", "Position", NA, "Météo", "Observation", "Espèce", "Effectif", NA),',
+        '  "label::English (en)" = c(NA, "Site", "Site", "Habitat", "Location", NA, "Weather", "Observation", "Species", "Count", NA), check.names = FALSE)',
+        'choices <- data.frame(list_name = c("habitat", "habitat", "meteo", "meteo", "meteo", "espece", "espece", "espece"),',
+        '  name = c("prairie", "foret", "soleil", "pluie", "vent", "turmer", "parmaj", "erirub"),',
+        '  "label::Français (fr)" = c("Prairie", "Forêt", "Soleil", "Pluie", "Vent", "Merle noir", "Mésange charbonnière", "Rougegorge familier"),',
+        '  "label::English (en)" = c("Grassland", "Forest", "Sun", "Rain", "Wind", "Common blackbird", "Great tit", "European robin"), check.names = FALSE)',
+        `openxlsx::write.xlsx(list(survey = survey, choices = choices, settings = data.frame(form_title = "Relevé des oiseaux")), ${r(form)})`].join('\n') });
+      // opened: the export is recognised, the preview of its import comes back instead of a project
+      const o = await api('ouvrir', { chemin: xlsx });
+      verifier(o.kobo && !o.id && o.kobo.outil === 'kobo' && o.kobo.tables.map((x) => x.nom).join() === 'Relevé,observation' && o.kobo.table === 'Relevé'
+        && o.kobo.phrases.includes('Métadonnées retirées (6) : start, _id, _uuid, _submission_time, __version__, _index.'), `aperçu à l’ouverture : ${JSON.stringify(o).slice(0, 400)}`);
+      const a = await api('kobo_apercu', { chemin: xlsx, table: 'observation', garder: ['envoi'], formulaire: form });
+      verifier(a.lignes === 4 && a.parents.length === 1 && a.parents[0].table === 'Relevé' && a.parents[0].colonnes.includes('submission_time')
+        && a.formulaire.langue === 'Français (fr)' && a.coordonnees && a.metadonnees.find((m) => m.role === 'envoi').garde, `aperçu de la répétition : ${JSON.stringify(a).slice(0, 600)}`);
+      const p = await api('kobo_importer', { chemin: xlsx, nom: 'releve kobo.xlsx', table: 'observation', garder: ['envoi'],
+        parents: { Relevé: ['habitat', 'gps_longitude', 'gps_latitude', 'submission_time'] }, formulaire: form });
+      const noms = p.variables.map((v) => v.nom);
+      verifier(p.id && p.nom === 'releve kobo (observation).xlsx' && p.table === 'observation' && noms.join() === 'espece,effectif,habitat,gps_longitude,gps_latitude,submission_time'
+        && p.coordonnees && p.coordonnees.nom_x === 'gps_longitude' && p.coordonnees.systeme === 4326 && p.collecte.phrases.length > 3
+        && p.variables.find((v) => v.nom === 'espece').categories.join() === 'Merle noir,Mésange charbonnière,Rougegorge familier'
+        && p.variables.find((v) => v.nom === 'habitat').categories.join() === 'Prairie,Forêt', `import : ${JSON.stringify(p).slice(0, 600)}`);
+      const d = await api('donnees', { projet: p.id });
+      verifier(d.valeurs[d.variables.indexOf('gps_latitude')].join() === '43.61,43.61,43.65,' && d.valeurs[d.variables.indexOf('effectif')].join() === '2,1,3,1',
+        `valeurs jointes : ${JSON.stringify(d.valeurs)}`);
+      // as it is (the sheets to choose from), and the import redone from its settings (the engine restarted)
+      const brut = await api('ouvrir', { chemin: xlsx, brut: true });
+      verifier(Array.isArray(brut.choisir) && brut.choisir.join() === 'Relevé,observation', `tel quel : ${JSON.stringify(brut).slice(0, 200)}`);
+      const relance = await api('ouvrir', { chemin: xlsx, table: p.table, kobo: p.kobo });
+      verifier(relance.id !== p.id && relance.variables.map((v) => v.nom).join() === noms.join() && relance.nom === p.nom, `refait : ${JSON.stringify(relance.kobo)}`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${p.id} <- importer_collecte(`) && j.includes('table = "observation", garder = "envoi"'), 'journal : importer_collecte');
+      const en = await api('kobo_apercu', { chemin: xlsx }, 'en');
+      verifier(en.phrases[0] === 'KoboToolbox export (Excel workbook, 2 tables): the submissions table “Relevé”, 3 row(s).', `en anglais : ${en.phrases[0]}`);
+      let refus = '';
+      try { await api('ouvrir', { chemin: tableau(), collecte: true }); } catch (e) { refus = e.message; }
+      verifier(/essai\.csv n'est pas un export de KoboToolbox ni d'ODK Central/.test(refus), `un tableau ordinaire importé : « ${refus} »`);
+      // an ODK Central zip (one CSV per table, PARENT_KEY), sent by the browser as File › Open does
+      const odk = path.join(dossier, 'odk');
+      fs.mkdirSync(odk);
+      fs.writeFileSync(path.join(odk, 'releve.csv'), ['SubmissionDate,group_site-site,group_site-gps-Latitude,group_site-gps-Longitude,meteo,meta-instanceID,KEY,SubmitterName,ReviewState',
+        '2024-05-03T06:45:12.000Z,S1,43.61,3.87,soleil vent,uuid:a,uuid:a,Anne,approved', '2024-05-04T07:00:00.000Z,S2,43.65,3.9,pluie,uuid:b,uuid:b,Paul,'].join('\n'));
+      fs.writeFileSync(path.join(odk, 'releve-observation.csv'), ['espece,effectif,PARENT_KEY,KEY', 'turmer,2,uuid:a,uuid:a/observation[1]',
+        'parmaj,1,uuid:a,uuid:a/observation[2]', 'erirub,1,uuid:b,uuid:b/observation[1]'].join('\n'));
+      const zipf = path.join(dossier, 'releve.zip');
+      await api('console', { code: `zip::zip(${r(zipf)}, files = c("releve.csv", "releve-observation.csv"), root = ${r(odk)})` });
+      const envoi = await fetch(`http://127.0.0.1:${port}/api/televerser?nom=releve.zip`, { method: 'POST', body: fs.readFileSync(zipf), headers: { Cookie: cookie } });
+      const z = await envoi.json();
+      verifier(envoi.ok && z.kobo && z.kobo.outil === 'odk' && z.kobo.tables.map((x) => x.nom).join() === 'releve,observation', `archive envoyée : ${JSON.stringify(z).slice(0, 300)}`);
+      const pz = await api('kobo_importer', { chemin: z.chemin, nom: z.nom, table: 'observation', formulaire: form });
+      verifier(pz.variables.map((v) => v.nom).join() === 'espece,effectif,site,gps_longitude,gps_latitude,meteo_soleil,meteo_pluie,meteo_vent'
+        && pz.coordonnees && pz.coordonnees.nom_y === 'gps_latitude' && pz.nom === 'releve (observation).zip', `répétition d’ODK : ${pz.variables.map((v) => v.nom).join()}`);
+    });
     await etape('RDA (Hellinger, partielle, permutée par site) et analyse des correspondances', async () => {
       // 30 relevés de 6 espèces le long de deux gradients (température, sable), 5 sites
       let g = 11;
@@ -1552,6 +1620,85 @@ async function principal() {
       let refusHCA = '';
       try { await api('hca', { modele: nmds.id }); } catch (err) { refusHCA = err.message; }
       verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
+    });
+    await etape('document Quarto reproductible : l’export vers R des modèles cités à côté, chaque valeur en R, rendu par Quarto quand il est là', async () => {
+      // a PLS, a GLM and a PERMANOVA of 40 made-up relevés, cited by a document resolved as the
+      // interface resolves it (references.js, rendu_document.js), then written as a reproducible .qmd
+      let g = 21;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\thabitat\ttemp\tph\tsp1\tsp2\tsp3\tsp4\toiseaux\tbiomasse'];
+      for (let i = 1; i <= 40; i += 1) {
+        const temp = 8 + 10 * alea();
+        const h = ['bois', 'lande', 'prairie'][i % 3];
+        const sp = [temp, 20 - temp, h === 'bois' ? 8 : 2, 4].map((x) => Math.round(x * (0.5 + alea())));
+        lignes.push([`r${i}`, h, temp.toFixed(2), (6 + alea()).toFixed(2), ...sp, Math.round((temp / 3) * (0.5 + alea())), (2 + 0.3 * temp + alea()).toFixed(3)].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Reproductible' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const modeles = {
+        M1: await api('ajuster', { projet: q.id, type: 'PLS', x: [v.temp, v.ph, v.sp1, v.sp2], y: [v.biomasse], A: 2, nom: 'M1' }),
+        M2: await api('ajuster', { projet: q.id, type: 'GLM', x: [v.temp, v.habitat], y: [v.oiseaux], echelle: 'none', nom: 'M2', famille: 'poisson' }),
+        M3: await api('ajuster', { projet: q.id, type: 'PERMANOVA', x: [v.habitat, v.temp], y: [v.sp1, v.sp2, v.sp3, v.sp4], echelle: 'none', nom: 'M3',
+          options: { distance: 'bray', permutations: 99, graine: 3 } }),
+      };
+      verifier(![].concat((await api('export_r_possible', { projet: q.id, noms: Object.keys(modeles) })).sans_export).length, 'les trois s’exportent vers R');
+      const interfaceUrl = (f) => require('url').pathToFileURL(path.join(interfaceDir, f)).href;
+      const { formeReference, texteForme, separerCible } = await import(interfaceUrl('references.js'));
+      const { analyser, pluginReferences, versQmd, referencesReproductibles } = await import(interfaceUrl('rendu_document.js'));
+      const md = require('markdown-it')({ html: false, linkify: true }).use(pluginReferences);
+      const terme = [].concat(modeles.M2.coefficients_regression.terme)[1];
+      const valeurs = ['M1.Q2', 'M1.R2Y:%', 'M1.N', 'M1.vip.temp', 'M1.coef.temp', 'M1.RMSEcv', 'M1.cvanova.p', 'M1.gain', 'M2.AIC', `M2.coef.${terme}`, `M2.p.${terme}`,
+        'M2.deviance_expliquee', 'M2.Q2', 'M3.N', 'M3.K'];
+      const texte = `---\ntitle: "Essai"\n---\n\n${valeurs.map((c, i) => `- v${i + 1}: {{${c}}}`).join('\n')}\n\n{{M1.scores #fig-scores | Scores}}\n\n`
+        + '{{M2.table.coefficients #tbl-coef | Coefficients}}\n\n{{M3.permanova #fig-permanova | PERMANOVA}}\n\n{{M1.biplot | Biplot}}\n\n{{M1.methodes}}\n';
+      const analyse = analyser(md, texte);
+      const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      let figures = 0;
+      const resolus = analyse.refs.map((tok) => {
+        const ref = tok.meta.ref;
+        const c = separerCible(ref.cible, Object.keys(modeles));
+        const m = modeles[c.modele];
+        const base = { modele: m.id, chemin: c.chemin, legende: ref.legende, etiquette: ref.etiquette };
+        if (['scores', 'permanova', 'biplot'].includes(c.chemin[0])) {
+          figures += 1;
+          return { ...base, genre: 'figure', image: PNG, largeur: 900, hauteur: 580, numero: figures, nom: c.chemin[0], vue: c.chemin[0], variante: {} };
+        }
+        if (c.chemin[0] === 'table') return { ...base, genre: 'tableau', blocs: [{ entetes: ['x'], lignes: [['1']] }], numero: 1, nom: 'Coefficients', cle: c.chemin[1] };
+        if (c.chemin[0] === 'methodes') return { ...base, genre: 'texte', paragraphes: ['Les méthodes.'] };
+        const f = formeReference(m, c.chemin, ref);
+        return { ...base, genre: 'valeur', texte: texteForme(f, 'fr'), forme: f };
+      });
+      verifier(resolus.every((x) => !x.erreur), 'références résolues');
+      const ici = path.join(dossier, 'reproductible');
+      fs.mkdirSync(ici);
+      const rep = await api('document_reproductible', { projet: q.id, langue: 'fr', version: 'essai', nom: 'Essai', dossier: ici, ...referencesReproductibles(resolus) });
+      const refs = [].concat(rep.references);
+      const enDur = refs.map((x, i) => (x && x.raison ? `${analyse.refs[i].meta.ref.cible} (${x.raison})` : null)).filter(Boolean);
+      verifier(refs.slice(0, valeurs.length).every((x) => x && x.code) && enDur.length === 2 && /biplot/.test(enDur[0]) && /methodes/.test(enDur[1]),
+        `${valeurs.length} valeurs en R ; en dur : ${enDur.join(', ')}`);
+      verifier(['nuee.R', 'M1.R', 'M1 - donnees.csv', 'M2.R', 'M3.R'].every((f) => fs.existsSync(path.join(ici, 'Essai_R', f))) && [].concat(rep.relatifs).length === 7,
+        `à côté : ${[].concat(rep.relatifs).join(', ')}`);
+      const qmd = versQmd(texte, analyse, resolus, { fichierFigure: (x) => `Essai_figures/figure-${x.numero}.png`, langue: 'fr', titre: 'Essai', reproductible: rep });
+      verifier(/^```\{r\}\n#\| label: nuee-modeles/m.test(qmd.texte) && qmd.texte.includes('- v1: `r nuee_nombre(M1$composantes$Q2cum[2])`')
+        && qmd.texte.includes('#| label: fig-scores') && qmd.texte.includes('#| label: tbl-coef') && qmd.images.length === 1, 'le .qmd : son premier bloc, ses valeurs en R, ses blocs');
+      fs.writeFileSync(path.join(ici, 'Essai.qmd'), qmd.texte);
+      fs.mkdirSync(path.join(ici, 'Essai_figures'));
+      fs.writeFileSync(path.join(ici, 'Essai_figures', 'figure-3.png'), Buffer.from(PNG.split(',')[1], 'base64'));
+      // rendered by Quarto when the computer has it (with knitr and rmarkdown for R): the numbers of the page are Nuée's
+      const quarto = [process.env.QUARTO_PATH, ...(process.env.PATH || '').split(path.delimiter).map((d) => path.join(d, process.platform === 'win32' ? 'quarto.exe' : 'quarto')),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Quarto', 'bin', 'quarto.exe'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Quarto', 'bin', 'quarto.exe'),
+        '/usr/local/bin/quarto', '/opt/quarto/bin/quarto'].filter(Boolean).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+      if (!quarto || !rep.R.knitr || !rep.R.rmarkdown) {
+        console.log(`          (${quarto ? 'knitr ou rmarkdown absent' : 'Quarto absent'} : le .qmd n’est pas rendu)`);
+        return;
+      }
+      execFileSync(quarto, ['render', 'Essai.qmd', '--to', 'html'], { cwd: ici, env: { ...process.env, QUARTO_R: rep.R.bin }, stdio: 'pipe' });
+      const page = fs.readFileSync(path.join(ici, 'Essai.html'), 'utf8');
+      const rendus = Object.fromEntries([...page.matchAll(/<li>v(\d+): ([^<]*)<\/li>/g)].map((x) => [x[1], x[2].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')]));
+      const differents = resolus.slice(0, valeurs.length).map((x, i) => (rendus[i + 1] === x.texte ? null : `${valeurs[i]} : ${rendus[i + 1]} au lieu de ${x.texte}`)).filter(Boolean);
+      verifier(!differents.length && /id="fig-scores"/.test(page) && /id="tbl-coef"/.test(page) && /id="fig-permanova"/.test(page),
+        `rendu par Quarto : ${differents.join(', ') || 'les nombres de Nuée'}`);
+      console.log(`          (rendu par Quarto : ${valeurs.length} nombres, ${resolus.slice(0, 3).map((x) => x.texte).join(' ; ')}…)`);
     });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
@@ -1854,6 +2001,10 @@ async function principal() {
         const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, f), version: 'essai', langue });
         verifier(fs.existsSync(s.script) && !s.ecart && motif.test(fs.readFileSync(s.script, 'utf8')), `script ${f} : ${s.ecart || 'sans écart'}`);
       }
+      // (the compile dialog of a reproducible Quarto document lists the models without an export to R:
+      // distance sampling exports, so none here)
+      const sansExport = [].concat((await api('export_r_possible', { projet: q.id, noms: ['Distance'] })).sans_export);
+      verifier(sansExport.length === 0, `sans export vers R : ${JSON.stringify(sansExport)}`);
     });
     await etape('forêts aléatoires et arbres boostés (moteur/R/forets.R, boosting.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe, une présence

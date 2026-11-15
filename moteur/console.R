@@ -31,6 +31,7 @@ appel_ouverture <- function(chemin, table = NULL) {
   ext <- tolower(tools::file_ext(chemin))
   if (ext == "usp") return(sprintf("lire_projet(convertir_usp(%s))  # .usp converti par export_project", code_r(chemin)))
   if (ext %in% c("nuee", "json")) return(sprintf("lire_projet(%s)", code_r(chemin)))
+  if (ext == "zip") return(sprintf("projet_brut_collecte(%s%s)", code_r(chemin), if (!is.null(table)) sprintf(", table = %s", code_r(table)) else ""))
   if (!is.null(table)) return(sprintf("importer_tableau(%s, table = %s)", code_r(chemin), code_r(table)))
   sprintf("importer_tableau(%s)", code_r(chemin))
 }
@@ -63,7 +64,9 @@ journaliser <- function(nom, q, r) {
     c(commentaire, code_definition(projet(e$projet), e$definition, e$projet), sprintf("%s <- ajuster(%s, d)", id, e$projet))
   }
   lignes <- switch(nom,
-    ouvrir = if (!is.null(r$id)) sprintf("%s <- %s", r$id, appel_ouverture(q$chemin, q$table)),
+    # (un export de KoboToolbox ou d'ODK importé, ou ouvert tel quel : kobo.R)
+    ouvrir = if (!is.null(r$id)) sprintf("%s <- %s", r$id, if (!is.null(q$kobo)) appel_collecte(q$chemin, q$kobo) else appel_ouverture(q$chemin, q$table)),
+    kobo_importer = sprintf("%s <- %s", r$id, appel_collecte(q$chemin, q)),
     coller = c("# tableau collé, gardé dans un fichier de la session", sprintf("%s <- importer_tableau(%s)", r$id, code_r(r$fichier_colle))),
     importer_spectres = sprintf("%s <- importer_spectres(%s%s, nom = %s)", r$id, vecteur_r(as.character(unlist(q$chemins))),
                                 if (length(q$infos) && nzchar(q$infos)) sprintf(", infos = %s", code_r(q$infos)) else "", code_r(r$nom)),

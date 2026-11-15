@@ -40,6 +40,8 @@ File › Open (Ctrl+O):
       Stata .dta                      dBase .dbf, Weka .arff
       jamovi .omv                     spectra: JCAMP-DX .jdx, .dx, .jcm and SPC .spc (see Spectra)
       GeoPackage .gpkg (a layer of QGIS: see Maps and spatial data)
+    An export of KoboToolbox or ODK Central (.xlsx, .csv, or ODK's .zip) is recognised by its
+    columns and opens through its import (see Field data from KoboToolbox or ODK).
     The first column names the observations if it holds text, or if it is called "ID", "Obs",
     "Name"... (for an R file, the row names). Other text columns whose values all differ (one
     code per observation) become secondary identifiers: they serve as labels but don't enter
@@ -62,6 +64,8 @@ File › Open (Ctrl+O):
 File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).
+File › Import from KoboToolbox or ODK...: the phone surveys exported by KoboToolbox or ODK
+Central (see Field data from KoboToolbox or ODK).
 File › Import spectra: files of spectra made into one project (see Spectra).
 Dropping files on the window (drag and drop from Explorer) opens them the same way: JCAMP-DX or
 SPC spectra together make one project, as Import spectra; other files each open as with File ›
@@ -72,6 +76,45 @@ To try it: Help › Example project opens 120 made-up apples (four varieties, or
 conventional growing, a dozen measurements and a tasting score) with four ready models: a
 PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The
 original table, vergers.csv, is next to it (resources\exemple), to try opening a table.
+
+Field data from KoboToolbox or ODK
+----------------------------------
+Forms filled in on phones (KoboCollect, ODK Collect, Enketo) are exported by their server:
+KoboToolbox as an Excel workbook (a sheet for the submissions, one per repeat group) or a CSV
+file (semicolons), ODK Central as a .zip archive (one CSV per table) or its submissions CSV
+alone. File › Open recognises them by their columns (_id, _uuid, _submission_time, _index...;
+SubmissionDate, KEY, meta-instanceID...), as does dropping one on the window; File › Import
+from KoboToolbox or ODK... asks for the import, and refuses any other file. A dialog says in
+sentences what the import will do before doing it, and says it again at each setting changed:
+  - the table to analyse: the submissions, or a repeat group (one row per species observed, per
+    plant measured), with the columns of its parent tables joined to each row, all ticked by
+    default (the site's habitat and coordinates; a repeat within a repeat goes up both levels);
+  - the metadata dropped, listed (internal IDs, device, form version, the columns that link the
+    tables...); the submission date and time, the submitter, the submission ID, the start, end
+    and day of the survey and the validation status can be kept;
+  - group prefixes removed from names (group_site/altitude, group_site-altitude: altitude); two
+    questions with the same name in different groups keep their group (group_site_notes,
+    group_end_notes);
+  - a single choice (select_one) becomes a qualitative variable, a multiple choice
+    (select_multiple) one 0/1 column per choice named question_code (weather_rain): 1 chosen,
+    0 not, empty when the question wasn't answered; the export's own 0/1 columns are used when
+    it has them, never twice;
+  - a GPS point (geopoint), as text ("lat lon alt acc") or in columns, becomes gps_longitude,
+    gps_latitude, gps_altitude and gps_precision; the table's first point (or its parent's,
+    joined) becomes the project's coordinates, in WGS 84 (see Maps and spatial data);
+  - dates and times lose their fractions of a second and their time zone
+    (2024-05-03T08:12:45.123+02:00 becomes 2024-05-03 08:12:45, the phone's clock), so that
+    Nuée reads them as dates (see Dates as time).
+The XLSForm form (the workbook with the survey and choices sheets, downloaded from KoboToolbox
+or ODK Central), if given, tells each question's type, the choices' labels in the language
+chosen (label::English (en), label::Français (fr) or label; by default the interface's) and
+their order, which becomes the order of the categories; the columns then take the questions'
+names, whatever the export's headers (names or labels). Without the form, answers stay as the
+export writes them (codes, or labels for an export in labels), categories in alphabetical order,
+and a multiple choice without its 0/1 columns stays text. "Open as is" opens the chosen table
+unchanged (the sheet, or the CSV of the archive). The import is a project like any table opened,
+to save (Ctrl+S); the Methods text says the data were collected with KoboToolbox or ODK (and
+the form's title).
 
 Saving and getting your work back
 ---------------------------------
@@ -392,8 +435,9 @@ which Nuée installs with itself), commented in the export's language, in four p
   2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
      written without loss and categories in their order;
   3. the model: its X and Y terms (transformations, categories, cross terms), their
-     scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients,
-     CV-ANOVA, classification for a PLS-DA, test set;
+     scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients
+     (a PLS's with their 95% jackknife interval), RMSEE and RMSEcv, CV-ANOVA, classification
+     for a PLS-DA, test set;
   4. the results: the tables, the permutation test (commented out) and the plots (scores,
      loadings, VIP, observed / fitted, T2 and DModX).
 Format: R script (.R); or an R Markdown (.Rmd) or Quarto (.qmd) report, which adds the
@@ -444,12 +488,30 @@ in red, with the reason when you hover it. A model of the project not computed y
 when the document cites it, without opening its views. Numbers follow the document's language
 (0,65 in French, 0.65 in English), as do "Figure", "Table" and the Methods text.
 Compile: a Word file (.docx: headings, lists, tables, plots and captions in Word's styles), a
-PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd) with its plots in a
-folder next to it, the results written in for good. When Quarto is installed (quarto.org, or
-with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML from it, with what Quarto
-adds: a bibliography (bibliography: refs.bib in the header, [@key] in the text),
-cross-references, journal templates. A YAML header (title, author, date) at the top of the
-document is read; a line {{< pagebreak >}} starts a new page.
+PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd). When Quarto is
+installed (quarto.org, or with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML
+from it, with what Quarto adds: a bibliography (bibliography: refs.bib in the header, [@key] in
+the text), cross-references, journal templates. A YAML header (title, author, date) at the top
+of the document is read; a line {{< pagebreak >}} starts a new page.
+For Quarto, Compile's dialog asks for the results:
+  - written in: the values, plots (in a folder next to the .qmd) and tables as Nuée shows them;
+  - reproducible: R recomputes them from the raw data when Quarto renders the document. Next to
+    the .qmd, the folder "<name>_R" holds each cited model's Export to R (File › Export to R: the
+    script, its data as CSV) and nuee.R. The .qmd's first chunk runs those scripts again, each in
+    an environment of its own; each cited value becomes an inline R expression,
+    `r nuee_nombre(M1$components$Q2cum[2])`, that reads the recomputed value and writes it as
+    Nuée does (0.65, 71%, p < 0.001); a plot becomes an R chunk that draws it with the script's
+    code (in base R), a table a knitr::kable chunk of the script's objects. Correcting a value in
+    the CSV, then rendering again, recomputes all that R writes. What the scripts don't have stays
+    written in, and the .qmd's first chunk says so in a comment: a plot they don't draw (its
+    image), the coefficient of an OPLS, or of a PLS validated with the full model's centres and
+    weights (its script hasn't its interval), the Methods and Results texts (written by Nuée,
+    not recomputed), a model whose type has no export to R yet (the dialog says so first).
+    Before writing the .qmd, Nuée runs the scripts again and checks that each expression gives
+    back the value it shows; any one that differs stays written in. R is needed, with its
+    knitr and rmarkdown packages: Nuée has Quarto render with its own R when it has them
+    (otherwise Quarto takes the computer's R, or QUARTO_R's). In the browser, the .qmd and what
+    goes beside it come in a .zip.
 Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 33; @eriksson2006], @wold2001 in
 the sentence ("Wold et al. (2001)"), [-@wold2001] without the author. Typing @ lists the document's
 references, then Zotero's. The list of references comes at the end (under the last heading when it is
