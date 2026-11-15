@@ -272,7 +272,12 @@ invisible(ecrire_script(p5, d5, f_script, "moteur", m = m5))
 s <- readLines(f_script, encoding = "UTF-8")
 verifier("script R : les unités et descriptions en commentaire avant les données", any(s == "# Unités et descriptions des variables :") &&
            any(s == "# - densite (ind./ha) : Densité des adultes par hectare") && any(s == "# - altitude (m)"))
-rs <- system2(file.path(R.home("bin"), "Rscript"), c("--vanilla", shQuote(f_script)), stdout = TRUE, stderr = TRUE)
+# (dans le dossier de l'essai : ses graphiques vont dans son Rplots.pdf, pas dans le dépôt)
+rs <- local({
+  ici <- setwd(dossier)
+  on.exit(setwd(ici))
+  system2(file.path(R.home("bin"), "Rscript"), c("--vanilla", shQuote(f_script)), stdout = TRUE, stderr = TRUE)
+})
 verifier("le script tourne encore", is.null(attr(rs, "status")))
 p_piege <- decrire_variables(p4, list(list(variable = u4("altitude"), unite = "m", description = "a\nstop(\"non\")")))
 p_piege$variables[[which(vapply(p_piege$variables, function(v) identical(v$ids[1], "altitude"), TRUE))]]$description <- "a\nstop(\"non\")"  # (un projet reçu)
