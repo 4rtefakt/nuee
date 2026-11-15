@@ -1,0 +1,70 @@
+[
+    {
+        "key": "3ZIIWUFM",
+        "version": 7,
+        "library": {
+            "type": "user",
+            "id": 0,
+            "name": "My Library",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/users/0",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/users/0/collections/3ZIIWUFM",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 1,
+            "numItems": 2
+        },
+        "data": {
+            "key": "3ZIIWUFM",
+            "version": 7,
+            "name": "Thèse",
+            "parentCollection": false,
+            "relations": {}
+        }
+    },
+    {
+        "key": "DVLJM2HA",
+        "version": 8,
+        "library": {
+            "type": "user",
+            "id": 0,
+            "name": "My Library",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/users/0",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/users/0/collections/DVLJM2HA",
+                "type": "application/json"
+            },
+            "up": {
+                "href": "http://localhost:23119/api/users/0/collections/3ZIIWUFM",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 0,
+            "numItems": 1
+        },
+        "data": {
+            "key": "DVLJM2HA",
+            "version": 8,
+            "name": "Flamants",
+            "parentCollection": "3ZIIWUFM",
+            "relations": {}
+        }
+    }
+]

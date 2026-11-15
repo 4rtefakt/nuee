@@ -1,8 +1,9 @@
-// Builds the example project (Aide › Projet d'exemple): 120 apples, entirely made up by this
-// script from a seeded random generator. Writes vergers.csv (the table, as one would import
-// it) and vergers.json (the project with four models, made through the R server like in the
-// application).
-//   node exemple/creer_exemple.js [Rscript]
+// Builds the example project (Help › Example project): 120 apples, entirely made up by this
+// script from a seeded random generator. Writes orchards.csv (the table, as one would import
+// it) and orchards.json (the project with four models, made through the R server like in the
+// application), in English; with --langue fr, vergers.csv and vergers.json, the same apples in
+// French (the French interface opens them, and the engine's checks use them).
+//   node exemple/creer_exemple.js [Rscript] [--langue fr]
 //
 // How the values are made: each apple has a variety (four), a growing method (organic or
 // conventional), an orchard, and three hidden factors: ripeness, size and days in storage.
@@ -16,7 +17,29 @@ const net = require('net');
 const path = require('path');
 
 const ici = __dirname;
-const lanceur = process.argv[2] || process.env.RSCRIPT
+const args = process.argv.slice(2);
+const iLangue = args.indexOf('--langue');
+const LANGUE = iLangue >= 0 ? args.splice(iLangue, 2)[1] : 'en';
+// the same apples in each language: the file, its columns, the growing methods, the models' titles and notes
+const TEXTES = {
+  en: { fichier: 'orchards', bio: 'organic', conventionnel: 'conventional',
+    colonnes: ['fruit', 'variety', 'farming', 'orchard', 'weight', 'diameter', 'firmness', 'sugar', 'acidity', 'starch',
+      'dry_matter', 'polyphenols', 'colour_a', 'colour_b', 'juice', 'calcium', 'nitrogen', 'storage', 'taste_score'],
+    titres: ['Overview', 'Taste score', 'Varieties', 'Organic or conventional'],
+    notes: ['Made-up data. Colour the scores by “variety”: the four varieties separate on t1 and t2.',
+      'What makes the score: sugar, firmness, acidity (see the VIP and the coefficients).', null,
+      'S-plot: the variables that best separate the two farming methods are at the ends.'] },
+  fr: { fichier: 'vergers', bio: 'bio', conventionnel: 'conventionnel',
+    colonnes: ['fruit', 'variete', 'culture', 'verger', 'poids', 'diametre', 'fermete', 'sucre', 'acidite', 'amidon',
+      'mat_seche', 'polyphenols', 'couleur_a', 'couleur_b', 'jus', 'calcium', 'azote', 'stockage', 'note_gout'],
+    titres: ['Vue d’ensemble', 'Note de dégustation', 'Variétés', 'Bio ou conventionnel'],
+    notes: ['Données inventées. Colorer les scores par « variete » : les quatre variétés se séparent sur t1 et t2.',
+      'Ce qui fait la note : sucre, fermeté, acidité (voir les VIP et les coefficients).', null,
+      'Graphique S : les variables qui séparent le mieux les deux cultures sont aux extrémités.'] },
+};
+const T = TEXTES[LANGUE];
+if (!T) throw new Error(`unknown language: ${LANGUE}`);
+const lanceur = args[0] || process.env.RSCRIPT
   || (process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R', 'R-4.6.2', 'bin', 'Rscript.exe') : 'Rscript');
 const rscript = fs.existsSync(path.join(path.dirname(lanceur), 'x64', 'Rscript.exe')) ? path.join(path.dirname(lanceur), 'x64', 'Rscript.exe') : lanceur;
 
@@ -36,8 +59,7 @@ const VARIETES = {
 };
 
 function tableau() {
-  const lignes = [['fruit', 'variete', 'culture', 'verger', 'poids', 'diametre', 'fermete', 'sucre', 'acidite', 'amidon',
-    'mat_seche', 'polyphenols', 'couleur_a', 'couleur_b', 'jus', 'calcium', 'azote', 'stockage', 'note_gout']];
+  const lignes = [T.colonnes];
   let n = 0;
   for (const [variete, [poids0, ferm0, sucre0, acid0, ms0, poly0, a0, b0, amidon0, jus0]] of Object.entries(VARIETES)) {
     for (let i = 0; i < 30; i += 1) {
@@ -62,7 +84,7 @@ function tableau() {
       const azote = 520 - 110 * o + 25 * s + 28 * normale();
       const note = Math.min(10, Math.max(0, 5.2 + 0.7 * (sucre - 13) + 0.45 * (fermete - 7)
         - 0.07 * (acidite - 6) ** 2 + 0.0008 * (poly - 1000) + 0.3 * normale()));
-      const ligne = [`P${String(n).padStart(3, '0')}`, variete, bio ? 'bio' : 'conventionnel', 'ABC'[Math.floor(uniforme() * 3)],
+      const ligne = [`P${String(n).padStart(3, '0')}`, variete, bio ? T.bio : T.conventionnel, 'ABC'[Math.floor(uniforme() * 3)],
         arrondi(poids, 0), arrondi(diametre, 1), arrondi(fermete, 2), arrondi(sucre, 1), arrondi(acidite, 2), arrondi(amidon, 1),
         arrondi(matSeche, 1), arrondi(poly, 0), arrondi(couleurA, 1), arrondi(couleurB, 1), arrondi(jus, 1), arrondi(calcium, 1),
         arrondi(azote, 0), stockage, arrondi(note, 1)];
@@ -82,7 +104,7 @@ function portLibre() {
 }
 
 async function principal() {
-  const csv = path.join(ici, 'vergers.csv');
+  const csv = path.join(ici, `${T.fichier}.csv`);
   fs.writeFileSync(csv, tableau());
 
   const port = await portLibre();
@@ -96,7 +118,7 @@ async function principal() {
     serveur.on('exit', (code) => reject(new Error(`R s'est arrêté (code ${code}) : ${sortie.slice(-800)}`)));
   });
   const api = async (nom, q = {}) => {
-    const r = await fetch(`http://127.0.0.1:${port}/api/${nom}`, { method: 'POST', body: JSON.stringify(q), headers: { Cookie: `nuee_${port}=${jeton}` } });
+    const r = await fetch(`http://127.0.0.1:${port}/api/${nom}`, { method: 'POST', body: JSON.stringify(q), headers: { Cookie: `nuee_${port}=${jeton}`, 'X-Langue': LANGUE } });
     const j = await r.json();
     if (!r.ok) throw new Error(`${nom} : ${j.erreur}`);
     return j;
@@ -104,24 +126,21 @@ async function principal() {
   try {
     const p = await api('ouvrir', { chemin: csv });
     const uid = Object.fromEntries(p.variables.map((v) => [v.nom, v.uid]));
-    const x = ['poids', 'diametre', 'fermete', 'sucre', 'acidite', 'amidon', 'mat_seche', 'polyphenols', 'couleur_a',
-      'couleur_b', 'jus', 'calcium', 'azote', 'stockage'].map((n) => uid[n]);
+    const c = T.colonnes;  // fruit, variety, farming, orchard, the 14 measures, the tasting score
+    const x = c.slice(4, 18).map((n) => uid[n]);
     const modeles = [
-      { type: 'PCA', x, A: 0, nom: 'M1', titre: 'Vue d’ensemble',
-        note: 'Données inventées. Colorer les scores par « variete » : les quatre variétés se séparent sur t1 et t2.' },
-      { type: 'PLS', x, y: [uid.note_gout], A: 0, nom: 'M2', titre: 'Note de dégustation',
-        note: 'Ce qui fait la note : sucre, fermeté, acidité (voir les VIP et les coefficients).' },
-      { type: 'PLS-DA', x, classe: uid.variete, A: 3, nom: 'M3', titre: 'Variétés' },
-      { type: 'OPLS-DA', x, classe: uid.culture, A: 2, nom: 'M4', titre: 'Bio ou conventionnel',
-        note: 'Graphique S : les variables qui séparent le mieux les deux cultures sont aux extrémités.' },
+      { type: 'PCA', x, A: 0, nom: 'M1', titre: T.titres[0], note: T.notes[0] },
+      { type: 'PLS', x, y: [uid[c[18]]], A: 0, nom: 'M2', titre: T.titres[1], note: T.notes[1] },
+      { type: 'PLS-DA', x, classe: uid[c[1]], A: 3, nom: 'M3', titre: T.titres[2] },
+      { type: 'OPLS-DA', x, classe: uid[c[2]], A: 2, nom: 'M4', titre: T.titres[3], note: T.notes[3] },
     ];
     for (const { note, ...q } of modeles) {
       const m = await api('ajuster', { projet: p.id, ...q });
       if (note) await api('note_modele', { modele: m.id, note });
       console.log(`${q.nom} ${m.type} A=${m.A} R2X=${m.composantes.R2Xcum[m.A - 1].toFixed(2)} Q2=${m.composantes.Q2cum[m.A - 1].toFixed(2)}`);
     }
-    await api('enregistrer', { projet: p.id, chemin: path.join(ici, 'vergers.json') });
-    console.log('Écrit :', path.join(ici, 'vergers.json'));
+    await api('enregistrer', { projet: p.id, chemin: path.join(ici, `${T.fichier}.json`) });
+    console.log('Written:', path.join(ici, `${T.fichier}.json`));
   } finally {
     try { execFileSync('taskkill', ['/pid', String(serveur.pid), '/T', '/F'], { stdio: 'ignore' }); } catch { serveur.kill(); }
   }

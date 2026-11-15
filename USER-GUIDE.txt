@@ -1,22 +1,18 @@
-NUÉE — PCA, PLS, PLS-DA and OPLS, computed in R
-===============================================
+NUÉE — PCA, PLS, community ecology, models and maps, computed in R
+==================================================================
 (Guide en français : LISEZ-MOI-APPLICATION.txt)
 
 Getting started
 ---------------
-Two ways to install Nuée, without administrator rights; R is included in both.
-- From the network share: double-click "Lancer Nuee.cmd". Windows can't start the
-  application straight from a network share, so this launcher copies it to the computer (into
-  %LOCALAPPDATA%\Nuee) and starts it there. The first copy takes one or two minutes; after
-  that only the files changed on the share are copied again, and the application starts right
-  away. On the first start, "Nuée" shortcuts are made on the desktop and in the Start menu:
-  they start the application the same way (always up to date with the share).
-- With the installer: double-click "Nuee-Setup-<version>.exe" and follow the steps (for you
-  alone, or for every user of the computer).
-Either way, Nuée appears in Settings › Apps › Installed apps, where it can be uninstalled;
-projects and settings are kept.
+To install Nuée, double-click "Nuee-Setup-<version>.exe" and follow the steps: for you alone
+(no administrator rights needed) or for every user of the computer. R is included. Nuée
+appears in Settings › Apps › Installed apps, where it can be uninstalled; projects and
+settings are kept.
 If Windows shows "Windows protected your PC" (unknown publisher), click "More info", then
 "Run anyway".
+For IT departments installing Nuée on many computers (silent installation, Intune,
+Configuration Manager, Group Policy, turning the update check off): the deployment guide,
+https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md
 
 On macOS, R is included too: open Nuee-<version>-arm64.dmg (Apple silicon, macOS 14 or later)
 or Nuee-<version>-x64.dmg (Intel, macOS 13 or later) and drag Nuée into Applications. The
@@ -30,7 +26,7 @@ On Linux, Nuée uses the computer's R.
 - Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
   Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
   install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme",
-  "mgcv", "MASS", "rpart", "cluster")).
+  "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).
 .usp projects need python3. For another R than the PATH's: start Nuée with
 RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
 
@@ -45,6 +41,9 @@ File › Open (Ctrl+O):
       SPSS .sav, .zsav, .por          SAS .sas7bdat, .xpt
       Stata .dta                      dBase .dbf, Weka .arff
       jamovi .omv                     spectra: JCAMP-DX .jdx, .dx, .jcm and SPC .spc (see Spectra)
+      GeoPackage .gpkg (a layer of QGIS: see Maps and spatial data)
+    An export of KoboToolbox or ODK Central (.xlsx, .csv, or ODK's .zip) is recognised by its
+    columns and opens through its import (see Field data from KoboToolbox or ODK).
     The first column names the observations if it holds text, or if it is called "ID", "Obs",
     "Name"... (for an R file, the row names). Other text columns whose values all differ (one
     code per observation) become secondary identifiers: they serve as labels but don't enter
@@ -67,6 +66,8 @@ File › Open (Ctrl+O):
 File › Paste a table (Ctrl+V): cells copied from Excel, LibreOffice, Google Sheets or jamovi
 become a project (the first row gives the variable names). The project has no file yet: save
 it (Ctrl+S).
+File › Import from KoboToolbox or ODK...: the phone surveys exported by KoboToolbox or ODK
+Central (see Field data from KoboToolbox or ODK).
 File › Import spectra: files of spectra made into one project (see Spectra).
 Dropping files on the window (drag and drop from Explorer) opens them the same way: JCAMP-DX or
 SPC spectra together make one project, as Import spectra; other files each open as with File ›
@@ -76,7 +77,49 @@ The last files opened are in File › Open recent.
 To try it: Help › Example project opens 120 made-up apples (four varieties, organic or
 conventional growing, a dozen measurements and a tasting score) with four ready models: a
 PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The
-original table, vergers.csv, is next to it (resources\exemple), to try opening a table.
+original table, orchards.csv, is next to it (resources\exemple), to try opening a table.
+
+Field data from KoboToolbox or ODK
+----------------------------------
+Forms filled in on phones (KoboCollect, ODK Collect, Enketo) are exported by their server:
+KoboToolbox as an Excel workbook (a sheet for the submissions, one per repeat group) or a CSV
+file (semicolons), ODK Central as a .zip archive (one CSV per table) or its submissions CSV
+alone. File › Open recognises them by their columns (_id, _uuid, _submission_time, _index...;
+SubmissionDate, KEY, meta-instanceID...), as does dropping one on the window; File › Import
+from KoboToolbox or ODK... asks for the import, and refuses any other file. A dialog says in
+sentences what the import will do before doing it, and says it again at each setting changed:
+  - the table to analyse: the submissions, or a repeat group (one row per species observed, per
+    plant measured), with the columns of its parent tables joined to each row, all ticked by
+    default (the site's habitat and coordinates; a repeat within a repeat goes up both levels);
+  - the metadata dropped, listed (internal IDs, device, form version, the columns that link the
+    tables...); the submission date and time, the submitter, the submission ID, the start, end
+    and day of the survey and the validation status can be kept;
+  - group prefixes removed from names (group_site/altitude, group_site-altitude, or with the
+    separator chosen for a KoboToolbox export, group_site.altitude: altitude); two questions
+    with the same name in different groups keep their group (group_site_notes,
+    group_end_notes), with the form even when an ODK export leaves out the groups;
+  - a single choice (select_one) becomes a qualitative variable, a multiple choice
+    (select_multiple) one 0/1 column per choice named question_code (weather_rain): 1 chosen,
+    0 not, empty when the question wasn't answered (even where ODK writes 0); the export's own
+    0/1 columns are used when it has them, never twice, and with the form a choice they lack
+    (ODK writes columns only for the choices picked at least once) gets its column too;
+  - a GPS point (geopoint), as text ("lat lon alt acc") or in columns, becomes gps_longitude,
+    gps_latitude, gps_altitude and gps_precision; the table's first point (or its parent's,
+    joined) becomes the project's coordinates, in WGS 84 (see Maps and spatial data);
+  - dates and times lose their fractions of a second and their time zone
+    (2024-05-03T08:12:45.123+02:00 becomes 2024-05-03 08:12:45, the phone's clock), so that
+    Nuée reads them as dates (see Dates as time).
+The XLSForm form (the workbook with the survey and choices sheets, downloaded from KoboToolbox
+or ODK Central), if given, tells each question's type, the choices' labels in the language
+chosen (label::English (en), label::Français (fr) or label; by default the interface's) and
+their order, which becomes the order of the categories; the columns then take the questions'
+names, whatever the export's headers (names or labels), and a multiple choice exported as one
+column of labels gets its 0/1 columns from them. Without the form, answers stay as the export
+writes them (codes, or labels for an export in labels), categories in alphabetical order, and a
+multiple choice without its 0/1 columns stays text. "Open as is" opens the chosen table unchanged
+(the sheet, or the CSV of the archive). The import is a project like any table opened, to save
+(Ctrl+S); the Methods text says the data were collected with KoboToolbox or ODK (and the form's
+title).
 
 Saving and getting your work back
 ---------------------------------
@@ -121,8 +164,7 @@ installer is downloaded and checked (its SHA-256 checksum must be the one GitHub
 Nuée closes (offering to save the projects you changed), installs it and starts again. For an
 installation for all users, Windows asks for permission. Help › Check for updates does the
 same at any time, even with the start-up check off; Help › Look for a new version at
-start-up turns the check off. The copy started from the network share doesn't look: it is
-updated with the share.
+start-up turns the check off.
 
 The explorer (on the left)
 --------------------------
@@ -178,6 +220,75 @@ included) and makes a new model.
 Before fitting, the application checks the data: variables or observations with more than
 50 % missing values, constant variables. If there are any, it lists them and offers "Exclude
 them and fit" or "Fit anyway".
+
+Which analysis? (Model › Which analysis?)
+-----------------------------------------
+Model › Which analysis? (also a button of the start page, next to New model, and Ctrl+K): a few
+questions in plain words, then the analysis that answers them, already set up.
+  - Your question: compare groups or periods; the effect of variables on one response; many
+    species at once (how the composition changes, one model per species, the species that
+    characterize each group); a trend over time or a monitoring index; a density or an
+    abundance (distance sampling); where (maps, spatial autocorrelation); explore or summarise a
+    table; predict or classify; diversity and species richness; before-after with controls
+    (BACI).
+  - The response: the variable measured, and its kind: a measurement, a count (with many zeros
+    or not), a presence-absence (0 or 1), a proportion between 0 and 1, a class (a qualitative
+    variable), a table of species (one column per species), or the distances to the animals
+    detected (one row per detection).
+  - The design: the same sites or plots measured several times (the site), years or dates (the
+    time), a BACI design (the unit), spatial coordinates, lines or points (distance sampling).
+  - The variables: the explanatory variables (X), or the groups.
+Nuée proposes the answers from the project's variables (as Variable statistics reads them): a
+response of whole numbers from 0 is a count, of 0 and 1 a presence-absence, between 0 and 1 a
+proportion; "many zeros" when at least a quarter of the values are 0, and 15 points more than a
+Poisson distribution of the same mean would give (the sentence under the response gives both);
+the site is a qualitative variable named like one (site, station, plot, transect...) whose
+categories repeat; the time a variable named like a year or a date, or whole numbers between
+1900 and 2100; the species the columns of numbers zero or more that have zeros (four at least);
+the coordinates the project's, or those its variables' names propose; the distances a variable
+named like them, and the other columns of distance sampling by the names New model proposes
+them from (Distance's Sample.Label, Effort, Region.Label, Area, size, or transect, longueur,
+région, aire, taille); points rather than lines when the transect's column is named like a point
+or a station. Every answer can be changed.
+On the right: the recommended analysis, why, its main conditions and notes for the answers given
+(the random effect by site, the residual autocorrelation of successive years, the adjusted means
+after comparing groups, a proportion that reaches 0 or 1...), what will be filled in, what is
+left to complete, and a button. It opens New model already filled in (type, distribution, roles,
+transformation, curves, random effect, cross-validation groups, and the analysis's own settings,
+such as an RDA's Hellinger transformation, TRIM's site and time, or the transect, effort,
+stratum, area and group size of distance sampling), or the right view
+(Statistical tests in the right mode, Series with its trends, Map, Spatial autocorrelation,
+Rarefaction, Variable statistics), or New variable with a diversity index. One model per species
+opens New model for the first species, then One model per response with the others ticked. The
+alternatives below open the same way. The answers are kept until Nuée closes: cancel New model
+and come back to try another.
+The main choices:
+  - a count: the negative binomial when it varies more than a Poisson distribution allows (a
+    variance beyond 1.5 times the mean) or has many zeros (many zeros don't always mean zero
+    inflation, Warton 2005: compare with the zero-inflated Poisson by AIC), otherwise Poisson; a
+    presence-absence: logistic regression; a proportion: beta regression; a positive, skewed
+    measurement: gamma (or its log); a measurement with zeros: Tweedie; otherwise the linear
+    model; with the same sites measured several times, a random effect by site and
+    cross-validation by site;
+  - groups compared: the test between two variables (the one their types call for), paired by
+    site when each site comes once in each group (no more observations than sites × groups),
+    otherwise the mixed model and its adjusted means; for counts, presences and proportions,
+    their GLM;
+  - many species: RDA after the Hellinger transformation with quantitative X, PERMANOVA with
+    groups, NMDS without X; indicator species; one model per species;
+  - a trend: TRIM for counts by site and year (one row per site and year: no more observations
+    than sites × years; otherwise a GLM, and TRIM after Edit › Summarize by group); a
+    measurement on several sites: the mixed model with the year as X; a single series: Series
+    and its trends;
+  - predict: PLS or PLS-DA with many X (20 or more, or half as many as the observations), the
+    random forest otherwise, boosted trees for counts and presences;
+  - a density or an abundance: distance sampling, the distances as Y, lines or points, its
+    columns pre-filled from their names; the units (m, km and km² until changed) are left to
+    check, and a missing transect or effort to complete; without the strata's areas (or with
+    areas of 0), the density only;
+  - where: the map, then Moran's I and a GAM's spatial smooth; the Mantel test for species;
+  - explore: PCA, NMDS for species; diversity: rarefaction.
+Advice, not a rule: the conditions are checked after the fit (Summary › Model conditions).
 
 Plots: colours and labels
 -------------------------
@@ -247,7 +358,10 @@ Excel (one sheet per table), CSV, tab-separated text, R (.rds: a list of tables;
 the last ones, one file per table ("M1.sav", "M1 - variables.sav"...). Qualitative variables
 stay qualitative (R factors, SPSS and Stata value labels, jamovi nominal variables). For SPSS,
 Stata, SAS and dBase, variable names are made valid (unaccented letters, digits, "_"); the
-original name becomes the variable label.
+original name becomes the variable label. The variables' units and descriptions (Edit › Units
+and descriptions) go into a "Variables" sheet of an Excel workbook, read back when Nuée opens
+it, a "Variables" table of a GeoPackage, the descriptions of a jamovi file and the attributes
+of an R table (see Cleaning the data).
 SAS: transport format version 5, which SAS reads with libname xport (names of 8 characters,
 labels of 40, text of 200 at most). dBase: text in Windows-1252; in LibreOffice, choose the
 "Western Europe (Windows-1252)" character set when opening. The files written were opened in
@@ -316,15 +430,18 @@ Export to R (script, R Markdown, Quarto)
 ----------------------------------------
 File › Export to R: a file that refits the model without Nuée, with R alone, to send to a
 colleague or attach to a paper. The calculation is written for that model alone, in plain R
-with no package (a regression: lm, or nlme and mgcv, which come with R), commented in the
-export's language, in four parts:
+with no package (a regression: lm, or nlme and mgcv, which come with R; an NMDS: MASS, which
+comes with R too; TRIM and distance sampling, and boosted trees with rpart: the functions of
+Nuée's engine, copied into the script; a random forest, the one exception: the ranger package,
+which Nuée installs with itself), commented in the export's language, in four parts:
   1. the functions: the NIPALS algorithm, the cross-validation, and only what this model
      uses (missing values, spectral preprocessing, OPLS...);
   2. the data, in the script or in a CSV file next to it ("M1 - donnees.csv"), numbers
      written without loss and categories in their order;
   3. the model: its X and Y terms (transformations, categories, cross terms), their
-     scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients,
-     CV-ANOVA, classification for a PLS-DA, test set;
+     scaling, the fit, then R2 and Q2, T2 and DModX with their limits, VIP, coefficients
+     (a PLS's with their 95% jackknife interval), RMSEE and RMSEcv, CV-ANOVA, classification
+     for a PLS-DA, test set;
   4. the results: the tables, the permutation test (commented out) and the plots (scores,
      loadings, VIP, observed / fitted, T2 and DModX).
 Format: R script (.R); or an R Markdown (.Rmd) or Quarto (.qmd) report, which adds the
@@ -361,7 +478,11 @@ their values:
   {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
   {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
   {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
-A plot, a table or the Methods text goes alone on its line. Plots and tables are numbered in
+  {{M1.resultats}} (Results text: the fit, each coefficient with its interval and p, as a factor
+  or an odds ratio for a log or logit link, the significant terms, curves, random effects; for a
+  PCA, PLS or OPLS, the variance explained, Q², CV-ANOVA and the most important variables)
+A plot, a table, the Methods text or the Results text goes alone on its line. Model › Text for
+the Methods section shows the Results text under the Methods. Plots and tables are numbered in
 order (Figure 1, Table 1); with a label, {{M1.scores #fig-scores | caption}}, {{ref:fig-scores}}
 writes "Figure 1" anywhere in the text. Type {{ to list the project's models, then what the one
 chosen offers, with its current value; Insert, in the toolbar, does the same from menus, and a
@@ -371,12 +492,30 @@ in red, with the reason when you hover it. A model of the project not computed y
 when the document cites it, without opening its views. Numbers follow the document's language
 (0,65 in French, 0.65 in English), as do "Figure", "Table" and the Methods text.
 Compile: a Word file (.docx: headings, lists, tables, plots and captions in Word's styles), a
-PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd) with its plots in a
-folder next to it, the results written in for good. When Quarto is installed (quarto.org, or
-with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML from it, with what Quarto
-adds: a bibliography (bibliography: refs.bib in the header, [@key] in the text),
-cross-references, journal templates. A YAML header (title, author, date) at the top of the
-document is read; a line {{< pagebreak >}} starts a new page.
+PDF, an HTML page (a single file, plots included), or a Quarto file (.qmd). When Quarto is
+installed (quarto.org, or with RStudio), "Compile with Quarto" makes Word, PDF (Typst) or HTML
+from it, with what Quarto adds: a bibliography (bibliography: refs.bib in the header, [@key] in
+the text), cross-references, journal templates. A YAML header (title, author, date) at the top
+of the document is read; a line {{< pagebreak >}} starts a new page.
+For Quarto, Compile's dialog asks for the results:
+  - written in: the values, plots (in a folder next to the .qmd) and tables as Nuée shows them;
+  - reproducible: R recomputes them from the raw data when Quarto renders the document. Next to
+    the .qmd, the folder "<name>_R" holds each cited model's Export to R (File › Export to R: the
+    script, its data as CSV) and nuee.R. The .qmd's first chunk runs those scripts again, each in
+    an environment of its own; each cited value becomes an inline R expression,
+    `r nuee_nombre(M1$components$Q2cum[2])`, that reads the recomputed value and writes it as
+    Nuée does (0.65, 71%, p < 0.001); a plot becomes an R chunk that draws it with the script's
+    code (in base R), a table a knitr::kable chunk of the script's objects. Correcting a value in
+    the CSV, then rendering again, recomputes all that R writes. What the scripts don't have stays
+    written in, and the .qmd's first chunk says so in a comment: a plot they don't draw (its
+    image), the coefficient of an OPLS, or of a PLS validated with the full model's centres and
+    weights (its script hasn't its interval), the Methods and Results texts (written by Nuée,
+    not recomputed), a model whose type has no export to R yet (the dialog says so first).
+    Before writing the .qmd, Nuée runs the scripts again and checks that each expression gives
+    back the value it shows; any one that differs stays written in. R is needed, with its
+    knitr and rmarkdown packages: Nuée has Quarto render with its own R when it has them
+    (otherwise Quarto takes the computer's R, or QUARTO_R's). In the browser, the .qmd and what
+    goes beside it come in a .zip.
 Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 33; @eriksson2006], @wold2001 in
 the sentence ("Wold et al. (2001)"), [-@wold2001] without the author. Typing @ lists the document's
 references, then Zotero's. The list of references comes at the end (under the last heading when it is
@@ -387,14 +526,25 @@ style), in the document's language. Where the references come from (the Cite but
     BibTeX's automatic export keeps it up to date: a key not found has the file read again;
   - Zotero on this computer (Zotero 7 or later, with Settings › Advanced › "Allow other applications
     on this computer to communicate with Zotero" ticked): its references are searched as you type @,
-    or in Cite › Insert a citation, in the whole library or in one of its collections; their keys are
-    Zotero's own (Better BibTeX's when it is installed). With the Better BibTeX plugin, Cite › Pick in
-    Zotero opens Zotero's own picker, the page given there included. Nuée only reads the library;
+    or in Cite › Insert a citation, in My Library or in a group library (those Zotero syncs, under
+    My Library in its window), whole or one of its collections; the library chosen in Insert a
+    citation is kept, and typing @ searches it. Their keys are Zotero's own (Better BibTeX's when it
+    is installed). With the Better BibTeX plugin, Cite › Pick in Zotero opens Zotero's own picker, in
+    all its libraries, the page given there included. Nuée only reads the libraries. When Zotero
+    doesn't list its group libraries, Insert a citation says why and offers My Library alone;
   - BibTeX pasted (Cite › Paste BibTeX references).
-The document keeps a copy of the references it cites: sent to someone without the .bib, it still cites
-them (Cite › The document's references lists them, and removes those no longer cited). Compiled for
-Quarto, the citations stay as they are, the references cited in a .bib beside the .qmd, so that Quarto
-writes them in any journal's style (csl: style.csl in the header; the file is copied beside the .qmd).
+A key is unique within a Zotero library, not across libraries: two different works can have the same
+key in My Library and in a group (bechet2019). A reference from Zotero whose key the document already
+gives to another work (from another library, or from a linked file) is cited with a letter added,
+@bechet2019a, and the status bar says so; the same item cited again, or the same work copied into
+another library (the same DOI, or the same title, year and first author), keeps the key the document
+has for it, whichever key Zotero gives it there. A file linked afterwards that gives the key of a
+reference kept from Zotero to another work: the file's is the one cited, and the status bar says so.
+The document keeps a copy of the references it cites, with the library and item each one from Zotero
+came from: sent to someone without the .bib, it still cites them (Cite › The document's references
+lists them, and removes those no longer cited). Compiled for Quarto, the citations stay as they are,
+the references cited in a .bib beside the .qmd, so that Quarto writes them in any journal's style
+(csl: style.csl in the header; the file is copied beside the .qmd).
 A reference's language (Zotero's Language field: fr, de...) goes with it: styles that put English
 titles in title case, as Quarto's default one does, then leave a French title as it is written.
 Each document opens in a tab of its own. Plots in documents and model reports are drawn in the light
@@ -413,24 +563,23 @@ View › R console (Ctrl+J): a panel below the tabs, with
   - a prompt to type R, run in the application's R session. m is the model shown, p its
     project; P1, M4... the open projects and models, by their names in the log. For example:
     m$statistiques$variables, summary(p$donnees), plot(m$T[, 1], m$T[, 2]) (the plot shows in
-    the console), modeles(), projets(), definition("M4").
+    the console), models(), projects(), definition("M4").
     Enter runs the command, Shift+Enter starts a new line, ↑ and ↓ recall commands.
     Tab completes the name begun: objects, m$... and p$... (the names they hold), the
     arguments of the function whose parenthesis is open; when several fit, a list opens
     (arrows, then Tab or Enter). The application's shortcuts (Ctrl+S, Ctrl+K...) also work
     while typing.
 Changing a project in the console (p$donnees[...] <- ...) changes it in the application.
-Correcting the engine: dossier_moteur() gives the folder of the application's R files; after
-a correction, recharger_moteur() reads them again, then refit the model. For the copy started
-from the network share, this folder is the copy made on the computer: at the next start, the
-share's copy replaces it; to keep a correction, make it in the same file on the share
-(application\resources\moteur\R).
+Correcting the engine: engine_folder() gives the folder of the application's R files; after
+a correction, reload_engine() reads them again, then refit the model. Updating Nuée
+replaces these files.
 A long command blocks the application until the computation ends.
-Checking the engine: verifier_moteur() refits the imported models of the open projects and
+Checking the engine: check_engine() refits the imported models of the open projects and
 compares them with the values stored in their files (R2X, R2Y, Q2), validated like the files;
-verifier_moteur("folder") does the same for the .usp and .json files of a folder. To do after a
+check_engine("folder") does the same for the .usp and .json files of a folder. To do after a
 correction of the engine. Q2 counts in the verdict, except a PCA's, only close (see "What
-differs").
+differs"). The French names of these helpers (modeles(), projets(), dossier_moteur(),
+recharger_moteur(), verifier_moteur()) work too.
 
 Model report
 ------------
@@ -438,6 +587,42 @@ File › Model report (or right-click on the model): a PDF or Word (.docx) docum
 title, a comment and the parts ticked (summary, scores, loadings, DModX, VIP, coefficients,
 CV-ANOVA, classification, list of variables...). Plots are formatted as in their open panels.
 The document opens once written.
+
+Figures for publication
+-----------------------
+Plots › Compose a figure… (or right-click a plot › Add to a figure, or right-click the project
+in the explorer): plots side by side in one figure, at the size a journal prints it, for a paper.
+  - Panels: the plots open in the window, of any model or of the project (scores, loadings,
+    effects, the map, series...): "Add an open plot..." lists them, the plot in front is the
+    first. Each gets its letter in the order of the list (the arrows change it): A, B, C, or
+    a, b, c, (A), (a), bold or not, in the corner chosen. A panel takes one cell of the grid,
+    or two columns, or two rows; the grid (rows × columns: 1 × 2, 2 × 2, 1 × 3...) grows when a
+    panel added doesn't fit, and a panel that has no room is shown in red.
+  - Size: the journal's width in millimetres: one column (85 or 90 mm), one and a half (114 or
+    140 mm), two columns (174 or 190 mm), or another; the height given, or from the panels (the
+    shape of the plots on screen).
+  - Text and lines: the text size in points once printed (tick labels, axis titles, legends:
+    6 to 8 pt for most journals; the labels by the points and the notes in proportion), the
+    width of the curves' lines in points (axes and grid half of it), the plots' titles (hidden by
+    default: the letter and the caption are enough) and legends.
+  - Export: PDF (vector, fonts embedded, the page exactly the figure's size), SVG (vector, sized
+    in millimetres), or PNG and TIFF at 300 or 600 dpi (dots per inch), that resolution written in
+    the file (PNG's pHYs, TIFF's resolution tags) for journals' checks; the TIFF compressed by
+    LZW, losslessly, or not compressed. In a browser, the PDF goes through its print window
+    (choose "Save as PDF", no margins).
+  - Maps on a background (OpenStreetMap, IGN): in the file, the points, legend and colour scale
+    are vectors over a picture of the map's tiles at the export's resolution (300 dpi in a PDF
+    or SVG), fetched again for it from a closer zoom level than the preview's: more detail,
+    smaller place names. Each map asks its tile server for at most 200 tiles, from at most two
+    zoom levels above the screen's and none beyond level 19; the status bar says when that
+    leaves the background less sharp than asked. The attribution (© OpenStreetMap contributors,
+    © IGN) stays in a corner of the map.
+Each plot is drawn as in its view when it was added (axes, colours, labels, the titles of
+Format plot, zoom), in the light theme, without the selection, on white; the refresh button of a
+panel takes its open view's settings again. The figure is kept in the project and saved with it
+(in the explorer, under Figures: open, export, rename, duplicate, delete); it always uses the
+latest fit of each model (a model not computed is computed when the figure is drawn): after
+refitting, export it again. Edit › Undo leaves figures alone.
 
 Variable statistics
 -------------------
@@ -526,6 +711,101 @@ without a season are left out of the test, and counted. The seasonal test takes 
 independent: autocorrelation from one month to the next makes p too small, and Allow for
 autocorrelation doesn't apply to it (Hirsch and Slack, 1984, give a correction, not done here).
 The Test column gives each line's test; the correction over the lines stays the same.
+
+One model per response
+----------------------
+Model › One model per response (for a regression: LM, LMM, GLM or GAM): the same model, its
+terms, random effects, distribution, curves, observations and the transformation of its
+response, fitted to each response ticked, one species after another (a filter and All / None
+help pick them). For each term, the p-values are corrected over the responses: Benjamini–
+Hochberg (FDR) by default, or Holm, or Bonferroni. The view shows, for the term chosen: each
+response's coefficient with its 95 % interval as a forest plot, in red where the corrected p is
+at most 0.05 (a curve: its edf); the term's effect in small multiples, one small plot per
+response (36 at most); and a table with each model's N, AIC, R² and Q². A response that can't be
+fitted is named with the reason, and the others are kept. "Also keep each model in the project"
+adds them all, each with its own views.
+
+Maps and spatial data
+---------------------
+Plots › Map (or in the explorer, under the project): the observations on a map. The first time,
+choose the project's coordinates: two of its variables, X (east, or the longitude) and Y (north,
+or the latitude), and their coordinate system: longitudes and latitudes in degrees (WGS 84),
+Lambert-93, the CC zones, Lambert II étendu (NTF), a UTM zone (another EPSG code: 326xx north,
+327xx south), LAEA Europe, web Mercator, or plane coordinates in metres of another system
+(distances stay right, without a background map). Nuée proposes them from the variables' names
+(lon/lat, X_L93/Y_L93, X/Y...). They are saved with the project, and Ctrl+Z takes them back.
+The map draws the points with the same scale on both axes. Colour: a variable of the project, or
+a column of a fitted model's results (scores, residuals, fitted values, clusters...); Size: a
+quantitative variable or column; Labels: the observations' names. Background: none by default,
+so nothing leaves the computer; OpenStreetMap, the IGN map or IGN's aerial photographs (France)
+are downloaded when chosen, and their servers then receive the area shown. A box, lasso or click
+selects observations, shared with the project's models as in the other plots.
+Conversions between systems are written in Nuée (Lambert, transverse Mercator, LAEA formulas;
+NTF moved to WGS 84 by IGN's three translations, to about a metre; RGF93 and ETRS89 taken as
+WGS 84): they match PROJ, the library QGIS uses, to the micrometre.
+
+GeoPackage (.gpkg), the format of QGIS: File › Open reads one of its layers (Nuée asks which when
+there are several) as a table; points give two coordinate columns (X and Y, or longitude and
+latitude), lines and polygons their centre (the centroid of a polygon's area), and the project's
+coordinates are set. File › Export data and a model's Export write a GeoPackage when the project
+has coordinates: one point per observation with all its columns, a model's other result tables
+beside it; QGIS opens it with its coordinate system.
+
+Raster values (Edit › Add raster values…, or the button on the map): an elevation, a slope, a
+land cover, a climate layer… read from raster files at each observation's position, and added
+to the project as new variables, one per band. Choose one or several files: GeoTIFF (.tif, as
+QGIS, IGN's BD ALTI and RGE ALTI, Copernicus, CORINE, WorldClim or CHELSA write it) or ESRI
+ASCII grids (.asc, with their .prj). In the browser version, type each file's full path
+(several: separated by ";"): the engine reads the files where they are. Before adding, each
+file shows its size, format, compression, cells and their size, bands and their type,
+coordinate system, no-data value, and how many observations fall in it; a file that can't be
+read says why. For each file, choose the value: the cell holding the observation (classes,
+land cover; proposed for 8-bit integers and palettes), the bilinear interpolation of the four
+nearest cells (continuous values; proposed for reals), or the mean, or the majority class, of
+the cells whose centre is within a radius in metres (a tie goes to the class of the
+observation's own cell, then to the smallest; with no centre within the radius, the
+observation's own cell). The values are those of terra::extract. An observation without
+coordinates, outside the raster or on a cell without a value gets a missing value, and the
+result counts each case. Each band gets a name (its description in the file, or the file's
+name), which you can change; a name already taken becomes "name (2)". Files side by side with
+the same bands, type, system and cells (the tiles of a DEM) are proposed as one raster: one
+variable per band, each observation taking the value of the tile that holds it (a circle
+takes the cells of every tile). Edit › Undo (Ctrl+Z) removes the variables. They are saved
+with the project like any other, and remember where they come from: the Methods text of a
+model that uses them says which files, cell size, system and method gave them. The R console
+shows the call, ajouter_valeurs_rasters(...), and what it gave.
+The files are read in Nuée, without GDAL, and only the strips or tiles that hold observations:
+a national DEM stays quick (a fraction of a second for a hundred observations in an
+uncompressed or Deflate file, one to three seconds with LZW, decoded in R). Read: classic TIFF
+and BigTIFF, in strips or tiles, bands interleaved or separate; uncompressed, LZW, Deflate,
+PackBits, LZMA and ZSTD (ZSTD with R 4.4 and later), with predictors 2 and 3; integers of 8, 16
+and 32 bits, reals of 32 and 64 bits; GDAL's no-data value, scale, offset and band names; the
+georeferencing (ModelPixelScale and ModelTiepoint, ModelTransformation, or a .tfw file), pixels
+as areas or as points. The raster's coordinate system comes from its EPSG code, or its
+parameters, and must be one Nuée converts (WGS 84, ETRS89, RGF93, Lambert-93, CC42 to CC50,
+Lambert II étendu, UTM, LAEA Europe, web Mercator): another one is refused with its code;
+reproject the raster in QGIS (Raster › Projections › Warp) or with gdalwarp. A raster without a
+coordinate system is taken in the project's. Refused, with a message: JPEG, WebP, LERC, JPEG
+2000 and CCITT compression, values of 1, 2, 4, 12 or 24 bits, 16-bit reals, complex numbers,
+YCbCr colours, ground control points (GCPs). Read without their colours: palettes (the class
+numbers are read). Left aside: overviews (the values come from the full resolution), the other
+images of a file, masks and .aux.xml files.
+
+Plots › Spatial autocorrelation (from the map, or for a regression from its model): Moran's I of
+a variable or of a regression's residuals (or, for counts, presence-absence and positive values,
+its quantile residuals), with its expectation without autocorrelation, z and the one-sided p
+(positive autocorrelation) under randomisation, and p by permutations (999 by default). For a
+linear model without random effects, a second line gives the test that accounts for the fit
+(Cliff and Ord 1981, as spdep::lm.morantest). Neighbourhood: the k nearest neighbours of each
+observation (made mutual), the observations within a distance (empty: the smallest distance that
+gives each observation a neighbour), or the inverse of the distance; rows summing to 1 (spdep's
+"W" style) or the weights as they are. Under it, the correlogram (Moran's I in classes of
+distance up to half the largest one, two-sided p corrected by Holm over the classes, in red at
+0.05) and the semivariogram (half the mean squared difference between the values of the pairs of
+each class, as gstat::variogram, up to a third of the area's diagonal), with the variance as a
+dashed line. Distances are along great circles for longitudes and latitudes, straight lines for
+plane coordinates. Observations at the same place (a plot surveyed several years) are each
+other's nearest neighbours: "Mean by place" replaces their values by their mean.
 
 Statistical tests
 -----------------
@@ -713,9 +993,12 @@ Not covered: in nlme, a slope uncorrelated with the intercept ((0 + year | site)
 qualitative variable, a cross term or a curve.
 Type "Generalized linear model (GLM)" or "Additive model (GAM)" (mgcv), for a Y that isn't
 normal. Distribution of Y: Poisson for counts; negative binomial for counts that vary more than
-a Poisson allows (its θ estimated); binomial for presence-absence (0 or 1); gamma for positive
-values; Tweedie for densities with zeros (its power p estimated); or normal. The link is log
-(counts, gamma, Tweedie), logit (binomial) or identity (normal). Effort (offset): a variable
+a Poisson allows (its θ estimated); zero-inflated Poisson for counts with more zeros than a
+Poisson gives (its θ₁ and θ₂ estimated); binomial for presence-absence (0 or 1); gamma for
+positive values; Tweedie for densities with zeros (its power p estimated); beta for proportions
+strictly between 0 and 1 (its precision φ estimated); or normal. The link is log (counts, gamma,
+Tweedie; for the zero-inflated Poisson, that of its Poisson parameter μ), logit (binomial, beta)
+or identity (normal). Effort (offset): a variable
 such as an area, a duration or a number of visits, whose log enters the model with a
 coefficient of 1, which then describes a density (an effort of 0 or less is refused). Random
 effects as above make a GLMM or a GAMM. With the normal distribution and at least one random
@@ -744,6 +1027,48 @@ effects are estimated by REML, and the AIC comes from an ML fit; a GLM without t
 by maximum likelihood, as glm() and MASS::glm.nb() do. The Summary of a Poisson model warns
 when the counts are overdispersed (Pearson's chi-square above 1.5 times its degrees of
 freedom): its p values are then too small, and the negative binomial suits the counts better.
+Zero-inflated Poisson and beta (mgcv's ziP and betar families; Wood, Pya & Säfken 2016). In the
+zero-inflated Poisson, a hurdle model, a count is zero with probability 1 − p and otherwise
+follows a Poisson distribution of parameter μ truncated at zero; the linear predictor is log(μ)
+(mgcv calls this link "identity"; exp(coefficient) multiplies μ, and so does the effort), and p
+is tied to it by log(−log(1 − p)) = θ₁ + θ₂ log(μ), θ₁ and θ₂ estimated with the model; θ₁ = 0
+and θ₂ = 1 give back the Poisson distribution, so its AIC compares with those of the Poisson and
+negative binomial models of the same counts. Its fitted values, predictions, cross-validation and
+test set are expected counts, p μ / (1 − e^(−μ)); it has no adjusted R², only the deviance
+explained. It needs counts with at least one zero. Many zeros don't make zero inflation (too many
+zeros given the model's mean may): compare the models by AIC and look at the quantile residuals;
+when X variables explain the zeros themselves, the model may be poorly identified. The beta
+distribution is for proportions strictly between 0 and 1 (a cover, a share of time), of mean μ
+with the logit link and variance μ (1 − μ) / (1 + φ), its precision φ estimated (Ferrari &
+Cribari-Neto 2004); its AIC compares with that of a normal model of the same proportions. A
+response at 0 or 1 is refused, with the number of such values: mgcv would move them just inside
+(its eps), which isn't harmless for the fit; bring them inside yourself, saying so (Edit › New
+variable, for example (y * (n - 1) + 0.5) / n for n observations; Smithson & Verkuilen 2006),
+or take the binomial for presence-absence. Both take random effects, curves and the spatial
+smooth (no CAR1 autocorrelation); only the zero-inflated Poisson takes an effort. θ₁, θ₂ and φ
+show in the Summary, the report and the coefficients side by side. Without a curve or random
+effect, mgcv's ML fit of these two families sometimes stops on a LAPACK error: Nuée then finds
+the distribution's parameters that maximize the likelihood itself (each fit at fixed parameters
+by mgcv), and its exported script does the same.
+Spatial smooth (General tab, for a GAM of a project with coordinates, see Maps and spatial
+data): a surface of the observations' coordinates, s(x, y), a thin plate regression spline on
+plane coordinates (Wood 2003) or a spline on the sphere for longitudes and latitudes (s(lat,
+lon, bs = "sos")), of basis dimension k (empty: 30 at most, fewer with few places). It takes up
+the spatial structure the terms don't explain: check with Plots › Spatial autocorrelation of the
+model's residuals, and compare the models by AIC. Observations without coordinates are left out
+of the model. Its edf and test are in the Summary's curves table, and its value at each
+observation is a column of the model's results that the map can show. The R formula writes it
+s(x, y), s(x, y, k = 40) or s(lat, lon, bs = "sos"). Export to R redoes it: the script puts the
+coordinates in the columns sx and sy of the model's table and the term in the formula (with its
+k, thin plate or on the sphere), its row in the curves table and a map of its value at each
+observation.
+Model conditions (a regression's Summary): pointers in words, each ✓ or ⚠ with what to do: the
+residuals' distribution (Shapiro–Wilk, on the quantile residuals for counts, presence-absence and
+positive values), a spread of the residuals that changes with the fitted values, influential
+observations (Cook's distance beyond 4/n, linear model), overdispersion and an excess of zeros
+(counts), collinear quantitative terms (VIF > 5), curves confounded with the other terms, and the
+residuals' spatial autocorrelation when the project has coordinates. With many observations a
+test sees harmless departures, with few it sees none: the residual plots remain the reference.
 R formula (General tab): the model written as in R, for instance
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
@@ -787,12 +1112,14 @@ that contain it and the curves per category it makes (the With column names them
 2 means the block clearly
 improves the model, a likelihood-ratio test gives its p. Observations with a missing value in
 Y, X, a random effect, the time or the effort are left out (the summary counts them).
-Residuals of a GLM or GAM with the Poisson, negative binomial, binomial or gamma distribution:
-beside the standardized deviance residuals (the default), the randomized quantile residuals of
-Dunn and Smyth (1996), r = Φ⁻¹(u), F the model's distribution at each observation's fitted
-value (its random effects and effort included; the negative binomial with its fitted θ, the
-binomial with one trial, the gamma with the shape 1 / its estimated scale): u = F(y) for the
-gamma, and for counts or 0/1 u drawn uniformly between F(y − 1) and F(y), with a fixed seed, so
+Residuals of a GLM or GAM with the Poisson, negative binomial, binomial, gamma, zero-inflated
+Poisson or beta distribution: beside the standardized deviance residuals (the default), the
+randomized quantile residuals of Dunn and Smyth (1996), r = Φ⁻¹(u), F the model's distribution at
+each observation's fitted value (its random effects and effort included; the negative binomial
+with its fitted θ, the binomial with one trial, the gamma with the shape 1 / its estimated scale,
+the zero-inflated Poisson as mgcv defines it with its θ₁ and θ₂, the beta of shapes μ φ and
+(1 − μ) φ): u = F(y) for the gamma and the beta, and for counts or 0/1 u drawn uniformly between
+F(y − 1) and F(y), with a fixed seed, so
 that the plot doesn't change from one look to the next (the session's random numbers are left
 as they were). The Pearson or deviance residuals of counts are far from normal even when the
 model is right; these residuals are normal when it is. Not offered for Tweedie (no distribution
@@ -903,12 +1230,18 @@ the number of groups of the first random effect minus one: typically, the mean o
 the number of sites minus one, a pair of sectors within sites the inner df; for a habitat that
 varies only between sites, the mean of the first habitat has the number of sites minus one, the
 others and the pairs the habitat's df, the sites minus one minus its coefficients); z
-(asymptotic) for a Poisson, binomial or negative binomial distribution, as emmeans for glm()
-and as the model's Coefficients (on an mgcv::gam object, emmeans uses the residual df whatever
-the distribution). With a log or logit link, the means are on the response scale (exp; inverse
-logit: probabilities), their intervals transformed from the link scale, and the pairs are
-ratios of means or odds ratios, tested on the link scale, as emmeans' type = "response"; the
-link scale on demand. A transformed Y (log10, ln…) stays on its scale, as the view says:
+(asymptotic) for a Poisson, binomial, negative binomial, zero-inflated Poisson or beta
+distribution, as emmeans for glm() and as the model's Coefficients (on an mgcv::gam object,
+emmeans uses the residual df whatever the distribution). With a log or logit link, the means are
+on the response scale (exp; inverse logit: probabilities, or mean proportions for the beta
+distribution), their intervals transformed from the link scale, and the pairs are ratios of
+means or odds ratios, tested on the link scale, as emmeans' type = "response"; the link scale on
+demand. With the zero-inflated Poisson, the means are expected counts, p μ / (1 − e^(−μ)) at
+each category's linear predictor log(μ) (θ₁ and θ₂ taken as known; their standard errors by the
+delta method, their intervals transformed, that value increasing with log(μ)), and the pairs
+ratios of expected counts, tested on their log by the delta method, as emmeans'
+regrid(transform = "log"); on the link scale, log(μ). A transformed Y (log10, ln…) stays on
+its scale, as the view says:
 back-transformed, a mean of logarithms is a median (a geometric mean), not a mean. A
 combination of categories that no observation has is not estimable (emmeans: nonEst): its mean
 and its pairs are left out, and named. A click on a pair in the table gives its sentence ready
@@ -926,8 +1259,9 @@ so). ⚠ marks a value outside the range of the model's observations: an extrapo
 Prediction › Compare models: Q2 and RMSEcv for every model; AIC, ΔAIC and Akaike weights (the
 probability that each model is the best of its set) between the regressions of the same
 response on the same observations only (an "AIC set", lettered A, B...), and only those whose
-likelihoods compare: Poisson and negative binomial models of the same counts, but not a normal
-model of them; Tweedie models with each other; GLMMs and GAMMs (mgcv's conditional likelihood)
+likelihoods compare: Poisson, negative binomial and zero-inflated Poisson models of the same
+counts, but not a normal model of them; normal, gamma or beta models of the same values;
+Tweedie models with each other; GLMMs and GAMMs (mgcv's conditional likelihood)
 with each other.
 Under the AIC table, Nested models: the likelihood-ratio test between each pair of nested
 regressions of the same AIC set, as anova(m1, m2) on ML fits. The smaller model's fixed terms
@@ -1065,6 +1399,137 @@ Both export their tables (File › Export), write their Methods text with its re
 a report. File › Export to R writes a script, or an R Markdown or Quarto report, that redoes
 them with R alone, their tests with the same permutations. They don't predict new observations.
 
+Canonical correspondence analysis (CCA)
+---------------------------------------
+New model › type "CCA (canonical correspondence analysis)" (ter Braak 1986): the RDA's
+counterpart for species counts or abundances whose responses along the gradients are unimodal
+rather than linear. Y: the species (counts or abundances, positive or zero), the columns of the
+table; X: the explanatory variables; Z: covariates removed first (partial CCA). The table is
+turned into its departures from independence, as in a correspondence analysis, and the X are
+weighted by the observations' masses (their shares of the grand total). General tab: the number
+of permutations (999; 0: no test), the groups they stay within and their seed; in each
+permutation the masses go with the observations. Observations with a missing value or without
+any abundance, and species absent from all the others, are left out.
+
+Views, as the RDA's: Summary (inertia; R2 and the adjusted R2, estimated with the test's
+permutations, Peres-Neto et al. 2006, none without permutations; pseudo-F and p); Ordination,
+the triplot in scaling 1 (chi-square distances between observations), 2 (between species) or 3
+(symmetric); Eigenvalues; Permutation tests (each constrained axis after the previous ones, the
+terms one after another in the order of the model, each term after all the others; forward
+selection, with adjusted R2 from the same permutations). Variation partitioning is an RDA's.
+The results are those of vegan (cca, anova.cca by axis, by terms and by margin, RsquareAdj,
+ordiR2step), and for the same permutations the same p values. Methods text, export, report and
+Export to R as for the RDA.
+
+Indicator species
+-----------------
+New model › type "Indicator species (IndVal)": which species characterize each group of
+observations (habitats, site types...). Y: the species, abundances or presences; Class: the
+qualitative variable of the groups. For each species and each group, A (specificity: the share
+of its abundance in the group) and B (fidelity: the share of the group's observations where it
+is), and the indicator value √(A·B): IndVal.g by default, which compares the groups' mean
+abundances so that groups of different sizes count alike (De Cáceres and Legendre 2009), or
+IndVal, which compares their totals (Dufrêne and Legendre 1997). Combinations of groups
+(De Cáceres et al. 2010): by default every combination, up to all the groups (a species tied to
+all of them isn't tested), or single groups, or up to an order. Each species goes to the group
+or combination of its largest value, tested by permuting the observations' groups (999 times;
+within strata, an ID or a qualitative variable; a seed); its p corrected over the species
+(Benjamini–Hochberg or Holm) stands beside the raw p. "Presences only" uses 0/1 values.
+Views: Indicator species (the sortable table, p ≤ 0.05 in red, "corrected p ≤ 0.05 only"; a
+click highlights the species in the plot), Indicator values (each species' value for its group,
+coloured by the group and pale when not significant; or one species' A and B in each group),
+Summary (the number of species retained at 0.05, raw and corrected, and per group). The
+statistics are those of indicspecies::multipatt, and for the same permutations the same p values.
+Methods text, export and report as for the other models; Export to R redoes the analysis with R
+alone, the engine's own functions and the same permutations.
+
+Rarefaction and species accumulation
+------------------------------------
+Plots › Rarefaction (or in the explorer, under the project): how many species the observations
+hold, compared on an equal footing. The species: columns of counts, a range from one column to
+another in the table's order (as the diversity indices of New variable read them) or ticked in
+the list. Rarefaction (by observation): each observation's expected richness in m individuals
+drawn without replacement (Hurlbert 1971) with its standard deviation (Heck et al. 1975), the
+curve from 1 to all its individuals, and its richness at a common size (by default the smallest
+observation's: the dashed line); in the table, Chao1 (bias-corrected) and ACE estimate each
+observation's richness. These need integer counts of individuals: with covers or densities the
+view says so and gives the accumulation alone. Accumulation (over the observations): the
+richness expected in k observations drawn among all (exact method, Ugland et al. 2003), ±2
+standard deviations, and the estimators of the total richness from the presences: Chao2, the
+first- and second-order jackknifes and the bootstrap. By group (a qualitative variable or an
+ID): a curve and estimators per group. A click or a box selects observations, as in Series. The
+values are those of vegan (rarefy, rarecurve, specaccum, estimateR, specpool), except ACE's
+standard deviation, from the delta method with ACE's own gradient (vegan uses another).
+PCoA, NMDS, PERMANOVA and Mantel test
+-------------------------------------
+Four analyses built on a distance between observations, computed on the table Y (Role Y: the
+species, or any quantitative variables); an observation with a missing Y value is left out and
+counted. General tab: the distance, as the vegan package defines it (Bray-Curtis, Jaccard
+2B/(1 + B), Gower, Euclidean, Manhattan, Canberra, Kulczynski, Hellinger, chord), optionally on
+presence-absence (Bray-Curtis then becomes the Sørensen index); a transformation before it
+(square or fourth root, log(x + 1), presence-absence, relative abundances, Wisconsin double
+standardization, square root then Wisconsin as metaMDS does); the number of permutations of the
+tests (999; 0: none), the groups they stay within and their seed. A distance that has no meaning
+for negative values (Bray-Curtis, Jaccard, Kulczynski, Canberra, Hellinger) refuses them, and
+one that isn't defined for an observation without any value (only zeros) names it.
+
+Type "PCoA (principal coordinates analysis)": the axes that best show, on a few dimensions, the
+distances between observations (Gower 1966). A distance that isn't Euclidean (Bray-Curtis,
+usually) has negative eigenvalues: they are kept and reported, and the Lingoes or Cailliez
+correction (General tab) adds the constant that removes them. X variables (optional): fitted
+onto the first two axes as vegan::envfit, an arrow per quantitative variable (its direction and
+R2), a centroid per category of a qualitative one (and its R2), each tested by permutations;
+observations without an X value are left out of this fit only. Views: Summary; Ordination (the
+observations, coloured and labelled like the other plots, the species at the weighted average
+of their observations, the arrows, grey when p > 0.05, and the centroids, on equal scales);
+Eigenvalues (the share of the total inertia, the sum of all the eigenvalues; negative ones in
+red); Fitted variables; the lists of observations and variables.
+
+Type "NMDS (non-metric multidimensional scaling)": a configuration in k dimensions (2 by
+default, 1 to 4) whose distances keep the order of the dissimilarities (Kruskal 1964), by
+MASS::isoMDS as vegan::metaMDS does it: from the PCoA, then from 20 random starts (fixed seed);
+the lowest stress is kept, and the Summary says whether another start found it again
+(Procrustes): when none did, raise the starts. A zero dissimilarity between two observations
+is replaced by half the smallest non-zero one. The configuration is centred, rotated to its
+principal axes and scaled to the largest dissimilarity. Views: Summary (the stress: below 0.1
+good, beyond 0.2 to be read with care); Ordination, as for the PCoA; Shepard diagram (each
+pair's dissimilarity and ordination distance, the monotone regression, the stress of each
+start); Fitted variables; the lists (each observation's share of the stress).
+
+Type "PERMANOVA (permutational analysis of variance)": the effect of the X terms (qualitative or
+quantitative, cross terms included) on the distance (Anderson 2001), as vegan::adonis2: each term
+after those before it, in their order (sequential), each after all the others (marginal: a term
+inside a cross term isn't tested alone) or the whole model; degrees of freedom, sum of squares,
+R2, pseudo-F and its permutation p. With it, the multivariate dispersion (Anderson 2006, as
+vegan::betadisper) of the categories of each qualitative X variable and of the class variable
+(Role Class, one more grouping): each observation's distance to the centroid (or the spatial
+median) of its group in the PCoA space, compared by an ANOVA, its residuals permuted, and
+Tukey's pairs. A dispersion that differs between groups makes the PERMANOVA harder to read: its
+differences may come from the spread of the groups as much as from their position. Views:
+Summary; PERMANOVA table; Multivariate dispersion (box plots or the PCoA plane, with its tests);
+the list of observations (each one's distance to its centre).
+
+Type "Mantel test": the correlation (Pearson, or Spearman on ranks) between the distance of Y and
+the Euclidean distance of the X variables, scaled as the Variables tab says (UV by default), and
+its one-sided permutation p (vegan::mantel); with covariates Z (Role Z), the partial Mantel test
+(vegan::mantel.partial); and the Mantel correlogram (vegan::mantel.correlog): the X distance cut
+into classes of equal width (Sturges' rule, or the number given), the Mantel r of each class
+(positive: close observations more alike), the classes beyond half tested only if every
+observation has a pair in them, the p values corrected progressively by Holm's method. Views:
+Summary; Mantel test (each pair of observations); Mantel correlogram; the list. "X distance:
+Geographic" compares the distance of Y with the distance between the observations in kilometres,
+from the project's coordinates (see Maps and spatial data), no X needed: whether nearby samples
+are more alike (distance decay), and with the correlogram, up to what distance.
+
+The four export their tables (File › Export), write their Methods text with its references and
+make a report; they don't predict new observations. The results are those of vegan (vegdist,
+wcmdscale, envfit, metaMDS with isoMDS, adonis2, betadisper, mantel, mantel.correlog): the same
+values, and for the same permutations the same p values. File › Export to R writes a script, or
+an R Markdown or Quarto report, that redoes them with R alone (and MASS, which comes with R, for
+the NMDS): its functions are those of Nuée's engine, copied as the engine writes them; then the
+model's data (the coordinates for a geographic Mantel test), its transformation, distance and
+options, the same permutations and the same starts, so the same p values and the same NMDS.
+
 Decision trees, linear discriminant analysis and k-means
 --------------------------------------------------------
 New model › type "Decision tree" (rpart): a quantitative Y variable (regression tree) or a
@@ -1103,6 +1568,275 @@ For all three: Methods text with its references, Export, PDF or Word report, Exp
 (a script or an R Markdown / Quarto report that redoes the analysis with rpart, MASS or
 cluster, which come with R). Compare models shows a regression tree's Q2 and RMSEcv beside
 the other models.
+
+TRIM: indices and trends of counts
+----------------------------------
+New model › type "TRIM (indices and trends of counts)": the yearly indices and the trend of
+counts of animals surveyed on sites year after year, as Statistics Netherlands' TRIM 3 software
+and the rtrim package compute them (the standard of European bird monitoring), with missing
+counts: the model imputes them. The data: the long table, one row per site and year; Y: the
+counts (whole numbers, positive or zero; an empty cell is a missing count); X: optional
+qualitative covariates (a site's habitat, or a value per site and year) that make the time
+effects vary. General tab:
+  - the site (an ID or a variable) and the time (the year: a variable or an ID made of evenly
+    spaced numbers; a year without any row is added, all its counts imputed), proposed from the
+    columns' names;
+  - the model: 3, an effect of each year (ln μ = site + year); 2, a linear trend on the log scale
+    whose slope changes at the changepoints given (years; empty: a single slope), at every year,
+    or chosen stepwise as rtrim does (a point leaves when the Wald test of its change in slope
+    exceeds p = 0.2, comes back when its score test falls below p = 0.15); 1, no time effect;
+  - overdispersion (σ²) and serial correlation (ρ, between two successive years of a site),
+    ticked by default as the TRIM manual recommends: the parameters are then estimated by
+    generalized estimating equations that allow for them; without them, by Poisson maximum
+    likelihood;
+  - weights (a variable: over- or under-represented sites), and the base time of the indices
+    (the first by default).
+Two rows for the same site and year are refused, the site, the year and the observations named;
+a site without any positive count is left out, and counted; a cell without a row takes the
+weight and the covariate category of its site's previous year.
+
+Views: Summary (the model, σ² and ρ, the overall slope of the imputed totals: multiplicative, per
+time step, with its standard error, its 95% interval and its class by TRIM, strong increase,
+moderate increase, stable, uncertain, moderate decline or steep decline, from the interval
+compared with 1 and with 0.95 / 1.05; the Pearson chi-square, the likelihood ratio and the AIC);
+Indices (the imputed indices, from the observed counts and the model's for the missing ones, and
+the model's, with their 95% band, the base time, and optionally the overall slope's line); Time
+totals (observed, imputed, model); Slopes, parameters and tests (the Wald tests of the slope, the
+changes in slope, the deviations from the linear trend and the covariates; model 3 as a line and
+its deviations; the stepwise steps); Counts by site (a site's counts and the model's, or every
+count against its expected value). The results are those of the rtrim package. Methods text
+with its references, Export and report as for the other models, and Export to R: a script or
+report that redoes the model with R alone, TRIM's functions of Nuée's engine copied into it (the
+same indices, totals, slopes and tests as Nuée). No prediction.
+
+Distance sampling: density and abundance
+----------------------------------------
+New model › type "Distance sampling (density, abundance)": the density and abundance of a
+population from the distances of the animals detected from lines (line transects) or from
+points (point transects, point counts), as the ds() and dht2() functions of the Distance package
+compute them (Buckland et al. 2001; Miller et al. 2019). The data: the flat table, one row per
+detection, as Distance reads it:
+  - the distance (Y): the perpendicular distance from the line, or the distance from the point;
+  - the transect (the line or the point: an ID or a variable) and its effort, the same on all
+    its rows: the length of the line, or for points the number of visits (no column: one visit
+    per point);
+  - optional: the stratum (the region: an ID or a variable) and its area, the same on all its
+    rows (without an area, or areas all 0, the density only); the size of each detected group;
+  - a transect without any detection stays a row, its distance empty, so that its effort
+    counts; rows without a transect and a distance are left out.
+For example, with Distance's column names (the dialog proposes them from the names):
+    Region.Label  Area  Sample.Label  Effort  distance  size
+    North         630   N-01          2.4     35        2
+    North         630   N-01          2.4     120       1
+    North         630   N-02          1.8               (no detection)
+General tab:
+  - line or point transects;
+  - the truncation: the largest distance (ds's default), a distance, or a percentage of the
+    largest distances (5 to 10% is usual); a left truncation if needed. Detections beyond it
+    leave the model, their transect stays;
+  - intervals, for distances recorded in classes (as ds(cutpoints = )): their bounds, e.g.
+    "0 10 25 50 100"; each distance of the table (the true one, or its class's midpoint) counts
+    in its interval, the first bound is the left truncation and the last w; the likelihood is
+    then that of the counts of the classes, and the goodness of fit the chi-square on them;
+  - the key of the detection function g(x): half-normal exp(−x²/2σ²), hazard-rate
+    1 − exp(−(x/σ)^−b) (b ≥ 1, as mrds) or uniform;
+  - covariates (multiple-covariate distance sampling, as ds(formula = ~ x1 + x2); Marques and
+    Buckland 2003, Marques et al. 2007): the variables whose Role is Z in the Variables tab, or
+    added from the Covariates list of the General tab (the same thing). The scale σ of the
+    half-normal or hazard-rate key depends on them, ln σ = β0 + β1 x1 + …: a quantitative
+    covariate as it is, a qualitative one through an indicator of each of its categories but the
+    first present among the detections, its reference (R's treatment contrasts); the group size
+    can be one. Each detection then has its own detection function and its own probability of
+    detection pi. As ds: no adjustment terms unless a number is given, no monotonicity
+    constraint, no uniform key; the covariates are taken as they are (no transformation), known
+    for every detection within the truncation;
+  - the adjustment terms: cosine (the default), Hermite polynomials or simple polynomials, their
+    number chosen by AIC as ds() does (the key alone, then one more term at a time while the AIC
+    falls, five at most; orders 2, 3, 4… for cosines, 4, 6, 8… for Hermite and polynomials, 1,
+    2, 3… and 2, 4, 6… with the uniform key) or fixed; the distances in the terms divided by the
+    truncation w (ds's default) or by σ;
+  - monotonicity: mrds's constraint on a function with adjustment terms, checked at 10
+    distances from 0 to w: strict (the default: g decreases), weak (g stays below g(0)), or
+    none; g stays positive there;
+  - the units of the distances, of the effort (lines) and of the areas, or a conversion factor
+    (Distance's convert_units): the density is per unit of area, and the results say it.
+The detection function is fitted by maximum likelihood on the exact distances; its parameters'
+variance comes from the outer product of the distances' scores, as mrds; p, the average
+probability of detection within the truncation, and its standard error by the delta method; the
+effective strip half-width ESW = p w (lines) or the effective detection radius EDR = w √p
+(points). The density of each stratum is D = n / (a p), a the covered area (2 w L, or 2 (w − L)
+L with a left truncation, for lines; π w² K for points); its variance combines the encounter
+rate's between transects (the R2 estimator for lines, P2 for points, Fewster et al. 2009), that
+of p, and that of the mean group size; its 95% interval is log-normal with Satterthwaite degrees
+of freedom, as dht2. The total over the strata adds their abundances (with areas) or weights
+their densities by their covered areas (without). Without areas, each stratum's encounter rate
+and group size variances enter the total's with the square of its weight, and the total's
+degrees of freedom are those of Satterthwaite's formula with these weights. dht2 leaves the
+weights out of the group size variance, which gives a larger standard error with groups, and out
+of its degrees of freedom's denominator, which gives fewer degrees of freedom, and a wider total
+interval, sometimes absurdly so: on Distance's amakihi data (7 strata, hn ~ OBs + MAS), 0.6
+instead of 871, and an interval of 0.09 to 434 birds per hectare instead of 5.85 to 6.89. The
+strata's intervals don't depend on it. The Summary, the Density and abundance view and the
+Methods text give dht2's numbers as well. Refused, and named: a negative distance, a missing or
+zero effort, two efforts for one transect, two areas for one stratum, an area of zero beside
+others, a distance without a transect.
+With covariates, the likelihood is that of each detection's distance given its covariates
+(mrds's flpt.lnl, or the counts of the classes); the coefficients are fitted on the quantitative
+covariates centred and scaled, then returned in their units. The same settings without
+covariates are fitted too, first in the list of models, to compare the AICs (as Distance's
+summarize_ds_models). p̄ = n / Σ 1/pi is the average probability of detection, with its standard
+error as mrds's summary.ds, and ESW = p̄ (w − L) or EDR = w √p̄; the density of each stratum is
+dht2's Horvitz–Thompson-like estimator D = Σ si / pi / a (si the group size, 1 without groups),
+its detection variance by the delta method on all the parameters; the goodness of fit compares
+each distance with the detection function of its covariates (Cramér–von Mises on their fitted
+distributions, the chi-square's expected counts summed over the detections). Refused, and named:
+a covariate missing for a detection, a qualitative covariate with a single category among the
+detections, a quantitative one with a single value, covariates that follow from one another, and
+a combination of covariates whose scale σ runs off to infinity (its distances don't fall off up
+to w: group the categories, or choose others).
+
+Views: Summary (the model retained and the AIC of each model fitted on the way, p and ESW or EDR
+with their standard errors, the parameters, the goodness of fit, the overall density and
+abundance with their intervals; what was left out; with covariates, the covariates and their
+reference categories, and the coefficients on ln σ with exp(β), the factor on σ of a category
+against its reference or of one unit of a quantitative covariate); Detection function (the
+histogram of the distances, each bar its count over the count it would have if every animal were
+detected, as mrds's plot.ds, under the fitted g; each detection on the curve, a click selects
+its row; for points, the density of the distances f(r) = 2r g(r) / (w² p) too; below, the
+chi-square's classes; with covariates, the average detection function, each detection's g given
+its covariates weighted by 1/pi as plot.ds, each detection at its own g, and "by" a qualitative
+covariate one curve per category, the average over its detections as plot.ds(subset = )); QQ
+plot (the fitted distribution of each distance against the empirical one, with the Cramér–von
+Mises test; not for distances in intervals); Density and abundance (by stratum and overall:
+area, covered area, effort, transects, detections, encounter rate and its CV, D, its standard
+error, CV, 95% interval and df, N and its interval, the share of the variance due to the
+encounter rate, to detection and to group size; with groups, the density of groups too). The
+observation list gives each detection's g and, with covariates, its probability of detection pi.
+Methods and Results texts with their references, Export and report as for the other models, and
+Export to R: a script or report that redoes the analysis with R alone, without Distance or mrds,
+the distance sampling functions of Nuée's engine copied into it (the same candidates and AICs,
+parameters and their covariance, p or p̄ and each detection's pi, ESW or EDR, goodness-of-fit
+tests, density and abundance as Nuée; the detection function over the histogram, one curve per
+category of each qualitative covariate, and the QQ plot in base R). No prediction.
+
+The results are those of Distance 2.0 (moteur/tests/verifier_distance.R compares them, with
+covariates on Distance's amakihi, ETP_Dolphin, ClusterExercise, unimak and golftees data), with
+these known differences: Nuée integrates the hazard-rate key exactly where mrds approximates its
+integral by a smoothing spline (lines, the key without adjustment terms, with or without
+covariates: parameters and p differ by about 1e-4); with a left truncation of line transects the
+covered area is 2 (w − L) L, where dht2 keeps 2 w L; without stratum areas, the strata's weights
+enter the total's group size variance (squared) and its Satterthwaite degrees of freedom, where
+dht2 leaves them out of both: a larger standard error with groups, and fewer degrees of freedom;
+mrds's optimizer under the monotonicity constraint stops within 1e-6 of the likelihood, so its
+estimates can differ from Nuée's in the fourth digit, or, on rare data, settle on another local
+optimum. With covariates: ds can stop short of the maximum on poorly conditioned covariates (on
+unimak, hn ~ MSTDO + Hour, on a plateau where σ is e^9 or more, thousands of times w, 21.9
+log-likelihood units below the maximum Nuée finds; started from Nuée's estimates, ds stays
+there); a combination of covariates whose σ runs off to infinity is refused, where ds returns
+the point where its optimizer stopped; when the group size is a covariate, dht2 recomputes each
+detection's probability with a size of 1 for the variance of its density of groups, where Nuée
+keeps the detection's own (the densities of individuals agree); for points, the density of the
+distances drawn is the mean of the detections' f(r | z), the density the histogram estimates,
+where plot.ds weights them by 1/pi. And dht2 keeps a transect without detection within the
+truncation only if its Sample.Label has no detection in any stratum (amakihi repeats its labels
+across strata): Nuée keeps every transect's effort.
+
+Random forests and boosted trees
+--------------------------------
+New model › type "Random forest" (the ranger package, Wright and Ziegler 2017): a quantitative
+Y variable (regression forest) or a class variable (classification forest), and X variables by
+their raw values. Each tree is grown on a bootstrap draw of the observations (with
+replacement), each split chosen among mtry randomly drawn variables; the forest predicts the
+mean of its trees, or the class most of them vote for (Breiman 2001). General tab: 500 trees,
+ranger's mtry and node size by default (the square root of the number of X rounded down; nodes
+of 5 observations for a regression, 1 for a classification), the share drawn, the permutation
+importance unscaled or divided by its standard error. Seed 1 and a single thread: the same
+forest every time. ranger takes no missing values: an observation with a missing X value is
+left out (the summary counts them). The out-of-bag error: each observation predicted by the
+trees whose draw doesn't hold it (MSE and R², or the share misclassified); the
+cross-validation: each cross-validation group (the site) predicted by a forest rebuilt without
+it (Q2 and RMSEcv, or the share correctly classified). Views: Variable importance (by
+permutation, how much the out-of-bag error rises when the variable's values are permuted; or by
+impurity), Partial dependence (computed on request, Friedman 2001: the forest's mean prediction
+when a variable takes each value of a grid, the other X unchanged; all the variables side by
+side, or one, the observed values under the curve; for a classification, the share of a class's
+votes), Error against the number of trees, Observed / predicted (out of bag, cross-validated or
+fitted) or Classification (with ROC curves from the votes). Test set and Predict.
+
+Type "Boosted trees (BRT)": gradient boosting of regression trees (Friedman 2001, 2002), as the
+gbm package computes it and as Elith, Leathwick and Hastie (2008) describe it for ecologists,
+written in R on rpart. A quantitative Y: a measurement (normal distribution), a presence-absence
+0/1 (binomial) or counts (Poisson), chosen as a GLM's. The trees are added one by one, each
+fitted to what the model still misses (the gradient of the deviance) on a draw without
+replacement of a share of the observations, its leaves re-estimated for the deviance, and added
+with a small weight (the learning rate). General tab: at most 2000 trees, a learning rate of
+0.01, 3 splits per tree (the interaction depth: 1 gives an additive model), at least 10
+observations per leaf, draws of 50%. The number of trees is the one where the cross-validated
+deviance is smallest (each cross-validation group predicted after each tree by the boosting
+redone without it): the more groups and trees, the longer the fit. Observations with a missing
+X value are left out. Views: Relative influence (the error reductions of each variable's splits,
+in %), Partial dependence (on the link scale, logit or log, or on the response's), Error against
+the number of trees (the deviance of the fit and the cross-validated one, the number of trees
+retained), Observed / predicted, and Classification (at a probability of 0.5, with the ROC
+curve) for a 0/1 response. Test set and Predict.
+
+For both: Methods text with its references, Export, PDF or Word report. Compare models shows
+the Q2 and RMSEcv of a regression forest, or of boosted trees of a measurement, beside the other
+models. Export to R: boosted trees with R and rpart alone (the boosting of Nuée's engine copied
+into the script: with the same seed, the same draws and the same trees, which are gbm's); a
+random forest with R and the ranger package, the one exception to "no package": Nuée depends on
+it and installs it with itself (elsewhere, install.packages("ranger")), and the script loads it
+with the same seed, one thread and the same settings, so its forest is Nuée's, tree for tree,
+with the same version of ranger. The test set and the partial dependence, when it was computed,
+are in it too.
+
+Cleaning the data: find and replace, categories, units
+------------------------------------------------------
+What one used to do in Excel before opening the table, in Nuée, each change undone by a single
+Ctrl+Z (Edit › Undo) like the other changes of the data; models already fitted keep their
+results until you fit them again. In the Edit menu, in the Data view's toolbar, and in the
+right-click on a column's header in the Data view (a header shows the variable's unit, its
+number of empty cells and of distinct values, "Column summary"; its tooltip, the description)
+or on a variable of Plots › Variable statistics.
+Edit › Find and replace (Ctrl+H): in one variable, several or all, the cells that hold a text
+or a number, or the empty cells ("empty cells": replace empty by 0), get what you type, or
+become empty when you type nothing (replace -9999 by nothing). A qualitative variable is
+compared as text: the whole cell, or part of the text (a "," in "3,5"), capitals counting or
+not; a quantitative variable as numbers ("3,5" finds 3.5), on the whole cell, and it takes only
+a number or nothing (its cells stay otherwise, and the dialog says so). Before you replace,
+the dialog says how many cells will change in each variable, the first changes ("foret" →
+"forêt" (3)) and what each variable becomes: a text variable whose values all become numbers
+(",", "<0.5" replaced by 0.25, "abs" by 0) becomes quantitative, unless you untick it. A
+category replaced by another one that exists merges into it; one emptied of its cells leaves.
+Note that a column of measurements is read as numbers when you open the table: a few "<0.5"
+or "nd" in it are read as missing values then (File › Open says so), and are no longer there
+to replace; a column with more text stays text, where you can.
+Edit › Categories (or right-click on a qualitative variable's header): a qualitative variable's
+categories with their number of observations, to rename (a name another category has merges
+them), merge (the ticked ones, into the most frequent), move up and down, and choose the
+reference. Their order is that of the plots and tables (colours, bars, adjusted means). In a
+regression the last category observed is the reference category: each other category's
+coefficient is its difference from it, and "Reference" moves a category last. The project's
+model definitions follow the categories (refitted, a regression takes the new reference); a
+fitted model whose categories were renamed or merged can't be refitted from its own page (fewer
+observations, a component more) nor predict: fit it again (Model › Modify model, or double-click
+its definition in the explorer). A new order only doesn't stop it.
+Edit › Units and descriptions (or right-click on a header › Unit and description): each
+variable's unit (ind./ha, m, °C) and description. The unit goes into the axis titles
+("density (ind./ha)": Effects, Observed / predicted, Variable statistics, Series, the Map's
+legend, adjusted means, statistical tests, a forest's partial dependence; not on an axis that
+shows it transformed), the Data view's headers, the Methods text ("the response is "density"
+(ind./ha)") and the Results text (a coefficient "per m" when the variable is in its own units).
+Both are saved in the project, kept by File › Export data where the format has room (a
+"Variables" sheet of an Excel workbook and a "Variables" table of a GeoPackage, which Nuée
+reads back when it opens them; the description of a jamovi column; the label and units
+attributes of an R column, as Hmisc reads them; not in CSV or text), and written as comments
+before the data in Export to R.
+In the Data view, a click on a cell, then Ctrl+V, pastes a block of cells copied from a
+spreadsheet from that cell on, in the rows and columns as the view shows them (sorted,
+filtered): each cell as when you edit it by hand (empty: missing; a new category is added; a
+text in a quantitative variable is refused, naming the observation, and nothing changes); cells
+beyond the table are left out. One Ctrl+Z undoes the whole block.
 
 Adding columns from another table
 ---------------------------------
@@ -1167,7 +1901,7 @@ In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; 
 missing value; for a qualitative variable, the category's name). Models already fitted don't
 change: refit them.
 Edit › New variable: from an R formula on the other variables and the observation IDs, for
-example log10(polyphenols), sucre / acidite, ifelse(poids >= 170, "gros", "petit") (a text
+example log10(polyphenols), sugar / acidity, ifelse(weight >= 170, "large", "small") (a text
 result gives a qualitative variable); by group, group_mean(x, sector), the mean of x in each
 observation's group (missing values ignored; an observation without a group gets none), and
 group_deviation(x, sector), the deviation from it (moyenne_groupe and ecart_groupe in
@@ -1385,6 +2119,12 @@ What matches the stored values (checked on 944 models from 133 .usp projects)
 -----------------------------------------------------------------------------
 Scaling, R2X, R2Y, scores, loadings, eigenvalues, T2 and its limit, DModX (plain and weighted)
 and DCrit, VIP, coefficients, RMSEE.
+The models of a file are fitted as the software that wrote it fits them: with missing values,
+NIPALS sometimes converges very slowly, doesn't converge or has several solutions, and it stops
+there as that software does (a relative change of 1e-5, 200 iterations at most), starts from the
+same column and validates each component starting from the full model. So 805 PLS models out of
+809 of the test corpus, and the 403 PLS models of the 2003 projects, give back their fit and
+their Q2; the models Nuée fits itself keep its precision (1e-10).
 
 What differs
 ------------
@@ -1397,12 +2137,15 @@ What differs
   nearly always lower; 0.04 for PCA. With groups by an ID (a site, a sector), the difference is
   larger: the model fitted without a site doesn't know that site's mean level either. Validated
   with "Full model's centres and weights (like SIMCA)", the stored Q2 comes back exactly, groups
-  by ID included: 773 PLS models out of 809 of the test corpus (220 out of 220 without missing
-  data), 441 out of 443 of four real projects (moteur/tests/verifier_references.R), where the
-  other two have a round without any variation, whose stored value comes from rounding errors.
-  For a PCA, it is off by 0.02 in median: the details of the files' validation aren't
-  published.
+  by ID included: 805 PLS models out of 809 of the test corpus (220 out of 220 without missing
+  data; the other four are those of a project whose fit differs, below), 441 out of 443 of four
+  real projects (moteur/tests/verifier_references.R), where the other two have a round without
+  any variation, whose stored value comes from rounding errors. For a PCA, it is off by 0.02 in
+  median: the details of the files' validation aren't published.
 
+- A version 11 project: its four PLS models, whose single Y has missing values. Their software
+  counts the observations without y in the X weights, as if their Y residuals were ±0.99, which
+  no rule found explains; R2 and Q2 are up to 0.04 off.
 - Sign of the components of new models: arbitrary (imported models are oriented as in the
   file).
 - Dendrograms: exact Ward method; the merges at the top of the tree may differ from those of
@@ -1443,8 +2186,11 @@ Every computation is in resources\moteur\R (R, commented in French):
   condition.R            a model's observations chosen by a condition
   langue.R               language of the messages (traduire("français", "English"))
   modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fitting)
-In R: source("resources/moteur/charger.R"), then for example
-  p <- importer_tableau("my_data.csv")
-  d <- definir_modele(p, "PLS", x = 3:20, y = 2)
-  m <- ajuster(p, d)
+In R: source("resources/moteur/load.R"), then for example
+  p <- import_table("my_data.csv")
+  d <- define_model(p, "PLS", x = 3:20, y = 2)
+  m <- fit_model(p, d)
   m$statistiques$composantes
+load.R loads the engine in English (its messages, statuses and column names). charger.R loads
+it in French, as before 1.0, so that scripts written for it get the same words; the French
+names importer_tableau(), definir_modele() and ajuster() work with either.

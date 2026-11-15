@@ -18,7 +18,8 @@
 # par les 10 groupes tirés au hasard de ce contrôle.
 #
 # En tête, les outils communs aux analyses de ce fichier, de discrimination.R (LDA) et de
-# kmoyennes.R (k-moyennes) ; leur export vers R est dans classement_script.R.
+# kmoyennes.R (k-moyennes) ; leur export vers R est dans classement_script.R. Les forêts
+# aléatoires (forets.R) et les arbres boostés (boosting.R) s'en servent aussi.
 
 # ---------------------------------------------------------------- outils communs
 
@@ -111,7 +112,15 @@ REFERENCES_CLASSEMENT <- list(
   venables = "Venables, W. N., & Ripley, B. D. (2002). Modern applied statistics with S (4th ed.). Springer. https://doi.org/10.1007/978-0-387-21706-2",
   hartigan = "Hartigan, J. A., & Wong, M. A. (1979). Algorithm AS 136: A k-means clustering algorithm. Journal of the Royal Statistical Society: Series C (Applied Statistics), 28(1), 100–108. https://doi.org/10.2307/2346830",
   rousseeuw = "Rousseeuw, P. J. (1987). Silhouettes: A graphical aid to the interpretation and validation of cluster analysis. Journal of Computational and Applied Mathematics, 20, 53–65. https://doi.org/10.1016/0377-0427(87)90125-7",
-  cluster = "Maechler, M., Rousseeuw, P., Struyf, A., Hubert, M., & Hornik, K. (%s). cluster: Cluster analysis basics and extensions (R package version %s). https://CRAN.R-project.org/package=cluster")
+  cluster = "Maechler, M., Rousseeuw, P., Struyf, A., Hubert, M., & Hornik, K. (%s). cluster: Cluster analysis basics and extensions (R package version %s). https://CRAN.R-project.org/package=cluster",
+  # (forêts aléatoires, forets.R, et arbres boostés, boosting.R)
+  breiman2001 = "Breiman, L. (2001). Random forests. Machine Learning, 45(1), 5–32. https://doi.org/10.1023/A:1010933404324",
+  wright = "Wright, M. N., & Ziegler, A. (2017). ranger: A fast implementation of random forests for high dimensional data in C++ and R. Journal of Statistical Software, 77(1), 1–17. https://doi.org/10.18637/jss.v077.i01",
+  wright_konig = "Wright, M. N., & König, I. R. (2019). Splitting on categorical predictors in random forests. PeerJ, 7, e6339. https://doi.org/10.7717/peerj.6339",
+  friedman2001 = "Friedman, J. H. (2001). Greedy function approximation: A gradient boosting machine. The Annals of Statistics, 29(5), 1189–1232. https://doi.org/10.1214/aos/1013203451",
+  friedman2002 = "Friedman, J. H. (2002). Stochastic gradient boosting. Computational Statistics & Data Analysis, 38(4), 367–378. https://doi.org/10.1016/S0167-9473(01)00065-2",
+  elith = "Elith, J., Leathwick, J. R., & Hastie, T. (2008). A working guide to boosted regression trees. Journal of Animal Ecology, 77(4), 802–813. https://doi.org/10.1111/j.1365-2656.2008.01390.x",
+  ridgeway = "Ridgeway, G. (2007). Generalized boosted models: A guide to the gbm package. https://CRAN.R-project.org/package=gbm")
 
 # La phrase des logiciels d'un texte des méthodes de ces analyses (R, Nuée et le paquet : rpart,
 # MASS, cluster ; NULL : R seul) et ses références (`cites`, avec celles de R et de Nuée), dans
@@ -120,8 +129,8 @@ references_classement <- function(cites, paquet, fr, version) {
   annee_r <- R.version$year
   annee_nuee <- format(Sys.Date(), "%Y")
   desc <- if (!is.null(paquet)) utils::packageDescription(paquet)
-  annee_paquet <- if (identical(paquet, "MASS")) "2002" else if (!is.null(paquet)) substr(desc$Date %||% desc$Packaged %||% annee_r, 1, 4)
-  auteurs <- if (!is.null(paquet)) switch(paquet, rpart = "Therneau & Atkinson", MASS = "Venables & Ripley", cluster = "Maechler et al.")
+  annee_paquet <- if (identical(paquet, "MASS")) "2002" else if (identical(paquet, "ranger")) "2017" else if (!is.null(paquet)) substr(desc$Date %||% desc$Packaged %||% annee_r, 1, 4)
+  auteurs <- if (!is.null(paquet)) switch(paquet, rpart = "Therneau & Atkinson", MASS = "Venables & Ripley", cluster = "Maechler et al.", ranger = "Wright & Ziegler")
   phrase <- sprintf(if (fr) "Les calculs ont été faits avec Nuée%s (4rtefakt, %s) et R %s (R Core Team, %s)%s."
                     else "Computations were done with Nuée%s (4rtefakt, %s) and R %s (R Core Team, %s)%s.",
                     if (nzchar(version)) paste0(" ", version) else "", annee_nuee, paste(R.version$major, R.version$minor, sep = "."), annee_r,
@@ -610,7 +619,8 @@ texte_methodes_tree <- function(projet, d, m, langue = "fr", version = "") {
   laissees <- if (length(m$exclues)) sprintf(if (fr) " (%d autres laissées de côté : leur réponse ou toutes leurs valeurs X manquent)"
                                              else " (%d others left out: their response or all their X values are missing)", length(m$exclues)) else ""
   reponse <- if (m$classement) sprintf(if (fr) "la classe %s (%d classes)" else "the class %s (%d classes)", g(m$y$nom), length(m$classes))
-             else if (!is.null(m$y$transform)) formule_transformation(m$y$transform, g(m$y$nom), fr) else g(m$y$nom)
+             else if (!is.null(m$y$transform)) formule_transformation(m$y$transform, paste0(g(m$y$nom), unite_texte(projet, m$y$nom)), fr)
+             else paste0(g(m$y$nom), unite_texte(projet, m$y$nom))  # (avec son unité : atelier.R)
   p1 <- sprintf(if (fr) "L'arbre porte sur %s%s ; sa réponse est %s." else "The tree uses %s%s; its response is %s.",
                 observations_texte(m$N, d, fr), laissees, reponse)
   explicatives <- if (length(noms) <= 12) sprintf(if (fr) "%d variables explicatives (%s)" else "%d explanatory variables (%s)", length(noms), liste_mots(noms, fr))

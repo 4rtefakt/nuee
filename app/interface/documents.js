@@ -6,16 +6,19 @@
 // The editor (CodeMirror) and the Markdown reader (markdown-it) come in one file, loaded when a
 // document is first opened (copier-vendor.js: vendor/editeur.min.js).
 // Citations ([@wold2001], bibliographie.js): from the BibTeX or CSL-JSON files the document's header
-// names (bibliography:), from Zotero on this computer (zotero.js), or kept in the document itself
-// (its `bib`: the references added from Zotero or pasted, and a copy of those cited from files).
-import { t, ajouterTextes, langueActuelle } from './i18n.js';
+// names (bibliography:), from Zotero on this computer (zotero.js: My Library or a group library), or
+// kept in the document itself (its `bib`: the references added from Zotero, with where they are in
+// it, or pasted, and a copy of those cited from files).
+import { t, ajouterTextes, langueActuelle, lire, ecrire } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
-import { separerCible, valeurReference, offreModele, numeroter } from './references.js';
-import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, lireEntete, listeEntete, fixerEntete, BLOCS } from './rendu_document.js';
-import { lireBibtex, lireCslJson, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES } from './bibliographie.js';
+import { separerCible, formeReference, texteForme, offreModele, numeroter } from './references.js';
+import { zip } from './zip.js';
+import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, referencesReproductibles, lireEntete, listeEntete, fixerEntete, BLOCS } from './rendu_document.js';
+import { lireBibtex, lireCslJson, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES,
+  elementZotero, lireReponseZotero, memeOeuvre, placerReference, SANS_ZOTERO } from './bibliographie.js';
 import { VERSION } from './nouveautes.js';
 
 let md = null;              // markdown-it, once loaded
@@ -73,7 +76,7 @@ function styleMarkdown() {
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 // A project's models in the order of their numbers (fitting one moves it to the end of its list).
 const parNumero = (modeles) => [...modeles].sort((a, b) => (Number(a.numero) || 1e9) - (Number(b.numero) || 1e9));
-const AUTRES_ANALYSES = ['RDA', 'CA', 'LDA', 'TREE', 'KMEANS'];
+const AUTRES_ANALYSES = ['RDA', 'CA', 'LDA', 'TREE', 'KMEANS', 'CCA', 'INDVAL', 'TRIM', 'PCOA', 'NMDS', 'PERMANOVA', 'MANTEL', 'FOREST', 'BOOST', 'DISTANCE'];
 
 export function installerDocuments(app) {
   VUES.document = {
@@ -158,7 +161,7 @@ function creerEditeur(app, conteneur, pid, d, loc) {
     images: new Map(), tableaux: new Map(), methodes: new Map(), calculs: new Map(), urls: new Map(),
     // its citations: the references kept in it (BibTeX), their style, the files read, the keys not found
     bib: d.bib || '', style: STYLES.includes(d.style) ? d.style : STYLES[0], bibEnvoye: d.bib || '', styleEnvoye: d.style || STYLES[0],
-    biblio: { signature: null, fichiers: [], version: 0, lecture: null, cache: null, date: 0 }, citesInconnues: new Set(),
+    biblio: { signature: null, fichiers: [], version: 0, lecture: null, cache: null, date: 0, conflits: new Set(), dernierConflit: '' }, citesInconnues: new Set(),
   };
   ouverts.add(s);
   if (bureau && bureau.quartoDisponible) bureau.quartoDisponible().then((q) => { s.quarto = q; }).catch(() => { s.quarto = false; });
@@ -363,7 +366,9 @@ const garder = (carte, cle, valeur, max = 80) => {
 
 // One reference resolved (rendu_document.js says what it gives) once its model is known. Plots,
 // tables and the Methods text take time: unless `attendre`, those not yet at hand give null (the
-// preview shows the text first, then them).
+// preview shows the text first, then them). What a reproducible Quarto file needs to write it in R
+// comes too: a value's `forme` (references.js: formeReference), a plot's `vue` and `variante`, a
+// table's `cle`.
 async function resoudreUne(app, s, m, chemin, ref, attendre) {
   const parties = partiesModele(m);
   const partie = (cle, quoi) => parties.find((x) => x.cle === cle && x[quoi]);
@@ -374,13 +379,19 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     const r = s.methodes.get(cle) || garder(s.methodes, cle, await demander('methodes', { modele: m.id, langue: s.langue, version: VERSION }));
     return { genre: 'texte', paragraphes: [].concat(chemin[1] === 'references' ? r.references : r.paragraphes).filter(Boolean) };
   }
+  if (chemin[0] === 'resultats' && chemin.length === 1) {
+    const cle = `${m.id}|${s.langue}|resultats`;
+    if (!s.methodes.has(cle) && !attendre) return null;
+    const r = s.methodes.get(cle) || garder(s.methodes, cle, await demander('resultats_texte', { modele: m.id, langue: s.langue }));
+    return { genre: 'texte', paragraphes: [].concat(r.paragraphes).filter(Boolean) };
+  }
   if (chemin[0] === 'table') {
     const x = partie(chemin[1], 'tableau');
     if (!x || chemin.length !== 2) return erreur('ref_tableau_inconnu');
     const cle = `${m.id}|${x.cle}`;
     if (!s.tableaux.has(cle) && !attendre) return null;
     const blocs = s.tableaux.get(cle) || garder(s.tableaux, cle, await x.tableau(m));
-    return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: t(x.cle) };
+    return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: t(x.cle), cle: x.cle };
   }
   const x = partie(chemin[0], 'vue');
   if (x && (chemin.length === 1 || x.variantes)) {
@@ -398,10 +409,10 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     if (!s.images.has(cle) && !attendre) return null;
     const image = s.images.get(cle) || garder(s.images, cle, await imageVue(app, x.vue, m, variante), 40);
     if (!image) return erreur('ref_graphique_absent');
-    return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: t(x.cle) };
+    return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: t(x.cle), vue: x.vue, variante };
   }
-  const v = valeurReference(m, chemin, ref, s.langue);
-  return v.erreur ? erreur(`ref_${v.erreur}`) : { genre: 'valeur', texte: v.texte };
+  const f = formeReference(m, chemin, ref);
+  return f.erreur ? erreur(`ref_${f.erreur}`) : { genre: 'valeur', texte: texteForme(f, s.langue), forme: f };
 }
 
 // Every reference of the document resolved, in order (null: not yet, unless `attendre`); then the
@@ -418,7 +429,7 @@ async function resoudre(app, s, analyse, attendre) {
     try {
       const m = await modelePour(app, s, c.modele, attendre);
       const r = m ? await resoudreUne(app, s, m, c.chemin, ref, attendre) : null;
-      resolus.push(!r || r.erreur ? r : { ...r, legende: ref.legende, etiquette: ref.etiquette });
+      resolus.push(!r || r.erreur ? r : { ...r, legende: ref.legende, etiquette: ref.etiquette, modele: m.id, chemin: c.chemin });
     } catch (e) {
       resolus.push({ erreur: e.message });
     }
@@ -527,10 +538,10 @@ function completion(app, s) {
     if (m) {
       const parties = partiesModele(m);
       offre = offreModele(m, { vues: parties.filter((x) => x.vue).map((x) => x.cle), tableaux: parties.filter((x) => x.tableau).map((x) => x.cle), langue: s.langue })
-        .map((o) => ({ ...o, detail: o.type === 'graphique' || o.type === 'tableau' ? t(o.detail) : o.type === 'texte' ? t('document_methodes') : o.detail }));
+        .map((o) => ({ ...o, detail: o.type === 'graphique' || o.type === 'tableau' ? t(o.detail) : o.type === 'texte' ? t(o.chemin === 'resultats' ? 'document_resultats' : 'document_methodes') : o.detail }));
     } else {
       offre = [...VALEURS_COURANTES.map((c) => ({ chemin: c, type: 'valeur', detail: t('document_non_calcule') })),
-        { chemin: 'methodes', type: 'texte', detail: t('document_methodes') }];
+        { chemin: 'methodes', type: 'texte', detail: t('document_methodes') }, { chemin: 'resultats', type: 'texte', detail: t('document_resultats') }];
     }
     // (in the order given: the model's main values first, then by variable, tables, plots;
     // boost keeps it among the options that match as well)
@@ -550,7 +561,9 @@ const nomFichier = (chemin) => String(chemin).split(/[\\/]/).pop();
 
 // The references the document can cite: those kept in it (s.bib), then those of the files its
 // header names (bibliography: a file or a list, as Quarto reads them), which win (they may have
-// changed since). The files are read again when the header changes, or when `forcer`.
+// changed since). The files are read again when the header changes, or when `forcer`. A file that
+// gives the key of a reference kept from Zotero to another work (two libraries' keys alike) is said
+// once, in the status bar: the file's is the one cited.
 async function bibliotheque(app, s, { forcer = false } = {}) {
   const chemins = listeEntete(lireEntete(s.vue.state.doc.toString()).entete.bibliography);
   const signature = JSON.stringify(chemins);
@@ -575,7 +588,22 @@ async function bibliotheque(app, s, { forcer = false } = {}) {
   await b.lecture;
   if (b.cache && b.cache.bib === s.bib && b.cache.version === b.version) return b.cache.entrees;
   const entrees = new Map(lireBibtex(s.bib).entrees.map((e) => [e.cle, { ...e, origine: null }]));
-  for (const f of b.fichiers) for (const e of f.entrees) entrees.set(e.cle, { ...e, origine: f.chemin });
+  const conflits = [];
+  for (const f of b.fichiers) {
+    for (const e of f.entrees) {
+      const x = entrees.get(e.cle);
+      const dit = `${e.cle}|${f.chemin}`;
+      if (x && !x.origine && x.zotero && !memeOeuvre(x, e) && !b.conflits.has(dit)) {
+        b.conflits.add(dit);
+        conflits.push(t('zotero_conflit_fichier', { cle: e.cle, fichier: nomFichier(f.chemin), bibliotheque: nomBibliotheque(x.zotero) }));
+      }
+      entrees.set(e.cle, { ...e, origine: f.chemin });
+    }
+  }
+  if (conflits.length) {
+    b.dernierConflit = conflits.join(' ');
+    app.statut(b.dernierConflit, true);
+  }
   b.cache = { bib: s.bib, version: b.version, entrees };
   return entrees;
 }
@@ -597,13 +625,16 @@ async function citer(app, s, analyse) {
 }
 
 // The references cited from files, kept in the document too, as BibTeX (a project sent to someone
-// who hasn't the .bib still cites them): added, or brought up to date when their file changed.
+// who hasn't the .bib still cites them): added, or brought up to date when their file changed; not
+// over another work kept from Zotero under the same key (bibliotheque() says so).
 function garderCitees(s, citations, entrees) {
   const stock = new Map(lireBibtex(s.bib).entrees.map((e) => [e.cle, e]));
   let change = false;
   for (const { cle } of citations.liste) {
     const e = entrees.get(cle);
     if (!e || !e.origine) continue;
+    const garde = stock.get(cle);
+    if (garde && garde.zotero && !memeOeuvre(garde, e)) continue;
     const texte = versBibtex(e);
     if (!stock.has(cle) || versBibtex(stock.get(cle)) !== texte) {
       stock.set(cle, lireBibtex(texte).entrees[0]);
@@ -615,13 +646,45 @@ function garderCitees(s, citations, entrees) {
   s.garder();
 }
 
-// References added to the document (from Zotero, or pasted): kept in its BibTeX, a key already
-// there replaced.
+// References pasted in the document: kept in its BibTeX, a key already there replaced.
 function ajouterAuDocument(s, liste) {
   const stock = new Map(lireBibtex(s.bib).entrees.map((e) => [e.cle, e]));
   for (const e of liste) stock.set(e.cle, lireBibtex(versBibtex(e)).entrees[0]);
   s.bib = [...stock.values()].map((e) => versBibtex(e)).join('\n\n');
   s.garder();
+}
+
+// References added from Zotero, from any of its libraries: kept in the document's BibTeX with where
+// they are in Zotero, each placed among the document's references (`entrees`, its files' included)
+// by placerReference: the same item or the same work is cited under the key the document has for
+// it; another work whose key the document already uses (the same key in two libraries) gets that key
+// with a letter. Returns { cles: the key each one is cited under, in order, notes: what to say of
+// those cited under another key than Zotero's (dire), alerte: one of them took a letter }.
+function ajouterZotero(s, liste, entrees) {
+  const stock = new Map(lireBibtex(s.bib).entrees.map((e) => [e.cle, e]));
+  const toutes = new Map(entrees);
+  const notes = [];
+  let alerte = false;
+  let change = false;
+  const cles = liste.map((e) => {
+    const p = placerReference(e, toutes);
+    if (p.nouvelle || p.remplace) {
+      const x = lireBibtex(versBibtex({ ...e, cle: p.cle })).entrees[0];
+      change = change || !stock.has(p.cle) || versBibtex(stock.get(p.cle)) !== versBibtex(x);
+      stock.set(p.cle, x);
+      toutes.set(p.cle, { ...x, origine: null });
+    }
+    if (p.renommee) {
+      notes.push(t('zotero_renommee', { cle: p.renommee, nouvelle: p.cle, bibliotheque: nomBibliotheque(e.zotero) }));
+      alerte = true;
+    } else if (p.autre) notes.push(t('zotero_deja_sous', { cle: p.autre, existante: p.cle }));
+    return p.cle;
+  });
+  if (change) {
+    s.bib = [...stock.values()].map((e) => versBibtex(e)).join('\n\n');
+    s.garder();
+  }
+  return { cles, notes, alerte };
 }
 
 // Text typed at the cursor (never in the YAML header). `citation`: a space before it when it
@@ -639,43 +702,75 @@ function insererTexte(s, texte, citation = false) {
 
 // Zotero on this computer (zotero.js), seen again every 20 seconds at most: its local API (Zotero 7
 // and later, when "Allow other applications on this computer to communicate with Zotero" is
-// ticked), and Better BibTeX's picker.
-const zotero = { etat: null, date: 0, recherches: new Map(), collection: '' };
+// ticked), the libraries it has (My Library, users/0, then the group libraries it syncs,
+// groups/<id>; `sansGroupes` when it doesn't list them: My Library alone), and Better BibTeX's
+// picker. The library searched, or one of its collections, is chosen in Insert a citation and kept
+// (`source`: "groups/<id>|<collection key>"); typing @ searches that library.
+const zotero = { etat: null, date: 0, recherches: new Map(), source: lire('zotero_source') || '' };
 async function etatZotero(forcer = false) {
   if (!bureau || !bureau.zotero) return (zotero.etat = { bureau: false });
   if (!forcer && zotero.etat && Date.now() - zotero.date < 20000) return zotero.etat;
-  const [api, bbt] = await Promise.all([bureau.zotero('/api/users/0/items/top?limit=1&format=keys', 3000), bureau.zotero('/better-bibtex/cayw?probe=1', 3000)])
-    .catch(() => [{ erreur: 'absent' }, {}]);
-  zotero.etat = { bureau: true, api: api.statut === 200, bbt: bbt.statut === 200 && /ready/i.test(bbt.texte || ''),
-    absent: api.erreur === 'absent', ferme: api.statut === 403, ancien: api.statut === 404 };
+  const [api, bbt, groupes] = await Promise.all([bureau.zotero('/api/users/0/items/top?limit=1&format=keys', 3000), bureau.zotero('/better-bibtex/cayw?probe=1', 3000),
+    bureau.zotero('/api/users/0/groups?format=json', 3000)]).catch(() => [{ erreur: 'absent' }, {}, {}]);
+  const z = { bureau: true, api: api.statut === 200, bbt: bbt.statut === 200 && /ready/i.test(bbt.texte || ''),
+    absent: api.erreur === 'absent', ferme: api.statut === 403, ancien: api.statut === 404, bibliotheques: [{ id: 'users/0' }] };
+  if (z.api) {
+    let l = null;
+    try { l = groupes.statut === 200 ? JSON.parse(groupes.texte) : null; } catch { l = null; }
+    if (Array.isArray(l)) {
+      z.bibliotheques.push(...l.filter((g) => g && Number.isInteger(g.id)).map((g) => ({ id: `groups/${g.id}`, nom: String((g.data && g.data.name) || g.id) }))
+        .sort((a, b) => a.nom.localeCompare(b.nom)));
+    } else z.sansGroupes = groupes.statut === 404 ? 'ancien' : 'erreur';
+  }
+  zotero.etat = z;
   zotero.date = Date.now();
-  return zotero.etat;
+  return z;
+}
+// The library searched and its collection ('': the whole library): the one chosen, while Zotero
+// still has that library, else My Library.
+function sourceZotero(z = zotero.etat) {
+  const [b, c = ''] = String(zotero.source).split('|');
+  return z && z.bibliotheques && z.bibliotheques.some((x) => x.id === b) ? { bibliotheque: b, collection: /^[A-Z0-9]{8}$/.test(c) ? c : '' }
+    : { bibliotheque: 'users/0', collection: '' };
+}
+// A Zotero library's name, from its id or one of its items' (groups/<id>/items/<key>).
+function nomBibliotheque(id) {
+  const b = (/^(users\/0|groups\/\d+)/.exec(String(id || '')) || [])[1];
+  if (!b) return 'Zotero';
+  if (b === 'users/0') return t('zotero_ma_bibliotheque');
+  const x = zotero.etat && zotero.etat.bibliotheques && zotero.etat.bibliotheques.find((y) => y.id === b);
+  return x ? x.nom : t('zotero_groupe', { id: b.slice(7) });
 }
 function messageZotero(z) {
   if (!z || !z.bureau) return t('zotero_bureau');
-  if (z.api) return z.bbt ? t('zotero_connecte_bbt') : t('zotero_connecte');
+  if (z.api) return t(z.bbt ? 'zotero_connecte_bbt' : 'zotero_connecte', { bibliotheque: nomBibliotheque(sourceZotero(z).bibliotheque) });
   if (z.ferme) return t('zotero_ferme');
   if (z.ancien) return t('zotero_ancien');
   return t('zotero_absent');
 }
-// Zotero's references that answer a search (title, authors, year), in the whole library or in one
-// collection (its key: then all of its references when the search is empty), as BibTeX: their keys
-// are those Zotero exports (Better BibTeX's when it is installed). Kept a minute.
-function chercherZotero(q, collection = '') {
-  const cle = `${collection}|${q.trim().toLowerCase()}`;
+// The notes of ajouterZotero, in the status bar (as a warning when a key took a letter).
+const dire = (app, notes, alerte) => { if (notes.length) app.statut(notes.join(' '), alerte); };
+// "kept in the document", and from which group when it came from one.
+const dansDocument = (e) => (/^groups\//.test(e.zotero || '') ? `${t('citer_dans_document')} · ${nomBibliotheque(e.zotero)}` : t('citer_dans_document'));
+// Zotero's references that answer a search (title, authors, year), in one of its libraries or in
+// one of their collections (its key: then all of its references when the search is empty): each read
+// from its BibTeX, its key the one Zotero exports (Better BibTeX's when it is installed), with where
+// it is in Zotero (format=json&include=bibtex: each item's own export, about 4 ms each). Kept a minute.
+function chercherZotero(q, { bibliotheque = 'users/0', collection = '' } = {}) {
+  const cle = `${bibliotheque}|${collection}|${q.trim().toLowerCase()}`;
   const garde = zotero.recherches.get(cle);
   if (garde && Date.now() - garde.date < 60000) return garde.promesse;
-  const base = collection ? `/api/users/0/collections/${collection}/items/top?` : '/api/users/0/items/top?';
+  const base = collection ? `/api/${bibliotheque}/collections/${collection}/items/top?` : `/api/${bibliotheque}/items/top?`;
   const recherche = q.trim() ? `q=${encodeURIComponent(q.trim())}&qmode=titleCreatorYear&` : '';
-  const promesse = bureau.zotero(`${base}${recherche}itemType=-attachment&itemType=-note&format=bibtex&limit=${collection ? 300 : 25}`, 8000)
-    .then((r) => (r.statut === 200 ? lireBibtex(r.texte).entrees : []), () => []);
+  const promesse = bureau.zotero(`${base}${recherche}itemType=-attachment&itemType=-note&format=json&include=bibtex&limit=${collection ? 300 : 25}`, 15000)
+    .then((r) => (r.statut === 200 ? lireReponseZotero(r.texte) : []), () => []);
   zotero.recherches.set(cle, { date: Date.now(), promesse });
   if (zotero.recherches.size > 100) zotero.recherches.delete(zotero.recherches.keys().next().value);
   return promesse;
 }
-// The library's collections, with their path ("Thèse › Perdrix") and how many references each holds.
-async function collectionsZotero() {
-  const r = await bureau.zotero('/api/users/0/collections?format=json&limit=1000', 8000);
+// A library's collections, with their path ("Thèse › Perdrix") and how many references each holds.
+async function collectionsZotero(bibliotheque = 'users/0') {
+  const r = await bureau.zotero(`/api/${bibliotheque}/collections?format=json&limit=1000`, 8000);
   let l = [];
   try { l = r.statut === 200 ? JSON.parse(r.texte) : []; } catch { l = []; }
   const par = new Map(l.map((c) => [c.key, c]));
@@ -699,18 +794,25 @@ async function choisirDansZotero(app, s) {
   try { choix = [].concat(JSON.parse(r.texte || '[]')).filter((c) => c && c.citationKey); } catch { choix = []; }
   app.statut('');
   if (!choix.length) return;
+  // (Better BibTeX's keys are unique in a library, not across them: each entry is found again by its
+  // library and key, with its item's place in Zotero)
+  const bib = (c) => (Number.isInteger(c.item && c.item.libraryID) ? c.item.libraryID : 1);
   const parBibliotheque = new Map();
-  for (const c of choix) {
-    const b = Number.isInteger(c.item && c.item.libraryID) ? c.item.libraryID : 1;
-    parBibliotheque.set(b, [...(parBibliotheque.get(b) || []), c.citationKey]);
-  }
-  const lus = await Promise.all([...parBibliotheque].map(([b, cles]) => bureau.zotero(
-    `/better-bibtex/export/item?citationKeys=${encodeURIComponent(cles.join(','))}&translator=${encodeURIComponent('Better CSL JSON')}&libraryID=${b}`, 15000)));
-  const liste = lus.flatMap((x) => (x.statut === 200 ? lireCslJson(x.texte).entrees : []));
-  if (liste.length) ajouterAuDocument(s, liste);
-  const manquent = choix.filter((c) => !liste.some((e) => e.cle === c.citationKey)).length;
-  if (manquent) app.statut(t('zotero_incomplet', { n: manquent }), true);
-  insererTexte(s, `[${choix.map(citationChoisie).join('; ')}]`, true);
+  for (const c of choix) parBibliotheque.set(bib(c), [...(parBibliotheque.get(bib(c)) || []), c]);
+  const trouvees = new Map();
+  await Promise.all([...parBibliotheque].map(async ([b, cs]) => {
+    const cles = [...new Set(cs.map((c) => c.citationKey))];
+    const x = await bureau.zotero(`/better-bibtex/export/item?citationKeys=${encodeURIComponent(cles.join(','))}&translator=${encodeURIComponent('Better CSL JSON')}&libraryID=${b}`, 15000);
+    const ou = new Map(cs.map((c) => [c.citationKey, elementZotero(c.uri || (c.item && c.item.uri))]));
+    if (x.statut === 200) for (const e of lireCslJson(x.texte).entrees) trouvees.set(`${b}|${e.cle}`, { ...e, zotero: ou.get(e.cle) || '' });
+  }));
+  const lues = choix.map((c) => trouvees.get(`${bib(c)}|${c.citationKey}`));
+  const { cles, notes, alerte } = ajouterZotero(s, lues.filter(Boolean), await bibliotheque(app, s));
+  let i = 0;
+  const citees = choix.map((c, k) => (lues[k] ? { ...c, citationKey: cles[i++] } : c));
+  const manquent = lues.filter((e) => !e).length;
+  dire(app, manquent ? [...notes, t('zotero_incomplet', { n: manquent })] : notes, alerte || manquent > 0);
+  insererTexte(s, `[${citees.map(citationChoisie).join('; ')}]`, true);
 }
 // A reference picked in Better BibTeX's picker as Pandoc writes it: "see -@a, p. 3 and after".
 function citationChoisie(c) {
@@ -739,19 +841,25 @@ function citationsDocument(app, s) {
     return options.length ? { from: a.debut, options, filter: false } : null;
   };
 }
+// (in the library chosen in Insert a citation; those the document has already, the same item or the
+// same work, are among its own; another work under a key the document uses comes with its letter)
 function citationsZotero(app, s) {
   return async (contexte) => {
     const a = avantArobase(contexte);
     if (!a || a.q.length < 3 || !bureau || !bureau.zotero) return null;
     await new Promise((r) => setTimeout(r, 300));
-    if (contexte.aborted || !(await etatZotero()).api) return null;
+    const z = await etatZotero();
+    if (contexte.aborted || !z.api) return null;
     const entrees = await bibliotheque(app, s);
-    const trouvees = (await chercherZotero(a.q)).filter((e) => !entrees.has(e.cle));
+    const { bibliotheque: b } = sourceZotero(z);
+    const trouvees = (await chercherZotero(a.q, { bibliotheque: b })).map((e) => ({ e, p: placerReference(e, entrees) })).filter((x) => x.p.nouvelle);
     if (contexte.aborted || !trouvees.length) return null;
-    return { from: a.debut, filter: false, options: trouvees.map((e) => ({ label: e.cle, detail: `${resume(e, s.langue)} · Zotero`, type: 'class',
+    const ou = b === 'users/0' ? 'Zotero' : `Zotero · ${nomBibliotheque(b)}`;
+    return { from: a.debut, filter: false, options: trouvees.map(({ e, p }) => ({ label: p.cle, detail: `${resume(e, s.langue)} · ${ou}`, type: 'class',
       apply: (vue, _c, from, to) => {
-        ajouterAuDocument(s, [e]);
-        vue.dispatch({ changes: { from, to, insert: e.cle }, selection: { anchor: from + e.cle.length } });
+        const { cles, notes, alerte } = ajouterZotero(s, [e], entrees);
+        vue.dispatch({ changes: { from, to, insert: cles[0] }, selection: { anchor: from + cles[0].length } });
+        dire(app, notes, alerte);
       } })) };
   };
 }
@@ -776,14 +884,15 @@ function menuCiter(app, s) {
   ];
 }
 
-// Insert a citation: the document's references and Zotero's that answer a search, in the whole
-// library or in one of its collections (with plain Zotero, what Better BibTeX's picker gives); those
-// ticked cited together ([@a; @b]), or in the sentence (@a).
+// Insert a citation: the document's references and Zotero's that answer a search, in one of its
+// libraries (My Library, a group's) or one of their collections (with plain Zotero, what Better
+// BibTeX's picker gives); those ticked cited together ([@a; @b]), or in the sentence (@a). The
+// library chosen is kept, and typing @ searches it. Without its group libraries (Zotero didn't list
+// them), My Library alone, as before groups were listed, and a sentence says so.
 async function dialogueCiter(app, s) {
-  const choisies = new Map();
+  const choisies = new Map();  // (by line: a key of the document's, or a Zotero item)
   const recherche = el('input', { type: 'search', class: 'recherche-citation', placeholder: t('citer_rechercher'), 'aria-label': t('citer_rechercher') });
-  const choixCollection = el('select', { class: 'collection-zotero', title: t('zotero_collection_aide'), 'aria-label': t('zotero_collection_aide') },
-    el('option', { value: '' }, t('zotero_bibliotheque')));
+  const choixSource = el('select', { class: 'collection-zotero', title: t('zotero_source_aide'), 'aria-label': t('zotero_source_aide') });
   const liste = el('div', { class: 'liste-citations' });
   const etat = el('p', { class: 'note' });
   const narratif = el('input', { type: 'checkbox' });
@@ -791,45 +900,66 @@ async function dialogueCiter(app, s) {
   const majListe = async () => {
     const g = ++generation;
     const q = recherche.value.trim();
-    const coll = choixCollection.value;
+    const [lib, coll = ''] = (choixSource.value || 'users/0|').split('|');
     const entrees = await bibliotheque(app, s);
     const z = await etatZotero();
-    // (a collection: its references, those already in the document among them; else the
-    // document's first, then Zotero's not in it yet)
+    // (a collection: all its references, those the document has already among them; else the
+    // document's first, then Zotero's it hasn't yet)
     const locales = coll ? [] : [...entrees.values()].filter((e) => !q || correspond(e, q)).sort((a, b) => resume(a).localeCompare(resume(b)));
-    const distantes = z.api && (coll || q.length >= 2) ? (await chercherZotero(q, coll)).filter((e) => coll || !entrees.has(e.cle)) : [];
+    const distantes = z.api && (coll || q.length >= 2) ? (await chercherZotero(q, { bibliotheque: lib, collection: coll }))
+      .map((e) => ({ e, p: placerReference(e, entrees) })).filter((x) => coll || x.p.nouvelle) : [];
     if (g !== generation) return;
-    const ligne = (e, source) => el('label', { class: 'ligne-citation' },
-      el('input', { type: 'checkbox', checked: choisies.has(e.cle), onchange: (ev) => { if (ev.target.checked) choisies.set(e.cle, { e, source }); else choisies.delete(e.cle); } }),
-      el('span', { class: 'resume-citation', title: `@${e.cle}` }, resume(e, s.langue)),
-      el('span', { class: 'source-citation' }, source === 'zotero' ? (entrees.has(e.cle) ? t('citer_deja') : 'Zotero') : e.origine ? nomFichier(e.origine) : t('citer_dans_document')));
-    liste.replaceChildren(...locales.slice(0, 80).map((e) => ligne(e, 'document')), ...distantes.map((e) => ligne(e, 'zotero')));
+    const ou = lib === 'users/0' ? 'Zotero' : `Zotero · ${nomBibliotheque(lib)}`;
+    const ligne = (id, e, source, cle, texte) => el('label', { class: 'ligne-citation' },
+      el('input', { type: 'checkbox', checked: choisies.has(id), onchange: (ev) => { if (ev.target.checked) choisies.set(id, { e, source }); else choisies.delete(id); } }),
+      el('span', { class: 'resume-citation', title: `@${cle}` }, resume(e, s.langue)),
+      el('span', { class: 'source-citation' }, texte));
+    liste.replaceChildren(...locales.slice(0, 80).map((e) => ligne(`d|${e.cle}`, e, 'document', e.cle, e.origine ? nomFichier(e.origine) : dansDocument(e))),
+      ...distantes.map(({ e, p }) => ligne(`z|${e.zotero || e.cle}`, e, 'zotero', p.cle, p.nouvelle ? ou : t('citer_deja'))));
     if (!liste.childElementCount) liste.append(el('p', { class: 'note' }, q || coll ? t('citer_rien') : t('citer_vide')));
     etat.textContent = messageZotero(z);
   };
   recherche.addEventListener('input', () => { clearTimeout(recherche.attente); recherche.attente = setTimeout(majListe, 250); });
-  choixCollection.addEventListener('change', () => { zotero.collection = choixCollection.value; majListe(); });
+  choixSource.addEventListener('change', () => { zotero.source = choixSource.value; ecrire('zotero_source', zotero.source); majListe(); });
   const z = await etatZotero();
   if (z.api) {
-    // (the collection chosen last time, while it still exists)
-    for (const c of await collectionsZotero()) choixCollection.append(el('option', { value: c.cle, selected: c.cle === zotero.collection }, `${c.nom} (${c.n})`));
+    // each library, with its collections (with groups, under its name); the one chosen last time
+    // while Zotero still has it
+    const groupes = z.bibliotheques.length > 1;
+    const collections = await Promise.all(z.bibliotheques.map((b) => collectionsZotero(b.id)));
+    z.bibliotheques.forEach((b, i) => {
+      const nom = nomBibliotheque(b.id);
+      const options = [el('option', { value: `${b.id}|` }, groupes ? t('zotero_toute', { bibliotheque: nom }) : t('zotero_bibliotheque')),
+        ...collections[i].map((c) => el('option', { value: `${b.id}|${c.cle}` }, `${groupes ? `${nom} › ` : ''}${c.nom} (${c.n})`))];
+      choixSource.append(...(groupes ? [el('optgroup', { label: nom }, options)] : options));
+    });
+    const source = sourceZotero(z);
+    choixSource.value = `${source.bibliotheque}|${source.collection}`;
+    if (!choixSource.value) choixSource.value = `${source.bibliotheque}|`;
   }
   dialogue({ titre: t('citer_inserer').replace(/…$/, ''), large: true,
-    contenu: el('div', { class: 'dialogue-citer' }, el('div', { class: 'ligne-recherche-citation' }, recherche, z.api ? choixCollection : null),
+    contenu: el('div', { class: 'dialogue-citer' }, el('div', { class: 'ligne-recherche-citation' }, recherche, z.api ? choixSource : null),
+      z.api && z.sansGroupes ? el('p', { class: 'note' }, t(`zotero_sans_groupes_${z.sansGroupes}`)) : null,
       liste, el('label', { class: 'champ' }, narratif, ` ${t('citer_narratif')}`), etat),
     boutons: [
       ...(z.bbt ? [{ libelle: t('zotero_choisir'), action: () => { choisirDansZotero(app, s); return true; } }] : []),
       { libelle: t('annuler'), action: () => true },
       { libelle: t('citer_bouton'), principal: true, action: () => {
         if (!choisies.size) return false;
-        const choix = [...choisies.values()];
-        const zot = choix.filter((x) => x.source === 'zotero').map((x) => x.e);
-        if (zot.length) ajouterAuDocument(s, zot);
-        const cles = choix.map((x) => `@${x.e.cle}`);
-        insererTexte(s, narratif.checked ? cles.join(', ') : `[${cles.join('; ')}]`, true);
+        citerChoisies(app, s, [...choisies.values()], narratif.checked);
         return true;
       } }] });
   majListe();
+}
+// The references ticked in Insert a citation, cited at the cursor: Zotero's kept in the document
+// first (ajouterZotero: under the key it gives them), each key once.
+async function citerChoisies(app, s, choix, narratif) {
+  const zot = choix.filter((x) => x.source === 'zotero').map((x) => x.e);
+  const { cles, notes, alerte } = zot.length ? ajouterZotero(s, zot, await bibliotheque(app, s)) : { cles: [], notes: [] };
+  let i = 0;
+  const citees = [...new Set(choix.map((x) => `@${x.source === 'zotero' ? cles[i++] : x.e.cle}`))];
+  insererTexte(s, narratif ? citees.join(', ') : `[${citees.join('; ')}]`, true);
+  dire(app, notes, alerte);
 }
 
 // A bibliography file named in the header (bibliography:), relative to the project's folder when it
@@ -848,9 +978,13 @@ async function lierFichier(app, s) {
     const nouveau = fixerEntete(brut || '', 'bibliography', actuels.length ? [...actuels, valeur] : valeur);
     s.vue.dispatch({ changes: { from: 0, to: brut.length, insert: nouveau } });
   }
+  s.biblio.dernierConflit = '';
   await bibliotheque(app, s, { forcer: true });
   const f = s.biblio.fichiers.find((x) => x.chemin === valeur);
-  app.statut(f && f.erreur ? `${nomFichier(valeur)} : ${f.erreur}` : t('citer_lie', { fichier: nomFichier(valeur), n: f ? f.entrees.length : 0 }), !!(f && f.erreur));
+  // (with what bibliotheque() said of a key the file gives to another work than one kept from Zotero)
+  const conflit = s.biblio.dernierConflit;
+  app.statut([f && f.erreur ? `${nomFichier(valeur)} : ${f.erreur}` : t('citer_lie', { fichier: nomFichier(valeur), n: f ? f.entrees.length : 0 }), conflit].filter(Boolean).join(' — '),
+    !!(f && f.erreur) || !!conflit);
   s.rafraichir();
 }
 
@@ -875,7 +1009,7 @@ async function dialogueReferences(app, s) {
   const citees = new Set(analyser(md, s.vue.state.doc.toString()).citations.flatMap((tok) => tok.meta.cites.map((c) => c.cle)));
   const lignes = [...entrees.values()].sort((a, b) => resume(a).localeCompare(resume(b))).map((e) => el('div', { class: `ligne-reference${citees.has(e.cle) ? ' citee' : ''}` },
     el('code', {}, `@${e.cle}`), el('span', { class: 'resume-citation' }, resume(e, s.langue)),
-    el('span', { class: 'source-citation' }, e.origine ? nomFichier(e.origine) : t('citer_dans_document'))));
+    el('span', { class: 'source-citation' }, e.origine ? nomFichier(e.origine) : dansDocument(e))));
   const sources = [...s.biblio.fichiers.map((f) => `${f.chemin} : ${f.erreur || t('citer_n', { n: f.entrees.length })}${f.erreurs.length ? ` (${t('citer_coller_erreurs', { n: f.erreurs.length })})` : ''}`),
     t('citer_n_document', { n: lireBibtex(s.bib).entrees.length })];
   const inutiles = lireBibtex(s.bib).entrees.filter((e) => !citees.has(e.cle));
@@ -955,10 +1089,12 @@ function menuInserer(app, s) {
         '-',
         ...parties.filter((x) => x.tableau).map((x) => ({ libelle: `${t('document_tableau')} · ${t(x.cle)}`, icone: 'table-2', action: ref(`table.${x.cle} | ${t(x.cle)}`, true) })),
         '-',
-        { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) }]);
+        { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) },
+        { libelle: t('document_resultats'), icone: 'quote', action: ref('resultats', true) }]);
     } else {
       sous = [...VALEURS_COURANTES.map((c) => ({ libelle: c, action: ref(c) })), '-',
-        { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) }];
+        { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) },
+        { libelle: t('document_resultats'), icone: 'quote', action: ref('resultats', true) }];
     }
     return { libelle: `${d.nom}${d.titre ? ` — ${d.titre}` : ''}`, sous };
   });
@@ -974,11 +1110,40 @@ function menuCompiler(app, s) {
     { libelle: 'PDF…', icone: 'file-down', action: () => compiler(app, s, 'pdf') },
     { libelle: 'HTML…', icone: 'file-code', action: () => compiler(app, s, 'html') },
     '-',
-    { libelle: t('document_qmd'), icone: 'file-output', action: () => compiler(app, s, 'qmd') },
+    { libelle: t('document_qmd'), icone: 'file-output', action: () => dialogueQuarto(app, s, null) },
     quarto ? { libelle: t('document_quarto'), icone: 'file-output',
-      sous: [['docx', 'Word (.docx)'], ['typst', 'PDF (Typst)'], ['html', 'HTML']].map(([f, n]) => ({ libelle: n, action: () => compiler(app, s, 'qmd', f) })) }
+      sous: Object.entries(SORTIES_QUARTO).map(([f, n]) => ({ libelle: n, action: () => dialogueQuarto(app, s, f) })) }
       : { libelle: t('document_quarto_absent'), icone: 'file-output', actif: false, action: () => {} },
   ];
+}
+const SORTIES_QUARTO = { docx: 'Word (.docx)', typst: 'PDF (Typst)', html: 'HTML' };
+
+// The Quarto file's results: written in, or reproducible (R recomputes them from the raw data with
+// each cited model's Export to R script, written beside the .qmd). The models cited whose type has
+// no export to R yet are said here: their values stay written in. The choice is kept.
+async function dialogueQuarto(app, s, quarto) {
+  const p = app.projet(s.pid);
+  const noms = p.modeles.map((d) => d.nom).concat(app.modelesDe(s.pid).map((m) => m.nom));
+  const cites = [...new Set(analyser(md, s.vue.state.doc.toString()).refs.map((tok) => separerCible(tok.meta.ref.cible, noms)).filter(Boolean).map((c) => c.modele))];
+  const sans = cites.length ? [].concat((await demander('export_r_possible', { projet: s.pid, noms: cites }).catch(() => ({}))).sans_export || []) : [];
+  let reproductible = s.reproductible ?? lire('document_reproductible') === 'oui';
+  const choix = (valeur, titre, aide) => el('label', { class: 'champ choix-quarto' },
+    el('input', { type: 'radio', name: 'resultats-quarto', checked: reproductible === valeur, onchange: () => { reproductible = valeur; } }),
+    el('span', {}, el('span', { class: 'titre-choix' }, titre), el('span', { class: 'note' }, aide)));
+  dialogue({ titre: quarto ? `${t('document_quarto')} · ${SORTIES_QUARTO[quarto]}` : t('reproductible_titre'),
+    contenu: el('div', { class: 'dialogue-quarto' },
+      el('p', {}, t('reproductible_question')),
+      choix(false, t('reproductible_non'), t('reproductible_non_aide')),
+      choix(true, t('reproductible_oui'), t('reproductible_oui_aide')),
+      sans.length ? el('p', { class: 'note avertissement' }, t('reproductible_sans_export', {
+        modeles: sans.map((x) => `${x.nom} (${String(x.raison).replace(/\.$/, '').replace(/^\p{Lu}(?!\p{Lu})/u, (c) => c.toLowerCase())})`).join(' ; ') })) : null),
+    boutons: [{ libelle: t('annuler'), action: () => true },
+      { libelle: bureau ? t('choisir_emplacement') : t('telecharger'), principal: true, action: () => {
+        s.reproductible = reproductible;
+        ecrire('document_reproductible', reproductible ? 'oui' : 'non');
+        compiler(app, s, 'qmd', quarto, reproductible);
+        return true;
+      } }] });
 }
 
 // A code chunk Quarto would run (```{r}, ```{python}..., or inline `r ...`).
@@ -987,8 +1152,10 @@ const FILTRES = { docx: { name: 'Word', extensions: ['docx'] }, pdf: { name: 'PD
 const octets = (texte) => new TextEncoder().encode(texte);
 
 // The document written in `format` (docx, pdf, html, or qmd with its figures beside it), its
-// references resolved now; then compiled by Quarto when `quarto` names its output.
-async function compiler(app, s, format, quarto = null) {
+// references resolved now; then compiled by Quarto when `quarto` names its output. `reproductible`
+// (qmd): R recomputes its results when Quarto renders it, with the cited models' Export to R
+// scripts written beside it (in <name>_R); in the browser, all of it in a .zip.
+async function compiler(app, s, format, quarto = null, reproductible = false) {
   await s.enregistrer();
   const base = (s.titre || t('document_sans_titre')).replace(/[^\p{L}\p{N} _.()-]+/gu, '_').trim() || 'document';
   const r = await app.occupe(async () => {
@@ -1007,6 +1174,7 @@ async function compiler(app, s, format, quarto = null) {
   }
   const lib = libelles(s.langue);
   let ouvrir = chemin;
+  let rep = null;
   await app.occupe(async () => {
     if (format === 'docx') {
       const o = versDocx(r.analyse, r.resolus, { langue: s.langue, libelles: lib, citations: r.citations });
@@ -1032,30 +1200,60 @@ async function compiler(app, s, format, quarto = null) {
           csl = cslEntete.split(/[\\/]/).pop();
         } catch (e) { app.statut(`${t('document_csl_absent')} ${e.message}`, true); }
       }
-      const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre: s.titre || base,
-        bibliographie: bib, csl, libelles: lib });
-      if (!bureau) { telecharger(octets(q.texte), fichier); return; }
-      const racine = chemin.slice(0, chemin.length - fichier.length);
-      const sep = chemin.includes('\\') ? '\\' : '/';
-      if (bib) await bureau.ecrireFichier(`${racine}${bib}`, octets(`${cites.map((e) => versBibtex(e)).join('\n\n')}\n`));
-      if (texteCsl !== null) await bureau.ecrireFichier(`${racine}${csl}`, octets(texteCsl));
-      for (const x of r.resolus.filter((y) => y.genre === 'figure' && y.numero)) {
-        const b = atob(x.image.split(',')[1]);
-        await bureau.ecrireFichier(`${racine}${dossier}${sep}figure-${x.numero}.png`, Uint8Array.from(b, (c) => c.charCodeAt(0)));
+      const racine = chemin ? chemin.slice(0, chemin.length - fichier.length) : '';
+      // reproducible: the engine writes each cited model's Export to R script and its data beside
+      // the .qmd (in the browser, in a folder of its session), and says what the .qmd writes instead
+      // of each reference
+      if (reproductible) {
+        app.statut(t('reproductible_en_cours'));
+        rep = await demander('document_reproductible', { projet: s.pid, langue: s.langue, version: VERSION, nom, dossier: bureau ? racine : null,
+          ...referencesReproductibles(r.resolus) });
       }
+      const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre: s.titre || base,
+        bibliographie: bib, csl, libelles: lib, reproductible: rep });
+      const texteBib = bib ? `${cites.map((e) => versBibtex(e, SANS_ZOTERO)).join('\n\n')}\n` : null;
+      const png = (x) => { const b = atob(x.image.split(',')[1]); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+      const figures = q.images.filter((x) => x.numero);
+      if (!bureau) {
+        if (!rep) { telecharger(octets(q.texte), fichier); return; }
+        // (one .zip: the .qmd, its references, the figures R doesn't draw, the scripts and their data)
+        const lus = await Promise.all([].concat(rep.fichiers).map(async (f) => new Uint8Array(await (await fetch(`/api/fichier?chemin=${encodeURIComponent(f)}`)).arrayBuffer())));
+        telecharger(zip([[fichier, octets(q.texte)], ...(texteBib ? [[bib, octets(texteBib)]] : []), ...(texteCsl !== null ? [[csl, octets(texteCsl)]] : []),
+          ...figures.map((x) => [`${dossier}/figure-${x.numero}.png`, png(x)]), ...[].concat(rep.relatifs).map((f, i) => [f, lus[i]])]), `${nom}.zip`);
+        const note = noteReproductible(rep);
+        if (note) app.statut(note, true);
+        return;
+      }
+      const sep = chemin.includes('\\') ? '\\' : '/';
+      if (texteBib) await bureau.ecrireFichier(`${racine}${bib}`, octets(texteBib));
+      if (texteCsl !== null) await bureau.ecrireFichier(`${racine}${csl}`, octets(texteCsl));
+      for (const x of figures) await bureau.ecrireFichier(`${racine}${dossier}${sep}figure-${x.numero}.png`, png(x));
       await bureau.ecrireFichier(chemin, octets(q.texte));
       if (quarto) {
         app.statut(t('document_quarto_en_cours'));
-        const sortie = await bureau.quarto(chemin, quarto);
+        // (Quarto runs the R of a reproducible .qmd with the engine's R when it has knitr and rmarkdown, unless QUARTO_R says another)
+        const R = rep && rep.R && rep.R.knitr && rep.R.rmarkdown ? rep.R.bin : null;
+        const sortie = await bureau.quarto(chemin, quarto, R ? { R } : {});
         if (sortie.erreur) throw new Error(sortie.erreur === 'quarto_absent' ? t('document_quarto_absent') : `Quarto : ${sortie.erreur}`);
         ouvrir = sortie.sortie;
       }
     }
   });
   if (ouvrir && bureau) {
-    app.statut(`${t('document_ecrit')} ${ouvrir}`);
+    const note = rep ? noteReproductible(rep) : '';
+    app.statut(`${t('document_ecrit')} ${ouvrir}${note ? ` · ${note}` : ''}`, !!note);
     bureau.ouvrirChemin(ouvrir);
   }
+}
+
+// After a reproducible .qmd: how many of its references stay written in, and the models its
+// scripts don't redo (its first chunk says why); '' when R recomputes them all.
+function noteReproductible(rep) {
+  const refs = [].concat(rep.references || []).filter(Boolean);
+  const enDur = refs.filter((x) => x.raison).length;
+  const sans = [].concat(rep.modeles || []).filter((x) => x.erreur).map((x) => x.nom);
+  if (!enDur && !sans.length) return '';
+  return t('reproductible_en_dur', { n: enDur, total: refs.length }) + (sans.length ? ` ${t('reproductible_modeles_en_dur', { modeles: sans.join(', ') })}` : '');
 }
 
 function telecharger(o, nom) {
@@ -1135,7 +1333,8 @@ function gabarit(app, p, st, choisis) {
   };
   // its plots: those a report holds by default (the report), or the first (the article); a model
   // not computed yet: the plot most models of its kind have
-  const PREMIERE = { PCA: 'scores', LM: 'coefficients', LMM: 'coefficients', GLM: 'coefficients', GAM: 'effets', RDA: 'ordination', CA: 'ordination' };
+  const PREMIERE = { PCA: 'scores', LM: 'coefficients', LMM: 'coefficients', GLM: 'coefficients', GAM: 'effets', RDA: 'ordination', CA: 'ordination',
+    CCA: 'ordination', INDVAL: 'indval_graphe', TRIM: 'trim_indices', DISTANCE: 'distance_detection' };
   const figures = (d, toutes) => {
     const m = calcule(d);
     let liste = m ? partiesModele(m).filter((x) => x.vue && !x.variantes && (!toutes || x.defaut)).map((x) => x.cle) : [];
@@ -1147,10 +1346,10 @@ function gabarit(app, p, st, choisis) {
   const entete = `---\ntitle: "${(st.titre || t('document_sans_titre')).replace(/"/g, '\\"')}"\n${st.gabarit === 'article' ? 'author: ""\n' : ''}---\n\n`;
   if (st.gabarit === 'article') {
     return entete + [`# ${w.introduction}`, '', `# ${w.methodes}`, ...choisis.map((d) => `{{${d.nom}.methodes}}`),
-      `# ${w.resultats}`, ...choisis.flatMap((d) => [phrase(d), ...figures(d, false)]), `# ${w.discussion}`, '', `# ${w.references}`, ''].join('\n\n');
+      `# ${w.resultats}`, ...choisis.flatMap((d) => [phrase(d), `{{${d.nom}.resultats}}`, ...figures(d, false)]), `# ${w.discussion}`, '', `# ${w.references}`, ''].join('\n\n');
   }
   if (st.gabarit === 'rapport') {
-    return entete + choisis.flatMap((d) => [`# ${d.nom}${d.titre ? ` — ${d.titre}` : ''}`, phrase(d),
+    return entete + choisis.flatMap((d) => [`# ${d.nom}${d.titre ? ` — ${d.titre}` : ''}`, phrase(d), `{{${d.nom}.resultats}}`,
       ...resume(d), ...figures(d, true), `## ${w.methodes}`, `{{${d.nom}.methodes}}`]).join('\n\n') + '\n';
   }
   return entete;
@@ -1238,11 +1437,19 @@ ajouterTextes({
   document_compiler: 'Compiler', document_compiler_aide: 'Écrire le document en Word, PDF, HTML ou Quarto, les références remplacées par leurs résultats',
   document_apercu_aide: 'Montrer ou cacher l’aperçu', document_aide: 'Écrire un document', document_modifie: 'modifié…',
   document_non_enregistre: 'non gardé : le moteur ne répond pas', document_mots: '{n} mots', document_refs: '{n} références',
-  document_refs_erreurs: '{n} introuvable(s)', document_tableau: 'Tableau', document_methodes: 'Texte des méthodes',
+  document_refs_erreurs: '{n} introuvable(s)', document_tableau: 'Tableau', document_methodes: 'Texte des méthodes', document_resultats: 'Texte des résultats',
   document_renvoi: 'le numéro d’une figure ou d’un tableau étiqueté (#…)',
   document_inserer_renvoi: 'Renvoi à une figure ou un tableau ({{ref:…}})', document_non_calcule: 'pas encore calculé : il le sera',
   document_seul: 'Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne.',
-  document_qmd: 'Quarto (.qmd), résultats écrits en dur…', document_quarto: 'Compiler avec Quarto', document_quarto_absent: 'Compiler avec Quarto (Quarto n’est pas installé)',
+  document_qmd: 'Quarto (.qmd)…', document_quarto: 'Compiler avec Quarto', document_quarto_absent: 'Compiler avec Quarto (Quarto n’est pas installé)',
+  reproductible_titre: 'Quarto (.qmd)', reproductible_question: 'Les résultats du document :',
+  reproductible_non: 'Écrits en dur', reproductible_non_aide: 'Les valeurs, les graphiques et les tableaux tels que Nuée les montre.',
+  reproductible_oui: 'Reproductibles',
+  reproductible_oui_aide: 'R les recalcule à partir des données brutes quand Quarto compile le document, avec l’export vers R de chaque modèle cité, écrit à côté du .qmd (il faut R et ses paquets knitr et rmarkdown).',
+  reproductible_sans_export: 'Sans export vers R, leurs valeurs resteront écrites en dur : {modeles}.',
+  reproductible_en_cours: 'Export vers R des modèles cités…',
+  reproductible_en_dur: '{n} des {total} références restent écrites en dur (le premier bloc du .qmd dit pourquoi).',
+  reproductible_modeles_en_dur: 'Pas refaits par R : {modeles}.',
   document_quarto_en_cours: 'Quarto compile le document…', document_ecrit: 'Document écrit :',
   document_compiler_erreurs: '{n} référence(s) introuvable(s) : elles resteront telles quelles, en rouge. Compiler quand même ?',
   document_quarto_code: 'Ce document contient du code (R, Python…) que Quarto va exécuter sur cet ordinateur. Ne le compilez que si vous savez ce que fait ce code. Compiler avec Quarto ?',
@@ -1270,12 +1477,18 @@ ajouterTextes({
   citer_retirer: 'Retirer les {n} gardées et non citées', citer_actualiser: 'Relire les fichiers de bibliographie', citer_style: 'Style des citations',
   'citer_style_auteur-annee': 'Auteur-année : (Wold et al., 2001)', citer_style_numerique: 'Numéroté : [1]',
   citer_n: '{n} références', citer_n_document: 'Gardées dans le document : {n}', citer_fichier_erreur: 'illisible ou introuvable',
-  zotero_bibliotheque: 'Zotero : toute la bibliothèque', zotero_collection_aide: 'Chercher dans toute la bibliothèque Zotero, ou parcourir une de ses collections',
+  zotero_bibliotheque: 'Zotero : toute la bibliothèque', zotero_source_aide: 'Chercher dans une bibliothèque Zotero (la vôtre ou celle d’un groupe), ou parcourir une de ses collections',
+  zotero_ma_bibliotheque: 'Ma bibliothèque', zotero_toute: '{bibliotheque} : toute la bibliothèque', zotero_groupe: 'groupe Zotero {id}',
+  zotero_sans_groupes_ancien: 'Ce Zotero ne donne pas ses bibliothèques de groupe aux autres applications (Zotero 7 ou plus récent le fait) : seule Ma bibliothèque est proposée.',
+  zotero_sans_groupes_erreur: 'Zotero n’a pas répondu pour ses bibliothèques de groupe : seule Ma bibliothèque est proposée.',
+  zotero_renommee: '@{cle} est déjà une autre référence dans ce document : celle de {bibliotheque} y est citée sous @{nouvelle}.',
+  zotero_deja_sous: '@{cle} est déjà dans le document sous @{existante} : elle y est citée sous cette clé.',
+  zotero_conflit_fichier: '@{cle} : {fichier} donne cette clé à une autre référence que celle gardée de {bibliotheque} ; c’est celle du fichier qui est citée.',
   citer_deja: 'déjà dans le document',
   zotero_choisir: 'Choisir dans Zotero (Better BibTeX)…', zotero_attente: 'Choisissez les références dans la fenêtre de Zotero…',
   zotero_delai: 'Zotero n’a rien renvoyé à temps.', zotero_bureau: 'Zotero : dans l’application de bureau',
   zotero_incomplet: 'Zotero n’a pas envoyé {n} des références choisies : elles sont citées, mais introuvables.',
-  zotero_connecte: 'Zotero : connecté (recherche dans la bibliothèque)', zotero_connecte_bbt: 'Zotero : connecté, avec Better BibTeX',
+  zotero_connecte: 'Zotero : connecté (recherche dans {bibliotheque})', zotero_connecte_bbt: 'Zotero : connecté, avec Better BibTeX (recherche dans {bibliotheque})',
   zotero_ferme: 'Zotero : cochez Paramètres › Avancé › « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero »',
   zotero_ancien: 'Zotero : la recherche demande Zotero 7 ou plus récent', zotero_absent: 'Zotero ne répond pas (est-il ouvert ?)',
   document_aide_texte: 'Un document s’écrit en Markdown : # Titre, ## Sous-titre, *italique*, **gras**, listes (- ou 1.), tableaux (| a | b |), liens [texte](https://…).\n'
@@ -1286,8 +1499,9 @@ ajouterTextes({
     + 'Tapez {{ pour voir les modèles et ce que chacun offre, avec sa valeur. Les graphiques sont dessinés comme dans leur fenêtre quand elle est ouverte. La langue du document règle l’écriture des nombres et le texte des méthodes.\n'
     + 'Les citations s’écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 3 ; @eriksson2006], @wold2001 dans la phrase, [-@wold2001] sans l’auteur ; tapez @ pour les références du document et de Zotero. La liste des références vient à la fin, ou là où le document met {{bibliographie}} :\n'
     + '`---\ntitle: Mon article\nbibliography: references.bib\n---\nLa PLS [@wold2001] et la validation croisée (@eriksson2006, p. 92).`\n'
-    + 'Citer › Lier un fichier : un fichier BibTeX ou CSL-JSON (exporté de Zotero, Mendeley, JabRef… ; Better BibTeX le tient à jour), nommé dans l’en-tête. Zotero ouvert sur cet ordinateur : ses références se cherchent depuis Nuée (Zotero 7, en cochant « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero »).\n'
-    + 'Compiler : Word, PDF ou HTML directement ; ou un fichier Quarto (.qmd) avec ses figures et ses références (.bib), et, si Quarto est installé, compilé par lui (style CSL d’une revue : csl: dans l’en-tête, renvois, modèles de revues). {{< pagebreak >}} seul sur sa ligne commence une nouvelle page.',
+    + 'Citer › Lier un fichier : un fichier BibTeX ou CSL-JSON (exporté de Zotero, Mendeley, JabRef… ; Better BibTeX le tient à jour), nommé dans l’en-tête. Zotero ouvert sur cet ordinateur : ses références se cherchent depuis Nuée (Zotero 7, en cochant « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero »), dans Ma bibliothèque ou la bibliothèque d’un groupe, choisie dans Citer › Insérer une citation. Une référence dont la clé est déjà celle d’une autre du document (la même clé dans deux bibliothèques) y est citée avec une lettre en plus : @bechet2019a.\n'
+    + 'Compiler : Word, PDF ou HTML directement ; ou un fichier Quarto (.qmd) avec ses figures et ses références (.bib), et, si Quarto est installé, compilé par lui (style CSL d’une revue : csl: dans l’en-tête, renvois, modèles de revues). {{< pagebreak >}} seul sur sa ligne commence une nouvelle page.\n'
+    + 'Quarto reproductible : à côté du .qmd, l’export vers R de chaque modèle cité et ses données ; Quarto les relance, et chaque valeur devient `r …` qui lit la valeur recalculée, chaque graphique et chaque tableau un bloc R. Ce que les scripts n’ont pas (un graphique qu’ils ne dessinent pas, le texte des méthodes et des résultats) reste écrit en dur, et le premier bloc du .qmd le dit.',
 }, {
   document: 'Document', documents: 'Documents', nouveau_document: 'New document…', creer_document: 'Create the document',
   document_sans_titre: 'Untitled', document_titre: 'Title', document_langue: 'Language', document_copie: 'copy', ok: 'OK',
@@ -1303,11 +1517,19 @@ ajouterTextes({
   document_compiler: 'Compile', document_compiler_aide: 'Write the document as Word, PDF, HTML or Quarto, its references replaced by their results',
   document_apercu_aide: 'Show or hide the preview', document_aide: 'Writing a document', document_modifie: 'changed…',
   document_non_enregistre: 'not kept: the engine doesn’t answer', document_mots: '{n} words', document_refs: '{n} references',
-  document_refs_erreurs: '{n} unresolved', document_tableau: 'Table', document_methodes: 'Methods text',
+  document_refs_erreurs: '{n} unresolved', document_tableau: 'Table', document_methodes: 'Methods text', document_resultats: 'Results text',
   document_renvoi: 'the number of a labelled figure or table (#…)',
   document_inserer_renvoi: 'Cross-reference to a figure or table ({{ref:…}})', document_non_calcule: 'not computed yet: it will be',
   document_seul: 'A plot, a table or the Methods text goes alone on its line.',
-  document_qmd: 'Quarto (.qmd), results written in…', document_quarto: 'Compile with Quarto', document_quarto_absent: 'Compile with Quarto (Quarto isn’t installed)',
+  document_qmd: 'Quarto (.qmd)…', document_quarto: 'Compile with Quarto', document_quarto_absent: 'Compile with Quarto (Quarto isn’t installed)',
+  reproductible_titre: 'Quarto (.qmd)', reproductible_question: 'The document’s results:',
+  reproductible_non: 'Written in', reproductible_non_aide: 'The values, plots and tables as Nuée shows them.',
+  reproductible_oui: 'Reproducible',
+  reproductible_oui_aide: 'R recomputes them from the raw data when Quarto renders the document, with each cited model’s Export to R script, written beside the .qmd (R and its packages knitr and rmarkdown are needed).',
+  reproductible_sans_export: 'Without an export to R, their values will stay written in: {modeles}.',
+  reproductible_en_cours: 'Exporting the cited models to R…',
+  reproductible_en_dur: '{n} of the {total} references stay written in (the .qmd’s first chunk says why).',
+  reproductible_modeles_en_dur: 'Not redone by R: {modeles}.',
   document_quarto_en_cours: 'Quarto is compiling the document…', document_ecrit: 'Document written:',
   document_compiler_erreurs: '{n} unresolved reference(s): they will stay as they are, in red. Compile anyway?',
   document_quarto_code: 'This document holds code (R, Python…) that Quarto will run on this computer. Only compile it if you know what that code does. Compile with Quarto?',
@@ -1335,12 +1557,18 @@ ajouterTextes({
   citer_retirer: 'Remove the {n} kept and not cited', citer_actualiser: 'Read the bibliography files again', citer_style: 'Citation style',
   'citer_style_auteur-annee': 'Author–year: (Wold et al., 2001)', citer_style_numerique: 'Numbered: [1]',
   citer_n: '{n} references', citer_n_document: 'Kept in the document: {n}', citer_fichier_erreur: 'unreadable or missing',
-  zotero_bibliotheque: 'Zotero: whole library', zotero_collection_aide: 'Search the whole Zotero library, or browse one of its collections',
+  zotero_bibliotheque: 'Zotero: whole library', zotero_source_aide: 'Search a Zotero library (yours or a group’s), or browse one of its collections',
+  zotero_ma_bibliotheque: 'My Library', zotero_toute: '{bibliotheque}: whole library', zotero_groupe: 'Zotero group {id}',
+  zotero_sans_groupes_ancien: 'This Zotero doesn’t give its group libraries to other applications (Zotero 7 or later does): only My Library is offered.',
+  zotero_sans_groupes_erreur: 'Zotero didn’t answer for its group libraries: only My Library is offered.',
+  zotero_renommee: '@{cle} is already another reference in this document: the one from {bibliotheque} is cited as @{nouvelle}.',
+  zotero_deja_sous: '@{cle} is already in the document as @{existante}: it is cited under that key.',
+  zotero_conflit_fichier: '@{cle}: {fichier} gives this key to another reference than the one kept from {bibliotheque}; the file’s is the one cited.',
   citer_deja: 'already in the document',
   zotero_choisir: 'Pick in Zotero (Better BibTeX)…', zotero_attente: 'Pick the references in Zotero’s window…',
   zotero_delai: 'Zotero sent nothing back in time.', zotero_bureau: 'Zotero: in the desktop application',
   zotero_incomplet: 'Zotero didn’t send {n} of the references picked: they are cited, but not found.',
-  zotero_connecte: 'Zotero: connected (library search)', zotero_connecte_bbt: 'Zotero: connected, with Better BibTeX',
+  zotero_connecte: 'Zotero: connected (searching {bibliotheque})', zotero_connecte_bbt: 'Zotero: connected, with Better BibTeX (searching {bibliotheque})',
   zotero_ferme: 'Zotero: tick Settings › Advanced › “Allow other applications on this computer to communicate with Zotero”',
   zotero_ancien: 'Zotero: searching needs Zotero 7 or later', zotero_absent: 'Zotero doesn’t answer (is it open?)',
   document_aide_texte: 'A document is written in Markdown: # Title, ## Subtitle, *italic*, **bold**, lists (- or 1.), tables (| a | b |), links [text](https://…).\n'
@@ -1351,6 +1579,7 @@ ajouterTextes({
     + 'Type {{ to see the models and what each offers, with its value. Plots are drawn as in their window when it is open. The document’s language sets how numbers are written and the Methods text.\n'
     + 'Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 3; @eriksson2006], @wold2001 in the sentence, [-@wold2001] without the author; type @ for the references of the document and of Zotero. The list of references comes at the end, or where the document puts {{bibliographie}}:\n'
     + '`---\ntitle: My paper\nbibliography: references.bib\n---\nPLS [@wold2001] and cross-validation (@eriksson2006, p. 92).`\n'
-    + 'Cite › Link a file: a BibTeX or CSL-JSON file (exported from Zotero, Mendeley, JabRef…; Better BibTeX keeps it up to date), named in the header. With Zotero open on this computer, its references are searched from Nuée (Zotero 7, ticking “Allow other applications on this computer to communicate with Zotero”).\n'
-    + 'Compile: Word, PDF or HTML directly; or a Quarto file (.qmd) with its figures and references (.bib), compiled by Quarto when it is installed (a journal’s CSL style: csl: in the header, cross-references, journal templates). {{< pagebreak >}} alone on its line starts a new page.',
+    + 'Cite › Link a file: a BibTeX or CSL-JSON file (exported from Zotero, Mendeley, JabRef…; Better BibTeX keeps it up to date), named in the header. With Zotero open on this computer, its references are searched from Nuée (Zotero 7, ticking “Allow other applications on this computer to communicate with Zotero”), in My Library or a group’s library, chosen in Cite › Insert a citation. A reference whose key another one of the document already has (the same key in two libraries) is cited with a letter added: @bechet2019a.\n'
+    + 'Compile: Word, PDF or HTML directly; or a Quarto file (.qmd) with its figures and references (.bib), compiled by Quarto when it is installed (a journal’s CSL style: csl: in the header, cross-references, journal templates). {{< pagebreak >}} alone on its line starts a new page.\n'
+    + 'Reproducible Quarto: beside the .qmd, each cited model’s Export to R script and its data; Quarto runs them again, and each value becomes `r …` reading the recomputed value, each plot and table an R chunk. What the scripts don’t have (a plot they don’t draw, the Methods and Results texts) stays written in, and the .qmd’s first chunk says so.',
 });

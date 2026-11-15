@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivre une population : tendance et densité · Nuée</title>
+<meta name="description" content="Tutoriel Nuée : la tendance d'une population d'oiseaux suivie par comptages (TRIM), sa densité par transects linéaires (échantillonnage par distances), et une figure pour le rapport.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="tendances.html">
+<link rel="alternate" hreflang="en" href="../../en/tutorials/trends.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="../guide/index.html">Guide</a>
+      <a href="index.html" aria-current="page">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/tutorials/trends.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Tutoriel Nuée : la tendance d'une population d'oiseaux suivie par comptages (TRIM), sa densité par transects linéaires (échantillonnage par distances), et une figure pour le rapport. -->
+<h1>Suivre une population : tendance et densité</h1>
+<p class="chapeau">Une alouette comptée sur 40 sites pendant 17 ans : de Quelle analyse ? à la tendance de TRIM et à sa classe, puis la densité par transects linéaires, et une figure pour le rapport.</p>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#la-question-et-les-donnees">La question et les données</a></li>
+<li><a href="#1-quelle-analyse-la-tendance-des-comptages">1. Quelle analyse ? La tendance des comptages</a></li>
+<li><a href="#2-le-modele-trim">2. Le modèle TRIM</a></li>
+<li><a href="#3-la-pente-globale-et-sa-classe">3. La pente globale et sa classe</a></li>
+<li><a href="#4-les-indices">4. Les indices</a></li>
+<li><a href="#5-la-densite-en-2024-l-echantillonnage-par-distances">5. La densité en 2024 : l'échantillonnage par distances</a></li>
+<li><a href="#6-la-fonction-de-detection">6. La fonction de détection</a></li>
+<li><a href="#7-densite-et-effectif">7. Densité et effectif</a></li>
+<li><a href="#8-une-figure-pour-le-rapport">8. Une figure pour le rapport</a></li>
+<li><a href="#le-texte-des-methodes">Le texte des méthodes</a></li>
+<li><a href="#pour-aller-plus-loin">Pour aller plus loin</a></li>
+</ul>
+</nav>
+<div class="encadre">
+<p><strong>Les données sont simulées.</strong> Aucun oiseau n'a été compté : les deux tableaux ont été fabriqués
+par le script <a href="../../donnees/suivi.R">suivi.R</a>, avec des graines fixes. Les comptages contiennent un
+déclin connu, de 3,5 % par an dans les cultures et de 2 % dans les prairies ; les transects, une
+densité de 25 groupes par km².</p>
+</div>
+<h2 id="la-question-et-les-donnees">La question et les données</h2>
+<p>L'alouette des champs est suivie au printemps sur 40 carrés de 2 km, de 2008 à 2024, comme dans
+un suivi des oiseaux communs. Sa population baisse-t-elle, et de combien par an ? En 2024, un
+inventaire par transects linéaires a été fait sur la zone d'étude (120 km²) : combien y a-t-il
+d'alouettes ?</p>
+<p><a href="../../donnees/comptages_alouette.csv">comptages_alouette.csv</a> : une ligne par site et par année
+(680 lignes).</p>
+<table>
+<thead>
+<tr>
+<th>Colonne</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>obs</td>
+<td>le site et l'année (C01-2008)</td>
+</tr>
+<tr>
+<td>site</td>
+<td>C01 à C40</td>
+</tr>
+<tr>
+<td>habitat</td>
+<td>cultures ou prairies</td>
+</tr>
+<tr>
+<td>annee</td>
+<td>2008 à 2024</td>
+</tr>
+<tr>
+<td>alouettes</td>
+<td>le nombre d'alouettes comptées ; vide quand le site n'a pas été suivi cette année-là (10 sites ont rejoint le suivi après 2008, et chacun manque une année sur dix environ)</td>
+</tr>
+</tbody>
+</table>
+<p><a href="../../donnees/transects_alouette.csv">transects_alouette.csv</a> : une ligne par alouette détectée,
+avec les colonnes que Nuée reconnaît pour l'échantillonnage par distances.</p>
+<table>
+<thead>
+<tr>
+<th>Colonne</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>region, aire</td>
+<td>la zone d'étude et son aire, 120 km²</td>
+</tr>
+<tr>
+<td>transect, longueur</td>
+<td>le transect (T01 à T24) et sa longueur, en km</td>
+</tr>
+<tr>
+<td>distance</td>
+<td>la distance perpendiculaire de l'oiseau à la ligne, en m</td>
+</tr>
+<tr>
+<td>taille</td>
+<td>la taille du groupe (1 ou 2 oiseaux)</td>
+</tr>
+</tbody>
+</table>
+<p>Le transect T24, qui traverse un village, n'a aucune détection : il garde une ligne, sa distance
+vide, pour que sa longueur compte dans l'effort.</p>
+<h2 id="1-quelle-analyse-la-tendance-des-comptages">1. Quelle analyse ? La tendance des comptages</h2>
+<p>Ouvrez <a href="../../donnees/comptages_alouette.csv">comptages_alouette.csv</a>, puis <em>Modèle › Quelle
+analyse ?</em>. Cochez <strong>Une tendance dans le temps, un indice de suivi</strong>, la réponse <strong>Un comptage</strong>,
+et choisissez <code>alouettes</code>. Nuée décrit la variable (des entiers de 0 à 79, 14 % de valeurs
+manquantes), propose le site et le temps d'après les noms des colonnes, et conseille <strong>TRIM</strong>.</p>
+<figure><a class="clair-seul" href="../../images/fr/suivi-choix-trim.png"><img src="../../images/fr/suivi-choix-trim.png" alt="Quelle analyse ? : une tendance, un comptage, et TRIM conseillé" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-choix-trim.png"><img src="../../images/fr/sombre/suivi-choix-trim.png" alt="Quelle analyse ? : une tendance, un comptage, et TRIM conseillé" width="900" height="680" loading="lazy"></a><figcaption>Quelle analyse ? : TRIM, avec deux autres possibilités, un GLM binomial négatif et un modèle additif, un effet aléatoire par site.</figcaption></figure>
+<p>TRIM est la méthode des suivis d'oiseaux communs en Europe (Statistics Netherlands) : il estime
+les indices de chaque année et la tendance à partir de comptages incomplets, les comptages
+manquants étant imputés par le modèle. Cliquez sur <strong>Ouvrir Nouveau modèle, déjà rempli</strong>.</p>
+<h2 id="2-le-modele-trim">2. Le modèle TRIM</h2>
+<p>L'onglet <strong>Général</strong> est rempli : le site, le temps, le <strong>modèle 3</strong> (un effet de chaque année),
+la <strong>surdispersion</strong> et la <strong>corrélation sérielle</strong> cochées, comme le conseille le manuel de TRIM.</p>
+<figure><a class="clair-seul" href="../../images/fr/suivi-trim-modele.png"><img src="../../images/fr/suivi-trim-modele.png" alt="Nouveau modèle : TRIM, site, temps, modèle 3, surdispersion et corrélation sérielle" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-trim-modele.png"><img src="../../images/fr/sombre/suivi-trim-modele.png" alt="Nouveau modèle : TRIM, site, temps, modèle 3, surdispersion et corrélation sérielle" width="900" height="680" loading="lazy"></a><figcaption>Le modèle TRIM : le site et l'année, le modèle 3, les paramètres estimés par équations d'estimation généralisées.</figcaption></figure>
+<p>Cliquez sur <strong>Ajuster</strong>.</p>
+<h2 id="3-la-pente-globale-et-sa-classe">3. La pente globale et sa classe</h2>
+<figure><a class="clair-seul" href="../../images/fr/suivi-trim-resume.png"><img src="../../images/fr/suivi-trim-resume.png" alt="Le résumé du modèle TRIM : la pente globale des totaux imputés et sa classe, déclin modéré" width="560" height="579" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-trim-resume.png"><img src="../../images/fr/sombre/suivi-trim-resume.png" alt="Le résumé du modèle TRIM : la pente globale des totaux imputés et sa classe, déclin modéré" width="560" height="579" loading="lazy"></a><figcaption>Le résumé : la pente globale, son intervalle et sa classe.</figcaption></figure>
+<p>Le résumé donne d'abord le modèle : 586 comptages observés sur 680 cases site × année, les
+autres imputés ; une surdispersion σ² = 2,19 (les comptages varient deux fois plus qu'une loi de
+Poisson ne le voudrait) et une corrélation sérielle ρ = 0,14 entre deux années d'un même site,
+faible, comme le résumé le note.</p>
+<p>Puis la <strong>pente globale</strong> des totaux imputés : × 0,9702 par an, soit <strong>−3,0 % par an</strong>
+[IC 95 % 0,9590 ; 0,9815]. Sa classe, selon les règles de TRIM : <strong>déclin modéré</strong> (p &lt; 0,01).
+TRIM compare l'intervalle de la pente à 1 et à 0,95 : entièrement sous 1, mais pas sous 0,95,
+c'est un déclin modéré ; sous 0,95, ce serait un fort déclin.</p>
+<p>Les tests d'ajustement (khi² de Pearson, rapport de vraisemblance) supposent des comptages de
+Poisson indépendants : avec σ² et ρ estimés, ils ne valent plus, comme le résumé le rappelle ;
+les tests de Wald, eux, en tiennent compte.</p>
+<h2 id="4-les-indices">4. Les indices</h2>
+<p>La vue <strong>Indices</strong> : chaque année rapportée à la première (2008 = 1), avec la bande à 95 %.
+Cochez <em>droite de la pente globale</em>.</p>
+<figure><a class="clair-seul" href="../../images/fr/suivi-trim-indices.png"><img src="../../images/fr/suivi-trim-indices.png" alt="Les indices de TRIM de 2008 à 2024, leur bande à 95 % et la droite de la pente globale" width="900" height="645" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-trim-indices.png"><img src="../../images/fr/sombre/suivi-trim-indices.png" alt="Les indices de TRIM de 2008 à 2024, leur bande à 95 % et la droite de la pente globale" width="900" height="645" loading="lazy"></a><figcaption>Les indices : de 1 en 2008 à 0,65 en 2024.</figcaption></figure>
+<p>L'indice imputé passe de 1 en 2008 à 0,65 en 2024 : un tiers des alouettes en moins entre ces
+deux années. Le tableau sous le graphique donne chaque indice et son erreur-type ; Ctrl+C le
+copie pour un tableur.</p>
+<h2 id="5-la-densite-en-2024-l-echantillonnage-par-distances">5. La densité en 2024 : l'échantillonnage par distances</h2>
+<p>Ouvrez <a href="../../donnees/transects_alouette.csv">transects_alouette.csv</a>, choisissez ce projet dans
+l'explorateur, puis <em>Modèle › Quelle analyse ?</em> : <strong>Une densité ou un effectif (échantillonnage
+par distance)</strong>. Nuée propose <code>distance</code> comme réponse et des lignes (transects linéaires), et
+remplit le transect, l'effort, l'aire et la taille des groupes d'après les noms des colonnes.</p>
+<figure><a class="clair-seul" href="../../images/fr/suivi-choix-distance.png"><img src="../../images/fr/suivi-choix-distance.png" alt="Quelle analyse ? : une densité, et l'échantillonnage par distance conseillé" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-choix-distance.png"><img src="../../images/fr/sombre/suivi-choix-distance.png" alt="Quelle analyse ? : une densité, et l'échantillonnage par distance conseillé" width="900" height="680" loading="lazy"></a><figcaption>Quelle analyse ? : l'échantillonnage par distance, ses conditions, et ce qui reste à vérifier, les unités.</figcaption></figure>
+<p>On ne voit pas tous les oiseaux, et moins ceux qui sont loin de la ligne : la fonction de
+détection, ajustée aux distances, donne la probabilité de détection, puis la densité. Cliquez
+sur <strong>Ouvrir Nouveau modèle, déjà rempli</strong>.</p>
+<p>Dans l'onglet Général, vérifiez les <strong>unités</strong> : distances en m, longueurs en km, aires en km².
+Choisissez une <strong>troncature</strong> de 5 % (<em>des plus grandes distances</em>) : les quelques détections
+les plus lointaines, peu nombreuses et mal décrites, sortent du modèle, comme c'est l'usage.
+La clé demi-normale et les termes d'ajustement en cosinus choisis par l'AIC sont les réglages
+par défaut, ceux de la fonction ds() du paquet Distance.</p>
+<figure><a class="clair-seul" href="../../images/fr/suivi-distance-modele.png"><img src="../../images/fr/suivi-distance-modele.png" alt="Nouveau modèle : échantillonnage par distances, transects linéaires, troncature de 5 %, clé demi-normale, unités" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-distance-modele.png"><img src="../../images/fr/sombre/suivi-distance-modele.png" alt="Nouveau modèle : échantillonnage par distances, transects linéaires, troncature de 5 %, clé demi-normale, unités" width="900" height="680" loading="lazy"></a><figcaption>Le modèle : les colonnes reconnues, la troncature, la fonction de détection et les unités.</figcaption></figure>
+<h2 id="6-la-fonction-de-detection">6. La fonction de détection</h2>
+<figure><a class="clair-seul" href="../../images/fr/suivi-distance-detection.png"><img src="../../images/fr/suivi-distance-detection.png" alt="L'histogramme des distances sous la fonction de détection demi-normale" width="860" height="645" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-distance-detection.png"><img src="../../images/fr/sombre/suivi-distance-detection.png" alt="L'histogramme des distances sous la fonction de détection demi-normale" width="860" height="645" loading="lazy"></a><figcaption>La fonction de détection : la probabilité de voir un oiseau selon sa distance à la ligne.</figcaption></figure>
+<p>L'histogramme des distances (corrigé pour qu'une barre vaille 1 si tous les oiseaux étaient vus)
+suit la courbe : presque tous les oiseaux sont vus près de la ligne, une petite part à 150 m.
+L'AIC a gardé la clé demi-normale seule (un terme en cosinus ne la faisait pas baisser). Les tests
+d'adéquation (Cramér–von Mises, khi²) ne montrent pas d'écart.</p>
+<h2 id="7-densite-et-effectif">7. Densité et effectif</h2>
+<figure><a class="clair-seul" href="../../images/fr/suivi-distance-resume.png"><img src="../../images/fr/suivi-distance-resume.png" alt="Le résumé du modèle : détections, troncature, probabilité de détection, densité et effectif" width="560" height="485" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-distance-resume.png"><img src="../../images/fr/sombre/suivi-distance-resume.png" alt="Le résumé du modèle : détections, troncature, probabilité de détection, densité et effectif" width="560" height="485" loading="lazy"></a><figcaption>La densité et l'effectif, avec leurs intervalles.</figcaption></figure>
+<p>157 détections sur 24 transects (43,3 km), jusqu'à 150 m. La probabilité moyenne de détection
+dans la bande est p = 0,58, soit une demi-largeur effective de 87 m : on compte autant
+d'oiseaux que si tous ceux à moins de 87 m étaient vus, et aucun au-delà.</p>
+<p>La <strong>densité</strong> est de <strong>23,2 alouettes par km²</strong> (CV 12,9 % ; IC 95 % 17,9 à 30,0), soit un
+<strong>effectif</strong> de 2780 oiseaux (2144 à 3605) sur les 120 km². La vue <em>Densité et effectif</em> détaille
+le calcul, et la part de la variance due au taux de rencontre entre transects (72 %), à la
+détection et à la taille des groupes.</p>
+<h2 id="8-une-figure-pour-le-rapport">8. Une figure pour le rapport</h2>
+<p>Revenez au projet des comptages. Les vues <strong>Indices</strong> et <strong>Totaux de chaque temps</strong> de TRIM
+sont ouvertes (sinon, double-cliquez-les sous le modèle dans l'explorateur). <em>Graphiques ›
+Composer une figure…</em> ouvre une figure ; <em>Ajouter un graphique ouvert…</em> y met l'une puis
+l'autre, en A et B.</p>
+<figure><a class="clair-seul" href="../../images/fr/suivi-figure.png"><img src="../../images/fr/suivi-figure.png" alt="Le compositeur de figures : deux panneaux A et B côte à côte, 174 mm de large, 75 mm de haut" width="1086" height="640" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/suivi-figure.png"><img src="../../images/fr/sombre/suivi-figure.png" alt="Le compositeur de figures : deux panneaux A et B côte à côte, 174 mm de large, 75 mm de haut" width="1086" height="640" loading="lazy"></a><figcaption>Une figure de deux colonnes : les indices (A) et les totaux annuels (B), au texte de 8 pt.</figcaption></figure>
+<p>Choisissez la largeur d'une revue (174 mm, deux colonnes), une hauteur (décochez <em>d'après les
+panneaux</em>, puis 75 mm), la taille du texte une fois imprimé (8 pt), puis <strong>Exporter…</strong> en PDF ou
+SVG vectoriels, ou en PNG et TIFF à 300 ou 600 points par pouce. La figure est gardée dans le
+projet et prend toujours le dernier ajustement de chaque modèle : après un nouvel ajustement,
+exportez-la à nouveau.</p>
+<h2 id="le-texte-des-methodes">Le texte des méthodes</h2>
+<p>Pour TRIM, <em>Modèle › Texte pour la section Méthodes</em> écrit, entre autres :</p>
+<blockquote>
+<p>Les indices sont les totaux de chaque temps (imputés : les comptages observés et, pour les
+manquants, ceux du modèle) rapportés à celui de 2008, avec leurs erreurs-types par la méthode
+delta. La pente globale des totaux imputés (celle de la droite des moindres carrés à travers
+leur logarithme) est de 0,9702 par pas de temps (erreur-type 0,0053 ; IC à 95 % 0,9590–0,9815,
+loi t à 15 degrés de liberté), soit −3,0 % par pas : déclin modéré, selon la classification de
+TRIM (l'intervalle de confiance de la pente comparé à 1, à 0,95 et à 1,05), p &lt; 0,001.</p>
+</blockquote>
+<p>et pour les transects :</p>
+<blockquote>
+<p>La densité : D = 23,17 par km² (erreur-type 3, CV 12,9 % ; IC à 95 % 17,87–30,04 ; 43,6 ddl),
+soit un effectif N = 2780 (IC à 95 % 2144–3605) sur 120 km².</p>
+</blockquote>
+<h2 id="pour-aller-plus-loin">Pour aller plus loin</h2>
+<ul>
+<li>Une <strong>covariable</strong> dans TRIM (l'habitat, en X) fait varier les effets du temps d'une catégorie
+à l'autre ; le modèle 2 estime une tendance linéaire, avec des points de changement choisis ou
+pas à pas.</li>
+<li><em>Graphiques › Séries</em> trace les comptages de chaque site au fil des années, avec les tests de
+tendance de Mann–Kendall et les pentes de Sen.</li>
+<li>Pour des points d'écoute plutôt que des lignes, choisissez <em>points d'écoute</em> dans le modèle.</li>
+<li>Le guide : <a href="../guide/suivis.html">Séries, TRIM et échantillonnage par distances</a>,
+<a href="../guide/graphiques.html">les figures pour publication</a>.</li>
+</ul>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

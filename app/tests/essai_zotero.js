@@ -1,8 +1,11 @@
 // Checks zotero.js (Zotero on this computer, for documents' citations) against a stand-in for
 // Zotero's server that behaves as Zotero's does: it drops what comes from a browser (a "Mozilla/"
-// user agent, an Origin header), answers its local API with BibTeX and Better BibTeX's picker.
+// user agent, an Origin header), answers its local API with BibTeX and Better BibTeX's picker; then
+// against Zotero's real answers for group libraries, replayed (tests/donnees/zotero: Zotero 10.0.8
+// alone and with Better BibTeX 9.0.77, with My Library, a group the user can edit and one read only).
 //   node tests/essai_zotero.js
 const http = require('http');
+const fs = require('fs');
 const path = require('path');
 const { demanderZotero } = require('../zotero');
 
@@ -82,6 +85,88 @@ const serveur = http.createServer((req, res) => {
   await new Promise((r) => setTimeout(r, 100));
   const absent = await demanderZotero('/connector/ping', { port, delai: 2000 });
   verifier('Zotero absent : « absent »', absent.erreur === 'absent', JSON.stringify(absent));
+
+  // ---------------------------------------------------------------- group libraries, real answers
+  console.log('Bibliothèques de groupe (réponses enregistrées de Zotero)');
+  const { lireReponseZotero, lireCslJson } = await import(path.join(__dirname, '..', 'interface', 'bibliographie.js').replace(/\\/g, '/').replace(/^([A-Za-z]):/, 'file:///$1:'));
+  // (each folder's index: the address asked, its status, its type; `api_fermee`: what any /api/
+  // address answers with the local API off)
+  const rejouer = (dossier, { fermee = false } = {}) => {
+    const index = JSON.parse(fs.readFileSync(path.join(__dirname, 'donnees', 'zotero', dossier, 'index.json'), 'utf8'));
+    const lire = (f) => ({ ...index[f], texte: fs.readFileSync(path.join(__dirname, 'donnees', 'zotero', dossier, f), 'utf8') });
+    const par = new Map(Object.keys(index).filter((f) => f !== 'api_fermee.txt' && f !== 'cayw_annule.txt').map((f) => [index[f].chemin, f]));
+    const s = http.createServer((req, res) => {
+      if ((req.headers['user-agent'] || '').startsWith('Mozilla/') || 'origin' in req.headers) { req.socket.destroy(); return; }
+      const f = fermee && req.url.startsWith('/api/') ? 'api_fermee.txt' : par.get(req.url);
+      if (!f) { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('No endpoint found'); return; }
+      const r = lire(f);
+      res.writeHead(r.statut, { 'Content-Type': r.type });
+      res.end(r.texte);
+    });
+    return new Promise((ok) => s.listen(0, '127.0.0.1', () => ok({ s, port: s.address().port, index, lire })));
+  };
+  // what documents.js asks (etatZotero, chercherZotero, collectionsZotero)
+  const SANS = 'itemType=-attachment&itemType=-note';
+  const recherche = (b, q) => `/api/${b}/items/top?q=${q}&qmode=titleCreatorYear&${SANS}&format=json&include=bibtex&limit=25`;
+  const clesEtLieux = async (port, b, q) => lireReponseZotero((await demanderZotero(recherche(b, q), { port })).texte).map((e) => `${e.cle} ${e.zotero}`);
+  for (const [dossier, bbt] of [['better-bibtex', true], ['simple', false]]) {
+    const z = await rejouer(dossier);
+    const p = z.port;
+    const groupes = await demanderZotero('/api/users/0/groups?format=json', { port: p });
+    const l = JSON.parse(groupes.texte);
+    verifier(`${dossier} : les groupes listés (pas Ma bibliothèque), leur id et leur nom`, groupes.statut === 200
+      && JSON.stringify(l.map((g) => [g.id, g.data.name])) === JSON.stringify([[6011001, 'Équipe Camargue'], [6011002, 'Réseau Perdrix']]), groupes.texte.slice(0, 200));
+    const moi = await clesEtLieux(p, 'users/0', 'bechet');
+    const camargue = await clesEtLieux(p, 'groups/6011001', 'bechet');
+    const cle = bbt ? 'bechetPopulationDynamicsGreater2019' : 'bechet_population_2019';
+    verifier(`${dossier} : la même clé dans Ma bibliothèque et dans le groupe, pour deux œuvres, que leur lieu distingue`,
+      moi.length === 1 && moi[0].startsWith(`${cle} users/0/items/`) && camargue.some((x) => x.startsWith(`${cle} groups/6011001/items/`)) && camargue.length === 2, JSON.stringify([moi, camargue]));
+    const perdrix = await clesEtLieux(p, 'groups/6011002', 'perdrix');
+    verifier(`${dossier} : le groupe en lecture seule (${bbt ? 'les clés de Better BibTeX' : 'les clés de Zotero'})`,
+      JSON.stringify(perdrix.map((x) => x.split(' ')[0]).sort()) === JSON.stringify(bbt ? ['broSurvieHivernalePerdrix2019', 'reitzSuiviPopulationsPerdrix2012'] : ['bro_survie_2019', 'reitz_suivi_2012'])
+      && perdrix.every((x) => / groups\/6011002\/items\/[A-Z0-9]{8}$/.test(x)), JSON.stringify(perdrix));
+    const colls = JSON.parse((await demanderZotero('/api/groups/6011001/collections?format=json&limit=1000', { port: p })).texte);
+    const flamants = colls.find((c) => c.data.name === 'Flamants');
+    const repro = colls.find((c) => c.data.name === 'Reproduction');
+    const dans = await demanderZotero(`/api/groups/6011001/collections/${flamants.key}/items/top?${SANS}&format=json&include=bibtex&limit=300`, { port: p });
+    verifier(`${dossier} : les collections d’un groupe, une sous-collection, les références de l’une`, repro.data.parentCollection === flamants.key
+      && JSON.stringify(lireReponseZotero(dans.texte).map((e) => e.titre).sort()) === JSON.stringify(['Population dynamics of greater flamingos in Mediterranean wetlands', 'The greater flamingo']),
+    dans.texte.slice(0, 200));
+    const inconnu = await demanderZotero(recherche('groups/999', 'x'), { port: p });
+    verifier(`${dossier} : un groupe inconnu, 404`, inconnu.statut === 404 && lireReponseZotero(inconnu.texte).length === 0, JSON.stringify(inconnu));
+    if (bbt) {
+      // the picker: each reference with its item's URI and Zotero's libraryID (2, 3: not the group's
+      // id), its export asked by that libraryID; a dialog closed without a pick gives nothing
+      const choix = JSON.parse(z.lire('cayw_camargue.json').texte);
+      verifier('Better BibTeX : son sélecteur dans un groupe (clé, URI de l’élément, libraryID)', JSON.stringify(choix.map((c) => [c.citationKey, c.uri.replace(/^.*\/groups\//, 'groups/'), c.item.libraryID]))
+        === JSON.stringify([['bechetPopulationDynamicsGreater2019', 'groups/6011001/items/79PWGJ9R', 2], ['johnsonGreaterFlamingo2007', 'groups/6011001/items/BXYBNU2K', 2]]), JSON.stringify(choix).slice(0, 300));
+      const parLib = async (b, cles) => lireCslJson((await demanderZotero(`/better-bibtex/export/item?citationKeys=${encodeURIComponent(cles)}&translator=${encodeURIComponent('Better CSL JSON')}&libraryID=${b}`, { port: p })).texte).entrees;
+      const deux = await parLib(2, 'bechetPopulationDynamicsGreater2019,johnsonGreaterFlamingo2007');
+      const un = await parLib(1, 'bechetPopulationDynamicsGreater2019');
+      verifier('Better BibTeX : la même clé exportée de deux bibliothèques, deux œuvres', deux.length === 2 && un.length === 1
+        && deux[0].titre !== un[0].titre && deux[0].cle === un[0].cle, JSON.stringify([deux.map((e) => e.titre), un.map((e) => e.titre)]));
+      const perdrixChoisie = JSON.parse(z.lire('cayw_perdrix.json').texte)[0];
+      verifier('Better BibTeX : dans le groupe en lecture seule, sa clé et libraryID 3', perdrixChoisie.citationKey === 'broSurvieHivernalePerdrix2019' && perdrixChoisie.item.libraryID === 3
+        && (await parLib(3, 'broSurvieHivernalePerdrix2019')).length === 1, JSON.stringify(perdrixChoisie).slice(0, 200));
+      const inconnue = await demanderZotero(`/better-bibtex/export/item?citationKeys=x&translator=${encodeURIComponent('Better CSL JSON')}&libraryID=9`, { port: p });
+      verifier('Better BibTeX : une bibliothèque inconnue, 400 ; le dialogue fermé sans choix, rien', inconnue.statut === 400 && z.lire('cayw_annule.txt').texte === ''
+        && z.index['cayw_annule.txt'].statut === 200, JSON.stringify(inconnue));
+    }
+    z.s.close();
+  }
+  const ferme = await rejouer('simple', { fermee: true });
+  const r403 = await Promise.all(['/api/users/0/groups?format=json', '/api/users/0/items/top?limit=1&format=keys'].map((c) => demanderZotero(c, { port: ferme.port })));
+  verifier('l’API locale fermée : 403 partout', r403.every((x) => x.statut === 403 && x.texte === 'Local API is not enabled'), JSON.stringify(r403));
+  ferme.s.close();
+  // the addresses documents.js asks, for My Library and a group, pass; others don't
+  const demandes = ['/api/users/0/groups?format=json', recherche('groups/6011001', 'bechet'), `/api/groups/6011001/collections/IYEWRT45/items/top?${SANS}&format=json&include=bibtex&limit=300`,
+    '/api/groups/6011001/collections?format=json&limit=1000', recherche('users/0', 'wold')];
+  const refusees = ['/api/groups/abc/items?q=x', '/api/groups/6011001/items/79PWGJ9R?format=json', '/api/groups/6011001?format=json', '/api/users/0/groups/6011001?format=json',
+    '/api/groups/6011001/items/79PWGJ9R/children?format=json', '/api/groups/6011001/collections/IYEWRT45?format=json', '/api/groups/6011001/searches?format=json',
+    '/api/groups//items/top?q=x', '/api/groups/6011001/items/top/../../../users/1/items?q=x'];
+  const { PERMIS } = require('../zotero');
+  verifier('les adresses des groupes que Nuée demande passent', demandes.every((c) => PERMIS.test(c)), JSON.stringify(demandes.filter((c) => !PERMIS.test(c))));
+  verifier('les autres adresses de groupe sont refusées', refusees.every((c) => !PERMIS.test(c)), JSON.stringify(refusees.filter((c) => PERMIS.test(c))));
 
   console.log(echecs ? `${echecs} vérification(s) en échec` : 'Toutes les vérifications sont passées.');
   process.exit(echecs ? 1 : 0);

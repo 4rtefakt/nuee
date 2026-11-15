@@ -75,7 +75,7 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 
 /* ---------------------------------------------------------------- menus */
 .menu { position: fixed; z-index: 1000; min-width: 230px; padding: 4px; background: var(--fond-panneau); border: 1px solid var(--bord);
-  border-radius: 6px; box-shadow: var(--ombre); }
+  border-radius: 6px; box-shadow: var(--ombre); max-height: calc(100vh - 8px); overflow-y: auto; overflow-x: hidden; }
 .menu .item { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 4px; cursor: default; white-space: nowrap; }
 .menu .item:hover:not(.desactive) { background: var(--accent-doux); }
 .menu .item.desactive { color: var(--texte-doux); opacity: .55; }
@@ -303,7 +303,62 @@ body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed
 /* Add columns from a table: a key's two columns side by side; Summarize by group: the statistics */
 .dialogue-colonnes .grille-champs, .dialogue-resume .grille-champs { grid-template-columns: max-content minmax(0, 460px); }
 .dialogue-colonnes .ligne select { max-width: 13em; }
+/* Import from KoboToolbox or ODK (kobo.js): the tables, the parent columns, the metadata, the form, what will be done */
+.dialogue-kobo { flex: 1; min-height: 0; overflow: auto; }
+.dialogue-kobo .grille-champs { grid-template-columns: max-content minmax(0, 680px); align-items: start; }
+.dialogue-kobo .grille-champs > label { padding-top: 3px; }
+.dialogue-kobo .kobo-tables { display: flex; flex-direction: column; gap: 2px; }
+.dialogue-kobo .champ { display: flex; align-items: baseline; gap: 6px; color: var(--texte); }
+.dialogue-kobo .champ .doux { font-size: 11.5px; }
+.kobo-resume { margin: 0; padding-left: 18px; }
+.kobo-resume[aria-busy="true"] { opacity: 0.5; }
+.kobo-resume li { margin: 3px 0; overflow-wrap: anywhere; }
+/* Model › Which analysis? (quelle_analyse.js): the questions on the left, the advice on the right */
+.quelle-analyse { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; flex: 1; min-height: 0; }
+.quelle-analyse > div { overflow: auto; min-height: 0; padding-right: 4px; }
+.quelle-analyse h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--texte-doux); margin: 12px 0 5px; }
+.quelle-analyse h3:first-child { margin-top: 2px; }
+.qa-choix { display: flex; flex-direction: column; gap: 1px; }
+.qa-choix label { display: flex; align-items: baseline; gap: 6px; padding: 2px 5px; border-radius: 4px; cursor: pointer; }
+.qa-choix label:hover { background: var(--survol); }
+.qa-choix label.actif { background: var(--accent-doux); }
+.qa-choix .doux { font-size: 11.5px; }
+.qa-but { margin: 4px 0 0 18px; }
+.qa-genres { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px 8px; margin-top: 4px; }
+.qa-genre { display: flex; flex-direction: column; }
+.qa-genre .qa-zeros { margin-left: 24px; font-size: 12px; }
+.quelle-analyse .ligne { margin: 3px 0; }
+.quelle-analyse .ligne > label { color: var(--texte-doux); }
+.quelle-analyse select { max-width: 18em; }
+.qa-plan { margin: 3px 0; }
+.qa-plan > .ligne { margin-left: 24px; }
+.qa-liste .ligne { flex-wrap: wrap; gap: 6px; }
+.qa-filtre { width: 10em; }
+.qa-cases { max-height: 9.5em; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; align-content: start;
+  border: 1px solid var(--grille); border-radius: 4px; padding: 3px 6px; }
+.qa-cases label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qa-carte { border: 1px solid var(--bord); border-radius: 6px; padding: 8px 10px; background: var(--fond-barre); }
+.qa-carte h4 { margin: 0 0 4px; font-size: 14px; }
+.qa-carte p, .qa-detail p { margin: 4px 0; }
+.qa-rempli { font-size: 12px; color: var(--texte-doux); }
+.quelle-analyse p.attention { color: var(--attention); }
+.qa-ouvrir { display: flex; justify-content: flex-end; margin-top: 6px; }
+.qa-autres details { border-bottom: 1px solid var(--grille); padding: 3px 0; }
+.qa-autres summary { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.qa-autres summary button { padding: 1px 8px; }
+.qa-detail { padding: 2px 0 4px 16px; }
+.qa-attente { margin-top: 30px; }
+@media (max-width: 760px) { .quelle-analyse { grid-template-columns: minmax(0, 1fr); } }
 .statistiques-groupe { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+/* Add raster values (raster.js): a card per file, its facts, method and names */
+.dialogue-raster { gap: 6px; }
+.raster-fichiers { display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
+.raster-fichier, .raster-groupe { border: 1px solid var(--bord); border-radius: 6px; padding: 6px 10px; }
+.raster-fichier.refuse { border-color: var(--erreur); }
+.raster-fichier p, .raster-groupe p { margin: 3px 0; }
+.raster-tete .icone-seule { margin-left: auto; }
+.raster-fichier .grille-champs, .raster-groupe .grille-champs { grid-template-columns: max-content minmax(0, 640px); padding: 4px 0 0; }
+.raster-fichier select, .raster-groupe select { max-width: 32em; }
 /* Documents (documents.js): the text and its live preview side by side */
 .document { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .barre-document .titre-document-champ { width: 24em; max-width: 38%; font-weight: 600; }
@@ -358,6 +413,15 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .dialogue-document .colonne { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .dialogue-document .modeles-gabarit { display: flex; flex-direction: column; gap: 3px; padding: 4px 2px 0; max-height: 14em; overflow: auto; }
 .aide-document pre { background: var(--fond-barre); padding: 6px 8px; white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; border-radius: 4px; }
+/* Compile › Quarto: its results written in, or reproducible */
+.dialogue-quarto { display: flex; flex-direction: column; gap: 6px; max-width: 36em; }
+.dialogue-quarto p { margin: 0 0 2px; }
+.dialogue-quarto .choix-quarto { display: flex; align-items: flex-start; gap: 8px; color: var(--texte); }
+.dialogue-quarto .choix-quarto input { margin-top: 3px; flex: none; }
+.dialogue-quarto .choix-quarto > span { display: flex; flex-direction: column; }
+.dialogue-quarto .titre-choix { font-weight: 600; }
+.dialogue-quarto .choix-quarto .note { margin: 1px 0 0; }
+.dialogue-quarto .avertissement { color: var(--attention); }
 /* Citations in documents: in the text, in the preview, and the dialogs to find them */
 .editeur-document .cm-cite { color: var(--ok); }
 .editeur-document .cm-cite-erreur { color: var(--erreur); text-decoration: underline wavy var(--erreur); text-underline-offset: 3px; }
@@ -380,3 +444,57 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .ligne-recherche-citation { display: flex; gap: 8px; align-items: center; }
 .ligne-recherche-citation .recherche-citation { flex: 1; min-width: 0; }
 .ligne-recherche-citation .collection-zotero { max-width: 45%; }
+
+/* Figures (figures.js): the settings beside the figure's preview, one above the other when narrow */
+.cadre-figure { height: 100%; min-height: 0; container-type: inline-size; }
+.figure-compo { display: grid; grid-template-columns: minmax(280px, 370px) minmax(0, 1fr); height: 100%; min-height: 0; }
+.reglages-figure { overflow: auto; padding: 2px 12px 24px 2px; border-right: 1px solid var(--grille); display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.reglages-figure h3 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); margin: 10px 0 2px; }
+.reglages-figure .titre-figure { font-weight: 600; flex: 1; min-width: 0; }
+.reglages-figure .grille-champs { grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; padding: 2px; }
+.reglages-figure .ligne { flex-wrap: wrap; gap: 6px; }
+.reglages-figure input[type=number] { width: 4.8em; }
+.reglages-figure .choix-figure { gap: 4px 12px; }
+.reglages-figure .choix-figure .champ { color: var(--texte); }
+.ajout-figure { width: 100%; }
+.panneaux-figure { display: flex; flex-direction: column; gap: 1px; }
+.ligne-panneau { display: flex; align-items: center; gap: 4px; padding: 2px 3px; border-radius: 4px; }
+.ligne-panneau:hover { background: var(--survol); }
+.ligne-panneau .lettre-panneau { flex: none; min-width: 2.1em; text-align: center; background: var(--accent-doux); color: var(--accent); border-radius: 3px; padding: 0 3px; }
+.ligne-panneau .nom-panneau { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ligne-panneau.hors-grille .nom-panneau { color: var(--erreur); }
+.ligne-panneau select { max-width: 7.5em; }
+.apercu-figure { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; background: var(--fond); }
+.feuille-figure { background: #ffffff; box-shadow: var(--ombre); line-height: 0; max-width: 100%; transition: opacity .15s; }
+.feuille-figure.attente { opacity: .55; }
+.feuille-figure img { display: block; max-width: 100%; height: auto; }
+.resume-figure { margin: 2px 0 0; }
+.erreurs-figure p { margin: 2px 0; font-size: 12px; }
+@container (max-width: 660px) {
+  .figure-compo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 55%) minmax(0, 1fr); }
+  .reglages-figure { border-right: 0; border-bottom: 1px solid var(--grille); }
+}
+
+/* the model's conditions in its summary (panneaux.js: rendreResumeRegression) */
+.verifications .verification { margin: 0.25em 0; }
+.verifications .verification .signe { display: inline-block; width: 1.2em; font-weight: 600; }
+.verifications .verification.ok .signe { color: #3b9a5b; }
+.verifications .verification.attention .signe { color: #d1495b; }
+.verifications .verification.info .signe { color: var(--texte-doux, #666); }
+
+/* The data workbench (atelier.js): the Data view's headers (a variable's unit, its empty cells and
+   distinct values), Find and replace, Categories, Units and descriptions */
+.tableau th .sous-titre { display: block; font-weight: 400; font-size: 11px; color: var(--texte-doux); }
+.dialogue-remplacer .grille-champs, .dialogue-categories .grille-champs { grid-template-columns: max-content minmax(0, 480px); }
+.apercu-remplacer { min-height: 5.6em; border: 1px solid var(--bord); border-radius: 4px; padding: 4px 8px; background: var(--fond-barre); }
+.apercu-remplacer p { margin: 2px 0; }
+.apercu-remplacer .resume-remplacer { font-weight: 600; }
+.liste-categories { max-height: 20em; overflow: auto; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--bord); border-radius: 4px; padding: 4px 6px; margin-bottom: 6px; }
+.ligne-categorie { gap: 6px; }
+.ligne-categorie .nom-categorie { width: 12em; }
+.ligne-categorie .effectif { min-width: 4.5em; font-size: 11.5px; }
+.ligne-categorie.reference .nom-categorie { border-color: var(--accent); }
+.defile-unites { max-height: calc(88vh - 220px); overflow: auto; }
+.dialogue-unites .unite-variable { width: 8em; }
+.dialogue-unites .description-variable { width: 30em; }
+.tableau td.ancre { outline: 2px solid var(--accent); outline-offset: -2px; }

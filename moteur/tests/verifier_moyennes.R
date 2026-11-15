@@ -316,6 +316,82 @@ verifier("dans chaque habitat : la combinaison T3 · H2 laissée de côté ; H1 
            proche(rJd$paires$estimation, e$simple_estimate) && proche(rJd$paires$p, e$simple_p, 1e-6) && proche(rJd$paires$bas, e$simple_lower, 1e-4) &&
            identical(as.numeric(rJd$paires$famille), c(3, 3, 3, 2)))
 
+cat("Poisson à excès de zéros et loi bêta : l'échelle de la réponse\n")
+# (des comptages à excès de zéros, de la loi de ziP, et des proportions de loi bêta, tirés à part : le
+# hasard des vérifications suivantes rendu tel quel ; trois habitats, un effort)
+etat_hasard <- .Random.seed
+set.seed(29)
+nz <- 240
+tzm <- data.frame(nom = sprintf("Z%03d", 1:nz), habitat = rep(c("H1", "H2", "H3"), length.out = nz), x = round(runif(nz, 0, 10), 3), effort = round(runif(nz, 1, 3), 2),
+                  stringsAsFactors = FALSE)
+gzm <- 0.2 + c(H1 = 0.5, H2 = 0, H3 = -0.4)[tzm$habitat] + 0.08 * tzm$x + log(tzm$effort)
+presents <- runif(nz) < 1 - exp(-exp(-0.6 + 1.1 * gzm))
+tzm$compte <- 0
+tzm$compte[presents] <- stats::qpois(runif(sum(presents), stats::dpois(0, exp(gzm[presents])), 1), exp(gzm[presents]))
+mub <- stats::plogis(-0.2 + c(H1 = 0.6, H2 = 0, H3 = -0.3)[tzm$habitat] + 0.05 * tzm$x)
+tzm$prop <- round(stats::rbeta(nz, mub * 6, (1 - mub) * 6), 6)
+assign(".Random.seed", etat_hasard, envir = globalenv())
+pzm <- projet_depuis_tableau(tzm, "zip et bêta")
+uzm <- function(...) numeros(pzm, c(...))
+# la grille, dans les colonnes du modèle : chaque habitat, x à sa moyenne, l'effort à 1 (un décalage nul)
+grille_zb <- function(m) {
+  nd <- as.data.frame(matrix(0, 3, length(m$termes), dimnames = list(NULL, m$termes)))
+  for (k in 1:3) nd[k, m$termes[match(sprintf("habitat(H%d)", k), m$noms_termes)]] <- 1
+  nd[[m$termes[match("x", m$noms_termes)]]] <- mean(tzm$x)
+  if ("decalage" %in% names(m$donnees)) nd$decalage <- 0
+  nd
+}
+dZ <- definir_modele(pzm, "GLM", x = uzm("habitat", "x"), y = uzm("compte"), echelle = "none", famille = "poisson_zi", decalage = uzm("effort"))
+mZ <- ajuster(pzm, dZ)
+rZ <- moyennes_ajustees(pzm, mZ, dZ)
+aZ <- mZ$ajustement
+ndZ <- grille_zb(mZ)
+thZ <- aZ$family$getTheta(TRUE)
+# (la valeur attendue de ziP écrite ici : p λ / (1 − e^(−λ)), log(−log(1 − p)) = θ1 + θ2 log(λ))
+hZ <- function(eta) (1 - exp(-exp(thZ[1] + thZ[2] * eta))) * exp(eta) / (1 - exp(-exp(eta)))
+LZ <- stats::predict(aZ, ndZ, type = "lpmatrix")
+etaZ <- drop(LZ %*% stats::coef(aZ))
+seZ <- sqrt(rowSums((LZ %*% stats::vcov(aZ)) * LZ))
+pZ <- stats::predict(aZ, ndZ, type = "response", se.fit = TRUE)
+verifier("ziP : les comptages attendus de chaque habitat (x à sa moyenne, l'effort à 1) = predict(type = \"response\") de mgcv, leur erreur-type = sa méthode delta, l'intervalle h(η ± 1,96 se)",
+         identical(rZ$echelle, "reponse") && identical(rZ$lien, "log") && proche(rZ$moyennes$estimation, pZ$fit, 1e-8) && proche(rZ$moyennes$erreur_type, pZ$se.fit, 1e-8) &&
+           proche(rZ$moyennes$bas, hZ(etaZ - qnorm(0.975) * seZ), 1e-8) && proche(rZ$moyennes$haut, hZ(etaZ + qnorm(0.975) * seZ), 1e-8) && all(is.infinite(rZ$moyennes$ddl)))
+# (les paires : le logarithme du rapport des comptages attendus, son gradient par différences finies de log h ici)
+dlogh <- function(eta) (log(hZ(eta + 1e-6)) - log(hZ(eta - 1e-6))) / 2e-6
+ij <- utils::combn(3, 2)
+GZ <- t(vapply(seq_len(ncol(ij)), function(k) dlogh(etaZ[ij[1, k]]) * LZ[ij[1, k], ] - dlogh(etaZ[ij[2, k]]) * LZ[ij[2, k], ], numeric(ncol(LZ))))
+lrZ <- log(hZ(etaZ[ij[1, ]]) / hZ(etaZ[ij[2, ]]))
+slZ <- sqrt(rowSums((GZ %*% stats::vcov(aZ)) * GZ))
+verifier(sprintf("ziP : les paires, des rapports de comptages attendus (%s), testés sur leur logarithme par la méthode delta (gradient par différences finies ici), Tukey avec z",
+                 paste(formatC(rZ$paires$estimation, digits = 3, format = "f"), collapse = ", ")),
+         proche(rZ$paires$estimation, exp(lrZ), 1e-8) && proche(rZ$paires$t, lrZ / slZ, 1e-6) &&
+           proche(rZ$paires$p, stats::ptukey(sqrt(2) * abs(lrZ / slZ), 3, Inf, lower.tail = FALSE), 1e-6) &&
+           proche(rZ$paires$bas, exp(lrZ - stats::qtukey(0.95, 3, Inf) / sqrt(2) * slZ), 1e-6) && all(is.infinite(rZ$paires$ddl)))
+rZl <- moyennes_ajustees(pzm, mZ, dZ, list(echelle = "lien"))
+verifier("ziP sur l'échelle du lien : log(μ) de chaque habitat, les paires des différences (le rapport des paramètres μ)",
+         identical(rZl$echelle, "lien") && proche(rZl$moyennes$estimation, etaZ, 1e-8) && proche(rZl$paires$estimation, etaZ[ij[1, ]] - etaZ[ij[2, ]], 1e-8))
+dB <- definir_modele(pzm, "GLM", x = uzm("habitat", "x"), y = uzm("prop"), echelle = "none", famille = "beta")
+mB <- ajuster(pzm, dB)
+rB <- moyennes_ajustees(pzm, mB, dB)
+aB <- mB$ajustement
+hB <- a_la_main(stats::predict(aB, grille_zb(mB), type = "lpmatrix"), as.list(1:3), stats::coef(aB), stats::vcov(aB), Inf)
+verifier("bêta (logit) : des proportions moyennes, plogis de la moyenne et son erreur-type par la méthode delta ; les paires, des rapports des cotes testés sur l'échelle du lien (Tukey, z)",
+         identical(rB$echelle, "reponse") && proche(rB$moyennes$estimation, stats::plogis(hB$est), 1e-8) && proche(rB$moyennes$erreur_type, stats::dlogis(hB$est) * hB$se, 1e-8) &&
+           proche(rB$moyennes$bas, stats::plogis(hB$est - qnorm(0.975) * hB$se), 1e-8) && proche(rB$paires$estimation, exp(hB$d), 1e-8) &&
+           proche(rB$paires$p, hB$p_tukey, 1e-6) && proche(rB$paires$bas, exp(hB$bas_tukey), 1e-6) && identical(rB$ddl$methode, "asymptotique"))
+mZ$moyennes <- rZ
+mB$moyennes <- rB
+for (l in c("fr", "en")) {
+  tZ <- paste(texte_methodes(pzm, dZ, mZ, l)$paragraphes, collapse = " ")
+  tB <- paste(texte_methodes(pzm, dB, mB, l)$paragraphes, collapse = " ")
+  verifier(sprintf("texte des Méthodes (%s) : les comptages attendus de ziP et leurs rapports (méthode delta), l'effort de 1 sans « densités » ; les proportions moyennes de la loi bêta", l),
+           grepl(if (l == "fr") "Avec le Poisson à excès de zéros, les moyennes ont été ramenées sur l'échelle de la réponse" else "With the zero-inflated Poisson, the means were back-transformed to the response scale", tZ, fixed = TRUE) &&
+             grepl(if (l == "fr") "méthode delta" else "delta method", tZ, fixed = TRUE) && !grepl(if (l == "fr") "des densités" else "densities", tZ, fixed = TRUE) &&
+             grepl(if (l == "fr") "logit inverse : des proportions moyennes" else "inverse logit: mean proportions", tB, fixed = TRUE))
+}
+verifier("la phrase d'une paire de ziP : un rapport, z", grepl("^Moyennes ajustées de « compte » par « habitat » \\(modèle linéaire généralisé, loi de Poisson à excès de zéros ; échelle de la réponse\\) : H1 / H2 = ", rZ$phrases[1]) &&
+           grepl("z = ", rZ$phrases[1], fixed = TRUE))
+
 cat("Refus\n")
 d0 <- definir_modele(pq, "LM", x = uq("x", "annee"), y = uq("densite"))
 verifier("un modèle sans variable qualitative", grepl("pas de variable qualitative", refus(moyennes_ajustees(pq, ajuster(pq, d0), d0))))

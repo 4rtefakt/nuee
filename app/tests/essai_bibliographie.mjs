@@ -1,9 +1,12 @@
 // Checks interface/bibliographie.js (the references a document cites), without the application:
 // BibTeX and CSL-JSON read, LaTeX decoded, names, citations in Pandoc's syntax, the author–year and
-// numbered styles in French and English, the list of references, BibTeX written back.
+// numbered styles in French and English, the list of references, BibTeX written back; references
+// from Zotero's libraries (Zotero's real answers, tests/donnees/zotero), where they are kept and the
+// same key in two libraries.
 //   node tests/essai_bibliographie.mjs
+import fs from 'fs';
 import { decoderLatex, lireBibtex, lireNoms, lireCslJson, lireBibliographie, versBibtex, lireGroupeCitations, formaterCitations,
-  segments, texteSeul, resume, correspond, DEBUT_ITALIQUE, FIN_ITALIQUE } from '../interface/bibliographie.js';
+  segments, texteSeul, resume, correspond, DEBUT_ITALIQUE, FIN_ITALIQUE, elementZotero, lireReponseZotero, memeOeuvre, placerReference, SANS_ZOTERO } from '../interface/bibliographie.js';
 
 let echecs = 0;
 const verifier = (nom, ok, detail = '') => {
@@ -122,6 +125,59 @@ egal('numéroté : la liste dans le même ordre', num.liste.map((x) => [x.numero
 console.log('Recherche');
 verifier('une recherche sur l’auteur et l’année, sans accents', correspond(par.get('wold2001'), 'sjostrom 2001') && !correspond(par.get('wold2001'), 'legendre'));
 egal('le résumé d’une entrée', resume(par.get('wold2001')), 'Wold et al. 2001 · PLS-regression: a basic tool of chemometrics');
+
+console.log('Bibliothèques de Zotero');
+const zot = (dossier, f) => fs.readFileSync(new URL(`./donnees/zotero/${dossier}/${f}`, import.meta.url), 'utf8');
+egal('le lieu d’un élément : Ma bibliothèque (locale ou synchronisée), un groupe, tel que gardé ; rien sinon', ['http://zotero.org/users/local/ahrmAr1M/items/YP7DZ63D',
+  'http://zotero.org/users/12345/items/ABCD1234', 'http://zotero.org/groups/6011001/items/79PWGJ9R', 'groups/6011001/items/79PWGJ9R', 'users/0/items/YP7DZ63D',
+  'http://zotero.org/groups/x/items/79PWGJ9R', 'groups/6011001/items/abc', '', undefined].map(elementZotero),
+['users/0/items/YP7DZ63D', 'users/0/items/ABCD1234', 'groups/6011001/items/79PWGJ9R', 'groups/6011001/items/79PWGJ9R', 'users/0/items/YP7DZ63D', '', '', '', '']);
+// (Zotero 10.0.8 with Better BibTeX: format=json&include=bibtex, each item's library, key and BibTeX)
+const moiB = lireReponseZotero(zot('better-bibtex', 'recherche_users_0_bechet.json'));
+const camB = lireReponseZotero(zot('better-bibtex', 'recherche_groupe_6011001_bechet.json'));
+const camW = lireReponseZotero(zot('better-bibtex', 'recherche_groupe_6011001_wold.json'))[0];
+const perB = lireReponseZotero(zot('better-bibtex', 'recherche_groupe_6011002_perdrix.json'));
+const perS = lireReponseZotero(zot('simple', 'recherche_groupe_6011002_perdrix.json'));
+const bechetMoi = moiB[0];
+const bechetGroupe = camB.find((e) => e.type === 'article');
+egal('lu de la réponse de Zotero : la clé, le lieu, les champs', [bechetMoi.cle, bechetMoi.zotero, bechetGroupe.cle, bechetGroupe.zotero, bechetGroupe.doi, bechetGroupe.auteurs[1].nom],
+  ['bechetPopulationDynamicsGreater2019', 'users/0/items/YP7DZ63D', 'bechetPopulationDynamicsGreater2019', 'groups/6011001/items/79PWGJ9R', '10.1111/jav.01234', 'Germain']);
+egal('une réponse illisible, ou une erreur : rien', [lireReponseZotero('Not found'), lireReponseZotero(''), lireReponseZotero('[{"key":"ABCD1234"}]')], [[], [], []]);
+const woldMoi = lireBibtex(String.raw`@article{woldPLSregressionBasicTool2001, title = {{PLS}-regression: a basic tool of chemometrics}, author = {Wold, Svante and Sj{\"o}str{\"o}m, Michael}, year = {2001}}`).entrees[0];
+verifier('la même œuvre : copiée d’une bibliothèque à l’autre (titre, année, premier auteur ; DOI quand les deux en ont)', memeOeuvre(woldMoi, camW)
+  && !memeOeuvre(bechetMoi, bechetGroupe) && !memeOeuvre({ ...camW, doi: '10.1/autre' }, camW) && memeOeuvre({ ...bechetMoi, doi: 'X' }, { ...bechetGroupe, doi: 'x' }));
+verifier('les clés d’un groupe en lecture seule : celles de Better BibTeX, ou de Zotero sans lui, pour les mêmes œuvres', perB.map((e) => e.cle).join() === 'broSurvieHivernalePerdrix2019,reitzSuiviPopulationsPerdrix2012'
+  && perS.map((e) => e.cle).join() === 'bro_survie_2019,reitz_suivi_2012' && memeOeuvre(perB[0], perS[0]), JSON.stringify([perB.map((e) => e.cle), perS.map((e) => e.cle)]));
+
+// where a reference from Zotero goes among those of a document (kept: no `origine`; a file's: its path)
+const doc = (...l) => new Map(l.map((e) => [e.cle, e]));
+const garde = (e) => lireBibtex(versBibtex(e)).entrees[0];
+const d1 = doc({ ...garde(bechetMoi), origine: null });
+egal('une clé libre : prise', placerReference(camB.find((e) => e.type === 'techreport'), d1), { cle: 'bechetSuiviColoniesFlamants2021', nouvelle: true });
+const p1 = placerReference(bechetGroupe, d1);
+egal('la même clé dans deux bibliothèques, deux œuvres : la seconde prend une lettre', p1, { cle: 'bechetPopulationDynamicsGreater2019a', nouvelle: true, renommee: 'bechetPopulationDynamicsGreater2019' });
+const d2 = doc(...d1.values(), { ...garde({ ...bechetGroupe, cle: p1.cle }), origine: null });
+egal('choisie de nouveau, elle retrouve sa clé (le même élément de Zotero)', placerReference(bechetGroupe, d2),
+  { cle: 'bechetPopulationDynamicsGreater2019a', remplace: true, autre: 'bechetPopulationDynamicsGreater2019' });
+egal('Ma bibliothèque de nouveau : sa clé, remise à jour', placerReference({ ...bechetMoi, titre: `${bechetMoi.titre} !` }, d2),
+  { cle: 'bechetPopulationDynamicsGreater2019', remplace: true, autre: null });
+const d3 = doc(...d2.values(), { ...garde({ ...bechetGroupe, cle: 'bechetPopulationDynamicsGreater2019b', zotero: 'groups/1/items/AAAAAAAA', titre: 'Encore une autre' }), origine: null });
+egal('une troisième œuvre : la lettre suivante', placerReference({ ...bechetGroupe, zotero: 'groups/1/items/BBBBBBBB', titre: 'Et une autre', doi: '' }, d3).cle, 'bechetPopulationDynamicsGreater2019c');
+egal('la même œuvre copiée dans un groupe : la clé du document, sans la remplacer', placerReference(camW, doc({ ...garde({ ...woldMoi, zotero: 'users/0/items/QCQEELND' }), origine: null })),
+  { cle: 'woldPLSregressionBasicTool2001', remplace: false, autre: null });
+egal('un élément gardé sous la clé de Zotero, choisi dans Better BibTeX : la clé du document', placerReference(perB[0], doc({ ...garde({ ...perS[0], zotero: perB[0].zotero }), origine: null })),
+  { cle: 'bro_survie_2019', remplace: true, autre: 'broSurvieHivernalePerdrix2019' });
+egal('la clé d’une autre œuvre d’un fichier lié : une lettre ; la même œuvre d’un fichier : sa clé, le fichier gardé', [placerReference(bechetGroupe, doc({ ...bechetMoi, zotero: '', origine: 'refs.bib' })),
+  placerReference(bechetMoi, doc({ ...bechetMoi, zotero: '', origine: 'refs.bib' }))],
+[{ cle: 'bechetPopulationDynamicsGreater2019a', nouvelle: true, renommee: 'bechetPopulationDynamicsGreater2019' }, { cle: 'bechetPopulationDynamicsGreater2019', remplace: false, autre: null }]);
+const ecrit = versBibtex({ ...bechetGroupe, cle: p1.cle });
+egal('gardée avec son lieu dans Zotero, relue pareil ; sans lui dans le .bib de Quarto', [/zotero = \{groups\/6011001\/items\/79PWGJ9R\}/.test(ecrit), lireBibtex(ecrit).entrees[0].zotero,
+  versBibtex(lireBibtex(ecrit).entrees[0]) === ecrit, /zotero/.test(versBibtex(lireBibtex(ecrit).entrees[0], SANS_ZOTERO)), /zotero/.test(versBibtex({ ...lireCslJson(zot('better-bibtex', 'export_camargue_2.json')).entrees[0], zotero: 'groups/6011001/items/79PWGJ9R' }, SANS_ZOTERO))],
+[true, 'groups/6011001/items/79PWGJ9R', true, false, false]);
+const deuxBechet = formaterCitations([{ cites: [{ cle: 'bechetPopulationDynamicsGreater2019', prefixe: '', suffixe: '', sansAuteur: false }, { cle: p1.cle, prefixe: '', suffixe: '', sansAuteur: false }] }],
+  new Map([...d2.entries()]), { langue: 'en' });
+egal('les deux citées, dans leur ordre : deux références', [deuxBechet.textes[0], deuxBechet.liste.map((x) => x.cle), deuxBechet.inconnues],
+  ['(Béchet & Johnson, 2019; Béchet & Germain, 2019)', ['bechetPopulationDynamicsGreater2019a', 'bechetPopulationDynamicsGreater2019'], []]);
 
 console.log(echecs ? `${echecs} vérification(s) en échec` : 'Toutes les vérifications sont passées.');
 process.exit(echecs ? 1 : 0);

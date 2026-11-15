@@ -29,12 +29,12 @@ jobs:
           Add-Content $env:GITHUB_PATH 'C:\R\bin'
 
       - name: Paquets R
-        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan'), repos = 'https://cloud.r-project.org')"
+        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra', 'Distance'), repos = 'https://cloud.r-project.org')"
 
       - name: Vérifications du moteur
         shell: bash
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -58,6 +58,26 @@ jobs:
         working-directory: app
         run: node tests/essai_installation.js
 
+  # The update from 0.9.9 keeps Nuée's shortcuts and taskbar pin (app/installateur.nsh): 0.9.9 as
+  # published, installed, then this version's installer around a stand-in application, run as
+  # 0.9.9's updater runs it and as this version's does (app/tests/essai_mise_a_jour.js).
+  mise-a-jour:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Paquets de l'interface
+        working-directory: app
+        run: npm ci --ignore-scripts
+
+      - name: Mise à jour depuis la 0.9.9, raccourcis et épingle gardés
+        working-directory: app
+        run: node tests/essai_mise_a_jour.js
+
   linux:
     runs-on: ubuntu-24.04
     steps:
@@ -66,12 +86,12 @@ jobs:
       - name: R d'Ubuntu, avec les paquets dont dépend le .deb
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends r-base-core r-cran-httpuv r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign r-cran-nlme r-cran-mgcv r-cran-knitr r-cran-mass r-cran-rpart r-cran-cluster xvfb xauth
+          sudo apt-get install -y --no-install-recommends r-base-core r-cran-httpuv r-cran-jsonlite r-cran-openxlsx r-cran-haven r-cran-readxl r-cran-foreign r-cran-nlme r-cran-mgcv r-cran-knitr r-cran-mass r-cran-rpart r-cran-cluster r-cran-rsqlite r-cran-sf r-cran-spdep r-cran-gstat r-cran-ranger r-cran-terra xvfb xauth
           Rscript -e 'cat(R.version.string, "\n")'
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -169,7 +189,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"

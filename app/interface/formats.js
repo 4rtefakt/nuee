@@ -14,7 +14,10 @@ export const LECTURE = [
   { cle: 'format_jamovi', ext: ['omv'] },
   { cle: 'format_dbase', ext: ['dbf'] },
   { cle: 'format_arff', ext: ['arff'] },
+  { cle: 'format_geopackage', ext: ['gpkg'] },
   { cle: 'format_spectres', ext: ['jdx', 'dx', 'jcm', 'spc'] },
+  // (an ODK Central export, one CSV per table: opened through its import, kobo.js)
+  { cle: 'kobo_format_zip', ext: ['zip'] },
 ];
 
 // Files of spectra (moteur/R/fichiers_spectres.R): JCAMP-DX, SPC, or text (x, then one column per spectrum).
@@ -23,7 +26,9 @@ export const filtresSpectres = () => [{ name: t('tous_spectres'), extensions: SP
   ...SPECTRES.map((f) => ({ name: t(f.cle), extensions: f.ext })), { name: t('tous_fichiers'), extensions: ['*'] }];
 export const acceptSpectres = () => SPECTRES.flatMap((f) => f.ext).map((e) => '.' + e).join(',');
 
-// One extension each; `plusieurs`: a model's results make one file per table in this format.
+// One extension each; `plusieurs`: a model's results make one file per table in this format;
+// `coordonnees`: offered only for a project with coordinates (a GeoPackage of points, its other
+// tables beside them).
 export const ECRITURE = [
   { ext: 'xlsx', cle: 'format_excel' },
   { ext: 'csv', cle: 'format_csv', plusieurs: true },
@@ -36,9 +41,10 @@ export const ECRITURE = [
   { ext: 'omv', cle: 'format_jamovi', plusieurs: true },
   { ext: 'dbf', cle: 'format_dbase', plusieurs: true },
   { ext: 'arff', cle: 'format_arff', plusieurs: true },
+  { ext: 'gpkg', cle: 'format_geopackage', coordonnees: true },
 ];
 
-const tableaux = LECTURE.filter((f) => !['format_projet', 'format_usp'].includes(f.cle));
+const tableaux = LECTURE.filter((f) => !['format_projet', 'format_usp', 'kobo_format_zip'].includes(f.cle));
 
 // Filters of the Open dialog: everything first, then each format.
 export function filtresOuverture(seulementTableaux = false) {

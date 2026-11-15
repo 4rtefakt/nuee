@@ -190,6 +190,13 @@ refr <- mgcv::gam(stats::as.formula("compte ~ x2 + s(x1, k = 10) + s(site, bs = 
 vcomp <- mgcv::gam.vcomp(refr)  # (une liste, ou la matrice seule selon la version de mgcv)
 verifier("GAMM : la variance du site = gam.vcomp() d'un ajustement en REML",
          proche(mg6$resultat$variances$variance, (if (is.matrix(vcomp)) vcomp else vcomp$vc)["s(site)", 1]^2, 1e-3))
+# (sans courbe, gam.vcomp() n'a qu'une ligne, et la colonne des écarts-types en perdait le nom)
+mg6b <- modele_g("GLM", "compte", "x2", famille = "poisson", decalage = ug("effort"), aleatoires = list(list(by = "variable", variable = ug("site"))))
+refb <- mgcv::gam(stats::as.formula("compte ~ x2 + s(site, bs = \"re\")", env = env), data = transform(tg, site = factor(site)),
+                  family = poisson, method = "REML", offset = log(effort))
+vb <- mgcv::gam.vcomp(refb)
+verifier("GLMM sans courbe, un seul effet aléatoire : sa variance = gam.vcomp()",
+         isTRUE(mg6b$resultat$variances$variance > 0) && proche(mg6b$resultat$variances$variance, (if (is.matrix(vb)) vb else vb$vc)["s(site)", 1]^2, 1e-4))
 eg6 <- effets_regression(mg6)
 verifier("courbes d'effet : la courbe en x1, la droite en x2, avec leurs intervalles", length(eg6) == 2 && isTRUE(eg6[[1]]$courbe) &&
          all(eg6[[1]]$haut >= eg6[[1]]$bas) && length(eg6[[2]]$x) == 80)

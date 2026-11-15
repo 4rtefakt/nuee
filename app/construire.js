@@ -16,6 +16,7 @@
 //   node construire.js <output folder>        (RSCRIPT=<Rscript> for another R than the PATH's)
 // tests/essai_api.js runs first (interface syntax, main requests of the R server): a failure
 // stops the build (SANS_ESSAI=1 skips it). SANS_INSTALLATEUR=1 skips the installer.
+//   node construire.js --installateur <packaged application> <output folder>: the installer alone.
 const { packager } = require('@electron/packager');
 const builder = require('electron-builder');
 const { execFileSync } = require('child_process');
@@ -46,13 +47,18 @@ const inutile = (rel) => /^(doc|tests|Tcl)([\\/]|$)|^unins/i.test(rel)
 
 // R packages to bring: base R, the recommended packages (for the R console; foreign reads dBase
 // and Weka files) and what the engine loads with its dependencies (haven: SPSS, Stata, SAS;
-// readxl: .xls). Others installed in the local R (testthat...) stay out, and so do those only
-// needed to compile a package (LinkingTo: cpp11, progress).
+// readxl: .xls; RSQLite: GeoPackage; ranger: random forests). Others installed in the local R
+// (testthat...) stay out, and so do those only needed to compile a package (LinkingTo: cpp11,
+// progress). One of the engine's packages missing from R's own library stops the build: the
+// program would be shipped without it.
 function paquetsR() {
+  const moteur = 'c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "RSQLite", "ranger")';
   const code = 'ip <- installed.packages(lib.loc = .Library); '
+    + `manque <- setdiff(${moteur}, rownames(ip)); `
+    + 'if (length(manque)) stop("not in R\'s own library (install.packages(..., lib = .Library)): ", paste(manque, collapse = ", "), call. = FALSE); '
     + 'std <- rownames(ip)[ip[, "Priority"] %in% c("base", "recommended")]; '
-    + 'dep <- unlist(tools::package_dependencies(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"), db = ip, recursive = TRUE, which = c("Depends", "Imports"))); '
-    + 'writeLines(union(std, c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "translations", dep)))';
+    + `dep <- unlist(tools::package_dependencies(${moteur}, db = ip, recursive = TRUE, which = c("Depends", "Imports"))); `
+    + `writeLines(union(std, c(${moteur}, "translations", dep)))`;
   return new Set(execFileSync(rscript, ['-e', code], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean));
 }
 
@@ -121,7 +127,7 @@ async function construire() {
   console.log('moteur…');
   copier(path.join(depot, 'moteur'), path.join(ressources, 'moteur'));
   // the example project (made-up data) and its table
-  copier(path.join(depot, 'exemple'), path.join(ressources, 'exemple'), (rel) => /^vergers\.(json|csv)$/.test(rel));
+  copier(path.join(depot, 'exemple'), path.join(ressources, 'exemple'), (rel) => /^(orchards|vergers)\.(json|csv)$/.test(rel));
   // the full user guide, opened from Aide › Guide d'utilisation
   for (const f of ['LISEZ-MOI-APPLICATION.txt', 'USER-GUIDE.txt']) fs.copyFileSync(path.join(depot, f), path.join(ressources, f));
 
@@ -174,26 +180,35 @@ async function construire() {
   fs.copyFileSync(path.join(depot, 'USER-GUIDE.txt'), path.join(final, 'USER-GUIDE.txt'));
   console.log('Prêt :', final);
 
-  // The installer for everyone else: for this user (no administrator rights needed) or for
-  // all users, Start menu and desktop shortcuts, listed in Settings › Apps with its uninstaller.
   if (process.env.SANS_INSTALLATEUR) return;
+  await construireInstallateur(path.join(final, 'application'), path.join(sortie, 'installateur'));
+}
+
+// The installer for everyone else, from the packaged application `application` into `dossier`: for
+// this user (no administrator rights needed) or for all users, Start menu and desktop shortcuts,
+// listed in Settings › Apps with its uninstaller. installateur.nsh: an installation over Nuée's
+// folder keeps its shortcuts and taskbar pin. (Alone: node construire.js --installateur
+// <application> <output folder>, as tests/essai_mise_a_jour.js does with a stand-in application.)
+async function construireInstallateur(application, dossier) {
   console.log('installateur…');
   const fichiers = await builder.build({
     targets: builder.Platform.WINDOWS.createTarget('nsis', builder.Arch.x64),
-    prepackaged: path.join(final, 'application'),
+    prepackaged: application,
     projectDir: __dirname,
     config: {
       appId: 'io.github.4rtefakt.nuee', productName: 'Nuée', executableName: 'Nuee', copyright: '4rtefakt', compression: 'maximum',
-      directories: { output: path.join(sortie, 'installateur') },
+      directories: { output: dossier },
       win: { icon: path.join(__dirname, 'icone', 'nuee.ico') },
       // .nuee projects open in Nuée when double-clicked, with its icon
-      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Projet Nuée', icon: path.join(__dirname, 'icone', 'nuee.ico') }],
+      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Nuée project', icon: path.join(__dirname, 'icone', 'nuee.ico') }],
       nsis: {
         oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true,
         createDesktopShortcut: true, createStartMenuShortcut: true, shortcutName: 'Nuée', uninstallDisplayName: 'Nuée',
         installerIcon: path.join(__dirname, 'icone', 'nuee.ico'), uninstallerIcon: path.join(__dirname, 'icone', 'nuee.ico'),
         installerSidebar: path.join(__dirname, 'icone', 'installateur.bmp'), uninstallerSidebar: path.join(__dirname, 'icone', 'installateur.bmp'),
-        installerLanguages: ['fr_FR', 'en_US'], language: '1036', artifactName: 'Nuee-Setup-${version}.exe',
+        // (Windows's language when it is one of them, English otherwise: the first one)
+        installerLanguages: ['en_US', 'fr_FR'], language: '1033', artifactName: 'Nuee-Setup-${version}.exe',
+        include: path.join(__dirname, 'installateur.nsh'),
       },
     },
   });
@@ -259,19 +274,20 @@ async function construireLinux(dossier) {
         artifactName: 'Nuee-${version}-${arch}.${ext}',
       },
       // .nuee projects open in Nuée (MIME type in the menu entry and the .deb)
-      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Projet Nuée', mimeType: 'application/x-nuee' }],
+      fileAssociations: [{ ext: 'nuee', name: 'Nuee.Projet', description: 'Nuée project', mimeType: 'application/x-nuee' }],
       // electron-builder's own list (it is replaced, not added to) with libgbm1 and libasound2,
       // which Electron needs too (a minimal Ubuntu 22.04 lacks libgbm1), then R and the engine's
       // packages (foreign, for dBase and Weka files, nlme and mgcv, for mixed, generalized and
       // additive models, MASS, for a curve's thresholds and the LDA, rpart, for decision trees, and
       // cluster, for k-means silhouettes, are among R's recommended packages, which Debian keeps
-      // out of r-base-core; the others are for the R console, as on Windows)
+      // out of r-base-core; RSQLite reads and writes GeoPackage files and ranger grows random forests;
+      // the others are for the R console, as on Windows)
       deb: {
         packageCategory: 'science',
         depends: ['libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6', 'xdg-utils', 'libatspi2.0-0', 'libuuid1', 'libsecret-1-0',
           'libgbm1', 'libasound2',
           'r-base-core', 'r-cran-httpuv', 'r-cran-jsonlite', 'r-cran-openxlsx', 'r-cran-haven', 'r-cran-readxl', 'r-cran-foreign', 'r-cran-nlme', 'r-cran-mgcv',
-          'r-cran-mass', 'r-cran-rpart', 'r-cran-cluster'],
+          'r-cran-mass', 'r-cran-rpart', 'r-cran-cluster', 'r-cran-rsqlite', 'r-cran-ranger'],
         recommends: ['python3', 'r-recommended'],
       },
     },
@@ -279,4 +295,5 @@ async function construireLinux(dossier) {
   console.log('Paquets :', fichiers.filter((f) => /\.(deb|AppImage|tar\.gz)$/.test(f)).join(', '));
 }
 
-construire().catch((e) => { console.error(e); process.exit(1); });
+(process.argv[2] === '--installateur' ? construireInstallateur(path.resolve(process.argv[3]), path.resolve(process.argv[4])) : construire())
+  .catch((e) => { console.error(e); process.exit(1); });

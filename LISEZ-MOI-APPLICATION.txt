@@ -1,22 +1,19 @@
-NUÉE — ACP, PLS, PLS-DA et OPLS, calculées en R
-===============================================
+NUÉE — ACP, PLS, écologie des communautés, modèles et cartes, calculés en R
+===========================================================================
 (English guide: USER-GUIDE.txt)
 
 Démarrer
 --------
-Deux façons d'installer Nuée, sans droits d'administrateur ; R est inclus dans les deux.
-- Depuis le NAS : double-cliquez sur « Lancer Nuee.cmd ». Windows ne sait pas lancer
-  l'application directement depuis le NAS ; ce lanceur la copie sur l'ordinateur (dans
-  %LOCALAPPDATA%\Nuee) puis la démarre. La première fois la copie prend une à deux minutes ;
-  ensuite seuls les fichiers modifiés sur le NAS sont recopiés, et l'application démarre tout
-  de suite. Au premier lancement, des raccourcis « Nuée » sont créés sur le Bureau et dans le
-  menu Démarrer : ils lancent l'application de la même façon (toujours à jour avec le NAS).
-- Avec l'installateur : double-cliquez sur « Nuee-Setup-<version>.exe » et suivez les
-  étapes (pour vous seul, ou pour tous les utilisateurs de l'ordinateur).
-Dans les deux cas, Nuée apparaît dans Paramètres › Applications › Applications installées,
-d'où on peut la désinstaller ; les projets et les réglages sont gardés.
+Pour installer Nuée, double-cliquez sur « Nuee-Setup-<version>.exe » et suivez les étapes :
+pour vous seul (sans droits d'administrateur) ou pour tous les utilisateurs de l'ordinateur.
+R est inclus. Nuée apparaît dans Paramètres › Applications › Applications installées, d'où on
+peut la désinstaller ; les projets et les réglages sont gardés.
 Si Windows affiche « Windows a protégé votre ordinateur » (éditeur inconnu), cliquez sur
 « Informations complémentaires » puis « Exécuter quand même ».
+Pour les services informatiques qui installent Nuée sur de nombreux ordinateurs (installation
+silencieuse, Intune, Configuration Manager, stratégies de groupe, recherche de mises à jour
+coupée) : le guide de déploiement, en anglais,
+https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md
 
 Sous macOS, R est inclus aussi : ouvrez Nuee-<version>-arm64.dmg (Apple silicon, macOS 14 ou
 plus récent) ou Nuee-<version>-x64.dmg (Intel, macOS 13 ou plus récent) et faites glisser Nuée
@@ -31,7 +28,7 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
 - Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster")).
+  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).
 Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
 RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
 
@@ -47,6 +44,9 @@ Fichier › Ouvrir (Ctrl+O) :
       Stata .dta                      SAS .sas7bdat, .xpt
       jamovi .omv                     dBase .dbf, Weka .arff
       spectres JCAMP-DX .jdx, .dx, .jcm et SPC .spc (voir Spectres)
+      GeoPackage .gpkg (une couche de QGIS : voir Cartes et données spatiales)
+    Un export de KoboToolbox ou d'ODK Central (.xlsx, .csv, ou le .zip d'ODK) est reconnu à ses
+    colonnes et s'ouvre par son import (voir Données de terrain de KoboToolbox ou d'ODK).
     La première colonne sert de nom d'observation si c'est du texte ou si elle s'appelle
     « ID », « Obs », « Nom »... (pour un fichier R, les noms des lignes) ; les autres colonnes
     de texte dont toutes les valeurs diffèrent (un code par observation) deviennent des
@@ -72,6 +72,8 @@ Fichier › Ouvrir (Ctrl+O) :
 Fichier › Coller un tableau (Ctrl+V) : des cellules copiées dans Excel, LibreOffice, Google
 Sheets ou jamovi deviennent un projet (la première ligne donne les noms des variables). Le
 projet n'a pas encore de fichier : l'enregistrer (Ctrl+S).
+Fichier › Importer depuis KoboToolbox ou ODK... : les relevés sur téléphone exportés par
+KoboToolbox ou ODK Central (voir Données de terrain de KoboToolbox ou d'ODK).
 Fichier › Importer des spectres : des fichiers de spectres réunis en un projet (voir Spectres).
 Déposer des fichiers sur la fenêtre (glisser-déposer depuis l'Explorateur) les ouvre de même :
 des spectres JCAMP-DX ou SPC ensemble font un seul projet, comme Importer des spectres ; les
@@ -83,6 +85,53 @@ bio ou conventionnelle, une douzaine de mesures et une note de dégustation) ave
 modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA de la
 culture. Le tableau d'origine, vergers.csv, est à côté (resources\exemple) pour essayer
 l'ouverture d'un tableau.
+
+Données de terrain de KoboToolbox ou d'ODK
+------------------------------------------
+Les formulaires remplis sur téléphone (KoboCollect, ODK Collect, Enketo) sont exportés par leur
+serveur : KoboToolbox en classeur Excel (une feuille pour les envois, une par groupe répété) ou
+en fichier CSV (points-virgules), ODK Central en archive .zip (un CSV par table) ou en son seul
+CSV des envois. Fichier › Ouvrir les reconnaît à leurs colonnes (_id, _uuid, _submission_time,
+_index... ; SubmissionDate, KEY, meta-instanceID...), comme un fichier déposé sur la fenêtre ;
+Fichier › Importer depuis KoboToolbox ou ODK... demande l'import, et refuse tout autre fichier.
+Un dialogue dit en phrases ce que l'import fera avant de le faire, et le redit à chaque réglage
+changé :
+  - la table à analyser : les envois, ou un groupe répété (une ligne par espèce observée, par
+    plante mesurée), avec les colonnes de ses tables parentes jointes à chaque ligne, toutes
+    cochées au départ (l'habitat et les coordonnées du site ; une répétition dans une
+    répétition remonte les deux niveaux) ;
+  - les métadonnées retirées, listées (identifiants internes, appareil, version du formulaire,
+    colonnes qui relient les tables...) ; on peut garder la date et l'heure d'envoi, son auteur,
+    son identifiant, le début, la fin et le jour du relevé, et le statut de validation ;
+  - les préfixes des groupes retirés des noms (group_site/altitude, group_site-altitude, ou
+    avec le séparateur choisi pour un export de KoboToolbox, group_site.altitude : altitude) ;
+    deux questions au même nom dans deux groupes gardent leur groupe (group_site_remarques,
+    group_fin_remarques), avec le formulaire même quand un export d'ODK omet les groupes ;
+  - un choix unique (select_one) devient une variable qualitative, un choix multiple
+    (select_multiple) une colonne 0/1 par choix nommée question_code (meteo_pluie) : 1 choisi,
+    0 non, vide quand la question est restée sans réponse (même là où ODK écrit 0) ; les
+    colonnes 0/1 de l'export servent quand il les a, jamais en double, et avec le formulaire
+    un choix qui leur manque (ODK n'en écrit que pour les choix pris au moins une fois) a
+    aussi la sienne ;
+  - un point GPS (geopoint), en texte (« lat lon alt préc ») ou en colonnes, devient
+    gps_longitude, gps_latitude, gps_altitude et gps_precision ; le premier point de la table
+    (ou de sa table parente, joint) devient les coordonnées du projet, en WGS 84 (voir Cartes
+    et données spatiales) ;
+  - les dates et heures perdent leurs fractions de seconde et leur fuseau horaire
+    (2024-05-03T08:12:45.123+02:00 devient 2024-05-03 08:12:45, l'heure du téléphone), pour
+    que Nuée les lise comme des dates (voir Le temps en dates).
+Le formulaire XLSForm (le classeur aux feuilles survey et choices, téléchargé depuis KoboToolbox
+ou ODK Central), s'il est donné, dit le type de chaque question, les libellés des choix dans la
+langue choisie (label::Français (fr), label::English (en) ou label ; par défaut celle de
+l'interface) et leur ordre, qui devient celui des catégories ; les colonnes prennent alors les
+noms des questions, quels que soient les en-têtes de l'export (noms ou libellés), et un choix
+multiple exporté en une colonne de libellés en tire ses colonnes 0/1. Sans le formulaire, les
+réponses restent telles que l'export les écrit (des codes, ou des libellés pour un export en
+libellés), les catégories dans l'ordre alphabétique, et un choix multiple sans ses colonnes 0/1
+reste du texte. « Ouvrir tel quel » ouvre la table choisie sans rien y changer (la feuille, ou le
+CSV de l'archive). L'import est un projet comme un tableau ouvert, à enregistrer (Ctrl+S) ; le
+texte des Méthodes dit que les données ont été recueillies avec KoboToolbox ou ODK (et le titre
+du formulaire).
 
 Enregistrer et retrouver son travail
 ------------------------------------
@@ -134,8 +183,7 @@ vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée 
 proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation
 pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour
 fait de même à tout moment, même sans la recherche au démarrage ; Aide › Chercher une nouvelle
-version au démarrage arrête la recherche. La copie lancée depuis le NAS ne cherche pas : elle
-se met à jour avec le NAS.
+version au démarrage arrête la recherche.
 
 L'explorateur (à gauche)
 ------------------------
@@ -192,6 +240,83 @@ les modèles importés) et crée un nouveau modèle.
 Avant le calcul, l'application vérifie les données : variables ou observations avec plus de
 50 % de valeurs manquantes, variables constantes. S'il y en a, elle les liste et propose
 « Les exclure et ajuster » ou « Ajuster quand même ».
+
+Quelle analyse ? (Modèle › Quelle analyse ?)
+--------------------------------------------
+Modèle › Quelle analyse ? (aussi un bouton de la page d'accueil, à côté de Nouveau modèle, et
+Ctrl+K) : quelques questions en mots simples, puis l'analyse qui y répond, déjà réglée.
+  - Votre question : comparer des groupes ou des périodes ; l'effet de variables sur une
+    réponse ; beaucoup d'espèces à la fois (comment la composition change, un modèle par
+    espèce, les espèces qui caractérisent chaque groupe) ; une tendance dans le temps ou un
+    indice de suivi ; une densité ou un effectif (échantillonnage par distance) ; où (cartes,
+    autocorrélation spatiale) ; explorer ou résumer un tableau ; prédire ou classer ; diversité
+    et richesse en espèces ; avant/après avec des témoins (BACI).
+  - La réponse : la variable mesurée, et son type : une mesure, un comptage (avec beaucoup de
+    zéros ou non), une présence-absence (0 ou 1), une proportion entre 0 et 1, une classe (une
+    variable qualitative), un tableau d'espèces (une colonne par espèce), ou les distances aux
+    animaux détectés (une ligne par détection).
+  - Le dispositif : les mêmes sites ou placettes mesurés plusieurs fois (le site), des années
+    ou des dates (le temps), un dispositif BACI (l'unité), des coordonnées spatiales, des lignes
+    ou des points (échantillonnage par distance).
+  - Les variables : les variables explicatives (X), ou les groupes.
+Nuée propose les réponses d'après les variables du projet (comme les lit Statistiques des
+variables) : une réponse d'entiers à partir de 0 est un comptage, de 0 et de 1 une
+présence-absence, entre 0 et 1 une proportion ; « beaucoup de zéros » quand un quart au moins
+des valeurs sont nulles, et 15 points de plus que n'en donnerait une loi de Poisson de même
+moyenne (la phrase sous la réponse donne les deux) ; le site est une variable qualitative nommée
+comme un site (site, station, placette, transect...) dont les catégories se répètent ; le temps
+une variable nommée comme une année ou une date, ou des entiers entre 1900 et 2100 ; les espèces
+les colonnes de nombres positifs ou nuls qui ont des zéros (quatre au moins) ; les coordonnées
+celles du projet, ou celles que proposent les noms de ses variables ; les distances une
+variable nommée comme elles, et les autres colonnes de l'échantillonnage par distance par les
+noms d'où Nouveau modèle les propose (Sample.Label, Effort, Region.Label, Area, size du paquet
+Distance, ou transect, longueur, région, aire, taille) ; des points plutôt que des lignes quand
+la colonne du transect est nommée comme un point ou une station. Chaque réponse se change.
+À droite : l'analyse conseillée, pourquoi, ses conditions principales et des notes selon les
+réponses (l'effet aléatoire par site, l'autocorrélation des résidus d'années qui se suivent, les
+moyennes ajustées après la comparaison de groupes, une proportion qui touche 0 ou 1...), ce qui
+sera rempli, ce qui reste à compléter, et un bouton. Il ouvre Nouveau modèle déjà rempli (type,
+loi, rôles, transformation, courbes, effet aléatoire, groupes de validation croisée, et les
+réglages propres de l'analyse, comme la transformation de Hellinger d'une RDA, le site et le
+temps de TRIM, ou le transect, l'effort, la strate, l'aire et la taille des groupes de
+l'échantillonnage par distance), ou la bonne vue (Tests statistiques dans le bon mode, Séries
+avec ses tendances, Carte, Autocorrélation spatiale, Raréfaction, Statistiques des variables),
+ou Nouvelle variable avec un indice de diversité. Un modèle par espèce ouvre Nouveau modèle pour
+la première espèce, puis Un modèle par réponse, les autres cochées. Les autres possibilités, en
+dessous, s'ouvrent de la même façon. Les réponses sont gardées jusqu'à la fermeture de Nuée :
+annulez Nouveau modèle et revenez en essayer une autre.
+Les choix principaux :
+  - un comptage : la binomiale négative quand il varie plus qu'une loi de Poisson ne le permet
+    (une variance au-delà de 1,5 fois la moyenne) ou a beaucoup de zéros (beaucoup de zéros ne
+    veut pas toujours dire excès de zéros, Warton 2005 : comparez avec la Poisson à excès de
+    zéros par l'AIC), sinon Poisson ; une présence-absence : la régression logistique ; une
+    proportion : la régression bêta ; une mesure positive et asymétrique : gamma (ou son
+    logarithme) ; une mesure avec des zéros : Tweedie ; sinon le modèle linéaire ; avec les
+    mêmes sites mesurés plusieurs fois, un effet aléatoire par site et la validation croisée par
+    site ;
+  - des groupes comparés : le test entre deux variables (celui que leurs types demandent),
+    apparié par site quand chaque site vient une fois dans chaque groupe (pas plus
+    d'observations que de sites × groupes), sinon le modèle mixte et ses moyennes ajustées ;
+    pour des comptages, des présences et des proportions, leur GLM ;
+  - beaucoup d'espèces : la RDA après la transformation de Hellinger avec des X quantitatives,
+    la PERMANOVA avec des groupes, le NMDS sans X ; les espèces indicatrices ; un modèle par
+    espèce ;
+  - une tendance : TRIM pour des comptages par site et par année (une ligne par site et par
+    année : pas plus d'observations que de sites × années ; sinon un GLM, et TRIM après Édition
+    › Résumer par groupe) ; une mesure sur plusieurs sites : le modèle mixte, l'année en X ; une
+    seule série : Séries et ses tendances ;
+  - prédire : la PLS ou la PLS-DA avec beaucoup de X (20 ou plus, ou moitié moins que
+    d'observations), la forêt aléatoire sinon, les arbres boostés pour des comptages et des
+    présences ;
+  - une densité ou un effectif : l'échantillonnage par distance, les distances en Y, des lignes
+    ou des points, ses colonnes préremplies d'après leurs noms ; les unités (m, km et km²
+    sinon) restent à vérifier, et un transect ou un effort introuvable à compléter ; sans aire
+    des strates (ou des aires nulles), la densité seule ;
+  - où : la carte, puis l'I de Moran et le lissage spatial d'un GAM ; le test de Mantel pour
+    des espèces ;
+  - explorer : l'ACP, le NMDS pour des espèces ; la diversité : la raréfaction.
+Un conseil, pas une règle : les conditions se vérifient après l'ajustement (Résumé › Conditions
+du modèle).
 
 Graphiques : couleurs et étiquettes
 -----------------------------------
@@ -265,7 +390,11 @@ Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) et Weka (.arff) 
 derniers, un fichier par tableau (« M1.sav », « M1 - variables.sav »...). Les variables
 qualitatives restent qualitatives (facteurs R, étiquettes de valeurs SPSS et Stata, nominales
 jamovi). Pour SPSS, Stata, SAS et dBase, les noms de variables sont rendus valides (lettres
-sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable.
+sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable. Les
+unités et descriptions des variables (Édition › Unités et descriptions) vont dans une feuille
+« Variables » d'un classeur Excel, relue quand Nuée l'ouvre, une table « Variables » d'un
+GeoPackage, les descriptions d'un fichier jamovi et les attributs d'un tableau R (voir
+Nettoyer les données).
 SAS : format de transport version 5, que SAS lit avec libname xport (noms de 8 caractères,
 étiquettes de 40, textes de 200 au plus). dBase : textes en Windows-1252 ; dans LibreOffice,
 choisir le jeu de caractères « Europe occidentale (Windows-1252) » à l'ouverture. Les
@@ -338,15 +467,19 @@ Exporter vers R (script, R Markdown, Quarto)
 --------------------------------------------
 Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
 envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul,
-en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R), commenté dans la
-langue de l'export, en quatre parties :
+en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R ; un NMDS : MASS, livré
+avec R lui aussi ; TRIM et l'échantillonnage par distances, et des arbres boostés avec rpart :
+les fonctions du moteur de Nuée, recopiées dans le script ; une forêt aléatoire, la seule
+exception : le paquet ranger, que Nuée installe avec lui), commenté dans la langue de l'export,
+en quatre parties :
   1. les fonctions : l'algorithme NIPALS, la validation croisée, et seulement ce que ce
      modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;
   2. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
      les nombres écrits sans perte et les catégories dans leur ordre ;
   3. le modèle : ses termes X et Y (transformations, catégories, termes croisés), leur
      mise à l'échelle, l'ajustement, puis R2 et Q2, T2 et DModX avec leurs limites, VIP,
-     coefficients, CV-ANOVA, classement pour une PLS-DA, jeu de test ;
+     coefficients (ceux d'une PLS avec leur intervalle à 95 % par jack-knife), RMSEE et RMSEcv,
+     CV-ANOVA, classement pour une PLS-DA, jeu de test ;
   4. les résultats : les tableaux, le test de permutation (en commentaire) et les
      graphiques (scores, loadings, VIP, observé / ajusté, T2 et DModX).
 Format : script R (.R) ; ou rapport R Markdown (.Rmd) ou Quarto (.qmd), qui y ajoute le texte
@@ -385,7 +518,12 @@ donnent leur valeur :
   {{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
   {{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
   {{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
-Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne. Graphiques et
+  {{M1.resultats}} (texte des résultats : l'ajustement, chaque coefficient avec son intervalle et p,
+  en facteur ou en rapport de cotes pour un lien log ou logit, les termes significatifs, les
+  courbes, les effets aléatoires ; pour une ACP, une PLS ou une OPLS, la variance expliquée, Q²,
+  la CV-ANOVA et les variables les plus importantes)
+Un graphique, un tableau, le texte des méthodes ou celui des résultats se met seul sur sa ligne.
+Modèle › Texte pour la section Méthodes montre aussi le texte des résultats, sous les méthodes. Graphiques et
 tableaux sont numérotés dans l'ordre (Figure 1, Tableau 1) ; avec une étiquette,
 {{M1.scores #fig-scores | légende}}, {{ref:fig-scores}} écrit « Figure 1 » n'importe où dans le
 texte. Tapez {{ pour voir les modèles du projet, puis ce que celui choisi offre, avec sa valeur
@@ -397,12 +535,31 @@ cite, sans ouvrir ses vues. Les nombres suivent la langue du document (0,65 en f
 en anglais), comme « Figure », « Tableau » et le texte des méthodes.
 Compiler : un fichier Word (.docx : titres, listes, tableaux, graphiques et légendes dans les
 styles de Word), un PDF, une page HTML (un seul fichier, graphiques compris), ou un fichier
-Quarto (.qmd) avec ses graphiques dans un dossier à côté, les résultats écrits en dur. Quand
-Quarto est installé (quarto.org, ou avec RStudio), « Compiler avec Quarto » en fait un Word, un
-PDF (Typst) ou une page HTML, avec ce que Quarto apporte : bibliographie (bibliography: refs.bib
-dans l'en-tête, [@cle] dans le texte), renvois, modèles de revues. Un en-tête YAML (title,
-author, date) en haut du document est lu ; une ligne {{< pagebreak >}} commence une nouvelle
-page.
+Quarto (.qmd). Quand Quarto est installé (quarto.org, ou avec RStudio), « Compiler avec Quarto »
+en fait un Word, un PDF (Typst) ou une page HTML, avec ce que Quarto apporte : bibliographie
+(bibliography: refs.bib dans l'en-tête, [@cle] dans le texte), renvois, modèles de revues. Un
+en-tête YAML (title, author, date) en haut du document est lu ; une ligne {{< pagebreak >}}
+commence une nouvelle page.
+Pour Quarto, le dialogue de Compiler demande les résultats :
+  - écrits en dur : les valeurs, les graphiques (dans un dossier à côté) et les tableaux tels
+    que Nuée les montre ;
+  - reproductibles : R les recalcule à partir des données brutes quand Quarto compile le
+    document. À côté du .qmd, le dossier « <nom>_R » contient l'export vers R de chaque modèle cité
+    (Fichier › Exporter vers R : le script, ses données en CSV) et nuee.R. Le premier bloc du .qmd
+    relance ces scripts, chacun dans son propre environnement ; chaque valeur citée devient une
+    expression R en ligne, `r nuee_nombre(M1$composantes$Q2cum[2])`, qui lit la valeur recalculée
+    et l'écrit comme Nuée (0,65, 71 %, p < 0,001) ; un graphique devient un bloc R qui le dessine
+    avec le code du script (en R de base), un tableau un bloc knitr::kable des objets du script.
+    Corriger une valeur du CSV, puis recompiler, recalcule tout ce que R écrit. Ce que les scripts n'ont
+    pas reste écrit en dur, et le premier bloc du .qmd le dit en commentaire : un graphique qu'ils
+    ne dessinent pas (son image), le coefficient d'une OPLS, ou d'une PLS validée avec les centres
+    et les poids du modèle complet (son script n'a pas son intervalle), le texte des méthodes et
+    celui des résultats (écrits par Nuée, pas recalculés), un modèle dont le type n'a pas encore
+    d'export vers R (le dialogue le dit avant). Avant d'écrire le .qmd, Nuée relance les scripts et
+    vérifie que chaque expression redonne la valeur qu'il montre ; une seule qui diffère reste
+    écrite en dur. Il faut R avec ses paquets knitr et rmarkdown : Nuée fait compiler Quarto avec
+    son propre R quand il les a (sinon Quarto prend le R de l'ordinateur, ou celui de QUARTO_R).
+    Dans le navigateur, le .qmd et ce qui va à côté arrivent dans un .zip.
 Les citations s'écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 33 ; @eriksson2006],
 @wold2001 dans la phrase (« Wold et al. (2001) »), [-@wold2001] sans l'auteur. Taper @ montre les
 références du document, puis celles de Zotero. La liste des références vient à la fin (sous le dernier
@@ -415,16 +572,29 @@ numérotée (Citer › Style des citations), dans la langue du document. D'où v
     le fichier ;
   - Zotero sur cet ordinateur (Zotero 7 ou plus récent, en cochant Paramètres › Avancé › « Autoriser
     les autres applications de cet ordinateur à communiquer avec Zotero ») : ses références se
-    cherchent en tapant @, ou dans Citer › Insérer une citation, dans toute la bibliothèque ou dans
-    une de ses collections ; leurs clés sont celles de Zotero (celles de Better BibTeX quand il est
-    installé). Avec l'extension Better BibTeX, Citer › Choisir dans Zotero ouvre le sélecteur de
-    Zotero, avec la page qu'on y donne. Nuée ne fait que lire la bibliothèque ;
+    cherchent en tapant @, ou dans Citer › Insérer une citation, dans Ma bibliothèque ou dans la
+    bibliothèque d'un groupe (ceux que Zotero synchronise, sous Ma bibliothèque dans sa fenêtre),
+    entière ou dans une de ses collections ; la bibliothèque choisie dans Insérer une citation est
+    gardée, et taper @ y cherche. Leurs clés sont celles de Zotero (celles de Better BibTeX quand il
+    est installé). Avec l'extension Better BibTeX, Citer › Choisir dans Zotero ouvre le sélecteur de
+    Zotero, dans toutes ses bibliothèques, avec la page qu'on y donne. Nuée ne fait que lire les
+    bibliothèques. Quand Zotero ne donne pas ses bibliothèques de groupe, Insérer une citation dit
+    pourquoi et propose Ma bibliothèque seule ;
   - du BibTeX collé (Citer › Coller des références BibTeX).
-Le document garde une copie des références qu'il cite : envoyé à quelqu'un qui n'a pas le .bib, il les
-cite encore (Citer › Références du document les montre, et retire celles qui ne sont plus citées).
-Compilé pour Quarto, le texte garde ses citations telles quelles, les références citées dans un .bib à
-côté du .qmd, pour que Quarto les écrive dans le style d'une revue (csl: style.csl dans l'en-tête ; le
-fichier est copié à côté du .qmd).
+Une clé est unique dans une bibliothèque Zotero, pas d'une bibliothèque à l'autre : deux œuvres
+différentes peuvent avoir la même clé dans Ma bibliothèque et dans un groupe (bechet2019). Une
+référence de Zotero dont le document donne déjà la clé à une autre œuvre (d'une autre bibliothèque, ou
+d'un fichier lié) y est citée avec une lettre en plus, @bechet2019a, et la barre d'état le dit ; le
+même élément cité de nouveau, ou la même œuvre copiée dans une autre bibliothèque (le même DOI, ou le
+même titre, la même année et le même premier auteur), garde la clé que le document lui donne, quelle
+que soit celle que Zotero lui donne là. Un fichier lié ensuite qui donne la clé d'une référence gardée
+de Zotero à une autre œuvre : c'est celle du fichier qui est citée, et la barre d'état le dit.
+Le document garde une copie des références qu'il cite, avec la bibliothèque et l'élément d'où vient
+chacune de celles de Zotero : envoyé à quelqu'un qui n'a pas le .bib, il les cite encore (Citer ›
+Références du document les montre, et retire celles qui ne sont plus citées). Compilé pour Quarto, le
+texte garde ses citations telles quelles, les références citées dans un .bib à côté du .qmd, pour que
+Quarto les écrive dans le style d'une revue (csl: style.csl dans l'en-tête ; le fichier est copié à
+côté du .qmd).
 La langue d'une référence (le champ Langue de Zotero : fr, de...) la suit : les styles qui mettent
 les titres anglais en capitales (Title Case), comme celui de Quarto par défaut, laissent alors un
 titre français tel qu'il est écrit.
@@ -453,9 +623,8 @@ Affichage › Console R (Ctrl+J) : un panneau sous les onglets, avec
     fonctionnent aussi pendant qu'on tape.
 Modifier un projet dans la console (p$donnees[...] <- ...) le modifie dans l'application.
 Corriger le moteur : dossier_moteur() donne le dossier des fichiers R de l'application ; après
-une correction, recharger_moteur() les relit, puis réajuster le modèle. Ce dossier est la
-copie faite sur l'ordinateur : au lancement suivant, la copie du NAS la remplace. Pour garder
-une correction, la reporter dans le même fichier sur le NAS (application\resources\moteur\R).
+une correction, recharger_moteur() les relit, puis réajuster le modèle. Une mise à jour de
+Nuée remplace ces fichiers.
 Une commande longue bloque l'application jusqu'à la fin du calcul.
 Vérifier le moteur : verifier_moteur() recalcule les modèles importés des projets ouverts,
 validés comme leurs fichiers, et les compare aux valeurs enregistrées dans leurs fichiers (R2X,
@@ -469,6 +638,48 @@ Fichier › Rapport du modèle (ou clic droit sur le modèle) : un document PDF 
 avec un titre, un commentaire et les parties cochées (résumé, scores, loadings, DModX, VIP,
 coefficients, CV-ANOVA, classification, liste des variables...). Les graphiques y sont mis en
 forme comme dans leurs panneaux ouverts. Le document s'ouvre une fois écrit.
+
+Figures pour publication
+------------------------
+Graphiques › Composer une figure… (ou clic droit sur un graphique › Ajouter à une figure, ou clic
+droit sur le projet dans l'explorateur) : des graphiques côte à côte dans une figure, à la taille
+où une revue l'imprime, pour un article.
+  - Panneaux : les graphiques ouverts dans la fenêtre, de n'importe quel modèle ou du projet
+    (scores, loadings, effets, carte, séries...) : « Ajouter un graphique ouvert... » les liste,
+    le graphique au premier plan vient en premier. Chacun a sa lettre dans l'ordre de la liste
+    (les flèches le changent) : A, B, C, ou a, b, c, (A), (a), en gras ou non, dans le coin
+    choisi. Un panneau prend une case de la grille, ou deux colonnes, ou deux lignes ; la grille
+    (lignes × colonnes : 1 × 2, 2 × 2, 1 × 3...) s'agrandit quand un panneau ajouté n'y tient
+    pas, et un panneau qui n'a pas de place est en rouge.
+  - Taille : la largeur de la revue en millimètres : une colonne (85 ou 90 mm), une et demie
+    (114 ou 140 mm), deux colonnes (174 ou 190 mm), ou une autre ; la hauteur donnée, ou tirée
+    des panneaux (la forme des graphiques à l'écran).
+  - Texte et traits : la taille du texte en points une fois imprimé (graduations, titres des
+    axes, légendes : de 6 à 8 pt pour la plupart des revues ; les étiquettes des points et les
+    notes en proportion), la largeur des traits des courbes en points (axes et grille à la
+    moitié), les titres des graphiques (cachés d'abord : la lettre et la légende suffisent) et
+    les légendes.
+  - Export : PDF (vectoriel, polices incluses, la page juste à la taille de la figure), SVG
+    (vectoriel, dimensionné en millimètres), ou PNG et TIFF à 300 ou 600 points par pouce, cette
+    résolution écrite dans le fichier (pHYs du PNG, étiquettes de résolution du TIFF) pour les
+    vérifications des revues ; le TIFF compressé en LZW, sans perte, ou pas compressé. Dans le
+    navigateur, le PDF passe par sa fenêtre d'impression (choisir « Enregistrer au format PDF »,
+    sans marges).
+  - Cartes sur fond (OpenStreetMap, IGN) : dans le fichier, les points, la légende et l'échelle
+    de couleurs sont des vecteurs sur une image des tuiles de la carte à la résolution de
+    l'export (300 points par pouce dans un PDF ou un SVG), téléchargées de nouveau pour lui à un
+    niveau de zoom plus proche que celui de l'aperçu : plus de détails, des noms de lieux plus
+    petits. Chaque carte demande au plus 200 tuiles à son serveur, d'au plus deux niveaux de zoom
+    au-dessus de celui de l'écran et d'aucun au-delà du niveau 19 ; la barre d'état dit quand le
+    fond en est moins net que demandé. L'attribution (© OpenStreetMap contributors, © IGN) reste
+    dans un coin de la carte.
+Chaque graphique est dessiné comme dans sa vue au moment où il a été ajouté (axes, couleurs,
+étiquettes, titres de Mise en forme, zoom), dans le thème clair, sans la sélection, sur fond
+blanc ; le bouton d'actualisation d'un panneau reprend les réglages de sa vue ouverte. La figure
+est gardée dans le projet et enregistrée avec lui (dans l'explorateur, sous Figures : ouvrir,
+exporter, renommer, dupliquer, supprimer) ; elle prend toujours le dernier ajustement de chaque
+modèle (un modèle pas encore calculé l'est quand la figure est dessinée) : après un
+réajustement, on l'exporte de nouveau. Édition › Annuler ne touche pas aux figures.
 
 Statistiques des variables
 --------------------------
@@ -566,6 +777,112 @@ saisonnier tient les saisons pour indépendantes : une autocorrélation d'un moi
 p trop petite, et Tenir compte de l'autocorrélation ne s'y applique pas (Hirsch et Slack, 1984,
 donnent une correction, qui n'est pas faite ici). La colonne Test donne le test de chaque
 ligne ; la correction sur les lignes reste la même.
+
+Un modèle par réponse
+---------------------
+Modèle › Un modèle par réponse (pour une régression : LM, LMM, GLM ou GAM) : le même modèle,
+ses termes, ses effets aléatoires, sa loi, ses courbes, ses observations et la transformation de
+sa réponse, ajusté à chaque réponse cochée, une espèce après l'autre (un filtre et Toutes /
+Aucune aident à les choisir). Pour chaque terme, les valeurs p sont corrigées sur les réponses :
+Benjamini–Hochberg (FDR) par défaut, ou Holm, ou Bonferroni. La vue montre, pour le terme
+choisi : le coefficient de chaque réponse avec son intervalle à 95 % en forêt, en rouge là où la
+p corrigée est au plus 0,05 (une courbe : son edf) ; l'effet du terme en petits graphiques, un
+par réponse (36 au plus) ; et un tableau avec le N, l'AIC, le R² et le Q² de chaque modèle. Une
+réponse qui ne s'ajuste pas est nommée avec la raison, et les autres restent. « Garder aussi
+chaque modèle dans le projet » les y ajoute tous, chacun avec ses vues.
+
+Cartes et données spatiales
+---------------------------
+Graphiques › Carte (ou dans l'explorateur, sous le projet) : les observations sur une carte. La
+première fois, choisissez les coordonnées du projet : deux de ses variables, X (l'est, ou la
+longitude) et Y (le nord, ou la latitude), et leur système de coordonnées : des longitudes et
+latitudes en degrés (WGS 84), du Lambert-93, les zones CC, le Lambert II étendu (NTF), une zone
+UTM (un autre code EPSG : 326xx au nord, 327xx au sud), LAEA Europe, la Mercator du web, ou des
+coordonnées planes en mètres d'un autre système (les distances restent justes, sans fond de
+carte). Nuée les propose d'après le nom des variables (lon/lat, X_L93/Y_L93, X/Y...). Elles sont
+enregistrées avec le projet, et Ctrl+Z les retire.
+La carte place les points à la même échelle sur les deux axes. Couleur : une variable du projet,
+ou une colonne des résultats d'un modèle ajusté (scores, résidus, valeurs ajustées, groupes...) ;
+Taille : une variable ou une colonne quantitative ; Étiquettes : le nom des observations. Fond :
+aucun par défaut, et rien ne quitte l'ordinateur ; OpenStreetMap, le plan de l'IGN ou ses
+photographies aériennes (en France) se téléchargent quand on les choisit, et leurs serveurs
+reçoivent alors la zone affichée. Un cadre, un lasso ou un clic sélectionne des observations,
+partagées avec les modèles du projet comme dans les autres graphiques.
+Les conversions entre systèmes sont écrites dans Nuée (formules de Lambert, de la Mercator
+transverse, de LAEA ; la NTF passée en WGS 84 par les trois translations de l'IGN, au mètre près ;
+RGF93 et ETRS89 pris pour WGS 84) : elles donnent celles de PROJ, la bibliothèque de QGIS, au
+micromètre près.
+
+GeoPackage (.gpkg), le format de QGIS : Fichier › Ouvrir lit l'une de ses couches (Nuée demande
+laquelle quand il y en a plusieurs) comme un tableau ; des points donnent deux colonnes de
+coordonnées (X et Y, ou longitude et latitude), des lignes et des polygones leur centre (le
+centre de gravité de la surface d'un polygone), et les coordonnées du projet sont réglées.
+Fichier › Exporter les données et l'export des résultats d'un modèle écrivent un GeoPackage quand
+le projet a des coordonnées : un point par observation avec toutes ses colonnes, les autres
+tableaux de résultats d'un modèle à côté ; QGIS l'ouvre avec son système de coordonnées.
+
+Valeurs de rasters (Édition › Ajouter des valeurs de rasters…, ou le bouton de la carte) :
+l'altitude, la pente, l'occupation du sol, le climat… lus dans des fichiers raster à la position
+de chaque observation, et ajoutés au projet comme de nouvelles variables, une par bande.
+Choisissez un ou plusieurs fichiers : GeoTIFF (.tif, celui de QGIS, de la BD ALTI et du RGE ALTI
+de l'IGN, de Copernicus, de CORINE, de WorldClim ou de CHELSA) ou grilles ASCII d'ESRI (.asc,
+avec leur .prj). Dans la version navigateur, tapez le chemin complet de chaque fichier
+(plusieurs : séparés par « ; ») : le moteur lit les fichiers là où ils sont. Avant d'ajouter,
+chaque fichier montre sa taille, son format, sa compression, ses cellules et leur taille, ses
+bandes et leur type, son système de coordonnées, sa valeur manquante, et combien d'observations
+y tombent ; un fichier qui ne se lit pas dit pourquoi. Pour chaque fichier, choisissez la
+valeur : la cellule qui contient l'observation (des classes, l'occupation du sol ; proposée pour
+des entiers de 8 bits et les palettes), l'interpolation bilinéaire des quatre cellules les plus
+proches (des valeurs continues ; proposée pour des réels), ou la moyenne, ou la classe
+majoritaire, des cellules dont le centre est à moins d'un rayon en mètres (à égalité, la classe
+de la cellule de l'observation, puis la plus petite ; sans centre dans le rayon, la cellule de
+l'observation). Les valeurs sont celles de terra::extract. Une observation sans coordonnées,
+hors du raster ou sur une cellule sans valeur reçoit une valeur manquante, et le résultat compte
+chaque cas. Chaque bande reçoit un nom (sa description dans le fichier, ou le nom du fichier),
+que vous pouvez changer ; un nom déjà pris devient « nom (2) ». Des fichiers côte à côte, aux
+mêmes bandes, type, système et cellules (les dalles d'un MNT), sont proposés comme un seul
+raster : une variable par bande, chaque observation prenant la valeur de la dalle qui la
+contient (un cercle prend les cellules de toutes les dalles). Édition › Annuler (Ctrl+Z) retire
+les variables. Elles sont enregistrées avec le projet comme les autres, et gardent d'où elles
+viennent : le texte des Méthodes d'un modèle qui les utilise dit quels fichiers, quelle taille de
+cellules, quel système et quelle méthode les ont données. La console R montre l'appel,
+ajouter_valeurs_rasters(...), et ce qu'il a donné.
+Les fichiers sont lus dans Nuée, sans GDAL, et seulement les bandes de lignes ou les tuiles qui
+contiennent des observations : un MNT national reste rapide (une fraction de seconde pour une
+centaine d'observations dans un fichier sans compression ou Deflate, une à trois secondes en LZW,
+décodé en R). Lus : TIFF classique et BigTIFF, en bandes de lignes ou en tuiles, bandes
+entrelacées ou séparées ; sans compression, LZW, Deflate, PackBits, LZMA et ZSTD (ZSTD avec R 4.4
+et après), avec les prédicteurs 2 et 3 ; des entiers de 8, 16 et 32 bits, des réels de 32 et 64
+bits ; la valeur manquante, l'échelle, le décalage et le nom des bandes de GDAL ; le
+géoréférencement (ModelPixelScale et ModelTiepoint, ModelTransformation, ou un fichier .tfw),
+les pixels comme surfaces ou comme points. Le système de coordonnées du raster vient de son code
+EPSG, ou de ses paramètres, et doit être de ceux que Nuée convertit (WGS 84, ETRS89, RGF93,
+Lambert-93, CC42 à CC50, Lambert II étendu, UTM, LAEA Europe, Mercator du web) : un autre est
+refusé avec son code ; reprojetez le raster dans QGIS (Raster › Projections › Projection) ou
+avec gdalwarp. Un raster sans système de coordonnées est pris dans celui du projet. Refusés,
+avec un message : les compressions JPEG, WebP, LERC, JPEG 2000 et CCITT, des valeurs de 1, 2, 4,
+12 ou 24 bits, des réels de 16 bits, des nombres complexes, les couleurs YCbCr, les points
+d'appui (GCP). Lues sans leurs couleurs : les palettes (les numéros des classes sont lus).
+Laissés de côté : les aperçus (overviews : les valeurs viennent de la pleine résolution), les
+autres images d'un fichier, les masques et les fichiers .aux.xml.
+
+Graphiques › Autocorrélation spatiale (depuis la carte, ou pour une régression depuis son modèle) :
+l'I de Moran d'une variable ou des résidus d'une régression (ou, pour des comptages, des
+présences-absences et des valeurs positives, ses résidus quantiles), avec son espérance sans
+autocorrélation, z et la valeur p unilatérale (autocorrélation positive) sous la randomisation,
+et p par permutations (999 par défaut). Pour un modèle linéaire sans effet aléatoire, une seconde
+ligne donne le test qui tient compte de l'ajustement (Cliff et Ord 1981, comme
+spdep::lm.morantest). Voisinage : les k plus proches voisines de chaque observation (rendues
+réciproques), les observations à moins d'une distance (vide : la plus petite qui donne une
+voisine à chacune), ou l'inverse de la distance ; lignes de somme 1 (style « W » de spdep) ou
+poids tels quels. Dessous, le corrélogramme (l'I de Moran par classes de distance jusqu'à la
+moitié de la plus grande, p bilatérale corrigée par Holm sur les classes, en rouge à 0,05) et le
+semi-variogramme (la moitié de la moyenne des carrés des écarts entre les valeurs des paires de
+chaque classe, comme gstat::variogram, jusqu'au tiers de la diagonale de la zone), la variance
+en tirets. Les distances suivent les grands cercles pour des longitudes et latitudes, des lignes
+droites pour des coordonnées planes. Des observations au même endroit (une placette suivie
+plusieurs années) sont les plus proches voisines les unes des autres : « Moyenne par lieu »
+remplace leurs valeurs par leur moyenne.
 
 Tests statistiques
 ------------------
@@ -770,9 +1087,12 @@ variable qualitative, d'un terme croisé ou d'une courbe.
 Type « Modèle linéaire généralisé (GLM) » ou « Modèle additif (GAM) » (mgcv), pour une
 variable Y qui ne suit pas une loi normale. Loi de Y : Poisson pour des comptages ; binomiale
 négative pour des comptages qui varient plus qu'une loi de Poisson ne le permet (son θ
-estimé) ; binomiale pour la présence-absence (0 ou 1) ; gamma pour des valeurs positives ;
-Tweedie pour des densités avec des zéros (sa puissance p estimée) ; ou normale. Le lien est
-log (comptages, gamma, Tweedie), logit (binomiale) ou l'identité (normale). Effort
+estimé) ; Poisson à excès de zéros pour des comptages qui ont plus de zéros qu'une loi de
+Poisson n'en donne (ses θ₁ et θ₂ estimés) ; binomiale pour la présence-absence (0 ou 1) ;
+gamma pour des valeurs positives ; Tweedie pour des densités avec des zéros (sa puissance p
+estimée) ; bêta pour des proportions strictement comprises entre 0 et 1 (sa précision φ
+estimée) ; ou normale. Le lien est log (comptages, gamma, Tweedie ; pour le Poisson à excès de
+zéros, celui de son paramètre de Poisson μ), logit (binomiale, bêta) ou l'identité (normale). Effort
 (décalage) : une variable comme une surface, une durée ou un nombre de passages, dont le log
 entre dans le modèle avec un coefficient 1 : il décrit alors une densité (un effort nul ou
 négatif est refusé). Des effets aléatoires comme ci-dessus en font un GLMM ou un GAMM. Avec la
@@ -804,6 +1124,53 @@ est ajusté par maximum de vraisemblance, comme le font glm() et MASS::glm.nb().
 modèle de Poisson prévient quand les comptages sont surdispersés (le khi² de Pearson au-delà
 de 1,5 fois ses degrés de liberté) : ses valeurs p sont alors trop petites, et la binomiale
 négative convient mieux à ces comptages.
+Poisson à excès de zéros et loi bêta (les familles ziP et betar de mgcv ; Wood, Pya et Säfken,
+2016). Dans le Poisson à excès de zéros, un modèle à obstacle, un comptage est nul avec la
+probabilité 1 − p et suit sinon une loi de Poisson de paramètre μ tronquée en zéro ; le
+prédicteur linéaire est log(μ) (mgcv nomme ce lien « identity » ; exp(coefficient) multiplie μ,
+l'effort aussi), et p lui est lié par log(−log(1 − p)) = θ₁ + θ₂ log(μ), θ₁ et θ₂ estimés avec
+le modèle ; θ₁ = 0 et θ₂ = 1 redonnent la loi de Poisson, et son AIC se compare à ceux des
+modèles de Poisson et binomiaux négatifs des mêmes comptages. Ses valeurs ajustées, ses
+prédictions, sa validation croisée et son jeu de test sont des comptages attendus,
+p μ / (1 − e^(−μ)) ; il n'a pas de R² ajusté, seulement la part de déviance expliquée. Il
+demande des comptages, dont au moins un zéro. Beaucoup de zéros ne font pas un excès de zéros
+(trop de zéros pour la moyenne du modèle, si) : comparez les modèles par l'AIC et regardez les
+résidus quantiles ; quand des X expliquent les zéros eux-mêmes, le modèle peut mal s'identifier.
+La loi bêta est faite pour des proportions strictement comprises entre 0 et 1 (une couverture,
+une part de temps), de moyenne μ par le lien logit et de variance μ (1 − μ) / (1 + φ), sa
+précision φ estimée (Ferrari et Cribari-Neto, 2004) ; son AIC se compare à celui d'un modèle de
+loi normale des mêmes proportions. Une réponse à 0 ou à 1 est refusée, avec le nombre de ces
+valeurs : mgcv les déplacerait juste à l'intérieur (son eps), ce qui n'est pas sans effet sur
+l'ajustement ; ramenez-les vous-même dans l'intervalle, en le disant (Édition › Nouvelle
+variable, par exemple (y * (n - 1) + 0.5) / n pour n observations ; Smithson et Verkuilen,
+2006), ou prenez la binomiale pour une présence-absence. Les deux prennent des effets
+aléatoires, des courbes et le lissage spatial (pas d'autocorrélation CAR1) ; seul le Poisson à
+excès de zéros prend un effort. θ₁, θ₂ et φ se lisent dans le Résumé, le rapport et les
+coefficients côte à côte. Sans courbe ni effet aléatoire, l'ajustement en ML de mgcv avec ces
+deux familles s'arrête parfois sur une erreur de LAPACK : Nuée cherche alors lui-même les
+paramètres de la loi qui maximisent la vraisemblance (chaque ajustement à paramètres fixés par
+mgcv), et son script exporté fait de même.
+Lissage spatial (onglet Général, pour un GAM d'un projet qui a des coordonnées, voir Cartes et
+données spatiales) : une surface des coordonnées des observations, s(x, y), une spline de
+régression en plaques minces sur des coordonnées planes (Wood 2003) ou une spline sur la sphère
+pour des longitudes et latitudes (s(lat, lon, bs = "sos")), de dimension de base k (vide : 30 au
+plus, moins avec peu de lieux). Elle prend la structure spatiale que les termes n'expliquent
+pas : vérifiez-le avec Graphiques › Autocorrélation spatiale des résidus du modèle, et comparez
+les modèles par l'AIC. Les observations sans coordonnées restent hors du modèle. Son edf et son
+test sont dans le tableau des courbes du Résumé, et sa valeur en chaque observation est une
+colonne des résultats du modèle que la carte peut montrer. La formule R l'écrit s(x, y),
+s(x, y, k = 40) ou s(lat, lon, bs = "sos"). Exporter vers R la refait : le script met les
+coordonnées dans les colonnes sx et sy du tableau du modèle et le terme dans la formule (avec son
+k, en plaques minces ou sur la sphère), sa ligne dans le tableau des courbes et une carte de sa
+valeur en chaque observation.
+Conditions du modèle (le Résumé d'une régression) : des repères en mots, chacun ✓ ou ⚠ avec ce
+qu'on peut faire : la loi des résidus (Shapiro–Wilk, sur les résidus quantiles pour des comptages,
+des présences-absences et des valeurs positives), une dispersion des résidus qui change avec les
+valeurs ajustées, les observations influentes (distance de Cook au-delà de 4/n, modèle linéaire),
+la surdispersion et un excès de zéros (comptages), des termes quantitatifs colinéaires (VIF > 5),
+des courbes confondues avec les autres termes, et l'autocorrélation spatiale des résidus quand le
+projet a des coordonnées. Avec beaucoup d'observations un test voit des écarts sans conséquence,
+avec peu il n'en voit aucun : les graphiques des résidus restent la référence.
 Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/secteur).
 Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations
@@ -849,11 +1216,13 @@ qu'il fait (la colonne Avec les nomme) ;
 un ΔAIC au-dessus de 2 dit que le bloc améliore nettement le modèle, un test du rapport
 de vraisemblance donne son p. Les observations où Y, un X, un effet aléatoire, le temps ou
 l'effort manque sont laissées de côté (le résumé les compte).
-Résidus d'un GLM ou d'un GAM à loi de Poisson, binomiale négative, binomiale ou gamma : à côté
-des résidus de déviance standardisés (ceux par défaut), les résidus quantiles randomisés de Dunn
-et Smyth (1996), r = Φ⁻¹(u), F la loi du modèle à la valeur ajustée de chaque observation (ses
-effets aléatoires et son effort compris ; la binomiale négative de son θ estimé, la binomiale
-d'une épreuve, la gamma de forme 1 / son échelle estimée) : u = F(y) pour la loi gamma, et pour
+Résidus d'un GLM ou d'un GAM à loi de Poisson, binomiale négative, binomiale, gamma, de Poisson à
+excès de zéros ou bêta : à côté des résidus de déviance standardisés (ceux par défaut), les
+résidus quantiles randomisés de Dunn et Smyth (1996), r = Φ⁻¹(u), F la loi du modèle à la valeur
+ajustée de chaque observation (ses effets aléatoires et son effort compris ; la binomiale
+négative de son θ estimé, la binomiale d'une épreuve, la gamma de forme 1 / son échelle estimée,
+le Poisson à excès de zéros tel que mgcv le définit, de ses θ₁ et θ₂, la bêta de formes μ φ et
+(1 − μ) φ) : u = F(y) pour les lois gamma et bêta, et pour
 des comptages ou des 0/1, u tiré uniformément entre F(y − 1) et F(y), avec une graine fixe, pour
 que le graphique ne change pas d'un regard à l'autre (le hasard de la séance reste tel qu'il
 était). Les résidus de Pearson ou de déviance de comptages sont loin de la loi normale même
@@ -978,12 +1347,18 @@ en général, la moyenne d'un secteur a le nombre de sites moins un, une paire d
 les sites les degrés de liberté intérieurs ; pour un habitat qui ne change que d'un site à
 l'autre, la moyenne du premier habitat a le nombre de sites moins un, les autres et les paires
 ceux de l'habitat, les sites moins un moins ses coefficients) ; z (asymptotique) pour une loi
-de Poisson, binomiale ou binomiale négative, comme emmeans pour glm() et comme les Coefficients
-du modèle (sur un objet mgcv::gam, emmeans prend les degrés de liberté résiduels quelle que
-soit la loi). Avec un lien log ou logit, les moyennes sont sur l'échelle de la réponse (exp ;
-logit inverse : des probabilités), leurs intervalles transformés depuis l'échelle du lien, et
-les paires sont des rapports de moyennes ou des rapports des cotes, testés sur l'échelle du
-lien, comme type = "response" dans emmeans ; l'échelle du lien au choix. Une variable Y
+de Poisson, binomiale, binomiale négative, de Poisson à excès de zéros ou bêta, comme emmeans
+pour glm() et comme les Coefficients du modèle (sur un objet mgcv::gam, emmeans prend les
+degrés de liberté résiduels quelle que soit la loi). Avec un lien log ou logit, les moyennes
+sont sur l'échelle de la réponse (exp ; logit inverse : des probabilités, ou des proportions
+moyennes pour la loi bêta), leurs intervalles transformés depuis l'échelle du lien, et les
+paires sont des rapports de moyennes ou des rapports des cotes, testés sur l'échelle du lien,
+comme type = "response" dans emmeans ; l'échelle du lien au choix. Avec le Poisson à excès de
+zéros, les moyennes sont des comptages attendus, p μ / (1 − e^(−μ)) au prédicteur linéaire
+log(μ) de chaque catégorie (θ₁ et θ₂ tenus pour connus ; leurs erreurs-types par la méthode
+delta, leurs intervalles transformés, cette valeur croissant avec log(μ)), et les paires des
+rapports de comptages attendus, testés sur leur logarithme par la méthode delta, comme
+regrid(transform = "log") d'emmeans ; sur l'échelle du lien, log(μ). Une variable Y
 transformée (log10, ln…) reste sur son échelle, et la vue le dit : ramenée sur l'échelle de la
 variable, une moyenne de logarithmes est une médiane (une moyenne géométrique), non une
 moyenne. Une combinaison de catégories qu'aucune observation n'a n'est pas estimable (emmeans :
@@ -1004,8 +1379,9 @@ une extrapolation.
 Prédiction › Comparer les modèles : Q2 et RMSEcv pour tous les modèles ; AIC, ΔAIC et poids
 d'Akaike (la probabilité que chaque modèle soit le meilleur de son ensemble) entre les seules
 régressions de la même réponse sur les mêmes observations (un « ensemble AIC », lettré A,
-B...), et seulement celles dont les vraisemblances se comparent : des modèles de Poisson et
-binomiaux négatifs des mêmes comptages, mais pas un modèle normal de ces comptages ; des
+B...), et seulement celles dont les vraisemblances se comparent : des modèles de Poisson,
+binomiaux négatifs et à excès de zéros des mêmes comptages, mais pas un modèle normal de ces
+comptages ; des modèles de loi normale, gamma ou bêta des mêmes valeurs ; des
 modèles de Tweedie entre eux ; des GLMM et des GAMM (la vraisemblance conditionnelle de mgcv)
 entre eux.
 Sous le tableau des AIC, Modèles emboîtés : le test du rapport de vraisemblance entre chaque
@@ -1154,6 +1530,150 @@ méthodes avec ses références et font un rapport. Fichier › Exporter vers R 
 un rapport R Markdown ou Quarto, qui les refait avec R seul, leurs tests avec les mêmes
 permutations. Elles ne prédisent pas de nouvelles observations.
 
+Analyse canonique des correspondances (CCA)
+-------------------------------------------
+Nouveau modèle › type « CCA (analyse canonique des correspondances) » (ter Braak 1986) : la
+cousine de la RDA pour des effectifs ou des abondances d'espèces qui répondent aux gradients en
+cloche plutôt qu'en ligne droite. Y : les espèces (effectifs ou abondances, positifs ou nuls),
+les colonnes du tableau ; X : les variables explicatives ; Z : des covariables retirées d'abord
+(CCA partielle). Le tableau est ramené à ses écarts à l'indépendance, comme dans une analyse des
+correspondances, et les X pondérés par les masses des observations (leurs parts de l'effectif
+total). Onglet Général : le nombre de permutations (999 ; 0 : aucun test), les groupes où elles
+restent et leur graine ; à chaque permutation, les masses suivent les observations. Les
+observations où une valeur manque ou sans aucune abondance, et les espèces absentes de toutes
+les autres, sont laissées de côté.
+
+Les vues, comme celles de la RDA : Résumé (l'inertie ; le R² et le R² ajusté, estimé par les
+permutations du test, Peres-Neto et al. 2006, absent sans permutation ; le pseudo-F et p) ;
+Ordination, le triplot en échelle 1 (distances du khi² entre observations), 2 (entre espèces)
+ou 3 (symétrique) ; Valeurs propres ; Tests par permutation (chaque axe contraint après les
+précédents, les termes l'un après l'autre dans l'ordre du modèle, chaque terme après tous les
+autres ; la sélection pas à pas, ses R² ajustés par les mêmes permutations). La partition de la
+variance est celle d'une RDA. Les résultats sont ceux de vegan (cca, anova.cca par axe, par
+terme en séquence et marginal, RsquareAdj, ordiR2step) et, pour les mêmes permutations, les
+mêmes valeurs p. Texte des méthodes, export, rapport et export vers R comme pour la RDA.
+
+Espèces indicatrices
+--------------------
+Nouveau modèle › type « Espèces indicatrices (IndVal) » : quelles espèces caractérisent chaque
+groupe d'observations (des milieux, des types de sites...). Y : les espèces, des abondances ou
+des présences ; Classe : la variable qualitative des groupes. Pour chaque espèce et chaque
+groupe, A (la spécificité : la part de son abondance dans le groupe) et B (la fidélité : la part
+des observations du groupe où elle est), et la valeur indicatrice √(A·B) : IndVal.g par défaut,
+qui compare les abondances moyennes des groupes, des groupes d'effectifs différents comptant
+alors autant (De Cáceres et Legendre 2009), ou IndVal, qui compare leurs totaux (Dufrêne et
+Legendre 1997). Les combinaisons de groupes (De Cáceres et al. 2010) : par défaut toutes,
+jusqu'à tous les groupes (une espèce rattachée à tous n'est pas testée), ou les groupes seuls,
+ou jusqu'à un ordre. Chaque espèce va au groupe ou à la combinaison de sa plus grande valeur,
+testée en permutant les groupes des observations (999 fois ; à l'intérieur de strates, un
+identifiant ou une variable qualitative ; une graine) ; sa valeur p corrigée sur les espèces
+(Benjamini–Hochberg ou Holm) est donnée à côté de la p brute. « Présences seules » prend des 0/1.
+Les vues : Espèces indicatrices (le tableau, qui se trie ; p ≤ 0,05 en rouge ; « p corrigée
+≤ 0,05 seulement » ; un clic met l'espèce en évidence dans le graphique), Valeurs indicatrices
+(la valeur de chaque espèce pour son groupe, de la couleur du groupe, pâle quand elle n'est pas
+significative ; ou A et B d'une espèce dans chaque groupe), Résumé (le nombre d'espèces retenues
+à 0,05, p brutes et corrigées, et par groupe). Les statistiques sont celles de
+indicspecies::multipatt et, pour les mêmes permutations, les mêmes valeurs p. Texte des
+méthodes, export et rapport comme pour les autres modèles ; Exporter vers R refait l'analyse
+avec R seul, les fonctions du moteur lui-même et les mêmes permutations.
+
+Raréfaction et accumulation des espèces
+---------------------------------------
+Graphiques › Raréfaction (ou dans l'explorateur, sous le projet) : combien d'espèces portent les
+observations, comparées à effort égal. Les espèces : des colonnes d'effectifs, une plage d'une
+colonne à une autre dans l'ordre du tableau (comme les indices de diversité de Nouvelle variable
+les lisent) ou cochées dans la liste. Raréfaction (par observation) : la richesse attendue de
+chaque observation dans m individus tirés sans remise (Hurlbert 1971) et son écart-type (Heck et
+al. 1975), la courbe de 1 à tous ses individus, et sa richesse à une taille commune (par défaut
+celle de la plus petite observation : la ligne en pointillés) ; dans le tableau, Chao1 (corrigé
+du biais) et ACE estiment la richesse de chaque observation. Ils demandent des effectifs
+entiers d'individus : avec des recouvrements ou des densités, la vue le dit et ne donne que
+l'accumulation. Accumulation (sur les observations) : la richesse attendue dans k observations
+tirées parmi toutes (méthode exacte, Ugland et al. 2003), ±2 écarts-types, et les estimateurs de
+la richesse totale d'après les présences : Chao2, les jackknifes d'ordre 1 et 2 et le bootstrap.
+Par groupe (une variable qualitative ou un identifiant) : une courbe et des estimateurs par
+groupe. Un clic ou un cadre sélectionne des observations, comme dans Séries. Les valeurs sont
+celles de vegan (rarefy, rarecurve, specaccum, estimateR, specpool), sauf l'écart-type d'ACE,
+calculé par la méthode delta avec le gradient d'ACE lui-même (vegan en prend un autre).
+PCoA, NMDS, PERMANOVA et test de Mantel
+---------------------------------------
+Quatre analyses fondées sur une distance entre observations, calculée sur le tableau Y (rôle Y :
+les espèces, ou toutes variables quantitatives) ; une observation où une valeur Y manque est
+laissée de côté, et comptée. Onglet Général : la distance, comme le paquet vegan la définit
+(Bray-Curtis, Jaccard 2B/(1 + B), Gower, euclidienne, Manhattan, Canberra, Kulczynski,
+Hellinger, corde), au choix sur les présences-absences (Bray-Curtis devient alors l'indice de
+Sørensen) ; une transformation avant elle (racine carrée ou quatrième, log(x + 1),
+présences-absences, abondances relatives, double standardisation de Wisconsin, racine carrée
+puis Wisconsin comme le fait metaMDS) ; le nombre de permutations des tests (999 ; 0 : aucune),
+les groupes à l'intérieur desquels elles restent et leur graine. Une distance qui n'a pas de
+sens pour des valeurs négatives (Bray-Curtis, Jaccard, Kulczynski, Canberra, Hellinger) les
+refuse, et une distance qui n'est pas définie pour une observation sans aucune valeur (que des
+zéros) la nomme.
+
+Type « PCoA (analyse en coordonnées principales) » : les axes qui montrent au mieux, sur peu de
+dimensions, les distances entre observations (Gower 1966). Une distance qui n'est pas
+euclidienne (Bray-Curtis, le plus souvent) a des valeurs propres négatives : elles sont gardées
+et signalées, et la correction de Lingoes ou de Cailliez (onglet Général) ajoute la constante
+qui les supprime. Variables X (facultatives) : ajustées sur les deux premiers axes comme
+vegan::envfit, une flèche par variable quantitative (sa direction et son R2), un centroïde par
+catégorie d'une qualitative (et son R2), chacune testée par permutations ; les observations
+sans valeur X ne sont laissées de côté que de cet ajustement. Vues : Résumé ; Ordination (les
+observations, colorées et étiquetées comme dans les autres graphiques, les espèces à la
+moyenne pondérée de leurs observations, les flèches, en gris quand p > 0,05, et les
+centroïdes, à la même échelle sur les deux axes) ; Valeurs propres (la part de l'inertie
+totale, la somme de toutes les valeurs propres ; les négatives en rouge) ; Variables ajustées ;
+les listes des observations et des variables.
+
+Type « NMDS (positionnement multidimensionnel non métrique) » : une configuration en k
+dimensions (2 par défaut, de 1 à 4) dont les distances respectent l'ordre des dissimilarités
+(Kruskal 1964), par MASS::isoMDS comme le fait vegan::metaMDS : depuis la PCoA, puis depuis 20
+départs au hasard (graine fixe) ; le plus faible stress est gardé, et le Résumé dit si un autre
+départ l'a retrouvé (Procrustes) : si aucun ne l'a fait, augmentez les départs. Une
+dissimilarité nulle entre deux observations est remplacée par la moitié de la plus petite non
+nulle. La configuration est centrée, tournée sur ses axes principaux et mise à l'échelle de la
+plus grande dissimilarité. Vues : Résumé (le stress : sous 0,1 bon, au-delà de 0,2 à lire avec
+prudence) ; Ordination, comme pour la PCoA ; Diagramme de Shepard (la dissimilarité et la
+distance dans l'ordination de chaque paire, la régression monotone, le stress de chaque
+départ) ; Variables ajustées ; les listes (la part du stress de chaque observation).
+
+Type « PERMANOVA (analyse de variance par permutation) » : l'effet des termes X (qualitatifs ou
+quantitatifs, termes croisés compris) sur la distance (Anderson 2001), comme vegan::adonis2 :
+chaque terme après ceux qui le précèdent, dans leur ordre (séquentiels), chacun après tous les
+autres (marginaux : un terme contenu dans un terme croisé n'est pas testé seul) ou le modèle
+entier ; degrés de liberté, somme des carrés, R2, pseudo-F et sa valeur p par permutation. Avec
+elle, la dispersion multivariée (Anderson 2006, comme vegan::betadisper) des catégories de
+chaque variable X qualitative et de la variable de classe (rôle Classe, un groupement de plus) :
+la distance de chaque observation au centroïde (ou à la médiane spatiale) de son groupe dans
+l'espace de la PCoA, comparée par une ANOVA, ses résidus permutés, et les paires de Tukey. Une
+dispersion qui diffère d'un groupe à l'autre rend la PERMANOVA plus difficile à lire : ses
+différences peuvent venir de l'étalement des groupes autant que de leur position. Vues :
+Résumé ; Table de la PERMANOVA ; Dispersion multivariée (en boîtes ou sur le plan de la PCoA,
+avec ses tests) ; la liste des observations (la distance de chacune à son centre).
+
+Type « Test de Mantel » : la corrélation (de Pearson, ou de Spearman sur les rangs) entre la
+distance de Y et la distance euclidienne des variables X, mises à l'échelle comme le dit
+l'onglet Variables (UV par défaut), et sa valeur p unilatérale par permutation (vegan::mantel) ;
+avec des covariables Z (rôle Z), le test de Mantel partiel (vegan::mantel.partial) ; et le
+corrélogramme de Mantel (vegan::mantel.correlog) : la distance X découpée en classes d'égale
+largeur (règle de Sturges, ou le nombre donné), le r de Mantel de chaque classe (positif : des
+observations proches plus semblables), les classes au-delà de la moitié testées seulement si
+chaque observation y a une paire, les valeurs p corrigées progressivement par la méthode de
+Holm. Vues : Résumé ; Test de Mantel (chaque paire d'observations) ; Corrélogramme de Mantel ; la
+liste. « Distance X : Géographique » compare la distance de Y à la distance entre les
+observations en kilomètres, d'après les coordonnées du projet (voir Cartes et données
+spatiales), sans variable X : des relevés proches se ressemblent-ils plus (la décroissance avec
+la distance), et avec le corrélogramme, jusqu'à quelle distance.
+
+Les quatre exportent leurs tableaux (Fichier › Exporter), écrivent leur texte des méthodes avec
+ses références et font un rapport ; elles ne prédisent pas de nouvelles observations. Les
+résultats sont ceux de vegan (vegdist, wcmdscale, envfit, metaMDS avec isoMDS, adonis2,
+betadisper, mantel, mantel.correlog) : les mêmes valeurs, et pour les mêmes permutations, les
+mêmes valeurs p. Fichier › Exporter vers R écrit un script, ou un rapport R Markdown ou Quarto,
+qui les refait avec R seul (et MASS, livré avec R, pour le NMDS) : ses fonctions sont celles du
+moteur de Nuée, recopiées telles qu'il les écrit ; puis les données du modèle (les coordonnées
+pour un test de Mantel géographique), sa transformation, sa distance et ses réglages, les mêmes
+permutations et les mêmes départs, donc les mêmes valeurs p et le même NMDS.
+
 Arbres de décision, analyse discriminante linéaire et k-moyennes
 ----------------------------------------------------------------
 Nouveau modèle › type « Arbre de décision » (rpart) : une variable Y quantitative (arbre de
@@ -1195,6 +1715,295 @@ Pour les trois : texte des méthodes avec ses références, Exporter, rapport PD
 Exporter vers R (un script ou un rapport R Markdown / Quarto qui refait l'analyse avec
 rpart, MASS ou cluster, livrés avec R). Comparer les modèles donne le Q2 et le RMSEcv d'un
 arbre de régression à côté des autres modèles.
+
+TRIM : indices et tendances de comptages
+----------------------------------------
+Nouveau modèle › type « TRIM (indices et tendances de comptages) » : les indices annuels et la
+tendance de comptages d'animaux suivis sur des sites année après année, comme le logiciel TRIM 3
+de Statistics Netherlands et le paquet rtrim (le standard des suivis d'oiseaux européens), avec
+des comptages manquants : le modèle les impute. Les données : le tableau long, une ligne par site
+et par année ; Y : les comptages (des entiers positifs ou nuls ; une case vide est un comptage
+manquant) ; X : des covariables qualitatives, facultatives (l'habitat d'un site, ou une valeur
+par site et par année), qui font varier les effets du temps. Onglet Général :
+  - le site (un identifiant ou une variable) et le temps (l'année : une variable ou un
+    identifiant fait de nombres régulièrement espacés ; une année sans aucune ligne est ajoutée,
+    tous ses comptages imputés), proposés d'après les noms des colonnes ;
+  - le modèle : 3, un effet de chaque année (ln μ = site + année) ; 2, une tendance linéaire sur
+    l'échelle log, dont la pente change aux points de changement donnés (des années ; vide : une
+    seule pente), à chaque année, ou choisis pas à pas comme rtrim (un point sort quand le test de
+    Wald de son changement de pente dépasse p = 0,2, revient quand son test du score passe sous
+    p = 0,15) ; 1, sans effet du temps ;
+  - la surdispersion (σ²) et la corrélation sérielle (ρ, entre deux années successives d'un même
+    site), cochées par défaut comme le recommande le manuel de TRIM : les paramètres sont alors
+    estimés par des équations d'estimation généralisées qui en tiennent compte ; sans elles, par
+    le maximum de vraisemblance de Poisson ;
+  - des poids (une variable : des sites sur- ou sous-représentés), et le temps de base des
+    indices (le premier par défaut).
+Deux lignes pour le même site et la même année sont refusées, le site, l'année et les
+observations nommés ; un site sans aucun comptage positif est laissé de côté, et compté ; une
+case sans ligne prend le poids et la catégorie de covariable de l'année d'avant de son site.
+
+Vues : Résumé (le modèle, σ² et ρ, la pente globale des totaux imputés : multiplicative, par pas
+de temps, avec son erreur-type, son intervalle à 95 % et sa classe selon TRIM, forte
+augmentation, augmentation modérée, stable, incertaine, déclin modéré ou fort déclin, d'après
+l'intervalle comparé à 1 et à 0,95 / 1,05 ; le khi² de Pearson, le rapport de vraisemblance et
+l'AIC) ; Indices (les indices imputés, d'après les comptages observés et ceux du modèle pour les
+manquants, et ceux du modèle, avec leur bande à 95 %, le temps de base, et au choix la droite de
+la pente globale) ; Totaux de chaque temps (observés, imputés, du modèle) ; Pentes, paramètres et
+tests (les tests de Wald de la pente, des changements de pente, des écarts à la tendance
+linéaire et des covariables ; la droite et ses écarts pour le modèle 3 ; les étapes du pas à
+pas) ; Comptages par site (les comptages d'un site et ceux du modèle, ou tous les comptages
+contre leur valeur attendue). Les résultats sont ceux du paquet rtrim. Texte des méthodes avec
+ses références, Exporter et rapport comme pour les autres modèles, et Exporter vers R : un script
+ou un rapport qui refait le modèle avec R seul, les fonctions de TRIM du moteur de Nuée recopiées
+dedans (les mêmes indices, totaux, pentes et tests que Nuée). Pas de prédiction.
+
+Échantillonnage par distances : densité et effectif
+---------------------------------------------------
+Nouveau modèle › type « Échantillonnage par distances (densité, effectif) » : la densité et
+l'effectif d'une population d'après les distances des animaux détectés depuis des lignes
+(transects linéaires) ou des points (points d'écoute), comme les fonctions ds() et dht2() du
+paquet Distance les calculent (Buckland et al. 2001 ; Miller et al. 2019). Les données : le
+tableau à plat, une ligne par détection, comme Distance le lit :
+  - la distance (Y) : la distance perpendiculaire à la ligne, ou la distance au point ;
+  - le transect (la ligne ou le point : un identifiant ou une variable) et son effort, le même
+    sur toutes ses lignes : la longueur de la ligne, ou pour des points le nombre de passages
+    (sans colonne : un passage par point) ;
+  - facultatifs : la strate (la région : un identifiant ou une variable) et son aire, la même
+    sur toutes ses lignes (sans aire, ou des aires toutes nulles, la densité seulement) ; la
+    taille de chaque groupe détecté ;
+  - un transect sans aucune détection reste une ligne, sa distance vide, pour que son effort
+    compte ; une ligne sans transect ni distance est laissée de côté.
+Par exemple, avec les noms de colonnes de Distance (la fenêtre les propose d'après les noms) :
+    Region.Label  Area  Sample.Label  Effort  distance  size
+    Nord          630   N-01          2.4     35        2
+    Nord          630   N-01          2.4     120       1
+    Nord          630   N-02          1.8               (aucune détection)
+Onglet Général :
+  - des transects linéaires ou des points ;
+  - la troncature : la plus grande distance (le défaut de ds), une distance, ou un pourcentage
+    des plus grandes distances (5 à 10 % est l'usage) ; une troncature à gauche au besoin. Les
+    détections au-delà sortent du modèle, leur transect reste ;
+  - des intervalles, pour des distances relevées par classes (comme ds(cutpoints = )) : leurs
+    bornes, par exemple « 0 10 25 50 100 » ; chaque distance du tableau (la vraie, ou le milieu
+    de sa classe) compte dans son intervalle, la première borne est la troncature à gauche et la
+    dernière w ; la vraisemblance est alors celle des comptes des classes, et l'adéquation le
+    khi² sur elles ;
+  - la clé de la fonction de détection g(x) : demi-normale exp(−x²/2σ²), hasard (hazard-rate)
+    1 − exp(−(x/σ)^−b) (b ≥ 1, comme mrds) ou uniforme ;
+  - des covariables (l'échantillonnage par distances à covariables multiples, comme ds(formula =
+    ~ x1 + x2) ; Marques et Buckland 2003, Marques et al. 2007) : les variables au rôle Z de
+    l'onglet Variables, ou ajoutées depuis la liste Covariables de l'onglet Général (c'est la
+    même chose). L'échelle σ de la clé demi-normale ou hasard en dépend, ln σ = β0 + β1 x1 + … :
+    une covariable quantitative telle quelle, une qualitative par une indicatrice de chacune de
+    ses catégories sauf la première présente parmi les détections, sa référence (les contrastes
+    de traitement de R) ; la taille des groupes peut en être une. Chaque détection a alors sa
+    fonction de détection et sa probabilité de détection pi. Comme ds : pas de terme d'ajustement
+    sauf un nombre donné, pas de contrainte de monotonie, pas de clé uniforme ; les covariables
+    sont prises telles qu'elles sont (sans transformation), connues pour chaque détection dans la
+    troncature ;
+  - les termes d'ajustement : cosinus (le défaut), polynômes d'Hermite ou polynômes simples, leur
+    nombre choisi par l'AIC comme ds() le fait (la clé seule, puis un terme de plus tant que
+    l'AIC baisse, cinq au plus ; ordres 2, 3, 4… des cosinus, 4, 6, 8… d'Hermite et des
+    polynômes, 1, 2, 3… et 2, 4, 6… avec la clé uniforme) ou fixé ; les distances des termes
+    divisées par la troncature w (le défaut de ds) ou par σ ;
+  - la monotonie : la contrainte de mrds sur une fonction à termes d'ajustement, en 10 distances
+    de 0 à w : stricte (le défaut : g décroît), faible (g reste sous g(0)) ou aucune ; g y reste
+    positive ;
+  - les unités des distances, de l'effort (des lignes) et des aires, ou un facteur de conversion
+    (convert_units de Distance) : la densité est par unité d'aire, et les résultats le disent.
+La fonction de détection est ajustée par le maximum de vraisemblance des distances exactes ; la
+variance de ses paramètres vient de la somme des produits des scores des distances, comme mrds ;
+p, la probabilité moyenne de détection dans la troncature, et son erreur-type par la méthode
+delta ; la demi-largeur effective de bande ESW = p w (lignes) ou le rayon effectif de détection
+EDR = w √p (points). La densité de chaque strate est D = n / (a p), a l'aire couverte (2 w L, ou
+2 (w − L) L avec une troncature à gauche, pour des lignes ; π w² K pour des points) ; sa variance
+réunit celle du taux de rencontre entre les transects (l'estimateur R2 pour des lignes, P2 pour
+des points, Fewster et al. 2009), celle de p et celle de la taille moyenne des groupes ; son
+intervalle à 95 % est log-normal avec les degrés de liberté de Satterthwaite, comme dht2. Le
+total sur les strates additionne leurs effectifs (avec des aires) ou pondère leurs densités par
+leurs aires couvertes (sans). Sans aire, les variances du taux de rencontre et de la taille des
+groupes de chaque strate entrent dans celle du total avec le carré de son poids, et les degrés de
+liberté du total sont ceux de la formule de Satterthwaite avec ces poids. dht2 laisse les poids
+hors de la variance de la taille des groupes, ce qui donne une erreur-type plus grande avec des
+groupes, et hors du dénominateur de ses degrés de liberté, ce qui en donne moins, et un
+intervalle du total plus large, parfois absurdement : sur les données amakihi de Distance (7
+strates, hn ~ OBs + MAS), 0,6 au lieu de 871, et un intervalle de 0,09 à 434 oiseaux par hectare
+au lieu de 5,85 à 6,89. Les intervalles des strates n'en dépendent pas. Le Résumé, la vue Densité
+et effectif et le texte des méthodes donnent aussi ceux de dht2. Refusés, et nommés : une
+distance négative, un effort manquant ou nul, deux efforts pour un transect, deux aires pour une
+strate, une aire nulle parmi d'autres, une distance sans transect.
+Avec des covariables, la vraisemblance est celle de la distance de chaque détection sachant ses
+covariables (flpt.lnl de mrds, ou les comptes des classes) ; les coefficients sont ajustés sur
+les covariables quantitatives centrées et réduites, puis rendus dans leurs unités. Les mêmes
+réglages sans covariables sont ajustés aussi, en tête de la liste des modèles, pour comparer les
+AIC (comme summarize_ds_models de Distance). p̄ = n / Σ 1/pi est la probabilité moyenne de
+détection, avec son erreur-type comme summary.ds de mrds, et ESW = p̄ (w − L) ou EDR = w √p̄ ; la
+densité de chaque strate est celle de type Horvitz–Thompson de dht2, D = Σ si / pi / a (si la
+taille du groupe, 1 sans groupes), sa variance de détection par la méthode delta sur tous les
+paramètres ; l'adéquation rapporte chaque distance à la fonction de détection de ses covariables
+(Cramér–von Mises sur leurs répartitions ajustées, les comptes attendus du khi² sommés sur les
+détections). Refusées, et nommées : une covariable manquante pour une détection, une covariable
+qualitative d'une seule catégorie parmi les détections, une quantitative d'une seule valeur,
+des covariables qui se déduisent l'une de l'autre, et une combinaison de covariables dont
+l'échelle σ part à l'infini (ses distances ne décroissent pas jusqu'à w : regroupez les
+catégories, ou choisissez-en d'autres).
+
+Vues : Résumé (le modèle retenu et l'AIC de chaque modèle ajusté en chemin, p et ESW ou EDR avec
+leurs erreurs-types, les paramètres, l'adéquation, la densité et l'effectif d'ensemble avec leurs
+intervalles ; ce qui a été laissé de côté ; avec des covariables, les covariables et leurs
+catégories de référence, et les coefficients sur ln σ avec exp(β), le facteur sur σ d'une
+catégorie par rapport à sa référence ou d'une unité d'une covariable quantitative) ; Fonction de
+détection (l'histogramme des distances, chaque barre son compte sur celui qu'elle aurait si tous
+les animaux étaient détectés, comme plot.ds de mrds, sous la fonction g ajustée ; chaque
+détection sur la courbe, un clic choisit sa ligne ; pour des points, la densité des distances
+f(r) = 2r g(r) / (w² p) aussi ; dessous, les classes du khi² ; avec des covariables, la fonction
+de détection moyenne, le g de chaque détection sachant ses covariables pondéré par 1/pi comme
+plot.ds, chaque détection à son propre g, et « par » une covariable qualitative une courbe par
+catégorie, la moyenne sur ses détections comme plot.ds(subset = )) ; Diagramme quantile-quantile
+(la répartition ajustée de chaque distance contre la répartition empirique, avec le test de
+Cramér–von Mises ; pas pour des distances par intervalles) ; Densité et effectif (par strate et
+au total : aire, aire couverte, effort, transects, détections, taux de rencontre et son CV, D,
+son erreur-type, son CV, son intervalle à 95 % et ses ddl, N et son intervalle, la part de la
+variance due au taux de rencontre, à la détection et à la taille des groupes ; avec des groupes,
+la densité des groupes aussi). La liste des observations donne le g de chaque détection et, avec
+des covariables, sa probabilité de détection pi. Textes des méthodes et des résultats avec leurs
+références, Exporter et rapport comme pour les autres modèles, et Exporter vers R : un script ou
+un rapport qui refait l'analyse avec R seul, sans Distance ni mrds, les fonctions de
+l'échantillonnage par distances du moteur de Nuée recopiées dedans (les mêmes modèles candidats
+et AIC, paramètres et leur covariance, p ou p̄ et le pi de chaque détection, ESW ou EDR, tests
+d'adéquation, densité et effectif que Nuée ; la fonction de détection sur l'histogramme, une
+courbe par catégorie de chaque covariable qualitative, et le diagramme quantile-quantile en R de
+base). Pas de prédiction.
+
+Les résultats sont ceux de Distance 2.0 (moteur/tests/verifier_distance.R les compare, avec des
+covariables sur les données amakihi, ETP_Dolphin, ClusterExercise, unimak et golftees de
+Distance), à ces différences connues près : Nuée intègre la clé hasard exactement là où mrds
+approche son intégrale par un spline de lissage (des lignes, la clé sans terme d'ajustement, avec
+ou sans covariables : les paramètres et p diffèrent d'environ 1e-4) ; avec une troncature à
+gauche de transects linéaires, l'aire couverte est 2 (w − L) L, là où dht2 garde 2 w L ; sans
+aire de strate, les poids des strates entrent dans la variance de la taille des groupes du total
+(au carré) et dans ses degrés de liberté de Satterthwaite, là où dht2 les laisse hors des deux :
+une erreur-type plus grande avec des groupes, et moins de degrés de liberté ; l'optimiseur de
+mrds sous la contrainte de monotonie s'arrête à 1e-6 près de la vraisemblance, si bien que ses
+estimations peuvent différer de celles de Nuée au quatrième chiffre, ou, sur de rares données,
+s'arrêter à un autre optimum local. Avec des covariables : ds peut s'arrêter avant le maximum sur
+des covariables mal conditionnées (sur unimak, hn ~ MSTDO + Hour, sur un plateau où σ vaut e^9 ou
+plus, des milliers de fois w, 21,9 de log-vraisemblance sous le maximum que trouve Nuée ; parti
+des estimations de Nuée, ds y reste) ; une combinaison de covariables dont σ part à l'infini est
+refusée, là où ds rend le point où son optimiseur s'est arrêté ; quand la taille des groupes est
+une covariable, dht2 recalcule la probabilité de chaque détection avec une taille de 1 pour la
+variance de sa densité des groupes, là où Nuée garde celle de la détection (les densités des
+individus concordent) ; pour des points, la densité des distances tracée est la moyenne des
+f(r | z) des détections, celle qu'estime l'histogramme, là où plot.ds les pondère par 1/pi. Et
+dht2 ne garde un transect sans détection dans la troncature que si son Sample.Label n'a de
+détection dans aucune strate (amakihi répète ses étiquettes d'une strate à l'autre) : Nuée garde
+l'effort de chaque transect.
+
+Forêts aléatoires et arbres boostés
+-----------------------------------
+Nouveau modèle › type « Forêt aléatoire » (le paquet ranger, Wright et Ziegler 2017) : une
+variable Y quantitative (forêt de régression) ou une variable de classe (forêt de classement),
+et des X par leurs valeurs brutes. Chaque arbre est grandi sur un tirage bootstrap des
+observations (avec remise), chaque coupure choisie parmi mtry variables tirées au hasard ; la
+forêt prédit la moyenne de ses arbres, ou la classe que le plus d'arbres votent (Breiman 2001).
+Onglet Général : 500 arbres, mtry et la taille des nœuds de ranger par défaut (la racine du
+nombre de X arrondie en dessous ; des nœuds de 5 observations en régression, 1 en classement),
+la part tirée, l'importance par permutation non mise à l'échelle ou divisée par son
+erreur-type. Graine 1 et un seul fil de calcul : la même forêt à chaque fois. ranger ne prend
+pas de valeurs manquantes : une observation où une valeur X manque est laissée de côté (le
+résumé les compte). L'erreur hors sac : chaque observation prédite par les arbres dont le
+tirage ne la contient pas (MSE et R², ou la part mal classée) ; la validation croisée : chaque
+groupe de validation croisée (le site) prédit par une forêt refaite sans lui (Q2 et RMSEcv, ou
+la part bien classée). Vues : Importance des variables (par permutation, la hausse de l'erreur
+hors sac quand les valeurs de la variable sont permutées ; ou par l'impureté), Dépendance
+partielle (calculée à la demande, Friedman 2001 : la prédiction moyenne de la forêt quand une
+variable prend chaque valeur d'une grille, les autres X inchangés ; toutes les variables côte à
+côte, ou une seule, les valeurs observées sous la courbe ; en classement, la part des votes
+d'une classe), Erreur selon le nombre d'arbres, Observé / prédit (hors sac, en validation
+croisée ou ajusté) ou Classement (avec les courbes ROC des votes). Jeu de test et Prédire.
+
+Type « Arbres boostés (BRT) » : le gradient boosting d'arbres de régression (Friedman 2001,
+2002), comme le calcule le paquet gbm et comme Elith, Leathwick et Hastie (2008) le présentent
+aux écologues, écrit en R sur rpart. Une Y quantitative : une mesure (loi normale), une
+présence-absence 0/1 (binomiale) ou des comptages (Poisson), choisie comme celle d'un GLM. Les
+arbres sont ajoutés un à un, chacun ajusté à ce que le modèle manque encore (le gradient de la
+déviance) sur un tirage sans remise d'une part des observations, ses feuilles réestimées pour
+la déviance, puis ajouté avec un petit poids (le taux d'apprentissage). Onglet Général : au plus
+2000 arbres, un taux d'apprentissage de 0,01, 3 coupures par arbre (la profondeur
+d'interaction : 1 donne un modèle additif), au moins 10 observations par feuille, des tirages de
+50 %. Le nombre d'arbres est celui où la déviance de validation croisée est la plus petite
+(chaque groupe de validation croisée prédit après chaque arbre par le boosting refait sans lui) :
+plus il y a de groupes et d'arbres, plus l'ajustement est long. Les observations où une valeur X
+manque sont laissées de côté. Vues : Influence relative (les réductions d'erreur des coupures de
+chaque variable, en %), Dépendance partielle (à l'échelle du lien, logit ou log, ou à celle de la
+réponse), Erreur selon le nombre d'arbres (la déviance de l'ajustement et celle de la validation
+croisée, le nombre d'arbres retenu), Observé / prédit, et Classement (à une probabilité de 0,5,
+avec la courbe ROC) pour une réponse 0/1. Jeu de test et Prédire.
+
+Pour les deux : texte des méthodes avec ses références, Exporter, rapport PDF ou Word. Comparer
+les modèles donne le Q2 et le RMSEcv d'une forêt de régression, ou d'arbres boostés d'une
+mesure, à côté des autres modèles. Exporter vers R : des arbres boostés avec R et rpart seuls (le
+boosting du moteur de Nuée recopié dans le script : avec la même graine, les mêmes tirages et les
+mêmes arbres, ceux de gbm) ; une forêt aléatoire avec R et le paquet ranger, la seule exception à
+« sans paquet » : Nuée en dépend et l'installe avec lui (ailleurs, install.packages("ranger")), et
+le script le charge avec la même graine, un seul fil et les mêmes réglages, si bien que sa forêt
+est celle de Nuée, arbre pour arbre, avec la même version de ranger. Le jeu de test et la
+dépendance partielle, si elle a été calculée, y sont aussi.
+
+Nettoyer les données : chercher et remplacer, catégories, unités
+--------------------------------------------------------------
+Ce qu'on faisait dans Excel avant d'ouvrir le tableau, dans Nuée, chaque changement annulé par
+un seul Ctrl+Z (Édition › Annuler) comme les autres changements des données ; les modèles déjà
+ajustés gardent leurs résultats jusqu'à ce que vous les ajustiez à nouveau. Dans le menu
+Édition, dans la barre de la vue Données, et par un clic droit sur l'en-tête d'une colonne de la
+vue Données (un en-tête montre l'unité de la variable, son nombre de cases vides et de valeurs
+distinctes, « Résumé des colonnes » ; sa bulle, la description) ou sur une variable de
+Graphiques › Statistiques des variables.
+Édition › Chercher et remplacer (Ctrl+H) : dans une variable, plusieurs ou toutes, les cases qui
+valent un texte ou un nombre, ou les cases vides (« les cellules vides » : remplacer vide par
+0), prennent ce que vous tapez, ou deviennent vides si vous ne tapez rien (remplacer -9999 par
+rien). Une variable qualitative se compare en texte : la case entière, ou une partie du texte
+(la « , » de « 3,5 »), les majuscules comptant ou non ; une variable quantitative en nombres
+(« 3,5 » trouve 3,5), sur la case entière, et ne prend qu'un nombre ou rien (sinon ses cases
+restent, et le dialogue le dit). Avant de remplacer, le dialogue dit combien de cases changeront
+dans chaque variable, les premiers changements (« foret » → « forêt » (3)) et ce que devient
+chaque variable : une variable de texte dont toutes les valeurs deviennent des nombres (« , »,
+« <0,5 » remplacé par 0,25, « abs » par 0) devient quantitative, sauf si vous décochez la case.
+Une catégorie remplacée par une autre qui existe s'y fond ; une catégorie vidée de ses cases
+disparaît. Une colonne de mesures est lue en nombres à l'ouverture du tableau : quelques
+« <0,5 » ou « nd » y sont alors lus comme des valeurs manquantes (Fichier › Ouvrir le dit), et
+ne sont plus là pour être remplacés ; une colonne avec plus de texte reste du texte, où on peut.
+Édition › Catégories (ou clic droit sur l'en-tête d'une variable qualitative) : les catégories
+d'une variable qualitative avec leur nombre d'observations, à renommer (le nom d'une autre
+catégorie les fusionne), fusionner (celles cochées, dans la plus nombreuse), monter et
+descendre, et la référence à choisir. Leur ordre est celui des graphiques et des tableaux
+(couleurs, barres, moyennes ajustées). Dans une régression, la dernière catégorie observée est
+la catégorie de référence : le coefficient de chacune des autres est son écart à elle, et
+« Référence » met une catégorie en dernier. Les définitions des modèles du projet suivent les
+catégories (ajustée à nouveau, une régression prend la nouvelle référence) ; un modèle ajusté
+dont des catégories ont été renommées ou fusionnées ne se réajuste plus depuis sa page (moins
+d'observations, une composante de plus) et ne prédit plus : ajustez-le à nouveau (Modèle ›
+Modifier le modèle, ou double-clic sur sa définition dans l'explorateur). Un nouvel ordre seul
+ne l'en empêche pas.
+Édition › Unités et descriptions (ou clic droit sur un en-tête › Unité et description) :
+l'unité (ind./ha, m, °C) et la description de chaque variable. L'unité vient dans les titres des
+axes (« densité (ind./ha) » : Effets, Observé / prédit, Statistiques des variables, Séries, la
+légende de la Carte, moyennes ajustées, tests statistiques, dépendance partielle d'une forêt ;
+pas sur un axe qui la montre transformée), les en-têtes de la vue Données, le texte des Méthodes
+(« la réponse est « densité » (ind./ha) ») et celui des résultats (un coefficient « par m »
+quand la variable est dans ses unités). Les deux sont enregistrées dans le projet, gardées par
+Fichier › Exporter les données là où le format a leur place (une feuille « Variables » d'un
+classeur Excel et une table « Variables » d'un GeoPackage, que Nuée relit en les ouvrant ; la
+description d'une colonne de jamovi ; les attributs label et units d'une colonne de R, comme
+Hmisc les lit ; pas en CSV ni en texte), et écrites en commentaire avant les données dans
+l'export vers R.
+Dans la vue Données, un clic sur une case, puis Ctrl+V, colle à partir de cette case un bloc de
+cellules copiées dans un tableur, dans les lignes et les colonnes telles que la vue les montre
+(triées, filtrées) : chaque case comme quand on la modifie à la main (vide : manquante ; une
+nouvelle catégorie s'ajoute ; un texte dans une variable quantitative est refusé, en nommant
+l'observation, et rien ne change) ; les cases au-delà du tableau sont laissées. Un seul Ctrl+Z
+annule tout le bloc.
 
 Ajouter des colonnes d'un autre tableau
 ---------------------------------------
@@ -1497,6 +2306,12 @@ Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 13
 -------------------------------------------------------------------------------------------
 Mise à l'échelle, R2X, R2Y, scores, loadings, valeurs propres, T2 et sa limite, DModX
 (normal et pondéré) et DCrit, VIP, coefficients, RMSEE.
+Les modèles d'un fichier sont ajustés comme le logiciel qui l'a écrit : avec des valeurs
+manquantes, NIPALS converge parfois très lentement, ne converge pas ou a plusieurs solutions,
+et il s'y arrête comme ce logiciel (un écart relatif de 1e-5, 200 itérations au plus), part de
+la même colonne et valide chaque composante en partant du modèle complet. Ainsi 805 PLS sur 809
+du corpus d'essai, et les 403 PLS des projets de 2003, redonnent leur ajustement et leur Q2 ;
+les modèles que Nuée ajuste lui-même gardent sa précision (1e-10).
 
 Ce qui diffère
 --------------
@@ -1510,12 +2325,15 @@ Ce qui diffère
   identifiant (un site, un secteur), l'écart est plus grand : le modèle ajusté sans un site ne
   connaît pas non plus le niveau moyen de ce site. Validé avec « Centres et poids du modèle
   complet (comme SIMCA) », le Q2 enregistré revient exactement, groupes par identifiant
-  compris : 773 PLS sur 809 du corpus d'essai (220 sur 220 sans données manquantes), 441 sur
-  443 de quatre projets réels (moteur/tests/verifier_references.R), où les deux autres ont un
-  tour sans aucune variation, dont la valeur enregistrée vient d'erreurs d'arrondi. Pour une
-  ACP, il s'en écarte de 0,02 en médiane : le détail de la validation des fichiers n'est pas
-  publié.
+  compris : 805 PLS sur 809 du corpus d'essai (220 sur 220 sans données manquantes ; les quatre
+  autres sont celles d'un projet dont l'ajustement diffère, ci-dessous), 441 sur 443 de quatre
+  projets réels (moteur/tests/verifier_references.R), où les deux autres ont un tour sans aucune
+  variation, dont la valeur enregistrée vient d'erreurs d'arrondi. Pour une ACP, il s'en écarte
+  de 0,02 en médiane : le détail de la validation des fichiers n'est pas publié.
 
+- Un projet de la version 11 : ses quatre PLS, dont le seul Y a des valeurs manquantes. Leur
+  logiciel compte les observations sans y dans les poids des X, comme si leurs résidus de Y
+  valaient ±0,99, ce qu'aucune règle trouvée n'explique ; R2 et Q2 s'en écartent jusqu'à 0,04.
 - Signe des composantes de nouveaux modèles : arbitraire (les modèles importés sont
   orientés comme dans le fichier).
 - Dendrogrammes : méthode de Ward exacte ; les fusions du haut de l'arbre peuvent
@@ -1563,3 +2381,5 @@ Dans R : source("resources/moteur/charger.R"), puis par exemple
   d <- definir_modele(p, "PLS", x = 3:20, y = 2)
   m <- ajuster(p, d)
   m$statistiques$composantes
+load.R charge le même moteur en anglais (ses messages, statuts et noms de colonnes), avec des
+noms anglais : import_table(), define_model(), fit_model().

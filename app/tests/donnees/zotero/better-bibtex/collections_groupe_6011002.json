@@ -1,0 +1,34 @@
+[
+    {
+        "key": "IGHGKH8Z",
+        "version": 3,
+        "library": {
+            "type": "group",
+            "id": 6011002,
+            "name": "Réseau Perdrix",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011002",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011002/collections/IGHGKH8Z",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 0,
+            "numItems": 1
+        },
+        "data": {
+            "key": "IGHGKH8Z",
+            "version": 3,
+            "name": "Suivis",
+            "parentCollection": false,
+            "relations": {}
+        }
+    }
+]

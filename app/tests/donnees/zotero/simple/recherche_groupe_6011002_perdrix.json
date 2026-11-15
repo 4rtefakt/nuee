@@ -1,0 +1,56 @@
+[
+    {
+        "key": "EHM5NI5N",
+        "version": 4,
+        "library": {
+            "type": "group",
+            "id": 6011002,
+            "name": "Réseau Perdrix",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011002",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011002/items/EHM5NI5N",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "creatorSummary": "⁨Bro⁩ and ⁨Mayot⁩",
+            "parsedDate": "2019",
+            "numChildren": 0
+        },
+        "bibtex": "\n@article{bro_survie_2019,\n\ttitle = {Survie hivernale de la perdrix grise (\\textit{{Perdix} perdix}) en plaine céréalière},\n\tvolume = {322},\n\tlanguage = {fr},\n\tjournal = {Faune Sauvage},\n\tauthor = {Bro, Elisabeth and Mayot, Philippe},\n\tyear = {2019},\n\tpages = {12--19},\n}\n"
+    },
+    {
+        "key": "W3AJRVAC",
+        "version": 2,
+        "library": {
+            "type": "group",
+            "id": 6011002,
+            "name": "Réseau Perdrix",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011002",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011002/items/W3AJRVAC",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "creatorSummary": "⁨Reitz⁩ and ⁨Bro⁩",
+            "parsedDate": "2012",
+            "numChildren": 0
+        },
+        "bibtex": "\n@article{reitz_suivi_2012,\n\ttitle = {Suivi des populations de perdrix grises en plaine},\n\tvolume = {295},\n\tlanguage = {fr},\n\tjournal = {Faune Sauvage},\n\tauthor = {Reitz, François and Bro, Elisabeth},\n\tyear = {2012},\n\tpages = {4--11},\n}\n"
+    }
+]

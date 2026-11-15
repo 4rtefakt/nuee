@@ -292,14 +292,16 @@ const profondeurNulle = (s) => { let p = 0; for (const c of s) { if (c === '{') 
 
 const TYPES_THESE = { phdthesis: 'these', mastersthesis: 'memoire', thesis: 'these' };
 
-// A BibTeX entry with its fields as text (the form the styles below read).
+// A BibTeX entry with its fields as text (the form the styles below read). `zotero`: where a
+// reference added from Zotero is there (users/0/items/<key>, groups/<id>/items/<key>), which the
+// document keeps with it (versBibtex).
 function normaliserBibtex(e) {
   const c = e.champs;
   const t = (n) => (c[n] !== undefined ? decoderLatex(c[n]) : '');
   const date = t('date');
   const annee = (/\d{4}/.exec(t('year')) || /\d{4}/.exec(date) || [''])[0] || t('year');
   return {
-    cle: e.cle, type: e.type, source: 'bibtex', brut: e.brut, champsBruts: c,
+    cle: e.cle, type: e.type, source: 'bibtex', brut: e.brut, champsBruts: c, zotero: elementZotero(c.zotero),
     auteurs: c.author ? lireNoms(c.author) : [], editeurs: c.editor ? lireNoms(c.editor) : [],
     annee, titre: t('title'), revue: t('journal') || t('journaltitle'), livre: t('booktitle'),
     volume: t('volume'), numero: t('number') || t('issue'), pages: t('pages'), editeur: t('publisher'), lieu: t('address') || t('location'),
@@ -352,14 +354,21 @@ const echapperBibtex = (v) => String(v ?? '').replace(/[&%$#_]/g, (c) => `\\${c}
   .split(DEBUT_ITALIQUE).join('\\textit{').split(FIN_ITALIQUE).join('}');
 const nomBibtex = (n) => (n.litteral ? `{${n.litteral}}` : [[n.particule, n.nom].filter(Boolean).join(' '), n.suffixe, n.prenom].filter(Boolean).join(', '));
 
-// An entry as BibTeX: its own text when it came from BibTeX (without `sauf`'s fields: a file's
-// path, an abstract), else written from its fields. Its language as langid, which Pandoc reads
-// (Zotero writes language, which it doesn't): a French title in an English document is then left
-// as it is, where a style puts English titles in title case.
-export function versBibtex(e, sauf = ['file', 'abstract', 'keywords', 'annote', 'annotation', 'mendeley-tags']) {
+// The fields a document doesn't keep of a reference (a file's path, an abstract...); nor, in the
+// .bib written beside a Quarto file, where it is in Zotero.
+const SANS = ['file', 'abstract', 'keywords', 'annote', 'annotation', 'mendeley-tags'];
+export const SANS_ZOTERO = [...SANS, 'zotero'];
+
+// An entry as BibTeX: its own text when it came from BibTeX (without `sauf`'s fields), else written
+// from its fields; where it is in Zotero (`zotero`) as a field of that name. Its language as langid,
+// which Pandoc reads (Zotero writes language, which it doesn't): a French title in an English
+// document is then left as it is, where a style puts English titles in title case.
+export function versBibtex(e, sauf = SANS) {
+  const zotero = e.zotero && !sauf.includes('zotero') ? [['zotero', e.zotero]] : [];
   if (e.champsBruts) {
-    const champs = Object.entries(e.champsBruts).filter(([k]) => !sauf.includes(k));
+    const champs = Object.entries(e.champsBruts).filter(([k]) => !sauf.includes(k) && k !== 'zotero');
     if (e.champsBruts.language && !e.champsBruts.langid && !e.champsBruts.hyphenation) champs.push(['langid', e.champsBruts.language]);
+    champs.push(...zotero);
     return `@${e.type}{${e.cle},\n${champs.map(([k, v]) => `  ${k} = {${v}}`).join(',\n')}\n}`;
   }
   const type = { online: 'misc', software: 'misc', unpublished: 'unpublished', thesis: e.these === 'memoire' ? 'mastersthesis' : 'phdthesis' }[e.type] || e.type;
@@ -369,7 +378,7 @@ export function versBibtex(e, sauf = ['file', 'abstract', 'keywords', 'annote', 
     ['volume', e.volume], ['number', e.numero], ['pages', String(e.pages || '').replace(/–/g, '--')], ['publisher', echapperBibtex(e.editeur)],
     ['address', echapperBibtex(e.lieu)], ['edition', e.edition], ['school', e.type === 'thesis' ? echapperBibtex(e.ecole) : ''],
     ['institution', e.type === 'report' ? echapperBibtex(e.institution) : ''], ['type', echapperBibtex(e.rapport)], ['doi', e.doi], ['url', e.url],
-    ['note', echapperBibtex(e.note)], ['langid', echapperBibtex(e.langue)],
+    ['note', echapperBibtex(e.note)], ['langid', echapperBibtex(e.langue)], ...zotero,
   ].filter(([, v]) => v);
   return `@${type}{${e.cle},\n${champs.map(([k, v]) => `  ${k} = {${v}}`).join(',\n')}\n}`;
 }
@@ -378,6 +387,59 @@ export function versBibtex(e, sauf = ['file', 'abstract', 'keywords', 'annote', 
 export function lireBibliographie(texte, nomFichier = '') {
   const json = /\.json$/i.test(nomFichier) || /^\s*[[{]/.test(String(texte ?? '').replace(/^﻿/, ''));
   return json ? lireCslJson(texte) : lireBibtex(texte);
+}
+
+// ------------------------------------------------------------ Zotero's libraries
+
+// Where an item is in Zotero, from its URI (http://zotero.org/users/local/<id>/items/<key>,
+// .../users/<id>/items/<key>, .../groups/<id>/items/<key>) or as kept: users/0/items/<key> for
+// My Library, groups/<id>/items/<key> for a group's ('' when it says nowhere).
+export function elementZotero(adresse) {
+  const m = /(?:^|\/)(?:users\/(?:local\/)?[^/\s]+|groups\/(\d+))\/items\/([A-Z0-9]{8})$/.exec(String(adresse ?? '').trim());
+  return !m ? '' : m[1] ? `groups/${m[1]}/items/${m[2]}` : `users/0/items/${m[2]}`;
+}
+
+// The references of Zotero's local API answering in JSON with each item's BibTeX (format=json&
+// include=bibtex): read from that BibTeX, each with where it is in Zotero (its library and key).
+export function lireReponseZotero(texte) {
+  let items;
+  try { items = JSON.parse(String(texte ?? '')); } catch { return []; }
+  return [].concat(items || []).flatMap((x) => {
+    const e = x && typeof x.bibtex === 'string' ? lireBibtex(x.bibtex).entrees[0] : null;
+    if (!e) return [];
+    const b = x.library || {};
+    return [{ ...e, zotero: elementZotero(`${b.type === 'group' ? `groups/${b.id}` : 'users/0'}/items/${x.key}`) }];
+  });
+}
+
+// Whether two entries are the same work: the same DOI when both have one, else the same title,
+// year and first author (accents, case and punctuation aside). A reference copied from one Zotero
+// library to another is the same work.
+export function memeOeuvre(a, b) {
+  const doi = (e) => String(e.doi || '').trim().toLowerCase();
+  if (doi(a) && doi(b)) return doi(a) === doi(b);
+  const titre = (e) => plier(e.titre).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const auteur = (e) => { const n = (e.auteurs || [])[0] || (e.editeurs || [])[0]; return n ? plier(n.litteral || n.nom) : ''; };
+  return !!titre(a) && titre(a) === titre(b) && String(a.annee || '') === String(b.annee || '') && auteur(a) === auteur(b);
+}
+
+// Where a reference added from Zotero goes among the document's (`entrees`: Map key -> entry, those
+// of its files with their `origine`): { cle: the key it is cited under, nouvelle: added under that
+// key, remplace: the one kept there replaced by it (the same Zotero item, up to date), renommee: the
+// key it came with, when another work has it already, autre: the key it came with, when the
+// document has it under another }. The same Zotero item, or else the same work (a copy in another
+// library, Better BibTeX's key and Zotero's own for one item), is cited under the key the document
+// has for it; another work whose key is taken gets that key with a letter (bechet2019a, b...).
+export function placerReference(e, entrees) {
+  const toutes = [...entrees.values()];
+  const meme = entrees.has(e.cle) && memeOeuvre(entrees.get(e.cle), e) ? entrees.get(e.cle) : null;
+  const x = (e.zotero && toutes.find((y) => y.zotero === e.zotero)) || meme || toutes.find((y) => memeOeuvre(y, e));
+  if (x) return { cle: x.cle, remplace: !x.origine && (!x.zotero || x.zotero === e.zotero), autre: x.cle !== e.cle ? e.cle : null };
+  if (!entrees.has(e.cle)) return { cle: e.cle, nouvelle: true };
+  const lettres = (n) => (n < 26 ? String.fromCharCode(97 + n) : lettres(Math.floor(n / 26) - 1) + String.fromCharCode(97 + (n % 26)));
+  let n = 0;
+  while (entrees.has(e.cle + lettres(n))) n += 1;
+  return { cle: e.cle + lettres(n), nouvelle: true, renommee: e.cle };
 }
 
 // ------------------------------------------------------------ citations ([@a; @b], @a)

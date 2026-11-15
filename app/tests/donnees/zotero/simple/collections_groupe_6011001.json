@@ -1,0 +1,102 @@
+[
+    {
+        "key": "WQNPV8CD",
+        "version": 10,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/collections/WQNPV8CD",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 0,
+            "numItems": 300
+        },
+        "data": {
+            "key": "WQNPV8CD",
+            "version": 10,
+            "name": "Beaucoup",
+            "parentCollection": false,
+            "relations": {}
+        }
+    },
+    {
+        "key": "CTGDT244",
+        "version": 5,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/collections/CTGDT244",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 1,
+            "numItems": 2
+        },
+        "data": {
+            "key": "CTGDT244",
+            "version": 5,
+            "name": "Flamants",
+            "parentCollection": false,
+            "relations": {}
+        }
+    },
+    {
+        "key": "W8857J4W",
+        "version": 6,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/collections/W8857J4W",
+                "type": "application/json"
+            },
+            "up": {
+                "href": "http://localhost:23119/api/groups/6011001/collections/CTGDT244",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 0,
+            "numItems": 1
+        },
+        "data": {
+            "key": "W8857J4W",
+            "version": 6,
+            "name": "Reproduction",
+            "parentCollection": "CTGDT244",
+            "relations": {}
+        }
+    }
+]

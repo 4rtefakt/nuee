@@ -258,6 +258,147 @@ if (avec_vegan) {
              proche(sv$etapes$p[sv$etapes$retenu], pasv$anova[["Pr(>F)"]][seq_along(tv)]))
 }
 
+cat("CCA : calculs directs\n")
+# le tableau des abondances (Y) contre temp, pH et habitat ; le relevé sans pH laissé de côté
+dcca <- definir_modele(p, "CCA", x = u("temp", "ph", "habitat"), y = u(especes), echelle = "none", options = list(permutations = B, graine = 4))
+mcca <- ajuster(p, dcca)
+kk <- mcca$noyau
+Ng <- abondances[garde, ]
+Pg <- Ng / sum(Ng)
+rw <- rowSums(Pg)
+cw <- colSums(Pg)
+Ykhi <- (Pg - outer(rw, cw)) / sqrt(outer(rw, cw))
+# (la CCA comme régression pondérée : chaque profil de ligne régressé sur X avec les masses des lignes en poids)
+ajuste_w <- function(Xmat, Yk, w) stats::lm.wfit(cbind(1, Xmat), Yk / sqrt(w), w = w)$fitted.values * sqrt(w)
+Xcca <- stats::model.matrix(~ temp + ph + habitat, env[garde, ])[, -1]
+ac <- ajuste_w(Xcca, Ykhi, rw)
+verifier(sprintf("%d observations ; inertie totale = khi² / effectif total", mcca$N),
+         mcca$N == 39 && proche(kk$totale, suppressWarnings(stats::chisq.test(Ng)$statistic) / sum(Ng)))
+verifier("valeurs propres contraintes = svd de la régression pondérée (lm.wfit) des écarts à l'indépendance", proche(kk$contraint$eig, (svd(ac)$d^2)[1:4]))
+verifier("valeurs propres résiduelles = svd de ses résidus", proche(kk$residuel$eig, (svd(Ykhi - ac)$d^2)[1:kk$residuel$rang]))
+verifier("R² = inertie contrainte / totale", proche(mcca$r2, sum(ac^2) / sum(Ykhi^2)))
+Pc <- permutations_rda(mcca)
+q_c <- ncol(Xcca)
+r_c <- 39 - q_c - 1
+F0c <- (sum(ac^2) / q_c) / ((sum(Ykhi^2) - sum(ac^2)) / r_c)
+# (les masses suivent les lignes permutées : la régression pondérée refaite à chaque permutation)
+nums <- apply(Pc, 1, function(ip) sum(ajuste_w(Xcca, Ykhi[ip, ], rw[ip])^2))
+Fpc <- (nums / q_c) / ((sum(Ykhi^2) - nums) / r_c)
+verifier(sprintf("pseudo-F (%.3f) et p (%.3f) = boucle de lm.wfit, les masses permutées avec les lignes", mcca$test$F, mcca$test$p),
+         proche(mcca$test$F, F0c) && identical(mcca$test$p, (sum(Fpc >= F0c - sqrt(.Machine$double.eps)) + 1) / (B + 1)))
+verifier("R² ajusté = 1 - (1 - R²) / (1 - moyenne des R² permutés)", proche(mcca$r2_ajuste, 1 - (1 - mcca$r2) / (1 - mean(nums) / sum(Ykhi^2))))
+sc1 <- scores_cca(mcca, 1)
+sc2 <- scores_cca(mcca, 2)
+sc3 <- scores_cca(mcca, 3)
+verifier("échelle 1 : les scores wa des observations = moyennes pondérées (profils) des scores des espèces",
+         proche(sc1$sites[, 1:4], (Ng / rowSums(Ng)) %*% sc1$reponses[, 1:4]))
+verifier("flèches (échelle 2) : corrélations pondérées par les masses des X quantitatifs aux scores lc",
+         proche(fleches_rda(mcca, sc2)[, 1:4], stats::cov.wt(cbind(env$temp[garde], env$ph[garde], sc2$lc[, 1:4]), wt = rw, cor = TRUE)$cor[1:2, 3:6]))
+verifier("centroïdes = moyennes des scores lc par habitat, pondérées par les masses",
+         proche(sc2$centroides[, 1:4], t(vapply(levels(env$habitat), function(h) { i <- env$habitat[garde] == h; colSums(sc2$lc[i, 1:4] * rw[i]) / sum(rw[i]) }, numeric(4)))))
+verifier("échelle 3 : observations et espèces × racine(racine(λ)) ; échelle 1 = échelle 2 × racine(λ) pour les observations",
+         proche(sc3$sites, sweep(sc2$sites, 2, sqrt(sqrt(sc2$valeurs_propres)), "*")) && proche(sc3$reponses, sweep(sc1$reponses, 2, sqrt(sqrt(sc1$valeurs_propres)), "*")) &&
+           proche(sc1$sites, sweep(sc2$sites, 2, sqrt(sc2$valeurs_propres), "*")))
+dccz <- definir_modele(p, "CCA", x = u("temp", "habitat"), y = u(especes), echelle = "none",
+                       options = list(permutations = B, graine = 6, z = u("pente"), strates = list(by = "variable", variable = u("site"))))
+mccz <- ajuster(p, dccz)
+Ptot <- abondances / sum(abondances)
+rw40 <- rowSums(Ptot)
+Y40 <- (Ptot - outer(rw40, colSums(Ptot))) / sqrt(outer(rw40, colSums(Ptot)))
+az0 <- ajuste_w(cbind(env$pente), Y40, rw40)
+azx <- ajuste_w(cbind(env$pente, stats::model.matrix(~ temp + habitat, env)[, -1]), Y40, rw40)
+verifier("CCA partielle (40 relevés) : inertie conditionnelle et valeurs propres contraintes des régressions pondérées",
+         mccz$N == 40 && proche(mccz$noyau$conditionnelle, sum(az0^2)) && proche(mccz$noyau$contraint$eig, (svd(azx - az0)$d^2)[1:mccz$noyau$contraint$rang]))
+verifier("CCA partielle : permutations à l'intérieur des sites", all(apply(permutations_rda(mccz), 1, function(ip) all(env$site[ip] == env$site))))
+tseq <- tests_sequentiels(mcca, Pc)
+verifier("tests séquentiels : les inerties de chaque terme s'ajoutent en l'inertie contrainte", nrow(tseq) == 4 && proche(sum(tseq$inertie[1:3]), kk$contraint$inertie) &&
+           all(tseq$ddl[1:3] == c(1, 1, 2)))
+
+if (avec_vegan) {
+  cat("CCA : comparaison avec vegan\n")
+  pv <- function(P) { attr(P, "control") <- permute::how(nperm = nrow(P)); P }
+  cv <- vegan::cca(Ng ~ temp + ph + habitat, data = env[garde, ])
+  verifier("valeurs propres et inerties = vegan::cca", proche(kk$contraint$eig, cv$CCA$eig) && proche(kk$residuel$eig, cv$CA$eig) &&
+             proche(kk$totale, cv$tot.chi) && proche(kk$contraint$inertie, cv$CCA$tot.chi))
+  for (e in 1:3) {
+    sv <- vegan::scores(cv, choices = seq_along(c(cv$CCA$eig, cv$CA$eig)), display = c("sites", "lc", "species", "bp", "cn"), scaling = e)
+    sn <- scores_cca(mcca, e)
+    verifier(sprintf("échelle %d : scores wa, lc, espèces, flèches (temp, pH), centroïdes = vegan::scores", e),
+             proche(sn$sites, sv$sites) && proche(sn$lc, sv$constraints) && proche(sn$reponses, sv$species) &&
+               proche(sn$biplot[c("temp", "ph"), ], sv$biplot[c("temp", "ph"), ]) && proche(sn$centroides, sv$centroids[paste0("habitat", levels(env$habitat)), ]))
+  }
+  # (les tests et le R² ajusté d'une CCA sont comparés à vegan 2.7 seulement : leurs permutations,
+  # où les masses suivent les lignes, sont celles de vegan 2.5 et après, et vegan 2.6 n'a pas été essayé)
+  if (vegan_27) {
+    avc <- vegan::anova.cca(cv, permutations = pv(Pc))
+    verifier("test global : F et p = anova.cca avec les mêmes permutations", proche(mcca$test$F, avc$F[1]) && identical(mcca$test$p, avc[["Pr(>F)"]][1]))
+    verifier("R² et R² ajusté = RsquareAdj (les mêmes permutations)", {
+      ra <- vegan::RsquareAdj(cv, permutations = pv(Pc))
+      proche(mcca$r2, ra$r.squared) && proche(mcca$r2_ajuste, ra$adj.r.squared)
+    })
+    ta <- tests_axes_rda(mcca, Pc)
+    va <- vegan::anova.cca(cv, by = "axis", permutations = pv(Pc))
+    verifier("tests par axe = anova.cca(by = \"axis\")", proche(ta$F, va$F) && isTRUE(all.equal(ta$p, va[["Pr(>F)"]])) && proche(ta$ddl, va$Df) && proche(ta$inertie, va$ChiSquare))
+    vs <- vegan::anova.cca(cv, by = "terms", permutations = pv(Pc))
+    verifier("tests séquentiels = anova.cca(by = \"terms\")", proche(tseq$F, vs$F) && isTRUE(all.equal(tseq$p, vs[["Pr(>F)"]])) && proche(tseq$ddl, vs$Df) &&
+               proche(tseq$inertie, vs$ChiSquare))
+    tm <- tests_termes_rda(mcca, Pc)
+    vm <- vegan::anova.cca(cv, by = "margin", permutations = pv(Pc))
+    verifier("tests par terme (marginaux) = anova.cca(by = \"margin\")", proche(tm$F, vm$F) && isTRUE(all.equal(tm$p, vm[["Pr(>F)"]])) && proche(tm$ddl, vm$Df) &&
+               proche(tm$inertie, vm$ChiSquare))
+  }
+  czv <- vegan::cca(abondances ~ temp + habitat + Condition(pente), data = env)
+  Pcz <- permutations_rda(mccz)
+  kz2 <- mccz$noyau
+  verifier("CCA partielle : inerties, valeurs propres = vegan", proche(kz2$conditionnelle, czv$pCCA$tot.chi) && proche(kz2$contraint$eig, czv$CCA$eig) &&
+             proche(kz2$residuel$eig, czv$CA$eig))
+  verifier("CCA partielle : scores (échelles 1 à 3) = vegan", all(vapply(1:3, function(e) {
+    sv <- vegan::scores(czv, choices = seq_along(c(czv$CCA$eig, czv$CA$eig)), display = c("sites", "lc", "species", "bp", "cn"), scaling = e)
+    sn <- scores_cca(mccz, e)
+    proche(sn$sites, sv$sites) && proche(sn$lc, sv$constraints) && proche(sn$reponses, sv$species) && proche(sn$biplot["temp", ], sv$biplot["temp", ]) &&
+      proche(sn$centroides, sv$centroids[paste0("habitat", levels(env$habitat)), ])
+  }, TRUE)))
+  if (vegan_27) {
+    avz <- vegan::anova.cca(czv, permutations = pv(Pcz))
+    verifier("CCA partielle permutée par site : F et p = anova.cca", proche(mccz$test$F, avz$F[1]) && identical(mccz$test$p, avz[["Pr(>F)"]][1]))
+    verifier("CCA partielle : R² ajusté = RsquareAdj (les mêmes permutations)", proche(mccz$r2_ajuste, vegan::RsquareAdj(czv, permutations = pv(Pcz))$adj.r.squared))
+  }
+  if (vegan_27) verifier("CCA partielle : tests par axe, séquentiels et marginaux = anova.cca", {
+    a <- tests_axes_rda(mccz, Pcz); va <- vegan::anova.cca(czv, by = "axis", permutations = pv(Pcz))
+    s <- tests_sequentiels(mccz, Pcz); vs <- vegan::anova.cca(czv, by = "terms", permutations = pv(Pcz))
+    t <- tests_termes_rda(mccz, Pcz); vt <- vegan::anova.cca(czv, by = "margin", permutations = pv(Pcz))
+    proche(a$F, va$F) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])) && proche(s$F, vs$F) && isTRUE(all.equal(s$p, vs[["Pr(>F)"]])) &&
+      proche(t$F, vt$F) && isTRUE(all.equal(t$p, vt[["Pr(>F)"]]))
+  })
+  # les lichens des landes à pins : une CCA et sa sélection pas à pas (ordiR2step, R² ajustés et tests par les mêmes permutations)
+  e2 <- new.env()
+  utils::data("varespec", "varechem", package = "vegan", envir = e2)
+  pvc <- projet_depuis_tableau(data.frame(nom = rownames(e2$varespec), e2$varechem, e2$varespec, check.names = FALSE), "varespec")
+  dvc <- definir_modele(pvc, "CCA", x = numeros(pvc, c("Al", "P", "K", "N", "Baresoil")), y = numeros(pvc, names(e2$varespec)), echelle = "none",
+                        options = list(permutations = 199, graine = 2))
+  mvc <- ajuster(pvc, dvc)
+  cvc <- vegan::cca(e2$varespec ~ Al + P + K + N + Baresoil, data = e2$varechem)
+  Pv <- permutations_rda(mvc)
+  verifier("vegan::varespec, CCA : valeurs propres, scores (échelle 2), test = vegan", {
+    sv <- vegan::scores(cvc, choices = 1:5, display = c("sites", "species", "bp"), scaling = 2)
+    sn <- scores_cca(mvc, 2)
+    proche(mvc$noyau$contraint$eig, cvc$CCA$eig) && proche(sn$sites[, 1:5], sv$sites) && proche(sn$reponses[, 1:5], sv$species) && proche(sn$biplot[, 1:5], sv$biplot) &&
+      (!vegan_27 || identical(mvc$test$p, vegan::anova.cca(cvc, permutations = pv(Pv))[["Pr(>F)"]][1]))
+  })
+  if (vegan_27) {
+    sel_c <- selection_rda(mvc, Pv)
+    hv <- e2$varespec
+    vc2 <- e2$varechem
+    suppressPackageStartupMessages(library("vegan", character.only = TRUE))
+    pas_c <- suppressMessages(vegan::ordiR2step(vegan::cca(hv ~ 1, data = vc2), scope = stats::formula(cvc), permutations = pv(Pv), R2permutations = pv(Pv), trace = FALSE))
+    detach("package:vegan")
+    tc <- attr(stats::terms(pas_c), "term.labels")
+    verifier(sprintf("vegan::varespec, CCA : sélection pas à pas (%s), R² ajustés et p = ordiR2step", paste(tc, collapse = ", ")),
+             identical(sel_c$retenus, tc) && (!length(tc) || (proche(sel_c$etapes$r2_ajuste[sel_c$etapes$retenu], pas_c$anova$R2.adj[seq_along(tc)]) &&
+                                                                 proche(sel_c$etapes$p[sel_c$etapes$retenu], pas_c$anova[["Pr(>F)"]][seq_along(tc)]))))
+  }
+}
+
 cat("Une condition (onglet Observations : condition.R)\n")
 # la RDA des relevés où habitat != "marais" & altitude > 760 (le relevé sans pH laissé de côté
 # s'il en est) : celle des mêmes lignes calculée directement, et celle de vegan quand il est là
@@ -307,6 +448,41 @@ rp <- demande_analyse_rda_partition(list(modele = "M3"))
 verifier("partition à la demande", nrow(rp$fractions) == 8 && inherits(json(rp), "json"))
 invisible(garder("M5", dcond, mcond))
 verifier("RDA à condition : sa condition dans ses réglages (Modifier le modèle)", identical(resultat("M5")$reglages$condition, dcond$condition))
+rcc <- resultat(garder("M6", dcca, mcca))
+verifier("CCA : analyse sans prédiction, échelles 1 à 3, flèches des X quantitatifs, centroïdes, R² ajusté par permutation",
+         isTRUE(rcc$analyse) && identical(rcc$type, "CCA") && length(rcc$ordination) == 3 && identical(as.character(rcc$ordination$`2`$noms_biplot), c("temp", "ph")) &&
+           nrow(rcc$ordination$`3`$centroides) == 3 && grepl("^R2aj ", rcc$chiffres) && identical(names(rcc$observations)[3], "CCA1") && inherits(json(rcc), "json"))
+rtc <- demande_analyse_rda_tests(list(modele = "M6"))
+verifier("CCA : tests à la demande par axe (4 + résidus), séquentiels et marginaux (3 + résidus), gardés avec le modèle",
+         nrow(rtc$axes) == 5 && nrow(rtc$sequentiels) == 4 && nrow(rtc$termes) == 4 && !is.null(etat$modeles$M6$modele$tests$sequentiels) && inherits(json(rtc), "json"))
+rsc <- demande_analyse_rda_selection(list(modele = "M6"))
+verifier("CCA : sélection à la demande ; partition refusée", length(rsc$etapes$terme) >= 1 && inherits(json(rsc), "json") &&
+           grepl("pas pour une CCA", refus(demande_analyse_rda_partition(list(modele = "M6")))))
+invisible(garder("M7", dccz, mccz))
+verifier("CCA partielle : ses réglages (Z, groupes des permutations) pour Modifier le modèle",
+         identical(as.numeric(resultat("M7")$reglages$options$z), u("pente")) && identical(resultat("M7")$strates, "site"))
+dcc0 <- definir_modele(p, "CCA", x = u("temp"), y = u(especes), echelle = "none", options = list(permutations = 0))
+mcc0 <- ajuster(p, dcc0)
+verifier("CCA sans permutation : pas de p ni de R² ajusté, le R² seul", is.na(mcc0$test$p) && is.na(mcc0$r2_ajuste) && grepl("^R2 ", resultat(garder("M8", dcc0, mcc0))$chiffres))
+for (langue in c("fr", "en")) {
+  tcc <- texte_methodes(p, dcca, etat$modeles$M6$modele, langue, "essai")
+  tcz <- texte_methodes(p, dccz, mccz, langue, "essai")
+  verifier(sprintf("texte des méthodes (%s) : CCA, R² ajusté par permutation, tests, sélection ; CCA partielle ; références", langue),
+           any(grepl(if (langue == "fr") "analyse canonique des correspondances" else "canonical correspondence analysis", tcc$paragraphes)) &&
+             any(grepl("Peres-Neto", tcc$paragraphes)) && any(grepl("Blanchet", tcc$paragraphes)) && any(grepl("Legendre et al., 2011", tcc$paragraphes)) &&
+             any(grepl(if (langue == "fr") "CCA partielle" else "partial CCA", tcz$paragraphes)) && any(grepl("ter Braak, C. J. F. (1986)", tcc$references, fixed = TRUE)) &&
+             !any(grepl("SIMCA", c(tcc$paragraphes, tcz$paragraphes))))
+}
+tcc <- tables_resultats(p, etat$modeles$M6$modele)
+verifier("CCA : tableaux exportés, échelles 1 à 3, tests séquentiels", all(vapply(tcc, is.data.frame, TRUE)) &&
+           all(c("observations", "observations_echelle_3", "reponses_echelle_3", "centroides_echelle_3", "tests_axes", "tests_sequentiels", "tests_termes", "selection") %in% names(tcc)))
+negc <- p
+negc$donnees[1, as.character(u("temp"))] <- -1
+verifier("refus : CCA sans X, de valeurs négatives, d'une espèce qualitative ou seule",
+         grepl("correspondances", refus(ajuster(p, definir_modele(p, "CCA", x = NULL, y = u(especes), echelle = "none")))) &&
+           grepl("positives", refus(ajuster(negc, definir_modele(negc, "CCA", x = u("ph"), y = u("temp", "pente"), echelle = "none")))) &&
+           grepl("habitat", refus(ajuster(p, definir_modele(p, "CCA", x = u("temp"), y = u("habitat", "sp01"), echelle = "none")))) &&
+           grepl("deux espèces", refus(ajuster(p, definir_modele(p, "CCA", x = u("temp"), y = u("sp01"), echelle = "none")))))
 rc <- resultat(garder("M4", dc, mc))
 verifier("CA : contributions et cos² des lignes et des colonnes, échelles 1 à 3", isTRUE(rc$analyse) && nrow(rc$contributions$lignes) == 40 &&
            all(c("ctr_CA1", "cos2_CA1", "masse", "inertie") %in% names(rc$contributions$colonnes)) && length(rc$ordination) == 3 && inherits(json(rc), "json"))
@@ -359,20 +535,23 @@ lancer <- function(script, objets) {
 }
 cas <- list(list(id = "M1", langue = "fr", quoi = "RDA, tests par axe et par terme, sélection"), list(id = "M2", langue = "en", quoi = "RDA partielle permutée par site"),
             list(id = "M3", langue = "fr", quoi = "RDA, partition de la variance"), list(id = "M4", langue = "en", quoi = "analyse des correspondances"),
-            list(id = "M5", langue = "en", quoi = "RDA à condition, ses lignes choisies par elle"))
+            list(id = "M5", langue = "en", quoi = "RDA à condition, ses lignes choisies par elle"),
+            list(id = "M6", langue = "fr", quoi = "CCA, tests par axe, séquentiels et par terme, sélection"),
+            list(id = "M7", langue = "en", quoi = "CCA partielle permutée par site"), list(id = "M8", langue = "en", quoi = "CCA sans permutation"))
 for (k in cas) {
   e <- etat$modeles[[k$id]]
   r <- ecrire_script(p, e$definition, file.path(dossier, paste0(k$id, ".R")), "moteur", m = e$modele, version = "essai", langue = k$langue)
   n <- function(x) nom_ordination(x, k$langue)
-  s <- lancer(r$script, c(n("m"), n("valeurs_propres"), if (e$modele$type == "RDA") c(n("r2"), n("test"))))
+  contrainte <- e$modele$type %in% c("RDA", "CCA")
+  s <- lancer(r$script, c(n("m"), n("valeurs_propres"), if (contrainte) c(n("r2"), n("test"))))
   texte <- readLines(r$script, encoding = "UTF-8")
   sm <- s[[n("m")]]
-  memes <- length(s) && if (e$modele$type == "RDA") {
+  memes <- length(s) && if (contrainte) {
     proche(c(sm[[n("contraint")]][[n("valeurs_propres")]], sm[[n("residuel")]][[n("valeurs_propres")]]), c(e$modele$noyau$contraint$eig, e$modele$noyau$residuel$eig)) &&
-      proche(s[[n("r2")]][[n("ajuste")]], e$modele$r2_ajuste) && identical(unname(s[[n("test")]][["p"]]), e$modele$test$p)
+      isTRUE(all.equal(s[[n("r2")]][[n("ajuste")]], e$modele$r2_ajuste)) && identical(unname(s[[n("test")]][["p"]]), if (e$modele$options$permutations > 0) e$modele$test$p)
   } else proche(sm[[n("valeurs_propres")]], e$modele$noyau$eig)
   verifier(sprintf("%s (%s) : sans écart vu par le moteur ; lancé seul, mêmes valeurs propres%s ; R seul, en %s", k$id, k$quoi,
-                   if (e$modele$type == "RDA") ", R² ajusté et p" else "", k$langue),
+                   if (contrainte) ", R² ajusté et p" else "", k$langue),
            is.null(r$ecart) && memes && !any(grepl("library(", sub("#.*$", "", texte), fixed = TRUE)) && !any(grepl("vegan::", sub("#.*$", "", texte), fixed = TRUE)) &&
              (k$langue == "fr" || (any(grepl("^redundancy_analysis <- function|^correspondence_analysis <- function", texte)) && !any(grepl("^ *#(fr|en)( |$)", texte)))))
   if (!is.null(r$ecart) || !isTRUE(memes)) cat("    écart :", r$ecart, "/", utils::tail(attr(s, "messages"), 3), "\n")

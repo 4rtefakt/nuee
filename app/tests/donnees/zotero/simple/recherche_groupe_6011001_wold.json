@@ -1,0 +1,29 @@
+[
+    {
+        "key": "JLXH5HBC",
+        "version": 2,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/items/JLXH5HBC",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "creatorSummary": "Wold et al.",
+            "parsedDate": "2001",
+            "numChildren": 0
+        },
+        "bibtex": "\n@article{wold_pls-regression_2001,\n\ttitle = {{PLS}-regression: a basic tool of chemometrics},\n\tvolume = {58},\n\tdoi = {10.1016/S0169-7439(01)00155-1},\n\tlanguage = {en},\n\tnumber = {2},\n\tjournal = {Chemometrics and Intelligent Laboratory Systems},\n\tauthor = {Wold, Svante and Sjöström, Michael and Eriksson, Lennart},\n\tyear = {2001},\n\tpages = {109--130},\n}\n"
+    }
+]

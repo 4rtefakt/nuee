@@ -31,6 +31,8 @@ contributions <- function(m, observations, type = c("DModX", "score", "T2"), com
 # avec plus de 50 % de valeurs manquantes, et variables sans variance (constantes).
 # Renvoie une ligne par variable concernée (avec ses termes) et par observation concernée.
 verifier_donnees <- function(projet, definition, limite = 0.5) {
+  f <- if (est_autre_analyse(definition)) fonction_analyse("verifier_", definition$type)  # (analyses.R : une analyse qui vérifie elle-même ses données)
+  if (!is.null(f)) return(f(projet, definition))
   obs <- definition$observations
   bx <- construire_bloc(projet, definition$x, obs)
   by <- if (length(definition$y)) construire_bloc(projet, definition$y, obs, facteurs = bx$simples)
@@ -41,14 +43,14 @@ verifier_donnees <- function(projet, definition, limite = 0.5) {
     v <- X[!is.na(X[, k]), k]
     length(v) < 2 || stats::sd(v) == 0
   }, TRUE)
-  # par variable : le pire de ses termes simples (une variable qualitative en a plusieurs)
+  # par variable : le pire de ses termes simples (une variable qualitative en a plusieurs ; un seul
+  # data.frame pour toutes : un par variable, empilés, prenait des secondes pour des spectres)
   simples <- which(vapply(termes, function(t) length(t$variables) == 1, TRUE))
   uid <- vapply(termes[simples], function(t) as.numeric(t$variables), 0)
-  vars <- do.call(rbind, lapply(unique(uid), function(u) {
-    k <- simples[uid == u]
-    data.frame(uid = u, nom = unname(projet$noms_var[as.character(u)]), manquantes = max(manque[k]),
-               constante = all(constant[k]))
-  }))
+  us <- unique(uid)
+  k <- lapply(us, function(u) simples[uid == u])
+  vars <- if (length(us)) data.frame(uid = us, nom = unname(projet$noms_var[as.character(us)]), manquantes = vapply(k, function(i) max(manque[i]), 0),
+                                     constante = vapply(k, function(i) all(constant[i]), TRUE))
   vars <- if (is.null(vars)) data.frame() else vars[vars$manquantes > limite | vars$constante, , drop = FALSE]
   manque_obs <- if (ncol(bx$X)) rowMeans(is.na(bx$X)) else rep(0, length(obs))  # (une régression sans X : le modèle nul)
   garde <- manque_obs > limite
@@ -74,6 +76,9 @@ verifier_donnees <- function(projet, definition, limite = 0.5) {
 # nulle (en valeur absolue), plus cette valeur s'il y a des valeurs négatives. La règle
 # publiée ne dit pas si les deux critères doivent être réunis : on les exige tous les deux, car une variable
 # symétrique ou qui varie peu en proportion ne gagne rien au logarithme.
+# Pour Modèle › Quelle analyse ? (choix_analyse.js), deux colonnes de plus parmi les valeurs connues :
+# entiers (toutes des nombres entiers : un comptage, une présence-absence) et zeros (la part de
+# zéros, en %).
 statistiques_variables <- function(projet, observations = NULL) {
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
@@ -86,8 +91,10 @@ statistiques_variables <- function(projet, observations = NULL) {
                         min = NA_real_, max = NA_real_, min_max = NA_real_, moyenne = NA_real_, mediane = NA_real_,
                         ecart_type = NA_real_, et_moyenne = NA_real_, asymetrie = NA_real_, test_asymetrie = NA_real_,
                         aplatissement = NA_real_, rouge_min_max = FALSE, rouge_asymetrie = FALSE,
-                        suggestion = NA_character_, C2 = NA_real_, stringsAsFactors = FALSE)
+                        suggestion = NA_character_, C2 = NA_real_, entiers = NA, zeros = NA_real_, stringsAsFactors = FALSE)
     if (ligne$qualitative || !n) return(ligne)
+    ligne$entiers <- all(abs(ok - round(ok)) < 1e-8)
+    ligne$zeros <- 100 * mean(ok == 0)
     m <- mean(ok)
     s <- if (n > 1) stats::sd(ok) else NA_real_
     ligne[c("min", "max", "moyenne", "mediane", "ecart_type")] <- list(min(ok), max(ok), m, stats::median(ok), s)

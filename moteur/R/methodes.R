@@ -17,8 +17,21 @@ REFERENCES <- list(
   r = "R Core Team (%s). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/",
   nuee = "4rtefakt (%s). Nuée%s [Computer software]. https://github.com/4rtefakt/nuee")
 
+# (pour tous les types : d'où viennent les variables lues dans des rasters, à la fin du premier
+# paragraphe, celui des données ; raster.R ; et, au début, l'outil de terrain qui a recueilli les
+# données d'un projet importé de KoboToolbox ou d'ODK : kobo.R)
 texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   langue <- match.arg(langue)
+  r <- texte_methodes_type(projet, d, m, langue, version)
+  uids <- suppressWarnings(as.numeric(c(unlist(lapply(c(d$x, d$y), function(t) t$variables)), unlist(d$classe))))
+  phrase <- phrase_methodes_raster(projet, unique(uids[!is.na(uids)]), langue == "fr")
+  if (!is.null(phrase)) r$paragraphes <- if (length(r$paragraphes)) c(paste(r$paragraphes[1], phrase), r$paragraphes[-1]) else phrase
+  collecte <- phrase_methodes_collecte(projet, langue == "fr")
+  if (!is.null(collecte)) r$paragraphes <- if (length(r$paragraphes)) c(paste(collecte, r$paragraphes[1]), r$paragraphes[-1]) else collecte
+  r
+}
+
+texte_methodes_type <- function(projet, d, m, langue, version) {
   if (est_regression(d)) return(texte_methodes_regression(projet, d, m, langue, version))  # regression.R
   if (est_autre_analyse(d)) return(fonction_analyse("texte_methodes_", d$type)(projet, d, m, langue, version))  # analyses.R
   fr <- langue == "fr"
@@ -60,8 +73,10 @@ texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
                              liste(sprintf("%s (n = %d)", sub("^.*\\(([^()]*)\\)$", "\\1", classes), effectifs))))
   } else if (pls) {
     ny <- m$y$noms
-    p1 <- c(p1, if (fr) sprintf("%s : %s.", if (length(ny) > 1) sprintf("Les %d variables Y", length(ny)) else "La variable Y", liste(guillemets(ny)))
-                else sprintf("%s: %s.", if (length(ny) > 1) sprintf("The %d Y variables", length(ny)) else "The Y variable", liste(guillemets(ny))))
+    # (chacune avec son unité, quand elle en a une : atelier.R)
+    noms_y <- paste0(guillemets(ny), vapply(ny, function(n) unite_texte(projet, n), ""))
+    p1 <- c(p1, if (fr) sprintf("%s : %s.", if (length(ny) > 1) sprintf("Les %d variables Y", length(ny)) else "La variable Y", liste(noms_y))
+                else sprintf("%s: %s.", if (length(ny) > 1) sprintf("The %d Y variables", length(ny)) else "The Y variable", liste(noms_y)))
   }
 
   # --- prétraitement

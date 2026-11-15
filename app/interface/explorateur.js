@@ -22,7 +22,9 @@ export const vuesDe = (m) => ((typeof VUES_TYPES[m.type] === 'function' ? VUES_T
 // R2 and Q2 of a fitted model, for its line in the explorer
 const chiffresModele = (m) => (m.chiffres ? m.chiffres : m.regression
   ? `${m.qualite.marginal !== undefined ? `R2m ${fmt(m.qualite.marginal, 2)} · R2c ${fmt(m.qualite.conditionnel, 2)}`
-    : `R2 ${fmt(m.qualite.r2 ?? m.qualite.r2_ajuste, 2)}`} · Q2 ${fmt(m.qualite.Q2, 2)} · AIC ${fmt(m.qualite.AIC, 1)}`
+    // (a zero-inflated Poisson has no R2, only the deviance explained: D2)
+    : (m.qualite.r2 ?? m.qualite.r2_ajuste) == null && m.qualite.deviance_expliquee != null
+      ? `D2 ${fmt(m.qualite.deviance_expliquee, 2)}` : `R2 ${fmt(m.qualite.r2 ?? m.qualite.r2_ajuste, 2)}`} · Q2 ${fmt(m.qualite.Q2, 2)} · AIC ${fmt(m.qualite.AIC, 1)}`
   : `R2X ${fmt(m.composantes.R2Xcum[m.A - 1], 2)}${m.composantes.R2Ycum ? ' · R2Y ' + fmt(m.composantes.R2Ycum[m.A - 1], 2) : ''} · Q2 ${fmt(m.composantes.Q2cum[m.A - 1], 2)}`);
 
 export function rendreExplorateur(conteneur, app) {
@@ -118,16 +120,21 @@ export function rendreExplorateur(conteneur, app) {
     // the project's documents (documents.js)
     const noeudDocument = (d) => noeud({ cle: `${p.id}/doc/${d.id}`, niveau: 3, ic: 'file-text', libelle: d.titre || t('document_sans_titre'),
       double: () => app.ouvrirDocument(p.id, d.id), menu: () => app.menuDocument(p.id, d.id) });
+    // its figures for publication (figures.js)
+    const noeudFigure = (f) => noeud({ cle: `${p.id}/fig/${f.id}`, niveau: 3, ic: 'layout-grid', libelle: f.titre || t('figure_sans_titre'),
+      double: () => app.ouvrirFigure(p.id, f.id), menu: () => app.menuFigure(p.id, f.id) });
     return noeud({
       cle: p.id, niveau: 1, ic: 'folder', libelle: [el('b', {}, p.nom), p.modifie ? el('span', { class: 'badge alerte', title: t('modifie') }, '●') : null],
       titre: p.source,
       menu: () => [
         { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
         { libelle: t('nouveau_document'), icone: 'file-text', action: () => app.nouveauDocument(p.id) },
+        { libelle: t('figure_composer'), icone: 'layout-grid', action: () => app.composerFigure(p.id) },
         { libelle: t('donnees'), icone: 'database', action: () => app.ouvrirVue('donnees', null, null, p.id) },
         { libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) },
         { libelle: t('tests_variables'), icone: 'flask-conical', action: () => app.ouvrirVue('tests', null, null, p.id) },
         { libelle: t('series'), icone: ICONES_VUES.series, action: () => app.ouvrirVue('series', null, null, p.id) },
+        { libelle: t('carte'), icone: 'map', action: () => app.ouvrirVue('carte', null, null, p.id) },
         '-',
         { libelle: t('enregistrer'), icone: 'save', action: () => app.enregistrer(p.id, false) },
         { libelle: t('enregistrer_sous'), action: () => app.enregistrer(p.id, true) },
@@ -140,8 +147,12 @@ export function rendreExplorateur(conteneur, app) {
           double: () => app.ouvrirVue('donnees', null, null, p.id),
           menu: () => [{ libelle: t('donnees'), icone: 'database', action: () => app.ouvrirVue('donnees', null, null, p.id) },
             { libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) },
+            { libelle: t('atelier_remplacer'), icone: 'search', action: () => app.remplacerDonnees(p.id) },
+            { libelle: t('atelier_categories'), icone: 'tag', actif: p.variables.some((v) => v.qualitative), action: () => app.categoriesVariable(p.id) },
+            { libelle: t('atelier_variables'), icone: 'ruler', action: () => app.variablesProjet(p.id) },
             { libelle: t('nouvelle_variable'), icone: 'calculator', action: () => app.nouvelleVariable(p.id) },
             { libelle: t('ajouter_colonnes'), icone: 'file-spreadsheet', action: () => app.ajouterColonnes(p.id) },
+            { libelle: t('raster_valeurs'), icone: 'layers', action: () => app.valeursRaster(p.id) },
             { libelle: t('resumer_groupes'), icone: 'sigma', action: () => app.resumerGroupes(p.id) },
             { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
             { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) }] }),
@@ -157,10 +168,18 @@ export function rendreExplorateur(conteneur, app) {
         noeud({ cle: `${p.id}/series`, niveau: 2, ic: ICONES_VUES.series, libelle: t('series'),
           double: () => app.ouvrirVue('series', null, null, p.id),
           menu: () => [{ libelle: t('series'), icone: ICONES_VUES.series, action: () => app.ouvrirVue('series', null, null, p.id) }] }),
+        noeud({ cle: `${p.id}/carte`, niveau: 2, ic: 'map', libelle: t('carte'), details: p.coordonnees ? `${p.coordonnees.nom_x}, ${p.coordonnees.nom_y}` : '',
+          double: () => app.ouvrirVue('carte', null, null, p.id),
+          menu: () => [{ libelle: t('carte'), icone: 'map', action: () => app.ouvrirVue('carte', null, null, p.id) },
+            { libelle: t('autocorrelation_spatiale'), icone: 'radar', action: () => app.ouvrirVue('autocorrelation_spatiale', null, null, p.id) }] }),
+        noeud({ cle: `${p.id}/rarefaction`, niveau: 2, ic: 'chart-spline', libelle: t('rarefaction'),
+          double: () => app.ouvrirVue('rarefaction', null, null, p.id),
+          menu: () => [{ libelle: t('rarefaction'), icone: 'chart-spline', action: () => app.ouvrirVue('rarefaction', null, null, p.id) }] }),
         groupe('importes', t('modeles_fichier'), 'layout-dashboard', importes, def),
         groupe('propres', t('modeles_projet'), 'layout-dashboard', propres, def),
         groupe('calcules', t('modeles_r'), 'sigma', calcules, modele),
         groupe('documents', t('documents'), 'file-text', [].concat(p.documents || []), noeudDocument),
+        groupe('figures', t('figure_figures'), 'layout-grid', [].concat(p.figures || []), noeudFigure),
         groupe('predictions', t('jeux_prediction'), 'target', p.predictions || [], (s, i) => noeud({
           cle: `${p.id}/ps/${i}`, niveau: 3, ic: 'list', libelle: s.nom || `${t('jeu_prediction')} ${i + 1}`, details: `${s.n_obs} ${t('obs')}` })),
       ],

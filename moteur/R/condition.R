@@ -223,7 +223,8 @@ plan_condition <- function(projet, d, tab) {
   e <- lire_condition(projet, d$condition)
   texte <- paste(deparse(e, width.cutoff = 500L, control = c("keepInteger", "digits17"), backtick = TRUE), collapse = " ")
   n <- noms_condition(projet)
-  traduits <- c(names(NOMS_SCRIPT_EN), names(NOMS_CLASSEMENT_EN), names(NOMS_ORDINATION_EN))
+  traduits <- c(names(NOMS_SCRIPT_EN), names(NOMS_CLASSEMENT_EN), names(NOMS_ORDINATION_EN), names(NOMS_COMMUNAUTES_EN),
+                names(NOMS_TRIM_EN), names(NOMS_FORET_EN), names(NOMS_BOOST_EN), names(NOMS_DISTANCE_EN))
   pd <- utils::getParseData(parse(text = texte, keep.source = TRUE, encoding = "UTF-8"))
   pd <- pd[pd$terminal & pd$token == "SYMBOL", , drop = FALSE]
   pd <- pd[order(-pd$col1), , drop = FALSE]  # (une seule ligne : de droite à gauche)

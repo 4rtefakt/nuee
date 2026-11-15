@@ -42,7 +42,7 @@ let arretVoulu = false;  // R stopped on purpose (restart), not a crash
 // R in its environment and to the windows in a cookie no other site can send.
 const jeton = crypto.randomBytes(32).toString('hex');
 const cookieR = () => `nuee_${port}`;
-let langue = 'fr';  // the interface's, for the dialogs shown from here
+let langue = 'en';  // the interface's (English until it says), for the dialogs shown from here
 // Recovery copies of the projects not saved yet, written regularly by the interface; they
 // are deleted when the application closes normally.
 const dossierSecours = () => path.join(app.getPath('userData'), 'secours');
@@ -492,27 +492,39 @@ function ipc() {
   // Zotero on this computer, for a document's citations (zotero.js: its local API and Better
   // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
   recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
-  recevoir('quarto', (_, chemin, format) => new Promise((ok) => {
+  // (options.R: the bin folder of an R that has knitr and rmarkdown, for the R chunks of a
+  // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own)
+  recevoir('quarto', (_, chemin, format, options = {}) => new Promise((ok) => {
     const quarto = trouverQuarto();
     if (!quarto) return ok({ erreur: 'quarto_absent' });
     if (!['docx', 'html', 'typst'].includes(format) || !/\.qmd$/i.test(String(chemin))) return ok({ erreur: 'demande' });
     const dossier = path.dirname(chemin);
     const sortie = path.join(dossier, path.basename(chemin).replace(/\.qmd$/i, format === 'typst' ? '.pdf' : `.${format}`));
+    const R = options && typeof options.R === 'string' && !process.env.QUARTO_R && fs.existsSync(options.R) ? options.R : null;
     let journal = '';
-    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true });
+    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true, env: R ? { ...process.env, QUARTO_R: R } : process.env });
     q.stdout.on('data', (d) => { journal += d; });
     q.stderr.on('data', (d) => { journal += d; });
     q.on('error', (e) => ok({ erreur: e.message }));
     q.on('close', (code) => ok(code === 0 && fs.existsSync(sortie) ? { sortie } : { erreur: journal.slice(-3000) || `quarto: ${code}` }));
   }));
-  recevoir('imprimer-pdf', async (_, html, chemin) => {
+  // (format: a figure's page, { largeur, hauteur } in mm (figures.js), printed at that size
+  // without margins, its first page only; otherwise A4. Its size is taken from the page's own
+  // @page rule: Chromium puts a page on a grid of 1/300 inch, and from pageSize in inches it came
+  // out up to 0.3 mm too large, from @page within 0.1 mm)
+  recevoir('imprimer-pdf', async (_, html, chemin, format) => {
     const page = path.join(app.getPath('temp'), `rapport-${process.pid}-${Date.now()}.html`);
     await fs.promises.writeFile(page, html, 'utf8');
     const f = new BrowserWindow({ show: false, webPreferences: { offscreen: false, javascript: false } });
     cachees.add(f);
+    const mm = (x) => Number(x) >= 10 && Number(x) <= 1000;
+    const options = format && mm(format.largeur) && mm(format.hauteur)
+      ? { pageSize: { width: format.largeur / 25.4, height: format.hauteur / 25.4 }, preferCSSPageSize: true, printBackground: true,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 }, pageRanges: '1' }
+      : { pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } };
     try {
       await f.loadFile(page);
-      const pdf = await f.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } });
+      const pdf = await f.webContents.printToPDF(options);
       await fs.promises.writeFile(chemin, pdf);
     } finally {
       f.destroy();
@@ -664,7 +676,11 @@ async function telechargerInstallateur(a, progression) {
 
 // Once Nuée has closed, the installer runs silently, in the same mode (for all users when it
 // was installed so, which Windows asks to allow: installation.js; for this user otherwise) and folder;
-// then Nuée starts again, with the same profile. cmd.exe waits two seconds (Nuée has closed) by
+// then Nuée starts again, with the same profile. --updated tells the installer it is an update:
+// it then keeps the Start menu and desktop shortcuts and the application's taskbar identity, so a
+// pin on the taskbar survives. Without it, an installer that lets one choose the folder
+// (allowToChangeInstallationDirectory) has the old version's uninstaller delete the shortcuts and
+// makes new ones, and Windows drops the pin with them. cmd.exe waits two seconds (Nuée has closed) by
 // running this executable as Node, a program without a console (ping, a console program run by
 // a cmd.exe that has none, opened a black window), then for the installer; the paths reach it
 // through environment variables. A go-between starts it and ends at once (this executable run
@@ -675,7 +691,7 @@ function installerPuisRelancer(fichier) {
   const pourTous = require('./installation').pourTousLesUtilisateurs(dossier);
   const relance = process.argv.slice(1).filter((x) => /^--(user-data-dir|remote-debugging-port)=/.test(x)).map((x) => `"${x}"`).join(' ');
   const commande = `start "" /wait "%NUEE_EXE%" -e "setTimeout(Boolean, 2000)" & set "ELECTRON_RUN_AS_NODE="`
-    + ` & start "" /wait "%NUEE_INSTALLATEUR%" /S ${pourTous ? '/allusers' : '/currentuser'}`
+    + ` & start "" /wait "%NUEE_INSTALLATEUR%" /S --updated ${pourTous ? '/allusers' : '/currentuser'}`
     + (/^[^&|<>^%"]+$/.test(dossier) ? ' /D=%NUEE_DOSSIER%' : '') + ` & start "" "%NUEE_EXE%"${relance ? ' %NUEE_RELANCE%' : ''}`;
   // (cmd.exe keeps ELECTRON_RUN_AS_NODE for the wait, then drops it: the installer, then Nuée)
   const relais = `require('child_process').spawn('cmd.exe', ['/d', '/s', '/c', '"' + process.env.NUEE_COMMANDE + '"'], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();`;

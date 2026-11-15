@@ -1,0 +1,102 @@
+[
+    {
+        "key": "SEY7AYPR",
+        "version": 14,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/collections/SEY7AYPR",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 0,
+            "numItems": 300
+        },
+        "data": {
+            "key": "SEY7AYPR",
+            "version": 14,
+            "name": "Beaucoup",
+            "parentCollection": false,
+            "relations": {}
+        }
+    },
+    {
+        "key": "IYEWRT45",
+        "version": 9,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/collections/IYEWRT45",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 1,
+            "numItems": 2
+        },
+        "data": {
+            "key": "IYEWRT45",
+            "version": 9,
+            "name": "Flamants",
+            "parentCollection": false,
+            "relations": {}
+        }
+    },
+    {
+        "key": "V5WRAHLH",
+        "version": 10,
+        "library": {
+            "type": "group",
+            "id": 6011001,
+            "name": "Équipe Camargue",
+            "links": {
+                "self": {
+                    "href": "http://localhost:23119/api/groups/6011001",
+                    "type": "application/json"
+                }
+            }
+        },
+        "links": {
+            "self": {
+                "href": "http://localhost:23119/api/groups/6011001/collections/V5WRAHLH",
+                "type": "application/json"
+            },
+            "up": {
+                "href": "http://localhost:23119/api/groups/6011001/collections/IYEWRT45",
+                "type": "application/json"
+            }
+        },
+        "meta": {
+            "numCollections": 0,
+            "numItems": 1
+        },
+        "data": {
+            "key": "V5WRAHLH",
+            "version": 10,
+            "name": "Reproduction",
+            "parentCollection": "IYEWRT45",
+            "relations": {}
+        }
+    }
+]

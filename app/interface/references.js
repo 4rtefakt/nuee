@@ -5,7 +5,8 @@
 // A reference is written {{target[:format] [#label] [| caption]}}:
 //   - target: a model of the project by its name (M1, or "M2 (1)": names can hold spaces), a dot,
 //     then what to take from it: a value (Q2, R2Y, N, gain, vip.sucre, coef.annee...), a table
-//     (table.composantes), a plot (scores, loadings, vip...) or the Methods text (methodes);
+//     (table.composantes), a plot (scores, loadings, vip...), the Methods text (methodes) or the
+//     results text (resultats, moteur/R/resultats_texte.R);
 //     or ref:<label>, the number of a figure or table labelled #<label> ("Figure 2");
 //   - format: a number of decimals (:3), or a percentage (:% or :%1);
 //   - #label: a name for a figure or table, for {{ref:label}} elsewhere;
@@ -99,20 +100,40 @@ const decimalesSignificatives = (x, significatifs = 3) => {
 };
 
 // An estimate with its interval, all with the estimate's decimals (3 significant digits unless
-// the reference asks for decimals): "−0,123 [−0,201 ; −0,046]".
-function avecIntervalle(est, bas, haut, ref, langue) {
-  const d = /^\d$/.test(ref.format) ? Number(ref.format) : decimalesSignificatives(est);
+// `decimales` is given): "−0,123 [−0,201 ; −0,046]".
+function avecIntervalle(est, bas, haut, decimales, langue) {
+  const d = Number.isInteger(decimales) ? decimales : decimalesSignificatives(est);
   const n = (x) => nombre(x, { decimales: d, langue });
   return { n, ic: Number.isFinite(bas) && Number.isFinite(haut) ? `[${n(bas)}${langue === 'fr' ? ' ; ' : ', '}${n(haut)}]` : '' };
 }
+// (the decimals a reference asks for, :3; null otherwise)
+const decimalesDe = (ref) => (/^\d$/.test(ref.format) ? Number(ref.format) : null);
 
-// A value with the format of its reference (:3 decimals, :% or :%1), else its own defaults.
-function enTexte(v, ref, langue, defaut = {}) {
-  if (/^%/.test(ref.format)) return pourcentage(v, { decimales: Number(ref.format.slice(1) || 0), langue });
-  if (/^\d$/.test(ref.format)) return nombre(v, { decimales: Number(ref.format), langue });
-  if (defaut.pourcentage) return pourcentage(v, { decimales: defaut.decimales ?? 0, langue });
-  if (defaut.entier) return nombre(v, { decimales: 0, langue });
-  return nombre(v, { decimales: defaut.decimales ?? 2, significatifs: defaut.significatifs ?? null, langue });
+// How a value is written, with the format of its reference (:3 decimals, :% or :%1), else its own defaults.
+function formeValeur(x, ref, defaut = {}) {
+  if (/^%/.test(ref.format)) return { forme: 'pourcentage', x, decimales: Number(ref.format.slice(1) || 0) };
+  if (/^\d$/.test(ref.format)) return { forme: 'nombre', x, decimales: Number(ref.format) };
+  if (defaut.pourcentage) return { forme: 'pourcentage', x, decimales: defaut.decimales ?? 0 };
+  if (defaut.entier) return { forme: 'nombre', x, decimales: 0 };
+  return { forme: 'nombre', x, decimales: defaut.decimales ?? 2, significatifs: defaut.significatifs ?? null };
+}
+
+// A value as text (formeReference says how), in the document's language.
+export function texteForme(f, langue = 'fr') {
+  switch (f.forme) {
+    case 'pourcentage': return pourcentage(f.x, { decimales: f.decimales, langue });
+    case 'p': return valeurP(f.x, { langue, decimales: f.decimales });
+    case 'coef': {
+      const { n, ic } = avecIntervalle(f.est, f.bas, f.haut, f.decimales, langue);
+      const p = valeurP(f.p, { langue });
+      return f.quoi === 'est' ? n(f.est) : f.quoi === 'ic' ? ic : f.quoi === 'p' ? p : `${n(f.est)} ${ic}, ${p}`;
+    }
+    case 'coef_cs': {
+      const { n, ic } = avecIntervalle(f.est, f.est - f.ic, f.est + f.ic, f.decimales, langue);
+      return ic ? `${n(f.est)} ${ic}` : n(f.est);
+    }
+    default: return nombre(f.x, { decimales: f.decimales, significatifs: f.significatifs, langue });
+  }
 }
 
 // ------------------------------------------------------------ what a model offers
@@ -165,35 +186,45 @@ const termesComposantes = (m) => colonne(m.variables && m.variables.terme);
 // The value a reference gives, as text: { texte } or { erreur }. `m`: the model's results (as
 // the interface has them); `chemin`: what follows the model's name.
 export function valeurReference(m, chemin, ref, langue = 'fr') {
+  const f = formeReference(m, chemin, ref);
+  return f.erreur ? f : { texte: texteForme(f, langue) };
+}
+
+// What a reference gives before it is written (texteForme writes it): a number { forme: 'nombre',
+// x, decimales, significatifs }, a percentage { forme: 'pourcentage', x, decimales }, a p-value
+// { forme: 'p', x, decimales }, a regression's coefficient { forme: 'coef', quoi (coef, est, ic or p),
+// est, bas, haut, p, decimales }, a PLS coefficient with its interval { forme: 'coef_cs', est, ic,
+// decimales }; or { erreur }. A reproducible Quarto file writes the same in R (documents.js;
+// moteur/R/document_reproductible.R).
+export function formeReference(m, chemin, ref) {
   const [nom, ...reste] = chemin;
   const err = (e) => ({ erreur: e });
   if (m.regression) {
-    if (['coef', 'est', 'p', 'ic'].includes(nom)) return coefficientRegression(m, nom, reste.join('.'), ref, langue);
+    if (['coef', 'est', 'p', 'ic'].includes(nom)) return coefficientRegression(m, nom, reste.join('.'), ref);
     const v = VALEURS_REGRESSION[nom];
     if (!v || (v.si && !v.si(m))) return err('valeur_inconnue');
-    return { texte: enTexte(v.f(m, reste), ref, langue, v) };
+    return formeValeur(v.f(m, reste), ref, v);
   }
   if (nom === 'vip' && reste.length) {
     const i = termesComposantes(m).indexOf(reste.join('.'));
     if (i < 0 || !m.variables.VIP) return err('variable_inconnue');
-    return { texte: enTexte(colonne(m.variables.VIP)[i], ref, langue, { decimales: 2 }) };
+    return formeValeur(colonne(m.variables.VIP)[i], ref, { decimales: 2 });
   }
-  if (nom === 'coef' && reste.length) return coefficientComposantes(m, reste.join('.'), ref, langue);
+  if (nom === 'coef' && reste.length) return coefficientComposantes(m, reste.join('.'), ref);
   if (nom === 'cvanova' && ['p', 'F'].includes(reste[0])) {
     const a = (m.cv_anova || {})[reste[1] || premierY(m)];
     if (!a) return err('valeur_inconnue');
-    return reste[0] === 'p' ? { texte: valeurP(colonne(a.p)[1], { langue, decimales: /^\d$/.test(ref.format) ? Number(ref.format) : 3 }) }
-      : { texte: enTexte(colonne(a.F)[1], ref, langue, { decimales: 2 }) };
+    return reste[0] === 'p' ? { forme: 'p', x: colonne(a.p)[1], decimales: decimalesDe(ref) ?? 3 } : formeValeur(colonne(a.F)[1], ref, { decimales: 2 });
   }
   const v = VALEURS_COMPOSANTES[nom];
   if (!v || (v.si && !v.si(m))) return err('valeur_inconnue');
   const x = v.f(m, reste);
   if (x === null || x === undefined) return err('valeur_absente');
-  return { texte: enTexte(x, ref, langue, v) };
+  return formeValeur(x, ref, v);
 }
 
 // A PLS coefficient (centred and scaled, of the first Y) with its 95 % interval: "−0,35 [−0,56 ; −0,14]".
-function coefficientComposantes(m, terme, ref, langue) {
+function coefficientComposantes(m, terme, ref) {
   const c = m.coefficients;
   if (!c) return { erreur: 'valeur_inconnue' };
   const i = colonne(c.terme).indexOf(terme);
@@ -201,23 +232,15 @@ function coefficientComposantes(m, terme, ref, langue) {
   if (i < 0) return { erreur: 'variable_inconnue' };
   const est = colonne(c[`CoeffCS ${y}`])[i];
   if (!Number.isFinite(est)) return { erreur: 'valeur_absente' };  // (the constant, centred and scaled: none)
-  const ic = colonne(c[`CoeffCS ${y} IC`])[i];
-  const { n, ic: texteIC } = avecIntervalle(est, est - ic, est + ic, ref, langue);
-  return { texte: texteIC ? `${n(est)} ${texteIC}` : n(est) };
+  return { forme: 'coef_cs', est, ic: colonne(c[`CoeffCS ${y} IC`])[i], decimales: decimalesDe(ref) };
 }
 
 // A regression coefficient: coef (estimate, interval and p), est, ic or p alone.
-function coefficientRegression(m, quoi, terme, ref, langue) {
+function coefficientRegression(m, quoi, terme, ref) {
   const c = coefficientsRegression(m);
   const i = termesRegression(m).indexOf(terme);
   if (i < 0) return { erreur: 'terme_inconnu' };
-  const est = colonne(c.estimation)[i];
-  const { n, ic } = avecIntervalle(est, colonne(c.bas)[i], colonne(c.haut)[i], ref, langue);
-  const p = valeurP(colonne(c.p)[i], { langue });
-  if (quoi === 'est') return { texte: n(est) };
-  if (quoi === 'ic') return { texte: ic };
-  if (quoi === 'p') return { texte: p };
-  return { texte: `${n(est)} ${ic}, ${p}` };
+  return { forme: 'coef', quoi, est: colonne(c.estimation)[i], bas: colonne(c.bas)[i], haut: colonne(c.haut)[i], p: colonne(c.p)[i], decimales: decimalesDe(ref) };
 }
 
 // What a model offers, for the completion: [{ chemin, type: 'valeur' | 'tableau' | 'graphique' |
@@ -241,6 +264,7 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
   for (const t of tableaux) offre.push({ chemin: `table.${t}`, type: 'tableau', detail: t });
   for (const v of vues) offre.push({ chemin: v, type: 'graphique', detail: v });
   offre.push({ chemin: 'methodes', type: 'texte', detail: '' });
+  offre.push({ chemin: 'resultats', type: 'texte', detail: 'resultats' });
   return offre;
 }
 
@@ -248,7 +272,7 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
 // `vues`) or 'valeur'.
 export function genreChemin(chemin, vues = []) {
   if (chemin[0] === 'table') return 'tableau';
-  if (chemin[0] === 'methodes' && chemin.length === 1) return 'texte';
+  if ((chemin[0] === 'methodes' || chemin[0] === 'resultats') && chemin.length === 1) return 'texte';
   if (chemin.length === 1 && vues.includes(chemin[0])) return 'graphique';
   return 'valeur';
 }

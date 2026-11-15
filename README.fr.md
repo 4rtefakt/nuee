@@ -5,7 +5,7 @@
 <p align="center"><a href="README.md">English</a> · <b>Français</b></p>
 
 <p align="center">
-  <b>ACP, PLS, PLS-DA et OPLS sous Windows, macOS et Linux, calculées en R.</b><br>
+  <b>ACP, PLS, écologie des communautés, modèles mixtes et cartes sous Windows, macOS et Linux, calculés en R.</b><br>
   Des graphiques interactifs, des modèles côte à côte, et chaque calcul lisible.
 </p>
 
@@ -29,8 +29,8 @@ exportez un script ou un rapport R Markdown / Quarto qui refait le modèle avec 
 Nuée. Chaque calcul est écrit en R, commenté, pour vérifier exactement ce qui a été calculé, et
 le modifier.
 
-L'interface est en français et en anglais (*Affichage › Langue*) ; les captures la montrent en
-français.
+L'interface est en anglais, par défaut, et en français (*Affichage › Langue*) ; les captures la
+montrent en anglais.
 
 ## Installer
 
@@ -52,8 +52,9 @@ vérifie son empreinte SHA-256 auprès de GitHub, propose d'enregistrer vos proj
 et redémarre Nuée. *Aide › Chercher une nouvelle version au démarrage* arrête la recherche.
 
 **Pour les services informatiques :** installation silencieuse pour un utilisateur ou pour tout
-l'ordinateur, une stratégie qui coupe la recherche de mises à jour pour tous, ce que Nuée écrit
-où et envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
+l'ordinateur, les réglages pour Intune, Configuration Manager, les stratégies de groupe et PDQ
+Deploy, une stratégie qui coupe la recherche de mises à jour pour tous, ce que Nuée écrit où et
+envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
 
 ### macOS
 
@@ -85,7 +86,7 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   lancer ; il demande FUSE 2, le paquet `libfuse2` dans la plupart des distributions) ou
   `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
   d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger"))`.
   Sous Ubuntu 24.04 et après, préférez le `.deb` : il installe le profil AppArmor dont le bac
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 
@@ -111,6 +112,10 @@ d'état ouvre sa page.
   pour les formats), ou *Fichier › Coller un tableau* (Ctrl+V) prend des cellules copiées
   dans n'importe quel tableur, ou déposez des fichiers sur la fenêtre. Les colonnes de texte et
   les facteurs deviennent des variables qualitatives, pour colorer ou comme classes.
+- **Quelle analyse choisir ?** *Modèle › Quelle analyse ?* pose votre question en mots simples
+  (comparer des groupes, l'effet de variables, beaucoup d'espèces, une tendance, où…), propose
+  la réponse et le dispositif d'après vos données, conseille une analyse avec ses conditions et
+  ouvre Nouveau modèle déjà rempli.
 - **Faire un modèle :** *Modèle › Nouveau modèle* (Ctrl+N) : le type, le rôle de chaque variable
   (X, Y ou écartée), l'échelle et la transformation, les observations retenues. Le nombre de
   composantes est choisi par validation croisée, sauf si vous le fixez.
@@ -122,7 +127,8 @@ d'état ouvre sa page.
 
 Le guide complet est fourni avec l'application (*Aide › Guide d'utilisation › Guide complet*),
 en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en anglais
-([USER-GUIDE.txt](USER-GUIDE.txt)).
+([USER-GUIDE.txt](USER-GUIDE.txt)). Il est aussi sur le
+[site de documentation](https://4rtefakt.github.io/nuee/fr/), avec trois tutoriels.
 
 ## Ce qu'elle fait
 
@@ -168,8 +174,9 @@ Sen. Des dates de relevé peuvent faire le temps.
 **Modèles linéaires, généralisés et mixtes :** régression linéaire et modèles linéaires mixtes
 (nlme), avec des effets aléatoires emboîtés (le site, puis le secteur dans le site), des pentes
 aléatoires (chaque site sa tendance) et une autocorrélation en temps continu (CAR1) ; modèles
-linéaires généralisés et additifs (mgcv) pour des comptages (Poisson, binomiale négative), la
-présence-absence, des valeurs positives et des densités avec des zéros (Tweedie), avec des
+linéaires généralisés et additifs (mgcv) pour des comptages (Poisson, binomiale négative,
+Poisson à zéros en excès), la présence-absence, des proportions entre 0 et 1 (bêta), des
+valeurs positives et des densités avec des zéros (Tweedie), avec des
 effets aléatoires, un effort en décalage et des courbes lissées pour un effet qui monte puis
 descend ou un seuil, une par catégorie au besoin (avec aussi le CAR1, par mgcv::gamm, pour une
 réponse normale) ; des variables qualitatives dans les termes croisés (la pente de l'année par
@@ -183,7 +190,9 @@ l'AIC qui ajuste toutes les combinaisons des blocs et suggère un modèle à aju
 la comparaison par l'AIC (ΔAIC, poids d'Akaike, tests du rapport de vraisemblance des modèles
 emboîtés) des régressions de la même réponse, à côté du Q2 en validation croisée de tous les
 modèles, avec leurs coefficients côte à côte ; la puissance pour détecter une tendance, pour un
-plan de suivi. De nouvelles variables peuvent prendre la valeur de l'année d'avant dans un
+plan de suivi ; les conditions du modèle vérifiées et dites en mots (résidus, dispersion,
+points influents, surdispersion, excès de zéros, colinéarité, autocorrélation spatiale). De
+nouvelles variables peuvent prendre la valeur de l'année d'avant dans un
 secteur, ou le taux de croissance. Une formule R règle le modèle (R la lit sans jamais
 l'exécuter), et les régressions prédisent de nouvelles observations et des fichiers, les
 extrapolations signalées.
@@ -193,12 +202,46 @@ d'espèces (transformées par Hellinger, corde ou log(x + 1)) par des variables 
 partielle avec des covariables, triplots en échelle 1 ou 2, R2 ajusté, tests par permutation
 du modèle, de chaque axe et de chaque terme (à l'intérieur des sites au besoin), sélection pas
 à pas et partition de la variance ; analyse des correspondances (CA) de tableaux d'effectifs,
-avec contributions et cos². Les résultats sont ceux du paquet vegan.
+avec contributions et cos² ; analyse canonique des correspondances (CCA, partielle aussi). Des
+analyses fondées sur une distance entre relevés (Bray–Curtis, Jaccard, Gower, Hellinger et cinq
+autres, en abondances ou en présences) : PCoA, NMDS et son diagramme de Shepard, PERMANOVA avec
+la dispersion multivariée de chaque groupe, et le test de Mantel (partiel, avec son
+corrélogramme, ou face à la distance géographique entre relevés), les variables explicatives
+ajustées sur l'ordination. Espèces indicatrices (IndVal.g), courbes de raréfaction et
+d'accumulation des espèces avec des estimateurs de richesse (Chao1, ACE, jackknife). Les
+résultats sont ceux des paquets vegan et indicspecies, avec les mêmes valeurs p pour les mêmes
+permutations.
 
-**Arbres, analyse discriminante, groupes :** arbres de décision (rpart) pour une réponse
-quantitative ou une classe, sur les valeurs brutes des variables pour que les seuils se lisent
-dans leurs unités, élagués par une validation croisée par site et validés en prédisant chaque
-site par un arbre refait sans lui, avec la stabilité de la première coupure ; analyse
+**Suivis :** l'échantillonnage par distances, la densité et l'effectif d'animaux à partir de
+transects linéaires ou de points d'écoute comme le paquet Distance les calcule (fonctions de
+détection demi-normale, hazard-rate ou uniforme avec des termes d'ajustement choisis par l'AIC,
+troncature, distances en intervalles, groupes, strates, variance du taux de rencontre et
+intervalles de Satterthwaite). TRIM, la référence des suivis d'oiseaux européens, écrit d'après la
+méthode de Statistics Netherlands : indices et totaux annuels avec leurs erreurs types à partir
+de comptages lacunaires, surdispersion et autocorrélation, ruptures choisies ou pas à pas,
+covariables et poids, et la pente générale avec sa classe (augmentation modérée, stable, fort
+déclin…), comme rtrim les donne. Un modèle par réponse ajuste la même régression à chaque espèce
+et corrige les valeurs p de chaque terme sur elles (FDR), avec une forêt de coefficients et de
+petits graphiques côte à côte.
+
+**Cartes et données spatiales :** les coordonnées d'un projet (longitudes et latitudes WGS 84,
+Lambert-93, UTM…) placent les observations sur une carte, colorées et dimensionnées par une
+variable ou les résultats d'un modèle, sur un fond OpenStreetMap ou IGN quand on en choisit un
+(sinon rien ne quitte l'ordinateur). Les fichiers GeoPackage, le format de QGIS, s'ouvrent avec
+leurs coordonnées, et les données et les résultats d'un modèle s'y exportent. Les valeurs d'un
+raster (l'altitude d'un MNT, l'occupation du sol, un climat, depuis des fichiers GeoTIFF ou des
+grilles ASCII d'ESRI) s'ajoutent à chaque site, comme terra::extract les donne. L'I de Moran d'une
+variable ou des résidus d'un modèle, son corrélogramme et le semi-variogramme, comme spdep et
+gstat les donnent, et un lissage spatial s(x, y) dans les modèles additifs pour ce que les
+termes laissent dans l'espace.
+
+**Arbres et forêts, analyse discriminante, groupes :** arbres de décision (rpart) pour une
+réponse quantitative ou une classe, sur les valeurs brutes des variables pour que les seuils se
+lisent dans leurs unités, élagués par une validation croisée par site et validés en prédisant
+chaque site par un arbre refait sans lui, avec la stabilité de la première coupure ; forêts
+aléatoires (ranger) et arbres de régression boostés (l'algorithme de gbm, pour une mesure, une
+présence-absence ou des comptages), avec leur erreur hors sac ou en validation croisée,
+l'importance et la dépendance partielle des variables, comme ranger et gbm les donnent ; analyse
 discriminante linéaire (MASS::lda), classement en validation croisée et probabilités a
 posteriori ; k-moyennes avec silhouettes et choix de k.
 
@@ -235,12 +278,17 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
 - des notes sur chaque modèle ;
 - la modification des données et de nouvelles variables par des formules R ou des classes de
   valeurs ; des colonnes ajoutées d'un autre tableau par une clé, et des tableaux résumés par
-  groupe ;
+  groupe ; chercher et remplacer (Ctrl+H), les catégories d'une variable qualitative renommées,
+  fusionnées ou réordonnées, et une unité et une description pour chaque variable, reprises dans
+  les titres des axes, les textes des méthodes et des résultats et les exports ; les exports de
+  formulaires de KoboToolbox et d'ODK Central ouverts proprement (métadonnées retirées, choix en
+  catégories, points GPS en coordonnées du projet, groupes répétés avec les colonnes des parents) ;
 - les observations d'un modèle choisies par une condition (`site == "S1" & annee >= 2010`),
   refaite à chaque ajustement ;
 - plusieurs fenêtres, et des vues qui se détachent sur un second écran ;
 - des graphiques mis en forme pour une publication (polices, palettes, taille) et exportés en
-  PNG ou SVG ;
+  PNG ou SVG, et des figures faites de plusieurs graphiques (des panneaux A, B, C à la largeur
+  d'une revue) exportées en PDF vectoriel, en SVG, ou en PNG et TIFF à 300 ou 600 ppp ;
 - Ctrl+C sur un tableau de résultats le copie, prêt à coller dans Excel ;
 - *Affichage › Rechercher une commande* (Ctrl+K) : tapez une partie du nom d'une commande au lieu
   de chercher dans les menus ;
@@ -249,8 +297,13 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   ses références (*Modèle › Texte pour la section Méthodes*) ;
 - des documents gardés dans le projet (*Fichier › Nouveau document*) : un article ou un rapport en
   Markdown, à côté de son aperçu en direct, qui cite les résultats du projet (`{{M1.Q2}}`,
-  `{{M1.scores | légende}}`, le texte des méthodes) et la bibliographie (`[@wold2001]`, depuis des
-  fichiers BibTeX ou CSL-JSON ou depuis Zotero), et se compile en Word, PDF, HTML ou Quarto.
+  `{{M1.scores | légende}}`, le texte des méthodes, le texte des résultats `{{M1.resultats}}` qui
+  dit en phrases ce que montre le modèle) et la bibliographie (`[@wold2001]`, depuis des fichiers
+  BibTeX ou CSL-JSON ou depuis Zotero), et se compile en Word, PDF, HTML ou Quarto, le document
+  Quarto reproductible si on le veut : chaque valeur, graphique et tableau cité recalculé à partir
+  des données brutes par les scripts d'export vers R des modèles ;
+- un rapport de problème (*Aide › Informations de diagnostic*) : un `.zip` avec les versions et le
+  journal de la séance, et le projet si on le coche, à joindre à un message ; rien n'est envoyé.
 
 ## Fichiers
 
@@ -288,7 +341,8 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   projet affichés.
 - **Exporter vers R** (*Fichier › Exporter vers R*) : tout modèle devient un script, ou un
   rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet (une régression :
-  `lm`, ou `nlme` et `mgcv`, livrés avec R). Il contient les
+  `lm`, ou `nlme` et `mgcv`, livrés avec R ; une forêt aléatoire, la seule exception : `ranger`,
+  que Nuée installe avec lui). Il contient les
   données (ou les lit dans un CSV à côté) et le calcul écrit pour ce modèle seul, commenté : sa
   mise à l'échelle, l'algorithme NIPALS, la validation croisée, puis les statistiques, tableaux
   et graphiques (une PLS fait environ 170 lignes de code). Le rapport ajoute le texte des
@@ -328,7 +382,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 0.9.9) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)

@@ -1,0 +1,93 @@
+{
+ "groupes.json": {
+  "chemin": "/api/users/0/groups?format=json",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "groupe_inconnu.txt": {
+  "chemin": "/api/groups/999/items/top?q=x&qmode=titleCreatorYear&itemType=-attachment&itemType=-note&format=json&include=bibtex&limit=25",
+  "statut": 404,
+  "type": "text/plain"
+ },
+ "collections_users_0.json": {
+  "chemin": "/api/users/0/collections?format=json&limit=1000",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "collections_groupe_6011001.json": {
+  "chemin": "/api/groups/6011001/collections?format=json&limit=1000",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "collections_groupe_6011002.json": {
+  "chemin": "/api/groups/6011002/collections?format=json&limit=1000",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "recherche_users_0_bechet.json": {
+  "chemin": "/api/users/0/items/top?q=bechet&qmode=titleCreatorYear&itemType=-attachment&itemType=-note&format=json&include=bibtex&limit=25",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "recherche_groupe_6011001_bechet.json": {
+  "chemin": "/api/groups/6011001/items/top?q=bechet&qmode=titleCreatorYear&itemType=-attachment&itemType=-note&format=json&include=bibtex&limit=25",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "recherche_groupe_6011001_wold.json": {
+  "chemin": "/api/groups/6011001/items/top?q=wold&qmode=titleCreatorYear&itemType=-attachment&itemType=-note&format=json&include=bibtex&limit=25",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "recherche_groupe_6011002_perdrix.json": {
+  "chemin": "/api/groups/6011002/items/top?q=perdrix&qmode=titleCreatorYear&itemType=-attachment&itemType=-note&format=json&include=bibtex&limit=25",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "collection_flamants.json": {
+  "chemin": "/api/groups/6011001/collections/IYEWRT45/items/top?itemType=-attachment&itemType=-note&format=json&include=bibtex&limit=300",
+  "statut": 200,
+  "type": "application/json"
+ },
+ "cayw_camargue.json": {
+  "chemin": "/better-bibtex/cayw?format=json&minimize=true&selected=1",
+  "statut": 200,
+  "type": "text/html; charset=utf-8"
+ },
+ "export_camargue_2.json": {
+  "chemin": "/better-bibtex/export/item?citationKeys=bechetPopulationDynamicsGreater2019%2CjohnsonGreaterFlamingo2007&translator=Better%20CSL%20JSON&libraryID=2",
+  "statut": 200,
+  "type": "text/plain"
+ },
+ "cayw_moi.json": {
+  "chemin": "/better-bibtex/cayw?format=json&minimize=true&selected=1",
+  "statut": 200,
+  "type": "text/html; charset=utf-8"
+ },
+ "export_moi_1.json": {
+  "chemin": "/better-bibtex/export/item?citationKeys=bechetPopulationDynamicsGreater2019&translator=Better%20CSL%20JSON&libraryID=1",
+  "statut": 200,
+  "type": "text/plain"
+ },
+ "cayw_perdrix.json": {
+  "chemin": "/better-bibtex/cayw?format=json&minimize=true&selected=1",
+  "statut": 200,
+  "type": "text/html; charset=utf-8"
+ },
+ "export_perdrix_3.json": {
+  "chemin": "/better-bibtex/export/item?citationKeys=broSurvieHivernalePerdrix2019&translator=Better%20CSL%20JSON&libraryID=3",
+  "statut": 200,
+  "type": "text/plain"
+ },
+ "export_bibliotheque_inconnue.txt": {
+  "chemin": "/better-bibtex/export/item?citationKeys=x&translator=Better%20CSL%20JSON&libraryID=9",
+  "statut": 400,
+  "type": "text/plain"
+ },
+ "cayw_annule.txt": {
+  "chemin": "/better-bibtex/cayw?format=json&minimize=true",
+  "statut": 200,
+  "type": "text/html; charset=utf-8",
+  "note": "the citation dialog closed without picking anything"
+ }
+}

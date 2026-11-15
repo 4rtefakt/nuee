@@ -590,15 +590,45 @@ export function referencesDansTexte(corps, analyse) {
   return trouvees;
 }
 
+// A chunk of R code for Quarto: its options (#| key: value), then its lines.
+const blocR = (options, lignes) => ['```{r}', ...Object.entries(options).map(([k, v]) => `#| ${k}: ${v}`), ...lignes, '```'].join('\n');
+
+// What the engine needs to write a reproducible .qmd (the request document_reproductible:
+// moteur/R/document_reproductible.R), from the references resolved (documents.js: with each one's
+// model, path, a value's `forme` and text, a plot's view and variant, a table's key): the models
+// cited, and each reference (null: one it doesn't write), as JSON text.
+export function referencesReproductibles(resolus) {
+  const refs = resolus.map((x) => {
+    if (!x || x.erreur || !x.modele || !['valeur', 'figure', 'tableau', 'texte'].includes(x.genre)) return null;
+    const r = { modele: x.modele, chemin: x.chemin, genre: x.genre };
+    if (x.genre === 'valeur') {
+      const { forme, decimales, significatifs, quoi } = x.forme || {};
+      Object.assign(r, { forme: { forme, decimales, significatifs, quoi }, texte: x.texte });
+    }
+    if (x.genre === 'figure') Object.assign(r, { vue: x.vue, variante: x.variante || {} });
+    if (x.genre === 'tableau') r.cle = x.cle;
+    return r;
+  });
+  return { modeles: [...new Set(refs.filter(Boolean).map((x) => x.modele))], references: JSON.stringify(refs) };
+}
+
 // The text with its references written in for good (values, Quarto figures and tables with their
 // labels, @fig-... for "Figure 2"), for Quarto or another Markdown tool. `fichierFigure(r)`: the
-// path written for a figure's image. Returns { texte, erreurs: [brut] }.
-export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue = 'fr', titre = '', bibliographie = null, csl = null, libelles = {} }) {
+// path written for a figure's image. Returns { texte, erreurs: [brut], images: the figures written
+// as images }.
+// `reproductible` (moteur/R/document_reproductible.R): the document recomputed by R when Quarto
+// renders it. Its chunk `installation` comes first (it redoes the models cited, from the raw data,
+// with their Export to R scripts); `references[i]`, for the i-th reference, gives `code` (a value:
+// an inline R expression), `lignes` (a plot, with its `largeur` and `hauteur` in inches, or a
+// table: the code of its chunk) or `raison` (why it stays written in, as Nuée shows it). A block
+// becomes a chunk only at the start of its line (not in a list or a quote).
+export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue = 'fr', titre = '', bibliographie = null, csl = null, libelles = {}, reproductible = null }) {
   const { corps, brut } = lireEntete(texteDocument);
   const refs = referencesDansTexte(corps, analyse);
   const etiquettes = new Map();  // a document's label -> the Quarto label of its figure or table
   resolus.forEach((r) => { if (r && (r.genre === 'figure' || r.genre === 'tableau') && r.etiquette) etiquettes.set(r.etiquette, etiquetteQuarto(r.genre, r.etiquette, r.numero)); });
   const erreurs = [];
+  const images = [];
   let sortie = '';
   let pos = 0;
   refs.forEach((ref) => {
@@ -606,12 +636,23 @@ export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue
     sortie += corps.slice(pos, ref.debut);
     pos = ref.fin;
     if (!r || r.erreur) { erreurs.push(ref.brut); sortie += ref.brut; return; }
-    if (r.genre === 'valeur') sortie += r.texte;
+    const rr = (reproductible && reproductible.references && reproductible.references[ref.i]) || {};
+    const enTete = ref.debut === 0 || corps[ref.debut - 1] === '\n';
+    const legende = JSON.stringify(r.legende || r.nom || '');
+    // (a block left as Nuée shows it: why, in a comment the output doesn't show)
+    if (rr.raison && BLOCS.includes(r.genre) && enTete) sortie += `<!-- Nuée${langue === 'en' ? ':' : ' :'} ${rr.raison.replace(/--/g, '—')} -->\n\n`;
+    if (r.genre === 'valeur') sortie += rr.code && !/[`|\n]/.test(rr.code) ? `\`r ${rr.code}\`` : r.texte;
     else if (r.genre === 'renvoi') sortie += etiquettes.has(r.cible) ? `@${etiquettes.get(r.cible)}` : r.texte;
-    // (Quarto numbers a figure that has a caption: the plot's name when the document gives none)
-    // (the path between < >: it may hold spaces, the folder being named after the document)
-    else if (r.genre === 'figure') sortie += `![${r.legende || r.nom || ''}](<${fichierFigure(r)}>){#${etiquetteQuarto('figure', r.etiquette, r.numero)}}`;
-    else if (r.genre === 'tableau') {
+    else if (r.genre === 'figure' && rr.lignes && enTete) {
+      sortie += blocR({ label: etiquetteQuarto('figure', r.etiquette, r.numero), 'fig-cap': legende, 'fig-width': rr.largeur, 'fig-height': rr.hauteur, echo: 'false' }, [].concat(rr.lignes));
+    } else if (r.genre === 'figure') {
+      // (Quarto numbers a figure that has a caption: the plot's name when the document gives none)
+      // (the path between < >: it may hold spaces, the folder being named after the document)
+      images.push(r);
+      sortie += `![${r.legende || r.nom || ''}](<${fichierFigure(r)}>){#${etiquetteQuarto('figure', r.etiquette, r.numero)}}`;
+    } else if (r.genre === 'tableau' && rr.lignes && enTete) {
+      sortie += blocR({ label: etiquetteQuarto('tableau', r.etiquette, r.numero), 'tbl-cap': legende, echo: 'false' }, [].concat(rr.lignes));
+    } else if (r.genre === 'tableau') {
       const parties = r.blocs.map((b) => (b.texte !== undefined ? b.texte : tablePipe(b)));
       const premiere = r.blocs.findIndex((b) => b.entetes);
       if (premiere >= 0) parties.splice(premiere + 1, 0, `: ${r.legende || r.nom || ''} {#${etiquetteQuarto('tableau', r.etiquette, r.numero)}}`);
@@ -633,5 +674,6 @@ export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue
   // (citeproc for every format: Quarto's PDF through Typst would use Typst's own, in another
   // style, with a heading of its own and the LaTeX of the titles left as it is)
   if (bibliographie) tete = fixerEntete(tete, 'citeproc', 'true', true);
-  return { texte: tete + sortie, erreurs };
+  const installation = reproductible && reproductible.installation ? `\n${[].concat(reproductible.installation).join('\n')}\n\n` : '';
+  return { texte: tete + (installation ? installation + sortie.replace(/^\n+/, '') : sortie), erreurs, images };
 }
