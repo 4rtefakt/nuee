@@ -48,7 +48,8 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
     lignes_rapport(format, pl, langue, texte_methodes(projet, d, m, langue, version), fonctions, code_donnees, x)
   }
   ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), x$objets), c(if (format != "R") c("knitr", "rmarkdown"), paquets_script(b)))
-  list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart)
+  # (ses graphiques, pour un document reproductible : document_reproductible.R)
+  structure(list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart), graphiques = x$graphiques)
 }
 
 # Les paquets des régressions (livrés avec R) : nlme (un modèle mixte, l'autocorrélation d'un
@@ -355,7 +356,8 @@ code_modele <- function(pl, b, langue, seance = NULL, signes = NULL) {
                   code_ajustement(pl, b, tx))
   objets <- c("m", "vc", "s", "pretraiter", "X", if (pls) "Y", if (!is.null(pl$groupes_vc)) "groupes_vc", "composantes",
               if (pls && !identical(pl$validation, "complet")) c("q2_vide", "gain"), "observations", "variables", "limites",
-              if (pls) "coefficients", if (pl$cv_anova) "cv_anova", if (pl$plsda) "classification",
+              if (pls) c("coefficients", "RMSEE", "RMSEcv"), if (pl$type == "pls" && !identical(pl$validation, "complet")) "ic_coefficients",
+              if (pl$cv_anova) "cv_anova", if (pl$plsda) "classification",
               if (test) "predictions_test", if (test && pl$type != "acp" && !pl$plsda) "test",
               if (test && pl$plsda) "classification_test")
   list(ajustement = traduire_code(ajustement, langue),
@@ -917,8 +919,25 @@ code_statistiques <- function(pl, tx) {
              "B <- m$W %*% solve(crossprod(m$P, m$W)) %*% t(m$C)"),
       "coefficients <- B * s$poids_x / rep(s$poids_y, each = K)",
       "coefficients <- rbind(coefficients, Constante = s$centre_y - colSums(coefficients * s$centre_x))",
-      if (!pl$plsda) c(tx("# Y ajusté par le modèle, dans les unités des données", "# Y fitted by the model, in the units of the data"),
-                       "y_ajuste <- sweep(sweep(m$T %*% t(m$C), 2, s$poids_y, \"/\"), 2, s$centre_y, \"+\")")),
+      if (!pl$plsda) tx("# Y ajusté par le modèle, dans les unités des données", "# Y fitted by the model, in the units of the data")
+      else tx("# les indicatrices des classes ajustées par le modèle", "# the indicators of the classes fitted by the model"),
+      "y_ajuste <- sweep(sweep(m$T %*% t(m$C), 2, s$poids_y, \"/\"), 2, s$centre_y, \"+\")",
+      commentaire(tx("RMSEE : l'erreur des valeurs ajustées de chaque Y, sur N - A - 1 degrés de liberté ; RMSEcv : celle de ses prédictions en validation croisée ; dans les unités des données.",
+                     "RMSEE: the error of each Y's fitted values, on N - A - 1 degrees of freedom; RMSEcv: that of its cross-validation predictions; in the units of the data.")),
+      "RMSEE <- sqrt(colSums((y_observe - y_ajuste)^2, na.rm = TRUE) / (colSums(!is.na(y_observe - y_ajuste)) - A - 1))",
+      "RMSEcv <- sqrt(colMeans(sweep(s$Y - vc$y_vc, 2, s$poids_y, \"/\")^2, na.rm = TRUE))",
+      if (pl$type == "pls" && !modele_complet) c(
+        commentaire(tx("L'intervalle à 95 % de chaque coefficient B (termes centrés et mis à l'échelle), par jack-knife sur les sous-modèles de la validation croisée : les coefficients de chacun (W* C', W* comme plus haut), ses composantes orientées comme celles du modèle complet, puis la demi-largeur t(0,975 ; G - 1) × racine((G - 1) / G × somme des carrés des écarts à leur moyenne) ; manquante quand un sous-modèle n'a pas toutes les composantes.",
+                       "The 95% interval of each coefficient B (centred and scaled terms), by jackknife over the sub-models of the cross-validation: the coefficients of each (W* C', W* as above), its components oriented as those of the full model, then the half-width t(0.975; G - 1) × sqrt((G - 1) / G × sum of the squared deviations from their mean); missing when a sub-model hasn't all the components.")),
+        "coefficients_tours <- do.call(cbind, lapply(vc$tours, function(r) {",
+        "  signes <- ifelse(colSums(r$W * m$W) < 0, -1, 1)",
+        "  W <- sweep(r$W, 2, signes, \"*\")",
+        "  P <- sweep(r$P, 2, signes, \"*\")",
+        "  for (a in seq_len(A)[-1]) W[, a] <- W[, a] - W[, 1:(a - 1), drop = FALSE] %*% crossprod(P[, 1:(a - 1), drop = FALSE], W[, a])",
+        "  as.vector(W %*% t(sweep(r$C, 2, signes, \"*\")))",
+        "}))",
+        "ic_coefficients <- matrix(apply(coefficients_tours, 1, function(v) qt(0.975, length(v) - 1) * sqrt((length(v) - 1) / length(v) * sum((v - mean(v))^2))),",
+        "                          K, ncol(s$Y), dimnames = list(colnames(s$X), colnames(s$Y)))")),
     if (pl$cv_anova) c("",
       commentaire(tx("CV-ANOVA (Eriksson et al., 2008), pour chaque Y : ses résidus de validation croisée comparés à sa variation autour de sa moyenne (Y centré et mis à l'échelle) ; la régression compte 2 degrés de liberté par composante.",
                      "CV-ANOVA (Eriksson et al., 2008), for each Y: its cross-validation residuals compared with its variation around its mean (Y centred and scaled); the regression counts 2 degrees of freedom per component.")),
@@ -1013,6 +1032,7 @@ code_sortie <- function(pl, tx, seul, langue) {
           if (pls && !pl$plsda) "scores, T2, DModX, observed and fitted Y" else if (pl$plsda) "scores, T2, DModX, observed and predicted class" else "scores, T2, DModX"),
     ligne("print(variables)", if (pls) "loadings p, poids w, VIP" else "loadings p", if (pls) "loadings p, weights w, VIP" else "loadings p"),
     if (pls) ligne("print(coefficients)", "coefficients, dans les unités des données", "coefficients, in the units of the data"),
+    if (pls) ligne("print(rbind(RMSEE = RMSEE, RMSEcv = RMSEcv))", "RMSEE et RMSEcv de chaque Y", "RMSEE and RMSEcv of each Y"),
     ligne("print(limites)", "T2Crit (95 %, 99 %), DCrit (5 %)", "T2Crit (95%, 99%), DCrit (5%)"),
     if (pl$cv_anova) ligne("print(cv_anova)", "CV-ANOVA", "CV-ANOVA"),
     if (pl$plsda) ligne("print(classification)", "table de classification (validation croisée)", "classification table (cross-validation)"),
@@ -2469,7 +2489,9 @@ modele_vc_pls <- function(tx, na, y_na) c(
                  "The cross-validation of the PLS: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows and the full model (`full`), then a PLS with A components; the rows of the group, preprocessed likewise, are projected on its components one by one. The Y predicted with 1, 2... A components is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS: the sum of squared prediction errors; SS: that of the previous component (that of Y for the 1st); y_vc: Y predicted in cross-validation with A components; Q2V: the cumulative Q2 of each Y, 1 - PRESS / SS.")),
   "validation_croisee_pls <- function(X, Y, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
   "  complet <- pretraiter(X, Y, seq_len(nrow(X)))",
-  "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y, press0 = 0)",
+  "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y, press0 = 0, tours = list())",
+  tx("  completer <- function(M, n) cbind(M, matrix(NA_real_, n, A - NCOL(M)))  # (NA : une composante qu'un sous-modèle n'a pas)",
+     "  completer <- function(M, n) cbind(M, matrix(NA_real_, n, A - NCOL(M)))  # (NA: a component a sub-model hasn't)"),
   "  for (g in unique(groupe)) {",
   "    hors <- groupe == g",
   "    s <- pretraiter(X, Y, !hors, complet)",
@@ -2477,6 +2499,8 @@ modele_vc_pls <- function(tx, na, y_na) c(
      "    y_vide <- mettre_a_echelle(matrix(s$centre_y, sum(hors), length(s$centre_y), byrow = TRUE), complet$centre_y, complet$poids_y)  # the empty model: the mean of Y over the other rows"),
   sprintf("    vc$press0 <- vc$press0 + colSums((complet$Y[hors, , drop = FALSE] - y_vide)^2%s)", if (y_na) ", na.rm = TRUE" else ""),
   "    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], A)",
+  tx("    # le sous-modèle, pour l'intervalle des coefficients (jack-knife)", "    # the sub-model, for the interval of the coefficients (jackknife)"),
+  "    vc$tours[[length(vc$tours) + 1]] <- list(W = completer(mg$W, ncol(s$X)), P = completer(mg$P, ncol(s$X)), C = completer(mg$C, ncol(s$Y)))",
   if (na) c("    M <- 1 * !is.na(s$X[hors, , drop = FALSE])", "    E <- replace(s$X[hors, , drop = FALSE], M == 0, 0)") else "    E <- s$X[hors, , drop = FALSE]",
   "    prediction <- matrix(0, sum(hors), ncol(complet$Y))",
   "    for (a in 1:A) {",
@@ -3497,6 +3521,7 @@ NOMS_SCRIPT_EN <- c(
   erreur = "error", biais = "bias", predictions_test = "test_predictions", classification_test = "classification_test",
   couleur = "colour", ordre = "ranking", pretraiter = "preprocess", apprentissage = "training", cases = "cells",
   groupes_vc = "cv_groups", retrait = "removal_order", Wetoile = "Wstar", y_vide = "y_empty", q2_vide = "q2_empty",
+  tours = "rounds", completer = "pad_columns", coefficients_tours = "coefficients_rounds", ic_coefficients = "coefficients_ci",
   # les régressions
   termes_utiles = "useful_terms", termes = "model_terms", garde = "kept_columns", aic_corrige = "aic_corrected",
   validation_croisee = "cross_validation", cadre = "model_data", predire = "predict_group", echecs = "failures", ici = "here",
@@ -3602,6 +3627,10 @@ ecart_script <- function(pl, m, e, langue) {
     limites = list(unlist(s$limites), r("limites")),
     VIP = if (pls) list(s$variables$VIP, r("VIP")),
     coefficients = if (pls) list(as.matrix(s$coefficients[paste("Coeff", ny)]), r("coefficients")),
+    "RMSEE, RMSEcv" = if (pls) list(unname(c(s$RMSEE, s$RMSEcv)), unname(c(r("RMSEE"), r("RMSEcv")))),
+    "intervalles des coefficients" = if (pl$type == "pls" && !identical(pl$validation, "complet")) {
+      list(as.matrix(s$coefficients[seq_len(m$K), paste("CoeffCS", ny, "IC")]), r("ic_coefficients"))
+    },
     "CV-ANOVA" = if (pl$cv_anova) list(do.call(rbind, lapply(s$cv_anova, `[`, colonnes_cv)), do.call(rbind, lapply(r("cv_anova"), `[`, colonnes_cv))),
     classification = if (pl$plsda) list(s$classification$vc$table, r("classification")),
     test = if (!is.null(m$test$statistiques) && !pl$plsda) list(m$test$statistiques[c("n", "RMSEP", "biais", "SEP", "Q2ext")], r("test")[-1]),

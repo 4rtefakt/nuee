@@ -296,7 +296,8 @@ ecrire_script_moteur <- function(projet, d, chemin_script, m, piece, donnees = "
     lignes_rapport_moteur(format, d, langue, texte_methodes(projet, d, m, langue, version), piece, code_donnees)
   }
   ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), piece$objets), c(piece$paquets, if (format != "R") c("knitr", "rmarkdown")))
-  list(script = chemin_script, chemins = unname(fichiers), ecart = ecart)
+  # (ses graphiques, pour un document reproductible : document_reproductible.R)
+  structure(list(script = chemin_script, chemins = unname(fichiers), ecart = ecart), graphiques = piece$graphiques)
 }
 
 # Le rapport R Markdown ou Quarto : les méthodes, les données, le code (replié dans le rapport
