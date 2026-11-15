@@ -1059,6 +1059,69 @@ Both export their tables (File › Export), write their Methods text with its re
 a report. File › Export to R writes a script, or an R Markdown or Quarto report, that redoes
 them with R alone, their tests with the same permutations. They don't predict new observations.
 
+PCoA, NMDS, PERMANOVA and Mantel test
+-------------------------------------
+Four analyses built on a distance between observations, computed on the table Y (Role Y: the
+species, or any quantitative variables); an observation with a missing Y value is left out and
+counted. General tab: the distance, as the vegan package defines it (Bray-Curtis, Jaccard
+2B/(1 + B), Gower, Euclidean, Manhattan, Canberra, Kulczynski, Hellinger, chord), optionally on
+presence-absence (Bray-Curtis then becomes the Sørensen index); a transformation before it
+(square or fourth root, log(x + 1), presence-absence, relative abundances, Wisconsin double
+standardization, square root then Wisconsin as metaMDS does); the number of permutations of the
+tests (999; 0: none), the groups they stay within and their seed. A distance that has no meaning
+for negative values (Bray-Curtis, Jaccard, Kulczynski, Canberra, Hellinger) refuses them, and
+one that isn't defined for an observation without any value (only zeros) names it.
+
+Type "PCoA (principal coordinates analysis)": the axes that best show, on a few dimensions, the
+distances between observations (Gower 1966). A distance that isn't Euclidean (Bray-Curtis,
+usually) has negative eigenvalues: they are kept and reported, and the Lingoes or Cailliez
+correction (General tab) adds the constant that removes them. X variables (optional): fitted
+onto the first two axes as vegan::envfit, an arrow per quantitative variable (its direction and
+R2), a centroid per category of a qualitative one (and its R2), each tested by permutations;
+observations without an X value are left out of this fit only. Views: Summary; Ordination (the
+observations, coloured and labelled like the other plots, the species at the weighted average
+of their observations, the arrows, grey when p > 0.05, and the centroids, on equal scales);
+Eigenvalues (the share of the total inertia, the sum of all the eigenvalues; negative ones in
+red); Fitted variables; the lists of observations and variables.
+
+Type "NMDS (non-metric multidimensional scaling)": a configuration in k dimensions (2 by
+default, 1 to 4) whose distances keep the order of the dissimilarities (Kruskal 1964), by
+MASS::isoMDS as vegan::metaMDS does it: from the PCoA, then from 20 random starts (fixed seed);
+the lowest stress is kept, and the Summary says whether another start found it again
+(Procrustes): when none did, raise the starts. A zero dissimilarity between two observations
+is replaced by half the smallest non-zero one. The configuration is centred, rotated to its
+principal axes and scaled to the largest dissimilarity. Views: Summary (the stress: below 0.1
+good, beyond 0.2 to be read with care); Ordination, as for the PCoA; Shepard diagram (each
+pair's dissimilarity and ordination distance, the monotone regression, the stress of each
+start); Fitted variables; the lists (each observation's share of the stress).
+
+Type "PERMANOVA (permutational analysis of variance)": the effect of the X terms (qualitative or
+quantitative, cross terms included) on the distance (Anderson 2001), as vegan::adonis2: each term
+after those before it, in their order (sequential), each after all the others (marginal: a term
+inside a cross term isn't tested alone) or the whole model; degrees of freedom, sum of squares,
+R2, pseudo-F and its permutation p. With it, the multivariate dispersion (Anderson 2006, as
+vegan::betadisper) of the categories of each qualitative X variable and of the class variable
+(Role Class, one more grouping): each observation's distance to the centroid (or the spatial
+median) of its group in the PCoA space, compared by an ANOVA, its residuals permuted, and
+Tukey's pairs. A dispersion that differs between groups makes the PERMANOVA harder to read: its
+differences may come from the spread of the groups as much as from their position. Views:
+Summary; PERMANOVA table; Multivariate dispersion (box plots or the PCoA plane, with its tests);
+the list of observations (each one's distance to its centre).
+
+Type "Mantel test": the correlation (Pearson, or Spearman on ranks) between the distance of Y and
+the Euclidean distance of the X variables, scaled as the Variables tab says (UV by default), and
+its one-sided permutation p (vegan::mantel); with covariates Z (Role Z), the partial Mantel test
+(vegan::mantel.partial); and the Mantel correlogram (vegan::mantel.correlog): the X distance cut
+into classes of equal width (Sturges' rule, or the number given), the Mantel r of each class
+(positive: close observations more alike), the classes beyond half tested only if every
+observation has a pair in them, the p values corrected progressively by Holm's method. Views:
+Summary; Mantel test (each pair of observations); Mantel correlogram; the list.
+
+The four export their tables (File › Export), write their Methods text with its references and
+make a report; they don't predict new observations and have no Export to R yet. The results are
+those of vegan (vegdist, wcmdscale, envfit, metaMDS with isoMDS, adonis2, betadisper, mantel,
+mantel.correlog): the same values, and for the same permutations the same p values.
+
 Decision trees, linear discriminant analysis and k-means
 --------------------------------------------------------
 New model › type "Decision tree" (rpart): a quantitative Y variable (regression tree) or a
