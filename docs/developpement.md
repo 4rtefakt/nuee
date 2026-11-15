@@ -324,7 +324,7 @@ which the build copies like the Windows one:
 
 ```bash
 sudo installer -pkg R-4.6.2-arm64.pkg -target /
-sudo Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl'), lib = .Library, repos = 'https://cloud.r-project.org')"
+sudo Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'ranger'), lib = .Library, repos = 'https://cloud.r-project.org')"
 PYTHON=<a python3 with PyInstaller> node app/construire.js <output folder> [R folder]
 ```
 
@@ -346,8 +346,9 @@ for CRAN's R, gets the `libR` already loaded. A library loaded from anywhere els
 system or XQuartz (`/opt/X11`, which only the X11 and cairo devices load, as with CRAN's R) stops
 the build: it would be missing on another Mac. `Rscript` itself still names
 `/Library/Frameworks` for R's folder: `main.js` starts it with `RHOME` set to the application's
-R (and `R_LIBS`, as on Windows). `app/tests/essai_r_macos.js` checks the names and the `bin/R`
-change.
+R (and `R_LIBS`, as on Windows), and so does Quarto when it runs a reproducible document's R
+chunks with the engine's R (`QUARTO_R`). `app/tests/essai_r_macos.js` checks the names and the
+`bin/R` change.
 
 The build produces:
 
@@ -434,11 +435,14 @@ except `verifier_references.R`, whose exported projects aren't in the repository
   from the Finder (no `LANG`, a short `PATH`), then on the `.dmg` mounted: the engine must run
   on the R in `Nuée.app` (checked), and a `.nuee` given to the Finder (`open`) opens in the
   window. The images are kept with the run (artifacts `nuee-macos-arm64` and
-  `nuee-macos-x86_64`). On Apple silicon, `verifier_script.R` runs apart and doesn't stop the
-  job: some exported scripts give the engine's results to rounding only there (mixed models
-  and GAMs within 1e-6 but not 1e-10, two k-means clusters of the same size numbered the other
-  way round, the thresholds of GAM curves drawn otherwise by `MASS::mvrnorm`), while every check
-  passes on Intel. Nuée's own check before writing a script passes on both.
+  `nuee-macos-x86_64`). On Apple silicon, `verifier_script.R`, `verifier_spatial.R`,
+  `verifier_communautes.R` and `verifier_forets.R` run apart and don't stop the job: some
+  exported scripts give the engine's results to rounding only there (mixed models and GAMs
+  within 1e-6 but not 1e-10, two k-means clusters of the same size numbered the other way
+  round, the thresholds of GAM curves drawn otherwise by `MASS::mvrnorm`, the smooths of spatial
+  models, random forests grown otherwise), and an exact Procrustes fit leaves an error above
+  1e-10, while every check passes on Intel. Nuée's own check before writing a script passes on
+  both.
 
 Electron's and electron-builder's downloaders fetch GitHub release files anonymously, which
 GitHub throttles at times (HTTP 504 for hours on 2026-11-09). The Linux and macOS jobs have them fetched

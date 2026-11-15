@@ -241,12 +241,12 @@ jobs:
 
       # (in R's own library, which the build copies)
       - name: Paquets R
-        run: sudo Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan'), lib = .Library, repos = 'https://cloud.r-project.org')"
+        run: sudo Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra', 'Distance'), lib = .Library, repos = 'https://cloud.r-project.org')"
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement; do
-            if [ "$f" = script ] && [ "${{ matrix.arch }}" = arm64 ]; then continue; fi
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
+            if [ "${{ matrix.arch }}" = arm64 ] && [[ " script spatial communautes forets " == *" $f "* ]]; then continue; fi
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -255,12 +255,20 @@ jobs:
       # On Apple silicon (not on Intel, where they pass), some exported scripts give the engine's
       # results to rounding only: mixed models and GAMs within 1e-6 but not 1e-10, two k-means
       # clusters of the same size numbered the other way round, the thresholds of GAM curves drawn
-      # otherwise (MASS::mvrnorm). Nuée's own check before writing a script passes. Shown, without
-      # stopping the job, until the scripts compute exactly as the engine does.
-      - name: Scripts R, sur Apple silicon
+      # otherwise (MASS::mvrnorm), smooths of spatial models, random forests grown otherwise; and
+      # an exact Procrustes fit leaves an error above 1e-10. Nuée's own check before writing a
+      # script passes. Shown, without stopping the job, until they agree there too.
+      - name: Scripts R et arrondis, sur Apple silicon
         if: matrix.arch == 'arm64'
         continue-on-error: true
-        run: Rscript moteur/tests/verifier_script.R
+        run: |
+          s=0
+          for f in script spatial communautes forets; do
+            echo "::group::verifier_$f"
+            Rscript moteur/tests/verifier_$f.R || s=1
+            echo "::endgroup::"
+          done
+          exit $s
 
       - uses: actions/setup-node@v7
         with:

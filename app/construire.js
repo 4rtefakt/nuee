@@ -97,7 +97,7 @@ async function construire() {
     // macOS: .nuee projects open in Nuée when double-clicked in the Finder (main.js: open-file), with
     // its icon. CRAN's packages for R 4.6 on Apple silicon need macOS 14 (Electron 45: 13).
     ...(mac ? { appBundleId: 'io.github.4rtefakt.nuee', appCopyright: '4rtefakt', extendInfo: { CFBundleDocumentTypes: [
-      { CFBundleTypeName: 'Projet Nuée', CFBundleTypeExtensions: ['nuee'], CFBundleTypeRole: 'Editor', LSHandlerRank: 'Owner', CFBundleTypeIconFile: 'electron.icns' }],
+      { CFBundleTypeName: 'Nuée project', CFBundleTypeExtensions: ['nuee'], CFBundleTypeRole: 'Editor', LSHandlerRank: 'Owner', CFBundleTypeIconFile: 'electron.icns' }],
     ...(arch === 'arm64' ? { LSMinimumSystemVersion: '14.0' } : {}) } } : {}),
     ignore: [/^\/node_modules/, /^\/tests/, /^\/construire\.js$/, /^\/copier-vendor\.js$/, /^\/r-macos\.js$/, /^\/package-lock\.json$/, /\.cmd$/, /^\/icone\/(?!nuee\.png$)/],
   });

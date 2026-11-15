@@ -493,7 +493,8 @@ function ipc() {
   // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
   recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
   // (options.R: the bin folder of an R that has knitr and rmarkdown, for the R chunks of a
-  // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own)
+  // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own; on macOS
+  // with its R folder as RHOME, without which the Rscript of Nuée.app starts another R: demarrerR)
   recevoir('quarto', (_, chemin, format, options = {}) => new Promise((ok) => {
     const quarto = trouverQuarto();
     if (!quarto) return ok({ erreur: 'quarto_absent' });
@@ -502,7 +503,8 @@ function ipc() {
     const sortie = path.join(dossier, path.basename(chemin).replace(/\.qmd$/i, format === 'typst' ? '.pdf' : `.${format}`));
     const R = options && typeof options.R === 'string' && !process.env.QUARTO_R && fs.existsSync(options.R) ? options.R : null;
     let journal = '';
-    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true, env: R ? { ...process.env, QUARTO_R: R } : process.env });
+    const env = R ? { ...process.env, QUARTO_R: R, ...(process.platform === 'darwin' ? { RHOME: path.dirname(R) } : {}) } : process.env;
+    const q = spawn(quarto, ['render', path.basename(chemin), '--to', format], { cwd: dossier, windowsHide: true, env });
     q.stdout.on('data', (d) => { journal += d; });
     q.stderr.on('data', (d) => { journal += d; });
     q.on('error', (e) => ok({ erreur: e.message }));
