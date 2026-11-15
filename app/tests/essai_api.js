@@ -1222,6 +1222,38 @@ async function principal() {
       try { await api('ajuster', { projet: q.id, type: 'CA', x: [v.temp, v.site], echelle: 'none' }); } catch (err) { refusCA = err.message; }
       verifier(/quantitatives/.test(refusCA), `CA d'une variable qualitative refusée : « ${refusCA} »`);
     });
+    await etape('CCA (partielle, permutée par site) : échelles 1 à 3, tests par axe, séquentiels et par terme, script, méthodes', async () => {
+      // 30 relevés de 6 espèces le long de la température et du sable, 5 sites
+      let g = 13;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647; };
+      const lignes = ['nom\tsite\ttemp\tsable\tsp1\tsp2\tsp3\tsp4\tsp5\tsp6'];
+      for (let i = 1; i <= 30; i += 1) {
+        const temp = 8 + 10 * alea();
+        const sable = 100 * alea();
+        const sp = [temp, 20 - temp, sable / 10, 10 - sable / 10, (temp * sable) / 100, 3].map((x) => Math.round(x * (0.5 + alea())) + (x > 0 ? 1 : 0));
+        lignes.push([`r${i}`, `S${1 + (i % 5)}`, temp.toFixed(2), sable.toFixed(1), ...sp].join('\t'));
+      }
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Relevés CCA' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const especes = ['sp1', 'sp2', 'sp3', 'sp4', 'sp5', 'sp6'].map((n) => v[n]);
+      const cca = await api('ajuster', { projet: q.id, type: 'CCA', x: [v.temp], y: especes, echelle: 'none', nom: 'CCA',
+        options: { permutations: 99, graine: 2, z: [v.sable], strates: { by: 'variable', variable: v.site } } });
+      verifier(cca.type === 'CCA' && cca.analyse === true && cca.prediction === false && cca.N === 30 && Object.keys(cca.ordination).join() === '1,2,3'
+        && cca.ordination['2'].sites.CCA1.length === 30 && /^R2aj /.test(cca.chiffres) && cca.strates === 'site' && [].concat(cca.covariables).join() === 'sable',
+      `CCA : ${cca.chiffres}, N = ${cca.N}`);
+      const tests = await api('rda_tests', { modele: cca.id });
+      verifier([].concat(tests.axes.axe).length === 2 && [].concat(tests.sequentiels.terme).join() === 'temp,Résidus' && [].concat(tests.termes.terme).length === 2
+        && typeof [].concat(tests.sequentiels.p)[0] === 'number', `tests : ${JSON.stringify(tests.sequentiels)}`);
+      const s = await api('script_r', { modele: cca.id, chemin: path.join(dossier, 'cca.R'), version: 'essai' });
+      verifier(fs.existsSync(s.script) && !s.ecart && !/vegan::/.test(fs.readFileSync(s.script, 'utf8').replace(/#.*$/gm, '')), `script R : ${s.ecart || 'R seul'}`);
+      const mt = await api('methodes', { modele: cca.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /canonical correspondence analysis/.test(x)) && mt.references.some((x) => /ter Braak, C\. J\. F\. \(1986\)/.test(x)), 'texte des méthodes');
+      const e = await api('exporter', { modele: cca.id, chemin: path.join(dossier, 'cca.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      let refus = '';
+      try { await api('rda_partition', { modele: cca.id }); } catch (err) { refus = err.message; }
+      verifier(/pas pour une CCA/.test(refus), `partition refusée : « ${refus} »`);
+    });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
       let g = 5;
