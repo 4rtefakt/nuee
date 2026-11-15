@@ -1531,6 +1531,99 @@ async function principal() {
       const t = await api('projet_texte', { projet: q.id, version: 'essai' });
       verifier(/"coordonnees"/.test(t.texte) && /"paquets"/.test(t.texte), 'projet en texte, pour un rapport de problème');
     });
+    await etape('valeurs de rasters aux observations : GeoTIFF écrit octet par octet, grille ASCII, refus, annuler, enregistrer (moteur/R/raster.R)', async () => {
+      // un GeoTIFF petit-boutiste, réels de 32 bits en une bande de lignes, en Lambert-93 : 50 × 40 cellules de 500 m depuis
+      // (815000, 6290000), de valeur 10 + i + j / 2 (ligne i, colonne j), une cellule sans valeur (-9999)
+      const geotiff = (chemin, { epsg = 2154, compression = 1 } = {}) => {
+        const W = 50; const H = 40;
+        const image = Buffer.alloc(W * H * 4);
+        for (let i = 0; i < H; i += 1) for (let j = 0; j < W; j += 1) image.writeFloatLE(i === 5 && j === 6 ? -9999 : 10 + i + j / 2, (i * W + j) * 4);
+        const court = (...v) => { const b = Buffer.alloc(2 * v.length); v.forEach((x, k) => b.writeUInt16LE(x, 2 * k)); return b; };
+        const long = (...v) => { const b = Buffer.alloc(4 * v.length); v.forEach((x, k) => b.writeUInt32LE(x, 4 * k)); return b; };
+        const reel = (...v) => { const b = Buffer.alloc(8 * v.length); v.forEach((x, k) => b.writeDoubleLE(x, 8 * k)); return b; };
+        const entrees = [[256, 4, 1, long(W)], [257, 4, 1, long(H)], [258, 3, 1, court(32)], [259, 3, 1, court(compression)], [262, 3, 1, court(1)],
+          [273, 4, 1, long(8)], [277, 3, 1, court(1)], [278, 4, 1, long(H)], [279, 4, 1, long(image.length)], [284, 3, 1, court(1)], [339, 3, 1, court(3)],
+          [33550, 12, 3, reel(500, 500, 0)], [33922, 12, 6, reel(0, 0, 0, 815000, 6290000, 0)],
+          [34735, 3, 16, court(1, 1, 0, 3, 1024, 0, 1, 1, 1025, 0, 1, 1, 3072, 0, 1, epsg)], [42113, 2, 6, Buffer.from('-9999\0', 'latin1')]];
+        // (les valeurs qui ne tiennent pas dans leur entrée, après l'image ; puis le répertoire)
+        let position = 8 + image.length;
+        const hors = [];
+        for (const e of entrees) if (e[3].length > 4) { e.push(position); hors.push(e[3]); position += e[3].length; }
+        const repertoire = Buffer.alloc(2 + 12 * entrees.length + 4);
+        repertoire.writeUInt16LE(entrees.length, 0);
+        entrees.forEach(([etiquette, type, n, valeur, ou], k) => {
+          const o = 2 + 12 * k;
+          repertoire.writeUInt16LE(etiquette, o); repertoire.writeUInt16LE(type, o + 2); repertoire.writeUInt32LE(n, o + 4);
+          if (ou !== undefined) repertoire.writeUInt32LE(ou, o + 8); else valeur.copy(repertoire, o + 8);
+        });
+        const tete = Buffer.from([0x49, 0x49, 42, 0, 0, 0, 0, 0]);
+        tete.writeUInt32LE(position, 4);
+        fs.writeFileSync(chemin, Buffer.concat([tete, image, ...hors, repertoire]));
+      };
+      const tif = path.join(dossier, 'mnt.tif');
+      geotiff(tif);
+      const jpeg = path.join(dossier, 'photo.tif');
+      geotiff(jpeg, { compression: 7 });
+      const nord = path.join(dossier, 'nord.tif');
+      geotiff(nord, { epsg: 27561 });
+      // une grille ASCII d'ESRI de 10 × 8 cellules de 2 km, ses classes, et son .prj (Lambert-93, sans code)
+      const asc = path.join(dossier, 'occupation.asc');
+      const lignesAsc = ['ncols 10', 'nrows 8', 'xllcorner 815000', 'yllcorner 6270000', 'cellsize 2500', 'NODATA_value -1'];
+      for (let i = 0; i < 8; i += 1) lignesAsc.push(Array.from({ length: 10 }, (_, j) => (i + j) % 4).join(' '));
+      fs.writeFileSync(asc, lignesAsc.join('\n'));
+      fs.writeFileSync(path.join(dossier, 'occupation.prj'), 'PROJCS["RGF_1993_Lambert_93",GEOGCS["GCS_RGF_1993",DATUM["D_RGF_1993",SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Conformal_Conic"],PARAMETER["False_Easting",700000.0],PARAMETER["False_Northing",6600000.0],PARAMETER["Central_Meridian",3.0],PARAMETER["Standard_Parallel_1",49.0],PARAMETER["Standard_Parallel_2",44.0],PARAMETER["Latitude_Of_Origin",46.5],UNIT["Meter",1.0]]');
+      // des placettes : au centre de la cellule (3, 4), au coin de quatre cellules, sur la cellule sans valeur, hors du raster, sans coordonnées
+      const x0 = 815000; const y0 = 6290000;
+      const placettes = [['centre', x0 + 4.5 * 500, y0 - 3.5 * 500], ['coin', x0 + 10 * 500, y0 - 10 * 500], ['sans_valeur', x0 + 6.5 * 500, y0 - 5.5 * 500],
+        ['dehors', x0 - 1000, y0 - 1000], ['sans_coordonnees', '', y0 - 2000], ['loin', x0 + 20.25 * 500, y0 - 30.75 * 500]];
+      const q = await api('coller', { texte: ['placette\tX\tY\tz', ...placettes.map((l, k) => [...l, k].join('\t'))].join('\r\n'), nom: 'Placettes (raster)' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      let sans = '';
+      try { await api('raster_infos', { projet: q.id, chemins: [tif] }); } catch (e) { sans = e.message; }
+      verifier(/n'a pas de coordonnées/.test(sans), `sans coordonnées : « ${sans} »`);
+      await api('coordonnees', { projet: q.id, regler: true, x: v.X, y: v.Y, systeme: '2154' });
+      const infos = [].concat((await api('raster_infos', { projet: q.id, chemins: [tif, asc, jpeg, nord] })).fichiers);
+      const [i1, i2, i3, i4] = infos;
+      verifier(i1.systeme.code === 2154 && i1.largeur === 50 && i1.hauteur === 40 && i1.type === 'float32' && i1.resolution === '500 m' && i1.methode === 'bilineaire'
+        && i1.nodata === -9999 && i1.dedans === 4 && i1.observations === 5 && [].concat(i1.noms).join() === 'mnt' && i1.taille === fs.statSync(tif).size,
+      `le GeoTIFF : ${JSON.stringify(i1)}`);
+      verifier(i2.format === 'ASCII' && i2.systeme.code === 2154 && i2.methode === 'cellule' && i2.resolution === '2500 m', `la grille ASCII : ${JSON.stringify(i2)}`);
+      verifier(/la compression JPEG ne se lit pas ici/.test(i3.erreur) && /EPSG:27561/.test(i4.erreur), `refus : « ${i3.erreur} » ; « ${i4.erreur} »`);
+      const en = [].concat((await api('raster_infos', { projet: q.id, chemins: [jpeg] }, 'en')).fichiers)[0];
+      verifier(/JPEG compression isn't read here/.test(en.erreur), `en anglais : « ${en.erreur} »`);
+      const r = await api('ajouter_raster', { projet: q.id, fichiers: [
+        { chemin: tif, methode: 'cellule', noms: ['altitude'] }, { chemin: tif, methode: 'bilineaire', noms: ['altitude_bil'] },
+        { chemin: tif, methode: 'moyenne', rayon: 600, noms: ['altitude_600m'] }, { chemin: asc, methode: 'majorite', rayon: 3000, noms: ['occupation'] }] });
+      const d = await api('donnees', { projet: q.id });
+      const col = (nom) => d.valeurs[d.variables.indexOf(nom)];
+      const f = (i, j) => 10 + i + j / 2;
+      // (le coin de quatre cellules : la cellule en bas à droite, l'interpolation à mi-chemin ; dans 600 m du centre, la cellule et ses quatre voisines)
+      verifier(JSON.stringify(col('altitude')) === JSON.stringify([f(3, 4), f(10, 10), null, null, null, f(30, 20)])
+        && Math.abs(col('altitude_bil')[1] - f(9.5, 9.5)) < 1e-9 && col('altitude_bil')[0] === f(3, 4) && col('altitude_bil')[3] === null
+        && Math.abs(col('altitude_600m')[0] - f(3, 4)) < 1e-9 && r.annulable === 'valeurs de mnt.tif, occupation.asc',
+      `valeurs : ${JSON.stringify({ cellule: col('altitude'), bilineaire: col('altitude_bil'), cercle: col('altitude_600m') })}`);
+      verifier([].concat(r.raster.phrases)[0] === '« altitude » : 3 observation(s) sur 6 ont une valeur, manquante pour 1 hors du raster, 1 sur une cellule sans valeur, 1 sans coordonnées.'
+        && col('occupation').filter((x) => x !== null).length === 5, `phrases : ${[].concat(r.raster.phrases).join(' | ')}`);
+      const j = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel').map((e) => e.texte).join('\n');
+      verifier(j.includes(`${q.id} <- ajouter_valeurs_rasters(${q.id}, list(list(chemin = `) && j.includes('methode = "moyenne", rayon = 600'), 'journal : ajouter_valeurs_rasters');
+      // le texte des Méthodes d'un modèle qui utilise ces variables dit d'où elles viennent
+      const lm = await api('ajuster', { projet: q.id, type: 'LM', x: [r.variables.find((x) => x.nom === 'altitude_bil').uid], y: [v.z], echelle: 'none', nom: 'R1' });
+      const mt = await api('methodes', { modele: lm.id, langue: 'fr' });
+      const me = await api('methodes', { modele: lm.id, langue: 'en' });
+      verifier(mt.paragraphes[0].includes('Lues dans des rasters à la position de chaque observation : « altitude_bil » de mnt.tif (GeoTIFF, cellules de 500 m, RGF93 v1 / Lambert-93 ; par interpolation bilinéaire')
+        && me.paragraphes[0].includes('“altitude_bil” from mnt.tif (GeoTIFF, 500 m cells, RGF93 v1 / Lambert-93; by bilinear interpolation'), `méthodes : ${mt.paragraphes[0]}`);
+      // enregistré et rouvert : des variables comme les autres ; puis Ctrl+Z les retire
+      const fichier = path.join(dossier, 'placettes_raster.nuee');
+      await api('enregistrer', { projet: q.id, chemin: fichier });
+      const o = await api('ouvrir', { chemin: fichier });
+      verifier(['altitude', 'altitude_bil', 'altitude_600m', 'occupation'].every((n) => o.variables.some((x) => x.nom === n)), 'enregistré et rouvert');
+      const u = (await api('annuler', { projet: q.id })).projet;
+      verifier(u.variables.map((x) => x.nom).join() === 'X,Y,z' && u.annulable === 'coordonnées', `annuler : ${u.variables.map((x) => x.nom).join()}`);
+      let refus = '';
+      try { await api('ajouter_raster', { projet: q.id, fichiers: [{ chemin: nord, noms: ['x'] }] }); } catch (e) { refus = e.message; }
+      verifier(/nord.tif : le système de coordonnées du fichier, EPSG:27561/.test(refus) && !(await api('projet', { projet: q.id })).variables.some((x) => x.nom === 'x'),
+        `un système inconnu refusé, rien d'ajouté : « ${refus} »`);
+    });
     await etape('TRIM : indices et tendances de comptages d’un tableau site × année (moteur/R/trim.R)', async () => {
       // 8 sites comptés de 2015 à 2021, des comptages manquants (vides) et des lignes absentes, un habitat par site
       let g = 3;

@@ -141,7 +141,9 @@ async function rendreCarte(conteneur, ctx, p, loc) {
     geo ? el('span', { title: t('carte_fond_aide') }, choix(t('carte_fond'), [['', t('carte_fond_aucun')], ['osm', 'OpenStreetMap'], ['ign_plan', t('carte_ign_plan')],
       ['ign_photo', t('carte_ign_photo')]], loc.fond, (v) => { loc.fond = v; ctx.rafraichir(); })) : null,
     el('button', { title: t('autocorrelation_spatiale_aide'), onclick: () => ctx.ouvrirVue('autocorrelation_spatiale', null,
-      loc.couleur && loc.couleur.startsWith('v') ? { source: loc.couleur } : null, pid) }, t('autocorrelation_spatiale')));
+      loc.couleur && loc.couleur.startsWith('v') ? { source: loc.couleur } : null, pid) }, t('autocorrelation_spatiale')),
+    // (raster.js: an elevation, a land cover... at each point, as new variables of the project)
+    el('button', { title: t('raster_carte_aide'), onclick: () => ctx.valeursRaster(pid) }, t('raster_valeurs')));
   const graphe = el('div', { class: 'graphe' });
   const sans = U.length - avec.length;
   const sel = new Set(ctx.selection(pid));
