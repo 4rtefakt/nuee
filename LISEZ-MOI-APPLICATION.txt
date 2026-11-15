@@ -1146,6 +1146,70 @@ méthodes avec ses références et font un rapport. Fichier › Exporter vers R 
 un rapport R Markdown ou Quarto, qui les refait avec R seul, leurs tests avec les mêmes
 permutations. Elles ne prédisent pas de nouvelles observations.
 
+Analyse canonique des correspondances (CCA)
+-------------------------------------------
+Nouveau modèle › type « CCA (analyse canonique des correspondances) » (ter Braak 1986) : la
+cousine de la RDA pour des effectifs ou des abondances d'espèces qui répondent aux gradients en
+cloche plutôt qu'en ligne droite. Y : les espèces (effectifs ou abondances, positifs ou nuls),
+les colonnes du tableau ; X : les variables explicatives ; Z : des covariables retirées d'abord
+(CCA partielle). Le tableau est ramené à ses écarts à l'indépendance, comme dans une analyse des
+correspondances, et les X pondérés par les masses des observations (leurs parts de l'effectif
+total). Onglet Général : le nombre de permutations (999 ; 0 : aucun test), les groupes où elles
+restent et leur graine ; à chaque permutation, les masses suivent les observations. Les
+observations où une valeur manque ou sans aucune abondance, et les espèces absentes de toutes
+les autres, sont laissées de côté.
+
+Les vues, comme celles de la RDA : Résumé (l'inertie ; le R² et le R² ajusté, estimé par les
+permutations du test, Peres-Neto et al. 2006, absent sans permutation ; le pseudo-F et p) ;
+Ordination, le triplot en échelle 1 (distances du khi² entre observations), 2 (entre espèces)
+ou 3 (symétrique) ; Valeurs propres ; Tests par permutation (chaque axe contraint après les
+précédents, les termes l'un après l'autre dans l'ordre du modèle, chaque terme après tous les
+autres ; la sélection pas à pas, ses R² ajustés par les mêmes permutations). La partition de la
+variance est celle d'une RDA. Les résultats sont ceux de vegan (cca, anova.cca par axe, par
+terme en séquence et marginal, RsquareAdj, ordiR2step) et, pour les mêmes permutations, les
+mêmes valeurs p. Texte des méthodes, export, rapport et export vers R comme pour la RDA.
+
+Espèces indicatrices
+--------------------
+Nouveau modèle › type « Espèces indicatrices (IndVal) » : quelles espèces caractérisent chaque
+groupe d'observations (des milieux, des types de sites...). Y : les espèces, des abondances ou
+des présences ; Classe : la variable qualitative des groupes. Pour chaque espèce et chaque
+groupe, A (la spécificité : la part de son abondance dans le groupe) et B (la fidélité : la part
+des observations du groupe où elle est), et la valeur indicatrice √(A·B) : IndVal.g par défaut,
+qui compare les abondances moyennes des groupes, des groupes d'effectifs différents comptant
+alors autant (De Cáceres et Legendre 2009), ou IndVal, qui compare leurs totaux (Dufrêne et
+Legendre 1997). Les combinaisons de groupes (De Cáceres et al. 2010) : par défaut toutes,
+jusqu'à tous les groupes (une espèce rattachée à tous n'est pas testée), ou les groupes seuls,
+ou jusqu'à un ordre. Chaque espèce va au groupe ou à la combinaison de sa plus grande valeur,
+testée en permutant les groupes des observations (999 fois ; à l'intérieur de strates, un
+identifiant ou une variable qualitative ; une graine) ; sa valeur p corrigée sur les espèces
+(Benjamini–Hochberg ou Holm) est donnée à côté de la p brute. « Présences seules » prend des 0/1.
+Les vues : Espèces indicatrices (le tableau, qui se trie ; p ≤ 0,05 en rouge ; « p corrigée
+≤ 0,05 seulement » ; un clic met l'espèce en évidence dans le graphique), Valeurs indicatrices
+(la valeur de chaque espèce pour son groupe, de la couleur du groupe, pâle quand elle n'est pas
+significative ; ou A et B d'une espèce dans chaque groupe), Résumé (le nombre d'espèces retenues
+à 0,05, p brutes et corrigées, et par groupe). Les statistiques sont celles de
+indicspecies::multipatt et, pour les mêmes permutations, les mêmes valeurs p.
+
+Raréfaction et accumulation des espèces
+---------------------------------------
+Graphiques › Raréfaction (ou dans l'explorateur, sous le projet) : combien d'espèces portent les
+observations, comparées à effort égal. Les espèces : des colonnes d'effectifs, une plage d'une
+colonne à une autre dans l'ordre du tableau (comme les indices de diversité de Nouvelle variable
+les lisent) ou cochées dans la liste. Raréfaction (par observation) : la richesse attendue de
+chaque observation dans m individus tirés sans remise (Hurlbert 1971) et son écart-type (Heck et
+al. 1975), la courbe de 1 à tous ses individus, et sa richesse à une taille commune (par défaut
+celle de la plus petite observation : la ligne en pointillés) ; dans le tableau, Chao1 (corrigé
+du biais) et ACE estiment la richesse de chaque observation. Ils demandent des effectifs
+entiers d'individus : avec des recouvrements ou des densités, la vue le dit et ne donne que
+l'accumulation. Accumulation (sur les observations) : la richesse attendue dans k observations
+tirées parmi toutes (méthode exacte, Ugland et al. 2003), ±2 écarts-types, et les estimateurs de
+la richesse totale d'après les présences : Chao2, les jackknifes d'ordre 1 et 2 et le bootstrap.
+Par groupe (une variable qualitative ou un identifiant) : une courbe et des estimateurs par
+groupe. Un clic ou un cadre sélectionne des observations, comme dans Séries. Les valeurs sont
+celles de vegan (rarefy, rarecurve, specaccum, estimateR, specpool), sauf l'écart-type d'ACE,
+calculé par la méthode delta avec le gradient d'ACE lui-même (vegan en prend un autre).
+
 Arbres de décision, analyse discriminante linéaire et k-moyennes
 ----------------------------------------------------------------
 Nouveau modèle › type « Arbre de décision » (rpart) : une variable Y quantitative (arbre de

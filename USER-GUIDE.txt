@@ -1059,6 +1059,66 @@ Both export their tables (File › Export), write their Methods text with its re
 a report. File › Export to R writes a script, or an R Markdown or Quarto report, that redoes
 them with R alone, their tests with the same permutations. They don't predict new observations.
 
+Canonical correspondence analysis (CCA)
+---------------------------------------
+New model › type "CCA (canonical correspondence analysis)" (ter Braak 1986): the RDA's
+counterpart for species counts or abundances whose responses along the gradients are unimodal
+rather than linear. Y: the species (counts or abundances, positive or zero), the columns of the
+table; X: the explanatory variables; Z: covariates removed first (partial CCA). The table is
+turned into its departures from independence, as in a correspondence analysis, and the X are
+weighted by the observations' masses (their shares of the grand total). General tab: the number
+of permutations (999; 0: no test), the groups they stay within and their seed; in each
+permutation the masses go with the observations. Observations with a missing value or without
+any abundance, and species absent from all the others, are left out.
+
+Views, as the RDA's: Summary (inertia; R2 and the adjusted R2, estimated with the test's
+permutations, Peres-Neto et al. 2006, none without permutations; pseudo-F and p); Ordination,
+the triplot in scaling 1 (chi-square distances between observations), 2 (between species) or 3
+(symmetric); Eigenvalues; Permutation tests (each constrained axis after the previous ones, the
+terms one after another in the order of the model, each term after all the others; forward
+selection, with adjusted R2 from the same permutations). Variation partitioning is an RDA's.
+The results are those of vegan (cca, anova.cca by axis, by terms and by margin, RsquareAdj,
+ordiR2step), and for the same permutations the same p values. Methods text, export, report and
+Export to R as for the RDA.
+
+Indicator species
+-----------------
+New model › type "Indicator species (IndVal)": which species characterize each group of
+observations (habitats, site types...). Y: the species, abundances or presences; Class: the
+qualitative variable of the groups. For each species and each group, A (specificity: the share
+of its abundance in the group) and B (fidelity: the share of the group's observations where it
+is), and the indicator value √(A·B): IndVal.g by default, which compares the groups' mean
+abundances so that groups of different sizes count alike (De Cáceres and Legendre 2009), or
+IndVal, which compares their totals (Dufrêne and Legendre 1997). Combinations of groups
+(De Cáceres et al. 2010): by default every combination, up to all the groups (a species tied to
+all of them isn't tested), or single groups, or up to an order. Each species goes to the group
+or combination of its largest value, tested by permuting the observations' groups (999 times;
+within strata, an ID or a qualitative variable; a seed); its p corrected over the species
+(Benjamini–Hochberg or Holm) stands beside the raw p. "Presences only" uses 0/1 values.
+Views: Indicator species (the sortable table, p ≤ 0.05 in red, "corrected p ≤ 0.05 only"; a
+click highlights the species in the plot), Indicator values (each species' value for its group,
+coloured by the group and pale when not significant; or one species' A and B in each group),
+Summary (the number of species retained at 0.05, raw and corrected, and per group). The
+statistics are those of indicspecies::multipatt, and for the same permutations the same p values.
+
+Rarefaction and species accumulation
+------------------------------------
+Plots › Rarefaction (or in the explorer, under the project): how many species the observations
+hold, compared on an equal footing. The species: columns of counts, a range from one column to
+another in the table's order (as the diversity indices of New variable read them) or ticked in
+the list. Rarefaction (by observation): each observation's expected richness in m individuals
+drawn without replacement (Hurlbert 1971) with its standard deviation (Heck et al. 1975), the
+curve from 1 to all its individuals, and its richness at a common size (by default the smallest
+observation's: the dashed line); in the table, Chao1 (bias-corrected) and ACE estimate each
+observation's richness. These need integer counts of individuals: with covers or densities the
+view says so and gives the accumulation alone. Accumulation (over the observations): the
+richness expected in k observations drawn among all (exact method, Ugland et al. 2003), ±2
+standard deviations, and the estimators of the total richness from the presences: Chao2, the
+first- and second-order jackknifes and the bootstrap. By group (a qualitative variable or an
+ID): a curve and estimators per group. A click or a box selects observations, as in Series. The
+values are those of vegan (rarefy, rarecurve, specaccum, estimateR, specpool), except ACE's
+standard deviation, from the delta method with ACE's own gradient (vegan uses another).
+
 Decision trees, linear discriminant analysis and k-means
 --------------------------------------------------------
 New model › type "Decision tree" (rpart): a quantitative Y variable (regression tree) or a
