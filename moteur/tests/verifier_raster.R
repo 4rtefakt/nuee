@@ -280,6 +280,8 @@ g <- ouvrir_raster(f("meta.tif"))
 attendu <- v * 0.5 + 100
 attendu[3, 4] <- NA
 verifier("GDAL_NODATA, échelle et décalage (valeur × 0,5 + 100), nom de la bande", proche(toutes(g), comme_lu(attendu), 1e-12) && identical(noms_bandes(g), "altitude & pente"))
+ecrire_tiff(f("bande_generique.tif"), array(v, c(dim(v), 2)), "int16", meta = '<GDALMetadata><Item name="DESCRIPTION" sample="0" role="description">Band 1</Item><Item name="DESCRIPTION" sample="1" role="description">lyr.2</Item></GDALMetadata>')
+verifier("des noms de bandes sans contenu (« Band 1 », « lyr.2 » de terra) : le nom du fichier, numéroté", identical(noms_bandes(ouvrir_raster(f("bande_generique.tif"))), c("bande_generique_1", "bande_generique_2")))
 vf <- valeurs_type("float32")
 vf[2, 2] <- -3.4028234663852886e+38
 vf[5, 6] <- NaN

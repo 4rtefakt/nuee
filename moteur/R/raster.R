@@ -1063,12 +1063,15 @@ methode_proposee <- function(g) {
   if (isTRUE(g$palette) || g$type %in% c("uint8", "int8", "texte_entiers")) "cellule" else "bilineaire"
 }
 
-# Le nom proposé de chaque bande : la description de la bande (dans les métadonnées de GDAL) ou le
-# nom du fichier, numéroté s'il a plusieurs bandes.
+# Le nom proposé de chaque bande : la description de la bande (dans les métadonnées de GDAL), sauf
+# une description sans contenu (« Band 1 », « lyr.1 » de terra...), ou le nom du fichier, numéroté
+# s'il a plusieurs bandes.
 noms_bandes <- function(g) {
   base <- tools::file_path_sans_ext(g$nom)
-  if (g$bandes == 1) return(if (!is.na(g$noms_bandes[1])) g$noms_bandes[1] else base)
-  ifelse(is.na(g$noms_bandes), sprintf("%s_%d", base, seq_len(g$bandes)), g$noms_bandes)
+  d <- g$noms_bandes
+  d[!is.na(d) & grepl("^(lyr|layer|band|bande|couche|b)[ ._-]*[0-9]+$", d, ignore.case = TRUE)] <- NA
+  if (g$bandes == 1) return(if (!is.na(d[1])) d[1] else base)
+  ifelse(is.na(d), sprintf("%s_%d", base, seq_len(g$bandes)), d)
 }
 
 # Le raster prêt pour les points du projet (`pts` : points_projet) : son système, celui du
