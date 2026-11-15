@@ -31,6 +31,12 @@ refus <- function(expr) tryCatch({ force(expr); "" }, error = conditionMessage)
 
 if (nzchar(Sys.getenv("NUEE_VEGAN"))) .libPaths(c(Sys.getenv("NUEE_VEGAN"), .libPaths()))
 avec_vegan <- requireNamespace("vegan", quietly = TRUE)
+# (les comparaisons sont celles de vegan 2.7 : adonis2, metaMDS, betadisper et mantel.correlog ont
+# changé depuis 2.6 ; avec une version plus ancienne, seuls les calculs directs sont faits)
+if (avec_vegan && utils::packageVersion("vegan") < "2.7") {
+  cat(sprintf("(vegan %s, avant 2.7 : pas de comparaison avec lui)\n", utils::packageVersion("vegan")))
+  avec_vegan <- FALSE
+}
 cat(if (avec_vegan) sprintf("(vegan %s installé : comparaisons avec lui)\n", utils::packageVersion("vegan")) else "(vegan absent : calculs directs seulement)\n")
 # (les permutations de Nuée passées à vegan, avec une description que permute sait afficher)
 pv <- function(P) { attr(P, "control") <- permute::how(nperm = nrow(P)); P }
@@ -273,7 +279,7 @@ if (avec_vegan) {
   cat("PERMANOVA : vegan::adonis2, mêmes permutations\n")
   Pt <- permutations_lignes(39, B, NULL, 6)
   compare <- function(t, a) proche(t$ddl, a$Df) && proche(t$ss, a$SumOfSqs) && proche(t$R2, a$R2) && proche(t$F, a$F) && isTRUE(all.equal(t$p, a[["Pr(>F)"]]))
-  verifier("un facteur = adonis2", compare(t1, vegan::adonis2(stats::as.dist(Db) ~ habitat, data = e, permutations = pv(P1))))
+  verifier("un facteur = adonis2", compare(t1, vegan::adonis2(stats::as.dist(Db) ~ habitat, data = e, permutations = pv(P1), by = "terms")))
   verifier("termes séquentiels avec un terme croisé = adonis2(by = \"terms\") : ddl, SC, R², F et p",
            compare(mt$noyau$table, vegan::adonis2(stats::as.dist(Db) ~ temp + altitude + habitat + temp:habitat, data = e, permutations = pv(Pt), by = "terms")))
   dm <- definir_modele(p, "PERMANOVA", x = u("temp", "altitude", "habitat"), y = u(especes), echelle = "none", croises = list(u("temp", "habitat")),
@@ -286,11 +292,11 @@ if (avec_vegan) {
   mw <- ajuster(p, dw)
   Pw <- permutations_lignes(39, B, e$site, 6)
   verifier("le modèle entier, distance corrigée par Lingoes, permutations par site = adonis2(add = \"lingoes\")",
-           compare(mw$noyau$table, vegan::adonis2(stats::as.dist(Db) ~ temp + altitude + habitat, data = e, permutations = pv(Pw), add = "lingoes")) &&
+           compare(mw$noyau$table, vegan::adonis2(stats::as.dist(Db) ~ temp + altitude + habitat, data = e, permutations = pv(Pw), add = "lingoes", by = NULL)) &&
              proche(mw$constante, vegan:::addLingoes(Db)))
   verifier("le test du modèle entier, donné avec les termes, = adonis2(by = NULL)",
-           proche(mt$noyau$modele$F, vegan::adonis2(stats::as.dist(Db) ~ temp + altitude + habitat + temp:habitat, data = e, permutations = pv(Pt))$F[1]) &&
-             identical(mt$noyau$modele$p, vegan::adonis2(stats::as.dist(Db) ~ temp + altitude + habitat + temp:habitat, data = e, permutations = pv(Pt))[["Pr(>F)"]][1]))
+           proche(mt$noyau$modele$F, vegan::adonis2(stats::as.dist(Db) ~ temp + altitude + habitat + temp:habitat, data = e, permutations = pv(Pt), by = NULL)$F[1]) &&
+             identical(mt$noyau$modele$p, vegan::adonis2(stats::as.dist(Db) ~ temp + altitude + habitat + temp:habitat, data = e, permutations = pv(Pt), by = NULL)[["Pr(>F)"]][1]))
 }
 
 cat("Dispersion multivariée : calculs directs\n")

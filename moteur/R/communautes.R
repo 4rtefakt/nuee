@@ -762,10 +762,17 @@ distance_euclidienne_termes <- function(projet, termes, observations) {
 
 # La distance des variables X d'un test de Mantel, pour les observations `observations` : la
 # distance euclidienne sur les termes X mis à l'échelle comme le dit l'onglet Variables. Rend
-# list(D, connues, termes, echelles) : `connues`, les observations dont les valeurs sont connues ;
-# `D`, la matrice de leurs distances. (La séance qui coordonne ajoutera ici les distances
-# géographiques des coordonnées du projet.)
-distances_mantel_x <- function(projet, d, observations) distance_euclidienne_termes(projet, d$x, observations)
+# list(D, connues, termes, echelles, texte) : `connues`, les observations dont les valeurs sont
+# connues ; `D`, la matrice de leurs distances (nommée par leurs numéros) ; `texte`, ce qu'en dit le
+# texte des méthodes, en français et en anglais. (La séance qui coordonne ajoutera ici les
+# distances géographiques des coordonnées du projet.)
+distances_mantel_x <- function(projet, d, observations) {
+  r <- distance_euclidienne_termes(projet, d$x, observations)
+  termes <- function(fr) paste0(liste_mots(utils::head(r$termes, 12), fr), if (length(r$termes) > 12) "…" else "")
+  r$texte <- list(fr = sprintf("la distance euclidienne sur %s (%s), %s", if (length(r$termes) == 1) "un terme" else sprintf("%d termes", length(r$termes)), termes(TRUE), echelles_texte(r$echelles, TRUE)),
+                  en = sprintf("the Euclidean distance on %s (%s), %s", if (length(r$termes) == 1) "one term" else sprintf("%d terms", length(r$termes)), termes(FALSE), echelles_texte(r$echelles, FALSE)))
+  r
+}
 
 # Les termes des covariables Z d'un test de Mantel partiel : chacune avec sa transformation et son
 # échelle (UV par défaut).
@@ -914,7 +921,7 @@ ajuster_mantel <- function(projet, d) {
   test <- mantel_noyau(dc$D, Dx, o$methode, P, Dz)
   correlogramme <- correlogramme_noyau(dc$D, Dx, o$methode, P, o$classes)
   m <- list(type = "MANTEL", observations = garde, exclues = dc$exclues, N = length(garde), K = ncol(dc$Y), Y = list(noms = colnames(dc$Y)),
-            X = list(termes = dx$termes, echelles = dx$echelles),
+            X = list(termes = dx$termes, echelles = dx$echelles, texte = dx$texte),
             Z = list(termes = if (!is.null(dz)) dz$termes else character(0), echelles = if (!is.null(dz)) dz$echelles,
                      variables = vapply(o$z, function(u) as.character(variable_du_projet(projet, u)$ids[1]), "")),
             options = o, test = test, correlogramme = correlogramme, noms = dc$noms,
@@ -1274,10 +1281,9 @@ texte_methodes_communaute <- function(projet, d, m, langue = "fr", version = "")
   } else {
     t <- m$test
     cite("mantel")
-    echelles <- echelles_texte(m$X$echelles, fr)
-    p1 <- sprintf(tx("Un test de Mantel (Mantel, 1967 ; Legendre et Legendre, 2012) a porté sur %s. %s La distance des variables X est la distance euclidienne sur %s (%s), %s.",
-                     "A Mantel test (Mantel, 1967; Legendre & Legendre, 2012) was performed on %s. %s The distance of the X variables is the Euclidean distance on %s (%s), %s."),
-                  tableau, donnees, if (length(m$X$termes) == 1) tx("un terme", "one term") else sprintf(tx("%d termes", "%d terms"), length(m$X$termes)), court(m$X$termes), echelles)
+    p1 <- sprintf(tx("Un test de Mantel (Mantel, 1967 ; Legendre et Legendre, 2012) a porté sur %s. %s La distance des variables X est %s.",
+                     "A Mantel test (Mantel, 1967; Legendre & Legendre, 2012) was performed on %s. %s The distance of the X variables is %s."),
+                  tableau, donnees, m$X$texte[[langue]])  # (distances_mantel_x)
     correlation <- if (o$methode == "spearman") tx("la corrélation des rangs de Spearman", "Spearman's rank correlation") else tx("la corrélation de Pearson", "Pearson's correlation")
     p2 <- sprintf(tx("La statistique de Mantel, %s entre les deux distances des mêmes paires d'observations, vaut r = %s ; sa valeur p unilatérale vient de %s de la distance du tableau Y (vegan::mantel) : %s.",
                      "The Mantel statistic, %s between the two distances of the same pairs of observations, is r = %s; its one-sided p-value comes from %s of the distance of the table Y (vegan::mantel): %s."),
