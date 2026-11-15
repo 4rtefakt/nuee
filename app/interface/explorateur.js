@@ -120,12 +120,16 @@ export function rendreExplorateur(conteneur, app) {
     // the project's documents (documents.js)
     const noeudDocument = (d) => noeud({ cle: `${p.id}/doc/${d.id}`, niveau: 3, ic: 'file-text', libelle: d.titre || t('document_sans_titre'),
       double: () => app.ouvrirDocument(p.id, d.id), menu: () => app.menuDocument(p.id, d.id) });
+    // its figures for publication (figures.js)
+    const noeudFigure = (f) => noeud({ cle: `${p.id}/fig/${f.id}`, niveau: 3, ic: 'layout-grid', libelle: f.titre || t('figure_sans_titre'),
+      double: () => app.ouvrirFigure(p.id, f.id), menu: () => app.menuFigure(p.id, f.id) });
     return noeud({
       cle: p.id, niveau: 1, ic: 'folder', libelle: [el('b', {}, p.nom), p.modifie ? el('span', { class: 'badge alerte', title: t('modifie') }, '●') : null],
       titre: p.source,
       menu: () => [
         { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
         { libelle: t('nouveau_document'), icone: 'file-text', action: () => app.nouveauDocument(p.id) },
+        { libelle: t('figure_composer'), icone: 'layout-grid', action: () => app.composerFigure(p.id) },
         { libelle: t('donnees'), icone: 'database', action: () => app.ouvrirVue('donnees', null, null, p.id) },
         { libelle: t('statistiques'), icone: 'chart-column-big', action: () => app.ouvrirVue('statistiques', null, null, p.id) },
         { libelle: t('tests_variables'), icone: 'flask-conical', action: () => app.ouvrirVue('tests', null, null, p.id) },
@@ -172,6 +176,7 @@ export function rendreExplorateur(conteneur, app) {
         groupe('propres', t('modeles_projet'), 'layout-dashboard', propres, def),
         groupe('calcules', t('modeles_r'), 'sigma', calcules, modele),
         groupe('documents', t('documents'), 'file-text', [].concat(p.documents || []), noeudDocument),
+        groupe('figures', t('figure_figures'), 'layout-grid', [].concat(p.figures || []), noeudFigure),
         groupe('predictions', t('jeux_prediction'), 'target', p.predictions || [], (s, i) => noeud({
           cle: `${p.id}/ps/${i}`, niveau: 3, ic: 'list', libelle: s.nom || `${t('jeu_prediction')} ${i + 1}`, details: `${s.n_obs} ${t('obs')}` })),
       ],

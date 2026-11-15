@@ -29,6 +29,7 @@ import './vues_trim.js';
 import './vues_forets.js';
 import './vues_distance.js';
 import { installerDocuments } from './documents.js';
+import { installerFigures } from './figures.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 
 const params = new URLSearchParams(location.search);
@@ -259,6 +260,7 @@ const app = {
   async enregistrer(pid, sous) {
     if (!etat.projets[pid]) { statut(t('choisir_projet'), true); return false; }
     if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
+    if (app.viderFigures) await app.viderFigures(pid);  // (and a figure's last change)
     const p = etat.projets[pid];
     let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
@@ -318,6 +320,7 @@ const app = {
   async fermerProjet(pid) {
     if (!etat.projets[pid]) return;
     if (app.viderDocuments) await app.viderDocuments(pid);  // (what was just typed in its documents makes it modified)
+    if (app.viderFigures) await app.viderFigures(pid);
     const p = etat.projets[pid];
     if (p.modifie && !window.confirm(t('confirmer_fermer_projet', { nom: p.nom }))) return;
     await demander('fermer_projet', { projet: pid });
@@ -769,13 +772,18 @@ const app = {
   // off screen (in the light theme, whatever the window's)
   locVue: (vue, id) => (etat.panneaux.get(`${vue}:${id}`) || {}).loc || null,
   contexteHorsEcran: (loc, surGraphe) => ({ ...contexte({ loc }), rafraichir: () => {}, definirGraphe: surGraphe, menuGraphique: () => {}, clair: true }),
+  // for a figure (figures.js): the views open in this window that show a plot (in a tab behind
+  // another too: dockview takes it out of the page meanwhile), and a view's settings as a
+  // session keeps them
+  vuesGraphiques: () => [...etat.panneaux.values()].filter((e) => e.graphe && e.graphe.data && VUES[e.vue] && !EXTERNES.includes(e.vue)),
+  locEnregistrable: (loc) => locEnregistrable(loc),
   version: async () => ({ ...(await demander('version')), application: VERSION, electron: bureau && bureau.versions.electron }),
 
   // ---- views and windows
   // A view of a model opens in the model's page (as a tab beside the last view used there);
   // a project view (data, statistics...) as a tab of the central group.
   ouvrirVue(vue, id, loc, pid, position) {
-    if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid, vue === 'document' ? loc : null);
+    if (VUE_SEULE) return app.ouvrirFenetreVue(vue, id, pid, suffixeVue(vue, loc) ? loc : null);
     const m = id ? etat.modeles[id] : null;
     const projet = m ? m.projet : pid;
     const cle = `${vue}:${id || projet || ''}${suffixeVue(vue, loc)}`;
@@ -817,7 +825,7 @@ const app = {
     if (!p) return;
     const e = etat.panneaux.get(p.id);
     if (!e) return;
-    app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, e.vue === 'document' ? e.loc : null);
+    app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, suffixeVue(e.vue, e.loc) ? e.loc : null);
     p.api.close();
   },
 
@@ -885,6 +893,7 @@ const app = {
 };
 
 installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app.nouveauDocument...)
+installerFigures(app);  // (the figures for publication: their view, app.composerFigure, app.ouvrirFigure...)
 const C = creerCommandes(app);
 
 // ------------------------------------------------------------ state helpers
@@ -1607,6 +1616,8 @@ function menuGraphique(e, div, entree) {
     { libelle: t('copier_image'), icone: 'copy', action: () => copierImage(div) },
     { libelle: t('image_png'), icone: 'image-down', action: () => enregistrerImage(div, 'png') },
     { libelle: t('image_svg'), action: () => enregistrerImage(div, 'svg') },
+    // (figures.js: this plot beside others, for a journal)
+    { libelle: t('figure_ajouter'), icone: 'layout-grid', sous: app.sousMenuFigure(entree) },
     '-',
     { libelle: t('effacer_selection'), actif: sel.length + vars.length > 0, action: () => app.effacerSelection(id) },
     { libelle: t('exclure_reajuster'), icone: 'eye-off', actif: modele && sel.length > 0, action: () => app.reajuster(id, { exclues: sel }) },
@@ -1753,7 +1764,8 @@ function accueil() {
 }
 
 function rattacher() {
-  const loc = VUE_SEULE === 'document' ? (etat.panneaux.get('seul') || {}).loc : null;
+  const seul = etat.panneaux.get('seul') || {};
+  const loc = suffixeVue(VUE_SEULE, seul.loc) ? seul.loc : null;  // (a document's or a figure's: which one)
   diffuser('rattacher', { vers: params.get('de'), vue: VUE_SEULE, modele: params.get('modele'), projet: params.get('projet'), loc });
   window.close();
 }
