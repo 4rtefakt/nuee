@@ -930,6 +930,7 @@ code_statistiques <- function(pl, tx) {
         commentaire(tx("L'intervalle à 95 % de chaque coefficient B (termes centrés et mis à l'échelle), par jack-knife sur les sous-modèles de la validation croisée : les coefficients de chacun (W* C', W* comme plus haut), ses composantes orientées comme celles du modèle complet, puis la demi-largeur t(0,975 ; G - 1) × racine((G - 1) / G × somme des carrés des écarts à leur moyenne) ; manquante quand un sous-modèle n'a pas toutes les composantes.",
                        "The 95% interval of each coefficient B (centred and scaled terms), by jackknife over the sub-models of the cross-validation: the coefficients of each (W* C', W* as above), its components oriented as those of the full model, then the half-width t(0.975; G - 1) × sqrt((G - 1) / G × sum of the squared deviations from their mean); missing when a sub-model hasn't all the components.")),
         "coefficients_tours <- do.call(cbind, lapply(vc$tours, function(r) {",
+        "  if (ncol(r$W) < A) return(rep(NA_real_, K * ncol(s$Y)))",
         "  signes <- ifelse(colSums(r$W * m$W) < 0, -1, 1)",
         "  W <- sweep(r$W, 2, signes, \"*\")",
         "  P <- sweep(r$P, 2, signes, \"*\")",
