@@ -244,7 +244,9 @@ the model's domain, and export the results.
 - data editing and new variables from R formulas or value ranges; columns added from another
   table by a key, and tables summarized by group; find and replace (Ctrl+H), a qualitative
   variable's categories renamed, merged or reordered, and a unit and a description for each
-  variable, carried into axis titles, the Methods and Results texts and the exports;
+  variable, carried into axis titles, the Methods and Results texts and the exports; exports of
+  KoboToolbox and ODK Central forms opened cleanly (metadata dropped, choices as categories, GPS
+  points as the project's coordinates, repeat groups with their parents' columns);
 - a model's observations chosen by a condition (`site == "S1" & year >= 2010`), applied again at
   each fit;
 - several windows, and views that pop out onto a second screen;
