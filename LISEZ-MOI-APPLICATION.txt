@@ -535,6 +535,40 @@ avec un titre, un commentaire et les parties cochées (résumé, scores, loading
 coefficients, CV-ANOVA, classification, liste des variables...). Les graphiques y sont mis en
 forme comme dans leurs panneaux ouverts. Le document s'ouvre une fois écrit.
 
+Figures pour publication
+------------------------
+Graphiques › Composer une figure… (ou clic droit sur un graphique › Ajouter à une figure, ou clic
+droit sur le projet dans l'explorateur) : des graphiques côte à côte dans une figure, à la taille
+où une revue l'imprime, pour un article.
+  - Panneaux : les graphiques ouverts dans la fenêtre, de n'importe quel modèle ou du projet
+    (scores, loadings, effets, carte, séries...) : « Ajouter un graphique ouvert... » les liste,
+    le graphique au premier plan vient en premier. Chacun a sa lettre dans l'ordre de la liste
+    (les flèches le changent) : A, B, C, ou a, b, c, (A), (a), en gras ou non, dans le coin
+    choisi. Un panneau prend une case de la grille, ou deux colonnes, ou deux lignes ; la grille
+    (lignes × colonnes : 1 × 2, 2 × 2, 1 × 3...) s'agrandit quand un panneau ajouté n'y tient
+    pas, et un panneau qui n'a pas de place est en rouge.
+  - Taille : la largeur de la revue en millimètres : une colonne (85 ou 90 mm), une et demie
+    (114 ou 140 mm), deux colonnes (174 ou 190 mm), ou une autre ; la hauteur donnée, ou tirée
+    des panneaux (la forme des graphiques à l'écran).
+  - Texte et traits : la taille du texte en points une fois imprimé (graduations, titres des
+    axes, légendes : de 6 à 8 pt pour la plupart des revues ; les étiquettes des points et les
+    notes en proportion), la largeur des traits des courbes en points (axes et grille à la
+    moitié), les titres des graphiques (cachés d'abord : la lettre et la légende suffisent) et
+    les légendes.
+  - Export : PDF (vectoriel, polices incluses, la page juste à la taille de la figure), SVG
+    (vectoriel, dimensionné en millimètres), ou PNG et TIFF à 300 ou 600 points par pouce, cette
+    résolution écrite dans le fichier (pHYs du PNG, étiquettes de résolution du TIFF) pour les
+    vérifications des revues ; le TIFF compressé en LZW, sans perte, ou pas compressé. Dans le
+    navigateur, le PDF passe par sa fenêtre d'impression (choisir « Enregistrer au format PDF »,
+    sans marges).
+Chaque graphique est dessiné comme dans sa vue au moment où il a été ajouté (axes, couleurs,
+étiquettes, titres de Mise en forme, zoom), dans le thème clair, sans la sélection, sur fond
+blanc ; le bouton d'actualisation d'un panneau reprend les réglages de sa vue ouverte. La figure
+est gardée dans le projet et enregistrée avec lui (dans l'explorateur, sous Figures : ouvrir,
+exporter, renommer, dupliquer, supprimer) ; elle prend toujours le dernier ajustement de chaque
+modèle (un modèle pas encore calculé l'est quand la figure est dessinée) : après un
+réajustement, on l'exporte de nouveau. Édition › Annuler ne touche pas aux figures.
+
 Statistiques des variables
 --------------------------
 Graphiques › Statistiques des variables (ou dans l'explorateur, sous le projet) : pour chaque
