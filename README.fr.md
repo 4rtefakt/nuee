@@ -192,7 +192,11 @@ d'accumulation des espèces avec des estimateurs de richesse (Chao1, ACE, jackkn
 résultats sont ceux des paquets vegan et indicspecies, avec les mêmes valeurs p pour les mêmes
 permutations.
 
-**Tendances des suivis :** TRIM, la référence des suivis d'oiseaux européens, écrit d'après la
+**Suivis :** l'échantillonnage par distances, la densité et l'effectif d'animaux à partir de
+transects linéaires ou de points d'écoute comme le paquet Distance les calcule (fonctions de
+détection demi-normale, hazard-rate ou uniforme avec des termes d'ajustement choisis par l'AIC,
+troncature, distances en intervalles, groupes, strates, variance du taux de rencontre et
+intervalles de Satterthwaite). TRIM, la référence des suivis d'oiseaux européens, écrit d'après la
 méthode de Statistics Netherlands : indices et totaux annuels avec leurs erreurs types à partir
 de comptages lacunaires, surdispersion et autocorrélation, ruptures choisies ou pas à pas,
 covariables et poids, et la pente générale avec sa classe (augmentation modérée, stable, fort

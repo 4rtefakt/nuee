@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use Nuée in your research, please cite it as below. Model > Text for the Methods section writes the citation for you."
 type: software
 title: "Nuée"
-abstract: "Desktop application for multivariate data analysis (PCA, PLS, PLS-DA, OPLS and OPLS-DA, class models, redundancy, correspondence and canonical correspondence analysis, linear discriminant analysis, decision trees, random forests, boosted trees, k-means), community ecology (PCoA, NMDS, PERMANOVA, Mantel tests, indicator species, rarefaction), monitoring trends (TRIM), linear, generalized, mixed and additive models compared by AIC, maps and spatial statistics, and statistical tests, computed in R, with export to R scripts, reports and documents."
+abstract: "Desktop application for multivariate data analysis (PCA, PLS, PLS-DA, OPLS and OPLS-DA, class models, redundancy, correspondence and canonical correspondence analysis, linear discriminant analysis, decision trees, random forests, boosted trees, k-means), community ecology (PCoA, NMDS, PERMANOVA, Mantel tests, indicator species, rarefaction), monitoring (distance sampling, TRIM trends), linear, generalized, mixed and additive models compared by AIC, maps and spatial statistics, and statistical tests, computed in R, with export to R scripts, reports and documents."
 authors:
   - name: "4rtefakt"
 version: "1.0.0"

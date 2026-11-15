@@ -182,11 +182,14 @@ rarefaction and species accumulation curves with richness estimators (Chao1, ACE
 The results are those of the vegan and indicspecies packages, with the same p values for the
 same permutations.
 
-**Monitoring trends:** TRIM, the standard of European bird monitoring, written from Statistics
-Netherlands' method: yearly indices and totals with their standard errors from counts with gaps,
-overdispersion and serial correlation, changepoints chosen or stepwise, covariates and weights,
-and the overall slope with its class (moderate increase, stable, steep decline...), as rtrim
-gives them. One model per response fits the same regression to each species and corrects each
+**Monitoring:** distance sampling, density and abundance from line transects or point counts as
+the Distance package computes them (half-normal, hazard-rate or uniform detection functions with
+adjustment terms chosen by AIC, truncation, binned distances, groups, strata, the encounter
+rate's variance and Satterthwaite intervals). TRIM, the standard of European bird monitoring,
+written from Statistics Netherlands' method: yearly indices and totals with their standard
+errors from counts with gaps, overdispersion and serial correlation, changepoints chosen or
+stepwise, covariates and weights, and the overall slope with its class (moderate increase,
+stable, steep decline...), as rtrim gives them. One model per response fits the same regression to each species and corrects each
 term's p values over them (FDR), with a forest plot and small multiples.
 
 **Maps and spatial data:** a project's coordinates (WGS 84 longitudes and latitudes, Lambert-93,
