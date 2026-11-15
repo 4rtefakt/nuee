@@ -266,12 +266,86 @@ r1 <- reglages_modele(ps, d1)
 verifier("dans la formule : écrite, puis relue", identical(formule_reglages(ps, r1), "y ~ x + s(X, Y)") &&
            identical(as.numeric(lire_formule(ps, "y ~ x + s(lat, lon, bs = \"sos\", k = 40)")$lisse_spatial$variables), us("lon", "lat")) &&
            identical(formule_reglages(ps, reglages_modele(ps, d2)), "y ~ x + s(lat, lon, bs = \"sos\", k = 40)"))
-verifier("refus : hors d'un GAM, une variable qualitative, des degrés hors bornes pour la sphère, k hors bornes, l'export vers R",
+verifier("refus : hors d'un GAM, une variable qualitative, des degrés hors bornes pour la sphère, k hors bornes",
          nzchar(refus(definir_modele(ps, "GLM", x = us("x"), y = us("y"), observations = numeros_observations(ps), famille = "gaussienne", lisse_spatial = list(variables = us("X", "Y"))))) &&
            nzchar(refus(dg(lisse_spatial = list(variables = us("X", "Y"), base = "sos")))) &&
-           nzchar(refus(dg(lisse_spatial = list(variables = us("X", "Y"), k = 2)))) &&
-           grepl("lissage spatial", refus(ecrire_script(ps, d1, tempfile(fileext = ".R"), "moteur", m = m1))))
+           nzchar(refus(dg(lisse_spatial = list(variables = us("X", "Y"), k = 2)))))
 verifier("la sélection par AIC le garde dans chaque modèle", nrow(selection_aic(m1, d1)$modeles) == 2)
+
+# L'export vers R (script.R) : le script écrit les coordonnées dans les colonnes sx et sy du tableau
+# du modèle et le terme dans la formule (plaques minces, ou sphère ; sa dimension sur les lignes de
+# chaque ajustement) ; il est exécuté dans le moteur avant d'être écrit (`ecart`), puis lancé dans une
+# session R neuve, et ses objets comparés au modèle par ecart_regression : coefficients, AIC et
+# vraisemblance, R², variances, courbes et la ligne du lissage (edf, test, concurvité), validation
+# croisée, valeurs ajustées et résidus, résidus quantiles, jeu de test, sélection par l'AIC.
+cat("Export vers R d'un modèle additif à lissage spatial, en français et en anglais, et en rapport R Markdown\n")
+dossier_s <- tempfile("lissage_script")
+dir.create(dossier_s)
+rscript <- file.path(R.home("bin"), "Rscript")
+lanceur <- file.path(dossier_s, "lancer.R")
+writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
+             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+lancer <- function(script, objets) {
+  sortie <- tempfile("sortie", dossier_s, ".rds")
+  ici <- setwd(dossier_s)
+  on.exit(setwd(ici))
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(lanceur), shQuote(script), shQuote(sortie), shQuote(paste(objets, collapse = ","))),
+                                       stdout = TRUE, stderr = TRUE))
+  if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
+}
+psi <- ps
+psi$observation_id_names <- c("Observation", "parcelle")
+for (i in seq_along(psi$observations)) psi$observations[[i]]$ids <- c(psi$observations[[i]]$ids[1], sprintf("P%02d", (i - 1) %/% 10 + 1))
+dgi <- function(..., famille = "gaussienne", y = "y", x = "x") definir_modele(psi, "GAM", x = numeros(psi, x), y = numeros(psi, y), observations = numeros_observations(psi),
+                                                                               echelle = c(defaut = "none"), famille = famille, ...)
+essayer_spatial <- function(nom, d, langue, selection = FALSE) {
+  m <- ajuster(psi, d)
+  if (selection) m$selection_aic <- selection_aic(m, d)
+  r <- ecrire_script(psi, d, file.path(dossier_s, paste0(nom, ".R")), "moteur", m = m, version = "essai", langue = langue)
+  objets <- nom_script(c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection"), langue)
+  s <- lancer(r$script, objets)
+  pl <- plan_modele(psi, d, m, tableau_script(psi, ids_script(list(d), psi)))
+  difference <- if (length(s)) ecart_regression(pl, m, list2env(s), langue) else paste(utils::tail(attr(s, "messages"), 3), collapse = " / ")
+  texte <- readLines(r$script, encoding = "UTF-8")
+  spatial <- s[[nom_script("observations", langue)]][[nom_script("lissage_spatial", langue)]]
+  attendu <- observations_regression(psi, m)[[m$spatial$nom]]
+  verifier(sprintf("%s (%s) : sans écart vu par le moteur ; lancé seul, les résultats du moteur, la ligne du lissage dans le tableau des courbes, sa valeur en chaque observation", nom, langue),
+           is.null(r$ecart) && is.null(difference) && length(spatial) == m$N && isTRUE(all.equal(spatial, attendu, tolerance = 1e-8)) &&
+             any(grepl("tab$sx <- ", texte, fixed = TRUE)) && any(grepl(if (identical(m$spatial$base, "sos")) "s(sy, sx, bs = \\\"sos\\\"" else "s(sx, sy, k = %d)", texte, fixed = TRUE)))
+  if (!is.null(r$ecart) || !is.null(difference)) cat("    écart :", r$ecart, "/", difference, "\n")
+  invisible(list(r = r, m = m, s = s))
+}
+essayer_spatial("plaques_minces_selection", dgi(lisse_spatial = list(variables = numeros(psi, c("X", "Y")))), "fr", selection = TRUE)
+essayer_spatial("sphere_k40_en", dgi(lisse_spatial = list(variables = numeros(psi, c("lon", "lat")), base = "sos", k = 40)), "en")
+essayer_spatial("poisson_k20", dgi(lisse_spatial = list(variables = numeros(psi, c("X", "Y")), k = 20), famille = "poisson", y = "compte"), "fr")
+essayer_spatial("courbe_et_lissage_test_en", dgi(x = c("x", "compte"), lisses = numeros(psi, "compte"), lisse_spatial = list(variables = numeros(psi, c("X", "Y")), k = 20),
+                                                 test = numeros_observations(psi)[seq(5, n2, 15)]), "en")
+essayer_spatial("effet_aleatoire_lissage", dgi(aleatoires = list(list(by = "id", id = "parcelle")), lisse_spatial = list(variables = numeros(psi, c("X", "Y")), k = 15)), "fr")
+dr <- dgi(lisse_spatial = list(variables = numeros(psi, c("X", "Y")), k = 20), famille = "poisson", y = "compte", nom = "R1")
+mr <- ajuster(psi, dr)
+r <- ecrire_script(psi, dr, file.path(dossier_s, "R1.Rmd"), "moteur", m = mr, version = "essai", langue = "fr")
+texte <- readLines(r$script, encoding = "UTF-8")
+verifier("R1.Rmd : son tableau des courbes (la ligne du lissage), sa carte, Wood (2003) dans les références",
+         is.null(r$ecart) && any(grepl("^```\\{r courbes-edf\\}", texte)) && any(grepl("^```\\{r lissage-spatial,", texte)) && any(grepl("^- Wood, S. N. \\(2003\\)", texte)))
+if (requireNamespace("knitr", quietly = TRUE)) {
+  compiler <- file.path(dossier_s, "compiler.R")
+  writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
+               "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(r$script)), stdout = TRUE, stderr = TRUE))
+  md <- sub("[.]Rmd$", ".md", r$script)
+  verifier("R1.Rmd se compile avec knitr, avec ses graphiques", file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) &&
+             length(list.files(file.path(dossier_s, "figure"), "\\.png$")) >= 3)
+} else cat("  (knitr absent : le rapport n'est pas compilé)\n")
+# la séance : un modèle linéaire, puis le modèle additif à lissage spatial, dans le même script
+definitions <- list(definir_modele(psi, "LM", x = numeros(psi, "x"), y = numeros(psi, "y"), echelle = "none", nom = "L1"), dr)
+ms <- lapply(definitions, function(d) ajuster(psi, d))
+r <- ecrire_script_seance(psi, definitions, ms, file.path(dossier_s, "seance.R"), "moteur", version = "essai", langue = "en")
+s <- lancer(r$script, c("L1", "R1"))
+verifier("a session with a linear model and the additive model with its spatial smooth: each under its name, the engine's coefficients and curves",
+         is.null(r$ecart) && length(s) == 2 && isTRUE(all.equal(as.matrix(s$R1$coefficients[2:8]), as.matrix(mr$resultat$coefficients[c("estimation", "erreur_type", "ddl", "t", "p", "bas", "haut")]),
+                                                                check.attributes = FALSE, tolerance = 1e-8)) &&
+           isTRUE(all.equal(as.matrix(Filter(is.numeric, s$R1$curves)), as.matrix(Filter(is.numeric, mr$resultat$courbes)), check.attributes = FALSE, tolerance = 1e-8)))
+unlink(dossier_s, recursive = TRUE)
 
 # ---------------------------------------------------------------- GeoPackage
 

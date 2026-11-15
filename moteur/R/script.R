@@ -29,7 +29,6 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
   tab <- tableau_script(projet, ids_script(list(d), projet))
   nom_projet <- as.character(projet$source %||% "projet")
   m <- m %||% ajuster(projet, d)
-  refuser_lissage_spatial(list(m))
   pl <- plan_modele(projet, d, m, tab)
   b <- besoins_script(list(pl), seance = FALSE)
   fonctions <- code_fonctions(b, list(pl), langue)
@@ -88,7 +87,6 @@ ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, do
   langue <- if (identical(langue, "en")) "en" else "fr"
   tab <- tableau_script(projet, ids_script(definitions, projet))
   nom_projet <- as.character(projet$source %||% "projet")
-  refuser_lissage_spatial(modeles)
   plans <- lapply(seq_along(definitions), function(k) plan_modele(projet, definitions[[k]], modeles[[k]], tab))
   b <- besoins_script(plans, seance = TRUE)
   fonctions <- code_fonctions(b, plans, langue)
@@ -306,6 +304,7 @@ besoins_script <- function(plans, seance) {
        regression = length(reg) > 0, lmm = any(vapply(reg, function(pl) !pl$generalise && length(pl$niveaux) > 0, TRUE)),
        mgcv = any(vapply(reg, `[[`, TRUE, "generalise")), courbes = any(vapply(reg, function(pl) length(pl$lisses) > 0, TRUE)),
        par_courbes = any(vapply(reg, function(pl) length(pl$par) > 0, TRUE)),  # (des courbes par catégorie, s(x, by = f))
+       spatial = any(vapply(reg, function(pl) !is.null(pl$spatial), TRUE)),  # (un lissage spatial, s(x, y) : sa dimension)
        aleatoires_mgcv = any(vapply(reg, function(pl) pl$generalise && !isTRUE(pl$gamm) && length(pl$niveaux) > 0, TRUE)),
        gamm = any(vapply(reg, function(pl) isTRUE(pl$gamm), TRUE)), car1 = any(vapply(reg, function(pl) !is.null(pl$temps), TRUE)),
        # (des pentes aléatoires de nlme, dans un lme ou la partie nlme d'un mgcv::gamm : leur tableau des variances)
@@ -1139,6 +1138,10 @@ plan_regression <- function(projet, d, m, tab) {
   # emboîtés, un facteur chacun : le secteur dans son site), temps, groupe de l'autocorrélation, effort
   emboites <- if (generalise && !gamm && L >= 2) vapply(2:L, function(l) paste(m$niveaux[seq_len(l)], collapse = "_"), "") else character(0)
   nr <- noms_r(c(m$y$noms, m$noms_termes, m$niveaux, emboites, m$temps, m$dans, m$decalage))
+  # (le lissage spatial d'un GAM : ses coordonnées sont les colonnes sx et sy du tableau du modèle,
+  # comme dans le moteur, regression.R : terme_spatial ; aucune autre colonne ne prend ces noms)
+  sp <- m$spatial
+  if (!is.null(sp)) nr <- make.unique(c("sx", "sy", nr), sep = "_")[-(1:2)]
   avant <- 1 + K + L + length(emboites)
   termes_r <- nr[1 + seq_len(K)]
   # les termes en courbe (GAM), dans l'ordre des termes, utiles ou non (le script choisit les utiles)
@@ -1208,7 +1211,13 @@ plan_regression <- function(projet, d, m, tab) {
        dans = if (!is.null(dans)) list(nom = nr[avant + 2], affiche = m$dans, code = lecture(dans)),
        effort = if (!is.null(d$decalage)) list(nom = nr[length(nr)], affiche = m$decalage,
                                                code = sprintf("d[[%s]]", code_texte(tab$noms[[as.character(d$decalage)]]))),
-       lisses = lisses, n_courbes = NROW(m$resultat$courbes), k_demandes = k_demandes,
+       # (les courbes des termes ; le tableau des courbes a aussi la ligne du lissage spatial)
+       lisses = lisses, n_courbes = NROW(m$resultat$courbes) - !is.null(sp), k_demandes = k_demandes,
+       # (le lissage spatial : le code de ses deux colonnes, sa base, la dimension demandée, son nom
+       # dans Nuée et son étiquette dans mgcv, le terme de la formule à sa dimension)
+       spatial = if (!is.null(sp)) list(code = vapply(sp$variables, function(u) sprintf("d[[%s]]", code_texte(tab$noms[[as.character(u)]])), ""),
+                                        noms = sp$noms, base = sp$base, k = sp$k_demande, nom = sp$nom, etiquette = etiquette_spatial(sp),
+                                        terme = if (identical(sp$base, "sos")) "s(sy, sx, bs = \"sos\", k = %d)" else "s(sx, sy, k = %d)"),
        par = par, facteurs = lapply(seq_along(facteurs), function(j) list(nom = noms_f[j], affiche = facteurs[[j]]$nom,
                                                                           colonnes = stats::setNames(termes_r[match(facteurs[[j]]$colonnes, m$termes)], names(facteurs[[j]]$colonnes)))),
        sans_courbe = sans_courbe,
@@ -1310,6 +1319,7 @@ entete_regression <- function(pl, nom_projet, version, fichiers, langue) {
                            "It redoes this model with %s, without Nuée: the computation is written for this model, from its data to its results, which are those of Nuée. Its four parts:"),
                         texte_paquets(paquet, langue))),
     paste0(tx("#   1. Fonctions : termes utiles, AIC corrigé, validation croisée", "#   1. Functions: useful terms, corrected AIC, cross-validation"),
+           if (!is.null(pl$spatial)) tx(", lissage spatial", ", spatial smooth"),
            if (!is.null(pl$selection)) tx(", sélection par l'AIC", ", AIC selection"), if (!is.null(pl$puissance)) tx(", puissance pour une tendance", ", trend power"),
            if (!is.null(pl$moyennes)) tx(", moyennes ajustées", ", adjusted means")),
     tx("#   2. Données", "#   2. Data"),
@@ -1351,6 +1361,9 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   zip <- identical(pl$famille, "poisson_zi")  # (fitted() de ziP donne log(μ) : les valeurs ajustées par predict())
   profil <- pl$famille %in% c("poisson_zi", "beta") && !mixte  # (sans terme pénalisé, en ML : profil_loi, regression.R)
   quantiles <- isTRUE(pl$quantiles)
+  # (le lissage spatial d'un GAM, s(x, y) : plan_regression)
+  sp <- pl$spatial
+  spatial <- !is.null(sp)
   guillemets <- function(x) tx(sprintf("« %s »", texte_sur(x)), sprintf("“%s”", texte_sur(x)))
   liste <- function(x) liste_textes(x, tx("et", "and"))
   affiches <- vapply(pl$niveaux, `[[`, "", "affiche")
@@ -1388,8 +1401,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   quoi <- c(tx("la réponse", "the response"), if (K) tx("les termes X", "the X terms"),
             if (mixte) tx("les groupes des effets aléatoires", "the groups of the random effects"), if (car1) tx("le temps", "the time"),
             if (!is.null(pl$dans)) tx("le groupe de l'autocorrélation", "the group of the autocorrelation"),
-            if (!is.null(pl$effort)) tx("l'effort", "the effort"))
-  lectures <- c(vapply(pl$niveaux, `[[`, "", "code"), pl$temps$code, pl$dans$code, pl$effort$code)
+            if (!is.null(pl$effort)) tx("l'effort", "the effort"), if (spatial) tx("les coordonnées", "the coordinates"))
+  lectures <- c(vapply(pl$niveaux, `[[`, "", "code"), pl$temps$code, pl$dans$code, pl$effort$code, sp$code)
   # le groupe de l'autocorrélation : le dernier effet aléatoire, ou un niveau plus fin
   groupes_car1 <- paste(c(r_niveaux, pl$dans$nom), collapse = " / ")
   # (pour les résidus normalisés d'un modèle avec CAR1 : le temps et ce groupe, colonnes du cadre)
@@ -1428,6 +1441,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     if (car1) sprintf("  tab[[%s]] <- %s[ici]", code_texte(pl$temps$nom), pl$temps$code),
     if (!is.null(pl$dans)) sprintf("  tab[[%s]] <- factor(%s[ici])", code_texte(pl$dans$nom), pl$dans$code),
     if (!is.null(pl$effort)) sprintf("  tab[[%s]] <- %s[ici]", code_texte(pl$effort$nom), pl$effort$code),
+    if (spatial) c(sprintf("  tab$sx <- %s[ici]", sp$code[1]), sprintf("  tab$sy <- %s[ici]", sp$code[2])),
     "  tab")
   filtre <- function(cadre, noms) if (pl$croises_tr) c(
     sprintf("retenues <- complete.cases(%s)  # %s", cadre, tx("un terme croisé hors du domaine de sa transformation : manquant", "a cross term outside the domain of its transformation: missing")),
@@ -1469,15 +1483,17 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     sprintf(if (test) "apprentissage <- intersect(which(%s), modele)" else "apprentissage <- which(%s)", if (pl$sans_courbe) "connu & avec_courbe" else "connu"),
     if (K) c("", code_echelle_bloc(pl$x, "X", "x", plx, tx, "X")),
     "",
-    commentaire(tx(sprintf("Le tableau du modèle pour les lignes `ici` de d : la réponse, %s%s%s%s. Ses colonnes ont des noms R (`reponse`, `termes`%s).",
+    commentaire(tx(sprintf("Le tableau du modèle pour les lignes `ici` de d : la réponse, %s%s%s%s%s. Ses colonnes ont des noms R (`reponse`, `termes`%s).",
                            if (K) "les termes X" else "sans terme X",
                            if (mixte) sprintf(", les groupes de chaque effet aléatoire en facteurs%s", if (length(pl$emboites)) " (mgcv : un facteur par niveau emboîté, chacun dans le précédent)" else "") else "",
                            if (car1) ", le temps" else "", if (!is.null(pl$effort)) ", l'effort" else "",
+                           if (spatial) sprintf(", les coordonnées du lissage spatial (sx : %s, sy : %s)", guillemets(sp$noms[1]), guillemets(sp$noms[2])) else "",
                            if (!meme_noms) " ; `noms_termes` : les noms des termes dans Nuée" else ""),
-                   sprintf("The table of the model for the rows `here` of d: the response, %s%s%s%s. Its columns have R names (`response`, `model_terms`%s).",
+                   sprintf("The table of the model for the rows `here` of d: the response, %s%s%s%s%s. Its columns have R names (`response`, `model_terms`%s).",
                            if (K) "the X terms" else "no X term",
                            if (mixte) sprintf(", the groups of each random effect as factors%s", if (length(pl$emboites)) " (mgcv: one factor per nested level, each within the previous one)" else "") else "",
                            if (car1) ", the time" else "", if (!is.null(pl$effort)) ", the effort" else "",
+                           if (spatial) sprintf(", the coordinates of the spatial smooth (sx: %s, sy: %s)", guillemets(sp$noms[1]), guillemets(sp$noms[2])) else "",
                            if (!meme_noms) "; `term_labels`: the names of the terms in Nuée" else ""))),
     sprintf("reponse <- %s", code_texte(pl$reponse)),
     if (K) code_valeurs(vapply(pl$termes, code_texte, ""), "termes <- ") else "termes <- character(0)",
@@ -1503,8 +1519,21 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   # --- l'ajustement
   formule <- function(droite) c(sprintf("  droite <- %s", droite),
                                 "  f <- reformulate(if (length(droite)) droite else \"1\", response = reponse)")
+  # (le lissage spatial : sa dimension sur les lignes du modèle, puis sur celles de chaque ajustement,
+  # et son terme dans la formule, après les courbes ; regression.R : dimension_spatiale, spatial_appris)
+  terme_s <- if (spatial) sprintf("if (!is.na(ks)) sprintf(%s, ks)", code_texte(sp$terme))
+  ks_ajustement <- if (spatial) sprintf("  ks <- dimension_spatiale(tab, k_spatial)  # %s", tx("(moins de lieux sur ces lignes : une dimension plus petite ; en dessous de 5, sans lissage spatial)",
+                                                                                                 "(fewer places on these rows: a smaller dimension; below 5, no spatial smooth)"))
+  code_spatial <- if (spatial) c(
+    commentaire(tx(sprintf("Le lissage spatial %s : %s des coordonnées sx et sy, de dimension de base %s, au plus le nombre de lieux différents moins 1 (dimension_spatiale ci-dessus) ; un terme pénalisé, comme une courbe.",
+                           guillemets(sp$nom), if (identical(sp$base, "sos")) "une spline sur la sphère (Wahba 1981 ; sy la latitude, sx la longitude, en degrés)" else "une spline de régression en plaques minces isotrope (Wood 2003)",
+                           if (is.na(sp$k)) "30 (celle de mgcv pour deux variables)" else sp$k),
+                   sprintf("The spatial smooth %s: %s of the coordinates sx and sy, of basis dimension %s, at most the number of different places minus 1 (basis_dimension_spatial above); a penalized term, like a curve.",
+                           guillemets(sp$nom), if (identical(sp$base, "sos")) "a spline on the sphere (Wahba 1981; sy the latitude, sx the longitude, in degrees)" else "an isotropic thin plate regression spline (Wood 2003)",
+                           if (is.na(sp$k)) "30 (mgcv's for two variables)" else sp$k))),
+    sprintf("k_spatial <- dimension_spatiale(cadre, %s)", if (is.na(sp$k)) "NA" else as.integer(sp$k)))
   ajustement <- if (gamm) {
-    droite_gamm <- paste(c(if (courbes) "setdiff(utiles, lis)" else "utiles", if (courbes) courbe_s), collapse = ", ")
+    droite_gamm <- paste(c(if (courbes) "setdiff(utiles, lis)" else "utiles", if (courbes) courbe_s, terme_s), collapse = ", ")
     c(commentaire(tx("La loi de la réponse : normale, lien identité (avec une autocorrélation, mgcv::gamm ne prend qu'elle : une autre loi passerait par une quasi-vraisemblance, sans AIC).",
                      "The distribution of the response: normal, identity link (with an autocorrelation, mgcv::gamm takes only that one: another would go through a quasi-likelihood, with no AIC).")),
       if (courbes) c(commentaire(tx("Les termes en courbe (des splines de régression en plaques minces) et la dimension de base de chacune.",
@@ -1513,6 +1542,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      if (length(pl$k_demandes)) sprintf("k_demandes <- c(%s)", paste(sprintf("%s = %dL", vapply(names(pl$k_demandes), code_texte, ""), pl$k_demandes), collapse = ", ")),
                      sprintf("k <- vapply(lisses, function(t) dimension_courbe(cadre[[t]]%s), 0L)", if (length(pl$k_demandes)) ", k_demandes[t]" else ""),
                      code_par),
+      code_spatial,
       commentaire(tx(sprintf("Les effets aléatoires (de nlme) : une ordonnée à l'origine aléatoire %s%s ; une autocorrélation des résidus en temps continu (CAR1) le long de %s, dans chaque %s.",
                              emboitement, texte_pentes, guillemets(pl$temps$affiche), guillemets(dans_affiche)),
                      sprintf("The random effects (of nlme): a random intercept %s%s; a continuous-time autocorrelation of the residuals (CAR1) along %s, within each %s.",
@@ -1529,6 +1559,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      "  kk <- vapply(lis, function(t) dimension_courbe(tab[[t]], k[[t]]), 0L)",
                      "  lis <- lis[kk >= 3]",
                      "  kk <- kk[kk >= 3]"),
+      ks_ajustement,
       formule(sprintf("c(%s)", droite_gamm)),
       "  tenter <- function(...) tryCatch(gamm(f, random = aleatoire, correlation = correlation, data = tab, method = methode, ...), error = function(e) NULL)",
       "  m <- tenter()",
@@ -1548,9 +1579,10 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                                    "zero-inflated Poisson (a count is zero with probability 1 − p, otherwise a Poisson distribution of parameter μ truncated at zero): the linear predictor is log(μ), which mgcv calls \"identity\", and log(−log(1 − p)) = θ1 + θ2 log(μ), θ1 and θ2 estimated; fitted() gives log(μ), predict(type = \"response\") the expected value p μ / (1 − exp(−μ))"),
                    beta = tx("bêta, lien logit (de moyenne μ et de variance μ (1 − μ) / (1 + φ), sa précision φ estimée ; la réponse strictement entre 0 et 1)",
                              "beta, logit link (of mean μ and variance μ (1 − μ) / (1 + φ), its precision φ estimated; the response strictly between 0 and 1)"))
-    penalise <- courbes || mixte
+    penalise <- courbes || mixte || spatial
     droite <- paste(c(if (courbes) "setdiff(utiles, lis)" else "utiles",
                       if (courbes) courbe_s,
+                      terme_s,
                       if (mixte) "sprintf(\"s(%s, bs = \\\"re\\\")\", aleatoires)",
                       if (avec_pentes) "sprintf(\"s(%s, %s, bs = \\\"re\\\")\", names(pentes_aleatoires), pentes_aleatoires)",
                       if (!is.null(pl$effort)) code_texte(sprintf("offset(log(%s))", pl$effort$nom))), collapse = ", ")
@@ -1565,6 +1597,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      if (length(pl$k_demandes)) sprintf("k_demandes <- c(%s)", paste(sprintf("%s = %dL", vapply(names(pl$k_demandes), code_texte, ""), pl$k_demandes), collapse = ", ")),
                      sprintf("k <- vapply(lisses, function(t) dimension_courbe(cadre[[t]]%s), 0L)", if (length(pl$k_demandes)) ", k_demandes[t]" else ""),
                      code_par),
+      code_spatial,
       if (mixte) c(commentaire(tx(sprintf("Les effets aléatoires (des termes pénalisés) : une ordonnée à l'origine aléatoire %s%s%s.", emboitement,
                                           if (length(pl$emboites)) " (mgcv : un facteur par niveau emboîté)" else "", texte_pentes),
                                   sprintf("The random effects (penalized terms): a random intercept %s%s%s.", emboitement,
@@ -1572,28 +1605,33 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    code_valeurs(vapply(re_mgcv, code_texte, ""), "aleatoires <- "),
                    if (avec_pentes) sprintf("pentes_aleatoires <- setNames(%s, %s)  # %s", code_textes(pentes_mgcv), code_textes(names(pentes_mgcv)),
                                             tx("le terme de chaque pente aléatoire, nommé par le facteur de son niveau", "each random slope's term, named by its level's factor"))),
-      commentaire(tx(sprintf("Ajustement : un modèle %s (mgcv::gam) avec les termes utiles sur ces lignes (termes_utiles())%s%s ; %s.",
+      commentaire(tx(sprintf("Ajustement : un modèle %s (mgcv::gam) avec les termes utiles sur ces lignes (termes_utiles())%s%s%s ; %s.",
                              if (identical(pl$modele, "GAM")) "additif généralisé" else "linéaire généralisé",
                              if (courbes) ", une courbe pour chaque terme de `lisses` (sa dimension réduite si ces lignes ont trop peu de valeurs ; en dessous de 3, il reste une droite)" else "",
+                             if (spatial) ", le lissage spatial" else "",
                              if (!is.null(pl$effort)) sprintf(", et log(%s) en décalage (l'effort)", guillemets(pl$effort$affiche)) else "",
-                             if (penalise) "REML pour les courbes et les effets aléatoires (methode = \"ML\" : l'ajustement dont viennent la vraisemblance et l'AIC)" else "en maximum de vraisemblance (sans terme pénalisé)"),
-                     sprintf("Fit: a %s model (mgcv::gam) with the useful terms on these rows (useful_terms())%s%s; %s.",
+                             if (penalise) sprintf("REML pour %s (methode = \"ML\" : l'ajustement dont viennent la vraisemblance et l'AIC)", liste(c(if (courbes) "les courbes", if (spatial) "le lissage spatial", if (mixte) "les effets aléatoires")))
+                             else "en maximum de vraisemblance (sans terme pénalisé)"),
+                     sprintf("Fit: a %s model (mgcv::gam) with the useful terms on these rows (useful_terms())%s%s%s; %s.",
                              if (identical(pl$modele, "GAM")) "generalized additive" else "generalized linear",
                              if (courbes) ", a curve for each term of `smooth_terms` (its dimension reduced if these rows have too few values; below 3, it stays a straight line)" else "",
+                             if (spatial) ", the spatial smooth" else "",
                              if (!is.null(pl$effort)) sprintf(", and log(%s) as an offset (the effort)", guillemets(pl$effort$affiche)) else "",
-                             if (penalise) "REML for the curves and the random effects (method = \"ML\": the fit that gives the likelihood and the AIC)" else "by maximum likelihood (no penalized term)"))),
+                             if (penalise) sprintf("REML for %s (method = \"ML\": the fit that gives the likelihood and the AIC)", liste(c(if (courbes) "the curves", if (spatial) "the spatial smooth", if (mixte) "the random effects")))
+                             else "by maximum likelihood (no penalized term)"))),
       sprintf("ajuster_modele <- function(tab, candidats = %s, methode = %s) {", candidats, if (mixte) "\"REML\"" else if (penalise) "NULL" else "\"ML\""),
       "  utiles <- termes_utiles(tab, candidats)",
       if (courbes) c("  lis <- intersect(lisses, utiles)",
                      "  kk <- vapply(lis, function(t) dimension_courbe(tab[[t]], k[[t]]), 0L)",
                      "  lis <- lis[kk >= 3]",
                      "  kk <- kk[kk >= 3]"),
+      ks_ajustement,
       formule(sprintf("c(%s)", droite)),
-      if (!mixte && penalise) "  if (is.null(methode)) methode <- if (length(lis)) \"REML\" else \"ML\"",
+      if (!mixte && penalise) sprintf("  if (is.null(methode)) methode <- if (%s) \"REML\" else \"ML\"", paste(c(if (courbes) "length(lis)", if (spatial) "!is.na(ks)"), collapse = " || ")),
       # (ziP ou betar sans terme pénalisé, en ML : profil_loi quand mgcv s'arrête, comme regression.R)
       if (profil) c(
         "  m <- tryCatch(gam(f, data = tab, family = famille(), method = methode), error = function(e) NULL)",
-        sprintf("  if (is.null(m) && methode == \"ML\"%s) m <- profil_loi(f, tab, %s, %d)", if (courbes) " && !length(lis)" else "",
+        sprintf("  if (is.null(m) && methode == \"ML\"%s) m <- profil_loi(f, tab, %s, %d)", paste0(if (courbes) " && !length(lis)" else "", if (spatial) " && is.na(ks)" else ""),
                 if (identical(pl$famille, "beta")) "function(th) betar(theta = exp(th), link = \"logit\")" else "function(th) ziP(theta = th)",
                 if (identical(pl$famille, "beta")) 1L else 2L),
         "  m")
@@ -1602,7 +1640,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "m <- ajuster_modele(cadre)",
       sprintf("utiles <- termes_utiles(cadre, %s)", candidats),
       if (!penalise) tx("m_ml <- m  # (sans terme pénalisé : un seul ajustement, en ML)", "m_ml <- m  # (no penalized term: a single fit, by ML)")
-      else if (mixte) "m_ml <- ajuster_modele(cadre, methode = \"ML\")"
+      else if (mixte || spatial) "m_ml <- ajuster_modele(cadre, methode = \"ML\")"
       else "m_ml <- if (length(intersect(lisses, utiles))) ajuster_modele(cadre, methode = \"ML\") else m")
   } else if (mixte) {
     niveaux_txt <- paste(r_niveaux, collapse = " / ")
@@ -1680,8 +1718,19 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                    if (length(s$produits)) sprintf("produits = setNames(poids_x[%s], %s)", code_nombres(match(s$produits, pl$termes)), code_textes(s$produits)))
     sprintf("%s = seuils_courbe(%s)", code_texte(s$nom), paste(arguments, collapse = ", "))
   }
+  # (le lissage spatial : sa ligne dans le tableau des courbes, après celles des courbes ; regression.R : ligne_spatiale)
+  code_ligne_spatiale <- function(g) {
+    e <- code_texte(sp$etiquette)
+    c(commentaire(tx(sprintf("Le lissage spatial : ses degrés de liberté effectifs, son test et sa concurvité, sa ligne dans le tableau des courbes (son étiquette dans mgcv : %s).", sp$etiquette),
+                     sprintf("The spatial smooth: its effective degrees of freedom, its test and its concurvity, its row in the curves table (its label in mgcv: %s).", sp$etiquette))),
+      if (!courbes) sprintf("cc <- concurvity(%s, full = TRUE)", g),
+      sprintf("ligne_spatiale <- data.frame(terme = %s, edf = sm$s.table[%s, 1], ref_ddl = sm$s.table[%s, 2], statistique = sm$s.table[%s, 3],", code_texte(sp$nom), e, e, e),
+      sprintf("                             p = sm$s.table[%s, 4], concurvite = unname(cc[\"estimate\", %s]), concurvite_pire = unname(cc[\"worst\", %s]), row.names = NULL)", e, e, e),
+      if (courbes && par_cat) c("ligne_spatiale$par <- NA_character_", "ligne_spatiale$niveau <- NA_character_"),
+      if (courbes) "courbes <- rbind(courbes, ligne_spatiale)" else "courbes <- ligne_spatiale")
+  }
   code_courbes <- function(g) {
-    if (!courbes) return(NULL)
+    if (!courbes) return(if (spatial) code_ligne_spatiale(g))
     etiquettes <- if (par_cat) "etiquettes$etiquette" else "sprintf(\"s(%s)\", lis)"
     lignes_seuils <- vapply(pl$seuils, code_seuil, "", g = g)
     c(commentaire(tx(sprintf("Les courbes : leurs degrés de liberté effectifs (edf ; 1 est une droite) et leur test%s.", if (par_cat) ", une ligne par catégorie d'une courbe par catégorie (etiquettes_courbes() ci-dessus)" else ""),
@@ -1706,7 +1755,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
         commentaire(tx("Les seuils de chaque courbe, et de chaque catégorie quand une courbe en a une par catégorie, sur ses lignes (seuils_courbe ci-dessus) ; puis la liste de leurs plages nettes.",
                        "The thresholds of each curve, and of each category when a curve has one per category, on its rows (curve_thresholds above); then the list of their clear ranges.")),
         if (length(lignes_seuils) == 1) sprintf("seuils <- list(%s)", lignes_seuils) else c("seuils <- list(", paste0("  ", lignes_seuils, c(rep(",", length(lignes_seuils) - 1), "")), ")")),
-      "plages_seuils <- do.call(rbind, lapply(names(seuils), function(n) data.frame(terme = rep(n, nrow(seuils[[n]]$plages)), seuils[[n]]$plages, row.names = NULL)))")
+      "plages_seuils <- do.call(rbind, lapply(names(seuils), function(n) data.frame(terme = rep(n, nrow(seuils[[n]]$plages)), seuils[[n]]$plages, row.names = NULL)))",
+      if (spatial) code_ligne_spatiale(g))
   }
   statistiques <- if (gamm) c(
     commentaire(ic),
@@ -1819,6 +1869,12 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       commentaire(tx(sprintf("Et ses résidus quantiles randomisés (residus_quantiles ci-dessus), de la loi du modèle (%s) à sa valeur ajustée : normaux quand le modèle est juste.", lois[[pl$famille]]),
                      sprintf("And its randomized quantile residuals (quantile_residuals above), from the model's distribution (%s) at its fitted value: normal when the model is right.", lois[[pl$famille]]))),
       sprintf("observations$residu_quantile <- residus_quantiles(cadre[[1]], %s)", arguments))
+  }
+  if (spatial) {
+    statistiques <- c(statistiques,
+      commentaire(tx("Et la valeur du lissage spatial en chaque observation, sur l'échelle du lien (celle que la carte de Nuée montre).",
+                     "And the value of the spatial smooth at each observation, on the link scale (the one Nuée's map shows).")),
+      sprintf("observations$lissage_spatial <- as.vector(predict(%s, type = \"terms\")[, %s])", if (gamm) "m$gam" else "m", code_texte(sp$etiquette)))
   }
 
   # --- la sélection par l'AIC (regression.R : selection_aic), quand elle a été faite dans Nuée
@@ -1933,7 +1989,8 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     if (car1) ligne("print(phi)", "l'autocorrélation CAR1", "the CAR1 autocorrelation"),
     if (loi) ligne("print(parametre_loi)", "le paramètre de la loi", "the parameter of the distribution"),
     if (poisson) ligne("print(dispersion)", "au-delà de 1,5 : préférer la binomiale négative", "above 1.5: prefer the negative binomial"),
-    if (courbes) ligne("print(courbes)", "edf, test et concurvité de chaque courbe", "edf, test and concurvity of each curve"),
+    if (courbes || spatial) ligne("print(courbes)", if (courbes) "edf, test et concurvité de chaque courbe" else "edf, test et concurvité du lissage spatial",
+                                  if (courbes) "edf, test and concurvity of each curve" else "edf, test and concurvity of the spatial smooth"),
     if (courbes) ligne("print(plages_seuils)", "les plages nettes de la pente et de l'effet des courbes", "the clear ranges of the curves' slope and effect"),
     ligne("print(c(Q2 = vc$Q2, RMSEcv = vc$RMSEcv))", "validation croisée", "cross-validation"),
     if (!is.null(sel)) ligne("print(head(selection$modeles, 20))", "sélection par l'AIC : les 20 meilleurs modèles", "AIC selection: the 20 best models"),
@@ -2024,6 +2081,14 @@ code_regression <- function(pl, b, langue, seance = NULL) {
               code_texte(tx("hausse", "rise"))),
       "}",
       "par(op)")),
+    # (le lissage spatial : sa valeur en chaque observation, à ses coordonnées)
+    if (spatial) list(nom = "lissage-spatial", largeur = 6.5, hauteur = 6, code = c(
+      "teintes <- hcl.colors(9, \"Blue-Red\")",
+      "tranche <- cut(observations$lissage_spatial, 9)",
+      sprintf("plot(cadre$sx, cadre$sy, pch = 19, col = teintes[tranche], asp = %s, xlab = %s, ylab = %s, main = %s)",
+              if (identical(sp$base, "sos")) "1 / cos(mean(cadre$sy) * pi / 180)" else "1", code_texte(sp$noms[1]), code_texte(sp$noms[2]),
+              code_texte(sprintf(tx("Lissage spatial %s (échelle du lien)", "Spatial smooth %s (link scale)"), sp$nom))),
+      "legend(\"topright\", levels(tranche), pch = 19, col = teintes, cex = 0.7, bty = \"n\")")),
     if (!is.null(pu)) list(nom = "puissance", largeur = 6, hauteur = 4.5, code = c(
       sprintf("plot(NULL, xlim = range(puissance$annees), ylim = c(0, 1), xlab = %s, ylab = %s, main = %s)", code_texte(tx("Années de suivi", "Years of monitoring")),
               code_texte(tx("Puissance", "Power")), code_texte(tx("Puissance pour une tendance", "Trend power"))),
@@ -2042,7 +2107,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "arrows(x, mo$bas, x, mo$haut, angle = 90, code = 3, length = 0.04)",
       "axis(1, at = x, labels = if (all(is.na(mo$groupe))) mo$niveau else paste(mo$niveau, mo$groupe, sep = \" · \"))")))
   objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations",
-              if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes) c("courbes", "seuils", "plages_seuils"),
+              if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes || spatial) "courbes", if (courbes) c("seuils", "plages_seuils"),
               if (!is.null(sel)) "selection", if (!is.null(pu)) c("puissance", "annees_80"), if (!is.null(pu$resultat$simulation)) "simulation_puissance",
               if (!is.null(mo)) "moyennes_ajustees", if (test) c("test", "predictions_test"))
   list(calcul = traduire_code(c(donnees, "", ajustement, "", validation, "", statistiques, if (!is.null(sel)) c("", selection), if (!is.null(pu)) c("", code_puissance),
@@ -2252,6 +2317,8 @@ code_fonctions <- function(b, plans, langue) {
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
     if (isTRUE(b$courbes)) c(modele_dimension_courbe(tx), "", modele_seuils_courbe(tx), if (isTRUE(b$par_courbes)) c("", modele_courbes_par_categorie(tx))),
+    # (la dimension du lissage spatial : la fonction du moteur, regression.R, recopiée : script_moteur.R)
+    if (isTRUE(b$spatial)) utils::head(code_moteur("dimension_spatiale", langue, ENTETES_SPATIAL_EN), -1),
     if (isTRUE(b$aleatoires_mgcv)) modele_predire_fixes(tx),
     if (isTRUE(b$residus_quantiles)) modele_residus_quantiles(tx),
     if (isTRUE(b$repartition_zip)) modele_repartition_zip(tx),
@@ -3464,6 +3531,9 @@ NOMS_SCRIPT_EN <- c(
   facteurs = "factors", facteur = "factor_column",
   variances_niveaux = "level_variances", variances_pentes = "slope_variances", noms_niveaux = "level_labels", nom_residuelle = "residual_label",
   pentes_aleatoires = "random_slopes", termes_gardes = "kept_terms", exclus = "excluded",
+  # (le lissage spatial d'un GAM)
+  dimension_spatiale = "basis_dimension_spatial", lieux = "places", ligne_spatiale = "spatial_row", lissage_spatial = "spatial_smooth",
+  teintes = "hues", tranche = "value_class",
   # (la puissance pour une tendance ; ni temps, ni repetition, ni y, ni g1 : aussi des noms de colonnes en texte)
   variance_pente = "slope_variance", puissance_normale = "normal_power", plan_donnees_puissance = "power_data_design", simuler_puissance = "simulate_power",
   temps_puissance = "power_time", plan_puissance = "power_design", variances_puissance = "power_variances", phi_puissance = "power_phi",
@@ -3701,7 +3771,7 @@ lignes_rapport <- function(format, pl, langue, methodes, fonctions, code_donnees
       bloc("qualite", kable("t(c(r2, Q2 = vc$Q2, RMSEcv = vc$RMSEcv))", 3)),
       if (length(pl$niveaux)) bloc("variances", kable("variances", 4)),
       # (« courbes » est le bloc de leurs graphiques : knitr refuse deux blocs du même nom)
-      if (length(pl$lisses)) bloc("courbes-edf", kable("courbes", 3)),
+      if (length(pl$lisses) || !is.null(pl$spatial)) bloc("courbes-edf", kable("courbes", 3)),
       if (length(pl$lisses)) bloc("plages-seuils", kable("plages_seuils", 3)),
       if (!is.null(pl$selection)) bloc("selection-aic", kable("head(selection$modeles, 20)", 3)),
       if (!is.null(pl$selection)) bloc("importance-aic", kable("selection$importance", 3)),
@@ -4019,13 +4089,7 @@ code_definition <- function(projet, d, p = "p") {
   }
 }
 
-# Un modèle additif avec un lissage spatial des coordonnées (regression.R : terme_spatial) ne
-# s'exporte pas encore : son script ne refait pas ce terme. Refusé avant d'écrire quoi que ce soit.
-refuser_lissage_spatial <- function(modeles) {
-  for (m in modeles) if (!is.null(m$spatial)) {
-    stop(sprintf(traduire("L'export vers R ne refait pas encore le lissage spatial %s du modèle %s : ce modèle ne s'exporte pas.",
-                          "Export to R doesn't redo the spatial smooth %s of model %s yet: this model can't be exported."),
-                 m$spatial$nom, m$nom %||% ""), call. = FALSE)
-  }
-  invisible()
-}
+# Le commentaire anglais de la dimension du lissage spatial (regression.R : dimension_spatiale), que le
+# script d'un modèle additif à lissage spatial reprend du moteur (en français : celui du moteur).
+ENTETES_SPATIAL_EN <- c(
+  dimension_spatiale = "The dimension of the spatial smooth on `data` (its columns sx and sy): the one requested (30 by default, as mgcv for two variables), at most the number of different places minus 1; NA below 5 (a thin plate surface already has 3 unpenalized functions: 1, x and y).")
