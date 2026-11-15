@@ -124,6 +124,7 @@ annuler_demande <- function(q) {
   ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
   ancien$fichier_lu <- actuel$fichier_lu
   ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
+  ancien$figures <- actuel$figures  # (les figures non plus)
   ancien$modifie <- TRUE
   etat$projets[[q$projet]] <- ancien
   reviser(q$projet)
@@ -246,6 +247,7 @@ resume_projet <- function(p) {
        modeles = lapply(p$models, resume_modele), session = !is.null(p$session),
        coordonnees = coordonnees_projet(p),
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
+       figures = lapply(p$figures %||% list(), function(f) list(id = f$id, titre = f$titre %||% "")),
        historique = sum(vapply(p$audit %||% list(), function(s) length(s$events), 0)),
        predictions = lapply(p$prediction_sets, function(s) list(nom = s$name %||% "", n_obs = length(s$observations))))
 }
@@ -915,6 +917,50 @@ DEMANDES <- list(
   document_supprimer = function(q) {
     p <- projet(q$projet)
     p$documents <- Filter(function(d) !identical(d$id, q$id), p$documents %||% list())
+    p$modifie <- TRUE
+    etat$projets[[p$id]] <- p
+    list(projet = resume_projet(p))
+  },
+  # Les figures d'un projet (interface/figures.js) : des graphiques du projet assemblés en une
+  # figure pour une revue (panneaux A, B, C…, taille en millimètres, texte en points), gardées
+  # dans le projet (p$figures : id, titre, contenu, le texte JSON que l'interface seule relit),
+  # donc enregistrées avec lui et dans ses copies de secours, pour les exporter de nouveau après
+  # avoir réajusté les modèles. L'annulation ne les touche pas (annuler_demande).
+  figure = function(q) {
+    f <- Find(function(f) identical(f$id, q$id), projet(q$projet)$figures %||% list())
+    if (is.null(f)) stop(traduire("Figure introuvable", "Figure not found"))
+    f
+  },
+  # Crée (sans q$id) ou change une figure : son titre, son contenu ; le projet n'est marqué
+  # modifié que si l'un d'eux change.
+  figure_enregistrer = function(q) {
+    p <- projet(q$projet)
+    figures <- p$figures %||% list()
+    id <- as.character(q$id %||% "")[1]
+    k <- which(vapply(figures, function(f) identical(f$id, id), TRUE))
+    if (!nzchar(id) || !length(k)) {
+      numeros <- suppressWarnings(as.numeric(sub("^F", "", vapply(figures, function(f) as.character(f$id), ""))))
+      id <- paste0("F", max(c(0, numeros), na.rm = TRUE) + 1)
+      figures[[length(figures) + 1]] <- list(id = id, titre = "", contenu = "{}", cree = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
+      k <- length(figures)
+      p$modifie <- TRUE
+    }
+    for (champ in c("titre", "contenu")) {
+      v <- q[[champ]]
+      if (!is.null(v) && !identical(figures[[k]][[champ]], as.character(v)[1])) {
+        if (champ == "contenu" && nchar(as.character(v)[1], "bytes") > 5e6) stop(traduire("Figure trop grande pour être gardée dans le projet", "Figure too big to be kept in the project"))
+        figures[[k]][[champ]] <- as.character(v)[1]
+        figures[[k]]$change <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
+        p$modifie <- TRUE
+      }
+    }
+    p$figures <- figures
+    etat$projets[[p$id]] <- p
+    list(id = id, projet = resume_projet(p))
+  },
+  figure_supprimer = function(q) {
+    p <- projet(q$projet)
+    p$figures <- Filter(function(f) !identical(f$id, q$id), p$figures %||% list())
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
     list(projet = resume_projet(p))
