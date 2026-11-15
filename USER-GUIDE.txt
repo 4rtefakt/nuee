@@ -24,7 +24,7 @@ On Linux, Nuée uses the computer's R.
 - Other distributions: Nuee-<version>-x86_64.AppImage (make it executable, then run it) or
   Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
   install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme",
-  "mgcv", "MASS", "rpart", "cluster")).
+  "mgcv", "MASS", "rpart", "cluster", "RSQLite")).
 .usp projects need python3. For another R than the PATH's: start Nuée with
 RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
 
@@ -39,6 +39,7 @@ File › Open (Ctrl+O):
       SPSS .sav, .zsav, .por          SAS .sas7bdat, .xpt
       Stata .dta                      dBase .dbf, Weka .arff
       jamovi .omv                     spectra: JCAMP-DX .jdx, .dx, .jcm and SPC .spc (see Spectra)
+      GeoPackage .gpkg (a layer of QGIS: see Maps and spatial data)
     The first column names the observations if it holds text, or if it is called "ID", "Obs",
     "Name"... (for an R file, the row names). Other text columns whose values all differ (one
     code per observation) become secondary identifiers: they serve as labels but don't enter
@@ -520,6 +521,48 @@ without a season are left out of the test, and counted. The seasonal test takes 
 independent: autocorrelation from one month to the next makes p too small, and Allow for
 autocorrelation doesn't apply to it (Hirsch and Slack, 1984, give a correction, not done here).
 The Test column gives each line's test; the correction over the lines stays the same.
+
+Maps and spatial data
+---------------------
+Plots › Map (or in the explorer, under the project): the observations on a map. The first time,
+choose the project's coordinates: two of its variables, X (east, or the longitude) and Y (north,
+or the latitude), and their coordinate system: longitudes and latitudes in degrees (WGS 84),
+Lambert-93, the CC zones, Lambert II étendu (NTF), a UTM zone (another EPSG code: 326xx north,
+327xx south), LAEA Europe, web Mercator, or plane coordinates in metres of another system
+(distances stay right, without a background map). Nuée proposes them from the variables' names
+(lon/lat, X_L93/Y_L93, X/Y...). They are saved with the project, and Ctrl+Z takes them back.
+The map draws the points with the same scale on both axes. Colour: a variable of the project, or
+a column of a fitted model's results (scores, residuals, fitted values, clusters...); Size: a
+quantitative variable or column; Labels: the observations' names. Background: none by default,
+so nothing leaves the computer; OpenStreetMap, the IGN map or IGN's aerial photographs (France)
+are downloaded when chosen, and their servers then receive the area shown. A box, lasso or click
+selects observations, shared with the project's models as in the other plots.
+Conversions between systems are written in Nuée (Lambert, transverse Mercator, LAEA formulas;
+NTF moved to WGS 84 by IGN's three translations, to about a metre; RGF93 and ETRS89 taken as
+WGS 84): they match PROJ, the library QGIS uses, to the micrometre.
+
+GeoPackage (.gpkg), the format of QGIS: File › Open reads one of its layers (Nuée asks which when
+there are several) as a table; points give two coordinate columns (X and Y, or longitude and
+latitude), lines and polygons their centre (the centroid of a polygon's area), and the project's
+coordinates are set. File › Export data and a model's Export write a GeoPackage when the project
+has coordinates: one point per observation with all its columns, a model's other result tables
+beside it; QGIS opens it with its coordinate system.
+
+Plots › Spatial autocorrelation (from the map, or for a regression from its model): Moran's I of
+a variable or of a regression's residuals (or, for counts, presence-absence and positive values,
+its quantile residuals), with its expectation without autocorrelation, z and the one-sided p
+(positive autocorrelation) under randomisation, and p by permutations (999 by default). For a
+linear model without random effects, a second line gives the test that accounts for the fit
+(Cliff and Ord 1981, as spdep::lm.morantest). Neighbourhood: the k nearest neighbours of each
+observation (made mutual), the observations within a distance (empty: the smallest distance that
+gives each observation a neighbour), or the inverse of the distance; rows summing to 1 (spdep's
+"W" style) or the weights as they are. Under it, the correlogram (Moran's I in classes of
+distance up to half the largest one, two-sided p corrected by Holm over the classes, in red at
+0.05) and the semivariogram (half the mean squared difference between the values of the pairs of
+each class, as gstat::variogram, up to a third of the area's diagonal), with the variance as a
+dashed line. Distances are along great circles for longitudes and latitudes, straight lines for
+plane coordinates. Observations at the same place (a plot surveyed several years) are each
+other's nearest neighbours: "Mean by place" replaces their values by their mean.
 
 Statistical tests
 -----------------

@@ -18,6 +18,7 @@ import { ouvrirPalette } from './palette.js';
 // (explorateur.js: VUES_TYPES) and its strings (i18n.js: ajouterTextes).
 import './vues_ordination.js';
 import './vues_classement.js';
+import './vues_carte.js';
 import { installerDocuments } from './documents.js';
 
 const params = new URLSearchParams(location.search);
@@ -285,7 +286,7 @@ const app = {
   async exporter(id) {
     const m = etat.modeles[id];
     if (!m) return;
-    const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), m.nom, true);
+    const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), m.nom, true, !!(etat.projets[m.projet] || {}).coordonnees);
     if (choix) apresExport(await occupe(() => demander('exporter', { modele: id, ...choix })));
   },
   // the coefficients side by side shown in Compare models (coefficientsActifs): the table as
@@ -297,7 +298,7 @@ const app = {
   async exporterDonnees(pid) {
     const p = etat.projets[pid];
     if (!p) { statut(t('choisir_projet'), true); return; }
-    const choix = await choisirExport(t('exporter_donnees_titre', { nom: p.nom }), p.nom.replace(/\.[^.]+$/, ''), false);
+    const choix = await choisirExport(t('exporter_donnees_titre', { nom: p.nom }), p.nom.replace(/\.[^.]+$/, ''), false, !!p.coordonnees);
     if (choix) apresExport(await occupe(() => demander('exporter_donnees', { projet: pid, ...choix })));
   },
 
@@ -851,13 +852,15 @@ function choisirTable(res) {
 
 // The export dialog: a format, then (desktop) where to write it. Resolves to { chemin } or
 // (browser) { format }, or null when cancelled. The last format chosen is offered again.
-function choisirExport(titre, nom, plusieursTables) {
+// coordonnees: the project has coordinates (moteur/R/spatial.R), so GeoPackage is offered.
+function choisirExport(titre, nom, plusieursTables, coordonnees = false) {
   return new Promise((resolve) => {
+    const formats = ECRITURE.filter((f) => coordonnees || !f.coordonnees);
     let choix = lire('format_export');
-    if (!ECRITURE.some((f) => f.ext === choix)) choix = 'xlsx';
+    if (!formats.some((f) => f.ext === choix)) choix = 'xlsx';
     const note = el('p', { class: 'note' });
-    const maj = () => { note.textContent = plusieursTables && ECRITURE.find((f) => f.ext === choix).plusieurs ? t('export_plusieurs_fichiers') : ''; };
-    const liste = el('div', { class: 'formats-export' }, ECRITURE.map((f) => el('label', { class: 'champ' },
+    const maj = () => { note.textContent = plusieursTables && formats.find((f) => f.ext === choix).plusieurs ? t('export_plusieurs_fichiers') : ''; };
+    const liste = el('div', { class: 'formats-export' }, formats.map((f) => el('label', { class: 'champ' },
       el('input', { type: 'radio', name: 'format-export', value: f.ext, checked: f.ext === choix, onchange: () => { choix = f.ext; maj(); } }),
       el('span', {}, t(f.cle)), el('span', { class: 'doux' }, '.' + f.ext))));
     maj();
@@ -1147,11 +1150,11 @@ async function restaurerSession(pid, donnee = null) {
 }
 
 // The views that keep a copy of a project's data, or results computed from it (data table,
-// variable statistics, statistical tests, series; the history too, for a project replaced from
+// variable statistics, statistical tests, series, the map and the spatial autocorrelation; the history too, for a project replaced from
 // the R console): computed again once the data change.
 function oublierCalculs(pid) {
   for (const e of etat.panneaux.values()) {
-    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'historique'].includes(e.vue)) {
+    if (e.params.projet === pid && ['donnees', 'statistiques', 'tests', 'series', 'historique', 'carte', 'autocorrelation_spatiale'].includes(e.vue)) {
       for (const k of ['d', 'res', 'cle', 'cleValeurs', 'cache']) delete e.loc[k];
     }
   }

@@ -83,6 +83,10 @@ export function creerCommandes(app) {
     statistiques: { icone: 'chart-column-big', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('statistiques', null, null, app.projetActif()) },
     tests: { icone: 'flask-conical', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('tests', null, null, app.projetActif()) },
     series: { icone: ICONES_VUES.series, actif: () => !!app.projetActif(), action: () => app.ouvrirVue('series', null, null, app.projetActif()) },
+    // (vues_carte.js: the project's map; the spatial autocorrelation, of a regression's residuals from its model)
+    carte: { icone: 'map', actif: () => !!app.projetActif(), action: () => app.ouvrirVue('carte', null, null, app.projetActif()) },
+    autocorrelation_spatiale: { icone: 'radar', actif: () => !!app.projetActif(),
+      action: () => (avecRegression() ? app.ouvrirVue('autocorrelation_spatiale', m()) : app.ouvrirVue('autocorrelation_spatiale', null, null, app.projetActif())) },
     predire: { icone: 'target', actif: () => avecPrediction(), action: () => app.ouvrirVue('predictions', m()) },
     comparaison: { icone: 'columns-2', action: () => app.ouvrirVue('comparaison') },
 
@@ -149,7 +153,7 @@ export function menus(app, C) {
       it('reajuster_vip'), '-', it('scores_variables'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
       it('vip'), it('coefficients'), it('obspred'), it('effets'), it('moyennes'), it('residus'), it('acf'), it('apports'), it('selection_aic'), it('puissance'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
-      it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series')] },
+      it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series'), it('carte'), it('autocorrelation_spatiale')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
     { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },

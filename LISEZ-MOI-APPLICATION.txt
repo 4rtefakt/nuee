@@ -24,7 +24,7 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
 - Autres distributions : Nuee-<version>-x86_64.AppImage (le rendre exécutable, puis le
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
-  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster")).
+  "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite")).
 Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
 RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
 
@@ -40,6 +40,7 @@ Fichier › Ouvrir (Ctrl+O) :
       Stata .dta                      SAS .sas7bdat, .xpt
       jamovi .omv                     dBase .dbf, Weka .arff
       spectres JCAMP-DX .jdx, .dx, .jcm et SPC .spc (voir Spectres)
+      GeoPackage .gpkg (une couche de QGIS : voir Cartes et données spatiales)
     La première colonne sert de nom d'observation si c'est du texte ou si elle s'appelle
     « ID », « Obs », « Nom »... (pour un fichier R, les noms des lignes) ; les autres colonnes
     de texte dont toutes les valeurs diffèrent (un code par observation) deviennent des
@@ -558,6 +559,54 @@ saisonnier tient les saisons pour indépendantes : une autocorrélation d'un moi
 p trop petite, et Tenir compte de l'autocorrélation ne s'y applique pas (Hirsch et Slack, 1984,
 donnent une correction, qui n'est pas faite ici). La colonne Test donne le test de chaque
 ligne ; la correction sur les lignes reste la même.
+
+Cartes et données spatiales
+---------------------------
+Graphiques › Carte (ou dans l'explorateur, sous le projet) : les observations sur une carte. La
+première fois, choisissez les coordonnées du projet : deux de ses variables, X (l'est, ou la
+longitude) et Y (le nord, ou la latitude), et leur système de coordonnées : des longitudes et
+latitudes en degrés (WGS 84), du Lambert-93, les zones CC, le Lambert II étendu (NTF), une zone
+UTM (un autre code EPSG : 326xx au nord, 327xx au sud), LAEA Europe, la Mercator du web, ou des
+coordonnées planes en mètres d'un autre système (les distances restent justes, sans fond de
+carte). Nuée les propose d'après le nom des variables (lon/lat, X_L93/Y_L93, X/Y...). Elles sont
+enregistrées avec le projet, et Ctrl+Z les retire.
+La carte place les points à la même échelle sur les deux axes. Couleur : une variable du projet,
+ou une colonne des résultats d'un modèle ajusté (scores, résidus, valeurs ajustées, groupes...) ;
+Taille : une variable ou une colonne quantitative ; Étiquettes : le nom des observations. Fond :
+aucun par défaut, et rien ne quitte l'ordinateur ; OpenStreetMap, le plan de l'IGN ou ses
+photographies aériennes (en France) se téléchargent quand on les choisit, et leurs serveurs
+reçoivent alors la zone affichée. Un cadre, un lasso ou un clic sélectionne des observations,
+partagées avec les modèles du projet comme dans les autres graphiques.
+Les conversions entre systèmes sont écrites dans Nuée (formules de Lambert, de la Mercator
+transverse, de LAEA ; la NTF passée en WGS 84 par les trois translations de l'IGN, au mètre près ;
+RGF93 et ETRS89 pris pour WGS 84) : elles donnent celles de PROJ, la bibliothèque de QGIS, au
+micromètre près.
+
+GeoPackage (.gpkg), le format de QGIS : Fichier › Ouvrir lit l'une de ses couches (Nuée demande
+laquelle quand il y en a plusieurs) comme un tableau ; des points donnent deux colonnes de
+coordonnées (X et Y, ou longitude et latitude), des lignes et des polygones leur centre (le
+centre de gravité de la surface d'un polygone), et les coordonnées du projet sont réglées.
+Fichier › Exporter les données et l'export des résultats d'un modèle écrivent un GeoPackage quand
+le projet a des coordonnées : un point par observation avec toutes ses colonnes, les autres
+tableaux de résultats d'un modèle à côté ; QGIS l'ouvre avec son système de coordonnées.
+
+Graphiques › Autocorrélation spatiale (depuis la carte, ou pour une régression depuis son modèle) :
+l'I de Moran d'une variable ou des résidus d'une régression (ou, pour des comptages, des
+présences-absences et des valeurs positives, ses résidus quantiles), avec son espérance sans
+autocorrélation, z et la valeur p unilatérale (autocorrélation positive) sous la randomisation,
+et p par permutations (999 par défaut). Pour un modèle linéaire sans effet aléatoire, une seconde
+ligne donne le test qui tient compte de l'ajustement (Cliff et Ord 1981, comme
+spdep::lm.morantest). Voisinage : les k plus proches voisines de chaque observation (rendues
+réciproques), les observations à moins d'une distance (vide : la plus petite qui donne une
+voisine à chacune), ou l'inverse de la distance ; lignes de somme 1 (style « W » de spdep) ou
+poids tels quels. Dessous, le corrélogramme (l'I de Moran par classes de distance jusqu'à la
+moitié de la plus grande, p bilatérale corrigée par Holm sur les classes, en rouge à 0,05) et le
+semi-variogramme (la moitié de la moyenne des carrés des écarts entre les valeurs des paires de
+chaque classe, comme gstat::variogram, jusqu'au tiers de la diagonale de la zone), la variance
+en tirets. Les distances suivent les grands cercles pour des longitudes et latitudes, des lignes
+droites pour des coordonnées planes. Des observations au même endroit (une placette suivie
+plusieurs années) sont les plus proches voisines les unes des autres : « Moyenne par lieu »
+remplace leurs valeurs par leur moyenne.
 
 Tests statistiques
 ------------------

@@ -41,8 +41,8 @@ const inutile = (rel) => /^(doc|tests|Tcl)([\\/]|$)|^unins/i.test(rel)
 function paquetsR() {
   const code = 'ip <- installed.packages(lib.loc = .Library); '
     + 'std <- rownames(ip)[ip[, "Priority"] %in% c("base", "recommended")]; '
-    + 'dep <- unlist(tools::package_dependencies(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl"), db = ip, recursive = TRUE, which = c("Depends", "Imports"))); '
-    + 'writeLines(union(std, c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "translations", dep)))';
+    + 'dep <- unlist(tools::package_dependencies(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "RSQLite"), db = ip, recursive = TRUE, which = c("Depends", "Imports"))); '
+    + 'writeLines(union(std, c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "RSQLite", "translations", dep)))';
   return new Set(execFileSync(rscript, ['-e', code], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean));
 }
 
@@ -199,13 +199,13 @@ async function construireLinux(dossier) {
       // packages (foreign, for dBase and Weka files, nlme and mgcv, for mixed, generalized and
       // additive models, MASS, for a curve's thresholds and the LDA, rpart, for decision trees, and
       // cluster, for k-means silhouettes, are among R's recommended packages, which Debian keeps
-      // out of r-base-core; the others are for the R console, as on Windows)
+      // out of r-base-core; RSQLite reads and writes GeoPackage files; the others are for the R console, as on Windows)
       deb: {
         packageCategory: 'science',
         depends: ['libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6', 'xdg-utils', 'libatspi2.0-0', 'libuuid1', 'libsecret-1-0',
           'libgbm1', 'libasound2',
           'r-base-core', 'r-cran-httpuv', 'r-cran-jsonlite', 'r-cran-openxlsx', 'r-cran-haven', 'r-cran-readxl', 'r-cran-foreign', 'r-cran-nlme', 'r-cran-mgcv',
-          'r-cran-mass', 'r-cran-rpart', 'r-cran-cluster'],
+          'r-cran-mass', 'r-cran-rpart', 'r-cran-cluster', 'r-cran-rsqlite'],
         recommends: ['python3', 'r-recommended'],
       },
     },
