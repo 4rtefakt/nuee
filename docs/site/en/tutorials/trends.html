@@ -126,17 +126,17 @@ that its length counts in the effort.</p>
 <strong>A trend over time, a monitoring index</strong>, the response <strong>A count</strong>, and choose <code>skylarks</code>. Nuée
 describes the variable (whole numbers from 0 to 79, 14% missing values), proposes the site and the
 time from the columns' names, and recommends <strong>TRIM</strong>.</p>
-<figure><a href="../../images/en/suivi-choix-trim.png"><img src="../../images/en/suivi-choix-trim.png" alt="Which analysis?: a trend, a count, and TRIM recommended" width="900" height="680" loading="lazy"></a><figcaption>Which analysis?: TRIM, with two other possibilities, a negative binomial GLM and an additive model, with a random effect per site.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-choix-trim.png"><img src="../../images/en/suivi-choix-trim.png" alt="Which analysis?: a trend, a count, and TRIM recommended" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-choix-trim.png"><img src="../../images/en/sombre/suivi-choix-trim.png" alt="Which analysis?: a trend, a count, and TRIM recommended" width="900" height="680" loading="lazy"></a><figcaption>Which analysis?: TRIM, with two other possibilities, a negative binomial GLM and an additive model, with a random effect per site.</figcaption></figure>
 <p>TRIM is the method of common bird monitoring in Europe (Statistics Netherlands): it estimates each
 year's index and the trend from incomplete counts, the missing counts being imputed by the model.
 Click <strong>Open New model, already filled in</strong>.</p>
 <h2 id="2-the-trim-model">2. The TRIM model</h2>
 <p>The <strong>General</strong> tab is filled in: the site, the time, <strong>model 3</strong> (an effect of each year),
 <strong>overdispersion</strong> and <strong>serial correlation</strong> ticked, as the TRIM manual recommends.</p>
-<figure><a href="../../images/en/suivi-trim-modele.png"><img src="../../images/en/suivi-trim-modele.png" alt="New model: TRIM, site, time, model 3, overdispersion and serial correlation" width="900" height="680" loading="lazy"></a><figcaption>The TRIM model: the site and the year, model 3, the parameters estimated by generalized estimating equations.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-trim-modele.png"><img src="../../images/en/suivi-trim-modele.png" alt="New model: TRIM, site, time, model 3, overdispersion and serial correlation" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-trim-modele.png"><img src="../../images/en/sombre/suivi-trim-modele.png" alt="New model: TRIM, site, time, model 3, overdispersion and serial correlation" width="900" height="680" loading="lazy"></a><figcaption>The TRIM model: the site and the year, model 3, the parameters estimated by generalized estimating equations.</figcaption></figure>
 <p>Click <strong>Fit</strong>.</p>
 <h2 id="3-the-overall-slope-and-its-class">3. The overall slope and its class</h2>
-<figure><a href="../../images/en/suivi-trim-resume.png"><img src="../../images/en/suivi-trim-resume.png" alt="The TRIM model's Summary: the overall slope of the imputed totals and its class, moderate decline" width="560" height="579" loading="lazy"></a><figcaption>The Summary: the overall slope, its interval and its class.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-trim-resume.png"><img src="../../images/en/suivi-trim-resume.png" alt="The TRIM model's Summary: the overall slope of the imputed totals and its class, moderate decline" width="560" height="579" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-trim-resume.png"><img src="../../images/en/sombre/suivi-trim-resume.png" alt="The TRIM model's Summary: the overall slope of the imputed totals and its class, moderate decline" width="560" height="579" loading="lazy"></a><figcaption>The Summary: the overall slope, its interval and its class.</figcaption></figure>
 <p>The Summary first gives the model: 586 observed counts out of 680 site × year cells, the others
 imputed; an overdispersion σ² = 2.19 (the counts vary twice as much as a Poisson distribution would
 have them) and a serial correlation ρ = 0.14 between two years of a site, low, as the Summary notes.</p>
@@ -150,7 +150,7 @@ for them.</p>
 <h2 id="4-the-indices">4. The indices</h2>
 <p>The <strong>Indices</strong> view: each year relative to the first (2008 = 1), with the 95% band. Tick
 <em>overall slope line</em>.</p>
-<figure><a href="../../images/en/suivi-trim-indices.png"><img src="../../images/en/suivi-trim-indices.png" alt="TRIM's indices from 2008 to 2024, their 95% band and the overall slope line" width="900" height="645" loading="lazy"></a><figcaption>The indices: from 1 in 2008 to 0.65 in 2024.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-trim-indices.png"><img src="../../images/en/suivi-trim-indices.png" alt="TRIM's indices from 2008 to 2024, their 95% band and the overall slope line" width="900" height="645" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-trim-indices.png"><img src="../../images/en/sombre/suivi-trim-indices.png" alt="TRIM's indices from 2008 to 2024, their 95% band and the overall slope line" width="900" height="645" loading="lazy"></a><figcaption>The indices: from 1 in 2008 to 0.65 in 2024.</figcaption></figure>
 <p>The imputed index goes from 1 in 2008 to 0.65 in 2024: a third fewer skylarks between these two
 years. The table under the plot gives each index and its standard error; Ctrl+C copies it for a
 spreadsheet.</p>
@@ -159,7 +159,7 @@ spreadsheet.</p>
 explorer, then <em>Model › Which analysis?</em>: <strong>A density or an abundance (distance sampling)</strong>. Nuée
 proposes <code>distance</code> as the response and lines (line transects), and fills in the transect, the
 effort, the area and the group size from the columns' names.</p>
-<figure><a href="../../images/en/suivi-choix-distance.png"><img src="../../images/en/suivi-choix-distance.png" alt="Which analysis?: a density, and distance sampling recommended" width="900" height="680" loading="lazy"></a><figcaption>Which analysis?: distance sampling, its conditions, and what is left to check, the units.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-choix-distance.png"><img src="../../images/en/suivi-choix-distance.png" alt="Which analysis?: a density, and distance sampling recommended" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-choix-distance.png"><img src="../../images/en/sombre/suivi-choix-distance.png" alt="Which analysis?: a density, and distance sampling recommended" width="900" height="680" loading="lazy"></a><figcaption>Which analysis?: distance sampling, its conditions, and what is left to check, the units.</figcaption></figure>
 <p>Not every bird is seen, and fewer of those far from the line: the detection function, fitted to
 the distances, gives the probability of detection, then the density. Click <strong>Open New model,
 already filled in</strong>.</p>
@@ -167,15 +167,15 @@ already filled in</strong>.</p>
 <strong>truncation</strong> of 5% (<em>of the largest distances</em>): the few farthest detections, rare and poorly
 described, leave the model, as is usual. The half-normal key and the cosine adjustment terms chosen
 by AIC are the defaults, those of the Distance package's ds() function.</p>
-<figure><a href="../../images/en/suivi-distance-modele.png"><img src="../../images/en/suivi-distance-modele.png" alt="New model: distance sampling, line transects, 5% truncation, half-normal key, units" width="900" height="680" loading="lazy"></a><figcaption>The model: the columns recognized, the truncation, the detection function and the units.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-distance-modele.png"><img src="../../images/en/suivi-distance-modele.png" alt="New model: distance sampling, line transects, 5% truncation, half-normal key, units" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-distance-modele.png"><img src="../../images/en/sombre/suivi-distance-modele.png" alt="New model: distance sampling, line transects, 5% truncation, half-normal key, units" width="900" height="680" loading="lazy"></a><figcaption>The model: the columns recognized, the truncation, the detection function and the units.</figcaption></figure>
 <h2 id="6-the-detection-function">6. The detection function</h2>
-<figure><a href="../../images/en/suivi-distance-detection.png"><img src="../../images/en/suivi-distance-detection.png" alt="The histogram of the distances under the half-normal detection function" width="860" height="645" loading="lazy"></a><figcaption>The detection function: the probability of seeing a bird by its distance from the line.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-distance-detection.png"><img src="../../images/en/suivi-distance-detection.png" alt="The histogram of the distances under the half-normal detection function" width="860" height="645" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-distance-detection.png"><img src="../../images/en/sombre/suivi-distance-detection.png" alt="The histogram of the distances under the half-normal detection function" width="860" height="645" loading="lazy"></a><figcaption>The detection function: the probability of seeing a bird by its distance from the line.</figcaption></figure>
 <p>The histogram of the distances (each bar the class's count over the count it would have if every
 bird were seen) follows the curve: nearly every bird is seen near the line, a small share at 150 m.
 The AIC kept the half-normal key alone (a cosine term didn't lower it). The goodness-of-fit tests
 (Cramér–von Mises, chi-square) show no departure.</p>
 <h2 id="7-density-and-abundance">7. Density and abundance</h2>
-<figure><a href="../../images/en/suivi-distance-resume.png"><img src="../../images/en/suivi-distance-resume.png" alt="The model's Summary: detections, truncation, probability of detection, density and abundance" width="560" height="485" loading="lazy"></a><figcaption>The density and the abundance, with their intervals.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-distance-resume.png"><img src="../../images/en/suivi-distance-resume.png" alt="The model's Summary: detections, truncation, probability of detection, density and abundance" width="560" height="485" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-distance-resume.png"><img src="../../images/en/sombre/suivi-distance-resume.png" alt="The model's Summary: detections, truncation, probability of detection, density and abundance" width="560" height="485" loading="lazy"></a><figcaption>The density and the abundance, with their intervals.</figcaption></figure>
 <p>157 detections on 24 transects (43.3 km), up to 150 m. The average probability of detection within
 the strip is p = 0.58, that is an effective strip half-width of 87 m: as many birds are counted as
 if all those within 87 m were seen, and none beyond.</p>
@@ -187,7 +187,7 @@ transects (72%), to detection and to group size.</p>
 <p>Go back to the counts project. TRIM's <strong>Indices</strong> and <strong>Time totals</strong> views are open (otherwise,
 double-click them under the model in the explorer). <em>Plots › Compose a figure…</em> opens a figure;
 <em>Add an open plot…</em> puts one then the other in it, as A and B.</p>
-<figure><a href="../../images/en/suivi-figure.png"><img src="../../images/en/suivi-figure.png" alt="The figure composer: two panels A and B side by side, 174 mm wide, 75 mm high" width="1086" height="640" loading="lazy"></a><figcaption>A two-column figure: the indices (A) and the yearly totals (B), with 8 pt text.</figcaption></figure>
+<figure><a class="clair-seul" href="../../images/en/suivi-figure.png"><img src="../../images/en/suivi-figure.png" alt="The figure composer: two panels A and B side by side, 174 mm wide, 75 mm high" width="1086" height="640" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/suivi-figure.png"><img src="../../images/en/sombre/suivi-figure.png" alt="The figure composer: two panels A and B side by side, 174 mm wide, 75 mm high" width="1086" height="640" loading="lazy"></a><figcaption>A two-column figure: the indices (A) and the yearly totals (B), with 8 pt text.</figcaption></figure>
 <p>Choose a journal's width (174 mm, two columns), a height (untick <em>from the panels</em>, then 75 mm),
 the text's size once printed (8 pt), then <strong>Export…</strong> as vector PDF or SVG, or as PNG and TIFF at
 300 or 600 dots per inch. The figure is kept in the project and always takes each model's latest

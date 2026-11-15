@@ -85,6 +85,15 @@ figure { margin: 1.25rem 0 1.5rem; }
 figure img { display: block; border: 1px solid var(--bord); border-radius: .4rem; box-shadow: var(--ombre); background: #fff; }
 figure a { display: inline-block; max-width: 100%; }
 figcaption { color: var(--texte-doux); font-size: .9rem; margin-top: .45rem; }
+/* a screenshot's dark version (images/<langue>/sombre/) in the dark theme, its light one otherwise;
+   the hidden one, lazy, isn't downloaded */
+figure a.sombre-seul { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="clair"]) figure a.clair-seul { display: none; }
+  :root:not([data-theme="clair"]) figure a.sombre-seul { display: inline-block; }
+}
+:root[data-theme="sombre"] figure a.clair-seul { display: none; }
+:root[data-theme="sombre"] figure a.sombre-seul { display: inline-block; }
 
 /* the "On this page" list, the guide's pages beside the text */
 .sommaire { background: var(--fond-doux); border: 1px solid var(--bord); border-radius: .5rem; padding: .6rem 1rem; margin: 1rem 0 1.5rem; font-size: .95rem; }

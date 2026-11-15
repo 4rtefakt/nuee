@@ -389,10 +389,18 @@ function rendreMarkdown(texte, langue, chemin) {
     });
   let h = md.render(remplace);
   h = h.replace(/(href|src)="(page:|@\/)([^"]*)"/g, (_, attr, sorte, cible) => `${attr}="${attribut(lien(sorte, cible, langue, chemin))}"`);
+  // a screenshot and, when there is one (images/<langue>/sombre/), its dark version, which the
+  // site's dark theme shows instead (site.css)
   h = h.replace(/<p><img src="([^"]+)" alt="([^"]*)" title="([^"]*)"><\/p>/g, (_, src, alt, titre) => {
-    const t = taillePng(path.join(SITE, path.posix.normalize(path.posix.join(path.posix.dirname(chemin), src))));
-    const taille = t ? ` width="${t.largeur}" height="${t.hauteur}"` : '';
-    return `<figure><a href="${src}"><img src="${src}" alt="${alt}"${taille} loading="lazy"></a><figcaption>${titre}</figcaption></figure>`;
+    const fichier = (s) => path.join(SITE, path.posix.normalize(path.posix.join(path.posix.dirname(chemin), s)));
+    const image = (s, classe) => {
+      const t = taillePng(fichier(s));
+      const taille = t ? ` width="${t.largeur}" height="${t.hauteur}"` : '';
+      return `<a${classe ? ` class="${classe}"` : ''} href="${s}"><img src="${s}" alt="${alt}"${taille} loading="lazy"></a>`;
+    };
+    const sombre = path.posix.join(path.posix.dirname(src), 'sombre', path.posix.basename(src));
+    const images = fs.existsSync(fichier(sombre)) ? image(src, 'clair-seul') + image(sombre, 'sombre-seul') : image(src);
+    return `<figure>${images}<figcaption>${titre}</figcaption></figure>`;
   });
   return h;
 }

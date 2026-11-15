@@ -1,8 +1,10 @@
 // The tutorials' screenshots (docs/site/images/<langue>/), taken from the browser version of Nuée:
 // the R engine (moteur/serveur.R) serves the interface, a headless Chrome (or Edge) shows it, and
 // this script uses it over the Chrome DevTools Protocol as a person would, once in French with the
-// French data, once in English with the English data. Each tutorial starts a fresh engine.
-//   node docs/site/captures.mjs [baci] [pls] [suivi] [--langue fr|en]
+// French data, once in English with the English data, each in the light theme (images/<langue>/)
+// and the dark one (images/<langue>/sombre/, shown by the site's dark theme). Each tutorial
+// starts a fresh engine.
+//   node docs/site/captures.mjs [baci] [pls] [suivi] [--langue fr|en] [--theme clair|sombre]
 // Needs Node 22 or later, R with the engine's packages (RSCRIPT=/path/to/Rscript, otherwise R
 // 4.6.2's default place on Windows, or Rscript on the PATH) and Chrome or Edge (CHROME=...).
 // With Python and Pillow, the images are then reduced to 256 colours (a third of their size).
@@ -29,7 +31,10 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const args = process.argv.slice(2);
 const iLangue = args.indexOf('--langue');
 const LANGUES = iLangue >= 0 ? [args[iLangue + 1]] : ['fr', 'en'];
-const choisis = args.filter((a, i) => !a.startsWith('--') && (iLangue < 0 || i !== iLangue + 1));
+const iTheme = args.indexOf('--theme');
+const THEMES = iTheme >= 0 ? [args[iTheme + 1]] : ['clair', 'sombre'];
+const choisis = args.filter((a, i) => !a.startsWith('--') && (iLangue < 0 || i !== iLangue + 1) && (iTheme < 0 || i !== iTheme + 1));
+let theme = 'clair';  // the interface's theme for the tutorial being captured
 
 // ------------------------------------------------------------ the engine and the browser
 
@@ -194,11 +199,11 @@ const OUTILS = `(async () => {
 
 // ------------------------------------------------------------ steps shared by the tutorials
 
-// The interface in the language wanted, the What's new of a first start closed.
+// The interface in the language and theme wanted, the What's new of a first start closed.
 async function demarrer(moteur, langue, fichier) {
   const p = await onglet(1280, 900);
   await p.aller(moteur.url);
-  await p.evaluer(`localStorage.setItem('langue', '${langue}'); true`);
+  await p.evaluer(`localStorage.setItem('langue', '${langue}'); localStorage.setItem('theme', '${theme}'); true`);
   await p.aller(`${moteur.base}/?ouvrir=${encodeURIComponent(fichier)}`);
   await p.attendre(`!!document.querySelector('.arbre') && document.querySelector('.arbre').textContent.includes(${JSON.stringify(path.basename(fichier))})`);
   await pause(1500);
@@ -569,13 +574,15 @@ function compresser(dossier) {
   const chrome = await demarrerChrome();
   try {
     for (const langue of LANGUES) {
-      const images = path.join(ICI, 'images', langue);
-      for (const [nom, f] of Object.entries(TUTORIELS)) {
-        if (choisis.length && !choisis.includes(nom)) continue;
-        console.log(`${nom} (${langue})`);
-        await f(langue, images);
+      for (theme of THEMES) {
+        const images = path.join(ICI, 'images', langue, ...(theme === 'sombre' ? ['sombre'] : []));
+        for (const [nom, f] of Object.entries(TUTORIELS)) {
+          if (choisis.length && !choisis.includes(nom)) continue;
+          console.log(`${nom} (${langue}, ${theme})`);
+          await f(langue, images);
+        }
+        compresser(images);
       }
-      compresser(images);
     }
   } finally {
     arreter(chrome.proc);

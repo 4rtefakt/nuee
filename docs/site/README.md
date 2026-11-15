@@ -11,7 +11,7 @@ is merged).
 | `index.html` | the root: sends the reader to `fr/` (or to `en/` when the browser prefers English) |
 | `fr/`, `en/` | the pages, built by `construire.js`: don't edit them by hand |
 | `assets/` | `site.css`, `site.js` (the theme the reader chose, the guide's menu folded on a phone), the logo |
-| `images/fr/`, `images/en/` | the tutorials' screenshots, made by `captures.mjs` |
+| `images/fr/`, `images/en/` | the tutorials' screenshots, made by `captures.mjs`; their dark versions in `sombre/` |
 | `donnees/` | the tutorials' data (simulated) and the R scripts that made them |
 | `sources/fr/`, `sources/en/` | the home page, the installation and the tutorials, in Markdown |
 | `construire.js` | builds the pages |
@@ -56,12 +56,14 @@ docs/site`, then open http://127.0.0.1:8792/. The pages also open from the disk 
 ## Screenshots and data
 
 ```
-node docs/site/captures.mjs [baci] [pls] [suivi] [--langue fr|en]
+node docs/site/captures.mjs [baci] [pls] [suivi] [--langue fr|en] [--theme clair|sombre]
 ```
 
 Starts the R engine (`moteur/serveur.R`, port 8793) and a headless Chrome or Edge (port 9333),
 then goes through each tutorial in the browser version of Nuée, as a person would, in French with
-the French data and in English with the English data, and writes `images/<langue>/`. It needs
+the French data and in English with the English data, each in Nuée's light theme and its dark one,
+and writes `images/<langue>/` and `images/<langue>/sombre/`: the site's dark theme shows the dark
+screenshots (`construire.js` puts both in the page when both exist). It needs
 Node 22 or later, R with the engine's packages (`RSCRIPT=…`) and Chrome or Edge (`CHROME=…`); with
 Python and Pillow, the images are then reduced to 256 colours. With `NUEE_TEXTES=<folder>`, it also
 writes each model's Methods and Results texts there (the tutorials quote them: when the numbers
