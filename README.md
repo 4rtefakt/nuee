@@ -28,7 +28,7 @@ model in plain R, without Nuée. Every calculation is written in R, with comment
 check exactly what was computed, and change it.
 
 The interface is in English, by default, and French (*View › Language*); the screenshots show it
-in French.
+in English.
 
 ## Install
 

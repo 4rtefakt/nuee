@@ -15,7 +15,7 @@ is merged).
 | `donnees/` | the tutorials' data (simulated) and the R scripts that made them |
 | `sources/fr/`, `sources/en/` | the home page, the installation and the tutorials, in Markdown |
 | `construire.js` | builds the pages |
-| `captures.mjs` | takes the screenshots |
+| `captures.mjs` | takes the screenshots, the tutorials' and the README's (`docs/captures/`) |
 | `verifier_liens.js` | checks the links |
 
 ## Rebuilding the pages
@@ -56,7 +56,7 @@ docs/site`, then open http://127.0.0.1:8792/. The pages also open from the disk 
 ## Screenshots and data
 
 ```
-node docs/site/captures.mjs [baci] [pls] [suivi] [--langue fr|en] [--theme clair|sombre]
+node docs/site/captures.mjs [baci] [pls] [suivi] [readme] [--langue fr|en] [--theme clair|sombre]
 ```
 
 Starts the R engine (`moteur/serveur.R`, port 8793) and a headless Chrome or Edge (port 9333),
@@ -72,6 +72,22 @@ which one.
 
 The data are simulated, with fixed seeds: `Rscript docs/site/donnees/baci.R` (and `spectres.R`,
 `suivi.R`) writes the same files again.
+
+`readme` takes the README's screenshots, `docs/captures/*.png` (`README.md` and `README.fr.md`
+show them), only when it is named:
+
+```
+node docs/site/captures.mjs readme
+```
+
+Each is the whole window, 1440 × 900, in English whatever `--langue` says, and in Nuée's light
+theme whatever `--theme` says, but `console.png` in the dark one, as its caption says. Six come
+from the example project (*Help › Example project*): the PCA, the PLS with its VIP, the OPLS-DA
+with its S-plot, the R console under the PCA, the tests between two varieties and the class
+models; `spectres.png` and `zones.png` from spectra the script makes up in a temporary folder (a
+table of 60 spectra; 24 JCAMP-DX files and a table of their sugar contents, imported by *File ›
+Import spectra*). Retake them after a change to what they show; they are reduced to 256 colours
+as the site's are.
 
 ## Publishing
 

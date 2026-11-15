@@ -29,7 +29,7 @@ Nuée. Chaque calcul est écrit en R, commenté, pour vérifier exactement ce qu
 le modifier.
 
 L'interface est en anglais, par défaut, et en français (*Affichage › Langue*) ; les captures la
-montrent en français.
+montrent en anglais.
 
 ## Installer
 
