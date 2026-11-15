@@ -244,6 +244,7 @@ resume_projet <- function(p) {
        jeux = lapply(p$datasets, function(d) list(nom = d$name %||% "", n_obs = length(d$observations),
                                                   n_var = length(d$variables))),
        modeles = lapply(p$models, resume_modele), session = !is.null(p$session),
+       coordonnees = coordonnees_projet(p),
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
        historique = sum(vapply(p$audit %||% list(), function(s) length(s$events), 0)),
        predictions = lapply(p$prediction_sets, function(s) list(nom = s$name %||% "", n_obs = length(s$observations))))
@@ -671,7 +672,12 @@ exporter_demande <- function(q) {
   e <- modele(q$modele)
   nom <- nom_fichier(e$definition$name %||% "modele")
   if (is.null(q$chemin)) q$chemin <- chemin_temporaire(paste0(nom, ".", q$format %||% "xlsx"))
-  chemins <- ecrire_tables(tables_resultats(projet(e$projet), e$modele), q$chemin, objet = make.names(nom))
+  tables <- tables_resultats(projet(e$projet), e$modele)
+  if (extension(q$chemin) == "gpkg") {  # (les observations en points, les autres tableaux à côté : geopackage.R)
+    ecrire_geopackage_resultats(projet(e$projet), e$modele, tables, q$chemin, nom)
+    return(list(chemin = q$chemin, chemins = I(q$chemin)))
+  }
+  chemins <- ecrire_tables(tables, q$chemin, objet = make.names(nom))
   list(chemin = chemins[1], chemins = I(chemins))
 }
 
@@ -683,11 +689,17 @@ regressions_demande <- function(ids) {
   stats::setNames(ms, make.unique(vapply(ms, function(m) as.character(m$nom %||% ""), ""), sep = " "))
 }
 
-# Les données d'un projet, dans le format de l'extension du chemin.
+# Les données d'un projet, dans le format de l'extension du chemin ; un GeoPackage : une couche
+# de points de ses coordonnées (geopackage.R).
 exporter_donnees_demande <- function(q) {
   p <- projet(q$projet)
   chemin <- q$chemin %||% chemin_temporaire(paste0(nom_fichier(p$nom), ".", q$format %||% "xlsx"))
-  ecrire_tableau(tableau_projet(p), chemin, objet = make.names(nom_fichier(p$nom)))
+  if (extension(chemin) == "gpkg") {
+    pts <- points_projet(p)
+    ecrire_geopackage(tableau_projet(p), chemin, pts$x, pts$y, pts$systeme, couche = nom_fichier(p$nom))
+  } else {
+    ecrire_tableau(tableau_projet(p), chemin, objet = make.names(nom_fichier(p$nom)))
+  }
   list(chemin = chemin, chemins = I(chemin))
 }
 
@@ -996,6 +1008,35 @@ DEMANDES <- list(
   # avec q$saisons ("mois", une variable qualitative ou "id:k"), le test de Kendall saisonnier. Des
   # options refusées (des saisons par mois sans dates...) n'empêchent pas le graphique :
   # tendances_erreur le dit, et l'interface garde le tableau et ses options pour les changer.
+  # Les coordonnées du projet (spatial.R) : celles qui sont réglées, une proposition d'après le
+  # nom des variables, les systèmes de la liste ; avec q$regler, les règle (q$x, q$y, q$systeme ;
+  # sans q$x, les retire), annulable par Ctrl+Z.
+  coordonnees = function(q) {
+    p <- projet(q$projet)
+    r <- NULL
+    if (isTRUE(q$regler)) {
+      r <- changer_projet(q, function(p) regler_coordonnees(p, q$x, q$y, q$systeme), traduire("coordonnées", "coordinates"))
+      p <- projet(q$projet)
+    }
+    list(coordonnees = coordonnees_projet(p), proposition = proposer_coordonnees(p), systemes = liste_systemes(), projet = r)
+  },
+  # Les points de la carte (Graphiques › Carte) : les coordonnées de chaque observation, et leur
+  # longitude et latitude WGS 84 pour le fond de carte.
+  carte = function(q) {
+    p <- projet(q$projet)
+    pts <- points_projet(p)
+    s <- systeme_coordonnees(pts$systeme)
+    list(uid = pts$uid, nom = unname(p$noms_obs[as.character(pts$uid)]), x = pts$x, y = pts$y, lon = pts$lon, lat = pts$lat,
+         coordonnees = pts$coordonnees, systeme = list(code = s$code, nom = s$nom, type = s$type))
+  },
+  # L'autocorrélation spatiale d'une variable (q$variable) ou des résidus d'une régression
+  # (q$modele, q$residus) : spatial.R.
+  autocorrelation_spatiale = function(q) {
+    e <- if (length(q$modele)) modele(q$modele)
+    p <- projet(if (!is.null(e)) e$projet else q$projet)
+    autocorrelation_spatiale(p, e$modele, if (length(q$variable)) as.numeric(q$variable), q$residus %||% "standardises",
+                             q$voisinage %||% list(), q$permutations %||% 999, q$classes %||% 10, par_lieu = isTRUE(q$par_lieu))
+  },
   series = function(q) {
     p <- projet(q$projet)
     r <- series_variable(p, q$variable, q$temps, q$lignes, q$panneaux)
@@ -1204,7 +1245,7 @@ DEMANDES <- list(
   completer = function(q) completer_console(as.character(q$texte %||% ""), as.integer(q$curseur %||% nchar(q$texte %||% "")), q$modele, q$projet),
   version = function(q) list(R = R.version.string, plateforme = R.version$platform, systeme = utils::osVersion %||% "",
                              locale = Sys.getlocale("LC_CTYPE"),
-                             paquets = as.list(vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl", "foreign", "rmarkdown", "knitr"), function(x)
+                             paquets = as.list(vapply(c("jsonlite", "httpuv", "openxlsx", "haven", "readxl", "foreign", "RSQLite", "rmarkdown", "knitr"), function(x)
                                tryCatch(as.character(utils::packageVersion(x)), error = function(e) "-"), ""))))
 
 # Les demandes propres d'une autre analyse (analyses.R) : chaque fonction demande_analyse_<nom>(q)

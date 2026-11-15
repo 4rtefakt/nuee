@@ -1,0 +1,281 @@
+# Vérifie les données géographiques (moteur/R/spatial.R, moteur/R/geopackage.R) : les
+# conversions de coordonnées contre des valeurs de PROJ relevées, et contre PROJ lui-même (paquet
+# sf) quand il est installé ; les distances ; l'I de Moran, celui des résidus d'un modèle linéaire
+# et le corrélogramme contre spdep, le semi-variogramme contre gstat, quand ils le sont ; les
+# GeoPackage écrits puis relus, et lus par GDAL (sf), ceux de GDAL lus ici (points, polygones,
+# lignes, points en 3D) ; les coordonnées d'un projet, réglées, enregistrées et relues ; la
+# demande d'autocorrélation spatiale sur une variable et sur les résidus de régressions.
+#   Rscript moteur/tests/verifier_spatial.R
+# NUEE_SF : une bibliothèque où sont installés sf, spdep, gstat (et RSQLite, s'il n'est pas dans
+# celle de R).
+
+source("moteur/charger.R", encoding = "UTF-8")
+echecs <- 0
+verifier <- function(nom, ok) {
+  cat(if (isTRUE(ok)) "  ok      " else "  ÉCHEC   ", nom, "\n", sep = "")
+  if (!isTRUE(ok)) echecs <<- echecs + 1
+}
+refus <- function(expr) tryCatch({ force(expr); "" }, error = conditionMessage)
+# (des valeurs égales à `tol` près, les manquantes aux mêmes places)
+proche <- function(a, b, tol) {
+  a <- as.numeric(unlist(a)); b <- as.numeric(unlist(b))
+  length(a) == length(b) && identical(is.na(a), is.na(b)) && isTRUE(max(abs(a - b), na.rm = TRUE) <= tol)
+}
+
+if (nzchar(Sys.getenv("NUEE_SF"))) .libPaths(c(Sys.getenv("NUEE_SF"), .libPaths()))
+avec <- function(p) requireNamespace(p, quietly = TRUE)
+avec_sf <- avec("sf")
+avec_spdep <- avec("spdep")
+avec_gstat <- avec("gstat")
+avec_rsqlite <- avec("RSQLite")
+cat(sprintf("(sf %s, spdep %s, gstat %s, RSQLite %s)\n", if (avec_sf) utils::packageVersion("sf") else "absent", if (avec_spdep) utils::packageVersion("spdep") else "absent",
+            if (avec_gstat) utils::packageVersion("gstat") else "absent", if (avec_rsqlite) utils::packageVersion("RSQLite") else "absent"))
+
+# ---------------------------------------------------------------- conversions de coordonnées
+
+cat("Conversions de coordonnées\n")
+# La Tour du Valat (4,6° E, 43,55° N), convertie par PROJ 9 (sf 1.1-3) : au micromètre près.
+releves <- list(`2154` = c(829334.348534, 6273636.080013), `27572` = c(783148.843460, 1841303.620205),
+                `32631` = c(629245.013390, 4823137.821481), `3035` = c(3883936.695443, 2286986.427576))
+for (code in names(releves)) {
+  n <- depuis_lonlat(4.6, 43.55, as.integer(code))
+  verifier(sprintf("EPSG:%s : la Tour du Valat comme PROJ (au millimètre)", code), proche(c(n$x, n$y), releves[[code]], 1e-3))
+}
+set.seed(1)
+lon <- stats::runif(300, -5, 9.5)
+lat <- stats::runif(300, 41.3, 51.1)
+codes <- c(2154, 3942, 3946, 3950, 27572, 3035, 3857, 32630, 32631, 32632, 25830, 25831, 25832, 32733)
+for (code in codes) {
+  lo <- if (code == 32733) stats::runif(300, 12, 18) else lon
+  la <- if (code == 32733) stats::runif(300, -30, -1) else lat
+  p <- depuis_lonlat(lo, la, code)
+  r <- vers_lonlat(p$x, p$y, code)
+  # (le Lambert II étendu passe deux fois par le changement de datum, qui laisse la hauteur : 1 mm)
+  verifier(sprintf("EPSG:%d : aller et retour (%s)", code, systeme_coordonnees(code)$nom), proche(c(r$lon, r$lat), c(lo, la), if (code == 27572) 2e-8 else 1e-9))
+  if (avec_sf) {
+    ref <- sf::sf_project("EPSG:4326", sprintf("EPSG:%d", code), cbind(lo, la))
+    verifier(sprintf("EPSG:%d : comme PROJ, vers le système (au millimètre)", code), proche(cbind(p$x, p$y), ref, 1e-3))
+    retour <- sf::sf_project(sprintf("EPSG:%d", code), "EPSG:4326", ref)
+    g <- vers_lonlat(ref[, 1], ref[, 2], code)
+    verifier(sprintf("EPSG:%d : comme PROJ, vers la longitude et la latitude", code), proche(cbind(g$lon, g$lat), retour, if (code == 27572) 2e-8 else 1e-9))
+  }
+}
+verifier("du Lambert-93 au Lambert II étendu", {
+  a <- depuis_lonlat(4.6, 43.55, 2154)
+  b <- convertir_coordonnees(a$x, a$y, 2154, 27572)
+  proche(c(b$x, b$y), releves[["27572"]], 1e-3)
+})
+verifier("un système plan n'a pas de longitude ni de latitude", all(is.na(unlist(vers_lonlat(c(1, 2), c(3, 4), "plan")))))
+verifier("un code inconnu est refusé", grepl("inconnu|Unknown", refus(vers_lonlat(1, 2, 99999))))
+verifier("les systèmes proposés sont tous connus", all(vapply(liste_systemes(), function(s) !is.null(systeme_coordonnees(s$code)), TRUE)))
+verifier("deviner : des degrés, le Lambert-93, le Lambert II étendu, sinon plan",
+         identical(list(deviner_systeme(lon, lat), deviner_systeme(c(829334, 650000), c(6273636, 6860000)),
+                        deviner_systeme(c(783148, 600000), c(1841303, 2400000)), deviner_systeme(c(1000, 5000), c(2000, 7000))),
+                   list(4326, 2154, 27572, "plan")))
+
+# ---------------------------------------------------------------- distances
+
+cat("Distances\n")
+d <- distances_points(c(2.3522, 5.3698), c(48.8566, 43.2965), 4326)
+# (Paris – Marseille le long d'un grand cercle de rayon 6 371 008,8 m, par la loi des cosinus)
+loi_cosinus <- RAYON_TERRE * acos(sin(rad(48.8566)) * sin(rad(43.2965)) + cos(rad(48.8566)) * cos(rad(43.2965)) * cos(rad(5.3698 - 2.3522)))
+verifier("haversine = la loi des cosinus sphérique (Paris – Marseille)", abs(d[1, 2] - loi_cosinus) < 1e-6 && d[1, 1] == 0)
+if (avec_sf) {
+  pts <- sf::st_as_sf(data.frame(lon = lon[1:30], lat = lat[1:30]), coords = c("lon", "lat"), crs = 4326)
+  ref <- unclass(sf::st_distance(pts))
+  # (s2 prend une sphère de 6 371 010 m : les angles sont comparés)
+  verifier("haversine comme sf (s2)", max(abs(distances_points(lon[1:30], lat[1:30], 4326) / RAYON_TERRE - ref / s2::s2_earth_radius_meters())) < 1e-12)
+}
+verifier("coordonnées planes : en ligne droite", isTRUE(all.equal(distances_points(c(0, 3), c(0, 4), 2154)[1, 2], 5)))
+
+# ---------------------------------------------------------------- autocorrélation spatiale
+
+cat("Autocorrélation spatiale\n")
+set.seed(3)
+n <- 60
+x <- stats::runif(n, 0, 10000)
+y <- stats::runif(n, 0, 8000)
+v <- sin(x / 3000) + cos(y / 2500) + stats::rnorm(n, 0, 0.4)
+D <- distances_points(x, y, 2154)
+W <- poids_spatiaux(D, "voisins", k = 4)
+verifier("voisins : 4 au moins chacun, symétriques, lignes de somme 1", all(rowSums(W > 0) >= 4) && all((W > 0) == t(W > 0)) && isTRUE(all.equal(rowSums(W), rep(1, n))))
+Wb <- poids_spatiaux(D, "bande", standardiser = FALSE)
+verifier("bande par défaut : un voisin au moins pour chacune", all(rowSums(Wb) >= 1) && isTRUE(all.equal(attr(Wb, "portee"), max(apply(D + diag(Inf, n), 1, min)))))
+a <- moran(v, W, permutations = 0)
+# (l'I à la main : n / S0 × Σ wij zi zj / Σ zi²)
+z <- v - mean(v)
+verifier("I de Moran écrit à la main", isTRUE(all.equal(a$I, n / sum(W) * sum(W * outer(z, z)) / sum(z^2))))
+verifier("espérance −1/(n − 1)", isTRUE(all.equal(a$esperance, -1 / (n - 1))))
+graine_avant <- .Random.seed
+m1 <- moran(v, W, permutations = 199)
+m2 <- moran(v, W, permutations = 199)
+verifier("permutations : la même valeur p à chaque calcul, le hasard de la séance intact", identical(m1$p_permutations, m2$p_permutations) && identical(graine_avant, .Random.seed))
+verifier("une variable constante est refusée", grepl("constante|constant", refus(moran(rep(1, n), W))))
+if (avec_spdep) {
+  co <- cbind(x, y)
+  suppressWarnings({
+    lw <- spdep::nb2listw(spdep::make.sym.nb(spdep::knn2nb(spdep::knearneigh(co, k = 4))), style = "W")
+    b <- spdep::moran.test(v, lw, randomisation = TRUE)
+    verifier("k voisins, style W : I, espérance, variance et p comme spdep::moran.test",
+             proche(c(a$I, a$esperance, a$variance, a$p), c(b$estimate, b$p.value), 1e-10))
+    bb <- spdep::moran.test(v, spdep::nb2listw(spdep::dnearneigh(co, 0, attr(Wb, "portee")), style = "B"), randomisation = TRUE)
+    ab <- moran(v, Wb, 0)
+    verifier("bande, style B : comme spdep", proche(c(ab$I, ab$variance, ab$z), c(bb$estimate[c(1, 3)], bb$statistic), 1e-10))
+    nbi <- spdep::dnearneigh(co, 0, 1e9)
+    gl <- lapply(spdep::nbdists(nbi, co), function(d) 1 / d)
+    bi <- spdep::moran.test(v, spdep::nb2listw(nbi, glist = gl, style = "W"), randomisation = TRUE)
+    ai <- moran(v, poids_spatiaux(D, "inverse"), 0)
+    verifier("inverse de la distance, style W : comme spdep", proche(c(ai$I, ai$variance), bi$estimate[c(1, 3)], 1e-10))
+    covariable <- stats::rnorm(n)
+    ajustement <- stats::lm(v ~ covariable + x)
+    al <- moran_residus_lm(stats::residuals(ajustement), stats::model.matrix(ajustement), W)
+    bl <- spdep::lm.morantest(ajustement, lw)
+    verifier("résidus d'un modèle linéaire : I, espérance, variance comme spdep::lm.morantest",
+             proche(c(al$I, al$esperance, al$variance, al$p), c(bl$estimate, bl$p.value), 1e-10))
+    cg <- correlogramme_moran(v, D, classes = 5)
+    bornes <- c(cg$de, cg$a[5])
+    ref <- t(vapply(1:5, function(k) {
+      t <- spdep::moran.test(v, spdep::nb2listw(spdep::dnearneigh(co, bornes[k], bornes[k + 1]), style = "B", zero.policy = TRUE),
+                             randomisation = TRUE, zero.policy = TRUE, adjust.n = FALSE)
+      c(t$estimate[1], t$statistic)
+    }, numeric(2)))
+    verifier("corrélogramme : I et z de chaque classe comme spdep (anneaux de dnearneigh, style B)", proche(cbind(cg$I, cg$z), ref, 1e-10))
+  })
+}
+vg <- variogramme(v, D, diagonale = sqrt(diff(range(x))^2 + diff(range(y))^2))
+i <- which(upper.tri(D) & D <= vg$a[1] & D > 0)
+verifier("semi-variogramme : la première classe écrite à la main", isTRUE(all.equal(vg$gamma[1], mean((outer(v, v, "-")^2 / 2)[i]))) && vg$paires[1] == length(i))
+if (avec_gstat && avec_sf) {
+  g <- gstat::variogram(v ~ 1, sf::st_as_sf(data.frame(x, y, v), coords = c("x", "y")))
+  verifier("semi-variogramme comme gstat::variogram (paires, distances, γ)", nrow(vg) == nrow(g) && all(vg$paires == g$np) &&
+             proche(cbind(vg$distance, vg$gamma), cbind(g$dist, g$gamma), 1e-9))
+}
+
+# ---------------------------------------------------------------- coordonnées d'un projet
+
+cat("Coordonnées d'un projet\n")
+lon_s <- 4.5 + stats::runif(n, 0, 0.3)
+lat_s <- 43.4 + stats::runif(n, 0, 0.25)
+l93 <- depuis_lonlat(lon_s, lat_s, 2154)
+df <- data.frame(nom = sprintf("p%02d", 1:n), site = rep(sprintf("S%d", 1:12), each = 5), X_L93 = l93$x, Y_L93 = l93$y,
+                 habitat = sample(c("marais", "sansouire", "prairie"), n, TRUE), abondance = stats::rpois(n, exp(1 + v / 2)), v = v,
+                 stringsAsFactors = FALSE)
+df$X_L93[5] <- NA
+p <- projet_depuis_tableau(df, "essai")
+pr <- proposer_coordonnees(p)
+verifier("proposées d'après le nom : X_L93 et Y_L93, en Lambert-93", identical(list(pr$x, pr$y, pr$systeme), list(numeros(p, "X_L93"), numeros(p, "Y_L93"), 2154)))
+verifier("pas de proposition sans noms de coordonnées", is.null(proposer_coordonnees(projet_depuis_tableau(df[c("nom", "v", "abondance")], "sans"))))
+verifier("des degrés hors bornes refusés", grepl("180", refus(regler_coordonnees(p, numeros(p, "X_L93"), numeros(p, "Y_L93"), 4326))))
+verifier("une variable qualitative refusée", nzchar(refus(regler_coordonnees(p, numeros(p, "habitat"), numeros(p, "Y_L93"), 2154))))
+verifier("un système inconnu refusé", nzchar(refus(regler_coordonnees(p, numeros(p, "X_L93"), numeros(p, "Y_L93"), 123))))
+p <- regler_coordonnees(p, numeros(p, "X_L93"), numeros(p, "Y_L93"), "EPSG:2154")
+co <- coordonnees_projet(p)
+verifier("réglées : x, y et le système", identical(list(co$nom_x, co$nom_y, co$systeme), list("X_L93", "Y_L93", 2154L)))
+pts <- points_projet(p)
+verifier("longitude et latitude retrouvées, NA sans coordonnée", proche(pts$lon[-5], lon_s[-5], 1e-9) && proche(pts$lat[-5], lat_s[-5], 1e-9) && is.na(pts$lon[5]))
+f <- tempfile(fileext = ".nuee")
+enregistrer_projet(p, f, "1.0.0")
+p2 <- lire_projet(f)
+verifier("enregistrées avec le projet et relues", identical(coordonnees_projet(p2)[c("x", "y", "systeme")], co[c("x", "y", "systeme")]))
+verifier("retirées", is.null(coordonnees_projet(regler_coordonnees(p, NULL, NULL, NULL))))
+verifier("sans coordonnées : la demande le dit", grepl("Carte|Map", refus(points_projet(regler_coordonnees(p, NULL, NULL, NULL)))))
+
+cat("Autocorrélation spatiale d'une variable et de résidus\n")
+r <- autocorrelation_spatiale(p, variable = numeros(p, "v"), permutations = 99)
+verifier("une variable : 59 observations, une laissée de côté (sans coordonnée)", r$n == 59 && r$laissees == 1)
+verifier("une variable : l'I de Moran de ses valeurs", isTRUE(all.equal(r$moran$I, moran(df$v[-5], poids_spatiaux(distances_points(df$X_L93[-5], df$Y_L93[-5], 2154)), 0)$I)))
+d <- definir_modele(p, "LM", x = numeros(p, "habitat"), y = numeros(p, "v"), observations = numeros_observations(p), echelle = c(defaut = "none"))
+m <- ajuster(p, d)
+rr <- autocorrelation_spatiale(p, m, permutations = 0)
+verifier("résidus d'un modèle linéaire : le test qui tient compte de l'ajustement", !is.null(rr$moran$modele) && rr$n == 59)
+if (avec_spdep) {
+  ok <- !is.na(df$X_L93)
+  a <- stats::lm(v ~ habitat, data = df[ok, ])
+  co_ok <- cbind(df$X_L93[ok], df$Y_L93[ok])
+  lw <- spdep::nb2listw(spdep::make.sym.nb(spdep::knn2nb(spdep::knearneigh(co_ok, k = 4))), style = "W")
+  bl <- suppressWarnings(spdep::lm.morantest(a, lw))
+  verifier("… comme spdep::lm.morantest sur lm(v ~ habitat)", proche(c(rr$moran$modele$I, rr$moran$modele$esperance, rr$moran$modele$variance), bl$estimate, 1e-8))
+}
+dg <- definir_modele(p, "GLM", x = numeros(p, "habitat"), y = numeros(p, "abondance"), observations = numeros_observations(p),
+                     echelle = c(defaut = "none"), famille = "poisson")
+mg <- ajuster(p, dg)
+rq <- autocorrelation_spatiale(p, mg, residus = "quantiles", permutations = 0)
+verifier("résidus quantiles d'un modèle de Poisson", rq$n == 59 && is.null(rq$moran$modele) && isTRUE(all.equal(rq$valeurs, mg$resultat$residus_quantiles[-5])))
+verifier("résidus quantiles refusés pour la loi normale", grepl("quantile", refus(autocorrelation_spatiale(p, m, residus = "quantiles"))))
+pl <- autocorrelation_spatiale(p, variable = numeros(p, "v"), permutations = 0, par_lieu = TRUE)
+verifier("par lieu : une valeur par lieu (ici chacun différent)", pl$n == 59 && all(pl$lieux == 1))
+dup <- df
+dup$X_L93 <- rep(dup$X_L93[seq(1, n, 5)], each = 5)
+dup$Y_L93 <- rep(dup$Y_L93[seq(1, n, 5)], each = 5)
+pd <- projet_depuis_tableau(dup, "placettes")
+pd <- regler_coordonnees(pd, numeros(pd, "X_L93"), numeros(pd, "Y_L93"), 2154)
+ad <- autocorrelation_spatiale(pd, variable = numeros(pd, "v"), permutations = 0, par_lieu = TRUE)
+verifier("par lieu : 12 placettes de 5 années, la moyenne de chacune", ad$n == 12 && sum(ad$lieux) == 60 &&
+           isTRUE(all.equal(ad$valeurs[2], mean(df$v[6:10]))))
+ae <- autocorrelation_spatiale(pd, variable = numeros(pd, "v"), permutations = 0)
+verifier("sans regrouper : les paires au même endroit comptées", ae$nulles == 12 * 10)
+
+# ---------------------------------------------------------------- GeoPackage
+
+if (!avec_rsqlite) {
+  cat("(RSQLite absent : GeoPackage non vérifié)\n")
+} else {
+  cat("GeoPackage\n")
+  dossier <- tempfile()
+  dir.create(dossier)
+  g <- file.path(dossier, "essai.gpkg")
+  donnees <- tableau_projet(p)
+  ecrire_geopackage(donnees, g, pts$x, pts$y, 2154, "relevés 2024")
+  verifier("une couche", identical(couches_geopackage(g), "relevés_2024"))
+  lu <- lire_geopackage(g)
+  verifier("relu : les colonnes, puis X et Y", identical(names(lu), c(names(donnees), "X", "Y")) && nrow(lu) == n)
+  verifier("relu : les coordonnées, une ligne sans point", proche(lu$X[-5], pts$x[-5], 1e-6) && is.na(lu$X[5]) && is.na(lu$Y[5]))
+  verifier("relu : le système", identical(attr(lu, "coordonnees")$systeme, 2154L))
+  pg <- importer_tableau(g)
+  verifier("ouvert comme un projet : ses coordonnées réglées", identical(coordonnees_projet(pg)$nom_x, "X") && identical(coordonnees_projet(pg)$systeme, 2154L))
+  tables <- tables_resultats(p, m)
+  gr <- file.path(dossier, "resultats.gpkg")
+  ecrire_geopackage_resultats(p, m, tables, gr, "M1")
+  verifier("les résultats d'un modèle : les observations en points, les autres tableaux à côté",
+           identical(couches_geopackage(gr), c("M1", setdiff(names(Filter(Negate(is.null), tables)), "observations"))))
+  ro <- lire_geopackage(gr, "M1")
+  k <- match(ro$Observation, df$nom)
+  verifier("… chaque observation à sa place", proche(ro$X[!is.na(ro$X)], df$X_L93[k][!is.na(ro$X)], 1e-6))
+  for (code in c(4326, 27572, 32631, 3035, "plan")) {
+    gc <- file.path(dossier, sprintf("s%s.gpkg", code))
+    q <- if (identical(code, "plan")) list(x = pts$x, y = pts$y) else convertir_coordonnees(pts$x, pts$y, 2154, code)
+    ecrire_geopackage(donnees[c("Observation", "v")], gc, q$x, q$y, code)
+    lc <- lire_geopackage(gc)
+    verifier(sprintf("écrit et relu dans le système %s", code), identical(as.character(attr(lc, "coordonnees")$systeme), as.character(if (identical(code, "plan")) "plan" else code)))
+    if (avec_sf) {
+      s <- sf::st_read(gc, quiet = TRUE)
+      verifier(sprintf("lu par GDAL (sf) : %s, les mêmes points", code),
+               (identical(code, "plan") || identical(as.integer(sf::st_crs(s)$epsg), as.integer(code))) &&
+                 proche(sf::st_coordinates(s)[, 1:2], cbind(q$x, ifelse(is.na(q$x), NA, q$y)), 1e-9))  # (un point sans x : vide)
+    }
+  }
+  if (avec_sf) {
+    sf::sf_use_s2(FALSE)
+    nc <- sf::st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
+    nc <- sf::st_transform(nc[1:20, c("NAME", "AREA")], 2154)
+    f2 <- file.path(dossier, "nc.gpkg")
+    sf::st_write(nc, f2, quiet = TRUE)
+    r2 <- lire_geopackage(f2)
+    cen <- sf::st_coordinates(suppressWarnings(sf::st_centroid(sf::st_geometry(nc))))
+    verifier("polygones de GDAL : leur centre de gravité comme sf::st_centroid", proche(cbind(r2$X, r2$Y), cen, 1e-3) && length(attr(r2, "note")) == 1)
+    lignes <- sf::st_cast(sf::st_boundary(nc[1:5, ]), "MULTILINESTRING")
+    f3 <- file.path(dossier, "lignes.gpkg")
+    sf::st_write(lignes, f3, quiet = TRUE)
+    r3 <- lire_geopackage(f3)
+    cl <- sf::st_coordinates(suppressWarnings(sf::st_centroid(sf::st_geometry(lignes))))
+    verifier("lignes de GDAL : le centre de leurs segments comme sf::st_centroid", proche(cbind(r3$X, r3$Y), cl, 1e-3))
+    pz <- sf::st_as_sf(data.frame(a = 1:3, x = 1:3, y = 4:6, z = 7:9), coords = c("x", "y", "z"), crs = 32631)
+    f4 <- file.path(dossier, "z.gpkg")
+    sf::st_write(pz, f4, quiet = TRUE)
+    r4 <- lire_geopackage(f4)
+    verifier("points en 3D de GDAL : x et y", identical(r4$X, c(1, 2, 3)) && identical(r4$Y, c(4, 5, 6)) && identical(attr(r4, "coordonnees")$systeme, 32631L))
+  }
+}
+
+cat(if (echecs) sprintf("%d échec(s)\n", echecs) else "Tout est bon.\n")
+if (echecs) quit(status = 1)

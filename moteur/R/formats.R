@@ -11,12 +11,15 @@
 #   .omv                      jamovi           (lu ici : lire_omv)
 #   .dbf                      dBase            (lu par foreign : lire_dbf ; écrit ici)
 #   .arff                     Weka             (lu ici : lire_arff ; écrit par foreign)
+#   .gpkg                     GeoPackage       (geopackage.R : une couche au choix, ses géométries
+#                                              en deux colonnes de coordonnées ; écrit par
+#                                              ecrire_geopackage, avec les coordonnées du projet)
 #   .jdx .dx .jcm .spc        spectres JCAMP-DX et Galactic (fichiers_spectres.R ; lecture seule)
 # Écriture : ecrire_tableau() écrit un data.frame dans l'un de ces formats (sauf .xls, .por,
 # .sas7bdat, que les logiciels lisent mal quand un autre programme les écrit).
 
 FORMATS_LECTURE <- c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls", "rds", "rdata", "rda",
-                     "sav", "zsav", "por", "dta", "sas7bdat", "xpt", "omv", "dbf", "arff",
+                     "sav", "zsav", "por", "dta", "sas7bdat", "xpt", "omv", "dbf", "arff", "gpkg",
                      "jdx", "dx", "jcm", "spc")
 FORMATS_ECRITURE <- c("xlsx", "csv", "tsv", "txt", "rds", "rdata", "sav", "dta", "xpt", "omv", "dbf", "arff")
 
@@ -31,6 +34,7 @@ tables_fichier <- function(chemin) {
          xlsx = , xlsm = , xls = readxl::excel_sheets(chemin),
          rdata = , rda = names(objets_r(chemin)),
          rds = { x <- lire_rds(chemin); if (est_tableau(x)) NULL else names(tableaux_r(x)) },
+         gpkg = couches_geopackage(chemin),
          NULL)
 }
 
@@ -63,9 +67,13 @@ lire_tableau <- function(chemin, table = NULL, quantitatives = NULL, textes = NU
     omv = lire_omv(chemin),
     dbf = lire_dbf(chemin),
     arff = lire_arff(chemin),
+    gpkg = lire_geopackage(chemin, table),
     jdx = , dx = , jcm = , spc = tableau_spectres(lire_spectres(chemin)),
     stop(traduire("Format de fichier non reconnu : .", "Unrecognised file format: ."), ext))
-  finir_tableau(x, quantitatives, toutes = ext %in% c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls"), textes = textes)
+  coordonnees <- attr(x, "coordonnees")  # (un GeoPackage : les colonnes de ses coordonnées et leur système)
+  x <- finir_tableau(x, quantitatives, toutes = ext %in% c("csv", "txt", "tsv", "tab", "dat", "xlsx", "xlsm", "xls"), textes = textes)
+  attr(x, "coordonnees") <- coordonnees
+  x
 }
 
 # Un tableau lu, en data.frame simple (vers_data_frame), ses colonnes de texte converties

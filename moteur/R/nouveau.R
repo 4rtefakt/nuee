@@ -10,10 +10,14 @@
 # des variables qualitatives (une catégorie par valeur distincte), sauf les colonnes de texte
 # dont toutes les valeurs diffèrent, gardées en identifiants secondaires si `secondaires` (pas
 # pour un fichier à prédire : quelques lignes peuvent avoir chacune une catégorie différente).
+# Un GeoPackage donne aussi les coordonnées du projet (spatial.R) : ses deux colonnes de
+# coordonnées et leur système.
 importer_tableau <- function(chemin, table = NULL, secondaires = TRUE, quantitatives = NULL) {
   df <- lire_tableau(chemin, table, quantitatives)
   p <- projet_depuis_tableau(df, basename(chemin), secondaires)
   p$note <- unname(attr(df, "note"))
+  co <- attr(df, "coordonnees")
+  if (!is.null(co)) p$coordonnees <- tryCatch(list(x = numeros(p, co$x), y = numeros(p, co$y), systeme = co$systeme), error = function(e) NULL)
   p
 }
 

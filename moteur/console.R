@@ -135,6 +135,13 @@ journaliser <- function(nom, q, r) {
       if (isTRUE(q$tendances)) sprintf("tendances_series(%s$points, %s%s)", appel, code_r(q$correction %||% "BH"),
                                        if (isTRUE(q$autocorrelation)) ", autocorrelation = TRUE" else "") else appel
     },
+    coordonnees = if (isTRUE(q$regler)) sprintf("%s <- regler_coordonnees(%s, %s, %s, %s)", q$projet, q$projet,
+                                                 if (length(q$x)) q$x else "NULL", if (length(q$y)) q$y else "NULL", code_r(q$systeme %||% "plan")),
+    carte = sprintf("points_projet(%s)", q$projet),
+    autocorrelation_spatiale = sprintf("autocorrelation_spatiale(%s)", paste(c(
+      if (length(q$modele)) c(pm(q$modele), q$modele) else c(q$projet, "NULL"),
+      if (length(q$variable)) paste("variable =", q$variable) else paste("residus =", code_r(q$residus %||% "standardises")),
+      if (length(q$voisinage)) paste("voisinage =", code_r(q$voisinage)), if (isTRUE(q$par_lieu)) "par_lieu = TRUE"), collapse = ", ")),
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
     script_r = if (length(q$modeles) > 1) {
