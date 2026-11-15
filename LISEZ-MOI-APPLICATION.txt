@@ -400,8 +400,10 @@ Exporter vers R (script, R Markdown, Quarto)
 --------------------------------------------
 Fichier › Exporter vers R : un fichier qui refait le modèle sans Nuée, avec R seul, à
 envoyer à un collègue ou à joindre à un article. Le calcul y est écrit pour ce modèle seul,
-en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R), commenté dans la
-langue de l'export, en quatre parties :
+en R sans paquet (une régression : lm, ou nlme et mgcv, livrés avec R ; un NMDS : MASS, livré
+avec R lui aussi ; TRIM et des arbres boostés, avec rpart : les fonctions du moteur de Nuée,
+recopiées dans le script ; une forêt aléatoire, la seule exception : le paquet ranger, que
+Nuée installe avec lui), commenté dans la langue de l'export, en quatre parties :
   1. les fonctions : l'algorithme NIPALS, la validation croisée, et seulement ce que ce
      modèle utilise (valeurs manquantes, prétraitement des spectres, OPLS...) ;
   2. les données, dans le script ou dans un fichier CSV à côté (« M1 - donnees.csv »),
@@ -676,6 +678,51 @@ centre de gravité de la surface d'un polygone), et les coordonnées du projet s
 Fichier › Exporter les données et l'export des résultats d'un modèle écrivent un GeoPackage quand
 le projet a des coordonnées : un point par observation avec toutes ses colonnes, les autres
 tableaux de résultats d'un modèle à côté ; QGIS l'ouvre avec son système de coordonnées.
+
+Valeurs de rasters (Édition › Ajouter des valeurs de rasters…, ou le bouton de la carte) :
+l'altitude, la pente, l'occupation du sol, le climat… lus dans des fichiers raster à la position
+de chaque observation, et ajoutés au projet comme de nouvelles variables, une par bande.
+Choisissez un ou plusieurs fichiers : GeoTIFF (.tif, celui de QGIS, de la BD ALTI et du RGE ALTI
+de l'IGN, de Copernicus, de CORINE, de WorldClim ou de CHELSA) ou grilles ASCII d'ESRI (.asc,
+avec leur .prj). Dans la version navigateur, tapez le chemin complet de chaque fichier
+(plusieurs : séparés par « ; ») : le moteur lit les fichiers là où ils sont. Avant d'ajouter,
+chaque fichier montre sa taille, son format, sa compression, ses cellules et leur taille, ses
+bandes et leur type, son système de coordonnées, sa valeur manquante, et combien d'observations
+y tombent ; un fichier qui ne se lit pas dit pourquoi. Pour chaque fichier, choisissez la
+valeur : la cellule qui contient l'observation (des classes, l'occupation du sol ; proposée pour
+des entiers de 8 bits et les palettes), l'interpolation bilinéaire des quatre cellules les plus
+proches (des valeurs continues ; proposée pour des réels), ou la moyenne, ou la classe
+majoritaire, des cellules dont le centre est à moins d'un rayon en mètres (à égalité, la classe
+de la cellule de l'observation, puis la plus petite ; sans centre dans le rayon, la cellule de
+l'observation). Les valeurs sont celles de terra::extract. Une observation sans coordonnées,
+hors du raster ou sur une cellule sans valeur reçoit une valeur manquante, et le résultat compte
+chaque cas. Chaque bande reçoit un nom (sa description dans le fichier, ou le nom du fichier),
+que vous pouvez changer ; un nom déjà pris devient « nom (2) ». Des fichiers côte à côte, aux
+mêmes bandes, type, système et cellules (les dalles d'un MNT), sont proposés comme un seul
+raster : une variable par bande, chaque observation prenant la valeur de la dalle qui la
+contient (un cercle prend les cellules de toutes les dalles). Édition › Annuler (Ctrl+Z) retire
+les variables. Elles sont enregistrées avec le projet comme les autres, et gardent d'où elles
+viennent : le texte des Méthodes d'un modèle qui les utilise dit quels fichiers, quelle taille de
+cellules, quel système et quelle méthode les ont données. La console R montre l'appel,
+ajouter_valeurs_rasters(...), et ce qu'il a donné.
+Les fichiers sont lus dans Nuée, sans GDAL, et seulement les bandes de lignes ou les tuiles qui
+contiennent des observations : un MNT national reste rapide (une fraction de seconde pour une
+centaine d'observations dans un fichier sans compression ou Deflate, une à trois secondes en LZW,
+décodé en R). Lus : TIFF classique et BigTIFF, en bandes de lignes ou en tuiles, bandes
+entrelacées ou séparées ; sans compression, LZW, Deflate, PackBits, LZMA et ZSTD (ZSTD avec R 4.4
+et après), avec les prédicteurs 2 et 3 ; des entiers de 8, 16 et 32 bits, des réels de 32 et 64
+bits ; la valeur manquante, l'échelle, le décalage et le nom des bandes de GDAL ; le
+géoréférencement (ModelPixelScale et ModelTiepoint, ModelTransformation, ou un fichier .tfw),
+les pixels comme surfaces ou comme points. Le système de coordonnées du raster vient de son code
+EPSG, ou de ses paramètres, et doit être de ceux que Nuée convertit (WGS 84, ETRS89, RGF93,
+Lambert-93, CC42 à CC50, Lambert II étendu, UTM, LAEA Europe, Mercator du web) : un autre est
+refusé avec son code ; reprojetez le raster dans QGIS (Raster › Projections › Projection) ou
+avec gdalwarp. Un raster sans système de coordonnées est pris dans celui du projet. Refusés,
+avec un message : les compressions JPEG, WebP, LERC, JPEG 2000 et CCITT, des valeurs de 1, 2, 4,
+12 ou 24 bits, des réels de 16 bits, des nombres complexes, les couleurs YCbCr, les points
+d'appui (GCP). Lues sans leurs couleurs : les palettes (les numéros des classes sont lus).
+Laissés de côté : les aperçus (overviews : les valeurs viennent de la pleine résolution), les
+autres images d'un fichier, les masques et les fichiers .aux.xml.
 
 Graphiques › Autocorrélation spatiale (depuis la carte, ou pour une régression depuis son modèle) :
 l'I de Moran d'une variable ou des résidus d'une régression (ou, pour des comptages, des
@@ -970,8 +1017,10 @@ pas : vérifiez-le avec Graphiques › Autocorrélation spatiale des résidus du
 les modèles par l'AIC. Les observations sans coordonnées restent hors du modèle. Son edf et son
 test sont dans le tableau des courbes du Résumé, et sa valeur en chaque observation est une
 colonne des résultats du modèle que la carte peut montrer. La formule R l'écrit s(x, y),
-s(x, y, k = 40) ou s(lat, lon, bs = "sos"). L'export vers R ne la refait pas encore : un tel
-modèle y est refusé.
+s(x, y, k = 40) ou s(lat, lon, bs = "sos"). Exporter vers R la refait : le script met les
+coordonnées dans les colonnes sx et sy du tableau du modèle et le terme dans la formule (avec son
+k, en plaques minces ou sur la sphère), sa ligne dans le tableau des courbes et une carte de sa
+valeur en chaque observation.
 Conditions du modèle (le Résumé d'une régression) : des repères en mots, chacun ✓ ou ⚠ avec ce
 qu'on peut faire : la loi des résidus (Shapiro–Wilk, sur les résidus quantiles pour des comptages,
 des présences-absences et des valeurs positives), une dispersion des résidus qui change avec les
@@ -1382,7 +1431,9 @@ Les vues : Espèces indicatrices (le tableau, qui se trie ; p ≤ 0,05 en rouge 
 (la valeur de chaque espèce pour son groupe, de la couleur du groupe, pâle quand elle n'est pas
 significative ; ou A et B d'une espèce dans chaque groupe), Résumé (le nombre d'espèces retenues
 à 0,05, p brutes et corrigées, et par groupe). Les statistiques sont celles de
-indicspecies::multipatt et, pour les mêmes permutations, les mêmes valeurs p.
+indicspecies::multipatt et, pour les mêmes permutations, les mêmes valeurs p. Texte des
+méthodes, export et rapport comme pour les autres modèles ; Exporter vers R refait l'analyse
+avec R seul, les fonctions du moteur lui-même et les mêmes permutations.
 
 Raréfaction et accumulation des espèces
 ---------------------------------------
@@ -1472,10 +1523,14 @@ spatiales), sans variable X : des relevés proches se ressemblent-ils plus (la d
 la distance), et avec le corrélogramme, jusqu'à quelle distance.
 
 Les quatre exportent leurs tableaux (Fichier › Exporter), écrivent leur texte des méthodes avec
-ses références et font un rapport ; elles ne prédisent pas de nouvelles observations et n'ont
-pas encore d'export vers R. Les résultats sont ceux de vegan (vegdist, wcmdscale, envfit,
-metaMDS avec isoMDS, adonis2, betadisper, mantel, mantel.correlog) : les mêmes valeurs, et pour
-les mêmes permutations, les mêmes valeurs p.
+ses références et font un rapport ; elles ne prédisent pas de nouvelles observations. Les
+résultats sont ceux de vegan (vegdist, wcmdscale, envfit, metaMDS avec isoMDS, adonis2,
+betadisper, mantel, mantel.correlog) : les mêmes valeurs, et pour les mêmes permutations, les
+mêmes valeurs p. Fichier › Exporter vers R écrit un script, ou un rapport R Markdown ou Quarto,
+qui les refait avec R seul (et MASS, livré avec R, pour le NMDS) : ses fonctions sont celles du
+moteur de Nuée, recopiées telles qu'il les écrit ; puis les données du modèle (les coordonnées
+pour un test de Mantel géographique), sa transformation, sa distance et ses réglages, les mêmes
+permutations et les mêmes départs, donc les mêmes valeurs p et le même NMDS.
 
 Arbres de décision, analyse discriminante linéaire et k-moyennes
 ----------------------------------------------------------------
@@ -1557,8 +1612,91 @@ tests (les tests de Wald de la pente, des changements de pente, des écarts à l
 linéaire et des covariables ; la droite et ses écarts pour le modèle 3 ; les étapes du pas à
 pas) ; Comptages par site (les comptages d'un site et ceux du modèle, ou tous les comptages
 contre leur valeur attendue). Les résultats sont ceux du paquet rtrim. Texte des méthodes avec
-ses références, Exporter et rapport comme pour les autres modèles ; ni prédiction ni export vers
-R.
+ses références, Exporter et rapport comme pour les autres modèles, et Exporter vers R : un script
+ou un rapport qui refait le modèle avec R seul, les fonctions de TRIM du moteur de Nuée recopiées
+dedans (les mêmes indices, totaux, pentes et tests que Nuée). Pas de prédiction.
+
+Échantillonnage par distances : densité et effectif
+---------------------------------------------------
+Nouveau modèle › type « Échantillonnage par distances (densité, effectif) » : la densité et
+l'effectif d'une population d'après les distances des animaux détectés depuis des lignes
+(transects linéaires) ou des points (points d'écoute), comme les fonctions ds() et dht2() du
+paquet Distance les calculent (Buckland et al. 2001 ; Miller et al. 2019). Les données : le
+tableau à plat, une ligne par détection, comme Distance le lit :
+  - la distance (Y) : la distance perpendiculaire à la ligne, ou la distance au point ;
+  - le transect (la ligne ou le point : un identifiant ou une variable) et son effort, le même
+    sur toutes ses lignes : la longueur de la ligne, ou pour des points le nombre de passages
+    (sans colonne : un passage par point) ;
+  - facultatifs : la strate (la région : un identifiant ou une variable) et son aire, la même
+    sur toutes ses lignes (sans aire, ou des aires toutes nulles, la densité seulement) ; la
+    taille de chaque groupe détecté ;
+  - un transect sans aucune détection reste une ligne, sa distance vide, pour que son effort
+    compte ; une ligne sans transect ni distance est laissée de côté.
+Par exemple, avec les noms de colonnes de Distance (la fenêtre les propose d'après les noms) :
+    Region.Label  Area  Sample.Label  Effort  distance  size
+    Nord          630   N-01          2.4     35        2
+    Nord          630   N-01          2.4     120       1
+    Nord          630   N-02          1.8               (aucune détection)
+Onglet Général :
+  - des transects linéaires ou des points ;
+  - la troncature : la plus grande distance (le défaut de ds), une distance, ou un pourcentage
+    des plus grandes distances (5 à 10 % est l'usage) ; une troncature à gauche au besoin. Les
+    détections au-delà sortent du modèle, leur transect reste ;
+  - des intervalles, pour des distances relevées par classes (comme ds(cutpoints = )) : leurs
+    bornes, par exemple « 0 10 25 50 100 » ; chaque distance du tableau (la vraie, ou le milieu
+    de sa classe) compte dans son intervalle, la première borne est la troncature à gauche et la
+    dernière w ; la vraisemblance est alors celle des comptes des classes, et l'adéquation le
+    khi² sur elles ;
+  - la clé de la fonction de détection g(x) : demi-normale exp(−x²/2σ²), hasard (hazard-rate)
+    1 − exp(−(x/σ)^−b) (b ≥ 1, comme mrds) ou uniforme ;
+  - les termes d'ajustement : cosinus (le défaut), polynômes d'Hermite ou polynômes simples, leur
+    nombre choisi par l'AIC comme ds() le fait (la clé seule, puis un terme de plus tant que
+    l'AIC baisse, cinq au plus ; ordres 2, 3, 4… des cosinus, 4, 6, 8… d'Hermite et des
+    polynômes, 1, 2, 3… et 2, 4, 6… avec la clé uniforme) ou fixé ; les distances des termes
+    divisées par la troncature w (le défaut de ds) ou par σ ;
+  - la monotonie : la contrainte de mrds sur une fonction à termes d'ajustement, en 10 distances
+    de 0 à w : stricte (le défaut : g décroît), faible (g reste sous g(0)) ou aucune ; g y reste
+    positive ;
+  - les unités des distances, de l'effort (des lignes) et des aires, ou un facteur de conversion
+    (convert_units de Distance) : la densité est par unité d'aire, et les résultats le disent.
+La fonction de détection est ajustée par le maximum de vraisemblance des distances exactes ; la
+variance de ses paramètres vient de la somme des produits des scores des distances, comme mrds ;
+p, la probabilité moyenne de détection dans la troncature, et son erreur-type par la méthode
+delta ; la demi-largeur effective de bande ESW = p w (lignes) ou le rayon effectif de détection
+EDR = w √p (points). La densité de chaque strate est D = n / (a p), a l'aire couverte (2 w L, ou
+2 (w − L) L avec une troncature à gauche, pour des lignes ; π w² K pour des points) ; sa variance
+réunit celle du taux de rencontre entre les transects (l'estimateur R2 pour des lignes, P2 pour
+des points, Fewster et al. 2009), celle de p et celle de la taille moyenne des groupes ; son
+intervalle à 95 % est log-normal avec les degrés de liberté de Satterthwaite, comme dht2. Le
+total sur les strates additionne leurs effectifs (avec des aires) ou pondère leurs densités par
+leurs aires couvertes (sans). Refusés, et nommés : une distance négative, un effort manquant ou
+nul, deux efforts pour un transect, deux aires pour une strate, une aire nulle parmi d'autres,
+une distance sans transect.
+
+Vues : Résumé (le modèle retenu et l'AIC de chaque modèle ajusté en chemin, p et ESW ou EDR avec
+leurs erreurs-types, les paramètres, l'adéquation, la densité et l'effectif d'ensemble avec
+leurs intervalles ; ce qui a été laissé de côté) ; Fonction de détection (l'histogramme des
+distances, chaque barre son compte sur celui qu'elle aurait si tous les animaux étaient
+détectés, comme plot.ds de mrds, sous la fonction g ajustée ; chaque détection sur la courbe, un
+clic choisit sa ligne ; pour des points, la densité des distances f(r) = 2r g(r) / (w² p)
+aussi ; dessous, les classes du khi²) ; Diagramme quantile-quantile (la répartition ajustée de
+chaque distance contre la répartition empirique, avec le test de Cramér–von Mises ; pas pour des
+distances par intervalles) ; Densité et
+effectif (par strate et au total : aire, aire couverte, effort, transects, détections, taux de
+rencontre et son CV, D, son erreur-type, son CV, son intervalle à 95 % et ses ddl, N et son
+intervalle, la part de la variance due au taux de rencontre, à la détection et à la taille des
+groupes ; avec des groupes, la densité des groupes aussi). Texte des méthodes avec ses
+références, Exporter et rapport comme pour les autres modèles ; pas de prédiction, et pas encore
+d'export vers R. Les covariables de la fonction de détection (MCDS) ne sont pas encore prises.
+
+Les résultats sont ceux de Distance 2.0 (moteur/tests/verifier_distance.R les compare), à trois
+différences connues près : Nuée intègre la clé hasard exactement là où mrds approche son
+intégrale par un spline de lissage (des lignes, la clé sans terme d'ajustement : les paramètres
+et p diffèrent d'environ 1e-4) ; avec une troncature à gauche de transects linéaires, l'aire
+couverte est 2 (w − L) L, là où dht2 garde 2 w L ; l'optimiseur de mrds sous la contrainte de
+monotonie s'arrête à 1e-6 près de la vraisemblance, si bien que ses estimations peuvent différer
+de celles de Nuée au quatrième chiffre, ou, sur de rares données, s'arrêter à un autre optimum
+local.
 
 Forêts aléatoires et arbres boostés
 -----------------------------------
@@ -1603,7 +1741,13 @@ avec la courbe ROC) pour une réponse 0/1. Jeu de test et Prédire.
 
 Pour les deux : texte des méthodes avec ses références, Exporter, rapport PDF ou Word. Comparer
 les modèles donne le Q2 et le RMSEcv d'une forêt de régression, ou d'arbres boostés d'une
-mesure, à côté des autres modèles. Pas encore d'export vers R.
+mesure, à côté des autres modèles. Exporter vers R : des arbres boostés avec R et rpart seuls (le
+boosting du moteur de Nuée recopié dans le script : avec la même graine, les mêmes tirages et les
+mêmes arbres, ceux de gbm) ; une forêt aléatoire avec R et le paquet ranger, la seule exception à
+« sans paquet » : Nuée en dépend et l'installe avec lui (ailleurs, install.packages("ranger")), et
+le script le charge avec la même graine, un seul fil et les mêmes réglages, si bien que sa forêt
+est celle de Nuée, arbre pour arbre, avec la même version de ranger. Le jeu de test et la
+dépendance partielle, si elle a été calculée, y sont aussi.
 
 Nettoyer les données : chercher et remplacer, catégories, unités
 --------------------------------------------------------------

@@ -277,5 +277,90 @@ verifier("tableaux exportés : des data.frame (résumé, observations, influence
          all(vapply(c(tb, tc), is.data.frame, TRUE)) && all(c("resume", "observations", "influence", "deviance", "dependance") %in% names(tb)) &&
            "classement_vc" %in% names(tc) && nrow(tb$deviance) == 200)
 
+# ---------------------------------------------------------------- l'export vers R
+
+# Chaque script est écrit (ecrire_script : exécuté d'abord dans le moteur et comparé, `ecart`), puis
+# lancé dans une session R neuve (Rscript --vanilla, sans le moteur) ; ses objets en reviennent et
+# ecart_boost les compare au modèle du moteur : la déviance après chaque arbre (ajustement et
+# validation croisée), le nombre d'arbres, f ajusté et en validation croisée, l'influence relative,
+# la qualité (D², R², Q², AUC), le classement, le jeu de test et la dépendance partielle, à 1e-8 près.
+cat("Export vers R : des scripts lancés seuls, en français et en anglais, et un rapport R Markdown\n")
+dossier <- tempfile("boost_script")
+dir.create(dossier)
+rscript <- file.path(R.home("bin"), "Rscript")
+lanceur <- file.path(dossier, "lancer.R")
+writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
+             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+lancer <- function(script, langue) {
+  objets <- nom_traduit(c("courbe", "meilleur", "ajuste_lien", "vc", "influence", "qualite", "classement", "test", "dependance", "modele", "X"), langue, NOMS_BOOST_EN)
+  sortie <- tempfile("sortie", dossier, ".rds")
+  ici <- setwd(dossier)
+  on.exit(setwd(ici))
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(lanceur), shQuote(script), shQuote(sortie), shQuote(paste(objets, collapse = ","))),
+                                       stdout = TRUE, stderr = TRUE))
+  if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
+}
+hors_donnees <- function(texte) texte[-(grep("^# 2\\. ", texte):(grep("^# 3\\. ", texte) - 1))]
+paquets_appeles <- function(texte) unique(regmatches(texte, regexpr("[A-Za-z.]+(?=::)", texte, perl = TRUE)))
+# `id` : le modèle gardé (pour la dépendance partielle, calculée d'abord pour `dependance`)
+essayer_script <- function(nom, d, langue, dependance = character(0), ext = "R", ...) {
+  m <- ajuster(p, d)
+  if (length(dependance)) {
+    garder(nom, d, m)
+    demande_analyse_dependance_partielle(list(modele = nom, variables = dependance))
+    m <- etat$modeles[[nom]]$modele
+  }
+  r <- ecrire_script(p, d, file.path(dossier, paste0(nom, ".", ext)), "moteur", m = m, version = "essai", langue = langue, ...)
+  if (ext != "R") return(invisible(list(r = r, m = m)))
+  s <- lancer(r$script, langue)
+  texte <- readLines(r$script, encoding = "UTF-8")
+  code <- sub("#.*$", "", hors_donnees(texte))
+  difference <- if (length(s)) ecart_boost(m, list2env(s), langue) else paste(utils::tail(attr(s, "messages"), 3), collapse = " / ")
+  francais <- langue == "fr" || !any(grepl("meilleures_coupures|tirage_sac|valeurs_feuilles|reglages", code))
+  collisions <- if (langue == "fr") collisions_traduction(hors_donnees(texte), c(NOMS_BOOST_EN, NOMS_SCRIPT_EN)) else list()
+  verifier(sprintf("%s (%s) : sans écart vu par le moteur ; lancé seul, les mêmes arbres et résultats ; R et rpart seuls (ni library() ni autre paquet), sans traduire()%s",
+                   nom, langue, if (langue == "en") ", ses noms en anglais" else ", aucun nom confondu en anglais"),
+           is.null(r$ecart) && is.null(difference) && !any(grepl("library\\(|require\\(|traduire\\(", code)) &&
+             all(paquets_appeles(code) %in% c("stats", "utils", "rpart")) && francais && !length(collisions))
+  if (!is.null(r$ecart) || !is.null(difference) || length(collisions)) cat("    écart :", r$ecart, "/", difference, "/", names(collisions), "\n")
+  invisible(list(r = r, m = m, s = s))
+}
+db1 <- definir_modele(p, "BOOST", x = xs, y = u("densite"), echelle = "none", vc = vc, options = list(arbres_max = 150, taux = 0.05), test = 221:240)
+x <- essayer_script("boost_normale_test", db1, "fr", dependance = c("haie", "sol"))
+essayer_script("boost_normale_test_en", db1, "en", dependance = c("h_gel", "sol"))
+db2 <- definir_modele(p, "BOOST", x = xs, y = u("presence"), echelle = "none", vc = vc, options = list(loi = "binomiale", arbres_max = 120, taux = 0.05, part = 1, profondeur = 2))
+x2 <- essayer_script("boost_binomiale_sans_tirage_en", db2, "en")
+verifier("loi binomiale : l'AUC et le classement à 0,5 du script, en validation croisée",
+         length(x2$s) > 0 && isTRUE(all.equal(unname(x2$s$quality[c("auc", "auc_vc")]), c(x2$m$qualite$auc, x2$m$qualite$auc_vc), tolerance = 1e-12)) &&
+           identical(unname(x2$s$classification$vc$table), unname(x2$m$classification$vc$table)))
+db3 <- definir_modele(p, "BOOST", x = xs, y = u("comptage"), echelle = "none", vc = vc, options = list(loi = "poisson", arbres_max = 100, taux = 0.1, profondeur = 1),
+                      condition = "secteur != \"Z6\" & h_gel < 28")
+x3 <- essayer_script("boost_poisson_souches_condition", db3, "fr")
+if (avec_gbm && length(x3$s)) {
+  # les arbres du script contre gbm, avec les mêmes réglages et la même graine, sur ses observations
+  Xs <- x3$s$X
+  Xg <- stats::setNames(Xs, names(X))
+  graine()
+  g <- gbm::gbm.fit(Xg, x3$m$y_valeurs, distribution = "poisson", n.trees = 100, interaction.depth = 1, n.minobsinnode = 10, shrinkage = 0.1, bag.fraction = 0.5,
+                    keep.data = FALSE, verbose = FALSE)
+  verifier(sprintf("le script lancé seul et gbm : le même f après %d arbres (écart %.1e)", x3$s$meilleur, ecart(x3$s$ajuste_lien, gbm::predict.gbm(g, Xg, n.trees = x3$s$meilleur))),
+           proche(x3$s$ajuste_lien, gbm::predict.gbm(g, Xg, n.trees = x3$s$meilleur), 1e-10))
+}
+x <- essayer_script("rapport_boost", db1, "fr", dependance = "haie", ext = "Rmd", donnees = "csv", rdata = TRUE)
+texte <- readLines(x$r$script, encoding = "UTF-8")
+verifier("rapport R Markdown : méthodes, code, résultats, références ; données en CSV et .RData à côté",
+         is.null(x$r$ecart) && texte[1] == "---" && any(grepl("^## Méthodes", texte)) && any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^```\\{r influence-table\\}", texte)) &&
+           any(grepl("^- Friedman", texte)) && length(x$r$chemins) == 3 && all(file.exists(x$r$chemins)) && !anyDuplicated(sub("^```\\{r ([^,} ]+).*$", "\\1", grep("^```\\{r [^,} ]", texte, value = TRUE))))
+if (requireNamespace("knitr", quietly = TRUE)) {
+  compiler <- file.path(dossier, "compiler.R")
+  writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
+               "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(x$r$script)), stdout = TRUE, stderr = TRUE))
+  md <- sub("[.]Rmd$", ".md", x$r$script)
+  verifier("le rapport se compile avec knitr, avec ses graphiques", file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) &&
+             length(list.files(file.path(dossier, "figure"), "\\.png$")) >= 3)
+} else cat("  (knitr absent : le rapport n'est pas compilé)\n")
+unlink(dossier, recursive = TRUE)
+
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

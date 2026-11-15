@@ -145,6 +145,14 @@ journaliser <- function(nom, q, r) {
       }
       sprintf("%s <- decrire_variables(%s, list(%s))", q$projet, q$projet, paste(vapply(d, function(x) sprintf("list(%s)", champs(x)), ""), collapse = ", "))
     },
+    # (chaque fichier : son chemin, la méthode, le rayon en mètres, le nom de chaque bande ; puis ce que l'ajout a donné)
+    ajouter_raster = {
+      un <- function(f) sprintf("list(chemin = %s, methode = %s%s, noms = %s)", code_r(as.character(f$chemin)[1]), code_r(as.character(f$methode %||% "")[1]),
+                                if (length(f$rayon) && !is.na(f$rayon[1])) sprintf(", rayon = %s", code_r(as.numeric(f$rayon)[1])) else "",
+                                vecteur_r(as.character(unlist(f$noms))))
+      c(sprintf("%s <- ajouter_valeurs_rasters(%s, list(%s))", q$projet, q$projet, paste(vapply(fichiers_raster_demande(q$fichiers), un, ""), collapse = ",\n  ")),
+        sprintf("# %s", unlist(r$raster$phrases)))
+    },
     statistiques_variables = sprintf("statistiques_variables(%s)", q$projet),
     series = {
       # (avec les tendances, leur appel sur les points, et les saisons du test saisonnier)

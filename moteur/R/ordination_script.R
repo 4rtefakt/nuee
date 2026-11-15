@@ -209,10 +209,11 @@ scores_rda <- function(m, echelle = 2, facteurs = list()) {
 }
 )---"
 
-CODE_TEST <- r"---(
+# (les permutations : aussi dans les scripts des analyses de communautés, communautes_script.R)
+CODE_PERMUTER <- r"---(
 #fr Les permutations des observations : libres, ou à l'intérieur des groupes de `strates` (pris dans
 #fr l'ordre où ils apparaissent) ; reproductibles par leur graine.
-#en The permutations of the observations: free, or within the groups of `strates` (taken in the order
+#en The permutations of the observations: free, or within the groups of `strata` (taken in the order
 #en they appear); reproducible from their seed.
 permuter <- function(n, B, strates = NULL, graine = 1) {
   set.seed(graine, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
@@ -229,7 +230,9 @@ permuter <- function(n, B, strates = NULL, graine = 1) {
   }
   P
 }
+)---"
 
+CODE_TEST <- r"---(
 #fr Pour chaque permutation : les réponses sans les covariables permutées (et, dans une RDA partielle,
 #fr les covariables avec elles : les X sont rendus orthogonaux aux covariables permutées), ce qu'en
 #fr expliquent les X (ou la première valeur propre, `premier`) et le reste (vegan::permutest).
@@ -541,7 +544,7 @@ contributions_ca <- function(m) {
 # Le code des fonctions dont le script a besoin.
 code_fonctions_ordination <- function(m) {
   cca <- identical(m$type, "CCA")
-  morceaux <- if (identical(m$type, "CA")) CODE_CA else c(CODE_RDA, if (cca) CODE_CCA, if (m$options$permutations > 0) CODE_TEST,
+  morceaux <- if (identical(m$type, "CA")) CODE_CA else c(CODE_RDA, if (cca) CODE_CCA, if (m$options$permutations > 0) c(CODE_PERMUTER, CODE_TEST),
                                                            if (!is.null(m$tests) || !is.null(m$selection)) CODE_EMBOITES,
                                                            if (!is.null(m$tests)) CODE_TESTS, if (cca && !is.null(m$tests)) CODE_SEQUENTIELS,
                                                            if (!is.null(m$selection)) CODE_SELECTION,

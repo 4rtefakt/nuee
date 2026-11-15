@@ -8,6 +8,7 @@ import { el, icone, menuContextuel, ouvrirMenuSous, fermerMenus, dialogue } from
 import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
+import { dialogueRaster } from './raster.js';
 import { dialogueRapport } from './rapport.js';
 import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
@@ -26,6 +27,7 @@ import './vues_carte.js';
 import './vues_par_reponse.js';
 import './vues_trim.js';
 import './vues_forets.js';
+import './vues_distance.js';
 import { installerDocuments } from './documents.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
@@ -739,6 +741,14 @@ const app = {
   },
   async lirePressePapiers() {
     try { return (bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText()) || ''; } catch { return ''; }
+  },
+  // Edit › Add raster values (raster.js): the dialog, then the values added by R, one variable per band (Ctrl+Z removes them)
+  valeursRaster: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueRaster(app, p); },
+  async ajouterRaster(pid, q) {
+    const res = await occupe(() => demander('ajouter_raster', { projet: pid, ...q }));
+    projetChange(res);
+    statut([].concat(res.raster.phrases)[0]);
+    return res;
   },
   // Edit › Summarize by group: a new project beside this one, one row per group; its data open
   resumerGroupes: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueResume(app, p); },
@@ -1554,6 +1564,7 @@ function contexte(entree) {
     predireFichier: app.predireFichier,
     exporterPrediction: app.exporterPrediction,
     nouvelleVariable: app.nouvelleVariable,
+    valeursRaster: app.valeursRaster,
     modifierValeur: app.modifierValeur,
     remplacerDonnees: app.remplacerDonnees,
     categoriesVariable: app.categoriesVariable,

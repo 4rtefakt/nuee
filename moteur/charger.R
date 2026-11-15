@@ -9,6 +9,8 @@ local({
       break
     }
   }
+  # (le dossier du moteur, où l'export vers R relit les fonctions qu'il écrit dans un script : script_moteur.R)
+  options(nuee.moteur = normalizePath(dossier, winslash = "/", mustWork = FALSE))
   for (f in sort(list.files(file.path(dossier, "R"), "\\.R$", full.names = TRUE))) {
     sys.source(f, envir = globalenv(), keep.source = FALSE)
   }

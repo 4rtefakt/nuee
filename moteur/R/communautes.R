@@ -15,6 +15,8 @@
 # dispersion ; Z (MANTEL) : les covariables du test partiel. Leurs réglages sont dans d$options.
 # Permutations : celles de ordination.R (permutations_lignes : reproductibles par leur graine,
 # libres ou à l'intérieur de groupes, comme how(blocks = ) du paquet permute).
+# Leur export vers R est dans communautes_script.R : son script reprend les fonctions de ce
+# fichier telles qu'elles y sont écrites (distance_tableau, pcoa_noyau, nmds_noyau...).
 
 # ---------------------------------------------------------------- les réglages
 
@@ -111,21 +113,28 @@ quelques_noms <- function(noms) paste0(paste(utils::head(noms, 5), collapse = ",
 #   hellinger   euclidienne sur √(x / Σx) ;  chord  euclidienne sur x / √Σx²  (Legendre et Gallagher 2001)
 # `binaire` : sur les présences-absences (Bray-Curtis devient l'indice de Sørensen). Une distance
 # sous 1e-15 vaut 0, comme dans vegan. Refusés : des valeurs négatives là où la distance n'a pas de
-# sens avec elles, une observation sans aucune valeur là où sa distance n'est pas définie.
+# sens avec elles, une observation sans aucune valeur là où sa distance n'est pas définie. Le
+# calcul lui-même est distance_tableau, que l'export vers R écrit dans son script.
 distance_communaute <- function(Y, methode, binaire = FALSE, noms = rownames(Y)) {
   if ((binaire || methode %in% DISTANCES_POSITIVES) && any(Y < 0)) {
     stop(sprintf(traduire("La distance %s demande des valeurs positives ou nulles (des abondances).",
                           "The %s distance needs positive or zero values (abundances)."), nom_distance(methode, binaire)), call. = FALSE)
   }
-  if (binaire) Y <- (Y > 0) * 1
   if (methode %in% DISTANCES_SANS_VIDE) {
-    vides <- which(rowSums(abs(Y)) == 0)
+    vides <- which(rowSums(abs(if (binaire) (Y > 0) * 1 else Y)) == 0)
     if (length(vides)) {
       stop(sprintf(traduire("La distance %s n'est pas définie pour une observation sans aucune valeur (que des zéros) : %s. Retirez-la, ou choisissez une autre distance.",
                             "The %s distance is not defined for an observation without any value (only zeros): %s. Leave it out, or choose another distance."),
                    nom_distance(methode, binaire), quelques_noms(noms[vides])), call. = FALSE)
     }
   }
+  distance_tableau(Y, methode, binaire, noms)
+}
+
+# La distance entre les lignes de Y, sans les refus de distance_communaute (les formules sont
+# dites au-dessus d'elle).
+distance_tableau <- function(Y, methode, binaire = FALSE, noms = rownames(Y)) {
+  if (binaire) Y <- (Y > 0) * 1
   manhattan <- function(X) as.matrix(stats::dist(X, "manhattan"))
   s <- rowSums(Y)
   bray <- function() manhattan(Y) / outer(s, s, "+")
@@ -502,9 +511,9 @@ nmds_noyau <- function(D, k, departs, graine) {
   ecarts <- (sh$y - sh$yf)^2 / sum(sh$y^2)
   # (le stress de chaque observation : la racine de la moitié de la part du stress² de ses paires,
   # vegan : goodness ; la somme de leurs carrés est le stress²)
-  ordre <- order(dis)
+  tri <- order(dis)  # (les paires dans l'ordre des dissimilarités, celui de Shepard)
   part <- numeric(length(dis))
-  part[ordre] <- ecarts
+  part[tri] <- ecarts
   M <- matrix(0, n, n)
   M[lower.tri(M)] <- part
   M <- M + t(M)
@@ -608,8 +617,9 @@ permanova_noyau <- function(G, X, groupes, par, P) {
   tete <- if (!is.null(lignes)) lignes else data.frame(terme = traduire("Modèle", "Model"), ddl = r, ss = ajuste, F = test$F, p = test$p, stringsAsFactors = FALSE)
   table <- rbind(tete, data.frame(terme = c(traduire("Résidus", "Residual"), "Total"), ddl = c(ddl_res, n - 1), ss = c(residus, totale), F = NA_real_, p = NA_real_,
                                   stringsAsFactors = FALSE))
-  table$R2 <- table$ss / totale
-  list(table = table[c("terme", "ddl", "ss", "R2", "F", "p")], modele = list(ddl = r, ss = ajuste, R2 = ajuste / totale, F = test$F, p = test$p),
+  # (R² après la somme des carrés ; les colonnes par leur place : le script en anglais traduit leurs noms)
+  table <- data.frame(table[1:3], R2 = table$ss / totale, table[4:5], stringsAsFactors = FALSE)
+  list(table = table, modele = list(ddl = r, ss = ajuste, R2 = ajuste / totale, F = test$F, p = test$p),
        ddl_residus = ddl_res, totale = totale, alias = alias)
 }
 

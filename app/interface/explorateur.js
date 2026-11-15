@@ -148,6 +148,7 @@ export function rendreExplorateur(conteneur, app) {
             { libelle: t('atelier_variables'), icone: 'ruler', action: () => app.variablesProjet(p.id) },
             { libelle: t('nouvelle_variable'), icone: 'calculator', action: () => app.nouvelleVariable(p.id) },
             { libelle: t('ajouter_colonnes'), icone: 'file-spreadsheet', action: () => app.ajouterColonnes(p.id) },
+            { libelle: t('raster_valeurs'), icone: 'layers', action: () => app.valeursRaster(p.id) },
             { libelle: t('resumer_groupes'), icone: 'sigma', action: () => app.resumerGroupes(p.id) },
             { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
             { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) }] }),

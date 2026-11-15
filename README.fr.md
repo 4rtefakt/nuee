@@ -192,7 +192,11 @@ d'accumulation des espèces avec des estimateurs de richesse (Chao1, ACE, jackkn
 résultats sont ceux des paquets vegan et indicspecies, avec les mêmes valeurs p pour les mêmes
 permutations.
 
-**Tendances des suivis :** TRIM, la référence des suivis d'oiseaux européens, écrit d'après la
+**Suivis :** l'échantillonnage par distances, la densité et l'effectif d'animaux à partir de
+transects linéaires ou de points d'écoute comme le paquet Distance les calcule (fonctions de
+détection demi-normale, hazard-rate ou uniforme avec des termes d'ajustement choisis par l'AIC,
+troncature, distances en intervalles, groupes, strates, variance du taux de rencontre et
+intervalles de Satterthwaite). TRIM, la référence des suivis d'oiseaux européens, écrit d'après la
 méthode de Statistics Netherlands : indices et totaux annuels avec leurs erreurs types à partir
 de comptages lacunaires, surdispersion et autocorrélation, ruptures choisies ou pas à pas,
 covariables et poids, et la pente générale avec sa classe (augmentation modérée, stable, fort
@@ -204,7 +208,9 @@ petits graphiques côte à côte.
 Lambert-93, UTM…) placent les observations sur une carte, colorées et dimensionnées par une
 variable ou les résultats d'un modèle, sur un fond OpenStreetMap ou IGN quand on en choisit un
 (sinon rien ne quitte l'ordinateur). Les fichiers GeoPackage, le format de QGIS, s'ouvrent avec
-leurs coordonnées, et les données et les résultats d'un modèle s'y exportent. L'I de Moran d'une
+leurs coordonnées, et les données et les résultats d'un modèle s'y exportent. Les valeurs d'un
+raster (l'altitude d'un MNT, l'occupation du sol, un climat, depuis des fichiers GeoTIFF ou des
+grilles ASCII d'ESRI) s'ajoutent à chaque site, comme terra::extract les donne. L'I de Moran d'une
 variable ou des résidus d'un modèle, son corrélogramme et le semi-variogramme, comme spdep et
 gstat les donnent, et un lissage spatial s(x, y) dans les modèles additifs pour ce que les
 termes laissent dans l'espace.
@@ -308,7 +314,8 @@ validation croisée, statistiques, prédiction. Aucune statistique n'est calcul�
   projet affichés.
 - **Exporter vers R** (*Fichier › Exporter vers R*) : tout modèle devient un script, ou un
   rapport R Markdown ou Quarto, qui le refait sans Nuée, en R seul, sans paquet (une régression :
-  `lm`, ou `nlme` et `mgcv`, livrés avec R). Il contient les
+  `lm`, ou `nlme` et `mgcv`, livrés avec R ; une forêt aléatoire, la seule exception : `ranger`,
+  que Nuée installe avec lui). Il contient les
   données (ou les lit dans un CSV à côté) et le calcul écrit pour ce modèle seul, commenté : sa
   mise à l'échelle, l'algorithme NIPALS, la validation croisée, puis les statistiques, tableaux
   et graphiques (une PLS fait environ 170 lignes de code). Le rapport ajoute le texte des

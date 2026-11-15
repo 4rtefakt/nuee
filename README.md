@@ -182,20 +182,25 @@ rarefaction and species accumulation curves with richness estimators (Chao1, ACE
 The results are those of the vegan and indicspecies packages, with the same p values for the
 same permutations.
 
-**Monitoring trends:** TRIM, the standard of European bird monitoring, written from Statistics
-Netherlands' method: yearly indices and totals with their standard errors from counts with gaps,
-overdispersion and serial correlation, changepoints chosen or stepwise, covariates and weights,
-and the overall slope with its class (moderate increase, stable, steep decline...), as rtrim
-gives them. One model per response fits the same regression to each species and corrects each
+**Monitoring:** distance sampling, density and abundance from line transects or point counts as
+the Distance package computes them (half-normal, hazard-rate or uniform detection functions with
+adjustment terms chosen by AIC, truncation, binned distances, groups, strata, the encounter
+rate's variance and Satterthwaite intervals). TRIM, the standard of European bird monitoring,
+written from Statistics Netherlands' method: yearly indices and totals with their standard
+errors from counts with gaps, overdispersion and serial correlation, changepoints chosen or
+stepwise, covariates and weights, and the overall slope with its class (moderate increase,
+stable, steep decline...), as rtrim gives them. One model per response fits the same regression to each species and corrects each
 term's p values over them (FDR), with a forest plot and small multiples.
 
 **Maps and spatial data:** a project's coordinates (WGS 84 longitudes and latitudes, Lambert-93,
 UTM...) place the observations on a map, coloured and sized by a variable or a model's results,
 on OpenStreetMap or IGN backgrounds when you choose one (nothing leaves the computer
 otherwise). GeoPackage files, QGIS's format, open with their coordinates, and the data and a
-model's results export to one. Moran's I of a variable or of a model's residuals, its
-correlogram and the semivariogram, as spdep and gstat give them, and a spatial smooth s(x, y)
-in additive models for what the terms leave in space.
+model's results export to one. A raster's values (a DEM's elevation, land cover, a climate,
+from GeoTIFF files or ESRI ASCII grids) are added at each site, as terra::extract gives them.
+Moran's I of a variable or of a model's residuals, its correlogram and the semivariogram, as
+spdep and gstat give them, and a spatial smooth s(x, y) in additive models for what the terms
+leave in space.
 
 **Trees and forests, discriminant analysis, clustering:** decision trees (rpart) for a
 quantitative response or a class, on the raw variables so that thresholds read in their units,
@@ -289,7 +294,8 @@ cross-validation, statistics, prediction. No statistic is computed anywhere else
   on screen.
 - **Export to R** (*File › Export to R*): any model becomes a script, or an R Markdown
   or Quarto report, that refits it without Nuée, in plain R with no package (a regression: `lm`,
-  or `nlme` and `mgcv`, which come with R). It holds the
+  or `nlme` and `mgcv`, which come with R; a random forest, the one exception: `ranger`, which
+  Nuée installs with itself). It holds the
   data (or reads them from a CSV next to it) and the calculation written for that model alone,
   with comments: its scaling, the NIPALS algorithm, the cross-validation, then the statistics,
   tables and plots (a PLS is about 170 lines of code). The report adds the Methods text,

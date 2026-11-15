@@ -17,8 +17,18 @@ REFERENCES <- list(
   r = "R Core Team (%s). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/",
   nuee = "4rtefakt (%s). Nuée%s [Computer software]. https://github.com/4rtefakt/nuee")
 
+# (pour tous les types : d'où viennent les variables lues dans des rasters, à la fin du premier
+# paragraphe, celui des données ; raster.R)
 texte_methodes <- function(projet, d, m, langue = c("fr", "en"), version = "") {
   langue <- match.arg(langue)
+  r <- texte_methodes_type(projet, d, m, langue, version)
+  uids <- suppressWarnings(as.numeric(c(unlist(lapply(c(d$x, d$y), function(t) t$variables)), unlist(d$classe))))
+  phrase <- phrase_methodes_raster(projet, unique(uids[!is.na(uids)]), langue == "fr")
+  if (!is.null(phrase)) r$paragraphes <- if (length(r$paragraphes)) c(paste(r$paragraphes[1], phrase), r$paragraphes[-1]) else phrase
+  r
+}
+
+texte_methodes_type <- function(projet, d, m, langue, version) {
   if (est_regression(d)) return(texte_methodes_regression(projet, d, m, langue, version))  # regression.R
   if (est_autre_analyse(d)) return(fonction_analyse("texte_methodes_", d$type)(projet, d, m, langue, version))  # analyses.R
   fr <- langue == "fr"

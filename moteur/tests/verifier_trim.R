@@ -501,5 +501,85 @@ ch <- ecrire_tables(tr, file.path(dossier, "trim.xlsx"), objet = "trim")
 verifier("écrits en Excel", length(ch) == 1 && file.exists(ch))
 unlink(dossier, recursive = TRUE)
 
+# ---------------------------------------------------------------- l'export vers R
+
+# Chaque script est écrit (ecrire_script : il est d'abord exécuté dans le moteur et comparé, `ecart`),
+# puis lancé dans une session R neuve (Rscript --vanilla, sans le moteur) ; ses objets en reviennent
+# et ecart_trim les compare au modèle du moteur : paramètres, covariance, effets des sites, σ², ρ, points
+# de changement gardés et retirés, totaux, indices, pentes et leurs classes, paramètres, tests de
+# Wald, ajustement, droite et écarts, étapes du pas à pas, à 1e-8 près.
+cat("Export vers R : des scripts lancés seuls, en français et en anglais, et un rapport R Markdown\n")
+dossier <- tempfile("trim_script")
+dir.create(dossier)
+rscript <- file.path(R.home("bin"), "Rscript")
+lanceur <- file.path(dossier, "lancer.R")
+writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
+             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+lancer <- function(script) {
+  objets <- nom_traduit(c("fit", "ce", "grille", "totaux", "indices", "pentes", "parametres", "tests", "ajustement", "ecarts", "etapes_pas_a_pas"),
+                        attr(script, "langue"), NOMS_TRIM_EN)
+  sortie <- tempfile("sortie", dossier, ".rds")
+  ici <- setwd(dossier)
+  on.exit(setwd(ici))
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(lanceur), shQuote(script), shQuote(sortie), shQuote(paste(objets, collapse = ","))),
+                                       stdout = TRUE, stderr = TRUE))
+  if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
+}
+# Le code d'un script hors de ses données (ses lignes « # 2. » à « # 3. » retirées).
+hors_donnees <- function(texte) texte[-(grep("^# 2\\. ", texte):(grep("^# 3\\. ", texte) - 1))]
+# Les paquets qu'un script appelle par `paquet::`.
+paquets_appeles <- function(texte) unique(regmatches(texte, regexpr("[A-Za-z.]+(?=::)", texte, perl = TRUE)))
+essayer_script <- function(nom, p, d, langue, ext = "R", ...) {
+  m <- ajuster(p, d)
+  r <- ecrire_script(p, d, file.path(dossier, paste0(nom, ".", ext)), "moteur", m = m, version = "essai", langue = langue, ...)
+  if (ext != "R") return(invisible(list(r = r, m = m)))
+  script <- structure(r$script, langue = langue)
+  s <- lancer(script)
+  texte <- readLines(r$script, encoding = "UTF-8")
+  code <- sub("#.*$", "", hors_donnees(texte))
+  difference <- if (length(s)) ecart_trim(m, list2env(s), langue) else paste(utils::tail(attr(s, "messages"), 3), collapse = " / ")
+  francais <- langue == "fr" || !any(grepl("estimer_trim|pente_globale|totaux_trim|<- function\\(t, des,", code))
+  collisions <- if (langue == "fr") collisions_traduction(hors_donnees(texte), c(NOMS_TRIM_EN, NOMS_SCRIPT_EN)) else list()
+  verifier(sprintf("%s (%s) : sans écart vu par le moteur ; lancé seul, les mêmes résultats ; R seul (ni library() ni autre paquet), sans traduire()%s",
+                   nom, langue, if (langue == "en") ", ses noms en anglais" else ", aucun nom confondu en anglais"),
+           is.null(r$ecart) && is.null(difference) && !any(grepl("library\\(|require\\(|traduire\\(", code)) &&
+             all(paquets_appeles(code) %in% c("stats", "utils")) && francais && !length(collisions))
+  if (!is.null(r$ecart) || !is.null(difference) || length(collisions)) cat("    écart :", r$ecart, "/", difference, "/", names(collisions), "\n")
+  invisible(list(r = r, m = m, s = s))
+}
+essayer_script("trim_m2_covariables_poids", ps, definition_trim(ps, 2, TRUE, TRUE, cov = c("habitat", "gestion"), cp = c(2000, 2007), poids = "poids", base = 2003), "fr")
+essayer_script("trim_m2_covariables_poids_en", ps, definition_trim(ps, 2, TRUE, TRUE, cov = c("habitat", "gestion"), cp = c(2000, 2007), poids = "poids", base = 2003), "en")
+x <- essayer_script("trim_m3_droite", ps, definition_trim(ps, 3, TRUE, TRUE), "en")
+verifier("modèle 3 sans covariable : la droite et ses écarts, le test des écarts, la classe de chaque pente en mots dans le script",
+         !is.null(x$s$deviations) && "deviations from the line" %in% x$s$tests$test && all(x$s$slopes$trend %in% libelle_classe_trim(TRIM_CLASSES, FALSE)))
+essayer_script("trim_m1_surdispersion", ps, definition_trim(ps, 1, TRUE, FALSE), "en")
+x <- essayer_script("trim_pas_a_pas", ppa, definition_trim(ppa, 2, TRUE, FALSE, cp = "tous", pas_a_pas = TRUE), "fr")
+verifier(sprintf("pas à pas : les mêmes %d étapes et les mêmes points gardés (%s)", nrow(mpa$pas_a_pas$etapes), paste(mpa$changements, collapse = ", ")),
+         identical(nrow(x$s$etapes_pas_a_pas), nrow(mpa$pas_a_pas$etapes)) && identical(x$s$grille[x$s$fit$des$cp], mpa$changements))
+essayer_script("trim_pas_a_pas_en", ppa, definition_trim(ppa, 2, TRUE, FALSE, cp = "tous", pas_a_pas = TRUE), "en")
+essayer_script("trim_m3_ml_habitat", ps, definition_trim(ps, 3, FALSE, FALSE, cov = "habitat"), "fr")
+x <- essayer_script("trim_temps_ajoute_point_retire", pt, definition_trim(pt, 2, TRUE, TRUE, cp = c(2000, 2003, 2004)), "fr")
+verifier(sprintf("un temps sans aucune ligne (2004) dans la grille du script ; le point de changement 2003, sans comptage après lui, retiré comme dans le moteur (%s)",
+                 paste(x$m$changements_retires, collapse = ", ")),
+         identical(x$m$changements_retires, 2003) && 2004 %in% x$s$grille && identical(x$s$grille[x$s$ce$retires], 2003))
+essayer_script("trim_condition_en", ps, definition_trim(ps, 2, TRUE, TRUE, condition = "habitat == \"bocage\" & annee >= 2002"), "en")
+essayer_script("trim_site_identifiant", pid, definition_trim(pid, 3, TRUE, TRUE, site = "id:code du site"), "fr")
+# un rapport R Markdown : ses parties, ses blocs, et il se compile avec knitr quand il est installé
+x <- essayer_script("rapport_trim", ps, definition_trim(ps, 2, TRUE, TRUE, cov = "habitat", cp = c(2000, 2005), poids = "poids"), "fr", ext = "Rmd", donnees = "csv", rdata = TRUE)
+texte <- readLines(x$r$script, encoding = "UTF-8")
+verifier("rapport R Markdown : méthodes, code, résultats, références ; données en CSV et .RData à côté",
+         is.null(x$r$ecart) && texte[1] == "---" && any(grepl("^## Méthodes", texte)) && any(grepl("^```\\{r modele\\}", texte)) && any(grepl("^```\\{r pentes-table\\}", texte)) &&
+           any(grepl("^- Pannekoek", texte)) && length(x$r$chemins) == 3 && all(file.exists(x$r$chemins)) && !anyDuplicated(sub("^```\\{r ([^,} ]+).*$", "\\1", grep("^```\\{r [^,} ]", texte, value = TRUE))))
+if (requireNamespace("knitr", quietly = TRUE)) {
+  compiler <- file.path(dossier, "compiler.R")
+  writeLines(c(sprintf(".libPaths(%s)", paste(deparse(.libPaths()), collapse = "")), "a <- commandArgs(TRUE)", "setwd(dirname(a[1]))",
+               "knitr::knit(basename(a[1]), output = sub('[.][Rq]md$', '.md', basename(a[1])), quiet = TRUE, envir = new.env())"), compiler)
+  messages <- suppressWarnings(system2(rscript, c("--vanilla", shQuote(compiler), shQuote(x$r$script)), stdout = TRUE, stderr = TRUE))
+  md <- sub("[.]Rmd$", ".md", x$r$script)
+  verifier("le rapport se compile avec knitr, avec ses graphiques", file.exists(md) && !any(grepl("^## Error|Error in", readLines(md, encoding = "UTF-8"))) &&
+             length(list.files(file.path(dossier, "figure"), "\\.png$")) >= 2)
+} else cat("  (knitr absent : le rapport n'est pas compilé)\n")
+unlink(dossier, recursive = TRUE)
+
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
