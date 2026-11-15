@@ -299,8 +299,8 @@ ANALYSES.FOREST = {
   test: true,  // (a test set, predicted after the fit: forets.R, tester_forest)
   champs: (st) => [
     el('label', {}, t('for_arbres')), el('div', { class: 'ligne' }, nombreOption(st, 'arbres', 500, { min: 10, max: 5000, step: 10 }),
-      el('label', { class: 'champ' }, 'mtry', nombreOption(st, 'mtry', '', { min: 1, step: 1, placeholder: t('for_defaut'), title: t('for_mtry_aide') }))),
-    el('label', {}, t('for_min_noeud')), el('div', { class: 'ligne' }, nombreOption(st, 'min_noeud', '', { min: 1, step: 1, placeholder: t('for_defaut'), title: t('for_min_noeud_aide') }),
+      el('label', { class: 'champ' }, 'mtry', nombreOption(st, 'mtry', '', { min: 1, step: 1, placeholder: t('auto_court'), title: t('for_mtry_aide') }))),
+    el('label', {}, t('for_min_noeud')), el('div', { class: 'ligne' }, nombreOption(st, 'min_noeud', '', { min: 1, step: 1, placeholder: t('auto_court'), title: t('for_min_noeud_aide') }),
       el('label', { class: 'champ' }, t('for_fraction'), nombreOption(st, 'fraction', 1, { min: 0.1, max: 1, step: 0.05 }))),
     el('label', {}, t('for_importance')), el('select', { onchange: (e) => { st.options.importance = e.target.value; } },
       [['brute', t('for_importance_brute')], ['echelle', t('for_importance_echelle')]].map(([k, n]) => el('option', { value: k, selected: k === (st.options.importance || 'brute') }, n))),
@@ -447,7 +447,7 @@ ajouterTextes({
   ens_echecs_vc: '{n} groupes de validation croisée sans prédiction (sans eux, une seule valeur de la réponse reste).',
   ens_croises: 'Les arbres font eux-mêmes leurs interactions : retirer les termes croisés.',
   for_note: 'Une variable Y quantitative (forêt de régression) ou une variable de classe (forêt de classement), et les variables X par leurs valeurs brutes (ranger). Chaque arbre est grandi sur un tirage bootstrap des observations, chaque coupure choisie parmi mtry variables tirées au hasard ; erreur hors sac, et validation croisée par les groupes de validation croisée (un site, par exemple). Les observations où une valeur X manque sont laissées de côté.',
-  for_arbres: 'Nombre d’arbres', for_defaut: 'par défaut', for_mtry_aide: 'Variables candidates à chaque coupure ; par défaut, la racine du nombre de variables X arrondie en dessous (ranger).',
+  for_arbres: 'Nombre d’arbres', for_mtry_aide: 'Variables candidates à chaque coupure ; par défaut, la racine du nombre de variables X arrondie en dessous (ranger).',
   for_min_noeud: 'Taille des nœuds', for_min_noeud_aide: 'La taille minimale d’un nœud (min.node.size de ranger) ; par défaut 5 en régression, 1 en classement.',
   for_fraction: 'part tirée', for_importance: 'Importance par permutation', for_importance_brute: 'non mise à l’échelle', for_importance_echelle: 'divisée par son erreur-type',
   for_reglages_note: 'Par défaut : 500 arbres, mtry et la taille des nœuds de ranger, des tirages de 100 % des observations avec remise ; graine 1, un seul fil de calcul (les mêmes arbres à chaque fois).',
@@ -507,7 +507,7 @@ ajouterTextes({
   ens_echecs_vc: '{n} cross-validation groups without a prediction (without them, a single response value remains).',
   ens_croises: 'Trees make their own interactions: remove the cross terms.',
   for_note: 'A quantitative Y variable (regression forest) or a class variable (classification forest), and the X variables by their raw values (ranger). Each tree is grown on a bootstrap draw of the observations, each split chosen among mtry randomly drawn variables; out-of-bag error, and cross-validation by the cross-validation groups (a site, say). Observations with a missing X value are left out.',
-  for_arbres: 'Number of trees', for_defaut: 'default', for_mtry_aide: 'Candidate variables at each split; by default, the square root of the number of X variables rounded down (ranger).',
+  for_arbres: 'Number of trees', for_mtry_aide: 'Candidate variables at each split; by default, the square root of the number of X variables rounded down (ranger).',
   for_min_noeud: 'Node size', for_min_noeud_aide: 'The minimum node size (ranger’s min.node.size); by default 5 for regression, 1 for classification.',
   for_fraction: 'share drawn', for_importance: 'Permutation importance', for_importance_brute: 'unscaled', for_importance_echelle: 'divided by its standard error',
   for_reglages_note: 'By default: 500 trees, ranger’s mtry and node size, draws of 100% of the observations with replacement; seed 1, a single thread (the same trees every time).',
