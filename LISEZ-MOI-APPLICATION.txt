@@ -1517,6 +1517,11 @@ Onglet Général :
   - la troncature : la plus grande distance (le défaut de ds), une distance, ou un pourcentage
     des plus grandes distances (5 à 10 % est l'usage) ; une troncature à gauche au besoin. Les
     détections au-delà sortent du modèle, leur transect reste ;
+  - des intervalles, pour des distances relevées par classes (comme ds(cutpoints = )) : leurs
+    bornes, par exemple « 0 10 25 50 100 » ; chaque distance du tableau (la vraie, ou le milieu
+    de sa classe) compte dans son intervalle, la première borne est la troncature à gauche et la
+    dernière w ; la vraisemblance est alors celle des comptes des classes, et l'adéquation le
+    khi² sur elles ;
   - la clé de la fonction de détection g(x) : demi-normale exp(−x²/2σ²), hasard (hazard-rate)
     1 − exp(−(x/σ)^−b) (b ≥ 1, comme mrds) ou uniforme ;
   - les termes d'ajustement : cosinus (le défaut), polynômes d'Hermite ou polynômes simples, leur
@@ -1550,14 +1555,14 @@ distances, chaque barre son compte sur celui qu'elle aurait si tous les animaux 
 détectés, comme plot.ds de mrds, sous la fonction g ajustée ; chaque détection sur la courbe, un
 clic choisit sa ligne ; pour des points, la densité des distances f(r) = 2r g(r) / (w² p)
 aussi ; dessous, les classes du khi²) ; Diagramme quantile-quantile (la répartition ajustée de
-chaque distance contre la répartition empirique, avec le test de Cramér–von Mises) ; Densité et
+chaque distance contre la répartition empirique, avec le test de Cramér–von Mises ; pas pour des
+distances par intervalles) ; Densité et
 effectif (par strate et au total : aire, aire couverte, effort, transects, détections, taux de
 rencontre et son CV, D, son erreur-type, son CV, son intervalle à 95 % et ses ddl, N et son
 intervalle, la part de la variance due au taux de rencontre, à la détection et à la taille des
 groupes ; avec des groupes, la densité des groupes aussi). Texte des méthodes avec ses
 références, Exporter et rapport comme pour les autres modèles ; pas de prédiction, et pas encore
-d'export vers R. Les covariables de la fonction de détection (MCDS) et les distances relevées
-par intervalles ne sont pas encore prises.
+d'export vers R. Les covariables de la fonction de détection (MCDS) ne sont pas encore prises.
 
 Les résultats sont ceux de Distance 2.0 (moteur/tests/verifier_distance.R les compare), à trois
 différences connues près : Nuée intègre la clé hasard exactement là où mrds approche son

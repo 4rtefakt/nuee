@@ -67,8 +67,15 @@ const entetesCandidats = () => [t('distance_modele'), t('distance_n_parametres')
 const lignesParametres = (m) => (m.parametres ? lignesDe(m.parametres, ['parametre', 'estimation', 'se']).map((l) => [l[0], fmt(l[1], 4), fmt(l[2], 4)]) : []);
 const lignesAdequation = (m) => {
   const a = m.adequation;
-  return [[t('distance_cvm'), fmt(a.cvm.W, 4), '', pValeur(a.cvm.p)],
-    [t('distance_khi2', { k: liste(a.khi2.classes.de).length }), fmt(a.khi2.chi2, 3), fini(a.khi2.ddl) ? String(a.khi2.ddl) : '—', pValeur(a.khi2.p)]];
+  return [a.cvm ? [t('distance_cvm'), fmt(a.cvm.W, 4), '', pValeur(a.cvm.p)] : null,
+    [t('distance_khi2', { k: liste(a.khi2.classes.de).length }), fmt(a.khi2.chi2, 3), fini(a.khi2.ddl) ? String(a.khi2.ddl) : '—', pValeur(a.khi2.p)]].filter(Boolean);
+};
+// distances recorded in intervals (their bounds)
+const parIntervalles = (m) => liste(m.intervalles).length > 0;
+const texteTroncature = (m) => {
+  const tr = m.troncature || {};
+  if (parIntervalles(m)) return t('distance_n_intervalles', { k: liste(m.intervalles).length - 1, de: sig(tr.L), a: avecUnite(sig(tr.w), uDist(m)) });
+  return `${avecUnite(sig(tr.w), uDist(m))}${fini(tr.pourcentage) ? ` (${tr.pourcentage} %)` : ''}${tr.L > 0 ? ` · ${t('distance_gauche')} ${sig(tr.L)}` : ''}`;
 };
 const phraseDetection = (m) => t('distance_phrase_p', { p: fmt(m.p, 3), se: fmt(m.se_p, 3), cv: pct(m.cv_p), quoi: effectifLibelle(m),
   e: avecUnite(sig(m.effectif.valeur), uDist(m)), se_e: avecUnite(sig(m.effectif.se, 3), uDist(m)) });
@@ -84,13 +91,12 @@ function phraseTotal(m) {
 }
 
 function rendreResumeDistance(conteneur, ctx, m) {
-  const tr = m.troncature || {};
   const titre = el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, t('distance_badge')), m.titre ? el('span', { class: 'doux' }, m.titre) : null);
   const strates = liste(m.strates).length;
   const fiche = el('div', { class: 'fiche' }, titre,
     el('div', { class: 'fiche-chiffres' }, chiffre(t('distance_plan'), t(point(m) ? 'distance_points' : 'distance_lignes')), chiffre(t('distance_detections'), String(m.n)),
       chiffre(t('distance_transects'), String(liste(m.transects.transect).length)), m.avec_strates ? chiffre(t('distance_strates'), String(strates)) : null,
-      chiffre(t('distance_troncature'), `${avecUnite(sig(tr.w), uDist(m))}${fini(tr.pourcentage) ? ` (${tr.pourcentage} %)` : ''}${tr.L > 0 ? ` · ${t('distance_gauche')} ${sig(tr.L)}` : ''}`)),
+      chiffre(t(parIntervalles(m) ? 'distance_intervalles' : 'distance_troncature'), texteTroncature(m))),
     el('div', { class: 'fiche-chiffres' }, chiffre(t('distance_modele'), m.modele_detection), chiffre('p', `${fmt(m.p, 3)} ± ${fmt(m.se_p, 3)}`),
       chiffre(effectifLibelle(m), avecUnite(`${sig(m.effectif.valeur)} ± ${sig(m.effectif.se, 3)}`, uDist(m))), chiffre('AIC', fmt(m.AIC, 2)),
       liste(m.ordres).length ? chiffre(t('distance_monotonie'), t('distance_monotonie_' + m.monotonie)) : null),
@@ -120,11 +126,12 @@ function rendreDetection(conteneur, ctx, p, loc) {
   loc.courbe ??= 'g';
   loc.points ??= true;
   const pdf = point(m) && loc.courbe === 'f';
+  const points = loc.points && !pdf && !parIntervalles(m);  // (distances in intervals: no exact distance to show)
   const graphe = el('div', { class: 'graphe' });
   const bas = el('div', { class: 'bas' });
   conteneur.replaceChildren(outils(
     point(m) ? choix('', [['g', t('distance_g')], ['f', t('distance_pdf')]], loc.courbe, (v) => { loc.courbe = v; ctx.rafraichir(); }) : null,
-    pdf ? null : caseACocher(t('distance_points_obs'), loc.points, (v) => { loc.points = v; ctx.rafraichir(); }, t('distance_points_obs_aide'))),
+    pdf || parIntervalles(m) ? null : caseACocher(t('distance_points_obs'), loc.points, (v) => { loc.points = v; ctx.rafraichir(); }, t('distance_points_obs_aide'))),
   el('p', { class: 'note' }, t(pdf ? 'distance_pdf_note' : point(m) ? 'distance_g_note_points' : 'distance_g_note')), graphe, bas);
   const h = m.histogramme;
   const de = liste(h.de);
@@ -137,7 +144,7 @@ function rendreDetection(conteneur, ctx, p, loc) {
     hovertemplate: `%{x:.3g}<br>%{y:.3f} (n = %{customdata})<extra>${t('distance_histogramme')}</extra>` },
   { type: 'scatter', mode: 'lines', name: pdf ? t('distance_pdf') : t('distance_g'), x: liste(c.x), y: courbe, line: { color: PALETTE[1], width: 2.5 },
     hovertemplate: `%{x:.3g}<br>%{y:.4f}<extra>${m.modele_detection}</extra>` }];
-  if (loc.points && !pdf) {
+  if (points) {
     const sel = new Set(ctx.selection(m.id));
     const uids = liste(m.uid_distances);
     traces.push({ type: 'scatter', mode: 'markers', name: t('distance_observees'), x: liste(m.distances), y: liste(m.g_distances), customdata: uids,
@@ -148,7 +155,7 @@ function rendreDetection(conteneur, ctx, p, loc) {
   tracer(ctx, graphe, traces, { title: { text: `${m.nom} · ${m.modele_detection}` }, barmode: 'overlay', bargap: 0, dragmode: 'zoom',
     xaxis: { title: { text: avecUnite(m.noms ? m.noms.y : t('distance_distance'), uDist(m) ? `(${uDist(m)})` : '') }, range: [Math.min(0, de[0] || 0), m.troncature.w] },
     yaxis: { title: { text: pdf ? t('distance_densite_proba') : t('distance_proba') }, range: [0, pdf ? undefined : ymax], rangemode: 'tozero' } });
-  if (loc.points && !pdf) brancherSelection(graphe, ctx, m.id);
+  if (points) brancherSelection(graphe, ctx, m.id);
   const k = m.adequation.khi2.classes;
   const obs = liste(k.observe);
   const att = liste(k.attendu);
@@ -250,6 +257,8 @@ const UNITES_LONGUEUR = ['m', 'km', 'ft', 'yd', 'mi', 'nmi'];
 const UNITES_AIRE = ['m2', 'ha', 'km2', 'acre', 'mi2', 'nmi2'];
 const SYMBOLES = { m2: 'm²', km2: 'km²', mi2: 'mi²', nmi2: 'nmi²' };
 const nombreLu = (v) => { const x = Number(String(v ?? '').replace(',', '.')); return String(v ?? '').trim() === '' ? null : x; };
+// the bounds of the intervals, separated by spaces or semicolons (a comma: a decimal mark)
+const lireBornes = (texte) => String(texte || '').split(/[\s;]+/).filter(Boolean).map((x) => Number(x.replace(',', '.')));
 const premier = (x) => (Array.isArray(x) ? x[0] : x);
 
 function champsDistance(st, rendre, p) {
@@ -280,6 +289,7 @@ function champsDistance(st, rendre, p) {
     valeurs.map((k) => el('option', { value: k, selected: String(k) === String(valeur) }, libelle(k))));
   const tr = o.troncature;
   const aj = premier(o.ajustements) ?? 'aic';
+  if (o.intervalles_texte === undefined) o.intervalles_texte = liste(o.intervalles).map((x) => sig(x, 12)).join(' ');
   return [
     el('label', {}, t('distance_plan')), choisir(['ligne', 'point'], o.transect, (v) => { o.transect = v; rendre(); }, (k) => t(k === 'point' ? 'distance_points' : 'distance_lignes')),
     el('label', {}, t('distance_echantillon')), el('select', { title: t('distance_echantillon_aide'), onchange: (e) => { o.echantillon = specLue(e.target.value); } }, options(specCode(o.echantillon), () => true)),
@@ -294,6 +304,8 @@ function champsDistance(st, rendre, p) {
         oninput: (e) => { tr.valeur = nombreLu(e.target.value); } }), tr.type === 'pourcentage' ? '%' : null,
       etiquette(t('distance_gauche')), el('input', { type: 'number', step: 'any', min: 0, value: premier(o.gauche) ?? '', placeholder: '0', style: 'width:6em',
         title: t('distance_gauche_aide'), oninput: (e) => { o.gauche = nombreLu(e.target.value); } })),
+    el('label', {}, t('distance_intervalles')), el('input', { value: o.intervalles_texte, placeholder: t('distance_intervalles_exemple'), style: 'width:18em',
+      title: t('distance_intervalles_aide'), oninput: (e) => { o.intervalles_texte = e.target.value; } }),
     el('label', {}, t('distance_cle')), choisir(['hn', 'hr', 'unif'], premier(o.cle) || 'hn', (v) => { o.cle = v; rendre(); }, libelleCle, t('distance_cle_aide')),
     el('label', {}, t('distance_ajustements')), el('div', { class: 'ligne' },
       choisir(['cos', 'herm', 'poly', 'aucune'], premier(o.serie) || 'cos', (v) => { o.serie = v; rendre(); }, libelleSerie, t('distance_serie_aide')),
@@ -334,6 +346,8 @@ ANALYSES.DISTANCE = {
     if (g !== null && g !== undefined && !(Number.isFinite(g) && g >= 0)) return t('distance_gauche_invalide');
     const f = premier(o.facteur);
     if (f !== null && f !== undefined && !(Number.isFinite(f) && f > 0)) return t('distance_facteur_invalide');
+    const b = lireBornes(o.intervalles_texte);
+    if (b.length && (b.length < 3 || b.some((x, i) => !Number.isFinite(x) || x < 0 || (i && x <= b[i - 1])))) return t('distance_intervalles_invalides');
     return '';
   },
   options: (st) => {
@@ -343,7 +357,8 @@ ANALYSES.DISTANCE = {
     return { transect: o.transect || 'ligne', echantillon: o.echantillon, strate: o.strate || null, effort: o.effort || null, aire: o.aire || null, taille: o.taille || null,
       troncature: tr.type === 'aucune' ? { type: 'aucune' } : { type: tr.type, valeur: tr.valeur }, gauche: Number.isFinite(premier(o.gauche)) ? premier(o.gauche) : 0,
       cle: premier(o.cle) || 'hn', serie: premier(o.serie) || 'cos', ajustements: premier(o.ajustements) ?? 'aic', echelle_ajustements: premier(o.echelle_ajustements) || 'largeur',
-      monotonie: premier(o.monotonie) || 'stricte', unites: o.unites, facteur: Number.isFinite(f) && f > 0 ? f : null };
+      monotonie: premier(o.monotonie) || 'stricte', unites: o.unites, facteur: Number.isFinite(f) && f > 0 ? f : null,
+      intervalles: lireBornes(o.intervalles_texte).length ? lireBornes(o.intervalles_texte) : null };
   },
 };
 
@@ -366,7 +381,8 @@ const blocsDensite = (m) => [{ entetes: [t('distance_strate'), 'k', 'n', t('dist
 PARTIES_TYPES.DISTANCE = [
   { cle: 'resume', defaut: true, tableau: blocsResume },
   { cle: 'distance_detection', vue: 'distance_detection', defaut: true, tableau: blocsDetection },
-  { cle: 'distance_qq', vue: 'distance_qq', defaut: true, tableau: (m) => [{ texte: t('distance_qq_note', { W: fmt(m.adequation.cvm.W, 4), p: pValeur(m.adequation.cvm.p) }) }] },
+  { cle: 'distance_qq', vue: 'distance_qq', defaut: true, si: (m) => !parIntervalles(m),
+    tableau: (m) => [{ texte: t('distance_qq_note', { W: fmt(m.adequation.cvm.W, 4), p: pValeur(m.adequation.cvm.p) }) }] },
   { cle: 'distance_densite', vue: 'distance_densite', defaut: true, tableau: blocsDensite },
 ];
 
@@ -383,7 +399,7 @@ Object.assign(VUES, {
   distance_densite: { rendre: rendreDensite, titre: (m) => `${m.nom} · ${t('distance_densite')}` },
 });
 Object.assign(ICONES_VUES, { distance_detection: 'chart-column', distance_qq: 'chart-scatter', distance_densite: 'table-2' });
-VUES_TYPES.DISTANCE = ['resume', 'distance_detection', 'distance_qq', 'distance_densite', 'liste_obs'];
+VUES_TYPES.DISTANCE = (m) => ['resume', 'distance_detection'].concat(parIntervalles(m) ? [] : ['distance_qq'], ['distance_densite', 'liste_obs']);
 
 ajouterTextes({
   type_distance: 'Échantillonnage par distances (densité, effectif)',
@@ -400,6 +416,10 @@ ajouterTextes({
   distance_troncature: 'Troncature', distance_troncature_aucune: 'la plus grande distance', distance_troncature_distance: 'à une distance', distance_troncature_pourcentage: 'des plus grandes distances',
   distance_troncature_aide: 'Les détections au-delà de la troncature w sortent du modèle (leur transect reste) : tronquer les 5 à 10 % des plus grandes distances est l’usage (Buckland et al., 2001).',
   distance_gauche: 'à gauche', distance_gauche_aide: 'Une troncature à gauche (facultative) : les distances plus petites sortent du modèle.',
+  distance_intervalles: 'Intervalles', distance_intervalles_exemple: 'distances exactes (ou : 0 10 25 50 100)',
+  distance_intervalles_aide: 'Des distances relevées par classes : les bornes des intervalles, croissantes, séparées par des espaces (comme ds(cutpoints = )). Chaque distance du tableau (la vraie, ou le milieu de sa classe) compte dans son intervalle ; la première borne fait la troncature à gauche, la dernière w, à la place de la troncature ci-dessus.',
+  distance_intervalles_invalides: 'Les bornes des intervalles sont au moins trois distances croissantes, positives ou nulles, séparées par des espaces.',
+  distance_n_intervalles: '{k} intervalles de {de} à {a}',
   distance_cle: 'Clé', distance_cle_hn: 'demi-normale', distance_cle_hr: 'hasard (hazard-rate)', distance_cle_unif: 'uniforme',
   distance_cle_aide: 'La forme de base de la fonction de détection g(x) : demi-normale exp(−x²/2σ²), hasard 1 − exp(−(x/σ)^−b), uniforme 1 (les termes d’ajustement la façonnent).',
   distance_ajustements: 'Termes d’ajustement', distance_serie_cos: 'cosinus', distance_serie_herm: 'polynômes d’Hermite', distance_serie_poly: 'polynômes simples', distance_serie_aucune: 'aucun',
@@ -468,6 +488,10 @@ ajouterTextes({
   distance_troncature: 'Truncation', distance_troncature_aucune: 'the largest distance', distance_troncature_distance: 'at a distance', distance_troncature_pourcentage: 'of the largest distances',
   distance_troncature_aide: 'Detections beyond the truncation w leave the model (their transect stays): truncating the 5 to 10% largest distances is usual (Buckland et al., 2001).',
   distance_gauche: 'left', distance_gauche_aide: 'An optional left truncation: smaller distances leave the model.',
+  distance_intervalles: 'Intervals', distance_intervalles_exemple: 'exact distances (or: 0 10 25 50 100)',
+  distance_intervalles_aide: 'Distances recorded in classes: the bounds of the intervals, increasing, separated by spaces (as ds(cutpoints = )). Each distance of the table (the true one, or its class’s midpoint) counts in its interval; the first bound is the left truncation, the last w, instead of the truncation above.',
+  distance_intervalles_invalides: 'The bounds of the intervals are at least three increasing distances, positive or zero, separated by spaces.',
+  distance_n_intervalles: '{k} intervals from {de} to {a}',
   distance_cle: 'Key', distance_cle_hn: 'half-normal', distance_cle_hr: 'hazard-rate', distance_cle_unif: 'uniform',
   distance_cle_aide: 'The basic shape of the detection function g(x): half-normal exp(−x²/2σ²), hazard-rate 1 − exp(−(x/σ)^−b), uniform 1 (the adjustment terms shape it).',
   distance_ajustements: 'Adjustment terms', distance_serie_cos: 'cosine', distance_serie_herm: 'Hermite polynomial', distance_serie_poly: 'simple polynomial', distance_serie_aucune: 'none',

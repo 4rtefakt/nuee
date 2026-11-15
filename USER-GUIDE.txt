@@ -1399,6 +1399,10 @@ General tab:
   - the truncation: the largest distance (ds's default), a distance, or a percentage of the
     largest distances (5 to 10% is usual); a left truncation if needed. Detections beyond it
     leave the model, their transect stays;
+  - intervals, for distances recorded in classes (as ds(cutpoints = )): their bounds, e.g.
+    "0 10 25 50 100"; each distance of the table (the true one, or its class's midpoint) counts
+    in its interval, the first bound is the left truncation and the last w; the likelihood is
+    then that of the counts of the classes, and the goodness of fit the chi-square on them;
   - the key of the detection function g(x): half-normal exp(−x²/2σ²), hazard-rate
     1 − exp(−(x/σ)^−b) (b ≥ 1, as mrds) or uniform;
   - the adjustment terms: cosine (the default), Hermite polynomials or simple polynomials, their
@@ -1431,13 +1435,12 @@ distances, each bar its count over the count it would have if every animal were 
 mrds's plot.ds, under the fitted g; each detection on the curve, a click selects its row; for
 points, the density of the distances f(r) = 2r g(r) / (w² p) too; below, the chi-square's
 classes); QQ plot (the fitted distribution of each distance against the empirical one, with
-the Cramér–von Mises test); Density and abundance (by stratum and overall: area, covered area,
+the Cramér–von Mises test; not for distances in intervals); Density and abundance (by stratum and overall: area, covered area,
 effort, transects, detections, encounter rate and its CV, D, its standard error, CV, 95%
 interval and df, N and its interval, the share of the variance due to the encounter rate, to
 detection and to group size; with groups, the density of groups too). Methods text with its
 references, Export and report as for the other models; no prediction, and no Export to R yet.
-Covariates in the detection function (MCDS) and distances recorded in intervals are not
-supported yet.
+Covariates in the detection function (MCDS) are not supported yet.
 
 The results are those of Distance 2.0 (moteur/tests/verifier_distance.R compares them), with
 three known differences: Nuée integrates the hazard-rate key exactly where mrds approximates

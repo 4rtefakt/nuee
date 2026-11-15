@@ -45,13 +45,13 @@ cat(if (avec_distance) sprintf("(Distance %s et mrds %s installés : comparaison
 projet_distance <- function(df, nom = "distances") projet_depuis_tableau(cbind(nom = sprintf("r%04d", seq_len(nrow(df))), df, stringsAsFactors = FALSE), nom)
 definition_distance <- function(p, transect = "ligne", w = NULL, pct = NULL, gauche = 0, cle = "hn", serie = "cos", aj = "aic", mono = "stricte",
                                 echelle = "largeur", strate = "Region.Label", aire = "Area", effort = "Effort", taille = NULL, echantillon = "Sample.Label",
-                                unites = list(distance = "m", effort = "km", aire = "km2"), facteur = NULL, observations = NULL, condition = NULL) {
+                                unites = list(distance = "m", effort = "km", aire = "km2"), facteur = NULL, observations = NULL, condition = NULL, intervalles = NULL) {
   u <- function(x) numeros(p, x)
   spec <- function(x) if (startsWith(x, "id:")) list(by = "id", id = substring(x, 4)) else list(by = "variable", variable = u(x))
   o <- list(transect = transect, echantillon = spec(echantillon), strate = if (!is.null(strate)) spec(strate), effort = if (!is.null(effort)) u(effort),
             aire = if (!is.null(aire)) u(aire), taille = if (!is.null(taille)) u(taille),
             troncature = if (!is.null(w)) list(type = "distance", valeur = w) else if (!is.null(pct)) list(type = "pourcentage", valeur = pct) else list(type = "aucune"),
-            gauche = gauche, cle = cle, serie = serie, ajustements = aj, monotonie = mono, echelle_ajustements = echelle, unites = unites, facteur = facteur)
+            gauche = gauche, cle = cle, serie = serie, ajustements = aj, monotonie = mono, echelle_ajustements = echelle, unites = unites, facteur = facteur, intervalles = intervalles)
   definir_modele(p, "DISTANCE", x = NULL, y = u("distance"), echelle = "none", options = o, observations = observations, condition = condition)
 }
 distance_de <- function(p, ...) ajuster(p, definition_distance(p, ...))
@@ -258,6 +258,25 @@ verifier(sprintf("Cramér–von Mises (W = %.4f) et le khi² sur %d classes éga
          proche(a$cvm$W, W, 1e-10) && identical(as.numeric(a$khi2$classes$observe), as.numeric(obs)) && proche(a$khi2$classes$attendu, att, 1e-9) &&
            proche(a$khi2$chi2, sum((obs - att)^2 / att), 1e-9) && a$khi2$ddl == nc - 2 && abs(1 - pcramer_detection(0.46136) - 0.05) < 2e-5 &&
            abs(1 - pcramer_detection(0.74346) - 0.01) < 2e-5)
+# des distances par intervalles : la loi multinomiale des comptes des classes, écrite avec pnorm()
+bornes <- c(0, 0.1, 0.25, 0.45, 0.7, 1)
+xb <- xs[xs <= 1]
+fdb <- c(fd_de("hn", w = 1), list(coupures = bornes))
+ab <- ajuster_detection(fdb, xb)
+nk <- tabulate(cut(xb, bornes, include.lowest = TRUE, labels = FALSE), 5)
+ll_b <- function(ls) { s <- exp(ls); P <- diff(stats::pnorm(bornes / s)) / (stats::pnorm(1 / s) - 0.5); sum(nk * log(P)) }
+ob <- stats::optimize(ll_b, c(-5, 3), maximum = TRUE, tol = 1e-12)
+fdb2 <- c(fd_de("hr", 2:3, "cos", point = TRUE), list(coupures = bornes))
+thb <- c(log(2.5), log(0.4), 0.1, -0.05)
+Sb <- vraisemblance_detection(fdb2, thb, xb, TRUE)$scores
+Jb <- vapply(seq_along(thb), function(j) {
+  h <- 1e-5
+  (vraisemblance_detection(fdb2, replace(thb, j, thb[j] + h), xb)$ll - vraisemblance_detection(fdb2, replace(thb, j, thb[j] - h), xb)$ll) / (2 * h)
+}, 0)
+verifier(sprintf("des distances par intervalles (5 classes) : la vraisemblance multinomiale de la demi-normale écrite avec pnorm() ; les scores (hasard + cosinus, points) contre des différences finies (écart %.1e)",
+                 max(abs(colSums(Sb) - Jb)) / max(abs(Jb))),
+         abs(ab$theta - ob$maximum) < 1e-7 && abs(ab$ll - ob$objective) < 1e-9 * abs(ob$objective) && max(abs(colSums(Sb) - Jb)) < 1e-6 * max(abs(Jb)) &&
+           is.null(adequation_detection(ab, xb, seq_along(xb))$cvm) && identical(as.numeric(adequation_detection(ab, xb, seq_along(xb))$khi2$classes$observe), as.numeric(nk)))
 verifier("les unités : m, km, km² donnent 0,001 (lignes) ; m et ha, 0,01 (points) ; un facteur donné tel quel",
          proche(facteur_echantillonnage(list(transect = "ligne", unites = list(distance = "m", effort = "km", aire = "km2"))), 0.001, 1e-15) &&
            proche(facteur_echantillonnage(list(transect = "point", unites = list(distance = "m", effort = "m", aire = "ha"))), 0.01, 1e-15) &&
@@ -319,8 +338,10 @@ if (avec_distance) {
       res$hessien <- proche(det$H, dI$hessian, if (spline) 1e-2 else 1e-5)
       res$p <- proche(mN$p, sI$average.p, if (spline) 1e-3 else 1e-9) && proche(mN$se_p, sI$average.p.se, tol_v)
       g <- suppressMessages(mrds::ddf.gof(dI, qq = FALSE))
-      # (W est une somme de petits carrés : l'intégrale de mrds à 1e-7 près s'y voit davantage)
-      res$adequation <- proche(mN$adequation$cvm$W, g$dsgof$CvM$W, if (spline) 1e-2 else 1e-5) && proche(mN$adequation$cvm$p, g$dsgof$CvM$p, if (spline) 1e-2 else 1e-6) &&
+      # (W est une somme de petits carrés : l'intégrale de mrds à 1e-7 près s'y voit davantage ; des
+      # distances par intervalles : le khi² seulement, comme ddf.gof)
+      res$adequation <- (if (is.null(mN$adequation$cvm)) is.null(g$dsgof)
+                         else proche(mN$adequation$cvm$W, g$dsgof$CvM$W, if (spline) 1e-2 else 1e-5) && proche(mN$adequation$cvm$p, g$dsgof$CvM$p, if (spline) 1e-2 else 1e-6)) &&
         proche(mN$adequation$khi2$chi2, g$chisquare$chi1$chisq, if (spline) 1e-2 else 1e-6) && identical(as.numeric(mN$adequation$khi2$classes$observe), as.numeric(g$chisquare$chi1$observed))
     } else dI <- dD
     d2 <- as.data.frame(Distance::dht2(dI, flatfile = df, strat_formula = if (strates) ~Region.Label else ~1, convert_units = cu))
@@ -421,6 +442,18 @@ if (avec_distance) {
     comparer(sprintf("une bosse, %s + %s, monotonie %s (contrainte active)", cfg[[1]], cfg[[2]], cfg[[4]]), df_b, list(truncation = 1, key = cfg[[1]], adjustment = cfg[[2]], monotonicity = cfg[[3]]),
              list(w = 1, cle = cfg[[1]], serie = cfg[[2]], mono = cfg[[4]], strate = NULL, unites = list(distance = "km", effort = "km", aire = "km2")), 1, strates = FALSE)
   }
+  # des distances par intervalles (ds(cutpoints = )) : la vraisemblance multinomiale, le khi² sur ces classes
+  cp_lt <- c(0, 2.5, 5, 7.5, 10, 15, 20)
+  for (k in c("hn", "hr", "unif")) {
+    comparer(sprintf("LTExercise par intervalles (6 classes), %s + cos", k), lt, list(cutpoints = cp_lt, key = k), list(cle = k, strate = NULL, intervalles = cp_lt), cu_lkm, strates = FALSE)
+  }
+  comparer("ducknest par intervalles (8 classes), unif + cos", duck, list(cutpoints = seq(0, 2.4, 0.3), key = "unif"), list(cle = "unif", strate = NULL, intervalles = seq(0, 2.4, 0.3)), cu_lkm, strates = FALSE)
+  comparer("PTExercise par intervalles (4 classes), points, hn + cos", pt, list(cutpoints = c(0, 5, 10, 15, 20), transect = "point"),
+           list(transect = "point", strate = NULL, intervalles = c(0, 5, 10, 15, 20), unites = list(distance = "m", effort = "m", aire = "ha")), cu_pha, strates = FALSE)
+  comparer("simulées, points par intervalles, hr + cos, deux strates", s2, list(cutpoints = c(0, 10, 20, 35, 50, 70, 100), transect = "point", key = "hr"),
+           list(transect = "point", cle = "hr", intervalles = c(0, 10, 20, 35, 50, 70, 100)), Distance::convert_units("meter", NULL, "square kilometer"))
+  comparer("simulées, lignes par intervalles, la première borne à 5 m (troncature à gauche)", s1, list(truncation = list(left = 5, right = 100), cutpoints = c(5, 20, 40, 60, 80, 100)),
+           list(intervalles = c(5, 20, 40, 60, 80, 100)), cu_lkm, gauche_lignes = TRUE)
   # le hasard sans ajustement sur des lignes : mrds intègre la clé par un spline de lissage (gstdint), Nuée exactement
   r <- comparer("LTExercise hr seul", lt, list(truncation = 20, key = "hr", adjustment = NULL), list(w = 20, cle = "hr", serie = "aucune", strate = NULL), cu_lkm, strates = FALSE)
   dD <- r$mD$ddf
@@ -498,6 +531,15 @@ verifier("ce que l'interface reçoit : une analyse sans prédiction, ses vues, s
          isTRUE(r$analyse) && identical(r$prediction, FALSE) && identical(as.character(r$vues_defaut), c("distance_detection", "distance_densite")) &&
            grepl("^hn.* · D ", r$chiffres) && nrow(r$observations) == r$N && all(c("uid", "nom", "transect", "strate", "distance", "dans_troncature", "g", "taille") %in% names(r$observations)) &&
            nrow(r$courbe) == 101 && sum(r$histogramme$compte) == r$n && nrow(r$adequation$qq) == r$n && nrow(r$densite) == 3 && inherits(json(r), "json"))
+db <- definition_distance(ps, intervalles = c(0, 20, 40, 60, 80, 100))
+etat$modeles$M2 <- list(projet = "P1", definition = db, modele = ajuster(ps, db))
+rb <- resultat_distance("M2")
+tb <- texte_methodes(ps, db, etat$modeles$M2$modele, "fr", "essai")
+verifier("des distances par intervalles : les bornes font la troncature, le khi² sur ces classes, ni Cramér–von Mises ni diagramme quantile-quantile ; le texte des méthodes, les tableaux ; des bornes qui ne croissent pas refusées",
+         identical(as.numeric(rb$intervalles), c(0, 20, 40, 60, 80, 100)) && is.null(rb$adequation$cvm) && is.null(rb$adequation$qq) && nrow(rb$histogramme) == 5 &&
+           rb$troncature$w == 100 && inherits(json(rb), "json") && grepl("5 intervalles", tb$paragraphes[1]) && !grepl("Cramér", tb$paragraphes[2]) &&
+           identical(tables_resultats(ps, etat$modeles$M2$modele)$adequation$test, "khi2") &&
+           grepl("bornes croissantes", refus(distance_de(ps, intervalles = c(0, 50, 40, 100)))))
 verifier("ses réglages pour Modifier le modèle (les options, les distances en Y)", identical(r$reglages$options$cle, "hn") && identical(as.numeric(r$reglages$y), numeros(ps, "distance")) &&
            identical(as.numeric(r$reglages$options$taille), numeros(ps, "size")))
 options(nuee.langue = "en")

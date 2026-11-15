@@ -154,15 +154,16 @@ detection_distance <- function(fd, theta, x, derivees = FALSE) {
 # comme mrds (fx, fr) : la vraisemblance en garde les mêmes termes.
 poids_detection <- function(fd, x) if (fd$point) 2 * x / fd$w^2 else rep(1 / (fd$w - fd$L), length(x))
 
-# Les intégrales de poids_detection × g̃ de `a` à chaque `b` (et leurs dérivées par θ), une valeur
-# sous 1e-16 comptant pour 0 comme dans mrds (gstdint).
+# Les intégrales de poids_detection × g̃ de chaque `a` à chaque `b` (`a` seul : le même début), et leurs
+# dérivées par θ, une valeur sous 1e-16 comptant pour 0 comme dans mrds (gstdint).
 integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
   valeur <- function(x) {
     v <- poids_detection(fd, x) * detection_distance(fd, theta, x)$gt
     v[!(v >= 1e-16)] <- 0
     v
   }
-  I <- vapply(b, function(bb) integrer_detection(valeur, a, bb), 0)
+  a <- rep_len(a, length(b))
+  I <- vapply(seq_along(b), function(i) integrer_detection(valeur, a[i], b[i]), 0)
   e0 <- detection_distance(fd, theta, 0, derivees)
   if (!derivees) return(list(I = I, s0 = e0$s0))
   derivee <- function(j) function(x) {
@@ -171,14 +172,33 @@ integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
     v <- pd * e$gt
     pd * e$dgt[, j] * (!is.na(v) & v >= 1e-16)
   }
-  dI <- vapply(seq_len(indices_detection(fd)$q), function(j) vapply(b, function(bb) integrer_detection(derivee(j), a, bb), 0), numeric(length(b)))
+  dI <- vapply(seq_len(indices_detection(fd)$q), function(j) vapply(seq_along(b), function(i) integrer_detection(derivee(j), a[i], b[i]), 0), numeric(length(b)))
   list(I = I, dI = matrix(dI, length(b)), s0 = e0$s0, ds0 = e0$ds0)
 }
 
+# Des distances relevées par intervalles (fd$coupures, comme ds(cutpoints = ) : le premier la
+# troncature à gauche, le dernier w) : la classe de chaque distance, fermée à droite (la première
+# des deux côtés), comme create_bins de Distance.
+classes_detection <- function(fd, x) cut(x, fd$coupures, include.lowest = TRUE, labels = FALSE)
+
 # La log-vraisemblance des distances exactes `x` (entre L et w) : Σ ln f(xi), f = poids × g̃ / ∫ poids
-# × g̃ ; une densité sous 1e-15 comptant pour 1e-15 (mrds : flpt.lnl). Avec `scores`, la dérivée de
-# chaque terme par θ (une ligne par observation).
+# × g̃ ; une densité sous 1e-15 comptant pour 1e-15 (mrds : flpt.lnl). Des distances par intervalles :
+# Σ ln (∫ de sa classe / ∫ de L à w), la loi multinomiale des comptes des classes. Avec `scores`, la
+# dérivée de chaque terme par θ (une ligne par observation).
 vraisemblance_detection <- function(fd, theta, x, scores = FALSE) {
+  if (!is.null(fd$coupures)) {
+    K <- length(fd$coupures) - 1
+    k <- classes_detection(fd, x)
+    nk <- tabulate(k, K)
+    ib <- integrale_detection(fd, theta, fd$coupures[-(K + 1)], fd$coupures[-1], scores)
+    ia <- integrale_detection(fd, theta, fd$L, fd$w, scores)
+    vus <- nk > 0
+    if (!is.finite(ia$I) || ia$I <= 0 || !all(ib$I[vus] > 0)) return(list(ll = -Inf))
+    ll <- sum(nk[vus] * (log(ib$I[vus]) - log(ia$I)))
+    if (!scores) return(list(ll = ll))
+    Sk <- sweep(ib$dI / ib$I, 2, ia$dI[1, ] / ia$I)
+    return(list(ll = ll, scores = Sk[k, , drop = FALSE]))
+  }
   e <- detection_distance(fd, theta, x, scores)
   p1 <- poids_detection(fd, x) * e$gt
   bas <- !(p1 >= 1e-15)
@@ -226,10 +246,14 @@ contraintes_monotonie <- function(fd, theta, strict = TRUE) {
 # Les valeurs de départ de mrds (setinitial.ds) : ln σ = la moyenne de ln(x + w/1000) (demi-normale) ;
 # pour le hasard, la meilleure vraisemblance d'une grille (sethazard : σ = s/2 + 0,2 j s, s la racine
 # de la moyenne des x², j de 1 à 10 ; b = 1, 3… 29 ; la première case retient b = 2, comme mrds) ;
-# les ajustements à 1e-16.
+# les ajustements à 1e-16. Des distances par intervalles y comptent pour le milieu de leur classe.
 depart_detection <- function(fd, x) {
   ix <- indices_detection(fd)
   theta <- numeric(ix$q)
+  if (!is.null(fd$coupures)) {
+    k <- classes_detection(fd, x)
+    x <- (fd$coupures[k] + fd$coupures[k + 1]) / 2
+  }
   if (fd$cle == "hn") theta[ix$echelle] <- mean(log(x + fd$w / 1000))
   if (fd$cle == "hr") {
     cle <- fd
@@ -384,6 +408,12 @@ ordres_ajustement <- function(n, cle, serie) {
   as.integer(seq(if (cle == "unif") 2 else 4, by = 2, length.out = n))
 }
 
+# Plus de paramètres que de distances différentes, ou que de classes moins une (mrds, ddf.ds).
+trop_de_parametres <- function(fd, x) {
+  q <- indices_detection(fd)$q
+  if (!is.null(fd$coupures)) length(fd$coupures) - 2 < q else length(unique(x)) < q
+}
+
 # Le libellé d'une fonction de détection : « hn », « hn + cos(2, 3) ».
 libelle_detection <- function(fd) {
   if (!length(fd$ordres)) return(fd$cle)
@@ -418,7 +448,7 @@ choisir_detection <- function(base, x, serie, n_fixe = NULL, n_max = DISTANCE_AJ
     fd <- fd_de(ordres[seq_len(i)])
     depart <- if (i > 1) c(meilleur$theta, 0)
     # (une taille de données trop petite pour tant de paramètres : la recherche s'arrête là, comme mrds)
-    if (length(unique(x)) < indices_detection(fd)$q) { raison <- "parametres"; break }
+    if (trop_de_parametres(fd, x)) { raison <- "parametres"; break }
     m <- tryCatch(ajuster_detection(fd, x, depart, monotonie), error = function(e) NULL)
     if (is.null(m) || !m$converge) {
       if (!is.null(m)) candidats[[length(candidats) + 1]] <- m
@@ -450,30 +480,39 @@ pcramer_detection <- function(q, eps = 1e-5) {
   }, 0))
 }
 
+# Les classes de l'histogramme et du khi² : celles des distances par intervalles, sinon √n classes
+# égales de L à w (gof.ds, plot.ds).
+bords_classes <- function(fd, n) {
+  if (!is.null(fd$coupures)) return(fd$coupures)
+  nc <- max(1, round(sqrt(n)))
+  fd$L + (fd$w - fd$L) / nc * (0:nc)
+}
+
 # Les tests d'adéquation de mrds (ddf.gof) : Cramér–von Mises sur les distances exactes (W = 1/12n +
-# Σ (F(x(i)) − (i − ½)/n)², p asymptotique) et le khi² sur √n classes égales de L à w (gof.ds : les
-# classes fermées à droite, ddl = classes − 1 − paramètres) ; le diagramme quantile-quantile (la
-# répartition ajustée de chaque distance contre la répartition empirique, comme qqplot.ddf).
+# Σ (F(x(i)) − (i − ½)/n)², p asymptotique) et le khi² sur les classes (gof.ds : fermées à droite,
+# ddl = classes − 1 − paramètres) ; le diagramme quantile-quantile (la répartition ajustée de chaque
+# distance contre la répartition empirique, comme qqplot.ddf). Des distances par intervalles : le khi²
+# seulement, sur leurs classes.
 adequation_detection <- function(det, x, uid) {
   fd <- det$fd
   n <- length(x)
-  F <- repartition_detection(fd, det$theta, x)
-  o <- order(F)
-  Fs <- F[o]
-  W <- 1 / (12 * n) + sum((Fs - (seq_len(n) - 0.5) / n)^2)
-  cvm <- list(W = W, p = 1 - pcramer_detection(W))
-  nc <- max(1, round(sqrt(n)))
-  bords <- fd$L + (fd$w - fd$L) / nc * (0:nc)
+  bords <- bords_classes(fd, n)
+  nc <- length(bords) - 1
   observe <- as.vector(table(cut(x, bords, include.lowest = TRUE)))
   tot <- integrale_detection(fd, det$theta, fd$L, fd$w)$I
-  attendu <- n * diff(c(0, integrale_detection(fd, det$theta, fd$L, bords[-1])$I)) / tot
+  attendu <- n * integrale_detection(fd, det$theta, bords[-(nc + 1)], bords[-1])$I / tot
   chi2 <- sum((observe - attendu)^2 / attendu, na.rm = TRUE)
   ddl <- nc - 1 - det$q
   khi2 <- list(classes = data.frame(de = bords[-length(bords)], a = bords[-1], observe = observe, attendu = attendu),
                chi2 = chi2, ddl = if (ddl > 0) ddl else NA_integer_, p = if (ddl > 0) stats::pchisq(chi2, ddl, lower.tail = FALSE) else NA_real_)
+  if (!is.null(fd$coupures)) return(list(khi2 = khi2))
+  F <- repartition_detection(fd, det$theta, x)
+  o <- order(F)
+  Fs <- F[o]
+  W <- 1 / (12 * n) + sum((Fs - (seq_len(n) - 0.5) / n)^2)
   qq <- data.frame(uid = uid[o], distance = x[o], ajustee = Fs, empirique_bas = vapply(Fs, function(v) sum(Fs < v), 0) / n,
                    empirique = vapply(Fs, function(v) sum(Fs <= v), 0) / n)
-  list(cvm = cvm, khi2 = khi2, qq = qq)
+  list(cvm = list(W = W, p = 1 - pcramer_detection(W)), khi2 = khi2, qq = qq)
 }
 
 # ---------------------------------------------------------------- les unités
@@ -498,7 +537,9 @@ facteur_echantillonnage <- function(r) {
 # l'aire de la strate et de la taille des groupes ; la troncature à droite (aucune : la plus grande
 # distance, comme ds ; une distance ; un pourcentage des plus grandes) et à gauche ; la clé, la série
 # d'ajustement, leur nombre ("aic" : choisi par l'AIC, ou 0 à 5), leur échelle (la troncature w,
-# comme ds par défaut, ou σ), la monotonie ; les unités ou un facteur de conversion donné tel quel.
+# comme ds par défaut, ou σ), la monotonie ; les unités ou un facteur de conversion donné tel quel ;
+# les bornes des intervalles de distances relevées par classes (ds : cutpoints), qui font alors les
+# troncatures (la première à gauche, la dernière w).
 reglages_echantillonnage <- function(d) {
   o <- d$options %||% list()
   spec <- function(x) if (length(x$by)) specs_groupement(x)[[1]]
@@ -513,7 +554,10 @@ reglages_echantillonnage <- function(d) {
   tr <- o$troncature %||% list()
   aj <- as.character(unlist(o$ajustements %||% "aic"))[1]
   u <- o$unites %||% list()
+  coupures <- suppressWarnings(as.numeric(unlist(o$intervalles)))
+  coupures <- coupures[!is.na(coupures)]
   list(transect = texte(o$transect, c("ligne", "point"), "ligne"), echantillon = spec(o$echantillon), strate = spec(o$strate),
+       intervalles = if (length(coupures)) coupures,
        effort = nombre(o$effort), aire = nombre(o$aire), taille = nombre(o$taille),
        troncature = list(type = texte(tr$type, c("aucune", "distance", "pourcentage"), "aucune"), valeur = nombre(tr$valeur)),
        gauche = nombre(o$gauche) %||% 0, cle = texte(o$cle, DISTANCE_CLES, "hn"), serie = texte(o$serie, c(DISTANCE_SERIES, "aucune"), "cos"),
@@ -642,6 +686,15 @@ donnees_echantillonnage <- function(projet, d, r) {
       if (!is.finite(v) || v < 0 || v >= 100) err("La troncature est un pourcentage de 0 à 100 (exclu).", "The truncation is a percentage from 0 to 100 (excluded).")
       unname(stats::quantile(xs, 1 - v / 100))
     })
+  coupures <- r$intervalles
+  if (!is.null(coupures)) {
+    # (des distances par intervalles : les bornes font les troncatures, comme ds(cutpoints = ))
+    if (length(coupures) < 3 || any(diff(coupures) <= 0) || coupures[1] < 0) {
+      err("Les intervalles de distances sont au moins trois bornes croissantes, positives ou nulles (0 10 25 50…).", "The distance intervals are at least three increasing bounds, positive or zero (0 10 25 50…).")
+    }
+    L <- coupures[1]
+    w <- coupures[length(coupures)]
+  }
   if (!is.finite(L) || L < 0) err("La troncature à gauche est une distance positive ou nulle.", "The left truncation is a distance, positive or zero.")
   if (!is.finite(w) || w <= L) err("La troncature (%s) doit dépasser la troncature à gauche (%s).", "The truncation (%s) must exceed the left truncation (%s).", nombre(w), nombre(L))
   dans <- garde & !is.na(x) & x >= L & x <= w
@@ -667,7 +720,7 @@ donnees_echantillonnage <- function(projet, d, r) {
        observations = obs[garde], lignes = data.frame(uid = obs[garde], nom = noms_obs[garde], transect = tr[garde], strate = st[garde], distance = x[garde],
                                                       dans = dans[garde], taille = if (!is.null(taille)) taille[garde] else NA_real_, stringsAsFactors = FALSE),
        vides = sum(vide), au_dela = sum(garde & !is.na(x) & x > w), en_deca = sum(garde & !is.na(x) & x < L), n = n, noms = noms,
-       pourcentage = if (r$troncature$type == "pourcentage") r$troncature$valeur)
+       pourcentage = if (r$troncature$type == "pourcentage" && is.null(coupures)) r$troncature$valeur, coupures = coupures)
 }
 
 # ---------------------------------------------------------------- densité et effectif
@@ -771,8 +824,12 @@ ajuster_distance <- function(projet, d) {
   if (!identical(r$ajustements, "aic") && (r$ajustements < 0 || r$ajustements > DISTANCE_AJUSTEMENTS_MAX)) {
     stop(sprintf(traduire("Le nombre de termes d'ajustement va de 0 à %d.", "The number of adjustment terms goes from 0 to %d."), DISTANCE_AJUSTEMENTS_MAX), call. = FALSE)
   }
-  base <- list(cle = r$cle, w = t$w, L = t$L, point = t$point, echelle_ajustements = r$echelle_ajustements, ordres = integer(0))
+  base <- list(cle = r$cle, w = t$w, L = t$L, point = t$point, echelle_ajustements = r$echelle_ajustements, ordres = integer(0), coupures = t$coupures)
   serie <- if (r$serie != "aucune") r$serie
+  if (!is.null(t$coupures) && trop_de_parametres(base, t$x)) {
+    stop(sprintf(traduire("Trop peu d'intervalles (%d) pour estimer la clé %s : il en faut au moins un de plus que de paramètres.",
+                          "Too few intervals (%d) to estimate the %s key: it takes at least one more than parameters."), length(t$coupures) - 1, r$cle), call. = FALSE)
+  }
   ch <- choisir_detection(base, t$x, serie, n_fixe = if (!identical(r$ajustements, "aic")) r$ajustements, monotonie = r$monotonie)
   det <- ch$choisi
   if (!det$converge) {
@@ -856,8 +913,7 @@ observations_echantillonnage <- function(m) {
 # Δ(r²) n / (p w²)) ; et la densité des distances (le compte sur n Δ), pour la courbe f.
 histogramme_echantillonnage <- function(m) {
   t <- m$donnees
-  nc <- max(1, round(sqrt(t$n)))
-  bords <- t$L + (t$w - t$L) / nc * (0:nc)
+  bords <- bords_classes(list(coupures = t$coupures, L = t$L, w = t$w), t$n)
   comptes <- as.vector(table(cut(t$x, bords, include.lowest = TRUE)))
   Nc <- t$n / m$p
   g1 <- if (t$point) diff(bords^2) * Nc / t$w^2 else diff(bords) * Nc / (t$w - t$L)
@@ -887,6 +943,7 @@ resultat_distance <- function(id) {
        candidats = m$candidats, parametres = m$parametres, logL = det$ll, AIC = det$AIC, q = det$q, n = t$n,
        p = m$p, se_p = m$se_p, cv_p = m$se_p / m$p, effectif = m$effectif, Nc = m$Nc,
        troncature = list(w = t$w, L = t$L, type = r$troncature$type, pourcentage = t$pourcentage), au_dela = t$au_dela, en_deca = t$en_deca, vides = t$vides,
+       intervalles = if (!is.null(t$coupures)) I(t$coupures),
        courbe = m$courbe, histogramme = histogramme_echantillonnage(m), distances = I(t$x), uid_distances = I(t$uid), g_distances = I(m$g_x),
        adequation = list(cvm = m$adequation$cvm, khi2 = m$adequation$khi2, qq = m$adequation$qq),
        densite = m$densite, densite_groupes = m$densite_groupes, densite_seule = t$densite_seule, groupes = t$groupes,
@@ -918,7 +975,8 @@ tables_distance <- function(projet, m) {
   if (!is.null(m$parametres)) out$parametres <- m$parametres
   out$detection <- data.frame(statistique = c("p", m$effectif$quoi, "N_couvert"), estimation = c(m$p, m$effectif$valeur, m$Nc),
                               se = c(m$se_p, m$effectif$se, NA), cv = c(m$se_p / m$p, m$effectif$se / m$effectif$valeur, NA))
-  out$adequation <- data.frame(test = c("Cramer-von Mises", "khi2"), statistique = c(a$cvm$W, a$khi2$chi2), ddl = c(NA, a$khi2$ddl), p = c(a$cvm$p, a$khi2$p))
+  out$adequation <- rbind(if (!is.null(a$cvm)) data.frame(test = "Cramer-von Mises", statistique = a$cvm$W, ddl = NA, p = a$cvm$p),
+                          data.frame(test = "khi2", statistique = a$khi2$chi2, ddl = a$khi2$ddl, p = a$khi2$p))
   out$classes <- a$khi2$classes
   out$densite <- m$densite
   if (!is.null(m$densite_groupes)) out$densite_groupes <- m$densite_groupes
@@ -967,6 +1025,10 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
   trunc <- sprintf(tx("jusqu'à la troncature w = %s", "up to the truncation distance w = %s"), dist(t$w))
   if (!is.null(t$pourcentage)) trunc <- paste0(trunc, sprintf(tx(" (les %s %% des plus grandes distances tronquées)", " (the %s%% largest distances truncated)"), sig(t$pourcentage, 3)))
   if (t$L > 0) trunc <- paste0(trunc, sprintf(tx(", et à gauche à %s", ", and on the left at %s"), dist(t$L)))
+  if (!is.null(t$coupures)) {
+    trunc <- sprintf(tx("relevées par %d intervalles (bornes %s %s)", "recorded in %d intervals (bounds %s %s)"), length(t$coupures) - 1,
+                     paste(vapply(t$coupures, sig, "", 4), collapse = tx(" ; ", ", ")), u$distance)
+  }
   p1 <- sprintf(tx("Les distances de %s ont été analysées par échantillonnage par distances (distance sampling ; Buckland et al., 2001) depuis %s : %s, dont %d détections %s.",
                    "The distances of %s were analysed by distance sampling (Buckland et al., 2001) from %s: %s, of which %d detections %s."),
                 guillemets_texte(t$noms$y, fr), plan, observations_texte(m$N, d, fr), t$n, trunc)
@@ -995,9 +1057,10 @@ texte_methodes_distance <- function(projet, d, m, langue = "fr", version = "") {
                              "The average probability of detection within the truncation is p = %s (standard error %s, CV %s), that is %s."),
                           nombre(m$p, 3), nombre(m$se_p, 3), pourcent_texte(m$se_p / m$p, fr), eff))
   a <- m$adequation
-  p2 <- paste(p2, sprintf(tx("Adéquation : Cramér–von Mises W = %s (%s) ; khi² = %s sur %d classes (%s).", "Goodness of fit: Cramér–von Mises W = %s (%s); chi-square = %s on %d classes (%s)."),
-                          nombre(a$cvm$W, 3), valeur_p(a$cvm$p), nombre(a$khi2$chi2, 2), nrow(a$khi2$classes),
-                          if (is.na(a$khi2$ddl)) tx("sans degré de liberté", "no degree of freedom") else sprintf(tx("%d ddl, %s", "%d df, %s"), as.integer(a$khi2$ddl), valeur_p(a$khi2$p))))
+  khi2 <- sprintf(tx("khi² = %s sur %d classes (%s)", "chi-square = %s on %d classes (%s)"), nombre(a$khi2$chi2, 2), nrow(a$khi2$classes),
+                  if (is.na(a$khi2$ddl)) tx("sans degré de liberté", "no degree of freedom") else sprintf(tx("%d ddl, %s", "%d df, %s"), as.integer(a$khi2$ddl), valeur_p(a$khi2$p)))
+  p2 <- paste(p2, if (is.null(a$cvm)) sprintf(tx("Adéquation : %s.", "Goodness of fit: %s."), khi2)
+                  else sprintf(tx("Adéquation : Cramér–von Mises W = %s (%s) ; %s.", "Goodness of fit: Cramér–von Mises W = %s (%s); %s."), nombre(a$cvm$W, 3), valeur_p(a$cvm$p), khi2))
   # la densité
   dens <- m$densite
   tot <- dens[nrow(dens), ]

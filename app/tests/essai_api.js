@@ -1602,6 +1602,9 @@ async function principal() {
       const points = await api('ajuster', { ...def, nom: 'Distance 3', options: { ...options, transect: 'point', effort: null, strate: null, aire: null, unites: { distance: 'm', effort: 'm', aire: 'ha' } } });
       verifier(points.transect === 'point' && points.effectif.quoi === 'EDR' && points.densite_seule === true && [].concat(points.densite.D).length === 1 && / \/ha /.test(points.chiffres),
         `points, la densité seule : ${points.chiffres}`);
+      const classes = await api('ajuster', { ...def, nom: 'Distance 4', options: { ...options, intervalles: [0, 15, 30, 50, 75, 100] } });
+      verifier([].concat(classes.intervalles).join() === '0,15,30,50,75,100' && classes.adequation.cvm === null && classes.adequation.qq === null
+        && classes.histogramme.compte.length === 5 && classes.troncature.w === 100, `distances par intervalles : ${classes.chiffres}`);
       const re = await api('reajuster', { modele: dm.id, exclues: [1] });
       verifier(re.type === 'DISTANCE' && re.N === k - 1, `réajusté : N = ${re.N}`);
       const mt = await api('methodes', { modele: dm.id, langue: 'en' });
