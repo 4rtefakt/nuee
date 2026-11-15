@@ -88,6 +88,7 @@ figcaption { color: var(--texte-doux); font-size: .9rem; margin-top: .45rem; }
 /* a screenshot's dark version (images/<langue>/sombre/) in the dark theme, its light one otherwise;
    the hidden one, lazy, isn't downloaded */
 figure a.sombre-seul { display: none; }
+figure a.sombre-seul img { background: var(--fond-doux); }  /* not a white box while it loads */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="clair"]) figure a.clair-seul { display: none; }
   :root:not([data-theme="clair"]) figure a.sombre-seul { display: inline-block; }
