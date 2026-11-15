@@ -1,0 +1,14 @@
+{
+  "name": "nuee-vitrine",
+  "private": true,
+  "type": "module",
+  "description": "nuee.io: Nuée's landing page, on Cloudflare Workers",
+  "scripts": {
+    "build": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON construire.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.162.0"
+  }
+}

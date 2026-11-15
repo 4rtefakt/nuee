@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="{{langue}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{meta_titre}}</title>
+<meta name="description" content="{{meta_description}}">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f4efe4">
+<link rel="canonical" href="{{url_page}}">
+<link rel="alternate" hreflang="en" href="https://nuee.io/">
+<link rel="alternate" hreflang="fr" href="https://nuee.io/fr/">
+<link rel="alternate" hreflang="x-default" href="https://nuee.io/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Nuée">
+<meta property="og:title" content="{{meta_titre}}">
+<meta property="og:description" content="{{meta_description}}">
+<meta property="og:url" content="{{url_page}}">
+<meta property="og:locale" content="{{og_locale}}">
+<meta property="og:image" content="https://nuee.io/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/assets/nuee.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/assets/polices/fraunces-latin-full-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/site.css">
+<script type="module" src="/assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">{{sauter}}</a>
+<canvas id="nuee" aria-hidden="true"></canvas>
+
+<header class="entete" id="entete">
+  <a class="marque" href="{{url_accueil}}"><img src="/assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+  <nav class="menu" aria-label="{{menu_aria}}">
+    <a href="#tour">{{menu_tour}}</a>
+    <a href="#choisir">{{menu_choisir}}</a>
+    <a href="#r">{{menu_r}}</a>
+    <a href="{{docs}}">{{menu_docs}}</a>
+    <a href="{{depot}}">GitHub</a>
+  </nav>
+  <div class="entete-fin">
+    <a class="langue" href="{{url_autre_langue}}" hreflang="{{autre_langue}}" lang="{{autre_langue}}">{{nom_autre_langue}}</a>
+    <a class="bouton petit" href="#telecharger">{{menu_telecharger}}</a>
+  </div>
+</header>
+
+<main id="contenu">
+
+<!-- ======================================================== the hero: the word, and its swarm -->
+<section class="hero" id="hero">
+  <div class="hero-texte">
+    <p class="entree"><span class="entree-mot">nuée</span> <span class="entree-phon">/nɥe/</span> <span class="entree-gram">{{hero_gram}}</span></p>
+    <h1>Nuée</h1>
+    <ol class="definitions">
+      <li>{{hero_def1}}</li>
+      <li>{{hero_def2}}</li>
+    </ol>
+    <div class="actions">
+      <a class="bouton" href="/download/windows" data-telecharger>{{telecharger_windows}}</a>
+      <a class="bouton second" href="#telecharger">{{hero_autres}}</a>
+    </div>
+    <p class="note">{{hero_note}}</p>
+  </div>
+  <div class="ciel" id="ciel" role="img" aria-label="{{hero_fig_aria}}">
+    <div class="figure" data-figure="hero"><div class="zone"></div></div>
+  </div>
+  <p class="legende hero-legende"><span class="fig">Fig. 1</span> {{hero_legende}} <button type="button" class="bascule" id="poser" hidden></button></p>
+</section>
+
+<!-- ======================================================== 1. the application -->
+<section class="bloc application" id="application">
+  <div class="axe" aria-hidden="true"></div>
+  <div class="cadre">
+    <header class="bloc-tete">
+      <p class="surtitre"><span>§ 1</span>{{app_surtitre}}</p>
+      <h2>{{app_titre}}</h2>
+    </header>
+    <div class="app-grille">
+      <div class="app-texte">
+        <p class="chapeau">{{app_p1}}</p>
+        <p>{{app_p2}}</p>
+        <ul class="marges">
+          <li>{{app_note1}}</li>
+          <li>{{app_note2}}</li>
+          <li>{{app_note3}}</li>
+        </ul>
+      </div>
+      <figure class="fenetre" id="fenetre">
+        <div class="fenetre-cadre">
+          <img class="clair" src="/assets/captures/{{langue}}/fenetre.png" alt="{{app_fig_alt}}" width="1280" height="900">
+          <img class="sombre" src="/assets/captures/{{langue}}/fenetre-sombre.png" alt="" width="1280" height="900" loading="lazy">
+        </div>
+        <figcaption class="legende">
+          <span><span class="fig">Fig. 2</span> {{app_fig}}</span>
+          <button type="button" class="interrupteur" id="theme" aria-pressed="false" aria-label="{{app_theme_aria}}"><span>{{app_jour}}</span><i aria-hidden="true"></i><span>{{app_nuit}}</span></button>
+        </figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== 2. the tour: one swarm, six shapes -->
+<section class="bloc tour" id="tour">
+  <div class="axe" aria-hidden="true"></div>
+  <div class="cadre">
+    <header class="bloc-tete">
+      <p class="surtitre"><span>§ 2</span>{{tour_surtitre}}</p>
+      <h2>{{tour_titre}}</h2>
+      <p class="chapeau">{{tour_intro}}</p>
+    </header>
+    <div class="tour-grille">
+      <div class="tour-figure">
+        <div class="planche" id="planche" aria-hidden="true">
+          <div class="figure" data-figure="tour"><div class="zone"></div></div>
+          <p class="planche-nom" id="planche-nom"></p>
+        </div>
+      </div>
+      <ol class="etapes">
+{{bloc_etapes}}
+      </ol>
+    </div>
+    <p class="aussi">{{tour_aussi}}</p>
+  </div>
+</section>
+
+<!-- ======================================================== 3. Which analysis? -->
+<section class="bloc choisir" id="choisir">
+  <div class="axe" aria-hidden="true"></div>
+  <div class="cadre">
+    <header class="bloc-tete">
+      <p class="surtitre"><span>§ 3</span>{{choisir_surtitre}}</p>
+      <h2>{{choisir_titre}}</h2>
+      <p class="chapeau">{{choisir_intro}}</p>
+    </header>
+    <div class="choisir-grille" id="quelle-analyse" hidden>
+      <form class="questionnaire" id="questionnaire">
+        <fieldset><legend><span>1</span>{{qa_titre_question}}</legend><div class="choix" id="qa-questions"></div></fieldset>
+        <fieldset><legend><span>2</span>{{qa_titre_reponse}}</legend><div class="choix" id="qa-reponses"></div></fieldset>
+        <fieldset><legend><span>3</span>{{qa_titre_plan}}</legend><div class="choix" id="qa-plan"></div></fieldset>
+      </form>
+      <div class="ordonnance" id="qa-resultat" aria-live="polite"></div>
+    </div>
+    <p class="apres">{{choisir_apres}}</p>
+  </div>
+</section>
+
+<!-- ======================================================== 4. R, all the way down -->
+<section class="bloc nuit" id="r">
+  <div class="cadre">
+    <header class="bloc-tete">
+      <p class="surtitre"><span>§ 4</span>{{r_surtitre}}</p>
+      <h2>{{r_titre}}</h2>
+      <p class="chapeau">{{r_p}}</p>
+    </header>
+    <div class="r-grille">
+      <div class="r-gauche">
+        <figure class="terminal" id="console">
+          <div class="terminal-barre"><span>{{r_console_titre}}</span><span>{{r_console_aide}}</span></div>
+          <pre class="terminal-corps"><code>{{bloc_console}}</code></pre>
+          <figcaption>{{r_console}}</figcaption>
+        </figure>
+        <p class="r-corriger">{{r_corriger}}</p>
+      </div>
+      <figure class="terminal script">
+        <div class="terminal-barre"><span>{{r_script_titre}}</span><span>{{r_suite}}</span></div>
+        <pre class="terminal-corps"><code>{{bloc_script}}</code></pre>
+        <figcaption>{{r_script}}</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== 5. from the model to the paper -->
+<section class="bloc publier" id="publier">
+  <div class="cadre">
+    <header class="bloc-tete">
+      <p class="surtitre"><span>§ 5</span>{{pub_surtitre}}</p>
+      <h2>{{pub_titre}}</h2>
+      <p class="chapeau">{{pub_p}}</p>
+    </header>
+    <div class="pub-grille">
+      <figure class="feuille" id="feuille">
+        <div class="feuille-papier">
+          <div class="feuille-tete">
+            <h3>{{pub_feuille_titre}}</h3>
+            <div class="langues" role="group" aria-label="{{pub_langue_aria}}">
+              <button type="button" data-langue="en" lang="en">English</button><button type="button" data-langue="fr" lang="fr">Français</button>
+            </div>
+          </div>
+{{bloc_methodes}}
+        </div>
+        <figcaption class="legende"><span><span class="fig">Fig. 9</span> {{pub_fig}}</span></figcaption>
+      </figure>
+      <div class="pub-cote">
+        <article>
+          <h3>{{pub_doc_titre}}</h3>
+          <p>{{pub_doc_p}}</p>
+{{bloc_document}}
+        </article>
+        <article>
+          <h3>{{pub_figure_titre}}</h3>
+          <p>{{pub_figure_p}}</p>
+          <img class="vignette" src="/assets/captures/{{langue}}/figure.png" alt="{{pub_figure_alt}}" width="{{figure_largeur}}" height="{{figure_hauteur}}" loading="lazy">
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== 6. files -->
+<section class="bloc fichiers" id="fichiers">
+  <div class="axe" aria-hidden="true"></div>
+  <div class="cadre">
+    <header class="bloc-tete">
+      <p class="surtitre"><span>§ 6</span>{{fichiers_surtitre}}</p>
+      <h2>{{fichiers_titre}}</h2>
+      <p class="chapeau">{{fichiers_p}}</p>
+    </header>
+  </div>
+  <div class="defile">
+    <p class="defile-nom"><span>{{fichiers_entree}}</span></p>
+    <div class="defile-piste">{{bloc_formats_entree}}</div>
+    <p class="defile-nom"><span>{{fichiers_sortie}}</span></p>
+    <div class="defile-piste inverse">{{bloc_formats_sortie}}</div>
+  </div>
+</section>
+
+<!-- ======================================================== 7. checked -->
+<section class="bloc confiance" id="confiance">
+  <div class="axe" aria-hidden="true"></div>
+  <div class="cadre">
+    <header class="bloc-tete">
+      <p class="surtitre"><span>§ 7</span>{{conf_surtitre}}</p>
+      <h2>{{conf_titre}}</h2>
+      <p class="chapeau">{{conf_p}}</p>
+    </header>
+    <table class="registre">
+      <tbody>
+{{bloc_registre}}
+      </tbody>
+    </table>
+    <p class="registre-note">{{conf_note}} <a href="{{depot}}/actions/workflows/verifications.yml">{{conf_checks}}</a></p>
+    <div class="prive">
+      <h3>{{prive_titre}}</h3>
+      <p>{{prive_p}}</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== 8. download -->
+<section class="bloc telecharger" id="telecharger">
+  <div class="axe" aria-hidden="true"></div>
+  <div class="cadre">
+    <div class="dl-tete">
+      <header class="bloc-tete">
+        <p class="surtitre"><span>§ 8</span>{{dl_surtitre}}</p>
+        <h2>{{dl_titre}}</h2>
+        <p class="chapeau" id="dl-version" hidden>{{dl_version}}</p>
+        <p class="avance" id="dl-avance" hidden>{{dl_avance}}</p>
+      </header>
+      <div class="ciel-fin" id="ciel-fin" aria-hidden="true"><div class="figure" data-figure="fin"><div class="zone"></div></div></div>
+    </div>
+    <div class="dl-grille">
+      <article class="dl-carte">
+        <h3>{{dl_win_titre}}</h3>
+        <p>{{dl_win_p}}</p>
+        <a class="bouton" href="/download/windows">{{telecharger_windows}}</a>
+        <p class="dl-note">{{dl_win_note}}</p>
+      </article>
+      <article class="dl-carte">
+        <h3>{{dl_linux_titre}}</h3>
+        <p>{{dl_linux_p}}</p>
+        <a class="bouton" href="/download/deb">{{dl_linux_bouton}}</a>
+        <p class="dl-note">{{dl_linux_note}}</p>
+      </article>
+    </div>
+    <ul class="dl-liens">
+      <li><a href="{{docs_installation}}">{{dl_installer}}</a></li>
+      <li><a href="{{docs_tutoriels}}">{{dl_tutoriels}}</a></li>
+      <li><a href="{{docs_nouveautes}}">{{dl_nouveautes}}</a></li>
+      <li><a href="{{depot}}/releases">{{dl_versions}}</a></li>
+      <li><a href="{{depot_deploiement}}">{{dl_it}}</a></li>
+    </ul>
+    <p class="dl-essayer">{{dl_essayer}}</p>
+    <p class="dl-citer">{{dl_citer}}</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="pied">
+  <div class="cadre">
+    <p class="pied-marque"><img src="/assets/nuee.svg" alt="" width="40" height="40"><span>Nuée</span></p>
+    <p>{{pied_licence}}</p>
+    <ul class="pied-liens">
+      <li><a href="{{depot}}">{{pied_source}}</a></li>
+      <li><a href="{{docs}}">{{pied_docs}}</a></li>
+      <li><a href="{{depot}}/issues/new/choose">{{pied_probleme}}</a></li>
+      <li><a href="{{url_autre_langue}}" hreflang="{{autre_langue}}" lang="{{autre_langue}}">{{nom_autre_langue}}</a></li>
+    </ul>
+    <p class="colophon">{{pied_colophon}}</p>
+  </div>
+</footer>
+
+<script type="application/json" id="donnees">{{donnees}}</script>
+</body>
+</html>
