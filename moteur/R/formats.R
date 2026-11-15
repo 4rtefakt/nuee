@@ -1024,7 +1024,7 @@ NOMS_COLONNES_EN <- c(
   comptages_observes = "observed_counts", compte = "count", concurvite = "concurvity", concurvite_pire = "concurvity_worst",
   conditionnel = "conditional", constante = "constant", contraint = "constrained", converge = "converged", coupures = "breaks",
   couverte = "covered", covariable = "covariate", covariables = "covariates", cumul = "cumulative",
-  cv_groupes = "cv_groups", cv_rencontre = "cv_encounter", dans_troncature = "within_truncation", ddl = "df",
+  cv_groupes = "cv_groups", cv_rencontre = "cv_encounter", dans_troncature = "within_truncation", ddl = "df", ddl_dht2 = "df_dht2",
   ddl_modele = "df_model", ddl_rencontre = "df_encounter", ddl_residus = "df_residual", de = "from", depart = "start",
   departs = "starts", dernier_temps = "last_time", deviance_expliquee = "deviance_explained", deviance_nulle = "null_deviance",
   deviance_vc = "deviance_cv", dissimilarite = "dissimilarity", dissimilarites_nulles = "zero_dissimilarities",

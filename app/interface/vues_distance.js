@@ -41,9 +41,9 @@ const etiquette = (texte) => el('span', { class: 'doux', style: 'white-space:now
 const avecUnite = (v, u) => (u ? `${v} ${u}` : v);
 const etiquetteStrate = (s) => (s === null || s === undefined ? t('distance_total') : s === '' ? t('distance_region') : s);
 const lignesDensite = (dn) => lignesDe(dn, ['strate', 'aire', 'couverte', 'effort', 'k', 'n', 'rencontre', 'se_rencontre', 'cv_rencontre', 'D', 'se_D', 'cv', 'bas_D', 'haut_D', 'ddl',
-  'N', 'se_N', 'bas_N', 'haut_N', 'taille_moyenne', 'part_rencontre', 'part_detection', 'part_groupes']).map((l) => ({
+  'N', 'se_N', 'bas_N', 'haut_N', 'taille_moyenne', 'part_rencontre', 'part_detection', 'part_groupes', 'ddl_dht2']).map((l) => ({
   strate: l[0], aire: l[1], couverte: l[2], effort: l[3], k: l[4], n: l[5], er: l[6], se_er: l[7], cv_er: l[8], D: l[9], se_D: l[10], cv: l[11], bas_D: l[12],
-  haut_D: l[13], ddl: l[14], N: l[15], se_N: l[16], bas_N: l[17], haut_N: l[18], taille: l[19], p_er: l[20], p_det: l[21], p_gr: l[22] }));
+  haut_D: l[13], ddl: l[14], N: l[15], se_N: l[16], bas_N: l[17], haut_N: l[18], taille: l[19], p_er: l[20], p_det: l[21], p_gr: l[22], ddl_dht2: l[23] }));
 const effectifLibelle = (m) => t(point(m) ? 'distance_edr' : 'distance_esw');
 const libelleCle = (c) => t('distance_cle_' + c);
 const libelleSerie = (s) => t('distance_serie_' + (s || 'aucune'));
@@ -66,11 +66,13 @@ function notesDistance(m) {
   if (m.unites && m.unites.donne) n.push(t('distance_facteur_donne', { f: sig(m.unites.facteur, 6) }));
   return n;
 }
-// Without stratum areas, the total's degrees of freedom are dht2's (moteur/R/distance.R:
-// densite_echantillonnage): said with their number wherever the total shows
+// Without stratum areas, the total's degrees of freedom are Satterthwaite's with the strata's weights,
+// and dht2, which leaves the weights out, gives fewer (moteur/R/distance.R: densite_echantillonnage,
+// ddl_dht2 when they differ): both numbers said wherever the total shows
 const noteDdlTotal = (m, dn) => {
   const l = lignesDensite(dn);
-  return m.densite_seule && l.length > 1 ? t('distance_ddl_total', { ddl: fmt(l[l.length - 1].ddl, 1) }) : null;
+  const tot = l[l.length - 1];
+  return m.densite_seule && l.length > 1 && fini(tot.ddl_dht2) ? t('distance_ddl_total', { ddl: fmt(tot.ddl, 1), dht2: fmt(tot.ddl_dht2, 1) }) : null;
 };
 const phraseSelection = (m) => {
   const s = t('distance_selection_' + (m.selection || 'aic'), { serie: libelleSerie(m.serie_demandee) });
@@ -251,9 +253,9 @@ function rendreDensite(conteneur, ctx, p, loc) {
     noteDdlTotal(m, groupes ? m.densite_groupes : m.densite) ? el('p', { class: 'note' }, noteDdlTotal(m, groupes ? m.densite_groupes : m.densite)) : null, graphe, bas);
   const noms = lignes.map((l) => etiquetteStrate(l.strate));
   const couleurs = lignes.map((l) => (l.strate === null ? PALETTE[1] : PALETTE[0]));
-  // (an interval of the total far wider than the strata's, with dht2's few degrees of freedom: the axis
-  // stays on the strata's, and the total's bar, drawn up to twice the axis, runs off the top; the hover
-  // gives its bounds)
+  // (an interval of the total far wider than the strata's, with few degrees of freedom: the axis stays
+  // on the strata's, and the total's bar, drawn up to twice the axis, runs off the top; the hover gives
+  // its bounds)
   const hauts = lignes.filter((l) => l.strate !== null && fini(l.haut_D)).map((l) => l.haut_D);
   const tot = lignes.find((l) => l.strate === null);
   const plafond = hauts.length && tot && fini(tot.haut_D) && tot.haut_D > 3 * Math.max(...hauts) ? 1.15 * Math.max(...hauts, tot.D) : null;
@@ -546,7 +548,7 @@ ajouterTextes({
   distance_contraint: 'La contrainte de monotonie agit : sans elle, la fonction de détection monterait ou deviendrait négative en l’un des 10 points.',
   distance_un_transect: 'Une strate d’un seul transect n’a pas de variance du taux de rencontre (comme dht2).',
   distance_densite_seule: 'Sans aire de strate : la densité seulement (le total est la moyenne des strates pondérée par leurs aires couvertes, comme dht2).',
-  distance_ddl_total: 'Le total a {ddl} degrés de liberté, ceux de dht2 sans aire de strate : sa formule de Satterthwaite laisse les poids des strates (leurs aires couvertes) hors de son dénominateur, ce qui donne moins de degrés de liberté, et un intervalle du total plus large, qu’avec eux. Les intervalles des strates n’en dépendent pas. Nuée garde ce calcul pour donner les mêmes nombres que Distance.',
+  distance_ddl_total: 'Sans aire de strate, le total a {ddl} degrés de liberté, ceux de la formule de Satterthwaite avec les poids des strates (leurs aires couvertes). dht2 laisse ces poids hors de son dénominateur et n’en donne que {dht2}, d’où un intervalle du total plus large chez lui. Les intervalles des strates n’en dépendent pas.',
   distance_facteur_donne: 'Les distances converties par le facteur {f} : les densités sont par unité d’aire de ce facteur.',
   distance_detection: 'Fonction de détection', distance_g: 'Fonction de détection g', distance_pdf: 'Densité des distances f', distance_histogramme: 'Histogramme des distances',
   distance_points_obs: 'distances observées', distance_points_obs_aide: 'Chaque détection sur la courbe, à sa distance ; un clic la choisit.',
@@ -639,7 +641,7 @@ ajouterTextes({
   distance_contraint: 'The monotonicity constraint is active: without it, the detection function would rise or turn negative at one of the 10 points.',
   distance_un_transect: 'A stratum with a single transect has no encounter rate variance (as dht2).',
   distance_densite_seule: 'Without stratum areas: the density only (the total is the strata’s mean weighted by their covered areas, as dht2).',
-  distance_ddl_total: 'The total has {ddl} degrees of freedom, dht2’s without stratum areas: its Satterthwaite formula leaves the strata’s weights (their covered areas) out of its denominator, which gives fewer degrees of freedom, and a wider total interval, than with them. The strata’s intervals don’t depend on it. Nuée keeps this computation to give the same numbers as Distance.',
+  distance_ddl_total: 'Without stratum areas, the total has {ddl} degrees of freedom, those of Satterthwaite’s formula with the strata’s weights (their covered areas). dht2 leaves these weights out of its denominator and gives only {dht2}, hence a wider total interval there. The strata’s intervals don’t depend on it.',
   distance_facteur_donne: 'The distances converted by the factor {f}: the densities are per unit of area of that factor.',
   distance_detection: 'Detection function', distance_g: 'Detection function g', distance_pdf: 'Density of distances f', distance_histogramme: 'Histogram of distances',
   distance_points_obs: 'observed distances', distance_points_obs_aide: 'Each detection on the curve, at its distance; a click selects it.',
