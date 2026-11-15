@@ -157,6 +157,7 @@ async function onglet(largeur, hauteur) {
       const res = await envoyer('Page.captureScreenshot', { format: 'png', clip });
       fs.mkdirSync(path.dirname(fichier), { recursive: true });
       fs.writeFileSync(fichier, Buffer.from(res.data, 'base64'));
+      prises.add(fichier);
       console.log(`   ${path.relative(ICI, fichier)} ${clip.width}×${clip.height}`);
     },
     async fermer() {
@@ -554,6 +555,9 @@ async function tutorielSuivi(langue, images) {
 
 const TUTORIELS = { baci: tutorielBaci, pls: tutorielPls, suivi: tutorielSuivi };
 
+// the screenshots taken by this run (only they are reduced: a screenshot reduced again changes its bytes)
+const prises = new Set();
+
 function compresser(dossier) {
   const script = [
     'import sys, os', 'from PIL import Image',
@@ -562,7 +566,8 @@ function compresser(dossier) {
     '    q = im.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)',
     '    q.save(f, optimize=True)',
   ].join('\n');
-  const fichiers = fs.readdirSync(dossier).filter((f) => f.endsWith('.png')).map((f) => path.join(dossier, f));
+  const fichiers = fs.readdirSync(dossier).filter((f) => f.endsWith('.png')).map((f) => path.join(dossier, f)).filter((f) => prises.has(f));
+  if (!fichiers.length) return true;
   for (const py of ['python', 'python3']) {
     try { execFileSync(py, ['-c', script, ...fichiers], { stdio: 'inherit' }); return true; } catch { /* the next one */ }
   }
