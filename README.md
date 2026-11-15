@@ -260,7 +260,8 @@ the model's domain, and export the results.
   its live preview, that cites the project's results (`{{M1.Q2}}`, `{{M1.scores | caption}}`, the
   Methods text, the Results text `{{M1.resultats}}` that puts the model's findings in sentences) and
   the literature (`[@wold2001]`, from BibTeX or CSL-JSON files or from Zotero), and compiles to
-  Word, PDF, HTML or Quarto;
+  Word, PDF, HTML or Quarto, the Quarto document reproducible if you like: each cited value, plot
+  and table recomputed from the raw data by the models' Export to R scripts;
 - a problem report (*Help › Diagnostic information*): a `.zip` with the versions and the session's
   journal, and the project if you tick it, to attach to a message; nothing is sent.
 

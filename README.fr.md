@@ -277,7 +277,9 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   Markdown, à côté de son aperçu en direct, qui cite les résultats du projet (`{{M1.Q2}}`,
   `{{M1.scores | légende}}`, le texte des méthodes, le texte des résultats `{{M1.resultats}}` qui
   dit en phrases ce que montre le modèle) et la bibliographie (`[@wold2001]`, depuis des fichiers
-  BibTeX ou CSL-JSON ou depuis Zotero), et se compile en Word, PDF, HTML ou Quarto ;
+  BibTeX ou CSL-JSON ou depuis Zotero), et se compile en Word, PDF, HTML ou Quarto, le document
+  Quarto reproductible si on le veut : chaque valeur, graphique et tableau cité recalculé à partir
+  des données brutes par les scripts d'export vers R des modèles ;
 - un rapport de problème (*Aide › Informations de diagnostic*) : un `.zip` avec les versions et le
   journal de la séance, et le projet si on le coche, à joindre à un message ; rien n'est envoyé.
 
