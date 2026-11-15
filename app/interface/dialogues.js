@@ -73,12 +73,14 @@ const MODES_VALIDATION = ['sans_fuite', 'centres', 'complet'];
 // spectral preprocessing steps (moteur/R/spectres.R); sg1 = Savitzky–Golay 1st derivative
 const ETAPES = ['', 'snv', 'msc', 'detrend', 'ligne_base', 'sg0', 'sg1', 'sg2'];
 
-// projet: project summary; r: settings of an existing model to start from (m.reglages).
-export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele')) {
+// projet: project summary; r: settings of an existing model to start from (m.reglages), or made
+// by Model › Which analysis? (quelle_analyse.js: with a default scaling `echelle` and `auto` for an
+// automatic number of components); apres(id): called with the new model's id once it is fitted.
+export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'), apres = null) {
   const p = projet;
   const st = {
     type: r ? r.type : 'PLS', nom: nomLibre(p), titre: r && r.nom ? `${r.titre ? r.titre + ' — ' : ''}${langueActuelle() === 'fr' ? 'd’après' : 'from'} ${r.nom}` : '',
-    A: r ? r.A : 0, auto: !r, G: r ? r.G || 7 : 7, echelle: 'UV', roles: {}, echelles: {}, transfos: {},
+    A: r ? r.A : 0, auto: !r || r.auto === true, G: r ? r.G || 7 : 7, echelle: (r && r.echelle) || 'UV', roles: {}, echelles: {}, transfos: {},
     // cross-validation groups: null = in turn (G groups), else { by: 'id', id } | { by: 'variable', variable } | { by: 'groups', … } (moteur/R/validation_croisee.R)
     vc: r && r.vc && r.vc.by ? r.vc : null, blocs: {}, modificateurs: {}, bloc: '',
     // how a PCA, PLS or OPLS is cross-validated: 'sans_fuite' | 'centres' | 'complet' (moteur/R/validation_croisee.R: mode_validation)
@@ -687,8 +689,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     erreur.textContent = '';
     alerte.replaceChildren(el('p', { class: 'infos' }, t('calcul')));
     try {
-      await app.ajusterDefinition(q);
+      const id = await app.ajusterDefinition(q);
       d.fermer();
+      if (apres && id) apres(id);
     } catch (e) {
       alerte.replaceChildren();
       erreur.textContent = e.message;
@@ -769,6 +772,7 @@ const AIDE = {
       ['Explorateur', 'À gauche : projets, données, modèles importés d’un fichier .usp, modèles calculés et leurs vues. Double-clic pour ouvrir, clic droit pour les actions.'],
       ['Modèles importés', 'Double-cliquer un modèle importé le recalcule en R. Le résumé marque chaque valeur : = identique à la valeur enregistrée dans le fichier, ≈ proche, ≠ différente.'],
       ['Nouveau modèle', 'Modèle › Nouveau modèle (Ctrl+N) : type (ACP, PLS, PLS-DA, OPLS), rôle, échelle, bloc, modificateur et transformation de chaque variable (racine, log10, ou personnalisée : log10, ln, −log10, exp, logit, puissance ou linéaire, avec ses constantes), termes croisés (A × B, A × B × C, carrés et cubes, chacun avec son échelle, son bloc et son modificateur), observations incluses, nombre de composantes (automatique par défaut), groupes de validation croisée (à tour de rôle, ou un groupe par valeur d’un identifiant ou d’une variable : toutes les années d’un site ensemble). Onglet Observations, « Garder seulement les observations où… » : une condition écrite comme une formule de Nouvelle variable, site == "S1" & annee >= 2010, !is.na(densite) ou habitat %in% c("marais", "prairie") ; dessous, combien d’observations cochées la remplissent, ou pourquoi elle ne se lit pas. Elle est gardée avec le modèle et refaite sur les données du projet à chaque ajustement et réajustement ; le modèle prend les observations cochées où elle est vraie (un résultat manquant compte pour faux). Les cases cochées ne changent pas (la vider rend les observations qu’elle écartait), le jeu de test garde les siennes, et celles qu’elle écarte sont hors du modèle, comme des décochées : Prédire les observations les prédit. Le texte des méthodes, le rapport et l’export vers R la donnent.'],
+      ['Quelle analyse ?', 'Modèle › Quelle analyse ? (ou le bouton de la page d’accueil) : votre question en mots simples (comparer des groupes, l’effet de variables, beaucoup d’espèces, une tendance, où, explorer, prédire, la diversité, un BACI), la réponse mesurée (une mesure, un comptage, une présence-absence, une proportion, une classe, des espèces) et le dispositif (les mêmes sites mesurés plusieurs fois, des années, un BACI, des coordonnées), proposés d’après les variables du projet : des entiers, leurs zéros comparés à ceux d’une loi de Poisson, les bornes 0 et 1, l’asymétrie, les noms des sites et des années. À droite, l’analyse conseillée, pourquoi et ses conditions, d’autres possibilités, et un bouton qui ouvre Nouveau modèle déjà rempli (type, loi, rôles, effet aléatoire, validation croisée) ou la bonne vue (tests, Séries, Carte, Raréfaction…). Un conseil, pas une règle : les conditions se vérifient après l’ajustement.'],
       ['Sélection', 'Cadre ou lasso dans un graphique, clic sur un point ou une ligne de liste : la sélection apparaît dans toutes les vues et toutes les fenêtres du modèle. Échap l’efface ; Ctrl+Suppr exclut les observations et réajuste.'],
       ['Variables en évidence', 'Un clic sur une variable (barre des VIP, des coefficients ou des loadings, point des loadings, du biplot ou du S-plot, ligne d’un profil ou de la liste des variables) la met en évidence sur tous les graphiques du modèle ; un cadre en choisit plusieurs dans les nuages de points. Échap les efface.'],
       ['Fenêtres', 'Un onglet par modèle : sa page montre résumé, scores et loadings, ses autres vues s’y ajoutent en onglets. Les vues se déplacent par leur onglet (glisser-déposer), se divisent et s’empilent ; glisser l’onglet d’un modèle à côté d’un autre pour les comparer. Clic droit sur un onglet : détacher dans une fenêtre, agrandir, fermer. Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète.'],
@@ -837,6 +841,7 @@ const AIDE = {
       ['Explorer', 'On the left: projects, data, models imported from a .usp file, fitted models and their views. Double-click to open, right-click for actions.'],
       ['Imported models', 'Double-clicking an imported model recomputes it in R. The summary marks each value: = same as the value stored in the file, ≈ close, ≠ different.'],
       ['New model', 'Model › New model (Ctrl+N): type (PCA, PLS, PLS-DA, OPLS), each variable’s role, scaling, block, modifier and transform (root, log10, or custom: log10, ln, −log10, exp, logit, power or linear, with its constants), cross terms (A × B, A × B × C, squares and cubes, each with its own scaling, block and modifier), included observations, number of components (automatic by default), cross-validation groups (in turn, or one group per value of an ID or of a variable: all the years of a site together). Observations tab, “Keep only the observations where…”: a condition written like a New variable formula, site == "S1" & year >= 2010, !is.na(density) or habitat %in% c("marsh", "meadow"); under it, how many ticked observations meet it, or why it doesn’t read. It is saved with the model and evaluated again on the project’s data at each fit and refit; the model takes the ticked observations where it is TRUE (a missing result counts as FALSE). The ticks don’t change (clearing it brings back the observations it set aside), the test set keeps its own, and those it sets aside are out of the model, as unticked ones, so Predict observations predicts them. The Methods text, the report and Export to R give it.'],
+      ['Which analysis?', 'Model › Which analysis? (or the start page’s button): your question in plain words (compare groups, the effect of variables, many species, a trend, where, explore, predict, diversity, a BACI), the response measured (a measurement, a count, a presence-absence, a proportion, a class, species) and the design (the same sites measured several times, years, a BACI, coordinates), proposed from the project’s variables: whole numbers, their zeros compared with a Poisson distribution’s, the bounds 0 and 1, skewness, the names of sites and years. On the right, the recommended analysis, why and its conditions, alternatives, and a button that opens New model already filled in (type, distribution, roles, random effect, cross-validation) or the right view (tests, Series, Map, Rarefaction…). Advice, not a rule: the conditions are checked after the fit.'],
       ['Selection', 'Box or lasso in a plot, click a point or a list row: the selection shows in every view and window of the model. Esc clears it; Ctrl+Delete excludes the observations and refits.'],
       ['Highlighted variables', 'Clicking a variable (a bar of the VIP, coefficients or loadings, a point of the loadings, biplot or S-plot, a line of a profile or of the variable list) highlights it on all the model’s graphs; a box picks several in the scatter plots. Esc clears them.'],
       ['Windows', 'One tab per model: its page shows the summary, scores and loadings, and its other views join it as tabs. Drag views by their tab to move, split and stack them; drag a model’s tab beside another to compare them. Right-click a tab to move it to a new window, maximize or close it. Window › New window opens a second full window.'],
@@ -976,9 +981,10 @@ export function dialogueFormat(app, entree, div) {
 // New variable: an R formula on the project's variables, or classes cut from the values of a
 // quantitative variable (given bounds, or classes of equal size). Computed in R
 // (moteur/R/variables.R).
-export function dialogueVariable(app, p, mode = 'formule') {
+// initial: a name and a formula to start from (Which analysis?: a diversity index of the species)
+export function dialogueVariable(app, p, mode = 'formule', initial = {}) {
   const quantitatives = p.variables.filter((v) => !v.qualitative);
-  const st = { mode, nom: '', formule: '', variable: quantitatives.length ? quantitatives[0].uid : null, parBornes: true, bornes: '', n: 3,
+  const st = { mode, nom: initial.nom || '', formule: initial.formule || '', variable: quantitatives.length ? quantitatives[0].uid : null, parBornes: true, bornes: '', n: 3,
     // imputation by PCA (moteur/R/variables.R: imputer_acp): every quantitative variable takes part, as in a PCA of them
     // (the number of components chosen as missMDA::estim_ncpPCA does, unless given: 2 by default, as imputePCA)
     imputees: new Set(quantitatives.map((v) => v.uid)), kAuto: true, k: 2, bornes2: true, remplacer: false };

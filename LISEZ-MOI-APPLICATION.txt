@@ -186,6 +186,71 @@ Avant le calcul, l'application vérifie les données : variables ou observations
 50 % de valeurs manquantes, variables constantes. S'il y en a, elle les liste et propose
 « Les exclure et ajuster » ou « Ajuster quand même ».
 
+Quelle analyse ? (Modèle › Quelle analyse ?)
+--------------------------------------------
+Modèle › Quelle analyse ? (aussi un bouton de la page d'accueil, à côté de Nouveau modèle, et
+Ctrl+K) : quelques questions en mots simples, puis l'analyse qui y répond, déjà réglée.
+  - Votre question : comparer des groupes ou des périodes ; l'effet de variables sur une
+    réponse ; beaucoup d'espèces à la fois (comment la composition change, un modèle par
+    espèce, les espèces qui caractérisent chaque groupe) ; une tendance dans le temps ou un
+    indice de suivi ; où (cartes, autocorrélation spatiale) ; explorer ou résumer un tableau ;
+    prédire ou classer ; diversité et richesse en espèces ; avant/après avec des témoins (BACI).
+  - La réponse : la variable mesurée, et son type : une mesure, un comptage (avec beaucoup de
+    zéros ou non), une présence-absence (0 ou 1), une proportion entre 0 et 1, une classe (une
+    variable qualitative), ou un tableau d'espèces (une colonne par espèce).
+  - Le dispositif : les mêmes sites ou placettes mesurés plusieurs fois (le site), des années
+    ou des dates (le temps), un dispositif BACI (l'unité), des coordonnées spatiales.
+  - Les variables : les variables explicatives (X), ou les groupes.
+Nuée propose les réponses d'après les variables du projet (comme les lit Statistiques des
+variables) : une réponse d'entiers à partir de 0 est un comptage, de 0 et de 1 une
+présence-absence, entre 0 et 1 une proportion ; « beaucoup de zéros » quand un quart au moins
+des valeurs sont nulles, et 15 points de plus que n'en donnerait une loi de Poisson de même
+moyenne (la phrase sous la réponse donne les deux) ; le site est une variable qualitative nommée
+comme un site (site, station, placette, transect...) dont les catégories se répètent ; le temps
+une variable nommée comme une année ou une date, ou des entiers entre 1900 et 2100 ; les espèces
+les colonnes de nombres positifs ou nuls qui ont des zéros (quatre au moins) ; les coordonnées
+celles du projet, ou celles que proposent les noms de ses variables. Chaque réponse se change.
+À droite : l'analyse conseillée, pourquoi, ses conditions principales et des notes selon les
+réponses (l'effet aléatoire par site, l'autocorrélation des résidus d'années qui se suivent, les
+moyennes ajustées après la comparaison de groupes, une proportion qui touche 0 ou 1...), ce qui
+sera rempli, ce qui reste à compléter, et un bouton. Il ouvre Nouveau modèle déjà rempli (type,
+loi, rôles, transformation, courbes, effet aléatoire, groupes de validation croisée, et les
+réglages propres de l'analyse, comme la transformation de Hellinger d'une RDA ou le site et le
+temps de TRIM), ou la bonne vue (Tests statistiques dans le bon mode, Séries avec ses tendances,
+Carte, Autocorrélation spatiale, Raréfaction, Statistiques des variables), ou Nouvelle variable
+avec un indice de diversité. Un modèle par espèce ouvre Nouveau modèle pour la première espèce,
+puis Un modèle par réponse, les autres cochées. Les autres possibilités, en dessous, s'ouvrent
+de la même façon. Les réponses sont gardées jusqu'à la fermeture de Nuée : annulez Nouveau
+modèle et revenez en essayer une autre.
+Les choix principaux :
+  - un comptage : la binomiale négative quand il varie plus qu'une loi de Poisson ne le permet
+    (une variance au-delà de 1,5 fois la moyenne) ou a beaucoup de zéros (beaucoup de zéros ne
+    veut pas toujours dire excès de zéros, Warton 2005 : comparez avec la Poisson à excès de
+    zéros par l'AIC), sinon Poisson ; une présence-absence : la régression logistique ; une
+    proportion : la régression bêta ; une mesure positive et asymétrique : gamma (ou son
+    logarithme) ; une mesure avec des zéros : Tweedie ; sinon le modèle linéaire ; avec les
+    mêmes sites mesurés plusieurs fois, un effet aléatoire par site et la validation croisée par
+    site ;
+  - des groupes comparés : le test entre deux variables (celui que leurs types demandent),
+    apparié par site quand chaque site vient une fois dans chaque groupe (pas plus
+    d'observations que de sites × groupes), sinon le modèle mixte et ses moyennes ajustées ;
+    pour des comptages, des présences et des proportions, leur GLM ;
+  - beaucoup d'espèces : la RDA après la transformation de Hellinger avec des X quantitatives,
+    la PERMANOVA avec des groupes, le NMDS sans X ; les espèces indicatrices ; un modèle par
+    espèce ;
+  - une tendance : TRIM pour des comptages par site et par année (une ligne par site et par
+    année : pas plus d'observations que de sites × années ; sinon un GLM, et TRIM après Édition
+    › Résumer par groupe) ; une mesure sur plusieurs sites : le modèle mixte, l'année en X ; une
+    seule série : Séries et ses tendances ;
+  - prédire : la PLS ou la PLS-DA avec beaucoup de X (20 ou plus, ou moitié moins que
+    d'observations), la forêt aléatoire sinon, les arbres boostés pour des comptages et des
+    présences ;
+  - où : la carte, puis l'I de Moran et le lissage spatial d'un GAM ; le test de Mantel pour
+    des espèces ;
+  - explorer : l'ACP, le NMDS pour des espèces ; la diversité : la raréfaction.
+Un conseil, pas une règle : les conditions se vérifient après l'ajustement (Résumé › Conditions
+du modèle).
+
 Graphiques : couleurs et étiquettes
 -----------------------------------
 Scores, DModX, T², observé / prédit : la liste « Couleur » colore les points par classe

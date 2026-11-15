@@ -58,6 +58,8 @@ export function creerCommandes(app) {
     resumer_groupes: { icone: 'sigma', actif: () => !!app.projetActif(), action: () => app.resumerGroupes(app.projetActif()) },
 
     nouveau_modele: { icone: 'file-plus', raccourci: 'Ctrl+N', actif: () => !!app.projetActif(), action: () => app.nouveauModele(app.projetActif()) },
+    // (a few questions, then New model already filled in: quelle_analyse.js, choix_analyse.js)
+    quelle_analyse: { icone: 'signpost', actif: () => !!app.projetActif(), action: () => app.quelleAnalyse(app.projetActif()) },
     modifier_modele: { icone: 'square-pen', raccourci: 'Ctrl+M', actif: avecModele, action: () => app.modifierModele(m()) },
     autoajuster: { icone: 'wand-sparkles', actif: avecLV, action: () => app.reajuster(m(), { A: 0, auto: true }) },
     plus_comp: { icone: 'circle-plus', raccourci: 'Ctrl+=', actif: avecLV, action: () => app.reajuster(m(), { A: app.modele(m()).A + 1 }) },
@@ -151,7 +153,7 @@ export function menus(app, C) {
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('nouvelle_variable'), it('ajouter_colonnes'), it('resumer_groupes')] },
-    { cle: 'm_modele', items: () => [it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
+    { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
       it('vip'), it('coefficients'), it('obspred'), it('effets'), it('moyennes'), it('residus'), it('acf'), it('apports'), it('selection_aic'), it('puissance'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
