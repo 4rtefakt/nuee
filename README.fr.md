@@ -5,7 +5,7 @@
 <p align="center"><a href="README.md">English</a> · <b>Français</b></p>
 
 <p align="center">
-  <b>ACP, PLS, PLS-DA et OPLS sous Windows et Linux, calculées en R.</b><br>
+  <b>ACP, PLS, écologie des communautés, modèles mixtes et cartes sous Windows et Linux, calculés en R.</b><br>
   Des graphiques interactifs, des modèles côte à côte, et chaque calcul lisible.
 </p>
 
@@ -67,7 +67,7 @@ bibliothèques de sa distribution : elle ne peut pas être emportée comme sous 
   lancer ; il demande FUSE 2, le paquet `libfuse2` dans la plupart des distributions) ou
   `Nuee-<version>-x64.tar.gz` (le décompresser, puis lancer `./nuee`). Installez
   d'abord R depuis votre distribution, puis les paquets, dans R :
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite"))`.
   Sous Ubuntu 24.04 et après, préférez le `.deb` : il installe le profil AppArmor dont le bac
   à sable de Chromium a besoin là, et une AppImage doit être lancée avec `--no-sandbox`.
 
@@ -165,7 +165,9 @@ l'AIC qui ajuste toutes les combinaisons des blocs et suggère un modèle à aju
 la comparaison par l'AIC (ΔAIC, poids d'Akaike, tests du rapport de vraisemblance des modèles
 emboîtés) des régressions de la même réponse, à côté du Q2 en validation croisée de tous les
 modèles, avec leurs coefficients côte à côte ; la puissance pour détecter une tendance, pour un
-plan de suivi. De nouvelles variables peuvent prendre la valeur de l'année d'avant dans un
+plan de suivi ; les conditions du modèle vérifiées et dites en mots (résidus, dispersion,
+points influents, surdispersion, excès de zéros, colinéarité, autocorrélation spatiale). De
+nouvelles variables peuvent prendre la valeur de l'année d'avant dans un
 secteur, ou le taux de croissance. Une formule R règle le modèle (R la lit sans jamais
 l'exécuter), et les régressions prédisent de nouvelles observations et des fichiers, les
 extrapolations signalées.
@@ -175,7 +177,32 @@ d'espèces (transformées par Hellinger, corde ou log(x + 1)) par des variables 
 partielle avec des covariables, triplots en échelle 1 ou 2, R2 ajusté, tests par permutation
 du modèle, de chaque axe et de chaque terme (à l'intérieur des sites au besoin), sélection pas
 à pas et partition de la variance ; analyse des correspondances (CA) de tableaux d'effectifs,
-avec contributions et cos². Les résultats sont ceux du paquet vegan.
+avec contributions et cos² ; analyse canonique des correspondances (CCA, partielle aussi). Des
+analyses fondées sur une distance entre relevés (Bray–Curtis, Jaccard, Gower, Hellinger et cinq
+autres, en abondances ou en présences) : PCoA, NMDS et son diagramme de Shepard, PERMANOVA avec
+la dispersion multivariée de chaque groupe, et le test de Mantel (partiel, avec son
+corrélogramme, ou face à la distance géographique entre relevés), les variables explicatives
+ajustées sur l'ordination. Espèces indicatrices (IndVal.g), courbes de raréfaction et
+d'accumulation des espèces avec des estimateurs de richesse (Chao1, ACE, jackknife). Les
+résultats sont ceux des paquets vegan et indicspecies, avec les mêmes valeurs p pour les mêmes
+permutations.
+
+**Tendances des suivis :** TRIM, la référence des suivis d'oiseaux européens, écrit d'après la
+méthode de Statistics Netherlands : indices et totaux annuels avec leurs erreurs types à partir
+de comptages lacunaires, surdispersion et autocorrélation, ruptures choisies ou pas à pas,
+covariables et poids, et la pente générale avec sa classe (augmentation modérée, stable, fort
+déclin…), comme rtrim les donne. Un modèle par réponse ajuste la même régression à chaque espèce
+et corrige les valeurs p de chaque terme sur elles (FDR), avec une forêt de coefficients et de
+petits graphiques côte à côte.
+
+**Cartes et données spatiales :** les coordonnées d'un projet (longitudes et latitudes WGS 84,
+Lambert-93, UTM…) placent les observations sur une carte, colorées et dimensionnées par une
+variable ou les résultats d'un modèle, sur un fond OpenStreetMap ou IGN quand on en choisit un
+(sinon rien ne quitte l'ordinateur). Les fichiers GeoPackage, le format de QGIS, s'ouvrent avec
+leurs coordonnées, et les données et les résultats d'un modèle s'y exportent. L'I de Moran d'une
+variable ou des résidus d'un modèle, son corrélogramme et le semi-variogramme, comme spdep et
+gstat les donnent, et un lissage spatial s(x, y) dans les modèles additifs pour ce que les
+termes laissent dans l'espace.
 
 **Arbres, analyse discriminante, groupes :** arbres de décision (rpart) pour une réponse
 quantitative ou une classe, sur les valeurs brutes des variables pour que les seuils se lisent
@@ -231,8 +258,11 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   ses références (*Modèle › Texte pour la section Méthodes*) ;
 - des documents gardés dans le projet (*Fichier › Nouveau document*) : un article ou un rapport en
   Markdown, à côté de son aperçu en direct, qui cite les résultats du projet (`{{M1.Q2}}`,
-  `{{M1.scores | légende}}`, le texte des méthodes) et la bibliographie (`[@wold2001]`, depuis des
-  fichiers BibTeX ou CSL-JSON ou depuis Zotero), et se compile en Word, PDF, HTML ou Quarto.
+  `{{M1.scores | légende}}`, le texte des méthodes, le texte des résultats `{{M1.resultats}}` qui
+  dit en phrases ce que montre le modèle) et la bibliographie (`[@wold2001]`, depuis des fichiers
+  BibTeX ou CSL-JSON ou depuis Zotero), et se compile en Word, PDF, HTML ou Quarto ;
+- un rapport de problème (*Aide › Informations de diagnostic*) : un `.zip` avec les versions et le
+  journal de la séance, et le projet si on le coche, à joindre à un message ; rien n'est envoyé.
 
 ## Fichiers
 
@@ -310,7 +340,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> 4rtefakt (2026). Nuée (version 0.9.9) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)

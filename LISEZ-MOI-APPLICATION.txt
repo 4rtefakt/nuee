@@ -1,5 +1,5 @@
-NUÉE — ACP, PLS, PLS-DA et OPLS, calculées en R
-===============================================
+NUÉE — ACP, PLS, écologie des communautés, modèles et cartes, calculés en R
+===========================================================================
 (English guide: USER-GUIDE.txt)
 
 Démarrer

@@ -1,5 +1,5 @@
-NUÉE — PCA, PLS, PLS-DA and OPLS, computed in R
-===============================================
+NUÉE — PCA, PLS, community ecology, models and maps, computed in R
+==================================================================
 (Guide en français : LISEZ-MOI-APPLICATION.txt)
 
 Getting started

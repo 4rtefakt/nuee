@@ -9,9 +9,12 @@
 #     et mise à l'échelle de chaque terme) et les résultats enregistrés dans le fichier.
 #
 # Un projet enregistré par l'application dit aussi ce qui l'a écrit (j$nuee : format, version de
-# Nuée, version de R). FORMAT_PROJET augmente quand une version de Nuée écrit des projets que
-# les précédentes ne liraient pas en entier : elles le voient au format du fichier.
-FORMAT_PROJET <- 1L
+# Nuée, de R et des paquets qui calculent les modèles). FORMAT_PROJET augmente quand une version
+# de Nuée écrit des projets que les précédentes ne liraient pas en entier : elles le voient au
+# format du fichier. 1 : jusqu'à 0.9.9 ; 2 : la 1.0 (les coordonnées du projet, le lissage
+# spatial d'un GAM, de nouveaux types d'analyses, qu'une version plus ancienne ne refait pas).
+# Toute version 1.x ouvre les projets de la 1.0.
+FORMAT_PROJET <- 2L
 
 lire_projet <- function(chemin) {
   j <- jsonlite::fromJSON(chemin, simplifyVector = TRUE, simplifyDataFrame = FALSE,

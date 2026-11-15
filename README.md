@@ -5,7 +5,7 @@
 <p align="center"><b>English</b> · <a href="README.fr.md">Français</a></p>
 
 <p align="center">
-  <b>PCA, PLS, PLS-DA and OPLS on Windows and Linux, computed in plain R.</b><br>
+  <b>PCA, PLS, community ecology, mixed models and maps on Windows and Linux, computed in plain R.</b><br>
   Interactive plots, models side by side, and every calculation open to read.
 </p>
 
@@ -65,7 +65,7 @@ libraries, so it can't be carried along as on Windows).
   it needs FUSE 2, the `libfuse2` package on most distributions) or
   `Nuee-<version>-x64.tar.gz` (unpack it, then run `./nuee`). Install R from your
   distribution first, then the packages, in R:
-  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster"))`.
+  `install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite"))`.
   On Ubuntu 24.04 and later, prefer the `.deb`: it installs the AppArmor profile Chromium's
   sandbox needs there, and an AppImage has to be started with `--no-sandbox`.
 
@@ -156,7 +156,9 @@ in one click), the AIC change when each block of variables is removed, an AIC se
 fits every combination of the blocks and suggests a model to fit in one click, and an AIC
 comparison (ΔAIC, Akaike weights, likelihood-ratio tests of nested models) of the regressions
 of the same response, next to the cross-validated Q2 of every model, with their coefficients
-side by side; the power to detect a trend, for a monitoring design. New variables can take the
+side by side; the power to detect a trend, for a monitoring design; the model's conditions
+checked and said in words (residuals, spread, influential points, overdispersion, excess zeros,
+collinearity, spatial autocorrelation). New variables can take the
 previous year's value in a sector, or the growth rate. An R formula box sets the model (R reads
 it and never runs it), and regressions predict new observations and files, extrapolations
 flagged.
@@ -165,8 +167,30 @@ flagged.
 abundances (Hellinger, chord or log(x + 1) transformed) by explanatory variables, partial RDA
 with covariates, triplots in scaling 1 or 2, adjusted R2, permutation tests of the model, of
 each axis and of each term (within sites if needed), forward selection and variation
-partitioning; correspondence analysis (CA) of count tables, with contributions and cos². The
-results are those of the vegan package.
+partitioning; correspondence analysis (CA) of count tables, with contributions and cos²;
+canonical correspondence analysis (CCA, partial too). Analyses built on a distance between
+samples (Bray–Curtis, Jaccard, Gower, Hellinger and five others, on abundances or presences):
+PCoA, NMDS with its Shepard diagram, PERMANOVA with the multivariate dispersion of each group,
+and the Mantel test (partial, with its correlogram, or against the geographic distance between
+samples), the explanatory variables fitted onto the ordination. Indicator species (IndVal.g),
+rarefaction and species accumulation curves with richness estimators (Chao1, ACE, jackknife).
+The results are those of the vegan and indicspecies packages, with the same p values for the
+same permutations.
+
+**Monitoring trends:** TRIM, the standard of European bird monitoring, written from Statistics
+Netherlands' method: yearly indices and totals with their standard errors from counts with gaps,
+overdispersion and serial correlation, changepoints chosen or stepwise, covariates and weights,
+and the overall slope with its class (moderate increase, stable, steep decline...), as rtrim
+gives them. One model per response fits the same regression to each species and corrects each
+term's p values over them (FDR), with a forest plot and small multiples.
+
+**Maps and spatial data:** a project's coordinates (WGS 84 longitudes and latitudes, Lambert-93,
+UTM...) place the observations on a map, coloured and sized by a variable or a model's results,
+on OpenStreetMap or IGN backgrounds when you choose one (nothing leaves the computer
+otherwise). GeoPackage files, QGIS's format, open with their coordinates, and the data and a
+model's results export to one. Moran's I of a variable or of a model's residuals, its
+correlogram and the semivariogram, as spdep and gstat give them, and a spatial smooth s(x, y)
+in additive models for what the terms leave in space.
 
 **Trees, discriminant analysis, clustering:** decision trees (rpart) for a quantitative
 response or a class, on the raw variables so that thresholds read in their units, pruned by a
@@ -217,8 +241,11 @@ the model's domain, and export the results.
   references (*Model › Text for the Methods section*);
 - documents kept in the project (*File › New document*): an article or a report in Markdown, beside
   its live preview, that cites the project's results (`{{M1.Q2}}`, `{{M1.scores | caption}}`, the
-  Methods text) and the literature (`[@wold2001]`, from BibTeX or CSL-JSON files or from Zotero),
-  and compiles to Word, PDF, HTML or Quarto.
+  Methods text, the Results text `{{M1.resultats}}` that puts the model's findings in sentences) and
+  the literature (`[@wold2001]`, from BibTeX or CSL-JSON files or from Zotero), and compiles to
+  Word, PDF, HTML or Quarto;
+- a problem report (*Help › Diagnostic information*): a `.zip` with the versions and the session's
+  journal, and the project if you tick it, to attach to a message; nothing is sent.
 
 ## Files
 
@@ -292,7 +319,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> 4rtefakt (2026). Nuée (version 0.9.9) [Computer software]. https://github.com/4rtefakt/nuee
+> 4rtefakt (2026). Nuée (version 1.0.0) [Computer software]. https://github.com/4rtefakt/nuee
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).

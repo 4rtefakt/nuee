@@ -276,7 +276,7 @@ async function principal() {
       const f = path.join(dossier, 'partage.nuee');
       await api('enregistrer', { projet: p.id, chemin: f, version: '9.9.9' });
       const lu = JSON.parse(fs.readFileSync(f, 'utf8'));
-      verifier(lu.nuee && lu.nuee.format === 1 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
+      verifier(lu.nuee && lu.nuee.format === 2 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
       verifier(!fs.readdirSync(dossier).some((x) => x.endsWith('.tmp')), 'fichier temporaire resté');
       // a colleague saves the same file meanwhile: asked before overwriting, then overwritten if wanted
       fs.writeFileSync(f, JSON.stringify({ ...lu, source: 'collègue' }));

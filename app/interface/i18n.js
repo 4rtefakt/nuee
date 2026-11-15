@@ -1,7 +1,7 @@
 // Interface strings, French and English.
 const TEXTES = {
   fr: {
-    titre: 'Nuée', sous_titre: 'ACP, PLS, PLS-DA et OPLS, calculées en R',
+    titre: 'Nuée', sous_titre: 'ACP, PLS, écologie des communautés, modèles et cartes, calculés en R',
     projet_exemple: 'Projet d’exemple', projet_exemple_aide: 'Des données inventées (120 pommes) pour essayer l’application', licence: 'Licence',
     // menus
     m_fichier: 'Fichier', m_edition: 'Édition', m_modele: 'Modèle', m_graphiques: 'Graphiques',
@@ -678,7 +678,7 @@ const TEXTES = {
     ipls_aide: 'Le spectre est prétraité une fois, en entier, puis coupé ; chaque intervalle est une PLS sur sa zone : la barre donne son plus petit RMSEcv, le chiffre le nombre de composantes. En vert, les intervalles qui prédisent mieux que le spectre entier (tirets rouges). Cliquez des barres pour les choisir. Un nouveau modèle avec eux prétraite ses propres variables : avec SNV, MSC, detrend ou ligne de base, son RMSEcv peut différer de la barre.',
   },
   en: {
-    titre: 'Nuée', sous_titre: 'PCA, PLS, PLS-DA and OPLS, computed in R',
+    titre: 'Nuée', sous_titre: 'PCA, PLS, community ecology, models and maps, computed in R',
     projet_exemple: 'Example project', projet_exemple_aide: 'Made-up data (120 apples) to try the application', licence: 'License',
     m_fichier: 'File', m_edition: 'Edit', m_modele: 'Model', m_graphiques: 'Plots',
     m_prediction: 'Predict', m_fenetre: 'Window', m_affichage: 'View', m_aide: 'Help',
