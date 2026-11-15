@@ -133,5 +133,46 @@ verifier("valeurs_bloc : chaque terme simple comme lu seul (catégories, transfo
 verifier("definir_modele : les termes de chaque variable, cherchée par son numéro",
          pareil(definir_modele(pt, "PCA", x = c(3, 1, 4))$x, unlist(lapply(c(3, 1, 4), function(u) termes_variable(pt, u, "UV")), recursive = FALSE)))
 
+cat("Enregistrer un projet : le même fichier\n")
+# (enregistrer_projet d'avant la 1.0 : chaque observation et chaque terme écrits un à un par jsonlite)
+enregistrer_un_a_un <- function(projet, chemin, version = "") {
+  p <- unclass(projet)
+  for (i in seq_along(p$datasets)) {
+    d <- p$datasets[[i]]
+    p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
+  }
+  p$donnees <- p$noms_obs <- p$noms_var <- NULL
+  p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- NULL
+  p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
+                 paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
+  jsonlite::write_json(p, chemin, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+}
+octets <- function(f) readBin(f, "raw", file.size(f))
+meme_fichier <- function(p) {
+  a <- tempfile(fileext = ".nuee")
+  b <- tempfile(fileext = ".nuee")
+  enregistrer_projet(p, a, "1.0")
+  enregistrer_un_a_un(p, b, "1.0")
+  identical(octets(a), octets(b))
+}
+pe <- lire_projet("exemple/vergers.json")
+ps <- p
+for (i in 1:3) ps$models <- c(ps$models, list(definir_modele(ps, if (i == 2) "PCA" else "PLS", x = x, y = if (i != 2) 2, spectres = etapes_sg, nom = paste0("M", i))))
+ps$models <- c(ps$models, list(definir_modele(ps, "PLS", x = x[1:30], y = 3, nom = "M4")))
+dt2 <- data.frame(code = sprintf("c%d", 1:30), autre = sprintf("n° %d « é »", 1:30), lieu = rep(c("nord", "sud"), 15), v = c(1:29, NA))
+verifier("le projet d'exemple (ses modèles de tous les types)", meme_fichier(pe))
+verifier("des spectres à quatre modèles, trois aux mêmes termes", meme_fichier(ps))
+verifier("un tableau à deux identifiants par observation, du texte accentué", meme_fichier(projet_depuis_tableau(dt2, "t.csv")))
+verifier("un numéro d'observation non entier parmi des entiers", {
+  pn <- projet_depuis_tableau(dt2, "t.csv")
+  pn$observations[[3]]$uid <- 3.5
+  meme_fichier(pn)
+})
+verifier("des observations aux identifiants plus ou moins nombreux (écrites une à une)", {
+  pn <- projet_depuis_tableau(dt2, "t.csv")
+  pn$observations[[4]]$ids <- c(pn$observations[[4]]$ids, "x")
+  meme_fichier(pn)
+})
+
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

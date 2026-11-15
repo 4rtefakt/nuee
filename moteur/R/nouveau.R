@@ -660,7 +660,48 @@ enregistrer_projet <- function(projet, chemin, version = "") {
   p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- NULL  # état de la session
   p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
                  paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
-  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA))
+  # (des milliers de petites listes, que jsonlite écrit une à une : les observations, écrites d'un coup
+  # comme les lignes d'un tableau, et les termes d'un modèle, écrits une fois pour tous les modèles
+  # qui ont les mêmes ; le même texte, que write_json reprend tel quel, json_verbatim)
+  p$observations <- json_observations(p$observations)
+  p$models <- json_termes_modeles(p$models)
+  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE))
+}
+
+# Les observations d'un projet (list(uid, ids) chacune) en JSON, tel que jsonlite les écrirait une à
+# une, quand elles ont toutes la même forme (un numéro, autant d'identifiants, du texte sans valeur
+# manquante) : les lignes d'un tableau, que jsonlite écrit d'un coup (100 000 observations : 12 s une à
+# une, moins d'une seconde ainsi). Sinon les observations telles quelles.
+json_observations <- function(obs) {
+  if (!length(obs) || !is.null(names(obs))) return(obs)
+  simple <- function(o) identical(names(o), c("uid", "ids")) && is.numeric(o$uid) && length(o$uid) == 1 && !is.na(o$uid) &&
+    is.null(attributes(o$uid)) && is.character(o$ids) && length(o$ids) >= 1 && !anyNA(o$ids) && is.null(attributes(o$ids))
+  if (!all(vapply(obs, simple, NA))) return(obs)
+  ids <- lapply(obs, `[[`, "ids")
+  L <- unique(lengths(ids))
+  if (length(L) != 1) return(obs)
+  uid <- lapply(obs, `[[`, "uid")
+  lignes <- data.frame(uid = if (all(vapply(uid, is.integer, NA))) unlist(uid) else as.double(unlist(uid)))
+  lignes$ids <- if (L == 1) unlist(ids) else I(ids)
+  jsonlite::toJSON(lignes, dataframe = "rows", auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+}
+
+# Les modèles d'un projet, les termes X et Y de chacun (des milliers pour des spectres) en JSON tel que
+# jsonlite les écrirait : une fois pour tous les modèles qui ont les mêmes termes (identical).
+json_termes_modeles <- function(modeles) {
+  faits <- list()
+  en_json <- function(termes) {
+    if (length(termes) < 20) return(termes)
+    for (f in faits) if (identical(f$termes, termes)) return(f$json)
+    j <- jsonlite::toJSON(termes, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+    faits[[length(faits) + 1]] <<- list(termes = termes, json = j)
+    j
+  }
+  lapply(modeles, function(d) {
+    if (!is.list(d)) return(d)
+    for (k in intersect(c("x", "y"), names(d))) if (is.list(d[[k]]) && is.null(names(d[[k]]))) d[[k]] <- en_json(d[[k]])
+    d
+  })
 }
 
 # Écrit un fichier (ecrire(fichier temporaire)) sans jamais en laisser un à moitié écrit : dans
