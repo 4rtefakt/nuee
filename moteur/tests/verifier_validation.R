@@ -17,6 +17,9 @@
 #     (chaque composante sur les résidus
 #     du modèle complet, écrit à nouveau d'après Wold, 1978 ; l'ACP comme Nuée 0.8) ;
 #   - le Q2 honnête d'un modèle hiérarchique refait ses modèles de base sans le groupe caché ;
+#   - un modèle d'un fichier .usp suit le NIPALS de son logiciel (départ, arrêt à 1e-5, validation
+#     croisée partant du poids du modèle complet, terme sans valeur de la version 10, observations
+#     sans X), un modèle de Nuée le sien ;
 #   - comparer_references() valide comme le fichier et compte le Q2 dans son statut.
 #   Rscript moteur/tests/verifier_validation.R
 
@@ -597,6 +600,72 @@ verifier("avec les centres et poids du modèle complet, et pour une ACP : ni Q2 
 hh <- ajuster(ph, dh)$hierarchique
 verifier(sprintf("le Q2 honnête d'un hiérarchique a son gain sur le modèle vide (%.4f, Q2 honnête %.4f, modèle vide %.4f)", hh$gain, utils::tail(hh$q2cum, 1), hh$q2_vide),
          isTRUE(all.equal(hh$gain, (utils::tail(hh$q2cum, 1) - hh$q2_vide) / (1 - hh$q2_vide))))
+
+cat("Un modèle d'un fichier .usp suit le NIPALS de son logiciel (nipals.R), un modèle de Nuée le sien\n")
+# des valeurs manquantes, une observation sans aucune valeur X (la 5e) et un terme sans aucune valeur (azote)
+pv <- p
+pv$donnees[, as.character(uid("azote"))] <- NA
+pv$donnees[c(3, 9, 20), as.character(uid("sucre"))] <- NA
+pv$donnees[c(4, 11), as.character(uid("fermete"))] <- NA
+pv$donnees[5, as.character(complets)] <- NA
+xv <- c(complets[1:3], uid("azote"), complets[4:6])
+dv <- definir_modele(pv, "PLS", x = xv, y = uid(c("note_gout", "jus")), A = 2, validation = "complet")
+version <- function(v) { d <- dv; d$version_origine <- v; d }
+verifier("la colonne de départ : la plus grande somme des carrés ; pour un fichier, la première à 1e-9 près",
+         colonne_depart(c(39, 39 + 1e-13, 38)) == 2 && colonne_depart(c(39, 39 + 1e-13, 38), 11) == 1 && colonne_depart(c(38, 39, 39.5), 11) == 3)
+# la composante 1, refaite à la main d'après la règle du logiciel des fichiers : u part de la
+# 1re colonne de plus grande somme des carrés, arrêt à un écart relatif de u sous 1e-5
+m11 <- ajuster(pv, version(11))
+nipals_fichier <- function(E, ME, F, MF, u) {
+  for (i in 1:200) {
+    w <- projeter_colonnes(E, ME, u)
+    w <- w / sqrt(sum(w^2))
+    tt <- projeter(E, ME, w)
+    cc <- projeter_colonnes(F, MF, tt)
+    suivant <- projeter(F, MF, cc)
+    fini <- sqrt(sum((suivant - u)^2)) < 1e-5 * sqrt(sum(suivant^2))
+    u <- suivant
+    if (fini) break
+  }
+  list(w = w, iterations = i)
+}
+ss <- colSums(m11$Y^2)
+k1 <- nipals_fichier(m11$X, m11$MX, m11$Y, m11$MY, m11$Y[, which(ss >= max(ss) * (1 - 1e-9))[1]])
+kn <- composante_pls(m11$X, m11$MX, m11$Y, m11$MY)
+kf <- composante_pls(m11$X, m11$MX, m11$Y, m11$MY, version = 11)
+verifier(sprintf("composante 1 d'un fichier : le w de la règle refaite à la main (écart %.1e), en %d itérations au lieu de %d pour Nuée (écart %.1e)",
+                 max(abs(kf$w - k1$w)), kf$iterations, kn$iterations, max(abs(kf$w - kn$w))),
+         max(abs(kf$w - k1$w)) < 1e-12 && kf$iterations == k1$iterations && kf$iterations < kn$iterations && max(abs(kf$w - kn$w)) < 1e-3)
+# la validation croisée de chaque composante part du poids du modèle complet
+h <- m11$vc$groupes == 1
+k0 <- composante_pls(m11$X[!h, ], m11$MX[!h, ], m11$Y[!h, ], m11$MY[!h, ], version = 11, w0 = kf$w)
+verifier("validation croisée d'un fichier : la composante d'un groupe part du poids w du modèle complet",
+         max(abs(abs(m11$vc$tours[[1]]$W[, 1]) - abs(k0$w))) < 1e-12)
+# un terme sans aucune valeur : 0 pour Nuée et les versions 11 et 13, les w et p du terme d'avant
+# pour la version 10 (le même ajustement : scores au facteur près, R2X)
+m10 <- ajuster(pv, version(10))
+mn <- ajuster(pv, dv)
+verifier(sprintf("terme sans valeur : w = 0 pour Nuée et la version 11, ceux du terme d'avant pour la version 10 (%.4f), le même R2X (écart %.1e)",
+                 m10$W[4, 1], max(abs(m10$ssx - m11$ssx))),
+         all(mn$W[4, ] == 0) && all(m11$W[4, ] == 0) && all(m10$W[4, ] == m10$W[3, ]) && all(m10$P[4, ] == m10$P[3, ]) && m10$W[4, 1] != 0 &&
+           max(abs(m10$ssx - m11$ssx)) < 1e-8 * m11$ssx[1] && abs(sum(m10$W[-4, 1]^2) - 1) > 1e-3)
+# une observation sans aucune valeur X : parfaitement ajustée dès la 1re composante pour un fichier
+# (ses résidus de Y valent 0), et à la 1re composante de la validation croisée parfaitement
+# prédite par les versions 10 et 11, prédite par 0 par la version 13 (et Nuée) : leur PRESS
+# diffère de ses résidus de Y avant la 1re composante
+m13 <- ajuster(pv, version(13))
+r5 <- sum(m13$Y[5, ]^2)
+verifier(sprintf("observation sans X : résidus de Y nuls après la 1re composante pour un fichier (Nuée : %.3f), PRESS(1) de la version 13 moins celui de la version 11 = ses résidus avant (%.4f, %.4f)",
+                 sum(mn$residus_y[5, ]^2), sum(m13$press[1, ]) - sum(m11$press[1, ]), r5),
+         sum(m11$residus_y[5, ]^2) == 0 && sum(m13$residus_y[5, ]^2) == 0 && sum(mn$residus_y[5, ]^2) > 0 &&
+           isTRUE(all.equal(sum(m13$press[1, ]) - sum(m11$press[1, ]), r5)) && isTRUE(all.equal(m13$ssyv, m11$ssyv)))
+# une ACP d'un fichier : t part de la 1re colonne de plus grande somme des carrés, arrêt à 1e-5
+da <- definir_modele(pv, "PCA", x = xv, A = 2)
+da$version_origine <- 11
+ma <- ajuster(pv, da)
+mna <- ajuster(pv, definir_modele(pv, "PCA", x = xv, A = 2))
+verifier(sprintf("ACP d'un fichier : à 1e-4 de celle de Nuée (écart %.1e), plus vite", max(abs(abs(ma$P) - abs(mna$P)))),
+         max(abs(abs(ma$P) - abs(mna$P))) < 1e-4 && composante_acp(ma$X, ma$MX, version = 11)$iterations < composante_acp(ma$X, ma$MX)$iterations)
 
 cat("comparer_references() : validé comme le fichier, le Q2 compte dans le statut\n")
 dref <- ds

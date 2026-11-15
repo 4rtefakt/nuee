@@ -72,7 +72,7 @@ calculer_modele <- function(projet, definition, A = definition$A, G = definition
   # OPLS (opls.R) : A = Ap composantes prédictives + A - Ap composantes orthogonales
   Ap <- if (isTRUE(definition$opls)) definition$Ap %||% 1
   res <- if (isTRUE(definition$opls)) ajuster_opls(X, Y, max(0, A - Ap), Ap, vc, jusqua = !is.null(arret), etat = etat)
-         else ajuster_matrices(X, Y, A, arret, vc, etat)
+         else ajuster_matrices(X, Y, A, arret, vc, etat, version = definition$version_origine)
 
   modele <- c(list(
     type = definition$type, plsda = isTRUE(definition$plsda), opls = isTRUE(definition$opls), Ap = Ap,
@@ -88,8 +88,10 @@ calculer_modele <- function(projet, definition, A = definition$A, G = definition
 # (debut_validation), qui avancent d'une composante avec le modèle (ainsi l'ajustement
 # automatique, `arret`, juge chaque composante sur son Q2 sans en calculer de trop). `etat` : le
 # résultat garde aussi (etat_auto) la validation croisée en cours et les résidus d'avant la dernière
-# composante, de quoi en faire le modèle d'une composante de moins (modele_tronque).
-ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL, etat = FALSE) {
+# composante, de quoi en faire le modèle d'une composante de moins (modele_tronque). `version` : celle
+# du fichier .usp d'où vient le modèle (definition$version_origine), dont il suit alors le NIPALS
+# (nipals.R : TOLERANCE_FICHIER) ; NULL pour un modèle de Nuée.
+ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL, etat = FALSE, version = NULL) {
   pls <- !is.null(Y)
   K <- ncol(X$E)
   avec_x <- rowSums(X$M) > 0  # sans aucune valeur X, pas de score
@@ -105,7 +107,7 @@ ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL, etat = FALSE) {
   for (a in seq_len(A)) {
     # plus de variation à décrire (nipals.R) : l'ajustement automatique (arret) s'arrête là ;
     # sinon l'erreur dit combien de composantes le modèle peut avoir
-    comp <- tryCatch(if (pls) composante_pls(E, X$M, F, Y$M, depart) else composante_acp(E, X$M, depart),
+    comp <- tryCatch(if (pls) composante_pls(E, X$M, F, Y$M, depart, version) else composante_acp(E, X$M, depart, version),
                      sans_variation = function(e) if (!is.null(arret) && a > 1) NULL else stop(erreur_composantes(a)))
     if (is.null(comp)) break
     tt <- comp$t
@@ -117,7 +119,7 @@ ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL, etat = FALSE) {
     res$P <- cbind(res$P, comp$p)
     res$ssxv <- cbind(res$ssxv, colSums(E^2))
     if (pls) {
-      F <- retirer_composante(F, Y$M, t0, comp$c, plein_y)
+      F <- residus_sans_x(retirer_composante(F, Y$M, t0, comp$c, plein_y), avec_x, version)
       res$W <- cbind(res$W, comp$w)
       res$C <- cbind(res$C, comp$c)
       u <- comp$u

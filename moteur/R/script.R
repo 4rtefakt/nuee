@@ -220,6 +220,8 @@ plan_modele <- function(projet, d, m, tab) {
        dcrit_simple = N - 1 - A >= 1 && dfm >= K && (min(K, 100) - A) / (N / (N - 1 - A)) >= 1,
        cv_anova = pls && all(n_y - 1 - 2 * A > 0),
        dmodx_affiche = if (!is.null(s$observations$DModX_pondere) && (is.null(d$version_origine) || isTRUE(d$version_origine >= 13))) "DModX_pondere" else "DModX",
+       # (un modèle d'un fichier .usp : la version de son logiciel, dont il suit le NIPALS, nipals.R)
+       version_fichier = if (!is.null(d$version_origine)) as.numeric(d$version_origine),
        test = if (length(test)) list(manquantes = anyNA(bt), vides = any(presentes_test == 0), ki_court = any(presentes_test <= A),
                                      erreurs_manquantes = any(presentes_test == 0) || anyNA(yt)))
 }
@@ -293,6 +295,8 @@ besoins_script <- function(plans, seance) {
   # « complet » : validation_modele_complet_*), ou par des sous-modèles (validation_croisee_*) ;
   # l'écart-type gardé d'un terme sans le groupe caché (ecart_vc) pour celle « sans fuite »
   modele_complet <- vapply(plans, function(pl) identical(pl$validation, "complet"), TRUE)
+  fichiers <- vapply(plans, function(pl) !is.null(pl$version_fichier), TRUE)
+  fichiers_10 <- vapply(plans, function(pl) isTRUE(pl$version_fichier == 10) && isTRUE(pl$manquantes), TRUE)
   list(acp = any(types == "acp"), pls = any(types == "pls"), opls = any(types == "opls"),
        vc_acp = any(types == "acp" & !modele_complet), vc_pls = any(types == "pls" & !modele_complet), vc_opls = any(types == "opls" & !modele_complet),
        complet_acp = any(types == "acp" & modele_complet), complet_pls = any(types == "pls" & modele_complet), complet_opls = any(types == "opls" & modele_complet),
@@ -300,6 +304,12 @@ besoins_script <- function(plans, seance) {
        opls_general = any(vapply(plans, function(pl) pl$type == "opls" && pl$Ap > 1, TRUE)),
        manquantes = any(vapply(plans, `[[`, TRUE, "manquantes")), y_manquantes = any(vapply(plans, `[[`, TRUE, "y_manquantes")),
        vides = any(vapply(plans, `[[`, TRUE, "vides")),
+       # des ACP et des PLS de fichiers .usp (nipals.R : leur NIPALS) ; de la version 10 avec des
+       # valeurs manquantes (un terme sans valeur y prend les w et p du terme d'avant) ; des PLS avec
+       # des observations sans aucune valeur X (parfaitement ajustées après la 1re composante)
+       fichier_acp = any(types == "acp" & fichiers), fichier_pls = any(types == "pls" & fichiers),
+       vides_acp = any(types == "acp" & fichiers_10), vides_pls = any(types == "pls" & fichiers_10),
+       fichier_sans_x = any(types == "pls" & fichiers & vapply(plans, function(pl) isTRUE(pl$vides), TRUE)),
        plsda = any(vapply(plans, `[[`, TRUE, "plsda")), spectres = etapes, seance = seance,
        # les régressions : leurs fonctions, et les termes mis à l'échelle (toujours pour les autres modèles)
        regression = length(reg) > 0, lmm = any(vapply(reg, function(pl) !pl$generalise && length(pl$niveaux) > 0, TRUE)),
@@ -750,6 +760,10 @@ code_separer_test <- function(pl, tx) {
     if (pls) c("y_test <- y_observe[-modele, , drop = FALSE]", "y_observe <- y_observe[modele, , drop = FALSE]", "Y <- Y[modele, , drop = FALSE]"))
 }
 
+# L'argument qui fait suivre à un modèle d'un fichier .usp le NIPALS de son logiciel (nipals.R) :
+# « , version_fichier = 10 », rien pour un modèle de Nuée (ni pour une OPLS, qui suit celui de Nuée).
+arg_fichier <- function(pl) if (!is.null(pl$version_fichier) && pl$type != "opls") sprintf(", version_fichier = %d", as.integer(pl$version_fichier)) else ""
+
 # L'ajustement et la validation croisée (fonctions du début du script).
 code_ajustement <- function(pl, b, tx) {
   A <- pl$A
@@ -757,9 +771,10 @@ code_ajustement <- function(pl, b, tx) {
   general <- pl$type == "opls" && b$opls_general
   groupes <- arguments_groupes(pl)
   modele_complet <- identical(pl$validation, "complet")
+  f <- arg_fichier(pl)
   appel <- switch(pl$type,
-    acp = c("m <- acp(s$X, A)", if (modele_complet) sprintf("vc <- validation_modele_complet_acp(s, m, %s)", groupes) else sprintf("vc <- validation_croisee_acp(X, A, pretraiter, %s)", groupes)),
-    pls = c("m <- pls(s$X, s$Y, A)", if (modele_complet) sprintf("vc <- validation_modele_complet_pls(s, m, %s)", groupes) else sprintf("vc <- validation_croisee_pls(X, Y, A, pretraiter, %s)", groupes)),
+    acp = c(sprintf("m <- acp(s$X, A%s)", f), if (modele_complet) sprintf("vc <- validation_modele_complet_acp(s, m, %s%s)", groupes, f) else sprintf("vc <- validation_croisee_acp(X, A, pretraiter, %s%s)", groupes, f)),
+    pls = c(sprintf("m <- pls(s$X, s$Y, A%s)", f), if (modele_complet) sprintf("vc <- validation_modele_complet_pls(s, m, %s%s)", groupes, f) else sprintf("vc <- validation_croisee_pls(X, Y, A, pretraiter, %s%s)", groupes, f)),
     opls = if (general) c(sprintf("Ap <- %d  # %s", pl$Ap, tx("composantes prédictives", "predictive components")),
                           "m <- opls(s$X, s$Y, Ap, A - Ap)",
                           if (modele_complet) sprintf("vc <- validation_modele_complet_opls(s, Ap, A - Ap, %s)", groupes) else sprintf("vc <- validation_croisee_opls(X, Y, Ap, A - Ap, pretraiter, %s)", groupes))
@@ -1050,14 +1065,15 @@ appel_permutations <- function(pl, tx, liste = NULL) {
     return(paste0(formatC(paste("#", appel), width = -max(27, nchar(appel) + 4)), "# ", tx("test de permutation (quelques secondes)", "permutation test (a few seconds)")))
   }
   langue <- tx
-  ajuster <- switch(pl$type, pls = sprintf("pls(s$X, s$Y, %d)", pl$A),
+  f <- arg_fichier(pl)
+  ajuster <- switch(pl$type, pls = sprintf("pls(s$X, s$Y, %d%s)", pl$A, f),
                     opls = if (pl$Ap > 1) sprintf("opls(s$X, s$Y, %d, %d)", pl$Ap, pl$A - pl$Ap) else sprintf("opls(s$X, s$Y, %d)", pl$A - 1))
   g <- arguments_groupes(pl, liste)
   modele_complet <- identical(pl$validation, "complet")
   vc <- if (modele_complet) {  # (avec les centres et les poids du modèle complet de Yp : ses termes prétraités s et, pour une PLS, ses composantes m)
-    switch(pl$type, pls = sprintf("validation_modele_complet_pls(s, m, %s)", g),
+    switch(pl$type, pls = sprintf("validation_modele_complet_pls(s, m, %s%s)", g, f),
            opls = if (pl$Ap > 1) sprintf("validation_modele_complet_opls(s, %d, %d, %s)", pl$Ap, pl$A - pl$Ap, g) else sprintf("validation_modele_complet_opls(s, %d, %s)", pl$A - 1, g))
-  } else switch(pl$type, pls = sprintf("validation_croisee_pls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A, liste, g),
+  } else switch(pl$type, pls = sprintf("validation_croisee_pls(%s$X, Yp, %d, %s$pretraiter, %s%s)", liste, pl$A, liste, g, f),
                 opls = if (pl$Ap > 1) sprintf("validation_croisee_opls(%s$X, Yp, %d, %d, %s$pretraiter, %s)", liste, pl$Ap, pl$A - pl$Ap, liste, g)
                        else sprintf("validation_croisee_opls(%s$X, Yp, %d, %s$pretraiter, %s)", liste, pl$A - 1, liste, g))
   avec_m <- modele_complet && pl$type == "pls"
@@ -2318,11 +2334,13 @@ code_fonctions <- function(b, plans, langue) {
                                          "Generalized and additive models: mgcv (it comes with R), attached so that its distributions (nb(), tw()) find its functions.")),
                           "library(mgcv)"),
     if (na || isTRUE(b$vc_acp)) modele_projeter(tx),  # (la validation croisée d'une ACP ignore des termes comme des valeurs manquantes)
-    if (b$acp) c(modele_composante_acp(tx, na), "", modele_acp(tx, na, b$vides), if (b$vc_acp) c("", modele_vc_acp(tx, na)),
-                 if (b$complet_acp) c("", modele_complet_acp(tx, na, b$vides))),
-    if (b$pls || b$opls) modele_composante_pls(tx, na),
-    if (b$pls) c(modele_pls(tx, na, b$vides), if (b$vc_pls) c("", modele_vc_pls(tx, na, b$y_manquantes)),
-                 if (b$complet_pls) c("", modele_complet_pls(tx, na, b$vides))),
+    if (b$vides_acp || b$vides_pls) modele_reporter_vides(tx),
+    if (b$acp) c(modele_composante_acp(tx, na, b$fichier_acp, b$vides_acp), "", modele_acp(tx, na, b$vides, b$fichier_acp),
+                 if (b$vc_acp) c("", modele_vc_acp(tx, na, b$fichier_acp)),
+                 if (b$complet_acp) c("", modele_complet_acp(tx, na, b$vides, b$fichier_acp))),
+    if (b$pls || b$opls) modele_composante_pls(tx, na, b$fichier_pls, b$vides_pls),
+    if (b$pls) c(modele_pls(tx, na, b$vides, b$fichier_pls, b$fichier_sans_x), if (b$vc_pls) c("", modele_vc_pls(tx, na, b$y_manquantes, b$fichier_pls)),
+                 if (b$complet_pls) c("", modele_complet_pls(tx, na, b$vides, b$fichier_pls, b$fichier_sans_x))),
     if (b$opls) c(if (general) c(modele_composantes_pls(tx, na), "", modele_base_poids_y(tx, na), ""),
                   modele_opls_noyau(tx, na, general), "", modele_opls(tx, na, b$vides, general), "",
                   modele_opls_predire(tx, na, general), if (b$vc_opls) c("", modele_vc_opls(tx, na, general)),
@@ -2364,55 +2382,101 @@ modele_projeter <- function(tx) c(
   "  drop(E %*% v) / sum(v^2) * correction",
   "}")
 
-modele_composante_acp <- function(tx, na) c(
+# (`fichier` : des modèles de fichiers .usp, qui suivent le NIPALS de leur logiciel, nipals.R ;
+# `vides` : de la version 10, avec des valeurs manquantes : reporter_vides)
+modele_composante_acp <- function(tx, na, fichier = FALSE, vides = FALSE) c(
   commentaire(c(tx("Une composante d'ACP par NIPALS, à partir des résidus E : les scores t et les loadings p (de norme 1), recalculés l'un par l'autre jusqu'à ce que t ne change plus (écart relatif 1e-10, 2000 tours au plus).",
                    "One PCA component by NIPALS, from the residuals E: the scores t and the loadings p (of norm 1), computed from each other until t no longer changes (relative change 1e-10, 2000 rounds at most)."),
-                if (na) tx("Les valeurs manquantes sont ignorées (M).", "Missing values are ignored (M)."))),
-  if (na) "composante_acp <- function(E, M) {" else "composante_acp <- function(E) {",
+                if (na) tx("Les valeurs manquantes sont ignorées (M).", "Missing values are ignored (M)."),
+                if (fichier) texte_nipals_fichier(tx, FALSE, vides))),
+  if (fichier) { if (na) "composante_acp <- function(E, M, version_fichier = NULL) {" else "composante_acp <- function(E, version_fichier = NULL) {" }
+  else if (na) "composante_acp <- function(E, M) {" else "composante_acp <- function(E) {",
   if (na) c("  Et <- t(E)", "  Mt <- t(M)"),
-  "  tt <- E[, which.max(colSums(E^2))]",
-  "  for (i in 1:2000) {",
+  if (fichier) c("  fichier <- !is.null(version_fichier)", "  ss <- colSums(E^2)",
+                 "  tt <- E[, if (fichier) which(ss >= max(ss) * (1 - 1e-9))[1] else which.max(ss)]",
+                 if (vides) "  vides <- isTRUE(version_fichier == 10) & rowSums(Mt) == 0")
+  else "  tt <- E[, which.max(colSums(E^2))]",
+  if (fichier) "  for (i in 1:(if (fichier) 200 else 2000)) {" else "  for (i in 1:2000) {",
   if (na) "    p <- projeter(Et, Mt, tt)" else "    p <- drop(crossprod(E, tt)) / sum(tt^2)",
+  if (vides) "    if (any(vides)) p <- reporter_vides(p, vides)",
   "    p <- p / sqrt(sum(p^2))",
   if (na) "    t_suivant <- projeter(E, M, p)" else "    t_suivant <- drop(E %*% p) / sum(p^2)",
-  "    fini <- sqrt(sum((t_suivant - tt)^2)) <= 1e-10 * sqrt(sum(t_suivant^2))",
+  if (fichier) "    fini <- sqrt(sum((t_suivant - tt)^2)) <= (if (fichier) 1e-5 else 1e-10) * sqrt(sum(t_suivant^2))"
+  else "    fini <- sqrt(sum((t_suivant - tt)^2)) <= 1e-10 * sqrt(sum(t_suivant^2))",
   "    tt <- t_suivant",
   "    if (fini) break",
   "  }",
-  if (na) "  list(t = tt, p = projeter(Et, Mt, tt))" else "  list(t = tt, p = drop(crossprod(E, tt)) / sum(tt^2))",
+  if (fichier) { if (na) "  list(t = tt, p = if (fichier) p else projeter(Et, Mt, tt))" else "  list(t = tt, p = if (fichier) p else drop(crossprod(E, tt)) / sum(tt^2))" }
+  else if (na) "  list(t = tt, p = projeter(Et, Mt, tt))" else "  list(t = tt, p = drop(crossprod(E, tt)) / sum(tt^2))",
   "}")
 
-modele_composante_pls <- function(tx, na) c(
+modele_composante_pls <- function(tx, na, fichier = FALSE, vides = FALSE) c(
   commentaire(c(tx("Une composante PLS par NIPALS, à partir des résidus E de X et F de Y : les poids w des termes X (de norme 1), les scores t, les poids c des termes Y et les loadings p, recalculés jusqu'à ce que les scores u de Y ne changent plus (écart relatif 1e-10, 2000 tours au plus).",
                    "One PLS component by NIPALS, from the residuals E of X and F of Y: the weights w of the X terms (of norm 1), the scores t, the weights c of the Y terms and the loadings p, computed until the Y scores u no longer change (relative change 1e-10, 2000 rounds at most)."),
-                if (na) tx("Les valeurs manquantes sont ignorées (ME, MF).", "Missing values are ignored (ME, MF)."))),
-  if (na) "composante_pls <- function(E, ME, F, MF) {" else "composante_pls <- function(E, F) {",
+                if (na) tx("Les valeurs manquantes sont ignorées (ME, MF).", "Missing values are ignored (ME, MF)."),
+                if (fichier) texte_nipals_fichier(tx, TRUE, vides))),
+  if (fichier) { if (na) "composante_pls <- function(E, ME, F, MF, version_fichier = NULL, w0 = NULL) {" else "composante_pls <- function(E, F, version_fichier = NULL, w0 = NULL) {" }
+  else if (na) "composante_pls <- function(E, ME, F, MF) {" else "composante_pls <- function(E, F) {",
   if (na) c("  Et <- t(E)", "  MEt <- t(ME)", "  Ft <- t(F)", "  MFt <- t(MF)"),
-  "  u <- F[, which.max(colSums(F^2))]",
-  "  for (i in 1:2000) {",
+  if (fichier) c("  fichier <- !is.null(version_fichier)",
+                 tx("  if (!is.null(w0)) {  # (t, c et le premier u viennent du poids de départ w0)", "  if (!is.null(w0)) {  # (t, c and the first u come from the starting weight w0)"),
+                 if (na) "    tt <- projeter(E, ME, w0)" else "    tt <- drop(E %*% w0) / sum(w0^2)",
+                 if (na) "    cc <- projeter(Ft, MFt, tt)" else "    cc <- drop(crossprod(F, tt)) / sum(tt^2)",
+                 if (na) "    u <- projeter(F, MF, cc)" else "    u <- drop(F %*% cc) / sum(cc^2)",
+                 "  } else {",
+                 "    ss <- colSums(F^2)",
+                 "    u <- F[, if (fichier) which(ss >= max(ss) * (1 - 1e-9))[1] else which.max(ss)]",
+                 "  }",
+                 if (vides) "  vides <- isTRUE(version_fichier == 10) & rowSums(MEt) == 0")
+  else "  u <- F[, which.max(colSums(F^2))]",
+  if (fichier) "  for (i in 1:(if (fichier) 200 else 2000)) {" else "  for (i in 1:2000) {",
   if (na) "    w <- projeter(Et, MEt, u)" else "    w <- drop(crossprod(E, u)) / sum(u^2)",
+  if (vides) "    if (any(vides)) w <- reporter_vides(w, vides)",
   "    w <- w / sqrt(sum(w^2))",
   if (na) "    tt <- projeter(E, ME, w)" else "    tt <- drop(E %*% w) / sum(w^2)",
   if (na) "    cc <- projeter(Ft, MFt, tt)" else "    cc <- drop(crossprod(F, tt)) / sum(tt^2)",
   if (na) "    u_suivant <- projeter(F, MF, cc)" else "    u_suivant <- drop(F %*% cc) / sum(cc^2)",
-  "    fini <- sqrt(sum((u_suivant - u)^2)) <= 1e-10 * sqrt(sum(u_suivant^2))",
+  if (fichier) "    fini <- sqrt(sum((u_suivant - u)^2)) <= (if (fichier) 1e-5 else 1e-10) * sqrt(sum(u_suivant^2))"
+  else "    fini <- sqrt(sum((u_suivant - u)^2)) <= 1e-10 * sqrt(sum(u_suivant^2))",
   "    u <- u_suivant",
   "    if (fini) break",
   "  }",
-  if (na) "  list(w = w, t = tt, c = cc, p = projeter(Et, MEt, tt))" else "  list(w = w, t = tt, c = cc, p = drop(crossprod(E, tt)) / sum(tt^2))",
+  if (vides) c("  p <- projeter(Et, MEt, tt)", "  list(w = w, t = tt, c = cc, p = if (any(vides)) reporter_vides(p, vides) else p)")
+  else if (na) "  list(w = w, t = tt, c = cc, p = projeter(Et, MEt, tt))" else "  list(w = w, t = tt, c = cc, p = drop(crossprod(E, tt)) / sum(tt^2))",
   "}")
 
-# L'ajustement d'une ACP : les composantes une à une, chacune retirée de X.
-modele_acp <- function(tx, na, vides) c(
-  commentaire(tx("L'ACP à A composantes (X centré et mis à l'échelle) : chaque composante est retirée de X avant la suivante ; moins de A quand X n'a plus de variation (un reste sous 1e-12 de sa somme des carrés). ssx : la somme des carrés de chaque terme, avant la 1re composante puis après chacune.",
-                 "The PCA with A components (X centred and scaled): each component is removed from X before the next; fewer than A when X has no variation left (a remainder under 1e-12 of its sum of squares). ssx: the sum of squares of each term, before the 1st component then after each.")),
-  "acp <- function(X, A) {",
+# Ce que le NIPALS d'un modèle d'un fichier .usp fait autrement (nipals.R), pour le commentaire
+# d'une composante d'ACP ou de PLS (`pls`) ; `vides` : avec reporter_vides.
+texte_nipals_fichier <- function(tx, pls, vides) {
+  c(if (pls) tx("Un modèle d'un fichier .usp suit le NIPALS du logiciel de ce fichier (version_fichier : sa version, 10, 11 ou 13) : u part de la première colonne de F de plus grande somme des carrés (avec w0, du poids w0 : la validation croisée de chaque composante part du poids du modèle complet), et le calcul s'arrête à un écart relatif de 1e-5, ou après 200 tours.",
+                "A model from a .usp file follows the NIPALS of that file's software (file_version: its version, 10, 11 or 13): u starts from the first column of F with the largest sum of squares (with w0, from the weight w0: the cross-validation of each component starts from the full model's weight), and the computation stops at a relative change of 1e-5, or after 200 rounds.")
+    else tx("Un modèle d'un fichier .usp suit le NIPALS du logiciel de ce fichier (version_fichier : sa version, 10, 11 ou 13) : t part de la première colonne de E de plus grande somme des carrés, le calcul s'arrête à un écart relatif de 1e-5, ou après 200 tours, et le loading rendu est celui du dernier tour.",
+            "A model from a .usp file follows the NIPALS of that file's software (file_version: its version, 10, 11 or 13): t starts from the first column of E with the largest sum of squares, the computation stops at a relative change of 1e-5, or after 200 rounds, and the loading returned is the last round's."),
+    if (vides) tx(sprintf("Sa version 10 donne à un terme X sans aucune valeur %s du terme d'avant (reporter_vides).", if (pls) "le poids et le loading" else "le loading"),
+                  sprintf("Its version 10 gives an X term without any value the %s of the term before it (carry_previous).", if (pls) "weight and loading" else "loading")))
+}
+
+modele_reporter_vides <- function(tx) c(
+  commentaire(tx("La version 10 du logiciel des fichiers .usp donne à chaque terme X sans aucune valeur (`vides`, TRUE pour lui) la valeur du terme d'avant dans un poids ou un loading `v` (un terme vide en tête garde 0) : ses W, P, VIP et coefficients en viennent.",
+                 "Version 10 of the software of .usp files gives each X term without any value (`empty_terms`, TRUE for it) the value of the term before it in a weight or loading `v` (an empty first term keeps 0): its W, P, VIP and coefficients come from it.")),
+  "reporter_vides <- function(v, vides) {",
+  "  for (k in which(vides)) if (k > 1) v[k] <- v[k - 1]",
+  "  v",
+  "}")
+
+# L'ajustement d'une ACP : les composantes une à une, chacune retirée de X (`fichier` : des modèles
+# de fichiers .usp, version_fichier passée à composante_acp).
+modele_acp <- function(tx, na, vides, fichier = FALSE) c(
+  commentaire(c(tx("L'ACP à A composantes (X centré et mis à l'échelle) : chaque composante est retirée de X avant la suivante ; moins de A quand X n'a plus de variation (un reste sous 1e-12 de sa somme des carrés). ssx : la somme des carrés de chaque terme, avant la 1re composante puis après chacune.",
+                   "The PCA with A components (X centred and scaled): each component is removed from X before the next; fewer than A when X has no variation left (a remainder under 1e-12 of its sum of squares). ssx: the sum of squares of each term, before the 1st component then after each."),
+                if (fichier) tx("version_fichier : celle d'un modèle d'un fichier .usp (composante_acp).", "file_version: that of a model from a .usp file (pca_component)."))),
+  if (fichier) "acp <- function(X, A, version_fichier = NULL) {" else "acp <- function(X, A) {",
   if (na) c("  M <- 1 * !is.na(X)", "  E <- replace(X, is.na(X), 0)") else "  E <- X",
   "  m <- list(ssx = colSums(E^2))",
   "  depart <- sum(E^2)",
   "  for (a in 1:A) {",
   tx("    if (sum(E^2) <= 1e-12 * depart) break  # plus de variation à décrire", "    if (sum(E^2) <= 1e-12 * depart) break  # no variation left to describe"),
-  if (na) "    k <- composante_acp(E, M)" else "    k <- composante_acp(E)",
+  sprintf("    k <- composante_acp(E%s%s)", if (na) ", M" else "", if (fichier) ", version_fichier" else ""),
   if (na) "    E <- (E - outer(k$t, k$p)) * M" else "    E <- E - outer(k$t, k$p)",
   "    m$T <- cbind(m$T, k$t)",
   "    m$P <- cbind(m$P, k$p)",
@@ -2423,18 +2487,18 @@ modele_acp <- function(tx, na, vides) c(
   "  m",
   "}")
 
-# La validation croisée d'une ACP.
-modele_vc_acp <- function(tx, na) c(
+# La validation croisée d'une ACP (`fichier` : version_fichier passée aux sous-modèles).
+modele_vc_acp <- function(tx, na, fichier = FALSE) c(
   commentaire(tx("La validation croisée de l'ACP : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation ; les termes en G groupes à tour de rôle. Chaque groupe d'observations est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes et le modèle complet (`complet`), puis une ACP à A composantes. Pour chaque groupe de termes, les valeurs de ces termes sont prédites par les scores de chaque observation calculés sans eux (comme des valeurs manquantes), composante après composante ; puis ramenées dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante) et dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction, avec 1, 2... A composantes ; SS : celle de la composante précédente (celle de X pour la 1re).",
                  "The cross-validation of the PCA: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group; the terms to G groups in turn. Each group of observations is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows and the full model (`full`), then a PCA with A components. For each group of terms, the values of these terms are predicted by the scores of each observation computed without them (as missing values), component after component; then brought back to the units of the data (a term constant in the sub-model: its constant value) and to those of the full model. PRESS: the sum of squared prediction errors, with 1, 2... A components; SS: that of the previous component (that of X for the 1st).")),
-  "validation_croisee_acp <- function(X, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
+  sprintf("validation_croisee_acp <- function(X, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %%%% G + 1%s) {", if (fichier) ", version_fichier = NULL" else ""),
   "  complet <- pretraiter(X, seq_len(nrow(X)))",
   "  groupe_terme <- (seq_len(ncol(complet$X)) - 1) %% G + 1",
   "  vc <- list(press = matrix(0, A, ncol(complet$X)))",
   "  for (g in unique(groupe)) {",
   "    hors <- groupe == g",
   "    s <- pretraiter(X, !hors, complet)",
-  "    mg <- acp(s$X[!hors, , drop = FALSE], A)",
+  sprintf("    mg <- acp(s$X[!hors, , drop = FALSE], A%s)", if (fichier) ", version_fichier" else ""),
   "    for (h in unique(groupe_terme)) {",
   "      cases <- groupe_terme == h",
   "      M <- 1 * !is.na(s$X[hors, , drop = FALSE])",
@@ -2458,11 +2522,14 @@ modele_vc_acp <- function(tx, na) c(
   "  vc",
   "}")
 
-# L'ajustement d'une PLS.
-modele_pls <- function(tx, na, vides) c(
-  commentaire(tx("La PLS à A composantes (X et Y centrés et mis à l'échelle) : chaque composante est retirée de X et de Y avant la suivante ; moins de A quand X ou Y n'a plus de variation (un reste sous 1e-12 de sa somme des carrés). ssx, ssy : la somme des carrés de chaque terme, avant la 1re composante puis après chacune.",
-                 "The PLS with A components (X and Y centred and scaled): each component is removed from X and Y before the next; fewer than A when X or Y has no variation left (a remainder under 1e-12 of its sum of squares). ssx, ssy: the sum of squares of each term, before the 1st component then after each.")),
-  "pls <- function(X, Y, A) {",
+# L'ajustement d'une PLS (`fichier` : des modèles de fichiers .usp, version_fichier passée à
+# composante_pls ; `sans_x` : l'un d'eux a des observations sans aucune valeur X).
+modele_pls <- function(tx, na, vides, fichier = FALSE, sans_x = FALSE) c(
+  commentaire(c(tx("La PLS à A composantes (X et Y centrés et mis à l'échelle) : chaque composante est retirée de X et de Y avant la suivante ; moins de A quand X ou Y n'a plus de variation (un reste sous 1e-12 de sa somme des carrés). ssx, ssy : la somme des carrés de chaque terme, avant la 1re composante puis après chacune.",
+                   "The PLS with A components (X and Y centred and scaled): each component is removed from X and Y before the next; fewer than A when X or Y has no variation left (a remainder under 1e-12 of its sum of squares). ssx, ssy: the sum of squares of each term, before the 1st component then after each."),
+                if (fichier) tx(sprintf("version_fichier : celle d'un modèle d'un fichier .usp (composante_pls)%s.", if (sans_x) " ; son logiciel compte les observations sans aucune valeur X comme parfaitement ajustées dès la 1re composante (leurs résidus de Y valent 0), et fait les suivantes sans elles" else ""),
+                                sprintf("file_version: that of a model from a .usp file (pls_component)%s.", if (sans_x) "; its software counts the observations without any X value as perfectly fitted from the 1st component on (their Y residuals are 0), and makes the next ones without them" else "")))),
+  if (fichier) "pls <- function(X, Y, A, version_fichier = NULL) {" else "pls <- function(X, Y, A) {",
   if (na) c("  MX <- 1 * !is.na(X)", "  MY <- 1 * !is.na(Y)", "  E <- replace(X, is.na(X), 0)", "  F <- replace(Y, is.na(Y), 0)") else c("  E <- X", "  F <- Y"),
   if (vides) tx("  avec_x <- rowSums(MX) > 0  # les observations qui ont une valeur X au moins", "  avec_x <- rowSums(MX) > 0  # the observations that have one X value at least"),
   "  m <- list(ssx = colSums(E^2), ssy = colSums(F^2))",
@@ -2470,8 +2537,9 @@ modele_pls <- function(tx, na, vides) c(
   "  for (a in 1:A) {",
   tx("    if (sum(E^2) <= 1e-12 * depart[1] || sum(F^2) <= 1e-12 * depart[2]) break  # plus de variation à décrire",
      "    if (sum(E^2) <= 1e-12 * depart[1] || sum(F^2) <= 1e-12 * depart[2]) break  # no variation left to describe"),
-  if (na) "    k <- composante_pls(E, MX, F, MY)" else "    k <- composante_pls(E, F)",
+  sprintf("    k <- composante_pls(E, %sF%s%s)", if (na) "MX, " else "", if (na) ", MY" else "", if (fichier) ", version_fichier" else ""),
   if (na) c("    E <- (E - outer(k$t, k$p)) * MX", "    F <- (F - outer(k$t, k$c)) * MY") else c("    E <- E - outer(k$t, k$p)", "    F <- F - outer(k$t, k$c)"),
+  if (sans_x) "    if (!is.null(version_fichier)) F[!avec_x, ] <- 0",
   "    m$T <- cbind(m$T, k$t)",
   "    m$W <- cbind(m$W, k$w)",
   "    m$P <- cbind(m$P, k$p)",
@@ -2484,11 +2552,11 @@ modele_pls <- function(tx, na, vides) c(
   "  m",
   "}")
 
-# La validation croisée d'une PLS.
-modele_vc_pls <- function(tx, na, y_na) c(
+# La validation croisée d'une PLS (`fichier` : version_fichier passée aux sous-modèles).
+modele_vc_pls <- function(tx, na, y_na, fichier = FALSE) c(
   commentaire(tx("La validation croisée de la PLS : les observations sont réparties à tour de rôle en G groupes (la 1re, la 8e, la 15e... dans le groupe 1 pour G = 7), ou d'après `groupe`, le groupe de chaque observation. Chaque groupe est prédit par un sous-modèle ajusté sans lui : ses termes prétraités (pretraiter) d'après les autres lignes et le modèle complet (`complet`), puis une PLS à A composantes ; les lignes du groupe, prétraitées de même, sont projetées sur ses composantes une à une. Le Y prédit avec 1, 2... A composantes est ramené dans les unités des données (un terme constant dans le sous-modèle : sa valeur constante), puis dans celles du modèle complet. PRESS : la somme des carrés des erreurs de prédiction ; SS : celle de la composante précédente (celle de Y pour la 1re) ; y_vc : Y prédit en validation croisée avec A composantes ; Q2V : le Q2 cumulé de chaque Y, 1 - PRESS / SS.",
                  "The cross-validation of the PLS: the observations are assigned in turn to G groups (the 1st, 8th, 15th... in group 1 for G = 7), or after `group`, each observation's group. Each group is predicted by a sub-model fitted without it: its terms preprocessed (preprocess) from the other rows and the full model (`full`), then a PLS with A components; the rows of the group, preprocessed likewise, are projected on its components one by one. The Y predicted with 1, 2... A components is brought back to the units of the data (a term constant in the sub-model: its constant value), then to those of the full model. PRESS: the sum of squared prediction errors; SS: that of the previous component (that of Y for the 1st); y_vc: Y predicted in cross-validation with A components; Q2V: the cumulative Q2 of each Y, 1 - PRESS / SS.")),
-  "validation_croisee_pls <- function(X, Y, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %% G + 1) {",
+  sprintf("validation_croisee_pls <- function(X, Y, A, pretraiter, G = 7, groupe = (seq_len(nrow(X)) - 1) %%%% G + 1%s) {", if (fichier) ", version_fichier = NULL" else ""),
   "  complet <- pretraiter(X, Y, seq_len(nrow(X)))",
   "  vc <- list(press = matrix(0, A, ncol(complet$Y)), y_vc = 0 * complet$Y, press0 = 0, tours = list())",
   tx("  completer <- function(M, n) cbind(M, matrix(NA_real_, n, A - NCOL(M)))  # (NA : une composante qu'un sous-modèle n'a pas)",
@@ -2499,7 +2567,7 @@ modele_vc_pls <- function(tx, na, y_na) c(
   tx("    y_vide <- mettre_a_echelle(matrix(s$centre_y, sum(hors), length(s$centre_y), byrow = TRUE), complet$centre_y, complet$poids_y)  # le modèle vide : la moyenne de Y des autres lignes",
      "    y_vide <- mettre_a_echelle(matrix(s$centre_y, sum(hors), length(s$centre_y), byrow = TRUE), complet$centre_y, complet$poids_y)  # the empty model: the mean of Y over the other rows"),
   sprintf("    vc$press0 <- vc$press0 + colSums((complet$Y[hors, , drop = FALSE] - y_vide)^2%s)", if (y_na) ", na.rm = TRUE" else ""),
-  "    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], A)",
+  sprintf("    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], A%s)", if (fichier) ", version_fichier" else ""),
   tx("    # le sous-modèle, pour l'intervalle des coefficients (jack-knife)", "    # the sub-model, for the interval of the coefficients (jackknife)"),
   "    vc$tours[[length(vc$tours) + 1]] <- list(W = completer(mg$W, ncol(s$X)), P = completer(mg$P, ncol(s$X)), C = completer(mg$C, ncol(s$Y)))",
   if (na) c("    M <- 1 * !is.na(s$X[hors, , drop = FALSE])", "    E <- replace(s$X[hors, , drop = FALSE], M == 0, 0)") else "    E <- s$X[hors, , drop = FALSE]",
@@ -2523,12 +2591,13 @@ modele_vc_pls <- function(tx, na, y_na) c(
   "}")
 
 # La validation croisée d'une ACP avec les centres et les poids du modèle complet (mode « complet » ;
-# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`.
-modele_complet_acp <- function(tx, na, vides) {
+# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`
+# (`fichier` : version_fichier passée à composante_acp).
+modele_complet_acp <- function(tx, na, vides, fichier = FALSE) {
   t0 <- if (vides) "T0" else "m$T"
   c(commentaire(tx("La validation croisée de l'ACP avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes (`s` : les termes prétraités du modèle complet, `m` : ses composantes). Les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation ; les termes en G groupes à tour de rôle. Pour chaque composante, sur les résidus E du modèle complet avant elle, chaque case est prédite par t × p : le loading p ajusté sans le groupe de son observation, et le score t sans le groupe de son terme (Krzanowski, 1987), chacun orienté comme la composante du modèle complet (0 pour un groupe dont les autres lignes, ou les autres termes, n'ont plus de variation). PRESS : la somme des carrés des erreurs de prédiction ; SS : la somme des carrés de E. Ce Q2 s'écarte de 0,01 en médiane de ceux enregistrés dans les fichiers .usp : le logiciel qui les écrit ne publie pas tout le détail de sa validation.",
                    "The cross-validation of the PCA with the full model's centres and weights, each component validated on what the previous ones leave (`s`: the full model's preprocessed terms, `m`: its components). The observations are assigned in turn to G groups, or after `group`, each observation's group; the terms to G groups in turn. For each component, on the full model's residuals E before it, each cell is predicted by t × p: the loading p fitted without its observation's group, and the score t without its term's group (Krzanowski, 1987), each oriented like the full model's component (0 for a group whose other rows, or other terms, have no variation left). PRESS: the sum of squared prediction errors; SS: the sum of squares of E. This Q2 is 0.01 away, in median, from those stored in .usp files: the software that writes them does not publish every detail of its validation.")),
-    "validation_modele_complet_acp <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %% G + 1) {",
+    sprintf("validation_modele_complet_acp <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %%%% G + 1%s) {", if (fichier) ", version_fichier = NULL" else ""),
     if (na) c("  M <- 1 * !is.na(s$X)", "  E <- replace(s$X, M == 0, 0)") else "  E <- s$X",
     if (vides) "  T0 <- replace(m$T, is.na(m$T), 0)",
     "  depart <- sum(E^2)",
@@ -2543,14 +2612,14 @@ modele_complet_acp <- function(tx, na, vides) {
     "    for (g in unique(groupe)) {",
     "      hors <- groupe == g",
     "      if (sum(E[!hors, ]^2) > 1e-12 * depart) {",
-    sprintf("        k <- composante_acp(E[!hors, , drop = FALSE]%s)", if (na) ", M[!hors, , drop = FALSE]" else ""),
+    sprintf("        k <- composante_acp(E[!hors, , drop = FALSE]%s%s)", if (na) ", M[!hors, , drop = FALSE]" else "", if (fichier) ", version_fichier" else ""),
     "        P[, hors] <- k$p * sens(k$p, m$P[, a])",
     "      }",
     "    }",
     "    for (h in unique(groupe_terme)) {",
     "      cases <- groupe_terme == h",
     "      if (!all(cases) && sum(E[, !cases]^2) > 1e-12 * depart) {",
-    sprintf("        k <- composante_acp(E[, !cases, drop = FALSE]%s)", if (na) ", M[, !cases, drop = FALSE]" else ""),
+    sprintf("        k <- composante_acp(E[, !cases, drop = FALSE]%s%s)", if (na) ", M[, !cases, drop = FALSE]" else "", if (fichier) ", version_fichier" else ""),
     sprintf("        Tc[, cases] <- k$t * sens(k$t, %s[, a])", t0),
     "      }",
     "    }",
@@ -2563,14 +2632,20 @@ modele_complet_acp <- function(tx, na, vides) {
 }
 
 # La validation croisée d'une PLS avec les centres et les poids du modèle complet (mode « complet » ;
-# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`.
-modele_complet_pls <- function(tx, na, vides) {
+# validation_croisee.R : validation_par_composante), sur ses termes prétraités `s` et ses composantes `m`
+# (`fichier` : version_fichier passée aux composantes, qui partent alors du poids du modèle complet ;
+# `sans_x` : un modèle d'un fichier .usp a des observations sans aucune valeur X).
+modele_complet_pls <- function(tx, na, vides, fichier = FALSE, sans_x = FALSE) {
   t0 <- if (vides) "T0" else "m$T"
+  arguments <- if (na) "E[!hors, , drop = FALSE], MX[!hors, , drop = FALSE], F[!hors, , drop = FALSE], MY[!hors, , drop = FALSE]" else "E[!hors, , drop = FALSE], F[!hors, , drop = FALSE]"
   c(commentaire(tx("La validation croisée de la PLS avec les centres et les poids du modèle complet, chaque composante validée sur ce que laissent les précédentes ; elle redonne les Q2 enregistrés dans les fichiers .usp (`s` : les termes prétraités du modèle complet, `m` : ses composantes). Les observations sont réparties à tour de rôle en G groupes, ou d'après `groupe`, le groupe de chaque observation. Pour chaque composante, sur les résidus E et F du modèle complet avant elle, une composante PLS est ajustée sans chaque groupe, et le F du groupe en est prédit (0 quand les autres lignes n'ont plus de variation). PRESS : la somme des carrés des erreurs de prédiction de F ; SS : la somme des carrés de F ; y_vc : le Y du groupe prédit par une PLS à A composantes ajustée sur les autres lignes de `s` (RMSEcv, CV-ANOVA, classement) ; Q2V : le Q2 cumulé de chaque Y, 1 - le produit des (1 - Q2) des composantes, chaque Q2 compté pour -0,1 au plus bas (comme dans les fichiers .usp).",
                    "The cross-validation of the PLS with the full model's centres and weights, each component validated on what the previous ones leave; it gives back the Q2 stored in .usp files (`s`: the full model's preprocessed terms, `m`: its components). The observations are assigned in turn to G groups, or after `group`, each observation's group. For each component, on the full model's residuals E and F before it, a PLS component is fitted without each group, and the group's F is predicted from it (0 when the other rows have no variation left). PRESS: the sum of squared prediction errors of F; SS: the sum of squares of F; y_vc: the group's Y predicted by a PLS with A components fitted on the other rows of `s` (RMSEcv, CV-ANOVA, classification); Q2V: the cumulative Q2 of each Y, 1 - the product of the components' (1 - Q2), each Q2 counted as -0.1 at worst (as in .usp files).")),
-    "validation_modele_complet_pls <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %% G + 1) {",
+    sprintf("validation_modele_complet_pls <- function(s, m, G = 7, groupe = (seq_len(nrow(s$X)) - 1) %%%% G + 1%s) {", if (fichier) ", version_fichier = NULL" else ""),
     if (na) c("  MX <- 1 * !is.na(s$X)", "  MY <- 1 * !is.na(s$Y)", "  E <- replace(s$X, MX == 0, 0)", "  F <- replace(s$Y, MY == 0, 0)") else c("  E <- s$X", "  F <- s$Y"),
     if (vides) "  T0 <- replace(m$T, is.na(m$T), 0)",
+    if (sans_x) c(tx("  MP <- MY  # les cases dont l'erreur de prédiction compte dans le PRESS", "  MP <- MY  # the cells whose prediction error counts in the PRESS"),
+                  tx("  if (isTRUE(version_fichier < 13)) MP[rowSums(MX) == 0, ] <- 0  # (versions 10 et 11 : une observation sans aucune valeur X est parfaitement prédite)",
+                     "  if (isTRUE(version_fichier < 13)) MP[rowSums(MX) == 0, ] <- 0  # (versions 10 and 11: an observation without any X value is perfectly predicted)")),
     "  depart <- c(sum(E^2), sum(F^2))",
     "  vc <- list()",
     "  for (a in 1:ncol(m$T)) {",
@@ -2578,21 +2653,23 @@ modele_complet_pls <- function(tx, na, vides) {
     "    for (g in unique(groupe)) {",
     "      hors <- groupe == g",
     "      if (sum(E[!hors, ]^2) > 1e-12 * depart[1] && sum(F[!hors, ]^2) > 1e-12 * depart[2]) {",
-    if (na) "        k <- composante_pls(E[!hors, , drop = FALSE], MX[!hors, , drop = FALSE], F[!hors, , drop = FALSE], MY[!hors, , drop = FALSE])"
-    else "        k <- composante_pls(E[!hors, , drop = FALSE], F[!hors, , drop = FALSE])",
+    if (fichier) sprintf("        k <- composante_pls(%s, version_fichier, if (!is.null(version_fichier)) m$W[, a])", arguments)
+    else sprintf("        k <- composante_pls(%s)", arguments),
     if (na) "        tt <- projeter(E[hors, , drop = FALSE], MX[hors, , drop = FALSE], k$w)" else "        tt <- drop(E[hors, , drop = FALSE] %*% k$w) / sum(k$w^2)",
     "        erreur[hors, ] <- F[hors, , drop = FALSE] - outer(tt, k$c)",
     "      }",
     "    }",
-    sprintf("    vc$press <- rbind(vc$press, colSums(%s^2))", if (na) "(erreur * MY)" else "erreur"),
+    sprintf("    vc$press <- rbind(vc$press, colSums(%s^2))", if (sans_x) "(erreur * MP)" else if (na) "(erreur * MY)" else "erreur"),
     "    vc$ss <- rbind(vc$ss, colSums(F^2))",
     if (na) c(sprintf("    E <- (E - outer(%s[, a], m$P[, a])) * MX", t0), sprintf("    F <- (F - outer(%s[, a], m$C[, a])) * MY", t0))
     else c(sprintf("    E <- E - outer(%s[, a], m$P[, a])", t0), sprintf("    F <- F - outer(%s[, a], m$C[, a])", t0)),
+    if (sans_x) tx("    if (!is.null(version_fichier)) F[rowSums(MX) == 0, ] <- 0  # (parfaitement ajustées : pls)",
+                   "    if (!is.null(version_fichier)) F[rowSums(MX) == 0, ] <- 0  # (perfectly fitted: pls)"),
     "  }",
     "  vc$y_vc <- 0 * s$Y",
     "  for (g in unique(groupe)) {",
     "    hors <- groupe == g",
-    "    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], ncol(m$T))",
+    sprintf("    mg <- pls(s$X[!hors, , drop = FALSE], s$Y[!hors, , drop = FALSE], ncol(m$T)%s)", if (fichier) ", version_fichier" else ""),
     if (na) c("    Mh <- 1 * !is.na(s$X[hors, , drop = FALSE])", "    Eh <- replace(s$X[hors, , drop = FALSE], Mh == 0, 0)") else "    Eh <- s$X[hors, , drop = FALSE]",
     "    y <- matrix(0, sum(hors), ncol(s$Y))",
     "    for (a in seq_len(NCOL(mg$W))) {",
@@ -3367,10 +3444,11 @@ modele_esperance_zip <- function(tx) c(
 # séance, `ajuster(Yp)` donne l'ajustement et la validation croisée de chaque modèle.
 modele_permutations <- function(tx, pl, na) {
   G <- if (!is.null(pl) && (pl$G != 7 || !is.null(pl$groupes_vc))) paste0(", ", arguments_groupes(pl)) else ""
+  f <- if (!is.null(pl)) arg_fichier(pl) else ""
   modele_complet <- !is.null(pl) && identical(pl$validation, "complet")
   mesure <- if (is.null(pl)) c("    r <- ajuster(Yp)", "    A <- ncol(r[[1]]$T)", "    m <- r[[1]]", "    vc <- r[[2]]")
   else c("    s <- pretraiter(X, Yp, seq_len(nrow(X)))", switch(pl$type,
-    pls = c("    m <- pls(s$X, s$Y, A)", if (modele_complet) sprintf("    vc <- validation_modele_complet_pls(s, m%s)", G) else sprintf("    vc <- validation_croisee_pls(X, Yp, A, pretraiter%s)", G)),
+    pls = c(sprintf("    m <- pls(s$X, s$Y, A%s)", f), if (modele_complet) sprintf("    vc <- validation_modele_complet_pls(s, m%s%s)", G, f) else sprintf("    vc <- validation_croisee_pls(X, Yp, A, pretraiter%s%s)", G, f)),
     opls = if (pl$Ap > 1) c("    m <- opls(s$X, s$Y, Ap, Ao)", if (modele_complet) sprintf("    vc <- validation_modele_complet_opls(s, Ap, Ao%s)", G) else sprintf("    vc <- validation_croisee_opls(X, Yp, Ap, Ao, pretraiter%s)", G), "    A <- Ap + Ao")
            else c("    m <- opls(s$X, s$Y, Ao)", if (modele_complet) sprintf("    vc <- validation_modele_complet_opls(s, Ao%s)", G) else sprintf("    vc <- validation_croisee_opls(X, Yp, Ao, pretraiter%s)", G), "    A <- 1 + Ao")))
   arguments <- if (is.null(pl)) "ajuster, Y" else switch(pl$type, pls = "X, Y, A", opls = if (pl$Ap > 1) "X, Y, Ap, Ao" else "X, Y, Ao")
@@ -3523,6 +3601,7 @@ NOMS_SCRIPT_EN <- c(
   couleur = "colour", ordre = "ranking", pretraiter = "preprocess", apprentissage = "training", cases = "cells",
   groupes_vc = "cv_groups", retrait = "removal_order", Wetoile = "Wstar", y_vide = "y_empty", q2_vide = "q2_empty",
   tours = "rounds", completer = "pad_columns", coefficients_tours = "coefficients_rounds", ic_coefficients = "coefficients_ci",
+  version_fichier = "file_version", fichier = "from_file", reporter_vides = "carry_previous", vides = "empty_terms",
   # les régressions
   termes_utiles = "useful_terms", termes = "model_terms", garde = "kept_columns", aic_corrige = "aic_corrected",
   validation_croisee = "cross_validation", cadre = "model_data", predire = "predict_group", echecs = "failures", ici = "here",

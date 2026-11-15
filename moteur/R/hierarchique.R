@@ -53,7 +53,8 @@ ajuster_sans_validation <- function(projet, d, A = d$A, complet = NULL) {
   X <- preparer(bx$X)
   Y <- if (pls) preparer(by$X)
   Ap <- d$Ap %||% 1
-  res <- if (isTRUE(d$opls)) ajuster_opls(X, Y, max(0, A - Ap), Ap, jusqua = TRUE) else ajuster_matrices(X, Y, A, arret = function(res, a) FALSE)
+  res <- if (isTRUE(d$opls)) ajuster_opls(X, Y, max(0, A - Ap), Ap, jusqua = TRUE)
+         else ajuster_matrices(X, Y, A, arret = function(res, a) FALSE, version = d$version_origine)  # (un modèle d'un fichier : son NIPALS, nipals.R)
   c(list(type = d$type, opls = isTRUE(d$opls), Ap = Ap, A = ncol(res$T), x = bx), res)
 }
 

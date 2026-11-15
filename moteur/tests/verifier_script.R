@@ -2,7 +2,9 @@
 # ajuste (ACP, PLS à un ou plusieurs Y, PLS-DA, OPLS, OPLS-DA à deux classes et plus) et ses
 # options (transformations, mises à l'échelle par variable, termes qualitatifs, croisés et carrés,
 # spectres, valeurs manquantes, jeu de test, modèle d'un .usp orienté comme sa solution
-# enregistrée, modèle hiérarchique, sous-modèles de la validation croisée à court de variation ;
+# enregistrée, modèles de fichiers .usp et le NIPALS de leur logiciel (versions 10, 11 et 13, seuls
+# ou en séance avec un modèle de Nuée), modèle hiérarchique, sous-modèles de la validation croisée
+# à court de variation ;
 # les trois façons de valider, sans fuite, centres seulement et avec les centres et les poids du
 # modèle complet, et la garde d'un terme qui ne varie presque que dans un groupe), le script est
 # écrit, lancé dans une session R neuve
@@ -427,6 +429,44 @@ r_modes <- ecrire_script_seance(qm, defs, ms_modes, file.path(dossier, "anglais_
 verifier("ni nom ni commentaire en français (OPLS-DA et jeu de test, ACP et PLS avec valeurs manquantes, OPLS à 2 Y, termes croisés et échelles mêlées, spectres, séance ; validations centres seulement et avec les centres et les poids du modèle complet, garde, séance aux trois façons)",
          en_anglais(lignes_script(r)) && all(anglais) && en_anglais(lignes_script(r_sp)) && en_anglais(lignes_script(r_seance)) && en_anglais(lignes_script(r_modes)) &&
            !length(ecarts) && is.null(r_sp$ecart) && is.null(r_seance$ecart) && is.null(r_modes$ecart))
+
+cat("Modèles de fichiers .usp : le NIPALS de leur logiciel (nipals.R)\n")
+# Des valeurs manquantes, une observation sans aucune valeur X (la 5e) et un terme sans aucune
+# valeur (azote) : une PLS de la version 10 (le terme vide prend les w et p du terme d'avant :
+# reporter_vides), de la version 11 (l'observation sans X parfaitement prédite en validation
+# croisée), une ACP de la version 13 ; validées comme le fichier ou par défaut, en anglais, et dans
+# une séance avec un modèle de Nuée (les mêmes fonctions, le modèle de Nuée avec les siennes).
+pv <- p
+pv$donnees[, as.character(uid("azote"))] <- NA
+pv$donnees[c(3, 9, 20), as.character(uid("sucre"))] <- NA
+pv$donnees[c(4, 11), as.character(uid("fermete"))] <- NA
+pv$donnees[5, as.character(complets[1:6])] <- NA
+xv <- c(complets[1:3], uid("azote"), complets[4:6])
+du_fichier <- function(d, v) { d$version_origine <- v; d }
+d10 <- du_fichier(definir_modele(pv, "PLS", x = xv, y = uid(c("note_gout", "jus")), A = 2, validation = "complet", nom = "U10"), 10)
+r <- essayer("usp_v10", pv, d10, permutations = TRUE)
+verifier("usp_v10 : le NIPALS du logiciel du fichier (version_fichier = 10, reporter_vides)",
+         any(grepl("^m <- pls\\(s\\$X, s\\$Y, A, version_fichier = 10\\)", lignes_script(r))) && any(grepl("^reporter_vides <- function", lignes_script(r))))
+essayer("usp_v11_centres", pv, du_fichier(definir_modele(pv, "PLS", x = xv, y = uid(c("note_gout", "jus")), A = 2), 11), permutations = TRUE)
+essayer("usp_v11_complet", pv, du_fichier(definir_modele(pv, "PLS", x = xv[-4], y = uid("note_gout"), A = 2, validation = "complet"), 11))
+essayer("usp_v13_acp", pv, du_fichier(definir_modele(pv, "PCA", x = xv, A = 2, validation = "complet"), 13))
+essayer("usp_v13_acp_sans_fuite", pv, du_fichier(definir_modele(pv, "PCA", x = xv[-4], A = 2, validation = "sans_fuite"), 13))
+r_en <- essayer("usp_v10_anglais", pv, d10, langue = "en")
+verifier("usp_v10_anglais : ni nom ni commentaire en français", en_anglais(lignes_script(r_en)))
+dir.create(ici <- file.path(dossier, "seance_fichier"))
+defs_f <- list(d10, definir_modele(pv, "PLS", x = xv[-4], y = uid("note_gout"), A = 2, nom = "Nuee", validation = "complet"))
+ms_f <- lapply(defs_f, function(d) ajuster(pv, d))
+r <- ecrire_script_seance(pv, defs_f, ms_f, file.path(ici, "seance.R"), "moteur", version = "essai")
+texte <- lignes_script(r)
+sortie <- lancer(r$script, c("U10", "Nuee"))
+memes <- vapply(1:2, function(k) {
+  a <- moteur(ms_f[[k]])
+  x <- sortie[[c("U10", "Nuee")[k]]]
+  !is.null(x) && meme(a$scores, x$m$T) && meme(a[["R2, Q2"]], x$composantes) && meme(a$VIP, x$variables$VIP) && meme(a$coefficients, x$coefficients)
+}, TRUE)
+verifier("une séance d'un modèle d'un fichier et d'un modèle de Nuée : les résultats du moteur, chacun avec son NIPALS",
+         is.null(r$ecart) && all(memes) && sum(grepl("^composante_pls <- function", texte)) == 1 &&
+           any(grepl("^m <- pls\\(s\\$X, s\\$Y, A, version_fichier = 10\\)", texte)) && sum(grepl("^m <- pls\\(s\\$X, s\\$Y, A\\)$", texte)) == 1)
 
 cat("Toute la séance dans un script\n")
 dir.create(ici <- file.path(dossier, "seance"))
