@@ -464,6 +464,14 @@ verifier("CCA partielle : ses réglages (Z, groupes des permutations) pour Modif
 dcc0 <- definir_modele(p, "CCA", x = u("temp"), y = u(especes), echelle = "none", options = list(permutations = 0))
 mcc0 <- ajuster(p, dcc0)
 verifier("CCA sans permutation : pas de p ni de R² ajusté, le R² seul", is.na(mcc0$test$p) && is.na(mcc0$r2_ajuste) && grepl("^R2 ", resultat(garder("M8", dcc0, mcc0))$chiffres))
+# (des X tous qualitatifs : aucune flèche, et la matrice des flèches sans noms de lignes)
+qualitatives <- lapply(c("RDA", "CCA"), function(type) {
+  dq <- definir_modele(p, type, x = u("habitat"), y = u(especes), echelle = "none", options = list(permutations = 0))
+  tryCatch(resultat(garder(paste0("Q", type), dq, ajuster(p, dq))), error = conditionMessage)
+})
+verifier("RDA et CCA d'une X qualitative seule : aucune flèche, les centroïdes de ses catégories, aucune variable X",
+         all(vapply(qualitatives, function(r) is.list(r) && length(r$ordination$`2`$noms_biplot) == 0 && nrow(r$ordination$`2`$biplot) == 0 &&
+                      nrow(r$ordination$`2`$centroides) == 3 && identical(names(r$variables)[1], "terme") && nrow(r$variables) == 0 && inherits(json(r), "json"), TRUE)))
 for (langue in c("fr", "en")) {
   tcc <- texte_methodes(p, dcca, etat$modeles$M6$modele, langue, "essai")
   tcz <- texte_methodes(p, dccz, mccz, langue, "essai")
