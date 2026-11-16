@@ -574,3 +574,39 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .badge.drapeau-change.nouveau { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .badge.drapeau-change.disparu, .badge.drapeau-change.retourne { background: var(--grille); color: var(--texte-doux); }
 .seul-cote p { margin: 3px 0; }
+
+/* Signing in to GitHub or GitLab, inviting a colleague (connexion.js): the code big and copyable, the
+   wait for the approval, the account's card, the other ways to sign in */
+.dialogue-compte { display: flex; flex-direction: column; gap: 6px; min-width: min(32em, 80vw); }
+.dialogue-compte p { margin: 2px 0; }
+.dialogue-compte a { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); }
+.dialogue-compte a .icone { width: 13px; height: 13px; }
+.dialogue-compte .ligne { flex-wrap: wrap; gap: 8px; }
+.dialogue-compte .ligne > label, .etiquette-compte { color: var(--texte-doux); }
+.etape-connexion { display: flex; flex-direction: column; gap: 8px; }
+.services-connexion { display: flex; gap: 10px; margin: 4px 0; }
+.services-connexion button { flex: 1; justify-content: center; padding: 10px; font-size: 14px; font-weight: 600; }
+.code-appareil { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 6px 0 2px; }
+.code-appareil code { font: 600 30px/1.2 Consolas, 'Cascadia Mono', monospace; letter-spacing: .14em; padding: 6px 8px 6px 18px; border: 1px solid var(--bord);
+  border-radius: 6px; background: var(--fond-barre); user-select: all; }
+.ouvrir-connexion { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.adresse-connexion { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12px; color: var(--texte-doux); }
+.attente-connexion { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--texte-doux); }
+.attente-connexion .point { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; flex: none; }
+.ok-compte { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+.carte-compte { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--grille); border-radius: 8px; background: var(--fond-barre); }
+.avatar-compte { width: 44px; height: 44px; border-radius: 50%; flex: none; object-fit: cover; background: var(--fond); }
+.avatar-compte.vide { display: inline-flex; align-items: center; justify-content: center; color: var(--texte-doux); }
+.avatar-compte.vide .icone { width: 30px; height: 30px; }
+.texte-compte { min-width: 0; overflow-wrap: anywhere; }
+.autres-connexions { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--grille); padding-top: 6px; }
+.autres-connexions:empty, .jeton-connexion:empty { display: none; }
+.autres-connexions h3 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); margin: 2px 0; }
+.jeton-connexion { display: flex; flex-direction: column; gap: 6px; }
+.message-compte { min-height: 1.4em; overflow-wrap: anywhere; }
+.message-compte.ok-compte { display: block; }
+.invites-compte { margin: 0; padding: 0; list-style: none; }
+.invites-compte li { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+.comptes-essai { display: flex; flex-direction: column; gap: 8px; }
+.ligne-compte { display: flex; flex-direction: column; gap: 6px; }
+.actions-compte { display: flex; flex-wrap: wrap; gap: 6px; }
