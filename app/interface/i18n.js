@@ -2,7 +2,7 @@
 const TEXTES = {
   fr: {
     titre: 'Nuée', sous_titre: 'ACP, PLS, écologie des communautés, modèles et cartes, calculés en R',
-    projet_exemple: 'Projet d’exemple', projet_exemple_aide: 'Des données inventées (120 pommes) pour essayer l’application', licence: 'Licence',
+    projet_exemple: 'Projets d’exemple', projet_exemple_aide: 'Des données inventées ou simulées, avec leurs modèles, pour essayer l’application : des pommes, des alouettes, des truites', licence: 'Licence',
     // menus
     m_fichier: 'Fichier', m_edition: 'Édition', m_modele: 'Modèle', m_graphiques: 'Graphiques',
     m_prediction: 'Prédiction', m_fenetre: 'Fenêtre', m_affichage: 'Affichage', m_aide: 'Aide',
@@ -774,7 +774,7 @@ const TEXTES = {
   },
   en: {
     titre: 'Nuée', sous_titre: 'PCA, PLS, community ecology, models and maps, computed in R',
-    projet_exemple: 'Example project', projet_exemple_aide: 'Made-up data (120 apples) to try the application', licence: 'License',
+    projet_exemple: 'Example projects', projet_exemple_aide: 'Made-up or simulated data, with their models, to try the application: apples, skylarks, trout', licence: 'License',
     m_fichier: 'File', m_edition: 'Edit', m_modele: 'Model', m_graphiques: 'Plots',
     m_prediction: 'Predict', m_fenetre: 'Window', m_affichage: 'View', m_aide: 'Help',
     ouvrir: 'Open…', recents: 'Open recent', aucun_recent: 'No recent files',

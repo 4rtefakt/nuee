@@ -83,8 +83,8 @@ la page des [publications sur GitHub]({{telechargement:toutes}}) ; ce qui a chan
   témoins (BACI), une PLS sur des spectres, le suivi d'une population d'oiseaux, les carabes de
   trois milieux (écologie des communautés), les cartes et les modèles spatiaux, et le rapport d'une
   étude.
-- Dans l'application, Aide › Projet d'exemple ouvre 120 pommes inventées avec quatre modèles
-  prêts.
+- Dans l'application, Aide › Projets d'exemple ouvre 120 pommes inventées avec quatre modèles
+  prêts, et les alouettes et les truites des tutoriels avec les leurs.
 - [Le guide d'utilisation](page:guide) décrit chaque fenêtre et chaque calcul.
 
 Nuée est un logiciel libre ([GPL-3.0](https://github.com/4rtefakt/nuee/blob/main/LICENSE)).

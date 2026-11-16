@@ -956,9 +956,11 @@ async function ajusterModeleProjet(p, nom) {
   await graphes(p, 3);
 }
 
-// Help › Example project: its PCA M1 fitted, the scores coloured by variety
+// Help › Example projects › Apples: its PCA M1 fitted, the scores coloured by variety
 async function exemple(p) {
   await menu(p, 'm_aide', 'projet_exemple');
+  await p.attendre("!!document.querySelector('.menu.sous-menu .item')");
+  await p.cliquer("__n.debut('.menu.sous-menu .item', __n.t('exemple_pommes'))");
   await p.attendre(`!!(${ligneModele('M1', true)})`, 180000);
   await graphes(p, 3);
 }

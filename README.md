@@ -101,10 +101,11 @@ page.
 
 ## First steps
 
-- **Try the example:** *Help › Example project* opens 120 made-up
+- **Try the examples:** *Help › Example projects › Apples* opens 120 made-up
   apples (four varieties, organic or conventional, a dozen measurements and a tasting score)
   with four models ready: a PCA, a PLS predicting the score, a PLS-DA of the varieties and an
-  OPLS-DA of the growing method.
+  OPLS-DA of the growing method. *Skylark monitoring* (TRIM, a mixed model, distance sampling)
+  and *A weir removed* (BACI) open the tutorials' simulated data with their models fitted.
 - **Open your data:** *File › Open* (Ctrl+O) reads a table with one row per observation
   and the observation names in the first column (see [Files](#files) for the formats), or
   *File › Paste a table* (Ctrl+V) takes cells copied from any spreadsheet, or drop files on
@@ -122,8 +123,8 @@ page.
   follows you in every plot of the model. Click a variable (a VIP bar, a coefficient, a point
   of the loadings or of the S-plot) to highlight it in all the model's plots.
 
-The full user guide comes with the application (*Help › User guide › Full guide*), in
-English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
+The full user guide comes with the application (*Help › User guide*, F1: in a panel beside your
+work, at the section of what is in front), in English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)). It is also on the
 [documentation website](https://4rtefakt.github.io/nuee/en/), with six tutorials.
 

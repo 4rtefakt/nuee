@@ -74,10 +74,20 @@ SPC spectra together make one project, as Import spectra; other files each open 
 Open. Double-clicking a .nuee project in Windows Explorer opens it in Nuée (in the window
 already open, if there is one).
 The last files opened are in File › Open recent.
-To try it: Help › Example project opens 120 made-up apples (four varieties, organic or
-conventional growing, a dozen measurements and a tasting score) with four ready models: a
-PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The
-original table, orchards.csv, is next to it (resources\exemple), to try opening a table.
+To try it, Help › Example projects:
+- Apples: 120 made-up apples (four varieties, organic or conventional growing, a dozen
+  measurements and a tasting score) with four ready models: a PCA, a PLS of the score, a PLS-DA
+  of the varieties and an OPLS-DA of the growing method. The original table, orchards.csv, is
+  next to it (resources\exemple), to try opening a table.
+- Skylark monitoring: the two projects of the monitoring tutorial, a skylark counted on 40 sites
+  over 17 years (TRIM and a negative binomial mixed model, fitted) and its line transects
+  (distance sampling: density and abundance).
+- A weir removed: the young trout of the BACI tutorial, before and after a weir was removed,
+  with the before/after view of Statistical tests and its mixed model.
+Their data are made up or simulated (the tutorials' tables can be downloaded from the
+documentation website). Each opens as a new project, its models fitted and its views open; Save
+asks where to put it. While a project of the skylarks or the trout is in front, the status bar
+links to its tutorial.
 
 Field data from KoboToolbox or ODK
 ----------------------------------
@@ -143,6 +153,11 @@ Closing the application with unsaved changes offers "Save and close". Every two 
 also keeps a recovery copy of unsaved projects: if it stops without being closed (crash,
 power cut), it offers to recover them at the next start. Closing that question without an
 answer keeps the copies for next time; only "Ignore" deletes them.
+File › Settings... › At start-up, "Reopen the projects that were open when Nuée was closed":
+at the next start, the saved projects (.nuee) open when Nuée closed come back, with their
+models and views; a file moved or deleted since is named in the status bar. Without it, the
+start page offers Reopen last session. After an unexpected stop, the recovery copies are
+offered instead.
 Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
 variable, class, scores as variables, deleted definition...), up to 20 steps back.
 Notes: each model's summary has a notes area, saved with the project and included in the
@@ -219,6 +234,13 @@ Loadings, DModX, T², Contrib., VIP, Coeff., Obs/pred, HCA, as always); a regres
 analysis has its own (a regression's Coefficients, Effects, Residuals, AIC selection...; TRIM's
 Indices and Totals; distance sampling's Detection and Density). The Plots menu starts with the
 active model's views; those it doesn't have are under Plots › Other plots.
+Help › User guide (F1): this guide, in a panel at the window's right, beside the work, at the
+section of what is in front: the model's type, the view (F1 on a TRIM model opens TRIM's section,
+on Plots › AIC selection its paragraph). Its contents, the sections before and after, and a
+search through every section (accents and capitals don't matter, the words found are marked);
+the sections it refers to ("see Cross-validation") and web addresses are links. It stays open
+while you work, like another panel (Ctrl+W closes it, F1 again goes to what is in front); its
+buttons open the guide online and as a text file.
 Keyboard and screen readers: Alt (or F10) goes to the menu bar, the arrows through its menus,
 Enter runs a command, Esc goes back; Alt with a menu's underlined letter opens it (Alt+F
 File...). F6 goes from area to area (toolbar, explorer, each group of panels, status bar),
@@ -2416,7 +2438,8 @@ views. Window › Close all views closes every tab of the centre, models' pages 
 views (the explorer and the R console stay).
 Window › New window opens a second full window. A selection of observations (box or lasso in
 a plot, click on a point or a list row) shows in every view and every window of the same
-model.
+model. A window's title, which its taskbar button and the Window menu show, names the project
+in front: the one the menus act on.
 Plots: mouse wheel to zoom; right-click to copy or save the image (PNG, SVG), see the
 selection's contributions or make it a class.
 Ctrl+C in a view that shows a table (summary, lists, statistics...) copies the table as
@@ -2427,6 +2450,11 @@ View › Find a command (Ctrl+K): type part of the name of a command or of its m
 "random forest"), then Enter: the command runs, or New model opens with that type.
 Help › Diagnostic information: the versions of Nuée, the system, R and its packages, to paste
 into a report of a problem (github.com/4rtefakt/nuee/issues; no paths, no data).
+Help › Tutorials and Help › User guide online open the documentation website in the browser,
+in the interface's language: six tutorials, from the question to the paper, and this guide in
+pages. Help › About gives the versions, the website (nuee.io), the source code and Report a
+problem, and how to cite Nuée: the sentence to copy, with Zenodo's DOI, which stands for every
+version (Model › Text for the Methods section writes it too).
 
 What matches the stored values (checked on 944 models from 133 .usp projects)
 -----------------------------------------------------------------------------

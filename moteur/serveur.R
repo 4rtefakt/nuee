@@ -1588,15 +1588,29 @@ DEMANDES <- list(
   # formulaire XLSForm et sa langue), puis l'import, un nouveau projet.
   kobo_apercu = function(q) apercu_collecte(q$chemin, q$table, q$garder, q$parents, q$formulaire, q$langue),
   kobo_importer = function(q) ouvrir_collecte(q$chemin, q$nom %||% basename(q$chemin), q),
-  # Le projet d'exemple (données inventées) dans la langue de l'interface : exemple/orchards.json
-  # en anglais, exemple/vergers.json en français (les mêmes pommes : exemple/creer_exemple.js) ;
-  # ouvert comme un projet nouveau, que Enregistrer range où l'on veut.
+  # Un projet d'exemple (données inventées ou simulées) dans la langue de l'interface, q$nom (les
+  # pommes sans nom) : les pommes, exemple/orchards.json en anglais, exemple/vergers.json en français
+  # (exemple/creer_exemple.js) ; les comptages et les transects d'alouettes du tutoriel de suivi et
+  # les truites du tutoriel BACI (exemple/creer_exemples_ecologie.js, d'après docs/site/donnees), avec
+  # leur séance. Ouvert comme un projet nouveau, que Enregistrer range où l'on veut.
   exemple = function(q) {
-    r <- ouvrir_fichier(file.path(racine, "exemple", traduire("vergers.json", "orchards.json")))
+    fichiers <- list(pommes = c("vergers", "orchards"), alouettes_comptages = c("comptages_alouette", "skylark_counts"),
+                     alouettes_transects = c("transects_alouette", "skylark_transects"), baci = c("baci_truite", "baci_trout"))
+    nom <- as.character(q$nom %||% "pommes")[1]
+    f <- if (nom %in% names(fichiers)) fichiers[[nom]] else stop(traduire("Projet d'exemple inconnu : ", "Unknown example project: "), nom, call. = FALSE)
+    r <- ouvrir_fichier(file.path(racine, "exemple", paste0(traduire(f[1], f[2]), ".json")))
     p <- projet(r$id)
     p$chemin <- NULL
     etat$projets[[p$id]] <- p
     resume_projet(p)
+  },
+  # Le guide d'utilisation complet, pour le panneau d'aide (interface/aide.js : F1) : celui qui est à
+  # côté du moteur, en français (LISEZ-MOI-APPLICATION.txt) ou en anglais (USER-GUIDE.txt), dans la
+  # langue q$langue, sinon celle de la demande.
+  guide = function(q) {
+    en <- if (!is.null(q$langue)) identical(q$langue, "en") else identical(traduire("fr", "en"), "en")
+    f <- file.path(racine, if (en) "USER-GUIDE.txt" else "LISEZ-MOI-APPLICATION.txt")
+    list(texte = paste(readLines(f, encoding = "UTF-8", warn = FALSE), collapse = "\n"))
   },
   projet = function(q) resume_projet(projet(q$projet)),
   donnees = function(q) donnees_projet(projet(q$projet), q$colonnes),

@@ -105,10 +105,12 @@ d'état ouvre sa page.
 
 ## Premiers pas
 
-- **Essayer l'exemple :** *Aide › Projet d'exemple* ouvre 120 pommes inventées (quatre
-  variétés, bio ou conventionnelles, une douzaine de mesures et une note de dégustation) avec
-  quatre modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA du
-  mode de culture.
+- **Essayer les exemples :** *Aide › Projets d'exemple › Pommes* ouvre 120 pommes inventées
+  (quatre variétés, bio ou conventionnelles, une douzaine de mesures et une note de dégustation)
+  avec quatre modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA
+  du mode de culture. *Suivi d'alouettes* (TRIM, un modèle mixte, l'échantillonnage par
+  distances) et *Un seuil arasé* (BACI) ouvrent les données simulées des tutoriels, leurs modèles
+  ajustés.
 - **Ouvrir vos données :** *Fichier › Ouvrir* (Ctrl+O) lit un tableau, une ligne par
   observation et les noms des observations dans la première colonne (voir [Fichiers](#fichiers)
   pour les formats), ou *Fichier › Coller un tableau* (Ctrl+V) prend des cellules copiées
@@ -127,8 +129,8 @@ d'état ouvre sa page.
   barre des VIP, un coefficient, un point des loadings ou du S-plot) pour la mettre en évidence
   dans tous les graphiques du modèle.
 
-Le guide complet est fourni avec l'application (*Aide › Guide d'utilisation › Guide complet*),
-en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en anglais
+Le guide complet est fourni avec l'application (*Aide › Guide d'utilisation*, F1 : dans un panneau
+à côté du travail, à la section de ce qui est devant), en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en anglais
 ([USER-GUIDE.txt](USER-GUIDE.txt)). Il est aussi sur le
 [site de documentation](https://4rtefakt.github.io/nuee/fr/), avec six tutoriels.
 

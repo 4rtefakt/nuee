@@ -98,5 +98,5 @@ Then either:
 
 ## Then
 
-Open a table (*File › Open*, Ctrl+O), or try *Help › Example project*, then follow
+Open a table (*File › Open*, Ctrl+O), or try *Help › Example projects*, then follow
 [a tutorial](page:tutoriels) or [the guide](page:guide.demarrer).

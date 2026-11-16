@@ -74,7 +74,7 @@ async function brancher(cible) {
   const envoyer = (method, params = {}) => new Promise((ok) => { n += 1; attente.set(n, ok); ws.send(JSON.stringify({ id: n, method, params })); });
   await envoyer('Runtime.enable');
   await envoyer('Emulation.setFocusEmulationEnabled', { enabled: true });  // (a hidden window has the keyboard's focus)
-  const VK = { Enter: 13, Escape: 27, Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Home: 36, End: 35, F6: 117, F10: 121, Alt: 18 };
+  const VK = { Enter: 13, Escape: 27, Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Home: 36, End: 35, F1: 112, F6: 117, F10: 121, Alt: 18 };
   const p = {
     erreurs,
     async evaluer(expression) {
@@ -187,12 +187,23 @@ async function brancher(cible) {
       await p.touche('Escape');
       verifier(!(await p.focus()).dans, 'Escape: out of the menu bar');
     });
-    await etape('Aide › Projet d’exemple au clavier (Alt+H)', async () => {
-      await commande('h', 'Example project');
+    await etape('Aide › Projets d’exemple › Pommes au clavier (Alt+H, Entrée ouvre le sous-menu)', async () => {
+      // (Entrée sur Projets d’exemple ouvre son sous-menu, le clavier sur son premier élément, les pommes)
+      await commande('h', 'Example projects');
+      verifier((await p.evaluer("(document.activeElement.querySelector('.libelle') || {}).textContent || ''")).startsWith('Apples'), 'the submenu has the keyboard');
+      await p.touche('Enter');
       await p.attendre("document.querySelectorAll('.js-plotly-plot').length >= 2", 60000);
       await calme();
     });
     await etape('axe : modèle, ses vues (clair)', () => p.axe('modele'));
+    // F1 : le guide dans un panneau à côté du modèle, le clavier dans sa recherche ; Ctrl+W le ferme
+    await etape('F1 : le guide à côté du modèle (axe, le clavier, Ctrl+W)', async () => {
+      await p.touche('F1');
+      await p.attendre("!!document.querySelector('.aide-corps h3') && document.activeElement === document.querySelector('.aide-recherche')", 30000);
+      await p.axe('guide');
+      await p.touche('Control+w');
+      await p.attendre("!document.querySelector('.aide-panneau')", 5000);
+    });
     await etape('chaque graphique a son texte', async () => {
       const g = await p.evaluer("[...document.querySelectorAll('.js-plotly-plot')].map((d) => [d.getAttribute('role'), d.getAttribute('aria-label') || '', d.tabIndex])");
       verifier(g.length >= 2, `${g.length} plots`);

@@ -8,7 +8,8 @@
 // or waits for the next start. The R an organisation sets (a policy) shows and can't be changed
 // here; RSCRIPT, for developers, overrides both.
 // Also: once, the message that the R chosen couldn't start and Nuée's own took over (main.js:
-// demarrerMoteur), with the R in use for About.
+// demarrerMoteur), with the R in use for About. And At start-up: the last session's projects
+// reopened or not (main.js: reglages.rouvrirSeance; app.js: rouvrirSeance), taken at once.
 import { t, ajouterTextes } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { bureau } from './api.js';
@@ -46,7 +47,8 @@ async function dialogueReglages(app) {
   if (!r) return;
   let etat;
   let trouves;
-  try { [etat, trouves] = await Promise.all([r.etat(), r.trouver()]); } catch (e) { app.statut(e.message, true); return; }
+  let rouvrir = null;
+  try { [etat, trouves, rouvrir] = await Promise.all([r.etat(), r.trouver(), bureau.seance ? bureau.seance.rouvrir() : null]); } catch (e) { app.statut(e.message, true); return; }
   let versionEnService = null;  // (the engine's answer: it may be busy, so the dialog doesn't wait for it)
   const linux = etat.plateforme === 'linux';
   const meme = (a, b) => !!a && !!b && (etat.plateforme === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
@@ -204,7 +206,12 @@ async function dialogueReglages(app) {
     etat.rscript ? el('p', { class: 'note' }, t('r_rscript', { chemin: etat.rscript })) : null,
     utilise.repli ? el('p', { class: 'note' }, t('r_repli_en_service', { propre: t(linux ? 'r_systeme_phrase' : 'r_propre_phrase'),
       dossier: utilise.repli.dossier || utilise.repli.chemin })) : null,
-    liste, impose ? null : el('div', { class: 'ligne-r' }, parcourir), resultat, message),
+    liste, impose ? null : el('div', { class: 'ligne-r' }, parcourir), resultat, message,
+    // (whatever the R chosen, and its buttons: the box is taken as soon as it changes)
+    rouvrir === null ? null : [el('h3', { class: 'reglages-section' }, t('seance_titre')),
+      el('label', { class: 'champ seance-champ' }, el('input', { type: 'checkbox', checked: rouvrir,
+        onchange: (e) => { bureau.seance.rouvrir(e.target.checked).catch(() => {}); } }), t('seance_rouvrir')),
+      el('p', { class: 'note' }, t('seance_note'))]),
   // (set elsewhere: nothing to choose, only to look at, or to install the packages it lacks)
   boutons: impose ? [{ libelle: t('fermer'), principal: true, action: () => true }]
     : [{ libelle: t('annuler'), action: () => true }, { libelle: t('r_utiliser'), principal: true, action: () => { appliquer(); return true; } }] });
@@ -283,6 +290,10 @@ ajouterTextes({
   r_repli_texte: 'Le R choisi dans Fichier › Réglages… ({dossier}) n’a pas pu démarrer : Nuée calcule avec {propre}. Réglages… permet d’en choisir un autre.',
   r_repli_organisation: 'Le R que votre organisation choisit pour Nuée ({dossier}) n’a pas pu démarrer : Nuée calcule avec {propre}. Votre service informatique peut en choisir un autre.',
   r_repli_arret: 'Il s’est arrêté avant d’être prêt, en disant :',
+  seance_titre: 'Au démarrage', seance_rouvrir: 'Rouvrir les projets ouverts quand Nuée a été fermée',
+  seance_note: 'Les projets enregistrés dans un fichier reviennent avec leurs modèles et leurs vues ; un fichier déplacé ou supprimé depuis est nommé. Sans cette case, la page d’accueil propose Rouvrir la dernière séance. Pris en compte tout de suite.',
+  seance_bouton: 'Rouvrir la dernière séance', seance_rouverte_un: 'Dernière séance rouverte : un projet.', seance_rouverte: 'Dernière séance rouverte : {n} projets.',
+  seance_absents: 'Introuvables (déplacés ou supprimés) : {noms}.', seance_illisibles: 'Pas rouverts : {noms}.',
 }, {
   reglages: 'Settings…', reglages_titre: 'Settings', r_titre: 'R used by Nuée',
   r_texte: 'Nuée computes with its own R, which comes with it, with every package it needs. It can use an R installed on this computer instead: that R’s packages and .Renviron apply, not your .Rprofile, so that it can’t change the results.',
@@ -310,4 +321,8 @@ ajouterTextes({
   r_repli_texte: 'The R chosen in File › Settings… ({dossier}) couldn’t start, so Nuée computes with {propre}. Settings… lets you choose another one.',
   r_repli_organisation: 'The R your organisation sets for Nuée ({dossier}) couldn’t start, so Nuée computes with {propre}. Your IT department can set another one.',
   r_repli_arret: 'It stopped before it was ready, saying:',
+  seance_titre: 'At start-up', seance_rouvrir: 'Reopen the projects that were open when Nuée was closed',
+  seance_note: 'Projects saved to a file come back with their models and views; a file moved or deleted since is named. Without this box, the start page offers Reopen last session. Taken into account at once.',
+  seance_bouton: 'Reopen last session', seance_rouverte_un: 'Last session reopened: one project.', seance_rouverte: 'Last session reopened: {n} projects.',
+  seance_absents: 'Not found (moved or deleted): {noms}.', seance_illisibles: 'Not reopened: {noms}.',
 });

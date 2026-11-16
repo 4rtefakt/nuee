@@ -109,23 +109,6 @@ const SUBSTITUTS = `(() => {
   // (the inspector's own require, until main.js is the main module)
   const { dialog, shell, app } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
   const E = globalThis.__essai = globalThis.__essai || { ouvrir: [], enregistrer: [], messages: [], appels: [], ouverts: [], liens: [], recents: [] };
-  // NUEE_HORS_ECRAN=1 (a run on a computer someone is using): every window off the screen, out of
-  // the taskbar, shown without taking the focus, still drawing (with the program's option
-  // --disable-features=CalculateNativeWinOcclusion, Chromium doesn't count it as hidden)
-  if (${process.env.NUEE_HORS_ECRAN === '1'} && !E.horsEcran) {
-    E.horsEcran = true;
-    E.montrees = [];  // (where each window was when shown)
-    const ecarter = (w) => {
-      w.setSkipTaskbar(true);
-      w.setPosition(-20000, -20000);
-      w.webContents.setBackgroundThrottling(false);
-      w.show = () => w.showInactive();
-      w.focus = () => {};
-      w.once('show', () => E.montrees.push(w.getBounds()));
-    };
-    for (const w of BrowserWindow.getAllWindows()) ecarter(w);
-    app.on('browser-window-created', (_, w) => ecarter(w));
-  }
   const sans = (a, b) => (b === undefined ? a : b);  // (the window is optional)
   dialog.showOpenDialog = async (a, b) => {
     const o = sans(a, b) || {};
@@ -154,6 +137,20 @@ const SUBSTITUTS = `(() => {
   shell.openPath = async (chemin) => { E.ouverts.push(chemin); return ''; };
   shell.openExternal = async (url) => { E.liens.push(url); };
   app.addRecentDocument = (chemin) => { E.recents.push(chemin); };
+  return true;
+})()`;
+
+// NUEE_HORS_ECRAN=1, a run on a computer someone is using: the program's windows kept off the screen
+// and out of the taskbar, shown without ever taking the focus, and still drawn (Chromium's occlusion
+// tracking off, demarrer; their pages never throttled as hidden ones).
+const HORS_ECRAN = process.env.NUEE_HORS_ECRAN === '1';
+const SANS_ECRAN = `(() => {
+  const { app, BrowserWindow } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  const cacher = (w) => { w.setPosition(-32000, -32000); w.setSkipTaskbar(true); w.webContents.setBackgroundThrottling(false); };
+  BrowserWindow.prototype.show = function show() { cacher(this); this.showInactive(); };
+  BrowserWindow.prototype.focus = function focus() {};
+  for (const w of BrowserWindow.getAllWindows()) cacher(w);
+  if (!globalThis.__horsEcran) { globalThis.__horsEcran = true; app.on('browser-window-created', (_, w) => cacher(w)); }
   return true;
 })()`;
 
@@ -217,7 +214,7 @@ const OUTILS = `(async () => {
   return true;
 })()`;
 
-const TOUCHES = { Enter: 13, Escape: 27 };
+const TOUCHES = { Enter: 13, Escape: 27, F1: 112 };
 
 // A zip archive's files (an .xlsx, a .docx), read without anything else: name -> Buffer.
 function lireZip(octets) {
@@ -320,7 +317,8 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
   const portPage = await portLibre();
   const portNode = await portLibre();
   const debut = Date.now();
-  const proc = spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${portPage}`, `--inspect=${portNode}`, ...options],
+  const horsEcran = HORS_ECRAN ? ['--disable-features=CalculateNativeWinOcclusion'] : [];
+  const proc = spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${portPage}`, `--inspect=${portNode}`, ...horsEcran, ...options],
     { env, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
   let sortie = '';
   proc.stdout.on('data', (d) => { sortie += d; });
@@ -359,6 +357,7 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
     };
     await jusqua(() => evaluerPrincipal(SUBSTITUTS).catch(() => false), 30000, 'the main process’s modules');
     await evaluerPrincipal(GARDIEN(process.pid));
+    if (HORS_ECRAN) await evaluerPrincipal(SANS_ECRAN);
 
     // then the window (R starts first: up to two minutes)
     const cible = await jusqua(async () => ((await lister(portPage)) || []).find((c) => c.type === 'page' && /^http:\/\/127\.0\.0\.1:\d+\/(\?.*)?$/.test(c.url)),
@@ -547,6 +546,13 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
           console.log(`    (${cleMenu} › ${cleItem}: ${e.message.split('\n')[0].slice(0, 160)}; the menu opened again)`);
         }
       }
+    },
+    // ... and an item of one of its submenus (Help › Example projects › Apples), by their keys
+    async sousMenu(cleMenu, cleItem, cleSous) {
+      await n.menu(cleMenu, cleItem);
+      const item = `(() => { const x = __n.t(${JSON.stringify(cleSous)}); return __n.tous('.menu.sous-menu > .item').find((e) => __n.norm((e.querySelector('.libelle') || e).textContent) === x); })()`;
+      await n.attendre(`!!${item}`, 10000);
+      await n.cliquer(item);
     },
     // (a press outside the menus closes them, ui.js)
     fermerMenus: () => n.evaluer("document.querySelectorAll('.menu').length ? (document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), true) : true"),

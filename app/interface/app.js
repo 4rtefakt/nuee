@@ -4,8 +4,8 @@
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { demander, televerser, bureau } from './api.js';
 import { VUES } from './panneaux.js';
-import { el, icone, menuContextuel, barreMenus, dialogue } from './ui.js';
-import { creerCommandes, menus, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
+import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
+import { creerCommandes, menus, menuExemples, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
 import { dialogueRaster } from './raster.js';
@@ -38,6 +38,7 @@ import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atel
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
 import { installerEtapes } from './etapes.js';
 import { installerReglages } from './reglages.js';
+import { installerAide, prechargerGuide } from './aide.js';
 import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
 
 const params = new URLSearchParams(location.search);
@@ -47,7 +48,9 @@ const canal = new BroadcastChannel('nuee');
 const DV = window['dockview-core'];
 
 const etat = { projets: {}, modeles: {}, selection: {}, variables: {}, groupesHCA: {}, choixVIP: {}, locInitial: {}, panneaux: new Map(), noeud: null,
-  replies: new Set(), occupe: 0, message: '', erreur: false, selectionLiee: lire('selection_liee') !== '0' };
+  replies: new Set(), occupe: 0, message: '', erreur: false, selectionLiee: lire('selection_liee') !== '0',
+  // the last session's projects (main.js: their files, still there or not), reopened once; this session's, as told to main.js
+  seance: { precedente: [], rouverte: false, notee: null } };
 // The window's panels. `dock` holds the explorer and, in one central group of tabs, a page per
 // model and the project views (data, statistics...). A model's page is a dock of its own
 // (`pages`) holding that model's views: summary, scores and loadings first, then the others.
@@ -57,7 +60,7 @@ const elementsPages = new Map();   // model id -> element of its page
 const derniers = new Map();        // model id -> last view used in its page (other than the summary)
 const dispositionsAttente = {};    // model id -> saved layout of its page, applied when the page opens
 let restauration = false;  // while a saved layout replaces the panels
-const EXTERNES = ['explorateur', 'accueil', 'console:'];  // the panels around the central tabs
+const EXTERNES = ['explorateur', 'accueil', 'console:', 'aide:'];  // the panels around the central tabs (aide: the guide, aide.js)
 let dernierContenu = null;  // the central tab last in front (while typing in the console)
 VUES.console = { rendre: rendreConsole, titre: () => t('console_r'), global: true };
 let recents = [];
@@ -253,14 +256,31 @@ const app = {
     if (res) await apresOuverture(res);
   },
 
-  // the example project (made-up data), with its first model open, scores coloured by variety
-  async ouvrirExemple() {
-    const res = await occupe(() => demander('exemple'));
-    await apresOuverture(res);
-    if (!res.modeles.length) return;
-    const id = await app.calculer(res.id, res.modeles[0].numero);
-    const variete = res.variables.find((v) => v.nom === 'variety' || v.nom === 'variete');  // (orchards.json, vergers.json)
-    if (variete) app.ouvrirVue('scores', id, { couleur: 'v' + variete.uid });
+  // Help › Example projects (made-up or simulated data), opened as new projects that Save puts where
+  // asked: the apples, with their first model open, scores coloured by variety; the skylark counts
+  // and transects of the monitoring tutorial, then the trout of the BACI tutorial, with their models
+  // fitted and their views open as their sessions say (exemple/creer_exemples_ecologie.js), the
+  // counts' TRIM in front, and their tutorial in the status bar while they are in front (aide.js)
+  async ouvrirExemple(cle = 'pommes') {
+    if (cle === 'pommes') {
+      const res = await occupe(() => demander('exemple', { nom: 'pommes' }));
+      await apresOuverture(res);
+      if (!res.modeles.length) return;
+      const id = await app.calculer(res.id, res.modeles[0].numero);
+      const variete = res.variables.find((v) => v.nom === 'variety' || v.nom === 'variete');  // (orchards.json, vergers.json)
+      if (variete) app.ouvrirVue('scores', id, { couleur: 'v' + variete.uid });
+      return;
+    }
+    const { projets, tutoriel } = { alouettes: { projets: ['alouettes_comptages', 'alouettes_transects'], tutoriel: 'suivi' }, baci: { projets: ['baci'], tutoriel: 'baci' } }[cle];
+    const ids = [];
+    for (const nom of projets) {
+      const res = await occupe(() => demander('exemple', { nom }));
+      if (app.noterTutoriel) app.noterTutoriel(res.id, tutoriel);
+      await apresOuverture(res);
+      ids.push(res.id);
+    }
+    const premier = app.modelesDe(ids[0])[0];
+    if (ids.length > 1 && premier) app.ouvrirModele(premier.id);
   },
 
   // collecte: File › Import from KoboToolbox or ODK (kobo.js), the import asked for (another file is refused)
@@ -434,6 +454,26 @@ const app = {
   majStatut: () => majEtat(),
 
   quitter: () => bureau && bureau.quitter(),
+
+  // The last session's projects (File › Settings… › At start-up, or the start page's Reopen last
+  // session): the files of the saved projects open when Nuée last closed, opened again with their
+  // sessions, once; a file moved or deleted since, or one that doesn't open, is named.
+  async rouvrirSeance() {
+    const s = etat.seance;
+    if (s.rouverte || !s.precedente.length) return;
+    s.rouverte = true;
+    app.rafraichirExplorateur();  // (the start page's button goes)
+    const absents = [];
+    const illisibles = [];
+    let n = 0;
+    for (const { chemin, existe } of s.precedente) {
+      if (!existe) { absents.push(chemin); continue; }
+      try { await app.ouvrirChemin(chemin); n += 1; } catch { illisibles.push(chemin); }
+    }
+    const noms = (l) => l.map((c) => c.split(/[\\/]/).pop()).join(', ');
+    statut([t(n === 1 ? 'seance_rouverte_un' : 'seance_rouverte', { n }), absents.length ? t('seance_absents', { noms: noms(absents) }) : '',
+      illisibles.length ? t('seance_illisibles', { noms: noms(illisibles) }) : ''].filter(Boolean).join(' '), illisibles.length > 0);
+  },
 
   // ---- models
   async calculer(pid, numero) {
@@ -1026,7 +1066,8 @@ const app = {
   },
 
   fermerPanneau() {
-    const p = app.panneauActif() || (dock && dock.activePanel);
+    // (the guide's panel when it has the keyboard: panneauActif is then the view it is beside)
+    const p = (dock && dock.activePanel && dock.activePanel.id === 'aide:' && dock.activePanel) || app.panneauActif() || (dock && dock.activePanel);
     if (p) p.api.close();
   },
   // Window › Close all views: every tab of the central group, models' pages and project views (the
@@ -1091,7 +1132,12 @@ const app = {
     toutRedessiner();
   },
   zoom: (d) => bureau && bureau.zoom(d),
-  aide: (sujet) => dialogueAide(app, sujet),
+  // (the guide in a panel beside the work, at what is in front: ouvrirAide; in a window of its own,
+  // a detached view, in a dialog; About: aide.js)
+  aide(sujet) {
+    if (sujet === 'guide' && dock) return ouvrirAide();
+    return sujet === 'apropos' ? app.apropos() : dialogueAide(app, sujet);
+  },
   // the full guide: the text file shipped with the desktop app, or on GitHub
   ouvrirGuide() {
     if (bureau && bureau.ouvrirGuide) bureau.ouvrirGuide();
@@ -1103,9 +1149,12 @@ installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app
 installerFigures(app);  // (the figures for publication: their view, app.composerFigure, app.ouvrirFigure...)
 installerVersions(app);  // (File › History and What changed: their views, sharing, the status bar's clock...)
 const C = creerCommandes(app);
+// (Help › Example projects as a menu under a button: the start page's, the empty explorer's)
+app.menuExemples = (bouton) => ouvrirMenuSous(bouton, menuExemples(C).sous);
 installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Update the data, the notice of a changed file)
 installerReglages(app);  // (File › Settings…: the R the engine runs on; the message when Nuée's own took over)
 installerCode(app);  // (R-code models: the bar over a project whose code was written elsewhere, app.barresCode)
+installerAide(app);  // (Help: the tutorials and the guide online, About)
 
 // ------------------------------------------------------------ state helpers
 
@@ -1275,7 +1324,6 @@ async function apresOuverture(res, session = null) {
   diffuser('modeles');
   app.rafraichirExplorateur();
   majEtat();
-  document.title = `${t('titre')} — ${res.nom}`;
   if (app.verifierSource) app.verifierSource(res.id);  // (its data file changed since it was read: a notice, etapes.js)
   if (dock && (session || res.session)) await restaurerSession(res.id, session);
   // a table (a project without models): its data open, in front, so that the menus act on it
@@ -1715,10 +1763,11 @@ function trouverPanneau(id) {
   return null;
 }
 
-// The view in focus: the view in front in the active page, or the active project view.
+// The view in focus: the view in front in the active page, or the active project view (while the
+// keyboard is in the R console or the guide, the one in front before).
 function panneauCourant() {
   let p = dock && dock.activePanel;
-  if (p && p.id === 'console:') p = dernierContenu && dock.getPanel(dernierContenu);
+  if (p && (p.id === 'console:' || p.id === 'aide:')) p = dernierContenu && dock.getPanel(dernierContenu);
   if (!p || EXTERNES.includes(p.id)) return null;
   if (estPage(p)) {
     const d = pages.get(p.id.slice(5));
@@ -1733,6 +1782,36 @@ function positionCentrale() {
   const ref = (contenu(dock.activePanel) && dock.activePanel) || dock.panels.find(contenu) || dock.getPanel('accueil');
   if (ref) return { referencePanel: ref.id, direction: 'within' };
   return dock.getPanel('explorateur') ? { referencePanel: 'explorateur', direction: 'right' } : undefined;
+}
+
+// Help › User guide (F1): the guide's panel at the window's right, at the section of what is in
+// front (aide.js); already open, it goes there. The keyboard in its search field.
+function ouvrirAide() {
+  const contexte = contexteAide();
+  let panel = dock.getPanel('aide:');
+  if (panel) {
+    const e = etat.panneaux.get('aide:');
+    if (e && e.element._aide) e.element._aide.aller(contexte);
+    panel.api.setActive();
+  } else {
+    etat.locInitial['aide:'] = { contexte };
+    panel = dock.addPanel({ id: 'aide:', component: 'aide', title: t('guide'), params: {}, position: { direction: 'right' } });
+    panel.api.group.api.setSize({ width: Math.min(460, Math.max(320, Math.round(window.innerWidth * 0.3))) });
+  }
+  setTimeout(() => { const e = etat.panneaux.get('aide:'); if (e && e.element._aide) e.element._aide.focus(); });
+}
+
+// What is in front, for the guide (aide_texte.js: sectionPour, blocCible): the view and the active
+// model's type; the view's name and, when a menu has it, its place there ("Plots › AIC selection"),
+// as the guide writes them.
+function contexteAide() {
+  const p = panneauCourant();
+  const e = p && etat.panneaux.get(p.id);
+  const m = etat.modeles[app.modeleActif()];
+  const vue = e ? e.vue : null;
+  const menu = vue && C[vue] ? (['predictions', 'comparaison'].includes(vue) ? 'm_prediction' : 'm_graphiques') : null;
+  const libelle = vue && vue !== 'resume' ? t(vue === 'predictions' ? 'predire' : vue) : null;
+  return { vue, type: m ? m.type : null, langue: langueActuelle(), libelle: libelle !== vue ? libelle : null, chemin: menu && libelle ? `${t(menu)} › ${libelle}` : null };
 }
 
 function fermerAccueil() {
@@ -2004,7 +2083,6 @@ function rafraichirModele(id) {
 }
 
 function toutRedessiner() {
-  document.title = t('titre');
   if (!VUE_SEULE) { rendreMenus(); rendreBarreOutils(); }
   for (const e of etat.panneaux.values()) rendrePanneau(e);
   if (dock) for (const p of dock.panels) if (p.id === 'explorateur') p.api.setTitle(t('explorateur')); else if (p.id === 'accueil') p.api.setTitle(t('titre'));
@@ -2150,9 +2228,31 @@ function majBarreOutils() {
   }
 }
 
+// The window's title, which the taskbar and Window's list of windows show: the project in front,
+// the one the menus act on (a window of its own, a detached view, has its view's: rendrePanneau)
+function majTitre() {
+  const p = etat.projets[app.projetActif()];
+  const titre = p ? `${t('titre')} — ${p.nom}` : t('titre');
+  if (document.title !== titre) document.title = titre;
+}
+
+// The files of the saved projects open now, told to main.js as they change: the last session's
+// projects at the next start (rouvrirSeance). A window that has had none yet tells nothing, so that
+// a start where nothing opens keeps the session before.
+function noterSeance() {
+  if (!bureau || !bureau.seance) return;
+  const chemins = Object.values(etat.projets).filter((p) => p.chemin_enregistrement && !p.lecture_seule).map((p) => p.chemin_enregistrement);
+  const cle = JSON.stringify(chemins);
+  if (cle === etat.seance.notee || (!chemins.length && etat.seance.notee === null)) return;
+  etat.seance.notee = cle;
+  bureau.seance.noter(chemins).catch(() => {});
+}
+
 function majEtat() {
   if (!VUE_SEULE) majBarreOutils();
   if (!VUE_SEULE) retitrerPages();  // (a project opened or closed: the models' tabs name theirs, or no longer)
+  if (!VUE_SEULE) majTitre();
+  if (!VUE_SEULE) noterSeance();
   if (!VUE_SEULE && app.barresCode) app.barresCode();  // (a project's R code written elsewhere: vues_code.js)
   const c = etat.panneaux.get('console:');
   if (c && c.element._console) c.element._console.entete();  // m and p follow the model shown
@@ -2174,6 +2274,8 @@ function majEtat() {
     !VUE_SEULE && app.avisDonnees ? app.avisDonnees() : null,
     // (the active project's versions to send and to get: versions.js)
     !VUE_SEULE && app.indicateurVersions ? app.indicateurVersions() : null,
+    // (an example project in front: its tutorial, aide.js)
+    !VUE_SEULE && app.lienTutoriel ? app.lienTutoriel(app.projetActif()) : null,
     m ? el('span', {}, `${plusieursProjets() ? `${nomProjetCourt(m.projet)} · ` : ''}${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`)
       : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
@@ -2189,9 +2291,12 @@ function rendreAccueil(conteneur) {
     el('div', { class: 'accueil-tete' }, el('img', { class: 'logo', src: 'nuee.svg', alt: '' }), el('h1', {}, t('titre')), el('p', {}, t('sous_titre'))),
     el('div', { class: 'accueil-actions' },
       el('button', { class: 'principal', onclick: () => app.ouvrir() }, icone('folder-open'), t('ouvrir')),
+      // (the projects open when Nuée last closed: rouvrirSeance)
+      etat.seance.precedente.length && !etat.seance.rouverte ? el('button', { onclick: () => app.rouvrirSeance(),
+        title: etat.seance.precedente.map((x) => x.chemin).join('\n') }, icone('rotate-ccw'), t('seance_bouton')) : null,
       el('button', { onclick: () => app.coller(), title: t('coller_aide') }, icone('clipboard-paste'), t('coller')),
       el('button', { onclick: () => app.importerSpectres() }, icone('audio-waveform'), t('importer_spectres')),
-      el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
+      el('button', { onclick: (e) => app.menuExemples(e.currentTarget), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple'), icone('chevron-down')),
       el('button', { onclick: () => app.nouveauModele(), disabled: !app.projetActif() }, icone('file-plus'), t('nouveau_modele')),
       el('button', { onclick: () => app.quelleAnalyse(), disabled: !app.projetActif() }, icone('signpost'), t('quelle_analyse')),
       el('button', { onclick: () => app.aide('guide') }, icone('circle-help'), t('guide'))),
@@ -2299,6 +2404,7 @@ async function demarrerVue() {
 
 async function demarrerPrincipal() {
   try { recents = bureau ? await bureau.recents() : JSON.parse(lire('recents') || '[]'); } catch { recents = []; }
+  try { etat.seance.precedente = bureau && bureau.seance ? [].concat(await bureau.seance.precedente()) : []; } catch { etat.seance.precedente = []; }
   rendreMenus();
   rendreBarreOutils();
   dock = DV.createDockview(document.getElementById('dock'), optionsDock());
@@ -2325,12 +2431,17 @@ async function demarrerPrincipal() {
     app.signalerRepliR();
   }
   if (bureau) setInterval(sauvegarderSecours, 120000);  // (every main window: the first one open writes them)
+  setTimeout(prechargerGuide, 3000);  // (the guide read while R waits: F1 then shows it at once)
   if (bureau && bureau.langue) bureau.langue(langueActuelle());  // for the dialogs of the desktop app
   if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar, and the update
     etat.majAuto = await bureau.majAuto();
     bureau.nouvelleVersion().then((v) => { etat.nouvelleVersion = v; majEtat(); }).catch(() => {});
     if (bureau.surProgressionMaj) bureau.surProgressionMaj((f) => statut(t('maj_telechargement', { v: etat.nouvelleVersion.version, p: Math.round(100 * f) })));
   }
+  // the last session's projects, when File › Settings… says so (not after an unexpected stop: its
+  // recovery copies are offered instead, proposerRecuperation), before a file given at start
+  if (ID_FENETRE === 'principale' && bureau && bureau.seance && etat.seance.precedente.length && !Object.keys(etat.projets).length
+    && await bureau.seance.rouvrir().catch(() => false) && !(await bureau.secoursListe().catch(() => [])).length) await app.rouvrirSeance();
   if (params.get('ouvrir')) await app.ouvrirChemin(params.get('ouvrir'));
   if (!VUE_SEULE) {
     document.addEventListener('dragover', (e) => {

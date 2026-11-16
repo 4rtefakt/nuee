@@ -81,11 +81,20 @@ des spectres JCAMP-DX ou SPC ensemble font un seul projet, comme Importer des sp
 autres fichiers s'ouvrent chacun comme avec Fichier › Ouvrir. Un double-clic sur un projet
 .nuee dans l'Explorateur Windows l'ouvre dans Nuée (dans la fenêtre déjà ouverte s'il y en a une).
 Les derniers fichiers ouverts sont dans Fichier › Ouvrir un fichier récent.
-Pour essayer : Aide › Projet d'exemple ouvre 120 pommes inventées (quatre variétés, culture
-bio ou conventionnelle, une douzaine de mesures et une note de dégustation) avec quatre
-modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA de la
-culture. Le tableau d'origine, vergers.csv, est à côté (resources\exemple) pour essayer
-l'ouverture d'un tableau.
+Pour essayer, Aide › Projets d'exemple :
+- Pommes : 120 pommes inventées (quatre variétés, culture bio ou conventionnelle, une douzaine
+  de mesures et une note de dégustation) avec quatre modèles prêts : une ACP, une PLS de la
+  note, une PLS-DA des variétés et une OPLS-DA de la culture. Le tableau d'origine,
+  vergers.csv, est à côté (resources\exemple) pour essayer l'ouverture d'un tableau.
+- Suivi d'alouettes : les deux projets du tutoriel de suivi, une alouette comptée sur 40 sites
+  pendant 17 ans (TRIM et un modèle mixte binomial négatif, ajustés) et ses transects linéaires
+  (échantillonnage par distances : densité et effectif).
+- Un seuil arasé : les jeunes truites du tutoriel BACI, avant et après l'arasement d'un seuil,
+  avec la vue avant/après des Tests statistiques et son modèle mixte.
+Leurs données sont inventées ou simulées (les tableaux des tutoriels se téléchargent sur le site
+de documentation). Chacun s'ouvre en projet nouveau, ses modèles ajustés et ses vues ouvertes ;
+Enregistrer demande où le ranger. Quand un projet des alouettes ou des truites est devant, la
+barre d'état donne le lien de son tutoriel.
 
 Données de terrain de KoboToolbox ou d'ODK
 ------------------------------------------
@@ -158,6 +167,11 @@ fermer ». Toutes les deux minutes, elle garde aussi une copie de secours des pr
 enregistrés : si elle s'arrête sans avoir été fermée (panne, coupure), elle propose au
 lancement suivant de les récupérer. Fermer cette question sans répondre garde les copies pour
 la fois suivante ; seul « Ignorer » les efface.
+Fichier › Réglages... › Au démarrage, « Rouvrir les projets ouverts quand Nuée a été fermée » :
+au lancement suivant, les projets enregistrés (.nuee) ouverts quand Nuée a été fermée
+reviennent, avec leurs modèles et leurs vues ; un fichier déplacé ou supprimé depuis est nommé
+dans la barre d'état. Sans cette case, la page d'accueil propose Rouvrir la dernière séance.
+Après un arrêt inattendu, ce sont les copies de secours qui sont proposées.
 Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
 (valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
 jusqu'à 20 en arrière.
@@ -243,6 +257,14 @@ toujours) ; une régression ou une autre analyse a les siennes (Coefficients, Ef
 Sélection par AIC... d'une régression ; Indices et Totaux de TRIM ; Détection et Densité de
 l'échantillonnage par distances). Le menu Graphiques commence par les vues du modèle actif ;
 celles qu'il n'a pas sont sous Graphiques › Autres graphiques.
+Aide › Guide d'utilisation (F1) : ce guide, dans un panneau à droite de la fenêtre, à côté du
+travail, à la section de ce qui est devant : le type du modèle, la vue (F1 sur un modèle TRIM
+ouvre la section de TRIM, sur Graphiques › Sélection par AIC son paragraphe). Son sommaire, les
+sections d'avant et d'après, et une recherche dans toutes les sections (sans compter accents ni
+majuscules, les mots trouvés marqués) ; les sections qu'il cite (« voir Validation croisée ») et
+les adresses web sont des liens. Il reste ouvert pendant le travail, comme un autre panneau
+(Ctrl+W le ferme, F1 de nouveau va à ce qui est devant) ; ses boutons ouvrent le guide en ligne
+et en fichier texte.
 Clavier et lecteurs d'écran : Alt (ou F10) mène à la barre de menus, les flèches dans ses
 menus, Entrée lance une commande, Échap revient ; Alt et la lettre soulignée d'un menu l'ouvre
 (Alt+F Fichier...). F6 va de zone en zone (barre d'outils, explorateur, chaque groupe de
@@ -2638,7 +2660,9 @@ toutes les vues ferme tous les onglets du centre, pages des modèles et vues des
 (l'explorateur et la console R restent).
 Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète. Une sélection d'observations (cadre ou lasso dans un
 graphique, clic sur un point ou une ligne de liste) apparaît dans toutes les vues et toutes
-les fenêtres du même modèle.
+les fenêtres du même modèle. Le titre d'une fenêtre, que montrent son bouton dans la barre
+des tâches et le menu Fenêtre, nomme le projet qui est devant : celui sur lequel agissent
+les menus.
 Graphiques : molette pour zoomer ; clic droit pour copier l'image ou l'enregistrer (PNG, SVG),
 voir les contributions de la sélection ou en faire une classe.
 Ctrl+C dans une vue qui montre un tableau (résumé, listes, statistiques...) copie le tableau en
@@ -2651,6 +2675,11 @@ Nouveau modèle s'ouvre sur ce type.
 Aide › Informations de diagnostic : les versions de Nuée, du système, de R et de ses paquets, à
 coller dans un signalement de problème (github.com/4rtefakt/nuee/issues ; ni chemins ni
 données).
+Aide › Tutoriels et Aide › Guide en ligne ouvrent le site de documentation dans le
+navigateur, dans la langue de l'interface : six tutoriels, de la question à l'article, et ce
+guide en pages. Aide › À propos donne les versions, le site (nuee.io), le code source et
+Signaler un problème, et comment citer Nuée : la phrase à copier, avec le DOI de Zenodo, qui
+désigne toutes les versions (Modèle › Texte pour la section Méthodes l'écrit aussi).
 
 Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 133 projets .usp)
 -------------------------------------------------------------------------------------------

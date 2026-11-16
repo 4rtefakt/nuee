@@ -135,11 +135,17 @@ export function creerCommandes(app) {
     zoom_normal: { raccourci: 'Ctrl+0', actif: () => !!app.bureau, action: () => app.zoom(0) },
 
     guide: { icone: 'circle-help', raccourci: 'F1', action: () => app.aide('guide') },
+    // (aide.js: the documentation site, in the browser)
+    tutoriels: { icone: 'book-open', action: () => app.tutoriels() },
+    guide_en_ligne: { icone: 'external-link', action: () => app.guideEnLigne() },
     quoi_de_neuf: { action: () => app.quoiDeNeuf(true) },
     maj_auto: { coche: () => app.majAuto() === true, action: () => app.basculerMajAuto() },
     chercher_maj: { icone: 'refresh-ccw-dot', action: () => app.chercherMiseAJour() },
     diagnostic: { icone: 'stethoscope', action: () => app.diagnostic() },
-    projet_exemple: { icone: 'apple', action: () => app.ouvrirExemple() },
+    // Help › Example projects (app.js: ouvrirExemple): made-up apples; the tutorials' simulated skylarks and trout
+    exemple_pommes: { icone: 'apple', action: () => app.ouvrirExemple('pommes') },
+    exemple_alouettes: { icone: 'trending-up', action: () => app.ouvrirExemple('alouettes') },
+    exemple_baci: { icone: 'chart-column', action: () => app.ouvrirExemple('baci') },
     redemarrer_moteur: { icone: 'refresh-cw', actif: () => !!app.bureau, action: () => app.confirmerRedemarrage() },
     differences: { action: () => app.aide('differences') },
     apropos: { icone: 'info', action: () => app.aide('apropos') },
@@ -192,7 +198,7 @@ export function menus(app, C) {
     { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
-    { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
+    { cle: 'm_aide', items: () => [it('guide'), it('tutoriels'), it('guide_en_ligne'), '-', menuExemples(C), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
       .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), '-', it('apropos')]) },
   ];
 }
@@ -232,6 +238,9 @@ export function commandeVue(app, nom) {
   return { id: nom, icone: ICONES_VUES[nom] || 'chart-scatter', action: () => app.ouvrirVue(nom, app.modeleActif()),
     actif: () => { const x = app.modele(app.modeleActif()); return !!x && vuesDe(x).includes(nom); } };
 }
+
+// Help › Example projects, and the start page's button (app.js)
+export const menuExemples = (C) => ({ libelle: t('projet_exemple'), icone: 'apple', sous: ['exemple_pommes', 'exemple_alouettes', 'exemple_baci'].map((id) => item(C, id)) });
 
 export const BARRE_OUTILS = [
   ['ouvrir', 'enregistrer'],
