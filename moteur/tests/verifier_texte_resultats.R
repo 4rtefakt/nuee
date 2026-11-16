@@ -112,5 +112,32 @@ s_separee <- statuts(dm("GLM", "x1", "separee", famille = "binomiale"))
 s_presence <- statuts(dm("GLM", "x1", "presence", famille = "binomiale"))
 verifier("une présence que x1 sépare tout à fait : la séparation signalée, pas pour une présence ordinaire",
          identical(unname(s_separee["separation"]), "attention") && !"separation" %in% names(s_presence))
+# la séparation : un coefficient démesuré dont l'erreur-type l'est plus encore, pas des probabilités
+# ajustées de 0 ou 1 seules (une pente raide mais finie en donne, à moins de 1e-8 du bord, et même
+# numériquement 0 ou 1 comme glm.fit le dit) ; une catégorie sans présence, que ce seuil ne voit pas
+texte_separation <- function(p, d) Find(function(v) identical(v$cle, "separation"), verifications_regression(p, ajuster(p, d)))$texte
+v_separee <- texte_separation(pv, dm("GLM", "x1", "separee", famille = "binomiale"))
+set.seed(4)
+da <- data.frame(nom = sprintf("a%03d", 1:200), altitude = round(stats::runif(200, 0, 2000)), stringsAsFactors = FALSE)
+da$presence <- stats::rbinom(200, 1, stats::plogis(-25 + 0.025 * da$altitude))
+da$raide <- stats::rbinom(200, 1, stats::plogis(-50 + 0.05 * da$altitude))
+pa <- projet_depuis_tableau(da, "altitude")
+d_alt <- function(y) definir_modele(pa, "GLM", x = numeros(pa, "altitude"), y = numeros(pa, y), observations = numeros_observations(pa), echelle = c(defaut = "none"), famille = "binomiale")
+g_raide <- stats::glm(raide ~ altitude, family = stats::binomial, data = da)
+set.seed(9)
+dh <- data.frame(nom = sprintf("h%03d", 1:150), hab = sample(c("a", "b", "c"), 150, TRUE), x = stats::rnorm(150), stringsAsFactors = FALSE)
+dh$y <- stats::rbinom(150, 1, stats::plogis(0.3 + 0.8 * dh$x))
+dh$y[dh$hab == "c"] <- 0
+ph <- projet_depuis_tableau(dh, "habitats")
+v_categorie <- texte_separation(ph, definir_modele(ph, "GLM", x = numeros(ph, c("hab", "x")), y = numeros(ph, "y"), observations = numeros_observations(ph),
+                                                   echelle = c(defaut = "none"), famille = "binomiale"))
+verifier(sprintf("une pente raide mais finie de l'altitude (le logit de -25 à 25) : pas de séparation, ni pour une plus raide dont %d probabilités ajustées sont numériquement 0 ou 1",
+                 sum(stats::fitted(g_raide) < 10 * .Machine$double.eps | stats::fitted(g_raide) > 1 - 10 * .Machine$double.eps)),
+         is.null(texte_separation(pa, d_alt("presence"))) && is.null(texte_separation(pa, d_alt("raide"))) &&
+           any(stats::fitted(g_raide) < 10 * .Machine$double.eps))
+verifier(sprintf("une catégorie sans présence : la séparation signalée, les coefficients de ses catégories nommés, pas celui de x (« %s »)", substr(v_categorie %||% "", 1, 90)),
+         grepl("^Les? coefficients? de « hab\\([abc]\\) » \\(β = -?1[89]", v_categorie %||% "") && !grepl("« x »", v_categorie %||% "", fixed = TRUE) &&
+           !grepl("numériquement", v_categorie %||% "") &&
+           grepl("^Le coefficient de « x1 » \\(β = ", v_separee %||% "") && grepl("observations ont une probabilité ajustée numériquement de 0 ou 1", v_separee %||% "", fixed = TRUE))
 cat(if (echecs) sprintf("%d échec(s)\n", echecs) else "Tout est bon.\n")
 if (echecs) quit(status = 1)
