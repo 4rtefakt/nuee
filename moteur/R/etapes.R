@@ -918,6 +918,31 @@ termes_nouvelles_categories <- function(termes, projet, uid, codes) {
   structure(garde, ajoutees = ajoutees)
 }
 
+# Celles des observations `obs` où la condition d'observations de `d` est vraie sur les données de `p`
+# (condition.R) : toutes sans condition, aucune quand elle ne se lit plus (une variable qu'elle lit
+# manque : le modèle ne se réajuste plus).
+sous_condition <- function(d, p, obs) {
+  obs <- numeros_entiers(obs)
+  if (!avec_condition(d) || !length(obs)) return(obs)
+  vraie <- tryCatch(valeurs_condition(p, texte_condition(d$condition)), error = function(e) NULL)
+  if (is.null(vraie)) return(obs[0])
+  obs[vraie[match(as.character(obs), rownames(p$donnees))] %in% TRUE]
+}
+
+# Celles des observations `obs` que le modèle de définition `d` peut prendre dans son ajustement sur les
+# données de `p` : celles qui ont une valeur de chacune de ses variables, son ajustement laissant les
+# autres de côté (une régression, la plupart des autres analyses) ; toutes pour une ACP, une PLS ou une
+# OPLS (NIPALS fait avec les valeurs manquantes), un arbre (ses variables de substitution), TRIM (il
+# impute les comptages manquants) et l'échantillonnage par distances (un transect sans détection garde
+# sa ligne). Une transformation qui rend une valeur manquante (le log de 0) n'est pas vue.
+lignes_utiles <- function(d, p, obs) {
+  obs <- numeros_entiers(obs)
+  if (!length(obs) || !sans_composantes(d) || premier_texte(d$type) %in% c("TREE", "TRIM", "DISTANCE")) return(obs)
+  vars <- Filter(function(u) as.character(u) %in% colnames(p$donnees), variables_definition(d))
+  valeurs <- do.call(cbind, lapply(vars, function(u) colonne(p, u, obs)))
+  if (is.null(valeurs)) obs else obs[stats::complete.cases(valeurs)]
+}
+
 # La catégorie de référence de la variable qualitative `uid` dans la régression de définition `d` sur
 # les données de `p` (le nom de la catégorie ; NA sans elle) : la dernière, dans l'ordre de ses termes,
 # que portent les lignes complètes de ses observations (sa condition refaite), comme l'ajustement la
@@ -926,10 +951,7 @@ reference_variable <- function(d, p, uid) {
   termes <- Filter(function(t) length(t$variables) == 1 && as.numeric(t$variables) == uid && categorie(t) != 0, d$x)
   codes <- vapply(termes, function(t) as.numeric(categorie(t)), 0)
   if (!length(codes)) return(NA_character_)
-  obs <- tryCatch(resoudre_observations(p, d)$observations, error = function(e) as.numeric(unlist(d$observations)))
-  vars <- Filter(function(u) as.character(u) %in% colnames(p$donnees), variables_definition(d))
-  valeurs <- do.call(cbind, lapply(vars, function(u) colonne(p, u, obs)))
-  if (!is.null(valeurs)) obs <- obs[stats::complete.cases(valeurs)]
+  obs <- lignes_utiles(d, p, tryCatch(resoudre_observations(p, d)$observations, error = function(e) d$observations))
   x <- colonne(p, uid, obs)
   presentes <- codes[codes %in% x]
   if (!length(presentes)) return(NA_character_)
@@ -1199,10 +1221,25 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     ids <- intersect(identifiants_definition(d, actuel), id_absents)
     if (length(u) || length(ids)) list(nom = premier_texte(d$name), numero = d$number, variables = I(c(vapply(Filter(function(v) uid(v) %in% u, parties), nom, ""), ids)))
   }))
-  choisies <- Filter(Negate(is.null), lapply(actuel$models, function(d) {
-    admises <- nouvelles_admises(d, actuel, uo_a)
-    dedans <- as.numeric(unlist(c(if (avec_condition(d)) d$cochees %||% d$observations else d$observations, d$test)))
-    if (length(setdiff(admises, dedans))) list(nom = premier_texte(d$name), numero = d$number, observations = length(intersect(dedans, uo_a)), admises = length(admises))
+  # (les modèles qui ont laissé de côté des lignes qu'ils pouvaient prendre, à qui le fichier en apporte
+  # de nouvelles qu'ils pourraient prendre : on leur demande s'ils les prennent. Sont comptées les
+  # lignes qu'un modèle peut vraiment ajuster : celles qu'il admet (nouvelles_admises), sous sa
+  # condition, avec une valeur de chacune de ses variables quand son ajustement laisse les autres de
+  # côté (lignes_utiles) ; une ligne qu'il n'aurait pas pu prendre ne compte pas comme laissée de
+  # côté. `observations` : celles qu'il ajuste ; `admises` : celles qu'il pouvait ajuster, hors de son
+  # jeu de test ; `nouvelles` : celles du fichier qu'il ajusterait, sur les données mises à jour. Des
+  # groupes de validation croisée d'un fichier .usp n'en prennent pas : sans_nouvelles les dit.)
+  utiles <- function(d, p, obs) lignes_utiles(d, p, sous_condition(d, p, obs))
+  choisies <- Filter(Negate(is.null), lapply(seq_along(actuel$models), function(i) {
+    d <- actuel$models[[i]]
+    if (identical(premier_texte(d$groupes_vc$by), "groups")) return(NULL)
+    cochees <- numeros_entiers(if (avec_condition(d)) d$cochees %||% d$observations else d$observations)
+    test <- numeros_entiers(d$test)
+    prises <- utiles(d, actuel, cochees)
+    possibles <- union(prises, setdiff(utiles(d, actuel, nouvelles_admises(d, actuel, uo_a)), test))
+    if (!length(setdiff(possibles, c(cochees, test)))) return(NULL)
+    nouvelles <- utiles(p$models[[i]], p, nouvelles_admises(p$models[[i]], p, ajoutees))
+    if (length(nouvelles)) list(nom = premier_texte(d$name), numero = d$number, observations = length(prises), admises = length(possibles), nouvelles = length(nouvelles))
   }))
   sans <- vapply(Filter(function(d) !prend(d) || identical(premier_texte(d$groupes_vc$by), "groups"), actuel$models), function(d) premier_texte(d$name), "")
   rapport <- list(

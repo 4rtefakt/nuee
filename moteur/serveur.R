@@ -1655,8 +1655,12 @@ DEMANDES <- list(
   # de type dans le fichier et l'ont repris), `identifiants` (nouveaux, absents), `etapes` (n,
   # demande, etiquette, statut "ok", "sautee" ou "erreur", raison, notes), `modeles`
   # (variables_absentes : ceux qui ne se réajustent plus et les variables qui leur manquent ;
-  # observations_choisies : ceux qui n'avaient pas toutes les observations du projet, à qui demander
-  # s'ils prennent les nouvelles ; sans_nouvelles : ceux qui ne les prendront pas ;
+  # observations_choisies : ceux qui ont laissé de côté des lignes qu'ils pouvaient prendre et à qui le
+  # fichier en apporte qu'ils pourraient prendre, à qui demander s'ils les prennent (nom, numero ;
+  # observations, les lignes qu'ils ajustent ; admises, celles qu'ils pouvaient ajuster, hors du jeu
+  # de test ; nouvelles, celles du fichier qu'ils ajusteraient ; des lignes qu'ils admettent, sous leur
+  # condition, sans valeur manquante dans leurs variables quand leur ajustement les laisse de côté) ;
+  # sans_nouvelles : ceux qui ne les prendront pas ;
   # nouvelles_categories : ceux qui prennent le terme d'une catégorie nouvelle, mise avant la dernière
   # de sa variable ; references_changees : les régressions dont la catégorie de référence change quand
   # même, la dernière n'ayant plus de lignes, avant et après), `fichier`,

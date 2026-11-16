@@ -24,6 +24,10 @@
 #     et relevel()), son nouveau coefficient en plus ; une PLS prend son terme, aux réglages des
 #     autres ; une PLS-DA garde ses classes ; la référence d'un modèle qui change quand même (sa
 #     catégorie n'a plus de lignes, ou une nouvelle vient après elle dans ses lignes), dite ; Ctrl+Z ;
+#   - les modèles à qui demander s'ils prennent les nouvelles observations : ceux qui ont laissé de
+#     côté une ligne qu'ils pouvaient ajuster (pas une ligne d'une valeur manquante dans leurs
+#     variables, ni hors de leur condition), quand le fichier leur en apporte ; leurs lignes comptées
+#     comme leur ajustement les compte, avant et après la mise à jour ;
 #   - un projet sans source (un tableau collé) mis à jour d'un fichier ; un projet sans étapes dont
 #     une variable calculée garde sa formule ; un tableau sans colonne qui nomme les observations,
 #     retrouvées par leur place.
@@ -229,8 +233,10 @@ a <- demande("mettre_a_jour", list(projet = id, apercu = TRUE))
 verifier("l'aperçu : chaque étape faite, aucune observation ni variable de plus ou de moins, aucune cellule changée",
          all(statuts(a) == "ok") && a$observations$ajoutees == 0 && a$observations$retirees == 0 && a$observations$cellules == 0 &&
            !length(a$variables$nouvelles) && !length(a$variables$absentes) && !length(a$variables$categories))
+verifier("l'aperçu : aucune observation nouvelle, aucun modèle à qui demander s'il les prend (Sans a laissé deux lignes de côté)",
+         !length(a$modeles$observations_choisies))
 verifier("l'aperçu ne change rien", identical(projet(id), avant))
-brut <- sans_attributs(importer_source(source_csv, "tableau", NULL, avant$source_donnees$reglages))
+brut <-sans_attributs(importer_source(source_csv, "tableau", NULL, avant$source_donnees$reglages))
 rj <- rejouer_etapes(brut, avant$etapes, dossier_projet(avant))
 al <- aligner_projet(avant, rj$projet)
 memes <- function(a, b) {
@@ -305,8 +311,9 @@ verifier("l'aperçu : la variable nouvelle, les catégories nouvelles de chaque 
          identical(as.character(a$variables$nouvelles), "profondeur") && !length(a$variables$absentes) &&
            any(vapply(a$variables$categories, function(x) identical(x$variable, "habitat") && identical(as.character(x$nouvelles), "dune"), TRUE)) &&
            any(vapply(a$variables$categories, function(x) identical(x$variable, "site") && identical(as.character(x$nouvelles), "S5"), TRUE)))
-verifier("l'aperçu : les modèles qui n'avaient pas toutes les observations (un jeu de test les a), à qui demander s'ils prennent les nouvelles",
-         identical(vapply(a$modeles$observations_choisies, `[[`, "", "nom"), "Sans") && a$modeles$observations_choisies[[1]]$observations == 38 &&
+verifier("l'aperçu : les modèles qui ont laissé de côté des lignes qu'ils pouvaient prendre (un jeu de test n'en laisse pas), à qui demander s'ils prennent les nouvelles : Sans en ajuste 38 de 40, le fichier lui en apporte 5",
+         identical(vapply(a$modeles$observations_choisies, `[[`, "", "nom"), "Sans") &&
+           identical(as.numeric(unlist(a$modeles$observations_choisies[[1]][c("observations", "admises", "nouvelles")])), c(38, 40, 5)) &&
            !length(a$modeles$variables_absentes))
 verifier("l'aperçu ne change rien", identical(projet(id), avant))
 a <- demande("mettre_a_jour", list(projet = id, chemin = suivant, sans_nouvelles = list("Garde")))
@@ -590,6 +597,43 @@ verifier("une PLS-DA : la classe nouvelle mise avant la dernière, ses classes s
          identical(categories_de(pc, "groupe"), c("g1", "g3", "g2")) && identical(vapply(dda$y, `[[`, "", "name"), c("groupe(g1)", "groupe(g2)")) &&
            identical(vapply(dda$y, function(t) as.numeric(t$categories), 0), c(1, 3)) && length(dda$observations) == 31 &&
            demande("ajuster", list(projet = cp$id, numero = da$numero))$N == 31)
+
+cat("Les modèles à qui demander s'ils prennent les nouvelles : les lignes qu'ils peuvent ajuster\n")
+# douze lignes, x2 manquant dans deux (m03, m07) ; l'année suivante, quatre de plus, x2 manquant dans m15
+lignes <- function(noms, graine) {
+  set.seed(graine)
+  n <- length(noms)
+  data.frame(nom = noms, g = rep(c("a", "b"), length.out = n), x1 = round(rnorm(n), 3), x2 = round(rnorm(n), 3), y = round(rnorm(n, 3), 3))
+}
+l1 <- lignes(sprintf("m%02d", 1:12), 4)
+l1$x2[c(3, 7)] <- NA
+lignes_csv <- fichier("lignes.csv")
+utils::write.csv(l1, lignes_csv, row.names = FALSE, na = "")
+lid <- demande("ouvrir", list(chemin = lignes_csv))$id
+lu <- function(nom) uid_de(projet(lid), nom)
+lo <- function(noms) numeros_observations(projet(lid), noms)
+lm_x2 <- function(nom, exclues) demande("ajuster", list(projet = lid, type = "LM", x = list(lu("x2"), lu("x1")), y = list(lu("y")), nom = nom, exclues = lo(exclues)))
+m_manque <- lm_x2("Manque", "m05")
+m_m03 <- lm_x2("Sans m03", "m03")
+m_acp <- demande("ajuster", list(projet = lid, type = "PCA", x = list(lu("x1"), lu("x2")), A = 1, nom = "ACP", exclues = lo("m03")))
+lm_g <- function(nom, exclues) demande("ajuster", list(projet = lid, type = "LM", x = list(lu("x1")), y = list(lu("y")), nom = nom, condition = "g == \"a\"", exclues = lo(exclues)))
+m_ga <- lm_g("Cond", c("m01", "m02"))
+m_gb <- lm_g("Cond b", "m02")
+verifier("avant : une régression ajuste les lignes qui ont toutes ses valeurs, une ACP aussi les autres, une condition les siennes",
+         m_manque$N == 9 && m_m03$N == 10 && m_acp$N == 11 && m_ga$N == 5 && m_gb$N == 6)
+al <- demande("mettre_a_jour", list(projet = lid, apercu = TRUE))
+verifier("aucune ligne nouvelle : aucun modèle à qui demander", al$observations$ajoutees == 0 && !length(al$modeles$observations_choisies))
+utils::write.csv(rbind(l1, transform(lignes(sprintf("m%02d", 13:16), 5), x2 = c(0.5, -0.2, NA, 1.1))), lignes_csv, row.names = FALSE, na = "")
+al <- demande("mettre_a_jour", list(projet = lid, apercu = TRUE))
+ch <- stats::setNames(lapply(al$modeles$observations_choisies, function(x) stats::setNames(as.numeric(unlist(x[c("observations", "admises", "nouvelles")])), c("observations", "admises", "nouvelles"))),
+                      vapply(al$modeles$observations_choisies, `[[`, "", "nom"))
+verifier("les modèles qui ont laissé de côté une ligne qu'ils pouvaient ajuster, comptés en lignes qu'ils ajustent, celles qu'ils pouvaient, celles du fichier",
+         identical(names(ch), c("Manque", "ACP", "Cond")) && identical(unname(ch$Manque), c(9, 10, 3)) && identical(unname(ch$ACP), c(11, 12, 4)) &&
+           identical(unname(ch$Cond), c(5, 6, 2)) && ch$Manque[["observations"]] == m_manque$N && ch$Cond[["observations"]] == m_ga$N)
+verifier("pas ceux qui n'ont laissé de côté qu'une ligne sans x2, ou hors de leur condition", !any(c("Sans m03", "Cond b") %in% names(ch)))
+demande("mettre_a_jour", list(projet = lid))
+refits <- vapply(c(m_manque$numero, m_acp$numero, m_ga$numero), function(k) as.numeric(demande("ajuster", list(projet = lid, numero = k))$N), 0)
+verifier("mis à jour et réajustés : chacun ajuste ses lignes d'avant et les nouvelles qu'il pouvait ajuster", identical(refits, c(12, 15, 7)))
 
 cat("Sans source, sans étapes, sans colonne qui nomme les observations\n")
 cl <- demande("coller", list(texte = paste(c("nom\tx\tz", sprintf("c%d\t%d\t%d", 1:6, 1:6, c(3, 1, 4, 1, 5, 9))), collapse = "\n"), nom = "Collé"))
