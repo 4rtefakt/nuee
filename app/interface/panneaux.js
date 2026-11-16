@@ -3510,7 +3510,15 @@ function rendreComparaison(conteneur, ctx, p, loc) {
   const mode = outils(choix('', [['ajustement', t('comparaison_ajustement')], ['coefficients', t('cote_a_cote')]], loc.mode,
     (v) => { loc.mode = v; ctx.rafraichir(); }));
   if (loc.mode === 'coefficients') { rendreCoteACote(conteneur, ctx, loc, mode); return; }
-  const ms = ctx.tousModeles();
+  // (models of several projects: all of them, or one project's)
+  const tous = ctx.tousModeles();
+  const projets = [...new Set(tous.map((m) => m.projet))];
+  if (loc.projet && !projets.includes(loc.projet)) loc.projet = '';
+  if (projets.length > 1) {
+    mode.append(choix(t('projets'), [['', t('tous_projets')]].concat(projets.map((id) => [id, (ctx.projet(id) || {}).nom || id])), loc.projet || '',
+      (v) => { loc.projet = v; ctx.rafraichir(); }));
+  }
+  const ms = loc.projet ? tous.filter((m) => m.projet === loc.projet) : tous;
   const cum = (v) => (v && v.length ? v[v.length - 1] : null);
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });

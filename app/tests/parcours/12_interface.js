@@ -1,7 +1,10 @@
 // The window around the models, with two projects open: New model's types by family; the
-// toolbar and the Plots menu of a regression (a PCA's toolbar as it was).
+// toolbar and the Plots menu of a regression (a PCA's toolbar as it was); Find a command's
+// analyses; two projects' M1 told apart in the tabs, the files' names and Compare models.
+const path = require('path');
+
 module.exports = {
-  async executer(n, verifier, { donnee }) {
+  async executer(n, verifier, { donnee, dossier }) {
     await n.menu('m_aide', 'projet_exemple');
     await n.attendre(n.ligneModele('M1', true));
     await n.libre();
@@ -54,5 +57,32 @@ module.exports = {
     verifier('paletteNouveauModele', type === 'TRIM', type);
     await n.bouton('annuler');
     await n.attendre('!__n.dialogue()');
+
+    // ---- a second project with an M1 of its own: the tabs, the files and Compare models tell them apart
+    await n.fichierAOuvrir(donnee('docs', 'site', 'donnees', 'skylark_counts.csv'));
+    await n.menu('m_fichier', 'ouvrir');
+    await n.attendre(n.ligneProjet('skylark_counts.csv'));
+    const tendance = await n.nouveauModele({ type: 'LM', y: ['skylarks'], sans: ['site', 'habitat'] });
+    const onglets = await n.attendre(`(() => { const o = __n.tous('.dv-tab').map((e) => __n.norm(e.textContent));
+      return o.includes('orchards · M1 · PCA') && o.includes('skylark_counts · M1 · LM') && o.includes('orchards · M5 · LM') ? o : null; })()`);
+    verifier('ongletsAvecProjet', tendance.nom === 'M1' && !!onglets, onglets);
+    // File › Export model results proposes "skylark_counts - M1 LM.xlsx"
+    await n.fichierAEnregistrer(path.join(dossier, 'resultats.xlsx'));
+    await n.menu('m_fichier', 'exporter');
+    await n.attendre("__n.titreDialogue().startsWith(__n.t('exporter_resultats_titre').split('{')[0])");
+    await n.cliquer("__n.boite().querySelector('.formats-export input[value=\"xlsx\"]')");
+    await n.bouton('choisir_emplacement');
+    await n.attendre("__n.statut().startsWith(__n.t('exporte'))");
+    const enregistrement = (await n.principal()).appels.filter((a) => a.dialogue === 'enregistrer').pop();
+    verifier('nomDeFichierAvecProjet', !!enregistrement && enregistrement.nom === 'skylark_counts - M1 LM.xlsx', enregistrement && enregistrement.nom);
+    // Predict › Compare models: one project's models
+    await n.menu('m_prediction', 'comparaison');
+    const filtre = "__n.tous('.outils label.champ').find((l) => __n.norm((l.querySelector('span') || {}).textContent) === __n.t('projets'))";
+    await n.attendre(filtre);
+    const skylarks = (await n.etat()).projets.find((p) => p.nom === 'skylark_counts.csv').id;
+    await n.choisir(`${filtre}.querySelector('select')`, skylarks);
+    const lignes = await n.attendre(`(() => { const t = ${filtre}.closest('.panneau').querySelector('table.tableau');
+      const l = t ? [...t.tBodies[0].rows].map((r) => __n.norm(r.cells[0].textContent)) : []; return l.length === 1 ? l : null; })()`);
+    verifier('comparerUnProjet', lignes[0] === 'M1', lignes);
   },
 };

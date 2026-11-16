@@ -71,6 +71,7 @@ export function dialogueRapport(app, id) {
   const parties = partiesModele(m);
   const choix = new Set(parties.filter((x) => x.defaut).map((x) => x.cle));
   const st = { titre: `${m.nom}${m.titre ? ' — ' + m.titre : ''}`, commentaire: '', format: 'pdf' };
+  st.defaut = st.titre;
   const contenu = el('div', { class: 'dialogue-rapport' },
     el('div', { class: 'grille-champs' },
       el('label', {}, t('titre_graphe')), el('input', { value: st.titre, style: 'width:28em', oninput: (e) => { st.titre = e.target.value; } }),
@@ -92,7 +93,8 @@ export function dialogueRapport(app, id) {
 }
 
 async function creerRapport(app, m, parties, st) {
-  const nomFichier = (st.titre || m.nom).replace(/[^\p{L}\p{N} _.()-]+/gu, '_');
+  // (its title as the dialog gave it: "<project> - M1 PLS", as the model's other files; a title typed: that)
+  const nomFichier = st.titre === st.defaut && app.nomFichierModele ? app.nomFichierModele(m) : (st.titre || m.nom).replace(/[^\p{L}\p{N} _.()-]+/gu, '_');
   let chemin = null;
   if (app.bureau) {
     chemin = await app.bureau.enregistrerSous(`${nomFichier}.${st.format}`,

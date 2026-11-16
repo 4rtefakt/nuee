@@ -25,7 +25,7 @@ const TEXTES = {
     zoom_plus: 'Agrandir le texte', zoom_moins: 'Réduire le texte', zoom_normal: 'Taille normale',
     guide: 'Guide d’utilisation', guide_complet: 'Guide complet', differences: 'Résultats et écarts connus', apropos: 'À propos',
     // explorer, status
-    projets: 'Projets', modeles_fichier: 'Modèles importés', modeles_projet: 'Modèles du projet', modeles_r: 'Modèles calculés',
+    projets: 'Projets', tous_projets: 'Tous les projets', modeles_fichier: 'Modèles importés', modeles_projet: 'Modèles du projet', modeles_r: 'Modèles calculés',
     vues: 'Vues', jeux_prediction: 'Jeux de prédiction', aucun_projet: 'Aucun projet ouvert.',
     aide_vide: 'Ouvrez un tableau (Excel, CSV, R, SPSS, Stata, SAS, jamovi…) ou un projet avec Fichier › Ouvrir (Ctrl+O), ou collez des cellules copiées dans un tableur (Ctrl+V).',
     non_ajuste: 'non ajusté dans le fichier d’origine', calcul: 'Calcul en cours…', pret: 'Moteur R prêt', erreur: 'Erreur',
@@ -792,7 +792,7 @@ const TEXTES = {
     explorateur: 'Project explorer', theme_sombre: 'Dark theme', langue: 'Language',
     zoom_plus: 'Larger text', zoom_moins: 'Smaller text', zoom_normal: 'Normal size',
     guide: 'User guide', guide_complet: 'Full guide', differences: 'Results and known differences', apropos: 'About',
-    projets: 'Projects', modeles_fichier: 'Imported models', modeles_projet: 'Project models', modeles_r: 'Fitted models',
+    projets: 'Projects', tous_projets: 'All projects', modeles_fichier: 'Imported models', modeles_projet: 'Project models', modeles_r: 'Fitted models',
     vues: 'Views', jeux_prediction: 'Prediction sets', aucun_projet: 'No project open.',
     aide_vide: 'Open a table (Excel, CSV, R, SPSS, Stata, SAS, jamovi…) or a project with File › Open (Ctrl+O), or paste cells copied from a spreadsheet (Ctrl+V).',
     non_ajuste: 'not fitted in the original file', calcul: 'Computing…', pret: 'R engine ready', erreur: 'Error',
