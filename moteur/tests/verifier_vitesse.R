@@ -19,7 +19,9 @@
 #     (UV, Pareto, centrage, aucune ; blocs et modificateurs ; valeurs manquantes, une colonne
 #     constante ou vide ; les centres et poids d'un autre bloc, l'écart-type du modèle complet) ;
 #   - les arbres boostés : le tirage de chaque arbre comme la boucle de gbm l'écrit, et les arbres
-#     faits par la fonction C de rpart comme par rpart().
+#     faits par la fonction C de rpart comme par rpart() ;
+#   - l'échantillonnage par distances : les intégrales de la fonction de détection (une clé seule,
+#     des termes d'ajustement ; lignes et points) comme avec detection_distance en chaque point.
 #   Rscript moteur/tests/verifier_vitesse.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -301,6 +303,58 @@ for (loi in names(ys)) {
   arbre_rpart <- arbre_c
   verifier(sprintf("loi %s, 120 arbres : ceux de la fonction C (vérifiée sur le premier, qui a ses coupures) = ceux de rpart()", loi),
            appels == 120 && identical(direct, par_rpart))
+}
+
+cat("Échantillonnage par distances : les intégrales de la fonction de détection\n")
+# (integrale_detection d'avant : g̃ et ses dérivées par detection_distance, en chaque point)
+integrale_avant <- function(fd, theta, a, b, derivees = FALSE) {
+  valeur <- function(x) {
+    v <- poids_detection(fd, x) * detection_distance(fd, theta, x)$gt
+    v[!(v >= 1e-16)] <- 0
+    v
+  }
+  a <- rep_len(a, length(b))
+  ix <- indices_detection(fd)
+  cle_seule <- !length(fd$ordres) && fd$cle != "unif"
+  if (cle_seule && fd$cle == "hn") {
+    s <- exp(theta[ix$echelle])
+    ua <- a^2 / (2 * s^2)
+    ub <- b^2 / (2 * s^2)
+    I <- if (fd$point) 2 * s^2 * ifelse(ua > 0.5, exp(-ua) - exp(-ub), expm1(-ua) - expm1(-ub)) / fd$w^2
+         else s * sqrt(2 * pi) * (stats::pnorm(a / s, lower.tail = FALSE) - stats::pnorm(b / s, lower.tail = FALSE)) / (fd$w - fd$L)
+  } else I <- vapply(seq_along(b), function(i) integrer_detection(valeur, a[i], b[i]), 0)
+  e0 <- detection_distance(fd, theta, 0, derivees)
+  if (!derivees) return(list(I = I, s0 = e0$s0))
+  derivee <- function(j) function(x) {
+    e <- detection_distance(fd, theta, x, TRUE)
+    pd <- poids_detection(fd, x)
+    v <- pd * e$gt
+    pd * e$dgt[, j] * (!is.na(v) & v >= 1e-16)
+  }
+  dI <- matrix(0, length(b), ix$q)
+  for (j in if (cle_seule) setdiff(seq_len(ix$q), ix$echelle) else seq_len(ix$q)) {
+    dI[, j] <- vapply(seq_along(b), function(i) integrer_detection(derivee(j), a[i], b[i]), 0)
+  }
+  if (cle_seule) {
+    k <- function(x) cle_detection(fd, theta, x)$k
+    dI[, ix$echelle] <- if (fd$point) 2 * I - 2 * (b^2 * k(b) - a^2 * k(a)) / fd$w^2 else I - (b * k(b) - a * k(a)) / (fd$w - fd$L)
+  }
+  list(I = I, dI = dI, s0 = e0$s0, ds0 = e0$ds0)
+}
+fdd <- function(cle, ordres = integer(0), serie = NULL, point = FALSE, L = 0) {
+  list(cle = cle, serie = serie, ordres = as.integer(ordres), w = 120, L = L, point = point, echelle_ajustements = "largeur")
+}
+cas_distance <- list(list("hasard, lignes", fdd("hr"), c(log(2.5), log(30))), list("hasard, points", fdd("hr", point = TRUE), c(log(3), log(40))),
+                     list("hasard, tronqué à gauche", fdd("hr", L = 5), c(log(1.5), log(20))), list("demi-normale seule", fdd("hn"), log(30)),
+                     list("demi-normale + cos(2, 3)", fdd("hn", c(2, 3), "cos"), c(log(30), 0.2, -0.1)),
+                     list("hasard + cos(2)", fdd("hr", 2, "cos"), c(log(2), log(35), 0.1)),
+                     list("demi-normale + Hermite(4), points", fdd("hn", 4, "herm", point = TRUE), c(log(25), 0.05)),
+                     list("uniforme + cos(1, 2)", fdd("unif", c(1, 2), "cos"), c(0.3, -0.1)))
+for (k in cas_distance) {
+  bornes <- list(list(k[[2]]$L, k[[2]]$w), list(c(k[[2]]$L, 30, 60), c(30, 60, k[[2]]$w)))
+  verifier(sprintf("%s : intégrales et dérivées, de L à w et par intervalles", k[[1]]),
+           all(vapply(bornes, function(ab) identical(integrale_detection(k[[2]], k[[3]], ab[[1]], ab[[2]]), integrale_avant(k[[2]], k[[3]], ab[[1]], ab[[2]])) &&
+                                             identical(integrale_detection(k[[2]], k[[3]], ab[[1]], ab[[2]], TRUE), integrale_avant(k[[2]], k[[3]], ab[[1]], ab[[2]], TRUE)), TRUE)))
 }
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
