@@ -2097,11 +2097,12 @@ descriptions, les coordonnées, une classe d'une sélection, des scores ou des g
 k-moyennes en variables.
 Édition › Étapes des données (ou clic droit sur les données du projet) : la source (trouvée,
 modifiée depuis sa lecture, ou introuvable) et les étapes, chacune avec sa date et les fichiers
-qu'elle a lus. Retirer relit la source et rejoue les autres étapes, en un seul changement
-qu'annule Ctrl+Z ; une source modifiée depuis sa lecture est lue telle qu'elle est maintenant.
-Quand les données ont changé hors des étapes (dans la console R, ou avec une version de Nuée
-d'avant la 1.1), le dialogue le dit : les mettre à jour reprendrait celles que la source et les
-étapes donnent.
+qu'elle a lus. Retirer montre d'abord ce que ferait le retrait d'une étape (la source relue,
+les autres étapes rejouées dessus), puis, comme une mise à jour, remplace les données en un seul
+changement qu'annule Ctrl+Z, ajuste à nouveau chaque modèle et montre Ce qui a changé ; quand la
+source a changé depuis sa lecture, mettez d'abord les données à jour. Quand les données ont
+changé hors des étapes (dans la console R, ou avec une version de Nuée d'avant la 1.1), le
+dialogue le dit : les mettre à jour reprendrait celles que la source et les étapes donnent.
 Édition › Mettre à jour les données : la source relue, ou un autre fichier, celui de l'année
 suivante, dont les colonnes peuvent venir dans un autre ordre ou avec de nouvelles. Les étapes y
 sont rejouées, puis ses lignes rapportées aux observations du projet par leurs identifiants et

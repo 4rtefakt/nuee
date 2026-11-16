@@ -1919,11 +1919,12 @@ the observations' identifiers: a value edited, Find and replace, the categories,
 columns from a table (with that table's file), raster values, pasted cells, units and
 descriptions, coordinates, a class from a selection, scores or k-means clusters as variables.
 Edit › Data steps (or right-click on the project's data): the source (found, changed since it
-was read, or not found) and the steps, each with its date and the files it read. Remove reads
-the source again and replays the other steps, as one change that Ctrl+Z undoes; a source that
-changed since it was read is read as it is now. When the data changed outside the steps (in the
-R console, or with a version of Nuée before 1.1), the dialog says so: updating them would bring
-back what the source and the steps give.
+was read, or not found) and the steps, each with its date and the files it read. Remove shows
+first what removing a step would do (the source read again, the other steps replayed on it),
+then, as an update, replaces the data as one change that Ctrl+Z undoes, fits every model again
+and shows What changed; when the source changed since it was read, update the data first. When
+the data changed outside the steps (in the R console, or with a version of Nuée before 1.1), the
+dialog says so: updating them would bring back what the source and the steps give.
 Edit › Update the data: the source read again, or another file, next year's, whose columns may
 come in another order or with new ones. The steps are replayed on it, then its rows are matched
 to the project's observations by their identifiers and its columns to the variables by their

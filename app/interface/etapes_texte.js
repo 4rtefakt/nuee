@@ -280,4 +280,6 @@ export function valeursChangees(avant, apres, nonRefaits = []) {
 // ------------------------------------------------------------ the version before
 
 // The description of the version saved before an update (versions.js: enregistrerVersion).
-export const descriptionVersion = (date = new Date()) => t('etapes_version', { date: date.toLocaleString(locale(), { dateStyle: 'long', timeStyle: 'short' }) });
+// (its moment, also that of the version before a step is removed: "16 November 2026 at 14:05")
+export const dateDescription = (date = new Date()) => date.toLocaleString(locale(), { dateStyle: 'long', timeStyle: 'short' });
+export const descriptionVersion = (date = new Date()) => t('etapes_version', { date: dateDescription(date) });
