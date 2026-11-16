@@ -368,12 +368,20 @@ invisible(file.rename(source_csv, cache))
 verifier("refusé sans le fichier source", grepl("introuvable", refus("retirer_etape", list(projet = id, n = 1))) &&
            isFALSE(demande("etapes", list(projet = id))$source$existe))
 invisible(file.rename(cache, source_csv))
-verifier("le fichier source changé : la demande etapes le dit", {
-  write("S9-2030,S9,lande,2030,1,1,1,1,1,1", source_csv, append = TRUE)
-  ch <- isTRUE(demande("etapes", list(projet = id))$source$modifie)
-  writeLines(utils::head(readLines(source_csv), -1), source_csv)
-  ch
-})
+write("S9-2030,S9,lande,2030,1,1,1,1,1,1", source_csv, append = TRUE)
+verifier("le fichier source changé : la demande etapes le dit", isTRUE(demande("etapes", list(projet = id))$source$modifie))
+avant_retrait <- projet(id)
+refus_retrait <- tryCatch({ demande("retirer_etape", list(projet = id, n = k)); NULL }, error = function(e) e)
+verifier("retirer une étape d'une source changée : refusé (source_modifiee), en disant de mettre à jour d'abord ou de regarder l'aperçu",
+         inherits(refus_retrait, "source_modifiee") && grepl("à jour", conditionMessage(refus_retrait)) && grepl("aperçu", conditionMessage(refus_retrait)) &&
+           identical(projet(id), avant_retrait))
+ar <- demande("retirer_etape", list(projet = id, n = k, apercu = TRUE))
+verifier("son aperçu : le rapport d'une mise à jour, la ligne nouvelle du fichier comprise, sans rien changer",
+         isTRUE(ar$apercu) && ar$observations$ajoutees == 1 && identical(as.character(ar$observations$premieres_ajoutees), "S9-2030") &&
+           length(ar$etapes) == 16 && is.null(ar$projet) && identical(projet(id), avant_retrait))
+writeLines(utils::head(readLines(source_csv), -1), source_csv)
+verifier("le fichier rendu tel qu'il était (une autre date, le même contenu) : la source n'a pas changé, le retrait se ferait",
+         isFALSE(demande("etapes", list(projet = id))$source$modifie) && demande("retirer_etape", list(projet = id, n = k, apercu = TRUE))$observations$ajoutees == 0)
 
 cat("Des données changées hors des étapes\n")
 etat$projets[[id]]$donnees[1, 1] <- 1234  # (la console R : P1$donnees[1, 1] <- 1234)

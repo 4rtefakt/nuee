@@ -2242,6 +2242,12 @@ async function principal() {
       fs.writeFileSync(releves, ['y,nom,x,zone', ...lignes(8).map((l) => [l[3], l[0], l[2], l[1]].join(','))].join('\n'));
       e = await api('etapes', { projet: q.id });
       verifier(e.source.modifie === true && e.source.actuel.taille !== e.source.taille, `le fichier changé : ${JSON.stringify(e.source)}`);
+      // removing a step would also bring in the changed file's rows: refused (source_modifiee), unless it is a preview
+      const retrait = await fetch(`http://127.0.0.1:${port}/api/retirer_etape`, { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ projet: q.id, n: 1 }) });
+      const jr = await retrait.json();
+      verifier(retrait.status === 400 && jr.source_modifiee === true && /aperçu/.test(jr.erreur), `retrait d'une source changée : HTTP ${retrait.status} ${JSON.stringify(jr)}`);
+      const ar = await api('retirer_etape', { projet: q.id, n: 1, apercu: true });
+      verifier(ar.apercu === true && ar.observations.ajoutees === 2 && ar.etapes.length === 1 && !ar.projet, `aperçu du retrait : ${JSON.stringify(ar.observations)}`);
       const a = await api('mettre_a_jour', { projet: q.id, apercu: true });
       verifier(a.apercu === true && a.observations.ajoutees === 2 && a.observations.retirees === 0 && [].concat(a.observations.premieres_ajoutees).join() === 'r7,r8'
         && a.etapes.length === 2 && a.etapes.every((x) => x.statut === 'ok') && !a.projet && a.modeles.variables_absentes.length === 0,

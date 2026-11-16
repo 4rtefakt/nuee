@@ -1018,7 +1018,10 @@ mettre_a_jour_demande <- function(q) {
   remplacer_par_mise_a_jour(actuel, r, traduire("mise à jour des données", "data update"))
 }
 
-# Une étape retirée, les données refaites sans elle : DEMANDES$retirer_etape.
+# Une étape retirée, les données refaites sans elle : DEMANDES$retirer_etape. La source est relue telle
+# qu'elle est : changée depuis sa lecture (etat_fiche), le retrait prendrait aussi ses nouvelles
+# données, et en ferait la source sans le dire. Il est alors refusé (une erreur de classe
+# « source_modifiee », que la réponse dit, appli) ; son aperçu (q$apercu) montre ce qu'il ferait.
 retirer_etape_demande <- function(q) {
   actuel <- projet(q$projet)
   n <- suppressWarnings(as.integer(unlist(q$n))[1])
@@ -1026,11 +1029,18 @@ retirer_etape_demande <- function(q) {
   if (is.na(n) || n < 1 || n > length(etapes)) stop(sprintf(traduire("Étape inconnue : %s", "Unknown step: %s"), premier_texte(q$n)), call. = FALSE)
   s <- actuel$source_donnees
   if (is.null(s)) stop(traduire("Ce projet n'a pas de fichier source : ses étapes ne se refont pas sans lui.", "This project has no source file: its steps can't be redone without it."), call. = FALSE)
-  if (is.null(fichier_retrouve(s, dossier_projet(actuel)))) {
+  dossier <- dossier_projet(actuel)
+  if (is.null(fichier_retrouve(s, dossier))) {
     stop(sprintf(traduire("Le fichier source est introuvable : %s", "The source file isn't found: %s"), premier_texte(s$chemin)), call. = FALSE)
+  }
+  if (!isTRUE(q$apercu) && isTRUE(etat_fiche(s, dossier)$modifie)) {
+    stop(structure(class = c("source_modifiee", "error", "condition"), list(call = NULL, message = traduire(
+      "Le fichier source a changé depuis qu'il a été lu : retirer l'étape y prendrait aussi ses nouvelles données. Mettez d'abord les données à jour, ou regardez l'aperçu du retrait.",
+      "The source file changed since it was read: removing the step would also bring in its new data. Update the data first, or look at the removal's preview."))))
   }
   r <- mise_a_jour(actuel, etapes = etapes[-n])
   if (!is.null(r$choisir)) return(r)
+  if (isTRUE(q$apercu)) return(c(r$rapport, list(apercu = TRUE)))
   remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n))
 }
 
@@ -1611,6 +1621,9 @@ DEMANDES <- list(
   etapes = etapes_demande,
   # L'étape q$n retirée : la source relue, les autres étapes rejouées, les données remplacées comme
   # par mettre_a_jour (le même rapport, et `projet`), un seul Ctrl+Z ; refusé sans le fichier source.
+  # Avec q$apercu, le rapport seul, sans rien changer (et `apercu`) ; sans lui, refusé quand le fichier
+  # source a changé depuis sa lecture (sa réponse d'erreur porte `source_modifiee`) : mettre d'abord
+  # les données à jour, ou regarder l'aperçu.
   retirer_etape = retirer_etape_demande,
   # Les données mises à jour : le fichier q$chemin (sa source par défaut ; q$table, sa feuille ou sa
   # table) relu comme la source, les étapes rejouées, le résultat rapporté au projet par les noms des
@@ -1778,6 +1791,8 @@ appli <- list(
     }, error = function(e) {
       tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
       if (inherits(e, "conflit_fichier")) return(repondre(409L, list(erreur = conditionMessage(e), conflit = TRUE, date = e$date)))
+      # (une étape à retirer d'une source changée depuis sa lecture : retirer_etape_demande)
+      if (inherits(e, "source_modifiee")) return(repondre(400L, list(erreur = conditionMessage(e), source_modifiee = TRUE)))
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },
