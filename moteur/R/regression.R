@@ -823,6 +823,7 @@ ajuster_regression <- function(projet, d) {
                  nrow(cadre$cadre), length(candidats), length(candidats) + 2), call. = FALSE)
   }
   refuser_reponse_constante(cadre$cadre$y, as.character(d$y[[1]]$name))
+  refuser_valeurs_extremes(cadre$cadre, c(y = as.character(d$y[[1]]$name), stats::setNames(cadre$noms, cadre$termes)))
   G <- d$cv_groups %||% 7
   groupes <- groupes_definition(projet, d, G)[match(cadre$observations, d$observations)]
   termes_x <- termes_regression(d$x)
@@ -1361,6 +1362,28 @@ refuser_reponse_constante <- function(y, nom) {
     stop(sprintf(traduire("La réponse « %s » vaut %s pour chacune des %d observations du modèle : il n'y a rien à expliquer. Choisissez une autre réponse, ou d'autres observations.",
                           "The response “%s” is %s for each of the model's %d observations: there is nothing to explain. Choose another response, or other observations."),
                  nom, format(y[1], digits = 6), length(y)), call. = FALSE)
+  }
+}
+
+# Des valeurs dont le carré dépasse les nombres de R (au-delà de 1e150 environ ; NaN, Inf une fois mises
+# à l'échelle) ou s'annule (toutes en deçà de 1e-150) : chaque somme de carrés serait infinie ou nulle,
+# les coefficients, R² et Q² NaN. Refusées, en disant laquelle et quoi faire (`cadre` : la table du
+# modèle ; `noms` : le nom de chacune de ses colonnes à voir, par colonne).
+refuser_valeurs_extremes <- function(cadre, noms) {
+  for (k in intersect(names(noms), names(cadre))) {
+    v <- cadre[[k]]
+    if (!is.numeric(v)) next
+    a <- abs(v[v != 0])
+    if (any(!is.finite(a)) || (length(a) && max(a) > 1e150)) {
+      stop(sprintf(traduire("« %s » a des valeurs trop grandes pour le calcul%s : leurs carrés dépassent les nombres que R sait écrire. Divisez-la par une puissance de 10 (Nouvelle variable), ou mettez-la à l'échelle.",
+                            "“%s” has values too large for the computation%s: their squares exceed the numbers R can hold. Divide it by a power of 10 (New variable), or scale it."),
+                   noms[[k]], if (any(is.finite(a))) sprintf(traduire(" (jusqu'à %s)", " (up to %s)"), format(max(a[is.finite(a)]), digits = 3)) else ""), call. = FALSE)
+    }
+    if (length(a) && max(a) < 1e-150) {
+      stop(sprintf(traduire("« %s » a des valeurs trop petites pour le calcul (au plus %s) : leurs carrés s'annulent. Multipliez-la par une puissance de 10 (Nouvelle variable), ou mettez-la à l'échelle.",
+                            "“%s” has values too small for the computation (at most %s): their squares vanish. Multiply it by a power of 10 (New variable), or scale it."),
+                   noms[[k]], format(max(a), digits = 3)), call. = FALSE)
+    }
   }
 }
 
@@ -2075,7 +2098,7 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   fr <- langue == "fr"
   r <- m$resultat
   nombre <- function(x, chiffres = 2) formatC(x, format = "f", digits = chiffres, decimal.mark = if (fr) "," else ".")
-  pourcent <- function(x) paste0(formatC(100 * x, format = "f", digits = if (100 * x < 10) 1 else 0, decimal.mark = if (fr) "," else "."), if (fr) " %" else "%")
+  pourcent <- function(x) paste0(formatC(100 * x, format = "f", digits = if (isTRUE(100 * x < 10)) 1 else 0, decimal.mark = if (fr) "," else "."), if (fr) " %" else "%")
   liste <- function(x) if (length(x) <= 1) paste(x) else paste(paste(x[-length(x)], collapse = ", "), if (fr) "et" else "and", x[length(x)])
   guillemets <- function(x) if (fr) sprintf("« %s »", x) else sprintf("“%s”", x)
   cites <- character(0)
