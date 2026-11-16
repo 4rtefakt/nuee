@@ -169,9 +169,10 @@ noter_demande <- function(cas, analyse, nom, statut, message = "", duree = 0, ch
 # Ce qu'une réponse dit, sans ce qui tient aux numéros internes des observations et des variables
 # (uid…, les variables des coordonnées), ni à la séance (identifiants, chemins, révisions, la durée
 # mesurée d'une simulation) : les mêmes données numérotées autrement doivent donner la même
-# empreinte (le cas numeros_100000 contre le cas base).
+# empreinte (le cas numeros_100000 contre le cas base). `a_source` (1.1) : un projet fait d'un fichier
+# en a une, le même tableau fait en mémoire non ; ce n'est pas une différence de ses données.
 CHAMPS_INTERNES <- c("id", "projet", "modele", "demande", "reglages", "numero", "chemin", "chemins", "chemin_enregistrement", "signature",
-                     "revision", "annulable", "source", "fichier_colle", "script", "variable", "coordonnees", "proposition", "duree",
+                     "revision", "annulable", "source", "a_source", "fichier_colle", "script", "variable", "coordonnees", "proposition", "duree",
                      "par_ajustement", "_row")
 empreinte <- function(x) {
   if (is.list(x)) {
