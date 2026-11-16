@@ -678,10 +678,13 @@ autoajuster_modele <- function(projet, definition, A_max = NULL, garder = TRUE) 
 # des paquets R qui calculent les modèles (PAQUETS_CALCUL), pour savoir plus tard avec quoi un
 # résultat a été obtenu. La source de ses données et les fichiers de ses étapes y prennent leur
 # chemin depuis `dossier` (etapes.R : chemins_relatifs), celui du fichier ; une copie de secours
-# garde ceux depuis le dossier du projet.
+# garde ceux depuis le dossier du projet. `auteur` : qui l'enregistre, écrit avec ce qui l'a écrit
+# quand il est donné (un collègue qui a ouvert le même fichier le voit : serveur.R, fichier_change).
+# `copie` : un fichier de la séance où l'écrire d'abord, puis le copier à sa place ; il reste, tel que
+# le fichier est écrit (la base d'une fusion avec ce que d'autres y enregistreront : fusion.R).
 PAQUETS_CALCUL <- c("stats", "mgcv", "nlme", "MASS", "rpart", "cluster")
 version_paquet <- function(x) tryCatch(as.character(utils::packageVersion(x)), error = function(e) NA_character_)
-enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(chemin)) {
+enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(chemin), copie = NULL, auteur = NULL) {
   p <- unclass(chemins_relatifs(projet, dossier))
   for (i in seq_along(p$datasets)) {
     d <- p$datasets[[i]]
@@ -692,12 +695,26 @@ enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(c
   p$lecture_seule <- p$cache <- NULL  # (une ancienne version ouverte, un projet caché : serveur.R, ouvrir)
   p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
                  paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
+  # (un nom seulement : l'auteur des versions, { nom, email }, n'y laisse pas son courriel)
+  auteur <- as.character(unlist(if (is.list(auteur)) auteur$nom else auteur))
+  if (length(auteur) && !is.na(auteur[1]) && nzchar(trimws(auteur[1]))) p$nuee$auteur <- trimws(auteur[1])
   # (des milliers de petites listes, que jsonlite écrit une à une : les observations, écrites d'un coup
   # comme les lignes d'un tableau, et les termes d'un modèle, écrits une fois pour tous les modèles
   # qui ont les mêmes ; le même texte, que write_json reprend tel quel, json_verbatim)
   p$observations <- json_observations(p$observations)
   p$models <- json_termes_modeles(p$models)
-  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE))
+  ecrire <- function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE)
+  # (une copie qui ne s'écrit pas, le disque de la séance plein : le fichier s'écrit comme avant, sans elle ;
+  # attr(, "copie") dit si elle est là)
+  if (!is.null(copie) && !isTRUE(tryCatch(suppressWarnings({ ecrire(copie); TRUE }), error = function(e) FALSE))) {
+    unlink(copie)
+    copie <- NULL
+  }
+  if (is.null(copie)) return(invisible(structure(ecrire_sans_risque(chemin, ecrire), copie = NULL)))
+  ecrire_sans_risque(chemin, function(f) {
+    if (!file.copy(copie, f, overwrite = TRUE)) stop(sprintf(traduire("Impossible d'écrire %s", "Couldn't write %s"), chemin), call. = FALSE)
+  })
+  invisible(structure(chemin, copie = copie))
 }
 
 # Les observations d'un projet (list(uid, ids) chacune) en JSON, tel que jsonlite les écrirait une à

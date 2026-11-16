@@ -178,7 +178,10 @@ async function rendreCarte(conteneur, ctx, p, loc) {
     customdata: idx.map((k) => uids[k]), hovertext: idx.map((k) => `<b>${N[avec[k]]}</b><br>${coordTexte(k)}${valeurTexte(k)}`),
     hovertemplate: '%{hovertext}<extra></extra>', text: loc.etiquettes ? idx.map((k) => N[avec[k]]) : undefined, textposition: 'top center',
     textfont: { size: 10 },
-    marker: { size: idx.map((k) => taillesPx[k]), color: couleur, opacity: sel.size ? idx.map((k) => (sel.has(uids[k]) ? 1 : 0.35)) : 0.85, ...extra },
+    // (the outline in the panel's colour: Plotly's own is white, around points of varying size, which
+    // in the dark theme paled the dark end of Viridis)
+    marker: { size: idx.map((k) => taillesPx[k]), color: couleur, opacity: sel.size ? idx.map((k) => (sel.has(uids[k]) ? 1 : 0.35)) : 0.85,
+      line: { color: couleursTheme(ctx).fond, width: 1 }, ...extra },
   });
   const tous = avec.map((_, k) => k);
   const traces = [];
@@ -233,9 +236,17 @@ async function rendreCarte(conteneur, ctx, p, loc) {
     // shorter by the cosine of the latitude
     const lonlat = r.systeme.type === 'lonlat';
     const moyenne = py.reduce((s, v) => s + v, 0) / py.length;
+    // (projected coordinates in metres, Lambert-93's 6 399 000: written in full, not Plotly's
+    // 6.399M and 696k; the system's name in the axis titles)
+    const [x0, x1] = etendue(px);
+    const [y0, y1] = etendue(py);
+    const metres = !lonlat && Math.max(Math.abs(x0), Math.abs(x1), Math.abs(y0), Math.abs(y1)) >= 1e4;
+    const precisions = [lonlat || r.systeme.type === 'plan' ? '' : r.systeme.nom, metres ? 'm' : ''].filter(Boolean).join(', ');
+    const titreAxe = (nom) => (precisions ? `${nom} (${precisions})` : nom);
+    const format = metres ? { tickformat: ',d' } : {};
     tracer(ctx, graphe, traces, { title: { text: titre },
-      xaxis: { title: { text: co.nom_x }, zeroline: false, constrain: 'domain' },
-      yaxis: { title: { text: co.nom_y }, zeroline: false, scaleanchor: 'x', scaleratio: lonlat ? 1 / Math.cos((moyenne * Math.PI) / 180) : 1, constrain: 'domain' } });
+      xaxis: { title: { text: titreAxe(co.nom_x) }, zeroline: false, constrain: 'domain', ...format },
+      yaxis: { title: { text: titreAxe(co.nom_y) }, zeroline: false, scaleanchor: 'x', scaleratio: lonlat ? 1 / Math.cos((moyenne * Math.PI) / 180) : 1, constrain: 'domain', ...format } });
   }
   brancherSelection(graphe, ctx, pid);
 }
@@ -382,11 +393,11 @@ ajouterTextes({
   autocorrelation_portee: 'Portée (km)', autocorrelation_portee_aide: 'Vide : la plus petite distance qui donne un voisin à chaque observation (pour l’inverse de la distance : toutes les paires).',
   autocorrelation_standardiser: 'Lignes de somme 1', autocorrelation_standardiser_aide: 'Les poids de chaque observation ramenés à une somme de 1 (style « W » de spdep) ; sinon les poids tels quels (« B »).',
   autocorrelation_par_lieu: 'Moyenne par lieu', autocorrelation_par_lieu_aide: 'Les observations au même endroit (une placette suivie plusieurs années) remplacées par la moyenne de leurs valeurs : sinon elles sont les plus proches voisines les unes des autres.',
-  autocorrelation_moran: 'I de Moran de {nom} :', autocorrelation_modele: 'Test des résidus qui tient compte de l’ajustement (modèle linéaire) :',
+  autocorrelation_moran: 'I de Moran ({nom}) :', autocorrelation_modele: 'Test des résidus qui tient compte de l’ajustement (modèle linéaire) :',
   autocorrelation_ligne: 'I = {I}, attendu {E} sans autocorrélation, z = {z}, p = {p}.',
   autocorrelation_permutations: 'Par {n} permutations : p = {p}.',
   autocorrelation_note_voisins: '{n} observations, {moyenne} voisins en moyenne.',
-  autocorrelation_methode_voisins: 'Voisinage : les {k} plus proches voisines de chaque observation, rendues réciproques.',
+  autocorrelation_methode_voisins: 'Voisinage : les {k} plus proches voisins de chaque observation, rendus réciproques.',
   autocorrelation_methode_bande: 'Voisinage : les observations à moins de {portee} {unite}.',
   autocorrelation_methode_inverse: 'Poids : l’inverse de la distance, jusqu’à {portee} {unite}.',
   autocorrelation_methode_inverse_tout: 'Poids : l’inverse de la distance, entre toutes les paires.',

@@ -401,6 +401,8 @@ for (langue_a in c("fr", "en")) {
            any(grepl("gamm", tma$paragraphes)) && any(grepl("CAR1", tma$paragraphes)) && any(grepl("secteur", tma$paragraphes)) &&
              any(grepl("Pinheiro", tma$references)) && any(grepl("Wood", tma$references)) && any(grepl("marginal", tma$paragraphes)) &&
              !any(grepl("NA", tma$paragraphes, fixed = TRUE)))
+  verifier(sprintf("texte des méthodes (%s) : le lien dans la langue du texte (« lien identité », pas « lien identity »)", langue_a),
+           any(grepl(if (langue_a == "fr") "loi normale, lien identité" else "normal distribution, identity link", tma$paragraphes, fixed = TRUE)))
 }
 fa_proj <- tempfile(fileext = ".nuee")
 pa$models <- list(da)

@@ -276,8 +276,11 @@ simples, puis l'analyse qui y répond, déjà réglée.
     ou des points (échantillonnage par distance).
   - Les variables : les variables explicatives (X), ou les groupes.
 Nuée propose les réponses d'après les variables du projet (comme les lit Statistiques des
-variables) : une réponse d'entiers à partir de 0 est un comptage, de 0 et de 1 une
-présence-absence, entre 0 et 1 une proportion ; « beaucoup de zéros » quand un quart au moins
+variables) : une réponse d'entiers à partir de 0 est un comptage, sauf quand son unité (Édition ›
+Unités et descriptions : g, cm, ha, %, °C...) ou son nom (une moyenne, un rapport, une
+biomasse...) dit une mesure arrondie à son unité ; des comptages que rien ne confirme (pas
+d'unité de comptage, pas de nom comme abondance) ont aussi le modèle linéaire parmi les autres
+possibilités ; de 0 et de 1 une présence-absence, entre 0 et 1 une proportion ; « beaucoup de zéros » quand un quart au moins
 des valeurs sont nulles, et 15 points de plus que n'en donnerait une loi de Poisson de même
 moyenne (la phrase sous la réponse donne les deux) ; le site est une variable qualitative nommée
 comme un site (site, station, placette, transect...) dont les catégories se répètent ; le temps
@@ -306,8 +309,9 @@ Les choix principaux :
     (une variance au-delà de 1,5 fois la moyenne) ou a beaucoup de zéros (beaucoup de zéros ne
     veut pas toujours dire excès de zéros, Warton 2005 : comparez avec la Poisson à excès de
     zéros par l'AIC), sinon Poisson ; une présence-absence : la régression logistique ; une
-    proportion : la régression bêta ; une mesure positive et asymétrique : gamma (ou son
-    logarithme) ; une mesure avec des zéros : Tweedie ; sinon le modèle linéaire ; avec les
+    proportion : la régression bêta ; une mesure avec des zéros : Tweedie ; sinon le modèle
+    linéaire, une mesure positive et asymétrique aussi (ses X peuvent la rendre asymétrique :
+    ses résidus le disent après l'ajustement, et gamma ou le logarithme sont proposés) ; avec les
     mêmes sites mesurés plusieurs fois, un effet aléatoire par site et la validation croisée par
     site ;
   - des groupes comparés : le test entre deux variables (celui que leurs types demandent),
@@ -863,10 +867,10 @@ les variables. Elles sont enregistrées avec le projet comme les autres, et gard
 viennent : le texte des Méthodes d'un modèle qui les utilise dit quels fichiers, quelle taille de
 cellules, quel système et quelle méthode les ont données. La console R montre l'appel,
 ajouter_valeurs_rasters(...), et ce qu'il a donné.
-Les fichiers sont lus dans Nuée, sans GDAL, et seulement les bandes de lignes ou les tuiles qui
+Les fichiers sont lus dans Nuée, sans GDAL, et seulement les blocs de lignes ou les tuiles qui
 contiennent des observations : un MNT national reste rapide (une fraction de seconde pour une
 centaine d'observations dans un fichier sans compression ou Deflate, une à trois secondes en LZW,
-décodé en R). Lus : TIFF classique et BigTIFF, en bandes de lignes ou en tuiles, bandes
+décodé en R). Lus : TIFF classique et BigTIFF, en blocs de lignes ou en tuiles, bandes
 entrelacées ou séparées ; sans compression, LZW, Deflate, PackBits, LZMA et ZSTD (ZSTD avec R 4.4
 et après), avec les prédicteurs 2 et 3 ; des entiers de 8, 16 et 32 bits, des réels de 32 et 64
 bits ; la valeur manquante, l'échelle, le décalage et le nom des bandes de GDAL ; le
@@ -888,9 +892,9 @@ présences-absences et des valeurs positives, ses résidus quantiles), avec son 
 autocorrélation, z et la valeur p unilatérale (autocorrélation positive) sous la randomisation,
 et p par permutations (999 par défaut). Pour un modèle linéaire sans effet aléatoire, une seconde
 ligne donne le test qui tient compte de l'ajustement (Cliff et Ord 1981, comme
-spdep::lm.morantest). Voisinage : les k plus proches voisines de chaque observation (rendues
-réciproques), les observations à moins d'une distance (vide : la plus petite qui donne une
-voisine à chacune), ou l'inverse de la distance ; lignes de somme 1 (style « W » de spdep) ou
+spdep::lm.morantest). Voisinage : les k plus proches voisins de chaque observation (rendus
+réciproques), les observations à moins d'une distance (vide : la plus petite qui donne un
+voisin à chacune), ou l'inverse de la distance ; lignes de somme 1 (style « W » de spdep) ou
 poids tels quels. Dessous, le corrélogramme (l'I de Moran par classes de distance jusqu'à la
 moitié de la plus grande, p bilatérale corrigée par Holm sur les classes, en rouge à 0,05) et le
 semi-variogramme (la moitié de la moyenne des carrés des écarts entre les valeurs des paires de
@@ -2097,11 +2101,12 @@ descriptions, les coordonnées, une classe d'une sélection, des scores ou des g
 k-moyennes en variables.
 Édition › Étapes des données (ou clic droit sur les données du projet) : la source (trouvée,
 modifiée depuis sa lecture, ou introuvable) et les étapes, chacune avec sa date et les fichiers
-qu'elle a lus. Retirer relit la source et rejoue les autres étapes, en un seul changement
-qu'annule Ctrl+Z ; une source modifiée depuis sa lecture est lue telle qu'elle est maintenant.
-Quand les données ont changé hors des étapes (dans la console R, ou avec une version de Nuée
-d'avant la 1.1), le dialogue le dit : les mettre à jour reprendrait celles que la source et les
-étapes donnent.
+qu'elle a lus. Retirer montre d'abord ce que ferait le retrait d'une étape (la source relue,
+les autres étapes rejouées dessus), puis, comme une mise à jour, remplace les données en un seul
+changement qu'annule Ctrl+Z, ajuste à nouveau chaque modèle et montre Ce qui a changé ; quand la
+source a changé depuis sa lecture, mettez d'abord les données à jour. Quand les données ont
+changé hors des étapes (dans la console R, ou avec une version de Nuée d'avant la 1.1), le
+dialogue le dit : les mettre à jour reprendrait celles que la source et les étapes donnent.
 Édition › Mettre à jour les données : la source relue, ou un autre fichier, celui de l'année
 suivante, dont les colonnes peuvent venir dans un autre ordre ou avec de nouvelles. Les étapes y
 sont rejouées, puis ses lignes rapportées aux observations du projet par leurs identifiants et
@@ -2115,7 +2120,7 @@ modèle dont la catégorie de référence n'a plus d'observation, et comment le 
 (sans colonne qui nomme les observations, elles se retrouvent par leur numéro de ligne). Un
 modèle qui laisse de côté des observations demande s'il prend les nouvelles (coché). Mettre à
 jour remplace les données en un seul changement (Ctrl+Z l'annule, la source et les étapes
-comprises) ; avec les versions, une version est enregistrée d'abord. Puis chaque modèle du
+comprises, et ajuste à nouveau chaque modèle sur les données d'avant) ; avec les versions, une version est enregistrée d'abord. Puis chaque modèle du
 projet est ajusté à nouveau, avec une barre de progression et Arrêter, et Ce qui a changé
 compare leurs résultats clés avant et après. Il montre aussi ce que la mise à jour a fait aux
 données, et les valeurs citées dans les documents qui ont changé, chacune avec sa phrase (un

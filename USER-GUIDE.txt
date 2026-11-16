@@ -253,7 +253,10 @@ answers them, already set up.
     time), a BACI design (the unit), spatial coordinates, lines or points (distance sampling).
   - The variables: the explanatory variables (X), or the groups.
 Nuée proposes the answers from the project's variables (as Variable statistics reads them): a
-response of whole numbers from 0 is a count, of 0 and 1 a presence-absence, between 0 and 1 a
+response of whole numbers from 0 is a count, unless its unit (Edit › Units and descriptions: g,
+cm, ha, %, °C...) or its name (a mean, a ratio, a biomass...) says a measurement rounded to its
+unit; counts that nothing confirms (no count unit, no name such as abundance) get the linear
+model among the alternatives too; of 0 and 1 a presence-absence, between 0 and 1 a
 proportion; "many zeros" when at least a quarter of the values are 0, and 15 points more than a
 Poisson distribution of the same mean would give (the sentence under the response gives both);
 the site is a qualitative variable named like one (site, station, plot, transect...) whose
@@ -280,9 +283,10 @@ The main choices:
   - a count: the negative binomial when it varies more than a Poisson distribution allows (a
     variance beyond 1.5 times the mean) or has many zeros (many zeros don't always mean zero
     inflation, Warton 2005: compare with the zero-inflated Poisson by AIC), otherwise Poisson; a
-    presence-absence: logistic regression; a proportion: beta regression; a positive, skewed
-    measurement: gamma (or its log); a measurement with zeros: Tweedie; otherwise the linear
-    model; with the same sites measured several times, a random effect by site and
+    presence-absence: logistic regression; a proportion: beta regression; a measurement with
+    zeros: Tweedie; otherwise the linear model, a positive, skewed measurement too (the skew
+    may come from its X: its residuals tell after the fit, and gamma or the log are offered);
+    with the same sites measured several times, a random effect by site and
     cross-validation by site;
   - groups compared: the test between two variables (the one their types call for), paired by
     site when each site comes once in each group (no more observations than sites × groups),
@@ -1919,11 +1923,12 @@ the observations' identifiers: a value edited, Find and replace, the categories,
 columns from a table (with that table's file), raster values, pasted cells, units and
 descriptions, coordinates, a class from a selection, scores or k-means clusters as variables.
 Edit › Data steps (or right-click on the project's data): the source (found, changed since it
-was read, or not found) and the steps, each with its date and the files it read. Remove reads
-the source again and replays the other steps, as one change that Ctrl+Z undoes; a source that
-changed since it was read is read as it is now. When the data changed outside the steps (in the
-R console, or with a version of Nuée before 1.1), the dialog says so: updating them would bring
-back what the source and the steps give.
+was read, or not found) and the steps, each with its date and the files it read. Remove shows
+first what removing a step would do (the source read again, the other steps replayed on it),
+then, as an update, replaces the data as one change that Ctrl+Z undoes, fits every model again
+and shows What changed; when the source changed since it was read, update the data first. When
+the data changed outside the steps (in the R console, or with a version of Nuée before 1.1), the
+dialog says so: updating them would bring back what the source and the steps give.
 Edit › Update the data: the source read again, or another file, next year's, whose columns may
 come in another order or with new ones. The steps are replayed on it, then its rows are matched
 to the project's observations by their identifiers and its columns to the variables by their
@@ -1935,8 +1940,8 @@ with the reason, the models that can no longer be fitted and what they miss, a m
 reference category has no observations left, and how the file was read (without a column that
 names the observations, they are matched by their row number). A model that leaves out some
 observations asks whether it takes the new ones (ticked). Update replaces the data as one change
-(Ctrl+Z undoes it, the source and the steps included); with versions on, a version is saved
-first. Then every model of the project is fitted again, with a progress bar and Stop, and What
+(Ctrl+Z undoes it, the source and the steps included, and fits every model again on the data as
+they were); with versions on, a version is saved first. Then every model of the project is fitted again, with a progress bar and Stop, and What
 changed compares their key results before and after. It also shows what the update did to the
 data, and the values cited in the documents that changed, each with its sentence (a click opens
 the document there); in each document's preview, those values are marked, the one before on

@@ -2132,7 +2132,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
                                              else "The response, a proportion strictly between 0 and 1, follows a beta distribution of mean μ and variance μ (1 − μ) / (1 + φ) (Ferrari & Cribari-Neto, 2004), its precision φ estimated with the model (Wood et al., 2016)."),
       NULL)
     c(cite("wood2017", if (fr) sprintf("Nous avons ajusté un modèle %s (loi %s, lien %s ; Wood, 2017) avec %s%s%s%s. %s",
-                                       if (identical(m$type, "GAM")) "additif généralisé" else "linéaire généralisé", lois[[m$famille]], m$lien, termes, paste0(courbes, spatial), aleatoire, effort, unites)
+                                       if (identical(m$type, "GAM")) "additif généralisé" else "linéaire généralisé", lois[[m$famille]],
+                                       if (identical(m$lien, "identity")) "identité" else m$lien, termes, paste0(courbes, spatial), aleatoire, effort, unites)
                        else sprintf("We fitted a %s model (%s distribution, %s link; Wood, 2017) with %s%s%s%s. %s",
                                     if (identical(m$type, "GAM")) "generalized additive" else "generalized linear", lois[[m$famille]], m$lien, termes, paste0(courbes, spatial), aleatoire, effort, unites)),
       loi_etendue,

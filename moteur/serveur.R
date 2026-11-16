@@ -66,6 +66,9 @@ etat$compteur <- 0
 etat$annulations <- list()  # par projet : les états précédents, pour « Annuler » (Ctrl+Z)
 etat$revisions <- list()  # par projet : le nombre de changements de ses données (resume_projet)
 etat$paires <- list()  # les tableaux de toutes les paires des tests appariés (memo_paires)
+etat$copies <- list()  # par projet : les copies de son fichier tel qu'il a été lu ou enregistré (copie_fichier_lu)
+etat$fusions <- list()  # les fusions préparées (fusionner), jusqu'à ce qu'elles soient finies (fusionner_finir)
+etat$n_fusions <- 0
 
 nouvel_id <- function(prefixe) {
   etat$compteur <- etat$compteur + 1
@@ -95,9 +98,11 @@ convertir_usp <- function(chemin) {
 }
 
 # Garde l'état actuel d'un projet avant de le changer, pour pouvoir revenir en arrière
-# (20 changements au plus par projet).
-memoriser <- function(p, etiquette) {
-  pile <- c(list(list(etiquette = etiquette, projet = p)), etat$annulations[[p$id]] %||% list())
+# (20 changements au plus par projet). `fusion` : pour une fusion (fusionner_finir), les documents,
+# les figures et l'état du fichier que le projet fusionné a pris, qu'Annuler lui retire s'ils n'ont pas
+# changé depuis (annuler_demande).
+memoriser <- function(p, etiquette, fusion = NULL) {
+  pile <- c(list(c(list(etiquette = etiquette, projet = p), if (!is.null(fusion)) list(fusion = fusion))), etat$annulations[[p$id]] %||% list())
   etat$annulations[[p$id]] <- utils::head(pile, 20)
 }
 # Chaque changement des données d'un projet, une fois fait, et chaque retour en arrière comptent
@@ -122,13 +127,18 @@ annuler_demande <- function(q) {
   ancien <- pile[[1]]$projet
   etat$annulations[[q$projet]] <- pile[-1]
   ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
-  ancien$fichier_lu <- actuel$fichier_lu
-  ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
-  ancien$figures <- actuel$figures  # (les figures non plus)
+  # (une fusion annulée : les documents, les figures et l'état du fichier qu'elle avait pris redeviennent
+  # ceux d'avant, s'ils n'ont pas changé depuis ; son fichier, changé par l'autre, se fusionne alors de
+  # nouveau. Ce qu'on a écrit ou enregistré depuis reste, comme après tout autre changement)
+  f <- pile[[1]]$fusion
+  if (is.null(f) || !identical(actuel$fichier_lu, f$fichier_lu)) ancien$fichier_lu <- actuel$fichier_lu
+  if (is.null(f) || !identical(actuel$documents, f$documents)) ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
+  if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
   ancien$modifie <- TRUE
   suivre_conditions_seance(actuel, ancien)
   etat$projets[[q$projet]] <- ancien
   reviser(q$projet)
+  ranger_copies(q$projet)
   list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
 }
 
@@ -168,20 +178,33 @@ ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = 
     tables <- tables_fichier(chemin)
     if (length(tables) > 1) return(list(choisir = I(tables), chemin = chemin, nom = nom))
   }
+  # (un projet est d'abord copié dans la séance tel qu'il est, puis lu de la copie : la base d'une fusion
+  # avec ce que d'autres y enregistreront, fusion.R ; son état d'avant la copie, pour qu'un changement
+  # fait pendant ne passe pas inaperçu)
+  lu <- copie <- NULL
+  if (ext %in% c("nuee", "json")) {
+    lu <- etat_fichier(chemin)
+    copie <- copie_fichier_lu(chemin)
+  }
   # (un tableau importé garde d'où viennent ses données, et ce que l'import en a décidé, pour les
   # relire, le fichier changé ou celui de l'année suivante : etapes.R ; un .nuee garde la sienne)
-  p <- switch(ext,
-              nuee = , json = lire_projet(chemin),
+  p <- tryCatch(switch(ext,
+              nuee = , json = lire_projet(copie %||% chemin),
               usp = lire_projet(convertir_usp(chemin)),
               zip = avec_source(projet_brut_collecte(chemin, table, identifiants = list()), chemin, "archive", table),  # (un CSV d'une archive d'ODK, tel qu'écrit : kobo.R)
-              avec_source(importer_tableau(chemin, table, reglages = list()), chemin, "tableau", table))
+              avec_source(importer_tableau(chemin, table, reglages = list()), chemin, "tableau", table)),
+              error = function(e) {
+                if (!is.null(copie)) unlink(copie)
+                stop(e)
+              })
   p$id <- nouvel_id("P")
   p$nom <- if (is.null(table)) nom else sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), table, tools::file_ext(nom))
   p$chemin <- chemin
   p$table <- table
   if (brut) p$brut <- TRUE  # (ouvert tel quel : un export de KoboToolbox ou d'ODK se rouvre de même, le moteur relancé)
-  if (ext %in% c("nuee", "json")) p$fichier_lu <- etat_fichier(chemin)
+  if (ext %in% c("nuee", "json")) p$fichier_lu <- c(lu, if (!is.null(copie)) list(copie = copie))
   etat$projets[[p$id]] <- p
+  garder_copie(p$id, copie)
   r <- resume_projet(p)
   # ce qu'il faut savoir de la lecture (valeurs non numériques lues comme manquantes...), et
   # d'un projet venant d'une version plus récente
@@ -236,12 +259,39 @@ fichier_lu_repris <- function(lu, origine) {
   list(chemin = as.character(lu$chemin), taille = as.numeric(lu$taille), date = as.numeric(lu$date))
 }
 
-# Une erreur que l'interface reconnaît : le fichier a changé depuis qu'on l'a lu.
-conflit_fichier <- function(chemin) {
+# Une erreur que l'interface reconnaît : le fichier a changé depuis qu'on l'a lu. `fusion` : une copie
+# du fichier tel qu'il avait été lu est gardée, ses changements peuvent se fusionner au projet
+# (DEMANDES$fusionner avec q$projet) plutôt que d'écraser ou de garder l'un ou l'autre.
+conflit_fichier <- function(chemin, fusion = FALSE) {
   structure(class = c("conflit_fichier", "error", "condition"),
             list(message = sprintf(traduire("%s a été modifié par ailleurs depuis que vous l'avez ouvert ou enregistré.",
                                             "%s was changed elsewhere since you opened or saved it."), basename(chemin)),
-                 call = NULL, date = etat_fichier(chemin)$date))
+                 call = NULL, date = etat_fichier(chemin)$date, fusion = isTRUE(fusion)))
+}
+
+# Le fichier d'un projet (`chemin`) copié tel qu'il est maintenant dans le dossier temporaire de la
+# séance, jamais à côté du fichier de l'utilisateur : la base d'une fusion avec ce que d'autres y auront
+# enregistré depuis (un dossier partagé : fusion.R). Sans `chemin`, le nom d'une copie à écrire
+# (enregistrer). NULL quand la copie ne se fait pas (un disque plein) : le projet s'ouvre et s'enregistre
+# comme avant, sans fusion possible.
+copie_fichier_lu <- function(chemin = NULL) {
+  dossier <- file.path(tempdir(), "copies")
+  dir.create(dossier, showWarnings = FALSE)
+  copie <- tempfile("lu", tmpdir = dossier, fileext = ".nuee")
+  if (is.null(chemin) || isTRUE(suppressWarnings(file.copy(chemin, copie)))) copie
+}
+garder_copie <- function(id, copie) if (!is.null(copie)) etat$copies[[id]] <- c(etat$copies[[id]], copie)
+
+# Les copies d'un projet (copie_fichier_lu) que plus rien n'utilise, effacées : ni le projet, ni l'état
+# d'avant une fusion qu'Annuler peut lui rendre (les autres retours en arrière gardent le fichier tel
+# qu'il est su maintenant : annuler_demande), ni une fusion préparée. Une par enregistrement s'accumulerait.
+ranger_copies <- function(id) {
+  utilisees <- c(etat$projets[[id]]$fichier_lu$copie,
+                 unlist(lapply(Filter(function(e) !is.null(e$fusion), etat$annulations[[id]]), function(e) e$projet$fichier_lu$copie)),
+                 unlist(lapply(Filter(function(f) identical(f$projet, id), etat$fusions), function(f) f$copie_leur)))
+  copies <- etat$copies[[id]]
+  unlink(setdiff(copies, utilisees))
+  etat$copies[[id]] <- intersect(copies, utilisees)
 }
 
 # Un nom de fichier (ou d'objet R) tiré du nom d'un projet ou d'un modèle.
@@ -1059,6 +1109,174 @@ retirer_etape_demande <- function(q) {
   remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n))
 }
 
+# ---------------------------------------------------------------- la fusion de deux versions (fusion.R)
+
+# Un projet lu d'un fichier pour une fusion : il doit exister et être un projet (.nuee, .json).
+projet_a_fusionner <- function(chemin) {
+  chemin <- premier_texte(chemin)
+  if (!nzchar(chemin) || !file_test("-f", chemin)) stop(sprintf(traduire("Fichier introuvable : %s", "File not found: %s"), chemin), call. = FALSE)
+  if (!extension(chemin) %in% c("nuee", "json")) stop(sprintf(traduire("Pas un projet de Nuée (.nuee) : %s", "Not a Nuée project (.nuee): %s"), basename(chemin)), call. = FALSE)
+  lire_projet(chemin)
+}
+
+# Ce qui a écrit un fichier de projet (p$nuee : la version de Nuée et, quand le projet le dit, qui :
+# nouveau.R, enregistrer_projet), lu sans lire tout le projet, qui peut être gros et que l'on regarde
+# toutes les 30 secondes : l'objet « nuee » de son JSON, trouvé dans ses octets (ses accolades et ses
+# guillemets ne sont jamais des morceaux d'un caractère UTF-8). NULL quand il n'en a pas.
+entete_projet <- function(chemin) {
+  taille <- file.info(chemin)$size
+  if (is.na(taille) || !taille) return(NULL)
+  octets <- readBin(chemin, "raw", taille)
+  k <- grepRaw('"nuee":{"format":', octets, fixed = TRUE)
+  if (!length(k)) return(NULL)
+  debut <- k[1] + 7L
+  profondeur <- 0L
+  chaine <- FALSE
+  echappe <- FALSE
+  for (j in debut:min(length(octets), debut + 20000L)) {
+    b <- as.integer(octets[j])
+    if (chaine) {
+      if (echappe) echappe <- FALSE else if (b == 92L) echappe <- TRUE else if (b == 34L) chaine <- FALSE
+    } else if (b == 34L) {
+      chaine <- TRUE
+    } else if (b == 123L) {
+      profondeur <- profondeur + 1L
+    } else if (b == 125L) {
+      profondeur <- profondeur - 1L
+      if (!profondeur) {
+        texte <- rawToChar(octets[debut:j])
+        Encoding(texte) <- "UTF-8"
+        return(tryCatch(jsonlite::fromJSON(texte, simplifyVector = TRUE), error = function(e) NULL))
+      }
+    }
+  }
+  NULL
+}
+
+# DEMANDES$fichier_change.
+fichier_change_demande <- function(q) {
+  p <- projet(q$projet)
+  lu <- p$fichier_lu
+  if (is.null(lu)) return(list(change = FALSE, connu = FALSE, existe = FALSE, base = FALSE))
+  chemin <- premier_texte(lu$chemin)
+  r <- list(change = FALSE, connu = TRUE, existe = file_test("-f", chemin), chemin = chemin,
+            base = length(lu$copie) > 0 && file.exists(premier_texte(lu$copie)))
+  if (!r$existe) return(r)
+  i <- etat_fichier(chemin)
+  r$taille <- i$taille
+  r$date <- format(as.POSIXct(i$date, origin = "1970-01-01"), "%Y-%m-%dT%H:%M:%S")
+  if (meme_etat(i, lu)) return(r)
+  # (une autre taille ou une autre date : son contenu, pour en être sûr. Le même (un programme de
+  # synchronisation l'a touché, il a été recopié) : seule sa date a changé, celle qu'on garde aussi, pour
+  # qu'Enregistrer ne demande pas s'il faut l'écraser)
+  gardee <- premier_texte(lu$sha256)
+  if (!nzchar(gardee) && r$base) {
+    gardee <- empreinte_sha(premier_texte(lu$copie))
+    p$fichier_lu$sha256 <- gardee
+  }
+  if (nzchar(gardee) && isTRUE(meme_empreinte(gardee, chemin))) {
+    p$fichier_lu$taille <- i$taille
+    p$fichier_lu$date <- i$date
+    etat$projets[[p$id]] <- p
+    return(r)
+  }
+  etat$projets[[p$id]] <- p
+  e <- entete_projet(chemin)
+  r$change <- TRUE
+  if (nzchar(premier_texte(e$auteur))) r$auteur <- premier_texte(e$auteur)
+  if (nzchar(premier_texte(e$version))) r$version <- premier_texte(e$version)
+  r
+}
+
+# DEMANDES$fusionner. Leur côté, quand c'est le fichier d'un projet de la séance, est copié d'abord
+# (comme à l'ouverture) avec son état : le projet fusionné l'aura lu, et sa copie sera sa base.
+fusionner_demande <- function(q) {
+  p <- if (length(q$projet)) projet(premier_texte(q$projet))
+  if (!is.null(p) && (!is.null(p$lecture_seule) || isTRUE(p$cache))) {
+    stop(traduire("Cette ancienne version est en lecture seule : elle ne se fusionne pas.", "This old version is read-only: it isn't merged."), call. = FALSE)
+  }
+  if (is.null(p) && !length(q$mien)) stop(traduire("Mon côté manque : q$mien (un fichier) ou q$projet.", "My side is missing: q$mien (a file) or q$projet."), call. = FALSE)
+  chemin_base <- premier_texte(q$base)
+  if (!nzchar(chemin_base) && !is.null(p)) chemin_base <- premier_texte(p$fichier_lu$copie)
+  if (!nzchar(chemin_base) || !file_test("-f", chemin_base)) {
+    stop(traduire("Pas de version commune d'où fusionner : ce projet n'a été ni ouvert d'un fichier ni enregistré depuis que Nuée a démarré.",
+                  "No common version to merge from: this project was neither opened from a file nor saved since Nuée started."), call. = FALSE)
+  }
+  base <- projet_a_fusionner(chemin_base)
+  chemin_leur <- premier_texte(q$leur)
+  if (!nzchar(chemin_leur) && !is.null(p)) chemin_leur <- premier_texte(p$fichier_lu$chemin, premier_texte(p$chemin_enregistrement))
+  if (!nzchar(chemin_leur) || !file_test("-f", chemin_leur)) stop(sprintf(traduire("Fichier introuvable : %s", "File not found: %s"), chemin_leur), call. = FALSE)
+  fiche <- copie <- NULL
+  if (!is.null(p)) {
+    fiche <- etat_fichier(chemin_leur)
+    copie <- copie_fichier_lu(chemin_leur)
+  }
+  leur <- projet_a_fusionner(copie %||% chemin_leur)
+  du_projet <- !is.null(p) && identical(etat_fichier(chemin_leur)$chemin, premier_texte(p$fichier_lu$chemin))
+  dossier <- premier_texte(q$dossier)
+  dossier <- if (nzchar(dossier)) dossier else if (!is.null(p)) dossier_projet(p) else dirname(normalizePath(premier_texte(q$mien), winslash = "/", mustWork = FALSE))
+  qui <- premier_texte(leur$nuee$auteur, basename(chemin_leur))
+  mien <- if (!is.null(p)) projet_relu(p) else projet_a_fusionner(q$mien)
+  r <- fusionner_projets(base, mien, leur, list(), dossier = dossier, qui = qui, relus = TRUE, seance = p %||% mien)
+  etat$n_fusions <- etat$n_fusions + 1
+  id <- paste0("fusion", etat$n_fusions)
+  etat$fusions[[id]] <- list(projet = p$id, seance = p, base = base, mien = mien, leur = leur, dossier = dossier, qui = qui,
+                             fiche = if (du_projet && !is.null(copie)) c(fiche, list(copie = copie)), copie_leur = copie)
+  if (!is.null(p)) garder_copie(p$id, copie)
+  # (cinq fusions préparées au plus : une fusion jamais finie n'en garde pas les projets pour toujours)
+  if (length(etat$fusions) > 5) {
+    vieilles <- utils::head(etat$fusions, length(etat$fusions) - 5)
+    etat$fusions <- utils::tail(etat$fusions, 5)
+    for (v in vieilles) if (!is.null(v$projet) && !is.null(etat$projets[[v$projet]])) ranger_copies(v$projet)
+  }
+  list(fusion = id, auto = !length(r$conflits), conflits = r$conflits, apports = list(mien = I(r$apports$mien), leur = I(r$apports$leur)),
+       donnees = r$donnees, qui = qui, notes = I(r$notes))
+}
+
+# DEMANDES$fusionner_finir.
+fusionner_finir_demande <- function(q) {
+  id <- premier_texte(q$fusion)
+  f <- etat$fusions[[id]]
+  if (is.null(f)) stop(sprintf(traduire("Fusion inconnue : %s", "Unknown merge: %s"), id), call. = FALSE)
+  choix <- as.list(q$choix %||% list())
+  r <- fusionner_projets(f$base, f$mien, f$leur, choix, dossier = f$dossier, qui = f$qui, relus = TRUE, seance = f$seance %||% f$mien)
+  manquent <- Filter(function(x) !premier_texte(choix[[x$id]]) %in% c("mien", "leur"), r$conflits)
+  if (length(manquent)) {
+    stop(sprintf(traduire("Choisir le mien ou le leur pour : %s", "Choose mine or theirs for: %s"), paste(vapply(manquent, function(x) x$titre, ""), collapse = ", ")), call. = FALSE)
+  }
+  n <- r$projet
+  if (is.null(f$projet)) {
+    chemin <- premier_texte(q$chemin)
+    if (!nzchar(chemin)) chemin <- chemin_temporaire(paste0(nom_fichier(premier_texte(n$nom, "fusion")), ".nuee"))
+    enregistrer_projet(n, chemin, premier_texte(q$version), dossier = if (nzchar(premier_texte(f$dossier))) f$dossier else dirname(chemin))
+    etat$fusions[[id]] <- NULL
+    return(list(chemin = chemin))
+  }
+  actuel <- projet(f$projet)
+  # (le projet tel qu'il était quand la fusion a été préparée, sans ce que fichier_change, appelé toutes
+  # les 30 secondes, garde de son fichier)
+  sans <- function(x) x[setdiff(names(x), c("modifie", "fichier_lu"))]
+  if (!identical(sans(unclass(actuel)), sans(unclass(f$seance)))) {
+    stop(traduire("Le projet a changé depuis que la fusion a été préparée : elle est à refaire.", "The project changed since the merge was prepared: it must be done again."), call. = FALSE)
+  }
+  for (x in intersect(CHAMPS_SEANCE_FUSION, names(actuel))) n[x] <- list(actuel[[x]])
+  if (!is.null(f$fiche)) n$fichier_lu <- f$fiche
+  n$modifie <- TRUE
+  etiquette <- sprintf(traduire("fusion avec %s", "merge with %s"), f$qui)
+  memoriser(actuel, etiquette, fusion = list(fichier_lu = n$fichier_lu, documents = n$documents, figures = n$figures))
+  suivre_conditions_seance(actuel, n)
+  etat$projets[[actuel$id]] <- n
+  reviser(actuel$id)
+  etat$fusions[[id]] <- NULL
+  ranger_copies(actuel$id)
+  resultat <- list(projet = resume_projet(n), etiquette = etiquette)
+  if (nzchar(premier_texte(q$chemin))) {
+    enregistrer_projet(n, premier_texte(q$chemin), premier_texte(q$version), dossier = dossier_projet(n))
+    resultat$chemin <- premier_texte(q$chemin)
+  }
+  resultat
+}
+
 # ---------------------------------------------------------------- HTTP
 
 # Tout ce qui est ouvert : pour une nouvelle fenêtre de l'application.
@@ -1076,6 +1294,10 @@ DEMANDES <- list(
   fermer_projet = function(q) {
     etat$modeles <- Filter(function(e) !identical(e$projet, q$projet), etat$modeles)
     etat$projets[[q$projet]] <- NULL
+    # (les copies de son fichier, et les fusions préparées avec lui)
+    etat$fusions <- Filter(function(f) !identical(f$projet, q$projet), etat$fusions)
+    unlink(etat$copies[[q$projet]])
+    etat$copies[[q$projet]] <- NULL
     list(ferme = q$projet)
   },
   # Retire un modèle calculé ; avec definition = TRUE, sa définition quitte aussi le projet
@@ -1285,7 +1507,11 @@ DEMANDES <- list(
       p$lecture_seule <- list(source = texte(q$lecture_seule$source), oid = texte(q$lecture_seule$oid), date = texte(q$lecture_seule$date))
     }
     if (isTRUE(q$cache)) p$cache <- TRUE
+    # (une ancienne version, un projet caché ne se fusionnent pas : la copie de leur fichier part, comme
+    # celle d'une copie de secours, qui n'est pas le fichier du projet)
+    if (!is.null(p$lecture_seule) || isTRUE(p$cache)) p$fichier_lu$copie <- NULL
     etat$projets[[p$id]] <- p
+    ranger_copies(p$id)
     resume_projet(p)
   },
   # Un export de KoboToolbox ou d'ODK Central (kobo.R) : l'aperçu de son import avec les réglages
@@ -1711,6 +1937,9 @@ DEMANDES <- list(
     enregistrer_projet(p, f, as.character(q$version %||% ""), dossier = dossier_projet(p))
     list(nom = nom_fichier(p$nom), texte = paste(readLines(f, encoding = "UTF-8", warn = FALSE), collapse = "\n"))
   },
+  # q$auteur : le nom de qui enregistre (celui des réglages des versions), écrit avec ce qui a écrit le
+  # fichier (p$nuee$auteur : nouveau.R, enregistrer_projet), pour qu'un collègue qui l'a ouvert sache qui
+  # l'a changé (fichier_change, fusionner) ; sans lui, le fichier ne nomme personne.
   enregistrer = function(q) {
     p <- projet(q$projet)
     # (une ancienne version ouverte en lecture seule : jamais sur le fichier temporaire d'où elle a été lue)
@@ -1720,24 +1949,63 @@ DEMANDES <- list(
     }
     if (!is.null(q$session)) p$session <- q$session
     chemin <- q$chemin %||% file.path(tempdir(), paste0(tools::file_path_sans_ext(p$nom), ".nuee"))
-    # le fichier qu'on avait lu ou écrit, changé depuis : l'interface demande avant de l'écraser
+    # le fichier qu'on avait lu ou écrit, changé depuis : l'interface demande avant de l'écraser, ou
+    # fusionne ses changements (fusionner, quand une copie du fichier lu est gardée : `fusion`)
     lu <- p$fichier_lu
     if (!is.null(q$chemin) && !isTRUE(q$ecraser) && !is.null(lu) && file.exists(chemin) &&
         identical(etat_fichier(chemin)$chemin, lu$chemin) && !meme_etat(etat_fichier(chemin), lu)) {
-      stop(conflit_fichier(chemin))
+      stop(conflit_fichier(chemin, fusion = length(lu$copie) && file.exists(premier_texte(lu$copie))))
     }
-    # (sans q$chemin, un fichier à télécharger : les chemins relatifs restent ceux depuis le dossier du projet)
-    enregistrer_projet(p, chemin, as.character(q$version %||% ""), dossier = if (!is.null(q$chemin)) dirname(chemin) else dossier_projet(p))
+    # (sans q$chemin, un fichier à télécharger : les chemins relatifs restent ceux depuis le dossier du projet ;
+    # avec, le fichier est écrit d'abord dans la séance, la base d'une fusion à venir, puis copié à sa place)
+    copie <- if (!is.null(q$chemin)) copie_fichier_lu()
+    ecrit <- tryCatch(enregistrer_projet(p, chemin, as.character(q$version %||% ""), dossier = if (!is.null(q$chemin)) dirname(chemin) else dossier_projet(p),
+                                         copie = copie, auteur = q$auteur),
+                      error = function(e) {
+                        if (!is.null(copie)) unlink(copie)
+                        stop(e)
+                      })
+    copie <- attr(ecrit, "copie")
     if (!is.null(q$chemin)) {
       p <- chemins_relatifs(p, dirname(chemin))  # (comme le fichier les écrit : etapes.R)
       p$chemin_enregistrement <- chemin
-      p$fichier_lu <- etat_fichier(chemin)
+      p$fichier_lu <- c(etat_fichier(chemin), if (!is.null(copie)) list(copie = copie))
       p$lecture_seule <- NULL  # (une ancienne version enregistrée ailleurs : une copie, un projet comme un autre)
     }
     p$modifie <- FALSE
     etat$projets[[p$id]] <- p
+    if (!is.null(q$chemin)) {
+      garder_copie(p$id, copie)
+      ranger_copies(p$id)
+    }
     list(chemin = chemin)
   },
+  # La fusion de deux versions d'un projet (fusion.R : fusionner_projets), par le sens : q$base, q$mien
+  # et q$leur, trois fichiers de projet (leur dernier état commun et les deux côtés : les versions d'un
+  # dépôt GitHub ou GitLab, interface/versions.js), ou q$projet au lieu de q$mien, le projet tel qu'il
+  # est dans la séance, changements pas encore enregistrés compris (sans q$base, la copie de son fichier
+  # tel qu'il a été lu ou enregistré ; sans q$leur, son fichier, que d'autres ont pu enregistrer depuis :
+  # un dossier partagé) ; q$dossier : celui d'où se retrouvent la source des données et les fichiers des
+  # étapes (par défaut, celui du projet). Rien ne change encore. Rend `fusion` (l'identifiant de la fusion
+  # préparée), `auto` (sans conflit), `conflits` ({ id, genre : "modele", "document", "figure", "source",
+  # "variable" ou "champ", cle, titre, mien et leur : ce que chaque côté a fait, en peu de mots, details }),
+  # `apports` ({ mien, leur } : ce que chaque côté a apporté, en phrases), `donnees` ({ mode : "etapes",
+  # "cellules" ou "inchangees", raison : pourquoi pas par les étapes }), `qui` (l'autre côté : qui a écrit
+  # leur fichier quand il le dit, sinon son nom) et `notes`, dans la langue de la demande.
+  fusionner = fusionner_demande,
+  # La fusion préparée q$fusion finie, chaque conflit tranché par q$choix ({ <id d'un conflit> : "mien" ou
+  # "leur" }, un pour chacun) : sans q$projet à la fusion, le projet fusionné écrit dans q$chemin (sinon un
+  # fichier temporaire) → { chemin } ; avec, il prend la place du projet de la séance, un seul Ctrl+Z
+  # (« fusion avec Alice »), et quand leur côté était son fichier, il le sait lu : Enregistrer ne demande
+  # plus s'il faut l'écraser → { projet, etiquette }, et { chemin } aussi avec q$chemin. Refusé quand le
+  # projet a changé depuis que la fusion a été préparée : elle est à refaire.
+  fusionner_finir = fusionner_finir_demande,
+  # Le fichier du projet q$projet a-t-il changé depuis qu'il a été lu ou enregistré (un collègue l'a
+  # enregistré, sur un dossier partagé) : sa taille et sa date, puis son contenu pour en être sûr (une date
+  # seule changée, le contenu étant le même, ne le change pas) → { change, connu (le projet a un fichier),
+  # existe, chemin, taille, date, base (une copie du fichier lu est gardée : il peut se fusionner), et
+  # auteur et version (qui l'a écrit, et quelle Nuée, quand le fichier le dit) }.
+  fichier_change = fichier_change_demande,
   journal = function(q) list(entrees = journal_depuis(as.numeric(q$depuis %||% 0)), dernier = etat$n_journal),
   console = function(q) evaluer_console(q$code, q$modele, q$projet),
   completer = function(q) completer_console(as.character(q$texte %||% ""), as.integer(q$curseur %||% nchar(q$texte %||% "")), q$modele, q$projet),
@@ -1812,7 +2080,7 @@ appli <- list(
       repondre(200L, r)
     }, error = function(e) {
       tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
-      if (inherits(e, "conflit_fichier")) return(repondre(409L, list(erreur = conditionMessage(e), conflit = TRUE, date = e$date)))
+      if (inherits(e, "conflit_fichier")) return(repondre(409L, c(list(erreur = conditionMessage(e), conflit = TRUE, date = e$date), if (isTRUE(e$fusion)) list(fusion = TRUE))))
       # (une étape à retirer d'une source changée depuis sa lecture : retirer_etape_demande)
       if (inherits(e, "source_modifiee")) return(repondre(400L, list(erreur = conditionMessage(e), source_modifiee = TRUE)))
       repondre(400L, list(erreur = conditionMessage(e)))

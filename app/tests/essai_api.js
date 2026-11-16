@@ -2128,6 +2128,11 @@ async function principal() {
         && /^R2 OOB .* arbres$/.test(foret.chiffres) && [].concat(foret.vues_defaut).join() === 'ens_importance,ens_obspred'
         && foret.observations['densite prédit (OOB)'].length === 65 && [].concat(foret.importance.variable).length === 4 && foret.courbe.arbres.length === 200
         && foret.exclues_manquantes === 7 && foret.reglages.options.arbres === 200 && typeof foret.comparaison.Q2 === 'number', `forêt : ${foret.chiffres}, N = ${foret.N}`);
+      // (the console shows a forest by its key results, not the whole object with its data and trees)
+      const affiche = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'resultat').pop();
+      const lignesForet = affiche ? String(affiche.texte).split('\n') : [];
+      verifier(lignesForet.length > 1 && lignesForet.length <= 25 && /Forêt \(FOREST\)/.test(lignesForet[0]) && /Q/.test(affiche.texte),
+        `la console résume la forêt : ${lignesForet.length} ligne(s), ${lignesForet.slice(0, 3).join(' | ')}`);
       const dp = await api('dependance_partielle', { modele: foret.id, variables: ['gel'] });
       const d0 = [].concat(dp.dependance)[0];
       verifier(d0.variable === 'gel' && d0.x.length === 25 && d0.y.length === 25 && d0.tapis.length > 1, `dépendance partielle : ${d0.x.length} points`);
@@ -2283,6 +2288,63 @@ async function principal() {
       let refus = '';
       try { await api('retirer_etape', { projet: o.id, n: 9 }); } catch (err) { refus = err.message; }
       verifier(/Étape inconnue/.test(refus), `étape inconnue : « ${refus} »`);
+    });
+    await etape('fusionner deux versions : un dossier partagé (fichier_change, la question avant d’écraser, fusionner avec le projet), trois fichiers et un conflit (moteur/R/fusion.R)', async () => {
+      // a shared file that Alice and Bob both open; Bob adds a model, changes the last paragraph and saves under his name
+      const releves = path.join(dossier, 'partage.csv');
+      fs.writeFileSync(releves, ['nom,zone,x,y', ...Array.from({ length: 8 }, (_, i) => [`s${i + 1}`, ['A', 'B'][i % 2], (i * 1.3 + 1).toFixed(1), ((i % 3) * 0.7 + i * 0.2 + 3).toFixed(1)].join(','))].join('\n'));
+      const q = await api('ouvrir', { chemin: releves });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      await api('ajuster', { projet: q.id, type: 'LM', x: [v.x], y: [v.y], nom: 'L1' });
+      await api('document_enregistrer', { projet: q.id, titre: 'Rapport', texte: 'Un\n\nDeux\n\nTrois' });
+      const f = path.join(dossier, 'partage.nuee');
+      await api('enregistrer', { projet: q.id, chemin: f });
+      await api('fermer_projet', { projet: q.id });
+      const alice = await api('ouvrir', { chemin: f });
+      const bob = await api('ouvrir', { chemin: f });
+      let c = await api('fichier_change', { projet: alice.id });
+      verifier(c.change === false && c.connu === true && c.existe === true && c.base === true, `fichier_change : ${JSON.stringify(c)}`);
+      await api('ajuster', { projet: bob.id, type: 'LM', x: [v.x], y: [v.y], nom: 'L2' });
+      await api('document_enregistrer', { projet: bob.id, id: 'D1', texte: 'Un\n\nDeux\n\nTrois, de Bob' });
+      await new Promise((ok) => { setTimeout(ok, 1100); });
+      await api('enregistrer', { projet: bob.id, chemin: f, auteur: 'Bob' });
+      await api('document_enregistrer', { projet: alice.id, id: 'D1', texte: 'Un, d’Alice\n\nDeux\n\nTrois' });
+      c = await api('fichier_change', { projet: alice.id });
+      verifier(c.change === true && c.auteur === 'Bob' && c.taille === fs.statSync(f).size, `changé par Bob : ${JSON.stringify(c)}`);
+      const r = await fetch(`http://127.0.0.1:${port}/api/enregistrer`, { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ projet: alice.id, chemin: f }) });
+      const j = await r.json();
+      verifier(r.status === 409 && j.conflit === true && j.fusion === true, `HTTP ${r.status} ${JSON.stringify(j)}`);
+      const fu = await api('fusionner', { projet: alice.id }, 'en');
+      verifier(fu.auto === true && fu.qui === 'Bob' && Array.isArray(fu.conflits) && fu.conflits.length === 0 && fu.apports.leur.some((x) => /L2/.test(x))
+        && fu.apports.mien.some((x) => /Rapport/.test(x)) && fu.donnees.mode === 'inchangees', `fusionner : ${JSON.stringify(fu)}`);
+      const fin = await api('fusionner_finir', { fusion: fu.fusion, choix: {} }, 'en');
+      verifier(fin.etiquette === 'merge with Bob' && fin.projet.annulable === 'merge with Bob' && fin.projet.modeles.map((m) => m.nom).join() === 'L1,L2',
+        `fusionner_finir : ${JSON.stringify(fin.etiquette)} ${JSON.stringify(fin.projet.modeles)}`);
+      verifier((await api('document', { projet: alice.id, id: 'D1' })).texte === 'Un, d’Alice\n\nDeux\n\nTrois, de Bob', 'le document des deux');
+      await api('enregistrer', { projet: alice.id, chemin: f });  // (her project knows it read Bob's file: no question)
+      // three files: each side rewrote the second paragraph; the conflict, a refusal without a choice, then theirs written
+      const cote = async (nom, texte) => {
+        const x = await api('ouvrir', { chemin: f });
+        await api('document_enregistrer', { projet: x.id, id: 'D1', texte });
+        const g = path.join(dossier, nom);
+        await api('enregistrer', { projet: x.id, chemin: g });
+        await api('fermer_projet', { projet: x.id });
+        return g;
+      };
+      const mien = await cote('mien.nuee', 'Un, d’Alice\n\nDeux, d’Alice\n\nTrois, de Bob');
+      const leur = await cote('leur.nuee', 'Un, d’Alice\n\nDeux, de Bob\n\nTrois, de Bob');
+      const t = await api('fusionner', { base: f, mien, leur });
+      const k = t.conflits[0] || {};
+      verifier(t.auto === false && t.conflits.length === 1 && k.id === 'document:D1' && k.genre === 'document' && k.mien === 'paragraphe 2 réécrit'
+        && k.details.passages[0].leur === 'Deux, de Bob', `le conflit : ${JSON.stringify(t.conflits)}`);
+      let refusF = '';
+      try { await api('fusionner_finir', { fusion: t.fusion, choix: {} }); } catch (e) { refusF = e.message; }
+      verifier(/Rapport/.test(refusF), `sans choix : « ${refusF} »`);
+      const g = path.join(dossier, 'fusion.nuee');
+      const w = await api('fusionner_finir', { fusion: t.fusion, choix: { 'document:D1': 'leur' }, chemin: g });
+      const o = await api('ouvrir', { chemin: w.chemin });
+      verifier(w.chemin === g && (await api('document', { projet: o.id, id: 'D1' })).texte === 'Un, d’Alice\n\nDeux, de Bob\n\nTrois, de Bob', 'le leur, écrit et rouvert');
+      for (const x of [alice, bob, o]) await api('fermer_projet', { projet: x.id });
     });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;

@@ -124,10 +124,18 @@ function rendreResumeIndval(conteneur, ctx, m) {
     el('div', { class: 'fiche-chiffres' }, chiffre(t('iv_indice'), o.indice === 'IndVal' ? 'IndVal' : 'IndVal.g'), chiffre(t('nb_permutations'), o.permutations || 0, 0),
       o.permutations ? chiffre(t('iv_retenues_p'), r.brutes, 0) : null, o.permutations ? chiffre(t('iv_retenues_p_ajuste'), r.corrigees, 0) : null));
   fiche.append(...[ficheCondition(m)].filter(Boolean));
+  // (each group, then each combination of groups that significant species indicate best, "field+hedgerow",
+  // and the total: most species indicate several habitats, and counted by single group only they vanished)
+  const sig = especes(m).filter(significative);
+  const nGroupe = new Map(colonne(m.groupes, 'groupe').map((g, k) => [g, colonne(m.groupes, 'n')[k]]));
+  const combinaisons = [...new Set(sig.map((e) => e.groupe).filter((g) => !nGroupe.has(g)))];
+  const nCombinaison = (g) => { const parts = String(g).split('+'); return parts.every((x) => nGroupe.has(x)) ? parts.reduce((s, x) => s + nGroupe.get(x), 0) : null; };
+  const ligne = (g, n, k = sig.filter((e) => e.groupe === g).length) => el('tr', {}, el('td', {}, g), el('td', { class: 'num' }, n === null ? '' : String(n)),
+    el('td', { class: 'num' }, String(k)));
   const groupes = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, m.classe_nom), el('th', { class: 'num' }, 'n'), el('th', { class: 'num' }, t('iv_indicatrices_groupe')))),
-    el('tbody', {}, colonne(m.groupes, 'groupe').map((g, k) => el('tr', {}, el('td', {}, g), el('td', { class: 'num' }, String(colonne(m.groupes, 'n')[k])),
-      el('td', { class: 'num' }, String(especes(m).filter((e) => e.groupe === g && significative(e)).length))))));
+    el('tbody', {}, [...nGroupe.keys()].map((g) => ligne(g, nGroupe.get(g))), combinaisons.map((g) => ligne(g, nCombinaison(g))),
+      combinaisons.length ? ligne(t('total'), null, sig.length) : null));
   const notes = notesModele(conteneur, ctx, m);
   const textes = [noteIndicatrices(m), liste(m.absentes).length ? t('iv_absentes', { noms: liste(m.absentes).join(', ') }) : ''].filter(Boolean);
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, notes.champ, groupes, textes.map((x) => el('p', { class: 'note' }, x))));
