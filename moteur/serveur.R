@@ -1270,7 +1270,7 @@ fusionner_finir_demande <- function(q) {
   if (is.null(f$projet)) {
     chemin <- premier_texte(q$chemin)
     if (!nzchar(chemin)) chemin <- chemin_temporaire(paste0(nom_fichier(premier_texte(n$nom, "fusion")), ".nuee"))
-    enregistrer_projet(n, chemin, premier_texte(q$version), dossier = if (nzchar(premier_texte(f$dossier))) f$dossier else dirname(chemin))
+    enregistrer_projet(n, chemin, premier_texte(q$version), dossier = if (nzchar(premier_texte(f$dossier))) f$dossier else dirname(chemin), auteur = q$auteur)
     etat$fusions[[id]] <- NULL
     return(list(chemin = chemin))
   }
@@ -1293,7 +1293,7 @@ fusionner_finir_demande <- function(q) {
   ranger_copies(actuel$id)
   resultat <- list(projet = resume_projet(n), etiquette = etiquette)
   if (nzchar(premier_texte(q$chemin))) {
-    enregistrer_projet(n, premier_texte(q$chemin), premier_texte(q$version), dossier = dossier_projet(n))
+    enregistrer_projet(n, premier_texte(q$chemin), premier_texte(q$version), dossier = dossier_projet(n), auteur = q$auteur)
     resultat$chemin <- premier_texte(q$chemin)
   }
   resultat
@@ -2035,8 +2035,10 @@ DEMANDES <- list(
   # "leur" }, un pour chacun) : sans q$projet à la fusion, le projet fusionné écrit dans q$chemin (sinon un
   # fichier temporaire) → { chemin } ; avec, il prend la place du projet de la séance, un seul Ctrl+Z
   # (« fusion avec Alice »), et quand leur côté était son fichier, il le sait lu : Enregistrer ne demande
-  # plus s'il faut l'écraser → { projet, etiquette }, et { chemin } aussi avec q$chemin. Refusé quand le
-  # projet a changé depuis que la fusion a été préparée : elle est à refaire.
+  # plus s'il faut l'écraser → { projet, etiquette }, et { chemin } aussi avec q$chemin. q$auteur : le nom
+  # de qui fusionne, écrit avec le fichier comme Enregistrer l'écrit (le fichier d'un conflit de GitHub ou
+  # de GitLab, qui devient la version suivante, le nomme). Refusé quand le projet a changé depuis que la
+  # fusion a été préparée : elle est à refaire.
   fusionner_finir = fusionner_finir_demande,
   # Le fichier du projet q$projet a-t-il changé depuis qu'il a été lu ou enregistré (un collègue l'a
   # enregistré, sur un dossier partagé) : sa taille et sa date, puis son contenu pour en être sûr (une date

@@ -626,9 +626,11 @@ ft <- demande("fusionner", list(base = base, mien = mien_c, leur = leur_c, dossi
 verifier("trois fichiers : les mêmes conflits que fusionner_projets", setequal(vapply(ft$conflits, function(x) x$id, ""), ids_conflits(fc)) && isFALSE(ft$auto))
 verifier("un conflit sans choix : refusé, en le nommant", grepl("Modèle M1", refus("fusionner_finir", list(fusion = ft$fusion, choix = list(`document:D1` = "leur")))))
 sortie <- file.path(dossier, "fusion_trois.nuee")
-ff <- demande("fusionner_finir", list(fusion = ft$fusion, choix = choix("leur"), chemin = sortie))
+ff <- demande("fusionner_finir", list(fusion = ft$fusion, choix = choix("leur"), chemin = sortie, auteur = list(nom = "Alice", email = "alice@exemple.invalid")))
 q <- lire_projet(sortie)
 verifier("le projet fusionné écrit dans le fichier demandé, les choix faits", identical(ff$chemin, sortie) && definition(q, "M1")$A == 3 && x1(q) == 7)
+verifier("… et nommant qui l'a fusionné (son nom, pas son courriel), comme Enregistrer",
+         identical(entete_projet(sortie)$auteur, "Alice") && !grepl("exemple.invalid", paste(readLines(sortie, warn = FALSE), collapse = ""), fixed = TRUE))
 verifier("une fusion finie ne se finit pas deux fois", grepl("inconnue", refus("fusionner_finir", list(fusion = ft$fusion, choix = choix("leur")))))
 v <- demande("ouvrir", list(chemin = partage, nom = "partage — version", lecture_seule = list(source = partage, oid = "a1", date = "2026-11-16")))
 verifier("une ancienne version ne se fusionne pas, et n'a pas de copie gardée",
