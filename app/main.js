@@ -797,9 +797,13 @@ async function demarrer() {
   fenetrePrincipale();
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
-app.on('second-instance', (_, argv) => montrerFenetre(fichierDonne(argv)));  // Nuée started again: its file opens in the main window
-app.whenReady().then(demarrer);
+// Nuée started again (a .nuee double-clicked while it runs): that start hands its file to this one
+// and ends, without starting R nor writing the settings (it wrote another port there, and the
+// interface's own settings, kept by address, seemed lost at the next start)
+const premiere = app.requestSingleInstanceLock();
+if (!premiere) app.quit();
+app.on('second-instance', (_, argv) => montrerFenetre(fichierDonne(argv)));  // its file opens in the main window
+if (premiere) app.whenReady().then(demarrer);
 app.on('window-all-closed', () => app.quit());
 app.on('quit', () => {
   arreterR();

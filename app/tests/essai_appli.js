@@ -266,10 +266,15 @@ async function brancher(cible) {
     const fichier = path.join(dossier, `${nom}.nuee`);
     await p.api('enregistrer', { projet: colle.id, chemin: fichier });
     await p.api('fermer_projet', { projet: colle.id });
+    const portReglages = () => { try { return JSON.parse(fs.readFileSync(path.join(profil, 'reglages.json'), 'utf8')).port; } catch { return null; } };
+    const portAvant = portReglages();
     const second = lancer(await portLibre(), [fichier]);
     await new Promise((ok) => { second.on('exit', ok); setTimeout(ok, 60000); });
     const ouvert = await p.attendre(`document.querySelector('.arbre').textContent.includes(${JSON.stringify(nom)})`, 20000).catch(() => false);
     verifier('fichierOuvertParUnSecondLancement', !!ouvert && second.exitCode !== null);
+    // (that start only handed its file over: no R of its own, the settings' port left as it was)
+    const rDuSecond = fs.readdirSync(windows ? temp : os.tmpdir()).filter((n) => new RegExp(`^nuee-r-(\\d+-)?${second.pid}(-|$)`).test(n));
+    verifier('secondLancementSansMoteur', !rDuSecond.length && portReglages() === portAvant, { rDuSecond, portAvant, portApres: portReglages() });
     tuer(second);
     // macOS: a .nuee double-clicked in the Finder comes as an event (open-file), not as an argument
     if (mac) {
