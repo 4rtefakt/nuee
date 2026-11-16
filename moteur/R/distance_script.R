@@ -161,7 +161,7 @@ code_calcul_distance <- function(projet, d, m, tab, langue) {
   r <- m$reglages_echantillonnage
   t <- m$donnees
   g <- function(x) tx(sprintf("« %s »", texte_sur(x)), sprintf("“%s”", texte_sur(x)))
-  col <- function(uid) sprintf("d[[%s]]", code_texte(tab$noms[[as.character(uid)]]))
+  col <- function(uid) sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(uid)]]))
   point <- t$point
   intervalles <- !is.null(t$coupures)
   avec_strates <- !is.null(r$strate)

@@ -30,7 +30,7 @@
 # bloc (colonne Bloc de l'onglet Variables) et si c'est l'indicatrice d'une catégorie.
 colonnes_ordination <- function(projet, termes, observations) {
   if (!length(termes)) {
-    return(list(X = matrix(numeric(0), length(observations), 0, dimnames = list(as.character(observations), NULL)),
+    return(list(X = matrix(numeric(0), length(observations), 0, dimnames = list(nom_numero(observations), NULL)),
                 groupes = character(0), blocs = character(0), indicatrices = logical(0)))
   }
   bruts <- lapply(termes, function(t) { t$scaling <- list(type = "none"); t })
@@ -48,7 +48,7 @@ colonnes_ordination <- function(projet, termes, observations) {
 # Les termes des covariables Z (leurs numéros de variables), avec leurs transformations.
 termes_variables <- function(projet, uids, transformations = NULL) {
   unlist(lapply(as.numeric(unlist(uids)), function(u) {
-    n <- transformations[[as.character(u)]]
+    n <- transformations[[nom_numero(u)]]
     tr <- if (length(n) && nzchar(as.character(n[1]))) lire_transformation(as.character(n[1]))
     termes_variable(projet, u, "none", tr)
   }), recursive = FALSE)
@@ -64,7 +64,7 @@ reponses_ordination <- function(projet, termes, observations, quoi) {
     }
   }
   Y <- valeurs_bloc(projet, termes, observations)
-  dimnames(Y) <- list(as.character(observations), vapply(termes, function(t) as.character(t$name), ""))
+  dimnames(Y) <- list(nom_numero(observations), vapply(termes, function(t) as.character(t$name), ""))
   Y
 }
 
@@ -835,6 +835,7 @@ resultat_rda <- function(id) {
   k <- m$noyau
   cca <- identical(m$type, "CCA")
   echelles <- lapply(if (cca) 1:3 else 1:2, function(i) scores_contraints(m, i))
+  # (sans X quantitatif, aucune flèche : rownames() d'une matrice sans ligne vaut NULL)
   ordination <- function(s) {
     f <- fleches_rda(m, s)
     list(sites = colonnes_axes(s$sites), lc = colonnes_axes(s$lc), reponses = colonnes_axes(s$reponses), noms_reponses = I(rownames(s$reponses)),
@@ -843,7 +844,7 @@ resultat_rda <- function(id) {
   }
   s2 <- echelles[[2]]
   f2 <- fleches_rda(m, s2)
-  noms_obs <- unname(p$noms_obs[as.character(m$observations)])
+  noms_obs <- unname(p$noms_obs[nom_numero(m$observations)])
   vp <- table_valeurs_propres(s2$valeurs_propres, k$totale, k$contraint$rang)
   # (la ligne de l'explorateur dans la langue de l'interface : sa virgule décimale, R2aj ou R2adj)
   fr <- !identical(getOption("nuee.langue"), "en")
@@ -880,7 +881,7 @@ resultat_ca <- function(id) {
   echelles <- lapply(1:3, function(i) scores_ca(m, i))
   s2 <- echelles[[2]]
   ctr <- m$contributions
-  noms_obs <- unname(p$noms_obs[as.character(m$observations)])
+  noms_obs <- unname(p$noms_obs[nom_numero(m$observations)])
   fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   parts <- function(cote, noms, masses) {
     c_ <- colonnes_axes(100 * cote$contribution)
@@ -970,7 +971,7 @@ avec_noms <- function(M, noms, colonne = "Observation") {
 # 2 ; les tests par axe et par terme, la sélection et la partition s'ils ont été calculés.
 tables_rda <- function(projet, m) {
   k <- m$noyau
-  noms <- unname(projet$noms_obs[as.character(m$observations)])
+  noms <- unname(projet$noms_obs[nom_numero(m$observations)])
   s1 <- scores_contraints(m, 1)
   s2 <- scores_contraints(m, 2)
   avec_lc <- function(s) cbind(avec_noms(s$sites, noms), stats::setNames(as.data.frame(s$lc, row.names = NULL), paste0("lc_", colnames(s$lc))))
@@ -1014,7 +1015,7 @@ tables_cca <- function(projet, m) tables_rda(projet, m)
 
 tables_ca <- function(projet, m) {
   k <- m$noyau
-  noms <- unname(projet$noms_obs[as.character(m$observations)])
+  noms <- unname(projet$noms_obs[nom_numero(m$observations)])
   ctr <- m$contributions
   s <- lapply(1:3, function(i) scores_ca(m, i))
   list(lignes_echelle_2 = avec_noms(s[[2]]$sites, noms), valeurs_propres = table_valeurs_propres(k$eig, k$totale),

@@ -18,7 +18,7 @@ predire <- function(projet, m, definition, observations) {
   s <- m$statistiques
   notes <- !is.na(m$T[, 1])
   var_t <- colSums(m$T[notes, , drop = FALSE]^2) / (sum(notes) - 1)
-  out <- data.frame(row.names = as.character(observations))
+  out <- data.frame(row.names = nom_numero(observations))
   for (a in seq_len(A)) out[[paste0("t", a)]] <- T[, a]
   out$T2 <- rowSums(sweep(T^2, 2, var_t, "/"))
   Ki <- rowSums(X$M)
@@ -72,7 +72,7 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
   tableau <- projet_depuis_tableau(df, basename(chemin), secondaires = FALSE)
   noms_fichier <- nom_comparable(vapply(tableau$variables, function(v) as.character(v$ids[1]), ""))
   obs <- seq_len(nrow(tableau$donnees))
-  donnees <- matrix(NA_real_, length(obs), length(utilises), dimnames = list(as.character(obs), as.character(utilises)))
+  donnees <- matrix(NA_real_, length(obs), length(utilises), dimnames = list(nom_numero(obs), as.character(utilises)))
   absentes <- character(0)
   effort_absent <- FALSE
   inconnue <- rep(FALSE, length(obs))  # (une catégorie d'une variable X qualitative que le projet n'a pas)
@@ -83,7 +83,7 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
     if (is.na(k)) {
       x <- if (!is.null(completer)) completer(nom)
       # un Y absent est normal (on le prédit) : seuls les X manquants sont signalés
-      if (!is.null(x)) donnees[, as.character(u)] <- x else if (u %in% variables_x) absentes <- c(absentes, nom)
+      if (!is.null(x)) donnees[, nom_numero(u)] <- x else if (u %in% variables_x) absentes <- c(absentes, nom)
       if (u %in% effort) effort_absent <- TRUE
       next
     }
@@ -93,7 +93,7 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
       x <- match(norme(etiquettes), norme(v$categories))
       if (u %in% variables_x) inconnue <- inconnue | (!is.na(etiquettes) & nzchar(trimws(etiquettes)) & is.na(x))
     }
-    donnees[, as.character(u)] <- x
+    donnees[, nom_numero(u)] <- x
   }
   # (les variables du projet : la place de chacune dans son tableau, d'où les zones de spectre que
   # Savitzky–Golay traite à part, comme à l'ajustement)
@@ -102,7 +102,7 @@ predire_fichier <- function(projet, m, definition, chemin, completer = NULL) {
   # (une régression : une catégorie que le projet n'a pas, sans prédiction, est aussi une catégorie que
   # le modèle n'a pas vue)
   if (regression && any(inconnue)) out$categorie_inconnue <- inconnue | (out$categorie_inconnue %||% FALSE)
-  out$nom <- unname(tableau$noms_obs[as.character(obs)])
+  out$nom <- unname(tableau$noms_obs[nom_numero(obs)])
   # ce qu'il faut dire de la lecture : du fichier, et des colonnes des variables X
   note <- attr(df, "note") %||% character(0)
   colonnes <- names(note) %||% character(length(note))

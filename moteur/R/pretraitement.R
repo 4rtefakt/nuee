@@ -232,6 +232,15 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     bruts <- r$bruts
     reference <- r$reference
   }
+  # (des valeurs dont le carré dépasse les nombres de R, ou s'annule : l'écart-type d'un terme UV ou
+  # Pareto serait infini ou nul, le bloc NaN ou sans variation ; refusées quand le modèle lui-même
+  # calcule ses poids, pas pour y projeter des observations ni dans sa validation croisée. Les valeurs
+  # brutes d'un terme sans mise à l'échelle restent permises : un arbre ou une RDA s'en accommodent,
+  # une régression les refuse elle-même ; regression.R)
+  if (is.null(imposees) && poids == "calcules" && is.null(complet)) {
+    ecarts <- seuls[vapply(termes[seuls], function(t) isTRUE(t$scaling$type %in% c("UV", "Par")), TRUE)]
+    if (length(ecarts)) refuser_valeurs_extremes(stats::setNames(as.data.frame(bruts[, ecarts, drop = FALSE]), noms[ecarts]), stats::setNames(noms[ecarts], noms[ecarts]))
+  }
   Xs <- if (length(seuls)) echelle_simples()
   if (!is.null(Xs) && length(seuls) == K) {
     X <- Xs  # (que des termes simples : leur matrice est le bloc)
@@ -255,7 +264,7 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     X[, k] <- mettre_a_echelle(k, transformer(x, t$transform))
   }
   colnames(X) <- noms
-  rownames(X) <- as.character(observations)
+  rownames(X) <- nom_numero(observations)
   list(X = X, centre = centre, poids = poids_k, type = type, facteur = facteur, noms = noms, simples = simples, reference = reference,
        ecart = ecart, gardes = gardes)
 }
@@ -269,8 +278,8 @@ valeurs_bloc <- function(projet, termes, observations) {
   croises <- which(vapply(termes, function(t) length(t$variables) > 1, TRUE))
   simples <- setdiff(seq_along(termes), croises)
   if (!length(simples)) return(bruts)
-  lignes <- match(as.character(observations), rownames(projet$donnees))
-  colonnes <- match(vapply(termes[simples], function(t) as.character(t$variables[1]), ""), colnames(projet$donnees))
+  lignes <- match(nom_numero(observations), rownames(projet$donnees))
+  colonnes <- match(vapply(termes[simples], function(t) nom_numero(t$variables[1]), ""), colnames(projet$donnees))
   for (i in seq_along(simples)) {
     k <- simples[i]
     x <- if (is.na(colonnes[i])) rep(NA_real_, length(observations)) else projet$donnees[lignes, colonnes[i]]

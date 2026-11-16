@@ -148,7 +148,7 @@ resumer_par_groupe <- function(projet, groupes, variables = NULL, statistiques =
   noms_groupes <- vapply(g, `[[`, "", "nom")
   # « site, secteur et annee »
   enumerer <- function(et) if (length(noms_groupes) == 1) noms_groupes else paste(paste(utils::head(noms_groupes, -1), collapse = ", "), utils::tail(noms_groupes, 1), sep = et)
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   uids <- vapply(vars, function(v) as.numeric(v$uid), 0)
   dans_groupes <- uids %in% suppressWarnings(as.numeric(groupes[!startsWith(groupes, "id:")]))
   qualitative <- vapply(vars, function(v) length(v$categories) > 0, TRUE)
@@ -404,12 +404,16 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
                            famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
                            condition = NULL, par_courbes = NULL, validation = NULL, lisse_spatial = NULL) {
+  # (un type inconnu serait ajusté comme une PLS, sans rien dire)
+  if (!isTRUE(as.character(type)[1] %in% c("PCA", "PLS", "PLS-DA", "OPLS", "OPLS-DA", REGRESSIONS, AUTRES_ANALYSES))) {
+    stop(sprintf(traduire("Type de modèle inconnu : %s.", "Unknown model type: %s."), paste(as.character(type), collapse = " ")), call. = FALSE)
+  }
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
-    if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
+    if (nom_numero(uid) %in% names(echelle)) return(echelle[[nom_numero(uid)]])
     if ("defaut" %in% names(echelle)) echelle[["defaut"]] else "UV"
   }
-  par_variable <- function(valeurs, uid) if (as.character(uid) %in% names(valeurs)) valeurs[[as.character(uid)]]
+  par_variable <- function(valeurs, uid) if (nom_numero(uid) %in% names(valeurs)) valeurs[[nom_numero(uid)]]
   # (chaque variable cherchée par son numéro dans un index fait une fois : variable_du_projet parcourt
   # toutes les variables à chaque appel, des millions de fois pour des milliers de longueurs d'onde ;
   # elle reste pour dire qu'un numéro n'existe pas)
@@ -420,7 +424,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   }
   termes <- function(u) termes_variable(projet, u, ech(u), trans(u), par_variable(blocs, u), par_variable(modificateurs, u), v = variable(u))
   trans <- function(uid) {
-    n <- if (as.character(uid) %in% names(transformations)) transformations[[as.character(uid)]]
+    n <- if (nom_numero(uid) %in% names(transformations)) transformations[[nom_numero(uid)]]
     if (is.null(n) || !nzchar(n)) return(NULL)
     lire_transformation(n)
   }
@@ -438,6 +442,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   test <- unique(as.numeric(test))
   obs <- setdiff(obs, test)
+  exiger_observations(obs)  # (condition.R : avant les vérifications des groupes et des classes, qui en diraient une autre raison)
   x <- unique(as.numeric(x))
   y <- unique(as.numeric(y))
   spectres <- etapes_spectres(spectres)
@@ -457,12 +462,15 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (nzchar(condition)) obs <- observations_condition(projet, condition, cochees)
   Ap <- if (opls) (if (plsda) length(unique(colonne(projet, classe, obs))) - 1 else length(y))
   if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
+  # (une seule classe : son Y est constant, que trop_de_composantes dirait « sans variation »)
+  if (plsda && !opls && length(unique(colonne(projet, classe, obs))) < 2) stop(traduire("Une PLS-DA demande au moins deux classes", "A PLS-DA needs at least two classes"), call. = FALSE)
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   regression <- type %in% REGRESSIONS
   # (une régression : les facteurs de ses termes croisés qui ne sont pas en X, sans effet principal)
   seuls <- if (regression) setdiff(unique(as.numeric(unlist(croises))), x) else numeric(0)
   facteur_seul <- function(u) lapply(termes(u), function(t) c(t, list(facteur_seul = TRUE)))
   autre <- type %in% AUTRES_ANALYSES  # (analyses.R : RDA, CA, LDA, TREE, KMEANS)
+  if (!regression && !autre && !length(x)) stop(traduire("Choisissez au moins une variable X.", "Choose at least one X variable."), call. = FALSE)
   if (autre && length(test) && is.null(fonction_analyse("tester_", type))) {
     stop(traduire("Cette analyse ne prédit pas d'observations laissées de côté : elle ne prend pas de jeu de test.",
                   "This analysis doesn't predict left-out observations: it takes no test set."), call. = FALSE)
@@ -509,7 +517,13 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     if (length(classe) && !is.na(classe[1])) d$classe <- as.numeric(classe)[1]  # (sa variable de classe : LDA, arbre de classement)
   }
   # (ACP, PLS, OPLS : la façon de valider, validation_croisee.R : mode_validation)
-  if (!regression && !autre && length(validation) && as.character(validation)[1] %in% MODES_VALIDATION) d$validation <- as.character(validation)[1]
+  # (une façon inconnue serait celle par défaut, sans rien dire)
+  if (!regression && !autre && length(validation) && nzchar(as.character(validation)[1])) {
+    if (!as.character(validation)[1] %in% MODES_VALIDATION) {
+      stop(sprintf(traduire("Validation croisée inconnue : %s (sans_fuite, centres ou complet).", "Unknown cross-validation: %s (sans_fuite, centres or complet)."), as.character(validation)[1]), call. = FALSE)
+    }
+    d$validation <- as.character(validation)[1]
+  }
   if (length(vc$by) && !identical(as.character(vc$by), "order")) {
     d$groupes_vc <- vc
     groupes_definition(projet, d)  # (une erreur claire maintenant : un seul groupe, identifiant inconnu)
@@ -562,7 +576,7 @@ reglages_modele <- function(projet, d) {
   modificateurs <- list()
   for (t in c(d$x, d$y)) {
     if (length(t$variables) != 1) next
-    k <- as.character(t$variables)
+    k <- nom_numero(t$variables)
     echelles[[k]] <- t$scaling$type %||% "UV"
     tr <- nom_transformation(t$transform)
     if (!is.null(tr)) transformations[[k]] <- tr
@@ -688,7 +702,7 @@ enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(c
   p <- unclass(chemins_relatifs(projet, dossier))
   for (i in seq_along(p$datasets)) {
     d <- p$datasets[[i]]
-    p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
+    p$datasets[[i]]$values <- unname(projet$donnees[nom_numero(d$observations), nom_numero(d$variables), drop = FALSE])
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
   p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- p$import_collecte <- NULL  # état de la session

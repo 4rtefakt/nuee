@@ -864,11 +864,14 @@ async function principal() {
       let refusT = '';
       try { await api('autocorrelation_residus', { modele: m2.id, temps: { by: 'variable', variable: v.annee }, groupe: null }); } catch (err) { refusT = err.message; }
       verifier(/même temps/.test(refusT), `les années de tous les sites en une série, refusé : « ${refusT} »`);
-      const r = await api('rapports_vraisemblance', { modeles: [m2.id, m1.id, c1.id, q.id] });
+      const r = await api('rapports_vraisemblance', { modeles: [m2.id, m1.id, c1.id] });
       const khi2 = 2 * (m2.qualite.logLik - m1.qualite.logLik);
       verifier(r.total === 1 && [].concat(r.paires.grand)[0] === m2.id && [].concat(r.paires.petit)[0] === m1.id && [].concat(r.paires.ddl)[0] === 1
         && Math.abs([].concat(r.paires.khi2)[0] - Math.max(0, khi2)) < 1e-8 && [].concat(r.paires.approche)[0] === false,
       `x + z contre x (pas le modèle avec CAR1) : ${JSON.stringify(r)}`);
+      let refusRV = '';
+      try { await api('rapports_vraisemblance', { modeles: [m2.id, m1.id, q.id] }); } catch (err) { refusRV = err.message; }
+      verifier(/Modèle inconnu/.test(refusRV), `un identifiant qui n'est pas celui d'un modèle, refusé : « ${refusRV} »`);
       // Fit with CAR1 (reajuster with car1): M2 again with CAR1 along the year in each site, which is C1
       const annee = { by: 'variable', variable: v.annee };
       const car = await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'effets' }] } });

@@ -125,7 +125,7 @@ demande_analyse_kmeans_variable <- function(q) {
 # Les observations des k-moyennes : leur groupe (en texte, pour les couleurs), sa distance au
 # centre, la silhouette et le groupe voisin, les deux premières composantes principales.
 observations_kmeans <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), classe = as.character(m$groupe),
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), classe = as.character(m$groupe),
                     groupe = m$groupe, distance = m$distance, stringsAsFactors = FALSE)
   if (!is.null(m$silhouette)) {
     obs$silhouette <- m$silhouette$largeur

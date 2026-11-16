@@ -352,6 +352,8 @@ ajuster_boost <- function(projet, d) {
     stop(traduire("Trop peu d'observations avec une réponse et toutes leurs valeurs X (il en faut au moins 5).",
                   "Too few observations with a response and all their X values (at least 5 are needed)."), call. = FALSE)
   }
+  refuser_reponse_constante(y[complet], as.character(ty$name))  # (regression.R)
+  refuser_valeurs_extremes(list(y = y[complet]), c(y = as.character(ty$name)))
   garde <- obs[complet]
   groupes <- groupes_observations(projet, d, garde)
   if (length(unique(groupes)) < 2) {
@@ -418,7 +420,7 @@ tester_boost <- function(projet, m, d) {
   test <- as.numeric(d$test)
   p <- prediction_ensemble(projet, m, test)
   y <- suppressWarnings(transformer(valeurs_simples(projet, d$y[[1]], test), d$y[[1]]$transform))
-  test_regression(m, test, unname(projet$noms_obs[as.character(test)]), y, p$prediction, sum(!p$complet))
+  test_regression(m, test, unname(projet$noms_obs[nom_numero(test)]), y, p$prediction, sum(!p$complet))
 }
 
 predire_boost <- function(projet, m, d, observations) {
@@ -444,7 +446,7 @@ dependance_boost <- function(m, j, grille) {
 # Les observations : la réponse observée, ajustée (le modèle de toutes les observations) et prédite
 # en validation croisée (à l'échelle de la réponse), le groupe de validation croisée.
 observations_boost <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   y <- m$y$nom
   obs[[paste(y, "observé")]] <- m$y_valeurs
   obs[[paste(y, "ajusté")]] <- m$ajuste

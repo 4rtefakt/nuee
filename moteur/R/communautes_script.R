@@ -32,7 +32,7 @@ NOMS_COMMUNAUTES_EN <- c(
   intra = "within_ss", lignes = "rows", niveaux = "group_levels", centroides_facteurs = "factor_centroids",
   procrustes_symetrique = "symmetric_procrustes", residus = "resid", carres = "squares", avec_graine = "with_seed", graine = "seed",
   nmds_noyau = "nmds_core", dis = "dissimilarities", nuls = "zeros", depart = "start", departs = "starts", meilleur = "best",
-  retrouvee = "found_again", ecarts = "deviations", tri = "sorted", ordre = "max_order", dissimilarite = "dissimilarity", ajustee = "fitted",
+  retrouvee = "found_again", meme_stress = "same_stress", ecarts = "deviations", tri = "sorted", ordre = "max_order", dissimilarite = "dissimilarity", ajustee = "fitted",
   stress_departs = "stress_starts", remplacement = "replacement", especes = "species", connues = "known", facteurs = "factors",
   facteurs_connus = "known_factors", ajustement = "fit", centroides = "centroids", variables_ajustees = "fitted_variables",
   facteurs_ajustes = "fitted_factors", complet = "complete_rows", etiquette_axe = "axis_label", fleches = "arrow_ends",
@@ -273,7 +273,7 @@ code_fonctions_communaute <- function(m, langue) {
 # toutes, ou leurs rangs.
 code_lignes_communaute <- function(projet, d, tab, tx) {
   obs <- as.numeric(d$observations)
-  rangs <- unname(tab$rangs[as.character(obs)])
+  rangs <- unname(tab$rangs[nom_numero(obs)])
   pc <- plan_condition(projet, d, tab)
   if (!is.null(pc)) {
     return(c(code_condition(pc, tx, tx(sprintf("Les %d observations du modèle.", length(obs)), sprintf("The %d observations of the model.", length(obs)))), "d <- donnees[lignes, ]"))
@@ -289,14 +289,14 @@ code_lignes_communaute <- function(projet, d, tab, tx) {
 code_exclues <- function(projet, exclues, tx, quoi) {
   n <- length(exclues)
   if (!n) return(character(0))
-  noms <- if (n <= 8) sprintf(" (%s)", liste_textes(texte_sur(unname(projet$noms_obs[as.character(exclues)])), tx("et", "and"))) else ""
+  noms <- if (n <= 8) sprintf(" (%s)", liste_textes(texte_sur(unname(projet$noms_obs[nom_numero(exclues)])), tx("et", "and"))) else ""
   commentaire(tx(sprintf("Ici, %d observation%s%s : %s.", n, if (n > 1) "s" else "", noms, quoi[1]), sprintf("Here, %d observation%s%s: %s.", n, if (n > 1) "s" else "", noms, quoi[2])))
 }
 
 # Les groupes des permutations (un identifiant ou une variable : le site), ou NULL.
 code_strates_communaute <- function(spec, tab, tx) {
   if (is.null(spec)) return(NULL)
-  col <- if (identical(as.character(spec$by)[1], "id")) tab$ids[[as.character(spec$id)[1]]] else tab$noms[[as.character(spec$variable)[1]]]
+  col <- if (identical(as.character(spec$by)[1], "id")) tab$ids[[as.character(spec$id)[1]]] else tab$noms[[nom_numero(spec$variable)[1]]]
   c(commentaire(tx(sprintf("Les groupes des permutations : « %s » (les observations ne sont permutées qu'à l'intérieur de chacun).", texte_sur(col)),
                    sprintf("The groups of the permutations: “%s” (the observations are only permuted within each).", texte_sur(col)))),
     sprintf("strates <- d[[%s]]", code_texte(col)))
@@ -360,7 +360,7 @@ code_calcul_ordination_distance <- function(projet, d, m, tab, langue) {
   nmds <- identical(m$type, "NMDS")
   objet <- if (nmds) "nmds" else "pcoa"
   quantitatifs <- Filter(function(t) categorie(t) == 0, d$x)
-  qualitatives <- unique(as.character(unlist(lapply(d$x, function(t) if (categorie(t) != 0) t$variables[1]))))
+  qualitatives <- unique(nom_numero(unlist(lapply(d$x, function(t) if (categorie(t) != 0) t$variables[1]))))
   noms_q <- vapply(qualitatives, function(u) as.character(variable_du_projet(projet, u)$ids[1]), "", USE.NAMES = FALSE)
   strates <- if (r$ajustement) code_strates_communaute(o$strates, tab, tx)
   correction <- if (!nmds) code_correction_communaute(o, tx)
@@ -437,7 +437,7 @@ code_calcul_permanova <- function(projet, d, m, tab, langue) {
     if (is.null(uids[[nom]])) uids[[nom]] <- u
   }
   noms_g <- intersect(names(uids), names(m$dispersions))
-  colonnes_g <- vapply(noms_g, function(nom) tab$noms[[as.character(uids[[nom]])]], "", USE.NAMES = FALSE)
+  colonnes_g <- vapply(noms_g, function(nom) tab$noms[[nom_numero(uids[[nom]])]], "", USE.NAMES = FALSE)
   facon <- switch(o$par,
     termes = tx("chaque terme après ceux qui le précèdent (sommes des carrés séquentielles)", "each term after those before it (sequential sums of squares)"),
     marges = tx("chaque terme après tous les autres (effets marginaux)", "each term after all the others (marginal effects)"),
@@ -532,7 +532,7 @@ code_calcul_mantel <- function(projet, d, m, tab, langue) {
   geo <- if (r$geographique) {
     co <- coordonnees_projet(projet, exiger = TRUE)
     s <- systeme_coordonnees(co$systeme)
-    list(x = tab$noms[[as.character(co$x)]], y = tab$noms[[as.character(co$y)]], nom = texte_sur(s$nom), lonlat = identical(s$type, "lonlat"))
+    list(x = tab$noms[[nom_numero(co$x)]], y = tab$noms[[nom_numero(co$y)]], nom = texte_sur(s$nom), lonlat = identical(s$type, "lonlat"))
   }
   methode <- if (identical(o$methode, "spearman")) tx("de Spearman (sur les rangs)", "Spearman's (on ranks)") else tx("de Pearson", "Pearson's")
   manque <- c(if (!r$geographique) "X", if (r$z) "Z")
@@ -584,7 +584,7 @@ code_calcul_indval <- function(projet, d, m, tab, langue) {
   tx <- function(fr, en) if (langue == "en") en else fr
   o <- m$reglages_indval
   obs <- as.numeric(d$observations)
-  col <- tab$noms[[as.character(d$classe)]]
+  col <- tab$noms[[nom_numero(d$classe)]]
   strates <- code_strates_communaute(o$strates, tab, tx)
   egalises <- identical(o$indice, "IndVal.g")
   k <- length(m$niveaux)

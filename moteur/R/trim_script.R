@@ -83,7 +83,7 @@ racines_trim <- function(m) {
 colonne_trim <- function(projet, spec, tab) {
   if (identical(as.character(spec$by)[1], "id")) return(list(code = sprintf("d[[%s]]", code_texte(tab$ids[[as.character(spec$id)[1]]])), type = "id"))
   v <- variable_du_projet(projet, spec$variable)
-  list(code = sprintf("d[[%s]]", code_texte(tab$noms[[as.character(v$uid)]])), type = if (length(v$categories)) "qualitative" else "nombre")
+  list(code = sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(v$uid)]])), type = if (length(v$categories)) "qualitative" else "nombre")
 }
 
 # La partie « modèle » du script d'un TRIM (en français, ses commentaires « #fr » et « #en » ;
@@ -105,9 +105,9 @@ code_calcul_trim <- function(projet, d, m, tab, langue) {
   # les covariables : chaque variable qualitative de X, une fois (ses catégories font ses termes)
   ucov <- unique(vapply(d$x, function(x) as.numeric(x$variables[1]), 0))
   noms_cov <- vapply(ucov, function(u) as.character(variable_du_projet(projet, u)$ids[1]), "")
-  valeurs_cov <- sprintf("%s = d[[%s]]", vapply(noms_cov, code_texte, ""), vapply(ucov, function(u) code_texte(tab$noms[[as.character(u)]]), ""))
+  valeurs_cov <- sprintf("%s = d[[%s]]", vapply(noms_cov, code_texte, ""), vapply(ucov, function(u) code_texte(tab$noms[[nom_numero(u)]]), ""))
   cov <- if (length(ucov) == 1) sprintf("variables_cov <- list(%s)", valeurs_cov) else if (length(ucov)) code_valeurs(valeurs_cov, "variables_cov <- ", ouvrir = "list(")
-  poids <- if (t$ponderee) sprintf("poids <- d[[%s]]", code_texte(tab$noms[[as.character(r$poids)]]))
+  poids <- if (t$ponderee) sprintf("poids <- d[[%s]]", code_texte(tab$noms[[nom_numero(r$poids)]]))
   modele <- m$modele
   rangs <- function(x) sprintf("vapply(%s, rang, 0L)", code_nombres(x))
   cp <- if (modele == 2) {
@@ -124,7 +124,7 @@ code_calcul_trim <- function(projet, d, m, tab, langue) {
                            if (t$ponderee) sprintf(", its weight (%s)", g(t$noms$poids)) else "", if (length(ucov)) sprintf(", its covariates (%s)", liste_textes(vapply(noms_cov, g, ""), "and")) else ""))),
     sprintf("site <- %s", code_site),
     sprintf("temps <- %s", code_temps),
-    sprintf("compte <- round(d[[%s]])", code_texte(tab$noms[[as.character(y$uid)]])),
+    sprintf("compte <- round(d[[%s]])", code_texte(tab$noms[[nom_numero(y$uid)]])),
     poids, cov,
     "connu <- !is.na(site) & !is.na(temps)",
     "",

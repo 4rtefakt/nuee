@@ -123,7 +123,7 @@ cles_groupes_vc <- function(projet, d) {
       if (length(v$categories)) v$categories[x] else x
     },
     groups = {
-      g <- as.numeric(vc$groups)[match(as.character(obs), as.character(vc$observations))]
+      g <- as.numeric(vc$groups)[match(nom_numero(obs), nom_numero(vc$observations))]
       if (anyNA(g)) stop(traduire("Validation croisée : les groupes de ce modèle viennent du fichier .usp, et certaines de ses observations n'en ont pas. Choisissez d'autres groupes dans Nouveau modèle.",
                                   "Cross-validation: this model's groups come from the .usp file, and some of its observations have none. Choose other groups in New model."), call. = FALSE)
       g

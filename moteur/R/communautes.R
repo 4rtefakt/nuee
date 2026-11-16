@@ -241,7 +241,7 @@ donnees_communaute <- function(projet, d, o, quoi, aussi = NULL) {
     stop(sprintf(traduire("Trop peu d'observations ont toutes leurs valeurs pour %s (3 au moins).", "Too few observations have all their values for %s (3 or more)."), quoi), call. = FALSE)
   }
   Y <- Y[connu, , drop = FALSE]
-  noms <- unname(projet$noms_obs[as.character(garde)])
+  noms <- unname(projet$noms_obs[nom_numero(garde)])
   W <- transformer_communaute(Y, o$transformation)
   D <- distance_communaute(W, o$distance, o$binaire, noms)
   if (all(D == 0)) stop(traduire("Toutes les distances entre observations sont nulles : rien à analyser.", "All the distances between observations are zero: nothing to analyse."), call. = FALSE)
@@ -502,7 +502,11 @@ nmds_noyau <- function(D, k, departs, graine) {
         if (pr$rmse < 0.005 && max(pr$residus) < 0.01) retrouvee <- retrouvee + 1
       }
     }
-    list(s0 = s0, stress = stress, meilleur = meilleur, retrouvee = retrouvee)
+    # (les autres départs qui atteignent le stress de la meilleure solution à 0,0001 près, quelle que
+    # soit leur configuration : des minimums presque égaux, où quelques observations se placent un peu
+    # autrement, ne sont pas « retrouvés » par Procrustes, et le stress est pourtant atteint)
+    meme_stress <- sum(abs(stress - s0$stress) < 0.01) - 1
+    list(s0 = s0, stress = stress, meilleur = meilleur, retrouvee = retrouvee, meme_stress = meme_stress)
   })
   X <- scale(r$s0$points, scale = FALSE)
   X <- stats::prcomp(X, center = TRUE)$x
@@ -520,7 +524,7 @@ nmds_noyau <- function(D, k, departs, graine) {
   M[lower.tri(M)] <- part
   M <- M + t(M)
   list(points = X, stress = sqrt(sum(ecarts)), stress_departs = r$stress / 100, meilleur = r$meilleur, retrouvee = r$retrouvee,
-       nuls = nuls, remplacement = if (nuls) min(dis[dis > 0]) else NA_real_, shepard = list(dissimilarite = sh$x, distance = sh$y, ajustee = sh$yf),
+       meme_stress = r$meme_stress, nuls = nuls, remplacement = if (nuls) min(dis[dis > 0]) else NA_real_, shepard = list(dissimilarite = sh$x, distance = sh$y, ajustee = sh$yf),
        stress_observations = sqrt(colSums(M) / 2))
 }
 
@@ -767,7 +771,7 @@ distance_euclidienne_termes <- function(projet, termes, observations) {
   connues <- stats::complete.cases(b$X)
   if (!all(connues)) b <- construire_bloc(projet, termes, observations[connues])
   D <- as.matrix(stats::dist(b$X))
-  dimnames(D) <- list(as.character(observations[connues]), as.character(observations[connues]))
+  dimnames(D) <- list(nom_numero(observations[connues]), nom_numero(observations[connues]))
   list(D = D, connues = connues, termes = b$noms, echelles = unique(b$type))
 }
 
@@ -785,7 +789,7 @@ distances_mantel_x <- function(projet, d, observations) {
     connues <- is.finite(pts$x) & is.finite(pts$y)
     if (sum(connues) < 3) stop(traduire("Moins de 3 observations ont des coordonnées : pas de distance géographique.", "Fewer than 3 observations have coordinates: no geographic distance."), call. = FALSE)
     D <- distances_points(pts$x[connues], pts$y[connues], pts$systeme) / 1000
-    dimnames(D) <- list(as.character(observations[connues]), as.character(observations[connues]))
+    dimnames(D) <- list(nom_numero(observations[connues]), nom_numero(observations[connues]))
     s <- systeme_coordonnees(pts$systeme)
     co <- pts$coordonnees
     lonlat <- s$type == "lonlat"
@@ -806,9 +810,9 @@ distances_mantel_x <- function(projet, d, observations) {
 # échelle (UV par défaut).
 termes_z_mantel <- function(projet, o) {
   unlist(lapply(o$z, function(u) {
-    tr <- o$z_transformations[[as.character(u)]]
+    tr <- o$z_transformations[[nom_numero(u)]]
     tr <- if (length(tr) && nzchar(as.character(tr[1]))) lire_transformation(as.character(tr[1]))
-    ech <- as.character(unlist(o$z_echelles[[as.character(u)]] %||% "UV"))[1]
+    ech <- as.character(unlist(o$z_echelles[[nom_numero(u)]] %||% "UV"))[1]
     termes_variable(projet, u, if (ech %in% c("UV", "Par", "Ctr", "none")) ech else "UV", tr)
   }), recursive = FALSE)
 }
@@ -943,10 +947,10 @@ ajuster_mantel <- function(projet, d) {
     dx <- distances_mantel_x(projet, d, garde)
     if (!is.null(dz)) dz <- distance_euclidienne_termes(projet, tz, garde)
   }
-  Dx <- dx$D[as.character(garde), as.character(garde), drop = FALSE]
+  Dx <- dx$D[nom_numero(garde), nom_numero(garde), drop = FALSE]
   if (all(Dx == 0)) stop(if (identical(o$distance_x, "geographique")) traduire("Toutes les observations sont au même endroit : leurs distances sont nulles.", "All the observations are at the same place: their distances are zero.")
                          else traduire("Les variables X ne varient pas : toutes leurs distances sont nulles.", "The X variables don't vary: all their distances are zero."), call. = FALSE)
-  Dz <- if (!is.null(dz)) dz$D[as.character(garde), as.character(garde), drop = FALSE]
+  Dz <- if (!is.null(dz)) dz$D[nom_numero(garde), nom_numero(garde), drop = FALSE]
   strates <- if (!is.null(strates)) strates[dc$connu]
   verifier_strates(strates)
   P <- permutations_lignes(length(garde), o$permutations, strates, o$graine)
@@ -1044,7 +1048,7 @@ resultat_nmds <- function(id) resultat_communaute(id, function(p, m, d) {
   obs$stress <- k$stress_observations
   list(chiffres = sprintf("stress %s · k = %d", nombre_texte(k$stress, 3, !identical(getOption("nuee.langue"), "en")), m$options$k),
        vues_defaut = I(c("ordination_dist", "shepard")), observations = obs, axes = I(colnames(k$points)),
-       stress = k$stress, k = m$options$k, departs = m$options$departs, meilleur = k$meilleur, retrouvee = k$retrouvee, nuls = k$nuls,
+       stress = k$stress, k = m$options$k, departs = m$options$departs, meilleur = k$meilleur, retrouvee = k$retrouvee, meme_stress = k$meme_stress %||% 0, nuls = k$nuls,
        stress_departs = data.frame(depart = seq_along(k$stress_departs) - 1, stress = k$stress_departs),
        shepard = list(dissimilarite = sh$dissimilarite[garde], distance = sh$distance[garde], ajustee = sh$ajustee[garde], total = length(sh$dissimilarite)),
        especes = scores_table(m$especes), ajustement = ajustement_interface(m$ajustement),
@@ -1145,7 +1149,7 @@ tables_permanova <- function(projet, m) {
     out$dispersion_groupes <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$groupes)))
     out$dispersion_tests <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$anova)))
     out$dispersion_paires <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$tukey)))
-    out$dispersion_distances <- do.call(rbind, lapply(ds, function(r) data.frame(Observation = unname(projet$noms_obs[as.character(r$observations)]), variable = r$variable,
+    out$dispersion_distances <- do.call(rbind, lapply(ds, function(r) data.frame(Observation = unname(projet$noms_obs[nom_numero(r$observations)]), variable = r$variable,
                                                                                  groupe = as.character(r$groupe), distance = unname(r$distances), stringsAsFactors = FALSE)))
     rownames(out$dispersion_groupes) <- rownames(out$dispersion_tests) <- rownames(out$dispersion_paires) <- rownames(out$dispersion_distances) <- NULL
   }
@@ -1274,6 +1278,8 @@ texte_methodes_communaute <- function(projet, d, m, langue = "fr", version = "")
                  if (o$departs > 0) {
                    if (k$retrouvee > 0) sprintf(tx(" et retrouvée %s (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01). ", " and found again %s (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01). "),
                                                 if (k$retrouvee == 1) tx("une fois", "once") else sprintf(tx("%d fois", "%d times"), k$retrouvee))
+                   else if (isTRUE(k$meme_stress > 0)) sprintf(tx(" ; aucun autre départ n'a retrouvé sa configuration (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01), mais %d ont atteint son stress à 0,0001 près, quelques observations placées un peu autrement : le stress est atteint, la place de ces observations est incertaine. ",
+                                                                   "; no other start found its configuration again (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01), but %d reached its stress to 0.0001, with some observations placed slightly differently: the stress is reached, the place of those observations is uncertain. "), k$meme_stress)
                    else tx(" ; aucun autre départ ne l'a retrouvée : ce peut être un minimum local. ", "; no other start found it again: it may be a local minimum. ")
                  } else ". ",
                  if (k$nuls) sprintf(tx("%d dissimilarités nulles entre observations distinctes ont été remplacées par la moitié de la plus petite non nulle. ", "%d zero dissimilarities between distinct observations were replaced by half the smallest non-zero one. "), k$nuls) else "",

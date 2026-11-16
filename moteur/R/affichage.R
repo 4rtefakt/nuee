@@ -55,7 +55,7 @@ print.modele_nuee <- function(x, lignes = 25, ...) {
   tableau(v[, intersect(c("terme", grep("^p\\d+$", names(v), value = TRUE), "VIP", "R2V_cum", "Q2V_cum"), names(v)), drop = FALSE], lignes)
   section(traduire("Observations (m$statistiques$observations)", "Observations (m$statistiques$observations)"))
   o <- s$observations
-  o <- cbind(observation = as.character(x$observations), o[, intersect(c(grep("^t\\d+$", names(o), value = TRUE), "T2", "DModX",
+  o <- cbind(observation = nom_numero(x$observations), o[, intersect(c(grep("^t\\d+$", names(o), value = TRUE), "T2", "DModX",
                                                                           grep(" (observé|ajusté)$", names(o), value = TRUE)), names(o)), drop = FALSE])
   tableau(o, min(lignes, 10))
   invisible(x)

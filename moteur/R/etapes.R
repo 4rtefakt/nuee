@@ -461,7 +461,7 @@ ETAPES_DONNEES <- list(
       imputer_acp(p, unlist(q$variables), k = q$k, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
     }),
   classes_valeurs = list(variables = "variable",
-    appliquer = function(p, q, rejeu = NULL) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n)),
+    appliquer = function(p, q, rejeu = NULL) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q[["n"]])),  # (q[["n"]] : sans n, q$n prendrait q$nom)
   # (des cellules collées, que la séance garde dans un fichier qui disparaîtra : leur texte va avec
   # l'étape, `texte`, à la place du chemin)
   ajouter_colonnes = list(colonnes = "cles_projet", fichiers = "chemin",

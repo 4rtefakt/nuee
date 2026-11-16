@@ -356,6 +356,15 @@ convertir_colonnes <- function(df, virgule = "decimale", quantitatives = NULL, t
   for (k in seq_along(df)) {
     x <- df[[k]]
     if (names(df)[k] %in% textes) next
+    # (NaN et Inf d'un fichier qui dit ses nombres, R ou SPSS : des valeurs manquantes, dites ; chaque
+    # analyse planterait sur eux)
+    if (is.numeric(x) && any(is.nan(x) | is.infinite(x))) {
+      faux <- is.nan(x) | is.infinite(x)
+      note[names(df)[k]] <- note_manquantes(names(df)[k], as.character(x[faux]))
+      x[faux] <- NA
+      df[[k]] <- x
+      next
+    }
     if (!(forcees[k] && (is.character(x) || is.factor(x) || is.logical(x))) && !(toutes && is.character(x))) next
     y <- convertir_colonne(as.character(x), virgule, premiere = k == 1, forcer = forcees[k])
     manquantes <- attr(y, "manquantes")
@@ -383,6 +392,7 @@ convertir_colonne <- function(x, virgule = "decimale", premiere = FALSE, forcer 
   connues <- !is.na(v)
   if (!any(connues)) return(rep(NA_real_, length(v)))
   n <- lire_nombres(v, virgule)
+  n[is.infinite(n)] <- NA  # (« Inf », « 1e999 » : pas des mesures, lues manquantes et dites comme « NaN »)
   autres <- connues & is.na(n)
   if (!any(autres)) return(n)
   texte <- sum(!valeur_manquante(v[autres]))
@@ -420,7 +430,8 @@ valeur_manquante <- function(v) {
   code <- gsub("[[:space:]./]", "", tolower(v))
   grepl("^[<>≤≥]", v) |
     code %in% c("nd", "na", "nan", "nm", "nq", "ns", "null", "-", "--", "---", "—", "–", "?", "??",
-                "lod", "loq", "ld", "lq", "dl", "ql", "tr", "trace", "traces") |
+                "lod", "loq", "ld", "lq", "dl", "ql", "tr", "trace", "traces",
+                "inf", "-inf", "+inf", "infinity", "-infinity", "+infinity", "∞", "-∞", "+∞") |
     grepl("^#(n/a|div/0!|value!|valeur!|ref!|name\\?|nom\\?|num!|nombre!|null!|nul!)$", v, ignore.case = TRUE)
 }
 
@@ -966,7 +977,7 @@ ecrire_tables <- function(tables, chemin, objet = "resultats") {
 # chaque variable (en facteur pour une variable qualitative).
 tableau_projet <- function(projet) {
   obs <- rownames(projet$donnees)
-  uid <- vapply(projet$observations, function(o) as.character(o$uid), "")
+  uid <- vapply(projet$observations, function(o) nom_numero(o$uid), "")
   noms_id <- as.character(projet$observation_id_names %||% character(0))
   premier <- if (length(noms_id) && nzchar(noms_id[1]) && !startsWith(noms_id[1], "$")) noms_id[1] else "Observation"
   colonnes <- list(unname(projet$noms_obs[obs]))
@@ -979,8 +990,8 @@ tableau_projet <- function(projet) {
     noms <- c(noms, noms_id[k])
   }
   for (v in projet$variables) {
-    if (!as.character(v$uid) %in% colnames(projet$donnees)) next
-    x <- projet$donnees[, as.character(v$uid)]
+    if (!nom_numero(v$uid) %in% colnames(projet$donnees)) next
+    x <- projet$donnees[, nom_numero(v$uid)]
     colonnes[[length(colonnes) + 1]] <- if (length(v$categories)) factor(v$categories[x], levels = v$categories) else unname(x)
     noms <- c(noms, as.character(v$ids[1]))
   }

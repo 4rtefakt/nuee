@@ -435,7 +435,7 @@ verifier_regression <- function(projet, d) {
     if (!all(as.numeric(d$lisses) %in% simples_x)) err("Une courbe se fait sur une variable X quantitative.", "A curve is made on a quantitative X variable.")
     if (length(d$k_courbes)) {  # (la dimension de base d'une courbe, demandée : k)
       k <- suppressWarnings(as.numeric(unlist(d$k_courbes)))
-      if (anyNA(k) || any(k < 3 | k > 100 | k != round(k)) || !all(names(d$k_courbes) %in% as.character(as.numeric(d$lisses)))) {
+      if (anyNA(k) || any(k < 3 | k > 100 | k != round(k)) || !all(names(d$k_courbes) %in% nom_numero(as.numeric(d$lisses)))) {
         err("La dimension d'une courbe (k) est un nombre entier de 3 à 100, pour une variable en courbe.", "A curve's dimension (k) is a whole number from 3 to 100, for a variable in a curve.")
       }
     }
@@ -459,7 +459,7 @@ verifier_regression <- function(projet, d) {
     }
     valeurs_groupement(projet, s, d$observations[1])
     for (u in as.numeric(unlist(s$pentes))) {
-      nom <- tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) as.character(u))
+      nom <- tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) nom_numero(u))
       if (!u %in% simples_x) {
         stop(sprintf(traduire("« %s » a une pente aléatoire : elle doit être aussi un terme X du modèle, quantitatif et seul (transformé ou non), la pente fixe autour de laquelle varient celles des groupes.",
                               "\"%s\" has a random slope: it must also be an X term of the model, quantitative and on its own (transformed or not), the fixed slope around which the groups' slopes vary."), nom), call. = FALSE)
@@ -496,7 +496,7 @@ verifier_par_courbes <- function(projet, d) {
   par <- d$par_courbes %||% list()
   if (!length(par)) return(invisible(TRUE))
   if (!identical(d$type, "GAM")) stop(traduire("Une courbe par catégorie demande un modèle additif (GAM).", "A curve per category needs an additive model (GAM)."), call. = FALSE)
-  nom <- function(u) tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) as.character(u))
+  nom <- function(u) tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) nom_numero(u))
   principales <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) != 0 && !isTRUE(t$facteur_seul)) as.numeric(t$variables)))
   for (u in names(par)) {
     f <- suppressWarnings(as.numeric(unlist(par[[u]]))[1])
@@ -644,7 +644,7 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
 # catégorie. Une liste nommée par ces colonnes.
 facteurs_courbes <- function(d, composition) {
   par <- d$par_courbes %||% list()
-  vars <- unique(as.numeric(unlist(par[names(par) %in% as.character(as.numeric(d$lisses))])))
+  vars <- unique(as.numeric(unlist(par[names(par) %in% nom_numero(as.numeric(d$lisses))])))
   if (!length(vars)) return(list())
   stats::setNames(lapply(vars, function(f) {
     ts <- Filter(function(t) length(composition[[t]]$variables) == 1 && composition[[t]]$variables == f && composition[[t]]$categories != 0 &&
@@ -818,9 +818,12 @@ ajuster_regression <- function(projet, d) {
   candidats <- cadre$candidats
   noms_candidats <- cadre$noms[match(candidats, cadre$termes)]
   if (nrow(cadre$cadre) <= length(candidats) + 1) {
-    stop(sprintf(traduire("Trop peu d'observations complètes (%d) pour %d termes.", "Too few complete observations (%d) for %d terms."),
-                 nrow(cadre$cadre), length(candidats)), call. = FALSE)
+    stop(sprintf(traduire("Trop peu d'observations complètes (%d) pour %d terme(s) : il en faut au moins %d, la réponse et chaque variable X connues.",
+                          "Too few complete observations (%d) for %d term(s): at least %d are needed, with the response and every X variable known."),
+                 nrow(cadre$cadre), length(candidats), length(candidats) + 2), call. = FALSE)
   }
+  refuser_reponse_constante(cadre$cadre$y, as.character(d$y[[1]]$name))
+  refuser_valeurs_extremes(cadre$cadre, c(y = as.character(d$y[[1]]$name), stats::setNames(cadre$noms, cadre$termes)))
   G <- d$cv_groups %||% 7
   groupes <- groupes_definition(projet, d, G)[match(cadre$observations, d$observations)]
   termes_x <- termes_regression(d$x)
@@ -834,12 +837,12 @@ ajuster_regression <- function(projet, d) {
     lisses <- quantitatifs[vapply(termes_x[match(quantitatifs, cadre$termes)], function(t) as.numeric(t$variables) %in% as.numeric(d$lisses), TRUE)]
     # la dimension demandée d'une courbe (k), par terme
     k_demandes <- unlist(lapply(lisses, function(t) {
-      k <- d$k_courbes[[as.character(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
+      k <- d$k_courbes[[nom_numero(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
       if (length(k)) stats::setNames(as.integer(k), t)
     }))
     # (une courbe par catégorie : la colonne du facteur de sa variable qualitative, par terme ; facteurs_courbes)
     par <- unlist(lapply(lisses, function(t) {
-      f <- d$par_courbes[[as.character(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
+      f <- d$par_courbes[[nom_numero(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
       if (length(f)) stats::setNames(paste0("f", as.numeric(unlist(f))[1]), t)
     }))
     # (le lissage spatial des coordonnées : cadre_regression en a fait les colonnes sx et sy)
@@ -936,7 +939,7 @@ tester_regression <- function(projet, m, d) {
   predit <- as.vector(predit)
   y <- m$y$noms
   e <- predit - nd$y
-  obs <- data.frame(uid = t$observations, nom = unname(projet$noms_obs[as.character(t$observations)]), hors_domaine = FALSE, stringsAsFactors = FALSE)
+  obs <- data.frame(uid = t$observations, nom = unname(projet$noms_obs[nom_numero(t$observations)]), hors_domaine = FALSE, stringsAsFactors = FALSE)
   obs[[paste(y, "observé")]] <- nd$y
   obs[[paste(y, "prédit")]] <- predit
   ok <- !is.na(e)
@@ -986,7 +989,7 @@ predire_observations_regression <- function(projet, m, d, observations, effort_a
     hors <- hors | (!is.na(nd[[t]]) & (nd[[t]] < r[1] - marge | nd[[t]] > r[2] + marge))
   }
   y <- transformer(valeurs_simples(projet, d$y[[1]], observations), d$y[[1]]$transform)
-  out <- data.frame(row.names = as.character(observations))
+  out <- data.frame(row.names = nom_numero(observations))
   out[[paste(m$y$noms, "prédit")]] <- predit
   if (any(!is.na(y))) out[[paste(m$y$noms, "observé")]] <- y
   out$hors_domaine <- hors
@@ -1009,7 +1012,7 @@ quantiles_henry <- function(e) {
 observations_regression <- function(projet, m) {
   r <- m$resultat
   y <- m$y$noms
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   obs[[paste(y, "observé")]] <- m$donnees$y
   obs[[paste(y, "ajusté")]] <- r$ajuste
   if (!is.null(r$ajuste_fixe)) obs[[paste(y, "ajusté (effets fixes)")]] <- r$ajuste_fixe
@@ -1246,7 +1249,7 @@ definition_selection <- function(d, m, choisis) {
   # la validation croisée « à tour de rôle », qui sont des rangs dans cette liste)
   complets <- if (length(d$termes_complets)) d$termes_complets else d$x
   # (de même ses courbes par catégorie : une catégorie qui n'y a pas de courbe reste de côté)
-  par_complet <- if (length(d$termes_complets)) d$courbes_du_complet else d$par_courbes[names(d$par_courbes) %in% as.character(as.numeric(d$lisses))]
+  par_complet <- if (length(d$termes_complets)) d$courbes_du_complet else d$par_courbes[names(d$par_courbes) %in% nom_numero(as.numeric(d$lisses))]
   inconnus <- setdiff(choisis, names(groupes_modele(m)))
   if (length(inconnus)) stop(sprintf(traduire("Groupe de termes inconnu dans ce modèle : %s", "Unknown group of terms in this model: %s"),
                                      paste(inconnus, collapse = ", ")), call. = FALSE)
@@ -1260,11 +1263,11 @@ definition_selection <- function(d, m, choisis) {
   restantes <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1) as.numeric(t$variables)))
   d$lisses <- intersect(as.numeric(d$lisses), restantes)
   if (!length(d$lisses)) d$lisses <- NULL
-  d$k_courbes <- d$k_courbes[names(d$k_courbes) %in% as.character(d$lisses)]
+  d$k_courbes <- d$k_courbes[names(d$k_courbes) %in% nom_numero(d$lisses)]
   if (!length(d$k_courbes)) d$k_courbes <- NULL
   # (une courbe par catégorie reste avec sa courbe et l'effet principal de sa variable qualitative, que la sélection garde avec elle)
   principales <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) != 0 && !isTRUE(t$facteur_seul)) as.numeric(t$variables)))
-  d$par_courbes <- Filter(function(f) as.numeric(unlist(f))[1] %in% principales, d$par_courbes[names(d$par_courbes) %in% as.character(d$lisses)])
+  d$par_courbes <- Filter(function(f) as.numeric(unlist(f))[1] %in% principales, d$par_courbes[names(d$par_courbes) %in% nom_numero(d$lisses)])
   if (!length(d$par_courbes)) d$par_courbes <- NULL
   d$termes_complets <- complets
   d$courbes_du_complet <- if (length(par_complet)) par_complet
@@ -1348,6 +1351,58 @@ famille_mgcv <- function(nom, theta = NULL) {
     }
   }
   f
+}
+
+# Une réponse qui a la même valeur pour toutes les observations du modèle n'a rien à expliquer : R²,
+# Q² et la déviance expliquée seraient 0 / 0. Refusée, en le disant (`y` : ses valeurs ; `nom` : son
+# nom) ; une régression, un arbre de régression, une forêt et des arbres boostés.
+refuser_reponse_constante <- function(y, nom) {
+  y <- y[is.finite(y)]
+  if (length(y) && all(y == y[1])) {
+    stop(sprintf(traduire("La réponse « %s » vaut %s pour chacune des %d observations du modèle : il n'y a rien à expliquer. Choisissez une autre réponse, ou d'autres observations.",
+                          "The response “%s” is %s for each of the model's %d observations: there is nothing to explain. Choose another response, or other observations."),
+                 nom, format(y[1], digits = 6), length(y)), call. = FALSE)
+  }
+}
+
+# Des valeurs dont le carré dépasse les nombres de R (au-delà de 1e150 environ ; NaN, Inf une fois mises
+# à l'échelle) ou s'annule (toutes en deçà de 1e-150) : chaque somme de carrés serait infinie ou nulle,
+# les coefficients, R² et Q² NaN, un écart-type infini ou nul (une mise à l'échelle n'y peut rien : elle
+# le calcule). Refusées, en disant laquelle et quoi faire (`cadre` : la table du modèle ; `noms` : le nom
+# de chacune de ses colonnes à voir, par colonne ; les valeurs manquantes n'y comptent pas). Pour une
+# régression, un arbre, une forêt, des arbres boostés, les termes UV ou Pareto d'un bloc X ou Y
+# (construire_bloc, pretraitement.R), une LDA (discrimination.R), un test de deux variables et un
+# BACI (comparaisons.R).
+refuser_valeurs_extremes <- function(cadre, noms) {
+  for (k in intersect(names(noms), names(cadre))) {
+    v <- cadre[[k]]
+    if (!is.numeric(v)) next
+    a <- abs(v[!is.na(v) & v != 0])
+    if (any(!is.finite(a)) || (length(a) && max(a) > 1e150)) {
+      stop(sprintf(traduire("« %s » a des valeurs trop grandes pour le calcul%s : leurs carrés dépassent les nombres que R sait écrire. Divisez-la par une puissance de 10 (Édition › Nouvelle variable).",
+                            "“%s” has values too large for the computation%s: their squares exceed the numbers R can hold. Divide it by a power of 10 (Edit › New variable)."),
+                   noms[[k]], if (any(is.finite(a))) sprintf(traduire(" (jusqu'à %s)", " (up to %s)"), format(max(a[is.finite(a)]), digits = 3)) else ""), call. = FALSE)
+    }
+    if (length(a) && max(a) < 1e-150) {
+      stop(sprintf(traduire("« %s » a des valeurs trop petites pour le calcul (au plus %s) : leurs carrés s'annulent. Multipliez-la par une puissance de 10 (Édition › Nouvelle variable).",
+                            "“%s” has values too small for the computation (at most %s): their squares vanish. Multiply it by a power of 10 (Edit › New variable)."),
+                   noms[[k]], format(max(a), digits = 3)), call. = FALSE)
+    }
+  }
+}
+
+# Une erreur-type nulle, ou qui n'est pas un nombre : mgcv a perdu la précision de son calcul, les
+# termes ayant des tailles trop éloignées (l'un vers 1e12 et l'ordonnée à l'origine vers 1 ; 1e8 et
+# 1e-8 pour deux termes d'une régression logistique). Il met alors le coefficient ou son erreur-type à
+# 0 : un t de 0 / 0 ou infini, une valeur p nulle. Refusée, en disant quoi faire (`co` : la table des
+# coefficients, son terme et son erreur-type).
+refuser_precision_perdue <- function(co) {
+  perdu <- !is.finite(co$erreur_type) | co$erreur_type <= 0
+  if (any(perdu)) {
+    stop(sprintf(traduire("L'erreur-type de « %s » ne se calcule pas : les valeurs des termes du modèle ont des tailles trop éloignées (des milliards de fois), le calcul y a perdu sa précision. Ramenez-les près de 1 par une puissance de 10 (Édition › Nouvelle variable), ou mettez-les à l'échelle (UV).",
+                          "The standard error of “%s” can't be computed: the values of the model's terms are too far apart in size (billions of times), and the computation lost its precision. Bring them near 1 by a power of 10 (Edit › New variable), or scale them (UV)."),
+                 paste(co$terme[perdu], collapse = traduire(" », « ", "”, “"))), call. = FALSE)
+  }
 }
 
 # Une réponse que la loi accepte : des comptages (Poisson, binomiale négative, Poisson à excès de
@@ -1577,6 +1632,7 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
   co <- data.frame(terme = c("(Intercept)", noms[match(rownames(pt)[-1], termes)]), estimation = pt[, 1], erreur_type = pt[, 2],
                    ddl = if (echelle) estime$df.residual else NA_real_, t = pt[, 3], p = pt[, 4],
                    bas = pt[, 1] - q * pt[, 2], haut = pt[, 1] + q * pt[, 2], row.names = NULL, stringsAsFactors = FALSE)
+  refuser_precision_perdue(co)
   courbes <- if (length(lis)) tableau_courbes(estime, lis, termes, noms, donnees, par, facteurs)
   if (!is.null(spatial)) courbes <- ligne_spatiale(estime, spatial, courbes)
   variances <- singularites <- NULL
@@ -1703,6 +1759,7 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
   co <- data.frame(terme = c("(Intercept)", noms[match(rownames(pt)[-1], termes)]), estimation = pt[, 1], erreur_type = pt[, 2],
                    ddl = g$df.residual, t = pt[, 3], p = pt[, 4], bas = pt[, 1] - q * pt[, 2], haut = pt[, 1] + q * pt[, 2],
                    row.names = NULL, stringsAsFactors = FALSE)
+  refuser_precision_perdue(co)
   courbes <- if (length(lis)) tableau_courbes(g, lis, termes, noms, donnees, par, facteurs)
   if (!is.null(spatial)) courbes <- ligne_spatiale(g, spatial, courbes)
   # la variance de chaque effet aléatoire (nlme : σ² fois sa matrice relative), puis la résiduelle
@@ -2061,7 +2118,7 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   fr <- langue == "fr"
   r <- m$resultat
   nombre <- function(x, chiffres = 2) formatC(x, format = "f", digits = chiffres, decimal.mark = if (fr) "," else ".")
-  pourcent <- function(x) paste0(formatC(100 * x, format = "f", digits = if (100 * x < 10) 1 else 0, decimal.mark = if (fr) "," else "."), if (fr) " %" else "%")
+  pourcent <- function(x) paste0(formatC(100 * x, format = "f", digits = if (isTRUE(100 * x < 10)) 1 else 0, decimal.mark = if (fr) "," else "."), if (fr) " %" else "%")
   liste <- function(x) if (length(x) <= 1) paste(x) else paste(paste(x[-length(x)], collapse = ", "), if (fr) "et" else "and", x[length(x)])
   guillemets <- function(x) if (fr) sprintf("« %s »", x) else sprintf("“%s”", x)
   cites <- character(0)
@@ -2204,7 +2261,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
 
   # --- qualité
   aic <- cite("burnham", sprintf("AIC = %s (Burnham %s Anderson, 2002)", nombre(r$AIC, 1), if (fr) "et" else "&"))
-  vc <- if (sans_q2) (if (fr) "la validation croisée n'a pas donné de Q²" else "cross-validation gave no Q²")
+  # (-Inf : une seule prédiction, ou des réponses toutes égales parmi elles ; ce Q² n'a pas de sens)
+  vc <- if (!is.finite(m$vc$Q2 %||% NA)) (if (fr) "la validation croisée n'a pas donné de Q²" else "cross-validation gave no Q²")
         else sprintf(if (fr) "en validation croisée, Q² = %s et RMSEcv = %s" else "in cross-validation, Q² = %s and RMSEcv = %s", nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
   loi <- r$parametre_loi
   # (les paramètres de la loi : θ, p, θ₁ et θ₂, φ ; le Poisson à excès de zéros n'a pas de R² ajusté)
@@ -2322,6 +2380,10 @@ phrase_selection_aic <- function(m, fr, nombre, liste, guillemets) {
                                                                 if (fr) (if (plusieurs) "portent une pente aléatoire, sont restés" else "porte une pente aléatoire, est resté")
                                                                 else (if (plusieurs) "carry a random slope, stayed" else "carries a random slope, stayed")))
   p <- s$parcimonieux
+  # (des AICc non calculés, des valeurs trop grandes pour le calcul : ni meilleur modèle ni importance à dire)
+  if (!isTRUE(p >= 1) || !isTRUE(is.finite(mo$poids[1]))) {
+    return(paste(comparaison, if (fr) "Les AICc n'ont pas pu être calculés : aucun modèle n'est désigné." else "The AICc couldn't be computed: no model is singled out."))
+  }
   choix <- sprintf(if (fr) "Le meilleur modèle (l'AICc le plus bas, poids d'Akaike %s) %s ; %s." else "The best model (lowest AICc, Akaike weight %s) %s; %s.",
                    nombre(mo$poids[1]), contenu(1),
                    if (p == 1) (if (fr) "c'était aussi le plus parcimonieux à ΔAICc ≤ 2" else "it was also the most parsimonious within ΔAICc ≤ 2")
@@ -2380,7 +2442,7 @@ references_qualitatives <- function(m) {
       length(ct$variables) == 2 && u %in% ct$variables && sum(ct$categories == 0) == 1 && length(principal(ct$variables[ct$categories == 0], FALSE)) > 0
     }, m$candidats)
     if (length(pentes)) laissee(u, pentes) else NA_character_
-  }), qual)
+  }), nom_numero(qual))
 }
 
 # Les variables qualitatives d'une régression dans le texte des Méthodes : la catégorie de
@@ -2397,9 +2459,9 @@ phrases_qualitatives <- function(m, d, fr, liste, guillemets) {
   comp <- m$composition
   refs <- references_qualitatives(m)
   if (!length(refs)) return(character(0))
-  noms <- unlist(lapply(unname(comp), function(ct) stats::setNames(ct$noms, ct$variables)))
-  nom <- function(u) guillemets(noms[[as.character(u)]])
-  ref <- function(u) refs[[as.character(u)]] %||% NA_character_
+  noms <- unlist(lapply(unname(comp), function(ct) stats::setNames(ct$noms, nom_numero(ct$variables))))
+  nom <- function(u) guillemets(noms[[nom_numero(u)]])
+  ref <- function(u) refs[[nom_numero(u)]] %||% NA_character_
   # (le terme de son effet principal parmi les candidats : une catégorie, ou la variable quantitative)
   principal <- function(u, categorie) Find(function(t) length(comp[[t]]$variables) == 1 && comp[[t]]$variables == u && (comp[[t]]$categories != 0) == categorie, m$candidats)
   # les termes croisés qui ont une variable qualitative
@@ -2554,8 +2616,8 @@ verifier_lisse_spatial <- function(projet, d) {
     if (is.na(k) || k < 5 || k > 300 || k != round(k)) err("La dimension du lissage spatial (k) est un nombre entier de 5 à 300.", "The spatial smooth's dimension (k) is a whole number from 5 to 300.")
   }
   if (identical(as.character(ls$base)[1], "sos")) {
-    x <- projet$donnees[, as.character(vs[1])]
-    y <- projet$donnees[, as.character(vs[2])]
+    x <- projet$donnees[, nom_numero(vs[1])]
+    y <- projet$donnees[, nom_numero(vs[2])]
     if (any(abs(x) > 180, na.rm = TRUE) || any(abs(y) > 90, na.rm = TRUE)) {
       err("Une spline sur la sphère demande des longitudes et des latitudes en degrés.", "A spline on the sphere needs longitudes and latitudes in degrees.")
     }

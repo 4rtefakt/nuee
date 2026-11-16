@@ -378,6 +378,8 @@ ajuster_tree <- function(projet, d) {
   # (les lignes que rpart garde : une réponse et au moins une valeur X, comme na.rpart)
   connu <- !is.na(y) & rowSums(!is.na(X)) > 0
   if (sum(connu) < 4) stop(traduire("Trop peu d'observations avec une réponse et au moins une valeur X.", "Too few observations with a response and at least one X value."), call. = FALSE)
+  if (!classement) refuser_reponse_constante(y[connu], nom_y)  # (regression.R)
+  if (!classement) refuser_valeurs_extremes(list(y = y[connu]), c(y = nom_y))
   garde <- obs[connu]
   groupes <- groupes_observations(projet, d, garde)
   if (length(unique(groupes)) < 3) {
@@ -412,7 +414,7 @@ ajuster_tree <- function(projet, d) {
 tester_tree <- function(projet, m, d) {
   test <- as.numeric(d$test)
   X <- x_bruts(projet, m$variables, test)
-  noms <- unname(projet$noms_obs[as.character(test)])
+  noms <- unname(projet$noms_obs[nom_numero(test)])
   vides <- rowSums(!is.na(X)) == 0
   if (m$classement) {
     y <- as.character(classe_observations(projet, d$classe, test))
@@ -487,7 +489,7 @@ feuilles_nouvelles <- function(a, X) {
 # Les observations d'un arbre : réponse observée, ajustée et prédite en validation croisée (et
 # probabilités), résidu standardisé (par le RMSEE) et son quantile normal, feuille, groupe.
 observations_arbre <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   if (m$classement) {
     obs$classe <- as.character(m$donnees$.y)
     obs[["classe ajustée"]] <- m$classification$ajuste$predite

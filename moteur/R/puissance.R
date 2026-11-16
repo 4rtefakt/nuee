@@ -244,6 +244,9 @@ PUISSANCE_LIMITES <- list(annees = c(3L, 100L), unites = 10000L, courbes = 10L, 
 # défaut), vérifiés : le terme du temps (son nom), la tendance et son unité ("pente" ou
 # "pourcent"), alpha, les années des courbes (de, à), les nombres d'unités (celui des données y est
 # toujours), le plan et le nombre de jeux de la simulation.
+# (les champs d'une demande qui sont des réglages, serveur.R : puissance_tendance ; ses autres champs
+# n'en sont pas : un champ en trop referait le calcul avec les réglages par défaut)
+REGLAGES_PUISSANCE <- c("terme", "tendance", "unite", "alpha", "annees", "unites", "simulation", "simuler")
 reglages_puissance <- function(m, d, lu, q) {
   err <- function(fr, en) stop(traduire(fr, en), call. = FALSE)
   nombre <- function(v, defaut) { v <- suppressWarnings(as.numeric(unlist(v))); if (length(v) && !anyNA(v)) v else defaut }
@@ -259,7 +262,7 @@ reglages_puissance <- function(m, d, lu, q) {
   if (!terme %in% lu$noms) err(sprintf("« %s » n'est pas un X quantitatif (non transformé) de ce modèle : choisissez le temps parmi %s.", terme, paste(lu$noms, collapse = ", ")),
                                sprintf("\"%s\" isn't a quantitative X (untransformed) of this model: choose the time among %s.", terme, paste(lu$noms, collapse = ", ")))
   pourcent_possible <- !is.null(log_reponse(d$y[[1]]$transform))
-  unite <- as.character(unlist(q$unite))[1]
+  unite <- as.character(unlist(q[["unite"]]))[1]  # (sans unite, q$unite prendrait q$unites : la correspondance partielle de $)
   if (is.na(unite) || !unite %in% c("pente", "pourcent")) unite <- if (pourcent_possible) "pourcent" else "pente"
   y <- m$donnees$y
   defaut <- if (unite == "pourcent") -3 else -signif(if (mean(y) != 0) 0.03 * abs(mean(y)) else if (stats::sd(y) > 0) 0.1 * stats::sd(y) else 0.1, 2)
