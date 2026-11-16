@@ -24,7 +24,9 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 
-const [programme, capture, ...optionsProgramme] = process.argv.slice(2);
+const [programmeDonne, capture, ...optionsProgramme] = process.argv.slice(2);
+// (a path made absolute: a start from another working folder, below, finds the program too)
+const programme = programmeDonne && /[\\/]/.test(programmeDonne) ? path.resolve(programmeDonne) : programmeDonne;
 if (!programme) {
   console.error('node tests/essai_appli.js <program> [screenshot.png] [program options...]');
   process.exit(2);

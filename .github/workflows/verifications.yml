@@ -53,25 +53,10 @@ jobs:
         with:
           node-version: 22
 
-      # Electron comes from GitHub's releases: kept between runs, and fetched through GitHub's API
-      # with this job's token (its own downloader goes anonymously, which GitHub throttles at times)
-      - uses: actions/cache@v6
-        with:
-          path: ~/AppData/Local/electron/Cache
-          key: electron-windows-${{ hashFiles('app/package-lock.json') }}
-
-      - name: Fichiers des versions GitHub, par l'API
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          Start-Process node -ArgumentList '.github/miroir-github.js', '8123' -RedirectStandardOutput "$env:RUNNER_TEMP\miroir.log" -RedirectStandardError "$env:RUNNER_TEMP\miroir-erreurs.log"
-          Add-Content $env:GITHUB_ENV 'ELECTRON_MIRROR=http://127.0.0.1:8123/electron/electron/'
-
-      # (Electron too: the program is built below)
+      # (the checks before the build run in Node: Electron is fetched for the build, below)
       - name: Paquets de l'interface
         working-directory: app
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Requêtes au serveur R
         working-directory: app
@@ -100,15 +85,28 @@ jobs:
       - name: PyInstaller
         run: python -m pip install pyinstaller
 
+      # Electron comes from GitHub's releases: kept between runs, and fetched through GitHub's API
+      # with this job's token (its own downloader goes anonymously, which GitHub throttles at times)
+      - uses: actions/cache@v6
+        with:
+          path: ~/AppData/Local/electron/Cache
+          key: electron-windows-${{ hashFiles('app/package-lock.json') }}
+
       # The program as the network-share folder holds it (Nuee\application, R copied from C:\R),
       # without its installer, which is never run here; essai_api.js ran above. Then used end to
       # end (app/tests/essai_appli.js), and through the workflows people do (essai_parcours.js).
+      # Electron for it, and npm's Electron, which the accessibility check runs in, come through
+      # the local mirror of GitHub's release files, which runs each command and stops with it.
       - name: Nuée pour Windows
         working-directory: app
         env:
           SANS_ESSAI: '1'
           SANS_INSTALLATEUR: '1'
-        run: node construire.js ../dist C:\R
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node ../.github/miroir-github.js 8123 node node_modules/electron/install.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node ../.github/miroir-github.js 8123 node construire.js ../dist C:\R
 
       - name: Nuée, de bout en bout
         working-directory: app

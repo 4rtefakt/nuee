@@ -738,12 +738,14 @@ f_md5 <- tempfile(fileext = ".csv")
 writeLines(c("a,b", "1,2"), f_md5)
 m5 <- empreinte_sha(f_md5, md5 = TRUE)
 ed <- empreinte_donnees(projet(id))
-ed_md5 <- ed
-ed_md5$structure <- empreinte_sha(octets = charToRaw("x"), md5 = TRUE)
+# (les mêmes données d'après un R récent, un SHA-256, et d'après un plus ancien, un MD5 : quel que soit ce R,
+# dont l'empreinte est l'une ou l'autre)
+ed_sha <- modifyList(ed, list(structure = strrep("a", 64)))
+ed_md5 <- modifyList(ed, list(structure = empreinte_sha(octets = charToRaw("x"), md5 = TRUE)))
 verifier("empreinte MD5 d'un fichier et d'octets, préfixée ; comparée au même algorithme ; données comparées par leurs sommes",
          identical(m5, paste0("md5:", unname(tools::md5sum(f_md5)))) && startsWith(ed_md5$structure, "md5:") &&
            isTRUE(meme_empreinte(m5, f_md5)) && isFALSE(meme_empreinte(paste0("md5:", strrep("0", 32)), f_md5)) &&
-           memes_donnees(ed, ed_md5) && !memes_donnees(ed, modifyList(ed_md5, list(sommes = as.list(unlist(ed$sommes) + 1)))))
+           memes_donnees(ed_sha, ed_md5) && !memes_donnees(ed_sha, modifyList(ed_md5, list(sommes = as.list(unlist(ed$sommes) + 1)))))
 unlink(f_md5)
 
 unlink(dossier, recursive = TRUE)
