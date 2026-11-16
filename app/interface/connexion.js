@@ -224,8 +224,8 @@ export async function ouvrirInvitation(app, { hote, url } = {}) {
   const c = comptes();
   if (!c) { app.statut(t('connexion_navigateur'), true); return { ok: false }; }
   let k = null;
-  try { k = await c.compte(hote); } catch { /* the server's refusal comes with the invitation */ }
-  if (!k || (!k.connecte && !k.horsLigne)) {
+  try { k = await c.compte(hote); } catch { /* (the server's refusal comes with the invitation) */ }
+  if (k && !k.connecte) {
     if (!(await ouvrirConnexion(app, { hote })).ok) return { ok: false };
   }
   const service = nomService(hote);

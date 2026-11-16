@@ -154,16 +154,16 @@ function creerComptes({ fetch, jeton: ecrireJeton, jetons, renouvellements, regl
 
   // ------------------------------------------------------------------ HTTP
 
-  // A request: { statut, json (null when the answer isn't JSON), entetes }. No cookie; with a token,
-  // no redirect followed (it would carry the token elsewhere). A network error or 30 s without an
+  // A request: { statut, json (null when the answer isn't JSON), entetes }. No cookie, and no
+  // redirect followed (it would carry the token elsewhere). A network error or 30 s without an
   // answer: a refusal saying so.
-  async function demander(url, { methode = 'GET', entetes = {}, corps, suivre = false } = {}) {
+  async function demander(url, { methode = 'GET', entetes = {}, corps } = {}) {
     let r;
     try {
-      r = await fetch(url, { method: methode, headers: entetes, body: corps, credentials: 'omit', redirect: suivre ? 'follow' : 'error', signal: AbortSignal.timeout(30000) });
+      r = await fetch(url, { method: methode, headers: entetes, body: corps, credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(30000) });
     } catch (e) {
       const h = new URL(url).host;
-      if (!suivre && /redirect/i.test(`${e && e.message} ${e && e.cause && e.cause.message}`)) {
+      if (/redirect/i.test(`${e && e.message} ${e && e.cause && e.cause.message}`)) {
         throw refus(`${h} renvoie ailleurs : Nuée ne suit pas une redirection avec la connexion.`, `${h} sends elsewhere: Nuée doesn’t follow a redirect with the sign-in.`, 'redirection');
       }
       const quoi = (/net::ERR_[A-Z_0-9]+/.exec(String(e && e.message)) || [])[0] || (e && e.cause && e.cause.code)
@@ -320,7 +320,7 @@ function creerComptes({ fetch, jeton: ecrireJeton, jetons, renouvellements, regl
       try { r = await oauth(adresses(h).jeton, { grant_type: 'refresh_token', refresh_token: rafraichir, client_id: id }); } catch { return null; }
       const j = r.json || {};
       if (!j.access_token) {
-        if (r.statut >= 400 && r.statut < 500) await renouvellements.ecrire(h, '');
+        if (j.error || (r.statut >= 400 && r.statut < 500)) await renouvellements.ecrire(h, '');
         return null;
       }
       const nouveau = retenir(String(j.access_token));
@@ -418,8 +418,7 @@ function creerComptes({ fetch, jeton: ecrireJeton, jetons, renouvellements, regl
     const h = exigerHote(hote);
     const s = enCours.get(h);
     if (!s) throw refus(`Aucune connexion n’est en cours pour ${h} : recommencez.`, `No sign-in is under way for ${h}: start again.`, 'aucune');
-    if (!/^https:\/\//.test(s.page)) throw refus('Nuée n’ouvre que des pages https.', 'Nuée opens https pages only.');
-    await ouvrirNavigateur(s.page);
+    await ouvrirNavigateur(s.page);  // (https on the server itself: pageDe)
   }
 
   // Until the code is approved (→ { ok: true, compte }), refused, expired or the sign-in cancelled
