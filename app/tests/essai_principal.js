@@ -6,7 +6,9 @@
 //   sends SIGKILL; Node's kill() on Windows): no exit code, its signal only, and Restart doesn't wait
 //   for an end that already came;
 // - a plugin's packages installed into the engine's R as the engine runs it (RHOME, R_LIBS), another
-//   R with its own environment only.
+//   R with its own environment only;
+// - the settings written beside, then put in their place: a write cut short (a full disk) leaves them
+//   as they were; a window's size and place written once it stops moving, and when it closes.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -193,6 +195,53 @@ async function paquetsDUnGreffon(dossier) {
     b && { ...b, env: { RHOME: b.env.RHOME, R_LIBS: b.env.R_LIBS } });
 }
 
+// The settings written in one step; a window's moves written once it stops
+async function reglagesEcrits(dossier) {
+  console.log('Les réglages : écrits d’un coup, la fenêtre une fois arrêtée');
+  const profil = path.join(dossier, 'profil');
+  fs.mkdirSync(profil, { recursive: true });
+  const fichier = path.join(profil, 'reglages.json');
+  // (a full disk: half of what is written goes, then the error; the writes of the settings counted)
+  let panne = false;
+  let ecritures = 0;
+  const espion = { ...fs,
+    writeFileSync: (f, d, o) => {
+      if (panne && String(f).startsWith(profil)) {
+        fs.writeFileSync(f, String(d).slice(0, Math.floor(String(d).length / 2)));
+        throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' });
+      }
+      if (path.basename(String(f)) === 'reglages.json') ecritures += 1;
+      return fs.writeFileSync(f, d, o);
+    },
+    renameSync: (a, b) => { if (path.basename(String(b)) === 'reglages.json') ecritures += 1; return fs.renameSync(a, b); },
+  };
+  const m = chargerMain(dossier, { fs: espion });
+  m.evaluer("reglages = { ...reglages, port: 47863, rscript: '/opt/R/4.5.2/bin/Rscript', codeApprouve: ['a'.repeat(64)] }; ecrireReglages()");
+  panne = true;
+  m.evaluer('reglages.port = 50000; ecrireReglages()');
+  panne = false;
+  let relu = null;
+  try { relu = JSON.parse(fs.readFileSync(fichier, 'utf8')); } catch { /* cut */ }
+  verifier(!!relu && relu.port === 47863 && relu.rscript === '/opt/R/4.5.2/bin/Rscript' && egal(fs.readdirSync(profil), ['reglages.json']),
+    'une écriture interrompue (disque plein) laisse les réglages tels qu’ils étaient, et rien à côté', relu || fs.readdirSync(profil));
+
+  ecritures = 0;
+  const fenetre = m.evaluer('fenetrePrincipale()');
+  for (let i = 1; i <= 100; i += 1) { fenetre.bornes.x = 10 + i; fenetre.emit('move'); }
+  const pendant = ecritures;
+  await pause(1500);
+  const garde = JSON.parse(fs.readFileSync(fichier, 'utf8')).fenetre || {};
+  verifier(pendant === 0 && ecritures === 1 && garde.x === 110 && garde.width === 1400, 'cent pas d’un déplacement : les réglages écrits une fois, quand il s’arrête',
+    { pendant, ecritures, garde });
+  fenetre.bornes.width = 1234;
+  fenetre.emit('resize');
+  fenetre.emit('close');
+  const fermee = JSON.parse(fs.readFileSync(fichier, 'utf8')).fenetre || {};
+  verifier(ecritures === 2 && fermee.width === 1234, 'fermée juste après un changement de taille : celle-ci gardée tout de suite', { ecritures, fermee });
+  await pause(1300);
+  verifier(ecritures === 2, 'et rien de plus ensuite', ecritures);
+}
+
 async function principal() {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-principal-'));
   try {
@@ -201,6 +250,7 @@ async function principal() {
     fs.writeFileSync(path.join(dossier, 'moteur', 'serveur.R'), SERVEUR_FACTICE);
     await redemarrageApresUnSignal(dossier);
     await paquetsDUnGreffon(dossier);
+    await reglagesEcrits(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {

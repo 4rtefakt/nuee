@@ -79,8 +79,18 @@ const PORT_HABITUEL = 47863;
 function lireReglages() {
   try { reglages = { ...reglages, ...JSON.parse(fs.readFileSync(fichierReglages(), 'utf8')) }; } catch { /* first start */ }
 }
+// Written beside, then put in its place in one step: a stop meanwhile (a crash, a full disk, the
+// computer switched off) leaves the settings as they were, never a cut file, which would read as a
+// first start (the R chosen, the approvals, the GitLab application IDs, the session, the port lost).
 function ecrireReglages() {
-  try { fs.writeFileSync(fichierReglages(), JSON.stringify(reglages, null, 1)); } catch { /* read-only profile */ }
+  const fichier = fichierReglages();
+  const temporaire = `${fichier}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temporaire, JSON.stringify(reglages, null, 1));
+    fs.renameSync(temporaire, fichier);
+  } catch {
+    try { fs.rmSync(temporaire, { force: true }); } catch { /* read-only profile */ }
+  }
 }
 
 // Windows: bin\x64\Rscript.exe is R itself; bin\Rscript.exe only starts it, and stopping that
@@ -562,13 +572,20 @@ function fenetrePrincipale() {
   const visible = f && screen.getAllDisplays().some((d) => f.x >= d.bounds.x - 50 && f.x < d.bounds.x + d.bounds.width && f.y >= d.bounds.y - 50 && f.y < d.bounds.y + d.bounds.height);
   const fenetre = new BrowserWindow({ ...options(1400, 900), ...(visible ? { x: f.x, y: f.y, width: f.width, height: f.height } : {}) });
   if (visible && f.maximized) fenetre.maximize();
+  // (its size and place kept once it stops moving, and when it closes: not the whole settings file
+  // written again at each step of a move)
+  let attente = null;
   const garder = () => {
+    clearTimeout(attente);
+    attente = null;
     if (fenetre.isDestroyed()) return;
     reglages.fenetre = { ...fenetre.getNormalBounds(), maximized: fenetre.isMaximized() };
     ecrireReglages();
   };
-  fenetre.on('resize', garder);
-  fenetre.on('move', garder);
+  const plusTard = () => { clearTimeout(attente); attente = setTimeout(garder, 1000); };
+  fenetre.on('resize', plusTard);
+  fenetre.on('move', plusTard);
+  fenetre.on('close', () => { if (attente) garder(); });
   const fichier = fichierDonne(process.argv) || fichierMac;
   fichierMac = null;
   fenetre.loadURL(fichier ? `${adresse}?ouvrir=${encodeURIComponent(fichier)}` : adresse);
