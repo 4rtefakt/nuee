@@ -52,14 +52,16 @@
       "description": [
         "A request is POST /api/<name> with a JSON object of its parameters as body, in UTF-8; an empty body is a request without parameters. Neither the method nor the Content-Type is checked.",
         "The engine reads the body with jsonlite::fromJSON(simplifyVector = TRUE): an array of numbers or strings becomes a vector, so a one-element array and its element are the same parameter; an array of objects becomes a table (a data.frame), which the requests that take a list of objects accept; an array of arrays becomes a matrix; an array mixing numbers and strings becomes strings; null is the same as leaving the parameter out.",
-        "Parameters the description doesn't list are ignored, except by moyennes and puissance_tendance, which take every parameter but modele as one of their settings."
+        "Parameters the description doesn't list are ignored, except by moyennes and puissance_tendance, which take every parameter but modele as one of their settings.",
+        "The engine reads a parameter with R's $, which also takes a parameter whose name starts with the one read when that one is left out: without n, classes_valeurs reads nom as n. Send only the parameters a request takes."
       ]
     },
     "reponse": {
       "type": "application/json; charset=utf-8",
       "description": [
         "The answer is written by jsonlite::toJSON(auto_unbox = TRUE, dataframe = \"columns\", na = \"null\", null = \"null\", digits = NA).",
-        "A vector of one element is written as that element: a field described as an array can arrive as a single value when it has one element, unless the engine keeps it an array (I() in its code). A table (data.frame) becomes an object of columns, each always an array; a matrix, an array of its rows; a missing value, NaN or an infinity, null; numbers keep all their digits."
+        "A vector of one element is written as that element: a field described as an array can arrive as a single value when it has one element, unless the engine keeps it an array (I() in its code). A table (data.frame) becomes an object of columns, each always an array; a matrix, an array of its rows; a missing value, NaN or an infinity, null; numbers keep all their digits.",
+        "Errors carry no code, only their message, said for a user in the request's language: a client tells them apart by their status (and conflit for 409), not by their words. A malformed parameter often gets R's own message, untranslated. A few requests answer 200 with an error inside: series' tendances_erreur, raster_infos' erreur for a file it can't read, test_deux_variables' erreur for a pair it can't test."
       ]
     },
     "statuts": { "200": "The request's result, in JSON.", "302": "/api/connexion with the right token: the cookie is set and the browser sent to the interface.", "400": "The request failed: {\"erreur\": message}, the message in the request's language (an R error, often one of the engine's own, said for the user).", "403": "Without the session's token: {\"erreur\": message}. With another host name: the plain text interdit. /api/connexion with a wrong token: the plain text jeton refusé.", "404": "A path outside /api/ that isn't a file of the interface: the plain text introuvable.", "409": "enregistrer only: the file changed elsewhere since it was read or written, {\"erreur\": message, \"conflit\": true, \"date\": its modification time, seconds since 1970}." },
@@ -550,7 +552,7 @@
       "parametres": {},
       "resultat": {
         "type": "object[]",
-        "description": "One object per fitted model, in the order they were fitted (always an array, empty when none is fitted); champs are each object's fields.",
+        "description": "One object per fitted model, in the order they were fitted (always an array, empty when none is fitted).",
         "champs": {
           "id": { "type": "string", "description": "The fitted model's id (M1, M2…)." },
           "projet": { "type": "string", "description": "The id of its project." },
