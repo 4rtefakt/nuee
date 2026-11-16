@@ -1038,7 +1038,7 @@ retirer_etape_demande <- function(q) {
       "Le fichier source a changé depuis qu'il a été lu : retirer l'étape y prendrait aussi ses nouvelles données. Mettez d'abord les données à jour, ou regardez l'aperçu du retrait.",
       "The source file changed since it was read: removing the step would also bring in its new data. Update the data first, or look at the removal's preview."))))
   }
-  r <- mise_a_jour(actuel, etapes = etapes[-n])
+  r <- mise_a_jour(actuel, table = q$table, etapes = etapes[-n])
   if (!is.null(r$choisir)) return(r)
   if (isTRUE(q$apercu)) return(c(r$rapport, list(apercu = TRUE)))
   remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n))
@@ -1623,7 +1623,8 @@ DEMANDES <- list(
   # par mettre_a_jour (le même rapport, et `projet`), un seul Ctrl+Z ; refusé sans le fichier source.
   # Avec q$apercu, le rapport seul, sans rien changer (et `apercu`) ; sans lui, refusé quand le fichier
   # source a changé depuis sa lecture (sa réponse d'erreur porte `source_modifiee`) : mettre d'abord
-  # les données à jour, ou regarder l'aperçu.
+  # les données à jour, ou regarder l'aperçu. q$table, comme pour mettre_a_jour : la feuille ou la
+  # table à lire quand celle de la source n'y est plus (la réponse est alors `choisir`).
   retirer_etape = retirer_etape_demande,
   # Les données mises à jour : le fichier q$chemin (sa source par défaut ; q$table, sa feuille ou sa
   # table) relu comme la source, les étapes rejouées, le résultat rapporté au projet par les noms des

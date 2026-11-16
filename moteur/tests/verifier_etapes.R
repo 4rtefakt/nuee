@@ -382,6 +382,21 @@ verifier("son aperçu : le rapport d'une mise à jour, la ligne nouvelle du fich
 writeLines(utils::head(readLines(source_csv), -1), source_csv)
 verifier("le fichier rendu tel qu'il était (une autre date, le même contenu) : la source n'a pas changé, le retrait se ferait",
          isFALSE(demande("etapes", list(projet = id))$source$modifie) && demande("retirer_etape", list(projet = id, n = k, apercu = TRUE))$observations$ajoutees == 0)
+# (un classeur dont la feuille de la source a changé de nom : retirer_etape demande laquelle lire, et la prend)
+classeur <- fichier("releves.xlsx")
+openxlsx::write.xlsx(list(releves = utils::head(df, 12), notes = data.frame(note = "relevés de printemps")), classeur)
+xl <- demande("ouvrir", list(chemin = classeur, table = "releves"))
+demande("modifier_valeur", list(projet = xl$id, observation = 2, variable = uid_de(projet(xl$id), "x1"), valeur = "50"))
+openxlsx::write.xlsx(list(`releves 2026` = utils::head(df, 15), notes = data.frame(note = "relevés de printemps")), classeur)
+choix <- demande("retirer_etape", list(projet = xl$id, n = 1, apercu = TRUE))
+ax <- demande("retirer_etape", list(projet = xl$id, n = 1, apercu = TRUE, table = "releves 2026"))
+verifier("retirer_etape d'un classeur dont la feuille de la source n'y est plus : choisir, puis la feuille donnée (table)",
+         identical(as.character(choix$choisir), c("releves 2026", "notes")) && ax$observations$ajoutees == 3 && identical(ax$fichier$table, "releves 2026"))
+demande("mettre_a_jour", list(projet = xl$id, table = "releves 2026"))
+rx <- demande("retirer_etape", list(projet = xl$id, n = 1))
+verifier("mis à jour de cette feuille, devenue celle de la source : le retrait s'y fait sans la redemander",
+         identical(projet(xl$id)$source_donnees$table, "releves 2026") && !length(projet(xl$id)$etapes) && length(projet(xl$id)$observations) == 15 &&
+           identical(unname(valeurs(projet(xl$id), "x1")[2]), df$x1[2]))
 
 cat("Des données changées hors des étapes\n")
 etat$projets[[id]]$donnees[1, 1] <- 1234  # (la console R : P1$donnees[1, 1] <- 1234)
