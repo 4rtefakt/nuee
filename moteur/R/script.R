@@ -1264,6 +1264,8 @@ plan_regression <- function(projet, d, m, tab) {
        # (les seuils de chaque courbe, et de chaque catégorie d'une courbe par catégorie ou de termes
        # croisés : regression.R, variantes_seuils et courbes_seuils ; vide pour des courbes seules)
        seuils = plan_seuils(m, termes_r, par),
+       # (les effets de la vue Effets que le script refait : effets_script)
+       effets = effets_script(m, termes_r),
        quantiles = !is.null(m$resultat$residus_quantiles),  # (les résidus quantiles d'un modèle de comptages... : regression_diagnostics.R)
        groupes_vc = groupes, en_tour = identical(groupes, as.integer((seq_along(groupes) - 1) %% G + 1)), G_tour = G,
        # (les groupes de la validation croisée sont-ils les niveaux du premier effet aléatoire, comme par défaut ?)
@@ -1280,6 +1282,20 @@ plan_regression <- function(projet, d, m, tab) {
        choisi = if (!is.null(d$selection_origine) && length(d$termes_complets))
          list(modele = as.character(d$selection_origine$modele)[1],
               hors = match(setdiff(as.numeric(d$observations), m$observations), as.numeric(d$observations))))
+}
+
+# Les effets de la vue Effets d'une régression que son script refait (regression.R :
+# effets_regression) : ceux d'un terme quantitatif seul, une courbe ou une droite, dans leur ordre ;
+# leur nom R et leur nom dans Nuée, courbe ou non, et leurs valeurs dans Nuée (abscisses, effet,
+# bas, haut), que le script doit redonner (ecart_regression). Un terme croisé avec des catégories
+# (une droite par catégorie) ou une courbe par catégorie n'en a pas dans le script : son graphique
+# reste celui de Nuée. NULL sans effet (ou si la vue n'en a pas pour ce modèle).
+effets_script <- function(m, termes_r) {
+  ve <- Filter(function(e) is.null(e$niveaux), tryCatch(effets_regression(m), error = function(e) NULL))
+  if (!length(ve)) return(NULL)
+  noms <- vapply(ve, function(e) as.character(e$terme), "")
+  list(terme = termes_r[match(m$termes[match(noms, m$noms_termes)], m$termes)], nom = noms, courbe = vapply(ve, function(e) isTRUE(e$courbe), TRUE),
+       valeurs = lapply(ve, function(e) c(e$x, e$effet, e$bas, e$haut)))
 }
 
 # Les seuils d'une régression que son script calcule un par un (regression.R : variantes_seuils et
@@ -1916,6 +1932,33 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      "And the value of the spatial smooth at each observation, on the link scale (the one Nuée's map shows).")),
       sprintf("observations$lissage_spatial <- as.vector(predict(%s, type = \"terms\")[, %s])", if (gamm) "m$gam" else "m", code_texte(sp$etiquette)))
   }
+  # (les effets de la vue Effets : plan_regression, effets_script)
+  ef <- pl$effets
+  if (length(ef$terme)) {
+    ind <- if (any(ef$courbe)) "    " else "  "  # (une droite : dans le else des courbes, s'il y en a)
+    statistiques <- c(statistiques, "",
+      commentaire(tx("Les effets (la vue Effets de Nuée) : pour chaque terme quantitatif, son effet sur l'échelle du lien quand sa variable parcourt ses valeurs, les autres termes fixés, avec son intervalle à 95 % ; une courbe telle que mgcv l'a ajustée, une droite par son coefficient, centrée sur la moyenne de la variable ; les abscisses dans les unités de la variable.",
+                     "The effects (Nuée's Effects view): for each quantitative term, its effect on the link scale as its variable runs over its values, the other terms held, with its 95% interval; a curve as mgcv fitted it, a line by its coefficient, centred on the variable's mean; the abscissas in the variable's units.")),
+      sprintf("effets <- lapply(%s, function(t) {", code_textes(ef$terme)),
+      "  j <- match(t, termes)",
+      "  x <- seq(min(cadre[[t]]), max(cadre[[t]]), length.out = 80)",
+      if (any(ef$courbe)) c(
+        sprintf("  if (t %%in%% %s) {", code_textes(ef$terme[ef$courbe])),
+        "    nd <- cadre[rep(1, length(x)), , drop = FALSE]",
+        "    nd[[t]] <- x",
+        sprintf("    p <- predict(%s, nd, type = \"terms\", terms = sprintf(\"s(%%s)\", t), se.fit = TRUE)", if (gamm) "m$gam" else "m"),
+        "    effet <- as.vector(p$fit[, 1])",
+        "    se <- as.vector(p$se.fit[, 1])",
+        "  } else {"),
+      paste0(ind, c(sprintf("k <- match(%s, coefficients[[1]])", if (meme_noms) "t" else "noms_termes[j]"),
+                    "dx <- x - mean(cadre[[t]])",
+                    "effet <- coefficients[[2]][k] * dx",
+                    "se <- abs(dx) * coefficients[[3]][k]")),
+      if (any(ef$courbe)) "  }",
+      "  data.frame(x = x / poids_x[j] + centre_x[j], effet = effet, bas = effet - 1.96 * se, haut = effet + 1.96 * se)",
+      "})",
+      sprintf("names(effets) <- %s", code_textes(ef$nom)))
+  }
 
   # --- la sélection par l'AIC (regression.R : selection_aic), quand elle a été faite dans Nuée
   sel <- pl$selection
@@ -2146,7 +2189,20 @@ code_regression <- function(pl, b, langue, seance = NULL) {
               code_texte(if (identical(mo$mode, "pentes")) tx("Pentes par catégorie", "Slopes by category") else tx("Moyennes ajustées", "Adjusted means"))),
       "arrows(x, mo$bas, x, mo$haut, angle = 90, code = 3, length = 0.04)",
       "axis(1, at = x, labels = if (all(is.na(mo$groupe))) mo$niveau else paste(mo$niveau, mo$groupe, sep = \" · \"))")))
-  objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations",
+  # (les effets : un graphique par terme, comme la vue Effets en montre un ; `terme`, son nom dans
+  # Nuée, le désigne au document reproductible : document_reproductible.R, graphique_reproductible)
+  if (length(ef$terme)) graphiques <- c(graphiques, lapply(seq_along(ef$terme), function(k) {
+    j <- match(ef$terme[k], pl$termes)
+    list(nom = sprintf("effet-%d", k), terme = ef$nom[k], largeur = 6, hauteur = 4.5, code = c(
+      sprintf("e <- effets[[%d]]", k),
+      sprintf("plot(e$x, e$effet, type = \"n\", ylim = range(e$bas, e$haut), xlab = %s, ylab = %s, main = %s)", code_texte(ef$nom[k]), code_texte(ylab),
+              code_texte(sprintf(tx("Effet : %s", "Effect: %s"), ef$nom[k]))),
+      "polygon(c(e$x, rev(e$x)), c(e$bas, rev(e$haut)), col = \"#2f6fb52e\", border = NA)",
+      "lines(e$x, e$effet, lwd = 2, col = \"#2f6fb5\")",
+      sprintf("rug(cadre[[%s]] / poids_x[%d] + centre_x[%d])", code_texte(ef$terme[k]), j, j),
+      "abline(h = 0, lty = 3, col = \"grey\")"))
+  }))
+  objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations", if (length(ef$terme)) "effets",
               if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes || spatial) "courbes", if (courbes) c("seuils", "plages_seuils"),
               if (!is.null(sel)) "selection", if (!is.null(pu)) c("puissance", "annees_80"), if (!is.null(pu$resultat$simulation)) "simulation_puissance",
               if (!is.null(mo)) "moyennes_ajustees", if (test) c("test", "predictions_test"))
@@ -2295,6 +2351,8 @@ ecart_regression <- function(pl, m, e, langue) {
       list(unlist(lapply(seq_len(nrow(v)), function(i) { s <- seuils_courbe(m, v$terme[i], v$categorie[i]); c(s$x, s$effet, s$pente) })),
            unlist(lapply(unname(r("seuils")), function(s) s[nom_script(c("x", "effet", "pente"), langue)])))
     },
+    # (les effets de la vue Effets que le script refait : abscisses, effet et intervalle de chaque terme)
+    effets = if (length(pl$effets$terme)) list(unlist(pl$effets$valeurs), if (is.list(r("effets"))) unlist(lapply(unname(r("effets")), unlist, use.names = FALSE))),
     "validation croisée" = list(c(m$vc$Q2, m$vc$RMSEcv, m$vc$echecs), if (!is.null(vc)) c(vc$Q2, vc$RMSEcv, vc[[nom_script("echecs", langue)]])),
     "prédictions de la validation croisée" = list(m$vc$prediction, vc$prediction),
     "valeurs ajustées et résidus" = list(cbind(res$ajuste, res$residus), colonnes(r("observations"), 3:4)),
@@ -3575,7 +3633,7 @@ modele_ligne_base <- function(tx) c(
 # en anglais, ses noms (pas ses textes ni ses commentaires, écrits dans les deux langues) sont
 # remplacés d'après cette table. Les noms venus des données sont toujours dans des chaînes.
 NOMS_SCRIPT_EN <- c(
-  residus_normalises_car1 = "car1_normalized_residuals",
+  residus_normalises_car1 = "car1_normalized_residuals", effets = "effects",
   temps_en_nombres = "times_as_numbers", morceaux = "parts", motif = "pattern", numeros = "group_numbers", debut = "first", fin = "last",
   heure = "time_of_day", jma = "day_first", bissextile = "leap", jour_annee = "day_of_year",
   donnees = "data", lignes = "rows", lignes_test = "test_rows", modele = "in_model", y_observe = "y_observed",
