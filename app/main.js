@@ -312,10 +312,11 @@ function envoyerApprobations() {
     req.end(JSON.stringify({ empreintes: [].concat(reglages.codeApprouve || []) }));
   });
 }
-// Fingerprints the engine computed (hexadecimal SHA-256, or "md5:" on an R older than 4.5), approved
-// by this user: added to the settings, the most recent last, then told to R.
+// Fingerprints the engine computed (hexadecimal SHA-256, whatever the R: an approval holds when
+// File › Settings… changes the R), approved by this user: added to the settings, the most recent
+// last, then told to R.
 function approuverCode(empreintes) {
-  const valides = [].concat(empreintes || []).filter((e) => typeof e === 'string' && /^(md5:)?[0-9a-f]{32,64}$/.test(e));
+  const valides = [].concat(empreintes || []).filter((e) => typeof e === 'string' && /^[0-9a-f]{64}$/.test(e));
   const deja = [].concat(reglages.codeApprouve || []).filter((e) => !valides.includes(e));
   reglages.codeApprouve = [...deja, ...new Set(valides)].slice(-APPROUVES_MAX);
   ecrireReglages();

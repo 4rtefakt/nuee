@@ -129,9 +129,17 @@ verifier("une fenêtre ne l'approuve pas elle-même : sans le secret de l'applic
 r_appli <- requete("code_approuve", charToRaw(sprintf('{"empreintes":["%s"]}', empreinte_code(code_lm))), list(HTTP_X_NUEE_CODE = "secret-de-l-essai"))
 verifier("l'application, avec son secret, le donne : approuvé (toute la liste remplacée)",
          r_appli$statut == 200 && code_approuve(code_lm) && identical(APPROBATIONS_CODE$empreintes, empreinte_code(code_lm)))
+sha_de_r <- tryCatch(getExportedValue("tools", "sha256sum"), error = function(e) NULL)  # (R 4.5 ou plus récent)
+octets_lm <- charToRaw(enc2utf8(code_lm))
 verifier("l'empreinte : le SHA-256 du code en UTF-8, les fins de ligne de Windows comptant comme \\n",
-         identical(empreinte_code(code_lm), as.character(tools::sha256sum(bytes = charToRaw(enc2utf8(code_lm))))) &&
+         identical(empreinte_code(code_lm), if (is.null(sha_de_r)) sha256_r(octets_lm) else unname(as.character(sha_de_r(bytes = octets_lm)))) &&
            identical(empreinte_code(gsub("\n", "\r\n", code_lm)), empreinte_code(code_lm)))
+verifier("… la même avec un R d'avant 4.5 (sans tools::sha256sum) : sha256_r, en R seul (les vecteurs de la FIPS 180-2)",
+         identical(sha256_r(charToRaw("abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") &&
+           identical(sha256_r(raw(0)), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") &&
+           identical(sha256_r(charToRaw("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")),
+                     "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1") &&
+           identical(sha256_r(octets_lm), empreinte_code(code_lm)))
 
 # ---------------------------------------------------------------- lm, glm, nls, nlme
 

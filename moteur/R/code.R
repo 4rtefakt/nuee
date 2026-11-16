@@ -43,16 +43,68 @@ if (!exists("APPROBATIONS_CODE", envir = globalenv(), inherits = FALSE)) {
 # depuis Windows a la même empreinte que le même code tapé).
 texte_code <- function(code) gsub("\r\n?", "\n", enc2utf8(paste(as.character(unlist(code)), collapse = "\n")))
 
-# Son empreinte : SHA-256 (etapes.R : empreinte_sha ; « md5: » sur un R d'avant 4.5). Celle que
-# l'application garde est celle que le moteur calcule (demande empreinte_code) : les deux ne diffèrent
-# jamais d'algorithme.
-empreinte_code <- function(code) empreinte_sha(octets = charToRaw(texte_code(code)))
+# Son empreinte : son SHA-256, quel que soit le R. Celle que l'application garde est celle que le moteur
+# calcule (demande empreinte_code). Un R d'avant 4.5 n'a pas tools::sha256sum (etapes.R : empreinte_sha
+# y prend un MD5, bon pour les fichiers de données) : sha256_r le calcule alors, pour que l'approbation
+# d'un code tienne quand on change de R (Fichier › Réglages…, le R qu'utilise Nuée).
+empreinte_code <- function(code) {
+  octets <- charToRaw(texte_code(code))
+  if (is.null(tryCatch(getExportedValue("tools", "sha256sum"), error = function(e) NULL))) return(sha256_r(octets))
+  empreinte_sha(octets = octets)
+}
+
+# Le SHA-256 d'octets (FIPS 180-4) en R seul, pour quelques kilo-octets (un code : 4 Ko en 0,1 s). Les
+# mots de 32 bits sont des doubles entiers dans [0, 2^32) : leurs opérations bit à bit se font sur
+# leurs deux moitiés de 16 bits (les entiers de R n'ont pas 2^31, leur NA).
+sha256_r <- function(octets) {
+  M <- 4294967296
+  ou_x <- function(a, b) bitwXor(a %/% 65536, b %/% 65536) * 65536 + bitwXor(a %% 65536, b %% 65536)
+  et <- function(a, b) bitwAnd(a %/% 65536, b %/% 65536) * 65536 + bitwAnd(a %% 65536, b %% 65536)
+  rotd <- function(x, n) x %/% 2^n + (x %% 2^n) * 2^(32 - n)
+  K <- c(0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+         0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+         0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+         0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+         0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+         0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+         0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+         0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2)
+  H <- c(0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19)
+  n <- length(octets)
+  # (complété : 0x80, des zéros, la longueur en bits sur 8 octets, gros-boutiste)
+  longueur <- numeric(8)
+  b <- n * 8
+  for (i in 8:1) { longueur[i] <- b %% 256; b <- b %/% 256 }
+  m <- c(as.numeric(as.integer(octets)), 128, numeric((55 - n) %% 64), longueur)
+  W <- numeric(64)
+  for (debut in seq(0, length(m) - 1, by = 64)) {
+    bloc <- m[debut + 1:64]
+    for (t in 1:16) W[t] <- sum(bloc[(t - 1) * 4 + 1:4] * c(16777216, 65536, 256, 1))
+    for (t in 17:64) {
+      s0 <- ou_x(ou_x(rotd(W[t - 15], 7), rotd(W[t - 15], 18)), W[t - 15] %/% 8)
+      s1 <- ou_x(ou_x(rotd(W[t - 2], 17), rotd(W[t - 2], 19)), W[t - 2] %/% 1024)
+      W[t] <- (W[t - 16] + s0 + W[t - 7] + s1) %% M
+    }
+    v <- H
+    for (t in 1:64) {
+      e <- v[5]; a <- v[1]
+      S1 <- ou_x(ou_x(rotd(e, 6), rotd(e, 11)), rotd(e, 25))
+      ch <- ou_x(et(e, v[6]), et(M - 1 - e, v[7]))
+      T1 <- (v[8] + S1 + ch + K[t] + W[t]) %% M
+      S0 <- ou_x(ou_x(rotd(a, 2), rotd(a, 13)), rotd(a, 22))
+      maj <- ou_x(ou_x(et(a, v[2]), et(a, v[3])), et(v[2], v[3]))
+      v <- c((T1 + S0 + maj) %% M, v[1:3], (v[4] + T1) %% M, v[5:7])
+    }
+    H <- (H + v) %% M
+  }
+  paste(sprintf("%04x%04x", H %/% 65536, H %% 65536), collapse = "")
+}
 
 # Les empreintes approuvées ajoutées (ou, `remplacer`, la liste entière : celle de l'application) ;
 # une empreinte qui n'en est pas une est laissée de côté. Rend leur nombre.
 approuver_codes <- function(empreintes, remplacer = FALSE) {
   e <- as.character(unlist(empreintes))
-  e <- e[!is.na(e) & grepl("^(md5:)?[0-9a-f]{32,64}$", e)]
+  e <- e[!is.na(e) & grepl("^[0-9a-f]{64}$", e)]
   APPROBATIONS_CODE$empreintes <- unique(c(if (!remplacer) APPROBATIONS_CODE$empreintes, e))
   length(APPROBATIONS_CODE$empreintes)
 }
