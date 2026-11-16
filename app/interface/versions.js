@@ -1240,7 +1240,7 @@ const proposes = new Map();
 // (the versions written to a project's file by this window, until the project is read again: not someone else's)
 let ecritures = 0;
 async function surveillerDossiers(app) {
-  if (!surveillance || ecritures || document.querySelector('.fond-dialogue')) return;
+  if (!surveillance || ecritures || document.querySelector('.fond-dialogue') || !(await fenetreQuiAgit())) return;
   for (const p of app.projets()) {
     const chemin = fichierProjet(p);
     if (!chemin) continue;
@@ -1251,7 +1251,7 @@ async function surveillerDossiers(app) {
     }
     if (!r || !r.change) { proposes.delete(p.id); continue; }
     const cle = JSON.stringify([r.date || null, r.taille || null]);
-    if (proposes.get(p.id) === cle || !(await fenetreQuiAgit())) continue;
+    if (proposes.get(p.id) === cle) continue;
     // (shared with GitHub or GitLab: what the background received, which reloads the project itself)
     const e = await lireEtat(chemin).catch(() => null);
     if (!e || e.partage || ecritures) continue;
