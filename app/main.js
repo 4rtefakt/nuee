@@ -316,16 +316,21 @@ function etatR() {
   };
 }
 
+// R still running. (R that ended from a signal has no exit code, only its signalCode: R raises its
+// SIGSEGV again once it has said so, the system's OOM killer sends SIGKILL; on Windows, a process
+// Node stopped with kill() ends the same way)
+const rEnMarche = () => !!serveur && serveur.exitCode === null && serveur.signalCode === null;
+
 // R and anything it started (on Linux and macOS, Rscript becomes R itself: stopping it is enough)
 function arreterR() {
-  if (!serveur || serveur.exitCode !== null) return;
+  if (!rEnMarche()) return;
   if (process.platform !== 'win32') { serveur.kill(); return; }
   try { execFileSync('taskkill', ['/pid', String(serveur.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { serveur.kill(); }
 }
 
 async function redemarrerR() {
   arretVoulu = true;
-  if (serveur && serveur.exitCode === null) {
+  if (rEnMarche()) {
     await new Promise((resolve) => { serveur.once('exit', resolve); arreterR(); });
   }
   arretVoulu = false;

@@ -215,8 +215,9 @@ function lancer(programme, args, { env = process.env, delai = 0, surTexte = null
     p.on('close', (code) => finir({ code }));
   });
 }
+// (ended from a signal, a process has no exit code, only its signalCode: main.js, rEnMarche)
 function arreter(p) {
-  if (!p || p.exitCode !== null) return;
+  if (!p || p.exitCode !== null || p.signalCode !== null) return;
   if (process.platform === 'win32') {
     try { execFileSync('taskkill', ['/pid', String(p.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); return; } catch { /* then kill */ }
   }

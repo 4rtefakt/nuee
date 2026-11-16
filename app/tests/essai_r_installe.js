@@ -236,6 +236,11 @@ function sansProgramme() {
   verifier(R.ligneInstallation(['ranger']) === 'install.packages("ranger", repos = "https://cloud.r-project.org")'
     && R.ligneInstallation(['httpuv', 'RSQLite']) === 'install.packages(c("httpuv", "RSQLite"), repos = "https://cloud.r-project.org")',
   'la ligne à lancer dans ce R');
+  // an R that ended from a signal has no exit code, only its signal: not stopped again (its number,
+  // 999999, is never a process's on Windows, whose numbers are multiples of 4)
+  let arrets = 0;
+  R.arreter({ pid: 999999, exitCode: null, signalCode: 'SIGKILL', kill: () => { arrets += 1; } });
+  verifier(arrets === 0, 'un R arrêté par un signal n’est pas arrêté de nouveau', arrets);
 }
 
 async function avecFauxR(racine) {
