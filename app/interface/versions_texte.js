@@ -150,6 +150,9 @@ function chiffres(v, k) {
   return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
 }
 
+// A p-value beside a value: "p < 0.001", "p = 0.034".
+export const texteP = (p) => (p === null || p === undefined || Number.isNaN(Number(p)) ? '' : Number(p) < 0.001 ? `p < ${decimal('0.001')}` : `p = ${decimal(Number(p).toFixed(3))}`);
+
 // A compared entry's change: "+0.012 (+15%)"; the relative change only when it means something
 // (not for a percentage, nor from 0).
 export function ecartResultat(e) {

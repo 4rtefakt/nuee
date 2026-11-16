@@ -6,7 +6,7 @@
 //   node tests/essai_versions_texte.mjs
 import {
   dateLongue, dateVersion, sansExtension, titreVersion, nomFichier, nomDeChemin, dossierDe, memeFichier, nomHote, hoteAdresse, liensConnexion,
-  indicateurVersions, resumeDivergence, phraseDivergence, descriptionVersion, nombreVersions, valeurResultat, ecartResultat, drapeauxEntree,
+  indicateurVersions, resumeDivergence, phraseDivergence, descriptionVersion, nombreVersions, valeurResultat, texteP, ecartResultat, drapeauxEntree,
   apparierModeles, ordonnerComparaisons, entreesChangees, TEXTES_VERSIONS,
 } from '../interface/versions_texte.js';
 import { changerLangue } from '../interface/i18n.js';
@@ -108,6 +108,7 @@ egal('négatif ; d’un entier ; sans part', [ecartResultat({ ecart: -5, ecart_r
   ecartResultat({ ecart: 0.031, ecart_relatif: 0.2, forme: 'pourcentage' }), ecartResultat({ ecart: null })], ['−5 (−8.3%)', '+0.02', '+3.1%', '']);
 changerLangue('fr');
 egal('la virgule en français', [valeurResultat(0.80812), valeurResultat(0.4567, 'pourcentage'), ecartResultat({ ecart: -0.25, ecart_relatif: -0.5 })], ['0,8081', '45,7 %', '−0,25 (−50 %)']);
+egal('une valeur p', [texteP(2.9e-14), texteP(0.0342), texteP(0.5), texteP(null)], ['p < 0,001', 'p = 0,034', 'p = 0,500', '']);
 egal('les drapeaux, les plus parlants d’abord', drapeauxEntree({ ic: true, signe: true, nouveau: false, seuil: true, change: true }), ['signe', 'seuil', 'ic']);
 
 console.log('Les modèles des deux côtés');
