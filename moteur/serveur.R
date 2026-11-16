@@ -1546,11 +1546,13 @@ DEMANDES <- list(
       stop(conflit_fichier(chemin))
     }
     enregistrer_projet(p, chemin, as.character(q$version %||% ""))
+    # (sans chemin, une copie dans le dossier temporaire, que le navigateur télécharge : le projet
+    # reste à enregistrer)
     if (!is.null(q$chemin)) {
       p$chemin_enregistrement <- chemin
       p$fichier_lu <- etat_fichier(chemin)
+      p$modifie <- FALSE
     }
-    p$modifie <- FALSE
     etat$projets[[p$id]] <- p
     list(chemin = chemin)
   },
