@@ -530,7 +530,9 @@ the system's file dialogs get the answers a scenario queued (`n.fichierAOuvrir`,
 `n.fichierAEnregistrer`; one asked for without an answer is cancelled, and fails the scenario), a
 question (unsaved projects) the answer queued, and opening a file (`shell.openPath`), following a
 link or adding a recent document is only recorded: a run never opens Word or a browser, nor
-touches the system's list of recent files. The check for a newer version asks a closed local port
+touches the system's list of recent files. With `NUEE_HORS_ECRAN=1` (a run on a computer someone is using) the
+windows stay off the screen and out of the taskbar, never take the focus, and are still drawn
+(Chromium's occlusion tracking and background throttling off). The check for a newer version asks a closed local port
 instead of GitHub (`NUEE_SOURCE_MAJ`). Each scenario also fails on an error in the page, a request
 the engine refused, a security policy violation or an unexpected `confirm()` (answered Cancel at
 once). A program that stops or stops answering is started again for the next scenario.

@@ -116,6 +116,20 @@ const SUBSTITUTS = `(() => {
   return true;
 })()`;
 
+// NUEE_HORS_ECRAN=1, a run on a computer someone is using: the program's windows kept off the screen
+// and out of the taskbar, shown without ever taking the focus, and still drawn (Chromium's occlusion
+// tracking off, demarrer; their pages never throttled as hidden ones).
+const HORS_ECRAN = process.env.NUEE_HORS_ECRAN === '1';
+const SANS_ECRAN = `(() => {
+  const { app, BrowserWindow } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  const cacher = (w) => { w.setPosition(-32000, -32000); w.setSkipTaskbar(true); w.webContents.setBackgroundThrottling(false); };
+  BrowserWindow.prototype.show = function show() { cacher(this); this.showInactive(); };
+  BrowserWindow.prototype.focus = function focus() {};
+  for (const w of BrowserWindow.getAllWindows()) cacher(w);
+  if (!globalThis.__horsEcran) { globalThis.__horsEcran = true; app.on('browser-window-created', (_, w) => cacher(w)); }
+  return true;
+})()`;
+
 // What each page of the window gets before its own scripts: the requests to the engine counted
 // (those under way, those refused), and the security policy's violations.
 const ESPION = `(() => {
@@ -171,7 +185,7 @@ const OUTILS = `(async () => {
   return true;
 })()`;
 
-const TOUCHES = { Enter: 13, Escape: 27 };
+const TOUCHES = { Enter: 13, Escape: 27, F1: 112 };
 
 // A zip archive's files (an .xlsx, a .docx), read without anything else: name -> Buffer.
 function lireZip(octets) {
@@ -267,7 +281,8 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
   const portPage = await portLibre();
   const portNode = await portLibre();
   const debut = Date.now();
-  const proc = spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${portPage}`, `--inspect=${portNode}`, ...options],
+  const horsEcran = HORS_ECRAN ? ['--disable-features=CalculateNativeWinOcclusion'] : [];
+  const proc = spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${portPage}`, `--inspect=${portNode}`, ...horsEcran, ...options],
     { env, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
   let sortie = '';
   proc.stdout.on('data', (d) => { sortie += d; });
@@ -302,6 +317,7 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
       return r.result.value;
     };
     await jusqua(() => evaluerPrincipal(SUBSTITUTS).catch(() => false), 30000, 'the main process’s modules');
+    if (HORS_ECRAN) await evaluerPrincipal(SANS_ECRAN);
 
     // then the window (R starts first: up to two minutes)
     const cible = await jusqua(async () => ((await lister(portPage)) || []).find((c) => c.type === 'page' && /^http:\/\/127\.0\.0\.1:\d+\/(\?.*)?$/.test(c.url)),
