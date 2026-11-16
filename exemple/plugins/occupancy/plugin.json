@@ -1,0 +1,88 @@
+{
+  "id": "occupancy",
+  "version": "1.0.0",
+  "nuee": "1.1.0",
+  "name": {
+    "en": "Site occupancy (single season)",
+    "fr": "Occupation des sites (une saison)"
+  },
+  "description": {
+    "en": "The proportion of sites a species occupies, allowing for detections missed at the visits (MacKenzie et al. 2002): psi, the probability that a site is occupied, and p, the probability of detecting the species at a visit of an occupied site, each with a constant or site covariates, fitted by maximum likelihood.",
+    "fr": "La part des sites qu’une espèce occupe, en tenant compte des détections manquées lors des visites (MacKenzie et al. 2002) : psi, la probabilité qu’un site soit occupé, et p, celle de détecter l’espèce lors d’une visite d’un site occupé, chacune constante ou fonction de covariables des sites, ajustées par maximum de vraisemblance."
+  },
+  "authors": [
+    { "name": "Clément Boutin" }
+  ],
+  "license": "GPL-3.0-or-later",
+  "citation": {
+    "text": "MacKenzie, D. I., Nichols, J. D., Lachman, G. B., Droege, S., Royle, J. A., & Langtimm, C. A. (2002). Estimating site occupancy rates when detection probabilities are less than one. Ecology, 83(8), 2248–2255. https://doi.org/10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2",
+    "bibtex": "@article{mackenzie2002,\n  author = {MacKenzie, Darryl I. and Nichols, James D. and Lachman, Gideon B. and Droege, Sam and Royle, J. Andrew and Langtimm, Catherine A.},\n  title = {Estimating site occupancy rates when detection probabilities are less than one},\n  journal = {Ecology},\n  year = {2002},\n  volume = {83},\n  number = {8},\n  pages = {2248--2255},\n  doi = {10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2}\n}"
+  },
+  "packages": [],
+  "files": ["occupancy.R"],
+  "function": "occupancy_fit",
+  "inputs": [
+    {
+      "id": "detections",
+      "type": "variables",
+      "accepts": "quantitative",
+      "min": 2,
+      "label": { "en": "Detection histories (one column per visit)", "fr": "Historiques de détection (une colonne par visite)" },
+      "help": {
+        "en": "1 when the species was detected at that visit, 0 when it was looked for and not detected, empty when the site wasn’t visited.",
+        "fr": "1 quand l’espèce a été détectée à cette visite, 0 quand elle a été cherchée sans être détectée, rien quand le site n’a pas été visité."
+      }
+    },
+    {
+      "id": "occupancy",
+      "type": "variables",
+      "accepts": "any",
+      "min": 0,
+      "label": { "en": "Site covariates for occupancy (psi)", "fr": "Covariables des sites pour l’occupation (psi)" },
+      "help": { "en": "None: psi is the same at every site.", "fr": "Aucune : psi est le même pour tous les sites." }
+    },
+    {
+      "id": "detection",
+      "type": "variables",
+      "accepts": "any",
+      "min": 0,
+      "label": { "en": "Site covariates for detection (p)", "fr": "Covariables des sites pour la détection (p)" },
+      "help": { "en": "None: p is the same at every site.", "fr": "Aucune : p est le même pour tous les sites." }
+    }
+  ],
+  "options": [
+    {
+      "id": "method",
+      "type": "choice",
+      "values": [
+        { "value": "BFGS", "label": { "en": "BFGS, with the exact gradient", "fr": "BFGS, avec le gradient exact" } },
+        { "value": "Nelder-Mead", "label": { "en": "Nelder–Mead, without derivatives", "fr": "Nelder–Mead, sans dérivées" } }
+      ],
+      "default": "BFGS",
+      "label": { "en": "Optimizer (optim)", "fr": "Optimiseur (optim)" }
+    },
+    {
+      "id": "maxit",
+      "type": "number",
+      "integer": true,
+      "min": 10,
+      "max": 100000,
+      "default": 1000,
+      "label": { "en": "Maximum iterations", "fr": "Itérations au plus" }
+    },
+    {
+      "id": "level",
+      "type": "number",
+      "min": 0.5,
+      "max": 0.999,
+      "default": 0.95,
+      "label": { "en": "Confidence level of the intervals", "fr": "Niveau de confiance des intervalles" }
+    },
+    {
+      "id": "sites",
+      "type": "checkbox",
+      "default": true,
+      "label": { "en": "Table of the sites (psi, p, occupancy given the detections)", "fr": "Tableau des sites (psi, p, occupation d’après les détections)" }
+    }
+  ]
+}

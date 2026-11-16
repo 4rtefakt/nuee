@@ -233,16 +233,29 @@ ligne_lecture <- function(message) {
   if (length(x) == 2) as.integer(x[2]) else NA_integer_
 }
 
+# D'où viennent les appels en cours (sys.calls()) : le fichier et la ligne de chacun qui a les siens
+# (lu avec keep.source), du plus extérieur au plus intérieur.
+pile_appels <- function(appels) {
+  Filter(Negate(is.null), lapply(appels, function(cl) {
+    sr <- attr(cl, "srcref")
+    f <- if (!is.null(sr)) attr(sr, "srcfile")
+    if (!is.null(sr)) list(fichier = as.character(if (is.environment(f)) f$filename else "") %||% "", ligne = as.integer(sr[1]))
+  }))
+}
+
 # Le code évalué comme la console le fait (console.R : evaluer_console), sur `donnees` : dans un
 # environnement neuf dont le parent est l'environnement global (library() et paquet:: prennent les
 # paquets du R utilisé) ; chaque expression à son tour, celle dont la valeur est visible affichée comme
 # dans la console (un graphique lattice ou ggplot y est dessiné), sauf la dernière, dont la valeur est
 # le modèle. Sa sortie, ses messages, ses avertissements et les graphiques qu'il dessine (des PNG, comme
 # la console) sont gardés ; une erreur arrête l'évaluation (`erreur`, le message de R, `ligne` celle de
-# l'expression, `paquet` celui qui manque). `paquets` : ceux qu'il nomme (paquets_nommes), sans ceux de R.
-evaluer_code <- function(code, donnees) {
+# l'expression, `paquet` celui qui manque, `pile` les fichiers et les lignes des appels en cours quand
+# elle est survenue, du plus extérieur au plus intérieur). `paquets` : ceux qu'il nomme (paquets_nommes),
+# sans ceux de R. `objets` : d'autres objets que le code voit à côté de `donnees` ; `parent` :
+# l'environnement parent du sien (un greffon : celui où ses fichiers ont été lus, greffons.R).
+evaluer_code <- function(code, donnees, objets = list(), parent = globalenv()) {
   r <- list(valeur = NULL, sortie = character(0), messages = character(0), avertissements = character(0), images = character(0),
-            erreur = NULL, ligne = NA_integer_, paquet = NULL, paquets = character(0))
+            erreur = NULL, ligne = NA_integer_, paquet = NULL, paquets = character(0), pile = list())
   exprs <- tryCatch(parse(text = texte_code(code), keep.source = TRUE), error = function(e) e)
   if (inherits(exprs, "error")) {
     r$erreur <- conditionMessage(exprs)
@@ -254,8 +267,9 @@ evaluer_code <- function(code, donnees) {
     return(r)
   }
   r$paquets <- setdiff(paquets_nommes(exprs), PAQUETS_DE_R)
-  env <- new.env(parent = globalenv())
+  env <- new.env(parent = parent)
   assign("donnees", donnees, envir = env)
+  for (k in names(objets)) assign(k, objets[[k]], envir = env)
   dossier <- tempfile("code-")
   dir.create(dossier)
   on.exit(unlink(dossier, recursive = TRUE), add = TRUE)
@@ -278,15 +292,16 @@ evaluer_code <- function(code, donnees) {
   avertissements <- character(0)
   refs <- attr(exprs, "srcref")
   n <- length(exprs)
+  pile <- list()
   for (k in seq_len(n)) {
     res <- withCallingHandlers(
-      tryCatch({
+      tryCatch(withCallingHandlers({
         s <- utils::capture.output(v <- withVisible(eval(exprs[[k]], env)))
         if (k < n && v$visible) s <- c(s, utils::capture.output(print(v$value)))
         sortie <- c(sortie, s)
         if (k == n) r$valeur <- v$value
         NULL
-      }, error = function(e) e),
+      }, error = function(e) pile <<- pile_appels(sys.calls())), error = function(e) e),
       warning = function(w) { avertissements <<- c(avertissements, conditionMessage(w)); invokeRestart("muffleWarning") },
       message = function(m) { messages <<- c(messages, sub("\n$", "", conditionMessage(m))); invokeRestart("muffleMessage") })
     if (inherits(res, "error")) {
@@ -294,6 +309,7 @@ evaluer_code <- function(code, donnees) {
       r$erreur <- if (!is.null(appel)) sprintf("%s (%s)", conditionMessage(res), paste(deparse(appel, nlines = 1L, width.cutoff = 80L), collapse = ""))
                   else conditionMessage(res)
       r$ligne <- if (length(refs) >= k) as.integer(refs[[k]][1]) else NA_integer_
+      r$pile <- pile
       if (inherits(res, "packageNotFoundError")) r$paquet <- as.character(res$package %||% "")
       break
     }
@@ -512,6 +528,15 @@ ajuster_code <- function(projet, d) {
   donnees <- donnees_code(projet, d)
   ev <- evaluer_code(code, donnees)
   if (!is.null(ev$erreur)) stop(erreur_code(ev))
+  m <- modele_valeur_code(projet, d, ev, donnees)
+  m[c("code", "empreinte")] <- list(code, empreinte_code(code))
+  m
+}
+
+# Le modèle que Nuée tire de la dernière valeur d'un code évalué (evaluer_code : `ev`, sur les
+# `donnees` du modèle de définition `d`) : celui d'un modèle de code R, ou d'un greffon (greffons.R :
+# `type` PLUGIN, la valeur rendue par sa fonction).
+modele_valeur_code <- function(projet, d, ev, donnees, type = "CODE") {
   v <- ev$valeur
   liste <- forme_liste_code(v)
   fit <- if (liste) v[["modele"]] else v
@@ -530,8 +555,8 @@ ajuster_code <- function(projet, d) {
   if (length(ajustees) != length(residus)) ajustees <- residus <- NULL
   # (chaque valeur ajustée rapportée à son observation : une par observation prise, ou par ligne reçue)
   uid_ajustees <- if (length(ajustees) && length(ajustees) == length(utilisees)) utilisees else if (length(ajustees) == length(obs)) obs
-  m <- list(type = "CODE", N = N, n_donnees = length(obs), observations = utilisees %||% obs, recues = obs, utilisees_connues = !is.null(utilisees),
-            code = code, empreinte = empreinte_code(code), ajustement = fit, liste = liste,
+  m <- list(type = type, N = N, n_donnees = length(obs), observations = utilisees %||% obs, recues = obs, utilisees_connues = !is.null(utilisees),
+            ajustement = fit, liste = liste,
             autres = if (liste) setdiff(names(v), c("modele", "valeurs", "tableaux")) else character(0),
             classe = if (!is.null(fit)) class(fit) else character(0), reponse = reponse_code(fit),
             resume = resume_code(fit), coefficients = coefficients_code(fit), statistiques = st,

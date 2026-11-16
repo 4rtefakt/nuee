@@ -5,7 +5,8 @@
 //     Help › What's new shows;
 //   - the home page, the installation and the tutorials, from the Markdown files of sources/fr and
 //     sources/en;
-//   - the download links, from the version in app/package.json.
+//   - the download links, from the version in app/package.json;
+//   - the example plugins of exemple/plugins, as .nueeplugin files in greffons/ (greffons()).
 //   node docs/site/construire.js        (markdown-it comes from app/node_modules: npm install in app/)
 // The pages are plain HTML and CSS (assets/), with a small script for the light or dark theme.
 // In the Markdown sources, `page:<id>` links to another page of the same language (page:guide.regressions,
@@ -382,6 +383,31 @@ async function nouveautes() {
   return { fr: versionsFr, en: versionsEn };
 }
 
+// ------------------------------------------------------------ the example plugins
+
+// Each example plugin of exemple/plugins as a .nueeplugin, the file Nuée installs (File › Plugins…):
+// its folder's files in a zip archive, written by the interface's own zip writer (app/interface/zip.js)
+// with a fixed date, so that an unchanged plugin gives the same bytes at each build.
+async function greffons() {
+  const source = path.join(RACINE, 'exemple', 'plugins');
+  const copie = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-site-')), 'zip.mjs');
+  fs.copyFileSync(path.join(RACINE, 'app', 'interface', 'zip.js'), copie);
+  const { zip } = await import(pathToFileURL(copie).href);
+  fs.rmSync(path.dirname(copie), { recursive: true, force: true });
+  const ecrits = [];
+  fs.mkdirSync(path.join(SITE, 'greffons'), { recursive: true });
+  for (const id of fs.readdirSync(source).filter((d) => fs.existsSync(path.join(source, d, 'plugin.json'))).sort()) {
+    const lister = (d) => fs.readdirSync(path.join(source, id, d), { withFileTypes: true })
+      .flatMap((e) => (e.isDirectory() ? lister(path.posix.join(d, e.name)) : [path.posix.join(d, e.name)]));
+    // (their text with LF line ends, whatever the checkout: the same bytes on every system)
+    const fichiers = lister('').sort().map((f) => [f, new TextEncoder().encode(fs.readFileSync(path.join(source, id, f), 'utf8').replace(/\r\n?/g, '\n'))]);
+    const nom = path.posix.join('greffons', `${id}.nueeplugin`);
+    fs.writeFileSync(path.join(SITE, nom), zip(fichiers, new Date(2026, 10, 16, 12, 0, 0)));
+    ecrits.push(nom);
+  }
+  return ecrits;
+}
+
 const dateLongue = (iso, langue) => new Intl.DateTimeFormat(langue === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
   .format(new Date(`${iso}T00:00:00Z`));
 
@@ -635,6 +661,7 @@ async function construire() {
 </html>
 `);
   ecrits.push('index.html');
+  ecrits.push(...await greffons());
   return ecrits;
 }
 

@@ -321,15 +321,19 @@ composantes_stockees <- function(d) {
 }
 
 # (un modèle de code R : l'empreinte de son code et s'il est approuvé sur cet ordinateur, code.R ; sans
-# approbation, l'interface le dit et propose de le lire, puis de l'exécuter)
+# approbation, l'interface le dit et propose de le lire, puis de l'exécuter ; un modèle de greffon, de
+# même, et son greffon : qui il est, la version installée de même id, greffons.R)
 resume_modele <- function(d) {
+  greffon <- if (identical(d$type, "PLUGIN")) resume_greffon_modele(d)
   list(numero = d$number %||% NA, nom = d$name %||% "", titre = d$title %||% "",
        type = paste0(if (isTRUE(d$opls)) "O" else "", if (isTRUE(d$plsda)) "PLS-DA" else d$type %||% ""), A = d$A %||% 0,
        ajuste = isTRUE(d$fitted) || !is.null(d$app), erreur = d$error %||% NULL,
        n_obs = length(d$observations), x = vapply(Filter(function(t) !isTRUE(t$facteur_seul), d$x), function(t) as.character(t$name), ""),  # (sans les facteurs seuls d'une régression)
        y = vapply(d$y, function(t) as.character(t$name), ""), stocke = composantes_stockees(d), note = d$note %||% "",
        version_origine = if (!isTRUE(d$app)) d$version_origine %||% NULL,
-       code_r = if (identical(d$type, "CODE")) list(empreinte = empreinte_code(d$options$code %||% ""), approuve = code_approuve(d$options$code %||% "")))
+       code_r = if (identical(d$type, "CODE")) list(empreinte = empreinte_code(d$options$code %||% ""), approuve = code_approuve(d$options$code %||% ""))
+                else if (!is.null(greffon)) list(empreinte = greffon$empreinte, approuve = greffon$approuve),
+       greffon = greffon)
 }
 
 # Les variables qui ont des valeurs dans les jeux de données. Les fichiers .usp listent aussi des variables
@@ -1336,13 +1340,14 @@ fusionner_finir_demande <- function(q) {
 # ---------------------------------------------------------------- HTTP
 
 # Tout ce qui est ouvert : pour une nouvelle fenêtre de l'application. `code_interdit` : les modèles de
-# code R retirés par une politique (code.R : code_interdit), que l'interface ne propose pas.
+# code R retirés par une politique (code.R : code_interdit), que l'interface ne propose pas ;
+# `greffons` : les greffons installés, pour ses menus (greffons.R : greffons_interface).
 etat_complet <- function() {
   # (sans les projets que l'interface ne montre pas, ni leurs modèles : ouvrir, q$cache)
   vus <- Filter(function(p) !isTRUE(p$cache), etat$projets)
   list(projets = lapply(unname(vus), resume_projet),
        modeles = lapply(Filter(function(id) !is.null(vus[[etat$modeles[[id]]$projet]]), names(etat$modeles)), resultat_modele),
-       code_interdit = code_interdit())
+       code_interdit = code_interdit(), greffons = greffons_interface())
 }
 
 DEMANDES <- list(
@@ -2189,6 +2194,8 @@ appli <- list(
       # (un modèle de code R : un code pas approuvé ici, avec son empreinte ; un code qui s'arrête, à sa ligne : code.R)
       if (inherits(e, "code_non_approuve")) return(repondre(400L, list(erreur = conditionMessage(e), code_non_approuve = TRUE, empreinte = e$empreinte)))
       if (inherits(e, "erreur_code")) return(repondre(400L, list(erreur = conditionMessage(e), ligne = e$ligne)))
+      # (un greffon pas approuvé ici, interdit, ou à qui il manque des paquets : greffons.R)
+      if (inherits(e, "refus_greffon")) return(repondre(400L, c(list(erreur = conditionMessage(e)), e$details)))
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },

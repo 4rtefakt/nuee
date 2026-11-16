@@ -11,12 +11,13 @@ function crc32(octets) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-// `fichiers`: [[name, Uint8Array]...] -> the archive's bytes.
-export function zip(fichiers) {
+// `fichiers`: [[name, Uint8Array]...] -> the archive's bytes. `maintenant`: the files' date (now by
+// default; a fixed one gives the same bytes at each build: the plugins of the documentation site,
+// docs/site/construire.js).
+export function zip(fichiers, maintenant = new Date()) {
   const morceaux = [];
   const centre = [];
   let decalage = 0;
-  const maintenant = new Date();
   const heure = (maintenant.getHours() << 11) | (maintenant.getMinutes() << 5) | (maintenant.getSeconds() >> 1);
   const jour = ((maintenant.getFullYear() - 1980) << 9) | ((maintenant.getMonth() + 1) << 5) | maintenant.getDate();
   for (const [nom, octets] of fichiers) {
