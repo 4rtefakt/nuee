@@ -129,7 +129,7 @@ d'état ouvre sa page.
 Le guide complet est fourni avec l'application (*Aide › Guide d'utilisation › Guide complet*),
 en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en anglais
 ([USER-GUIDE.txt](USER-GUIDE.txt)). Il est aussi sur le
-[site de documentation](https://4rtefakt.github.io/nuee/fr/), avec trois tutoriels.
+[site de documentation](https://4rtefakt.github.io/nuee/fr/), avec six tutoriels.
 
 ## Ce qu'elle fait
 
@@ -276,6 +276,10 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   disposition de vos panneaux, les réglages des graphiques et les sélections ;
 - une copie de secours toutes les deux minutes, proposée après une panne, et l'annulation des
   modifications des données ;
+- les versions de chaque projet gardées d'elles-mêmes (*Fichier › Historique*), nommées,
+  comparées et restaurées, et partagées sur GitHub ou GitLab avec des collègues, les changements
+  de deux personnes réunis modèle par modèle et passage par passage (sur un dossier réseau
+  partagé aussi) ;
 - des notes sur chaque modèle ;
 - la modification des données et de nouvelles variables par des formules R ou des classes de
   valeurs ; des colonnes ajoutées d'un autre tableau par une clé, et des tableaux résumés par
@@ -284,6 +288,10 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   les titres des axes, les textes des méthodes et des résultats et les exports ; les exports de
   formulaires de KoboToolbox et d'ODK Central ouverts proprement (métadonnées retirées, choix en
   catégories, points GPS en coordonnées du projet, groupes répétés avec les colonnes des parents) ;
+- des rapports vivants : le fichier de données de l'année suivante lu dans le projet (*Édition ›
+  Mettre à jour les données*), les changements faits aux données rejoués dessus, chaque modèle
+  ajusté à nouveau, et ce qui a changé dit en phrases, jusqu'aux valeurs que citent les
+  documents ;
 - les observations d'un modèle choisies par une condition (`site == "S1" & annee >= 2010`),
   refaite à chaque ajustement ;
 - plusieurs fenêtres, et des vues qui se détachent sur un second écran ;
@@ -403,5 +411,5 @@ ultérieure.
 
 L'installateur Windows et l'application macOS incluent R (GPL-2 | GPL-3) avec ses paquets recommandés et les paquets R httpuv,
 jsonlite, openxlsx, haven, readxl et leurs dépendances, Electron (MIT), Plotly.js (MIT),
-dockview (MIT), les icônes Lucide (ISC), et CodeMirror et markdown-it (MIT) pour les documents,
-chacun sous sa propre licence.
+dockview (MIT), les icônes Lucide (ISC), CodeMirror et markdown-it (MIT) pour les documents, et
+isomorphic-git (MIT) pour les versions, chacun sous sa propre licence.

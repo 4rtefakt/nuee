@@ -2,8 +2,9 @@
 
 For IT departments installing Nuée on several Windows computers: how to install it silently,
 the settings for Intune, Configuration Manager, Group Policy and other deployment tools, how to
-turn off its update check, what it writes where, and what it sends over the network. Macs and
-Linux computers: see [macOS](#macos) and [Linux](#linux) at the end.
+turn off its update check, what it writes where (the versions it keeps beside projects included),
+what it sends over the network and through which proxy, and how to let users sign in to your own
+GitLab. Macs and Linux computers: see [macOS](#macos) and [Linux](#linux) at the end.
 
 ## What gets installed
 
@@ -157,15 +158,30 @@ Registry*, a new registry item with action *Update*, hive `HKEY_LOCAL_MACHINE`, 
 
 ## Network and privacy
 
-- Nuée sends nothing anywhere except the update check above, when it is on. There is no
-  telemetry, no usage statistics, no crash report, and no account or licence server.
-- The update check goes through the system's proxy settings, as Chrome does.
+- Nuée sends nothing anywhere except the update check above, when it is on; the map tiles of a
+  background map, when a user chooses one (OpenStreetMap, IGN); and, for a project a user shares
+  on GitHub or GitLab (from 1.1), its versions, to that repository. There is no telemetry, no
+  usage statistics, no crash report, no account of Nuée's own and no licence server.
+- All of it goes through the system's proxy settings and certificates, as Chrome does: see
+  [Proxies and certificates](#proxies-and-certificates).
 - Data stay on the computer. Projects are files saved wherever users choose.
 - The calculations run in a local R process. It serves the interface on `127.0.0.1` only (port
   47863, or another free one), so no firewall rule is needed. It answers only Nuée's own windows:
   each request must carry a random token drawn at each start, in a cookie that no other site can
   send, and name 127.0.0.1 as its host. Web pages open in a browser can't use it, and neither can
   other users of a shared computer (Remote Desktop).
+
+## Proxies and certificates
+
+Nuée reaches GitHub and GitLab (signing in, sharing a project, its versions sent and received,
+a project opened from a repository) through Chromium's network stack, as it does its update
+check: the system's proxy settings (manual, a PAC file or WPAD) and the system's certificate
+store apply, so a proxy that inspects TLS works once its root certificate is trusted by the
+computer, as in Chrome or Edge. The hosts are `github.com`, `api.github.com` and
+`avatars.githubusercontent.com` (the account's picture) for GitHub; `gitlab.com`, or your own
+GitLab's host. The page where users approve Nuée opens in their default browser. *Use this
+computer's git sign-in*, in the sign-in dialog, asks the git installed on the computer for its
+stored sign-in (`git credential fill`), which follows git's own settings.
 
 ## What Nuée writes where
 
@@ -177,6 +193,9 @@ Registry*, a new registry item with action *Update*, hive `HKEY_LOCAL_MACHINE`, 
 | R's temporary files (pasted tables, converted `.usp` projects, console plots) | `%TEMP%\nuee-r-<process>`, deleted when Nuée closes, or at the next start after a crash |
 | The installer of a one-click update | `%TEMP%\nuee-mise-a-jour`, deleted at the next start |
 | Projects | Wherever users save them (`.nuee`) |
+| Projects' versions (1.1) | A hidden folder beside the projects, `.nuee-versions`: see [The versions folder](#the-versions-folder) |
+| Old versions opened or compared | R's temporary folder above, deleted when Nuée closes |
+| Sign-ins and tokens for GitHub and GitLab, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
 
 ## Projects on network folders
 
@@ -184,10 +203,60 @@ Registry*, a new registry item with action *Update*, hive `HKEY_LOCAL_MACHINE`, 
   takes its place in one step, so a network cut or a full disk leaves the old file intact. A
   file another program keeps open (a sync client, an antivirus) is retried for five seconds,
   then left as it was, and Nuée says so; it is never written over in place.
-- Projects aren't locked: two people can open the same one. If the file changed on disk since it
-  was opened or last saved (a colleague, another window), Nuée asks before overwriting it and
-  offers *Save as…* instead. This also holds for a project recovered from its recovery copy
-  after a crash or an engine restart.
+- Projects aren't locked: two people can open the same one. Every 30 seconds, Nuée looks whether
+  an open project's file was saved by someone else, and offers to merge their changes into the
+  open project, by what changed (models, documents, data); *Save* offers it too, beside
+  *Overwrite* and *Save as…*. A project recovered from its recovery copy after a crash, or opened
+  before Nuée or its engine restarted, has no copy of the file as it was read to merge from:
+  Nuée then asks before overwriting the file, and offers *Save as…* instead.
+- The project's versions are kept beside it, on the share: see the next section.
+
+## The versions folder
+
+From 1.1, Nuée keeps versions of each project by itself, in a hidden folder beside the project
+file, `.nuee-versions`: one history per project of that folder (`<name>.nuee.git`, a git
+repository that Nuée writes itself, with no git to install) and a `.gitignore` of `*`, so that a
+git repository of the user's around the folder ignores it. On Windows the folder has the hidden
+attribute. Users see it as *File › History*.
+
+- **On network shares:** the folder is made where the project is saved, so whoever can save a
+  project there can keep its versions. A project's history is common to everyone who saves it,
+  each version signed with the name its author set in *File › History › Settings…*. A lock file
+  beside each history (`<name>.nuee.lock`, touched every 30 seconds while held, taken over after
+  two minutes) keeps two copies of Nuée from writing it at once. For the versions, nothing else
+  is written beside the projects.
+- **Its size:** each version holds the whole project file, compressed (the example project to a
+  quarter of its size); *File › History* shows the folder's size. A version is kept when a
+  project is saved and its last one is an hour old, when it is closed, and before its data are
+  updated. Automatic versions never sent anywhere are thinned out: one a day after 30 days, one
+  a month after a year. Named versions, versions saved by hand and versions sent to a shared
+  repository are all kept.
+- **Deleting it** deletes the history of the projects in that folder, and nothing else: the
+  projects don't change, and a new history starts at their next save. Users stop new histories
+  in *File › History › Settings…* (*Keep versions of my projects*), or for one project (*Keep
+  versions of this project*); there is no system-wide policy for it. A project shared on GitHub
+  or GitLab loses its link to the repository with the folder; its versions stay in the
+  repository.
+
+## Signing in to your institution's GitLab
+
+Users sign in to github.com and gitlab.com with Nuée's own applications there. To let them sign
+in to your institution's GitLab too (GitLab 17.3 or later; 17.2 with the
+`oauth2_device_grant_flow` feature flag), register Nuée once as an application of that GitLab:
+
+1. *Admin › Applications › New application*: an instance-wide application, for every user.
+2. Name `Nuée`; redirect URI `http://127.0.0.1/` (the form requires one; Nuée signs in with the
+   device flow, which never uses it); *Trusted* ticked if users needn't approve it themselves;
+   *Confidential* **unticked**: Nuée is a desktop application and keeps no secret.
+3. Scopes `api` (making a project, adding a member), `read_user` (the account's name and
+   picture) and `write_repository` (sending versions).
+4. Give users the *Application ID* (64 hexadecimal digits). They type it once in Nuée's sign-in
+   dialog, after the server's name, and Nuée keeps it in their settings. The *Secret* GitLab
+   shows is not used: keep it to yourself.
+
+The sign-in's tokens last two hours, as GitLab's OAuth tokens do; Nuée renews them while it
+runs. An older GitLab, or one without the application, still works with a personal access token,
+with the scopes `api`, `read_user` and `write_repository`.
 
 ## Shared computers (Remote Desktop, Citrix)
 
@@ -239,8 +308,9 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
   system-wide policy on macOS.
 - **What Nuée writes where:** settings and recovery copies in
   `~/Library/Application Support/Nuee`, R's temporary files in the user's own temporary folder
-  (`$TMPDIR/nuee-r-<user id>-<process>`). Nothing is written inside `Nuée.app`. The network
-  and file rules above are the same.
+  (`$TMPDIR/nuee-r-<user id>-<process>`), the GitHub and GitLab sign-ins encrypted with a key
+  kept in the user's keychain. Nothing is written inside `Nuée.app`. The network and file rules
+  above are the same.
 
 ## Linux
 
@@ -258,7 +328,9 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
   new `.deb` installs over the old one. Users can turn the check off in *Help*; there is no
   system-wide policy on Linux.
 - **What Nuée writes where:** settings and recovery copies in `~/.config/Nuee`, R's temporary
-  files in `/tmp/nuee-r-<user id>-<process>`. The network and file rules above are the same.
+  files in `/tmp/nuee-r-<user id>-<process>`, the GitHub and GitLab sign-ins encrypted with a
+  key kept in the desktop's keyring (GNOME Keyring, KWallet), or kept only until Nuée closes
+  without one. The network and file rules above are the same.
 
 ## Reporting a problem
 
