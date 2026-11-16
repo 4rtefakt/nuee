@@ -971,7 +971,9 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     length(n) > 0 && identical(n, as.character(seq_along(n)))
   }
   noms_obs_a <- stats::setNames(premiers_noms(actuel), as.character(uo_a))
-  id_absents <- Filter(function(n) any(nzchar(identifiants_observations(actuel, match(n, noms_id_a), uo_a), keepNA = TRUE), na.rm = TRUE), setdiff(noms_id_a[-1], noms_id_n))
+  # (sans les identifiants internes des fichiers .usp, $ClassID…, ni ceux qui n'avaient pas de valeurs)
+  id_absents <- Filter(function(n) !startsWith(n, "$") && any(nzchar(identifiants_observations(actuel, match(n, noms_id_a), uo_a), keepNA = TRUE), na.rm = TRUE),
+                       setdiff(noms_id_a[-1], noms_id_n))
   touches <- Filter(Negate(is.null), lapply(actuel$models, function(d) {
     u <- intersect(variables_definition(d), absentes_uid)
     ids <- intersect(identifiants_definition(d, actuel), id_absents)

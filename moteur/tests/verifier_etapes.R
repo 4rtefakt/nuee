@@ -54,7 +54,6 @@ erreur <- function(expr) tryCatch({ expr; "" }, error = conditionMessage)
 # et l'étape qui le lit en garde le texte, etapes.R : dans_seance)
 dossier <- file.path(dirname(tempdir()), basename(tempfile("nuee_etapes")))
 dir.create(dossier)
-on.exit(unlink(dossier, recursive = TRUE), add = TRUE)
 fichier <- function(...) file.path(dossier, ...)
 
 # Une demande comme l'interface l'envoie : `q` passé par le JSON, la réponse mise en JSON (elle doit
@@ -496,5 +495,6 @@ verifier("the reasons of skipped steps in English", grepl("missing from the data
            grepl("outside the steps", { etat$projets[[id]]$donnees[2, 4] <- -1; demande("etapes", list(projet = id))$raison }))
 options(nuee.langue = "fr")
 
+unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
