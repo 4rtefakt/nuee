@@ -283,7 +283,8 @@ async function principal() {
       await api('annuler', { projet: p.id });
       verifier((await api('reajuster', { modele: pls.id, exclues: [1], A: 2 })).N === 59, 'le nom revenu, il se réajuste');
       // a code in numbers as categories, then as numbers again; a variable a model uses can't be deleted, another can
-      await api('variable_calculee', { projet: p.id, nom: 'code', formule: 'rep(c(3, 1, 2), 20)' });
+      // (rep() isn't allowed in a formula: the same pattern by the observations' order)
+      await api('variable_calculee', { projet: p.id, nom: 'code', formule: 'c(3, 1, 2)[(seq_along(x2) - 1) %% 3 + 1]' });
       const code = (await api('projet', { projet: p.id })).variables.find((v) => v.nom === 'code').uid;
       r = await api('type_variable', { projet: p.id, variable: code, type: 'qualitative' });
       const vc = r.variables.find((v) => v.uid === code);
