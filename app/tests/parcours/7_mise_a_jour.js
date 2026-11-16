@@ -47,6 +47,9 @@ module.exports = {
     await n.menu('m_fichier', 'enregistrer');
     await n.attendre(`__n.statut().startsWith(__n.t('enregistre')) && __n.statut()`);
     verifier('enregistre', fs.existsSync(fichier));
+    // (History's first version is kept in the background after the save: there before the project
+    // changes again, else a slow machine kept it only with the update's save, as the one before it)
+    await n.attendre(`window.bureau.versions.liste(${JSON.stringify(fichier)}).then((v) => v.length >= 1)`);
     // ---- a sentence added to the document after saving: the version kept before the update holds it
     // (the keyboard is back in the text, its cursor at the end)
     await n.taper(' Next season to come.');

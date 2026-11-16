@@ -34,6 +34,36 @@ const ATTENTE = Number(process.env.NUEE_ATTENTE || 60000);    // the longest wai
 // holding the run until the CI machine gives up (a start on GitHub's arm64 Mac once waited 85 min)
 const REPONSE_MAX = Math.max(3 * ATTENTE, 180000);
 
+// Every program a run started is stopped with the run, however it ends: a failure, an exception,
+// Ctrl+C, the CI cancelling it. (A run killed outright runs nothing more: the program's main process
+// then sees it gone and stops itself, GARDIEN.) No window outlives its run.
+const lances = new Set();
+let accroche = false;
+function arreterAvecLeRun(arreter) {
+  lances.add(arreter);
+  if (accroche) return;
+  accroche = true;
+  process.on('exit', () => { for (const a of lances) a(); });
+  for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129], ['SIGBREAK', 149]]) {
+    process.on(signal, () => process.exit(code));  // (the 'exit' above stops them)
+  }
+}
+
+// What the program's main process runs once the run reaches it: every second, whether the run is
+// still there; once it isn't, the program stops, with all it started (R).
+const GARDIEN = (pid) => `(() => {
+  if (globalThis.__gardien) return true;
+  const { execFile } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('child_process');
+  globalThis.__gardien = setInterval(() => {
+    try { process.kill(${pid}, 0); return; } catch (e) { if (e.code === 'EPERM') return; }
+    clearInterval(globalThis.__gardien);
+    if (process.platform === 'win32') execFile('taskkill', ['/pid', String(process.pid), '/T', '/F'], () => process.exit(1));
+    else try { process.kill(-process.pid, 'SIGKILL'); } catch { process.exit(1); }
+  }, 1000);
+  globalThis.__gardien.unref();
+  return true;
+})()`;
+
 function portLibre() {
   return new Promise((ok, ko) => {
     const s = net.createServer();
@@ -77,14 +107,8 @@ async function session(url) {
 // (installed once its inspector answers; main.js holds the same `dialog`, `shell` and `app`).
 const SUBSTITUTS = `(() => {
   // (the inspector's own require, until main.js is the main module)
-  const { dialog, shell, app, BrowserWindow } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  const { dialog, shell, app } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
   const E = globalThis.__essai = globalThis.__essai || { ouvrir: [], enregistrer: [], messages: [], appels: [], ouverts: [], liens: [], recents: [] };
-  // the windows deaf to the computer's own mouse (the run's clicks reach the page through DevTools,
-  // not the system): a pointer resting over a window, as over the menu bar on GitHub's Windows and
-  // macOS machines, moves the hover there whenever the system stirs it, and a menu the run opened
-  // gives way to the one under that pointer before the run's click on its item
-  for (const w of BrowserWindow.getAllWindows()) w.setIgnoreMouseEvents(true);
-  if (!E.sourdes) { E.sourdes = true; app.on('browser-window-created', (_, w) => w.setIgnoreMouseEvents(true)); }
   const sans = (a, b) => (b === undefined ? a : b);  // (the window is optional)
   dialog.showOpenDialog = async (a, b) => {
     const o = sans(a, b) || {};
@@ -121,6 +145,11 @@ const SUBSTITUTS = `(() => {
 const ESPION = `(() => {
   const E = window.__essai = { enCours: 0, refus: [], requetes: [], violations: [] };
   document.addEventListener('securitypolicyviolation', (e) => E.violations.push(e.violatedDirective));
+  // the last mouse event the page got: where, and on what, and how many moves so far (cliquer)
+  E.mouvements = 0;
+  for (const type of ['mousemove', 'mousedown']) {
+    window.addEventListener(type, (e) => { E.souris = { type, x: e.clientX, y: e.clientY, cible: e.target }; if (type === 'mousemove') E.mouvements += 1; }, true);
+  }
   const f = window.fetch;
   window.fetch = async (...a) => {
     const url = String((a[0] && a[0].url) || a[0]);
@@ -279,6 +308,8 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
       else process.kill(-proc.pid, 'SIGKILL');
     } catch { /* already gone */ }
   };
+  arreterAvecLeRun(arreter);
+  proc.on('exit', () => lances.delete(arreter));
   const vivant = () => proc.exitCode === null;
   const jusqua = async (f, ms, quoi) => {
     const fin = Date.now() + ms;
@@ -290,7 +321,8 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
       await attente(200);
     }
   };
-  const lister = async (port) => { try { return await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); } catch { return null; } };
+  // (a port that takes the connection and never answers counts as nothing yet: the waits stay theirs)
+  const lister = async (port) => { try { return await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) })).json(); } catch { return null; } };
 
   try {
     // the main process first: its dialogs answered before the window can ask anything
@@ -302,6 +334,7 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
       return r.result.value;
     };
     await jusqua(() => evaluerPrincipal(SUBSTITUTS).catch(() => false), 30000, 'the main process’s modules');
+    await evaluerPrincipal(GARDIEN(process.pid));
 
     // then the window (R starts first: up to two minutes)
     const cible = await jusqua(async () => ((await lister(portPage)) || []).find((c) => c.type === 'page' && /^http:\/\/127\.0\.0\.1:\d+\/(\?.*)?$/.test(c.url)),
@@ -380,24 +413,58 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
 
     // ---- the mouse and the keyboard
     // the middle of the element `expression` gives, once it is shown and nothing covers it
+    // (an item of a menu: once the menu is in its place. On GitHub's Windows and macOS machines a
+    // menu that opens is laid out at the window's top left corner, 0, 0 (where ui.js's placer()
+    // first puts it), for some tens of milliseconds before it is under its title: an item measured
+    // then was pressed where the menu bar, or the item above, was once the menu had moved.)
     async centre(expression, ms = ATTENTE) {
       return n.attendre(`(() => { const e = ${expression}; if (!e || !__n.visible(e)) return null;
+        const m = e.closest && e.closest('.menu');
+        if (m) { const q = m.getBoundingClientRect(); if (q.left < 1 && q.top < 1) return null; }
         e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return null;
         const x = r.left + r.width / 2, y = r.top + r.height / 2;
         const sous = document.elementFromPoint(x, y);
         return sous && (sous === e || e.contains(sous) || sous.contains(e)) ? { x, y } : null; })()`, ms);
     },
-    async souris(x, y, clics = 1) {
-      await envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-      for (let k = 1; k <= clics; k += 1) {
-        await envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: k });
-        await envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: k });
+    // A click at the middle of the element `expression` gives: the pointer brought over it, and
+    // pressed once the page says it is over that very element (its own record of the pointer,
+    // ESPION); an element that moved meanwhile is measured again, and a press the page got on
+    // another element stops the run there, saying on what (rather than a wait for what it
+    // didn't do).
+    async cliquer(expression, clics = 1, ms = ATTENTE) {
+      const lu = `(() => { const s = window.__essai.souris; const e = ${expression}; if (!s) return null;
+        const c = s.cible; const d = c && c.closest ? c.closest('[class], [id]') || c : c;
+        return { type: s.type, x: s.x, y: s.y, dessus: !!e && !!c && (c === e || e.contains(c)),
+          sur: d && d.tagName ? d.tagName.toLowerCase() + (d.id ? '#' + d.id : '') + (d.className && typeof d.className === 'string' ? '.' + d.className.trim().split(/\\s+/).join('.') : '')
+            + ' “' + __n.norm(d.textContent).slice(0, 40) + '”' : String(c) }; })()`;
+      let vu = null;
+      for (let essai = 1; essai <= 6; essai += 1) {
+        const c = await n.centre(expression, ms);
+        const { x, y } = c;
+        // (from a pixel away: a pointer already there would give the page no move to record; and
+        // the page may get moves at its next frame only)
+        const avant = await n.evaluer('window.__essai.mouvements');
+        await envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x - 1, y });
+        await envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await n.attendre(`window.__essai.mouvements > ${avant}`, 3000).catch(() => {});
+        vu = await n.evaluer(lu);
+        if (!vu || !vu.dessus) {
+          console.log(`    (the pointer at ${Math.round(c.x)}, ${Math.round(c.y)} was over ${vu ? vu.sur : 'nothing the page saw'}, not over ${expression.replace(/\s+/g, ' ').slice(0, 90)}: measured again)`);
+          await attente(150);
+          continue;
+        }
+        for (let k = 1; k <= clics; k += 1) {
+          await envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: k });
+          if (k === 1) vu = await n.evaluer(lu);
+          await envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: k });
+          if (k === 1 && !(vu && vu.type === 'mousedown' && vu.dessus)) {
+            throw new Error(`pressed at ${Math.round(x)}, ${Math.round(y)} for ${expression.slice(0, 200)}, the page got it at ${vu ? `${Math.round(vu.x)}, ${Math.round(vu.y)} on ${vu.sur}` : 'no press'}`);
+          }
+        }
+        return;
       }
-    },
-    async cliquer(expression, clics = 1) {
-      const c = await n.centre(expression);
-      await n.souris(c.x, c.y, clics);
+      throw new Error(`the pointer never came over ${expression.slice(0, 200)}: the page had it at ${vu ? `${Math.round(vu.x)}, ${Math.round(vu.y)} over ${vu.sur}` : 'no move'}`);
     },
     double: (expression) => n.cliquer(expression, 2),
     taper: (texte) => envoyer('Input.insertText', { text: texte }),
@@ -440,15 +507,22 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
         const l = (e) => __n.norm((e.querySelector('.libelle') || e).textContent);
         return items.find((e) => l(e) === x) || items.find((e) => l(e).startsWith(x.replace(/…$/, ''))); })()`;
       const fin = Date.now() + ATTENTE;
-      for (;;) {
-        await n.fermerMenus();
-        await n.cliquer(`__n.texte('.menu-haut', __n.t(${JSON.stringify(cleMenu)}))`);
-        const etat = await n.attendre(`(() => { const e = ${item}; return e ? (e.classList.contains('desactive') ? 'inactif' : 'pret') : null; })()`, 10000);
-        if (etat === 'pret') break;
-        if (Date.now() > fin) throw new Error(`menu item still disabled: ${cleMenu} › ${cleItem}`);
-        await attente(250);  // (not ready yet: the menu is opened again)
+      for (let rate = 0; ;) {
+        try {
+          await n.fermerMenus();
+          await n.cliquer(`__n.texte('.menu-haut', __n.t(${JSON.stringify(cleMenu)}))`);
+          const etat = await n.attendre(`(() => { const e = ${item}; return e ? (e.classList.contains('desactive') ? 'inactif' : 'pret') : null; })()`, 10000);
+          if (etat === 'pret') { await n.cliquer(item, 1, 5000); return; }
+          if (Date.now() > fin) throw new Error(`menu item still disabled: ${cleMenu} › ${cleItem}`);
+          await attente(250);  // (not ready yet: the menu is opened again)
+        } catch (e) {
+          // (the menu gone before its item was pressed: opened again; a press that landed elsewhere
+          // is not undone, and stops here)
+          rate += 1;
+          if (rate >= 3 || /^(pressed at|menu item still disabled)/.test(e.message)) throw e;
+          console.log(`    (${cleMenu} › ${cleItem}: ${e.message.split('\n')[0].slice(0, 160)}; the menu opened again)`);
+        }
       }
-      await n.cliquer(item);
     },
     // (a press outside the menus closes them, ui.js)
     fermerMenus: () => n.evaluer("document.querySelectorAll('.menu').length ? (document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), true) : true"),
