@@ -136,13 +136,17 @@ function magasinJetons({ fichier, safeStorage }) {
       return result || null;
     } catch { return null; }
   }
+  // (the system's encryptor is asked for only when a token is there: started, it may ask for the
+  // Keychain on macOS, again after each update of an application signed ad hoc)
   return {
     seulementSession: async () => !(await chiffrable()),
-    present: async (hote) => session.has(hote) || ((await chiffrable()) && chiffre(hote) !== null),
-    lire: async (hote) => session.get(hote) || ((await chiffrable()) && chiffre(hote) ? dechiffrer(hote, chiffre(hote)) : null),
+    present: async (hote) => session.has(hote) || (chiffre(hote) !== null && await chiffrable()),
+    lire: async (hote) => session.get(hote) || (chiffre(hote) && await chiffrable() ? dechiffrer(hote, chiffre(hote)) : null),
     // (every token known, to blank one from any message)
-    connus: async () => [...session.values(), ...((await chiffrable())
-      ? await Promise.all(Object.entries(lus()).filter(([, x]) => typeof x === 'string').map(([h, x]) => dechiffrer(h, x))) : [])].filter(Boolean),
+    connus: async () => {
+      const chiffres = Object.entries(lus()).filter(([, x]) => typeof x === 'string');
+      return [...session.values(), ...(chiffres.length && await chiffrable() ? await Promise.all(chiffres.map(([h, x]) => dechiffrer(h, x))) : [])].filter(Boolean);
+    },
     async ecrire(hote, jeton) {
       session.delete(hote);
       const tous = lus();
@@ -601,7 +605,7 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
     const p = await projet(chemin);
     const a = reglageAuteur.lire();
     const res = { depot: !!p.racine, suivi: false, racine: p.racine, modifie: false, versions: 0, distant: null, jeton: false,
-      jetonSession: await jetons.seulementSession(), avance: 0, retard: 0, auteur: a && a.nom ? { nom: a.nom, email: a.email } : null };
+      jetonSession: false, avance: 0, retard: 0, auteur: a && a.nom ? { nom: a.nom, email: a.email } : null };
     if (!p.racine) return res;
     const d = { ...p, dir: p.racine, fs: fsPour(p.racine) };
     const branche = await git.currentBranch({ fs: d.fs, dir: d.dir });
@@ -617,6 +621,8 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
     const hote = hoteDe(url);
     res.distant = { url, hote };
     res.jeton = !!hote && await jetons.present(hote);
+    // (whether a token given will be kept only until Nuée closes: asked once there is a remote)
+    res.jetonSession = !!hote && await jetons.seulementSession();
     if (tete && branche) {
       const suit = await git.getConfig({ fs: d.fs, dir: d.dir, path: `branch.${branche}.merge` });
       const leur = await resoudre(d, `refs/remotes/origin/${typeof suit === 'string' ? suit.replace(/^refs\/heads\//, '') : branche}`);

@@ -56,13 +56,17 @@ try { gitSys(['--version'], racine); } catch { gitPresent = false; }
 const initSys = (dossier, ...options) => { gitSys(['init', '-q', ...options, dossier], racine); gitSys(['symbolic-ref', 'HEAD', 'refs/heads/main'], dossier); };
 
 // A stand-in for Electron's safeStorage: "encrypted" by a XOR after the key's number, refused at
-// will; a key changed since asks for encrypting again
-const fauxChiffrement = ({ disponible = true, magasin = 'gnome_libsecret', cle = 1 } = {}) => ({
-  isAsyncEncryptionAvailable: async () => disponible,
-  getSelectedStorageBackend: () => magasin,
-  encryptStringAsync: async (s) => Buffer.from([cle, ...Buffer.from(s, 'utf8').map((b) => b ^ 0xa5)]),
-  decryptStringAsync: async (b) => ({ shouldReEncrypt: b[0] !== cle, result: Buffer.from(b.subarray(1).map((x) => x ^ 0xa5)).toString('utf8') }),
-});
+// will; a key changed since asks for encrypting again; its calls counted
+const fauxChiffrement = ({ disponible = true, magasin = 'gnome_libsecret', cle = 1 } = {}) => {
+  const f = {
+    appels: 0,
+    isAsyncEncryptionAvailable: async () => { f.appels += 1; return disponible; },
+    getSelectedStorageBackend: () => magasin,
+    encryptStringAsync: async (s) => { f.appels += 1; return Buffer.from([cle, ...Buffer.from(s, 'utf8').map((b) => b ^ 0xa5)]); },
+    decryptStringAsync: async (b) => { f.appels += 1; return { shouldReEncrypt: b[0] !== cle, result: Buffer.from(b.subarray(1).map((x) => x ^ 0xa5)).toString('utf8') }; },
+  };
+  return f;
+};
 // (Node's rmSync, on Windows, leaves read-only files in some versions, git's objects among them,
 // and paths that aren't ASCII in others: every file made writable, then removed one by one)
 function effacer(d) {
@@ -98,7 +102,7 @@ function ordinateur({ langue = 'en', chiffrement = fauxChiffrement(), auteur = n
     jetons: magasinJetons({ fichier: () => fichierJetons, safeStorage: chiffrement }),
     auteur: { lire: () => a, ecrire: (x) => { a = x; } },
   });
-  return Object.assign(v, { fichierJetons, langue: (l) => { langue = l; } });
+  return Object.assign(v, { fichierJetons, chiffrement, langue: (l) => { langue = l; } });
 }
 
 // ---------------------------------------------------------------- a smart-HTTP git server
@@ -252,6 +256,8 @@ async function local() {
     verifier('pour git : un dépôt valable, le projet à jour dans l’index, l’autre fichier hors du dépôt', statut === '?? donnees.csv' && sujets.length === 6
       && sujets[1].startsWith('Restored the version of') && sujets.at(-1) === 'First version', { statut, sujets });
   }
+  // (started, it may ask for the Keychain on macOS)
+  verifier('sans dépôt distant ni jeton : le chiffrement du système jamais demandé', alice.chiffrement.appels === 0, alice.chiffrement.appels);
   return { alice, projet, dossier };
 }
 
