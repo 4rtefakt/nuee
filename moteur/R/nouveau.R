@@ -378,6 +378,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
                            famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
                            condition = NULL, par_courbes = NULL, validation = NULL, lisse_spatial = NULL) {
+  # (un type inconnu serait ajusté comme une PLS, sans rien dire)
+  if (!isTRUE(as.character(type)[1] %in% c("PCA", "PLS", "PLS-DA", "OPLS", "OPLS-DA", REGRESSIONS, AUTRES_ANALYSES))) {
+    stop(sprintf(traduire("Type de modèle inconnu : %s.", "Unknown model type: %s."), paste(as.character(type), collapse = " ")), call. = FALSE)
+  }
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
     if (nom_numero(uid) %in% names(echelle)) return(echelle[[nom_numero(uid)]])
@@ -483,7 +487,13 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     if (length(classe) && !is.na(classe[1])) d$classe <- as.numeric(classe)[1]  # (sa variable de classe : LDA, arbre de classement)
   }
   # (ACP, PLS, OPLS : la façon de valider, validation_croisee.R : mode_validation)
-  if (!regression && !autre && length(validation) && as.character(validation)[1] %in% MODES_VALIDATION) d$validation <- as.character(validation)[1]
+  # (une façon inconnue serait celle par défaut, sans rien dire)
+  if (!regression && !autre && length(validation) && nzchar(as.character(validation)[1])) {
+    if (!as.character(validation)[1] %in% MODES_VALIDATION) {
+      stop(sprintf(traduire("Validation croisée inconnue : %s (sans_fuite, centres ou complet).", "Unknown cross-validation: %s (sans_fuite, centres or complet)."), as.character(validation)[1]), call. = FALSE)
+    }
+    d$validation <- as.character(validation)[1]
+  }
   if (length(vc$by) && !identical(as.character(vc$by), "order")) {
     d$groupes_vc <- vc
     groupes_definition(projet, d)  # (une erreur claire maintenant : un seul groupe, identifiant inconnu)
