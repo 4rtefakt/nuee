@@ -16,7 +16,16 @@
 #   - des tableaux de 1 000, 10 000 et 100 000 lignes ouverts en CSV et en .xlsx, et leurs données
 #     envoyées à la vue Données ;
 #   - un projet de spectres (petit, moyen) à 10 modèles ajustés, enregistré puis rouvert, ses
-#     modèles refaits comme quand l'interface restaure la séance.
+#     modèles refaits comme quand l'interface restaure la séance ;
+#   - la sélection par l'AIC et l'apport de chaque groupe de termes du modèle mixte et du GAM des
+#     relevés ; une forêt aléatoire et des arbres boostés sur les mêmes relevés ;
+#   - des communautés de 60, 200 et 600 relevés de 30, 50 et 80 espèces : PCoA et NMDS (les X
+#     ajustés à leurs axes), PERMANOVA, test de Mantel et son corrélogramme, espèces indicatrices,
+#     RDA et les tests de ses axes et de ses termes, chacun avec 999 permutations ;
+#   - TRIM sur 50, 200 et 800 sites suivis 12, 20 et 25 ans : le modèle 3 avec une covariable, le
+#     modèle 2 et ses points de changement choisis pas à pas ;
+#   - l'échantillonnage par distances avec covariables (une demi-normale, un hasard) sur 22, 70 et
+#     210 transects.
 # Chaque cas passe par les demandes du serveur (serveur.R : DEMANDES, journaliser, repondre), telles
 # que l'interface les envoie (en JSON, relues par jsonlite), et se refait --repetitions fois (3 par
 # défaut) depuis le même état : le temps donné est la médiane. Ses résultats (les réponses, le
@@ -132,9 +141,76 @@ banc_tableau <- function(n, graine = 3) {
   df
 }
 
+# Des relevés de communautés : n relevés de S espèces (des comptages de Poisson le long de deux
+# gradients, la température et l'altitude, et selon l'habitat), le secteur de chaque relevé (six
+# secteurs). Un relevé sans aucune espèce en reçoit une : la distance de Bray–Curtis n'a pas de
+# sens pour lui.
+banc_communautes <- function(n, S, graine = 4) {
+  set.seed(graine)
+  temperature <- round(stats::runif(n, 5, 25), 1)
+  altitude <- round(stats::runif(n, 0, 1500))
+  habitats <- c("foret", "prairie", "marais")
+  habitat <- sample(habitats, n, replace = TRUE)
+  optimum_t <- stats::runif(S, 5, 25)
+  optimum_a <- stats::runif(S, 0, 1500)
+  preference <- matrix(stats::rnorm(3 * S, 0, 0.8), 3, S)
+  eta <- 1.5 - outer(temperature, optimum_t, "-")^2 / 50 - outer(altitude, optimum_a, "-")^2 / 8e5 + preference[match(habitat, habitats), ]
+  Y <- matrix(stats::rpois(n * S, exp(eta)), n, S, dimnames = list(NULL, sprintf("sp%02d", seq_len(S))))
+  vides <- which(rowSums(Y) == 0)
+  Y[cbind(vides, sample(S, length(vides), replace = TRUE))] <- 1
+  data.frame(releve = sprintf("C%04d", seq_len(n)), secteur = sprintf("Z%d", (seq_len(n) - 1) %% 6 + 1), habitat = habitat,
+             temperature = temperature, altitude = altitude, Y)
+}
+
+# Des comptages pour TRIM, comme ceux de verifier_trim.R : I sites suivis J ans, un effet par site,
+# une hausse puis une baisse (plus forte en marais), un bruit autocorrélé d'une année à l'autre (des
+# comptages surdispersés et corrélés), 30 % de comptages manquants, un habitat par site.
+banc_trim <- function(I, J, graine = 5) {
+  set.seed(graine)
+  site <- sprintf("S%03d", seq_len(I))
+  habitat <- sample(c("bocage", "marais"), I, TRUE)
+  a <- stats::rnorm(I, 2, 0.8)
+  g <- expand.grid(j = seq_len(J), i = seq_len(I))
+  milieu <- J %/% 2
+  pente <- ifelse(habitat[g$i] == "marais", -0.12, -0.05)
+  lin <- ifelse(g$j <= milieu, 0.06 * (g$j - 1), 0.06 * (milieu - 1) + pente * (g$j - milieu))
+  bruit <- as.vector(vapply(seq_len(I), function(i) as.numeric(stats::arima.sim(list(ar = 0.5), J, sd = 0.25)), numeric(J)))
+  compte <- stats::rpois(nrow(g), exp(a[g$i] + lin + bruit))
+  compte[stats::runif(nrow(g)) < 0.3] <- NA
+  data.frame(nom = sprintf("r%05d", seq_len(nrow(g))), site = site[g$i], annee = 2000 + g$j - 1, compte = compte, habitat = habitat[g$i])
+}
+
+# Des transects linéaires pour l'échantillonnage par distances, comme ceux de verifier_distance.R :
+# deux strates de k[1] et k[2] transects, les animaux à moins de 120 m de chaque ligne, détectés
+# selon une demi-normale dont l'échelle dépend de l'observateur (A, B ou C) et du vent ; un
+# transect sans détection garde une ligne, sa distance vide.
+banc_distance <- function(k, graine = 6) {
+  set.seed(graine)
+  strates <- c(Nord = 60, Sud = 35)
+  D <- c(Nord = 40, Sud = 70)
+  lignes <- list()
+  for (s in names(strates)) for (j in seq_len(k[[match(s, names(strates))]])) {
+    effort <- round(stats::runif(1, 0.5, 3), 2)
+    N <- stats::rpois(1, D[[s]] * 2 * 0.12 * effort)
+    x <- stats::runif(N, 0, 120)
+    obs <- sample(c("A", "B", "C"), N, TRUE, prob = c(0.5, 0.3, 0.2))
+    vent <- round(stats::runif(N, 0, 4), 1)
+    sig <- 30 * exp(log(1.4) * (obs == "B") + log(0.8) * (obs == "C") - 0.15 * vent)
+    vu <- stats::runif(N) < exp(-(x / sig)^2 / 2)
+    lab <- sprintf("%s-%03d", s, j)
+    lignes[[length(lignes) + 1]] <- if (!any(vu)) data.frame(Region.Label = s, Area = strates[[s]], Sample.Label = lab, Effort = effort, distance = NA, observateur = NA, vent = NA)
+      else data.frame(Region.Label = s, Area = strates[[s]], Sample.Label = lab, Effort = effort, distance = round(x[vu], 1), observateur = obs[vu], vent = vent[vu])
+  }
+  df <- do.call(rbind, lignes)
+  data.frame(nom = sprintf("d%05d", seq_len(nrow(df))), df)
+}
+
 TAILLES_SPECTRES <- list(petit = c(100, 500), moyen = c(500, 2000), grand = c(2000, 2000))
 TAILLES_RELEVES <- list(petit = c(2000, 20), moyen = c(5000, 25), grand = c(20000, 40))
 TAILLES_TABLEAUX <- list(petit = 1000, moyen = 10000, grand = 100000)
+TAILLES_COMMUNAUTES <- list(petit = c(60, 30), moyen = c(200, 50), grand = c(600, 80))
+TAILLES_TRIM <- list(petit = c(50, 12), moyen = c(200, 20), grand = c(800, 25))
+TAILLES_DISTANCE <- list(petit = c(12, 10), moyen = c(40, 30), grand = c(120, 90))
 
 # ---------------------------------------------------------------- demandes au serveur
 
@@ -185,6 +261,17 @@ banc_q_releves <- function(projet, type) {
        famille = if (type == "GAM") "gaussienne" else NULL, lisses = if (type == "GAM") 4 else list(),
        k_courbes = vide, par_courbes = vide, validation = NULL, decalage = NULL, lisse_spatial = NULL,
        croises_reglages = vide, nom = "M1", titre = "", condition = "")
+}
+
+# Une autre analyse (analyses.R) comme Nouveau modèle la demande : ses rôles (x, y, classe), son
+# échelle et ses réglages propres (options), ceux de son onglet dans la boîte (vues_*.js).
+banc_q_analyse <- function(projet, type, x, y, options, classe = NULL, echelle = "none") {
+  vide <- stats::setNames(list(), character(0))
+  list(projet = projet, type = type, x = x, y = y, classe = classe, exclues = list(), test = list(), echelle = echelle,
+       echelles = vide, transformations = vide, croises = list(), spectres = list(), A = 0, G = 7, vc = NULL,
+       blocs = vide, modificateurs = vide, aleatoires = list(), correlation = NULL, famille = NULL, lisses = list(),
+       k_courbes = vide, par_courbes = vide, validation = NULL, decalage = NULL, lisse_spatial = NULL,
+       croises_reglages = vide, nom = "M1", titre = "", condition = "", options = options)
 }
 
 # Vérifier puis ajuster, comme Nouveau modèle › Ajuster : la réponse, le modèle et sa définition.
@@ -360,6 +447,112 @@ for (taille in c("petit", "moyen")) local({
          octets = file.size(ctx$chemin) + sum(vapply(refaits, `[[`, 0, "octets")),
          sorties = list(fichier = readLines(ctx$chemin, encoding = "UTF-8", warn = FALSE), ouverture = banc_sans_chemins(o$r),
                         reponses = lapply(refaits, `[[`, "json"), modeles = lapply(refaits, function(x) banc_sans_ajustement(etat$modeles[[x$r$id]]$modele))))
+  })
+})
+
+# La sélection par l'AIC des effets fixes d'un modèle mixte et d'un GAM des relevés (ajustés avant
+# le cas : les 16 combinaisons de leurs quatre groupes de termes), et l'apport de chaque groupe.
+for (taille in names(TAILLES_RELEVES)) local({
+  taille <- taille
+  n <- TAILLES_RELEVES[[taille]][1]
+  sites <- TAILLES_RELEVES[[taille]][2]
+  for (type in c("LMM", "GAM")) local({
+    type <- type
+    banc_ajouter(sprintf("releves_%s_%s_aic", taille, tolower(type)), function() {
+      p <- banc_projet(banc_releves(n, sites), sprintf("releves_%s.csv", taille))
+      list(modele = banc_demande("ajuster", banc_q_releves(p, type))$r$id)
+    }, function(ctx) {
+      s <- banc_demande("selection_aic", list(modele = ctx$modele))
+      a <- banc_demande("apports", list(modele = ctx$modele))
+      list(temps = c(selection = s$calcul, apports = a$calcul), octets = s$octets + a$octets, sorties = list(selection = s$json, apports = a$json))
+    })
+  })
+})
+
+# Les analyses de communautés, chacune avec 999 permutations : la PCoA et la NMDS (20 départs) avec
+# les X ajustés à leurs axes, la PERMANOVA terme à terme et la dispersion de l'habitat, le test de
+# Mantel et son corrélogramme (10 classes), les espèces indicatrices des habitats, et la RDA des
+# espèces (Hellinger) avec les tests de ses axes et de ses termes. Variables : 1 secteur, 2 habitat,
+# 3 température, 4 altitude, puis les espèces.
+for (taille in names(TAILLES_COMMUNAUTES)) local({
+  taille <- taille
+  n <- TAILLES_COMMUNAUTES[[taille]][1]
+  S <- TAILLES_COMMUNAUTES[[taille]][2]
+  especes <- 5:(S + 4)
+  vide <- stats::setNames(list(), character(0))
+  communes <- list(distance = "bray", binaire = FALSE, transformation = "aucune", permutations = 999, graine = 1, strates = NULL)
+  analyses <- list(
+    pcoa = list(type = "PCOA", x = c(3, 4, 2), options = c(communes, list(correction = "aucune"))),
+    nmds = list(type = "NMDS", x = c(3, 4, 2), options = c(communes, list(k = 2, departs = 20))),
+    permanova = list(type = "PERMANOVA", x = c(3, 2), options = c(communes, list(correction = "aucune", par = "termes", dispersion = "centroide"))),
+    mantel = list(type = "MANTEL", x = c(3, 4), echelle = "UV", options = c(communes, list(methode = "pearson", classes = 10, z = list(), distance_x = "variables",
+                                                                                            z_transformations = vide, z_echelles = vide))),
+    indval = list(type = "INDVAL", x = list(), classe = 2, options = list(indice = "IndVal.g", ordre = NULL, presence = FALSE, permutations = 999, graine = 1,
+                                                                        strates = NULL, correction = "BH")),
+    rda = list(type = "RDA", x = c(3, 4, 2), options = list(transformation = "hellinger", reduire = FALSE, permutations = 999, graine = 1, strates = NULL,
+                                                           z = list(), z_transformations = vide)))
+  for (nom in names(analyses)) local({
+    a <- analyses[[nom]]
+    q <- function(p) banc_q_analyse(p, a$type, a$x, especes, a$options, classe = a$classe, echelle = a$echelle %||% "none")
+    banc_ajouter(sprintf("communautes_%s_%s", taille, nom), function() list(projet = banc_projet(banc_communautes(n, S), sprintf("communautes_%s.csv", taille))),
+                 function(ctx) {
+                   r <- banc_ajuster(q(ctx$projet))
+                   if (a$type == "RDA") {
+                     o <- banc_demande("rda_tests", list(modele = r$sorties$reponse$id))
+                     r$temps <- c(r$temps, tests = o$calcul)
+                     r$sorties$tests <- o$json
+                   }
+                   r
+                 })
+  })
+})
+
+# TRIM : le modèle 3 (une année, un paramètre) avec l'habitat en covariable, et le modèle 2 à
+# points de changement choisis pas à pas parmi toutes les années ; surdispersion et corrélation
+# sérielle (GEE). Variables : 1 site, 2 année, 3 comptage, 4 habitat.
+for (taille in names(TAILLES_TRIM)) local({
+  taille <- taille
+  I <- TAILLES_TRIM[[taille]][1]
+  J <- TAILLES_TRIM[[taille]][2]
+  for (modele in c(3, 2)) local({
+    modele <- modele
+    options <- list(site = list(by = "variable", variable = 1), temps = list(by = "variable", variable = 2), modele = modele,
+                    changements = if (modele == 2) "tous" else list(), pas_a_pas = modele == 2, surdispersion = TRUE, correlation = TRUE, poids = NULL, base = NULL)
+    banc_ajouter(sprintf("trim_%s_%s", taille, if (modele == 3) "modele3_covariable" else "modele2_pas_a_pas"),
+                 function() list(projet = banc_projet(banc_trim(I, J), sprintf("trim_%s.csv", taille))),
+                 function(ctx) banc_ajuster(banc_q_analyse(ctx$projet, "TRIM", if (modele == 3) 4 else list(), 3, options)))
+  })
+})
+
+# L'échantillonnage par distances avec covariables (l'observateur et le vent), une demi-normale ou
+# un hasard, ses termes d'ajustement choisis par l'AIC, 5 % des plus grandes distances tronquées.
+# Variables : 1 strate, 2 aire, 3 transect, 4 effort, 5 distance, 6 observateur, 7 vent.
+for (taille in names(TAILLES_DISTANCE)) local({
+  taille <- taille
+  k <- TAILLES_DISTANCE[[taille]]
+  for (cle in c("hn", "hr")) local({
+    cle <- cle
+    options <- list(transect = "ligne", echantillon = list(by = "variable", variable = 3), strate = list(by = "variable", variable = 1), effort = 4, aire = 2,
+                    taille = NULL, z = c(6, 7), troncature = list(type = "pourcentage", valeur = 5), gauche = 0, cle = cle, serie = "cos", ajustements = "aic",
+                    echelle_ajustements = "largeur", monotonie = "stricte", unites = list(distance = "m", effort = "km", aire = "km2"), facteur = NULL, intervalles = NULL)
+    banc_ajouter(sprintf("distance_%s_%s_covariables", taille, cle), function() list(projet = banc_projet(banc_distance(k), sprintf("distance_%s.csv", taille))),
+                 function(ctx) banc_ajuster(banc_q_analyse(ctx$projet, "DISTANCE", list(), 5, options)))
+  })
+})
+
+# Une forêt aléatoire (500 arbres) et des arbres boostés (2 000 arbres au plus, taux 0,01, trois
+# coupures, la moitié des observations tirée pour chaque arbre) de la densité des relevés selon la
+# température, la profondeur, l'habitat et l'année, validés en 7 groupes.
+for (taille in names(TAILLES_RELEVES)) local({
+  taille <- taille
+  n <- TAILLES_RELEVES[[taille]][1]
+  sites <- TAILLES_RELEVES[[taille]][2]
+  ensembles <- list(foret = list(type = "FOREST", options = list(arbres = 500, mtry = NULL, min_noeud = NULL, fraction = 1, importance = "brute")),
+                    boost = list(type = "BOOST", options = list(loi = "gaussienne", arbres_max = 2000, profondeur = 3, min_feuille = 10, taux = 0.01, part = 0.5)))
+  for (nom in names(ensembles)) local({
+    e <- ensembles[[nom]]
+    banc_ajouter(sprintf("releves_%s_%s", taille, nom), function() list(projet = banc_projet(banc_releves(n, sites), sprintf("releves_%s.csv", taille))),
+                 function(ctx) banc_ajuster(banc_q_analyse(ctx$projet, e$type, c(4, 5, 3, 2), 6, e$options)))
   })
 })
 

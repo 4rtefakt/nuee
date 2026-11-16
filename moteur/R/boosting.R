@@ -91,15 +91,57 @@ reponse_boost <- function(f, loi) switch(loi, gaussienne = f, binomiale = 1 / (1
 tirage_sac <- function(n, k) {
   u <- stats::runif(n)
   if (k >= n) return(seq_len(n))
+  # (les u_i (n - i + 1) d'un coup, et ce qui reste à prendre, k - pris, tenu à jour : les mêmes
+  # comparaisons, en deux fois moins d'opérations à chaque observation de la boucle)
+  seuil <- u * (n - seq_len(n) + 1)
+  reste <- k
   dans <- logical(n)
-  pris <- 0L
   for (i in seq_len(n)) {
-    if (u[i] * (n - i + 1) < k - pris) {
+    if (seuil[i] < reste) {
       dans[i] <- TRUE
-      pris <- pris + 1L
+      reste <- reste - 1
     }
   }
   which(dans)
+}
+
+# L'arbre de rpart d'une étape (method = "anova", sans poids ni validation croisée interne) sur les
+# lignes de Xm (des nombres : matrice_codes) et la réponse z : la fonction C de rpart, `c_rpart`, avec
+# les arguments que rpart::rpart() lui donne pour cet arbre, puis, de ce qu'elle rend, les parties de
+# l'objet rpart que lisent meilleures_coupures et arbre_court (le tableau des nœuds, sans ses autres
+# colonnes, celui des coupures, csplit), faites comme rpart() les fait. Sur les milliers d'arbres d'un
+# boosting, le reste de rpart() (son modèle de données, sa matrice, l'importance des variables, le
+# tableau des nœuds en data.frame) prenait les trois quarts du temps. `ncat` : le nombre de catégories
+# de chaque colonne de Xm (0 pour une variable quantitative) ; `opt` : les réglages de rpart.control,
+# en nombres. boosting() vérifie sur ses premiers arbres que rpart() donne les mêmes.
+arbre_rpart <- function(Xm, z, ncat, opt, c_rpart) {
+  a <- .Call(c_rpart, ncat, 1L, opt, 0, 0L, 0L, z, Xm, rep(1, length(z)), 1L, rep(1, ncol(Xm)))
+  etiquettes <- c("<leaf>", colnames(Xm))
+  if (!nrow(a$isplit)) {
+    return(list(frame = structure(list(var = "<leaf>", n = a$inode[, 5L], dev = a$dnode[, 1L], ncompete = 0L, nsurrogate = 0L),
+                                  class = "data.frame", row.names = 1L)))
+  }
+  index <- a$inode[, 2L]
+  coupee <- ifelse(index == 0L, 0L, a$isplit[ifelse(index == 0L, 1L, index), 1L])
+  noeuds <- structure(list(var = etiquettes[coupee + 1L], n = a$inode[, 5L], dev = a$dnode[, 1L], ncompete = pmax(0L, a$inode[, 3L] - 1L),
+                           nsurrogate = a$inode[, 4L]), class = "data.frame", row.names = a$inode[, 1L])
+  coupures <- matrix(c(a$isplit[, 2:3], a$dsplit), ncol = 5L, dimnames = list(etiquettes[a$isplit[, 1L] + 1L], c("count", "ncat", "improve", "index", "adj")))
+  list(frame = noeuds, splits = coupures, csplit = if (!is.null(a$csplit) && nrow(a$csplit)) a$csplit + 2L)
+}
+
+# Le même arbre par rpart::rpart(), sur son modèle de données tout fait (`mf`, son argument `model` :
+# il n'en refait pas un) : ses lignes `lignes`, la réponse z.
+arbre_modele <- function(mf, lignes, z, ctl) {
+  mt <- mf[lignes, , drop = FALSE]
+  mt$.z <- z
+  attr(mt, "terms") <- attr(mf, "terms")
+  rpart::rpart(model = mt, method = "anova", control = ctl, x = FALSE, y = FALSE)
+}
+
+# Ce que lisent d'un arbre meilleures_coupures et arbre_court : les numéros, variables, effectifs,
+# sommes des carrés et coupures concurrentes et de substitution de ses nœuds, ses coupures, csplit.
+parties_arbre <- function(a) {
+  list(rownames(a$frame), lapply(c("var", "n", "dev", "ncompete", "nsurrogate"), function(k) a$frame[[k]]), a$splits, a$csplit)
 }
 
 # Les `profondeur` coupures d'un arbre de rpart (fait jusqu'à cette profondeur) que gbm aurait
@@ -210,8 +252,10 @@ valeurs_feuilles <- function(feuille, z, y, f, loi, nn) {
 # ligne de `ev` prédite après chaque arbre (`chemin` : une colonne par arbre). Les `garder` premiers
 # arbres sont gardés (forme courte, avec la contribution λ v de chaque feuille), avec la réduction
 # de la somme des carrés de chaque variable dans chacun ; `arret` : un nombre d'arbres où garder f
-# des lignes `ap`. rpart reçoit son modèle de données tout fait (son argument `model`) : il n'en
-# refait pas un à chaque arbre.
+# des lignes `ap`. Chaque arbre est fait par la fonction C de rpart (arbre_rpart), sauf les premiers,
+# faits aussi par rpart::rpart() jusqu'au premier qui a une coupure : elle ne sert que si elle les a
+# donnés à l'identique (une autre version de rpart pourrait changer les arguments qu'elle prend),
+# sinon rpart() fait tous les arbres (`direct` : NA tant que ce n'est pas vérifié).
 boosting <- function(X, y, ap, ev, r, garder = 0, arret = NULL) {
   ya <- y[ap]
   f0 <- initiale_boost(ya, r$loi)
@@ -224,8 +268,12 @@ boosting <- function(X, y, ap, ev, r, garder = 0, arret = NULL) {
   base <- X
   base$.z <- 0
   mf <- stats::model.frame(FORMULE_BOOST, base)
-  termes <- attr(mf, "terms")
   Xm <- matrice_codes(X)
+  Xa <- Xm[ap, , drop = FALSE]
+  ncat <- vapply(X, function(x) if (is.factor(x)) length(levels(x)) else 0L, 0L, USE.NAMES = FALSE)
+  opt <- as.double(unlist(do.call(rpart::rpart.control, ctl)))
+  c_rpart <- utils::getFromNamespace("C_rpart", "rpart")
+  direct <- NA
   deviance <- numeric(r$arbres)
   chemin <- if (length(ev)) matrix(NA_real_, length(ev), r$arbres)
   arbres <- vector("list", garder)
@@ -234,10 +282,11 @@ boosting <- function(X, y, ap, ev, r, garder = 0, arret = NULL) {
   avec_graine(GRAINE_BOOST, for (t in seq_len(r$arbres)) {
     z <- gradient_boost(ya, fa, r$loi)
     dans <- tirage_sac(length(ap), k)
-    mt <- mf[ap[dans], , drop = FALSE]
-    mt$.z <- z[dans]
-    attr(mt, "terms") <- termes
-    a <- rpart::rpart(model = mt, method = "anova", control = ctl, x = FALSE, y = FALSE)
+    if (is.na(direct)) {
+      a <- arbre_modele(mf, ap[dans], z[dans], ctl)
+      essai <- tryCatch(arbre_rpart(Xa[dans, , drop = FALSE], z[dans], ncat, opt, c_rpart), error = function(e) NULL)
+      direct <- if (is.null(essai) || !identical(parties_arbre(essai), parties_arbre(a))) FALSE else if (!is.null(a$splits)) TRUE else NA
+    } else a <- if (direct) arbre_rpart(Xa[dans, , drop = FALSE], z[dans], ncat, opt, c_rpart) else arbre_modele(mf, ap[dans], z[dans], ctl)
     cb <- meilleures_coupures(a, r$profondeur)
     arb <- arbre_court(a, cb$noeuds, names(X))
     noeud <- feuilles_arbre(arb, Xm)
