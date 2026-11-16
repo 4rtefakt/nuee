@@ -1127,7 +1127,9 @@ async function dialogueConflit(app, pid, { mien, leur, fichiers }) {
   boutonFusion.disabled = true;
   const fusionner = async () => {
     if (!proposition) return;
-    const fin = await essayer(app, () => demander('fusionner_finir', { fusion: proposition.fusion, choix, version: VERSION }));
+    // (the merged file says who merged, as a save does)
+    const auteur = await nomAuteur();
+    const fin = await essayer(app, () => demander('fusionner_finir', { fusion: proposition.fusion, choix, version: VERSION, ...(auteur ? { auteur } : {}) }));
     if (!fin || !fin.chemin) return;
     d.fermer();
     await choisirCote(app, pid, 'fusion', fin.chemin, hote, t('versions_fusion_description', { nom: qui }));
@@ -1207,7 +1209,8 @@ async function dialogueFusionFichier(app, pid, { titre, texte, boutons, qui: qui
   return new Promise((resolve) => {
     let fait = false;
     const finir = async () => {
-      try { await app.changerDonnees('fusionner_finir', pid, { fusion: r.fusion, choix }); } catch { return; }
+      const auteur = await nomAuteur();
+      try { await app.changerDonnees('fusionner_finir', pid, { fusion: r.fusion, choix, ...(auteur ? { auteur } : {}) }); } catch { return; }
       fait = true;
       d.fermer();
       resolve('fusion');
