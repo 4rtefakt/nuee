@@ -1367,21 +1367,25 @@ refuser_reponse_constante <- function(y, nom) {
 
 # Des valeurs dont le carré dépasse les nombres de R (au-delà de 1e150 environ ; NaN, Inf une fois mises
 # à l'échelle) ou s'annule (toutes en deçà de 1e-150) : chaque somme de carrés serait infinie ou nulle,
-# les coefficients, R² et Q² NaN. Refusées, en disant laquelle et quoi faire (`cadre` : la table du
-# modèle ; `noms` : le nom de chacune de ses colonnes à voir, par colonne).
+# les coefficients, R² et Q² NaN, un écart-type infini ou nul (une mise à l'échelle n'y peut rien : elle
+# le calcule). Refusées, en disant laquelle et quoi faire (`cadre` : la table du modèle ; `noms` : le nom
+# de chacune de ses colonnes à voir, par colonne ; les valeurs manquantes n'y comptent pas). Pour une
+# régression, un arbre, une forêt, des arbres boostés, les termes UV ou Pareto d'un bloc X ou Y
+# (construire_bloc, pretraitement.R), une LDA (discrimination.R), un test de deux variables et un
+# BACI (comparaisons.R).
 refuser_valeurs_extremes <- function(cadre, noms) {
   for (k in intersect(names(noms), names(cadre))) {
     v <- cadre[[k]]
     if (!is.numeric(v)) next
-    a <- abs(v[v != 0])
+    a <- abs(v[!is.na(v) & v != 0])
     if (any(!is.finite(a)) || (length(a) && max(a) > 1e150)) {
-      stop(sprintf(traduire("« %s » a des valeurs trop grandes pour le calcul%s : leurs carrés dépassent les nombres que R sait écrire. Divisez-la par une puissance de 10 (Nouvelle variable), ou mettez-la à l'échelle.",
-                            "“%s” has values too large for the computation%s: their squares exceed the numbers R can hold. Divide it by a power of 10 (New variable), or scale it."),
+      stop(sprintf(traduire("« %s » a des valeurs trop grandes pour le calcul%s : leurs carrés dépassent les nombres que R sait écrire. Divisez-la par une puissance de 10 (Édition › Nouvelle variable).",
+                            "“%s” has values too large for the computation%s: their squares exceed the numbers R can hold. Divide it by a power of 10 (Edit › New variable)."),
                    noms[[k]], if (any(is.finite(a))) sprintf(traduire(" (jusqu'à %s)", " (up to %s)"), format(max(a[is.finite(a)]), digits = 3)) else ""), call. = FALSE)
     }
     if (length(a) && max(a) < 1e-150) {
-      stop(sprintf(traduire("« %s » a des valeurs trop petites pour le calcul (au plus %s) : leurs carrés s'annulent. Multipliez-la par une puissance de 10 (Nouvelle variable), ou mettez-la à l'échelle.",
-                            "“%s” has values too small for the computation (at most %s): their squares vanish. Multiply it by a power of 10 (New variable), or scale it."),
+      stop(sprintf(traduire("« %s » a des valeurs trop petites pour le calcul (au plus %s) : leurs carrés s'annulent. Multipliez-la par une puissance de 10 (Édition › Nouvelle variable).",
+                            "“%s” has values too small for the computation (at most %s): their squares vanish. Multiply it by a power of 10 (Edit › New variable)."),
                    noms[[k]], format(max(a), digits = 3)), call. = FALSE)
     }
   }

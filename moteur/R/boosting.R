@@ -304,6 +304,7 @@ ajuster_boost <- function(projet, d) {
                   "Too few observations with a response and all their X values (at least 5 are needed)."), call. = FALSE)
   }
   refuser_reponse_constante(y[complet], as.character(ty$name))  # (regression.R)
+  refuser_valeurs_extremes(list(y = y[complet]), c(y = as.character(ty$name)))
   garde <- obs[complet]
   groupes <- groupes_observations(projet, d, garde)
   if (length(unique(groupes)) < 2) {

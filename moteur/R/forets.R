@@ -214,6 +214,7 @@ ajuster_forest <- function(projet, d) {
                   "Too few observations with a response and all their X values (at least 5 are needed)."), call. = FALSE)
   }
   if (!classement) refuser_reponse_constante(y[complet], nom_y)  # (regression.R)
+  if (!classement) refuser_valeurs_extremes(list(y = y[complet]), c(y = nom_y))
   garde <- obs[complet]
   groupes <- groupes_observations(projet, d, garde)
   if (length(unique(groupes)) < 2) {

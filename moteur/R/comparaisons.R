@@ -190,7 +190,9 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
   ok <- !is.na(a$valeurs) & !is.na(b$valeurs)
   noms <- unname(projet$noms_obs[nom_numero(obs[ok])])
   # (une variable quantitative constante sur ces observations : ni corrélation ni comparaison des
-  # groupes ne se calcule, leurs tests rendent NA)
+  # groupes ne se calcule, leurs tests rendent NA ; d'abord, des valeurs trop grandes ou trop petites
+  # pour R, dont l'écart-type serait infini, ou nul sans qu'elles soient égales : regression.R)
+  if (sum(ok) >= 3) for (v in list(a, b)) if (!v$qualitative) refuser_valeurs_extremes(list(x = v$valeurs[ok]), c(x = v$nom))
   if (sum(ok) >= 3) for (v in list(a, b)) if (!v$qualitative && isTRUE(stats::sd(v$valeurs[ok]) == 0)) {
     stop(sprintf(traduire("« %s » a la même valeur pour les %d observations où les deux variables sont connues : aucun test ne se calcule.",
                           "“%s” has the same value for the %d observations where both variables are known: no test can be computed."), v$nom, sum(ok)), call. = FALSE)
@@ -856,6 +858,7 @@ baci <- function(projet, y, temps, unite, impact, temoins, evenement = NULL, fin
   u <- as.character(vu$valeurs)
   role <- ifelse(u %in% impact, "impact", ifelse(u %in% temoins, "temoin", NA_character_))
   i <- which(!is.na(role) & !is.na(vy$valeurs) & !is.na(tv))
+  refuser_valeurs_extremes(list(y = vy$valeurs[i]), c(y = vy$nom))  # (regression.R)
   temps_vus <- sort(unique(tv[i]))
   ti <- match(tv[i], temps_vus)
   par_temps <- function(r, f, vide) vapply(seq_along(temps_vus), function(k) {

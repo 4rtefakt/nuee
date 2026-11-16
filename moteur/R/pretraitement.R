@@ -181,6 +181,15 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     bruts <- r$bruts
     reference <- r$reference
   }
+  # (des valeurs dont le carré dépasse les nombres de R, ou s'annule : l'écart-type d'un terme UV ou
+  # Pareto serait infini ou nul, le bloc NaN ou sans variation ; refusées quand le modèle lui-même
+  # calcule ses poids, pas pour y projeter des observations ni dans sa validation croisée. Les valeurs
+  # brutes d'un terme sans mise à l'échelle restent permises : un arbre ou une RDA s'en accommodent,
+  # une régression les refuse elle-même ; regression.R)
+  if (is.null(imposees) && poids == "calcules" && is.null(complet)) {
+    ecarts <- seuls[vapply(termes[seuls], function(t) isTRUE(t$scaling$type %in% c("UV", "Par")), TRUE)]
+    if (length(ecarts)) refuser_valeurs_extremes(stats::setNames(as.data.frame(bruts[, ecarts, drop = FALSE]), noms[ecarts]), stats::setNames(noms[ecarts], noms[ecarts]))
+  }
   for (k in seuls) X[, k] <- mettre_a_echelle(k, bruts[, k])
   # les termes simples par « variable catégorie », pour les termes croisés (d'un coup : une liste
   # qui grandit terme à terme coûte cher avec des milliers de termes)

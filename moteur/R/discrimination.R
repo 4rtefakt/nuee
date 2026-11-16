@@ -98,6 +98,9 @@ ajuster_lda <- function(projet, d) {
   cl <- droplevels(classe[complet])
   if (nlevels(cl) < 2) stop(traduire("Une LDA demande au moins deux classes.", "An LDA needs at least two classes."), call. = FALSE)
   X <- bx$X[complet, , drop = FALSE]
+  # (des valeurs trop grandes ou trop petites pour R : l'écart-type par lequel lda_nuee les divise serait
+  # infini ou nul ; regression.R)
+  refuser_valeurs_extremes(stats::setNames(as.data.frame(X), colnames(X)), stats::setNames(colnames(X), colnames(X)))
   j <- colonnes_utiles(X)
   if (!length(j)) stop(traduire("Aucune variable X ne varie sur ces observations.", "No X variable varies over these observations."), call. = FALSE)
   retires <- colnames(X)[-j]
