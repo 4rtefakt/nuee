@@ -113,7 +113,11 @@
     <div class="tour-grille">
       <div class="tour-figure">
         <div class="planche" id="planche" aria-hidden="true">
-          <div class="figure" data-figure="tour"><div class="zone"></div></div>
+          <div class="figure" data-figure="tour">
+            <div class="zone"></div>
+            <!-- the map's own zone, of its picture's proportions: IGN's Plan IGN (carte.py) -->
+            <div class="zone zone-carte" data-forme="carte"><img class="fond" src="/assets/carte.webp" alt="" width="1024" height="768" loading="lazy" decoding="async"><span class="credit">© IGN – Plan IGN</span></div>
+          </div>
           <p class="planche-nom" id="planche-nom"></p>
         </div>
       </div>

@@ -117,20 +117,37 @@ h3 { font: 540 1.5rem/1.15 var(--serif); font-variation-settings: "SOFT" 60, "WO
 .deco line, .deco polyline, .deco polygon, .deco rect { vector-effect: non-scaling-stroke; fill: none; stroke: var(--encre); stroke-width: 1; }
 .deco .tirets { stroke-dasharray: 4 4; stroke: var(--encre-douce); }
 .deco .bande { stroke: none; fill: var(--encre); opacity: .07; }
+.deco .barre { stroke: none; fill: var(--c0); opacity: .13; }  /* a histogram's bar, under the dots that fill it */
 .deco .enveloppe { stroke-width: 1.5; fill-opacity: .08; stroke-linejoin: round; }
 .deco .moyenne { stroke-width: 2.5; stroke-linecap: round; opacity: .85; }
 .deco .s0 { stroke: var(--c0); fill: var(--c0); } .deco .s1 { stroke: var(--c1); fill: var(--c1); } .deco .s2 { stroke: var(--c2); fill: var(--c2); }
 .deco .s3 { stroke: var(--c3); fill: var(--c3); } .deco .s5 { stroke: var(--c5); fill: var(--c5); }
+.deco .courbe { stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }  /* TRIM's indices over the counts, */
+.deco .ruban { stroke: none; fill: var(--encre); opacity: .11; }  /* and their 95% band */
+/* the map: a zone of its picture's proportions, as large as the plate allows under its name */
+.planche { container-type: size; }
+.zone-carte { inset: 0; margin: auto; width: min(100cqw - 2.2rem, (100cqh - 4.8rem) * 1.3333); height: auto; aspect-ratio: 4 / 3; }
+.zone-carte .fond { display: block; width: 100%; height: 100%; border: 1px solid var(--encre); border-radius: 3px; box-shadow: 5px 6px 0 var(--papier-fonce);
+  filter: saturate(.42) contrast(.9) brightness(1.04);  /* the map quiet under the flocks */
+  opacity: 0; transition: opacity .3s; }
+.zone-carte .credit { position: absolute; right: .3rem; bottom: .3rem; padding: .15rem .4rem; border-radius: 2px; background: rgba(255, 253, 248, .88);
+  font: 400 .58rem/1.3 var(--mono); color: var(--encre-douce); opacity: 0; transition: opacity .3s; }
+.zone-carte.montre .fond, .zone-carte.montre .credit { opacity: 1; transition: opacity .7s .2s; }
 .grad { position: absolute; font: 400 .66rem/1 var(--mono); color: var(--encre-douce); white-space: nowrap; }
 .grad.x { transform: translate(-50%, .55rem); }
 .grad.y { transform: translate(calc(-100% - .5rem), 50%); }
 .grad.titre { color: var(--encre); font-weight: 500; }
-.grad.fin-x { transform: translate(-100%, -1.1rem); }
+.grad.fin-x { transform: translate(-100%, .55rem); }
 .grad.haut-y { transform: translate(.5rem, 0); }
 .grad.centre { transform: translate(-50%, 1.9rem); }
 .grad.note-haut { transform: translate(.45rem, 0); }
-.grad.groupe { transform: translate(-50%, 0); font-weight: 500; font-size: .7rem; }
-.grad.g0 { color: var(--c0); } .grad.g1 { color: var(--c1); } .grad.g2 { color: var(--c2); } .grad.g3 { color: #b97a1c; }
+.grad.entete-figure { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .3rem 1.2rem; width: 100%;
+  transform: translateY(calc(-100% - .6rem)); line-height: 1.35; white-space: normal; }
+.entete-figure .titre { color: var(--encre); font-weight: 500; }
+.cles-figure { display: inline-flex; flex-wrap: wrap; gap: .2rem .9rem; }
+.cles-figure .cle .trait { width: 1.15rem; height: 2.2px; border-radius: 1px; background: var(--encre); }  /* a line's key */
+.grad.nom-point { transform: translate(-50%, calc(-100% - .5rem)); font-weight: 500; font-size: .7rem; }
+.grad.g2 { color: var(--c2); } .grad.g3 { color: #b97a1c; }
 
 /* ---------------------------------------------------------------- a section */
 .bloc { position: relative; padding: clamp(4.2rem, 12vh, 8.5rem) 0 clamp(4rem, 11vh, 8rem); }

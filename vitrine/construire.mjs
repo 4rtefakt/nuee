@@ -7,7 +7,8 @@
 //   - the application itself: the rules and texts of Which analysis?
 //     (app/interface/choix_analyse.js) and the way a document writes the values it cites
 //     (app/interface/references.js), so that the page says what the application says;
-//   - the screenshots of the documentation site (docs/site/images).
+//   - the screenshots of the documentation site (docs/site/images);
+//   - src/assets/carte.webp, the map under the tour's last figure, made by carte.py.
 
 import { readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -26,7 +27,7 @@ const echapper = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').r
 
 const D = JSON.parse(lire(SRC, 'donnees.json'));
 const choix = await importer('app', 'interface', 'choix_analyse.js');
-const { nombre, pourcentage } = await importer('app', 'interface', 'references.js');
+const { nombre, pourcentage, valeurP, lireReferences, separerCible, valeurReference } = await importer('app', 'interface', 'references.js');
 
 // ------------------------------------------------------------ the two languages have the same keys
 for (const cle of new Set([...Object.keys(textes.en), ...Object.keys(textes.fr)])) {
@@ -58,19 +59,19 @@ const marquerNombres = (texte) => echapper(texte).replace(/\d+\.\d+\.\d+|\b(?:19
 // The six steps of the tour: the family of analyses, its figure's caption with the colours' keys,
 // and its pages of the documentation.
 const ETAPES = [
-  { forme: 'acp', cles: (t) => D.formes.acp.groupes.map((g, i) => [i, g]), liens: ['docs_acp'] },
-  { forme: 'spectres', cles: (t) => [[2, t.tour2_g1], [3, t.tour2_g2]], liens: ['docs_tuto_pls', 'docs_acp'] },
+  { forme: 'acp', cles: (t) => [[3, t.js_cle_cultures], [2, t.js_cle_prairies]], liens: ['docs_acp'] },
+  { forme: 'spectres', cles: (t) => [[0, t.tour2_g1], [1, t.tour2_g2]], liens: ['docs_tuto_pls', 'docs_acp'] },
   { forme: 'baci', cles: (t) => [[0, t.tour3_g1], [1, t.tour3_g2]], liens: ['docs_tuto_baci', 'docs_regressions'] },
-  { forme: 'communautes', cles: (t) => [[5, t.tour4_g1], [3, t.tour4_g2], [2, t.tour4_g3]], liens: ['docs_communautes'] },
+  { forme: 'communautes', cles: (t) => [[3, t.js_cle_cultures], [2, t.js_cle_prairies]], liens: ['docs_communautes'] },
   { forme: 'distance', cles: () => [], liens: ['docs_tuto_suivi', 'docs_suivis'] },
-  { forme: 'carte', cles: (t) => [[0, t.tour6_g1], [5, ''], [3, ''], [1, t.tour6_g2]], liens: ['docs_cartes'] },
+  { forme: 'carte', cles: (t) => [[1, t.tour6_g1], [3, ''], [5, ''], [0, t.tour6_g2]], liens: ['docs_tuto_suivi', 'docs_cartes'] },
 ];
 function blocEtapes(t) {
   return ETAPES.map((e, i) => {
     const k = i + 1;
     const cles = e.cles(t).map(([c, nom]) => `<span class="cle"><i class="c${c}"></i>${echapper(nom)}</span>`).join('');
     const liens = e.liens.map((l) => `<a href="${t[l]}">${l.startsWith('docs_tuto') ? t.tour_tutoriel : t.tour_guide}</a>`).join('');
-    return `        <li class="etape" data-forme="${e.forme}">
+    return `        <li class="etape" data-forme="${e.forme}" id="tour-${e.forme}">
           <p class="etape-nom"><span>${String(k).padStart(2, '0')}</span>${t[`tour${k}_nom`]}</p>
           <h3>${t[`tour${k}_titre`]}</h3>
           <p>${t[`tour${k}_p`]}</p>
@@ -84,11 +85,11 @@ function blocEtapes(t) {
 const blocConsole = () => `<span class="invite">&gt; </span><span class="commande" id="commande">${colorerR(D.console.commande)}</span>\n`
   + `<span class="sortie" id="sortie">${D.console.sortie.map(echapper).join('\n')}</span>`;
 
-// The script of Export to R: its header, then its function for one PLS component, with the line numbers.
+// The script of Export to R: its header, then its function for the overall slope, with the line numbers.
 function blocScript(s) {
   // (each line is a block of its own: no line break between them, the <pre> would show it too)
   const lignes = (ls, debut) => ls.map((l, i) => `<span class="ligne"><span class="num">${debut + i}</span>${colorerR(l) || ' '}</span>`).join('');
-  return `${lignes(s.entete, 1)}<span class="ligne coupe"><span class="num">⋮</span></span>${lignes(s.nipals, s.de)}`;
+  return `${lignes(s.entete, 1)}<span class="ligne coupe"><span class="num">⋮</span></span>${lignes(s.coeur, s.de)}`;
 }
 
 // The Methods text in both languages (the switch of the sheet shows one), the page's own first.
@@ -103,14 +104,30 @@ function blocMethodes(t) {
   }).join('\n');
 }
 
-// A document's line as it is written, and as it is read: the values written as references.js does.
+// A document's line as it is written, and as it is read: its references to the model named BACI
+// (the skylark plots' mixed model) are read and written by the application's own functions
+// (references.js), from the model's coefficients as the interface has them.
 function blocDocument(t) {
-  const v = D.texte[t.langue].valeurs;
-  const l = t.langue;
-  const ligne = (n, q2, r2y, citation) => `${t.pub_doc_avant}<b>${n}</b>${t.pub_doc_milieu1}<b>${q2}</b>${t.pub_doc_milieu2}<b>${r2y}</b>${t.pub_doc_apres}${citation}.`;
+  const modele = { regression: true, coefficients_regression: { ...D.document, terme: D.document.terme.map((x) => (x === 'after*plots' ? t.pub_doc_terme : x)) } };
+  const source = t.pub_doc_texte;
+  let ecrit = '';
+  let lu = '';
+  let fin = 0;
+  for (const r of lireReferences(source)) {
+    const cible = separerCible(r.cible, ['BACI']);
+    const v = cible ? valeurReference(modele, cible.chemin, r, t.langue) : { erreur: 'modele_inconnu' };
+    if (v.erreur) throw new Error(`textes.mjs: pub_doc_texte (${t.langue}), ${r.brut}: ${v.erreur}`);
+    ecrit += `${echapper(source.slice(fin, r.debut))}<b>${echapper(r.brut)}</b>`;
+    lu += `${echapper(source.slice(fin, r.debut))}<b>${v.texte}</b>`;
+    fin = r.fin;
+  }
+  const citation = '[@stewartoaten1986]';
+  if (!source.includes(citation)) throw new Error(`textes.mjs: pub_doc_texte (${t.langue}) should cite ${citation}`);
+  ecrit = (ecrit + echapper(source.slice(fin))).replace(citation, `<b>${citation}</b>`);
+  lu = (lu + echapper(source.slice(fin))).replace(citation, t.pub_doc_citation);
   return `          <div class="doc-demo">
-            <p><span class="etiquette">${t.pub_doc_source}</span><code>${ligne('{{M2.N}}', '{{M2.Q2}}', '{{M2.R2Y:%}}', '<b>[@wold2001]</b>')}</code></p>
-            <p><span class="etiquette">${t.pub_doc_rendu}</span><span>${ligne(nombre(v.N, { decimales: 0, langue: l }), nombre(v.Q2, { langue: l }), pourcentage(v.R2Y, { langue: l }), t.pub_doc_citation)}</span></p>
+            <p><span class="etiquette">${t.pub_doc_source}</span><code>${ecrit}</code></p>
+            <p><span class="etiquette">${t.pub_doc_rendu}</span><span>${lu}</span></p>
           </div>`;
 }
 
@@ -167,10 +184,16 @@ function textesDe(langue) {
   const s = D.texte[langue].script;
   // what the texts' {names} stand for
   const valeurs = {
-    acp_n: n(F.acp.n), acp_k: n(F.acp.k), acp_r1: pc(F.acp.r2x[0]), acp_r2: pc(F.acp.r2x[1]),
-    sp_n: n(F.spectres.n), sp_k: n(F.spectres.k), baci_avant: n(F.baci.avant, 1), baci_apres: n(F.baci.apres, 1),
+    acp_n: n(F.acp.n), acp_k: n(F.acp.k), acp_r1: pc(F.acp.r2x[0]), acp_r2: pc(F.acp.r2x[1]), acp_dehors: F.acp.dehors,
+    sp_n: n(F.spectres.n), sp_k: n(F.spectres.k), sp_montee: n(F.spectres.montee),
+    baci_fermes: n(F.baci.fermes), baci_avant: n(F.baci.avant, 1), baci_apres: n(F.baci.apres, 1),
+    baci_effet: n(F.baci.effet, 1), baci_bas: n(F.baci.bas, 1), baci_haut: n(F.baci.haut, 1),
     com_n: n(F.communautes.n), com_sp: n(F.communautes.especes), com_stress: n(F.communautes.stress, 3),
-    dist_n: n(F.distance.n), dist_p: pc(F.distance.p), dist_w: n(F.distance.w), carte_n: n(F.carte.n),
+    com_r2: pc(F.communautes.r2), com_p: valeurP(F.communautes.p, { langue }),
+    dist_n: n(F.distance.n), dist_p: pc(F.distance.p), dist_w: n(F.distance.w), carte_n: n(F.carte.n), carte_baisse: n(F.carte.baisse),
+    // the skylarks' counts: TRIM's slope as a change a year ("−3.0%"), and in round numbers ("3%")
+    cpt_n: n(F.comptages.n), cpt_sites: n(F.comptages.sites), cpt_annees: n(F.comptages.annees),
+    cpt_pente: pourcentage(F.comptages.pente - 1, { decimales: 1, langue }), cpt_baisse: pc(1 - F.comptages.pente),
     lignes_moteur: n(D.chiffres.lignes_moteur), fichiers_moteur: n(D.chiffres.fichiers_moteur), verifications: n(D.chiffres.verifications),
     script_n: n(s.n), de: s.de, a: s.a, n: s.n,
   };
@@ -184,7 +207,7 @@ function page(langue, v) {
   const t = textesDe(langue);
   const figure = taillePng(path.join(DEPOT, 'docs', 'site', 'images', langue, 'suivi-figure.png'));
   // what site.js needs: the shapes of the swarm, the rules of Which analysis?, a few texts
-  const formes = Object.fromEntries(Object.entries(D.formes).map(([id, f]) => [id, { points: f.points, lignes: f.lignes, part_lignes: f.part_lignes, deco: f.deco, groupes: id === 'acp' ? f.groupes : undefined }]));
+  const formes = Object.fromEntries(Object.entries(D.formes).map(([id, f]) => [id, { points: f.points, lignes: f.lignes, part_lignes: f.part_lignes, petit: f.petit, deco: f.deco }]));
   const donnees = {
     langue, formes, choix: donneesChoix(langue),
     t: Object.fromEntries(Object.entries(t).filter(([k]) => k.startsWith('js_')).map(([k, x]) => [k.slice(3), x])
@@ -198,12 +221,12 @@ function page(langue, v) {
     bloc_registre: blocRegistre(t), figure_largeur: figure.largeur, figure_hauteur: figure.hauteur, v,
     donnees: JSON.stringify(donnees).replace(/</g, '\\u003c'),
   };
-  // (one pass: what a block or a text holds is not read again, a document's {{M2.Q2}} stays as it is)
+  // (one pass: what a block or a text holds is not read again, a document's {{BACI.est...}} stays as it is)
   return lire(SRC, 'gabarit.html').replace(/\{\{(\w+)\}\}/g, (tout, cle) => {
     const x = cle in blocs ? blocs[cle] : t[cle];
     if (x === undefined) throw new Error(`gabarit.html: {{${cle}}} is neither a text nor a block`);
     return x;
-  }).replace(/(\/assets\/[\w./-]+\.(?:css|js|png|svg))(\?v=\w+)?(?=")/g, `$1?v=${v}`);
+  }).replace(/(\/assets\/[\w./-]+\.(?:css|js|png|svg|webp))(\?v=\w+)?(?=")/g, `$1?v=${v}`);
 }
 
 function page404(langue, v) {
@@ -232,14 +255,14 @@ function page404(langue, v) {
 
 // ------------------------------------------------------------ dist/
 
-rmSync(DIST, { recursive: true, force: true });
+rmSync(DIST, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });  // (Windows may still hold a file for a moment)
 cpSync(path.join(SRC, 'assets'), path.join(DIST, 'assets'), { recursive: true });
 for (const langue of ['en', 'fr']) {
   const images = path.join(DEPOT, 'docs', 'site', 'images', langue);
   const captures = path.join(DIST, 'assets', 'captures', langue);
   mkdirSync(captures, { recursive: true });
-  cpSync(path.join(images, 'accueil-fenetre.png'), path.join(captures, 'fenetre.png'));
-  cpSync(path.join(images, 'sombre', 'accueil-fenetre.png'), path.join(captures, 'fenetre-sombre.png'));
+  cpSync(path.join(images, 'suivi-fenetre.png'), path.join(captures, 'fenetre.png'));
+  cpSync(path.join(images, 'sombre', 'suivi-fenetre.png'), path.join(captures, 'fenetre-sombre.png'));
   cpSync(path.join(images, 'suivi-figure.png'), path.join(captures, 'figure.png'));
 }
 

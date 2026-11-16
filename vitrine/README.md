@@ -7,24 +7,33 @@ links to it.
 
 What it shows is taken from the application, not written beside it:
 
-- the swarm's six shapes, the R console's output, the Methods text and the Export to R script are
-  computed by the engine from the example project and the tutorials' data (`donnees.R`);
+- the figure the swarm lands as on the first screen (the monitoring tutorial's skylarks: each
+  count over its site's level, under TRIM's indices), the six shapes of the tour, the R console's
+  output, the Methods text, the Export to R script and the values the document cites are computed
+  by the engine (`donnees.R`), all from one study: the tutorial's skylarks, and surveys of the
+  same birds made up in that script (their songs, a trial of skylark plots, the other birds of
+  the squares);
+- the map under the tour's last figure is IGN's Plan IGN, one of the two backgrounds the
+  application's Map view offers, fetched once and served from here (`carte.py`);
 - *Which analysis?* runs the application's own rules and texts (`app/interface/choix_analyse.js`),
   and a document's cited values are written by its own functions (`app/interface/references.js`);
-- the screenshots are the documentation site's (`docs/site/images`), the logo and the icons the
-  application's (`app/interface/nuee.svg`, `app/icone`);
+- the screenshots are the documentation site's (`docs/site/images`: the window with the skylarks'
+  model, `suivi-fenetre.png`, is taken for this page by `node docs/site/captures.mjs suivi`), the
+  logo and the icons the application's (`app/interface/nuee.svg`, `app/icone`);
 - the download buttons go to the latest release on GitHub, whatever its number (`src/worker.js`).
 
 | | |
 |---|---|
 | `src/gabarit.html` | the page: `{{key}}` is a text of `textes.mjs` or a block made by `construire.mjs` |
 | `src/textes.mjs` | the texts, English and French, the same keys in both |
-| `src/assets/` | `site.css`, `site.js` (the swarm, *Which analysis?*, the page's small machines), the fonts, `og.png` |
+| `src/assets/` | `site.css`, `site.js` (the swarm, *Which analysis?*, the page's small machines), the fonts, `og.png`, `carte.webp` |
 | `src/donnees.json` | the figures and the quoted texts, written by `donnees.R`: don't edit it by hand |
+| `src/carte.json` | where the map's tiles are, written by `carte.py` for `donnees.R` |
 | `src/worker.js` | what no file answers: `/download/<windows, mac-arm64, mac-x64, deb, appimage, tar>`, `/version.json`, the 404 pages |
 | `construire.mjs` | builds `dist/` (not committed) |
 | `donnees.R` | computes `src/donnees.json` with the engine |
 | `image.mjs` | makes `src/assets/og.png`, the picture of a shared link |
+| `carte.py` | makes `src/assets/carte.webp`, the map, and `src/carte.json` |
 | `wrangler.jsonc` | the Worker: its assets, its build, `nuee.io` and `www.nuee.io` |
 
 ## Looking at it
@@ -61,14 +70,30 @@ the page.
 
 ```
 Rscript vitrine/donnees.R      # from the repository's folder: writes vitrine/src/donnees.json
-node vitrine/image.mjs         # if the example's PCA changed: the shared link's picture (needs Chrome or Edge)
+node vitrine/image.mjs         # if the skylarks' figure changed: the shared link's picture (needs Chrome or Edge)
 ```
 
 `donnees.R` needs R with the engine's packages. It checks that the Export to R script gives the
-engine's results before quoting it. The NMDS's communities and the map's relief are simulated in
-it, with fixed seeds; the rest is the example project (`exemple/`) and the tutorials' data
-(`docs/site/donnees/`). A few numbers of the tour's captions come from the tutorials' texts (the
-BACI effect, the skylarks' density): update `src/textes.mjs` when the tutorials change.
+engine's results before quoting it. The songs' spectra, the skylark plots and the squares' other
+birds are simulated in it, with fixed seeds, and the page calls them made up; the rest is the
+monitoring tutorial's data (`docs/site/donnees/`). One number of the tour's captions comes from
+that tutorial's text (the skylarks' density): update `src/textes.mjs` when the tutorial changes.
+
+## The map
+
+The tutorial's 40 sites have no coordinates: `donnees.R` gives each a place, made up like its
+counts (the cropland squares on the Beauce plain, the grassland ones along the Loire and its
+tributaries), and the page says so. Each site is drawn as a flock: the swarm's birds shared
+between the sites by their mean counts, so the flocks must not overlap (`donnees.R` stops if two
+do: move one). The background is IGN's Plan IGN (© IGN, Licence Ouverte 2.0), twelve tiles at
+zoom 11 stitched by `carte.py`, and shown with less colour than IGN gives it:
+
+```
+python vitrine/carte.py        # needs Pillow; then Rscript vitrine/donnees.R, and build again
+```
+
+To show another place, change the tiles in `carte.py` and the sites' longitudes and latitudes in
+`donnees.R`. The page credits "© IGN – Plan IGN" on the map and in its colophon.
 
 ## The texts
 
