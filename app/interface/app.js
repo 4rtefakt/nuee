@@ -686,7 +686,7 @@ const app = {
   async texteMethodes(id) {
     const m = etat.modeles[id];
     let langue = langueActuelle();
-    const corps = el('div', { class: 'texte-methodes' });
+    const corps = el('div', { class: 'texte-methodes', tabindex: 0 });  // (a text that scrolls: the keyboard scrolls it)
     const montrer = async () => {
       const [r, res] = await occupe(() => Promise.all([demander('methodes', { modele: id, langue, version: VERSION }),
         demander('resultats_texte', { modele: id, langue }).catch(() => ({ paragraphes: [] }))]));

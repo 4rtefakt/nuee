@@ -9,7 +9,7 @@ ajouterTextes({
   graphe_axes: '{y} en fonction de {x}', graphe_valeurs: '{n} valeurs', graphe_groupes: '{n} groupes',
   graphe_aide: 'Ctrl+C copie ses nombres en tableau, Maj+F10 ouvre son menu.', graphe_serie: 'Série', graphe_etiquette: 'Étiquette',
   graphe_copie: 'Nombres du graphique copiés : collez-les dans un tableur.',
-  texte_document: 'Texte du document', afficher_mode: 'Afficher', remarque: 'Remarque', barre_outils: 'Barre d’outils', onglet_suivant: 'Onglet suivant', onglet_precedent: 'Onglet précédent',
+  texte_document: 'Texte du document', afficher_mode: 'Afficher', remarque: 'Remarque', source: 'Source', barre_outils: 'Barre d’outils', onglet_suivant: 'Onglet suivant', onglet_precedent: 'Onglet précédent',
   region_suivante: 'Zone suivante', region_precedente: 'Zone précédente',
   dock_ouvert: 'Ouvert : {titre}', dock_ferme: 'Fermé : {titre}', dock_agrandi: 'Agrandi : {titre}', dock_restaure: 'Rétabli : {titre}',
   dock_flottant: 'Flottant : {titre}', dock_ancre: 'Ancré : {titre}', dock_fenetre: 'Dans une nouvelle fenêtre : {titre}',
@@ -20,7 +20,7 @@ ajouterTextes({
   graphe_axes: '{y} against {x}', graphe_valeurs: '{n} values', graphe_groupes: '{n} groups',
   graphe_aide: 'Ctrl+C copies its numbers as a table, Shift+F10 opens its menu.', graphe_serie: 'Series', graphe_etiquette: 'Label',
   graphe_copie: 'The plot’s numbers copied: paste them into a spreadsheet.',
-  texte_document: 'Text of the document', afficher_mode: 'Show', remarque: 'Remark', barre_outils: 'Toolbar', onglet_suivant: 'Next tab', onglet_precedent: 'Previous tab',
+  texte_document: 'Text of the document', afficher_mode: 'Show', remarque: 'Remark', source: 'Source', barre_outils: 'Toolbar', onglet_suivant: 'Next tab', onglet_precedent: 'Previous tab',
   region_suivante: 'Next area', region_precedente: 'Previous area',
   dock_ouvert: '{titre} opened', dock_ferme: '{titre} closed', dock_agrandi: '{titre} maximized', dock_restaure: '{titre} restored',
   dock_flottant: '{titre} floated', dock_ancre: '{titre} docked', dock_fenetre: '{titre} opened in a new window',
@@ -40,7 +40,7 @@ const texte = (x) => (x ? (x.textContent || '').replace(/\s+/g, ' ').trim() : ''
 const titreColonne = (th) => { const c = th.cloneNode(true); c.querySelectorAll('.sous-titre, [aria-hidden="true"]').forEach((x) => x.remove()); return texte(c); };
 // (a label's own words: not the options of the list it holds)
 const texteEtiquette = (l) => { const c = l.cloneNode(true); c.querySelectorAll(CHAMPS).forEach((x) => x.remove()); return texte(c); };
-const aUnNom = (x) => x.hasAttribute('aria-label') || x.hasAttribute('aria-labelledby') || (x.labels && [...x.labels].some((l) => texteEtiquette(l)));
+const aUnNom = (x) => !!(x.getAttribute('aria-label') || '').trim() || x.hasAttribute('aria-labelledby') || (x.labels && [...x.labels].some((l) => texteEtiquette(l)));
 let nEtiquettes = 0;
 const idDe = (x) => x.id || (x.id = `etiquette-${(nEtiquettes += 1)}`);
 
@@ -56,25 +56,50 @@ function nommer(x) {
     const nom = colonne && ligne ? `${colonne} (${ligne})` : colonne || ligne;
     if (nom) { x.setAttribute('aria-label', nom); return; }
   }
+  // a list whose first choice says what it is for ("Role…", "Insert a variable…")
+  if (x.tagName === 'SELECT' && x.options.length && /\S\s*(…|\.\.\.)$/.test(x.options[0].text)) {
+    x.setAttribute('aria-label', x.options[0].text.replace(/…$|\.\.\.$/, ''));
+    return;
+  }
   const grille = x.closest('.grille-champs');
   if (grille) {
     let bloc = x;
     while (bloc.parentElement && bloc.parentElement !== grille) bloc = bloc.parentElement;
-    const etiquette = bloc.previousElementSibling;
-    if (bloc.parentElement === grille && etiquette && etiquette.tagName === 'LABEL' && !etiquette.querySelector(CHAMPS) && texte(etiquette)) {
-      if (bloc !== x && bloc.querySelectorAll(CHAMPS).length > 1) {
-        if (!bloc.hasAttribute('role')) { bloc.setAttribute('role', 'group'); bloc.setAttribute('aria-labelledby', idDe(etiquette)); }
-      } else { x.setAttribute('aria-labelledby', idDe(etiquette)); return; }
+    // (its label, or that of the setting it goes on with: a row whose label is left empty)
+    let etiquette = bloc.parentElement === grille ? bloc.previousElementSibling : null;
+    while (etiquette && etiquette.tagName === 'LABEL' && !texte(etiquette) && etiquette.previousElementSibling) etiquette = etiquette.previousElementSibling.previousElementSibling;
+    if (etiquette && etiquette.tagName === 'LABEL' && !etiquette.querySelector(CHAMPS) && texte(etiquette)) {
+      if (bloc !== x && bloc.querySelectorAll(CHAMPS).length > 1 && !bloc.hasAttribute('role')) {
+        bloc.setAttribute('role', 'group');
+        bloc.setAttribute('aria-labelledby', idDe(etiquette));
+      }
+      x.setAttribute('aria-labelledby', idDe(etiquette));
+      return;
     }
   }
-  if (x.title) { x.setAttribute('aria-label', x.title); return; }
-  // a list whose first choice says what it is for ("Role…"); a view's list of what it shows
-  if (x.tagName === 'SELECT' && x.options.length && /…$|\.\.\.$/.test(x.options[0].text)) x.setAttribute('aria-label', x.options[0].text.replace(/…$|\.\.\.$/, ''));
-  else if (x.tagName === 'SELECT' && x.closest('.outils')) x.setAttribute('aria-label', t('afficher_mode'));
+  if (x.title) x.setAttribute('aria-label', x.title);
+  else if (x.tagName === 'SELECT' && x.closest('.outils')) x.setAttribute('aria-label', t('afficher_mode'));  // (a view's list of what it shows)
+}
+
+// In a grid of fields, a label followed by several fields (radio buttons, a value and its unit): a group named by it
+function grouper(grille) {
+  for (const bloc of grille.children) {
+    const etiquette = bloc.previousElementSibling;
+    if (bloc.tagName === 'LABEL' || bloc.hasAttribute('role') || !etiquette || etiquette.tagName !== 'LABEL' || !texte(etiquette)) continue;
+    if (bloc.querySelectorAll(CHAMPS).length > 1) { bloc.setAttribute('role', 'group'); bloc.setAttribute('aria-labelledby', idDe(etiquette)); }
+  }
 }
 
 function nommerDans(racine) {
   if (racine.nodeType !== 1) return;
+  const grilles = new Set(racine.querySelectorAll('.grille-champs'));
+  if (racine.closest('.grille-champs')) grilles.add(racine.closest('.grille-champs'));
+  grilles.forEach(grouper);
+  // (a dialog's title is a level 2 heading: its sections' h4, with no h3 between, are of level 3)
+  for (const h of [racine, ...racine.querySelectorAll('h4')]) {
+    const corps = h.matches('h4') && h.closest('.corps-dialogue');
+    if (corps && !corps.querySelector('h3')) h.setAttribute('aria-level', '3');
+  }
   if (racine.matches(CHAMPS)) nommer(racine);
   for (const x of racine.querySelectorAll(CHAMPS)) nommer(x);
 }

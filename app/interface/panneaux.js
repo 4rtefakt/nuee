@@ -3535,7 +3535,7 @@ function rendreComparaison(conteneur, ctx, p, loc) {
       ['R2Y', 'R2Y(cum)'], ['Q2', 'Q2(cum)'], ['RMSEE', 'RMSEE'], ['RMSEcv', 'RMSEcv']]
       .concat(regressions ? [['R2', t('r2_regression')], ['ensemble', t('ensemble_aic')], ['AIC', 'AIC'], ['dAIC', 'ΔAIC'], ['poids', t('poids_akaike')]] : [],
         [['sR2X', `R2X(cum) ${t('stocke')}`], ['sR2Y', `R2Y(cum) ${t('stocke')}`], ['sQ2', `Q2(cum) ${t('stocke')}`]])
-      .map(([cle, titre]) => ({ cle, titre, decimales: ['A', 'N', 'K'].includes(cle) ? 0 : undefined })),
+      .map(([cle, titre]) => ({ cle, titre, lecteur: cle === 'nom' ? t('nom') : undefined, decimales: ['A', 'N', 'K'].includes(cle) ? 0 : undefined })),
     valeur: (i, k) => (typeof lignes[i][k] === 'number' && !['A', 'N', 'K'].includes(k) ? Number(lignes[i][k].toFixed(4)) : lignes[i][k]),
   });
   rendreEmboites(emboites, ctx, loc, lignes);
@@ -3695,7 +3695,7 @@ function rendreCVANOVA(conteneur, ctx, p) {
     Object.entries(m.cv_anova || {}).map(([y, a]) => el('section', {},
       el('h4', { class: 'titre-section' }, `CV-ANOVA · ${y}`),
       el('table', { class: 'tableau compact' },
-        el('thead', {}, el('tr', {}, ['', 'SS', 'DF', 'MS', 'F', 'p', 'SD'].map((h, k) => el('th', { class: k ? 'num' : '' }, h)))),
+        el('thead', {}, el('tr', {}, ['', 'SS', 'DF', 'MS', 'F', 'p', 'SD'].map((h, k) => el('th', { class: k ? 'num' : '' }, h || el('span', { class: 'lecteur-seul' }, t('source')))))),
         el('tbody', {}, a.source.map((_, i) => el('tr', {}, el('td', {}, t('anova_' + i)),
           el('td', { class: 'num' }, fmt(a.SS[i], 3)), el('td', { class: 'num' }, a.DF[i]), el('td', { class: 'num' }, fmt(a.MS[i], 4)),
           el('td', { class: 'num' }, a.F[i] === null ? '' : fmt(a.F[i], 3)), el('td', { class: 'num' }, pf(a.p[i])),
