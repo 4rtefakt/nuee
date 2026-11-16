@@ -1,6 +1,7 @@
 // The picture a link to nuee.io shows when it is shared (src/assets/og.png, 1200 × 630): the name,
-// a line, and the example's scores plot from donnees.json, drawn with the site's own styles and
-// photographed by a headless Chrome or Edge (CHROME=… to say which).
+// a line, and the figure the page's swarm lands as, the skylarks' counts under TRIM's indices, from
+// donnees.json, drawn with the site's own styles and photographed by a headless Chrome or Edge
+// (CHROME=… to say which).
 //   node vitrine/image.mjs        (after a change to the look or to the data; then build again)
 
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -11,21 +12,26 @@ import path from 'node:path';
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(ICI, 'src', 'assets');
-const acp = JSON.parse(readFileSync(path.join(ICI, 'src', 'donnees.json'), 'utf8')).formes.acp;
+const comptages = JSON.parse(readFileSync(path.join(ICI, 'src', 'donnees.json'), 'utf8')).formes.comptages;
 const navigateur = [process.env.CHROME, 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe',
   '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find((c) => c && existsSync(c));
 if (!navigateur) throw new Error('No Chrome or Edge found: set CHROME to its path');
 
-// the plot, 560 × 440: the axes through the middle, the ellipse, the apples in their varieties' colours
+// the plot, 560 × 440: the counts in their habitats' colours, the band and the line of TRIM's
+// indices, the level of the first year in dashes, the axis of the years
 const L = 560;
 const H = 440;
 const COULEURS = ['#2f6fb5', '#d1495b', '#3b9a5b', '#e09f3e'];
 const X = (x) => (x * L).toFixed(1);
 const Y = (y) => ((1 - y) * H).toFixed(1);
+const trace = (pts) => pts.map(([x, y]) => `${X(x)},${Y(y)}`).join(' ');
+const d = comptages.deco;
 const graphique = `<svg viewBox="0 0 ${L} ${H}" width="${L}" height="${H}">
-  <line x1="0" y1="${H / 2}" x2="${L}" y2="${H / 2}"/><line x1="${L / 2}" y1="0" x2="${L / 2}" y2="${H}"/>
-  <polygon points="${acp.deco.ellipse.map(([x, y]) => `${X(x)},${Y(y)}`).join(' ')}" stroke-dasharray="5 5"/>
-  ${acp.points.map(([x, y, g]) => `<circle cx="${X(x)}" cy="${Y(y)}" r="5.2" fill="${COULEURS[g]}" stroke="none"/>`).join('')}
+  <polygon class="ruban" points="${trace(d.rubans[0])}"/>
+  ${d.tirets.map(([x1, y1, x2, y2]) => `<line class="tirets" x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}"/>`).join('')}
+  <line x1="0" y1="${H}" x2="${L}" y2="${H}"/>
+  ${comptages.points.map(([x, y, g]) => `<circle cx="${X(x)}" cy="${Y(y)}" r="3.6" fill="${COULEURS[g]}"/>`).join('')}
+  <polyline class="courbe" points="${trace(d.courbes[0])}"/>
 </svg>`;
 
 const dossier = mkdtempSync(path.join(tmpdir(), 'nuee-og-'));
@@ -40,8 +46,10 @@ writeFileSync(page, `<!doctype html><meta charset="utf-8">
   .devise em { color: var(--bleu); font-weight: 340; }
   .liste { font: 400 17px/1.5 var(--mono); color: var(--encre-douce); margin: 0; }
   svg { justify-self: center; overflow: visible; }
-  svg line, svg polygon { fill: none; stroke: var(--encre); stroke-width: 1.3; }
-  svg polygon { stroke: var(--encre-douce); }
+  svg line, svg polyline { fill: none; stroke: var(--encre); stroke-width: 1.3; }
+  svg .tirets { stroke: var(--encre-douce); stroke-dasharray: 5 5; }
+  svg .ruban { fill: var(--encre); opacity: .11; }
+  svg .courbe { stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
 </style>
 <div>
   <h1>Nuée</h1>

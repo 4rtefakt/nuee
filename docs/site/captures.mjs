@@ -507,6 +507,8 @@ async function tutorielSuivi(langue, images) {
     await p.cliquer(`__n.texte('.fond-dialogue button', __n.t('ajuster'))`);
     await p.attendre("__n.tous('.arbre .noeud').some((e) => e.textContent.includes('TRIM'))", 180000);
     await pause(2500);
+    // the whole window, for nuee.io (vitrine/)
+    await p.capture(path.join(images, 'suivi-fenetre.png'), 'document.body');
     let e = await etat(p);
     const trim = e.modeles.find((x) => x.type === 'TRIM');
     await garderTextes(p, 'trim', trim.id, langue);
