@@ -60,7 +60,7 @@ button.principal:focus-visible { outline-offset: 2px; }
 .groupe-outils:last-child { border-right: 0; }
 .outil { flex-direction: column; gap: 1px; border: 1px solid transparent; background: transparent; padding: 3px 5px; min-width: 50px; }
 .outil .icone { width: 19px; height: 19px; color: var(--accent); }
-.outil span:last-child { font-size: 11px; white-space: nowrap; }
+.outil span:last-child { font-size: 11px; white-space: nowrap; max-width: 8em; overflow: hidden; text-overflow: ellipsis; }  /* (a view's long name: its title says it) */
 .outil:hover:not(:disabled) { background: var(--survol); border-color: transparent; }
 .outil:disabled .icone { color: var(--texte-doux); }
 #barre-outils { scrollbar-width: none; }

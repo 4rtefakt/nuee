@@ -5,7 +5,7 @@ import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, d
 import { demander, televerser, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { el, icone, menuContextuel, barreMenus, dialogue } from './ui.js';
-import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
+import { creerCommandes, menus, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
 import { dialogueRaster } from './raster.js';
@@ -2040,15 +2040,22 @@ function rendreMenus() {
   } })), [el('img', { class: 'logo', src: 'nuee.svg', alt: '' })]);
 }
 
-// The toolbar is one Tab stop: left and right (Home, End) go from button to button.
+// The toolbar is one Tab stop: left and right (Home, End) go from button to button. Its views follow
+// the model in front (commandes.js: barreOutils): drawn again when they change.
+const vuesBarre = new Map();  // (the commands of views that have none of their own: commandeVue)
+const commandeBarre = (id) => C[id] || vuesBarre.get(id) || vuesBarre.set(id, commandeVue(app, id)).get(id);
+const signatureBarre = () => barreOutils(app).map((g) => g.join(' ')).join('|');
 function rendreBarreOutils() {
   const barre = document.getElementById('barre-outils');
+  const avant = barre.contains(document.activeElement) ? document.activeElement.dataset.commande ?? '' : null;
+  barre._signature = signatureBarre();
   barre.setAttribute('aria-label', t('barre_outils'));
-  barre.replaceChildren(...BARRE_OUTILS.map((groupe) => el('div', { class: 'groupe-outils', role: 'group' }, groupe.map((id) => {
-    const c = C[id];
+  barre.replaceChildren(...barreOutils(app).map((groupe) => el('div', { class: 'groupe-outils', role: 'group' }, groupe.map((id) => {
+    const c = commandeBarre(id);
+    const court = t('court_' + id);  // (a view without a short name: its name)
     return el('button', { class: 'outil', 'data-commande': id, title: t(id) + (c.raccourci ? ` (${afficherRaccourci(c.raccourci)})` : ''), tabindex: -1,
       'aria-keyshortcuts': c.raccourci ? c.raccourci.replace('Ctrl', 'Control').replace('=', 'Plus') : null,
-      onclick: () => { if (!c.actif || c.actif()) c.action(); } }, icone(c.icone || ICONES_VUES[id]), el('span', {}, t('court_' + id)));
+      onclick: () => { if (!c.actif || c.actif()) c.action(); } }, icone(c.icone || ICONES_VUES[id]), el('span', {}, court === `court_${id}` ? t(id) : court));
   }))));
   if (!barre._clavier) {
     barre._clavier = true;
@@ -2065,11 +2072,18 @@ function rendreBarreOutils() {
     });
   }
   majBarreOutils();
+  // (the keyboard on the toolbar while it changed: on the same command, else its Tab stop)
+  if (avant !== null) {
+    const b = barre.querySelector(`.outil[data-commande="${avant}"]:not(:disabled)`) || barre.querySelector('.outil[tabindex="0"]');
+    if (b) b.focus();
+  }
 }
 
 function majBarreOutils() {
+  const barre = document.getElementById('barre-outils');
+  if (barre && barre._signature !== undefined && barre._signature !== signatureBarre()) { rendreBarreOutils(); return; }
   document.querySelectorAll('#barre-outils .outil').forEach((b) => {
-    const c = C[b.dataset.commande];
+    const c = commandeBarre(b.dataset.commande);
     b.disabled = c.actif ? !c.actif() : false;
   });
   // (the toolbar's Tab stop on an enabled button)
