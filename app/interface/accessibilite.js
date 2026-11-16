@@ -1,15 +1,25 @@
 // Accessibility helpers of the interface: what the keyboard and screen readers need beyond the
 // menus and dialogs (ui.js) and the project tree (explorateur.js). Their strings are added here.
 import { t, ajouterTextes } from './i18n.js';
-import { el } from './ui.js';
+import { el, decimal } from './ui.js';
 
 ajouterTextes({
+  graphe_nuage: 'Nuage de points', graphe_lignes: 'Courbes', graphe_barres: 'Diagramme en barres', graphe_histogramme: 'Histogramme',
+  graphe_chaleur: 'Carte de chaleur', graphe_boites: 'Boîtes à moustaches', graphe_3d: 'Nuage de points en 3D', graphe_carte: 'Carte', graphe_generique: 'Graphique',
+  graphe_axes: '{y} en fonction de {x}', graphe_valeurs: '{n} valeurs', graphe_groupes: '{n} groupes',
+  graphe_aide: 'Ctrl+C copie ses nombres en tableau, Maj+F10 ouvre son menu.', graphe_serie: 'Série', graphe_etiquette: 'Étiquette',
+  graphe_copie: 'Nombres du graphique copiés : collez-les dans un tableur.',
   texte_document: 'Texte du document', afficher_mode: 'Afficher', remarque: 'Remarque', barre_outils: 'Barre d’outils', onglet_suivant: 'Onglet suivant', onglet_precedent: 'Onglet précédent',
   region_suivante: 'Zone suivante', region_precedente: 'Zone précédente',
   dock_ouvert: 'Ouvert : {titre}', dock_ferme: 'Fermé : {titre}', dock_agrandi: 'Agrandi : {titre}', dock_restaure: 'Rétabli : {titre}',
   dock_flottant: 'Flottant : {titre}', dock_ancre: 'Ancré : {titre}', dock_fenetre: 'Dans une nouvelle fenêtre : {titre}',
   dock_fermer: 'Fermer {titre}',
 }, {
+  graphe_nuage: 'Scatter plot', graphe_lignes: 'Line plot', graphe_barres: 'Bar chart', graphe_histogramme: 'Histogram',
+  graphe_chaleur: 'Heat map', graphe_boites: 'Box plot', graphe_3d: '3D scatter plot', graphe_carte: 'Map', graphe_generique: 'Plot',
+  graphe_axes: '{y} against {x}', graphe_valeurs: '{n} values', graphe_groupes: '{n} groups',
+  graphe_aide: 'Ctrl+C copies its numbers as a table, Shift+F10 opens its menu.', graphe_serie: 'Series', graphe_etiquette: 'Label',
+  graphe_copie: 'The plot’s numbers copied: paste them into a spreadsheet.',
   texte_document: 'Text of the document', afficher_mode: 'Show', remarque: 'Remark', barre_outils: 'Toolbar', onglet_suivant: 'Next tab', onglet_precedent: 'Previous tab',
   region_suivante: 'Next area', region_precedente: 'Previous area',
   dock_ouvert: '{titre} opened', dock_ferme: '{titre} closed', dock_agrandi: '{titre} maximized', dock_restaure: '{titre} restored',
@@ -138,6 +148,55 @@ export function grilleClavier(table, loc, plus) {
     while (r >= table.rows.length && plus()) { /* the next slice */ }
     aller(cellule(r, c));
   });
+}
+
+// ------------------------------------------------------------ plots
+
+// Every plot (panneaux.js: tracer) is an image for screen readers, named by its title and what it
+// shows ("M1 · Scores. Scatter plot, t[2] against t[1]: 120 values, 4 groups: Gala 30, Golden 30…"),
+// that the keyboard reaches: Shift+F10 or the menu key give its menu, Ctrl+C copies its numbers
+// as a table (app.js: tableauActif, from donneesGraphe), Ctrl+Shift+C its image.
+const NATURES = { scatter: 'nuage', scattergl: 'nuage', bar: 'barres', histogram: 'histogramme', heatmap: 'chaleur', contour: 'chaleur',
+  box: 'boites', violin: 'boites', scatter3d: '3d', surface: '3d', scattermap: 'carte', scattermapbox: 'carte', scattergeo: 'carte' };
+const sansBalises = (s) => String(s ?? '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+const titreDe = (x) => sansBalises(x && typeof x === 'object' ? x.text : x);
+const dessinees = (traces) => traces.filter((tr) => tr.visible !== false && tr.visible !== 'legendonly' && tr.hoverinfo !== 'skip');
+const nValeurs = (tr) => Math.max(0, ...['x', 'y', 'z', 'lat'].map((k) => (Array.isArray(tr[k]) ? tr[k].length : 0)));
+
+export function decrireGraphe(div, traces, layout) {
+  const vues = dessinees(traces).filter((tr) => nValeurs(tr) > 0);
+  const nature = [...new Set(vues.map((tr) => ((!tr.type || /^scatter(gl)?$/.test(tr.type)) && /lines/.test(tr.mode || '') && !/markers/.test(tr.mode || '')
+    ? 'lignes' : NATURES[tr.type || 'scatter'] || 'generique')))].map((x) => t(`graphe_${x}`)).join(', ') || t('graphe_generique');
+  const x = titreDe(layout.xaxis && layout.xaxis.title);
+  const y = titreDe(layout.yaxis && layout.yaxis.title);
+  const nommees = vues.filter((tr) => tr.name && tr.showlegend !== false);
+  const total = vues.reduce((s, tr) => s + nValeurs(tr), 0);
+  const groupes = nommees.length > 1 ? `, ${t('graphe_groupes', { n: nommees.length })}: ${nommees.slice(0, 8).map((tr) => `${sansBalises(tr.name)} ${nValeurs(tr)}`).join(', ')}${nommees.length > 8 ? ', …' : ''}` : '';
+  div.setAttribute('role', 'img');
+  div.setAttribute('aria-label', `${titreDe(layout.title) || t('graphe_generique')}. ${nature}${x && y ? `, ${t('graphe_axes', { x, y })}` : ''}: ${t('graphe_valeurs', { n: total })}${groupes}.`);
+  div.setAttribute('aria-description', t('graphe_aide'));
+  if (!div.hasAttribute('tabindex')) div.tabIndex = 0;
+}
+
+// A plot's numbers as a table, tab-separated with the interface's decimal mark: a row per value of
+// each trace drawn (its series, its label, x, y, and z for a 3D plot), or a heat map's grid.
+export function donneesGraphe(div) {
+  const L = div.layout || {};
+  const val = (v) => (v === null || v === undefined ? '' : typeof v === 'number' ? decimal(v) : sansBalises(v));
+  const traces = dessinees(div.data || []);
+  const avecZ = traces.some((tr) => Array.isArray(tr.z) && !Array.isArray(tr.z[0]));
+  const lignes = [[t('graphe_serie'), t('graphe_etiquette'), titreDe(L.xaxis && L.xaxis.title) || 'x', titreDe(L.yaxis && L.yaxis.title) || 'y'].concat(avecZ ? ['z'] : []).join('\t')];
+  for (const tr of traces) {
+    if (Array.isArray(tr.z) && Array.isArray(tr.z[0])) {
+      lignes.push([sansBalises(tr.name || ''), ...(tr.x || tr.z[0].map((_, j) => j + 1)).map(val)].join('\t'));
+      tr.z.forEach((r, i) => lignes.push([val(Array.isArray(tr.y) ? tr.y[i] : i + 1), ...r.map(val)].join('\t')));
+      continue;
+    }
+    const etiquette = (i) => [tr.hovertext, tr.text].map((a) => (Array.isArray(a) ? a[i] : null)).find((v) => v !== null && v !== undefined && v !== '') ?? '';
+    const de = (k, i) => (Array.isArray(tr[k]) ? tr[k][i] : '');
+    for (let i = 0; i < nValeurs(tr); i++) lignes.push([sansBalises(tr.name || ''), val(etiquette(i)), val(de('x', i)), val(de('y', i))].concat(avecZ ? [val(de('z', i))] : []).join('\t'));
+  }
+  return lignes.join('\n');
 }
 
 // ------------------------------------------------------------ panels and tabs

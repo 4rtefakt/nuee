@@ -121,6 +121,8 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .note { color: var(--texte-doux); font-size: 11.5px; margin: 4px 0; }
 .attente { margin: 20px; }
 .graphe { flex: 1; min-height: 200px; }
+/* (a plot's ring outside it: Plotly's layers would cover one drawn inside) */
+.js-plotly-plot:focus-visible { outline-offset: 1px; }
 .graphe.petit { flex: 0 0 230px; min-height: 180px; }
 .bas { flex: 1; display: flex; flex-direction: column; min-height: 120px; }
 .defile { overflow: auto; flex: 1; min-height: 60px; }

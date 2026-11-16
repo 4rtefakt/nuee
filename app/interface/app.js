@@ -33,7 +33,7 @@ import { installerFigures } from './figures.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
-import { messagesDock, ongletDock } from './accessibilite.js';
+import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -1747,7 +1747,8 @@ app.tableauActif = () => {
   const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
   const e = p && etat.panneaux.get(p.id);
   const table = e && e.element && e.element.querySelector('table');
-  if (!table) return null;
+  // (a plot without a table: its numbers, accessibilite.js)
+  if (!table) return e && e.graphe && e.graphe.isConnected && e.graphe.data ? () => navigator.clipboard.writeText(donneesGraphe(e.graphe)).then(() => statut(t('graphe_copie'))) : null;
   if (e.element._copierTableau) return e.element._copierTableau;
   return () => {
     const texte = (c) => { const x = c.cloneNode(true); x.querySelectorAll('.marque').forEach((m) => m.remove()); return x.textContent.replace(/[▲▼]/g, '').trim(); };

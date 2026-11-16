@@ -2,7 +2,7 @@
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
 import { t, lire, ecrire, langueActuelle, libelleResultat } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
-import { grilleClavier } from './accessibilite.js';
+import { grilleClavier, decrireGraphe } from './accessibilite.js';
 
 export const PALETTES = {
   defaut: ['#2f6fb5', '#d1495b', '#3b9a5b', '#e09f3e', '#7b5ea7', '#2a9d8f', '#8c564b', '#c2549d', '#6b6b6b', '#a3a322'],
@@ -120,6 +120,7 @@ export function tracer(ctx, div, traces, layout = {}) {
     responsive: true, displaylogo: false, scrollZoom: true,
     modeBarButtonsToRemove: ['toImage', 'autoScale2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'],
   });
+  decrireGraphe(div, traces, lay);  // (its text for screen readers, and the keyboard's stop: accessibilite.js)
   if (!div._observe) {
     div._observe = new ResizeObserver(() => { if (div.offsetWidth) window.Plotly.Plots.resize(div); });
     div._observe.observe(div);
