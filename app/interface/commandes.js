@@ -35,6 +35,10 @@ export function creerCommandes(app) {
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: () => avecModele() || !!app.coefficientsActifs(),
       action: () => (app.coefficientsActifs() ? app.exporterCoefficients(app.coefficientsActifs()) : app.exporter(m())) },
     script_r: { icone: 'file-code', actif: avecModele, action: () => app.exporterScript(m()) },
+    // the project's reproducibility package: its data, one R script for every model, its documents,
+    // its citation, in one .zip; and the same deposited on Zenodo as a draft (paquet.js; desktop only)
+    paquet: { icone: 'package', actif: () => !!app.projetActif(), action: () => app.exporterPaquet(app.projetActif()) },
+    paquet_zenodo: { icone: 'cloud-upload', actif: () => !!app.projetActif() && !!app.bureau, action: () => app.deposerZenodo(app.projetActif()) },
     // a document of the project: text that refers to its results (documents.js)
     nouveau_document: { icone: 'file-text', actif: () => !!app.projetActif(), action: () => app.nouveauDocument(app.projetActif()) },
     rapport: { icone: 'file-text', actif: avecModele, action: () => app.rapport(m()) },
@@ -160,7 +164,8 @@ export function menus(app, C) {
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
-      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
+      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-',
+      it('paquet'), ...(app.bureau ? [it('paquet_zenodo')] : []), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
