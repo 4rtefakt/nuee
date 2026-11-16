@@ -30,7 +30,10 @@
 #     comme leur ajustement les compte, avant et après la mise à jour ;
 #   - un projet sans source (un tableau collé) mis à jour d'un fichier ; un projet sans étapes dont
 #     une variable calculée garde sa formule ; un tableau sans colonne qui nomme les observations,
-#     retrouvées par leur place.
+#     retrouvées par leur place ;
+#   - les prédictions d'un modèle ajusté avant un nouvel ordre des catégories (une forêt, des arbres
+#     boostés, un arbre, une LDA aux X qualitatifs, un modèle hiérarchique) : les mêmes, sur ses
+#     observations, un jeu de prédiction et un fichier ; après un nom changé, refusées.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -664,6 +667,61 @@ utils::write.csv(data.frame(mesure = c(2.5, 3.1, 4.2, 1.8, 2.2), autre = c(1, 2,
 ap <- demande("mettre_a_jour", list(projet = pp$id, apercu = TRUE))
 verifier("un tableau sans colonne qui nomme les observations : retrouvées par leur place, et dit", isTRUE(ap$observations$par_position) &&
            ap$observations$ajoutees == 1 && identical(parametres(projet(pp$id), 1)$observation, "3") && all(statuts(ap) == "ok"))
+
+# Un modèle ajusté avant un nouvel ordre des catégories (Édition › Catégories) reste à jour, sa
+# définition rapportée au nouvel ordre ; il prédit sur le projet tel qu'il l'a vu (serveur.R :
+# pour_predire). Une forêt, des arbres boostés, un arbre, une LDA aux X qualitatifs donnent les mêmes
+# prédictions qu'avant : ses observations, un jeu de prédiction, un fichier (un modèle hiérarchique et
+# son modèle de base compris), les classes sous leurs noms ; un nom changé depuis, refusé.
+cat("Prédire après un nouvel ordre des catégories\n")
+set.seed(3)
+n_o <- 60
+hab <- sample(c("forêt", "lande", "prairie"), n_o, TRUE)
+sol <- ifelse(hab == "forêt", sample(c("argile", "sable"), n_o, TRUE, c(.8, .2)),
+              ifelse(hab == "lande", sample(c("argile", "sable", "limon"), n_o, TRUE), sample(c("limon", "sable"), n_o, TRUE, c(.7, .3))))
+alt <- round(runif(n_o, 50, 500))
+pente <- round(runif(n_o, 0, 30), 1)
+d_o <- data.frame(nom = paste0("R", seq_len(n_o)), habitat = hab, sol = sol, altitude = alt, pente = pente,
+                  densite = round(c(forêt = 10, lande = 4, prairie = 7)[hab] + 0.01 * alt + 0.1 * pente + rnorm(n_o), 2))
+f_o <- fichier("ordre.csv")
+utils::write.csv(d_o, f_o, row.names = FALSE)
+f_pred <- fichier("ordre_a_predire.csv")
+utils::write.csv(d_o[1:15, c("nom", "habitat", "sol", "altitude", "pente")], f_pred, row.names = FALSE)
+io <- demande("ouvrir", list(chemin = f_o))$id
+uo <- function(nom) uid_de(projet(io), nom)
+x3 <- list(uo("habitat"), uo("altitude"), uo("pente"))
+ordre_modeles <- list(
+  foret = list(type = "FOREST", x = x3, y = list(uo("densite")), options = list(arbres = 100)),
+  boost = list(type = "BOOST", x = x3, y = list(uo("densite")), options = list(arbres = 100)),
+  arbre = list(type = "TREE", x = x3[1:2], y = list(uo("densite"))),
+  lda = list(type = "LDA", x = x3, classe = uo("sol"), echelle = "UV"),
+  foret_classes = list(type = "FOREST", x = x3[1:2], classe = uo("sol"), options = list(arbres = 100)),
+  base = list(type = "PCA", x = x3, A = 2))
+ids_o <- vapply(names(ordre_modeles), function(k) demande("ajuster", c(list(projet = io, nom = k), ordre_modeles[[k]]))$id, "")
+demande("scores_en_variables", list(modele = ids_o[["base"]]))
+ids_o[["haut"]] <- demande("ajuster", list(projet = io, type = "PLS", x = list(uo("$base.t1"), uo("$base.t2"), uo("altitude")), y = list(uo("densite")), A = 1, nom = "haut"))$id
+etat$projets[[io]]$prediction_sets <- list(list(name = "J", observations = numeros_observations(projet(io))[1:10]))
+predictions_o <- function(id) list(obs = demande("predire", list(modele = id))$observations, jeu = demande("predire", list(modele = id, jeu = 1))$observations,
+                                   fichier = demande("predire_fichier", list(modele = id, chemin = f_pred))$observations)
+avant_o <- lapply(ids_o, predictions_o)
+cats_o <- function(nom) categories_de(projet(io), nom)
+demande("categories", list(projet = io, variable = uo("habitat"), noms = cats_o("habitat"), ordre = rev(cats_o("habitat"))))
+demande("categories", list(projet = io, variable = uo("sol"), noms = cats_o("sol"), ordre = rev(cats_o("sol"))))
+apres_o <- lapply(ids_o, predictions_o)
+memes_o <- vapply(names(ids_o), function(k) isTRUE(all.equal(avant_o[[k]], apres_o[[k]], tolerance = 1e-12)), TRUE)
+verifier(sprintf("le nouvel ordre fait (%s ; %s), et les mêmes prédictions qu'avant : %s", paste(cats_o("habitat"), collapse = ", "), paste(cats_o("sol"), collapse = ", "),
+                 paste(sprintf("%s %s", names(memes_o), ifelse(memes_o, "ok", "CHANGÉ")), collapse = ", ")),
+         identical(cats_o("habitat"), c("prairie", "lande", "forêt")) && identical(cats_o("sol"), c("sable", "limon", "argile")) && all(memes_o))
+cl_o <- apres_o$lda$obs
+verifier("les classes d'une LDA et d'une forêt de classement sous leurs noms, leurs probabilités nommées par elles",
+         all(cl_o[["classe prédite"]] %in% c("argile", "limon", "sable")) && identical(cl_o[["classe observée"]], unname(valeurs(projet(io), "sol"))) &&
+           all(paste("probabilité", c("argile", "limon", "sable")) %in% names(cl_o)) && all(apres_o$foret_classes$fichier[["classe prédite"]] %in% c("argile", "limon", "sable")))
+# (un nom changé : la forêt n'est plus à jour, et le modèle de base du modèle hiérarchique non plus)
+demande("categories", list(projet = io, variable = uo("habitat"), noms = sub("forêt", "bois", cats_o("habitat")), ordre = sub("forêt", "bois", cats_o("habitat"))))
+verifier("un nom changé depuis : prédire refusé, d'un fichier aussi, et par le modèle de base d'un modèle hiérarchique",
+         grepl("ont changé depuis l'ajustement de foret", refus("predire", list(modele = ids_o[["foret"]]))) &&
+           grepl("ont changé depuis l'ajustement de foret", refus("predire_fichier", list(modele = ids_o[["foret"]], chemin = f_pred))) &&
+           grepl("ont changé depuis l'ajustement de base", refus("predire_fichier", list(modele = ids_o[["haut"]], chemin = f_pred))))
 
 cat("En anglais\n")
 options(nuee.langue = "en")

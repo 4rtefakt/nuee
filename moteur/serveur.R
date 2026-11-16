@@ -401,6 +401,19 @@ modele <- function(id, a_jour = FALSE) {
   e
 }
 
+# Le projet et la définition sur lesquels un modèle de la séance prédit : le projet tel qu'il l'a vu,
+# ses catégories dans l'ordre de son ajustement (atelier.R : projet_tel_ajuste), avec la définition
+# de cet ajustement, comme son export vers R (script_demande). Un nouvel ordre change sinon ses
+# prédictions : les X qualitatifs d'une forêt, d'arbres boostés ou d'un arbre se lisent par le numéro
+# de leur catégorie, ceux d'une LDA par ses indicatrices. Refusé comme modele(id, TRUE) quand une
+# catégorie qu'il a vue a changé de nom ou disparu ; sans ordres gardés, le projet d'aujourd'hui.
+pour_predire <- function(id, e = modele(id, TRUE)) {
+  vu <- etat$modeles[[as.character(id)[1]]]
+  p <- projet(e$projet)
+  if (length(vu$ordres)) list(projet = projet_tel_ajuste(p, vu$ordres), definition = vu$definition)
+  else list(projet = p, definition = e$definition)
+}
+
 # Définition d'un modèle décrit par l'interface (type, variables, observations exclues...).
 definition_interface <- function(p, q) {
   obs <- vapply(p$observations, function(o) as.numeric(o$uid), 0)
@@ -700,7 +713,8 @@ predire_demande <- function(q) {
   }
   obs <- if (!is.null(q$jeu)) p$prediction_sets[[as.numeric(q$jeu)[1]]]$observations
          else vapply(p$observations, function(o) as.numeric(o$uid), 0)
-  out <- predire(p, e$modele, e$definition, obs)
+  vu <- pour_predire(q$modele, e)
+  out <- predire(vu$projet, e$modele, vu$definition, obs)
   out$uid <- obs
   out$nom <- unname(p$noms_obs[nom_numero(obs)])
   out$dans_modele <- obs %in% e$modele$observations
@@ -726,7 +740,8 @@ hca_demande <- function(q) {
 
 # Prédiction d'un fichier. Pour un modèle hiérarchique, les scores des modèles de base
 # ($M1.t1...) absents du fichier sont calculés par le modèle de base du même nom ajusté dans
-# la session (le plus récent), qui prédit lui-même le fichier.
+# la session (le plus récent), qui prédit lui-même le fichier. Chacun lit le fichier sur le projet tel
+# qu'il l'a vu (pour_predire) : ses catégories reconnues par leur nom, dans l'ordre de son ajustement.
 predire_fichier_demande <- function(q) {
   e <- modele(q$modele, TRUE)
   p <- projet(e$projet)
@@ -734,15 +749,17 @@ predire_fichier_demande <- function(q) {
   base <- function(nom_modele) {
     ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, p$id) &&
                     identical(etat$modeles[[id]]$definition$name, nom_modele), names(etat$modeles))
-    if (length(ids)) etat$modeles[[ids[length(ids)]]]
+    if (length(ids)) ids[length(ids)]
   }
   completer <- function(nom) {
     x <- regmatches(nom, regexec("^\\$([^.]+)\\.t(\\d+)", nom))[[1]]
     b <- if (length(x)) base(x[2])
-    if (is.null(b) || identical(b$definition$name, e$definition$name)) return(NULL)
-    predire_fichier(p, b$modele, b$definition, q$chemin, completer)$observations[[paste0("t", x[3])]]
+    if (is.null(b) || identical(etat$modeles[[b]]$definition$name, e$definition$name)) return(NULL)
+    vb <- pour_predire(b)
+    predire_fichier(vb$projet, etat$modeles[[b]]$modele, vb$definition, q$chemin, completer)$observations[[paste0("t", x[3])]]
   }
-  r <- predire_fichier(p, e$modele, e$definition, q$chemin, completer)
+  vu <- pour_predire(q$modele, e)
+  r <- predire_fichier(vu$projet, e$modele, vu$definition, q$chemin, completer)
   r$observations$dans_modele <- FALSE
   etat$predictions[[q$modele]] <- r$observations
   c(list(modele = q$modele), r)

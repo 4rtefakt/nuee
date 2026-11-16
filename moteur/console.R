@@ -58,6 +58,13 @@ colonne_r <- function(df, nom) if (identical(make.names(nom), nom)) sprintf("%s$
 # Les lignes R d'une action de l'interface (NULL pour celles qui ne font qu'afficher).
 journaliser <- function(nom, q, r) {
   pm <- function(id) etat$modeles[[id]]$projet
+  # (le projet d'un modèle tel qu'il l'a vu, quand ses catégories ont changé d'ordre depuis : atelier.R,
+  # projet_tel_ajuste ; definition() est celle de son ajustement)
+  projet_vu <- function(id) {
+    vu <- etat$modeles[[id]]
+    if (length(vu$ordres) && !identical(projet_tel_ajuste(projet(vu$projet), vu$ordres), projet(vu$projet))) sprintf("projet_tel_ajuste(%s, etat$modeles[[%s]]$ordres)", pm(id), code_r(id))
+    else pm(id)
+  }
   variable_r <- function(x) if (is.numeric(x)) as.character(x) else code_r(x)  # (un numéro de variable, ou "id:k")
   definition_modele <- function(id, commentaire) {
     e <- etat$modeles[[id]]
@@ -87,9 +94,10 @@ journaliser <- function(nom, q, r) {
     selection_aic = sprintf("selection_aic(%s, definition(%s))", q$modele, code_r(q$modele)),
     puissance_tendance = if (length(intersect(names(q), REGLAGES_PUISSANCE))) sprintf("puissance_tendance(%s, definition(%s), %s)", q$modele, code_r(q$modele), code_r(q[intersect(names(q), REGLAGES_PUISSANCE)])),
     moyennes = if (length(intersect(names(q), REGLAGES_MOYENNES))) sprintf("moyennes_ajustees(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q[intersect(names(q), REGLAGES_MOYENNES)])),
-    predire = sprintf("predire(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele),
+    # (sur le projet tel que le modèle l'a vu, comme serveur.R le prédit : pour_predire)
+    predire = sprintf("predire(%s, %s, definition(%s), %s)", projet_vu(q$modele), q$modele, code_r(q$modele),
                       if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),
-    predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),
+    predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", projet_vu(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),
     hca = sprintf("classification(%s, %s)", q$modele, q$composantes %||% sprintf("%s$A", q$modele)),
     permutations = sprintf("permutations(%s, %s, definition(%s), y = %s, n = %s)", pm(q$modele), q$modele, code_r(q$modele), q$y %||% 1, q$n %||% 20),
     contributions = sprintf("contributions(%s, %s, %s)", q$modele, vecteur_r(as.numeric(q$observations)), code_r(q$type %||% "DModX")),
