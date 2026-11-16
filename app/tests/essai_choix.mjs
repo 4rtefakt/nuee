@@ -29,7 +29,7 @@ function repondre(p, F, changements, infos = null) {
   const R = proposer(p, F, infos);
   const { y, ...reste } = changements;
   Object.assign(R, reste);
-  if (y !== undefined) choisirReponse(R, F, uid(p, y));
+  if (y !== undefined) choisirReponse(R, F, uid(p, y), p);
   return R;
 }
 const conseil = (p, F, R) => recommander(contexte(R, F, p));
@@ -242,6 +242,10 @@ console.log('Des mesures sur des sites');
   const Et = repondre(p, F, { question: 'predire', y: 'etat' });
   const rf = construire(conseil(p, F, Et).choix, Et, F, p);
   egal('prédire une classe → forêt aléatoire, la classe en classe, validation par site', [rf.reglages.type, rf.reglages.classe, rf.reglages.y, rf.reglages.vc], ['FOREST', uid(p, 'etat'), undefined, site]);
+  const Gq = repondre(p, F, { question: 'groupes', y: 'traitement' });
+  const tq = construire(conseil(p, F, Gq).choix, Gq, F, p).loc;
+  egal('comparer des groupes sur une réponse qualitative qui était les groupes proposés : d’autres groupes, jamais la réponse elle-même',
+    [Gq.reponse, Gq.groupe, tq.deux.x !== tq.deux.y], ['classe', uid(p, 'etat'), true]);
   const Gr = repondre(p, F, { question: 'groupes', y: 'longueur', groupe: uid(p, 'traitement') });
   const rgr = conseil(p, F, Gr);
   egal('comparer deux traitements sur des sites suivis plusieurs années (des lignes par site et traitement) → modèle mixte, sans test apparié',

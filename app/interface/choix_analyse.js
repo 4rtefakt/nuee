@@ -248,8 +248,9 @@ export function proposer(p, F, coordonnees = null) {
 }
 
 // The response chosen: its kind (the only one its question offers, or the one its values say) and
-// many zeros, from its facts.
-export function choisirReponse(R, F, uid) {
+// many zeros, from its facts. p (the project): the groups, when the response is the qualitative
+// variable they were, become another one (or none, to choose), never the response itself.
+export function choisirReponse(R, F, uid, p = null) {
   const f = uid === null || uid === undefined ? null : F.get(uid);
   R.y = f ? uid : null;
   if (f) {
@@ -259,6 +260,7 @@ export function choisirReponse(R, F, uid) {
   }
   R.x = liste(R.x).filter((u) => u !== R.y);
   R.variables = liste(R.variables).filter((u) => u !== R.y);
+  if (p && R.y !== null && R.groupe === R.y) R.groupe = trouverGroupe(p, new Set([R.y, uidDe(R.site), uidDe(R.unite)]));
   return R;
 }
 

@@ -168,7 +168,7 @@ export async function dialogueQuelleAnalyse(app, projet) {
         const options = [...(numeriques ? quantitatives() : []), ...(f.reponses.includes('classe') ? qualitatives() : [])]
           .map((v) => [v.uid, v.qualitative ? `${v.nom} (${liste(v.categories).length})` : v.nom]);
         reponse.push(el('div', { class: 'ligne' }, el('label', {}, uneSeule ? t(`qa_r_${f.reponses[0]}`) : t('qa_reponse_variable')),
-          select('qa-y', options, R.y, (v) => { choisirReponse(R, F, v === '' ? null : Number(v)); ajusterReponse(); maj(true); },
+          select('qa-y', options, R.y, (v) => { choisirReponse(R, F, v === '' ? null : Number(v), p()); ajusterReponse(); maj(true); },
             f.facultative ? t('qa_reponse_facultative') : t('qa_choisir'))));
       }
       if (!uneSeule) {
