@@ -3,6 +3,7 @@
 import { t, lire, ecrire, langueActuelle, libelleResultat, deuxPoints, separateurIntervalle, pourcent } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
 import { grilleClavier, decrireGraphe } from './accessibilite.js';
+import { decimalesValeurs } from './nombres.js';
 
 // The default palette stays apart under the common colour-vision deficiencies (Machado et al. 2009's
 // protanopia, deuteranopia and tritanopia): every pair at least 5.9 in CIEDE2000, the first four 9.9.
@@ -1360,9 +1361,12 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     const vides = x.reduce((s, y) => s + (y === null ? 1 : 0), 0);
     const distinctes = new Set(x.filter((y) => y !== null)).size;
     const valeurs = [vides ? t('atelier_vides_n', { n: vides }) : '', t('atelier_distinctes', { n: distinctes })].filter(Boolean).join(' · ');
-    // (a column of whole numbers, years or counts, without decimals: 2008, not 2008.0000)
+    // (a column of whole numbers, years or counts, without decimals: 2008, not 2008.0000; the others
+    // with the decimals their values have, up to 6, decided on a sample of them: an altitude 3.2, a
+    // GPS longitude 4.615327, nombres.js; the whole column when the sample had only whole numbers)
     const entiers = x.every((y) => typeof y !== 'number' || Number.isInteger(y));
-    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i], decimales: entiers ? 0 : undefined,
+    const decimales = entiers ? 0 : decimalesValeurs(x) || decimalesValeurs(x, { echantillon: Infinity });
+    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i], decimales,
       sousTitre: [v.unite, resume ? valeurs : ''].filter(Boolean).join(' · ') || null,
       info: [v.description, `${d.variables[i]}${v.unite ? ` (${v.unite})` : ''} · ${v.qualitative ? t([].concat(v.categories || []).length === 1 ? 'atelier_qualitative_une' : 'atelier_qualitative', { n: [].concat(v.categories || []).length }) : t('atelier_quantitative')} · ${valeurs}`,
         t('atelier_entete_aide')].filter(Boolean).join('\n') };

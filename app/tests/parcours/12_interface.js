@@ -9,6 +9,15 @@ module.exports = {
     await n.attendre(n.ligneModele('M1', true));
     await n.libre();
 
+    // ---- the Data view: each column's decimals as in its values (weight 133, diameter 62.1, firmness 6.63)
+    await n.menu('m_graphiques', 'donnees');
+    const cellules = await n.attendre(`(() => { const t = __n.tous('table.tableau').find((x) => [...x.tHead.rows[0].cells].some((c) => __n.norm(c.childNodes[0] && c.childNodes[0].textContent) === 'firmness'));
+      if (!t || !t.tBodies[0].rows.length) return null;
+      const k = (nom) => [...t.tHead.rows[0].cells].findIndex((c) => __n.norm(c.childNodes[0] && c.childNodes[0].textContent) === nom);
+      const l = t.tBodies[0].rows[0];
+      return ['weight', 'diameter', 'firmness'].map((nom) => __n.norm(l.cells[k(nom)].textContent)); })()`);
+    verifier('donneesDecimales', JSON.stringify(cellules) === JSON.stringify(['133', '62.1', '6.63']), cellules);
+
     // ---- New model's Type list: its families in their order, each type once, R code under Other
     await n.menu('m_modele', 'nouveau_modele');
     await n.dialogue('nouveau_modele');
