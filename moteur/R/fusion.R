@@ -619,8 +619,13 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
 # donnent devient une étape de plus, un collage des cellules, et les données restent celles que leurs
 # étapes donnent. NULL quand ce n'est pas possible (une source absente de cet ordinateur, une étape de
 # l'autre côté qui ne s'applique plus après les miennes…), et ctx$raison dit pourquoi quand c'est utile
-# à savoir : la fusion se fait alors cellule par cellule.
-fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
+# à savoir : la fusion se fait alors cellule par cellule. Les fichiers relus (la source, ceux des
+# étapes) doivent être ceux qui ont été lus : changés depuis, la fusion prendrait aussi ce que personne
+# n'a mis à jour. Chaque étape rejouée doit se refaire (une erreur, un fichier d'une étape qui n'est que
+# sur l'ordinateur de l'autre, laisseraient de côté ce qu'elle donne), et chaque variable des deux côtés
+# être dans les données rejouées, sauf celle qu'un côté a retirée et que l'autre n'a pas changée
+# (`dM`, `dL` : changements_fusion) : autrement, cellule par cellule.
+fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier, dM, dL) {
   rien <- function(raison) {
     ctx$raison <- raison
     NULL
@@ -652,6 +657,21 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   if (is.null(fichier_retrouve(S$source_donnees, dossier))) {
     return(rien(phrase_fusion("la source %s est introuvable sur cet ordinateur", "the source %s isn't found on this computer", basename(premier_texte(S$source_donnees$chemin)))))
   }
+  # (la source, son formulaire et les fichiers des étapes, tels qu'ils ont été lus : comme le retrait d'une
+  # étape, serveur.R)
+  change <- function(f) isTRUE(etat_fiche(f, dossier)$modifie)
+  if (change(S$source_donnees)) {
+    return(rien(phrase_fusion("la source %s a changé depuis qu'elle a été lue", "the source %s changed since it was read", basename(premier_texte(S$source_donnees$chemin)))))
+  }
+  if (is.list(S$source_donnees$formulaire) && change(S$source_donnees$formulaire)) {
+    return(rien(phrase_fusion("le formulaire %s a changé depuis qu'il a été lu", "the form %s changed since it was read", basename(premier_texte(S$source_donnees$formulaire$chemin)))))
+  }
+  for (e in etapes) for (f in e$fichiers %||% list()) {
+    if (change(f)) {
+      return(rien(phrase_fusion("le fichier %s de l'étape %s a changé depuis qu'il a été lu", "the file %s of the step %s changed since it was read",
+                                basename(premier_texte(f$chemin)), guillemets_fusion(etiquette_etape(e)))))
+    }
+  }
   cible <- M
   cible$source_donnees <- S$source_donnees
   cible$models <- list()
@@ -659,6 +679,12 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   r <- tryCatch(mise_a_jour(cible, dossier = dossier, etapes = etapes), error = function(e) e)
   if (inherits(r, "error")) return(rien(conditionMessage(r)))
   if (!is.null(r$choisir)) return(rien(traduire("la source a plusieurs tableaux", "the source has several tables")))
+  # (chaque étape rejouée ; celles de l'autre côté, faites après les miennes, sans être sautées non plus)
+  for (e in r$rapport$etapes) {
+    if (identical(e$statut, "erreur")) {
+      return(rien(phrase_fusion("l'étape %s ne se refait pas (%s)", "the step %s can't be redone (%s)", guillemets_fusion(premier_texte(e$etiquette)), premier_texte(e$raison))))
+    }
+  }
   for (e in utils::tail(r$rapport$etapes, length(etapes) - length(S$etapes))) {
     if (!identical(e$statut, "ok")) {
       return(rien(phrase_fusion("l'étape %s ne s'applique plus après les autres (%s)", "the step %s no longer applies after the others (%s)",
@@ -667,6 +693,20 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   }
   D <- r$projet
   tD <- tableau_fusion(D, ctx$colonnes_cle)
+  # (chaque variable de chaque côté, dans les données rejouées, sauf retirée d'un côté et inchangée de l'autre)
+  inchangee <- function(d, k) is.null(d$cellules[[k]]) && is.null(d$champs[[k]]) && !k %in% d$listes
+  for (k in setdiff(c(tM$cles_v, setdiff(tL$cles_v, tM$cles_v)), tD$cles_v)) {
+    retiree <- k %in% tB$cles_v && (!k %in% tM$cles_v || !k %in% tL$cles_v) &&
+      (!k %in% tM$cles_v || inchangee(dM, k)) && (!k %in% tL$cles_v || inchangee(dL, k))
+    if (!retiree) {
+      return(rien(phrase_fusion("les étapes rejouées ne donnent pas la variable %s", "the replayed steps don't give the variable %s", guillemets_fusion(nom_cle_fusion(k)))))
+    }
+  }
+  # (ni une variable qu'aucun côté n'a)
+  autres <- setdiff(tD$cles_v, c(tM$cles_v, tL$cles_v))
+  if (length(autres)) {
+    return(rien(phrase_fusion("les étapes rejouées donnent une variable qu'aucun côté n'a : %s", "the replayed steps give a variable neither side has: %s", guillemets_fusion(nom_cle_fusion(autres[1])))))
+  }
   for (k in tD$cles_v) {
     v <- tD$vars[[k]]
     cats <- as.character(unlist(v$categories))
@@ -1767,7 +1807,7 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
     ctx$mode <- "inchangees"
   } else {
     n0 <- length(ctx$conflits)
-    D <- fusion_etapes(base, mien, leur, tB, tM, tL, ctx, dossier)
+    D <- fusion_etapes(base, mien, leur, tB, tM, tL, ctx, dossier, dM, dL)
     if (!is.null(D)) {
       for (f in c("variables", "observations", "observation_id_names", "datasets", "donnees", "noms_obs", "noms_var", "source_donnees",
                   "etapes", "empreinte_donnees", "coordonnees", "collecte")) p <- avec_champ(p, f, D[[f]])

@@ -457,6 +457,16 @@ verifier("son aperçu : le rapport d'une mise à jour, la ligne nouvelle du fich
 writeLines(utils::head(readLines(source_csv), -1), source_csv)
 verifier("le fichier rendu tel qu'il était (une autre date, le même contenu) : la source n'a pas changé, le retrait se ferait",
          isFALSE(demande("etapes", list(projet = id))$source$modifie) && demande("retirer_etape", list(projet = id, n = k, apercu = TRUE))$observations$ajoutees == 0)
+# (le fichier d'une étape qui reste, des colonnes jointes, changé depuis sa lecture : le retrait le relirait aussi)
+e_sites <- Find(function(e) identical(e$demande, "ajouter_colonnes") && length(e$fichiers), projet(id)$etapes)
+f_sites <- fichier_retrouve(e_sites$fichiers[[1]], dossier_projet(projet(id)))
+octets_sites <- readBin(f_sites, "raw", file.size(f_sites))
+utils::write.csv(data.frame(site = sites$site, altitude = c(121, 85, 140, 310), sol = c("argile", "sable", "argile", "limon")), f_sites, row.names = FALSE)
+avant_retrait <- projet(id)
+refus_fichier <- tryCatch({ demande("retirer_etape", list(projet = id, n = k)); NULL }, error = function(e) e)
+verifier("le fichier d'une étape changé depuis sa lecture : le retrait refusé de même (source_modifiee), le fichier nommé",
+         inherits(refus_fichier, "source_modifiee") && grepl("sites.csv", conditionMessage(refus_fichier), fixed = TRUE) && identical(projet(id), avant_retrait))
+writeBin(octets_sites, f_sites)
 # (un classeur dont la feuille de la source a changé de nom : retirer_etape demande laquelle lire, et la prend)
 classeur <- fichier("releves.xlsx")
 openxlsx::write.xlsx(list(releves = utils::head(df, 12), notes = data.frame(note = "relevés de printemps")), classeur)

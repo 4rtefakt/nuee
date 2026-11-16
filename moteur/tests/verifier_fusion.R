@@ -11,7 +11,9 @@
 #     des deux côtés, une fois ; les deux côtés ajoutent une variable calculée (numéros qui se croisent), un
 #     modèle de la leur la suit ; un seul côté met les données à jour, l'étape de l'autre rejouée après ;
 #   - cellule par cellule quand les étapes ne se rejouent pas : la source introuvable sur cet ordinateur,
-#     des données changées hors des étapes, une étape de l'autre côté qui ne s'applique plus ;
+#     des données changées hors des étapes, une étape de l'autre côté qui ne s'applique plus ; la source
+#     changée depuis sa lecture, une étape qui ne se refait pas ici (son fichier n'est que chez l'autre), une
+#     variable supprimée d'un côté et changée de l'autre ;
 #   - les données cellule par cellule (des projets de la 1.0, sans étapes) : des lignes ajoutées des deux
 #     côtés par deux mises à jour, une cellule changée autrement des deux côtés, les catégories nouvelles
 #     de chaque côté mises avant la dernière (une régression garde sa référence, contre lm()), les termes
@@ -401,6 +403,72 @@ verifier("la raison dite, et la variable faite autrement des deux côtés, un co
 pl <- fusion(base, mien_e, leur_e, list(`variable:v` = "leur"))$projet
 verifier("le leur : leurs valeurs ; les étapes des deux côtés gardées, l'empreinte rompue (les données ne sont plus ce qu'elles donnent)",
          isTRUE(all.equal(unname(valeurs(pl, "v")), unname(valeurs(lire_projet(leur_e), "v")))) && length(pl$etapes) == 2 && identical(pl$empreinte_donnees, ""))
+
+cat("Par les étapes, seulement sur les fichiers tels qu'ils ont été lus, chaque étape refaite et chaque variable là\n")
+# (une étude à part : six observations, chaque côté corrige une valeur de x)
+etude2 <- file.path(dossier, "etude2")
+dir.create(file.path(etude2, "donnees"), recursive = TRUE)
+csv2 <- file.path(etude2, "donnees", "releves.csv")
+df2 <- data.frame(nom = paste0("O", 1:6), x = c(1, 2, 3, 4, 5, 6), z = c(7, 3, 8, 1, 9, 2), y = c(10, 21, 29, 42, 50, 61))
+utils::write.csv(df2, csv2, row.names = FALSE)
+id2 <- demande("ouvrir", list(chemin = csv2))$id
+demande("ajuster", list(projet = id2, type = "LM", x = uid(id2, "x"), y = uid(id2, "y"), nom = "M1"))
+base2 <- file.path(etude2, "base.nuee")
+demande("enregistrer", list(projet = id2, chemin = base2))
+demande("fermer_projet", list(projet = id2))
+cote2 <- function(nom, f) {
+  id <- demande("ouvrir", list(chemin = base2))$id
+  f(id)
+  chemin <- file.path(etude2, nom)
+  demande("enregistrer", list(projet = id, chemin = chemin))
+  demande("fermer_projet", list(projet = id))
+  chemin
+}
+corriger <- function(id, o, v, x) demande("modifier_valeur", list(projet = id, observation = numeros_observations(projet(id), o), variable = uid(id, v), valeur = x))
+fusion2 <- function(m, l, choix = list()) fusionner_projets(lire_projet(base2), lire_projet(m), lire_projet(l), choix, dossier = etude2, qui = "Bob")
+mien2 <- cote2("mien.nuee", function(id) corriger(id, "O1", "x", "100"))
+leur2 <- cote2("leur.nuee", function(id) corriger(id, "O2", "x", "200"))
+# (le fichier source changé depuis qu'il a été lu, sans que personne ne mette les données à jour : x de O3
+# corrigé, une ligne O7 de plus)
+utils::write.csv(rbind(transform(df2, x = replace(x, 3, 33)), data.frame(nom = "O7", x = 7, z = 5, y = 70)), csv2, row.names = FALSE)
+r <- fusion2(mien2, leur2)
+verifier("la source changée depuis sa lecture : cellule par cellule, la raison dite ; ni sa valeur corrigée ni sa ligne nouvelle, la source d'avant",
+         identical(r$donnees$mode, "cellules") && grepl("a changé depuis qu'elle a été lue", r$donnees$raison) &&
+           identical(unname(valeurs(r$projet, "x")), c(100, 200, 3, 4, 5, 6)) && identical(r$projet$source_donnees$sha256, lire_projet(base2)$source_donnees$sha256))
+utils::write.csv(df2, csv2, row.names = FALSE)
+verifier("le fichier rendu tel qu'il était : de nouveau par les étapes", identical(fusion2(mien2, leur2)$donnees$mode, "etapes"))
+# (leur côté a mis les données à jour du fichier de l'année suivante, et ajouté des colonnes d'un fichier
+# qui n'est que sur son ordinateur : leur étape ne se refait pas ici)
+csv26 <- file.path(etude2, "donnees", "releves_2026.csv")
+utils::write.csv(rbind(df2, data.frame(nom = "O7", x = 7, z = 5, y = 70)), csv26, row.names = FALSE)
+ailleurs <- file.path(dossier, "chez_bob")
+dir.create(ailleurs)
+sites2 <- file.path(ailleurs, "sites.csv")
+utils::write.csv(data.frame(nom = paste0("O", 1:7), altitude = c(110, 120, 130, 140, 150, 160, 170)), sites2, row.names = FALSE)
+leur26 <- cote2("leur26.nuee", function(id) {
+  demande("mettre_a_jour", list(projet = id, chemin = csv26))
+  demande("ajouter_colonnes", list(projet = id, chemin = sites2, nom = "sites.csv", cles_projet = list("id:1"), cles_table = list("nom"), colonnes = list("altitude")))
+})
+unlink(sites2)
+r <- fusion2(mien2, leur26)
+verifier("une étape de leur côté qui ne se refait pas ici : cellule par cellule, la raison dite, leur colonne altitude gardée",
+         identical(r$donnees$mode, "cellules") && grepl("ne se refait pas", r$donnees$raison) && grepl("sites.csv", r$donnees$raison, fixed = TRUE) &&
+           "altitude" %in% r$projet$noms_var && unname(valeurs(r$projet, "altitude")["O7"]) == 170 && unname(valeurs(r$projet, "x")["O1"]) == 100)
+# (leur côté a mis les données à jour, et corrigé z ; le mien a supprimé z : rejouées, mes étapes après
+# les leurs ôteraient z et leur correction sans rien dire)
+leur_z <- cote2("leur_z.nuee", function(id) {
+  demande("mettre_a_jour", list(projet = id, chemin = csv26))
+  corriger(id, "O2", "z", "30")
+})
+mien_z <- cote2("mien_z.nuee", function(id) demande("supprimer_variable", list(projet = id, variable = uid(id, "z"))))
+r <- fusion2(mien_z, leur_z)
+verifier("une variable supprimée de mon côté, changée du leur, que les étapes rejouées n'ont plus : cellule par cellule, un conflit",
+         identical(r$donnees$mode, "cellules") && grepl("variable « z »", r$donnees$raison, fixed = TRUE) && "variable:z" %in% ids_conflits(r))
+verifier("le leur : z et leur correction", isTRUE(tryCatch(unname(valeurs(fusion2(mien_z, leur_z, list(`variable:z` = "leur"))$projet, "z")["O2"]) == 30, error = function(e) FALSE)))
+# (supprimée d'un côté, inchangée de l'autre : par les étapes)
+r <- fusion2(mien_z, leur26 <- cote2("leur_o7.nuee", function(id) demande("mettre_a_jour", list(projet = id, chemin = csv26))))
+verifier("une variable supprimée d'un côté, inchangée de l'autre : par les étapes, sans elle", identical(r$donnees$mode, "etapes") && !"z" %in% r$projet$noms_var &&
+           "O7" %in% names(valeurs(r$projet, "x")))
 
 # ---------------------------------------------------------------- cellule par cellule
 

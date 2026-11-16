@@ -1275,7 +1275,9 @@ mettre_a_jour_demande <- function(q) {
 # Une étape retirée, les données refaites sans elle : DEMANDES$retirer_etape. La source est relue telle
 # qu'elle est : changée depuis sa lecture (etat_fiche), le retrait prendrait aussi ses nouvelles
 # données, et en ferait la source sans le dire. Il est alors refusé (une erreur de classe
-# « source_modifiee », que la réponse dit, appli) ; son aperçu (q$apercu) montre ce qu'il ferait.
+# « source_modifiee », que la réponse dit, appli) ; son aperçu (q$apercu) montre ce qu'il ferait. De
+# même pour son formulaire XLSForm et le fichier d'une des étapes qui restent (des colonnes jointes, un
+# raster), relus aussi.
 retirer_etape_demande <- function(q) {
   actuel <- projet(q$projet)
   n <- suppressWarnings(as.integer(unlist(q$n))[1])
@@ -1287,10 +1289,20 @@ retirer_etape_demande <- function(q) {
   if (is.null(fichier_retrouve(s, dossier))) {
     stop(sprintf(traduire("Le fichier source est introuvable : %s", "The source file isn't found: %s"), premier_texte(s$chemin)), call. = FALSE)
   }
+  modifiee <- function(message) stop(structure(class = c("source_modifiee", "error", "condition"), list(call = NULL, message = message)))
   if (!isTRUE(q$apercu) && isTRUE(etat_fiche(s, dossier)$modifie)) {
-    stop(structure(class = c("source_modifiee", "error", "condition"), list(call = NULL, message = traduire(
+    modifiee(traduire(
       "Le fichier source a changé depuis qu'il a été lu : retirer l'étape y prendrait aussi ses nouvelles données. Mettez d'abord les données à jour, ou regardez l'aperçu du retrait.",
-      "The source file changed since it was read: removing the step would also bring in its new data. Update the data first, or look at the removal's preview."))))
+      "The source file changed since it was read: removing the step would also bring in its new data. Update the data first, or look at the removal's preview."))
+  }
+  if (!isTRUE(q$apercu)) {
+    fiches <- c(if (is.list(s$formulaire)) list(s$formulaire), unlist(lapply(etapes[-n], function(e) e$fichiers %||% list()), recursive = FALSE))
+    for (f in fiches) if (isTRUE(etat_fiche(f, dossier)$modifie)) {
+      modifiee(sprintf(traduire(
+        "Le fichier %s, lu par une étape ou par l'import, a changé depuis qu'il a été lu : retirer l'étape y prendrait aussi ses nouvelles données. Mettez d'abord les données à jour, ou regardez l'aperçu du retrait.",
+        "The file %s, read by a step or by the import, changed since it was read: removing the step would also bring in its new data. Update the data first, or look at the removal's preview."),
+        basename(premier_texte(f$chemin))))
+    }
   }
   r <- mise_a_jour(actuel, table = q$table, etapes = etapes[-n])
   if (!is.null(r$choisir)) return(r)
