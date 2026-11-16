@@ -45,6 +45,13 @@ let arretVoulu = false;  // R stopped on purpose (restart), not a crash
 // R in its environment and to the windows in a cookie no other site can send.
 const jeton = crypto.randomBytes(32).toString('hex');
 const cookieR = () => `nuee_${port}`;
+// The R code of a project (an R-code model, moteur/R/code.R) runs only once this user has written or
+// approved it on this computer: its fingerprint among those kept in the settings (codeApprouve),
+// which R is given at each start, and after each approval, with this secret only this process and R
+// know (the windows, which have the token, can't approve code themselves). The engine refuses any
+// other code, whatever a window asks: opening a file never runs code from it (docs/deploiement.md).
+const secretCode = crypto.randomBytes(32).toString('hex');
+const APPROUVES_MAX = 10000;  // (the latest approvals: an older code is asked about again)
 let langue = 'en';  // the interface's (English until it says), for the dialogs shown from here
 // Recovery copies of the projects not saved yet, written regularly by the interface; they
 // are deleted when the application closes normally.
@@ -193,7 +200,9 @@ function dossierTemporaireR() {
 function demarrerR(port, r, repli = false) {
   return new Promise((resolve, reject) => {
     dossierTemporaireR();
-    const env = { ...process.env, NUEE_JETON: jeton, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR };
+    const env = { ...process.env, NUEE_JETON: jeton, NUEE_CODE_SECRET: secretCode, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR };
+    // (R-code models turned off for everyone by the organisation: the engine refuses them too)
+    if (codeInterdit()) env.NUEE_SANS_CODE = '1'; else delete env.NUEE_SANS_CODE;
     const conv = path.join(racine, 'outils', process.platform === 'win32' ? 'export_project.exe' : 'export_project');
     if (fs.existsSync(conv)) env.CONVERTISSEUR_USP = conv;
     // An installed copy runs the same engine whoever uses it: the researcher's own R setup stays
@@ -286,6 +295,32 @@ async function redemarrerR() {
   arretVoulu = false;
   journal = '';
   await demarrerMoteur();
+  await envoyerApprobations();  // (before the windows reopen their projects: their code approved runs)
+}
+
+// The approved fingerprints told to R (secretCode, see above): true once R has them.
+function envoyerApprobations() {
+  return new Promise((resolve) => {
+    if (!adresse) { resolve(false); return; }
+    const req = http.request(`${adresse}api/code_approuve`, { method: 'POST', timeout: 10000,
+      headers: { 'Content-Type': 'application/json', Cookie: `${cookieR()}=${jeton}`, 'X-Nuee-Code': secretCode } }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode === 200));
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(false));
+    req.end(JSON.stringify({ empreintes: [].concat(reglages.codeApprouve || []) }));
+  });
+}
+// Fingerprints the engine computed (hexadecimal SHA-256, whatever the R: an approval holds when
+// File › Settings… changes the R), approved by this user: added to the settings, the most recent
+// last, then told to R.
+function approuverCode(empreintes) {
+  const valides = [].concat(empreintes || []).filter((e) => typeof e === 'string' && /^[0-9a-f]{64}$/.test(e));
+  const deja = [].concat(reglages.codeApprouve || []).filter((e) => !valides.includes(e));
+  reglages.codeApprouve = [...deja, ...new Set(valides)].slice(-APPROUVES_MAX);
+  ecrireReglages();
+  return envoyerApprobations();
 }
 
 // "Save and close": the window saves each modified project (asking where for new ones);
@@ -756,6 +791,10 @@ function ipc() {
     return etatR();
   });
   recevoir('r-repli', () => { const r = rRepliASignaler; rRepliASignaler = null; return r; });
+  // R code approved by this user (interface/vues_code.js: typed and fitted, or read and run from the
+  // bar over a project whose code was written elsewhere): true once the engine knows it; false when
+  // the policy turns R-code models off
+  recevoir('approuver-code', (_, empreintes) => (codeInterdit() ? false : approuverCode(empreintes)));
   recevoir('nouvelle-version', (_, maintenant) => nouvelleVersion(!!maintenant).catch((e) => ({ erreur: e.message })));
   // for Aide › Informations de diagnostic (no paths, nothing personal): which R, not where
   recevoir('diagnostic', () => ({ systeme: `${process.platform} ${process.getSystemVersion()} ${process.arch}`,
@@ -826,6 +865,14 @@ function politique(nom) {
   }
   return null;
 }
+// The same policy key turns R-code models off (DWORD DisableCustomCode = 1), as does the environment
+// variable NUEE_SANS_CODE=1 (any system): they aren't offered, and the engine refuses them
+// (NUEE_SANS_CODE, demarrerR). Read once per start.
+let codeRefuse;
+const codeInterdit = () => {
+  if (codeRefuse === undefined) codeRefuse = process.env.NUEE_SANS_CODE === '1' || politique('DisableCustomCode') === 1;
+  return codeRefuse;
+};
 let majInterdite;
 const verificationPossible = () => {
   if (!app.isPackaged || process.argv.includes('--lanceur-nas')) return false;
@@ -993,6 +1040,7 @@ async function demarrer() {
   adresse = `http://127.0.0.1:${port}/`;
   // a session cookie (not kept on disk), for this address only, unreadable by the page's scripts
   await session.defaultSession.cookies.set({ url: adresse, name: cookieR(), value: jeton, httpOnly: true, sameSite: 'strict' });
+  await envoyerApprobations();  // (before the window opens a project: its approved code runs)
   fenetrePrincipale();
 }
 

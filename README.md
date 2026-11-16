@@ -381,6 +381,11 @@ checks run on GitHub for every push and pull request.
 
 Nuée is free software under the [GNU General Public License v3.0](LICENSE) or later.
 
+What Nuée writes for you is yours: the scripts and reports of Export to R (with the parts of the
+engine they copy), the reproducible documents and the reproducibility packages may be used and
+shared under any terms, by an additional permission under the GPL's section 7
+([LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md)). Each of them says how to cite Nuée: please do.
+
 The Windows installer and the macOS application bundle R (GPL-2 | GPL-3) with its recommended packages and the R packages
 httpuv, jsonlite, openxlsx, haven, readxl and their dependencies, Electron (MIT), Plotly.js (MIT),
 dockview (MIT), Lucide icons (ISC), CodeMirror and markdown-it (MIT) for the documents, and

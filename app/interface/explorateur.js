@@ -74,6 +74,14 @@ export function rendreExplorateur(conteneur, app) {
       const s = d.stocke;
       const der = (v) => (v && v.length ? v[d.A - 1] : null);
       const chiffres = s ? `R2X ${fmt(der(s.R2Xcum), 2)}${s.R2Ycum && der(s.R2Ycum) !== null ? ' · R2Y ' + fmt(der(s.R2Ycum), 2) : ''} · Q2 ${fmt(der(s.Q2cum), 2)}` : '';
+      // (an R-code model whose code isn't approved on this computer: read it, then run it, vues_code.js)
+      if (d.code_r && d.code_r.approuve === false) {
+        return noeud({ cle: `${p.id}/def/${d.numero}`, niveau: 3, ic: 'lock', classe: 'inactif',
+          libelle: [el('b', {}, d.nom), ' ', el('span', { class: 'badge' }, d.type)], details: t('code_non_execute'), titre: t('code_non_execute_aide'),
+          double: () => app.montrerCode(p.id),
+          menu: () => [{ libelle: t('code_montrer'), icone: 'file-code', action: () => app.montrerCode(p.id) },
+            { libelle: t('code_executer'), icone: 'refresh-cw', action: () => app.executerCode(p.id) }] });
+      }
       return noeud({
         cle: `${p.id}/def/${d.numero}`, niveau: 3, ic: 'box', classe: d.ajuste ? '' : 'inactif',
         libelle: [el('b', {}, d.nom), ' ', el('span', { class: 'badge' }, d.type), REGRESSIONS.includes(d.type) || VUES_TYPES[d.type] ? '' : ` A=${d.A}`, d.note ? el('span', { class: 'note-icone' }, icone('pencil')) : null],

@@ -178,6 +178,36 @@ const VALEURS_REGRESSION = {
   BIC: { f: (m) => (m.qualite || {}).BIC, decimales: 1 },
 };
 
+// The values of an R-code model (moteur/R/code.R): those the engine could take from the model, its
+// coefficients (coef, est, ic, p and se, by term) and the values its code gives (valeurs.<name>).
+const statistiqueCode = (k) => (m) => (m.statistiques || {})[k];
+const VALEURS_CODE = {
+  N: { f: (m) => m.N, entier: true },
+  K: { f: (m) => m.K, entier: true },
+  logLik: { f: statistiqueCode('logLik'), decimales: 2, si: (m) => statistiqueCode('logLik')(m) !== undefined },
+  AIC: { f: statistiqueCode('AIC'), decimales: 1, si: (m) => statistiqueCode('AIC')(m) !== undefined },
+  BIC: { f: statistiqueCode('BIC'), decimales: 1, si: (m) => statistiqueCode('BIC')(m) !== undefined },
+};
+const valeursCode = (m) => m.valeurs || {};
+function referenceCode(m, nom, reste, ref) {
+  const c = m.coefficients || {};
+  const terme = reste.join('.');
+  if (['coef', 'est', 'p', 'ic', 'se'].includes(nom)) {
+    const i = colonne(c.terme).indexOf(terme);
+    if (i < 0) return { erreur: 'terme_inconnu' };
+    if (nom === 'se') return formeValeur(colonne(c.erreur_type)[i], ref, { significatifs: 3 });
+    return { forme: 'coef', quoi: nom, est: colonne(c.estimation)[i], bas: colonne(c.bas)[i], haut: colonne(c.haut)[i], p: colonne(c.p)[i], decimales: decimalesDe(ref) };
+  }
+  if (nom === 'valeurs') {
+    const i = colonne(valeursCode(m).nom).indexOf(terme);
+    if (i < 0) return { erreur: 'valeur_inconnue' };
+    return formeValeur(colonne(valeursCode(m).valeur)[i], ref, { significatifs: 3 });
+  }
+  const v = VALEURS_CODE[nom];
+  if (!v || (v.si && !v.si(m))) return { erreur: 'valeur_inconnue' };
+  return formeValeur(v.f(m, reste), ref, v);
+}
+
 // The terms a regression has coefficients for, and its columns.
 const coefficientsRegression = (m) => m.coefficients_regression || {};
 const termesRegression = (m) => colonne(coefficientsRegression(m).terme);
@@ -199,6 +229,7 @@ export function valeurReference(m, chemin, ref, langue = 'fr') {
 export function formeReference(m, chemin, ref) {
   const [nom, ...reste] = chemin;
   const err = (e) => ({ erreur: e });
+  if (m.code_r) return referenceCode(m, nom, reste, ref);
   if (m.regression) {
     if (['coef', 'est', 'p', 'ic'].includes(nom)) return coefficientRegression(m, nom, reste.join('.'), ref);
     const v = VALEURS_REGRESSION[nom];
@@ -252,7 +283,11 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
     const r = valeurReference(m, chemin.split('.'), { format: '' }, langue);
     if (!r.erreur) offre.push({ chemin, type: 'valeur', detail: r.texte });
   };
-  if (m.regression) {
+  if (m.code_r) {
+    Object.keys(VALEURS_CODE).forEach(valeur);
+    for (const terme of colonne((m.coefficients || {}).terme)) valeur(`coef.${terme}`);
+    for (const nom of colonne(valeursCode(m).nom)) valeur(`valeurs.${nom}`);
+  } else if (m.regression) {
     Object.keys(VALEURS_REGRESSION).forEach(valeur);
     for (const terme of termesRegression(m)) valeur(`coef.${terme}`);
   } else {

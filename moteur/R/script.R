@@ -47,7 +47,8 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
   } else {
     lignes_rapport(format, pl, langue, texte_methodes(projet, d, m, langue, version), fonctions, code_donnees, x)
   }
-  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), x$objets), c(if (format != "R") c("knitr", "rmarkdown"), paquets_script(b)))
+  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), x$objets), c(if (format != "R") c("knitr", "rmarkdown"), paquets_script(b)),
+                         langue = langue, version = version)
   # (ses graphiques, pour un document reproductible : document_reproductible.R)
   structure(list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart), graphiques = x$graphiques)
 }
@@ -130,7 +131,7 @@ ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, do
               titre_partie(1, langue), fonctions,
               titre_partie(2, langue), donnees_script(tab, fichiers, langue), "",
               sprintf("# 3. %s ----", tx("Modèles et résultats", "Models and results")), "", morceaux)
-  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), noms), paquets_script(b))
+  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), noms), paquets_script(b), langue = langue, version = version)
   list(script = chemin_script, chemins = unname(fichiers), ecart = if (length(ecarts)) paste(ecarts, collapse = " ; "))
 }
 
@@ -4006,11 +4007,41 @@ commentaire_variables <- function(descriptions, langue) {
                                                               if (nzchar(x$description)) paste0(tx(" : ", ": "), x$description))))))
 }
 
+# L'avis que porte tout fichier de code R que Nuée écrit pour ses utilisateurs (ecrire_fichiers_script,
+# le nuee.R d'un document reproductible) : ce qu'ils peuvent en faire, sous les conditions de leur
+# choix (l'exception à la GPL que Clément Boutin, titulaire des droits, donne pour ce que Nuée écrit :
+# LICENSE-EXCEPTION.md), et comment citer Nuée (methodes.R : REFERENCES$nuee, comme le texte des
+# méthodes). Une demande, pas une condition.
+avis_licence_script <- function(langue = "fr", version = "") {
+  tx <- function(fr, en) if (identical(langue, "en")) en else fr
+  citation <- sprintf(REFERENCES$nuee, format(Sys.Date(), "%Y"), if (nzchar(version)) sprintf(" (version %s)", version) else "")
+  c("#",
+    commentaire(tx("Licence : vous pouvez utiliser, modifier et partager ce fichier sous les conditions de votre choix, y compris les parties du moteur de Nuée qu'il contient (une exception à la licence GPL-3.0-ou-ultérieure de Nuée : https://github.com/4rtefakt/nuee/blob/main/LICENSE-EXCEPTION.md).",
+                   "License: you may use, change and share this file under terms of your choice, including the parts of Nuée's engine it contains (an exception to Nuée's GPL-3.0-or-later license: https://github.com/4rtefakt/nuee/blob/main/LICENSE-EXCEPTION.md).")),
+    commentaire(paste(tx("Si vous publiez des résultats obtenus avec ce fichier, merci de citer Nuée :", "If you publish results obtained with this file, please cite Nuée:"), citation)))
+}
+
+# Les lignes d'un fichier de code, l'avis ajouté à la fin des commentaires qui l'ouvrent (leur suite
+# sans ligne vide depuis la première ligne), ou en tête s'il n'en a pas. Un rapport R Markdown ou
+# Quarto commence par son en-tête YAML : l'avis le suit, en commentaire HTML (absent du rendu).
+avec_avis_licence <- function(lignes, langue = "fr", version = "") {
+  # (un élément de `lignes` peut en porter plusieurs : elles sont séparées, les lignes vides gardées)
+  lignes <- head(strsplit(paste0(paste(lignes, collapse = "\n"), "\n."), "\n", fixed = TRUE)[[1]], -1)
+  if (length(lignes) && identical(trimws(lignes[1]), "---")) {
+    fin <- which(trimws(lignes) == "---")[2]
+    if (!is.na(fin)) return(append(lignes, c("", "<!--", sub("^# ?", "", avis_licence_script(langue, version)[-1]), "-->"), after = fin))
+  }
+  commentaires <- grepl("^\\s*#", lignes)
+  k <- if (length(lignes) && commentaires[1]) { fin <- which(!commentaires)[1]; if (is.na(fin)) length(lignes) else fin - 1L } else 0L
+  if (k == 0) return(c(avis_licence_script(langue, version)[-1], "", lignes))
+  append(lignes, avis_licence_script(langue, version), after = k)
+}
+
 # Écrit le script et les fichiers d'à côté ; `objets` : ce que le .RData garde de `e` (ses
 # fonctions, comme pretraiter(), y sont rattachées à l'environnement global de la session qui le
-# relira, et non à `e`, où le script a tourné ici).
-ecrire_fichiers_script <- function(lignes, fichiers, e, objets, paquets) {
-  writeBin(charToRaw(enc2utf8(paste0(lignes, "\n", collapse = ""))), fichiers[["script"]])
+# relira, et non à `e`, où le script a tourné ici). Le script porte l'avis de licence (avec_avis_licence).
+ecrire_fichiers_script <- function(lignes, fichiers, e, objets, paquets, langue = "fr", version = "") {
+  writeBin(charToRaw(enc2utf8(paste0(avec_avis_licence(lignes, langue, version), "\n", collapse = ""))), fichiers[["script"]])
   if ("rdata" %in% names(fichiers)) {
     global <- function(x) {
       if (is.function(x)) environment(x) <- globalenv()

@@ -327,7 +327,7 @@ ecrire_document_reproductible <- function(projet, modeles, references, dossier, 
   ici <- file.path(dossier, sous)
   dir.create(ici, showWarnings = FALSE, recursive = TRUE)
   aide <- file.path(ici, "nuee.R")
-  writeBin(charToRaw(enc2utf8(paste0(code_aide_reproductible(langue), "\n", collapse = ""))), aide)
+  writeBin(charToRaw(enc2utf8(paste0(avec_avis_licence(code_aide_reproductible(langue), langue, version), "\n", collapse = ""))), aide)
   fichiers <- aide
   # l'environnement où les expressions sont vérifiées : nuee.R et les modèles refaits
   ev <- new.env(parent = parent.env(globalenv()))

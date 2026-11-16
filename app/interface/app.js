@@ -28,6 +28,7 @@ import './vues_par_reponse.js';
 import './vues_trim.js';
 import './vues_forets.js';
 import './vues_distance.js';
+import { installerCode } from './vues_code.js';
 import { installerDocuments } from './documents.js';
 import { installerFigures } from './figures.js';
 import { installerVersions } from './versions.js';
@@ -445,6 +446,8 @@ const app = {
   // components, if not the definition's. A project the interface doesn't show (an old version
   // compared with the project now, opened in the engine only: changements.js) keeps it there only.
   async calculerDiscret(pid, numero, A) {
+    // (an R-code model whose code isn't approved here: it waits for Run it, in the bar over its project)
+    if (codeEnAttente(pid, numero)) throw new Error(t('code_attente', { nom: ([].concat(etat.projets[pid].modeles).find((x) => x.numero === numero) || {}).nom }));
     const res = await demander('ajuster', { projet: pid, numero, A });
     if (!etat.projets[pid]) return res.id;
     etat.modeles[res.id] = res;
@@ -509,15 +512,20 @@ const app = {
   },
   modifierModele(id) {
     const m = etat.modeles[id];
-    if (m) dialogueModele(app, etat.projets[m.projet], m.reglages, t('modifier_modele'));
+    if (!m) return;
+    // (an R-code model: its code edited, then fitted in its place under its name: vues_code.js)
+    if (m.analyse && m.type === 'CODE') dialogueModele(app, etat.projets[m.projet], { ...m.reglages, remplace: m.id }, `${t('code_modifier')} — ${m.nom}`);
+    else dialogueModele(app, etat.projets[m.projet], m.reglages, t('modifier_modele'));
   },
   // a new model from a model's settings, changed (the Profiles view's wavelength ranges)
   nouveauModeleDepuis(id, reglages) {
     const m = etat.modeles[id];
     if (m) dialogueModele(app, etat.projets[m.projet], reglages);
   },
-  // (the new model's id, for what follows it: Which analysis?'s one model per response)
-  async ajusterDefinition(q) {
+  // (the new model's id, for what follows it: Which analysis?'s one model per response).
+  // remplace: the fit whose place it takes, its page and views (an R-code model's code edited under
+  // the same name: vues_code.js), as Update the data does (ajusterDeNouveau).
+  async ajusterDefinition(q, remplace = null) {
     if (q.type === 'CLASSES') {  // one PCA per class, then their Coomans plot
       const r = await occupe(() => demander('modeles_classe', q));
       const liste = [].concat(r.modeles);
@@ -527,6 +535,10 @@ const app = {
       return liste[0].id;
     }
     const res = await occupe(() => demander('ajuster', q));
+    if (remplace && etat.modeles[remplace]) {
+      await remplacerAjustement(remplace, res);
+      return res.id;
+    }
     await garder(res);
     vuesParDefaut(res.id);
     return res.id;
@@ -1070,6 +1082,7 @@ installerVersions(app);  // (File › History and What changed: their views, sha
 const C = creerCommandes(app);
 installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Update the data, the notice of a changed file)
 installerReglages(app);  // (File › Settings…: the R the engine runs on; the message when Nuée's own took over)
+installerCode(app);  // (R-code models: the bar over a project whose code was written elsewhere, app.barresCode)
 
 // ------------------------------------------------------------ state helpers
 
@@ -1407,6 +1420,13 @@ function collecterSession(pid) {
     selection: parModele(etat.selection), variables: parModele(etat.variables), choixVIP: parModele(etat.choixVIP), groupesHCA: parModele(etat.groupesHCA) };
 }
 
+// Is the model `numero` of the project an R-code model whose code isn't approved on this computer
+// (the engine says so in the project's summary: moteur/serveur.R, resume_modele)?
+function codeEnAttente(pid, numero) {
+  const d = [].concat((etat.projets[pid] || {}).modeles || []).find((x) => x.numero === numero);
+  return !!(d && d.code_r && d.code_r.approuve === false);
+}
+
 async function restaurerSession(pid, donnee = null) {
   let s = donnee;
   if (!s) try { s = JSON.parse((await demander('session', { projet: pid })).session); } catch { return; }
@@ -1414,6 +1434,9 @@ async function restaurerSession(pid, donnee = null) {
   const ids = {};
   await occupe(async () => {
     for (const m of s.modeles) {
+      // (an R-code model whose code isn't approved here: not even asked, the engine would refuse it;
+      // the bar over the project offers to read it, then run it: vues_code.js)
+      if (codeEnAttente(pid, m.numero)) continue;
       try {
         const res = await demander('ajuster', { projet: pid, numero: m.numero, A: m.A });
         etat.modeles[res.id] = res;
@@ -1518,6 +1541,24 @@ async function garder(res) {
   majEtat();
 }
 
+// A new fit `res` in the place of the fit `ancien` (an edited R-code model, under the same name:
+// ajusterDefinition): its page with its layout and views' settings, the selection, the explorer's
+// node; the old fit leaves the session (its definition was replaced by the engine, by name).
+async function remplacerAjustement(ancien, res) {
+  etat.modeles[res.id] = res;
+  const dans = new Set([].concat((res.observations && res.observations.uid) || []));
+  if (etat.selection[ancien]) etat.selection[res.id] = etat.selection[ancien].filter((u) => dans.has(u));
+  remplacerPage(ancien, res.id);
+  if (!pages.get(res.id)) vuesParDefaut(res.id);
+  etat.noeud = `${res.projet}/m/${res.id}`;
+  oublierModele(ancien);
+  await demander('supprimer_modele', { modele: ancien }).catch(() => {});
+  await rafraichirProjet(res.projet);
+  rafraichirModele(res.projet);
+  diffuser('modeles');
+  majEtat();
+}
+
 function oublierModele(id) {
   delete etat.modeles[id];
   delete etat.selection[id];
@@ -1543,6 +1584,7 @@ function oublierProjet(pid) {
 // Everything the R server holds (for a new window, or after another window changed it).
 async function synchroniser() {
   const e = await demander('etat');
+  app.codeInterdit = !!e.code_interdit;  // (R-code models turned off by a policy: vues_code.js doesn't offer them)
   const avant = etat.projets;
   etat.projets = Object.fromEntries(e.projets.map((p) => [p.id, p]));
   // (data changed in another window: R counts each change as a revision of the project)
@@ -2040,6 +2082,7 @@ function majBarreOutils() {
 
 function majEtat() {
   if (!VUE_SEULE) majBarreOutils();
+  if (!VUE_SEULE && app.barresCode) app.barresCode();  // (a project's R code written elsewhere: vues_code.js)
   const c = etat.panneaux.get('console:');
   if (c && c.element._console) c.element._console.entete();  // m and p follow the model shown
   const s = document.getElementById('statut');

@@ -615,6 +615,31 @@ entrees_lda <- function(projet, d, m) {
     entrees_jeu_test(m$test))
 }
 
+# Un modèle de code R (code.R) : ses observations, sa vraisemblance, son AIC et son BIC, chaque
+# coefficient (son estimation, son intervalle et sa valeur p, sous coef.<terme> comme ceux d'une
+# régression, que ses documents citent ; son erreur-type sous se.<terme>) et chacune des valeurs que le
+# code donne (valeurs.<nom>).
+entrees_code <- function(projet, d, m) {
+  g <- nom_resultat
+  s <- m$statistiques
+  co <- m$coefficients
+  E <- list(entree_n(m$N),
+            entree_resultat("K", traduire("Nombre de coefficients", "Number of coefficients"), "ajustement", NROW(co), forme = "entier"),
+            entree_resultat("logLik", traduire("Log-vraisemblance", "Log-likelihood"), "ajustement", s$logLik, genre = "f"),
+            entree_resultat("AIC", "AIC", "ajustement", s$AIC),
+            entree_resultat("BIC", "BIC", "ajustement", s$BIC))
+  for (i in seq_len(NROW(co))) {
+    t <- as.character(co$terme[i])
+    constante <- grepl("^(.*\\.)?\\(Intercept\\)$", t)
+    E <- c(E, list(entree_resultat(paste0("coef.", t), if (constante) sprintf(traduire("Ordonnée à l'origine (%s)", "Intercept (%s)"), t) else sprintf(traduire("Coefficient de %s", "Coefficient of %s"), g(t)),
+                                   "estimations", co$estimation[i], ic = c(co$bas[i], co$haut[i]), p = co$p[i], limite = 0, genre = if (constante) "f",
+                                   alias = paste0(c("est.", "ic.", "p."), t)),
+                   entree_resultat(paste0("se.", t), sprintf(traduire("Erreur-type de %s", "Standard error of %s"), g(t)), "estimations", co$erreur_type[i], genre = "f")))
+  }
+  v <- m$valeurs
+  c(E, lapply(seq_along(v), function(k) entree_resultat(paste0("valeurs.", names(v)[k]), sprintf(traduire("Valeur %s du code", "Value %s of the code"), g(names(v)[k])), "estimations", v[[k]], genre = "f")))
+}
+
 entrees_kmeans <- function(projet, d, m) {
   sil <- if (!is.null(m$silhouette)) mean(m$silhouette$largeur)
   list(entree_n(m$N), entree_resultat("K", traduire("Nombre de termes X", "Number of X terms"), "ajustement", m$K, forme = "entier"),

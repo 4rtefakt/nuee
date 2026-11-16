@@ -116,6 +116,9 @@ contextBridge.exposeInMainWorld('bureau', {
     repli: () => ipcRenderer.invoke('r-repli'),
   },
   surReglages: (f) => ipcRenderer.on('ouvrir-reglages', () => f()),
+  // R code approved by this user: the engine's fingerprints of it, kept by the app and told to the
+  // engine, which runs no other code (interface/vues_code.js); true once done
+  approuverCode: (empreintes) => ipcRenderer.invoke('approuver-code', empreintes),
   nouvelleVersion: (maintenant) => ipcRenderer.invoke('nouvelle-version', maintenant),
   diagnostic: () => ipcRenderer.invoke('diagnostic'),
   majAuto: (oui) => ipcRenderer.invoke('maj-auto', oui),
