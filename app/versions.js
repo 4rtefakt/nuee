@@ -110,36 +110,48 @@ function fsPour(racine) {
 
 // The tokens, one per server (github.com, gitlab.com, an institute's GitLab), encrypted by the
 // system with Electron's safeStorage (DPAPI on Windows, the Keychain on macOS, the keyring on
-// Linux) in a file of the user's settings (`fichier()`). Where it can't encrypt (Linux without a
-// keyring, where Chromium would keep them in clear: basic_text), they are kept in memory until
-// Nuée closes, and nothing is written.
+// Linux; its asynchronous functions, the others being deprecated) in a file of the user's
+// settings (`fichier()`). Where it can't encrypt (Linux without a keyring, where Chromium would
+// keep them in clear: basic_text), they are kept in memory until Nuée closes, and nothing is
+// written.
 function magasinJetons({ fichier, safeStorage }) {
   const session = new Map();
-  const chiffrable = () => {
+  const chiffrable = async () => {
     try {
-      return safeStorage.isEncryptionAvailable()
+      return await safeStorage.isAsyncEncryptionAvailable()
         && !(process.platform === 'linux' && ['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend()));
     } catch { return false; }
   };
   const lus = () => { try { return JSON.parse(fs.readFileSync(fichier(), 'utf8')) || {}; } catch { return {}; } };
+  const garder = (tous) => {
+    fs.mkdirSync(path.dirname(fichier()), { recursive: true });
+    fs.writeFileSync(fichier(), JSON.stringify(tous, null, 1), { mode: 0o600 });
+  };
   const chiffre = (hote) => { const t = lus(); return Object.hasOwn(t, hote) && typeof t[hote] === 'string' ? t[hote] : null; };
-  const dechiffrer = (b64) => { try { return safeStorage.decryptString(Buffer.from(b64, 'base64')) || null; } catch { return null; } };
+  // (encrypted again when the system says its key has changed)
+  async function dechiffrer(hote, b64) {
+    try {
+      const { shouldReEncrypt, result } = await safeStorage.decryptStringAsync(Buffer.from(b64, 'base64'));
+      if (shouldReEncrypt && result) garder({ ...lus(), [hote]: (await safeStorage.encryptStringAsync(result)).toString('base64') });
+      return result || null;
+    } catch { return null; }
+  }
   return {
-    seulementSession: () => !chiffrable(),
-    present: (hote) => session.has(hote) || (chiffrable() && chiffre(hote) !== null),
-    lire: (hote) => session.get(hote) || (chiffrable() && chiffre(hote) ? dechiffrer(chiffre(hote)) : null),
+    seulementSession: async () => !(await chiffrable()),
+    present: async (hote) => session.has(hote) || ((await chiffrable()) && chiffre(hote) !== null),
+    lire: async (hote) => session.get(hote) || ((await chiffrable()) && chiffre(hote) ? dechiffrer(hote, chiffre(hote)) : null),
     // (every token known, to blank one from any message)
-    connus: () => [...session.values(), ...(chiffrable() ? Object.values(lus()).filter((x) => typeof x === 'string').map(dechiffrer) : [])].filter(Boolean),
-    ecrire(hote, jeton) {
+    connus: async () => [...session.values(), ...((await chiffrable())
+      ? await Promise.all(Object.entries(lus()).filter(([, x]) => typeof x === 'string').map(([h, x]) => dechiffrer(h, x))) : [])].filter(Boolean),
+    async ecrire(hote, jeton) {
       session.delete(hote);
       const tous = lus();
       const avait = Object.hasOwn(tous, hote);
       delete tous[hote];
-      if (jeton && !chiffrable()) session.set(hote, jeton);
-      else if (jeton) tous[hote] = safeStorage.encryptString(jeton).toString('base64');
-      if (!avait && !(jeton && chiffrable())) return;
-      fs.mkdirSync(path.dirname(fichier()), { recursive: true });
-      fs.writeFileSync(fichier(), JSON.stringify(tous, null, 1), { mode: 0o600 });
+      const chiffrer = jeton && await chiffrable();
+      if (jeton && !chiffrer) session.set(hote, jeton);
+      else if (jeton) tous[hote] = (await safeStorage.encryptStringAsync(jeton)).toString('base64');
+      if (avait || chiffrer) garder(tous);
     },
   };
 }
@@ -420,7 +432,8 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
         try { await fs.promises.rename(temporaire, chemin); return; } catch (e) { if (i >= 24) throw e; await pause(200); }
       }
     } finally {
-      await fs.promises.rm(temporaire, { force: true });
+      // (unlink: Node's rm leaves a path that isn't ASCII in some versions, on Windows)
+      await fs.promises.unlink(temporaire).catch(() => {});
     }
   }
 
@@ -442,9 +455,13 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
   // The token for the remote's server, given only when it asks (401): a public repository is read
   // without it. GitHub and GitLab take any user name with a token; these are their own.
   function auth(d) {
-    const jeton = jetons.lire(d.hote);
-    d.jetonDonne = !!jeton;
-    return { onAuth: () => (jeton ? { username: d.hote === 'github.com' ? 'x-access-token' : 'oauth2', password: jeton } : undefined) };
+    return {
+      onAuth: async () => {
+        const jeton = await jetons.lire(d.hote);
+        d.jetonDonne = !!jeton;
+        return jeton ? { username: d.hote === 'github.com' ? 'x-access-token' : 'oauth2', password: jeton } : undefined;
+      },
+    };
   }
 
   // An error of git or of the network as the user reads it (`messages`: what the server said
@@ -493,9 +510,9 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
   }
 
   // (a known token blanked from a message, in any form a request could have carried it)
-  function sansJeton(message) {
+  async function sansJeton(message) {
     let m = String(message);
-    for (const j of jetons.connus()) {
+    for (const j of await jetons.connus()) {
       const formes = [j, encodeURIComponent(j), Buffer.from(j).toString('base64'),
         ...['x-access-token', 'oauth2'].map((u) => Buffer.from(`${u}:${j}`).toString('base64'))];
       for (const f of formes) m = m.split(f).join('•••');
@@ -576,7 +593,7 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
     const p = await projet(chemin);
     const a = reglageAuteur.lire();
     const res = { depot: !!p.racine, suivi: false, racine: p.racine, modifie: false, versions: 0, distant: null, jeton: false,
-      jetonSession: jetons.seulementSession(), avance: 0, retard: 0, auteur: a && a.nom ? { nom: a.nom, email: a.email } : null };
+      jetonSession: await jetons.seulementSession(), avance: 0, retard: 0, auteur: a && a.nom ? { nom: a.nom, email: a.email } : null };
     if (!p.racine) return res;
     const d = { ...p, dir: p.racine, fs: fsPour(p.racine) };
     const branche = await git.currentBranch({ fs: d.fs, dir: d.dir });
@@ -591,7 +608,7 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
     if (!url) return res;
     const hote = hoteDe(url);
     res.distant = { url, hote };
-    res.jeton = !!hote && jetons.present(hote);
+    res.jeton = !!hote && await jetons.present(hote);
     if (tete && branche) {
       const suit = await git.getConfig({ fs: d.fs, dir: d.dir, path: `branch.${branche}.merge` });
       const leur = await resoudre(d, `refs/remotes/origin/${typeof suit === 'string' ? suit.replace(/^refs\/heads\//, '') : branche}`);
@@ -716,13 +733,13 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
     return { url: a.url, hote: a.hote };
   }
 
-  function jeton(hote, valeur) {
+  async function jeton(hote, valeur) {
     const h = String(hote == null ? '' : hote).trim().toLowerCase();
     if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?$/.test(h)) throw refus('Donnez le nom du serveur, comme github.com.', 'Give the server’s name, such as github.com.');
     const j = String(valeur == null ? '' : valeur).trim();
     if (/\s/.test(j) || j.length > 1000) throw refus('Un jeton est un seul mot, tel que GitHub ou GitLab l’a donné.', 'A token is one word, as GitHub or GitLab gave it.');
-    jetons.ecrire(h, j);
-    return { jeton: !!j, jetonSession: jetons.seulementSession() };
+    await jetons.ecrire(h, j);
+    return { jeton: !!j, jetonSession: await jetons.seulementSession() };
   }
 
   async function verifierDistant(chemin) {
@@ -733,7 +750,7 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
       await reseau(d, () => git.getRemoteInfo2({ http, url: d.url, forPush: true, protocolVersion: 1, ...auth(d) }));
       return { ok: true, message: t(`Le dépôt sur ${d.hote} répond, et le jeton permet d’y envoyer des versions.`, `The repository on ${d.hote} answers, and the token may send versions to it.`) };
     } catch (e) {
-      return { ok: false, message: sansJeton(traduire(e, d).message) };
+      return { ok: false, message: await sansJeton(traduire(e, d).message) };
     }
   }
 
@@ -817,7 +834,7 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
   let file = Promise.resolve();
   const commande = (f, { attendre = true } = {}) => async (...args) => {
     const faire = async () => {
-      try { return await f(...args); } catch (e) { throw new Refus(sansJeton(traduire(e, null).message)); }
+      try { return await f(...args); } catch (e) { throw new Refus(await sansJeton(traduire(e, null).message)); }
     };
     if (!attendre) return faire();
     const r = file.then(faire);

@@ -55,13 +55,24 @@ let gitPresent = true;
 try { gitSys(['--version'], racine); } catch { gitPresent = false; }
 const initSys = (dossier, ...options) => { gitSys(['init', '-q', ...options, dossier], racine); gitSys(['symbolic-ref', 'HEAD', 'refs/heads/main'], dossier); };
 
-// A stand-in for Electron's safeStorage: "encrypted" by a XOR, and refused at will
-const fauxChiffrement = ({ disponible = true, magasin = 'gnome_libsecret' } = {}) => ({
-  isEncryptionAvailable: () => disponible,
+// A stand-in for Electron's safeStorage: "encrypted" by a XOR after the key's number, refused at
+// will; a key changed since asks for encrypting again
+const fauxChiffrement = ({ disponible = true, magasin = 'gnome_libsecret', cle = 1 } = {}) => ({
+  isAsyncEncryptionAvailable: async () => disponible,
   getSelectedStorageBackend: () => magasin,
-  encryptString: (s) => Buffer.from(Buffer.from(s, 'utf8').map((b) => b ^ 0xa5)),
-  decryptString: (b) => Buffer.from(Buffer.from(b).map((x) => x ^ 0xa5)).toString('utf8'),
+  encryptStringAsync: async (s) => Buffer.from([cle, ...Buffer.from(s, 'utf8').map((b) => b ^ 0xa5)]),
+  decryptStringAsync: async (b) => ({ shouldReEncrypt: b[0] !== cle, result: Buffer.from(b.subarray(1).map((x) => x ^ 0xa5)).toString('utf8') }),
 });
+// (Node's rmSync, on Windows, leaves read-only files in some versions, git's objects among them,
+// and paths that aren't ASCII in others: every file made writable, then removed one by one)
+function effacer(d) {
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const p = path.join(d, e.name);
+    if (e.isDirectory()) effacer(p);
+    else { fs.chmodSync(p, 0o666); fs.unlinkSync(p); }
+  }
+  fs.rmdirSync(d);
+}
 
 const JETON = `ghp_essai${crypto.randomBytes(12).toString('hex')}`;
 const JETON_LECTURE = `glpat-lecture${crypto.randomBytes(12).toString('hex')}`;
@@ -518,34 +529,39 @@ async function echanges() {
   }
 }
 
-function jetons() {
+async function jetons() {
   console.log('Les jetons');
   const fichier = path.join(racine, 'jetons-magasin.json');
   const m = magasinJetons({ fichier: () => fichier, safeStorage: fauxChiffrement() });
-  m.ecrire('github.com', JETON);
-  verifier('chiffré dans le fichier des réglages', fs.existsSync(fichier) && !fs.readFileSync(fichier, 'utf8').includes(JETON) && m.lire('github.com') === JETON
-    && m.present('github.com') && !m.seulementSession());
-  m.ecrire('gitlab.example.org', JETON_LECTURE);
-  m.ecrire('github.com', '');
-  verifier('un jeton vide le retire, les autres restent', !m.present('github.com') && m.lire('github.com') === null && m.lire('gitlab.example.org') === JETON_LECTURE
-    && !Object.keys(JSON.parse(fs.readFileSync(fichier, 'utf8'))).includes('github.com'));
-  verifier('un serveur nommé comme une propriété d’objet : sans jeton', !m.present('constructor') && m.lire('constructor') === null);
+  await m.ecrire('github.com', JETON);
+  verifier('chiffré dans le fichier des réglages', fs.existsSync(fichier) && !fs.readFileSync(fichier, 'utf8').includes(JETON) && await m.lire('github.com') === JETON
+    && await m.present('github.com') && !(await m.seulementSession()));
+  await m.ecrire('gitlab.example.org', JETON_LECTURE);
+  await m.ecrire('github.com', '');
+  verifier('un jeton vide le retire, les autres restent', !(await m.present('github.com')) && await m.lire('github.com') === null
+    && await m.lire('gitlab.example.org') === JETON_LECTURE && !Object.keys(JSON.parse(fs.readFileSync(fichier, 'utf8'))).includes('github.com'));
+  verifier('un serveur nommé comme une propriété d’objet : sans jeton', !(await m.present('constructor')) && await m.lire('constructor') === null);
+  const nouvelleCle = magasinJetons({ fichier: () => fichier, safeStorage: fauxChiffrement({ cle: 2 }) });
+  verifier('la clé du système changée : lu, puis chiffré de nouveau', await nouvelleCle.lire('gitlab.example.org') === JETON_LECTURE
+    && Buffer.from(JSON.parse(fs.readFileSync(fichier, 'utf8'))['gitlab.example.org'], 'base64')[0] === 2);
   const fichierS = path.join(racine, 'jetons-session.json');
   const s = magasinJetons({ fichier: () => fichierS, safeStorage: fauxChiffrement({ disponible: false }) });
-  s.ecrire('github.com', JETON);
-  verifier('sans chiffrement : gardé pour la session, rien d’écrit', s.seulementSession() && s.present('github.com') && s.lire('github.com') === JETON && !fs.existsSync(fichierS));
+  await s.ecrire('github.com', JETON);
+  verifier('sans chiffrement : gardé pour la session, rien d’écrit', await s.seulementSession() && await s.present('github.com') && await s.lire('github.com') === JETON
+    && !fs.existsSync(fichierS));
   const autre = magasinJetons({ fichier: () => fichierS, safeStorage: fauxChiffrement({ disponible: false }) });
-  verifier('… et oublié au lancement suivant', !autre.present('github.com'));
+  verifier('… et oublié au lancement suivant', !(await autre.present('github.com')));
   if (process.platform === 'linux') {
     const b = magasinJetons({ fichier: () => fichierS, safeStorage: fauxChiffrement({ magasin: 'basic_text' }) });
-    b.ecrire('github.com', JETON);
-    verifier('Linux sans trousseau (basic_text) : pour la session', b.seulementSession() && !fs.existsSync(fichierS));
+    await b.ecrire('github.com', JETON);
+    verifier('Linux sans trousseau (basic_text) : pour la session', await b.seulementSession() && !fs.existsSync(fichierS));
   }
   if (electron) {
     const fichierE = path.join(racine, 'jetons-electron.json');
     const e = magasinJetons({ fichier: () => fichierE, safeStorage: electron.safeStorage });
-    e.ecrire('github.com', JETON);
-    verifier(`safeStorage du système (${e.seulementSession() ? 'session' : 'chiffré'})`, e.lire('github.com') === JETON && (e.seulementSession() || !fs.readFileSync(fichierE, 'utf8').includes(JETON)));
+    await e.ecrire('github.com', JETON);
+    const session = await e.seulementSession();
+    verifier(`safeStorage du système (${session ? 'session' : 'chiffré'})`, await e.lire('github.com') === JETON && (session || !fs.readFileSync(fichierE, 'utf8').includes(JETON)));
   }
   verifier('les adresses : https seulement, sans identifiants, la page d’un dépôt ramenée au dépôt', JSON.stringify([
     'https://github.com/4rtefakt/nuee', 'https://github.com/4rtefakt/nuee/tree/main/app?x=1#l', 'https://GitLab.com/groupe/sous-groupe/projet/-/tree/main',
@@ -565,7 +581,7 @@ function jetons() {
       if (path.dirname(d) === d) break;
     }
     console.log(`Vérification des versions (${electron ? 'Electron, net.fetch' : 'Node'})`);
-    jetons();
+    await jetons();
     await local();
     if (gitPresent) await depotExistant();
     await partageReseau();
@@ -575,7 +591,7 @@ function jetons() {
     verifier('erreur', false, e.stack);
   } finally {
     console.log(echecs ? `${echecs} vérification(s) en échec` : 'Toutes les vérifications sont passées.');
-    fs.rmSync(racine, { recursive: true, force: true });
+    try { effacer(racine); } catch (e) { console.log(`  (${racine} pas supprimé : ${e.code} ${e.path})`); }
     fin = echecs ? 1 : 0;
     if (electron) electron.app.exit(fin); else process.exit(fin);
   }
