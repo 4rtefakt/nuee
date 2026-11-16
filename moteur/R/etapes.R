@@ -743,15 +743,29 @@ ETAPES_DONNEES <- list(
     preparer = function(avant, q, contexte) q[intersect(c("temps", "unite", "impact", "temoins", "evenement"), names(q))],
     appliquer = function(p, q, rejeu = NULL) variables_baci(p, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)), q$evenement)$projet),
   # (les scores d'un modèle, les groupes de k-moyennes : rejoués, le modèle est ajusté à nouveau sur
-  # les données rejouées jusque-là, modele_rejoue)
+  # les données rejouées jusque-là, modele_rejoue. Les groupes d'avant vont avec l'étape (`groupes` : les
+  # observations et leur groupe, en JSON) : refaits, ils prennent leurs numéros par leurs observations
+  # communes, kmoyennes.R : renumeroter_groupes ; sinon des données qui changent l'ordre de leurs tailles
+  # échangeraient les groupes, sous les mêmes noms)
   scores_en_variables = list(
     preparer = function(avant, q, contexte) etape_modele(avant, contexte$definition),
     appliquer = function(p, q, rejeu = NULL) scores_en_variables(p, modele_rejoue(p, q, rejeu))$projet),
   kmeans_variable = list(
-    preparer = function(avant, q, contexte) c(list(nom = premier_texte(q$nom)), etape_modele(avant, contexte$definition)),
+    preparer = function(avant, q, contexte) {
+      m <- contexte$modele
+      c(list(nom = premier_texte(q$nom)), etape_modele(avant, contexte$definition),
+        if (!is.null(m)) list(groupes = as.character(jsonlite::toJSON(list(observations = numeros_entiers(m$observations), groupe = as.integer(m$groupe)), digits = NA))))
+    },
     appliquer = function(p, q, rejeu = NULL) {
       m <- modele_rejoue(p, q, rejeu)
-      ajouter_colonne(p, premier_texte(q$nom), m$observations, m$groupe, categories = as.character(seq_len(m$k)))
+      groupe <- m$groupe
+      if (!is.null(q$groupes)) {
+        g <- jsonlite::fromJSON(as.character(q$groupes))
+        vers <- attr(m, "vers_nouveau")
+        anciens <- stats::setNames(as.numeric(g$groupe), as.character(numeros_entiers(unname(vers[as.character(numeros_entiers(g$observations))]))))
+        groupe <- renumeroter_groupes(m$groupe, unname(anciens[as.character(numeros_entiers(m$observations))]), m$k)
+      }
+      ajouter_colonne(p, premier_texte(q$nom), m$observations, groupe, categories = as.character(seq_len(m$k)))
     })
 )
 
@@ -880,6 +894,7 @@ modele_rejoue <- function(p, q, rejeu = NULL) {
   if (!isTRUE(as.numeric(d$A) > 0) && !sans_composantes(d)) d$A <- max(1, autoajuster(a$projet, d))
   m <- ajuster(a$projet, d)
   m$observations <- unname(a$vers_nouveau[as.character(m$observations)])
+  attr(m, "vers_nouveau") <- a$vers_nouveau  # (le numéro dans `p` de chaque observation du projet qu'il avait vu)
   m
 }
 

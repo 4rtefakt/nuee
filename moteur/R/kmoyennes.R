@@ -112,7 +112,8 @@ demande_analyse_kmeans_choix <- function(q) {
 
 # Les groupes en variable qualitative du projet (catégories 1 à k), pour les observations du
 # modèle ; annulable comme les autres modifications des données. L'étape garde la définition du
-# modèle : rejouée, elle refait les k-moyennes sur les données du moment (etapes.R).
+# modèle et ses groupes : rejouée, elle refait les k-moyennes sur les données du moment, leurs groupes
+# numérotés comme ceux d'avant (etapes.R).
 demande_analyse_kmeans_variable <- function(q) {
   e <- modele(q$modele)
   if (!identical(e$modele$type, "KMEANS")) stop(traduire("Seulement pour des k-moyennes.", "Only for k-means."), call. = FALSE)
@@ -120,7 +121,32 @@ demande_analyse_kmeans_variable <- function(q) {
   nom <- trimws(as.character(q$nom %||% ""))
   if (!length(nom) || !nzchar(nom[1])) nom <- sprintf("%s %s", e$definition$name %||% "k", traduire("groupes", "clusters"))
   changer_projet(list(projet = e$projet, nom = nom[1]), function(p) ajouter_colonne(p, nom[1], m$observations, m$groupe, categories = as.character(seq_len(m$k))),
-                 sprintf("variable %s", nom[1]), "kmeans_variable", list(definition = e$definition))
+                 sprintf("variable %s", nom[1]), "kmeans_variable", list(definition = e$definition, modele = m))
+}
+
+# Les groupes `nouveau` de k-moyennes refaites (1 à k) numérotés comme ceux d'avant des mêmes
+# observations (`ancien`, NA pour une observation qui n'en avait pas) : les groupes d'un ajustement
+# sont rangés du plus grand au plus petit, et des données qui changent peuvent en changer l'ordre.
+# Chaque groupe prend le numéro de celui d'avant qu'il recouvre le plus, la paire qui a le plus
+# d'observations en commun d'abord ; ceux qui ne recouvrent plus rien prennent les numéros qui restent,
+# dans leur ordre.
+renumeroter_groupes <- function(nouveau, ancien, k) {
+  ok <- !is.na(nouveau) & !is.na(ancien) & ancien %in% seq_len(k)
+  if (!any(ok)) return(nouveau)
+  communs <- table(factor(nouveau[ok], levels = seq_len(k)), factor(ancien[ok], levels = seq_len(k)))
+  carte <- rep(NA_integer_, k)
+  libres_n <- seq_len(k)
+  libres_a <- seq_len(k)
+  while (length(libres_n) && length(libres_a)) {
+    t <- communs[libres_n, libres_a, drop = FALSE]
+    if (max(t) <= 0) break
+    ij <- which(t == max(t), arr.ind = TRUE)[1, ]
+    carte[libres_n[ij[1]]] <- libres_a[ij[2]]
+    libres_n <- libres_n[-ij[1]]
+    libres_a <- libres_a[-ij[2]]
+  }
+  carte[is.na(carte)] <- libres_a[seq_len(sum(is.na(carte)))]
+  carte[nouveau]
 }
 
 # Les observations des k-moyennes : leur groupe (en texte, pour les couleurs), sa distance au

@@ -56,7 +56,9 @@
 #     (un modèle et sa condition les suivent), une unité, une variable en catégories (refusé tant qu'un
 #     modèle l'y utilise) ;
 #   - un projet de la 1.0 (une valeur corrigée alors) : dit d'avant la 1.1 après sa première étape aussi,
-#     enregistré et rouvert, et par l'aperçu de la mise à jour, qui remplace cette valeur.
+#     enregistré et rouvert, et par l'aperçu de la mise à jour, qui remplace cette valeur ;
+#   - des groupes de k-moyennes rejoués sur des données où l'ordre de leurs tailles change : chacun garde
+#     son numéro.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -1125,6 +1127,29 @@ demande("mettre_a_jour", list(projet = id11, chemin = csv10))
 verifier("mis à jour : sa valeur de la 1.0 remplacée par celle du fichier, comme l'aperçu le disait ; ses données sont alors celles de ses étapes",
          unname(valeurs(projet(id11), "x")["O3"]) == 3 && isTRUE(demande("etapes", list(projet = id11))$conformes) &&
            !isTRUE(demande("mettre_a_jour", list(projet = id11, chemin = csv10, apercu = TRUE))$changements_avant_etapes))
+
+cat("Des groupes de k-moyennes rejoués\n")
+# (deux nuages, A plus nombreux que B : A est le groupe 1 ; l'année suivante, B a plus de points, et ses
+# groupes refaits, rangés par taille, prendraient les numéros l'un de l'autre)
+set.seed(6)
+nuages <- function(na, nb) data.frame(nom = c(sprintf("A%02d", seq_len(na)), sprintf("B%02d", seq_len(nb))),
+                                      x = c(rnorm(na, 0, 0.3), rnorm(nb, 5, 0.3)), z = c(rnorm(na, 0, 0.3), rnorm(nb, 5, 0.3)))
+d_k <- nuages(12, 10)
+k_csv <- fichier("points.csv")
+utils::write.csv(d_k, k_csv, row.names = FALSE)
+kid <- demande("ouvrir", list(chemin = k_csv))$id
+rk <- demande("ajuster", list(projet = kid, type = "KMEANS", x = list(uid_de(projet(kid), "x"), uid_de(projet(kid), "z")), options = list(k = 2), nom = "K1"))
+demande("kmeans_variable", list(modele = rk$id, nom = "groupe"))
+groupes_ab <- function() {
+  v <- valeurs(projet(kid), "groupe")
+  list(A = unique(unname(v[startsWith(names(v), "A")])), B = unique(unname(v[startsWith(names(v), "B")])))
+}
+avant_k <- groupes_ab()
+k_csv2 <- fichier("points 2.csv")
+utils::write.csv(rbind(d_k, data.frame(nom = sprintf("B%02d", 11:16), x = rnorm(6, 5, 0.3), z = rnorm(6, 5, 0.3))), k_csv2, row.names = FALSE)
+ak <- demande("mettre_a_jour", list(projet = kid, chemin = k_csv2))
+verifier("des k-moyennes refaites sur des données où l'ordre des tailles de leurs groupes change : chacun garde son numéro, aucune cellule changée",
+         identical(avant_k, list(A = "1", B = "2")) && identical(groupes_ab(), avant_k) && all(statuts(ak) == "ok") && ak$observations$cellules == 0)
 
 cat("En anglais\n")
 options(nuee.langue = "en")
