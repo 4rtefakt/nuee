@@ -1,7 +1,7 @@
-# Vérifie que les raccourcis de calcul de la 1.0 (la vitesse sur les grands tableaux et les spectres)
-# rendent exactement ce que rend le calcul qu'ils évitent (identical() avec le BLAS de référence, celui
-# de R sous Windows ; à 1e-12 près avec un BLAS optimisé, OpenBLAS ou MKL, qui ne fait pas ses sommes
-# dans le même ordre selon le produit) :
+# Vérifie que les raccourcis de calcul de la 1.0 et d'après (la vitesse sur les grands tableaux, les
+# spectres et les autres analyses) rendent exactement ce que rend le calcul qu'ils évitent
+# (identical() avec le BLAS de référence, celui de R sous Windows ; à 1e-12 près avec un BLAS
+# optimisé, OpenBLAS ou MKL, qui ne fait pas ses sommes dans le même ordre selon le produit) :
 #   - NIPALS : la projection des colonnes (crossprod) et celle d'un masque sans case manquante
 #     (somme_blas) redonnent celles d'avant (t(E), M %*% v^2) ; retirer une composante sans
 #     multiplier par un masque de 1 ; preparer() d'une matrice sans valeur manquante ;
@@ -14,7 +14,10 @@
 #   - valeurs_bloc et definir_modele : les mêmes valeurs et les mêmes termes qu'en cherchant chaque
 #     terme seul ;
 #   - enregistrer_projet : octet pour octet le fichier qu'écrit jsonlite, chaque observation et
-#     chaque terme un à un.
+#     chaque terme un à un ;
+#   - construire_bloc : ses termes simples mis à l'échelle d'un coup, comme un à un par echelle()
+#     (UV, Pareto, centrage, aucune ; blocs et modificateurs ; valeurs manquantes, une colonne
+#     constante ou vide ; les centres et poids d'un autre bloc, l'écart-type du modèle complet).
 #   Rscript moteur/tests/verifier_vitesse.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -182,6 +185,78 @@ verifier("des observations aux identifiants plus ou moins nombreux (écrites une
   pn$observations[[4]]$ids <- c(pn$observations[[4]]$ids, "x")
   meme_fichier(pn)
 })
+
+cat("Les termes simples d'un bloc mis à l'échelle d'un coup\n")
+# (construire_bloc d'avant, pour des termes simples : chacun mis à l'échelle seul, par echelle())
+bloc_terme_a_terme <- function(termes, B, imposees = NULL, complet = NULL) {
+  K <- length(termes)
+  X <- matrix(NA_real_, nrow(B), K)
+  centre <- poids <- ecart <- rep(NA_real_, K)
+  type <- character(K)
+  facteur <- rep(1, K)
+  gardes <- stats::setNames(numeric(0), character(0))
+  ponderation <- facteurs_ponderation(termes)
+  noms <- vapply(termes, function(t) as.character(t$name), "")
+  for (k in seq_len(K)) {
+    x <- B[, k]
+    ech <- termes[[k]]$scaling
+    if (!is.null(imposees)) {
+      cw <- c(centre = imposees$centre[k], poids = imposees$poids[k])
+      type[k] <- imposees$type[k]
+      facteur[k] <- imposees$facteur[k] %||% 1
+    } else {
+      ec <- complet$ecart[k]
+      remplacable <- !is.null(ec) && ech$type %in% c("UV", "Par") && isTRUE(ec > 0)
+      if (remplacable && !is.finite(complet$seuil)) {
+        cw <- echelle(x, ech$type, ecart = ec)
+      } else {
+        cw <- echelle(x, ech$type)
+        if (remplacable && cw[["ecart"]] < complet$seuil * ec) {
+          if (cw[["ecart"]] > 0 && is.finite(complet$seuil)) gardes[[noms[k]]] <- cw[["ecart"]] / ec
+          cw <- echelle(x, ech$type, ecart = ec)
+        }
+      }
+      cw[["poids"]] <- cw[["poids"]] * ponderation[k]
+      facteur[k] <- ponderation[k]
+      type[k] <- ech$type
+      ecart[k] <- cw[["ecart"]]
+    }
+    centre[k] <- cw[["centre"]]
+    poids[k] <- cw[["poids"]]
+    X[, k] <- (x - cw[["centre"]]) * cw[["poids"]]
+  }
+  list(X = X, centre = centre, poids = poids, type = type, facteur = facteur, ecart = ecart, gardes = gardes)
+}
+meme_bloc <- function(b, a) {
+  pareil(unname(b$X), a$X) && identical(b[c("centre", "poids", "type", "facteur", "ecart", "gardes")], a[c("centre", "poids", "type", "facteur", "ecart", "gardes")])
+}
+set.seed(4)
+nb <- 40
+db <- data.frame(id = sprintf("o%02d", seq_len(nb)), matrix(round(rnorm(nb * 12, 10, 3), 3), nb, 12, dimnames = list(NULL, sprintf("v%02d", 1:12))))
+pb <- projet_depuis_tableau(db, "bloc.csv")
+d <- definir_modele(pb, "PCA", x = 1:12, echelle = c(defaut = "UV", `2` = "Par", `3` = "Ctr", `4` = "none", `9` = "Par"),
+                    blocs = c(`5` = "A", `6` = "A", `7` = "A"), modificateurs = c(`8` = 2.5, `9` = 0.5))
+obs <- d$observations
+B <- valeurs_bloc(pb, d$x, obs)
+B[c(2, 9, 30), 1] <- NA                                 # (des valeurs manquantes)
+B[c(5, 6), 2] <- NA
+B[, 10] <- NA                                           # (une colonne vide)
+B[, 11] <- 7                                            # (constante)
+B[, 12] <- c(15, 2, 19, 4, 10 + stats::rnorm(nb - 4, 0, 0.05))  # (presque constante sans ses quatre premières lignes)
+hors <- seq_len(nb) <= 4
+complet <- construire_bloc(pb, d$x, obs, bruts = B)
+verifier("le bloc du modèle complet : centres, poids, types, facteurs, écarts-types, matrice", meme_bloc(complet, bloc_terme_a_terme(d$x, B)))
+for (seuil in c(Inf, SEUIL_ECART_VC)) {
+  cpl <- list(ecart = complet$ecart, seuil = seuil)
+  sous <- construire_bloc(pb, d$x, obs[!hors], bruts = B[!hors, , drop = FALSE], complet = cpl, garder_simples = FALSE)
+  avant <- bloc_terme_a_terme(d$x, B[!hors, , drop = FALSE], complet = cpl)
+  verifier(sprintf("un sous-modèle, seuil %s des écarts-types du modèle complet%s", format(seuil),
+                   if (length(avant$gardes)) sprintf(" (%d gardé)", length(avant$gardes)) else ""),
+           meme_bloc(sous, avant) && (is.finite(seuil) == (length(avant$gardes) > 0)))
+  verifier("  et son groupe caché, aux centres et poids du sous-modèle",
+           meme_bloc(construire_bloc(pb, d$x, obs[hors], imposees = sous, bruts = B[hors, , drop = FALSE], garder_simples = FALSE),
+                     bloc_terme_a_terme(d$x, B[hors, , drop = FALSE], imposees = sous)))
+}
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
