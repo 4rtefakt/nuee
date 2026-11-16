@@ -7,6 +7,7 @@ import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, not
   notesMoyennes, titreMoyenne, titrePaire, libellePaire, parametresLoi } from './panneaux.js';
 import { demander } from './api.js';
 import { zip } from './zip.js';
+import { etiquettesRepoussees, replacerEtiquettes } from './etiquettes.js';
 
 export const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
 export const HAUTEUR = 580;
@@ -71,6 +72,7 @@ export function dialogueRapport(app, id) {
   const parties = partiesModele(m);
   const choix = new Set(parties.filter((x) => x.defaut).map((x) => x.cle));
   const st = { titre: `${m.nom}${m.titre ? ' — ' + m.titre : ''}`, commentaire: '', format: 'pdf' };
+  st.defaut = st.titre;
   const contenu = el('div', { class: 'dialogue-rapport' },
     el('div', { class: 'grille-champs' },
       el('label', {}, t('titre_graphe')), el('input', { value: st.titre, style: 'width:28em', oninput: (e) => { st.titre = e.target.value; } }),
@@ -92,7 +94,8 @@ export function dialogueRapport(app, id) {
 }
 
 async function creerRapport(app, m, parties, st) {
-  const nomFichier = (st.titre || m.nom).replace(/[^\p{L}\p{N} _.()-]+/gu, '_');
+  // (its title as the dialog gave it: "<project> - M1 PLS", as the model's other files; a title typed: that)
+  const nomFichier = st.titre === st.defaut && app.nomFichierModele ? app.nomFichierModele(m) : (st.titre || m.nom).replace(/[^\p{L}\p{N} _.()-]+/gu, '_');
   let chemin = null;
   if (app.bureau) {
     chemin = await app.bureau.enregistrerSous(`${nomFichier}.${st.format}`,
@@ -156,7 +159,10 @@ export async function imageVue(app, vue, m, variante = {}) {
   try {
     await VUES[vue].rendre(hote, app.contexteHorsEcran(loc, (div) => { graphe = div; }), { modele: m.id, projet: m.projet }, loc);
     if (!graphe) return null;
-    return await window.Plotly.toImage(graphe, { format: 'png', width: LARGEUR, height: HAUTEUR, scale: 2 });
+    // (its labels spread, Plots › Format plot: once placed, placed again at the picture's size, etiquettes.js)
+    if (graphe._etiquettes) await graphe._etiquettes;
+    const source = etiquettesRepoussees(graphe.layout) ? await replacerEtiquettes({ data: graphe.data, layout: { ...graphe.layout, width: LARGEUR, height: HAUTEUR } }) : graphe;
+    return await window.Plotly.toImage(source, { format: 'png', width: LARGEUR, height: HAUTEUR, scale: 2 });
   } catch (e) {
     console.warn(`rapport : ${vue}`, e);  // the part is left out of the report
     return null;

@@ -118,6 +118,7 @@ export function creerCommandes(app) {
     nouvelle_fenetre: { icone: 'app-window', raccourci: 'Ctrl+Shift+N', action: () => app.nouvelleFenetre() },
     detacher: { icone: 'external-link', raccourci: 'Ctrl+Shift+D', actif: () => !!app.panneauActif(), action: () => app.detacher() },
     fermer_panneau: { raccourci: 'Ctrl+W', actif: () => !!app.panneauActif(), action: () => app.fermerPanneau() },
+    fermer_vues: { actif: () => app.avecVues(), action: () => app.fermerVues() },
     // the keyboard from tab to tab of the group in use, and from area to area (app.js; accessibilite.js's strings)
     onglet_suivant: { raccourci: 'Ctrl+Tab', action: () => app.ongletVoisin(1) },
     onglet_precedent: { raccourci: 'Ctrl+Shift+Tab', action: () => app.ongletVoisin(-1) },
@@ -183,12 +184,9 @@ export function menus(app, C) {
       it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes'), '-', it('etapes_donnees'), it('etapes_mettre_a_jour')] },
     { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
-    { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
-      it('vip'), it('coefficients'), it('obspred'), it('effets'), it('moyennes'), it('residus'), it('acf'), it('apports'), it('selection_aic'), it('puissance'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
-      it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series'), it('carte'), it('autocorrelation_spatiale'), it('rarefaction'),
-      '-', it('figure_composer')] },
+    { cle: 'm_graphiques', items: () => itemsGraphiques(app, C, it) },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
-    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('onglet_suivant'), it('onglet_precedent'),
+    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), it('fermer_vues'), '-', it('onglet_suivant'), it('onglet_precedent'),
       it('region_suivante'), it('region_precedente'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },
     { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
@@ -199,12 +197,58 @@ export function menus(app, C) {
   ];
 }
 
+// The Plots menu: the views of the active model, then the project's. Another analysis's own views
+// (TRIM's indices, the detection function...) come after its summary; the model views the active
+// model doesn't have (all of them, with no model in front) are folded under Other plots.
+const GRAPHIQUES_MODELE = ['resume', '-', 'scores', 'loadings', 'profils', 'ipls', 'biplot', 'scores3d', 'splot', 'dmodx', 't2', 'contributions', '-',
+  'vip', 'coefficients', 'obspred', 'effets', 'moyennes', 'residus', 'acf', 'apports', 'selection_aic', 'puissance', '-', 'permutations', 'cvanova', 'classification', '-',
+  'dendrogramme', 'coomans'];
+const GRAPHIQUES_PROJET = ['donnees', 'statistiques', 'tests', 'series', 'carte', 'autocorrelation_spatiale', 'rarefaction'];
+function itemsGraphiques(app, C, it) {
+  const id = app.modeleActif();
+  const x = app.modele(id);
+  const propres = x ? vuesDe(x).filter((v) => !C[v] && v !== 'predictions')
+    .map((v) => ({ libelle: t(v), icone: ICONES_VUES[v], action: () => app.ouvrirVue(v, id) })) : [];
+  const ici = [];
+  const ailleurs = [];
+  for (const k of GRAPHIQUES_MODELE) {
+    if (k === '-') { ici.push('-'); ailleurs.push('-'); continue; }
+    const i = it(k);
+    (i.actif ? ici : ailleurs).push(i);
+    if (k === 'resume' && propres.length) ici.push('-', ...propres);
+  }
+  const listes = ['liste_obs', 'liste_vars'].map(it);
+  ailleurs.push('-', ...listes.filter((i) => !i.actif));
+  const autres = sansSeparateursEnTrop(ailleurs);
+  return sansSeparateursEnTrop([...ici, ...(autres.length ? ['-', { libelle: t('autres_graphiques'), sous: autres }] : []), '-',
+    ...listes.filter((i) => i.actif), ...GRAPHIQUES_PROJET.map(it), '-', it('figure_composer')]);
+}
+// (a menu's separators between items only, one at a time)
+const sansSeparateursEnTrop = (l) => l.filter((x, i) => x !== '-' || (i > 0 && l[i - 1] !== '-' && l.slice(i + 1).some((y) => y !== '-')));
+
+// A view of the active model without a command of its own (another analysis's: TRIM's indices,
+// the detection function...), for the toolbar.
+export function commandeVue(app, nom) {
+  return { id: nom, icone: ICONES_VUES[nom] || 'chart-scatter', action: () => app.ouvrirVue(nom, app.modeleActif()),
+    actif: () => { const x = app.modele(app.modeleActif()); return !!x && vuesDe(x).includes(nom); } };
+}
+
 export const BARRE_OUTILS = [
   ['ouvrir', 'enregistrer'],
   ['nouveau_modele', 'modifier_modele', 'autoajuster', 'plus_comp', 'moins_comp'],
   ['resume', 'scores', 'loadings', 'dmodx', 't2', 'contributions', 'vip', 'coefficients', 'obspred', 'dendrogramme'],
   ['permutations', 'classification', 'predire', 'comparaison', 'exporter'],
 ];
+// The toolbar for the model in front. A PCA, PLS or OPLS, or no model, has BARRE_OUTILS as it is
+// (SIMCA's buttons, where hands know them); a regression or another analysis has its own views in
+// the middle (vuesDe, explorateur.js: its lists left out, at most 12), without the buttons of
+// components and of views it never has.
+const HORS_BARRE = ['liste_obs', 'liste_vars', 'predictions'];
+export function barreOutils(app) {
+  const x = app.modele(app.modeleActif());
+  if (!x || (!x.regression && !x.analyse)) return BARRE_OUTILS;
+  return [BARRE_OUTILS[0], ['nouveau_modele', 'modifier_modele'], vuesDe(x).filter((v) => !HORS_BARRE.includes(v)).slice(0, 12), ['predire', 'comparaison', 'exporter']];
+}
 
 const MAC = /Mac/.test(navigator.platform);
 export function afficherRaccourci(r) {

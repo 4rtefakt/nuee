@@ -3,6 +3,8 @@
 import { t, lire, ecrire, langueActuelle, libelleResultat, deuxPoints, separateurIntervalle, pourcent } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
 import { grilleClavier, decrireGraphe } from './accessibilite.js';
+import { decimalesValeurs } from './nombres.js';
+import { ETIQUETTE, aEtiquettes, etiquettesDe, sansTextes, repousserFigure, geometrieDe, mesurerTexte, etiquettesRepoussees, replacerDansGraphe } from './etiquettes.js';
 
 // The default palette stays apart under the common colour-vision deficiencies (Machado et al. 2009's
 // protanopia, deuteranopia and tritanopia): every pair at least 5.9 in CIEDE2000, the first four 9.9.
@@ -53,7 +55,7 @@ export function etendue(valeurs) {
 // Plot formatting chosen in Graphiques › Mise en forme, for every plot, kept from one session
 // to the next. A plot's own title and axis titles are in its panel's settings (loc).
 export const FORMAT = { police: 'Segoe UI', taille: 12, points: 1, palette: 'defaut', grille: true, legende: true,
-  largeur: 1200, hauteur: 800, echelle: 2, format: 'png' };
+  largeur: 1200, hauteur: 800, echelle: 2, format: 'png', repousser: false };  // (repousser: labels spread apart, etiquettes.js)
 try { Object.assign(FORMAT, JSON.parse(lire('format') || '{}')); } catch { /* defaults */ }
 PALETTE.splice(0, PALETTE.length, ...(PALETTES[FORMAT.palette] || PALETTES.defaut));
 
@@ -132,13 +134,47 @@ export function tracer(ctx, div, traces, layout = {}) {
     if (tr.textfont && tr.textfont.size) x.textfont = { ...tr.textfont, size: tr.textfont.size * F.taille / 12 };
     return x;
   });
-  window.Plotly.react(div, traces, lay, {
+  // Labels spread apart (Plots › Format plot, etiquettes.js): the plot drawn first without them, then
+  // they are placed in it as drawn and it is drawn again (awaited through div._etiquettes by a figure
+  // or a report drawing it off screen); the same labels on a plot of the same size and zoom take their
+  // places again at once (a selection drawn again).
+  const repousser = !!F.repousser && traces.some(aEtiquettes);
+  const generation = (div._generationEtiquettes || 0) + 1;
+  div._generationEtiquettes = generation;
+  const cleEtiquettes = repousser ? JSON.stringify([etiquettesDe(traces, lay), div.clientWidth, div.clientHeight, lay.xaxis.range, lay.yaxis.range, lay.font, F.taille, F.police]) : null;
+  // (a view draws a new plot each time: the one it replaces holds the labels' places too)
+  const precedent = div._repousse || (avant && avant !== div ? avant._repousse : null);
+  const deja = repousser && precedent && precedent.cle === cleEtiquettes ? precedent.annotations : null;
+  if (deja) div._repousse = precedent;
+  const dessin = window.Plotly.react(div, repousser ? sansTextes(traces) : traces, deja ? { ...lay, annotations: [].concat(lay.annotations || [], deja) } : lay, {
     responsive: true, displaylogo: false, scrollZoom: true,
     modeBarButtonsToRemove: ['toImage', 'autoScale2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'],
   });
+  div._etiquettes = repousser && !deja ? Promise.resolve(dessin).then(async () => {
+    if (div._generationEtiquettes !== generation) return;
+    const r = repousserFigure(traces, lay, geometrieDe(div), mesurerTexte);
+    if (div._generationEtiquettes !== generation) return;
+    if (!r) { await window.Plotly.react(div, traces, lay); return; }  // (too many, or axes of another kind: as Plotly writes them)
+    div._repousse = { cle: cleEtiquettes, annotations: r.layout.annotations.filter((a) => String(a.name || '').startsWith(ETIQUETTE)) };
+    div._tailleEtiquettes = `${div.clientWidth}x${div.clientHeight}`;
+    await window.Plotly.react(div, r.data, r.layout);
+  }).catch(() => {}) : null;
+  if (deja) div._tailleEtiquettes = `${div.clientWidth}x${div.clientHeight}`;
   decrireGraphe(div, traces, lay);  // (its text for screen readers, and the keyboard's stop: accessibilite.js)
   if (!div._observe) {
-    div._observe = new ResizeObserver(() => { if (div.offsetWidth) window.Plotly.Plots.resize(div); });
+    div._observe = new ResizeObserver(() => {
+      if (!div.offsetWidth) return;
+      window.Plotly.Plots.resize(div);
+      // (labels spread: placed again in the plot's new size, once it stops changing)
+      clearTimeout(div._minuterieEtiquettes);
+      div._minuterieEtiquettes = setTimeout(() => {
+        if (!etiquettesRepoussees(div.layout) || `${div.clientWidth}x${div.clientHeight}` === div._tailleEtiquettes) return;
+        const g = div._generationEtiquettes;
+        div._tailleEtiquettes = `${div.clientWidth}x${div.clientHeight}`;
+        div._repousse = null;
+        replacerDansGraphe(div, () => div._generationEtiquettes === g).catch(() => {});
+      }, 250);
+    });
     div._observe.observe(div);
     div.addEventListener('contextmenu', (e) => { e.preventDefault(); ctx.menuGraphique(e, div); });
     div.on('plotly_relayout', () => {
@@ -1360,9 +1396,12 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     const vides = x.reduce((s, y) => s + (y === null ? 1 : 0), 0);
     const distinctes = new Set(x.filter((y) => y !== null)).size;
     const valeurs = [vides ? t('atelier_vides_n', { n: vides }) : '', t('atelier_distinctes', { n: distinctes })].filter(Boolean).join(' · ');
-    // (a column of whole numbers, years or counts, without decimals: 2008, not 2008.0000)
+    // (a column of whole numbers, years or counts, without decimals: 2008, not 2008.0000; the others
+    // with the decimals their values have, up to 6, decided on a sample of them: an altitude 3.2, a
+    // GPS longitude 4.615327, nombres.js; the whole column when the sample had only whole numbers)
     const entiers = x.every((y) => typeof y !== 'number' || Number.isInteger(y));
-    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i], decimales: entiers ? 0 : undefined,
+    const decimales = entiers ? 0 : decimalesValeurs(x) || decimalesValeurs(x, { echantillon: Infinity });
+    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i], decimales,
       sousTitre: [v.unite, resume ? valeurs : ''].filter(Boolean).join(' · ') || null,
       info: [v.description, `${d.variables[i]}${v.unite ? ` (${v.unite})` : ''} · ${v.qualitative ? t([].concat(v.categories || []).length === 1 ? 'atelier_qualitative_une' : 'atelier_qualitative', { n: [].concat(v.categories || []).length }) : t('atelier_quantitative')} · ${valeurs}`,
         t('atelier_entete_aide')].filter(Boolean).join('\n') };
@@ -3510,7 +3549,15 @@ function rendreComparaison(conteneur, ctx, p, loc) {
   const mode = outils(choix('', [['ajustement', t('comparaison_ajustement')], ['coefficients', t('cote_a_cote')]], loc.mode,
     (v) => { loc.mode = v; ctx.rafraichir(); }));
   if (loc.mode === 'coefficients') { rendreCoteACote(conteneur, ctx, loc, mode); return; }
-  const ms = ctx.tousModeles();
+  // (models of several projects: all of them, or one project's)
+  const tous = ctx.tousModeles();
+  const projets = [...new Set(tous.map((m) => m.projet))];
+  if (loc.projet && !projets.includes(loc.projet)) loc.projet = '';
+  if (projets.length > 1) {
+    mode.append(choix(t('projets'), [['', t('tous_projets')]].concat(projets.map((id) => [id, (ctx.projet(id) || {}).nom || id])), loc.projet || '',
+      (v) => { loc.projet = v; ctx.rafraichir(); }));
+  }
+  const ms = loc.projet ? tous.filter((m) => m.projet === loc.projet) : tous;
   const cum = (v) => (v && v.length ? v[v.length - 1] : null);
   const graphe = el('div', { class: 'graphe petit' });
   const bas = el('div', { class: 'bas' });

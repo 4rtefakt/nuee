@@ -5,7 +5,7 @@ import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, d
 import { demander, televerser, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { el, icone, menuContextuel, barreMenus, dialogue } from './ui.js';
-import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
+import { creerCommandes, menus, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
 import { dialogueRaster } from './raster.js';
@@ -357,13 +357,14 @@ const app = {
   async exporter(id) {
     const m = etat.modeles[id];
     if (!m) return;
-    const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), m.nom, true, !!(etat.projets[m.projet] || {}).coordonnees);
+    const choix = await choisirExport(t('exporter_resultats_titre', { nom: m.nom }), nomFichierModele(m), true, !!(etat.projets[m.projet] || {}).coordonnees);
     if (choix) apresExport(await occupe(() => demander('exporter', { modele: id, ...choix })));
   },
   // the coefficients side by side shown in Compare models (coefficientsActifs): the table as
   // copied, and each model's coefficients in numbers (moteur/R/coefficients_modeles.R)
   async exporterCoefficients(q) {
-    const choix = await choisirExport(t('exporter_coefficients_titre'), 'coefficients', true);
+    const m = etat.modeles[[].concat(q.modeles || [])[0]];  // (the regressions of one project)
+    const choix = await choisirExport(t('exporter_coefficients_titre'), m ? sansCaracteresInterdits(`${sansExtension((etat.projets[m.projet] || {}).nom)} - coefficients`) : 'coefficients', true);
     if (choix) apresExport(await occupe(() => demander('exporter_coefficients', { ...q, ...choix })));
   },
   async exporterDonnees(pid) {
@@ -499,10 +500,11 @@ const app = {
     const e = etat.panneaux.get(cle);
     if (e && e.api) e.api.setTitle(titre);
   },
-  nouveauModele(pid) {
+  // (type: the one New model starts with, Find a command's "New model: TRIM…", palette.js)
+  nouveauModele(pid, type = null) {
     const p = etat.projets[pid || app.projetActif()];
     if (!p) return statut(t('choisir_projet'), true);
-    dialogueModele(app, p);
+    dialogueModele(app, p, null, undefined, null, type);
   },
   // Model › Which analysis?: a few questions, then New model already filled in, or the right view
   quelleAnalyse(pid) {
@@ -806,7 +808,7 @@ const app = {
   },
   async exporterPrediction(id) {
     const m = etat.modeles[id];
-    const choix = await choisirExport(t('exporter_prediction_titre', { nom: m.nom }), `${t('predictions')} ${m.nom}`, false);
+    const choix = await choisirExport(t('exporter_prediction_titre', { nom: m.nom }), `${nomFichierModele(m)} - ${t('predictions')}`, false);
     if (choix) apresExport(await occupe(() => demander('exporter_prediction', { modele: id, ...choix })));
   },
   async scoresEnVariables(id) {
@@ -824,7 +826,8 @@ const app = {
   async exporterScript(id) {
     const m = etat.modeles[id];
     const seance = modelesSeance(m.projet).filter((x) => !x.analyse);
-    const choix = await choisirScript(m.nom, seance.length > 1 && seance.some((x) => x.id === id) ? { modeles: seance, nom: etat.projets[m.projet].nom } : null);
+    const choix = await choisirScript(m.nom, seance.length > 1 && seance.some((x) => x.id === id) ? { modeles: seance, nom: sansCaracteresInterdits(sansExtension(etat.projets[m.projet].nom)) } : null,
+      nomFichierModele(m));
     if (!choix) return;
     const qui = choix.seance ? { modeles: seance.map((x) => x.id) } : { modele: id };
     const r = await occupe(() => demander('script_r', { ...qui, version: VERSION, langue: langueActuelle(), ...choix }));
@@ -960,6 +963,11 @@ const app = {
   // session keeps them
   vuesGraphiques: () => [...etat.panneaux.values()].filter((e) => e.graphe && e.graphe.data && VUES[e.vue] && !EXTERNES.includes(e.vue)),
   locEnregistrable: (loc) => locEnregistrable(loc),
+  // (a model's files' default name, "<project> - M1 TRIM": its report, rapport.js; a project's name
+  // without its extension, and whether several are open: the figures' list, figures.js)
+  nomFichierModele: (m) => nomFichierModele(m),
+  nomProjetCourt: (pid) => nomProjetCourt(pid),
+  plusieursProjets: () => plusieursProjets(),
   version: async () => ({ ...(await demander('version')), application: VERSION, electron: bureau && bureau.versions.electron }),
 
   // ---- views and windows
@@ -1020,6 +1028,21 @@ const app = {
   fermerPanneau() {
     const p = app.panneauActif() || (dock && dock.activePanel);
     if (p) p.api.close();
+  },
+  // Window › Close all views: every tab of the central group, models' pages and project views (the
+  // explorer and the console stay; the start page comes back). And a tab's menu › Close all tabs of
+  // its project: its models' pages and its views.
+  avecVues: () => !!dock && dock.panels.some((p) => !EXTERNES.includes(p.id)),
+  fermerVues() {
+    if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
+  },
+  fermerVuesProjet(pid) {
+    if (!dock) return;
+    for (const p of [...dock.panels]) {
+      const e = etat.panneaux.get(p.id);
+      const m = estPage(p) ? etat.modeles[p.id.slice(5)] : null;
+      if ((m && m.projet === pid) || (!estPage(p) && e && e.params.projet === pid)) p.api.close();
+    }
   },
 
   reinitialiser() {
@@ -1191,8 +1214,9 @@ function choisirExport(titre, nom, plusieursTables, coordonnees = false) {
 // The R script dialog: where the data go (in the script, or a CSV file next to it) and the
 // files written next to the script (renv.lock, the data and fitted model in .RData, an RStudio
 // project). Resolves to the choices, with { chemin } on the desktop, or null. Remembered.
-// seance: { modeles, nom } when the project has other models, offering them all in one .R script.
-function choisirScript(nom, seance = null) {
+// seance: { modeles, nom } when the project has other models, offering them all in one .R script
+// (its file named after the project's: nom); fichier: the model's file's name.
+function choisirScript(nom, seance = null, fichier = nom) {
   return new Promise((resolve) => {
     const choix = { donnees: lire('script_donnees') === 'csv' ? 'csv' : 'script', format: ['R', 'Rmd', 'qmd'].includes(lire('script_format')) ? lire('script_format') : 'R',
       seance: false };
@@ -1229,7 +1253,7 @@ function choisirScript(nom, seance = null) {
         for (const k of ['renv', 'rdata', 'rproj']) ecrire(`script_${k}`, choix[k] ? 'oui' : 'non');
         const r = choix.seance ? { ...choix, format: 'R' } : choix;
         if (!bureau) { resolve(r); return true; }
-        bureau.enregistrerSous(`${choix.seance ? seance.nom : nom}.${r.format}`, [{ name: t(`script_format_${r.format}`), extensions: [r.format] }])
+        bureau.enregistrerSous(`${choix.seance ? seance.nom : fichier}.${r.format}`, [{ name: t(`script_format_${r.format}`), extensions: [r.format] }])
           .then((chemin) => resolve(chemin ? { ...r, chemin } : null));
         return true;
       } }] });
@@ -1243,6 +1267,9 @@ function apresExport(r) {
 }
 
 async function apresOuverture(res, session = null) {
+  // (the explorer follows: the other projects' fitted models folded, a line each without their views,
+  // and the project opened brought into view, explorateur.js)
+  for (const m of Object.values(etat.modeles)) if (m.projet !== res.id) etat.replies.add(`${m.projet}/m/${m.id}`);
   projetRecu(res);
   etat.noeud = res.id;
   diffuser('modeles');
@@ -1639,7 +1666,30 @@ const estPage = (p) => !!p && typeof p.id === 'string' && p.id.startsWith('page:
 // (the tabs of an old version opened read-only, versions.js: marked, its model pages beside the
 // project's own of the same names)
 const marqueLecture = (pid) => (etat.projets[pid] && etat.projets[pid].lecture_seule ? '🔒 ' : '');
-const titrePage = (m) => `${marqueLecture(m.projet)}${m.nom} · ${m.type}`;
+// A project's name without its file's extension ("skylark_counts"); with several projects open, a
+// model's tab starts with it, as Compare models' bars do: "skylark_counts · M1 · TRIM"
+// (retitrerPages, from majEtat, when that changes)
+const sansExtension = (nom) => String(nom || '').replace(/\.[^.]+$/, '');
+const nomProjetCourt = (pid) => {
+  const nom = String((etat.projets[pid] || {}).nom || '');
+  // (two projects of the same name, a table and its project: with their extensions)
+  return Object.values(etat.projets).some((p) => p.id !== pid && sansExtension(p.nom) === sansExtension(nom)) ? nom : sansExtension(nom);
+};
+const plusieursProjets = () => Object.keys(etat.projets).length > 1;
+const titrePage = (m) => `${marqueLecture(m.projet)}${plusieursProjets() ? `${nomProjetCourt(m.projet)} · ` : ''}${m.nom} · ${m.type}`;
+function retitrerPages() {
+  const signature = plusieursProjets() ? Object.values(etat.projets).map((p) => `${p.id}:${p.nom}`).join('|') : '';
+  if (!dock || signature === etat.titresPages) return;
+  etat.titresPages = signature;
+  for (const id of pages.keys()) {
+    const page = dock.getPanel(`page:${id}`);
+    if (page && etat.modeles[id]) page.api.setTitle(titrePage(etat.modeles[id]));
+  }
+}
+// A model's files, by default: "<project> - M1 TRIM" (the M1 of two projects no longer take the same
+// name in a folder), without the characters a file's name can't have
+const sansCaracteresInterdits = (s) => s.replace(/[\\/:*?"<>|]+/g, '_').trim();
+const nomFichierModele = (m) => sansCaracteresInterdits(`${sansExtension((etat.projets[m.projet] || {}).nom)} - ${m.nom} ${m.type}`);
 // The tabs of a project titled again (an old version saved elsewhere is read-only no more)
 function retitrer(pid) {
   for (const m of app.modelesDe(pid)) {
@@ -1842,8 +1892,13 @@ function menuOnglet(e) {
   const ensuite = () => setTimeout(() => focusOnglet(group.element && group.element.isConnected ? group : d && d.activeGroup));
   const agrandir = { libelle: group.api.isMaximized() ? t('restaurer') : t('agrandir'),
     action: () => (group.api.isMaximized() ? group.api.exitMaximized() : group.api.maximize()) };
+  // (a tab of a project, a model's page or view, a project view: all the tabs of that project too)
+  const entree = etat.panneaux.get(panel.id);
+  const pid = estPage(panel) ? (etat.modeles[panel.id.slice(5)] || {}).projet : entree && (entree.params.projet || (etat.modeles[entree.params.modele] || {}).projet);
   const fermer = [{ libelle: t('fermer_panneau'), action: () => { panel.api.close(); ensuite(); } },
-    { libelle: t('fermer_autres'), action: () => { group.panels.filter((x) => x.id !== panel.id).forEach((x) => x.api.close()); ensuite(); } }];
+    { libelle: t('fermer_autres'), action: () => { group.panels.filter((x) => x.id !== panel.id).forEach((x) => x.api.close()); ensuite(); } }]
+    .concat(pid && etat.projets[pid] ? [{ libelle: t('fermer_onglets_projet', { nom: etat.projets[pid].nom }), action: () => { app.fermerVuesProjet(pid); ensuite(); } }] : [],
+      [{ libelle: t('fermer_vues'), action: () => { app.fermerVues(); ensuite(); } }]);
   menuContextuel(e.clientX, e.clientY, panel.id === 'explorateur' ? [fermer[0]] : estPage(panel) ? [agrandir, '-', ...fermer]
     : [{ libelle: t('detacher'), action: () => app.detacher(panel.id) }, agrandir, '-', ...fermer]);
 }
@@ -1936,7 +1991,8 @@ function rendrePanneau(entree) {
   const titre = v.titre(m, etat.projets[entree.params.projet] || {}, entree.loc);
   // (in its model's page, the model's name goes without saying, and the page's tab has the mark)
   if (entree.api) entree.api.setTitle(m ? titreCourt(titre, m) : marqueLecture(entree.params.projet) + titre);
-  if (VUE_SEULE) document.title = marqueLecture(entree.params.projet) + titre;
+  // (a model's view in a window of its own: its project's name first, "skylark_counts · M1 · Indices")
+  if (VUE_SEULE) document.title = marqueLecture(entree.params.projet) + (m && nomProjetCourt(m.projet) ? `${nomProjetCourt(m.projet)} · ` : '') + titre;
 }
 
 function rafraichirModele(id) {
@@ -2040,15 +2096,22 @@ function rendreMenus() {
   } })), [el('img', { class: 'logo', src: 'nuee.svg', alt: '' })]);
 }
 
-// The toolbar is one Tab stop: left and right (Home, End) go from button to button.
+// The toolbar is one Tab stop: left and right (Home, End) go from button to button. Its views follow
+// the model in front (commandes.js: barreOutils): drawn again when they change.
+const vuesBarre = new Map();  // (the commands of views that have none of their own: commandeVue)
+const commandeBarre = (id) => C[id] || vuesBarre.get(id) || vuesBarre.set(id, commandeVue(app, id)).get(id);
+const signatureBarre = () => barreOutils(app).map((g) => g.join(' ')).join('|');
 function rendreBarreOutils() {
   const barre = document.getElementById('barre-outils');
+  const avant = barre.contains(document.activeElement) ? document.activeElement.dataset.commande ?? '' : null;
+  barre._signature = signatureBarre();
   barre.setAttribute('aria-label', t('barre_outils'));
-  barre.replaceChildren(...BARRE_OUTILS.map((groupe) => el('div', { class: 'groupe-outils', role: 'group' }, groupe.map((id) => {
-    const c = C[id];
+  barre.replaceChildren(...barreOutils(app).map((groupe) => el('div', { class: 'groupe-outils', role: 'group' }, groupe.map((id) => {
+    const c = commandeBarre(id);
+    const court = t('court_' + id);  // (a view without a short name: its name)
     return el('button', { class: 'outil', 'data-commande': id, title: t(id) + (c.raccourci ? ` (${afficherRaccourci(c.raccourci)})` : ''), tabindex: -1,
       'aria-keyshortcuts': c.raccourci ? c.raccourci.replace('Ctrl', 'Control').replace('=', 'Plus') : null,
-      onclick: () => { if (!c.actif || c.actif()) c.action(); } }, icone(c.icone || ICONES_VUES[id]), el('span', {}, t('court_' + id)));
+      onclick: () => { if (!c.actif || c.actif()) c.action(); } }, icone(c.icone || ICONES_VUES[id]), el('span', {}, court === `court_${id}` ? t(id) : court));
   }))));
   if (!barre._clavier) {
     barre._clavier = true;
@@ -2065,11 +2128,18 @@ function rendreBarreOutils() {
     });
   }
   majBarreOutils();
+  // (the keyboard on the toolbar while it changed: on the same command, else its Tab stop)
+  if (avant !== null) {
+    const b = barre.querySelector(`.outil[data-commande="${avant}"]:not(:disabled)`) || barre.querySelector('.outil[tabindex="0"]');
+    if (b) b.focus();
+  }
 }
 
 function majBarreOutils() {
+  const barre = document.getElementById('barre-outils');
+  if (barre && barre._signature !== undefined && barre._signature !== signatureBarre()) { rendreBarreOutils(); return; }
   document.querySelectorAll('#barre-outils .outil').forEach((b) => {
-    const c = C[b.dataset.commande];
+    const c = commandeBarre(b.dataset.commande);
     b.disabled = c.actif ? !c.actif() : false;
   });
   // (the toolbar's Tab stop on an enabled button)
@@ -2082,6 +2152,7 @@ function majBarreOutils() {
 
 function majEtat() {
   if (!VUE_SEULE) majBarreOutils();
+  if (!VUE_SEULE) retitrerPages();  // (a project opened or closed: the models' tabs name theirs, or no longer)
   if (!VUE_SEULE && app.barresCode) app.barresCode();  // (a project's R code written elsewhere: vues_code.js)
   const c = etat.panneaux.get('console:');
   if (c && c.element._console) c.element._console.entete();  // m and p follow the model shown
@@ -2103,7 +2174,8 @@ function majEtat() {
     !VUE_SEULE && app.avisDonnees ? app.avisDonnees() : null,
     // (the active project's versions to send and to get: versions.js)
     !VUE_SEULE && app.indicateurVersions ? app.indicateurVersions() : null,
-    m ? el('span', {}, `${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
+    m ? el('span', {}, `${plusieursProjets() ? `${nomProjetCourt(m.projet)} · ` : ''}${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`)
+      : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
     nv ? el('span', { class: 'sel' }, t('variables_en_evidence', { n: nv })) : null,
     el('button', { class: 'icone-seule', title: t('theme_sombre'), 'aria-label': t('theme_sombre'), 'aria-pressed': String(app.themeSombre()),

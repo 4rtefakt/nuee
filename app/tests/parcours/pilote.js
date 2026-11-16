@@ -109,6 +109,23 @@ const SUBSTITUTS = `(() => {
   // (the inspector's own require, until main.js is the main module)
   const { dialog, shell, app } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
   const E = globalThis.__essai = globalThis.__essai || { ouvrir: [], enregistrer: [], messages: [], appels: [], ouverts: [], liens: [], recents: [] };
+  // NUEE_HORS_ECRAN=1 (a run on a computer someone is using): every window off the screen, out of
+  // the taskbar, shown without taking the focus, still drawing (with the program's option
+  // --disable-features=CalculateNativeWinOcclusion, Chromium doesn't count it as hidden)
+  if (${process.env.NUEE_HORS_ECRAN === '1'} && !E.horsEcran) {
+    E.horsEcran = true;
+    E.montrees = [];  // (where each window was when shown)
+    const ecarter = (w) => {
+      w.setSkipTaskbar(true);
+      w.setPosition(-20000, -20000);
+      w.webContents.setBackgroundThrottling(false);
+      w.show = () => w.showInactive();
+      w.focus = () => {};
+      w.once('show', () => E.montrees.push(w.getBounds()));
+    };
+    for (const w of BrowserWindow.getAllWindows()) ecarter(w);
+    app.on('browser-window-created', (_, w) => ecarter(w));
+  }
   const sans = (a, b) => (b === undefined ? a : b);  // (the window is optional)
   dialog.showOpenDialog = async (a, b) => {
     const o = sans(a, b) || {};
@@ -293,6 +310,13 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
       .filter((k) => process.env[k]).map((k) => [k, process.env[k]])), PATH: '/usr/bin:/bin' };
   // (no question to GitHub about a newer version: a closed local port answers instead)
   env.NUEE_SOURCE_MAJ = 'http://127.0.0.1:9/';
+  // (a new profile: its engine on a port of its own, not on the one an installed Nuée takes when
+  // it is free, whose interface settings are kept by that address: main.js, PORT_HABITUEL)
+  const fichierReglages = path.join(profil, 'reglages.json');
+  if (!fs.existsSync(fichierReglages)) {
+    fs.mkdirSync(profil, { recursive: true });
+    fs.writeFileSync(fichierReglages, JSON.stringify({ port: await portLibre() }));
+  }
   const portPage = await portLibre();
   const portNode = await portLibre();
   const debut = Date.now();

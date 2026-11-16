@@ -221,6 +221,9 @@ recalcule en R ; le Résumé marque chaque valeur : « = » identique à la vale
 dans le fichier, « ≈ » proche (moins de 0,01), « ≠ » différente. Le Q2 diffère en général : un
 modèle importé est validé comme les autres (voir « Validation croisée ») ; « Centres et poids du
 modèle complet (comme SIMCA) » redonne celui du fichier.
+L'explorateur suit le travail : un projet ouvert, ou un modèle ajusté, vient en vue en haut, et
+ouvrir un projet replie les modèles ajustés des autres projets, une ligne chacun (leur flèche
+les déplie).
 
 Menus et barre d'outils
 -----------------------
@@ -234,6 +237,12 @@ Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. 
   Ctrl+B explorateur       F1 guide
   Ctrl+Tab / Ctrl+Maj+Tab onglet suivant / précédent  F6 / Maj+F6 zone suivante / précédente
 Affichage : thème sombre, français / anglais, taille du texte.
+Les vues de la barre d'outils suivent le modèle devant : une ACP, une PLS ou une OPLS a celles de
+SIMCA (Résumé, Scores, Loadings, DModX, T², Contrib., VIP, Coeff., Obs/préd., HCA, comme
+toujours) ; une régression ou une autre analyse a les siennes (Coefficients, Effets, Résidus,
+Sélection par AIC... d'une régression ; Indices et Totaux de TRIM ; Détection et Densité de
+l'échantillonnage par distances). Le menu Graphiques commence par les vues du modèle actif ;
+celles qu'il n'a pas sont sous Graphiques › Autres graphiques.
 Clavier et lecteurs d'écran : Alt (ou F10) mène à la barre de menus, les flèches dans ses
 menus, Entrée lance une commande, Échap revient ; Alt et la lettre soulignée d'un menu l'ouvre
 (Alt+F Fichier...). F6 va de zone en zone (barre d'outils, explorateur, chaque groupe de
@@ -254,7 +263,9 @@ Onglet Général : type (ACP, PLS, PLS-DA, OPLS, OPLS-DA, modèles de classe, r�
 linéaire, modèle linéaire mixte, modèle linéaire généralisé, modèle additif : voir Modèles
 linéaires, généralisés et mixtes ; RDA et CA : voir Analyse de redondance et analyse des
 correspondances ; arbre de décision, LDA et k-moyennes : voir Arbres de décision, analyse
-discriminante linéaire et k-moyennes), nom, nombre de composantes
+discriminante linéaire et k-moyennes ; la liste est rangée par famille : analyses multivariées,
+régressions, communautés d'espèces, classement et prédiction, suivi des populations, autres),
+nom, nombre de composantes
 (automatique par défaut, par validation croisée), groupes de validation croisée (à tour de
 rôle, G groupes ; ou un groupe par valeur d'un identifiant ou d'une variable, voir Validation
 croisée), échelle par défaut.
@@ -394,8 +405,15 @@ Mise en forme des graphiques (pour un article, un rapport)
 Clic droit sur un graphique › Mise en forme, ou Édition › Mise en forme du graphique :
 titre et titres des axes de ce graphique ; pour tous les graphiques : police, taille du
 texte, taille des points, couleurs (dont une palette lisible par les daltoniens et des
-niveaux de gris), grille, légende ; et « Exporter l'image » à la taille voulue (en pixels,
-résolution ×1 à ×6) en PNG, SVG ou JPEG. Ces réglages sont gardés d'une fois sur l'autre.
+niveaux de gris), grille, légende, « Écarter les étiquettes » ; et « Exporter l'image » à la
+taille voulue (en pixels, résolution ×1 à ×6) en PNG, SVG ou JPEG. Ces réglages sont gardés
+d'une fois sur l'autre.
+Écarter les étiquettes : les noms écrits près des points des scores, des loadings, des biplots
+et des ordinations ne se chevauchent plus. Une étiquette qui en couvrirait une autre, ou un
+point, se place à côté de son point, ou plus loin avec un trait fin jusqu'à lui (comme ggrepel
+dans R) ; une étiquette sans chevauchement reste où elle était. Les figures, les rapports et les
+documents les placent de nouveau à leur propre taille. (Jusqu'à 500 étiquettes par graphique ;
+au-delà, elles restent telles quelles.)
 
 Contributions
 -------------
@@ -434,7 +452,10 @@ variables). Fichier › Exporter les résultats du modèle (Ctrl+E) : les tablea
 composantes ; coefficients ; variables Y). Formats : Excel (une feuille par tableau), CSV,
 texte séparé par des tabulations, R (.rds : une liste de tableaux ; .RData), SPSS (.sav),
 Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) et Weka (.arff) ; dans ces
-derniers, un fichier par tableau (« M1.sav », « M1 - variables.sav »...). Les variables
+derniers, un fichier par tableau (« vergers - M1 PCA.sav », « vergers - M1 PCA -
+variables.sav »...). Les fichiers d'un modèle portent par défaut le nom de son projet, son nom
+et son type (ses résultats, l'export vers R, son rapport, ses prédictions) : les M1 de deux
+projets ne prennent pas le même nom dans un dossier. Les variables
 qualitatives restent qualitatives (facteurs R, étiquettes de valeurs SPSS et Stata, nominales
 jamovi). Pour SPSS, Stata, SAS et dBase, les noms de variables sont rendus valides (lettres
 sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable. Les
@@ -695,13 +716,16 @@ Figures pour publication
 Graphiques › Composer une figure… (ou clic droit sur un graphique › Ajouter à une figure, ou clic
 droit sur le projet dans l'explorateur) : des graphiques côte à côte dans une figure, à la taille
 où une revue l'imprime, pour un article.
-  - Panneaux : les graphiques ouverts dans la fenêtre, de n'importe quel modèle ou du projet
-    (scores, loadings, effets, carte, séries...) : « Ajouter un graphique ouvert... » les liste,
-    le graphique au premier plan vient en premier. Chacun a sa lettre dans l'ordre de la liste
-    (les flèches le changent) : A, B, C, ou a, b, c, (A), (a), en gras ou non, dans le coin
-    choisi. Un panneau prend une case de la grille, ou deux colonnes, ou deux lignes ; la grille
-    (lignes × colonnes : 1 × 2, 2 × 2, 1 × 3...) s'agrandit quand un panneau ajouté n'y tient
-    pas, et un panneau qui n'a pas de place est en rouge.
+  - Panneaux : chaque graphique des modèles ajustés du projet, ouvert ou non (scores, loadings,
+    effets, indices... : ceux qu'un rapport dessine, et les profils des spectres, le dendrogramme,
+    le graphique de Coomans), et les graphiques du projet ouverts dans la fenêtre (carte,
+    séries...) : « Ajouter un graphique... » les liste par modèle (« M1 · PCA »), le graphique au
+    premier plan vient en premier. Un graphique pas ouvert est dessiné avec les réglages habituels
+    de sa vue, un graphique ouvert, marqué comme tel, avec les siens. Chacun a sa lettre dans
+    l'ordre de la liste (les flèches le changent) : A, B, C, ou a, b, c, (A), (a), en gras ou non,
+    dans le coin choisi. Un panneau prend une case de la grille, ou deux colonnes, ou deux
+    lignes ; la grille (lignes × colonnes : 1 × 2, 2 × 2, 1 × 3...) s'agrandit quand un panneau
+    ajouté n'y tient pas, et un panneau qui n'a pas de place est en rouge.
   - Taille : la largeur de la revue en millimètres : une colonne (85 ou 90 mm), une et demie
     (114 ou 140 mm), deux colonnes (174 ou 190 mm), ou une autre ; la hauteur donnée, ou tirée
     des panneaux (la forme des graphiques à l'écran).
@@ -725,8 +749,10 @@ où une revue l'imprime, pour un article.
     fond en est moins net que demandé. L'attribution (© OpenStreetMap contributors, © IGN) reste
     dans un coin de la carte.
 Chaque graphique est dessiné comme dans sa vue au moment où il a été ajouté (axes, couleurs,
-étiquettes, titres de Mise en forme, zoom), dans le thème clair, sans la sélection, sur fond
-blanc ; le bouton d'actualisation d'un panneau reprend les réglages de sa vue ouverte. La figure
+étiquettes, titres de Mise en forme, zoom), ou avec ses réglages habituels s'il n'était pas
+ouvert, dans le thème clair, sans la sélection, sur fond blanc ; les étiquettes écartées (Mise
+en forme) sont placées de nouveau dans sa case ; le bouton d'actualisation d'un panneau
+reprend les réglages de sa vue ouverte. La figure
 est gardée dans le projet et enregistrée avec lui (dans l'explorateur, sous Figures : ouvrir,
 exporter, renommer, dupliquer, supprimer) ; elle prend toujours le dernier ajustement de chaque
 modèle (un modèle pas encore calculé l'est quand la figure est dessinée) : après un
@@ -1427,7 +1453,8 @@ comprise), à côté de Y observé quand il est connu. Les colonnes d'un fichier
 le nom des variables du modèle, l'effort compris (sans lui, les prédictions sont pour un effort
 de 1, et la note le dit). ⚠ signale une valeur hors de l'étendue des observations du modèle :
 une extrapolation.
-Prédiction › Comparer les modèles : Q2 et RMSEcv pour tous les modèles ; AIC, ΔAIC et poids
+Prédiction › Comparer les modèles (avec des modèles de plusieurs projets ajustés, sa liste
+Projets en montre un seul) : Q2 et RMSEcv pour tous les modèles ; AIC, ΔAIC et poids
 d'Akaike (la probabilité que chaque modèle soit le meilleur de son ensemble) entre les seules
 régressions de la même réponse sur les mêmes observations (un « ensemble AIC », lettré A,
 B...), et seulement celles dont les vraisemblances se comparent : des modèles de Poisson,
@@ -2224,9 +2251,11 @@ données.
 
 Modifier les données, créer des variables
 -----------------------------------------
-Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour
-annuler ; vide = valeur manquante ; pour une variable qualitative, le nom de la catégorie).
-Les modèles déjà ajustés ne changent pas : les réajuster.
+La vue Données montre chaque colonne avec les décimales de ses valeurs, jusqu'à six (une
+altitude 3,2, une longitude GPS 4,615327), les nombres entiers sans ; le champ d'une case et la
+copie gardent toute la précision. Dans la vue Données, double-cliquer une case pour la modifier
+(Entrée pour garder, Échap pour annuler ; vide = valeur manquante ; pour une variable
+qualitative, le nom de la catégorie). Les modèles déjà ajustés ne changent pas : les réajuster.
 Édition › Nouvelle variable : par une formule R sur les autres variables et les identifiants
 des observations, par exemple log10(polyphenols), sucre / acidite, ifelse(poids >= 170,
 "gros", "petit") (un résultat en texte donne une variable qualitative) ; par groupe,
@@ -2594,14 +2623,19 @@ variable, puis employer cette variable dans la condition.
 Fenêtres
 --------
 Au centre, un onglet par modèle (« M1 · PLS »), et un onglet pour chaque vue du projet
-(Données, Statistiques des variables, Historique). L'onglet d'un modèle est sa page : son
-résumé à gauche, ses scores et ses loadings à droite ; ses autres vues (VIP, DModX...)
-s'y ajoutent en onglets. Choisir un modèle dans l'explorateur affiche sa page ; fermer la
-dernière vue d'une page ferme la page.
+(Données, Statistiques des variables, Historique). Avec plusieurs projets ouverts, l'onglet
+d'un modèle, et la barre d'état, commencent par le nom de son projet
+(« comptages_alouette · M1 · TRIM »). L'onglet d'un modèle est sa page : son résumé à gauche,
+ses scores et ses loadings à droite ; ses autres vues (VIP, DModX...) s'y ajoutent en onglets.
+Choisir un modèle dans l'explorateur affiche sa page ; fermer la dernière vue d'une page ferme
+la page.
 Dans une page comme au centre, les vues se déplacent par leur onglet (glisser-déposer),
 se divisent et s'empilent ; glisser l'onglet d'un modèle à côté d'un autre permet de
 comparer deux modèles. Clic droit sur un onglet, ou l'icône en haut à droite d'un groupe :
-détacher dans sa propre fenêtre (par exemple sur un second écran), agrandir, fermer.
+détacher dans sa propre fenêtre (par exemple sur un second écran), agrandir, fermer, fermer
+les autres, fermer tous les onglets de son projet, fermer toutes les vues. Fenêtre › Fermer
+toutes les vues ferme tous les onglets du centre, pages des modèles et vues des projets
+(l'explorateur et la console R restent).
 Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète. Une sélection d'observations (cadre ou lasso dans un
 graphique, clic sur un point ou une ligne de liste) apparaît dans toutes les vues et toutes
 les fenêtres du même modèle.
@@ -2611,7 +2645,9 @@ Ctrl+C dans une vue qui montre un tableau (résumé, listes, statistiques...) co
 texte séparé par des tabulations, à coller dans Excel (une liste : toutes ses lignes, en pleine
 précision) ; avec du texte sélectionné, Ctrl+C copie le texte comme d'habitude.
 Affichage › Rechercher une commande (Ctrl+K) : taper une partie du nom d'une commande ou de son
-menu (« vip », « exporter r »), puis Entrée.
+menu (« vip », « exporter r »), ou d'une analyse, en français ou en anglais, ou son code
+(« trim », « glm », « nmds », « forêt aléatoire »), puis Entrée : la commande se lance, ou
+Nouveau modèle s'ouvre sur ce type.
 Aide › Informations de diagnostic : les versions de Nuée, du système, de R et de ses paquets, à
 coller dans un signalement de problème (github.com/4rtefakt/nuee/issues ; ni chemins ni
 données).
