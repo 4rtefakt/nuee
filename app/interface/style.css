@@ -824,3 +824,43 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .sortie-r { margin: 4px 0 0; max-height: 12em; overflow: auto; padding: 6px 8px; background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px;
   font: 11px Consolas, 'Cascadia Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .sortie-r:empty { display: none; }
+/* ---------------------------------------------------------------- R-code models (vues_code.js) */
+/* the code editor in New model: the field column as wide as the dialog, line numbers, R colours */
+.grille-champs:has(.champ-code) { grid-template-columns: max-content minmax(0, 1fr); align-items: start; }
+.grille-champs:has(.champ-code) > label { padding-top: 3px; }
+.champ-code { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.editeur-code { min-width: 0; }
+.editeur-code textarea.formule { width: 100%; font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; font-size: 12.5px; resize: vertical; }
+.editeur-code .cm-editor { height: 280px; border: 1px solid var(--bord-champ); border-radius: 4px; background: var(--fond-panneau); color: var(--texte); font-size: 12.5px; }
+.editeur-code .cm-editor.cm-focused { outline: 2px solid var(--accent); outline-offset: -1px; }
+.editeur-code .cm-scroller { font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; line-height: 1.5; }
+.editeur-code .cm-gutters { background: var(--fond-barre); color: var(--texte-doux); border-right: 1px solid var(--grille); }
+.editeur-code .cm-activeLine, .editeur-code .cm-activeLineGutter { background: color-mix(in srgb, var(--survol) 70%, transparent); }
+.editeur-code .cm-cursor { border-left-color: var(--texte); }
+.editeur-code .cm-selectionBackground, .editeur-code .cm-focused .cm-selectionBackground { background: var(--accent-doux) !important; }
+.editeur-code .cm-placeholder { color: var(--texte-doux); }
+.editeur-code .cm-matchingBracket { background: var(--accent-doux); outline: 1px solid var(--accent); }
+.aide-code { border: 1px solid var(--grille); border-radius: 6px; padding: 4px 10px; background: var(--fond-barre); }
+.aide-code summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 2px 0; }
+.aide-code p { margin: 6px 0; }
+.corps-dialogue p.erreur { white-space: pre-wrap; font-family: inherit; }
+/* the model's views: R's text, the code with its line numbers, plots side by side, the code's own plots */
+pre.code-sortie, pre.code-r { font: 12px/1.45 Consolas, 'Cascadia Mono', 'Courier New', monospace; background: var(--fond-barre); border: 1px solid var(--grille);
+  border-radius: 4px; padding: 6px 8px; margin: 2px 0; overflow: auto; white-space: pre; tab-size: 4; }
+pre.code-r { counter-reset: ligne-code; }
+pre.code-r .ligne-code { display: block; }
+pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter(ligne-code); display: inline-block; width: 3ch; margin-right: 10px; text-align: right;
+  color: var(--texte-doux); user-select: none; }
+.deux-graphes { display: flex; flex: 1; gap: 8px; min-height: 0; }
+.deux-graphes .graphe { min-width: 0; }
+.image-code { margin: 6px 0 12px; }
+.image-code img { max-width: 100%; height: auto; border: 1px solid var(--grille); border-radius: 4px; background: #fff; }
+.tableau-code { flex: none; max-height: 320px; }
+/* the bar over a project whose R code was written elsewhere: Show the code, Run it */
+#barres-code:empty { display: none; }
+.barre-code { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: color-mix(in srgb, var(--attention) 14%, var(--fond-panneau));
+  border-bottom: 1px solid var(--attention); color: var(--texte); }
+.barre-code > span:not(.icone) { flex: 1; min-width: 0; }
+.barre-code > .icone { color: var(--attention); }
+.montrer-code section { margin-bottom: 10px; }
+.montrer-code h4 { margin: 6px 0 2px; font-size: 13px; }

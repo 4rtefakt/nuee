@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Votre propre modèle en code R · Nuée</title>
+<meta name="description" content="Un modèle écrit en R par vous (lm, glm, nls, mgcv, nlme, glmmTMB…) : ses données, ses résultats, ses textes, son export, et le code venu d’ailleurs.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="code-r.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/r-code.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/r-code.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="code-r.html" aria-current="page">Votre propre modèle en code R</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="versions.html">Versions et travail à plusieurs</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Votre propre modèle en code R</h1>
+<div class="texte-guide">
+<section id="votre-propre-modele-en-code-r">
+<p><strong>Nouveau modèle › type « Code R (votre propre modèle) » :</strong> un modèle que vous écrivez en R, pour ce que Nuée n'ajuste pas lui-même : tout ce que R sait ajuster (lm, glm, nls, mgcv, nlme, glmmTMB, unmarked, brms…), avec les paquets installés pour le R que Nuée utilise (library() et paquet:: marchent comme dans R). Nuée donne au code ses données, tire du modèle ce qu'il peut, et le traite comme ses autres modèles.</p>
+<ul>
+<li><strong>Onglet Général :</strong> l'éditeur du code (R en couleurs, les numéros de ligne ; Ctrl+Entrée ajuste) et son aide, avec un exemple fait des variables du projet ; onglet Observations : les observations du modèle, comme pour les autres (cochées, une condition).</li>
+<li><strong>Les données :</strong> `donnees`, un data.frame des observations du modèle, une colonne par variable du projet sous son nom (les variables qualitatives en facteurs, leurs catégories dans l'ordre du projet), puis les identifiants des observations, en texte.</li>
+<li><strong>Le modèle :</strong> la dernière valeur du code (lm(...), fit…), n'importe quel objet R. Ou une liste dont Nuée reconnaît les éléments : list(modele = fit, valeurs = c(densite = 3.2, pente = -0.4), tableaux = list(effectifs = d)) ; `valeurs`, des nombres nommés, des résultats clés que les documents citent ({{M1.valeurs.densite}}) et que Ce qui a changé suit ; `tableaux`, des data.frame nommés, montrés et exportés.</li>
+<li>Le code s'exécute dans un environnement à lui, chaque expression à son tour, comme dans la console R : une valeur visible est affichée (un graphique ggplot ou lattice dessiné), sauf la dernière, le modèle. Ce qu'il affiche, ses messages, ses avertissements et ses graphiques sont gardés. Une erreur donne le message de R et sa ligne (l'éditeur y va) ; un paquet qui n'est pas installé est nommé, avec comment l'installer ; le modèle reste dans le dialogue, non ajusté.</li>
+</ul>
+<p>Du modèle, chaque partie quand l'objet le permet : print(summary()) ; les coefficients (coef(summary()) quand c'est un tableau de nombres, ou plusieurs, comme cond, zi et disp de glmmTMB ; sinon coef() avec les erreurs-types de vcov()) et leur intervalle à 95 % (la loi t à leurs degrés de liberté quand leur test est un t, sinon la loi normale) ; nobs(), logLik() et ses degrés de liberté, AIC(), BIC() ; fitted() et residuals() ; predict(fit, newdata) quand il marche.</p>
+<p><strong>Vues :</strong> Résumé (la classe, N, logLik, AIC, BIC, les versions de R et des paquets, les avertissements, ce que le code a affiché, summary(), Modifier le code), Coefficients (un graphique et le tableau), Résidus (contre les valeurs ajustées, et la droite de Henry), Graphiques du code, Valeurs et tableaux, Le code ; Prédictions. Modèle › Modifier le modèle (ou Modifier le code) ouvre l'éditeur avec le code : ajusté de nouveau, le modèle garde son nom et sa place. Ce qui a changé, les documents ({{M1.coef.x}}, {{M1.AIC}}, {{M1.N}}), Exporter, le rapport et Mettre à jour les données comme pour les autres modèles. Comparer les modèles compare son AIC aux régressions et aux modèles de code R de la même réponse, telle quelle, sur les mêmes observations, quand Nuée peut vérifier que leurs vraisemblances se comparent (lm, glm, glm.nb, nls, et lme et gls de nlme ajustés par maximum de vraisemblance) ; sinon son AIC est donné avec la raison pour laquelle il n'est pas comparé (un modèle ajusté par REML, une réponse transformée…). Le texte des méthodes dit que le modèle a été ajusté par le code R de ses auteurs, avec la version de R et les paquets que le code a chargés, leurs versions et leurs citations (citation()), qui rejoignent les références d'un document. Exporter vers R : les données comme les autres scripts les ont, le code tel qu'il est écrit, puis ce que Nuée montre du modèle (résumé, coefficients, vraisemblance, graphiques des résidus) ; Nuée exécute le script avant de l'écrire et dit s'il ne donne pas les mêmes nombres.</p>
+<p><strong>Confiance :</strong> ouvrir un fichier n'exécute jamais son code. Le code écrit, ou approuvé, sur cet ordinateur par vous s'exécute ; celui d'un projet venu d'ailleurs (d'un collègue, d'un dossier partagé, une version de GitHub ou de GitLab) que vous n'avez pas approuvé, non : ses modèles restent non ajustés, sous une barre « Ce projet a du code R écrit par quelqu'un d'autre (M7) — Montrer le code / Exécuter ». Exécuter approuve ce code (Nuée garde son empreinte, un SHA-256, dans vos réglages) et ajuste les modèles ; changé de nouveau ailleurs, il redemande. Le moteur R lui-même refuse un code que personne n'a approuvé, quel que soit le chemin (l'ouverture, Mettre à jour les données, une fusion, les versions). Une organisation peut retirer ce type de modèle (la politique DisableCustomCode).</p>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="arbres.html">← Arbres, forêts, discriminante, k-moyennes</a><a rel="next" href="resultats.html">Résultats, documents et R →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.1.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

@@ -258,8 +258,8 @@ cat("Enregistré et rouvert : la source et les étapes telles quelles\n")
 f_projet <- file.path(etude, "etude.nuee")
 demande("enregistrer", list(projet = id, chemin = f_projet))
 lu <- jsonlite::fromJSON(f_projet, simplifyVector = FALSE)
-verifier("le fichier : le format 3, la source et son chemin relatif, les étapes, l'empreinte",
-         lu$nuee$format == 3 && identical(lu$source_donnees$relatif, "donnees/releves.csv") && length(lu$etapes) == 17 &&
+verifier("le fichier : le format de cette version (3 au moins, celui des rapports vivants), la source et son chemin relatif, les étapes, l'empreinte",
+         lu$nuee$format == FORMAT_PROJET && FORMAT_PROJET >= 3 && identical(lu$source_donnees$relatif, "donnees/releves.csv") && length(lu$etapes) == 17 &&
            identical(lu$etapes[[11]]$fichiers[[1]]$relatif, "donnees/sites.csv") && is.list(lu$empreinte_donnees))
 r2 <- demande("ouvrir", list(chemin = f_projet))
 p2 <- projet(r2$id)

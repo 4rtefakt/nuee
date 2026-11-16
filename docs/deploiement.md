@@ -68,6 +68,24 @@ runs as a 32-bit process. The same value under `HKCU\SOFTWARE\Policies\Nuee` app
 When both exist, the computer's value wins. The same key holds the other policy, `RHome`, the R
 every user's engine runs on: see [R and the users' own R](#r-and-the-users-own-r).
 
+## Policies
+
+Nuée reads these `REG_DWORD` values under `HKLM\SOFTWARE\Policies\Nuee` (the computer, which
+wins) or `HKCU\SOFTWARE\Policies\Nuee` (one user), in the registry's 64-bit view, at each start:
+
+| Value | Set to 1 |
+|---|---|
+| `DisableUpdateCheck` | No update check and no one-click update: the update items disappear from *Help* ([Updates](#updates)) |
+| `DisableCustomCode` | R-code models are turned off (from 1.2): *New model* doesn't offer them, the R engine refuses to fit them, and the projects that have some show them not fitted ([Opening files from elsewhere](#opening-files-from-elsewhere)) |
+
+```
+reg add "HKLM\SOFTWARE\Policies\Nuee" /v DisableCustomCode /t REG_DWORD /d 1 /f /reg:64
+```
+
+Any tool that writes registry values sets them, as for the update check below. On macOS and
+Linux, which have no such policy, the environment variable `NUEE_SANS_CODE=1` (set for the
+session, by a profile script or launchd) turns R-code models off the same way.
+
 ## Deployment tools
 
 The usual choice with these tools is an installation for every user of the computer, run as
@@ -199,7 +217,7 @@ stored sign-in (`git credential fill`), which follows git's own settings.
 | What | Where |
 |---|---|
 | The program | `%LOCALAPPDATA%\Programs\Nuee` or `%ProgramFiles%\Nuee` (network-share copy: `%LOCALAPPDATA%\Nuee`) |
-| Settings, recent files, interface preferences | `%APPDATA%\Nuee` |
+| Settings, recent files, interface preferences, the fingerprints of the R code each user approved (1.2) | `%APPDATA%\Nuee` (`reglages.json`) |
 | Recovery copies of projects with unsaved changes, every two minutes | `%APPDATA%\Nuee\secours`, deleted when Nuée closes normally |
 | R's temporary files (pasted tables, converted `.usp` projects, console plots) | `%TEMP%\nuee-r-<process>`, deleted when Nuée closes, or at the next start after a crash |
 | The installer of a one-click update | `%TEMP%\nuee-mise-a-jour`, deleted at the next start |
@@ -332,12 +350,25 @@ Otherwise each user installs those missing into their own library, from *File �
 Opening a file never runs code from it:
 
 - **Projects (`.nuee`):** data and model definitions only. Nothing in them can choose where Nuée
-  saves.
+  saves. From 1.2 a project can hold R-code models (*New model › R code*): their code runs only
+  once a user of this computer has approved it, below.
 - **R files (`.rds`, `.RData`):** must hold tables; anything else is refused.
 - **Spectra and text tables:** read with checks on their size and structure.
 
-R code runs only when a user types it: a formula in *Edit › New variable*, or the R console. The
-windows run with Electron's sandbox and context isolation and a content security policy, and
+R code runs only when a user writes it or approves it: a formula in *Edit › New variable*, the R
+console, or the code of an R-code model typed in *New model* and fitted. A project opened with
+R code written elsewhere (a colleague's, from a shared folder, a version from GitHub or GitLab)
+doesn't run it: its models stay not fitted, under a bar that offers *Show the code* and *Run it*.
+*Run it* approves that code: Nuée keeps its SHA-256 fingerprint in the user's settings, and code
+changed elsewhere since asks again. The R engine itself refuses code whose fingerprint isn't
+approved, whatever the window asks (opening a project, updating its data, merging versions,
+exporting to R): approvals reach it only from Nuée's main process, with a secret drawn at each
+start. Approved code runs with the user's rights, as code typed in the R console does: it can
+read and write files and use the network. To turn R-code models off for everyone, set the
+`DisableCustomCode` policy (see [Policies](#policies)): the type is no longer offered, and the
+engine refuses it.
+
+The windows run with Electron's sandbox and context isolation and a content security policy, and
 can't be navigated to another site.
 
 ## Code signing

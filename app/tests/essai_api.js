@@ -339,7 +339,7 @@ async function principal() {
       const f = path.join(dossier, 'partage.nuee');
       await api('enregistrer', { projet: p.id, chemin: f, version: '9.9.9' });
       const lu = JSON.parse(fs.readFileSync(f, 'utf8'));
-      verifier(lu.nuee && lu.nuee.format === 3 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
+      verifier(lu.nuee && lu.nuee.format === 4 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
       verifier(!fs.readdirSync(dossier).some((x) => x.endsWith('.tmp')), 'fichier temporaire resté');
       // a colleague saves the same file meanwhile: asked before overwriting, then overwritten if wanted
       fs.writeFileSync(f, JSON.stringify({ ...lu, source: 'collègue' }));
@@ -2068,6 +2068,40 @@ async function principal() {
       verifier(/Deux lignes pour le même site et le même temps/.test(refus), `deux lignes pour un site et un temps refusées : « ${refus} »`);
       let refusHCA = '';
       try { await api('hca', { modele: tr.id }); } catch (err) { refusHCA = err.message; }
+      verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
+    });
+    await etape('code R : le modèle de l’utilisateur refusé tant qu’il n’est pas approuvé, puis ajusté, ses résultats, ses textes, son export (moteur/R/code.R)', async () => {
+      const lignes = ['nom\tsite\tx\ty'];
+      for (let i = 1; i <= 24; i += 1) lignes.push([`r${i}`, `S${1 + (i % 4)}`, i, (2 + 0.5 * i + Math.sin(i)).toFixed(3)].join('\t'));
+      const q = await api('coller', { texte: lignes.join('\r\n'), nom: 'Code R' });
+      const code = 'fit <- lm(y ~ x, data = donnees)\nsummary(fit)$r.squared\nfit';
+      const def = { projet: q.id, type: 'CODE', nom: 'R1', options: { code } };
+      let refus = '';
+      try { await api('ajuster', def); } catch (err) { refus = err.message; }
+      verifier(/approuvé/.test(refus), `refusé sans approbation : « ${refus} »`);
+      const { empreinte } = await api('empreinte_code', { code });
+      verifier(/^[0-9a-f]{64}$/.test(empreinte), `empreinte : ${empreinte}`);
+      await api('code_approuve', { empreintes: [empreinte] });
+      const m = await api('ajuster', def);
+      const termes = [].concat(m.coefficients.terme);
+      verifier(m.type === 'CODE' && m.analyse === true && m.code_r === true && m.N === 24 && [].concat(m.classe)[0] === 'lm' && termes.join() === '(Intercept),x'
+        && m.prediction === true && [].concat(m.ajustees.ajuste).length === 24 && typeof m.statistiques.AIC === 'number' && /signature/.test(JSON.stringify(m.comparaison))
+        && [].concat(m.sortie).some((l) => /^\[1\] 0\.9/.test(l)) && [].concat(m.vues_defaut).join() === 'code_coefficients,code_diagnostics', `le modèle : ${m.chiffres}`);
+      const p = await api('projet', { projet: q.id });
+      verifier(p.modeles.some((d) => d.type === 'CODE' && d.code_r && d.code_r.approuve === true && d.code_r.empreinte === empreinte), 'le résumé du projet dit le code approuvé');
+      const cles = (await api('resultats_cles', { modele: m.id })).entrees.map((x) => x.cle);
+      verifier(['N', 'AIC', 'coef.x', 'se.x'].every((k) => cles.includes(k)), `résultats clés : ${cles.join(', ')}`);
+      const mt = await api('methodes', { modele: m.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /own R code/.test(x)) && mt.references.some((x) => /R Core Team/.test(x)), 'texte des méthodes');
+      const pr = await api('predire', { modele: m.id });
+      verifier([].concat(pr.observations['y prédit'] || []).length === 24, `prédictions : ${Object.keys(pr.observations).join(', ')}`);
+      const e = await api('exporter', { modele: m.id, chemin: path.join(dossier, 'code.xlsx') });
+      verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, 'code.R') });
+      const texte = fs.readFileSync(s.script, 'utf8');
+      verifier(!s.ecart && texte.includes(code.split('\n')[0]) && /resultat <- fit/.test(texte), `export vers R : ${s.ecart || ''}`);
+      let refusHCA = '';
+      try { await api('hca', { modele: m.id }); } catch (err) { refusHCA = err.message; }
       verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
     });
     await etape('échantillonnage par distances : densité et effectif de transects linéaires (moteur/R/distance.R)', async () => {

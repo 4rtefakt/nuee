@@ -3,11 +3,13 @@
 # et analyse des correspondances (CA), analyse discriminante linéaire (LDA), arbre de décision
 # (TREE), k-moyennes (KMEANS), indices et tendances de comptages (TRIM, trim.R), forêt aléatoire
 # (FOREST, forets.R), arbres boostés (BOOST, boosting.R), échantillonnage par distances (DISTANCE,
-# distance.R). Leur type est celui de definir_modele() ;
-# leurs réglages propres sont dans d$options.
+# distance.R), un modèle écrit en code R par l'utilisateur (CODE, code.R et code_script.R). Leur type
+# est celui de definir_modele() ; leurs réglages propres sont dans d$options.
 #
 # Chaque analyse suit la même convention de noms, pour que le moteur et le serveur la trouvent
 # sans liste à tenir, <type> en minuscules (ajuster_rda, resultat_kmeans...) :
+#   definir_<type>(projet, d)        sa définition complétée ou refusée par definir_modele (nouveau.R),
+#                                    si elle en a besoin (CODE : son code et les colonnes qu'il nomme) ;
 #   ajuster_<type>(projet, d)        l'ajuste (modele.R : ajuster) ; l'objet rendu a son $type ;
 #   resultat_<type>(id)              ce que l'interface en reçoit (serveur.R : resultat_modele),
 #                                    avec analyse = TRUE, prediction = TRUE ou FALSE (prédit-elle de
@@ -35,7 +37,7 @@
 # demandes qui supposent des composantes et leurs scores (serveur.R : SANS_REGRESSION) lui sont
 # refusées, comme aux régressions ; le script de toute une séance la laisse de côté (elle
 # s'exporte seule).
-AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS", "CCA", "INDVAL", "TRIM", "PCOA", "NMDS", "PERMANOVA", "MANTEL", "FOREST", "BOOST", "DISTANCE")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R ; TRIM : trim.R ; PCoA, NMDS, PERMANOVA, Mantel : communautes.R ; forêts : forets.R ; arbres boostés : boosting.R ; échantillonnage par distances : distance.R)
+AUTRES_ANALYSES <- c("RDA", "CA", "LDA", "TREE", "KMEANS", "CCA", "INDVAL", "TRIM", "PCOA", "NMDS", "PERMANOVA", "MANTEL", "FOREST", "BOOST", "DISTANCE", "CODE")  # (CCA : ordination.R ; espèces indicatrices : indicatrices.R ; TRIM : trim.R ; PCoA, NMDS, PERMANOVA, Mantel : communautes.R ; forêts : forets.R ; arbres boostés : boosting.R ; échantillonnage par distances : distance.R ; code R : code.R)
 
 est_autre_analyse <- function(d) isTRUE(as.character(d$type %||% "") %in% AUTRES_ANALYSES)
 

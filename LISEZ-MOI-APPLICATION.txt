@@ -1998,6 +1998,63 @@ le script le charge avec la même graine, un seul fil et les mêmes réglages, s
 est celle de Nuée, arbre pour arbre, avec la même version de ranger. Le jeu de test et la
 dépendance partielle, si elle a été calculée, y sont aussi.
 
+Votre propre modèle en code R
+-----------------------------
+Nouveau modèle › type « Code R (votre propre modèle) » : un modèle que vous écrivez en R, pour ce
+que Nuée n'ajuste pas lui-même : tout ce que R sait ajuster (lm, glm, nls, mgcv, nlme, glmmTMB,
+unmarked, brms…), avec les paquets installés pour le R que Nuée utilise (library() et paquet::
+marchent comme dans R). Nuée donne au code ses données, tire du modèle ce qu'il peut, et le
+traite comme ses autres modèles.
+  - Onglet Général : l'éditeur du code (R en couleurs, les numéros de ligne ; Ctrl+Entrée
+    ajuste) et son aide, avec un exemple fait des variables du projet ; onglet Observations :
+    les observations du modèle, comme pour les autres (cochées, une condition).
+  - Les données : `donnees`, un data.frame des observations du modèle, une colonne par variable
+    du projet sous son nom (les variables qualitatives en facteurs, leurs catégories dans l'ordre
+    du projet), puis les identifiants des observations, en texte.
+  - Le modèle : la dernière valeur du code (lm(...), fit…), n'importe quel objet R. Ou une liste
+    dont Nuée reconnaît les éléments : list(modele = fit, valeurs = c(densite = 3.2, pente =
+    -0.4), tableaux = list(effectifs = d)) ; `valeurs`, des nombres nommés, des résultats clés
+    que les documents citent ({{M1.valeurs.densite}}) et que Ce qui a changé suit ; `tableaux`,
+    des data.frame nommés, montrés et exportés.
+  - Le code s'exécute dans un environnement à lui, chaque expression à son tour, comme dans la
+    console R : une valeur visible est affichée (un graphique ggplot ou lattice dessiné), sauf la
+    dernière, le modèle. Ce qu'il affiche, ses messages, ses avertissements et ses graphiques sont
+    gardés. Une erreur donne le message de R et sa ligne (l'éditeur y va) ; un paquet qui n'est
+    pas installé est nommé, avec comment l'installer ; le modèle reste dans le dialogue, non
+    ajusté.
+Du modèle, chaque partie quand l'objet le permet : print(summary()) ; les coefficients
+(coef(summary()) quand c'est un tableau de nombres, ou plusieurs, comme cond, zi et disp de
+glmmTMB ; sinon coef() avec les erreurs-types de vcov()) et leur intervalle à 95 % (la loi t à
+leurs degrés de liberté quand leur test est un t, sinon la loi normale) ; nobs(), logLik() et ses
+degrés de liberté, AIC(), BIC() ; fitted() et residuals() ; predict(fit, newdata) quand il marche.
+
+Vues : Résumé (la classe, N, logLik, AIC, BIC, les versions de R et des paquets, les
+avertissements, ce que le code a affiché, summary(), Modifier le code), Coefficients (un graphique
+et le tableau), Résidus (contre les valeurs ajustées, et la droite de Henry), Graphiques du code,
+Valeurs et tableaux, Le code ; Prédictions. Modèle › Modifier le modèle (ou Modifier le code)
+ouvre l'éditeur avec le code : ajusté de nouveau, le modèle garde son nom et sa place. Ce qui a
+changé, les documents ({{M1.coef.x}}, {{M1.AIC}}, {{M1.N}}), Exporter, le rapport et Mettre à jour
+les données comme pour les autres modèles. Comparer les modèles compare son AIC aux régressions
+et aux modèles de code R de la même réponse, telle quelle, sur les mêmes observations, quand Nuée
+peut vérifier que leurs vraisemblances se comparent (lm, glm, glm.nb, nls, et lme et gls de nlme
+ajustés par maximum de vraisemblance) ; sinon son AIC est donné avec la raison pour laquelle il
+n'est pas comparé (un modèle ajusté par REML, une réponse transformée…). Le texte des méthodes dit
+que le modèle a été ajusté par le code R de ses auteurs, avec la version de R et les paquets que
+le code a chargés, leurs versions et leurs citations (citation()), qui rejoignent les références
+d'un document. Exporter vers R : les données comme les autres scripts les ont, le code tel qu'il
+est écrit, puis ce que Nuée montre du modèle (résumé, coefficients, vraisemblance, graphiques des
+résidus) ; Nuée exécute le script avant de l'écrire et dit s'il ne donne pas les mêmes nombres.
+
+Confiance : ouvrir un fichier n'exécute jamais son code. Le code écrit, ou approuvé, sur cet
+ordinateur par vous s'exécute ; celui d'un projet venu d'ailleurs (d'un collègue, d'un dossier
+partagé, une version de GitHub ou de GitLab) que vous n'avez pas approuvé, non : ses modèles
+restent non ajustés, sous une barre « Ce projet a du code R écrit par quelqu'un d'autre (M7) —
+Montrer le code / Exécuter ». Exécuter approuve ce code (Nuée garde son empreinte, un SHA-256,
+dans vos réglages) et ajuste les modèles ; changé de nouveau ailleurs, il redemande. Le moteur R
+lui-même refuse un code que personne n'a approuvé, quel que soit le chemin (l'ouverture, Mettre à
+jour les données, une fusion, les versions). Une organisation peut retirer ce type de modèle (la
+politique DisableCustomCode).
+
 Nettoyer les données : chercher et remplacer, catégories, unités
 --------------------------------------------------------------
 Ce qu'on faisait dans Excel avant d'ouvrir le tableau, dans Nuée, chaque changement annulé par
