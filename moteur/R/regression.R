@@ -312,6 +312,7 @@ validation_lineaire <- function(donnees, termes, groupe, niveaux = 0, car1 = FAL
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
+    verifier_arret()
     ici <- groupe == g
     apprentissage <- droplevels(donnees[!ici, , drop = FALSE])
     m <- ajuster_lineaire(apprentissage, termes_utiles(apprentissage, termes), niveaux, car1, "REML", pentes)
@@ -1176,6 +1177,7 @@ selection_aic <- function(m, d, limite = 256) {
   requis <- groupes_requis(groupes, m$composition, requis_courbes(m))
   permis <- function(b) all(vapply(noms[b], function(g) all(requis[[g]] %in% noms[b]), TRUE))
   evaluer <- function(b) {  # (un candidat : les groupes qu'il contient)
+    verifier_arret()
     a <- ajuster_termes_ml(m, intersect(m$utiles, c(fixes, unlist(groupes[b], use.names = FALSE))))
     if (is.null(a)) return(c(k = NA_real_, logLik = NA_real_, AICc = NA_real_))
     ll <- stats::logLik(a)
@@ -1691,6 +1693,7 @@ validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
+    verifier_arret()
     ici <- groupe == g
     appris <- droplevels(donnees[!ici, , drop = FALSE])
     u <- termes_utiles(appris, termes)
@@ -1791,6 +1794,7 @@ validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux, pentes 
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
+    verifier_arret()
     ici <- groupe == g
     appris <- droplevels(donnees[!ici, , drop = FALSE])
     u <- termes_utiles(appris, termes)

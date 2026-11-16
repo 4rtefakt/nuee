@@ -40,6 +40,9 @@ Sys.unsetenv("NUEE_JETON")  # ni la console ni les programmes qu'elle lance n'en
 # navigateur), sans secret, le moteur garde celles que l'interface lui donne, le temps de la séance.
 SECRET_CODE <- Sys.getenv("NUEE_CODE_SECRET")
 Sys.unsetenv("NUEE_CODE_SECRET")
+# Arrêter un long calcul : le fichier que l'application écrit quand on appuie sur Arrêter (main.js), que
+# les longues boucles regardent (arret.R : verifier_arret) ; lancé à la main, sans lui, rien ne s'arrête.
+options(nuee.arret = Sys.getenv("NUEE_ARRET"))
 COOKIE <- paste0("nuee_", port)  # les cookies ne distinguent pas les ports : un nom par serveur
 HOTES <- sprintf(c("127.0.0.1:%d", "localhost:%d"), port)
 
@@ -71,6 +74,7 @@ etat$modeles <- list()
 etat$predictions <- list()  # dernière prédiction de chaque modèle (pour l'export Excel)
 etat$compteur <- 0
 etat$annulations <- list()  # par projet : les états précédents, pour « Annuler » (Ctrl+Z)
+etat$retablissements <- list()  # par projet : les états que « Annuler » a quittés, pour « Rétablir » (Ctrl+Y)
 etat$revisions <- list()  # par projet : le nombre de changements de ses données (resume_projet)
 etat$paires <- list()  # les tableaux de toutes les paires des tests appariés (memo_paires)
 etat$copies <- list()  # par projet : les copies de son fichier tel qu'il a été lu ou enregistré (copie_fichier_lu)
@@ -107,10 +111,14 @@ convertir_usp <- function(chemin) {
 # Garde l'état actuel d'un projet avant de le changer, pour pouvoir revenir en arrière
 # (20 changements au plus par projet). `fusion` : pour une fusion (fusionner_finir), les documents,
 # les figures et l'état du fichier que le projet fusionné a pris, qu'Annuler lui retire s'ils n'ont pas
-# changé depuis (annuler_demande).
-memoriser <- function(p, etiquette, fusion = NULL) {
-  pile <- c(list(c(list(etiquette = etiquette, projet = p), if (!is.null(fusion)) list(fusion = fusion))), etat$annulations[[p$id]] %||% list())
+# changé depuis (annuler_demande). `references` : les références des documents qu'un nom de variable
+# changé a suivies (renommer_variable_demande), qu'Annuler remet, même dans un document écrit depuis.
+# Un nouveau changement vide ce que Rétablir pouvait refaire.
+memoriser <- function(p, etiquette, fusion = NULL, references = NULL) {
+  pile <- c(list(c(list(etiquette = etiquette, projet = p), if (!is.null(fusion)) list(fusion = fusion), if (!is.null(references)) list(references = references))),
+            etat$annulations[[p$id]] %||% list())
   etat$annulations[[p$id]] <- utils::head(pile, 20)
+  etat$retablissements[[p$id]] <- NULL
 }
 # Chaque changement des données d'un projet, une fois fait, et chaque retour en arrière comptent
 # une révision du projet : les vues qui gardent des calculs sur ses données les refont.
@@ -131,22 +139,75 @@ annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
   if (!length(pile)) stop(traduire("Rien à annuler", "Nothing to undo"))
   actuel <- projet(q$projet)
-  ancien <- pile[[1]]$projet
+  ancien <- revenir_a(actuel, pile[[1]])
   etat$annulations[[q$projet]] <- pile[-1]
-  ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
-  # (une fusion annulée : les documents, les figures et l'état du fichier qu'elle avait pris redeviennent
-  # ceux d'avant, s'ils n'ont pas changé depuis ; son fichier, changé par l'autre, se fusionne alors de
-  # nouveau. Ce qu'on a écrit ou enregistré depuis reste, comme après tout autre changement)
-  f <- pile[[1]]$fusion
-  if (is.null(f) || !identical(actuel$fichier_lu, f$fichier_lu)) ancien$fichier_lu <- actuel$fichier_lu
-  if (is.null(f) || !identical(actuel$documents, f$documents)) ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
-  if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
-  ancien$modifie <- TRUE
-  suivre_conditions_seance(actuel, ancien)
+  etat$retablissements[[q$projet]] <- utils::head(c(list(entree_inverse(actuel, pile[[1]], ancien)), etat$retablissements[[q$projet]] %||% list()), 20)
   etat$projets[[q$projet]] <- ancien
   reviser(q$projet)
   ranger_copies(q$projet)
-  list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
+  list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette, documents = documents_changes(actuel, ancien))
+}
+
+# Rétablir (Ctrl+Y, Ctrl+Maj+Z) : le changement qu'Annuler a défait, refait tel qu'il était (ses données,
+# sa source et ses étapes comprises), et de nouveau annulable ; tout nouveau changement vide sa pile
+# (memoriser).
+retablir_demande <- function(q) {
+  pile <- etat$retablissements[[q$projet]]
+  if (!length(pile)) stop(traduire("Rien à rétablir", "Nothing to redo"))
+  actuel <- projet(q$projet)
+  apres <- revenir_a(actuel, pile[[1]])
+  etat$retablissements[[q$projet]] <- pile[-1]
+  etat$annulations[[q$projet]] <- utils::head(c(list(entree_inverse(actuel, pile[[1]], apres)), etat$annulations[[q$projet]] %||% list()), 20)
+  etat$projets[[q$projet]] <- apres
+  reviser(q$projet)
+  ranger_copies(q$projet)
+  list(projet = resume_projet(apres), etiquette = pile[[1]]$etiquette, documents = documents_changes(actuel, apres))
+}
+
+# Le projet `actuel` ramené à l'état d'une entrée `e` d'une des deux piles (etiquette, projet, fusion) :
+# Annuler prend la plus récente des annulations, Rétablir celle des rétablissements.
+revenir_a <- function(actuel, e) {
+  ancien <- e$projet
+  ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
+  # (une fusion annulée : les documents, les figures et l'état du fichier qu'elle avait pris redeviennent
+  # ceux d'avant, s'ils n'ont pas changé depuis ; son fichier, changé par l'autre, se fusionne alors de
+  # nouveau. Ce qu'on a écrit ou enregistré depuis reste, comme après tout autre changement ; rétablie,
+  # elle les reprend de même, s'ils sont encore ceux qu'Annuler a rendus)
+  f <- e$fusion
+  # (l'empreinte que fichier_change ajoute à l'état du fichier ne le change pas)
+  sans_empreinte <- function(x) x[setdiff(names(x), "sha256")]
+  if (is.null(f) || !identical(sans_empreinte(actuel$fichier_lu), sans_empreinte(f$fichier_lu))) ancien$fichier_lu <- actuel$fichier_lu
+  if (is.null(f) || !identical(actuel$documents, f$documents)) {
+    ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
+    # (un nom de variable changé : les références que ses documents ont suivies le suivent encore, même
+    # écrits depuis : atelier.R, suivre_references)
+    if (length(e$references)) {
+      noms <- unique(c(vapply(ancien$models, function(d) premier_texte(d$name), ""), vapply(actuel$models, function(d) premier_texte(d$name), "")))
+      docs <- suivre_references(actuel$documents, noms, e$references)
+      if (length(attr(docs, "changes"))) ancien$documents <- lapply(seq_along(docs), function(k) docs[[k]])
+    }
+  }
+  if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
+  ancien$modifie <- TRUE
+  suivre_conditions_seance(actuel, ancien)
+  ancien
+}
+
+# L'entrée de l'autre pile qui ramène à `actuel`, quitté pour l'entrée `e` : son étiquette et, pour une
+# fusion, les documents, les figures et l'état du fichier que ce retour a donnés au projet (`apres`) ;
+# les références d'un nom de variable changé, dans l'autre sens.
+entree_inverse <- function(actuel, e, apres) {
+  c(list(etiquette = e$etiquette, projet = actuel),
+    if (!is.null(e$fusion)) list(fusion = list(fichier_lu = apres$fichier_lu, documents = apres$documents, figures = apres$figures)),
+    if (length(e$references)) list(references = carte_inverse(e$references)))
+}
+
+# Les documents dont le texte a changé de `avant` à `apres` (Annuler, Rétablir : l'interface les relit).
+documents_changes <- function(avant, apres) {
+  texte <- function(p) stats::setNames(vapply(p$documents %||% list(), function(d) premier_texte(d$texte), ""), vapply(p$documents %||% list(), function(d) premier_texte(d$id), ""))
+  a <- texte(avant)
+  b <- texte(apres)
+  I(names(b)[is.na(a[names(b)]) | a[names(b)] != b])
 }
 
 # Les modèles de la séance du projet `p` dont la condition d'observations était celle de leur
@@ -290,11 +351,12 @@ copie_fichier_lu <- function(chemin = NULL) {
 garder_copie <- function(id, copie) if (!is.null(copie)) etat$copies[[id]] <- c(etat$copies[[id]], copie)
 
 # Les copies d'un projet (copie_fichier_lu) que plus rien n'utilise, effacées : ni le projet, ni l'état
-# d'avant une fusion qu'Annuler peut lui rendre (les autres retours en arrière gardent le fichier tel
-# qu'il est su maintenant : annuler_demande), ni une fusion préparée. Une par enregistrement s'accumulerait.
+# d'avant une fusion qu'Annuler peut lui rendre, ou d'après elle, que Rétablir peut lui rendre (les autres
+# retours en arrière gardent le fichier tel qu'il est su maintenant : revenir_a), ni une fusion préparée.
+# Une par enregistrement s'accumulerait.
 ranger_copies <- function(id) {
   utilisees <- c(etat$projets[[id]]$fichier_lu$copie,
-                 unlist(lapply(Filter(function(e) !is.null(e$fusion), etat$annulations[[id]]), function(e) e$projet$fichier_lu$copie)),
+                 unlist(lapply(Filter(function(e) !is.null(e$fusion), c(etat$annulations[[id]], etat$retablissements[[id]])), function(e) e$projet$fichier_lu$copie)),
                  unlist(lapply(Filter(function(f) identical(f$projet, id), etat$fusions), function(f) f$copie_leur)))
   copies <- etat$copies[[id]]
   unlink(setdiff(copies, utilisees))
@@ -354,9 +416,11 @@ resume_projet <- function(p) {
     unite = as.character(v$unite %||% ""), description = as.character(v$description %||% "")))
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
+  refaire <- etat$retablissements[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
        table = p$table %||% NULL, brut = isTRUE(p$brut),
-       annulable = if (length(pile)) pile[[1]]$etiquette, revision = etat$revisions[[p$id]] %||% 0,
+       annulable = if (length(pile)) pile[[1]]$etiquette, retablissable = if (length(refaire)) refaire[[1]]$etiquette,
+       revision = etat$revisions[[p$id]] %||% 0,
        chemin_enregistrement = p$chemin_enregistrement %||% (if (json) p$chemin),
        observations = list(uid = as.numeric(names(p$noms_obs)), nom = unname(p$noms_obs)),
        identifiants = identifiants_secondaires(p),
@@ -407,6 +471,12 @@ modele <- function(id, a_jour = FALSE) {
   if (!length(id) || is.na(id[1]) || !nzchar(as.character(id[1]))) stop(traduire("Quel modèle ? La demande n'en désigne pas (modele).", "Which model? The request names none (modele)."), call. = FALSE)
   e <- etat$modeles[[as.character(id)[1]]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id)
   p <- etat$projets[[e$projet]]
+  # (une variable qu'il utilise renommée, supprimée, ou passée en catégories ou en nombres depuis son
+  # ajustement : atelier.R, variables_changees ; sa définition, elle, a suivi dans le projet)
+  if (a_jour && !is.null(p) && length(e$variables)) {
+    changees <- variables_changees(p, e$definition, e$variables)
+    if (!is.null(changees)) stop(changees, call. = FALSE)
+  }
   if (length(e$categories) && !is.null(p)) {
     d <- aligner_categories(p, e$definition, e$categories)
     if (is.null(attr(d, "perimee"))) e$definition <- d
@@ -594,8 +664,10 @@ ajuster_et_garder <- function(p, d, m = NULL) {
     etat$projets[[p$id]] <- p
   }
   # (les catégories de ses variables qualitatives, telles qu'il les a vues : modele(), atelier.R ;
-  # leur ordre dans tout le projet, pour l'écrire en R tel qu'il a été ajusté : script_demande)
-  etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m, categories = categories_definition(p, d), ordres = ordres_categories(p))
+  # leur ordre dans tout le projet, pour l'écrire en R tel qu'il a été ajusté : script_demande ; le nom
+  # et le type de ses variables : variables_vues)
+  etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m, categories = categories_definition(p, d), ordres = ordres_categories(p),
+                             variables = variables_vues(p, d))
   resultat_modele(id)
 }
 
@@ -848,6 +920,49 @@ changer_projet_dit <- function(q, f, etiquette, attribut, etape = NULL) {
     n
   }, etiquette, etape)
   c(r, stats::setNames(list(info), attribut))
+}
+
+# Une variable renommée (atelier.R : renommer_variable), un seul Ctrl+Z, notée en étape : les définitions
+# des modèles du projet suivent, et les références des documents qui citent ses termes ({{M1.coef.site}}) ;
+# Annuler les remet, même dans un document écrit depuis (memoriser : references). La réponse dit ce qui a
+# suivi (`renommage` : ses phrases, les documents réécrits et combien de références, les numéros des
+# modèles du projet dont un ajustement de la séance a l'ancien nom, à ajuster de nouveau) ; avec q$apercu,
+# rien ne change.
+renommer_variable_demande <- function(q) {
+  avant <- projet(q$projet)
+  n <- renommer_variable(avant, q$variable, q$nom)
+  info <- attr(n, "renommage")
+  carte <- attr(n, "termes")
+  n <- sans_attributs(n)
+  noms <- vapply(n$models, function(d) premier_texte(d$name), "")
+  docs <- suivre_references(n$documents, noms, carte)
+  info$documents <- I(attr(docs, "changes"))
+  info$references <- attr(docs, "n")
+  if (info$references) info$phrases <- I(c(info$phrases, sprintf(traduire("%d référence(s) des documents suivent.", "%d reference(s) in the documents follow."), info$references)))
+  vus <- Filter(function(e) identical(e$projet, avant$id) && nom_numero(info$variable) %in% names(e$variables), etat$modeles)
+  info$ajustes <- I(unique(as.numeric(unlist(lapply(vus, function(e) e$definition$number)))))
+  if (isTRUE(q$apercu)) return(list(renommage = info))
+  if (length(info$documents)) n$documents <- lapply(seq_along(docs), function(k) docs[[k]])
+  etiquette <- etiquette_variable("renommer_variable", info$ancien, info$nom)
+  n <- noter_etape(avant, n, "renommer_variable", q, etiquette)
+  suivre_conditions_seance(avant, n)
+  memoriser(avant, etiquette, fusion = if (length(info$documents)) list(fichier_lu = n$fichier_lu, documents = n$documents, figures = n$figures),
+            references = if (length(info$documents)) carte_inverse(carte))
+  n$modifie <- TRUE
+  etat$projets[[n$id]] <- n
+  reviser(n$id)
+  c(resume_projet(n), list(renommage = info))
+}
+
+# Une variable supprimée, ou traitée en catégories ou en nombres (atelier.R), un seul Ctrl+Z, notée en
+# étape ; avec q$apercu, ce que le changement dirait (ou son refus), sans rien changer.
+changer_variable_demande <- function(q, demande) {
+  avant <- projet(q$projet)
+  v <- variable_du_projet(avant, q$variable)
+  f <- function(p) appliquer_etape(demande, p, q)
+  attribut <- if (demande == "supprimer_variable") "suppression" else "type"
+  if (isTRUE(q$apercu)) return(stats::setNames(list(attr(f(avant), attribut)), attribut))
+  changer_projet_dit(q, f, etiquette_variable(demande, as.character(v$ids[1]), premier_texte(q$type)), attribut, demande)
 }
 
 classe_demande <- function(q) {
@@ -1376,6 +1491,7 @@ DEMANDES <- list(
     etat$fusions <- Filter(function(f) !identical(f$projet, q$projet), etat$fusions)
     unlink(etat$copies[[q$projet]])
     etat$copies[[q$projet]] <- NULL
+    etat$retablissements[[q$projet]] <- NULL
     list(ferme = q$projet)
   },
   # Retire un modèle calculé ; avec definition = TRUE, sa définition quitte aussi le projet
@@ -1964,6 +2080,12 @@ DEMANDES <- list(
   # L'unité et la description des variables (q$descriptions : variable, unite, description)
   decrire_variables = function(q) changer_projet(q, function(p) appliquer_etape("decrire_variables", p, q), traduire("unités et descriptions", "units and descriptions"),
                                                  "decrire_variables"),
+  # Une variable renommée (q$variable, q$nom), supprimée (q$variable), traitée en catégories ou en nombres
+  # (q$variable, q$type : "qualitative" ou "quantitative") : un clic droit sur l'en-tête de sa colonne ;
+  # chacune avec q$apercu, sans rien changer (son refus, ou ce qu'elle dirait)
+  renommer_variable = renommer_variable_demande,
+  supprimer_variable = function(q) changer_variable_demande(q, "supprimer_variable"),
+  type_variable = function(q) changer_variable_demande(q, "type_variable"),
   # Les rapports vivants (etapes.R). La source et les étapes du projet q$projet : `source` (le
   # fichier d'où viennent ses données : `chemin`, `relatif`, `table`, `lecteur` ; `trouve`, celui qui
   # serait lu, d'abord par son chemin relatif ; `existe` ; `modifie`, s'il a changé depuis qu'il a
@@ -2008,6 +2130,8 @@ DEMANDES <- list(
   # L'interface réajuste ensuite les modèles. Un fichier de plusieurs tableaux sans q$table : `choisir`.
   mettre_a_jour = mettre_a_jour_demande,
   annuler = annuler_demande,
+  # Rétablir : le dernier changement annulé, refait ; `etiquette` comme pour Annuler
+  retablir = retablir_demande,
   # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur
   # prétraitement : q$quoi, ceux que la vue dessine ("bruts" ou "pretraites" ; "noms" pour aucun,
   # seulement leurs variables ; sans lui, les deux). Arrondis à 6 chiffres significatifs : la vue ne
@@ -2165,6 +2289,20 @@ fini <- function(x) {
   x
 }
 
+# Une demande faite (la fonction `f` de DEMANDES, sur ses paramètres `q`), qu'Arrêter peut interrompre
+# (arret.R) : list(reponse) ; NULL quand elle a été arrêtée, la séance remise alors telle qu'elle était
+# avant elle (ses projets, ses modèles, ses piles d'annulation…), son journal mis à part.
+faire_demande <- function(f, q) {
+  garde <- function() setdiff(ls(etat, all.names = TRUE), c("journal", "n_journal"))
+  avant <- mget(garde(), envir = etat)
+  arretee <- FALSE
+  r <- withRestarts(f(q), arreter_calcul = function() arretee <<- TRUE)
+  if (!arretee) return(list(reponse = r))
+  rm(list = setdiff(garde(), names(avant)), envir = etat)
+  for (n in names(avant)) assign(n, avant[[n]], envir = etat)
+  NULL
+}
+
 repondre <- function(statut, contenu) {
   list(status = statut, headers = list("Content-Type" = "application/json; charset=utf-8"),
        body = enc2utf8(as.character(jsonlite::toJSON(fini(contenu), auto_unbox = TRUE, dataframe = "columns",
@@ -2185,6 +2323,8 @@ appli <- list(
     }
     nom <- sub("^/api/", "", chemin)
     corps <- req$rook.input$read()
+    # (un Arrêter d'avant cette demande, venu quand plus rien ne calculait, ne l'arrête pas : arret.R)
+    if (nzchar(getOption("nuee.arret", ""))) unlink(getOption("nuee.arret"))
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
         f <- normalizePath(utils::URLdecode(sub(".*chemin=([^&]*).*", "\\1", req$QUERY_STRING)), winslash = "/")
@@ -2217,7 +2357,12 @@ appli <- list(
         stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
                       "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
       }
-      r <- f(q)
+      fait <- faire_demande(f, q)
+      if (is.null(fait)) {  # (Arrêter : arret.R ; rien n'a changé)
+        tryCatch(noter("erreur", sprintf("(%s) %s", nom, traduire("calcul arrêté", "computation stopped"))), error = function(x) NULL)
+        return(repondre(400L, list(erreur = traduire("Calcul arrêté.", "Computation stopped."), arrete = TRUE)))
+      }
+      r <- fait$reponse
       tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
       repondre(200L, r)
     }, error = function(e) {
@@ -2230,6 +2375,7 @@ appli <- list(
       if (inherits(e, "erreur_code")) return(repondre(400L, list(erreur = conditionMessage(e), ligne = e$ligne)))
       # (un greffon pas approuvé ici, interdit, ou à qui il manque des paquets : greffons.R)
       if (inherits(e, "refus_greffon")) return(repondre(400L, c(list(erreur = conditionMessage(e)), e$details)))
+      if (inherits(e, "calcul_arrete")) return(repondre(400L, list(erreur = conditionMessage(e), arrete = TRUE)))
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },

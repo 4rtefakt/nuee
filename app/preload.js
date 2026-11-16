@@ -109,6 +109,8 @@ contextBridge.exposeInMainWorld('bureau', {
   secoursIndex: (entrees) => ipcRenderer.invoke('secours-index', entrees),
   surMoteurArrete: (f) => ipcRenderer.on('moteur-arrete', (_, journal) => f(journal)),
   redemarrerMoteur: () => ipcRenderer.invoke('redemarrer-moteur'),
+  // Stop, in the status bar: the computation under way stopped between two of its rounds (main.js)
+  arreterCalcul: () => ipcRenderer.invoke('arreter-calcul'),
   // File › Settings…: the R the engine runs on, Nuée's own or another R of this computer (main.js,
   // r-installes.js); `chemin`, an R's folder or its Rscript. surReglages: the macOS menu's Settings…
   r: {

@@ -280,6 +280,7 @@ boosting <- function(X, y, ap, ev, r, garder = 0, arret = NULL) {
   gains <- matrix(0, garder, ncol(X), dimnames = list(NULL, names(X)))
   f_arret <- NULL
   avec_graine(GRAINE_BOOST, for (t in seq_len(r$arbres)) {
+    verifier_arret()
     z <- gradient_boost(ya, fa, r$loi)
     dans <- tirage_sac(length(ap), k)
     if (is.na(direct)) {
@@ -317,6 +318,7 @@ validation_boost <- function(X, y, groupes, r) {
   chemin <- matrix(NA_real_, nrow(X), r$arbres)
   echecs <- 0
   for (g in unique(groupes)) {
+    verifier_arret()
     k <- which(groupes == g)
     b <- tryCatch(boosting(X, y, which(groupes != g), k, r), error = function(e) NULL)
     if (is.null(b)) { echecs <- echecs + 1; next }

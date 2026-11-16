@@ -96,6 +96,7 @@ choix_k <- function(m) {
   ks <- 2:min(10, m$distincts - 1)
   distances <- if (m$N <= SILHOUETTE_MAX) stats::dist(m$donnees)
   do.call(rbind, lapply(ks, function(k) {
+    verifier_arret()
     a <- suppressWarnings(kmeans_nuee(m$donnees, k))
     s <- if (!is.null(distances)) silhouette_kmeans(m$donnees, a$groupe, distances)
     data.frame(k = k, intra = sum(a$intra), r2 = a$inter / a$totale, silhouette = if (is.null(s)) NA_real_ else mean(s$largeur))

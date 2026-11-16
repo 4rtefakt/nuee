@@ -2,7 +2,7 @@
 // ?vue=<view>&modele=<id> shows a single view instead (a panel moved to its own window).
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
-import { demander, televerser, bureau } from './api.js';
+import { demander, televerser, bureau, debutAttente } from './api.js';
 import { VUES, seulementCourbes } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, menuExemples, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
@@ -35,7 +35,7 @@ import { installerFigures } from './figures.js';
 import { installerVersions } from './versions.js';
 import { nomFichier } from './versions_texte.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
-import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
+import { dialogueRemplacer, dialogueCategories, dialogueVariables, actionsVariable } from './atelier.js';
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
 import { installerEtapes } from './etapes.js';
 import { installerReglages } from './reglages.js';
@@ -629,12 +629,26 @@ const app = {
       } }] });
   },
   async annulerAction(pid) {
+    // (what is being typed in a document goes in first: Undo may give its references back, a variable renamed)
+    if (app.viderDocuments) await app.viderDocuments(pid);
     const r = await occupe(() => demander('annuler', { projet: pid }));
     projetChange(r.projet);
+    app.relireDocuments(pid, [].concat(r.documents || []));
     statut(t('annule', { quoi: r.etiquette }));
     if (app.verifierSource) app.verifierSource(pid);  // (an update undone: the source read before, which may have changed since)
     // (an update of the data or a step removed, undone: the models fitted again on the data back, etapes.js)
     if (app.apresAnnulation) await app.apresAnnulation(pid, r);
+  },
+  // Edit › Redo (Ctrl+Y, Ctrl+Shift+Z): the change Undo took back, made again as it was (its data,
+  // source and steps); an update of the data redone fits the models again, as its undo did
+  async retablirAction(pid) {
+    if (app.viderDocuments) await app.viderDocuments(pid);
+    const r = await occupe(() => demander('retablir', { projet: pid }));
+    projetChange(r.projet);
+    app.relireDocuments(pid, [].concat(r.documents || []));
+    statut(t('retabli', { quoi: r.etiquette }));
+    if (app.verifierSource) app.verifierSource(pid);
+    if (app.apresAnnulation) await app.apresAnnulation(pid, r, true);
   },
   async noterModele(id, note) {
     let r;
@@ -989,6 +1003,16 @@ const app = {
   remplacerDonnees: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueRemplacer(app, p, uid); },
   categoriesVariable: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueCategories(app, p, uid); },
   variablesProjet: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariables(app, p, uid); },
+  // (a column's header: rename, treat as categories or as numbers, delete; atelier.js)
+  actionsVariable: (pid, uid) => actionsVariable(app, etat.projets[pid], uid),
+  // the documents whose text the engine changed (references that follow a variable renamed, undone,
+  // redone): drawn again in their editors here, and in the other windows
+  relireDocuments(pid, ids) {
+    for (const id of ids) {
+      if (app.surDocument) app.surDocument({ projet: pid, id });
+      diffuser('document', { projet: pid, id });
+    }
+  },
   // one of its changes (the request `nom`), undone by a single Ctrl+Z; the views of the data are drawn again
   // (an answer that is a report holds the project's summary under `projet`: mettre_a_jour,
   // retirer_etape; one that asks which table of a file to read, none: nothing changed)
@@ -1193,6 +1217,8 @@ async function occupe(f) {
     etat.message = '';
     return r;
   } catch (e) {
+    // (Stop pressed: not an error, nothing changed)
+    if (e.reponse && e.reponse.arrete) { statut(t('calcul_arrete')); throw e; }
     console.error(e);
     statut(`${t('erreur')}${deuxPoints()}${e.message}`, true);
     throw e;
@@ -1202,6 +1228,60 @@ async function occupe(f) {
     majEtat();
   }
 }
+
+// Stop: a request the user waits for (api.js), after a second and a half, gets a Stop button over
+// the status bar, after the engine's state; main.js then writes the file the engine's long loops
+// look at between two rounds (moteur/R/arret.R), and the request comes back "stopped", nothing
+// changed. It is an element of its own beside #appli, which a dialog doesn't make inert (aria-live):
+// New model fits with its dialog open. Desktop app only: in a browser nothing writes the file.
+const ATTENTE_ARRET = 1500;
+let minuterieArret = null;
+let minuterieArretLent = null;
+function majArret() {
+  if (!bureau || !bureau.arreterCalcul) return;
+  clearTimeout(minuterieArret);
+  let b = document.getElementById('arret-calcul');
+  const debut = debutAttente();
+  const visible = debut !== null && Date.now() - debut >= ATTENTE_ARRET;
+  if (debut !== null && !visible) minuterieArret = setTimeout(majArret, debut + ATTENTE_ARRET - Date.now() + 20);
+  if (!visible) {
+    etat.arretDemande = etat.arretLent = false;
+    clearTimeout(minuterieArretLent);
+    if (b && !b.hidden) { b.hidden = true; majEtat(); }
+    return;
+  }
+  if (!b) {
+    b = el('div', { id: 'arret-calcul', 'aria-live': 'polite', hidden: true }, el('button', { onclick: arreterCalcul }, icone('circle-stop'), el('span', { class: 'libelle' })));
+    document.body.append(b);
+  }
+  const apparait = b.hidden;
+  b.hidden = false;
+  if (apparait) majEtat();
+  // (after a minute, the status bar says how to get out of a computation that doesn't stop)
+  if (Date.now() - debut < 61000) minuterieArret = setTimeout(() => { majEtat(); majArret(); }, debut + 61000 - Date.now());
+  const bouton = b.querySelector('button');
+  bouton.disabled = !!etat.arretDemande;
+  bouton.title = t(etat.arretLent ? 'arret_lent' : 'arreter_calcul_aide');
+  b.querySelector('.libelle').textContent = t(etat.arretLent ? 'arret_lent' : etat.arretDemande ? 'arret_demande' : 'arreter_calcul');
+  placerArret();
+}
+// (after the engine's state in the status bar, whose text changes: majEtat places it again; in a
+// view's own window, at the bottom left)
+function placerArret() {
+  const b = document.getElementById('arret-calcul');
+  if (!b || b.hidden) return;
+  const m = document.querySelector('#statut .moteur');
+  b.style.left = `${m && m.getClientRects().length ? Math.round(m.getBoundingClientRect().right) + 10 : 10}px`;
+}
+async function arreterCalcul() {
+  etat.arretDemande = true;
+  majArret();
+  try { await bureau.arreterCalcul(); } catch { etat.arretDemande = false; majArret(); return; }
+  // (a computation that doesn't check between rounds, a single fit in compiled code: said after a while)
+  clearTimeout(minuterieArretLent);
+  minuterieArretLent = setTimeout(() => { if (etat.arretDemande) { etat.arretLent = true; majArret(); } }, 8000);
+}
+window.addEventListener('requetes', majArret);
 
 function choisirFichierNavigateur(accept) {
   return new Promise((resolve) => {
@@ -1515,6 +1595,7 @@ async function restaurerSession(pid, donnee = null) {
   if (!s) try { s = JSON.parse((await demander('session', { projet: pid })).session); } catch { return; }
   if (!s || !s.modeles || !s.modeles.length) return;
   const ids = {};
+  let arrete = false;
   await occupe(async () => {
     for (const m of s.modeles) {
       // (an R-code model whose code isn't approved here: not even asked, the engine would refuse it;
@@ -1524,9 +1605,12 @@ async function restaurerSession(pid, donnee = null) {
         const res = await demander('ajuster', { projet: pid, numero: m.numero, A: m.A });
         etat.modeles[res.id] = res;
         ids['@' + m.numero] = res.id;
-      } catch { /* a model that no longer fits is left out */ }
+      } catch (e) {  // (a model that no longer fits is left out; Stop: the others too, they wait in the explorer)
+        if (e.reponse && e.reponse.arrete) { arrete = true; break; }
+      }
     }
   });
+  if (arrete) statut(t('session_arretee', { n: Object.keys(ids).length }));
   await rafraichirProjet(pid);
   diffuser('modeles');
   for (const cle of ['selection', 'variables', 'choixVIP', 'groupesHCA']) {
@@ -2057,6 +2141,7 @@ function contexte(entree) {
     remplacerDonnees: app.remplacerDonnees,
     categoriesVariable: app.categoriesVariable,
     variablesProjet: app.variablesProjet,
+    actionsVariable: app.actionsVariable,
     changerDonnees: app.changerDonnees,
     lirePressePapiers: app.lirePressePapiers,
     modeleActif: () => app.modeleActif(),
@@ -2077,6 +2162,8 @@ function rendrePanneau(entree) {
   let rendu;
   try { rendu = v.rendre(entree.element, contexte(entree), entree.params, entree.loc); } catch (e) { rendu = Promise.reject(e); }
   Promise.resolve(rendu).catch((e) => {
+    // (Stop pressed while the view computed: said as such, not as an error)
+    if (e.reponse && e.reponse.arrete) { entree.element.replaceChildren(el('p', { class: 'infos' }, t('calcul_arrete'))); return; }
     entree.element.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${e.message}`));
   });
   const titre = v.titre(m, etat.projets[entree.params.projet] || {}, entree.loc);
@@ -2275,9 +2362,13 @@ function majEtat() {
   const m = id && etat.modeles[id];
   const n = id ? app.selection(id).length : 0;
   const nv = id ? app.variablesChoisies(id).length : 0;
+  // (a view's request that takes long computes too, under Stop: majArret)
+  const arret = document.getElementById('arret-calcul');
+  const calcule = etat.occupe || !!(arret && !arret.hidden);
+  const debut = etat.occupe ? etat.debutOccupe : debutAttente();
   s.replaceChildren(...[
-    el('span', { class: 'moteur' + (etat.occupe ? ' occupe' : etat.erreur ? ' erreur' : '') }, el('span', { class: 'point' }),
-      etat.occupe ? (Date.now() - etat.debutOccupe > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
+    el('span', { class: 'moteur' + (calcule ? ' occupe' : etat.erreur ? ' erreur' : '') }, el('span', { class: 'point' }),
+      calcule ? (debut !== null && Date.now() - debut > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
     el('span', { class: 'espace' }),
     etat.nouvelleVersion && lire('version_ignoree') !== etat.nouvelleVersion.version ? el('span', { class: 'nouvelle-version' },
       el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); if (etat.nouvelleVersion.installateur) app.mettreAJour(); else window.open(etat.nouvelleVersion.page); } },
@@ -2297,6 +2388,7 @@ function majEtat() {
       onclick: () => app.changerTheme(!app.themeSombre()) }, icone(app.themeSombre() ? 'sun' : 'moon')),
     el('select', { class: 'langue', title: t('langue'), 'aria-label': t('langue'), onchange: (e) => app.changerLangue(e.target.value) },
       [['fr', 'FR'], ['en', 'EN']].map(([v, x]) => el('option', { value: v, selected: v === langueActuelle() }, x)))].filter(Boolean));
+  placerArret();
 }
 
 function rendreAccueil(conteneur) {
@@ -2374,9 +2466,10 @@ document.addEventListener('keydown', (e) => {
   // (in the Data view, Ctrl+V pastes a block of cells from the cell chosen: panneaux.js, collerCellules)
   const cellules = combo === 'Ctrl+V' && !saisie && e.target.closest && e.target.closest('[data-coller-cellules]');
   if (cellules && cellules._collerCellules) { e.preventDefault(); cellules._collerCellules(); return; }
-  const edition = ['Ctrl+Z', 'Ctrl+Y', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X'];
+  const edition = ['Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X'];
   if (saisie && !/^(Shift\+)?F\d+$/.test(combo) && (!combo.startsWith('Ctrl') || edition.includes(combo))) return;
-  const c = Object.values(C).find((x) => x.raccourci === combo);
+  // (a command may have a second shortcut: Redo, Ctrl+Y and Ctrl+Shift+Z)
+  const c = Object.values(C).find((x) => x.raccourci === combo || (x.autres || []).includes(combo));
   if (!c) return;
   if (c.actif && !c.actif()) return;
   e.preventDefault();

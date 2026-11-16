@@ -609,6 +609,15 @@ u <- demande("annuler", list(projet = a))
 verifier("annulée : la figure d'avant, et le fichier se voit de nouveau changé (il se fusionnera encore)",
          identical(u$etiquette, "fusion avec Bob") && identical(figure(projet(a), "F1")$titre, "Figure 1") && isTRUE(demande("fichier_change", list(projet = a))$change) &&
            inherits(tryCatch(demande("enregistrer", list(projet = a, chemin = partage)), error = function(e) e), "conflit_fichier"))
+# (rétablie, même après que fichier_change a gardé l'empreinte du fichier : la figure de Bob, et le projet le sait lu)
+rt <- demande("retablir", list(projet = a))
+verifier("rétablie : la figure de Bob revient et le fichier n'est plus vu changé ; Annuler la défait encore",
+         identical(rt$etiquette, "fusion avec Bob") && identical(figure(projet(a), "F1")$titre, "Figure de Bob") &&
+           isFALSE(demande("fichier_change", list(projet = a))$change) && identical(rt$projet$annulable, "fusion avec Bob") && is.null(rt$projet$retablissable))
+u <- demande("annuler", list(projet = a))
+verifier("annulée de nouveau : la figure d'avant, le fichier vu changé, la copie d'après la fusion gardée pour Rétablir",
+         identical(figure(projet(a), "F1")$titre, "Figure 1") && isTRUE(demande("fichier_change", list(projet = a))$change) &&
+           all(file.exists(unlist(lapply(etat$retablissements[[a]], function(e) e$projet$fichier_lu$copie)))))
 fu <- demande("fusionner", list(projet = a))
 verifier("une fusion inconnue : refusée", grepl("inconnue", refus("fusionner_finir", list(fusion = "fusion0"))))
 paragraphe(a, 5, "Changé pendant la fusion.")

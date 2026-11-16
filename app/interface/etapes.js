@@ -25,7 +25,7 @@ export function installerEtapes(app) {
     miseAJourDonnees: (pid) => dialogueMiseAJour(app, pid),
     verifierSource: (pid) => verifierSource(app, pid),
     avisDonnees: () => avisDonnees(app),
-    apresAnnulation: (pid, r) => apresAnnulation(app, pid, r),
+    apresAnnulation: (pid, r, retabli) => apresAnnulation(app, pid, r, retabli),
   });
   // (a file changed by another program while Nuée was behind it: seen when it comes back)
   if (!VUE_SEULE) window.addEventListener('focus', () => verifierSources(app));
@@ -366,9 +366,10 @@ const LIBELLES = {
     finiSauf: 'etapes_retrait_fini_sauf' },
 };
 
-// The progress of an update, in a dialog: what is being done, a bar, and Stop: no more models
-// fitted again after the one being fitted (before the data change, no update at all). Closing the
-// dialog stops the same way.
+// The progress of an update, in a dialog: what is being done, a bar, and Stop: the model being
+// fitted stopped too (moteur/R/arret.R, the stop of the status bar), and no more models fitted again
+// (before the data change, no update at all). Closing the dialog fits no more models either, the one
+// being fitted finishing.
 function progression(titre) {
   const etape = el('p', { class: 'etape-maj' });
   const barre = el('progress', { class: 'barre-maj' });
@@ -382,6 +383,7 @@ function progression(titre) {
     arret = true;
     bouton.disabled = true;
     bouton.textContent = t('etapes_arret_demande');
+    if (bureau && bureau.arreterCalcul) bureau.arreterCalcul().catch(() => {});
   }
   return {
     arrete: () => arret,
@@ -413,7 +415,10 @@ async function reajusterTout(app, pid, pr, modeles) {
     if (pr.arrete()) break;
     pr.montrer(t('etapes_p_reajuster', { n: k + 1, total: modeles.length }), k, modeles.length, { note: `${m.nom} · ${m.type}` });
     if (m.bloque) continue;
-    try { refaits.set(m.numero, { id: await app.ajusterDeNouveau(pid, m.numero) }); } catch (e) { refaits.set(m.numero, { erreur: e.message }); }
+    try { refaits.set(m.numero, { id: await app.ajusterDeNouveau(pid, m.numero) }); } catch (e) {
+      refaits.set(m.numero, { erreur: e.message });
+      if (e.reponse && e.reponse.arrete) break;  // (Stop, of the status bar or of the dialog: no more models)
+    }
   }
   return refaits;
 }
@@ -427,6 +432,7 @@ async function reajusterTout(app, pid, pr, modeles) {
 async function executer(app, pid, { demande, parametres, textes, quand, version, etape = null }) {
   const p = app.projet(pid);
   const pr = progression(t(textes.titre, { nom: p.nom, etape }));
+  let change = false;
   try {
     if (version) {
       pr.montrer(t('etapes_p_version'), null, null, { arretable: false });
@@ -441,6 +447,7 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
     pr.montrer(t(textes.donnees), null, null, { arretable: false });
     const n = app.projet(pid).observations.uid.length;
     const r = await app.changerDonnees(demande, pid, parametres);
+    change = true;
     noterRemplacement(pid, r);
     verifierSource(app, pid);
     const modeles = modelesAReajuster(r.projet, r);
@@ -459,6 +466,8 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
       : t(textes.fini, { n: modeles.length, etape }), restes.length > 0);
   } catch (e) {
     pr.fermer();
+    // (Stop, of the status bar, before the data changed: nothing changed, the engine stopped there)
+    if (e.reponse && e.reponse.arrete && !change) { app.statut(t('etapes_p_arrete_avant')); return; }
     // (the source changed between the preview and the removal: an update first)
     if (e.reponse && e.reponse.source_modifiee) {
       if (await confirmer(t('etapes_retirer_titre'), e.message, null, t('etapes_mettre_a_jour'))) app.miseAJourDonnees(pid);
@@ -480,19 +489,20 @@ function noterRemplacement(pid, r) {
   remplacements.get(pid).add(etiquette);
 }
 
-// One of them undone (app.js: annulerAction, `r` the engine's answer): the data, the source, the
-// steps and the models' definitions are back, but the session's fits are those of the changed
-// data; every model is fitted again, as the change did (its progress, Stop), and the status bar
-// says so.
-async function apresAnnulation(app, pid, r) {
+// One of them undone (app.js: annulerAction, `r` the engine's answer), or redone (`retabli`:
+// retablirAction): the data, the source, the steps and the models' definitions are back, but the
+// session's fits are those of the other data; every model is fitted again, as the change did (its
+// progress, Stop), and the status bar says so.
+async function apresAnnulation(app, pid, r, retabli = false) {
   const faits = remplacements.get(pid);
   if (!faits || !faits.has(r.etiquette) || !app.projet(pid)) return;
   const modeles = modelesAReajuster(r.projet);
   if (!modeles.length) return;
-  const pr = progression(t('etapes_annulation_titre', { quoi: r.etiquette, nom: app.projet(pid).nom }));
+  const cle = retabli ? 'etapes_retablissement' : 'etapes_annulation';
+  const pr = progression(t(`${cle}_titre`, { quoi: r.etiquette, nom: app.projet(pid).nom }));
   let refaits = new Map();
   try { refaits = await reajusterTout(app, pid, pr, modeles); } finally { pr.fermer(); }
   const restes = modeles.filter((m) => !(refaits.get(m.numero) || {}).id);
-  app.statut(restes.length ? t('etapes_annulation_fini_sauf', { quoi: r.etiquette, n: modeles.length - restes.length, total: modeles.length, noms: noms(restes.map((m) => m.nom)) })
-    : t('etapes_annulation_fini', { quoi: r.etiquette, n: modeles.length }), restes.length > 0);
+  app.statut(restes.length ? t(`${cle}_fini_sauf`, { quoi: r.etiquette, n: modeles.length - restes.length, total: modeles.length, noms: noms(restes.map((m) => m.nom)) })
+    : t(`${cle}_fini`, { quoi: r.etiquette, n: modeles.length }), restes.length > 0);
 }

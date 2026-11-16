@@ -102,11 +102,11 @@ noms_utilises <- function(lignes) {
 }
 
 # Les définitions du moteur qu'il faut pour `racines` : elles, et ce qu'elles utilisent du moteur,
-# de proche en proche (sans `exclus` : traduire, dont les appels sont remplacés ; ni un nom qui
-# n'a de définition que dans une chaîne).
+# de proche en proche (sans `exclus` : traduire, dont les appels sont remplacés, et verifier_arret,
+# dont les appels sont retirés : arret.R ; ni un nom qui n'a de définition que dans une chaîne).
 dependances_moteur <- function(racines, exclus = character(0)) {
   index <- index_sources_moteur()
-  exclus <- c("traduire", exclus)
+  exclus <- c("traduire", "verifier_arret", exclus)
   vus <- character(0)
   a_voir <- racines
   while (length(a_voir)) {
@@ -164,7 +164,7 @@ commentaires_anglais <- function(lignes, traductions = character(0)) {
 # Le texte d'une définition du moteur pour le script (definition_moteur), dans sa langue : son
 # commentaire et ses lignes (voir en tête) ; `entetes` : le commentaire anglais de chaque définition.
 texte_moteur <- function(def, langue, entetes = character(0), commentaires = character(0)) {
-  lignes <- remplacer_traductions(def$lignes, langue)
+  lignes <- remplacer_traductions(sans_arret(def$lignes), langue)
   if (!identical(langue, "en")) return(c(def$commentaire, lignes))
   c(if (def$nom %in% names(entetes)) commentaire(entetes[[def$nom]]), commentaires_anglais(lignes, commentaires))
 }

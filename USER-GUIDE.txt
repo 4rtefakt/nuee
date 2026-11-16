@@ -159,7 +159,10 @@ models and views; a file moved or deleted since is named in the status bar. With
 start page offers Reopen last session. After an unexpected stop, the recovery copies are
 offered instead.
 Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
-variable, class, scores as variables, deleted definition...), up to 20 steps back.
+variable, class, scores as variables, deleted definition...), up to 20 steps back. Edit › Redo
+(Ctrl+Y or Ctrl+Shift+Z) makes again, as it was, what Undo took back: an update of the data with
+its source and steps, the models fitted again on its data. Both menu items name the change they
+act on; any new change empties Redo.
 Notes: each model's summary has a notes area, saved with the project and included in the
 report; a pencil marks it in the explorer.
 Removing a model (Model › Delete model) asks for confirmation. Its definition stays in the
@@ -167,8 +170,21 @@ project; for a model made in the application, a checkbox removes it as well (und
 
 If the R engine stops
 ---------------------
-The application says so and offers to restart it; you can also do it yourself (Help ›
-Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
+A computation that takes more than a second and a half gets Stop in the status bar (above a
+dialog too, such as New model fitting). Stop ends it between two of its rounds, and nothing
+changes: the model isn't added, the data aren't changed, the view says "Computation stopped".
+The long loops stop this way: permutations (of a PLS, a PERMANOVA, a dispersion test, Mantel's
+test and its correlogram, indicator species, an RDA's tests, the variables fitted to an
+ordination's axes, Moran's I), the AIC selection's models, an NMDS's random starts, the power
+simulations, the cross-validation rounds (PCA, PLS, OPLS, linear models, GAMs, trees, random
+forests, boosted trees), boosted trees one tree at a time, a tree's stability draws, TRIM's
+stepwise selection of change points, iPLS's intervals, One model per response, k-means' choice
+of k, and the steps replayed by Update the data. What can't be stopped before it ends: a single
+fit in compiled code (a mixed model, a GAM, a random forest's trees, distance sampling, TRIM's
+estimation), the R console's code and an R-code model's code; Stop then says so, and Help ›
+Restart the R engine remains. During Update the data, its own Stop stops the model being fitted
+too. The application says when the engine stops and offers to restart it; you can also do it
+yourself (Help › Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
 views, from their recovery copy if they had changes, otherwise from the file they save to;
 changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when
 the engine no longer answers keeps the recovery copies, offered at the next start. After a
@@ -222,6 +238,7 @@ Menus and toolbar
 File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:
   Ctrl+O open              Ctrl+S save                Ctrl+E export the results
   Ctrl+V paste a table     Ctrl+Z undo                Ctrl+H find and replace
+  Ctrl+Y (or Ctrl+Shift+Z) redo
   Ctrl+K find a command    Ctrl+J R console           Ctrl+C copy the table
   Ctrl+N new model         Ctrl+M edit the model      Ctrl+= / Ctrl+- components
   Esc    clear the selection       Ctrl+Del exclude the selection and refit
@@ -2152,6 +2169,25 @@ spreadsheet from that cell on, in the rows and columns as the view shows them (s
 filtered): each cell as when you edit it by hand (empty: missing; a new category is added; a
 text in a quantitative variable is refused, naming the observation, and nothing changes); cells
 beyond the table are left out. One Ctrl+Z undoes the whole block.
+Right-click on a column's header (or on a variable of Variable statistics) › Rename…, Treat as
+categories (or Treat as numbers), Delete…: each is one change that Ctrl+Z undoes and Ctrl+Y
+redoes, and a data step that Update the data replays in its place. Rename: as you type, the
+dialog says what follows the new name, the definitions of the project's models (their terms,
+their conditions), the formulas of computed variables, the documents' references to its terms
+({{M1.coef.site}}, their format and caption kept), and what doesn't: an R-code model's code,
+which is never rewritten. A name that another variable or an identifier of the observations
+has is refused. The models fitted with the old name keep it until fitted again: a box, ticked,
+fits them again at once. Undo gives the documents' references back too, even in a document
+written since. Treat as categories: each distinct value becomes a category, in the numbers'
+order (a site coded 1, 2, 3, which a random effect wants qualitative); Treat as numbers reads
+each category as a number ("3,5" included), refused while one isn't (Find and replace first).
+The models that have the variable as an X follow (a term per category, or a single one in
+numbers), their fits keeping their results until fitted again; a model that has it as its
+response, its class, a curve, a random effect or in its condition has to be modified first.
+Delete asks first, and is refused while a model uses the variable (modify or delete the model
+first); it names an R-code model whose code reads it, a computed variable's formula that reads
+it, and coordinates it was one of. In Model › Which analysis?, a column of sites coded in
+numbers gets a button that treats it as categories, to make it the site.
 
 Adding columns from another table
 ---------------------------------

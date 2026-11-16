@@ -63,6 +63,9 @@ export function creerCommandes(app) {
     classe_selection: { icone: 'tag', actif: avecSelection, action: () => app.classeSelection(m()) },
     annuler_action: { icone: 'undo-2', raccourci: 'Ctrl+Z', actif: () => { const p = app.projet(app.projetActif()); return !!(p && p.annulable); },
       action: () => app.annulerAction(app.projetActif()) },
+    // (`autres`: its other shortcut, app.js)
+    retablir_action: { icone: 'redo-2', raccourci: 'Ctrl+Y', autres: ['Ctrl+Shift+Z'], actif: () => { const p = app.projet(app.projetActif()); return !!(p && p.retablissable); },
+      action: () => app.retablirAction(app.projetActif()) },
     selection_liee: { coche: () => app.selectionLiee(), action: () => app.basculerSelectionLiee() },
     nouvelle_variable: { icone: 'calculator', actif: () => !!app.projetActif(), action: () => app.nouvelleVariable(app.projetActif()) },
     ajouter_colonnes: { icone: 'file-spreadsheet', actif: () => !!app.projetActif(), action: () => app.ajouterColonnes(app.projetActif()) },
@@ -176,10 +179,15 @@ export function item(C, id) {
 export function menus(app, C) {
   const it = (id) => item(C, id);
   const recents = app.recents();
-  const annuler = () => {  // "Undo" names what it undoes
+  const annuler = () => {  // "Undo" names what it undoes, "Redo" what it redoes
     const p = app.projet(app.projetActif());
     const entre = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
     return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} ${entre(p.annulable)}` : t('annuler_action') };
+  };
+  const retablir = () => {
+    const p = app.projet(app.projetActif());
+    const entre = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
+    return { ...it('retablir_action'), libelle: p && p.retablissable ? `${t('retablir_action')} ${entre(p.retablissable)}` : t('retablir_action') };
   };
   return [
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
@@ -187,7 +195,7 @@ export function menus(app, C) {
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
       '-', it('enregistrer'), it('enregistrer_sous'), '-', it('versions'), it('versions_partager'), it('versions_ouvrir_distant'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('reglages'), it('greffons'), '-', it('quitter')] : ['-', it('greffons')]) },
-    { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
+    { cle: 'm_edition', items: () => [annuler(), retablir(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
       it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes'), '-', it('etapes_donnees'), it('etapes_mettre_a_jour')] },
     // (Model › Plugins: a New model of each plugin installed, then File › Plugins…: vues_greffons.js)

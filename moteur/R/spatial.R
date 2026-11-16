@@ -438,7 +438,7 @@ moran <- function(x, W, permutations = 999, graine = 1) {
   zv <- (I - E) / sqrt(V)
   r <- list(I = I, esperance = E, variance = V, z = zv, p = stats::pnorm(zv, lower.tail = FALSE), n = n, S0 = S0)
   if (permutations > 0) {
-    Ip <- avec_graine(graine, vapply(seq_len(permutations), function(i) { zp <- sample(z); (n / S0) * sum(zp * (W %*% zp)) / ss }, 0))
+    Ip <- avec_graine(graine, vapply(seq_len(permutations), function(i) { verifier_arret(); zp <- sample(z); (n / S0) * sum(zp * (W %*% zp)) / ss }, 0))
     r$permutations <- permutations
     r$p_permutations <- (sum(Ip >= I) + 1) / (permutations + 1)
   }

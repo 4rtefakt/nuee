@@ -174,7 +174,10 @@ dans la barre d'état. Sans cette case, la page d'accueil propose Rouvrir la der
 Après un arrêt inattendu, ce sont les copies de secours qui sont proposées.
 Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
 (valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
-jusqu'à 20 en arrière.
+jusqu'à 20 en arrière. Édition › Rétablir (Ctrl+Y ou Ctrl+Maj+Z) refait, tel qu'il était, ce
+qu'Annuler a défait : une mise à jour des données avec sa source et ses étapes, les modèles
+ajustés à nouveau sur ses données. Les deux disent le changement qu'ils visent ; tout nouveau
+changement vide Rétablir.
 Notes : le résumé de chaque modèle a une zone de notes, enregistrée avec le projet et reprise
 dans le rapport ; un crayon le signale dans l'explorateur.
 Retirer un modèle (Modèle › Supprimer le modèle) demande confirmation. Sa définition reste
@@ -183,8 +186,23 @@ aussi (annulable).
 
 Si le moteur R s'arrête
 -----------------------
-L'application le signale et propose de le redémarrer ; on peut aussi le faire soi-même
-(Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs
+Un calcul qui dure plus d'une seconde et demie a Arrêter dans la barre d'état (au-dessus d'un
+dialogue aussi, comme Nouveau modèle qui ajuste). Arrêter l'interrompt entre deux de ses tours,
+et rien ne change : le modèle ne s'ajoute pas, les données ne changent pas, la vue dit « Calcul
+arrêté ». Les longues boucles s'arrêtent ainsi : les permutations (d'une PLS, d'une PERMANOVA,
+d'un test de dispersion, du test de Mantel et de son corrélogramme, des espèces indicatrices, des
+tests d'une RDA, des variables ajustées aux axes d'une ordination, de l'I de Moran), les modèles
+de la sélection par l'AIC, les départs aléatoires d'un NMDS, les simulations de la puissance, les
+tours des validations croisées (ACP, PLS, OPLS, modèles linéaires, GAM, arbres, forêts
+aléatoires, arbres boostés), les arbres boostés arbre par arbre, les tirages de la stabilité d'un
+arbre, la sélection pas à pas des points de changement de TRIM, les intervalles d'iPLS, Un modèle
+par réponse, le choix de k des k-moyennes, et les étapes que rejoue Mettre à jour les données. Ce
+qui ne s'arrête pas avant sa fin : un ajustement seul en code compilé (un modèle mixte, un GAM, les
+arbres d'une forêt aléatoire, l'échantillonnage par distances, l'estimation de TRIM), le code de
+la console R et celui d'un modèle de code R ; Arrêter le dit alors, et Aide › Redémarrer le moteur
+R reste. Pendant Mettre à jour les données, son propre Arrêter interrompt aussi le modèle en train
+d'être ajusté. L'application signale l'arrêt du moteur et propose de le redémarrer ; on peut aussi
+le faire soi-même (Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs
 modèles et leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon
 depuis le fichier où ils s'enregistrent ; les changements faits depuis la dernière copie de
 secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde
@@ -244,6 +262,7 @@ Menus et barre d'outils
 Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. Raccourcis :
   Ctrl+O ouvrir            Ctrl+S enregistrer         Ctrl+E exporter les résultats
   Ctrl+V coller un tableau Ctrl+Z annuler             Ctrl+H chercher et remplacer
+  Ctrl+Y (ou Ctrl+Maj+Z) rétablir
   Ctrl+K rechercher une commande    Ctrl+J console R  Ctrl+C copier le tableau
   Ctrl+N nouveau modèle    Ctrl+M modifier le modèle  Ctrl+= / Ctrl+- composantes
   Échap  effacer la sélection    Ctrl+Suppr exclure la sélection et réajuster
@@ -2347,6 +2366,27 @@ cellules copiées dans un tableur, dans les lignes et les colonnes telles que la
 nouvelle catégorie s'ajoute ; un texte dans une variable quantitative est refusé, en nommant
 l'observation, et rien ne change) ; les cases au-delà du tableau sont laissées. Un seul Ctrl+Z
 annule tout le bloc.
+Un clic droit sur l'en-tête d'une colonne (ou sur une variable des Statistiques des variables) ›
+Renommer…, Traiter en catégories (ou Traiter en nombres), Supprimer… : chacun est un seul
+changement, qu'annule Ctrl+Z et que rétablit Ctrl+Y, et une étape des données que Mettre à jour
+les données rejoue à sa place. Renommer : à mesure qu'on tape, le dialogue dit ce qui suit le
+nouveau nom, les définitions des modèles du projet (leurs termes, leurs conditions), les
+formules des variables calculées, les références des documents à ses termes ({{M1.coef.site}},
+leur format et leur légende gardés), et ce qui ne le suit pas : le code d'un modèle de code R,
+jamais réécrit. Un nom que porte une autre variable ou un identifiant des observations est
+refusé. Les modèles ajustés avec l'ancien nom le gardent jusqu'à ce qu'on les ajuste à nouveau :
+une case, cochée, les ajuste à nouveau tout de suite. Annuler remet aussi les références des
+documents, même dans un document écrit depuis. Traiter en catégories : chaque valeur distincte
+devient une catégorie, dans l'ordre des nombres (un site codé 1, 2, 3, qu'un effet aléatoire
+demande qualitatif) ; Traiter en nombres lit chaque catégorie comme un nombre (« 3,5 » compris),
+refusé tant que l'une n'en est pas un (Chercher et remplacer d'abord). Les modèles qui ont la
+variable en X suivent (un terme par catégorie, ou un seul en nombres), leurs ajustements gardant
+leurs résultats jusqu'à ce qu'on les ajuste à nouveau ; un modèle qui l'a en réponse, en classe,
+en courbe, en effet aléatoire ou dans sa condition est à modifier d'abord. Supprimer demande
+d'abord, et est refusé tant qu'un modèle utilise la variable (modifier ou supprimer le modèle
+d'abord) ; il nomme un modèle de code R dont le code la lit, la formule d'une variable calculée
+qui la lit, et les coordonnées dont elle était. Dans Modèle › Quelle analyse ?, une colonne de
+sites codés en nombres a un bouton qui la traite en catégories, pour en faire le site.
 
 Ajouter des colonnes d'un autre tableau
 ---------------------------------------

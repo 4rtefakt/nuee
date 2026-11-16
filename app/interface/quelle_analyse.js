@@ -13,8 +13,13 @@ import { QUESTIONS, BUTS, formulaire, TEXTES_CHOIX, faitsVariables, genre, beauc
   contexte, recommander, construire, notesPour, uidDe, nomColonne, distanceProposee, reponsesPossibles, proposerReponse } from './choix_analyse.js';
 
 ajouterTextes(TEXTES_CHOIX.fr, TEXTES_CHOIX.en);
+ajouterTextes({ qa_site_en_nombres: '{nom} est fait de nombres : en catégories, il peut être le site.' },
+  { qa_site_en_nombres: '{nom} is made of numbers: as categories, it can be the site.' });
 
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));
+const entreGuillemets = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
+// (the name of a column of sites, plots, stations… that a code in numbers may name, accents removed)
+const SITE_EN_NOMBRES = /^(sites?|plots?|placettes?|parcelles?|stations?|transects?|quadrats?|routes?|blocs?|blocks?|lieux?|unites?|units?|pieges?|traps?|mares?|ponds?|etangs?|nichoirs?|colonies?)([ _.-]*(id|code|no|num|numero|number|nr))?$/i;
 const deuxPoints = () => (langueActuelle() === 'fr' ? ' : ' : ': ');  // (a space before the colon in French only)
 // the answers last given in each project, offered again when the dialog opens again (a model
 // dialog cancelled, to try an alternative)
@@ -217,8 +222,20 @@ export async function dialogueQuelleAnalyse(app, projet) {
         proposerReponse(R, F, p());
         maj(R.y !== avant);
       };
-      champ('repetes', t('qa_d_repetes'), () => el('div', { class: 'ligne', title: t('qa_d_repetes_aide') }, el('span', { class: 'doux' }, t('qa_site')),
-        select('qa-site', colonnes(false), R.site, autrePlan((v) => { R.site = v; R.x = R.x.filter((u) => u !== uidDe(R.site)); }))));
+      // (a site coded 1, 2, 3 is made of numbers, and a site is qualitative: the first such column
+      // can be treated as categories from here, one change of the data, and the dialog comes back with it)
+      const siteEnNombres = !R.site ? quantitatives().find((v) => SITE_EN_NOMBRES.test(v.nom.normalize('NFD').replace(/[̀-ͯ]/g, '').trim())
+        && (F.get(v.uid) || {}).entiers) : null;
+      const enCategories = async (v) => {
+        try { await app.changerDonnees('type_variable', pid, { variable: v.uid, type: 'qualitative' }); } catch { return; }  // (occupe said why)
+        R.site = `v:${v.uid}`;
+        d.fermer();
+        app.quelleAnalyse(pid);
+      };
+      champ('repetes', t('qa_d_repetes'), () => el('div', {}, el('div', { class: 'ligne', title: t('qa_d_repetes_aide') }, el('span', { class: 'doux' }, t('qa_site')),
+        select('qa-site', colonnes(false), R.site, autrePlan((v) => { R.site = v; R.x = R.x.filter((u) => u !== uidDe(R.site)); }))),
+      siteEnNombres ? el('p', { class: 'note' }, t('qa_site_en_nombres', { nom: entreGuillemets(siteEnNombres.nom) }), ' ',
+        el('button', { 'data-cle': 'qa-site-categories', onclick: () => enCategories(siteEnNombres) }, t('atelier_en_categories', { nom: entreGuillemets(siteEnNombres.nom) }))) : null));
       champ('annees', t('qa_d_annees'), () => el('div', { class: 'ligne' }, el('span', { class: 'doux' }, t('qa_temps')),
         select('qa-temps', colonnes(true), R.temps, autrePlan((v) => { R.temps = v; R.x = R.x.filter((u) => u !== uidDe(R.temps)); }))));
       champ('baci', t('qa_d_baci'), () => el('div', { class: 'ligne' }, el('span', { class: 'doux' }, t('qa_unite')),

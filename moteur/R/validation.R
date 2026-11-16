@@ -28,6 +28,7 @@ permutations <- function(projet, m, definition, y = 1, n = 20, graine = 1) {
   set.seed(graine)
   lignes <- list(c(correlation = 1, mesure(m)))
   for (i in seq_len(n)) {
+    verifier_arret()
     ordre <- sample(length(lignes_y))
     pp <- projet
     pp$donnees[lignes_y, variables] <- valeurs[ordre, , drop = FALSE]

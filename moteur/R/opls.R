@@ -193,6 +193,7 @@ validation_opls <- function(vc, Ao, Ap, noyaux = NULL, garder = FALSE) {
   vc$predictions <- lapply(seq_len(A), function(r) matrix(NA_real_, nrow(vc$Z$E), M))
   gardes <- list()
   for (i in seq_along(vc$tours)) {
+    verifier_arret()
     r <- vc$tours[[i]]
     nk <- if (is.null(noyaux)) opls_noyau(r$X$E, r$X$M, r$Y$E, r$Y$M, Ao, Ap, r$depart, jusqua = TRUE) else noyau_reduit(noyaux[[i]], Ao)
     if (garder) gardes[[i]] <- nk[setdiff(names(nk), "E")]

@@ -87,9 +87,11 @@ async function principal() {
   // the session token, as main.js gives it to R and to its windows
   const jeton = require('crypto').randomBytes(32).toString('hex');
   const cookie = `nuee_${port}=${jeton}`;
-  // (the plugins installed in a folder of this run, as main.js gives the engine the user's: moteur/R/greffons.R)
+  // (the plugins installed in a folder of this run, as main.js gives the engine the user's: moteur/R/greffons.R;
+  // NUEE_ARRET: the file Stop writes, as main.js gives it: moteur/R/arret.R)
+  const fichierArret = path.join(dossier, 'arreter');
   const serveur = spawn(rscript, [path.join(depot, 'moteur', 'serveur.R'), String(port), interfaceDir],
-    { windowsHide: true, env: { ...process.env, NUEE_JETON: jeton, NUEE_GREFFONS: path.join(dossier, 'greffons'), NUEE_GREFFONS_ORGANISATION: '', NUEE_VERSION: '1.1.0' } });
+    { windowsHide: true, env: { ...process.env, NUEE_JETON: jeton, NUEE_GREFFONS: path.join(dossier, 'greffons'), NUEE_GREFFONS_ORGANISATION: '', NUEE_VERSION: '1.1.0', NUEE_ARRET: fichierArret } });
   let sortie = '';
   await new Promise((resolve, reject) => {
     serveur.stdout.on('data', (d) => { sortie += d; if (sortie.includes('PRET')) resolve(); });
@@ -207,6 +209,23 @@ async function principal() {
       const b = await api('biplot', { modele: pls.id });
       verifier(Array.isArray(b.c[0]) && b.t.length === 2, 'biplot');
     });
+    await etape('Arrêter : une longue demande arrêtée rend « arrêtée », la séance inchangée ; le fichier effacé à la demande suivante', async () => {
+      const avant = await api('etat');
+      const debut = Date.now();
+      // (999 permutations of the PLS, each model fitted again and cross-validated: several seconds;
+      // Stop written once the engine computes, as main.js writes it)
+      const longue = fetch(`http://127.0.0.1:${port}/api/permutations`, { method: 'POST', body: JSON.stringify({ modele: pls.id, n: 999 }), headers: { Cookie: cookie } })
+        .then(async (r) => ({ statut: r.status, j: await r.json(), duree: Date.now() - debut }));
+      await new Promise((ok) => { setTimeout(ok, 700); });
+      fs.writeFileSync(fichierArret, String(Date.now()));
+      const r = await longue;
+      verifier(r.statut === 400 && r.j.arrete === true && /arrêté/.test(r.j.erreur), `réponse : HTTP ${r.statut} ${JSON.stringify(r.j).slice(0, 200)} en ${r.duree} ms`);
+      verifier(r.duree < 700 + 3000, `arrêtée en ${r.duree} ms`);
+      const apres = await api('etat');
+      verifier(!fs.existsSync(fichierArret), 'le fichier d’arrêt effacé par la demande suivante');
+      verifier(JSON.stringify(apres.projets) === JSON.stringify(avant.projets) && apres.modeles.length === avant.modeles.length, 'la séance telle qu’elle était');
+      verifier((await api('permutations', { modele: pls.id, n: 3 })).points.R2.length === 4, 'la demande suivante se fait');
+    });
     await etape('statistiques des variables, vérification des données', async () => {
       const s = await api('statistiques_variables', { projet: p.id });
       verifier(s.nom.length === 9, 'statistiques');
@@ -235,6 +254,52 @@ async function principal() {
       const apresRefus = await api('projet', { projet: p.id });
       verifier(refus && apresRefus.revision === apres && !apresRefus.annulable,
         `un changement refusé ne compte ni révision ni retour en arrière (${refus} ; ${apresRefus.annulable})`);
+    });
+    await etape('rétablir ce qu’Annuler a défait, vidé par un nouveau changement', async () => {
+      // (the edit of x1 undone above: Redo offers it, named; the refused change left it)
+      let r = await api('projet', { projet: p.id });
+      verifier(/x1/.test(r.retablissable || ''), `à rétablir : ${r.retablissable}`);
+      const avant = r.revision;
+      const re = await api('retablir', { projet: p.id });
+      r = re.projet;
+      const d = await api('donnees', { projet: p.id });
+      verifier(d.valeurs[d.variables.indexOf('x1')][0] === 12.5 && /x1/.test(re.etiquette) && r.annulable && !r.retablissable && r.revision === avant + 1,
+        `rétabli : ${re.etiquette}, révision ${r.revision}`);
+      r = (await api('annuler', { projet: p.id })).projet;
+      verifier(r.retablissable && r.revision === avant + 2, 'de nouveau à rétablir');
+      r = await api('variable_calculee', { projet: p.id, nom: 'x1x2', formule: 'x1 * x2' });
+      verifier(!r.retablissable, `un nouveau changement vide Rétablir (${r.retablissable})`);
+      await api('annuler', { projet: p.id });
+    });
+    await etape('renommer, traiter en catégories, supprimer une variable (clic droit sur sa colonne)', async () => {
+      // (x1 is in the PLS fitted above: its definition follows, and its fit with the old name is refused a refit until fitted again)
+      const ap = await api('renommer_variable', { projet: p.id, variable: uid.x1, nom: 'x1 (cm)', apercu: true });
+      verifier([].concat(ap.renommage.modeles).includes('PLS') && [].concat(ap.renommage.ajustes).includes(pls.numero), `aperçu : ${JSON.stringify(ap.renommage)}`);
+      let r = await api('renommer_variable', { projet: p.id, variable: uid.x1, nom: 'x1 (cm)' });
+      verifier(r.variables.some((v) => v.nom === 'x1 (cm)') && r.annulable === 'x1 renommée x1 (cm)', `renommée : ${r.annulable}`);
+      let refus = '';
+      try { await api('reajuster', { modele: pls.id, exclues: [1], A: 2 }); } catch (e) { refus = e.message; }
+      verifier(/x1 \(cm\)/.test(refus), `réajuster le PLS ajusté avec l’ancien nom : ${refus}`);
+      await api('annuler', { projet: p.id });
+      verifier((await api('reajuster', { modele: pls.id, exclues: [1], A: 2 })).N === 59, 'le nom revenu, il se réajuste');
+      // a code in numbers as categories, then as numbers again; a variable a model uses can't be deleted, another can
+      await api('variable_calculee', { projet: p.id, nom: 'code', formule: 'rep(c(3, 1, 2), 20)' });
+      const code = (await api('projet', { projet: p.id })).variables.find((v) => v.nom === 'code').uid;
+      r = await api('type_variable', { projet: p.id, variable: code, type: 'qualitative' });
+      const vc = r.variables.find((v) => v.uid === code);
+      verifier(vc.qualitative && [].concat(vc.categories).join() === '1,2,3' && r.annulable === 'code en catégories', `en catégories : ${JSON.stringify(vc)}`);
+      r = await api('type_variable', { projet: p.id, variable: code, type: 'quantitative' });
+      verifier(!r.variables.find((v) => v.uid === code).qualitative, 'en nombres');
+      refus = '';
+      try { await api('type_variable', { projet: p.id, variable: uid.zone, type: 'quantitative' }); } catch (e) { refus = e.message; }
+      verifier(/zone/.test(refus), `les catégories A, B, C en nombres : refusé (${refus})`);
+      refus = '';
+      try { await api('supprimer_variable', { projet: p.id, variable: uid.x2, apercu: true }); } catch (e) { refus = e.message; }
+      verifier(/PLS/.test(refus) && /x2/.test(refus), `une variable qu’utilisent des modèles : ${refus}`);
+      r = await api('supprimer_variable', { projet: p.id, variable: code });
+      verifier(!r.variables.some((v) => v.uid === code) && r.annulable === 'suppression de code', `supprimée : ${r.annulable}`);
+      for (let i = 0; i < 4; i += 1) r = (await api('annuler', { projet: p.id })).projet;
+      verifier(r.variables.length === 9 && !r.variables.some((v) => v.nom === 'code'), `annulées : ${r.variables.length} variables`);
     });
     await etape('indices de diversité en Nouvelle variable (richesse, shannon, simpson, pielou)', async () => {
       // three surveys of four species, the site before them: an ordinary one (10, 5, 0, 1), an empty

@@ -66,6 +66,7 @@ meilleures_indval <- function(IV) {
 test_indval <- function(X, g, C, egalises, valeur, P) {
   plus <- numeric(ncol(X))
   for (b in seq_len(nrow(P))) {
+    verifier_arret()
     vb <- meilleures_indval(statistiques_indval(X, g[P[b, ]], C, egalises)$IndVal)$valeur
     plus <- plus + (vb >= valeur - EPS_PERMUTATIONS)
   }

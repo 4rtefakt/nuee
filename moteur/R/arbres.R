@@ -236,6 +236,7 @@ validation_arbre <- function(dat, groupes, methode, ctl, regle) {
   classes <- if (methode == "class") levels(dat$.y)
   pred <- if (is.null(classes)) rep(NA_real_, nrow(dat)) else matrix(NA_real_, nrow(dat), length(classes), dimnames = list(NULL, classes))
   for (g in unique(groupes)) {
+    verifier_arret()
     k <- groupes == g
     restantes <- if (!is.null(classes)) unique(as.character(dat$.y[!k]))
     if (length(restantes) == 1) {  # (sans ce groupe, une seule classe : tout arbre la prédit ; rpart ne s'ajuste pas sur une classe)
@@ -447,6 +448,7 @@ stabilite_arbre <- function(m) avec_graine(2026, {
   us <- unique(m$groupes)
   aucune <- ""  # (aucune coupure : dit dans la langue de ce qui l'affiche, stabilite_affichee)
   tirages <- lapply(seq_len(m$reglages_arbre$tirages), function(i) {
+    verifier_arret()
     ss <- us[sample.int(length(us), length(us), replace = TRUE)]
     k <- unlist(lapply(ss, function(s) which(m$groupes == s)))
     plis <- rep(seq_along(ss), vapply(ss, function(s) sum(m$groupes == s), 0L))
