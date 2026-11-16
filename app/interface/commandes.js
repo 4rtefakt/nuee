@@ -156,7 +156,8 @@ export function menus(app, C) {
   const recents = app.recents();
   const annuler = () => {  // "Undo" names what it undoes
     const p = app.projet(app.projetActif());
-    return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} « ${p.annulable} »` : t('annuler_action') };
+    const entre = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
+    return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} ${entre(p.annulable)}` : t('annuler_action') };
   };
   return [
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),

@@ -429,6 +429,57 @@ The build produces:
 the menu entry and docks group them under its icon. The tests run the same way:
 `node tests/essai_api.js` and `Rscript moteur/tests/verifier_*.R` find `Rscript` on the `PATH`.
 
+## Workflows, end to end
+
+`app/tests/essai_appli.js` checks briefly that a built program starts, computes and quits.
+`app/tests/essai_parcours.js` goes through the workflows people actually do, in a built program,
+through its window: real clicks and keys on its menus, dialogs, plots and document editor, sent
+over the Chrome DevTools Protocol, then what the window shows checked against what the engine
+answers. It starts the program once with a temporary profile, runs the scenarios of
+`app/tests/parcours/` in their numbers' order, and between two of them closes the projects and
+loads the window again. It needs Node 22 or later and nothing from npm.
+
+```bash
+cd app
+node tests/essai_parcours.js ../dist/Nuee/application/Nuee.exe       # Windows, after node construire.js ../dist
+node tests/essai_parcours.js <program> <screenshots> --parcours=suivi # one scenario (or several, by commas); a screenshot of each, <screenshots>-<name>.png
+xvfb-run -a node tests/essai_parcours.js '/opt/Nuée/nuee'            # Linux, on a server (in a container as root, add --no-sandbox)
+```
+
+| Scenario | What it does, and checks |
+|---|---|
+| `1_donnees` | File › Open the example's CSV (the Data view's first row) and a made-up Excel workbook of two sheets (the sheet chosen, its numbers, text and empty cell); Edit › Find and replace (the preview's count, then the categories), Categories (two orchards ticked and merged, their counts), New variable (`sugar / acidity`, each value); Edit › Undo, which names what it undoes, three times, each change gone from the engine and the Data view |
+| `2_acp_pls` | Model › New model: a PCA (7 cross-validation groups) and a PLS of the taste score (cross-validated by orchard); their Summary's R2 and Q2 by component, the scores (the engine's t1 and t2), loadings, VIP (the engine's values) and coefficients drawn; the observations of lowest and highest t1 clicked on the scores, Exclude selection and refit (N 118 in the fit, its Summary and plot); File › Export model results to Excel, the workbook read back (its t1 the refit's) |
+| `3_modele_mixte` | The BACI tutorial's trout densities: Model › Which analysis? › before and after, the impact stations ticked, the controls, the event typed, the test's sentence, Fit the mixed model; the same request sent to the engine again and every figure of the Summary (N, R2, Q2, RMSE, AIC, AICc, BIC, logLik, parameters) and variance compared as the Summary writes them; the coefficients (the engine's estimates), residuals (each value) and effects drawn |
+| `4_suivi` | The monitoring tutorial's skylark counts: Which analysis? › a trend › of a count fills New model in with TRIM, fitted; its Indices view (the engine's imputed indices, 1 in the base year, and the table under them); a table with coordinates (the made-up sites of `moteur/tests/donnees/collecte/envois.csv`): Plots › Map proposes its longitude, latitude and WGS 84, applied, each visit placed at its coordinates and the one without said |
+| `5_documents` | Help › Example project, File › New document, typed in its editor: a sentence citing `{{M1.Q2}}` and a line `{{M1.scores \| caption}}`; the preview shows the engine's Q2 and the plot; Compile › HTML, Word and PDF, each read back (the value, the figure). Nuée writes all three itself on every system (Electron prints the PDF); only Compile › Quarto needs other software, Quarto, and isn't run |
+| `6_enregistrer` | The example project with its PLS fitted too, a document citing `{{M2.Q2}}` with the VIP, a figure of the PLS's scores (Plots › Compose a figure); File › Save project, File › Close project (nothing asked), Nuée quit and started again, File › Open: the session restored (the two models fitted again with the same numbers, the same tabs), the document and the figure as they were, the same preview |
+
+It never waits a fixed time: each step waits for what it needs (an element, a request's answer, a
+status message), up to a minute for each (`NUEE_ATTENTE`, in milliseconds; fits up to three), so a
+slow computer only makes it longer; `NUEE_TRACE=1` prints the waits that took over a second. The
+window's page is laid out at 1400 × 900 whatever the screen (GitHub's Windows machines have
+1024 × 768). The whole run takes about 30 seconds on a recent Windows PC, a minute with four runs
+at once. The program's main process is reached through its Node inspector (`--inspect`): there
+the system's file dialogs get the answers a scenario queued (`n.fichierAOuvrir`,
+`n.fichierAEnregistrer`; one asked for without an answer is cancelled, and fails the scenario), a
+question (unsaved projects) the answer queued, and opening a file (`shell.openPath`), following a
+link or adding a recent document is only recorded: a run never opens Word or a browser, nor
+touches the system's list of recent files. The check for a newer version asks a closed local port
+instead of GitHub (`NUEE_SOURCE_MAJ`). Each scenario also fails on an error in the page, a request
+the engine refused, a security policy violation or an unexpected `confirm()` (answered Cancel at
+once). A program that stops or stops answering is started again for the next scenario.
+
+A new scenario is a file `app/tests/parcours/<number>_<name>.js` that exports
+`executer(n, verifier, contexte)`. `n` drives the window: `app/tests/parcours/pilote.js` says what
+it offers (menus by the keys of their labels in `i18n.js`, never by their words, dialogs and their
+buttons, fields, plots and their points, New model filled in, the engine's requests, Excel files
+written and read back, `.zip` archives read). `verifier(name, ok, value)` records a check;
+`contexte` gives the repository's files (`donnee('docs', 'site', 'donnees', …)`), a folder of the
+scenario's own, and `redemarrer()`, which quits Nuée and starts it again on the same profile (it
+returns the new `n`). Only made-up data: the example project, `docs/site/donnees` and the engine's
+test data.
+
 ## Checks on GitHub
 
 `.github/workflows/verifications.yml` runs the engine's checks (`moteur/tests/verifier_*.R`,
@@ -436,29 +487,35 @@ except `verifier_references.R`, whose exported projects aren't in the repository
 `app/tests/essai_api.js` and `app/tests/essai_versions.js` on every push and pull request:
 
 - on Windows, with R 4.6.2 from CRAN, the version the Windows build ships (change both
-  together);
+  together; the engine's packages go into R's own library, which the build copies). This job
+  then builds the program as the network share holds it (`Nuee\application`, without the
+  installer, which is never run there), and runs `app/tests/essai_appli.js` and
+  `app/tests/essai_parcours.js` on it; their screenshots are kept with the run
+  (`capture-windows`);
 - on Ubuntu 24.04, with Ubuntu's own R (4.3) and R packages. This job then builds the Linux
   packages, installs the `.deb` with apt, and runs `app/tests/essai_appli.js` as the runner's
-  ordinary user on the installed program and on the AppImage (mounted with FUSE 2), under
-  Xvfb. The packages are kept with the run (artifact `nuee-linux`), and so are the
-  screenshots (`capture-*`);
+  ordinary user on the installed program and on the AppImage (mounted with FUSE 2), then
+  `essai_parcours.js` on the installed program, under Xvfb. The packages are kept with the run
+  (artifact `nuee-linux`), and so are the screenshots (`capture-*`);
 - in Debian 12 (R 4.2) and Ubuntu 22.04 (R 4.1) containers: that `.deb` installed with apt,
   which brings R and its packages, then a check that the program finds every library it
-  loads, the engine's checks, `essai_api.js` and `essai_appli.js` with that R;
+  loads, the engine's checks, `essai_api.js`, `essai_appli.js` and `essai_parcours.js` with
+  that R;
 - on macOS, Apple silicon (`macos-15`) and Intel (`macos-15-intel`), with CRAN's R 4.6.2 from
   its `.pkg`, the R the build brings along. These jobs then build `Nuée.app` and its `.dmg`,
   move `/Library/Frameworks/R.framework` away, and run `essai_appli.js` on the application, as
   from the Finder (no `LANG`, a short `PATH`), then on the `.dmg` mounted: the engine must run
   on the R in `Nuée.app` (checked), and a `.nuee` given to the Finder (`open`) opens in the
-  window. The images are kept with the run (artifacts `nuee-macos-arm64` and
-  `nuee-macos-x86_64`). Every engine check runs there as on Windows and Linux. Apple silicon,
+  window; then `essai_parcours.js` on the application. The images are kept with the run
+  (artifacts `nuee-macos-arm64` and `nuee-macos-x86_64`). Every engine check runs there as on
+  Windows and Linux. Apple silicon,
   whose arithmetic differs in the last bit (no 80-bit sums), is where three results that hung on
   that bit showed: exported scripts now write their numbers so that R reads them back exactly,
   the Procrustes error comes from the residuals, and a fit of distance sampling under the
   monotonicity constraint ends with Newton on its KKT conditions.
 
 Electron's and electron-builder's downloaders fetch GitHub release files anonymously, which
-GitHub throttles at times (HTTP 504 for hours on 2026-11-09). The Linux and macOS jobs have them fetched
+GitHub throttles at times (HTTP 504 for hours on 2026-11-09). The Windows, Linux and macOS jobs have them fetched
 through GitHub's API with its token instead (`.github/miroir-github.js`, through
 `ELECTRON_MIRROR` and `ELECTRON_BUILDER_BINARIES_MIRROR`); both still check the files against
 their own checksums. The files are also cached between runs.

@@ -1,9 +1,10 @@
 # The engine's checks and the requests to the R server, on every push and pull request: on
 # Windows, on macOS (Apple silicon and Intel) and on Linux with the distributions' own R. Linux
 # also builds the packages (.deb, AppImage, .tar.gz), installs the .deb with what it depends on,
-# and uses the installed program end to end (app/tests/essai_appli.js); macOS builds Nuée.app
-# and its .dmg, and uses them the same way. The packages stay with the run, and are added to a
-# release when it is published.
+# and uses the installed program end to end (app/tests/essai_appli.js), then through the
+# workflows people do (app/tests/essai_parcours.js); Windows builds the program (no installer)
+# and macOS Nuée.app and its .dmg, and use them the same way. The packages stay with the run, and
+# are added to a release when it is published.
 # (verifier_references.R needs exported .usp projects that are not in the repository.)
 name: Vérifications
 
@@ -28,8 +29,9 @@ jobs:
           Start-Process "$env:RUNNER_TEMP\R.exe" -ArgumentList '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES', '/DIR=C:\R' -Wait
           Add-Content $env:GITHUB_PATH 'C:\R\bin'
 
+      # (in R's own library, which the build copies)
       - name: Paquets R
-        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra', 'Distance'), repos = 'https://cloud.r-project.org')"
+        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra', 'Distance'), lib = .Library, repos = 'https://cloud.r-project.org')"
 
       - name: Vérifications du moteur
         shell: bash
@@ -44,10 +46,25 @@ jobs:
         with:
           node-version: 22
 
-      # (the documents' tests read Markdown with markdown-it; Electron itself isn't needed)
+      # Electron comes from GitHub's releases: kept between runs, and fetched through GitHub's API
+      # with this job's token (its own downloader goes anonymously, which GitHub throttles at times)
+      - uses: actions/cache@v6
+        with:
+          path: ~/AppData/Local/electron/Cache
+          key: electron-windows-${{ hashFiles('app/package-lock.json') }}
+
+      - name: Fichiers des versions GitHub, par l'API
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          Start-Process node -ArgumentList '.github/miroir-github.js', '8123' -RedirectStandardOutput "$env:RUNNER_TEMP\miroir.log" -RedirectStandardError "$env:RUNNER_TEMP\miroir-erreurs.log"
+          Add-Content $env:GITHUB_ENV 'ELECTRON_MIRROR=http://127.0.0.1:8123/electron/electron/'
+
+      # (Electron too: the program is built below)
       - name: Paquets de l'interface
         working-directory: app
-        run: npm ci --ignore-scripts
+        run: npm ci
 
       - name: Requêtes au serveur R
         working-directory: app
@@ -62,6 +79,37 @@ jobs:
       - name: Mode d'installation, pour la mise à jour
         working-directory: app
         run: node tests/essai_installation.js
+
+      # the .usp converter, compiled with PyInstaller as the build does it
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: PyInstaller
+        run: python -m pip install pyinstaller
+
+      # The program as the network-share folder holds it (Nuee\application, R copied from C:\R),
+      # without its installer, which is never run here; essai_api.js ran above. Then used end to
+      # end (app/tests/essai_appli.js), and through the workflows people do (essai_parcours.js).
+      - name: Nuée pour Windows
+        working-directory: app
+        env:
+          SANS_ESSAI: '1'
+          SANS_INSTALLATEUR: '1'
+        run: node construire.js ../dist C:\R
+
+      - name: Nuée, de bout en bout
+        working-directory: app
+        run: node tests/essai_appli.js ../dist/Nuee/application/Nuee.exe ../dist/windows.png
+
+      - name: Les parcours, de bout en bout
+        working-directory: app
+        run: node tests/essai_parcours.js ../dist/Nuee/application/Nuee.exe ../dist/windows-parcours
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: capture-windows
+          path: dist/*.png
 
   # The update from 0.9.9 keeps Nuée's shortcuts and taskbar pin (app/installateur.nsh): 0.9.9 as
   # published, installed, then this version's installer around a stand-in application, run as
@@ -154,6 +202,11 @@ jobs:
           chmod +x ../dist/installateur/Nuee-*.AppImage
           xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_appli.js ../dist/installateur/Nuee-*.AppImage ../dist/ubuntu-24.04-appimage.png --no-sandbox
 
+      # the workflows people do, through the window of the installed program (app/tests/essai_parcours.js)
+      - name: Les parcours, de bout en bout
+        working-directory: app
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_parcours.js '/opt/Nuée/nuee' ../dist/ubuntu-24.04-parcours
+
       - uses: actions/upload-artifact@v7
         with:
           name: nuee-linux
@@ -221,6 +274,11 @@ jobs:
       - name: Nuée installée, de bout en bout
         working-directory: app
         run: xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_appli.js '/opt/Nuée/nuee' ../${{ matrix.nom }}.png --no-sandbox
+
+      # (app/tests/essai_parcours.js, with that distribution's R)
+      - name: Les parcours, de bout en bout
+        working-directory: app
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_parcours.js '/opt/Nuée/nuee' ../${{ matrix.nom }}-parcours --no-sandbox
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -315,6 +373,11 @@ jobs:
           hdiutil attach -nobrowse -mountpoint "$RUNNER_TEMP/dmg" ../dist/installateur/Nuee-*.dmg
           node tests/essai_appli.js "$RUNNER_TEMP/dmg/Nuée.app/Contents/MacOS/Nuée" ../dist/macos-${{ matrix.arch }}-dmg.png
           hdiutil detach "$RUNNER_TEMP/dmg"
+
+      # the workflows people do, through the window of Nuée.app (app/tests/essai_parcours.js)
+      - name: Les parcours, de bout en bout
+        working-directory: app
+        run: node tests/essai_parcours.js '../dist/Nuee/Nuée.app/Contents/MacOS/Nuée' ../dist/macos-${{ matrix.arch }}-parcours
 
       - uses: actions/upload-artifact@v7
         with:
