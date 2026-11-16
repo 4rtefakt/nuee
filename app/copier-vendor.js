@@ -10,15 +10,16 @@ for (const f of ['plotly.js-dist-min/plotly.min.js', 'dockview-core/dist/dockvie
 }
 
 // The document editor (interface/documents.js): CodeMirror 6 and markdown-it (MIT licences), in
-// one file loaded when a document is first opened, as window.CM and window.markdownit. The
-// licence of each package it holds is written at its end.
+// one file loaded when a document is first opened, as window.CM and window.markdownit (an R-code
+// model's editor too, with line numbers and its own R highlighting on StreamLanguage:
+// interface/vues_code.js). The licence of each package it holds is written at its end.
 const editeur = require('esbuild').buildSync({
   stdin: {
     contents: `
       import { EditorState, Compartment } from '@codemirror/state';
-      import { EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator, WidgetType } from '@codemirror/view';
+      import { EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator, WidgetType, lineNumbers } from '@codemirror/view';
       import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-      import { syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput } from '@codemirror/language';
+      import { syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput, StreamLanguage, bracketMatching } from '@codemirror/language';
       import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
       import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, startCompletion } from '@codemirror/autocomplete';
       import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
@@ -27,7 +28,7 @@ const editeur = require('esbuild').buildSync({
       window.CM = { EditorState, Compartment, EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator,
         WidgetType, defaultKeymap, history, historyKeymap, indentWithTab, syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput,
         markdown, markdownLanguage, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, startCompletion, search, searchKeymap,
-        highlightSelectionMatches, openSearchPanel, tags };
+        highlightSelectionMatches, openSearchPanel, tags, lineNumbers, StreamLanguage, bracketMatching };
       window.markdownit = markdownit;`,
     resolveDir: __dirname,
     loader: 'js',

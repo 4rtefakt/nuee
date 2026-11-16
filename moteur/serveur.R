@@ -33,6 +33,13 @@ JETON <- Sys.getenv("NUEE_JETON")
 jeton_donne <- nzchar(JETON)
 if (!jeton_donne) JETON <- paste(sample(c(0:9, letters[1:6]), 64, replace = TRUE), collapse = "")
 Sys.unsetenv("NUEE_JETON")  # ni la console ni les programmes qu'elle lance n'en héritent
+# Le code R d'un projet (un modèle de code R : code.R) ne s'exécute qu'approuvé sur cet ordinateur par
+# cet utilisateur. L'application garde les empreintes qu'il a approuvées (main.js : reglages.json) et
+# les donne au moteur (demande code_approuve) avec ce secret, que seuls elle et R connaissent : les
+# fenêtres, qui ont le jeton, ne peuvent pas approuver du code elles-mêmes. Lancé à la main (un
+# navigateur), sans secret, le moteur garde celles que l'interface lui donne, le temps de la séance.
+SECRET_CODE <- Sys.getenv("NUEE_CODE_SECRET")
+Sys.unsetenv("NUEE_CODE_SECRET")
 COOKIE <- paste0("nuee_", port)  # les cookies ne distinguent pas les ports : un nom par serveur
 HOTES <- sprintf(c("127.0.0.1:%d", "localhost:%d"), port)
 
@@ -313,13 +320,16 @@ composantes_stockees <- function(d) {
        Q2 = cle("Q2"), Q2cum = cle("Q2(cum)"))
 }
 
+# (un modèle de code R : l'empreinte de son code et s'il est approuvé sur cet ordinateur, code.R ; sans
+# approbation, l'interface le dit et propose de le lire, puis de l'exécuter)
 resume_modele <- function(d) {
   list(numero = d$number %||% NA, nom = d$name %||% "", titre = d$title %||% "",
        type = paste0(if (isTRUE(d$opls)) "O" else "", if (isTRUE(d$plsda)) "PLS-DA" else d$type %||% ""), A = d$A %||% 0,
        ajuste = isTRUE(d$fitted) || !is.null(d$app), erreur = d$error %||% NULL,
        n_obs = length(d$observations), x = vapply(Filter(function(t) !isTRUE(t$facteur_seul), d$x), function(t) as.character(t$name), ""),  # (sans les facteurs seuls d'une régression)
        y = vapply(d$y, function(t) as.character(t$name), ""), stocke = composantes_stockees(d), note = d$note %||% "",
-       version_origine = if (!isTRUE(d$app)) d$version_origine %||% NULL)
+       version_origine = if (!isTRUE(d$app)) d$version_origine %||% NULL,
+       code_r = if (identical(d$type, "CODE")) list(empreinte = empreinte_code(d$options$code %||% ""), approuve = code_approuve(d$options$code %||% "")))
 }
 
 # Les variables qui ont des valeurs dans les jeux de données. Les fichiers .usp listent aussi des variables
@@ -1325,12 +1335,14 @@ fusionner_finir_demande <- function(q) {
 
 # ---------------------------------------------------------------- HTTP
 
-# Tout ce qui est ouvert : pour une nouvelle fenêtre de l'application.
+# Tout ce qui est ouvert : pour une nouvelle fenêtre de l'application. `code_interdit` : les modèles de
+# code R retirés par une politique (code.R : code_interdit), que l'interface ne propose pas.
 etat_complet <- function() {
   # (sans les projets que l'interface ne montre pas, ni leurs modèles : ouvrir, q$cache)
   vus <- Filter(function(p) !isTRUE(p$cache), etat$projets)
   list(projets = lapply(unname(vus), resume_projet),
-       modeles = lapply(Filter(function(id) !is.null(vus[[etat$modeles[[id]]$projet]]), names(etat$modeles)), resultat_modele))
+       modeles = lapply(Filter(function(id) !is.null(vus[[etat$modeles[[id]]$projet]]), names(etat$modeles)), resultat_modele),
+       code_interdit = code_interdit())
 }
 
 DEMANDES <- list(
@@ -2074,6 +2086,24 @@ DEMANDES <- list(
   # existe, chemin, taille, date, base (une copie du fichier lu est gardée : il peut se fusionner), et
   # auteur et version (qui l'a écrit, et quelle Nuée, quand le fichier le dit) }.
   fichier_change = fichier_change_demande,
+  # Les modèles de code R (code.R). code_approuve : les empreintes approuvées par cet utilisateur
+  # (q$empreintes), toute la liste que l'application garde (avec son secret, SECRET_CODE : appli$call)
+  # ou, sans application, celles que l'interface ajoute ; empreinte_code : celle d'un code (q$code),
+  # que l'interface fait approuver avant d'ajuster le code qu'on vient d'écrire ; code_modeles : les
+  # modèles de code R du projet q$projet, avec leur code, leur empreinte et s'ils sont approuvés (les
+  # lire avant de les exécuter).
+  code_approuve = function(q) list(n = approuver_codes(q$empreintes, remplacer = nzchar(SECRET_CODE))),
+  empreinte_code = function(q) {
+    refuser_si_interdit()
+    list(empreinte = empreinte_code(q$code %||% ""))
+  },
+  code_modeles = function(q) {
+    p <- projet(q$projet)
+    list(modeles = I(lapply(Filter(function(d) identical(d$type, "CODE"), p$models), function(d) {
+      code <- texte_code(d$options$code %||% "")
+      list(nom = d$name %||% "", numero = d$number %||% NA, titre = d$title %||% "", code = code, empreinte = empreinte_code(code), approuve = code_approuve(code))
+    })))
+  },
   journal = function(q) list(entrees = journal_depuis(as.numeric(q$depuis %||% 0)), dernier = etat$n_journal),
   console = function(q) evaluer_console(q$code, q$modele, q$projet),
   completer = function(q) completer_console(as.character(q$texte %||% ""), as.integer(q$curseur %||% nchar(q$texte %||% "")), q$modele, q$projet),
@@ -2138,6 +2168,11 @@ appli <- list(
       }
       f <- DEMANDES[[nom]]
       if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
+      # (les approbations de code R ne viennent que de l'application, quand elle a lancé le moteur)
+      if (nom == "code_approuve" && nzchar(SECRET_CODE) && !identical(req$HTTP_X_NUEE_CODE, SECRET_CODE)) {
+        return(repondre(403L, list(erreur = traduire("Seule l'application approuve du code R (Exécuter, dans la barre au-dessus du projet).",
+                                                     "Only the application approves R code (Run it, in the bar above the project)."))))
+      }
       q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
       if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
         stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
@@ -2151,6 +2186,9 @@ appli <- list(
       if (inherits(e, "conflit_fichier")) return(repondre(409L, c(list(erreur = conditionMessage(e), conflit = TRUE, date = e$date), if (isTRUE(e$fusion)) list(fusion = TRUE))))
       # (une étape à retirer d'une source changée depuis sa lecture : retirer_etape_demande)
       if (inherits(e, "source_modifiee")) return(repondre(400L, list(erreur = conditionMessage(e), source_modifiee = TRUE)))
+      # (un modèle de code R : un code pas approuvé ici, avec son empreinte ; un code qui s'arrête, à sa ligne : code.R)
+      if (inherits(e, "code_non_approuve")) return(repondre(400L, list(erreur = conditionMessage(e), code_non_approuve = TRUE, empreinte = e$empreinte)))
+      if (inherits(e, "erreur_code")) return(repondre(400L, list(erreur = conditionMessage(e), ligne = e$ligne)))
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },

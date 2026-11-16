@@ -515,6 +515,8 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     d$A <- 0
     if (length(options)) d$options <- options  # (les réglages propres de l'analyse)
     if (length(classe) && !is.na(classe[1])) d$classe <- as.numeric(classe)[1]  # (sa variable de classe : LDA, arbre de classement)
+    f <- fonction_analyse("definir_", type)  # (analyses.R : sa définition complétée, ou refusée ; CODE, code.R)
+    if (!is.null(f)) d <- f(projet, d)
   }
   # (ACP, PLS, OPLS : la façon de valider, validation_croisee.R : mode_validation)
   # (une façon inconnue serait celle par défaut, sans rien dire)

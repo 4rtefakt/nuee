@@ -19,8 +19,11 @@
 # à elles, en étapes qui se rejouent (p$etapes, leurs paramètres en texte JSON), et l'empreinte
 # des données après la dernière (p$empreinte_donnees). La 1.0 lit les données et les modèles d'un
 # projet de la 1.1, et garde ces champs sans s'en servir ; ce qu'elle change aux données n'est pas
-# une étape, et l'empreinte le montre. Toute version 1.x ouvre les projets de la 1.0.
-FORMAT_PROJET <- 3L
+# une étape, et l'empreinte le montre. Toute version 1.x ouvre les projets de la 1.0. 4 : la 1.2, le
+# modèle écrit en code R (type CODE, code.R : son code dans d$options$code, les colonnes qu'il nomme
+# dans d$options$colonnes), qu'une version plus ancienne lit sans pouvoir l'ajuster (elle en dit
+# l'erreur) ; rien d'autre ne change.
+FORMAT_PROJET <- 4L
 
 lire_projet <- function(chemin) {
   j <- jsonlite::fromJSON(chemin, simplifyVector = TRUE, simplifyDataFrame = FALSE,

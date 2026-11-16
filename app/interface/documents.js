@@ -77,7 +77,7 @@ function styleMarkdown() {
 const REGRESSIONS = ['LM', 'LMM', 'GLM', 'GAM'];
 // A project's models in the order of their numbers (fitting one moves it to the end of its list).
 const parNumero = (modeles) => [...modeles].sort((a, b) => (Number(a.numero) || 1e9) - (Number(b.numero) || 1e9));
-const AUTRES_ANALYSES = ['RDA', 'CA', 'LDA', 'TREE', 'KMEANS', 'CCA', 'INDVAL', 'TRIM', 'PCOA', 'NMDS', 'PERMANOVA', 'MANTEL', 'FOREST', 'BOOST', 'DISTANCE'];
+const AUTRES_ANALYSES = ['RDA', 'CA', 'LDA', 'TREE', 'KMEANS', 'CCA', 'INDVAL', 'TRIM', 'PCOA', 'NMDS', 'PERMANOVA', 'MANTEL', 'FOREST', 'BOOST', 'DISTANCE', 'CODE'];
 
 export function installerDocuments(app) {
   VUES.document = {
@@ -1466,7 +1466,7 @@ function gabarit(app, p, st, choisis) {
   // its plots: those a report holds by default (the report), or the first (the article); a model
   // not computed yet: the plot most models of its kind have
   const PREMIERE = { PCA: 'scores', LM: 'coefficients', LMM: 'coefficients', GLM: 'coefficients', GAM: 'effets', RDA: 'ordination', CA: 'ordination',
-    CCA: 'ordination', INDVAL: 'indval_graphe', TRIM: 'trim_indices', DISTANCE: 'distance_detection' };
+    CCA: 'ordination', INDVAL: 'indval_graphe', TRIM: 'trim_indices', DISTANCE: 'distance_detection', CODE: 'code_coefficients' };
   const figures = (d, toutes) => {
     const m = calcule(d);
     let liste = m ? partiesModele(m).filter((x) => x.vue && !x.variantes && (!toutes || x.defaut)).map((x) => x.cle) : [];

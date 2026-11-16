@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your own model in R code · Nuée</title>
+<meta name="description" content="A model you write in R (lm, glm, nls, mgcv, nlme, glmmTMB…): its data, its results, its texts, its export, and code from elsewhere.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="r-code.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/code-r.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/code-r.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="r-code.html" aria-current="page">Your own model in R code</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="versions.html">Versions and working together</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Your own model in R code</h1>
+<div class="texte-guide">
+<section id="your-own-model-in-r-code">
+<p><strong>New model › type "R code (your own model)":</strong> a model you write in R, for what Nuée doesn't fit itself: anything R can fit (lm, glm, nls, mgcv, nlme, glmmTMB, unmarked, brms…), with the packages installed for the R Nuée uses (library() and package:: work as in R). Nuée gives the code its data, takes from the model what it can, and treats it like its other models.</p>
+<ul>
+<li><strong>General tab:</strong> the code editor (R in colour, line numbers; Ctrl+Enter fits) and its help, with an example made of the project's variables; Observations tab: the model's observations, as for the others (ticked, a condition).</li>
+<li><strong>The data:</strong> `donnees`, a data.frame of the model's observations, one column per variable of the project under its name (qualitative variables as factors, their categories in the project's order), then the observations' IDs, as text.</li>
+<li><strong>The model:</strong> the code's last value (lm(...), fit…), any R object. Or a list whose elements Nuée recognises: list(modele = fit, valeurs = c(density = 3.2, slope = -0.4), tableaux = list(counts = d)); `valeurs`, named numbers, key results that documents cite ({{M1.valeurs.density}}) and What changed follows; `tableaux`, named data.frames, shown and exported.</li>
+<li>The code runs in an environment of its own, each expression in turn, as in the R console: a visible value is printed (a ggplot or lattice plot drawn), except the last, the model. What it prints, its messages, its warnings and its plots are kept. An error gives R's message and its line (the editor goes there); a package that isn't installed is named, with how to install it; the model stays in the dialog, not fitted.</li>
+</ul>
+<p>From the model, each part when the object allows it: print(summary()); the coefficients (coef(summary()) when it is a table of numbers, or several, as glmmTMB's cond, zi and disp; else coef() with the standard errors of vcov()) and their 95% interval (the t distribution at their degrees of freedom when their test is a t, else the normal); nobs(), logLik() and its degrees of freedom, AIC(), BIC(); fitted() and residuals(); predict(fit, newdata) when it works.</p>
+<p><strong>Views:</strong> Summary (the class, N, logLik, AIC, BIC, the versions of R and of the packages, the warnings, what the code printed, summary(), Edit the code), Coefficients (a plot and the table), Residuals (against the fitted values, and the normal QQ plot), Plots of the code, Values and tables, The code; Predictions. Model › Edit model (or Edit the code) opens the editor with the code: fitted again, the model keeps its name and its place. What changed, documents ({{M1.coef.x}}, {{M1.AIC}}, {{M1.N}}), Export, the report and Update the data as for the other models. Compare models compares its AIC with the regressions and R-code models of the same response, as it is, on the same observations, when Nuée can check that their likelihoods compare (lm, glm, glm.nb, nls, and nlme's lme and gls fitted by maximum likelihood); otherwise its AIC is shown with why it isn't compared (a model fitted by REML, a transformed response…). The Methods text says the model was fitted with its authors' own R code, with R's version and the packages the code loaded, their versions and their citations (citation()), which join a document's references. Export to R: the data as the other scripts have them, the code as it is written, then what Nuée shows of the model (summary, coefficients, likelihood, plots of the residuals); Nuée runs the script before writing it and says if it doesn't give the same numbers.</p>
+<p><strong>Trust:</strong> opening a file never runs code from it. Code written, or approved, on this computer by you runs; the code of a project from elsewhere (a colleague's, a shared folder, a version from GitHub or GitLab) that you haven't approved doesn't: its models stay not fitted, under a bar "This project has R code written by someone else (M7) — Show the code / Run it". Run it approves that code (Nuée keeps its fingerprint, a SHA-256, in your settings) and fits the models; changed elsewhere again, it asks again. The R engine itself refuses code nobody approved, whatever the path (opening, Update the data, merging, versions). An organisation can turn this type of model off (the DisableCustomCode policy).</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="trees.html">← Trees, forests, discriminant analysis, k-means</a><a rel="next" href="results.html">Results, documents and R →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.1.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

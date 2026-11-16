@@ -3521,8 +3521,10 @@ function rendreComparaison(conteneur, ctx, p, loc) {
       RMSEE: m.RMSEE ? Object.values(m.RMSEE)[0] : null, RMSEcv: m.RMSEcv ? Object.values(m.RMSEcv)[0] : null,
       sR2X: s ? s.R2Xcum[m.A - 1] : null, sR2Y: s && s.R2Ycum ? s.R2Ycum[m.A - 1] : null, sQ2: s ? s.Q2cum[m.A - 1] : null };
   });
-  // the AIC sets, lettered A, B... in the order of their first model
-  const ensembles = [...new Set(lignes.filter((l) => l.AIC !== undefined && l.AIC !== null).map((l) => l.signature))];
+  // the AIC sets, lettered A, B... in the order of their first model (an R-code model joins one only
+  // when its response, observations and likelihood can be checked: moteur/R/code.R, comparaison_code;
+  // otherwise its AIC is shown, outside the sets, and why under the table)
+  const ensembles = [...new Set(lignes.filter((l) => l.AIC !== undefined && l.AIC !== null && l.signature).map((l) => l.signature))];
   ensembles.forEach((sig, k) => {
     const ici = lignes.filter((l) => l.signature === sig && l.AIC !== null);
     const min = Math.min(...ici.map((l) => l.AIC));
@@ -3541,6 +3543,8 @@ function rendreComparaison(conteneur, ctx, p, loc) {
     valeur: (i, k) => (typeof lignes[i][k] === 'number' && !['A', 'N', 'K'].includes(k) ? Number(lignes[i][k].toFixed(4)) : lignes[i][k]),
   });
   rendreEmboites(emboites, ctx, loc, lignes);
+  const ecartes = lignes.filter((l) => l.raison && !l.signature);
+  if (ecartes.length) emboites.after(el('div', {}, ecartes.map((l) => el('p', { class: 'note' }, t('comparaison_hors_aic', { nom: l.nom, raison: l.raison })))));
   if (!ms.length) return;
   // (a group of bars per model: with models of several projects, each named after its project,
   // "orchards · M2", so that two M2 don't fall into one bar; a name that still repeats is numbered)
