@@ -233,7 +233,9 @@ export async function replacerDansGraphe(div, encore = () => true) {
 // (a figure's cell, a report's picture): its plot's area measured off screen, without the labels'
 // annotations (which would widen the axes). The figure as it was when nothing is to be done.
 export async function replacerEtiquettes(fig) {
-  if (!etiquettesRepoussees(fig.layout)) return fig;
+  // (a plot still drawn by WebGL, of thousands of points, would wait off screen for frames the
+  // browser doesn't draw: its labels keep their places)
+  if (!etiquettesRepoussees(fig.layout) || fig.data.some((tr) => tr.type === 'scattergl')) return fig;
   const sans = { ...fig.layout, annotations: [].concat(fig.layout.annotations || []).filter((a) => !String((a && a.name) || '').startsWith(ETIQUETTE)) };
   const div = document.createElement('div');
   div.style.cssText = `position:fixed;left:-30000px;top:0;width:${fig.layout.width || 900}px;height:${fig.layout.height || 600}px`;
