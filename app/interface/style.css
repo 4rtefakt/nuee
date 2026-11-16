@@ -64,6 +64,9 @@ button.principal:focus-visible { outline-offset: 2px; }
 .outil:hover:not(:disabled) { background: var(--survol); border-color: transparent; }
 .outil:disabled .icone { color: var(--texte-doux); }
 #barre-outils { scrollbar-width: none; }
+/* (a narrow window, or text made larger, 200 % included: the toolbar's groups go on a second row
+   rather than out of sight) */
+#barre-outils { flex-wrap: wrap; row-gap: 2px; }
 @media (max-width: 1100px) {
   .outil { min-width: 34px; }
   .outil span:last-child { display: none; }
@@ -78,6 +81,12 @@ button.principal:focus-visible { outline-offset: 2px; }
 .moteur.erreur { color: var(--erreur); }
 .moteur.erreur .point { background: var(--erreur); }
 @keyframes pulse { 50% { opacity: .3; } }
+/* Motion only for those who haven't asked their system for less: no pulse, no transitions (dockview's
+   drop targets and sashes, a figure's preview) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
+    transition-delay: 0s !important; scroll-behavior: auto !important; }
+}
 
 /* detached view window */
 #seul { display: none; }
