@@ -268,6 +268,25 @@ re <- ecrire_document_reproductible(p, list(m6 = list(definition = d_gam2, model
 code <- vapply(re$references, function(z) length(z$lignes) > 0, TRUE)
 verifier("en dur : les seuils d'un GAM à deux courbes et l'effet d'un terme croisé avec l'habitat ; refaits : la courbe de l'altitude et la droite du pH",
          identical(code, c(FALSE, TRUE, FALSE, TRUE)) && all(vapply(re$references[!code], function(z) nzchar(z$raison %||% ""), TRUE)))
+cat("Un modèle ajusté avant un nouvel ordre de ses catégories\n")
+# (Édition › Catégories : l'habitat dans un autre ordre ; le modèle reste valide, sa définition suit le
+# nouvel ordre. Le script de la PERMANOVA, écrit sur le projet d'aujourd'hui, donnerait ses
+# dispersions dans un autre ordre : écrit sur le projet tel qu'elle l'a vu, avec la définition de son
+# ajustement, comme le serveur le fait (serveur.R : document_reproductible ; atelier.R :
+# projet_tel_ajuste), il la refait)
+p_ordre <- changer_categories(p, u("habitat"), c("bois", "lande", "prairie"), c("prairie", "lande", "bois"))
+refs_ordre <- list(valeur("m3", "N", nb(0), NULL), list(modele = "m3", chemin = list("permanova"), genre = "figure", vue = "permanova", variante = list()))
+refs_ordre[[1]]$texte <- fr$nuee_nombre(m_per$N, 0)
+ici <- file.path(dossier, "ordre")
+dir.create(ici)
+aujourdhui <- ecrire_document_reproductible(p_ordre, list(m3 = list(definition = aligner_categories(p_ordre, d_per, categories_definition(p, d_per)), modele = m_per)),
+                                            refs_ordre, ici, "Aujourdhui", "fr", "essai")
+tel_vu <- ecrire_document_reproductible(p_ordre, list(m3 = list(definition = d_per, modele = m_per, projet = projet_tel_ajuste(p_ordre, ordres_categories(p)))),
+                                        refs_ordre, ici, "Tel vu", "fr", "essai")
+verifier("sur le projet tel qu'il l'a vu : refait, sa valeur et son graphique par R (sur celui d'aujourd'hui : ses dispersions dans un autre ordre)",
+         grepl("dispersion", aujourdhui$modeles[[1]]$erreur %||% "") && is.null(tel_vu$modeles[[1]]$erreur) &&
+           identical(tel_vu$references[[1]]$code, "nuee_nombre(nrow(M3$Y), 0)") && length(tel_vu$references[[2]]$lignes) > 0)
+
 if (is.null(fonction_analyse("ecrire_script_", "DISTANCE"))) {
   verifier("un type sans export vers R le dit (raison_sans_export), dans la langue demandée", grepl("export vers R", raison_sans_export(list(type = "DISTANCE"))) &&
              grepl("No export to R", raison_sans_export(list(type = "DISTANCE"), function(fr, en) en)) &&

@@ -1293,6 +1293,11 @@ async function principal() {
       const rejoue = jl ? await api('console', { code: `cat(is.null(${jl.texte}$ecart))` }) : { journal: [] };
       verifier(jl && jl.texte.startsWith('ecrire_script(projet_tel_ajuste(') && rejoue.journal.some((e) => e.type === 'sortie' && e.texte.trim() === 'TRUE'),
         `journal de l’export : ${jl && jl.texte} → ${JSON.stringify(rejoue.journal)}`);
+      // and so in a reproducible document citing its scores: R redraws them (document_reproductible)
+      const dl = await api('document_reproductible', { projet: q.id, langue: 'fr', version: 'essai', nom: 'Ordre', dossier: path.join(dossier, 'ordre'), modeles: [lda.id],
+        references: JSON.stringify([{ modele: lda.id, chemin: ['lda_scores'], genre: 'figure', vue: 'lda_scores', variante: {} }]) });
+      verifier(!dl.modeles[0].erreur && [].concat(dl.references[0].lignes || []).length > 0,
+        `un document reproductible cite cette LDA : ${dl.modeles[0].erreur || JSON.stringify(dl.references[0]).slice(0, 300)}`);
       // a model whose condition names categories (not a term of it): a renamed category, then Ctrl+Z,
       // and it is refitted from its own definition each time (serveur.R: suivre_conditions_seance)
       const mc = await api('ajuster', { projet: q.id, type: 'LM', x: [v.altitude], y: [v.densite], echelle: 'none', nom: 'LMcond', condition: 'habitat %in% c("prairie", "lande")' });

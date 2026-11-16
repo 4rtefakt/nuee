@@ -309,7 +309,9 @@ tableau_reproductible <- function(famille, d, m, cle, objet, langue) {
 # Le document reproductible : les scripts des modèles cités et nuee.R écrits dans `dossier`/<nom>_R,
 # puis ce que le .qmd en écrit.
 #   modeles     une liste nommée par l'identifiant de chaque modèle cité : list(definition, modele,
-#               et erreur, pourquoi il ne peut pas être refait, s'il ne le peut pas) ;
+#               et erreur, pourquoi il ne peut pas être refait, s'il ne le peut pas ; et projet, celui
+#               sur lequel écrire son script quand ce n'est pas `projet` : le projet tel qu'il l'a vu,
+#               ses catégories dans l'ordre d'alors, atelier.R : projet_tel_ajuste) ;
 #   references  les références du document, dans l'ordre (NULL : celles que le document ne résout
 #               pas) : list(modele, chemin, genre = "valeur" | "figure" | "tableau" | "texte", et pour
 #               une valeur forme (references.js : formeReference) et texte (ce que Nuée en écrit),
@@ -346,7 +348,7 @@ ecrire_document_reproductible <- function(projet, modeles, references, dossier, 
     info <- list(id = id, nom = noms[[id]], objet = objets[[id]], script = paste(sous, paste0(base, ".R"), sep = "/"), famille = famille_reproductible(d))
     raison <- modeles[[id]]$erreur %||% raison_sans_export(d, tx)
     if (is.null(raison)) {
-      r <- tryCatch(ecrire_script(projet, d, chemin, "moteur", m = m, donnees = "csv", version = version, langue = langue), error = function(e) e)
+      r <- tryCatch(ecrire_script(modeles[[id]]$projet %||% projet, d, chemin, "moteur", m = m, donnees = "csv", version = version, langue = langue), error = function(e) e)
       if (inherits(r, "error")) raison <- conditionMessage(r)
       else {
         fichiers <- c(fichiers, r$chemins)

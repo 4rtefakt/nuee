@@ -1137,6 +1137,10 @@ DEMANDES <- list(
       if (!identical(e$projet, p$id)) stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
       # (une catégorie qu'il a vue a changé de nom ou disparu : son script ne le refait plus, il reste en dur)
       perime <- tryCatch({ modele(id, TRUE); NULL }, error = function(err) conditionMessage(err))
+      # (son script sur le projet tel qu'il l'a vu, ses catégories dans l'ordre d'alors, avec la
+      # définition de son ajustement, comme script_demande : un nouvel ordre change une autre analyse)
+      vu <- etat$modeles[[id]]
+      if (length(vu$ordres)) return(list(definition = vu$definition, modele = e$modele, erreur = perime, projet = projet_tel_ajuste(p, vu$ordres)))
       list(definition = e$definition, modele = e$modele, erreur = perime)
     })
     dossier <- if (length(q$dossier) && nzchar(as.character(q$dossier)[1])) as.character(q$dossier)[1] else dirname(chemin_temporaire("document"))
