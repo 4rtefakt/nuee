@@ -2,16 +2,21 @@
 // a data file keeps that file, its source, and every change made to its data in Nuée as a step
 // that can be replayed (moteur/R/etapes.R). Data steps shows the source and the steps, and removes
 // one; Update the data reads the file again, or next year's, replays the steps, replaces the data
-// as one change (Ctrl+Z), fits every model again and shows What changed (changements.js). A notice
-// in the status bar says when the source file changed since it was read. What the engine's answers
+// as one change (Ctrl+Z), fits every model again and shows What changed (changements.js), with the
+// values cited in the documents that changed, marked in their previews (documents.js). A notice in
+// the status bar says when the source file changed since it was read. What the engine's answers
 // say is read by etapes_texte.js.
 import { t } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander, bureau } from './api.js';
+import { resumerProjet, afficherChangements, sectionsRapport } from './changements.js';
+import { valeursCitees } from './documents.js';
 import { liste, noms, dateLisible, tailleLisible, nomFichier, etatSource, ICONES_ETAPES, genreEtape, lireRapport, modelesAReajuster, resumeApres,
-  descriptionVersion } from './etapes_texte.js';
+  valeursChangees, descriptionVersion } from './etapes_texte.js';
 
 const VUE_SEULE = new URLSearchParams(location.search).get('vue');
+// (an element's children made again, those that are null or false left out, as el() does)
+const remplir = (x, ...enfants) => x.replaceChildren(...enfants.flat(Infinity).filter((e) => e !== null && e !== undefined && e !== false));
 
 export function installerEtapes(app) {
   Object.assign(app, {
@@ -93,14 +98,6 @@ function ficheFichier(f, { titre = null, grand = false } = {}) {
     e.etat === 'changee' ? el('p', { class: 'note attention' }, t('etapes_maintenant', { taille: tailleLisible(a.taille), modifie: dateLisible(a.date) })) : null);
 }
 
-// A report's sections (etapes_texte.js: lireRapport), each a heading and its lines.
-const ICONES_SECTIONS = { nouveau: 'circle-plus', absent: 'circle-minus', change: 'pencil', etapes: 'list', modeles: 'box', lecture: 'file-input' };
-function sectionsRapport(lu) {
-  return el('div', { class: 'sections-maj' }, lu.sections.map((s) => el('section', { class: `section-maj ${s.cle}` },
-    el('h4', {}, icone(ICONES_SECTIONS[s.cle]), s.titre),
-    el('ul', {}, s.lignes.map((l) => el('li', { class: l.classe }, l.texte))))));
-}
-
 // Data that changed outside the steps (the R console, a version before 1.1), or a project from
 // before 1.1: what the engine says of it.
 function avisConformes(r) {
@@ -133,7 +130,10 @@ async function dialogueEtapes(app, pid) {
 
   const retirer = async (e) => {
     const quoi = e.etiquette || genreEtape(e.demande);
-    if (!(await confirmer(t('etapes_retirer_titre'), t('etapes_retirer_question', { n: e.n, etiquette: quoi }), t('etapes_retirer_note'), t('retirer')))) return;
+    // (the source is read as it is now: changed since, removing a step also brings what changed in it)
+    const changee = (sources.get(pid) || {}).etat === 'changee';
+    const note = changee ? `${t('etapes_retirer_note')} ${t('etapes_retirer_source_changee')}` : t('etapes_retirer_note');
+    if (!(await confirmer(t('etapes_retirer_titre'), t('etapes_retirer_question', { n: e.n, etiquette: quoi }), note, t('retirer')))) return;
     const n = (app.projet(pid) || p).observations.uid.length;
     message.replaceChildren(el('p', { class: 'infos attente' }, t('etapes_retrait')));
     let r;
@@ -152,7 +152,7 @@ async function dialogueEtapes(app, pid) {
     noterSource(app, pid, r);
     if (fermee) return;
     const etapes = liste(r.etapes);
-    contenu.replaceChildren(
+    remplir(contenu,
       el('h3', {}, t('etapes_source')),
       r.source ? ficheFichier(r.source, { grand: true }) : el('p', { class: 'note' }, t('etapes_sans_source')),
       r.source && r.source.formulaire ? ficheFichier(r.source.formulaire, { titre: t('etapes_formulaire') }) : null,
@@ -209,7 +209,7 @@ async function dialogueMiseAJour(app, pid) {
         rendreFichier();
         if (valeur === 'autre' && !st.autre) choisirAutre(); else previsualiser();
       } }), libelle);
-    zoneFichier.replaceChildren(el('h3', {}, t('etapes_maj_le_fichier')),
+    remplir(zoneFichier, el('h3', {}, t('etapes_maj_le_fichier')),
       es.etat === 'aucune' ? el('p', { class: 'note' }, t('etapes_maj_sans_source')) : el('div', { class: 'ligne' },
         radio('source', t('etapes_maj_source', { nom: nomFichier(s.chemin) }), !avecSource), badgeEtat(es.etat),
         el('span', { class: 'chemin-fichier', title: s.trouve || s.chemin }, s.trouve || s.chemin)),
@@ -234,8 +234,8 @@ async function dialogueMiseAJour(app, pid) {
     const lu = st.lu;
     const f = r.fichier || {};
     const nouvelles = Number((r.observations || {}).ajoutees) > 0;
-    zoneApercu.replaceChildren(el('h3', {}, t('etapes_maj_apercu')),
-      el('p', { class: 'doux fichier-lu' }, t('etapes_maj_lu', { chemin: f.chemin || '' }), f.table ? ` · ${t('etapes_table', { table: f.table })}` : ''),
+    remplir(zoneApercu, el('h3', {}, t('etapes_maj_apercu')),
+      f.table ? el('p', { class: 'doux fichier-lu' }, t('etapes_table', { table: f.table })) : null,
       el('p', { class: `resume-maj${lu.rien ? ' rien' : ''}` }, lu.resume),
       sectionsRapport(lu),
       nouvelles && lu.choix.length ? el('div', { class: 'choix-maj' }, el('h4', {}, icone('circle-plus'), t('etapes_maj_nouvelles_obs')),
@@ -337,25 +337,26 @@ async function marquerVersion(app, pid, chemin, quand) {
   await v.marquer(chemin, descriptionVersion(quand));
 }
 
-// The update: a version first if asked, the models' key results before, the data updated by the
-// engine (one Ctrl+Z), every model fitted again (app.ajusterDeNouveau) but those the report says
-// can't be, the key results after, then What changed. A model not fitted again goes into What
-// changed with its reason (resumeApres).
+// The update: a version first if asked; the models' key results and the values the documents cite
+// before; the data updated by the engine (one Ctrl+Z); every model fitted again
+// (app.ajusterDeNouveau) but those the report says can't be; the key results and cited values
+// after; then What changed, and the values that changed marked in the documents. A model not
+// fitted again goes into What changed with its reason (resumeApres), its cited values as not updated.
 async function executer(app, pid, { chemin, table, sans_nouvelles: sansNouvelles, version }) {
   const p = app.projet(pid);
   const quand = new Date();
   const pr = progression(t('etapes_p_titre', { nom: p.nom }));
-  let changements = null;
-  try { changements = await import('./changements.js'); } catch { /* What changed comes with 1.1's changements.js */ }
   try {
     if (version) {
       pr.montrer(t('etapes_p_version'), null, null, { arretable: false });
       await marquerVersion(app, pid, version, quand);
     }
     const suivre = (cle) => (x) => pr.montrer(t(cle, { n: Math.min(x.fait + 1, x.total), total: x.total }), x.fait, x.total, { note: x.nom || '' });
-    const avant = changements ? await changements.resumerProjet(app, pid, { surProgression: suivre('etapes_p_avant') }) : null;
+    const avant = await resumerProjet(app, pid, { surProgression: suivre('etapes_p_avant') });
+    const citeesAvant = await valeursCitees(app, pid);
     if (pr.arrete()) { pr.fermer(); app.statut(t('etapes_p_arrete_avant')); return; }
     pr.montrer(t('etapes_p_donnees'), null, null, { arretable: false });
+    const n = app.projet(pid).observations.uid.length;
     const r = await app.changerDonnees('mettre_a_jour', pid, { chemin, table, sans_nouvelles: sansNouvelles });
     verifierSource(app, pid);
     const modeles = modelesAReajuster(r.projet, r);
@@ -366,10 +367,15 @@ async function executer(app, pid, { chemin, table, sans_nouvelles: sansNouvelles
       if (m.bloque) continue;
       try { refaits.set(m.numero, { id: await app.ajusterDeNouveau(pid, m.numero) }); } catch (e) { refaits.set(m.numero, { erreur: e.message }); }
     }
-    const apres = changements ? resumeApres(await changements.resumerProjet(app, pid, { surProgression: suivre('etapes_p_apres') }), modeles, refaits) : null;
-    pr.fermer();
-    if (changements) await changements.afficherChangements(app, { titre: t('etapes_changements', { date: dateLisible(quand) }), pid, avant, apres });
+    const apres = resumeApres(await resumerProjet(app, pid, { surProgression: suivre('etapes_p_apres') }), modeles, refaits);
     const restes = modeles.filter((m) => !(refaits.get(m.numero) || {}).id);
+    const documents = valeursChangees(citeesAvant, await valeursCitees(app, pid), restes.map((m) => m.nom));
+    pr.fermer();
+    const date = dateLisible(quand);
+    app.marquerChangements(pid, documents, date);
+    const lu = lireRapport(r, n);
+    await afficherChangements(app, { titre: t('etapes_changements', { date }), pid, avant, apres, documents,
+      donnees: { resume: lu.resume, rien: lu.rien, sections: lu.sections, fichier: (r.fichier || {}).chemin || '' } });
     app.statut(restes.length ? t('etapes_p_fini_sauf', { n: modeles.length - restes.length, total: modeles.length, noms: noms(restes.map((m) => m.nom)) })
       : t('etapes_p_fini', { n: modeles.length }), restes.length > 0);
   } catch (e) {

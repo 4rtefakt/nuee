@@ -1610,10 +1610,11 @@ function remplacerPage(ancien, nouveau) {
   const disposition = remplacerIds(interne.toJSON(), (s) => ids.get(s));
   for (const p of Object.values(disposition.panels || {})) p.params = { modele: nouveau, projet: m.projet };
   dispositionsAttente[nouveau] = disposition;
+  const rang = page.group ? page.group.panels.indexOf(page) : -1;
   try {
     restauration = true;
     dock.addPanel({ id: `page:${nouveau}`, component: 'page', title: titrePage(m), params: { modele: nouveau, projet: m.projet },
-      position: { referencePanel: page.id, direction: 'within' }, inactive: dock.activePanel !== page });
+      position: { referencePanel: page.id, direction: 'within', ...(rang >= 0 ? { index: rang } : {}) }, inactive: dock.activePanel !== page });
   } finally {
     restauration = false;
     delete dispositionsAttente[nouveau];

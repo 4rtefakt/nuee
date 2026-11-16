@@ -2,8 +2,8 @@
 // dialogs of etapes.js), without the application: a source's state, an update's report read in
 // sections (its preview), the models fitted again and the summary after an update.
 //   node tests/essai_etapes.mjs
-import { liste, noms, dateLisible, tailleLisible, etatSource, genreEtape, lireRapport, modelesAReajuster, resumeApres, descriptionVersion }
-  from '../interface/etapes_texte.js';
+import { liste, noms, dateLisible, tailleLisible, etatSource, genreEtape, lireRapport, modelesAReajuster, resumeApres, phraseAutour, valeursChangees,
+  descriptionVersion } from '../interface/etapes_texte.js';
 import { changerLangue } from '../interface/i18n.js';
 
 // (i18n.js puts the language on the page: none here)
@@ -123,6 +123,31 @@ egal('after the update: a model fitted again as it is, one that failed and one b
 const arrete = resumeApres(apres, modeles.slice(0, 2), new Map([[1, { id: 'M9' }]]));
 egal('a model left when the update was stopped', arrete.modeles.map((m) => m.erreur || ''), ['', 'not fitted again: the update was stopped before it', '']);
 verifier('the summary given is left as it was', apres.modeles.every((m) => m.entrees && !m.erreur));
+
+console.log('The values cited in documents');
+const doc = ['---', 'title: Suivi', '---', '', '# Results', 'The trend is **{{M1.coef.annee}}** per year. The model explains {{M1.R2:%}} of',
+  'the variance (Q² = {{M1.Q2}}).', '', '- Sites: {{M2.N}} in all', '- Last one: none', '', '{{M1.scores | Scores. Of the sites}}'].join('\n');
+const position = (brut, depuis = 0) => { const k = doc.indexOf(brut, depuis); return { debut: k, fin: k + brut.length, brut }; };
+const valeursAvant = [{ ...position('{{M1.coef.annee}}'), modele: 'M1', texte: '0.12 [0.05, 0.19], p = 0.002' },
+  { ...position('{{M1.R2:%}}'), modele: 'M1', texte: '41%' }, { ...position('{{M1.Q2}}'), modele: 'M1', texte: '0.35' }, { ...position('{{M2.N}}'), modele: 'M2', texte: '40' }];
+const k = (brut) => valeursAvant.find((v) => v.brut === brut);
+egal('the sentence of a reference: its words before and after, in its sentence only, a heading above left out',
+  phraseAutour(doc, k('{{M1.coef.annee}}').debut, k('{{M1.coef.annee}}').fin, valeursAvant), { avant: 'The trend is ', apres: ' per year.' });
+egal('over two lines, the other references as their values', phraseAutour(doc, k('{{M1.Q2}}').debut, k('{{M1.Q2}}').fin, valeursAvant),
+  { avant: 'The model explains 41% of the variance (Q² = ', apres: ').' });
+egal('a list item, its mark left out, the next item not taken', phraseAutour(doc, k('{{M2.N}}').debut, k('{{M2.N}}').fin, valeursAvant), { avant: 'Sites: ', apres: ' in all' });
+const long = `${'word '.repeat(60)}{{M1.Q2}} ${'more '.repeat(60)}end.`;
+const ph = phraseAutour(long, long.indexOf('{{'), long.indexOf('}}') + 2, [], 40);
+verifier('a long sentence cut on both sides at a word', ph.avant.startsWith('…') && ph.avant.length <= 42 && ph.apres.endsWith('…') && ph.apres.length <= 42 && !/\s…$/.test(ph.apres),
+  JSON.stringify(ph));
+const valeursApres = valeursAvant.map((v) => (v.brut === '{{M1.Q2}}' ? { ...v, texte: '0.31' } : v.brut === '{{M1.R2:%}}' ? null : v)).filter(Boolean);
+const changes = valeursChangees([{ id: 'D1', titre: 'Report', texte: doc, valeurs: valeursAvant }], [{ id: 'D1', titre: 'Report', texte: doc, valeurs: valeursApres }]);
+egal('the values that changed, one the reference no longer gives, in the order of the text', changes.map((d) => [d.id, d.valeurs.map((v) => [v.brut, v.avant, v.apres])]),
+  [['D1', [['{{M1.R2:%}}', '41%', ''], ['{{M1.Q2}}', '0.35', '0.31']]]]);
+egal('with their sentences, a reference without a value written as it is', changes[0].valeurs[1].phrase, { avant: 'The model explains {{M1.R2:%}} of the variance (Q² = ', apres: ').' });
+egal('a model not fitted again: its values are said not updated', valeursChangees([{ id: 'D1', texte: doc, valeurs: valeursAvant }],
+  [{ id: 'D1', texte: doc, valeurs: valeursAvant }], ['M2']).map((d) => d.valeurs.map((v) => [v.brut, v.perime])), [[['{{M2.N}}', true]]]);
+egal('a document whose values didn’t change is left out', valeursChangees([{ id: 'D1', texte: doc, valeurs: valeursAvant }], [{ id: 'D1', texte: doc, valeurs: valeursAvant }]), []);
 
 console.log('The version before');
 verifier('its description, with the date', /^Before the data update of 16 November 2026/.test(descriptionVersion(new Date(2026, 10, 16, 14, 5))));

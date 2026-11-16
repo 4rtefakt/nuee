@@ -192,6 +192,91 @@ export function resumeApres(apres, modeles, refaits) {
   return { ...apres, modeles: liste(apres && apres.modeles).map((x) => (raisons.has(Number(x.numero)) ? { ...x, entrees: null, erreur: raisons.get(Number(x.numero)) } : x)) };
 }
 
+// ------------------------------------------------------------ the values cited in documents
+
+// A line that starts a block of its own in Markdown (a heading, a list item, a quote, a table's
+// row), and one that ends it (blank, a rule, the YAML header's ---).
+const DEBUT_BLOC = /^\s{0,3}(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\|)/;
+const FIN_BLOC = /^\s*$|^\s*(---|\.\.\.|\*\*\*|___)\s*$/;
+const MARQUE_BLOC = /^\s{0,3}(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*|\|\s*)/;
+// (a sentence ends at . ! ? or … before a space, its closing quote or bracket with it)
+const FIN_PHRASE = /[.!?…]["»”’)\]]*(?=\s|$)/g;
+
+// The sentence of a document's text around its reference at [debut, fin): { avant, apres }, its
+// words before and after the reference, within the paragraph or list item and between sentence
+// ends; the other references in it written as `valeurs` gives them ([{ debut, fin, texte }]),
+// Markdown's marks left out, each side cut to about `max` characters.
+export function phraseAutour(texte, debut, fin, valeurs = [], max = 120) {
+  const s = String(texte);
+  // (the block: line by line, up to a blank line, a rule, or a line that starts a block)
+  const debutLigne = (i) => s.lastIndexOf('\n', i - 1) + 1;
+  const finLigne = (i) => { const k = s.indexOf('\n', i); return k < 0 ? s.length : k; };
+  let a = debutLigne(debut);
+  while (a > 0 && !DEBUT_BLOC.test(s.slice(a, finLigne(a)))) {
+    const avant = debutLigne(a - 1);
+    const ligne = s.slice(avant, a - 1);
+    if (FIN_BLOC.test(ligne) || /^\s{0,3}#/.test(ligne)) break;
+    a = avant;
+  }
+  let b = finLigne(fin);
+  while (b < s.length) {
+    const ligne = s.slice(b + 1, finLigne(b + 1));
+    if (FIN_BLOC.test(ligne) || DEBUT_BLOC.test(ligne)) break;
+    b = finLigne(b + 1);
+  }
+  // (the sentence ends, the references aside: a caption's full stop isn't one)
+  const masque = s.slice(a, b).replace(/\{\{[\s\S]*?\}\}/g, (m) => 'x'.repeat(m.length));
+  let p = a;
+  let q = b;
+  for (const m of masque.matchAll(FIN_PHRASE)) {
+    const k = a + m.index + m[0].length;
+    if (k <= debut) p = k;
+    else if (a + m.index >= fin) { q = k; break; }
+  }
+  // (the other references written as their values, those without one as they are)
+  const ecrire = (x, y) => {
+    let r = '';
+    let i = x;
+    for (const v of liste(valeurs).filter((w) => w.debut >= x && w.fin <= y).sort((u, w) => u.debut - w.debut)) {
+      r += s.slice(i, v.debut) + v.texte;
+      i = v.fin;
+    }
+    return (r + s.slice(i, y)).replace(/\*\*|__|`|\*/g, '').replace(/\s+/g, ' ');
+  };
+  let avant = ecrire(p, debut).replace(MARQUE_BLOC, '').trimStart();
+  let apres = ecrire(fin, q).trimEnd();
+  if (avant.length > max) avant = `…${avant.slice(avant.indexOf(' ', avant.length - max) + 1)}`;
+  if (apres.length > max) { const k = apres.lastIndexOf(' ', max); apres = `${apres.slice(0, k > 0 ? k : max)}…`; }
+  return { avant, apres };
+}
+
+// The values cited in the documents that an update of the data changed: `avant` and `apres`, the
+// documents' values before and after it (documents.js: valeursCitees), matched by their place and
+// their text; `nonRefaits`, the names of the models not fitted again, whose values are still those
+// of the data before (`perime`). [{ id, titre, valeurs: [{ debut, fin, brut, modele, avant, apres,
+// perime, phrase }] }] in the order of the text, the documents without one left out.
+export function valeursChangees(avant, apres, nonRefaits = []) {
+  const vieux = new Set(liste(nonRefaits));
+  return liste(apres).map((d) => {
+    const a = liste(avant).find((x) => x.id === d.id) || { valeurs: [] };
+    const meme = (x, y) => x.debut === y.debut && x.brut === y.brut;
+    const valeurs = [];
+    for (const v of liste(d.valeurs)) {
+      const w = liste(a.valeurs).find((x) => meme(x, v));
+      const perime = vieux.has(v.modele);
+      if (!perime && w && w.texte === v.texte) continue;
+      valeurs.push({ debut: v.debut, fin: v.fin, brut: v.brut, modele: v.modele, avant: w ? w.texte : '', apres: v.texte, perime });
+    }
+    // (a value before that the reference no longer gives)
+    for (const w of liste(a.valeurs)) {
+      if (!liste(d.valeurs).some((v) => meme(v, w))) valeurs.push({ debut: w.debut, fin: w.fin, brut: w.brut, modele: w.modele, avant: w.texte, apres: '', perime: false });
+    }
+    valeurs.sort((x, y) => x.debut - y.debut);
+    for (const v of valeurs) v.phrase = phraseAutour(d.texte, v.debut, v.fin, d.valeurs);
+    return { id: d.id, titre: d.titre, valeurs };
+  }).filter((d) => d.valeurs.length);
+}
+
 // ------------------------------------------------------------ the version before
 
 // The description of the version saved before an update (versions.js: enregistrerVersion).
