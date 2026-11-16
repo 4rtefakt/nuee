@@ -294,19 +294,22 @@ expression_cle <- function(famille, chemin, d, m, o, n) {
     # (la ligne du total, la dernière ; celle d'une strate par son nom)
     ligne <- function(col, strate = NULL) if (is.null(strate)) sprintf("utils::tail(%s, 1)", element(dens, col))
                                           else sprintf("%s[match(%s, %s)]", element(dens, col), code_texte(strate), element(dens, "strate"))
+    # (une strate d'abord, par son nom, comme references.js prend la clé la plus longue : D.Nord, et
+    # D.Nord.ic, avant une partie de la densité totale, D.ic)
+    if (startsWith(k, "D.")) {
+      strates <- as.character(m$densite$strate[!is.na(m$densite$strate)])
+      s <- Find(function(x) identical(k, paste0("D.", x)) || startsWith(k, paste0("D.", x, ".")), strates)
+      if (!is.null(s)) {
+        p <- if (identical(k, paste0("D.", s))) "valeur" else substring(k, nchar(s) + 4)
+        return(switch(p, valeur = ligne("D", s), bas = ligne("bas_D", s), haut = ligne("haut_D", s), ic = list(bas = ligne("bas_D", s), haut = ligne("haut_D", s)), cv = ligne("cv", s), NULL))
+      }
+    }
     for (base in c("D", "abondance")) {
       p <- partie(base)
       if (is.na(p)) next
       v <- if (base == "D") c(valeur = "D", bas = "bas_D", haut = "haut_D") else c(valeur = "N", bas = "bas_N", haut = "haut_N")
       return(switch(p, valeur = ligne(v[["valeur"]]), bas = ligne(v[["bas"]]), haut = ligne(v[["haut"]]), ic = list(bas = ligne(v[["bas"]]), haut = ligne(v[["haut"]])),
                     cv = ligne("cv"), NULL))
-    }
-    if (startsWith(k, "D.")) {
-      strates <- as.character(m$densite$strate[!is.na(m$densite$strate)])
-      s <- Find(function(x) identical(k, paste0("D.", x)) || startsWith(k, paste0("D.", x, ".")), strates)
-      if (is.null(s)) return(NULL)
-      p <- if (identical(k, paste0("D.", s))) "valeur" else substring(k, nchar(s) + 4)
-      return(switch(p, valeur = ligne("D", s), bas = ligne("bas_D", s), haut = ligne("haut_D", s), ic = list(bas = ligne("bas_D", s), haut = ligne("haut_D", s)), cv = ligne("cv", s), NULL))
     }
     if (k %in% c("p", "ESW", "EDR")) {
       det <- o("detection")
