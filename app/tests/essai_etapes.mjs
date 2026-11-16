@@ -50,7 +50,7 @@ const rapport = {
   variables: { nouvelles: ['profondeur'], absentes: [], recalculees: [], categories: [{ variable: 'habitat', nouvelles: ['dune'] }, { variable: 'site', nouvelles: ['S5'] }],
     types: [] },
   identifiants: { nouveaux: [], absents: [] },
-  modeles: { variables_absentes: [], observations_choisies: [{ nom: 'Sans', numero: 2, observations: 38, admises: 40 }], sans_nouvelles: [],
+  modeles: { variables_absentes: [], observations_choisies: [{ nom: 'Sans', numero: 2, observations: 38, admises: 40, nouvelles: 5 }], sans_nouvelles: [],
     references_changees: [{ nom: 'Tous', numero: 1, variable: 'habitat', avant: 'prairie', apres: 'lande' }],
     nouvelles_categories: [{ nom: 'C1', numero: 5, variable: 'habitat', categories: ['dune'] }] },
   etapes: [{ n: 1, demande: 'modifier_valeur', etiquette: 'modification de x1', statut: 'ok', raison: '', notes: [] },
@@ -67,8 +67,8 @@ egal('every step replayed', textes(lu, 'etapes'), ['All 2 steps replayed.']);
 egal('a reference category that changes warns, a category gained informs', [textes(lu, 'modeles'), classes(lu, 'modeles')],
   [['Tous: its reference category of “habitat”, “prairie”, has no observations left; “lande” takes its place', 'C1 takes the new categories of “habitat”: “dune”'], ['attention', '']]);
 egal('one line: the observations before and after, what came and went', lu.resume, '40 → 44 observations · 5 new, 1 gone · 40 cell(s) changed · variables: 1 new, 0 gone');
-egal('the models asked whether they take the new observations', lu.choix.map((c) => [c.nom, c.numero, c.texte]),
-  [['Sans', 2, 'Sans takes them (it has 38 of the 40 observations it could have)']]);
+egal('the models asked whether they take the new rows: those they fit, could fit, and would take', lu.choix.map((c) => [c.nom, c.numero, c.nouvelles, c.texte]),
+  [['Sans', 2, 5, 'Sans · fits 38 of 40 rows · takes 5 new row(s)']]);
 verifier('something changes', !lu.rien);
 const avant = lireRapport({ ...rapport, modeles: { ...rapport.modeles, references_changees: undefined, nouvelles_categories: undefined } }, 40);
 egal('an engine without the fields on categories: no line for them', textes(avant, 'modeles'), []);
@@ -104,7 +104,7 @@ egal('one line, without the counts of observations when none is given', lireRapp
 console.log('The same file read again');
 const meme = { observations: { ajoutees: 0, retirees: 0, premieres_ajoutees: [], premieres_retirees: [], cellules: 0, cellules_par_variable: [], par_position: false, repetees: 0 },
   variables: { nouvelles: [], absentes: [], recalculees: [], categories: [], types: [] }, identifiants: { nouveaux: [], absents: [] },
-  modeles: { variables_absentes: [], observations_choisies: [{ nom: 'Sans', numero: 2, observations: 38, admises: 40 }], sans_nouvelles: [] },
+  modeles: { variables_absentes: [], observations_choisies: [], sans_nouvelles: [] },
   etapes: [{ n: 1, demande: 'remplacer', etiquette: 'remplacement', statut: 'ok', raison: '', notes: [] }], fichier: { chemin: 'C:/etude/releves.csv' }, notes: [] };
 const lu3 = lireRapport(meme, 40);
 egal('nothing changes: said, and only the steps listed', [lu3.rien, lu3.resume, lu3.sections.map((s) => s.cle)], [true, 'Nothing changes: the file gives the same data.', ['etapes']]);

@@ -155,8 +155,9 @@ export function lireRapport(r, n = null) {
   return {
     rien, sections, bloques,
     resume: rien ? t('etapes_r_rien') : morceaux.join(' · '),
-    choix: liste(m.observations_choisies).map((x) => ({ nom: x.nom, numero: x.numero, observations: x.observations, admises: x.admises,
-      texte: t('etapes_r_choix', { nom: x.nom, n: x.observations, total: x.admises }) })),
+    // (the rows each one fits, those it could fit, and the file's new rows it would take)
+    choix: liste(m.observations_choisies).map((x) => ({ nom: x.nom, numero: x.numero, observations: x.observations, admises: x.admises, nouvelles: x.nouvelles,
+      texte: t('etapes_r_choix', { nom: x.nom, n: x.observations, total: x.admises, nouvelles: x.nouvelles }) })),
   };
 }
 
