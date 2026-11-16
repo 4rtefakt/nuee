@@ -68,7 +68,8 @@ Node 22 or later, R with the engine's packages (`RSCRIPT=…`) and Chrome or Edg
 Python and Pillow, the images are then reduced to 256 colours. With `NUEE_TEXTES=<folder>`, it also
 writes each model's Methods and Results texts there (the tutorials quote them: when the numbers
 change, update the Markdown sources). A change in the interface can break a step: the script says
-which one.
+which one. `suivi` also takes `suivi-fenetre.png`, the whole window with the skylarks' TRIM model:
+no page of this site shows it, nuee.io does (`vitrine/`).
 
 The data are simulated, with fixed seeds: `Rscript docs/site/donnees/baci.R` (and `spectres.R`,
 `suivi.R`, `communautes.R`, `cartes.R`) writes the same files again; `cartes.R` also writes the

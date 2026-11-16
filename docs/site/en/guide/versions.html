@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Versions and working together · Nuée</title>
+<meta name="description" content="A project’s history of versions, What changed, sharing on GitHub or GitLab and signing in, working together on a project.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="versions.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/versions.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/versions.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="versions.html" aria-current="page">Versions and working together</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Versions and working together</h1>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#history-and-versions">History and versions</a></li>
+<li><a href="#what-changed">What changed</a></li>
+<li><a href="#sharing-on-github-or-gitlab">Sharing on GitHub or GitLab</a></li>
+<li><a href="#signing-in-to-github-or-gitlab">Signing in to GitHub or GitLab</a></li>
+<li><a href="#working-together">Working together</a></li>
+</ul>
+</nav>
+<div class="texte-guide">
+<section id="history-and-versions">
+<h2>History and versions (File › History)</h2>
+<p>Nuée keeps versions of each project saved in its format (.nuee) by itself, with nothing to install: when the project is saved and its last version is an hour old or more, when it is closed (or Nuée quits) and it changed since, and before its data are updated (Update the data's "Save a version first", ticked). Each one says what changed since the one before: rows and variables, models by name, documents and figures by title, data steps, the data's source. Nothing leaves the computer unless the project is shared (see <a href="#sharing-on-github-or-gitlab">Sharing on GitHub or GitLab</a>).</p>
+<p><strong>File › History (or the clock in the status bar):</strong> the versions day by day (a right-click on the project gives them too), each with its time, what changed, its names, its author, "automatic" for one Nuée kept by itself, and "sent" once it is in a shared repository. On each one: Open (beside the project, read-only: a lock in the explorer and on its tabs; Save as... keeps a copy of it elsewhere), Compare (with the project as it is now: see <a href="#what-changed">What changed</a>), Name... ("submitted to the journal", "thesis chapter 2"), Restore... (the project becomes that version again, its data, models, documents and figures; its current state stays in the history, kept in a version first). Save a version... keeps one at once, with a few words; a project with unsaved changes is saved first, and one that hasn't changed since its last version says so.</p>
+<p>Automatic versions that were never sent are thinned out with time, once a day at most: one a day after 30 days, one a month after a year. Named versions, the versions saved by hand and those sent are all kept. Keep versions of this project (at the top of History) turns them off for one project, those already kept staying readable; Settings... turns them off for every project (Keep versions of my projects: no new history starts, existing ones stay), and gives the name, and the email address, written with each version.</p>
+<p>The versions are kept beside the project, in a hidden folder named .nuee-versions: one history per project of that folder (a git repository of yours around the folder ignores it). The top of History gives its size; each version holds the whole project file, compressed. A project renamed outside Nuée is found again by its content, and Save as... takes its history along. Deleting the .nuee-versions folder deletes the history of the projects in that folder, and only that: the projects don't change, and a new history starts at their next save unless versions are turned off (a project whose versions were off follows Settings again). A project shared on GitHub or GitLab also loses its link to the repository: its versions stay there, and File › Open from GitHub or GitLab, into another folder, gets the project back with them. The browser version has no History: the desktop application keeps the versions.</p>
+</section>
+<section id="what-changed">
+<h2>What changed</h2>
+<p>What changed compares two states of a project, model by model, the models matched by their names, on their key results: the fit (N, R², Q², AIC, deviance explained), each estimate with its 95% interval and p value (coefficients, slopes, indices), the tests, the random effects, the components, each variable's VIP, coefficients or loadings, each species' indicator value, the adjusted means and trend power kept with the model, a test set. It opens after an update of the data or a step removed (see <a href="data.html#data-steps-and-updating-the-data">Data steps and updating the data</a>), from History (Compare: a version against the project now) and when a colleague's version comes in (What changed, in the status bar's message). The models of both states are fitted first, with a progress bar.</p>
+<p>Each model starts with its notable changes, in sentences written like the Results text: The coefficient of "year" goes from -0.0210 to -0.0260 (95% CI [-0.0310, -0.0210]), still significant (p &lt; 0.001). Then the table of its results that changed: before, after (with their interval and p), the change (in points for a percentage) and what it crossed: new or gone; sign (to the other side of 0, or of 1 for a ratio or an index); 5% threshold (significant on one side only); outside the former CI (the new value lies outside the former 95% interval); category (a trend's class, an indicator's group); reflected component (a component's sign, which is arbitrary, flipped: turned back before comparing). More than eight variables or species that changed are summed up in one sentence per mark. The models of only one side come last.</p>
+</section>
+<section id="sharing-on-github-or-gitlab">
+<h2>Sharing on GitHub or GitLab</h2>
+<p><strong>File › Share on GitHub or GitLab (also in History):</strong> the project's versions are sent to a repository on GitHub, GitLab or your institution's GitLab, and your colleagues' come back from it; each works on their own copy, and Nuée keeps them in step. Choose the server and sign in there (see <a href="#signing-in-to-github-or-gitlab">Signing in to GitHub or GitLab</a>): Nuée makes the project a repository of your account, named after it (another name is offered when that one is taken), private unless you untick it: only you and the colleagues you invite see it. The first time, it asks for your name and email address, written with each version (GitHub and GitLab show who did what by the address).</p>
+<p><strong>Invite a colleague...:</strong> their user name on the server, as in the address of their profile (the button is in Share once it is done, then in History, beside your account). GitHub sends them an invitation, which they accept from its email or their notifications; GitLab makes them a member of the project, as a Developer. They then open it with File › Open from GitHub or GitLab: the repository's address (signed in to its server, for a private one; or a token), the project when the repository holds several, and the folder to put it in. It opens with its versions, shared with that repository.</p>
+<p>Use an existing repository, or another server: its address, as its Code button gives it (https://...). Signed in to GitHub or GitLab, nothing else is needed; otherwise, a token that can write to it (on GitHub, a fine-grained token with Contents read and write on that repository; on GitLab, a token with write_repository). The repository may be empty or hold other files: the project goes at its root under its name, or under another one when a file there already has it, and the other files are left as they are.</p>
+<p>Once the project is shared, its versions go by themselves: each one is sent, and the repository is asked for newer ones when the project opens, after each version and when Nuée comes back to the front (every five minutes at most). A newer version updates the open project when it has no unsaved changes, and the status bar says so, with What changed; with unsaved changes, it waits until they are saved. History's sharing part gives the state (up to date, sending, to send, newer version, waiting, to choose, or the error, with Try again), the account signed in, with Invite a colleague... and Sign out (or Sign in...), and Send now, Get now, Check, Change the address or token... and Stop sharing (the versions stay here and in the repository). The clock in the status bar shows the same state. When you and a colleague both changed the project: see <a href="#working-together">Working together</a>.</p>
+</section>
+<section id="signing-in-to-github-or-gitlab">
+<h2>Signing in to GitHub or GitLab</h2>
+<p>Nuée signs in to GitHub, GitLab and your institution's GitLab without a password typed in Nuée. Share, Sign in... in History, or a private repository in Open from GitHub or GitLab show a short code: Open the page (it opens in your browser, the code copied), paste or type the code there (GitLab's page has it already) and approve Nuée. The dialog waits for that (it says until when the code works; refused or expired, Get a new code), then shows the account, with its picture, name and user name. The sign-in is kept in the computer's keychain (on Linux without a keyring, until Nuée closes) and renewed by itself.</p>
+<p><strong>Your institution's GitLab:</strong> type its server's name (gitlab.example.org). Nuée signs in there once its administrator has registered it as an application of that GitLab (17.3 or later): they give you its Application ID, which you type once. Before GitLab 17.3, or until Nuée is registered, use a token.</p>
+<p><strong>Other ways to sign in:</strong> Use this computer's git sign-in, when git is installed (a Git Credential Manager window may open); Use a token instead, a token made on the server's site (Make one on GitHub, scope "repo"; on GitLab, scopes api, read_user and write_repository), checked, then kept in the keychain and never shown again. A sign-in that may only send and get versions can't create a repository nor invite: the dialog says so, and signing in with the server's page does it.</p>
+<p>Sign out (in History, beside the account): Nuée forgets its sign-in to that server on this computer, and the projects shared there stop sending and getting their versions until you sign in again. The account and its repositories stay as they are.</p>
+</section>
+<section id="working-together">
+<h2>Working together</h2>
+<p>Two people can work on one project, each on their own computer: shared through GitHub or GitLab, or opened from a shared network folder. When both changed it, Nuée merges the two by what changed, not as text. Each model by its name, setting by setting (variables, terms, observations, options); two new models of the same name are both kept, theirs renamed. Documents line by line, their references following a renamed model, and figures. The data by their steps, when both sides only added steps to the same source: the source of the side that updated it, then both sides' steps replayed on it (see <a href="data.html#data-steps-and-updating-the-data">Data steps and updating the data</a>); otherwise cell by cell, a variable or an observation added on one side kept, one removed on one side and unchanged on the other removed.</p>
+<p>What clashes is what both sides changed differently: the same cell, a passage of a document, a setting of a model, a variable removed on one side and changed on the other. With nothing clashing, the dialog lists what each side brought, and Merge both merges them. Otherwise each clash shows both sides, its passages or its cells (the first twenty) side by side, with Keep mine or Take theirs (mine to start with), and Merge with these choices merges them.</p>
+<p><strong>Shared on GitHub or GitLab:</strong> when your version and a colleague's both changed the project, the status bar says so (Choose...), and so does History. Merge both, or, for the whole project, Keep mine or Take theirs (the project becomes theirs, yours staying in the history), after Compare if you like (What changed from yours to theirs). The merged project is the next version, sent to the repository; both histories are kept. Without a version in common (a project shared into a repository that already had it), Nuée may only offer Keep mine and Take theirs.</p>
+<p><strong>On a shared network folder:</strong> when a project is open from a share or a NAS, every 30 seconds Nuée looks whether its file was saved by someone else since it was read; it then says who (the name given in History › Settings...) and offers to merge their changes into yours, with Merge both, or the choices of each clash, or Not now. The merge is one change of the project, which Ctrl+Z undoes: save the project to keep it. Save meets the changed file too: Merge both (then the merged project is saved), Overwrite (their changes are lost), Save as... or Cancel. A project opened before Nuée or its R engine restarted, or recovered after a crash, can't be merged: Save then asks whether to overwrite their changes. The project's history, in the folder's .nuee-versions, is common to both, each version with the name of who saved it. A project shared through GitHub or GitLab is kept in step by its repository instead.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="results.html">← Results, documents and R</a><a rel="next" href="usp-projects.html">.usp projects →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

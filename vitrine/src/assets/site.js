@@ -24,8 +24,11 @@ document.documentElement.classList.add('js');
 // The application's plot colours (site.css: --c0 to --c6), then the ink of a bird in flight.
 const COULEURS = ['#2f6fb5', '#d1495b', '#3b9a5b', '#e09f3e', '#7b5ea7', '#2a9d8f', '#9aa0ae', '#16233f'];
 const ENCRE = 7;
-// The width of a bird's stroke: on a line, in flight, as a point of a plot.
-const TRAITS = [2.9, 3.2, 5.4];
+// The width of a bird that isn't flying: on a line, in the air (slowing down), as a point of a
+// plot, as a small point (a shape of many points: `petit`).
+const TRAITS = [2.9, 3.2, 5.4, 3.9];
+// The shapes whose birds land on a picture: a rim of paper around each keeps them apart from it.
+const SUR_IMAGE = new Set(['carte']);
 
 // Nuée's logo as a shape: its seventeen points and its ellipse (app/interface/nuee.svg).
 const LOGO = (() => {
@@ -44,15 +47,19 @@ const LOGO = (() => {
 const FORMES = { ...D.formes, logo: LOGO };
 
 // Where n birds go to draw a shape: on its points in turn (several birds on a point when there are
-// more birds than points), and evenly along its lines. Sorted from left to right, so that two
-// shapes exchange birds without the whole swarm crossing itself.
+// more birds than points; points taken evenly through the list when there are fewer), and evenly
+// along its lines. Sorted from left to right, so that two shapes exchange birds without the whole
+// swarm crossing itself.
 function cibles(forme, n) {
   const P = forme.points || [];
   const L = forme.lignes || [];
   const nL = !L.length ? 0 : !P.length ? n : Math.round(n * (forme.part_lignes ?? 0.5));
   const nP = n - nL;
   const c = [];
-  for (let i = 0; i < nP; i++) { const p = P[i % P.length]; c.push([p[0], p[1], p[2], 2, Math.random()]); }
+  for (let i = 0; i < nP; i++) {
+    const p = P[nP < P.length ? Math.floor(i * P.length / nP) : i % P.length];
+    c.push([p[0], p[1], p[2], forme.petit ? 3 : 2, Math.random()]);
+  }
   if (nL) {
     const segments = [];
     let total = 0;
@@ -87,23 +94,29 @@ class Nuee {
   constructor(toile) {
     this.toile = toile;
     this.g = toile.getContext('2d');
-    const n = this.n = innerWidth < 720 ? 420 : 540;
-    for (const k of ['x', 'y', 'vx', 'vy', 'tx', 'ty', 'attente', 'phase']) this[k] = new Float32Array(n);
+    // (a bird for each count of the first figure, the skylarks': 586)
+    const n = this.n = Math.max(540, FORMES.comptages.points.length);
+    for (const k of ['x', 'y', 'vx', 'vy', 'tx', 'ty', 'attente', 'phase', 'cadence', 'taille']) this[k] = new Float32Array(n);
     for (const k of ['etat', 'coul', 'trait', 'cc', 'ct']) this[k] = new Uint8Array(n);
     this.coul.fill(ENCRE);
     this.trait.fill(1);
-    for (let i = 0; i < n; i++) this.phase[i] = Math.random() * 6.283;
+    for (let i = 0; i < n; i++) {
+      this.phase[i] = Math.random() * 6.283;
+      this.cadence[i] = 6.283 * (3.6 + 1.8 * Math.random());  // wingbeats: 3.6 to 5.4 a second
+      this.taille[i] = 0.84 + 0.34 * Math.random();            // no two birds the same size
+    }
     this.mode = null;
     this.zone = null;
     this.forme = null;
     this.temps = 0;
-    this.pointeur = { x: -9999, y: -9999, vu: -1e9 };
+    this.pointeur = { x: -9999, y: -9999, vu: -1e9, souris: false };
+    this.faucon = { x: 0, y: 0, cap: 0, la: false };
     this.image = 0;
     this.lent = 0;
     this.gardees = new Map();
     this.tailler();
     addEventListener('resize', () => { this.tailler(); this.reveiller(); });
-    addEventListener('pointermove', (e) => { this.pointeur = { x: e.clientX, y: e.clientY, vu: performance.now() }; }, { passive: true });
+    addEventListener('pointermove', (e) => { this.pointeur = { x: e.clientX, y: e.clientY, vu: performance.now(), souris: e.pointerType !== 'touch' }; }, { passive: true });
     addEventListener('pointerleave', () => { this.pointeur.vu = -1e9; });
     document.addEventListener('visibilitychange', () => this.reveiller());
   }
@@ -237,6 +250,21 @@ class Nuee {
     const chasse = performance.now() - this.pointeur.vu < 2500;
     const px = this.pointeur.x;
     const py = this.pointeur.y;
+    // the falcon: it comes where the pointer is, and follows it a little behind, turned the way it goes
+    const F = this.faucon;
+    if (!chasse) F.la = false;
+    else if (!F.la) { F.x = px; F.y = py; F.la = true; }
+    else {
+      const dx = (px - F.x) * 0.16;
+      const dy = (py - F.y) * 0.16;
+      if (dx * dx + dy * dy > 0.09) {
+        let tourne = Math.atan2(dy, dx) - F.cap;
+        tourne -= 6.2832 * Math.round(tourne / 6.2832);
+        F.cap += tourne * Math.min(1, 0.22 * f);
+      }
+      F.x += dx * f;
+      F.y += dy * f;
+    }
 
     // ---- the neighbours of the birds in flight, by a grid
     const R = 58 * this.echelle;
@@ -308,8 +336,9 @@ class Nuee {
             }
           }
         }
-        let ax = (but.x - x[i]) * 0.00042 + (Math.random() - 0.5) * 0.08;
-        let ay = (but.y - y[i]) * 0.00042 + (Math.random() - 0.5) * 0.08;
+        // (and waves that cross the flock, as in a murmuration)
+        let ax = (but.x - x[i]) * 0.00042 + (Math.random() - 0.5) * 0.08 + 0.05 * Math.sin(y[i] * 0.021 + this.temps * 1.7);
+        let ay = (but.y - y[i]) * 0.00042 + (Math.random() - 0.5) * 0.08 + 0.05 * Math.cos(x[i] * 0.017 - this.temps * 1.3);
         if (nb) {
           ax += (mx / nb - x[i]) * 0.0016 + (mvx / nb - vx[i]) * 0.07 + ex * 1.5;
           ay += (my / nb - y[i]) * 0.0016 + (mvy / nb - vy[i]) * 0.07 + ey * 1.5;
@@ -336,30 +365,95 @@ class Nuee {
     }
   }
 
-  // Each bird a stroke along its speed, a dot when it is still; one path per colour and width.
+  // A bird in flight is two wings that beat, set along its speed, and a body between them; as it
+  // slows down to land the wings fold, and what is left is the dot of a plot. One path per colour
+  // for the wings, one for the dots.
   dessiner() {
     const g = this.g;
     const k = this.densite;
     g.setTransform(k, 0, 0, k, 0, 0);
     g.clearRect(0, 0, this.L, this.H);
     g.lineCap = 'round';
-    const chemins = new Array(COULEURS.length * TRAITS.length);
+    g.lineJoin = 'round';
+    const ailes = new Array(COULEURS.length);
+    const points = new Array(COULEURS.length);
+    // (on a picture, the birds that have landed get a rim of paper under them)
+    const rims = this.mode === 'forme' && SUR_IMAGE.has(this.forme) ? new Path2D() : null;
+    const e = this.echelle;
     const { n, x, y, vx, vy } = this;
     for (let i = 0; i < n; i++) {
       if (x[i] < -20 || x[i] > this.L + 20 || y[i] < -20 || y[i] > this.H + 20) continue;
-      const c = this.coul[i] * TRAITS.length + this.trait[i];
-      const p = chemins[c] || (chemins[c] = new Path2D());
+      const c = this.coul[i];
       const v = Math.hypot(vx[i], vy[i]);
-      const e = v > 5.5 ? 9.5 / v : 1.7;  // (no longer than a bird, however fast)
-      p.moveTo(x[i], y[i]);
-      p.lineTo(x[i] - vx[i] * e - 0.01, y[i] - vy[i] * e);
+      // how far the wings are open: folded under half a pixel a frame, spread from two
+      const ouvert = v < 0.5 ? 0 : v > 2 ? 1 : (v - 0.5) / 1.5;
+      if (ouvert > 0) {
+        const T = this.taille[i] * e * ouvert;
+        const ux = vx[i] / v;
+        const uy = vy[i] / v;
+        // the beat: the tips wide and level with the shoulders, then closer and swept back
+        const bat = Math.sin(this.temps * this.cadence[i] + this.phase[i]);
+        const large = (4 + 1.25 * bat) * T;
+        const recul = (1.9 - 1.3 * bat) * T;
+        const coude = 1.3 * T;
+        const tete = 1.9 * T;
+        const queue = 2.3 * T;
+        const p = ailes[c] || (ailes[c] = new Path2D());
+        p.moveTo(x[i] - ux * recul - uy * large, y[i] - uy * recul + ux * large);
+        p.quadraticCurveTo(x[i] + ux * coude - uy * large * 0.45, y[i] + uy * coude + ux * large * 0.45, x[i], y[i]);
+        p.quadraticCurveTo(x[i] + ux * coude + uy * large * 0.45, y[i] + uy * coude - ux * large * 0.45, x[i] - ux * recul + uy * large, y[i] - uy * recul - ux * large);
+        p.moveTo(x[i] + ux * tete, y[i] + uy * tete);
+        p.lineTo(x[i] - ux * queue, y[i] - uy * queue);
+      }
+      if (ouvert < 1) {
+        const r = TRAITS[this.trait[i]] / 2 * e * (1 - ouvert);
+        const p = points[c] || (points[c] = new Path2D());
+        p.moveTo(x[i] + r, y[i]);
+        p.arc(x[i], y[i], r, 0, 6.2832);
+        if (rims && this.etat[i] === 1) { rims.moveTo(x[i] + r + 1.6 * e, y[i]); rims.arc(x[i], y[i], r + 1.6 * e, 0, 6.2832); }
+      }
     }
-    for (let c = 0; c < chemins.length; c++) {
-      if (!chemins[c]) continue;
-      g.strokeStyle = COULEURS[Math.floor(c / TRAITS.length)];
-      g.lineWidth = TRAITS[c % TRAITS.length] * this.echelle;
-      g.stroke(chemins[c]);
+    if (rims) { g.fillStyle = '#fffdf8'; g.fill(rims); }
+    g.lineWidth = 1.55 * e;
+    for (let c = 0; c < COULEURS.length; c++) {
+      if (points[c]) { g.fillStyle = COULEURS[c]; g.fill(points[c]); }
+      if (ailes[c]) { g.strokeStyle = COULEURS[c]; g.stroke(ailes[c]); }
     }
+    this.dessinerFaucon();
+  }
+
+  // The falcon, where the pointer is over the swarm's element: long pointed wings swept back, a
+  // tail. It fades when the pointer has been still for a while.
+  dessinerFaucon() {
+    const F = this.faucon;
+    const age = performance.now() - this.pointeur.vu;
+    if (!F.la || !this.pointeur.souris || !this.zone || age > 2500) return;
+    const r = this.zone.getBoundingClientRect();
+    if (F.x < r.left - 40 || F.x > r.right + 40 || F.y < r.top - 40 || F.y > r.bottom + 40) return;
+    const g = this.g;
+    const s = 1.15 * this.echelle;
+    g.save();
+    g.translate(F.x, F.y);
+    g.rotate(F.cap);
+    g.scale(s, s);
+    g.globalAlpha = Math.min(1, (2500 - age) / 500) * 0.92;
+    g.fillStyle = COULEURS[ENCRE];
+    g.beginPath();
+    g.moveTo(9, 0);
+    g.quadraticCurveTo(6, 2.6, 3, 2.9);
+    g.quadraticCurveTo(1.5, 9, -7, 14.5);
+    g.quadraticCurveTo(-3.2, 7.5, -3.6, 2.6);
+    g.lineTo(-8.5, 1.5);
+    g.lineTo(-13, 3.1);
+    g.lineTo(-12.2, 0);
+    g.lineTo(-13, -3.1);
+    g.lineTo(-8.5, -1.5);
+    g.lineTo(-3.6, -2.6);
+    g.quadraticCurveTo(-3.2, -7.5, -7, -14.5);
+    g.quadraticCurveTo(1.5, -9, 3, -2.9);
+    g.quadraticCurveTo(6, -2.6, 9, 0);
+    g.fill();
+    g.restore();
   }
 }
 
@@ -384,10 +478,14 @@ function decorer(zone, id) {
   };
   const trace = (pts) => pts.map(([x, y]) => `${X(x)},${Y(y)}`).join(' ');
   for (const [a, b] of d.bandes || []) dessin.append(svg('rect', { x: X(a), y: 0, width: X(b) - X(a), height: 100, class: 'bande' }));
+  for (const [a, b, h] of d.barres || []) dessin.append(svg('rect', { x: X(a), y: Y(h), width: X(b) - X(a), height: 100 - Y(h), class: 'barre' }));
+  for (const r of d.rubans || []) dessin.append(svg('polygon', { points: trace(r), class: 'ruban' }));
+  for (const [x1, y1, x2, y2] of d.tirets || []) dessin.append(svg('line', { x1: X(x1), y1: Y(y1), x2: X(x2), y2: Y(y2), class: 'tirets' }));
   for (const [x1, y1, x2, y2] of d.axes || []) dessin.append(svg('line', { x1: X(x1), y1: Y(y1), x2: X(x2), y2: Y(y2) }));
   if (d.ellipse) dessin.append(svg('polygon', { points: trace(d.ellipse), class: 'tirets' }));
   for (const e of d.enveloppes || []) dessin.append(svg('polygon', { points: trace(e.pts), class: `enveloppe s${e.g}` }));
   for (const m of d.moyennes || []) dessin.append(svg('polyline', { points: trace(m.pts), class: `moyenne s${m.g}` }));
+  for (const c of d.courbes || []) dessin.append(svg('polyline', { points: trace(c), class: 'courbe' }));
   if (d.evenement !== undefined) {
     dessin.append(svg('line', { x1: X(d.evenement), y1: 0, x2: X(d.evenement), y2: 100, class: 'tirets' }));
     etiquette(d.evenement, 1, T.evenement, 'titre note-haut');
@@ -399,30 +497,39 @@ function decorer(zone, id) {
   if (id === 'acp') {
     etiquette(1, 0.5, 't[1]', 'titre fin-x');
     etiquette(0.5, 1, 't[2]', 'titre haut-y');
-    // each variety's name by its apples: under them in the lower half, over them in the upper
-    (FORMES.acp.groupes || []).forEach((nom, g) => {
-      const pts = FORMES.acp.points.filter((p) => p[2] === g);
-      const ys = pts.map((p) => p[1]);
-      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
-      const bas = ys.reduce((s, y) => s + y, 0) / ys.length < 0.5;
-      etiquette(cx, bas ? Math.min(...ys) - 0.035 : Math.max(...ys) + 0.085, nom, `groupe g${g}`);
-    });
+    // the name of the site outside the ellipse, over its point
+    for (const s of d.noms || []) etiquette(s.x, s.y, s.nom, `nom-point g${s.g}`);
+  }
+  if (id === 'comptages') {
+    // over the plot: what it shows, and its keys (the two habitats' colours, TRIM's line with its
+    // slope), one under the other where they don't fit side by side
+    const entete = el('span', { class: 'grad entete-figure' },
+      el('span', { class: 'titre' }, T.axe_comptages),
+      el('span', { class: 'cles-figure' },
+        [[3, T.cle_cultures], [2, T.cle_prairies]].map(([c, nom]) => el('span', { class: 'cle' }, el('i', { class: `c${c}` }), nom)),
+        el('span', { class: 'cle' }, el('i', { class: 'trait' }), T.tendance)));
+    entete.style.left = '0%';
+    entete.style.top = '0%';
+    boite.append(entete);
   }
   if (id === 'spectres') etiquette(0.5, 0, T.axe_spectres, 'titre centre');
   if (id === 'distance') etiquette(0.5, 0, T.axe_distance, 'titre centre');
-  if (id === 'carte') etiquette(1, 1, '↑ N', 'titre fin-x');
   zone.append(boite);
   return boite;
 }
 
+// A figure of the page: the zone its shapes land in, and what is drawn over each (shown with its
+// shape). A shape may have a zone of its own in the page: the map's, which holds its picture.
 function figure(conteneur, ids) {
-  const zone = $('.zone', conteneur);
-  const decos = Object.fromEntries(ids.map((id) => [id, decorer(zone, id)]));
+  const commune = $('.zone:not([data-forme])', conteneur);
+  const zones = Object.fromEntries(ids.map((id) => [id, $(`.zone[data-forme="${id}"]`, conteneur) || commune]));
+  const decos = Object.fromEntries(ids.map((id) => [id, decorer(zones[id], id)]));
   let montree = null;
-  return { zone, montrer(id) {
+  const montrer = (id, oui) => { decos[id].classList.toggle('montre', oui); zones[id].classList.toggle('montre', oui); };
+  return { zone: (id) => zones[id] || commune, montrer(id) {
     if (id === montree) return;
-    if (montree) decos[montree].classList.remove('montre');
-    if (id) decos[id].classList.add('montre');
+    if (montree) montrer(montree, false);
+    if (id) montrer(id, true);
     montree = id;
   } };
 }
@@ -430,8 +537,8 @@ function figure(conteneur, ids) {
 // ================================================================ the swarm on the page
 
 // The swarm belongs to the hero's sky, to the tour's plate or to the logo near the downloads:
-// whichever shows most in the window. In the sky it flies, or lands as the example's PCA; on the
-// plate it takes the shape of the step being read.
+// whichever shows most in the window. In the sky it flies, or lands as the skylarks' counts, a
+// bird for each; on the plate it takes the shape of the step being read.
 function scene() {
   const toile = $('#nuee');
   const ciel = $('#ciel');
@@ -439,7 +546,7 @@ function scene() {
   const cielFin = $('#ciel-fin');
   if (!toile || !ciel) return;
   const nuee = new Nuee(toile);
-  const hero = figure(ciel, ['acp']);
+  const hero = figure(ciel, ['comptages']);
   const tour = figure(planche, $$('.etape').map((e) => e.dataset.forme));
   const fin = figure(cielFin, []);
   const etapes = $$('.etape');
@@ -470,10 +577,10 @@ function scene() {
       nom.textContent = lue ? $('.etape-nom', lue).textContent.replace(/^(\d+)/, '$1 · ') : '';
     }
     const forme = etape ? etape.dataset.forme : calme ? etapes[0].dataset.forme : null;
-    if (lieu === 'hero') { if (pose) nuee.former('acp', hero.zone); else nuee.voler(ciel); }
-    else if (lieu === 'tour') { if (forme) nuee.former(forme, tour.zone); else nuee.voler(planche); }
-    else nuee.former('logo', fin.zone);
-    hero.montrer(lieu === 'hero' && pose ? 'acp' : null);
+    if (lieu === 'hero') { if (pose) nuee.former('comptages', hero.zone('comptages')); else nuee.voler(ciel); }
+    else if (lieu === 'tour') { if (forme) nuee.former(forme, tour.zone(forme)); else nuee.voler(planche); }
+    else nuee.former('logo', fin.zone('logo'));
+    hero.montrer(lieu === 'hero' && pose ? 'comptages' : null);
     tour.montrer(lieu === 'tour' ? forme : null);
     bascule.textContent = pose ? T.envoler : T.poser;
     nuee.reveiller();

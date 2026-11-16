@@ -43,7 +43,14 @@ environnement, statisticiens ou non. Nuée vous aide à choisir :
 <li><h3>Suivis</h3><p>Tendances de séries, avant/après avec témoins (BACI), indices de comptages (TRIM), densités par échantillonnage par distances.</p><p><a href="page:guide.suivis">Le guide</a></p></li>
 <li><h3>Cartes</h3><p>Coordonnées et systèmes (Lambert-93, UTM…), GeoPackage pour QGIS, valeurs de rasters, autocorrélation spatiale.</p><p><a href="page:guide.cartes">Le guide</a></p></li>
 <li><h3>Publication</h3><p>Figures composées à la taille d'une revue, rapports PDF et Word, documents avec citations, export vers R, R Markdown et Quarto.</p><p><a href="page:guide.resultats">Le guide</a></p></li>
+<li><h3>Rapports vivants</h3><p>Le fichier de données de l'année suivante lu dans le projet, ses changements rejoués, chaque modèle ajusté à nouveau, et les valeurs que citent vos documents mises à jour.</p><p><a href="page:guide.donnees#etapes-des-donnees-et-mise-a-jour">Le guide</a></p></li>
+<li><h3>Versions</h3><p>Les versions de chaque projet gardées d'elles-mêmes, nommées, ouvertes, restaurées, et comparées : ce qui a changé dans les résultats de chaque modèle, en phrases.</p><p><a href="page:guide.versions">Le guide</a></p></li>
+<li><h3>À plusieurs</h3><p>Un projet partagé sur GitHub ou GitLab, ou sur un dossier réseau, les changements des deux côtés réunis modèle par modèle, passage par passage.</p><p><a href="page:guide.versions#travailler-a-plusieurs">Le guide</a></p></li>
 </ul>
+
+Nouveau dans la version 1.1 : les rapports vivants, les versions et le travail à plusieurs, et
+toute l'interface au clavier ou avec un lecteur d'écran. Tout ce qui a changé d'autre :
+[Quoi de neuf](page:nouveautes).
 
 ## Tout en R, sur votre ordinateur
 
@@ -53,8 +60,9 @@ action. Les résultats sont ceux des paquets de référence (vegan, nlme, mgcv, 
 Distance…), vérifiés à chaque changement.
 
 Vos données restent sur votre ordinateur : Nuée n'envoie rien, sauf une question à GitHub au
-démarrage pour savoir s'il existe une nouvelle version (elle se coupe dans le menu Aide), et la
-zone affichée aux serveurs d'OpenStreetMap ou de l'IGN quand vous choisissez un fond de carte.
+démarrage pour savoir s'il existe une nouvelle version (elle se coupe dans le menu Aide), la zone
+affichée aux serveurs d'OpenStreetMap ou de l'IGN quand vous choisissez un fond de carte, et les
+versions d'un projet au dépôt GitHub ou GitLab où vous le partagez.
 
 ## Télécharger
 

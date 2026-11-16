@@ -125,7 +125,7 @@ page.
 The full user guide comes with the application (*Help › User guide › Full guide*), in
 English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)). It is also on the
-[documentation website](https://4rtefakt.github.io/nuee/en/), with three tutorials.
+[documentation website](https://4rtefakt.github.io/nuee/en/), with six tutorials.
 
 ## What it does
 
@@ -260,6 +260,9 @@ the model's domain, and export the results.
 - saving a project (`.nuee`, which opens Nuée when double-clicked) keeps its models, the layout
   of your panels, plot settings and selections;
 - a recovery copy every two minutes, offered back after a crash, and undo for data changes;
+- versions of each project kept by themselves (*File › History*), named, compared and restored,
+  and shared on GitHub or GitLab with colleagues, two people's changes merged model by model
+  and passage by passage (on a shared network folder too);
 - notes on each model;
 - data editing and new variables from R formulas or value ranges; columns added from another
   table by a key, and tables summarized by group; find and replace (Ctrl+H), a qualitative
@@ -267,6 +270,9 @@ the model's domain, and export the results.
   variable, carried into axis titles, the Methods and Results texts and the exports; exports of
   KoboToolbox and ODK Central forms opened cleanly (metadata dropped, choices as categories, GPS
   points as the project's coordinates, repeat groups with their parents' columns);
+- living reports: next year's data file read into the project (*Edit › Update the data*), the
+  changes made to the data replayed on it, every model fitted again, and what changed said in
+  sentences, down to the values the documents cite;
 - a model's observations chosen by a condition (`site == "S1" & year >= 2010`), applied again at
   each fit;
 - several windows, and views that pop out onto a second screen;
@@ -377,5 +383,5 @@ Nuée is free software under the [GNU General Public License v3.0](LICENSE) or l
 
 The Windows installer and the macOS application bundle R (GPL-2 | GPL-3) with its recommended packages and the R packages
 httpuv, jsonlite, openxlsx, haven, readxl and their dependencies, Electron (MIT), Plotly.js (MIT),
-dockview (MIT), Lucide icons (ISC), and CodeMirror and markdown-it (MIT) for the documents, each under
-its own license.
+dockview (MIT), Lucide icons (ISC), CodeMirror and markdown-it (MIT) for the documents, and
+isomorphic-git (MIT) for the versions, each under its own license.
