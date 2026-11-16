@@ -30,7 +30,10 @@
 #     comme leur ajustement les compte, avant et après la mise à jour ;
 #   - un projet sans source (un tableau collé) mis à jour d'un fichier ; un projet sans étapes dont
 #     une variable calculée garde sa formule ; un tableau sans colonne qui nomme les observations,
-#     retrouvées par leur place.
+#     retrouvées par leur place ;
+#   - les prédictions d'un modèle ajusté avant un nouvel ordre des catégories (une forêt, des arbres
+#     boostés, un arbre, une LDA aux X qualitatifs, un modèle hiérarchique) : les mêmes, sur ses
+#     observations, un jeu de prédiction et un fichier ; après un nom changé, refusées.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
