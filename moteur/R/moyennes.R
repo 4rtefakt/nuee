@@ -501,7 +501,10 @@ ajuster_paires <- function(pa, ajustement, adaptatif = FALSE) {
       k <- (1 + sqrt(1 + 8 * nc)) / 2
       famille[ici] <- k
       p[ici] <- stats::ptukey(sqrt(2) * abs(pa$t[ici]), k, zapsmall(df[ici]), lower.tail = FALSE)
-      critique[ici] <- stats::qtukey(0.95, k, df[ici]) / sqrt(2)
+      # (la valeur critique ne dépend que des degrés de liberté : calculée une fois pour chacun, qtukey
+      # étant lent ; les 19 900 paires d'un facteur de 200 catégories en passaient la moitié de leur temps)
+      u <- unique(df[ici])
+      critique[ici] <- (stats::qtukey(0.95, k, u) / sqrt(2))[match(df[ici], u)]
     } else {
       famille[ici] <- nc
       p[ici] <- stats::p.adjust(brute[ici], "holm")
