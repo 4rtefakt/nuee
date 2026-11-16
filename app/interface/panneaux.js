@@ -2,6 +2,7 @@
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
 import { t, lire, ecrire, langueActuelle, libelleResultat } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
+import { grilleClavier } from './accessibilite.js';
 
 export const PALETTES = {
   defaut: ['#2f6fb5', '#d1495b', '#3b9a5b', '#e09f3e', '#7b5ea7', '#2a9d8f', '#8c564b', '#c2549d', '#6b6b6b', '#a3a322'],
@@ -344,6 +345,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     if (couleur) td.style.boxShadow = `inset 4px 0 0 ${couleur}`;
     if (modifier && c.modifiable) {
       td.title = aideCellule || t('double_clic_modifier');
+      td.setAttribute('aria-readonly', 'false');  // (the keyboard edits it with Enter or F2: accessibilite.js)
       td.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         const initial = texteValeur(v);
@@ -368,14 +370,16 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     }
     return td;
   };
+  const tri = (c) => (loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? 'ascending' : 'descending') : null);
   const tete = el('tr', {}, colonnes.map((c) => el('th', {
-    class: (c.num ? 'num' : '') + (loc.tri && loc.tri.cle === c.cle ? ' trie' : ''), title: c.info || null,
+    class: (c.num ? 'num' : '') + (loc.tri && loc.tri.cle === c.cle ? ' trie' : ''), title: c.info || null, 'aria-sort': tri(c),
     onclick: () => { loc.tri = { cle: c.cle, sens: loc.tri && loc.tri.cle === c.cle ? -loc.tri.sens : 1 }; ctx.rafraichir(); },
     oncontextmenu: menuColonne ? (e) => { e.preventDefault(); e.stopPropagation(); menuColonne(c, e); } : null },
-  c.titre || (c.lecteur ? el('span', { class: 'lecteur-seul' }, c.lecteur) : ''), loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? ' ▲' : ' ▼') : '',
+  c.titre || (c.lecteur ? el('span', { class: 'lecteur-seul' }, c.lecteur) : ''), tri(c) ? el('span', { 'aria-hidden': 'true' }, tri(c) === 'ascending' ? ' ▲' : ' ▼') : '',
   c.sousTitre ? el('span', { class: 'sous-titre' }, c.sousTitre) : null)));
   const ligne = (i) => el('tr', {
     class: (uid && sel.has(uid(i))) || (choisie && choisie(i)) ? 'choisie' : '',
+    'aria-selected': uid || cliquer ? String(!!((uid && sel.has(uid(i))) || (choisie && choisie(i)))) : null,
     onclick: uid ? () => {
       const s = new Set(ctx.selection(idModele));
       const u = uid(i);
@@ -389,12 +393,16 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
   const tranche = Math.max(50, Math.ceil(CELLULES_TRANCHE / colonnes.length));
   let dessinees = Math.min(tranche, montrees.length);
   const corps = el('tbody', {}, montrees.slice(0, dessinees).map(ligne));
-  const defile = el('div', { class: 'defile' }, el('table', { class: 'tableau' }, el('thead', {}, tete), corps));
+  const table = el('table', { class: 'tableau', 'aria-rowcount': montrees.length + 1, 'aria-readonly': modifier ? null : 'true' }, el('thead', {}, tete), corps);
+  const defile = el('div', { class: 'defile' }, table);
+  const plus = () => {
+    if (dessinees >= montrees.length) return false;
+    corps.append(...montrees.slice(dessinees, dessinees + tranche).map(ligne));
+    dessinees += tranche;
+    return true;
+  };
   const suite = () => {
-    while (dessinees < montrees.length && defile.clientHeight && defile.scrollTop + defile.clientHeight > defile.scrollHeight - 600) {
-      corps.append(...montrees.slice(dessinees, dessinees + tranche).map(ligne));
-      dessinees += tranche;
-    }
+    while (defile.clientHeight && defile.scrollTop + defile.clientHeight > defile.scrollHeight - 600 && plus()) { /* the next slice */ }
   };
   defile.addEventListener('scroll', suite, { passive: true });
   const copier = () => {
@@ -413,6 +421,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
       el('button', { class: 'icone-seule', title: t('copier_tableau'), onclick: copier }, icone('copy'))),
     defile);
   requestAnimationFrame(suite);  // (a tall panel shows more than the first slice)
+  grilleClavier(table, loc, plus);  // (the keyboard from cell to cell: accessibilite.js)
   if (loc.focus) { filtre.focus(); filtre.setSelectionRange(filtre.value.length, filtre.value.length); }
   filtre.addEventListener('focus', () => { loc.focus = true; });
   filtre.addEventListener('blur', () => { loc.focus = false; });
@@ -1386,14 +1395,23 @@ function collerCellules(conteneur, ctx, p, loc, d) {
   marquer();
   if (conteneur._collage) return;
   conteneur._collage = true;
+  const ancrer = (td) => {
+    const cle = conteneur._colonnes[td.cellIndex];
+    if (cle === -1 || cle === undefined) return false;
+    loc.ancre = { i: conteneur._lignes[td.parentElement.sectionRowIndex], cle };
+    marquer();
+    return true;
+  };
   conteneur.addEventListener('click', (e) => {
     const td = e.target.closest('tbody td');
     if (!td || !td.closest('.tableau') || e.target.closest('input')) return;
-    const cle = conteneur._colonnes[td.cellIndex];
-    if (cle === -1 || cle === undefined) return;
-    loc.ancre = { i: conteneur._lignes[td.parentElement.sectionRowIndex], cle };
-    marquer();
-    conteneur.focus({ preventScroll: true });
+    // (a cell the keyboard is on keeps it: Ctrl+V reaches the view from there too)
+    if (ancrer(td) && document.activeElement !== td) conteneur.focus({ preventScroll: true });
+  });
+  // (the keyboard going from cell to cell: accessibilite.js, grilleClavier)
+  conteneur.addEventListener('focusin', (e) => {
+    const td = e.target.matches && e.target.matches('tbody td') ? e.target : null;
+    if (td && td.closest('.tableau')) ancrer(td);
   });
   conteneur._collerCellules = async () => {
     const ld = loc.d;
