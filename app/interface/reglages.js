@@ -298,6 +298,7 @@ ajouterTextes({
   seance_note: 'Les projets enregistrés dans un fichier reviennent avec leurs modèles et leurs vues ; un fichier déplacé ou supprimé depuis est nommé. Sans cette case, la page d’accueil propose Rouvrir la dernière séance. Pris en compte tout de suite.',
   seance_bouton: 'Rouvrir la dernière séance', seance_rouverte_un: 'Dernière séance rouverte : un projet.', seance_rouverte: 'Dernière séance rouverte : {n} projets.',
   seance_absents: 'Introuvables (déplacés ou supprimés) : {noms}.', seance_illisibles: 'Pas rouverts : {noms}.',
+  seance_injoignables: 'Pas joignables (un dossier réseau qui ne répond pas) : {noms}.',
 }, {
   reglages: 'Settings…', reglages_titre: 'Settings', r_titre: 'R used by Nuée',
   r_texte: 'Nuée computes with its own R, which comes with it, with every package it needs. It can use an R installed on this computer instead: that R’s packages and .Renviron apply, not your .Rprofile, so that it can’t change the results.',
@@ -330,4 +331,5 @@ ajouterTextes({
   seance_note: 'Projects saved to a file come back with their models and views; a file moved or deleted since is named. Without this box, the start page offers Reopen last session. Taken into account at once.',
   seance_bouton: 'Reopen last session', seance_rouverte_un: 'Last session reopened: one project.', seance_rouverte: 'Last session reopened: {n} projects.',
   seance_absents: 'Not found (moved or deleted): {noms}.', seance_illisibles: 'Not reopened: {noms}.',
+  seance_injoignables: 'Out of reach (a network folder that doesn’t answer): {noms}.',
 });

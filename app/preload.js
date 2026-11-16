@@ -71,10 +71,12 @@ contextBridge.exposeInMainWorld('bureau', {
   lirePressePapiers: () => ipcRenderer.invoke('lire-presse-papiers'),
   enregistrerSous: (nom, filtres) => ipcRenderer.invoke('enregistrer-sous', nom, filtres),
   recents: () => ipcRenderer.invoke('recents'),
-  // the last session's projects (their files, still there or not), this session's told as they
-  // change, and whether they reopen at start-up (File › Settings…; main.js)
+  // the last session's projects (their files; whether each is still there: true, false, or null when
+  // its network folder didn't answer), this session's told as they change, and whether they reopen at
+  // start-up (File › Settings…; main.js)
   seance: {
     precedente: () => ipcRenderer.invoke('seance-precedente'),
+    presents: (chemins) => ipcRenderer.invoke('seance-presents', chemins),
     noter: (chemins) => ipcRenderer.invoke('seance-noter', chemins),
     rouvrir: (oui) => ipcRenderer.invoke('seance-rouvrir', oui),
   },

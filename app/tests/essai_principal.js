@@ -10,7 +10,10 @@
 // - the settings written beside, then put in their place: a write cut short (a full disk) leaves them
 //   as they were; a window's size and place written once it stops moving, and when it closes;
 // - another R that is never ready stopped after its time (shortened here), Nuée's own taking over and
-//   saying why; Nuée's own R, as slow, never stopped.
+//   saying why; Nuée's own R, as slow, never stopped;
+// - the last session's files given to the window without a look at them, then looked at when they
+//   reopen, without holding the main process: a network share that doesn't answer looked at once,
+//   given up after its time (shortened here), its files said out of reach.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -293,6 +296,48 @@ async function autreRJamaisPret(dossier) {
   m2.evaluer('arreterR()');
 }
 
+// The last session's files: given without a look; looked at when they reopen, a share that doesn't
+// answer once, and given up after its time
+async function derniereSeance(dossier) {
+  console.log('La dernière séance : ses fichiers regardés sans attendre');
+  const partage = windows ? '\\\\serveur-absent\\partage' : '/serveur-absent/partage';
+  const surLePartage = (f) => String(f).toLowerCase().startsWith(partage);
+  const regards = { synchrones: 0, partage: 0, enMeme: 0, auPlus: 0 };
+  const espion = { ...fs,
+    existsSync: (f) => { if (surLePartage(f)) regards.synchrones += 1; return fs.existsSync(f); },
+    statSync: (f, o) => { if (surLePartage(f)) regards.synchrones += 1; return fs.statSync(f, o); },
+    promises: { ...fs.promises,
+      // (a share out of reach: a look that never ends)
+      stat: (f, o) => {
+        if (!surLePartage(f)) return fs.promises.stat(f, o);
+        regards.partage += 1;
+        regards.enMeme += 1;
+        regards.auPlus = Math.max(regards.auPlus, regards.enMeme);
+        return new Promise(() => {});
+      } } };
+  const m = chargerMain(dossier, { fs: espion }, [['const DELAI_PRESENCE = 5000;', 'const DELAI_PRESENCE = 500;']]);
+  const ici = path.join(dossier, 'seance');
+  fs.mkdirSync(ici, { recursive: true });
+  const present = path.join(ici, 'comptages.nuee');
+  const autre = path.join(ici, 'autre.nuee');
+  for (const f of [present, autre]) fs.writeFileSync(f, '{}');
+  const fichiers = [present, path.join(ici, 'transects.nuee'), ...[1, 2, 3].map((i) => path.join(partage, `projet${i}.nuee`)), autre];
+  m.evaluer('seancePrecedente = __valeur', fichiers);
+  const demander = demandeur(m);
+  try {
+    const liste = await demander('seance-precedente');
+    verifier(egal(liste.map((x) => x.chemin), fichiers) && regards.synchrones === 0 && regards.partage === 0, 'donnés à la fenêtre sans regarder les fichiers', regards);
+    const debut = Date.now();
+    const presents = await auPlus(Promise.resolve(demander('seance-presents', fichiers)), 10000, 'the look');
+    verifier(egal(presents, [true, false, null, null, null, true]) && Date.now() - debut < 3000,
+      `regardés en ${Date.now() - debut} ms : présent, supprimé, trois sur un partage qui ne répond pas (null), présent`, presents);
+    verifier(regards.partage === 1 && regards.synchrones === 0, 'un seul regard vers ce partage, et sans attendre', regards);
+    verifier(egal(await demander('seance-precedente'), []), 'donnés une fois');
+  } catch (e) {
+    verifier(false, 'regardés sans attendre', e.message);
+  }
+}
+
 async function principal() {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-principal-'));
   try {
@@ -303,6 +348,7 @@ async function principal() {
     await paquetsDUnGreffon(dossier);
     await reglagesEcrits(dossier);
     await autreRJamaisPret(dossier);
+    await derniereSeance(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {

@@ -137,6 +137,28 @@ let rRepliASignaler = null;  // that fallback, until a window tells it (once: 'r
 // (reglages.rouvrirSeance), or from the start page's Reopen last session. Given once, to the first
 // main window that asks: a second window, or the page loaded again, doesn't reopen them twice.
 let seancePrecedente = [];
+// Whether files are there (the last session's, when they reopen), without holding the main process:
+// true, false, or null when their folder didn't answer in time (a network share out of reach, which
+// the system waits for far longer). One look at a time per share, drive or mount, and none more at one
+// that didn't answer: a look at a share out of reach holds one of the few threads Node reads files
+// with until the system gives up.
+const DELAI_PRESENCE = 5000;
+const racineDe = (c) => ((/^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/.exec(c) || /^[A-Za-z]:/.exec(c) || /^\/[^/]+(?:\/[^/]+)?/.exec(c) || [''])[0]).toLowerCase();
+async function fichiersPresents(chemins) {
+  const presents = chemins.map(() => null);
+  const parRacine = new Map();
+  chemins.forEach((c, i) => parRacine.set(racineDe(c), [...(parRacine.get(racineDe(c)) || []), i]));
+  await Promise.all([...parRacine.values()].map(async (indices) => {
+    for (const i of indices) {
+      let minuterie;
+      presents[i] = await Promise.race([fs.promises.stat(chemins[i]).then((s) => s.isFile(), () => false),
+        new Promise((ok) => { minuterie = setTimeout(ok, DELAI_PRESENCE, null); })]);
+      clearTimeout(minuterie);
+      if (presents[i] === null) return;
+    }
+  }));
+  return presents;
+}
 
 // Quarto, if the computer has it: on the PATH, where its installer puts it, or the one RStudio
 // brings along; null otherwise (documents.js then compiles by itself).
@@ -730,12 +752,14 @@ function ipc() {
     return r.canceled ? null : r.filePath;
   });
   recevoir('recents', () => reglages.recents);
-  // (the last session's projects, once: each file, and whether it is still there; this session's, as told)
+  // (the last session's projects, once: their files, whether each is still there asked only when they
+  // reopen, fichiersPresents; this session's, as told)
   recevoir('seance-precedente', () => {
     const liste = seancePrecedente;
     seancePrecedente = [];
-    return liste.map((chemin) => ({ chemin, existe: fs.existsSync(chemin) }));
+    return liste.map((chemin) => ({ chemin }));
   });
+  recevoir('seance-presents', (_, chemins) => fichiersPresents([].concat(chemins || []).filter((c) => typeof c === 'string').slice(0, 50)));
   recevoir('seance-noter', (_, chemins) => {
     const liste = [...new Set([].concat(chemins || []).filter((c) => typeof c === 'string' && c))].slice(0, 50);
     if (JSON.stringify(liste) === JSON.stringify(reglages.seance || [])) return;

@@ -458,21 +458,27 @@ const app = {
 
   // The last session's projects (File › Settings… › At start-up, or the start page's Reopen last
   // session): the files of the saved projects open when Nuée last closed, opened again with their
-  // sessions, once; a file moved or deleted since, or one that doesn't open, is named.
+  // sessions, once; a file moved or deleted since, one on a network folder that doesn't answer, or one
+  // that doesn't open, is named. (Whether each is there is asked now, not at each start: main.js.)
   async rouvrirSeance() {
     const s = etat.seance;
     if (s.rouverte || !s.precedente.length) return;
     s.rouverte = true;
     app.rafraichirExplorateur();  // (the start page's button goes)
+    const chemins = s.precedente.map((x) => x.chemin);
+    const presents = await bureau.seance.presents(chemins).catch(() => chemins.map(() => true));
     const absents = [];
+    const injoignables = [];
     const illisibles = [];
     let n = 0;
-    for (const { chemin, existe } of s.precedente) {
-      if (!existe) { absents.push(chemin); continue; }
+    for (const [i, chemin] of chemins.entries()) {
+      if (presents[i] === false) { absents.push(chemin); continue; }
+      if (presents[i] === null) { injoignables.push(chemin); continue; }
       try { await app.ouvrirChemin(chemin); n += 1; } catch { illisibles.push(chemin); }
     }
     const noms = (l) => l.map((c) => c.split(/[\\/]/).pop()).join(', ');
     statut([t(n === 1 ? 'seance_rouverte_un' : 'seance_rouverte', { n }), absents.length ? t('seance_absents', { noms: noms(absents) }) : '',
+      injoignables.length ? t('seance_injoignables', { noms: noms(injoignables) }) : '',
       illisibles.length ? t('seance_illisibles', { noms: noms(illisibles) }) : ''].filter(Boolean).join(' '), illisibles.length > 0);
   },
 
