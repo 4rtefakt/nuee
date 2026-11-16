@@ -144,6 +144,25 @@ for (t in 1:20) {
 }
 verifier("20 arbres de trois coupures (snip.rpart des autres, puis predict.rpart sur toutes les observations) : les mêmes feuilles", ok)
 
+cat("Les arbres de la fonction C de rpart (arbre_rpart) : ceux de rpart::rpart, à l'identique\n")
+ok <- TRUE
+ncat <- vapply(Xi, function(x) if (is.factor(x)) length(levels(x)) else 0L, 0L, USE.NAMES = FALSE)
+Xm <- matrice_codes(Xi)
+c_rpart <- utils::getFromNamespace("C_rpart", "rpart")
+for (t in 1:30) {
+  set.seed(t)
+  # (une réponse constante, la dernière fois : un arbre sans coupure)
+  z <- if (t == 30) rep(1, N) else stats::rnorm(N) + (Xi$x5 %in% c("limon", "tourbe")) + Xi$x1 / 10
+  d <- sort(sample(N, min(N, 60 + 5 * t)))
+  for (profondeur in 1:4) {
+    ctl <- rpart::rpart.control(maxdepth = profondeur, minbucket = 2 + t %% 7, minsplit = 2 * (2 + t %% 7), cp = 0, xval = 0, maxcompete = 0, maxsurrogate = 0, usesurrogate = 0)
+    a <- rpart::rpart(.z ~ ., data.frame(.z = z[d], Xi[d, ]), method = "anova", control = ctl)
+    b <- arbre_rpart(Xm[d, , drop = FALSE], z[d], ncat, as.double(unlist(ctl)), c_rpart)
+    ok <- ok && identical(parties_arbre(a), parties_arbre(b))
+  }
+}
+verifier("120 arbres de 1 à 4 coupures, des X quantitatifs et qualitatifs, un sans coupure : nœuds, coupures et csplit identiques", ok)
+
 if (avec_gbm) {
   cat("Contre gbm : même graine, mêmes réglages\n")
   suppressMessages(requireNamespace("gbm"))

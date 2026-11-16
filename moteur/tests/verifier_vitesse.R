@@ -17,7 +17,9 @@
 #     chaque terme un à un ;
 #   - construire_bloc : ses termes simples mis à l'échelle d'un coup, comme un à un par echelle()
 #     (UV, Pareto, centrage, aucune ; blocs et modificateurs ; valeurs manquantes, une colonne
-#     constante ou vide ; les centres et poids d'un autre bloc, l'écart-type du modèle complet).
+#     constante ou vide ; les centres et poids d'un autre bloc, l'écart-type du modèle complet) ;
+#   - les arbres boostés : le tirage de chaque arbre comme la boucle de gbm l'écrit, et les arbres
+#     faits par la fonction C de rpart comme par rpart().
 #   Rscript moteur/tests/verifier_vitesse.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -256,6 +258,49 @@ for (seuil in c(Inf, SEUIL_ECART_VC)) {
   verifier("  et son groupe caché, aux centres et poids du sous-modèle",
            meme_bloc(construire_bloc(pb, d$x, obs[hors], imposees = sous, bruts = B[hors, , drop = FALSE], garder_simples = FALSE),
                      bloc_terme_a_terme(d$x, B[hors, , drop = FALSE], imposees = sous)))
+}
+
+cat("Arbres boostés : le tirage de chaque arbre, et les arbres de la fonction C de rpart\n")
+# (le tirage d'avant : la boucle de gbm telle quelle)
+tirage_boucle <- function(n, k) {
+  u <- stats::runif(n)
+  if (k >= n) return(seq_len(n))
+  dans <- logical(n)
+  pris <- 0L
+  for (i in seq_len(n)) {
+    if (u[i] * (n - i + 1) < k - pris) {
+      dans[i] <- TRUE
+      pris <- pris + 1L
+    }
+  }
+  which(dans)
+}
+verifier("le tirage de k observations parmi n : les mêmes, et le même hasard ensuite", all(vapply(1:40, function(s) {
+  n <- 5L + 13L * s
+  k <- floor(c(0.1, 0.5, 0.9, 1)[s %% 4 + 1] * n)
+  set.seed(s)
+  a <- tirage_sac(n, k)
+  ua <- stats::runif(1)
+  set.seed(s)
+  b <- tirage_boucle(n, k)
+  identical(a, b) && identical(ua, stats::runif(1))
+}, TRUE)))
+set.seed(5)
+nx <- 300
+Xb <- data.frame(x1 = round(stats::runif(nx, 0, 30)), x2 = stats::rnorm(nx), x3 = factor(sample(c("a", "b", "c", "d"), nx, TRUE)), x4 = stats::runif(nx))
+eta <- 0.5 * (Xb$x1 > 12) + Xb$x2 * (Xb$x3 %in% c("a", "c"))
+ys <- list(gaussienne = eta + stats::rnorm(nx, 0, 0.3), binomiale = stats::rbinom(nx, 1, stats::plogis(eta)), poisson = stats::rpois(nx, exp(eta)))
+arbre_c <- arbre_rpart
+for (loi in names(ys)) {
+  rb <- list(loi = loi, arbres = 120, profondeur = 3, min_noeud = 5, taux = 0.05, fraction = 0.5)
+  appels <- 0
+  arbre_rpart <- function(...) { appels <<- appels + 1; arbre_c(...) }
+  direct <- boosting(Xb, ys[[loi]], seq_len(250), 251:nx, rb, garder = 120, arret = 80)
+  arbre_rpart <- function(...) stop("la fonction C de rpart n'est pas appelée")
+  par_rpart <- boosting(Xb, ys[[loi]], seq_len(250), 251:nx, rb, garder = 120, arret = 80)
+  arbre_rpart <- arbre_c
+  verifier(sprintf("loi %s, 120 arbres : ceux de la fonction C (vérifiée sur le premier, qui a ses coupures) = ceux de rpart()", loi),
+           appels == 120 && identical(direct, par_rpart))
 }
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
