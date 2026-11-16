@@ -853,10 +853,10 @@ les variables. Elles sont enregistrées avec le projet comme les autres, et gard
 viennent : le texte des Méthodes d'un modèle qui les utilise dit quels fichiers, quelle taille de
 cellules, quel système et quelle méthode les ont données. La console R montre l'appel,
 ajouter_valeurs_rasters(...), et ce qu'il a donné.
-Les fichiers sont lus dans Nuée, sans GDAL, et seulement les bandes de lignes ou les tuiles qui
+Les fichiers sont lus dans Nuée, sans GDAL, et seulement les blocs de lignes ou les tuiles qui
 contiennent des observations : un MNT national reste rapide (une fraction de seconde pour une
 centaine d'observations dans un fichier sans compression ou Deflate, une à trois secondes en LZW,
-décodé en R). Lus : TIFF classique et BigTIFF, en bandes de lignes ou en tuiles, bandes
+décodé en R). Lus : TIFF classique et BigTIFF, en blocs de lignes ou en tuiles, bandes
 entrelacées ou séparées ; sans compression, LZW, Deflate, PackBits, LZMA et ZSTD (ZSTD avec R 4.4
 et après), avec les prédicteurs 2 et 3 ; des entiers de 8, 16 et 32 bits, des réels de 32 et 64
 bits ; la valeur manquante, l'échelle, le décalage et le nom des bandes de GDAL ; le
