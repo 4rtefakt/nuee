@@ -315,8 +315,9 @@ async function dialogueMiseAJour(app, pid) {
 // steps replayed on it, nothing changed yet), then as an update: a version first, the models
 // fitted again, What changed (executer). A source changed since it was read can't be read for
 // it, the removal would bring its new data in too, which the engine refuses: the dialog says so
-// and offers Update the data. `surRetrait`: called once the removal is asked (Data steps closes).
-async function dialogueRetrait(app, pid, etape, surRetrait = () => {}) {
+// and offers Update the data. `quitterEtapes`: called when it leads on, the removal asked or Update
+// the data opened (Data steps closes).
+async function dialogueRetrait(app, pid, etape, quitterEtapes = () => {}) {
   const p = app.projet(pid);
   if (!p) return;
   let info;
@@ -333,7 +334,7 @@ async function dialogueRetrait(app, pid, etape, surRetrait = () => {}) {
     majBouton();
     const quand = new Date();
     d.fermer();
-    surRetrait();
+    quitterEtapes();
     await executer(app, pid, { demande: 'retirer_etape', textes: LIBELLES.retirer_etape, quand, etape: etape.n,
       version: version.voulue() ? t('etapes_version_retrait', { n: etape.n, date: dateDescription(quand) }) : null,
       parametres: { n: etape.n, table: apercu.table() } });
@@ -346,7 +347,7 @@ async function dialogueRetrait(app, pid, etape, surRetrait = () => {}) {
       apercu.zone, changee ? null : version.zone, el('p', { class: 'note' }, t('etapes_retrait_note'))),
     // (the source changed since it was read: update the data first)
     boutons: [{ libelle: t('annuler'), action: () => true }, changee
-      ? { libelle: t('etapes_mettre_a_jour'), principal: true, action: () => { app.miseAJourDonnees(pid); return true; } }
+      ? { libelle: t('etapes_mettre_a_jour'), principal: true, action: () => { quitterEtapes(); app.miseAJourDonnees(pid); return true; } }
       : { libelle: t('etapes_retrait_bouton'), principal: true, action: () => { lancer(); return false; } }] });
   const bouton = d.boite.querySelector('.pied-dialogue button.principal');
   function majBouton() { if (bouton && !changee) bouton.disabled = !apercu.pret() || st.enCours; }

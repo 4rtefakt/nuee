@@ -447,8 +447,9 @@ const app = {
       remplacerPage(m.id, res.id);
       const n = (etat.noeud || '').split('/');
       if (n[1] === 'm' && n[2] === m.id) { n[2] = res.id; etat.noeud = n.join('/'); }
-      await demander('supprimer_modele', { modele: m.id }).catch(() => {});
+      // (its page closed at once, so that its tab and the new one's never show together)
       oublierModele(m.id);
+      await demander('supprimer_modele', { modele: m.id }).catch(() => {});
     }
     await rafraichirProjet(pid);
     diffuser('modeles');
