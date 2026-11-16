@@ -233,9 +233,17 @@ async function rendreCarte(conteneur, ctx, p, loc) {
     // shorter by the cosine of the latitude
     const lonlat = r.systeme.type === 'lonlat';
     const moyenne = py.reduce((s, v) => s + v, 0) / py.length;
+    // (projected coordinates in metres, Lambert-93's 6 399 000: written in full, not Plotly's
+    // 6.399M and 696k; the system's name in the axis titles)
+    const [x0, x1] = etendue(px);
+    const [y0, y1] = etendue(py);
+    const metres = !lonlat && Math.max(Math.abs(x0), Math.abs(x1), Math.abs(y0), Math.abs(y1)) >= 1e4;
+    const precisions = [lonlat || r.systeme.type === 'plan' ? '' : r.systeme.nom, metres ? 'm' : ''].filter(Boolean).join(', ');
+    const titreAxe = (nom) => (precisions ? `${nom} (${precisions})` : nom);
+    const format = metres ? { tickformat: ',d' } : {};
     tracer(ctx, graphe, traces, { title: { text: titre },
-      xaxis: { title: { text: co.nom_x }, zeroline: false, constrain: 'domain' },
-      yaxis: { title: { text: co.nom_y }, zeroline: false, scaleanchor: 'x', scaleratio: lonlat ? 1 / Math.cos((moyenne * Math.PI) / 180) : 1, constrain: 'domain' } });
+      xaxis: { title: { text: titreAxe(co.nom_x) }, zeroline: false, constrain: 'domain', ...format },
+      yaxis: { title: { text: titreAxe(co.nom_y) }, zeroline: false, scaleanchor: 'x', scaleratio: lonlat ? 1 / Math.cos((moyenne * Math.PI) / 180) : 1, constrain: 'domain', ...format } });
   }
   brancherSelection(graphe, ctx, pid);
 }
