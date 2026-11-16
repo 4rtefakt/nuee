@@ -1479,6 +1479,7 @@ etat_complet <- function() {
        code_interdit = code_interdit(), greffons = greffons_interface())
 }
 
+# (chaque demande est décrite dans moteur/protocole.json, que verifier_protocole.R confronte à cette liste)
 DEMANDES <- list(
   etat = function(q) etat_complet(),
   # les noms des projets aux changements non enregistrés (main.js, avant de fermer)
@@ -2278,6 +2279,9 @@ DEMANDES <- list(
 # Les demandes propres d'une autre analyse (analyses.R) : chaque fonction demande_analyse_<nom>(q)
 # du moteur est la demande <nom>.
 for (f in ls(globalenv(), pattern = "^demande_analyse_")) DEMANDES[[sub("^demande_analyse_", "", f)]] <- get(f, envir = globalenv())
+
+# La demande protocole, et la description de chaque demande (moteur/protocole.json, docs/protocole.md).
+source(file.path(racine, "moteur", "protocole.R"), encoding = "UTF-8")
 
 # Les valeurs non finies (NaN, Inf) deviennent des valeurs manquantes en JSON.
 fini <- function(x) {
