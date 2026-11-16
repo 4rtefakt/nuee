@@ -1334,7 +1334,9 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     const vides = x.reduce((s, y) => s + (y === null ? 1 : 0), 0);
     const distinctes = new Set(x.filter((y) => y !== null)).size;
     const valeurs = [vides ? t('atelier_vides_n', { n: vides }) : '', t('atelier_distinctes', { n: distinctes })].filter(Boolean).join(' · ');
-    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i],
+    // (a column of whole numbers, years or counts, without decimals: 2008, not 2008.0000)
+    const entiers = x.every((y) => typeof y !== 'number' || Number.isInteger(y));
+    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i], decimales: entiers ? 0 : undefined,
       sousTitre: [v.unite, resume ? valeurs : ''].filter(Boolean).join(' · ') || null,
       info: [v.description, `${d.variables[i]}${v.unite ? ` (${v.unite})` : ''} · ${v.qualitative ? t([].concat(v.categories || []).length === 1 ? 'atelier_qualitative_une' : 'atelier_qualitative', { n: [].concat(v.categories || []).length }) : t('atelier_quantitative')} · ${valeurs}`,
         t('atelier_entete_aide')].filter(Boolean).join('\n') };
