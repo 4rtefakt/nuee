@@ -296,6 +296,9 @@ const app = {
     }
     if (!bureau && !chemin) telecharger(r.chemin);
     statut(`${t('enregistre')} ${r.chemin}`);
+    // (the project file, with its models, in File › Open recent and on the start page, where only the
+    // table it came from was)
+    if (bureau) recents = await bureau.ajouterRecent(r.chemin);
     await rafraichirProjet(pid);
     sauvegarderSecours();  // its recovery copy, now older than the file, leaves the index
     diffuser('modeles');
