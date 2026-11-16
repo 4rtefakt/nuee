@@ -14,6 +14,13 @@ on:
   release:
     types: [published]
 
+# A newer push to the same branch (or pull request) cancels the runs it makes useless: a branch
+# pushed several times an hour otherwise queues full runs, macOS's included, behind one another. A
+# published release always runs to the end: it attaches the packages.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
 jobs:
   windows:
     runs-on: windows-latest
