@@ -217,6 +217,19 @@ verifier("la classe d'une LDA : ses catégories gardées avec le modèle ; un no
            grepl("ont changé depuis l'ajustement", attr(aligner_categories(r3, d_lda, vues_lda), "perimee") %||% "") &&
            grepl("ont changé depuis l'ajustement", attr(aligner_categories(r2, d_lda, vues_lda), "perimee") %||% "") &&
            is.null(attr(aligner_categories(r1, d_lda, vues_lda), "perimee")))
+# Son export vers R après le nouvel ordre (serveur.R : script_demande) : sur le projet tel qu'il l'a vu
+# (projet_tel_ajuste), avec la définition de son ajustement, le script redonne ses probabilités, ses
+# coefficients, sa validation croisée ; sur le projet d'aujourd'hui, ses classes viendraient dans un
+# autre ordre
+m_lda <- ajuster(p4, d_lda)
+vu <- projet_tel_ajuste(r1, ordres_categories(p4))
+r_vu <- ecrire_script(vu, d_lda, file.path(dossier, "lda_vu.R"), "moteur", m = m_lda)
+r_auj <- ecrire_script(r1, aligner_categories(r1, d_lda, vues_lda), file.path(dossier, "lda_aujourdhui.R"), "moteur", m = m_lda)
+verifier("le script d'une LDA ajustée avant un nouvel ordre de ses classes : sur le projet tel qu'elle l'a vu, ses résultats",
+         identical(categories_de(vu, "habitat"), categories_de(p4, "habitat")) && identical(valeurs(vu, "habitat"), valeurs(p4, "habitat")) &&
+           identical(unname(vu$donnees[, as.character(u4("habitat"))]), unname(p4$donnees[, as.character(u4("habitat"))])) &&
+           is.null(r_vu$ecart) && grepl("probabilites", r_auj$ecart %||% "") &&
+           identical(projet_tel_ajuste(r3, ordres_categories(p4)), r3) && identical(projet_tel_ajuste(p4, ordres_categories(p4)), p4))
 d_pls <- definir_modele(p4, "PLS", x = u4("habitat", "altitude"), y = u4("densite"), observations = obs, A = 1)
 p4b <- p4
 p4b$models <- list(d_pls)

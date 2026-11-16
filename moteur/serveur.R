@@ -491,8 +491,9 @@ ajuster_et_garder <- function(p, d, m = NULL) {
     if (!identical(ancien, d)) p$modifie <- TRUE  # recalculer un modèle enregistré ne change pas le projet
     etat$projets[[p$id]] <- p
   }
-  # (les catégories de ses variables qualitatives, telles qu'il les a vues : modele(), atelier.R)
-  etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m, categories = categories_definition(p, d))
+  # (les catégories de ses variables qualitatives, telles qu'il les a vues : modele(), atelier.R ;
+  # leur ordre dans tout le projet, pour l'écrire en R tel qu'il a été ajusté : script_demande)
+  etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m, categories = categories_definition(p, d), ordres = ordres_categories(p))
   resultat_modele(id)
 }
 
@@ -747,6 +748,12 @@ script_demande <- function(q) {
   options <- list(donnees = if (identical(q$donnees, "csv")) "csv" else "script", renv = isTRUE(q$renv),
                   rdata = isTRUE(q$rdata), rproj = isTRUE(q$rproj), version = as.character(q$version %||% ""),
                   langue = if (identical(q$langue, "en")) "en" else "fr")
+  # (un modèle seul : sur le projet tel qu'il l'a vu, ses catégories dans l'ordre d'alors, avec la
+  # définition de son ajustement ; une autre analyse en dépend, atelier.R : projet_tel_ajuste)
+  vu <- etat$modeles[[ids[1]]]
+  if (!seance && length(vu$ordres)) {
+    return(do.call(ecrire_script, c(list(projet_tel_ajuste(projet(e$projet), vu$ordres), vu$definition, chemin, file.path(racine, "moteur"), m = e$modele), options)))
+  }
   if (!seance) return(do.call(ecrire_script, c(list(projet(e$projet), e$definition, chemin, file.path(racine, "moteur"), m = e$modele), options)))
   es <- lapply(ids, modele, a_jour = TRUE)
   if (!all(vapply(es, function(x) identical(x$projet, e$projet), FALSE)))

@@ -494,6 +494,37 @@ aligner_categories <- function(projet, d, vues) {
   aligne
 }
 
+# Les catégories de chaque variable qualitative du projet, dans leur ordre, par numéro de variable
+# (gardées avec un modèle de la séance quand il est ajusté : serveur.R, ajuster_et_garder).
+ordres_categories <- function(projet) {
+  q <- Filter(function(v) length(v$categories) > 0, projet$variables)
+  stats::setNames(lapply(q, function(v) as.character(v$categories)), vapply(q, function(v) as.character(v$uid), ""))
+}
+
+# Le projet tel qu'un modèle l'a vu (`ordres` : ordres_categories à son ajustement) : les catégories
+# de chaque variable dans l'ordre d'alors, celles venues depuis après elles ; une variable dont une
+# catégorie d'alors n'est plus là reste telle qu'elle est (le modèle est alors à ajuster à nouveau
+# s'il la prend : aligner_categories). Un nouvel ordre ne rend pas un modèle à ajuster à nouveau,
+# mais les résultats d'une autre analyse suivent l'ordre des catégories (les classes d'une LDA et
+# ses coefficients, les centroïdes d'une RDA ou d'une PCoA, les sites et covariables de TRIM, les
+# strates d'un échantillonnage par distances), et un arbre ou une forêt de classement en dépendent :
+# son export vers R s'écrit sur ce projet, avec la définition de son ajustement, et redonne ainsi
+# ses résultats (serveur.R : script_demande).
+projet_tel_ajuste <- function(projet, ordres) {
+  uids <- vapply(projet$variables, function(v) as.character(v$uid), "")
+  for (u in intersect(names(ordres), colnames(projet$donnees))) {
+    i <- match(u, uids)
+    actuelles <- as.character(projet$variables[[i]]$categories %||% character(0))
+    vues <- as.character(ordres[[u]])
+    if (!length(actuelles) || !all(vues %in% actuelles)) next
+    ordre <- c(vues, setdiff(actuelles, vues))
+    if (identical(ordre, actuelles)) next
+    projet$donnees[, u] <- match(actuelles, ordre)[projet$donnees[, u]]
+    projet$variables[[i]]$categories <- ordre
+  }
+  projet
+}
+
 # ---------------------------------------------------------------- unités et descriptions
 
 # L'unité et la description des variables (Édition › Variables, ou l'en-tête d'une colonne de la
