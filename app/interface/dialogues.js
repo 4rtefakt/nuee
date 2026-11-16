@@ -67,8 +67,39 @@ function editeurTransfo(initial, choisir, apres) {
 //     options sent (p: the project summary, its variables and IDs);
 //   onglets: the tabs it has, when not all four; sansEchelle: true when no default scaling applies;
 //     offert(): false when it isn't offered (an organisation's policy); avantAjuster(q): awaited before
-//     the fit (an R-code model's code approved: vues_code.js); surErreur(st, e): told of a fit's error.
+//     the fit (an R-code model's code approved: vues_code.js); surErreur(st, e): told of a fit's error;
+//   familleType: the family it goes under in the Type list when none lists it (FAMILLES_TYPES).
 export const ANALYSES = {};
+
+// New model's Type list, by family: each family's `types` in their order, then the analyses that
+// name it (ANALYSES[type].familleType), and the types of no family under Other, last. A module adds
+// a family of its own with FAMILLES_TYPES.push({ cle, libelle: () => its name, types: [] }), its
+// analyses naming it; a family without `libelle` is named by the string types_<cle> (i18n.js).
+export const FAMILLES_TYPES = [
+  { cle: 'multivariees', types: ['PCA', 'PLS', 'PLS-DA', 'OPLS', 'OPLS-DA', 'CLASSES'] },
+  { cle: 'regressions', types: ['LM', 'LMM', 'GLM', 'GAM'] },
+  { cle: 'communautes', types: ['RDA', 'CCA', 'CA', 'INDVAL', 'PCOA', 'NMDS', 'PERMANOVA', 'MANTEL'] },
+  { cle: 'classement', types: ['TREE', 'LDA', 'KMEANS', 'FOREST', 'BOOST'] },
+  { cle: 'suivi', types: ['TRIM', 'DISTANCE'] },
+];
+
+// The types New model offers, by family: [{ cle, libelle, types: [[type, its name]] }], without
+// empty families (also Find a command's, palette.js). courant: a type offered whatever an
+// organisation's policy says (the model's own, when it is edited).
+export function typesModele(courant = null) {
+  const tous = [['PCA', langueActuelle() === 'fr' ? 'ACP / PCA' : 'PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')],
+    ['LM', t('type_lm')], ['LMM', t('type_lmm')], ['GLM', t('type_glm')], ['GAM', t('type_gam')]]
+    .concat(Object.entries(ANALYSES).filter(([k, a]) => !a.offert || a.offert() || k === courant).map(([k, a]) => [k, a.libelle()]));
+  const groupes = FAMILLES_TYPES.map((f) => ({ cle: f.cle, libelle: f.libelle ? f.libelle() : t(`types_${f.cle}`), types: [], ordre: [].concat(f.types || []) }));
+  const autres = { cle: 'autres', libelle: t('types_autres'), types: [], ordre: [] };
+  for (const x of tous) {
+    const g = groupes.find((f) => f.ordre.includes(x[0])) || groupes.find((f) => f.cle === (ANALYSES[x[0]] || {}).familleType) || autres;
+    g.types.push(x);
+  }
+  const rang = (g, k) => (g.ordre.includes(k) ? g.ordre.indexOf(k) : g.ordre.length);  // (a stable sort: the others in their order)
+  return [...groupes, autres].filter((g) => g.types.length)
+    .map((g) => ({ cle: g.cle, libelle: g.libelle, types: [...g.types].sort((a, b) => rang(g, a[0]) - rang(g, b[0])) }));
+}
 
 // the ways to cross-validate a PCA, PLS or OPLS (moteur/R/validation_croisee.R: MODES_VALIDATION)
 const MODES_VALIDATION = ['sans_fuite', 'centres', 'complet'];
@@ -375,10 +406,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       if (!r && echelleType() !== avant) st.echelle = echelleType();
       rendre();
     } },
-      [['PCA', langueActuelle() === 'fr' ? 'ACP / PCA' : 'PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')],
-        ['LM', t('type_lm')], ['LMM', t('type_lmm')], ['GLM', t('type_glm')], ['GAM', t('type_gam')]]
-        .concat(Object.entries(ANALYSES).filter(([k, a]) => !a.offert || a.offert() || k === st.type).map(([k, a]) => [k, a.libelle()]))
-        .map(([k, n]) => el('option', { value: k, selected: k === st.type }, n))),
+      // (by family: Multivariate analyses, Regressions, Species communities...)
+      typesModele(st.type).map((g) => el('optgroup', { label: g.libelle },
+        g.types.map(([k, n]) => el('option', { value: k, selected: k === st.type }, n))))),
     analyse() && analyse().note ? [el('label', {}, ''), el('p', { class: 'note' }, analyse().note())] : null,
     analyse() && analyse().champs ? analyse().champs(st, rendre, p) : null,
     regression() ? [el('label', {}, ''), el('p', { class: 'note' }, t({ LM: 'lm_note', LMM: 'lmm_note', GLM: 'glm_note', GAM: 'gam_note' }[st.type]))] : null,
