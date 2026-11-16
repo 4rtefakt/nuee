@@ -366,8 +366,9 @@ dossier <- tempfile("classement")
 dir.create(dossier)
 rscript <- file.path(R.home("bin"), "Rscript")
 lanceur <- file.path(dossier, "lancer.R")
+# (les objets nommés, et tous ceux du script : ecart_arbre, ecart_lda et ecart_kmeans les comparent au modèle)
 writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
-             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+             ".r <- mget(union(strsplit(.a[3], \",\")[[1]], ls(globalenv())), envir = globalenv(), ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
 lancer <- function(script, objets) {
   sortie <- tempfile("sortie", dossier, ".rds")
   ici <- setwd(dossier)
@@ -388,11 +389,14 @@ for (k in cas) {
     TREE = proche(s[[nm("elagage")]], e$modele$complet$cptable) && proche(s[[nm("vc")]], if (e$modele$classement) e$modele$vc$proba else e$modele$vc$prediction),
     LDA = proche(s[[nm("resultat")]][[nm("proba")]], e$modele$proba) && proche(s[[nm("vc")]], e$modele$vc$proba),
     KMEANS = identical(as.numeric(s[[nm("groupe")]]), as.numeric(e$modele$groupe)) && proche(s[[nm("r2")]], e$modele$r2))
+  # (et tout ce que le moteur compare quand il écrit le script : règles, importance, stabilité, jeu de
+  # test, coefficients, structure, centres, silhouettes, choix de k…)
+  difference <- if (length(s)) switch(e$modele$type, TREE = ecart_arbre, LDA = ecart_lda, KMEANS = ecart_kmeans)(e$modele, list2env(s), k$langue)
   texte <- readLines(r$script, encoding = "UTF-8")
-  verifier(sprintf("%s (%s, %s) : sans écart vu par le moteur ; lancé seul, mêmes résultats ; sans library()", k$id, k$quoi, k$langue),
-           is.null(r$ecart) && memes && !any(grepl("library(", sub("#.*$", "", texte), fixed = TRUE)) &&
+  verifier(sprintf("%s (%s, %s) : sans écart vu par le moteur ; lancé seul, mêmes résultats, tous ceux que le moteur compare ; sans library()", k$id, k$quoi, k$langue),
+           is.null(r$ecart) && memes && is.null(difference) && !any(grepl("library(", sub("#.*$", "", texte), fixed = TRUE)) &&
              (k$langue == "fr" || !any(grepl("arbre_elague|validation_lda|kmeans_ordonne", texte))))
-  if (!is.null(r$ecart) || !isTRUE(memes)) cat("    écart :", r$ecart, "/", utils::tail(attr(s, "messages"), 3), "\n")
+  if (!is.null(r$ecart) || !isTRUE(memes) || !is.null(difference)) cat("    écart :", r$ecart, "/", difference, "/", utils::tail(attr(s, "messages"), 3), "\n")
 }
 for (ext in c("Rmd", "qmd")) {
   e <- etat$modeles$A2
