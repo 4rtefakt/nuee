@@ -304,6 +304,7 @@ resume_projet <- function(p) {
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
        figures = lapply(p$figures %||% list(), function(f) list(id = f$id, titre = f$titre %||% "")),
        kobo = p$import_collecte,  # (les réglages d'un import de KoboToolbox ou d'ODK, pour le refaire : kobo.R)
+       a_source = !is.null(p$source_donnees),  # (un fichier d'où viennent ses données, que la demande etapes décrit : etapes.R)
        lecture_seule = p$lecture_seule,  # (une ancienne version ouverte en lecture seule : sa source, son oid, sa date ; ouvrir)
        historique = sum(vapply(p$audit %||% list(), function(s) length(s$events), 0)),
        predictions = lapply(p$prediction_sets, function(s) list(nom = s$name %||% "", n_obs = length(s$observations))))
@@ -975,25 +976,39 @@ resumer_groupes_demande <- function(q) {
 
 # ---------------------------------------------------------------- les rapports vivants
 
-# La source et les étapes d'un projet (etapes.R), pour l'interface : DEMANDES$etapes.
+# Les données d'un projet sont-elles encore celles de sa source et de ses étapes (etapes.R :
+# donnees_conformes) ? Gardé pour chaque révision de ses données (reviser) et l'empreinte qu'il garde :
+# l'empreinte des données, qui les parcourt toutes, ne se refait qu'après un changement.
+conformite_projet <- function(p) {
+  g <- etat$conformites[[p$id]]
+  revision <- etat$revisions[[p$id]] %||% 0
+  if (!is.null(g) && identical(g$revision, revision) && identical(g$empreinte, p$empreinte_donnees)) return(g$valeur)
+  v <- donnees_conformes(p)
+  etat$conformites[[p$id]] <- list(revision = revision, empreinte = p$empreinte_donnees, valeur = v)
+  v
+}
+
+# La source et les étapes d'un projet (etapes.R), pour l'interface : DEMANDES$etapes. q$conformes
+# FALSE : sans dire si les données sont encore celles des étapes (conformes, raison).
 etapes_demande <- function(q) {
   p <- projet(q$projet)
   dossier <- dossier_projet(p)
   s <- p$source_donnees
   source <- if (is.list(s)) c(etat_fiche(s, dossier), list(table = if (nzchar(premier_texte(s$table))) premier_texte(s$table), lecteur = premier_texte(s$lecteur)),
                               if (is.list(s$formulaire)) list(formulaire = etat_fiche(s$formulaire, dossier)))
-  conformes <- donnees_conformes(p)
-  list(source = source,
-       etapes = lapply(seq_along(p$etapes), function(k) {
-         e <- p$etapes[[k]]
-         list(n = k, etiquette = premier_texte(e$etiquette), date = premier_texte(e$date), demande = premier_texte(e$demande),
-              fichiers = lapply(e$fichiers %||% list(), etat_fiche, dossier))
-       }),
-       conformes = conformes,
-       raison = if (isFALSE(conformes)) traduire("Les données ont changé hors des étapes (dans la console R, ou dans une version de Nuée d'avant la 1.1) : les mettre à jour reprendrait celles que la source et les étapes donnent.",
-                                                  "The data changed outside the steps (in the R console, or in a version of Nuée before 1.1): updating them would bring back those the source and the steps give.")
-                else if (is.na(conformes)) traduire("Projet d'une version de Nuée d'avant la 1.1 : ses changements d'alors ne sont pas des étapes.",
-                                                    "A project from a version of Nuée before 1.1: its changes from then aren't steps.") else "")
+  r <- list(source = source,
+            etapes = lapply(seq_along(p$etapes), function(k) {
+              e <- p$etapes[[k]]
+              list(n = k, etiquette = premier_texte(e$etiquette), date = premier_texte(e$date), demande = premier_texte(e$demande),
+                   fichiers = lapply(e$fichiers %||% list(), etat_fiche, dossier))
+            }))
+  if (isFALSE(q$conformes)) return(r)
+  conformes <- conformite_projet(p)
+  c(r, list(conformes = conformes,
+            raison = if (isFALSE(conformes)) traduire("Les données ont changé hors des étapes (dans la console R, ou dans une version de Nuée d'avant la 1.1) : les mettre à jour reprendrait celles que la source et les étapes donnent.",
+                                                       "The data changed outside the steps (in the R console, or in a version of Nuée before 1.1): updating them would bring back those the source and the steps give.")
+                     else if (is.na(conformes)) traduire("Projet d'une version de Nuée d'avant la 1.1 : ses changements d'alors ne sont pas des étapes.",
+                                                         "A project from a version of Nuée before 1.1: its changes from then aren't steps.") else ""))
 }
 
 # Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z. Les
@@ -1617,7 +1632,9 @@ DEMANDES <- list(
   # lu, `actuel` : sa taille et sa date maintenant ; null sans source), `etapes` (n, etiquette, date,
   # demande, et les fichiers qu'elle lit, comme `source`), `conformes` (les données sont encore
   # celles que la source et les étapes donnent ; false : changées autrement, dans la console R ou par
-  # une version d'avant la 1.1 ; null : on ne sait pas, un projet d'avant la 1.1) et sa `raison`.
+  # une version d'avant la 1.1 ; null : on ne sait pas, un projet d'avant la 1.1) et sa `raison` ; avec
+  # q$conformes false, ni l'un ni l'autre (l'empreinte des données, gardée pour chaque révision, n'est
+  # pas faite). resume_projet dit déjà si un projet a une source : `a_source`.
   etapes = etapes_demande,
   # L'étape q$n retirée : la source relue, les autres étapes rejouées, les données remplacées comme
   # par mettre_a_jour (le même rapport, et `projet`), un seul Ctrl+Z ; refusé sans le fichier source.

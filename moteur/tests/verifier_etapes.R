@@ -399,7 +399,19 @@ verifier("mis à jour de cette feuille, devenue celle de la source : le retrait 
            identical(unname(valeurs(projet(xl$id), "x1")[2]), df$x1[2]))
 
 cat("Des données changées hors des étapes\n")
-etat$projets[[id]]$donnees[1, 1] <- 1234  # (la console R : P1$donnees[1, 1] <- 1234)
+verifier("resume_projet dit qu'un projet a une source (a_source) ; etapes sans q$conformes ne fait pas l'empreinte des données",
+         isTRUE(resume_projet(projet(id))$a_source) && isFALSE(demande("coller", list(texte = "a\tb\n1\t2\n3\t4"))$a_source) &&
+           !any(c("conformes", "raison") %in% names(demande("etapes", list(projet = id, conformes = FALSE)))) && isTRUE(demande("etapes", list(projet = id))$conformes))
+verifier("la conformité gardée pour la révision des données : l'empreinte n'est refaite qu'après un changement",
+         identical(etat$conformites[[id]]$revision, etat$revisions[[id]] %||% 0) && {
+           garde <- etat$conformites[[id]]
+           etat$conformites[[id]]$valeur <- "gardée"
+           vue <- identical(demande("etapes", list(projet = id))$conformes, "gardée")
+           etat$conformites[[id]] <- garde
+           vue
+         })
+etat$projets[[id]]$donnees[1, 1] <- 1234  # (la console R : P1$donnees[1, 1] <- 1234, une révision des données)
+reviser(id)
 e <- demande("etapes", list(projet = id))
 verifier("vu : les données ne sont plus celles des étapes, et la raison", isFALSE(e$conformes) && grepl("hors des étapes", e$raison))
 demande("modifier_valeur", list(projet = id, observation = o("S1-2017"), variable = u("x1"), valeur = "1"))
@@ -601,7 +613,7 @@ cat("En anglais\n")
 options(nuee.langue = "en")
 en <- demande("mettre_a_jour", list(projet = id, chemin = manque, apercu = TRUE))
 verifier("the reasons of skipped steps in English", grepl("missing from the data", en$etapes[[2]]$raison) &&
-           grepl("outside the steps", { etat$projets[[id]]$donnees[2, 4] <- -1; demande("etapes", list(projet = id))$raison }))
+           grepl("outside the steps", { etat$projets[[id]]$donnees[2, 4] <- -1; reviser(id); demande("etapes", list(projet = id))$raison }))
 options(nuee.langue = "fr")
 
 # Le R d'une distribution Linux plus ancienne que 4.5 n'a pas tools::sha256sum : ses empreintes sont des

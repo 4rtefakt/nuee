@@ -2237,8 +2237,12 @@ async function principal() {
       const m = await api('ajuster', { projet: q.id, type: 'LM', x: [v.x], y: [v.y], nom: 'L' });
       let e = await api('etapes', { projet: q.id });
       verifier(e.source && e.source.existe && e.source.modifie === false && e.source.lecteur === 'tableau' && e.source.chemin.endsWith('releves.csv')
-        && e.etapes.length === 2 && e.etapes[0].demande === 'modifier_valeur' && e.etapes[1].etiquette === 'variable xy' && e.conformes === true,
+        && e.etapes.length === 2 && e.etapes[0].demande === 'modifier_valeur' && e.etapes[1].demande === 'variable_calculee' && e.conformes === true,
       `etapes : ${JSON.stringify(e)}`);
+      // whether a project has a source, in its summary; etapes without the data's fingerprint
+      const leger = await api('etapes', { projet: q.id, conformes: false });
+      verifier(q.a_source === true && (await api('projet', { projet: p.id })).a_source === true && !('conformes' in leger) && leger.etapes.length === 2,
+        `a_source : ${q.a_source} ; etapes sans empreinte : ${JSON.stringify(Object.keys(leger))}`);
       fs.writeFileSync(releves, ['y,nom,x,zone', ...lignes(8).map((l) => [l[3], l[0], l[2], l[1]].join(','))].join('\n'));
       e = await api('etapes', { projet: q.id });
       verifier(e.source.modifie === true && e.source.actuel.taille !== e.source.taille, `le fichier changé : ${JSON.stringify(e.source)}`);
