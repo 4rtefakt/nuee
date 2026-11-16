@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld('bureau', {
   quarto: (chemin, format, options) => ipcRenderer.invoke('quarto', chemin, format, options || {}),
   // Zotero on this computer, read only (zotero.js)
   zotero: (chemin, delai) => ipcRenderer.invoke('zotero', chemin, delai),
+  // Zenodo, for a reproducibility package (paquet.js, zenodo.js): whether a token is kept for a host
+  // (the main process never gives it back), keeping one, forgetting it, and the package (a .zip the
+  // engine wrote in its session folder) deposited as a draft, never published
+  zenodoEtat: (hote) => ipcRenderer.invoke('zenodo-etat', hote),
+  zenodoJeton: (hote, jeton) => ipcRenderer.invoke('zenodo-jeton', hote, jeton),
+  zenodoOublier: (hote) => ipcRenderer.invoke('zenodo-oublier', hote),
+  zenodoDeposer: (hote, chemin, meta) => ipcRenderer.invoke('zenodo-deposer', hote, chemin, meta),
   // closing with "Save and close": the window saves its projects, then answers
   surEnregistrerTout: (f) => ipcRenderer.on('enregistrer-tout', async () => {
     let ok = false;
