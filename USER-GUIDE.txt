@@ -526,6 +526,7 @@ their values:
   {{M1.gain}}  {{M1.vip.sugar}}  {{M1.coef.sugar}} (scaled coefficient and its 95 % interval)
   {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
   {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
+  {{M5.valeurs_predites.year}} (its predicted values on the response scale, Effects › Scale)
   {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
   {{M1.resultats}} (Results text: the fit, each coefficient with its interval and p, as a factor
   or an odds ratio for a log or logit link, the significant terms, curves, random effects; for a
@@ -1147,8 +1148,9 @@ Q2 and RMSEcv; AIC; the variance of each random effect and its share (with rando
 above); φ of the
 autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
 with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
-the odds ratio; a GAM whose terms are all curves, y ~ s(year) + (1 | site), has only its
-intercept there: it opens on Effects and Residuals, and its Coefficients point to Effects),
+the odds ratio, which the box "exp(estimate)" plots instead, on a log axis through 1; a GAM
+whose terms are all curves, y ~ s(year) + (1 | site), has only its intercept there: it opens on
+Effects and Residuals, and its Coefficients point to Effects),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
 95 % band and the observed values below it: a GAM's curves, straight lines otherwise, one per
 category for a term crossed with a qualitative variable or a curve per category, with the
@@ -1158,7 +1160,20 @@ slope with 95 % simultaneous bands from 2000 draws of the coefficients, the rang
 slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
 nearly a straight line, as Simpson (2018) reads thresholds; a curve with one per category (a
 curve per category, or a curve crossed with a qualitative variable) has the thresholds of the
-category chosen in the list beside the box, over the variable's percentiles in that category),
+category chosen in the list beside the box, over the variable's percentiles in that category;
+Scale › Predicted y: the values of the response the model predicts as the term's variable
+varies, with their 95 % band, that of the linear predictor (±1.96 standard errors) brought back
+by the inverse of the link (exp, inverse logit; a count's expected value for the zero-inflated
+Poisson), the predicted skylarks by year in each habitat rather than the log-scale effect. What
+is held fixed, which the note under the plot says: the other quantitative variables at their mean
+over the model's observations (before their transformation, as for the adjusted means), their
+curves at that point; the qualitative variables in their reference category, except those
+crossed with the term, each category of which has its curve over its own values (and a curve per
+category its level); the random effects at 0 (the population, no group's own departure); an
+effort of 1 (densities); the spatial smooth at the mean point of the coordinates. With the
+identity link they are the predicted values of the modelled response (transformed, if it is).
+Export to R computes and draws the same (predicted_values, a plot per term), and a document cites
+them as {{M5.valeurs_predites.year}}),
 Observed / predicted, Residuals
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
 distance for a linear regression; the quantile residuals too for counts, presence-absence and

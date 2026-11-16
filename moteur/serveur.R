@@ -1810,6 +1810,12 @@ DEMANDES <- list(
   effets = function(q) {
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    # (q$echelle = "reponse" : les valeurs prédites sur l'échelle de la réponse, moyennes.R : effets_reponse,
+    # sur la grille des moyennes ajustées ; calculées une fois)
+    if (identical(as.character(q$echelle)[1], "reponse")) {
+      if (is.null(e$modele$effets_reponse)) etat$modeles[[q$modele]]$modele$effets_reponse <- effets_reponse(projet(e$projet), e$modele, e$definition)
+      return(c(list(modele = q$modele, echelle = "reponse"), etat$modeles[[q$modele]]$modele$effets_reponse))
+    }
     if (is.null(e$modele$effets)) etat$modeles[[q$modele]]$modele$effets <- effets_regression(e$modele)
     list(modele = q$modele, lien = e$modele$lien, effets = etat$modeles[[q$modele]]$modele$effets)
   },

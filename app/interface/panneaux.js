@@ -2765,24 +2765,30 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
   const graphe = el('div', { class: 'graphe' });
   const table = el('div', { class: 'bas' });
   const multiplicatif = ['log', 'logit'].includes(m.lien);
-  conteneur.replaceChildren(el('p', { class: 'note' }, [t('coefficients_regression_note', { y: m.noms_y[0] }),
+  // (a log or logit link: the estimates as exp(β), multiplicative effects or odds ratios, on a log axis through 1)
+  const enExp = multiplicatif && !!loc.exp;
+  const quoiExp = t(m.lien === 'logit' ? 'rapport_cotes' : 'effet_multiplicatif');
+  const caseExp = multiplicatif ? outils(el('label', { class: 'champ', title: t(m.lien === 'logit' ? 'coefficients_exp_aide_logit' : 'coefficients_exp_aide_log') },
+    el('input', { type: 'checkbox', checked: enExp, onchange: (ev) => { loc.exp = ev.target.checked; ctx.rafraichir(); } }), t('coefficients_exp', { quoi: quoiExp }))) : null;
+  conteneur.replaceChildren(caseExp, el('p', { class: 'note' }, [t('coefficients_regression_note', { y: m.noms_y[0] }),
     m.lien && m.lien !== 'identity' ? t(m.famille === 'poisson_zi' ? 'coefficients_lien_zip' : multiplicatif ? `coefficients_lien_${m.lien}` : 'coefficients_lien', { lien: m.lien }) : '',
     ...notesTermesRetires(m)].filter(Boolean).join(' ')), graphe, table);
   const idx = termes.map((_, i) => i).filter((i) => termes[i] !== '(Intercept)');
+  const v = (x) => (enExp ? Math.exp(x) : x);
   // (a GAM made only of curves: no coefficient to plot; its curves are in Effects)
   if (!idx.length && seulementCourbes(m)) {
     const [avant, apres] = t('coefficients_courbes_seules').split('{lien}');
     graphe.replaceWith(el('p', { class: 'infos' }, avant, el('a', { href: '#', style: { color: 'var(--accent)' },
       onclick: (e) => { e.preventDefault(); ctx.ouvrirVue('effets', m.id); } }, `${t('m_graphiques')} › ${t('effets')}`), apres));
-  } else tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => est[i]),
-    error_x: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: '#888', thickness: 1.5 },
+  } else tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => v(est[i])),
+    error_x: { type: 'data', symmetric: false, array: idx.map((i) => v(haut[i]) - v(est[i])), arrayminus: idx.map((i) => v(est[i]) - v(bas[i])), color: '#888', thickness: 1.5 },
     // (p ≤ 0.05 filled and red, the others open: not by colour alone)
     marker: { size: 9, color: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? '#d1495b' : PALETTE[0])), symbol: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? 'circle' : 'circle-open')) },
-    customdata: idx.map((i) => [fmt(bas[i], 4), fmt(haut[i], 4), valeurP(pv[i])]),
+    customdata: idx.map((i) => [fmt(v(bas[i]), 4), fmt(v(haut[i]), 4), valeurP(pv[i])]),
     hovertemplate: `<b>%{y}</b><br>%{x:.4f} [%{customdata[0]}${separateurIntervalle()}%{customdata[1]}]<br>p = %{customdata[2]}<extra></extra>` }],
-  { title: { text: `${m.nom} · ${t('coefficients')} ${m.noms_y[0]}` }, dragmode: 'zoom', showlegend: false,
-    xaxis: { title: { text: t('estimation_ic') } }, yaxis: { autorange: 'reversed' },
-    shapes: [{ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: 0, x1: 0, line: { color: '#888', width: 1, dash: 'dot' } }] });
+  { title: { text: `${m.nom} · ${t('coefficients')} ${m.noms_y[0]}${enExp ? ` · ${quoiExp}` : ''}` }, dragmode: 'zoom', showlegend: false,
+    xaxis: enExp ? { title: { text: t('exp_estimation_ic', { quoi: quoiExp }) }, type: 'log' } : { title: { text: t('estimation_ic') } }, yaxis: { autorange: 'reversed' },
+    shapes: [{ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: enExp ? 1 : 0, x1: enExp ? 1 : 0, line: { color: '#888', width: 1, dash: 'dot' } }] });
   loc.table ??= {};
   const num = (cle, titre, decimales, format, alerte) => ({ cle, titre, num: true, decimales, format, alerte });
   tableau(table, ctx, loc.table, {
@@ -2880,6 +2886,22 @@ function tracerSeuils(ctx, graphe, m, e, s, lien) {
         { type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y2', y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }]) });
 }
 
+// What the predicted values of a term hold fixed (moteur/R/moyennes.R: effets_reponse), in words:
+// its other quantitative variables at their mean, its other qualitative variables in their
+// reference category, then the random effects at 0, the effort at 1, the spatial smooth.
+export function fixesReponse(e, commun) {
+  const f = e.fixes || {};
+  const col = (x, k) => [].concat((x || {})[k] ?? []);
+  const nb = (v) => decimal(String(+Number(v).toPrecision(6)));
+  const morceaux = [
+    ...col(f.quantitatives, 'nom').map((nom, i) => t('fixe_moyenne', { nom, valeur: nb(col(f.quantitatives, 'valeur')[i]) })),
+    ...col(f.qualitatives, 'nom').map((nom, i) => t('fixe_reference', { nom, categorie: col(f.qualitatives, 'categorie')[i] })),
+    [].concat(commun.aleatoires || []).length ? t('fixe_aleatoires', { noms: [].concat(commun.aleatoires).join(', ') }) : '',
+    commun.decalage ? t('fixe_effort', { nom: commun.decalage }) : '',
+    commun.spatial ? t('fixe_spatial', { nom: commun.spatial.nom }) : ''].filter(Boolean);
+  return morceaux.length ? morceaux.join(langueActuelle() === 'fr' ? ' ; ' : '; ') : t('fixe_rien');
+}
+
 async function rendreEffets(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const cache = ((loc.cache ??= {}).effets ??= {});  // (loc.cache isn't saved with the session)
@@ -2888,19 +2910,30 @@ async function rendreEffets(conteneur, ctx, p, loc) {
     cache.res = await ctx.demander('effets', { modele: m.id });
     cache.id = m.id;
     cache.seuils = {};
+    cache.reponse = null;
   }
-  const effets = [].concat(cache.res.effets || []);
+  // the predicted values on the response scale (loc.echelle), asked once (moyennes.R: effets_reponse)
+  const reponse = loc.echelle === 'reponse';
+  if (reponse && !cache.reponse) {
+    conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
+    cache.reponse = await ctx.demander('effets', { modele: m.id, echelle: 'reponse' });
+  }
+  const res = reponse ? cache.reponse : cache.res;
+  const effets = [].concat(res.effets || []);
   if (!effets.length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('effets_vide'))); return; }
   if (!effets.some((e) => e.terme === loc.terme)) loc.terme = (effets.find((e) => e.courbe) || effets[0]).terme;
   const e = effets.find((x) => x.terme === loc.terme);
   const graphe = el('div', { class: 'graphe' });
   const lien = cache.res.lien || 'identity';
+  const y = m.noms_y[0];
+  const echelle = choix(t('effets_echelle'), [['lien', t(lien === 'identity' ? 'effets_echelle_partiel' : 'effets_echelle_lien', { lien })], ['reponse', t('effets_echelle_reponse', { y })]],
+    reponse ? 'reponse' : 'lien', (v) => { loc.echelle = v; ctx.rafraichir(); });
   // (a term crossed with categories: one line, or curve, per category, regression.R: effets_par_niveau;
   // a curve per category, s(x, by = f): effets_par_courbe)
   const niveaux = e.niveaux ? [].concat(e.niveaux) : null;
   // a curve's thresholds (regression.R: seuils_courbe): computed on demand, kept per term and category;
   // a curve with one per category has those of the category chosen (loc.categorie)
-  const avecSeuils = e.courbe && !!loc.seuils;
+  const avecSeuils = e.courbe && !!loc.seuils && !reponse;
   const categories = e.courbe && niveaux ? niveaux.map((n) => n.niveau) : [];
   if (categories.length && !categories.includes(loc.categorie)) loc.categorie = categories[0];
   const categorie = categories.length ? loc.categorie : '';
@@ -2912,16 +2945,22 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   }
   const s = avecSeuils ? seuils[cleSeuils] : null;
   const valeursLien = { par: e.par, terme: e.terme, lien: lien === 'identity' ? '' : t('effets_lien', { lien }) };
-  const note = !niveaux ? t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien })
-    : t(e.par_categorie ? 'effets_note_par_categorie' : e.courbe ? 'effets_note_niveaux_courbe' : 'effets_note_niveaux', valeursLien);
+  // (the predicted values: what is held fixed, said; one curve per category of a crossed variable)
+  const note = reponse ? t(lien === 'identity' ? 'effets_note_reponse_identite' : 'effets_note_reponse', { y, lien, fixes: fixesReponse(e, res.commun || {}),
+    par: niveaux ? t('effets_reponse_par', { par: e.par }) : '' })
+    : !niveaux ? t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien })
+      : t(e.par_categorie ? 'effets_note_par_categorie' : e.courbe ? 'effets_note_niveaux_courbe' : 'effets_note_niveaux', valeursLien);
   conteneur.replaceChildren(outils(choix(t('terme'), effets.map((x) => [x.terme, x.courbe ? `${x.terme} (${t('courbe').toLowerCase()})` : x.terme]), loc.terme,
-    (v) => { loc.terme = v; ctx.rafraichir(); }),
-    e.courbe ? el('label', { class: 'champ', title: t('seuils_aide') }, el('input', { type: 'checkbox', checked: avecSeuils,
+    (v) => { loc.terme = v; ctx.rafraichir(); }), echelle,
+    e.courbe && !reponse ? el('label', { class: 'champ', title: t('seuils_aide') }, el('input', { type: 'checkbox', checked: avecSeuils,
       onchange: (ev) => { loc.seuils = ev.target.checked; ctx.rafraichir(); } }), t('seuils')) : null,
     avecSeuils && categories.length ? choix(e.par, categories.map((c) => [c, c]), categorie, (v) => { loc.categorie = v; ctx.rafraichir(); }) : null,
     el('span', { class: 'infos' }, s ? resumeSeuils(s) : note)), graphe);
   if (s) { tracerSeuils(ctx, graphe, m, e, s, lien); return; }
-  if (niveaux) { tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien); return; }
+  // (the axis of Y: the effect on the link scale, or the response predicted, in its units)
+  const axeY = reponse ? `${t('valeurs_predites_de', { y })}${uniteAxe(ctx, m.projet, y, !!m.transformation_y)}`
+    : lien === 'identity' ? `${t('effet_sur', { y })}${uniteAxe(ctx, m.projet, y, !!m.transformation_y)}` : t('effet_lien', { lien });
+  if (niveaux) { tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, axeY, reponse); return; }
   const x = [].concat(e.x);
   const c = couleursTheme(ctx);
   const valeurs = [].concat(e.valeurs);
@@ -2931,11 +2970,11 @@ async function rendreEffets(conteneur, ctx, p, loc) {
     { type: 'scatter', mode: 'lines', x: x.concat([...x].reverse()), y: bas.concat([...[].concat(e.haut)].reverse()), fill: 'toself',
       fillcolor: 'rgba(47, 111, 181, 0.18)', line: { width: 0 }, hoverinfo: 'skip', name: t('ic_95') },
     { type: 'scatter', mode: 'lines', x, y: [].concat(e.effet), line: { color: PALETTE[0], width: 2 }, name: e.terme,
-      hovertemplate: `${e.terme} = %{x:.3f}<br>${t('effet')} = %{y:.3f}<extra></extra>` },
+      hovertemplate: `${e.terme} = %{x:.3f}<br>${reponse ? y : t('effet')} = %{y:.3f}<extra></extra>` },
     { type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux }, hoverinfo: 'skip', name: t('observations') }],
-  { title: { text: `${m.nom} · ${t('effets')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
-    xaxis: { title: { text: avecUnite(ctx, m.projet, e.terme, transformeeDans(ctx, m, e.terme)) } }, yaxis: { title: { text: lien === 'identity' ? `${t('effet_sur', { y: m.noms_y[0] })}${uniteAxe(ctx, m.projet, m.noms_y[0], !!m.transformation_y)}` : t('effet_lien', { lien }) } },
-    shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
+  { title: { text: `${m.nom} · ${t(reponse ? 'valeurs_predites' : 'effets')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
+    xaxis: { title: { text: avecUnite(ctx, m.projet, e.terme, transformeeDans(ctx, m, e.terme)) } }, yaxis: { title: { text: axeY } },
+    shapes: reponse ? [] : [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
 }
 
 // A term crossed with categories (regression.R: effets_par_niveau): each category's line (or
@@ -2943,7 +2982,7 @@ async function rendreEffets(conteneur, ctx, p, loc) {
 // category, all the observed values along the axis; under the plot, each line's slope per unit
 // of the term with its 95 % interval.
 const translucide = (couleur, a) => `rgba(${[1, 3, 5].map((i) => parseInt(couleur.slice(i, i + 2), 16)).join(', ')}, ${a})`;
-function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien) {
+function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, axeY, reponse = false) {
   const c = couleursTheme(ctx);
   const valeurs = [].concat(e.valeurs);
   const basMin = Math.min(...niveaux.flatMap((n) => [].concat(n.bas)));
@@ -2954,13 +2993,14 @@ function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, lien) {
       { type: 'scatter', mode: 'lines', x: x.concat([...x].reverse()), y: [].concat(n.bas).concat([...[].concat(n.haut)].reverse()), fill: 'toself',
         fillcolor: translucide(couleur, 0.16), line: { width: 0 }, hoverinfo: 'skip', legendgroup: n.niveau, showlegend: false, name: n.niveau },
       { type: 'scatter', mode: 'lines', x, y: [].concat(n.effet), line: { color: couleur, width: 2 }, name: n.niveau, legendgroup: n.niveau,
-        hovertemplate: `${n.niveau}<br>${e.terme} = %{x:.3f}<br>${t('effet')} = %{y:.3f}<extra></extra>` }];
+        hovertemplate: `${n.niveau}<br>${e.terme} = %{x:.3f}<br>${reponse ? m.noms_y[0] : t('effet')} = %{y:.3f}<extra></extra>` }];
   }).concat([{ type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux },
     hoverinfo: 'skip', name: t('observations'), showlegend: false }]),
-  { title: { text: `${m.nom} · ${t('effets')} · ${e.terme} × ${e.par}` }, showlegend: true, dragmode: 'zoom',
-    xaxis: { title: { text: avecUnite(ctx, m.projet, e.terme, transformeeDans(ctx, m, e.terme)) } }, yaxis: { title: { text: lien === 'identity' ? `${t('effet_sur', { y: m.noms_y[0] })}${uniteAxe(ctx, m.projet, m.noms_y[0], !!m.transformation_y)}` : t('effet_lien', { lien }) } },
-    shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
-  if (e.courbe) return;
+  { title: { text: `${m.nom} · ${t(reponse ? 'valeurs_predites' : 'effets')} · ${e.terme} × ${e.par}` }, showlegend: true, dragmode: 'zoom',
+    xaxis: { title: { text: avecUnite(ctx, m.projet, e.terme, transformeeDans(ctx, m, e.terme)) } }, yaxis: { title: { text: axeY } },
+    shapes: reponse ? [] : [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: c.doux, width: 1, dash: 'dot' } }] });
+  // (each line's slope per unit, on the link scale: not for curves, nor for the predicted values)
+  if (e.courbe || reponse) return;
   conteneur.append(el('div', { class: 'bas' }, el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, [e.par, t('pente_niveau', { terme: e.terme }), t('ic_bas'), t('ic_haut')].map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
     el('tbody', {}, niveaux.map((n) => el('tr', {}, el('td', {}, n.niveau),

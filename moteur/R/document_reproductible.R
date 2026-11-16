@@ -272,6 +272,8 @@ graphique_reproductible <- function(famille, d, m, vue, variante, graphiques, ob
   nom <- if (length(table) && vue %in% names(table)) table[[vue]]
   if (is.null(nom)) return(NULL)
   if (identical(vue, "residus") && identical(variante$residus, "quantiles")) nom <- "residus-quantiles"
+  # (les valeurs prédites de la vue Effets, sur l'échelle de la réponse : un graphique par terme aussi)
+  if (identical(vue, "effets") && identical(as.character(variante$echelle)[1], "reponse")) nom <- "prediction"
   if (identical(vue, "dispersion") && length(m$dispersions) != 1) return(NULL)
   # (une vue à variantes dont le script dessine tout d'un coup : seulement sans variante choisie ; les
   # effets d'une régression, un graphique par terme : celui de la variante ; les seuils d'une courbe,

@@ -1129,6 +1129,15 @@ async function principal() {
       let refus = '';
       try { await api('reajuster', { modele: lmm.id, centrer: v.secteur }); } catch (err) { refus = err.message; }
       verifier(/pas une variable quantitative X/.test(refus), `une variable qualitative à centrer, refusée : « ${refus} »`);
+      // the Effects view's predicted values (moyennes.R: effets_reponse): one line per sector, the site at
+      // 0; the same once the year is centred (the same model)
+      const p1 = await api('effets', { modele: lmm.id, echelle: 'reponse' });
+      const p2 = await api('effets', { modele: re.id, echelle: 'reponse' });
+      const parSecteur = (p) => [].concat(p.effets[0].niveaux);
+      const memes = parSecteur(p1).every((n, i) => [].concat(n.effet).every((x, j) => Math.abs(x - [].concat(parSecteur(p2)[i].effet)[j]) < 1e-6));
+      verifier(p1.echelle === 'reponse' && p1.lien === 'identity' && parSecteur(p1).map((n) => n.niveau).join() === 'S1,S2,S3' && [].concat(p1.commun.aleatoires).join() === 'site'
+        && [].concat(p1.effets[0].fixes.qualitatives.nom || []).length === 0 && [].concat(parSecteur(p1)[0].x).length === 80 && memes,
+      `valeurs prédites : ${JSON.stringify(parSecteur(p1).map((n) => [n.niveau, [].concat(n.effet)[0]]))}`);
     });
     await etape('Poisson à excès de zéros (ziP) et loi bêta (betar) : loi, lien, paramètres, résidus quantiles, moyennes, côte à côte, méthodes, refus', async () => {
       // 90 surveys of three habitats with an effort: counts with extra zeros, proportions between 0 and 1

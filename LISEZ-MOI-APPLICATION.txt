@@ -572,6 +572,7 @@ donnent leur valeur :
   {{M1.gain}}  {{M1.vip.sucre}}  {{M1.coef.sucre}} (coefficient centré-réduit et son intervalle à 95 %)
   {{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
   {{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
+  {{M5.valeurs_predites.annee}} (ses valeurs prédites sur l'échelle de la réponse, Effets › Échelle)
   {{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
   {{M1.resultats}} (texte des résultats : l'ajustement, chaque coefficient avec son intervalle et p,
   en facteur ou en rapport de cotes pour un lien log ou logit, les termes significatifs, les
@@ -1256,7 +1257,8 @@ courbe par catégorie) ; Q2 et RMSEcv ; AIC ; la variance
 de chaque effet aléatoire et sa part (avec des pentes aléatoires, voir plus haut) ; φ de
 l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
 quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
-plus, avec le logit le rapport des cotes ; un GAM dont tous les termes sont des courbes,
+plus, avec le logit le rapport des cotes, que la case « exp(estimation) » trace à leur place,
+sur un axe logarithmique passant par 1 ; un GAM dont tous les termes sont des courbes,
 y ~ s(annee) + (1 | site), n'y a que son ordonnée à l'origine : il s'ouvre sur Effets et
 Résidus, et ses Coefficients renvoient à Effets), Effets (l'effet de chaque terme quantitatif quand sa
 variable varie, les autres fixés, avec sa bande à 95 % et les valeurs observées dessous : les
@@ -1268,7 +1270,20 @@ pour une courbe, Seuils : l'effet et sa pente avec des intervalles simultanés �
 nette, colorées et listées, et l'edf, sous 1,5 presque une droite, comme Simpson (2018) lit les
 seuils ; une courbe qui en a une par catégorie (une courbe par catégorie, ou une courbe croisée
 avec une variable qualitative) a les seuils de la catégorie choisie dans la liste à côté de la
-case, sur les percentiles de la variable dans cette catégorie), Observé / prédit, Résidus
+case, sur les percentiles de la variable dans cette catégorie ; Échelle › Valeurs prédites :
+les valeurs de la réponse que prédit le modèle quand la variable du terme varie, avec leur bande
+à 95 %, celle du prédicteur linéaire (± 1,96 erreur-type) ramenée par l'inverse du lien (exp,
+logit inverse ; la valeur attendue d'un comptage pour le Poisson à excès de zéros), les alouettes
+attendues par année dans chaque habitat plutôt que l'effet sur l'échelle log. Ce qui reste fixe,
+que dit la note sous le graphique : les autres variables quantitatives à leur moyenne sur les
+observations du modèle (avant leur transformation, comme pour les moyennes ajustées), leurs
+courbes en ce point ; les variables qualitatives dans leur catégorie de référence, sauf celles
+croisées avec le terme, dont chaque catégorie a sa courbe sur ses propres valeurs (et une courbe
+par catégorie, son niveau) ; les effets aléatoires à 0 (la population, sans l'écart propre à un
+groupe) ; un effort de 1 (des densités) ; le lissage spatial au point moyen des coordonnées. Avec
+le lien identité, ce sont les valeurs prédites de la réponse modélisée (transformée, si elle
+l'est). Exporter vers R les calcule et les dessine de même (valeurs_predites, un graphique par
+terme), et un document les cite par {{M5.valeurs_predites.annee}}), Observé / prédit, Résidus
 (standardisés, contre les valeurs ajustées, droite de
 Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire ; aussi
 les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,

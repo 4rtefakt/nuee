@@ -11,7 +11,11 @@
 # Poisson sur l'échelle de la réponse (rapports, z), avec un effort, un GLM
 # binomial (rapports des cotes), un GAM et un mgcv::gamm (la covariance bayésienne), un carré et un
 # terme croisé de deux nombres, une combinaison jamais observée (laissée de côté, la famille de Tukey
-# des paires estimables) ; les refus, les phrases et le texte des Méthodes.
+# des paires estimables) ; les refus, les phrases et le texte des Méthodes. Puis les valeurs prédites
+# de la vue Effets (effets_reponse), sur la même grille, contre predict() de R sur ses propres modèles :
+# les autres variables à leur moyenne ou dans leur catégorie de référence, une courbe par catégorie
+# d'un terme croisé ou d'une courbe par catégorie, les effets aléatoires à 0, l'effort à 1, le Poisson à
+# excès de zéros, et le GLMM binomial négatif des comptages d'alouettes du tutoriel.
 #   Rscript moteur/tests/verifier_moyennes.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -391,6 +395,86 @@ for (l in c("fr", "en")) {
 }
 verifier("la phrase d'une paire de ziP : un rapport, z", grepl("^Moyennes ajustées de « compte » par « habitat » \\(modèle linéaire généralisé, loi de Poisson à excès de zéros ; échelle de la réponse\\) : H1 / H2 = ", rZ$phrases[1]) &&
            grepl("z = ", rZ$phrases[1], fixed = TRUE))
+
+cat("Les valeurs prédites de la vue Effets (effets_reponse)\n")
+# (une ligne de valeurs prédites contre predict() d'un modèle de R aux mêmes x : `nd`, la grille de R,
+# `inverse`, l'inverse du lien ; la bande à ± 1,96 erreur-type du prédicteur linéaire)
+comme_r <- function(l, ajuste, nd, inverse = identity, exclure = NULL, tol = 1e-6) {
+  p <- if (is.null(exclure)) stats::predict(ajuste, nd, se.fit = TRUE) else stats::predict(ajuste, nd, se.fit = TRUE, exclude = exclure)
+  proche(l$effet, inverse(p$fit), tol) && proche(l$bas, inverse(p$fit - 1.96 * p$se.fit), tol) && proche(l$haut, inverse(p$fit + 1.96 * p$se.fit), tol)
+}
+terme_pr <- function(r, nom) Find(function(e) identical(e$terme, nom), r$effets)
+# une régression linéaire : l'année à x moyen (avant son log10) et dans le secteur de référence (S3) ;
+# x sur l'étendue de log10(x), l'année à sa moyenne
+pA <- effets_reponse(pq, mA, dA)
+aA <- terme_pr(pA, "annee")
+xA <- terme_pr(pA, "x")
+verifier("régression linéaire : l'année à la moyenne de x (avant son log10) et dans « S3 », la catégorie de référence de « secteur » ; = predict(lm()) ± 1,96 erreur-type ; ce qui est fixe, dit",
+         comme_r(aA, lA, data.frame(annee = aA$x, x = mean(tq$x), secteur = "S3"), tol = 1e-8) &&
+           comme_r(xA, lA, data.frame(annee = mean(tq$annee), x = 10^xA$x, secteur = "S3"), tol = 1e-8) && proche(range(xA$x), range(log10(tq$x)), 1e-12) &&
+           identical(aA$fixes$quantitatives$nom, "x") && proche(aA$fixes$quantitatives$valeur, mean(tq$x), 1e-12) &&
+           identical(aA$fixes$qualitatives$nom, "secteur") && identical(aA$fixes$qualitatives$categorie, "S3") && identical(pA$lien, "identity"))
+# un GLM binomial : des probabilités, l'habitat dans sa catégorie de référence (H2)
+pF <- effets_reponse(pq, mF, dF)
+gF <- glm(presence ~ habitat + x, family = binomial, data = tq)
+verifier("GLM binomial : des probabilités (le logit inverse de la bande du lien), l'habitat dans « H2 » ; = predict(glm())",
+         comme_r(pF$effets[[1]], gF, data.frame(x = pF$effets[[1]]$x, habitat = "H2"), stats::plogis, tol = 1e-6) && identical(pF$effets[[1]]$fixes$qualitatives$categorie, "H2"))
+# un GAM : la courbe de x, l'année à sa moyenne et le secteur de référence ; l'année croisée avec le
+# secteur, une ligne par secteur sur ses années, la courbe de x à sa moyenne
+pG <- effets_reponse(pq, mG, dG)
+xG <- terme_pr(pG, "x")
+aG <- terme_pr(pG, "annee")
+verifier(sprintf("GAM : la courbe de x (l'année à sa moyenne, « S3 ») et l'année dans chaque secteur (%s, x à sa moyenne) ; = predict() de mgcv",
+                 paste(vapply(aG$niveaux, `[[`, "", "niveau"), collapse = ", ")),
+         isTRUE(xG$courbe) && comme_r(xG, gG, data.frame(x = xG$x, annee = mean(tq$annee), secteur = "S3"), tol = 1e-5) &&
+           identical(vapply(aG$niveaux, `[[`, "", "niveau"), c("S1", "S2", "S3")) &&
+           all(vapply(aG$niveaux, function(n) comme_r(n, gG, data.frame(x = mean(tq$x), annee = n$x, secteur = n$niveau), tol = 1e-5), TRUE)) &&
+           identical(aG$par, "secteur") && !nrow(aG$fixes$qualitatives) && identical(aG$fixes$quantitatives$nom, "x"))
+# une courbe par secteur (s(annee, by = secteur)) : la courbe de chaque secteur et son niveau (le modèle
+# plus haut, ajusté de nouveau : dI et mI ont servi depuis à un autre)
+dIc <- definir_modele(pq, "GAM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", famille = "gaussienne",
+                      lisses = uq("annee"), par_courbes = stats::setNames(list(uq("secteur")), uq("annee")))
+mIc <- ajuster(pq, dIc)
+pI <- effets_reponse(pq, mIc, dIc)
+verifier("une courbe par secteur : chaque secteur sa courbe, avec l'effet principal du secteur ; = predict() de mgcv",
+         isTRUE(pI$effets[[1]]$par_categorie) && identical(vapply(pI$effets[[1]]$niveaux, `[[`, "", "niveau"), c("S1", "S2", "S3")) &&
+           all(vapply(pI$effets[[1]]$niveaux, function(n) comme_r(n, gI, data.frame(annee = n$x, secteur = factor(n$niveau, levels = c("S1", "S2", "S3"))), tol = 1e-5), TRUE)))
+# un modèle mixte (nlme, CAR1) : les effets fixes, l'année dans chaque secteur
+pC <- effets_reponse(pq, mC, dC)
+XC <- function(n) model.matrix(~ annee * secteur, data.frame(annee = n$x, secteur = factor(n$niveau, levels = c("S1", "S2", "S3"))))
+verifier("modèle mixte (nlme) : la population (ses seuls effets fixes), l'année dans chaque secteur ; = X β et √(X V Xᵀ) de nlme (varFix)",
+         all(vapply(pC$effets[[1]]$niveaux, function(n) {
+           X <- XC(n)
+           eta <- drop(X %*% nlme::fixef(lC))
+           se <- sqrt(rowSums((X %*% vcov(lC)) * X))
+           proche(n$effet, eta, 1e-5) && proche(n$bas, eta - 1.96 * se, 1e-4)
+         }, TRUE)) && identical(as.character(pC$commun$aleatoires), "site"))
+# le Poisson à excès de zéros, avec un effort : des comptages attendus à un effort de 1, l'habitat de référence
+pZ <- effets_reponse(pzm, mZ, dZ)
+eZ <- pZ$effets[[1]]
+ndZx <- grille_zb(mZ)[rep(3, length(eZ$x)), ]
+ndZx[[mZ$termes[match("x", mZ$noms_termes)]]] <- eZ$x
+for (k in 1:2) ndZx[[mZ$termes[match(sprintf("habitat(H%d)", k), mZ$noms_termes)]]] <- 0
+LZx <- stats::predict(aZ, ndZx, type = "lpmatrix")
+etaZx <- drop(LZx %*% stats::coef(aZ))
+seZx <- sqrt(rowSums((LZx %*% stats::vcov(aZ)) * LZx))
+verifier("ziP : les comptages attendus à un effort de 1 (h(η) de mgcv), l'intervalle h(η ± 1,96 se), « H3 » de référence ; l'effort dit",
+         proche(eZ$effet, stats::predict(aZ, ndZx, type = "response"), 1e-8) && proche(eZ$bas, hZ(etaZx - 1.96 * seZx), 1e-8) && proche(eZ$haut, hZ(etaZx + 1.96 * seZx), 1e-8) &&
+           identical(eZ$fixes$qualitatives$categorie, "H3") && identical(pZ$commun$decalage, "effort"))
+# le GLMM binomial négatif du tutoriel de suivi : les alouettes par année dans chaque habitat, le site à 0
+ta <- utils::read.csv("docs/site/donnees/skylark_counts.csv", stringsAsFactors = FALSE)
+pa <- projet_depuis_tableau(ta, "alouettes")
+ua <- function(...) numeros(pa, c(...))
+da <- definir_modele(pa, "GLM", x = ua("year", "habitat"), y = ua("skylarks"), echelle = "none", famille = "binomiale_negative",
+                     croises = list(ua("year", "habitat")), aleatoires = list(list(by = "variable", variable = ua("site"))))
+ma <- ajuster(pa, da)
+ra <- effets_reponse(pa, ma, da)
+ta_ok <- transform(ta[!is.na(ta$skylarks), ], habitat = factor(habitat), site = factor(site))
+ga <- mgcv::gam(stats::as.formula("skylarks ~ year * habitat + s(site, bs = \"re\")", env = env_mgcv), data = ta_ok, family = mgcv::nb(), method = "REML")
+verifier("le GLMM binomial négatif des alouettes : les alouettes attendues par année dans chaque habitat, le site à 0 (exp de la bande du lien) ; = predict() de mgcv, le site exclu",
+         identical(vapply(ra$effets[[1]]$niveaux, `[[`, "", "niveau"), c("cropland", "grassland")) &&
+           all(vapply(ra$effets[[1]]$niveaux, function(n) comme_r(n, ga, data.frame(year = n$x, habitat = factor(n$niveau, levels = levels(ta_ok$habitat)), site = ta_ok$site[1]),
+                                                                  exp, "s(site)", 1e-6), TRUE)))
 
 cat("Refus\n")
 d0 <- definir_modele(pq, "LM", x = uq("x", "annee"), y = uq("densite"))

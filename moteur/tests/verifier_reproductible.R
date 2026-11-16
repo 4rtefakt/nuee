@@ -141,7 +141,10 @@ BLOCS <- list(
   list(modele = "m5", chemin = list("effets", "altitude"), genre = "figure", vue = "effets", variante = list(terme = "altitude", seuils = FALSE), etiquette = "fig-effet-altitude",
        legende = "Effet de l'altitude"),
   # (et les seuils de sa courbe, la vue Effets avec ses seuils : sa seule courbe, {{M5.seuils}})
-  list(modele = "m5", chemin = list("seuils"), genre = "figure", vue = "effets", variante = list(terme = "temp", seuils = TRUE), etiquette = "fig-seuils", legende = "Seuils"))
+  list(modele = "m5", chemin = list("seuils"), genre = "figure", vue = "effets", variante = list(terme = "temp", seuils = TRUE), etiquette = "fig-seuils", legende = "Seuils"),
+  # (et les valeurs prédites de l'altitude sur l'échelle de la réponse, {{M5.valeurs_predites.altitude}} : le graphique prediction-k du script)
+  list(modele = "m5", chemin = list("valeurs_predites", "altitude"), genre = "figure", vue = "effets", variante = list(terme = "altitude", seuils = FALSE, echelle = "reponse"),
+       etiquette = "fig-predites", legende = "Valeurs prédites de l'altitude"))
 EN_DUR <- list(
   list(modele = "m1", chemin = list("biplot"), genre = "figure", vue = "biplot", variante = list()),
   list(modele = "m4", chemin = list("coef", "temp"), genre = "valeur", forme = list(forme = "coef_cs"), texte = "0,12 [0,05 ; 0,19]"),
