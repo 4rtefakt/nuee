@@ -1306,7 +1306,7 @@ Since 1.0. Changes the project, with an undo step that `annuler` takes back. One
 |---|---|---|---|
 | `projet` | `string` | yes | The project's id. |
 | `nom` | `string` | yes | The new variable's name; the spaces around it are dropped. |
-| `formule` | `string` | yes | An R expression, evaluated by R (it can call any R function) with each variable and each observation identifier under its name (a name with spaces or signs between `backticks`; a qualitative variable as its categories' names, one value per observation), and Nuée's helpers: moyenne_groupe/group_mean, ecart_groupe/group_deviation, precedent/previous, suivant/following, croissance/growth_rate, richesse/richness, shannon, simpson and pielou (variables.R). It must give one value per observation, or a single value for all: numbers make a quantitative variable (non-finite ones missing), text or logical values a qualitative one, its categories sorted. |
+| `formule` | `string` | yes | An R expression, read before it is evaluated (since 1.1: only the project's variables and identifiers, numbers, text, and the calculation, text, date and distribution functions of FONCTIONS_FORMULE; anything else is refused, the rest of R going to the console), evaluated with each variable and each observation identifier under its name (a name with spaces or signs between `backticks`; a qualitative variable as its categories' names, one value per observation), and Nuée's helpers: moyenne_groupe/group_mean, ecart_groupe/group_deviation, precedent/previous, suivant/following, croissance/growth_rate, richesse/richness, shannon, simpson and pielou (variables.R). It must give one value per observation, or a single value for all: numbers make a quantitative variable (non-finite ones missing), text or logical values a qualitative one, its categories sorted. |
 
 **Result:** [`Projet`](#type-projet). The project with the new variable.
 
@@ -1319,6 +1319,7 @@ Since 1.0. Changes the project, with an undo step that `annuler` takes back. One
 | Give the new variable a name | nom is empty, or only spaces. ([`nom_variable_manquant`](#errors)) |
 | A variable is already called “&lt;name&gt;” | nom, without the spaces around it, is the name of one of the project's variables. ([`nom_variable_pris`](#errors)) |
 | Variable not found: &lt;name&gt; (check the name; a name with spaces or signs is written between `backticks`) | The formula names an object R doesn't find. |
+| "&lt;what&gt;" isn't allowed in a New variable formula: arithmetic (+, log10(), ifelse()…), text (paste(), substr()…), dates (as.Date()…), and Nuée's group, lag and diversity functions. For the rest of R, use the R console (View › R console). | The formula calls a function outside FONCTIONS_FORMULE, assigns, uses { } or ;, or names something that is neither a variable, an identifier nor a constant (since 1.1). |
 | The formula must give one value per observation (&lt;n&gt;); it gives &lt;k&gt; | The formula's result is neither one value nor one per observation. |
 | The formula must give numbers or text | The result is neither numbers, text, logical values nor a factor. |
 | &lt;R's message&gt; | The formula fails as R evaluates it (a wrong argument, stop()…), or one of Nuée's helpers refuses its arguments (precedent(): two observations with the same time in a group…): its message, as it is. |

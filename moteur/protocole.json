@@ -1097,7 +1097,7 @@
       "parametres": {
         "projet": { "type": "string", "requis": true, "description": "The project's id." },
         "nom": { "type": "string", "requis": true, "description": "The new variable's name; the spaces around it are dropped." },
-        "formule": { "type": "string", "requis": true, "description": "An R expression, evaluated by R (it can call any R function) with each variable and each observation identifier under its name (a name with spaces or signs between `backticks`; a qualitative variable as its categories' names, one value per observation), and Nuée's helpers: moyenne_groupe/group_mean, ecart_groupe/group_deviation, precedent/previous, suivant/following, croissance/growth_rate, richesse/richness, shannon, simpson and pielou (variables.R). It must give one value per observation, or a single value for all: numbers make a quantitative variable (non-finite ones missing), text or logical values a qualitative one, its categories sorted." }
+        "formule": { "type": "string", "requis": true, "description": "An R expression, read before it is evaluated (since 1.1: only the project's variables and identifiers, numbers, text, and the calculation, text, date and distribution functions of FONCTIONS_FORMULE; anything else is refused, the rest of R going to the console), evaluated with each variable and each observation identifier under its name (a name with spaces or signs between `backticks`; a qualitative variable as its categories' names, one value per observation), and Nuée's helpers: moyenne_groupe/group_mean, ecart_groupe/group_deviation, precedent/previous, suivant/following, croissance/growth_rate, richesse/richness, shannon, simpson and pielou (variables.R). It must give one value per observation, or a single value for all: numbers make a quantitative variable (non-finite ones missing), text or logical values a qualitative one, its categories sorted." }
       },
       "resultat": { "type": "Projet", "description": "The project with the new variable." },
       "erreurs": [
@@ -1106,6 +1106,7 @@
         "nom_variable_manquant",
         "nom_variable_pris",
         { "message": "Variable not found: <name> (check the name; a name with spaces or signs is written between `backticks`)", "quand": "The formula names an object R doesn't find." },
+        { "message": "\"<what>\" isn't allowed in a New variable formula: arithmetic (+, log10(), ifelse()…), text (paste(), substr()…), dates (as.Date()…), and Nuée's group, lag and diversity functions. For the rest of R, use the R console (View › R console).", "quand": "The formula calls a function outside FONCTIONS_FORMULE, assigns, uses { } or ;, or names something that is neither a variable, an identifier nor a constant (since 1.1)." },
         { "message": "The formula must give one value per observation (<n>); it gives <k>", "quand": "The formula's result is neither one value nor one per observation." },
         { "message": "The formula must give numbers or text", "quand": "The result is neither numbers, text, logical values nor a factor." },
         { "message": "<R's message>", "quand": "The formula fails as R evaluates it (a wrong argument, stop()…), or one of Nuée's helpers refuses its arguments (precedent(): two observations with the same time in a group…): its message, as it is." }
