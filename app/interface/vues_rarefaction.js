@@ -134,7 +134,10 @@ async function rendreRarefaction(conteneur, ctx, p, loc) {
     const premier = !vus.has(nom);
     vus.add(nom);
     const choisie = sel.has(uid);
+    // (legendrank: the groups in the legend in their order, as the accumulation's, not in that of
+    // their first observation in the table)
     return { type: 'scatter', mode: 'lines', name: nom, legendgroup: nom, showlegend: niveaux.length > 0 && premier,
+      ...(niveaux.length ? { legendrank: 1000 + niveaux.indexOf(g) } : {}),
       x: pts.map((x) => x.taille), y: pts.map((x) => x.S), customdata: pts.map(() => uid), text: pts.map((x) => x.se),
       line: { color: niveaux.length ? couleur(g) : PALETTE[0], width: choisie ? 3 : 1.3 }, opacity: sel.size && !choisie ? 0.35 : 0.9,
       hovertemplate: `<b>${nomDe.get(uid)}</b><br>${t('rar_individus')} %{x}<br>${t('rar_richesse')} %{y:.2f} ± %{text:.2f}<extra>${niveaux.length ? g : ''}</extra>` };
