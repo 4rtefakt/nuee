@@ -168,7 +168,7 @@ async function rendreTestsRDA(conteneur, ctx, p, loc) {
   const tg = m.test;
   const fiche = el('div', { class: 'fiche' },
     el('div', { class: 'fiche-titre' }, el('b', {}, t('ord_test_global'))),
-    el('div', { class: 'fiche-chiffres' }, chiffre(t('ord_pseudo_f'), tg.F, 3), chiffre(t('ddl'), `${liste(tg.df).join(', ')}`), chiffre('p', pValeur(tg.p)),
+    el('div', { class: 'fiche-chiffres' }, chiffre(t('ord_pseudo_f'), tg.F, 3), chiffre(t('ddl'), liste(tg.df).join(entreNombres())), chiffre('p', pValeur(tg.p)),
       chiffre(t('nb_permutations'), B, 0), m.strates ? chiffre(t('ord_dans'), m.strates) : null, chiffre(t('ord_graine'), (m.options || {}).graine ?? 1, 0)));
   if (!B) { conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, el('p', { class: 'note' }, t('ord_sans_permutations')))); return; }
   if (!cache.res) {
