@@ -247,7 +247,9 @@ in to your institution's GitLab too (GitLab 17.3 or later; 17.2 with the
 1. *Admin › Applications › New application*: an instance-wide application, for every user.
 2. Name `Nuée`; redirect URI `http://127.0.0.1/` (the form requires one; Nuée signs in with the
    device flow, which never uses it); *Trusted* ticked if users needn't approve it themselves;
-   *Confidential* **unticked**: Nuée is a desktop application and keeps no secret.
+   *Confidential* **unticked**: Nuée is a desktop application and keeps no secret;
+   *Device authorization grant* **ticked**: a new application has it off, and Nuée's sign-in
+   needs it.
 3. Scopes `api` (making a project, adding a member), `read_user` (the account's name and
    picture) and `write_repository` (sending versions).
 4. Give users the *Application ID* (64 hexadecimal digits). They type it once in Nuée's sign-in

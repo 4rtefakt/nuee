@@ -284,6 +284,14 @@ async function connexionGitlab() {
   await c4.reglerServeur('gitlab.example.org', 'f'.repeat(64));
   const e2 = await refus(() => c4.commencerConnexion('gitlab.example.org'));
   verifier('un identifiant inconnu, ou une application confidentielle : dit', e2?.code === 'non_regle' && /non-confidential application/.test(e2.message), e2);
+  // the application's “Device authorization grant” unticked (as GitLab makes a new one)
+  simule.etat.fluxDesactive = true;
+  const e3 = await refus(() => c4.commencerConnexion('gitlab.com'));
+  verifier('Device authorization grant pas coché (gitlab.com) : dit', e3?.code === 'non_regle' && /Nuée’s application on GitLab \(its “Device authorization grant” setting\)/.test(e3.message), e3);
+  await c4.reglerServeur('gitlab.example.org', simule.etat.ids['gitlab.example.org']);
+  const e4 = await refus(() => c4.commencerConnexion('gitlab.example.org'));
+  verifier('… et sur le GitLab de l’établissement : son administrateur', e4?.code === 'non_regle' && /its administrator must tick “Device authorization grant”/.test(e4.message), e4);
+  simule.etat.fluxDesactive = false;
   return c;
 }
 

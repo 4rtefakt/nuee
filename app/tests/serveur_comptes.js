@@ -67,7 +67,7 @@ async function serveurComptes() {
     },
     depots: new Map(),         // 'host/path' → { hote, chemin, prive, proprietaire, membres: Set }
     ancien: new Set(),         // GitLabs without the device flow (before 17.3: 404)
-    fluxDesactive: false,      // GitHub: the application's device flow not enabled
+    fluxDesactive: false,      // the application's device flow not enabled (GitHub's Enable Device Flow, GitLab's Device authorization grant)
     bavard: false,             // the user API failing with the token in its message
     redirige: false,           // the user API sending elsewhere (a redirect that would carry the token)
     coupes: new Set(),         // servers the network doesn't reach
@@ -114,6 +114,7 @@ async function serveurComptes() {
       if (!gh && etat.ancien.has(hote)) { res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('<html><body>404 Page Not Found</body></html>'); return; }
       if (gh && etat.fluxDesactive) { erreur('device_flow_disabled', 'Device Flow must be explicitly enabled for this App'); return; }
       if (f.client_id !== etat.ids[hote]) { json(res, 401, { error: gh ? 'incorrect_client_credentials' : 'invalid_client', error_description: 'Client authentication failed' }); return; }
+      if (!gh && etat.fluxDesactive) { erreur('access_denied', 'The resource owner or authorization server denied the request.'); return; }
       const appareil = secret(aleatoire(20));
       const code = nouveauCode(hote);
       etat.codes.set(appareil, { hote, code, client: f.client_id, portee: f.scope, reponses: etat.prochain.splice(0), sondages: 0, accorde: false, refuse: false, intervalle: 5 });

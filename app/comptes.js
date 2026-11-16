@@ -207,6 +207,14 @@ function creerComptes({ fetch, jeton: ecrireJeton, jetons, renouvellements, regl
       return refus('La connexion par code n’est pas activée pour l’application Nuée sur GitHub (son réglage « Enable Device Flow »).',
         'Signing in with a code isn’t enabled for Nuée’s application on GitHub (its “Enable Device Flow” setting).', 'non_regle');
     }
+    // (GitLab's: the application's "Device authorization grant" box, unticked in a new one)
+    if (e === 'access_denied' && etape === 'code' && fournisseur(h) === 'gitlab') {
+      return h === 'gitlab.com'
+        ? refus('La connexion par code n’est pas activée pour l’application Nuée sur GitLab (son réglage « Device authorization grant »).',
+          'Signing in with a code isn’t enabled for Nuée’s application on GitLab (its “Device authorization grant” setting).', 'non_regle')
+        : refus(`La connexion par code n’est pas activée pour l’application Nuée sur ${h} : son administrateur doit cocher « Device authorization grant » dans ses réglages.`,
+          `Signing in with a code isn’t enabled for Nuée’s application on ${h}: its administrator must tick “Device authorization grant” in its settings.`, 'non_regle');
+    }
     if (['incorrect_client_credentials', 'invalid_client', 'unauthorized_client'].includes(e) || (etape === 'code' && r.statut === 401)
       || (etape === 'code' && fournisseur(h) === 'github' && r.statut === 404)) {
       return fournisseur(h) === 'github' || h === 'gitlab.com'
