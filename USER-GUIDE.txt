@@ -1137,7 +1137,8 @@ Q2 and RMSEcv; AIC; the variance of each random effect and its share (with rando
 above); φ of the
 autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
 with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
-the odds ratio),
+the odds ratio; a GAM whose terms are all curves, y ~ s(year) + (1 | site), has only its
+intercept there: it opens on Effects and Residuals, and its Coefficients point to Effects),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
 95 % band and the observed values below it: a GAM's curves, straight lines otherwise, one per
 category for a term crossed with a qualitative variable or a curve per category, with the

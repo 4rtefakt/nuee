@@ -1246,7 +1246,9 @@ courbe par catégorie) ; Q2 et RMSEcv ; AIC ; la variance
 de chaque effet aléatoire et sa part (avec des pentes aléatoires, voir plus haut) ; φ de
 l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
 quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
-plus, avec le logit le rapport des cotes), Effets (l'effet de chaque terme quantitatif quand sa
+plus, avec le logit le rapport des cotes ; un GAM dont tous les termes sont des courbes,
+y ~ s(annee) + (1 | site), n'y a que son ordonnée à l'origine : il s'ouvre sur Effets et
+Résidus, et ses Coefficients renvoient à Effets), Effets (l'effet de chaque terme quantitatif quand sa
 variable varie, les autres fixés, avec sa bande à 95 % et les valeurs observées dessous : les
 courbes d'un GAM, des droites sinon, une par catégorie pour un terme croisé avec une variable
 qualitative ou une courbe par catégorie, avec la légende des catégories ; sur l'échelle du

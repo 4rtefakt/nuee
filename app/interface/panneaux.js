@@ -2739,6 +2739,15 @@ function indiceSelectionAIC(ctx, m) {
     `${t('m_graphiques')} › ${t('selection_aic')}`), apres];
 }
 
+// A GAM whose terms are all curves (y ~ s(year) + (1 | site)): its coefficients are the intercept
+// alone, its effects are its curves (app.js opens it on Effects; Coefficients points there).
+export function seulementCourbes(m) {
+  const termes = [].concat((m.coefficients_regression || {}).terme || []);
+  const courbes = [].concat((m.courbes || {}).terme || []);
+  // (a spatial smooth has a row of the curves too, but no effect of its own: not enough alone)
+  return m.type === 'GAM' && termes.every((x) => x === '(Intercept)') && courbes.length > (m.reglages && m.reglages.lisse_spatial ? 1 : 0);
+}
+
 // The coefficients of a regression: each term's effect on Y with its 95 % interval (a forest
 // plot, red when p ≤ 0.05), and their table.
 function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
@@ -2756,7 +2765,12 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
     m.lien && m.lien !== 'identity' ? t(m.famille === 'poisson_zi' ? 'coefficients_lien_zip' : multiplicatif ? `coefficients_lien_${m.lien}` : 'coefficients_lien', { lien: m.lien }) : '',
     ...notesTermesRetires(m)].filter(Boolean).join(' ')), graphe, table);
   const idx = termes.map((_, i) => i).filter((i) => termes[i] !== '(Intercept)');
-  tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => est[i]),
+  // (a GAM made only of curves: no coefficient to plot; its curves are in Effects)
+  if (!idx.length && seulementCourbes(m)) {
+    const [avant, apres] = t('coefficients_courbes_seules').split('{lien}');
+    graphe.replaceWith(el('p', { class: 'infos' }, avant, el('a', { href: '#', style: { color: 'var(--accent)' },
+      onclick: (e) => { e.preventDefault(); ctx.ouvrirVue('effets', m.id); } }, `${t('m_graphiques')} › ${t('effets')}`), apres));
+  } else tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => est[i]),
     error_x: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: '#888', thickness: 1.5 },
     // (p ≤ 0.05 filled and red, the others open: not by colour alone)
     marker: { size: 9, color: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? '#d1495b' : PALETTE[0])), symbol: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? 'circle' : 'circle-open')) },
