@@ -291,7 +291,10 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
       entrees.push({ mode, path: segments[0], oid: blob, type: 'blob' });
     } else {
       // (a file where the project's folder is would go: not replaced)
-      if (avant && avant.type !== 'tree') throw new Refus(`${segments[0]}: ${avant.type}`);
+      if (avant && avant.type !== 'tree') {
+        throw refus(`Dans le dépôt, ${avant.path} est un fichier, là où est le dossier du projet : utilisez git directement.`,
+          `In the repository, ${avant.path} is a file where the project’s folder is: use git directly.`);
+      }
       entrees.push({ mode: '040000', path: segments[0], oid: await arbreAvec(d, avant && avant.oid, blob, segments.slice(1)), type: 'tree' });
     }
     return git.writeTree({ fs: d.fs, dir: d.dir, tree: entrees });
@@ -528,8 +531,9 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
     return new Map(refs.filter((r) => !r.ref.endsWith('^{}')).map((r) => [r.ref.slice('refs/tags/'.length), r.oid]));
   }
 
-  // The names the remote had at the last exchange, kept with its address in the repository
-  // (.git/nuee-noms.json): one gone since from one side was removed there
+  // The names both sides had at the last exchange, each with its tag, kept with the remote's
+  // address in the repository (.git/nuee-noms.json): one gone since from one side, and the same
+  // tag on the other, was removed there
   async function fichierBase(d) {
     const g = path.join(d.racine, '.git');
     if ((await fs.promises.stat(g)).isDirectory()) return path.join(g, 'nuee-noms.json');
@@ -539,39 +543,43 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
   async function baseNoms(d) {
     try {
       const b = JSON.parse(await fs.promises.readFile(await fichierBase(d), 'utf8'));
-      if (b.url === d.url && Array.isArray(b.noms)) return new Set(b.noms);
+      if (b.url === d.url && b.noms && typeof b.noms === 'object') return new Map(Object.entries(b.noms));
     } catch { /* no exchange yet */ }
-    return new Set();
+    return new Map();
   }
 
   // The names put in step with the remote's, from what each side did since the last exchange: a
-  // name added on one side is added on the other, one removed is removed on the other.
-  // `avant`: this side's names before the exchange (a receive's fetch brings the remote's new ones);
-  // `distants`: the remote's. Receiving changes this side only; sending, the remote's too (its new
-  // names wait for the next receive, which brings their tags).
+  // name added on one side is added on the other, one removed is removed on the other (unless the
+  // other gave it since to another version: that one stays). `avant`: this side's names before the
+  // exchange (a receive's fetch brings the remote's new ones); `distants`: the remote's, name → tag.
+  // Receiving changes this side only; sending, the remote's too (its new names wait for the next
+  // receive, which brings their tags). A name on both sides with different tags is left as it is.
   async function accorderNoms(d, avant, distants, { envoi }) {
     const base = await baseNoms(d);
     const ici = await tags(d);
-    const garde = new Set();
+    const garde = new Map();
     const pousser = (nom, supprimer) => reseau(d, () => git.push({ fs: d.fs, http, dir: d.dir, remote: 'origin', ref: `refs/tags/${nom}`,
       remoteRef: `refs/tags/${nom}`, delete: supprimer, ...auth(d) }));
-    for (const nom of new Set([...avant.keys(), ...distants.keys(), ...base])) {
-      if (avant.has(nom) && distants.has(nom)) garde.add(nom);
-      else if (avant.has(nom)) {
-        if (base.has(nom)) await git.deleteTag({ fs: d.fs, dir: d.dir, ref: nom });  // removed on the remote
-        else if (envoi) { await pousser(nom, false); garde.add(nom); }
-      } else if (distants.has(nom)) {
-        if (base.has(nom) && envoi) {
+    for (const nom of new Set([...avant.keys(), ...distants.keys(), ...base.keys()])) {
+      const local = avant.has(nom) ? avant.get(nom).oid : null;
+      const la = distants.get(nom) || null;
+      const connu = base.get(nom) || null;
+      if (local && la) garde.set(nom, la);
+      else if (local) {
+        if (local === connu) await git.deleteTag({ fs: d.fs, dir: d.dir, ref: nom });  // removed on the remote
+        else if (envoi) { await pousser(nom, false); garde.set(nom, local); }
+      } else if (la) {
+        if (la === connu && envoi) {
           // removed here: removed there (a deletion pushes a local ref, put back for the time of it)
-          await git.writeRef({ fs: d.fs, dir: d.dir, ref: `refs/tags/${nom}`, value: distants.get(nom), force: true });
+          await git.writeRef({ fs: d.fs, dir: d.dir, ref: `refs/tags/${nom}`, value: la, force: true });
           try { await pousser(nom, true); } finally { await git.deleteRef({ fs: d.fs, dir: d.dir, ref: `refs/tags/${nom}` }); }
-        } else if (base.has(nom)) {
-          garde.add(nom);  // (removed here, not sent yet: the fetch brought it back)
+        } else if (la === connu) {
+          garde.set(nom, la);  // (removed here, not sent yet: the fetch brought it back)
           if (ici.has(nom)) await git.deleteTag({ fs: d.fs, dir: d.dir, ref: nom });
-        } else if (ici.has(nom)) garde.add(nom);  // new there, fetched
+        } else if (ici.has(nom)) garde.set(nom, la);  // new there, fetched
       }
     }
-    await fs.promises.writeFile(await fichierBase(d), JSON.stringify({ url: d.url, noms: [...garde].sort() }));
+    await fs.promises.writeFile(await fichierBase(d), JSON.stringify({ url: d.url, noms: Object.fromEntries([...garde].sort()) }));
   }
 
   // The branch sent, then the names

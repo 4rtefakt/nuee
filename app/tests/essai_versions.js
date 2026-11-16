@@ -449,6 +449,15 @@ async function echanges() {
     verifier('Alice reçoit : le nom retiré par Bob retiré, le nouveau reçu, le sien (pas envoyé) gardé', JSON.stringify(nomsA) === '["Brouillon","Version finale"]', nomsA);
     await alice.envoyer(pA);
     verifier('Alice envoie : son nom sur le serveur', surServeur(herons, 'tag', '-l').split(/\r?\n/).sort().join() === 'Brouillon,Version-finale', surServeur(herons, 'tag', '-l'));
+    await bob.recevoir(pB);
+    await bob.retirerNom(pB, 'Brouillon');
+    await bob.envoyer(pB);
+    await alice.retirerNom(pA, 'Brouillon');
+    await alice.nommer(pA, (await alice.liste(pA))[0].oid, 'Brouillon');
+    await alice.recevoir(pA);
+    verifier('un nom retiré là-bas mais redonné ici, à une autre version : gardé', (await alice.liste(pA))[0].noms.includes('Brouillon'), (await alice.liste(pA)).map((v) => v.noms));
+    await alice.envoyer(pA);
+    verifier('… et renvoyé', surServeur(herons, 'tag', '-l').split(/\r?\n/).includes('Brouillon') && surServeur(herons, 'rev-parse', 'Brouillon^{}') === gitSys(['rev-parse', 'HEAD'], dA).trim());
 
     // another file in the repository: not Nuée's to bring together
     ecrire(path.join(dB, 'README.md'), '# Hérons\n');
