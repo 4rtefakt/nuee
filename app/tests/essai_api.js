@@ -325,7 +325,7 @@ async function principal() {
       const f = path.join(dossier, 'partage.nuee');
       await api('enregistrer', { projet: p.id, chemin: f, version: '9.9.9' });
       const lu = JSON.parse(fs.readFileSync(f, 'utf8'));
-      verifier(lu.nuee && lu.nuee.format === 2 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
+      verifier(lu.nuee && lu.nuee.format === 3 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
       verifier(!fs.readdirSync(dossier).some((x) => x.endsWith('.tmp')), 'fichier temporaire resté');
       // a colleague saves the same file meanwhile: asked before overwriting, then overwritten if wanted
       fs.writeFileSync(f, JSON.stringify({ ...lu, source: 'collègue' }));
@@ -2166,6 +2166,51 @@ async function principal() {
       const fr = await api('comparer_resultats', { avant: await api('resultats_cles', { modele: lm.id }), apres: await api('resultats_cles', { modele: (await api('reajuster', { modele: lm.id, exclues: [8, 9, 10, 11] })).id }) });
       const nfr = fr.entrees.find((x) => x.cle === 'N');
       verifier(nfr.phrase === 'Le nombre d\'observations passe de 60 à 56.' && fr.phrases.every((f) => !/\d\.\d/.test(f.texte)), `phrases en français : ${fr.phrases.map((f) => f.texte).join(' | ')}`);
+    });
+    await etape('rapports vivants : la source, les étapes, l’aperçu et la mise à jour, une étape retirée, Ctrl+Z (moteur/R/etapes.R)', async () => {
+      // six relevés, un nom par ligne ; puis l'année suivante, deux de plus et les colonnes rangées autrement
+      const releves = path.join(dossier, 'releves.csv');
+      const lignes = (n) => Array.from({ length: n }, (_, i) => [`r${i + 1}`, ['A', 'B'][i % 2], (i * 1.5 + 2).toFixed(1), i + 10]);
+      fs.writeFileSync(releves, ['nom,zone,x,y', ...lignes(6).map((l) => l.join(','))].join('\n'));
+      const q = await api('ouvrir', { chemin: releves });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      await api('modifier_valeur', { projet: q.id, observation: q.observations.uid[1], variable: v.x, valeur: '40' });
+      await api('variable_calculee', { projet: q.id, nom: 'xy', formule: 'x * y' });
+      const m = await api('ajuster', { projet: q.id, type: 'LM', x: [v.x], y: [v.y], nom: 'L' });
+      let e = await api('etapes', { projet: q.id });
+      verifier(e.source && e.source.existe && e.source.modifie === false && e.source.lecteur === 'tableau' && e.source.chemin.endsWith('releves.csv')
+        && e.etapes.length === 2 && e.etapes[0].demande === 'modifier_valeur' && e.etapes[1].etiquette === 'variable xy' && e.conformes === true,
+      `etapes : ${JSON.stringify(e)}`);
+      fs.writeFileSync(releves, ['y,nom,x,zone', ...lignes(8).map((l) => [l[3], l[0], l[2], l[1]].join(','))].join('\n'));
+      e = await api('etapes', { projet: q.id });
+      verifier(e.source.modifie === true && e.source.actuel.taille !== e.source.taille, `le fichier changé : ${JSON.stringify(e.source)}`);
+      const a = await api('mettre_a_jour', { projet: q.id, apercu: true });
+      verifier(a.apercu === true && a.observations.ajoutees === 2 && a.observations.retirees === 0 && [].concat(a.observations.premieres_ajoutees).join() === 'r7,r8'
+        && a.etapes.length === 2 && a.etapes.every((x) => x.statut === 'ok') && !a.projet && a.modeles.variables_absentes.length === 0,
+      `aperçu : ${JSON.stringify(a)}`);
+      verifier((await api('projet', { projet: q.id })).observations.uid.length === 6, 'l’aperçu ne change rien');
+      const u = await api('mettre_a_jour', { projet: q.id });
+      const d = await api('donnees', { projet: q.id });
+      const col = (n) => d.valeurs[d.variables.indexOf(n)];
+      verifier(u.projet.observations.uid.length === 8 && u.projet.annulable === 'mise à jour des données' && col('x')[1] === 40 && col('xy')[7] === (7 * 1.5 + 2) * 17,
+        `mis à jour : ${u.projet.observations.uid.length} observations, x ${JSON.stringify(col('x'))}`);
+      const refait = await api('ajuster', { projet: q.id, numero: m.numero });
+      verifier(refait.N === 8, `le modèle réajusté : N = ${refait.N}`);
+      const r = await api('retirer_etape', { projet: q.id, n: 1 });
+      verifier(r.projet.annulable === "retrait de l'étape 1" && (await api('etapes', { projet: q.id })).etapes.length === 1
+        && (await api('donnees', { projet: q.id })).valeurs[d.variables.indexOf('x')][1] === 3.5, `étape retirée : ${r.projet.annulable}`);
+      await api('annuler', { projet: q.id });
+      verifier((await api('etapes', { projet: q.id })).etapes.length === 2, 'Ctrl+Z rend l’étape');
+      const f = path.join(dossier, 'vivant.nuee');
+      await api('enregistrer', { projet: q.id, chemin: f });
+      const lu = JSON.parse(fs.readFileSync(f, 'utf8'));
+      const o = await api('ouvrir', { chemin: f });
+      const eo = await api('etapes', { projet: o.id });
+      verifier(lu.source_donnees.relatif === 'releves.csv' && lu.etapes.length === 2 && typeof lu.etapes[0].parametres === 'string'
+        && eo.etapes.length === 2 && eo.conformes === true && eo.source.trouve.endsWith('releves.csv'), `enregistré et rouvert : ${JSON.stringify(eo)}`);
+      let refus = '';
+      try { await api('retirer_etape', { projet: o.id, n: 9 }); } catch (err) { refus = err.message; }
+      verifier(/Étape inconnue/.test(refus), `étape inconnue : « ${refus} »`);
     });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;

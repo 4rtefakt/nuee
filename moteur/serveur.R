@@ -168,11 +168,13 @@ ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = 
     tables <- tables_fichier(chemin)
     if (length(tables) > 1) return(list(choisir = I(tables), chemin = chemin, nom = nom))
   }
+  # (un tableau importé garde d'où viennent ses données, et ce que l'import en a décidé, pour les
+  # relire, le fichier changé ou celui de l'année suivante : etapes.R ; un .nuee garde la sienne)
   p <- switch(ext,
               nuee = , json = lire_projet(chemin),
               usp = lire_projet(convertir_usp(chemin)),
-              zip = projet_brut_collecte(chemin, table),  # (un CSV d'une archive d'ODK, tel qu'écrit : kobo.R)
-              importer_tableau(chemin, table))
+              zip = avec_source(projet_brut_collecte(chemin, table, identifiants = list()), chemin, "archive", table),  # (un CSV d'une archive d'ODK, tel qu'écrit : kobo.R)
+              avec_source(importer_tableau(chemin, table, reglages = list()), chemin, "tableau", table))
   p$id <- nouvel_id("P")
   p$nom <- if (is.null(table)) nom else sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), table, tools::file_ext(nom))
   p$chemin <- chemin
@@ -194,10 +196,13 @@ ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = 
 # importer_collecte), avec les réglages `o` du dialogue de l'import : nommée comme une feuille d'un
 # classeur quand c'est un groupe répété, « inventaire (observation).xlsx ». Son fichier reste
 # celui de l'export, et sa table celle importée (un autre import du même fichier reste possible).
+# Sa source (etapes.R) garde les réglages de l'import et son formulaire, pour le refaire sur l'export
+# suivant.
 ouvrir_collecte <- function(chemin, nom, o) {
-  p <- importer_collecte(chemin, table = o$table, garder = o$garder, parents = o$parents, formulaire = o$formulaire, langue = o$langue)
+  p <- importer_collecte(chemin, table = o$table, garder = o$garder, parents = o$parents, formulaire = o$formulaire, langue = o$langue, identifiants = list())
   info <- attr(p, "collecte")
   attr(p, "collecte") <- NULL
+  p <- avec_source(p, chemin, "collecte", collecte = p$import_collecte)
   p$id <- nouvel_id("P")
   p$nom <- if (isTRUE(p$collecte$repetition)) sprintf("%s (%s).%s", tools::file_path_sans_ext(nom), p$collecte$table, tools::file_ext(nom)) else nom
   p$chemin <- chemin
@@ -538,7 +543,9 @@ baci_modele_demande <- function(q) {
   }
   m <- ajuster(b$projet, d)
   if (length(b$nouvelles)) {
-    memoriser(p, sprintf(if (length(b$nouvelles) > 1) "variables %s" else "variable %s", paste(b$nouvelles, collapse = ", ")))
+    etiquette <- sprintf(if (length(b$nouvelles) > 1) "variables %s" else "variable %s", paste(b$nouvelles, collapse = ", "))
+    b$projet <- noter_etape(p, b$projet, "baci_modele", q, etiquette)
+    memoriser(p, etiquette)
     b$projet$modifie <- TRUE
     etat$projets[[p$id]] <- b$projet
     reviser(p$id)
@@ -679,12 +686,16 @@ exporter_prediction_demande <- function(q) {
   list(chemin = chemin, chemins = I(chemin))
 }
 
-# Les scores d'un modèle deviennent des variables du projet (modèles hiérarchiques).
+# Les scores d'un modèle deviennent des variables du projet (modèles hiérarchiques). L'étape garde
+# la définition du modèle telle qu'il a été ajusté : rejouée, elle l'ajuste de nouveau sur les
+# données du moment (etapes.R : modele_rejoue).
 scores_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
   r <- scores_en_variables(p, e$modele)
-  memoriser(p, sprintf("scores de %s en variables", e$definition$name %||% q$modele))
+  etiquette <- sprintf("scores de %s en variables", e$definition$name %||% q$modele)
+  r$projet <- noter_etape(p, r$projet, "scores_en_variables", q, etiquette, list(definition = e$definition))
+  memoriser(p, etiquette)
   r$projet$modifie <- TRUE
   etat$projets[[p$id]] <- r$projet
   reviser(p$id)
@@ -693,9 +704,12 @@ scores_demande <- function(q) {
 
 # Un changement du projet q$projet par f, retenu pour Ctrl+Z (memoriser) une fois fait : un
 # changement refusé (une formule qui ne se calcule pas...) ne laisse pas de retour en arrière vide.
-changer_projet <- function(q, f, etiquette) {
+# `etape` : la demande, que le projet garde en étape pour la rejouer (etapes.R : noter_etape ;
+# `contexte`, ce qu'elle sait de plus) ; Ctrl+Z retire l'étape avec le changement.
+changer_projet <- function(q, f, etiquette, etape = NULL, contexte = NULL) {
   avant <- projet(q$projet)
   p <- f(avant)
+  if (!is.null(etape)) p <- noter_etape(avant, p, etape, q, etiquette, contexte)
   suivre_conditions_seance(avant, p)
   memoriser(avant, etiquette)
   p$modifie <- TRUE
@@ -706,21 +720,22 @@ changer_projet <- function(q, f, etiquette) {
 
 # Comme changer_projet, avec ce que le changement dit de lui-même (attr(, attribut) du projet
 # changé : atelier.R), rendu à côté du résumé du projet.
-changer_projet_dit <- function(q, f, etiquette, attribut) {
+changer_projet_dit <- function(q, f, etiquette, attribut, etape = NULL) {
   info <- NULL
   r <- changer_projet(q, function(p) {
     n <- f(p)
     info <<- attr(n, attribut)
     attr(n, attribut) <- NULL
     n
-  }, etiquette)
+  }, etiquette, etape)
   c(r, stats::setNames(list(info), attribut))
 }
 
 classe_demande <- function(q) {
   avant <- projet(q$projet)
-  p <- ajouter_classe(avant, q$variable, q$etiquette, as.numeric(q$observations))
-  memoriser(avant, sprintf("classe %s", q$etiquette))
+  etiquette <- sprintf("classe %s", q$etiquette)
+  p <- noter_etape(avant, appliquer_etape("classe_selection", avant, q), "classe_selection", q, etiquette)
+  memoriser(avant, etiquette)
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
   reviser(p$id)
@@ -824,13 +839,14 @@ exporter_donnees_demande <- function(q) {
 }
 
 # Un tableau collé depuis un tableur : écrit dans un fichier de la session (que le journal de
-# la console R relit), puis importé comme un tableau ouvert.
+# la console R relit), puis importé comme un tableau ouvert. Sans fichier qui dure, il n'a pas de
+# source, mais il note ses étapes (etapes.R) : on peut le mettre à jour d'un fichier.
 coller_demande <- function(q) {
   texte <- as.character(q$texte %||% "")
   if (!grepl("[\t;,]", texte) || !grepl("\n.", texte)) stop(traduire("Le presse-papiers ne contient pas de tableau (au moins deux lignes et deux colonnes)", "The clipboard holds no table (at least two rows and two columns)"))
   chemin <- chemin_temporaire("tableau colle.tsv")
   writeLines(enc2utf8(texte), chemin, useBytes = TRUE)
-  p <- importer_tableau(chemin)
+  p <- debut_etapes(importer_tableau(chemin))
   p$id <- nouvel_id("P")
   p$nom <- q$nom %||% "Tableau"
   p$modifie <- TRUE  # à enregistrer : il n'a pas de fichier
@@ -842,9 +858,10 @@ coller_demande <- function(q) {
 }
 
 # Des spectres (JCAMP-DX, SPC, texte), un par fichier ou plusieurs, réunis en un projet, avec
-# un tableau d'informations sur les échantillons s'il est donné (fichiers_spectres.R).
+# un tableau d'informations sur les échantillons s'il est donné (fichiers_spectres.R). Fait de
+# plusieurs fichiers, il n'a pas de source qu'on relise (etapes.R), mais il note ses étapes.
 importer_spectres_demande <- function(q) {
-  p <- importer_spectres(as.character(unlist(q$chemins)), q$infos, q$nom)
+  p <- debut_etapes(importer_spectres(as.character(unlist(q$chemins)), q$infos, q$nom))
   p$id <- nouvel_id("P")
   p$nom <- p$source
   p$modifie <- TRUE  # à enregistrer : il n'a pas de fichier
@@ -898,13 +915,13 @@ table_a_joindre_demande <- function(q) {
 
 # Les colonnes d'un tableau ajoutées au projet par une clé (variables.R : ajouter_colonnes_table), le
 # tableau relu avec les colonnes de la clé telles qu'écrites ; comme une Nouvelle variable, Ctrl+Z
-# les retire. q$nom : le nom du tableau, pour Annuler.
+# les retire. q$nom : le nom du tableau, pour Annuler. L'étape garde le fichier comme la source du
+# projet (etapes.R), ou le texte des cellules collées.
 ajouter_colonnes_demande <- function(q) {
   p <- projet(q$projet)
-  cles_table <- as.character(unlist(q$cles_table))
-  tableau <- tableau_a_joindre(q$chemin, q$table, textes = cles_table)
-  n <- ajouter_colonnes_table(p, tableau, as.character(unlist(q$cles_projet)), cles_table, if (!is.null(q$colonnes)) as.character(unlist(q$colonnes)))
-  memoriser(p, sprintf(traduire("colonnes de %s", "columns from %s"), q$nom %||% basename(q$chemin)))
+  etiquette <- sprintf(traduire("colonnes de %s", "columns from %s"), q$nom %||% basename(q$chemin))
+  n <- noter_etape(p, appliquer_etape("ajouter_colonnes", p, q), "ajouter_colonnes", q, etiquette)
+  memoriser(p, etiquette)
   info <- attr(n, "jointure")
   attr(n, "jointure") <- NULL
   n$modifie <- TRUE
@@ -922,13 +939,14 @@ fichiers_raster_demande <- function(x) {
 }
 
 # Les valeurs de rasters ajoutées au projet (raster.R : ajouter_valeurs_rasters), une variable par
-# bande ; comme une Nouvelle variable, Ctrl+Z les retire.
+# bande ; comme une Nouvelle variable, Ctrl+Z les retire. L'étape garde chaque fichier comme la
+# source du projet (etapes.R).
 ajouter_raster_demande <- function(q) {
   p <- projet(q$projet)
-  fichiers <- fichiers_raster_demande(q$fichiers)
-  n <- ajouter_valeurs_rasters(p, fichiers)
-  noms <- unique(basename(vapply(fichiers, function(f) as.character(f$chemin)[1], "")))
-  memoriser(p, sprintf(traduire("valeurs de %s", "values from %s"), paste0(paste(utils::head(noms, 2), collapse = ", "), if (length(noms) > 2) "…" else "")))
+  noms <- unique(basename(vapply(fichiers_raster_demande(q$fichiers), function(f) as.character(f$chemin)[1], "")))
+  etiquette <- sprintf(traduire("valeurs de %s", "values from %s"), paste0(paste(utils::head(noms, 2), collapse = ", "), if (length(noms) > 2) "…" else ""))
+  n <- noter_etape(p, appliquer_etape("ajouter_raster", p, q), "ajouter_raster", q, etiquette)
+  memoriser(p, etiquette)
   info <- attr(n, "raster")
   attr(n, "raster") <- NULL
   n$modifie <- TRUE
@@ -938,17 +956,76 @@ ajouter_raster_demande <- function(q) {
 }
 
 # Résumer par groupe : un nouveau projet, une ligne par groupe (nouveau.R : resumer_par_groupe), sans
-# fichier, à enregistrer comme un tableau collé.
+# fichier, à enregistrer comme un tableau collé ; comme lui, il note ses étapes (etapes.R).
 resumer_groupes_demande <- function(q) {
   p <- resumer_par_groupe(projet(q$projet), as.character(unlist(q$groupes)),
                           variables = if (!is.null(q$variables)) as.numeric(unlist(q$variables)), statistiques = as.character(unlist(q$statistiques %||% "moyenne")))
   info <- attr(p, "resume")
   attr(p, "resume") <- NULL
+  p <- debut_etapes(p)
   p$id <- nouvel_id("P")
   p$nom <- p$source
   p$modifie <- TRUE
   etat$projets[[p$id]] <- p
   c(resume_projet(p), list(resume = info))
+}
+
+# ---------------------------------------------------------------- les rapports vivants
+
+# La source et les étapes d'un projet (etapes.R), pour l'interface : DEMANDES$etapes.
+etapes_demande <- function(q) {
+  p <- projet(q$projet)
+  dossier <- dossier_projet(p)
+  s <- p$source_donnees
+  source <- if (is.list(s)) c(etat_fiche(s, dossier), list(table = if (nzchar(premier_texte(s$table))) premier_texte(s$table), lecteur = premier_texte(s$lecteur)),
+                              if (is.list(s$formulaire)) list(formulaire = etat_fiche(s$formulaire, dossier)))
+  conformes <- donnees_conformes(p)
+  list(source = source,
+       etapes = lapply(seq_along(p$etapes), function(k) {
+         e <- p$etapes[[k]]
+         list(n = k, etiquette = premier_texte(e$etiquette), date = premier_texte(e$date), demande = premier_texte(e$demande),
+              fichiers = lapply(e$fichiers %||% list(), etat_fiche, dossier))
+       }),
+       conformes = conformes,
+       raison = if (isFALSE(conformes)) traduire("Les données ont changé hors des étapes (dans la console R, ou dans une version de Nuée d'avant la 1.1) : les mettre à jour reprendrait celles que la source et les étapes donnent.",
+                                                  "The data changed outside the steps (in the R console, or in a version of Nuée before 1.1): updating them would bring back those the source and the steps give.")
+                else if (is.na(conformes)) traduire("Projet d'une version de Nuée d'avant la 1.1 : ses changements d'alors ne sont pas des étapes.",
+                                                    "A project from a version of Nuée before 1.1: its changes from then aren't steps.") else "")
+}
+
+# Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z.
+remplacer_par_mise_a_jour <- function(actuel, r, etiquette) {
+  memoriser(actuel, etiquette)
+  n <- r$projet
+  n$modifie <- TRUE
+  etat$projets[[actuel$id]] <- n
+  reviser(actuel$id)
+  c(r$rapport, list(projet = resume_projet(n)))
+}
+
+# Les données mises à jour : DEMANDES$mettre_a_jour.
+mettre_a_jour_demande <- function(q) {
+  actuel <- projet(q$projet)
+  r <- mise_a_jour(actuel, q$chemin, q$table, as.character(unlist(q$sans_nouvelles)))
+  if (!is.null(r$choisir)) return(r)
+  if (isTRUE(q$apercu)) return(c(r$rapport, list(apercu = TRUE)))
+  remplacer_par_mise_a_jour(actuel, r, traduire("mise à jour des données", "data update"))
+}
+
+# Une étape retirée, les données refaites sans elle : DEMANDES$retirer_etape.
+retirer_etape_demande <- function(q) {
+  actuel <- projet(q$projet)
+  n <- suppressWarnings(as.integer(unlist(q$n))[1])
+  etapes <- actuel$etapes %||% list()
+  if (is.na(n) || n < 1 || n > length(etapes)) stop(sprintf(traduire("Étape inconnue : %s", "Unknown step: %s"), premier_texte(q$n)), call. = FALSE)
+  s <- actuel$source_donnees
+  if (is.null(s)) stop(traduire("Ce projet n'a pas de fichier source : ses étapes ne se refont pas sans lui.", "This project has no source file: its steps can't be redone without it."), call. = FALSE)
+  if (is.null(fichier_retrouve(s, dossier_projet(actuel)))) {
+    stop(sprintf(traduire("Le fichier source est introuvable : %s", "The source file isn't found: %s"), premier_texte(s$chemin)), call. = FALSE)
+  }
+  r <- mise_a_jour(actuel, etapes = etapes[-n])
+  if (!is.null(r$choisir)) return(r)
+  remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n))
 }
 
 # ---------------------------------------------------------------- HTTP
@@ -1142,7 +1219,8 @@ DEMANDES <- list(
   sauvegarde_secours = function(q) {
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
-    enregistrer_projet(p, q$chemin, as.character(q$version %||% ""))
+    # (les chemins relatifs de sa source restent ceux depuis le dossier du projet : etapes.R)
+    enregistrer_projet(p, q$chemin, as.character(q$version %||% ""), dossier = dossier_projet(p))
     list(chemin = q$chemin, lu = p$fichier_lu)
   },
   # q$secours : une copie de secours (q$chemin), rouverte comme le projet qu'elle garde : son nom,
@@ -1289,7 +1367,7 @@ DEMANDES <- list(
     p <- projet(q$projet)
     r <- NULL
     if (isTRUE(q$regler)) {
-      r <- changer_projet(q, function(p) regler_coordonnees(p, q$x, q$y, q$systeme), traduire("coordonnées", "coordinates"))
+      r <- changer_projet(q, function(p) appliquer_etape("coordonnees", p, q), traduire("coordonnées", "coordinates"), "coordonnees")
       p <- projet(q$projet)
     }
     list(coordonnees = coordonnees_projet(p), proposition = proposer_coordonnees(p), systemes = liste_systemes(), projet = r)
@@ -1450,15 +1528,17 @@ DEMANDES <- list(
   },
   correlations_variables = function(q) correlations_variables(projet(q$projet), q$methode %||% "pearson", q$correction %||% "BH"),
   historique = function(q) historique_projet(projet(q$projet)),
-  # données modifiées et variables ajoutées : le projet est à enregistrer
-  modifier_valeur = function(q) changer_projet(q, function(p) modifier_valeur(p, q$observation, q$variable, q$valeur),
-    sprintf("modification de %s", projet(q$projet)$noms_var[[as.character(q$variable)]])),
-  variable_calculee = function(q) changer_projet(q, function(p) variable_calculee(p, q$nom, q$formule), sprintf("variable %s", q$nom)),
+  # données modifiées et variables ajoutées : le projet est à enregistrer ; chaque changement est
+  # une étape du projet, qu'il rejoue quand ses données sont mises à jour (etapes.R)
+  modifier_valeur = function(q) changer_projet(q, function(p) appliquer_etape("modifier_valeur", p, q),
+    sprintf("modification de %s", projet(q$projet)$noms_var[[as.character(q$variable)]]), "modifier_valeur"),
+  variable_calculee = function(q) changer_projet(q, function(p) appliquer_etape("variable_calculee", p, q), sprintf("variable %s", q$nom), "variable_calculee"),
   # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
   imputer = function(q) {
     avant <- projet(q$projet)
-    p <- imputer_acp(avant, unlist(q$variables), k = q$k, bornes = !isFALSE(q$bornes), remplacer = isTRUE(q$remplacer))
-    memoriser(avant, traduire("imputation", "imputation"))
+    etiquette <- traduire("imputation", "imputation")
+    p <- noter_etape(avant, appliquer_etape("imputer", avant, q), "imputer", q, etiquette)
+    memoriser(avant, etiquette)
     info <- attr(p, "imputation")
     attr(p, "imputation") <- NULL
     p$modifie <- TRUE
@@ -1466,8 +1546,7 @@ DEMANDES <- list(
     reviser(p$id)
     c(resume_projet(p), list(imputation = info))
   },
-  classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),
-    sprintf("variable %s", q$nom)),
+  classes_valeurs = function(q) changer_projet(q, function(p) appliquer_etape("classes_valeurs", p, q), sprintf("variable %s", q$nom), "classes_valeurs"),
   # Édition › Ajouter des colonnes d'un tableau : le tableau et les clés proposées, puis l'ajout
   table_a_joindre = table_a_joindre_demande,
   ajouter_colonnes = ajouter_colonnes_demande,
@@ -1480,27 +1559,53 @@ DEMANDES <- list(
   # remplacer : avec q$apercu, ce qui changerait (le nombre de cellules, ce que devient chaque
   # variable), sans rien changer ; sinon le remplacement, refusé quand aucune cellule ne change.
   remplacer = function(q) {
-    f <- function(p) {
-      n <- remplacer_valeurs(p, q$variables, q$chercher, q$remplacer, vides = isTRUE(q$vides), partie = isTRUE(q$partie),
-                             casse = isTRUE(q$casse), nombres = !isFALSE(q$nombres))
-      if (!isTRUE(q$apercu) && !attr(n, "remplacement")$cellules) stop(traduire("Aucune cellule à remplacer.", "No cell to replace."), call. = FALSE)
-      n
-    }
+    f <- function(p) appliquer_etape("remplacer", p, q)
     if (isTRUE(q$apercu)) return(list(remplacement = attr(f(projet(q$projet)), "remplacement")))
     quoi <- if (isTRUE(q$vides)) traduire("cellules vides", "empty cells") else as.character(q$chercher %||% "")[1]
-    changer_projet_dit(q, f, sprintf(traduire("remplacement de %s", "replacement of %s"), quoi), "remplacement")
+    changer_projet_dit(q, f, sprintf(traduire("remplacement de %s", "replacement of %s"), quoi), "remplacement", "remplacer")
   },
   # Les catégories d'une variable qualitative : renommées, fusionnées, rangées (q$noms, q$ordre)
   categories = function(q) {
     nom <- as.character(variable_du_projet(projet(q$projet), q$variable)$ids[1])
-    changer_projet_dit(q, function(p) changer_categories(p, q$variable, q$noms, q$ordre), sprintf(traduire("catégories de %s", "categories of %s"), nom), "categories")
+    changer_projet_dit(q, function(p) appliquer_etape("categories", p, q), sprintf(traduire("catégories de %s", "categories of %s"), nom), "categories", "categories")
   },
   # Un bloc de cellules collé dans la vue Données, à partir de la case choisie (q$observations,
   # q$variables : ses lignes et ses colonnes ; q$valeurs : ses textes, null pour une case laissée)
-  coller_cellules = function(q) changer_projet_dit(q, function(p) coller_cellules(p, q$observations, q$variables, q$valeurs),
-                                                   traduire("cellules collées", "pasted cells"), "collage"),
+  coller_cellules = function(q) changer_projet_dit(q, function(p) appliquer_etape("coller_cellules", p, q),
+                                                   traduire("cellules collées", "pasted cells"), "collage", "coller_cellules"),
   # L'unité et la description des variables (q$descriptions : variable, unite, description)
-  decrire_variables = function(q) changer_projet(q, function(p) decrire_variables(p, q$descriptions), traduire("unités et descriptions", "units and descriptions")),
+  decrire_variables = function(q) changer_projet(q, function(p) appliquer_etape("decrire_variables", p, q), traduire("unités et descriptions", "units and descriptions"),
+                                                 "decrire_variables"),
+  # Les rapports vivants (etapes.R). La source et les étapes du projet q$projet : `source` (le
+  # fichier d'où viennent ses données : `chemin`, `relatif`, `table`, `lecteur` ; `trouve`, celui qui
+  # serait lu, d'abord par son chemin relatif ; `existe` ; `modifie`, s'il a changé depuis qu'il a
+  # été lu, sa taille, sa date ou son contenu ; `taille`, `date`, `sha256` et `lu` de quand il a été
+  # lu, `actuel` : sa taille et sa date maintenant ; null sans source), `etapes` (n, etiquette, date,
+  # demande, et les fichiers qu'elle lit, comme `source`), `conformes` (les données sont encore
+  # celles que la source et les étapes donnent ; false : changées autrement, dans la console R ou par
+  # une version d'avant la 1.1 ; null : on ne sait pas, un projet d'avant la 1.1) et sa `raison`.
+  etapes = etapes_demande,
+  # L'étape q$n retirée : la source relue, les autres étapes rejouées, les données remplacées comme
+  # par mettre_a_jour (le même rapport, et `projet`), un seul Ctrl+Z ; refusé sans le fichier source.
+  retirer_etape = retirer_etape_demande,
+  # Les données mises à jour : le fichier q$chemin (sa source par défaut ; q$table, sa feuille ou sa
+  # table) relu comme la source, les étapes rejouées, le résultat rapporté au projet par les noms des
+  # variables et les identifiants des observations. q$sans_nouvelles : les modèles (noms ou numéros)
+  # qui ne prennent pas les nouvelles observations. Avec q$apercu, le rapport seul, sans rien
+  # changer : `observations` (ajoutees, retirees, premieres_ajoutees, premieres_retirees, cellules
+  # changées et cellules_par_variable, celles des observations communes ; par_position : sans colonne
+  # qui les nomme, retrouvées par leur place ; repetees : des noms qui reviennent, retrouvés dans leur
+  # ordre), `variables` (nouvelles, absentes, recalculees
+  # d'après leur formule, categories : les nouvelles de chaque variable, types : celles qui ont changé
+  # de type dans le fichier et l'ont repris), `identifiants` (nouveaux, absents), `etapes` (n,
+  # demande, etiquette, statut "ok", "sautee" ou "erreur", raison, notes), `modeles`
+  # (variables_absentes : ceux qui ne se réajustent plus et les variables qui leur manquent ;
+  # observations_choisies : ceux qui n'avaient pas toutes les observations du projet, à qui demander
+  # s'ils prennent les nouvelles ; sans_nouvelles : ceux qui ne les prendront pas), `fichier`,
+  # `notes` (la lecture du fichier). Sans q$apercu, la mise à jour faite, un seul Ctrl+Z (la source et
+  # les étapes comprises), le fichier lu devenant la source : le même rapport et `projet`.
+  # L'interface réajuste ensuite les modèles. Un fichier de plusieurs tableaux sans q$table : `choisir`.
+  mettre_a_jour = mettre_a_jour_demande,
   annuler = annuler_demande,
   # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur
   # prétraitement : q$quoi, ceux que la vue dessine ("bruts" ou "pretraites" ; "noms" pour aucun,
@@ -1541,7 +1646,7 @@ DEMANDES <- list(
     p <- projet(q$projet)
     f <- file.path(tempdir(), paste0(nouvel_id("rapport"), ".nuee"))
     on.exit(unlink(f))
-    enregistrer_projet(p, f, as.character(q$version %||% ""))
+    enregistrer_projet(p, f, as.character(q$version %||% ""), dossier = dossier_projet(p))
     list(nom = nom_fichier(p$nom), texte = paste(readLines(f, encoding = "UTF-8", warn = FALSE), collapse = "\n"))
   },
   enregistrer = function(q) {
@@ -1554,8 +1659,10 @@ DEMANDES <- list(
         identical(etat_fichier(chemin)$chemin, lu$chemin) && !meme_etat(etat_fichier(chemin), lu)) {
       stop(conflit_fichier(chemin))
     }
-    enregistrer_projet(p, chemin, as.character(q$version %||% ""))
+    # (sans q$chemin, un fichier à télécharger : les chemins relatifs restent ceux depuis le dossier du projet)
+    enregistrer_projet(p, chemin, as.character(q$version %||% ""), dossier = if (!is.null(q$chemin)) dirname(chemin) else dossier_projet(p))
     if (!is.null(q$chemin)) {
+      p <- chemins_relatifs(p, dirname(chemin))  # (comme le fichier les écrit : etapes.R)
       p$chemin_enregistrement <- chemin
       p$fichier_lu <- etat_fichier(chemin)
     }

@@ -12,13 +12,20 @@
 # pour un fichier à prédire : quelques lignes peuvent avoir chacune une catégorie différente).
 # Un GeoPackage donne aussi les coordonnées du projet (spatial.R) : ses deux colonnes de
 # coordonnées et leur système.
-importer_tableau <- function(chemin, table = NULL, secondaires = TRUE, quantitatives = NULL) {
+#   `reglages` : ce qu'un import a décidé des colonnes, pour que celui du même fichier, ou de sa
+# version de l'année suivante, en décide de même (etapes.R : la source d'un projet). list() pour un
+# premier import : attr(, "reglages") rend ses décisions (projet_depuis_tableau, et `quantitatives`,
+# les colonnes lues en nombres). Avec des décisions, ces colonnes sont lues en nombres quoi qu'il
+# arrive : une colonne de mesures où des « absent » sont venus reste quantitative, et les modèles
+# qui l'utilisent aussi.
+importer_tableau <- function(chemin, table = NULL, secondaires = TRUE, quantitatives = NULL, reglages = NULL) {
   # (un classeur ou un GeoPackage écrit par l'export des données : sa feuille « Variables » rend les
   # unités et descriptions des variables, et n'est pas le tableau à ouvrir : atelier.R)
   variables <- if (extension(chemin) %in% c("xlsx", "xlsm", "xls", "gpkg")) tableau_variables_fichier(chemin)
   if (is.null(table) && !is.null(variables)) table <- tables_fichier(chemin)[1]
-  df <- lire_tableau(chemin, table, quantitatives)
-  p <- appliquer_descriptions(projet_depuis_tableau(df, basename(chemin), secondaires), variables)
+  df <- lire_tableau(chemin, table, c(quantitatives, as.character(unlist(reglages$quantitatives))))
+  p <- appliquer_descriptions(projet_depuis_tableau(df, basename(chemin), secondaires, identifiants = reglages), variables)
+  if (!is.null(reglages)) attr(p, "reglages")$quantitatives <- names(df)[vapply(df, is.numeric, TRUE)]
   p$note <- unname(attr(df, "note"))
   co <- attr(df, "coordonnees")
   if (!is.null(co)) p$coordonnees <- tryCatch(list(x = numeros(p, co$x), y = numeros(p, co$y), systeme = co$systeme), error = function(e) NULL)
@@ -37,18 +44,36 @@ importer_texte <- function(texte, nom = "tableau", secondaires = TRUE) {
 # `toutes_modalites` : garder aussi les modalités d'un facteur sans observation (script R
 # autonome : les catégories restent celles du projet d'origine). `qualitatives` : des noms de
 # colonnes qui restent des variables même quand leurs valeurs diffèrent toutes (une question à
-# choix unique d'un formulaire : kobo.R).
-projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE, qualitatives = NULL) {
+# choix unique d'un formulaire : kobo.R). `identifiants` : list() pour savoir ce qui a été décidé
+# (attr(, "reglages") : `identifiant`, le nom de la première colonne quand elle nomme les
+# observations, "" quand ce sont les numéros des lignes ; `secondaires`, les colonnes gardées en
+# identifiants secondaires) ; ces décisions, pour les reprendre telles quelles quand le même
+# tableau est relu (etapes.R), une colonne de codes qui reçoit un doublon restant un identifiant.
+# La colonne qui nommait les observations reprend alors la première place si elle l'a quittée (un
+# fichier aux colonnes rangées autrement) ; sans elle, les observations ne se retrouveraient pas :
+# refusé.
+projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE, qualitatives = NULL, identifiants = NULL) {
   if (!ncol(df) || !nrow(df)) stop(traduire("Le tableau est vide", "The table is empty"))
-  premiere_id <- is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
+  impose <- as.character(unlist(identifiants$identifiant))
+  if (length(impose) && nzchar(impose[1])) {
+    k <- match(impose[1], names(df))
+    if (is.na(k)) {
+      stop(sprintf(traduire("Le tableau n'a plus de colonne « %s », qui nommait les observations : elles ne peuvent pas se retrouver.",
+                            "The table no longer has the column “%s”, which named the observations: they can't be matched."), impose[1]), call. = FALSE)
+    }
+    if (k > 1) df <- df[c(k, seq_along(df)[-k])]
+  }
+  premiere_id <- if (length(impose)) nzchar(impose[1]) else is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
     (is.factor(df[[1]]) || grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE)))
+  colonne_id <- if (premiere_id) names(df)[1] else ""
   ids <- if (premiere_id) as.character(df[[1]]) else as.character(seq_len(nrow(df)))
   if (premiere_id) df <- df[-1]
   # Une colonne de texte dont toutes les valeurs diffèrent (un code par observation) n'est
   # pas une variable : on la garde en identifiant secondaire, pour les étiquettes.
-  secondaire <- vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE) &
-    !names(df) %in% qualitatives
-  ids_secondaires <- lapply(df[secondaire], as.character)
+  secondaire <- if (!is.null(identifiants$secondaires)) names(df) %in% as.character(unlist(identifiants$secondaires))
+    else vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE) &
+      !names(df) %in% qualitatives
+  ids_secondaires <- lapply(df[secondaire], function(x) { x <- as.character(x); x[is.na(x)] <- ""; x })
   df <- df[!secondaire]
   vars <- list()
   donnees <- matrix(NA_real_, nrow(df), ncol(df))
@@ -76,6 +101,7 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
   p$noms_obs <- stats::setNames(ids, as.character(seq_len(nrow(df))))
   p$noms_var <- stats::setNames(names(df), as.character(seq_along(df)))
   class(p) <- "projet_nuee"
+  if (!is.null(identifiants)) attr(p, "reglages") <- list(identifiant = colonne_id, secondaires = names(ids_secondaires))
   p
 }
 
@@ -650,11 +676,13 @@ autoajuster_modele <- function(projet, definition, A_max = NULL, garder = TRUE) 
 # Enregistre un projet (données et définitions de modèles) au format lu par lire_projet(), avec
 # ce qui l'a écrit : le format (FORMAT_PROJET, projet.R), la version de Nuée (`version`), de R et
 # des paquets R qui calculent les modèles (PAQUETS_CALCUL), pour savoir plus tard avec quoi un
-# résultat a été obtenu.
+# résultat a été obtenu. La source de ses données et les fichiers de ses étapes y prennent leur
+# chemin depuis `dossier` (etapes.R : chemins_relatifs), celui du fichier ; une copie de secours
+# garde ceux depuis le dossier du projet.
 PAQUETS_CALCUL <- c("stats", "mgcv", "nlme", "MASS", "rpart", "cluster")
 version_paquet <- function(x) tryCatch(as.character(utils::packageVersion(x)), error = function(e) NA_character_)
-enregistrer_projet <- function(projet, chemin, version = "") {
-  p <- unclass(projet)
+enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(chemin)) {
+  p <- unclass(chemins_relatifs(projet, dossier))
   for (i in seq_along(p$datasets)) {
     d <- p$datasets[[i]]
     p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
