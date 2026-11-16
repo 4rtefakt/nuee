@@ -46,8 +46,10 @@ function noterSource(app, pid, r) {
   return e;
 }
 
+// (not an old version opened read-only, versions.js: its source is the project's, said there)
 async function verifierSource(app, pid) {
-  if (!app.projet(pid)) return;
+  const p = app.projet(pid);
+  if (!p || p.lecture_seule) return;
   try { noterSource(app, pid, await demander('etapes', { projet: pid }, { silencieux: true })); } catch { /* asked again when the window comes back */ }
 }
 
@@ -353,7 +355,9 @@ async function executer(app, pid, { chemin, table, sans_nouvelles: sansNouvelles
     }
     const suivre = (cle) => (x) => pr.montrer(t(cle, { n: Math.min(x.fait + 1, x.total), total: x.total }), x.fait, x.total, { note: x.nom || '' });
     const avant = await resumerProjet(app, pid, { surProgression: suivre('etapes_p_avant') });
-    const citeesAvant = await valeursCitees(app, pid);
+    // (the documents' values, a part of What changed that never stops the update: null if unread)
+    const citees = () => valeursCitees(app, pid).catch(() => null);
+    const citeesAvant = await citees();
     if (pr.arrete()) { pr.fermer(); app.statut(t('etapes_p_arrete_avant')); return; }
     pr.montrer(t('etapes_p_donnees'), null, null, { arretable: false });
     const n = app.projet(pid).observations.uid.length;
@@ -369,7 +373,8 @@ async function executer(app, pid, { chemin, table, sans_nouvelles: sansNouvelles
     }
     const apres = resumeApres(await resumerProjet(app, pid, { surProgression: suivre('etapes_p_apres') }), modeles, refaits);
     const restes = modeles.filter((m) => !(refaits.get(m.numero) || {}).id);
-    const documents = valeursChangees(citeesAvant, await valeursCitees(app, pid), restes.map((m) => m.nom));
+    const citeesApres = citeesAvant && await citees();
+    const documents = citeesApres ? valeursChangees(citeesAvant, citeesApres, restes.map((m) => m.nom)) : [];
     pr.fermer();
     const date = dateLisible(quand);
     app.marquerChangements(pid, documents, date);

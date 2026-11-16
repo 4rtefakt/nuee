@@ -434,6 +434,7 @@ const app = {
     for (const m of anciens) {
       if (etat.selection[m.id] && !etat.selection[res.id]) etat.selection[res.id] = etat.selection[m.id].filter((u) => dans.has(u));
       for (const k of ['variables', 'choixVIP']) if (etat[k][m.id] && !etat[k][res.id]) etat[k][res.id] = etat[k][m.id];
+      if (etat.replies.has(`${pid}/m/${m.id}`)) etat.replies.add(`${pid}/m/${res.id}`);  // (folded in the explorer, it stays so)
       remplacerPage(m.id, res.id);
       const n = (etat.noeud || '').split('/');
       if (n[1] === 'm' && n[2] === m.id) { n[2] = res.id; etat.noeud = n.join('/'); }

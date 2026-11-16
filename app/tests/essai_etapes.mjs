@@ -121,7 +121,7 @@ const marque = resumeApres(apres, modeles, new Map([[1, { id: 'M9' }], [3, { err
 egal('after the update: a model fitted again as it is, one that failed and one blocked with their reasons', marque.modeles.map((m) => [m.nom, !!m.entrees, m.erreur || '']),
   [['Tous', true, ''], ['M3', false, 'Singular fit'], ['C1', false, 'variables missing from the data: x2']]);
 const arrete = resumeApres(apres, modeles.slice(0, 2), new Map([[1, { id: 'M9' }]]));
-egal('a model left when the update was stopped', arrete.modeles.map((m) => m.erreur || ''), ['', 'not fitted again: the update was stopped before it', '']);
+egal('a model left when the update was stopped', arrete.modeles.map((m) => m.erreur || ''), ['', 'the update was stopped before its turn', '']);
 verifier('the summary given is left as it was', apres.modeles.every((m) => m.entrees && !m.erreur));
 
 console.log('The values cited in documents');
