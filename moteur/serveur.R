@@ -1228,7 +1228,9 @@ fusionner_finir_demande <- function(q) {
     return(list(chemin = chemin))
   }
   actuel <- projet(f$projet)
-  sans <- function(x) x[setdiff(names(x), "modifie")]
+  # (le projet tel qu'il était quand la fusion a été préparée, sans ce que fichier_change, appelé toutes
+  # les 30 secondes, garde de son fichier)
+  sans <- function(x) x[setdiff(names(x), c("modifie", "fichier_lu"))]
   if (!identical(sans(unclass(actuel)), sans(unclass(f$seance)))) {
     stop(traduire("Le projet a changé depuis que la fusion a été préparée : elle est à refaire.", "The project changed since the merge was prepared: it must be done again."), call. = FALSE)
   }

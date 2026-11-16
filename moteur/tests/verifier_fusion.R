@@ -4,15 +4,20 @@
 #     son numéro, les références de leurs documents ({{M3.R2X}}) et les panneaux de leurs figures avec
 #     lui ; le même modèle fait des deux côtés, une fois ;
 #   - un document fusionné ligne à ligne, chaque côté ayant changé un paragraphe ; une figure dont chaque
-#     côté a changé un champ ; deux figures nouvelles sous le même identifiant ;
+#     côté a changé un champ ; deux documents et deux figures nouveaux sous le même identifiant ; la séance
+#     de la fenêtre, la mienne ;
 #   - les données par les étapes : deux nettoyages (-9999 vidé, « foret » renommée « forêt ») fusionnés et
-#     rejoués depuis la source, les mêmes données que les deux faits l'un après l'autre ; les deux côtés
-#     ajoutent une variable calculée (numéros qui se croisent), un modèle de la leur la suit ;
+#     rejoués depuis la source, les mêmes données que les deux faits l'un après l'autre ; la même étape faite
+#     des deux côtés, une fois ; les deux côtés ajoutent une variable calculée (numéros qui se croisent), un
+#     modèle de la leur la suit ; un seul côté met les données à jour, l'étape de l'autre rejouée après ;
+#   - cellule par cellule quand les étapes ne se rejouent pas : la source introuvable sur cet ordinateur,
+#     des données changées hors des étapes, une étape de l'autre côté qui ne s'applique plus ;
 #   - les données cellule par cellule (des projets de la 1.0, sans étapes) : des lignes ajoutées des deux
 #     côtés par deux mises à jour, une cellule changée autrement des deux côtés, les catégories nouvelles
 #     de chaque côté mises avant la dernière (une régression garde sa référence, contre lm()), les termes
 #     de ces catégories ajoutés des deux côtés au même modèle, un modèle nouveau d'un côté qui prend les
-#     lignes de l'autre ;
+#     lignes de l'autre ; une variable et des observations retirées d'un côté, inchangées (retirées) ou
+#     changées (un conflit) de l'autre ; une unité ; un jeu de prédiction ;
 #   - chaque sorte de conflit (modèle, document, figure, source des données, variable, champ : l'unité
 #     d'une variable, les coordonnées, l'ordre des catégories) et ses deux choix, par les étapes (le choix
 #     que les étapes rejouées ne donnent pas devient une étape, les données restent conformes) et cellule
@@ -23,9 +28,11 @@
 #     côté du fichier ; fichier_change (inchangé, changé et par qui, une date seule changée, effacé) ; la
 #     question avant d'écraser, qui dit qu'une fusion est possible ; fusionner avec le projet de la séance,
 #     puis fusionner_finir (un seul Ctrl+Z, l'enregistrement qui passe ensuite sans question), les refus
-#     (des choix qui manquent, un projet changé depuis, une ancienne version, sans base) ; une fusion de
-#     trois fichiers écrite dans un fichier ; annuler une fusion ; les copies effacées à la fermeture ;
-#   - un projet que personne ne fusionne : le même fichier écrit, le même projet lu ;
+#     (des choix qui manquent, un projet changé depuis, une ancienne version, sans base), fichier_change
+#     demandé pendant une fusion préparée ; une fusion de trois fichiers écrite dans un fichier ; annuler une
+#     fusion ; les copies effacées à la fermeture ;
+#   - un projet que personne ne fusionne : le même fichier écrit, le même projet lu, aussi quand sa copie
+#     dans la séance ne s'écrit pas ;
 #   - les phrases en anglais.
 #   Rscript moteur/tests/verifier_fusion.R
 
@@ -577,6 +584,17 @@ verifier("une fusion inconnue : refusée", grepl("inconnue", refus("fusionner_fi
 paragraphe(a, 5, "Changé pendant la fusion.")
 verifier("le projet changé depuis la fusion préparée : refusé, à refaire",
          grepl("refaire", refus("fusionner_finir", list(fusion = fu$fusion, choix = stats::setNames(list(), character(0))))))
+demande("enregistrer", list(projet = a, chemin = partage, ecraser = TRUE))
+b <- demande("ouvrir", list(chemin = partage))$id
+demande("figure_enregistrer", list(projet = b, id = "F1", titre = "Figure de Bob, 2"))
+Sys.sleep(1.1)
+demande("enregistrer", list(projet = b, chemin = partage, auteur = "Bob"))
+demande("fermer_projet", list(projet = b))
+fu <- demande("fusionner", list(projet = a))
+invisible(demande("fichier_change", list(projet = a)))  # (l'interface le demande toutes les 30 secondes : il garde l'empreinte du fichier)
+verifier("fichier_change pendant une fusion préparée ne l'empêche pas de finir",
+         identical(erreur(demande("fusionner_finir", list(fusion = fu$fusion, choix = stats::setNames(list(), character(0))))), "") &&
+           identical(figure(projet(a), "F1")$titre, "Figure de Bob, 2"))
 fc <- fusion(base, mien_c, leur_c)
 ft <- demande("fusionner", list(base = base, mien = mien_c, leur = leur_c, dossier = etude))
 verifier("trois fichiers : les mêmes conflits que fusionner_projets", setequal(vapply(ft$conflits, function(x) x$id, ""), ids_conflits(fc)) && isFALSE(ft$auto))

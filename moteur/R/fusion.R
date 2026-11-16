@@ -286,7 +286,7 @@ titre_cle_fusion <- function(k) {
 cellules_conflit <- function(obs, i, vb, vm, vl, ob) {
   b <- function(j) if (ob[j]) valeur_lisible(texte_valeurs(vb)[j]) else "—"
   exemples <- function(x) {
-    t <- vapply(utils::head(i, 3), function(j) sprintf("%s : %s → %s", cle_lisible(obs[j]), b(j), valeur_lisible(texte_valeurs(x)[j])), "")
+    t <- vapply(utils::head(i, 3), function(j) sprintf(traduire("%s : %s → %s", "%s: %s → %s"), cle_lisible(obs[j]), b(j), valeur_lisible(texte_valeurs(x)[j])), "")
     paste0(phrase_fusion("%d cellule(s) : ", "%d cell(s): ", length(i)), paste(t, collapse = ", "), if (length(i) > 3) ", …" else "")
   }
   list(mien = exemples(vm), leur = exemples(vl),
@@ -747,8 +747,9 @@ nom_champ_variable <- function(f) {
 # deux côtés (`vm`, `vl` : la variable de chaque côté).
 conflit_champ_variable <- function(ctx, k, f, vm, vl) {
   texte <- function(x) if (f %in% names(x)) paste(as.character(unlist(x[[f]])), collapse = " ") else traduire("retiré", "removed")
+  titre <- phrase_fusion("%s de %s", "%s of %s", nom_champ_variable(f), guillemets_fusion(nom_cle_fusion(k)))
   conflit_fusion(ctx, paste0("champ:variable:", k, ":", f), "champ", paste(k, f, sep = "."),
-                 phrase_fusion("%s de %s", "%s of %s", nom_champ_variable(f), guillemets_fusion(nom_cle_fusion(k))), texte(vm), texte(vl))
+                 paste0(toupper(substr(titre, 1, 1)), substring(titre, 2)), texte(vm), texte(vl))
 }
 
 # Les coordonnées d'un projet (spatial.R : p$coordonnees) par les clés de leurs variables (tableau_fusion),
@@ -1658,8 +1659,8 @@ fusion_predictions <- function(tB, tM, tL, cartes, ctx) {
     vl <- if (nom %in% names(l)) l[[nom]] else NA_character_
     cote <- cote_fusion(vb, vm, vl)
     if (cote == "conflit") {
-      etat <- function(v) if (is.na(v)) traduire("retiré", "removed") else traduire("changé", "changed")
-      cote <- conflit_fusion(ctx, paste0("champ:prediction:", nom), "champ", nom, phrase_fusion("Jeu de prédiction %s", "Prediction set %s", guillemets_fusion(nom)), etat(vm), etat(vl))
+      dit <- function(v) if (is.na(v)) traduire("retiré", "removed") else traduire("changé", "changed")
+      cote <- conflit_fusion(ctx, paste0("champ:prediction:", nom), "champ", nom, phrase_fusion("Jeu de prédiction %s", "Prediction set %s", guillemets_fusion(nom)), dit(vm), dit(vl))
     }
     if (cote == "leur" && !is.na(vl)) sortie[[length(sortie) + 1L]] <- pour(tL, cartes$leur, nom)
     else if (cote == "mien" && !is.na(vm)) sortie[[length(sortie) + 1L]] <- pour(tM, cartes$mien, nom)
@@ -1780,7 +1781,10 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
   for (f in setdiff(unique(c(names(mien), names(leur), names(base))), CHAMPS_FUSIONNES)) {
     if (identical(ctx$mode, "etapes") && identical(f, "collecte")) next
     cote <- cote_fusion(texte_champ(base, f), texte_champ(mien, f), texte_champ(leur, f))
-    if (cote == "conflit") cote <- conflit_fusion(ctx, paste0("champ:", f), "champ", f, f, traduire("changé", "changed"), traduire("changé", "changed"))
+    if (cote == "conflit") {
+      dit <- function(x) if (f %in% names(x)) traduire("changé", "changed") else traduire("retiré", "removed")
+      cote <- conflit_fusion(ctx, paste0("champ:", f), "champ", f, phrase_fusion("Champ %s du projet", "Project field %s", guillemets_fusion(f)), dit(mien), dit(leur))
+    }
     if (cote != "leur") next
     if (f %in% names(leur)) p[f] <- list(leur[[f]]) else p[[f]] <- NULL
   }
