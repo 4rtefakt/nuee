@@ -9,7 +9,6 @@
 //   registered asks once for the application ID its administrator gives.
 // - Invite a colleague: their user name; GitHub sends them an invitation, GitLab makes them a member
 //   of the project as Developer.
-// - dialogueComptesEssai: Help's temporary entry to try them, until those screens exist.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { bureau } from './api.js';
@@ -26,8 +25,9 @@ const nomDuDepot = (url) => {
 const pageJeton = (hote) => (hote === 'github.com' ? 'https://github.com/settings/tokens/new?scopes=repo&description=Nu%C3%A9e'
   : `https://${hote}/-/user_settings/personal_access_tokens?name=Nu%C3%A9e&scopes=api,read_user,write_repository`);
 
-// An account: its picture (or a silhouette), its name, user name and how it signed in
-function carteCompte(hote, k) {
+// An account: its picture (or a silhouette), its name, user name and how it signed in (also History's
+// sharing line, versions.js)
+export function carteCompte(hote, k) {
   const service = nomService(hote);
   const details = [k.login && k.nom ? `@${k.login}` : null, k.source ? t(`connexion_source_${k.source}`, { service }) : null,
     k.horsLigne ? t('comptes_hors_ligne', { service }) : null].filter(Boolean).join(' · ');
@@ -262,58 +262,6 @@ export async function ouvrirInvitation(app, { hote, url } = {}) {
   });
 }
 
-// ------------------------------------------------------------ Help's temporary entry
-
-// The accounts on GitHub, GitLab and another GitLab, with Sign in, Sign out, a new repository named
-// after the project in front and Invite a colleague to it: to try the dialogs until the History and
-// sharing screens call them (then this goes, with its menu entry)
-export function dialogueComptesEssai(app) {
-  const c = comptes();
-  if (!c) { app.statut(t('connexion_navigateur'), true); return; }
-  const lignes = el('div', { class: 'comptes-essai' });
-  const autre = el('input', { placeholder: 'gitlab.example.org', spellcheck: 'false', autocomplete: 'off', style: 'width:14em' });
-  const depot = el('input', { type: 'url', placeholder: 'https://github.com/…', spellcheck: 'false', autocomplete: 'off', style: 'flex:1' });
-  const message = el('p', { class: 'message-compte', 'aria-live': 'polite' });
-  const dire = (texte, genre = '') => { message.className = `message-compte ${genre}`; message.textContent = texte; };
-  const nomProjet = () => { const p = app.projet(app.projetActif()); return (p && p.nom) || 'Nuée'; };
-  async function dessiner() {
-    const hotes = ['github.com', 'gitlab.com', autre.value.trim().toLowerCase()].filter(Boolean);
-    const rangs = [];
-    for (const h of hotes) {
-      let k;
-      try { k = await c.compte(h); } catch (e) { k = { connecte: false, erreur: e.message }; }
-      rangs.push(ligne(h, k));
-    }
-    lignes.replaceChildren(...rangs);
-  }
-  function ligne(h, k) {
-    const service = nomService(h);
-    const actions = k.connecte ? [
-      el('button', { onclick: async () => {
-        try { const r = await c.creerDepot(h, nomProjet(), { prive: true }); depot.value = r.url; dire(t('comptes_depot_cree', { url: r.url }), 'ok-compte'); } catch (e) { dire(e.message, 'erreur'); }
-      } }, icone('plus'), t('comptes_creer_depot', { nom: nomProjet() })),
-      el('button', { onclick: () => {
-        if (!depot.value.trim()) { dire(t('comptes_depot_manque'), 'erreur'); depot.focus(); return; }
-        ouvrirInvitation(app, { hote: h, url: depot.value.trim() });
-      } }, icone('user-plus'), t('comptes_inviter')),
-      el('button', { onclick: async () => { await c.deconnecter(h).catch((e) => dire(e.message, 'erreur')); dire(t('comptes_deconnecte', { service })); dessiner(); } },
-        icone('log-out'), t('comptes_deconnecter'))]
-      : [el('button', { class: 'principal', onclick: async () => { if ((await ouvrirConnexion(app, { hote: h })).ok) dessiner(); } }, icone('log-in'), t('comptes_connecter'))];
-    return el('div', { class: 'ligne-compte' },
-      k.connecte ? carteCompte(h, k) : el('div', { class: 'carte-compte' }, el('span', { class: 'avatar-compte vide' }, icone('circle-user-round')),
-        el('div', { class: 'texte-compte' }, el('b', {}, service), el('div', { class: 'doux' }, k.erreur || t(k.refuse ? 'comptes_refuse' : 'comptes_non_connecte')))),
-      el('div', { class: 'actions-compte' }, actions));
-  }
-  autre.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') dessiner(); });
-  dialogue({ titre: t('comptes_essai').replace('…', ''),
-    contenu: el('div', { class: 'dialogue-compte' }, el('p', { class: 'note' }, t('comptes_essai_note')),
-      el('div', {}, el('button', { onclick: async () => { if ((await ouvrirConnexion(app)).ok) dessiner(); } }, icone('log-in'), t('comptes_choisir'))), lignes,
-      el('div', { class: 'ligne' }, el('label', {}, t('comptes_autre')), autre, el('button', { onclick: dessiner }, t('comptes_afficher'))),
-      el('div', { class: 'ligne' }, el('label', {}, t('comptes_depot')), depot), message),
-    boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
-  dessiner();
-}
-
 // ------------------------------------------------------------ strings
 
 ajouterTextes({
@@ -354,13 +302,8 @@ ajouterTextes({
   invitation_bouton: 'Inviter', invitation_en_cours: 'Invitation…', invitation_vide: 'Tapez le nom d’utilisateur de votre collègue.',
   invitation_invite: 'Invitation envoyée à {qui}, à accepter depuis le courriel reçu ou les notifications de GitHub.',
   invitation_ajoute: '{qui} est maintenant membre du projet (Developer).', invitation_deja: '{qui} a déjà accès à ce dépôt.',
-  comptes_essai: 'Comptes GitHub et GitLab (essai)…',
-  comptes_essai_note: 'Provisoire : pour essayer la connexion, la création d’un dépôt et l’invitation, en attendant les écrans Historique et Partage.',
-  comptes_non_connecte: 'Non connecté', comptes_refuse: 'la connexion ne marche plus : reconnectez-vous', comptes_hors_ligne: '{service} injoignable',
+  comptes_hors_ligne: '{service} injoignable',
   comptes_connecter: 'Se connecter…', comptes_deconnecter: 'Se déconnecter', comptes_deconnecte: 'Déconnecté de {service}.',
-  comptes_creer_depot: 'Nouveau dépôt « {nom} »', comptes_depot_cree: 'Dépôt créé : {url}', comptes_depot_manque: 'Donnez d’abord l’adresse du dépôt, ou créez-en un.',
-  comptes_inviter: 'Inviter un collègue…', comptes_autre: 'Un autre GitLab', comptes_afficher: 'Afficher', comptes_depot: 'Dépôt',
-  comptes_choisir: 'Se connecter, en choisissant le service…',
 }, {
   connexion_titre: 'Sign in', connexion_titre_service: 'Sign in to {service}',
   connexion_navigateur: 'Signing in to GitHub or GitLab works in the desktop app.',
@@ -399,11 +342,6 @@ ajouterTextes({
   invitation_bouton: 'Invite', invitation_en_cours: 'Inviting…', invitation_vide: 'Type your colleague’s user name.',
   invitation_invite: 'Invitation sent to {qui}: they accept it from the email they get, or their GitHub notifications.',
   invitation_ajoute: '{qui} is now a member of the project (Developer).', invitation_deja: '{qui} already has access to this repository.',
-  comptes_essai: 'GitHub and GitLab accounts (test)…',
-  comptes_essai_note: 'Temporary: to try signing in, creating a repository and inviting, until the History and sharing screens offer them.',
-  comptes_non_connecte: 'Not signed in', comptes_refuse: 'the sign-in no longer works: sign in again', comptes_hors_ligne: '{service} not reached',
+  comptes_hors_ligne: '{service} not reached',
   comptes_connecter: 'Sign in…', comptes_deconnecter: 'Sign out', comptes_deconnecte: 'Signed out of {service}.',
-  comptes_creer_depot: 'New repository “{nom}”', comptes_depot_cree: 'Repository created: {url}', comptes_depot_manque: 'Give the repository’s address first, or create one.',
-  comptes_inviter: 'Invite a colleague…', comptes_autre: 'Another GitLab', comptes_afficher: 'Show', comptes_depot: 'Repository',
-  comptes_choisir: 'Sign in, choosing the service…',
 });

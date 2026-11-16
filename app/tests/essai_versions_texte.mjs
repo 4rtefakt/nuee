@@ -7,7 +7,7 @@
 //   node tests/essai_versions_texte.mjs
 import {
   dateLongue, heureVersion, dateVersion, jourVersion, grouperParJour, tailleLisible, sansExtension, titreVersion, nomFichier, nomDeChemin, dossierDe,
-  memeFichier, nomHote, hoteAdresse, liensConnexion, placeDansDepot, etatPartage, phraseRecu, autreAuteur, titreDeVersion, descriptionVersion,
+  memeFichier, nomHote, hoteAdresse, liensConnexion, placeDansDepot, serveurDeComptes, cheminDepot, pageDepot, nomSuivant, etatPartage, phraseRecu, autreAuteur, titreDeVersion, descriptionVersion,
   nombreVersions, demandeAbsente, valeurResultat, texteP, ecartResultat, drapeauxEntree, apparierModeles, ordonnerComparaisons, entreesChangees, TEXTES_VERSIONS,
 } from '../interface/versions_texte.js';
 import { changerLangue } from '../interface/i18n.js';
@@ -83,6 +83,13 @@ const autre = liensConnexion('https://git.example.org/equipe/suivi.git');
 verifier('un autre serveur : les pages des deux', autre.github && autre.gitlab && autre.gitlab.depot === 'https://gitlab.com/projects/new', JSON.stringify(autre));
 egal('où va le projet dans le dépôt', [placeDansDepot('vergers.nuee', 'vergers.nuee'), placeDansDepot('vergers.nuee', 'vergers/vergers.nuee')],
   ['', 'In this repository, the project is at vergers/vergers.nuee: another file was already at vergers.nuee.']);
+egal('les serveurs où Nuée se connecte : GitHub, et un GitLab par son nom', ['github.com', 'GitLab.com', 'gitlab.inrae.fr', 'api.github.com', 'git.example.org', '', null].map(serveurDeComptes),
+  [true, true, true, false, false, false, false]);
+egal('le dépôt d’une adresse, et sa page', [cheminDepot('https://github.com/octocat/orchards.git'), cheminDepot('https://gitlab.com/equipe/suivi/vergers.git'),
+  cheminDepot('https://gitlab.com/equipe/vergers/-/tree/main'), pageDepot('https://github.com/octocat/orchards.git'), pageDepot('https://gitlab.inrae.fr/equipe/vergers')],
+['octocat/orchards', 'equipe/suivi/vergers', 'equipe/vergers', 'https://github.com/octocat/orchards', 'https://gitlab.inrae.fr/equipe/vergers']);
+egal('un autre nom quand le nom est pris (une année reste)', ['orchards', 'orchards-2', 'orchards-9', 'suivi-2026', ' vergers ', ''].map(nomSuivant),
+  ['orchards-2', 'orchards-3', 'orchards-10', 'suivi-2026-2', 'vergers-2', 'nuee-2']);
 
 console.log('L’état d’un projet partagé');
 const partage = (x = {}) => ({ actif: true, versions: 5, partage: { url: 'https://github.com/moi/vergers.git', hote: 'github.com', aEnvoyer: 0, aRecevoir: 0, erreur: null, ...x }, conflit: null });

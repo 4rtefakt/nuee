@@ -14,6 +14,9 @@
 //   - a version compared with the project now: opened in the engine only, its models fitted
 //     quietly, then What changed (changements.js);
 //   - a version restored, then the project read again from its file (app.rechargerProjet);
+//   - shared on GitHub or GitLab: signed in there (connexion.js, over window.bureau.comptes), a
+//     repository made for the project, or an existing one's address; Invite a colleague; the
+//     account signed in shown in History, with Sign out;
 //   - a conflict: both sides' versions, the engine's merge by meaning when it has one (requests
 //     fusionner and fusionner_finir), else Keep mine or Take theirs; Compare first;
 //   - a project on a shared folder changed on disk by someone else (request fichier_change):
@@ -23,8 +26,10 @@ import { el, icone, dialogue } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { dateLongue, dateVersion, heureVersion, grouperParJour, tailleLisible, titreVersion, nomDeChemin, memeFichier, nomHote, hoteAdresse, liensConnexion,
-  placeDansDepot, etatPartage, phraseRecu, autreAuteur, titreDeVersion, descriptionVersion, nombreVersions, demandeAbsente, sansExtension } from './versions_texte.js';
+  placeDansDepot, etatPartage, phraseRecu, autreAuteur, titreDeVersion, descriptionVersion, nombreVersions, demandeAbsente, sansExtension,
+  serveurDeComptes, cheminDepot, pageDepot, nomSuivant } from './versions_texte.js';
 import { resumerProjet, afficherChangements, installerChangements } from './changements.js';
+import { ouvrirConnexion, ouvrirInvitation, carteCompte } from './connexion.js';
 
 // The main process's functions; none in a browser
 const couche = () => (bureau && bureau.versions && typeof bureau.versions.etat === 'function' && typeof bureau.versions.ouvert === 'function' ? bureau.versions : null);
@@ -150,7 +155,10 @@ async function evenement(app, e) {
   oublier(chemin);
   if (e.type === 'envoi') vus.set(chemin, { type: 'envoi' });
   else if (['envoye', 'recu'].includes(e.type)) vus.delete(chemin);
-  else if (e.type === 'erreur') vus.set(chemin, { type: 'erreur', message: e.message });
+  else if (e.type === 'erreur') {
+    vus.set(chemin, { type: 'erreur', message: e.message });
+    comptesVus.clear();  // (a sign-in refused shows in History at once)
+  }
   else if (e.type === 'attente') vus.set(chemin, { type: 'attente' });
   else if (e.type === 'conflit') vus.set(chemin, { type: 'conflit', mien: e.mien, leur: e.leur, fichiers: e.fichiers });
   const p = projetDuFichier(app, chemin);
@@ -325,7 +333,8 @@ function ligneVersion(app, p, v, actuelle, partage) {
       el('button', { disabled: actuelle, onclick: () => restaurerVersion(app, p.id, v) }, icone('rotate-ccw'), t('versions_restaurer'))));
 }
 
-// Shared with GitHub or GitLab: its state, Send now, Get now, the token, Stop sharing; or Share
+// Shared with GitHub or GitLab: its state, the account signed in there (with Invite a colleague and
+// Sign out), Send now, Get now, the address or token, Stop sharing; or Share
 function sectionPartage(app, p, e) {
   const chemin = fichierProjet(p);
   if (!e.partage) {
@@ -335,6 +344,10 @@ function sectionPartage(app, p, e) {
   const x = e.partage;
   const etat = etatPartage(e, vus.get(chemin));
   const hote = nomHote(x.hote) || x.url;
+  // (the token's note, which the account's line replaces by its own once signed in)
+  const noteJeton = el('span', {}, x.jeton ? t(x.jetonSession ? 'versions_jeton_session' : 'versions_jeton_garde') : t('versions_jeton_aucun'));
+  const compte = el('div', { class: 'compte-partage' });
+  remplirCompte(app, p.id, compte, x, noteJeton);
   return el('div', { class: 'partage-versions' },
     el('div', { class: 'ligne' },
       el('span', {}, icone('cloud'), ' ', t('versions_partage_avec', { hote })), el('span', { class: 'adresse-versions' }, x.url),
@@ -344,15 +357,14 @@ function sectionPartage(app, p, e) {
       el('span', {}, t('versions_conflit_avis', { nom: sansExtension(p.nom) })), el('button', { class: 'principal', onclick: () => resoudreConflit(app, p.id) }, t('versions_choisir'))) : null,
     etat && etat.cle === 'erreur' ? el('div', { class: 'banniere-versions erreur-versions' }, el('span', {}, (vus.get(chemin) || {}).message || x.erreur),
       el('button', { onclick: () => envoyerMaintenant(app, p.id) }, icone('refresh-cw'), t('versions_reessayer'))) : null,
+    compte,
     el('div', { class: 'ligne' },
       el('button', { disabled: !x.hote, onclick: () => envoyerMaintenant(app, p.id) }, icone('cloud-upload'), t('versions_envoyer_maintenant')),
       el('button', { disabled: !x.hote, onclick: () => recevoirMaintenant(app, p.id) }, icone('cloud-download'), t('versions_recevoir_maintenant')),
       el('button', { onclick: () => verifierPartage(app, p.id) }, icone('circle-check'), t('versions_verifier')),
-      el('button', { onclick: () => dialoguePartage(app, p.id) }, icone('link'), t('versions_changer_jeton')),
-      connexionDisponible('ouvrirInvitation') ? el('button', { onclick: () => inviter(app, x) }, icone('user-round'), t('versions_inviter')) : null,
+      el('button', { onclick: () => dialoguePartage(app, p.id, { existant: true }) }, icone('link'), t('versions_changer_jeton')),
       el('button', { onclick: () => arreterPartage(app, p.id, hote) }, icone('x'), t('versions_arreter_partage'))),
-    el('p', { class: 'note' }, x.jeton ? t(x.jetonSession ? 'versions_jeton_session' : 'versions_jeton_garde') : t('versions_jeton_aucun'),
-      x.dernierEchange ? ` · ${t('versions_dernier_echange', { date: dateVersion(x.dernierEchange) })}` : ''));
+    el('p', { class: 'note' }, noteJeton, x.dernierEchange ? ` · ${t('versions_dernier_echange', { date: dateVersion(x.dernierEchange) })}` : ''));
 }
 
 // An old version opened read-only: what it is, Restore, Save as, and its project's history
@@ -403,8 +415,8 @@ function demanderDescription(p) {
 
 // The author's fields (name, email), filled with the settings' author
 function champsAuteur(auteur) {
-  const nom = el('input', { value: (auteur && auteur.nom) || '', style: 'width:22em', autocomplete: 'name' });
-  const email = el('input', { type: 'email', value: (auteur && auteur.email) || '', style: 'width:22em', autocomplete: 'email' });
+  const nom = el('input', { value: (auteur && auteur.nom) || '', style: 'width:22em', autocomplete: 'name', 'aria-label': t('versions_auteur_nom') });
+  const email = el('input', { type: 'email', value: (auteur && auteur.email) || '', style: 'width:22em', autocomplete: 'email', 'aria-label': t('versions_auteur_email') });
   return { nom, email, lignes: [el('label', {}, t('versions_auteur_nom')), nom, el('label', {}, t('versions_auteur_email')), email] };
 }
 
@@ -627,15 +639,106 @@ async function refuserEnregistrement(app, pid) {
 
 // ------------------------------------------------------------ GitHub and GitLab
 
-// The sign-in dialogs (connexion.js: ouvrirConnexion, ouvrirInvitation), when they are there
-let connexion = null;
-import('./connexion.js').then((m) => { connexion = m; }, () => { connexion = null; });
-const connexionDisponible = (f) => !!(connexion && typeof connexion[f] === 'function');
+// Signing in to GitHub and GitLab (app/comptes.js, through preload.js); none in a browser
+const comptes = () => (bureau && bureau.comptes && typeof bureau.comptes.compte === 'function' ? bureau.comptes : null);
 
-// Share on GitHub or GitLab: signed in (connexion.js, when there) the repository made for the
-// project; or a repository's address and a token that can write to it, with where to make both.
-// The author's name and email asked the first time (GitHub and GitLab show who did what by it).
-async function dialoguePartage(app, pid) {
+// Who is signed in on each server, asked again after five minutes (a minute after a failure): each
+// drawing of History would otherwise ask the server. host → { k | erreur, quand } or { promesse }
+const comptesVus = new Map();
+function compteConnu(h, { frais = false } = {}) {
+  const m = comptesVus.get(h);
+  if (m && m.promesse) return m.promesse;
+  if (m && !frais && Date.now() - m.quand < (m.erreur ? 60000 : 300000)) return m.erreur ? Promise.reject(new Error(m.erreur)) : Promise.resolve(m.k);
+  const promesse = comptes().compte(h).then(
+    (k) => { comptesVus.set(h, { k, quand: Date.now() }); return k; },
+    (err) => { comptesVus.set(h, { erreur: err.message, quand: Date.now() }); throw err; });
+  comptesVus.set(h, { promesse });
+  return promesse;
+}
+const compteSigne = (h, k) => comptesVus.set(h, { k, quand: Date.now() });
+
+// A server Nuée signs in to: GitHub, GitLab, a GitLab by its name, or one whose application ID was given
+async function avecComptes(h) {
+  if (!h || !comptes()) return false;
+  if (serveurDeComptes(h)) return true;
+  try { return !!(await comptes().serveur(h)).connexion; } catch { return false; }
+}
+
+// Signed in to the server, through the sign-in dialog when no one is yet: the account, or null
+async function seConnecter(app, h) {
+  let k = null;
+  try { k = await compteConnu(h, { frais: true }); } catch { /* (the sign-in dialog says what goes wrong) */ }
+  if (k && k.connecte) return k;
+  const s = await ouvrirConnexion(app, { hote: h });
+  if (!s.ok) return null;
+  compteSigne(h, s.compte);
+  return s.compte;
+}
+
+// History's line of the account signed in on the shared project's server: its card, Invite a
+// colleague and Sign out; Sign in… when no one is, or when the server refuses the sign-in kept.
+// Nothing for a server Nuée doesn't sign in to: the token's note says what there is.
+async function remplirCompte(app, pid, zone, x, noteJeton) {
+  const h = x.hote;
+  if (!(await avecComptes(h))) return;
+  const service = nomHote(h) || h;
+  let k;
+  try { k = await compteConnu(h); } catch (err) {
+    if (zone.isConnected) zone.replaceChildren(el('p', { class: 'note erreur' }, err.message));
+    return;
+  }
+  if (!zone.isConnected) return;
+  const connecter = async () => {
+    const s = await ouvrirConnexion(app, { hote: h });
+    if (s.ok) { compteSigne(h, s.compte); apresConnexion(app, pid); }
+  };
+  if (!k.connecte) {
+    zone.replaceChildren(el('span', { class: 'avatar-compte vide' }, icone('circle-user-round')),
+      el('span', { class: k.refuse ? 'erreur' : 'doux' }, t(k.refuse ? 'versions_connexion_refusee' : 'versions_non_connecte', { service })),
+      el('button', { class: 'principal', onclick: connecter }, icone('log-in'), t('comptes_connecter')));
+    return;
+  }
+  noteJeton.textContent = t(k.session ? 'connexion_session' : 'versions_connexion_gardee');
+  zone.replaceChildren(...[carteCompte(h, k),
+    el('div', { class: 'actions-compte' },
+      // (a sign-in for git only may send and get, not invite: the server's own sign-in for that)
+      k.limite ? el('button', { onclick: connecter }, icone('log-in'), t('connexion_avec', { service }))
+        : el('button', { onclick: () => inviter(app, x) }, icone('user-plus'), t('versions_inviter')),
+      el('button', { onclick: () => deconnecter(app, h) }, icone('log-out'), t('comptes_deconnecter'))),
+    k.limite ? el('p', { class: 'note' }, t('connexion_limitee', { service })) : null].filter(Boolean));
+}
+
+// Signed in again from History: the exchange that failed tried again, else the panel drawn again
+function apresConnexion(app, pid) {
+  const chemin = fichierProjet(app.projet(pid));
+  const e = chemin && (memo.get(chemin) || {}).etat;
+  const etat = e && etatPartage(e, vus.get(chemin));
+  if (etat && etat.cle === 'erreur') envoyerMaintenant(app, pid);
+  else apresAction(app, pid);
+}
+
+// Sign out: asked first (the projects shared on that server stop sending and getting), then the
+// sign-in forgotten, and every History drawn again
+async function deconnecter(app, h) {
+  const service = nomHote(h) || h;
+  const oui = await demanderChoix({ titre: t('versions_deconnecter_titre', { service }), texte: t('versions_deconnecter_texte', { service }),
+    boutons: [{ libelle: t('comptes_deconnecter'), principal: true, valeur: true }] });
+  if (!oui) return;
+  try { await comptes().deconnecter(h); } catch (err) { app.statut(err.message, true); return; }
+  comptesVus.delete(h);
+  memo.clear();
+  app.statut(t('comptes_deconnecte', { service }));
+  for (const c of document.querySelectorAll('[data-versions]')) if (c._redessiner) c._redessiner();
+  app.majStatut();
+}
+
+// Share on GitHub or GitLab: the server chosen (GitHub, GitLab, the institution's GitLab), signed in
+// there when no one is yet (connexion.js), a repository of the account's own made for the project
+// (named after it, private unless unticked; a name taken offers another), then shared, with Invite
+// a colleague; or an existing repository's address, with a token for a server Nuée doesn't sign in
+// to. The author's name and email asked the first time (GitHub and GitLab show who did what by
+// it). existant: straight to the address and token (History's Change the address or token…).
+async function dialoguePartage(app, pid, { existant = false } = {}) {
   const p = app.projet(pid);
   const chemin = fichierProjet(p);
   if (!chemin) { app.versions(pid); return; }
@@ -644,82 +747,192 @@ async function dialoguePartage(app, pid) {
   let r;
   try { [e, r] = await Promise.all([lireEtat(chemin), c.reglages()]); } catch (err) { app.statut(err.message, true); return; }
   const a = r.auteur && r.auteur.email ? null : champsAuteur(r.auteur);
-  const adresse = el('input', { type: 'url', value: (e.partage && e.partage.url) || '', placeholder: t('versions_adresse_exemple'), style: 'width:100%', spellcheck: 'false' });
-  const jeton = el('input', { type: 'password', style: 'width:100%', autocomplete: 'off', spellcheck: 'false',
-    placeholder: e.partage && e.partage.jeton ? t('versions_jeton_garder', { hote: nomHote(e.partage.hote) || e.partage.hote }) : '' });
+  const zone = el('div', { class: 'etape-connexion' });
   const message = el('p', { class: 'message-connexion', 'aria-live': 'polite' });
-  const liens = el('div', { class: 'liens-connexion' });
-  const lien = (href, texte) => el('a', { href, target: '_blank', rel: 'noopener' }, icone('external-link'), texte);
-  const dessinerLiens = () => {
-    const l = liensConnexion(adresse.value);
-    liens.replaceChildren(el('ol', {},
-      el('li', {}, t('versions_etape_depot'), ' ', l.github ? lien(l.github.depot, t('versions_lien_github_depot')) : null, ' ', l.gitlab ? lien(l.gitlab.depot, t('versions_lien_gitlab_depot')) : null),
-      el('li', {}, t('versions_etape_jeton'), ' ', l.github ? lien(l.github.jeton, t('versions_lien_github_jeton')) : null, ' ', l.gitlab ? lien(l.gitlab.jeton, t('versions_lien_gitlab_jeton')) : null),
-      el('li', {}, t('versions_etape_coller'))));
-  };
-  adresse.addEventListener('input', dessinerLiens);
-  dessinerLiens();
+  const dire = (texte, genre = '') => { message.className = `message-connexion ${genre}`; message.textContent = texte || ''; };
+  // (each step replaces the one before; what an older one gets back comes too late)
+  let numero = 0;
+  const etape = (...enfants) => { numero += 1; zone.replaceChildren(...enfants.flat(Infinity).filter((x) => x !== null && x !== undefined && x !== false)); return numero; };
+  const attente = (texte) => el('p', { class: 'attente-connexion' }, el('span', { class: 'point' }), texte);
+  const d = dialogue({ titre: t('versions_partager_titre'),
+    contenu: el('div', { class: 'dialogue-connexion dialogue-partage' }, el('p', {}, t('versions_partager_texte')),
+      a ? [el('h4', {}, t('versions_auteur_titre')), el('p', { class: 'note' }, t('versions_auteur_texte')), el('div', { class: 'grille-champs' }, a.lignes)] : null,
+      zone, message),
+    boutons: [{ libelle: t('annuler'), action: () => true }],
+    surFermeture: () => { numero += 1; } });
+  const pied = (boutons) => d.boite.querySelector('.pied-dialogue').replaceChildren(...boutons.map((b) => el('button', {
+    class: b.principal ? 'principal' : '', onclick: () => { if (b.action() !== false) d.fermer(); } }, b.libelle)));
   // (the author first, when not given yet)
   const auteurDonne = async () => {
     if (!a) return true;
-    if (!a.nom.value.trim() || !a.email.value.trim()) { message.className = 'message-connexion erreur'; message.textContent = t('versions_auteur_manque'); return false; }
+    if (!a.nom.value.trim() || !a.email.value.trim()) { dire(t('versions_auteur_manque'), 'erreur'); (a.nom.value.trim() ? a.email : a.nom).focus(); return false; }
     await c.regler({ auteur: { nom: a.nom.value, email: a.email.value } });
     return true;
   };
+  // (one action at a time)
   let enCours = false;
-  const partager = async (url) => {
+  const une = (f) => async () => {
     if (enCours) return;
     enCours = true;
-    message.className = 'message-connexion doux';
-    message.textContent = t('versions_verification');
-    try {
-      if (!(await auteurDonne())) return;
-      // (the token first when the address names its server: the first exchange needs it)
-      const hote = hoteAdresse(url);
-      if (jeton.value.trim() && hote) await c.jeton(hote, jeton.value.trim());
-      const d = await c.partager(chemin, url);
-      // (the address as the main process keeps it: a page's address cut to its repository)
-      adresse.value = d.url;
-      dessinerLiens();
-      if (jeton.value.trim() && d.hote && d.hote !== hote) await c.jeton(d.hote, jeton.value.trim());
-      jeton.value = '';
-      const v = await c.verifierPartage(chemin);
-      const place = placeDansDepot(nomDeChemin(chemin), d.chemin);
-      message.className = `message-connexion ${v.ok ? 'ok-connexion' : 'erreur'}`;
-      message.textContent = [v.message, place].filter(Boolean).join(' ');
-      apresAction(app, pid);
-      if (v.ok) app.statut(t('versions_partage_ok', { hote: nomHote(d.hote) || d.hote }));
-    } catch (err) {
-      message.className = 'message-connexion erreur';
-      message.textContent = err.message;
-    } finally { enCours = false; }
+    try { await f(); } finally { enCours = false; }
   };
-  // (signed in: the service's account makes the repository, connexion.js and bureau.comptes)
-  const compte = connexionDisponible('ouvrirConnexion') ? el('div', { class: 'ligne connexion-compte' }, ['github.com', 'gitlab.com'].map((h) => el('button', { onclick: async () => {
-    const s = await connexion.ouvrirConnexion(app, { hote: h }).catch(() => null);
-    if (!s || !s.ok) return;
-    const comptes = bureau.comptes;
-    if (comptes && typeof comptes.creerDepot === 'function') {
-      try {
-        const depot = await comptes.creerDepot({ hote: h, nom: sansExtension(p.nom), prive: true });
-        if (depot && depot.url) { adresse.value = depot.url; await partager(depot.url); }
-      } catch (err) { message.className = 'message-connexion erreur'; message.textContent = err.message; }
+
+  // GitHub, GitLab, or the institution's GitLab by its name; or an existing repository
+  function choisir({ ouvert = false, url = '' } = {}) {
+    dire('');
+    const serveurAutre = el('input', { placeholder: 'gitlab.example.org', spellcheck: 'false', autocomplete: 'off', 'aria-label': t('connexion_autre_gitlab') });
+    const continuer = () => {
+      const v = serveurAutre.value.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+      if (!v) { dire(t('connexion_autre_vide'), 'erreur'); serveurAutre.focus(); return; }
+      serveurChoisi(v);
+    };
+    serveurAutre.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') continuer(); });
+    const github = el('button', { onclick: () => serveurChoisi('github.com') }, 'GitHub');
+    const formulaire = formulaireExistant({ ouvert, url });
+    etape(el('p', {}, t('versions_partager_compte')),
+      el('div', { class: 'services-connexion' }, github, el('button', { onclick: () => serveurChoisi('gitlab.com') }, 'GitLab')),
+      el('div', { class: 'ligne autre-gitlab' }, el('label', {}, t('connexion_autre_gitlab')), serveurAutre, el('button', { onclick: continuer }, t('connexion_continuer'))),
+      formulaire);
+    pied([{ libelle: t('annuler'), action: () => true }]);
+    if (!a) (ouvert ? formulaire.querySelector('input') : github).focus();
+  }
+
+  // A server: signed in there (the sign-in dialog when no one is yet), then its new repository
+  async function serveurChoisi(h) {
+    dire('');
+    const n = etape(attente(t('connexion_preparation')));
+    const k = await seConnecter(app, h);
+    if (n !== numero) return;
+    if (!k) { choisir(); return; }
+    // (a sign-in for git only can't make a repository: an existing one's address then)
+    if (k.limite) {
+      etape(carteCompte(h, k), el('p', { class: 'note' }, t('connexion_limitee', { service: nomHote(h) || h })), formulaireExistant({ ouvert: true, url: `https://${h}/` }));
+      return;
     }
-  } }, icone('user-round'), t('versions_compte', { service: nomHote(h) })))) : null;
-  dialogue({ titre: t('versions_partager_titre'),
-    contenu: el('div', { class: 'dialogue-connexion' }, el('p', {}, t('versions_partager_texte')),
-      a ? [el('h4', {}, t('versions_auteur_titre')), el('p', { class: 'note' }, t('versions_auteur_texte')), el('div', { class: 'grille-champs' }, a.lignes)] : null,
-      compte ? [compte, el('p', { class: 'note' }, t('versions_ou_jeton'))] : null,
-      liens,
+    nouveauDepot(h, k);
+  }
+
+  // A repository of the account's own, named after the project, private unless unticked
+  function nouveauDepot(h, k) {
+    const service = nomHote(h) || h;
+    const nom = el('input', { value: sansExtension(p.nom), spellcheck: 'false', autocomplete: 'off', maxlength: 100, 'aria-label': t('versions_nom_depot') });
+    const prive = el('input', { type: 'checkbox', checked: true });
+    const creer = une(async () => {
+      dire('');
+      if (!nom.value.trim()) { nom.focus(); return; }
+      if (!(await auteurDonne())) return;
+      dire(t('versions_creation', { service }), 'doux');
+      let depot;
+      try { depot = await comptes().creerDepot(h, nom.value.trim(), { prive: prive.checked }); } catch (err) {
+        dire(err.message, 'erreur');
+        // (a name taken: another one offered)
+        if (err.code === 'existe') { nom.value = nomSuivant(nom.value); nom.focus(); nom.select(); }
+        return;
+      }
+      dire(t('versions_partage_en_cours'), 'doux');
+      let s;
+      try { s = await c.partager(chemin, depot.url); } catch (err) {
+        // (the repository is made: it is the one to share once what went wrong is solved)
+        choisir({ ouvert: true, url: depot.url });
+        dire(err.message, 'erreur');
+        return;
+      }
+      fait(s, { prive: prive.checked, page: depot.page });
+    });
+    nom.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') creer(); });
+    etape(carteCompte(h, k),
+      el('h4', {}, t('versions_nouveau_depot', { service })),
+      el('div', { class: 'ligne' }, el('label', {}, t('versions_nom_depot')), nom),
+      el('label', { class: 'champ' }, prive, t('versions_depot_prive')),
+      el('div', { class: 'ligne' }, el('button', { class: 'principal', onclick: creer }, icone('cloud-upload'), t('versions_creer_partager')),
+        el('a', { href: '#', onclick: (ev) => { ev.preventDefault(); choisir({ ouvert: true }); } }, t('versions_plutot_existant'))));
+    nom.focus();
+    nom.select();
+  }
+
+  // An existing repository: its address; signed in to its server, nothing else, otherwise a token
+  // that can write to it (with where to make both)
+  function formulaireExistant({ ouvert = false, url = '' } = {}) {
+    const adresse = el('input', { type: 'url', value: url || (e.partage && e.partage.url) || '', placeholder: t('versions_adresse_exemple'),
+      style: 'width:100%', spellcheck: 'false', 'aria-label': t('versions_adresse') });
+    const jeton = el('input', { type: 'password', style: 'width:100%', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('versions_jeton'),
+      placeholder: e.partage && e.partage.jeton ? t('versions_jeton_garder', { hote: nomHote(e.partage.hote) || e.partage.hote }) : '' });
+    const liens = el('div', { class: 'liens-connexion' });
+    const lien = (href, texte) => el('a', { href, target: '_blank', rel: 'noopener' }, icone('external-link'), texte);
+    const dessinerLiens = () => {
+      const l = liensConnexion(adresse.value);
+      liens.replaceChildren(el('ol', {},
+        el('li', {}, t('versions_etape_depot'), ' ', l.github ? lien(l.github.depot, t('versions_lien_github_depot')) : null, ' ', l.gitlab ? lien(l.gitlab.depot, t('versions_lien_gitlab_depot')) : null),
+        el('li', {}, t('versions_etape_jeton'), ' ', l.github ? lien(l.github.jeton, t('versions_lien_github_jeton')) : null, ' ', l.gitlab ? lien(l.gitlab.jeton, t('versions_lien_gitlab_jeton')) : null),
+        el('li', {}, t('versions_etape_coller'))));
+    };
+    adresse.addEventListener('input', dessinerLiens);
+    dessinerLiens();
+    const partager = une(async () => {
+      const lue = adresse.value.trim();
+      dire(t('versions_verification'), 'doux');
+      try {
+        if (!(await auteurDonne())) return;
+        const h = hoteAdresse(lue);
+        // (a token typed: kept for its server; none: signed in there, through the sign-in dialog when no one is)
+        if (jeton.value.trim() && h) await c.jeton(h, jeton.value.trim());
+        else if (h && !(e.partage && e.partage.jeton && e.partage.hote === h) && (await avecComptes(h))) {
+          if (!(await seConnecter(app, h))) { dire(''); return; }
+        }
+        const s = await c.partager(chemin, lue);
+        // (the address as the main process keeps it: a page's address cut to its repository)
+        adresse.value = s.url;
+        dessinerLiens();
+        if (jeton.value.trim() && s.hote && s.hote !== h) await c.jeton(s.hote, jeton.value.trim());
+        jeton.value = '';
+        const v = await c.verifierPartage(chemin);
+        apresAction(app, pid);
+        if (!v.ok) { dire([v.message, placeDansDepot(nomDeChemin(chemin), s.chemin)].filter(Boolean).join(' '), 'erreur'); return; }
+        fait(s, { verification: v.message });
+      } catch (err) { dire(err.message, 'erreur'); }
+    });
+    adresse.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') partager(); });
+    return el('details', { class: 'depot-existant', open: ouvert }, el('summary', {}, t('versions_depot_existant')),
+      el('p', { class: 'note' }, t('versions_depot_existant_texte')),
       el('div', { class: 'grille-champs' },
         el('label', {}, t('versions_adresse')), adresse,
         el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t('versions_jeton_aide')))),
-      message),
-    boutons: [{ libelle: t('fermer'), action: () => true }, { libelle: t('versions_verifier'), principal: true, action: () => { partager(adresse.value); return false; } }] });
+      liens,
+      el('div', { class: 'ligne' }, el('button', { class: 'principal', onclick: partager }, icone('cloud-upload'), t('versions_partager_bouton'))));
+  }
+
+  // Shared: where, the repository's page, and Invite a colleague when the account may
+  async function fait(s, { prive = null, page = null, verification = null } = {}) {
+    const service = nomHote(s.hote) || s.hote;
+    const adressePage = page || pageDepot(s.url);
+    const place = placeDansDepot(nomDeChemin(chemin), s.chemin);
+    let invitable = false;
+    if (await avecComptes(s.hote)) {
+      try { const k = await compteConnu(s.hote); invitable = k.connecte && !k.limite; } catch { /* (no invitation then) */ }
+    }
+    etape(el('p', { class: 'ok-compte' }, icone('circle-check'),
+      t(prive ? 'versions_partage_fait_prive' : 'versions_partage_fait', { nom: p.nom, service, depot: cheminDepot(s.url) })),
+    el('p', {}, el('a', { href: adressePage, target: '_blank', rel: 'noopener' }, icone('external-link'), adressePage.replace(/^https:\/\//, ''))),
+    verification ? el('p', { class: 'note' }, verification) : null,
+    place ? el('p', { class: 'note' }, place) : null,
+    el('p', {}, t('versions_partage_suite')),
+    invitable ? el('div', { class: 'ligne' }, el('button', { onclick: () => inviter(app, s) }, icone('user-plus'), t('versions_inviter'))) : null);
+    dire('');
+    pied([{ libelle: t('connexion_terminer'), principal: true, action: () => true }]);
+    d.boite.querySelector('.pied-dialogue .principal').focus();
+    app.statut(t('versions_partage_ok', { hote: service }));
+    apresAction(app, pid);
+  }
+
+  if (existant || !comptes()) {
+    etape(formulaireExistant({ ouvert: true }));
+    if (!a) zone.querySelector('input').focus();
+  } else choisir();
 }
 
+// Invite a colleague to the shared repository (connexion.js: signed in first when no one is)
 async function inviter(app, partage) {
-  try { await connexion.ouvrirInvitation(app, { hote: partage.hote, url: partage.url }); } catch (err) { app.statut(err.message, true); }
+  try { await ouvrirInvitation(app, { hote: partage.hote, url: partage.url }); } catch (err) { app.statut(err.message, true); }
 }
 
 async function verifierPartage(app, pid) {
@@ -964,16 +1177,20 @@ async function fusionnerFichierChange(app, pid, { avantEnregistrer = false, chan
 
 // ------------------------------------------------------------ Open from GitHub or GitLab
 
-// A colleague's project: the repository's address (and a token if it is private), its projects,
-// the folder to put the one chosen in; then it opens, shared with that repository
+// A colleague's project: the repository's address (signed in to its server, or a token, if it is
+// private), its projects, the folder to put the one chosen in; then it opens, shared with that
+// repository
 function dialogueDistant(app) {
   const c = couche();
   if (!c) { app.statut(t('versions_navigateur'), true); return; }
-  const adresse = el('input', { type: 'url', placeholder: t('versions_adresse_exemple'), style: 'width:100%', spellcheck: 'false' });
-  const jeton = el('input', { type: 'password', style: 'width:100%', autocomplete: 'off', spellcheck: 'false' });
-  const ligneJeton = el('div', { class: 'grille-champs', hidden: true }, el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t('versions_distant_jeton'))));
-  const dossier = el('input', { style: 'width:100%', spellcheck: 'false' });
+  const adresse = el('input', { type: 'url', placeholder: t('versions_adresse_exemple'), style: 'width:100%', spellcheck: 'false', 'aria-label': t('versions_adresse') });
+  const jeton = el('input', { type: 'password', style: 'width:100%', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('versions_jeton') });
+  const ligneConnexion = el('div', { class: 'ligne connexion-distant', hidden: true });
+  const ligneJeton = el('div', { class: 'grille-champs', hidden: true }, el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t('versions_jeton_aide'))));
+  const dossier = el('input', { style: 'width:100%', spellcheck: 'false', 'aria-label': t('versions_distant_dossier') });
   const projets = el('div', { class: 'projets-distants' });
+  // (its projects, once found)
+  const ligneProjets = el('div', { class: 'grille-champs', hidden: true }, el('label', {}, t('versions_distant_projets')), projets);
   const message = el('p', { class: 'message-connexion', 'aria-live': 'polite' });
   let fichiers = [];
   let choisi = null;
@@ -984,8 +1201,27 @@ function dialogueDistant(app) {
       const hote = hoteAdresse(adresse.value);
       if (jeton.value.trim() && hote) { await c.jeton(hote, jeton.value.trim()); jeton.value = ''; }
       const r = await c.listerDistant(adresse.value);
-      if (r.jeton) { ligneJeton.hidden = false; message.className = 'message-connexion erreur'; message.textContent = t('versions_distant_jeton'); jeton.focus(); return; }
+      if (r.jeton) {
+        // (private: signed in to its server, with an account that can see it, when Nuée signs in
+        // there; or a token)
+        const service = nomHote(hote) || hote;
+        const avecCompte = await avecComptes(hote);
+        ligneConnexion.hidden = !avecCompte;
+        ligneConnexion.replaceChildren(...(avecCompte ? [el('span', { class: 'erreur' }, t('versions_distant_connexion', { service })), el('button', { class: 'principal', onclick: async () => {
+          const s = await ouvrirConnexion(app, { hote });
+          if (s.ok) { compteSigne(hote, s.compte); chercher(); }
+        } }, icone('log-in'), t('versions_compte', { service }))] : []));
+        ligneJeton.hidden = false;
+        ligneProjets.hidden = true;
+        message.className = avecCompte ? 'message-connexion' : 'message-connexion erreur';
+        message.textContent = avecCompte ? '' : t('versions_distant_jeton');
+        (avecCompte ? ligneConnexion.querySelector('button') : jeton).focus();
+        return;
+      }
+      ligneConnexion.hidden = true;
+      ligneJeton.hidden = true;
       fichiers = [].concat(r.fichiers || []);
+      ligneProjets.hidden = !fichiers.length;
       choisi = fichiers.length === 1 ? fichiers[0] : null;
       message.textContent = fichiers.length ? '' : t('versions_distant_aucun');
       projets.replaceChildren(...fichiers.map((f) => el('label', { class: 'champ projet-distant' },
@@ -1009,9 +1245,8 @@ function dialogueDistant(app) {
     contenu: el('div', { class: 'dialogue-connexion dialogue-distant' }, el('p', {}, t('versions_distant_texte')),
       el('div', { class: 'grille-champs' }, el('label', {}, t('versions_adresse')), el('div', { class: 'ligne' }, adresse,
         el('button', { onclick: chercher }, icone('search'), t('versions_distant_chercher')))),
-      ligneJeton,
-      el('div', { class: 'grille-champs' }, el('label', {}, t('versions_distant_projets')), projets,
-        el('label', {}, t('versions_distant_dossier')), el('div', { class: 'ligne' }, dossier,
+      ligneConnexion, ligneJeton, ligneProjets,
+      el('div', { class: 'grille-champs' }, el('label', {}, t('versions_distant_dossier')), el('div', { class: 'ligne' }, dossier,
           el('button', { disabled: !bureau.choisirDossier, onclick: async () => { const x = await bureau.choisirDossier(); if (x) dossier.value = x; } }, icone('folder-open'), t('versions_distant_choisir_dossier')))),
       message),
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('versions_distant_ouvrir'), principal: true, action: () => { ouvrir(); return false; } }] });

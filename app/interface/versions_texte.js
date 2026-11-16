@@ -126,6 +126,30 @@ export function liensConnexion(texte) {
 // file was there): the sentence that says so, else ''.
 export const placeDansDepot = (nom, chemin) => (chemin && chemin !== nom ? t('versions_place', { chemin, nom }) : '');
 
+// A server whose accounts Nuée signs in to (app/comptes.js): GitHub, gitlab.com, or a GitLab by its
+// name (a self-hosted GitLab under another name is known once its application ID is given)
+export const serveurDeComptes = (hote) => {
+  const h = String(hote || '').toLowerCase();
+  return h === 'github.com' || nomHote(h) === 'GitLab';
+};
+
+// A repository's owner and name (on GitLab, its groups and name), from its address
+export function cheminDepot(url) {
+  try { return new URL(String(url || '')).pathname.replace(/\/-\/.*$/, '').replace(/^\/+|\/+$/g, '').replace(/\.git$/i, ''); } catch { return String(url || ''); }
+}
+// A repository's page, from its address
+export function pageDepot(url) {
+  try { return `${new URL(String(url || '')).origin}/${cheminDepot(url)}`; } catch { return String(url || ''); }
+}
+
+// Another name for a repository whose name is taken: "orchards" → "orchards-2" → "orchards-3"
+// (a year stays: "survey-2026" → "survey-2026-2")
+export function nomSuivant(nom) {
+  const n = String(nom || '').trim() || 'nuee';
+  const m = /^(.*\D)-(\d{1,2})$/.exec(n);
+  return m ? `${m[1]}-${Number(m[2]) + 1}` : `${n}-2`;
+}
+
 // The state of a shared project, from etat() and what the background last told (`vu`: { type:
 // 'envoi' | 'attente' | 'conflit' | 'erreur', message }), for the status bar and History:
 // → { cle, court, titre } (cle: a_jour, envoi, a_envoyer, a_recevoir, attente, conflit, erreur), or
@@ -308,8 +332,23 @@ export const TEXTES_VERSIONS = { fr: {
   versions_jeton_aide: 'Gardé dans le trousseau de l’ordinateur, il n’est plus jamais montré.', versions_jeton_garder: 'Un jeton est gardé pour {hote} : laissez vide pour le garder.',
   versions_verifier: 'Vérifier', versions_verification: 'Vérification…', versions_partage_ok: 'Partagé avec {hote}.',
   versions_place: 'Dans ce dépôt, le projet est à {chemin} : un autre fichier était déjà à {nom}.',
-  versions_compte: 'Se connecter à {service}…', versions_creer_depot: 'Créer un dépôt privé « {nom} »', versions_inviter: 'Inviter un collègue…',
-  versions_ou_jeton: 'Ou avec l’adresse d’un dépôt et un jeton :',
+  versions_compte: 'Se connecter à {service}…', versions_inviter: 'Inviter un collègue…',
+  versions_partager_compte: 'Connectez-vous, et Nuée lui crée un dépôt privé sur votre compte :',
+  versions_depot_existant: 'Utiliser un dépôt existant, ou un autre serveur',
+  versions_depot_existant_texte: 'Son adresse, telle que la donne son bouton Code sur GitHub ou GitLab. Connecté à GitHub ou GitLab, il ne faut rien d’autre ; pour un autre serveur, un jeton qui peut y écrire.',
+  versions_plutot_existant: 'Utiliser plutôt un dépôt existant',
+  versions_nouveau_depot: 'Un nouveau dépôt sur {service}', versions_nom_depot: 'Son nom',
+  versions_depot_prive: 'Privé : vous seul et les collègues que vous invitez le voyez',
+  versions_creer_partager: 'Créer et partager', versions_creation: 'Création du dépôt sur {service}…', versions_partage_en_cours: 'Partage du projet…',
+  versions_partager_bouton: 'Partager',
+  versions_partage_fait: '{nom} est partagé sur {service}, dans le dépôt {depot}.', versions_partage_fait_prive: '{nom} est partagé sur {service}, dans le dépôt privé {depot}.',
+  versions_partage_suite: 'Ses versions y sont envoyées d’elles-mêmes, et celles de vos collègues en reviennent. Invitez-les : ils l’ouvrent ensuite avec Fichier › Ouvrir depuis GitHub ou GitLab.',
+  versions_non_connecte: 'Non connecté à {service} : envoyer et recevoir les versions demandent une connexion.',
+  versions_connexion_refusee: '{service} n’accepte plus la connexion : reconnectez-vous pour envoyer et recevoir les versions.',
+  versions_deconnecter_titre: 'Se déconnecter de {service}',
+  versions_deconnecter_texte: 'Nuée oublie sa connexion à {service} sur cet ordinateur : les projets partagés là-bas n’envoient ni ne reçoivent plus leurs versions jusqu’à ce que vous vous reconnectiez. Votre compte et ses dépôts restent tels qu’ils sont.',
+  versions_connexion_gardee: 'Connexion gardée dans le trousseau de cet ordinateur.',
+  versions_distant_connexion: 'Ce dépôt est privé : connectez-vous à {service} avec un compte qui y a accès, ou donnez un jeton.',
   versions_partage_hote: 'partagé avec {hote}', versions_partage_avec: 'Partagé avec {hote} :', versions_dernier_echange: 'dernier échange {date}',
   versions_court_a_jour: 'à jour', versions_court_envoi: 'envoi…', versions_court_a_recevoir: 'plus récente', versions_court_attente: 'en attente',
   versions_court_conflit: 'à choisir', versions_court_erreur: 'erreur',
@@ -423,8 +462,23 @@ export const TEXTES_VERSIONS = { fr: {
   versions_jeton_aide: 'Kept in the computer’s keychain, it is never shown again.', versions_jeton_garder: 'A token is kept for {hote}: leave this empty to keep it.',
   versions_verifier: 'Check', versions_verification: 'Checking…', versions_partage_ok: 'Shared with {hote}.',
   versions_place: 'In this repository, the project is at {chemin}: another file was already at {nom}.',
-  versions_compte: 'Sign in to {service}…', versions_creer_depot: 'Create a private repository “{nom}”', versions_inviter: 'Invite a colleague…',
-  versions_ou_jeton: 'Or with a repository’s address and a token:',
+  versions_compte: 'Sign in to {service}…', versions_inviter: 'Invite a colleague…',
+  versions_partager_compte: 'Sign in, and Nuée makes it a private repository on your account:',
+  versions_depot_existant: 'Use an existing repository, or another server',
+  versions_depot_existant_texte: 'Its address, as its Code button on GitHub or GitLab gives it. Signed in to GitHub or GitLab, nothing else is needed; for another server, a token that can write to it.',
+  versions_plutot_existant: 'Use an existing repository instead',
+  versions_nouveau_depot: 'A new repository on {service}', versions_nom_depot: 'Its name',
+  versions_depot_prive: 'Private: only you and the colleagues you invite can see it',
+  versions_creer_partager: 'Create and share', versions_creation: 'Creating the repository on {service}…', versions_partage_en_cours: 'Sharing the project…',
+  versions_partager_bouton: 'Share',
+  versions_partage_fait: '{nom} is shared on {service}, in the repository {depot}.', versions_partage_fait_prive: '{nom} is shared on {service}, in the private repository {depot}.',
+  versions_partage_suite: 'Its versions are sent there by themselves, and your colleagues’ come back from it. Invite them: they then open it with File › Open from GitHub or GitLab.',
+  versions_non_connecte: 'Not signed in to {service}: sending and getting the versions need a sign-in.',
+  versions_connexion_refusee: '{service} no longer accepts the sign-in: sign in again to send and get the versions.',
+  versions_deconnecter_titre: 'Sign out of {service}',
+  versions_deconnecter_texte: 'Nuée forgets its sign-in to {service} on this computer: the projects shared there stop sending and getting their versions until you sign in again. Your account and its repositories stay as they are.',
+  versions_connexion_gardee: 'Sign-in kept in this computer’s keychain.',
+  versions_distant_connexion: 'This repository is private: sign in to {service} with an account that can see it, or give a token.',
   versions_partage_hote: 'shared with {hote}', versions_partage_avec: 'Shared with {hote}:', versions_dernier_echange: 'last exchange {date}',
   versions_court_a_jour: 'up to date', versions_court_envoi: 'sending…', versions_court_a_recevoir: 'newer version', versions_court_attente: 'waiting',
   versions_court_conflit: 'to choose', versions_court_erreur: 'error',

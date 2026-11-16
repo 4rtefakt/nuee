@@ -7,9 +7,11 @@ const version = (nom, ...args) => ipcRenderer.invoke(`versions-${nom}`, ...args)
   if ('erreur' in r) throw new Error(r.erreur);
   return r.valeur;
 });
-// signing in to GitHub and GitLab (comptes.js, through main.js): the same, the error's `code` too
+// signing in to GitHub and GitLab (comptes.js, through main.js): the same, the error's `code` too.
+// An Error crossing the context bridge keeps its message only, so the refusal reaches the page as
+// an object with its message and code.
 const compte = (nom, ...args) => ipcRenderer.invoke(`comptes-${nom}`, ...args).then((r) => {
-  if ('erreur' in r) throw Object.assign(new Error(r.erreur), r.code ? { code: r.code } : {});
+  if ('erreur' in r) return Promise.reject({ name: 'Error', message: r.erreur, code: r.code || null });
   return r.valeur;
 });
 
