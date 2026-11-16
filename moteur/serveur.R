@@ -639,7 +639,7 @@ ajuster_demande <- function(q) {
   } else {
     d <- definition_interface(p, q)
   }
-  ajuster_et_garder(p, d)
+  ajuster_et_garder(p, d, refait = !is.null(q$numero))
 }
 
 # Les groupements d'une demande ({ by: "id" | "variable" }, ou { by: "effets" } : les effets
@@ -714,8 +714,10 @@ reajuster_demande <- function(q) {
 # (m : le modèle déjà ajusté sur la définition `d`, s'il l'est : baci_modele_demande). Une définition
 # à condition est gardée avec les observations qu'elle donne sur les données du moment (condition.R).
 # L'ajustement automatique d'une ACP ou d'une PLS a déjà calculé le modèle de ses composantes
-# (nouveau.R : autoajuster_modele) : ajuster le reprend, sans refaire sa validation croisée.
-ajuster_et_garder <- function(p, d, m = NULL) {
+# (nouveau.R : autoajuster_modele) : ajuster le reprend, sans refaire sa validation croisée. `refait` : la
+# définition d'un modèle du projet ajustée de nouveau par son numéro (comme l'interface le fait de chacun
+# après une mise à jour ou son annulation), qui ne laisse rien que Rétablir défairait.
+ajuster_et_garder <- function(p, d, m = NULL, refait = FALSE) {
   d <- resoudre_observations(p, d)
   calcule <- NULL
   if (!d$A && !sans_composantes(d)) {  # (ni une régression ni une autre analyse n'a de composantes)
@@ -740,7 +742,7 @@ ajuster_et_garder <- function(p, d, m = NULL) {
     # ne le défera pas : definitions_changees)
     if (!identical(ancien, d)) {
       p$modifie <- TRUE
-      definitions_changees(p$id)
+      if (!refait || is.null(ancien)) definitions_changees(p$id)
     }
     etat$projets[[p$id]] <- p
   }

@@ -1037,23 +1037,25 @@ aid <- demande("ouvrir", list(chemin = und_csv))$id
 ua <- function(nom) uid_de(projet(aid), nom)
 noms_modeles <- function() vapply(projet(aid)$models, function(d) d$name, "")
 dans_seance <- function(nom) any(vapply(etat$modeles, function(e) identical(e$projet, aid) && identical(e$definition$name, nom), TRUE))
+demande("ajuster", list(projet = aid, type = "PCA", x = list(ua("x"), ua("z"), ua("y")), A = 1, nom = "P1"))
 demande("modifier_valeur", list(projet = aid, observation = numeros_observations(projet(aid), "O1"), variable = ua("x"), valeur = "5"))
 demande("annuler", list(projet = aid))
 demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x"), ua("z")), y = ua("y"), nom = "M1"))
 verifier("un modèle ajusté après Annuler : Rétablir n'est plus proposé (il retirerait sa définition du projet)",
-         identical(noms_modeles(), "M1") && is.null(resume_projet(projet(aid))$retablissable) && grepl("Rien à rétablir", refus("retablir", list(projet = aid))))
+         setequal(noms_modeles(), c("P1", "M1")) && is.null(resume_projet(projet(aid))$retablissable) && grepl("Rien à rétablir", refus("retablir", list(projet = aid))))
 demande("modifier_valeur", list(projet = aid, observation = numeros_observations(projet(aid), "O2"), variable = ua("x"), valeur = "6"))
 demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x")), y = ua("y"), nom = "M2"))
 demande("annuler", list(projet = aid))
 verifier("un changement, un modèle ajusté, Annuler : le changement défait, le modèle reste dans le projet comme dans la séance",
-         setequal(noms_modeles(), c("M1", "M2")) && dans_seance("M2") && unname(valeurs(projet(aid), "x")["O2"]) != 6)
+         setequal(noms_modeles(), c("P1", "M1", "M2")) && dans_seance("M2") && unname(valeurs(projet(aid), "x")["O2"]) != 6)
 demande("retablir", list(projet = aid))
-verifier("puis Rétablir : le changement refait, les deux modèles gardés", setequal(noms_modeles(), c("M1", "M2")) && unname(valeurs(projet(aid), "x")["O2"]) == 6)
-# (l'interface réajuste chaque modèle après Annuler une mise à jour : leurs définitions ne changent pas, et
-# Rétablir reste proposé)
+verifier("puis Rétablir : le changement refait, les modèles gardés", setequal(noms_modeles(), c("P1", "M1", "M2")) && unname(valeurs(projet(aid), "x")["O2"]) == 6)
+# (l'interface réajuste chaque modèle par son numéro après Annuler une mise à jour, avec les composantes de
+# son dernier ajustement, celui des données d'après : Rétablir reste proposé)
 demande("annuler", list(projet = aid))
-for (d in projet(aid)$models) demande("ajuster", list(projet = aid, numero = d$number))
-verifier("Annuler, puis chaque modèle réajusté par son numéro : Rétablir reste proposé", identical(resume_projet(projet(aid))$retablissable, "modification de x"))
+for (d in projet(aid)$models) demande("ajuster", list(projet = aid, numero = d$number, A = if (identical(d$name, "P1")) 2))
+verifier("Annuler, puis chaque modèle réajusté par son numéro (une ACP à 2 composantes au lieu d'une) : Rétablir reste proposé",
+         identical(resume_projet(projet(aid))$retablissable, "modification de x") && definition(projet(aid), "P1")$A == 2)
 demande("retablir", list(projet = aid))
 demande("variable_calculee", list(projet = aid, nom = "w", formule = "x * 2"))
 demande("ajuster", list(projet = aid, type = "LM", x = list(ua("w")), y = ua("y"), nom = "M3"))
