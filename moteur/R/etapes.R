@@ -30,6 +30,14 @@ fiche_fichier <- function(chemin) {
        sha256 = unname(as.character(tools::sha256sum(chemin))), lu = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
 }
 
+# Des numéros internes (uid) en entiers quand ils le sont, comme jsonlite les lit : leur texte est
+# celui des noms des lignes et des colonnes des données (« 100000 » ; d'un nombre réel, R écrit
+# « 1e+05 »).
+numeros_entiers <- function(x) {
+  x <- as.numeric(unlist(x))
+  if (all(is.na(x) | (x == round(x) & abs(x) < .Machine$integer.max))) as.integer(x) else x
+}
+
 # Le premier texte de `x`, `defaut` sans lui (une valeur relue d'un fichier peut être absente, vide,
 # une liste ou NA).
 premier_texte <- function(x, defaut = "") {
@@ -201,16 +209,23 @@ importer_source <- function(chemin, lecteur, table = NULL, reglages = list(), co
 # nombres relus ne serait pas celle des nombres écrits.
 empreinte_donnees <- function(p) {
   vars <- Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
-  obs <- as.character(vapply(p$observations, function(o) as.numeric(o$uid), 0))
-  obs <- obs[obs %in% rownames(p$donnees)]
-  M <- p$donnees[obs, vapply(vars, function(v) as.character(v$uid), ""), drop = FALSE]
+  # (les lignes et les colonnes dans l'ordre des observations et des variables : d'ordinaire celui
+  # du tableau des données, qui sert tel quel, sans en copier des milliers de lignes par leur nom)
+  lignes <- as.character(numeros_entiers(vapply(p$observations, `[[`, 0, "uid")))
+  colonnes <- as.character(numeros_entiers(vapply(vars, `[[`, 0, "uid")))
+  M <- p$donnees
+  if (!identical(rownames(M), lignes)) M <- M[lignes[lignes %in% rownames(M)], , drop = FALSE]
+  if (!identical(colnames(M), colonnes)) M <- M[, colonnes, drop = FALSE]
   absentes <- which(!is.finite(M))
   M[absentes] <- 0
   poids <- 1 + (seq_len(nrow(M)) * 0.6180339887498949) %% 1
+  # (les identifiants des observations d'un seul tenant, et combien en a chacune : des milliers
+  # d'observations, écrites une à une, prendraient des secondes à chaque étape)
+  ids <- lapply(p$observations, `[[`, "ids")
   texte <- paste(c(vapply(vars, function(v) paste(c(as.character(v$ids[1]), as.character(unlist(v$categories))), collapse = "\u001f"), ""),
                    paste(as.character(unlist(p$observation_id_names)), collapse = "\u001f"),
-                   vapply(p$observations, function(o) paste(as.character(unlist(o$ids)), collapse = "\u001f"), "")), collapse = "\u001e")
-  octets <- c(charToRaw(enc2utf8(texte)), writeBin(as.integer(absentes), raw(), endian = "little"))
+                   paste(as.character(unlist(ids)), collapse = "\u001f")), collapse = "\u001e")
+  octets <- c(charToRaw(enc2utf8(texte)), writeBin(c(lengths(ids), as.integer(absentes)), raw(), endian = "little"))
   list(structure = unname(as.character(tools::sha256sum(bytes = octets))), sommes = unname(c(colSums(abs(M)), colSums(M * poids))))
 }
 
@@ -244,10 +259,24 @@ donnees_conformes <- function(p) {
 # les observations du même nom se retrouvant dans l'ordre où elles viennent. Un tableau sans colonne
 # qui les nomme a pour noms les numéros de ses lignes : ses observations se retrouvent par leur place.
 cles_observations <- function(p) {
-  noms <- vapply(p$observations, function(o) premier_texte(o$ids), "")
-  if (!length(noms)) return(character(0))
-  rang <- stats::ave(seq_along(noms), noms, FUN = seq_along)
+  noms <- premiers_noms(p)
+  if (!anyDuplicated(noms)) return(noms)
+  # (le rang de chaque nom parmi ceux qui le portent, dans leur ordre : un tri stable)
+  o <- order(noms, method = "radix")
+  tries <- noms[o]
+  debut <- cummax(ifelse(!duplicated(tries), seq_along(tries), 0L))
+  rang <- integer(length(noms))
+  rang[o] <- seq_along(tries) - debut + 1L
   ifelse(rang > 1, paste0(noms, "\u001f", rang), noms)
+}
+
+# Le nom de chaque observation (son premier identifiant), "" sans lui ; sans fonction appelée pour
+# chacune quand ils sont tous du texte (des milliers d'observations, à chaque étape).
+premiers_noms <- function(p) {
+  ids <- lapply(p$observations, `[[`, "ids")
+  noms <- tryCatch(vapply(ids, `[`, "", 1L), error = function(e) vapply(ids, function(x) if (length(x)) as.character(x[[1]]) else NA_character_, ""))
+  noms[is.na(noms)] <- ""
+  noms
 }
 
 # Un identifiant d'observation pour une phrase : « S1 (2) » pour la deuxième du nom.
@@ -285,12 +314,13 @@ convertir_valeurs <- function(x, f) if (is.list(x)) lapply(x, f) else f(x)
 # colonne qui est une variable ou un identifiant des observations (`colonnes` : un numéro, ou "id:k")
 # en « var:nom » ou « id:nom ».
 par_noms <- function(p, def, q) {
-  noms <- stats::setNames(vapply(p$variables, function(v) as.character(v$ids[1]), ""), vapply(p$variables, function(v) as.character(v$uid), ""))
-  cles <- stats::setNames(cles_observations(p), vapply(p$observations, function(o) as.character(o$uid), ""))
+  noms <- stats::setNames(vapply(p$variables, function(v) as.character(v$ids[1]), ""), as.character(numeros_entiers(vapply(p$variables, `[[`, 0, "uid"))))
+  # (les identifiants des observations, seulement pour une étape qui en nomme : il y en a des milliers)
+  cles <- if (length(def$observations)) stats::setNames(cles_observations(p), as.character(numeros_entiers(vapply(p$observations, `[[`, 0, "uid"))))
   ids <- as.character(unlist(p$observation_id_names %||% "Observation"))
   vers <- list(
-    variables = function(x) unname(noms[as.character(x)]),
-    observations = function(x) unname(cles[as.character(x)]),
+    variables = function(x) unname(noms[as.character(numeros_entiers(x))]),
+    observations = function(x) unname(cles[as.character(numeros_entiers(x))]),
     colonnes = function(x) {
       x <- as.character(x)
       id <- startsWith(x, "id:")
@@ -314,8 +344,8 @@ par_numeros <- function(p, def, q) {
   vars <- Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
   noms <- vapply(vars, function(v) as.character(v$ids[1]), "")
   garde <- !duplicated(noms, fromLast = TRUE)  # (la dernière de deux variables du même nom, comme une formule la lit)
-  uid_nom <- stats::setNames(vapply(vars[garde], function(v) as.numeric(v$uid), 0), noms[garde])
-  uid_cle <- stats::setNames(vapply(p$observations, function(o) as.numeric(o$uid), 0), cles_observations(p))
+  uid_nom <- stats::setNames(numeros_entiers(vapply(vars[garde], `[[`, 0, "uid")), noms[garde])
+  uid_cle <- if (length(def$observations)) stats::setNames(numeros_entiers(vapply(p$observations, `[[`, 0, "uid")), cles_observations(p))
   ids <- as.character(unlist(p$observation_id_names %||% "Observation"))
   vers <- list(
     variables = function(x) unname(uid_nom[as.character(x)]),
@@ -751,13 +781,17 @@ definition_suivie <- function(d, p, nouvelles, retirees, prend = TRUE) {
   d
 }
 
-# (la variable `de` du projet prend le numéro `vers`)
+# (la variable `de` du projet prend le numéro `vers` ; ses noms de colonne comparés en nombres, que
+# ajouter_colonne a pu écrire « 1e+05 »)
 renumeroter_variable <- function(p, de, vers) {
-  i <- which(vapply(p$variables, function(v) identical(as.numeric(v$uid), as.numeric(de)), TRUE))
+  de <- as.numeric(de)
+  vers <- numeros_entiers(vers)
+  i <- which(vapply(p$variables, function(v) identical(as.numeric(v$uid), de), TRUE))
   p$variables[[i]]$uid <- vers
-  colnames(p$donnees)[colnames(p$donnees) == as.character(de)] <- as.character(vers)
-  names(p$noms_var)[names(p$noms_var) == as.character(de)] <- as.character(vers)
-  p$datasets <- lapply(p$datasets, function(d) { d$variables[as.numeric(d$variables) == as.numeric(de)] <- vers; d })
+  ici <- function(x) suppressWarnings(as.numeric(x)) %in% de
+  colnames(p$donnees)[ici(colnames(p$donnees))] <- as.character(vers)
+  names(p$noms_var)[ici(names(p$noms_var))] <- as.character(vers)
+  p$datasets <- lapply(p$datasets, function(d) { d$variables[as.numeric(d$variables) == de] <- vers; d })
   p
 }
 
@@ -780,10 +814,11 @@ renumeroter_variable <- function(p, de, vers) {
 # observation, nommé par le sien ; absentes : les numéros des variables parties).
 aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   nom <- function(v) as.character(v$ids[1])
-  uid <- function(x) as.numeric(x$uid)
-  avec <- function(p) Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
+  uid <- function(x) numeros_entiers(x$uid)
+  uids <- function(l) numeros_entiers(vapply(l, `[[`, 0, "uid"))
+  avec <- function(p) Filter(function(v) as.character(uid(v)) %in% colnames(p$donnees), p$variables)
   va <- avec(actuel)
-  sans_donnees <- Filter(function(v) !as.character(v$uid) %in% colnames(actuel$donnees), actuel$variables)
+  sans_donnees <- Filter(function(v) !as.character(uid(v)) %in% colnames(actuel$donnees), actuel$variables)
   vn <- avec(nouveau)
   noms_a <- vapply(va, nom, "")
   noms_n <- vapply(vn, nom, "")
@@ -800,18 +835,20 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
       }
     }
   }
-  uid_v <- vapply(va, uid, 0)[k]
-  uid_v[is.na(k)] <- max(c(0, vapply(actuel$variables, uid, 0))) + seq_len(sum(is.na(k)))
+  uid_v <- uids(va)[k]
+  uid_v[is.na(k)] <- max(c(0L, uids(actuel$variables))) + seq_len(sum(is.na(k)))
+  uid_v <- numeros_entiers(uid_v)
   # (les observations)
-  uo_a <- vapply(actuel$observations, uid, 0)
-  uo_n <- vapply(nouveau$observations, uid, 0)
+  uo_a <- uids(actuel$observations)
+  uo_n <- uids(nouveau$observations)
   m <- match(cles_observations(nouveau), cles_observations(actuel))
   uid_o <- uo_a[m]
-  uid_o[is.na(m)] <- max(c(0, uo_a)) + seq_len(sum(is.na(m)))
+  uid_o[is.na(m)] <- max(c(0L, uo_a)) + seq_len(sum(is.na(m)))
+  uid_o <- numeros_entiers(uid_o)
   ajoutees <- uid_o[is.na(m)]
   retirees <- setdiff(uo_a, uid_o)
   # (les valeurs, et les catégories rapportées à celles du projet)
-  X <- nouveau$donnees[as.character(uo_n), vapply(vn, function(v) as.character(v$uid), ""), drop = FALSE]
+  X <- nouveau$donnees[as.character(uo_n), as.character(uids(vn)), drop = FALSE]
   vars <- vector("list", length(vn))
   categories <- list()
   types <- list()
@@ -859,7 +896,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     list(uid = uid_o[i], ids = valeurs)
   })
   # (le projet rapporté : les données de `nouveau`, le reste d'`actuel`)
-  mv <- stats::setNames(uid_v, vapply(vn, function(v) as.character(v$uid), ""))
+  mv <- stats::setNames(uid_v, as.character(uids(vn)))
   mo <- stats::setNames(uid_o, as.character(uo_n))
   p <- actuel
   p$variables <- c(vars, sans_donnees)
@@ -867,8 +904,8 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   p$observation_id_names <- noms_id
   p$datasets <- lapply(nouveau$datasets, function(d) {
     d$values <- NULL
-    o <- unname(mo[as.character(unlist(d$observations))])
-    w <- unname(mv[as.character(unlist(d$variables))])
+    o <- unname(mo[as.character(numeros_entiers(d$observations))])
+    w <- unname(mv[as.character(numeros_entiers(d$variables))])
     d$observations <- o[!is.na(o)]
     d$variables <- w[!is.na(w)]
     d
@@ -876,9 +913,10 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   dimnames(X) <- list(as.character(uid_o), as.character(uid_v))
   p$donnees <- X
   p$noms_obs <- stats::setNames(vapply(obs, function(o) as.character(o$ids[1]), ""), as.character(uid_o))
-  p$noms_var <- stats::setNames(vapply(p$variables, nom, ""), vapply(p$variables, function(v) as.character(v$uid), ""))
+  p$noms_var <- stats::setNames(vapply(p$variables, nom, ""), as.character(uids(p$variables)))
   co <- nouveau$coordonnees
-  co <- if (is.list(co) && length(co$x) && length(co$y)) list(x = unname(mv[as.character(co$x)]), y = unname(mv[as.character(co$y)]), systeme = co$systeme)
+  co <- if (is.list(co) && length(co$x) && length(co$y)) list(x = unname(mv[as.character(numeros_entiers(co$x))]), y = unname(mv[as.character(numeros_entiers(co$y))]),
+                                                                systeme = co$systeme)
   p["coordonnees"] <- list(if (!is.null(co) && !anyNA(c(co$x, co$y))) co
                            else if (is.list(actuel$coordonnees) && all(as.numeric(c(actuel$coordonnees$x, actuel$coordonnees$y)) %in% uid_v)) actuel$coordonnees)
   if (!is.null(nouveau$collecte)) p$collecte <- nouveau$collecte
@@ -932,7 +970,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     n <- vapply(q$observations, function(o) premier_texte(o$ids), "")
     length(n) > 0 && identical(n, as.character(seq_along(n)))
   }
-  noms_obs_a <- stats::setNames(vapply(actuel$observations, function(o) premier_texte(o$ids), ""), as.character(uo_a))
+  noms_obs_a <- stats::setNames(premiers_noms(actuel), as.character(uo_a))
   id_absents <- Filter(function(n) any(nzchar(identifiants_observations(actuel, match(n, noms_id_a), uo_a), keepNA = TRUE), na.rm = TRUE), setdiff(noms_id_a[-1], noms_id_n))
   touches <- Filter(Negate(is.null), lapply(actuel$models, function(d) {
     u <- intersect(variables_definition(d), absentes_uid)
