@@ -47,7 +47,7 @@ series_variable <- function(projet, variable, temps, lignes = NULL, panneaux = N
   i <- i[order(cp[i], cl[i], t[i])]
   niveau <- function(x) if (is.null(x)) rep(NA_character_, length(i)) else as.character(x$valeurs[i])
   points <- data.frame(temps = t[i], valeur = y[i], ligne = niveau(l), panneau = niveau(pa), uid = obs[i],
-                       nom = unname(projet$noms_obs[as.character(obs[i])]), stringsAsFactors = FALSE)
+                       nom = unname(projet$noms_obs[nom_numero(obs[i])]), stringsAsFactors = FALSE)
   niveaux <- function(x) if (is.null(x)) character(0) else levels(droplevels(x$valeurs[i]))
   temps_cle <- as.character(round(t[i], 8))
   # un même temps deux fois dans une ligne : ce n'est pas une série (les lignes à choisir plus fines)

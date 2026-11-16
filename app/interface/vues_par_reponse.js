@@ -5,7 +5,7 @@
 // term's effect in small multiples (one small plot per response, its band, the same x axis); and
 // each model's quality (N, AIC, R², Q²) with the responses that couldn't be fitted.
 // Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, langueActuelle, deuxPoints, separateurIntervalle } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, tableau, valeurP } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
@@ -17,14 +17,16 @@ const PETITS_MAX = 36;  // small multiples up to this many responses
 async function rendreParReponse(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const cache = (loc.cache ??= {});
-  const cle = JSON.stringify([liste(loc.reponses), loc.correction || 'BH']);
+  // (the language too: the Methods sentence and the reasons a response failed are the engine's;
+  // app.js, unModeleParReponse, hands the view its first result under the same key)
+  const cle = JSON.stringify([liste(loc.reponses), loc.correction || 'BH', langueActuelle()]);
   if (!liste(loc.reponses).length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('par_reponse_vide'))); return; }
   if (cache.cle !== cle || !cache.res) {
     conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
     try { cache.res = await ctx.demander('par_reponse', { modele: m.id, reponses: liste(loc.reponses), correction: loc.correction || 'BH' }); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
-  if (!cache.res) { conteneur.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const tab = r.tableau || {};
   const col = (k) => liste(tab[k]);
@@ -54,7 +56,9 @@ async function rendreParReponse(conteneur, ctx, p, loc) {
   const sig = (i) => col('p_corrige')[i] !== null && col('p_corrige')[i] <= 0.05;
   const y = ordre.map((i) => col('reponse')[i]);
   if (courbe) {
+    // (a corrected p ≤ 0.05: its colour, and a star, not the colour alone)
     tracer(ctx, g1, [{ type: 'bar', orientation: 'h', x: ordre.map((i) => col('edf')[i]), y, marker: { color: ordre.map((i) => (sig(i) ? PALETTE[1] : PALETTE[0])) },
+      text: ordre.map((i) => (sig(i) ? '*' : '')), textposition: 'outside', cliponaxis: false,
       customdata: ordre.map((i) => [valeurP(col('p')[i]), valeurP(col('p_corrige')[i])]),
       hovertemplate: '<b>%{y}</b><br>edf = %{x:.2f}<br>p = %{customdata[0]} · ' + t('par_reponse_p_corrige') + ' = %{customdata[1]}<extra></extra>' }],
     { title: { text: `${m.nom} · ${loc.terme} · edf` }, dragmode: 'zoom', showlegend: false, margin: { l: 110, r: 18, t: 34, b: 48 },
@@ -63,9 +67,10 @@ async function rendreParReponse(conteneur, ctx, p, loc) {
     tracer(ctx, g1, [{ type: 'scatter', mode: 'markers', x: ordre.map((i) => col('estimation')[i]), y,
       error_x: { type: 'data', symmetric: false, array: ordre.map((i) => col('haut')[i] - col('estimation')[i]), arrayminus: ordre.map((i) => col('estimation')[i] - col('bas')[i]),
         color: c.doux, thickness: 1.2, width: 3 },
-      marker: { size: 8, color: ordre.map((i) => (sig(i) ? PALETTE[1] : PALETTE[0])) },
-      customdata: ordre.map((i) => [fmt(col('bas')[i], 3), fmt(col('haut')[i], 3), valeurP(col('p')[i]), valeurP(col('p_corrige')[i])]),
-      hovertemplate: '<b>%{y}</b><br>%{x:.4f} [%{customdata[0]} ; %{customdata[1]}]<br>p = %{customdata[2]} · ' + t('par_reponse_p_corrige') + ' = %{customdata[3]}<extra></extra>' }],
+      marker: { size: 8, color: ordre.map((i) => (sig(i) ? PALETTE[1] : PALETTE[0])), symbol: ordre.map((i) => (sig(i) ? 'circle' : 'circle-open')) },
+      // (the interval's bounds with the estimate's 4 decimals)
+      customdata: ordre.map((i) => [fmt(col('bas')[i], 4), fmt(col('haut')[i], 4), valeurP(col('p')[i]), valeurP(col('p_corrige')[i])]),
+      hovertemplate: `<b>%{y}</b><br>%{x:.4f} [%{customdata[0]}${separateurIntervalle()}%{customdata[1]}]<br>p = %{customdata[2]} · ${t('par_reponse_p_corrige')} = %{customdata[3]}<extra></extra>` }],
     { title: { text: `${m.nom} · ${loc.terme}` }, dragmode: 'zoom', showlegend: false, margin: { l: 110, r: 18, t: 34, b: 48 },
       shapes: [{ type: 'line', xref: 'x', yref: 'paper', x0: 0, x1: 0, y0: 0, y1: 1, line: { color: c.doux, dash: 'dash', width: 1 } }],
       xaxis: { title: { text: t('par_reponse_coefficient') }, zeroline: false }, yaxis: { automargin: true } });

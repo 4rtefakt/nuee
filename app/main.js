@@ -1,6 +1,6 @@
 // Desktop application: starts the R server (moteur/serveur.R) once and shows its interface
 // in as many windows as wanted. Windows remember their size; recent files are kept.
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net: reseau, session, shell, screen } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net: reseau, safeStorage, session, shell, screen } = require('electron');
 const { spawn, execFileSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -9,6 +9,8 @@ const net = require('net');
 const path = require('path');
 const { fileURLToPath } = require('url');
 const { demanderZotero } = require('./zotero');
+const { creerVersions, magasinJetons } = require('./versions');
+const { creerComptes } = require('./comptes');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -328,6 +330,7 @@ function principale(f) {
 async function fermerNuee(fenetre) {
   const accord = await accordFermeture(fenetre);
   if (!accord) return false;
+  await versionsAvantDeFermer();
   quitter = true;
   if (accord !== 'secours') fermerSecours();
   app.quit();
@@ -436,6 +439,39 @@ function fichierDonne(argv) {
   return argv.slice(1).map(chemin).find((a) => a && !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
 }
 
+// Versions of projects kept in the background with git (versions.js): GitHub and GitLab reached
+// through Chromium's network stack, so that the system's proxy and certificates apply; the tokens
+// encrypted by the system (safeStorage) in jetons.json beside the settings, its own settings (keep
+// versions, the author) with the settings; the versions read written in this run's temporary
+// folder, deleted when Nuée closes; what the background exchanges did told to every window.
+const jetons = magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons.json'), safeStorage });
+const versions = creerVersions({
+  fetch: (url, init) => reseau.fetch(url, init),
+  jetons,
+  langue: () => langue,
+  reglages: { lire: () => reglages.versions || {}, ecrire: (r) => { reglages.versions = r; ecrireReglages(); } },
+  temporaire: () => { dossierTemporaireR(); return temporaireR; },
+  evenement: (e) => { for (const f of BrowserWindow.getAllWindows()) if (!f.isDestroyed()) f.webContents.send('versions', e); },
+});
+// (a window back to the front: the open projects' remotes asked again, every five minutes at most)
+app.on('browser-window-focus', () => versions.auPremierPlan());
+// The open projects' last versions, before Nuée closes (fifteen seconds at most: their sending
+// waits for the next start)
+const versionsAvantDeFermer = () => Promise.race([versions.fermerTout(), new Promise((ok) => setTimeout(ok, 15000))]);
+// Signing in to GitHub and GitLab (comptes.js): the token kept through the versions layer, the
+// refresh tokens of the sign-ins that expire (GitLab's, after two hours) encrypted the same way
+// beside it, what is known of each account (no secret) and the self-hosted GitLabs' application IDs
+// with the settings; the server's sign-in page opened in the browser.
+const comptes = creerComptes({
+  fetch: (url, init) => reseau.fetch(url, init),
+  jeton: versions.jeton,
+  jetons,
+  renouvellements: magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons-renouvellement.json'), safeStorage }),
+  reglages: { lire: () => reglages.comptes || {}, ecrire: (c) => { reglages.comptes = c; ecrireReglages(); } },
+  ouvrirNavigateur: (url) => shell.openExternal(url),
+  langue: () => langue,
+});
+
 function ipc() {
   const parent = (e) => BrowserWindow.fromWebContents(e.sender);
   // only the interface's own pages may ask (see deLInterface)
@@ -452,6 +488,11 @@ function ipc() {
   recevoir('choisir-fichiers', async (e, filtres) => {
     const r = await dialog.showOpenDialog(parent(e), { properties: ['openFile', 'multiSelections'], filters: filtres || [{ name: '*', extensions: ['*'] }] });
     return r.canceled ? [] : r.filePaths;
+  });
+  // a folder (where a project opened from GitHub or GitLab goes: interface/versions.js)
+  recevoir('choisir-dossier', async (e) => {
+    const r = await dialog.showOpenDialog(parent(e), { properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : r.filePaths[0];
   });
   recevoir('lire-presse-papiers', () => clipboard.readText());
   recevoir('enregistrer-sous', async (e, nom, filtres) => {
@@ -534,6 +575,27 @@ function ipc() {
     }
   });
   recevoir('ouvrir-chemin', (_, chemin) => shell.openPath(chemin));
+  // a project's versions (versions.js): { valeur }, or { erreur } with its message in the
+  // interface's language, which preload.js throws again in the page (an error thrown here would
+  // reach it inside Electron's own words)
+  for (const [nom, f] of Object.entries(versions)) {
+    recevoir(`versions-${nom}`, async (_, ...args) => {
+      try { return { valeur: await f(...args) }; } catch (e) { return { erreur: e.message }; }
+    });
+  }
+  // signing in to GitHub and GitLab (comptes.js), the same way, with the refusal's code; a sign-in
+  // waited for by a window that closes meanwhile ends with it
+  for (const [nom, f] of Object.entries(comptes)) {
+    if (nom === 'preparer') continue;
+    recevoir(`comptes-${nom}`, async (e, ...args) => {
+      const fin = () => { comptes.annulerConnexion(args[0]).catch(() => {}); };
+      const attente = nom === 'attendreConnexion' || nom === 'compteGit';
+      if (attente) e.sender.once('destroyed', fin);
+      try { return { valeur: await f(...args) }; } catch (err) { return { erreur: err.message, code: err.code || null }; } finally {
+        if (attente && !e.sender.isDestroyed()) e.sender.removeListener('destroyed', fin);
+      }
+    });
+  }
   // recovery copies: their folder, and the index of what they hold (files not in it are deleted)
   // (once Nuée is closing, nothing is written there any more: a copy or an index arriving after
   // the folder was deleted would bring it back, offering at the next start what was saved)
@@ -580,6 +642,7 @@ function ipc() {
     }
     const accord = await accordFermeture(fenetre);
     if (!accord) return { erreur: 'annulee' };
+    await versionsAvantDeFermer();
     quitter = true;
     if (accord !== 'secours') fermerSecours();
     arreterR();
@@ -762,6 +825,7 @@ async function demarrer() {
   const langues = [...new Set([...s.getSpellCheckerLanguages(), 'fr', 'en-US'])].filter((l) => s.availableSpellCheckerLanguages.includes(l));
   if (langues.length) s.setSpellCheckerLanguages(langues);
   ipc();
+  comptes.preparer();  // (a GitLab sign-in's token renewed before it expires, while Nuée runs)
   // the same port as last time when free: on a computer shared by several people (remote
   // desktop), whoever doesn't get the usual one keeps their own, and their settings with it
   port = await portLibre(reglages.port || PORT_HABITUEL);

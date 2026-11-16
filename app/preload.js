@@ -1,10 +1,70 @@
 // What the interface can ask of the desktop app (window.bureau); absent in a browser.
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+// a project's versions (versions.js, through main.js): an error thrown again here, its message in
+// the interface's language
+const version = (nom, ...args) => ipcRenderer.invoke(`versions-${nom}`, ...args).then((r) => {
+  if ('erreur' in r) throw new Error(r.erreur);
+  return r.valeur;
+});
+// signing in to GitHub and GitLab (comptes.js, through main.js): the same, the error's `code` too.
+// An Error crossing the context bridge keeps its message only, so the refusal reaches the page as
+// an object with its message and code.
+const compte = (nom, ...args) => ipcRenderer.invoke(`comptes-${nom}`, ...args).then((r) => {
+  if ('erreur' in r) return Promise.reject({ name: 'Error', message: r.erreur, code: r.code || null });
+  return r.valeur;
+});
+
 contextBridge.exposeInMainWorld('bureau', {
-  versions: { electron: process.versions.electron },
+  versions: {
+    electron: process.versions.electron,
+    // the versions of projects, kept in the background with git and shared with GitHub or GitLab;
+    // each given a project file's absolute path unless said
+    etat: (chemin) => version('etat', chemin),
+    ouvert: (chemin, options) => version('ouvert', chemin, options || {}),
+    apresEnregistrement: (chemin, options) => version('apresEnregistrement', chemin, options || {}),
+    aLaFermeture: (chemin) => version('aLaFermeture', chemin),
+    marquer: (chemin, description) => version('marquer', chemin, description),
+    liste: (chemin) => version('liste', chemin),
+    nommer: (chemin, oid, nom) => version('nommer', chemin, oid, nom),
+    retirerNom: (chemin, nom) => version('retirerNom', chemin, nom),
+    lire: (chemin, oid) => version('lire', chemin, oid),
+    restaurer: (chemin, oid) => version('restaurer', chemin, oid),
+    activer: (chemin, oui) => version('activer', chemin, oui),
+    reglages: () => version('reglages'),
+    regler: (r) => version('regler', r || {}),
+    partager: (chemin, url) => version('partager', chemin, url),
+    jeton: (hote, jeton) => version('jeton', hote, jeton),
+    verifierPartage: (chemin) => version('verifierPartage', chemin),
+    envoyer: (chemin) => version('envoyer', chemin),
+    recevoir: (chemin) => version('recevoir', chemin),
+    choisir: (chemin, cote, fichier, description) => version('choisir', chemin, cote, fichier || null, description || null),
+    arreterPartage: (chemin) => version('arreterPartage', chemin),
+    listerDistant: (url) => version('listerDistant', url),
+    ouvrirDistant: (url, cheminDistant, dossier) => version('ouvrirDistant', url, cheminDistant, dossier),
+    copierHistoire: (ancien, nouveau) => version('copierHistoire', ancien, nouveau),
+    // what the background exchanges did: { type: 'recu' | 'conflit' | 'attente' | 'envoi' | 'envoye' | 'erreur', chemin, … }
+    surVersions: (f) => ipcRenderer.on('versions', (_, e) => f(e)),
+  },
+  // signing in to a server (github.com, gitlab.com, a self-hosted GitLab), given by its name; no
+  // function hands a token back
+  comptes: {
+    serveur: (hote) => compte('serveur', hote),
+    reglerServeur: (hote, id) => compte('reglerServeur', hote, id),
+    commencerConnexion: (hote) => compte('commencerConnexion', hote),
+    ouvrirPage: (hote) => compte('ouvrirPage', hote),
+    attendreConnexion: (hote) => compte('attendreConnexion', hote),
+    annulerConnexion: (hote) => compte('annulerConnexion', hote),
+    compteGit: (hote) => compte('compteGit', hote),
+    utiliserJeton: (hote, jeton) => compte('utiliserJeton', hote, jeton),
+    compte: (hote) => compte('compte', hote),
+    creerDepot: (hote, nom, options) => compte('creerDepot', hote, nom, options || {}),
+    inviter: (hote, url, utilisateur) => compte('inviter', hote, url, utilisateur),
+    deconnecter: (hote) => compte('deconnecter', hote),
+  },
   choisirFichier: (filtres) => ipcRenderer.invoke('choisir-fichier', filtres),
   choisirFichiers: (filtres) => ipcRenderer.invoke('choisir-fichiers', filtres),
+  choisirDossier: () => ipcRenderer.invoke('choisir-dossier'),
   lirePressePapiers: () => ipcRenderer.invoke('lire-presse-papiers'),
   enregistrerSous: (nom, filtres) => ipcRenderer.invoke('enregistrer-sous', nom, filtres),
   recents: () => ipcRenderer.invoke('recents'),

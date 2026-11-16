@@ -5,7 +5,7 @@
 # elle donne ses chiffres ; l'échantillonnage par distances a le sien (sa fonction de détection, avec
 # des covariables leurs coefficients, p, la densité). Puis les conditions d'une régression dites en mots
 # (moteur/R/verifications_modele.R) : chacune vue où les données la mettent en défaut, et pas
-# ailleurs.
+# ailleurs (la séparation d'une présence-absence comprise).
 #   Rscript moteur/tests/verifier_texte_resultats.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -95,6 +95,8 @@ dv$x3 <- stats::rnorm(n)
 dv$bon <- 1 + dv$x1 + dv$x3 + stats::rnorm(n)
 dv$y <- exp(1 + dv$x1 + stats::rnorm(n, 0, 0.6))
 dv$n <- ifelse(stats::runif(n) < 0.4, 0, stats::rpois(n, exp(1 + 0.4 * dv$x1)))
+dv$separee <- as.integer(dv$x1 > 0)
+dv$presence <- as.integer(dv$x3 + stats::rnorm(n) > 0)
 pv <- projet_depuis_tableau(dv, "conditions")
 uv <- function(...) numeros(pv, c(...))
 statuts <- function(d) { v <- verifications_regression(pv, ajuster(pv, d)); stats::setNames(vapply(v, `[[`, "", "statut"), vapply(v, `[[`, "", "cle")) }
@@ -106,5 +108,9 @@ verifier("une réponse log-normale et deux termes colinéaires : loi, variance e
          all(s_mauvais[c("loi", "variance", "colinearite")] == "attention"))
 s_zero <- statuts(dm("GLM", "x1", "n", famille = "poisson"))
 verifier("des comptages avec trop de zéros : surdispersion et excès de zéros signalés", all(s_zero[c("dispersion", "zeros")] == "attention"))
+s_separee <- statuts(dm("GLM", "x1", "separee", famille = "binomiale"))
+s_presence <- statuts(dm("GLM", "x1", "presence", famille = "binomiale"))
+verifier("une présence que x1 sépare tout à fait : la séparation signalée, pas pour une présence ordinaire",
+         identical(unname(s_separee["separation"]), "attention") && !"separation" %in% names(s_presence))
 cat(if (echecs) sprintf("%d échec(s)\n", echecs) else "Tout est bon.\n")
 if (echecs) quit(status = 1)

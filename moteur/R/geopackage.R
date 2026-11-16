@@ -275,8 +275,8 @@ ecrire_geopackage_resultats <- function(projet, m, tables, chemin, nom = "result
   obs <- tables$observations
   if (is.null(obs) || !nrow(obs)) stop(traduire("Ce modèle n'a pas de tableau des observations à placer sur une carte.", "This model has no table of observations to place on a map."), call. = FALSE)
   pts <- points_projet(projet)
-  noms <- unname(projet$noms_obs[as.character(pts$uid)])
-  k <- if (!anyDuplicated(noms) && "Observation" %in% names(obs)) match(as.character(obs$Observation), noms)
+  noms <- unname(projet$noms_obs[nom_numero(pts$uid)])
+  k <- if (!anyDuplicated(noms) && "Observation" %in% names(obs)) match(nom_numero(obs$Observation), noms)
        else if (length(m$observations) == nrow(obs)) match(as.numeric(m$observations), pts$uid)
        else stop(traduire("Les observations du modèle ne se retrouvent pas dans le projet : des noms se répètent.", "The model's observations can't be found in the project: some names repeat."), call. = FALSE)
   ecrire_geopackage(obs, chemin, pts$x[k], pts$y[k], pts$systeme, couche = nom, tables = tables[setdiff(names(tables), "observations")])

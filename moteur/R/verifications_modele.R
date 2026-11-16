@@ -67,7 +67,7 @@ verifications_regression <- function(projet, m) {
     fortes <- which(r$cook > seuil)
     if (length(fortes)) {
       o <- fortes[order(-r$cook[fortes])]
-      noms <- unname(projet$noms_obs[as.character(m$observations[o])])
+      noms <- unname(projet$noms_obs[nom_numero(m$observations[o])])
       ajouter("influence", if (any(r$cook[o] > 1)) "attention" else "info",
               sprintf(if (fr) "%d observation%s %s une distance de Cook au-delà de 4/n = %s : %s%s. Vérifiez leurs valeurs, et refaites le modèle sans elles pour voir s'il change."
                       else "%d observation%s %s a Cook's distance beyond 4/n = %s: %s%s. Check their values, and refit without them to see whether the model changes.",
@@ -95,6 +95,19 @@ verifications_regression <- function(projet, m) {
       ajouter("zeros", if (trop) "attention" else "ok",
               sprintf(if (fr) "%d zéros observés, %s attendus par le modèle%s." else "%d zeros observed, %s expected by the model%s.", observes, nb(attendus, 1),
                       if (trop) (if (fr) " : un excès de zéros, qu'un modèle à zéros en excès ou la binomiale négative prendrait peut-être en compte" else ": an excess of zeros, which a zero-inflated model or the negative binomial may account for") else ""))
+    }
+  }
+  # --- la séparation d'une présence-absence : des probabilités ajustées de 0 ou 1, à moins de 1e-8 du
+  # bord (glm() le dit par « fitted probabilities numerically 0 or 1 », mgcv ne le dit pas). Les
+  # coefficients des termes qui séparent les présences des absences, tout à fait ou pour une catégorie,
+  # croissent sans fin et leurs erreurs-types plus encore : leurs tests (p près de 1) ne disent rien de
+  # leur effet (Albert et Anderson, 1984)
+  if (famille == "binomiale" && length(r$ajuste)) {
+    bords <- sum(r$ajuste < 1e-8 | r$ajuste > 1 - 1e-8, na.rm = TRUE)
+    if (bords) {
+      ajouter("separation", "attention", sprintf(if (fr) "%d des %d observations %s une probabilité ajustée de 0 ou 1 : des termes séparent les présences des absences (une catégorie sans présence, ou un seuil d'un X au-delà duquel il n'y a que des présences). Leurs coefficients croissent sans fin, et leurs tests (p près de 1) ne disent rien de leur effet : retirez le terme qui sépare, ou regroupez ses catégories."
+                                                 else "%d of the %d observations %s a fitted probability of 0 or 1: some terms separate the presences from the absences (a category without presences, or a threshold of an X beyond which there are only presences). Their coefficients grow without bound, and their tests (p near 1) say nothing of their effect: remove the term that separates, or merge its categories.",
+                                                 bords, n, if (fr) (if (bords > 1) "ont" else "a") else (if (bords > 1) "have" else "has")))
     }
   }
   # --- colinéarité des termes quantitatifs (VIF : la diagonale de l'inverse de leur matrice de corrélation)

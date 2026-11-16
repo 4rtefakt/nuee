@@ -26,7 +26,10 @@
 #                                    l'ajoute à ses DEMANDES ;
 #   verifier_<type>(projet, d)       à la place de la vérification des données avant l'ajustement
 #                                    (diagnostic.R : verifier_donnees), si elle n'a pas de sens pour
-#                                    elle (des comptages manquants que TRIM impute).
+#                                    elle (des comptages manquants que TRIM impute) ;
+#   entrees_<type>(projet, d, m)     ses résultats clés, pour la vue « Ce qui a changé » (écrite dans
+#                                    resultats_cles.R, avec celles des autres types ; sans elle, le
+#                                    nombre de ses observations seulement).
 # Leurs fichiers ne commencent pas par « a » : chargés après celui-ci (moteur/charger.R).
 # Ses variables Z (covariables d'une analyse partielle), s'il en a, sont dans d$options$z. Les
 # demandes qui supposent des composantes et leurs scores (serveur.R : SANS_REGRESSION) lui sont

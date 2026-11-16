@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Écologie des communautés : les espèces de trois milieux · Nuée</title>
+<meta name="description" content="Tutoriel Nuée : comparer les carabes de trois milieux, du tableau d'espèces à la raréfaction, un NMDS, une PERMANOVA et son test de dispersion, les espèces indicatrices et les textes pour un article.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="communautes.html">
+<link rel="alternate" hreflang="en" href="../../en/tutorials/communities.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="../guide/index.html">Guide</a>
+      <a href="index.html" aria-current="page">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/tutorials/communities.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Tutoriel Nuée : comparer les carabes de trois milieux, du tableau d'espèces à la raréfaction, un NMDS, une PERMANOVA et son test de dispersion, les espèces indicatrices et les textes pour un article. -->
+<h1>Écologie des communautés : les espèces de trois milieux</h1>
+<p class="chapeau">Les bois, les haies et les cultures abritent-ils les mêmes carabes ? Du tableau d'espèces aux courbes de raréfaction, un NMDS sur Bray-Curtis, une PERMANOVA et son test de dispersion, les espèces indicatrices, et ce qu'il faut écrire dans un article.</p>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#la-question-et-les-donnees">La question et les données</a></li>
+<li><a href="#1-quelle-analyse">1. Quelle analyse ?</a></li>
+<li><a href="#2-combien-d-especes-la-rarefaction">2. Combien d'espèces ? La raréfaction</a></li>
+<li><a href="#3-le-nmds-qui-ressemble-a-qui">3. Le NMDS : qui ressemble à qui</a></li>
+<li><a href="#4-la-permanova-et-son-test-de-dispersion">4. La PERMANOVA et son test de dispersion</a></li>
+<li><a href="#5-les-especes-indicatrices">5. Les espèces indicatrices</a></li>
+<li><a href="#6-les-textes-des-methodes-et-des-resultats">6. Les textes des méthodes et des résultats</a></li>
+<li><a href="#pour-aller-plus-loin">Pour aller plus loin</a></li>
+</ul>
+</nav>
+<div class="encadre">
+<p><strong>Les données sont simulées.</strong> Aucun carabe n'a été piégé : le tableau a été fabriqué par le
+script <a href="../../donnees/communautes.R">communautes.R</a>, avec une graine fixe, pour ce tutoriel. Les espèces
+et leurs milieux sont réels ; leurs effectifs sont inventés à partir d'une prise moyenne de chaque
+espèce dans chaque milieu, les haies recevant une part des espèces du bois et de celles des
+cultures.</p>
+</div>
+<h2 id="la-question-et-les-donnees">La question et les données</h2>
+<p>Les carabes se piègent au sol, dans des pots enterrés au ras de la terre, laissés ouverts trois
+semaines en mai. Dans un paysage agricole, 12 pièges ont été posés en bois, 12 le long de haies et
+12 dans des cultures. Les trois milieux abritent-ils les mêmes espèces, autant d'espèces, et
+quelles espèces caractérisent chacun d'eux ?</p>
+<p>Téléchargez <a href="../../donnees/carabes.csv">carabes.csv</a> (36 lignes, une par piège) :</p>
+<table>
+<thead>
+<tr>
+<th>Colonne</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>piege</td>
+<td>le nom de la ligne : P01 à P12 en bois, P13 à P24 le long des haies, P25 à P36 dans les cultures</td>
+</tr>
+<tr>
+<td>habitat</td>
+<td>bois, haie ou culture</td>
+</tr>
+<tr>
+<td>Abax parallelepipedus … Trechus quadristriatus</td>
+<td>le nombre d'individus de chaque espèce pris dans le piège (26 colonnes, par ordre alphabétique)</td>
+</tr>
+</tbody>
+</table>
+<p>Ouvrez-le avec <em>Fichier › Ouvrir</em> (Ctrl+O) : le projet compte 36 observations et 27 variables
+(la première colonne nomme les observations).</p>
+<h2 id="1-quelle-analyse">1. Quelle analyse ?</h2>
+<p><em>Modèle › Quelle analyse ?</em> : cochez <strong>Beaucoup d'espèces à la fois</strong>. Nuée propose les 26 espèces
+comme réponse (des colonnes d'entiers, positifs ou nuls, avec des zéros) et <code>habitat</code> comme variable
+explicative. Pour voir comment la composition change entre les groupes, il conseille une
+PERMANOVA, avec un NMDS et les espèces indicatrices parmi les autres possibilités.</p>
+<figure><a class="clair-seul" href="../../images/fr/com-choix.png"><img src="../../images/fr/com-choix.png" alt="Quelle analyse ? avec beaucoup d'espèces à la fois : les 26 espèces proposées, habitat en X, la PERMANOVA conseillée" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-choix.png"><img src="../../images/fr/sombre/com-choix.png" alt="Quelle analyse ? avec beaucoup d'espèces à la fois : les 26 espèces proposées, habitat en X, la PERMANOVA conseillée" width="900" height="680" loading="lazy"></a><figcaption>Quelle analyse ? : les espèces et les groupes proposés d'après les colonnes ; la PERMANOVA conseillée, le NMDS et les espèces indicatrices à côté.</figcaption></figure>
+<p>Fermez-la pour l'instant : la richesse d'abord.</p>
+<h2 id="2-combien-d-especes-la-rarefaction">2. Combien d'espèces ? La raréfaction</h2>
+<p>Un piège qui prend plus de carabes trouve plus d'espèces : les nombres d'espèces de deux pièges ne
+se comparent qu'à nombre d'individus égal. <em>Graphiques › Raréfaction et accumulation des espèces</em>
+(aussi sous le projet dans l'explorateur) : <em>Espèces de</em> <code>Abax parallelepipedus</code> <em>à</em>
+<code>Trechus quadristriatus</code>, <strong>Prendre la plage</strong>, puis <em>Par groupe</em> : <code>habitat</code>.</p>
+<figure><a class="clair-seul" href="../../images/fr/com-rarefaction.png"><img src="../../images/fr/com-rarefaction.png" alt="Les courbes de raréfaction des 36 pièges, colorées par milieu, la taille commune de 15 individus en pointillés, et le tableau de la richesse de chaque piège" width="1000" height="725" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-rarefaction.png"><img src="../../images/fr/sombre/com-rarefaction.png" alt="Les courbes de raréfaction des 36 pièges, colorées par milieu, la taille commune de 15 individus en pointillés, et le tableau de la richesse de chaque piège" width="1000" height="725" loading="lazy"></a><figcaption>La raréfaction : chaque courbe est la richesse qu'un piège montrerait avec moins d'individus ; les pointillés, la plus petite prise.</figcaption></figure>
+<p>Chaque courbe est le nombre d'espèces attendu dans m individus tirés de la prise du piège
+(Hurlbert, 1971). Lisez-les au même nombre d'individus : les pointillés, 15, sont la plus petite
+prise (le piège P14). À 15 individus, les pièges des haies comptent 8,02 à 10,57 espèces, ceux du
+bois 3,21 à 8,92 et ceux des cultures 5,60 à 9,13, alors que les cultures prennent le plus de
+carabes (29 à 110 par piège). Le tableau donne la richesse de chaque piège à 15 (<em>S à 15</em>), et deux
+estimations de ce qu'il compterait avec une prise bien plus grande, Chao1 et ACE. Elles ne valent
+que ce que vaut la prise : les 34 carabes de P06 sont 29 <em>Abax parallelepipedus</em> et cinq espèces
+vues une fois chacune ; Chao1 donne alors 16 ± 10,07, et ACE ne se calcule pas.</p>
+<p>Choisissez <strong>Accumulation (sur les observations)</strong> dans la même vue :</p>
+<figure><a class="clair-seul" href="../../images/fr/com-accumulation.png"><img src="../../images/fr/com-accumulation.png" alt="Les courbes d'accumulation des espèces des trois milieux, avec leur bande de ±2 écarts-types, et le tableau des estimateurs de la richesse" width="1000" height="685" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-accumulation.png"><img src="../../images/fr/sombre/com-accumulation.png" alt="Les courbes d'accumulation des espèces des trois milieux, avec leur bande de ±2 écarts-types, et le tableau des estimateurs de la richesse" width="1000" height="685" loading="lazy"></a><figcaption>L'accumulation : les espèces trouvées à mesure qu'on ajoute des pièges, dans chaque milieu ; dessous, les estimateurs de la richesse totale.</figcaption></figure>
+<p>Chaque courbe est le nombre d'espèces attendu dans k pièges du milieu (méthode exacte, Ugland et
+al., 2003). Les courbes s'aplatissent : douze pièges ont trouvé presque toutes les espèces de leur
+milieu. Chao2, les jackknifes et le bootstrap estiment la richesse totale d'après les espèces vues
+dans un ou deux pièges seulement : 18 espèces observées dans les cultures, 18,46 selon Chao2 et
+18,99 selon le jackknife d'ordre 2 ; 15 dans le bois, jusqu'à 16,75 ; et les 26 le long des haies,
+qui partagent les espèces du bois et celles des cultures.</p>
+<h2 id="3-le-nmds-qui-ressemble-a-qui">3. Le NMDS : qui ressemble à qui</h2>
+<p>Une ordination place les pièges sur un plan, proches quand leurs espèces se ressemblent. Revenez à
+<em>Modèle › Quelle analyse ?</em> et ouvrez le <strong>NMDS</strong> parmi les autres possibilités : Nouveau modèle
+s'ouvre avec les espèces en Y et <code>habitat</code> en X, à ajuster ensuite sur le plan.</p>
+<p>Dans l'onglet <strong>Général</strong>, gardez la distance de <strong>Bray-Curtis</strong> et choisissez la <em>Transformation</em> :
+<strong>racine carrée puis Wisconsin (comme metaMDS)</strong>.</p>
+<ul>
+<li>La dissimilarité de Bray-Curtis entre deux pièges vaut 0 quand ils ont les mêmes espèces dans les
+mêmes nombres, et 1 quand ils n'en partagent aucune.</li>
+<li>La racine carrée affaiblit les espèces les plus abondantes (<em>Pterostichus melanarius</em>, 275
+carabes en tout), qui sinon feraient seules la dissimilarité ; la double standardisation de
+Wisconsin donne ensuite le même maximum à chaque espèce, et le même total à chaque piège : un
+piège qui a pris deux fois plus de carabes, parce qu'il était mieux enterré, ne compte pas
+double. C'est ce que fait par défaut la fonction metaMDS de vegan pour des comptages.</li>
+</ul>
+<figure><a class="clair-seul" href="../../images/fr/com-nmds-modele.png"><img src="../../images/fr/com-nmds-modele.png" alt="Nouveau modèle : NMDS, Bray-Curtis, racine carrée puis Wisconsin, 2 dimensions, 20 départs au hasard" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-nmds-modele.png"><img src="../../images/fr/sombre/com-nmds-modele.png" alt="Nouveau modèle : NMDS, Bray-Curtis, racine carrée puis Wisconsin, 2 dimensions, 20 départs au hasard" width="900" height="680" loading="lazy"></a><figcaption>Les réglages du NMDS : la distance, la transformation, les dimensions et les départs.</figcaption></figure>
+<p>Cliquez sur <strong>Ajuster</strong>. Le NMDS (Kruskal, 1964) cherche les positions dont les distances
+respectent l'ordre des dissimilarités, depuis la configuration de la PCoA et 20 départs au hasard ;
+le résumé donne son <strong>stress, 0,1347</strong> : sous 0,1 l'ordre est bien respecté, au-delà de 0,2 le plan
+se lit avec prudence. <em>Retrouvée 1</em> : un autre départ a trouvé la même configuration, signe que ce
+n'est pas un minimum local (avec 0, augmentez les départs au hasard).</p>
+<p>Les vues du modèle s'ouvrent avec lui (sinon, double-cliquez-les sous le modèle dans
+l'explorateur). Dans <strong>Ordination</strong>, <em>Couleur</em> : <code>habitat</code> ; décochez <em>Espèces (Y)</em> pour voir les
+pièges :</p>
+<figure><a class="clair-seul" href="../../images/fr/com-nmds.png"><img src="../../images/fr/com-nmds.png" alt="Le plan du NMDS : les pièges du bois à droite, ceux des cultures à gauche, les haies entre les deux, et le centre de chaque milieu" width="820" height="605" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-nmds.png"><img src="../../images/fr/sombre/com-nmds.png" alt="Le plan du NMDS : les pièges du bois à droite, ceux des cultures à gauche, les haies entre les deux, et le centre de chaque milieu" width="820" height="605" loading="lazy"></a><figcaption>Le NMDS : chaque point est un piège, coloré par son milieu ; les triangles, le centre de chaque milieu.</figcaption></figure>
+<p>Les pièges du bois sont à droite, ceux des cultures à gauche, ceux des haies entre les deux et plus
+dispersés : une haie le long d'un bois abrite des carabes du bois, une haie entre deux champs des
+carabes des champs. Seules les positions les unes par rapport aux autres se lisent : les axes n'ont
+pas d'unité, et un NMDS n'a pas de part de variance par axe. Les triangles sont le centre de chaque
+milieu, ajusté après coup (la vue <strong>Variables ajustées</strong>) : la part des positions des pièges sur
+le plan qu'explique <code>habitat</code> est R² = 0,8062, p = 0,0010 par 999 permutations. Cochez
+<em>Espèces (Y)</em> : chaque espèce se place à la moyenne des pièges qui l'ont prise,
+<em>Abax parallelepipedus</em> parmi ceux du bois.</p>
+<figure><a class="clair-seul" href="../../images/fr/com-shepard.png"><img src="../../images/fr/com-shepard.png" alt="Le diagramme de Shepard : les distances dans le NMDS en fonction des dissimilarités, et la régression monotone" width="820" height="565" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-shepard.png"><img src="../../images/fr/sombre/com-shepard.png" alt="Le diagramme de Shepard : les distances dans le NMDS en fonction des dissimilarités, et la régression monotone" width="820" height="565" loading="lazy"></a><figcaption>Le diagramme de Shepard : plus les points sont près de la ligne en escalier, plus le stress est faible.</figcaption></figure>
+<p>Le <strong>diagramme de Shepard</strong> vérifie l'ordination : chaque paire de pièges, sa dissimilarité en
+abscisse, sa distance sur le plan en ordonnée. Elles montent ensemble ; le stress mesure leurs
+écarts à la ligne en escalier (R² non métrique = 1 − stress² = 0,982).</p>
+<h2 id="4-la-permanova-et-son-test-de-dispersion">4. La PERMANOVA et son test de dispersion</h2>
+<p>Le NMDS montre ; la PERMANOVA teste. Dans <em>Modèle › Quelle analyse ?</em>, ouvrez l'analyse conseillée,
+la <strong>PERMANOVA</strong>. Dans l'onglet <strong>Général</strong>, choisissez la même transformation que pour le NMDS,
+<strong>racine carrée puis Wisconsin</strong>, pour que le test porte sur les distances que montre le plan.
+Cliquez sur <strong>Ajuster</strong>.</p>
+<figure><a class="clair-seul" href="../../images/fr/com-permanova.png"><img src="../../images/fr/com-permanova.png" alt="La table de la PERMANOVA : l'habitat avec ses degrés de liberté, sa somme des carrés, son R², son pseudo-F et son p" width="760" height="445" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-permanova.png"><img src="../../images/fr/sombre/com-permanova.png" alt="La table de la PERMANOVA : l'habitat avec ses degrés de liberté, sa somme des carrés, son R², son pseudo-F et son p" width="760" height="445" loading="lazy"></a><figcaption>La table de la PERMANOVA : la part de la variation que l'habitat explique, et son test.</figcaption></figure>
+<p>La PERMANOVA (Anderson, 2001) partage la variation des dissimilarités comme une analyse de variance
+partage celle d'une variable : au sein des milieux, et entre leurs centres. <strong>R² = 0,512</strong> :
+l'habitat explique la moitié de la variation de composition entre les pièges. Le pseudo-F (17,344)
+compare les deux parts, et son p vient de 999 permutations des pièges entre les milieux : aucune
+n'a donné un F aussi grand, d'où <strong>p = 0,0010</strong>, le plus petit p que 999 permutations puissent
+donner.</p>
+<p>Une PERMANOVA teste les centres, mais elle réagit aussi à la dispersion des groupes : un milieu dont
+les pièges sont plus éparpillés peut faire paraître une différence de centres. La vue <strong>Dispersion
+multivariée</strong> teste cette dispersion (Anderson, 2006) :</p>
+<figure><a class="clair-seul" href="../../images/fr/com-dispersion.png"><img src="../../images/fr/com-dispersion.png" alt="La dispersion multivariée : la distance de chaque piège au centre de son milieu, en boîtes à moustaches, avec l'ANOVA et les paires de Tukey" width="820" height="865" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-dispersion.png"><img src="../../images/fr/sombre/com-dispersion.png" alt="La dispersion multivariée : la distance de chaque piège au centre de son milieu, en boîtes à moustaches, avec l'ANOVA et les paires de Tukey" width="820" height="865" loading="lazy"></a><figcaption>La dispersion : à quelle distance chaque piège se tient du centre de son milieu.</figcaption></figure>
+<p>Les pièges se tiennent en moyenne à 0,2939 du centre de leur milieu dans les cultures, 0,3473 le
+long des haies et 0,3410 dans le bois. Ces dispersions ne diffèrent pas : F = 1,862,
+<strong>p = 0,1980</strong> par permutations, et aucune paire du test de Tukey. La différence de la PERMANOVA
+est une différence de composition, pas de dispersion. Si ce test avait été significatif, la table
+de la PERMANOVA et cette vue l'auraient dit en rouge : le résultat se serait alors lu avec
+prudence, avec le plan du NMDS.</p>
+<h2 id="5-les-especes-indicatrices">5. Les espèces indicatrices</h2>
+<p>Dans <em>Modèle › Quelle analyse ?</em>, ouvrez les <strong>Espèces indicatrices (IndVal)</strong> : les espèces en Y,
+<code>habitat</code> comme classe. Cliquez sur <strong>Ajuster</strong>, puis la vue <strong>Espèces indicatrices</strong> :</p>
+<figure><a class="clair-seul" href="../../images/fr/com-indval.png"><img src="../../images/fr/com-indval.png" alt="Le tableau des espèces indicatrices : le groupe ou la combinaison de groupes de chaque espèce, A, B, IndVal.g et son p" width="1160" height="785" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-indval.png"><img src="../../images/fr/sombre/com-indval.png" alt="Le tableau des espèces indicatrices : le groupe ou la combinaison de groupes de chaque espèce, A, B, IndVal.g et son p" width="1160" height="785" loading="lazy"></a><figcaption>Les espèces indicatrices : pour chaque espèce, le groupe qu'elle caractérise, et pourquoi.</figcaption></figure>
+<p>Pour chaque espèce et chaque milieu, <strong>A</strong> (la spécificité) est la part de son abondance dans ce
+milieu, les milieux comparés à égalité, et <strong>B</strong> (la fidélité) la part des pièges du milieu où on
+la trouve. La valeur indicatrice IndVal.g est la racine carrée de A × B (De Cáceres et Legendre,
+2009) ; chaque espèce va au milieu, ou à la combinaison de milieux, de sa plus grande valeur,
+testée par 999 permutations, le p corrigé sur l'ensemble des espèces.</p>
+<ul>
+<li><em>Abax parallelus</em> indique le bois : A = 0,833, B = 0,917 ; <em>Harpalus affinis</em> les cultures ;
+<em>Leistus spinibarbis</em> les haies (A = 1,000 : elle n'a été prise nulle part ailleurs, B = 0,583 :
+dans 7 de leurs 12 pièges).</li>
+<li>La plupart des espèces vont à une combinaison de deux milieux : <em>Abax parallelepipedus</em> à
+bois+haie (les milieux boisés), <em>Pterostichus melanarius</em> à culture+haie (A = 0,971, B = 0,917,
+les terres ouvertes et leurs bordures). Les haies partagent leurs espèces avec leurs deux voisins.</li>
+<li><em>Loricera pilicornis</em> est dans les trois milieux : une espèce de tous les groupes n'est pas
+testée.</li>
+</ul>
+<p>25 espèces ont un p corrigé ≤ 0,05. Pour donner à chaque espèce un seul milieu, choisissez
+<em>Combinaisons de groupes</em> : <strong>les groupes seuls</strong> dans Nouveau modèle.</p>
+<h2 id="6-les-textes-des-methodes-et-des-resultats">6. Les textes des méthodes et des résultats</h2>
+<p>Choisissez la PERMANOVA dans l'explorateur, puis <em>Modèle › Texte pour la section Méthodes</em> :</p>
+<figure><a class="clair-seul" href="../../images/fr/com-methodes.png"><img src="../../images/fr/com-methodes.png" alt="Le texte des méthodes de la PERMANOVA, en français, avec ses références" width="560" height="692" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/com-methodes.png"><img src="../../images/fr/sombre/com-methodes.png" alt="Le texte des méthodes de la PERMANOVA, en français, avec ses références" width="560" height="692" loading="lazy"></a><figcaption>Le texte des méthodes : les données, la transformation, la distance, le test et la dispersion, avec leurs références.</figcaption></figure>
+<p>Il dit, entre autres :</p>
+<blockquote>
+<p>Les valeurs ont d'abord été transformées en racine carrée puis soumises à la double
+standardisation de Wisconsin (chaque variable divisée par son maximum, puis chaque observation
+par son total). La distance entre observations est la dissimilarité de Bray-Curtis (Bray et
+Curtis, 1957).</p>
+</blockquote>
+<p>et donne les résultats avec le test :</p>
+<blockquote>
+<p>habitat : R² = 0,512, pseudo-F = 17,34, p = 0,001. […] habitat : F = 1,86, p = 0,198 par
+permutation.</p>
+</blockquote>
+<p>Le NMDS et les espèces indicatrices ont le leur ; chacun donne la version de R et de Nuée, et les
+références. Complétez-les avec ce que les modèles ne savent pas : les pièges, leurs dates, la
+détermination. Pour ces analyses, le texte des résultats, sous celui des méthodes, est une ligne de
+chiffres (<em>Résultats de M2 (PERMANOVA) : R2 0,51 · p 0,001</em>) ; le paragraphe de l'article s'écrit
+d'après les vues, par exemple :</p>
+<blockquote>
+<p>Les peuplements différaient entre les milieux (PERMANOVA sur les dissimilarités de Bray-Curtis :
+R² = 0,51, pseudo-F = 17,3, p = 0,001), sans différence de dispersion multivariée (F = 1,86,
+p = 0,20). Dans le NMDS (stress = 0,135), les pièges des haies se plaçaient entre ceux du bois et
+ceux des cultures. À 15 individus, les pièges des haies comptaient 8,0 à 10,6 espèces, contre 3,2
+à 8,9 dans le bois et 5,6 à 9,1 dans les cultures. Vingt-cinq des 26 espèces étaient indicatrices
+d'un milieu ou d'une paire de milieux (IndVal.g, p corrigé ≤ 0,05).</p>
+</blockquote>
+<h2 id="pour-aller-plus-loin">Pour aller plus loin</h2>
+<ul>
+<li><em>Permuter à l'intérieur de</em> (Nouveau modèle, onglet Général) garde les permutations à
+l'intérieur de groupes : des pièges posés par blocs, un site suivi plusieurs années.</li>
+<li>Avec des coordonnées, le <strong>test de Mantel</strong> compare les dissimilarités à la distance
+géographique : des pièges voisins se ressemblent-ils davantage ?</li>
+<li><em>Modèle › Un modèle par réponse</em> ajuste un GLM à chaque espèce, <code>habitat</code> en X.</li>
+<li><em>Fichier › Exporter vers R</em> écrit un script qui refait ces analyses avec R seul, les mêmes
+permutations donnant les mêmes p.</li>
+<li>Le guide : <a href="../guide/communautes.html">espèces indicatrices, raréfaction, NMDS et PERMANOVA</a>.</li>
+</ul>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

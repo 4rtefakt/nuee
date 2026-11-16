@@ -11,7 +11,10 @@
 #   type = "T2"    : idem avec le poids de toutes les composantes à la fois (racine de la somme
 #                    des carrés des poids), pour une observation qui sort de l'ellipse.
 contributions <- function(m, observations, type = c("DModX", "score", "T2"), composante = 1, ponderee = TRUE) {
-  type <- match.arg(type)
+  type <- valeur_parmi(type, c("DModX", "score", "T2"), traduire("contributions", "contributions"))
+  if (type == "score" && !isTRUE(composante >= 1 && composante <= ncol(m$T))) {
+    stop(sprintf(traduire("Composante %s : le modèle en a %d.", "Component %s: the model has %d."), paste(composante, collapse = " "), ncol(m$T)), call. = FALSE)
+  }
   i <- match(as.numeric(observations), m$observations)
   i <- i[!is.na(i)]
   if (!length(i)) stop(traduire("Aucune des observations choisies n'est dans le modèle", "None of the chosen observations is in the model"))
@@ -31,6 +34,7 @@ contributions <- function(m, observations, type = c("DModX", "score", "T2"), com
 # avec plus de 50 % de valeurs manquantes, et variables sans variance (constantes).
 # Renvoie une ligne par variable concernée (avec ses termes) et par observation concernée.
 verifier_donnees <- function(projet, definition, limite = 0.5) {
+  exiger_observations(definition$observations)  # (condition.R ; sans observation, des parts manquantes de 0 sur 0)
   f <- if (est_autre_analyse(definition)) fonction_analyse("verifier_", definition$type)  # (analyses.R : une analyse qui vérifie elle-même ses données)
   if (!is.null(f)) return(f(projet, definition))
   obs <- definition$observations
@@ -49,13 +53,13 @@ verifier_donnees <- function(projet, definition, limite = 0.5) {
   uid <- vapply(termes[simples], function(t) as.numeric(t$variables), 0)
   us <- unique(uid)
   k <- lapply(us, function(u) simples[uid == u])
-  vars <- if (length(us)) data.frame(uid = us, nom = unname(projet$noms_var[as.character(us)]), manquantes = vapply(k, function(i) max(manque[i]), 0),
+  vars <- if (length(us)) data.frame(uid = us, nom = unname(projet$noms_var[nom_numero(us)]), manquantes = vapply(k, function(i) max(manque[i]), 0),
                                      constante = vapply(k, function(i) all(constant[i]), TRUE))
   vars <- if (is.null(vars)) data.frame() else vars[vars$manquantes > limite | vars$constante, , drop = FALSE]
   manque_obs <- if (ncol(bx$X)) rowMeans(is.na(bx$X)) else rep(0, length(obs))  # (une régression sans X : le modèle nul)
   garde <- manque_obs > limite
   list(variables = vars,
-       observations = data.frame(uid = obs[garde], nom = unname(projet$noms_obs[as.character(obs[garde])]),
+       observations = data.frame(uid = obs[garde], nom = unname(projet$noms_obs[nom_numero(obs[garde])]),
                                  manquantes = manque_obs[garde]))
 }
 
@@ -81,7 +85,7 @@ verifier_donnees <- function(projet, definition, limite = 0.5) {
 # zéros, en %).
 statistiques_variables <- function(projet, observations = NULL) {
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   lignes <- lapply(vars, function(v) {
     x <- colonne(projet, v$uid, obs)
     ok <- x[!is.na(x)]

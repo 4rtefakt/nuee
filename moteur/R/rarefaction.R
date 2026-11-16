@@ -161,7 +161,7 @@ rarefaction_projet <- function(projet, especes, groupe = NULL, taille = NULL, pa
   if (sum(garde) < 2) err("Trop peu d'observations ont toutes leurs valeurs.", "Too few observations have all their values.")
   X <- X[garde, , drop = FALSE]
   uid_obs <- obs[garde]
-  noms <- unname(projet$noms_obs[as.character(uid_obs)])
+  noms <- unname(projet$noms_obs[nom_numero(uid_obs)])
   grp <- if (!is.null(g)) droplevels(g$valeurs[garde])
   J <- rowSums(X)
   S <- rowSums(X > 0)

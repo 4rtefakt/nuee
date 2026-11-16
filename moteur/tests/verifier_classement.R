@@ -296,7 +296,7 @@ verifier("prédire : le groupe du centre le plus proche (une observation du mod�
 p1o <- predire(p, mk, dk, as.numeric(rownames(p$donnees))[which(ck)[2]])
 verifier("prédire une seule observation : une ligne, son groupe et sa distance au centre",
          nrow(p1o) == 1 && identical(p1o[["groupe prédit"]], mk$groupe[2]) && proche(p1o[["distance au centre"]], mk$distance[2]))
-changer_projet <- function(q, f, etiquette) { pp <- f(projet(q$projet)); etat$projets[[q$projet]] <- pp; list(id = q$projet) }
+changer_projet <- function(q, f, etiquette, ...) { pp <- f(projet(q$projet)); etat$projets[[q$projet]] <- pp; list(id = q$projet) }
 invisible(demande_analyse_kmeans_variable(list(modele = "K1", nom = "groupes k3")))
 pp <- etat$projets$P1
 v <- variable_du_projet(pp, numeros(pp, "groupes k3"))
@@ -322,6 +322,14 @@ for (id in c("A1", "A2", "L1", "K1", "T1")) {
            isTRUE(r$analyse) && isTRUE(r$prediction) && nzchar(r$chiffres) && length(r$vues_defaut) == 2 && r$N == etat$modeles[[id]]$modele$N &&
              inherits(json(r), "json") && is.data.frame(r$observations) && identical(names(r$observations)[1:2], c("uid", "nom")))
 }
+verifier("leurs lignes de l'explorateur en français : « 85 % bien classées (VC) », R2 et Q2 à la virgule",
+         grepl("^[0-9]+ % bien classées \\(VC\\)", resultat("A2")$chiffres) && grepl("^[0-9]+ % bien classées \\(VC\\)", resultat("L1")$chiffres) &&
+           grepl("^R2 -?[0-9]+,[0-9]{2} · Q2 ", resultat("A1")$chiffres))
+langue_avant <- options(nuee.langue = "en")
+verifier("et en anglais : « 85% correct (CV) », R2 et Q2 au point décimal",
+         grepl("^[0-9]+% correct \\(CV\\)", resultat("A2")$chiffres) && grepl("^[0-9]+% correct \\(CV\\)", resultat("L1")$chiffres) &&
+           grepl("^R2 -?[0-9]+\\.[0-9]{2} · Q2 ", resultat("A1")$chiffres))
+options(langue_avant)
 r <- resultat("A1")
 verifier("arbre de régression : observé, ajusté, résidus ; Q² et RMSEcv pour Comparer les modèles ; ses nœuds pour le dessin",
          all(c("densite observé", "densite ajusté", "residu", "quantile_normal", "feuille") %in% names(r$observations)) &&

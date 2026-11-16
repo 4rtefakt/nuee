@@ -434,6 +434,10 @@ verifier("RDA : analyse sans prédiction, chiffres, vues, scores en échelles 1 
          isTRUE(r$analyse) && identical(r$prediction, FALSE) && grepl("^R2aj ", r$chiffres) && identical(as.character(r$vues_defaut), c("ordination", "valeurs_propres")) &&
            nrow(r$observations) == 39 && identical(names(r$observations)[1:3], c("uid", "nom", "RDA1")) && ncol(r$ordination$`1`$sites) == 10 &&
            identical(as.character(r$ordination$`2`$noms_biplot), c("temp", "ph")) && nrow(r$ordination$`2`$centroides) == 3 && inherits(json(r), "json"))
+langue_avant <- options(nuee.langue = "en")
+verifier("RDA : sa ligne de l'explorateur dans la langue de l'interface (R2aj 0,35, R2adj 0.35)",
+         grepl("^R2aj [0-9]+,[0-9]{2} · p ", r$chiffres) && grepl("^R2adj [0-9]+\\.[0-9]{2} · p ", resultat("M1")$chiffres))
+options(langue_avant)
 verifier("RDA : ses réglages pour Modifier le modèle (options, Z)", identical(r$reglages$options$transformation, "hellinger") &&
            identical(as.numeric(resultat(garder("M2", dz, mz))$reglages$options$z), u("pente")))
 rt <- demande_analyse_rda_tests(list(modele = "M1"))
@@ -464,6 +468,14 @@ verifier("CCA partielle : ses réglages (Z, groupes des permutations) pour Modif
 dcc0 <- definir_modele(p, "CCA", x = u("temp"), y = u(especes), echelle = "none", options = list(permutations = 0))
 mcc0 <- ajuster(p, dcc0)
 verifier("CCA sans permutation : pas de p ni de R² ajusté, le R² seul", is.na(mcc0$test$p) && is.na(mcc0$r2_ajuste) && grepl("^R2 ", resultat(garder("M8", dcc0, mcc0))$chiffres))
+# (des X tous qualitatifs : aucune flèche, et la matrice des flèches sans noms de lignes)
+qualitatives <- lapply(c("RDA", "CCA"), function(type) {
+  dq <- definir_modele(p, type, x = u("habitat"), y = u(especes), echelle = "none", options = list(permutations = 0))
+  tryCatch(resultat(garder(paste0("Q", type), dq, ajuster(p, dq))), error = conditionMessage)
+})
+verifier("RDA et CCA d'une X qualitative seule : aucune flèche, les centroïdes de ses catégories, aucune variable X",
+         all(vapply(qualitatives, function(r) is.list(r) && length(r$ordination$`2`$noms_biplot) == 0 && nrow(r$ordination$`2`$biplot) == 0 &&
+                      nrow(r$ordination$`2`$centroides) == 3 && identical(names(r$variables)[1], "terme") && nrow(r$variables) == 0 && inherits(json(r), "json"), TRUE)))
 for (langue in c("fr", "en")) {
   tcc <- texte_methodes(p, dcca, etat$modeles$M6$modele, langue, "essai")
   tcz <- texte_methodes(p, dccz, mccz, langue, "essai")

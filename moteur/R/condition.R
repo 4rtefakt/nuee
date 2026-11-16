@@ -61,7 +61,7 @@ texte_condition <- function(x) trimws(paste(as.character(unlist(x)), collapse = 
 # identifiants des observations qu'aucune variable ne cache. list(variables : leurs numéros, nommés
 # par leur nom ; ids : les noms des identifiants).
 noms_condition <- function(projet) {
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   noms <- vapply(vars, function(v) as.character(v$ids[1]), "")
   uids <- vapply(vars, function(v) as.numeric(v$uid), 0)
   garde <- !duplicated(noms, fromLast = TRUE)
@@ -167,8 +167,9 @@ valeurs_condition <- function(projet, condition) {
 # Les observations de `observations` (des numéros) où la condition est vraie, dans leur ordre ;
 # une erreur quand il n'y en a aucune.
 observations_condition <- function(projet, condition, observations) {
+  exiger_observations(observations)
   vraie <- valeurs_condition(projet, condition)
-  garde <- vraie[match(as.character(observations), rownames(projet$donnees))]
+  garde <- vraie[match(nom_numero(observations), rownames(projet$donnees))]
   garde[is.na(garde)] <- FALSE
   if (!any(garde)) {
     stop(sprintf(traduire("Aucune des %d observations cochées ne remplit la condition %s.", "None of the %d ticked observations meets the condition %s."),
@@ -177,11 +178,24 @@ observations_condition <- function(projet, condition, observations) {
   as.numeric(observations)[garde]
 }
 
+# Un modèle sans aucune observation (toutes décochées, ou toutes dans le jeu de test) est refusé
+# avant tout calcul : chaque analyse en donnerait une autre raison, fausse (pas de variation, un
+# seul groupe de validation croisée, pas de classe).
+exiger_observations <- function(observations) {
+  if (!length(observations)) {
+    stop(traduire("Aucune observation n'est cochée pour ce modèle : cochez-en dans l'onglet Observations (celles du jeu de test n'en font pas partie).",
+                  "No observation is ticked for this model: tick some in the Observations tab (those of the test set aren't part of it)."), call. = FALSE)
+  }
+}
+
 # La définition `d` avec les observations de sa condition d'après les données du moment : celles
 # de d$cochees où elle est vraie ; telle quelle sans condition. Chaque ajustement passe par là
 # (modele.R : ajuster ; serveur.R : ajuster_et_garder), pour tous les types de modèles.
 resoudre_observations <- function(projet, d) {
-  if (!avec_condition(d)) return(d)
+  if (!avec_condition(d)) {
+    exiger_observations(d$observations)
+    return(d)
+  }
   d$condition <- texte_condition(d$condition)
   d$cochees <- as.numeric(unlist(d$cochees %||% d$observations))
   d$observations <- observations_condition(projet, d$condition, d$cochees)
@@ -240,7 +254,7 @@ plan_condition <- function(projet, d, tab) {
     colonne <- if (nom %in% names(n$variables)) {
       v <- variable_du_projet(projet, n$variables[[nom]])
       if (length(v$categories)) qualitatives <- TRUE
-      unname(tab$noms[as.character(v$uid)])
+      unname(tab$noms[nom_numero(v$uid)])
     } else if (nom %in% n$ids) unname(tab$ids[[nom]])
     if (is.null(colonne)) next  # (T, F, pi)
     # un nom qui n'est pas un nom R, ou que la traduction du script changerait, entre accents graves
@@ -249,7 +263,7 @@ plan_condition <- function(projet, d, tab) {
              else { bt <- deparse(as.name(colonne), backtick = TRUE); if (startsWith(bt, "`")) bt else paste0("`", colonne, "`") }
     texte <- paste0(substr(texte, 1, pd$col1[i] - 1), ecrit, substr(texte, pd$col2[i] + 1, nchar(texte)))
   }
-  list(texte = texte, cochees = unname(tab$rangs[as.character(d$cochees %||% d$observations)]),
+  list(texte = texte, cochees = unname(tab$rangs[nom_numero(d$cochees %||% d$observations)]),
        qualitatives = qualitatives, fonctions = intersect(all.names(e), FONCTIONS_NUEE_CONDITION),
        avertit = isTRUE(attr(valeurs_condition(projet, d$condition), "avertissement")), n_lignes = nrow(tab$donnees))
 }

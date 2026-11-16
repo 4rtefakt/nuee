@@ -68,8 +68,9 @@ How to install: see [Install](page:installation). Every version and its notes: t
 
 ## Getting started
 
-- [The tutorials](page:tutoriels) follow three studies from start to finish: a before-after with
-  controls (BACI), a PLS on spectra, and the monitoring of a bird population.
+- [The tutorials](page:tutoriels) follow six studies from start to finish: a before-after with
+  controls (BACI), a PLS on spectra, the monitoring of a bird population, the ground beetles of
+  three habitats (community ecology), maps and spatial models, and the report of a study.
 - In the application, Help › Example project opens 120 made-up apples with four ready models.
 - [The user guide](page:guide) describes every window and every calculation.
 

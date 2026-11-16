@@ -1,7 +1,7 @@
 // Model report (Fichier › Rapport du modèle): the parts chosen in the dialog, with the plots as
 // they look in their panels (colours, labels, titles), as a PDF (printed by the desktop app,
 // or by the browser) or a Word document (.docx, written here).
-import { t, langueActuelle } from './i18n.js';
+import { t, langueActuelle, deuxPoints, pourcent } from './i18n.js';
 import { el, fmt, decimal, dialogue } from './ui.js';
 import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites,
   notesMoyennes, titreMoyenne, titrePaire, libellePaire, parametresLoi } from './panneaux.js';
@@ -125,7 +125,7 @@ async function contenuRapport(app, m, parties, st) {
   const p = app.projet(m.projet) || {};
   const date = new Date().toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'long', timeStyle: 'short' });
   const blocs = [{ titre: st.titre || m.nom, niveau: 0 },
-    { texte: `${t('projet_rapport')} : ${p.nom || ''} · ${t('genere_le')} ${date}` }];
+    { texte: `${t('projet_rapport')}${deuxPoints()}${p.nom || ''} · ${t('genere_le')} ${date}` }];
   // the condition that chose the model's observations (moteur/R/condition.R)
   if (m.reglages && m.reglages.condition) blocs.push({ texte: t('condition_modele', { condition: m.reglages.condition }) });
   if (st.commentaire.trim()) st.commentaire.trim().split(/\n+/).forEach((x) => blocs.push({ texte: x }));
@@ -175,15 +175,15 @@ function tableauComposantes(m) {
   const cols = [['R2X', 'R2X'], ['R2Xcum', 'R2X(cum)']].concat(pls ? [['R2Y', 'R2Y'], ['R2Ycum', 'R2Y(cum)']] : [])
     .concat([['Q2', 'Q2'], ['Q2cum', 'Q2(cum)'], ['valeur_propre', t('valeur_propre')]]);
   const infos = [`${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K} · ${t('groupes_vc')} ${m.G}${m.vc_par ? ` (${m.vc_par})` : ''}`
-    + (m.validation ? ` · ${t('validation_vc')} : ${t('validation_' + m.validation)}` : '')];
-  if (Number.isFinite(m.gain) && Number.isFinite(m.q2_vide)) infos.push(`${t('gain_vide')} : ${fmt(m.gain, 3)} (${t('q2_vide')} ${fmt(m.q2_vide, 3)})`);
+    + (m.validation ? ` · ${t('validation_vc')}${deuxPoints()}${t('validation_' + m.validation)}` : '')];
+  if (Number.isFinite(m.gain) && Number.isFinite(m.q2_vide)) infos.push(`${t('gain_vide')}${deuxPoints()}${fmt(m.gain, 3)} (${t('q2_vide')} ${fmt(m.q2_vide, 3)})`);
   if (m.hierarchique && m.hierarchique.q2cum) {
     const h = m.hierarchique;
-    infos.push(`${t('q2_honnete')} : ${fmt([].concat(h.q2cum).pop(), 3)}` + (Number.isFinite(h.gain) ? ` (${t('gain_honnete')} ${fmt(h.gain, 3)})` : ''));
+    infos.push(`${t('q2_honnete')}${deuxPoints()}${fmt([].concat(h.q2cum).pop(), 3)}` + (Number.isFinite(h.gain) ? ` (${t('gain_honnete')} ${fmt(h.gain, 3)})` : ''));
   }
-  if (pls && m.noms_y.length) infos.push(`Y : ${[].concat(m.noms_y).join(', ')}`);
-  if (pls && m.RMSEE) infos.push(Object.keys(m.RMSEE).map((y) => `${y} : RMSEE ${fmt(m.RMSEE[y], 4)}, RMSEcv ${fmt(m.RMSEcv[y], 4)}`).join(' · '));
-  if (m.classification) infos.push(`${t('bien_classes_vc')} : ${fmt(100 * m.classification.vc.global, 1)} %`);
+  if (pls && m.noms_y.length) infos.push(`Y${deuxPoints()}${[].concat(m.noms_y).join(', ')}`);
+  if (pls && m.RMSEE) infos.push(Object.keys(m.RMSEE).map((y) => `${y}${deuxPoints()}RMSEE ${fmt(m.RMSEE[y], 4)}, RMSEcv ${fmt(m.RMSEcv[y], 4)}`).join(' · '));
+  if (m.classification) infos.push(`${t('bien_classes_vc')}${deuxPoints()}${fmt(100 * m.classification.vc.global, 1)}${pourcent()}`);
   return [...infos.map((texte) => ({ texte })),
     { entetes: [t('comp'), ...cols.map(([, n]) => n)], lignes: c.composante.map((a, i) => [String(a), ...cols.map(([k]) => nombre(c[k][i], 3))]) }];
 }
@@ -195,12 +195,12 @@ function tableauRegression(m) {
   const y = m.noms_y[0];
   const infos = [`${t('type_' + m.type.toLowerCase())} · N = ${m.N} · ${t('nb_termes')} ${m.K} · ${t('groupes_vc')} ${m.G}${m.vc_par ? ` (${m.vc_par})` : ''}`];
   if (['GLM', 'GAM'].includes(m.type) && m.famille) {
-    infos.push([`${t('loi')} : ${t('famille_' + m.famille)}`, `${t('lien')} : ${m.lien}`,
+    infos.push([`${t('loi')}${deuxPoints()}${t('famille_' + m.famille)}`, `${t('lien')}${deuxPoints()}${m.lien}`,
       ...parametresLoi(m).map(([s, v]) => `${s} = ${fmt(v, 3)}`),
-      m.decalage ? `${t('decalage')} : log(${m.decalage})` : ''].filter(Boolean).join(' · '));
+      m.decalage ? `${t('decalage')}${deuxPoints()}log(${m.decalage})` : ''].filter(Boolean).join(' · '));
   }
   const stats = (q.marginal !== undefined ? [[t('r2_marginal'), q.marginal], [t('r2_conditionnel'), q.conditionnel]]
-    : q.deviance_expliquee !== undefined ? [[t('r2_ajuste'), q.r2_ajuste], [t('deviance_expliquee'), q.deviance_expliquee === null ? null : `${fmt(100 * q.deviance_expliquee, 1)} %`]]
+    : q.deviance_expliquee !== undefined ? [[t('r2_ajuste'), q.r2_ajuste], [t('deviance_expliquee'), q.deviance_expliquee === null ? null : `${fmt(100 * q.deviance_expliquee, 1)}${pourcent()}`]]
       : [['R2', q.r2], [t('r2_ajuste'), q.r2_ajuste]])
     .concat([['Q2', q.Q2], ['RMSEE', m.RMSEE && m.RMSEE[y]], ['RMSEcv', q.RMSEcv], ['AIC', q.AIC], ['AICc', q.AICc], ['BIC', q.BIC], ['logLik', q.logLik], [t('parametres'), q.parametres]]);
   const blocs = [...infos.map((texte) => ({ texte })), { entetes: stats.map(([n]) => n), lignes: [stats.map(([, v]) => nombre(v, 3))] }];
@@ -338,9 +338,9 @@ function tableauClassification(m) {
   const r = m.classification.vc;
   const classes = [].concat(r.classes);
   const somme = (v) => v.reduce((a, b) => a + b, 0);
-  return [{ texte: `${t('validation_croisee')} · ${t('bien_classes')} : ${fmt(100 * r.global, 1)} %` },
+  return [{ texte: `${t('validation_croisee')} · ${t('bien_classes')}${deuxPoints()}${fmt(100 * r.global, 1)}${pourcent()}` },
     { entetes: [`${t('observee')} \\ ${t('predite')}`, ...classes, t('total'), t('bien_classes')],
-      lignes: classes.map((k, i) => [k, ...r.table[i].map(String), String(somme(r.table[i])), `${fmt(100 * [].concat(r.correct)[i], 1)} %`]) }];
+      lignes: classes.map((k, i) => [k, ...r.table[i].map(String), String(somme(r.table[i])), `${fmt(100 * [].concat(r.correct)[i], 1)}${pourcent()}`]) }];
 }
 
 function tableauVariables(m) {

@@ -210,7 +210,7 @@ plan_modele <- function(projet, d, m, tab) {
        # la façon de valider (validation_croisee.R : sans_fuite, centres ou complet), et des termes UV
        # ou Pareto, dont l'écart-type d'un sous-modèle peut venir du modèle complet
        validation = mode_validation(d), ecarts = any(vapply(c(x$termes, y$termes), function(t) t$type %in% c("UV", "Par"), TRUE)),
-       rangs = unname(tab$rangs[as.character(m$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
+       rangs = unname(tab$rangs[nom_numero(m$observations)]), rangs_test = unname(tab$rangs[nom_numero(test)]),
        condition = plan_condition(projet, d, tab),  # (condition.R)
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
        x = x$termes, y = y$termes, spectres = plan_spectres(projet, d, x$termes),
@@ -241,7 +241,7 @@ plan_bloc <- function(projet, termes, mb, tab, obs, bloc, cles = list()) {
               bloc_ponderation = if (length(t$scaling$block)) as.character(t$scaling$block[1]))
     if (!p$croise) {
       v <- variable_du_projet(projet, t$variables[1])
-      p$colonne <- unname(tab$noms[as.character(v$uid)])
+      p$colonne <- unname(tab$noms[nom_numero(v$uid)])
       p$categorie <- categorie(t)
       p$qualitative <- length(v$categories) > 0
       p$etiquette <- if (p$categorie != 0 && p$qualitative) as.character(v$categories[p$categorie])
@@ -1169,7 +1169,7 @@ plan_regression <- function(projet, d, m, tab) {
       return(if (nombre && dates) sprintf("temps_en_nombres(%s)", col) else if (nombre) sprintf("suppressWarnings(as.numeric(%s))", col) else col)
     }
     v <- variable_du_projet(projet, s$variable)
-    col <- sprintf("d[[%s]]", code_texte(tab$noms[[as.character(v$uid)]]))
+    col <- sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(v$uid)]]))
     if (!length(v$categories)) return(col)
     if (nombre && dates) sprintf("temps_en_nombres(%s)", col)
     else if (nombre) sprintf("suppressWarnings(as.numeric(as.character(%s)))", col) else sprintf("as.character(%s)", col)
@@ -1197,7 +1197,7 @@ plan_regression <- function(projet, d, m, tab) {
     en_courbe <- vapply(termes[match(q, m$termes)], function(t) as.numeric(t$variables) %in% as.numeric(d$lisses), TRUE)
     lisses <- termes_r[match(q[en_courbe], m$termes)]
     for (t in q[en_courbe]) {
-      u <- as.character(as.numeric(termes[[match(t, m$termes)]]$variables))
+      u <- nom_numero(as.numeric(termes[[match(t, m$termes)]]$variables))
       k <- d$k_courbes[[u]]
       if (length(k)) k_demandes[termes_r[match(t, m$termes)]] <- as.integer(k)
       f <- d$par_courbes[[u]]
@@ -1230,12 +1230,12 @@ plan_regression <- function(projet, d, m, tab) {
        type = "regression", regression = TRUE, modele = as.character(d$type), generalise = generalise, gamm = gamm,
        famille = m$famille, lien = m$lien %||% "identity", plsda = FALSE, opls = FALSE,
        N = m$N, K = K, A = 0, Ap = 0, M = 1, manquantes = FALSE, y_manquantes = FALSE, vides = FALSE,
-       rangs = unname(tab$rangs[as.character(d$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
+       rangs = unname(tab$rangs[nom_numero(d$observations)]), rangs_test = unname(tab$rangs[nom_numero(test)]),
        condition = plan_condition(projet, d, tab),  # (condition.R)
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
        x = x, na_termes = K > 0 && anyNA(m$bloc$X),
        croises_tr = any(vapply(x, function(t) t$croise && !is.null(t$tr) && !identite(t$tr), TRUE)),
-       y = list(colonne = tab$noms[[as.character(vy$uid)]], nom = m$y$noms, tr = ty$transform,
+       y = list(colonne = tab$noms[[nom_numero(vy$uid)]], nom = m$y$noms, tr = ty$transform,
                 garde = !is.null(ty$transform) && hors_domaine(ty$transform, valeurs_simples(projet, ty, candidates))),
        reponse = nr[1], termes = termes_r, noms_termes = m$noms_termes,
        # (les termes qui peuvent entrer dans l'ajustement, d'ordre plus bas d'abord, sans les facteurs
@@ -1250,12 +1250,12 @@ plan_regression <- function(projet, d, m, tab) {
        temps = if (!is.null(temps)) list(nom = nr[avant + 1], affiche = m$temps, code = lecture(temps, TRUE), dates = dates),
        dans = if (!is.null(dans)) list(nom = nr[avant + 2], affiche = m$dans, code = lecture(dans)),
        effort = if (!is.null(d$decalage)) list(nom = nr[length(nr)], affiche = m$decalage,
-                                               code = sprintf("d[[%s]]", code_texte(tab$noms[[as.character(d$decalage)]]))),
+                                               code = sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(d$decalage)]]))),
        # (les courbes des termes ; le tableau des courbes a aussi la ligne du lissage spatial)
        lisses = lisses, n_courbes = NROW(m$resultat$courbes) - !is.null(sp), k_demandes = k_demandes,
        # (le lissage spatial : le code de ses deux colonnes, sa base, la dimension demandée, son nom
        # dans Nuée et son étiquette dans mgcv, le terme de la formule à sa dimension)
-       spatial = if (!is.null(sp)) list(code = vapply(sp$variables, function(u) sprintf("d[[%s]]", code_texte(tab$noms[[as.character(u)]])), ""),
+       spatial = if (!is.null(sp)) list(code = vapply(sp$variables, function(u) sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(u)]])), ""),
                                         noms = sp$noms, base = sp$base, k = sp$k_demande, nom = sp$nom, etiquette = etiquette_spatial(sp),
                                         terme = if (identical(sp$base, "sos")) "s(sy, sx, bs = \"sos\", k = %d)" else "s(sx, sy, k = %d)"),
        par = par, facteurs = lapply(seq_along(facteurs), function(j) list(nom = noms_f[j], affiche = facteurs[[j]]$nom,
@@ -3975,13 +3975,13 @@ ecrire_fichiers_script <- function(lignes, fichiers, e, objets, paquets) {
 # nom d'identifiant, `rangs` le rang de chaque observation (sa ligne dans le tableau).
 tableau_script <- function(projet, ids = character(0)) {
   obs <- rownames(projet$donnees)
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   noms <- vapply(vars, function(v) as.character(v$ids[1] %||% ""), "")
   noms[!nzchar(noms)] <- paste0("V", which(!nzchar(noms)))
   ids <- unique(as.character(ids))
   noms <- make.unique(c("Observation", noms, ids), sep = "_")
   colonnes <- c(list(unname(as.character(projet$noms_obs[obs]))), lapply(vars, function(v) {
-    x <- projet$donnees[, as.character(v$uid)]
+    x <- projet$donnees[, nom_numero(v$uid)]
     if (length(v$categories)) factor(as.character(v$categories)[x], levels = as.character(v$categories)) else unname(as.numeric(x))
   }), lapply(ids, function(id) {
     x <- identifiants_observations(projet, match(id, as.character(projet$observation_id_names)), as.numeric(obs))
@@ -3992,9 +3992,9 @@ tableau_script <- function(projet, ids = character(0)) {
   decrites <- Filter(function(k) nzchar(vars[[k]]$unite %||% "") || nzchar(vars[[k]]$description %||% ""), seq_along(vars))
   list(donnees = as.data.frame(colonnes, check.names = FALSE, stringsAsFactors = FALSE),
        descriptions = lapply(decrites, function(k) list(nom = noms[1 + k], unite = as.character(vars[[k]]$unite %||% ""), description = as.character(vars[[k]]$description %||% ""))),
-       noms = stats::setNames(noms[1 + seq_along(vars)], vapply(vars, function(v) as.character(v$uid), "")),
+       noms = stats::setNames(noms[1 + seq_along(vars)], vapply(vars, function(v) nom_numero(v$uid), "")),
        ids = stats::setNames(noms[1 + length(vars) + seq_along(ids)], ids),
-       rangs = stats::setNames(seq_along(obs), obs))
+       rangs = stats::setNames(seq_along(obs), nom_numero(obs)))
 }
 
 # Les identifiants des observations dont les régressions de `definitions` font leurs groupes (effets
@@ -4199,7 +4199,7 @@ code_vecteur <- function(x) {
 # désignées par leur nom (pour le journal de la console).
 code_definition <- function(projet, d, p = "p") {
   q <- function(x) deparse(x, width.cutoff = 500L)
-  noms <- function(uids) unname(projet$noms_var[as.character(uids)])
+  noms <- function(uids) unname(projet$noms_var[nom_numero(uids)])
   vecteur <- function(x) if (length(x) == 1) q(x) else paste0("c(", paste(vapply(x, q, ""), collapse = ", "), ")")
   importe <- !isTRUE(d$app) && !is.null(d$number)
   if (importe) {
@@ -4211,16 +4211,16 @@ code_definition <- function(projet, d, p = "p") {
     r <- reglages_modele(projet, d)
     exclues <- noms(r$exclues)
     obs <- if (length(r$exclues)) {
-      sprintf("setdiff(numeros_observations(%s), numeros_observations(%s, %s))", p, p, vecteur(unname(projet$noms_obs[as.character(r$exclues)])))
+      sprintf("setdiff(numeros_observations(%s), numeros_observations(%s, %s))", p, p, vecteur(unname(projet$noms_obs[nom_numero(r$exclues)])))
     } else sprintf("numeros_observations(%s)", p)
     echelles <- unlist(r$echelles)
     autres <- echelles[echelles != "UV"]
     lignes_ech <- if (length(autres)) {
-      sprintf("echelles[as.character(numeros(%s, %s))] <- %s", p, vapply(names(autres), function(u) q(noms(as.numeric(u))), ""), vapply(autres, q, ""))
+      sprintf("echelles[nom_numero(numeros(%s, %s))] <- %s", p, vapply(names(autres), function(u) q(noms(as.numeric(u))), ""), vapply(autres, q, ""))
     }
     trans <- unlist(r$transformations)
     lignes_tr <- if (length(trans)) {
-      sprintf("transformations[as.character(numeros(%s, %s))] <- %s", p, vapply(names(trans), function(u) q(noms(as.numeric(u))), ""), vapply(trans, q, ""))
+      sprintf("transformations[nom_numero(numeros(%s, %s))] <- %s", p, vapply(names(trans), function(u) q(noms(as.numeric(u))), ""), vapply(trans, q, ""))
     }
     croises <- if (length(r$croises)) {
       paste0("list(", paste(vapply(r$croises, function(cr) sprintf("numeros(%s, %s)", p, vecteur(noms(cr))), ""), collapse = ",\n               "), ")")
@@ -4236,7 +4236,7 @@ code_definition <- function(projet, d, p = "p") {
       if (length(exclues)) "# observations exclues du modèle" else NULL,
       sprintf("observations <- %s", obs),
       if (length(r$test)) c("# jeu de test : hors du modèle, puis prédit par lui (jeu_test.R)",
-                            sprintf("test <- numeros_observations(%s, %s)", p, vecteur(unname(projet$noms_obs[as.character(r$test)])))),
+                            sprintf("test <- numeros_observations(%s, %s)", p, vecteur(unname(projet$noms_obs[nom_numero(r$test)])))),
       if (length(r$spectres)) c("# prétraitement des spectres, dans cet ordre (voir moteur/R/spectres.R)",
                                 sprintf("spectres <- %s", paste(deparse(r$spectres, width.cutoff = 500L), collapse = ""))),
       if (length(r$aleatoires)) c("# effets aléatoires emboîtés, du plus large au plus fin (voir moteur/R/regression.R)",

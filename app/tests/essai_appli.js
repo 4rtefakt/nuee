@@ -2,7 +2,8 @@
 // the R engine starts (on Linux, the computer's R), the example project opens with its plots,
 // a PLS model's views, the R console shows each fit's printout, a plot is saved as an image, a
 // .nuee project given on the command line (what a double-click does) opens in the running
-// window, then Nuée quits, R stops and its temporary folder goes.
+// window, its first version is kept on saving (versions.js, isomorphic-git), then Nuée quits, R
+// stops and its temporary folder goes.
 //   node tests/essai_appli.js <program> [screenshot.png] [program options...]
 // On Linux the program starts as from the desktop menu: no LANG and a short PATH (/usr/bin:/bin),
 // which once left the engine unable to read its own files. On a server, run it under xvfb-run.
@@ -209,6 +210,22 @@ async function brancher(cible) {
     const ouvert = await p.attendre(`document.querySelector('.arbre').textContent.includes(${JSON.stringify(nom)})`, 20000).catch(() => false);
     verifier('fichierOuvertParUnSecondLancement', !!ouvert && second.exitCode !== null);
     tuer(second);
+    // that project's versions (versions.js): isomorphic-git found in the program, the functions
+    // through preload.js, the first version on saving, a refusal with its message
+    const versions = await p.evaluer(`(async () => {
+      const v = window.bureau.versions;
+      const f = ${JSON.stringify(fichier)};
+      const avant = await v.etat(f);
+      await v.ouvert(f, { modifie: false });
+      const premiere = await v.apresEnregistrement(f, {});
+      const apres = await v.etat(f);
+      let refus = '';
+      try { await v.restaurer(f, '0123456789abcdef0123456789abcdef01234567'); } catch (e) { refus = e.message; }
+      return { avant: avant.versions, premiere: premiere.version && premiere.version.description, apres: [apres.actif, apres.versions].join(),
+        liste: (await v.liste(f)).length, refus, evenements: typeof v.surVersions };
+    })()`);
+    verifier('versions', versions.avant === 0 && versions.premiere === 'First version' && versions.apres === 'true,1' && versions.liste === 1
+      && /isn’t in the project’s history|n’est pas dans l’historique/.test(versions.refus) && versions.evenements === 'function', versions);
     // macOS: a .nuee double-clicked in the Finder comes as an event (open-file), not as an argument
     if (mac) {
       const nomFinder = 'essai-finder';

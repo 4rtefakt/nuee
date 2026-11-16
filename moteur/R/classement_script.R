@@ -52,8 +52,8 @@ nom_classement <- function(x, langue) {
 # choisit par elle (condition.R : code_condition), puis écarte celles que le moteur a laissées de
 # côté faute de valeurs.
 code_lignes_modele <- function(projet, d, m, tab, tx, quoi) {
-  rangs <- unname(tab$rangs[as.character(m$observations)])
-  test <- unname(tab$rangs[as.character(m$test$observations$uid %||% numeric(0))])
+  rangs <- unname(tab$rangs[nom_numero(m$observations)])
+  test <- unname(tab$rangs[nom_numero(m$test$observations$uid %||% numeric(0))])
   exclues <- length(m$exclues)
   pourquoi <- if (exclues) tx(sprintf(" (%d autre%s laissée%s de côté, %s)", exclues, if (exclues > 1) "s" else "", if (exclues > 1) "s" else "", quoi[1]),
                                sprintf(" (%d other%s left out, %s)", exclues, if (exclues > 1) "s" else "", quoi[2])) else ""
@@ -61,7 +61,7 @@ code_lignes_modele <- function(projet, d, m, tab, tx, quoi) {
   lignes <- if (!is.null(pc)) {
     c(code_condition(pc, tx, tx(sprintf("Les %d observations du modèle%s.", length(rangs), pourquoi), sprintf("The %d observations of the model%s.", length(rangs), pourquoi))),
       if (exclues) c(commentaire(tx(sprintf("Sans celles que le modèle laisse de côté (%s).", quoi[1]), sprintf("Without those the model leaves out (%s).", quoi[2]))),
-                     code_valeurs(morceaux_rangs(unname(tab$rangs[as.character(m$exclues)])), "lignes <- setdiff(lignes, ", ")")),
+                     code_valeurs(morceaux_rangs(unname(tab$rangs[nom_numero(m$exclues)])), "lignes <- setdiff(lignes, ", ")")),
       "d <- donnees[lignes, ]")
   } else if (!length(test) && identical(as.integer(rangs), seq_len(nrow(tab$donnees)))) {
     c(commentaire(tx(sprintf("Les %d observations du tableau%s.", length(rangs), pourquoi), sprintf("The %d observations of the table%s.", length(rangs), pourquoi))), "d <- donnees")
@@ -186,7 +186,7 @@ code_fonctions_arbre <- function(m, tx) {
 # lieu ; une variable qualitative reste un facteur.
 code_x_arbre <- function(m, tab, tx) {
   valeurs <- vapply(m$variables, function(v) {
-    col <- sprintf("d[[%s]]", code_texte(tab$noms[[as.character(v$uid)]]))
+    col <- sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(v$uid)]]))
     sprintf("  %s = %s,", code_texte(v$colonne), if (!is.null(v$transform)) code_transformation(v$transform, col, TRUE) else col)
   }, "")
   transformees <- vapply(Filter(function(v) !is.null(v$transform), m$variables), `[[`, "", "nom")
@@ -201,7 +201,7 @@ code_calcul_arbre <- function(projet, d, m, tab, langue) {
   tx <- function(fr, en) if (langue == "en") en else fr
   r <- m$reglages_arbre
   methode <- if (m$classement) "class" else "anova"
-  col_y <- tab$noms[[as.character(if (m$classement) d$classe else d$y[[1]]$variables[1])]]
+  col_y <- tab$noms[[nom_numero(if (m$classement) d$classe else d$y[[1]]$variables[1])]]
   ycode <- sprintf("d[[%s]]", code_texte(col_y))
   reponse <- if (m$classement) c(commentaire(tx(sprintf("La réponse : la classe « %s » (ses classes présentes).", texte_sur(m$y$nom)), sprintf("The response: the class “%s” (its classes present).", texte_sur(m$y$nom)))),
                                  sprintf("y <- droplevels(%s)", ycode), "classes <- levels(y)")
@@ -381,7 +381,7 @@ code_fonctions_lda <- function(m, tx) {
 
 code_calcul_lda <- function(projet, d, m, tab, langue) {
   tx <- function(fr, en) if (langue == "en") en else fr
-  col <- tab$noms[[as.character(d$classe)]]
+  col <- tab$noms[[nom_numero(d$classe)]]
   priors <- code_texte(m$reglages_lda$priors)
   c(code_lignes_modele(projet, d, m, tab, tx, c("classe ou une valeur X manquante", "class or an X value missing")), "",
     code_fonction_bloc(projet, m$termes, m$observations, tab, langue), "X <- variables_x(d)", "",

@@ -120,21 +120,22 @@ facteurs_ponderation <- function(termes) {
 # `garder_simples` : rendre dans `simples` la colonne de chaque terme simple, dont les termes croisés
 # d'un autre bloc prennent leurs facteurs (le bloc Y d'une PLS) ; sans termes croisés ici, et quand
 # aucun autre bloc ne s'en sert (la validation croisée), ces colonnes ne sont pas copiées.
+# `ponderation` : facteurs_ponderation(termes), déjà calculée (elle ne dépend pas des données : la
+# validation croisée la calcule une fois pour tous ses sous-modèles).
 construire_bloc <- function(projet, termes, observations, poids = c("calcules", "enregistres"),
                             facteurs = NULL, imposees = NULL, spectres = NULL, bruts = NULL, complet = NULL, pretraites = FALSE,
-                            garder_simples = TRUE) {
+                            garder_simples = TRUE, ponderation = NULL) {
   poids <- match.arg(poids)
   K <- length(termes)
-  X <- matrix(NA_real_, length(observations), K)
   centre <- poids_k <- ecart <- rep(NA_real_, K)
   gardes <- stats::setNames(numeric(0), character(0))
   type <- character(K)
   noms <- vapply(termes, function(t) as.character(t$name), "")
   simples <- if (is.null(facteurs)) list() else facteurs
   # la pondération de chaque terme (facteurs_ponderation), comprise dans son poids quand il est
-  # calculé ; celle d'un modèle déjà ajusté avec ses poids (`imposees`) ; 1 pour un poids
-  # enregistré, qui la comprend déjà
-  ponderation <- if (K) facteurs_ponderation(termes) else numeric(0)
+  # calculé ; celle d'un modèle déjà ajusté avec ses poids (`imposees`), qui n'a pas besoin de la
+  # sienne ; 1 pour un poids enregistré, qui la comprend déjà
+  if (is.null(ponderation)) ponderation <- if (K && is.null(imposees) && poids == "calcules") facteurs_ponderation(termes) else numeric(0)
   facteur <- rep(1, K)
 
   mettre_a_echelle <- function(k, x) {
@@ -171,6 +172,56 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     (x - cw[["centre"]]) * cw[["poids"]]
   }
 
+  # Les termes simples d'un coup, quand leurs réglages le permettent (des spectres : des milliers de
+  # termes, à chaque sous-modèle de la validation croisée, et autant d'appels de mettre_a_echelle) :
+  # le centre, le poids, le type, le facteur et l'écart-type de chacun comme mettre_a_echelle les
+  # donne, la moyenne et l'écart-type de chaque colonne calculés comme echelle() les calcule (sans
+  # l'écart-type qu'elle calcule pour rien quand il ne sert pas), puis chaque colonne centrée et
+  # mise à l'échelle par les mêmes opérations, dans la matrice de leurs valeurs (colonne par colonne :
+  # sur toute la matrice d'un coup, les copies de ses lignes répétées coûtent plus qu'elles
+  # n'épargnent). Rend cette matrice, ou NULL, sans rien avoir changé, quand un terme demande
+  # mettre_a_echelle elle-même (une échelle enregistrée ou inconnue, un écart-type qui n'est pas un
+  # nombre).
+  echelle_simples <- function() {
+    B <- bruts[, seuls, drop = FALSE]
+    if (!is.null(imposees)) {
+      cs <- imposees$centre[seuls]
+      ps <- imposees$poids[seuls]
+      fs <- if (is.null(imposees$facteur)) rep(NA_real_, length(seuls)) else imposees$facteur[seuls]
+      type[seuls] <<- imposees$type[seuls]
+      facteur[seuls] <<- ifelse(is.na(fs), 1, fs)
+    } else {
+      if (poids == "enregistres") return(NULL)
+      types <- vapply(termes[seuls], function(t) { e <- t$scaling$type; if (length(e) == 1 && !is.na(e)) as.character(e) else NA_character_ }, "")
+      if (!all(types %in% c("UV", "Par", "Ctr", "none"))) return(NULL)
+      ec <- if (is.null(complet$ecart)) rep(NA_real_, length(seuls)) else complet$ecart[seuls]
+      remplacable <- types %in% c("UV", "Par") & !is.na(ec) & ec > 0
+      seuil <- if (is.null(complet)) Inf else complet$seuil
+      donne <- remplacable & !is.finite(seuil)
+      calcule <- types %in% c("UV", "Par") & !donne
+      moy <- et <- numeric(length(seuls))
+      for (j in seq_along(seuls)) {
+        x <- B[, j]
+        v <- if (anyNA(x)) x[!is.na(x)] else x
+        moy[j] <- if (length(v)) mean(v) else 0
+        if (calcule[j]) et[j] <- if (length(v) > 1) stats::sd(v) else 0
+      }
+      if (anyNA(et)) return(NULL)
+      remplace <- calcule & remplacable & et < seuil * ec
+      for (j in which(remplace & et > 0)) gardes[[noms[seuls[j]]]] <<- et[j] / ec[j]
+      e <- ifelse(donne | remplace, ec, et)
+      cs <- ifelse(types == "none", 0, moy)
+      ps <- ifelse(types == "UV", ifelse(e > 0, 1 / e, 0), ifelse(types == "Par", ifelse(e > 0, 1 / sqrt(e), 0), 1)) * ponderation[seuls]
+      type[seuls] <<- types
+      facteur[seuls] <<- ponderation[seuls]
+      ecart[seuls] <<- ifelse(types %in% c("UV", "Par"), e, NA_real_)
+    }
+    centre[seuls] <<- cs
+    poids_k[seuls] <<- ps
+    for (j in seq_along(seuls)) B[, j] <- (B[, j] - cs[j]) * ps[j]
+    B
+  }
+
   croises <- which(vapply(termes, function(t) length(t$variables) > 1, TRUE))
   seuls <- setdiff(seq_len(K), croises)
   if (is.null(bruts)) bruts <- valeurs_bloc(projet, termes, observations)
@@ -181,7 +232,22 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     bruts <- r$bruts
     reference <- r$reference
   }
-  for (k in seuls) X[, k] <- mettre_a_echelle(k, bruts[, k])
+  # (des valeurs dont le carré dépasse les nombres de R, ou s'annule : l'écart-type d'un terme UV ou
+  # Pareto serait infini ou nul, le bloc NaN ou sans variation ; refusées quand le modèle lui-même
+  # calcule ses poids, pas pour y projeter des observations ni dans sa validation croisée. Les valeurs
+  # brutes d'un terme sans mise à l'échelle restent permises : un arbre ou une RDA s'en accommodent,
+  # une régression les refuse elle-même ; regression.R)
+  if (is.null(imposees) && poids == "calcules" && is.null(complet)) {
+    ecarts <- seuls[vapply(termes[seuls], function(t) isTRUE(t$scaling$type %in% c("UV", "Par")), TRUE)]
+    if (length(ecarts)) refuser_valeurs_extremes(stats::setNames(as.data.frame(bruts[, ecarts, drop = FALSE]), noms[ecarts]), stats::setNames(noms[ecarts], noms[ecarts]))
+  }
+  Xs <- if (length(seuls)) echelle_simples()
+  if (!is.null(Xs) && length(seuls) == K) {
+    X <- Xs  # (que des termes simples : leur matrice est le bloc)
+  } else {
+    X <- matrix(NA_real_, length(observations), K)
+    if (!is.null(Xs)) X[, seuls] <- Xs else for (k in seuls) X[, k] <- mettre_a_echelle(k, bruts[, k])
+  }
   # les termes simples par « variable catégorie », pour les termes croisés (d'un coup : une liste
   # qui grandit terme à terme coûte cher avec des milliers de termes)
   if (length(croises) || garder_simples) {
@@ -198,7 +264,7 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     X[, k] <- mettre_a_echelle(k, transformer(x, t$transform))
   }
   colnames(X) <- noms
-  rownames(X) <- as.character(observations)
+  rownames(X) <- nom_numero(observations)
   list(X = X, centre = centre, poids = poids_k, type = type, facteur = facteur, noms = noms, simples = simples, reference = reference,
        ecart = ecart, gardes = gardes)
 }
@@ -212,8 +278,8 @@ valeurs_bloc <- function(projet, termes, observations) {
   croises <- which(vapply(termes, function(t) length(t$variables) > 1, TRUE))
   simples <- setdiff(seq_along(termes), croises)
   if (!length(simples)) return(bruts)
-  lignes <- match(as.character(observations), rownames(projet$donnees))
-  colonnes <- match(vapply(termes[simples], function(t) as.character(t$variables[1]), ""), colnames(projet$donnees))
+  lignes <- match(nom_numero(observations), rownames(projet$donnees))
+  colonnes <- match(vapply(termes[simples], function(t) nom_numero(t$variables[1]), ""), colnames(projet$donnees))
   for (i in seq_along(simples)) {
     k <- simples[i]
     x <- if (is.na(colonnes[i])) rep(NA_real_, length(observations)) else projet$donnees[lignes, colonnes[i]]

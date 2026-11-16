@@ -4,7 +4,7 @@
 // their views (the ordination with the species and the fitted X, the eigenvalues, the Shepard
 // diagram, the fitted variables, the PERMANOVA table, the dispersion, the Mantel tests and the
 // correlogram), their summaries, report parts and strings. Imported by app.js.
-import { t, ajouterTextes, langueActuelle } from './i18n.js';
+import { t, ajouterTextes, langueActuelle, pourcent } from './i18n.js';
 import { el, fmt, entreNombres } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, valeurP, ficheCondition } from './panneaux.js';
@@ -49,7 +49,7 @@ const textePermutations = (m) => `${(m.distance || {}).permutations ?? 0} ${t('o
   + (m.strates ? `, ${t('ord_permutations_dans', { g: m.strates })}` : '');
 const axes = (m) => liste(m.axes);
 const partAxe = (m, k) => (m.type === 'PCOA' ? liste(m.valeurs_propres.part)[k] : null);
-const libelleAxe = (m, k) => (m.type === 'PCOA' ? `${axes(m)[k]} (${fmt(100 * partAxe(m, k), 1)} %)` : axes(m)[k]);
+const libelleAxe = (m, k) => (m.type === 'PCOA' ? `${axes(m)[k]} (${fmt(100 * partAxe(m, k), 1)}${pourcent()})` : axes(m)[k]);
 
 // ------------------------------------------------------------ the ordination plot (PCOA, NMDS)
 
@@ -94,9 +94,12 @@ function rendreOrdinationDist(conteneur, ctx, p, loc) {
   if (loc.especes && nomsE.length) {
     const xe = col(m.especes, a);
     const ye = y(col(m.especes, b));
+    // (the species in the theme's grey: a palette colour would be one of the sites' categories, the
+    // second's red)
+    const gris = couleursTheme(ctx).doux;
     traces.push({ type: 'scatter', mode: nomsE.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: t('com_especes'), x: xe, y: ye, text: nomsE,
-      meta: 'variables', customdata: nomsE, textposition: 'top center', textfont: { size: 10, color: PALETTE[1] },
-      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
+      meta: 'variables', customdata: nomsE, textposition: 'top center', textfont: { size: 10, color: gris },
+      marker: { color: gris, symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xe.filter(Number.isFinite)); etendue[1].push(...ye.filter(Number.isFinite));
   }
   const nomsC = liste(aj && aj.centroides && aj.centroides.terme);
@@ -156,9 +159,9 @@ function rendreValeursPropresPCoA(conteneur, ctx, p, loc) {
   const c = couleursTheme(ctx);
   tracer(ctx, graphe, [
     { type: 'bar', name: t('ord_part_inertie'), x: ax.slice(0, n), y: part.slice(0, n).map((v) => 100 * v),
-      marker: { color: neg.slice(0, n).map((k) => (k ? PALETTE[1] : PALETTE[0])) }, hovertemplate: '<b>%{x}</b><br>%{y:.2f} %<extra></extra>' },
+      marker: { color: neg.slice(0, n).map((k) => (k ? PALETTE[1] : PALETTE[0])) }, hovertemplate: `<b>%{x}</b><br>%{y:.2f}${pourcent()}<extra></extra>` },
     { type: 'scatter', mode: 'lines+markers', name: t('ord_cumul'), x: ax.slice(0, n), y: cumul.slice(0, n).map((v) => 100 * v), yaxis: 'y2',
-      line: { color: c.doux, width: 1.5 }, marker: { size: 5, color: c.doux }, hovertemplate: '<b>%{x}</b><br>%{y:.1f} %<extra></extra>' }],
+      line: { color: c.doux, width: 1.5 }, marker: { size: 5, color: c.doux }, hovertemplate: `<b>%{x}</b><br>%{y:.1f}${pourcent()}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('valeurs_propres')}` }, dragmode: false, yaxis: { title: { text: t('ord_part_inertie') } }, margin: { r: 54 },
     yaxis2: { overlaying: 'y', side: 'right', showgrid: false, zeroline: false, title: { text: `${t('ord_cumul')} (%)` } } });
   loc.table ??= {};
@@ -194,13 +197,18 @@ function rendreShepard(conteneur, ctx, p, loc) {
   loc.table ??= {};
   tableau(bas, ctx, loc.table, {
     n: liste(d.depart).length, nom: 'Starts', choisie: (i) => liste(d.depart)[i] === m.meilleur,
-    avant: [el('span', { class: 'infos' }, m.retrouvee > 0 ? t('com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) })
-      : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart'))],
+    avant: [el('span', { class: 'infos' }, texteRetrouvee(m))],
     colonnes: [{ cle: 'depart', titre: t('com_depart') }, { cle: 'stress', titre: 'stress', num: true, decimales: 4 }],
     valeur: (i, k) => (k === 'depart' ? departTexte(liste(d.depart)[i]) : liste(d[k])[i]),
   });
 }
 const departTexte = (k) => (k === 0 ? t('com_depart_pcoa') : `${t('com_depart_hasard')} ${k}`);
+// Whether the NMDS's best solution was found again; not found again by Procrustes but reached in
+// stress by other starts (meme_stress: some observations placed slightly differently), it isn't
+// called a local minimum.
+const texteRetrouvee = (m) => (m.retrouvee > 0 ? t(m.retrouvee === 1 ? 'com_retrouvee_une' : 'com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) })
+  : m.departs > 0 && m.meme_stress > 0 ? t('com_meme_stress', { n: m.meme_stress, meilleur: departTexte(m.meilleur) })
+    : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart'));
 
 // ------------------------------------------------------------ the fitted variables (PCOA, NMDS)
 
@@ -317,6 +325,12 @@ function rendreDispersion(conteneur, ctx, p, loc) {
 
 // ------------------------------------------------------------ Mantel tests and the correlogram
 
+// What the X distance is: the Euclidean one of the X variables (scaled), or the geographic one
+// between the project's coordinates (termes_x then holds their two names, and no scaling)
+const noteMantel = (m) => (m.distance_x === 'geographique'
+  ? t('com_mantel_note_geo', { x: liste(m.termes_x)[0] ?? '', y: liste(m.termes_x)[1] ?? '' })
+  : t('com_mantel_note', { termes: liste(m.termes_x).join(', '), echelles: liste(m.echelles_x).map((e) => t('echelle_' + e)).join(', ') }));
+
 function rendreMantel(conteneur, ctx, p) {
   const m = ctx.modele(p.modele);
   const s = m.test;
@@ -326,7 +340,7 @@ function rendreMantel(conteneur, ctx, p) {
     el('div', { class: 'fiche-chiffres' }, chiffre('r', s.r, 4), chiffre('p', pValeur(s.p)), chiffre(t('nb_permutations'), s.permutations, 0), m.strates ? chiffre(t('ord_dans'), m.strates) : null),
     s.r_partiel !== undefined && s.r_partiel !== null ? el('div', { class: 'fiche-chiffres' }, chiffre(t('com_r_partiel'), s.r_partiel, 4), chiffre('p', pValeur(s.p_partiel)),
       chiffre(t('com_z'), liste(m.termes_z).join(', '))) : null);
-  const notes = [t('com_mantel_note', { termes: liste(m.termes_x).join(', '), echelles: liste(m.echelles_x).map((e) => t('echelle_' + e)).join(', ') })];
+  const notes = [noteMantel(m)];
   if (pa.total > liste(pa.y).length) notes.push(t('com_paires_extrait', { n: liste(pa.y).length, total: pa.total }));
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, el('p', { class: 'note' }, notes.join(' ')), graphe));
   tracer(ctx, graphe, [{ type: 'scattergl', mode: 'markers', name: t('com_paires'), x: liste(pa.x), y: liste(pa.y),
@@ -374,13 +388,13 @@ function rendreResumeCommunaute(conteneur, ctx, m) {
   const textes = [texteDistance(m)];
   if (m.type === 'PCOA') {
     const part = liste(m.valeurs_propres.part);
-    ligne2 = el('div', { class: 'fiche-chiffres' }, chiffre(t('com_inertie_totale'), m.inertie.totale, 4), ...axes(m).slice(0, 3).map((a, k) => chiffre(a, `${fmt(100 * part[k], 1)} %`)),
+    ligne2 = el('div', { class: 'fiche-chiffres' }, chiffre(t('com_inertie_totale'), m.inertie.totale, 4), ...axes(m).slice(0, 3).map((a, k) => chiffre(a, `${fmt(100 * part[k], 1)}${pourcent()}`)),
       m.negatives && m.negatives.n ? chiffre(t('com_negatives'), m.negatives.n, 0) : null);
     textes.push(t('com_resume_pcoa'));
   } else if (m.type === 'NMDS') {
     ligne2 = el('div', { class: 'fiche-chiffres' }, chiffre('stress', m.stress, 4), chiffre('k', m.k, 0), chiffre(t('com_departs'), m.departs, 0),
-      chiffre(t('com_retrouvee_mot'), m.retrouvee, 0));
-    if (m.departs > 0 && !m.retrouvee) textes.push(t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }));
+      chiffre(t('com_retrouvee_mot'), m.retrouvee, 0), !m.retrouvee && m.meme_stress > 0 ? chiffre(t('com_meme_stress_mot'), m.meme_stress, 0) : null);
+    if (m.departs > 0 && !m.retrouvee) textes.push(texteRetrouvee(m));
     if (m.nuls) textes.push(t('com_nuls', { n: m.nuls }));
     textes.push(t('com_resume_nmds'));
   } else if (m.type === 'PERMANOVA') {
@@ -513,7 +527,9 @@ const blocsResume = (m) => {
     b.push({ entetes: [t('ord_axe'), t('valeur_propre'), t('ord_part_inertie'), `${t('ord_cumul')} (%)`],
       lignes: lignesDe(m.valeurs_propres, ['axe', 'valeur_propre', 'part', 'cumul']).slice(0, 5).map((l) => [l[0], fmt(l[1], 5), fmt(100 * l[2], 2), fmt(100 * l[3], 2)]) });
   } else if (m.type === 'NMDS') {
-    b.push({ entetes: ['stress', 'k', t('com_departs'), t('com_retrouvee_mot')], lignes: [[fmt(m.stress, 4), String(m.k), String(m.departs), String(m.retrouvee)]] });
+    const memeStress = !m.retrouvee && m.meme_stress > 0;
+    b.push({ entetes: ['stress', 'k', t('com_departs'), t('com_retrouvee_mot')].concat(memeStress ? [t('com_meme_stress_mot')] : []),
+      lignes: [[fmt(m.stress, 4), String(m.k), String(m.departs), String(m.retrouvee)].concat(memeStress ? [String(m.meme_stress)] : [])] });
   } else if (m.type === 'PERMANOVA') {
     b.push({ entetes: ['R2', t('ord_pseudo_f'), 'p', t('nb_permutations')], lignes: [[fmt(m.modele.R2, 4), fmt(m.modele.F, 3), pValeur(m.modele.p), String(m.distance.permutations)]] });
   } else {
@@ -526,7 +542,7 @@ const blocsValeursPropres = (m) => [{ entetes: [t('ord_axe'), t('valeur_propre')
   lignes: lignesDe(m.valeurs_propres, ['axe', 'valeur_propre', 'part', 'cumul']).slice(0, 10).map((l) => [l[0], fmt(l[1], 5), fmt(100 * l[2], 2), fmt(100 * l[3], 2)]) }]
   .concat(m.negatives && m.negatives.n ? [{ texte: t('com_vp_negatives', { n: m.negatives.n, part: fmt(100 * m.negatives.part, 1) }) }] : []);
 const blocsShepard = (m) => [{ texte: t('com_shepard_note', { stress: fmt(m.stress, 3), r2: fmt(1 - m.stress * m.stress, 3) }) },
-  { texte: m.retrouvee > 0 ? t('com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) }) : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart') }];
+  { texte: texteRetrouvee(m) }];
 const blocsAjustement = (m) => {
   const aj = m.ajustement;
   if (!aj) return [{ texte: t('com_sans_x') }];
@@ -544,7 +560,7 @@ const blocsDispersion = (m) => liste(m.dispersions).flatMap((d) => [{ texte: `${
   { entetes: [t('groupe'), 'n', t('moyenne')], lignes: lignesDe(d.groupes, ['groupe', 'n', 'moyenne']).map((l) => [l[0], String(l[1]), fmt(l[2], 4)]) },
   { entetes: [t('com_paire'), t('com_difference'), t('com_ic_bas'), t('com_ic_haut'), t('com_p_ajustee')],
     lignes: lignesDe(d.tukey, ['paire', 'difference', 'bas', 'haut', 'p']).map((l) => [l[0], fmt(l[1], 4), fmt(l[2], 4), fmt(l[3], 4), pValeur(l[4])]) }]);
-const blocsMantel = (m) => [{ texte: t('com_mantel_note', { termes: liste(m.termes_x).join(', '), echelles: liste(m.echelles_x).map((e) => t('echelle_' + e)).join(', ') }) },
+const blocsMantel = (m) => [{ texte: noteMantel(m) },
   { texte: `r = ${fmt(m.test.r, 4)}, p = ${pValeur(m.test.p)} · ${textePermutations(m)}` }]
   .concat(m.test.r_partiel !== undefined && m.test.r_partiel !== null
     ? [{ texte: `${t('com_r_partiel')} (${liste(m.termes_z).join(', ')})${deuxPoints()}r = ${fmt(m.test.r_partiel, 4)}, p = ${pValeur(m.test.p_partiel)}` }] : []);
@@ -643,7 +659,10 @@ ajouterTextes({
   com_shepard_extrait: 'Le graphique montre {n} des {total} paires, prises régulièrement dans l’ordre des dissimilarités.',
   com_paires: 'Paires', com_paires_mot: 'paires', com_monotone: 'Régression monotone', com_dissimilarite: 'Dissimilarité', com_distance_ordination: 'Distance dans l’ordination',
   com_retrouvee: 'La meilleure solution ({meilleur}) a été retrouvée {n} fois (Procrustes : erreur quadratique < 0,005, plus grand résidu < 0,01).',
+  com_retrouvee_une: 'La meilleure solution ({meilleur}) a été retrouvée une fois (Procrustes : erreur quadratique < 0,005, plus grand résidu < 0,01).',
   com_pas_retrouvee: 'La meilleure solution ({meilleur}) n’a été retrouvée par aucun autre départ : ce peut être un minimum local (augmentez les départs).',
+  com_meme_stress: 'Aucun autre départ n’a retrouvé la configuration de la meilleure solution ({meilleur}) à l’analyse procrustéenne (erreur quadratique < 0,005, plus grand résidu < 0,01), mais {n} ont atteint son stress à 0,0001 près, quelques observations placées un peu autrement : le stress est atteint, la place de ces observations est incertaine.',
+  com_meme_stress_mot: 'Même stress',
   com_sans_depart: 'Un seul ajustement, depuis la configuration de la PCoA.', com_depart: 'Départ', com_depart_pcoa: 'PCoA', com_depart_hasard: 'hasard',
   com_departs: 'Départs', com_retrouvee_mot: 'Retrouvée', com_nuls: '{n} dissimilarités nulles ont été remplacées par la moitié de la plus petite non nulle (isoMDS les refuse).',
   com_sans_x: 'Aucune variable X : ajoutez-en (Modifier le modèle) pour les ajuster sur l’ordination.',
@@ -661,6 +680,7 @@ ajouterTextes({
   com_dispersion_resume: 'Dispersion de « {v} » : F = {f}, p = {p} (permutations).',
   com_r_partiel: 'r partiel', com_z: 'Covariables Z',
   com_mantel_note: 'La distance X : euclidienne sur {termes} ({echelles}). Chaque point : une paire d’observations. Le test permute les observations de la distance Y (vegan::mantel) ; unilatéral.',
+  com_mantel_note_geo: 'La distance X : la distance géographique (en km) entre les coordonnées {x} et {y}. Chaque point : une paire d’observations. Le test permute les observations de la distance Y (vegan::mantel) ; unilatéral.',
   com_paires_extrait: 'Le graphique montre {n} des {total} paires, tirées au hasard.', com_distance_x_axe: 'Distance X (euclidienne)', com_distance_x_km: 'Distance géographique (km)', com_distance_y: 'Distance Y ({d})',
   com_correlogramme_note: 'La distance X découpée en {n} classes d’égale largeur ; dans chacune, la corrélation de Mantel entre les paires de la classe et la distance Y, de signe changé (positive : des observations proches plus semblables). Carré plein : p ≤ 0,05 après la correction progressive de Holm ; au-delà de la moitié, une classe n’est testée que si chaque observation y a une paire (vegan::mantel.correlog).',
   com_sturges: '(règle de Sturges)', com_sans_correlogramme: 'Pas de corrélogramme : les distances X ne varient pas.', com_r_mantel: 'r de Mantel',
@@ -714,7 +734,10 @@ ajouterTextes({
   com_shepard_extrait: 'The plot shows {n} of the {total} pairs, taken regularly in the order of the dissimilarities.',
   com_paires: 'Pairs', com_paires_mot: 'pairs', com_monotone: 'Monotone regression', com_dissimilarite: 'Dissimilarity', com_distance_ordination: 'Distance in the ordination',
   com_retrouvee: 'The best solution ({meilleur}) was found again {n} times (Procrustes: root mean square error < 0.005, largest residual < 0.01).',
+  com_retrouvee_une: 'The best solution ({meilleur}) was found again once (Procrustes: root mean square error < 0.005, largest residual < 0.01).',
   com_pas_retrouvee: 'The best solution ({meilleur}) was not found again by any other start: it may be a local minimum (raise the starts).',
+  com_meme_stress: 'No other start found the configuration of the best solution ({meilleur}) again by Procrustes (root mean square error < 0.005, largest residual < 0.01), but {n} reached its stress to 0.0001, with some observations placed slightly differently: the stress is reached, the place of those observations is uncertain.',
+  com_meme_stress_mot: 'Same stress',
   com_sans_depart: 'A single fit, from the PCoA configuration.', com_depart: 'Start', com_depart_pcoa: 'PCoA', com_depart_hasard: 'random',
   com_departs: 'Starts', com_retrouvee_mot: 'Found again', com_nuls: '{n} zero dissimilarities were replaced by half the smallest non-zero one (isoMDS refuses them).',
   com_sans_x: 'No X variable: add some (Edit model) to fit them onto the ordination.',
@@ -732,6 +755,7 @@ ajouterTextes({
   com_dispersion_resume: 'Dispersion of “{v}”: F = {f}, p = {p} (permutations).',
   com_r_partiel: 'partial r', com_z: 'Covariates Z',
   com_mantel_note: 'The X distance: Euclidean on {termes} ({echelles}). Each point: a pair of observations. The test permutes the observations of the Y distance (vegan::mantel); one-sided.',
+  com_mantel_note_geo: 'The X distance: the geographic distance (in km) between the coordinates {x} and {y}. Each point: a pair of observations. The test permutes the observations of the Y distance (vegan::mantel); one-sided.',
   com_paires_extrait: 'The plot shows {n} of the {total} pairs, drawn at random.', com_distance_x_axe: 'X distance (Euclidean)', com_distance_x_km: 'Geographic distance (km)', com_distance_y: 'Y distance ({d})',
   com_correlogramme_note: 'The X distance cut into {n} classes of equal width; in each, the Mantel correlation between the pairs of the class and the Y distance, its sign changed (positive: close observations more alike). Filled square: p ≤ 0.05 after Holm’s progressive correction; beyond half, a class is tested only if every observation has a pair in it (vegan::mantel.correlog).',
   com_sturges: '(Sturges’ rule)', com_sans_correlogramme: 'No correlogram: the X distances don’t vary.', com_r_mantel: 'Mantel r',
