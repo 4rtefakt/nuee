@@ -30,8 +30,11 @@ export function creerCommandes(app) {
     kobo_importer: { icone: 'smartphone', action: () => app.importerKobo() },
     enregistrer: { icone: 'save', raccourci: 'Ctrl+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), false) },
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
-    // (versions.js: the project's saved states, kept in its folder, sent to GitHub or GitLab)
+    // (versions.js: the project's history, kept by itself beside it; shared with GitHub or GitLab;
+    // a colleague's project opened from there)
     versions: { icone: 'history', actif: () => !!app.projetActif(), action: () => app.versions(app.projetActif()) },
+    versions_partager: { icone: 'cloud-upload', actif: () => !!app.bureau && !!app.projetActif(), action: () => app.partagerProjet(app.projetActif()) },
+    versions_ouvrir_distant: { icone: 'cloud-download', actif: () => !!app.bureau, action: () => app.ouvrirDepuisDistant() },
     exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
     // (from Compare models showing the coefficients side by side: that table)
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: () => avecModele() || !!app.coefficientsActifs(),
@@ -166,7 +169,7 @@ export function menus(app, C) {
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
-      '-', it('enregistrer'), it('enregistrer_sous'), it('versions'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
+      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('versions'), it('versions_partager'), it('versions_ouvrir_distant'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',

@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('bureau', {
   },
   choisirFichier: (filtres) => ipcRenderer.invoke('choisir-fichier', filtres),
   choisirFichiers: (filtres) => ipcRenderer.invoke('choisir-fichiers', filtres),
+  choisirDossier: () => ipcRenderer.invoke('choisir-dossier'),
   lirePressePapiers: () => ipcRenderer.invoke('lire-presse-papiers'),
   enregistrerSous: (nom, filtres) => ipcRenderer.invoke('enregistrer-sous', nom, filtres),
   recents: () => ipcRenderer.invoke('recents'),

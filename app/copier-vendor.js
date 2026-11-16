@@ -58,7 +58,7 @@ const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkl
   layout-dashboard ruler arrow-up-down scissors file-spreadsheet undo-2 check shuffle grid-3x3 scale git-merge
   rotate-ccw x-circle file-code tag file-input chart-column-big axis-3d file-text palette pencil history calculator crosshair square-terminal apple clipboard-paste file-output chart-spline download
   quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search trending-up book-open map radar layers signpost smartphone
-  layout-grid arrow-up arrow-down lock diff bookmark cloud cloud-upload cloud-download link circle-check circle-alert`.split(/\s+/);
+  layout-grid arrow-up arrow-down lock diff bookmark cloud cloud-upload cloud-download link circle-check circle-alert user-round`.split(/\s+/);
 const icones = {};
 for (const n of ICONES) {
   const svg = fs.readFileSync(path.join(__dirname, 'node_modules', 'lucide-static', 'icons', n + '.svg'), 'utf8');

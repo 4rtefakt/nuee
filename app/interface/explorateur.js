@@ -142,6 +142,7 @@ export function rendreExplorateur(conteneur, app) {
         { libelle: t('enregistrer'), icone: 'save', action: () => app.enregistrer(p.id, false) },
         { libelle: t('enregistrer_sous'), action: () => app.enregistrer(p.id, true) },
         { libelle: t('versions'), icone: 'history', action: () => app.versions(p.id) },
+        { libelle: t('versions_partager'), icone: 'cloud-upload', actif: !!app.bureau, action: () => app.partagerProjet(p.id) },
         { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) },
         '-',
         { libelle: t('fermer_projet'), icone: 'x', action: () => app.fermerProjet(p.id) },

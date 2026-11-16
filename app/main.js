@@ -474,6 +474,11 @@ function ipc() {
     const r = await dialog.showOpenDialog(parent(e), { properties: ['openFile', 'multiSelections'], filters: filtres || [{ name: '*', extensions: ['*'] }] });
     return r.canceled ? [] : r.filePaths;
   });
+  // a folder (where a project opened from GitHub or GitLab goes: interface/versions.js)
+  recevoir('choisir-dossier', async (e) => {
+    const r = await dialog.showOpenDialog(parent(e), { properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : r.filePaths[0];
+  });
   recevoir('lire-presse-papiers', () => clipboard.readText());
   recevoir('enregistrer-sous', async (e, nom, filtres) => {
     const r = await dialog.showSaveDialog(parent(e), { defaultPath: nom, filters: filtres });
