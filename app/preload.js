@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('bureau', {
   // Zotero on this computer, read only (zotero.js)
   zotero: (chemin, delai) => ipcRenderer.invoke('zotero', chemin, delai),
   // closing with "Save and close": the window saves its projects, then answers
+  // before closing (main.js: viderFenetres): what the page still holds goes to the engine first
+  surVider: (f) => ipcRenderer.on('vider', async () => {
+    try { await f(); } catch { /* sent as it could be */ }
+    ipcRenderer.send('vide');
+  }),
   surEnregistrerTout: (f) => ipcRenderer.on('enregistrer-tout', async () => {
     let ok = false;
     try { ok = await f(); } catch { ok = false; }

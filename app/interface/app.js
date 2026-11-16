@@ -1861,6 +1861,10 @@ document.addEventListener('keydown', (e) => {
 
 // ------------------------------------------------------------ start
 
+// Before Nuée closes (main.js asks every window): what this window's documents and figures still
+// hold, sent after a pause in typing, goes to the engine now, so that it knows it is unsaved.
+const viderEditions = () => Promise.all([app.viderDocuments && app.viderDocuments(), app.viderFigures && app.viderFigures()]);
+
 async function demarrerVue() {
   document.body.classList.add('seul');
   const id = params.get('modele');
@@ -1882,6 +1886,7 @@ async function demarrerVue() {
   etat.panneaux.set('seul', entree);
   rendrePanneau(entree);
   if (bureau && bureau.surEnregistrerTout) bureau.surEnregistrerTout(() => app.enregistrerTout());  // if it is the last window
+  if (bureau && bureau.surVider) bureau.surVider(viderEditions);
   tete.querySelector('.titre-seul').textContent = document.title;
   majEtat();
 }
@@ -1906,6 +1911,7 @@ async function demarrerPrincipal() {
   accueil();
   await synchroniser();
   if (bureau && bureau.surEnregistrerTout) bureau.surEnregistrerTout(() => app.enregistrerTout());
+  if (bureau && bureau.surVider) bureau.surVider(viderEditions);
   if (ID_FENETRE === 'principale') {
     quoiDeNeuf();
     proposerRecuperation();

@@ -8,6 +8,7 @@
 // window, a second main window stays when the first is closed, then Nuée quits from it, R stops
 // and its temporary folder goes (on Windows, in a temporary
 // folder whose path isn't ASCII, with a read-only file in it; an earlier run's goes at the start).
+// Started again with the project saved, quitting right after typing in its document asks about it.
 //   node tests/essai_appli.js <program> [screenshot.png] [program options...]
 // On Linux the program starts as from the desktop menu: no LANG and a short PATH (/usr/bin:/bin),
 // which once left the engine unable to read its own files. On a server, run it under xvfb-run.
@@ -394,6 +395,30 @@ async function brancher(cible) {
     verifier('copieDUnArretPrecedentGardee', fs.existsSync(copieAncienne) && index.length === 1 && path.basename(index[0].fichier) === path.basename(copieAncienne),
       `${fs.existsSync(copieAncienne)} / ${JSON.stringify(index)}`);
     verifier('sansErreurDansLaPage', !erreurs1.length && !p.erreurs.length, [...erreurs1, ...p.erreurs].slice(0, 10));
+
+    // the saved example project again: File › Quit right after typing in its document (its text is
+    // sent after a pause in typing), and Nuée asks about it instead of closing without it (main.js:
+    // viderFenetres, before the question closing the window asks too); the question left
+    // unanswered, the program is stopped
+    const port3 = await portLibre();
+    const proc3 = lancer(port3, [path.join(dossier, 'exemple.nuee')]);
+    try {
+      let cible3;
+      for (let i = 0; i < 240 && !cible3 && proc3.exitCode === null; i += 1) { await pause(500); cible3 = (await pages(port3)).find((c) => /^http:\/\/127\.0\.0\.1:\d+\//.test(c.url)); }
+      const p3 = await brancher(cible3);
+      const feuille = "[...document.querySelectorAll('.arbre *')].find((e) => e.children.length === 0 && e.textContent.trim() === 'Document EN')";
+      await p3.attendre(`!!${feuille}`, 60000);
+      await p3.evaluer(`document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove()); ${feuille}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+      await p3.attendre("!!document.querySelector('.cm-content')", 30000);
+      await p3.evaluer("document.querySelector('.cm-content').focus()");
+      await p3.taper(' Typed just before quitting.');
+      await p3.evaluer('window.bureau.quitter(); true');  // (not awaited: Nuée then waits for an answer)
+      for (let i = 0; i < 16 && proc3.exitCode === null; i += 1) await pause(250);
+      verifier('fermetureApresSaisieDemandee', proc3.exitCode === null, proc3.exitCode);
+      p3.fermer();
+    } finally {
+      tuer(proc3);
+    }
   } catch (e) {
     verifier('erreur', false, e.message);
     if (p && capture) try { await p.capture(capture.replace(/\.png$/i, '') + '-erreur.png'); } catch { /* no page */ }

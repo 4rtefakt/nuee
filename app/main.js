@@ -230,6 +230,19 @@ function demanderEnregistrement(fenetre) {
   });
 }
 
+// Before R is asked what is unsaved: each window's page sends what it still holds (a document's
+// text typed less than a second ago, a figure's last change: they are sent after a pause), and
+// answers; two seconds at most for one (a page that has crashed doesn't).
+function viderFenetres() {
+  return Promise.all(BrowserWindow.getAllWindows().filter((f) => deLInterface(f.webContents.getURL())).map((f) => new Promise((ok) => {
+    const finir = () => { clearTimeout(attente); ipcMain.removeListener('vide', fini); ok(); };
+    const fini = (e) => { if (e.sender === f.webContents) finir(); };
+    const attente = setTimeout(finir, 2000);
+    ipcMain.on('vide', fini);
+    f.webContents.send('vider');
+  })));
+}
+
 function effacerSecours() {
   try { fs.rmSync(dossierSecours(), { recursive: true, force: true }); } catch { /* nothing to delete */ }
 }
@@ -356,6 +369,7 @@ async function fermerNuee(fenetre) {
 // doesn't answer and there are recovery copies: close, but keep them. When R doesn't answer
 // (a long computation, or stopped), what is unsaved isn't known: the user is asked either way.
 async function accordFermeture(fenetre) {
+  await viderFenetres();
   const noms = await projetsModifies();
   const en = langue === 'en';
   if (noms === null) {
