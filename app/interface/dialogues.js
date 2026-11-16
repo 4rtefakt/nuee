@@ -850,7 +850,9 @@ const AIDE = {
       ['Mettre à jour les données', 'Édition › Mettre à jour les données : la source relue, ou un autre fichier (celui de l’année suivante, ses colonnes dans un autre ordre ou avec de nouvelles), les étapes rejouées dessus, puis ses lignes rapportées aux observations du projet par leurs identifiants et ses colonnes aux variables par leurs noms, si bien que chaque modèle garde sa définition (une nouvelle catégorie se place juste avant la dernière : chaque régression garde sa catégorie de référence) ; les données sont remplacées en un seul changement qu’annule Ctrl+Z, la source et les étapes comprises (annulé, chaque modèle est ajusté à nouveau sur les données d’avant). Avant que rien ne change, le dialogue montre ce qui changera : les nouvelles observations, variables et catégories, celles qui ne sont plus dans le fichier (elles quittent le projet et ses modèles), les cellules changées, les variables calculées de nouveau d’après leur formule, chaque étape rejouée, sautée ou en erreur et pourquoi, les modèles qui ne peuvent plus être ajustés, et comment le fichier a été lu (les observations retrouvées par leur numéro de ligne quand aucune colonne ne les nomme). Les modèles qui laissent de côté des observations demandent s’ils prennent les nouvelles (coché). Avec les versions, une version est enregistrée d’abord. Puis chaque modèle est ajusté à nouveau, avec une barre et Arrêter, et Ce qui a changé compare leurs résultats avant et après.'],
       ['Mises à jour', 'La version installée cherche au démarrage une nouvelle version sur GitHub et la signale dans la barre d’état ; sous Windows, un clic la télécharge, la vérifie, l’installe et relance Nuée (Aide › Chercher une nouvelle version au démarrage pour l’arrêter). Aide › Chercher une mise à jour : la même recherche, à tout moment.'],
       ['Historique du fichier', 'Sous un projet .usp : le journal d’audit enregistré dans le fichier (dates, versions, changements de chaque modèle).'],
+      ['Tutoriels et guide en ligne', 'Aide › Tutoriels et Aide › Guide en ligne ouvrent le site de documentation dans le navigateur, en français : six tutoriels, de la question à l’article, et ce guide en pages.'],
       ['Signaler un problème', 'Aide › Informations de diagnostic : les versions à coller dans une issue sur github.com/4rtefakt/nuee, en français ou en anglais.'],
+      ['Citer Nuée', 'Aide › À propos : les versions, le site (nuee.io), le code source, Signaler un problème, et la phrase pour citer Nuée, à copier, avec le DOI de Zenodo (toutes les versions). Modèle › Texte pour la section Méthodes écrit cette référence avec celles des méthodes du modèle.'],
       ['Code', `Tous les calculs sont en R, commentés en français, dans ${MOTEUR}.`],
     ],
     differences: [
@@ -934,7 +936,9 @@ const AIDE = {
       ['Update the data', 'Edit › Update the data: the source read again, or another file (next year’s, its columns in another order or with new ones), the steps replayed on it, then its rows matched to the project’s observations by their identifiers and its columns to the variables by their names, so that every model keeps its definition (a new category goes just before the last one: each regression keeps its reference category); the data are replaced as one change that Ctrl+Z undoes, the source and the steps included (undone, every model is fitted again on the data as they were). Before anything changes, the dialog shows what will: the new observations, variables and categories, those no longer in the file (they leave the project and its models), the cells changed, the variables computed again from their formula, each step replayed, skipped or failed and why, the models that can no longer be fitted, and how the file was read (the observations matched by their row number when no column names them). The models that leave out some observations ask whether they take the new ones (ticked). With versions on, a version is saved first. Then every model is fitted again, with a bar and Stop, and What changed compares their results before and after.'],
       ['Updates', 'The installed version looks for a new version on GitHub at start-up and shows it in the status bar; on Windows, one click downloads it, checks it, installs it and restarts Nuée (Help › Look for a new version at start-up to stop it). Help › Check for updates: the same check, at any time.'],
       ['File history', 'Under a .usp project: the audit trail stored in the file (dates, versions, changes to each model).'],
+      ['Tutorials and the guide online', 'Help › Tutorials and Help › User guide online open the documentation website in the browser, in English: six tutorials, from the question to the paper, and this guide in pages.'],
       ['Report a problem', 'Help › Diagnostic information: the versions to paste into an issue on github.com/4rtefakt/nuee, in English or French.'],
+      ['How to cite Nuée', 'Help › About: the versions, the website (nuee.io), the source code, Report a problem, and the sentence to cite Nuée, to copy, with Zenodo’s DOI (every version). Model › Text for the Methods section writes this reference with those of the model’s methods.'],
       ['Code', `All computations are in R, commented in French, in ${MOTEUR}.`],
     ],
     differences: [
@@ -949,20 +953,8 @@ const AIDE = {
   },
 };
 
+// (About: aide.js)
 export async function dialogueAide(app, sujet) {
-  if (sujet === 'apropos') {
-    const v = await app.version();
-    const r = app.texteR ? await app.texteR() : null;  // (which R: File › Settings…, reglages.js)
-    dialogue({ titre: t('apropos'), contenu: el('div', { class: 'apropos' },
-      el('div', { class: 'apropos-tete' }, el('img', { class: 'logo', src: 'nuee.svg', alt: '' }),
-        el('div', {}, el('h3', {}, t('titre')), el('p', { class: 'doux' }, t('sous_titre')))),
-      el('dl', {}, el('dt', {}, t('version')), el('dd', {}, v.application),
-        el('dt', {}, t('moteur')), el('dd', {}, v.R, r ? el('span', { class: 'doux' }, ` · ${r}`) : null),
-        el('dt', {}, t('interface')), el('dd', {}, `Electron ${v.electron || '—'} · dockview · Plotly`),
-        el('dt', {}, t('licence')), el('dd', {}, 'GPL-3.0 · github.com/4rtefakt/nuee'))),
-    boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
-    return;
-  }
   const textes = AIDE[langueActuelle()] || AIDE.fr;
   dialogue({ titre: t(sujet), large: true, contenu: el('div', { class: 'aide' },
     textes[sujet].map(([h, p]) => el('section', {}, el('h4', {}, h), el('p', {}, p)))),

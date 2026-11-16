@@ -2395,6 +2395,11 @@ View › Find a command (Ctrl+K): type part of the name of a command or of its m
 "export r"), then Enter.
 Help › Diagnostic information: the versions of Nuée, the system, R and its packages, to paste
 into a report of a problem (github.com/4rtefakt/nuee/issues; no paths, no data).
+Help › Tutorials and Help › User guide online open the documentation website in the browser,
+in the interface's language: six tutorials, from the question to the paper, and this guide in
+pages. Help › About gives the versions, the website (nuee.io), the source code and Report a
+problem, and how to cite Nuée: the sentence to copy, with Zenodo's DOI, which stands for every
+version (Model › Text for the Methods section writes it too).
 
 What matches the stored values (checked on 944 models from 133 .usp projects)
 -----------------------------------------------------------------------------

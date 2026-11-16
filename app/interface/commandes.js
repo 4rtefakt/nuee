@@ -134,6 +134,9 @@ export function creerCommandes(app) {
     zoom_normal: { raccourci: 'Ctrl+0', actif: () => !!app.bureau, action: () => app.zoom(0) },
 
     guide: { icone: 'circle-help', raccourci: 'F1', action: () => app.aide('guide') },
+    // (aide.js: the documentation site, in the browser)
+    tutoriels: { icone: 'book-open', action: () => app.tutoriels() },
+    guide_en_ligne: { icone: 'external-link', action: () => app.guideEnLigne() },
     quoi_de_neuf: { action: () => app.quoiDeNeuf(true) },
     maj_auto: { coche: () => app.majAuto() === true, action: () => app.basculerMajAuto() },
     chercher_maj: { icone: 'refresh-ccw-dot', action: () => app.chercherMiseAJour() },
@@ -194,7 +197,7 @@ export function menus(app, C) {
     { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
-    { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
+    { cle: 'm_aide', items: () => [it('guide'), it('tutoriels'), it('guide_en_ligne'), '-', it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
       .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), '-', it('apropos')]) },
   ];
 }

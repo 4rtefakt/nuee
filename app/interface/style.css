@@ -864,3 +864,9 @@ pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter
 .barre-code > .icone { color: var(--attention); }
 .montrer-code section { margin-bottom: 10px; }
 .montrer-code h4 { margin: 6px 0 2px; font-size: 13px; }
+
+/* ---------------------------------------------------------------- help (aide.js) */
+/* About: its links, and the sentence to cite Nuée, selectable */
+.apropos a { color: var(--accent); }
+.apropos h4 { margin: 14px 0 4px; font-size: 13px; }
+.citation-nuee { margin: 0 0 6px; padding: 6px 10px; background: var(--fond-barre); border: 1px solid var(--bord); border-radius: 4px; line-height: 1.45; user-select: text; }

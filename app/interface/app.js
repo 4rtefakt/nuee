@@ -38,6 +38,7 @@ import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atel
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
 import { installerEtapes } from './etapes.js';
 import { installerReglages } from './reglages.js';
+import { installerAide } from './aide.js';
 import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
 
 const params = new URLSearchParams(location.search);
@@ -1068,7 +1069,8 @@ const app = {
     toutRedessiner();
   },
   zoom: (d) => bureau && bureau.zoom(d),
-  aide: (sujet) => dialogueAide(app, sujet),
+  // (About: aide.js)
+  aide: (sujet) => (sujet === 'apropos' ? app.apropos() : dialogueAide(app, sujet)),
   // the full guide: the text file shipped with the desktop app, or on GitHub
   ouvrirGuide() {
     if (bureau && bureau.ouvrirGuide) bureau.ouvrirGuide();
@@ -1083,6 +1085,7 @@ const C = creerCommandes(app);
 installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Update the data, the notice of a changed file)
 installerReglages(app);  // (File › Settings…: the R the engine runs on; the message when Nuée's own took over)
 installerCode(app);  // (R-code models: the bar over a project whose code was written elsewhere, app.barresCode)
+installerAide(app);  // (Help: the tutorials and the guide online, About)
 
 // ------------------------------------------------------------ state helpers
 

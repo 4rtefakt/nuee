@@ -2613,6 +2613,11 @@ menu (« vip », « exporter r »), puis Entrée.
 Aide › Informations de diagnostic : les versions de Nuée, du système, de R et de ses paquets, à
 coller dans un signalement de problème (github.com/4rtefakt/nuee/issues ; ni chemins ni
 données).
+Aide › Tutoriels et Aide › Guide en ligne ouvrent le site de documentation dans le
+navigateur, dans la langue de l'interface : six tutoriels, de la question à l'article, et ce
+guide en pages. Aide › À propos donne les versions, le site (nuee.io), le code source et
+Signaler un problème, et comment citer Nuée : la phrase à copier, avec le DOI de Zenodo, qui
+désigne toutes les versions (Modèle › Texte pour la section Méthodes l'écrit aussi).
 
 Ce qui est identique aux valeurs enregistrées (vérifié sur 944 modèles de 133 projets .usp)
 -------------------------------------------------------------------------------------------
