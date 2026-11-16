@@ -306,6 +306,27 @@ verifier("rejouées depuis la source, les étapes du mien redonnent ses données
 verifier("sans choix, le mien", x1(fusion(base, mien_c, leur_c)$projet) == 9)
 verifier("les deux projets fusionnés se réajustent", reajuste(pm, "fusion_c_mien") && reajuste(pl, "fusion_c_leur"))
 
+cat("Les paragraphes d'un passage en conflit, comptés comme l'éditeur les montre (une ligne chacun), dans mon texte\n")
+doc_base <- cote("doc_base.nuee", function(id) demande("document_enregistrer", list(projet = id, id = "D1", texte = "Titre\nUn\nDeux")))
+ecrit <- function(nom, texte) cote(nom, depuis = doc_base, function(id) demande("document_enregistrer", list(projet = id, id = "D1", texte = texte)))
+passage <- function(r) conflit(r, "document:D1")$details$passages[[1]]
+r <- fusion(doc_base, ecrit("doc_mien1.nuee", "Titre\nUn, le mien\nDeux"), ecrit("doc_leur1.nuee", "Titre\nUn, le leur\nDeux"))
+verifier("un conflit sur la ligne 2 : « paragraphe 2 réécrit », et le passage à la ligne 2",
+         identical(conflit(r, "document:D1")$mien, "paragraphe 2 réécrit") && identical(conflit(r, "document:D1")$leur, "paragraphe 2 réécrit") && passage(r)$ligne == 2)
+r <- fusion(doc_base, ecrit("doc_mien2.nuee", "Nouveau\nTitre\nUn, le mien\nDeux"), ecrit("doc_leur2.nuee", "Titre\nUn, le leur\nDeux"))
+verifier("mon paragraphe ajouté en tête : le passage, le paragraphe 3 de mon texte, des deux côtés",
+         identical(conflit(r, "document:D1")$mien, "paragraphe 3 réécrit") && identical(conflit(r, "document:D1")$leur, "paragraphe 3 réécrit") && passage(r)$ligne == 3)
+verifier("… mon paragraphe ajouté, sans conflit, gardé avec l'un comme avec l'autre choix",
+         identical(document(r$projet, "D1")$texte, "Nouveau\nTitre\nUn, le mien\nDeux") &&
+           identical(document(fusion(doc_base, fichier("doc_mien2.nuee"), fichier("doc_leur2.nuee"), list(`document:D1` = "leur"))$projet, "D1")$texte, "Nouveau\nTitre\nUn, le leur\nDeux"))
+r <- fusion(doc_base, ecrit("doc_mien3.nuee", "Titre\nUn\nDeux\nMa fin"), ecrit("doc_leur3.nuee", "Titre\nUn\nDeux\nLeur fin"))
+verifier("du texte ajouté au même endroit des deux côtés : « texte ajouté après le paragraphe 3 », à la ligne 4",
+         identical(conflit(r, "document:D1")$mien, "texte ajouté après le paragraphe 3") && passage(r)$ligne == 4)
+r <- fusion(doc_base, ecrit("doc_mien4.nuee", "Titre"), ecrit("doc_leur4.nuee", "Titre\nUn, le leur\nDeux, le leur"))
+verifier("des paragraphes que j'ai retirés et qu'ils ont réécrits : « texte retiré après le paragraphe 1 », « texte réécrit … »",
+         identical(conflit(r, "document:D1")$mien, "texte retiré après le paragraphe 1") && identical(conflit(r, "document:D1")$leur, "texte réécrit après le paragraphe 1") &&
+           passage(r)$ligne == 2)
+
 cat("La source des données : les deux côtés mis à jour d'un autre fichier\n")
 avec_lignes <- function(nom, quels, graine) {
   f <- fichier("donnees", nom)
