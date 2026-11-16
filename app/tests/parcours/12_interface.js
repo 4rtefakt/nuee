@@ -84,5 +84,18 @@ module.exports = {
     const lignes = await n.attendre(`(() => { const t = ${filtre}.closest('.panneau').querySelector('table.tableau');
       const l = t ? [...t.tBodies[0].rows].map((r) => __n.norm(r.cells[0].textContent)) : []; return l.length === 1 ? l : null; })()`);
     verifier('comparerUnProjet', lignes[0] === 'M1', lignes);
+
+    // ---- tabs closed in bulk: a tab's menu › Close all tabs of its project, then Window › Close all views
+    const onglet = (titre) => `__n.onglet(${JSON.stringify(titre)})`;
+    await n.evaluer(`(() => { const o = ${onglet('skylark_counts · M1 · LM')}; const r = o.getBoundingClientRect();
+      o.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 10, clientY: r.top + 5 })); return true; })()`);
+    const fermerProjet = await n.evaluer("__n.t('fermer_onglets_projet', { nom: 'skylark_counts.csv' })");
+    await n.cliquer(`__n.tous('.menu .item').find((e) => __n.norm(e.textContent) === ${JSON.stringify(fermerProjet)})`);
+    const restent = await n.attendre(`(() => { const o = __n.tous('.dv-tab').map((e) => __n.norm(e.textContent));
+      return o.some((x) => x.startsWith('skylark_counts')) ? null : o; })()`);
+    verifier('fermerOngletsDuProjet', restent.includes('orchards · M1 · PCA') && restent.includes(await n.t('comparaison')), restent);
+    await n.menu('m_fenetre', 'fermer_vues');
+    const accueil = await n.attendre("(() => { const o = __n.tous('.dv-tab').map((e) => __n.norm(e.textContent)); return document.querySelector('.accueil') ? o : null; })()");
+    verifier('fermerToutesLesVues', accueil.length === 2 && accueil.includes(await n.t('explorateur')), accueil);
   },
 };

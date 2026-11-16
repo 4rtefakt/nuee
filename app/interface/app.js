@@ -1029,6 +1029,21 @@ const app = {
     const p = app.panneauActif() || (dock && dock.activePanel);
     if (p) p.api.close();
   },
+  // Window › Close all views: every tab of the central group, models' pages and project views (the
+  // explorer and the console stay; the start page comes back). And a tab's menu › Close all tabs of
+  // its project: its models' pages and its views.
+  avecVues: () => !!dock && dock.panels.some((p) => !EXTERNES.includes(p.id)),
+  fermerVues() {
+    if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
+  },
+  fermerVuesProjet(pid) {
+    if (!dock) return;
+    for (const p of [...dock.panels]) {
+      const e = etat.panneaux.get(p.id);
+      const m = estPage(p) ? etat.modeles[p.id.slice(5)] : null;
+      if ((m && m.projet === pid) || (!estPage(p) && e && e.params.projet === pid)) p.api.close();
+    }
+  },
 
   reinitialiser() {
     for (const p of [...dock.panels]) if (p.id !== 'explorateur') p.api.close();
@@ -1874,8 +1889,13 @@ function menuOnglet(e) {
   const ensuite = () => setTimeout(() => focusOnglet(group.element && group.element.isConnected ? group : d && d.activeGroup));
   const agrandir = { libelle: group.api.isMaximized() ? t('restaurer') : t('agrandir'),
     action: () => (group.api.isMaximized() ? group.api.exitMaximized() : group.api.maximize()) };
+  // (a tab of a project, a model's page or view, a project view: all the tabs of that project too)
+  const entree = etat.panneaux.get(panel.id);
+  const pid = estPage(panel) ? (etat.modeles[panel.id.slice(5)] || {}).projet : entree && (entree.params.projet || (etat.modeles[entree.params.modele] || {}).projet);
   const fermer = [{ libelle: t('fermer_panneau'), action: () => { panel.api.close(); ensuite(); } },
-    { libelle: t('fermer_autres'), action: () => { group.panels.filter((x) => x.id !== panel.id).forEach((x) => x.api.close()); ensuite(); } }];
+    { libelle: t('fermer_autres'), action: () => { group.panels.filter((x) => x.id !== panel.id).forEach((x) => x.api.close()); ensuite(); } }]
+    .concat(pid && etat.projets[pid] ? [{ libelle: t('fermer_onglets_projet', { nom: etat.projets[pid].nom }), action: () => { app.fermerVuesProjet(pid); ensuite(); } }] : [],
+      [{ libelle: t('fermer_vues'), action: () => { app.fermerVues(); ensuite(); } }]);
   menuContextuel(e.clientX, e.clientY, panel.id === 'explorateur' ? [fermer[0]] : estPage(panel) ? [agrandir, '-', ...fermer]
     : [{ libelle: t('detacher'), action: () => app.detacher(panel.id) }, agrandir, '-', ...fermer]);
 }
