@@ -12,6 +12,8 @@ const { demanderZotero } = require('./zotero');
 const { creerVersions, magasinJetons } = require('./versions');
 const { creerComptes } = require('./comptes');
 const rInstalles = require('./r-installes');
+const { creerJetons } = require('./jetons');
+const { deposerBrouillon, metadonneesZenodo } = require('./zenodo');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -92,6 +94,13 @@ const idMoteur = () => `${LANCEMENT}-${demarrages}`;
 // A fixed port when free: the interface keeps its settings (theme, language, plot format...)
 // per address, so they come back from one launch to the next.
 const PORT_HABITUEL = 47863;
+// Zenodo (zenodo.js): the real one and its sandbox, for tests; the user's token for each, kept by
+// jetons.js once the app is ready (safeStorage needs it), in a file of its own beside the versions'
+// tokens. NUEE_ZENODO: another address answering like Zenodo, for the checks (a stand-in: every
+// host goes there, and no page opens in a browser).
+const HOTES_ZENODO = ['zenodo.org', 'sandbox.zenodo.org'];
+const baseZenodo = (hote) => process.env.NUEE_ZENODO || `https://${hote}`;
+let jetonsZenodo = null;
 
 function lireReglages() {
   try { reglages = { ...reglages, ...JSON.parse(fs.readFileSync(fichierReglages(), 'utf8')) }; } catch { /* first start */ }
@@ -273,6 +282,14 @@ function dossierTemporaireR() {
   if (!s.isDirectory() || s.uid !== process.getuid() || (s.mode & 0o077)) {
     temporaireR = fs.mkdtempSync(`${temporaireDuLancement}-`);
   }
+}
+
+// A file inside a folder (its real path: no link nor `..` gets out of it)
+function dansDossier(fichier, dossier) {
+  try {
+    const rel = path.relative(fs.realpathSync(dossier), fs.realpathSync(fichier));
+    return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+  } catch { return false; }
 }
 
 // Stop, in the status bar (interface/app.js): R, one process, reads no request while it computes,
@@ -844,6 +861,32 @@ function ipc() {
   // Zotero on this computer, for a document's citations (zotero.js: its local API and Better
   // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
   recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
+  // Zenodo, for a reproducibility package (interface/paquet.js): whether a token is kept for a host
+  // (never the token: it stays here), keeping the one the user pastes, forgetting it, and a draft
+  // deposited with the package the engine wrote in its session folder (zenodo.js), whose page then
+  // opens in the browser. Never published: the user does it on Zenodo's site.
+  const hoteZenodo = (hote) => { if (!HOTES_ZENODO.includes(hote)) throw new Error('zenodo: hôte refusé'); return hote; };
+  recevoir('zenodo-etat', (_, hote) => ({ jeton: jetonsZenodo.lire(hoteZenodo(hote)) !== null, persistant: jetonsZenodo.persistant() }));
+  recevoir('zenodo-jeton', (_, hote, jeton) => {
+    const j = String(jeton || '').trim();
+    if (!/^[\x21-\x7e]{8,512}$/.test(j)) return { erreur: 'jeton_invalide' };
+    return { persistant: jetonsZenodo.garder(hoteZenodo(hote), j) };
+  });
+  recevoir('zenodo-oublier', (_, hote) => { jetonsZenodo.oublier(hoteZenodo(hote)); });
+  recevoir('zenodo-deposer', async (_, hote, chemin, meta) => {
+    const jeton = jetonsZenodo.lire(hoteZenodo(hote));
+    if (!jeton) return { erreur: 'sans_jeton' };
+    const fichier = String(chemin || '');
+    if (!/\.zip$/i.test(fichier) || !dansDossier(fichier, temporaireR)) return { erreur: 'demande' };
+    try {
+      const r = await deposerBrouillon({ base: baseZenodo(hote), jeton, fichier, fetch: reseau.fetch,
+        metadonnees: metadonneesZenodo(meta || {}, { langue: meta && meta.langue }) });
+      if (!process.env.NUEE_ZENODO) shell.openExternal(r.page);
+      return { page: r.page, id: r.id };
+    } catch (e) {
+      return { erreur: e.code || 'reseau', detail: String((e && e.message) || e).split(jeton).join('…'), page: (e && e.page) || null };
+    }
+  });
   // (options.R: the bin folder of an R that has knitr and rmarkdown, for the R chunks of a
   // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own; on macOS
   // with its R folder as RHOME, without which the Rscript of Nuée.app starts another R: demarrerR)
@@ -1182,6 +1225,7 @@ async function demarrer() {
   const s = session.defaultSession;
   const langues = [...new Set([...s.getSpellCheckerLanguages(), 'fr', 'en-US'])].filter((l) => s.availableSpellCheckerLanguages.includes(l));
   if (langues.length) s.setSpellCheckerLanguages(langues);
+  jetonsZenodo = creerJetons({ fichier: path.join(app.getPath('userData'), 'jetons-zenodo.json'), coffre: safeStorage });
   ipc();
   comptes.preparer();  // (a GitLab sign-in's token renewed before it expires, while Nuée runs)
   // the same port as last time when free: on a computer shared by several people (remote
