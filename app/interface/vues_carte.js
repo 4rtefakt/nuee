@@ -7,7 +7,7 @@
 // selection shared with the project's models. The autocorrelation view gives Moran's I of a
 // variable or of a regression's residuals, its correlogram and the semivariogram.
 // Imported by app.js.
-import { t, ajouterTextes, libelleResultat } from './i18n.js';
+import { t, ajouterTextes, libelleResultat, langueActuelle } from './i18n.js';
 import { el, fmt, decimal, entreNombres } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP, uniteAxe, etendue } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
@@ -104,6 +104,8 @@ function sources(ctx, pid, quantitativesSeules = false) {
 async function rendreCarte(conteneur, ctx, p, loc) {
   const pid = p.projet;
   const cache = (loc.cache ??= {});
+  // (the engine names a plane system in the interface's language: asked again in another)
+  if (cache.langue !== langueActuelle()) { delete cache.coordonnees; delete cache.points; cache.langue = langueActuelle(); }
   let infos;
   try { infos = await infosCoordonnees(ctx, pid, cache); } catch (e) { conteneur.replaceChildren(el('p', { class: 'erreur' }, e.message)); return; }
   const changer = () => { loc.cache = {}; loc.modifier = false; ctx.rafraichir(); };
@@ -281,7 +283,8 @@ async function rendreAutocorrelationSpatiale(conteneur, ctx, p, loc) {
     caseACocher(t('autocorrelation_standardiser'), !!loc.standardiser, (v) => { loc.standardiser = v; ctx.rafraichir(); }, t('autocorrelation_standardiser_aide')),
     choix(t('autocorrelation_n_permutations'), [[0, '0'], [99, '99'], [999, '999'], [9999, '9 999']], loc.permutations, (v) => { loc.permutations = Number(v); ctx.rafraichir(); }),
     caseACocher(t('autocorrelation_par_lieu'), !!loc.parLieu, (v) => { loc.parLieu = v; ctx.rafraichir(); }, t('autocorrelation_par_lieu_aide')));
-  const cle = JSON.stringify(q);
+  // (the language too: the name of the residuals and the messages are the engine's)
+  const cle = JSON.stringify([q, langueActuelle()]);
   if (cache.cle !== cle) {
     conteneur.replaceChildren(barre, el('p', { class: 'infos attente' }, t('calcul')));
     try { cache.res = await ctx.demander('autocorrelation_spatiale', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
