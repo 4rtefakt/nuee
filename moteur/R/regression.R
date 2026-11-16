@@ -821,6 +821,7 @@ ajuster_regression <- function(projet, d) {
     stop(sprintf(traduire("Trop peu d'observations complètes (%d) pour %d termes.", "Too few complete observations (%d) for %d terms."),
                  nrow(cadre$cadre), length(candidats)), call. = FALSE)
   }
+  refuser_reponse_constante(cadre$cadre$y, as.character(d$y[[1]]$name))
   G <- d$cv_groups %||% 7
   groupes <- groupes_definition(projet, d, G)[match(cadre$observations, d$observations)]
   termes_x <- termes_regression(d$x)
@@ -1348,6 +1349,18 @@ famille_mgcv <- function(nom, theta = NULL) {
     }
   }
   f
+}
+
+# Une réponse qui a la même valeur pour toutes les observations du modèle n'a rien à expliquer : R²,
+# Q² et la déviance expliquée seraient 0 / 0. Refusée, en le disant (`y` : ses valeurs ; `nom` : son
+# nom) ; une régression, un arbre de régression, une forêt et des arbres boostés.
+refuser_reponse_constante <- function(y, nom) {
+  y <- y[is.finite(y)]
+  if (length(y) && all(y == y[1])) {
+    stop(sprintf(traduire("La réponse « %s » vaut %s pour chacune des %d observations du modèle : il n'y a rien à expliquer. Choisissez une autre réponse, ou d'autres observations.",
+                          "The response “%s” is %s for each of the model's %d observations: there is nothing to explain. Choose another response, or other observations."),
+                 nom, format(y[1], digits = 6), length(y)), call. = FALSE)
+  }
 }
 
 # Une réponse que la loi accepte : des comptages (Poisson, binomiale négative, Poisson à excès de

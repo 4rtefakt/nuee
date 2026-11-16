@@ -213,6 +213,7 @@ ajuster_forest <- function(projet, d) {
     stop(traduire("Trop peu d'observations avec une réponse et toutes leurs valeurs X (il en faut au moins 5).",
                   "Too few observations with a response and all their X values (at least 5 are needed)."), call. = FALSE)
   }
+  if (!classement) refuser_reponse_constante(y[complet], nom_y)  # (regression.R)
   garde <- obs[complet]
   groupes <- groupes_observations(projet, d, garde)
   if (length(unique(groupes)) < 2) {

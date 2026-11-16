@@ -376,6 +376,7 @@ ajuster_tree <- function(projet, d) {
   # (les lignes que rpart garde : une réponse et au moins une valeur X, comme na.rpart)
   connu <- !is.na(y) & rowSums(!is.na(X)) > 0
   if (sum(connu) < 4) stop(traduire("Trop peu d'observations avec une réponse et au moins une valeur X.", "Too few observations with a response and at least one X value."), call. = FALSE)
+  if (!classement) refuser_reponse_constante(y[connu], nom_y)  # (regression.R)
   garde <- obs[connu]
   groupes <- groupes_observations(projet, d, garde)
   if (length(unique(groupes)) < 3) {
