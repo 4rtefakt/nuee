@@ -363,7 +363,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       if (!r && echelleType() !== avant) st.echelle = echelleType();
       rendre();
     } },
-      [['PCA', 'ACP / PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')],
+      [['PCA', langueActuelle() === 'fr' ? 'ACP / PCA' : 'PCA'], ['PLS', 'PLS'], ['PLS-DA', 'PLS-DA'], ['OPLS', 'OPLS'], ['OPLS-DA', 'OPLS-DA'], ['CLASSES', t('modeles_classe')],
         ['LM', t('type_lm')], ['LMM', t('type_lmm')], ['GLM', t('type_glm')], ['GAM', t('type_gam')]]
         .concat(Object.entries(ANALYSES).map(([k, a]) => [k, a.libelle()]))
         .map(([k, n]) => el('option', { value: k, selected: k === st.type }, n))),
