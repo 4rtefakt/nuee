@@ -200,6 +200,9 @@ coller_cellules <- function(projet, observations, variables, valeurs) {
   # tableau des données : case par case, chacune en copiait tout le tableau)
   n <- 0L
   lignes <- nom_numero(observations)
+  # (une observation que le projet n'a pas : R écrirait « subscript out of bounds », ou ajouterait sa ligne)
+  inconnues <- observations[!lignes %in% rownames(projet$donnees)]
+  if (length(inconnues)) stop(traduire("Observation inconnue : ", "Unknown observation: "), paste(utils::head(inconnues, 5), collapse = ", "), call. = FALSE)
   for (j in seq_along(variables)) {
     k <- nom_numero(variables[j])
     a <- which(!is.na(valeurs[, j]))
