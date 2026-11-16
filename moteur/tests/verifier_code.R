@@ -2,6 +2,8 @@
 # telles que l'interface les envoie (serveur.R : DEMANDES, chaque demande passée par le JSON) :
 #   - lm, glm, nls et un modèle mixte de nlme : les mêmes coefficients, erreurs-types, valeurs p,
 #     vraisemblance, AIC et BIC que ces fonctions appelées ici ; mgcv et MASS quand ils sont là ;
+#   - les colonnes de coef(summary()) prises par leur nom : survival::coxph (se(coef), robust se) et
+#     nnet::multinom (coef() et vcov()) quand ils sont là ; la loi t d'un gls (N − p) ;
 #   - la forme liste : ses valeurs et ses tableaux, ses éléments inconnus ; ce que le code affiche, ses
 #     messages, ses avertissements, un graphique dessiné ;
 #   - une erreur et sa ligne, une erreur de lecture, un paquet qui manque, un code vide, une valeur NULL ;
@@ -212,6 +214,42 @@ if (requireNamespace("MASS", quietly = TRUE)) {
   verifier("MASS::glm.nb : sa classe (negbin), son paquet, et la mesure discrète de sa vraisemblance pour l'AIC",
            identical(as.character(m_nb$classe)[1], "negbin") && "MASS" %in% m_nb$paquets$nom && grepl(" discrete marginale$", m_nb$comparaison$signature))
 } else cat("  (MASS absent)\n")
+# les colonnes de coef(summary()) reconnues par leur nom, jamais par leur place : survival::coxph
+# (coef, exp(coef), se(coef), robust se…), nnet::multinom (ses coefficients en tableau, une colonne par
+# terme, dont une variable z) ; les degrés de liberté de la loi t d'un gls (N − p, comme intervals())
+if (requireNamespace("survival", quietly = TRUE)) {
+  code_cox <- "survival::coxph(survival::Surv(n + 1, as.integer(x > 3)) ~ y + g, data = donnees)"
+  approuver(code_cox)
+  m_cox <- ajuste_code(code_cox, "S1")
+  a_cox <- survival::coxph(survival::Surv(n + 1, as.integer(x > 3)) ~ y + g, data = dd)
+  code_rob <- "survival::coxph(survival::Surv(n + 1, as.integer(x > 3)) ~ y + g, data = donnees, robust = TRUE)"
+  approuver(code_rob)
+  m_rob <- ajuste_code(code_rob, "S2")
+  a_rob <- survival::coxph(survival::Surv(n + 1, as.integer(x > 3)) ~ y + g, data = dd, robust = TRUE)
+  verifier("survival::coxph : l'erreur-type se(coef), pas exp(coef) ; z, p et l'intervalle de confint() ; avec robust = TRUE, l'erreur-type robuste, celle de son test",
+           proche(m_cox$coefficients$erreur_type, coef(summary(a_cox))[, "se(coef)"]) && proche(m_cox$coefficients$statistique, coef(summary(a_cox))[, "z"]) &&
+             proche(cbind(m_cox$coefficients$bas, m_cox$coefficients$haut), confint(a_cox)) &&
+             proche(m_rob$coefficients$erreur_type, coef(summary(a_rob))[, "robust se"]) && proche(cbind(m_rob$coefficients$bas, m_rob$coefficients$haut), confint(a_rob)))
+} else cat("  (survival absent : pas de coxph)\n")
+if (requireNamespace("nnet", quietly = TRUE)) {
+  code_mn <- "fit <- nnet::multinom(site ~ x + n, data = donnees, trace = FALSE)\nfit"
+  approuver(code_mn)
+  m_mn <- ajuste_code(code_mn, "S3")
+  a_mn <- nnet::multinom(site ~ x + n, data = dd, trace = FALSE)
+  b_mn <- coef(a_mn)
+  s_mn <- demande("script_r", list(modele = m_mn$id, chemin = fichier("S3.R"), langue = "fr"))
+  verifier("nnet::multinom : coef() et les erreurs-types de vcov(), catégorie:terme dans l'ordre de vcov(), pas son tableau de coefficients ; l'export vers R les redonne",
+           identical(m_mn$coefficients$terme, rownames(vcov(a_mn))) && proche(m_mn$coefficients$estimation, c(t(b_mn))) &&
+             proche(m_mn$coefficients$erreur_type, c(t(summary(a_mn)$standard.errors)), 1e-8) && all(m_mn$coefficients$bas < m_mn$coefficients$haut) &&
+             all(is.na(m_mn$coefficients$statistique)) && is.null(s_mn$ecart) && any(grepl("c(t(coef(modele)))", readLines(s_mn$script, encoding = "UTF-8"), fixed = TRUE)))
+} else cat("  (nnet absent : pas de multinom)\n")
+code_gls <- "nlme::gls(y ~ x + g, data = donnees, na.action = na.omit)"
+approuver(code_gls)
+m_gls <- ajuste_code(code_gls, "S4")
+a_gls <- nlme::gls(y ~ x + g, data = dd, na.action = na.omit)
+verifier("nlme::gls : la loi t à N − p degrés de liberté (55), celle de sa valeur p et de intervals() (df.residual() n'en dit rien)",
+         all(m_gls$coefficients$ddl == 55) && proche(m_gls$coefficients$bas, nlme::intervals(a_gls, which = "coef")$coef[, "lower"], 1e-8) &&
+           proche(m_gls$coefficients$haut, nlme::intervals(a_gls, which = "coef")$coef[, "upper"], 1e-8))
 
 # ---------------------------------------------------------------- la forme liste, la sortie, les erreurs
 

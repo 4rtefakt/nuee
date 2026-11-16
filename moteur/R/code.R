@@ -399,20 +399,31 @@ resume_code <- function(fit) {
 
 # Les coefficients d'une matrice de coef(summary(fit)) (une partie : cond, zi… de glmmTMB) : ses
 # colonnes reconnues par leur nom (Estimate, Std. Error, t value, Pr(>|t|) ; Value, Std.Error, DF,
-# t-value, p-value de nlme…) ; l'intervalle à 95 % de la loi t à leurs degrés de liberté (la colonne DF,
-# sinon ceux des résidus) quand le test est un t, sinon de la loi normale.
+# t-value, p-value de nlme ; coef, exp(coef), se(coef), robust se, z, Pr(>|z|) de survival…), la
+# première étant l'estimation ; NULL quand aucune n'est une erreur-type (une autre colonne n'en tient
+# pas lieu : exp(coef) de coxph ; les coefficients de multinom, en tableau, une colonne par terme).
+# L'erreur-type robuste d'abord (coxph(robust = TRUE) teste avec elle) ; la statistique n'est jamais
+# une colonne au nom d'un terme ou d'une variable du modèle (une variable z ou t). L'intervalle à 95 % :
+# de la loi t à leurs degrés de liberté quand le test est un t (la colonne DF, sinon ceux des résidus),
+# sinon de la loi normale (une colonne DF y est celle d'un χ² : coxph avec frailty()).
 coefficients_matrice <- function(M, partie, fit, prefixer) {
   noms <- colnames(M) %||% character(ncol(M))
-  colonne <- function(motif) { k <- grep(motif, noms, ignore.case = TRUE); if (length(k)) k[1] }
-  k_se <- colonne("std\\.? ?err|^se$|^s\\.e\\.?$") %||% (if (ncol(M) >= 2) 2L)
-  k_stat <- colonne("^(t|z)([ .-]?(value|ratio|stat))?$|wald")
+  termes <- c(rownames(M), names(essai_code(stats::coef(fit))), essai_code(all.vars(stats::formula(fit))))
+  colonne <- function(motif, exclues = character(0)) {
+    k <- setdiff(grep(motif, noms, ignore.case = TRUE), which(noms %in% exclues))
+    if (length(k)) k[1]
+  }
+  k_se <- colonne("^robust[ .]?se$") %||% colonne("std\\.? ?err|^se$|^s\\.e\\.?$|^se\\(coef\\)$")
+  if (is.null(k_se)) return(NULL)
+  k_stat <- colonne("^(t|z)([ .-]?(value|ratio|stat))?$|wald", termes)
   k_p <- colonne("^pr\\(|p[ .-]?val|^p$")
   k_ddl <- colonne("^df$|^ddl$|^d\\.f\\.?$")
   val <- function(k) if (!is.null(k)) unname(as.numeric(M[, k])) else rep(NA_real_, nrow(M))
   est <- val(1L)
   se <- val(k_se)
-  ddl <- val(k_ddl)
-  if (all(is.na(ddl)) && !is.null(k_stat) && grepl("^t", noms[k_stat], ignore.case = TRUE)) ddl <- rep(nombre_code(essai_code(stats::df.residual(fit))) %||% NA_real_, nrow(M))
+  t_test <- !is.null(k_stat) && grepl("^t", noms[k_stat], ignore.case = TRUE)
+  ddl <- if (t_test) val(k_ddl) else rep(NA_real_, nrow(M))
+  if (t_test && all(is.na(ddl))) ddl <- rep(ddl_residus_code(fit), nrow(M))
   q <- ifelse(is.finite(ddl) & ddl > 0, stats::qt(0.975, pmax(ddl, 1e-8)), stats::qnorm(0.975))
   terme <- rownames(M) %||% paste0("b", seq_len(nrow(M)))
   if (prefixer && nzchar(partie)) terme <- paste0(partie, ".", terme)
@@ -420,9 +431,20 @@ coefficients_matrice <- function(M, partie, fit, prefixer) {
              bas = est - q * se, haut = est + q * se, stringsAsFactors = FALSE)
 }
 
+# Les degrés de liberté des résidus d'un modèle dont le test est un t : df.residual(), sinon N − p
+# d'un gls ou d'un gnls de nlme (df.residual() n'en dit rien ; leurs valeurs p et intervals() les
+# prennent) ; NA sans.
+ddl_residus_code <- function(fit) {
+  ddl <- nombre_code(essai_code(stats::df.residual(fit)))
+  if (is.null(ddl) && inherits(fit, "gls") && is.list(fit$dims)) ddl <- nombre_code(fit$dims$N - fit$dims$p)
+  ddl %||% NA_real_
+}
+
 # Les coefficients du modèle : coef(summary(fit)) quand c'est une matrice de nombres ou une liste de
-# matrices (glmmTMB : cond, zi, disp ; leurs termes préfixés de leur partie), sinon coef(fit) avec les
-# erreurs-types de vcov(fit) et l'intervalle de la loi normale. NULL quand l'objet n'en a pas.
+# matrices (glmmTMB : cond, zi, disp ; leurs termes préfixés de leur partie) dont chacune a une colonne
+# d'erreurs-types (coefficients_matrice), sinon coef(fit) avec les erreurs-types de vcov(fit) et
+# l'intervalle de la loi normale ; des coefficients en tableau, une ligne par catégorie de la réponse
+# (multinom), dans l'ordre de vcov(), « catégorie:terme ». NULL quand l'objet n'en a pas.
 coefficients_code <- function(fit) {
   if (is.null(fit)) return(NULL)
   cs <- essai_code(stats::coef(summary(fit)))
@@ -433,17 +455,24 @@ coefficients_code <- function(fit) {
   if (!is.null(parties)) {
     noms <- names(parties) %||% rep("", length(parties))
     noms[is.na(noms)] <- ""
-    t <- do.call(rbind, lapply(seq_along(parties), function(k) coefficients_matrice(parties[[k]], noms[k], fit, length(parties) > 1)))
-    if (!is.null(t) && nrow(t)) return(structure(t, source = "summary"))  # (d'où ils viennent : l'export vers R refait le même appel)
+    tables <- lapply(seq_along(parties), function(k) coefficients_matrice(parties[[k]], noms[k], fit, length(parties) > 1))
+    if (!any(vapply(tables, is.null, TRUE))) {
+      t <- do.call(rbind, tables)
+      if (nrow(t)) return(structure(t, source = "summary"))  # (d'où ils viennent : l'export vers R refait le même appel)
+    }
   }
   b <- essai_code(stats::coef(fit))
+  matrice_b <- is.matrix(b) && is.numeric(b) && length(rownames(b)) && length(colnames(b))
+  if (matrice_b) b <- stats::setNames(as.vector(t(b)), paste(rep(rownames(b), each = ncol(b)), rep(colnames(b), nrow(b)), sep = ":"))
   if (!is.numeric(b) || !length(b) || is.matrix(b)) return(NULL)
   V <- essai_code(stats::vcov(fit))
+  if (is.matrix(V) && length(names(b)) && all(names(b) %in% rownames(V)) && all(names(b) %in% colnames(V))) V <- V[names(b), names(b), drop = FALSE]
+  else if (matrice_b) V <- NULL  # (sans les noms de vcov(), l'ordre de ses lignes n'est pas sûr)
   se <- if (is.matrix(V) && nrow(V) == length(b) && ncol(V) == length(b)) sqrt(pmax(0, diag(V))) else rep(NA_real_, length(b))
   z <- stats::qnorm(0.975)
   structure(data.frame(partie = "", terme = names(b) %||% paste0("b", seq_along(b)), estimation = unname(b), erreur_type = unname(se), statistique = NA_real_,
                        ddl = NA_real_, p = NA_real_, bas = unname(b) - z * unname(se), haut = unname(b) + z * unname(se), stringsAsFactors = FALSE),
-            source = "vcov")
+            source = if (matrice_b) "vcov_matrice" else "vcov")
 }
 
 # Le nombre d'observations, la log-vraisemblance et ses degrés de liberté, l'AIC et le BIC : chacun
