@@ -13,7 +13,10 @@
 //   saying why; Nuée's own R, as slow, never stopped;
 // - the last session's files given to the window without a look at them, then looked at when they
 //   reopen, without holding the main process: a network share that doesn't answer looked at once,
-//   given up after its time (shortened here), its files said out of reach.
+//   given up after its time (shortened here), its files said out of reach;
+// - closing Nuée with unsaved projects ("Save and close"), asked twice (a second ×, the update): one
+//   question; the windows hidden while the projects' last versions go, then Nuée quits once, what the
+//   update runs just before; Cancel closes nothing, and the next request asks again.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -338,6 +341,70 @@ async function derniereSeance(dossier) {
   }
 }
 
+// Closing with unsaved projects, asked twice: one question; nothing to change while the versions go
+async function fermerUneFois(dossier) {
+  console.log('Fermer Nuée : une question pour deux demandes, les fenêtres cachées ensuite');
+  // (the engine's answer: a project with unsaved changes)
+  const moteur = require('http').createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(req.url === '/api/projets_modifies' ? { noms: ['vergers'] } : {}));
+  });
+  await new Promise((ok) => moteur.listen(0, '127.0.0.1', ok));
+  const port = moteur.address().port;
+  const adresse = `http://127.0.0.1:${port}/`;
+  // (the last versions sent when this check says)
+  let envoyees = 0;
+  let finEnvoi = null;
+  const versions = { ...versionsFactices,
+    creerVersions: () => ({ fermerTout: () => { envoyees += 1; return new Promise((ok) => { finEnvoi = ok; }); }, auPremierPlan() {}, jeton: async () => null }) };
+  const charger = () => {
+    const m = chargerMain(dossier, { './versions': versions });
+    m.evaluer(`adresse = ${JSON.stringify(adresse)}; port = ${port}`);
+    const principaleF = new m.electron.BrowserWindow({});
+    principaleF.loadURL(adresse);
+    const vue = new m.electron.BrowserWindow({});
+    vue.loadURL(`${adresse}?vue=scores&modele=M1`);
+    return { m, principaleF, vue };
+  };
+  const attendre = async (f, quoi) => { for (let i = 0; i < 100 && !f(); i += 1) await pause(50); if (!f()) throw new Error(`waited for ${quoi}`); };
+  try {
+    const { m, principaleF, vue } = charger();
+    const ordre = [];
+    m.electron.app.quit = () => { ordre.push('quitter'); m.E.quitte += 1; };
+    m.E.reponses.push(0);  // Save and close
+    const a = m.evaluer('fermerNuee(__valeur)', principaleF);
+    // (asked again while the first waits for the engine: a second ×, then Update with its installer)
+    const b = m.evaluer('fermerNuee(__valeur)', principaleF);
+    const c = m.evaluer('fermerNuee(__valeur.f, __valeur.apres)', { f: principaleF, apres: () => ordre.push('installateur') });
+    await attendre(() => envoyees > 0, 'the last versions');
+    verifier(m.E.dialogues.length === 1 && envoyees === 1, 'une seule question pour trois demandes', m.E.dialogues);
+    verifier(principaleF.cachee && vue.cachee && m.E.quitte === 0, 'les fenêtres cachées pendant que les dernières versions partent, avant de quitter',
+      { cachees: [principaleF.cachee, vue.cachee], quitte: m.E.quitte });
+    finEnvoi();
+    const r = await auPlus(Promise.all([a, b, c]), 5000, 'the close');
+    verifier(egal(r, [true, true, true]) && egal(ordre, ['installateur', 'quitter']), 'puis Nuée quitte, une fois, l’installateur de la mise à jour lancé juste avant',
+      { r, ordre });
+  } catch (e) {
+    verifier(false, 'une seule question, les fenêtres cachées', e.message);
+  }
+  try {
+    const { m, principaleF } = charger();
+    m.E.reponses.push(2);  // Cancel
+    const r = await auPlus(m.evaluer('fermerNuee(__valeur)', principaleF), 5000, 'the close');
+    verifier(r === false && !principaleF.cachee && m.E.quitte === 0 && envoyees === 1, 'Annuler : rien ne se ferme', { r, cachee: principaleF.cachee });
+    m.E.reponses.push(1);  // Close without saving
+    const fin = m.evaluer('fermerNuee(__valeur)', principaleF);
+    await attendre(() => envoyees === 2, 'the last versions');
+    finEnvoi();
+    verifier((await auPlus(fin, 5000, 'the close')) === true && m.E.dialogues.length === 2 && m.E.quitte === 1, 'redemandé ensuite : la question de nouveau, puis Nuée quitte',
+      m.E.dialogues);
+  } catch (e) {
+    verifier(false, 'Annuler, puis redemandé', e.message);
+  }
+  moteur.close();
+}
+
 async function principal() {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-principal-'));
   try {
@@ -349,6 +416,7 @@ async function principal() {
     await reglagesEcrits(dossier);
     await autreRJamaisPret(dossier);
     await derniereSeance(dossier);
+    await fermerUneFois(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {

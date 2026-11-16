@@ -557,15 +557,29 @@ function principale(f) {
 }
 
 // Closes Nuée, once unsaved projects are saved or left (accordFermeture); the recovery copies go
-// with it, unless R didn't answer (they then hold the latest state known, offered next time).
-async function fermerNuee(fenetre) {
-  const accord = await accordFermeture(fenetre);
-  if (!accord) return false;
-  await versionsAvantDeFermer();
-  quitter = true;
-  if (accord !== 'secours') fermerSecours();
-  app.quit();
-  return true;
+// with it, unless R didn't answer (they then hold the latest state known, offered next time). One
+// close at a time: asked again meanwhile (a second ×, File › Quit, ⌘Q, Update), it waits for the
+// first one's answer instead of asking again. Once the user agreed, the windows are hidden while the
+// projects' last versions go (fifteen seconds at most): nothing can be changed there meanwhile, then
+// lost. `apres`: what runs just before Nuée quits, if it does (the update's installer).
+let fermeture = null;
+const avantDeQuitter = [];
+function fermerNuee(fenetre, apres = null) {
+  if (apres) avantDeQuitter.push(apres);
+  if (!fermeture) {
+    fermeture = (async () => {
+      const accord = await accordFermeture(fenetre);
+      if (!accord) { avantDeQuitter.length = 0; return false; }
+      for (const f of BrowserWindow.getAllWindows()) if (!f.isDestroyed()) f.hide();
+      await versionsAvantDeFermer();
+      quitter = true;
+      if (accord !== 'secours') fermerSecours();
+      for (const f of avantDeQuitter.splice(0)) f();
+      app.quit();
+      return true;
+    })().finally(() => { fermeture = null; });
+  }
+  return fermeture;
 }
 
 // Before closing (or installing an update): projects with unsaved changes are saved, or left,
@@ -962,15 +976,8 @@ function ipc() {
     } catch (err) {
       return { erreur: err.code === 'empreinte' ? 'empreinte' : 'reseau', detail: err.message };
     }
-    const accord = await accordFermeture(fenetre);
-    if (!accord) return { erreur: 'annulee' };
-    await versionsAvantDeFermer();
-    quitter = true;
-    if (accord !== 'secours') fermerSecours();
-    arreterR();
-    installerPuisRelancer(fichier);
-    app.quit();
-    return null;
+    const ferme = await fermerNuee(fenetre, () => { arreterR(); installerPuisRelancer(fichier); });
+    return ferme ? null : { erreur: 'annulee' };
   };
   let miseAJour = null;
   recevoir('mettre-a-jour', (e) => miseAJour || (miseAJour = mettreAJour(e).finally(() => { miseAJour = null; })));
