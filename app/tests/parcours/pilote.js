@@ -116,6 +116,37 @@ const SUBSTITUTS = `(() => {
   return true;
 })()`;
 
+// With NUEE_HORS_ECRAN=1 (a run on a desktop someone is using): every window kept beyond the
+// screens' left edge, shown without taking the focus, out of the taskbar, never raised, and still
+// drawn (give the program --disable-features=CalculateNativeWinOcclusion too), so that
+// Page.captureScreenshot works and nothing shows on the screens. Installed with SUBSTITUTS, before
+// the window: main.js opens it once R is ready.
+const HORS_ECRAN = `(() => {
+  const { app, BrowserWindow, screen } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  const loin = () => Math.min(...screen.getAllDisplays().map((d) => d.bounds.x)) - 5000;
+  const cacher = (w) => {
+    if (w.__horsEcran) return;
+    w.__horsEcran = true;
+    try {
+      w.show = () => w.showInactive();
+      w.focus = () => {};
+      w.moveTop = () => {};
+      w.setSkipTaskbar(true);
+      w.setPosition(loin(), 0);
+      w.webContents.setBackgroundThrottling(false);
+      w.on('move', () => { if (w.getPosition()[0] > loin() + 100) w.setPosition(loin(), 0); });
+      w.on('maximize', () => { w.unmaximize(); w.setPosition(loin(), 0); });
+    } catch (e) {
+      // (a window that can't be kept off the screens is closed rather than shown)
+      console.error('[off screen] ' + e.message);
+      w.destroy();
+    }
+  };
+  for (const w of BrowserWindow.getAllWindows()) cacher(w);
+  app.on('browser-window-created', (_, w) => cacher(w));
+  return true;
+})()`;
+
 // What each page of the window gets before its own scripts: the requests to the engine counted
 // (those under way, those refused), and the security policy's violations.
 const ESPION = `(() => {
@@ -266,6 +297,11 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
   env.NUEE_SOURCE_MAJ = 'http://127.0.0.1:9/';
   const portPage = await portLibre();
   const portNode = await portLibre();
+  // (on someone's desktop, the engine's own port too: never the installed Nuée's usual one)
+  if (process.env.NUEE_HORS_ECRAN && !fs.existsSync(path.join(profil, 'reglages.json'))) {
+    fs.mkdirSync(profil, { recursive: true });
+    fs.writeFileSync(path.join(profil, 'reglages.json'), JSON.stringify({ port: await portLibre() }));
+  }
   const debut = Date.now();
   const proc = spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${portPage}`, `--inspect=${portNode}`, ...options],
     { env, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
@@ -302,6 +338,7 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
       return r.result.value;
     };
     await jusqua(() => evaluerPrincipal(SUBSTITUTS).catch(() => false), 30000, 'the main process’s modules');
+    if (process.env.NUEE_HORS_ECRAN) await evaluerPrincipal(HORS_ECRAN);
 
     // then the window (R starts first: up to two minutes)
     const cible = await jusqua(async () => ((await lister(portPage)) || []).find((c) => c.type === 'page' && /^http:\/\/127\.0\.0\.1:\d+\/(\?.*)?$/.test(c.url)),

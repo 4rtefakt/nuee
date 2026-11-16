@@ -1171,7 +1171,7 @@ function majArret() {
     return;
   }
   if (!b) {
-    b = el('div', { id: 'arret-calcul', 'aria-live': 'polite', hidden: true }, el('button', { onclick: arreterCalcul }, icone('circle-stop'), el('span', {})));
+    b = el('div', { id: 'arret-calcul', 'aria-live': 'polite', hidden: true }, el('button', { onclick: arreterCalcul }, icone('circle-stop'), el('span', { class: 'libelle' })));
     document.body.append(b);
   }
   const apparait = b.hidden;
@@ -1182,7 +1182,7 @@ function majArret() {
   const bouton = b.querySelector('button');
   bouton.disabled = !!etat.arretDemande;
   bouton.title = t(etat.arretLent ? 'arret_lent' : 'arreter_calcul_aide');
-  b.querySelector('span').textContent = t(etat.arretLent ? 'arret_lent' : etat.arretDemande ? 'arret_demande' : 'arreter_calcul');
+  b.querySelector('.libelle').textContent = t(etat.arretLent ? 'arret_lent' : etat.arretDemande ? 'arret_demande' : 'arreter_calcul');
   placerArret();
 }
 // (after the engine's state in the status bar, whose text changes: majEtat places it again; in a
