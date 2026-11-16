@@ -121,6 +121,11 @@ contextBridge.exposeInMainWorld('bureau', {
     },
     choisir: (chemin) => ipcRenderer.invoke('r-choisir', chemin || null),
     repli: () => ipcRenderer.invoke('r-repli'),
+    // a plugin's packages, into the R the engine runs on (interface/vues_greffons.js)
+    installerGreffon: (paquets, surTexte) => {
+      surInstallation = typeof surTexte === 'function' ? surTexte : null;
+      return ipcRenderer.invoke('r-installer-greffon', paquets).finally(() => { surInstallation = null; });
+    },
   },
   surReglages: (f) => ipcRenderer.on('ouvrir-reglages', () => f()),
   // R code approved by this user: the engine's fingerprints of it, kept by the app and told to the

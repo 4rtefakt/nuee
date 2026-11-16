@@ -87,7 +87,9 @@ async function principal() {
   // the session token, as main.js gives it to R and to its windows
   const jeton = require('crypto').randomBytes(32).toString('hex');
   const cookie = `nuee_${port}=${jeton}`;
-  const serveur = spawn(rscript, [path.join(depot, 'moteur', 'serveur.R'), String(port), interfaceDir], { windowsHide: true, env: { ...process.env, NUEE_JETON: jeton } });
+  // (the plugins installed in a folder of this run, as main.js gives the engine the user's: moteur/R/greffons.R)
+  const serveur = spawn(rscript, [path.join(depot, 'moteur', 'serveur.R'), String(port), interfaceDir],
+    { windowsHide: true, env: { ...process.env, NUEE_JETON: jeton, NUEE_GREFFONS: path.join(dossier, 'greffons'), NUEE_GREFFONS_ORGANISATION: '', NUEE_VERSION: '1.1.0' } });
   let sortie = '';
   await new Promise((resolve, reject) => {
     serveur.stdout.on('data', (d) => { sortie += d; if (sortie.includes('PRET')) resolve(); });
@@ -2112,6 +2114,32 @@ async function principal() {
       let refusHCA = '';
       try { await api('hca', { modele: tr.id }); } catch (err) { refusHCA = err.message; }
       verifier(/autre analyse/.test(refusHCA), `dendrogramme refusé : « ${refusHCA} »`);
+    });
+    await etape('greffons : l’exemple d’occupation lu, refusé avant d’être approuvé, installé, ajusté par son dialogue, ses textes, son export (moteur/R/greffons.R)', async () => {
+      const fichier = path.join(depot, 'docs', 'site', 'greffons', 'occupancy.nueeplugin');
+      const lu = await api('greffon_lire', { chemin: fichier });
+      verifier(lu.peut === true && lu.greffon.id === 'occupancy' && /^[0-9a-f]{64}$/.test(lu.greffon.empreinte) && [].concat(lu.greffon.fichiers).length === 2, `lu : ${lu.raison || ''}`);
+      let refus = '';
+      try { await api('greffon_installer', { chemin: fichier, empreinte: '0'.repeat(64) }); } catch (err) { refus = err.message; }
+      verifier(/changé/.test(refus), `une autre empreinte : « ${refus} »`);
+      await api('code_approuve', { empreintes: [lu.greffon.empreinte] });
+      await api('greffon_installer', { chemin: fichier, empreinte: lu.greffon.empreinte });
+      const e = await api('etat');
+      verifier([].concat(e.greffons.liste).some((g) => g.id === 'occupancy' && g.permis === true && g.etat === 'ok'), 'listé dans l’état des fenêtres');
+      const q = await api('ouvrir', { chemin: path.join(depot, 'docs', 'site', 'donnees', 'woodpecker_occupancy.csv') });
+      const uid = (n) => q.variables.find((v) => v.nom === n).uid;
+      const def = { projet: q.id, type: 'PLUGIN', nom: 'G1', options: { greffon: { id: 'occupancy' }, entrees: { detections: ['visit1', 'visit2', 'visit3', 'visit4'].map(uid), occupancy: [uid('forest')], detection: [] }, options: { maxit: 500 } } };
+      const m = await api('ajuster', def);
+      verifier(m.type === 'PLUGIN' && m.N === 80 && [].concat(m.coefficients.terme).join() === 'psi.(Intercept),psi.forest,p.(Intercept)' && m.greffon.version === '1.0.0'
+        && [].concat(m.vues_defaut).join() === 'code_coefficients,code_tableaux' && !m.reglages.options.greffon.fichiers, `le modèle : ${m.chiffres}`);
+      const p = await api('projet', { projet: q.id });
+      verifier(p.modeles.some((d) => d.type === 'PLUGIN' && d.code_r.approuve === true && d.greffon.id === 'occupancy'), 'le résumé du projet dit le greffon approuvé');
+      const mt = await api('methodes', { modele: m.id, langue: 'en' });
+      verifier(mt.paragraphes.some((x) => /plugin “Site occupancy \(single season\)” 1\.0\.0/.test(x)) && mt.references.some((x) => /^MacKenzie/.test(x)), 'texte des méthodes');
+      const s = await api('script_r', { modele: m.id, chemin: path.join(dossier, 'greffon.R') });
+      verifier(!s.ecart && /occupancy_fit <- function\(donnees, entrees, options\)/.test(fs.readFileSync(s.script, 'utf8')), `export vers R : ${s.ecart || ''}`);
+      const gp = await api('greffon_projet', { projet: q.id });
+      verifier([].concat(gp.greffons).length === 1 && gp.greffons[0].permis === true, 'les greffons du projet');
     });
     await etape('code R : le modèle de l’utilisateur refusé tant qu’il n’est pas approuvé, puis ajusté, ses résultats, ses textes, son export (moteur/R/code.R)', async () => {
       const lignes = ['nom\tsite\tx\ty'];

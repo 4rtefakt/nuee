@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing a plugin · Nuée</title>
+<meta name="description" content="The manifest, the function, what it receives and what it returns, testing it in Nuée, packaging it.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="writing-a-plugin.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/ecrire-un-greffon.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/ecrire-un-greffon.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="r-code.html">Your own model in R code</a></li>
+<li><a href="plugins.html">Plugins</a></li>
+<li><a href="writing-a-plugin.html" aria-current="page">Writing a plugin</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="versions.html">Versions and working together</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Writing a plugin</h1>
+<div class="texte-guide">
+<section id="writing-a-plugin">
+<p>A plugin is a folder holding its manifest, plugin.json, and its R files: occupancy/plugin.json and occupancy/occupancy.R for the first example (<a href="https://github.com/4rtefakt/nuee/tree/main/exemple/plugins/occupancy">https://github.com/4rtefakt/nuee/tree/main/exemple/plugins/occupancy</a>). Start from an example: copy its folder, then change its manifest and its code. The manifest, in UTF-8, is a JSON object of these fields:</p>
+<dl>
+<dt>id</dt><dd>the plugin’s name for Nuée and its folder’s: lowercase letters, digits, and “-”, “_” or “.” between them (occupancy, mann-kendall); the same for all its versions.</dd>
+<dt>version</dt><dd>X.Y.Z (1.0.0); each version you share gets a greater one.</dd>
+<dt>nuee</dt><dd>the oldest Nuée it works with (1.1.0).</dd>
+<dt>name</dt><dd>{"en": "…", "fr": "…"}: English required, French optional (the English shows in French without it); description likewise, a sentence or two.</dd>
+<dt>authors</dt><dd>[{"name": "…", "orcid": "0000-0002-1825-0097"}], one at least; the ORCID optional (checked: its last digit).</dd>
+<dt>license</dt><dd>its licence (GPL-3.0-or-later, MIT…).</dd>
+<dt>citation</dt><dd>what its users cite: {"text": "…", "bibtex": "@article{…}"}, or a list of them; optional.</dd>
+<dt>packages</dt><dd>the R packages it needs beyond R’s own (["unmarked"]); optional.</dd>
+<dt>files</dt><dd>its R files, read in this order (["occupancy.R"], or ["R/model.R", "R/methods.R"]).</dd>
+<dt>function</dt><dd>the name of its function (occupancy_fit), defined at the top level of one of them.</dd>
+<dt>inputs</dt><dd>the project’s variables its dialog asks for, a list of {"id": "detections", "type": "variables", "accepts": "quantitative", "min": 2, "max": 20, "label": {"en": "…", "fr": "…"}, "help": {…}}: type "variable" (one; "optional": true lets it be left empty) or "variables" (several: min, 1 by default, and max, none by default); accepts "quantitative", "qualitative" or "any".</dd>
+<dt>options</dt><dd>its settings, a list of {"id": "maxit", "type": "number", "default": 1000, "min": 10, "max": 100000, "integer": true, "label": {…}, "help": {…}}: type "number" (default required; min, max and integer optional), "choice" ("values": [{"value": "BFGS", "label": {…}}], default required, one of the values), "checkbox" (default false or true) or "text" (default "").</dd>
+</dl>
+<p>Nuée checks the manifest strictly as it reads it: a field it doesn’t know, a field of the wrong kind, a file that isn’t there, a function the files don’t define at their top level are refused, saying where and what (“inputs[2].accepts: "quantitative", "qualitative" or "any"”); a plugin with an error doesn’t install. It reads the code without running it.</p>
+<p><strong>The function:</strong> Nuée calls it f(donnees, entrees, options).</p>
+<ul>
+<li><strong>donnees:</strong> a data.frame of the model’s observations (those of the Observations tab), one column per variable of the project under its name (qualitative variables as factors, their categories in the project’s order), then the observations’ IDs, as text: what an R-code model’s code sees.</li>
+<li><strong>entrees:</strong> the names of the variables chosen, by input id: a text (NULL when an optional input is left empty) for a "variable" input, a vector of texts (character(0) when none) for a "variables" one; donnees[entrees$detections] are their columns.</li>
+<li><strong>options:</strong> the value of each option, by its id: a number (an integer when "integer" is true), a text for a choice or a text, TRUE or FALSE for a box.</li>
+<li>It returns what an R-code model’s code returns: the fitted model, or list(modele = fit, valeurs = c(psi = 0.54, p = 0.37), tableaux = list(sites = d)). Nuée takes from the model print(summary()), coef(summary()) (or coef() and vcov()), logLik(), nobs(), AIC(), fitted(), residuals() and predict() when they work. For a class of your own, define its methods in your files (summary.myclass, print.summary.myclass, vcov.myclass, logLik.myclass, nobs.myclass…): Nuée registers those of the generics it calls, so that it finds them; give the class a name your plugin owns (nuee_occupancy).</li>
+<li><strong>Write it for R alone:</strong> call another package as package::function (or library() inside the function) and list it in "packages"; don’t use Nuée’s own functions: Export to R runs your code outside Nuée. stop() with a sentence says what is wrong (Nuée shows it with the plugin’s file and line). getOption("nuee.langue") is "fr" or "en", the interface’s language, for messages in both languages; outside Nuée it is NULL.</li>
+</ul>
+<p><strong>Testing it in Nuée:</strong> File › Plugins…, Install from file…, then the plugin.json of your folder (no need to package it): Nuée checks it, shows it and installs it. After a change, install it again (each change makes another fingerprint, approved again), then fit again (Model › Edit model). An error gives the plugin’s file and line; Export to R gives a script that calls your function on the same data, to work on it in R or RStudio. The examples’ check, moteur/tests/verifier_greffons.R, tests their numbers against references worked out independently (the likelihood by enumerating the sites’ states, a closed form, cor.test, a hand calculation): a model for testing yours.</p>
+<p><strong>Packaging:</strong> put the folder in a zip archive (plugin.json at its root, or in its one folder: Windows’ Send to › Compressed (zipped) folder does it), then rename the .zip to .nueeplugin. Only plugin.json and the R files it lists go into an installation and into the projects that use it. Give each new version a greater "version": the projects made with an older one keep it, and say a newer one is installed.</p>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="plugins.html">← Plugins</a><a rel="next" href="results.html">Results, documents and R →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.1.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

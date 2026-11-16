@@ -1,0 +1,85 @@
+{
+  "id": "mann-kendall",
+  "version": "1.0.0",
+  "nuee": "1.1.0",
+  "name": {
+    "en": "Mann–Kendall trend test and Sen’s slope",
+    "fr": "Test de tendance de Mann–Kendall et pente de Sen"
+  },
+  "description": {
+    "en": "Whether a series rises or falls over time, without assuming a straight line or a distribution: the Mann–Kendall test (S, its variance corrected for tied values, z and p), Kendall’s tau, and Sen’s slope, the median of the slopes between every two times, with its interval.",
+    "fr": "Si une série monte ou baisse au fil du temps, sans supposer une droite ni une loi : le test de Mann–Kendall (S, sa variance corrigée pour les ex aequo, z et p), le tau de Kendall, et la pente de Sen, la médiane des pentes entre deux temps, avec son intervalle."
+  },
+  "authors": [
+    { "name": "Clément Boutin" }
+  ],
+  "license": "GPL-3.0-or-later",
+  "citation": [
+    {
+      "text": "Mann, H. B. (1945). Nonparametric tests against trend. Econometrica, 13(3), 245–259. https://doi.org/10.2307/1907187",
+      "bibtex": "@article{mann1945,\n  author = {Mann, Henry B.},\n  title = {Nonparametric tests against trend},\n  journal = {Econometrica},\n  year = {1945},\n  volume = {13},\n  number = {3},\n  pages = {245--259},\n  doi = {10.2307/1907187}\n}"
+    },
+    {
+      "text": "Kendall, M. G. (1975). Rank correlation methods (4th ed.). Charles Griffin.",
+      "bibtex": "@book{kendall1975,\n  author = {Kendall, Maurice G.},\n  title = {Rank correlation methods},\n  edition = {4},\n  publisher = {Charles Griffin},\n  address = {London},\n  year = {1975}\n}"
+    },
+    {
+      "text": "Sen, P. K. (1968). Estimates of the regression coefficient based on Kendall’s tau. Journal of the American Statistical Association, 63(324), 1379–1389. https://doi.org/10.1080/01621459.1968.10480934",
+      "bibtex": "@article{sen1968,\n  author = {Sen, Pranab Kumar},\n  title = {Estimates of the regression coefficient based on {Kendall's} tau},\n  journal = {Journal of the American Statistical Association},\n  year = {1968},\n  volume = {63},\n  number = {324},\n  pages = {1379--1389},\n  doi = {10.1080/01621459.1968.10480934}\n}"
+    }
+  ],
+  "packages": [],
+  "files": ["mann_kendall.R"],
+  "function": "mann_kendall_fit",
+  "inputs": [
+    {
+      "id": "series",
+      "type": "variable",
+      "accepts": "quantitative",
+      "label": { "en": "Series (the values)", "fr": "Série (les valeurs)" },
+      "help": { "en": "One value per time; a missing value leaves its time out.", "fr": "Une valeur par temps ; une valeur manquante laisse son temps de côté." }
+    },
+    {
+      "id": "time",
+      "type": "variable",
+      "accepts": "quantitative",
+      "optional": true,
+      "label": { "en": "Time (the year, a date as a number…)", "fr": "Temps (l’année, une date en nombre…)" },
+      "help": { "en": "Empty: the observations’ order, 1, 2, 3…", "fr": "Vide : l’ordre des observations, 1, 2, 3…" }
+    }
+  ],
+  "options": [
+    {
+      "id": "alternative",
+      "type": "choice",
+      "values": [
+        { "value": "two.sided", "label": { "en": "Two-sided: a trend either way", "fr": "Bilatéral : une tendance dans un sens ou l’autre" } },
+        { "value": "greater", "label": { "en": "One-sided: an increasing trend", "fr": "Unilatéral : une tendance à la hausse" } },
+        { "value": "less", "label": { "en": "One-sided: a decreasing trend", "fr": "Unilatéral : une tendance à la baisse" } }
+      ],
+      "default": "two.sided",
+      "label": { "en": "Test", "fr": "Test" }
+    },
+    {
+      "id": "continuity",
+      "type": "checkbox",
+      "default": true,
+      "label": { "en": "Continuity correction", "fr": "Correction de continuité" },
+      "help": { "en": "z = (S − sign(S)) / √Var(S), as most software does.", "fr": "z = (S − signe(S)) / √Var(S), comme la plupart des logiciels." }
+    },
+    {
+      "id": "level",
+      "type": "number",
+      "min": 0.5,
+      "max": 0.999,
+      "default": 0.95,
+      "label": { "en": "Confidence level of the slope’s interval", "fr": "Niveau de confiance de l’intervalle de la pente" }
+    },
+    {
+      "id": "unit",
+      "type": "text",
+      "default": "",
+      "label": { "en": "Unit of time (for the summary: year, day…)", "fr": "Unité de temps (pour le résumé : année, jour…)" }
+    }
+  ]
+}

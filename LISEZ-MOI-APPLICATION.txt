@@ -2108,6 +2108,148 @@ lui-même refuse un code que personne n'a approuvé, quel que soit le chemin (l'
 jour les données, une fusion, les versions). Une organisation peut retirer ce type de modèle (la
 politique DisableCustomCode).
 
+Greffons
+--------
+Un greffon ajoute à Nuée un type de modèle écrit en R par quelqu’un d’autre : une fonction R et
+son manifeste (plugin.json), qui deviennent une entrée de menu avec son dialogue, ses résultats,
+son texte des méthodes et sa citation, et son export vers R. Il se partage en un seul fichier, un
+.nueeplugin. Deux greffons d’exemple accompagnent la documentation de Nuée : « Occupation des
+sites (une saison) », le modèle d’occupation de MacKenzie et al. (2002) ajusté par maximum de
+vraisemblance, et « Test de tendance de Mann–Kendall et pente de Sen ». Téléchargez-les sur le
+site de la documentation, https://4rtefakt.github.io/nuee/greffons/occupancy.nueeplugin et
+https://4rtefakt.github.io/nuee/greffons/mann-kendall.nueeplugin, ou trouvez-les dans le dépôt :
+https://github.com/4rtefakt/nuee/tree/main/exemple/plugins (avec les données du premier,
+docs/site/donnees/woodpecker_occupancy.csv).
+  - En installer un : Fichier › Greffons…, Installer depuis un fichier…, puis le .nueeplugin.
+    Nuée le lit sans rien exécuter et montre sa carte (son nom, sa version, ses auteurs et leur
+    ORCID, sa licence, sa citation, les paquets R qu’il demande, la plus ancienne Nuée avec
+    laquelle il marche) et son code. Un greffon est du code R : il s’exécute avec vos droits,
+    comme du code tapé dans la console R, et peut lire ou changer vos fichiers ; n’installez que
+    les greffons auxquels vous faites confiance. En installer un l’approuve sur cet ordinateur
+    (son empreinte, le SHA-256 de ses fichiers, rejoint le code que vous avez approuvé) : les
+    modèles faits avec lui s’ajustent ensuite sans rien demander. Une autre version du même
+    greffon le remplace.
+  - Fichier › Greffons… liste les greffons installés, les vôtres et ceux que votre organisation
+    donne à tous, chacun avec sa carte : Copier le BibTeX de sa citation ; ses paquets, présents
+    ou absents (Installer les paquets manquants les installe depuis le CRAN dans la bibliothèque
+    de l’utilisateur du R qu’utilise Nuée, comme Fichier › Réglages… pour ceux du moteur) ;
+    Montrer (son code) ; Nouveau modèle… ; Retirer (les vôtres seulement). Un greffon dont les
+    fichiers ont changé depuis son installation ne s’exécute pas tant qu’il n’est pas installé de
+    nouveau.
+  - En utiliser un : Modèle › Greffons › son nom… (il est aussi dans la liste des types de
+    Nouveau modèle). Son dialogue est fait d’après son manifeste : dans l’onglet Général, ses
+    entrées, les variables du projet qu’il prend (une, dans une liste, ou plusieurs, à cocher,
+    avec une recherche quand le projet en a beaucoup ; seules les quantitatives, qualitatives ou
+    les deux qu’il accepte sont proposées) et ses options (des nombres, des choix, des cases à
+    cocher, des textes), chacune avec son aide ; dans l’onglet Observations, les observations du
+    modèle, comme pour les autres modèles (cochées, une condition). Ajuster : la fonction du
+    greffon reçoit les données du modèle et ce qui a été choisi.
+  - Ses résultats sont ceux d’un modèle de code R (voir « Votre propre modèle en code R ») :
+    Résumé (ce que le greffon affiche, et sa carte : le greffon, sa version, ses auteurs, les
+    variables et les options choisies ; Modifier le modèle), Coefficients, Résidus, Graphiques du
+    code, Valeurs et tableaux, tels que le greffon les donne, et Le greffon (sa carte, son
+    empreinte, son code). Modèle › Modifier le modèle rouvre son dialogue. Ce qui a changé, les
+    documents ({{M1.valeurs.psi}}, {{M1.coef.psi.forest}}), Exporter, le rapport et Mettre à jour
+    les données comme pour les autres modèles. Le texte des méthodes nomme le greffon, sa version
+    et ses auteurs, cite ce que le greffon demande de citer (MacKenzie et al., 2002) et les
+    paquets qu’il utilise, avec leur version ; Exporter vers R écrit le code du greffon et
+    l’appel de sa fonction, un script qui s’exécute dans R seul.
+  - Partager : un projet qui utilise un greffon le garde en entier (son manifeste et son code)
+    dans son fichier. Ouvert sur un autre ordinateur, ses modèles attendent, non ajustés, sous
+    une barre qui nomme le greffon, sa version et ses auteurs : Montrer (sa carte et son code),
+    puis Installer et exécuter (installé depuis le projet, approuvé, ses modèles ajustés). Quand
+    une autre version du greffon y est installée, la barre le dit, et c’est la version du projet
+    qui refait ses modèles (Exécuter la version 1.0.0), à moins que vous ne choisissiez
+    l’installée (Utiliser la version 1.1.0 : ses modèles sont refaits avec elle, leurs entrées et
+    leurs options gardées, puis ajustés ; Ctrl+Z le défait). Retirer un greffon ne casse pas vos
+    projets : ils gardent leur copie, toujours approuvée sur cet ordinateur.
+  - Les organisations : le service informatique peut donner des greffons à tous (un dossier
+    choisi par la politique PluginsFolder : ils sont proposés et s’exécutent sans rien demander)
+    et, avec la politique DisableCustomCode, ne permettre qu’eux : les modèles de code R et les
+    greffons que les utilisateurs installeraient sont alors désactivés. docs/deploiement.md, dans
+    le dépôt de Nuée, dit comment.
+
+Écrire un greffon
+-----------------
+Un greffon est un dossier qui contient son manifeste, plugin.json, et ses fichiers R :
+occupancy/plugin.json et occupancy/occupancy.R pour le premier exemple
+(https://github.com/4rtefakt/nuee/tree/main/exemple/plugins/occupancy). Partez d’un exemple :
+copiez son dossier, puis changez son manifeste et son code. Le manifeste, en UTF-8, est un objet
+JSON de ces champs (leurs noms sont en anglais) :
+  id         le nom du greffon pour Nuée et celui de son dossier : des minuscules, des chiffres,
+             et « - », « _ » ou « . » entre eux (occupancy, mann-kendall) ; le même pour toutes
+             ses versions.
+  version    X.Y.Z (1.0.0) ; chaque version que vous partagez en a une plus grande.
+  nuee       la plus ancienne Nuée avec laquelle il marche (1.1.0).
+  name       {"en": "…", "fr": "…"} : l’anglais requis, le français facultatif (l’anglais
+             s’affiche en français sans lui) ; description de même, une phrase ou deux.
+  authors    [{"name": "…", "orcid": "0000-0002-1825-0097"}], au moins un ; l’ORCID facultatif
+             (vérifié : son dernier chiffre).
+  license    sa licence (GPL-3.0-or-later, MIT…).
+  citation   ce que ses utilisateurs citent : {"text": "…", "bibtex": "@article{…}"}, ou une
+             liste de ceux-ci ; facultatif.
+  packages   les paquets R qu’il demande au-delà de ceux de R (["unmarked"]) ; facultatif.
+  files      ses fichiers R, lus dans cet ordre (["occupancy.R"], ou ["R/modele.R",
+             "R/methodes.R"]).
+  function   le nom de sa fonction (occupancy_fit), définie au premier niveau de l’un d’eux.
+  inputs     les variables du projet que son dialogue demande, une liste de {"id": "detections",
+             "type": "variables", "accepts": "quantitative", "min": 2, "max": 20, "label": {"en":
+             "…", "fr": "…"}, "help": {…}} : type "variable" (une ; "optional": true permet de la
+             laisser vide) ou "variables" (plusieurs : min, 1 par défaut, et max, aucun par
+             défaut) ; accepts "quantitative", "qualitative" ou "any".
+  options    ses réglages, une liste de {"id": "maxit", "type": "number", "default": 1000, "min":
+             10, "max": 100000, "integer": true, "label": {…}, "help": {…}} : type "number"
+             (default requis ; min, max et integer facultatifs), "choice" ("values": [{"value":
+             "BFGS", "label": {…}}], default requis, l’une des valeurs), "checkbox" (default
+             false ou true) ou "text" (default "").
+
+Nuée vérifie strictement le manifeste en le lisant : un champ qu’elle ne connaît pas, un champ de
+la mauvaise sorte, un fichier qui n’est pas là, une fonction que les fichiers ne définissent pas
+au premier niveau sont refusés, en disant où et quoi (« inputs[2].accepts : « quantitative », «
+qualitative » ou « any » ») ; un greffon qui a une erreur ne s’installe pas. Elle lit le code
+sans l’exécuter.
+
+La fonction : Nuée l’appelle f(donnees, entrees, options).
+  - donnees : un data.frame des observations du modèle (celles de l’onglet Observations), une
+    colonne par variable du projet sous son nom (les variables qualitatives en facteurs, leurs
+    catégories dans l’ordre du projet), puis les identifiants des observations, en texte : ce que
+    voit le code d’un modèle de code R.
+  - entrees : le nom des variables choisies, par id d’entrée : un texte (NULL quand une entrée
+    facultative est laissée vide) pour une entrée "variable", un vecteur de textes (character(0)
+    quand il n’y en a aucune) pour une entrée "variables" ; donnees[entrees$detections] sont
+    leurs colonnes.
+  - options : la valeur de chaque option, par son id : un nombre (un entier quand "integer" est
+    vrai), un texte pour un choix ou un texte, TRUE ou FALSE pour une case.
+  - Elle rend ce que rend le code d’un modèle de code R : le modèle ajusté, ou list(modele = fit,
+    valeurs = c(psi = 0.54, p = 0.37), tableaux = list(sites = d)). Nuée tire du modèle
+    print(summary()), coef(summary()) (ou coef() et vcov()), logLik(), nobs(), AIC(), fitted(),
+    residuals() et predict() quand ils marchent. Pour une classe à vous, définissez ses méthodes
+    dans vos fichiers (summary.maclasse, print.summary.maclasse, vcov.maclasse, logLik.maclasse,
+    nobs.maclasse…) : Nuée enregistre celles des génériques qu’elle appelle, pour les trouver ;
+    donnez à la classe un nom qui appartient à votre greffon (nuee_occupancy).
+  - Écrivez-la pour R seul : appelez un autre paquet par paquet::fonction (ou library() dans la
+    fonction) et nommez-le dans "packages" ; n’utilisez pas les fonctions de Nuée elle-même :
+    Exporter vers R exécute votre code hors de Nuée. stop() avec une phrase dit ce qui ne va pas
+    (Nuée le montre avec le fichier et la ligne du greffon). getOption("nuee.langue") vaut "fr"
+    ou "en", la langue de l’interface, pour des messages dans les deux langues ; hors de Nuée,
+    NULL.
+
+L’essayer dans Nuée : Fichier › Greffons…, Installer depuis un fichier…, puis le plugin.json de
+votre dossier (inutile de l’empaqueter) : Nuée le vérifie, le montre et l’installe. Après un
+changement, installez-le de nouveau (chaque changement fait une autre empreinte, approuvée de
+nouveau), puis ajustez de nouveau (Modèle › Modifier le modèle). Une erreur donne le fichier et
+la ligne du greffon ; Exporter vers R donne un script qui appelle votre fonction sur les mêmes
+données, pour y travailler dans R ou RStudio. La vérification des exemples,
+moteur/tests/verifier_greffons.R, compare leurs nombres à des références obtenues autrement (la
+vraisemblance en énumérant les états des sites, une solution exacte, cor.test, un calcul à la
+main) : un modèle pour vérifier les vôtres.
+
+L’empaqueter : mettez le dossier dans une archive zip (plugin.json à sa racine, ou dans son seul
+dossier : Envoyer vers › Dossier compressé de Windows le fait), puis renommez le .zip en
+.nueeplugin. Seuls plugin.json et les fichiers R qu’il nomme entrent dans une installation et
+dans les projets qui l’utilisent. Donnez à chaque nouvelle version un "version" plus grand : les
+projets faits avec une ancienne la gardent, et disent qu’une plus récente est installée.
+
 Nettoyer les données : chercher et remplacer, catégories, unités
 --------------------------------------------------------------
 Ce qu'on faisait dans Excel avant d'ouvrir le tableau, dans Nuée, chaque changement annulé par

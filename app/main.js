@@ -52,6 +52,21 @@ const cookieR = () => `nuee_${port}`;
 // other code, whatever a window asks: opening a file never runs code from it (docs/deploiement.md).
 const secretCode = crypto.randomBytes(32).toString('hex');
 const APPROUVES_MAX = 10000;  // (the latest approvals: an older code is asked about again)
+// Plugins (moteur/R/greffons.R): R code with a manifest, which becomes a model type. This user's are
+// installed in the settings' folder (greffons), where the engine writes them (installing one approves
+// it, as for R code: approuver-code); an organisation's, offered to everyone without asking, are in a
+// folder set by a policy (REG_SZ PluginsFolder under HKLM or HKCU\SOFTWARE\Policies\Nuee, read as RHome
+// is: r-installes.js) or, on any system, by the variable NUEE_GREFFONS_ORGANISATION; with
+// DisableCustomCode = 1 only those run. The engine is given both folders and Nuée's version (a plugin
+// says the oldest Nuée it works with). docs/deploiement.md
+const dossierGreffons = () => path.join(app.getPath('userData'), 'greffons');
+let greffonsOrganisation;
+const dossierGreffonsOrganisation = () => {
+  if (greffonsOrganisation === undefined) {
+    greffonsOrganisation = (process.platform === 'win32' ? rInstalles.politiqueTexte('PluginsFolder') : null) || process.env.NUEE_GREFFONS_ORGANISATION || null;
+  }
+  return greffonsOrganisation;
+};
 let langue = 'en';  // the interface's (English until it says), for the dialogs shown from here
 // Recovery copies of the projects not saved yet, written regularly by the interface; they
 // are deleted when the application closes normally.
@@ -206,9 +221,11 @@ function dossierTemporaireR() {
 function demarrerR(port, r, repli = false) {
   return new Promise((resolve, reject) => {
     dossierTemporaireR();
-    const env = { ...process.env, NUEE_JETON: jeton, NUEE_CODE_SECRET: secretCode, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR };
+    const env = { ...process.env, NUEE_JETON: jeton, NUEE_CODE_SECRET: secretCode, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR,
+      NUEE_GREFFONS: dossierGreffons(), NUEE_VERSION: app.getVersion() };
     // (R-code models turned off for everyone by the organisation: the engine refuses them too)
     if (codeInterdit()) env.NUEE_SANS_CODE = '1'; else delete env.NUEE_SANS_CODE;
+    if (dossierGreffonsOrganisation()) env.NUEE_GREFFONS_ORGANISATION = dossierGreffonsOrganisation(); else delete env.NUEE_GREFFONS_ORGANISATION;
     const conv = path.join(racine, 'outils', process.platform === 'win32' ? 'export_project.exe' : 'export_project');
     if (fs.existsSync(conv)) env.CONVERTISSEUR_USP = conv;
     // An installed copy runs the same engine whoever uses it: the researcher's own R setup stays
@@ -799,6 +816,19 @@ function ipc() {
     if (!installation) {
       const fenetre = e.sender;
       installation = rInstalles.installer(chemin, paquets, { surTexte: (s) => { if (!fenetre.isDestroyed()) fenetre.send('r-installation', s); } })
+        .finally(() => { installation = null; });
+    }
+    return installation;
+  });
+  // the packages a plugin needs (File › Plugins…, interface/vues_greffons.js), installed into the user
+  // library of the R the engine runs on, as Settings installs the engine's own (one installation at a
+  // time); names that aren't an R package's are left out
+  recevoir('r-installer-greffon', (e, paquets) => {
+    if (!installation) {
+      const fenetre = e.sender;
+      const noms = [...new Set([].concat(paquets || []).filter((x) => typeof x === 'string' && /^[A-Za-z][A-Za-z0-9.]*[A-Za-z0-9]$/.test(x)))];
+      installation = rInstalles.installer((rUtilise && rUtilise.rscript) || trouverRscript(), noms,
+        { autres: noms, surTexte: (s) => { if (!fenetre.isDestroyed()) fenetre.send('r-installation', s); } })
         .finally(() => { installation = null; });
     }
     return installation;

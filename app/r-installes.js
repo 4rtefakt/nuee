@@ -266,11 +266,13 @@ async function verifier(chemin, { plateforme = process.platform, env = process.e
 }
 
 // The packages installed into that R's user library (made if needed), from CRAN; surTexte: what R
-// says meanwhile. { ok, manquants (those that still don't load), bibliotheque, ligne (to run in that
+// says meanwhile; autres: names allowed besides the engine's (a plugin's packages, main.js), each an R
+// package's name. { ok, manquants (those that still don't load), bibliotheque, ligne (to run in that
 // R by hand), fin (the end of what R said) }
-async function installer(chemin, paquets, { plateforme = process.platform, env = process.env, surTexte = null } = {}) {
+async function installer(chemin, paquets, { plateforme = process.platform, env = process.env, surTexte = null, autres = [] } = {}) {
   const rscript = rscriptDe(chemin, { plateforme });
-  const liste = [...new Set([].concat(paquets || []).filter((x) => PAQUETS.includes(x)))];
+  const permis = [].concat(autres || []).filter((x) => typeof x === 'string' && /^[A-Za-z][A-Za-z0-9.]*[A-Za-z0-9]$/.test(x));
+  const liste = [...new Set([].concat(paquets || []).filter((x) => PAQUETS.includes(x) || permis.includes(x)))];
   if (!rscript || !liste.length) return { ok: false, manquants: liste, ligne: liste.length ? ligneInstallation(liste) : null, fin: '' };
   const code = [CODE_BIBLIOTHEQUE, 'if (is.na(lib) || !nzchar(lib)) stop("R_LIBS_USER is empty")', 'dir.create(lib, recursive = TRUE, showWarnings = FALSE)',
     '.libPaths(c(lib, .libPaths()))', 'cat("NUEE_BIBLIOTHEQUE=", lib, "\\n", sep = "")', `install.packages(${listeR(liste)}, lib = lib, repos = "${CRAN}")`,

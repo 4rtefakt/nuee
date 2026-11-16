@@ -937,11 +937,11 @@ sous_condition <- function(d, p, obs) {
 # autres de côté (une régression, la plupart des autres analyses) ; toutes pour une ACP, une PLS ou une
 # OPLS (NIPALS fait avec les valeurs manquantes), un arbre (ses variables de substitution), TRIM (il
 # impute les comptages manquants), l'échantillonnage par distances (un transect sans détection garde
-# sa ligne) et un modèle de code R (code.R : le code reçoit toutes ses lignes, et en fait ce qu'il
-# veut). Une transformation qui rend une valeur manquante (le log de 0) n'est pas vue.
+# sa ligne), un modèle de code R et un greffon (code.R, greffons.R : le code reçoit toutes ses lignes,
+# et en fait ce qu'il veut). Une transformation qui rend une valeur manquante (le log de 0) n'est pas vue.
 lignes_utiles <- function(d, p, obs) {
   obs <- numeros_entiers(obs)
-  if (!length(obs) || !sans_composantes(d) || premier_texte(d$type) %in% c("TREE", "TRIM", "DISTANCE", "CODE")) return(obs)
+  if (!length(obs) || !sans_composantes(d) || premier_texte(d$type) %in% c("TREE", "TRIM", "DISTANCE", "CODE", "PLUGIN")) return(obs)
   vars <- Filter(function(u) as.character(u) %in% colnames(p$donnees), variables_definition(d))
   valeurs <- do.call(cbind, lapply(vars, function(u) colonne(p, u, obs)))
   if (is.null(valeurs)) obs else obs[stats::complete.cases(valeurs)]

@@ -47,6 +47,8 @@ export function creerCommandes(app) {
     fermer_projet: { actif: () => !!app.projetActif(), action: () => app.fermerProjet(app.projetActif()) },
     // (reglages.js: the R the engine runs on)
     reglages: { actif: () => !!app.bureau, action: () => app.reglages() },
+    // (vues_greffons.js: the plugins installed, Install from file…)
+    greffons: { icone: 'puzzle', action: () => app.gererGreffons() },
     quitter: { raccourci: 'Ctrl+Q', actif: () => !!app.bureau, action: () => app.quitter() },
 
     copier_image: { icone: 'copy', raccourci: 'Ctrl+Shift+C', actif: () => !!app.grapheActif(), action: () => app.copierImage() },
@@ -184,11 +186,13 @@ export function menus(app, C) {
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
       '-', it('enregistrer'), it('enregistrer_sous'), '-', it('versions'), it('versions_partager'), it('versions_ouvrir_distant'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
-      .concat(app.bureau ? ['-', it('reglages'), '-', it('quitter')] : []) },
+      .concat(app.bureau ? ['-', it('reglages'), it('greffons'), '-', it('quitter')] : ['-', it('greffons')]) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
       it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes'), '-', it('etapes_donnees'), it('etapes_mettre_a_jour')] },
-    { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
+    // (Model › Plugins: a New model of each plugin installed, then File › Plugins…: vues_greffons.js)
+    { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), { libelle: t('greffons_menu'), icone: 'puzzle', sous: app.menuGreffons ? app.menuGreffons() : [] },
+      it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => itemsGraphiques(app, C, it) },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },

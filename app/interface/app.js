@@ -29,6 +29,7 @@ import './vues_trim.js';
 import './vues_forets.js';
 import './vues_distance.js';
 import { installerCode } from './vues_code.js';
+import { installerGreffons } from './vues_greffons.js';
 import { installerDocuments } from './documents.js';
 import { installerFigures } from './figures.js';
 import { installerVersions } from './versions.js';
@@ -488,7 +489,11 @@ const app = {
   // compared with the project now, opened in the engine only: changements.js) keeps it there only.
   async calculerDiscret(pid, numero, A) {
     // (an R-code model whose code isn't approved here: it waits for Run it, in the bar over its project)
-    if (codeEnAttente(pid, numero)) throw new Error(t('code_attente', { nom: ([].concat(etat.projets[pid].modeles).find((x) => x.numero === numero) || {}).nom }));
+    // (a plugin's model likewise: its plugin isn't approved here, vues_greffons.js)
+    if (codeEnAttente(pid, numero)) {
+      const d = [].concat(etat.projets[pid].modeles).find((x) => x.numero === numero) || {};
+      throw new Error(t(d.type === 'PLUGIN' ? 'greffon_attente' : 'code_attente', { nom: d.nom }));
+    }
     const res = await demander('ajuster', { projet: pid, numero, A });
     if (!etat.projets[pid]) return res.id;
     etat.modeles[res.id] = res;
@@ -557,6 +562,8 @@ const app = {
     if (!m) return;
     // (an R-code model: its code edited, then fitted in its place under its name: vues_code.js)
     if (m.analyse && m.type === 'CODE') dialogueModele(app, etat.projets[m.projet], { ...m.reglages, remplace: m.id }, `${t('code_modifier')} — ${m.nom}`);
+    // (a plugin's model: the dialog its plugin's manifest describes, that of the model's own version: vues_greffons.js)
+    else if (m.analyse && m.type === 'PLUGIN' && app.modifierGreffon) app.modifierGreffon(m);
     else dialogueModele(app, etat.projets[m.projet], m.reglages, t('modifier_modele'));
   },
   // a new model from a model's settings, changed (the Profiles view's wavelength ranges)
@@ -1155,6 +1162,7 @@ installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Upd
 installerReglages(app);  // (File › Settings…: the R the engine runs on; the message when Nuée's own took over)
 installerCode(app);  // (R-code models: the bar over a project whose code was written elsewhere, app.barresCode)
 installerAide(app);  // (Help: the tutorials and the guide online, About)
+installerGreffons(app);  // (plugins: File › Plugins…, Model › Plugins, the bar over a project whose plugin isn't approved here)
 
 // ------------------------------------------------------------ state helpers
 
@@ -1660,6 +1668,8 @@ function oublierProjet(pid) {
 async function synchroniser() {
   const e = await demander('etat');
   app.codeInterdit = !!e.code_interdit;  // (R-code models turned off by a policy: vues_code.js doesn't offer them)
+  app.greffonsEtat = e.greffons || null;  // (the plugins installed, for the menus and New model: vues_greffons.js)
+  if (app.majGreffons) app.majGreffons();
   const avant = etat.projets;
   etat.projets = Object.fromEntries(e.projets.map((p) => [p.id, p]));
   // (data changed in another window: R counts each change as a revision of the project)
@@ -2254,6 +2264,7 @@ function majEtat() {
   if (!VUE_SEULE) majTitre();
   if (!VUE_SEULE) noterSeance();
   if (!VUE_SEULE && app.barresCode) app.barresCode();  // (a project's R code written elsewhere: vues_code.js)
+  if (!VUE_SEULE && app.barresGreffons) app.barresGreffons();  // (a project's plugin not approved here: vues_greffons.js)
   const c = etat.panneaux.get('console:');
   if (c && c.element._console) c.element._console.entete();  // m and p follow the model shown
   const s = document.getElementById('statut');

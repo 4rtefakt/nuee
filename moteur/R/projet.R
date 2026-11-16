@@ -18,10 +18,13 @@
 # l'import a décidé de ses colonnes, sa taille, sa date et son empreinte), chaque changement fait
 # à elles, en étapes qui se rejouent (p$etapes, leurs paramètres en texte JSON), et l'empreinte
 # des données après la dernière (p$empreinte_donnees) ; et le modèle écrit en code R (type CODE,
-# code.R : son code dans d$options$code, les colonnes qu'il nomme dans d$options$colonnes). La 1.0 lit
-# les données et les modèles d'un projet de la 1.1, et garde ces champs sans s'en servir ; ce qu'elle
-# change aux données n'est pas une étape, et l'empreinte le montre ; un modèle de code R, elle ne sait
-# pas l'ajuster (elle en dit l'erreur). Toute version 1.x ouvre les projets de la 1.0.
+# code.R : son code dans d$options$code, les colonnes qu'il nomme dans d$options$colonnes), et celui
+# d'un greffon (type PLUGIN, greffons.R : le greffon gardé en entier dans d$options$greffon, son
+# manifeste et ses fichiers R, ses entrées et ses options dans d$options$entrees et d$options$options).
+# La 1.0 lit les données et les modèles d'un projet de la 1.1, et garde ces champs sans s'en servir ;
+# ce qu'elle change aux données n'est pas une étape, et l'empreinte le montre ; un modèle de code R ou
+# de greffon, elle ne sait pas l'ajuster (elle en dit l'erreur). Toute version 1.x ouvre les projets
+# de la 1.0.
 FORMAT_PROJET <- 3L
 
 lire_projet <- function(chemin) {

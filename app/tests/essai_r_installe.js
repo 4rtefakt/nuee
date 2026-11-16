@@ -263,6 +263,10 @@ async function avecFauxR(racine) {
   const i2 = await R.installer(r44, ['RSQLite', 'pas-un-paquet-du-moteur']);
   const v4 = await R.verifier(r44);
   verifier(i2.ok && !i2.ligne && v4.ok, 'installé ensuite : ce R est utilisable (un paquet que le moteur ne demande pas n’est pas installé)', [i2, v4]);
+  // a plugin's packages (main.js: r-installer-greffon): installed when allowed (autres), a name that isn't an R package's left out
+  fs.writeFileSync(path.join(r44, 'faux.json'), JSON.stringify({ manquants: ['unmarked'], installables: ['unmarked'] }));
+  const i3 = await R.installer(r44, ['unmarked', 'pas un paquet'], { autres: ['unmarked', 'pas un paquet'] });
+  verifier(i3.ok && !i3.ligne && egal(i3.manquants, []), 'le paquet d’un greffon (autres) : installé ; un nom qui n’est pas celui d’un paquet R, laissé de côté', i3);
   const muet = await R.verifier(faux('4.5.0', { muet: true }));
   verifier(!muet.ok && /unable to open the base package/.test(muet.erreur), 'un R qui ne répond pas comme R : ce qu’il a dit', muet);
   const debut = Date.now();
