@@ -1339,6 +1339,8 @@ async function dialogueQuarto(app, s, quarto) {
 const CODE_QUARTO = /^[ \t]*(\x60{3,}|~{3,})[ \t]*\{\s*(r|python|julia|bash|sh|ojs)\b|\x60r /mi;
 const FILTRES = { docx: { name: 'Word', extensions: ['docx'] }, pdf: { name: 'PDF', extensions: ['pdf'] }, html: { name: 'HTML', extensions: ['html'] }, qmd: { name: 'Quarto', extensions: ['qmd'] } };
 const octets = (texte) => new TextEncoder().encode(texte);
+// a figure's PNG, from its data: address
+const png = (x) => { const b = atob(String(x.image).split(',')[1]); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
 
 // The document written in `format` (docx, pdf, html, or qmd with its figures beside it), its
 // references resolved now; then compiled by Quarto when `quarto` names its output. `reproductible`
@@ -1377,20 +1379,6 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
       // the .qmd, its figures in a folder beside it (<name>_figures), then Quarto if asked
       const fichier = chemin ? chemin.split(/[\\/]/).pop() : `${base}.qmd`;
       const nom = fichier.replace(/\.qmd$/i, '');
-      // (its figures' folder without # nor % in its name: their address is a URL, nomFichierQuarto)
-      const dossier = `${nomFichierQuarto(nom)}_figures`;
-      // the references cited, in <name>.bib beside it; the header's CSL style copied there too
-      const cites = r.citations ? r.citations.liste.map((x) => r.citations.entrees.get(x.cle)).filter(Boolean) : [];
-      const bib = cites.length ? `${nom}.bib` : null;
-      const cslEntete = String(lireEntete(r.texte).entete.csl || '');
-      let csl = null;
-      let texteCsl = null;
-      if (cslEntete && !/^https?:/i.test(cslEntete)) {
-        try {
-          texteCsl = (await demander('bibliographie_fichier', { projet: s.pid, chemin: cslEntete })).texte;
-          csl = cslEntete.split(/[\\/]/).pop();
-        } catch (e) { app.statut(`${t('document_csl_absent')} ${e.message}`, true); }
-      }
       const racine = chemin ? chemin.slice(0, chemin.length - fichier.length) : '';
       // reproducible: the engine writes each cited model's Export to R script and its data beside
       // the .qmd (in the browser, in a folder of its session), and says what the .qmd writes instead
@@ -1400,11 +1388,8 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
         rep = await demander('document_reproductible', { projet: s.pid, langue: s.langue, version: VERSION, nom, dossier: bureau ? racine : null,
           ...referencesReproductibles(r.resolus) });
       }
-      const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre: s.titre || base,
-        bibliographie: bib, csl, libelles: lib, reproductible: rep, nonCitees: r.citations ? r.citations.nonCitees : [] });
-      const texteBib = bib ? `${cites.map((e) => versBibtex(e, SANS_ZOTERO)).join('\n\n')}\n` : null;
-      const png = (x) => { const b = atob(x.image.split(',')[1]); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
-      const figures = q.images.filter((x) => x.numero);
+      const q = await preparerQmd(app, s, r, nom, rep, s.titre || base);
+      const { dossier, figures, bib, texteBib, csl, texteCsl } = q;
       if (!bureau) {
         if (!rep) { telecharger(octets(q.texte), fichier); return; }
         // (one .zip: the .qmd, its references, the figures R doesn't draw, the scripts and their data)
@@ -1445,6 +1430,55 @@ function noteReproductible(rep) {
   const sans = [].concat(rep.modeles || []).filter((x) => x.erreur).map((x) => x.nom);
   if (!enDur && !sans.length) return '';
   return t('reproductible_en_dur', { n: enDur, total: refs.length }) + (sans.length ? ` ${t('reproductible_modeles_en_dur', { modeles: sans.join(', ') })}` : '');
+}
+
+// The .qmd of a document whose references are resolved (`r`, as compiler() has them), named `nom`:
+// its text, its figures (in <nom>_figures), the references it cites (<nom>.bib) and the CSL style its
+// header names, copied beside it. `rep`: what the engine wrote for a reproducible one
+// (document_reproductible), or null; `titre`: its title when it has none.
+async function preparerQmd(app, s, r, nom, rep, titre) {
+  // (its figures' folder without # nor % in its name: their address is a URL, nomFichierQuarto)
+  const dossier = `${nomFichierQuarto(nom)}_figures`;
+  const cites = r.citations ? r.citations.liste.map((x) => r.citations.entrees.get(x.cle)).filter(Boolean) : [];
+  const bib = cites.length ? `${nom}.bib` : null;
+  const cslEntete = String(lireEntete(r.texte).entete.csl || '');
+  let csl = null;
+  let texteCsl = null;
+  if (cslEntete && !/^https?:/i.test(cslEntete)) {
+    try {
+      texteCsl = (await demander('bibliographie_fichier', { projet: s.pid, chemin: cslEntete })).texte;
+      csl = cslEntete.split(/[\\/]/).pop();
+    } catch (e) { app.statut(`${t('document_csl_absent')} ${e.message}`, true); }
+  }
+  const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre,
+    bibliographie: bib, csl, libelles: libelles(s.langue), reproductible: rep, nonCitees: r.citations ? r.citations.nonCitees : [] });
+  return { texte: q.texte, dossier, figures: q.images.filter((x) => x.numero), bib,
+    texteBib: bib ? `${cites.map((e) => versBibtex(e, SANS_ZOTERO)).join('\n\n')}\n` : null, csl, texteCsl };
+}
+
+// A document of the project as a reproducible Quarto file, for the project's reproducibility
+// package (paquet.js), read from the project: it needn't be open. What Compile › Quarto ›
+// Reproducible writes, with `nom` as the .qmd's name: its text; the references it cites and its
+// CSL style; the figures R doesn't redraw (base64 PNG, at their path beside it); and the cited
+// models' Export to R scripts with their data, which the engine writes in a folder of its session
+// (`fichiers`, each to go at its path in `relatifs`). `erreurs`: its references not resolved.
+export async function documentPourPaquet(app, pid, id, nom) {
+  await chargerEditeur();
+  const d = await demander('document', { projet: pid, id });
+  const texte = d.texte || '';
+  // (what resoudre() and citer() read of an open document, without its editor)
+  const s = { pid, id: d.id, titre: d.titre || '', langue: d.langue || langueActuelle(), vue: { state: { doc: { toString: () => texte } } },
+    images: new Map(), tableaux: new Map(), methodes: new Map(), calculs: new Map(), urls: new Map(),
+    bib: d.bib || '', style: STYLES.includes(d.style) ? d.style : STYLES[0], garder: () => {},
+    biblio: { signature: null, fichiers: [], version: 0, lecture: null, cache: null, date: 0, conflits: new Set(), dernierConflit: '' }, citesInconnues: new Set() };
+  const analyse = analyser(md, texte);
+  const r = { texte, analyse, resolus: await resoudre(app, s, analyse, true), citations: await citer(app, s, analyse).catch(() => null) };
+  const rep = await demander('document_reproductible', { projet: pid, langue: s.langue, version: VERSION, nom, dossier: null, ...referencesReproductibles(r.resolus) });
+  const q = await preparerQmd(app, s, r, nom, rep, s.titre || nom);
+  return { nom, titre: s.titre, qmd: q.texte, bib: q.texteBib, csl: q.csl ? { nom: q.csl, texte: q.texteCsl } : null,
+    figures: q.figures.map((x) => ({ chemin: `${q.dossier}/figure-${x.numero}.png`, png: String(x.image).split(',')[1] || '' })),
+    fichiers: [].concat(rep.fichiers || []), relatifs: [].concat(rep.relatifs || []),
+    erreurs: r.resolus.filter((x) => x && x.erreur).length + (r.citations ? r.citations.inconnues.length : 0), note: noteReproductible(rep) };
 }
 
 function telecharger(o, nom) {

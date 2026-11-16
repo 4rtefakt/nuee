@@ -41,6 +41,7 @@ import { installerEtapes } from './etapes.js';
 import { installerReglages } from './reglages.js';
 import { installerAide, prechargerGuide } from './aide.js';
 import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
+import { dialoguePaquet } from './paquet.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -962,6 +963,13 @@ const app = {
         boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
     }
   },
+  // File › Export a reproducibility package… and Deposit on Zenodo… (paquet.js): the project, its
+  // data, one R script for every model, its documents, its citation, in one .zip
+  exporterPaquet: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialoguePaquet(app, p); },
+  deposerZenodo: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialoguePaquet(app, p, { zenodo: true }); },
+  // (for the package: the latest fit of each model of the project, and the session Save keeps)
+  modelesSeance: (pid) => modelesSeance(pid),
+  sessionProjet: (pid) => (VUE_SEULE || !dock ? undefined : JSON.stringify(collecterSession(pid))),
   // The Methods paragraph written from the model, in French or English, with its references.
   async texteMethodes(id) {
     const m = etat.modeles[id];
