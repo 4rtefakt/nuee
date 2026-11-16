@@ -1178,7 +1178,9 @@ const plusRecente = (a, b) => {
 
 function quoiDeNeuf(tout = false) {
   const vue = lire('version_vue');
-  const liste = tout ? NOUVEAUTES : NOUVEAUTES.filter((n) => !vue || plusRecente(n.version, vue));
+  // (after an update only: a first start, with no version seen yet, opens on the start page alone,
+  // not on the changes of every version since the first)
+  const liste = tout ? NOUVEAUTES : vue ? NOUVEAUTES.filter((n) => plusRecente(n.version, vue)) : [];
   ecrire('version_vue', VERSION);
   if (!liste.length) return;
   const date = (d) => new Date(d).toLocaleDateString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'long' });
