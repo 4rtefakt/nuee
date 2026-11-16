@@ -76,7 +76,7 @@ wins) or `HKCU\SOFTWARE\Policies\Nuee` (one user), in the registry's 64-bit view
 | Value | Set to 1 |
 |---|---|
 | `DisableUpdateCheck` | No update check and no one-click update: the update items disappear from *Help* ([Updates](#updates)) |
-| `DisableCustomCode` | R-code models are turned off (from 1.2): *New model* doesn't offer them, the R engine refuses to fit them, and the projects that have some show them not fitted ([Opening files from elsewhere](#opening-files-from-elsewhere)) |
+| `DisableCustomCode` | R-code models are turned off (from 1.1): *New model* doesn't offer them, the R engine refuses to fit them, and the projects that have some show them not fitted ([Opening files from elsewhere](#opening-files-from-elsewhere)) |
 
 ```
 reg add "HKLM\SOFTWARE\Policies\Nuee" /v DisableCustomCode /t REG_DWORD /d 1 /f /reg:64
@@ -217,7 +217,7 @@ stored sign-in (`git credential fill`), which follows git's own settings.
 | What | Where |
 |---|---|
 | The program | `%LOCALAPPDATA%\Programs\Nuee` or `%ProgramFiles%\Nuee` (network-share copy: `%LOCALAPPDATA%\Nuee`) |
-| Settings, recent files, interface preferences, the fingerprints of the R code each user approved (1.2) | `%APPDATA%\Nuee` (`reglages.json`) |
+| Settings, recent files, interface preferences, the fingerprints of the R code each user approved (1.1) | `%APPDATA%\Nuee` (`reglages.json`) |
 | Recovery copies of projects with unsaved changes, every two minutes | `%APPDATA%\Nuee\secours`, deleted when Nuée closes normally |
 | R's temporary files (pasted tables, converted `.usp` projects, console plots) | `%TEMP%\nuee-r-<process>`, deleted when Nuée closes, or at the next start after a crash |
 | The installer of a one-click update | `%TEMP%\nuee-mise-a-jour`, deleted at the next start |
@@ -350,7 +350,7 @@ Otherwise each user installs those missing into their own library, from *File �
 Opening a file never runs code from it:
 
 - **Projects (`.nuee`):** data and model definitions only. Nothing in them can choose where Nuée
-  saves. From 1.2 a project can hold R-code models (*New model › R code*): their code runs only
+  saves. From 1.1 a project can hold R-code models (*New model › R code*): their code runs only
   once a user of this computer has approved it, below.
 - **R files (`.rds`, `.RData`):** must hold tables; anything else is refused.
 - **Spectra and text tables:** read with checks on their size and structure.
