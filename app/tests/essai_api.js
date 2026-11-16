@@ -1738,6 +1738,48 @@ async function principal() {
         `rendu par Quarto : ${differents.join(', ') || 'les nombres de Nuée'}`);
       console.log(`          (rendu par Quarto : ${valeurs.length} nombres, ${resolus.slice(0, 3).map((x) => x.texte).join(' ; ')}…)`);
     });
+    await etape('paquet de reproductibilité : le projet d’exemple, ses données, un script, ses empreintes (moteur/R/paquet.R)', async () => {
+      // (the files of a .zip, read here: its central directory, Deflate by zlib)
+      const lireZip = (o) => {
+        const b = Buffer.from(o);
+        let fin = b.length - 22;
+        while (fin >= 0 && b.readUInt32LE(fin) !== 0x06054b50) fin -= 1;
+        const fichiers = new Map();
+        for (let i = 0, p = b.readUInt32LE(fin + 16); i < b.readUInt16LE(fin + 10); i += 1) {
+          const lnom = b.readUInt16LE(p + 28);
+          const nom = b.toString('utf8', p + 46, p + 46 + lnom);
+          const local = b.readUInt32LE(p + 42);
+          const debut = local + 30 + b.readUInt16LE(local + 26) + b.readUInt16LE(local + 28);
+          const donnees = b.subarray(debut, debut + b.readUInt32LE(p + 20));
+          if (!nom.endsWith('/')) fichiers.set(nom, b.readUInt16LE(p + 10) === 8 ? require('zlib').inflateRawSync(donnees) : Buffer.from(donnees));
+          p += 46 + lnom + b.readUInt16LE(p + 30) + b.readUInt16LE(p + 32);
+        }
+        return fichiers;
+      };
+      const e = await api('exemple', {}, 'en');
+      const ids = [];
+      for (const d of e.modeles) ids.push((await api('ajuster', { projet: e.id, numero: d.numero }, 'en')).id);
+      const meta = { titre: 'Apples', description: 'Made-up data.', auteurs: [{ prenom: 'Ada', nom: 'Lovelace', orcid: '0000-0002-1825-0097' }], mots_cles: ['apples'], licence: 'CC-BY-4.0' };
+      const chemin = path.join(dossier, 'Apples package.zip');
+      const r = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', chemin, version: 'essai', langue: 'en' }, 'en');
+      const fichiers = [].concat(r.fichiers);
+      verifier(['orchards.nuee', 'data/orchards.csv', 'data/orchards - dictionary.csv', 'analysis.R', 'README.md', 'LICENSE', 'CITATION.cff', 'codemeta.json', 'MANIFEST.sha256']
+        .every((f) => fichiers.includes(f)) && fs.existsSync(chemin) && [].concat(r.modeles).map((m) => m.objet).join() === 'M1,M2,M3,M4' && !r.ecarts.length,
+      `${fichiers.join(', ')} ; ${JSON.stringify(r.modeles)}`);
+      verifier(r.projet.paquet && r.projet.paquet.titre === 'Apples' && r.projet.modifie && [].concat(r.projet.paquet.mots_cles).join() === 'apples',
+        'les réponses gardées dans le projet');
+      const zip = lireZip(fs.readFileSync(chemin));
+      const manifeste = zip.get('Apples package/MANIFEST.sha256').toString('utf8').trim().split('\n');
+      const faux = manifeste.filter((l) => { const [h, f] = [l.slice(0, 64), l.slice(66)]; return !zip.has(`Apples package/${f}`) || require('crypto').createHash('sha256').update(zip.get(`Apples package/${f}`)).digest('hex') !== h; });
+      verifier(manifeste.length === zip.size - 1 && !faux.length, `le manifeste et les SHA-256 de Node : ${faux.join(' | ') || `${manifeste.length} fichiers`}`);
+      // (in a browser: written in the engine's session folder, then downloaded)
+      const t = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', version: 'essai', langue: 'en' }, 'en');
+      const telecharge = await brute(`/api/fichier?chemin=${encodeURIComponent(t.chemin)}`, { Cookie: cookie });
+      verifier(telecharge.statut === 200 && /Apples\.zip$/.test(t.chemin), `téléchargé : HTTP ${telecharge.statut} ${t.chemin}`);
+      const refus = await api('paquet', { projet: e.id, meta: { ...meta, titre: ' ' }, modeles: ids, documents: '[]', version: 'essai', langue: 'en' }, 'en').catch((x) => x);
+      verifier(refus instanceof Error && /no title/.test(refus.message), `refusé sans titre : ${refus.message}`);
+      await api('fermer_projet', { projet: e.id });
+    });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe
       let g = 5;
