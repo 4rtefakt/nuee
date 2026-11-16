@@ -114,5 +114,25 @@ module.exports = {
     await n.menu('m_fenetre', 'fermer_vues');
     const accueil = await n.attendre("(() => { const o = __n.tous('.dv-tab').map((e) => __n.norm(e.textContent)); return document.querySelector('.accueil') ? o : null; })()");
     verifier('fermerToutesLesVues', accueil.length === 2 && accueil.includes(await n.t('explorateur')), accueil);
+
+    // ---- the figure composer offers every plot of the project's fitted models, none of them open now
+    await n.cliquer(n.ligneProjet('orchards.json'));
+    await n.menu('m_graphiques', 'figure_composer');
+    const ajout = "document.querySelector('select.ajout-figure')";
+    await n.attendre(`${ajout} && !${ajout}.disabled`);
+    await n.evaluer(`${ajout}.dispatchEvent(new Event('focus')), true`);  // (its list is made when it is opened)
+    const groupes = await n.attendre(`(() => { const g = [...${ajout}.querySelectorAll('optgroup')].map((x) => ({ libelle: x.label, vues: [...x.querySelectorAll('option')].map((o) => o.value) }));
+      return g.length ? g : null; })()`);
+    const m1 = groupes.find((g) => g.libelle === 'orchards · M1 · PCA');
+    const chargements = m1 && m1.vues.find((v) => /^m:[^:]+:loadings$/.test(v));
+    verifier('figureToutesLesVues', !!chargements && groupes.some((g) => g.libelle === 'orchards · M5 · LM' && g.vues.some((v) => v.endsWith(':effets'))),
+      groupes.map((g) => `${g.libelle}: ${g.vues.length}`));
+    await n.choisir(ajout, chargements);
+    // (its preview drawn again with the panel: the summary under it counts one)
+    const apercu = await n.attendre(`(() => { const f = document.querySelector('.feuille-figure'); const i = f && f.querySelector('img');
+      const resume = __n.norm((document.querySelector('.resume-figure') || {}).textContent);
+      return f && !f.classList.contains('attente') && i && i.src.startsWith('blob:') && / 1 /.test(resume) && document.querySelectorAll('.ligne-panneau').length === 1
+        ? { resume, erreurs: [...document.querySelectorAll('.erreurs-figure .erreur')].map((e) => __n.norm(e.textContent)), panneau: __n.norm(document.querySelector('.ligne-panneau .nom-panneau').textContent) } : null; })()`);
+    verifier('figureVueNonOuverte', apercu.erreurs.length === 0 && apercu.panneau.endsWith(await n.t('loadings')), apercu);
   },
 };

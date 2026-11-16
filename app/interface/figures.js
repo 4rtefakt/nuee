@@ -15,6 +15,7 @@ import { t, ajouterTextes, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue, decimal } from './ui.js';
 import { demander } from './api.js';
 import { VUES, FORMAT } from './panneaux.js';
+import { partiesModele } from './rapport.js';
 import { PX_PAR_PT, LARGEURS, STYLES_LETTRES, COINS, GRILLE_MAX, completer, grilleProposee, disposer, enPixels, lettre, placeLettre, adapterFigure,
   composerSVG, pagePDF, pixelsImage, carteEnPlan, cadrer, tuilesPour, adresseTuile, placeTuile } from './composition.js';
 import { ecrirePNG, ecrireTIFF } from './images.js';
@@ -98,6 +99,25 @@ function panneauDeVue(app, e) {
   }
   if (e.graphe && e.graphe._zoom) pn.zoom = JSON.parse(JSON.stringify(e.graphe._zoom));
   return pn;
+}
+
+// A model's view that isn't open, as a panel: its usual settings, the shape of a plot on screen.
+function panneauSansVue(m, vue) {
+  const pn = { vue, loc: {}, lignes: 1, colonnes: 1, aspect: 0.7, nom: m.nom };
+  if (m.numero !== null && m.numero !== undefined) pn.numero = m.numero; else pn.modele = m.id;
+  return pn;
+}
+
+// The project's fitted models: the latest fit of each of its models, in their numbers' order, then
+// the fits without a number (a model of this session only).
+function modelesAjustes(app, pid) {
+  const parNumero = new Map();
+  const sans = [];
+  for (const m of app.modelesDe(pid)) {
+    if (m.numero === null || m.numero === undefined) sans.push(m);
+    else if (!parNumero.has(m.numero) || numeroId(m.id) > numeroId(parNumero.get(m.numero).id)) parNumero.set(m.numero, m);
+  }
+  return [...parNumero.values()].sort((a, b) => a.numero - b.numero).concat(sans);
 }
 
 // (only a view's own settings name models: the map's colour and size, 'm<id>|<column>', the
@@ -525,12 +545,14 @@ function creerComposeur(app, conteneur, pid, f) {
       else return;
     }
   };
-  s.ajouter = (entree) => {
-    s.spec.panneaux.push(panneauDeVue(app, entree));
+  const ajouterPanneau = (pn) => {
+    s.spec.panneaux.push(pn);
     agrandir();
     construire();
     changer();
   };
+  s.ajouter = (entree) => ajouterPanneau(panneauDeVue(app, entree));
+  s.ajouterVue = (m, vue) => ajouterPanneau(panneauSansVue(m, vue));
 
   // ---- the settings
   const nombre = (valeur, min, max, pas, f, titre = '') => el('input', { type: 'number', min, max, step: pas, value: valeur, title: titre,
@@ -549,16 +571,31 @@ function creerComposeur(app, conteneur, pid, f) {
     zones.hauteurAuto.textContent = t('figure_hauteur_auto', { mm: d.hauteur });
   }
 
+  // The plots that can go in, by model ("M1 · PCA"; "orchards · M1 · PCA" with several projects open):
+  // every plot view of the project's fitted models (the latest fit of each), those a report or a
+  // document draws (rapport.js: partiesModele), drawn off screen with their usual settings, an open
+  // one with its own; then the project's plots open in this window (the map, series...).
   function majAjout() {
-    const vues = app.vuesGraphiques().filter((e) => sonProjet(app, e) === s.pid);
-    zones.ajout.replaceChildren(...(vues.length ? [el('option', { value: '' }, t('figure_vues_ouvertes'))].concat(vues.map((e) => {
-      const m = e.params.modele ? app.modele(e.params.modele) : null;
-      let titre = e.vue;
-      try { titre = VUES[e.vue].titre(m, app.projet(s.pid) || {}, e.loc || {}); } catch { /* its key */ }
-      return el('option', { value: e.id }, titre);
-    })) : [el('option', { value: '' }, t('figure_aucune_vue_courte'))]));
-    zones.ajout.disabled = !vues.length;
-    zones.noteAjout.style.display = vues.length ? 'none' : '';
+    const ouvertesIci = app.vuesGraphiques().filter((e) => sonProjet(app, e) === s.pid);
+    const ouverte = (m, vue) => ouvertesIci.find((e) => e.params.modele === m.id && e.vue === vue);
+    const option = (valeur, libelle) => el('option', { value: valeur }, libelle);
+    const groupes = modelesAjustes(app, s.pid).map((m) => {
+      const vues = [...new Set(partiesModele(m).filter((x) => x.vue).map((x) => x.vue))]
+        .concat(ouvertesIci.filter((e) => e.params.modele === m.id).map((e) => e.vue)).filter((v, i, l) => VUES[v] && l.indexOf(v) === i);
+      return vues.length ? el('optgroup', { label: `${app.plusieursProjets() ? `${app.nomProjetCourt(s.pid)} · ` : ''}${m.nom} · ${m.type}` },
+        vues.map((v) => (ouverte(m, v) ? option(`o:${ouverte(m, v).id}`, `${t(v)} (${t('figure_ouverte')})`) : option(`m:${m.id}:${v}`, t(v))))) : null;
+    }).filter(Boolean);
+    const duProjet = ouvertesIci.filter((e) => !e.params.modele);
+    if (duProjet.length) {
+      groupes.push(el('optgroup', { label: (app.projet(s.pid) || {}).nom || '' }, duProjet.map((e) => {
+        let titre = e.vue;
+        try { titre = VUES[e.vue].titre(null, app.projet(s.pid) || {}, e.loc || {}); } catch { /* its key */ }
+        return option(`o:${e.id}`, `${titre} (${t('figure_ouverte')})`);
+      })));
+    }
+    zones.ajout.replaceChildren(option('', t(groupes.length ? 'figure_vues_ouvertes' : 'figure_aucune_vue_courte')), ...groupes);
+    zones.ajout.disabled = !groupes.length;
+    zones.noteAjout.style.display = groupes.length ? 'none' : '';
   }
 
   function majPanneaux() {
@@ -637,10 +674,14 @@ function creerComposeur(app, conteneur, pid, f) {
       s.programmer();
     } });
     zones.panneaux = el('div', { class: 'panneaux-figure' });
-    zones.ajout = el('select', { class: 'ajout-figure', onmousedown: majAjout, onfocus: majAjout, onchange: (e) => {
-      const entree = app.vuesGraphiques().find((x) => x.id === e.target.value);
+    zones.ajout = el('select', { class: 'ajout-figure', 'aria-label': t('figure_vues_ouvertes'), onmousedown: majAjout, onfocus: majAjout, onchange: (e) => {
+      const v = e.target.value;
       e.target.value = '';
+      // (an open view: with its settings; a model's view not open: drawn with its usual ones)
+      const entree = v.startsWith('o:') && app.vuesGraphiques().find((x) => x.id === v.slice(2));
+      const [, id, vue] = /^m:([^:]+):(.+)$/.exec(v) || [];
       if (entree) s.ajouter(entree);
+      else if (id && app.modele(id)) s.ajouterVue(app.modele(id), vue);
     } });
     zones.noteAjout = el('p', { class: 'note' }, t('figure_aucune_vue'));
     zones.taille = el('div', { class: 'grille-champs' });
@@ -896,9 +937,9 @@ ajouterTextes({
   figure_composer: 'Composer une figure…', figure_ajouter: 'Ajouter à une figure', figure_nouvelle: 'Nouvelle figure', figure_nom: 'Figure',
   figure_figures: 'Figures', figure_sans_titre: 'Figure sans titre', figure_chargement: 'Ouverture de la figure…',
   figure_aucune: 'Ce projet n’a pas encore de figure.', figure_supprimee: 'Cette figure a été supprimée.',
-  figure_panneaux: 'Panneaux', figure_aucun_panneau: 'Aucun panneau encore.', figure_vues_ouvertes: 'Ajouter un graphique ouvert…',
-  figure_aucune_vue_courte: 'Aucun graphique ouvert',
-  figure_aucune_vue: 'Ouvrez les graphiques à y mettre (menu Graphiques, ou l’explorateur), puis choisissez-les ici ; ou clic droit sur un graphique › Ajouter à une figure.',
+  figure_panneaux: 'Panneaux', figure_aucun_panneau: 'Aucun panneau encore.', figure_vues_ouvertes: 'Ajouter un graphique…', figure_ouverte: 'ouverte',
+  figure_aucune_vue_courte: 'Aucun graphique à ajouter',
+  figure_aucune_vue: 'Ajustez un modèle du projet, ou ouvrez un de ses graphiques (menu Graphiques), puis choisissez-le ici ; ou clic droit sur un graphique › Ajouter à une figure.',
   figure_une_case: '1 case', figure_deux_colonnes: '2 colonnes', figure_deux_lignes: '2 lignes', figure_etendue_aide: 'La place du panneau dans la grille',
   figure_monter: 'Plus tôt dans l’ordre', figure_descendre: 'Plus tard dans l’ordre',
   figure_reprendre: 'Reprendre les réglages de sa vue ouverte (axes, couleurs, étiquettes, zoom)', figure_retirer: 'Retirer de la figure',
@@ -917,7 +958,7 @@ ajouterTextes({
   figure_compression_aide: 'LZW : sans perte, celle que les revues demandent ; aucune : un fichier bien plus gros', figure_sans_compression: 'aucune',
   figure_pixels: '{largeur} × {hauteur} pixels à {dpi} points par pouce.', figure_exporter: 'Exporter…',
   figure_navigateur_pdf: 'Dans le navigateur, le PDF passe par sa fenêtre d’impression : choisissez « Enregistrer au format PDF » et aucune marge. L’application de bureau l’écrit directement, à la taille de la figure.',
-  figure_note: 'Chaque graphique est dessiné comme dans sa vue au moment où il a été ajouté (axes, couleurs, étiquettes, titres de Mise en forme, zoom), dans le thème clair et sans la sélection, avec le dernier ajustement de son modèle : la figure suit les modèles réajustés. Elle est gardée dans le projet.',
+  figure_note: 'Chaque graphique est dessiné comme dans sa vue au moment où il a été ajouté (axes, couleurs, étiquettes, titres de Mise en forme, zoom), ou avec ses réglages habituels s’il n’était pas ouvert, dans le thème clair et sans la sélection, avec le dernier ajustement de son modèle : la figure suit les modèles réajustés. Elle est gardée dans le projet.',
   figure_resume: '{largeur} × {hauteur} mm · {n} panneau(x) · texte {police} pt', figure_ecrite: 'Figure écrite :',
   figure_exporter_quand_meme: '{n} panneau(x) n’ont pas pu être dessinés : {liste}. Exporter quand même, une case vide à leur place ?',
   figure_modele_absent: 'le modèle {nom} n’est plus dans le projet', figure_modele_non_ajuste: '{nom} n’a pas été ajusté dans le fichier d’origine',
@@ -934,9 +975,9 @@ ajouterTextes({
   figure_composer: 'Compose a figure…', figure_ajouter: 'Add to a figure', figure_nouvelle: 'New figure', figure_nom: 'Figure',
   figure_figures: 'Figures', figure_sans_titre: 'Untitled figure', figure_chargement: 'Opening the figure…',
   figure_aucune: 'This project has no figure yet.', figure_supprimee: 'This figure was deleted.',
-  figure_panneaux: 'Panels', figure_aucun_panneau: 'No panel yet.', figure_vues_ouvertes: 'Add an open plot…',
-  figure_aucune_vue_courte: 'No plot open',
-  figure_aucune_vue: 'Open the plots to put in it (Plots menu, or the explorer), then choose them here; or right-click a plot › Add to a figure.',
+  figure_panneaux: 'Panels', figure_aucun_panneau: 'No panel yet.', figure_vues_ouvertes: 'Add a plot…', figure_ouverte: 'open',
+  figure_aucune_vue_courte: 'No plot to add',
+  figure_aucune_vue: 'Fit a model of the project, or open one of its plots (Plots menu), then choose it here; or right-click a plot › Add to a figure.',
   figure_une_case: '1 cell', figure_deux_colonnes: '2 columns', figure_deux_lignes: '2 rows', figure_etendue_aide: 'The panel’s room in the grid',
   figure_monter: 'Earlier in the order', figure_descendre: 'Later in the order',
   figure_reprendre: 'Take the settings of its open view again (axes, colours, labels, zoom)', figure_retirer: 'Remove from the figure',
@@ -955,7 +996,7 @@ ajouterTextes({
   figure_compression_aide: 'LZW: lossless, the one journals ask for; none: a much bigger file', figure_sans_compression: 'none',
   figure_pixels: '{largeur} × {hauteur} pixels at {dpi} dpi.', figure_exporter: 'Export…',
   figure_navigateur_pdf: 'In a browser, the PDF goes through its print window: choose “Save as PDF” and no margins. The desktop application writes it directly, at the figure’s size.',
-  figure_note: 'Each plot is drawn as in its view when it was added (axes, colours, labels, Format titles, zoom), in the light theme and without the selection, with its model’s latest fit: the figure follows refitted models. It is kept in the project.',
+  figure_note: 'Each plot is drawn as in its view when it was added (axes, colours, labels, Format titles, zoom), or with its usual settings if it wasn’t open, in the light theme and without the selection, with its model’s latest fit: the figure follows refitted models. It is kept in the project.',
   figure_resume: '{largeur} × {hauteur} mm · {n} panel(s) · text {police} pt', figure_ecrite: 'Figure written:',
   figure_exporter_quand_meme: '{n} panel(s) couldn’t be drawn: {liste}. Export anyway, with an empty cell in their place?',
   figure_modele_absent: 'model {nom} is no longer in the project', figure_modele_non_ajuste: '{nom} wasn’t fitted in the original file',
