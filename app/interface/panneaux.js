@@ -4,8 +4,13 @@ import { t, lire, ecrire, langueActuelle, libelleResultat } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
 import { grilleClavier, decrireGraphe } from './accessibilite.js';
 
+// The default palette stays apart under the common colour-vision deficiencies (Machado et al. 2009's
+// protanopia, deuteranopia and tritanopia): every pair at least 5.9 in CIEDE2000, the first four 9.9.
+// Its red, green, orange, purple and pink moved as little as that needed (CIEDE2000 4.0, 4.4, 2.3, 3.0
+// and 2.0 from #d1495b, #3b9a5b, #e09f3e, #7b5ea7, #c2549d), where red and green were 1.6 apart for
+// deuteranopes; the others are as they were. Okabe & Ito's is the one made for it.
 export const PALETTES = {
-  defaut: ['#2f6fb5', '#d1495b', '#3b9a5b', '#e09f3e', '#7b5ea7', '#2a9d8f', '#8c564b', '#c2549d', '#6b6b6b', '#a3a322'],
+  defaut: ['#2f6fb5', '#e24b5a', '#35905f', '#e0a451', '#795b99', '#2a9d8f', '#8c564b', '#bd5d9d', '#6b6b6b', '#a3a322'],
   daltonien: ['#0072b2', '#e69f00', '#009e73', '#d55e00', '#cc79a7', '#56b4e9', '#f0e442', '#000000'],  // Okabe & Ito
   gris: ['#000000', '#7a7a7a', '#b5b5b5', '#3d3d3d', '#9a9a9a', '#5c5c5c'],
 };
