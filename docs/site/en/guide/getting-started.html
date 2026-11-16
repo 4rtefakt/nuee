@@ -47,6 +47,7 @@
 <li><a href="maps.html">Maps and spatial data</a></li>
 <li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
 <li><a href="results.html">Results, documents and R</a></li>
+<li><a href="versions.html">Versions and working together</a></li>
 <li><a href="usp-projects.html">.usp projects</a></li>
 </ul>
 </details>
@@ -107,7 +108,7 @@ GeoPackage .gpkg (a layer of QGIS: see Maps and spatial data)</pre>
 <section id="saving-and-getting-your-work-back">
 <h2>Saving and getting your work back</h2>
 <p>File › Save project (Ctrl+S) writes the project (.nuee) with its data, its models and the current session: fitted models, open panels and their layout, plot settings (axes, colours, labels, titles), selections, VIP choices, dendrogram groups. When the project is opened again, the models are refitted and everything comes back in place.</p>
-<p>The project is written to a file next to the old one, which then takes its place: a network cut or a full disk during the save leaves the old file intact. If another program keeps the file open (a sync client, an antivirus), Nuée tries again for five seconds, then leaves it as it was and says so: save again, or Save as.... If the file was changed elsewhere since you opened or saved it (a colleague, on a shared folder; another window), Nuée says so and offers Save as..., Overwrite or Cancel, also for a project recovered after a crash. The file also records which versions of Nuée and R wrote it; a project saved by a newer Nuée is pointed out when it opens.</p>
+<p>The project is written to a file next to the old one, which then takes its place: a network cut or a full disk during the save leaves the old file intact. If another program keeps the file open (a sync client, an antivirus), Nuée tries again for five seconds, then leaves it as it was and says so: save again, or Save as.... If the file was changed elsewhere since you opened or saved it (a colleague, on a shared folder; another window), Nuée says so and offers to merge their changes with yours (see <a href="versions.html#working-together">Working together</a>), Overwrite, Save as... or Cancel; for a project recovered after a crash, Save as..., Overwrite or Cancel. The file also records which versions of Nuée and R wrote it, and the name of who saved it; a project saved by a newer Nuée is pointed out when it opens. Nuée also keeps versions of each saved project by itself, to go back to: see <a href="versions.html#history-and-versions">History and versions</a>.</p>
 <p>Opening a file that is already open (a recent file, a double-click in Explorer) shows the open project instead of opening a second copy.</p>
 <p>Closing the application with unsaved changes offers "Save and close". Every two minutes it also keeps a recovery copy of unsaved projects: if it stops without being closed (crash, power cut), it offers to recover them at the next start. Closing that question without an answer keeps the copies for next time; only "Ignore" deletes them.</p>
 <p>Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new variable, class, scores as variables, deleted definition...), up to 20 steps back.</p>
