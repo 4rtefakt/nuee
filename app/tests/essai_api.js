@@ -1749,6 +1749,16 @@ async function principal() {
       verifier(perma.type === 'PERMANOVA' && [].concat(perma.table.terme).join() === 'temp,habitat,Résidus,Total' && perma.dispersions.length === 2
         && perma.dispersions.map((d) => d.variable).join() === 'habitat,site' && typeof perma.modele.p === 'number'
         && [].concat(perma.vues_defaut).join() === 'permanova,dispersion' && perma.reglages.classe === v.site, `PERMANOVA : ${perma.chiffres}`);
+      // their key numbers in a document (references.js: referenceCle): the NMDS's stress, the PERMANOVA's
+      // R² and p, the model's and each term's
+      {
+        const { valeurReference, offreModele } = await import(require('url').pathToFileURL(path.join(depot, 'app', 'interface', 'references.js')).href);
+        const ecrit = (m, c) => valeurReference(m, c.split('.'), { format: '' }, 'en').texte;
+        const s3 = (x) => +Number(x).toPrecision(3);
+        verifier(Number(ecrit(nmds, 'stress')) === s3(nmds.stress) && Number(ecrit(perma, 'permanova.modele')) === s3(perma.modele.R2) && /^p [<=] /.test(ecrit(perma, 'permanova.modele.p'))
+          && /^p [<=] /.test(ecrit(perma, 'permanova.habitat.p')) && offreModele(perma).some((o) => o.chemin === 'permanova.modele.p'),
+        `NMDS et PERMANOVA dans un document : stress = ${ecrit(nmds, 'stress')}, R² = ${ecrit(perma, 'permanova.modele')}, ${ecrit(perma, 'permanova.modele.p')}`);
+      }
       const mantel = await api('ajuster', { projet: q.id, type: 'MANTEL', x: [v.temp], y: especes, echelle: 'UV', nom: 'Mantel',
         options: { distance: 'bray', methode: 'spearman', permutations: 99, graine: 4, z: [v.habitat], strates: { by: 'variable', variable: v.site } } });
       verifier(mantel.type === 'MANTEL' && mantel.test.r > 0 && typeof mantel.test.r_partiel === 'number' && [].concat(mantel.correlogramme.table.classe).length >= 3
@@ -2098,6 +2108,25 @@ async function principal() {
       verifier(mt.paragraphes.some((x) => /TRIM model 3/.test(x)) && mt.paragraphes.some((x) => /overall slope/.test(x)) && mt.references.some((x) => /TRIM 3 manual/.test(x)), 'texte des méthodes');
       const e = await api('exporter', { modele: tr.id, chemin: path.join(dossier, 'trim.xlsx') });
       verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      // its key numbers in a document (references.js: referenceCle), under What changed's keys
+      // (resultats_cles.R: entrees_trim, alias_parties): the overall slope (4 decimals), its interval,
+      // its change in %, its class in the document's language, σ²; no A
+      const { offreModele, valeurReference } = await import(require('url').pathToFileURL(path.join(depot, 'app', 'interface', 'references.js')).href);
+      const ecrit = (m, c, l = 'fr') => valeurReference(m, c.split('.'), { format: '' }, l).texte;
+      const pt = { mult: [].concat(tr.pentes.multiplicative)[0], bas: [].concat(tr.pentes.bas)[0], haut: [].concat(tr.pentes.haut)[0], classe: [].concat(tr.pentes.classe)[0] };
+      const fr4 = (x) => x.toFixed(4).replace('.', ',').replace('-', '−');
+      const classes = { declin_modere: ['déclin modéré', 'moderate decline'], fort_declin: ['fort déclin', 'steep decline'], stable: ['stable', 'stable'], incertaine: ['incertaine', 'uncertain'],
+        hausse_moderee: ['augmentation modérée', 'moderate increase'], forte_hausse: ['forte augmentation', 'strong increase'] };
+      const offre = offreModele(tr).map((o) => o.chemin);
+      const cles = await api('resultats_cles', { modele: tr.id });
+      const parCle = new Map();
+      for (const x of cles.entrees) for (const c of [x.cle].concat(x.alias || [])) parCle.set(c, x);
+      verifier(ecrit(tr, 'pente') === fr4(pt.mult) && ecrit(tr, 'pente.ic') === `[${fr4(pt.bas)} ; ${fr4(pt.haut)}]`
+        && ecrit(tr, 'pente.pourcent') === `${(100 * (pt.mult - 1)).toFixed(1).replace('.', ',').replace('-', '−')} %` && ecrit(tr, 'pente.classe') === classes[pt.classe][0]
+        && ecrit(tr, 'pente.classe', 'en') === classes[pt.classe][1] && /^p [<=] /.test(ecrit(tr, 'pente.p')) && ecrit(tr, 'sigma2') !== undefined
+        && ['pente', 'pente.ic', 'pente.p', 'pente.pourcent', 'pente.classe', 'sigma2', 'N', 'sites'].every((c) => offre.includes(c)) && !offre.includes('A')
+        && ['pente.ic', 'pente.pourcent', 'pente.classe', 'pente.p'].every((c) => parCle.get(c) && parCle.get(c).cle === 'pente'),
+      `les nombres de TRIM dans un document : ${['pente', 'pente.ic', 'pente.pourcent', 'pente.classe', 'sigma2'].map((c) => `${c} = ${ecrit(tr, c)}`).join(' ; ')}`);
       let refus = '';
       try { await api('ajuster', { ...def, x: [], options: { ...options, site: { by: 'variable', variable: v.habitat } } }); } catch (err) { refus = err.message; }
       verifier(/Deux lignes pour le même site et le même temps/.test(refus), `deux lignes pour un site et un temps refusées : « ${refus} »`);
@@ -2176,6 +2205,21 @@ async function principal() {
         && dm.troncature.pourcentage === 5 && dm.au_dela > 0 && dm.effectif.quoi === 'ESW' && dm.reglages.options.cle === 'hn', `distance : ${dm.chiffres}, n = ${dm.n}`);
       const francais = await colonnesEnFrancais(dm.observations);
       verifier(!francais.length, `colonnes des observations en français dans l’interface en anglais : ${francais.join(', ')}`);
+      // its key numbers in a document (references.js: referenceCle): D, its interval and CV, the
+      // abundance, p, ESW, a stratum's density; neither A nor K (no X term)
+      {
+        const { offreModele, valeurReference } = await import(require('url').pathToFileURL(path.join(depot, 'app', 'interface', 'references.js')).href);
+        const ecrit = (c) => valeurReference(dm, c.split('.'), { format: '' }, 'en').texte;
+        const t = [].concat(dm.densite.D).length - 1;
+        const s3 = (x) => +Number(x).toPrecision(3);
+        const strate = [].concat(dm.densite.strate)[0];
+        const offre = offreModele(dm).map((o) => o.chemin);
+        verifier(Number(ecrit('D').replace(/,/g, '')) === s3([].concat(dm.densite.D)[t]) && /^\[[0-9.,]+, [0-9.,]+\]$/.test(ecrit('D.ic'))
+          && ecrit('D.cv') === `${(100 * [].concat(dm.densite.cv)[t]).toFixed(1)}%` && Number(ecrit('p')) === s3(dm.p) && Number(ecrit('ESW')) === s3(dm.effectif.valeur)
+          && Number(ecrit(`D.${strate}`).replace(/,/g, '')) === s3([].concat(dm.densite.D)[0])
+          && ['D', 'D.ic', 'D.cv', 'abondance', 'p', 'ESW', 'detections'].every((c) => offre.includes(c)) && !offre.includes('A') && !offre.includes('K'),
+        `les nombres de l’échantillonnage par distances dans un document : ${['D', 'D.ic', 'D.cv', 'abondance', 'p', 'ESW'].map((c) => `${c} = ${ecrit(c)}`).join(' ; ')}`);
+      }
       const groupes = await api('ajuster', { ...def, nom: 'Distance 2', options: { ...options, taille: v.taille, cle: 'hr', serie: 'cos', ajustements: 1, troncature: { type: 'distance', valeur: 90 } } });
       verifier(groupes.groupes === true && groupes.modele_detection === 'hr + cos(2)' && [].concat(groupes.densite_groupes.D).length === 3 && groupes.troncature.w === 90,
         `groupes, hasard et un terme : ${groupes.chiffres}`);

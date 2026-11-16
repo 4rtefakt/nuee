@@ -689,7 +689,13 @@ resultat_regression <- function(id) {
 resultat_modele <- function(id) {
   e <- modele(id)
   if (est_regression(e$definition)) return(resultat_regression(id))
-  if (est_autre_analyse(e$definition)) return(fonction_analyse("resultat_", e$definition$type)(id))  # analyses.R
+  if (est_autre_analyse(e$definition)) {  # analyses.R
+    r <- fonction_analyse("resultat_", e$definition$type)(id)
+    # (ses résultats clés, ce que ses documents en citent sous les clés que compare Ce qui a changé :
+    # resultats_cles.R, references.js)
+    r$cles <- tryCatch(resume_resultats(projet(e$projet), e), error = function(err) NULL)
+    return(r)
+  }
   p <- projet(e$projet)
   m <- e$modele
   d <- e$definition

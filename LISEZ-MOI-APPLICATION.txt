@@ -573,6 +573,19 @@ donnent leur valeur :
   {{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
   {{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
   {{M5.valeurs_predites.annee}} (ses valeurs prédites sur l'échelle de la réponse, Effets › Échelle)
+  {{T1.pente}} {{T1.pente.ic}} {{T1.pente.pourcent}} {{T1.pente.classe}} {{T1.sigma2}} {{T1.rho}}
+  (TRIM : la pente globale des totaux imputés, à 4 décimales, son intervalle à 95 %, sa variation
+  en % par pas de temps, sa classe dans la langue du document, σ² et ρ)  {{D1.D}} {{D1.D.ic}}
+  {{D1.D.cv}} {{D1.abondance}} {{D1.p}} {{D1.ESW}} {{D1.D.Nord}} (échantillonnage par distances :
+  la densité, son intervalle et son CV, l'effectif, p, ESW ou EDR, la densité d'une strate)
+  {{R1.R2_ajuste}} {{R1.test.modele.p}} (RDA, CCA)  {{P1.permanova.modele}}
+  {{P1.permanova.modele.p}} {{P1.permanova.habitat.p}} (PERMANOVA : le R² et p du modèle, ceux
+  d'un terme)  {{N1.stress}} (NMDS)
+  Les résultats clés des autres analyses se citent de même, sous les clés que compare Ce qui a
+  changé (un indice {{T1.indice.2015}}, le r d'un test de Mantel {{M1.mantel}}...) : une valeur,
+  puis .ic, .bas, .haut et .p pour celles qui ont un intervalle ou une valeur p, .pourcent pour une
+  valeur multiplicative ; A, et un K de 0, ne sont pas proposés là où ils ne veulent rien dire. Le
+  fichier Quarto reproductible écrit ceux ci-dessus d'après les scripts des modèles.
   {{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
   {{M1.resultats}} (texte des résultats : l'ajustement, chaque coefficient avec son intervalle et p,
   en facteur ou en rapport de cotes pour un lien log ou logit, les termes significatifs, les

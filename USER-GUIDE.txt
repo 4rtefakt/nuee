@@ -527,6 +527,19 @@ their values:
   {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
   {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
   {{M5.valeurs_predites.year}} (its predicted values on the response scale, Effects › Scale)
+  {{T1.pente}} {{T1.pente.ic}} {{T1.pente.pourcent}} {{T1.pente.classe}} {{T1.sigma2}} {{T1.rho}}
+  (TRIM: the overall slope of the imputed totals, 4 decimals, its 95 % interval, its change in %
+  per time step, its class in the document's language, σ² and ρ)  {{D1.D}} {{D1.D.ic}}
+  {{D1.D.cv}} {{D1.abondance}} {{D1.p}} {{D1.ESW}} {{D1.D.North}} (distance sampling: the
+  density, its interval and CV, the abundance, p, ESW or EDR, a stratum's density)
+  {{R1.R2_ajuste}} {{R1.test.modele.p}} (RDA, CCA)  {{P1.permanova.modele}}
+  {{P1.permanova.modele.p}} {{P1.permanova.habitat.p}} (PERMANOVA: the model's R² and p, a
+  term's)  {{N1.stress}} (NMDS)
+  The other analyses' key results are cited the same way, under the keys What changed compares
+  (an index {{T1.indice.2015}}, a Mantel r {{M1.mantel}}...): a value, then .ic, .bas, .haut and .p
+  for those that have an interval or a p, .pourcent for a multiplicative value; A, and a K of 0,
+  aren't offered where they don't apply. The reproducible Quarto file writes those above from the
+  models' scripts.
   {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
   {{M1.resultats}} (Results text: the fit, each coefficient with its interval and p, as a factor
   or an odds ratio for a log or logit link, the significant terms, curves, random effects; for a
