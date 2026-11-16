@@ -1,6 +1,7 @@
 // Starts the built program and uses it over the Chrome DevTools Protocol, as a person would:
 // the R engine starts (on Linux, the computer's R), the example project opens with its plots,
-// a PLS model's views, the R console shows each fit's printout, a plot is saved as an image, a
+// a PLS model's views, the R console shows each fit's printout, a plot is saved as an image,
+// Export to R offers all the session's models only with those a session script holds, a
 // .nuee project given on the command line (what a double-click does) opens in the running
 // window, then Nuée quits, R stops and its temporary folder goes.
 //   node tests/essai_appli.js <program> [screenshot.png] [program options...]
@@ -197,6 +198,29 @@ async function brancher(cible) {
     await p.attendre("document.querySelectorAll('.journal-r .r-resultat').length >= 3", 20000).catch(() => {});
     const console_ = await p.evaluer("[...document.querySelectorAll('.journal-r .r-resultat')].map((x) => x.textContent)");
     verifier('consoleAjustements', console_.length >= 3 && console_.every((t) => /Mod(èle|el) \S+ \(/.test(t)), console_.length);
+
+    // Export to R's "all the session's models": only those a session script holds (PCA, PLS, OPLS and
+    // regressions); another analysis is exported alone (serveur.R: script_demande), so its own dialog
+    // doesn't offer it. A k-means of the example project fitted here, the window told as another
+    // window would tell it.
+    const exemple = [].concat((await p.api('etat')).projets)[0];  // (the only project open)
+    const variables = [].concat((await p.api('projet', { projet: exemple.id })).variables).filter((v) => !v.qualitative).slice(0, 3);
+    await p.api('ajuster', { projet: exemple.id, type: 'KMEANS', x: variables.map((v) => v.uid), echelle: 'UV', options: { k: 3 }, nom: 'K1' });
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
+    await p.attendre("[...document.querySelectorAll('.arbre *')].some((e) => e.children.length === 0 && e.textContent.trim() === 'K1')", 20000);
+    const dialogueScript = async (modele) => {
+      await doubleClic(modele);
+      await pause(2000);
+      await commande(await libelle('script_r'));
+      await p.attendre("!!document.querySelector('.options-script')", 10000);
+      return p.evaluer("({ seance: document.querySelectorAll('.options-script input[name=\"script-portee\"]').length, liste: [...document.querySelectorAll('.options-script .doux')].map((x) => x.textContent).join(' | ') })");
+    };
+    const dk = await dialogueScript('K1');
+    const dm = await dialogueScript('M2');
+    verifier('scriptSeanceSansAutreAnalyse', dk.seance === 0 && dm.seance === 2 && !/\bK1\b/.test(dm.liste), { k1: dk, m2: dm });
+    // (the project, which K1 joined, saved: quitting below asks nothing)
+    await p.evaluer("document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove())");
+    await p.api('enregistrer', { projet: exemple.id, chemin: path.join(dossier, 'exemple.nuee') });
 
     // a .nuee project given to a second start (a double-click): it opens in this window
     const nom = 'essai-ligne-de-commande';

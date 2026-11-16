@@ -665,10 +665,12 @@ const app = {
       + (modeles.length ? t('modeles_a_reajuster', { modeles: modeles.join(', ') }) : ''));
   },
   // One model, or all the models of its project's session (the latest fit of each, as Ctrl+S
-  // saves them) in one .R script.
+  // saves them) in one .R script: PCA, PLS, OPLS and regressions only. Another analysis is
+  // exported on its own (serveur.R: script_demande leaves it out of a session's script), so its
+  // dialog doesn't offer the session, and the session's list doesn't name it.
   async exporterScript(id) {
     const m = etat.modeles[id];
-    const seance = modelesSeance(m.projet);
+    const seance = modelesSeance(m.projet).filter((x) => !x.analyse);
     const choix = await choisirScript(m.nom, seance.length > 1 && seance.some((x) => x.id === id) ? { modeles: seance, nom: etat.projets[m.projet].nom } : null);
     if (!choix) return;
     const qui = choix.seance ? { modeles: seance.map((x) => x.id) } : { modele: id };
