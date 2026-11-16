@@ -35,7 +35,7 @@ export function rendreConsole(conteneur, ctx) {
     for (const e of entrees) {
       etat.n = Math.max(etat.n, e.n);
       if (e.type === 'image') {
-        journal.append(el('div', { class: 'r-image' }, el('img', { src: e.texte })));
+        journal.append(el('div', { class: 'r-image' }, el('img', { src: e.texte, alt: t('image_r') })));
         continue;
       }
       const texte = e.type === 'commande' ? e.texte.split('\n').map((l, i) => (i ? '+ ' : '> ') + l).join('\n')
