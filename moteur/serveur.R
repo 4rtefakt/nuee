@@ -1237,6 +1237,26 @@ DEMANDES <- list(
     texte_resultats(projet(e$projet), e$definition, e$modele, if (identical(q$langue, "en")) "en" else "fr",
                     chiffres = if (autre) as.character(resultat_modele(q$modele)$chiffres %||% "") else "")
   },
+  # Les résultats clés d'un modèle de la séance (resultats_cles.R : resume_resultats), pour la vue
+  # « Ce qui a changé » : demandés avant et après un réajustement sur des données mises à jour, ou pour
+  # le modèle d'une ancienne version du projet ouverte comme un autre projet, puis renvoyés à
+  # comparer_resultats. Chaque entrée : sa clé (la référence d'un document quand il y en a une : Q2,
+  # coef.annee… ; alias, les autres qui donnent la même valeur), son libellé dans la langue de la
+  # demande, son groupe, sa valeur, et s'il y en a son intervalle à 95 % (ic), sa valeur p, son effectif
+  # (n), sa catégorie (classe).
+  resultats_cles = function(q) {
+    e <- modele(q$modele)
+    list(modele = q$modele, entrees = resume_resultats(etat$projets[[e$projet]], e))
+  },
+  # Deux résumés de resultats_cles comparés entrée par entrée, par leur clé (resultats_cles.R :
+  # comparer_resultats) : q$avant et q$apres, { entrees } tels que resultats_cles les rend ; q$langue,
+  # celle des phrases (sans elle, celle de la demande). Rend chaque entrée comparée (avant, après, écart
+  # et écart relatif, les drapeaux signe, seuil, ic, nouveau, disparu et categorie, son importance, sa
+  # phrase), les phrases des changements qui comptent, le plus important d'abord, et leurs comptes (resume).
+  comparer_resultats = function(q) {
+    langue <- if (length(q$langue)) (if (identical(q$langue, "en")) "en" else "fr") else getOption("nuee.langue") %||% "fr"
+    comparer_resultats(q$avant, q$apres, langue)
+  },
   modeles_classe = modeles_classe_demande,
   appartenance = appartenance_demande,
   contributions = function(q) {
