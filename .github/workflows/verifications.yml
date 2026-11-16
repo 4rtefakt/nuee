@@ -82,6 +82,12 @@ jobs:
         working-directory: app
         run: node tests/essai_versions.js
 
+      # (signing in to GitHub and GitLab, against a local stand-in of both; a stand-in git.exe
+      # compiled by the .NET Framework's csc.exe)
+      - name: Comptes GitHub et GitLab
+        working-directory: app
+        run: node tests/essai_comptes.js
+
       # (the updater reinstalls for all users or for this user, as the installer's entry says)
       - name: Mode d'installation, pour la mise à jour
         working-directory: app
@@ -195,6 +201,11 @@ jobs:
       - name: Versions d'un projet
         working-directory: app
         run: node tests/essai_versions.js
+
+      # (signing in to GitHub and GitLab, against a local stand-in of both)
+      - name: Comptes GitHub et GitLab
+        working-directory: app
+        run: node tests/essai_comptes.js
 
       - name: Installation du .deb
         run: sudo apt-get install -y ./dist/installateur/Nuee-*-amd64.deb
@@ -369,6 +380,11 @@ jobs:
       - name: Versions d'un projet
         working-directory: app
         run: node tests/essai_versions.js
+
+      # (signing in to GitHub and GitLab, against a local stand-in of both)
+      - name: Comptes GitHub et GitLab
+        working-directory: app
+        run: node tests/essai_comptes.js
 
       - name: Sans le R de /Library/Frameworks
         run: sudo mv /Library/Frameworks/R.framework "$RUNNER_TEMP/R.framework"

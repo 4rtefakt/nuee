@@ -10,6 +10,7 @@ const path = require('path');
 const { fileURLToPath } = require('url');
 const { demanderZotero } = require('./zotero');
 const { creerVersions, magasinJetons } = require('./versions');
+const { creerComptes } = require('./comptes');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -443,9 +444,10 @@ function fichierDonne(argv) {
 // encrypted by the system (safeStorage) in jetons.json beside the settings, its own settings (keep
 // versions, the author) with the settings; the versions read written in this run's temporary
 // folder, deleted when Nuée closes; what the background exchanges did told to every window.
+const jetons = magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons.json'), safeStorage });
 const versions = creerVersions({
   fetch: (url, init) => reseau.fetch(url, init),
-  jetons: magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons.json'), safeStorage }),
+  jetons,
   langue: () => langue,
   reglages: { lire: () => reglages.versions || {}, ecrire: (r) => { reglages.versions = r; ecrireReglages(); } },
   temporaire: () => { dossierTemporaireR(); return temporaireR; },
@@ -456,6 +458,19 @@ app.on('browser-window-focus', () => versions.auPremierPlan());
 // The open projects' last versions, before Nuée closes (fifteen seconds at most: their sending
 // waits for the next start)
 const versionsAvantDeFermer = () => Promise.race([versions.fermerTout(), new Promise((ok) => setTimeout(ok, 15000))]);
+// Signing in to GitHub and GitLab (comptes.js): the token kept through the versions layer, the
+// refresh tokens of the sign-ins that expire (GitLab's, after two hours) encrypted the same way
+// beside it, what is known of each account (no secret) and the self-hosted GitLabs' application IDs
+// with the settings; the server's sign-in page opened in the browser.
+const comptes = creerComptes({
+  fetch: (url, init) => reseau.fetch(url, init),
+  jeton: versions.jeton,
+  jetons,
+  renouvellements: magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons-renouvellement.json'), safeStorage }),
+  reglages: { lire: () => reglages.comptes || {}, ecrire: (c) => { reglages.comptes = c; ecrireReglages(); } },
+  ouvrirNavigateur: (url) => shell.openExternal(url),
+  langue: () => langue,
+});
 
 function ipc() {
   const parent = (e) => BrowserWindow.fromWebContents(e.sender);
@@ -561,6 +576,19 @@ function ipc() {
   for (const [nom, f] of Object.entries(versions)) {
     recevoir(`versions-${nom}`, async (_, ...args) => {
       try { return { valeur: await f(...args) }; } catch (e) { return { erreur: e.message }; }
+    });
+  }
+  // signing in to GitHub and GitLab (comptes.js), the same way, with the refusal's code; a sign-in
+  // waited for by a window that closes meanwhile ends with it
+  for (const [nom, f] of Object.entries(comptes)) {
+    if (nom === 'preparer') continue;
+    recevoir(`comptes-${nom}`, async (e, ...args) => {
+      const fin = () => { comptes.annulerConnexion(args[0]).catch(() => {}); };
+      const attente = nom === 'attendreConnexion' || nom === 'compteGit';
+      if (attente) e.sender.once('destroyed', fin);
+      try { return { valeur: await f(...args) }; } catch (err) { return { erreur: err.message, code: err.code || null }; } finally {
+        if (attente && !e.sender.isDestroyed()) e.sender.removeListener('destroyed', fin);
+      }
     });
   }
   // recovery copies: their folder, and the index of what they hold (files not in it are deleted)
@@ -792,6 +820,7 @@ async function demarrer() {
   const langues = [...new Set([...s.getSpellCheckerLanguages(), 'fr', 'en-US'])].filter((l) => s.availableSpellCheckerLanguages.includes(l));
   if (langues.length) s.setSpellCheckerLanguages(langues);
   ipc();
+  comptes.preparer();  // (a GitLab sign-in's token renewed before it expires, while Nuée runs)
   // the same port as last time when free: on a computer shared by several people (remote
   // desktop), whoever doesn't get the usual one keeps their own, and their settings with it
   port = await portLibre(reglages.port || PORT_HABITUEL);

@@ -2,6 +2,7 @@
 // keyboard shortcuts. `app` is the main window object built in app.js.
 import { t, langueActuelle } from './i18n.js';
 import { vuesDe } from './explorateur.js';
+import { dialogueComptesEssai } from './connexion.js';
 
 export function creerCommandes(app) {
   const m = () => app.modeleActif();
@@ -133,6 +134,8 @@ export function creerCommandes(app) {
     maj_auto: { coche: () => app.majAuto() === true, action: () => app.basculerMajAuto() },
     chercher_maj: { icone: 'refresh-ccw-dot', action: () => app.chercherMiseAJour() },
     diagnostic: { icone: 'stethoscope', action: () => app.diagnostic() },
+    // (temporary, to try signing in until the History and sharing screens offer it: connexion.js)
+    comptes_essai: { icone: 'log-in', actif: () => !!(app.bureau && app.bureau.comptes), action: () => dialogueComptesEssai(app) },
     projet_exemple: { icone: 'apple', action: () => app.ouvrirExemple() },
     redemarrer_moteur: { icone: 'refresh-cw', actif: () => !!app.bureau, action: () => app.confirmerRedemarrage() },
     differences: { action: () => app.aide('differences') },
@@ -190,7 +193,7 @@ export function menus(app, C) {
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
     { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
-      .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), '-', it('apropos')]) },
+      .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), it('comptes_essai'), '-', it('apropos')]) },
   ];
 }
 
