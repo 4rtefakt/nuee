@@ -123,7 +123,7 @@ cles_groupes_vc <- function(projet, d) {
       if (length(v$categories)) v$categories[x] else x
     },
     groups = {
-      g <- as.numeric(vc$groups)[match(as.character(obs), as.character(vc$observations))]
+      g <- as.numeric(vc$groups)[match(nom_numero(obs), nom_numero(vc$observations))]
       if (anyNA(g)) stop(traduire("Validation croisée : les groupes de ce modèle viennent du fichier .usp, et certaines de ses observations n'en ont pas. Choisissez d'autres groupes dans Nouveau modèle.",
                                   "Cross-validation: this model's groups come from the .usp file, and some of its observations have none. Choose other groups in New model."), call. = FALSE)
       g
@@ -176,6 +176,7 @@ tours_x_validation <- function(projet, d, X, bx, vx, poids, plan, projets = NULL
   par_ligne <- spectres_par_ligne(d$spectres)
   # (les colonnes de sx ne servent qu'aux termes croisés de Y : garder_simples)
   y_croises <- identical(d$type, "PLS") && any(vapply(d$y, function(t) length(t$variables) > 1, TRUE))
+  ponderation <- if (!plan$complet && length(d$x)) facteurs_ponderation(d$x)  # (la même pour chaque sous-modèle)
   lapply(sort(unique(plan$groupes)), function(g) {
     hors <- plan$groupes == g
     if (plan$complet) {
@@ -187,7 +188,8 @@ tours_x_validation <- function(projet, d, X, bx, vx, poids, plan, projets = NULL
       v <- if (is.null(projets)) vx else valeurs_bloc(p, d$x, obs)
       if (!is.null(projets) && par_ligne) v <- pretraiter_bloc(p, d$x, v, d$spectres)$bruts
       sx <- construire_bloc(p, d$x, obs[!hors], poids, spectres = d$spectres, bruts = v[!hors, , drop = FALSE],
-                            complet = list(ecart = bx$ecart, seuil = plan$seuil), pretraites = par_ligne, garder_simples = y_croises)
+                            complet = list(ecart = bx$ecart, seuil = plan$seuil), pretraites = par_ligne, garder_simples = y_croises,
+                            ponderation = ponderation)
       hx <- construire_bloc(p, d$x, obs[hors], imposees = sx, spectres = d$spectres, bruts = v[hors, , drop = FALSE], pretraites = par_ligne,
                             garder_simples = FALSE)
       Xs <- preparer(sx$X)

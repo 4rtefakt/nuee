@@ -49,7 +49,7 @@ appartenance_classes <- function(projet, modeles, observations = NULL) {
   dcrit <- vapply(modeles, function(x) x$modele$statistiques$limites[["DCrit(5%)"]] %||% NA_real_, 0)
   acceptee <- sweep(distances, 2, dcrit, "<=")
   acceptee[is.na(acceptee)] <- FALSE
-  tab <- data.frame(uid = obs, nom = unname(projet$noms_obs[as.character(obs)]), classe = vraie, stringsAsFactors = FALSE)
+  tab <- data.frame(uid = obs, nom = unname(projet$noms_obs[nom_numero(obs)]), classe = vraie, stringsAsFactors = FALSE)
   for (k in seq_along(classes)) tab[[paste("DModX", classes[k])]] <- distances[, k]
   tab$classes <- apply(acceptee, 1, function(r) paste(classes[r], collapse = ", "))
   lignes <- c(classes, if (anyNA(vraie)) NA)

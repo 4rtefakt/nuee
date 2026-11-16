@@ -434,6 +434,10 @@ verifier("RDA : analyse sans prédiction, chiffres, vues, scores en échelles 1 
          isTRUE(r$analyse) && identical(r$prediction, FALSE) && grepl("^R2aj ", r$chiffres) && identical(as.character(r$vues_defaut), c("ordination", "valeurs_propres")) &&
            nrow(r$observations) == 39 && identical(names(r$observations)[1:3], c("uid", "nom", "RDA1")) && ncol(r$ordination$`1`$sites) == 10 &&
            identical(as.character(r$ordination$`2`$noms_biplot), c("temp", "ph")) && nrow(r$ordination$`2`$centroides) == 3 && inherits(json(r), "json"))
+langue_avant <- options(nuee.langue = "en")
+verifier("RDA : sa ligne de l'explorateur dans la langue de l'interface (R2aj 0,35, R2adj 0.35)",
+         grepl("^R2aj [0-9]+,[0-9]{2} · p ", r$chiffres) && grepl("^R2adj [0-9]+\\.[0-9]{2} · p ", resultat("M1")$chiffres))
+options(langue_avant)
 verifier("RDA : ses réglages pour Modifier le modèle (options, Z)", identical(r$reglages$options$transformation, "hellinger") &&
            identical(as.numeric(resultat(garder("M2", dz, mz))$reglages$options$z), u("pente")))
 rt <- demande_analyse_rda_tests(list(modele = "M1"))
@@ -464,6 +468,14 @@ verifier("CCA partielle : ses réglages (Z, groupes des permutations) pour Modif
 dcc0 <- definir_modele(p, "CCA", x = u("temp"), y = u(especes), echelle = "none", options = list(permutations = 0))
 mcc0 <- ajuster(p, dcc0)
 verifier("CCA sans permutation : pas de p ni de R² ajusté, le R² seul", is.na(mcc0$test$p) && is.na(mcc0$r2_ajuste) && grepl("^R2 ", resultat(garder("M8", dcc0, mcc0))$chiffres))
+# (des X tous qualitatifs : aucune flèche, et la matrice des flèches sans noms de lignes)
+qualitatives <- lapply(c("RDA", "CCA"), function(type) {
+  dq <- definir_modele(p, type, x = u("habitat"), y = u(especes), echelle = "none", options = list(permutations = 0))
+  tryCatch(resultat(garder(paste0("Q", type), dq, ajuster(p, dq))), error = conditionMessage)
+})
+verifier("RDA et CCA d'une X qualitative seule : aucune flèche, les centroïdes de ses catégories, aucune variable X",
+         all(vapply(qualitatives, function(r) is.list(r) && length(r$ordination$`2`$noms_biplot) == 0 && nrow(r$ordination$`2`$biplot) == 0 &&
+                      nrow(r$ordination$`2`$centroides) == 3 && identical(names(r$variables)[1], "terme") && nrow(r$variables) == 0 && inherits(json(r), "json"), TRUE)))
 for (langue in c("fr", "en")) {
   tcc <- texte_methodes(p, dcca, etat$modeles$M6$modele, langue, "essai")
   tcz <- texte_methodes(p, dccz, mccz, langue, "essai")
@@ -523,8 +535,9 @@ rscript <- file.path(R.home("bin"), "Rscript")
 # lance un script dans une session neuve (sans le moteur, ses graphiques sans fichier), depuis un
 # autre dossier, et garde les objets nommés
 lanceur <- file.path(dossier, "lancer.R")
+# (les objets nommés, et tous ceux du script : ecart_ordination les compare au modèle)
 writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
-             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+             ".r <- mget(union(strsplit(.a[3], \",\")[[1]], ls(globalenv())), envir = globalenv(), ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
 lancer <- function(script, objets) {
   sortie <- tempfile("sortie", dossier, ".rds")
   ici <- setwd(dossier)
@@ -550,11 +563,14 @@ for (k in cas) {
     proche(c(sm[[n("contraint")]][[n("valeurs_propres")]], sm[[n("residuel")]][[n("valeurs_propres")]]), c(e$modele$noyau$contraint$eig, e$modele$noyau$residuel$eig)) &&
       isTRUE(all.equal(s[[n("r2")]][[n("ajuste")]], e$modele$r2_ajuste)) && identical(unname(s[[n("test")]][["p"]]), if (e$modele$options$permutations > 0) e$modele$test$p)
   } else proche(sm[[n("valeurs_propres")]], e$modele$noyau$eig)
-  verifier(sprintf("%s (%s) : sans écart vu par le moteur ; lancé seul, mêmes valeurs propres%s ; R seul, en %s", k$id, k$quoi,
+  # (et tout ce que le moteur compare quand il écrit le script : scores, flèches, centroïdes, tests par
+  # axe, séquentiels et par terme, sélection, partition, contributions)
+  difference <- if (length(s)) ecart_ordination(e$modele, list2env(s), k$langue)
+  verifier(sprintf("%s (%s) : sans écart vu par le moteur ; lancé seul, mêmes valeurs propres%s, et tout ce que le moteur compare ; R seul, en %s", k$id, k$quoi,
                    if (contrainte) ", R² ajusté et p" else "", k$langue),
-           is.null(r$ecart) && memes && !any(grepl("library(", sub("#.*$", "", texte), fixed = TRUE)) && !any(grepl("vegan::", sub("#.*$", "", texte), fixed = TRUE)) &&
+           is.null(r$ecart) && memes && is.null(difference) && !any(grepl("library(", sub("#.*$", "", texte), fixed = TRUE)) && !any(grepl("vegan::", sub("#.*$", "", texte), fixed = TRUE)) &&
              (k$langue == "fr" || (any(grepl("^redundancy_analysis <- function|^correspondence_analysis <- function", texte)) && !any(grepl("^ *#(fr|en)( |$)", texte)))))
-  if (!is.null(r$ecart) || !isTRUE(memes)) cat("    écart :", r$ecart, "/", utils::tail(attr(s, "messages"), 3), "\n")
+  if (!is.null(r$ecart) || !isTRUE(memes) || !is.null(difference)) cat("    écart :", r$ecart, "/", difference, "/", utils::tail(attr(s, "messages"), 3), "\n")
 }
 texte <- readLines(file.path(dossier, "M5.R"), encoding = "UTF-8")
 verifier("RDA à condition : son script choisit ses lignes par la condition, écrite en R", any(texte == "condition <- with(data_as_text, habitat != \"marais\" & altitude > 760)") &&

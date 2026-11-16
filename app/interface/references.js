@@ -264,6 +264,8 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
   for (const t of tableaux) offre.push({ chemin: `table.${t}`, type: 'tableau', detail: t });
   for (const v of vues) offre.push({ chemin: v, type: 'graphique', detail: v });
   offre.push({ chemin: 'methodes', type: 'texte', detail: '' });
+  // (the Methods text's references alone, in the document's list of references: documents.js)
+  offre.push({ chemin: 'methodes.references', type: 'texte', detail: '' });
   offre.push({ chemin: 'resultats', type: 'texte', detail: 'resultats' });
   return offre;
 }
@@ -273,6 +275,7 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
 export function genreChemin(chemin, vues = []) {
   if (chemin[0] === 'table') return 'tableau';
   if ((chemin[0] === 'methodes' || chemin[0] === 'resultats') && chemin.length === 1) return 'texte';
+  if (chemin[0] === 'methodes' && chemin[1] === 'references' && chemin.length === 2) return 'texte';
   if (chemin.length === 1 && vues.includes(chemin[0])) return 'graphique';
   return 'valeur';
 }

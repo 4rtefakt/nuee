@@ -213,6 +213,8 @@ ajuster_forest <- function(projet, d) {
     stop(traduire("Trop peu d'observations avec une réponse et toutes leurs valeurs X (il en faut au moins 5).",
                   "Too few observations with a response and all their X values (at least 5 are needed)."), call. = FALSE)
   }
+  if (!classement) refuser_reponse_constante(y[complet], nom_y)  # (regression.R)
+  if (!classement) refuser_valeurs_extremes(list(y = y[complet]), c(y = nom_y))
   garde <- obs[complet]
   groupes <- groupes_observations(projet, d, garde)
   if (length(unique(groupes)) < 2) {
@@ -267,7 +269,7 @@ ajuster_forest <- function(projet, d) {
 tester_forest <- function(projet, m, d) {
   test <- as.numeric(d$test)
   p <- prediction_ensemble(projet, m, test)
-  noms <- unname(projet$noms_obs[as.character(test)])
+  noms <- unname(projet$noms_obs[nom_numero(test)])
   if (m$classement) {
     y <- as.character(classe_observations(projet, d$classe, test))
     obs <- data.frame(uid = test, nom = noms, hors_domaine = FALSE, classe = y, classe_predite = p$prediction, stringsAsFactors = FALSE)
@@ -338,7 +340,7 @@ predire_forest <- function(projet, m, d, observations) {
 # ajustée par tous les arbres (en classement : les classes, et la part des votes hors sac de
 # chaque classe), le groupe de validation croisée.
 observations_foret <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   if (m$classement) {
     cl <- m$classification
     obs$classe <- as.character(m$y_valeurs)
@@ -366,9 +368,10 @@ resultat_forest <- function(id) {
   r <- m$reglages_foret
   qualite <- if (m$classement) list(bien_classes_oob = 1 - m$oob$erreur, bien_classes_vc = m$classification$vc$global, erreur_oob = m$oob$erreur)
              else list(mse_oob = m$oob$mse, r2_oob = m$oob$r2, Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, RMSE_oob = sqrt(m$oob$mse))
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   chiffres <- if (m$classement) sprintf("%s %s · %s %s", fmt_pourcent(1 - m$oob$erreur), traduire("bien classées (OOB)", "correct (OOB)"),
                                         fmt_pourcent(m$classification$vc$global), traduire("(VC)", "(CV)"))
-              else sprintf("R2 OOB %.2f · Q2 %.2f · %d %s", m$oob$r2, m$vc$Q2, r$arbres, traduire("arbres", "trees"))
+              else sprintf("R2 OOB %s · Q2 %s · %d %s", nombre_texte(m$oob$r2, 2, fr), nombre_texte(m$vc$Q2, 2, fr), r$arbres, traduire("arbres", "trees"))
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "FOREST", analyse = TRUE, prediction = TRUE,
        classement = m$classement, regression = FALSE, opls = FALSE, Ap = 0, A = 0, N = m$N, K = m$K, noms_y = I(y),
        transformation_y = nom_transformation(m$y$transform) %||% "", observations = observations_foret(p, m),

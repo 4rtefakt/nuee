@@ -199,12 +199,27 @@ Menus et barre d'outils
 -----------------------
 Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. Raccourcis :
   Ctrl+O ouvrir            Ctrl+S enregistrer         Ctrl+E exporter les résultats
-  Ctrl+V coller un tableau
+  Ctrl+V coller un tableau Ctrl+Z annuler             Ctrl+H chercher et remplacer
+  Ctrl+K rechercher une commande    Ctrl+J console R  Ctrl+C copier le tableau
   Ctrl+N nouveau modèle    Ctrl+M modifier le modèle  Ctrl+= / Ctrl+- composantes
   Échap  effacer la sélection    Ctrl+Suppr exclure la sélection et réajuster
   Ctrl+Maj+N nouvelle fenêtre    Ctrl+Maj+D détacher le panneau   Ctrl+W fermer le panneau
   Ctrl+B explorateur       F1 guide
+  Ctrl+Tab / Ctrl+Maj+Tab onglet suivant / précédent  F6 / Maj+F6 zone suivante / précédente
 Affichage : thème sombre, français / anglais, taille du texte.
+Clavier et lecteurs d'écran : Alt (ou F10) mène à la barre de menus, les flèches dans ses
+menus, Entrée lance une commande, Échap revient ; Alt et la lettre soulignée d'un menu l'ouvre
+(Alt+F Fichier...). F6 va de zone en zone (barre d'outils, explorateur, chaque groupe de
+panneaux, barre d'état), Ctrl+Tab d'onglet en onglet ; sur un onglet, les flèches et Suppr.
+L'explorateur est un arbre (flèches ; Entrée ouvre, Espace choisit), un tableau une grille
+(flèches ; Entrée ou F2 modifie une cellule, Espace choisit une ligne, Entrée sur un en-tête
+trie). Maj+F10 ou la touche menu donne le menu de ce qui a le clavier (nœud, ligne, colonne,
+onglet, graphique). Un graphique est nommé par ce qu'il montre pour les lecteurs d'écran, et
+Ctrl+C copie ses nombres en tableau. Les dialogues gardent le clavier jusqu'à leur fermeture.
+Les deux thèmes respectent les contrastes WCAG AA et le réglage « réduire les animations » du
+système ; Mise en forme › Couleurs « lisibles par les daltoniens » (Okabe-Ito) est faite pour
+les déficiences de la vision des couleurs, et les couleurs par défaut restent distinctes pour
+elles aussi.
 
 Nouveau modèle (Modèle › Nouveau modèle)
 ----------------------------------------
@@ -243,8 +258,9 @@ Avant le calcul, l'application vérifie les données : variables ou observations
 
 Quelle analyse ? (Modèle › Quelle analyse ?)
 --------------------------------------------
-Modèle › Quelle analyse ? (aussi un bouton de la page d'accueil, à côté de Nouveau modèle, et
-Ctrl+K) : quelques questions en mots simples, puis l'analyse qui y répond, déjà réglée.
+Modèle › Quelle analyse ? (aussi un bouton de la page d'accueil, à côté de Nouveau modèle, et en
+tapant « quelle » dans Affichage › Rechercher une commande, Ctrl+K) : quelques questions en mots
+simples, puis l'analyse qui y répond, déjà réglée.
   - Votre question : comparer des groupes ou des périodes ; l'effet de variables sur une
     réponse ; beaucoup d'espèces à la fois (comment la composition change, un modèle par
     espèce, les espèces qui caractérisent chaque groupe) ; une tendance dans le temps ou un
@@ -260,8 +276,11 @@ Ctrl+K) : quelques questions en mots simples, puis l'analyse qui y répond, déj
     ou des points (échantillonnage par distance).
   - Les variables : les variables explicatives (X), ou les groupes.
 Nuée propose les réponses d'après les variables du projet (comme les lit Statistiques des
-variables) : une réponse d'entiers à partir de 0 est un comptage, de 0 et de 1 une
-présence-absence, entre 0 et 1 une proportion ; « beaucoup de zéros » quand un quart au moins
+variables) : une réponse d'entiers à partir de 0 est un comptage, sauf quand son unité (Édition ›
+Unités et descriptions : g, cm, ha, %, °C...) ou son nom (une moyenne, un rapport, une
+biomasse...) dit une mesure arrondie à son unité ; des comptages que rien ne confirme (pas
+d'unité de comptage, pas de nom comme abondance) ont aussi le modèle linéaire parmi les autres
+possibilités ; de 0 et de 1 une présence-absence, entre 0 et 1 une proportion ; « beaucoup de zéros » quand un quart au moins
 des valeurs sont nulles, et 15 points de plus que n'en donnerait une loi de Poisson de même
 moyenne (la phrase sous la réponse donne les deux) ; le site est une variable qualitative nommée
 comme un site (site, station, placette, transect...) dont les catégories se répètent ; le temps
@@ -290,8 +309,9 @@ Les choix principaux :
     (une variance au-delà de 1,5 fois la moyenne) ou a beaucoup de zéros (beaucoup de zéros ne
     veut pas toujours dire excès de zéros, Warton 2005 : comparez avec la Poisson à excès de
     zéros par l'AIC), sinon Poisson ; une présence-absence : la régression logistique ; une
-    proportion : la régression bêta ; une mesure positive et asymétrique : gamma (ou son
-    logarithme) ; une mesure avec des zéros : Tweedie ; sinon le modèle linéaire ; avec les
+    proportion : la régression bêta ; une mesure avec des zéros : Tweedie ; sinon le modèle
+    linéaire, une mesure positive et asymétrique aussi (ses X peuvent la rendre asymétrique :
+    ses résidus le disent après l'ajustement, et gamma ou le logarithme sont proposés) ; avec les
     mêmes sites mesurés plusieurs fois, un effet aléatoire par site et la validation croisée par
     site ;
   - des groupes comparés : le test entre deux variables (celui que leurs types demandent),
@@ -847,10 +867,10 @@ les variables. Elles sont enregistrées avec le projet comme les autres, et gard
 viennent : le texte des Méthodes d'un modèle qui les utilise dit quels fichiers, quelle taille de
 cellules, quel système et quelle méthode les ont données. La console R montre l'appel,
 ajouter_valeurs_rasters(...), et ce qu'il a donné.
-Les fichiers sont lus dans Nuée, sans GDAL, et seulement les bandes de lignes ou les tuiles qui
+Les fichiers sont lus dans Nuée, sans GDAL, et seulement les blocs de lignes ou les tuiles qui
 contiennent des observations : un MNT national reste rapide (une fraction de seconde pour une
 centaine d'observations dans un fichier sans compression ou Deflate, une à trois secondes en LZW,
-décodé en R). Lus : TIFF classique et BigTIFF, en bandes de lignes ou en tuiles, bandes
+décodé en R). Lus : TIFF classique et BigTIFF, en blocs de lignes ou en tuiles, bandes
 entrelacées ou séparées ; sans compression, LZW, Deflate, PackBits, LZMA et ZSTD (ZSTD avec R 4.4
 et après), avec les prédicteurs 2 et 3 ; des entiers de 8, 16 et 32 bits, des réels de 32 et 64
 bits ; la valeur manquante, l'échelle, le décalage et le nom des bandes de GDAL ; le
@@ -872,9 +892,9 @@ présences-absences et des valeurs positives, ses résidus quantiles), avec son 
 autocorrélation, z et la valeur p unilatérale (autocorrélation positive) sous la randomisation,
 et p par permutations (999 par défaut). Pour un modèle linéaire sans effet aléatoire, une seconde
 ligne donne le test qui tient compte de l'ajustement (Cliff et Ord 1981, comme
-spdep::lm.morantest). Voisinage : les k plus proches voisines de chaque observation (rendues
-réciproques), les observations à moins d'une distance (vide : la plus petite qui donne une
-voisine à chacune), ou l'inverse de la distance ; lignes de somme 1 (style « W » de spdep) ou
+spdep::lm.morantest). Voisinage : les k plus proches voisins de chaque observation (rendus
+réciproques), les observations à moins d'une distance (vide : la plus petite qui donne un
+voisin à chacune), ou l'inverse de la distance ; lignes de somme 1 (style « W » de spdep) ou
 poids tels quels. Dessous, le corrélogramme (l'I de Moran par classes de distance jusqu'à la
 moitié de la plus grande, p bilatérale corrigée par Holm sur les classes, en rouge à 0,05) et le
 semi-variogramme (la moitié de la moyenne des carrés des écarts entre les valeurs des paires de
@@ -2067,6 +2087,48 @@ Une variable qualitative ou un identifiant dont les valeurs connues sont les mê
 groupe (l'habitat d'un secteur, le site d'un secteur) est gardé, avec cette valeur ; les autres
 sont laissés de côté, et la barre d'état les nomme. Le nouveau projet n'a pas encore de
 fichier : l'enregistrer (Ctrl+S).
+
+Étapes des données et mise à jour
+---------------------------------
+Un projet fait d'un fichier de données garde ce fichier, sa source : où il est (et son chemin
+depuis le dossier du projet, si bien qu'un dossier déplacé avec ses données les retrouve), sa
+table ou sa feuille, les choix de l'import sur ses colonnes, et sa taille, sa date et son
+empreinte quand il a été lu. Chaque changement fait à ses données dans Nuée est gardé en étape,
+écrite avec les noms des variables et les identifiants des observations : une valeur modifiée,
+Chercher et remplacer, les catégories, une Nouvelle variable, des colonnes d'un tableau (avec le
+fichier de ce tableau), des valeurs de rasters, des cellules collées, les unités et
+descriptions, les coordonnées, une classe d'une sélection, des scores ou des groupes de
+k-moyennes en variables.
+Édition › Étapes des données (ou clic droit sur les données du projet) : la source (trouvée,
+modifiée depuis sa lecture, ou introuvable) et les étapes, chacune avec sa date et les fichiers
+qu'elle a lus. Retirer montre d'abord ce que ferait le retrait d'une étape (la source relue,
+les autres étapes rejouées dessus), puis, comme une mise à jour, remplace les données en un seul
+changement qu'annule Ctrl+Z, ajuste à nouveau chaque modèle et montre Ce qui a changé ; quand la
+source a changé depuis sa lecture, mettez d'abord les données à jour. Quand les données ont
+changé hors des étapes (dans la console R, ou avec une version de Nuée d'avant la 1.1), le
+dialogue le dit : les mettre à jour reprendrait celles que la source et les étapes donnent.
+Édition › Mettre à jour les données : la source relue, ou un autre fichier, celui de l'année
+suivante, dont les colonnes peuvent venir dans un autre ordre ou avec de nouvelles. Les étapes y
+sont rejouées, puis ses lignes rapportées aux observations du projet par leurs identifiants et
+ses colonnes aux variables par leurs noms, si bien que chaque modèle garde sa définition. Avant
+que rien ne change, le dialogue montre ce qui changera : les nouvelles observations, variables
+et catégories, celles qui ne sont plus dans le fichier (elles quittent le projet et ses
+modèles), les cellules changées, les variables calculées de nouveau d'après leur formule, chaque
+étape rejouée, sautée (une observation ou une variable qu'elle nomme n'est plus là) ou en
+erreur, avec sa raison, les modèles qui ne peuvent plus être ajustés et ce qui leur manque, un
+modèle dont la catégorie de référence n'a plus d'observation, et comment le fichier a été lu
+(sans colonne qui nomme les observations, elles se retrouvent par leur numéro de ligne). Un
+modèle qui laisse de côté des observations demande s'il prend les nouvelles (coché). Mettre à
+jour remplace les données en un seul changement (Ctrl+Z l'annule, la source et les étapes
+comprises, et ajuste à nouveau chaque modèle sur les données d'avant) ; avec les versions, une version est enregistrée d'abord. Puis chaque modèle du
+projet est ajusté à nouveau, avec une barre de progression et Arrêter, et Ce qui a changé
+compare leurs résultats clés avant et après. Il montre aussi ce que la mise à jour a fait aux
+données, et les valeurs citées dans les documents qui ont changé, chacune avec sa phrase (un
+clic ouvre le document à cet endroit) ; dans l'aperçu de chaque document, ces valeurs sont
+marquées, celle d'avant au survol, jusqu'à Cacher les changements.
+Quand le fichier source d'un projet change (une nouvelle année ajoutée), la barre d'état le dit,
+à l'ouverture du projet et quand Nuée revient au premier plan ; son lien ouvre Mettre à jour les
+données.
 
 Modifier les données, créer des variables
 -----------------------------------------

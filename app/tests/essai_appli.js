@@ -1,16 +1,25 @@
 // Starts the built program and uses it over the Chrome DevTools Protocol, as a person would:
-// the R engine starts (on Linux, the computer's R), the example project opens with its plots,
-// a PLS model's views, the R console shows each fit's printout, a plot is saved as an image, a
+// the R engine starts (on Linux, the computer's R), the update is offered by a local stand-in for
+// GitHub (never the real one), and chosen twice while it downloads, then refused by its SHA-256
+// (Windows), the example project opens with its plots,
+// a PLS model's views, the R console shows each fit's printout, a plot is saved as an image,
+// Export to R offers all the session's models only with those a session script holds, a
 // .nuee project given on the command line (what a double-click does) opens in the running
-// window, then Nuée quits, R stops and its temporary folder goes.
+// window, its first version is kept on saving (versions.js, isomorphic-git), a second main window
+// stays when the first is closed, then Nuée quits from it, R stops and its temporary folder goes
+// (on Windows, in a temporary folder whose path isn't ASCII, with a read-only file in it; an
+// earlier run's goes at the start). Started again with the project saved, quitting right after
+// typing in its document asks about it.
 //   node tests/essai_appli.js <program> [screenshot.png] [program options...]
 // On Linux the program starts as from the desktop menu: no LANG and a short PATH (/usr/bin:/bin),
 // which once left the engine unable to read its own files. On a server, run it under xvfb-run.
 // macOS, as from the Finder (no LANG either): <program> is Nuée.app/Contents/MacOS/Nuée, and the
 // engine must run on the R in Nuée.app; a .nuee given to the Finder (open) opens in the window.
 // Needs Node 22 or later (fetch, WebSocket). Exits with 1 when a check fails.
-const { spawn, execFileSync } = require('child_process');
+const { spawn, spawnSync, execFileSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
+const http = require('http');
 const net = require('net');
 const os = require('os');
 const path = require('path');
@@ -24,12 +33,40 @@ const windows = process.platform === 'win32';
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-essai-'));
 const profil = path.join(dossier, 'profil');
+// (Windows: the program's temporary folder in a path that isn't ASCII, as a user named Clément has)
+const temp = path.join(dossier, 'Temp de Clément');
+if (windows) fs.mkdirSync(temp);
 
 const mac = process.platform === 'darwin';
 // (TMPDIR: macOS gives each user their own)
 const garder = ['HOME', 'DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'APPIMAGE_EXTRACT_AND_RUN', 'TMPDIR'];
-const env = windows ? process.env
+const env = windows ? { ...process.env, TEMP: temp, TMP: temp }
   : { ...Object.fromEntries(garder.filter((k) => process.env[k]).map((k) => [k, process.env[k]])), PATH: '/usr/bin:/bin' };
+
+// A stand-in for GitHub's latest release (main.js: NUEE_SOURCE_MAJ), so that the program never asks
+// the real one: a 9.9.9 whose "installer" is random bytes under a SHA-256 they don't have, sent
+// slowly. Nothing could install it.
+const installateurFactice = crypto.randomBytes(1 << 20);
+let telechargements = 0;
+const serveurMaj = http.createServer(async (req, res) => {
+  const ici = `http://127.0.0.1:${serveurMaj.address().port}`;
+  if (req.url === '/latest') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ tag_name: 'v9.9.9', html_url: `${ici}/page`, assets: [{ name: 'Nuee-Setup-9.9.9.exe', size: installateurFactice.length,
+      browser_download_url: `${ici}/Nuee-Setup-9.9.9.exe`, digest: `sha256:${'0'.repeat(64)}` }] }));
+  } else if (req.url === '/Nuee-Setup-9.9.9.exe') {
+    telechargements += 1;
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': installateurFactice.length });
+    for (let i = 0; i < 20; i += 1) {
+      res.write(installateurFactice.subarray(i * installateurFactice.length / 20, (i + 1) * installateurFactice.length / 20));
+      await pause(100);
+    }
+    res.end();
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
 
 function portLibre() {
   return new Promise((ok, ko) => {
@@ -40,8 +77,8 @@ function portLibre() {
 }
 
 // (detached on Linux: its own process group, so that a failed run can stop all of it)
-const lancer = (port, args = []) => spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${port}`, ...optionsProgramme, ...args],
-  { env, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
+const lancer = (port, args = [], cwd = undefined) => spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${port}`, ...optionsProgramme, ...args],
+  { env, cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
 function tuer(proc) {
   if (proc.exitCode !== null) return;
   try {
@@ -124,6 +161,23 @@ async function brancher(cible) {
   fs.mkdirSync(secours, { recursive: true });
   fs.writeFileSync(copieAncienne, '{}');
   fs.writeFileSync(path.join(secours, 'index.json'), JSON.stringify([{ fichier: copieAncienne, projet: 'P1', nom: 'arret precedent', date: new Date().toISOString() }]));
+  // (Windows) R's folder of an earlier run whose process has ended, with a read-only file and
+  // folder in it: the start removes it (main.js: nettoyerTemporairesR, supprimer)
+  const ancienR = windows ? path.join(temp, `nuee-r-${spawnSync(process.execPath, ['-e', '']).pid}`) : null;
+  if (ancienR) {
+    fs.mkdirSync(path.join(ancienR, 'Rtmp', 'figé'), { recursive: true });
+    fs.writeFileSync(path.join(ancienR, 'Rtmp', 'lecture seule.txt'), 'x');
+    fs.chmodSync(path.join(ancienR, 'Rtmp', 'lecture seule.txt'), 0o444);
+    fs.chmodSync(path.join(ancienR, 'Rtmp', 'figé'), 0o555);
+  }
+  // a project given to a second start while Nuée is still starting (its R folder made, no window
+  // yet): it waits for the window's page, and opens there (main.js: montrerFenetre, aOuvrir)
+  const auDemarrage = path.join(dossier, 'vergers.json');
+  fs.copyFileSync(path.join(__dirname, '..', '..', 'exemple', 'vergers.json'), auDemarrage);
+  const dossiersR = () => fs.readdirSync(windows ? temp : os.tmpdir()).filter((n) => n.startsWith('nuee-r-'));
+  const avantR = new Set(dossiersR());
+  await new Promise((ok) => serveurMaj.listen(0, '127.0.0.1', ok));
+  env.NUEE_SOURCE_MAJ = `http://127.0.0.1:${serveurMaj.address().port}/latest`;
   const port = await portLibre();
   const proc = lancer(port);
   let sortie = '';
@@ -131,6 +185,8 @@ async function brancher(cible) {
   proc.stderr.on('data', (d) => { sortie += d; });
   let p;
   try {
+    for (let i = 0; i < 600 && !dossiersR().some((n) => !avantR.has(n)) && proc.exitCode === null; i += 1) await pause(50);
+    const secondAuDemarrage = lancer(await portLibre(), [auDemarrage]);
     let cible;
     for (let i = 0; i < 240 && !cible && proc.exitCode === null; i += 1) {  // R starts first: up to two minutes
       await pause(500);
@@ -139,6 +195,23 @@ async function brancher(cible) {
     if (!cible) throw new Error(`no window (exit code ${proc.exitCode})`);
     p = await brancher(cible);
     await p.attendre("document.querySelectorAll('.menu-haut').length > 3", 60000);
+    const ouvertAuDemarrage = await p.attendre("document.querySelector('.arbre').textContent.includes('vergers')", 30000).catch(() => false);
+    verifier('fichierDonnePendantLeDemarrage', !!ouvertAuDemarrage && secondAuDemarrage.exitCode !== null, `${!!ouvertAuDemarrage} ${secondAuDemarrage.exitCode}`);
+    tuer(secondAuDemarrage);
+    for (const x of [].concat((await p.api('etat')).projets)) await p.api('fermer_projet', { projet: x.id });  // (the example project, below, is then the only one)
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
+    await p.attendre("!(document.querySelector('.arbre') || { textContent: '' }).textContent.includes('vergers')", 20000);
+    // the update, for an installed program (Help offers it; not from the sources), from the stand-in:
+    // the version it offers, then (Windows) Update chosen twice while the installer downloads, as its
+    // link stays in the status bar: one download, refused by its SHA-256, the same answer for both,
+    // nothing left (main.js: mettre-a-jour; elsewhere the link opens the release page)
+    if ((await p.evaluer('window.bureau.majAuto()')) !== null) {
+      const v = await p.evaluer('window.bureau.nouvelleVersion(true)');
+      const maj = windows ? await p.evaluer(`(async () => { const a = window.bureau.mettreAJour();
+        await new Promise((r) => setTimeout(r, 500)); return Promise.all([a, window.bureau.mettreAJour()]); })()`) : [];
+      verifier('miseAJour', !!v && v.version === '9.9.9' && (!windows || (!!v.installateur && telechargements === 1
+        && maj.every((r) => r && r.erreur === 'empreinte') && !fs.existsSync(path.join(temp, 'nuee-mise-a-jour')))), { v, maj, telechargements });
+    }
     // what goes wrong without a page error: a policy violation, a request the engine refuses
     await p.evaluer(`window.__violations = []; document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
       window.__refus = []; const f = window.fetch;
@@ -147,7 +220,12 @@ async function brancher(cible) {
     res.R = `${v.R} (${v.systeme})`;
     const sorties = (r) => [].concat(r.journal || []).filter((e) => e.type === 'sortie').map((e) => e.texte).join('').trim();
     const pidR = Number(sorties(await p.api('console', { code: 'cat(Sys.getpid())' })));
-    const temporaire = sorties(await p.api('console', { code: 'cat(dirname(tempdir()))' }));  // the folder of this run
+    // the folder of this run (by its long name: R on Windows gives the short one of a path with spaces)
+    let temporaire = sorties(await p.api('console', { code: 'cat(dirname(tempdir()))' }));
+    try { temporaire = fs.realpathSync.native(temporaire); } catch { /* checked below */ }
+    verifier('ancienDossierRSupprime', !ancienR || !fs.existsSync(ancienR), ancienR);
+    // (a read-only file in it, as a file copied there from a read-only folder: quitting removes it too)
+    await p.api('console', { code: 'f <- file.path(tempdir(), "lecture seule.txt"); writeLines("x", f); Sys.chmod(f, "444")' });
     res.localeR = sorties(await p.api('console', { code: 'cat(Sys.getlocale("LC_CTYPE"))' }));
     verifier('accentsLus', sorties(await p.api('console', { code: 'cat(nchar("Modèle"))' })) === '6');
     if (mac) {  // (not one CRAN's installer put in /Library/Frameworks)
@@ -198,17 +276,89 @@ async function brancher(cible) {
     const console_ = await p.evaluer("[...document.querySelectorAll('.journal-r .r-resultat')].map((x) => x.textContent)");
     verifier('consoleAjustements', console_.length >= 3 && console_.every((t) => /Mod(èle|el) \S+ \(/.test(t)), console_.length);
 
+    // Export to R's "all the session's models": only those a session script holds (PCA, PLS, OPLS and
+    // regressions); another analysis is exported alone (serveur.R: script_demande), so its own dialog
+    // doesn't offer it. A k-means of the example project fitted here, the window told as another
+    // window would tell it.
+    const exemple = [].concat((await p.api('etat')).projets)[0];  // (the only project open)
+    const variables = [].concat((await p.api('projet', { projet: exemple.id })).variables).filter((v) => !v.qualitative).slice(0, 3);
+    await p.api('ajuster', { projet: exemple.id, type: 'KMEANS', x: variables.map((v) => v.uid), echelle: 'UV', options: { k: 3 }, nom: 'K1' });
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
+    await p.attendre("[...document.querySelectorAll('.arbre *')].some((e) => e.children.length === 0 && e.textContent.trim() === 'K1')", 20000);
+    const dialogueScript = async (modele) => {
+      await doubleClic(modele);
+      await pause(2000);
+      await commande(await libelle('script_r'));
+      await p.attendre("!!document.querySelector('.options-script')", 10000);
+      return p.evaluer("({ seance: document.querySelectorAll('.options-script input[name=\"script-portee\"]').length, liste: [...document.querySelectorAll('.options-script .doux')].map((x) => x.textContent).join(' | ') })");
+    };
+    const dk = await dialogueScript('K1');
+    const dm = await dialogueScript('M2');
+    verifier('scriptSeanceSansAutreAnalyse', dk.seance === 0 && dm.seance === 2 && !/\bK1\b/.test(dm.liste), { k1: dk, m2: dm });
+    // (the project, which K1 joined, saved: quitting below asks nothing)
+    await p.evaluer("document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove())");
+    await p.api('enregistrer', { projet: exemple.id, chemin: path.join(dossier, 'exemple.nuee') });
+
+    // a document in English, the interface in French: the table it cites is in English, words and
+    // numbers, as its values are (documents.js, i18n.js: dansLangue); the references of the Methods
+    // text it cites are in its list of references (bibliographie.js: joindreReferences)
+    await p.evaluer("import('/i18n.js').then((m) => m.changerLangue('fr'))");
+    await p.api('document_enregistrer', { projet: exemple.id, titre: 'Document EN', langue: 'en', texte: 'Q2 = {{M2.Q2}}.\n\n{{M2.table.resume | Summary}}\n\n{{M2.methodes}}\n' });
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");  // (as another window says it: the explorer lists it)
+    await p.attendre("document.querySelector('.arbre').textContent.includes('Document EN')", 20000);
+    await doubleClic('Document EN');
+    const tableDocument = await p.attendre("(() => { const a = document.querySelector('.apercu-document table'); return a && [...a.querySelectorAll('th, td')].map((x) => x.textContent); })()", 60000)
+      .catch(() => null);
+    verifier('documentDansSaLangue', !!tableDocument && tableDocument.includes('Eigenvalue') && tableDocument.some((x) => /^0\.\d{3}$/.test(x)) && !tableDocument.some((x) => /\d,\d/.test(x)),
+      tableDocument && tableDocument.slice(0, 16));
+    const listeDocument = await p.attendre("(() => { const l = [...document.querySelectorAll('.apercu-document .bibliographie p')].map((x) => x.textContent); return l.length && l; })()", 30000)
+      .catch(() => null);
+    verifier('documentReferencesDesMethodes', !!listeDocument && listeDocument.some((x) => x.startsWith('Wold, S., Sjöström, M., & Eriksson, L. (2001). PLS-regression'))
+      && listeDocument.some((x) => x.startsWith('R Core Team (')), listeDocument);
+    await p.evaluer("import('/i18n.js').then((m) => m.changerLangue('en'))");
+    await p.api('enregistrer', { projet: exemple.id, chemin: path.join(dossier, 'exemple.nuee') });  // (Quit then has nothing to ask)
+
     // a .nuee project given to a second start (a double-click): it opens in this window
     const nom = 'essai-ligne-de-commande';
     const colle = await p.api('coller', { texte: 'nom\ta\tb\no1\t1\t2\no2\t3\t5\no3\t4\t4\n', nom });
     const fichier = path.join(dossier, `${nom}.nuee`);
     await p.api('enregistrer', { projet: colle.id, chemin: fichier });
     await p.api('fermer_projet', { projet: colle.id });
+    const portReglages = () => { try { return JSON.parse(fs.readFileSync(path.join(profil, 'reglages.json'), 'utf8')).port; } catch { return null; } };
+    const portAvant = portReglages();
     const second = lancer(await portLibre(), [fichier]);
     await new Promise((ok) => { second.on('exit', ok); setTimeout(ok, 60000); });
     const ouvert = await p.attendre(`document.querySelector('.arbre').textContent.includes(${JSON.stringify(nom)})`, 20000).catch(() => false);
     verifier('fichierOuvertParUnSecondLancement', !!ouvert && second.exitCode !== null);
+    // (that start only handed its file over: no R of its own, the settings' port left as it was)
+    const rDuSecond = fs.readdirSync(windows ? temp : os.tmpdir()).filter((n) => new RegExp(`^nuee-r-(\\d+-)?${second.pid}(-|$)`).test(n));
+    verifier('secondLancementSansMoteur', !rDuSecond.length && portReglages() === portAvant, { rDuSecond, portAvant, portApres: portReglages() });
     tuer(second);
+    // that project's versions (versions.js): isomorphic-git found in the program, the functions
+    // through preload.js, the first version on saving, a refusal with its message
+    const versions = await p.evaluer(`(async () => {
+      const v = window.bureau.versions;
+      const f = ${JSON.stringify(fichier)};
+      const avant = await v.etat(f);
+      await v.ouvert(f, { modifie: false });
+      const premiere = await v.apresEnregistrement(f, {});
+      const apres = await v.etat(f);
+      let refus = '';
+      try { await v.restaurer(f, '0123456789abcdef0123456789abcdef01234567'); } catch (e) { refus = e.message; }
+      return { avant: avant.versions, premiere: premiere.version && premiere.version.description, apres: [apres.actif, apres.versions].join(),
+        liste: (await v.liste(f)).length, refus, evenements: typeof v.surVersions };
+    })()`);
+    verifier('versions', versions.avant === 0 && versions.premiere === 'First version' && versions.apres === 'true,1' && versions.liste === 1
+      && /isn’t in the project’s history|n’est pas dans l’historique/.test(versions.refus) && versions.evenements === 'function', versions);
+    // the same .nuee by its name alone, from its folder, as a command line in that folder gives it (main.js:
+    // fichierDonne, from the second start's working folder)
+    for (const x of [].concat((await p.api('etat')).projets).filter((y) => y.nom.includes(nom))) await p.api('fermer_projet', { projet: x.id });
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
+    await p.attendre(`!document.querySelector('.arbre').textContent.includes(${JSON.stringify(nom)})`, 20000);
+    const relatif = lancer(await portLibre(), [path.basename(fichier)], dossier);
+    await new Promise((ok) => { relatif.on('exit', ok); setTimeout(ok, 60000); });
+    verifier('fichierRelatifOuvertParUnSecondLancement', !!(await p.attendre(`document.querySelector('.arbre').textContent.includes(${JSON.stringify(nom)})`, 20000).catch(() => false)));
+    tuer(relatif);
     // macOS: a .nuee double-clicked in the Finder comes as an event (open-file), not as an argument
     if (mac) {
       const nomFinder = 'essai-finder';
@@ -224,6 +374,31 @@ async function brancher(cible) {
     verifier('sansRefusDuMoteur', (await p.evaluer('window.__refus')).length === 0, await p.evaluer('window.__refus'));
     if (capture) await p.capture(capture);
 
+    // Window › New window: a second main window, which outlives the first (main.js: outlivesOpener).
+    // Closing the first one leaves Nuée running in the second, from which it quits below.
+    await commande(await libelle('nouvelle_fenetre'));
+    let cible2;
+    for (let i = 0; i < 60 && !cible2; i += 1) { await pause(500); cible2 = (await pages(port)).find((c) => /[?&]fenetre=/.test(c.url)); }
+    if (!cible2) throw new Error('no second main window');
+    const p2 = await brancher(cible2);
+    await p2.attendre("document.querySelectorAll('.menu-haut').length > 3", 60000);
+    const erreurs1 = p.erreurs;
+    await p.evaluer('setTimeout(() => window.close(), 100); true').catch(() => {});
+    await pause(3000);
+    p.fermer();
+    p = p2;
+    verifier('secondeFenetreGardee', proc.exitCode === null && (await p.evaluer("!!document.querySelector('.arbre')").catch(() => false)),
+      `${proc.exitCode} ${(await pages(port)).map((c) => c.url).join(' ')}`);
+    // and the recovery copies: the second window writes them now, every two minutes (app.js:
+    // sauvegarderSecours), keeping the earlier stop's that waits (checked after quitting)
+    const nomCopie = 'essai-copie-de-secours';
+    const pc = await p.api('coller', { texte: 'nom\ta\tb\no1\t1\t2\no2\t3\t5\n', nom: nomCopie });
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
+    const copie = () => { try { return JSON.parse(fs.readFileSync(path.join(secours, 'index.json'), 'utf8')).find((e) => e.nom === nomCopie && fs.existsSync(e.fichier)); } catch { return undefined; } };
+    for (let i = 0; i < 150 && !copie() && proc.exitCode === null; i += 1) await pause(1000);
+    verifier('copieDeSecoursDeLaSecondeFenetre', !!copie(), fs.existsSync(path.join(secours, 'index.json')) ? fs.readFileSync(path.join(secours, 'index.json'), 'utf8') : 'no index');
+    await p.api('fermer_projet', { projet: pc.id });  // (quitting then has nothing to ask)
+
     // quitting stops R and removes its temporary folder
     verifier('dossierTemporaireR', /nuee-r-[\d-]+$/.test(temporaire) && fs.existsSync(temporaire), temporaire);
     await Promise.race([p.evaluer('window.bureau.quitter()').catch(() => {}), pause(3000)]);  // the page goes with the app
@@ -236,17 +411,43 @@ async function brancher(cible) {
     try { index = JSON.parse(fs.readFileSync(path.join(secours, 'index.json'), 'utf8')); } catch { index = []; }
     verifier('copieDUnArretPrecedentGardee', fs.existsSync(copieAncienne) && index.length === 1 && path.basename(index[0].fichier) === path.basename(copieAncienne),
       `${fs.existsSync(copieAncienne)} / ${JSON.stringify(index)}`);
-    verifier('sansErreurDansLaPage', p.erreurs.length === 0, p.erreurs.slice(0, 10));
+    verifier('sansErreurDansLaPage', !erreurs1.length && !p.erreurs.length, [...erreurs1, ...p.erreurs].slice(0, 10));
+
+    // the saved example project again: File › Quit right after typing in its document (its text is
+    // sent after a pause in typing), and Nuée asks about it instead of closing without it (main.js:
+    // viderFenetres, before the question closing the window asks too); the question left
+    // unanswered, the program is stopped
+    const port3 = await portLibre();
+    const proc3 = lancer(port3, [path.join(dossier, 'exemple.nuee')]);
+    try {
+      let cible3;
+      for (let i = 0; i < 240 && !cible3 && proc3.exitCode === null; i += 1) { await pause(500); cible3 = (await pages(port3)).find((c) => /^http:\/\/127\.0\.0\.1:\d+\//.test(c.url)); }
+      const p3 = await brancher(cible3);
+      const feuille = "[...document.querySelectorAll('.arbre *')].find((e) => e.children.length === 0 && e.textContent.trim() === 'Document EN')";
+      await p3.attendre(`!!${feuille}`, 60000);
+      await p3.evaluer(`document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove()); ${feuille}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+      await p3.attendre("!!document.querySelector('.cm-content')", 30000);
+      await p3.evaluer("document.querySelector('.cm-content').focus()");
+      await p3.taper(' Typed just before quitting.');
+      await p3.evaluer('window.bureau.quitter(); true');  // (not awaited: Nuée then waits for an answer)
+      for (let i = 0; i < 16 && proc3.exitCode === null; i += 1) await pause(250);
+      verifier('fermetureApresSaisieDemandee', proc3.exitCode === null, proc3.exitCode);
+      p3.fermer();
+    } finally {
+      tuer(proc3);
+    }
   } catch (e) {
     verifier('erreur', false, e.message);
     if (p && capture) try { await p.capture(capture.replace(/\.png$/i, '') + '-erreur.png'); } catch { /* no page */ }
   } finally {
     if (p) p.fermer();
     tuer(proc);
+    serveurMaj.close();
     if (echecs.length) res.sortieProgramme = sortie.slice(-3000);
     console.log(JSON.stringify(res, null, 1));
     console.log(echecs.length ? `Échecs : ${echecs.join(', ')}` : 'Toutes les vérifications sont passées.');
-    fs.rmSync(dossier, { recursive: true, force: true });
+    // (fs.rmSync of Node 24.12 leaves a path that isn't ASCII in place without an error)
+    await fs.promises.rm(dossier, { recursive: true, force: true }).catch(() => {});
     process.exit(echecs.length ? 1 : 0);
   }
 })();

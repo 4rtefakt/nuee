@@ -1157,7 +1157,9 @@ infos_rasters <- function(projet, chemins) {
       list(chemin = chemin, nom = g$nom, taille = g$taille, format = g$format, largeur = g$largeur, hauteur = g$hauteur, bandes = g$bandes,
            type = g$type, compression = if (!is.null(tf)) tf$nom_compression else "", predicteur = if (!is.null(tf)) tf$predicteur else 1,
            organisation = if (is.null(tf)) "" else if (tf$tuiles) sprintf(traduire("tuiles de %d × %d", "%d × %d tiles"), as.integer(tf$bl), as.integer(tf$bh))
-                          else sprintf(traduire("bandes de %d ligne(s)", "strips of %d row(s)"), as.integer(tf$bh)),
+                          # (des blocs de lignes, pas des « bandes » : le mot des bandes du raster, juste à côté)
+                          else if (tf$bh == 1) traduire("blocs d'une ligne", "strips of 1 row")
+                          else sprintf(traduire("blocs de %d lignes", "strips of %d rows"), as.integer(tf$bh)),
            bandes_separees = isTRUE(tf$planaire), resolution = texte_cellules(taille_cellules(g)),
            etendue = list(xmin = min(coins$x), xmax = max(coins$x), ymin = min(coins$y), ymax = max(coins$y)),
            systeme = list(code = g$systeme$code %||% NA, nom = g$systeme$nom %||% "", suppose = isTRUE(g$systeme$suppose)),

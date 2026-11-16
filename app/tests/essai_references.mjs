@@ -71,11 +71,11 @@ console.log('Complétion, genres, numérotation');
 const offre = offreModele(pls, { vues: ['scores', 'vip'], tableaux: ['composantes'] });
 const chemins = offre.map((o) => o.chemin);
 verifier('la complétion propose valeurs, VIP et coefficients par variable, tableaux, graphiques, méthodes',
-  ['Q2', 'R2Y', 'gain', 'cvanova.p', 'vip.sucre', 'coef.acidite', 'table.composantes', 'scores', 'methodes'].every((c) => chemins.includes(c)) && !chemins.includes('Q2_honnete'),
+  ['Q2', 'R2Y', 'gain', 'cvanova.p', 'vip.sucre', 'coef.acidite', 'table.composantes', 'scores', 'methodes', 'methodes.references'].every((c) => chemins.includes(c)) && !chemins.includes('Q2_honnete'),
   chemins.join(', '));
 egal('chaque valeur proposée avec ce qu’elle donne', offre.find((o) => o.chemin === 'Q2').detail, '0,65');
-egal('genres', [genreChemin(['table', 'composantes']), genreChemin(['methodes']), genreChemin(['scores'], ['scores']), genreChemin(['vip', 'sucre'], ['vip']), genreChemin(['vip'], ['vip'])],
-  ['tableau', 'texte', 'graphique', 'valeur', 'graphique']);
+egal('genres', [genreChemin(['table', 'composantes']), genreChemin(['methodes']), genreChemin(['scores'], ['scores']), genreChemin(['vip', 'sucre'], ['vip']), genreChemin(['vip'], ['vip']),
+  genreChemin(['methodes', 'references'])], ['tableau', 'texte', 'graphique', 'valeur', 'graphique', 'texte']);
 const n = numeroter([{ etiquette: 'a' }, {}, { etiquette: 't1' }, { etiquette: 'b' }], (x) => ({ a: 'figure', t1: 'tableau', b: 'figure' }[x.etiquette] || null));
 egal('figures et tableaux numérotés à part, étiquettes', [[...n.numeros.entries()], [...n.etiquettes.entries()]],
   [[[0, 1], [2, 1], [3, 2]], [['a', { genre: 'figure', numero: 1 }], ['t1', { genre: 'tableau', numero: 1 }], ['b', { genre: 'figure', numero: 2 }]]]);

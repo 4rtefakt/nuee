@@ -30,6 +30,11 @@ export function creerCommandes(app) {
     kobo_importer: { icone: 'smartphone', action: () => app.importerKobo() },
     enregistrer: { icone: 'save', raccourci: 'Ctrl+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), false) },
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
+    // (versions.js: the project's history, kept by itself beside it; shared with GitHub or GitLab;
+    // a colleague's project opened from there)
+    versions: { icone: 'history', actif: () => !!app.projetActif(), action: () => app.versions(app.projetActif()) },
+    versions_partager: { icone: 'cloud-upload', actif: () => !!app.bureau && !!app.projetActif(), action: () => app.partagerProjet(app.projetActif()) },
+    versions_ouvrir_distant: { icone: 'cloud-download', actif: () => !!app.bureau, action: () => app.ouvrirDepuisDistant() },
     exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
     // (from Compare models showing the coefficients side by side: that table)
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: () => avecModele() || !!app.coefficientsActifs(),
@@ -65,6 +70,9 @@ export function creerCommandes(app) {
     atelier_categories: { icone: 'tag', actif: () => { const p = app.projet(app.projetActif()); return !!p && p.variables.some((v) => v.qualitative); },
       action: () => app.categoriesVariable(app.projetActif()) },
     atelier_variables: { icone: 'ruler', actif: () => !!app.projetActif(), action: () => app.variablesProjet(app.projetActif()) },
+    // the data's source and steps, and the data read again from it or from next year's file (etapes.js)
+    etapes_donnees: { icone: 'list', actif: () => !!app.projetActif(), action: () => app.etapesDonnees(app.projetActif()) },
+    etapes_mettre_a_jour: { icone: 'refresh-cw', actif: () => !!app.projetActif(), action: () => app.miseAJourDonnees(app.projetActif()) },
 
     nouveau_modele: { icone: 'file-plus', raccourci: 'Ctrl+N', actif: () => !!app.projetActif(), action: () => app.nouveauModele(app.projetActif()) },
     // (a few questions, then New model already filled in: quelle_analyse.js, choix_analyse.js)
@@ -108,6 +116,11 @@ export function creerCommandes(app) {
     nouvelle_fenetre: { icone: 'app-window', raccourci: 'Ctrl+Shift+N', action: () => app.nouvelleFenetre() },
     detacher: { icone: 'external-link', raccourci: 'Ctrl+Shift+D', actif: () => !!app.panneauActif(), action: () => app.detacher() },
     fermer_panneau: { raccourci: 'Ctrl+W', actif: () => !!app.panneauActif(), action: () => app.fermerPanneau() },
+    // the keyboard from tab to tab of the group in use, and from area to area (app.js; accessibilite.js's strings)
+    onglet_suivant: { raccourci: 'Ctrl+Tab', action: () => app.ongletVoisin(1) },
+    onglet_precedent: { raccourci: 'Ctrl+Shift+Tab', action: () => app.ongletVoisin(-1) },
+    region_suivante: { raccourci: 'F6', action: () => app.regionVoisine(1) },
+    region_precedente: { raccourci: 'Shift+F6', action: () => app.regionVoisine(-1) },
     reinitialiser: { icone: 'layout-dashboard', action: () => app.reinitialiser() },
 
     chercher_commande: { icone: 'search', raccourci: 'Ctrl+K', action: () => app.palette() },
@@ -139,7 +152,7 @@ export const ICONES_VUES = {
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
   statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
-  series: 'trending-up', document: 'file-text', figure: 'layout-grid',
+  series: 'trending-up', document: 'file-text', figure: 'layout-grid', versions: 'history', changements: 'diff',
 };
 
 // A menu item for a command, evaluated now (enabled state, check mark).
@@ -154,17 +167,18 @@ export function menus(app, C) {
   const recents = app.recents();
   const annuler = () => {  // "Undo" names what it undoes
     const p = app.projet(app.projetActif());
-    return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} « ${p.annulable} »` : t('annuler_action') };
+    const entre = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
+    return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} ${entre(p.annulable)}` : t('annuler_action') };
   };
   return [
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
-      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
+      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('versions'), it('versions_partager'), it('versions_ouvrir_distant'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
-      it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes')] },
+      it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes'), '-', it('etapes_donnees'), it('etapes_mettre_a_jour')] },
     { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
@@ -172,7 +186,8 @@ export function menus(app, C) {
       it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series'), it('carte'), it('autocorrelation_spatiale'), it('rarefaction'),
       '-', it('figure_composer')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
-    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
+    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('onglet_suivant'), it('onglet_precedent'),
+      it('region_suivante'), it('region_precedente'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },
     { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },

@@ -39,6 +39,18 @@ function portLibre() {
 
 function verifier(condition, message) { if (!condition) throw new Error(message); }
 
+// The result columns of models (their observations, their predictions) whose names the English
+// interface would still show in French (interface/i18n.js: libelleResultat), as it shows them.
+async function colonnesEnFrancais(...tableaux) {
+  globalThis.document ??= { documentElement: {} };  // (i18n.js puts the language on the page)
+  const i18n = await import(require('url').pathToFileURL(path.join(depot, 'app', 'interface', 'i18n.js')).href);
+  const avant = i18n.langueActuelle();
+  i18n.changerLangue('en');
+  const noms = [...new Set(tableaux.flatMap((o) => Object.keys(o || {})))].filter((k) => !['uid', 'nom'].includes(k)).map((k) => i18n.libelleResultat(k));
+  i18n.changerLangue(avant);
+  return noms.filter((x) => /[àâçéèêëîïôûùü]|\b(groupe|temps|compte|ajuste|impute|dans_troncature|CP\d)\b/.test(x));
+}
+
 async function etape(nom, f) {
   try {
     await f();
@@ -62,8 +74,10 @@ async function principal() {
   }
   fs.rmSync(copies, { recursive: true, force: true });
   // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules;
-  // the figures' layout and their PNG and TIFF files; the interface's numbers in each language
-  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_nombres.mjs']) {
+  // the figures' layout and their PNG and TIFF files; the interface's numbers in each language; the
+  // words and numbers of Versions and What changed; an update of the data read for its dialogs
+  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_nombres.mjs', 'essai_versions_texte.mjs',
+    'essai_etapes.mjs']) {
     await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
   }
 
@@ -325,7 +339,7 @@ async function principal() {
       const f = path.join(dossier, 'partage.nuee');
       await api('enregistrer', { projet: p.id, chemin: f, version: '9.9.9' });
       const lu = JSON.parse(fs.readFileSync(f, 'utf8'));
-      verifier(lu.nuee && lu.nuee.format === 2 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
+      verifier(lu.nuee && lu.nuee.format === 3 && lu.nuee.version === '9.9.9' && !lu.chemin_enregistrement, `en-tête : ${JSON.stringify(lu.nuee)}`);
       verifier(!fs.readdirSync(dossier).some((x) => x.endsWith('.tmp')), 'fichier temporaire resté');
       // a colleague saves the same file meanwhile: asked before overwriting, then overwritten if wanted
       fs.writeFileSync(f, JSON.stringify({ ...lu, source: 'collègue' }));
@@ -368,6 +382,40 @@ async function principal() {
       const s2 = await api('ouvrir', { chemin: copie2, secours: true, origine: f, nom: 'repris 2', lu: c2.lu });
       const r = await fetch(`http://127.0.0.1:${port}/api/enregistrer`, { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ projet: s2.id, chemin: f }) });
       verifier(r.status === 409 && JSON.parse(fs.readFileSync(f, 'utf8')).source === 'collègue', `HTTP ${r.status}, écrasé sans demander`);
+    });
+    await etape('une ancienne version (versions.js) : en lecture seule sous son nom, jamais enregistrée sur son fichier ; un projet caché', async () => {
+      // (the main process writes an old version's project file to a temporary file: here, a saved copy)
+      const f = path.join(dossier, 'ancienne-version.nuee');
+      await api('enregistrer', { projet: p.id, chemin: f });
+      const lecture = { source: path.join(dossier, 'projet.nuee'), oid: 'a1b2c3', date: '2026-11-12T14:32:00Z' };
+      const nom = 'essai — version du 12 nov. 2026, 14:32';
+      const v = await api('ouvrir', { chemin: f, nom, lecture_seule: lecture });
+      verifier(v.nom === nom && v.lecture_seule && v.lecture_seule.oid === 'a1b2c3' && v.lecture_seule.source === lecture.source && v.modifie === false,
+        `ouverte : ${JSON.stringify({ nom: v.nom, lecture_seule: v.lecture_seule, modifie: v.modifie })}`);
+      let refus = '';
+      try { await api('enregistrer', { projet: v.id, chemin: f }); } catch (e) { refus = e.message; }
+      verifier(/lecture seule/.test(refus), `enregistrée sur son fichier : « ${refus} »`);
+      // saved elsewhere: a copy under the same name, read-only no more; no file says it is a version
+      const copie = path.join(dossier, 'copie-version.nuee');
+      await api('enregistrer', { projet: v.id, chemin: copie });
+      const c = await api('projet', { projet: v.id });
+      const lu = JSON.parse(fs.readFileSync(copie, 'utf8'));
+      verifier(!c.lecture_seule && c.chemin_enregistrement === copie && c.nom === nom && !('lecture_seule' in lu) && !('cache' in lu),
+        `copie : ${JSON.stringify({ lecture_seule: c.lecture_seule, chemin: c.chemin_enregistrement, nom: c.nom })}`);
+      // a received file that says it is an old version of another project, or hidden, isn't
+      fs.writeFileSync(copie, JSON.stringify({ ...lu, lecture_seule: lecture, cache: true }));
+      const r = await api('ouvrir', { chemin: copie });
+      verifier(!r.lecture_seule && (await api('etat')).projets.some((x) => x.id === r.id), `relue du fichier : ${JSON.stringify(r.lecture_seule)}`);
+      // its recovery copy reopened (the index keeps what it was): still read-only
+      const s = await api('ouvrir', { chemin: f, secours: true, origine: f, nom, lecture_seule: lecture });
+      verifier(s.lecture_seule && s.lecture_seule.oid === 'a1b2c3' && s.modifie === true && s.nom === nom && s.chemin_enregistrement === f, 'copie de secours d’une version');
+      // hidden, the old version compared: out of the session's state, its models too
+      const h = await api('ouvrir', { chemin: f, cache: true });
+      const m = await api('ajuster', { projet: h.id, numero: pls.numero });
+      const e = await api('etat');
+      verifier(!e.projets.some((x) => x.id === h.id) && !e.modeles.some((x) => x.id === m.id) && e.projets.some((x) => x.id === v.id)
+        && (await api('resultats_cles', { modele: m.id })).entrees.length > 0, `cachée : ${e.projets.map((x) => x.id).join(', ')}`);
+      for (const x of [v, r, s, h]) await api('fermer_projet', { projet: x.id });
     });
     await etape('jeu de test : choisi par Kennard–Stone, prédit après l’ajustement', async () => {
       const t = await api('jeu_test', { projet: p.id, x: [uid.x1, uid.x2, uid.x3], methode: 'kennard_stone', part: 0.25 });
@@ -816,11 +864,14 @@ async function principal() {
       let refusT = '';
       try { await api('autocorrelation_residus', { modele: m2.id, temps: { by: 'variable', variable: v.annee }, groupe: null }); } catch (err) { refusT = err.message; }
       verifier(/même temps/.test(refusT), `les années de tous les sites en une série, refusé : « ${refusT} »`);
-      const r = await api('rapports_vraisemblance', { modeles: [m2.id, m1.id, c1.id, q.id] });
+      const r = await api('rapports_vraisemblance', { modeles: [m2.id, m1.id, c1.id] });
       const khi2 = 2 * (m2.qualite.logLik - m1.qualite.logLik);
       verifier(r.total === 1 && [].concat(r.paires.grand)[0] === m2.id && [].concat(r.paires.petit)[0] === m1.id && [].concat(r.paires.ddl)[0] === 1
         && Math.abs([].concat(r.paires.khi2)[0] - Math.max(0, khi2)) < 1e-8 && [].concat(r.paires.approche)[0] === false,
       `x + z contre x (pas le modèle avec CAR1) : ${JSON.stringify(r)}`);
+      let refusRV = '';
+      try { await api('rapports_vraisemblance', { modeles: [m2.id, m1.id, q.id] }); } catch (err) { refusRV = err.message; }
+      verifier(/Modèle inconnu/.test(refusRV), `un identifiant qui n'est pas celui d'un modèle, refusé : « ${refusRV} »`);
       // Fit with CAR1 (reajuster with car1): M2 again with CAR1 along the year in each site, which is C1
       const annee = { by: 'variable', variable: v.annee };
       const car = await api('reajuster', { modele: m2.id, car1: { temps: annee, groupe: [{ by: 'effets' }] } });
@@ -1280,13 +1331,32 @@ async function principal() {
       const m2 = await api('ajuster', { projet: q.id, numero: def.numero });
       verifier(!termes(m2).includes('habitat(lande)') && termes(m2).includes('habitat(prairie)') && termes(m2).includes('habitat(forêt)'), `référence après : ${termes(m2).join()}`);
       // a new order only: the model of the session is mapped to it, and refits
+      const lda = await api('ajuster', { projet: q.id, type: 'LDA', x: [v.altitude, v.densite], classe: v.habitat, echelle: 'UV', nom: 'LDAhab' });
       q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['prairie', 'forêt', 'lande'], ordre: ['forêt', 'prairie', 'lande'] });
       const m3 = await api('reajuster', { modele: m2.id, exclues: [2] });
       verifier(m3.N === m2.N - 1 && termes(m3).includes('habitat(forêt)'), `réajusté après un nouvel ordre : N = ${m3.N}`);
+      // an LDA of the habitat fitted before that order: its script, written with the categories in the
+      // order it saw (its classes, probabilities and coefficients follow it), gives its results
+      const sl = await api('script_r', { modele: lda.id, chemin: path.join(dossier, 'lda_ordre.R'), version: 'essai' });
+      verifier(!sl.ecart, `le script d’une LDA ajustée avant un nouvel ordre de ses classes : ${sl.ecart}`);
+      // the R console's log of that export (moteur/console.R): the same call, which gives that script again
+      const jl = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel' && e.texte.includes('lda_ordre.R')).pop();
+      const rejoue = jl ? await api('console', { code: `cat(is.null(${jl.texte}$ecart))` }) : { journal: [] };
+      verifier(jl && jl.texte.startsWith('ecrire_script(projet_tel_ajuste(') && rejoue.journal.some((e) => e.type === 'sortie' && e.texte.trim() === 'TRUE'),
+        `journal de l’export : ${jl && jl.texte} → ${JSON.stringify(rejoue.journal)}`);
+      // and so in a reproducible document citing its scores: R redraws them (document_reproductible)
+      const dl = await api('document_reproductible', { projet: q.id, langue: 'fr', version: 'essai', nom: 'Ordre', dossier: path.join(dossier, 'ordre'), modeles: [lda.id],
+        references: JSON.stringify([{ modele: lda.id, chemin: ['lda_scores'], genre: 'figure', vue: 'lda_scores', variante: {} }]) });
+      verifier(!dl.modeles[0].erreur && [].concat(dl.references[0].lignes || []).length > 0,
+        `un document reproductible cite cette LDA : ${dl.modeles[0].erreur || JSON.stringify(dl.references[0]).slice(0, 300)}`);
       // a model whose condition names categories (not a term of it): a renamed category, then Ctrl+Z,
       // and it is refitted from its own definition each time (serveur.R: suivre_conditions_seance)
       const mc = await api('ajuster', { projet: q.id, type: 'LM', x: [v.altitude], y: [v.densite], echelle: 'none', nom: 'LMcond', condition: 'habitat %in% c("prairie", "lande")' });
       q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['forêt', 'pré', 'lande'], ordre: ['forêt', 'pré', 'lande'] });
+      // (one of its classes renamed: the LDA is to be fitted again, as a model whose X category was)
+      refus = '';
+      try { await api('script_r', { modele: lda.id, chemin: path.join(dossier, 'lda_renommee.R'), version: 'essai' }); } catch (e) { refus = e.message; }
+      verifier(/ont changé depuis l'ajustement de LDAhab/.test(refus), `le script d’une LDA dont une classe a changé de nom : « ${refus} »`);
       const mc2 = await api('reajuster', { modele: mc.id, exclues: [] });
       await api('annuler', { projet: q.id });
       const mc3 = await api('reajuster', { modele: mc.id, exclues: [] });
@@ -1780,6 +1850,9 @@ async function principal() {
       verifier(pr.observations['densite prédit'].length === 72 && pr.observations.feuille.length === 72, 'prédire avec l’arbre');
       const prl = await api('predire', { modele: lda.id });
       verifier(prl.observations['classe prédite'].length === 72 && prl.observations['probabilité haute'].length === 72, 'prédire avec la LDA');
+      const francais = await colonnesEnFrancais(arbre.observations, classement.observations, lda.observations, km.observations, pr.observations, prl.observations,
+        (await api('predire', { modele: km.id })).observations);
+      verifier(!francais.length, `colonnes des résultats en français dans l’interface en anglais : ${francais.join(', ')}`);
       const re = await api('reajuster', { modele: arbre.id, exclues: [1, 2] });
       verifier(re.type === 'TREE' && re.N === 70 && re.A === 0, `arbre réajusté : N = ${re.N}`);
       for (const [m, f] of [[arbre, 'arbre.R'], [lda, 'lda.R'], [km, 'km.Rmd']]) {
@@ -1964,6 +2037,8 @@ async function principal() {
         && [].concat(tr.vues_defaut).join() === 'trim_indices,trim_totaux' && [].concat(tr.indices.impute).length === 7 && [].concat(tr.pentes.quoi).join() === 'imputee,modele'
         && /^pente /.test(tr.chiffres) && tr.comptes.length === 8 && tr.comptes[0].length === 7 && tr.observations.compte.length === 55 && typeof tr.sigma2 === 'number'
         && [].concat(tr.tests.test).includes('covariable') && tr.reglages.options.modele === 3, `TRIM : ${tr.chiffres}, N = ${tr.N}`);
+      const francais = await colonnesEnFrancais(tr.observations);
+      verifier(!francais.length, `colonnes des observations en français dans l’interface en anglais : ${francais.join(', ')}`);
       const m2 = await api('ajuster', { ...def, x: [], nom: 'TRIM 2', options: { ...options, modele: 2, changements: [2015, 2018], correlation: false } });
       verifier(m2.modele_trim === 2 && [].concat(m2.changements).join() === '2015,2018' && [].concat(m2.tests.test).join() === 'changement,changement' && m2.rho === null,
         `TRIM modèle 2 : ${m2.chiffres}`);
@@ -2015,6 +2090,8 @@ async function principal() {
         && [].concat(dn.strate).length === 3 && [].concat(dn.strate)[2] === null && [].concat(dn.D).every((x) => x > 0) && [].concat(dn.N).every((x) => x > 0)
         && [].concat(dm.candidats.modele)[0] === 'hn' && dm.courbe.x.length === 101 && dm.adequation.qq.uid.length === dm.n && typeof dm.adequation.cvm.p === 'number'
         && dm.troncature.pourcentage === 5 && dm.au_dela > 0 && dm.effectif.quoi === 'ESW' && dm.reglages.options.cle === 'hn', `distance : ${dm.chiffres}, n = ${dm.n}`);
+      const francais = await colonnesEnFrancais(dm.observations);
+      verifier(!francais.length, `colonnes des observations en français dans l’interface en anglais : ${francais.join(', ')}`);
       const groupes = await api('ajuster', { ...def, nom: 'Distance 2', options: { ...options, taille: v.taille, cle: 'hr', serie: 'cos', ajustements: 1, troncature: { type: 'distance', valeur: 90 } } });
       verifier(groupes.groupes === true && groupes.modele_detection === 'hr + cos(2)' && [].concat(groupes.densite_groupes.D).length === 3 && groupes.troncature.w === 90,
         `groupes, hasard et un terme : ${groupes.chiffres}`);
@@ -2073,6 +2150,11 @@ async function principal() {
         && /^R2 OOB .* arbres$/.test(foret.chiffres) && [].concat(foret.vues_defaut).join() === 'ens_importance,ens_obspred'
         && foret.observations['densite prédit (OOB)'].length === 65 && [].concat(foret.importance.variable).length === 4 && foret.courbe.arbres.length === 200
         && foret.exclues_manquantes === 7 && foret.reglages.options.arbres === 200 && typeof foret.comparaison.Q2 === 'number', `forêt : ${foret.chiffres}, N = ${foret.N}`);
+      // (the console shows a forest by its key results, not the whole object with its data and trees)
+      const affiche = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'resultat').pop();
+      const lignesForet = affiche ? String(affiche.texte).split('\n') : [];
+      verifier(lignesForet.length > 1 && lignesForet.length <= 25 && /Forêt \(FOREST\)/.test(lignesForet[0]) && /Q/.test(affiche.texte),
+        `la console résume la forêt : ${lignesForet.length} ligne(s), ${lignesForet.slice(0, 3).join(' | ')}`);
       const dp = await api('dependance_partielle', { modele: foret.id, variables: ['gel'] });
       const d0 = [].concat(dp.dependance)[0];
       verifier(d0.variable === 'gel' && d0.x.length === 25 && d0.y.length === 25 && d0.tapis.length > 1, `dépendance partielle : ${d0.x.length} points`);
@@ -2093,6 +2175,9 @@ async function principal() {
       verifier(pr.observations['densite prédit'].length === 72 && pr.observations['densite prédit'].filter((x) => x === null).length === 7, 'prédire avec la forêt');
       const pb = await api('predire', { modele: bb.id });
       verifier(pb.observations['presence prédit'].length === 72, 'prédire avec les arbres boostés');
+      const francais = await colonnesEnFrancais(foret.observations, fc.observations, bo.observations, bb.observations, pr.observations, pb.observations,
+        (await api('predire', { modele: fc.id })).observations);
+      verifier(!francais.length, `colonnes des résultats en français dans l’interface en anglais : ${francais.join(', ')}`);
       const re = await api('reajuster', { modele: foret.id, exclues: [2, 3] });
       verifier(re.type === 'FOREST' && re.N === 63 && re.A === 0, `forêt réajustée : N = ${re.N}`);
       const e = await api('exporter', { modele: bo.id, chemin: path.join(dossier, 'boosting.xlsx') });
@@ -2118,6 +2203,171 @@ async function principal() {
       let refus = '';
       try { await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, classe: v.niveau, vc, echelle: 'none' }); } catch (err) { refus = err.message; }
       verifier(/pas une classe/.test(refus), `arbres boostés d'une classe refusés : « ${refus} »`);
+    });
+    await etape('résultats clés d’un modèle, comparés avant et après un réajustement (moteur/R/resultats_cles.R)', async () => {
+      const { offreModele, formeReference } = await import(require('url').pathToFileURL(path.join(interfaceDir, 'references.js')).href);
+      const lm = await api('ajuster', { projet: p.id, type: 'LM', x: [uid.x1, uid.x2, uid.zone], y: [uid.y], echelle: 'none', nom: 'LMcles' });
+      // (another analysis: references.js reads it like a model of components, N, K, A, G, RMSEE...)
+      const arbre = await api('ajuster', { projet: p.id, type: 'TREE', x: [uid.x1, uid.x2, uid.x4], y: [uid.y], echelle: 'none', nom: 'Arbrecles', options: { minbucket: 8 } });
+      const lda = await api('ajuster', { projet: p.id, type: 'LDA', x: [uid.x1, uid.x2, uid.x4], classe: uid.groupe, echelle: 'UV', nom: 'LDAcles' });
+      // every value a document can cite (references.js offers it) is an entry, under its reference or
+      // an alias, with the number the document writes
+      for (const m of [pca, pls, opls, da, lm, arbre, lda]) {
+        const r = await api('resultats_cles', { modele: m.id });
+        verifier(r.modele === m.id && Array.isArray(r.entrees) && r.entrees.length > 0, `${m.nom} : aucune entrée`);
+        const parCle = new Map();
+        for (const e of r.entrees) for (const c of [e.cle].concat(e.alias || [])) parCle.set(c, e);
+        const terme = m.regression ? [].concat(m.coefficients_regression.terme)[1] : null;
+        const chemins = offreModele(m).filter((o) => o.type === 'valeur').map((o) => o.chemin)
+          .concat(m.regression ? [`est.${terme}`, `p.${terme}`, `ic.${terme}`] : m.analyse ? [] : ['R2X.1', 'Q2.1']);
+        verifier(chemins.length >= (m.analyse ? 4 : 8), `${m.nom} : ${chemins.length} références offertes seulement`);
+        for (const chemin of chemins) {
+          const e = parCle.get(chemin);
+          verifier(e, `${m.nom} : {{${m.nom}.${chemin}}} sans entrée`);
+          const f = formeReference(m, chemin.split('.'), { format: '' });
+          const attendu = f.forme === 'coef' ? { p: f.p, ic: f.bas }[f.quoi] ?? f.est : f.forme === 'coef_cs' ? f.est : f.x;
+          const quoi = chemin.split('.');
+          const obtenu = quoi[0] === 'p' || (quoi[0] === 'cvanova' && quoi[1] === 'p') ? e.p : quoi[0] === 'ic' ? e.ic[0] : e.valeur;
+          verifier(Math.abs(obtenu - attendu) <= 1e-9 * Math.max(1, Math.abs(attendu)), `${m.nom}.${chemin} : ${obtenu} au lieu de ${attendu}`);
+        }
+      }
+      // the summary before and after a refit without five observations, sent back as received
+      const avant = await api('resultats_cles', { modele: pls.id }, 'en');
+      const re = await api('reajuster', { modele: pls.id, exclues: [3, 4, 5, 6, 7], A: 2 });
+      const apres = await api('resultats_cles', { modele: re.id }, 'en');
+      verifier(avant.entrees.find((e) => e.cle === 'Q2').libelle === 'Cumulative Q²', 'libellés dans la langue de la demande');
+      const c = await api('comparer_resultats', { avant, apres, langue: 'en' });
+      const n = c.entrees.find((x) => x.cle === 'N');
+      verifier(n && n.avant === 60 && n.apres === 55 && n.change && n.phrase === 'The number of observations goes from 60 to 55.', `N comparé : ${JSON.stringify(n)}`);
+      verifier(c.entrees.every((x) => ['change', 'signe', 'seuil', 'ic', 'nouveau', 'disparu', 'categorie'].every((k) => typeof x[k] === 'boolean') && typeof x.importance === 'number'),
+        'chaque entrée comparée a ses drapeaux et son importance');
+      verifier(c.resume.entrees === c.entrees.length && c.resume.changees > 0 && c.phrases.length === c.resume.phrases
+        && c.phrases.every((f) => typeof f.texte === 'string' && Array.isArray(f.cles)), `résumé de la comparaison : ${JSON.stringify(c.resume)}`);
+      const q2 = c.entrees.find((x) => x.cle === 'Q2');
+      verifier(q2 && Math.abs(q2.ecart - (q2.apres - q2.avant)) < 1e-12, `écart du Q² : ${JSON.stringify(q2)}`);
+      const meme = await api('comparer_resultats', { avant, apres: avant });
+      verifier(meme.resume.changees === 0 && meme.phrases.length === 0, `un résumé comparé à lui-même : ${JSON.stringify(meme.resume)}`);
+      // in French (the request's language, without langue): the Results text's decimal comma
+      const fr = await api('comparer_resultats', { avant: await api('resultats_cles', { modele: lm.id }), apres: await api('resultats_cles', { modele: (await api('reajuster', { modele: lm.id, exclues: [8, 9, 10, 11] })).id }) });
+      const nfr = fr.entrees.find((x) => x.cle === 'N');
+      verifier(nfr.phrase === 'Le nombre d\'observations passe de 60 à 56.' && fr.phrases.every((f) => !/\d\.\d/.test(f.texte)), `phrases en français : ${fr.phrases.map((f) => f.texte).join(' | ')}`);
+    });
+    await etape('rapports vivants : la source, les étapes, l’aperçu et la mise à jour, une étape retirée, Ctrl+Z (moteur/R/etapes.R)', async () => {
+      // six relevés, un nom par ligne ; puis l'année suivante, deux de plus et les colonnes rangées autrement
+      const releves = path.join(dossier, 'releves.csv');
+      const lignes = (n) => Array.from({ length: n }, (_, i) => [`r${i + 1}`, ['A', 'B'][i % 2], (i * 1.5 + 2).toFixed(1), i + 10]);
+      fs.writeFileSync(releves, ['nom,zone,x,y', ...lignes(6).map((l) => l.join(','))].join('\n'));
+      const q = await api('ouvrir', { chemin: releves });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      await api('modifier_valeur', { projet: q.id, observation: q.observations.uid[1], variable: v.x, valeur: '40' });
+      await api('variable_calculee', { projet: q.id, nom: 'xy', formule: 'x * y' });
+      const m = await api('ajuster', { projet: q.id, type: 'LM', x: [v.x], y: [v.y], nom: 'L' });
+      let e = await api('etapes', { projet: q.id });
+      verifier(e.source && e.source.existe && e.source.modifie === false && e.source.lecteur === 'tableau' && e.source.chemin.endsWith('releves.csv')
+        && e.etapes.length === 2 && e.etapes[0].demande === 'modifier_valeur' && e.etapes[1].demande === 'variable_calculee' && e.conformes === true,
+      `etapes : ${JSON.stringify(e)}`);
+      // whether a project has a source, in its summary; etapes without the data's fingerprint
+      const leger = await api('etapes', { projet: q.id, conformes: false });
+      verifier(q.a_source === true && (await api('projet', { projet: p.id })).a_source === true && !('conformes' in leger) && leger.etapes.length === 2,
+        `a_source : ${q.a_source} ; etapes sans empreinte : ${JSON.stringify(Object.keys(leger))}`);
+      // each step's label written in the language of the request that shows it
+      const en = await api('etapes', { projet: q.id, conformes: false }, 'en');
+      verifier(e.etapes[0].etiquette === 'modification de x (r2)' && en.etapes[0].etiquette === 'edit of x (r2)' && en.etapes[1].etiquette === 'variable xy = x * y',
+        `étiquettes : ${e.etapes[0].etiquette} ; ${en.etapes.map((x) => x.etiquette).join(' | ')}`);
+      fs.writeFileSync(releves, ['y,nom,x,zone', ...lignes(8).map((l) => [l[3], l[0], l[2], l[1]].join(','))].join('\n'));
+      e = await api('etapes', { projet: q.id });
+      verifier(e.source.modifie === true && e.source.actuel.taille !== e.source.taille, `le fichier changé : ${JSON.stringify(e.source)}`);
+      // removing a step would also bring in the changed file's rows: refused (source_modifiee), unless it is a preview
+      const retrait = await fetch(`http://127.0.0.1:${port}/api/retirer_etape`, { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ projet: q.id, n: 1 }) });
+      const jr = await retrait.json();
+      verifier(retrait.status === 400 && jr.source_modifiee === true && /aperçu/.test(jr.erreur), `retrait d'une source changée : HTTP ${retrait.status} ${JSON.stringify(jr)}`);
+      const ar = await api('retirer_etape', { projet: q.id, n: 1, apercu: true });
+      verifier(ar.apercu === true && ar.observations.ajoutees === 2 && ar.etapes.length === 1 && !ar.projet, `aperçu du retrait : ${JSON.stringify(ar.observations)}`);
+      const a = await api('mettre_a_jour', { projet: q.id, apercu: true });
+      verifier(a.apercu === true && a.observations.ajoutees === 2 && a.observations.retirees === 0 && [].concat(a.observations.premieres_ajoutees).join() === 'r7,r8'
+        && a.etapes.length === 2 && a.etapes.every((x) => x.statut === 'ok') && !a.projet && a.modeles.variables_absentes.length === 0,
+      `aperçu : ${JSON.stringify(a)}`);
+      verifier((await api('projet', { projet: q.id })).observations.uid.length === 6, 'l’aperçu ne change rien');
+      const u = await api('mettre_a_jour', { projet: q.id });
+      const d = await api('donnees', { projet: q.id });
+      const col = (n) => d.valeurs[d.variables.indexOf(n)];
+      verifier(u.projet.observations.uid.length === 8 && u.projet.annulable === 'mise à jour des données' && col('x')[1] === 40 && col('xy')[7] === (7 * 1.5 + 2) * 17,
+        `mis à jour : ${u.projet.observations.uid.length} observations, x ${JSON.stringify(col('x'))}`);
+      const refait = await api('ajuster', { projet: q.id, numero: m.numero });
+      verifier(refait.N === 8, `le modèle réajusté : N = ${refait.N}`);
+      const r = await api('retirer_etape', { projet: q.id, n: 1 });
+      verifier(r.projet.annulable === "retrait de l'étape 1" && (await api('etapes', { projet: q.id })).etapes.length === 1
+        && (await api('donnees', { projet: q.id })).valeurs[d.variables.indexOf('x')][1] === 3.5, `étape retirée : ${r.projet.annulable}`);
+      await api('annuler', { projet: q.id });
+      verifier((await api('etapes', { projet: q.id })).etapes.length === 2, 'Ctrl+Z rend l’étape');
+      const f = path.join(dossier, 'vivant.nuee');
+      await api('enregistrer', { projet: q.id, chemin: f });
+      const lu = JSON.parse(fs.readFileSync(f, 'utf8'));
+      const o = await api('ouvrir', { chemin: f });
+      const eo = await api('etapes', { projet: o.id });
+      verifier(lu.source_donnees.relatif === 'releves.csv' && lu.etapes.length === 2 && typeof lu.etapes[0].parametres === 'string'
+        && eo.etapes.length === 2 && eo.conformes === true && eo.source.trouve.endsWith('releves.csv'), `enregistré et rouvert : ${JSON.stringify(eo)}`);
+      let refus = '';
+      try { await api('retirer_etape', { projet: o.id, n: 9 }); } catch (err) { refus = err.message; }
+      verifier(/Étape inconnue/.test(refus), `étape inconnue : « ${refus} »`);
+    });
+    await etape('fusionner deux versions : un dossier partagé (fichier_change, la question avant d’écraser, fusionner avec le projet), trois fichiers et un conflit (moteur/R/fusion.R)', async () => {
+      // a shared file that Alice and Bob both open; Bob adds a model, changes the last paragraph and saves under his name
+      const releves = path.join(dossier, 'partage.csv');
+      fs.writeFileSync(releves, ['nom,zone,x,y', ...Array.from({ length: 8 }, (_, i) => [`s${i + 1}`, ['A', 'B'][i % 2], (i * 1.3 + 1).toFixed(1), ((i % 3) * 0.7 + i * 0.2 + 3).toFixed(1)].join(','))].join('\n'));
+      const q = await api('ouvrir', { chemin: releves });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      await api('ajuster', { projet: q.id, type: 'LM', x: [v.x], y: [v.y], nom: 'L1' });
+      await api('document_enregistrer', { projet: q.id, titre: 'Rapport', texte: 'Un\n\nDeux\n\nTrois' });
+      const f = path.join(dossier, 'partage.nuee');
+      await api('enregistrer', { projet: q.id, chemin: f });
+      await api('fermer_projet', { projet: q.id });
+      const alice = await api('ouvrir', { chemin: f });
+      const bob = await api('ouvrir', { chemin: f });
+      let c = await api('fichier_change', { projet: alice.id });
+      verifier(c.change === false && c.connu === true && c.existe === true && c.base === true, `fichier_change : ${JSON.stringify(c)}`);
+      await api('ajuster', { projet: bob.id, type: 'LM', x: [v.x], y: [v.y], nom: 'L2' });
+      await api('document_enregistrer', { projet: bob.id, id: 'D1', texte: 'Un\n\nDeux\n\nTrois, de Bob' });
+      await new Promise((ok) => { setTimeout(ok, 1100); });
+      await api('enregistrer', { projet: bob.id, chemin: f, auteur: 'Bob' });
+      await api('document_enregistrer', { projet: alice.id, id: 'D1', texte: 'Un, d’Alice\n\nDeux\n\nTrois' });
+      c = await api('fichier_change', { projet: alice.id });
+      verifier(c.change === true && c.auteur === 'Bob' && c.taille === fs.statSync(f).size, `changé par Bob : ${JSON.stringify(c)}`);
+      const r = await fetch(`http://127.0.0.1:${port}/api/enregistrer`, { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ projet: alice.id, chemin: f }) });
+      const j = await r.json();
+      verifier(r.status === 409 && j.conflit === true && j.fusion === true, `HTTP ${r.status} ${JSON.stringify(j)}`);
+      const fu = await api('fusionner', { projet: alice.id }, 'en');
+      verifier(fu.auto === true && fu.qui === 'Bob' && Array.isArray(fu.conflits) && fu.conflits.length === 0 && fu.apports.leur.some((x) => /L2/.test(x))
+        && fu.apports.mien.some((x) => /Rapport/.test(x)) && fu.donnees.mode === 'inchangees', `fusionner : ${JSON.stringify(fu)}`);
+      const fin = await api('fusionner_finir', { fusion: fu.fusion, choix: {} }, 'en');
+      verifier(fin.etiquette === 'merge with Bob' && fin.projet.annulable === 'merge with Bob' && fin.projet.modeles.map((m) => m.nom).join() === 'L1,L2',
+        `fusionner_finir : ${JSON.stringify(fin.etiquette)} ${JSON.stringify(fin.projet.modeles)}`);
+      verifier((await api('document', { projet: alice.id, id: 'D1' })).texte === 'Un, d’Alice\n\nDeux\n\nTrois, de Bob', 'le document des deux');
+      await api('enregistrer', { projet: alice.id, chemin: f });  // (her project knows it read Bob's file: no question)
+      // three files: each side rewrote the second paragraph; the conflict, a refusal without a choice, then theirs written
+      const cote = async (nom, texte) => {
+        const x = await api('ouvrir', { chemin: f });
+        await api('document_enregistrer', { projet: x.id, id: 'D1', texte });
+        const g = path.join(dossier, nom);
+        await api('enregistrer', { projet: x.id, chemin: g });
+        await api('fermer_projet', { projet: x.id });
+        return g;
+      };
+      const mien = await cote('mien.nuee', 'Un, d’Alice\n\nDeux, d’Alice\n\nTrois, de Bob');
+      const leur = await cote('leur.nuee', 'Un, d’Alice\n\nDeux, de Bob\n\nTrois, de Bob');
+      const t = await api('fusionner', { base: f, mien, leur });
+      const k = t.conflits[0] || {};
+      verifier(t.auto === false && t.conflits.length === 1 && k.id === 'document:D1' && k.genre === 'document' && k.mien === 'paragraphe 2 réécrit'
+        && k.details.passages[0].leur === 'Deux, de Bob', `le conflit : ${JSON.stringify(t.conflits)}`);
+      let refusF = '';
+      try { await api('fusionner_finir', { fusion: t.fusion, choix: {} }); } catch (e) { refusF = e.message; }
+      verifier(/Rapport/.test(refusF), `sans choix : « ${refusF} »`);
+      const g = path.join(dossier, 'fusion.nuee');
+      const w = await api('fusionner_finir', { fusion: t.fusion, choix: { 'document:D1': 'leur' }, chemin: g, auteur: 'Alice' });
+      const o = await api('ouvrir', { chemin: w.chemin });
+      verifier(w.chemin === g && (await api('document', { projet: o.id, id: 'D1' })).texte === 'Un, d’Alice\n\nDeux, de Bob\n\nTrois, de Bob', 'le leur, écrit et rouvert');
+      verifier(JSON.parse(fs.readFileSync(g, 'utf8')).nuee.auteur === 'Alice', `qui a fusionné, dans le fichier : ${JSON.stringify(JSON.parse(fs.readFileSync(g, 'utf8')).nuee)}`);
+      for (const x of [alice, bob, o]) await api('fermer_projet', { projet: x.id });
     });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;

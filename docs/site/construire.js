@@ -54,10 +54,10 @@ const PAGES_GUIDE = [
       en: 'Installing, opening a table, saving and getting your work back, the explorer, the menus, the windows.' },
     sections: ['Getting started', 'Opening', 'Saving and getting your work back', 'If the R engine stops', 'The explorer (on the left)', 'Menus and toolbar', 'Windows'] },
   { id: 'donnees', slug: { fr: 'donnees', en: 'data' }, titre: { fr: 'Les données', en: 'The data' },
-    resume: { fr: 'Les données de terrain de KoboToolbox ou d’ODK, modifier les données, créer des variables, nettoyer, joindre un autre tableau, résumer par groupe, les dates.',
-      en: 'Field data from KoboToolbox or ODK, editing the data, making variables, cleaning, joining another table, summarizing by group, dates.' },
+    resume: { fr: 'Les données de terrain de KoboToolbox ou d’ODK, modifier les données, créer des variables, nettoyer, joindre un autre tableau, les étapes des données et leur mise à jour, résumer par groupe, les dates.',
+      en: 'Field data from KoboToolbox or ODK, editing the data, making variables, cleaning, joining another table, data steps and updating the data, summarizing by group, dates.' },
     sections: ['Field data from KoboToolbox or ODK', 'Editing the data, making variables', 'Cleaning the data: find and replace, categories, units', 'Adding columns from another table',
-      'Summarizing by group', 'Variable statistics', 'Dates as time'] },
+      'Data steps and updating the data', 'Summarizing by group', 'Variable statistics', 'Dates as time'] },
   { id: 'modeles', slug: { fr: 'modeles', en: 'models' }, titre: { fr: 'Choisir et construire un modèle', en: 'Choosing and building a model' },
     resume: { fr: 'Quelle analyse ?, Nouveau modèle, les observations, la validation croisée, le jeu de test, prédire.',
       en: 'Which analysis?, New model, the observations, cross-validation, the test set, predicting.' },
@@ -117,6 +117,9 @@ const PAGES = [
   { id: 'tutoriels.baci', chemin: { fr: 'fr/tutoriels/baci.html', en: 'en/tutorials/baci.html' }, source: { fr: 'tutoriel-baci.md', en: 'tutorial-baci.md' }, nav: 'tutoriels' },
   { id: 'tutoriels.pls', chemin: { fr: 'fr/tutoriels/pls-spectres.html', en: 'en/tutorials/pls-spectra.html' }, source: { fr: 'tutoriel-pls.md', en: 'tutorial-pls.md' }, nav: 'tutoriels' },
   { id: 'tutoriels.suivi', chemin: { fr: 'fr/tutoriels/tendances.html', en: 'en/tutorials/trends.html' }, source: { fr: 'tutoriel-suivi.md', en: 'tutorial-trends.md' }, nav: 'tutoriels' },
+  { id: 'tutoriels.communautes', chemin: { fr: 'fr/tutoriels/communautes.html', en: 'en/tutorials/communities.html' }, source: { fr: 'tutoriel-communautes.md', en: 'tutorial-communities.md' }, nav: 'tutoriels' },
+  { id: 'tutoriels.cartes', chemin: { fr: 'fr/tutoriels/cartes.html', en: 'en/tutorials/maps.html' }, source: { fr: 'tutoriel-cartes.md', en: 'tutorial-maps.md' }, nav: 'tutoriels' },
+  { id: 'tutoriels.rapport', chemin: { fr: 'fr/tutoriels/rapport.html', en: 'en/tutorials/report.html' }, source: { fr: 'tutoriel-rapport.md', en: 'tutorial-report.md' }, nav: 'tutoriels' },
   { id: 'nouveautes', chemin: { fr: 'fr/nouveautes.html', en: 'en/whats-new.html' }, nav: 'nouveautes' },
 ];
 const PAGE = Object.fromEntries(PAGES.map((p) => [p.id, p]));
@@ -556,9 +559,9 @@ async function construire() {
     }).join('\n');
     const introGuide = langue === 'fr'
       ? `<h1>Guide d’utilisation</h1>
-<p>Le guide complet de Nuée, en pages. C’est le guide installé avec l’application (Aide › Guide d’utilisation › Guide complet), écrit pour la version ${VERSION}. Pour commencer, les <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.fr)}">tutoriels</a> suivent trois études du début à la fin.</p>`
+<p>Le guide complet de Nuée, en pages. C’est le guide installé avec l’application (Aide › Guide d’utilisation › Guide complet), écrit pour la version ${VERSION}. Pour commencer, les <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.fr)}">tutoriels</a> suivent six études du début à la fin.</p>`
       : `<h1>User guide</h1>
-<p>Nuée’s full guide, in pages. It is the guide installed with the application (Help › User guide › Full guide), written for version ${VERSION}. To start with, the <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.en)}">tutorials</a> follow three studies from start to finish.</p>`;
+<p>Nuée’s full guide, in pages. It is the guide installed with the application (Help › User guide › Full guide), written for version ${VERSION}. To start with, the <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.en)}">tutorials</a> follow six studies from start to finish.</p>`;
     ecrire(cheminIndex, gabarit({ langue, page: indexGuide, titre: langue === 'fr' ? 'Guide d’utilisation' : 'User guide',
       description: langue === 'fr' ? 'Le guide d’utilisation de Nuée, en pages.' : 'Nuée’s user guide, in pages.',
       contenu: `${introGuide}\n<ul class="liste-guide">\n${listeGuide}\n</ul>\n<p class="note">${T.sourceGuide(g.fichier)}</p>`,

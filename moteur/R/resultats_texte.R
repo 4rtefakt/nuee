@@ -22,15 +22,20 @@ texte_resultats <- function(projet, d, m, langue = c("fr", "en"), chiffres = "")
   list(paragraphes = resultats_composantes(projet, d, m, fr))
 }
 
-# (des nombres et des valeurs p écrits comme dans le texte des méthodes)
+# (des nombres et des valeurs p écrits comme dans le texte des méthodes ; un infini « ∞ », un nombre de
+# 1e15 ou plus en notation scientifique, que « fg » écrirait chiffre à chiffre : une centaine pour
+# exp(240), le rapport de cotes d'une séparation complète)
 nombre_resultat <- function(x, fr, chiffres = 3) {
   if (is.null(x) || !length(x) || is.na(x)) return(if (fr) "non calculé" else "not computed")
+  if (is.infinite(x)) return(if (x > 0) "∞" else "−∞")
+  if (abs(x) >= 1e15) return(formatC(x, format = "g", digits = chiffres, decimal.mark = if (fr) "," else "."))
   trimws(sub("[.,]$", "", formatC(signif(x, chiffres), format = "fg", digits = chiffres, decimal.mark = if (fr) "," else ".", flag = "#")))
 }
+# (une valeur p manquante : non calculée, plutôt que « p = NA » ; trimws, formatC écrivant 1 «   1 »)
 p_resultat <- function(p, fr) {
-  if (is.null(p) || is.na(p)) return("p = NA")
+  if (is.null(p) || is.na(p)) return(if (fr) "p non calculée" else "p not computed")
   if (p < 0.001) return(if (fr) "p < 0,001" else "p < 0.001")
-  paste("p =", formatC(p, digits = 2, format = "g", decimal.mark = if (fr) "," else "."))
+  paste("p =", trimws(formatC(p, digits = 2, format = "g", decimal.mark = if (fr) "," else ".")))
 }
 guillemets_resultat <- function(x, fr) if (fr) sprintf("« %s »", x) else sprintf("“%s”", x)
 
@@ -56,7 +61,7 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
   } else sprintf(if (fr) "R² = %s (ajusté : %s)" else "R² = %s (adjusted: %s)", nb(r2$r2, 2), nb(r2$r2_ajuste, 2))
   p1 <- sprintf(if (fr) "Le modèle de %s porte sur %d observations : %s ; en validation croisée, Q² = %s (RMSEcv = %s). AIC = %s."
                 else "The model of %s uses %d observations: %s; in cross-validation, Q² = %s (RMSEcv = %s). AIC = %s.",
-                paste0(guillemets_resultat(m$y$noms, fr), if (!is.null(projet)) unite_texte(projet, m$y$uid[1]) else ""), m$N, qualite, nb(m$vc$Q2, 2), nb(m$vc$RMSEcv), nb(r$AIC, 4))
+                paste0(guillemets_resultat(m$y$noms, fr), if (!is.null(projet)) unite_texte(projet, m$y$uid[1]) else ""), m$N, qualite, if (is.finite(m$vc$Q2 %||% NA)) nb(m$vc$Q2, 2) else nb(NA), nb(m$vc$RMSEcv), nb(r$AIC, 4))
   co <- r$coefficients
   co <- co[co$terme != "(Intercept)", , drop = FALSE]
   lien <- m$lien %||% "identity"
@@ -122,6 +127,8 @@ resultats_composantes <- function(projet, d, m, fr) {
   if (length(ca)) {
     p2 <- paste(vapply(names(ca), function(y) {
       t <- ca[[y]]
+      # (sans valeur p, ses degrés de liberté résiduels ne sont pas positifs : son F ne veut rien dire)
+      if (is.na(t$p[2])) return(sprintf(if (fr) "CV-ANOVA de %s non calculée : trop peu d'observations pour ses degrés de liberté" else "CV-ANOVA of %s not computed: too few observations for its degrees of freedom", guillemets_resultat(y, fr)))
       sprintf(if (fr) "CV-ANOVA de %s : F = %s, %s" else "CV-ANOVA of %s: F = %s, %s", guillemets_resultat(y, fr), nb(t$F[2]), p_resultat(t$p[2], fr))
     }, ""), collapse = if (fr) " ; " else "; ")
     p2 <- paste0(p2, ".")

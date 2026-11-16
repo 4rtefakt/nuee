@@ -179,12 +179,25 @@ Menus and toolbar
 -----------------
 File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:
   Ctrl+O open              Ctrl+S save                Ctrl+E export the results
-  Ctrl+V paste a table
+  Ctrl+V paste a table     Ctrl+Z undo                Ctrl+H find and replace
+  Ctrl+K find a command    Ctrl+J R console           Ctrl+C copy the table
   Ctrl+N new model         Ctrl+M edit the model      Ctrl+= / Ctrl+- components
   Esc    clear the selection       Ctrl+Del exclude the selection and refit
   Ctrl+Shift+N new window          Ctrl+Shift+D detach the panel    Ctrl+W close the panel
   Ctrl+B explorer          F1 guide
+  Ctrl+Tab / Ctrl+Shift+Tab next / previous tab      F6 / Shift+F6 next / previous area
 View: dark theme, French / English, text size.
+Keyboard and screen readers: Alt (or F10) goes to the menu bar, the arrows through its menus,
+Enter runs a command, Esc goes back; Alt with a menu's underlined letter opens it (Alt+F
+File...). F6 goes from area to area (toolbar, explorer, each group of panels, status bar),
+Ctrl+Tab from tab to tab; on a tab, the arrows and Delete. The explorer is a tree (arrows;
+Enter opens, Space chooses), a table a grid (arrows; Enter or F2 edits a cell, Space chooses a
+row, Enter on a header sorts). Shift+F10 or the menu key gives the menu of what has the
+keyboard (a node, a row, a column, a tab, a plot). A plot is named by what it shows for screen
+readers, and Ctrl+C copies its numbers as a table. Dialogs keep the keyboard until they close.
+Both themes meet WCAG AA contrast and follow the system's "reduce motion" setting; Format plot
+› Colours "colour-blind safe" (Okabe-Ito) is made for colour-vision deficiencies, and the
+default colours stay apart for them too.
 
 New model (Model › New model)
 -----------------------------
@@ -223,8 +236,9 @@ them and fit" or "Fit anyway".
 
 Which analysis? (Model › Which analysis?)
 -----------------------------------------
-Model › Which analysis? (also a button of the start page, next to New model, and Ctrl+K): a few
-questions in plain words, then the analysis that answers them, already set up.
+Model › Which analysis? (also a button of the start page, next to New model, and found by typing
+"which" in View › Find a command, Ctrl+K): a few questions in plain words, then the analysis that
+answers them, already set up.
   - Your question: compare groups or periods; the effect of variables on one response; many
     species at once (how the composition changes, one model per species, the species that
     characterize each group); a trend over time or a monitoring index; a density or an
@@ -239,7 +253,10 @@ questions in plain words, then the analysis that answers them, already set up.
     time), a BACI design (the unit), spatial coordinates, lines or points (distance sampling).
   - The variables: the explanatory variables (X), or the groups.
 Nuée proposes the answers from the project's variables (as Variable statistics reads them): a
-response of whole numbers from 0 is a count, of 0 and 1 a presence-absence, between 0 and 1 a
+response of whole numbers from 0 is a count, unless its unit (Edit › Units and descriptions: g,
+cm, ha, %, °C...) or its name (a mean, a ratio, a biomass...) says a measurement rounded to its
+unit; counts that nothing confirms (no count unit, no name such as abundance) get the linear
+model among the alternatives too; of 0 and 1 a presence-absence, between 0 and 1 a
 proportion; "many zeros" when at least a quarter of the values are 0, and 15 points more than a
 Poisson distribution of the same mean would give (the sentence under the response gives both);
 the site is a qualitative variable named like one (site, station, plot, transect...) whose
@@ -266,9 +283,10 @@ The main choices:
   - a count: the negative binomial when it varies more than a Poisson distribution allows (a
     variance beyond 1.5 times the mean) or has many zeros (many zeros don't always mean zero
     inflation, Warton 2005: compare with the zero-inflated Poisson by AIC), otherwise Poisson; a
-    presence-absence: logistic regression; a proportion: beta regression; a positive, skewed
-    measurement: gamma (or its log); a measurement with zeros: Tweedie; otherwise the linear
-    model; with the same sites measured several times, a random effect by site and
+    presence-absence: logistic regression; a proportion: beta regression; a measurement with
+    zeros: Tweedie; otherwise the linear model, a positive, skewed measurement too (the skew
+    may come from its X: its residuals tell after the fit, and gamma or the log are offered);
+    with the same sites measured several times, a random effect by site and
     cross-validation by site;
   - groups compared: the test between two variables (the one their types call for), paired by
     site when each site comes once in each group (no more observations than sites × groups),
@@ -1894,6 +1912,42 @@ n = 0. As aggregate(d[variables], d[groups], FUN) on the project's data table: t
 A qualitative variable or an ID whose known values are the same within every group (the habitat
 of a sector, the site of a sector) is kept, with that value; the others are left out, and the
 status bar names them. The new project has no file yet: save it (Ctrl+S).
+
+Data steps and updating the data
+--------------------------------
+A project made from a data file keeps that file, its source: where it is (and its path from the
+project's folder, so that a folder moved with its data still finds them), its table or sheet,
+the choices the import made on its columns, and its size, date and fingerprint when it was read.
+Every change made to its data in Nuée is kept as a step, written with the variables' names and
+the observations' identifiers: a value edited, Find and replace, the categories, a New variable,
+columns from a table (with that table's file), raster values, pasted cells, units and
+descriptions, coordinates, a class from a selection, scores or k-means clusters as variables.
+Edit › Data steps (or right-click on the project's data): the source (found, changed since it
+was read, or not found) and the steps, each with its date and the files it read. Remove shows
+first what removing a step would do (the source read again, the other steps replayed on it),
+then, as an update, replaces the data as one change that Ctrl+Z undoes, fits every model again
+and shows What changed; when the source changed since it was read, update the data first. When
+the data changed outside the steps (in the R console, or with a version of Nuée before 1.1), the
+dialog says so: updating them would bring back what the source and the steps give.
+Edit › Update the data: the source read again, or another file, next year's, whose columns may
+come in another order or with new ones. The steps are replayed on it, then its rows are matched
+to the project's observations by their identifiers and its columns to the variables by their
+names, so that each model keeps its definition. Before anything changes, the dialog shows what
+will: the new observations, variables and categories, those no longer in the file (they leave
+the project and its models), the cells changed, the variables computed again from their
+formula, each step replayed, skipped (an observation or a variable it names is gone) or failed,
+with the reason, the models that can no longer be fitted and what they miss, a model whose
+reference category has no observations left, and how the file was read (without a column that
+names the observations, they are matched by their row number). A model that leaves out some
+observations asks whether it takes the new ones (ticked). Update replaces the data as one change
+(Ctrl+Z undoes it, the source and the steps included, and fits every model again on the data as
+they were); with versions on, a version is saved first. Then every model of the project is fitted again, with a progress bar and Stop, and What
+changed compares their key results before and after. It also shows what the update did to the
+data, and the values cited in the documents that changed, each with its sentence (a click opens
+the document there); in each document's preview, those values are marked, the one before on
+hover, until Hide changes.
+When a project's source file changes (a new year added to it), the status bar says so, when the
+project opens and when Nuée comes back to the front; its link opens Update the data.
 
 Editing the data, making variables
 ----------------------------------

@@ -3,7 +3,7 @@
 // text changed once only, and the separator between two numbers.
 //   node tests/essai_nombres.mjs
 import { fmt, decimal, entreNombres } from '../interface/nombres.js';
-import { changerLangue, langueActuelle } from '../interface/i18n.js';
+import { changerLangue, langueActuelle, dansLangue, t, tDans } from '../interface/i18n.js';
 
 // (i18n.js puts the language on the page: none here)
 globalThis.document ??= { documentElement: {} };
@@ -52,6 +52,24 @@ egal('entre deux nombres : un point-virgule', `${fmt(0.123)}${entreNombres()}${f
 console.log('De nouveau en anglais');
 changerLangue('en');
 egal('le point revient', [fmt(0.9591234), decimal('1.5'), entreNombres()], ['0.959', '1.5', ', ']);
+
+// A document in the other language (documents.js): the tables and plots it cites are built in its
+// language, words and numbers, the time they take (awaits included), one document at a time; then
+// the interface's language is back, a change made meanwhile kept.
+console.log('Un document dans l’autre langue : dansLangue');
+const attente = (ms) => new Promise((r) => setTimeout(r, ms));
+const dans = async (l, ms) => { await attente(ms); const x = [fmt(0.5, 1), t('valeur_propre'), langueActuelle()]; await attente(1); return x; };
+egal('un document français dans l’interface anglaise', await dansLangue('fr', () => dans('fr', 5)), ['0,5', 'Valeur propre', 'fr']);
+egal('puis l’anglais de l’interface', [fmt(0.5, 1), t('valeur_propre'), langueActuelle()], ['0.5', 'Eigenvalue', 'en']);
+const [a, b] = await Promise.all([dansLangue('fr', () => dans('fr', 20)), dansLangue('en', () => dans('en', 1))]);
+egal('deux documents de langues différentes en même temps : chacun la sienne', [a, b], [['0,5', 'Valeur propre', 'fr'], ['0.5', 'Eigenvalue', 'en']]);
+let erreur = '';
+await dansLangue('fr', async () => { await attente(1); throw new Error('table'); }).catch((e) => { erreur = e.message; });
+egal('une erreur passe, et la langue revient', [erreur, langueActuelle(), await dansLangue('fr', () => dans('fr', 1))], ['table', 'en', ['0,5', 'Valeur propre', 'fr']]);
+await dansLangue('en', async () => { changerLangue('fr'); await attente(1); });
+egal('l’interface mise en français pendant ce temps le reste', [langueActuelle(), fmt(0.5, 1)], ['fr', '0,5']);
+changerLangue('en');
+egal('tDans : un texte dans la langue donnée', [tDans('fr', 'valeur_propre'), tDans('en', 'valeur_propre'), t('valeur_propre')], ['Valeur propre', 'Eigenvalue', 'Eigenvalue']);
 
 console.log(echecs ? `${echecs} vérification(s) en échec` : 'Toutes les vérifications sont passées.');
 process.exit(echecs ? 1 : 0);

@@ -296,7 +296,7 @@ verifier("prédire : le groupe du centre le plus proche (une observation du mod�
 p1o <- predire(p, mk, dk, as.numeric(rownames(p$donnees))[which(ck)[2]])
 verifier("prédire une seule observation : une ligne, son groupe et sa distance au centre",
          nrow(p1o) == 1 && identical(p1o[["groupe prédit"]], mk$groupe[2]) && proche(p1o[["distance au centre"]], mk$distance[2]))
-changer_projet <- function(q, f, etiquette) { pp <- f(projet(q$projet)); etat$projets[[q$projet]] <- pp; list(id = q$projet) }
+changer_projet <- function(q, f, etiquette, ...) { pp <- f(projet(q$projet)); etat$projets[[q$projet]] <- pp; list(id = q$projet) }
 invisible(demande_analyse_kmeans_variable(list(modele = "K1", nom = "groupes k3")))
 pp <- etat$projets$P1
 v <- variable_du_projet(pp, numeros(pp, "groupes k3"))
@@ -322,6 +322,14 @@ for (id in c("A1", "A2", "L1", "K1", "T1")) {
            isTRUE(r$analyse) && isTRUE(r$prediction) && nzchar(r$chiffres) && length(r$vues_defaut) == 2 && r$N == etat$modeles[[id]]$modele$N &&
              inherits(json(r), "json") && is.data.frame(r$observations) && identical(names(r$observations)[1:2], c("uid", "nom")))
 }
+verifier("leurs lignes de l'explorateur en français : « 85 % bien classées (VC) », R2 et Q2 à la virgule",
+         grepl("^[0-9]+ % bien classées \\(VC\\)", resultat("A2")$chiffres) && grepl("^[0-9]+ % bien classées \\(VC\\)", resultat("L1")$chiffres) &&
+           grepl("^R2 -?[0-9]+,[0-9]{2} · Q2 ", resultat("A1")$chiffres))
+langue_avant <- options(nuee.langue = "en")
+verifier("et en anglais : « 85% correct (CV) », R2 et Q2 au point décimal",
+         grepl("^[0-9]+% correct \\(CV\\)", resultat("A2")$chiffres) && grepl("^[0-9]+% correct \\(CV\\)", resultat("L1")$chiffres) &&
+           grepl("^R2 -?[0-9]+\\.[0-9]{2} · Q2 ", resultat("A1")$chiffres))
+options(langue_avant)
 r <- resultat("A1")
 verifier("arbre de régression : observé, ajusté, résidus ; Q² et RMSEcv pour Comparer les modèles ; ses nœuds pour le dessin",
          all(c("densite observé", "densite ajusté", "residu", "quantile_normal", "feuille") %in% names(r$observations)) &&
@@ -366,8 +374,9 @@ dossier <- tempfile("classement")
 dir.create(dossier)
 rscript <- file.path(R.home("bin"), "Rscript")
 lanceur <- file.path(dossier, "lancer.R")
+# (les objets nommés, et tous ceux du script : ecart_arbre, ecart_lda et ecart_kmeans les comparent au modèle)
 writeLines(c(".a <- commandArgs(TRUE)", "pdf(NULL)", "source(.a[1], encoding = \"UTF-8\")",
-             ".r <- mget(strsplit(.a[3], \",\")[[1]], ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
+             ".r <- mget(union(strsplit(.a[3], \",\")[[1]], ls(globalenv())), envir = globalenv(), ifnotfound = list(NULL))", "saveRDS(.r, .a[2])"), lanceur)
 lancer <- function(script, objets) {
   sortie <- tempfile("sortie", dossier, ".rds")
   ici <- setwd(dossier)
@@ -388,11 +397,14 @@ for (k in cas) {
     TREE = proche(s[[nm("elagage")]], e$modele$complet$cptable) && proche(s[[nm("vc")]], if (e$modele$classement) e$modele$vc$proba else e$modele$vc$prediction),
     LDA = proche(s[[nm("resultat")]][[nm("proba")]], e$modele$proba) && proche(s[[nm("vc")]], e$modele$vc$proba),
     KMEANS = identical(as.numeric(s[[nm("groupe")]]), as.numeric(e$modele$groupe)) && proche(s[[nm("r2")]], e$modele$r2))
+  # (et tout ce que le moteur compare quand il écrit le script : règles, importance, stabilité, jeu de
+  # test, coefficients, structure, centres, silhouettes, choix de k…)
+  difference <- if (length(s)) switch(e$modele$type, TREE = ecart_arbre, LDA = ecart_lda, KMEANS = ecart_kmeans)(e$modele, list2env(s), k$langue)
   texte <- readLines(r$script, encoding = "UTF-8")
-  verifier(sprintf("%s (%s, %s) : sans écart vu par le moteur ; lancé seul, mêmes résultats ; sans library()", k$id, k$quoi, k$langue),
-           is.null(r$ecart) && memes && !any(grepl("library(", sub("#.*$", "", texte), fixed = TRUE)) &&
+  verifier(sprintf("%s (%s, %s) : sans écart vu par le moteur ; lancé seul, mêmes résultats, tous ceux que le moteur compare ; sans library()", k$id, k$quoi, k$langue),
+           is.null(r$ecart) && memes && is.null(difference) && !any(grepl("library(", sub("#.*$", "", texte), fixed = TRUE)) &&
              (k$langue == "fr" || !any(grepl("arbre_elague|validation_lda|kmeans_ordonne", texte))))
-  if (!is.null(r$ecart) || !isTRUE(memes)) cat("    écart :", r$ecart, "/", utils::tail(attr(s, "messages"), 3), "\n")
+  if (!is.null(r$ecart) || !isTRUE(memes) || !is.null(difference)) cat("    écart :", r$ecart, "/", difference, "/", utils::tail(attr(s, "messages"), 3), "\n")
 }
 for (ext in c("Rmd", "qmd")) {
   e <- etat$modeles$A2

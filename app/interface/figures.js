@@ -11,7 +11,7 @@
 // selection, then adapted to its cell (composition.js), its SVG nested in the figure's; PNG and
 // TIFF are that SVG drawn on a canvas, written by images.js. A map on tiles becomes a plane plot
 // whose points are vectors over a picture of its tiles, fetched again at the export's resolution.
-import { t, ajouterTextes, langueActuelle } from './i18n.js';
+import { t, ajouterTextes, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue, decimal } from './ui.js';
 import { demander } from './api.js';
 import { VUES, FORMAT } from './panneaux.js';
@@ -51,7 +51,7 @@ export function installerFigures(app) {
       if (!p) { app.statut(t('choisir_projet'), true); return; }
       const actif = app.panneauActif();
       nouvelleFigure(app, p.id, app.vuesGraphiques().filter((e) => actif && e.id === actif.id && sonProjet(app, e) === p.id))
-        .catch((e) => app.statut(`${t('erreur')} : ${e.message}`, true));
+        .catch((e) => app.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true));
     },
     ouvrirFigure: (pid, id) => app.ouvrirVue('figure', null, { figure: id }, pid),
     menuFigure: (pid, id) => menuFigure(app, pid, id),
@@ -60,11 +60,11 @@ export function installerFigures(app) {
       const pid = sonProjet(app, entree);
       const p = app.projet(pid);
       if (!p || !entree.graphe) return [{ libelle: t('figure_nouvelle'), actif: false, action: () => {} }];
-      const ajout = (id) => () => ajouterA(app, pid, id, entree).catch((e) => app.statut(`${t('erreur')} : ${e.message}`, true));
+      const ajout = (id) => () => ajouterA(app, pid, id, entree).catch((e) => app.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true));
       const figures = [].concat(p.figures || []);
       return figures.map((f) => ({ libelle: f.titre || t('figure_sans_titre'), icone: 'layout-grid', action: ajout(f.id) }))
         .concat(figures.length ? ['-'] : [], [{ libelle: t('figure_nouvelle'), icone: 'plus',
-          action: () => nouvelleFigure(app, pid, [entree]).catch((e) => app.statut(`${t('erreur')} : ${e.message}`, true)) }]);
+          action: () => nouvelleFigure(app, pid, [entree]).catch((e) => app.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true)) }]);
     },
     // (before a project is saved or closed: what was just changed in its figures goes in first)
     viderFigures: (pid) => Promise.all([...ouvertes].filter((s) => !pid || s.pid === pid).map((s) => s.enregistrer())),
@@ -479,7 +479,7 @@ async function rendreFigure(app, conteneur, params, loc) {
     conteneur.etatFigure = creerComposeur(app, conteneur, pid, f);
     app.titrePanneau(cleFigure(pid, id), f.titre || t('figure_sans_titre'));
   } catch (e) {
-    conteneur.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${e.message}`));
+    conteneur.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${e.message}`));
   } finally {
     conteneur.chargementFigure = null;
   }
@@ -704,7 +704,7 @@ function creerComposeur(app, conteneur, pid, f) {
     try {
       c = await composer(app, s.pid, s.spec, s.caches, 'apercu');
     } catch (e) {
-      if (generation === s.generation) erreurs.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${e.message}`));
+      if (generation === s.generation) erreurs.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${e.message}`));
       return;
     } finally {
       if (generation === s.generation) feuille.classList.remove('attente');
@@ -712,11 +712,14 @@ function creerComposeur(app, conteneur, pid, f) {
     if (generation !== s.generation || s.ferme) return;
     const url = URL.createObjectURL(new Blob([composerSVG(c)], { type: 'image/svg+xml' }));
     image.src = url;
+    // (for screen readers: the figure's title, then each panel by its letter)
+    image.alt = [s.titre || t('figure_sans_titre'), ...[...reglages.querySelectorAll('.ligne-panneau')]
+      .map((l) => [l.querySelector('.lettre-panneau'), l.querySelector('.nom-panneau')].map((x) => (x ? x.textContent.trim() : '')).filter(Boolean).join(' '))].join(' — ');
     if (s.url) URL.revokeObjectURL(s.url);
     s.url = url;
     image.style.width = `${(c.largeur * 96) / 25.4}px`;
     resume.textContent = t('figure_resume', { largeur: decimal(c.largeur), hauteur: decimal(c.hauteur), n: s.spec.panneaux.length, police: decimal(s.spec.police) });
-    erreurs.replaceChildren(...c.erreurs.map((e) => el('p', { class: 'erreur' }, `${e.lettre} : ${e.message}`)), ...c.notes.map((n) => el('p', { class: 'note' }, n)));
+    erreurs.replaceChildren(...c.erreurs.map((e) => el('p', { class: 'erreur' }, `${e.lettre}${deuxPoints()}${e.message}`)), ...c.notes.map((n) => el('p', { class: 'note' }, n)));
     if (s.majFormat) s.majFormat();
   };
   s.apercu = () => {
@@ -834,7 +837,7 @@ async function ajouterA(app, pid, id, entree) {
 }
 
 function menuFigure(app, pid, id) {
-  const erreur = (e) => app.statut(`${t('erreur')} : ${e.message}`, true);
+  const erreur = (e) => app.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true);
   return [
     { libelle: t('figure_ouvrir'), icone: 'layout-grid', action: () => app.ouvrirFigure(pid, id) },
     { libelle: t('figure_exporter'), icone: 'image-down', action: async () => {

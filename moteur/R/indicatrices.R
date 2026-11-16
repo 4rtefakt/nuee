@@ -123,11 +123,13 @@ ajuster_indval <- function(projet, d) {
   if (!ncol(X)) err("Aucune espèce n'est présente dans ces observations.", "No species is present in these observations.")
   k <- length(niveaux)
   ordre <- if (is.na(o$ordre)) k else min(o$ordre, k)
-  C <- combinaisons_groupes(niveaux, ordre)
-  if (ncol(C) > COMBINAISONS_MAX) {
-    stop(sprintf(traduire("%d groupes donnent %d combinaisons jusqu'à l'ordre %d : choisissez un ordre plus petit (Modifier le modèle).",
-                          "%d groups give %d combinations up to order %d: choose a smaller order (Edit model)."), k, ncol(C), ordre), call. = FALSE)
+  # (compté avant de les faire : 200 groupes en donnent 2^200, que la mémoire ne tiendrait pas)
+  n_combinaisons <- sum(choose(k, seq_len(ordre)))
+  if (n_combinaisons > COMBINAISONS_MAX) {
+    stop(sprintf(traduire("%d groupes donnent %s combinaisons jusqu'à l'ordre %d : choisissez un ordre plus petit (Modifier le modèle).",
+                          "%d groups give %s combinations up to order %d: choose a smaller order (Edit model)."), k, format(n_combinaisons, digits = 3), ordre), call. = FALSE)
   }
+  C <- combinaisons_groupes(niveaux, ordre)
   egalises <- identical(o$indice, "IndVal.g")
   s <- statistiques_indval(X, g, C, egalises)
   meilleures <- meilleures_indval(s$IndVal)
@@ -183,7 +185,7 @@ resultat_indval <- function(id) {
   d <- e$definition
   o <- m$reglages_indval
   r <- retenues_indval(m)
-  noms_obs <- unname(p$noms_obs[as.character(m$observations)])
+  noms_obs <- unname(p$noms_obs[nom_numero(m$observations)])
   groupe <- m$niveaux[m$groupe]
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "INDVAL", analyse = TRUE, prediction = FALSE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = length(m$especes), noms_y = I(m$especes),

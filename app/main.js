@@ -1,6 +1,6 @@
 // Desktop application: starts the R server (moteur/serveur.R) once and shows its interface
 // in as many windows as wanted. Windows remember their size; recent files are kept.
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net: reseau, session, shell, screen } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net: reseau, safeStorage, session, shell, screen } = require('electron');
 const { spawn, execFileSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -9,6 +9,8 @@ const net = require('net');
 const path = require('path');
 const { fileURLToPath } = require('url');
 const { demanderZotero } = require('./zotero');
+const { creerVersions, magasinJetons } = require('./versions');
+const { creerComptes } = require('./comptes');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -137,8 +139,22 @@ function nettoyerTemporairesR() {
     const pid = Number(n.slice(prefixeR.length).split('-')[0]);
     let vivant = pid === process.pid;
     if (!vivant) try { process.kill(pid, 0); vivant = true; } catch (e) { vivant = e.code === 'EPERM'; }  // (EPERM: running, someone else's)
-    if (!vivant) try { fs.rmSync(path.join(app.getPath('temp'), n), { recursive: true, force: true }); } catch { /* still held: next time */ }
+    if (!vivant) supprimer(path.join(app.getPath('temp'), n));
   }
+}
+
+// A folder removed with all it holds (R's, where R and the R console write what they like). On
+// Windows fs.rmSync gives up at a read-only file or folder (EPERM), and Node 24.12's left a path
+// that isn't ASCII in place without an error: what is still there is made writable (by this user
+// only) and removed one by one. (A file still held by a program stays: next time.)
+function supprimer(chemin) {
+  try { fs.rmSync(chemin, { recursive: true, force: true }); } catch { /* one by one below */ }
+  const un = (c) => {
+    const s = fs.lstatSync(c);
+    if (!s.isSymbolicLink()) fs.chmodSync(c, s.isDirectory() ? 0o700 : 0o600);
+    if (s.isDirectory()) { for (const n of fs.readdirSync(c)) un(path.join(c, n)); fs.rmdirSync(c); } else fs.unlinkSync(c);
+  };
+  try { if (fs.existsSync(chemin)) un(chemin); } catch { /* still held: next time */ }
 }
 
 // The folder made for this run, readable by this user only. On Linux, someone else could
@@ -214,6 +230,19 @@ function demanderEnregistrement(fenetre) {
     fenetre.webContents.once('render-process-gone', perdue);
     fenetre.webContents.send('enregistrer-tout');
   });
+}
+
+// Before R is asked what is unsaved: each window's page sends what it still holds (a document's
+// text typed less than a second ago, a figure's last change: they are sent after a pause), and
+// answers; two seconds at most for one (a page that has crashed doesn't).
+function viderFenetres() {
+  return Promise.all(BrowserWindow.getAllWindows().filter((f) => deLInterface(f.webContents.getURL())).map((f) => new Promise((ok) => {
+    const finir = () => { clearTimeout(attente); ipcMain.removeListener('vide', fini); ok(); };
+    const fini = (e) => { if (e.sender === f.webContents) finir(); };
+    const attente = setTimeout(finir, 2000);
+    ipcMain.on('vide', fini);
+    f.webContents.send('vider');
+  })));
 }
 
 function effacerSecours() {
@@ -300,10 +329,13 @@ function preparer(fenetre) {
   fenetre.once('ready-to-show', () => { if (!cachees.has(fenetre)) fenetre.show(); });
   // Windows opened by the interface (a second main window, a detached view) stay in the
   // app; web links go to the default browser; anything else (files, other programs) is refused.
+  // (A main window outlives the one it was opened from; a detached view goes with it. Electron
+  // closes a window with its opener: closing the first main window closed the others, and Nuée
+  // with them, without asking about unsaved projects.)
   fenetre.webContents.setWindowOpenHandler(({ url }) => {
     if (deLInterface(url)) {
       const vue = new URL(url).searchParams.get('vue');
-      return { action: 'allow', overrideBrowserWindowOptions: vue ? options(1000, 720) : options(1300, 850) };
+      return { action: 'allow', outlivesOpener: !vue, overrideBrowserWindowOptions: vue ? options(1000, 720) : options(1300, 850) };
     }
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -328,6 +360,7 @@ function principale(f) {
 async function fermerNuee(fenetre) {
   const accord = await accordFermeture(fenetre);
   if (!accord) return false;
+  await versionsAvantDeFermer();
   quitter = true;
   if (accord !== 'secours') fermerSecours();
   app.quit();
@@ -339,6 +372,7 @@ async function fermerNuee(fenetre) {
 // doesn't answer and there are recovery copies: close, but keep them. When R doesn't answer
 // (a long computation, or stopped), what is unsaved isn't known: the user is asked either way.
 async function accordFermeture(fenetre) {
+  await viderFenetres();
   const noms = await projetsModifies();
   const en = langue === 'en';
   if (noms === null) {
@@ -384,13 +418,17 @@ function fenetrePrincipale() {
   return fenetre;
 }
 
-// The main window brought forward, with a file to open in it (null: none)
+// The main window brought forward, with a file to open in it (null: none). The file waits in
+// aOuvrir until a main window's page takes it (preload.js: surOuvrirFichier): it may come while
+// Nuée is still starting, before its window, or the window's page, is there to hear about it.
+const aOuvrir = [];
 function montrerFenetre(fichier) {
+  if (fichier) aOuvrir.push(fichier);
   const f = BrowserWindow.getAllWindows().find(principale) || BrowserWindow.getAllWindows()[0];
   if (!f) return;
   if (f.isMinimized()) f.restore();
   f.focus();
-  if (fichier) f.webContents.send('ouvrir-fichier', fichier);
+  if (fichier) f.webContents.send('ouvrir-fichier');
 }
 
 // macOS gives the file to open (a .nuee double-clicked in the Finder, dropped on the Dock icon)
@@ -430,11 +468,46 @@ function menuMac(l) {
 }
 
 // The file the system asks Nuée to open (a .nuee project double-clicked, "Open with"): the
-// first argument that is an existing file. A Linux desktop gives it as a file:// URL (%U).
-function fichierDonne(argv) {
-  const chemin = (a) => { if (!/^file:\/\//i.test(a)) return a; try { return fileURLToPath(a); } catch { return null; } };
-  return argv.slice(1).map(chemin).find((a) => a && !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
+// first argument that is an existing file, a relative path taken from the folder Nuée was
+// started in (`dossier`: a second start's own, not this one's). A Linux desktop gives it as a
+// file:// URL (%U).
+function fichierDonne(argv, dossier = process.cwd()) {
+  const chemin = (a) => { if (!/^file:\/\//i.test(a)) return path.resolve(dossier, a); try { return fileURLToPath(a); } catch { return null; } };
+  return argv.slice(1).filter((a) => !a.startsWith('-')).map(chemin).find((a) => a && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
 }
+
+// Versions of projects kept in the background with git (versions.js): GitHub and GitLab reached
+// through Chromium's network stack, so that the system's proxy and certificates apply; the tokens
+// encrypted by the system (safeStorage) in jetons.json beside the settings, its own settings (keep
+// versions, the author) with the settings; the versions read written in this run's temporary
+// folder, deleted when Nuée closes; what the background exchanges did told to every window.
+const jetons = magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons.json'), safeStorage });
+const versions = creerVersions({
+  fetch: (url, init) => reseau.fetch(url, init),
+  jetons,
+  langue: () => langue,
+  reglages: { lire: () => reglages.versions || {}, ecrire: (r) => { reglages.versions = r; ecrireReglages(); } },
+  temporaire: () => { dossierTemporaireR(); return temporaireR; },
+  evenement: (e) => { for (const f of BrowserWindow.getAllWindows()) if (!f.isDestroyed()) f.webContents.send('versions', e); },
+});
+// (a window back to the front: the open projects' remotes asked again, every five minutes at most)
+app.on('browser-window-focus', () => versions.auPremierPlan());
+// The open projects' last versions, before Nuée closes (fifteen seconds at most: their sending
+// waits for the next start)
+const versionsAvantDeFermer = () => Promise.race([versions.fermerTout(), new Promise((ok) => setTimeout(ok, 15000))]);
+// Signing in to GitHub and GitLab (comptes.js): the token kept through the versions layer, the
+// refresh tokens of the sign-ins that expire (GitLab's, after two hours) encrypted the same way
+// beside it, what is known of each account (no secret) and the self-hosted GitLabs' application IDs
+// with the settings; the server's sign-in page opened in the browser.
+const comptes = creerComptes({
+  fetch: (url, init) => reseau.fetch(url, init),
+  jeton: versions.jeton,
+  jetons,
+  renouvellements: magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons-renouvellement.json'), safeStorage }),
+  reglages: { lire: () => reglages.comptes || {}, ecrire: (c) => { reglages.comptes = c; ecrireReglages(); } },
+  ouvrirNavigateur: (url) => shell.openExternal(url),
+  langue: () => langue,
+});
 
 function ipc() {
   const parent = (e) => BrowserWindow.fromWebContents(e.sender);
@@ -452,6 +525,11 @@ function ipc() {
   recevoir('choisir-fichiers', async (e, filtres) => {
     const r = await dialog.showOpenDialog(parent(e), { properties: ['openFile', 'multiSelections'], filters: filtres || [{ name: '*', extensions: ['*'] }] });
     return r.canceled ? [] : r.filePaths;
+  });
+  // a folder (where a project opened from GitHub or GitLab goes: interface/versions.js)
+  recevoir('choisir-dossier', async (e) => {
+    const r = await dialog.showOpenDialog(parent(e), { properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : r.filePaths[0];
   });
   recevoir('lire-presse-papiers', () => clipboard.readText());
   recevoir('enregistrer-sous', async (e, nom, filtres) => {
@@ -534,6 +612,28 @@ function ipc() {
     }
   });
   recevoir('ouvrir-chemin', (_, chemin) => shell.openPath(chemin));
+  // a project's versions (versions.js): { valeur }, or { erreur } with its message in the
+  // interface's language, which preload.js throws again in the page (an error thrown here would
+  // reach it inside Electron's own words)
+  for (const [nom, f] of Object.entries(versions)) {
+    recevoir(`versions-${nom}`, async (_, ...args) => {
+      try { return { valeur: await f(...args) }; } catch (e) { return { erreur: e.message }; }
+    });
+  }
+  // signing in to GitHub and GitLab (comptes.js), the same way, with the refusal's code; a sign-in
+  // waited for by a window that closes meanwhile ends with it
+  for (const [nom, f] of Object.entries(comptes)) {
+    if (nom === 'preparer') continue;
+    recevoir(`comptes-${nom}`, async (e, ...args) => {
+      const fin = () => { comptes.annulerConnexion(args[0]).catch(() => {}); };
+      const attente = nom === 'attendreConnexion' || nom === 'compteGit';
+      if (attente) e.sender.once('destroyed', fin);
+      try { return { valeur: await f(...args) }; } catch (err) { return { erreur: err.message, code: err.code || null }; } finally {
+        if (attente && !e.sender.isDestroyed()) e.sender.removeListener('destroyed', fin);
+      }
+    });
+  }
+  recevoir('fichiers-a-ouvrir', () => aOuvrir.splice(0));  // (see montrerFenetre)
   // recovery copies: their folder, and the index of what they hold (files not in it are deleted)
   // (once Nuée is closing, nothing is written there any more: a copy or an index arriving after
   // the folder was deleted would bring it back, offering at the next start what was saved)
@@ -567,8 +667,11 @@ function ipc() {
   recevoir('ouvrir-guide', () => shell.openPath(path.join(racine, langue === 'en' ? 'USER-GUIDE.txt' : 'LISEZ-MOI-APPLICATION.txt')));
   // One-click update: the new installer is downloaded (progress sent to the window) and
   // checked; then, once unsaved projects are dealt with, Nuée closes, the installer runs and
-  // Nuée starts again. { erreur } when it can't: aucune, reseau, empreinte, annulee.
-  recevoir('mettre-a-jour', async (e) => {
+  // Nuée starts again. { erreur } when it can't: aucune, reseau, empreinte, annulee. One at a
+  // time: Update chosen again meanwhile (its link stays in the status bar) gets the same answer.
+  // (A second download emptying the same folder failed, said as a network error, and took the
+  // first one's file away while it was being written: the first had no installer left to run.)
+  const mettreAJour = async (e) => {
     const v = await (versionTrouvee || nouvelleVersion());
     if (!v || !v.installateur) return { erreur: 'aucune' };
     const fenetre = parent(e);
@@ -580,13 +683,16 @@ function ipc() {
     }
     const accord = await accordFermeture(fenetre);
     if (!accord) return { erreur: 'annulee' };
+    await versionsAvantDeFermer();
     quitter = true;
     if (accord !== 'secours') fermerSecours();
     arreterR();
     installerPuisRelancer(fichier);
     app.quit();
     return null;
-  });
+  };
+  let miseAJour = null;
+  recevoir('mettre-a-jour', (e) => miseAJour || (miseAJour = mettreAJour(e).finally(() => { miseAJour = null; })));
 }
 
 // An installed copy (Setup.exe) hears about new versions: at start-up, one request to the
@@ -762,6 +868,7 @@ async function demarrer() {
   const langues = [...new Set([...s.getSpellCheckerLanguages(), 'fr', 'en-US'])].filter((l) => s.availableSpellCheckerLanguages.includes(l));
   if (langues.length) s.setSpellCheckerLanguages(langues);
   ipc();
+  comptes.preparer();  // (a GitLab sign-in's token renewed before it expires, while Nuée runs)
   // the same port as last time when free: on a computer shared by several people (remote
   // desktop), whoever doesn't get the usual one keeps their own, and their settings with it
   port = await portLibre(reglages.port || PORT_HABITUEL);
@@ -780,11 +887,15 @@ async function demarrer() {
   fenetrePrincipale();
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
-app.on('second-instance', (_, argv) => montrerFenetre(fichierDonne(argv)));  // Nuée started again: its file opens in the main window
-app.whenReady().then(demarrer);
+// Nuée started again (a .nuee double-clicked while it runs): that start hands its file to this one
+// and ends, without starting R nor writing the settings (it wrote another port there, and the
+// interface's own settings, kept by address, seemed lost at the next start)
+const premiere = app.requestSingleInstanceLock();
+if (!premiere) app.quit();
+app.on('second-instance', (_, argv, dossier) => montrerFenetre(fichierDonne(argv, dossier)));  // its file opens in the main window
+if (premiere) app.whenReady().then(demarrer);
 app.on('window-all-closed', () => app.quit());
 app.on('quit', () => {
   arreterR();
-  try { fs.rmSync(temporaireR, { recursive: true, force: true }); } catch { /* a file still held: next start */ }
+  supprimer(temporaireR);  // (a file still held: next start)
 });

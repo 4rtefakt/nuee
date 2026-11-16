@@ -15,8 +15,8 @@
 # silicon et x86) ; la séance en un script ; l'export en anglais ; les régressions
 # (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort, binomial et gamma,
 # GAMM binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
-# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, résidus quantiles,
-# jeu de test ; la sélection par l'AIC, toutes les combinaisons ou l'élimination descendante ; le
+# paramètres des lois, courbes, effets de la vue Effets, validation croisée, valeurs ajustées et
+# résidus, résidus quantiles, jeu de test ; la sélection par l'AIC, toutes les combinaisons ou l'élimination descendante ; le
 # modèle mixte de la vue BACI, avec CAR1 ou une fin), en séance et en rapport ; les rapports R
 # Markdown et Quarto (compilés avec knitr s'il est installé).
 #   Rscript moteur/tests/verifier_script.R
@@ -524,7 +524,7 @@ verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e
 cat("Régressions (lm, nlme, mgcv)\n")
 # Ce que le moteur donne d'une régression, et ce que son script a calculé (sous ses noms, dans sa langue).
 ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection",
-                         "puissance", "annees_80", "simulation_puissance", "moyennes_ajustees")
+                         "puissance", "annees_80", "simulation_puissance", "moyennes_ajustees", "effets")
 COURBES_SEUILS <- c("x", "effet", "bas", "haut", "x_pente", "pente", "pente_bas", "pente_haut")
 moteur_regression <- function(m) {
   r <- m$resultat
@@ -536,6 +536,8 @@ moteur_regression <- function(m) {
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, COURBES_SEUILS)),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- rbind(s$plages_pente, s$plages_effet); c(z$de, z$a) })),
        "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
+       # (les effets de la vue Effets d'un terme seul, courbe ou droite : abscisses, effet, intervalle ; script.R, effets_script)
+       effets = unlist(effets_script(m, m$termes)$valeurs),
        # (la corrélation de chaque pente aléatoire avec l'ordonnée à l'origine de son niveau, nlme)
        "corrélations des pentes" = if (any(!is.na(r$variances$correlation))) r$variances$correlation,
        phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(Filter(is.numeric, r$courbes)),
@@ -561,6 +563,7 @@ script_regression <- function(s, langue) {
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, nom_script(COURBES_SEUILS, langue))),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- s[[nom_script("plages", langue)]]; c(z[[3]], z[[4]]) })),
        "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = n("variances")$variance,
+       effets = if (!is.null(n("effets"))) unlist(lapply(unname(n("effets")), unlist, use.names = FALSE)),
        "corrélations des pentes" = n("variances")$correlation,
        phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) as.matrix(Filter(is.numeric, n("courbes"))),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,

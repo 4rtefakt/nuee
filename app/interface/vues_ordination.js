@@ -3,7 +3,7 @@
 // plot, eigenvalues, permutation tests, contributions, summary), their report parts and their
 // strings. A CCA is shown as the RDA is (a triplot, its tests), with the CA's three scalings.
 // Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, deuxPoints, pourcent } from './i18n.js';
 import { el, fmt, entreNombres } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
@@ -19,7 +19,7 @@ const GRIS = '#9aa7b8';
 const estOrdination = (m) => !!m && !!m.analyse && ['RDA', 'CA', 'CCA'].includes(m.type);
 const contrainte = (m) => m.type === 'RDA' || m.type === 'CCA';  // (constrained axes, X arrows, tests)
 const axes = (m) => liste(m.axes);
-const libelleAxe = (m, k) => `${axes(m)[k]} (${fmt(100 * liste(m.valeurs_propres.part)[k], 1)} %)`;
+const libelleAxe = (m, k) => `${axes(m)[k]} (${fmt(100 * liste(m.valeurs_propres.part)[k], 1)}${pourcent()})`;
 const caseACocher = (libelle, valeur, changer) => el('label', { class: 'champ' },
   el('input', { type: 'checkbox', checked: valeur, onchange: (e) => changer(e.target.checked) }), libelle);
 const chiffre = (k, v, d = 3) => el('span', {}, el('small', {}, k), ' ', el('b', {}, typeof v === 'number' ? fmt(v, d) : v ?? '—'));
@@ -83,9 +83,12 @@ function rendreOrdination(conteneur, ctx, p, loc) {
   if (loc.reponses && nomsR.length) {
     const xr = col(o.reponses, a);
     const yr = y(col(o.reponses, b));
+    // (the responses, species, in the theme's grey: a palette colour would be one of the sites'
+    // categories, the second's red)
+    const gris = couleursTheme(ctx).doux;
     traces.push({ type: 'scatter', mode: nomsR.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: nomReponses,
-      x: xr, y: yr, text: nomsR, meta: 'variables', customdata: nomsR, textposition: 'top center', textfont: { size: 10, color: PALETTE[1] },
-      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
+      x: xr, y: yr, text: nomsR, meta: 'variables', customdata: nomsR, textposition: 'top center', textfont: { size: 10, color: gris },
+      marker: { color: gris, symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xr); etendue[1].push(...yr);
   }
   const nomsC = liste(o.noms_centroides);
@@ -139,9 +142,9 @@ function rendreValeursPropres(conteneur, ctx, p, loc) {
   const c = couleursTheme(ctx);
   tracer(ctx, graphe, [
     { type: 'bar', name: t('ord_part_inertie'), x: ax.slice(0, n), y: part.slice(0, n).map((v) => 100 * v),
-      marker: { color: contraint.slice(0, n).map((k) => (k || !rda ? PALETTE[0] : GRIS)) }, hovertemplate: '<b>%{x}</b><br>%{y:.2f} %<extra></extra>' },
+      marker: { color: contraint.slice(0, n).map((k) => (k || !rda ? PALETTE[0] : GRIS)) }, hovertemplate: `<b>%{x}</b><br>%{y:.2f}${pourcent()}<extra></extra>` },
     { type: 'scatter', mode: 'lines+markers', name: t('ord_cumul'), x: ax.slice(0, n), y: cumul.slice(0, n).map((v) => 100 * v), yaxis: 'y2',
-      line: { color: c.doux, width: 1.5 }, marker: { size: 5, color: c.doux }, hovertemplate: '<b>%{x}</b><br>%{y:.1f} %<extra></extra>' }],
+      line: { color: c.doux, width: 1.5 }, marker: { size: 5, color: c.doux }, hovertemplate: `<b>%{x}</b><br>%{y:.1f}${pourcent()}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('valeurs_propres')}` }, dragmode: false, yaxis: { title: { text: t('ord_part_inertie') } }, margin: { r: 54 },
     yaxis2: { overlaying: 'y', side: 'right', range: [0, 101], tickmode: 'array', tickvals: [0, 25, 50, 75, 100], showgrid: false, zeroline: false,
       title: { text: `${t('ord_cumul')} (%)` } } });
@@ -168,7 +171,7 @@ async function rendreTestsRDA(conteneur, ctx, p, loc) {
   const tg = m.test;
   const fiche = el('div', { class: 'fiche' },
     el('div', { class: 'fiche-titre' }, el('b', {}, t('ord_test_global'))),
-    el('div', { class: 'fiche-chiffres' }, chiffre(t('ord_pseudo_f'), tg.F, 3), chiffre(t('ddl'), `${liste(tg.df).join(', ')}`), chiffre('p', pValeur(tg.p)),
+    el('div', { class: 'fiche-chiffres' }, chiffre(t('ord_pseudo_f'), tg.F, 3), chiffre(t('ddl'), liste(tg.df).join(entreNombres())), chiffre('p', pValeur(tg.p)),
       chiffre(t('nb_permutations'), B, 0), m.strates ? chiffre(t('ord_dans'), m.strates) : null, chiffre(t('ord_graine'), (m.options || {}).graine ?? 1, 0)));
   if (!B) { conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, el('p', { class: 'note' }, t('ord_sans_permutations')))); return; }
   if (!cache.res) {
@@ -241,7 +244,7 @@ function rendreContributionsCA(conteneur, ctx, p, loc) {
   const moyenne = 100 / Math.max(1, nom.length);
   const c = couleursTheme(ctx);
   tracer(ctx, graphe, [{ type: 'bar', x: ordre.map((i) => nom[i]), y: ordre.map((i) => ctr[i]),
-    marker: { color: ordre.map((i) => (ctr[i] > moyenne ? PALETTE[0] : GRIS)) }, hovertemplate: '<b>%{x}</b><br>%{y:.2f} %<extra></extra>' }],
+    marker: { color: ordre.map((i) => (ctr[i] > moyenne ? PALETTE[0] : GRIS)) }, hovertemplate: `<b>%{x}</b><br>%{y:.2f}${pourcent()}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('ord_ctr')} · ${ax}` }, dragmode: false, showlegend: false, xaxis: { tickangle: -40 }, yaxis: { title: { text: t('ord_ctr') } },
     shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: moyenne, y1: moyenne, line: { color: c.doux, width: 1, dash: 'dot' } }] });
   loc.table ??= {};
@@ -249,7 +252,7 @@ function rendreContributionsCA(conteneur, ctx, p, loc) {
   const premiers = noms.slice(0, 2);
   tableau(bas, ctx, loc.table, {
     n: nom.length, nom: 'Contributions', idModele: loc.cote === 'lignes' ? m.id : undefined, uid: loc.cote === 'lignes' ? (i) => uids[i] : undefined,
-    colonnes: [{ cle: 'nom', titre: '' }, { cle: 'masse', titre: t('ord_masse'), num: true, decimales: 4 }, { cle: 'inertie', titre: t('ord_inertie_pct'), num: true, decimales: 2 }]
+    colonnes: [{ cle: 'nom', titre: '', lecteur: t('nom') }, { cle: 'masse', titre: t('ord_masse'), num: true, decimales: 4 }, { cle: 'inertie', titre: t('ord_inertie_pct'), num: true, decimales: 2 }]
       .concat(noms.flatMap((n) => [{ cle: `ctr_${n}`, titre: `${t('ord_ctr')} ${n}`, num: true, decimales: 2 }, { cle: `cos2_${n}`, titre: `cos² ${n}`, num: true, decimales: 3 }]))
       .concat(premiers.length === 2 ? [{ cle: 'plan', titre: `cos² ${premiers.join('+')}`, num: true, decimales: 3 }] : []),
     valeur: (i, k) => (k === 'plan' ? liste(d[`cos2_${premiers[0]}`])[i] + liste(d[`cos2_${premiers[1]}`])[i] : liste(d[k])[i]),
@@ -261,7 +264,7 @@ function rendreContributionsCA(conteneur, ctx, p, loc) {
 function rendreResumeOrdination(conteneur, ctx, m) {
   const titre = el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, m.type), m.titre ? el('span', { class: 'doux' }, m.titre) : null);
   const i = m.inertie;
-  const pct = (v) => `${fmt(100 * v / i.totale, 1)} %`;
+  const pct = (v) => `${fmt(100 * v / i.totale, 1)}${pourcent()}`;
   let fiche;
   let table;
   const textes = [];
@@ -274,7 +277,7 @@ function rendreResumeOrdination(conteneur, ctx, m) {
         m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
       el('div', { class: 'fiche-chiffres' }, chiffre('R2', m.r2), chiffre(t('r2_ajuste'), m.r2_ajuste ?? '—'), chiffre(t('ord_pseudo_f'), m.test.F, 2),
         chiffre('p', m.test.permutations ? pValeur(m.test.p) : '—'), chiffre(t('nb_permutations'), m.test.permutations || 0, 0)));
-    table = tableCompacte([t('ord_inertie'), '', '%'], [[t('ord_inertie_totale'), fmt(i.totale, 5), '100 %']]
+    table = tableCompacte([t('ord_inertie'), '', '%'], [[t('ord_inertie_totale'), fmt(i.totale, 5), `100${pourcent()}`]]
       .concat(i.conditionnelle > 0 ? [[t('ord_inertie_conditionnelle'), fmt(i.conditionnelle, 5), pct(i.conditionnelle)]] : [],
         [[t('ord_inertie_contrainte'), fmt(i.contrainte, 5), pct(i.contrainte)], [t('ord_inertie_residuelle'), fmt(i.residuelle, 5), pct(i.residuelle)]]));
     textes.push((cca ? t('ord_reglages_cca') : t('ord_reglages_rda', { tr: t('ord_tr_' + (o.transformation || 'aucune')), centrage: t(o.reduire ? 'ord_reduites' : 'ord_centrees') }))
@@ -287,7 +290,7 @@ function rendreResumeOrdination(conteneur, ctx, m) {
     fiche = el('div', { class: 'fiche' }, titre,
       el('div', { class: 'fiche-chiffres' }, chiffre('N', m.N, 0), chiffre(t('variables'), m.K, 0), chiffre(t('ord_total_tableau'), m.total, 0),
         m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
-      el('div', { class: 'fiche-chiffres' }, chiffre(t('ord_inertie_totale'), i.totale, 4), ...axes(m).slice(0, 3).map((n, k) => chiffre(n, `${fmt(100 * vp[k], 1)} %`))));
+      el('div', { class: 'fiche-chiffres' }, chiffre(t('ord_inertie_totale'), i.totale, 4), ...axes(m).slice(0, 3).map((n, k) => chiffre(n, `${fmt(100 * vp[k], 1)}${pourcent()}`))));
     if (liste(m.variables_vides).length) textes.push(t('ord_variables_vides', { noms: liste(m.variables_vides).join(', ') }));
     textes.push(t('ord_resume_ca'));
   }
@@ -403,7 +406,7 @@ const blocsResume = (m) => {
   const pct = (v) => fmt(100 * v / i.totale, 1);
   const cca = m.type === 'CCA';
   return [{ texte: `${t(cca ? 'type_cca' : 'type_rda')} · N = ${m.N} · ${cca ? t('ord_especes') : t('ord_reponses')} ${liste(m.noms_y).length} · ${t('nb_termes')} ${liste(m.termes).length}`
-    + (liste(m.covariables).length ? ` · ${t('ord_covariables')} : ${liste(m.covariables).join(', ')}` : '') },
+    + (liste(m.covariables).length ? ` · ${t('ord_covariables')}${deuxPoints()}${liste(m.covariables).join(', ')}` : '') },
   { entetes: ['R2', t('r2_ajuste'), t('ord_pseudo_f'), 'p', t('nb_permutations')],
     lignes: [[fmt(m.r2, 4), m.r2_ajuste === null || m.r2_ajuste === undefined ? '—' : fmt(m.r2_ajuste, 4), fmt(m.test.F, 3), m.test.permutations ? pValeur(m.test.p) : '—',
       String(m.test.permutations || 0)]] },
@@ -419,7 +422,7 @@ const blocsValeursPropres = (m) => [{ entetes: [t('ord_axe'), t('valeur_propre')
 const demandeRapport = async (nom, m, f) => { try { return f(await demander(nom, { modele: m.id })); } catch (e) { return [{ texte: e.message }]; } };
 const lignesTests = (df, premiere) => lignesDe(df, [premiere, 'ddl', 'inertie', 'F', 'p']).map((l) => [l[0], fmt(l[1], 0), fmt(l[2], 5), l[3] === null ? '' : fmt(l[3], 3), l[4] === null ? '' : pValeur(l[4])]);
 const blocsTests = (m) => (!m.test.permutations ? [{ texte: t('ord_sans_permutations') }] : demandeRapport('rda_tests', m, (r) => [
-  { texte: `${t('ord_test_global')} : ${t('ord_pseudo_f')} = ${fmt(m.test.F, 3)}, p = ${pValeur(m.test.p)} (${m.test.permutations} ${t('ord_permutations_mot')}${m.strates ? `, ${t('ord_permutations_dans', { g: m.strates })}` : ''})` },
+  { texte: `${t('ord_test_global')}${deuxPoints()}${t('ord_pseudo_f')} = ${fmt(m.test.F, 3)}, p = ${pValeur(m.test.p)} (${m.test.permutations} ${t('ord_permutations_mot')}${m.strates ? `, ${t('ord_permutations_dans', { g: m.strates })}` : ''})` },
   { texte: t('ord_tests_axes') }, { entetes: [t('ord_axe'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.axes, 'axe') },
   ...(r.sequentiels ? [{ texte: t('ord_tests_sequentiels') }, { entetes: [t('terme'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.sequentiels, 'terme') }] : []),
   { texte: t('ord_tests_termes') }, { entetes: [t('terme'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.termes, 'terme') }]));

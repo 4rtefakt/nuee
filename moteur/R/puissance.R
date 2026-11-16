@@ -87,7 +87,7 @@ pente_puissance <- function(tendance, unite, transformation) {
   if (identical(unite, "pourcent")) {
     if (is.null(base)) stop(traduire("Une tendance en % par an demande une réponse en log10 ou en ln (Nouveau modèle › Variables).",
                                      "A trend in % per year needs a log10 or ln response (New model › Variables)."), call. = FALSE)
-    if (!(tendance > -100)) stop(traduire("Une baisse de 100 % ou plus n'a pas de logarithme.", "A decline of 100 % or more has no logarithm."), call. = FALSE)
+    if (!(tendance > -100)) stop(traduire("Une baisse de 100 % ou plus n'a pas de logarithme.", "A decline of 100% or more has no logarithm."), call. = FALSE)
     return(list(pente = if (base$type == "log10") log10(1 + tendance / 100) else log(1 + tendance / 100), approchee = base$decalage != 0))
   }
   list(pente = tendance, approchee = FALSE)
@@ -244,6 +244,9 @@ PUISSANCE_LIMITES <- list(annees = c(3L, 100L), unites = 10000L, courbes = 10L, 
 # défaut), vérifiés : le terme du temps (son nom), la tendance et son unité ("pente" ou
 # "pourcent"), alpha, les années des courbes (de, à), les nombres d'unités (celui des données y est
 # toujours), le plan et le nombre de jeux de la simulation.
+# (les champs d'une demande qui sont des réglages, serveur.R : puissance_tendance ; ses autres champs
+# n'en sont pas : un champ en trop referait le calcul avec les réglages par défaut)
+REGLAGES_PUISSANCE <- c("terme", "tendance", "unite", "alpha", "annees", "unites", "simulation", "simuler")
 reglages_puissance <- function(m, d, lu, q) {
   err <- function(fr, en) stop(traduire(fr, en), call. = FALSE)
   nombre <- function(v, defaut) { v <- suppressWarnings(as.numeric(unlist(v))); if (length(v) && !anyNA(v)) v else defaut }
@@ -259,7 +262,7 @@ reglages_puissance <- function(m, d, lu, q) {
   if (!terme %in% lu$noms) err(sprintf("« %s » n'est pas un X quantitatif (non transformé) de ce modèle : choisissez le temps parmi %s.", terme, paste(lu$noms, collapse = ", ")),
                                sprintf("\"%s\" isn't a quantitative X (untransformed) of this model: choose the time among %s.", terme, paste(lu$noms, collapse = ", ")))
   pourcent_possible <- !is.null(log_reponse(d$y[[1]]$transform))
-  unite <- as.character(unlist(q$unite))[1]
+  unite <- as.character(unlist(q[["unite"]]))[1]  # (sans unite, q$unite prendrait q$unites : la correspondance partielle de $)
   if (is.na(unite) || !unite %in% c("pente", "pourcent")) unite <- if (pourcent_possible) "pourcent" else "pente"
   y <- m$donnees$y
   defaut <- if (unite == "pourcent") -3 else -signif(if (mean(y) != 0) 0.03 * abs(mean(y)) else if (stats::sd(y) > 0) 0.1 * stats::sd(y) else 0.1, 2)

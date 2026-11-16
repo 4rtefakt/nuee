@@ -4,7 +4,7 @@
 // discriminant scores and coefficients, posterior probabilities; clusters on the first two
 // components, silhouettes, the choice of k, centres), their summaries, report parts and strings.
 // Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, deuxPoints, pourcent } from './i18n.js';
 import { el, fmt, decimal, entreNombres } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
@@ -18,7 +18,7 @@ const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R
 const TYPES = ['TREE', 'LDA', 'KMEANS'];
 const estClassement = (m) => !!m && !!m.analyse && TYPES.includes(m.type);
 const chiffre = (k, v, d = 3) => el('span', {}, el('small', {}, k), ' ', el('b', {}, typeof v === 'number' ? fmt(v, d) : v ?? '—'));
-const pct = (v, d = 1) => (v === null || v === undefined ? '—' : `${fmt(100 * v, d)} %`);
+const pct = (v, d = 1) => (v === null || v === undefined ? '—' : `${fmt(100 * v, d)}${pourcent()}`);
 // the rows of a data.frame sent by R (columns), as arrays of values
 const lignesDe = (df, cles) => { const n = liste((df || {})[cles[0]]).length; return Array.from({ length: n }, (_, i) => cles.map((k) => liste(df[k])[i])); };
 // a small fixed table: headers, rows of cells
@@ -58,7 +58,7 @@ const dansSousArbre = (id, bas) => { let n = bas; while (n > id) n = Math.floor(
 const noeudsObservations = (m) => { const noeuds = liste(m.regles.noeud); return liste(m.observations.feuille).map((f) => noeuds[f - 1]); };
 const valeurNoeud = (m, i) => {
   const a = m.arbre;
-  return m.classement ? `${liste(a.valeur)[i]} (${fmt(100 * liste(a.part)[i], 0)} %)` : fmt(liste(a.valeur)[i], 3);
+  return m.classement ? `${liste(a.valeur)[i]} (${fmt(100 * liste(a.part)[i], 0)}${pourcent()})` : fmt(liste(a.valeur)[i], 3);
 };
 
 function rendreArbre(conteneur, ctx, p) {
@@ -70,7 +70,7 @@ function rendreArbre(conteneur, ctx, p) {
   const q = m.qualite;
   conteneur.replaceChildren(outils(el('span', { class: 'infos' }, [
     `${liste(m.regles.feuille).length} ${t('arb_feuilles')}`,
-    m.premiere && m.premiere.regle ? ` · ${t('arb_premiere')} : ${m.premiere.regle}` : '',
+    m.premiere && m.premiere.regle ? ` · ${t('arb_premiere')}${deuxPoints()}${m.premiere.regle}` : '',
     m.classement ? ` · ${t('bien_classes_vc')} ${pct(q.bien_classes_vc)}` : ` · R2 ${fmt(q.r2, 2)} · Q2 ${fmt(q.Q2, 2)}`].join('')),
   el('span', { class: 'infos' }, t('arb_clic_noeud'))), graphe);
   const ids = d.ids;
@@ -185,7 +185,7 @@ function rendreImportance(conteneur, ctx, p, loc) {
   tracer(ctx, graphe, noms.map((b, k) => {
     const idx = vars.map((_, i) => i).filter((i) => (blocs[i] || '—') === b);
     return { type: 'bar', orientation: 'h', name: b === '—' ? t('aucun') : b, y: idx.map((i) => vars[i]), x: idx.map((i) => liste(imp.pourcentage)[i]),
-      marker: { color: PALETTE[k % PALETTE.length] }, hovertemplate: '<b>%{y}</b><br>%{x:.1f} %<extra></extra>' };
+      marker: { color: PALETTE[k % PALETTE.length] }, hovertemplate: `<b>%{y}</b><br>%{x:.1f}${pourcent()}<extra></extra>` };
   }), { title: { text: `${m.nom} · ${t('importance_arbre')}` }, dragmode: false, showlegend: noms.length > 1, barmode: 'stack',
     yaxis: { categoryorder: 'array', categoryarray: [...vars].reverse(), automargin: true }, xaxis: { title: { text: '%' } } });
   loc.table ??= {};
@@ -213,7 +213,7 @@ async function rendreStabilite(conteneur, ctx, p, loc) {
     + (loc.res.echecs ? ` ${t('arb_stabilite_echecs', { n: loc.res.echecs })}` : '')), graphe, bas);
   tracer(ctx, graphe, [{ type: 'bar', x: vars, y: liste(s.frequence), marker: { color: PALETTE[0] },
     text: liste(s.seuil_median).map((v) => (v === null ? '' : `${t('arb_seuil_median')} ${decimal(+v.toPrecision(4))}`)), textposition: 'outside', cliponaxis: false,
-    hovertemplate: '<b>%{x}</b><br>%{y:.1f} %<br>%{text}<extra></extra>' }],
+    hovertemplate: `<b>%{x}</b><br>%{y:.1f}${pourcent()}<br>%{text}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('stabilite_arbre')}` }, dragmode: false, yaxis: { title: { text: t('arb_frequence') }, range: [0, 115] } });
   loc.table ??= {};
   tableau(bas, ctx, loc.table, {
@@ -256,7 +256,7 @@ function rendreResumeArbre(conteneur, ctx, m) {
 
 // ------------------------------------------------------------ LDA
 
-const libelleLD = (m, k) => `${liste(m.axes)[k]} (${fmt(100 * liste(m.part)[k], 1)} %)`;
+const libelleLD = (m, k) => `${liste(m.axes)[k]} (${fmt(100 * liste(m.part)[k], 1)}${pourcent()})`;
 
 function rendreScoresLDA(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
@@ -397,8 +397,8 @@ function rendrePlanKmeans(conteneur, ctx, p, loc) {
     text: liste(ce.groupe).map(String), textposition: 'top center', textfont: { size: 12, color: c.texte },
     marker: { symbol: 'x-thin', size: 16, line: { width: 3, color: c.texte } }, hovertemplate: `${t('groupe')} %{text}<extra></extra>` });
   tracer(ctx, graphe, traces, { title: { text: `${m.nom} · ${t('km_plan')}` },
-    xaxis: { title: { text: `PC1 (${fmt(100 * part[0], 1)} %)` }, zeroline: true },
-    yaxis: { title: { text: deux ? `PC2 (${fmt(100 * part[1], 1)} %)` : '' }, zeroline: true } });
+    xaxis: { title: { text: `PC1 (${fmt(100 * part[0], 1)}${pourcent()})` }, zeroline: true },
+    yaxis: { title: { text: deux ? `PC2 (${fmt(100 * part[1], 1)}${pourcent()})` : '' }, zeroline: true } });
   brancherSelection(graphe, ctx, m.id);
 }
 
@@ -420,7 +420,7 @@ function rendreSilhouette(conteneur, ctx, p) {
   tracer(ctx, graphe, liste(tailles.groupe).map((k, j) => {
     const idx = ordre.filter((i) => g[i] === k);
     return { type: 'bar', orientation: 'h', name: `${nomGroupe(k)} (${fmt(liste(tailles.silhouette)[j], 2)})`, x: idx.map((i) => s[i]), y: idx.map((i) => position.get(i)),
-      customdata: idx.map((i) => liste(o.uid)[i]), hovertext: idx.map((i) => `<b>${liste(o.nom)[i]}</b><br>${t('km_voisin')} : ${nomGroupe(voisin[i])}`),
+      customdata: idx.map((i) => liste(o.uid)[i]), hovertext: idx.map((i) => `<b>${liste(o.nom)[i]}</b><br>${t('km_voisin')}${deuxPoints()}${nomGroupe(voisin[i])}`),
       marker: { color: PALETTE[j % PALETTE.length] }, hovertemplate: '%{hovertext}<br>%{x:.3f}<extra>%{fullData.name}</extra>' };
   }), { title: { text: `${m.nom} · ${t('km_silhouette')}` }, bargap: 0, showlegend: true, dragmode: 'select',
     yaxis: { autorange: 'reversed', showticklabels: false, title: { text: t('observations') } }, xaxis: { title: { text: t('km_largeur') }, zeroline: true },
@@ -573,7 +573,7 @@ const demandeRapport = async (nom, m, f) => { try { return f(await demander(nom,
 const blocsClassement = (m) => {
   const r = m.classification.vc;
   const classes = liste(r.classes);
-  return [{ texte: `${t('validation_croisee')} : ${t('bien_classes')} ${pct(r.global)}` },
+  return [{ texte: `${t('validation_croisee')}${deuxPoints()}${t('bien_classes')} ${pct(r.global)}` },
     { entetes: [`${t('observee')} \\ ${t('predite')}`, ...classes, t('bien_classes')],
       lignes: classes.map((k, i) => [k, ...r.table[i].map(String), pct(liste(r.correct)[i])]) }];
 };
@@ -582,7 +582,7 @@ const blocsResumeArbre = (m) => {
   return [{ texte: `${t(m.classement ? 'arb_classement' : 'arb_regression')} · N = ${m.N} · ${t('variables')} ${m.K} · ${t('groupes_vc')} ${groupesVC(m)}` },
     m.classement ? { entetes: [t('bien_classes'), t('bien_classes_vc'), t('arb_feuilles_titre'), 'cp'], lignes: [[pct(q.bien_classes), pct(q.bien_classes_vc), String(liste(m.regles.feuille).length), fmt(m.elagage.cp, 4)]] }
       : { entetes: ['R2', 'Q2', 'RMSEE', 'RMSEcv', t('arb_feuilles_titre'), 'cp'], lignes: [[fmt(q.r2, 3), fmt(q.Q2, 3), fmt(q.RMSEE, 4), fmt(q.RMSEcv, 4), String(liste(m.regles.feuille).length), fmt(m.elagage.cp, 4)]] },
-    m.premiere && m.premiere.regle ? { texte: `${t('arb_premiere')} : ${m.premiere.regle}` } : null,
+    m.premiere && m.premiere.regle ? { texte: `${t('arb_premiere')}${deuxPoints()}${m.premiere.regle}` } : null,
     { texte: noteReglagesArbre(m) }].filter(Boolean);
 };
 const blocsRegles = (m) => [{ entetes: [t('arb_feuille'), 'n', m.classement ? t('classe') : t('arb_moyenne'), t('arb_regle')],
