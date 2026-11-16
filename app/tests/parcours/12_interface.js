@@ -1,6 +1,9 @@
-// The window around the models, with two projects open: New model's types by family; the
-// toolbar and the Plots menu of a regression (a PCA's toolbar as it was); Find a command's
-// analyses; two projects' M1 told apart in the tabs, the files' names and Compare models.
+// The window around the models, on the example and then a second project: the Data view's
+// decimals as in the data; Format plot › Spread the labels on the PCA's loadings; New model's
+// types by family; the toolbar and the Plots menu of a regression (a PCA's toolbar as it was);
+// Find a command's analyses; the explorer following the work; the two projects' M1 told apart in
+// the tabs, the files' names and Compare models; tabs closed in bulk; the figure composer offering
+// the plots of models none of whose views is open.
 const path = require('path');
 
 module.exports = {
