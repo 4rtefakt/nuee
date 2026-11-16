@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A report, from the models to the paper · Nuée</title>
+<meta name="description" content="Nuée tutorial: writing up a study in a document, with values that follow the models, the Methods and Results texts, citations from a BibTeX file, a two-panel figure at a journal's size, Word and PDF, and a reproducible Quarto file.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="report.html">
+<link rel="alternate" hreflang="fr" href="../../fr/tutoriels/rapport.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="../guide/index.html">Guide</a>
+      <a href="index.html" aria-current="page">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/tutoriels/rapport.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Nuée tutorial: writing up a study in a document, with values that follow the models, the Methods and Results texts, citations from a BibTeX file, a two-panel figure at a journal's size, Word and PDF, and a reproducible Quarto file. -->
+<h1>A report, from the models to the paper</h1>
+<p class="chapeau">The meadows of the maps tutorial written up: values that follow the models, the Methods and Results texts, citations from a BibTeX file, a two-panel figure at a journal's size, Word and PDF, and a Quarto file whose numbers R recomputes.</p>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#1-a-new-document">1. A new document</a></li>
+<li><a href="#2-citing-the-results">2. Citing the results</a></li>
+<li><a href="#3-citations-from-a-bibtex-file">3. Citations from a BibTeX file</a></li>
+<li><a href="#4-a-figure-at-a-journal-s-size">4. A figure at a journal's size</a></li>
+<li><a href="#5-word-and-pdf">5. Word and PDF</a></li>
+<li><a href="#6-a-quarto-file-that-r-recomputes">6. A Quarto file that R recomputes</a></li>
+<li><a href="#going-further">Going further</a></li>
+</ul>
+</nav>
+<div class="encadre">
+<p><strong>Before you start.</strong> This tutorial writes up the study of
+<a href="maps.html">the maps tutorial</a>, on its simulated data: the meadows' project with its
+coordinates, the elevation and its two models, M1 (the linear regression) and M2 (the additive
+model with a spatial smooth). If you start here, do its steps 1 to 5 first. Then download
+<a href="../../donnees/references.bib">references.bib</a> into the folder of meadows.csv: four references on
+spatial autocorrelation and additive models, as Zotero or JabRef export them.</p>
+</div>
+<h2 id="1-a-new-document">1. A new document</h2>
+<p><em>File › New document</em> (or right-click the project in the explorer). Give it a title, choose its
+language, which sets how numbers are written (0.46 in English, 0,46 in French) and the Methods
+text's, then start from an <strong>Article</strong>, with <strong>M2</strong> ticked among the models to cite.</p>
+<figure><a class="clair-seul" href="../../images/en/rapport-nouveau.png"><img src="../../images/en/rapport-nouveau.png" alt="New document: the title, English, an article, M2 ticked" width="560" height="348" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/rapport-nouveau.png"><img src="../../images/en/sombre/rapport-nouveau.png" alt="New document: the title, English, an article, M2 ticked" width="560" height="348" loading="lazy"></a><figcaption>New document: a blank page, an article or an analysis report, the models ticked already cited.</figcaption></figure>
+<p>Click <strong>Create the document</strong>. It opens in a tab of its own: the text on the left, in Markdown
+(<code># Title</code>, <code>*italic*</code>, <code>**bold**</code>, lists, tables), and its preview on the right, drawn again as you
+type. The article has its headings (Introduction, Materials and methods, Results, Discussion,
+References), M2's Methods text, a sentence with two of its values, its Results text and a plot. The
+document is kept in the project and saved with it.</p>
+<h2 id="2-citing-the-results">2. Citing the results</h2>
+<p>A model's results are cited between double braces; the preview shows their value. In the Results,
+write:</p>
+<pre><code>The slope of biomass on elevation was {{M2.est.elevation}} g/m² per metre (95% CI
+{{M2.ic.elevation}}, {{M2.p.elevation}}). The spatial smooth lowered the AIC from
+{{M1.AIC}} to {{M2.AIC}} and raised the cross-validated Q² from {{M1.Q2}} to {{M2.Q2}}
+({{ref:fig-effet}}).
+</code></pre>
+<p>The preview reads:</p>
+<blockquote>
+<p>The slope of biomass on elevation was −0.848 g/m² per metre (95% CI [−1.110, −0.585], p &lt; 0.001).
+The spatial smooth lowered the AIC from 920.5 to 902.2 and raised the cross-validated Q² from 0.31
+to 0.46 (Figure 1).</p>
+</blockquote>
+<figure><a class="clair-seul" href="../../images/en/rapport-document.png"><img src="../../images/en/rapport-document.png" alt="The document: on the left the Results in Markdown with their references between braces, on the right the preview with the values, the figure and the references" width="1440" height="792" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/rapport-document.png"><img src="../../images/en/sombre/rapport-document.png" alt="The document: on the left the Results in Markdown with their references between braces, on the right the preview with the values, the figure and the references" width="1440" height="792" loading="lazy"></a><figcaption>The document: the text with its references, and the preview with their values, the figure and the list of references.</figcaption></figure>
+<ul>
+<li>A value: <code>{{M2.Q2}}</code>, <code>{{M1.AIC}}</code>, <code>{{M2.N}}</code>; a regression's coefficient,
+<code>{{M2.coef.elevation}}</code> (the estimate, its interval and p), or its parts, <code>est</code>, <code>ic</code> and <code>p</code>.
+After a colon, the decimals (<code>{{M2.Q2:3}}</code>) or a percentage (<code>{{M2.deviance_expliquee:%}}</code>).</li>
+<li>A block, alone on its line: the Methods text <code>{{M2.methodes}}</code>, the Results text
+<code>{{M2.resultats}}</code>, a table <code>{{M2.table.coefficients | caption}}</code>, or a plot of the model, as in
+its window: <code>{{M2.effets.elevation #fig-effet | Effect of elevation on hay biomass…}}</code>.
+Figures and tables are numbered in order; <code>#fig-effet</code> labels this one, and <code>{{ref:fig-effet}}</code>
+writes &quot;Figure 1&quot; in the text.</li>
+<li>Typing <code>{{</code> lists the project's models, then what the one chosen offers, with its current
+value; <em>Insert</em>, in the toolbar, does the same from menus.</li>
+</ul>
+<p>The values follow the models: refit M2 on corrected data, and the document says the new numbers. A
+reference that can't be resolved is in red, with the reason when you hover it.</p>
+<h2 id="3-citations-from-a-bibtex-file">3. Citations from a BibTeX file</h2>
+<p><em>Cite › Link a BibTeX or CSL-JSON file…</em>: choose <code>references.bib</code>. The header gains
+<code>bibliography: references.bib</code>, relative to the project's folder, as Quarto reads it, and the status
+bar says <em>references.bib: 4 references</em>. Citations are written as in Quarto:</p>
+<ul>
+<li><code>[@legendre1993; @dormann2007]</code> gives (Legendre, 1993; Dormann et al., 2007);</li>
+<li><code>@hodges2010</code>, in the sentence, Hodges and Reich (2010); <code>[see @wood2017, chap. 5]</code>, with a
+prefix and a page.</li>
+</ul>
+<p>Typing <code>@</code> lists the references; <em>Cite › Insert a citation…</em> offers them with a search:</p>
+<figure><a class="clair-seul" href="../../images/en/rapport-citer.png"><img src="../../images/en/rapport-citer.png" alt="Insert a citation: the four references of references.bib, a search field and the option to cite in the sentence" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/rapport-citer.png"><img src="../../images/en/sombre/rapport-citer.png" alt="Insert a citation: the four references of references.bib, a search field and the option to cite in the sentence" width="900" height="680" loading="lazy"></a><figcaption>Insert a citation: the document's references, and Zotero's when it is open on this computer.</figcaption></figure>
+<p>The list of references comes at the end, under the last heading when it is &quot;References&quot;, in an
+author–year or a numbered style (<em>Cite › Citation style</em>). With Zotero open on this computer, its
+libraries are searched as well. The Methods text names its own references (Nuée, R, mgcv,
+Wood 2003…), which this list doesn't hold: <em>Model › Text for the Methods section</em> lists them; add
+those you keep to your <code>.bib</code>.</p>
+<h2 id="4-a-figure-at-a-journal-s-size">4. A figure at a journal's size</h2>
+<p>A document shows a model's plots one by one. A journal asks for figures as files of their own, at
+its size. Put the map in front, coloured by <strong>M2 · s(X_L93, Y_L93)</strong> as at the end of the maps
+tutorial, then <em>Plots › Compose a figure…</em>: the composer takes the plot in front as panel A; <em>Add an
+open plot…</em>: <strong>M2 · Effects</strong>, panel B. Choose a width of <strong>174 mm</strong> (two columns), a height of
+80 mm (untick <em>from the panels</em>), text at 8 pt.</p>
+<figure><a class="clair-seul" href="../../images/en/rapport-figure.png"><img src="../../images/en/rapport-figure.png" alt="The figure composer: the map of the spatial smooth (A) and the effect of elevation (B), 174 mm wide and 80 mm high" width="1124" height="640" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/rapport-figure.png"><img src="../../images/en/sombre/rapport-figure.png" alt="The figure composer: the map of the spatial smooth (A) and the effect of elevation (B), 174 mm wide and 80 mm high" width="1124" height="640" loading="lazy"></a><figcaption>A two-column figure: the smooth on the map (A), the effect of elevation (B), with 8 pt text.</figcaption></figure>
+<p><strong>Export…</strong> writes it as a vector PDF or SVG, the page exactly 174 × 80 mm, or as PNG or TIFF at 300
+or 600 dpi: 4110 × 1890 pixels at 600 dpi, the TIFF compressed by LZW, losslessly, as journals ask.
+The figure is kept in the project (in the explorer, under <em>Figures</em>) and always takes each model's
+latest fit.</p>
+<h2 id="5-word-and-pdf">5. Word and PDF</h2>
+<p><em>Compile › Word (.docx)…</em> writes the document with its values, its figure and its list of
+references, in Word's styles (headings, captions), to go on with in Word; <em>PDF…</em>, pages ready to
+send; <em>HTML…</em>, a single page, plots included. The YAML header's title heads them; a line
+<code>{{&lt; pagebreak &gt;}}</code> starts a new page.</p>
+<h2 id="6-a-quarto-file-that-r-recomputes">6. A Quarto file that R recomputes</h2>
+<p><em>Compile › Quarto (.qmd)…</em> writes the document for Quarto, which renders it in a journal's style
+(<code>csl:</code> in the header). Its results are either <strong>written in</strong>, as Nuée shows them, or
+<strong>reproducible</strong>:</p>
+<figure><a class="clair-seul" href="../../images/en/rapport-quarto.png"><img src="../../images/en/rapport-quarto.png" alt="Quarto (.qmd): the results written in, or reproducible, recomputed by R from the raw data" width="560" height="234" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/rapport-quarto.png"><img src="../../images/en/sombre/rapport-quarto.png" alt="Quarto (.qmd): the results written in, or reproducible, recomputed by R from the raw data" width="560" height="234" loading="lazy"></a><figcaption>The Quarto file: the values written in, or recomputed by R when Quarto renders it.</figcaption></figure>
+<p>Reproducible, the <code>.qmd</code> comes with a folder of the same name ending in <code>_R</code>: the Export to R of M1
+and M2 (<em>File › Export to R</em>), each with its data as a CSV, and <code>nuee.R</code>. The first chunk of the
+<code>.qmd</code> runs the two scripts again; each value becomes an R expression that reads the recomputed
+value and writes it as Nuée does:</p>
+<pre><code>The slope of biomass on elevation was `r nuee_coefficient(M2$coefficients, &quot;elevation&quot;, &quot;est&quot;)`
+</code></pre>
+<p>Correct a value in a CSV, render again, and every number R writes follows. What the scripts don't
+recompute stays written in, and the first chunk says so in a comment: here the Methods and Results
+texts, and the effect of elevation, a plot the script doesn't draw (the status bar says <em>3 of the 10
+references stay written in</em>). Before writing, Nuée runs the scripts and checks that each expression
+gives back the value it shows. Rendering needs Quarto, and R with its knitr and rmarkdown packages;
+with Quarto installed, <em>Compile › Compile with Quarto</em> renders it from Nuée, as Word, PDF or HTML.</p>
+<h2 id="going-further">Going further</h2>
+<ul>
+<li>The <strong>analysis report</strong> template writes, for each model ticked, its summary, its plots and its
+Methods text.</li>
+<li><code>csl: style.csl</code> in the header gives Quarto a journal's citation style, copied beside the <code>.qmd</code>.</li>
+<li><em>File › Model report</em> makes a PDF or Word report of one model, without writing.</li>
+<li>The guide: <a href="../guide/results.html">documents, citations and Quarto</a>,
+<a href="../guide/plots.html">figures for publication</a>.</li>
+</ul>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>
