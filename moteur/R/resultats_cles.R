@@ -778,18 +778,26 @@ comparer_entree <- function(a, b, fr, retournes = character(0)) {
   signe_fort <- signe && (isTRUE(sa) || isTRUE(sb) || (is.na(sa) && is.na(sb)))
   # (le groupe d'une espèce indicatrice ni avant ni après : celui de sa plus grande valeur, sans portée)
   categorie_forte <- categorie && !(e$groupe %in% c("variables", "especes") && isFALSE(sa) && isFALSE(sb))
-  points <- 4 * (nouveau || disparu) + (if (signe) (if (signe_fort) 6 else 1.5) else 0) + 5 * seuil + 3 * hors_ic + (if (categorie) (if (categorie_forte) 5 else 1.5) else 0) + ampleur
+  # un estimé qui bouge beaucoup sans passer aucun seuil : la pente d'une tendance 60 % plus forte avec
+  # une année de plus, toujours significative et dans son ancien intervalle, est ce qu'un rapport de suivi
+  # doit dire en premier. D'un quart de sa valeur au moins et d'une demi-largeur de son ancien intervalle,
+  # significatif d'un côté au moins (un estimé incertain des deux côtés, autour de 0, change beaucoup en
+  # relatif sans rien dire), sauf les valeurs par variable ou par espèce, nombreuses.
+  grand_mouvement <- deux && change && !is.null(a$ic) && !(e$groupe %in% c("variables", "especes")) &&
+    (isTRUE(sa) || isTRUE(sb)) && !is.null(relatif) && abs(relatif) >= 0.25 && ampleur >= 0.5
+  points <- 4 * (nouveau || disparu) + (if (signe) (if (signe_fort) 6 else 1.5) else 0) + 5 * seuil + 3 * hors_ic + (if (categorie) (if (categorie_forte) 5 else 1.5) else 0) +
+    2 * grand_mouvement + ampleur
   importance <- if (change) round(poids * points, 4) else 0
 
   # une phrase pour un changement qui compte : un drapeau (un changement de signe, ou de la catégorie
   # d'une variable, quand la valeur est significative d'un côté au moins : sinon ils étaient déjà
-  # incertains), un nombre entier qui change (n, A…), ou, sans intervalle, un pourcentage qui bouge de
-  # 2 points, une valeur entre -1 et 1 de 0,05, une autre de 10 % (25 % pour la statistique d'un test) ;
-  # pas pour les composantes, que l'ajustement résume, ni pour l'ordonnée à l'origine, ni pour les
-  # résultats d'un fichier
+  # incertains), un grand mouvement (ci-dessus), un nombre entier qui change (n, A…), ou, sans
+  # intervalle, un pourcentage qui bouge de 2 points, une valeur entre -1 et 1 de 0,05, une autre de
+  # 10 % (25 % pour la statistique d'un test) ; pas pour les composantes, que l'ajustement résume, ni pour
+  # l'ordonnée à l'origine, ni pour les résultats d'un fichier
   test <- !is.null(a$p) || !is.null(b$p)
   notable <- change && !(e$groupe %in% c("composantes", "stocke")) && !identical(e$cle, "coef.(Intercept)") &&
-    (nouveau || disparu || signe_fort || seuil || hors_ic || categorie_forte || identical(e$forme, "entier") ||
+    (nouveau || disparu || signe_fort || seuil || hors_ic || categorie_forte || grand_mouvement || identical(e$forme, "entier") ||
        (deux && is.null(a$ic) && !(e$groupe %in% c("variables", "especes")) &&
           (if (identical(e$forme, "pourcentage")) abs(ecart) >= 0.02 else if (petite) abs(ecart) >= 0.05
            else !is.null(relatif) && abs(relatif) >= (if (test) 0.25 else 0.1))))

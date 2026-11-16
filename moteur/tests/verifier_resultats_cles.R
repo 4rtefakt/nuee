@@ -179,6 +179,33 @@ ancien <- options(nuee.langue = "en")
 verifier("LMM : les clés des effets aléatoires ne changent pas avec la langue (la résiduelle a son nom traduit dans les tableaux)",
          identical(cles(resume(pA, lmm_de(pA), ml)), cles(L)))
 options(ancien)
+# un suivi de 24 sites, 2015-2025 puis avec 2026, où le déclin s'accentue : la pente de l'année devient
+# 60 % plus forte, toujours significative et dans son ancien intervalle (aucun drapeau) ; elle a sa phrase,
+# la première, quand un coefficient d'habitat non significatif des deux côtés, qui bouge autant en
+# relatif, n'en a pas
+tableau_suivi <- function(annees, pente) {
+  set.seed(7)
+  sites <- sprintf("S%02d", 1:24)
+  d <- expand.grid(site = sites, annee = annees, stringsAsFactors = FALSE)
+  habitat <- stats::setNames(rep(c("cropland", "grassland", "hedgerows"), length.out = 24), sites)  # (hedgerows, la dernière : la référence)
+  d$habitat <- unname(habitat[d$site])
+  d$haies_km <- round(stats::runif(nrow(d), 0, 3), 2)
+  effet_site <- stats::setNames(stats::rnorm(24, 0, 0.35), sites)
+  mu <- 2.4 + pente * (d$annee - 2015) + c(cropland = -0.3, grassland = 0.25, hedgerows = 0)[d$habitat] + 0.12 * d$haies_km + effet_site[d$site]
+  data.frame(nom = sprintf("%s_%d", d$site, d$annee), d, log_comptes = round(mu + stats::rnorm(nrow(d), 0, 0.3), 3), stringsAsFactors = FALSE)
+}
+suivi_de <- function(p) definir_modele(p, "LMM", x = numeros(p, c("annee", "habitat", "haies_km")), y = numeros(p, "log_comptes"),
+                                       observations = numeros_observations(p), echelle = c(defaut = "none"),
+                                       aleatoires = list(list(by = "variable", variable = numeros(p, "site"))))
+psA <- projet_depuis_tableau(tableau_suivi(2015:2025, -0.012), "suivi")
+psB <- projet_depuis_tableau(tableau_suivi(2015:2026, -0.021), "suivi")
+CS <- comparer_resultats(resume(psA, suivi_de(psA)), resume(psB, suivi_de(psB)), "fr")
+pente <- comparee(CS, "coef.annee")
+verifier("Suivi : la pente de l'année, 60 % plus forte sans drapeau, a sa phrase (« toujours significatif »), la première",
+         !pente$signe && !pente$seuil && !pente$ic && abs(pente$ecart_relatif) >= 0.5 &&
+           contient(pente$phrase %||% "", "toujours significatif") && identical(as.character(CS$phrases[[1]]$cles), "coef.annee"))
+verifier("Suivi : pas de phrase pour un habitat non significatif des deux côtés, même s'il bouge beaucoup en relatif",
+         abs(comparee(CS, "coef.habitat(cropland)")$ecart_relatif) >= 0.25 && is.null(comparee(CS, "coef.habitat(cropland)")$phrase))
 # une courbe nette d'abord, puis aucune : son test passe le seuil
 tableau_gam <- function(graine, forte) {
   set.seed(graine)

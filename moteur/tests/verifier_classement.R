@@ -296,7 +296,7 @@ verifier("prédire : le groupe du centre le plus proche (une observation du mod�
 p1o <- predire(p, mk, dk, as.numeric(rownames(p$donnees))[which(ck)[2]])
 verifier("prédire une seule observation : une ligne, son groupe et sa distance au centre",
          nrow(p1o) == 1 && identical(p1o[["groupe prédit"]], mk$groupe[2]) && proche(p1o[["distance au centre"]], mk$distance[2]))
-changer_projet <- function(q, f, etiquette) { pp <- f(projet(q$projet)); etat$projets[[q$projet]] <- pp; list(id = q$projet) }
+changer_projet <- function(q, f, etiquette, ...) { pp <- f(projet(q$projet)); etat$projets[[q$projet]] <- pp; list(id = q$projet) }
 invisible(demande_analyse_kmeans_variable(list(modele = "K1", nom = "groupes k3")))
 pp <- etat$projets$P1
 v <- variable_du_projet(pp, numeros(pp, "groupes k3"))

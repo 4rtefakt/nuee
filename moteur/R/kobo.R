@@ -1237,14 +1237,15 @@ apercu_collecte <- function(chemin, table = NULL, garder = character(0), parents
 # libellés). Les coordonnées du projet sont le premier point GPS, en WGS 84. p$collecte (enregistré
 # avec le projet) dit d'où viennent les données, pour le texte des Méthodes ; p$import_collecte (de
 # la séance) les réglages, pour refaire l'import quand le moteur redémarre ; attr(, "collecte") :
-# ce qui a été fait.
-importer_collecte <- function(chemin, table = NULL, garder = character(0), parents = NULL, formulaire = NULL, langue = NULL) {
+# ce qui a été fait. `identifiants` : les décisions sur les colonnes qui nomment les observations,
+# à prendre ou à reprendre (nouveau.R : projet_depuis_tableau ; etapes.R, la source du projet).
+importer_collecte <- function(chemin, table = NULL, garder = character(0), parents = NULL, formulaire = NULL, langue = NULL, identifiants = NULL) {
   imp <- kobo_import(chemin, table, garder, parents, formulaire, langue)
   df <- convertir_colonnes(imp$donnees, imp$virgule, quantitatives = imp$nombres, toutes = TRUE, textes = imp$textes)
   r <- imp$resume
   principale <- identical(r$table, imp$export$principale)
   nom <- if (principale) basename(chemin) else sprintf("%s (%s).%s", tools::file_path_sans_ext(basename(chemin)), r$table, tools::file_ext(chemin))
-  p <- projet_depuis_tableau(df, nom, secondaires = TRUE, qualitatives = imp$qualitatives)
+  p <- projet_depuis_tableau(df, nom, secondaires = TRUE, qualitatives = imp$qualitatives, identifiants = identifiants)
   notes <- unname(attr(df, "note"))
   if (!is.null(imp$coordonnees)) {
     co <- imp$coordonnees
@@ -1262,14 +1263,15 @@ importer_collecte <- function(chemin, table = NULL, garder = character(0), paren
 
 # Une table d'une archive d'ODK Central telle qu'elle est écrite (Ouvrir tel quel ; un classeur ou
 # un CSV s'ouvrent comme tout tableau) : en projet comme un tableau ouvert (formats.R :
-# finir_tableau), sans rien de l'import. `table` : la table des envois par défaut.
-projet_brut_collecte <- function(chemin, table = NULL) {
+# finir_tableau), sans rien de l'import. `table` : la table des envois par défaut. `identifiants` :
+# comme pour importer_collecte.
+projet_brut_collecte <- function(chemin, table = NULL, identifiants = NULL) {
   export <- lire_collecte(chemin)
   tab <- export$tables[[kobo_reglages(export, table, NULL, NULL)$table]]
   df <- tab$donnees
   attr(df, "virgule") <- tab$virgule
   df <- finir_tableau(df)
-  p <- projet_depuis_tableau(df, basename(chemin))
+  p <- projet_depuis_tableau(df, basename(chemin), identifiants = identifiants)
   p$note <- unname(attr(df, "note"))
   p
 }

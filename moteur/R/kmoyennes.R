@@ -110,15 +110,16 @@ demande_analyse_kmeans_choix <- function(q) {
 }
 
 # Les groupes en variable qualitative du projet (catégories 1 à k), pour les observations du
-# modèle ; annulable comme les autres modifications des données.
+# modèle ; annulable comme les autres modifications des données. L'étape garde la définition du
+# modèle : rejouée, elle refait les k-moyennes sur les données du moment (etapes.R).
 demande_analyse_kmeans_variable <- function(q) {
   e <- modele(q$modele)
   if (!identical(e$modele$type, "KMEANS")) stop(traduire("Seulement pour des k-moyennes.", "Only for k-means."), call. = FALSE)
   m <- e$modele
   nom <- trimws(as.character(q$nom %||% ""))
   if (!length(nom) || !nzchar(nom[1])) nom <- sprintf("%s %s", e$definition$name %||% "k", traduire("groupes", "clusters"))
-  changer_projet(list(projet = e$projet), function(p) ajouter_colonne(p, nom[1], m$observations, m$groupe, categories = as.character(seq_len(m$k))),
-                 sprintf("variable %s", nom[1]))
+  changer_projet(list(projet = e$projet, nom = nom[1]), function(p) ajouter_colonne(p, nom[1], m$observations, m$groupe, categories = as.character(seq_len(m$k))),
+                 sprintf("variable %s", nom[1]), "kmeans_variable", list(definition = e$definition))
 }
 
 # Les observations des k-moyennes : leur groupe (en texte, pour les couleurs), sa distance au

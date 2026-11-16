@@ -422,6 +422,9 @@ async function echanges() {
     verifier('Alice reçoit : divergence, les versions de chacun depuis la dernière commune', div.resultat === 'diverge'
       && JSON.stringify(div.mien.map((v) => v.description)) === '["Juillet (Alice)"]' && JSON.stringify(div.leur.map((v) => v.description)) === '["Juillet (Bob)"]'
       && div.leur[0].auteur.nom === 'Bob' && contenu(pA) === projetJson(5) && (await alice.etat(pA)).retard === 1 && (await alice.etat(pA)).avance === 1, div);
+    const leurLu = await alice.lire(pA, div.leur[0].oid);
+    verifier('Alice lit la version de Bob avant de choisir (pour comparer) : son fichier, le sien inchangé',
+      contenu(leurLu.fichier) === projetJson(6) && contenu(pA) === projetJson(5), leurLu);
     verifier('choisir autre chose que mien ou leur : refusé', /nothing to choose/.test(await refus(() => alice.choisir(pA, 'les deux'))));
     const leur = garde(await alice.choisir(pA, 'leur'));
     const parents = surServeur(herons, 'log', '-1', '--format=%P', 'main').split(' ');
