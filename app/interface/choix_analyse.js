@@ -337,8 +337,11 @@ export const REGLES = [
   { question: 'effet', reponse: 'especes', choix: 'rda', autres: ['cca', 'par_reponse', 'permanova'] },
   { question: 'effet', reponse: 'classe', choix: 'arbre', autres: ['lda', 'foret', 'plsda'] },
   { question: 'effet', reponse: 'mesure', si: { avecZeros: true }, choix: 'glm_tweedie', autres: ['lm_log', 'normal', 'gam'] },
-  { question: 'effet', reponse: 'mesure', si: { asymetrique: true }, choix: 'glm_gamma', autres: ['lm_log', 'normal', 'gam'] },
+  // (a skewed response, judged before any X: the X may make it so, as a biomass falling with the
+  // elevation; the linear model first, its residuals checked after the fit, the gamma GLM and the
+  // log offered, never recommended on the raw skew alone)
   { question: 'effet', reponse: 'mesure', si: { coordonnees: true }, choix: 'normal', autres: ['gam_spatial', 'gam', 'foret'] },
+  { question: 'effet', reponse: 'mesure', si: { asymetrique: true }, choix: 'normal', autres: ['glm_gamma', 'lm_log', 'gam'] },
   { question: 'effet', reponse: 'mesure', choix: 'normal', autres: ['gam', 'foret', 'arbre'] },
   { question: 'effet', reponse: 'comptage', si: { zeros: true }, choix: 'glm_nb', autres: ['glm_zip', 'glm_poisson', 'gam'] },
   { question: 'effet', reponse: 'comptage', si: { surdispersion: true }, choix: 'glm_nb', autres: ['glm_poisson', 'gam', 'boost'] },
@@ -473,6 +476,7 @@ const COMPOSANTES = ['acp', 'pls', 'opls', 'plsda', 'oplsda', 'classes'];
 // Sentences added to an analysis (pour: its ids) when the context says so (si, as in REGLES).
 export const NOTES = [
   { si: { comptageIncertain: true }, pour: ['glm_poisson', 'glm_nb', 'glm_zip', 'trim', 'boost', 'gam'], cle: 'qa_note_comptage_incertain' },
+  { si: { asymetrique: true, question: 'effet' }, pour: ['normal', 'gam', 'gam_spatial'], cle: 'qa_note_asymetrie_residus' },
   { si: { repetes: true }, pour: REGRESSIONS, cle: 'qa_note_site' },
   { si: { repetes: true }, pour: ['pls', 'opls', 'plsda', 'oplsda', 'arbre', 'lda', 'foret', 'boost'], cle: 'qa_note_vc_site' },
   { si: { repetes: true }, pour: ['rda', 'cca', 'permanova', 'indval'], cle: 'qa_note_strates' },
@@ -492,7 +496,7 @@ export const notesPour = (id, c) => NOTES.filter((n) => n.pour.includes(id) && O
 
 // The distribution of a regression whose family follows the response (a GAM) or the species (one
 // model per species): counts → negative binomial (Poisson without overdispersion nor many zeros),
-// 0/1 → binomial, proportions → beta, a measurement with zeros → Tweedie, positive and skewed → gamma.
+// 0/1 → binomial, proportions → beta, a measurement with zeros → Tweedie, otherwise normal.
 export function familleDe(c, especes = []) {
   if (c.question === 'especes' || c.reponse === 'especes') {
     if (especes.length && especes.every((f) => genre(f) === 'presence')) return 'binomiale';
@@ -503,7 +507,7 @@ export function familleDe(c, especes = []) {
   if (c.reponse === 'presence') return 'binomiale';
   if (c.reponse === 'proportion') return 'beta';
   if (c.avecZeros) return 'tweedie';
-  if (c.asymetrique) return 'gamma';
+  // (a skewed response stays normal: its residuals, not its raw values, say whether gamma is needed)
   return 'gaussienne';
 }
 // the log of the response: the one Variable statistics proposes (log10(x + C2)), else log10, or
@@ -978,6 +982,7 @@ export const TEXTES_CHOIX = {
     qa_pourquoi_distance: 'On ne voit pas tous les animaux, et moins ceux qui sont loin : la fonction de détection, ajustée aux distances, donne la probabilité de détection, puis la densité et l’effectif de chaque strate (Buckland et al. 2001), comme le paquet Distance.',
     qa_conditions_distance: 'Une ligne par détection, sa distance en Y, et chaque transect sans détection gardé, sa distance vide ; tous les animaux sur la ligne ou le point vus ; une soixantaine de détections au moins. Ce qui change la détection (l’observateur, le vent, la taille des groupes) peut en être une covariable (Nouveau modèle › Covariables).',
 
+    qa_note_asymetrie_residus: 'La réponse est asymétrique, mais ses X peuvent la rendre ainsi : c’est sur les résidus qu’on en juge, après l’ajustement (Résumé › Conditions du modèle). S’ils restent asymétriques, choisissez la loi gamma ou le log de la réponse, parmi les autres possibilités.',
     qa_note_comptage_incertain: 'Des entiers sans unité, lus comme des comptages : si ce sont des mesures arrondies à leur unité (des grammes, des centimètres), choisissez plutôt Une mesure, ou le modèle linéaire parmi les autres possibilités ; Édition › Unités et descriptions donne son unité à la variable.',
     qa_note_site: 'Les observations d’un même site se ressemblent : l’effet aléatoire par site en tient compte, et la validation croisée prédit chaque site sans lui.',
     qa_note_vc_site: 'La validation croisée par site juge le modèle sur des sites qu’il n’a jamais vus.',
@@ -1159,6 +1164,7 @@ export const TEXTES_CHOIX = {
     qa_pourquoi_distance: 'Not every animal is seen, and fewer far away: the detection function, fitted to the distances, gives the probability of detection, then the density and abundance of each stratum (Buckland et al. 2001), as the Distance package.',
     qa_conditions_distance: 'One row per detection, its distance as Y, and each transect without detection kept, its distance empty; every animal on the line or point seen; about sixty detections at least. What changes detection (the observer, the wind, the group size) can be a covariate of it (New model › Covariates).',
 
+    qa_note_asymetrie_residus: 'The response is skewed, but its X may make it so: its residuals tell, after the fit (Summary › Model conditions). If they stay skewed, choose the gamma distribution or the log of the response, among the alternatives.',
     qa_note_comptage_incertain: 'Whole numbers without a unit, read as counts: if they are measurements rounded to their unit (grams, centimetres), choose A measurement instead, or the linear model among the alternatives; Edit › Units and descriptions gives the variable its unit.',
     qa_note_site: 'Observations of the same site resemble each other: the random effect by site accounts for it, and cross-validation predicts each site without it.',
     qa_note_vc_site: 'Cross-validation by site judges the model on sites it has never seen.',

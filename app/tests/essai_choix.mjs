@@ -222,7 +222,15 @@ console.log('Des mesures sur des sites');
   const ml = construire(rl.choix, L, F, p);
   egal('une mesure, des sites répétés → modèle linéaire mixte, effet aléatoire et validation par site', [rl.choix, ml.reglages.type, ml.reglages.aleatoires, ml.reglages.vc, ml.reglages.famille],
     ['normal', 'LMM', [site], site, undefined]);
-  egal('mesure positive asymétrique → GLM gamma', conseil(p, F, repondre(p, F, { question: 'effet', y: 'biomasse' })).choix, 'glm_gamma');
+  // (the skew of the raw response may come from its X: the linear model first, gamma and the log offered)
+  const Bi = repondre(p, F, { question: 'effet', y: 'biomasse' });
+  const rbi = conseil(p, F, Bi);
+  egal('mesure positive asymétrique → le modèle linéaire d’abord, le GLM gamma et le log proposés, la note des résidus',
+    [rbi.choix, rbi.autres.includes('glm_gamma'), rbi.autres.includes('lm_log'), notesPour('normal', contexte(Bi, F, p)).includes('qa_note_asymetrie_residus')],
+    ['normal', true, true, true]);
+  egal('le GAM d’une mesure asymétrique garde la loi normale', construire('gam', Bi, F, p).reglages.famille, 'gaussienne');
+  const avecCoordonnees = conseil({ ...p, coordonnees: { x: 1, y: 2, systeme: 4326 } }, F, { ...Bi, coordonnees: true });
+  egal('avec des coordonnées aussi : le modèle linéaire, le GAM spatial parmi les autres', [avecCoordonnees.choix, avecCoordonnees.autres.includes('gam_spatial')], ['normal', true]);
   egal('le log de la réponse, celui que proposent les statistiques', construire('lm_log', repondre(p, F, { question: 'effet', y: 'biomasse' }), F, p).reglages.transformations,
     { [uid(p, 'biomasse')]: 'log10' });
   egal('mesure avec des zéros → GLM de Tweedie', conseil(p, F, repondre(p, F, { question: 'effet', y: 'densite' })).choix, 'glm_tweedie');
