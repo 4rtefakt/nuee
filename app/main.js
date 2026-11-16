@@ -329,6 +329,7 @@ function principale(f) {
 async function fermerNuee(fenetre) {
   const accord = await accordFermeture(fenetre);
   if (!accord) return false;
+  await versionsAvantDeFermer();
   quitter = true;
   if (accord !== 'secours') fermerSecours();
   app.quit();
@@ -437,17 +438,24 @@ function fichierDonne(argv) {
   return argv.slice(1).map(chemin).find((a) => a && !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
 }
 
-// Versions of a project kept with git (versions.js): GitHub and GitLab reached through Chromium's
-// network stack, so that the system's proxy and certificates apply; the tokens encrypted by the
-// system (safeStorage) in jetons.json beside the settings, the author with the settings; the
-// versions read written in this run's temporary folder, deleted when Nuée closes.
+// Versions of projects kept in the background with git (versions.js): GitHub and GitLab reached
+// through Chromium's network stack, so that the system's proxy and certificates apply; the tokens
+// encrypted by the system (safeStorage) in jetons.json beside the settings, its own settings (keep
+// versions, the author) with the settings; the versions read written in this run's temporary
+// folder, deleted when Nuée closes; what the background exchanges did told to every window.
 const versions = creerVersions({
   fetch: (url, init) => reseau.fetch(url, init),
   jetons: magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons.json'), safeStorage }),
   langue: () => langue,
-  auteur: { lire: () => reglages.auteur || null, ecrire: (a) => { reglages.auteur = a; ecrireReglages(); } },
+  reglages: { lire: () => reglages.versions || {}, ecrire: (r) => { reglages.versions = r; ecrireReglages(); } },
   temporaire: () => { dossierTemporaireR(); return temporaireR; },
+  evenement: (e) => { for (const f of BrowserWindow.getAllWindows()) if (!f.isDestroyed()) f.webContents.send('versions', e); },
 });
+// (a window back to the front: the open projects' remotes asked again, every five minutes at most)
+app.on('browser-window-focus', () => versions.auPremierPlan());
+// The open projects' last versions, before Nuée closes (fifteen seconds at most: their sending
+// waits for the next start)
+const versionsAvantDeFermer = () => Promise.race([versions.fermerTout(), new Promise((ok) => setTimeout(ok, 15000))]);
 
 function ipc() {
   const parent = (e) => BrowserWindow.fromWebContents(e.sender);
@@ -601,6 +609,7 @@ function ipc() {
     }
     const accord = await accordFermeture(fenetre);
     if (!accord) return { erreur: 'annulee' };
+    await versionsAvantDeFermer();
     quitter = true;
     if (accord !== 'secours') fermerSecours();
     arreterR();

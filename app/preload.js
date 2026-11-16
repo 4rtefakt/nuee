@@ -11,23 +11,33 @@ const version = (nom, ...args) => ipcRenderer.invoke(`versions-${nom}`, ...args)
 contextBridge.exposeInMainWorld('bureau', {
   versions: {
     electron: process.versions.electron,
-    // the versions of a project kept with git, sent to and received from GitHub or GitLab; each
-    // given the project file's absolute path
+    // the versions of projects, kept in the background with git and shared with GitHub or GitLab;
+    // each given a project file's absolute path unless said
     etat: (chemin) => version('etat', chemin),
-    activer: (chemin) => version('activer', chemin),
-    enregistrerVersion: (chemin, description) => version('enregistrerVersion', chemin, description),
+    ouvert: (chemin, options) => version('ouvert', chemin, options || {}),
+    apresEnregistrement: (chemin, options) => version('apresEnregistrement', chemin, options || {}),
+    aLaFermeture: (chemin) => version('aLaFermeture', chemin),
+    marquer: (chemin, description) => version('marquer', chemin, description),
     liste: (chemin) => version('liste', chemin),
     nommer: (chemin, oid, nom) => version('nommer', chemin, oid, nom),
     retirerNom: (chemin, nom) => version('retirerNom', chemin, nom),
     lire: (chemin, oid) => version('lire', chemin, oid),
     restaurer: (chemin, oid) => version('restaurer', chemin, oid),
-    auteur: (a) => version('auteur', a),
-    distant: (chemin, url) => version('distant', chemin, url),
+    activer: (chemin, oui) => version('activer', chemin, oui),
+    reglages: () => version('reglages'),
+    regler: (r) => version('regler', r || {}),
+    partager: (chemin, url) => version('partager', chemin, url),
     jeton: (hote, jeton) => version('jeton', hote, jeton),
-    verifierDistant: (chemin) => version('verifierDistant', chemin),
+    verifierPartage: (chemin) => version('verifierPartage', chemin),
     envoyer: (chemin) => version('envoyer', chemin),
     recevoir: (chemin) => version('recevoir', chemin),
-    choisir: (chemin, cote) => version('choisir', chemin, cote),
+    choisir: (chemin, cote, fichier, description) => version('choisir', chemin, cote, fichier || null, description || null),
+    arreterPartage: (chemin) => version('arreterPartage', chemin),
+    listerDistant: (url) => version('listerDistant', url),
+    ouvrirDistant: (url, cheminDistant, dossier) => version('ouvrirDistant', url, cheminDistant, dossier),
+    copierHistoire: (ancien, nouveau) => version('copierHistoire', ancien, nouveau),
+    // what the background exchanges did: { type: 'recu' | 'conflit' | 'attente' | 'envoi' | 'envoye' | 'erreur', chemin, … }
+    surVersions: (f) => ipcRenderer.on('versions', (_, e) => f(e)),
   },
   choisirFichier: (filtres) => ipcRenderer.invoke('choisir-fichier', filtres),
   choisirFichiers: (filtres) => ipcRenderer.invoke('choisir-fichiers', filtres),
