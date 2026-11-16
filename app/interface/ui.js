@@ -352,9 +352,39 @@ window.addEventListener('blur', () => { altSeul = false; });
 
 // ------------------------------------------------------------ dialogs
 
+// Behind a modal dialog (or the command palette) the window is inert, out of reach of the keyboard,
+// the mouse and screen readers, until it closes: only the dialog on top is live. (Not the menus a
+// dialog opens, nor the live regions that speak for the window: #annonce, dockview's.)
+const inertes = new Set();
+export function majInert() {
+  const fonds = document.querySelectorAll('body > .fond-dialogue');
+  const dessus = fonds[fonds.length - 1] || null;
+  for (const x of inertes) x.inert = false;
+  inertes.clear();
+  if (!dessus) return;
+  for (const x of document.body.children) {
+    if (x === dessus || x.inert || x.matches('.menu, script, [aria-live]')) continue;
+    x.inert = true;
+    inertes.add(x);
+  }
+}
+new MutationObserver(majInert).observe(document.body, { childList: true });
+
+// What Tab goes through in `racine`, in order: a group of radio buttons is one stop (its checked one).
+const FOCUSABLES = 'a[href], button, input:not([type="hidden"]), select, textarea, [tabindex], [contenteditable="true"]';
+export function focusables(racine) {
+  return [...racine.querySelectorAll(FOCUSABLES)].filter((x) => {
+    if (x.tabIndex < 0 || x.disabled || x.closest('[inert]') || !x.getClientRects().length) return false;
+    if (x.type !== 'radio' || !x.name) return true;
+    const groupe = [...racine.querySelectorAll('input[type="radio"]')].filter((r) => r.name === x.name);
+    return x === (groupe.find((r) => r.checked) || groupe[0]);
+  });
+}
+
 // surFermeture: called once the dialog is gone, whichever way (button, Esc, ×, click outside).
-// The keyboard starts in the dialog (its first field, or its main button) and goes back where it
-// was when it closes (the R console's prompt, for one).
+// The keyboard starts in the dialog (its first field, or its main button), Tab and Shift+Tab go
+// round inside it, and it goes back where it was when the dialog closes (the R console's prompt,
+// for one; in a dialog that opened this one, its button).
 let nDialogues = 0;
 export function dialogue({ titre, contenu, boutons = [], large = false, surFermeture = null }) {
   const avant = document.activeElement;
@@ -364,15 +394,28 @@ export function dialogue({ titre, contenu, boutons = [], large = false, surFerme
     if (ferme) return;
     ferme = true;
     fond.remove();
+    majInert();  // (now: what had the keyboard can have it again)
     document.removeEventListener('keydown', touche, true);
-    if (avant && avant !== document.body && avant.isConnected && !document.querySelector('.fond-dialogue')) avant.focus();
+    const dessus = [...document.querySelectorAll('.fond-dialogue')].pop();
+    if (avant && avant !== document.body && avant.isConnected && (!dessus || dessus.contains(avant))) avant.focus();
     if (surFermeture) surFermeture();
   };
-  // Esc closes the dialog on top only (another may be open under it)
+  // Esc closes the dialog on top only (another may be open under it; a menu over it, or a table
+  // cell being edited, takes its own Escape)
   const touche = (e) => {
-    if (e.key !== 'Escape' || fond !== [...document.querySelectorAll('.fond-dialogue')].pop()) return;
-    e.stopPropagation();
-    fermer();
+    if (fond !== [...document.querySelectorAll('.fond-dialogue')].pop()) return;
+    if (e.target.closest && e.target.closest('.menu, .edition-cellule')) return;
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      fermer();
+    } else if (e.key === 'Tab') {
+      const liste = focusables(boite);
+      const i = liste.indexOf(document.activeElement);
+      const dedans = boite.contains(document.activeElement);
+      if (!liste.length) e.preventDefault();
+      else if (e.shiftKey && (i === 0 || !dedans)) { e.preventDefault(); liste[liste.length - 1].focus(); }
+      else if (!e.shiftKey && (i === liste.length - 1 || !dedans)) { e.preventDefault(); liste[0].focus(); }
+    }
   };
   const pied = el('div', { class: 'pied-dialogue' }, boutons.map((b) => el('button', {
     class: b.principal ? 'principal' : '', onclick: () => { if (b.action() !== false) fermer(); } }, b.libelle)));
@@ -385,8 +428,11 @@ export function dialogue({ titre, contenu, boutons = [], large = false, surFerme
   fond.addEventListener('mousedown', (e) => { if (e.target === fond) fermer(); });
   document.addEventListener('keydown', touche, true);
   document.body.append(fond);
-  const premier = boite.querySelector('.corps-dialogue input, .corps-dialogue select, .corps-dialogue textarea')
-    || pied.querySelector('button.principal') || pied.querySelector('button');
+  const corps = boite.querySelector('.corps-dialogue');
+  const champs = focusables(corps);
+  if (!champs.length) corps.tabIndex = 0;  // (a text that scrolls: the keyboard scrolls it)
+  const premier = champs.find((x) => x.matches('input, select, textarea'))
+    || pied.querySelector('button.principal') || pied.querySelector('button') || boite.querySelector('.tete-dialogue button');
   if (premier) premier.focus();
   return { fermer, boite };
 }
