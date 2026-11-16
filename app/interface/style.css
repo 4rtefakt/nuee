@@ -870,3 +870,29 @@ pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter
 .apropos a { color: var(--accent); }
 .apropos h4 { margin: 14px 0 4px; font-size: 13px; }
 .citation-nuee { margin: 0 0 6px; padding: 6px 10px; background: var(--fond-barre); border: 1px solid var(--bord); border-radius: 4px; line-height: 1.45; user-select: text; }
+/* the guide's panel (F1): its search and contents, a section of the guide, the sections before and after */
+.panneau.aide-conteneur { padding: 0; }
+.aide-panneau { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.aide-outils { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--grille); }
+.aide-recherche { flex: 1 1 11em; min-width: 8em; }
+.aide-sommaire { flex: 1 1 11em; min-width: 0; max-width: 100%; }
+.aide-corps { flex: 1; min-height: 0; overflow-y: auto; position: relative; padding: 4px 14px 14px; line-height: 1.5; user-select: text; }
+.aide-corps h3 { margin: 8px 0; font-size: 15px; }
+.aide-corps p { margin: 0 0 8px; }
+.aide-corps ul, .aide-corps ol { margin: 0 0 8px; padding-left: 1.4em; }
+.aide-corps li { margin-bottom: 3px; }
+.aide-corps li > p:last-child { margin-bottom: 2px; }
+.aide-corps .retrait { margin-left: 1.2em; }
+.aide-corps pre { margin: 0 0 8px; padding: 6px 8px; background: var(--fond-barre); border-radius: 4px; font: 11.5px/1.45 Consolas, 'Cascadia Mono', monospace; overflow-x: auto; }
+.aide-corps dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0 0 8px; }
+.aide-corps dt { font-weight: 600; }
+.aide-corps dd { margin: 0; }
+.aide-corps a { color: var(--accent); }
+.aide-corps mark { background: color-mix(in srgb, var(--attention) 30%, transparent); color: inherit; border-radius: 2px; }
+/* the paragraph that tells about the view in front */
+.aide-corps .aide-cible { background: var(--accent-doux); box-shadow: -6px 0 0 var(--accent-doux), -9px 0 0 var(--accent); border-radius: 0 3px 3px 0; }
+.aide-resultats { padding-left: 1.4em; }
+.aide-resultats li { margin-bottom: 8px; }
+.aide-resultats li > a { font-weight: 600; }
+.aide-resultats p { margin: 2px 0 0; font-size: 12px; }
+.aide-pied { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--grille); }

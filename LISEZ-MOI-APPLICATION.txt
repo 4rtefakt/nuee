@@ -234,6 +234,14 @@ Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. 
   Ctrl+B explorateur       F1 guide
   Ctrl+Tab / Ctrl+Maj+Tab onglet suivant / précédent  F6 / Maj+F6 zone suivante / précédente
 Affichage : thème sombre, français / anglais, taille du texte.
+Aide › Guide d'utilisation (F1) : ce guide, dans un panneau à droite de la fenêtre, à côté du
+travail, à la section de ce qui est devant : le type du modèle, la vue (F1 sur un modèle TRIM
+ouvre la section de TRIM, sur Graphiques › Sélection par AIC son paragraphe). Son sommaire, les
+sections d'avant et d'après, et une recherche dans toutes les sections (sans compter accents ni
+majuscules, les mots trouvés marqués) ; les sections qu'il cite (« voir Validation croisée ») et
+les adresses web sont des liens. Il reste ouvert pendant le travail, comme un autre panneau
+(Ctrl+W le ferme, F1 de nouveau va à ce qui est devant) ; ses boutons ouvrent le guide en ligne
+et en fichier texte.
 Clavier et lecteurs d'écran : Alt (ou F10) mène à la barre de menus, les flèches dans ses
 menus, Entrée lance une commande, Échap revient ; Alt et la lettre soulignée d'un menu l'ouvre
 (Alt+F Fichier...). F6 va de zone en zone (barre d'outils, explorateur, chaque groupe de

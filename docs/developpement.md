@@ -341,8 +341,8 @@ On Windows it then produces two things.
   their hash is kept in `outils/export_project.sources`).
 - `Lancer Nuee.cmd`: the launcher.
 - `LISEZ-MOI.txt` and `USER-GUIDE.txt`: the user guide, in French and in English (both are also
-  in `application/resources/`, where *Help › User guide › Full guide* opens the one in the
-  interface's language).
+  in `application/resources/`, where *Help › User guide* (F1) shows the one in the interface's
+  language in a panel, through the engine's `guide` request, and opens it as a text file).
 
 Electron crashes when started from a network share, so the launcher mirrors `application/` to
 `%LOCALAPPDATA%\Nuee` with robocopy and starts it from there. The first launch copies everything;

@@ -567,9 +567,9 @@ async function construire() {
     }).join('\n');
     const introGuide = langue === 'fr'
       ? `<h1>Guide d’utilisation</h1>
-<p>Le guide complet de Nuée, en pages. C’est le guide installé avec l’application (Aide › Guide d’utilisation › Guide complet), écrit pour la version ${VERSION}. Pour commencer, les <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.fr)}">tutoriels</a> suivent six études du début à la fin.</p>`
+<p>Le guide complet de Nuée, en pages. C’est le guide installé avec l’application (Aide › Guide d’utilisation, F1), écrit pour la version ${VERSION}. Pour commencer, les <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.fr)}">tutoriels</a> suivent six études du début à la fin.</p>`
       : `<h1>User guide</h1>
-<p>Nuée’s full guide, in pages. It is the guide installed with the application (Help › User guide › Full guide), written for version ${VERSION}. To start with, the <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.en)}">tutorials</a> follow six studies from start to finish.</p>`;
+<p>Nuée’s full guide, in pages. It is the guide installed with the application (Help › User guide, F1), written for version ${VERSION}. To start with, the <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.en)}">tutorials</a> follow six studies from start to finish.</p>`;
     ecrire(cheminIndex, gabarit({ langue, page: indexGuide, titre: langue === 'fr' ? 'Guide d’utilisation' : 'User guide',
       description: langue === 'fr' ? 'Le guide d’utilisation de Nuée, en pages.' : 'Nuée’s user guide, in pages.',
       contenu: `${introGuide}\n<ul class="liste-guide">\n${listeGuide}\n</ul>\n<p class="note">${T.sourceGuide(g.fichier)}</p>`,

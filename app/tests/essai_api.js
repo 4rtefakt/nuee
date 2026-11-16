@@ -527,6 +527,15 @@ async function principal() {
       verifier(en.modeles.length === 4 && en.observations.uid.length === 120 && noms(en).includes('sugar') && noms(en).includes('variety')
         && !noms(en).includes('sucre') && noms(e).includes('sucre'), `exemple en anglais : ${noms(en).join(', ')}`);
     });
+    // the full guide, for the help panel (F1: interface/aide.js), in the language asked for, else the request's
+    await etape('le guide complet pour le panneau d’aide', async () => {
+      const fichier = (f) => fs.readFileSync(path.join(depot, f), 'utf8').replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+      const en = await api('guide', { langue: 'en' });
+      const fr = await api('guide', { langue: 'fr' }, 'en');
+      const parDefaut = await api('guide', {}, 'en');
+      verifier(en.texte === fichier('USER-GUIDE.txt') && fr.texte === fichier('LISEZ-MOI-APPLICATION.txt') && parDefaut.texte === en.texte,
+        `${en.texte.length} / ${fr.texte.length} / ${parDefaut.texte.length} caractères`);
+    });
     await etape('tests par variable, texte des méthodes, modèles de classe, OPLS-DA à 4 classes', async () => {
       const e = await api('exemple');
       const v = (nom) => e.variables.find((x) => x.nom === nom).uid;

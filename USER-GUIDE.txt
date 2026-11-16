@@ -211,6 +211,13 @@ File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:
   Ctrl+B explorer          F1 guide
   Ctrl+Tab / Ctrl+Shift+Tab next / previous tab      F6 / Shift+F6 next / previous area
 View: dark theme, French / English, text size.
+Help › User guide (F1): this guide, in a panel at the window's right, beside the work, at the
+section of what is in front: the model's type, the view (F1 on a TRIM model opens TRIM's section,
+on Plots › AIC selection its paragraph). Its contents, the sections before and after, and a
+search through every section (accents and capitals don't matter, the words found are marked);
+the sections it refers to ("see Cross-validation") and web addresses are links. It stays open
+while you work, like another panel (Ctrl+W closes it, F1 again goes to what is in front); its
+buttons open the guide online and as a text file.
 Keyboard and screen readers: Alt (or F10) goes to the menu bar, the arrows through its menus,
 Enter runs a command, Esc goes back; Alt with a menu's underlined letter opens it (Alt+F
 File...). F6 goes from area to area (toolbar, explorer, each group of panels, status bar),

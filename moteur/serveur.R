@@ -1598,6 +1598,14 @@ DEMANDES <- list(
     etat$projets[[p$id]] <- p
     resume_projet(p)
   },
+  # Le guide d'utilisation complet, pour le panneau d'aide (interface/aide.js : F1) : celui qui est à
+  # côté du moteur, en français (LISEZ-MOI-APPLICATION.txt) ou en anglais (USER-GUIDE.txt), dans la
+  # langue q$langue, sinon celle de la demande.
+  guide = function(q) {
+    en <- if (!is.null(q$langue)) identical(q$langue, "en") else identical(traduire("fr", "en"), "en")
+    f <- file.path(racine, if (en) "USER-GUIDE.txt" else "LISEZ-MOI-APPLICATION.txt")
+    list(texte = paste(readLines(f, encoding = "UTF-8", warn = FALSE), collapse = "\n"))
+  },
   projet = function(q) resume_projet(projet(q$projet)),
   donnees = function(q) donnees_projet(projet(q$projet), q$colonnes),
   ajuster = ajuster_demande,

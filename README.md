@@ -122,8 +122,8 @@ page.
   follows you in every plot of the model. Click a variable (a VIP bar, a coefficient, a point
   of the loadings or of the S-plot) to highlight it in all the model's plots.
 
-The full user guide comes with the application (*Help › User guide › Full guide*), in
-English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
+The full user guide comes with the application (*Help › User guide*, F1: in a panel beside your
+work, at the section of what is in front), in English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)). It is also on the
 [documentation website](https://4rtefakt.github.io/nuee/en/), with six tutorials.
 

@@ -38,7 +38,7 @@ import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atel
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
 import { installerEtapes } from './etapes.js';
 import { installerReglages } from './reglages.js';
-import { installerAide } from './aide.js';
+import { installerAide, prechargerGuide } from './aide.js';
 import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
 
 const params = new URLSearchParams(location.search);
@@ -58,7 +58,7 @@ const elementsPages = new Map();   // model id -> element of its page
 const derniers = new Map();        // model id -> last view used in its page (other than the summary)
 const dispositionsAttente = {};    // model id -> saved layout of its page, applied when the page opens
 let restauration = false;  // while a saved layout replaces the panels
-const EXTERNES = ['explorateur', 'accueil', 'console:'];  // the panels around the central tabs
+const EXTERNES = ['explorateur', 'accueil', 'console:', 'aide:'];  // the panels around the central tabs (aide: the guide, aide.js)
 let dernierContenu = null;  // the central tab last in front (while typing in the console)
 VUES.console = { rendre: rendreConsole, titre: () => t('console_r'), global: true };
 let recents = [];
@@ -1019,7 +1019,8 @@ const app = {
   },
 
   fermerPanneau() {
-    const p = app.panneauActif() || (dock && dock.activePanel);
+    // (the guide's panel when it has the keyboard: panneauActif is then the view it is beside)
+    const p = (dock && dock.activePanel && dock.activePanel.id === 'aide:' && dock.activePanel) || app.panneauActif() || (dock && dock.activePanel);
     if (p) p.api.close();
   },
 
@@ -1069,8 +1070,12 @@ const app = {
     toutRedessiner();
   },
   zoom: (d) => bureau && bureau.zoom(d),
-  // (About: aide.js)
-  aide: (sujet) => (sujet === 'apropos' ? app.apropos() : dialogueAide(app, sujet)),
+  // (the guide in a panel beside the work, at what is in front: ouvrirAide; in a window of its own,
+  // a detached view, in a dialog; About: aide.js)
+  aide(sujet) {
+    if (sujet === 'guide' && dock) return ouvrirAide();
+    return sujet === 'apropos' ? app.apropos() : dialogueAide(app, sujet);
+  },
   // the full guide: the text file shipped with the desktop app, or on GitHub
   ouvrirGuide() {
     if (bureau && bureau.ouvrirGuide) bureau.ouvrirGuide();
@@ -1667,10 +1672,11 @@ function trouverPanneau(id) {
   return null;
 }
 
-// The view in focus: the view in front in the active page, or the active project view.
+// The view in focus: the view in front in the active page, or the active project view (while the
+// keyboard is in the R console or the guide, the one in front before).
 function panneauCourant() {
   let p = dock && dock.activePanel;
-  if (p && p.id === 'console:') p = dernierContenu && dock.getPanel(dernierContenu);
+  if (p && (p.id === 'console:' || p.id === 'aide:')) p = dernierContenu && dock.getPanel(dernierContenu);
   if (!p || EXTERNES.includes(p.id)) return null;
   if (estPage(p)) {
     const d = pages.get(p.id.slice(5));
@@ -1685,6 +1691,36 @@ function positionCentrale() {
   const ref = (contenu(dock.activePanel) && dock.activePanel) || dock.panels.find(contenu) || dock.getPanel('accueil');
   if (ref) return { referencePanel: ref.id, direction: 'within' };
   return dock.getPanel('explorateur') ? { referencePanel: 'explorateur', direction: 'right' } : undefined;
+}
+
+// Help › User guide (F1): the guide's panel at the window's right, at the section of what is in
+// front (aide.js); already open, it goes there. The keyboard in its search field.
+function ouvrirAide() {
+  const contexte = contexteAide();
+  let panel = dock.getPanel('aide:');
+  if (panel) {
+    const e = etat.panneaux.get('aide:');
+    if (e && e.element._aide) e.element._aide.aller(contexte);
+    panel.api.setActive();
+  } else {
+    etat.locInitial['aide:'] = { contexte };
+    panel = dock.addPanel({ id: 'aide:', component: 'aide', title: t('guide'), params: {}, position: { direction: 'right' } });
+    panel.api.group.api.setSize({ width: Math.min(460, Math.max(320, Math.round(window.innerWidth * 0.3))) });
+  }
+  setTimeout(() => { const e = etat.panneaux.get('aide:'); if (e && e.element._aide) e.element._aide.focus(); });
+}
+
+// What is in front, for the guide (aide_texte.js: sectionPour, blocCible): the view and the active
+// model's type; the view's name and, when a menu has it, its place there ("Plots › AIC selection"),
+// as the guide writes them.
+function contexteAide() {
+  const p = panneauCourant();
+  const e = p && etat.panneaux.get(p.id);
+  const m = etat.modeles[app.modeleActif()];
+  const vue = e ? e.vue : null;
+  const menu = vue && C[vue] ? (['predictions', 'comparaison'].includes(vue) ? 'm_prediction' : 'm_graphiques') : null;
+  const libelle = vue && vue !== 'resume' ? t(vue === 'predictions' ? 'predire' : vue) : null;
+  return { vue, type: m ? m.type : null, langue: langueActuelle(), libelle: libelle !== vue ? libelle : null, chemin: menu && libelle ? `${t(menu)} › ${libelle}` : null };
 }
 
 function fermerAccueil() {
@@ -2263,6 +2299,7 @@ async function demarrerPrincipal() {
     app.signalerRepliR();
   }
   if (bureau) setInterval(sauvegarderSecours, 120000);  // (every main window: the first one open writes them)
+  setTimeout(prechargerGuide, 3000);  // (the guide read while R waits: F1 then shows it at once)
   if (bureau && bureau.langue) bureau.langue(langueActuelle());  // for the dialogs of the desktop app
   if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar, and the update
     etat.majAuto = await bureau.majAuto();

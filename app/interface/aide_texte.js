@@ -356,15 +356,32 @@ const VUES = {
   acf: S.regressions, selection_aic: S.regressions, puissance: S.regressions, moyennes: S.regressions,
 };
 
-// The section for what is in front, and where in it: { section (its number), phrase (the first of
-// `phrases` its text has: a view's name with its menu, "Plots › AIC selection", then its name alone),
-// or null }. contexte: { vue, type (the active model's), langue }; nothing in front: Opening.
-export function sectionPour(contexte, sections, phrases = []) {
+// The number of the section for what is in front. contexte: { vue (the view in front), type (the
+// active model's), langue }; with nothing in front, Opening.
+export function sectionPour(contexte, sections) {
   const titres = (contexte.vue && VUES[contexte.vue]) || (contexte.type && TYPES[contexte.type]) || S.ouvrir;
   const titre = titres[fr(contexte.langue) ? 0 : 1];
-  let section = sections.findIndex((s) => s.titre === titre);
-  if (section < 0) section = 0;
-  const texte = (sections[section] ? sections[section].lignes : []).map((l) => l.trim()).join(' ');
-  const phrase = phrases.find((p) => p && texte.includes(p)) || null;
-  return { section, phrase };
+  return Math.max(0, sections.findIndex((s) => s.titre === titre));
+}
+
+// Where the view in front is told about, among the texts of a section's paragraphs and list items
+// (as shown, in order): the first that starts with its menu and its name ("Plots › AIC selection
+// (also under…): …", "Prediction › Compare models: …"), else the first that writes them, else, for a
+// view of its own analysis (a TRIM's Indices, no menu), the first that names it ("Indices (the
+// imputed…"); -1 for none. contexte: { libelle (the view's name), chemin ("Plots › AIC selection",
+// or null) }.
+export function blocCible(textes, contexte) {
+  const { libelle, chemin } = contexte || {};
+  if (!libelle) return -1;
+  const echappe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const net = textes.map((x) => String(x).replace(/\s+/g, ' ').trim());
+  const debut = new RegExp(`^[^.:;›]{0,40} › ${echappe(libelle)}(?![\\p{L}\\d])`, 'u');
+  let k = chemin ? net.findIndex((x) => debut.test(x)) : -1;
+  if (k < 0 && chemin) k = net.findIndex((x) => x.includes(chemin));
+  if (k < 0 && !chemin) {
+    const nomme = new RegExp(`(^|[\\s(;:])${echappe(libelle)} \\(`, 'u');
+    k = net.findIndex((x) => nomme.test(x));
+    if (k < 0) k = net.findIndex((x) => x.includes(libelle));
+  }
+  return k;
 }
