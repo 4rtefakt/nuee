@@ -616,17 +616,17 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
 # changée autrement des deux côtés reste un conflit : le choix qui n'est pas ce que les étapes rejouées
 # donnent devient une étape de plus, un collage des cellules, et les données restent celles que leurs
 # étapes donnent. NULL quand ce n'est pas possible (une source absente de cet ordinateur, une étape de
-# l'autre côté qui ne s'applique plus après les miennes…), et ctx$raison dit pourquoi : la fusion se fait
-# alors cellule par cellule.
+# l'autre côté qui ne s'applique plus après les miennes…), et ctx$raison dit pourquoi quand c'est utile
+# à savoir : la fusion se fait alors cellule par cellule.
 fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   rien <- function(raison) {
     ctx$raison <- raison
     NULL
   }
   cotes <- list(B, M, L)
-  if (!all(vapply(cotes, function(p) is.list(p$source_donnees) && !is.null(p$etapes), TRUE))) {
-    return(rien(traduire("un côté n'a pas de source de données ou d'étapes", "a side has no data source or steps")))
-  }
+  # (un projet sans fichier source, ou d'avant la 1.1, se fusionne toujours cellule par cellule : rien à
+  # en dire, au contraire d'une source introuvable ou de données changées hors des étapes)
+  if (!all(vapply(cotes, function(p) is.list(p$source_donnees) && !is.null(p$etapes), TRUE))) return(rien(""))
   if (!all(vapply(cotes, function(p) isTRUE(donnees_conformes(p)), TRUE))) {
     return(rien(traduire("des données ont changé hors des étapes", "data changed outside the steps")))
   }
@@ -1726,7 +1726,8 @@ apports_donnees <- function(B, X, d, ctx, cote) {
 # la séance, dont le projet fusionné prend ce qui est de la séance (serveur.R : son identifiant, son
 # fichier…), rendu tel quel quand leur côté n'a rien changé. Rend list(projet : le projet fusionné ;
 # conflits ; apports : list(mien, leur), ce que chaque côté a apporté, en phrases ; donnees : list(mode :
-# "etapes", "cellules" ou "inchangees", raison : pourquoi pas par les étapes) ; notes). Fusionner un côté
+# "etapes", "cellules" ou "inchangees" (aucun côté n'a touché aux données), raison : pourquoi pas par les
+# étapes quand c'est utile à savoir, "" sinon) ; notes). Fusionner un côté
 # avec lui-même, ou avec la base, rend ce côté tel quel.
 fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, qui = NULL, relus = FALSE, seance = mien) {
   force(seance)

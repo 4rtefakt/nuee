@@ -430,8 +430,13 @@ pm <- lire_projet(mien_f)
 pl <- lire_projet(leur_f)
 r <- fusion(base10, mien_f, leur_f)
 p <- r$projet
-verifier("par les cellules (la base n'a pas d'étapes) ; deux conflits : la source et la cellule de x1",
-         identical(r$donnees$mode, "cellules") && setequal(ids_conflits(r), c("source", "variable:x1")) && conflit(r, "variable:x1")$details$n == 1)
+verifier("par les cellules (la base n'a pas d'étapes), sans raison à dire ; deux conflits : la source et la cellule de x1",
+         identical(r$donnees$mode, "cellules") && identical(r$donnees$raison, "") && setequal(ids_conflits(r), c("source", "variable:x1")) &&
+           conflit(r, "variable:x1")$details$n == 1)
+r0 <- fusion(base10, cote("mien_f0.nuee", depuis = base10, function(id) demande("ajuster", list(projet = id, type = "PCA", x = uid(id, c("x1", "y")), A = 1, nom = "Seul"))),
+             cote("leur_f0.nuee", depuis = base10, function(id) paragraphe(id, 7, "Conclusion de Bob.")))
+verifier("sans fichier source, ni l'un ni l'autre côté ne touchant aux données : « inchangees », rien à en dire",
+         identical(r0$donnees$mode, "inchangees") && identical(r0$donnees$raison, "") && !length(r0$conflits))
 noms <- names(valeurs(p, "x1"))
 verifier("mes lignes de S5 et leur ligne de S6 ; S5-2018, ajoutée des deux côtés avec les mêmes valeurs, une fois",
          all(c("S5-2018", "S5-2019", "S6-2018") %in% noms) && length(noms) == 35 && !anyDuplicated(noms))

@@ -2026,9 +2026,10 @@ DEMANDES <- list(
   # "variable" ou "champ", cle, titre, mien et leur : ce que chaque côté a fait, en peu de mots, details ;
   # un passage d'un document dit son paragraphe dans mon texte, une ligne non vide chacun comme l'éditeur
   # les montre, le même que son `ligne`), `apports` ({ mien, leur } : ce que chaque côté a apporté, en
-  # phrases), `donnees` ({ mode : "etapes", "cellules" ou "inchangees", raison : pourquoi pas par les
-  # étapes }), `qui` (l'autre côté : qui a écrit leur fichier quand il le dit, sinon son nom) et `notes`,
-  # dans la langue de la demande.
+  # phrases), `donnees` ({ mode : "etapes", "cellules" ou "inchangees" (aucun côté n'a touché aux
+  # données), raison : pourquoi pas par les étapes, quand c'est utile à savoir, "" sinon }), `qui`
+  # (l'autre côté : qui a écrit leur fichier quand il le dit, sinon son nom) et `notes`, dans la langue de
+  # la demande.
   fusionner = fusionner_demande,
   # La fusion préparée q$fusion finie, chaque conflit tranché par q$choix ({ <id d'un conflit> : "mien" ou
   # "leur" }, un pour chacun) : sans q$projet à la fusion, le projet fusionné écrit dans q$chemin (sinon un
