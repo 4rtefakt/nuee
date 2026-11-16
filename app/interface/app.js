@@ -158,6 +158,13 @@ const app = {
     const n = /\/m\/([^/]+)$/.exec(cle);  // a model chosen in the explorer: its page comes to the front
     const page = n && dock && dock.getPanel(`page:${n[1]}`);
     if (page) page.api.setActive();
+    // (else the explorer comes to the front, as when a click brings the focus into it: the focus
+    // may already be there, left on the node that opened the view in front, and dockview then sees
+    // nothing; the menus act on what was chosen, not on that view's project)
+    else {
+      const ex = dock && dock.getPanel('explorateur');
+      if (ex && !ex.api.isActive) ex.api.setActive();
+    }
     app.rafraichirExplorateur();
     majEtat();
   },
