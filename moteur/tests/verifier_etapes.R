@@ -127,7 +127,7 @@ p <- projet(id)
 s <- p$source_donnees
 verifier("le fichier, son lecteur, sa taille, sa date et son SHA-256, l'heure de la lecture",
          identical(s$chemin, normalizePath(source_csv, winslash = "/")) && identical(s$lecteur, "tableau") && s$taille == file.size(source_csv) &&
-           abs(s$date - as.numeric(file.mtime(source_csv))) < 1e-3 && identical(s$sha256, unname(tools::sha256sum(source_csv))) && grepl("^\\d{4}-\\d\\d-\\d\\dT", s$lu))
+           abs(s$date - as.numeric(file.mtime(source_csv))) < 1e-3 && identical(s$sha256, unname(empreinte_sha(source_csv))) && grepl("^\\d{4}-\\d\\d-\\d\\dT", s$lu))
 verifier("ce que l'import a décidé : la colonne qui nomme les observations, celles lues en nombres",
          identical(s$reglages$identifiant, "nom") && all(c("annee", "x1", "x2", "y", "comptage", "X", "Y") %in% s$reglages$quantitatives) &&
            !"site" %in% s$reglages$quantitatives && !length(s$reglages$secondaires))
@@ -170,7 +170,7 @@ tj <- demande("table_a_joindre", list(projet = id, chemin = sites_csv))
 demande("ajouter_colonnes", list(projet = id, chemin = sites_csv, nom = "sites.csv", cles_projet = list(u("site")), cles_table = list("site"), colonnes = list("altitude", "sol")))
 e11 <- projet(id)$etapes[[11]]
 verifier("ajouter_colonnes d'un fichier : la clé en « var:site », le fichier gardé comme la source",
-         identical(parametres(projet(id), 11)$cles_projet, "var:site") && identical(e11$fichiers[[1]]$sha256, unname(tools::sha256sum(sites_csv))) &&
+         identical(parametres(projet(id), 11)$cles_projet, "var:site") && identical(e11$fichiers[[1]]$sha256, unname(empreinte_sha(sites_csv))) &&
            all(c("altitude", "sol") %in% projet(id)$noms_var))
 collees <- demande("table_a_joindre", list(projet = id, texte = "nom\tlot\nS1-2016\tA\nS2-2016\tB\nS3-2016\tA"))
 demande("ajouter_colonnes", list(projet = id, chemin = collees$chemin, colle = TRUE, nom = "cellules collées", cles_projet = list("id:1"), cles_table = list("nom"), colonnes = list("lot")))
@@ -418,7 +418,7 @@ invisible(file.copy(file.path(kobo, c("kobo/xml_groupes.xlsx", "formulaire_kobo.
 k1 <- demande("kobo_importer", list(chemin = file.path(copie_kobo, "xml_groupes.xlsx"), table = "observation", formulaire = file.path(copie_kobo, "formulaire_kobo.xlsx"), langue = "Français (fr)"))
 sk <- projet(k1$id)$source_donnees
 verifier("la source d'un import de KoboToolbox : ses réglages, son formulaire", identical(sk$lecteur, "collecte") && identical(sk$collecte$table, "observation") &&
-           identical(sk$formulaire$sha256, unname(tools::sha256sum(file.path(copie_kobo, "formulaire_kobo.xlsx")))))
+           identical(sk$formulaire$sha256, unname(empreinte_sha(file.path(copie_kobo, "formulaire_kobo.xlsx")))))
 pk <- projet(k1$id)
 nombre <- Find(function(v) !length(v$categories), Filter(function(v) as.character(v$uid) %in% colnames(pk$donnees), pk$variables))
 demande("modifier_valeur", list(projet = k1$id, observation = numeros_observations(pk)[2], variable = nombre$uid, valeur = "77"))
@@ -580,6 +580,22 @@ en <- demande("mettre_a_jour", list(projet = id, chemin = manque, apercu = TRUE)
 verifier("the reasons of skipped steps in English", grepl("missing from the data", en$etapes[[2]]$raison) &&
            grepl("outside the steps", { etat$projets[[id]]$donnees[2, 4] <- -1; demande("etapes", list(projet = id))$raison }))
 options(nuee.langue = "fr")
+
+# Le R d'une distribution Linux plus ancienne que 4.5 n'a pas tools::sha256sum : ses empreintes sont des
+# MD5 préfixés, comparées seulement à des empreintes du même algorithme ; les données se comparent alors
+# par leurs sommes
+cat("Empreintes sans SHA-256 (R antérieur à 4.5)\n")
+f_md5 <- tempfile(fileext = ".csv")
+writeLines(c("a,b", "1,2"), f_md5)
+m5 <- empreinte_sha(f_md5, md5 = TRUE)
+ed <- empreinte_donnees(projet(id))
+ed_md5 <- ed
+ed_md5$structure <- empreinte_sha(octets = charToRaw("x"), md5 = TRUE)
+verifier("empreinte MD5 d'un fichier et d'octets, préfixée ; comparée au même algorithme ; données comparées par leurs sommes",
+         identical(m5, paste0("md5:", unname(tools::md5sum(f_md5)))) && startsWith(ed_md5$structure, "md5:") &&
+           isTRUE(meme_empreinte(m5, f_md5)) && isFALSE(meme_empreinte(paste0("md5:", strrep("0", 32)), f_md5)) &&
+           memes_donnees(ed, ed_md5) && !memes_donnees(ed, modifyList(ed_md5, list(sommes = as.list(unlist(ed$sommes) + 1)))))
+unlink(f_md5)
 
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")

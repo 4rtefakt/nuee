@@ -27,7 +27,34 @@
 fiche_fichier <- function(chemin) {
   i <- file.info(chemin)
   list(chemin = normalizePath(chemin, winslash = "/", mustWork = FALSE), taille = as.numeric(i$size), date = as.numeric(i$mtime),
-       sha256 = unname(as.character(tools::sha256sum(chemin))), lu = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
+       sha256 = empreinte_sha(chemin), lu = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
+}
+
+# L'empreinte SHA-256 d'un fichier, ou d'octets : tools::sha256sum, qui n'existe que depuis R 4.5. Le R
+# d'une distribution Linux plus ancienne ne l'a pas : l'empreinte y est le MD5 (tools::md5sum, du
+# fichier, ou des octets écrits dans un fichier temporaire), préfixé « md5: », pour qu'une empreinte ne
+# soit comparée qu'à une empreinte du même algorithme (meme_empreinte, memes_donnees).
+empreinte_sha <- function(chemin = NULL, octets = NULL, md5 = FALSE) {
+  sha <- if (!md5) tryCatch(getExportedValue("tools", "sha256sum"), error = function(e) NULL)
+  if (!is.null(octets)) {
+    if (!is.null(sha) && "bytes" %in% names(formals(sha))) return(unname(as.character(sha(bytes = octets))))
+    chemin <- tempfile()
+    on.exit(unlink(chemin), add = TRUE)
+    writeBin(octets, chemin)
+  }
+  if (!is.null(sha)) return(unname(as.character(sha(chemin))))
+  paste0("md5:", unname(as.character(tools::md5sum(chemin))))
+}
+
+# Une empreinte gardée (empreinte_sha) comparée à celle d'aujourd'hui du même fichier, calculée avec le
+# même algorithme : TRUE ou FALSE ; NA quand ce R ne sait pas la refaire (un SHA-256 gardé par un R
+# récent, relu par un R qui n'en a pas).
+meme_empreinte <- function(gardee, chemin) {
+  gardee <- premier_texte(gardee)
+  if (!nzchar(gardee)) return(NA)
+  md5 <- startsWith(gardee, "md5:")
+  if (!md5 && is.null(tryCatch(getExportedValue("tools", "sha256sum"), error = function(e) NULL))) return(NA)
+  identical(empreinte_sha(chemin, md5 = md5), gardee)
 }
 
 # Des numéros internes (uid) en entiers quand ils le sont, comme jsonlite les lit : leur texte est
@@ -119,7 +146,7 @@ etat_fiche <- function(fiche, dossier = NULL) {
     i <- file.info(trouve)
     r$actuel <- list(taille = as.numeric(i$size), date = date_texte(as.numeric(i$mtime)))
     r$modifie <- !isTRUE(as.numeric(i$size) == r$taille) ||
-      (!isTRUE(abs(as.numeric(i$mtime) - as.numeric(unlist(fiche$date))[1]) < 1e-3) && !identical(unname(as.character(tools::sha256sum(trouve))), r$sha256))
+      (!isTRUE(abs(as.numeric(i$mtime) - as.numeric(unlist(fiche$date))[1]) < 1e-3) && !isTRUE(meme_empreinte(r$sha256, trouve)))
   }
   r
 }
@@ -226,14 +253,19 @@ empreinte_donnees <- function(p) {
                    paste(as.character(unlist(p$observation_id_names)), collapse = "\u001f"),
                    paste(as.character(unlist(ids)), collapse = "\u001f")), collapse = "\u001e")
   octets <- c(charToRaw(enc2utf8(texte)), writeBin(c(lengths(ids), as.integer(absentes)), raw(), endian = "little"))
-  list(structure = unname(as.character(tools::sha256sum(bytes = octets))), sommes = unname(c(colSums(abs(M)), colSums(M * poids))))
+  list(structure = empreinte_sha(octets = octets), sommes = unname(c(colSums(abs(M)), colSums(M * poids))))
 }
 
 # Deux empreintes des mêmes données (empreinte_donnees) : le même texte, et les mêmes sommes à 1e-11
 # près de la somme des valeurs absolues de leur variable (relu d'un fichier, chaque nombre diffère
 # de celui écrit de 5e-15 au plus, en proportion).
 memes_donnees <- function(a, b) {
-  if (!is.list(a) || !is.list(b) || !identical(premier_texte(a$structure), premier_texte(b$structure))) return(FALSE)
+  if (!is.list(a) || !is.list(b)) return(FALSE)
+  # (deux empreintes d'algorithmes différents, SHA-256 et MD5, d'un R récent et d'un R plus ancien : seules
+  # les sommes se comparent)
+  sa <- premier_texte(a$structure)
+  sb <- premier_texte(b$structure)
+  if (startsWith(sa, "md5:") == startsWith(sb, "md5:") && !identical(sa, sb)) return(FALSE)
   x <- as.numeric(unlist(a$sommes))
   y <- as.numeric(unlist(b$sommes))
   if (length(x) != length(y) || length(x) %% 2) return(FALSE)
