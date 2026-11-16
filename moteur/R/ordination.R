@@ -833,10 +833,11 @@ resultat_rda <- function(id) {
   k <- m$noyau
   cca <- identical(m$type, "CCA")
   echelles <- lapply(if (cca) 1:3 else 1:2, function(i) scores_contraints(m, i))
+  # (sans X quantitatif, aucune flèche : rownames() d'une matrice sans ligne vaut NULL)
   ordination <- function(s) {
     f <- fleches_rda(m, s)
     list(sites = colonnes_axes(s$sites), lc = colonnes_axes(s$lc), reponses = colonnes_axes(s$reponses), noms_reponses = I(rownames(s$reponses)),
-         biplot = colonnes_axes(f), noms_biplot = I(rownames(f)),
+         biplot = colonnes_axes(f), noms_biplot = I(rownames(f) %||% character(0)),
          centroides = if (!is.null(s$centroides)) colonnes_axes(s$centroides), noms_centroides = I(rownames(s$centroides) %||% character(0)))
   }
   s2 <- echelles[[2]]
@@ -849,7 +850,7 @@ resultat_rda <- function(id) {
        chiffres = sprintf("%s · p %s", chiffre_r2, if (is.na(m$test$p)) "—" else format(signif(m$test$p, 2))),
        vues_defaut = I(c("ordination", "valeurs_propres")),
        observations = cbind(data.frame(uid = m$observations, nom = noms_obs, stringsAsFactors = FALSE), colonnes_axes(s2$sites)),
-       variables = cbind(data.frame(terme = rownames(f2), stringsAsFactors = FALSE), colonnes_axes(f2)),
+       variables = cbind(data.frame(terme = rownames(f2) %||% character(0), stringsAsFactors = FALSE), colonnes_axes(f2)),
        variables_y = cbind(data.frame(terme = rownames(s2$reponses), stringsAsFactors = FALSE), colonnes_axes(s2$reponses)),
        axes = I(utils::head(names(s2$valeurs_propres), AXES_INTERFACE)), rang_contraint = k$contraint$rang,
        inertie = list(totale = k$totale, conditionnelle = k$conditionnelle, contrainte = k$contraint$inertie, residuelle = k$residuel$inertie),
