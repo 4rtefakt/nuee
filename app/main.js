@@ -591,8 +591,11 @@ function ipc() {
   recevoir('ouvrir-guide', () => shell.openPath(path.join(racine, langue === 'en' ? 'USER-GUIDE.txt' : 'LISEZ-MOI-APPLICATION.txt')));
   // One-click update: the new installer is downloaded (progress sent to the window) and
   // checked; then, once unsaved projects are dealt with, Nuée closes, the installer runs and
-  // Nuée starts again. { erreur } when it can't: aucune, reseau, empreinte, annulee.
-  recevoir('mettre-a-jour', async (e) => {
+  // Nuée starts again. { erreur } when it can't: aucune, reseau, empreinte, annulee. One at a
+  // time: Update chosen again meanwhile (its link stays in the status bar) gets the same answer.
+  // (A second download emptying the same folder failed, said as a network error, and took the
+  // first one's file away while it was being written: the first had no installer left to run.)
+  const mettreAJour = async (e) => {
     const v = await (versionTrouvee || nouvelleVersion());
     if (!v || !v.installateur) return { erreur: 'aucune' };
     const fenetre = parent(e);
@@ -610,7 +613,9 @@ function ipc() {
     installerPuisRelancer(fichier);
     app.quit();
     return null;
-  });
+  };
+  let miseAJour = null;
+  recevoir('mettre-a-jour', (e) => miseAJour || (miseAJour = mettreAJour(e).finally(() => { miseAJour = null; })));
 }
 
 // An installed copy (Setup.exe) hears about new versions: at start-up, one request to the

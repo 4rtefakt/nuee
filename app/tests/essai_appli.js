@@ -1,5 +1,7 @@
 // Starts the built program and uses it over the Chrome DevTools Protocol, as a person would:
-// the R engine starts (on Linux, the computer's R), the example project opens with its plots,
+// the R engine starts (on Linux, the computer's R), the update is offered by a local stand-in for
+// GitHub (never the real one), and chosen twice while it downloads, then refused by its SHA-256
+// (Windows), the example project opens with its plots,
 // a PLS model's views, the R console shows each fit's printout, a plot is saved as an image,
 // Export to R offers all the session's models only with those a session script holds, a
 // .nuee project given on the command line (what a double-click does) opens in the running
@@ -13,7 +15,9 @@
 // engine must run on the R in Nuée.app; a .nuee given to the Finder (open) opens in the window.
 // Needs Node 22 or later (fetch, WebSocket). Exits with 1 when a check fails.
 const { spawn, spawnSync, execFileSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
+const http = require('http');
 const net = require('net');
 const os = require('os');
 const path = require('path');
@@ -36,6 +40,31 @@ const mac = process.platform === 'darwin';
 const garder = ['HOME', 'DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'APPIMAGE_EXTRACT_AND_RUN', 'TMPDIR'];
 const env = windows ? { ...process.env, TEMP: temp, TMP: temp }
   : { ...Object.fromEntries(garder.filter((k) => process.env[k]).map((k) => [k, process.env[k]])), PATH: '/usr/bin:/bin' };
+
+// A stand-in for GitHub's latest release (main.js: NUEE_SOURCE_MAJ), so that the program never asks
+// the real one: a 9.9.9 whose "installer" is random bytes under a SHA-256 they don't have, sent
+// slowly. Nothing could install it.
+const installateurFactice = crypto.randomBytes(1 << 20);
+let telechargements = 0;
+const serveurMaj = http.createServer(async (req, res) => {
+  const ici = `http://127.0.0.1:${serveurMaj.address().port}`;
+  if (req.url === '/latest') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ tag_name: 'v9.9.9', html_url: `${ici}/page`, assets: [{ name: 'Nuee-Setup-9.9.9.exe', size: installateurFactice.length,
+      browser_download_url: `${ici}/Nuee-Setup-9.9.9.exe`, digest: `sha256:${'0'.repeat(64)}` }] }));
+  } else if (req.url === '/Nuee-Setup-9.9.9.exe') {
+    telechargements += 1;
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': installateurFactice.length });
+    for (let i = 0; i < 20; i += 1) {
+      res.write(installateurFactice.subarray(i * installateurFactice.length / 20, (i + 1) * installateurFactice.length / 20));
+      await pause(100);
+    }
+    res.end();
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
 
 function portLibre() {
   return new Promise((ok, ko) => {
@@ -145,6 +174,8 @@ async function brancher(cible) {
   fs.copyFileSync(path.join(__dirname, '..', '..', 'exemple', 'vergers.json'), auDemarrage);
   const dossiersR = () => fs.readdirSync(windows ? temp : os.tmpdir()).filter((n) => n.startsWith('nuee-r-'));
   const avantR = new Set(dossiersR());
+  await new Promise((ok) => serveurMaj.listen(0, '127.0.0.1', ok));
+  env.NUEE_SOURCE_MAJ = `http://127.0.0.1:${serveurMaj.address().port}/latest`;
   const port = await portLibre();
   const proc = lancer(port);
   let sortie = '';
@@ -168,6 +199,17 @@ async function brancher(cible) {
     for (const x of [].concat((await p.api('etat')).projets)) await p.api('fermer_projet', { projet: x.id });  // (the example project, below, is then the only one)
     await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
     await p.attendre("!(document.querySelector('.arbre') || { textContent: '' }).textContent.includes('vergers')", 20000);
+    // the update, for an installed program (Help offers it; not from the sources), from the stand-in:
+    // the version it offers, then (Windows) Update chosen twice while the installer downloads, as its
+    // link stays in the status bar: one download, refused by its SHA-256, the same answer for both,
+    // nothing left (main.js: mettre-a-jour; elsewhere the link opens the release page)
+    if ((await p.evaluer('window.bureau.majAuto()')) !== null) {
+      const v = await p.evaluer('window.bureau.nouvelleVersion(true)');
+      const maj = windows ? await p.evaluer(`(async () => { const a = window.bureau.mettreAJour();
+        await new Promise((r) => setTimeout(r, 500)); return Promise.all([a, window.bureau.mettreAJour()]); })()`) : [];
+      verifier('miseAJour', !!v && v.version === '9.9.9' && (!windows || (!!v.installateur && telechargements === 1
+        && maj.every((r) => r && r.erreur === 'empreinte') && !fs.existsSync(path.join(temp, 'nuee-mise-a-jour')))), { v, maj, telechargements });
+    }
     // what goes wrong without a page error: a policy violation, a request the engine refuses
     await p.evaluer(`window.__violations = []; document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
       window.__refus = []; const f = window.fetch;
@@ -358,6 +400,7 @@ async function brancher(cible) {
   } finally {
     if (p) p.fermer();
     tuer(proc);
+    serveurMaj.close();
     if (echecs.length) res.sortieProgramme = sortie.slice(-3000);
     console.log(JSON.stringify(res, null, 1));
     console.log(echecs.length ? `Échecs : ${echecs.join(', ')}` : 'Toutes les vérifications sont passées.');
