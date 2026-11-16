@@ -82,6 +82,13 @@ let langue = 'en';  // the interface's (English until it says), for the dialogs 
 // are deleted when the application closes normally.
 const dossierSecours = () => path.join(app.getPath('userData'), 'secours');
 const indexSecours = () => path.join(dossierSecours(), 'index.json');
+// The engine running now, by a name of its own: this launch's (its time) and how many engines it
+// started (one more each time one is ready). A recovery copy carries the one it was made with: a
+// restart reopens only the copies of the engine that stopped, whichever main window made them, and a
+// copy of an earlier launch never passes for one of this launch's (interface/app.js: sauvegarderSecours)
+const LANCEMENT = Date.now().toString(36);
+let demarrages = 0;
+const idMoteur = () => `${LANCEMENT}-${demarrages}`;
 // A fixed port when free: the interface keeps its settings (theme, language, plot format...)
 // per address, so they come back from one launch to the next.
 const PORT_HABITUEL = 47863;
@@ -307,7 +314,7 @@ function demarrerR(port, r, repli = false, delai = 0) {
     serveur = spawn(r.rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
     const ceR = serveur;  // (the one the time limit stops: never one started after it)
     const minuterie = delai ? setTimeout(() => { if (!pret && serveur === ceR) { depasse = true; arreterR(); } }, delai) : null;
-    serveur.stdout.on('data', (d) => { journal += d; if (!pret && journal.includes('PRET')) { pret = true; clearTimeout(minuterie); resolve(); } });
+    serveur.stdout.on('data', (d) => { journal += d; if (!pret && journal.includes('PRET')) { pret = true; demarrages += 1; clearTimeout(minuterie); resolve(); } });
     serveur.stderr.on('data', (d) => { journal += d; });
     serveur.on('exit', (code) => {
       clearTimeout(minuterie);
@@ -906,6 +913,10 @@ function ipc() {
   recevoir('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }
   });
+  // (before a restart's recovery copies: what every window's documents and figures still hold goes to
+  // the engine, as before closing; and the engine the copies are made with: idMoteur)
+  recevoir('vider-fenetres', () => viderFenetres());
+  recevoir('id-moteur', () => idMoteur());
   recevoir('arreter-calcul', () => arreterCalcul());
   // File › Settings…, the R the engine runs on (interface/reglages.js, r-installes.js): what is set
   // and in use, the Rs of this computer, one of them checked, its missing packages installed (one

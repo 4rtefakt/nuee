@@ -669,20 +669,28 @@ const app = {
   // had: from their recovery copy when they had unsaved changes, otherwise from the file they
   // are saved to (or, never saved, the file they came from). Those with neither are named.
   // copies (another R chosen in File › Settings…, the engine answering): recovery copies made
-  // first, so that the changes since the last ones reopen too. Afterwards, if the R chosen didn't
-  // start and Nuée's own took over, the window says so (reglages.js).
+  // first, by this window whichever main window it is, once every window's documents and figures
+  // have sent what they still hold, so that the changes since the last copies reopen too. The
+  // copies are taken from the index, whichever window made them, those of the engine that stops
+  // only (sauvegarderSecours). Afterwards, if the R chosen didn't start and Nuée's own took over,
+  // the window says so (reglages.js).
   async redemarrerMoteur({ copies = false } = {}) {
     if (!bureau) { statut(t('moteur_navigateur'), true); return; }
+    statut(t('moteur_redemarrage'));
+    // (this window's projects as the engine has them, when a restart from another window came first)
+    let moteur = await bureau.idMoteur().catch(() => null);
+    if (moteur !== moteurEtat) await synchroniser().catch(() => {});
     if (copies) {
-      statut(t('moteur_redemarrage'));
-      await sauvegarderSecours();
+      await bureau.viderFenetres().catch(() => {});
+      await sauvegarderSecours({ moi: true });
     }
+    moteur = moteurEtat;
+    const dernieres = new Map([].concat(await bureau.secoursListe().catch(() => [])).filter((e) => e && e.fichier && !e.attente && e.moteur === moteur)
+      .map((e) => [e.projet, e]));
     const aRouvrir = [];
     const perdus = [];
     for (const p of Object.values(etat.projets)) {
-      // (this launch's own copy of the project: those of an earlier stop, also in the index,
-      // had projects numbered P1, P2... too)
-      const s = p.modifie && derniersSecours.get(p.id);
+      const s = p.modifie && moteur && dernieres.get(p.id);
       const source = p.chemin_enregistrement || p.chemin;
       const session = dock ? collecterSession(p.id) : null;
       // (an old version opened read-only stays one, under its name: versions.js)
@@ -693,28 +701,35 @@ const app = {
       else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source, ...lecture } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
       else perdus.push(p.nom);
     }
+    // (the copies to reopen marked waiting until they are: a main window writing the index meanwhile,
+    // its projects already the new engine's, would otherwise leave them out, and they would be deleted)
+    const aReprendre = new Set(aRouvrir.filter((r) => r.copie).map((r) => r.copie.fichier));
+    const marquer = (attente) => (aReprendre.size
+      ? changerSecours((index) => index.map((e) => (aReprendre.has(e.fichier) ? { ...e, attente } : e))).catch(() => {}) : null);
+    await marquer(true);
     statut(t('moteur_redemarrage'));
     const erreur = await bureau.redemarrerMoteur();
     moteurArrete = false;
-    if (erreur) { statut(`${t('erreur')}${deuxPoints()}${erreur}`, true); return; }
+    if (erreur) { await marquer(false); statut(`${t('erreur')}${deuxPoints()}${erreur}`, true); return; }
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
     for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
-    derniersSecours.clear();  // the new engine numbers its projects from P1 again,
-    moteurs += 1;             // and its copies get names of their own (moteurs)
+    moteurEtat = await bureau.idMoteur().catch(() => null);  // (the new engine numbers its projects from P1 again)
     let n = 0;
+    const reprises = new Set();
     for (const r of aRouvrir) {
       try {
         await apresOuverture(await occupe(() => demander('ouvrir', r.q)), r.session);
         n += 1;
+        if (r.copie) reprises.add(r.copie.fichier);
       } catch {
-        perdus.push(r.nom);
-        if (r.copie) secoursEnAttente.push(r.copie);  // its recovery copy stays, for another try
+        perdus.push(r.nom);  // (its recovery copy stays waiting, for another try)
       }
     }
+    if (reprises.size) await changerSecours((index) => index.filter((e) => !reprises.has(e.fichier))).catch(() => {});
     diffuser('modeles');
     statut(t('moteur_redemarre', { n }) + (perdus.length ? ` ${t('non_rouverts', { noms: perdus.join(', ') })}` : ''), perdus.length > 0);
-    if (n) sauvegarderSecours();  // the reopened projects get copies of their own at once
+    if (n) sauvegarderSecours({ moi: true });  // the reopened projects get copies of their own at once
     app.signalerRepliR();
   },
   confirmerRedemarrage() {
@@ -1436,41 +1451,51 @@ async function apresOuverture(res, session = null) {
 
 // Every two minutes, a copy of each project with unsaved changes, with its session, goes to
 // the application's recovery folder (deleted when the application closes normally). After an
-// unexpected stop, the next start offers to reopen them. The index lists the copies to keep
-// (main.js deletes the others): those of this launch, named after it so that they never
-// replace one of an earlier stop, and those of an earlier stop that haven't been recovered or
-// set aside yet (secoursEnAttente). A project whose copy fails this time keeps its last one.
-// One main window writes them: the first one open, then, once it is closed, the next one
-// (several main windows share the projects; each counts the two minutes).
+// unexpected stop, the next start offers to reopen them. The index, which every main window reads
+// and writes (main.js keeps it, and deletes the copies it doesn't list), holds each project's last
+// copy, whichever window made it, with the engine it was made with (bureau.idMoteur: a restart
+// reopens only the copies of the engine that stopped), and the copies waiting (attente): those of an
+// earlier stop not recovered or set aside yet, those a restart is reopening or didn't reopen. A copy
+// is named after its window and its engine: none replaces another. A project whose copy fails this
+// time keeps its last one. One main window makes them every two minutes, the first one open (then,
+// once it is closed, the next one); any main window that restarts the engine makes them first (moi).
+// moteurEtat: the engine this window's projects are those of (synchroniser); a window that hasn't
+// heard of a restart yet makes no copy, its projects being the engine before's.
 const LANCEMENT = Date.now().toString(36);
-let moteurs = 0;  // engines started by this launch: each numbers its projects from P1
-let secoursEnAttente = [];
-const derniersSecours = new Map();
-async function sauvegarderSecours() {
+let moteurEtat = null;
+// the index changed by `f` (index => index), read just before: another main window may have written it
+async function changerSecours(f) {
+  await bureau.secoursIndex(f([].concat(await bureau.secoursListe()).filter((e) => e && e.fichier)));
+}
+async function sauvegarderSecours({ moi = false } = {}) {
   if (!bureau || VUE_SEULE || !dock) return;
   try {
-    const principales = (await bureau.fenetres()).filter((f) => f.principale).sort((a, b) => a.id - b.id);
-    if (principales.length && !principales[0].actuelle) return;
-    // (a window taking over from the first one: the copies that one kept waiting are those the
-    // index marks so, proposerRecuperation)
-    if (ID_FENETRE !== 'principale') secoursEnAttente = [].concat(await bureau.secoursListe()).filter((e) => e && e.attente);
+    if (!moi) {
+      const principales = (await bureau.fenetres()).filter((f) => f.principale).sort((a, b) => a.id - b.id);
+      if (principales.length && !principales[0].actuelle) return;
+    }
+    const moteur = await bureau.idMoteur();
+    if (moteur !== moteurEtat) return;
     const dossier = await bureau.secoursDossier();
-    const entrees = [];
+    const faites = new Map();
     for (const p of Object.values(etat.projets)) {
       if (!p.modifie) continue;
-      const fichier = `${dossier}/${LANCEMENT}-${moteurs}-${p.id}.json`;
+      const fichier = `${dossier}/${LANCEMENT}-${moteur}-${p.id}.json`;
       try {
         // (lu: the state of the project's file when it was read or saved, for the question
         // before overwriting it once the copy is recovered)
         const r = await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session: JSON.stringify(collecterSession(p.id)), version: VERSION });
         // (an old version opened read-only comes back as one: versions.js)
-        derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: p.chemin_enregistrement || p.chemin || null, lu: r.lu || null, date: new Date().toISOString(),
+        faites.set(p.id, { fichier, projet: p.id, moteur, nom: p.nom, origine: p.chemin_enregistrement || p.chemin || null, lu: r.lu || null, date: new Date().toISOString(),
           ...(p.lecture_seule ? { lecture_seule: p.lecture_seule } : {}) });
       } catch { /* this one is tried again two minutes later; the others go on */ }
-      if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
     }
     // (attente: kept when Nuée closes normally, to be offered at the next start; main.js)
-    await bureau.secoursIndex([...secoursEnAttente.map((e) => ({ ...e, attente: true })), ...entrees]);
+    await changerSecours((index) => {
+      const dernieres = new Map(index.filter((e) => !e.attente && e.moteur === moteur).map((e) => [e.projet, e]));
+      return [...index.filter((e) => e.attente),
+        ...Object.values(etat.projets).filter((p) => p.modifie).map((p) => faites.get(p.id) || dernieres.get(p.id)).filter(Boolean)];
+    });
   } catch { /* tried again two minutes later */ }
 }
 
@@ -1480,15 +1505,16 @@ async function sauvegarderSecours() {
 async function proposerRecuperation() {
   if (!bureau || VUE_SEULE) return;
   let entrees = [];
-  try { entrees = await bureau.secoursListe(); } catch { entrees = []; }
+  try { entrees = [].concat(await bureau.secoursListe()).filter((e) => e && e.fichier); } catch { entrees = []; }
   if (!entrees.length) return;
-  secoursEnAttente = entrees;
-  bureau.secoursIndex(entrees.map((e) => ({ ...e, attente: true }))).catch(() => {});  // (marked at once, for another main window: sauvegarderSecours)
+  // (marked waiting at once, whichever main window writes the index next: sauvegarderSecours)
+  const leurs = new Set(entrees.map((e) => e.fichier));
+  changerSecours((index) => index.map((e) => (leurs.has(e.fichier) ? { ...e, attente: true } : e))).catch(() => {});
   const quand = (d) => new Date(d).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   dialogue({ titre: t('recuperation'),
     contenu: el('div', {}, el('p', {}, t('recuperation_question')), el('ul', {}, entrees.map((e) => el('li', {}, `${e.nom} — ${quand(e.date)}`)))),
     boutons: [
-      { libelle: t('ignorer'), action: () => { secoursEnAttente = []; bureau.secoursIndex([]); return true; } },
+      { libelle: t('ignorer'), action: () => { changerSecours((index) => index.filter((e) => !leurs.has(e.fichier))).catch(() => {}); return true; } },
       { libelle: t('recuperer'), principal: true, action: () => {
         (async () => {
           const illisibles = [];
@@ -1497,7 +1523,9 @@ async function proposerRecuperation() {
             const origine = e.origine && e.origine !== e.fichier ? e.origine : null;
             try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom, lu: e.lu || null, lecture_seule: e.lecture_seule || undefined }))); } catch { illisibles.push(e); }
           }
-          secoursEnAttente = illisibles;  // kept for another try
+          // (those not reopened stay waiting, for another try)
+          const reprises = new Set(entrees.filter((e) => !illisibles.includes(e)).map((e) => e.fichier));
+          await changerSecours((index) => index.filter((e) => !reprises.has(e.fichier))).catch(() => {});
           if (illisibles.length) statut(t('recuperation_echec', { noms: illisibles.map((e) => e.nom).join(', ') }), true);
           sauvegarderSecours();  // the recovered projects get copies of their own at once
         })();
@@ -1763,7 +1791,11 @@ function oublierProjet(pid) {
 
 // Everything the R server holds (for a new window, or after another window changed it).
 async function synchroniser() {
+  // (the engine's name first, then its state: a restart between the two leaves moteurEtat behind the
+  // projects, never ahead of them, sauvegarderSecours)
+  const moteur = bureau && bureau.idMoteur ? await bureau.idMoteur().catch(() => null) : null;
   const e = await demander('etat');
+  moteurEtat = moteur;
   app.codeInterdit = !!e.code_interdit;  // (R-code models turned off by a policy: vues_code.js doesn't offer them)
   app.greffonsEtat = e.greffons || null;  // (the plugins installed, for the menus and New model: vues_greffons.js)
   if (app.majGreffons) app.majGreffons();

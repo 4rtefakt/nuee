@@ -5,10 +5,11 @@
 // (installed one after the other), one that says nothing R would, one that never answers.
 // Given an R (its folder), the same for real: found, checked, its missing packages installed into a
 // temporary user library and checked again. Given the program too (Nuée built, or Electron and the
-// app's folder): that R chosen in File › Settings… with a project open and a PCA not saved yet, the
-// engine restarted on it and the project back with its PCA, the engine's libraries, a model fitted
-// through its API, Help › Diagnostic information; the next start on the setting kept; then an R
-// that isn't there any more: Nuée's own R takes over, and says so once.
+// app's folder): that R chosen in File › Settings… of a second main window, with a project open in
+// the first, its PCA and its document not saved yet (text typed there just before Restart), the
+// engine restarted on it and the project back with its PCA and that text, the engine's libraries, a
+// model fitted through its API, Help › Diagnostic information; the next start on the setting kept;
+// then an R that isn't there any more: Nuée's own R takes over, and says so once.
 //   node tests/essai_r_installe.js [<R folder> [--neuf] [<program> [program options...]]]
 // --neuf: that R was just installed: the check must find the engine's packages missing, R's
 // recommended ones there. Needs Node 22 or later (the program: fetch, WebSocket).
@@ -400,27 +401,55 @@ async function moteurSurCeR(n, v) {
 }
 
 async function avecProgramme(programme, options, v, racine) {
-  console.log(`Nuée : Fichier › Réglages…, ce R, un projet ouvert (${programme})`);
+  console.log(`Nuée : Fichier › Réglages…, ce R, choisi dans une seconde fenêtre, un projet ouvert (${programme})`);
   const csv = path.join(__dirname, '..', '..', 'exemple', 'orchards.csv');
   let n = await lancer(programme, options, racine, 'profil-autre-r', null);
+  let n2 = null;
   try {
     verifier((await n.evaluer('window.bureau.r.etat()')).utilise.type === 'nuee', 'au départ, le R de Nuée');
-    // a project with a change not saved: a PCA fitted
+    // a project with changes not saved, in the first window: a PCA fitted, a document
     await n.fichierAOuvrir(csv);
     await n.menu('m_fichier', 'ouvrir');
     await n.attendre(n.ligneProjet('orchards.csv'));
     await n.nouveauModele({ type: 'PCA' });
-    await n.menu('m_fichier', 'reglages');
-    await n.dialogue('reglages_titre');
-    await n.cliquer(`[...__n.boite().querySelectorAll('.entree-r input')].find((i) => i.value.toLowerCase() === ${JSON.stringify(v.rscript.toLowerCase())})`);
-    await n.attendre("__n.boite().querySelector('.resultat-r .etat-r.ok')", 120000);
-    await n.bouton('r_utiliser');
-    await n.dialogue('r_redemarrer_titre');
-    await n.bouton('redemarrer');
-    await n.attendre("window.bureau.r.etat().then((e) => e.utilise && e.utilise.type === 'autre')", 120000);
-    const rouvert = await n.attendre(`__n.api('etat').then((e) => { const p = [].concat(e.projets).find((x) => x.nom === 'orchards.csv');
-      return !!p && [].concat(e.modeles).some((m) => m.projet === p.id && m.type === 'PCA'); })`, 120000).catch(() => false);
-    verifier(rouvert, 'le moteur redémarré sur ce R : le projet revient, avec son ACP pas encore enregistrée');
+    await n.menu('m_fichier', 'nouveau_document');
+    await n.dialogue('nouveau_document');
+    await n.ecrire("__n.boite().querySelector('.grille-champs input')", 'Notes');
+    await n.bouton('creer_document');
+    await n.attendre('!__n.dialogue() && !!document.querySelector(".document .cm-content")');
+    await n.cliquer("document.querySelector('.document .cm-content')");
+    // that R chosen in a second main window (Window › New window), which isn't the one that makes the
+    // recovery copies every two minutes: the restart makes them there, and takes them whichever window
+    // made them (interface/app.js: sauvegarderSecours)
+    await n.menu('m_fenetre', 'nouvelle_fenetre');
+    n2 = await n.fenetre((url) => /[?&]fenetre=/.test(url));
+    await n2.menu('m_fichier', 'reglages');
+    await n2.dialogue('reglages_titre');
+    await n2.cliquer(`[...__n.boite().querySelectorAll('.entree-r input')].find((i) => i.value.toLowerCase() === ${JSON.stringify(v.rscript.toLowerCase())})`);
+    await n2.attendre("__n.boite().querySelector('.resultat-r .etat-r.ok')", 120000);
+    await n2.bouton('r_utiliser');
+    await n2.dialogue('r_redemarrer_titre');
+    // typed in the first window's document just before Restart: a document sends its text after a
+    // pause in typing (0.8 s), and the restart has every window send what it holds first
+    const phrase = 'Typed just before the restart.';
+    const documentDuProjet = `const p = [].concat(e.projets).find((x) => x.nom === 'orchards.csv'); const d = p && [].concat(p.documents || [])[0];
+      const texte = d ? (await __n.api('document', { projet: p.id, id: d.id })).texte : null;`;
+    await n.taper(phrase);
+    const dejaEnvoye = await n2.evaluer(`__n.api('etat').then(async (e) => { ${documentDuProjet} return String(texte).includes(${JSON.stringify(phrase)}); })`);
+    await n2.bouton('redemarrer');
+    await n2.attendre("window.bureau.r.etat().then((e) => e.utilise && e.utilise.type === 'autre')", 120000);
+    const rouvert = await n2.attendre(`__n.api('etat').then(async (e) => { ${documentDuProjet}
+      return !!p && [].concat(e.modeles).some((m) => m.projet === p.id && m.type === 'PCA') ? { texte } : null; })`, 120000).catch(() => null);
+    verifier(!!rouvert, 'le moteur redémarré sur ce R, depuis la seconde fenêtre : le projet revient, avec son ACP pas encore enregistrée');
+    verifier(!!rouvert && String(rouvert.texte).includes(phrase),
+      `et son document avec ce qui venait d’être tapé dans la première${dejaEnvoye ? ' (déjà envoyé avant Redémarrer : rien de plus de vérifié ici)' : ''}`, rouvert);
+    // (the recovery copies then: the one reopened gone, the reopened project's own, made with the new engine, none waiting)
+    const index = await n2.attendre(`Promise.all([window.bureau.secoursListe(), window.bureau.idMoteur()])
+      .then(([l, m]) => (l.length === 1 && !l[0].attente && l[0].moteur === m && l[0].nom === 'orchards.csv' ? l : null))`, 30000).catch(() => null);
+    verifier(!!index, 'ses copies de secours : celle rouverte partie, celle du projet faite avec le nouveau moteur, aucune en attente',
+      await n2.evaluer('window.bureau.secoursListe()').catch((e) => e.message));
+    n2.detacher();
+    n2 = null;
     await moteurSurCeR(n, v);
     const p = await n.api('ouvrir', { chemin: csv });
     const x = [].concat(p.variables).filter((x) => !x.qualitative).map((x) => x.uid);
@@ -429,9 +458,13 @@ async function avecProgramme(programme, options, v, racine) {
     await n.menu('m_aide', 'diagnostic');
     await n.dialogue('diagnostic');
     const diag = await n.evaluer("__n.norm(__n.boite().querySelector('pre.diagnostic').textContent)");
-    verifier(diag.includes('R used: another R of this computer (File › Settings)') && diag.includes(`R version ${v.version}`), 'Aide › Informations de diagnostic dit quel R', diag);
+    verifier(diag.includes('R used: another R of this computer (File › Settings)') && diag.includes(`R version ${v.version}`)
+      && (!windows || /Policies: read by (reg\.exe|PowerShell)/.test(diag)), 'Aide › Informations de diagnostic dit quel R, et (Windows) si les politiques ont été lues', diag);
     verifier(await n.quitter(), 'Nuée quitte');
-  } finally { n.fermer(); }
+  } finally {
+    if (n2) n2.detacher();
+    n.fermer();
+  }
   console.log('Le démarrage suivant, sur le réglage gardé');
   n = await lancer(programme, options, racine, 'profil-autre-r', null, false);
   try {
