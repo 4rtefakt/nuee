@@ -497,6 +497,9 @@ script: the functions and the data once, then a block per model under its name (
 M2...).
 Before writing, the application refits the script's models and checks they give the same
 results; otherwise it says so.
+The script is yours: you may use, change and share it under any terms, the parts of Nuée's
+engine it copies included (an exception to Nuée's GPL licence, LICENSE-EXCEPTION.md). Its
+opening comments say so, and how to cite Nuée if you publish results obtained with it.
 
 Methods text
 ------------

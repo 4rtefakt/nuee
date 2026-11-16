@@ -540,6 +540,10 @@ seul script .R : les fonctions et les données une fois, puis un bloc par modèl
 (M1, M2...).
 Avant d'écrire, l'application recalcule les modèles du script et vérifie qu'ils donnent les
 mêmes résultats ; sinon elle le signale.
+Le script est à vous : vous pouvez l'utiliser, le modifier et le partager sous les conditions
+de votre choix, y compris les parties du moteur de Nuée qu'il recopie (une exception à la
+licence GPL de Nuée, LICENSE-EXCEPTION.md). Ses commentaires du début le disent, et comment
+citer Nuée si vous publiez des résultats obtenus avec lui.
 
 Texte des méthodes
 ------------------

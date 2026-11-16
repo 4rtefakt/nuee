@@ -1181,6 +1181,26 @@ for (i in seq_along(p$models)) {
   }
 }
 
+cat("L'avis de licence et la citation de Nuée (LICENSE-EXCEPTION.md)\n")
+dir.create(ici <- file.path(dossier, "avis"))
+d_avis <- p$models[[1]]
+r_r <- ecrire_script(p, d_avis, file.path(ici, "avis.R"), "moteur", version = "9.9.9", langue = "en")
+r_q <- ecrire_script(p, d_avis, file.path(ici, "avis.qmd"), "moteur", version = "9.9.9", langue = "fr", donnees = "csv")
+t_r <- readLines(r_r$script, encoding = "UTF-8")
+t_q <- readLines(r_q$script, encoding = "UTF-8")
+premier_code <- which(!grepl("^\\s*(#|$)", t_r))[1]
+licence_r <- grep("^# License: you may use, change and share this file under terms of your choice", t_r)
+verifier("un script .R : l'avis à la fin des commentaires du début, avant le code, avec la citation et sa version",
+         length(licence_r) == 1 && licence_r < premier_code && !any(grepl("^\\s*#", t_r[seq_len(licence_r - 2)]) == FALSE) &&
+           any(grepl("LICENSE-EXCEPTION\\.md", t_r[licence_r:premier_code])) &&
+           any(grepl("please cite Nuée: Boutin, C\\. \\(\\d{4}\\)\\. Nuée", t_r[licence_r:premier_code])) &&
+           any(grepl("9\\.9\\.9", t_r[licence_r:premier_code])))
+fins_yaml <- which(t_q == "---")
+verifier("un rapport Quarto : l'en-tête YAML d'abord, puis l'avis en commentaire HTML, en français",
+         t_q[1] == "---" && length(fins_yaml) >= 2 && identical(t_q[fins_yaml[2] + 2], "<!--") &&
+           any(grepl("^Licence : vous pouvez utiliser, modifier et partager ce fichier", t_q)) && any(t_q == "-->") &&
+           which(t_q == "-->")[1] < grep("^## Méthodes", t_q)[1])
+
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
