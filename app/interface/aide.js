@@ -44,7 +44,7 @@ function guide(langue) {
 // (read once the engine is free, so that F1 shows it at once even while R computes)
 export const prechargerGuide = () => guide(langueActuelle()).catch(() => {});
 
-// The panel (VUES.aide; app.js opens it at the window's right, aideOuverte): a search field and the
+// The panel (VUES.aide; app.js opens it at the window's right, ouvrirAide): a search field and the
 // contents above, one section of the guide, or the sections a search finds, and below, the section
 // before and after, the guide online and as a text file. loc.contexte: what was in front when it
 // opened ({ vue, type, langue, libelle, chemin }: aide_texte.js, sectionPour and blocCible). Drawn
