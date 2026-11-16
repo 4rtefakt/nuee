@@ -304,6 +304,7 @@ resume_projet <- function(p) {
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
        figures = lapply(p$figures %||% list(), function(f) list(id = f$id, titre = f$titre %||% "")),
        kobo = p$import_collecte,  # (les réglages d'un import de KoboToolbox ou d'ODK, pour le refaire : kobo.R)
+       a_source = !is.null(p$source_donnees),  # (un fichier d'où viennent ses données, que la demande etapes décrit : etapes.R)
        lecture_seule = p$lecture_seule,  # (une ancienne version ouverte en lecture seule : sa source, son oid, sa date ; ouvrir)
        historique = sum(vapply(p$audit %||% list(), function(s) length(s$events), 0)),
        predictions = lapply(p$prediction_sets, function(s) list(nom = s$name %||% "", n_obs = length(s$observations))))
@@ -696,7 +697,7 @@ scores_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
   r <- scores_en_variables(p, e$modele)
-  etiquette <- sprintf("scores de %s en variables", e$definition$name %||% q$modele)
+  etiquette <- sprintf(traduire("scores de %s en variables", "scores of %s as variables"), e$definition$name %||% q$modele)
   r$projet <- noter_etape(p, r$projet, "scores_en_variables", q, etiquette, list(definition = e$definition))
   memoriser(p, etiquette)
   r$projet$modifie <- TRUE
@@ -736,7 +737,7 @@ changer_projet_dit <- function(q, f, etiquette, attribut, etape = NULL) {
 
 classe_demande <- function(q) {
   avant <- projet(q$projet)
-  etiquette <- sprintf("classe %s", q$etiquette)
+  etiquette <- sprintf(traduire("classe %s", "class %s"), q$etiquette)
   p <- noter_etape(avant, appliquer_etape("classe_selection", avant, q), "classe_selection", q, etiquette)
   memoriser(avant, etiquette)
   p$modifie <- TRUE
@@ -975,25 +976,39 @@ resumer_groupes_demande <- function(q) {
 
 # ---------------------------------------------------------------- les rapports vivants
 
-# La source et les étapes d'un projet (etapes.R), pour l'interface : DEMANDES$etapes.
+# Les données d'un projet sont-elles encore celles de sa source et de ses étapes (etapes.R :
+# donnees_conformes) ? Gardé pour chaque révision de ses données (reviser) et l'empreinte qu'il garde :
+# l'empreinte des données, qui les parcourt toutes, ne se refait qu'après un changement.
+conformite_projet <- function(p) {
+  g <- etat$conformites[[p$id]]
+  revision <- etat$revisions[[p$id]] %||% 0
+  if (!is.null(g) && identical(g$revision, revision) && identical(g$empreinte, p$empreinte_donnees)) return(g$valeur)
+  v <- donnees_conformes(p)
+  etat$conformites[[p$id]] <- list(revision = revision, empreinte = p$empreinte_donnees, valeur = v)
+  v
+}
+
+# La source et les étapes d'un projet (etapes.R), pour l'interface : DEMANDES$etapes. q$conformes
+# FALSE : sans dire si les données sont encore celles des étapes (conformes, raison).
 etapes_demande <- function(q) {
   p <- projet(q$projet)
   dossier <- dossier_projet(p)
   s <- p$source_donnees
   source <- if (is.list(s)) c(etat_fiche(s, dossier), list(table = if (nzchar(premier_texte(s$table))) premier_texte(s$table), lecteur = premier_texte(s$lecteur)),
                               if (is.list(s$formulaire)) list(formulaire = etat_fiche(s$formulaire, dossier)))
-  conformes <- donnees_conformes(p)
-  list(source = source,
-       etapes = lapply(seq_along(p$etapes), function(k) {
-         e <- p$etapes[[k]]
-         list(n = k, etiquette = premier_texte(e$etiquette), date = premier_texte(e$date), demande = premier_texte(e$demande),
-              fichiers = lapply(e$fichiers %||% list(), etat_fiche, dossier))
-       }),
-       conformes = conformes,
-       raison = if (isFALSE(conformes)) traduire("Les données ont changé hors des étapes (dans la console R, ou dans une version de Nuée d'avant la 1.1) : les mettre à jour reprendrait celles que la source et les étapes donnent.",
-                                                  "The data changed outside the steps (in the R console, or in a version of Nuée before 1.1): updating them would bring back those the source and the steps give.")
-                else if (is.na(conformes)) traduire("Projet d'une version de Nuée d'avant la 1.1 : ses changements d'alors ne sont pas des étapes.",
-                                                    "A project from a version of Nuée before 1.1: its changes from then aren't steps.") else "")
+  r <- list(source = source,
+            etapes = lapply(seq_along(p$etapes), function(k) {
+              e <- p$etapes[[k]]
+              list(n = k, etiquette = etiquette_etape(e), date = premier_texte(e$date), demande = premier_texte(e$demande),
+                   fichiers = lapply(e$fichiers %||% list(), etat_fiche, dossier))
+            }))
+  if (isFALSE(q$conformes)) return(r)
+  conformes <- conformite_projet(p)
+  c(r, list(conformes = conformes,
+            raison = if (isFALSE(conformes)) traduire("Les données ont changé hors des étapes (dans la console R, ou dans une version de Nuée d'avant la 1.1) : les mettre à jour reprendrait celles que la source et les étapes donnent.",
+                                                       "The data changed outside the steps (in the R console, or in a version of Nuée before 1.1): updating them would bring back those the source and the steps give.")
+                     else if (is.na(conformes)) traduire("Projet d'une version de Nuée d'avant la 1.1 : ses changements d'alors ne sont pas des étapes.",
+                                                         "A project from a version of Nuée before 1.1: its changes from then aren't steps.") else ""))
 }
 
 # Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z. Les
@@ -1018,7 +1033,10 @@ mettre_a_jour_demande <- function(q) {
   remplacer_par_mise_a_jour(actuel, r, traduire("mise à jour des données", "data update"))
 }
 
-# Une étape retirée, les données refaites sans elle : DEMANDES$retirer_etape.
+# Une étape retirée, les données refaites sans elle : DEMANDES$retirer_etape. La source est relue telle
+# qu'elle est : changée depuis sa lecture (etat_fiche), le retrait prendrait aussi ses nouvelles
+# données, et en ferait la source sans le dire. Il est alors refusé (une erreur de classe
+# « source_modifiee », que la réponse dit, appli) ; son aperçu (q$apercu) montre ce qu'il ferait.
 retirer_etape_demande <- function(q) {
   actuel <- projet(q$projet)
   n <- suppressWarnings(as.integer(unlist(q$n))[1])
@@ -1026,11 +1044,18 @@ retirer_etape_demande <- function(q) {
   if (is.na(n) || n < 1 || n > length(etapes)) stop(sprintf(traduire("Étape inconnue : %s", "Unknown step: %s"), premier_texte(q$n)), call. = FALSE)
   s <- actuel$source_donnees
   if (is.null(s)) stop(traduire("Ce projet n'a pas de fichier source : ses étapes ne se refont pas sans lui.", "This project has no source file: its steps can't be redone without it."), call. = FALSE)
-  if (is.null(fichier_retrouve(s, dossier_projet(actuel)))) {
+  dossier <- dossier_projet(actuel)
+  if (is.null(fichier_retrouve(s, dossier))) {
     stop(sprintf(traduire("Le fichier source est introuvable : %s", "The source file isn't found: %s"), premier_texte(s$chemin)), call. = FALSE)
   }
-  r <- mise_a_jour(actuel, etapes = etapes[-n])
+  if (!isTRUE(q$apercu) && isTRUE(etat_fiche(s, dossier)$modifie)) {
+    stop(structure(class = c("source_modifiee", "error", "condition"), list(call = NULL, message = traduire(
+      "Le fichier source a changé depuis qu'il a été lu : retirer l'étape y prendrait aussi ses nouvelles données. Mettez d'abord les données à jour, ou regardez l'aperçu du retrait.",
+      "The source file changed since it was read: removing the step would also bring in its new data. Update the data first, or look at the removal's preview."))))
+  }
+  r <- mise_a_jour(actuel, table = q$table, etapes = etapes[-n])
   if (!is.null(r$choisir)) return(r)
+  if (isTRUE(q$apercu)) return(c(r$rapport, list(apercu = TRUE)))
   remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n))
 }
 
@@ -1555,7 +1580,7 @@ DEMANDES <- list(
   # données modifiées et variables ajoutées : le projet est à enregistrer ; chaque changement est
   # une étape du projet, qu'il rejoue quand ses données sont mises à jour (etapes.R)
   modifier_valeur = function(q) changer_projet(q, function(p) appliquer_etape("modifier_valeur", p, q),
-    sprintf("modification de %s", projet(q$projet)$noms_var[[as.character(q$variable)]]), "modifier_valeur"),
+    sprintf(traduire("modification de %s", "edit of %s"), projet(q$projet)$noms_var[[as.character(q$variable)]]), "modifier_valeur"),
   variable_calculee = function(q) changer_projet(q, function(p) appliquer_etape("variable_calculee", p, q), sprintf("variable %s", q$nom), "variable_calculee"),
   # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
   imputer = function(q) {
@@ -1607,10 +1632,16 @@ DEMANDES <- list(
   # lu, `actuel` : sa taille et sa date maintenant ; null sans source), `etapes` (n, etiquette, date,
   # demande, et les fichiers qu'elle lit, comme `source`), `conformes` (les données sont encore
   # celles que la source et les étapes donnent ; false : changées autrement, dans la console R ou par
-  # une version d'avant la 1.1 ; null : on ne sait pas, un projet d'avant la 1.1) et sa `raison`.
+  # une version d'avant la 1.1 ; null : on ne sait pas, un projet d'avant la 1.1) et sa `raison` ; avec
+  # q$conformes false, ni l'un ni l'autre (l'empreinte des données, gardée pour chaque révision, n'est
+  # pas faite). resume_projet dit déjà si un projet a une source : `a_source`.
   etapes = etapes_demande,
   # L'étape q$n retirée : la source relue, les autres étapes rejouées, les données remplacées comme
   # par mettre_a_jour (le même rapport, et `projet`), un seul Ctrl+Z ; refusé sans le fichier source.
+  # Avec q$apercu, le rapport seul, sans rien changer (et `apercu`) ; sans lui, refusé quand le fichier
+  # source a changé depuis sa lecture (sa réponse d'erreur porte `source_modifiee`) : mettre d'abord
+  # les données à jour, ou regarder l'aperçu. q$table, comme pour mettre_a_jour : la feuille ou la
+  # table à lire quand celle de la source n'y est plus (la réponse est alors `choisir`).
   retirer_etape = retirer_etape_demande,
   # Les données mises à jour : le fichier q$chemin (sa source par défaut ; q$table, sa feuille ou sa
   # table) relu comme la source, les étapes rejouées, le résultat rapporté au projet par les noms des
@@ -1624,8 +1655,12 @@ DEMANDES <- list(
   # de type dans le fichier et l'ont repris), `identifiants` (nouveaux, absents), `etapes` (n,
   # demande, etiquette, statut "ok", "sautee" ou "erreur", raison, notes), `modeles`
   # (variables_absentes : ceux qui ne se réajustent plus et les variables qui leur manquent ;
-  # observations_choisies : ceux qui n'avaient pas toutes les observations du projet, à qui demander
-  # s'ils prennent les nouvelles ; sans_nouvelles : ceux qui ne les prendront pas ;
+  # observations_choisies : ceux qui ont laissé de côté des lignes qu'ils pouvaient prendre et à qui le
+  # fichier en apporte qu'ils pourraient prendre, à qui demander s'ils les prennent (nom, numero ;
+  # observations, les lignes qu'ils ajustent ; admises, celles qu'ils pouvaient ajuster, hors du jeu
+  # de test ; nouvelles, celles du fichier qu'ils ajusteraient ; des lignes qu'ils admettent, sous leur
+  # condition, sans valeur manquante dans leurs variables quand leur ajustement les laisse de côté) ;
+  # sans_nouvelles : ceux qui ne les prendront pas ;
   # nouvelles_categories : ceux qui prennent le terme d'une catégorie nouvelle, mise avant la dernière
   # de sa variable ; references_changees : les régressions dont la catégorie de référence change quand
   # même, la dernière n'ayant plus de lignes, avant et après), `fichier`,
@@ -1778,6 +1813,8 @@ appli <- list(
     }, error = function(e) {
       tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
       if (inherits(e, "conflit_fichier")) return(repondre(409L, list(erreur = conditionMessage(e), conflit = TRUE, date = e$date)))
+      # (une étape à retirer d'une source changée depuis sa lecture : retirer_etape_demande)
+      if (inherits(e, "source_modifiee")) return(repondre(400L, list(erreur = conditionMessage(e), source_modifiee = TRUE)))
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },
