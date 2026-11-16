@@ -153,13 +153,14 @@ function chiffres(v, k) {
 // A p-value beside a value: "p < 0.001", "p = 0.034".
 export const texteP = (p) => (p === null || p === undefined || Number.isNaN(Number(p)) ? '' : Number(p) < 0.001 ? `p < ${decimal('0.001')}` : `p = ${decimal(Number(p).toFixed(3))}`);
 
-// A compared entry's change: "+0.012 (+15%)"; the relative change only when it means something
-// (not for a percentage, nor from 0).
+// A compared entry's change: "+0.012 (+15%)"; a percentage's in points ("−15.9 points", not to be
+// read as a share of it); the relative change only when it means something (not from 0).
 export function ecartResultat(e) {
   if (e.ecart === null || e.ecart === undefined) return '';
   const signe = (x) => (x > 0 ? '+' : x < 0 ? '−' : '±');
-  const ecart = `${signe(e.ecart)}${valeurResultat(Math.abs(e.ecart), e.forme === 'entier' ? 'entier' : e.forme === 'pourcentage' ? 'pourcentage' : null)}`;
-  if (e.forme === 'pourcentage' || e.ecart_relatif === null || e.ecart_relatif === undefined || !Number.isFinite(e.ecart_relatif)) return ecart;
+  if (e.forme === 'pourcentage') return `${signe(e.ecart)}${decimal(chiffres(Math.abs(100 * e.ecart), 3))} ${t('changements_points')}`;
+  const ecart = `${signe(e.ecart)}${valeurResultat(Math.abs(e.ecart), e.forme === 'entier' ? 'entier' : null)}`;
+  if (e.ecart_relatif === null || e.ecart_relatif === undefined || !Number.isFinite(e.ecart_relatif)) return ecart;
   return `${ecart} (${signe(e.ecart_relatif)}${decimal(chiffres(Math.abs(100 * e.ecart_relatif), 2))}${langueActuelle() === 'fr' ? ' %' : '%'})`;
 }
 
@@ -209,6 +210,8 @@ export const TEXTES_VERSIONS = { fr: {
   versions_auteur_titre: 'Qui enregistre les versions',
   versions_auteur_texte: 'Chaque version garde le nom et l’adresse électronique de qui l’a enregistrée, pour qu’on sache qui a fait quoi. Ils sont gardés sur cet ordinateur, pour toutes les versions.',
   versions_auteur_nom: 'Nom', versions_auteur_email: 'Adresse électronique', versions_auteur_manque: 'Donnez un nom et une adresse électronique.',
+  versions_auteur_bouton: 'Continuer',
+  versions_hors_https: 'Ce dépôt est à une adresse que Nuée ne joint pas (https:// seulement) : changez l’adresse pour envoyer et recevoir.',
   versions_auteur: 'Versions signées {nom} <{email}>', versions_changer: 'Changer…', versions_actualiser: 'Actualiser',
   versions_enregistrer: 'Enregistrer une version…', versions_description_titre: 'Enregistrer une version — {nom}',
   versions_description_aide: 'Quelques mots sur cet état, pour le retrouver plus tard :', versions_description_exemple: 'Comptages de 2026 ajoutés, modèles réajustés',
@@ -229,7 +232,7 @@ export const TEXTES_VERSIONS = { fr: {
   versions_voir_source: 'Les versions de {source}',
   versions_nommer_titre: 'Nommer la version du {date}',
   versions_nommer_aide: 'Un nom marque une version pour la retrouver d’un coup d’œil : « soumis à la revue », « chapitre 2 de la thèse ».',
-  versions_nom: 'Nom', versions_nom_vide: 'Écrivez un nom.', versions_noms: 'Ses noms', versions_retirer_nom: 'Retirer le nom « {nom} »',
+  versions_nom: 'Nom', versions_nom_vide: 'Écrivez un nom.', versions_noms: 'Ses noms :', versions_retirer_nom: 'Retirer le nom « {nom} »',
   versions_bouton_nommer: 'Nommer', versions_nommee: 'Version nommée « {nom} ».', versions_nom_retire: 'Nom « {nom} » retiré.',
   versions_restaurer_titre: 'Restaurer la version du {date}',
   versions_restaurer_texte: 'Le projet redevient cette version : ses données, ses modèles, ses documents et ses figures. Son état actuel reste dans l’historique : une version « Version du {longue} restaurée » est enregistrée, et vous pourrez revenir à l’état d’aujourd’hui.',
@@ -274,10 +277,10 @@ export const TEXTES_VERSIONS = { fr: {
   changements: 'Ce qui a changé', changements_titre: 'Ce qui a changé : {titre}',
   changements_resume: '{n} modèle(s) comparé(s), {notables} avec des changements notables.', changements_aucun_modele: 'Aucun modèle à comparer : ni l’un ni l’autre n’a de modèle enregistré.',
   changements_inchange: 'Aucun changement dans ses résultats clés.', changements_peu: 'De petits changements, aucun notable.',
-  changements_entrees: '{n} résultat(s) changé(s) sur {total}', changements_tout: 'Montrer les {n} résultats changés', changements_avant_seul: 'Seulement avant',
-  changements_apres_seul: 'Seulement après', changements_erreur: '{nom} n’a pas pu être ajusté : {message}', changements_non_compare: '{nom} n’a pas pu être comparé : {message}',
+  changements_entrees: '{n} résultat(s) changé(s) sur {total}', changements_tout: 'Montrer les {n} résultats changés', changements_avant_seul: 'Seulement avant :',
+  changements_apres_seul: 'Seulement après :', changements_erreur: '{nom} n’a pas pu être ajusté : {message}', changements_non_compare: '{nom} n’a pas pu être comparé : {message}',
   changements_pas_la: 'Cette comparaison n’est plus là : comparez de nouveau depuis Fichier › Versions.', changements_calcul: 'Comparaison des résultats…',
-  changements_resultat: 'Résultat', changements_avant: 'Avant', changements_apres: 'Après', changements_ecart: 'Écart',
+  changements_resultat: 'Résultat', changements_avant: 'Avant', changements_apres: 'Après', changements_ecart: 'Écart', changements_points: 'points',
   changements_g_ajustement: 'Ajustement', changements_g_estimations: 'Estimations', changements_g_tests: 'Tests', changements_g_aleatoires: 'Effets aléatoires',
   changements_g_composantes: 'Composantes', changements_g_variables: 'Variables', changements_g_especes: 'Espèces', changements_g_moyennes: 'Moyennes ajustées',
   changements_g_puissance: 'Puissance', changements_g_jeu_test: 'Jeu de test', changements_g_stocke: 'Résultats du fichier',
@@ -295,6 +298,8 @@ export const TEXTES_VERSIONS = { fr: {
   versions_auteur_titre: 'Who saves the versions',
   versions_auteur_texte: 'Each version keeps the name and email address of whoever saved it, so that everyone knows who did what. They are kept on this computer, for every version.',
   versions_auteur_nom: 'Name', versions_auteur_email: 'Email address', versions_auteur_manque: 'Give a name and an email address.',
+  versions_auteur_bouton: 'Continue',
+  versions_hors_https: 'This repository is at an address Nuée can’t reach (https:// only): change the address to send and get.',
   versions_auteur: 'Versions signed {nom} <{email}>', versions_changer: 'Change…', versions_actualiser: 'Refresh',
   versions_enregistrer: 'Save a version…', versions_description_titre: 'Save a version — {nom}',
   versions_description_aide: 'A few words on this state, to find it again later:', versions_description_exemple: '2026 counts added, models refitted',
@@ -315,7 +320,7 @@ export const TEXTES_VERSIONS = { fr: {
   versions_voir_source: 'The versions of {source}',
   versions_nommer_titre: 'Name the version of {date}',
   versions_nommer_aide: 'A name marks a version so it can be found at a glance: “submitted to the journal”, “thesis chapter 2”.',
-  versions_nom: 'Name', versions_nom_vide: 'Write a name.', versions_noms: 'Its names', versions_retirer_nom: 'Remove the name “{nom}”',
+  versions_nom: 'Name', versions_nom_vide: 'Write a name.', versions_noms: 'Its names:', versions_retirer_nom: 'Remove the name “{nom}”',
   versions_bouton_nommer: 'Name it', versions_nommee: 'Version named “{nom}”.', versions_nom_retire: 'Name “{nom}” removed.',
   versions_restaurer_titre: 'Restore the version of {date}',
   versions_restaurer_texte: 'The project becomes this version again: its data, models, documents and figures. Its current state stays in the history: a version “Restored the version of {longue}” is saved, and you can come back to today’s state.',
@@ -360,10 +365,10 @@ export const TEXTES_VERSIONS = { fr: {
   changements: 'What changed', changements_titre: 'What changed: {titre}',
   changements_resume: '{n} model(s) compared, {notables} with notable changes.', changements_aucun_modele: 'No model to compare: neither side has a saved model.',
   changements_inchange: 'No change in its key results.', changements_peu: 'Small changes, none notable.',
-  changements_entrees: '{n} result(s) changed out of {total}', changements_tout: 'Show the {n} changed results', changements_avant_seul: 'Only before',
-  changements_apres_seul: 'Only after', changements_erreur: '{nom} couldn’t be fitted: {message}', changements_non_compare: '{nom} couldn’t be compared: {message}',
+  changements_entrees: '{n} result(s) changed out of {total}', changements_tout: 'Show the {n} changed results', changements_avant_seul: 'Only before:',
+  changements_apres_seul: 'Only after:', changements_erreur: '{nom} couldn’t be fitted: {message}', changements_non_compare: '{nom} couldn’t be compared: {message}',
   changements_pas_la: 'This comparison is no longer here: compare again from File › Versions.', changements_calcul: 'Comparing the results…',
-  changements_resultat: 'Result', changements_avant: 'Before', changements_apres: 'After', changements_ecart: 'Change',
+  changements_resultat: 'Result', changements_avant: 'Before', changements_apres: 'After', changements_ecart: 'Change', changements_points: 'points',
   changements_g_ajustement: 'Fit', changements_g_estimations: 'Estimates', changements_g_tests: 'Tests', changements_g_aleatoires: 'Random effects',
   changements_g_composantes: 'Components', changements_g_variables: 'Variables', changements_g_especes: 'Species', changements_g_moyennes: 'Adjusted means',
   changements_g_puissance: 'Trend power', changements_g_jeu_test: 'Test set', changements_g_stocke: 'Stored results',

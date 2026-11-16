@@ -140,8 +140,8 @@ function rendreChangements(app, conteneur, loc) {
     !c.modeles.length && !c.avantSeul.length && !c.apresSeul.length ? el('p', { class: 'note' }, t('changements_aucun_modele')) : null,
     tries.map((m) => sectionModele(m, loc, () => rendreChangements(app, conteneur, loc))),
     c.avantSeul.length || c.apresSeul.length ? el('section', { class: 'modele-change seul-cote' },
-      c.avantSeul.length ? el('p', {}, el('b', {}, `${t('changements_avant_seul')} : `), listeNoms(c.avantSeul)) : null,
-      c.apresSeul.length ? el('p', {}, el('b', {}, `${t('changements_apres_seul')} : `), listeNoms(c.apresSeul)) : null) : null);
+      c.avantSeul.length ? el('p', {}, el('b', {}, t('changements_avant_seul')), ' ', listeNoms(c.avantSeul)) : null,
+      c.apresSeul.length ? el('p', {}, el('b', {}, t('changements_apres_seul')), ' ', listeNoms(c.apresSeul)) : null) : null);
   conteneur.replaceChildren(el('div', { class: 'changements' },
     el('h2', {}, t('changements_titre', { titre: c.titre })),
     el('p', { class: 'infos' }, compares ? t('changements_resume', { n: compares, notables }) : '',

@@ -105,7 +105,7 @@ egal('entier, pourcentage, très petit ou grand', [valeurResultat(59.6, 'entier'
 egal('manquante', [valeurResultat(null), valeurResultat(undefined), valeurResultat('x')], ['', '', '']);
 egal('un écart et sa part', ecartResultat({ ecart: 0.012, ecart_relatif: 0.15 }), '+0.012 (+15%)');
 egal('négatif ; d’un entier ; sans part', [ecartResultat({ ecart: -5, ecart_relatif: -0.0833, forme: 'entier' }), ecartResultat({ ecart: 0.02, ecart_relatif: null }),
-  ecartResultat({ ecart: 0.031, ecart_relatif: 0.2, forme: 'pourcentage' }), ecartResultat({ ecart: null })], ['−5 (−8.3%)', '+0.02', '+3.1%', '']);
+  ecartResultat({ ecart: 0.031, ecart_relatif: 0.2, forme: 'pourcentage' }), ecartResultat({ ecart: null })], ['−5 (−8.3%)', '+0.02', '+3.1 points', '']);
 changerLangue('fr');
 egal('la virgule en français', [valeurResultat(0.80812), valeurResultat(0.4567, 'pourcentage'), ecartResultat({ ecart: -0.25, ecart_relatif: -0.5 })], ['0,8081', '45,7 %', '−0,25 (−50 %)']);
 egal('une valeur p', [texteP(2.9e-14), texteP(0.0342), texteP(0.5), texteP(null)], ['p < 0,001', 'p = 0,034', 'p = 0,500', '']);

@@ -30,6 +30,8 @@ export function creerCommandes(app) {
     kobo_importer: { icone: 'smartphone', action: () => app.importerKobo() },
     enregistrer: { icone: 'save', raccourci: 'Ctrl+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), false) },
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
+    // (versions.js: the project's saved states, kept in its folder, sent to GitHub or GitLab)
+    versions: { icone: 'history', actif: () => !!app.projetActif(), action: () => app.versions(app.projetActif()) },
     exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
     // (from Compare models showing the coefficients side by side: that table)
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: () => avecModele() || !!app.coefficientsActifs(),
@@ -139,7 +141,7 @@ export const ICONES_VUES = {
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
   statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
-  series: 'trending-up', document: 'file-text', figure: 'layout-grid',
+  series: 'trending-up', document: 'file-text', figure: 'layout-grid', versions: 'history', changements: 'diff',
 };
 
 // A menu item for a command, evaluated now (enabled state, check mark).
@@ -160,7 +162,7 @@ export function menus(app, C) {
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
-      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
+      '-', it('enregistrer'), it('enregistrer_sous'), it('versions'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',

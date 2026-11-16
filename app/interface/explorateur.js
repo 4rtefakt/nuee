@@ -124,8 +124,11 @@ export function rendreExplorateur(conteneur, app) {
     const noeudFigure = (f) => noeud({ cle: `${p.id}/fig/${f.id}`, niveau: 3, ic: 'layout-grid', libelle: f.titre || t('figure_sans_titre'),
       double: () => app.ouvrirFigure(p.id, f.id), menu: () => app.menuFigure(p.id, f.id) });
     return noeud({
-      cle: p.id, niveau: 1, ic: 'folder', libelle: [el('b', {}, p.nom), p.modifie ? el('span', { class: 'badge alerte', title: t('modifie') }, '●') : null],
-      titre: p.source,
+      // (an old version opened read-only, versions.js: marked, beside its project of the same name)
+      cle: p.id, niveau: 1, ic: p.lecture_seule ? 'lock' : 'folder', classe: p.lecture_seule ? 'lecture-seule' : '',
+      libelle: [el('b', {}, p.nom), p.lecture_seule ? el('span', { class: 'badge lecture-seule', title: t('lecture_seule_aide') }, t('lecture_seule')) : null,
+        p.modifie ? el('span', { class: 'badge alerte', title: t('modifie') }, '●') : null],
+      titre: p.lecture_seule ? t('lecture_seule_aide') : p.source,
       menu: () => [
         { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
         { libelle: t('nouveau_document'), icone: 'file-text', action: () => app.nouveauDocument(p.id) },
@@ -138,6 +141,7 @@ export function rendreExplorateur(conteneur, app) {
         '-',
         { libelle: t('enregistrer'), icone: 'save', action: () => app.enregistrer(p.id, false) },
         { libelle: t('enregistrer_sous'), action: () => app.enregistrer(p.id, true) },
+        { libelle: t('versions'), icone: 'history', action: () => app.versions(p.id) },
         { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) },
         '-',
         { libelle: t('fermer_projet'), icone: 'x', action: () => app.fermerProjet(p.id) },
