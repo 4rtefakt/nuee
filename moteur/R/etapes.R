@@ -608,6 +608,9 @@ etiquette_etape <- function(e) {
     scores_en_variables = sprintf(traduire("scores de %s en variables", "scores of %s as variables"), t(q$modele)),
     kmeans_variable = sprintf(traduire("variable %s, groupes de %s", "variable %s, clusters of %s"), t(q$nom), t(q$modele)),
     NULL)
+  # (une étape qu'une fusion de deux versions a ajoutée pour donner à un conflit le côté choisi, avec qui :
+  # fusion.R, fusion_etapes)
+  if (nzchar(t(q$fusion_avec))) r <- sprintf(traduire("fusion avec %s : %s", "merge with %s: %s"), t(q$fusion_avec), r %||% notee)
   r %||% notee
 }
 

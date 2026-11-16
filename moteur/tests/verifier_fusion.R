@@ -209,8 +209,9 @@ verifier("la figure F1 : mon titre, leur contenu, leur panneau de M3 devenu celu
            identical(pn[[3]]$loc$couleur, "m@4|t1") && pn[[1]]$numero == 1 && identical(jsonlite::fromJSON(f1$contenu)$largeur, 174L))
 f2 <- figure(p, "F2")
 verifier("leur nouvelle figure F2, son panneau sur M4", !is.null(f2) && identical(f2$titre, "Leur figure") && panneaux(f2)[[1]]$numero == 4)
-verifier("ce que chaque côté a apporté, en phrases",
-         any(grepl("M3", r$apports$mien)) && any(grepl("remplacement de -9999", r$apports$mien)) && any(grepl("renommé M4", r$apports$leur)) &&
+verifier("ce que chaque côté a apporté, en phrases, chaque étape dite comme la vue des étapes la dit",
+         any(grepl("M3", r$apports$mien)) && "1 étape(s) : remplacement de « -9999 » par vide dans comptage" %in% r$apports$mien &&
+           "1 étape(s) : catégories de habitat" %in% r$apports$leur && any(grepl("renommé M4", r$apports$leur)) &&
            any(grepl("Rapport", r$apports$leur)) && any(grepl("figure", r$apports$leur)))
 verifier("le projet fusionné s'enregistre, se rouvre et chacun de ses modèles se réajuste", reajuste(p, "fusion_a"))
 
@@ -297,6 +298,9 @@ x1 <- function(p) unname(valeurs(p, "x1")["S1-2018"])
 verifier("la cellule : la mienne (9) par une étape de plus, la leur (7) ; leur cellule sans conflit (x2 = 1,5) des deux fois",
          x1(pm) == 9 && x1(pl) == 7 && unname(valeurs(pm, "x2")["S2-2018"]) == 1.5 && unname(valeurs(pl, "x2")["S2-2018"]) == 1.5 &&
            any(grepl("fusion : valeurs de x1 de mon côté", etiquettes(pm), fixed = TRUE)) && !any(grepl("fusion", etiquettes(pl))))
+verifier("les étapes de la fusion, dans la vue des étapes : « fusion avec Bob : … »",
+         all(c("fusion avec Bob : cellules collées dans x1", "fusion avec Bob : unités et descriptions de x1", "fusion avec Bob : coordonnées X et Y") %in%
+               vapply(pm$etapes, etiquette_etape, "")))
 verifier("l'unité : « mm » ou « cm » ; les coordonnées : X, Y ou Y, X ; les données restent celles que leurs étapes donnent",
          identical(variable_du_projet(pm, uid_p(pm, "x1"))$unite, "mm") && identical(variable_du_projet(pl, uid_p(pl, "x1"))$unite, "cm") &&
            pm$coordonnees$x == uid_p(pm, "X") && pl$coordonnees$x == uid_p(pl, "Y") && isTRUE(donnees_conformes(pm)) && isTRUE(donnees_conformes(pl)))
@@ -676,9 +680,12 @@ verifier("conflicts and contributions in English",
            identical(conflit(r, "variable:x1")$titre, "Variable “x1”") && identical(conflit(r, "champ:coordonnees")$titre, "Coordinates") &&
            any(grepl("cell(s) changed", r$apports$mien, fixed = TRUE)))
 pm <- fusion(base, mien_c, leur_c, choix("mien"))$projet
-verifier("the step a choice adds, named in English", any(grepl("merge: values of x1 from my side", etiquettes(pm), fixed = TRUE)))
+verifier("the step a choice adds, named in English", any(grepl("merge: values of x1 from my side", etiquettes(pm), fixed = TRUE)) &&
+           "merge with Bob: cells pasted into x1" %in% vapply(pm$etapes, etiquette_etape, ""))
 r <- fusion(base, mien_a, leur_a)
 verifier("their renamed model, said in English", any(grepl("their M3 renamed M4 (an M3 was made on both sides)", r$apports$leur, fixed = TRUE)))
+verifier("steps done in French, said in English", "1 step(s): replacement of “-9999” with empty in comptage" %in% r$apports$mien &&
+           "1 step(s): categories of habitat" %in% r$apports$leur)
 options(nuee.langue = "fr")
 
 unlink(dossier, recursive = TRUE)

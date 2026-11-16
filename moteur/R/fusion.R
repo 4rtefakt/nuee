@@ -696,8 +696,10 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     voulu <- texte_valeurs(if (choix == "mien") vm else vl)[i]
     a_faire <- which(!egales_fusion(voulu, texte_valeurs(valeurs_fusion(tD, k, oc[i]))) & oc[i] %in% tD$cles_o)
     if (!length(a_faire)) next
+    # (`fusion_avec` : l'étape dit, dans la langue de qui la lit, qu'elle vient de cette fusion : etapes.R,
+    # etiquette_etape ; rejouée, elle colle les cellules comme une autre)
     q <- list(observations = unname(tD$uid_o[oc[i][a_faire]]), variables = tD$uid_v[[k]],
-              valeurs = matrix(ifelse(is.na(voulu[a_faire]), "", voulu[a_faire]), ncol = 1))
+              valeurs = matrix(ifelse(is.na(voulu[a_faire]), "", voulu[a_faire]), ncol = 1), fusion_avec = ctx$qui)
     D <- noter_etape(D, sans_attributs(appliquer_etape("coller_cellules", D, q)), "coller_cellules", q,
                      etiquette_fusion(ctx, choix, phrase_fusion("valeurs de %s", "values of %s", nom_cle_fusion(k))))
     tD <- tableau_fusion(D)
@@ -711,7 +713,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     choix <- conflit_champ_variable(ctx, k, f, vm, vl)
     voulu <- premier_texte((if (choix == "mien") vm else vl)[[f]])
     if (identical(voulu, premier_texte(tD$vars[[k]][[f]]))) next
-    q <- list(descriptions = list(stats::setNames(list(tD$uid_v[[k]], voulu), c("variable", f))))
+    q <- list(descriptions = list(stats::setNames(list(tD$uid_v[[k]], voulu), c("variable", f))), fusion_avec = ctx$qui)
     D <- noter_etape(D, appliquer_etape("decrire_variables", D, q), "decrire_variables", q,
                      etiquette_fusion(ctx, choix, phrase_fusion("%s de %s", "%s of %s", nom_champ_variable(f), nom_cle_fusion(k))))
     tD <- tableau_fusion(D)
@@ -723,7 +725,8 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     choix <- conflit_coordonnees(ctx, cm, cl)
     voulu <- if (choix == "mien") cm else cl
     if (!identical(json_fusion(voulu), json_fusion(coordonnees_canon(tD))) && (is.null(voulu) || all(c(voulu$x, voulu$y) %in% tD$cles_v))) {
-      q <- if (is.null(voulu)) list(x = NULL, y = NULL) else list(x = tD$uid_v[[voulu$x]], y = tD$uid_v[[voulu$y]], systeme = premier_texte(voulu$systeme))
+      q <- c(if (is.null(voulu)) list(x = NULL, y = NULL) else list(x = tD$uid_v[[voulu$x]], y = tD$uid_v[[voulu$y]], systeme = premier_texte(voulu$systeme)),
+             list(fusion_avec = ctx$qui))
       D <- noter_etape(D, appliquer_etape("coordonnees", D, q), "coordonnees", q, etiquette_fusion(ctx, choix, traduire("coordonnées", "coordinates")))
     }
   }
@@ -1703,7 +1706,8 @@ apports_donnees <- function(B, X, d, ctx, cote) {
   }
   eb <- cles_etapes(B)
   neuves <- Filter(function(e) !cle_etape(e, TRUE) %in% eb, X$etapes %||% list())
-  if (length(neuves)) apport_fusion(ctx, cote, phrase_fusion("%d étape(s) : %s", "%d step(s): %s", length(neuves), noms_fusion(vapply(neuves, function(e) premier_texte(e$etiquette), ""), 3)))
+  # (chaque étape dite dans la langue de la demande, non dans celle où elle a été faite : etapes.R, etiquette_etape)
+  if (length(neuves)) apport_fusion(ctx, cote, phrase_fusion("%d étape(s) : %s", "%d step(s): %s", length(neuves), noms_fusion(vapply(neuves, etiquette_etape, ""), 3)))
   vars <- function(k) k[!startsWith(k, ID_FUSION)]
   if (length(vars(d$ajoutees))) apport_fusion(ctx, cote, phrase_fusion("variable(s) ajoutée(s) : %s", "variable(s) added: %s", noms_fusion(cle_lisible(vars(d$ajoutees)))))
   if (length(vars(d$retirees))) apport_fusion(ctx, cote, phrase_fusion("variable(s) retirée(s) : %s", "variable(s) removed: %s", noms_fusion(cle_lisible(vars(d$retirees)))))
