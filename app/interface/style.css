@@ -1,18 +1,24 @@
 /* ---------------------------------------------------------------- themes */
+/* WCAG AA in both themes: text 4.5:1 on every background it sits on (the tints included: --accent
+   on --accent-doux, --attention on --fond), fields' borders (--bord-champ) and the focus ring 3:1,
+   white on a main button (--principal) 4.5:1. */
 :root, :root[data-theme="clair"] {
   --fond: #eef0f3; --fond-panneau: #ffffff; --fond-barre: #f8f9fb; --texte: #1f2328; --texte-doux: #5f6773;
-  --bord: #d9dce1; --grille: #eceef1; --survol: #eef1f6; --accent: #2f6fb5; --accent-doux: #e3edf8;
-  --ligne-choisie: #fde8e4; --erreur: #b3261e; --ok: #2e7d32; --attention: #b26a00; --ligne-graphe: #9bb5d6;
+  --bord: #d9dce1; --bord-champ: #848a94; --grille: #eceef1; --survol: #eef1f6; --accent: #2d6cb0; --accent-doux: #e3edf8; --principal: var(--accent);
+  --ligne-choisie: #fde8e4; --selection: #e4572e; --erreur: #b3261e; --ok: #2d7931; --attention: #9b5c00; --ligne-graphe: #9bb5d6;
   --ombre: 0 8px 24px rgba(15, 23, 42, .16), 0 2px 6px rgba(15, 23, 42, .08);
   color-scheme: light;
 }
 :root[data-theme="sombre"] {
   --fond: #15171b; --fond-panneau: #1d2025; --fond-barre: #1a1c21; --texte: #e4e6ea; --texte-doux: #9aa2ad;
-  --bord: #33373f; --grille: #2b2f36; --survol: #262a31; --accent: #6aa5ea; --accent-doux: #22344b;
-  --ligne-choisie: #4a2b27; --erreur: #f2867c; --ok: #7cc47f; --attention: #e4a34a; --ligne-graphe: #4d6a8f;
+  --bord: #33373f; --bord-champ: #656b75; --grille: #2b2f36; --survol: #262a31; --accent: #6aa5ea; --accent-doux: #22344b; --principal: #2f6fb5;
+  --ligne-choisie: #4a2b27; --selection: #e4572e; --erreur: #f2867c; --ok: #7cc47f; --attention: #e4a34a; --ligne-graphe: #4d6a8f;
   --ombre: 0 8px 24px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3);
   color-scheme: dark;
 }
+/* dockview's tabs: the hidden tabs of a group without the focus as readable as the others (4.5:1) */
+:root .dockview-theme-light { --dv-inactivegroup-hiddenpanel-tab-color: rgba(51, 51, 51, 0.7); }
+:root .dockview-theme-dark { --dv-inactivegroup-hiddenpanel-tab-color: #969696; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -22,11 +28,17 @@ button { font: inherit; color: var(--texte); background: var(--fond-panneau); bo
   padding: 3px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; }
-button.principal { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.principal { background: var(--principal); border-color: var(--principal); color: #fff; }
 button.icone-seule { border-color: transparent; background: transparent; padding: 3px; }
 button.icone-seule:hover { background: var(--survol); }
-input, select, textarea { font: inherit; color: var(--texte); background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px; padding: 2px 6px; }
+input, select, textarea { font: inherit; color: var(--texte); background: var(--fond-panneau); border: 1px solid var(--bord-champ); border-radius: 4px; padding: 2px 6px; }
+::placeholder { color: var(--texte-doux); opacity: 1; }
+/* the keyboard's place, in both themes: a ring of the accent colour (outside a main button, whose
+   colour it is) */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+button.principal:focus-visible { outline-offset: 2px; }
+.dv-tab:focus-visible::after, .dv-tab:has(:focus-visible)::after { outline: 2px solid var(--accent) !important; outline-offset: -2px; }
 .icone { display: inline-flex; width: 16px; height: 16px; flex: none; }
 .icone svg { width: 100%; height: 100%; }
 .icone.grand { width: 44px; height: 44px; color: var(--accent); }
@@ -35,11 +47,14 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .espace { flex: 1; }
 
 /* ---------------------------------------------------------------- frame */
-#appli { height: 100%; display: grid; grid-template-rows: auto auto 1fr auto; }
+#appli { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+#entete { min-width: 0; }  /* (the menu bar and the toolbar: the window's banner landmark) */
 #menus { display: flex; align-items: center; gap: 1px; padding: 2px 6px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
 #menus .logo { width: 18px; height: 18px; margin: 0 6px 0 4px; }
 .menu-haut { border: 0; background: transparent; padding: 3px 9px; border-radius: 4px; }
 .menu-haut:hover, .menu-haut.ouvert { background: var(--survol); }
+/* a menu's letter (Alt+letter), underlined while the keyboard is in the menu bar */
+#menus.clavier .cle-acces { text-decoration: underline; text-underline-offset: 2px; }
 #barre-outils { display: flex; align-items: stretch; gap: 0; padding: 3px 6px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); overflow-x: auto; }
 .groupe-outils { display: flex; gap: 1px; padding: 0 6px; border-right: 1px solid var(--bord); }
 .groupe-outils:last-child { border-right: 0; }
@@ -49,6 +64,9 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .outil:hover:not(:disabled) { background: var(--survol); border-color: transparent; }
 .outil:disabled .icone { color: var(--texte-doux); }
 #barre-outils { scrollbar-width: none; }
+/* (a narrow window, or text made larger, 200 % included: the toolbar's groups go on a second row
+   rather than out of sight) */
+#barre-outils { flex-wrap: wrap; row-gap: 2px; }
 @media (max-width: 1100px) {
   .outil { min-width: 34px; }
   .outil span:last-child { display: none; }
@@ -63,6 +81,12 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .moteur.erreur { color: var(--erreur); }
 .moteur.erreur .point { background: var(--erreur); }
 @keyframes pulse { 50% { opacity: .3; } }
+/* Motion only for those who haven't asked their system for less: no pulse, no transitions (dockview's
+   drop targets and sashes, a figure's preview) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
+    transition-delay: 0s !important; scroll-behavior: auto !important; }
+}
 
 /* detached view window */
 #seul { display: none; }
@@ -77,8 +101,12 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .menu { position: fixed; z-index: 1000; min-width: 230px; padding: 4px; background: var(--fond-panneau); border: 1px solid var(--bord);
   border-radius: 6px; box-shadow: var(--ombre); max-height: calc(100vh - 8px); overflow-y: auto; overflow-x: hidden; }
 .menu .item { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 4px; cursor: default; white-space: nowrap; }
-.menu .item:hover:not(.desactive) { background: var(--accent-doux); }
-.menu .item.desactive { color: var(--texte-doux); opacity: .55; }
+.menu .item:hover:not(.desactive), .menu .item:focus { background: var(--accent-doux); }
+.menu .item.desactive { color: var(--texte-doux); }
+.menu .item.desactive > span { opacity: .55; }
+.menu .item.desactive:focus { background: var(--survol); }
+.menu:focus, .menu .item:focus { outline: none; }
+.clavier .menu .item:focus { box-shadow: inset 0 0 0 2px var(--accent); }
 .menu .coche { display: inline-flex; justify-content: center; color: var(--accent); }
 .menu .raccourci { color: var(--texte-doux); font-size: 12px; padding-left: 18px; display: inline-flex; }
 .menu .separateur { height: 1px; background: var(--bord); margin: 4px 6px; }
@@ -102,6 +130,11 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .note { color: var(--texte-doux); font-size: 11.5px; margin: 4px 0; }
 .attente { margin: 20px; }
 .graphe { flex: 1; min-height: 200px; }
+/* (a plot's ring outside it: Plotly's layers would cover one drawn inside; its tool buttons shown while
+   the keyboard is on it, their ring the accent's, which Plotly draws black whatever the theme) */
+.js-plotly-plot:focus-visible { outline-offset: 1px; }
+.js-plotly-plot:focus-visible .modebar--hover .modebar-group { opacity: 1; }
+.js-plotly-plot .plotly .modebar-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .graphe.petit { flex: 0 0 230px; min-height: 180px; }
 .bas { flex: 1; display: flex; flex-direction: column; min-height: 120px; }
 .defile { overflow: auto; flex: 1; min-height: 60px; }
@@ -114,6 +147,8 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .tableau .num { text-align: right; }
 .tableau tbody tr:hover td { background: var(--survol); }
 .tableau tr.choisie td { background: var(--ligne-choisie); }
+/* not by its tint alone (1.2:1): a bar at the start of a chosen row, of the plots' selection colour */
+.tableau tr.choisie td:first-child { box-shadow: inset 3px 0 0 var(--selection); }
 .tableau.compact { width: auto; min-width: 0; }
 .marque { margin-left: 4px; font-weight: 700; }
 .marque.egal { color: var(--ok); }
@@ -132,7 +167,7 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .arbre { user-select: none; }
 .noeud { display: flex; align-items: center; gap: 5px; padding: 3px 8px; cursor: default; white-space: nowrap; }
 .noeud:hover { background: var(--survol); }
-.noeud.actif { background: var(--accent-doux); }
+.noeud.actif { background: var(--accent-doux); box-shadow: inset 2px 0 0 var(--accent); }
 .noeud:focus { outline: none; }
 .noeud:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* read by screen readers, not shown */
@@ -166,7 +201,7 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .palette-saisie { margin: 10px; padding: 7px 10px; font-size: 14px; }
 .palette-liste { max-height: 55vh; overflow-y: auto; padding: 0 6px 6px; }
 .palette-item { display: grid; grid-template-columns: 22px auto 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; }
-.palette-item.actuel { background: var(--accent-doux); }
+.palette-item.actuel { background: var(--accent-doux); box-shadow: inset 2px 0 0 var(--accent); }
 .palette-item.inactif { opacity: .45; cursor: default; }
 .palette-chemin { color: var(--texte-doux); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-item .raccourci { color: var(--texte-doux); font-size: 12px; }
@@ -384,7 +419,7 @@ body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed
 .cm-tooltip { background: var(--fond-panneau) !important; color: var(--texte); border: 1px solid var(--bord) !important; border-radius: 4px; box-shadow: var(--ombre); }
 .cm-tooltip.cm-tooltip-autocomplete > ul { font-family: "Segoe UI", system-ui, sans-serif; max-height: 18em; }
 .cm-tooltip.cm-tooltip-autocomplete > ul > li { padding: 2px 8px; }
-.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--accent); color: #fff; }
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--principal); color: #fff; }
 .cm-completionDetail { color: var(--texte-doux); font-style: normal; margin-left: 1.2em; }
 li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .apercu-document { min-height: 0; overflow: auto; padding: 14px 24px 40vh; background: var(--fond-panneau); color: var(--texte);
@@ -462,7 +497,7 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .ligne-panneau:hover { background: var(--survol); }
 .ligne-panneau .lettre-panneau { flex: none; min-width: 2.1em; text-align: center; background: var(--accent-doux); color: var(--accent); border-radius: 3px; padding: 0 3px; }
 .ligne-panneau .nom-panneau { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ligne-panneau.hors-grille .nom-panneau { color: var(--erreur); }
+.ligne-panneau.hors-grille .nom-panneau { color: var(--erreur); text-decoration: line-through; }  /* (left out of the figure) */
 .ligne-panneau select { max-width: 7.5em; }
 .apercu-figure { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; background: var(--fond); }
 .feuille-figure { background: #ffffff; box-shadow: var(--ombre); line-height: 0; max-width: 100%; transition: opacity .15s; }
@@ -704,3 +739,39 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .badge.drapeau-change.nouveau { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .badge.drapeau-change.disparu, .badge.drapeau-change.retourne { background: var(--grille); color: var(--texte-doux); }
 .seul-cote p { margin: 3px 0; }
+
+/* Signing in to GitHub or GitLab, inviting a colleague (connexion.js): the code big and copyable, the
+   wait for the approval, the account's card, the other ways to sign in */
+.dialogue-compte { display: flex; flex-direction: column; gap: 6px; min-width: min(32em, 80vw); }
+.dialogue-compte p { margin: 2px 0; }
+.dialogue-compte a { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); }
+.dialogue-compte a .icone { width: 13px; height: 13px; }
+.dialogue-compte .ligne { flex-wrap: wrap; gap: 8px; }
+.dialogue-compte .ligne > label, .etiquette-compte { color: var(--texte-doux); }
+.etape-connexion { display: flex; flex-direction: column; gap: 8px; }
+.services-connexion { display: flex; gap: 10px; margin: 4px 0; }
+.services-connexion button { flex: 1; justify-content: center; padding: 10px; font-size: 14px; font-weight: 600; }
+.code-appareil { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 6px 0 2px; }
+.code-appareil code { font: 600 30px/1.2 Consolas, 'Cascadia Mono', monospace; letter-spacing: .14em; padding: 6px 8px 6px 18px; border: 1px solid var(--bord);
+  border-radius: 6px; background: var(--fond-barre); user-select: all; }
+.ouvrir-connexion { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.adresse-connexion { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12px; color: var(--texte-doux); }
+.attente-connexion { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--texte-doux); }
+.attente-connexion .point { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; flex: none; }
+.ok-compte { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+.carte-compte { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--grille); border-radius: 8px; background: var(--fond-barre); }
+.avatar-compte { width: 44px; height: 44px; border-radius: 50%; flex: none; object-fit: cover; background: var(--fond); }
+.avatar-compte.vide { display: inline-flex; align-items: center; justify-content: center; color: var(--texte-doux); }
+.avatar-compte.vide .icone { width: 30px; height: 30px; }
+.texte-compte { min-width: 0; overflow-wrap: anywhere; }
+.autres-connexions { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--grille); padding-top: 6px; }
+.autres-connexions:empty, .jeton-connexion:empty { display: none; }
+.autres-connexions h3 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); margin: 2px 0; }
+.jeton-connexion { display: flex; flex-direction: column; gap: 6px; }
+.message-compte { min-height: 1.4em; overflow-wrap: anywhere; }
+.message-compte.ok-compte { display: block; }
+.invites-compte { margin: 0; padding: 0; list-style: none; }
+.invites-compte li { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+.comptes-essai { display: flex; flex-direction: column; gap: 8px; }
+.ligne-compte { display: flex; flex-direction: column; gap: 6px; }
+.actions-compte { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -41,15 +41,18 @@ export function rendreExplorateur(conteneur, app) {
   }
   const replie = app.replies;
   const actif = app.noeudActif();
+  // (the node the keyboard was on, to put it back there once the tree is drawn again)
+  const enFocus = conteneur.contains(document.activeElement) && document.activeElement.dataset ? document.activeElement.dataset.cle : null;
 
   const noeud = ({ cle, niveau, ic, libelle, details, titre, enfants, clic, double, menu, classe = '' }) => {
     const ouvert = enfants ? !replie.has(cle) : false;
     const ligne = el('div', {
-      class: `noeud n${niveau} ${classe}` + (actif === cle ? ' actif' : ''), title: titre || '', tabindex: 0,
+      class: `noeud n${niveau} ${classe}` + (actif === cle ? ' actif' : ''), title: titre || '', tabindex: -1,
+      role: 'treeitem', 'aria-level': niveau, 'aria-selected': String(actif === cle), 'aria-expanded': enfants ? String(ouvert) : null, 'data-cle': cle,
       onclick: (e) => { e.stopPropagation(); app.choisirNoeud(cle); if (clic) clic(); },
       ondblclick: (e) => { e.stopPropagation(); if (double) double(); else if (enfants) basculer(); },
       oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); app.choisirNoeud(cle); if (clic) clic(); if (menu) menuContextuel(e.clientX, e.clientY, menu()); },
-      onkeydown: (e) => { if (e.key === 'Enter') { if (double) double(); else if (enfants) basculer(); } },
+      onkeydown: (e) => { if (e.key === 'Enter') { if (double) double(); else if (enfants) basculer(); } else if (e.key === ' ') { e.preventDefault(); app.choisirNoeud(cle); if (clic) clic(); } },
     },
     el('span', { class: 'fleche', onclick: (e) => { e.stopPropagation(); if (enfants) basculer(); } },
       enfants ? icone(ouvert ? 'chevron-down' : 'chevron-right') : ''),
@@ -58,6 +61,7 @@ export function rendreExplorateur(conteneur, app) {
       if (replie.has(cle)) replie.delete(cle); else replie.add(cle);
       app.rafraichirExplorateur();
     }
+    ligne._basculer = enfants ? basculer : null;
     return [ligne, ouvert && enfants ? enfants() : null];
   };
 
@@ -192,5 +196,57 @@ export function rendreExplorateur(conteneur, app) {
       ],
     });
   });
-  conteneur.replaceChildren(el('div', { class: 'arbre', role: 'tree' }, arbre));
+  const racine = el('div', { class: 'arbre', role: 'tree', 'aria-label': t('explorateur'), onkeydown: (e) => clavierArbre(e, racine) }, arbre);
+  conteneur.replaceChildren(racine);
+  // Each node's place among its siblings (the tree is drawn flat, its levels in aria-level), and the
+  // tree's one Tab stop: the node the keyboard was on, else the active one, else the first.
+  const lignes = [...racine.querySelectorAll('[role="treeitem"]')];
+  lignes.forEach((l, i) => {
+    if (l.hasAttribute('aria-posinset')) return;
+    const niveau = +l.getAttribute('aria-level');
+    const freres = [];
+    for (let k = i; k < lignes.length && +lignes[k].getAttribute('aria-level') >= niveau; k += 1) if (+lignes[k].getAttribute('aria-level') === niveau) freres.push(lignes[k]);
+    freres.forEach((f, j) => { f.setAttribute('aria-posinset', j + 1); f.setAttribute('aria-setsize', freres.length); });
+  });
+  const parCle = (c) => lignes.find((l) => l.dataset.cle === c);
+  // (a node gone with its branch folded: the nearest of its ancestors still shown)
+  let cible = null;
+  for (let c = enFocus; c && !cible; c = c.includes('/') ? c.slice(0, c.lastIndexOf('/')) : null) cible = parCle(c);
+  const arret = cible || parCle(actif) || lignes[0];
+  if (arret) arret.tabIndex = 0;
+  if (cible) cible.focus({ preventScroll: true });
+  racine.querySelectorAll('.badge.alerte').forEach((b) => { b.setAttribute('aria-hidden', 'true'); b.after(el('span', { class: 'lecteur-seul' }, ` (${t('modifie')})`)); });
+}
+
+// The tree from the keyboard (as the WAI-ARIA tree view): up and down from node to node, right
+// to unfold a branch or go into it, left to fold it or go to its parent, Home and End, a letter
+// for the next node starting with it. Enter opens (as a double click), Space chooses (as a click),
+// Shift+F10 or the menu key give its menu.
+function clavierArbre(e, racine) {
+  const ligne = e.target.closest && e.target.closest('[role="treeitem"]');
+  if (!ligne || e.ctrlKey || e.metaKey || e.altKey) return;
+  const lignes = [...racine.querySelectorAll('[role="treeitem"]')];
+  const i = lignes.indexOf(ligne);
+  const niveau = +ligne.getAttribute('aria-level');
+  const aller = (l) => {
+    if (!l) return;
+    lignes.forEach((x) => { x.tabIndex = x === l ? 0 : -1; });
+    l.focus();
+  };
+  const ouvert = ligne.getAttribute('aria-expanded');
+  const k = e.key;
+  if (k === 'ArrowDown') aller(lignes[i + 1]);
+  else if (k === 'ArrowUp') aller(lignes[i - 1]);
+  else if (k === 'Home') aller(lignes[0]);
+  else if (k === 'End') aller(lignes[lignes.length - 1]);
+  else if (k === 'ArrowRight') { if (ouvert === 'false') ligne._basculer(); else if (ouvert === 'true') aller(lignes[i + 1]); }
+  else if (k === 'ArrowLeft') {
+    if (ouvert === 'true') ligne._basculer();
+    else aller(lignes.slice(0, i).reverse().find((x) => +x.getAttribute('aria-level') < niveau));
+  } else if (k.length === 1 && k !== ' ') {
+    const l = k.toLowerCase();
+    aller([...lignes.slice(i + 1), ...lignes.slice(0, i + 1)].find((x) => (x.querySelector('.libelle').textContent || '').trim().toLowerCase().startsWith(l)));
+  } else return;
+  e.preventDefault();
+  e.stopPropagation();
 }

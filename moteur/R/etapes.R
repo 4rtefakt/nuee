@@ -572,6 +572,45 @@ ETAPES_DONNEES <- list(
 # Le changement d'une demande (serveur.R) ou d'une étape rejouée : sa fonction de ETAPES_DONNEES.
 appliquer_etape <- function(nom, p, q, rejeu = NULL) ETAPES_DONNEES[[nom]]$appliquer(p, q, rejeu)
 
+# Ce que dit une étape, dans la langue de la demande qui la montre (pas celle où elle a été faite) :
+# écrit d'après sa demande et ses paramètres, qui nomment ses variables et ses observations ; une
+# demande que cette version ne connaît pas garde l'étiquette notée avec elle.
+etiquette_etape <- function(e) {
+  fr <- !identical(getOption("nuee.langue"), "en")
+  notee <- premier_texte(e$etiquette)
+  q <- tryCatch(jsonlite::fromJSON(premier_texte(e$parametres, "{}"), simplifyVector = TRUE), error = function(err) NULL)
+  if (!is.list(q)) return(notee)
+  t <- function(x) premier_texte(x)
+  liste <- function(x) {
+    x <- as.character(unlist(x))
+    x <- x[!is.na(x) & nzchar(x)]
+    paste0(paste(utils::head(x, 3), collapse = ", "), if (length(x) > 3) "…" else "")
+  }
+  g <- function(x) guillemets_texte(t(x), fr)
+  fichier <- basename(premier_texte(e$fichiers[[1]]$chemin %||% q$chemin, t(q$nom)))
+  r <- switch(t(e$demande),
+    modifier_valeur = sprintf(traduire("modification de %s (%s)", "edit of %s (%s)"), t(q$variable), cle_lisible(t(q$observation))),
+    variable_calculee = sprintf(traduire("variable %s = %s", "variable %s = %s"), t(q$nom), t(q$formule)),
+    imputer = sprintf(traduire("imputation de %s", "imputation of %s"), liste(q$variables)),
+    classes_valeurs = sprintf(traduire("variable %s, classes de %s", "variable %s, classes of %s"), t(q$nom), t(q$variable)),
+    remplacer = sprintf(traduire("remplacement de %s par %s%s", "replacement of %s with %s%s"),
+                        if (isTRUE(q$vides)) traduire("cellules vides", "empty cells") else g(q$chercher),
+                        if (nzchar(t(q$remplacer))) g(q$remplacer) else traduire("vide", "empty"),
+                        if (length(q$variables)) sprintf(traduire(" dans %s", " in %s"), liste(q$variables)) else ""),
+    categories = sprintf(traduire("catégories de %s", "categories of %s"), t(q$variable)),
+    coller_cellules = sprintf(traduire("cellules collées dans %s", "cells pasted into %s"), liste(q$variables)),
+    decrire_variables = sprintf(traduire("unités et descriptions de %s", "units and descriptions of %s"), liste(valeur_chemin(q, "descriptions$variable"))),
+    coordonnees = if (length(q$x)) sprintf(traduire("coordonnées %s et %s", "coordinates %s and %s"), t(q$x), t(q$y)) else traduire("coordonnées retirées", "coordinates removed"),
+    ajouter_colonnes = sprintf(traduire("colonnes de %s", "columns from %s"), if (!is.null(q$texte)) traduire("cellules collées", "pasted cells") else fichier),
+    ajouter_raster = sprintf(traduire("valeurs de %s", "values from %s"), liste(basename(as.character(unlist(valeur_chemin(q, "fichiers$chemin")))))),
+    classe_selection = sprintf(traduire("classe %s de %s", "class %s of %s"), g(q$etiquette), t(q$variable)),
+    baci_modele = sprintf(traduire("variables BACI (événement %s)", "BACI variables (event %s)"), t(q$evenement)),
+    scores_en_variables = sprintf(traduire("scores de %s en variables", "scores of %s as variables"), t(q$modele)),
+    kmeans_variable = sprintf(traduire("variable %s, groupes de %s", "variable %s, clusters of %s"), t(q$nom), t(q$modele)),
+    NULL)
+  r %||% notee
+}
+
 # Ce qu'une étape qui ajuste un modèle garde pour le refaire : le nom du modèle, sa définition telle
 # qu'il a été ajusté, et le projet qu'il a vu (squelette_projet), en JSON l'un et l'autre, écrits et
 # relus comme ceux d'un fichier de projet.
@@ -695,7 +734,7 @@ rejouer_etapes <- function(projet, etapes, dossier = NULL, sans_nouvelles = NULL
   resultats <- vector("list", length(etapes))
   for (k in seq_along(etapes)) {
     e <- etapes[[k]]
-    r <- list(n = k, demande = premier_texte(e$demande), etiquette = premier_texte(e$etiquette), statut = "ok", raison = "", notes = I(character(0)))
+    r <- list(n = k, demande = premier_texte(e$demande), etiquette = etiquette_etape(e), statut = "ok", raison = "", notes = I(character(0)))
     essai <- tryCatch({
       def <- ETAPES_DONNEES[[r$demande]]
       if (is.null(def)) stop(sprintf(traduire("Étape inconnue de cette version de Nuée : %s", "Step unknown to this version of Nuée: %s"), r$demande), call. = FALSE)
@@ -879,6 +918,31 @@ termes_nouvelles_categories <- function(termes, projet, uid, codes) {
   structure(garde, ajoutees = ajoutees)
 }
 
+# Celles des observations `obs` où la condition d'observations de `d` est vraie sur les données de `p`
+# (condition.R) : toutes sans condition, aucune quand elle ne se lit plus (une variable qu'elle lit
+# manque : le modèle ne se réajuste plus).
+sous_condition <- function(d, p, obs) {
+  obs <- numeros_entiers(obs)
+  if (!avec_condition(d) || !length(obs)) return(obs)
+  vraie <- tryCatch(valeurs_condition(p, texte_condition(d$condition)), error = function(e) NULL)
+  if (is.null(vraie)) return(obs[0])
+  obs[vraie[match(as.character(obs), rownames(p$donnees))] %in% TRUE]
+}
+
+# Celles des observations `obs` que le modèle de définition `d` peut prendre dans son ajustement sur les
+# données de `p` : celles qui ont une valeur de chacune de ses variables, son ajustement laissant les
+# autres de côté (une régression, la plupart des autres analyses) ; toutes pour une ACP, une PLS ou une
+# OPLS (NIPALS fait avec les valeurs manquantes), un arbre (ses variables de substitution), TRIM (il
+# impute les comptages manquants) et l'échantillonnage par distances (un transect sans détection garde
+# sa ligne). Une transformation qui rend une valeur manquante (le log de 0) n'est pas vue.
+lignes_utiles <- function(d, p, obs) {
+  obs <- numeros_entiers(obs)
+  if (!length(obs) || !sans_composantes(d) || premier_texte(d$type) %in% c("TREE", "TRIM", "DISTANCE")) return(obs)
+  vars <- Filter(function(u) as.character(u) %in% colnames(p$donnees), variables_definition(d))
+  valeurs <- do.call(cbind, lapply(vars, function(u) colonne(p, u, obs)))
+  if (is.null(valeurs)) obs else obs[stats::complete.cases(valeurs)]
+}
+
 # La catégorie de référence de la variable qualitative `uid` dans la régression de définition `d` sur
 # les données de `p` (le nom de la catégorie ; NA sans elle) : la dernière, dans l'ordre de ses termes,
 # que portent les lignes complètes de ses observations (sa condition refaite), comme l'ajustement la
@@ -887,10 +951,7 @@ reference_variable <- function(d, p, uid) {
   termes <- Filter(function(t) length(t$variables) == 1 && as.numeric(t$variables) == uid && categorie(t) != 0, d$x)
   codes <- vapply(termes, function(t) as.numeric(categorie(t)), 0)
   if (!length(codes)) return(NA_character_)
-  obs <- tryCatch(resoudre_observations(p, d)$observations, error = function(e) as.numeric(unlist(d$observations)))
-  vars <- Filter(function(u) as.character(u) %in% colnames(p$donnees), variables_definition(d))
-  valeurs <- do.call(cbind, lapply(vars, function(u) colonne(p, u, obs)))
-  if (!is.null(valeurs)) obs <- obs[stats::complete.cases(valeurs)]
+  obs <- lignes_utiles(d, p, tryCatch(resoudre_observations(p, d)$observations, error = function(e) d$observations))
   x <- colonne(p, uid, obs)
   presentes <- codes[codes %in% x]
   if (!length(presentes)) return(NA_character_)
@@ -1160,10 +1221,25 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     ids <- intersect(identifiants_definition(d, actuel), id_absents)
     if (length(u) || length(ids)) list(nom = premier_texte(d$name), numero = d$number, variables = I(c(vapply(Filter(function(v) uid(v) %in% u, parties), nom, ""), ids)))
   }))
-  choisies <- Filter(Negate(is.null), lapply(actuel$models, function(d) {
-    admises <- nouvelles_admises(d, actuel, uo_a)
-    dedans <- as.numeric(unlist(c(if (avec_condition(d)) d$cochees %||% d$observations else d$observations, d$test)))
-    if (length(setdiff(admises, dedans))) list(nom = premier_texte(d$name), numero = d$number, observations = length(intersect(dedans, uo_a)), admises = length(admises))
+  # (les modèles qui ont laissé de côté des lignes qu'ils pouvaient prendre, à qui le fichier en apporte
+  # de nouvelles qu'ils pourraient prendre : on leur demande s'ils les prennent. Sont comptées les
+  # lignes qu'un modèle peut vraiment ajuster : celles qu'il admet (nouvelles_admises), sous sa
+  # condition, avec une valeur de chacune de ses variables quand son ajustement laisse les autres de
+  # côté (lignes_utiles) ; une ligne qu'il n'aurait pas pu prendre ne compte pas comme laissée de
+  # côté. `observations` : celles qu'il ajuste ; `admises` : celles qu'il pouvait ajuster, hors de son
+  # jeu de test ; `nouvelles` : celles du fichier qu'il ajusterait, sur les données mises à jour. Des
+  # groupes de validation croisée d'un fichier .usp n'en prennent pas : sans_nouvelles les dit.)
+  utiles <- function(d, p, obs) lignes_utiles(d, p, sous_condition(d, p, obs))
+  choisies <- Filter(Negate(is.null), lapply(seq_along(actuel$models), function(i) {
+    d <- actuel$models[[i]]
+    if (identical(premier_texte(d$groupes_vc$by), "groups")) return(NULL)
+    cochees <- numeros_entiers(if (avec_condition(d)) d$cochees %||% d$observations else d$observations)
+    test <- numeros_entiers(d$test)
+    prises <- utiles(d, actuel, cochees)
+    possibles <- union(prises, setdiff(utiles(d, actuel, nouvelles_admises(d, actuel, uo_a)), test))
+    if (!length(setdiff(possibles, c(cochees, test)))) return(NULL)
+    nouvelles <- utiles(p$models[[i]], p, nouvelles_admises(p$models[[i]], p, ajoutees))
+    if (length(nouvelles)) list(nom = premier_texte(d$name), numero = d$number, observations = length(prises), admises = length(possibles), nouvelles = length(nouvelles))
   }))
   sans <- vapply(Filter(function(d) !prend(d) || identical(premier_texte(d$groupes_vc$by), "groups"), actuel$models), function(d) premier_texte(d$name), "")
   rapport <- list(

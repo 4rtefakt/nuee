@@ -1,7 +1,7 @@
 // Command palette (Ctrl+K): every item of the menus, found by typing part of its name or of
 // its menu's ("vip", "export r", "anglais"), run with Enter or a click.
 import { t } from './i18n.js';
-import { el, icone } from './ui.js';
+import { el, icone, majInert } from './ui.js';
 import { menus } from './commandes.js';
 
 // "Exporter vers R" and "exporter vers r" alike, accents too
@@ -20,12 +20,20 @@ export function ouvrirPalette(app, C) {
   };
   for (const d of menus(app, C)) parcourir(d.items(), [t(d.cle)]);
 
+  // (for screen readers: a combobox whose list's current item, the one Enter runs, is its
+  // aria-activedescendant; the window behind is inert while it is open, ui.js: majInert)
+  const avant = document.activeElement;
   const fond = el('div', { class: 'fond-dialogue palette-fond' });
-  const saisie = el('input', { type: 'search', class: 'palette-saisie', placeholder: t('palette_aide') });
-  const liste = el('div', { class: 'palette-liste', role: 'listbox' });
+  const saisie = el('input', { type: 'search', class: 'palette-saisie', placeholder: t('palette_aide'), role: 'combobox', 'aria-label': t('chercher_commande'),
+    'aria-expanded': 'true', 'aria-controls': 'palette-liste', 'aria-autocomplete': 'list' });
+  const liste = el('div', { class: 'palette-liste', role: 'listbox', id: 'palette-liste', 'aria-label': t('chercher_commande') });
   let trouvees = [];
   let rang = 0;
-  const fermer = () => fond.remove();
+  const fermer = () => {
+    fond.remove();
+    majInert();
+    if (avant && avant !== document.body && avant.isConnected) avant.focus();  // (the keyboard back where it was, then the command)
+  };
   const lancer = (x) => {
     if (!x || x.actif === false) return;
     fermer();
@@ -38,20 +46,24 @@ export function ouvrirPalette(app, C) {
     trouvees = [...trouvees.filter(debut), ...trouvees.filter((x) => !debut(x))];  // names that start with the text first
     rang = Math.min(rang, Math.max(0, trouvees.length - 1));
     liste.replaceChildren(...(trouvees.length ? trouvees.map((x, i) => el('div', {
-      class: 'palette-item' + (i === rang ? ' actuel' : '') + (x.actif === false ? ' inactif' : ''), role: 'option',
+      class: 'palette-item' + (i === rang ? ' actuel' : '') + (x.actif === false ? ' inactif' : ''), role: 'option', id: `palette-${i}`,
+      'aria-selected': String(i === rang), 'aria-disabled': x.actif === false ? 'true' : null,
       onmousedown: (e) => e.preventDefault(), onmousemove: () => { if (rang !== i) marquer(i); }, onclick: () => lancer(x) },
     el('span', { class: 'palette-icone' }, x.coche ? icone('check') : x.icone ? icone(x.icone) : null),
     el('span', { class: 'palette-libelle' }, x.libelle), el('span', { class: 'palette-chemin' }, x.chemin),
-    el('span', { class: 'raccourci' }, x.raccourci || ''))) : [el('p', { class: 'infos' }, t('palette_rien'))]));
+    el('span', { class: 'raccourci' }, x.raccourci || ''))) : [el('p', { class: 'infos', role: 'status' }, t('palette_rien'))]));
+    if (trouvees.length) saisie.setAttribute('aria-activedescendant', `palette-${rang}`); else saisie.removeAttribute('aria-activedescendant');
   };
   const marquer = (i) => {  // the item Enter runs
     rang = i;
-    liste.querySelectorAll('.palette-item').forEach((d, k) => d.classList.toggle('actuel', k === i));
+    liste.querySelectorAll('.palette-item').forEach((d, k) => { d.classList.toggle('actuel', k === i); d.setAttribute('aria-selected', String(k === i)); });
+    saisie.setAttribute('aria-activedescendant', `palette-${i}`);
   };
   saisie.addEventListener('input', () => { rang = 0; rendre(); });
   saisie.addEventListener('keydown', (e) => {
     e.stopPropagation();
     if (e.key === 'Escape') fermer();
+    else if (e.key === 'Tab') e.preventDefault();  // (the palette is its field and its list: the keyboard stays)
     else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!trouvees.length) return;
@@ -60,7 +72,7 @@ export function ouvrirPalette(app, C) {
     } else if (e.key === 'Enter') { e.preventDefault(); lancer(trouvees[rang]); }
   });
   fond.addEventListener('mousedown', (e) => { if (e.target === fond) fermer(); });
-  fond.append(el('div', { class: 'palette', role: 'dialog' }, saisie, liste));
+  fond.append(el('div', { class: 'palette', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('chercher_commande') }, saisie, liste));
   document.body.append(fond);
   rendre();
   saisie.focus();

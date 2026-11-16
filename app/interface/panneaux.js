@@ -2,9 +2,15 @@
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
 import { t, lire, ecrire, langueActuelle, libelleResultat, deuxPoints, separateurIntervalle, pourcent } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
+import { grilleClavier, decrireGraphe } from './accessibilite.js';
 
+// The default palette stays apart under the common colour-vision deficiencies (Machado et al. 2009's
+// protanopia, deuteranopia and tritanopia): every pair at least 5.9 in CIEDE2000, the first four 9.9.
+// Its red, green, orange, purple and pink moved as little as that needed (CIEDE2000 4.0, 4.4, 2.3, 3.0
+// and 2.0 from #d1495b, #3b9a5b, #e09f3e, #7b5ea7, #c2549d), where red and green were 1.6 apart for
+// deuteranopes; the others are as they were. Okabe & Ito's is the one made for it.
 export const PALETTES = {
-  defaut: ['#2f6fb5', '#d1495b', '#3b9a5b', '#e09f3e', '#7b5ea7', '#2a9d8f', '#8c564b', '#c2549d', '#6b6b6b', '#a3a322'],
+  defaut: ['#2f6fb5', '#e24b5a', '#35905f', '#e0a451', '#795b99', '#2a9d8f', '#8c564b', '#bd5d9d', '#6b6b6b', '#a3a322'],
   daltonien: ['#0072b2', '#e69f00', '#009e73', '#d55e00', '#cc79a7', '#56b4e9', '#f0e442', '#000000'],  // Okabe & Ito
   gris: ['#000000', '#7a7a7a', '#b5b5b5', '#3d3d3d', '#9a9a9a', '#5c5c5c'],
 };
@@ -119,6 +125,7 @@ export function tracer(ctx, div, traces, layout = {}) {
     responsive: true, displaylogo: false, scrollZoom: true,
     modeBarButtonsToRemove: ['toImage', 'autoScale2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'],
   });
+  decrireGraphe(div, traces, lay);  // (its text for screen readers, and the keyboard's stop: accessibilite.js)
   if (!div._observe) {
     div._observe = new ResizeObserver(() => { if (div.offsetWidth) window.Plotly.Plots.resize(div); });
     div._observe.observe(div);
@@ -344,6 +351,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     if (couleur) td.style.boxShadow = `inset 4px 0 0 ${couleur}`;
     if (modifier && c.modifiable) {
       td.title = aideCellule || t('double_clic_modifier');
+      td.setAttribute('aria-readonly', 'false');  // (the keyboard edits it with Enter or F2: accessibilite.js)
       td.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         const initial = texteValeur(v);
@@ -368,14 +376,16 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     }
     return td;
   };
+  const tri = (c) => (loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? 'ascending' : 'descending') : null);
   const tete = el('tr', {}, colonnes.map((c) => el('th', {
-    class: (c.num ? 'num' : '') + (loc.tri && loc.tri.cle === c.cle ? ' trie' : ''), title: c.info || null,
+    class: (c.num ? 'num' : '') + (loc.tri && loc.tri.cle === c.cle ? ' trie' : ''), title: c.info || null, 'aria-sort': tri(c),
     onclick: () => { loc.tri = { cle: c.cle, sens: loc.tri && loc.tri.cle === c.cle ? -loc.tri.sens : 1 }; ctx.rafraichir(); },
     oncontextmenu: menuColonne ? (e) => { e.preventDefault(); e.stopPropagation(); menuColonne(c, e); } : null },
-  c.titre, loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? ' ▲' : ' ▼') : '',
+  c.titre || (c.lecteur ? el('span', { class: 'lecteur-seul' }, c.lecteur) : ''), tri(c) ? el('span', { 'aria-hidden': 'true' }, tri(c) === 'ascending' ? ' ▲' : ' ▼') : '',
   c.sousTitre ? el('span', { class: 'sous-titre' }, c.sousTitre) : null)));
   const ligne = (i) => el('tr', {
     class: (uid && sel.has(uid(i))) || (choisie && choisie(i)) ? 'choisie' : '',
+    'aria-selected': uid || cliquer ? String(!!((uid && sel.has(uid(i))) || (choisie && choisie(i)))) : null,
     onclick: uid ? () => {
       const s = new Set(ctx.selection(idModele));
       const u = uid(i);
@@ -389,12 +399,16 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
   const tranche = Math.max(50, Math.ceil(CELLULES_TRANCHE / colonnes.length));
   let dessinees = Math.min(tranche, montrees.length);
   const corps = el('tbody', {}, montrees.slice(0, dessinees).map(ligne));
-  const defile = el('div', { class: 'defile' }, el('table', { class: 'tableau' }, el('thead', {}, tete), corps));
+  const table = el('table', { class: 'tableau', 'aria-rowcount': montrees.length + 1, 'aria-readonly': modifier ? null : 'true' }, el('thead', {}, tete), corps);
+  const defile = el('div', { class: 'defile' }, table);
+  const plus = () => {
+    if (dessinees >= montrees.length) return false;
+    corps.append(...montrees.slice(dessinees, dessinees + tranche).map(ligne));
+    dessinees += tranche;
+    return true;
+  };
   const suite = () => {
-    while (dessinees < montrees.length && defile.clientHeight && defile.scrollTop + defile.clientHeight > defile.scrollHeight - 600) {
-      corps.append(...montrees.slice(dessinees, dessinees + tranche).map(ligne));
-      dessinees += tranche;
-    }
+    while (defile.clientHeight && defile.scrollTop + defile.clientHeight > defile.scrollHeight - 600 && plus()) { /* the next slice */ }
   };
   defile.addEventListener('scroll', suite, { passive: true });
   const copier = () => {
@@ -413,6 +427,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
       el('button', { class: 'icone-seule', title: t('copier_tableau'), onclick: copier }, icone('copy'))),
     defile);
   requestAnimationFrame(suite);  // (a tall panel shows more than the first slice)
+  grilleClavier(table, loc, plus);  // (the keyboard from cell to cell: accessibilite.js)
   if (loc.focus) { filtre.focus(); filtre.setSelectionRange(filtre.value.length, filtre.value.length); }
   filtre.addEventListener('focus', () => { loc.focus = true; });
   filtre.addEventListener('blur', () => { loc.focus = false; });
@@ -1287,7 +1302,7 @@ function rendreListeVars(conteneur, ctx, p, loc) {
     return k in y ? y[k][i - nx] : null;
   };
   const choisies = new Set(ctx.variablesChoisies(m.id));
-  tableau(conteneur, ctx, loc, { n: nx + ny, nom: 'Table', colonnes: [{ cle: 'terme', titre: t('variables') }, { cle: 'bloc', titre: '' }]
+  tableau(conteneur, ctx, loc, { n: nx + ny, nom: 'Table', colonnes: [{ cle: 'terme', titre: t('variables') }, { cle: 'bloc', titre: '', lecteur: t('bloc') }]
     .concat(cles.map((k) => ({ cle: k, titre: k.replace(/_IC$/, ' IC').replace('_cum', '(cum)') }))), valeur: val,
     choisie: (i) => choisies.has(val(i, 'terme')),
     cliquer: (i) => {  // a row highlights its variable on the model's graphs
@@ -1362,7 +1377,7 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
   }
   tableau(conteneur, ctx, loc, {
     n: d.observations.length, nom: 'Table', avant, menuColonne, aideCellule: t('atelier_aide_cellule'),
-    colonnes: [{ cle: -1, titre: '' }].concat(k.map(colonne)),
+    colonnes: [{ cle: -1, titre: '', lecteur: t('nom_obs') }].concat(k.map(colonne)),
     valeur: (i, j) => (j === -1 ? d.observations[i] : d.valeurs[j][i]),
     modifier: (i, j, texte) => ctx.modifierValeur(p.projet, d.uid_observations[i], d.uid_variables[j], texte),
   });
@@ -1388,14 +1403,23 @@ function collerCellules(conteneur, ctx, p, loc, d) {
   marquer();
   if (conteneur._collage) return;
   conteneur._collage = true;
+  const ancrer = (td) => {
+    const cle = conteneur._colonnes[td.cellIndex];
+    if (cle === -1 || cle === undefined) return false;
+    loc.ancre = { i: conteneur._lignes[td.parentElement.sectionRowIndex], cle };
+    marquer();
+    return true;
+  };
   conteneur.addEventListener('click', (e) => {
     const td = e.target.closest('tbody td');
     if (!td || !td.closest('.tableau') || e.target.closest('input')) return;
-    const cle = conteneur._colonnes[td.cellIndex];
-    if (cle === -1 || cle === undefined) return;
-    loc.ancre = { i: conteneur._lignes[td.parentElement.sectionRowIndex], cle };
-    marquer();
-    conteneur.focus({ preventScroll: true });
+    // (a cell the keyboard is on keeps it: Ctrl+V reaches the view from there too)
+    if (ancrer(td) && document.activeElement !== td) conteneur.focus({ preventScroll: true });
+  });
+  // (the keyboard going from cell to cell: accessibilite.js, grilleClavier)
+  conteneur.addEventListener('focusin', (e) => {
+    const td = e.target.matches && e.target.matches('tbody td') ? e.target : null;
+    if (td && td.closest('.tableau')) ancrer(td);
   });
   conteneur._collerCellules = async () => {
     const ld = loc.d;
@@ -2723,7 +2747,8 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
   const idx = termes.map((_, i) => i).filter((i) => termes[i] !== '(Intercept)');
   tracer(ctx, graphe, [{ type: 'scatter', mode: 'markers', y: idx.map((i) => termes[i]), x: idx.map((i) => est[i]),
     error_x: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: '#888', thickness: 1.5 },
-    marker: { size: 9, color: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? '#d1495b' : PALETTE[0])) },
+    // (p ≤ 0.05 filled and red, the others open: not by colour alone)
+    marker: { size: 9, color: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? '#d1495b' : PALETTE[0])), symbol: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? 'circle' : 'circle-open')) },
     customdata: idx.map((i) => [fmt(bas[i], 4), fmt(haut[i], 4), valeurP(pv[i])]),
     hovertemplate: `<b>%{y}</b><br>%{x:.4f} [%{customdata[0]}${separateurIntervalle()}%{customdata[1]}]<br>p = %{customdata[2]}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('coefficients')} ${m.noms_y[0]}` }, dragmode: 'zoom', showlegend: false,
@@ -3512,7 +3537,7 @@ function rendreComparaison(conteneur, ctx, p, loc) {
       ['R2Y', 'R2Y(cum)'], ['Q2', 'Q2(cum)'], ['RMSEE', 'RMSEE'], ['RMSEcv', 'RMSEcv']]
       .concat(regressions ? [['R2', t('r2_regression')], ['ensemble', t('ensemble_aic')], ['AIC', 'AIC'], ['dAIC', 'ΔAIC'], ['poids', t('poids_akaike')]] : [],
         [['sR2X', `R2X(cum) ${t('stocke')}`], ['sR2Y', `R2Y(cum) ${t('stocke')}`], ['sQ2', `Q2(cum) ${t('stocke')}`]])
-      .map(([cle, titre]) => ({ cle, titre, decimales: ['A', 'N', 'K'].includes(cle) ? 0 : undefined })),
+      .map(([cle, titre]) => ({ cle, titre, lecteur: cle === 'nom' ? t('nom') : undefined, decimales: ['A', 'N', 'K'].includes(cle) ? 0 : undefined })),
     valeur: (i, k) => (typeof lignes[i][k] === 'number' && !['A', 'N', 'K'].includes(k) ? Number(lignes[i][k].toFixed(4)) : lignes[i][k]),
   });
   rendreEmboites(emboites, ctx, loc, lignes);
@@ -3680,7 +3705,7 @@ function rendreCVANOVA(conteneur, ctx, p) {
     Object.entries(m.cv_anova || {}).map(([y, a]) => el('section', {},
       el('h4', { class: 'titre-section' }, `CV-ANOVA · ${y}`),
       el('table', { class: 'tableau compact' },
-        el('thead', {}, el('tr', {}, ['', 'SS', 'DF', 'MS', 'F', 'p', 'SD'].map((h, k) => el('th', { class: k ? 'num' : '' }, h)))),
+        el('thead', {}, el('tr', {}, ['', 'SS', 'DF', 'MS', 'F', 'p', 'SD'].map((h, k) => el('th', { class: k ? 'num' : '' }, h || el('span', { class: 'lecteur-seul' }, t('source')))))),
         el('tbody', {}, a.source.map((_, i) => el('tr', {}, el('td', {}, t('anova_' + i)),
           el('td', { class: 'num' }, fmt(a.SS[i], 3)), el('td', { class: 'num' }, a.DF[i]), el('td', { class: 'num' }, fmt(a.MS[i], 4)),
           el('td', { class: 'num' }, a.F[i] === null ? '' : fmt(a.F[i], 3)), el('td', { class: 'num' }, pf(a.p[i])),

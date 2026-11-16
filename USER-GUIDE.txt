@@ -185,7 +185,19 @@ File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:
   Esc    clear the selection       Ctrl+Del exclude the selection and refit
   Ctrl+Shift+N new window          Ctrl+Shift+D detach the panel    Ctrl+W close the panel
   Ctrl+B explorer          F1 guide
+  Ctrl+Tab / Ctrl+Shift+Tab next / previous tab      F6 / Shift+F6 next / previous area
 View: dark theme, French / English, text size.
+Keyboard and screen readers: Alt (or F10) goes to the menu bar, the arrows through its menus,
+Enter runs a command, Esc goes back; Alt with a menu's underlined letter opens it (Alt+F
+File...). F6 goes from area to area (toolbar, explorer, each group of panels, status bar),
+Ctrl+Tab from tab to tab; on a tab, the arrows and Delete. The explorer is a tree (arrows;
+Enter opens, Space chooses), a table a grid (arrows; Enter or F2 edits a cell, Space chooses a
+row, Enter on a header sorts). Shift+F10 or the menu key gives the menu of what has the
+keyboard (a node, a row, a column, a tab, a plot). A plot is named by what it shows for screen
+readers, and Ctrl+C copies its numbers as a table. Dialogs keep the keyboard until they close.
+Both themes meet WCAG AA contrast and follow the system's "reduce motion" setting; Format plot
+› Colours "colour-blind safe" (Okabe-Ito) is made for colour-vision deficiencies, and the
+default colours stay apart for them too.
 
 New model (Model › New model)
 -----------------------------

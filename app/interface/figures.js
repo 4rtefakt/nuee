@@ -712,6 +712,9 @@ function creerComposeur(app, conteneur, pid, f) {
     if (generation !== s.generation || s.ferme) return;
     const url = URL.createObjectURL(new Blob([composerSVG(c)], { type: 'image/svg+xml' }));
     image.src = url;
+    // (for screen readers: the figure's title, then each panel by its letter)
+    image.alt = [s.titre || t('figure_sans_titre'), ...[...reglages.querySelectorAll('.ligne-panneau')]
+      .map((l) => [l.querySelector('.lettre-panneau'), l.querySelector('.nom-panneau')].map((x) => (x ? x.textContent.trim() : '')).filter(Boolean).join(' '))].join(' — ');
     if (s.url) URL.revokeObjectURL(s.url);
     s.url = url;
     image.style.width = `${(c.largeur * 96) / 25.4}px`;

@@ -2237,11 +2237,25 @@ async function principal() {
       const m = await api('ajuster', { projet: q.id, type: 'LM', x: [v.x], y: [v.y], nom: 'L' });
       let e = await api('etapes', { projet: q.id });
       verifier(e.source && e.source.existe && e.source.modifie === false && e.source.lecteur === 'tableau' && e.source.chemin.endsWith('releves.csv')
-        && e.etapes.length === 2 && e.etapes[0].demande === 'modifier_valeur' && e.etapes[1].etiquette === 'variable xy' && e.conformes === true,
+        && e.etapes.length === 2 && e.etapes[0].demande === 'modifier_valeur' && e.etapes[1].demande === 'variable_calculee' && e.conformes === true,
       `etapes : ${JSON.stringify(e)}`);
+      // whether a project has a source, in its summary; etapes without the data's fingerprint
+      const leger = await api('etapes', { projet: q.id, conformes: false });
+      verifier(q.a_source === true && (await api('projet', { projet: p.id })).a_source === true && !('conformes' in leger) && leger.etapes.length === 2,
+        `a_source : ${q.a_source} ; etapes sans empreinte : ${JSON.stringify(Object.keys(leger))}`);
+      // each step's label written in the language of the request that shows it
+      const en = await api('etapes', { projet: q.id, conformes: false }, 'en');
+      verifier(e.etapes[0].etiquette === 'modification de x (r2)' && en.etapes[0].etiquette === 'edit of x (r2)' && en.etapes[1].etiquette === 'variable xy = x * y',
+        `étiquettes : ${e.etapes[0].etiquette} ; ${en.etapes.map((x) => x.etiquette).join(' | ')}`);
       fs.writeFileSync(releves, ['y,nom,x,zone', ...lignes(8).map((l) => [l[3], l[0], l[2], l[1]].join(','))].join('\n'));
       e = await api('etapes', { projet: q.id });
       verifier(e.source.modifie === true && e.source.actuel.taille !== e.source.taille, `le fichier changé : ${JSON.stringify(e.source)}`);
+      // removing a step would also bring in the changed file's rows: refused (source_modifiee), unless it is a preview
+      const retrait = await fetch(`http://127.0.0.1:${port}/api/retirer_etape`, { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ projet: q.id, n: 1 }) });
+      const jr = await retrait.json();
+      verifier(retrait.status === 400 && jr.source_modifiee === true && /aperçu/.test(jr.erreur), `retrait d'une source changée : HTTP ${retrait.status} ${JSON.stringify(jr)}`);
+      const ar = await api('retirer_etape', { projet: q.id, n: 1, apercu: true });
+      verifier(ar.apercu === true && ar.observations.ajoutees === 2 && ar.etapes.length === 1 && !ar.projet, `aperçu du retrait : ${JSON.stringify(ar.observations)}`);
       const a = await api('mettre_a_jour', { projet: q.id, apercu: true });
       verifier(a.apercu === true && a.observations.ajoutees === 2 && a.observations.retirees === 0 && [].concat(a.observations.premieres_ajoutees).join() === 'r7,r8'
         && a.etapes.length === 2 && a.etapes.every((x) => x.statut === 'ok') && !a.projet && a.modeles.variables_absentes.length === 0,

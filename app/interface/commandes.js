@@ -2,6 +2,7 @@
 // keyboard shortcuts. `app` is the main window object built in app.js.
 import { t, langueActuelle } from './i18n.js';
 import { vuesDe } from './explorateur.js';
+import { dialogueComptesEssai } from './connexion.js';
 
 export function creerCommandes(app) {
   const m = () => app.modeleActif();
@@ -116,6 +117,11 @@ export function creerCommandes(app) {
     nouvelle_fenetre: { icone: 'app-window', raccourci: 'Ctrl+Shift+N', action: () => app.nouvelleFenetre() },
     detacher: { icone: 'external-link', raccourci: 'Ctrl+Shift+D', actif: () => !!app.panneauActif(), action: () => app.detacher() },
     fermer_panneau: { raccourci: 'Ctrl+W', actif: () => !!app.panneauActif(), action: () => app.fermerPanneau() },
+    // the keyboard from tab to tab of the group in use, and from area to area (app.js; accessibilite.js's strings)
+    onglet_suivant: { raccourci: 'Ctrl+Tab', action: () => app.ongletVoisin(1) },
+    onglet_precedent: { raccourci: 'Ctrl+Shift+Tab', action: () => app.ongletVoisin(-1) },
+    region_suivante: { raccourci: 'F6', action: () => app.regionVoisine(1) },
+    region_precedente: { raccourci: 'Shift+F6', action: () => app.regionVoisine(-1) },
     reinitialiser: { icone: 'layout-dashboard', action: () => app.reinitialiser() },
 
     chercher_commande: { icone: 'search', raccourci: 'Ctrl+K', action: () => app.palette() },
@@ -131,6 +137,8 @@ export function creerCommandes(app) {
     maj_auto: { coche: () => app.majAuto() === true, action: () => app.basculerMajAuto() },
     chercher_maj: { icone: 'refresh-ccw-dot', action: () => app.chercherMiseAJour() },
     diagnostic: { icone: 'stethoscope', action: () => app.diagnostic() },
+    // (temporary, to try signing in until the History and sharing screens offer it: connexion.js)
+    comptes_essai: { icone: 'log-in', actif: () => !!(app.bureau && app.bureau.comptes), action: () => dialogueComptesEssai(app) },
     projet_exemple: { icone: 'apple', action: () => app.ouvrirExemple() },
     redemarrer_moteur: { icone: 'refresh-cw', actif: () => !!app.bureau, action: () => app.confirmerRedemarrage() },
     differences: { action: () => app.aide('differences') },
@@ -181,13 +189,14 @@ export function menus(app, C) {
       it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series'), it('carte'), it('autocorrelation_spatiale'), it('rarefaction'),
       '-', it('figure_composer')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
-    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
+    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('onglet_suivant'), it('onglet_precedent'),
+      it('region_suivante'), it('region_precedente'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },
     { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
     { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
-      .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), '-', it('apropos')]) },
+      .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), it('comptes_essai'), '-', it('apropos')]) },
   ];
 }
 
