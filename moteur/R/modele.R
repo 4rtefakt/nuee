@@ -63,6 +63,12 @@ calculer_modele <- function(projet, definition, A = definition$A, G = definition
   bx <- cote_x$bx
   X <- cote_x$X
   by <- if (pls) construire_bloc(projet, definition$y, obs, poids, facteurs = bx$simples)
+  # (des Y sans aucune valeur parmi ces observations : rien à prédire, que trop_de_composantes dirait
+  # « sans variation » ; un Y vide parmi d'autres reste permis, le NIPALS prend les autres)
+  if (pls && ncol(by$X) && all(is.na(by$X))) {
+    stop(sprintf(traduire("Aucune valeur de « %s » parmi les observations du modèle : il n'y a pas de Y à prédire.", "No value of “%s” among the model's observations: there is no Y to predict."),
+                 paste(by$noms, collapse = traduire(" », « ", "”, “"))), call. = FALSE)
+  }
   # PLS-DA venant d'un fichier .usp : ses classes s'appellent $M1.DA1... ; usp_extract a retrouvé leur
   # nom quand une variable qualitative les définit, par exemple « $M1.DA1 (variete=Gala) »
   noms_y <- definition[["reference"]][["ynames"]]

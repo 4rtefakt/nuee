@@ -436,6 +436,8 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (nzchar(condition)) obs <- observations_condition(projet, condition, cochees)
   Ap <- if (opls) (if (plsda) length(unique(colonne(projet, classe, obs))) - 1 else length(y))
   if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
+  # (une seule classe : son Y est constant, que trop_de_composantes dirait « sans variation »)
+  if (plsda && !opls && length(unique(colonne(projet, classe, obs))) < 2) stop(traduire("Une PLS-DA demande au moins deux classes", "A PLS-DA needs at least two classes"), call. = FALSE)
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   regression <- type %in% REGRESSIONS
   # (une régression : les facteurs de ses termes croisés qui ne sont pas en X, sans effet principal)
