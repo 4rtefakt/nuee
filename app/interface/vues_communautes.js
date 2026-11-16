@@ -94,9 +94,12 @@ function rendreOrdinationDist(conteneur, ctx, p, loc) {
   if (loc.especes && nomsE.length) {
     const xe = col(m.especes, a);
     const ye = y(col(m.especes, b));
+    // (the species in the theme's grey: a palette colour would be one of the sites' categories, the
+    // second's red)
+    const gris = couleursTheme(ctx).doux;
     traces.push({ type: 'scatter', mode: nomsE.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: t('com_especes'), x: xe, y: ye, text: nomsE,
-      meta: 'variables', customdata: nomsE, textposition: 'top center', textfont: { size: 10, color: PALETTE[1] },
-      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
+      meta: 'variables', customdata: nomsE, textposition: 'top center', textfont: { size: 10, color: gris },
+      marker: { color: gris, symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xe.filter(Number.isFinite)); etendue[1].push(...ye.filter(Number.isFinite));
   }
   const nomsC = liste(aj && aj.centroides && aj.centroides.terme);

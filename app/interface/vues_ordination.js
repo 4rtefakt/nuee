@@ -83,9 +83,12 @@ function rendreOrdination(conteneur, ctx, p, loc) {
   if (loc.reponses && nomsR.length) {
     const xr = col(o.reponses, a);
     const yr = y(col(o.reponses, b));
+    // (the responses, species, in the theme's grey: a palette colour would be one of the sites'
+    // categories, the second's red)
+    const gris = couleursTheme(ctx).doux;
     traces.push({ type: 'scatter', mode: nomsR.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: nomReponses,
-      x: xr, y: yr, text: nomsR, meta: 'variables', customdata: nomsR, textposition: 'top center', textfont: { size: 10, color: PALETTE[1] },
-      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
+      x: xr, y: yr, text: nomsR, meta: 'variables', customdata: nomsR, textposition: 'top center', textfont: { size: 10, color: gris },
+      marker: { color: gris, symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xr); etendue[1].push(...yr);
   }
   const nomsC = liste(o.noms_centroides);
