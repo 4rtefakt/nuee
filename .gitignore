@@ -7,7 +7,8 @@ extracted/
 # downloaded libraries and build outputs
 app/node_modules/
 app/interface/vendor/
-outils/
+outils/*
+!outils/exemple_client.py
 dist/
 __pycache__/
 
