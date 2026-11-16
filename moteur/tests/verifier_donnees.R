@@ -209,6 +209,14 @@ verifier("un retour en arrière : rien à rapporter", identical(aligner_categori
 verifier("un nom changé : à ajuster à nouveau, et le message le dit", grepl("ont changé depuis l'ajustement de M1", attr(aligner_categories(r3, d_lm, vues), "perimee") %||% ""))
 pq <- remplacer_valeurs(p4, u4("habitat"), vides = TRUE, remplacer = "inconnue")
 verifier("une catégorie ajoutée : rien ne change pour le modèle", is.null(attr(aligner_categories(pq, d_lm, vues), "perimee")))
+# (la classe d'une LDA, d'un arbre de classement, d'espèces indicatrices… n'est pas faite de termes)
+d_lda <- definir_modele(p4, "LDA", x = u4("altitude", "densite"), classe = u4("habitat"), observations = obs, echelle = "UV")
+vues_lda <- categories_definition(p4, d_lda)
+verifier("la classe d'une LDA : ses catégories gardées avec le modèle ; un nom changé ou une fusion, à ajuster à nouveau ; un nouvel ordre, rapporté",
+         identical(vues_lda[[as.character(u4("habitat"))]], c("forêt", "lande", "prairie")) &&
+           grepl("ont changé depuis l'ajustement", attr(aligner_categories(r3, d_lda, vues_lda), "perimee") %||% "") &&
+           grepl("ont changé depuis l'ajustement", attr(aligner_categories(r2, d_lda, vues_lda), "perimee") %||% "") &&
+           is.null(attr(aligner_categories(r1, d_lda, vues_lda), "perimee")))
 d_pls <- definir_modele(p4, "PLS", x = u4("habitat", "altitude"), y = u4("densite"), observations = obs, A = 1)
 p4b <- p4
 p4b$models <- list(d_pls)

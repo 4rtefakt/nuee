@@ -446,12 +446,16 @@ suivre_condition <- function(texte, nom, renommer) {
 
 # Les catégories des variables qualitatives d'une définition, telles qu'elles sont dans le projet
 # (gardées avec un modèle de la séance quand il est ajusté : serveur.R, ajuster_et_garder), par
-# numéro de variable ; une liste vide sans variable qualitative.
+# numéro de variable ; une liste vide sans variable qualitative. Sa classe aussi (d$classe : une
+# LDA, un arbre ou une forêt de classement, des espèces indicatrices, la classe d'une PERMANOVA),
+# qui n'est pas faite de termes : un nom changé ou une fusion de ses catégories le rend à ajuster à
+# nouveau, comme pour une variable X.
 categories_definition <- function(projet, d) {
-  uids <- unique(unlist(lapply(c(d$x, d$y, d$termes_complets), function(t) {
+  classe <- as.numeric(d$classe)
+  uids <- unique(c(unlist(lapply(c(d$x, d$y, d$termes_complets), function(t) {
     vs <- as.numeric(t$variables)
     vs[vapply(seq_along(vs), function(j) categorie(t, j) != 0, TRUE)]
-  })))
+  })), classe[!is.na(classe)]))
   vus <- lapply(uids, function(u) {
     v <- tryCatch(variable_du_projet(projet, u), error = function(e) NULL)
     as.character(v$categories %||% character(0))
