@@ -614,8 +614,12 @@ POIDS_GROUPES_RESULTATS <- c(ajustement = 1, estimations = 1, tests = 1, aleatoi
 entrees_recues <- function(x) {
   if (is.list(x) && !is.data.frame(x) && is.null(x$cle) && !is.null(x$entrees)) x <- x$entrees
   if (is.null(x) || !length(x)) return(list())
-  if (is.data.frame(x)) x <- lapply(seq_len(nrow(x)), function(i) lapply(as.list(x[i, , drop = FALSE]), function(v) if (is.list(v)) v[[1]] else v))
-  else if (!is.null(x$cle)) x <- list(x)
+  # (une entrée par ligne, lue colonne par colonne : extraire les lignes d'un data.frame une à une
+  # prendrait des secondes pour les milliers de loadings d'une ACP de spectres)
+  if (is.data.frame(x)) {
+    colonnes <- as.list(x)
+    x <- lapply(seq_len(nrow(x)), function(i) lapply(colonnes, function(v) if (is.list(v)) v[[i]] else v[i]))
+  } else if (!is.null(x$cle)) x <- list(x)
   texte <- function(v) {
     v <- as.character(unlist(v))
     if (length(v) && !is.na(v[1]) && nzchar(v[1])) v[1]
@@ -635,15 +639,15 @@ entrees_recues <- function(x) {
   }))
 }
 
-# L'ordre des entrées comparées : celui d'après, chaque entrée disparue placée après celle qui la
-# précédait avant.
+# L'ordre des entrées comparées : celui d'après, chaque entrée disparue placée après la dernière
+# entrée qui la précédait avant et qui reste après (au début sans elle), les disparues dans leur ordre.
 ordre_comparaison <- function(avant, apres) {
-  cles <- apres
-  for (k in setdiff(avant, apres)) {
-    precedentes <- intersect(rev(avant[seq_len(match(k, avant) - 1)]), cles)
-    cles <- append(cles, k, after = if (length(precedentes)) match(precedentes[1], cles) else 0)
-  }
-  cles
+  restent <- avant %in% apres
+  if (all(restent)) return(apres)
+  derniere <- cummax(ifelse(restent, seq_along(avant), 0))
+  ou <- ifelse(derniere > 0, match(avant[pmax(derniere, 1)], apres), 0)
+  parties <- !restent
+  c(apres, avant[parties])[order(c(seq_along(apres), ou[parties] + which(parties) / (length(avant) + 1)))]
 }
 
 # Les composantes sorties retournées d'un ajustement à l'autre : le signe d'une composante d'ACP est
@@ -765,7 +769,7 @@ comparer_entree <- function(a, b, fr, retournes = character(0)) {
        (deux && is.null(a$ic) && !(e$groupe %in% c("variables", "especes")) &&
           (if (identical(e$forme, "pourcentage")) abs(ecart) >= 0.02 else if (petite) abs(ecart) >= 0.05
            else !is.null(relatif) && abs(relatif) >= (if (test) 0.25 else 0.1))))
-  x <- list(cle = e$cle, libelle = e$libelle, groupe = e$groupe, alias = e$alias, forme = e$forme,
+  x <- list(cle = e$cle, libelle = e$libelle, groupe = e$groupe, alias = e$alias, forme = e$forme, axe = e$axe,
             avant = va, apres = vb, ic_avant = a$ic, ic_apres = b$ic, p_avant = a$p, p_apres = b$p, n_avant = a$n, n_apres = b$n,
             classe_avant = a[["classe"]], classe_apres = b[["classe"]], classe_texte_avant = a[["classe_texte"]], classe_texte_apres = b[["classe_texte"]],
             ecart = ecart, ecart_relatif = relatif, change = change, signe = signe, seuil = seuil, ic = hors_ic, nouveau = nouveau, disparu = disparu,
@@ -857,18 +861,17 @@ comparer_resultats <- function(avant, apres, langue = if (identical(getOption("n
   ca <- vapply(avant, `[[`, "", "cle")
   cp <- vapply(apres, `[[`, "", "cle")
   retournes <- axes_retournes(avant, apres)
-  entrees <- lapply(ordre_comparaison(ca, cp), function(k) {
-    a <- if (k %in% ca) avant[[match(k, ca)]]
-    b <- if (k %in% cp) apres[[match(k, cp)]]
-    comparer_entree(a, b, fr, retournes)
-  })
+  cles <- ordre_comparaison(ca, cp)
+  ia <- match(cles, ca)  # (les places une fois pour toutes : des milliers de loadings)
+  ib <- match(cles, cp)
+  entrees <- lapply(seq_along(cles), function(i) comparer_entree(if (!is.na(ia[i])) avant[[ia[i]]], if (!is.na(ib[i])) apres[[ib[i]]], fr, retournes))
   notables <- Filter(function(x) !is.null(x$phrase), entrees)
   par_variable <- vapply(notables, function(x) x$groupe %in% c("variables", "especes"), TRUE)
   une <- function(x) list(texte = x$phrase, cles = I(x$cle), importance = x$importance)
   phrases <- c(lapply(notables[!par_variable], une),
                if (sum(par_variable) > 8) phrases_variables(notables[par_variable], fr) else lapply(notables[par_variable], une),
                lapply(retournes, function(axe) {
-                 k <- vapply(Filter(function(x) isTRUE(x$retourne) && identical(apres[[match(x$cle, cp)]]$axe, axe), entrees), `[[`, "", "cle")
+                 k <- vapply(Filter(function(x) isTRUE(x$retourne) && identical(x$axe, axe), entrees), `[[`, "", "cle")
                  list(texte = sprintf(if (fr) "La composante %s est sortie retournée (son signe est arbitraire) : ses loadings sont comparés de signe changé."
                                       else "Component %s came out reflected (its sign is arbitrary): its loadings are compared with their sign changed.", axe),
                       cles = I(k), importance = 0)

@@ -2119,6 +2119,50 @@ async function principal() {
       try { await api('ajuster', { projet: q.id, type: 'BOOST', x: xs, classe: v.niveau, vc, echelle: 'none' }); } catch (err) { refus = err.message; }
       verifier(/pas une classe/.test(refus), `arbres boostés d'une classe refusés : « ${refus} »`);
     });
+    await etape('résultats clés d’un modèle, comparés avant et après un réajustement (moteur/R/resultats_cles.R)', async () => {
+      const { offreModele, formeReference } = await import(require('url').pathToFileURL(path.join(interfaceDir, 'references.js')).href);
+      const lm = await api('ajuster', { projet: p.id, type: 'LM', x: [uid.x1, uid.x2, uid.zone], y: [uid.y], echelle: 'none', nom: 'LMcles' });
+      // every value a document can cite (references.js offers it) is an entry, under its reference or
+      // an alias, with the number the document writes
+      for (const m of [pca, pls, opls, da, lm]) {
+        const r = await api('resultats_cles', { modele: m.id });
+        verifier(r.modele === m.id && Array.isArray(r.entrees) && r.entrees.length > 0, `${m.nom} : aucune entrée`);
+        const parCle = new Map();
+        for (const e of r.entrees) for (const c of [e.cle].concat(e.alias || [])) parCle.set(c, e);
+        const terme = m.regression ? [].concat(m.coefficients_regression.terme)[1] : null;
+        const chemins = offreModele(m).filter((o) => o.type === 'valeur').map((o) => o.chemin)
+          .concat(m.regression ? [`est.${terme}`, `p.${terme}`, `ic.${terme}`] : ['R2X.1', 'Q2.1']);
+        for (const chemin of chemins) {
+          const e = parCle.get(chemin);
+          verifier(e, `${m.nom} : {{${m.nom}.${chemin}}} sans entrée`);
+          const f = formeReference(m, chemin.split('.'), { format: '' });
+          const attendu = f.forme === 'coef' ? { p: f.p, ic: f.bas }[f.quoi] ?? f.est : f.forme === 'coef_cs' ? f.est : f.x;
+          const quoi = chemin.split('.');
+          const obtenu = quoi[0] === 'p' || (quoi[0] === 'cvanova' && quoi[1] === 'p') ? e.p : quoi[0] === 'ic' ? e.ic[0] : e.valeur;
+          verifier(Math.abs(obtenu - attendu) <= 1e-9 * Math.max(1, Math.abs(attendu)), `${m.nom}.${chemin} : ${obtenu} au lieu de ${attendu}`);
+        }
+      }
+      // the summary before and after a refit without five observations, sent back as received
+      const avant = await api('resultats_cles', { modele: pls.id }, 'en');
+      const re = await api('reajuster', { modele: pls.id, exclues: [3, 4, 5, 6, 7], A: 2 });
+      const apres = await api('resultats_cles', { modele: re.id }, 'en');
+      verifier(avant.entrees.find((e) => e.cle === 'Q2').libelle === 'Cumulative Q²', 'libellés dans la langue de la demande');
+      const c = await api('comparer_resultats', { avant, apres, langue: 'en' });
+      const n = c.entrees.find((x) => x.cle === 'N');
+      verifier(n && n.avant === 60 && n.apres === 55 && n.change && n.phrase === 'The number of observations goes from 60 to 55.', `N comparé : ${JSON.stringify(n)}`);
+      verifier(c.entrees.every((x) => ['change', 'signe', 'seuil', 'ic', 'nouveau', 'disparu', 'categorie'].every((k) => typeof x[k] === 'boolean') && typeof x.importance === 'number'),
+        'chaque entrée comparée a ses drapeaux et son importance');
+      verifier(c.resume.entrees === c.entrees.length && c.resume.changees > 0 && c.phrases.length === c.resume.phrases
+        && c.phrases.every((f) => typeof f.texte === 'string' && Array.isArray(f.cles)), `résumé de la comparaison : ${JSON.stringify(c.resume)}`);
+      const q2 = c.entrees.find((x) => x.cle === 'Q2');
+      verifier(q2 && Math.abs(q2.ecart - (q2.apres - q2.avant)) < 1e-12, `écart du Q² : ${JSON.stringify(q2)}`);
+      const meme = await api('comparer_resultats', { avant, apres: avant });
+      verifier(meme.resume.changees === 0 && meme.phrases.length === 0, `un résumé comparé à lui-même : ${JSON.stringify(meme.resume)}`);
+      // in French (the request's language, without langue): the Results text's decimal comma
+      const fr = await api('comparer_resultats', { avant: await api('resultats_cles', { modele: lm.id }), apres: await api('resultats_cles', { modele: (await api('reajuster', { modele: lm.id, exclues: [8, 9, 10, 11] })).id }) });
+      const nfr = fr.entrees.find((x) => x.cle === 'N');
+      verifier(nfr.phrase === 'Le nombre d\'observations passe de 60 à 56.' && fr.phrases.every((f) => !/\d\.\d/.test(f.texte)), `phrases en français : ${fr.phrases.map((f) => f.texte).join(' | ')}`);
+    });
     await etape('retirer un modèle et sa définition', async () => {
       const avant = (await api('projet', { projet: p.id })).modeles.length;
       const r = await api('supprimer_modele', { modele: da.id, definition: true });

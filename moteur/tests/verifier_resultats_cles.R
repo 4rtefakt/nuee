@@ -487,7 +487,9 @@ e2 <- list(entree_resultat("N", "Nombre d'observations", "ajustement", 12, forme
            entree_resultat("a", "Valeur a", "estimations", 1.000000000001, ic = c(0.5, 1.5), limite = 0, genre = "f"), entree_resultat("d", "Valeur d", "estimations", 3))
 C12 <- comparer_resultats(e1, e2, "fr")
 verifier("l'ordre d'après, une entrée disparue à sa place d'avant ; un écart de l'ordre de l'arrondi n'est pas un changement",
-         identical(vapply(C12$entrees, `[[`, "", "cle"), c("N", "c", "a", "b", "d")) && !comparee(C12, "a")$change && comparee(C12, "b")$disparu && comparee(C12, "d")$nouveau)
+         identical(vapply(C12$entrees, `[[`, "", "cle"), c("N", "c", "a", "b", "d")) && !comparee(C12, "a")$change && comparee(C12, "b")$disparu && comparee(C12, "d")$nouveau &&
+           identical(ordre_comparaison(c("b", "x", "c", "y", "z"), c("a", "b", "c")), c("a", "b", "x", "c", "y", "z")) &&
+           identical(ordre_comparaison(c("w", "b"), "b"), c("w", "b")) && identical(ordre_comparaison(c("a", "b"), c("b", "a")), c("b", "a")))
 verifier("une catégorie seule qui change (le modèle) : sa phrase, ses deux catégories",
          drapeau(C12, "c", "categorie") && identical(phrase(C12, "c"), "Le modèle passe de « hn » à « hr ».") && identical(comparee(C12, "c")$classe_avant, "hn"))
 verifier("un nombre entier qui change a sa phrase, sans décimale", identical(phrase(C12, "N"), "Le nombre d'observations passe de 10 à 12."))
