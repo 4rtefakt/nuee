@@ -818,8 +818,9 @@ ajuster_regression <- function(projet, d) {
   candidats <- cadre$candidats
   noms_candidats <- cadre$noms[match(candidats, cadre$termes)]
   if (nrow(cadre$cadre) <= length(candidats) + 1) {
-    stop(sprintf(traduire("Trop peu d'observations complètes (%d) pour %d termes.", "Too few complete observations (%d) for %d terms."),
-                 nrow(cadre$cadre), length(candidats)), call. = FALSE)
+    stop(sprintf(traduire("Trop peu d'observations complètes (%d) pour %d terme(s) : il en faut au moins %d, la réponse et chaque variable X connues.",
+                          "Too few complete observations (%d) for %d term(s): at least %d are needed, with the response and every X variable known."),
+                 nrow(cadre$cadre), length(candidats), length(candidats) + 2), call. = FALSE)
   }
   refuser_reponse_constante(cadre$cadre$y, as.character(d$y[[1]]$name))
   G <- d$cv_groups %||% 7
