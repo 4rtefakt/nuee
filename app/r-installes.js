@@ -144,10 +144,11 @@ const NOMS_POLITIQUES = ['DisableUpdateCheck', 'DisableCustomCode', 'RHome', 'Pl
 const RACINES = ['HKEY_LOCAL_MACHINE', 'HKEY_CURRENT_USER'];
 const programmeSysteme = (env, ...p) => path.win32.join(env.SystemRoot || env.windir || 'C:\\Windows', 'System32', ...p);
 
-// a program run to its end: its standard output, or null when it couldn't start or ended in error
+// a program run to its end: its standard output, or null when it couldn't start, ended in error, or
+// didn't end within 15 seconds (Nuée's start waits for it)
 function sortieDe(programme, args) {
   return new Promise((ok) => {
-    execFile(programme, args, { encoding: 'utf8', windowsHide: true, timeout: 30000, maxBuffer: 16 * 1024 * 1024 }, (e, sortie) => ok(e ? null : String(sortie)));
+    execFile(programme, args, { encoding: 'utf8', windowsHide: true, timeout: 15000, maxBuffer: 16 * 1024 * 1024 }, (e, sortie) => ok(e ? null : String(sortie)));
   });
 }
 
